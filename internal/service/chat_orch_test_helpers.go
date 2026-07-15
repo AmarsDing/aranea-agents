@@ -21,7 +21,9 @@ func (noopRunStatusTracker) SetRunStatusWithAwait(context.Context, string, strin
 	return nil
 }
 func (noopRunStatusTracker) PublishRunStatus(string, string, string, string)                  {}
-func (noopRunStatusTracker) PersistRunStatus(context.Context, string, string, string, string) {}
+func (noopRunStatusTracker) PersistRunStatus(context.Context, string, string, string, string) error {
+	return nil
+}
 func (noopRunStatusTracker) GetRunStatus(context.Context, string) (string, string, string, string, bool) {
 	return "", "", "", "", false
 }

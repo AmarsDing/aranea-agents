@@ -63,6 +63,8 @@ const (
 	FieldAgentVariant = "agent_variant"
 	// FieldVariantDescription holds the string denoting the variant_description field in the database.
 	FieldVariantDescription = "variant_description"
+	// FieldWorkspaceID holds the string denoting the workspace_id field in the database.
+	FieldWorkspaceID = "workspace_id"
 	// Table holds the table name of the agent in the database.
 	Table = "agents"
 )
@@ -95,6 +97,7 @@ var Columns = []string{
 	FieldPositionID,
 	FieldAgentVariant,
 	FieldVariantDescription,
+	FieldWorkspaceID,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -150,6 +153,8 @@ var (
 	DefaultAgentVariant string
 	// DefaultVariantDescription holds the default value on creation for the "variant_description" field.
 	DefaultVariantDescription string
+	// DefaultWorkspaceID holds the default value on creation for the "workspace_id" field.
+	DefaultWorkspaceID string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
@@ -341,4 +346,9 @@ func ByAgentVariant(opts ...sql.OrderTermOption) OrderOption {
 // ByVariantDescription orders the results by the variant_description field.
 func ByVariantDescription(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldVariantDescription, opts...).ToFunc()
+}
+
+// ByWorkspaceID orders the results by the workspace_id field.
+func ByWorkspaceID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkspaceID, opts...).ToFunc()
 }

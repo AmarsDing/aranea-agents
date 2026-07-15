@@ -16,7 +16,7 @@ type RunStatusWriter interface {
 	SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) error
 	SetRunStatusWithAwait(ctx context.Context, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) error
 	PublishRunStatus(sessionID, runID, status, errMsg string)
-	PersistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string)
+	PersistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) error
 }
 
 // RunStatusReader provides read access to run status.
@@ -131,7 +131,16 @@ func (t *chatRunStatusTracker) SetRunStatusWithAwait(ctx context.Context, sessio
 	} else {
 		PublishRunStatusFull(t.bus, sessionID, runID, status, errMsg, nil, bind.sessionRunID, bind.turnID)
 	}
-	t.PersistRunStatus(ctx, sessionID, runID, status, errMsg)
+	// C-11 fix: log on persist failure so operators can detect DB/memory
+	// divergence (WS already published; on restart the old status is restored).
+	if err := t.PersistRunStatus(ctx, sessionID, runID, status, errMsg); err != nil {
+		t.lg.Warn("persist run status failed; DB/memory may diverge on restart",
+			loggateway.StepID("run.persist_failed"),
+			loggateway.SessionID(sessionID),
+			loggateway.Str("run_id", runID),
+			loggateway.Str("status", status),
+			loggateway.Err(err))
+	}
 	return nil
 }
 
@@ -141,8 +150,8 @@ func (t *chatRunStatusTracker) PublishRunStatus(sessionID, runID, status, errMsg
 }
 
 // PersistRunStatus persists run status to session state.
-func (t *chatRunStatusTracker) PersistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
-	persistRunStatusToSession(t.sessions, ctx, sessionID, runID, status, errMsg)
+func (t *chatRunStatusTracker) PersistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) error {
+	return persistRunStatusToSession(t.sessions, ctx, sessionID, runID, status, errMsg)
 }
 
 // HydrateRunStatusFromSession loads run status from session state.

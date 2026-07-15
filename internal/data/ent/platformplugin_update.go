@@ -349,6 +349,20 @@ func (_u *PlatformPluginUpdate) SetNillableDeletedAt(v *string) *PlatformPluginU
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *PlatformPluginUpdate) SetWorkspaceID(v string) *PlatformPluginUpdate {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *PlatformPluginUpdate) SetNillableWorkspaceID(v *string) *PlatformPluginUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the PlatformPluginMutation object of the builder.
 func (_u *PlatformPluginUpdate) Mutation() *PlatformPluginMutation {
 	return _u.mutation
@@ -487,6 +501,9 @@ func (_u *PlatformPluginUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.DeletedAt(); ok {
 		_spec.SetField(platformplugin.FieldDeletedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformplugin.FieldWorkspaceID, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -830,6 +847,20 @@ func (_u *PlatformPluginUpdateOne) SetNillableDeletedAt(v *string) *PlatformPlug
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *PlatformPluginUpdateOne) SetWorkspaceID(v string) *PlatformPluginUpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *PlatformPluginUpdateOne) SetNillableWorkspaceID(v *string) *PlatformPluginUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the PlatformPluginMutation object of the builder.
 func (_u *PlatformPluginUpdateOne) Mutation() *PlatformPluginMutation {
 	return _u.mutation
@@ -998,6 +1029,9 @@ func (_u *PlatformPluginUpdateOne) sqlSave(ctx context.Context) (_node *Platform
 	}
 	if value, ok := _u.mutation.DeletedAt(); ok {
 		_spec.SetField(platformplugin.FieldDeletedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformplugin.FieldWorkspaceID, field.TypeString, value)
 	}
 	_node = &PlatformPlugin{config: _u.config}
 	_spec.Assign = _node.assignValues

@@ -34,8 +34,8 @@ func terminalRunStatus(status string) bool {
 	return biz.IsSessionRunPhaseTerminal(biz.ParseSessionRunPhase(status)) || strings.TrimSpace(strings.ToLower(status)) == "idle"
 }
 
-func (s *ChatService) persistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
-	s.orch.persistRunStatus(ctx, sessionID, runID, status, errMsg)
+func (s *ChatService) persistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) error {
+	return s.orch.persistRunStatus(ctx, sessionID, runID, status, errMsg)
 }
 
 func (s *ChatService) hydrateRunStatusFromSession(ctx context.Context, sessionID string) (persistedRunStatus, bool) {

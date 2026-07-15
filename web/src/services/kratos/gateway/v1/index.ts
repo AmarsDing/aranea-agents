@@ -62,90 +62,103 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createGatewayServiceClient(
-  handler: RequestHandler
-): GatewayService {
+export function createGatewayServiceClient(handler: RequestHandler): GatewayService {
   return {
-    CreateWebhook(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateWebhook(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/gateway/webhooks`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GatewayService",
-        method: "CreateWebhook",
-      }) as Promise<Webhook>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GatewayService',
+          method: 'CreateWebhook',
+        },
+      ) as Promise<Webhook>;
     },
-    ListWebhooks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListWebhooks(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/gateway/webhooks`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GatewayService",
-        method: "ListWebhooks",
-      }) as Promise<ListWebhooksResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GatewayService',
+          method: 'ListWebhooks',
+        },
+      ) as Promise<ListWebhooksResponse>;
     },
-    UpdateWebhook(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateWebhook(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/gateway/webhooks/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PUT",
-        body,
-      }, {
-        service: "GatewayService",
-        method: "UpdateWebhook",
-      }) as Promise<Webhook>;
+      return handler(
+        {
+          path: uri,
+          method: 'PUT',
+          body,
+        },
+        {
+          service: 'GatewayService',
+          method: 'UpdateWebhook',
+        },
+      ) as Promise<Webhook>;
     },
-    DeleteWebhook(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteWebhook(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/gateway/webhooks/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "DELETE",
-        body,
-      }, {
-        service: "GatewayService",
-        method: "DeleteWebhook",
-      }) as Promise<wellKnownEmpty>;
+      return handler(
+        {
+          path: uri,
+          method: 'DELETE',
+          body,
+        },
+        {
+          service: 'GatewayService',
+          method: 'DeleteWebhook',
+        },
+      ) as Promise<wellKnownEmpty>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
-
 
 // @@protoc_insertion_point(typescript-http-eof)

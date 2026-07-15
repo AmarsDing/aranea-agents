@@ -25,7 +25,9 @@
       @select-agent="entity.selectAgent($event)"
       @agent-settings="(id: string) => entity.openSettings('agent', id)"
       @agent-delete="(id: string) => entity.openDelete('agent', id)"
-      @agent-reorder="(payload: { groupKey: string; ids: string[] }) => entity.onGroupReorder(payload.groupKey, payload.ids)"
+      @agent-reorder="
+        (payload: { groupKey: string; ids: string[] }) => entity.onGroupReorder(payload.groupKey, payload.ids)
+      "
       @select-spirit-team="spiritStore.selectTeam($event)"
       @toggle-team-expand="spiritStore.toggleTeamExpand($event)"
       @spirit-settings="(id) => entity.openSettings('agent', id)"

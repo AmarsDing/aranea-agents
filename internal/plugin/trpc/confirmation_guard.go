@@ -37,6 +37,14 @@ func (c *ConfirmationGuardPlugin) beforeTool(ctx context.Context, args *trpctool
 	if args == nil {
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
+	// P1-10: skip when the product callback already handled confirmation.
+	// The product callback (tool_confirmation.go) runs as a Chain BeforeTool
+	// hook before plugin callbacks. After user approval, it tags the context
+	// via WithToolConfirmHandled. Without this check the plugin would re-block
+	// the same tool the user just approved — see E2E-P1-10.
+	if ToolConfirmHandled(ctx) {
+		return &trpctool.BeforeToolResult{Context: ctx}, nil
+	}
 	if MatchConfirmationGuard(c.cfg, args.ToolName, args.Arguments) {
 		c.base.logger.Info("plugin.confirmation_guard.before_tool",
 			"status", "blocked",

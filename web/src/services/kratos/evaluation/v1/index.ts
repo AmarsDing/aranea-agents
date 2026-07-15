@@ -259,314 +259,367 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createEvaluationServiceClient(
-  handler: RequestHandler
-): EvaluationService {
+export function createEvaluationServiceClient(handler: RequestHandler): EvaluationService {
   return {
-    CreateDataset(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateDataset(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/evaluation/datasets`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "EvaluationService",
-        method: "CreateDataset",
-      }) as Promise<EvalDataset>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'EvaluationService',
+          method: 'CreateDataset',
+        },
+      ) as Promise<EvalDataset>;
     },
-    GetDataset(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetDataset(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/evaluation/datasets/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "EvaluationService",
-        method: "GetDataset",
-      }) as Promise<EvalDataset>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'EvaluationService',
+          method: 'GetDataset',
+        },
+      ) as Promise<EvalDataset>;
     },
-    ListDatasets(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListDatasets(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/evaluation/datasets`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "EvaluationService",
-        method: "ListDatasets",
-      }) as Promise<ListDatasetsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'EvaluationService',
+          method: 'ListDatasets',
+        },
+      ) as Promise<ListDatasetsResponse>;
     },
-    DeleteDataset(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteDataset(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/evaluation/datasets/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "DELETE",
-        body,
-      }, {
-        service: "EvaluationService",
-        method: "DeleteDataset",
-      }) as Promise<wellKnownEmpty>;
+      return handler(
+        {
+          path: uri,
+          method: 'DELETE',
+          body,
+        },
+        {
+          service: 'EvaluationService',
+          method: 'DeleteDataset',
+        },
+      ) as Promise<wellKnownEmpty>;
     },
-    UpdateDataset(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateDataset(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/evaluation/datasets/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PATCH",
-        body,
-      }, {
-        service: "EvaluationService",
-        method: "UpdateDataset",
-      }) as Promise<EvalDataset>;
+      return handler(
+        {
+          path: uri,
+          method: 'PATCH',
+          body,
+        },
+        {
+          service: 'EvaluationService',
+          method: 'UpdateDataset',
+        },
+      ) as Promise<EvalDataset>;
     },
-    UploadCases(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UploadCases(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.datasetId) {
-        throw new Error("missing required field request.dataset_id");
+        throw new Error('missing required field request.dataset_id');
       }
       const path = `v1/evaluation/datasets/${request.datasetId}/cases`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "EvaluationService",
-        method: "UploadCases",
-      }) as Promise<UploadCasesResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'EvaluationService',
+          method: 'UploadCases',
+        },
+      ) as Promise<UploadCasesResponse>;
     },
-    RunEvaluation(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    RunEvaluation(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/evaluation/runs`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "EvaluationService",
-        method: "RunEvaluation",
-      }) as Promise<EvalRun>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'EvaluationService',
+          method: 'RunEvaluation',
+        },
+      ) as Promise<EvalRun>;
     },
-    GetRun(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetRun(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/evaluation/runs/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "EvaluationService",
-        method: "GetRun",
-      }) as Promise<EvalRun>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'EvaluationService',
+          method: 'GetRun',
+        },
+      ) as Promise<EvalRun>;
     },
-    DeleteRun(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteRun(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/evaluation/runs/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "DELETE",
-        body,
-      }, {
-        service: "EvaluationService",
-        method: "DeleteRun",
-      }) as Promise<wellKnownEmpty>;
+      return handler(
+        {
+          path: uri,
+          method: 'DELETE',
+          body,
+        },
+        {
+          service: 'EvaluationService',
+          method: 'DeleteRun',
+        },
+      ) as Promise<wellKnownEmpty>;
     },
-    ListRuns(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListRuns(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/evaluation/runs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.datasetId) {
-        queryParams.push(`datasetId=${encodeURIComponent(request.datasetId.toString())}`)
+        queryParams.push(`datasetId=${encodeURIComponent(request.datasetId.toString())}`);
       }
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "EvaluationService",
-        method: "ListRuns",
-      }) as Promise<ListRunsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'EvaluationService',
+          method: 'ListRuns',
+        },
+      ) as Promise<ListRunsResponse>;
     },
-    GetRunResults(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetRunResults(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.runId) {
-        throw new Error("missing required field request.run_id");
+        throw new Error('missing required field request.run_id');
       }
       const path = `v1/evaluation/runs/${request.runId}/results`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "EvaluationService",
-        method: "GetRunResults",
-      }) as Promise<GetRunResultsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'EvaluationService',
+          method: 'GetRunResults',
+        },
+      ) as Promise<GetRunResultsResponse>;
     },
-    AnnotateCaseResult(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    AnnotateCaseResult(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.runId) {
-        throw new Error("missing required field request.run_id");
+        throw new Error('missing required field request.run_id');
       }
       if (!request.resultId) {
-        throw new Error("missing required field request.result_id");
+        throw new Error('missing required field request.result_id');
       }
       const path = `v1/evaluation/runs/${request.runId}/results/${request.resultId}/annotation`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PATCH",
-        body,
-      }, {
-        service: "EvaluationService",
-        method: "AnnotateCaseResult",
-      }) as Promise<EvalCaseResult>;
+      return handler(
+        {
+          path: uri,
+          method: 'PATCH',
+          body,
+        },
+        {
+          service: 'EvaluationService',
+          method: 'AnnotateCaseResult',
+        },
+      ) as Promise<EvalCaseResult>;
     },
-    GetAgentEvalTrend(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetAgentEvalTrend(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error("missing required field request.agent_id");
+        throw new Error('missing required field request.agent_id');
       }
       const path = `v1/evaluation/agents/${request.agentId}/trend`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.datasetId) {
-        queryParams.push(`datasetId=${encodeURIComponent(request.datasetId.toString())}`)
+        queryParams.push(`datasetId=${encodeURIComponent(request.datasetId.toString())}`);
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "EvaluationService",
-        method: "GetAgentEvalTrend",
-      }) as Promise<GetAgentEvalTrendResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'EvaluationService',
+          method: 'GetAgentEvalTrend',
+        },
+      ) as Promise<GetAgentEvalTrendResponse>;
     },
-    CompareEvalRuns(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    CompareEvalRuns(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/evaluation/runs/compare`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "EvaluationService",
-        method: "CompareEvalRuns",
-      }) as Promise<CompareEvalRunsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'EvaluationService',
+          method: 'CompareEvalRuns',
+        },
+      ) as Promise<CompareEvalRunsResponse>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
-
 
 // @@protoc_insertion_point(typescript-http-eof)

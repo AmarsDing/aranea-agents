@@ -164,6 +164,11 @@ func VerificationGates(v string) predicate.GraphDefinition {
 	return predicate.GraphDefinition(sql.FieldEQ(FieldVerificationGates, v))
 }
 
+// WorkspaceID applies equality check predicate on the "workspace_id" field. It's identical to WorkspaceIDEQ.
+func WorkspaceID(v string) predicate.GraphDefinition {
+	return predicate.GraphDefinition(sql.FieldEQ(FieldWorkspaceID, v))
+}
+
 // NameEQ applies the EQ predicate on the "name" field.
 func NameEQ(v string) predicate.GraphDefinition {
 	return predicate.GraphDefinition(sql.FieldEQ(FieldName, v))
@@ -1287,6 +1292,71 @@ func VerificationGatesEqualFold(v string) predicate.GraphDefinition {
 // VerificationGatesContainsFold applies the ContainsFold predicate on the "verification_gates" field.
 func VerificationGatesContainsFold(v string) predicate.GraphDefinition {
 	return predicate.GraphDefinition(sql.FieldContainsFold(FieldVerificationGates, v))
+}
+
+// WorkspaceIDEQ applies the EQ predicate on the "workspace_id" field.
+func WorkspaceIDEQ(v string) predicate.GraphDefinition {
+	return predicate.GraphDefinition(sql.FieldEQ(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDNEQ applies the NEQ predicate on the "workspace_id" field.
+func WorkspaceIDNEQ(v string) predicate.GraphDefinition {
+	return predicate.GraphDefinition(sql.FieldNEQ(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDIn applies the In predicate on the "workspace_id" field.
+func WorkspaceIDIn(vs ...string) predicate.GraphDefinition {
+	return predicate.GraphDefinition(sql.FieldIn(FieldWorkspaceID, vs...))
+}
+
+// WorkspaceIDNotIn applies the NotIn predicate on the "workspace_id" field.
+func WorkspaceIDNotIn(vs ...string) predicate.GraphDefinition {
+	return predicate.GraphDefinition(sql.FieldNotIn(FieldWorkspaceID, vs...))
+}
+
+// WorkspaceIDGT applies the GT predicate on the "workspace_id" field.
+func WorkspaceIDGT(v string) predicate.GraphDefinition {
+	return predicate.GraphDefinition(sql.FieldGT(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDGTE applies the GTE predicate on the "workspace_id" field.
+func WorkspaceIDGTE(v string) predicate.GraphDefinition {
+	return predicate.GraphDefinition(sql.FieldGTE(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDLT applies the LT predicate on the "workspace_id" field.
+func WorkspaceIDLT(v string) predicate.GraphDefinition {
+	return predicate.GraphDefinition(sql.FieldLT(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDLTE applies the LTE predicate on the "workspace_id" field.
+func WorkspaceIDLTE(v string) predicate.GraphDefinition {
+	return predicate.GraphDefinition(sql.FieldLTE(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDContains applies the Contains predicate on the "workspace_id" field.
+func WorkspaceIDContains(v string) predicate.GraphDefinition {
+	return predicate.GraphDefinition(sql.FieldContains(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDHasPrefix applies the HasPrefix predicate on the "workspace_id" field.
+func WorkspaceIDHasPrefix(v string) predicate.GraphDefinition {
+	return predicate.GraphDefinition(sql.FieldHasPrefix(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDHasSuffix applies the HasSuffix predicate on the "workspace_id" field.
+func WorkspaceIDHasSuffix(v string) predicate.GraphDefinition {
+	return predicate.GraphDefinition(sql.FieldHasSuffix(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDEqualFold applies the EqualFold predicate on the "workspace_id" field.
+func WorkspaceIDEqualFold(v string) predicate.GraphDefinition {
+	return predicate.GraphDefinition(sql.FieldEqualFold(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDContainsFold applies the ContainsFold predicate on the "workspace_id" field.
+func WorkspaceIDContainsFold(v string) predicate.GraphDefinition {
+	return predicate.GraphDefinition(sql.FieldContainsFold(FieldWorkspaceID, v))
 }
 
 // And groups predicates with the AND operator between them.

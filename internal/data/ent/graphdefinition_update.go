@@ -321,6 +321,20 @@ func (_u *GraphDefinitionUpdate) SetNillableVerificationGates(v *string) *GraphD
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *GraphDefinitionUpdate) SetWorkspaceID(v string) *GraphDefinitionUpdate {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *GraphDefinitionUpdate) SetNillableWorkspaceID(v *string) *GraphDefinitionUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the GraphDefinitionMutation object of the builder.
 func (_u *GraphDefinitionUpdate) Mutation() *GraphDefinitionMutation {
 	return _u.mutation
@@ -455,6 +469,9 @@ func (_u *GraphDefinitionUpdate) sqlSave(ctx context.Context) (_node int, err er
 	}
 	if value, ok := _u.mutation.VerificationGates(); ok {
 		_spec.SetField(graphdefinition.FieldVerificationGates, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(graphdefinition.FieldWorkspaceID, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -769,6 +786,20 @@ func (_u *GraphDefinitionUpdateOne) SetNillableVerificationGates(v *string) *Gra
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *GraphDefinitionUpdateOne) SetWorkspaceID(v string) *GraphDefinitionUpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *GraphDefinitionUpdateOne) SetNillableWorkspaceID(v *string) *GraphDefinitionUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the GraphDefinitionMutation object of the builder.
 func (_u *GraphDefinitionUpdateOne) Mutation() *GraphDefinitionMutation {
 	return _u.mutation
@@ -933,6 +964,9 @@ func (_u *GraphDefinitionUpdateOne) sqlSave(ctx context.Context) (_node *GraphDe
 	}
 	if value, ok := _u.mutation.VerificationGates(); ok {
 		_spec.SetField(graphdefinition.FieldVerificationGates, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(graphdefinition.FieldWorkspaceID, field.TypeString, value)
 	}
 	_node = &GraphDefinition{config: _u.config}
 	_spec.Assign = _node.assignValues

@@ -114,12 +114,12 @@ function formatMoney(value?: number) {
 
 .all-models-breakdown__subtext {
   font-size: 11px;
-  opacity: 0.7;
+  opacity: 70%;
 }
 
 .all-models-breakdown__empty {
   padding: 24px;
   text-align: center;
-  opacity: 0.6;
+  opacity: 60%;
 }
 </style>

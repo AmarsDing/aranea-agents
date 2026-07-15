@@ -36,7 +36,11 @@ export function useSessionTree() {
     return tree;
   }
 
-  function findMemberSessionId(spiritSessionId: string, agentKey: string, teamSessionId?: string | null): string | null {
+  function findMemberSessionId(
+    spiritSessionId: string,
+    agentKey: string,
+    teamSessionId?: string | null,
+  ): string | null {
     const tree = treesBySpirit.value.get(spiritSessionId);
     if (!tree) return null;
     if (teamSessionId) {

@@ -1,0 +1,13 @@
+[1mdiff --git a/internal/service/service.go b/internal/service/service.go[m
+[1mindex 7ba81075b..b12ef4488 100644[m
+[1m--- a/internal/service/service.go[m
+[1m+++ b/internal/service/service.go[m
+[36m@@ -49,7 +49,7 @@[m [mvar ProviderSet = wire.NewSet([m
+ 	NewCronService,[m
+ 	NewPluginServiceWithBootstrap,[m
+ 	NewMCPServerService,[m
+[31m-	importer.NewEngine,[m
+[32m+[m	[32mimporter.ProvideEngineWithStore,[m
+ 	importer.ProvideLLMLister,[m
+ 	NewSkillService,[m
+ 	ProvideSkillResolveRootFn,[m

@@ -56,6 +56,7 @@ const accentColor = computed(() => {
   from {
     stroke-dashoffset: 10;
   }
+
   to {
     stroke-dashoffset: 0;
   }

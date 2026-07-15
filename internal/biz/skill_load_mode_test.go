@@ -42,3 +42,33 @@ func TestGetSkillLoadMode_DefaultEmpty(t *testing.T) {
 		t.Errorf("GetSkillLoadMode(progressive) = %q, want progressive", got)
 	}
 }
+
+// TestSkillLoadMode_P2_01_ProgressiveNotPassedToFramework verifies the
+// P2-01 contract: "progressive" is an Aranea-specific composite marker
+// that must NOT be passed to the framework's WithSkillLoadMode. The
+// framework only recognizes "once|turn|session" and silently falls back
+// to "turn" for unknown values, which would mask the composite semantic.
+//
+// This test mirrors the guard in trpc_build.go (line ~403) to ensure the
+// exclusion predicate is stable.
+func TestSkillLoadMode_P2_01_ProgressiveNotPassedToFramework(t *testing.T) {
+	// Modes that SHOULD be passed to WithSkillLoadMode (framework recognizes them).
+	passThrough := []string{"once", "turn", "session"}
+	for _, mode := range passThrough {
+		if IsProgressiveSkillLoad(mode) {
+			t.Errorf("mode %q should not be flagged as progressive (would incorrectly block pass-through)", mode)
+		}
+	}
+	// "progressive" (and case variants) MUST be blocked from pass-through.
+	if !IsProgressiveSkillLoad("progressive") {
+		t.Error("progressive must be flagged as progressive so it is excluded from WithSkillLoadMode")
+	}
+	if !IsProgressiveSkillLoad("Progressive") {
+		t.Error("Progressive (uppercase) must be flagged as progressive")
+	}
+	// "auto" is excluded by a separate guard in trpc_build.go; verify it
+	// is NOT flagged as progressive (it has its own exclusion condition).
+	if IsProgressiveSkillLoad("auto") {
+		t.Error("auto must not be flagged as progressive")
+	}
+}

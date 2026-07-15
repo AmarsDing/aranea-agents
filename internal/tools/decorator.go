@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,22 @@ import (
 // DefaultToolTimeout is the default per-call timeout applied by ToolDecorator
 // when ToolDecoratorConfig.Timeout is zero.
 const DefaultToolTimeout = 60 * time.Second
+
+// DefaultStreamTimeout is the default maximum duration for a streaming tool
+// call when ToolDecoratorConfig.StreamTimeout is zero. Streaming tools that
+// run longer than this are terminated with a context-deadline error.
+const DefaultStreamTimeout = 5 * time.Minute
+
+// DefaultStreamBudget is the default maximum total byte size of stream chunks
+// when ToolDecoratorConfig.StreamBudget is zero. Streams exceeding this total
+// are terminated with a budget-exceeded error. Set StreamBudget to a negative
+// value to disable the budget (unlimited).
+const DefaultStreamBudget = 1024 * 1024 // 1MB
+
+// streamProxyBufferSize is the channel buffer size for the proxy stream that
+// wraps the inner StreamReader. A small buffer is sufficient because the
+// proxy goroutine drains the inner reader as fast as the consumer reads.
+const streamProxyBufferSize = 16
 
 // ResultBudget controls the maximum size of tool execution results.
 // When a result's JSON serialization exceeds MaxBytes, it is truncated
@@ -80,6 +97,14 @@ type ToolDecoratorConfig struct {
 	ResultBudget *ResultBudget // nil = no truncation
 	EnableCache  bool          // cache ConcurrentSafe tools
 	Logger       loggateway.Logger
+	// StreamTimeout is the maximum duration for a streaming tool call.
+	// 0 = use DefaultStreamTimeout. A negative value disables the timeout
+	// (not recommended for production).
+	StreamTimeout time.Duration
+	// StreamBudget is the maximum total byte size of stream chunks.
+	// 0 = use DefaultStreamBudget. A negative value disables the budget
+	// (unlimited, not recommended for production).
+	StreamBudget int
 }
 
 // ToolDecorator wraps a CallableTool with three capabilities:
@@ -146,13 +171,18 @@ func NewToolDecorator(inner trpctool.CallableTool, cfg ToolDecoratorConfig) trpc
 	return d
 }
 
-// streamableToolDecorator embeds *ToolDecorator and adds StreamableCall as
-// a pass-through to the inner tool. This type exists (rather than defining
-// StreamableCall on *ToolDecorator) so that only streaming-capable tools
-// satisfy the StreamableTool interface after decoration.
+// streamableToolDecorator embeds *ToolDecorator and adds StreamableCall
+// with P2-02 streaming guards (deadline + byte budget + cancellation).
+// This type exists (rather than defining StreamableCall on *ToolDecorator)
+// so that only streaming-capable tools satisfy the StreamableTool interface
+// after decoration.
 //
 // All Call/Declaration/cache/timeout/budget behavior is inherited from
-// the embedded *ToolDecorator; only StreamableCall is added here.
+// the embedded *ToolDecorator; only StreamableCall is added here, where it
+// wraps the inner StreamReader with a proxy goroutine that enforces:
+//   - StreamTimeout: maximum stream duration (default 5 min)
+//   - StreamBudget: maximum total chunk byte size (default 1 MB)
+//   - Context cancellation: propagates caller cancellation to the inner tool
 type streamableToolDecorator struct {
 	*ToolDecorator
 }
@@ -163,9 +193,15 @@ var (
 	_ trpctool.StreamableTool = (*streamableToolDecorator)(nil)
 )
 
-// StreamableCall passes through to the inner tool's StreamableCall.
-// Timeout/budget/cache do not apply to streaming calls; callers should
-// rely on the context deadline for stream-level cancellation.
+// StreamableCall wraps the inner tool's StreamableCall with a proxy
+// goroutine that enforces stream-level deadline, byte budget, and
+// context cancellation (P2-02). The returned StreamReader is a proxy
+// reader; the proxy goroutine drains the inner reader and forwards
+// chunks to the proxy writer.
+//
+// When the budget or deadline is exceeded, the proxy sends a final error
+// chunk to the consumer and terminates the stream. The inner tool is
+// notified via context cancellation so it can release its resources.
 func (s *streamableToolDecorator) StreamableCall(ctx context.Context, jsonArgs []byte) (*trpctool.StreamReader, error) {
 	if s.ToolDecorator == nil || s.ToolDecorator.inner == nil {
 		return nil, fmt.Errorf("streamableToolDecorator: inner tool is nil")
@@ -176,7 +212,132 @@ func (s *streamableToolDecorator) StreamableCall(ctx context.Context, jsonArgs [
 		// when inner satisfies StreamableTool. Defensive guard.
 		return nil, fmt.Errorf("tool %q is not streamable", s.ToolDecorator.toolName())
 	}
-	return st.StreamableCall(ctx, jsonArgs)
+
+	cfg := s.cfg
+	timeout := cfg.StreamTimeout
+	if timeout == 0 {
+		timeout = DefaultStreamTimeout
+	}
+	budget := cfg.StreamBudget
+	if budget == 0 {
+		budget = DefaultStreamBudget
+	}
+
+	// Apply a deadline to the stream context. If the caller's context
+	// already has a sooner deadline, keep it.
+	streamCtx, cancel := context.WithCancel(ctx)
+	if timeout > 0 {
+		if dl, ok := streamCtx.Deadline(); !ok || time.Until(dl) > timeout {
+			var timeoutCancel context.CancelFunc
+			streamCtx, timeoutCancel = context.WithTimeout(streamCtx, timeout)
+			origCancel := cancel
+			cancel = func() { origCancel(); timeoutCancel() }
+		}
+	}
+
+	innerReader, err := st.StreamableCall(streamCtx, jsonArgs)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	if innerReader == nil {
+		cancel()
+		return nil, fmt.Errorf("streamable tool %q returned nil reader", s.toolName())
+	}
+
+	proxy := trpctool.NewStream(streamProxyBufferSize)
+	reader := proxy.Reader
+	writer := proxy.Writer
+	toolName := s.toolName()
+	lg := cfg.Logger
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+
+	go func() {
+		defer cancel()
+		defer innerReader.Close()
+		defer writer.Close()
+		s.proxyStreamLoop(streamCtx, innerReader, writer, budget, toolName, lg)
+	}()
+
+	return reader, nil
+}
+
+// proxyStreamLoop drains the inner StreamReader and forwards chunks to the
+// proxy StreamWriter, enforcing byte budget and detecting context
+// cancellation. It exits when:
+//   - The inner reader returns io.EOF (clean stream end)
+//   - The inner reader returns an error (propagated to consumer)
+//   - The byte budget is exceeded (sends budget-exceeded error)
+//   - The stream context is cancelled (sends cancellation error)
+//   - The consumer closes the proxy reader (writer.Send returns true)
+func (s *streamableToolDecorator) proxyStreamLoop(
+	streamCtx context.Context,
+	innerReader *trpctool.StreamReader,
+	writer *trpctool.StreamWriter,
+	budget int,
+	toolName string,
+	lg loggateway.Logger,
+) {
+	var totalBytes int
+	for {
+		// Check context before blocking on Recv to detect deadline/cancel
+		// promptly when the inner tool respects context cancellation.
+		if streamCtx.Err() != nil {
+			writer.Send(trpctool.StreamChunk{}, fmt.Errorf("stream %q cancelled: %w", toolName, streamCtx.Err()))
+			return
+		}
+		chunk, err := innerReader.Recv()
+		if err != nil {
+			// Check context first: if the deadline/cancellation fired, the
+			// inner tool may have closed the writer (causing io.EOF) in
+			// response to context cancellation. In that case, report the
+			// cancellation error rather than treating it as a clean EOF.
+			if cerr := streamCtx.Err(); cerr != nil {
+				writer.Send(trpctool.StreamChunk{}, fmt.Errorf("stream %q cancelled: %w", toolName, cerr))
+				return
+			}
+			if err == io.EOF {
+				return // Clean stream end
+			}
+			// Inner tool error: propagate to consumer.
+			writer.Send(trpctool.StreamChunk{}, err)
+			return
+		}
+		if budget > 0 {
+			chunkBytes := estimateChunkBytes(chunk)
+			totalBytes += chunkBytes
+			if totalBytes > budget {
+				lg.Warn("stream budget exceeded, terminating",
+					loggateway.StepID("tool.decorator.stream"),
+					loggateway.Str("tool", toolName),
+					loggateway.Int("bytes", totalBytes),
+					loggateway.Int("budget", budget))
+				writer.Send(trpctool.StreamChunk{}, fmt.Errorf("stream %q budget exceeded: %d > %d bytes", toolName, totalBytes, budget))
+				return
+			}
+		}
+		if closed := writer.Send(chunk, nil); closed {
+			return // Consumer closed the proxy reader
+		}
+	}
+}
+
+// estimateChunkBytes returns the approximate byte size of a StreamChunk's
+// content. It uses JSON marshaling for complex types and falls back to
+// string length. A nil content contributes zero bytes.
+func estimateChunkBytes(chunk trpctool.StreamChunk) int {
+	if chunk.Content == nil {
+		return 0
+	}
+	if data, err := json.Marshal(chunk.Content); err == nil {
+		return len(data)
+	}
+	if s, ok := chunk.Content.(string); ok {
+		return len(s)
+	}
+	return 0
 }
 
 // Declaration returns the inner tool's declaration unchanged.
@@ -218,9 +379,8 @@ func (d *ToolDecorator) Call(ctx context.Context, jsonArgs []byte) (any, error) 
 //
 // Streaming tools are instead wrapped with *streamableToolDecorator (see
 // NewToolDecorator), which embeds *ToolDecorator and adds StreamableCall
-// as a pass-through. Timeout/budget/cache apply only to Call, not to
-// streaming calls; callers should rely on the context deadline for
-// stream-level cancellation.
+// with P2-02 streaming guards (deadline + byte budget + cancellation).
+// See streamableToolDecorator.StreamableCall for details.
 
 // applyTimeout returns a context with deadline if timeout > 0.
 // If the existing context deadline is sooner than the timeout, the

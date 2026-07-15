@@ -3107,6 +3107,7 @@ type AgentMutation struct {
 	position_id             *string
 	agent_variant           *string
 	variant_description     *string
+	workspace_id            *string
 	clearedFields           map[string]struct{}
 	done                    bool
 	oldValue                func(context.Context) (*Agent, error)
@@ -4157,6 +4158,42 @@ func (m *AgentMutation) ResetVariantDescription() {
 	m.variant_description = nil
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *AgentMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *AgentMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the Agent entity.
+// If the Agent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *AgentMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
 // Where appends a list predicates to the AgentMutation builder.
 func (m *AgentMutation) Where(ps ...predicate.Agent) {
 	m.predicates = append(m.predicates, ps...)
@@ -4191,7 +4228,7 @@ func (m *AgentMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 26)
 	if m.agent_key != nil {
 		fields = append(fields, agent.FieldAgentKey)
 	}
@@ -4267,6 +4304,9 @@ func (m *AgentMutation) Fields() []string {
 	if m.variant_description != nil {
 		fields = append(fields, agent.FieldVariantDescription)
 	}
+	if m.workspace_id != nil {
+		fields = append(fields, agent.FieldWorkspaceID)
+	}
 	return fields
 }
 
@@ -4325,6 +4365,8 @@ func (m *AgentMutation) Field(name string) (ent.Value, bool) {
 		return m.AgentVariant()
 	case agent.FieldVariantDescription:
 		return m.VariantDescription()
+	case agent.FieldWorkspaceID:
+		return m.WorkspaceID()
 	}
 	return nil, false
 }
@@ -4384,6 +4426,8 @@ func (m *AgentMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldAgentVariant(ctx)
 	case agent.FieldVariantDescription:
 		return m.OldVariantDescription(ctx)
+	case agent.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	}
 	return nil, fmt.Errorf("unknown Agent field %s", name)
 }
@@ -4568,6 +4612,13 @@ func (m *AgentMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetVariantDescription(v)
 		return nil
+	case agent.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Agent field %s", name)
 }
@@ -4718,6 +4769,9 @@ func (m *AgentMutation) ResetField(name string) error {
 		return nil
 	case agent.FieldVariantDescription:
 		m.ResetVariantDescription()
+		return nil
+	case agent.FieldWorkspaceID:
+		m.ResetWorkspaceID()
 		return nil
 	}
 	return fmt.Errorf("unknown Agent field %s", name)
@@ -36908,6 +36962,7 @@ type GraphDefinitionMutation struct {
 	team_id            *string
 	is_template        *bool
 	verification_gates *string
+	workspace_id       *string
 	clearedFields      map[string]struct{}
 	done               bool
 	oldValue           func(context.Context) (*GraphDefinition, error)
@@ -37771,6 +37826,42 @@ func (m *GraphDefinitionMutation) ResetVerificationGates() {
 	m.verification_gates = nil
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *GraphDefinitionMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *GraphDefinitionMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the GraphDefinition entity.
+// If the GraphDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GraphDefinitionMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *GraphDefinitionMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
 // Where appends a list predicates to the GraphDefinitionMutation builder.
 func (m *GraphDefinitionMutation) Where(ps ...predicate.GraphDefinition) {
 	m.predicates = append(m.predicates, ps...)
@@ -37805,7 +37896,7 @@ func (m *GraphDefinitionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GraphDefinitionMutation) Fields() []string {
-	fields := make([]string, 0, 20)
+	fields := make([]string, 0, 21)
 	if m.name != nil {
 		fields = append(fields, graphdefinition.FieldName)
 	}
@@ -37866,6 +37957,9 @@ func (m *GraphDefinitionMutation) Fields() []string {
 	if m.verification_gates != nil {
 		fields = append(fields, graphdefinition.FieldVerificationGates)
 	}
+	if m.workspace_id != nil {
+		fields = append(fields, graphdefinition.FieldWorkspaceID)
+	}
 	return fields
 }
 
@@ -37914,6 +38008,8 @@ func (m *GraphDefinitionMutation) Field(name string) (ent.Value, bool) {
 		return m.IsTemplate()
 	case graphdefinition.FieldVerificationGates:
 		return m.VerificationGates()
+	case graphdefinition.FieldWorkspaceID:
+		return m.WorkspaceID()
 	}
 	return nil, false
 }
@@ -37963,6 +38059,8 @@ func (m *GraphDefinitionMutation) OldField(ctx context.Context, name string) (en
 		return m.OldIsTemplate(ctx)
 	case graphdefinition.FieldVerificationGates:
 		return m.OldVerificationGates(ctx)
+	case graphdefinition.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	}
 	return nil, fmt.Errorf("unknown GraphDefinition field %s", name)
 }
@@ -38112,6 +38210,13 @@ func (m *GraphDefinitionMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetVerificationGates(v)
 		return nil
+	case graphdefinition.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown GraphDefinition field %s", name)
 }
@@ -38244,6 +38349,9 @@ func (m *GraphDefinitionMutation) ResetField(name string) error {
 		return nil
 	case graphdefinition.FieldVerificationGates:
 		m.ResetVerificationGates()
+		return nil
+	case graphdefinition.FieldWorkspaceID:
+		m.ResetWorkspaceID()
 		return nil
 	}
 	return fmt.Errorf("unknown GraphDefinition field %s", name)
@@ -62568,6 +62676,7 @@ type PlatformPluginMutation struct {
 	created_at           *string
 	updated_at           *string
 	deleted_at           *string
+	workspace_id         *string
 	clearedFields        map[string]struct{}
 	done                 bool
 	oldValue             func(context.Context) (*PlatformPlugin, error)
@@ -63514,6 +63623,42 @@ func (m *PlatformPluginMutation) ResetDeletedAt() {
 	m.deleted_at = nil
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *PlatformPluginMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *PlatformPluginMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the PlatformPlugin entity.
+// If the PlatformPlugin object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlatformPluginMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *PlatformPluginMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
 // Where appends a list predicates to the PlatformPluginMutation builder.
 func (m *PlatformPluginMutation) Where(ps ...predicate.PlatformPlugin) {
 	m.predicates = append(m.predicates, ps...)
@@ -63548,7 +63693,7 @@ func (m *PlatformPluginMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PlatformPluginMutation) Fields() []string {
-	fields := make([]string, 0, 21)
+	fields := make([]string, 0, 22)
 	if m.plugin_key != nil {
 		fields = append(fields, platformplugin.FieldPluginKey)
 	}
@@ -63612,6 +63757,9 @@ func (m *PlatformPluginMutation) Fields() []string {
 	if m.deleted_at != nil {
 		fields = append(fields, platformplugin.FieldDeletedAt)
 	}
+	if m.workspace_id != nil {
+		fields = append(fields, platformplugin.FieldWorkspaceID)
+	}
 	return fields
 }
 
@@ -63662,6 +63810,8 @@ func (m *PlatformPluginMutation) Field(name string) (ent.Value, bool) {
 		return m.UpdatedAt()
 	case platformplugin.FieldDeletedAt:
 		return m.DeletedAt()
+	case platformplugin.FieldWorkspaceID:
+		return m.WorkspaceID()
 	}
 	return nil, false
 }
@@ -63713,6 +63863,8 @@ func (m *PlatformPluginMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldUpdatedAt(ctx)
 	case platformplugin.FieldDeletedAt:
 		return m.OldDeletedAt(ctx)
+	case platformplugin.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	}
 	return nil, fmt.Errorf("unknown PlatformPlugin field %s", name)
 }
@@ -63868,6 +64020,13 @@ func (m *PlatformPluginMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDeletedAt(v)
+		return nil
+	case platformplugin.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
 		return nil
 	}
 	return fmt.Errorf("unknown PlatformPlugin field %s", name)
@@ -64031,6 +64190,9 @@ func (m *PlatformPluginMutation) ResetField(name string) error {
 		return nil
 	case platformplugin.FieldDeletedAt:
 		m.ResetDeletedAt()
+		return nil
+	case platformplugin.FieldWorkspaceID:
+		m.ResetWorkspaceID()
 		return nil
 	}
 	return fmt.Errorf("unknown PlatformPlugin field %s", name)
@@ -92352,6 +92514,7 @@ type TeamMutation struct {
 	created_at            *string
 	updated_at            *string
 	deleted_at            *string
+	workspace_id          *string
 	clearedFields         map[string]struct{}
 	done                  bool
 	oldValue              func(context.Context) (*Team, error)
@@ -93437,6 +93600,42 @@ func (m *TeamMutation) ResetDeletedAt() {
 	m.deleted_at = nil
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *TeamMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *TeamMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the Team entity.
+// If the Team object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *TeamMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
 // Where appends a list predicates to the TeamMutation builder.
 func (m *TeamMutation) Where(ps ...predicate.Team) {
 	m.predicates = append(m.predicates, ps...)
@@ -93471,7 +93670,7 @@ func (m *TeamMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TeamMutation) Fields() []string {
-	fields := make([]string, 0, 26)
+	fields := make([]string, 0, 27)
 	if m.team_key != nil {
 		fields = append(fields, team.FieldTeamKey)
 	}
@@ -93550,6 +93749,9 @@ func (m *TeamMutation) Fields() []string {
 	if m.deleted_at != nil {
 		fields = append(fields, team.FieldDeletedAt)
 	}
+	if m.workspace_id != nil {
+		fields = append(fields, team.FieldWorkspaceID)
+	}
 	return fields
 }
 
@@ -93610,6 +93812,8 @@ func (m *TeamMutation) Field(name string) (ent.Value, bool) {
 		return m.UpdatedAt()
 	case team.FieldDeletedAt:
 		return m.DeletedAt()
+	case team.FieldWorkspaceID:
+		return m.WorkspaceID()
 	}
 	return nil, false
 }
@@ -93671,6 +93875,8 @@ func (m *TeamMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldUpdatedAt(ctx)
 	case team.FieldDeletedAt:
 		return m.OldDeletedAt(ctx)
+	case team.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	}
 	return nil, fmt.Errorf("unknown Team field %s", name)
 }
@@ -93862,6 +94068,13 @@ func (m *TeamMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetDeletedAt(v)
 		return nil
+	case team.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Team field %s", name)
 }
@@ -94009,6 +94222,9 @@ func (m *TeamMutation) ResetField(name string) error {
 		return nil
 	case team.FieldDeletedAt:
 		m.ResetDeletedAt()
+		return nil
+	case team.FieldWorkspaceID:
+		m.ResetWorkspaceID()
 		return nil
 	}
 	return fmt.Errorf("unknown Team field %s", name)

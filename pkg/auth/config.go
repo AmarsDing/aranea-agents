@@ -105,3 +105,14 @@ func cookieNameFromEnv(key string) string {
 func ParseTokenFromRequest(tokenStr string) (*Auth, error) {
 	return ParseToken(tokenStr, authSecretKey)
 }
+
+// SetSecretForTesting overrides the package-level JWT signing secret
+// (authSecretKey) used by Middleware and ParseTokenFromRequest. It returns
+// the previous secret so callers can restore it via defer. Intended ONLY for
+// use in tests that exercise the production auth path end-to-end and need
+// generated tokens to pass verification. Production code must NEVER call this.
+func SetSecretForTesting(newSecret string) string {
+	prev := authSecretKey
+	authSecretKey = newSecret
+	return prev
+}

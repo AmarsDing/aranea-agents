@@ -161,173 +161,202 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createAdminServiceClient(
-  handler: RequestHandler
-): AdminService {
+export function createAdminServiceClient(handler: RequestHandler): AdminService {
   return {
-    Login(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    Login(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/admins/login`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "AdminService",
-        method: "Login",
-      }) as Promise<Admin>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'AdminService',
+          method: 'Login',
+        },
+      ) as Promise<Admin>;
     },
-    Logout(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    Logout(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/admins/logout`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "AdminService",
-        method: "Logout",
-      }) as Promise<wellKnownEmpty>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'AdminService',
+          method: 'Logout',
+        },
+      ) as Promise<wellKnownEmpty>;
     },
-    Current(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    Current(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/admins/current`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "AdminService",
-        method: "Current",
-      }) as Promise<Admin>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'AdminService',
+          method: 'Current',
+        },
+      ) as Promise<Admin>;
     },
-    ListAdmins(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListAdmins(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/admins/list`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
       }
       if (request.pageToken) {
-        queryParams.push(`pageToken=${encodeURIComponent(request.pageToken.toString())}`)
+        queryParams.push(`pageToken=${encodeURIComponent(request.pageToken.toString())}`);
       }
       if (request.filter) {
-        queryParams.push(`filter=${encodeURIComponent(request.filter.toString())}`)
+        queryParams.push(`filter=${encodeURIComponent(request.filter.toString())}`);
       }
       if (request.orderBy) {
-        queryParams.push(`orderBy=${encodeURIComponent(request.orderBy.toString())}`)
+        queryParams.push(`orderBy=${encodeURIComponent(request.orderBy.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "AdminService",
-        method: "ListAdmins",
-      }) as Promise<AdminSet>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'AdminService',
+          method: 'ListAdmins',
+        },
+      ) as Promise<AdminSet>;
     },
-    CreateAdmin(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateAdmin(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/admins/create`; // eslint-disable-line quotes
       const body = JSON.stringify(request?.admin ?? {});
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "AdminService",
-        method: "CreateAdmin",
-      }) as Promise<Admin>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'AdminService',
+          method: 'CreateAdmin',
+        },
+      ) as Promise<Admin>;
     },
-    UpdateAdmin(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateAdmin(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/admins/update`; // eslint-disable-line quotes
       const body = JSON.stringify(request?.admin ?? {});
       const queryParams: string[] = [];
       if (request.updateMask) {
-        queryParams.push(`updateMask=${encodeURIComponent(request.updateMask.toString())}`)
+        queryParams.push(`updateMask=${encodeURIComponent(request.updateMask.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PUT",
-        body,
-      }, {
-        service: "AdminService",
-        method: "UpdateAdmin",
-      }) as Promise<Admin>;
+      return handler(
+        {
+          path: uri,
+          method: 'PUT',
+          body,
+        },
+        {
+          service: 'AdminService',
+          method: 'UpdateAdmin',
+        },
+      ) as Promise<Admin>;
     },
-    DeleteAdmin(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteAdmin(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/admins/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "DELETE",
-        body,
-      }, {
-        service: "AdminService",
-        method: "DeleteAdmin",
-      }) as Promise<wellKnownEmpty>;
+      return handler(
+        {
+          path: uri,
+          method: 'DELETE',
+          body,
+        },
+        {
+          service: 'AdminService',
+          method: 'DeleteAdmin',
+        },
+      ) as Promise<wellKnownEmpty>;
     },
-    GetAdmin(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetAdmin(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/admins/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "AdminService",
-        method: "GetAdmin",
-      }) as Promise<Admin>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'AdminService',
+          method: 'GetAdmin',
+        },
+      ) as Promise<Admin>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
-
 
 // @@protoc_insertion_point(typescript-http-eof)

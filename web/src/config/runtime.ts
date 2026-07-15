@@ -12,9 +12,7 @@ export async function loadRuntimeConfig(): Promise<void> {
   // Electron production uses file:// protocol — absolute path fetch fails.
   // Detect and use relative path; fall back to local backend on error.
   const isFileProtocol = typeof window !== 'undefined' && window.location?.protocol === 'file:';
-  const configPath = isFileProtocol
-    ? './assets/config/runtime-config.json'
-    : '/assets/config/runtime-config.json';
+  const configPath = isFileProtocol ? './assets/config/runtime-config.json' : '/assets/config/runtime-config.json';
   try {
     const resp = await fetch(configPath, { cache: 'no-store' });
     if (resp.ok) {
@@ -94,10 +92,7 @@ export function isWsSameOriginAsPage(): boolean {
 export function isLocalHttpOrigin(): boolean {
   if (typeof window === 'undefined') return false;
   const { protocol, hostname } = window.location;
-  return (
-    protocol === 'http:' &&
-    (hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]')
-  );
+  return protocol === 'http:' && (hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]');
 }
 
 export function buildWsUrl(params: {

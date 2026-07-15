@@ -88,127 +88,148 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createIndustryTaxonomyServiceClient(
-  handler: RequestHandler
-): IndustryTaxonomyService {
+export function createIndustryTaxonomyServiceClient(handler: RequestHandler): IndustryTaxonomyService {
   return {
-    ListIndustryTaxonomies(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListIndustryTaxonomies(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/industry-taxonomy`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "IndustryTaxonomyService",
-        method: "ListIndustryTaxonomies",
-      }) as Promise<ListIndustryTaxonomiesResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'IndustryTaxonomyService',
+          method: 'ListIndustryTaxonomies',
+        },
+      ) as Promise<ListIndustryTaxonomiesResponse>;
     },
-    ListIndustryTaxonomyTree(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListIndustryTaxonomyTree(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/industry-taxonomy/tree`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "IndustryTaxonomyService",
-        method: "ListIndustryTaxonomyTree",
-      }) as Promise<ListIndustryTaxonomyTreeResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'IndustryTaxonomyService',
+          method: 'ListIndustryTaxonomyTree',
+        },
+      ) as Promise<ListIndustryTaxonomyTreeResponse>;
     },
-    CreateIndustryTaxonomy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateIndustryTaxonomy(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/industry-taxonomy`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "IndustryTaxonomyService",
-        method: "CreateIndustryTaxonomy",
-      }) as Promise<IndustryTaxonomy>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'IndustryTaxonomyService',
+          method: 'CreateIndustryTaxonomy',
+        },
+      ) as Promise<IndustryTaxonomy>;
     },
-    GetIndustryTaxonomy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetIndustryTaxonomy(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/industry-taxonomy/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "IndustryTaxonomyService",
-        method: "GetIndustryTaxonomy",
-      }) as Promise<IndustryTaxonomy>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'IndustryTaxonomyService',
+          method: 'GetIndustryTaxonomy',
+        },
+      ) as Promise<IndustryTaxonomy>;
     },
-    UpdateIndustryTaxonomy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateIndustryTaxonomy(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/industry-taxonomy/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request?.industryTaxonomy ?? {});
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PATCH",
-        body,
-      }, {
-        service: "IndustryTaxonomyService",
-        method: "UpdateIndustryTaxonomy",
-      }) as Promise<IndustryTaxonomy>;
+      return handler(
+        {
+          path: uri,
+          method: 'PATCH',
+          body,
+        },
+        {
+          service: 'IndustryTaxonomyService',
+          method: 'UpdateIndustryTaxonomy',
+        },
+      ) as Promise<IndustryTaxonomy>;
     },
-    DeleteIndustryTaxonomy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteIndustryTaxonomy(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/industry-taxonomy/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "DELETE",
-        body,
-      }, {
-        service: "IndustryTaxonomyService",
-        method: "DeleteIndustryTaxonomy",
-      }) as Promise<wellKnownEmpty>;
+      return handler(
+        {
+          path: uri,
+          method: 'DELETE',
+          body,
+        },
+        {
+          service: 'IndustryTaxonomyService',
+          method: 'DeleteIndustryTaxonomy',
+        },
+      ) as Promise<wellKnownEmpty>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
-
 
 // @@protoc_insertion_point(typescript-http-eof)

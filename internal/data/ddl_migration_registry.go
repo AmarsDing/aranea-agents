@@ -120,6 +120,13 @@ var ddlMigrations = []ddlMigration{
 	// (co_activation_count/last_reinforced_at/context_note) for Phase E spreading activation,
 	// Hebbian reinforcement, and A-MEM style relationship evolution (FR-10.1/10.2/10.7).
 	{Version: 20261005, Name: "memory_neuron_enhancement", SQL: "sql/migrations/20261005_memory_neuron_enhancement.sql"},
+	// 20261006 admin_workspace_id: add workspace_id column to admins table for
+	// admin-Workspace 一对一绑定模型 (P2-A). empty = legacy/default admin.
+	{Version: 20261006, Name: "admin_workspace_id", SQL: "sql/migrations/20261006_admin_workspace_id.sql"},
+	// 20261007 tenant_owned_workspace_id: add workspace_id column to tenant-owned
+	// entities (agents/teams/graph_definitions/plugins) for P2-B repo 层硬隔离.
+	// empty = shared/legacy (visible to all workspaces); non-empty = tenant-private.
+	{Version: 20261007, Name: "tenant_owned_workspace_id", SQL: "sql/migrations/20261007_tenant_owned_workspace_id.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

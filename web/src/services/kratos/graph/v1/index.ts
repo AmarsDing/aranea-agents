@@ -3,16 +3,16 @@
 // @ts-nocheck
 
 export type TaskStatus =
-  | "TASK_PENDING"
-  | "TASK_CLAIMED"
-  | "TASK_COMPLETE"
-  | "TASK_BLOCKED"
-  | "TASK_REVIEW_REQUIRED"
-  | "TASK_FAILED"
-  | "TASK_TIMED_OUT"
-  | "TASK_CANCELLED"
-  | "TASK_CRASHED"
-  | "TASK_PENDING_ASSIGNMENT";
+  | 'TASK_PENDING'
+  | 'TASK_CLAIMED'
+  | 'TASK_COMPLETE'
+  | 'TASK_BLOCKED'
+  | 'TASK_REVIEW_REQUIRED'
+  | 'TASK_FAILED'
+  | 'TASK_TIMED_OUT'
+  | 'TASK_CANCELLED'
+  | 'TASK_CRASHED'
+  | 'TASK_PENDING_ASSIGNMENT';
 export type StateFieldDef = {
   //
   // Behaviors: REQUIRED
@@ -224,8 +224,7 @@ export type ReorderGraphsRequest = {
   ids: string[] | undefined;
 };
 
-export type ReorderGraphsResponse = {
-};
+export type ReorderGraphsResponse = {};
 
 export type ExecuteGraphRequest = {
   //
@@ -447,8 +446,7 @@ export type ValidateGraphResponse = {
   valid: boolean | undefined;
 };
 
-export type ListGraphTemplatesRequest = {
-};
+export type ListGraphTemplatesRequest = {};
 
 export type GraphTemplateInfo = {
   id: string | undefined;
@@ -754,8 +752,7 @@ export type LinkTasksRequest = {
   childTaskId: string | undefined;
 };
 
-export type LinkTasksResponse = {
-};
+export type LinkTasksResponse = {};
 
 export type UnlinkTasksRequest = {
   //
@@ -766,8 +763,7 @@ export type UnlinkTasksRequest = {
   childTaskId: string | undefined;
 };
 
-export type UnlinkTasksResponse = {
-};
+export type UnlinkTasksResponse = {};
 
 export type ListTaskCommentsRequest = {
   //
@@ -881,847 +877,1005 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createGraphServiceClient(
-  handler: RequestHandler
-): GraphService {
+export function createGraphServiceClient(handler: RequestHandler): GraphService {
   return {
-    CreateGraph(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateGraph(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/graphs`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "CreateGraph",
-      }) as Promise<CreateGraphResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'CreateGraph',
+        },
+      ) as Promise<CreateGraphResponse>;
     },
-    GetGraph(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetGraph(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/graphs/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "GetGraph",
-      }) as Promise<GetGraphResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'GetGraph',
+        },
+      ) as Promise<GetGraphResponse>;
     },
-    ListGraphs(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListGraphs(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/graphs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
       }
       if (request.pageToken) {
-        queryParams.push(`pageToken=${encodeURIComponent(request.pageToken.toString())}`)
+        queryParams.push(`pageToken=${encodeURIComponent(request.pageToken.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ListGraphs",
-      }) as Promise<ListGraphsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ListGraphs',
+        },
+      ) as Promise<ListGraphsResponse>;
     },
-    UpdateGraph(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateGraph(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/graphs/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PUT",
-        body,
-      }, {
-        service: "GraphService",
-        method: "UpdateGraph",
-      }) as Promise<UpdateGraphResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'PUT',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'UpdateGraph',
+        },
+      ) as Promise<UpdateGraphResponse>;
     },
-    DeleteGraph(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteGraph(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/graphs/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "DELETE",
-        body,
-      }, {
-        service: "GraphService",
-        method: "DeleteGraph",
-      }) as Promise<DeleteGraphResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'DELETE',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'DeleteGraph',
+        },
+      ) as Promise<DeleteGraphResponse>;
     },
-    ReorderGraphs(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ReorderGraphs(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/graphs:reorder`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PUT",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ReorderGraphs",
-      }) as Promise<ReorderGraphsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'PUT',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ReorderGraphs',
+        },
+      ) as Promise<ReorderGraphsResponse>;
     },
-    ExecuteGraph(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ExecuteGraph(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.graphId) {
-        throw new Error("missing required field request.graph_id");
+        throw new Error('missing required field request.graph_id');
       }
       const path = `v1/graphs/${request.graphId}/executions`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ExecuteGraph",
-      }) as Promise<ExecuteGraphResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ExecuteGraph',
+        },
+      ) as Promise<ExecuteGraphResponse>;
     },
-    GetGraphExecution(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetGraphExecution(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.executionId) {
-        throw new Error("missing required field request.execution_id");
+        throw new Error('missing required field request.execution_id');
       }
       const path = `v1/graph/executions/${request.executionId}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "GetGraphExecution",
-      }) as Promise<GetGraphExecutionResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'GetGraphExecution',
+        },
+      ) as Promise<GetGraphExecutionResponse>;
     },
-    ListGraphExecutions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListGraphExecutions(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.graphId) {
-        throw new Error("missing required field request.graph_id");
+        throw new Error('missing required field request.graph_id');
       }
       const path = `v1/graphs/${request.graphId}/executions`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
       }
       if (request.pageToken) {
-        queryParams.push(`pageToken=${encodeURIComponent(request.pageToken.toString())}`)
+        queryParams.push(`pageToken=${encodeURIComponent(request.pageToken.toString())}`);
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
       }
       if (request.startedAfter) {
-        queryParams.push(`startedAfter=${encodeURIComponent(request.startedAfter.toString())}`)
+        queryParams.push(`startedAfter=${encodeURIComponent(request.startedAfter.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ListGraphExecutions",
-      }) as Promise<ListGraphExecutionsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ListGraphExecutions',
+        },
+      ) as Promise<ListGraphExecutionsResponse>;
     },
-    CancelGraphExecution(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    CancelGraphExecution(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.executionId) {
-        throw new Error("missing required field request.execution_id");
+        throw new Error('missing required field request.execution_id');
       }
       const path = `v1/graph/executions/${request.executionId}/cancel`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "CancelGraphExecution",
-      }) as Promise<CancelGraphExecutionResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'CancelGraphExecution',
+        },
+      ) as Promise<CancelGraphExecutionResponse>;
     },
-    ResumeGraph(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ResumeGraph(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.executionId) {
-        throw new Error("missing required field request.execution_id");
+        throw new Error('missing required field request.execution_id');
       }
       const path = `v1/graph/executions/${request.executionId}/resume`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ResumeGraph",
-      }) as Promise<ResumeGraphResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ResumeGraph',
+        },
+      ) as Promise<ResumeGraphResponse>;
     },
-    TimeTravelGraph(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    TimeTravelGraph(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.executionId) {
-        throw new Error("missing required field request.execution_id");
+        throw new Error('missing required field request.execution_id');
       }
       const path = `v1/graph/executions/${request.executionId}/time-travel`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "TimeTravelGraph",
-      }) as Promise<TimeTravelGraphResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'TimeTravelGraph',
+        },
+      ) as Promise<TimeTravelGraphResponse>;
     },
-    VisualizeGraph(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    VisualizeGraph(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.graphId) {
-        throw new Error("missing required field request.graph_id");
+        throw new Error('missing required field request.graph_id');
       }
       const path = `v1/graphs/${request.graphId}/visualize`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.format) {
-        queryParams.push(`format=${encodeURIComponent(request.format.toString())}`)
+        queryParams.push(`format=${encodeURIComponent(request.format.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "VisualizeGraph",
-      }) as Promise<VisualizeGraphResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'VisualizeGraph',
+        },
+      ) as Promise<VisualizeGraphResponse>;
     },
-    ListCheckpoints(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListCheckpoints(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.executionId) {
-        throw new Error("missing required field request.execution_id");
+        throw new Error('missing required field request.execution_id');
       }
       const path = `v1/graph/executions/${request.executionId}/checkpoints`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ListCheckpoints",
-      }) as Promise<ListCheckpointsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ListCheckpoints',
+        },
+      ) as Promise<ListCheckpointsResponse>;
     },
-    GetStateSnapshot(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetStateSnapshot(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.executionId) {
-        throw new Error("missing required field request.execution_id");
+        throw new Error('missing required field request.execution_id');
       }
       const path = `v1/graph/executions/${request.executionId}/state-snapshot`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.checkpointId) {
-        queryParams.push(`checkpointId=${encodeURIComponent(request.checkpointId.toString())}`)
+        queryParams.push(`checkpointId=${encodeURIComponent(request.checkpointId.toString())}`);
       }
       if (request.namespace) {
-        queryParams.push(`namespace=${encodeURIComponent(request.namespace.toString())}`)
+        queryParams.push(`namespace=${encodeURIComponent(request.namespace.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "GetStateSnapshot",
-      }) as Promise<GetStateSnapshotResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'GetStateSnapshot',
+        },
+      ) as Promise<GetStateSnapshotResponse>;
     },
-    EditState(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    EditState(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.executionId) {
-        throw new Error("missing required field request.execution_id");
+        throw new Error('missing required field request.execution_id');
       }
       const path = `v1/graph/executions/${request.executionId}/edit-state`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "EditState",
-      }) as Promise<EditStateResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'EditState',
+        },
+      ) as Promise<EditStateResponse>;
     },
-    ValidateGraph(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ValidateGraph(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.graphId) {
-        throw new Error("missing required field request.graph_id");
+        throw new Error('missing required field request.graph_id');
       }
       const path = `v1/graphs/${request.graphId}/validate`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ValidateGraph",
-      }) as Promise<ValidateGraphResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ValidateGraph',
+        },
+      ) as Promise<ValidateGraphResponse>;
     },
-    ListGraphTemplates(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListGraphTemplates(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/graph/templates`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ListGraphTemplates",
-      }) as Promise<ListGraphTemplatesResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ListGraphTemplates',
+        },
+      ) as Promise<ListGraphTemplatesResponse>;
     },
-    CreateGraphFromTemplate(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateGraphFromTemplate(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/graph/from-template`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "CreateGraphFromTemplate",
-      }) as Promise<CreateGraphResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'CreateGraphFromTemplate',
+        },
+      ) as Promise<CreateGraphResponse>;
     },
-    ExportGraph(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ExportGraph(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.graphId) {
-        throw new Error("missing required field request.graph_id");
+        throw new Error('missing required field request.graph_id');
       }
       const path = `v1/graphs/${request.graphId}/export`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.format) {
-        queryParams.push(`format=${encodeURIComponent(request.format.toString())}`)
+        queryParams.push(`format=${encodeURIComponent(request.format.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ExportGraph",
-      }) as Promise<ExportGraphResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ExportGraph',
+        },
+      ) as Promise<ExportGraphResponse>;
     },
-    ImportGraph(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ImportGraph(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/graph/import`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ImportGraph",
-      }) as Promise<ImportGraphResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ImportGraph',
+        },
+      ) as Promise<ImportGraphResponse>;
     },
-    ListGraphVersions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListGraphVersions(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.graphId) {
-        throw new Error("missing required field request.graph_id");
+        throw new Error('missing required field request.graph_id');
       }
       const path = `v1/graphs/${request.graphId}/versions`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ListGraphVersions",
-      }) as Promise<ListGraphVersionsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ListGraphVersions',
+        },
+      ) as Promise<ListGraphVersionsResponse>;
     },
-    RollbackGraphVersion(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    RollbackGraphVersion(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.graphId) {
-        throw new Error("missing required field request.graph_id");
+        throw new Error('missing required field request.graph_id');
       }
       const path = `v1/graphs/${request.graphId}/rollback`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "RollbackGraphVersion",
-      }) as Promise<RollbackGraphVersionResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'RollbackGraphVersion',
+        },
+      ) as Promise<RollbackGraphVersionResponse>;
     },
-    SaveGraphAsTemplate(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    SaveGraphAsTemplate(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.graphId) {
-        throw new Error("missing required field request.graph_id");
+        throw new Error('missing required field request.graph_id');
       }
       const path = `v1/graphs/${request.graphId}/save-template`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "SaveGraphAsTemplate",
-      }) as Promise<SaveGraphAsTemplateResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'SaveGraphAsTemplate',
+        },
+      ) as Promise<SaveGraphAsTemplateResponse>;
     },
-    ListTasks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTasks(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.executionId) {
-        throw new Error("missing required field request.execution_id");
+        throw new Error('missing required field request.execution_id');
       }
       const path = `v1/graph/executions/${request.executionId}/tasks`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.statusFilter) {
-        queryParams.push(`statusFilter=${encodeURIComponent(request.statusFilter.toString())}`)
+        queryParams.push(`statusFilter=${encodeURIComponent(request.statusFilter.toString())}`);
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
       }
       if (request.pageToken) {
-        queryParams.push(`pageToken=${encodeURIComponent(request.pageToken.toString())}`)
+        queryParams.push(`pageToken=${encodeURIComponent(request.pageToken.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ListTasks",
-      }) as Promise<ListTasksResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ListTasks',
+        },
+      ) as Promise<ListTasksResponse>;
     },
-    GetTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetTask(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error("missing required field request.task_id");
+        throw new Error('missing required field request.task_id');
       }
       const path = `v1/graph/tasks/${request.taskId}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "GetTask",
-      }) as Promise<GetTaskResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'GetTask',
+        },
+      ) as Promise<GetTaskResponse>;
     },
-    ClaimTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ClaimTask(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error("missing required field request.task_id");
+        throw new Error('missing required field request.task_id');
       }
       const path = `v1/graph/tasks/${request.taskId}/claim`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ClaimTask",
-      }) as Promise<ClaimTaskResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ClaimTask',
+        },
+      ) as Promise<ClaimTaskResponse>;
     },
-    SubmitTaskResult(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    SubmitTaskResult(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error("missing required field request.task_id");
+        throw new Error('missing required field request.task_id');
       }
       const path = `v1/graph/tasks/${request.taskId}/submit`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "SubmitTaskResult",
-      }) as Promise<SubmitTaskResultResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'SubmitTaskResult',
+        },
+      ) as Promise<SubmitTaskResultResponse>;
     },
-    Heartbeat(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    Heartbeat(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error("missing required field request.task_id");
+        throw new Error('missing required field request.task_id');
       }
       const path = `v1/graph/tasks/${request.taskId}/heartbeat`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "Heartbeat",
-      }) as Promise<HeartbeatResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'Heartbeat',
+        },
+      ) as Promise<HeartbeatResponse>;
     },
-    ReportBlocked(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ReportBlocked(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error("missing required field request.task_id");
+        throw new Error('missing required field request.task_id');
       }
       const path = `v1/graph/tasks/${request.taskId}/blocked`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ReportBlocked",
-      }) as Promise<ReportBlockedResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ReportBlocked',
+        },
+      ) as Promise<ReportBlockedResponse>;
     },
-    UnblockTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UnblockTask(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error("missing required field request.task_id");
+        throw new Error('missing required field request.task_id');
       }
       const path = `v1/graph/tasks/${request.taskId}/unblock`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "UnblockTask",
-      }) as Promise<UnblockTaskResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'UnblockTask',
+        },
+      ) as Promise<UnblockTaskResponse>;
     },
-    CreateTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateTask(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.executionId) {
-        throw new Error("missing required field request.execution_id");
+        throw new Error('missing required field request.execution_id');
       }
       const path = `v1/graph/executions/${request.executionId}/tasks`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "CreateTask",
-      }) as Promise<CreateTaskResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'CreateTask',
+        },
+      ) as Promise<CreateTaskResponse>;
     },
-    LinkTasks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    LinkTasks(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/graph/tasks/link`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "LinkTasks",
-      }) as Promise<LinkTasksResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'LinkTasks',
+        },
+      ) as Promise<LinkTasksResponse>;
     },
-    UnlinkTasks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UnlinkTasks(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/graph/tasks/unlink`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "UnlinkTasks",
-      }) as Promise<UnlinkTasksResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'UnlinkTasks',
+        },
+      ) as Promise<UnlinkTasksResponse>;
     },
-    ReviewTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ReviewTask(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error("missing required field request.task_id");
+        throw new Error('missing required field request.task_id');
       }
       const path = `v1/graph/tasks/${request.taskId}/review`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ReviewTask",
-      }) as Promise<ReviewTaskResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ReviewTask',
+        },
+      ) as Promise<ReviewTaskResponse>;
     },
-    ListTaskComments(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTaskComments(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error("missing required field request.task_id");
+        throw new Error('missing required field request.task_id');
       }
       const path = `v1/graph/tasks/${request.taskId}/comments`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ListTaskComments",
-      }) as Promise<ListTaskCommentsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ListTaskComments',
+        },
+      ) as Promise<ListTaskCommentsResponse>;
     },
-    AddTaskComment(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    AddTaskComment(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error("missing required field request.task_id");
+        throw new Error('missing required field request.task_id');
       }
       const path = `v1/graph/tasks/${request.taskId}/comments`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "GraphService",
-        method: "AddTaskComment",
-      }) as Promise<AddTaskCommentResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'AddTaskComment',
+        },
+      ) as Promise<AddTaskCommentResponse>;
     },
-    ListTaskLogs(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTaskLogs(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error("missing required field request.task_id");
+        throw new Error('missing required field request.task_id');
       }
       const path = `v1/graph/tasks/${request.taskId}/logs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.stream) {
-        queryParams.push(`stream=${encodeURIComponent(request.stream.toString())}`)
+        queryParams.push(`stream=${encodeURIComponent(request.stream.toString())}`);
       }
       if (request.level) {
-        queryParams.push(`level=${encodeURIComponent(request.level.toString())}`)
+        queryParams.push(`level=${encodeURIComponent(request.level.toString())}`);
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ListTaskLogs",
-      }) as Promise<ListTaskLogsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ListTaskLogs',
+        },
+      ) as Promise<ListTaskLogsResponse>;
     },
-    ListTaskRuns(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTaskRuns(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error("missing required field request.task_id");
+        throw new Error('missing required field request.task_id');
       }
       const path = `v1/graph/tasks/${request.taskId}/runs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ListTaskRuns",
-      }) as Promise<ListTaskRunsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ListTaskRuns',
+        },
+      ) as Promise<ListTaskRunsResponse>;
     },
-    ListTaskEvents(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTaskEvents(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.executionId) {
-        throw new Error("missing required field request.execution_id");
+        throw new Error('missing required field request.execution_id');
       }
       const path = `v1/graph/executions/${request.executionId}/task-events`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.taskId) {
-        queryParams.push(`taskId=${encodeURIComponent(request.taskId.toString())}`)
+        queryParams.push(`taskId=${encodeURIComponent(request.taskId.toString())}`);
       }
       if (request.eventType) {
-        queryParams.push(`eventType=${encodeURIComponent(request.eventType.toString())}`)
+        queryParams.push(`eventType=${encodeURIComponent(request.eventType.toString())}`);
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "GraphService",
-        method: "ListTaskEvents",
-      }) as Promise<ListTaskEventsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'GraphService',
+          method: 'ListTaskEvents',
+        },
+      ) as Promise<ListTaskEventsResponse>;
     },
   };
 }

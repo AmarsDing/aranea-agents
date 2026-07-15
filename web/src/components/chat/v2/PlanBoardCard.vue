@@ -20,11 +20,7 @@
     </div>
     <div v-show="!collapsed" class="plan-body">
       <ol v-if="steps.length > 0" class="plan-step-list">
-        <li
-          v-for="(step, idx) in steps"
-          :key="step.ID"
-          :class="['plan-step-item', `plan-step-item--${step.Status}`]"
-        >
+        <li v-for="(step, idx) in steps" :key="step.ID" :class="['plan-step-item', `plan-step-item--${step.Status}`]">
           <div class="plan-step-item__index">{{ idx + 1 }}</div>
           <div class="plan-step-item__main">
             <div class="plan-step-item__label">{{ step.Label }}</div>

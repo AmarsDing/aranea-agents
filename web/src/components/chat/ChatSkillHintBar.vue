@@ -74,8 +74,9 @@ function onDismiss() {
 .hint-fade-leave-active {
   transition: opacity 0.3s ease;
 }
+
 .hint-fade-enter-from,
 .hint-fade-leave-to {
-  opacity: 0;
+  opacity: 0%;
 }
 </style>

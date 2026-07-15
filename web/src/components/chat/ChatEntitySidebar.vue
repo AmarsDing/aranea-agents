@@ -220,7 +220,7 @@ function getBlockedInfoForAgent(agentKey: string): BlockedResult {
 .spirit-phase-hint {
   display: flex;
   align-items: center;
-  opacity: 0.85;
+  opacity: 85%;
 }
 
 .team-card-wrapper--pulse {
@@ -233,6 +233,7 @@ function getBlockedInfoForAgent(agentKey: string): BlockedResult {
   0% {
     background-color: color-mix(in srgb, var(--pulse-color) 15%, transparent);
   }
+
   100% {
     background-color: transparent;
   }

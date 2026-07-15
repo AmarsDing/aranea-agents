@@ -115,67 +115,76 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createSystemSettingServiceClient(
-  handler: RequestHandler
-): SystemSettingService {
+export function createSystemSettingServiceClient(handler: RequestHandler): SystemSettingService {
   return {
-    GetSystemSettings(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetSystemSettings(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/system-settings`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "SystemSettingService",
-        method: "GetSystemSettings",
-      }) as Promise<SystemSettings>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'SystemSettingService',
+          method: 'GetSystemSettings',
+        },
+      ) as Promise<SystemSettings>;
     },
-    UpdateSystemSettings(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateSystemSettings(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/system-settings`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PUT",
-        body,
-      }, {
-        service: "SystemSettingService",
-        method: "UpdateSystemSettings",
-      }) as Promise<SystemSettings>;
+      return handler(
+        {
+          path: uri,
+          method: 'PUT',
+          body,
+        },
+        {
+          service: 'SystemSettingService',
+          method: 'UpdateSystemSettings',
+        },
+      ) as Promise<SystemSettings>;
     },
-    TestWebResearch(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    TestWebResearch(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/system-settings/web-research/test`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "SystemSettingService",
-        method: "TestWebResearch",
-      }) as Promise<TestWebResearchResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'SystemSettingService',
+          method: 'TestWebResearch',
+        },
+      ) as Promise<TestWebResearchResponse>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
-
 
 // @@protoc_insertion_point(typescript-http-eof)

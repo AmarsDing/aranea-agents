@@ -223,9 +223,7 @@ const complexityColor = computed(() => {
 
 const dqScoreColor = computed(() => getDqScoreColor(props.dqScore));
 
-const allCompleted = computed(
-  () => props.totalTeamCount > 0 && props.completedTeamCount >= props.totalTeamCount,
-);
+const allCompleted = computed(() => props.totalTeamCount > 0 && props.completedTeamCount >= props.totalTeamCount);
 
 const progressColor = computed(() => (allCompleted.value ? 'positive' : 'accent'));
 </script>

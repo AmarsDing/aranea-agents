@@ -129,6 +129,7 @@ var (
 		{Name: "position_id", Type: field.TypeString, Default: ""},
 		{Name: "agent_variant", Type: field.TypeString, Default: "general"},
 		{Name: "variant_description", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "workspace_id", Type: field.TypeString, Default: ""},
 	}
 	// AgentsTable holds the schema information for the "agents" table.
 	AgentsTable = &schema.Table{
@@ -150,6 +151,11 @@ var (
 				Name:    "agent_position_key_agent_variant",
 				Unique:  true,
 				Columns: []*schema.Column{AgentsColumns[22], AgentsColumns[24]},
+			},
+			{
+				Name:    "agent_workspace_id_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{AgentsColumns[26], AgentsColumns[18]},
 			},
 		},
 	}
@@ -1095,12 +1101,20 @@ var (
 		{Name: "team_id", Type: field.TypeString, Nullable: true, Default: ""},
 		{Name: "is_template", Type: field.TypeBool, Default: false},
 		{Name: "verification_gates", Type: field.TypeString, Size: 2147483647, Default: "[]"},
+		{Name: "workspace_id", Type: field.TypeString, Default: ""},
 	}
 	// GraphDefinitionsTable holds the schema information for the "graph_definitions" table.
 	GraphDefinitionsTable = &schema.Table{
 		Name:       "graph_definitions",
 		Columns:    GraphDefinitionsColumns,
 		PrimaryKey: []*schema.Column{GraphDefinitionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "graphdefinition_workspace_id",
+				Unique:  false,
+				Columns: []*schema.Column{GraphDefinitionsColumns[21]},
+			},
+		},
 	}
 	// GraphExecutionsColumns holds the columns for the "graph_executions" table.
 	GraphExecutionsColumns = []*schema.Column{
@@ -1986,6 +2000,7 @@ var (
 		{Name: "created_at", Type: field.TypeString, Default: ""},
 		{Name: "updated_at", Type: field.TypeString, Default: ""},
 		{Name: "deleted_at", Type: field.TypeString, Default: ""},
+		{Name: "workspace_id", Type: field.TypeString, Default: ""},
 	}
 	// PluginsTable holds the schema information for the "plugins" table.
 	PluginsTable = &schema.Table{
@@ -1997,6 +2012,11 @@ var (
 				Name:    "idx_plugins_enabled_order",
 				Unique:  false,
 				Columns: []*schema.Column{PluginsColumns[7], PluginsColumns[10]},
+			},
+			{
+				Name:    "platformplugin_workspace_id_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{PluginsColumns[22], PluginsColumns[7]},
 			},
 		},
 	}
@@ -2849,6 +2869,7 @@ var (
 		{Name: "created_at", Type: field.TypeString, Default: ""},
 		{Name: "updated_at", Type: field.TypeString, Default: ""},
 		{Name: "deleted_at", Type: field.TypeString, Default: ""},
+		{Name: "workspace_id", Type: field.TypeString, Default: ""},
 	}
 	// TeamsTable holds the schema information for the "teams" table.
 	TeamsTable = &schema.Table{
@@ -2865,6 +2886,11 @@ var (
 				Name:    "idx_teams_kind",
 				Unique:  false,
 				Columns: []*schema.Column{TeamsColumns[16], TeamsColumns[26]},
+			},
+			{
+				Name:    "team_workspace_id_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{TeamsColumns[27], TeamsColumns[26]},
 			},
 		},
 	}

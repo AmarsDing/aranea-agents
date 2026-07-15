@@ -119,25 +119,23 @@ describe('conversationEventDispatcher — ActivityEvent', () => {
   // 事件（spirit session 自身的 spirit_session_id 为空或等于自身 ID）。
   it('filters out child session events (spirit_session_id !== session_id)', () => {
     // member agent session 事件：session_id=member-sess, spirit_session_id=spirit-sess
-    const memberEv = activityEvent(
-      {},
-      { session_id: 'member-sess', spirit_session_id: 'spirit-sess' },
-    );
+    const memberEv = activityEvent({}, { session_id: 'member-sess', spirit_session_id: 'spirit-sess' });
     expect(projectConversationActivityEvent(memberEv, { currentSessionId: 'spirit-sess' })).toBeNull();
 
     // team session 事件：session_id=team-sess, spirit_session_id=spirit-sess
-    const teamEv = activityEvent(
-      {},
-      { session_id: 'team-sess', spirit_session_id: 'spirit-sess' },
-    );
+    const teamEv = activityEvent({}, { session_id: 'team-sess', spirit_session_id: 'spirit-sess' });
     expect(projectConversationActivityEvent(teamEv, { currentSessionId: 'spirit-sess' })).toBeNull();
 
     // spirit session 自身事件：spirit_session_id 空或 === session_id → 正常 projection
     const spiritEv1 = activityEvent({}, { session_id: 'spirit-sess', spirit_session_id: '' });
-    expect(projectConversationActivityEvent(spiritEv1, { currentSessionId: 'spirit-sess' })?.scope).toBe('current-session');
+    expect(projectConversationActivityEvent(spiritEv1, { currentSessionId: 'spirit-sess' })?.scope).toBe(
+      'current-session',
+    );
 
     const spiritEv2 = activityEvent({}, { session_id: 'spirit-sess', spirit_session_id: 'spirit-sess' });
-    expect(projectConversationActivityEvent(spiritEv2, { currentSessionId: 'spirit-sess' })?.scope).toBe('current-session');
+    expect(projectConversationActivityEvent(spiritEv2, { currentSessionId: 'spirit-sess' })?.scope).toBe(
+      'current-session',
+    );
 
     // channel inbound 事件：spirit_session_id 空且 session_id ≠ currentSessionId → 正常进 inbox
     const channelEv = activityEvent({}, { session_id: 'ch-sess', spirit_session_id: '' });

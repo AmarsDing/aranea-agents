@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 type GraphDefinition struct {
@@ -41,5 +42,15 @@ func (GraphDefinition) Fields() []ent.Field {
 		field.String("team_id").Default("").Optional().Comment("owning team ID (empty for template graphs)"),
 		field.Bool("is_template").Default(false).Comment("whether this graph is a reusable template"),
 		field.Text("verification_gates").Default("[]").Comment("verification gate definitions JSON"),
+		// P2-B: tenant isolation. empty = shared/legacy (visible to all workspaces);
+		// non-empty = tenant-private (visible only to owning workspace).
+		field.String("workspace_id").Default("").Comment("owning workspace ID; empty = shared/system builtin"),
+	}
+}
+
+func (GraphDefinition) Indexes() []ent.Index {
+	return []ent.Index{
+		// P2-B: tenant isolation index — filter graph definitions by workspace visibility.
+		index.Fields("workspace_id"),
 	}
 }

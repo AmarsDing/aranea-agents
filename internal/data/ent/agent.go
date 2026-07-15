@@ -66,7 +66,9 @@ type Agent struct {
 	AgentVariant string `json:"agent_variant,omitempty"`
 	// human-readable description of this variant
 	VariantDescription string `json:"variant_description,omitempty"`
-	selectValues       sql.SelectValues
+	// owning workspace ID; empty = shared/system builtin
+	WorkspaceID  string `json:"workspace_id,omitempty"`
+	selectValues sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -78,7 +80,7 @@ func (*Agent) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case agent.FieldContextWindow, agent.FieldBudgetMonthlyCents:
 			values[i] = new(sql.NullInt64)
-		case agent.FieldID, agent.FieldAgentKey, agent.FieldDisplayName, agent.FieldProvider, agent.FieldModel, agent.FieldStatus, agent.FieldIcon, agent.FieldAgentDescription, agent.FieldSystemPromptMode, agent.FieldConfigJSON, agent.FieldRolesJSON, agent.FieldCreatedBy, agent.FieldCreatedAt, agent.FieldUpdatedAt, agent.FieldDeletedAt, agent.FieldKind, agent.FieldSource, agent.FieldPositionKey, agent.FieldPositionID, agent.FieldAgentVariant, agent.FieldVariantDescription:
+		case agent.FieldID, agent.FieldAgentKey, agent.FieldDisplayName, agent.FieldProvider, agent.FieldModel, agent.FieldStatus, agent.FieldIcon, agent.FieldAgentDescription, agent.FieldSystemPromptMode, agent.FieldConfigJSON, agent.FieldRolesJSON, agent.FieldCreatedBy, agent.FieldCreatedAt, agent.FieldUpdatedAt, agent.FieldDeletedAt, agent.FieldKind, agent.FieldSource, agent.FieldPositionKey, agent.FieldPositionID, agent.FieldAgentVariant, agent.FieldVariantDescription, agent.FieldWorkspaceID:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -251,6 +253,12 @@ func (_m *Agent) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.VariantDescription = value.String
 			}
+		case agent.FieldWorkspaceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
+			} else if value.Valid {
+				_m.WorkspaceID = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -361,6 +369,9 @@ func (_m *Agent) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("variant_description=")
 	builder.WriteString(_m.VariantDescription)
+	builder.WriteString(", ")
+	builder.WriteString("workspace_id=")
+	builder.WriteString(_m.WorkspaceID)
 	builder.WriteByte(')')
 	return builder.String()
 }

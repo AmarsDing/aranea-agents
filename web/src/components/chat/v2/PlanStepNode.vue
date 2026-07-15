@@ -19,7 +19,7 @@
       :width="nodeWidth"
       :height="nodeHeight"
       rx="8"
-      :class="['plan-step-node__rect', `plan-step-node__rect--${step.Status}`]"
+      :class="['plan-step-node__rect', `plan-step-node__rect--${step.Status.replace(/_/g, '-')}`]"
       :stroke="isSelected ? 'var(--q-primary)' : 'var(--glass-border)'"
       :stroke-width="isSelected ? 2 : 1"
     />
@@ -89,59 +89,76 @@ const statusLabel = computed(() => {
 .plan-step-node {
   cursor: pointer;
 }
+
 .plan-step-node__rect {
-  transition: fill 0.2s ease, stroke 0.2s ease;
+  transition:
+    fill 0.2s ease,
+    stroke 0.2s ease;
 }
+
 /* 节点状态色用 CSS 变量，日间/夜间自动适配 */
 .plan-step-node__rect--pending {
-  fill: var(--color-icon-muted, #9e9e9e);
+  fill: var(--color-icon-muted);
 }
+
 .plan-step-node__rect--running {
-  fill: var(--color-accent, #00bcd4);
+  fill: var(--color-accent);
   animation: plan-step-pulse 2s ease-in-out infinite;
 }
+
 .plan-step-node__rect--completed {
-  fill: var(--color-success, #4caf50);
+  fill: var(--color-success);
 }
+
 .plan-step-node__rect--failed {
-  fill: var(--color-danger, #f44336);
+  fill: var(--color-danger);
 }
+
 .plan-step-node__rect--skipped {
-  fill: var(--color-text-secondary, #616161);
+  fill: var(--color-text-secondary);
 }
-.plan-step-node__rect--partial_failure {
-  fill: var(--color-warning, #ff9800);
+
+.plan-step-node__rect--partial-failure {
+  fill: var(--color-warning);
 }
+
 @keyframes plan-step-pulse {
   0%,
   100% {
-    opacity: 1;
+    opacity: 100%;
   }
+
   50% {
-    opacity: 0.75;
+    opacity: 75%;
   }
 }
+
 /* failed 抖动 */
 .plan-step-node--failed {
   animation: plan-step-shake 0.4s ease-in-out 2;
 }
+
 @keyframes plan-step-shake {
   0%,
   100% {
     transform: translateX(0);
   }
+
   25% {
     transform: translateX(-2px);
   }
+
   75% {
     transform: translateX(2px);
   }
 }
+
 .plan-step-node__label {
   fill: var(--color-text-primary);
   font-size: 12px;
   font-weight: 600;
 }
+
 .plan-step-node__status {
   fill: var(--color-text-secondary);
   font-size: 11px;

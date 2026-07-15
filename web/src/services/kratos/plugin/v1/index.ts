@@ -114,8 +114,7 @@ export type ListPluginRunsResponse = {
   pageSize: number | undefined;
 };
 
-export type DeleteAllPluginRunsRequest = {
-};
+export type DeleteAllPluginRunsRequest = {};
 
 export type DeleteAllPluginRunsResponse = {
   deletedCount: number | undefined;
@@ -137,190 +136,216 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createPluginServiceClient(
-  handler: RequestHandler
-): PluginService {
+export function createPluginServiceClient(handler: RequestHandler): PluginService {
   return {
-    ListPlugins(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListPlugins(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/plugins`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.search) {
-        queryParams.push(`search=${encodeURIComponent(request.search.toString())}`)
+        queryParams.push(`search=${encodeURIComponent(request.search.toString())}`);
       }
       if (request.category) {
-        queryParams.push(`category=${encodeURIComponent(request.category.toString())}`)
+        queryParams.push(`category=${encodeURIComponent(request.category.toString())}`);
       }
       if (request.enabled) {
-        queryParams.push(`enabled=${encodeURIComponent(request.enabled.toString())}`)
+        queryParams.push(`enabled=${encodeURIComponent(request.enabled.toString())}`);
       }
       if (request.callbackPoint) {
-        queryParams.push(`callbackPoint=${encodeURIComponent(request.callbackPoint.toString())}`)
+        queryParams.push(`callbackPoint=${encodeURIComponent(request.callbackPoint.toString())}`);
       }
       if (request.page) {
-        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`);
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "PluginService",
-        method: "ListPlugins",
-      }) as Promise<ListPluginsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'PluginService',
+          method: 'ListPlugins',
+        },
+      ) as Promise<ListPluginsResponse>;
     },
-    TogglePluginEnabled(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    TogglePluginEnabled(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/plugins/${request.id}/enabled`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PATCH",
-        body,
-      }, {
-        service: "PluginService",
-        method: "TogglePluginEnabled",
-      }) as Promise<Plugin>;
+      return handler(
+        {
+          path: uri,
+          method: 'PATCH',
+          body,
+        },
+        {
+          service: 'PluginService',
+          method: 'TogglePluginEnabled',
+        },
+      ) as Promise<Plugin>;
     },
-    UpdatePluginConfig(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdatePluginConfig(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/plugins/${request.id}/config`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PUT",
-        body,
-      }, {
-        service: "PluginService",
-        method: "UpdatePluginConfig",
-      }) as Promise<Plugin>;
+      return handler(
+        {
+          path: uri,
+          method: 'PUT',
+          body,
+        },
+        {
+          service: 'PluginService',
+          method: 'UpdatePluginConfig',
+        },
+      ) as Promise<Plugin>;
     },
-    UpdatePluginSortOrder(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdatePluginSortOrder(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/plugins/${request.id}/sort-order`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PATCH",
-        body,
-      }, {
-        service: "PluginService",
-        method: "UpdatePluginSortOrder",
-      }) as Promise<Plugin>;
+      return handler(
+        {
+          path: uri,
+          method: 'PATCH',
+          body,
+        },
+        {
+          service: 'PluginService',
+          method: 'UpdatePluginSortOrder',
+        },
+      ) as Promise<Plugin>;
     },
-    UpdatePluginScope(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdatePluginScope(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/plugins/${request.id}/scope`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PATCH",
-        body,
-      }, {
-        service: "PluginService",
-        method: "UpdatePluginScope",
-      }) as Promise<Plugin>;
+      return handler(
+        {
+          path: uri,
+          method: 'PATCH',
+          body,
+        },
+        {
+          service: 'PluginService',
+          method: 'UpdatePluginScope',
+        },
+      ) as Promise<Plugin>;
     },
-    ListPluginRuns(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListPluginRuns(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/plugins/runs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.pluginKey) {
-        queryParams.push(`pluginKey=${encodeURIComponent(request.pluginKey.toString())}`)
+        queryParams.push(`pluginKey=${encodeURIComponent(request.pluginKey.toString())}`);
       }
       if (request.pluginId) {
-        queryParams.push(`pluginId=${encodeURIComponent(request.pluginId.toString())}`)
+        queryParams.push(`pluginId=${encodeURIComponent(request.pluginId.toString())}`);
       }
       if (request.sessionId) {
-        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`);
       }
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
       }
       if (request.callbackPoint) {
-        queryParams.push(`callbackPoint=${encodeURIComponent(request.callbackPoint.toString())}`)
+        queryParams.push(`callbackPoint=${encodeURIComponent(request.callbackPoint.toString())}`);
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
       }
       if (request.from) {
-        queryParams.push(`from=${encodeURIComponent(request.from.toString())}`)
+        queryParams.push(`from=${encodeURIComponent(request.from.toString())}`);
       }
       if (request.to) {
-        queryParams.push(`to=${encodeURIComponent(request.to.toString())}`)
+        queryParams.push(`to=${encodeURIComponent(request.to.toString())}`);
       }
       if (request.page) {
-        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`);
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "PluginService",
-        method: "ListPluginRuns",
-      }) as Promise<ListPluginRunsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'PluginService',
+          method: 'ListPluginRuns',
+        },
+      ) as Promise<ListPluginRunsResponse>;
     },
-    DeleteAllPluginRuns(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteAllPluginRuns(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/plugins/runs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "DELETE",
-        body,
-      }, {
-        service: "PluginService",
-        method: "DeleteAllPluginRuns",
-      }) as Promise<DeleteAllPluginRunsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'DELETE',
+          body,
+        },
+        {
+          service: 'PluginService',
+          method: 'DeleteAllPluginRuns',
+        },
+      ) as Promise<DeleteAllPluginRunsResponse>;
     },
   };
 }

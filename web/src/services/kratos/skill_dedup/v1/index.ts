@@ -63,51 +63,57 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createSkillDedupServiceClient(
-  handler: RequestHandler
-): SkillDedupService {
+export function createSkillDedupServiceClient(handler: RequestHandler): SkillDedupService {
   return {
-    ListSkillDuplicateGroups(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListSkillDuplicateGroups(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/skill-dedup/duplicate-groups`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.page) {
-        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`);
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "SkillDedupService",
-        method: "ListSkillDuplicateGroups",
-      }) as Promise<ListSkillDuplicateGroupsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'SkillDedupService',
+          method: 'ListSkillDuplicateGroups',
+        },
+      ) as Promise<ListSkillDuplicateGroupsResponse>;
     },
-    MergeSkills(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    MergeSkills(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/skill-dedup/merge`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "SkillDedupService",
-        method: "MergeSkills",
-      }) as Promise<MergeSkillsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'SkillDedupService',
+          method: 'MergeSkills',
+        },
+      ) as Promise<MergeSkillsResponse>;
     },
   };
 }

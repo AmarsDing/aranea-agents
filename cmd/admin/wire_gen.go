@@ -509,7 +509,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	episodeIndexSyncer := provideEpisodeIndexSync(memoryUsecase, dataData)
 	memoryLLMExtractorConfig := provideMemoryLLMExtractorConfig(agentUsecase, sessionUsecase, llmProviderModelUsecase, loggatewayLogger)
 	memoryLLMExtractor := service.NewMemoryLLMExtractor(memoryLLMExtractorConfig)
-	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, sessionUsecase, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryWorkerStats, loggatewayLogger)
+	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, sessionUsecase, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryJobDeadLetterRepo, memoryWorkerStats, loggatewayLogger)
 	if err != nil {
 		cleanup()
 		return wireOut{}, nil, err
@@ -1452,22 +1452,24 @@ func provideAutoMemoryWorker(
 	episodeSync biz.EpisodeIndexSyncer,
 	extractor biz.MemoryTextExtractor,
 	queue trpcmem.AutoMemoryQueue,
+	deadLetterSink biz.MemoryDeadLetterSink,
 	workerStats *biz.MemoryWorkerStats,
 	lg loggateway.Logger,
 ) (*jobs.AutoMemoryWorker, error) {
 	return jobs.NewAutoMemoryWorker(jobs.AutoMemoryWorkerConfig{
-		RuntimeConf:  runtimeConf,
-		Interval:     0,
-		Sessions:     sessions,
-		Agents:       agents,
-		Writer:       writer,
-		IndexSync:    factSync,
-		EpisodeSync:  episodeSync,
-		L4:           l4,
-		Consolidator: biz.DefaultMemoryConsolidator(extractor),
-		Queue:        queue,
-		Stats:        workerStats,
-		Logger:       lg,
+		RuntimeConf:    runtimeConf,
+		Interval:       0,
+		Sessions:       sessions,
+		Agents:         agents,
+		Writer:         writer,
+		IndexSync:      factSync,
+		EpisodeSync:    episodeSync,
+		L4:             l4,
+		Consolidator:   biz.DefaultMemoryConsolidator(extractor),
+		Queue:          queue,
+		DeadLetterSink: deadLetterSink,
+		Stats:          workerStats,
+		Logger:         lg,
 	})
 }
 

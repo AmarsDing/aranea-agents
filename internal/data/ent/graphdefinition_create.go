@@ -271,6 +271,20 @@ func (_c *GraphDefinitionCreate) SetNillableVerificationGates(v *string) *GraphD
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *GraphDefinitionCreate) SetWorkspaceID(v string) *GraphDefinitionCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *GraphDefinitionCreate) SetNillableWorkspaceID(v *string) *GraphDefinitionCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *GraphDefinitionCreate) SetID(v string) *GraphDefinitionCreate {
 	_c.mutation.SetID(v)
@@ -376,6 +390,10 @@ func (_c *GraphDefinitionCreate) defaults() {
 		v := graphdefinition.DefaultVerificationGates
 		_c.mutation.SetVerificationGates(v)
 	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := graphdefinition.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -456,6 +474,9 @@ func (_c *GraphDefinitionCreate) check() error {
 	}
 	if _, ok := _c.mutation.VerificationGates(); !ok {
 		return &ValidationError{Name: "verification_gates", err: errors.New(`ent: missing required field "GraphDefinition.verification_gates"`)}
+	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "GraphDefinition.workspace_id"`)}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := graphdefinition.IDValidator(v); err != nil {
@@ -577,6 +598,10 @@ func (_c *GraphDefinitionCreate) createSpec() (*GraphDefinition, *sqlgraph.Creat
 	if value, ok := _c.mutation.VerificationGates(); ok {
 		_spec.SetField(graphdefinition.FieldVerificationGates, field.TypeString, value)
 		_node.VerificationGates = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(graphdefinition.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
 	}
 	return _node, _spec
 }
@@ -879,6 +904,18 @@ func (u *GraphDefinitionUpsert) SetVerificationGates(v string) *GraphDefinitionU
 // UpdateVerificationGates sets the "verification_gates" field to the value that was provided on create.
 func (u *GraphDefinitionUpsert) UpdateVerificationGates() *GraphDefinitionUpsert {
 	u.SetExcluded(graphdefinition.FieldVerificationGates)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *GraphDefinitionUpsert) SetWorkspaceID(v string) *GraphDefinitionUpsert {
+	u.Set(graphdefinition.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *GraphDefinitionUpsert) UpdateWorkspaceID() *GraphDefinitionUpsert {
+	u.SetExcluded(graphdefinition.FieldWorkspaceID)
 	return u
 }
 
@@ -1221,6 +1258,20 @@ func (u *GraphDefinitionUpsertOne) SetVerificationGates(v string) *GraphDefiniti
 func (u *GraphDefinitionUpsertOne) UpdateVerificationGates() *GraphDefinitionUpsertOne {
 	return u.Update(func(s *GraphDefinitionUpsert) {
 		s.UpdateVerificationGates()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *GraphDefinitionUpsertOne) SetWorkspaceID(v string) *GraphDefinitionUpsertOne {
+	return u.Update(func(s *GraphDefinitionUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *GraphDefinitionUpsertOne) UpdateWorkspaceID() *GraphDefinitionUpsertOne {
+	return u.Update(func(s *GraphDefinitionUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 
@@ -1730,6 +1781,20 @@ func (u *GraphDefinitionUpsertBulk) SetVerificationGates(v string) *GraphDefinit
 func (u *GraphDefinitionUpsertBulk) UpdateVerificationGates() *GraphDefinitionUpsertBulk {
 	return u.Update(func(s *GraphDefinitionUpsert) {
 		s.UpdateVerificationGates()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *GraphDefinitionUpsertBulk) SetWorkspaceID(v string) *GraphDefinitionUpsertBulk {
+	return u.Update(func(s *GraphDefinitionUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *GraphDefinitionUpsertBulk) UpdateWorkspaceID() *GraphDefinitionUpsertBulk {
+	return u.Update(func(s *GraphDefinitionUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 

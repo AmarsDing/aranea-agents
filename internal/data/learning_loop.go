@@ -286,3 +286,45 @@ func (r *proposalRepo) UpdateStatus(ctx context.Context, id string, status biz.P
 	}
 	return r.GetByID(ctx, id)
 }
+
+// UpdateStatusCAS atomically transitions a proposal from one of expectedStatuses
+// to newStatus. Returns (proposal, true, nil) on success, (zero, false, nil)
+// when the current status is not in expectedStatuses (concurrent modification),
+// or (zero, false, err) on DB error.
+func (r *proposalRepo) UpdateStatusCAS(ctx context.Context, id string, expectedStatuses []biz.ProposalStatus, newStatus biz.ProposalStatus, approvedBy string) (biz.KnowledgeProposal, bool, error) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	q := `UPDATE learning_proposals SET status = ?, approved_by = ?, updated_at = ?`
+	args := []any{string(newStatus), approvedBy, now}
+	if newStatus == biz.ProposalStatusValidated {
+		q += `, validated_at = ?`
+		args = append(args, now)
+	}
+	q += ` WHERE id = ? AND status IN (`
+	args = append(args, id)
+	for i, s := range expectedStatuses {
+		if i > 0 {
+			q += `,`
+		}
+		q += `?`
+		args = append(args, string(s))
+	}
+	q += `)`
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	if err != nil {
+		return biz.KnowledgeProposal{}, false, entErrToBizErr(err, "LEARNING")
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return biz.KnowledgeProposal{}, false, entErrToBizErr(err, "LEARNING")
+	}
+	if n == 0 {
+		// Either the row doesn't exist or the status didn't match.
+		// Either way, the CAS failed — no concurrent modification applied.
+		return biz.KnowledgeProposal{}, false, nil
+	}
+	updated, err := r.GetByID(ctx, id)
+	if err != nil {
+		return biz.KnowledgeProposal{}, false, err
+	}
+	return updated, true, nil
+}

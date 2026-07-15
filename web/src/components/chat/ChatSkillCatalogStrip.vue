@@ -99,8 +99,8 @@ const emit = defineEmits<{
   flex-direction: column;
   padding: 4px 8px;
   border-radius: 6px;
-  background: var(--glass-surface, rgba(255, 255, 255, 0.06));
-  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+  background: var(--glass-surface, rgb(255 255 255 / 6%));
+  border: 1px solid var(--glass-border, rgb(255 255 255 / 10%));
   cursor: pointer;
   flex-shrink: 0;
   min-width: 120px;
@@ -109,7 +109,7 @@ const emit = defineEmits<{
 }
 
 .skill-catalog-strip__card:hover {
-  background: var(--glass-elevated, rgba(255, 255, 255, 0.1));
+  background: var(--glass-elevated, rgb(255 255 255 / 10%));
 }
 
 .skill-catalog-strip__card--loaded {
@@ -134,7 +134,7 @@ const emit = defineEmits<{
 
 .skill-catalog-strip__card-desc {
   font-size: 11px;
-  color: var(--color-text-secondary, rgba(255, 255, 255, 0.6));
+  color: var(--color-text-secondary, rgb(255 255 255 / 60%));
   line-height: 1.3;
   margin-top: 2px;
   overflow: hidden;
@@ -155,7 +155,7 @@ const emit = defineEmits<{
   font-size: 10px;
   padding: 0 4px;
   border-radius: 3px;
-  background: var(--glass-border, rgba(255, 255, 255, 0.08));
-  color: var(--color-text-secondary, rgba(255, 255, 255, 0.5));
+  background: var(--glass-border, rgb(255 255 255 / 8%));
+  color: var(--color-text-secondary, rgb(255 255 255 / 50%));
 }
 </style>

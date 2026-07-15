@@ -50,14 +50,7 @@ const BROWSER_TOOLS = new Set([
 ]);
 
 /** File read tools. */
-const FILE_READ_TOOLS = new Set([
-  'read_file',
-  'file_read_file',
-  'file_read',
-  'get_file',
-  'cat_file',
-  'view_file',
-]);
+const FILE_READ_TOOLS = new Set(['read_file', 'file_read_file', 'file_read', 'get_file', 'cat_file', 'view_file']);
 
 /** File write/edit tools. */
 const FILE_WRITE_TOOLS = new Set([
@@ -106,14 +99,7 @@ const CODE_TOOLS = new Set([
 ]);
 
 /** Todo management tools. */
-const TODO_TOOLS = new Set([
-  'todo_write',
-  'todo_read',
-  'todo_update',
-  'task_create',
-  'task_update',
-  'task_complete',
-]);
+const TODO_TOOLS = new Set(['todo_write', 'todo_read', 'todo_update', 'task_create', 'task_update', 'task_complete']);
 
 /** MCP tool name prefix (case-insensitive). */
 const MCP_PREFIXES = ['mcp_', 'mcp.', 'mcp/'];

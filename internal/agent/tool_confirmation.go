@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/metrics"
+	plugintrpc "aranea-agents/internal/plugin/trpc"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/loggateway"
 
@@ -131,7 +132,11 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		}
 		if toolConfirmApproved(reply) {
 			metrics.PluginInvokeTotal.WithLabelValues("confirm_gate", "before_tool", "success").Inc()
-			return &trpctool.BeforeToolResult{Context: ctx}, nil
+			// P1-10: mark context so ConfirmationGuardPlugin skips its own
+			// check. Without this, the plugin (which runs after Chain
+			// callbacks via mergeToolCallbacks) would re-block the tool that
+			// the user just approved. See E2E-P1-10.
+			return &trpctool.BeforeToolResult{Context: plugintrpc.WithToolConfirmHandled(ctx)}, nil
 		}
 		recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
 			ToolKey:      toolKey,

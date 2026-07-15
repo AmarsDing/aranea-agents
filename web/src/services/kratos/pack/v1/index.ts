@@ -112,62 +112,72 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createPackServiceClient(
-  handler: RequestHandler
-): PackService {
+export function createPackServiceClient(handler: RequestHandler): PackService {
   return {
-    ExportPack(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ExportPack(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/pack/export`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "PackService",
-        method: "ExportPack",
-      }) as Promise<ExportPackResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'PackService',
+          method: 'ExportPack',
+        },
+      ) as Promise<ExportPackResponse>;
     },
-    ImportPack(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ImportPack(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/pack/import`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "PackService",
-        method: "ImportPack",
-      }) as Promise<ImportPackResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'PackService',
+          method: 'ImportPack',
+        },
+      ) as Promise<ImportPackResponse>;
     },
-    ValidatePack(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ValidatePack(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/pack/validate`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "PackService",
-        method: "ValidatePack",
-      }) as Promise<ValidatePackResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'PackService',
+          method: 'ValidatePack',
+        },
+      ) as Promise<ValidatePackResponse>;
     },
   };
 }

@@ -244,16 +244,22 @@ func (uc *LearningLoopUsecase) ValidateProposal(ctx context.Context, proposalID 
 	}
 	for _, e := range existing {
 		if e.Kind == p.Kind && strings.EqualFold(strings.TrimSpace(e.Title), strings.TrimSpace(p.Title)) {
-			_, err := uc.proposals.UpdateStatus(ctx, proposalID, ProposalStatusConflict, "")
+			_, ok, err := uc.proposals.UpdateStatusCAS(ctx, proposalID, []ProposalStatus{ProposalStatusDraft}, ProposalStatusConflict, "")
 			if err != nil {
 				return KnowledgeProposal{}, err
+			}
+			if !ok {
+				return KnowledgeProposal{}, apierror.Conflict("LEARNING", "proposal was concurrently modified")
 			}
 			return uc.proposals.GetByID(ctx, proposalID)
 		}
 	}
-	validated, err := uc.proposals.UpdateStatus(ctx, proposalID, ProposalStatusValidated, "")
+	validated, ok, err := uc.proposals.UpdateStatusCAS(ctx, proposalID, []ProposalStatus{ProposalStatusDraft}, ProposalStatusValidated, "")
 	if err != nil {
 		return KnowledgeProposal{}, err
+	}
+	if !ok {
+		return KnowledgeProposal{}, apierror.Conflict("LEARNING", "proposal was concurrently modified")
 	}
 	return validated, nil
 }
@@ -288,8 +294,7 @@ func (uc *LearningLoopUsecase) RegisterKnowledge(ctx context.Context, proposalID
 			CreatedAt:       time.Now().UTC(),
 		}
 		if err := uc.orchestrator.CreateSuggestion(ctx, suggestion); err != nil {
-			// Non-fatal: log and continue with proposal registration.
-			// DB unique constraint may catch duplicates.
+			return KnowledgeProposal{}, err
 		}
 	} else if uc.evolution != nil && p.Kind == "prompt" {
 		suggestions, sErr := uc.evolution.GetEvolutionSuggestions(ctx, p.AgentID, EvolutionStatusPending)
@@ -312,9 +317,12 @@ func (uc *LearningLoopUsecase) RegisterKnowledge(ctx context.Context, proposalID
 			}
 		}
 	}
-	applied, err := uc.proposals.UpdateStatus(ctx, proposalID, ProposalStatusApplied, approvedBy)
+	applied, ok, err := uc.proposals.UpdateStatusCAS(ctx, proposalID, []ProposalStatus{ProposalStatusValidated, ProposalStatusApproved}, ProposalStatusApplied, approvedBy)
 	if err != nil {
 		return KnowledgeProposal{}, err
+	}
+	if !ok {
+		return KnowledgeProposal{}, apierror.Conflict("LEARNING", "proposal was concurrently modified")
 	}
 	return applied, nil
 }
@@ -331,7 +339,14 @@ func (uc *LearningLoopUsecase) ApproveProposal(ctx context.Context, proposalID s
 	if p.Status != ProposalStatusValidated {
 		return KnowledgeProposal{}, apierror.BadRequest("LEARNING", "only validated proposals can be approved")
 	}
-	return uc.proposals.UpdateStatus(ctx, proposalID, ProposalStatusApproved, approvedBy)
+	approved, ok, err := uc.proposals.UpdateStatusCAS(ctx, proposalID, []ProposalStatus{ProposalStatusValidated}, ProposalStatusApproved, approvedBy)
+	if err != nil {
+		return KnowledgeProposal{}, err
+	}
+	if !ok {
+		return KnowledgeProposal{}, apierror.Conflict("LEARNING", "proposal was concurrently modified")
+	}
+	return approved, nil
 }
 
 func (uc *LearningLoopUsecase) RejectProposal(ctx context.Context, proposalID string) (KnowledgeProposal, error) {
@@ -346,7 +361,14 @@ func (uc *LearningLoopUsecase) RejectProposal(ctx context.Context, proposalID st
 	if p.Status != ProposalStatusDraft && p.Status != ProposalStatusValidated {
 		return KnowledgeProposal{}, apierror.BadRequest("LEARNING", "only draft or validated proposals can be rejected")
 	}
-	return uc.proposals.UpdateStatus(ctx, proposalID, ProposalStatusRejected, "")
+	rejected, ok, err := uc.proposals.UpdateStatusCAS(ctx, proposalID, []ProposalStatus{ProposalStatusDraft, ProposalStatusValidated}, ProposalStatusRejected, "")
+	if err != nil {
+		return KnowledgeProposal{}, err
+	}
+	if !ok {
+		return KnowledgeProposal{}, apierror.Conflict("LEARNING", "proposal was concurrently modified")
+	}
+	return rejected, nil
 }
 
 func (uc *LearningLoopUsecase) ListProposals(ctx context.Context, agentID string, status string) ([]KnowledgeProposal, error) {

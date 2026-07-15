@@ -160,10 +160,22 @@ func (f *Factory) applyAvailabilityFallback(ctx context.Context, typ string) str
 		return TypeLocal
 	}
 	if typ == TypeE2B && !f.IsBackendAvailable(TypeE2B) {
+		if isProductionEnv() && !f.env.AllowLocalInProd {
+			f.logger().Error("生产环境 E2B 不可用且未允许 local 执行器，拒绝代码执行",
+				loggateway.StepID("codeexec.e2b_unavailable_prod"),
+				loggateway.Str("requested", TypeE2B))
+			return TypeDisabled
+		}
 		f.warnResolveFallback(ctx, typ)
 		return TypeLocal
 	}
 	if typ == TypeContainer && !f.IsBackendAvailable(TypeContainer) {
+		if isProductionEnv() && !f.env.AllowLocalInProd {
+			f.logger().Error("生产环境 Container 不可用且未允许 local 执行器，拒绝代码执行",
+				loggateway.StepID("codeexec.container_unavailable_prod"),
+				loggateway.Str("requested", TypeContainer))
+			return TypeDisabled
+		}
 		f.warnResolveFallback(ctx, typ)
 		return TypeLocal
 	}

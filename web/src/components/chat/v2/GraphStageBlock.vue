@@ -90,9 +90,7 @@ const maxWidth = 600;
 const nodes = computed(() => store.getGraphStageNodes(props.graphStage.ID));
 
 const { layoutDAG } = usePlanDAGLayout();
-const layoutResult = computed(() =>
-  layoutDAG(nodes.value, { width: maxWidth, nodeWidth, nodeHeight, gapX, gapY }),
-);
+const layoutResult = computed(() => layoutDAG(nodes.value, { width: maxWidth, nodeWidth, nodeHeight, gapX, gapY }));
 const positions = computed(() => layoutResult.value.positions);
 const width = computed(() => layoutResult.value.computedWidth);
 const height = computed(() => {

@@ -89,6 +89,16 @@ type MemoryRuntimePolicy struct {
 	// for facts extracted from L2 episodes. Facts with importance below
 	// this value are skipped. Default: 0.3.
 	EpisodeMinImportance float64
+
+	// MemoryPromptTotalBudgetChars (P2-04) is the unified character ceiling
+	// for the combined memory inject (L1 + L2 + L3 + L4 cues). When the
+	// total exceeds this budget, the cue is truncated to fit. 0 = unlimited.
+	// Default: 4000.
+	MemoryPromptTotalBudgetChars int
+	// L3InjectProvenance (P2-04) controls whether L3 facts and composite
+	// recall hits include provenance metadata (fact ID, source session,
+	// confidence, version) in the prompt text. Default: true.
+	L3InjectProvenance bool
 }
 
 func (p MemoryRuntimePolicy) AnyInject() bool {
@@ -192,6 +202,11 @@ func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePol
 	if len(p.L3RecallScopes) == 0 {
 		p.L3RecallScopes = []string{"agent"}
 	}
+	// P2-04: unified prompt budget and provenance defaults.
+	if p.MemoryPromptTotalBudgetChars <= 0 {
+		p.MemoryPromptTotalBudgetChars = 4000
+	}
+	p.L3InjectProvenance = true // default on; opt-out only via explicit false
 	p.WriteConsolidate = p.WriteL3Facts || p.WriteL2Episode || p.WriteL4Graph
 	return p
 }

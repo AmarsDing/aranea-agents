@@ -77,8 +77,7 @@ export type ReorderTaxonomyRequest = {
   ids: string[] | undefined;
 };
 
-export type ReorderTaxonomyResponse = {
-};
+export type ReorderTaxonomyResponse = {};
 
 export interface TaxonomyService {
   ListTaxonomy(request: wellKnownEmpty): Promise<ListTaxonomyResponse>;
@@ -96,144 +95,169 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createTaxonomyServiceClient(
-  handler: RequestHandler
-): TaxonomyService {
+export function createTaxonomyServiceClient(handler: RequestHandler): TaxonomyService {
   return {
-    ListTaxonomy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTaxonomy(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/taxonomy`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "TaxonomyService",
-        method: "ListTaxonomy",
-      }) as Promise<ListTaxonomyResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'TaxonomyService',
+          method: 'ListTaxonomy',
+        },
+      ) as Promise<ListTaxonomyResponse>;
     },
-    ListTaxonomyTree(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTaxonomyTree(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/taxonomy/tree`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "TaxonomyService",
-        method: "ListTaxonomyTree",
-      }) as Promise<ListTaxonomyTreeResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'TaxonomyService',
+          method: 'ListTaxonomyTree',
+        },
+      ) as Promise<ListTaxonomyTreeResponse>;
     },
-    CreateTaxonomy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateTaxonomy(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/taxonomy`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "TaxonomyService",
-        method: "CreateTaxonomy",
-      }) as Promise<TaxonomyNode>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'TaxonomyService',
+          method: 'CreateTaxonomy',
+        },
+      ) as Promise<TaxonomyNode>;
     },
-    GetTaxonomy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetTaxonomy(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/taxonomy/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "TaxonomyService",
-        method: "GetTaxonomy",
-      }) as Promise<TaxonomyNode>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'TaxonomyService',
+          method: 'GetTaxonomy',
+        },
+      ) as Promise<TaxonomyNode>;
     },
-    UpdateTaxonomy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateTaxonomy(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/taxonomy/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request?.node ?? {});
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PATCH",
-        body,
-      }, {
-        service: "TaxonomyService",
-        method: "UpdateTaxonomy",
-      }) as Promise<TaxonomyNode>;
+      return handler(
+        {
+          path: uri,
+          method: 'PATCH',
+          body,
+        },
+        {
+          service: 'TaxonomyService',
+          method: 'UpdateTaxonomy',
+        },
+      ) as Promise<TaxonomyNode>;
     },
-    DeleteTaxonomy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteTaxonomy(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/taxonomy/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "DELETE",
-        body,
-      }, {
-        service: "TaxonomyService",
-        method: "DeleteTaxonomy",
-      }) as Promise<wellKnownEmpty>;
+      return handler(
+        {
+          path: uri,
+          method: 'DELETE',
+          body,
+        },
+        {
+          service: 'TaxonomyService',
+          method: 'DeleteTaxonomy',
+        },
+      ) as Promise<wellKnownEmpty>;
     },
-    ReorderTaxonomy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ReorderTaxonomy(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/taxonomy/reorder`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PUT",
-        body,
-      }, {
-        service: "TaxonomyService",
-        method: "ReorderTaxonomy",
-      }) as Promise<ReorderTaxonomyResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'PUT',
+          body,
+        },
+        {
+          service: 'TaxonomyService',
+          method: 'ReorderTaxonomy',
+        },
+      ) as Promise<ReorderTaxonomyResponse>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
-
 
 // @@protoc_insertion_point(typescript-http-eof)

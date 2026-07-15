@@ -300,6 +300,20 @@ func (_c *PlatformPluginCreate) SetNillableDeletedAt(v *string) *PlatformPluginC
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *PlatformPluginCreate) SetWorkspaceID(v string) *PlatformPluginCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *PlatformPluginCreate) SetNillableWorkspaceID(v *string) *PlatformPluginCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *PlatformPluginCreate) SetID(v string) *PlatformPluginCreate {
 	_c.mutation.SetID(v)
@@ -417,6 +431,10 @@ func (_c *PlatformPluginCreate) defaults() {
 		v := platformplugin.DefaultDeletedAt
 		_c.mutation.SetDeletedAt(v)
 	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := platformplugin.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -498,6 +516,9 @@ func (_c *PlatformPluginCreate) check() error {
 	}
 	if _, ok := _c.mutation.DeletedAt(); !ok {
 		return &ValidationError{Name: "deleted_at", err: errors.New(`ent: missing required field "PlatformPlugin.deleted_at"`)}
+	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "PlatformPlugin.workspace_id"`)}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := platformplugin.IDValidator(v); err != nil {
@@ -623,6 +644,10 @@ func (_c *PlatformPluginCreate) createSpec() (*PlatformPlugin, *sqlgraph.CreateS
 	if value, ok := _c.mutation.DeletedAt(); ok {
 		_spec.SetField(platformplugin.FieldDeletedAt, field.TypeString, value)
 		_node.DeletedAt = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformplugin.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
 	}
 	return _node, _spec
 }
@@ -949,6 +974,18 @@ func (u *PlatformPluginUpsert) SetDeletedAt(v string) *PlatformPluginUpsert {
 // UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
 func (u *PlatformPluginUpsert) UpdateDeletedAt() *PlatformPluginUpsert {
 	u.SetExcluded(platformplugin.FieldDeletedAt)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformPluginUpsert) SetWorkspaceID(v string) *PlatformPluginUpsert {
+	u.Set(platformplugin.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformPluginUpsert) UpdateWorkspaceID() *PlatformPluginUpsert {
+	u.SetExcluded(platformplugin.FieldWorkspaceID)
 	return u
 }
 
@@ -1319,6 +1356,20 @@ func (u *PlatformPluginUpsertOne) SetDeletedAt(v string) *PlatformPluginUpsertOn
 func (u *PlatformPluginUpsertOne) UpdateDeletedAt() *PlatformPluginUpsertOne {
 	return u.Update(func(s *PlatformPluginUpsert) {
 		s.UpdateDeletedAt()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformPluginUpsertOne) SetWorkspaceID(v string) *PlatformPluginUpsertOne {
+	return u.Update(func(s *PlatformPluginUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformPluginUpsertOne) UpdateWorkspaceID() *PlatformPluginUpsertOne {
+	return u.Update(func(s *PlatformPluginUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 
@@ -1856,6 +1907,20 @@ func (u *PlatformPluginUpsertBulk) SetDeletedAt(v string) *PlatformPluginUpsertB
 func (u *PlatformPluginUpsertBulk) UpdateDeletedAt() *PlatformPluginUpsertBulk {
 	return u.Update(func(s *PlatformPluginUpsert) {
 		s.UpdateDeletedAt()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformPluginUpsertBulk) SetWorkspaceID(v string) *PlatformPluginUpsertBulk {
+	return u.Update(func(s *PlatformPluginUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformPluginUpsertBulk) UpdateWorkspaceID() *PlatformPluginUpsertBulk {
+	return u.Update(func(s *PlatformPluginUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 

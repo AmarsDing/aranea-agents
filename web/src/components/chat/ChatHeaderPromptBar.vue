@@ -44,9 +44,7 @@ const displayLine = computed(() => {
   const prompt = props.fullText.trim();
   if (prompt) {
     // Show first 30 chars; ellipsis if longer
-    return prompt.length > PROMPT_PREVIEW_MAX
-      ? prompt.slice(0, PROMPT_PREVIEW_MAX) + '…'
-      : prompt;
+    return prompt.length > PROMPT_PREVIEW_MAX ? prompt.slice(0, PROMPT_PREVIEW_MAX) + '…' : prompt;
   }
   if (!props.hasMessages) {
     return (props.sessionTitle ?? '').trim() || t('chat.untitledSession');

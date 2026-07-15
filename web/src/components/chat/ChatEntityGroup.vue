@@ -143,27 +143,27 @@ function onDragEnd() {
     max-height 0.25s ease,
     opacity 0.2s ease;
   max-height: 2000px;
-  opacity: 1;
+  opacity: 100%;
 }
 
 .chat-group-collapse-enter-from,
 .chat-group-collapse-leave-to {
   max-height: 0;
-  opacity: 0;
+  opacity: 0%;
 }
 
 .chat-entity-item--ghost {
-  opacity: 0.4;
+  opacity: 40%;
   background: var(--glass-surface-hover);
 }
 
 .chat-entity-item--chosen {
-  box-shadow: 0 4px 12px var(--glass-border, rgba(0, 0, 0, 0.15));
+  box-shadow: 0 4px 12px var(--glass-border, rgb(0 0 0 / 15%));
   transform: translateY(-2px);
 }
 
 .chat-entity-item--dragging {
-  opacity: 0.8;
+  opacity: 80%;
   cursor: grabbing !important;
 }
 </style>

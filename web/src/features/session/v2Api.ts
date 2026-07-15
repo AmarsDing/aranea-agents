@@ -616,7 +616,9 @@ export async function listTeamRunsV2(stageId: string): Promise<TeamRun[]> {
 
 /** List member_sessions for a team_run. Backend: GET /v2/team_runs/{run_id}/member_sessions. */
 export async function listMemberSessionsV2(runId: string): Promise<MemberSession[]> {
-  const resp = await kratosApi.get<ListMemberSessionsV2Response>(`/v2/team_runs/${encodeURIComponent(runId)}/member_sessions`);
+  const resp = await kratosApi.get<ListMemberSessionsV2Response>(
+    `/v2/team_runs/${encodeURIComponent(runId)}/member_sessions`,
+  );
   return (resp.data?.memberSessions ?? []).map(mapMemberSession);
 }
 
@@ -640,6 +642,8 @@ export async function listGraphStagesV2(taskId: string): Promise<GraphStage[]> {
 
 /** List graph_nodes for a graph_stage. Backend: GET /v2/graph_stages/{stage_id}/graph_nodes. */
 export async function listGraphNodesV2(stageId: string): Promise<GraphNode[]> {
-  const resp = await kratosApi.get<ListGraphNodesV2Response>(`/v2/graph_stages/${encodeURIComponent(stageId)}/graph_nodes`);
+  const resp = await kratosApi.get<ListGraphNodesV2Response>(
+    `/v2/graph_stages/${encodeURIComponent(stageId)}/graph_nodes`,
+  );
   return (resp.data?.graphNodes ?? []).map(mapGraphNode);
 }

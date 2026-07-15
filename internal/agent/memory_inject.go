@@ -102,6 +102,24 @@ func (r *MemoryCueResult) JoinCues() string {
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }
 
+// JoinCuesWithBudget returns the combined cue text, truncated to the given
+// character budget (P2-04). budgetChars <= 0 means unlimited.
+func (r *MemoryCueResult) JoinCuesWithBudget(budgetChars int) string {
+	combined := r.JoinCues()
+	if budgetChars <= 0 || len([]rune(combined)) <= budgetChars {
+		return combined
+	}
+	// Truncate by runes to avoid splitting multi-byte characters, then append
+	// an ellipsis so the LLM knows the memory cue was budget-truncated.
+	runes := []rune(combined)
+	// Reserve 3 chars for the ellipsis suffix.
+	cut := budgetChars - 3
+	if cut < 0 {
+		cut = 0
+	}
+	return string(runes[:cut]) + "…\n[memory cue truncated by prompt budget]"
+}
+
 func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
 	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
 	if !policy.MasterEnabled || !policy.AnyInject() {
@@ -122,7 +140,8 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 		if result.IsEmpty() {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		cue := result.JoinCues()
+		// P2-04: apply unified prompt budget across L1+L2+L3+L4 cues.
+		cue := result.JoinCuesWithBudget(policy.MemoryPromptTotalBudgetChars)
 		sys := trpcmodel.NewSystemMessage(memoryInjectCueContent(cue))
 		args.Request.Messages = append([]trpcmodel.Message{sys}, args.Request.Messages...)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
@@ -221,9 +240,8 @@ func RebuildMemoryInjectForCompaction(ctx context.Context, deps TRPCBuilderDeps,
 		return
 	}
 
-	// Find and replace the existing MemoryInject system message in-place
-	// to preserve other hooks' cache breakpoint positions.
-	newCue := memoryInjectCueContent(result.JoinCues())
+	// P2-04: apply unified prompt budget on compaction rebuild too.
+	newCue := memoryInjectCueContent(result.JoinCuesWithBudget(policy.MemoryPromptTotalBudgetChars))
 	for i, msg := range req.Messages {
 		if isMemoryInjectMessage(msg) {
 			req.Messages[i] = trpcmodel.NewSystemMessage(newCue)

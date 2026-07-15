@@ -19,6 +19,11 @@ type CompositeRecallHit struct {
 	Layer string
 	Line  string
 	Score float64
+	// P2-04: provenance metadata for L3 facts (empty for L2 episodes).
+	FactID         string
+	SourceSession  string
+	Confidence     float64
+	Version        int
 }
 
 // SessionCompositeRecallStore loads fused L2+L3 candidates (implemented by sessionmemory.Store).
@@ -33,6 +38,11 @@ type CompositeRecallStoreRow struct {
 	Summary   string
 	Statement string
 	Score     float64
+	// P2-04: provenance metadata for L3 facts (empty for L2 episodes).
+	FactID        string
+	SourceSession string
+	Confidence    float64
+	Version       int
 }
 
 // MemoryCompositeRecaller performs cross-layer L2+L3 recall for prompt injection.
@@ -117,7 +127,15 @@ func (uc *MemoryCompositeRecallUsecase) RecallComposite(ctx context.Context, q C
 		if line == "" {
 			continue
 		}
-		out = append(out, CompositeRecallHit{Layer: row.Layer, Line: line, Score: row.Score})
+		out = append(out, CompositeRecallHit{
+			Layer:        row.Layer,
+			Line:         line,
+			Score:        row.Score,
+			FactID:       row.FactID,
+			SourceSession: row.SourceSession,
+			Confidence:   row.Confidence,
+			Version:      row.Version,
+		})
 	}
 	return out, nil
 }

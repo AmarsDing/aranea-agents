@@ -210,242 +210,283 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createA2AServiceClient(
-  handler: RequestHandler
-): A2AService {
+export function createA2AServiceClient(handler: RequestHandler): A2AService {
   return {
-    Discover(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    Discover(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/a2a/discover`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.workspace) {
-        queryParams.push(`workspace=${encodeURIComponent(request.workspace.toString())}`)
+        queryParams.push(`workspace=${encodeURIComponent(request.workspace.toString())}`);
       }
       if (request.capability) {
-        queryParams.push(`capability=${encodeURIComponent(request.capability.toString())}`)
+        queryParams.push(`capability=${encodeURIComponent(request.capability.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "A2AService",
-        method: "Discover",
-      }) as Promise<DiscoverResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'A2AService',
+          method: 'Discover',
+        },
+      ) as Promise<DiscoverResponse>;
     },
-    Invoke(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    Invoke(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/a2a/invoke`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "A2AService",
-        method: "Invoke",
-      }) as Promise<A2AInvokeResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'A2AService',
+          method: 'Invoke',
+        },
+      ) as Promise<A2AInvokeResponse>;
     },
-    UpdateAgentCard(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateAgentCard(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error("missing required field request.agent_id");
+        throw new Error('missing required field request.agent_id');
       }
       const path = `v1/a2a/agents/${request.agentId}/card`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PUT",
-        body,
-      }, {
-        service: "A2AService",
-        method: "UpdateAgentCard",
-      }) as Promise<A2AAgentCard>;
+      return handler(
+        {
+          path: uri,
+          method: 'PUT',
+          body,
+        },
+        {
+          service: 'A2AService',
+          method: 'UpdateAgentCard',
+        },
+      ) as Promise<A2AAgentCard>;
     },
-    GetAgentCard(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetAgentCard(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error("missing required field request.agent_id");
+        throw new Error('missing required field request.agent_id');
       }
       const path = `v1/a2a/agents/${request.agentId}/card`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "A2AService",
-        method: "GetAgentCard",
-      }) as Promise<A2AAgentCard>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'A2AService',
+          method: 'GetAgentCard',
+        },
+      ) as Promise<A2AAgentCard>;
     },
-    ListAudit(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListAudit(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/a2a/audit`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.callerAgentId) {
-        queryParams.push(`callerAgentId=${encodeURIComponent(request.callerAgentId.toString())}`)
+        queryParams.push(`callerAgentId=${encodeURIComponent(request.callerAgentId.toString())}`);
       }
       if (request.calleeAgentId) {
-        queryParams.push(`calleeAgentId=${encodeURIComponent(request.calleeAgentId.toString())}`)
+        queryParams.push(`calleeAgentId=${encodeURIComponent(request.calleeAgentId.toString())}`);
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "A2AService",
-        method: "ListAudit",
-      }) as Promise<ListAuditResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'A2AService',
+          method: 'ListAudit',
+        },
+      ) as Promise<ListAuditResponse>;
     },
-    RegisterRemoteAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    RegisterRemoteAgent(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/a2a/remote-agents`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "A2AService",
-        method: "RegisterRemoteAgent",
-      }) as Promise<A2ARemoteAgent>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'A2AService',
+          method: 'RegisterRemoteAgent',
+        },
+      ) as Promise<A2ARemoteAgent>;
     },
-    ListRemoteAgents(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListRemoteAgents(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/a2a/remote-agents`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.workspace) {
-        queryParams.push(`workspace=${encodeURIComponent(request.workspace.toString())}`)
+        queryParams.push(`workspace=${encodeURIComponent(request.workspace.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "A2AService",
-        method: "ListRemoteAgents",
-      }) as Promise<ListRemoteAgentsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'A2AService',
+          method: 'ListRemoteAgents',
+        },
+      ) as Promise<ListRemoteAgentsResponse>;
     },
-    DeleteRemoteAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteRemoteAgent(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/a2a/remote-agents/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "DELETE",
-        body,
-      }, {
-        service: "A2AService",
-        method: "DeleteRemoteAgent",
-      }) as Promise<wellKnownEmpty>;
+      return handler(
+        {
+          path: uri,
+          method: 'DELETE',
+          body,
+        },
+        {
+          service: 'A2AService',
+          method: 'DeleteRemoteAgent',
+        },
+      ) as Promise<wellKnownEmpty>;
     },
-    DiscoverRemoteAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    DiscoverRemoteAgent(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/a2a/remote-discover`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "A2AService",
-        method: "DiscoverRemoteAgent",
-      }) as Promise<A2AAgentCard>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'A2AService',
+          method: 'DiscoverRemoteAgent',
+        },
+      ) as Promise<A2AAgentCard>;
     },
-    GatewayDiscover(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GatewayDiscover(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/a2a/gateway/discover`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.workspace) {
-        queryParams.push(`workspace=${encodeURIComponent(request.workspace.toString())}`)
+        queryParams.push(`workspace=${encodeURIComponent(request.workspace.toString())}`);
       }
       if (request.capability) {
-        queryParams.push(`capability=${encodeURIComponent(request.capability.toString())}`)
+        queryParams.push(`capability=${encodeURIComponent(request.capability.toString())}`);
       }
       if (request.checkHealth) {
-        queryParams.push(`checkHealth=${encodeURIComponent(request.checkHealth.toString())}`)
+        queryParams.push(`checkHealth=${encodeURIComponent(request.checkHealth.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "A2AService",
-        method: "GatewayDiscover",
-      }) as Promise<GatewayDiscoverResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'A2AService',
+          method: 'GatewayDiscover',
+        },
+      ) as Promise<GatewayDiscoverResponse>;
     },
-    GetA2AConfig(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetA2AConfig(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/a2a/config`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "A2AService",
-        method: "GetA2AConfig",
-      }) as Promise<A2ARuntimeConfig>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'A2AService',
+          method: 'GetA2AConfig',
+        },
+      ) as Promise<A2ARuntimeConfig>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
-
 
 // @@protoc_insertion_point(typescript-http-eof)

@@ -57,7 +57,9 @@ type GraphDefinition struct {
 	IsTemplate bool `json:"is_template,omitempty"`
 	// verification gate definitions JSON
 	VerificationGates string `json:"verification_gates,omitempty"`
-	selectValues      sql.SelectValues
+	// owning workspace ID; empty = shared/system builtin
+	WorkspaceID  string `json:"workspace_id,omitempty"`
+	selectValues sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -69,7 +71,7 @@ func (*GraphDefinition) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case graphdefinition.FieldSortOrder:
 			values[i] = new(sql.NullInt64)
-		case graphdefinition.FieldID, graphdefinition.FieldName, graphdefinition.FieldDescription, graphdefinition.FieldStateFields, graphdefinition.FieldNodes, graphdefinition.FieldEdges, graphdefinition.FieldConditionalEdges, graphdefinition.FieldSubgraphs, graphdefinition.FieldEntryPoint, graphdefinition.FieldFinishPoint, graphdefinition.FieldExecutionEngine, graphdefinition.FieldInterruptBefore, graphdefinition.FieldInterruptAfter, graphdefinition.FieldMetadata, graphdefinition.FieldTeamID, graphdefinition.FieldVerificationGates:
+		case graphdefinition.FieldID, graphdefinition.FieldName, graphdefinition.FieldDescription, graphdefinition.FieldStateFields, graphdefinition.FieldNodes, graphdefinition.FieldEdges, graphdefinition.FieldConditionalEdges, graphdefinition.FieldSubgraphs, graphdefinition.FieldEntryPoint, graphdefinition.FieldFinishPoint, graphdefinition.FieldExecutionEngine, graphdefinition.FieldInterruptBefore, graphdefinition.FieldInterruptAfter, graphdefinition.FieldMetadata, graphdefinition.FieldTeamID, graphdefinition.FieldVerificationGates, graphdefinition.FieldWorkspaceID:
 			values[i] = new(sql.NullString)
 		case graphdefinition.FieldCreatedAt, graphdefinition.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -214,6 +216,12 @@ func (_m *GraphDefinition) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.VerificationGates = value.String
 			}
+		case graphdefinition.FieldWorkspaceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
+			} else if value.Valid {
+				_m.WorkspaceID = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -309,6 +317,9 @@ func (_m *GraphDefinition) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("verification_gates=")
 	builder.WriteString(_m.VerificationGates)
+	builder.WriteString(", ")
+	builder.WriteString("workspace_id=")
+	builder.WriteString(_m.WorkspaceID)
 	builder.WriteByte(')')
 	return builder.String()
 }

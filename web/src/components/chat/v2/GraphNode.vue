@@ -113,80 +113,97 @@ const nodeStrokeColor = computed(
   cursor: pointer;
   transition: opacity 0.2s ease;
 }
+
 /* P1 #6: hover 节点时高亮上下游依赖路径 — 暗化非路径节点 */
 .graph-node--dimmed {
-  opacity: 0.3;
+  opacity: 30%;
 }
+
 /* P1 #6: 路径上的节点保持高亮，无额外样式（stroke-width 在 template 中通过 prop 控制） */
 .graph-node--highlighted {
-  opacity: 1;
+  opacity: 100%;
 }
+
 .graph-node__rect {
   transition:
     fill 0.2s ease,
     stroke 0.2s ease;
 }
+
 /* 节点填充用半透明色，让文字在背景上可读。
    之前用纯色填充，文字和背景对比度不足。现在用 rgba 半透明覆盖，
    文字用高对比度的 primary 色，确保日间/夜间都可读。 */
 .graph-node__rect--pending {
-  fill: rgba(158, 158, 158, 0.15);
+  fill: rgb(158 158 158 / 15%);
 }
+
 .graph-node__rect--running {
-  fill: rgba(0, 188, 212, 0.18);
+  fill: rgb(0 188 212 / 18%);
   animation: graph-node-pulse 2s ease-in-out infinite;
 }
+
 .graph-node__rect--completed {
-  fill: rgba(76, 175, 80, 0.18);
+  fill: rgb(76 175 80 / 18%);
 }
+
 .graph-node__rect--failed {
-  fill: rgba(244, 67, 54, 0.18);
+  fill: rgb(244 67 54 / 18%);
 }
+
 .graph-node__rect--interrupted {
-  fill: rgba(255, 193, 7, 0.18);
+  fill: rgb(255 193 7 / 18%);
 }
+
 @keyframes graph-node-pulse {
   0%,
   100% {
-    opacity: 1;
+    opacity: 100%;
   }
+
   50% {
-    opacity: 0.75;
+    opacity: 75%;
   }
 }
+
 /* failed 抖动 */
 .graph-node--failed {
   animation: graph-node-shake 0.4s ease-in-out 2;
 }
+
 @keyframes graph-node-shake {
   0%,
   100% {
     transform: translateX(0);
   }
+
   25% {
     transform: translateX(-2px);
   }
+
   75% {
     transform: translateX(2px);
   }
 }
+
 /* 文字用高对比度颜色，确保在半透明背景上可读 */
 .graph-node__label {
-  fill: var(--color-text-primary, #fff);
+  fill: var(--color-text-primary);
   font-size: 12px;
   font-weight: 600;
+
   /* 文字描边，在任意背景上都可读 */
   paint-order: stroke;
-  stroke: rgba(0, 0, 0, 0.4);
+  stroke: rgb(0 0 0 / 40%);
   stroke-width: 2px;
   stroke-linejoin: round;
 }
+
 .graph-node__status {
-  fill: var(--color-text-primary, #fff);
+  fill: var(--color-text-primary);
   font-size: 11px;
   font-weight: 500;
   paint-order: stroke;
-  stroke: rgba(0, 0, 0, 0.4);
+  stroke: rgb(0 0 0 / 40%);
   stroke-width: 2px;
   stroke-linejoin: round;
 }

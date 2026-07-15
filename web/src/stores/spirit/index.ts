@@ -843,9 +843,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       avatarUrl: m.AvatarURL ?? '',
     }));
 
-    const incomingStatus: SpiritTeamStatus = isValidTeamStatus(ts.Status)
-      ? ts.Status
-      : 'pending';
+    const incomingStatus: SpiritTeamStatus = isValidTeamStatus(ts.Status) ? ts.Status : 'pending';
     const createdAt = ts.StartedAt ? new Date(ts.StartedAt).getTime() : Date.now();
 
     const existing = teams.value.find((t) => t.id === ts.TeamID);

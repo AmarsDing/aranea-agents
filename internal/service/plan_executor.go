@@ -70,6 +70,10 @@ type PlanExecutor struct {
 	gsSM *biz.GraphStageStateMachine
 	// 2026-07-05 P1 #9d 修复（AS-FSM-01）：TeamStage 状态机驱动状态转换。
 	tsSM *biz.TeamStageStateMachine
+	// C-20 fix: in-process execution lease. Prevents duplicate Team creation
+	// when the same PlanBoardCreatedEvent is delivered multiple times (replay,
+	// multi-instance, or event bus redelivery). Key: board.ID, Value: struct{}.
+	running sync.Map
 }
 
 // TeamDispatchMarker 标记一个 task 已派发 team。
@@ -148,6 +152,15 @@ func (e *PlanExecutor) StartSubscription() {
 			if len(board.Steps) == 0 {
 				continue
 			}
+			// C-20 fix: execution lease — skip duplicate events for the same
+			// board. LoadOrStore is atomic: if board.ID already exists, the
+			// event is a replay/duplicate → skip. Otherwise mark as running.
+			if _, loaded := e.running.LoadOrStore(board.ID, struct{}{}); loaded {
+				e.lg.Warn("PlanBoard 已在执行中，跳过重复事件",
+					loggateway.Str("plan_board_id", board.ID),
+					loggateway.Str("task_id", board.TaskID))
+				continue
+			}
 			e.lg.Info("PlanExecutor 收到 PlanBoardCreatedEvent，启动 DAG 执行",
 				loggateway.Str("plan_board_id", board.ID),
 				loggateway.Str("task_id", board.TaskID),
@@ -159,6 +172,7 @@ func (e *PlanExecutor) StartSubscription() {
 			// / publishV2TeamRunCompletion 都能拿到正确的 rootTaskID（之前为空字符串
 			// 导致 MemberSession.TaskID 为空，前端 getMemberSessionSteps 返回空数组）。
 			go func(b biz.PlanBoard) {
+				defer e.running.Delete(b.ID) // C-20: release lease on exit
 				runCtx := context.Background()
 				if b.TaskID != "" {
 					runCtx = agent.ContextWithRootTaskActivityID(

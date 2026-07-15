@@ -340,6 +340,20 @@ func (_c *AgentCreate) SetNillableVariantDescription(v *string) *AgentCreate {
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *AgentCreate) SetWorkspaceID(v string) *AgentCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *AgentCreate) SetNillableWorkspaceID(v *string) *AgentCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *AgentCreate) SetID(v string) *AgentCreate {
 	_c.mutation.SetID(v)
@@ -465,6 +479,10 @@ func (_c *AgentCreate) defaults() {
 		v := agent.DefaultVariantDescription
 		_c.mutation.SetVariantDescription(v)
 	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := agent.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -563,6 +581,9 @@ func (_c *AgentCreate) check() error {
 	}
 	if _, ok := _c.mutation.VariantDescription(); !ok {
 		return &ValidationError{Name: "variant_description", err: errors.New(`ent: missing required field "Agent.variant_description"`)}
+	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "Agent.workspace_id"`)}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := agent.IDValidator(v); err != nil {
@@ -704,6 +725,10 @@ func (_c *AgentCreate) createSpec() (*Agent, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.VariantDescription(); ok {
 		_spec.SetField(agent.FieldVariantDescription, field.TypeString, value)
 		_node.VariantDescription = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(agent.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
 	}
 	return _node, _spec
 }
@@ -1066,6 +1091,18 @@ func (u *AgentUpsert) SetVariantDescription(v string) *AgentUpsert {
 // UpdateVariantDescription sets the "variant_description" field to the value that was provided on create.
 func (u *AgentUpsert) UpdateVariantDescription() *AgentUpsert {
 	u.SetExcluded(agent.FieldVariantDescription)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *AgentUpsert) SetWorkspaceID(v string) *AgentUpsert {
+	u.Set(agent.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *AgentUpsert) UpdateWorkspaceID() *AgentUpsert {
+	u.SetExcluded(agent.FieldWorkspaceID)
 	return u
 }
 
@@ -1478,6 +1515,20 @@ func (u *AgentUpsertOne) SetVariantDescription(v string) *AgentUpsertOne {
 func (u *AgentUpsertOne) UpdateVariantDescription() *AgentUpsertOne {
 	return u.Update(func(s *AgentUpsert) {
 		s.UpdateVariantDescription()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *AgentUpsertOne) SetWorkspaceID(v string) *AgentUpsertOne {
+	return u.Update(func(s *AgentUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *AgentUpsertOne) UpdateWorkspaceID() *AgentUpsertOne {
+	return u.Update(func(s *AgentUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 
@@ -2057,6 +2108,20 @@ func (u *AgentUpsertBulk) SetVariantDescription(v string) *AgentUpsertBulk {
 func (u *AgentUpsertBulk) UpdateVariantDescription() *AgentUpsertBulk {
 	return u.Update(func(s *AgentUpsert) {
 		s.UpdateVariantDescription()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *AgentUpsertBulk) SetWorkspaceID(v string) *AgentUpsertBulk {
+	return u.Update(func(s *AgentUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *AgentUpsertBulk) UpdateWorkspaceID() *AgentUpsertBulk {
+	return u.Update(func(s *AgentUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 

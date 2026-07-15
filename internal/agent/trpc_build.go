@@ -400,7 +400,20 @@ func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings, skipRuntimeModelSelect
 		opts = append(opts, trpcllmagent.WithPreloadMemory(s.MemoryMaxResults))
 	}
 
-	if s.SkillLoadMode != "" && s.SkillLoadMode != "auto" {
+	if s.SkillLoadMode != "" && s.SkillLoadMode != "auto" && !biz.IsProgressiveSkillLoad(s.SkillLoadMode) {
+		// P2-01: "progressive" is an Aranea-specific composite marker, not a
+		// framework SkillLoadMode. The framework's normalizeSkillLoadMode only
+		// recognizes "once|turn|session" and silently falls back to "turn" for
+		// unknown values. Passing "progressive" here would be misleading because
+		// it suggests the framework understands the composite semantic.
+		//
+		// The progressive semantic is fully expressed by the combination of:
+		//   - Default "turn" load mode (the framework default, applied implicitly)
+		//   - WithSkillsLoadedContentInToolResults(true) (set above in buildTRPCAgent)
+		//   - Directory hints (set above)
+		//
+		// Skip passing the raw mode to avoid the silent normalization fallback
+		// and make the actual load mode explicit. See E2E-P2-01.
 		opts = append(opts, trpcllmagent.WithSkillLoadMode(s.SkillLoadMode))
 	}
 

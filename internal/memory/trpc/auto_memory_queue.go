@@ -28,6 +28,8 @@ const (
 
 	DeadLetterReasonQueueFull     = biz.MemoryDeadLetterReasonQueueFull
 	DeadLetterReasonQuotaExceeded = biz.MemoryDeadLetterReasonQuotaExceeded
+	// P2-03: record debounced jobs for observability and recovery.
+	DeadLetterReasonDebounced = biz.MemoryDeadLetterReasonDebounced
 )
 
 // MemoryDeadLetterSink is the biz-layer contract re-exported for adapter use.
@@ -184,6 +186,11 @@ func (q *MemoryJobQueue) Enqueue(r AutoMemoryJobRequest) {
 			if t, ok := q.recent.Load(sid); ok {
 				if time.Since(t.(time.Time)) < q.debounce {
 					q.debounced.Add(1)
+					// P2-03: record debounced jobs in the dead-letter store
+					// for observability. The surviving job for the same
+					// session should process the session's recent messages,
+					// but if it fails, this entry provides a recovery trail.
+					q.writeDeadLetter(r, DeadLetterReasonDebounced)
 					return
 				}
 			}

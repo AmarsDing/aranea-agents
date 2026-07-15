@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -213,17 +212,48 @@ func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embedde
 		return biz.GraphBuildConfig{}, nil, nil, apierror.BadRequest(apierror.DomainTeam, "embedded graph has no executable nodes")
 	}
 
-	edges, condEdges, entry, finish, branchIDs := compileEmbeddedEdges(def, spec, nodeTypeByID, executableIDs)
-	if entry == "" {
-		ids := make([]string, 0, len(executableIDs))
-		for id := range executableIDs {
-			ids = append(ids, id)
+	// C-22 fix: validate edge endpoints before compilation. Reject edges
+	// referencing unknown nodes instead of silently dropping them (fail-open).
+	var edgeErrs []string
+	for i, e := range spec.Edges {
+		from := strings.TrimSpace(e.Source)
+		to := strings.TrimSpace(e.Target)
+		if from == "" || to == "" {
+			continue
 		}
-		sort.Strings(ids)
-		entry = ids[0]
+		if _, ok := nodeTypeByID[from]; !ok && !isEmbeddedDecorID(from) {
+			edgeErrs = append(edgeErrs, fmt.Sprintf("edge[%d] source %q references unknown node", i, from))
+		}
+		if _, ok := nodeTypeByID[to]; !ok && !isEmbeddedDecorID(to) {
+			edgeErrs = append(edgeErrs, fmt.Sprintf("edge[%d] target %q references unknown node", i, to))
+		}
+	}
+	if len(edgeErrs) > 0 {
+		return biz.GraphBuildConfig{}, nil, nil, apierror.BadRequest(apierror.DomainTeam,
+			"embedded graph has invalid edges: "+strings.Join(edgeErrs, "; "))
+	}
+
+	edges, condEdges, entry, finish, branchIDs := compileEmbeddedEdges(def, spec, nodeTypeByID, executableIDs)
+	// C-22 fix: fail-closed entry/finish detection. Only allow implicit
+	// entry/finish for single-node graphs (trivially correct). Multi-node
+	// graphs MUST have explicit start/end decorators — no guessing.
+	if entry == "" {
+		if len(executableIDs) == 1 {
+			for id := range executableIDs {
+				entry = id
+			}
+		} else {
+			return biz.GraphBuildConfig{}, nil, nil, apierror.BadRequest(apierror.DomainTeam,
+				"embedded graph has no entry point: add a start decorator or specify explicit entry")
+		}
 	}
 	if finish == "" {
-		finish = entry
+		if len(executableIDs) == 1 {
+			finish = entry
+		} else {
+			return biz.GraphBuildConfig{}, nil, nil, apierror.BadRequest(apierror.DomainTeam,
+				"embedded graph has no finish point: add an end decorator or specify explicit finish")
+		}
 	}
 
 	cfg := biz.GraphBuildConfig{
@@ -357,33 +387,18 @@ func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID 
 		}
 		finish = joinTarget
 	}
-	if mode == "critic_loop" && len(executableIDs) >= 2 {
-		firstExec := entry
-		lastExec := finish
-		if firstExec == "" {
-			for id := range executableIDs {
-				if firstExec == "" || id < firstExec {
-					firstExec = id
-				}
-			}
-		}
-		if lastExec == "" {
-			for id := range executableIDs {
-				if lastExec == "" || id > lastExec {
-					lastExec = id
-				}
-			}
-		}
-		if firstExec != "" && lastExec != "" {
-			condEdges = append(condEdges, biz.ConditionalEdgeDef{
-				From:        lastExec,
-				CondFuncRef: biz.CriticLoopCondFuncRef,
-				PathMap: map[string]string{
-					"approved": lastExec,
-					"retry":    firstExec,
-				},
-			})
-		}
+	// C-22 fix: critic_loop conditional edge requires explicit entry/finish
+	// (from start/end decorators). No guessing — if entry/finish are empty,
+	// the strict check in compileFromEmbeddedGraph will reject the graph.
+	if mode == "critic_loop" && len(executableIDs) >= 2 && entry != "" && finish != "" {
+		condEdges = append(condEdges, biz.ConditionalEdgeDef{
+			From:        finish,
+			CondFuncRef: biz.CriticLoopCondFuncRef,
+			PathMap: map[string]string{
+				"approved": finish,
+				"retry":    entry,
+			},
+		})
 	}
 	return out, condEdges, entry, finish, branchIDs
 }

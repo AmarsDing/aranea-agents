@@ -142,6 +142,9 @@ type Agent struct {
 	// preview handler to display the injected role_responsibility block.
 	// It is never persisted to DB. PGO-1-BIZ-03.
 	CategoryResponsibilityPreview string
+	// WorkspaceID is the owning workspace ID for tenant isolation (P2-B).
+	// empty = shared/legacy (visible to all workspaces); non-empty = tenant-private.
+	WorkspaceID string
 }
 
 // SkipCategoryResponsibility returns true when the agent's metadata_json
@@ -591,8 +594,11 @@ type AgentListQuery struct {
 	CreatedBy string
 	Role      string
 	Kind      string // filter by ownership classification (user | system_builtin | ecosystem_preset | marketplace | certified)
-	Limit     int
-	Offset    int
+	// WorkspaceID filters by tenant visibility (P2-B):
+	// empty = system caller (see all); non-empty = tenant caller (see shared + own).
+	WorkspaceID string
+	Limit       int
+	Offset      int
 }
 
 // AgentCreator is a distinct agent creator for list filters.

@@ -373,6 +373,10 @@ func init() {
 	agentDescVariantDescription := agentFields[25].Descriptor()
 	// agent.DefaultVariantDescription holds the default value on creation for the variant_description field.
 	agent.DefaultVariantDescription = agentDescVariantDescription.Default.(string)
+	// agentDescWorkspaceID is the schema descriptor for workspace_id field.
+	agentDescWorkspaceID := agentFields[26].Descriptor()
+	// agent.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	agent.DefaultWorkspaceID = agentDescWorkspaceID.Default.(string)
 	// agentDescID is the schema descriptor for id field.
 	agentDescID := agentFields[0].Descriptor()
 	// agent.IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -2181,6 +2185,10 @@ func init() {
 	graphdefinitionDescVerificationGates := graphdefinitionFields[20].Descriptor()
 	// graphdefinition.DefaultVerificationGates holds the default value on creation for the verification_gates field.
 	graphdefinition.DefaultVerificationGates = graphdefinitionDescVerificationGates.Default.(string)
+	// graphdefinitionDescWorkspaceID is the schema descriptor for workspace_id field.
+	graphdefinitionDescWorkspaceID := graphdefinitionFields[21].Descriptor()
+	// graphdefinition.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	graphdefinition.DefaultWorkspaceID = graphdefinitionDescWorkspaceID.Default.(string)
 	// graphdefinitionDescID is the schema descriptor for id field.
 	graphdefinitionDescID := graphdefinitionFields[0].Descriptor()
 	// graphdefinition.IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -3655,6 +3663,10 @@ func init() {
 	platformpluginDescDeletedAt := platformpluginFields[21].Descriptor()
 	// platformplugin.DefaultDeletedAt holds the default value on creation for the deleted_at field.
 	platformplugin.DefaultDeletedAt = platformpluginDescDeletedAt.Default.(string)
+	// platformpluginDescWorkspaceID is the schema descriptor for workspace_id field.
+	platformpluginDescWorkspaceID := platformpluginFields[22].Descriptor()
+	// platformplugin.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	platformplugin.DefaultWorkspaceID = platformpluginDescWorkspaceID.Default.(string)
 	// platformpluginDescID is the schema descriptor for id field.
 	platformpluginDescID := platformpluginFields[0].Descriptor()
 	// platformplugin.IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -5353,6 +5365,10 @@ func init() {
 	teamDescDeletedAt := teamFields[26].Descriptor()
 	// team.DefaultDeletedAt holds the default value on creation for the deleted_at field.
 	team.DefaultDeletedAt = teamDescDeletedAt.Default.(string)
+	// teamDescWorkspaceID is the schema descriptor for workspace_id field.
+	teamDescWorkspaceID := teamFields[27].Descriptor()
+	// team.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	team.DefaultWorkspaceID = teamDescWorkspaceID.Default.(string)
 	// teamDescID is the schema descriptor for id field.
 	teamDescID := teamFields[0].Descriptor()
 	// team.IDValidator is a validator for the "id" field. It is called by the builders before save.

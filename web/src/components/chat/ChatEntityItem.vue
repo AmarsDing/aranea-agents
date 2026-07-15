@@ -124,16 +124,16 @@ const statusPillClass = computed(() => {
 }
 
 .entity-actions {
-  opacity: 0;
+  opacity: 0%;
   transition: opacity 0.2s;
 }
 
-.q-item:hover .entity-actions {
-  opacity: 1;
+.chat-entity-item--active .entity-actions {
+  opacity: 100%;
 }
 
-.chat-entity-item--active .entity-actions {
-  opacity: 1;
+.q-item:hover .entity-actions {
+  opacity: 100%;
 }
 
 .chat-action-btn {

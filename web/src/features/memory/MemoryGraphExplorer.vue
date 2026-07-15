@@ -367,7 +367,7 @@ function confidenceTierColor(confidence: number) {
 
 .memory-graph-activation {
   font-size: 10px;
-  fill: #ff6f00;
+  fill: var(--color-warning);
   font-weight: 600;
 }
 

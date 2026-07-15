@@ -188,7 +188,11 @@
           :hide-bottom-space="compactMode"
           type="textarea"
           :autogrow="!compactMode"
-          :input-style="compactMode ? { minHeight: '32px', maxHeight: '32px', overflow: 'hidden', resize: 'none', padding: '0' } : { minHeight: '56px', maxHeight: '200px' }"
+          :input-style="
+            compactMode
+              ? { minHeight: '32px', maxHeight: '32px', overflow: 'hidden', resize: 'none', padding: '0' }
+              : { minHeight: '56px', maxHeight: '200px' }
+          "
           :dark="isDark"
           :disable="isRunnerActive ? false : (inputDisabled ?? sending)"
           @keydown="onInputKeydown"

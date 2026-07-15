@@ -76,122 +76,139 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createEcosystemServiceClient(
-  handler: RequestHandler
-): EcosystemService {
+export function createEcosystemServiceClient(handler: RequestHandler): EcosystemService {
   return {
-    ListProducts(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListProducts(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/ecosystem/products`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.type) {
-        queryParams.push(`type=${encodeURIComponent(request.type.toString())}`)
+        queryParams.push(`type=${encodeURIComponent(request.type.toString())}`);
       }
       if (request.search) {
-        queryParams.push(`search=${encodeURIComponent(request.search.toString())}`)
+        queryParams.push(`search=${encodeURIComponent(request.search.toString())}`);
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "EcosystemService",
-        method: "ListProducts",
-      }) as Promise<ListProductsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'EcosystemService',
+          method: 'ListProducts',
+        },
+      ) as Promise<ListProductsResponse>;
     },
-    GetProduct(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetProduct(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/ecosystem/products/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "EcosystemService",
-        method: "GetProduct",
-      }) as Promise<Product>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'EcosystemService',
+          method: 'GetProduct',
+        },
+      ) as Promise<Product>;
     },
-    PublishProduct(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    PublishProduct(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/ecosystem/products`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "EcosystemService",
-        method: "PublishProduct",
-      }) as Promise<Product>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'EcosystemService',
+          method: 'PublishProduct',
+        },
+      ) as Promise<Product>;
     },
-    InstallProduct(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    InstallProduct(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/ecosystem/products/${request.id}/install`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "EcosystemService",
-        method: "InstallProduct",
-      }) as Promise<InstallResult>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'EcosystemService',
+          method: 'InstallProduct',
+        },
+      ) as Promise<InstallResult>;
     },
-    UninstallProduct(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UninstallProduct(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/ecosystem/products/${request.id}/install`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "DELETE",
-        body,
-      }, {
-        service: "EcosystemService",
-        method: "UninstallProduct",
-      }) as Promise<wellKnownEmpty>;
+      return handler(
+        {
+          path: uri,
+          method: 'DELETE',
+          body,
+        },
+        {
+          service: 'EcosystemService',
+          method: 'UninstallProduct',
+        },
+      ) as Promise<wellKnownEmpty>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
-
 
 // @@protoc_insertion_point(typescript-http-eof)

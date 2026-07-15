@@ -100,25 +100,19 @@ export function useActivityAutoScroll(opts: ActivityAutoScrollOpts) {
   }
 
   // Content changed: auto-scroll only if no pending user cooldown.
-  watch(
-    opts.contentSignature,
-    () => {
-      if (!opts.enabled.value) return;
-      if (recoveryTimer) return; // user is in control during cooldown
-      void nextTick(() => scrollToBottom());
-    },
-  );
+  watch(opts.contentSignature, () => {
+    if (!opts.enabled.value) return;
+    if (recoveryTimer) return; // user is in control during cooldown
+    void nextTick(() => scrollToBottom());
+  });
 
   // Panel expanded (or agent started running): scroll to bottom & clear cooldown.
-  watch(
-    opts.enabled,
-    (val) => {
-      if (val) {
-        clearRecoveryTimer();
-        void nextTick(() => scrollToBottom());
-      }
-    },
-  );
+  watch(opts.enabled, (val) => {
+    if (val) {
+      clearRecoveryTimer();
+      void nextTick(() => scrollToBottom());
+    }
+  });
 
   onBeforeUnmount(() => {
     clearRecoveryTimer();

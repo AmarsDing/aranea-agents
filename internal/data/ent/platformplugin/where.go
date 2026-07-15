@@ -168,6 +168,11 @@ func DeletedAt(v string) predicate.PlatformPlugin {
 	return predicate.PlatformPlugin(sql.FieldEQ(FieldDeletedAt, v))
 }
 
+// WorkspaceID applies equality check predicate on the "workspace_id" field. It's identical to WorkspaceIDEQ.
+func WorkspaceID(v string) predicate.PlatformPlugin {
+	return predicate.PlatformPlugin(sql.FieldEQ(FieldWorkspaceID, v))
+}
+
 // PluginKeyEQ applies the EQ predicate on the "plugin_key" field.
 func PluginKeyEQ(v string) predicate.PlatformPlugin {
 	return predicate.PlatformPlugin(sql.FieldEQ(FieldPluginKey, v))
@@ -1376,6 +1381,71 @@ func DeletedAtEqualFold(v string) predicate.PlatformPlugin {
 // DeletedAtContainsFold applies the ContainsFold predicate on the "deleted_at" field.
 func DeletedAtContainsFold(v string) predicate.PlatformPlugin {
 	return predicate.PlatformPlugin(sql.FieldContainsFold(FieldDeletedAt, v))
+}
+
+// WorkspaceIDEQ applies the EQ predicate on the "workspace_id" field.
+func WorkspaceIDEQ(v string) predicate.PlatformPlugin {
+	return predicate.PlatformPlugin(sql.FieldEQ(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDNEQ applies the NEQ predicate on the "workspace_id" field.
+func WorkspaceIDNEQ(v string) predicate.PlatformPlugin {
+	return predicate.PlatformPlugin(sql.FieldNEQ(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDIn applies the In predicate on the "workspace_id" field.
+func WorkspaceIDIn(vs ...string) predicate.PlatformPlugin {
+	return predicate.PlatformPlugin(sql.FieldIn(FieldWorkspaceID, vs...))
+}
+
+// WorkspaceIDNotIn applies the NotIn predicate on the "workspace_id" field.
+func WorkspaceIDNotIn(vs ...string) predicate.PlatformPlugin {
+	return predicate.PlatformPlugin(sql.FieldNotIn(FieldWorkspaceID, vs...))
+}
+
+// WorkspaceIDGT applies the GT predicate on the "workspace_id" field.
+func WorkspaceIDGT(v string) predicate.PlatformPlugin {
+	return predicate.PlatformPlugin(sql.FieldGT(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDGTE applies the GTE predicate on the "workspace_id" field.
+func WorkspaceIDGTE(v string) predicate.PlatformPlugin {
+	return predicate.PlatformPlugin(sql.FieldGTE(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDLT applies the LT predicate on the "workspace_id" field.
+func WorkspaceIDLT(v string) predicate.PlatformPlugin {
+	return predicate.PlatformPlugin(sql.FieldLT(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDLTE applies the LTE predicate on the "workspace_id" field.
+func WorkspaceIDLTE(v string) predicate.PlatformPlugin {
+	return predicate.PlatformPlugin(sql.FieldLTE(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDContains applies the Contains predicate on the "workspace_id" field.
+func WorkspaceIDContains(v string) predicate.PlatformPlugin {
+	return predicate.PlatformPlugin(sql.FieldContains(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDHasPrefix applies the HasPrefix predicate on the "workspace_id" field.
+func WorkspaceIDHasPrefix(v string) predicate.PlatformPlugin {
+	return predicate.PlatformPlugin(sql.FieldHasPrefix(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDHasSuffix applies the HasSuffix predicate on the "workspace_id" field.
+func WorkspaceIDHasSuffix(v string) predicate.PlatformPlugin {
+	return predicate.PlatformPlugin(sql.FieldHasSuffix(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDEqualFold applies the EqualFold predicate on the "workspace_id" field.
+func WorkspaceIDEqualFold(v string) predicate.PlatformPlugin {
+	return predicate.PlatformPlugin(sql.FieldEqualFold(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDContainsFold applies the ContainsFold predicate on the "workspace_id" field.
+func WorkspaceIDContainsFold(v string) predicate.PlatformPlugin {
+	return predicate.PlatformPlugin(sql.FieldContainsFold(FieldWorkspaceID, v))
 }
 
 // And groups predicates with the AND operator between them.

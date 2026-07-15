@@ -737,8 +737,8 @@ func (o *ChatOrchestrator) TrySendAwaitChannel(sessionID string, msg biz.AwaitRe
 }
 
 // persistRunStatus delegates to the runStatus sub-manager.
-func (o *ChatOrchestrator) persistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
-	o.runStatus().PersistRunStatus(ctx, sessionID, runID, status, errMsg)
+func (o *ChatOrchestrator) persistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) error {
+	return o.runStatus().PersistRunStatus(ctx, sessionID, runID, status, errMsg)
 }
 
 // hydrateRunStatusFromSession delegates to the runStatus sub-manager.

@@ -156,139 +156,160 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createRuntimeProfileServiceClient(
-  handler: RequestHandler
-): RuntimeProfileService {
+export function createRuntimeProfileServiceClient(handler: RequestHandler): RuntimeProfileService {
   return {
-    ListRuntimeProfiles(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListRuntimeProfiles(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error("missing required field request.agent_id");
+        throw new Error('missing required field request.agent_id');
       }
       const path = `v1/agents/${request.agentId}/runtime-profiles`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.activeOnly) {
-        queryParams.push(`activeOnly=${encodeURIComponent(request.activeOnly.toString())}`)
+        queryParams.push(`activeOnly=${encodeURIComponent(request.activeOnly.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "RuntimeProfileService",
-        method: "ListRuntimeProfiles",
-      }) as Promise<ListRuntimeProfilesResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'RuntimeProfileService',
+          method: 'ListRuntimeProfiles',
+        },
+      ) as Promise<ListRuntimeProfilesResponse>;
     },
-    GetRuntimeProfile(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetRuntimeProfile(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/runtime-profiles/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "RuntimeProfileService",
-        method: "GetRuntimeProfile",
-      }) as Promise<RuntimeProfile>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'RuntimeProfileService',
+          method: 'GetRuntimeProfile',
+        },
+      ) as Promise<RuntimeProfile>;
     },
-    CreateRuntimeProfile(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateRuntimeProfile(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error("missing required field request.agent_id");
+        throw new Error('missing required field request.agent_id');
       }
       const path = `v1/agents/${request.agentId}/runtime-profiles`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "RuntimeProfileService",
-        method: "CreateRuntimeProfile",
-      }) as Promise<RuntimeProfile>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'RuntimeProfileService',
+          method: 'CreateRuntimeProfile',
+        },
+      ) as Promise<RuntimeProfile>;
     },
-    UpdateRuntimeProfile(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateRuntimeProfile(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/runtime-profiles/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PUT",
-        body,
-      }, {
-        service: "RuntimeProfileService",
-        method: "UpdateRuntimeProfile",
-      }) as Promise<RuntimeProfile>;
+      return handler(
+        {
+          path: uri,
+          method: 'PUT',
+          body,
+        },
+        {
+          service: 'RuntimeProfileService',
+          method: 'UpdateRuntimeProfile',
+        },
+      ) as Promise<RuntimeProfile>;
     },
-    DeleteRuntimeProfile(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteRuntimeProfile(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/runtime-profiles/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "DELETE",
-        body,
-      }, {
-        service: "RuntimeProfileService",
-        method: "DeleteRuntimeProfile",
-      }) as Promise<wellKnownEmpty>;
+      return handler(
+        {
+          path: uri,
+          method: 'DELETE',
+          body,
+        },
+        {
+          service: 'RuntimeProfileService',
+          method: 'DeleteRuntimeProfile',
+        },
+      ) as Promise<wellKnownEmpty>;
     },
-    SetActive(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    SetActive(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/runtime-profiles/${request.id}/set-active`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "RuntimeProfileService",
-        method: "SetActive",
-      }) as Promise<RuntimeProfile>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'RuntimeProfileService',
+          method: 'SetActive',
+        },
+      ) as Promise<RuntimeProfile>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
-
 
 // @@protoc_insertion_point(typescript-http-eof)

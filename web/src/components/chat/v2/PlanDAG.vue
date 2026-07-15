@@ -98,10 +98,12 @@ const edges = computed<Edge[]>(() => {
   display: block;
   max-width: 100%;
 }
+
 .plan-dag__edge {
   stroke: var(--color-icon-muted);
   stroke-width: 1.5;
 }
+
 .plan-dag__arrowhead {
   fill: var(--color-icon-muted);
 }

@@ -28,6 +28,12 @@ const (
 	MemoryDeadLetterReasonQuotaExceeded       MemoryDeadLetterReason = "quota_exceeded"
 	MemoryDeadLetterReasonRetryExhausted      MemoryDeadLetterReason = "retry_exhausted"
 	MemoryDeadLetterReasonPendingQueueFailure MemoryDeadLetterReason = "pending_queue_failure"
+	// MemoryDeadLetterReasonDebounced indicates the job was coalesced within
+	// the debounce window. The surviving job for the same session should
+	// process the session's recent messages, but if the process crashes or
+	// the surviving job fails, the debounced job's data may not be extracted.
+	// P2-03: record debounced jobs for observability and recovery.
+	MemoryDeadLetterReasonDebounced MemoryDeadLetterReason = "debounced"
 )
 
 // MemoryDeadLetterRequest carries the minimal fields needed to persist a dead-letter entry.

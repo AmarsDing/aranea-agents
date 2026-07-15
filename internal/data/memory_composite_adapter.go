@@ -67,10 +67,25 @@ func (a *MemoryCompositeRecallAdapter) CompositeSearchMemories(ctx context.Conte
 			if v, ok := row["importance"].(float64); ok {
 				score = v
 			}
+			// P2-04: extract provenance metadata from the raw fact row.
+			factID, _ := row["id"].(string)
+			srcSess, _ := row["source_session_id"].(string)
+			var confidence float64
+			if v, ok := row["confidence"].(float64); ok {
+				confidence = v
+			}
+			var version int
+			if v, ok := row["version"].(float64); ok {
+				version = int(v)
+			}
 			all = append(all, biz.CompositeRecallStoreRow{
-				Layer:     "L3",
-				Statement: stmt,
-				Score:     score,
+				Layer:         "L3",
+				Statement:     stmt,
+				Score:         score,
+				FactID:        factID,
+				SourceSession: srcSess,
+				Confidence:    confidence,
+				Version:       version,
 			})
 		}
 	}

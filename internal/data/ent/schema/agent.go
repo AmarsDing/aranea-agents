@@ -24,6 +24,8 @@ func (Agent) Indexes() []ent.Index {
 		index.Fields("deleted_at"),
 		index.Fields("deleted_at", "status"),
 		index.Fields("position_key", "agent_variant").Unique(),
+		// P2-B: tenant isolation index — filter agents by workspace visibility.
+		index.Fields("workspace_id", "deleted_at"),
 	}
 }
 
@@ -56,5 +58,8 @@ func (Agent) Fields() []ent.Field {
 		field.String("position_id").Default("").Comment("FK to organizations(position), renamed from taxonomy_position_id"),
 		field.String("agent_variant").Default("general").Comment("variant within position: general/code_review/architect/..."),
 		field.Text("variant_description").Default("").Comment("human-readable description of this variant"),
+		// P2-B: tenant isolation. empty = shared/legacy (visible to all workspaces);
+		// non-empty = tenant-private (visible only to owning workspace).
+		field.String("workspace_id").Default("").Comment("owning workspace ID; empty = shared/system builtin"),
 	}
 }

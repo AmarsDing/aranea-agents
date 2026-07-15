@@ -81,140 +81,162 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createSkillEvolutionServiceClient(
-  handler: RequestHandler
-): SkillEvolutionService {
+export function createSkillEvolutionServiceClient(handler: RequestHandler): SkillEvolutionService {
   return {
-    ListSkillProposals(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListSkillProposals(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/skill-evolution/proposals`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
       }
       if (request.page) {
-        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`);
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "SkillEvolutionService",
-        method: "ListSkillProposals",
-      }) as Promise<ListSkillProposalsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'SkillEvolutionService',
+          method: 'ListSkillProposals',
+        },
+      ) as Promise<ListSkillProposalsResponse>;
     },
-    GetSkillProposal(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetSkillProposal(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/skill-evolution/proposals/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "SkillEvolutionService",
-        method: "GetSkillProposal",
-      }) as Promise<SkillProposal>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'SkillEvolutionService',
+          method: 'GetSkillProposal',
+        },
+      ) as Promise<SkillProposal>;
     },
-    ApproveSkillProposal(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ApproveSkillProposal(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/skill-evolution/proposals/${request.id}/approve`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "SkillEvolutionService",
-        method: "ApproveSkillProposal",
-      }) as Promise<SkillProposal>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'SkillEvolutionService',
+          method: 'ApproveSkillProposal',
+        },
+      ) as Promise<SkillProposal>;
     },
-    RejectSkillProposal(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    RejectSkillProposal(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/skill-evolution/proposals/${request.id}/reject`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "SkillEvolutionService",
-        method: "RejectSkillProposal",
-      }) as Promise<SkillProposal>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'SkillEvolutionService',
+          method: 'RejectSkillProposal',
+        },
+      ) as Promise<SkillProposal>;
     },
-    RegisterSkillProposal(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    RegisterSkillProposal(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/skill-evolution/proposals/${request.id}/register`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "SkillEvolutionService",
-        method: "RegisterSkillProposal",
-      }) as Promise<SkillProposal>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'SkillEvolutionService',
+          method: 'RegisterSkillProposal',
+        },
+      ) as Promise<SkillProposal>;
     },
-    TriggerSkillDetection(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    TriggerSkillDetection(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error("missing required field request.agent_id");
+        throw new Error('missing required field request.agent_id');
       }
       const path = `v1/skill-evolution/agents/${request.agentId}/detect`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "SkillEvolutionService",
-        method: "TriggerSkillDetection",
-      }) as Promise<TriggerSkillDetectionResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'SkillEvolutionService',
+          method: 'TriggerSkillDetection',
+        },
+      ) as Promise<TriggerSkillDetectionResponse>;
     },
   };
 }

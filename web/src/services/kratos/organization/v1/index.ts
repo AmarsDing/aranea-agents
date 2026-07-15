@@ -87,8 +87,7 @@ export type ReorderOrganizationRequest = {
   ids: string[] | undefined;
 };
 
-export type ReorderOrganizationResponse = {
-};
+export type ReorderOrganizationResponse = {};
 
 export interface OrganizationService {
   ListOrganization(request: wellKnownEmpty): Promise<ListOrganizationResponse>;
@@ -106,144 +105,169 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createOrganizationServiceClient(
-  handler: RequestHandler
-): OrganizationService {
+export function createOrganizationServiceClient(handler: RequestHandler): OrganizationService {
   return {
-    ListOrganization(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListOrganization(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/organization`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "OrganizationService",
-        method: "ListOrganization",
-      }) as Promise<ListOrganizationResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'OrganizationService',
+          method: 'ListOrganization',
+        },
+      ) as Promise<ListOrganizationResponse>;
     },
-    ListOrganizationTree(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListOrganizationTree(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/organization/tree`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "OrganizationService",
-        method: "ListOrganizationTree",
-      }) as Promise<ListOrganizationTreeResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'OrganizationService',
+          method: 'ListOrganizationTree',
+        },
+      ) as Promise<ListOrganizationTreeResponse>;
     },
-    CreateOrganization(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateOrganization(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/organization`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "POST",
-        body,
-      }, {
-        service: "OrganizationService",
-        method: "CreateOrganization",
-      }) as Promise<OrganizationNode>;
+      return handler(
+        {
+          path: uri,
+          method: 'POST',
+          body,
+        },
+        {
+          service: 'OrganizationService',
+          method: 'CreateOrganization',
+        },
+      ) as Promise<OrganizationNode>;
     },
-    GetOrganization(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetOrganization(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/organization/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "OrganizationService",
-        method: "GetOrganization",
-      }) as Promise<OrganizationNode>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'OrganizationService',
+          method: 'GetOrganization',
+        },
+      ) as Promise<OrganizationNode>;
     },
-    UpdateOrganization(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateOrganization(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/organization/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request?.node ?? {});
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PATCH",
-        body,
-      }, {
-        service: "OrganizationService",
-        method: "UpdateOrganization",
-      }) as Promise<OrganizationNode>;
+      return handler(
+        {
+          path: uri,
+          method: 'PATCH',
+          body,
+        },
+        {
+          service: 'OrganizationService',
+          method: 'UpdateOrganization',
+        },
+      ) as Promise<OrganizationNode>;
     },
-    DeleteOrganization(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteOrganization(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error("missing required field request.id");
+        throw new Error('missing required field request.id');
       }
       const path = `v1/organization/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "DELETE",
-        body,
-      }, {
-        service: "OrganizationService",
-        method: "DeleteOrganization",
-      }) as Promise<wellKnownEmpty>;
+      return handler(
+        {
+          path: uri,
+          method: 'DELETE',
+          body,
+        },
+        {
+          service: 'OrganizationService',
+          method: 'DeleteOrganization',
+        },
+      ) as Promise<wellKnownEmpty>;
     },
-    ReorderOrganization(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ReorderOrganization(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/organization/reorder`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "PUT",
-        body,
-      }, {
-        service: "OrganizationService",
-        method: "ReorderOrganization",
-      }) as Promise<ReorderOrganizationResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'PUT',
+          body,
+        },
+        {
+          service: 'OrganizationService',
+          method: 'ReorderOrganization',
+        },
+      ) as Promise<ReorderOrganizationResponse>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
-
 
 // @@protoc_insertion_point(typescript-http-eof)

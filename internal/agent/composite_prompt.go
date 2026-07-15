@@ -61,7 +61,12 @@ func CompositeMemoryCue(ctx context.Context, composite biz.MemoryCompositeRecall
 		if prefix == "" {
 			prefix = "MEM"
 		}
-		fmt.Fprintf(&b, "- [%s] %s\n", prefix, line)
+		fmt.Fprintf(&b, "- [%s] %s", prefix, line)
+		// P2-04: append provenance for L3 facts when available.
+		if policy.L3InjectProvenance && hit.Layer == "L3" && hit.FactID != "" {
+			b.WriteString(formatL3Provenance(hit.FactID, hit.SourceSession, hit.Confidence, hit.Version))
+		}
+		b.WriteByte('\n')
 	}
 	return strings.TrimSpace(b.String())
 }

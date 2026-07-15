@@ -48,6 +48,9 @@ func (Team) Fields() []ent.Field {
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
+		// P2-B: tenant isolation. empty = shared/legacy (visible to all workspaces);
+		// non-empty = tenant-private (visible only to owning workspace).
+		field.String("workspace_id").Default("").Comment("owning workspace ID; empty = shared/system builtin"),
 	}
 }
 
@@ -55,5 +58,7 @@ func (Team) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("spirit_session_id", "deleted_at").StorageKey("idx_teams_spirit_session"),
 		index.Fields("kind", "deleted_at").StorageKey("idx_teams_kind"),
+		// P2-B: tenant isolation index — filter teams by workspace visibility.
+		index.Fields("workspace_id", "deleted_at"),
 	}
 }

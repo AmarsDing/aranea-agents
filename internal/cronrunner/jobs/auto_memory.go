@@ -36,6 +36,7 @@ type AutoMemoryWorker struct {
 	consolidator biz.MemoryConsolidator
 	feedback     biz.MemoryConsolidator
 	queue        memtrpc.AutoMemoryQueue
+	deadLetter   biz.MemoryDeadLetterSink
 	memConf      conf.RuntimeAutoMemoryConfig
 	stats        *biz.MemoryWorkerStats
 	lg           loggateway.Logger
@@ -55,8 +56,11 @@ type AutoMemoryWorkerConfig struct {
 	L4           biz.L4GraphWriter
 	Consolidator biz.MemoryConsolidator
 	Queue        memtrpc.AutoMemoryQueue
-	Stats        *biz.MemoryWorkerStats
-	Logger       loggateway.Logger
+	// DeadLetterSink receives jobs that exhausted all retries (P2-03).
+	// When nil, retry-exhausted jobs are only logged/metered (legacy behavior).
+	DeadLetterSink biz.MemoryDeadLetterSink
+	Stats          *biz.MemoryWorkerStats
+	Logger         loggateway.Logger
 }
 
 // NewAutoMemoryWorker creates an AutoMemoryWorker. // WIRE: needs *conf.Runtime
@@ -83,6 +87,7 @@ func NewAutoMemoryWorker(cfg AutoMemoryWorkerConfig) (*AutoMemoryWorker, error) 
 		consolidator: consolidator,
 		feedback:     biz.NewFeedbackConsolidator(),
 		queue:        cfg.Queue,
+		deadLetter:   cfg.DeadLetterSink,
 		memConf:      cfg.RuntimeConf.AutoMemoryConfig(),
 		stats:        cfg.Stats,
 		lg:           cfg.Logger,
@@ -162,6 +167,21 @@ func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.Aut
 	}
 	servmetrics.AutoMemoryJobTotal.WithLabelValues("dead").Inc()
 	w.stats.RecordJobDead()
+	// P2-03: persist the exhausted job to the dead-letter store so the user
+	// can see what failed and optionally replay it. Without this, the job is
+	// permanently lost with only a log entry.
+	if w.deadLetter != nil {
+		w.deadLetter.WriteMemoryDeadLetter(biz.MemoryDeadLetterRequest{
+			SessionID:         req.SessionID,
+			AppName:           req.AppName,
+			UserID:            req.UserID,
+			FeedbackMessageID: req.FeedbackMessageID,
+			FeedbackRating:    req.FeedbackRating,
+			FeedbackComment:   req.FeedbackComment,
+			Priority:          req.Priority,
+			TenantID:           req.TenantID,
+		}, biz.MemoryDeadLetterReasonRetryExhausted, errString(lastErr))
+	}
 	w.lg.With(loggateway.SessionID(req.SessionID)).Warn("自动记忆提取重试耗尽", loggateway.Err(lastErr))
 }
 
@@ -493,4 +513,13 @@ func previewText(s string, max int) string {
 		return s
 	}
 	return s[:max] + "…"
+}
+
+// errString safely converts an error to its string representation.
+// Returns empty string for nil errors.
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

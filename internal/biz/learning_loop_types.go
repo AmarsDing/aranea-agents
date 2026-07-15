@@ -98,4 +98,9 @@ type ProposalReader interface {
 type ProposalWriter interface {
 	Create(ctx context.Context, p KnowledgeProposal) (KnowledgeProposal, error)
 	UpdateStatus(ctx context.Context, id string, status ProposalStatus, approvedBy string) (KnowledgeProposal, error)
+	// UpdateStatusCAS atomically transitions the proposal from one of
+	// expectedStatuses to newStatus. Returns (updated, true, nil) on success,
+	// (zero, false, nil) when the current status is not in expectedStatuses
+	// (concurrent modification), or (zero, false, err) on DB error.
+	UpdateStatusCAS(ctx context.Context, id string, expectedStatuses []ProposalStatus, newStatus ProposalStatus, approvedBy string) (KnowledgeProposal, bool, error)
 }

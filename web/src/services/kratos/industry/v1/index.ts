@@ -35,8 +35,7 @@ export type Position = {
   sortOrder: number | undefined;
 };
 
-export type ListIndustriesRequest = {
-};
+export type ListIndustriesRequest = {};
 
 export type ListIndustriesResponse = {
   items: Industry[] | undefined;
@@ -122,140 +121,162 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
 
-export function createIndustryServiceClient(
-  handler: RequestHandler
-): IndustryService {
+export function createIndustryServiceClient(handler: RequestHandler): IndustryService {
   return {
-    ListIndustries(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListIndustries(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/industries`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "IndustryService",
-        method: "ListIndustries",
-      }) as Promise<ListIndustriesResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'IndustryService',
+          method: 'ListIndustries',
+        },
+      ) as Promise<ListIndustriesResponse>;
     },
-    GetIndustry(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetIndustry(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.key) {
-        throw new Error("missing required field request.key");
+        throw new Error('missing required field request.key');
       }
       const path = `v1/industries/${request.key}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "IndustryService",
-        method: "GetIndustry",
-      }) as Promise<Industry>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'IndustryService',
+          method: 'GetIndustry',
+        },
+      ) as Promise<Industry>;
     },
-    ListDepartments(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListDepartments(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.industryKey) {
-        throw new Error("missing required field request.industry_key");
+        throw new Error('missing required field request.industry_key');
       }
       const path = `v1/industries/${request.industryKey}/departments`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "IndustryService",
-        method: "ListDepartments",
-      }) as Promise<ListDepartmentsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'IndustryService',
+          method: 'ListDepartments',
+        },
+      ) as Promise<ListDepartmentsResponse>;
     },
-    ListPositions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListPositions(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.industryKey) {
-        throw new Error("missing required field request.industry_key");
+        throw new Error('missing required field request.industry_key');
       }
       const path = `v1/industries/${request.industryKey}/positions`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.departmentKey) {
-        queryParams.push(`departmentKey=${encodeURIComponent(request.departmentKey.toString())}`)
+        queryParams.push(`departmentKey=${encodeURIComponent(request.departmentKey.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "IndustryService",
-        method: "ListPositions",
-      }) as Promise<ListPositionsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'IndustryService',
+          method: 'ListPositions',
+        },
+      ) as Promise<ListPositionsResponse>;
     },
-    GetPositionPrompt(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetPositionPrompt(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.industryKey) {
-        throw new Error("missing required field request.industry_key");
+        throw new Error('missing required field request.industry_key');
       }
       if (!request.positionKey) {
-        throw new Error("missing required field request.position_key");
+        throw new Error('missing required field request.position_key');
       }
       const path = `v1/industries/${request.industryKey}/positions/${request.positionKey}/prompt`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.variant) {
-        queryParams.push(`variant=${encodeURIComponent(request.variant.toString())}`)
+        queryParams.push(`variant=${encodeURIComponent(request.variant.toString())}`);
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "IndustryService",
-        method: "GetPositionPrompt",
-      }) as Promise<GetPositionPromptResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'IndustryService',
+          method: 'GetPositionPrompt',
+        },
+      ) as Promise<GetPositionPromptResponse>;
     },
-    ListPositionVariants(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListPositionVariants(request) {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.industryKey) {
-        throw new Error("missing required field request.industry_key");
+        throw new Error('missing required field request.industry_key');
       }
       if (!request.positionKey) {
-        throw new Error("missing required field request.position_key");
+        throw new Error('missing required field request.position_key');
       }
       const path = `v1/industries/${request.industryKey}/positions/${request.positionKey}/variants`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join("&")}`
+        uri += `?${queryParams.join('&')}`;
       }
-      return handler({
-        path: uri,
-        method: "GET",
-        body,
-      }, {
-        service: "IndustryService",
-        method: "ListPositionVariants",
-      }) as Promise<ListPositionVariantsResponse>;
+      return handler(
+        {
+          path: uri,
+          method: 'GET',
+          body,
+        },
+        {
+          service: 'IndustryService',
+          method: 'ListPositionVariants',
+        },
+      ) as Promise<ListPositionVariantsResponse>;
     },
   };
 }

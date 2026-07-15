@@ -409,6 +409,20 @@ func (_u *TeamUpdate) SetNillableDeletedAt(v *string) *TeamUpdate {
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *TeamUpdate) SetWorkspaceID(v string) *TeamUpdate {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *TeamUpdate) SetNillableWorkspaceID(v *string) *TeamUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the TeamMutation object of the builder.
 func (_u *TeamUpdate) Mutation() *TeamMutation {
 	return _u.mutation
@@ -584,6 +598,9 @@ func (_u *TeamUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.DeletedAt(); ok {
 		_spec.SetField(team.FieldDeletedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(team.FieldWorkspaceID, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -987,6 +1004,20 @@ func (_u *TeamUpdateOne) SetNillableDeletedAt(v *string) *TeamUpdateOne {
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *TeamUpdateOne) SetWorkspaceID(v string) *TeamUpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *TeamUpdateOne) SetNillableWorkspaceID(v *string) *TeamUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the TeamMutation object of the builder.
 func (_u *TeamUpdateOne) Mutation() *TeamMutation {
 	return _u.mutation
@@ -1192,6 +1223,9 @@ func (_u *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) {
 	}
 	if value, ok := _u.mutation.DeletedAt(); ok {
 		_spec.SetField(team.FieldDeletedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(team.FieldWorkspaceID, field.TypeString, value)
 	}
 	_node = &Team{config: _u.config}
 	_spec.Assign = _node.assignValues

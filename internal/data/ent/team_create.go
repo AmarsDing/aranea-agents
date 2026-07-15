@@ -370,6 +370,20 @@ func (_c *TeamCreate) SetNillableDeletedAt(v *string) *TeamCreate {
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *TeamCreate) SetWorkspaceID(v string) *TeamCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *TeamCreate) SetNillableWorkspaceID(v *string) *TeamCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *TeamCreate) SetID(v string) *TeamCreate {
 	_c.mutation.SetID(v)
@@ -507,6 +521,10 @@ func (_c *TeamCreate) defaults() {
 		v := team.DefaultDeletedAt
 		_c.mutation.SetDeletedAt(v)
 	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := team.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -619,6 +637,9 @@ func (_c *TeamCreate) check() error {
 	}
 	if _, ok := _c.mutation.DeletedAt(); !ok {
 		return &ValidationError{Name: "deleted_at", err: errors.New(`ent: missing required field "Team.deleted_at"`)}
+	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "Team.workspace_id"`)}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := team.IDValidator(v); err != nil {
@@ -764,6 +785,10 @@ func (_c *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DeletedAt(); ok {
 		_spec.SetField(team.FieldDeletedAt, field.TypeString, value)
 		_node.DeletedAt = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(team.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
 	}
 	return _node, _spec
 }
@@ -1144,6 +1169,18 @@ func (u *TeamUpsert) SetDeletedAt(v string) *TeamUpsert {
 // UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
 func (u *TeamUpsert) UpdateDeletedAt() *TeamUpsert {
 	u.SetExcluded(team.FieldDeletedAt)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *TeamUpsert) SetWorkspaceID(v string) *TeamUpsert {
+	u.Set(team.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *TeamUpsert) UpdateWorkspaceID() *TeamUpsert {
+	u.SetExcluded(team.FieldWorkspaceID)
 	return u
 }
 
@@ -1577,6 +1614,20 @@ func (u *TeamUpsertOne) SetDeletedAt(v string) *TeamUpsertOne {
 func (u *TeamUpsertOne) UpdateDeletedAt() *TeamUpsertOne {
 	return u.Update(func(s *TeamUpsert) {
 		s.UpdateDeletedAt()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *TeamUpsertOne) SetWorkspaceID(v string) *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *TeamUpsertOne) UpdateWorkspaceID() *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 
@@ -2177,6 +2228,20 @@ func (u *TeamUpsertBulk) SetDeletedAt(v string) *TeamUpsertBulk {
 func (u *TeamUpsertBulk) UpdateDeletedAt() *TeamUpsertBulk {
 	return u.Update(func(s *TeamUpsert) {
 		s.UpdateDeletedAt()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *TeamUpsertBulk) SetWorkspaceID(v string) *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *TeamUpsertBulk) UpdateWorkspaceID() *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 

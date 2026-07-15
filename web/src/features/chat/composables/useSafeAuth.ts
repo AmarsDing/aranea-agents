@@ -15,10 +15,10 @@ export function useSafeAuth(): SafeAuthIdentity {
   try {
     const auth = useAuthStore();
     return {
-      displayLabel: auth.displayLabel || '你',
+      displayLabel: auth.displayLabel || 'You',
       avatarLetter: auth.avatarLetter || 'U',
     };
   } catch {
-    return { displayLabel: '你', avatarLetter: 'U' };
+    return { displayLabel: 'You', avatarLetter: 'U' };
   }
 }

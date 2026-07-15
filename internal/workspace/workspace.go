@@ -66,6 +66,9 @@ func IsSystem(ctx context.Context) bool {
 //
 // 2026-07-15 P1-2: 从 middleware.AssertWorkspace 提升到 workspace 包，
 // 让 service 层可调用。middleware.AssertWorkspace 保留为 thin wrapper。
+//
+// 适用场景：tenant-owned 实体（如 admin、cron_task 等私有资源）。
+// 对于可共享实体（agent/team/graph/plugin），使用 AssertWorkspaceOrShared。
 func AssertWorkspace(callerWS, resourceWS string) error {
 	if callerWS == SystemWorkspaceID {
 		return nil
@@ -75,6 +78,34 @@ func AssertWorkspace(callerWS, resourceWS string) error {
 		effective = DefaultWorkspaceID
 	}
 	if callerWS == effective {
+		return nil
+	}
+	return apierror.Forbidden(DomainWorkspace, "access to resource in another workspace is not allowed")
+}
+
+// AssertWorkspaceOrShared 校验 caller workspace 是否可访问 resource workspace，
+// 将空 resourceWS 视为"全局共享"而非 default 私有。
+//
+// 规则：
+//   - callerWS == SystemWorkspaceID → 绕过（cron/admin 后台任务）
+//   - resourceWS == "" → 视为全局共享，允许任何 caller 访问（legacy/系统内置资源）
+//   - callerWS == resourceWS → 允许
+//   - 其他 → Forbidden
+//
+// 适用场景：可共享实体（agent/team/graph_definition/plugin），这些实体可能由
+// 系统内置（workspace_id=""）供所有租户使用，也可能是租户私有（workspace_id="ws-xxx"）。
+//
+// 与 AssertWorkspace 的区别：AssertWorkspace 把空 resourceWS 视为 DefaultWorkspaceID
+// （私有，仅 default 租户可访问）；本函数把空 resourceWS 视为全局共享（所有租户可访问）。
+func AssertWorkspaceOrShared(callerWS, resourceWS string) error {
+	if callerWS == SystemWorkspaceID {
+		return nil
+	}
+	// 空 resourceWS = 全局共享（legacy/系统内置），允许任何 caller 访问。
+	if resourceWS == "" {
+		return nil
+	}
+	if callerWS == resourceWS {
 		return nil
 	}
 	return apierror.Forbidden(DomainWorkspace, "access to resource in another workspace is not allowed")

@@ -211,3 +211,72 @@ func TestCompileToGraphBuildConfig_embeddedParallelJoin(t *testing.T) {
 		t.Fatalf("expected 2 skip-on-failure branches, nodes=%+v", runtimeCt.Nodes)
 	}
 }
+
+// TestCompileToGraphBuildConfig_unknownEdgeRejected (C-22) verifies that edges
+// referencing unknown nodes are rejected instead of silently dropped.
+func TestCompileToGraphBuildConfig_unknownEdgeRejected(t *testing.T) {
+	raw := `{
+		"mode":"sequential",
+		"members":[{"agent_id":"a1","sort_order":1}],
+		"graph":{
+			"nodes":[
+				{"id":"start","type":"start"},
+				{"id":"member-1","type":"agent","agent_id":"a1"},
+				{"id":"end","type":"end"}
+			],
+			"edges":[
+				{"source":"start","target":"member-1"},
+				{"source":"member-1","target":"ghost-node"},
+				{"source":"member-1","target":"end"}
+			]
+		}
+	}`
+	def, err := ParseDefinition(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = CompileToGraphBuildConfigFromJSON(def, raw, nil, loggateway.NewNoop())
+	if err == nil {
+		t.Fatal("expected error for edge referencing unknown node 'ghost-node', got nil (fail-open)")
+	}
+}
+
+// TestCompileToGraphBuildConfig_multiNodeNoEntryRejected (C-22) verifies that
+// a multi-node graph without start/end decorators is rejected (no guessing).
+func TestCompileToGraphBuildConfig_multiNodeNoEntryRejected(t *testing.T) {
+	raw := `{
+		"mode":"sequential",
+		"members":[{"agent_id":"a1","sort_order":1},{"agent_id":"a2","sort_order":2}],
+		"graph":{
+			"nodes":[
+				{"id":"member-1","type":"agent","agent_id":"a1"},
+				{"id":"member-2","type":"agent","agent_id":"a2"}
+			],
+			"edges":[
+				{"source":"member-1","target":"member-2"}
+			]
+		}
+	}`
+	def, err := ParseDefinition(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = CompileToGraphBuildConfigFromJSON(def, raw, nil, loggateway.NewNoop())
+	if err == nil {
+		t.Fatal("expected error for multi-node graph without start/end decorators, got nil (entry/finish guessing)")
+	}
+}
+
+// TestCompileToGraphBuildConfig_singleNodeNoEntryOK (C-22) verifies that a
+// single-node graph without start/end still works (implicit entry/finish).
+func TestCompileToGraphBuildConfig_singleNodeNoEntryOK(t *testing.T) {
+	raw := `{"mode":"sequential","members":[{"agent_id":"a1","sort_order":1}],"graph":{"nodes":[{"id":"member-1","type":"agent","agent_id":"a1"}],"edges":[]}}`
+	def, _ := ParseDefinition(raw)
+	cfg, _, err := CompileToGraphBuildConfigFromJSON(def, raw, func(id string) string { return "key-" + id }, loggateway.NewNoop())
+	if err != nil {
+		t.Fatalf("expected success for single-node graph without start/end, got error: %v", err)
+	}
+	if cfg.EntryPoint != "member-1" || cfg.FinishPoint != "member-1" {
+		t.Fatalf("entry/finish=%q/%q, want member-1/member-1", cfg.EntryPoint, cfg.FinishPoint)
+	}
+}

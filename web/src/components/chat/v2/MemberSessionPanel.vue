@@ -35,12 +35,7 @@
       <div v-if="memberSession.Error" class="member-error">{{ memberSession.Error }}</div>
 
       <!-- agent 内部活动（thinking/action/reply 等 steps），max-height 300px + 滚动条 -->
-      <div
-        v-if="memberSteps.length > 0"
-        ref="activitiesRef"
-        class="member-activities"
-        @scroll="onScroll"
-      >
+      <div v-if="memberSteps.length > 0" ref="activitiesRef" class="member-activities" @scroll="onScroll">
         <template v-for="step in memberSteps" :key="step.ID">
           <ThinkingBlock v-if="step.Kind === 'thinking'" :step="step" />
           <ActionBlock v-else-if="step.Kind === 'action'" :step="step" />
@@ -127,15 +122,13 @@ const store = useActivityQueries();
 
 // 查询 member session 对应的 agent 内部活动 steps
 const memberSteps = computed(() => {
-  return store
-    .getMemberSessionSteps(props.memberSession)
-    .filter((s) => {
-      if (isSystemInternalNotice(s.Kind, s.NoticeType)) return false;
-      if (s.Kind === 'reply' && s.Status !== 'running' && !s.Content?.trim()) {
-        return false;
-      }
-      return true;
-    });
+  return store.getMemberSessionSteps(props.memberSession).filter((s) => {
+    if (isSystemInternalNotice(s.Kind, s.NoticeType)) return false;
+    if (s.Kind === 'reply' && s.Status !== 'running' && !s.Content?.trim()) {
+      return false;
+    }
+    return true;
+  });
 });
 
 // 标题栏中间区域：最新动作摘要（图标 + 简短文本）
@@ -144,8 +137,7 @@ const latestAction = computed(() => {
   const steps = memberSteps.value;
   if (steps.length === 0) return null;
   const last = steps[steps.length - 1];
-  const isActive =
-    last.Status === 'running' || last.Status === 'tool_running' || last.Status === 'tool_blocked';
+  const isActive = last.Status === 'running' || last.Status === 'tool_running' || last.Status === 'tool_blocked';
   switch (last.Kind) {
     case 'thinking':
       return { icon: 'psychology', text: t('chat.v2.latestThinking'), active: isActive };
@@ -177,11 +169,7 @@ watch(
     if (userToggled.value) return;
     if (newStatus === 'running') {
       collapsed.value = false;
-    } else if (
-      newStatus === 'completed' ||
-      newStatus === 'failed' ||
-      newStatus === 'skipped'
-    ) {
+    } else if (newStatus === 'completed' || newStatus === 'failed' || newStatus === 'skipped') {
       collapsed.value = true;
     }
   },
@@ -205,9 +193,7 @@ function toggleCollapse() {
 
 // 自动滚动：running + 展开时实时滚到底；用户滚动后 10s 恢复
 const activitiesRef = ref<HTMLElement | null>(null);
-const autoScrollEnabled = computed(
-  () => !collapsed.value && props.memberSession.Status === 'running',
-);
+const autoScrollEnabled = computed(() => !collapsed.value && props.memberSession.Status === 'running');
 // 内容签名：steps 数量 + 最后一步 ID + 内容长度（检测流式增长）
 const contentSignature = computed(() => {
   const steps = memberSteps.value;
