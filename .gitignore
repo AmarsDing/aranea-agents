@@ -47,24 +47,24 @@ bin/
 .idea/
 *.swp
 
-# ----- 生成物（勿提交；本地用 make api / make generate / npm install 等还原）-----
+# ----- 生成物（CI 构建需要 protoc/ent/wire 生成物，已提交到仓库确保 go build 可用）-----
 
-# protoc → Go（保留 *.proto）
-api/**/*.pb.go
-internal/**/*.pb.go
+# protoc → Go（*.proto 和 *.pb.go 都提交，CI 构建需要）
+# api/**/*.pb.go
+# internal/**/*.pb.go
 
-# gnostic / kratos → 仓库根 OpenAPI
+# gnostic / kratos → 仓库根 OpenAPI（不需要提交）
 /openapi.yaml
 /openapi.json
 
-# Ent（保留 schema/ 与 generate.go）
-/internal/data/ent/*
-!/internal/data/ent/schema/
-!/internal/data/ent/schema/**
-!/internal/data/ent/generate.go
+# Ent（schema/ 和 generate.go 以及生成代码都提交）
+# /internal/data/ent/*
+# !/internal/data/ent/schema/
+# !/internal/data/ent/schema/**
+# !/internal/data/ent/generate.go
 
-# wire
-**/wire_gen.go
+# wire（已提交，CI 构建需要）
+# **/wire_gen.go
 
 # protoc → 前端 TS 客户端（保留 web/src/services 下手写文件）
 web/src/services/kratos/
