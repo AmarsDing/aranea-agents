@@ -358,9 +358,15 @@ $readmeContent = @"
 ## 快速开始
 
 1. 双击桌面「Aranea-Agents」快捷方式（或 AraneaLauncher.exe）
-2. 首次启动自动初始化数据库（约 10~30 秒，无黑框）
-3. 桌面应用自动打开
-4. 登录：admin / changeme
+2. 启动器会先做环境检查：优先使用本机 PostgreSQL(:5432) / Redis(:6379)；否则启用内置实例
+3. 首次启动自动初始化数据库（约 10~30 秒，无黑框）
+4. 桌面应用自动打开；登录：admin / changeme
+
+## 环境检查
+
+开始菜单「环境检查」或：`AraneaLauncher.exe -check`
+
+若系统 PostgreSQL 需要密码，请先设置用户环境变量 `ARANEA_PG_PASSWORD`。
 
 ## 停止
 
@@ -368,10 +374,12 @@ $readmeContent = @"
 - `AraneaLauncher.exe -stop`，或
 - `stop.bat`
 
+（不会停止系统自带的 PostgreSQL/Redis）
+
 ## 调试
 
 若需查看控制台日志，使用开始菜单「启动（调试控制台）」或 `start.bat`。
-故障日志：`logs\launcher.log`、`logs\server.log`、`logs\postgres.log`
+故障日志：`logs\launcher.log`、`logs\server.log`、`logs\preflight.txt`、`logs\postgres.log`
 
 ## 端口
 

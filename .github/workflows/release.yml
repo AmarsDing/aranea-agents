@@ -325,10 +325,13 @@ jobs:
             4. 默认登录：`admin` / `changeme`
 
             ### 使用说明
-            - **启动**：桌面快捷方式 / `AraneaLauncher.exe`
-            - **停止**：开始菜单「停止 Aranea-Agents」或 `AraneaLauncher.exe -stop`
-            - **调试**：开始菜单「启动（调试控制台）」；日志在安装目录 `logs\`
-            - 首次启动需 10~30 秒初始化数据库，请稍候桌面窗口出现
+            - **启动**：桌面快捷方式 / `AraneaLauncher.exe`（自动环境检查）
+            - **环境检查**：开始菜单「环境检查」或 `AraneaLauncher.exe -check`
+            - **停止**：开始菜单「停止 Aranea-Agents」或 `AraneaLauncher.exe -stop`（不关闭系统 PG/Redis）
+            - **本机已有 PostgreSQL/Redis**：优先复用（PG 默认 `:5432`）；否则启用内置实例
+            - **系统 PG 需要密码**时设置用户环境变量 `ARANEA_PG_PASSWORD`
+            - **调试**：开始菜单「启动（调试控制台）」；日志：`logs\launcher.log` / `preflight.txt` / `server.log`
+            - 首次启动需 10~30 秒，请稍候桌面窗口出现
 
             ### 系统要求
             - Windows 10 64位及以上

@@ -1,10 +1,14 @@
 // AraneaLauncher — silent Windows desktop launcher for the portable install.
 //
 // Built with -H windowsgui so double-clicking never shows a console.
-// Starts PostgreSQL → Redis → aranea-server, waits for /healthz, then opens
-// the Electron desktop app. Pass -stop to tear everything down.
+// Detects system PostgreSQL/Redis when available, otherwise starts bundled
+// instances. Runs environment preflight checks and shows errors clearly.
 //
-// On failure a MessageBox points the user at logs\launcher.log.
+// Flags:
+//
+//	(default)  start stack + desktop app
+//	-stop      stop bundled services (does not stop system PG/Redis)
+//	-check     run environment checks and show report (no start)
 package main
 
 import (
@@ -23,14 +27,13 @@ import (
 const (
 	appTitle       = "Aranea-Agents"
 	healthURL      = "http://127.0.0.1:8000/healthz"
-	pgPort         = "5433"
-	redisPort      = "6379"
-	backendWaitSec = 45
+	backendWaitSec = 60
 	mutexName      = "Local\\AraneaAgentsLauncherMutex"
 )
 
 func main() {
-	stop := flag.Bool("stop", false, "stop all Aranea-Agents services")
+	stop := flag.Bool("stop", false, "stop Aranea-Agents services")
+	checkOnly := flag.Bool("check", false, "run environment checks and exit")
 	flag.Parse()
 
 	root, err := installRoot()
@@ -62,46 +65,87 @@ func main() {
 		return
 	}
 
+	if *checkOnly {
+		env := detectRuntime(root, logger)
+		// Also probe DB if possible without starting bundled
+		if env.PGMode == "system" && env.PSQL != "" {
+			_ = ensurePostgres(env, logger)
+		}
+		showInfo("环境检查", env.reportText()+"\n日志: "+logPath)
+		if env.hasFatal() {
+			os.Exit(1)
+		}
+		return
+	}
+
 	releaseMutex, already := acquireSingleInstance()
 	if already {
-		logger("another launcher is running; focusing desktop app")
-		_ = launchElectron(root, logger)
+		logger("another launcher holds mutex; waiting for backend health")
+		if waitHealthy(logger) == nil {
+			_ = launchElectron(root, logger)
+			return
+		}
+		// Backend not up — show guidance instead of starting a broken second stack
+		showError("启动器已在运行",
+			"检测到另有启动过程正在进行，但后端尚未就绪。\n\n请稍候桌面窗口出现，或先执行「停止」后再启动。\n\n详见: "+logPath)
 		return
 	}
 	defer releaseMutex()
 
 	logger("start begin root=%s", root)
-	if err := ensureEnv(root); err != nil {
-		logger("env error: %v", err)
-		showError("环境准备失败", err.Error()+"\n\n详见: "+logPath)
+	_ = os.Setenv("KRATOS_AUTH_SECRET", "aranea-portable-dev-secret-32chars!!")
+	_ = os.Setenv("DEPLOY_ENV", "dev")
+	_ = os.Setenv("DAO_VECTOR_PGVECTOR", "1")
+
+	env := detectRuntime(root, logger)
+	if env.hasFatal() {
+		logger("preflight fatal\n%s", env.reportText())
+		showError("环境检查未通过", env.reportText()+"\n详见: "+logPath)
 		os.Exit(1)
 	}
-	if err := startPostgres(root, logger); err != nil {
-		logger("postgres error: %v", err)
-		showError("PostgreSQL 启动失败", err.Error()+"\n\n详见: "+logPath)
+
+	if err := ensurePostgres(env, logger); err != nil {
+		logger("postgres error: %v\n%s", err, env.reportText())
+		showError("PostgreSQL 未就绪", env.reportText()+"\n\n"+err.Error()+"\n\n详见: "+logPath+"\n与 logs\\postgres.log / initdb.log")
 		os.Exit(1)
 	}
-	if err := startRedis(root, logger); err != nil {
+	if err := ensureRedis(env, logger); err != nil {
 		logger("redis error: %v", err)
-		showError("Redis 启动失败", err.Error()+"\n\n详见: "+logPath)
+		showError("Redis 未就绪", env.reportText()+"\n\n"+err.Error()+"\n\n详见: "+logPath)
 		os.Exit(1)
 	}
-	if err := startBackend(root, logger); err != nil {
+	if err := writeRuntimeConfig(env, logger); err != nil {
+		logger("config error: %v", err)
+		showError("写入配置失败", err.Error())
+		os.Exit(1)
+	}
+	_ = writeModeFile(root, env)
+
+	// Persist check report for support / 环境检查
+	_ = os.WriteFile(filepath.Join(root, "logs", "preflight.txt"), []byte(env.reportText()), 0o644)
+	if env.hasWarn() {
+		showInfo("环境检查（有警告，仍将继续启动）", env.reportText()+"\n日志: "+logPath)
+	}
+
+	if err := startBackend(root, env, logger); err != nil {
 		logger("backend error: %v", err)
-		showError("后端服务启动失败", err.Error()+"\n\n详见: "+logPath)
+		showError("后端服务启动失败", env.reportText()+"\n\n"+err.Error()+"\n\n详见: "+logPath+"\n与 logs\\server.log")
 		os.Exit(1)
 	}
 	if err := waitHealthy(logger); err != nil {
-		logger("health error: %v", err)
-		showError("后端未就绪", err.Error()+"\n\n详见: "+logPath+"\n与 logs\\server.log")
+		logger("health error: %v\n%s", err, env.reportText())
+		showError("后端未就绪", env.reportText()+"\n\n"+err.Error()+
+			"\n\n常见原因：数据库未启动、端口被占用、配置错误。\n请查看 logs\\server.log\n"+logPath)
 		os.Exit(1)
 	}
+	env.add("后端健康检查", checkOK, healthURL, false)
+
 	if err := launchElectron(root, logger); err != nil {
 		logger("electron error: %v", err)
 		showError("桌面应用启动失败", err.Error()+"\n\n详见: "+logPath)
 		os.Exit(1)
 	}
-	logger("start complete")
+	logger("start complete\n%s", env.reportText())
 }
 
 func installRoot() (string, error) {
@@ -112,103 +156,10 @@ func installRoot() (string, error) {
 	return filepath.Dir(exe), nil
 }
 
-func ensureEnv(root string) error {
-	_ = os.Setenv("KRATOS_AUTH_SECRET", "aranea-portable-dev-secret-32chars!!")
-	_ = os.Setenv("DEPLOY_ENV", "dev")
-	_ = os.Setenv("DAO_VECTOR_PGVECTOR", "1")
-	_ = os.Setenv("PGDATA", filepath.Join(root, "postgres", "data"))
-	_ = os.MkdirAll(filepath.Join(root, "logs"), 0o755)
-	return nil
-}
-
-func startPostgres(root string, log func(string, ...any)) error {
-	pgBin := filepath.Join(root, "postgres", "bin")
-	pgData := filepath.Join(root, "postgres", "data")
-	initdb := filepath.Join(pgBin, "initdb.exe")
-	pgCtl := filepath.Join(pgBin, "pg_ctl.exe")
-	psql := filepath.Join(pgBin, "psql.exe")
-	pgIsReady := filepath.Join(pgBin, "pg_isready.exe")
-	logDir := filepath.Join(root, "logs")
-
-	if _, err := os.Stat(pgCtl); err != nil {
-		return fmt.Errorf("缺少 PostgreSQL: %w", err)
-	}
-
-	if _, err := os.Stat(filepath.Join(pgData, "PG_VERSION")); err != nil {
-		log("initializing postgres data dir")
-		cmd := hiddenCmd(initdb, "-D", pgData, "-U", "postgres", "--auth=trust", "--encoding=UTF8")
-		cmd.Dir = root
-		out, err := cmd.CombinedOutput()
-		_ = os.WriteFile(filepath.Join(logDir, "initdb.log"), out, 0o644)
-		if err != nil {
-			return fmt.Errorf("initdb failed: %w", err)
-		}
-	}
-
-	confPath := filepath.Join(pgData, "postgresql.conf")
-	if data, err := os.ReadFile(confPath); err == nil {
-		if !strings.Contains(string(data), "lc_messages = 'C'") {
-			f, err := os.OpenFile(confPath, os.O_APPEND|os.O_WRONLY, 0o644)
-			if err == nil {
-				_, _ = f.WriteString("\nlc_messages = 'C'\n")
-				_ = f.Close()
-			}
-		}
-	}
-
-	log("starting postgres on :%s", pgPort)
-	cmd := hiddenCmd(pgCtl, "start", "-D", pgData, "-l", filepath.Join(logDir, "postgres.log"), "-o", "-p "+pgPort, "-w")
-	cmd.Dir = root
-	out, err := cmd.CombinedOutput()
-	_ = os.WriteFile(filepath.Join(logDir, "pgctl.log"), out, 0o644)
-	if err != nil {
-		// May already be running — continue and probe readiness.
-		log("pg_ctl start returned: %v (%s)", err, strings.TrimSpace(string(out)))
-	}
-
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		probe := hiddenCmd(pgIsReady, "-U", "postgres", "-h", "127.0.0.1", "-p", pgPort)
-		if err := probe.Run(); err == nil {
-			break
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	check := hiddenCmd(psql, "-U", "postgres", "-h", "127.0.0.1", "-p", pgPort, "-tc", "SELECT 1 FROM pg_database WHERE datname = 'aranea'")
-	out, _ = check.CombinedOutput()
-	if !strings.Contains(string(out), "1") {
-		log("creating database aranea")
-		_ = hiddenCmd(psql, "-U", "postgres", "-h", "127.0.0.1", "-p", pgPort, "-c", "CREATE DATABASE aranea").Run()
-		_ = hiddenCmd(psql, "-U", "postgres", "-h", "127.0.0.1", "-p", pgPort, "-d", "aranea", "-c", "CREATE EXTENSION IF NOT EXISTS vector").Run()
-	}
-	return nil
-}
-
-func startRedis(root string, log func(string, ...any)) error {
-	if processRunning("redis-server.exe") {
-		log("redis already running")
-		return nil
-	}
-	exe := filepath.Join(root, "redis", "redis-server.exe")
-	if _, err := os.Stat(exe); err != nil {
-		return fmt.Errorf("缺少 Redis: %w", err)
-	}
-	log("starting redis on :%s", redisPort)
-	cmd := hiddenCmd(exe, "--port", redisPort, "--bind", "127.0.0.1")
-	cmd.Dir = filepath.Join(root, "redis")
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	// Detach — redis keeps running after launcher exits.
-	go func() { _ = cmd.Wait() }()
-	time.Sleep(500 * time.Millisecond)
-	return nil
-}
-
-func startBackend(root string, log func(string, ...any)) error {
+func startBackend(root string, env *runtimeEnv, log func(string, ...any)) error {
 	if healthy() {
 		log("backend already healthy")
+		env.add("后端服务", checkOK, "已在运行", false)
 		return nil
 	}
 	_ = killImage("aranea-server.exe")
@@ -230,7 +181,7 @@ func startBackend(root string, log func(string, ...any)) error {
 		"DEPLOY_ENV=dev",
 		"DAO_VECTOR_PGVECTOR=1",
 	)
-	log("starting aranea-server")
+	log("starting aranea-server (pg=%s:%s)", env.PGHost, env.PGPort)
 	if err := cmd.Start(); err != nil {
 		_ = stdout.Close()
 		return err
@@ -239,6 +190,7 @@ func startBackend(root string, log func(string, ...any)) error {
 		_ = cmd.Wait()
 		_ = stdout.Close()
 	}()
+	env.add("后端服务", checkOK, "已启动进程", false)
 	return nil
 }
 
@@ -284,16 +236,30 @@ func launchElectron(root string, log func(string, ...any)) error {
 }
 
 func stopAll(root string, log func(string, ...any)) error {
+	mode := readModeFile(root)
 	_ = killImage("AraneaAgents.exe")
 	_ = killImage("aranea-server.exe")
-	_ = killImage("redis-server.exe")
-	pgCtl := filepath.Join(root, "postgres", "bin", "pg_ctl.exe")
-	pgData := filepath.Join(root, "postgres", "data")
-	if _, err := os.Stat(pgCtl); err == nil {
-		cmd := hiddenCmd(pgCtl, "stop", "-D", pgData, "-m", "fast")
-		_ = cmd.Run()
+	// Never stop system Redis/PostgreSQL — only what we started.
+	if mode.StartedBundledRedis || mode.RedisMode == "bundled" {
+		_ = killImage("redis-server.exe")
+		log("stopped bundled redis")
+	} else {
+		log("skip system redis stop")
 	}
-	log("all services stopped")
+	if mode.StartedBundledPG || mode.PGMode == "bundled" {
+		pgCtl := filepath.Join(root, "postgres", "bin", "pg_ctl.exe")
+		pgData := filepath.Join(root, "postgres", "data")
+		if _, err := os.Stat(pgCtl); err == nil {
+			if _, err := os.Stat(filepath.Join(pgData, "PG_VERSION")); err == nil {
+				cmd := hiddenCmd(pgCtl, "stop", "-D", pgData, "-m", "fast")
+				_ = cmd.Run()
+				log("stopped bundled postgres")
+			}
+		}
+	} else {
+		log("skip system postgres stop")
+	}
+	log("all aranea-managed services stopped")
 	return nil
 }
 
@@ -327,14 +293,26 @@ func acquireSingleInstance() (release func(), alreadyRunning bool) {
 
 func showError(title, msg string) {
 	if runtime.GOOS == "windows" {
-		messageBoxWindows(appTitle+" — "+title, msg)
+		messageBoxWindows(appTitle+" — "+title, msg, true)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "%s: %s\n", title, msg)
 }
 
+func showInfo(title, msg string) {
+	if runtime.GOOS == "windows" {
+		messageBoxWindows(appTitle+" — "+title, msg, false)
+		return
+	}
+	fmt.Fprintf(os.Stdout, "%s: %s\n", title, msg)
+}
+
+func execLookPath(file string) (string, error) {
+	return exec.LookPath(file)
+}
+
 // Windows-specific helpers live in main_windows.go / main_stub.go.
 var (
 	acquireMutexWindows func(name string) (func(), bool)
-	messageBoxWindows   func(title, msg string)
+	messageBoxWindows   func(title, msg string, isError bool)
 )

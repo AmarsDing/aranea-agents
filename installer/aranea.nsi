@@ -75,11 +75,16 @@ Section "MainSection" SecMain
   File /nonfatal /r "${STAGING_DIR}\*.*"
 
   CreateDirectory "$SMPROGRAMS\Aranea-Agents"
-  ; 主入口：静默 launcher
+  ; 主入口：静默 launcher（内置环境探测与预检）
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
+  CreateShortcut "$SMPROGRAMS\Aranea-Agents\环境检查.lnk" "$INSTDIR\AraneaLauncher.exe" "-check" "$INSTDIR\frontend\resources\app\icons\icon.ico"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\停止 Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "-stop" "$INSTDIR\frontend\resources\app\icons\icon.ico"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\启动（调试控制台）.lnk" "$INSTDIR\start.bat" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\卸载.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
+
+  ; 安装结束后跑环境检查（弹窗展示系统 PG/Redis/pgvector 探测结果）
+  DetailPrint "Running environment check..."
+  ExecWait '"$INSTDIR\AraneaLauncher.exe" -check'
 
   ; 桌面快捷方式 → 静默 launcher（不再指向 start.bat）
   CreateShortcut "$DESKTOP\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"

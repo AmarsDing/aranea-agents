@@ -40,13 +40,18 @@ func init() {
 		}, false
 	}
 
-	messageBoxWindows = func(title, msg string) {
+	messageBoxWindows = func(title, msg string, isError bool) {
 		t, _ := syscall.UTF16PtrFromString(title)
 		m, _ := syscall.UTF16PtrFromString(msg)
 		user32 := windows.NewLazySystemDLL("user32.dll")
 		proc := user32.NewProc("MessageBoxW")
 		const mbOK = 0x00000000
 		const mbIconError = 0x00000010
-		_, _, _ = proc.Call(0, uintptr(unsafe.Pointer(m)), uintptr(unsafe.Pointer(t)), mbOK|mbIconError)
+		const mbIconInfo = 0x00000040
+		flags := uintptr(mbOK | mbIconInfo)
+		if isError {
+			flags = mbOK | mbIconError
+		}
+		_, _, _ = proc.Call(0, uintptr(unsafe.Pointer(m)), uintptr(unsafe.Pointer(t)), flags)
 	}
 }

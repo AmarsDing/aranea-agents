@@ -2,45 +2,48 @@
 
 ## 问题
 
-当前 Release（如 v0.1.23）安装后体验差、易不可用：
-
-1. 桌面快捷方式指向 `start.bat` → 弹出黑色命令框 + `pause`，反人类
-2. 安装到 `Program Files` → 每次启动 UAC / 写权限问题
-3. Electron 页面在随机端口，API 直连 `:8000`，Cookie/CORS 边界脆弱，易出现登录失败
+1. 桌面快捷方式指向 `start.bat` → 黑框 + `pause`
+2. 安装到 Program Files → UAC / 写权限问题
+3. Electron 跨端口 API → Cookie/CORS 脆弱
+4. Launcher 单实例互斥竞态：二次点击跳过 Postgres，后端连不上 `:5433`
+5. 未复用本机已安装的 PostgreSQL(:5432) / Redis
 
 ## 综合方案
 
 | 环节 | 方案 |
 |------|------|
-| 安装目录 | 默认 `%LOCALAPPDATA%\AraneaAgents`，`RequestExecutionLevel user`（免管理员） |
-| 启动入口 | `AraneaLauncher.exe`（`-H windowsgui`，无控制台） |
-| 桌面/开始菜单 | 指向 Launcher；另提供「调试控制台」→ `start.bat` |
-| 停止 | `AraneaLauncher.exe -stop` |
-| 运行时 | PG → Redis → `aranea-server` → 健康检查 → Electron |
-| 前端通信 | Electron 本地 HTTP + 反代 `/v1` `/api` `/healthz` `/v1/ws` → `:8000`（同源 Cookie） |
-| 故障 | MessageBox + `logs\launcher.log` / `server.log` |
+| 安装目录 | `%LOCALAPPDATA%\AraneaAgents`（免管理员） |
+| 启动入口 | `AraneaLauncher.exe`（无控制台） |
+| 环境探测 | 优先系统 PG `:5432` + Redis `:6379`；否则内置实例 |
+| pgvector | `CREATE EXTENSION vector`；失败则复制内置 `vector.dll` |
+| 预检 | `logs\preflight.txt`；失败弹窗；警告弹窗后继续；`-check` 专用检查 |
+| 配置 | 按探测结果重写 `configs/config.yaml` DSN |
+| 停止 | 只停 Aranea 托管的进程，不动系统 PG/Redis |
+| 前端 | Electron 同源反代 API/WS → `:8000` |
+
+### 系统 PostgreSQL 密码
+
+`ARANEA_PG_PASSWORD=你的密码`（用户环境变量）
 
 ## 用户路径
 
-1. 下载 `AraneaAgents-*-win-x64.exe` → 安装（无需管理员）
-2. 双击桌面「Aranea-Agents」→ 无黑框，等待窗口出现（首次 10~30s）
-3. 登录 `admin` / `changeme`
-4. 退出：开始菜单「停止 Aranea-Agents」
+1. 安装 `AraneaAgents-*-win-x64.exe`
+2. 安装结束会弹出「环境检查」
+3. 桌面快捷方式启动（无黑框）
+4. 登录 `admin` / `changeme`
+5. 排障：开始菜单「环境检查」或查看 `logs\preflight.txt`
 
 ## 代码锚点
 
 | 文件 | 作用 |
 |------|------|
-| `cmd/launcher/` | 静默启动器 |
-| `installer/aranea.nsi` | NSIS：用户目录 + Launcher 快捷方式 |
-| `installer/scripts/start.bat` | 调试入口（有 Launcher 时委托之） |
+| `cmd/launcher/` | 启动器 + 环境探测 + 预检 |
+| `installer/aranea.nsi` | 快捷方式 + 安装后 `-check` |
 | `web/src-electron/electron-main.ts` | 同源反代 |
-| `scripts/build-package.ps1` | 打包纳入 Launcher |
-| `.github/workflows/release.yml` | CI 构建 Launcher 并更新 Release 说明 |
+| `scripts/build-package.ps1` | 打包 |
 
 ## 验收
 
-- [x] `AraneaLauncher.exe` PE subsystem = GUI (2)
-- [ ] CI Release 产出新版本安装包
-- [ ] 安装后桌面快捷方式目标为 `AraneaLauncher.exe`
-- [ ] 双击无控制台黑框，桌面窗口可登录
+- [x] Launcher PE subsystem = GUI
+- [x] v0.1.24 发布（静默启动）
+- [ ] v0.1.25+ 环境探测 / 系统 PG 复用 / 预检弹窗

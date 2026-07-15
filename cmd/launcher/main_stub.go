@@ -10,5 +10,5 @@ func init() {
 	acquireMutexWindows = func(name string) (func(), bool) {
 		return func() {}, false
 	}
-	messageBoxWindows = func(title, msg string) {}
+	messageBoxWindows = func(title, msg string, isError bool) {}
 }
