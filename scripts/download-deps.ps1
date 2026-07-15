@@ -111,15 +111,31 @@ $RedisUrl = "https://github.com/tporadowski/redis/releases/download/v5.0.14.1/Re
 
 New-Item -ItemType Directory -Force -Path $OutDirFull | Out-Null
 
+# 带超时和重试的下载函数
+function Invoke-DownloadWithRetry {
+    param([string]$Url, [string]$OutFile, [string]$Label, [int]$MaxRetries = 3, [int]$TimeoutSec = 300)
+    for ($i = 1; $i -le $MaxRetries; $i++) {
+        try {
+            Write-Host "  [$Label] 尝试 $i/$MaxRetries..." -ForegroundColor Cyan
+            Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -TimeoutSec $TimeoutSec
+            return $true
+        } catch {
+            Write-Host "  [$Label] 尝试 $i 失败：$($_.Exception.Message)" -ForegroundColor Yellow
+            if (Test-Path $OutFile) { Remove-Item $OutFile -Force }
+            if ($i -lt $MaxRetries) { Start-Sleep -Seconds 10 }
+        }
+    }
+    return $false
+}
+
 # 下载 PostgreSQL
 $pgDir = Join-Path $OutDirFull "postgres"
 if (-not (Test-Path (Join-Path $pgDir "bin\postgres.exe"))) {
     Write-Host "[download-deps] 下载 PostgreSQL $PgVersion..." -ForegroundColor Cyan
     $pgZip = Join-Path $OutDirFull "pg-binaries.zip"
-    try {
-        Invoke-WebRequest -Uri $PgUrl -OutFile $pgZip -UseBasicParsing
-    } catch {
-        Write-Error "PostgreSQL 下载失败：$($_.Exception.Message)。请手动下载并放到 $pgDir"
+    $ok = Invoke-DownloadWithRetry -Url $PgUrl -OutFile $pgZip -Label "PostgreSQL"
+    if (-not $ok) {
+        Write-Error "PostgreSQL 下载失败（重试 3 次）。请手动下载并放到 $pgDir"
     }
 
     Write-Host "  解压中..."
@@ -154,10 +170,9 @@ $redisDir = Join-Path $OutDirFull "redis"
 if (-not (Test-Path (Join-Path $redisDir "redis-server.exe"))) {
     Write-Host "[download-deps] 下载 Redis for Windows..." -ForegroundColor Cyan
     $redisZip = Join-Path $OutDirFull "redis.zip"
-    try {
-        Invoke-WebRequest -Uri $RedisUrl -OutFile $redisZip -UseBasicParsing
-    } catch {
-        Write-Error "Redis 下载失败：$($_.Exception.Message)"
+    $ok = Invoke-DownloadWithRetry -Url $RedisUrl -OutFile $redisZip -Label "Redis"
+    if (-not $ok) {
+        Write-Error "Redis 下载失败（重试 3 次）"
     }
 
     Write-Host "  解压中..."

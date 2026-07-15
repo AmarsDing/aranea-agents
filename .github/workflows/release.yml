@@ -279,6 +279,22 @@ jobs:
           path: release/AraneaAgents-*.exe
           retention-days: 30
 
+      - name: List release directory (debug)
+        shell: pwsh
+        run: |
+          Write-Host "=== release/ contents ==="
+          if (Test-Path "release") {
+            Get-ChildItem -Path "release" -Recurse | ForEach-Object {
+              $rel = $_.FullName.Replace((Get-Location).Path, "")
+              $size = if ($_.PSIsContainer) { "<DIR>" } else { "$([math]::Round($_.Length / 1MB, 1)) MB" }
+              Write-Host "  $rel  $size"
+            }
+          } else {
+            Write-Host "  release/ directory not found!"
+          }
+          Write-Host "=== pwd ==="
+          Get-Location
+
       - name: Upload to GitHub Release
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
