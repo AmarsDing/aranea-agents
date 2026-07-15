@@ -228,8 +228,8 @@ jobs:
             exit 1
           }
           Pop-Location
-          if (-not (Test-Path "web/dist/index.html")) {
-            Write-Host "::error::web/dist/index.html not found after pnpm build"
+          if (-not (Test-Path "web/dist/spa/index.html")) {
+            Write-Host "::error::web/dist/spa/index.html not found after pnpm build"
             exit 1
           }
           Write-Host "Frontend built: web/dist/" -ForegroundColor Green
