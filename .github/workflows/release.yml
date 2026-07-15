@@ -285,8 +285,9 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: Aranea-Agents ${{ steps.version.outputs.version }}
-          draft: true
+          draft: false
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
             release/AraneaAgents-*.exe
           body: |
