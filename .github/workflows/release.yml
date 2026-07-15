@@ -164,6 +164,42 @@ jobs:
             Write-Host "Electron template already exists at $templateDir"
           }
 
+      - name: Install protoc and codegen tools
+        shell: pwsh
+        run: |
+          choco install protoc -y --no-progress
+          & protoc --version
+          # Install Go protoc plugins and wire
+          & go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          & go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          & go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@latest
+          & go install github.com/google/gnostic/cmd/protoc-gen-openapi@latest
+          & go install github.com/google/wire/cmd/wire@latest
+          # Add GOBIN to PATH for subsequent steps (protoc looks up protoc-gen-* via PATH)
+          $gobin = go env GOBIN
+          if (-not $gobin) { $gobin = "$(go env GOPATH)\bin" }
+          Add-Content -Path $env:GITHUB_PATH -Value $gobin
+          Write-Host "GOBIN: $gobin"
+
+      - name: Generate Go sources (proto + ent + wire)
+        shell: pwsh
+        run: |
+          # SKIP_API_TS=1: skip TypeScript client emit (not needed for backend build)
+          $env:SKIP_API_TS = "1"
+          # Generate api/*.pb.go (go, go-http, go-grpc, openapi)
+          & make api
+          if ($LASTEXITCODE -ne 0) { Write-Error "make api failed (exit $LASTEXITCODE)"; exit 1 }
+          # Generate internal/*.pb.go
+          & make config
+          if ($LASTEXITCODE -ne 0) { Write-Error "make config failed (exit $LASTEXITCODE)"; exit 1 }
+          # Generate ent code (go generate runs entgo.io/ent/cmd/ent via generate.go)
+          & go generate ./internal/data/ent/...
+          if ($LASTEXITCODE -ne 0) { Write-Error "ent generate failed (exit $LASTEXITCODE)"; exit 1 }
+          # Generate wire_gen.go for cmd/admin
+          & make wire-admin
+          if ($LASTEXITCODE -ne 0) { Write-Error "wire-admin failed (exit $LASTEXITCODE)"; exit 1 }
+          Write-Host "Go sources generated successfully" -ForegroundColor Green
+
       - name: Build backend (go build)
         shell: pwsh
         run: |
