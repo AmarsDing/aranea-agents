@@ -34,6 +34,7 @@ const (
 func main() {
 	stop := flag.Bool("stop", false, "stop Aranea-Agents services")
 	checkOnly := flag.Bool("check", false, "run environment checks and exit")
+	quiet := flag.Bool("quiet", false, "with -check: write report to file only, no MessageBox")
 	flag.Parse()
 
 	root, err := installRoot()
@@ -71,7 +72,11 @@ func main() {
 		if env.PGMode == "system" && env.PSQL != "" {
 			_ = ensurePostgres(env, logger)
 		}
-		showInfo("环境检查", env.reportText()+"\n日志: "+logPath)
+		report := env.reportText() + "\n日志: " + logPath
+		_ = os.WriteFile(filepath.Join(root, "logs", "preflight.txt"), []byte(report), 0o644)
+		if !*quiet {
+			showInfo("环境检查", report)
+		}
 		if env.hasFatal() {
 			os.Exit(1)
 		}
@@ -134,8 +139,11 @@ func main() {
 	}
 	if err := waitHealthy(logger); err != nil {
 		logger("health error: %v\n%s", err, env.reportText())
+		tail := readLogTail(filepath.Join(root, "logs", "server.log"), 25)
 		showError("后端未就绪", env.reportText()+"\n\n"+err.Error()+
-			"\n\n常见原因：数据库未启动、端口被占用、配置错误。\n请查看 logs\\server.log\n"+logPath)
+			"\n\n常见原因：数据库未连接、Redis 未就绪、端口被占用。"+
+			"\n\n--- logs\\server.log (末尾) ---\n"+tail+
+			"\n\n详见: "+logPath)
 		os.Exit(1)
 	}
 	env.add("后端健康检查", checkOK, healthURL, false)
@@ -225,13 +233,19 @@ func launchElectron(root string, log func(string, ...any)) error {
 	if _, err := os.Stat(exe); err != nil {
 		return fmt.Errorf("缺少桌面应用: %w", err)
 	}
-	log("launching desktop app")
-	cmd := hiddenCmd(exe)
+	log("launching desktop app (GUI, visible)")
+	// CRITICAL: must NOT use hiddenCmd — HideWindow makes Electron invisible.
+	cmd := guiCmd(exe)
 	cmd.Dir = filepath.Join(root, "frontend")
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	go func() { _ = cmd.Wait() }()
+	// Give the process a moment; if it exits immediately, surface failure.
+	time.Sleep(800 * time.Millisecond)
+	if !processRunning("AraneaAgents.exe") {
+		return fmt.Errorf("AraneaAgents.exe 启动后立即退出，请检查 frontend 目录是否完整")
+	}
 	return nil
 }
 
@@ -266,6 +280,12 @@ func stopAll(root string, log func(string, ...any)) error {
 func hiddenCmd(name string, args ...string) *exec.Cmd {
 	cmd := exec.Command(name, args...)
 	hideConsoleWindow(cmd)
+	return cmd
+}
+
+func guiCmd(name string, args ...string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
+	showGUIWindow(cmd)
 	return cmd
 }
 
@@ -309,6 +329,25 @@ func showInfo(title, msg string) {
 
 func execLookPath(file string) (string, error) {
 	return exec.LookPath(file)
+}
+
+func readLogTail(path string, maxLines int) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "(无法读取 " + path + ")"
+	}
+	lines := strings.Split(string(b), "\n")
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+	}
+	s := strings.TrimSpace(strings.Join(lines, "\n"))
+	if s == "" {
+		return "(日志为空)"
+	}
+	if len(s) > 1500 {
+		return s[len(s)-1500:]
+	}
+	return s
 }
 
 // Windows-specific helpers live in main_windows.go / main_stub.go.

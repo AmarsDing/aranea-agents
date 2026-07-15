@@ -341,7 +341,6 @@ $stopBat = Join-Path $scriptsDir "stop.bat"
 if (Test-Path $startBat) {
     Copy-Item $startBat (Join-Path $StagingDir "start.bat") -Force
 } else {
-    # 使用现有 AraneaAgents-deploy 的脚本
     Copy-Item (Join-Path $RepoRoot "AraneaAgents-deploy\start.bat") (Join-Path $StagingDir "start.bat") -Force
 }
 if (Test-Path $stopBat) {
@@ -349,7 +348,14 @@ if (Test-Path $stopBat) {
 } else {
     Copy-Item (Join-Path $RepoRoot "AraneaAgents-deploy\stop.bat") (Join-Path $StagingDir "stop.bat") -Force
 }
-Write-Host "  [OK] start.bat + stop.bat" -ForegroundColor Green
+$startVbs = Join-Path $scriptsDir "start-silent.vbs"
+if (Test-Path $startVbs) {
+    Copy-Item $startVbs (Join-Path $StagingDir "start-silent.vbs") -Force
+}
+Write-Host "  [OK] start.bat + stop.bat + start-silent.vbs" -ForegroundColor Green
+if (-not (Test-Path (Join-Path $StagingDir "AraneaLauncher.exe"))) {
+    Write-Error "Staging 缺少 AraneaLauncher.exe — 禁止打包"
+}
 
 # 创建 README
 $readmeContent = @"
@@ -366,7 +372,9 @@ $readmeContent = @"
 
 开始菜单「环境检查」或：`AraneaLauncher.exe -check`
 
-若系统 PostgreSQL 需要密码，请先设置用户环境变量 `ARANEA_PG_PASSWORD`。
+若系统 PostgreSQL 需要密码，任选其一：
+- 用户环境变量 `ARANEA_PG_PASSWORD=你的密码`
+- 或在安装目录创建 `configs\pg.password`（单行密码）
 
 ## 停止
 

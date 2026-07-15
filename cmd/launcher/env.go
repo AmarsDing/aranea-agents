@@ -120,21 +120,54 @@ func findSystemPSQL() (binDir, psql string) {
 		os.Getenv("ProgramFiles(x86)") + `\PostgreSQL`,
 		`C:\Program Files\PostgreSQL`,
 		`C:\Program Files (x86)\PostgreSQL`,
+		`D:\Program Files\PostgreSQL`,
+		`D:\Program Files (x86)\PostgreSQL`,
+		`E:\Program Files\PostgreSQL`,
 	}
+	// Also scan fixed drives for non-standard Program Files locations.
+	for _, letter := range []string{"C", "D", "E", "F"} {
+		roots = append(roots,
+			letter+`:\Program Files\PostgreSQL`,
+			letter+`:\Program Files (x86)\PostgreSQL`,
+		)
+	}
+	best := ""
+	seen := map[string]bool{}
 	for _, root := range roots {
+		if root == `\PostgreSQL` || seen[root] {
+			continue
+		}
+		seen[root] = true
 		matches, _ := filepath.Glob(filepath.Join(root, "*", "bin", "psql.exe"))
-		// Prefer higher version dirs (lexicographic works for 16/17)
-		best := ""
 		for _, m := range matches {
 			if best == "" || m > best {
 				best = m
 			}
 		}
-		if best != "" {
-			return filepath.Dir(best), best
-		}
+	}
+	if best != "" {
+		return filepath.Dir(best), best
 	}
 	return "", ""
+}
+
+func loadPGPassword(root string) string {
+	if v := strings.TrimSpace(os.Getenv("ARANEA_PG_PASSWORD")); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(os.Getenv("PGPASSWORD")); v != "" {
+		return v
+	}
+	// Optional local file (one line password) — never commit; user-created.
+	for _, name := range []string{"pg.password", "postgres.password"} {
+		b, err := os.ReadFile(filepath.Join(root, "configs", name))
+		if err == nil {
+			if line := strings.TrimSpace(strings.Split(string(b), "\n")[0]); line != "" {
+				return line
+			}
+		}
+	}
+	return ""
 }
 
 func lookPath(file string) (string, error) {
@@ -147,7 +180,7 @@ func detectRuntime(root string, log func(string, ...any)) *runtimeEnv {
 		Root:      root,
 		PGHost:    "127.0.0.1",
 		PGUser:    "postgres",
-		PGPass:    strings.TrimSpace(os.Getenv("ARANEA_PG_PASSWORD")),
+		PGPass:    loadPGPassword(root),
 		RedisAddr: "127.0.0.1:6379",
 	}
 

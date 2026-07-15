@@ -10,12 +10,20 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// hideConsoleWindow hides console-subsystem tools (psql/pg_ctl/redis/server).
+// Do NOT use this for Electron / GUI apps — HideWindow makes the window invisible.
 func hideConsoleWindow(cmd *exec.Cmd) {
 	const createNoWindow = 0x08000000
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: createNoWindow,
 	}
+}
+
+// showGUIWindow starts a GUI process normally (visible window).
+func showGUIWindow(cmd *exec.Cmd) {
+	// Leave SysProcAttr nil / default so the window is shown.
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
 }
 
 func init() {

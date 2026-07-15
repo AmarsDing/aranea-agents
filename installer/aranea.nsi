@@ -74,19 +74,32 @@ Section "MainSection" SecMain
 
   File /nonfatal /r "${STAGING_DIR}\*.*"
 
+  ; 校验关键文件已落地（避免装完却缺少启动器，回退到 bat 黑框）
+  IfFileExists "$INSTDIR\AraneaLauncher.exe" launcher_ok
+    MessageBox MB_OK|MB_ICONSTOP "安装失败：未找到 AraneaLauncher.exe，请重新下载安装包。"
+    Abort
+  launcher_ok:
+  IfFileExists "$INSTDIR\aranea-server.exe" server_ok
+    MessageBox MB_OK|MB_ICONSTOP "安装失败：未找到 aranea-server.exe。"
+    Abort
+  server_ok:
+  IfFileExists "$INSTDIR\frontend\AraneaAgents.exe" electron_ok
+    MessageBox MB_OK|MB_ICONSTOP "安装失败：未找到 frontend\AraneaAgents.exe。"
+    Abort
+  electron_ok:
+
   CreateDirectory "$SMPROGRAMS\Aranea-Agents"
-  ; 主入口：静默 launcher（内置环境探测与预检）
+  ; 主入口：静默 launcher（禁止指向 start.bat）
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\环境检查.lnk" "$INSTDIR\AraneaLauncher.exe" "-check" "$INSTDIR\frontend\resources\app\icons\icon.ico"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\停止 Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "-stop" "$INSTDIR\frontend\resources\app\icons\icon.ico"
-  CreateShortcut "$SMPROGRAMS\Aranea-Agents\启动（调试控制台）.lnk" "$INSTDIR\start.bat" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\卸载.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
 
-  ; 安装结束后跑环境检查（弹窗展示系统 PG/Redis/pgvector 探测结果）
-  DetailPrint "Running environment check..."
-  ExecWait '"$INSTDIR\AraneaLauncher.exe" -check'
+  ; 安静环境检查（只写 logs\preflight.txt，不弹窗、不启动服务、无 CMD）
+  DetailPrint "Running quiet environment check..."
+  nsExec::ExecToLog '"$INSTDIR\AraneaLauncher.exe" -check -quiet'
 
-  ; 桌面快捷方式 → 静默 launcher（不再指向 start.bat）
+  ; 桌面快捷方式 → 静默 launcher
   CreateShortcut "$DESKTOP\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
 
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AraneaAgents" "DisplayName" "Aranea-Agents"

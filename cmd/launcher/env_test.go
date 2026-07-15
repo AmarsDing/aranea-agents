@@ -1,6 +1,26 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestFindSystemPSQLPrefersExistingInstall(t *testing.T) {
+	bin, psql := findSystemPSQL()
+	if psql == "" {
+		t.Skip("no system PostgreSQL on this machine")
+	}
+	if _, err := os.Stat(psql); err != nil {
+		t.Fatalf("psql path invalid: %s", psql)
+	}
+	if filepath.Base(psql) != "psql.exe" {
+		t.Fatalf("unexpected psql: %s", psql)
+	}
+	if bin == "" {
+		t.Fatal("empty bin dir")
+	}
+}
 
 func TestURLQueryEscape(t *testing.T) {
 	got := urlQueryEscape("Hangshan@123")

@@ -5,6 +5,7 @@ package main
 import "os/exec"
 
 func hideConsoleWindow(cmd *exec.Cmd) {}
+func showGUIWindow(cmd *exec.Cmd)     {}
 
 func init() {
 	acquireMutexWindows = func(name string) (func(), bool) {
