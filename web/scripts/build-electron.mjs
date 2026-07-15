@@ -41,7 +41,8 @@ function parseArgs() {
 
 async function main() {
   const { platform } = parseArgs();
-  const webDist = path.join(WEB_DIR, 'dist');
+  // Quasar SPA 模式构建输出到 web/dist/spa/（由 quasar.config.js 的 build.publicPath 决定）
+  const webDist = path.join(WEB_DIR, 'dist', 'spa');
   // 输出到 web/build/electron/ 而非 web/dist/electron/，
   // 避免 Node cp 检测到 dest 是 src 子目录而抛错（filter 无法绕过该检查）。
   let outDir = path.join(WEB_DIR, 'build', 'electron');
@@ -49,7 +50,7 @@ async function main() {
 
   console.log('[1/5] Checking prerequisites...');
   if (!existsSync(path.join(webDist, 'index.html'))) {
-    console.error('ERROR: web/dist/index.html not found. Run "pnpm build" first.');
+    console.error('ERROR: web/dist/spa/index.html not found. Run "pnpm build" first.');
     process.exit(1);
   }
   if (!existsSync(TEMPLATE_DIR)) {
