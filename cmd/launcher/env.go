@@ -218,7 +218,7 @@ func detectRuntime(root string, log func(string, ...any)) *runtimeEnv {
 			env.PGMode = "system"
 			env.add("PostgreSQL", checkOK, "使用系统实例 127.0.0.1:5432", false)
 		} else {
-			env.add("PostgreSQL(系统)", checkWarn, "检测到 :5432 但无法以当前凭据连接（可设环境变量 ARANEA_PG_PASSWORD）。将改用内置实例。", false)
+			env.add("PostgreSQL(系统)", checkWarn, "检测到 :5432 但无法无交互连接（可写 configs\\pg.password 或设 ARANEA_PG_PASSWORD）。将改用内置 :5433。", false)
 			systemPortOpen = false
 		}
 	}
