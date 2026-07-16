@@ -179,6 +179,13 @@ export async function listTeamsPaged(): Promise<{ items: Team[]; total: number }
   return { items, total };
 }
 
+/** Workspace-scoped team count without loading items (Overview KPI). */
+export async function countTeams(): Promise<number> {
+  const svc = createTeamService();
+  const res = await svc.ListTeams({ countOnly: true });
+  return typeof res.total === 'number' ? res.total : 0;
+}
+
 export async function createTeam(payload: Partial<Team>): Promise<Team> {
   const svc = createTeamService();
   const data = await svc.CreateTeam({

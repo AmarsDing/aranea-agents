@@ -65,18 +65,14 @@ func (s *stubAgentReaderByKey) ListAgentsByIDs(_ context.Context, _ []string) ([
 // DisplayName rather than the raw agent_key. This is the regression guard for
 // Problem 2 (TeamCard display name).
 //
-// Phase 3b-D Task 10: publishSpiritTeamAssembled now publishes a v2
-// TeamStageCreatedEvent (no Meta) AND synchronously persists a v1 Activity
-// (carrying the rich Meta with members). This test asserts on the
-// sync-persisted Activity since that is where the members data lives.
+// publishSpiritTeamAssembled publishes a v2 TeamStageCreatedEvent with Members.
 func TestPublishSpiritTeamAssembled_UsesDisplayName(t *testing.T) {
 	eventBus := &captureEventBus{}
-	activityRepo := &capturingActivityRepo{}
 	reader := &stubAgentReaderByKey{byKey: map[string]biz.Agent{
 		"deep-researcher": {AgentKey: "deep-researcher", DisplayName: "Deep Researcher"},
 		"code-writer":     {AgentKey: "code-writer", DisplayName: "Code Writer"},
 	}}
-	a := &SpiritTeamAssembler{eventBus: eventBus, activityRepo: activityRepo, agentReader: reader, lg: loggateway.NewNoop()}
+	a := &SpiritTeamAssembler{eventBus: eventBus, agentReader: reader, lg: loggateway.NewNoop()}
 
 	a.publishSpiritTeamAssembled(
 		context.Background(),
@@ -93,43 +89,38 @@ func TestPublishSpiritTeamAssembled_UsesDisplayName(t *testing.T) {
 		},
 	)
 
-	// v2 EventBus should have exactly one TeamStageCreatedEvent.
 	v2Events := eventBus.snapshot()
-	if len(v2Events) != 1 {
-		t.Fatalf("expected 1 v2 event, got %d", len(v2Events))
+	if len(v2Events) < 1 {
+		t.Fatalf("expected >=1 v2 event, got %d", len(v2Events))
 	}
-	tsEv, ok := v2Events[0].(*biz.TeamStageCreatedEvent)
-	if !ok {
-		t.Fatalf("expected *biz.TeamStageCreatedEvent, got %T", v2Events[0])
+	var tsEv *biz.TeamStageCreatedEvent
+	for _, e := range v2Events {
+		if ev, ok := e.(*biz.TeamStageCreatedEvent); ok {
+			tsEv = ev
+			break
+		}
+	}
+	if tsEv == nil {
+		t.Fatalf("expected *biz.TeamStageCreatedEvent among %d events", len(v2Events))
 	}
 	if tsEv.TeamStage.Stage != biz.TeamStageStageAssembled {
 		t.Fatalf("expected stage %s, got %s", biz.TeamStageStageAssembled, tsEv.TeamStage.Stage)
 	}
-
-	// The synchronously-persisted v1 Activity carries the members Meta.
-	activities := activityRepo.snapshot()
-	if len(activities) != 1 {
-		t.Fatalf("expected 1 sync-persisted Activity, got %d", len(activities))
-	}
-	activity := activities[0]
-	if activity.Kind != biz.ActivityKindTeamStage || activity.Stage != "assembled" {
-		t.Fatalf("unexpected activity: kind=%s stage=%s", activity.Kind, activity.Stage)
-	}
-	members, _ := activity.Meta["members"].([]map[string]any)
+	members := tsEv.TeamStage.Members
 	if len(members) != 3 {
 		t.Fatalf("expected 3 members, got %d", len(members))
 	}
 	cases := []struct{ key, wantName string }{
 		{"deep-researcher", "Deep Researcher"},
 		{"code-writer", "Code Writer"},
-		{"unknown-agent", "unknown-agent"}, // not in catalog - fallback to agent_key
+		{"unknown-agent", "unknown-agent"},
 	}
 	for _, c := range cases {
 		found := false
 		for _, m := range members {
-			if m["agent_key"] == c.key {
-				if m["agent_name"] != c.wantName {
-					t.Fatalf("member %s: agent_name=%v, want %s", c.key, m["agent_name"], c.wantName)
+			if m.AgentKey == c.key {
+				if m.AgentName != c.wantName {
+					t.Fatalf("member %s: agent_name=%v, want %s", c.key, m.AgentName, c.wantName)
 				}
 				found = true
 				break

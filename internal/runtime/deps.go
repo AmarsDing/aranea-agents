@@ -59,12 +59,10 @@ type PersistenceSet struct {
 // called); the buffer was write-only with no reader. All Append callsites
 // (FlowTracker.emit / EventBusConsumer.handleEnvelope) were dead writes.
 //
-// ActivityBus is deprecated and unused; retained as a nil-able field for
-// transitional structs. New publishers use EventBus / Sequencer only.
 // MonitorEventBus is the typed contract.MonitorBus carrying
 // contract.MonitorEvent for monitor-channel events (alerts, logs, etc.).
+// Chat/team/graph realtime uses EventBus / Sequencer only.
 type EventPipeline struct {
-	ActivityBus     biz.ActivityEventBus // deprecated: always nil in production DI
 	EventBus        biz.EventBus
 	MonitorEventBus contract.MonitorBus
 	// Sequencer is the v2 publish-only entry point for typed events + notices.

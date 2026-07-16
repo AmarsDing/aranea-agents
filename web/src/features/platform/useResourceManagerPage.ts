@@ -24,7 +24,11 @@ export function useResourceManagerPage() {
   const resource = computed(() => route.meta.resource as PlatformResourceName);
   const isProviderResource = computed(() => resource.value === 'llm-provider-models');
   const pageTitle = computed(() => (route.meta.title as string) || '资源管理');
-  const pageSubtitle = computed(() => (route.meta.subtitle as string) || '管理平台资源、启用状态与运行配置。');
+  const pageSubtitle = computed(
+    () =>
+      (route.meta.subtitle as string) ||
+      '管理平台资源、启用状态与运行配置。列表为全量加载，下方分页为前端切片。',
+  );
 
   const list = useProviderList({ resource, isProviderResource, saving });
   const wizard = useProviderWizard({ editingId, dialogOpen, saving, resource, isProviderResource, rows: list.rows });

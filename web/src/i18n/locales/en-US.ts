@@ -699,7 +699,7 @@ export default {
     cronRuns: 'Cron run history',
     monitor: 'Monitoring',
     observability: 'Observability',
-    shop: 'Marketplace',
+    shop: 'Ecosystem shop',
     settings: 'System settings',
   },
   sessionsPage: {
@@ -774,7 +774,7 @@ export default {
     credentialKeyPending: 'Not generated yet (created on service startup; restart backend if this persists)',
     knowledgeEmbedTitle: 'Knowledge embedder defaults',
     knowledgeEmbedHint:
-      'Default RAG embedding config stored in system_settings; shared with the Knowledge page. Env KRATOS_KNOWLEDGE_EMBED_* overrides DB at startup.',
+      'Canonical system-wide RAG embedder write path (system_settings). The Knowledge page updates the same record and hot-reloads. Env KRATOS_KNOWLEDGE_EMBED_* overrides DB at startup.',
     mcpAdhocTitle: 'MCP Broker AdHoc HTTP',
     mcpAdhocHint:
       'Allow MCP Broker mcp_call against unregistered HTTP endpoints. Off by default in production; MCP Server must also set allow_adhoc_http. Stored in system_settings.mcp_allow_adhoc_http.',
@@ -897,7 +897,8 @@ export default {
   channelsPage: {
     kicker: 'Channel management',
     title: 'Channels',
-    subtitle: 'Manage external messaging channels, credentials, webhooks, and runtime lifecycle.',
+    subtitle:
+      'Manage external messaging channels, credentials, webhooks, and runtime lifecycle. Full list load; pagination is client-side.',
     add: 'Add channel',
     refresh: 'Refresh',
     searchLabel: 'Search channels',
@@ -1298,7 +1299,7 @@ export default {
     kicker: 'Callbacks',
     title: 'Hook / Callbacks',
     subtitle:
-      'Configure lifecycle callback rules for Agent, Model, Tool, and Runner events (log / notify / block / modify).',
+      'Configure lifecycle callback rules for Agent, Model, Tool, and Runner events (log / notify / block / modify). Full list load; pagination is client-side.',
     btnDeliveries: 'Deliveries',
     btnPluginRuns: 'Run logs',
     btnCreate: 'New Hook',
@@ -1413,7 +1414,7 @@ export default {
     kicker: 'Outbound Webhooks',
     title: 'Webhook Management',
     subtitle:
-      'Configure outbound webhook endpoints to push notifications to external services on Runner events (HMAC-SHA256 signature verification).',
+      'Configure outbound webhook endpoints to push notifications to external services on Runner events (HMAC-SHA256 signature verification). Full list load; pagination is client-side.',
     btnCreate: 'New Webhook',
     search: 'Search',
     btnRefresh: 'Refresh',

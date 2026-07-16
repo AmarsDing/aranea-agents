@@ -111,6 +111,9 @@ func (r *observatoryTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ strin
 func (r *observatoryTeamRepo) ListTeamsByWorkspace(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (r *observatoryTeamRepo) CountTeamsByWorkspace(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
 
 func TestGetTeamRunObservatory(t *testing.T) {
 	repo := &observatoryTeamRepo{

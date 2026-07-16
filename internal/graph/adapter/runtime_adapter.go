@@ -255,7 +255,7 @@ func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg logg
 			sanitizeActivityControlCommand(ev, e)
 		}
 		if ev != nil && bridge.EventBus() != nil {
-			biz.PublishSystemNoticeFromActivity(context.Background(), bridge.EventBus(), *ev)
+			bridge.EventBus().Publish(context.Background(), graphtrpc.ActivityEventToSystemNotice(*ev))
 		}
 	}
 

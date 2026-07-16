@@ -165,6 +165,41 @@ func NewOrchestrationStatusStore(reg OrchestrationRegistry) *OrchestrationStatus
 	return &OrchestrationStatusStore{Nodes: nodes}
 }
 
+// ApplySystemNotice projects a graph/team lifecycle system.notice onto node
+// status. NoticeType is the stage (node_start/node_end/…); Meta carries
+// activity_kind / activity_event / agent_key / execution_id / node_id.
+func (s *OrchestrationStatusStore) ApplySystemNotice(n *SystemNoticeEvent, reg OrchestrationRegistry) []*AgentNodeState {
+	if s == nil || n == nil {
+		return nil
+	}
+	meta := n.Meta
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	kind := ActivityKind(metaString(meta, "activity_kind"))
+	if kind == "" {
+		kind = ActivityKindNotice
+	}
+	eventType := ActivityEventType(metaString(meta, "activity_event"))
+	if eventType == "" {
+		eventType = ActivityEventUpdated
+	}
+	return s.ApplyActivityEvent(ActivityEvent{
+		Event: eventType,
+		Activity: Activity{
+			Kind:            kind,
+			Status:          ActivityStatus(metaString(meta, "activity_status")),
+			SessionID:       n.SpiritSessionID(),
+			SpiritSessionID: n.SpiritSessionID(),
+			Stage:           n.NoticeType,
+			Content:         n.Message,
+			Meta:            meta,
+			AgentKey:        metaString(meta, "agent_key"),
+			TeamID:          metaString(meta, "team_id"),
+		},
+	}, reg)
+}
+
 func (s *OrchestrationStatusStore) ApplyActivityEvent(aev ActivityEvent, reg OrchestrationRegistry) []*AgentNodeState {
 	if s == nil {
 		return nil

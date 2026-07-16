@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
@@ -19,35 +20,28 @@ func isNilInterface(v any) bool {
 	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
 
-// isInFlightActivity returns true for statuses that represent an unfinished
-// activity which can be cancelled (running / tool_running / tool_blocked).
-// Terminal statuses (completed/failed/cancelled/interrupted) are skipped.
-func isInFlightActivity(s biz.ActivityStatus) bool {
+// isInFlightStep returns true for statuses that represent an unfinished
+// step which can be cancelled (running / tool_running / tool_blocked).
+func isInFlightStep(s biz.StepStatus) bool {
 	switch s {
-	case biz.ActivityStatusRunning,
-		biz.ActivityStatusToolRunning,
-		biz.ActivityStatusToolBlocked:
+	case biz.StepStatusRunning,
+		biz.StepStatusToolRunning,
+		biz.StepStatusToolBlocked:
 		return true
 	default:
 		return false
 	}
 }
 
-// CancelRunningActivityMessages marks in-flight activity cards (running /
+// CancelRunningActivityMessages marks in-flight steps (running /
 // tool_running / tool_blocked) as cancelled when the user stops generation.
 //
-// Phase 3b-D Task 7: reads via v2 StepV2Reader.ListStepsBySpiritSession (spirit
-// root aggregation for Stop) with ListStepsBySession fallback (member-only
-// cancel), and converts each Step to the v1 Activity shape for the v1
-// ActivityWriter (writer migration is Tier 3). The v1 ActivityWriter is
-// retained because cancel persists status transitions via the v1 write path.
-//
-// The returned count is the number of activities successfully transitioned
-// to cancelled status.
+// Reads and writes go through steps_v2 (StepV2Reader / StepV2Writer). The
+// function name is retained for call-site stability.
 func CancelRunningActivityMessages(
 	ctx context.Context,
 	stepReader biz.StepV2Reader,
-	writer biz.ActivityWriter,
+	writer biz.StepV2Writer,
 	sessionID string,
 	lg loggateway.Logger,
 ) (int, error) {
@@ -71,32 +65,30 @@ func CancelRunningActivityMessages(
 		}
 	}
 	cancelled := 0
+	now := time.Now().UTC()
 	for i := range steps {
-		a := biz.StepToActivity(steps[i])
-		if !isInFlightActivity(a.Status) {
+		st := steps[i]
+		if !isInFlightStep(st.Status) {
 			continue
 		}
-		// Validate transition via state machine (AS-FSM-01).
-		// Running/ToolRunning/ToolBlocked all support cancel → Cancelled.
-		newStatus, err := biz.TransitionActivityStatus(a.Status, biz.ActivityTransitionCancel)
+		// Reuse Activity status machine — StepStatus shares the same string values.
+		newStatus, err := biz.TransitionActivityStatus(biz.ActivityStatus(st.Status), biz.ActivityTransitionCancel)
 		if err != nil {
-			// Illegal transition — skip silently to avoid blocking the cancel loop.
-			// This can happen if the activity transitioned to a terminal state
-			// between ListStepsBySession and UpdateActivity (race).
 			lg.Debug("跳过非法状态转换",
 				loggateway.StepID("chat.activity.cancel"),
 				loggateway.Str("session_id", sessionID),
-				loggateway.Str("activity_id", a.ID),
-				loggateway.Str("current_status", string(a.Status)),
+				loggateway.Str("step_id", st.ID),
+				loggateway.Str("current_status", string(st.Status)),
 			)
 			continue
 		}
-		a.Status = newStatus
-		if _, err := writer.UpdateActivity(ctx, a); err != nil {
+		st.Status = biz.StepStatus(newStatus)
+		st.CompletedAt = &now
+		if _, err := writer.UpdateStep(ctx, st); err != nil {
 			lg.Warn("取消执行卡片落库失败",
 				loggateway.StepID("chat.activity.cancel"),
 				loggateway.Str("session_id", sessionID),
-				loggateway.Str("activity_id", a.ID),
+				loggateway.Str("step_id", st.ID),
 				loggateway.Err(err))
 			continue
 		}

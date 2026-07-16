@@ -92,63 +92,9 @@ func (e *SystemNoticeEvent) EntityID() string          { return e.sessionID }
 func (e *SystemNoticeEvent) OccurredAt() time.Time     { return e.occurredAt }
 func (e *SystemNoticeEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
 
-// EventKindActivityBridge is the bridge event kind for legacy v1 ActivityEvent
-// payloads that have not yet been (or cannot be) mapped to a typed v2 entity
-// event. The bridge preserves the full v1 ActivityEvent shape (Meta/Content/
-// ParentActivityID/etc.) so consumers (OrchestrationStatusStore, frontend v1
-// inbound handler) can reuse existing field-aware logic without data loss.
-//
-// Phase 3b-D: introduced to eliminate the remaining v1 ActivityEventBus.Publish
-// callers (graph_stage / team_stage / session / plan / task_failed sites) in a
-// single stroke. The v1 ActivityEventBus itself remains for the WS broadcast
-// pump until Tier 4 deletion; only the publish callers are migrated.
-const EventKindActivityBridge EventKind = "activity.bridge"
-
-// ActivityBridgeEvent wraps a v1 ActivityEvent as a v2 Event so it can be
-// published on the v2 EventBus. The embedded ActivityEvent retains all v1
-// fields (Meta, Content, ParentActivityID, AgentKey, Stage, etc.) and serializes
-// to JSON using the existing snake_case tags on biz.Activity / biz.ActivityEvent.
-//
-// Consumers extract the embedded event via the ActivityEvent() accessor and
-// reuse existing v1 field-aware logic. The bridge does NOT alter the payload.
-type ActivityBridgeEvent struct {
-	sessionID string
-	// Event is the wrapped v1 ActivityEvent (the source of truth for routing,
-	// persistence, and frontend rendering). Carries Activity.Kind/Stage/Meta.
-	Event ActivityEvent
-	occurredAt time.Time
-}
-
-// NewActivityBridgeEvent constructs an ActivityBridgeEvent from a v1 ActivityEvent.
-//
-// Deprecated (2026-07-16): production publishers no longer emit ActivityBridgeEvent.
-// Chat/Team/Graph use typed v2 events or system.notice. Kept temporarily for
-// decode/tests; do not add new call sites.
-// spiritSessionID is derived from Event.Activity.SpiritSessionID (falls back to
-// SessionID) so the v2 EventBus can route the event to the correct WS subscribers.
-func NewActivityBridgeEvent(ev ActivityEvent) *ActivityBridgeEvent {
-	spiritSessionID := ev.Activity.SpiritSessionID
-	if spiritSessionID == "" {
-		spiritSessionID = ev.Activity.SessionID
-	}
-	return &ActivityBridgeEvent{
-		sessionID:  spiritSessionID,
-		Event:      ev,
-		occurredAt: time.Now(),
-	}
-}
-
-func (e *ActivityBridgeEvent) EventKind() EventKind      { return EventKindActivityBridge }
-func (e *ActivityBridgeEvent) SpiritSessionID() string   { return e.sessionID }
-func (e *ActivityBridgeEvent) TaskID() string            { return "" }
-func (e *ActivityBridgeEvent) EntityID() string          { return e.Event.Activity.ID }
-func (e *ActivityBridgeEvent) OccurredAt() time.Time     { return e.occurredAt }
-func (e *ActivityBridgeEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
-
 // Ensure interface compliance.
 var (
 	_ Event = (*RunStatusEvent)(nil)
 	_ Event = (*HeartbeatEvent)(nil)
 	_ Event = (*SystemNoticeEvent)(nil)
-	_ Event = (*ActivityBridgeEvent)(nil)
 )

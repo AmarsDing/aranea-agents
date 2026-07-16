@@ -142,11 +142,15 @@
       </q-tab-panel>
       <q-tab-panel name="audit" class="q-pa-none">
         <A2AAuditPanel
+          :page="audit.auditPage"
+          :page-size="audit.auditPageSize"
           :rows="audit.auditRows"
           :total="audit.auditTotal"
           :loading="audit.auditLoading"
           :columns="audit.auditColumns"
           :status-color="audit.auditStatusColor"
+          @page-change="audit.onAuditPage"
+          @page-size-change="audit.onAuditPageSize"
         />
       </q-tab-panel>
       <q-tab-panel name="invoke" class="q-pa-none">

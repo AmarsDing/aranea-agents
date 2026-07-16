@@ -429,8 +429,7 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 				if !ok {
 					continue
 				}
-				aev := biz.ActivityEventFromSystemNotice(notice)
-				if done, failed, errMsg := c.handleGraphWatchActivity(watchCtx, sess, aev, mode); done {
+				if done, failed, errMsg := c.handleGraphWatchNotice(watchCtx, sess, notice, mode); done {
 					c.finalizeTeamRun(watchCtx, sess, failed, errMsg)
 					return
 				}
@@ -458,20 +457,30 @@ func shouldResumeTeamGraph(exec *biz.GraphExecution, nodeID string) bool {
 	return strings.HasPrefix(exec.GraphID, "team:") && exec.GetInterruptNode() == nodeID
 }
 
-func (c *TeamGraphRunCoordinator) handleGraphWatchActivity(ctx context.Context, sess *teamGraphRunSession, aev biz.ActivityEvent, mode graphWatchMode) (done, failed bool, errMsg string) {
-	if aev.Activity.Kind != biz.ActivityKindGraphStage {
+func (c *TeamGraphRunCoordinator) handleGraphWatchNotice(ctx context.Context, sess *teamGraphRunSession, notice *biz.SystemNoticeEvent, mode graphWatchMode) (done, failed bool, errMsg string) {
+	if notice == nil {
 		return false, false, ""
 	}
-	execID := metaString(aev.Activity.Meta, "execution_id")
+	meta := notice.Meta
+	kind := biz.ActivityKind(metaString(meta, "activity_kind"))
+	if kind == "" {
+		kind = biz.ActivityKindNotice
+	}
+	eventType := biz.ActivityEventType(metaString(meta, "activity_event"))
+	if kind != biz.ActivityKindGraphStage {
+		return false, false, ""
+	}
+	execID := metaString(meta, "execution_id")
 	if execID != "" && execID != sess.execID {
 		return false, false, ""
 	}
 	stepCtx := sess.stepContext()
-	isNodeEnd := aev.Activity.Stage == "node_end"
-	isNodeStart := aev.Activity.Stage == "node_start"
-	isStepFinished := aev.Activity.Kind == biz.ActivityKindTeamStage && aev.Event == biz.ActivityEventCompleted
+	stage := notice.NoticeType
+	isNodeEnd := stage == "node_end"
+	isNodeStart := stage == "node_start"
+	isStepFinished := kind == biz.ActivityKindTeamStage && eventType == biz.ActivityEventCompleted
 	if sess.obsStore != nil {
-		changed := sess.obsStore.ApplyActivityEvent(aev, sess.obsReg)
+		changed := sess.obsStore.ApplySystemNotice(notice, sess.obsReg)
 		for _, st := range changed {
 			if isNodeStart && c.finisher != nil && stepCtx != nil {
 				c.finisher.PublishTeamStepStarted(ctx, stepCtx, st.NodeID)
@@ -489,28 +498,28 @@ func (c *TeamGraphRunCoordinator) handleGraphWatchActivity(ctx context.Context, 
 		}
 	}
 	if isStepFinished && stepCtx != nil {
-		if nodeID := resumeStepNodeID(aev.Activity.Meta, sess.obsReg); nodeID != "" {
+		if nodeID := resumeStepNodeID(meta, sess.obsReg); nodeID != "" {
 			stepCtx.MarkPersisted(nodeID)
 		}
 	}
 	if mode == graphWatchStepsOnly {
 		return false, false, ""
 	}
-	switch aev.Activity.Stage {
+	switch stage {
 	case "node_error":
-		if aev.Event != biz.ActivityEventFailed {
+		if eventType != biz.ActivityEventFailed {
 			return false, false, ""
 		}
-		if resumeMetaBool(aev.Activity.Meta, "retrying") {
+		if resumeMetaBool(meta, "retrying") {
 			return false, false, ""
 		}
-		msg := metaString(aev.Activity.Meta, "error")
-		if strings.TrimSpace(aev.Activity.Content) != "" && msg == "" {
-			msg = strings.TrimSpace(aev.Activity.Content)
+		msg := metaString(meta, "error")
+		if strings.TrimSpace(notice.Message) != "" && msg == "" {
+			msg = strings.TrimSpace(notice.Message)
 		}
 		return true, true, msg
 	case "execution_done":
-		if aev.Event != biz.ActivityEventCompleted {
+		if eventType != biz.ActivityEventCompleted {
 			return false, false, ""
 		}
 		return true, false, ""

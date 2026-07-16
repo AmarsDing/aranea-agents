@@ -36,13 +36,11 @@ var (
 // Chat Graph 块由 v2 GraphStage/GraphNode（PublishV2Board + PlanExecutor）维护，
 // 不再注入 v1 ActivityEventBus。
 type TeamStarter struct {
-	sessions         *biz.SessionUsecase
-	team             TeamOrchestrationDeps
-	eventBus         biz.EventBus      // v2: team_stage + notice events
-	seq              rt.EventPublisher // v2 Sequencer（FIFO + retry）
-	activityReader   biz.ActivityReader
-	activityUpserter biz.ActivityUpserter
-	lg               loggateway.Logger
+	sessions *biz.SessionUsecase
+	team     TeamOrchestrationDeps
+	eventBus biz.EventBus      // v2: team_stage + notice events
+	seq      rt.EventPublisher // v2 Sequencer（FIFO + retry）
+	lg       loggateway.Logger
 	// turnGateway is used to inject a synthetic message into the Spirit
 	// session when all teams complete, triggering the LLM to continue
 	// with synthesis. This replaces the LLM-polling pattern (check_progress
@@ -87,8 +85,6 @@ func NewTeamStarter(
 	team TeamOrchestrationDeps,
 	eventBus biz.EventBus,
 	seq rt.EventPublisher,
-	activityReader biz.ActivityReader,
-	activityUpserter biz.ActivityUpserter,
 	lg loggateway.Logger,
 	synthesisSvc *SpiritSynthesisService,
 	taskV2Reader biz.TaskV2Reader,
@@ -96,21 +92,17 @@ func NewTeamStarter(
 	teamRunR biz.TeamRunV2Reader,
 ) *TeamStarter {
 	return &TeamStarter{
-		sessions:         sessions,
-		team:             team,
-		eventBus:         eventBus,
-		seq:              seq,
-		activityReader:   activityReader,
-		activityUpserter: activityUpserter,
-		lg:               lg,
-		synthesisSvc:     synthesisSvc,
-		taskV2Reader:     taskV2Reader,
-		// 2026-07-05 P1 #9d-2：TeamStage 状态机 + Reader 注入。
-		teamStageR: teamStageR,
-		tsSM:       biz.NewTeamStageStateMachine(),
-		// 2026-07-05 P1 #9e：TeamRun v2 状态机 + Reader 注入。
-		teamRunR: teamRunR,
-		trSM:     biz.NewTeamRunV2StateMachine(),
+		sessions:     sessions,
+		team:         team,
+		eventBus:     eventBus,
+		seq:          seq,
+		lg:           lg,
+		synthesisSvc: synthesisSvc,
+		taskV2Reader: taskV2Reader,
+		teamStageR:   teamStageR,
+		tsSM:         biz.NewTeamStageStateMachine(),
+		teamRunR:     teamRunR,
+		trSM:         biz.NewTeamRunV2StateMachine(),
 	}
 }
 
@@ -779,18 +771,15 @@ func (s *TeamStarter) NotifyAllTeamsCompleted(ctx context.Context, spiritSession
 // `eventBus`/`seq` 发布 team_stage。Chat Graph 由 v2 GraphStage/GraphNode 维护，
 // 不再注入 v1 ActivityEventBus。
 type SpiritTeamAssembler struct {
-	spiritUC     *biz.SpiritTeamUsecase
-	orchCache    *biz.OrchestrationCache
-	eventBus     biz.EventBus      // v2: team_stage + notice events
-	seq          rt.EventPublisher // v2 Sequencer
-	activityRepo biz.ActivityUpserter
-	teamStarter  biz.TeamStarterPort
-	agentReader  biz.AgentReader
-	lg           loggateway.Logger
-	// 2026-07-05 P1 #9d-2（AS-FSM-01）：TeamStage 状态机 + Reader，用于 CancelTeam
-	// 中修复 Version=0 Bug + 添加状态机校验。
-	teamStageR biz.TeamStageV2Reader
-	tsSM       *biz.TeamStageStateMachine
+	spiritUC    *biz.SpiritTeamUsecase
+	orchCache   *biz.OrchestrationCache
+	eventBus    biz.EventBus      // v2: team_stage + notice events
+	seq         rt.EventPublisher // v2 Sequencer
+	teamStarter biz.TeamStarterPort
+	agentReader biz.AgentReader
+	lg          loggateway.Logger
+	teamStageR  biz.TeamStageV2Reader
+	tsSM        *biz.TeamStageStateMachine
 }
 
 func NewSpiritTeamAssembler(
@@ -798,24 +787,21 @@ func NewSpiritTeamAssembler(
 	orchCache *biz.OrchestrationCache,
 	eventBus biz.EventBus,
 	seq rt.EventPublisher,
-	activityRepo biz.ActivityUpserter,
 	teamStarter biz.TeamStarterPort,
 	agentReader biz.AgentReader,
 	lg loggateway.Logger,
 	teamStageR biz.TeamStageV2Reader,
 ) *SpiritTeamAssembler {
 	return &SpiritTeamAssembler{
-		spiritUC:     spiritUC,
-		orchCache:    orchCache,
-		eventBus:     eventBus,
-		seq:          seq,
-		activityRepo: activityRepo,
-		teamStarter:  teamStarter,
-		agentReader:  agentReader,
-		lg:           lg,
-		// 2026-07-05 P1 #9d-2：TeamStage 状态机 + Reader 注入。
-		teamStageR: teamStageR,
-		tsSM:       biz.NewTeamStageStateMachine(),
+		spiritUC:    spiritUC,
+		orchCache:   orchCache,
+		eventBus:    eventBus,
+		seq:         seq,
+		teamStarter: teamStarter,
+		agentReader: agentReader,
+		lg:          lg,
+		teamStageR:  teamStageR,
+		tsSM:        biz.NewTeamStageStateMachine(),
 	}
 }
 
@@ -1048,58 +1034,7 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	// (SequencerHandled=false). Previously the Bus event always had
 	// SequencerHandled=true, meaning a sync failure = permanent data loss.
 	// Now the Bus provides a fallback path.
-	persistedSync := false
-	if a.activityRepo != nil {
-		activity := biz.Activity{
-			ID:               string(agent.NewTeamStageActivityID(team.ID)),
-			Kind:             biz.ActivityKindTeamStage,
-			Status:           biz.ActivityStatusPending,
-			Stage:            "assembled",
-			Timestamp:        time.Now().UTC(),
-			ParentActivityID: string(agent.NewGraphStageActivityID(spiritSessionID)),
-			SpiritSessionID:  spiritSessionID,
-			SessionID:        spiritSessionID,
-			TeamID:           team.ID,
-			AgentKey:         "spirit-team-assembler",
-			DependsOn:        team.DependsOn,
-			Meta: map[string]any{
-				"team_id":         team.ID,
-				"team_name":       team.DisplayName,
-				"session_id":      teamSession.ID,
-				"mode":            mode,
-				"task_summary":    biz.TruncateRunes(taskDesc, 200),
-				"dag_node_id":     team.DagNodeID,
-				"depends_on":      team.DependsOn,
-				"topology_reason": topologyReason,
-				"duration_ms":     0,
-				"total_steps":     1,
-				"members":         members,
-			},
-		}
-		if _, err := a.activityRepo.UpsertActivity(ctx, activity); err != nil {
-			a.lg.Warn("spirit team assembled: synchronous persist failed, falling back to Bus async",
-				loggateway.StepID("spirit.team.assembled_persist"),
-				loggateway.Str("team_id", team.ID),
-				loggateway.Err(err),
-			)
-		} else {
-			persistedSync = true
-		}
-	}
-
-	// Phase 3b-D Task 10: migrated to v2 NewTeamStageCreatedEvent.
-	// The sync persist (a.activityRepo.UpsertActivity above) is RETAINED unchanged.
-	// DEVIATION: the v1 SequencerHandled flag (skip Bus async persist when sync
-	// succeeded) is DROPPED — v2 EventBus has no equivalent. The v2 EventBus may
-	// attempt async persist after the sync persist, but the version-guarded
-	// UpsertActivity makes the async attempt a no-op if sync already wrote the
-	// record. The `persistedSync` variable is now unused for the bus call but
-	// retained for the sync persist log above.
-	// 2026-07-04 问题 4 修复：设置 TaskID + Members，让前端 TeamStagePanel 能直接
-	// 显示 Team ID 和成员列表（之前 Members 为 null，前端无法渲染 member-chip）。
-	// Members 数据从上面构建的 members 数组（v1 Meta 格式）转换为 v2 类型安全的 []MemberInfo。
-	// 2026-07-04 问题 3 修复：携带 TeamName 让前端展示团队名称而非 ID。
-	// 2026-07-04 问题 C3 修复：team.DisplayName 为空时记录 Warn 日志，便于定位。
+	// Persist via v2 TeamStage Sequencer only (activities dual-write removed 2026-07-16).
 	if strings.TrimSpace(team.DisplayName) == "" {
 		a.lg.Warn("publishSpiritTeamAssembled: team.DisplayName 为空，前端将显示 team_id",
 			loggateway.StepID("spirit.team.empty_display_name"),
@@ -1120,8 +1055,6 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 		StartedAt: time.Now().UTC(),
 		Version:   1,
 	}
-	_ = persistedSync // retained for sync persist logging; no longer used by bus
-	// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
 	a.publishV2Event(ctx, biz.NewTeamStageCreatedEvent(ts))
 
 	// 2026-07-04 问题 4 修复：发布 v2 TeamRun + MemberSession 创建事件。

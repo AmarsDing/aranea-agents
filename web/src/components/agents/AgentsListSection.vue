@@ -84,6 +84,7 @@
           drag-class="agent-card--dragging"
           :animation="200"
           :delay="100"
+          :disabled="true"
         >
           <template #item="{ element: agent }">
             <agent-card

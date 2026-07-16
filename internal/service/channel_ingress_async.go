@@ -146,30 +146,35 @@ func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow bi
 				if !ok {
 					continue
 				}
-				aev := biz.ActivityEventFromSystemNotice(notice)
-				if aev.Activity.Kind != biz.ActivityKindGraphStage {
+				kind := metaStringFromMap(notice.Meta, "activity_kind")
+				if kind != "" && kind != string(biz.ActivityKindGraphStage) {
 					continue
 				}
-				metaID := metaStringFromActivity(aev, "execution_id")
+				if kind == "" && notice.NoticeType != "node_error" && notice.NoticeType != "execution_done" &&
+					notice.NoticeType != "node_start" && notice.NoticeType != "node_end" {
+					continue
+				}
+				metaID := metaStringFromMap(notice.Meta, "execution_id")
 				if metaID != "" && metaID != execID {
 					continue
 				}
-				switch aev.Activity.Stage {
+				eventType := metaStringFromMap(notice.Meta, "activity_event")
+				switch notice.NoticeType {
 				case "node_error":
-					if aev.Event == biz.ActivityEventFailed {
-						h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", graphNodeErrorMessageFromActivity(aev))
+					if eventType == string(biz.ActivityEventFailed) || eventType == "" {
+						h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", graphNodeErrorMessageFromNotice(notice))
 						return
 					}
 				case "execution_done":
-					if aev.Event != biz.ActivityEventCompleted {
+					if eventType != "" && eventType != string(biz.ActivityEventCompleted) {
 						continue
 					}
-					if failed, errMsg := graphExecutionSummaryFailedFromActivity(aev, h.lg); failed {
+					if failed, errMsg := graphExecutionSummaryFailedFromNotice(notice, h.lg); failed {
 						h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", errors.New(errMsg))
 						return
 					}
 					summary := channelAsyncGraphDoneSummary
-					if content := strings.TrimSpace(aev.Activity.Content); content != "" {
+					if content := strings.TrimSpace(notice.Message); content != "" {
 						summary = content
 					}
 					h.completeAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, summary)
@@ -314,11 +319,11 @@ func (h *ChannelIngress) finishAsyncTargetWatch(ctx context.Context, chRow biz.C
 	)
 }
 
-func metaStringFromActivity(aev biz.ActivityEvent, key string) string {
-	if aev.Activity.Meta == nil {
+func metaStringFromMap(meta map[string]any, key string) string {
+	if meta == nil {
 		return ""
 	}
-	v, ok := aev.Activity.Meta[key]
+	v, ok := meta[key]
 	if !ok || v == nil {
 		return ""
 	}
@@ -328,18 +333,24 @@ func metaStringFromActivity(aev biz.ActivityEvent, key string) string {
 	return strings.TrimSpace(fmt.Sprintf("%v", v))
 }
 
-func graphNodeErrorMessageFromActivity(aev biz.ActivityEvent) error {
-	if content := strings.TrimSpace(aev.Activity.Content); content != "" {
+func graphNodeErrorMessageFromNotice(n *biz.SystemNoticeEvent) error {
+	if n == nil {
+		return errors.New("graph node error")
+	}
+	if content := strings.TrimSpace(n.Message); content != "" {
 		return errors.New(content)
 	}
-	if msg := metaStringFromActivity(aev, "error"); msg != "" {
+	if msg := metaStringFromMap(n.Meta, "error"); msg != "" {
 		return errors.New(msg)
 	}
 	return errors.New("graph node error")
 }
 
-func graphExecutionSummaryFailedFromActivity(aev biz.ActivityEvent, lg loggateway.Logger) (bool, string) {
-	raw, ok := aev.Activity.Meta["execution_summary"]
+func graphExecutionSummaryFailedFromNotice(n *biz.SystemNoticeEvent, lg loggateway.Logger) (bool, string) {
+	if n == nil || n.Meta == nil {
+		return false, ""
+	}
+	raw, ok := n.Meta["execution_summary"]
 	if !ok || raw == nil {
 		return false, ""
 	}

@@ -8,6 +8,8 @@ package v1
 
 import (
 	context "context"
+	"strings"
+
 	http "github.com/go-kratos/kratos/v2/transport/http"
 	binding "github.com/go-kratos/kratos/v2/transport/http/binding"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -124,6 +126,16 @@ func _TeamService_ListTeams0_HTTP_Handler(srv TeamServiceHTTPServer) func(ctx ht
 		var in ListTeamsRequest
 		if err := ctx.BindQuery(&in); err != nil {
 			return err
+		}
+		// BindQuery may miss count_only until proto descriptor is regenerated; read query explicitly.
+		if r := ctx.Request(); r != nil {
+			q := r.URL.Query().Get("count_only")
+			if q == "" {
+				q = r.URL.Query().Get("countOnly")
+			}
+			if q == "1" || strings.EqualFold(q, "true") {
+				in.CountOnly = true
+			}
 		}
 		http.SetOperation(ctx, OperationTeamServiceListTeams)
 		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {

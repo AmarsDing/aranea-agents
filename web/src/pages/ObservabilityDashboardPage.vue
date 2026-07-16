@@ -7,18 +7,30 @@
         <div class="text-caption text-grey-7 q-mt-xs">{{ t('observabilityPage.subtitle') }}</div>
       </div>
 
-      <div class="observability-tabs-wrap q-mt-md">
-        <q-tabs v-model="activeTab" align="left" no-caps outside-arrows mobile-arrows class="observability-tabs">
-          <q-tab name="plans" icon="fact_check" :label="t('observabilityPage.tabPlans')" />
-          <q-tab name="teamRuns" icon="groups" :label="t('observabilityPage.tabTeamRuns')" />
-          <q-tab name="graphExecutions" icon="hub" :label="t('observabilityPage.tabGraphExecutions')" />
-          <q-tab name="metrics" icon="monitor_heart" :label="t('observabilityPage.tabMetrics')" />
-          <q-tab name="flowLogs" icon="terminal" :label="t('observabilityPage.tabFlowLogs')" />
-        </q-tabs>
+      <div class="observability-quick-links q-mt-md row q-gutter-sm">
+        <q-btn outline no-caps rounded color="primary" icon="groups" :label="t('observabilityPage.teamRunsLink')" to="/team" />
+        <q-btn outline no-caps rounded color="primary" icon="hub" :label="t('observabilityPage.graphExecutionsLink')" to="/graphs" />
+        <q-btn
+          outline
+          no-caps
+          rounded
+          color="primary"
+          icon="monitor_heart"
+          :label="t('observabilityPage.metricsLink')"
+          to="/monitor/logs"
+        />
+        <q-btn
+          outline
+          no-caps
+          rounded
+          color="primary"
+          icon="terminal"
+          :label="t('observabilityPage.flowLogsLink')"
+          to="/monitor/logs"
+        />
       </div>
 
-      <q-tab-panels v-model="activeTab" animated class="observability-panels q-mt-md">
-        <q-tab-panel name="plans">
+      <div class="observability-panels q-mt-md">
           <div class="row q-gutter-sm items-center q-mb-md">
             <q-input
               v-model="sessionIdInput"
@@ -269,88 +281,15 @@
               </q-card>
             </div>
           </div>
-        </q-tab-panel>
-
-        <q-tab-panel name="teamRuns">
-          <q-card flat bordered>
-            <q-card-section>
-              <div class="text-body1 q-mb-sm">{{ t('observabilityPage.tabTeamRuns') }}</div>
-              <div class="text-caption text-grey-7 q-mb-md">{{ t('observabilityPage.teamRunsDesc') }}</div>
-              <q-btn
-                unelevated
-                no-caps
-                color="accent"
-                icon="groups"
-                :label="t('observabilityPage.teamRunsLink')"
-                @click="router.push('/team')"
-              />
-            </q-card-section>
-          </q-card>
-        </q-tab-panel>
-
-        <q-tab-panel name="graphExecutions">
-          <q-card flat bordered>
-            <q-card-section>
-              <div class="text-body1 q-mb-sm">{{ t('observabilityPage.tabGraphExecutions') }}</div>
-              <div class="text-caption text-grey-7 q-mb-md">{{ t('observabilityPage.graphExecutionsDesc') }}</div>
-              <q-btn
-                unelevated
-                no-caps
-                color="accent"
-                icon="hub"
-                :label="t('observabilityPage.graphExecutionsLink')"
-                @click="router.push('/graphs')"
-              />
-            </q-card-section>
-          </q-card>
-        </q-tab-panel>
-
-        <q-tab-panel name="metrics">
-          <q-card flat bordered>
-            <q-card-section>
-              <div class="text-body1 q-mb-sm">{{ t('observabilityPage.tabMetrics') }}</div>
-              <div class="text-caption text-grey-7 q-mb-md">{{ t('observabilityPage.metricsDesc') }}</div>
-              <q-btn
-                unelevated
-                no-caps
-                color="accent"
-                icon="monitor_heart"
-                :label="t('observabilityPage.metricsLink')"
-                @click="router.push('/monitor/logs')"
-              />
-            </q-card-section>
-          </q-card>
-        </q-tab-panel>
-
-        <q-tab-panel name="flowLogs">
-          <q-card flat bordered>
-            <q-card-section>
-              <div class="text-body1 q-mb-sm">{{ t('observabilityPage.tabFlowLogs') }}</div>
-              <div class="text-caption text-grey-7 q-mb-md">{{ t('observabilityPage.flowLogsDesc') }}</div>
-              <q-btn
-                unelevated
-                no-caps
-                color="accent"
-                icon="terminal"
-                :label="t('observabilityPage.flowLogsLink')"
-                @click="router.push('/monitor/logs')"
-              />
-            </q-card-section>
-          </q-card>
-        </q-tab-panel>
-      </q-tab-panels>
+      </div>
     </div>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { useRouter } from 'vue-router';
 import { useObservabilityDashboard } from '../features/observability/useObservabilityDashboard';
 
-const router = useRouter();
-
 const {
-  activeTab,
   sessionIdInput,
   plansLoading,
   plans,
@@ -403,11 +342,8 @@ function complexityColor(level: string): string {
 .observability-hero
   padding-bottom: 0
 
-.observability-tabs-wrap
+.observability-quick-links
   padding: 0 16px
-
-.observability-tabs
-  border-bottom: 1px solid var(--glass-border, rgba(0, 0, 0, 0.12))
 
 .observability-panels
   padding: 0 16px

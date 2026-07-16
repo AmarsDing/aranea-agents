@@ -133,6 +133,10 @@ func (m *memTeamRepo) ListTeamsByWorkspace(_ context.Context, workspaceID string
 	}
 	return out, nil
 }
+func (m *memTeamRepo) CountTeamsByWorkspace(ctx context.Context, workspaceID string) (int, error) {
+	items, err := m.ListTeamsByWorkspace(ctx, workspaceID)
+	return len(items), err
+}
 
 func newTeamService() *service.TeamService {
 	repo := newMemTeamRepo()
@@ -178,6 +182,29 @@ func TestTeamService_CreateListGetDelete(t *testing.T) {
 	list2, _ := svc.ListTeams(ctx, &v1.ListTeamsRequest{})
 	if len(list2.GetItems()) != 0 {
 		t.Errorf("expected 0 after delete, got %d", len(list2.GetItems()))
+	}
+}
+
+func TestTeamService_ListTeamsCountOnly(t *testing.T) {
+	svc := newTeamService()
+	ctx := context.Background()
+
+	if _, err := svc.CreateTeam(ctx, &v1.CreateTeamRequest{TeamKey: "c1", DisplayName: "C1"}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := svc.CreateTeam(ctx, &v1.CreateTeamRequest{TeamKey: "c2", DisplayName: "C2"}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	got, err := svc.ListTeams(ctx, &v1.ListTeamsRequest{CountOnly: true})
+	if err != nil {
+		t.Fatalf("count_only: %v", err)
+	}
+	if len(got.GetItems()) != 0 {
+		t.Errorf("count_only should return empty items, got %d", len(got.GetItems()))
+	}
+	if got.GetTotal() != 2 {
+		t.Errorf("total=%d, want 2", got.GetTotal())
 	}
 }
 

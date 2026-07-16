@@ -45,7 +45,7 @@ func (b *EventBridge) Consume(ctx context.Context, eventCh <-chan *trpcevent.Eve
 	for e := range eventCh {
 		ev := b.ConvertEvent(e)
 		if ev != nil && b.eventBus != nil {
-			biz.PublishSystemNoticeFromActivity(ctx, b.eventBus, *ev)
+			b.eventBus.Publish(ctx, ActivityEventToSystemNotice(*ev))
 		} else if ev == nil {
 			b.lg.Warn("unhandled event dropped",
 				loggateway.StepID("graph.event_bridge"),
@@ -56,10 +56,43 @@ func (b *EventBridge) Consume(ctx context.Context, eventCh <-chan *trpcevent.Eve
 }
 
 // ConvertEvent converts a trpc-agent-go framework Event into a biz.ActivityEvent
-// suitable for publishing on biz.ActivityEventBus. Returns nil when the framework
+// used as an intermediate for system.notice Meta. Returns nil when the framework
 // event is not mapped (unknown object type or non-terminal GraphExecution event).
 func (b *EventBridge) ConvertEvent(e *trpcevent.Event) *biz.ActivityEvent {
 	return b.convertEvent(e)
+}
+
+// ActivityEventToSystemNotice maps a graph ActivityEvent intermediate to
+// system.notice. NoticeType = Stage; Meta preserves activity_kind/status/event.
+func ActivityEventToSystemNotice(aev biz.ActivityEvent) *biz.SystemNoticeEvent {
+	meta := aev.Activity.Meta
+	if meta == nil {
+		meta = map[string]any{}
+	} else {
+		cp := make(map[string]any, len(meta)+5)
+		for k, v := range meta {
+			cp[k] = v
+		}
+		meta = cp
+	}
+	meta["activity_kind"] = string(aev.Activity.Kind)
+	meta["activity_status"] = string(aev.Activity.Status)
+	meta["activity_event"] = string(aev.Event)
+	if aev.Activity.AgentKey != "" {
+		meta["agent_key"] = aev.Activity.AgentKey
+	}
+	if aev.Activity.TeamID != "" {
+		meta["team_id"] = aev.Activity.TeamID
+	}
+	noticeType := aev.Activity.Stage
+	if noticeType == "" {
+		noticeType = string(aev.Activity.Kind)
+	}
+	sessionID := aev.Activity.SpiritSessionID
+	if sessionID == "" {
+		sessionID = aev.Activity.SessionID
+	}
+	return biz.NewSystemNoticeEvent(sessionID, noticeType, aev.Activity.Content, meta)
 }
 
 func (b *EventBridge) convertEvent(e *trpcevent.Event) *biz.ActivityEvent {

@@ -8,9 +8,9 @@ import (
 	"aranea-agents/pkg/safego"
 )
 
-// runEventHandler consumes a projected ActivityEvent from the team run pipeline (BL-09).
+// runEventHandler consumes a system.notice from the team run pipeline (BL-09).
 type runEventHandler interface {
-	HandleRunEvent(ctx context.Context, aev biz.ActivityEvent) (stop bool)
+	HandleRunEvent(ctx context.Context, notice *biz.SystemNoticeEvent) (stop bool)
 }
 
 // teamRunPipeline fans out one EventBus subscription to multiple handlers.
@@ -30,7 +30,7 @@ func newTeamRunPipeline(handlers ...runEventHandler) *teamRunPipeline {
 	return &teamRunPipeline{handlers: out}
 }
 
-// Start subscribes once and fans SystemNotice → ActivityEvent to all handlers.
+// Start subscribes once and fans SystemNotice events to all handlers.
 func (p *teamRunPipeline) Start(ctx context.Context, bus biz.EventBus, spiritSessionID, sessionID string) context.CancelFunc {
 	if p == nil || bus == nil || len(p.handlers) == 0 {
 		return func() {}
@@ -51,12 +51,12 @@ func (p *teamRunPipeline) Start(ctx context.Context, bus biz.EventBus, spiritSes
 				if !ok {
 					return
 				}
-				aev, ok := activityEventFromBusEvent(e)
-				if !ok {
+				notice, ok := e.(*biz.SystemNoticeEvent)
+				if !ok || notice.NoticeType == "orchestration_status" {
 					continue
 				}
 				for _, h := range p.handlers {
-					if h.HandleRunEvent(procCtx, aev) {
+					if h.HandleRunEvent(procCtx, notice) {
 						cancel()
 						return
 					}
@@ -67,19 +67,7 @@ func (p *teamRunPipeline) Start(ctx context.Context, bus biz.EventBus, spiritSes
 	return cancel
 }
 
-func activityEventFromBusEvent(e biz.Event) (biz.ActivityEvent, bool) {
-	switch ev := e.(type) {
-	case *biz.SystemNoticeEvent:
-		if ev.NoticeType == "orchestration_status" {
-			return biz.ActivityEvent{}, false
-		}
-		return biz.ActivityEventFromSystemNotice(ev), true
-	default:
-		return biz.ActivityEvent{}, false
-	}
-}
-
-// orchestrationStatusHandler projects ActivityEvent → AgentNodeState and publishes WS status.
+// orchestrationStatusHandler projects system.notice → AgentNodeState and publishes WS status.
 type orchestrationStatusHandler struct {
 	cfg     OrchestrationProjectorConfig
 	store   *biz.OrchestrationStatusStore
@@ -87,12 +75,12 @@ type orchestrationStatusHandler struct {
 	mu      sync.Mutex
 }
 
-func (h *orchestrationStatusHandler) HandleRunEvent(ctx context.Context, aev biz.ActivityEvent) bool {
+func (h *orchestrationStatusHandler) HandleRunEvent(ctx context.Context, notice *biz.SystemNoticeEvent) bool {
 	if h == nil || h.store == nil {
 		return false
 	}
 	h.mu.Lock()
-	changed := h.store.ApplyActivityEvent(aev, h.cfg.Registry)
+	changed := h.store.ApplySystemNotice(notice, h.cfg.Registry)
 	h.mu.Unlock()
 	for _, st := range changed {
 		publishOrchestrationStatus(ctx, h.cfg, h.channel, st)

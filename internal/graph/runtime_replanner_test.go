@@ -19,7 +19,7 @@ import (
 // events (reconstructed as ActivityEvent for assertions).
 type recordingReplanBus struct {
 	mu        sync.Mutex
-	published []biz.ActivityEvent
+	published []*biz.SystemNoticeEvent
 }
 
 func (b *recordingReplanBus) Publish(_ context.Context, e biz.Event) {
@@ -29,7 +29,7 @@ func (b *recordingReplanBus) Publish(_ context.Context, e biz.Event) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.published = append(b.published, biz.ActivityEventFromSystemNotice(notice))
+	b.published = append(b.published, notice)
 }
 
 func (b *recordingReplanBus) Subscribe(_ biz.EventSubscribeOptions) (<-chan biz.Event, func()) {
@@ -37,10 +37,10 @@ func (b *recordingReplanBus) Subscribe(_ biz.EventSubscribeOptions) (<-chan biz.
 	return ch, func() { close(ch) }
 }
 
-func (b *recordingReplanBus) events() []biz.ActivityEvent {
+func (b *recordingReplanBus) events() []*biz.SystemNoticeEvent {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := make([]biz.ActivityEvent, len(b.published))
+	out := make([]*biz.SystemNoticeEvent, len(b.published))
 	copy(out, b.published)
 	return out
 }
@@ -297,33 +297,27 @@ func TestRuntimeReplanner_PublishesReplanEvent(t *testing.T) {
 		t.Fatalf("expected 1 published event, got %d", len(events))
 	}
 	ev := events[0]
-	if ev.Event != biz.ActivityEventUpdated {
-		t.Errorf("Event=%q want %q", ev.Event, biz.ActivityEventUpdated)
+	if ev.NoticeType != "replanned" {
+		t.Errorf("NoticeType=%q want %q", ev.NoticeType, "replanned")
 	}
-	if ev.Activity.Kind != biz.ActivityKindGraphStage {
-		t.Errorf("Kind=%q want %q", ev.Activity.Kind, biz.ActivityKindGraphStage)
+	if kind, _ := ev.Meta["activity_kind"].(string); kind != string(biz.ActivityKindGraphStage) {
+		t.Errorf("activity_kind=%q want %q", kind, biz.ActivityKindGraphStage)
 	}
-	if ev.Activity.Stage != "replanned" {
-		t.Errorf("Stage=%q want %q", ev.Activity.Stage, "replanned")
-	}
-	if ev.Domain != biz.ActivityDomainChat {
-		t.Errorf("Domain=%q want %q", ev.Domain, biz.ActivityDomainChat)
-	}
-	if ev.Activity.SessionID != exec.SessionID {
-		t.Errorf("SessionID=%q want %q", ev.Activity.SessionID, exec.SessionID)
+	if ev.SpiritSessionID() != exec.SessionID {
+		t.Errorf("SpiritSessionID=%q want %q", ev.SpiritSessionID(), exec.SessionID)
 	}
 	// Verify metadata carries replan details
-	if ev.Activity.Meta == nil {
+	if ev.Meta == nil {
 		t.Fatal("expected non-nil Meta")
 	}
-	if v, ok := ev.Activity.Meta["replan_type"].(string); !ok || v != string(ReplanRetry) {
-		t.Errorf("Meta[replan_type]=%v want %q", ev.Activity.Meta["replan_type"], ReplanRetry)
+	if v, ok := ev.Meta["replan_type"].(string); !ok || v != string(ReplanRetry) {
+		t.Errorf("Meta[replan_type]=%v want %q", ev.Meta["replan_type"], ReplanRetry)
 	}
-	if v, ok := ev.Activity.Meta["failed_node"].(string); !ok || v != "step1" {
-		t.Errorf("Meta[failed_node]=%v want %q", ev.Activity.Meta["failed_node"], "step1")
+	if v, ok := ev.Meta["failed_node"].(string); !ok || v != "step1" {
+		t.Errorf("Meta[failed_node]=%v want %q", ev.Meta["failed_node"], "step1")
 	}
-	if v, ok := ev.Activity.Meta["execution_id"].(string); !ok || v != exec.ID {
-		t.Errorf("Meta[execution_id]=%v want %q", ev.Activity.Meta["execution_id"], exec.ID)
+	if v, ok := ev.Meta["execution_id"].(string); !ok || v != exec.ID {
+		t.Errorf("Meta[execution_id]=%v want %q", ev.Meta["execution_id"], exec.ID)
 	}
 }
 

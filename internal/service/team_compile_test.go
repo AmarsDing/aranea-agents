@@ -97,6 +97,9 @@ func (r *compileTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string) (
 func (r *compileTeamRepo) ListTeamsByWorkspace(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (r *compileTeamRepo) CountTeamsByWorkspace(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
 
 func TestCompileTeamGraph_sequential(t *testing.T) {
 	repo := &compileTeamRepo{team: biz.Team{

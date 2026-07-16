@@ -29,12 +29,13 @@ type TeamService struct {
 	eventBus        biz.EventBus // Phase 3b-D Task 9: migrated from v1 ActivityEventBus to v2 EventBus
 	lg              loggateway.Logger
 	synthesis       *SpiritSynthesisService
-	activityRepo    biz.ActivityRepo
-	teamStageReader biz.TeamStageV2Reader // Phase 3b-D Task 6: v2 reader for ListSpiritTeams members
-	stepReader      biz.StepV2Reader      // Phase 3b-D Task 7: v2 step reader for CancelSessionRunSideEffects
-	teamRunV2       biz.TeamRunV2Repo    // optional: PauseTeamRun v2 TeamRun sync
-	memberSessionV2 biz.MemberSessionV2Repo // optional: PauseTeamRun v2 MemberSession sync
-	v2Seq           rt.EventPublisher    // optional: Sequencer for v2 entity events
+	activityRepo    biz.ActivityRepo // legacy read fallback for dead-letter hydrate
+	teamStageReader biz.TeamStageV2Reader
+	stepReader      biz.StepV2Reader
+	stepWriter      biz.StepV2Writer
+	teamRunV2       biz.TeamRunV2Repo
+	memberSessionV2 biz.MemberSessionV2Repo
+	v2Seq           rt.EventPublisher
 }
 
 func NewTeamService(
@@ -50,6 +51,7 @@ func NewTeamService(
 	activityRepo biz.ActivityRepo,
 	teamStageReader biz.TeamStageV2Reader,
 	stepReader biz.StepV2Reader,
+	stepWriter biz.StepV2Writer,
 	teamRunV2 biz.TeamRunV2Repo,
 	memberSessionV2 biz.MemberSessionV2Repo,
 	v2Seq rt.EventPublisher,
@@ -64,6 +66,7 @@ func NewTeamService(
 		activityRepo:    activityRepo,
 		teamStageReader: teamStageReader,
 		stepReader:      stepReader,
+		stepWriter:      stepWriter,
 		teamRunV2:       teamRunV2,
 		memberSessionV2: memberSessionV2,
 		v2Seq:           v2Seq,
@@ -290,17 +293,28 @@ func mapTeamErr(err error) error {
 	return err
 }
 
-func (s *TeamService) ListTeams(ctx context.Context, _ *v1.ListTeamsRequest) (*v1.ListTeamsResponse, error) {
+func (s *TeamService) ListTeams(ctx context.Context, req *v1.ListTeamsRequest) (*v1.ListTeamsResponse, error) {
 	// P2-B: 系统 caller（workspace_id="")看全部；租户 caller 看 shared + own。
 	callerWS := workspace.IDFromContext(ctx)
 	if workspace.IsSystem(ctx) {
 		callerWS = ""
 	}
+	if req.GetCountOnly() {
+		n, err := s.uc.CountByWorkspace(ctx, callerWS)
+		if err != nil {
+			return nil, err
+		}
+		return &v1.ListTeamsResponse{Items: []*v1.Team{}, Total: int32(n)}, nil
+	}
 	items, err := s.uc.ListByWorkspace(ctx, callerWS)
 	if err != nil {
 		return nil, err
 	}
-	out := &v1.ListTeamsResponse{Items: make([]*v1.Team, 0, len(items)), Total: int32(len(items))}
+	total := int32(len(items))
+	if n, cerr := s.uc.CountByWorkspace(ctx, callerWS); cerr == nil {
+		total = int32(n)
+	}
+	out := &v1.ListTeamsResponse{Items: make([]*v1.Team, 0, len(items)), Total: total}
 	for i := range items {
 		pb := toProtoTeam(items[i])
 		if active, aerr := s.uc.HasActiveRun(ctx, items[i].ID); aerr == nil {
@@ -446,7 +460,7 @@ func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRe
 		if entry, ok := s.runs.GetStatus(r.SessionID); ok && strings.TrimSpace(entry.RunID) != "" {
 			runID = entry.RunID
 		}
-		CancelSessionRunSideEffects(ctx, s.eventBus, s.stepReader, s.activityRepo, r.SessionID, runID, s.lg)
+		CancelSessionRunSideEffects(ctx, s.eventBus, s.stepReader, s.stepWriter, r.SessionID, runID, s.lg)
 	}
 	return toProtoTeamRun(r), nil
 }

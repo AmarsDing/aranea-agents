@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
@@ -11,9 +12,9 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// ConfirmActivity handles user approval/rejection of a tool-blocked confirm Activity.
-// It loads the Activity from DB, validates kind=confirm + status=tool_blocked,
-// updates the status, publishes an ActivityEvent (completed/cancelled), and resumes the
+// ConfirmActivity handles user approval/rejection of a tool-blocked confirm Step.
+// It loads from steps_v2, validates kind=confirm + status=tool_blocked,
+// updates status via StepV2Writer, publishes system.notice, and resumes the
 // awaiting run via the await channel.
 func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmActivityRequest) (*chatv1.ConfirmActivityResponse, error) {
 	if s == nil || s.orch == nil {
@@ -26,52 +27,31 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id and activity_id are required")
 	}
 
-	// Phase 3b-D Task 5: load via v2 StepV2Reader (reads from steps_v2 table)
-	// and convert back to v1 Activity shape. The legacy activityReader is
-	// retained for fallback; if StepReader is nil (v1-only deployments) we
-	// fall back to the v1 reader so existing tests/CLI continue to work.
 	stepReader := s.orch.stepReader()
-	var activity biz.Activity
-	if stepReader != nil {
-		step, err := stepReader.GetStep(ctx, activityID)
-		if err != nil {
-			return nil, err
-		}
-		activity = biz.StepToActivity(step)
-	} else {
-		reader := s.orch.activityReader()
-		if reader == nil {
-			return nil, apierror.Internal(apierror.DomainChat, "activity reader unavailable")
-		}
-		var err error
-		activity, err = reader.GetActivity(ctx, activityID)
-		if err != nil {
-			return nil, err
-		}
+	stepWriter := s.orch.stepWriter()
+	if stepReader == nil || stepWriter == nil {
+		return nil, apierror.Internal(apierror.DomainChat, "step store unavailable")
+	}
+	step, err := stepReader.GetStep(ctx, activityID)
+	if err != nil {
+		return nil, err
 	}
 
-	// Validate kind
-	if activity.Kind != biz.ActivityKindConfirm {
-		return nil, apierror.BadRequest(apierror.DomainChat, "expected confirm kind, got %s", activity.Kind)
+	if step.Kind != biz.StepKindConfirm {
+		return nil, apierror.BadRequest(apierror.DomainChat, "expected confirm kind, got %s", step.Kind)
 	}
-
-	// Validate status
-	if activity.Status != biz.ActivityStatusToolBlocked {
-		return nil, apierror.BadRequest(apierror.DomainChat, "activity is not in tool_blocked state (current: %s)", activity.Status)
+	if step.Status != biz.StepStatusToolBlocked {
+		return nil, apierror.BadRequest(apierror.DomainChat, "activity is not in tool_blocked state (current: %s)", step.Status)
 	}
-
-	// Validate session ownership
-	if activity.SessionID != sessionID {
+	if step.SessionID != sessionID {
 		return nil, apierror.BadRequest(apierror.DomainChat, "activity does not belong to session %s", sessionID)
 	}
 
-	// Validate user identity - reject anonymous (default_user) confirm requests
 	userID := ctxuser.FromContext(ctx)
 	if userID == ctxuser.DefaultUserID {
 		return nil, apierror.Unauthorized(apierror.DomainChat, "user authentication required for activity confirmation")
 	}
 
-	// Validate session ownership - only the session owner can confirm/reject activities
 	sessions := s.orch.td().Sessions
 	if sessions != nil {
 		session, err := sessions.Get(ctx, sessionID)
@@ -91,32 +71,23 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 		return nil, apierror.Internal(apierror.DomainChat, "session store unavailable, cannot verify ownership")
 	}
 
-	// Update status via state machine (AS-FSM-01).
-	// ToolBlocked → Completed (approved) or Cancelled (rejected).
-	// Using TransitionActivityStatus enforces legal transitions and prevents
-	// illegal direct assignments that bypass the state machine.
 	transitionEvent := biz.ActivityTransitionDone
 	if !req.GetApproved() {
 		transitionEvent = biz.ActivityTransitionCancel
 	}
-	newStatus, err := biz.TransitionActivityStatus(activity.Status, transitionEvent)
+	newStatus, err := biz.TransitionActivityStatus(biz.ActivityStatus(step.Status), transitionEvent)
 	if err != nil {
 		return nil, apierror.BadRequest(apierror.DomainChat,
 			"illegal activity transition from %s via %s: %v",
-			activity.Status, transitionEvent, err)
+			step.Status, transitionEvent, err)
 	}
-	activity.Status = newStatus
-
-	// Persist the status update
-	writer := s.orch.activityWriter()
-	if writer == nil {
-		return nil, apierror.Internal(apierror.DomainChat, "activity writer unavailable")
-	}
-	if _, err := writer.UpdateActivity(ctx, activity); err != nil {
+	step.Status = biz.StepStatus(newStatus)
+	now := time.Now().UTC()
+	step.CompletedAt = &now
+	if _, err := stepWriter.UpdateStep(ctx, step); err != nil {
 		return nil, err
 	}
 
-	// Publish confirm outcome as system.notice for WS subscribers.
 	if bus := s.orch.td().Pipeline.EventBus; bus != nil {
 		decision := "approved"
 		noticeType := "tool_confirm_approved"
@@ -125,26 +96,19 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 			noticeType = "tool_confirm_rejected"
 		}
 		meta := map[string]any{
-			"activity_id": activity.ID,
+			"activity_id": step.ID,
+			"step_id":     step.ID,
 			"decision":    decision,
-			"status":      string(activity.Status),
-			"kind":        string(activity.Kind),
+			"status":      string(step.Status),
+			"kind":        string(step.Kind),
 		}
-		if activity.Meta != nil {
-			for k, v := range activity.Meta {
-				meta[k] = v
-			}
-		}
-		bus.Publish(ctx, biz.NewSystemNoticeEvent(activity.SessionID, noticeType, "", meta))
+		bus.Publish(ctx, biz.NewSystemNoticeEvent(step.SessionID, noticeType, "", meta))
 	}
 
-	// Resume the awaiting run by sending the approval/rejection through the await channel.
-	// The tool_confirm gate in the runtime is waiting for this signal.
 	replyMsg := "approved"
 	if !req.GetApproved() {
 		replyMsg = "rejected"
 	}
-	// Resolve the active RunID for this session to avoid signal misdelivery (B-02).
 	runID := ""
 	if _, requestID, active := s.orch.ActiveRunner(sessionID); active {
 		runID = requestID
@@ -154,8 +118,6 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 		Reply: replyMsg,
 	})
 	if !sent {
-		// Channel full or closed - the runtime may not have received the signal.
-		// Return accepted=false so the frontend knows the confirm didn't reach the runner.
 		return &chatv1.ConfirmActivityResponse{
 			Accepted: false,
 			Status:   string(newStatus),

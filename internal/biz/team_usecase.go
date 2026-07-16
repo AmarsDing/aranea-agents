@@ -21,6 +21,10 @@ type TeamReader interface {
 	// (see shared + own).
 	// Stability:stable
 	ListTeamsByWorkspace(ctx context.Context, workspaceID string) ([]Team, error)
+	// CountTeamsByWorkspace returns the count of teams visible to the workspace
+	// (same visibility rules as ListTeamsByWorkspace).
+	// Stability:stable
+	CountTeamsByWorkspace(ctx context.Context, workspaceID string) (int, error)
 }
 
 // Stability:stable

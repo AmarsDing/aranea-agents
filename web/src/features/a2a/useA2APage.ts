@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 import type { A2AAgentCard, A2AInvokeResult, RegisterRemoteAgentInput, DiscoverRemoteInput } from './types';
 import { useA2AStore } from '../../stores/a2a';
+import { A2A_AUDIT_PAGE_SIZE_DEFAULT } from '../constants/queryLimits';
 
 import {
   A2A_AUDIT_TABLE_COLUMNS,
@@ -25,6 +26,8 @@ export function useA2APage() {
   } = storeToRefs(a2aStore);
 
   const tab = ref('discover');
+  const auditPage = ref(1);
+  const auditPageSize = ref(A2A_AUDIT_PAGE_SIZE_DEFAULT);
   const auditLoading = ref(false);
   const invokeLoading = ref(false);
   const remoteLoading = ref(false);
@@ -88,12 +91,40 @@ export function useA2APage() {
     auditLoading.value = true;
     error.value = '';
     try {
-      await a2aStore.loadAudit({ limit: 100 });
+      const limit = auditPageSize.value;
+      let page = auditPage.value;
+      const knownMax = Math.max(1, Math.ceil(Math.max(0, auditTotal.value) / limit) || 1);
+      if (auditTotal.value > 0 && page > knownMax) {
+        page = knownMax;
+        auditPage.value = page;
+      }
+      await a2aStore.loadAudit({ limit, offset: (page - 1) * limit });
+      const maxPage = Math.max(1, Math.ceil(Math.max(0, auditTotal.value) / limit));
+      if (auditPage.value > maxPage) {
+        auditPage.value = maxPage;
+        await a2aStore.loadAudit({ limit, offset: (auditPage.value - 1) * limit });
+      }
     } catch (e) {
       error.value = e instanceof Error ? e.message : '加载审计失败';
     } finally {
       auditLoading.value = false;
     }
+  }
+
+  function onAuditPage(page: number) {
+    if (page === auditPage.value) return;
+    auditPage.value = page;
+    void loadAudit();
+  }
+
+  function onAuditPageSize(pageSize: number) {
+    if (pageSize === auditPageSize.value && auditPage.value === 1) {
+      void loadAudit();
+      return;
+    }
+    auditPageSize.value = pageSize;
+    auditPage.value = 1;
+    void loadAudit();
   }
 
   async function submitInvoke() {
@@ -248,6 +279,10 @@ export function useA2APage() {
       auditLoading,
       auditColumns,
       auditStatusColor,
+      auditPage,
+      auditPageSize,
+      onAuditPage,
+      onAuditPageSize,
       loadAudit,
     }),
 

@@ -391,19 +391,9 @@ export function useTeamsPage() {
     router.push({ name: 'team-run-observatory', params: { teamId: store.selectedTeam.id, runId: runID } });
   }
 
-  // ── Reorder (local-only until backend API) ──
-  // TECH-DEBT: reorder is local-only; add backend persistence API — issue #TBD
-  function reorderTeams(ids: string[]) {
-    const idIndex = new Map(ids.map((id, i) => [id, i]));
-    const reordered = [...store.teams].sort((a, b) => {
-      const ai = idIndex.get(a.id);
-      const bi = idIndex.get(b.id);
-      if (ai !== undefined && bi !== undefined) return ai - bi;
-      if (ai !== undefined) return -1;
-      if (bi !== undefined) return 1;
-      return 0;
-    });
-    store.teams.splice(0, store.teams.length, ...reordered);
+  // Reorder UI is disabled (no Team.sort_order / ReorderTeams RPC). Keep no-op for call-site stability.
+  function reorderTeams(_ids: string[]) {
+    /* intentionally no-op */
   }
 
   return {

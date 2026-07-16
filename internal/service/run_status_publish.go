@@ -113,7 +113,7 @@ func PublishBackgroundJobRefresh(bus biz.EventBus, sessionID, jobID, status stri
 }
 
 // CancelSessionRunSideEffects publishes cancelled run_status and marks running activity cards cancelled.
-func CancelSessionRunSideEffects(ctx context.Context, bus biz.EventBus, stepReader biz.StepV2Reader, writer biz.ActivityWriter, sessionID, runID string, lg loggateway.Logger) {
+func CancelSessionRunSideEffects(ctx context.Context, bus biz.EventBus, stepReader biz.StepV2Reader, writer biz.StepV2Writer, sessionID, runID string, lg loggateway.Logger) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return

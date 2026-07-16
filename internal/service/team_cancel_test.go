@@ -44,6 +44,9 @@ func (r *cancelTeamRunRepo) ListTeamsByDepartmentID(_ context.Context, _ string)
 func (r *cancelTeamRunRepo) ListTeamsByWorkspace(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (r *cancelTeamRunRepo) CountTeamsByWorkspace(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
 
 // TeamWriter stubs
 func (r *cancelTeamRunRepo) CreateTeam(_ context.Context, t biz.Team) (biz.Team, error) {

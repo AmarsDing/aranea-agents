@@ -1,10 +1,10 @@
 <template>
   <q-page class="app-standard-page">
     <q-banner rounded class="bg-info text-white q-mb-md">
-      生态市场为<strong>技术预览</strong>：安装与发布流程尚未纳入核心 SLA，数据可能重置。
+      生态商城为<strong>技术预览</strong>：第三方包安装/发布尚未纳入核心 SLA，数据可能重置。与系统设置中的「行业预设/附带生态」不同——后者用于一键加载内置行业模板。
     </q-banner>
     <div class="row items-center q-mb-md">
-      <div class="text-h5 text-weight-bold">生态市场</div>
+      <div class="text-h5 text-weight-bold">生态商城</div>
       <q-space />
       <q-btn color="primary" unelevated rounded icon="add" label="发布" @click="publishOpen = true" />
       <q-btn flat rounded icon="refresh" label="刷新" :loading="loading" class="q-ml-sm" @click="load" />

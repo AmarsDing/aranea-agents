@@ -361,7 +361,10 @@ export type ResumeTeamRunExecutionResponse = {
   status: string | undefined;
 };
 
-export type ListTeamsRequest = {};
+export type ListTeamsRequest = {
+  /** When true, server returns total only (items empty). */
+  countOnly?: boolean;
+};
 
 export type ListTeamsResponse = {
   items: Team[] | undefined;
@@ -723,6 +726,9 @@ export function createTeamServiceClient(handler: RequestHandler): TeamService {
       const path = `v1/teams`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
+      if (request?.countOnly) {
+        queryParams.push(`count_only=true`);
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join('&')}`;

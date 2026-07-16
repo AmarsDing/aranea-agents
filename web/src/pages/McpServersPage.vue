@@ -3,7 +3,7 @@
     <AppPageHero
       kicker="Model Context Protocol"
       title="MCP 服务器"
-      subtitle="管理 Model Context Protocol 服务器连接、传输配置与健康状态。"
+      subtitle="管理 Model Context Protocol 服务器连接、传输配置与健康状态。列表为全量加载，下方分页为前端切片。"
     >
       <template #actions>
         <q-btn color="primary" rounded unelevated icon="add" label="添加服务器" @click="openCreate" />

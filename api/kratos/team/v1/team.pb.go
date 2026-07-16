@@ -2631,7 +2631,9 @@ func (x *ResumeTeamRunExecutionResponse) GetStatus() string {
 }
 
 type ListTeamsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// When true, return total only (items empty).
+	CountOnly     bool `protobuf:"varint,1,opt,name=count_only,json=countOnly,proto3" json:"count_only,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2664,6 +2666,13 @@ func (x *ListTeamsRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListTeamsRequest.ProtoReflect.Descriptor instead.
 func (*ListTeamsRequest) Descriptor() ([]byte, []int) {
 	return file_kratos_team_v1_team_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *ListTeamsRequest) GetCountOnly() bool {
+	if x != nil {
+		return x.CountOnly
+	}
+	return false
 }
 
 type ListTeamsResponse struct {

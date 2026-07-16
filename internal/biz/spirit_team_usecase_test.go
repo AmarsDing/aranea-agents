@@ -91,6 +91,9 @@ func (m *memSpiritTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string)
 func (m *memSpiritTeamRepo) ListTeamsByWorkspace(_ context.Context, _ string) ([]Team, error) {
 	return nil, nil
 }
+func (m *memSpiritTeamRepo) CountTeamsByWorkspace(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
 func (m *memSpiritTeamRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]TeamRunRecord, error) {
 	return nil, nil
 }

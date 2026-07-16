@@ -119,15 +119,13 @@ type ChatChannelDeps struct {
 // admission gate, admission usecase, and turn timeout. Consolidating these into a
 // single struct reduces ChatOrchestrator's field count (AS-COG-01).
 type chatTurnCoreDeps struct {
-	TD               rt.TurnDeps
-	RT               RuntimeTooling
-	AdmitGate        *turn.AdmissionGate
-	Admission        *biz.TurnAdmissionUsecase
-	TurnTimeout      time.Duration
-	ActivityWriter   biz.ActivityWriter   // AF phase: Activity persistence for direct create/update
-	ActivityUpserter biz.ActivityUpserter // AF phase: Activity persistence for ActivityProjector
-	ActivityReader   biz.ActivityReader   // AF phase: Activity lookup for Confirm API (legacy v1; retained until Task 15)
-	StepReader       biz.StepV2Reader     // Phase 3b-D Task 5: v2 step reader for ConfirmActivity
+	TD          rt.TurnDeps
+	RT          RuntimeTooling
+	AdmitGate   *turn.AdmissionGate
+	Admission   *biz.TurnAdmissionUsecase
+	TurnTimeout time.Duration
+	StepReader  biz.StepV2Reader
+	StepWriter  biz.StepV2Writer
 }
 
 // chatTurnLifecycle combines session state transition, turn metrics recording,
@@ -217,10 +215,8 @@ func (o *ChatOrchestrator) rt() RuntimeTooling                     { return o.co
 func (o *ChatOrchestrator) admitGate() *turn.AdmissionGate         { return o.core.AdmitGate }
 func (o *ChatOrchestrator) admission() *biz.TurnAdmissionUsecase   { return o.core.Admission }
 func (o *ChatOrchestrator) turnTimeout() time.Duration             { return o.core.TurnTimeout }
-func (o *ChatOrchestrator) activityWriter() biz.ActivityWriter     { return o.core.ActivityWriter }
-func (o *ChatOrchestrator) activityUpserter() biz.ActivityUpserter { return o.core.ActivityUpserter }
-func (o *ChatOrchestrator) activityReader() biz.ActivityReader     { return o.core.ActivityReader }
-func (o *ChatOrchestrator) stepReader() biz.StepV2Reader           { return o.core.StepReader }
+func (o *ChatOrchestrator) stepReader() biz.StepV2Reader { return o.core.StepReader }
+func (o *ChatOrchestrator) stepWriter() biz.StepV2Writer { return o.core.StepWriter }
 
 func (o *ChatOrchestrator) team() TeamOrchestrationDeps   { return o.teamExecDeps.Team }
 func (o *ChatOrchestrator) chJobs() ChannelTurnJobDeps    { return o.channelDeps.ChJobs }
@@ -292,15 +288,13 @@ func (o *ChatOrchestrator) sessionRunLC() sessionRunLifecycle      { return o.ru
 // run registry, runtime tooling, admission control, and turn timeout.
 type ChatTurnDeps struct {
 	rt.TurnDeps
-	Runs             *rt.RunRegistry
-	PendingQueue     *rt.PendingMessageQueue
-	RT               RuntimeTooling
-	TurnTimeout      time.Duration
-	Admission        *biz.TurnAdmissionUsecase
-	ActivityWriter   biz.ActivityWriter   // AF phase: Activity persistence for direct create/update
-	ActivityUpserter biz.ActivityUpserter // AF phase: Activity persistence for ActivityProjector
-	ActivityReader   biz.ActivityReader   // AF phase: Activity lookup for Confirm API (legacy v1; retained until Task 15)
-	StepReader       biz.StepV2Reader     // Phase 3b-D Task 5: v2 step reader for ConfirmActivity
+	Runs         *rt.RunRegistry
+	PendingQueue *rt.PendingMessageQueue
+	RT           RuntimeTooling
+	TurnTimeout  time.Duration
+	Admission    *biz.TurnAdmissionUsecase
+	StepReader   biz.StepV2Reader
+	StepWriter   biz.StepV2Writer
 }
 
 // ChatUsageDeps groups usage tracking, monitoring, artifact, and analytics dependencies.
@@ -443,14 +437,12 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 
 	o := &ChatOrchestrator{
 		core: chatTurnCoreDeps{
-			TD:               deps.Turn.TurnDeps,
-			RT:               deps.Turn.RT,
-			Admission:        deps.Turn.Admission,
-			TurnTimeout:      turnTimeout,
-			ActivityWriter:   deps.Turn.ActivityWriter,
-			ActivityUpserter: deps.Turn.ActivityUpserter,
-			ActivityReader:   deps.Turn.ActivityReader,
-			StepReader:       deps.Turn.StepReader,
+			TD:          deps.Turn.TurnDeps,
+			RT:          deps.Turn.RT,
+			Admission:   deps.Turn.Admission,
+			TurnTimeout: turnTimeout,
+			StepReader:  deps.Turn.StepReader,
+			StepWriter:  deps.Turn.StepWriter,
 		},
 		channelDeps:  deps.Channel,
 		usageDeps:    deps.Usage,
@@ -677,7 +669,7 @@ func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string
 			loggateway.Err(err))
 	}
 	o.transitionSessionStatus(persistCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonUserCancelled)
-	if _, err := chatactivity.CancelRunningActivityMessages(ctx, o.stepReader(), o.activityWriter(), sessionID, o.lg()); err != nil {
+	if _, err := chatactivity.CancelRunningActivityMessages(ctx, o.stepReader(), o.stepWriter(), sessionID, o.lg()); err != nil {
 		o.lg().Warn("取消执行卡片查询失败",
 			loggateway.StepID("chat.activity.cancel"),
 			loggateway.Str("session_id", sessionID),

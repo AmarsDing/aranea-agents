@@ -38,6 +38,9 @@ func (r *summaryTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string) (
 func (r *summaryTeamRepo) ListTeamsByWorkspace(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (r *summaryTeamRepo) CountTeamsByWorkspace(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
 
 // TeamWriter stubs
 func (r *summaryTeamRepo) CreateTeam(_ context.Context, t biz.Team) (biz.Team, error) { return t, nil }

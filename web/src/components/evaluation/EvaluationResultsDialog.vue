@@ -6,7 +6,7 @@
         <AppRegistryTable
           :shell="false"
           :data-shell="true"
-          :rows="pagedRows"
+          :rows="rows"
           :columns="columns"
           row-key="id"
           :loading="loading"
@@ -80,12 +80,14 @@
           </template>
         </AppRegistryTable>
         <AppRegistryPagination
-          v-model:page="page"
-          v-model:page-size="pageSize"
+          :page="page"
+          :page-size="pageSize"
           :page-max="pageMax"
-          :total="rows.length"
+          :total="total"
           :loading="loading"
           label="条用例"
+          @update:page="emit('page-change', $event)"
+          @update:page-size="emit('page-size-change', $event)"
         />
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
@@ -95,7 +97,8 @@
           color="primary"
           icon="download"
           label="导出 CSV"
-          :disable="!rows.length"
+          :disable="!total"
+          :loading="exporting"
           @click="onExportCsv"
         />
         <q-btn
@@ -104,7 +107,8 @@
           color="primary"
           icon="code"
           label="导出 JSON"
-          :disable="!rows.length"
+          :disable="!total"
+          :loading="exporting"
           @click="onExportJson"
         />
         <q-btn flat label="关闭" @click="$emit('update:open', false)" />
@@ -114,10 +118,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
+import { getRunResults } from '../../features/evaluation/api';
 import { exportEvalRunCsv, exportEvalRunJson } from '../../features/evaluation/exportRunResults';
 import type { EvalCaseResult, EvalRun } from '../../features/evaluation/types';
 import type { RegistryTableColumn } from '../../features/ui/registryTableColumns';
@@ -127,48 +132,52 @@ const props = defineProps<{
   runId: string;
   run?: EvalRun | null;
   rows: EvalCaseResult[];
+  total: number;
   loading: boolean;
   savingId?: string;
   columns: RegistryTableColumn<EvalCaseResult>[];
+  page: number;
+  pageSize: number;
 }>();
-
-const page = ref(1);
-const pageSize = ref(10);
-const pageMax = computed(() => Math.max(1, Math.ceil(props.rows.length / pageSize.value)));
-const pagedRows = computed(() => {
-  const start = (page.value - 1) * pageSize.value;
-  return props.rows.slice(start, start + pageSize.value);
-});
-
-watch(
-  () => props.runId,
-  () => {
-    page.value = 1;
-  },
-);
-
-watch(
-  () => props.rows.length,
-  () => {
-    if (page.value > pageMax.value) page.value = pageMax.value;
-  },
-);
-
-function onExportCsv(): void {
-  if (!props.run) return;
-  exportEvalRunCsv(props.run, props.rows);
-}
-
-function onExportJson(): void {
-  if (!props.run) return;
-  exportEvalRunJson(props.run, props.rows);
-}
 
 const emit = defineEmits<{
   'update:open': [value: boolean];
   annotate: [row: EvalCaseResult];
   'update-row': [row: EvalCaseResult];
+  'page-change': [page: number];
+  'page-size-change': [pageSize: number];
 }>();
+
+const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, props.total) / props.pageSize)));
+const exporting = ref(false);
+
+async function loadAllForExport(): Promise<EvalCaseResult[]> {
+  if (!props.run) return [];
+  const res = await getRunResults(props.run.id, { limit: 5000, offset: 0 });
+  return res.items;
+}
+
+async function onExportCsv(): Promise<void> {
+  if (!props.run) return;
+  exporting.value = true;
+  try {
+    const items = await loadAllForExport();
+    exportEvalRunCsv(props.run, items);
+  } finally {
+    exporting.value = false;
+  }
+}
+
+async function onExportJson(): Promise<void> {
+  if (!props.run) return;
+  exporting.value = true;
+  try {
+    const items = await loadAllForExport();
+    exportEvalRunJson(props.run, items);
+  } finally {
+    exporting.value = false;
+  }
+}
 
 function passValue(row: EvalCaseResult) {
   if (row.human_pass === true) return 'pass';

@@ -67,12 +67,12 @@ flowchart LR
 | All-models 表 | 只吃 `range`+`provider`，忽略 filter 的 model/status | 字幕说明筛选适用范围 | **已修** |
 | Sparkline「今日/近期」 | 取 filtered trends 末 24 点 | 按 hour/day 粒度改标签 | **已修** |
 | Provider「连通性」 | `llm-provider-models.status` 目录态 | 文案改为目录 status、非实时探测 | **已修** |
-| Team 数量 O-9 | `listTeams()` 全量取 length | 后端 `total` / CountTeams | 待后端 |
-| Agent 数量 O-8 | 直调 API 绕过 Store | Store `countOnly` 模式 | 待后端/Store |
+| Team 数量 O-9 | `listTeams()` 全量取 length | `ListTeams?count_only=true` + SQL `CountTeamsByWorkspace` | **已修** |
+| Agent 数量 O-8 | 直调 API 绕过 Store | Overview 已用 `listAgentsPaged(limit=1)` 取服务端 `total` | **已修**（语义正确；无需 Store 绕行） |
 | Fallback 列表 | 从 anomalies 客户端再筛 | 改名「异常重试事件」并说明来源 | **已修** |
 | 分类数 | `organization` 树根节点数 | 标明「顶级组织」 | **已修** |
 
-后端聚合本身（today 实时 / 历史 daily rollup、`billableOnly`）设计合理；前端语义边界已补齐（O-8/O-9 仍待 count API）。
+后端聚合本身（today 实时 / 历史 daily rollup、`billableOnly`）设计合理；前端语义边界与 O-8/O-9 count 路径已补齐。
 
 ### 3.2 其他页 KPI 误导
 
@@ -87,17 +87,18 @@ flowchart LR
 
 ## 4. P2 — 架构 / 产品设计问题
 
-| 主题 | 涉及页 | 建议 |
-|------|--------|------|
-| 可观测壳页面 | `/observability` 4/5 tab 仅为跳转 | 收成「任务计划」单页，或嵌入 monitor 组件；避免侧栏占位 |
-| 双仪表盘 | Overview ↔ Monitor（runner metrics 重复） | 保留 Overview 快捷条即可；Monitor 为权威运行时面（现状方向对） |
-| 双 embedder 配置 | `/knowledge` 与 `/settings` | 单一写入入口，另一处只读链过去 |
-| Taxonomy 树混用 | Teams 用 `taxonomy`，Agents/Org 用 `organization` | 统一组织树，或明确 Team.industry 绑定哪棵树 |
-| 本地排序不落库 | Agents、Teams | 对齐 Graphs 的 `Reorder*` RPC，或去掉拖拽 |
-| 假分页 / 硬上限 | Usage events 200、Channels/MCP/Hooks/Webhooks/Models 全量、Eval runs 50、A2A audit 100 | 有 total 的改服务端分页；否则 UI 标明「最多 N 条」 |
-| Chat 过重 | `useChatWorkspace` + 多 store | 按发送/活动/侧栏拆边界；修复 pause 用 sessionId vs agentId 不一致 |
-| 商城 vs 预设 | `/shop` vs Settings catalog | 文案区分「生态商城」与「行业预设」 |
-| 未完成入口 | Agents「迁移」即将推出 | 降级为次要或隐藏，避免假 CTA |
+| 主题 | 涉及页 | 建议 | 状态 |
+|------|--------|------|------|
+| 可观测壳页面 | `/observability` 4/5 tab 仅为跳转 | 收成「任务计划」单页 + 快捷跳转 | **已修**（假 Tab 移除） |
+| 双仪表盘 | Overview ↔ Monitor（runner metrics 重复） | 保留 Overview 快捷条即可；Monitor 为权威运行时面（现状方向对） | 接受现状 |
+| 双 embedder 配置 | `/knowledge` 与 `/settings` | Settings 热加载 + Knowledge 标明同一写入源 | **已修**（后端热加载 + FE 说明） |
+| Taxonomy 树混用 | Teams 用 `taxonomy`，Agents/Org 用 `organization` | Teams 改为 `organization` 树（department_id） | **已修** |
+| 本地排序不落库 | Agents、Teams | 无 sort_order 字段：禁用拖拽 | **已修**（禁用） |
+| 假分页 / 硬上限 | Usage events 200、Channels/MCP/Hooks/Webhooks/Models 全量、Eval runs、A2A audit | A2A/Eval 接服务端分页；登记册标明全量切片；Usage 标明上限 | **部分**（A2A/Eval **已修**；登记册文案 **已修**；服务端分页仍待） |
+| Chat 过重 | `useChatWorkspace` + 多 store | 按发送/活动/侧栏拆边界；修复 pause sessionId | **部分**（pause sessionId **已修**；拆分仍属中期） |
+| 商城 vs 预设 | `/shop` vs Settings catalog | 文案区分「生态商城」与「行业预设」 | **已修** |
+| 未完成入口 | Agents「迁移」即将推出 | 隐藏假 CTA | **已修** |
+| 记忆冲突 API | Memory 中心 | 接线 `ListConflictingFacts` | **已修** |
 | i18n 不均 | MCP/部分 Tools vs Channels/Hooks | 逐步统一 `t()` |
 
 ---
@@ -113,11 +114,11 @@ flowchart LR
 | 项 | 内容 |
 |----|------|
 | **A UI** | CommandCenterHero、QuickActions、StatusPanels、Filter、UsageMetricCards、Trend/Pie/Rankings、AllModelsBreakdown、RunnerMetrics、Inefficient/Anomaly/Fallback |
-| **B 路径** | `useOverviewPage` → `useUsageStore` + `usePlatformStore` + `useMonitorStore` + 直调 `listAgentsPaged` / `listTeams` |
+| **B 路径** | `useOverviewPage` → `useUsageStore` + `usePlatformStore` + `useMonitorStore` + 直调 `listAgentsPaged(limit=1)` / `countTeams()` |
 | **C 后端** | `UsageService.GetUsageOverview` / `ListUsageTrends` / `ListAllModelsBreakdown`；`MonitorService.GetRunnerMetrics`；`AgentService.ListAgents`；`TeamService.ListTeams`；`LlmProviderModelService`；`OrganizationService` tree |
 | **D 正确性** | 见 §3.1；用量聚合 billable 过滤合理；Hero/饼图/表/sparkline 语义易误导 |
 | **E 架构** | 多源并行无统一 loading/error；非单一 Dashboard RPC（可接受，但需文案边界清晰） |
-| **F 债** | TECH-DEBT(O-8/O-9)；OPT-1～4（Uptime/WS/死代码等，见 `62-overview-command-center.development.md`） |
+| **F 债** | O-8/O-9 已修；OPT-1～4（Uptime/WS/死代码等，见 `62-overview-command-center.development.md`） |
 
 #### 5.1.2 `/usage/events` — UsageEventsPage
 
@@ -159,9 +160,9 @@ flowchart LR
 | **A UI** | Agent 选择、KPI 卡、6 Tabs（总览/知识/Cascade/会话/进化/设置） |
 | **B 路径** | `useMemoryCenterPage` → memory + agents catalog + session stores |
 | **C 后端** | `MemoryService` 多 RPC；会话经 `SearchSessions`；设计中的 `GetMemoryOverview` **未落地** |
-| **D 正确性** | KPI/冲突文案已标明采样范围（P1 已修）；全量冲突列表仍未接 ListConflictingFacts |
+| **D 正确性** | KPI 标明采样范围；冲突 KPI 已接 `ListConflictingFacts.total`（无全量冲突列表 Tab） |
 | **E 架构** | Dashboard-of-dashboards；单 composable 过重 |
-| **F 债** | 冲突占位文案未接 API |
+| **F 债** | 可选：冲突列表 Tab + 服务端分页 |
 
 ---
 
@@ -171,10 +172,10 @@ flowchart LR
 
 | 项 | 内容 |
 |----|------|
-| **A UI** | Hero、筛选、网格/表、分页、创建/删除 Dialog；迁移入口 |
+| **A UI** | Hero、筛选、网格/表、分页、创建/删除 Dialog |
 | **B 路径** | `useAgentsPage` → `useAgentsPageStore` |
 | **C 后端** | `AgentService` CRUD/Favorite/Templates；组织树 |
-| **D 正确性** | 拖拽排序仅内存；迁移 Dialog「即将推出」假 CTA |
+| **D 正确性** | 拖拽已禁用（无 sort_order）；迁移假 CTA 已隐藏 |
 | **E 架构** | Page/Composable/Store 分离良好 |
 | **F 债** | 迁移未实装 |
 
@@ -336,7 +337,7 @@ flowchart LR
 | **A UI** | Discover / Gateway / Remote / Audit / Invoke 五 Tab |
 | **B 路径** | `useA2APage` → a2a store |
 | **C 后端** | `A2AService` |
-| **D 正确性** | 共享 error 跨 Tab；audit limit 100 无分页；runtime config 失败静默 |
+| **D 正确性** | 共享 error 跨 Tab；audit 已接 `limit/offset/total` 服务端分页；runtime config 失败静默 |
 | **E 架构** | 管理调试面完整；mount 急切加载偏重 |
 | **F 债** | 无 |
 
@@ -373,8 +374,8 @@ flowchart LR
 | **A UI** | Dataset 列表、Runs、Analytics、结果/标注 Dialog |
 | **B 路径** | `useEvaluationPage` → evaluation store |
 | **C 后端** | `EvaluationService`（含 trend/compare） |
-| **D 正确性** | Runs 加载上限 50 + 客户端分页；无自动轮询长任务 |
-| **E 架构** | Analytics 专用 RPC 正确 |
+| **D 正确性** | Runs / case results 已接 `limit/offset/total` 服务端分页；无自动轮询长任务 |
+| **E 架构** | Analytics 专用 RPC 正确；对比面板仅见当前页 runs |
 | **F 债** | Service IDOR 日志 TECH-DEBT(P2-B) |
 
 ---
@@ -385,12 +386,12 @@ flowchart LR
 
 | 项 | 内容 |
 |----|------|
-| **A UI** | Plans Tab（真）；Team/Graph/Metrics/FlowLogs 为跳转卡 |
+| **A UI** | 任务计划主区 + 快捷跳转（Team/Graph/Monitor） |
 | **B 路径** | `useObservabilityDashboard` → Chat `ListPlans` / `GetPlan` |
 | **C 后端** | Chat task-plan RPCs |
-| **D 正确性** | 需手填 sessionId；易被误认为完整可观测仪表盘 |
-| **E 架构** | **壳页面**；与 Monitor 职责重叠且未嵌入 |
-| **F 债** | 应收成单页或实装嵌入 |
+| **D 正确性** | 需手填 sessionId；不再用假 Tab 伪装完整仪表盘 |
+| **E 架构** | 计划查询页 + 外链；运行时权威面仍在 Monitor |
+| **F 债** | 可选嵌入 Monitor 组件 |
 
 #### 5.6.2 `/cron` — CronTasksPage
 
@@ -499,7 +500,7 @@ flowchart LR
 | | Skills 系 | 混合 REST；进化合并分页 P0 |
 | | Plugin/Hook/Webhook/A2A | 登记册合理；局部债 |
 | Knowledge/Ops | 知识/制品/评估 | 可用；依赖与上限 |
-| | 可观测 | **壳页面** |
+| | 可观测 | 计划查询 + 跳转（已瘦身） |
 | | Cron/监控/设置 | 清晰；监控为权威运维面 |
 | | 商城 | 技术预览 |
 
@@ -511,8 +512,10 @@ flowchart LR
 |------|------|------------|
 | 已交付 | 本评审报告 + 交叉参考 Overview 映射补丁 | 完成 |
 | P0 修复 | Org Reorder → Usage Purge → Graphs 加载更多 → Evolution 单类型分页 → Tools 批量安全 | **已完成**（2026-07-16） |
-| P1 修复 | 概览/会话/记忆文案与采样语义；Chat Spirit Token 作用域；Skills 空态 | **已完成**（2026-07-16）；O-8/O-9 仍待 count API |
-| 中期 P2 | Observability 瘦身、taxonomy 统一、假分页治理 | 规划项 |
+| P1 修复 | 概览/会话/记忆文案与采样语义；Chat Spirit Token 作用域；Skills 空态 | **已完成**（2026-07-16） |
+| P2 修复 | count API、Observability 瘦身、taxonomy、拖拽禁用、embedder 热加载、商城文案、迁移 CTA、Usage 200 上限提示、冲突事实 API、Chat pause sessionId | **已完成**（2026-07-16） |
+| P2+ 分页 | A2A audit / Eval runs+results 服务端分页；Channels/MCP/Hooks/Webhooks/Models 全量切片文案 | **已完成**（2026-07-16）；登记册服务端分页仍属后续 |
+| 中期 | Chat 拆分、Channels/MCP/Hooks/Webhooks/Models/Usage 服务端分页 | 规划项 |
 
 ---
 
@@ -538,3 +541,5 @@ flowchart LR
 | 2026-07-16 | 初版：全侧栏 26 页前后端对照评审，含 P0–P2 与概览深度核对 |
 | 2026-07-16 | P0 落地：Org Reorder 改绑 OrganizationService；Usage Purge 独立 retainDays；Graphs 加载更多；进化建议默认单类型分页；Tools 批量错误汇总+高风险确认 |
 | 2026-07-16 | P1 落地：概览/会话/记忆 KPI 文案与采样说明；Hero 链至用量事件；Spirit Token 限 activeTeam；Skills 空态修正 |
+| 2026-07-16 | P2 落地：Teams `count_only`+SQL count；Overview KPI；Observability 假 Tab 移除；Teams taxonomy→organization；拖拽禁用；Settings embedder 热加载；商城/迁移/Usage 上限文案；Memory 冲突 API；Chat pause 用 sessionId |
+| 2026-07-16 | P2+：A2A audit / Eval runs+results 接服务端分页；Channels/MCP/Hooks/Webhooks/Models 标明全量前端切片；Usage hero 引用 `USAGE_EVENTS_LIMIT` |

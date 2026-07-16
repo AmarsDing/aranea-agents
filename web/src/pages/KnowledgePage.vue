@@ -23,6 +23,11 @@
     <q-banner v-if="unavailable" rounded class="app-banner-warning q-mb-md">
       知识库服务不可用：{{ unavailable }}。请确认 Postgres / pgvector 已配置。
     </q-banner>
+    <q-banner rounded class="bg-grey-2 text-grey-8 q-mb-md">
+      Embedder 与系统设置共用同一条 system_settings 记录；也可在
+      <router-link class="text-primary" to="/settings">系统设置</router-link>
+      中配置。保存后后端会热加载到知识库服务。
+    </q-banner>
     <knowledge-embedder-panel :config="embedderConfig" :saving="embedderSaving" @save="saveEmbedderConfig" />
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
       {{ error }}

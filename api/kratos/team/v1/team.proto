@@ -317,7 +317,11 @@ message ResumeTeamRunExecutionResponse {
   string status = 3;
 }
 
-message ListTeamsRequest {}
+message ListTeamsRequest {
+  // When true, return total only (items empty). Used by Overview KPI without
+  // loading the full team list or HasActiveRun enrichment.
+  bool count_only = 1;
+}
 
 message ListTeamsResponse {
   repeated Team items = 1;

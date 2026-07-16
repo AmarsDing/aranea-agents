@@ -53,7 +53,7 @@
             <AppRegistryTable
               :shell="false"
               :data-shell="true"
-              :rows="pagedRuns"
+              :rows="runs"
               :columns="runColumns"
               row-key="id"
               :loading="runsLoading"
@@ -89,12 +89,15 @@
               </template>
             </AppRegistryTable>
             <AppRegistryPagination
-              v-model:page="runsPage"
-              v-model:page-size="runsPageSize"
+              :page="runsPage"
+              :page-size="runsPageSize"
               :page-max="runsPageMax"
-              :total="runs.length"
+              :total="runsTotal"
               :loading="runsLoading"
               label="条运行"
+              :page-size-options="[8, 10, 20, 50]"
+              @update:page="onRunsPage"
+              @update:page-size="onRunsPageSize"
             />
           </q-card-section>
         </q-card>
@@ -141,17 +144,21 @@
       :run-id="resultsRun?.id ?? ''"
       :run="resultsRun"
       :rows="caseResults"
+      :total="caseResultsTotal"
+      :page="resultsPage"
+      :page-size="resultsPageSize"
       :loading="resultsLoading"
       :saving-id="savingResultId"
       :columns="resultColumns"
       @annotate="saveAnnotation"
       @update-row="updateResultRow"
+      @page-change="onResultsPage"
+      @page-size-change="onResultsPageSize"
     />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
@@ -165,9 +172,15 @@ import { useEvaluationPage } from '../features/evaluation/useEvaluationPage';
 const {
   datasets,
   runs,
+  runsTotal,
   loading,
   selectedDatasetId,
   selectedDataset,
+  runsPage,
+  runsPageSize,
+  runsPageMax,
+  onRunsPage,
+  onRunsPageSize,
   runsLoading,
   error,
   createOpen,
@@ -178,6 +191,11 @@ const {
   resultsLoading,
   resultsRun,
   caseResults,
+  caseResultsTotal,
+  resultsPage,
+  resultsPageSize,
+  onResultsPage,
+  onResultsPageSize,
   agentOptions,
   createForm,
   runForm,
@@ -201,23 +219,4 @@ const {
   loadTrend,
   submitCompare,
 } = useEvaluationPage();
-
-const runsPage = ref(1);
-const runsPageSize = ref(8);
-const runsPageMax = computed(() => Math.max(1, Math.ceil(runs.value.length / runsPageSize.value)));
-const pagedRuns = computed(() => {
-  const start = (runsPage.value - 1) * runsPageSize.value;
-  return runs.value.slice(start, start + runsPageSize.value);
-});
-
-watch(
-  () => runs.value.length,
-  () => {
-    if (runsPage.value > runsPageMax.value) runsPage.value = runsPageMax.value;
-  },
-);
-
-watch(selectedDatasetId, () => {
-  runsPage.value = 1;
-});
 </script>

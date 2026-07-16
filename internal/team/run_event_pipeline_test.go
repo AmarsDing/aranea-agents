@@ -12,14 +12,14 @@ import (
 
 type captureHandler struct {
 	mu   sync.Mutex
-	got  []biz.ActivityEvent
+	got  []*biz.SystemNoticeEvent
 	stop bool
 }
 
-func (h *captureHandler) HandleRunEvent(_ context.Context, aev biz.ActivityEvent) bool {
+func (h *captureHandler) HandleRunEvent(_ context.Context, notice *biz.SystemNoticeEvent) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.got = append(h.got, aev)
+	h.got = append(h.got, notice)
 	return h.stop
 }
 
@@ -50,9 +50,19 @@ func TestTeamRunPipeline_FansOutSystemNotice(t *testing.T) {
 	t.Fatal("handler did not receive event")
 }
 
-func TestActivityEventFromBusEvent_SkipsOrchestrationStatus(t *testing.T) {
-	notice := biz.NewSystemNoticeEvent("s1", "orchestration_status", "", map[string]any{})
-	if _, ok := activityEventFromBusEvent(notice); ok {
-		t.Fatal("orchestration_status should be skipped")
+func TestTeamRunPipeline_SkipsOrchestrationStatus(t *testing.T) {
+	bus := event.NewV2Bus()
+	h := &captureHandler{}
+	cancel := newTeamRunPipeline(h).Start(context.Background(), bus, "spirit-1", "sess-1")
+	defer cancel()
+	time.Sleep(20 * time.Millisecond)
+
+	bus.Publish(context.Background(), biz.NewSystemNoticeEvent("spirit-1", "orchestration_status", "", map[string]any{}))
+	time.Sleep(50 * time.Millisecond)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.got) != 0 {
+		t.Fatalf("orchestration_status should be skipped, got %d", len(h.got))
 	}
 }

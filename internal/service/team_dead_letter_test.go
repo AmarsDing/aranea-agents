@@ -77,6 +77,9 @@ func (r *deadLetterTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string
 func (r *deadLetterTeamRepo) ListTeamsByWorkspace(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (r *deadLetterTeamRepo) CountTeamsByWorkspace(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
 func (r *deadLetterTeamRepo) BatchCreateOrchestrationSteps(context.Context, []biz.OrchestrationStep) error {
 	return nil
 }

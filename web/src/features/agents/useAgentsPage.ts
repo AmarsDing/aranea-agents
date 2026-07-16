@@ -360,8 +360,9 @@ export function useAgentsPage() {
     $q.notify({ type: 'positive', message: 'Agent 标识已复制' });
   }
 
-  function onReorder(ids: string[]) {
-    pageStore.reorderAgents(ids);
+  // Drag reorder is disabled in the list UI (no Agent.sort_order persistence / ReorderAgents RPC).
+  function onReorder(_ids: string[]) {
+    /* intentionally no-op */
   }
 
   return {

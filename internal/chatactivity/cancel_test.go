@@ -16,7 +16,7 @@ func TestCancelRunningActivityMessages_NilReader(t *testing.T) {
 }
 
 func TestCancelRunningActivityMessages_EmptySessionID(t *testing.T) {
-	n, err := CancelRunningActivityMessages(context.Background(), &stubStepReader{}, &stubActivityRepo{}, "  ", loggateway.NewNoop())
+	n, err := CancelRunningActivityMessages(context.Background(), &stubStepReader{}, &stubStepWriter{}, "  ", loggateway.NewNoop())
 	if err != nil || n != 0 {
 		t.Fatalf("expected 0,nil got %d,%v", n, err)
 	}
@@ -27,11 +27,10 @@ func TestCancelRunningActivityMessages_SkipsTerminalStatuses(t *testing.T) {
 		steps: []biz.Step{
 			{ID: "a1", SessionID: "sess1", Status: biz.StepStatusCompleted},
 			{ID: "a2", SessionID: "sess1", Status: biz.StepStatusFailed},
-			{ID: "a3", SessionID: "sess1", Status: "cancelled"},
-			{ID: "a4", SessionID: "sess1", Status: "interrupted"},
+			{ID: "a3", SessionID: "sess1", Status: biz.StepStatusCancelled},
 		},
 	}
-	writer := &stubActivityRepo{}
+	writer := &stubStepWriter{}
 	n, err := CancelRunningActivityMessages(context.Background(), reader, writer, "sess1", loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
@@ -53,7 +52,7 @@ func TestCancelRunningActivityMessages_CancelsInFlight(t *testing.T) {
 			{ID: "a4", SessionID: "sess1", Status: biz.StepStatusCompleted},
 		},
 	}
-	writer := &stubActivityRepo{}
+	writer := &stubStepWriter{}
 	n, err := CancelRunningActivityMessages(context.Background(), reader, writer, "sess1", loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
@@ -65,7 +64,7 @@ func TestCancelRunningActivityMessages_CancelsInFlight(t *testing.T) {
 		t.Fatalf("expected 3 updates, got %d", len(writer.updated))
 	}
 	for _, u := range writer.updated {
-		if u.Status != biz.ActivityStatusCancelled {
+		if u.Status != biz.StepStatusCancelled {
 			t.Fatalf("expected cancelled status, got %s", u.Status)
 		}
 	}
@@ -78,7 +77,7 @@ func TestCancelRunningActivityMessages_UpdateErrorContinues(t *testing.T) {
 			{ID: "a2", SessionID: "sess1", Status: biz.StepStatusToolRunning},
 		},
 	}
-	writer := &stubActivityRepo{updateErr: errUpdateFailed}
+	writer := &stubStepWriter{updateErr: errUpdateFailed}
 	n, err := CancelRunningActivityMessages(context.Background(), reader, writer, "sess1", loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
@@ -88,29 +87,26 @@ func TestCancelRunningActivityMessages_UpdateErrorContinues(t *testing.T) {
 	}
 }
 
-func TestIsInFlightActivity(t *testing.T) {
+func TestIsInFlightStep(t *testing.T) {
 	cases := []struct {
-		status biz.ActivityStatus
+		status biz.StepStatus
 		want   bool
 	}{
-		{biz.ActivityStatusPending, false},
-		{biz.ActivityStatusRunning, true},
-		{biz.ActivityStatusToolRunning, true},
-		{biz.ActivityStatusToolBlocked, true},
-		{biz.ActivityStatusCompleted, false},
-		{biz.ActivityStatusFailed, false},
-		{biz.ActivityStatusPartialFailure, false},
-		{biz.ActivityStatusCancelled, false},
-		{biz.ActivityStatusInterrupted, false},
+		{biz.StepStatusPending, false},
+		{biz.StepStatusRunning, true},
+		{biz.StepStatusToolRunning, true},
+		{biz.StepStatusToolBlocked, true},
+		{biz.StepStatusCompleted, false},
+		{biz.StepStatusFailed, false},
+		{biz.StepStatusCancelled, false},
 	}
 	for _, c := range cases {
-		if got := isInFlightActivity(c.status); got != c.want {
-			t.Fatalf("isInFlightActivity(%s)=%v, want %v", c.status, got, c.want)
+		if got := isInFlightStep(c.status); got != c.want {
+			t.Fatalf("isInFlightStep(%s)=%v, want %v", c.status, got, c.want)
 		}
 	}
 }
 
-// stubStepReader implements biz.StepV2Reader for cancel tests.
 type stubStepReader struct {
 	steps []biz.Step
 }
@@ -128,13 +124,7 @@ func (s *stubStepReader) ListStepsByTask(_ context.Context, _ string) ([]biz.Ste
 }
 
 func (s *stubStepReader) MaxSeqBySpiritSession(_ context.Context, _ string) (int64, error) {
-	var max int64
-	for _, st := range s.steps {
-		if st.Seq > max {
-			max = st.Seq
-		}
-	}
-	return max, nil
+	return 0, nil
 }
 
 func (s *stubStepReader) ListStepsBySession(_ context.Context, _ string) ([]biz.Step, error) {
@@ -145,55 +135,27 @@ func (s *stubStepReader) ListStepsBySpiritSession(_ context.Context, _ string) (
 	return s.steps, nil
 }
 
-// stubActivityRepo implements biz.ActivityRepo for cancel tests (writer only).
-// The same instance can serve as both reader and writer.
-type stubActivityRepo struct {
-	activities []biz.Activity
-	updated    []biz.Activity
-	updateErr  error
+type stubStepWriter struct {
+	updated   []biz.Step
+	updateErr error
 }
 
-func (s *stubActivityRepo) ListBySessionTurn(_ context.Context, _, _ string) ([]biz.Activity, error) {
-	return nil, nil
+func (s *stubStepWriter) CreateStep(_ context.Context, st biz.Step) (biz.Step, error) {
+	return st, nil
 }
 
-func (s *stubActivityRepo) ListBySession(_ context.Context, _ string) ([]biz.Activity, error) {
-	return s.activities, nil
-}
-
-func (s *stubActivityRepo) GetActivity(_ context.Context, _ string) (biz.Activity, error) {
-	return biz.Activity{}, nil
-}
-
-func (s *stubActivityRepo) ListBySpiritSession(_ context.Context, _ string) ([]biz.Activity, error) {
-	return nil, nil
-}
-
-func (s *stubActivityRepo) ListByTeam(_ context.Context, _ string) ([]biz.Activity, error) {
-	return nil, nil
-}
-
-func (s *stubActivityRepo) ListByParentSession(_ context.Context, _ string) ([]biz.Activity, error) {
-	return nil, nil
-}
-
-func (s *stubActivityRepo) CreateActivity(_ context.Context, a biz.Activity) (biz.Activity, error) {
-	return a, nil
-}
-
-func (s *stubActivityRepo) UpdateActivity(_ context.Context, a biz.Activity) (biz.Activity, error) {
+func (s *stubStepWriter) UpdateStep(_ context.Context, st biz.Step) (biz.Step, error) {
 	if s.updateErr != nil {
-		return biz.Activity{}, s.updateErr
+		return biz.Step{}, s.updateErr
 	}
-	s.updated = append(s.updated, a)
-	return a, nil
+	s.updated = append(s.updated, st)
+	return st, nil
 }
 
-func (s *stubActivityRepo) UpsertActivity(_ context.Context, a biz.Activity) (biz.Activity, error) {
-	return a, nil
+func (s *stubStepWriter) UpsertStep(_ context.Context, st biz.Step) (biz.Step, error) {
+	return s.UpdateStep(context.Background(), st)
 }
 
-// errUpdateFailed is a sentinel error for stub update failures.
 var errUpdateFailed = errSimple("update failed")
 
 type errSimple string

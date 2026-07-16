@@ -26,11 +26,9 @@ type SessionService struct {
 	runs           *biz.SessionRunUsecase
 	compress       biz.ManualCompressor
 	compressStatus biz.CompressStatusReader
-	metricsCache   biz.SessionMetricsReader
-	activityReader biz.ActivityReader
-	// sessionV2 is the v2 reader service; ListActivities delegates to it for
-	// reading from the steps_v2 table (Task 4 of Phase 3b-D). The legacy
-	// activityReader is retained until Task 15 deletes the v1 path.
+	metricsCache biz.SessionMetricsReader
+	// sessionV2 is the v2 reader service; ListActivities delegates to it
+	// (steps_v2 via StepToActivity adapter).
 	sessionV2 *SessionV2Service
 	lg        loggateway.Logger
 }
@@ -42,7 +40,6 @@ func NewSessionService(
 	compress biz.ManualCompressor,
 	compressStatus biz.CompressStatusReader,
 	metricsCache biz.SessionMetricsReader,
-	activityReader biz.ActivityReader,
 	sessionV2 *SessionV2Service,
 	lg loggateway.Logger,
 ) *SessionService {
@@ -56,7 +53,6 @@ func NewSessionService(
 		compress:       compress,
 		compressStatus: compressStatus,
 		metricsCache:   metricsCache,
-		activityReader: activityReader,
 		sessionV2:      sessionV2,
 		lg:             lg,
 	}

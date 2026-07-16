@@ -78,6 +78,9 @@ func (s stubTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]bi
 func (s stubTeamRepo) ListTeamsByWorkspace(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (s stubTeamRepo) CountTeamsByWorkspace(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
 
 type channelTestAgentRepo struct {
 	key string

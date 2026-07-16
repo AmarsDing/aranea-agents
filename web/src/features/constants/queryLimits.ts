@@ -74,7 +74,13 @@ export const CRON_TASK_LIMIT = 200;
 export const PLUGIN_AGENT_LIMIT = 200;
 
 // ── A2A ─────────────────────────────────────────────────
+/** @deprecated Prefer page-size driven ListAudit; kept for callers that still request a single window. */
 export const A2A_AUDIT_LIMIT = 100;
+export const A2A_AUDIT_PAGE_SIZE_DEFAULT = 10;
+
+// ── Evaluation ──────────────────────────────────────────
+export const EVAL_RUNS_PAGE_SIZE_DEFAULT = 8;
+export const EVAL_RESULTS_PAGE_SIZE_DEFAULT = 10;
 
 // ── Platform / Skills ───────────────────────────────────
 export const SKILL_FULL_LIST_LIMIT = 500;

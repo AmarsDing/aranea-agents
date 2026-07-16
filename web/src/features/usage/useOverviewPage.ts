@@ -12,7 +12,7 @@ import type { AgentListQuery } from '../agents/types';
 import type { ModelUsageQuery } from './types';
 import { formatUsdFromMicro, formatCount as fmtCount, formatPercent as fmtPercent } from './moneyFormat';
 import { useMonitorRunNavigation } from '../monitor/useMonitorRunNavigation';
-import { listTeamsPaged } from '../teams/api';
+import { countTeams } from '../teams/api';
 import { allowedGranularitiesForRange, resolveGranularityForRange, type Granularity } from './usageGranularityLinkage';
 
 const VALID_RANGES = new Set(['today', '7d', '30d', 'month']);
@@ -188,8 +188,7 @@ export function useOverviewPage() {
 
   async function loadTeamCount() {
     try {
-      const { total } = await listTeamsPaged();
-      teamCount.value = total;
+      teamCount.value = await countTeams();
     } catch {
       // silent
     }

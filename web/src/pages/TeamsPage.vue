@@ -42,6 +42,7 @@
         drag-class="team-card--dragging"
         :animation="200"
         :delay="100"
+        :disabled="true"
         @update:list="
           (val: unknown[]) => {
             const ref = draggableTeamsMap[group.id];

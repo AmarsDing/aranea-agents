@@ -3,7 +3,7 @@
     <AppPageHero
       kicker="Token / Usage"
       title="用量事件明细"
-      subtitle="按时间查看 model_token_usage_events 原始记录（费用来自 model_pricing_rules 快照）。"
+      :subtitle="`按时间查看 model_token_usage_events 原始记录（费用来自 model_pricing_rules 快照）。单次查询最多返回 ${usageEventsLimit} 条，下方分页为前端切片。`"
     >
       <template #actions>
         <q-btn outline rounded no-caps icon="download" label="导出 CSV" :loading="exporting" @click="onExportCsv" />
@@ -165,6 +165,9 @@ import { useUsageEventsPage } from '../features/usage/useUsageEventsPage';
 import type { ModelTokenUsageEvent } from '../features/usage/types';
 import { type RegistryTableColumn } from '../features/ui/registryTableColumns';
 import { useLocalPagination } from '../composables/useLocalPagination';
+import { USAGE_EVENTS_LIMIT } from '../features/constants/queryLimits';
+
+const usageEventsLimit = USAGE_EVENTS_LIMIT;
 
 const {
   events,

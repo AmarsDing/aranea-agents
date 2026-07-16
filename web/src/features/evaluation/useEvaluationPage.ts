@@ -3,14 +3,18 @@ import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 import type { EvalCaseResult, EvalRun, EvalRunComparison, EvalTrendPoint } from './types';
 import { useEvaluationStore } from '../../stores/evaluation';
+import { EVAL_RESULTS_PAGE_SIZE_DEFAULT, EVAL_RUNS_PAGE_SIZE_DEFAULT } from '../constants/queryLimits';
 import { EVAL_RESULT_TABLE_COLUMNS, EVAL_RUN_TABLE_COLUMNS } from './evaluationTableUi';
 
 export function useEvaluationPage() {
   const $q = useQuasar();
   const evaluationStore = useEvaluationStore();
-  const { datasets, runs, loading, agentOptions } = storeToRefs(evaluationStore);
+  const { datasets, runs, runsTotal, loading, agentOptions } = storeToRefs(evaluationStore);
 
   const selectedDatasetId = ref('');
+  const runsPage = ref(1);
+  const runsPageSize = ref(EVAL_RUNS_PAGE_SIZE_DEFAULT);
+  const runsPageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, runsTotal.value) / runsPageSize.value)));
   const runsLoading = ref(false);
   const error = ref('');
   const createOpen = ref(false);
@@ -21,6 +25,12 @@ export function useEvaluationPage() {
   const resultsLoading = ref(false);
   const resultsRun = ref<EvalRun | null>(null);
   const caseResults = ref<EvalCaseResult[]>([]);
+  const caseResultsTotal = ref(0);
+  const resultsPage = ref(1);
+  const resultsPageSize = ref(EVAL_RESULTS_PAGE_SIZE_DEFAULT);
+  const resultsPageMax = computed(() =>
+    Math.max(1, Math.ceil(Math.max(0, caseResultsTotal.value) / resultsPageSize.value)),
+  );
   const savingResultId = ref('');
 
   const trendAgentId = ref('');
@@ -72,7 +82,26 @@ export function useEvaluationPage() {
     if (!selectedDatasetId.value) return;
     runsLoading.value = true;
     try {
-      await evaluationStore.loadRuns({ dataset_id: selectedDatasetId.value, limit: 50 });
+      const limit = runsPageSize.value;
+      let page = runsPage.value;
+      // Pre-clamp using last known total when possible (avoids empty last page).
+      const maxPage = Math.max(1, Math.ceil(Math.max(0, runsTotal.value) / limit) || 1);
+      if (runsTotal.value > 0 && page > maxPage) {
+        page = maxPage;
+        runsPage.value = page;
+      }
+      const offset = (page - 1) * limit;
+      await evaluationStore.loadRuns({ dataset_id: selectedDatasetId.value, limit, offset });
+      if (runsPage.value > runsPageMax.value) {
+        runsPage.value = runsPageMax.value;
+        if (runsPage.value !== page) {
+          await evaluationStore.loadRuns({
+            dataset_id: selectedDatasetId.value,
+            limit,
+            offset: (runsPage.value - 1) * limit,
+          });
+        }
+      }
       if (trendAgentId.value) {
         void loadTrend();
       }
@@ -85,6 +114,19 @@ export function useEvaluationPage() {
 
   function selectDataset(id: string) {
     selectedDatasetId.value = id;
+    runsPage.value = 1;
+    void loadRuns();
+  }
+
+  function onRunsPage(page: number) {
+    if (page === runsPage.value) return;
+    runsPage.value = page;
+    void loadRuns();
+  }
+
+  function onRunsPageSize(pageSize: number) {
+    runsPageSize.value = pageSize;
+    runsPage.value = 1;
     void loadRuns();
   }
 
@@ -203,18 +245,56 @@ export function useEvaluationPage() {
     }
   }
 
-  async function openResults(run: EvalRun) {
-    resultsRun.value = run;
-    resultsOpen.value = true;
+  async function loadCaseResults() {
+    if (!resultsRun.value) return;
     resultsLoading.value = true;
     try {
-      const res = await evaluationStore.loadRunResults(run.id, { limit: 100 });
+      const limit = resultsPageSize.value;
+      let page = resultsPage.value;
+      const knownMax = Math.max(1, Math.ceil(Math.max(0, caseResultsTotal.value) / limit) || 1);
+      if (caseResultsTotal.value > 0 && page > knownMax) {
+        page = knownMax;
+        resultsPage.value = page;
+      }
+      let res = await evaluationStore.loadRunResults(resultsRun.value.id, {
+        limit,
+        offset: (page - 1) * limit,
+      });
       caseResults.value = res.items;
+      caseResultsTotal.value = res.total;
+      if (resultsPage.value > resultsPageMax.value) {
+        resultsPage.value = resultsPageMax.value;
+        res = await evaluationStore.loadRunResults(resultsRun.value.id, {
+          limit,
+          offset: (resultsPage.value - 1) * limit,
+        });
+        caseResults.value = res.items;
+        caseResultsTotal.value = res.total;
+      }
     } catch (e) {
       $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '加载结果失败' });
     } finally {
       resultsLoading.value = false;
     }
+  }
+
+  async function openResults(run: EvalRun) {
+    resultsRun.value = run;
+    resultsOpen.value = true;
+    resultsPage.value = 1;
+    await loadCaseResults();
+  }
+
+  function onResultsPage(page: number) {
+    if (page === resultsPage.value) return;
+    resultsPage.value = page;
+    void loadCaseResults();
+  }
+
+  function onResultsPageSize(pageSize: number) {
+    resultsPageSize.value = pageSize;
+    resultsPage.value = 1;
+    void loadCaseResults();
   }
 
   onMounted(() => {
@@ -225,9 +305,15 @@ export function useEvaluationPage() {
   return {
     datasets,
     runs,
+    runsTotal,
     loading,
     selectedDatasetId,
     selectedDataset,
+    runsPage,
+    runsPageSize,
+    runsPageMax,
+    onRunsPage,
+    onRunsPageSize,
     runsLoading,
     error,
     createOpen,
@@ -238,6 +324,12 @@ export function useEvaluationPage() {
     resultsLoading,
     resultsRun,
     caseResults,
+    caseResultsTotal,
+    resultsPage,
+    resultsPageSize,
+    resultsPageMax,
+    onResultsPage,
+    onResultsPageSize,
     agentOptions,
     createForm,
     runForm,

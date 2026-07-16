@@ -715,7 +715,7 @@ export default {
     cronRuns: 'Cron 执行历史',
     monitor: '监控',
     observability: '可观测性',
-    shop: '商城',
+    shop: '生态商城',
     settings: '系统设置',
   },
   sessionsPage: {
@@ -789,7 +789,7 @@ export default {
     credentialKeyPending: '尚未生成（服务启动后将自动创建；请重启后端或等待初始化完成）',
     knowledgeEmbedTitle: 'Knowledge Embedder 默认',
     knowledgeEmbedHint:
-      'RAG 向量嵌入默认配置，写入 system_settings；与 Knowledge 页互通。启动时 env KRATOS_KNOWLEDGE_EMBED_* 优先于数据库。',
+      '系统级 RAG 嵌入写入入口（system_settings）。Knowledge 页可同步修改同一配置；保存后后端热加载。启动时 env KRATOS_KNOWLEDGE_EMBED_* 优先于数据库。',
     mcpAdhocTitle: 'MCP Broker AdHoc HTTP',
     mcpAdhocHint:
       '允许 MCP Broker 通过 mcp_call 连接未预注册的 HTTP 端点。生产环境默认关闭；需同时满足 MCP Server 配置 allow_adhoc_http。写入 system_settings.mcp_allow_adhoc_http。',
@@ -847,7 +847,8 @@ export default {
   webhooksPage: {
     kicker: '出站 Webhook',
     title: 'Webhook 管理',
-    subtitle: '配置出站 Webhook 端点，当 Runner 事件触发时向外部服务推送通知（HMAC-SHA256 签名验证）。',
+    subtitle:
+      '配置出站 Webhook 端点，当 Runner 事件触发时向外部服务推送通知（HMAC-SHA256 签名验证）。列表为全量加载，下方分页为前端切片。',
     btnCreate: '新建 Webhook',
     search: '搜索',
     btnRefresh: '刷新',
@@ -954,7 +955,7 @@ export default {
   channelsPage: {
     kicker: 'Channel management',
     title: 'Channel 管理',
-    subtitle: '统一管理外部消息渠道、凭据引用、Webhook 与运行时启停。',
+    subtitle: '统一管理外部消息渠道、凭据引用、Webhook 与运行时启停。列表为全量加载，下方分页为前端切片。',
     add: '新增 Channel',
     refresh: '刷新',
     searchLabel: '搜索 Channel',
@@ -1349,7 +1350,8 @@ export default {
     },
     kicker: '回调规则',
     title: 'Hook / 回调规则',
-    subtitle: '为 Agent、Model、Tool 和 Runner 生命周期事件配置回调规则（log / notify / block / modify）。',
+    subtitle:
+      '为 Agent、Model、Tool 和 Runner 生命周期事件配置回调规则（log / notify / block / modify）。列表为全量加载，下方分页为前端切片。',
     btnDeliveries: '投递队列',
     btnPluginRuns: '运行记录',
     btnCreate: '新建 Hook',

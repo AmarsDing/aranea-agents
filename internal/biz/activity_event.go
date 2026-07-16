@@ -1,7 +1,5 @@
 package biz
 
-import "context"
-
 // ActivityEventType labels the business-semantic event for an Activity lifecycle.
 //
 // These 7 types replace the technical "delta" term with business-oriented
@@ -119,32 +117,7 @@ type ActivityEvent struct {
 	SequencerHandled bool `json:"-"`
 }
 
-// ActivityEventBus is the in-process event fanout hub for Activity lifecycle
-// events. It replaces the legacy Envelope bus for chat-related events.
-//
-// Implementations must be safe for concurrent use.
-// Stability:evolving
-type ActivityEventBus interface {
-	// Publish broadcasts an ActivityEvent to all matching subscribers.
-	Publish(ctx context.Context, event ActivityEvent)
-
-	// Subscribe registers a subscriber that receives ActivityEvents matching
-	// the given options. Returns a channel of events and an unsubscribe function.
-	// When globalMode is false, only events for the given sessionID are delivered.
-	Subscribe(opts ActivityEventSubscribeOptions) (<-chan ActivityEvent, func())
-
-	// DropCount returns the total number of dropped events due to full buffers.
-	DropCount() uint64
-}
-
-// ActivityEventSubscribeOptions configures an ActivityEventBus subscription.
-type ActivityEventSubscribeOptions struct {
-	SessionID  string // empty = all sessions (global mode)
-	BufferSize int    // subscriber channel buffer size
-	GlobalMode bool   // true = receive events for all sessions
-	// Filter is an optional predicate applied at the bus level. When set, only
-	// events for which Filter returns true are delivered. This prevents
-	// non-matching events from filling the subscriber queue. When nil, the
-	// session-scoped filter derived from SessionID/GlobalMode is used.
-	Filter func(ActivityEvent) bool
-}
+// ActivityEventBus was removed (2026-07-16). Chat/team/graph realtime uses
+// biz.EventBus (typed v2 events + system.notice). The ActivityEvent type remains
+// as a domain model for Step↔Activity adapters and ListActivities compat until
+// those call sites are retired.

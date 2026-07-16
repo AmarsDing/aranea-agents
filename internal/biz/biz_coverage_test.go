@@ -81,6 +81,9 @@ func (m *memTeamRepoB) ListTeamsByDepartmentID(_ context.Context, _ string) ([]b
 func (m *memTeamRepoB) ListTeamsByWorkspace(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (m *memTeamRepoB) CountTeamsByWorkspace(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
 func (m *memTeamRepoB) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRunRecord, error) {
 	return nil, nil
 }

@@ -44,20 +44,16 @@ func TestProcessInboundHTTPResultQQDispatchACKOnError(t *testing.T) {
 	}
 }
 
-func TestGraphExecutionSummaryFailedFromActivity(t *testing.T) {
-	aev := biz.ActivityEvent{
-		Activity: biz.Activity{
-			Meta: map[string]any{
-				"execution_summary": map[string]any{
-					"nodes": []any{
-						map[string]any{"status": "success"},
-						map[string]any{"status": "error", "error": "node boom"},
-					},
-				},
+func TestGraphExecutionSummaryFailedFromNotice(t *testing.T) {
+	notice := biz.NewSystemNoticeEvent("sess", "execution_done", "", map[string]any{
+		"execution_summary": map[string]any{
+			"nodes": []any{
+				map[string]any{"status": "success"},
+				map[string]any{"status": "error", "error": "node boom"},
 			},
 		},
-	}
-	failed, msg := graphExecutionSummaryFailedFromActivity(aev, loggateway.NewNoop())
+	})
+	failed, msg := graphExecutionSummaryFailedFromNotice(notice, loggateway.NewNoop())
 	if !failed || msg != "node boom" {
 		t.Fatalf("failed=%v msg=%q", failed, msg)
 	}
