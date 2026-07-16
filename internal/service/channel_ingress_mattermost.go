@@ -25,7 +25,15 @@ func (h *ChannelIngress) handleMattermostWebhook(w http.ResponseWriter, r *http.
 	// Prefer HMAC signature verification; fallback to token verification only when
 	// signing_secret is not configured. If signing_secret IS configured but the
 	// X-Signature header is missing, reject the request to prevent downgrade attacks.
-	signingSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "signing_secret", h.lg)
+	signingSecret, secretErr := resolveCredentialPlain(r.Context(), h.channels, creds, "signing_secret", h.lg)
+	if secretErr != nil {
+		h.lg.Warn("Mattermost signing_secret unresolved; falling back when empty",
+			loggateway.StepID("channel.credential.resolve_fail"),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Str("credential_key", "signing_secret"),
+			loggateway.Err(secretErr),
+		)
+	}
 	if strings.TrimSpace(signingSecret) != "" {
 		sigHeader := r.Header.Get("X-Signature")
 		if strings.TrimSpace(sigHeader) == "" {

@@ -27,6 +27,9 @@ message MCPServer {
 
 message ListMCPServersResponse {
   repeated MCPServer items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
 }
 
 message CreateMCPServerRequest {

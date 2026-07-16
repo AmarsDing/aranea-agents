@@ -22,7 +22,7 @@ import { useEnvelopeStream } from '../../realtime/useEnvelopeStream';
 import { createMonitorStream } from '../../realtime/useMonitorStream';
 import type { MonitorEvent } from '../../realtime/monitorEvent';
 import { flowSeverityToLevel, monitorLogLineFromFlowEvent } from './flow';
-import { teamRunEventFromActivityEvent } from '../teams/teamRunEventFromActivityEvent';
+import { teamRunEventFromV2Event } from '../teams/teamRunEventFromV2Event';
 
 const monitor = createMonitorService();
 
@@ -257,11 +257,9 @@ export function subscribeMonitorRuntimeEventsWs(
     logEnabled: false,
     onConnected: () => onConnected?.(),
     onDisconnected: () => onDisconnected?.(),
-    onActivityEvent: (ev) => {
-      const mapped = teamRunEventFromActivityEvent(ev);
-      if (mapped) {
-        onEvent(mapped);
-      }
+    onV2Event: (envelope) => {
+      const mapped = teamRunEventFromV2Event(envelope);
+      if (mapped) onEvent(mapped);
     },
   });
 

@@ -1,21 +1,29 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { createHook, deleteHook, listHooks, updateHook } from '../../features/hooks/api';
+import { createHook, deleteHook, listHooks, listHooksPaged, updateHook, type HookListQuery } from '../../features/hooks/api';
 import { listHookDeliveries, type HookDeliveryListQuery, type HookDeliveryRow } from '../../features/hooks/deliveries';
 import type { HookRow, HookRuleConfig } from '../../features/hooks/types';
 
 export const useHooksStore = defineStore('hooks', () => {
   const hooks = ref<HookRow[]>([]);
+  const total = ref(0);
   const loading = ref(false);
 
   const deliveries = ref<HookDeliveryRow[]>([]);
   const deliveriesTotal = ref(0);
   const deliveriesLoading = ref(false);
 
-  async function loadHooks(): Promise<HookRow[]> {
+  async function loadHooks(query?: HookListQuery): Promise<HookRow[]> {
     loading.value = true;
     try {
+      if (query) {
+        const result = await listHooksPaged(query);
+        hooks.value = result.items;
+        total.value = result.total;
+        return hooks.value;
+      }
       hooks.value = await listHooks();
+      total.value = hooks.value.length;
       return hooks.value;
     } finally {
       loading.value = false;
@@ -32,6 +40,7 @@ export const useHooksStore = defineStore('hooks', () => {
   }): Promise<HookRow> {
     const created = await createHook(input);
     hooks.value = [created, ...hooks.value.filter((row) => row.id !== created.id)];
+    total.value += 1;
     return created;
   }
 
@@ -49,6 +58,7 @@ export const useHooksStore = defineStore('hooks', () => {
   async function removeHook(id: string): Promise<void> {
     await deleteHook(id);
     hooks.value = hooks.value.filter((row) => row.id !== id);
+    total.value = Math.max(0, total.value - 1);
   }
 
   async function loadDeliveries(
@@ -67,6 +77,7 @@ export const useHooksStore = defineStore('hooks', () => {
 
   return {
     hooks,
+    total,
     loading,
     loadHooks,
     addHook,

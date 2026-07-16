@@ -14,8 +14,14 @@ export type ModelUsageQuery = {
   usage_kind?: string;
   status?: string;
   limit?: number;
+  offset?: number;
   /** "" | "day" | "hour" — hour uses model_token_usage_hourly */
   granularity?: string;
+};
+
+export type ModelUsageEventsResult = {
+  items: ModelTokenUsageEvent[];
+  total: number;
 };
 
 export type ModelUsageSummary = {

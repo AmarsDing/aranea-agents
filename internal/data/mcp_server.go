@@ -45,7 +45,7 @@ func entToBizMCP(e *ent.PlatformMCPServer) biz.MCPServer {
 	}
 }
 
-func (r *mcpServerRepo) ListMCPServers(ctx context.Context, q biz.MCPListQuery) ([]biz.MCPServer, error) {
+func (r *mcpServerRepo) mcpListQuery(ctx context.Context, q biz.MCPListQuery) *ent.PlatformMCPServerQuery {
 	pq := r.data.RW().Read(ctx).PlatformMCPServer.Query().
 		Where(platformmcpserver.DeletedAtEQ(""))
 	// P2-B: workspace visibility filter.
@@ -56,7 +56,18 @@ func (r *mcpServerRepo) ListMCPServers(ctx context.Context, q biz.MCPListQuery) 
 			platformmcpserver.WorkspaceIDEQ(ws),
 		))
 	}
-	rows, err := pq.Order(
+	if s := strings.TrimSpace(q.Search); s != "" {
+		pq = pq.Where(platformmcpserver.Or(
+			platformmcpserver.ServerKeyContainsFold(s),
+			platformmcpserver.NameContainsFold(s),
+			platformmcpserver.DescriptionContainsFold(s),
+		))
+	}
+	return pq
+}
+
+func (r *mcpServerRepo) ListMCPServers(ctx context.Context, q biz.MCPListQuery) ([]biz.MCPServer, error) {
+	rows, err := r.mcpListQuery(ctx, q).Order(
 		platformmcpserver.BySortOrder(),
 		platformmcpserver.ByCreatedAt(entsql.OrderDesc()),
 	).All(ctx)
@@ -68,6 +79,29 @@ func (r *mcpServerRepo) ListMCPServers(ctx context.Context, q biz.MCPListQuery) 
 		out = append(out, entToBizMCP(e))
 	}
 	return out, nil
+}
+
+func (r *mcpServerRepo) ListMCPServersPaged(ctx context.Context, q biz.MCPListQuery) (biz.MCPListResult, error) {
+	total, err := r.mcpListQuery(ctx, q).Count(ctx)
+	if err != nil {
+		return biz.MCPListResult{}, entErrToBizErr(err, apierror.DomainMCP)
+	}
+	rows, err := r.mcpListQuery(ctx, q).
+		Order(
+			platformmcpserver.BySortOrder(),
+			platformmcpserver.ByCreatedAt(entsql.OrderDesc()),
+		).
+		Limit(q.Limit).
+		Offset(q.Offset).
+		All(ctx)
+	if err != nil {
+		return biz.MCPListResult{}, entErrToBizErr(err, apierror.DomainMCP)
+	}
+	out := make([]biz.MCPServer, 0, len(rows))
+	for _, e := range rows {
+		out = append(out, entToBizMCP(e))
+	}
+	return biz.MCPListResult{Items: out, Total: total, Limit: q.Limit, Offset: q.Offset}, nil
 }
 
 // mcpWorkspacePredicate returns shared-or-own visibility for mcp_server (C-25).

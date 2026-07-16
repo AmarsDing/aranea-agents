@@ -17,7 +17,7 @@ import type {
 } from '../../services/kratos/team/v1/index';
 import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
 import { createEnvelopeStream } from '../../realtime/useEnvelopeStream';
-import { teamRunEventFromActivityEvent } from './teamRunEventFromActivityEvent';
+import { teamRunEventFromV2Event } from './teamRunEventFromV2Event';
 
 /** Session id alias that triggers admin-wide monitoring (maps to GLOBAL_WS_SESSION_ID). */
 const TEAM_MONITOR_SESSION_ALIAS = 'team-monitor';
@@ -270,9 +270,8 @@ export async function resumeTeamRunExecution(
  * Team run events over `WS /v1/ws`.
  * Pass a real chat `sessionId` for session-scoped runs, or `GLOBAL_WS_SESSION_ID` (`*`) for admin-wide monitoring.
  *
- * Team run telemetry arrives as `activity_event` payloads (kind `team_stage`)
- * on the WS chat channel; this subscriber converts them directly to
- * {@link TeamRunEvent} without going through the envelope bridge.
+ * Primary path: typed v2 `team_run.*` / `member_session.*` / team-related
+ * `system.notice`. Compat: transport may also adapt system.notice → ActivityEvent.
  */
 export function subscribeTeamRunEventsWs(sessionId: string, teamID: string, onEvent: (event: TeamRunEvent) => void) {
   const effectiveSession =
@@ -281,11 +280,9 @@ export function subscribeTeamRunEventsWs(sessionId: string, teamID: string, onEv
     sessionId: effectiveSession,
     channels: ['team', 'monitor', 'system'],
     autoConnect: false,
-    onActivityEvent: (ev) => {
-      const mapped = teamRunEventFromActivityEvent(ev, teamID);
-      if (mapped) {
-        onEvent(mapped);
-      }
+    onV2Event: (envelope) => {
+      const mapped = teamRunEventFromV2Event(envelope, teamID);
+      if (mapped) onEvent(mapped);
     },
   });
 

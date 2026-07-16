@@ -12,6 +12,9 @@ type stubHookRepo struct {
 }
 
 func (s *stubHookRepo) ListHooks(context.Context) ([]Hook, error) { return s.items, nil }
+func (s *stubHookRepo) ListHooksPaged(_ context.Context, q HookListQuery) (HookListResult, error) {
+	return HookListResult{Items: s.items, Total: len(s.items), Limit: q.Limit, Offset: q.Offset}, nil
+}
 func (s *stubHookRepo) GetHook(context.Context, string) (Hook, error) {
 	return Hook{}, nil
 }

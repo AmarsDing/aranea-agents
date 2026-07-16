@@ -126,8 +126,24 @@ type providerCostBlock struct {
 type LlmProviderModelReader interface {
 	// Stability:stable
 	ListProviderModels(ctx context.Context) ([]ProviderModel, error)
+	SearchProviderModels(ctx context.Context, q ProviderModelListQuery) (ProviderModelListResult, error)
 	GetProviderModel(ctx context.Context, id string) (ProviderModel, error)
 	GetProviderModelByProviderAndModel(ctx context.Context, provider, model string) (ProviderModel, error)
+}
+
+// ProviderModelListQuery is the pagination/filter input for admin model lists.
+type ProviderModelListQuery struct {
+	Search string
+	Limit  int
+	Offset int
+}
+
+// ProviderModelListResult is a page of provider models plus the filter-scoped total.
+type ProviderModelListResult struct {
+	Items  []ProviderModel
+	Total  int
+	Limit  int
+	Offset int
 }
 
 type LlmProviderModelWriter interface {
@@ -260,6 +276,31 @@ func (u *LlmProviderModelUsecase) List(ctx context.Context) ([]ProviderModel, er
 		u.statsInjector.InjectStats(ctx, items)
 	}
 	return items, nil
+}
+
+// ListPaged returns a page of provider models for the admin registry UI.
+// Internal catalog consumers should keep using List (unpaginated).
+func (u *LlmProviderModelUsecase) ListPaged(ctx context.Context, q ProviderModelListQuery) (ProviderModelListResult, error) {
+	if q.Limit <= 0 {
+		q.Limit = 20
+	}
+	if q.Limit > 100 {
+		q.Limit = 100
+	}
+	if q.Offset < 0 {
+		q.Offset = 0
+	}
+	result, err := u.reader.SearchProviderModels(ctx, q)
+	if err != nil {
+		return ProviderModelListResult{}, err
+	}
+	for i := range result.Items {
+		result.Items[i] = sanitizeProviderModelForAPI(result.Items[i])
+	}
+	if u.statsInjector != nil {
+		u.statsInjector.InjectStats(ctx, result.Items)
+	}
+	return result, nil
 }
 
 func (u *LlmProviderModelUsecase) Get(ctx context.Context, id string) (ProviderModel, error) {

@@ -1,22 +1,23 @@
-import { onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { useCallbackPointOptions } from '../callback/constants';
 import { defaultHookRuleConfig, parseHookConfig, type HookRow, type HookRuleConfig } from '../hooks/types';
 import { useHooksStore } from '../../stores/hooks';
-import { useLocalPagination } from '../../composables/useLocalPagination';
 
 export function useHooksPage() {
   const { t } = useI18n();
   const $q = useQuasar();
   const hooksStore = useHooksStore();
-  const { hooks: storeRows, loading: storeLoading } = storeToRefs(hooksStore);
+  const { hooks: storeRows, total, loading: storeLoading } = storeToRefs(hooksStore);
   const loading = storeLoading;
   const saving = ref(false);
   const error = ref('');
   const search = ref('');
   const filterPoint = ref('');
+  const page = ref(1);
+  const pageSize = ref(20);
   const callbackPointOptions = useCallbackPointOptions();
   const editorOpen = ref(false);
   const editingId = ref('');
@@ -34,43 +35,47 @@ export function useHooksPage() {
     return parseHookConfig(row.config_json);
   }
 
-  const {
-    page,
-    rowsPerPage: pageSize,
-    filteredRows,
-    pagedRows,
-    totalPages: pageMax,
-  } = useLocalPagination<HookRow>({
-    rows: storeRows,
-    filter: search,
-    filterFn: (r, q) => {
-      if (filterPoint.value) {
-        const rule = ruleOf(r);
-        if (rule.callback_point !== filterPoint.value) return false;
-      }
-      if (!q) return true;
-      return r.name.toLowerCase().includes(q) || r.key.toLowerCase().includes(q);
-    },
-  });
+  const filteredRows = computed(() => storeRows.value);
+  const pagedRows = computed(() => storeRows.value);
+  const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, total.value) / pageSize.value)));
+
+  async function loadRows() {
+    error.value = '';
+    try {
+      await hooksStore.loadHooks({
+        page: page.value,
+        page_size: pageSize.value,
+        search: search.value,
+        callback_point: filterPoint.value,
+      });
+      if (page.value > pageMax.value) page.value = pageMax.value;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+    }
+  }
 
   function resetFilters() {
     search.value = '';
     filterPoint.value = '';
     page.value = 1;
+    void loadRows();
   }
 
-  watch(filterPoint, () => {
-    page.value = 1;
-  });
-
-  async function loadRows() {
-    error.value = '';
-    try {
-      await hooksStore.loadHooks();
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : String(e);
+  let skipNextPageWatch = false;
+  watch([search, filterPoint], () => {
+    if (page.value !== 1) {
+      skipNextPageWatch = true;
+      page.value = 1;
     }
-  }
+    void loadRows();
+  });
+  watch([page, pageSize], () => {
+    if (skipNextPageWatch) {
+      skipNextPageWatch = false;
+      return;
+    }
+    void loadRows();
+  });
 
   function openCreate() {
     editingId.value = '';
@@ -122,6 +127,7 @@ export function useHooksPage() {
       }
       editorOpen.value = false;
       $q.notify({ type: 'positive', message: t('hooksPage.notifySaved') });
+      await loadRows();
     } catch (e) {
       $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -149,6 +155,7 @@ export function useHooksPage() {
     }).onOk(async () => {
       try {
         await hooksStore.removeHook(row.id);
+        await loadRows();
       } catch (e) {
         $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
       }
@@ -171,6 +178,7 @@ export function useHooksPage() {
     form,
     page,
     pageSize,
+    total,
     filteredRows,
     pagedRows,
     pageMax,

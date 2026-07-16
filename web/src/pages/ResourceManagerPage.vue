@@ -82,7 +82,7 @@
             v-model:page="page"
             v-model:page-size="rowsPerPage"
             :page-max="pageCount"
-            :total="filteredRows.length"
+            :total="total"
             :loading="loading"
             :label="t('resourceManager.modelsUnit')"
             :page-size-options="[10, 20, 50]"
@@ -412,6 +412,7 @@ const {
   pageTitle,
   pageSubtitle,
   filteredRows,
+  total,
   pageCount,
   pagedProviderRows,
   providerPresetOptions,

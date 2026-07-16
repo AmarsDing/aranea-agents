@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import {
   listMcpServers,
+  listMcpServersPaged,
   createMcpServer,
   updateMcpServer,
   deleteMcpServer,
@@ -12,6 +13,7 @@ import {
   deleteMcpUserCredential,
   type PlatformResource,
   type PlatformResourceInput,
+  type McpServerListQuery,
 } from '../../features/mcp/api';
 import type {
   McpServerTestResult,
@@ -22,12 +24,21 @@ import type {
 
 export const useMcpStore = defineStore('mcp', () => {
   const servers = ref<PlatformResource[]>([]);
+  const total = ref(0);
   const loading = ref(false);
 
-  async function loadServers() {
+  async function loadServers(query?: McpServerListQuery) {
     loading.value = true;
     try {
+      if (query) {
+        const result = await listMcpServersPaged(query);
+        servers.value = result.items;
+        total.value = result.total;
+        return result;
+      }
       servers.value = await listMcpServers();
+      total.value = servers.value.length;
+      return { items: servers.value, total: total.value, page: 1, page_size: total.value };
     } finally {
       loading.value = false;
     }
@@ -36,6 +47,7 @@ export const useMcpStore = defineStore('mcp', () => {
   async function addServer(payload: PlatformResourceInput) {
     const created = await createMcpServer(payload);
     servers.value.push(created);
+    total.value += 1;
     return created;
   }
 
@@ -48,6 +60,7 @@ export const useMcpStore = defineStore('mcp', () => {
   async function removeServer(id: string) {
     await deleteMcpServer(id);
     servers.value = servers.value.filter((s) => s.id !== id);
+    total.value = Math.max(0, total.value - 1);
   }
 
   async function test(id: string): Promise<McpServerTestResult> {
@@ -72,6 +85,7 @@ export const useMcpStore = defineStore('mcp', () => {
 
   return {
     servers,
+    total,
     loading,
     loadServers,
     addServer,

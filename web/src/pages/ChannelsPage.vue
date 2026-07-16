@@ -67,7 +67,7 @@
       v-model:page="page"
       v-model:page-size="pageSize"
       :page-max="pageMax"
-      :total="filteredRows.length"
+      :total="total"
       :loading="loading"
       :label="t('channelsPage.paginationUnit')"
     />
@@ -116,6 +116,7 @@ const {
   page,
   pageSize,
   pageMax,
+  total,
   loading,
   error,
   search,

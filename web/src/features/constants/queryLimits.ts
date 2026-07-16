@@ -87,7 +87,9 @@ export const SKILL_FULL_LIST_LIMIT = 500;
 export const PLATFORM_MODEL_USAGE_LIMIT = 200;
 
 // ── Usage ───────────────────────────────────────────────
+/** @deprecated Prefer page-size + offset ListUsageEvents; kept for export/window caps. */
 export const USAGE_EVENTS_LIMIT = 200;
+export const USAGE_EVENTS_PAGE_SIZE_DEFAULT = 20;
 
 // ── Chat ────────────────────────────────────────────────
 export const CHAT_ENVELOPE_LOG_LOCAL_MAX = 500;

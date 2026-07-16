@@ -9,69 +9,6 @@ import (
 )
 
 var (
-	// ActivitiesColumns holds the columns for the "activities" table.
-	ActivitiesColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
-		{Name: "kind", Type: field.TypeString, Size: 32},
-		{Name: "status", Type: field.TypeString, Size: 32, Default: "pending"},
-		{Name: "session_id", Type: field.TypeString, Size: 128, Default: ""},
-		{Name: "turn_id", Type: field.TypeString, Size: 128, Default: ""},
-		{Name: "parent_activity_id", Type: field.TypeString, Size: 64, Default: ""},
-		{Name: "timestamp", Type: field.TypeString, Default: ""},
-		{Name: "duration_ms", Type: field.TypeInt64, Default: 0},
-		{Name: "seq", Type: field.TypeInt64, Default: 0},
-		{Name: "prompt_tokens", Type: field.TypeInt64, Default: 0},
-		{Name: "completion_tokens", Type: field.TypeInt64, Default: 0},
-		{Name: "content", Type: field.TypeString, Size: 2147483647, Default: ""},
-		{Name: "reasoning", Type: field.TypeString, Size: 2147483647, Default: ""},
-		{Name: "tool_name", Type: field.TypeString, Size: 128, Default: ""},
-		{Name: "tool_category", Type: field.TypeString, Size: 32, Default: ""},
-		{Name: "tool_call_id", Type: field.TypeString, Size: 512, Default: ""},
-		{Name: "tool_arguments", Type: field.TypeString, Size: 2147483647, Default: ""},
-		{Name: "tool_result", Type: field.TypeString, Size: 2147483647, Default: ""},
-		{Name: "tool_duration_ms", Type: field.TypeInt64, Default: 0},
-		{Name: "tool_error_code", Type: field.TypeString, Size: 64, Default: ""},
-		{Name: "stage", Type: field.TypeString, Size: 64, Default: ""},
-		{Name: "child_board_id", Type: field.TypeString, Size: 64, Default: ""},
-		{Name: "spirit_session_id", Type: field.TypeString, Size: 128, Default: ""},
-		{Name: "team_id", Type: field.TypeString, Size: 128, Default: ""},
-		{Name: "dag_node_id", Type: field.TypeString, Size: 128, Default: ""},
-		{Name: "depends_on", Type: field.TypeJSON, Nullable: true},
-		{Name: "agent_key", Type: field.TypeString, Size: 128, Default: ""},
-		{Name: "agent_name", Type: field.TypeString, Size: 128, Default: ""},
-		{Name: "collapsed", Type: field.TypeBool, Default: false},
-		{Name: "label", Type: field.TypeString, Size: 128, Default: ""},
-		{Name: "version", Type: field.TypeInt64, Default: 0},
-		{Name: "meta", Type: field.TypeJSON, Nullable: true},
-	}
-	// ActivitiesTable holds the schema information for the "activities" table.
-	ActivitiesTable = &schema.Table{
-		Name:       "activities",
-		Columns:    ActivitiesColumns,
-		PrimaryKey: []*schema.Column{ActivitiesColumns[0]},
-		Indexes: []*schema.Index{
-			{
-				Name:    "idx_activities_session_turn",
-				Unique:  false,
-				Columns: []*schema.Column{ActivitiesColumns[3], ActivitiesColumns[4]},
-			},
-			{
-				Name:    "idx_activities_parent",
-				Unique:  false,
-				Columns: []*schema.Column{ActivitiesColumns[5]},
-			},
-			{
-				Name:    "idx_activities_spirit_session",
-				Unique:  false,
-				Columns: []*schema.Column{ActivitiesColumns[22]},
-			},
-			{
-				Name:    "idx_activities_team",
-				Unique:  false,
-				Columns: []*schema.Column{ActivitiesColumns[23]},
-			},
-		},
-	}
 	// AdminsColumns holds the columns for the "admins" table.
 	AdminsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1567,6 +1504,11 @@ var (
 				Name:    "idx_member_sessions_v2_agent",
 				Unique:  false,
 				Columns: []*schema.Column{MemberSessionsV2Columns[6]},
+			},
+			{
+				Name:    "idx_member_sessions_v2_spirit_orphan",
+				Unique:  false,
+				Columns: []*schema.Column{MemberSessionsV2Columns[5], MemberSessionsV2Columns[1]},
 			},
 		},
 	}
@@ -3446,7 +3388,6 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
-		ActivitiesTable,
 		AdminsTable,
 		AgentsTable,
 		AgentPerformancesTable,
@@ -3542,9 +3483,6 @@ var (
 )
 
 func init() {
-	ActivitiesTable.Annotation = &entsql.Annotation{
-		Table: "activities",
-	}
 	AgentsTable.Annotation = &entsql.Annotation{
 		Table: "agents",
 	}

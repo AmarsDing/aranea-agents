@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import {
   listChannels,
+  listChannelsPaged,
   listChannelCatalog,
   listChannelCredentials,
   createChannel,
@@ -11,6 +12,7 @@ import {
   testChannel,
   listChannelDeliveries,
   listChannelTurnJobs,
+  type ChannelListQuery,
 } from '../../features/channels/api';
 import type {
   ChannelRow,
@@ -31,16 +33,25 @@ import { listTeams } from '../../features/teams/api';
 
 export const useChannelsStore = defineStore('channels', () => {
   const channels = ref<ChannelRow[]>([]);
+  const total = ref(0);
   const catalog = ref<ChannelTypeItem[]>([]);
   const loading = ref(false);
   const routingAgents = ref<Agent[]>([]);
   const routingTeams = ref<Team[]>([]);
   const routingOptionsLoading = ref(false);
 
-  async function loadChannels() {
+  async function loadChannels(query?: ChannelListQuery) {
     loading.value = true;
     try {
+      if (query) {
+        const result = await listChannelsPaged(query);
+        channels.value = result.items;
+        total.value = result.total;
+        return result;
+      }
       channels.value = await listChannels();
+      total.value = channels.value.length;
+      return { items: channels.value, total: total.value, page: 1, page_size: total.value };
     } finally {
       loading.value = false;
     }
@@ -50,12 +61,21 @@ export const useChannelsStore = defineStore('channels', () => {
     catalog.value = await listChannelCatalog();
   }
 
-  async function loadAll() {
+  async function loadAll(query?: ChannelListQuery) {
     loading.value = true;
     try {
-      const [catalogData, channelsData] = await Promise.all([listChannelCatalog(), listChannels()]);
+      const [catalogData, channelsResult] = await Promise.all([
+        listChannelCatalog(),
+        query ? listChannelsPaged(query) : listChannels().then((items) => ({
+          items,
+          total: items.length,
+          page: 1,
+          page_size: items.length,
+        })),
+      ]);
       catalog.value = catalogData;
-      channels.value = channelsData;
+      channels.value = channelsResult.items;
+      total.value = channelsResult.total;
     } finally {
       loading.value = false;
     }
@@ -122,6 +142,7 @@ export const useChannelsStore = defineStore('channels', () => {
 
   return {
     channels,
+    total,
     catalog,
     loading,
     routingAgents,

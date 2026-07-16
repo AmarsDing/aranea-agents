@@ -149,11 +149,6 @@ export function useChatWorkspace() {
       // system.heartbeat carries progress metadata for a future heartbeat display.
       return;
     }
-    if (envelope.kind === 'activity.bridge') {
-      // Chat timeline is v2-only. Bridge frames are for non-chat consumers
-      // (graph/teams/monitor) via transport unwrap → onActivityEvent.
-      return;
-    }
     // Route team/member v2 events to spirit store for left sidebar updates.
     // The v2 event router (below) also receives these for activityV2Store
     // rendering — both paths run in parallel.

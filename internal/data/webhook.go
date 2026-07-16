@@ -115,6 +115,38 @@ func (r *webhookRepo) List(ctx context.Context) ([]biz.WebhookConfig, error) {
 	return entRowsToWebhooks(r.data.lg, rows), nil
 }
 
+func (r *webhookRepo) webhookListQuery(ctx context.Context, q biz.WebhookListQuery) *ent.GatewayWebhookQuery {
+	pq := r.data.RW().Read(ctx).GatewayWebhook.Query()
+	if s := strings.TrimSpace(q.Search); s != "" {
+		pq = pq.Where(gatewaywebhook.Or(
+			gatewaywebhook.NameContainsFold(s),
+			gatewaywebhook.URLContainsFold(s),
+		))
+	}
+	return pq
+}
+
+func (r *webhookRepo) ListPaged(ctx context.Context, q biz.WebhookListQuery) (biz.WebhookListResult, error) {
+	total, err := r.webhookListQuery(ctx, q).Count(ctx)
+	if err != nil {
+		return biz.WebhookListResult{}, err
+	}
+	rows, err := r.webhookListQuery(ctx, q).
+		Order(gatewaywebhook.ByCreatedAt()).
+		Limit(q.Limit).
+		Offset(q.Offset).
+		All(ctx)
+	if err != nil {
+		return biz.WebhookListResult{}, err
+	}
+	return biz.WebhookListResult{
+		Items:  entRowsToWebhooks(r.data.lg, rows),
+		Total:  total,
+		Limit:  q.Limit,
+		Offset: q.Offset,
+	}, nil
+}
+
 func (r *webhookRepo) ListEnabled(ctx context.Context) ([]biz.WebhookConfig, error) {
 	rows, err := r.data.RW().Read(ctx).GatewayWebhook.Query().
 		Where(gatewaywebhook.EnabledEQ(true)).

@@ -1,7 +1,7 @@
 import { onUnmounted, ref, watch } from 'vue';
 import { createEnvelopeStream } from '../../realtime/useEnvelopeStream';
 import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
-import type { ActivityEvent } from '../../realtime/activityEvent';
+import type { SystemNoticeEventPayload, V2WsEnvelope } from '../chat/v2Types';
 
 /** Subscribe to knowledge ingest progress over /v1/ws (EP-KN-02). */
 export function useKnowledgeIngestWs(collectionId: () => string, onProgress: () => void) {
@@ -22,17 +22,13 @@ export function useKnowledgeIngestWs(collectionId: () => string, onProgress: () 
     }
     disconnect();
 
-    // ActivityEvent migration: knowledge_ingest is now published as an
-    // ActivityEvent with kind='notice' and meta.event_type='knowledge_ingest'
-    // (see internal/service/knowledge.go publishKnowledgeIngest). The backend
-    // does not set SessionID (system-domain event), so session-filtered WS
-    // connections cannot receive it. We subscribe via the shared global WS hub
-    // (session_id=*) which bypasses the session filter, and filter by
-    // meta.collection_id client-side to only react to this collection.
-    function applyActivityEvent(ev: ActivityEvent) {
-      if (ev.activity.kind !== 'notice') return;
-      const meta = (ev.activity.meta ?? {}) as Record<string, unknown>;
-      if (String(meta.event_type ?? '') !== 'knowledge_ingest') return;
+    // Backend publishes NewSystemNoticeEvent("", "knowledge_ingest", …).
+    // Subscribe via GLOBAL_WS_SESSION_ID and filter by Meta.collection_id.
+    function applyV2(envelope: V2WsEnvelope) {
+      if (envelope.kind !== 'system.notice') return;
+      const payload = envelope.payload as SystemNoticeEventPayload;
+      if (payload.NoticeType !== 'knowledge_ingest') return;
+      const meta = payload.Meta ?? {};
       if (String(meta.collection_id ?? '') !== cid) return;
       onProgress();
     }
@@ -41,7 +37,7 @@ export function useKnowledgeIngestWs(collectionId: () => string, onProgress: () 
       sessionId: GLOBAL_WS_SESSION_ID,
       channels: ['chat', 'system'],
       autoConnect: false,
-      onActivityEvent: applyActivityEvent,
+      onV2Event: applyV2,
       onConnected: () => {
         connected.value = true;
       },

@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"strings"
 
 	"aranea-agents/internal/biz"
 	bizhook "aranea-agents/internal/biz/hook"
@@ -59,6 +60,44 @@ func (r *hookRepo) ListHooks(ctx context.Context) ([]biz.Hook, error) {
 		out = append(out, entToBizHook(e))
 	}
 	return out, nil
+}
+
+func (r *hookRepo) hookListQuery(ctx context.Context, q bizhook.ListQuery) *ent.PlatformHookQuery {
+	pq := r.data.RW().Read(ctx).PlatformHook.Query().Where(platformhook.DeletedAtEQ(""))
+	if s := strings.TrimSpace(q.Search); s != "" {
+		pq = pq.Where(platformhook.Or(
+			platformhook.HookKeyContainsFold(s),
+			platformhook.NameContainsFold(s),
+			platformhook.DescriptionContainsFold(s),
+		))
+	}
+	if cp := strings.TrimSpace(q.CallbackPoint); cp != "" {
+		pq = pq.Where(platformhook.ConfigJSONContainsFold(`"callback_point":"` + cp + `"`))
+	}
+	return pq
+}
+
+func (r *hookRepo) ListHooksPaged(ctx context.Context, q bizhook.ListQuery) (bizhook.ListResult, error) {
+	total, err := r.hookListQuery(ctx, q).Count(ctx)
+	if err != nil {
+		return bizhook.ListResult{}, err
+	}
+	rows, err := r.hookListQuery(ctx, q).
+		Order(
+			platformhook.BySortOrder(),
+			platformhook.ByCreatedAt(entsql.OrderDesc()),
+		).
+		Limit(q.Limit).
+		Offset(q.Offset).
+		All(ctx)
+	if err != nil {
+		return bizhook.ListResult{}, err
+	}
+	out := make([]biz.Hook, 0, len(rows))
+	for _, e := range rows {
+		out = append(out, entToBizHook(e))
+	}
+	return bizhook.ListResult{Items: out, Total: total, Limit: q.Limit, Offset: q.Offset}, nil
 }
 
 func (r *hookRepo) GetHook(ctx context.Context, id string) (biz.Hook, error) {

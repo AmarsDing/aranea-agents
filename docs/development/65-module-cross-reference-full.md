@@ -297,7 +297,7 @@
 | **共享类型** | v2 Event（Task/Turn/Step/Team/Graph/system.*）、`MonitorEvent` |
 | **事件生产** | 不生产业务事件（只提供基础设施；投影在 `agent/v2`） |
 | **事件消费** | Bus 是传输层；WS 经 `ws_v2_subscriber` 推送 |
-| **数据库** | FlowLogRepo；v2 实体表（tasks/turns/steps/…）；`activities` 表遗留读路径可能仍在 |
+| **数据库** | FlowLogRepo；v2 实体表（tasks/turns/steps/…）；`activities` 已 DROP（20261012）；FE 历史走 listStepsV2 |
 | **前端对应** | ChatPage（`v2_event` → activityV2Store）、MonitorPage（`monitor_event`） |
 
 **⚠️ 开发注意**：

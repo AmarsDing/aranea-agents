@@ -20,6 +20,7 @@ import type {
   ModelUsageQuery,
   ModelUsageTrendPoint,
   ModelUsageSummary,
+  ModelUsageEventsResult,
   AllModelsBreakdownQuery,
   AllModelsBreakdownResult,
 } from './types';
@@ -31,6 +32,7 @@ export type {
   ModelUsageQuery,
   ModelUsageTrendPoint,
   ModelUsageSummary,
+  ModelUsageEventsResult,
   AllModelsBreakdownQuery,
   AllModelsBreakdownResult,
 } from './types';
@@ -243,6 +245,7 @@ function queryToKratos(q: ModelUsageQuery): KUsageQuery {
     agentId: q.agent_id,
     status: q.status,
     limit: q.limit,
+    offset: q.offset,
     granularity: q.granularity,
     teamId: q.team_id?.trim() || undefined,
     usageKind: q.usage_kind?.trim() || undefined,
@@ -374,10 +377,11 @@ export async function listModelUsageTrends(query: ModelUsageQuery = {}): Promise
   return items.map((t: KTrend) => trendFromUnknown(t as unknown as Record<string, unknown>));
 }
 
-export async function listModelUsageEvents(query: ModelUsageQuery = {}): Promise<ModelTokenUsageEvent[]> {
+export async function listModelUsageEvents(query: ModelUsageQuery = {}): Promise<ModelUsageEventsResult> {
   const raw = (await usage.ListUsageEvents(queryToKratos(query))) as ListUsageEventsResponse;
-  const items = raw.items ?? [];
-  return items.map((e: KEvent) => tokenEventFromUnknown(e as unknown as Record<string, unknown>));
+  const items = (raw.items ?? []).map((e: KEvent) => tokenEventFromUnknown(e as unknown as Record<string, unknown>));
+  const total = typeof raw.total === 'number' ? raw.total : items.length;
+  return { items, total };
 }
 
 /** Persists one usage row + session counters + daily rollup (`usage/v1` ingest). */

@@ -21,6 +21,7 @@ import type {
   SkillRefineResult,
   SkillRunQuery,
   SkillTag,
+  SkillVersionDetail,
   ExperienceReportView,
   ExperienceReportListResult,
   EvolutionSuggestionView,
@@ -553,10 +554,28 @@ export async function previewSkillRuntime(id: string): Promise<SkillRuntimePrevi
   };
 }
 
-export async function getSkillVersions(id: string, page = 1, pageSize = 20): Promise<PaginatedResponse<unknown>> {
+export async function getSkillVersions(
+  id: string,
+  page = 1,
+  pageSize = 20,
+): Promise<PaginatedResponse<SkillVersionDetail>> {
   const res = await createSkillService().GetSkillVersions({ skillId: id, page, pageSize });
   const r = res as Record<string, unknown>;
-  const items = (r.items ?? []) as unknown[];
+  const rawItems = (r.items ?? []) as Record<string, unknown>[];
+  const items: SkillVersionDetail[] = rawItems.map((row) => {
+    const s = (a: string, b: string) => String(row[a] ?? row[b] ?? '');
+    return {
+      id: s('id', 'id'),
+      skill_id: s('skill_id', 'skillId'),
+      version: s('version', 'version'),
+      status: s('status', 'status'),
+      content_markdown: s('content_markdown', 'contentMarkdown'),
+      validation_status: s('validation_status', 'validationStatus'),
+      published_at: s('published_at', 'publishedAt'),
+      created_at: s('created_at', 'createdAt'),
+      file_manifest_json: s('file_manifest_json', 'fileManifestJson') || undefined,
+    };
+  });
   return {
     items,
     total: Number(r.total ?? 0),

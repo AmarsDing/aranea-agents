@@ -1,12 +1,24 @@
 # Channel 渠道 — 开发计划
 
-> **版本**：2026-06-06 | **状态**：🟢 13 平台连接；Runtime 生产级重连 + 流式出站 MVP；Phase K+L 全部优化完成（剩余 0 项）
+> **版本**：2026-07-16 | **状态**：🟢 13 平台连接主干可用；Runtime 重连 + 流式出站 MVP；**非「剩余 0」**——见下方已知缺口
 > **需求**：[17 channel.md](./17%20channel.md) · **设计**：[17 channel.design.md](./17%20channel.design.md) · **业务集成**：[17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md) · [**外部参考借鉴手册**](./17-channel-external-reference-playbook.md) · [**四层目标架构**](./0-module-decoupling-architecture.md#31-推荐目标架构channel--chat--agent) · [**Phase DECO**](./17-channel-development.md#14-phase-deco--四层架构解耦deco)  
 > **Hermes 对照**：[17 channel.design.md §十二](./17%20channel.design.md#十二hermes-agent-对照消息流转与飞书特殊处理) · Phase F backlog 见 **§11**  
 > **平台参考**：[MuseBot](https://github.com/yincongcyincong/MuseBot) `robot/`（MIT）  
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-BIZ-08
 
 ---
+
+## 0. 已知缺口（2026-07-16 审计后）
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| Teams RS256 JWKS | ✅ | `internal/channel/teams/jwks.go` |
+| LINE 多事件单次 HTTP 响应 | ✅ | `channel_ingress_line.go` |
+| 入站幂等 nil fail-closed | ✅ | `ChannelPeerUsecase.TryClaimInbound` |
+| Webhook 必填凭据 fail-closed | ✅ | `loadRequiredCredential` |
+| 飞书 Catalog Webhook UI | ⏳ | Catalog 仅开放 websocket |
+| Hermes 富媒体 / post 出站 / IP 限流 | ⏳ | Phase F backlog |
+| `execution_mode=auto` 关键词→Job | ❌（有意） | CC-R-05：仅 `/async`；关键词仅 UX hint |
 
 ## 1. 模块定位
 
@@ -96,7 +108,7 @@ Channel：在 Kratos 层实现外部 IM 平台连接，参考 MuseBot 的 SDK �
 | `personal_qq` | OneBot HTTP | webhook ✅ · outbound ✅ | ✅ | OneBot 协议 |
 | `line` | Webhook | webhook ✅ · outbound ✅ · 流式 update ✅ | ✅ | line-bot-sdk-go |
 | `mattermost` | WebSocket / Webhook | webhook ✅ · websocket ✅ · outbound ✅ · 流式 update ✅ | ✅ | gorilla/websocket + REST API v4 |
-| `teams` | Bot Framework Webhook | webhook ✅ · outbound ✅ | ✅ | Bot Framework OAuth2 |
+| `teams` | Bot Framework Webhook | webhook ✅ · outbound ✅ · **RS256 JWKS 验签 ✅**（2026-07-16） | ✅ | Bot Framework OAuth2 |
 
 ---
 

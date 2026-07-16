@@ -15,10 +15,42 @@ function wireToWebhook(raw: Record<string, unknown>): WebhookRow {
   };
 }
 
+export type WebhookListQuery = {
+  page?: number;
+  page_size?: number;
+  search?: string;
+};
+
+export type WebhookListResult = {
+  items: WebhookRow[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+/** Full catalog (no page params). */
 export async function listWebhooks(): Promise<WebhookRow[]> {
   const svc = createWebhookService();
   const res = await svc.ListWebhooks({});
   return (res.items ?? []).map((row) => wireToWebhook(row as Record<string, unknown>));
+}
+
+/** Admin registry page — server pagination. */
+export async function listWebhooksPaged(query: WebhookListQuery = {}): Promise<WebhookListResult> {
+  const svc = createWebhookService();
+  const page = query.page ?? 1;
+  const pageSize = query.page_size ?? 20;
+  const res = await svc.ListWebhooks({
+    page,
+    pageSize,
+    search: query.search?.trim() || undefined,
+  });
+  return {
+    items: (res.items ?? []).map((row) => wireToWebhook(row as Record<string, unknown>)),
+    total: Number(res.total ?? 0),
+    page: Number(res.page ?? page),
+    page_size: Number(res.pageSize ?? pageSize),
+  };
 }
 
 export async function createWebhook(input: {

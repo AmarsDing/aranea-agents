@@ -19,7 +19,7 @@ import (
 // - 注入 AgentReader 到 RealTeamOrchestrator，让 Orchestrate 能查询
 //   active agent 列表作为团队成员（PlanStep 不携带 AgentKeys）。
 // 2026-07-04 问题 1 修复：注入 v2 Sequencer 到 GraphOrchestrationProjector，
-// 让 PublishGraphTaskStatus 的 ActivityBridgeEvent 经过持久化（EventRouter →
+// 让 PublishGraphTaskStatus 的 system.notice 经过持久化（EventRouter →
 // UpsertActivity），避免刷新后丢失。graphProj 在 wire 中先于 sequencer 创建，
 // 需后注入打破循环。
 func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus biz.EventBus, realOrch *RealTeamOrchestrator, agentReader biz.AgentReader, graphProj *GraphOrchestrationProjector) *ChatService {

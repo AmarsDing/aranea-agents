@@ -28,6 +28,27 @@
 
       <div class="settings-subsection-grid">
         <div class="settings-subsection">
+          <div class="settings-subsection__head">
+            <div class="settings-subsection__title">加载模式</div>
+            <p class="settings-subsection__hint">
+              Progressive：Prompt 仅注入 Skill 清单（L0），正文经
+              <code>skill_load</code> 按需加载（L1），引用文档经
+              <code>skill_select_docs</code>（L2）。
+            </p>
+          </div>
+          <q-select
+            v-model="config.skill_load_mode"
+            dense
+            outlined
+            emit-value
+            map-options
+            :options="skillLoadModeOptions"
+            label="skill_load_mode"
+            hint="默认 turn；长上下文 / 多 Skill Agent 建议 progressive"
+          />
+        </div>
+
+        <div class="settings-subsection">
           <div class="settings-subsection__head row items-center justify-between">
             <div>
               <div class="settings-subsection__title">意图收窄</div>
@@ -294,6 +315,13 @@ const baseExecutorOptions = [
   { label: 'Docker（容器隔离，推荐生产）', value: 'docker' },
   { label: 'E2B（云端沙箱，需 E2B_API_KEY）', value: 'e2b' },
   { label: 'Container（框架引擎，需 build tag）', value: 'container' },
+];
+
+const skillLoadModeOptions = [
+  { label: 'turn（当前轮次，默认）', value: 'turn' },
+  { label: 'once（单次请求）', value: 'once' },
+  { label: 'session（会话内保持）', value: 'session' },
+  { label: 'progressive（L0→L1→L2 按需加载）', value: 'progressive' },
 ];
 
 const props = withDefaults(

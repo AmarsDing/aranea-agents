@@ -29,7 +29,6 @@ type TeamService struct {
 	eventBus        biz.EventBus // Phase 3b-D Task 9: migrated from v1 ActivityEventBus to v2 EventBus
 	lg              loggateway.Logger
 	synthesis       *SpiritSynthesisService
-	activityRepo    biz.ActivityRepo // legacy read fallback for dead-letter hydrate
 	teamStageReader biz.TeamStageV2Reader
 	stepReader      biz.StepV2Reader
 	stepWriter      biz.StepV2Writer
@@ -48,7 +47,6 @@ func NewTeamService(
 	eventBus biz.EventBus,
 	lg loggateway.Logger,
 	synthesis *SpiritSynthesisService,
-	activityRepo biz.ActivityRepo,
 	teamStageReader biz.TeamStageV2Reader,
 	stepReader biz.StepV2Reader,
 	stepWriter biz.StepV2Writer,
@@ -63,7 +61,6 @@ func NewTeamService(
 		uc: uc, graphUC: graphUC, agents: agents, sessions: sessions,
 		teamRunner: teamRunner, runs: runs, eventBus: eventBus, lg: lg,
 		synthesis:       synthesis,
-		activityRepo:    activityRepo,
 		teamStageReader: teamStageReader,
 		stepReader:      stepReader,
 		stepWriter:      stepWriter,

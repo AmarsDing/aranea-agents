@@ -10,7 +10,7 @@ import (
 // This bridges the package boundary: biz/session cannot import biz (circular),
 // so the adapter is provided from the biz package side via Wire.
 //
-// Phase 3b-D Task 7: migrated from biz.ActivityReader to biz.StepV2Reader.
+// Adapts StepV2Reader → session.ActivityLister (DTO shape for compress/search).
 // Steps are converted to the v1 Activity shape via StepToActivity for
 // backward compat with the session.ActivityEntry conversion.
 type sessionActivityLister struct {

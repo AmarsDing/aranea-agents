@@ -92,6 +92,28 @@ func (s *GatewayService) CreateWebhook(ctx context.Context, req *v1.CreateWebhoo
 }
 
 func (s *GatewayService) ListWebhooks(ctx context.Context, _ *emptypb.Empty) (*v1.ListWebhooksResponse, error) {
+	search := searchQueryFromContext(ctx)
+	if page, pageSize, ok := pageQueryFromContext(ctx); ok {
+		limit, offset, page, pageSize := biz.PageToLimitOffset(page, pageSize)
+		result, err := s.wh.ListPaged(ctx, biz.WebhookListQuery{
+			Search: search,
+			Limit:  limit,
+			Offset: offset,
+		})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]*v1.Webhook, 0, len(result.Items))
+		for i := range result.Items {
+			out = append(out, webhookToProto(result.Items[i]))
+		}
+		return &v1.ListWebhooksResponse{
+			Items:    out,
+			Total:    int32(result.Total),
+			Page:     page,
+			PageSize: pageSize,
+		}, nil
+	}
 	items, err := s.wh.List(ctx)
 	if err != nil {
 		return nil, err
@@ -100,7 +122,12 @@ func (s *GatewayService) ListWebhooks(ctx context.Context, _ *emptypb.Empty) (*v
 	for i := range items {
 		out = append(out, webhookToProto(items[i]))
 	}
-	return &v1.ListWebhooksResponse{Items: out}, nil
+	return &v1.ListWebhooksResponse{
+		Items:    out,
+		Total:    int32(len(out)),
+		Page:     1,
+		PageSize: int32(len(out)),
+	}, nil
 }
 
 func (s *GatewayService) UpdateWebhook(ctx context.Context, req *v1.UpdateWebhookRequest) (*v1.Webhook, error) {

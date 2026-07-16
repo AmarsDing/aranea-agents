@@ -1,6 +1,7 @@
 /**
- * Chat message store — manages per-session message state, revision tracking,
- * and message merge logic. Split from the monolithic useChatStore.
+ * Chat message store — revision / incremental hydrate / pending-message merge.
+ * Chat timeline rendering is v2-only (`activityV2Store` + SessionPanelV2);
+ * this store is NOT the timeline source of truth.
  */
 import { ref } from 'vue';
 import { defineStore } from 'pinia';

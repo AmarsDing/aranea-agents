@@ -83,6 +83,18 @@
             </q-card-section>
           </q-card>
         </div>
+
+        <div class="col-12">
+          <SkillVersionsCard
+            :versions="versions"
+            :loading="loadingVersions"
+            :error="versionsError"
+            :can-rollback="Boolean(skill.permissions?.can_edit)"
+            :rolling-id="rollingId"
+            @refresh="loadVersions"
+            @rollback="rollbackVersion"
+          />
+        </div>
       </div>
     </template>
   </q-page>
@@ -91,14 +103,29 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router';
 import SkillHealthCard from '../components/skills/SkillHealthCard.vue';
+import SkillVersionsCard from '../components/skills/SkillVersionsCard.vue';
 import { useSkillDetailPage } from '../features/skills/useSkillDetailPage';
 import { skillStatusLabel as statusLabel, skillStatusColor as statusColor } from '../components/skills/skillTableUi';
 
 const route = useRoute();
 const skillId = route.params.skillId as string;
 
-const { skill, health, loadingSkill, loadingHealth, skillError, healthError, loadHealth, goBack } =
-  useSkillDetailPage(skillId);
+const {
+  skill,
+  health,
+  versions,
+  loadingSkill,
+  loadingHealth,
+  loadingVersions,
+  rollingId,
+  skillError,
+  healthError,
+  versionsError,
+  loadHealth,
+  loadVersions,
+  rollbackVersion,
+  goBack,
+} = useSkillDetailPage(skillId);
 
 function formatDate(value?: string) {
   if (!value) return '-';

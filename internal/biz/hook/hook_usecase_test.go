@@ -23,6 +23,14 @@ func (m *mockRepo) ListHooks(ctx context.Context) ([]Hook, error) {
 	return nil, nil
 }
 
+func (m *mockRepo) ListHooksPaged(_ context.Context, q ListQuery) (ListResult, error) {
+	items, err := m.ListHooks(context.Background())
+	if err != nil {
+		return ListResult{}, err
+	}
+	return ListResult{Items: items, Total: len(items), Limit: q.Limit, Offset: q.Offset}, nil
+}
+
 func (m *mockRepo) GetHook(ctx context.Context, id string) (Hook, error) {
 	if m.getHook != nil {
 		return m.getHook(ctx, id)

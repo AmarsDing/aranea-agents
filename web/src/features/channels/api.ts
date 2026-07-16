@@ -122,9 +122,44 @@ export async function listChannelCatalog(): Promise<ChannelTypeItem[]> {
   return (data.items ?? []).map(kratosCatalogToLegacy);
 }
 
+export type ChannelListQuery = {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  type?: string;
+  status?: string;
+};
+
+export type ChannelListResult = {
+  items: ChannelRow[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+/** Full catalog (no page params) — pickers / monitor / routing. */
 export async function listChannels(): Promise<ChannelRow[]> {
   const data = await channelApi.ListChannels({});
   return (data.items ?? []).map(kratosChannelToLegacy);
+}
+
+/** Admin registry page — server pagination. */
+export async function listChannelsPaged(query: ChannelListQuery = {}): Promise<ChannelListResult> {
+  const page = query.page ?? 1;
+  const pageSize = query.page_size ?? 20;
+  const data = await channelApi.ListChannels({
+    page,
+    pageSize,
+    search: query.search?.trim() || undefined,
+    type: query.type?.trim() || undefined,
+    status: query.status?.trim() || undefined,
+  });
+  return {
+    items: (data.items ?? []).map(kratosChannelToLegacy),
+    total: Number(data.total ?? 0),
+    page: Number(data.page ?? page),
+    page_size: Number(data.pageSize ?? pageSize),
+  };
 }
 
 export async function createChannel(payload: ChannelResourceInput): Promise<ChannelRow> {

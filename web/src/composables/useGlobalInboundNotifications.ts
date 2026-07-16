@@ -3,23 +3,29 @@ import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
 import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from '../features/chat/globalWsHub';
-import type { ActivityEvent } from '../realtime/activityEvent';
-import { runStatusFromActivityEvent } from '../features/chat/activityRunStatus';
-import { activitySource, isTurnCompleteActivity } from '../features/chat/inboundSyncEnvelope';
+import { runStatusFromV2Payload } from '../features/chat/activityRunStatus';
 import { parseChannelSessionMeta } from '../features/chat/channelSessionMeta';
 import type { Session } from '../features/session/types';
 import {
   isChannelInboundSession,
   resolveInboundSession,
-  shouldChannelInboundCompleteToastActivity,
 } from '../features/chat/channelInboundSession';
 import { useInboundNotificationStore } from '../stores/inboundNotifications';
 import { useAppStore } from '../stores/app';
 import { useChatSessionStore } from '../stores/chat/sessionStore';
 import { useChatConversationStore } from '../stores/chat/conversationStore';
 import { refreshAgentSessionsForChannel } from '../features/chat/channelInboundSessionRefresh';
+import type { RunStatusEventPayload, V2WsEnvelope } from '../features/chat/v2Types';
+import { SESSION_RUN_STATUS } from '../features/chat/sessionRunStatus';
 
 const TOAST_DEDUPE_MS = 4000;
+
+const TERMINAL_KINDS = new Set([
+  'task.completed',
+  'task.failed',
+  'turn.completed',
+  'turn.failed',
+]);
 
 /**
  * App-wide channel inbound bell + toast. Mounted from MainLayout so notifications
@@ -53,13 +59,6 @@ export function useGlobalInboundNotifications() {
     return selectedAgent === agentId.trim();
   }
 
-  /**
-   * Sync the resolved Session into conversationStore so the inbox entry shows
-   * the real title (e.g. "feishu:channel_key:peer_key") instead of the
-   * "Untitled session" placeholder set by applyProjection when no prior
-   * session metadata exists. Also ensures the session is added to inbox even
-   * when the user is not on ChatPage (useChatInboundSync not mounted).
-   */
   function syncConversationInbox(sessionId: string, sess: Session | null, isViewing: boolean) {
     if (!sess) return;
     const title = sess.title?.trim() || parseChannelSessionMeta(sess.metadata_json)?.channel_key || 'Channel';
@@ -72,7 +71,6 @@ export function useGlobalInboundNotifications() {
         id: sess.agent_id,
         source: 'channel',
       },
-      // Preserve existing unreadCount; applyProjection (when mounted) handles increments.
       unreadCount: existing?.unreadCount ?? 0,
     });
     if (!isViewing) {
@@ -96,11 +94,11 @@ export function useGlobalInboundNotifications() {
     });
   }
 
-  async function handleActivityEvent(ev: ActivityEvent) {
-    const sessionId = (ev.activity.session_id ?? '').trim();
-    if (!sessionId) return;
-
-    const source = activitySource(ev);
+  async function handleInboundSession(sessionId: string, source: string, opts: {
+    running?: boolean;
+    completed?: boolean;
+    toast?: boolean;
+  }) {
     if (!(await isChannelInbound(sessionId, source))) return;
 
     const sess = await resolveSession(sessionId);
@@ -115,23 +113,18 @@ export function useGlobalInboundNotifications() {
     const title = sess?.title?.trim() || parseChannelSessionMeta(sess?.metadata_json)?.channel_key || 'Channel';
     syncConversationInbox(sessionId, sess, isViewingSession(sessionId, agentId));
 
-    if (ev.activity.stage === 'run_status') {
-      const rs = runStatusFromActivityEvent(ev);
-      if (rs?.status === 'running') {
-        pushNotification(sessionId, agentId, 'running', title);
-      }
+    if (opts.running) {
+      pushNotification(sessionId, agentId, 'running', title);
     }
-
-    if (!isTurnCompleteActivity(ev)) return;
+    if (!opts.completed) return;
 
     pushNotification(sessionId, agentId, 'completed', title);
 
-    const wantsToast = shouldChannelInboundCompleteToastActivity(ev);
     const now = Date.now();
     const lastToast = toastDedupeBySession.get(sessionId) ?? 0;
     const dedupeOk = now - lastToast >= TOAST_DEDUPE_MS;
 
-    if (!isViewingSession(sessionId, agentId) && wantsToast && dedupeOk) {
+    if (!isViewingSession(sessionId, agentId) && opts.toast && dedupeOk) {
       toastDedupeBySession.set(sessionId, now);
       $q.notify({
         type: 'info',
@@ -150,12 +143,43 @@ export function useGlobalInboundNotifications() {
     }
   }
 
+  async function handleV2Event(envelope: V2WsEnvelope) {
+    const sessionId = String(envelope.session_id ?? '').trim();
+    if (!sessionId) return;
+
+    if (envelope.kind === 'system.run_status') {
+      const payload = envelope.payload as RunStatusEventPayload;
+      const rs = runStatusFromV2Payload(payload);
+      if (!rs) return;
+      const source = String(payload.Meta?.source ?? '').trim();
+      if (rs.status === 'running') {
+        await handleInboundSession(sessionId, source, { running: true });
+        return;
+      }
+      const terminal =
+        rs.status === SESSION_RUN_STATUS.COMPLETED ||
+        rs.status === SESSION_RUN_STATUS.FAILED ||
+        rs.status === SESSION_RUN_STATUS.CANCELLED;
+      if (!terminal) return;
+      const toast =
+        rs.status === SESSION_RUN_STATUS.FAILED ||
+        rs.status === SESSION_RUN_STATUS.CANCELLED ||
+        (rs.status === SESSION_RUN_STATUS.COMPLETED && source === 'channel');
+      await handleInboundSession(sessionId, source, { completed: true, toast });
+      return;
+    }
+
+    if (TERMINAL_KINDS.has(envelope.kind)) {
+      await handleInboundSession(sessionId, 'channel', { completed: true, toast: true });
+    }
+  }
+
   onMounted(() => {
     hubId = acquireGlobalWsConsumer({
       channels: ['chat'],
       logEnabled: false,
-      onActivityEvent: (ev) => {
-        void handleActivityEvent(ev);
+      onV2Event: (envelope) => {
+        void handleV2Event(envelope);
       },
     });
   });

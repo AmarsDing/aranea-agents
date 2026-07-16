@@ -22,7 +22,11 @@ func (h *ChannelIngress) handleWeComWebhook(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	token, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "token", h.lg)
+	token, ok := h.loadRequiredCredential(r.Context(), chRow.ID, creds, "token")
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return nil
+	}
 	if err := wecom.VerifySignature(token, r.URL.Query().Get("timestamp"), r.URL.Query().Get("nonce"), r.URL.Query().Get("msg_signature")); err != nil {
 		h.lg.Warn("WeCom Webhook 签名验证失败",
 			loggateway.StepID("channel.wecom.webhook.verify_fail"),

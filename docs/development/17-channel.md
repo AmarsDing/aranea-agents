@@ -38,7 +38,7 @@ Catalog 由 `ListChannelTypes` 返回。
 
 | type | 标签 | MuseBot 参考 | 连接模式 | 状态 | 入站 | 出站 |
 |------|------|-------------|----------|------|------|------|
-| `feishu` | 飞书 / Lark | `robot/lark.go` | webhook · **websocket** | ✅ | ✅ | ✅ |
+| `feishu` | 飞书 / Lark | `robot/lark.go` | webhook · **websocket**（Catalog 默认仅开放 websocket） | ✅ | ✅ | ✅ |
 | `dingtalk` | 钉钉 | `robot/ding.go` | webhook · **stream** | ✅ | ✅ | ✅ |
 | `wecom` | 企微智能机器人 | `robot/comwechat.go` | webhook | ✅ | ✅ | ✅ |
 | `wecom-app` | 企微自建应用 | `robot/comwechat.go` | webhook | ✅ | ✅ | ✅ |
@@ -357,7 +357,7 @@ Channel **不负责** LLM 编排；本需求定义 **IM 侧体验与受理语义
 | `progress_mode` | enum | `off` | `off` \| `text` \| `steps`（Team 成员摘要，P1） |
 | `progress_quiet_sec` | int | `20` | 无输出时心跳间隔（秒）；0 关闭 |
 | `heartbeat_message` | string | `仍在处理中…` | 心跳文案；可含 `{{elapsed}}` |
-| `execution_mode` | enum | `sync` | `sync` \| `async` \| `auto`（P2，对接 Graph/Cron） |
+| `execution_mode` | enum | `sync` | `sync`：同步 Turn；`async`：一律走 Graph/Cron Job；`auto`：**仅当消息以 `/async` 开头**才升格 Job（关键词只作 UX 提示，见 CC-R-05） |
 
 配置写入 DB，保存后 **Runtime Reload** 生效；不要求改代码。
 

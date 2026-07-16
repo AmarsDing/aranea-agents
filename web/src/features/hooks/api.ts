@@ -18,10 +18,44 @@ function wireToHook(raw: Record<string, unknown>): HookRow {
   };
 }
 
+export type HookListQuery = {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  callback_point?: string;
+};
+
+export type HookListResult = {
+  items: HookRow[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+/** Full catalog (no page params) — resolvers / platform resource manager. */
 export async function listHooks(): Promise<HookRow[]> {
   const svc = createHookService();
   const res = await svc.ListHooks({});
   return (res.items ?? []).map((row) => wireToHook(row as Record<string, unknown>));
+}
+
+/** Admin registry page — server pagination. */
+export async function listHooksPaged(query: HookListQuery = {}): Promise<HookListResult> {
+  const svc = createHookService();
+  const page = query.page ?? 1;
+  const pageSize = query.page_size ?? 20;
+  const res = await svc.ListHooks({
+    page,
+    pageSize,
+    search: query.search?.trim() || undefined,
+    callbackPoint: query.callback_point?.trim() || undefined,
+  });
+  return {
+    items: (res.items ?? []).map((row) => wireToHook(row as Record<string, unknown>)),
+    total: Number(res.total ?? 0),
+    page: Number(res.page ?? page),
+    page_size: Number(res.pageSize ?? pageSize),
+  };
 }
 
 export async function createHook(input: {

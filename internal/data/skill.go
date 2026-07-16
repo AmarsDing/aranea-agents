@@ -531,6 +531,21 @@ func (r *skillRepo) UpdateSkillEnabled(ctx context.Context, id string, enabled b
 	if id == "" {
 		return biz.Skill{}, apierror.BadRequest("SKILL", "skill id is required")
 	}
+	if enabled {
+		existing, err := r.data.RW().Read(ctx).PlatformSkill.Query().
+			Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
+			Only(ctx)
+		if err != nil {
+			if dataent.IsNotFound(err) {
+				return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
+			}
+			return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+		}
+		status := strings.TrimSpace(strings.ToLower(existing.Status))
+		if status != "published" && status != "active" {
+			return biz.Skill{}, apierror.BadRequest(apierror.DomainSkill, "only published skills can be enabled")
+		}
+	}
 	err := r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(id).
 		SetEnabled(enabled).
 		SetUpdatedAt(nowRFC3339()).
@@ -1404,10 +1419,16 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 	return r.GetSkillByID(ctx, id)
 }
 
-func (r *skillRepo) PublishSkill(ctx context.Context, id string) (biz.Skill, error) {
+func (r *skillRepo) PublishSkill(ctx context.Context, id string, validationStatus string) (biz.Skill, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return biz.Skill{}, apierror.BadRequest("SKILL", "skill id is required")
+	}
+	validationStatus = strings.TrimSpace(strings.ToLower(validationStatus))
+	switch validationStatus {
+	case "pass", "warn":
+	default:
+		return biz.Skill{}, apierror.BadRequest(apierror.DomainSkill, "invalid validation_status for publish")
 	}
 
 	// Validate current skill state before publishing
@@ -1445,21 +1466,20 @@ func (r *skillRepo) PublishSkill(ctx context.Context, id string) (biz.Skill, err
 		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 		First(ctx)
 	if err != nil {
-		if !dataent.IsNotFound(err) {
-			return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+		if dataent.IsNotFound(err) {
+			return biz.Skill{}, apierror.BadRequest(apierror.DomainSkill, "SKILL.md body is required")
 		}
-		// No version found - skill has no content, still publish but log warning
-		r.data.lg.Warn("PublishSkill: no SkillVersion found for skill",
-			loggateway.StepID("data.skill"),
-			loggateway.Str("skill_id", id))
-	} else if sv != nil {
-		if _, serr := tx.SkillVersion.UpdateOneID(sv.ID).
-			SetPublishedAt(now).
-			SetValidationStatus("pass").
-			SetUpdatedAt(now).
-			Save(ctx); serr != nil {
-			return biz.Skill{}, entErrToBizErr(serr, apierror.DomainSkill)
-		}
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+	}
+	if sv == nil || strings.TrimSpace(sv.ContentMarkdown) == "" {
+		return biz.Skill{}, apierror.BadRequest(apierror.DomainSkill, "SKILL.md body is required")
+	}
+	if _, serr := tx.SkillVersion.UpdateOneID(sv.ID).
+		SetPublishedAt(now).
+		SetValidationStatus(validationStatus).
+		SetUpdatedAt(now).
+		Save(ctx); serr != nil {
+		return biz.Skill{}, entErrToBizErr(serr, apierror.DomainSkill)
 	}
 	if err = tx.Commit(); err != nil {
 		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)

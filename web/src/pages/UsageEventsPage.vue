@@ -3,7 +3,7 @@
     <AppPageHero
       kicker="Token / Usage"
       title="用量事件明细"
-      :subtitle="`按时间查看 model_token_usage_events 原始记录（费用来自 model_pricing_rules 快照）。单次查询最多返回 ${usageEventsLimit} 条，下方分页为前端切片。`"
+      subtitle="按时间查看 model_token_usage_events 原始记录（费用来自 model_pricing_rules 快照）。列表为服务端分页。"
     >
       <template #actions>
         <q-btn outline rounded no-caps icon="download" label="导出 CSV" :loading="exporting" @click="onExportCsv" />
@@ -94,7 +94,7 @@
       />
       <template #actions>
         <q-btn flat rounded no-caps label="重置" icon="restart_alt" @click="onResetFilters" />
-        <q-btn flat rounded no-caps label="查询" icon="manage_search" :loading="loading" @click="load" />
+        <q-btn flat rounded no-caps label="查询" icon="manage_search" :loading="loading" @click="onSearch" />
         <q-btn flat rounded no-caps label="删除记录" icon="delete_outline" :loading="purging" @click="onPurgeConfirm" />
       </template>
     </AppPageToolbar>
@@ -111,7 +111,7 @@
 
     <template v-else>
       <AppRegistryTable
-        :rows="pagedEvents"
+        :rows="events"
         :columns="columns"
         row-key="id"
         :loading="loading"
@@ -143,19 +143,21 @@
       </AppRegistryTable>
 
       <AppRegistryPagination
-        v-model:page="page"
-        v-model:page-size="pageSize"
+        :page="page"
+        :page-size="pageSize"
         :page-max="pageMax"
-        :total="events.length"
+        :total="eventsTotal"
         :loading="loading"
         label="条事件"
+        @update:page="onPage"
+        @update:page-size="onPageSize"
       />
     </template>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { onMounted, watch } from 'vue';
+import { onMounted } from 'vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
@@ -164,13 +166,16 @@ import AppRegistryPagination from '../components/layout/AppRegistryPagination.vu
 import { useUsageEventsPage } from '../features/usage/useUsageEventsPage';
 import type { ModelTokenUsageEvent } from '../features/usage/types';
 import { type RegistryTableColumn } from '../features/ui/registryTableColumns';
-import { useLocalPagination } from '../composables/useLocalPagination';
-import { USAGE_EVENTS_LIMIT } from '../features/constants/queryLimits';
-
-const usageEventsLimit = USAGE_EVENTS_LIMIT;
+import { USAGE_EVENT_TABLE_COLUMNS } from '../features/usage/usageTableUi';
 
 const {
   events,
+  eventsTotal,
+  page,
+  pageSize,
+  pageMax,
+  onPage,
+  onPageSize,
   loading,
   error,
   exporting,
@@ -188,23 +193,15 @@ const {
   formatMoney,
 } = useUsageEventsPage();
 
-const {
-  page,
-  rowsPerPage: pageSize,
-  pagedRows: pagedEvents,
-  totalPages: pageMax,
-} = useLocalPagination<ModelTokenUsageEvent>({
-  rows: events,
-  defaultRowsPerPage: 20,
-});
-
-import { USAGE_EVENT_TABLE_COLUMNS } from '../features/usage/usageTableUi';
-
 const columns = USAGE_EVENT_TABLE_COLUMNS satisfies RegistryTableColumn<ModelTokenUsageEvent>[];
 
 function onResetFilters() {
-  page.value = 1;
   resetFilters();
+}
+
+function onSearch() {
+  page.value = 1;
+  void load();
 }
 
 async function onExportCsv() {
@@ -219,10 +216,6 @@ function onFilterChange() {
   page.value = 1;
   void load();
 }
-
-watch(events, () => {
-  page.value = 1;
-});
 
 onMounted(() => void load());
 </script>

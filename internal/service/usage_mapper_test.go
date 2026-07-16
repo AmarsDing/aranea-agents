@@ -27,6 +27,7 @@ func TestFromProtoUsageQuery(t *testing.T) {
 			UsageKind:    "chat_turn",
 			Status:       "success",
 			Limit:        100,
+			Offset:       40,
 			Granularity:  "daily",
 		}
 		got := fromProtoUsageQuery(in)
@@ -59,6 +60,9 @@ func TestFromProtoUsageQuery(t *testing.T) {
 		}
 		if got.Limit != 100 {
 			t.Errorf("Limit = %d", got.Limit)
+		}
+		if got.Offset != 40 {
+			t.Errorf("Offset = %d", got.Offset)
 		}
 		if got.Granularity != "daily" {
 			t.Errorf("Granularity = %q", got.Granularity)

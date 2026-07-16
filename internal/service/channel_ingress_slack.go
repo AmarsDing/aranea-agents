@@ -21,7 +21,11 @@ func (h *ChannelIngress) handleSlackWebhook(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	signingSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "signing_secret", h.lg)
+	signingSecret, ok := h.loadRequiredCredential(r.Context(), chRow.ID, creds, "signing_secret")
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return nil
+	}
 	if err := slack.VerifyRequest(r.Header.Get("X-Slack-Request-Timestamp"), r.Header.Get("X-Slack-Signature"), signingSecret, raw); err != nil {
 		h.lg.Warn("Slack Webhook 签名验证失败",
 			loggateway.StepID("channel.slack.webhook.verify_fail"),

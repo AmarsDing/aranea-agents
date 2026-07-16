@@ -69,9 +69,26 @@ type Hook struct {
 	DeletedAt    string
 }
 
+// ListQuery is the pagination/filter input for admin hook lists.
+type ListQuery struct {
+	Search        string
+	CallbackPoint string
+	Limit         int
+	Offset        int
+}
+
+// ListResult is a page of hooks plus the filter-scoped total.
+type ListResult struct {
+	Items  []Hook
+	Total  int
+	Limit  int
+	Offset int
+}
+
 // Repo abstracts hook persistence.
 type Repo interface {
 	ListHooks(ctx context.Context) ([]Hook, error)
+	ListHooksPaged(ctx context.Context, q ListQuery) (ListResult, error)
 	GetHook(ctx context.Context, id string) (Hook, error)
 	CreateHook(ctx context.Context, h Hook) (Hook, error)
 	UpdateHook(ctx context.Context, h Hook) (Hook, error)
@@ -92,6 +109,20 @@ func NewUsecase(repo Repo, lg loggateway.Logger) *Usecase {
 // List returns all hooks.
 func (u *Usecase) List(ctx context.Context) ([]Hook, error) {
 	return u.repo.ListHooks(ctx)
+}
+
+// ListPaged returns a page of hooks for the admin registry UI.
+func (u *Usecase) ListPaged(ctx context.Context, q ListQuery) (ListResult, error) {
+	if q.Limit <= 0 {
+		q.Limit = 20
+	}
+	if q.Limit > 100 {
+		q.Limit = 100
+	}
+	if q.Offset < 0 {
+		q.Offset = 0
+	}
+	return u.repo.ListHooksPaged(ctx, q)
 }
 
 // Get returns one hook by ID.

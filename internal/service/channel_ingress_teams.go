@@ -21,9 +21,14 @@ func (h *ChannelIngress) handleTeamsWebhook(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	appID, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "app_id", h.lg)
+	appID, ok := h.loadRequiredCredential(r.Context(), chRow.ID, creds, "app_id")
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return nil
+	}
+	// app_secret is optional for RS256 (JWKS); required for HS256 paths.
 	appSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "app_secret", h.lg)
-	if err := teams.VerifyRequest(appID, appSecret, r.Header, raw); err != nil {
+	if err := teams.VerifyRequest(r.Context(), appID, appSecret, r.Header, raw); err != nil {
 		h.lg.Warn("Teams Webhook 签名验证失败",
 			loggateway.StepID("channel.teams.webhook.verify_fail"),
 			loggateway.Str("channel_id", chRow.ID),

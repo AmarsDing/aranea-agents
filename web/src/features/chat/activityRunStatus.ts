@@ -2,8 +2,8 @@
  * activityRunStatus — Run-status extraction from WS payloads.
  *
  * Primary path: v2 `system.run_status` (RunStatusEventPayload).
- * Legacy path: ActivityEvent with `activity.stage = 'run_status'` (still used
- * by non-chat consumers that unwrap activity.bridge).
+ * Legacy path: ActivityEvent with `activity.stage = 'run_status'` (compat
+ * for adapted system.notice / residual ActivityEvent listeners).
  */
 import type { ActivityEvent } from '../../realtime/activityEvent';
 import type { RunStatusValue } from './types';

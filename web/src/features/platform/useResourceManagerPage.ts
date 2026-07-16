@@ -27,7 +27,7 @@ export function useResourceManagerPage() {
   const pageSubtitle = computed(
     () =>
       (route.meta.subtitle as string) ||
-      '管理平台资源、启用状态与运行配置。列表为全量加载，下方分页为前端切片。',
+      '管理平台资源、启用状态与运行配置。模型列表支持服务端分页与搜索。',
   );
 
   const list = useProviderList({ resource, isProviderResource, saving });
@@ -180,6 +180,7 @@ export function useResourceManagerPage() {
     pageTitle,
     pageSubtitle,
     filteredRows: list.filteredRows,
+    total: list.total,
     pageCount: list.pageCount,
     pagedProviderRows: list.pagedProviderRows,
     providerPresetOptions: wizard.providerPresetOptions,

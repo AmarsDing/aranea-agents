@@ -60,7 +60,7 @@ describe('ws-transport v2_event', () => {
     transport.disconnect();
   });
 
-  it('unwraps activity.bridge to onActivityEvent for non-chat consumers', () => {
+  it('adapts system.notice to onActivityEvent for non-chat consumers', () => {
     const mock = new MockWS();
     const onActivityEvent = vi.fn();
     const onV2Event = vi.fn();
@@ -73,20 +73,31 @@ describe('ws-transport v2_event', () => {
     });
     transport.connect();
 
-    const bridged = {
-      event: 'created',
-      activity: { id: 'a1', kind: 'graph_stage', stage: 'node_start', session_id: 's1' },
-    };
     const v2Msg = JSON.stringify({
       type: 'v2_event',
-      kind: 'activity.bridge',
-      payload: { Event: bridged },
+      kind: 'system.notice',
+      session_id: 's1',
+      payload: {
+        NoticeType: 'node_start',
+        Message: '',
+        Meta: {
+          activity_kind: 'graph_stage',
+          activity_status: 'running',
+          activity_event: 'created',
+          filter_key: 'graph/g1/e1',
+          node_id: 'n1',
+        },
+      },
     });
     mock.onmessage!({ data: v2Msg });
 
     expect(onV2Event).toHaveBeenCalledTimes(1);
     expect(onActivityEvent).toHaveBeenCalledTimes(1);
-    expect(onActivityEvent.mock.calls[0][0]).toEqual(bridged);
+    const adapted = onActivityEvent.mock.calls[0][0];
+    expect(adapted.activity.kind).toBe('graph_stage');
+    expect(adapted.activity.stage).toBe('node_start');
+    expect(adapted.activity.session_id).toBe('s1');
+    expect(adapted.activity.meta.filter_key).toBe('graph/g1/e1');
     transport.disconnect();
   });
 });

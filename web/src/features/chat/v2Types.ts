@@ -1,7 +1,5 @@
 // web/src/features/chat/v2Types.ts
 
-import type { ActivityEvent as AFActivityEvent } from '../../realtime/activityEvent';
-
 // === Status / Kind string-literal unions ===
 
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -264,13 +262,7 @@ export type EventKind =
   // routing to the correct WS client is done server-side via SpiritSessionID().
   | 'system.run_status'
   | 'system.heartbeat'
-  | 'system.notice'
-  // Phase 3b-D: bridge event wrapping a v1 ActivityEvent payload.
-  // Backend struct: biz.ActivityBridgeEvent (only `Event` field is exported).
-  // The wrapped v1 ActivityEvent retains all snake_case JSON tags, so the
-  // frontend can reuse existing v1 field-aware logic (dedup, system-event
-  // routing, sender reset) without data loss.
-  | 'activity.bridge';
+  | 'system.notice';
 
 // === Event payload shapes (what's inside envelope.payload) ===
 // Note: backend event structs have NO json tags, so exported fields
@@ -340,21 +332,6 @@ export interface SystemNoticeEventPayload {
   Meta: Record<string, unknown> | null;
 }
 
-// Phase 3b-D: ActivityBridgeEvent wraps a v1 ActivityEvent as a v2 Event.
-// Backend struct biz.ActivityBridgeEvent has only one exported field `Event`
-// (no JSON tag → serializes as PascalCase "Event"). The inner ActivityEvent
-// retains all snake_case JSON tags from biz.ActivityEvent, so it maps directly
-// to the existing AFActivityEvent TypeScript type.
-//
-// The bridge is used for v1 publish sites that have not been (or cannot be)
-// mapped to typed v2 entity events: graph_stage / team_stage / session /
-// plan / task_failed / publishWSErrorActivity / TeamGraphRunCoordinator, etc.
-// Frontend ignores these for the chat timeline (typed v2 entity events cover
-// Task/Turn/Step/Team/Graph). Non-chat consumers unwrap Event via ws-transport.
-export interface ActivityBridgeEventPayload {
-  Event: AFActivityEvent;
-}
-
 // Discriminated union of all v2 events
 export type V2Event =
   | TaskEventPayload
@@ -372,8 +349,7 @@ export type V2Event =
   | GraphNodeEventPayload
   | RunStatusEventPayload
   | HeartbeatEventPayload
-  | SystemNoticeEventPayload
-  | ActivityBridgeEventPayload;
+  | SystemNoticeEventPayload;
 
 // === WS envelope ===
 

@@ -33,6 +33,9 @@ message CreateWebhookRequest {
 
 message ListWebhooksResponse {
   repeated Webhook items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
 }
 
 message UpdateWebhookRequest {

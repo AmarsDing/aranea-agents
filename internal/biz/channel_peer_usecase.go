@@ -59,9 +59,11 @@ func (u *ChannelPeerUsecase) UpdatePeerSessionID(ctx context.Context, channelID,
 }
 
 // TryClaimInbound records idempotency before running an agent turn.
+// Fail-closed: a missing usecase/repo must not silently claim the inbound
+// (that would allow duplicate Turns when Wire misconfigures receipts).
 func (u *ChannelPeerUsecase) TryClaimInbound(ctx context.Context, channelID, platform, messageKey, peerID, text string) (bool, error) {
 	if u == nil || u.inboundReceipts == nil {
-		return true, nil
+		return false, apierror.Internal("CHANNEL_INBOUND", "inbound receipt repo not configured")
 	}
 	return TryClaimInbound(ctx, u.inboundReceipts, channelID, platform, messageKey, peerID, text)
 }

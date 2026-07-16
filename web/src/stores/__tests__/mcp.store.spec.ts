@@ -4,6 +4,7 @@ import { useMcpStore } from '../mcp';
 
 vi.mock('../../features/mcp/api', () => ({
   listMcpServers: vi.fn().mockResolvedValue([]),
+  listMcpServersPaged: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
   createMcpServer: vi.fn(),
   updateMcpServer: vi.fn(),
   deleteMcpServer: vi.fn().mockResolvedValue(undefined),

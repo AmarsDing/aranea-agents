@@ -21,6 +21,10 @@ func (s *stubMCPRepo) ListMCPServers(_ context.Context, _ MCPListQuery) ([]MCPSe
 	return s.rows, nil
 }
 
+func (s *stubMCPRepo) ListMCPServersPaged(_ context.Context, q MCPListQuery) (MCPListResult, error) {
+	return MCPListResult{Items: s.rows, Total: len(s.rows), Limit: q.Limit, Offset: q.Offset}, nil
+}
+
 func (s *stubMCPRepo) GetMCPServer(_ context.Context, id string) (MCPServer, error) {
 	for _, r := range s.rows {
 		if r.ID == id {

@@ -633,6 +633,7 @@ function safeJsonParseMeta(json: string): Record<string, unknown> | undefined {
   }
 }
 
+/** @deprecated Prefer listStepsV2 + stepToActivitySnapshot (Event Inspector already migrated). */
 export async function listActivities(
   sessionId: string,
   turnId?: string,

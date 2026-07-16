@@ -15,6 +15,10 @@ import {
   getSkill,
   getSkillHealth,
   updateSkillFile as updateSkillFileApi,
+  createSkill as createSkillApi,
+  updateSkill as updateSkillApi,
+  getSkillVersions as getSkillVersionsApi,
+  rollbackSkillVersion as rollbackSkillVersionApi,
 } from '../../features/skills/api';
 import type {
   Skill,
@@ -26,6 +30,7 @@ import type {
   SkillImportApplyResult,
   SkillRefineResult,
   SkillFileContent,
+  SkillVersionDetail,
   PaginatedResponse,
 } from '../../features/skills/types';
 
@@ -109,6 +114,38 @@ export const useSkillsStore = defineStore('skills', () => {
     return updateSkillFileApi(id, path, content);
   }
 
+  async function create(payload: {
+    name: string;
+    description?: string;
+    slug?: string;
+    tags?: string[];
+    bodyMarkdown?: string;
+  }): Promise<Skill> {
+    const created = await createSkillApi(payload);
+    skills.value = [created, ...skills.value];
+    total.value += 1;
+    return created;
+  }
+
+  async function update(
+    id: string,
+    payload: { name?: string; description?: string; tags?: string[]; bodyMarkdown?: string },
+  ): Promise<Skill> {
+    const updated = await updateSkillApi(id, payload);
+    skills.value = skills.value.map((s) => (s.id === updated.id ? updated : s));
+    return updated;
+  }
+
+  async function loadVersions(id: string, page = 1, pageSize = 20): Promise<PaginatedResponse<SkillVersionDetail>> {
+    return getSkillVersionsApi(id, page, pageSize);
+  }
+
+  async function rollbackVersion(id: string, versionId: string): Promise<Skill> {
+    const updated = await rollbackSkillVersionApi(id, versionId);
+    skills.value = skills.value.map((s) => (s.id === updated.id ? updated : s));
+    return updated;
+  }
+
   return {
     skills,
     total,
@@ -127,5 +164,9 @@ export const useSkillsStore = defineStore('skills', () => {
     refineSkillConflictGroup,
     applySkillImport,
     updateSkillFile,
+    create,
+    update,
+    loadVersions,
+    rollbackVersion,
   };
 });

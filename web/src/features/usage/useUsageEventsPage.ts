@@ -1,11 +1,11 @@
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 import { useUsageStore } from '../../stores/usage';
 import type { ModelUsageQuery } from './types';
 import { formatUsdFromMicro } from './moneyFormat';
 import { downloadBlob } from '../../composables/useFileDownload';
-import { USAGE_EVENTS_LIMIT } from '../constants/queryLimits';
+import { USAGE_EVENTS_PAGE_SIZE_DEFAULT } from '../constants/queryLimits';
 
 /** Default retention when purging; independent of the view filter range. */
 export const DEFAULT_PURGE_RETAIN_DAYS = 30;
@@ -20,8 +20,11 @@ const PURGE_RETAIN_DAY_OPTIONS = [
 export function useUsageEventsPage() {
   const $q = useQuasar();
   const usageStore = useUsageStore();
-  const { events, eventsLoading, eventsError, exporting } = storeToRefs(usageStore);
-  const filters = ref<ModelUsageQuery>({ range: '7d', limit: USAGE_EVENTS_LIMIT });
+  const { events, eventsTotal, eventsLoading, eventsError, exporting } = storeToRefs(usageStore);
+  const page = ref(1);
+  const pageSize = ref(USAGE_EVENTS_PAGE_SIZE_DEFAULT);
+  const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, eventsTotal.value) / pageSize.value)));
+  const filters = ref<Omit<ModelUsageQuery, 'limit' | 'offset'>>({ range: '7d' });
   /** Purge retention is independent of the list filter `range` (e.g. 24h must not mean 24 days). */
   const retainDays = ref(DEFAULT_PURGE_RETAIN_DAYS);
 
@@ -44,18 +47,45 @@ export function useUsageEventsPage() {
     { label: 'Team 整轮', value: 'team_turn' },
   ];
 
+  function buildQuery(): ModelUsageQuery {
+    return {
+      ...filters.value,
+      limit: pageSize.value,
+      offset: (page.value - 1) * pageSize.value,
+    };
+  }
+
   async function load() {
-    await usageStore.loadEvents(filters.value);
+    const result = await usageStore.loadEvents(buildQuery());
+    if (page.value > pageMax.value) {
+      page.value = pageMax.value;
+      await usageStore.loadEvents(buildQuery());
+    }
+    return result;
+  }
+
+  function onPage(next: number) {
+    if (next === page.value) return;
+    page.value = next;
+    void load();
+  }
+
+  function onPageSize(next: number) {
+    pageSize.value = next;
+    page.value = 1;
+    void load();
   }
 
   async function exportCsv() {
-    const csv = await usageStore.exportEventsCsv(filters.value);
+    // Export uses the same filters but the dedicated export RPC (higher row cap).
+    const csv = await usageStore.exportEventsCsv({ ...filters.value });
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     downloadBlob(blob, `usage-events-${new Date().toISOString().slice(0, 10)}.csv`);
   }
 
   async function purgeEvents() {
     const deleted = await usageStore.purgeEvents(retainDays.value);
+    page.value = 1;
     await load();
     return deleted;
   }
@@ -89,12 +119,19 @@ export function useUsageEventsPage() {
   }
 
   function resetFilters() {
-    filters.value = { range: '7d', limit: USAGE_EVENTS_LIMIT };
+    filters.value = { range: '7d' };
+    page.value = 1;
     void load();
   }
 
   return {
     events,
+    eventsTotal,
+    page,
+    pageSize,
+    pageMax,
+    onPage,
+    onPageSize,
     loading: eventsLoading,
     error: eventsError,
     exporting,

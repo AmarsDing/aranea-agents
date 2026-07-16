@@ -1,7 +1,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { storeToRefs } from 'pinia';
-import type { McpServerConfig, McpServerMetadata, McpServerRow } from './types';
+import type { McpServerMetadata, McpServerRow } from './types';
 import { parseJSON } from './utils';
 import { useMcpStore } from '../../stores/mcp';
 import { useAuthStore } from '../../stores/auth';
@@ -11,12 +11,12 @@ export function useMcpServersPage() {
   const mcpStore = useMcpStore();
   const auth = useAuthStore();
   const { user } = storeToRefs(auth);
+  const { servers, total, loading: storeLoading } = storeToRefs(mcpStore);
 
-  const rows = ref<McpServerRow[]>([]);
   const search = ref('');
   const page = ref(1);
-  const pageSize = ref(12);
-  const loading = ref(false);
+  const pageSize = ref(20);
+  const loading = storeLoading;
   const error = ref('');
   const testingId = ref('');
   const editorOpen = ref(false);
@@ -29,59 +29,43 @@ export function useMcpServersPage() {
     return id != null && id > 0 ? String(id) : '';
   });
 
+  const rows = computed(() => servers.value as McpServerRow[]);
   const enabledCount = computed(() => rows.value.filter((row) => row.enabled).length);
-  const filteredRows = computed(() => {
-    const keyword = search.value.trim().toLowerCase();
-    if (!keyword) return rows.value;
-    return rows.value.filter((row) => {
-      const config = parseJSON<McpServerConfig>(row.config_json, {});
-      const metadata = parseJSON<McpServerMetadata>(row.metadata_json, {});
-      return [
-        row.key,
-        row.name,
-        row.description,
-        config.transport,
-        config.url,
-        config.command,
-        config.tool_prefix,
-        metadata.health_status,
-        metadata.last_error_message,
-      ].some((value) =>
-        String(value || '')
-          .toLowerCase()
-          .includes(keyword),
-      );
-    });
-  });
+  const filteredRows = computed(() => rows.value);
+  const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, total.value) / pageSize.value)));
+  const pagedRows = computed(() => rows.value);
 
-  const pageMax = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)));
-  const pagedRows = computed(() => {
-    const start = (page.value - 1) * pageSize.value;
-    return filteredRows.value.slice(start, start + pageSize.value);
-  });
+  async function loadRows() {
+    error.value = '';
+    try {
+      await mcpStore.loadServers({
+        page: page.value,
+        page_size: pageSize.value,
+        search: search.value,
+      });
+      if (page.value > pageMax.value) page.value = pageMax.value;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '加载 MCP 服务器失败';
+    }
+  }
 
+  let skipNextPageWatch = false;
   watch(search, () => {
-    page.value = 1;
+    if (page.value !== 1) {
+      skipNextPageWatch = true;
+      page.value = 1;
+    }
+    void loadRows();
   });
-
-  watch(filteredRows, () => {
-    if (page.value > pageMax.value) page.value = pageMax.value;
+  watch([page, pageSize], () => {
+    if (skipNextPageWatch) {
+      skipNextPageWatch = false;
+      return;
+    }
+    void loadRows();
   });
 
   onMounted(loadRows);
-
-  async function loadRows() {
-    loading.value = true;
-    error.value = '';
-    try {
-      await mcpStore.loadServers();
-      rows.value = mcpStore.servers as McpServerRow[];
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : '加载 MCP 服务器失败';
-    } finally {
-      loading.value = false;
-    }
-  }
 
   function openCreate() {
     editingRow.value = null;
@@ -102,13 +86,8 @@ export function useMcpServersPage() {
     credDialogOpen.value = true;
   }
 
-  function onSaved(row: McpServerRow) {
-    const index = rows.value.findIndex((item) => item.id === row.id);
-    if (index >= 0) {
-      rows.value[index] = row;
-    } else {
-      rows.value.push(row);
-    }
+  function onSaved(_row: McpServerRow) {
+    void loadRows();
   }
 
   async function testRow(row: McpServerRow) {
@@ -133,8 +112,8 @@ export function useMcpServersPage() {
     }).onOk(async () => {
       try {
         await mcpStore.removeServer(row.id);
-        rows.value = rows.value.filter((item) => item.id !== row.id);
         $q.notify({ type: 'positive', message: 'MCP 服务器已删除' });
+        await loadRows();
       } catch (err) {
         $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
       }
@@ -172,6 +151,7 @@ export function useMcpServersPage() {
     pageSize,
     pageMax,
     pagedRows,
+    total,
     loading,
     error,
     testingId,

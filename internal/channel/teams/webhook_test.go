@@ -1,9 +1,19 @@
 package teams
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"math/big"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 
 	"aranea-agents/internal/channel/port"
 )
@@ -81,8 +91,120 @@ func TestTextSenderID(t *testing.T) {
 func TestVerifyRequest_EmptyCredentials(t *testing.T) {
 	h := http.Header{}
 	h.Set("Authorization", "Bearer some-token")
-	err := VerifyRequest("", "", h, nil)
+	err := VerifyRequest(context.Background(), "", "", h, nil)
 	if !errors.Is(err, port.ErrCredentialsNotConfigured) {
 		t.Fatalf("expected ErrCredentialsNotConfigured, got %v", err)
+	}
+}
+
+func TestVerifyRequest_RS256Valid(t *testing.T) {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const kid = "test-kid"
+	const appID = "app-123"
+
+	keysSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(jwksDocument{Keys: []jwkKey{{
+			Kid: kid,
+			Kty: "RSA",
+			Alg: "RS256",
+			Use: "sig",
+			N:   base64.RawURLEncoding.EncodeToString(priv.N.Bytes()),
+			E:   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(priv.E)).Bytes()),
+		}}})
+	}))
+	defer keysSrv.Close()
+
+	metaSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(openIDMetadata{
+			Issuer:  botFrameworkIssuer,
+			JWKSURI: keysSrv.URL,
+		})
+	}))
+	defer metaSrv.Close()
+
+	ResetJWKSCacheForTest()
+	defaultJWKS.mu.Lock()
+	defaultJWKS.metaURL = metaSrv.URL
+	defaultJWKS.client = metaSrv.Client()
+	defaultJWKS.mu.Unlock()
+	t.Cleanup(func() {
+		ResetJWKSCacheForTest()
+		defaultJWKS.mu.Lock()
+		defaultJWKS.metaURL = botFrameworkOpenIDURL
+		defaultJWKS.client = &http.Client{Timeout: jwksFetchTimeout}
+		defaultJWKS.mu.Unlock()
+	})
+
+	claims := jwt.MapClaims{
+		"aud": appID,
+		"iss": botFrameworkIssuer,
+		"exp": float64(time.Now().Add(time.Hour).Unix()),
+		"iat": float64(time.Now().Unix()),
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	tok.Header["kid"] = kid
+	signed, err := tok.SignedString(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := http.Header{}
+	h.Set("Authorization", "Bearer "+signed)
+	if err := VerifyRequest(context.Background(), appID, "", h, nil); err != nil {
+		t.Fatalf("expected RS256 verify success, got %v", err)
+	}
+}
+
+func TestVerifyRequest_RS256BadAudience(t *testing.T) {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const kid = "test-kid-2"
+
+	keysSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(jwksDocument{Keys: []jwkKey{{
+			Kid: kid,
+			Kty: "RSA",
+			N:   base64.RawURLEncoding.EncodeToString(priv.N.Bytes()),
+			E:   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(priv.E)).Bytes()),
+		}}})
+	}))
+	defer keysSrv.Close()
+	metaSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(openIDMetadata{Issuer: botFrameworkIssuer, JWKSURI: keysSrv.URL})
+	}))
+	defer metaSrv.Close()
+
+	ResetJWKSCacheForTest()
+	defaultJWKS.mu.Lock()
+	defaultJWKS.metaURL = metaSrv.URL
+	defaultJWKS.client = metaSrv.Client()
+	defaultJWKS.mu.Unlock()
+	t.Cleanup(func() {
+		ResetJWKSCacheForTest()
+		defaultJWKS.mu.Lock()
+		defaultJWKS.metaURL = botFrameworkOpenIDURL
+		defaultJWKS.client = &http.Client{Timeout: jwksFetchTimeout}
+		defaultJWKS.mu.Unlock()
+	})
+
+	claims := jwt.MapClaims{
+		"aud": "other-app",
+		"iss": botFrameworkIssuer,
+		"exp": float64(time.Now().Add(time.Hour).Unix()),
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	tok.Header["kid"] = kid
+	signed, err := tok.SignedString(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := http.Header{}
+	h.Set("Authorization", "Bearer "+signed)
+	if err := VerifyRequest(context.Background(), "app-123", "", h, nil); err == nil {
+		t.Fatal("expected audience mismatch error")
 	}
 }

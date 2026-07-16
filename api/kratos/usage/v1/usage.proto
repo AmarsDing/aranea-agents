@@ -21,6 +21,8 @@ message UsageQuery {
   string granularity = 9; // "" | "day" | "hour"
   string team_id = 10;
   string usage_kind = 11; // exact kind filter (detail/export); aggregates always billable (exclude team_turn)
+  // Offset for ListUsageEvents server-side pagination (ignored by aggregate RPCs).
+  int32 offset = 12;
 }
 
 message UsageSummary {
@@ -196,6 +198,8 @@ message ListBreakdownResponse {
 
 message ListUsageEventsResponse {
   repeated TokenUsageEvent items = 1;
+  // Total matching rows for the query filters (same scope as items).
+  int32 total = 2;
 }
 
 message UsageQuota {

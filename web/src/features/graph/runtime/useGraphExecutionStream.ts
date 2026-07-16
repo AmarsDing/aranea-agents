@@ -49,14 +49,9 @@ export function useGraphExecutionStream(
     liveSteps.value = upsertStepFromStreamEvent(liveSteps.value, event);
   }
 
-  // ActivityEvent migration: graph lifecycle events now arrive as ActivityEvent
-  // payloads (kind=graph_stage) instead of envelopes. The step and task
-  // projections consume the activity.meta field, which carries the same
-  // keys as the legacy envelope metadata (node_id, step_number, execution_id, etc.).
-  stream.onActivityEvent((ev) => {
-    if (ev.activity.kind !== 'graph_stage') return;
-    const meta = (ev.activity.meta ?? {}) as Record<string, unknown>;
-    switch (ev.activity.stage) {
+  // Graph lifecycle arrives as v2 system.notice (NoticeType = stage).
+  stream.onGraphNotice((stage, meta) => {
+    switch (stage) {
       case 'node_start':
         applyStepEvent(meta, 'running');
         break;
@@ -77,6 +72,8 @@ export function useGraphExecutionStream(
         tasks.value = next;
         break;
       }
+      default:
+        break;
     }
   });
 

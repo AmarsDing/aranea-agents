@@ -18,6 +18,7 @@ export const useUsageStore = defineStore('usage', () => {
   const overview = ref<ModelUsageOverview | null>(null);
   const trends = ref<ModelUsageTrendPoint[]>([]);
   const events = ref<ModelTokenUsageEvent[]>([]);
+  const eventsTotal = ref(0);
   const loading = ref(false);
   const error = ref('');
   const eventsLoading = ref(false);
@@ -55,11 +56,13 @@ export const useUsageStore = defineStore('usage', () => {
     eventsError.value = '';
     try {
       const result = await listModelUsageEvents(query);
-      events.value = Array.isArray(result) ? result : [];
+      events.value = result.items;
+      eventsTotal.value = result.total;
       return result;
     } catch (e) {
       eventsError.value = e instanceof Error ? e.message : String(e);
       events.value = [];
+      eventsTotal.value = 0;
       throw e;
     } finally {
       eventsLoading.value = false;
@@ -84,6 +87,7 @@ export const useUsageStore = defineStore('usage', () => {
     overview,
     trends,
     events,
+    eventsTotal,
     loading,
     error,
     eventsLoading,

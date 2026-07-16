@@ -139,6 +139,9 @@ var ddlMigrations = []ddlMigration{
 	// 20261011 tenant_rls_phase1: ENABLE ROW LEVEL SECURITY (no FORCE) on tenant-owned
 	// tables with workspace_id. Postgres-only; skipped on SQLite via Func.
 	{Version: 20261011, Name: "tenant_rls_phase1", Func: ddlTenantRLSPhase1},
+	// 20261012 drop_activities_table: v1 activities persistence retired.
+	// Reads already use steps_v2; Ent Activity schema removed; no production writers.
+	{Version: 20261012, Name: "drop_activities_table", SQL: "sql/migrations/20261012_drop_activities_table.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

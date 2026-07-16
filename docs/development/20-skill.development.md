@@ -1,6 +1,6 @@
 # Skill 技能 — 开发计划
 
-> **版本**：2026-06-17 | **状态**：✅ 管理面 + 运行时装配（Layer A/B）+ Phase 1 + Phase 2 + 架构优化已接通
+> **版本**：2026-07-16 | **状态**：🟡 运行时装配（Layer A/B）已接通；管理面 P0/P1 修复中（启用门控/发布校验/元数据与版本 UI/`skill_load_mode`）；三角色 RBAC / Skill 市场 / Catalog WS 仍待
 > **需求**：[20-skill.md](./20-skill.md) · **设计**：[20-skill.design.md](./20-skill.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **变更**：[changelog/2026-05-21-Skill-DocSync-RuntimeWire.md](../changelog/2026-05-21-Skill-DocSync-RuntimeWire.md)
 
@@ -39,10 +39,11 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 文件监听与同步 | ✅ | `watch.Runner`：fsnotify + debounce + `filesystem_missing` + reconcile ticker |
 | 磁盘同步 UI + 通知 | ✅ | §2.4；health API / Banner / 筛选 / Monitor 事件 |
 | 存储根解析 | ✅ | `storage.ResolveRootWithPlatform` + `work_directory` |
-| Agent 设置 UI | ✅ | `AgentSettingsSkillsTab`：`skill_runtime_json` 白名单/标签/意图收窄/embedding 精排 |
-| 前端管理 | ✅ | 列表/详情/编辑 Dialog/导入/运行记录 |
-| 版本历史 / 回滚 API | ✅ | `GetSkillVersions` + `RollbackSkillVersion`；不可变策略（新建版本 + patch 递增） |
-| RBAC 权限 | ✅ | `requireAdminAccess`（biz 层写操作门控）+ `applySkillPermission`（biz 层读操作权限掩码）；未认证返回零权限 |
+| Agent 设置 UI | ✅ | `AgentSettingsSkillsTab`：`skill_runtime_json` + **`skill_load_mode`（含 progressive）** |
+| 前端管理 | ✅ | 列表/详情/**元数据 Dialog**（新建/编辑）/文件编辑/导入/运行记录 |
+| 版本历史 / 回滚 | ✅ | API + **详情页版本卡片与回滚 UI**（不可变策略） |
+| 启用门控 | ✅ | 仅 `published`/`active` 可启用（biz+data+FE）；发布需正文校验（非假 pass） |
+| RBAC 权限 | 🟡 | 二元 admin 门控（`requireAdminAccess`）；产品三角色（编辑者/只读）未落地 |
 | Preview 选中原因 | ✅ | `ResolveSkillSlugsDetailed` 返回 `Reasons map[string]string` + `agent_id` 关联 |
 | Prompt 注入方式 C | ✅ | BeforeModelHook + `BatchGetSkillGuidance` 批量获取 + 截断 + 空 guidance 防护 |
 | Embedding 语义精排 | ✅ | `SkillEmbedder` + `ScoreByEmbedding` + 内存缓存 + 评分融合 + 优雅降级 |
@@ -100,6 +101,10 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 6 | Context 目录迁移 | P4+ | `internal/skill/**` → `internal/capability/skill/**` |
 | 7 | Feedback 真实接入 | P4+ | `ScoreSkill` Feedback 维度当前为启发式估算（标注 `TEMPORARY`），待接入真实用户反馈 |
 | 8 | EvolutionCoordinator 清理 | P4+ | `evolution_coordinator.go` 已标记 `deprecated`，待完全移除并清理 fallback 逻辑 |
+| 9 | `extends_skill_id` + 环检测 | P4+ | proto/biz 有字段，Ent schema 无列；需迁移后实现 |
+| 10 | SkillProposal 状态机 | ✅ | `Approve/Reject/Register` 已走 `SkillProposalStateMachine`（2026-07-16） |
+| 11 | `skill_catalog` WS + 聊天 Catalog | ⏳ | 69 Phase3；组件已有，事件未接 |
+| 12 | Skill 市场 | ☐ | Phase3 生态 |
 
 ---
 

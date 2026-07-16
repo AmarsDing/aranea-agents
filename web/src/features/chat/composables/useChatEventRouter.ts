@@ -113,11 +113,6 @@ export function useChatEventRouter(store: Store) {
       case 'system.notice':
         break;
 
-      // activity.bridge is ignored by chat (v2 entity events cover the timeline).
-      // Non-chat consumers unwrap via ws-transport → onActivityEvent.
-      case 'activity.bridge':
-        break;
-
       default:
         // Unknown event kind — silently ignore (forward compatibility)
         break;

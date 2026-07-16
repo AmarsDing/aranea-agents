@@ -10,6 +10,18 @@ export type SkillVersionSummary = {
   published_at: string;
 };
 
+export type SkillVersionDetail = {
+  id: string;
+  skill_id: string;
+  version: string;
+  status: string;
+  content_markdown: string;
+  validation_status: string;
+  published_at: string;
+  created_at: string;
+  file_manifest_json?: string;
+};
+
 export type SkillPermissions = {
   can_edit: boolean;
   can_delete: boolean;

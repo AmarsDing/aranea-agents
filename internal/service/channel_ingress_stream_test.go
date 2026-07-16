@@ -35,6 +35,9 @@ func TestFeishuOutboundExtraReceiveIDType(t *testing.T) {
 type streamChannelRepo struct{}
 
 func (r *streamChannelRepo) List(context.Context) ([]biz.Channel, error) { return nil, nil }
+func (r *streamChannelRepo) ListPaged(_ context.Context, q biz.ChannelListQuery) (biz.ChannelListResult, error) {
+	return biz.ChannelListResult{Limit: q.Limit, Offset: q.Offset}, nil
+}
 func (r *streamChannelRepo) Get(context.Context, string) (biz.Channel, error) {
 	return biz.Channel{}, nil
 }

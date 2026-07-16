@@ -80,6 +80,57 @@ func (r *channelRepo) List(ctx context.Context) ([]biz.Channel, error) {
 	return out, nil
 }
 
+func (r *channelRepo) channelListQuery(ctx context.Context, q biz.ChannelListQuery) *ent.PlatformChannelQuery {
+	preds := []predicate.PlatformChannel{platformchannel.DeletedAtEQ("")}
+	if wsPred := channelWorkspacePredicate(ctx); wsPred != nil {
+		preds = append(preds, wsPred)
+	}
+	pq := r.data.RW().Read(ctx).PlatformChannel.Query().Where(preds...)
+	if s := strings.TrimSpace(q.Search); s != "" {
+		pq = pq.Where(platformchannel.Or(
+			platformchannel.ChannelKeyContainsFold(s),
+			platformchannel.NameContainsFold(s),
+			platformchannel.DescriptionContainsFold(s),
+		))
+	}
+	switch status := strings.TrimSpace(strings.ToLower(q.Status)); status {
+	case "enabled":
+		pq = pq.Where(platformchannel.EnabledEQ(true))
+	case "disabled":
+		pq = pq.Where(platformchannel.EnabledEQ(false))
+	case "":
+		// no status filter
+	default:
+		pq = pq.Where(platformchannel.StatusEQ(status))
+	}
+	if t := strings.TrimSpace(q.Type); t != "" {
+		// config_json typically contains `"type":"<channel-type>"`.
+		pq = pq.Where(platformchannel.ConfigJSONContainsFold(`"type":"` + t + `"`))
+	}
+	return pq
+}
+
+func (r *channelRepo) ListPaged(ctx context.Context, q biz.ChannelListQuery) (biz.ChannelListResult, error) {
+	base := r.channelListQuery(ctx, q)
+	total, err := base.Count(ctx)
+	if err != nil {
+		return biz.ChannelListResult{}, entErrToBizErr(err, "CHANNEL")
+	}
+	rows, err := r.channelListQuery(ctx, q).
+		Order(platformchannel.BySortOrder(sql.OrderAsc()), platformchannel.ByCreatedAt(sql.OrderDesc())).
+		Limit(q.Limit).
+		Offset(q.Offset).
+		All(ctx)
+	if err != nil {
+		return biz.ChannelListResult{}, entErrToBizErr(err, "CHANNEL")
+	}
+	out := make([]biz.Channel, 0, len(rows))
+	for _, e := range rows {
+		out = append(out, entToChannel(e))
+	}
+	return biz.ChannelListResult{Items: out, Total: total, Limit: q.Limit, Offset: q.Offset}, nil
+}
+
 func (r *channelRepo) Get(ctx context.Context, id string) (biz.Channel, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {

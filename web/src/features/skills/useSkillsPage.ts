@@ -3,7 +3,7 @@ import { useQuasar } from 'quasar';
 import type { Skill, SkillFilesystemHealth } from './types';
 import { useSkillsStore } from '../../stores/skills';
 // TECH-DEBT(FD5): file ops bypass store, acceptable for single-use file operations
-import { listSkillFiles, readSkillFile } from './api';
+import { listSkillFiles, readSkillFile, getSkill } from './api';
 
 export function useSkillsPage() {
   const $q = useQuasar();
@@ -29,6 +29,10 @@ export function useSkillsPage() {
   const deleting = ref(false);
   const editorOpen = ref(false);
   const editorTarget = ref<Skill | null>(null);
+  const metaOpen = ref(false);
+  const metaTarget = ref<Skill | null>(null);
+  const metaBody = ref('');
+  const metaSaving = ref(false);
 
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
@@ -58,6 +62,63 @@ export function useSkillsPage() {
 
   function openUpload() {
     uploadRef.value?.openDialog();
+  }
+
+  function openCreate() {
+    metaTarget.value = null;
+    metaBody.value = '';
+    metaOpen.value = true;
+  }
+
+  async function openMetaEditor(skill: Skill) {
+    metaTarget.value = skill;
+    metaBody.value = '';
+    metaOpen.value = true;
+    try {
+      const detail = await getSkill(skill.id);
+      metaTarget.value = detail.skill;
+      metaBody.value = detail.bodyMarkdown || '';
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '加载 Skill 失败' });
+    }
+  }
+
+  async function onMetaSubmit(payload: {
+    id?: string;
+    name: string;
+    slug: string;
+    description: string;
+    tags: string[];
+    bodyMarkdown: string;
+  }) {
+    metaSaving.value = true;
+    try {
+      if (payload.id) {
+        const updated = await skillsStore.update(payload.id, {
+          name: payload.name,
+          description: payload.description,
+          tags: payload.tags,
+          bodyMarkdown: payload.bodyMarkdown,
+        });
+        rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
+        $q.notify({ type: 'positive', message: 'Skill 已保存' });
+      } else {
+        await skillsStore.create({
+          name: payload.name,
+          slug: payload.slug,
+          description: payload.description,
+          tags: payload.tags,
+          bodyMarkdown: payload.bodyMarkdown,
+        });
+        $q.notify({ type: 'positive', message: 'Skill 草稿已创建' });
+        await loadRows();
+      }
+      metaOpen.value = false;
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存失败' });
+    } finally {
+      metaSaving.value = false;
+    }
   }
 
   async function loadFilesystemHealth() {
@@ -186,6 +247,7 @@ export function useSkillsPage() {
   return {
     uploadRef,
     openUpload,
+    openCreate,
     search,
     enabled,
     status,
@@ -205,6 +267,10 @@ export function useSkillsPage() {
     deleting,
     editorOpen,
     editorTarget,
+    metaOpen,
+    metaTarget,
+    metaBody,
+    metaSaving,
     pageMax,
     loadRows,
     resetFilters,
@@ -213,6 +279,8 @@ export function useSkillsPage() {
     onPublishSkill,
     onToggleEnabled,
     openEditor,
+    openMetaEditor,
+    onMetaSubmit,
     confirmDelete,
     deleteTargetSkill,
     uploadSkillZip: skillsStore.uploadSkillZip,

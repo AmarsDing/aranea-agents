@@ -20,6 +20,7 @@ func fromProtoUsageQuery(in *v1.UsageQuery) biz.UsageQuery {
 		UsageKind:    in.GetUsageKind(),
 		Status:       in.GetStatus(),
 		Limit:        int(in.GetLimit()),
+		Offset:       int(in.GetOffset()),
 		Granularity:  in.GetGranularity(),
 	}
 }

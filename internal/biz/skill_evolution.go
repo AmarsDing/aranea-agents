@@ -36,6 +36,7 @@ type SkillEvolutionUsecase struct {
 	registrar        SkillRegistrationPort
 	orchestrator     *SkillEvolutionOrchestrator
 	orchestratorOnce sync.Once
+	proposalSM       *SkillProposalStateMachine
 	lg               loggateway.Logger
 }
 
@@ -48,12 +49,13 @@ func NewSkillEvolutionUsecase(
 	lg loggateway.Logger,
 ) *SkillEvolutionUsecase {
 	return &SkillEvolutionUsecase{
-		repo:      repo,
-		patterns:  patterns,
-		agents:    agents,
-		creator:   creator,
-		registrar: registrar,
-		lg:        lg,
+		repo:       repo,
+		patterns:   patterns,
+		agents:     agents,
+		creator:    creator,
+		registrar:  registrar,
+		proposalSM: NewSkillProposalStateMachine(),
+		lg:         lg,
 	}
 }
 
@@ -173,10 +175,11 @@ func (uc *SkillEvolutionUsecase) ApproveProposal(ctx context.Context, id string,
 	if err != nil {
 		return SkillProposal{}, err
 	}
-	if p.Status != SkillProposalStatusPending {
+	next, terr := uc.transitionProposal(p.Status, SkillProposalEventApprove)
+	if terr != nil {
 		return SkillProposal{}, apierror.BadRequest("SKILL_EVO", "only pending proposals can be approved")
 	}
-	return uc.repo.UpdateStatus(ctx, id, SkillProposalStatusApproved, approvedBy)
+	return uc.repo.UpdateStatus(ctx, id, next, approvedBy)
 }
 
 func (uc *SkillEvolutionUsecase) RejectProposal(ctx context.Context, id string, rejectedBy string) (SkillProposal, error) {
@@ -188,10 +191,11 @@ func (uc *SkillEvolutionUsecase) RejectProposal(ctx context.Context, id string, 
 	if err != nil {
 		return SkillProposal{}, err
 	}
-	if p.Status != SkillProposalStatusPending {
+	next, terr := uc.transitionProposal(p.Status, SkillProposalEventReject)
+	if terr != nil {
 		return SkillProposal{}, apierror.BadRequest("SKILL_EVO", "only pending proposals can be rejected")
 	}
-	return uc.repo.UpdateStatus(ctx, id, SkillProposalStatusRejected, rejectedBy)
+	return uc.repo.UpdateStatus(ctx, id, next, rejectedBy)
 }
 
 func (uc *SkillEvolutionUsecase) RegisterApproved(ctx context.Context, id string) (SkillProposal, error) {
@@ -203,7 +207,8 @@ func (uc *SkillEvolutionUsecase) RegisterApproved(ctx context.Context, id string
 	if err != nil {
 		return SkillProposal{}, err
 	}
-	if p.Status != SkillProposalStatusApproved {
+	next, terr := uc.transitionProposal(p.Status, SkillProposalEventRegister)
+	if terr != nil {
 		return SkillProposal{}, apierror.BadRequest("SKILL_EVO", "only approved proposals can be registered")
 	}
 	if uc.registrar == nil {
@@ -223,7 +228,15 @@ func (uc *SkillEvolutionUsecase) RegisterApproved(ctx context.Context, id string
 	if regErr := uc.registrar.RegisterSkill(ctx, p.AgentID, p.SkillName, p.SkillMD); regErr != nil {
 		return SkillProposal{}, regErr
 	}
-	return uc.repo.UpdateStatus(ctx, id, SkillProposalStatusRegistered, "")
+	return uc.repo.UpdateStatus(ctx, id, next, "")
+}
+
+func (uc *SkillEvolutionUsecase) transitionProposal(from SkillProposalStatus, event SkillProposalEvent) (SkillProposalStatus, error) {
+	sm := uc.proposalSM
+	if sm == nil {
+		sm = NewSkillProposalStateMachine()
+	}
+	return sm.Transition(from, event)
 }
 
 func (uc *SkillEvolutionUsecase) GetProposal(ctx context.Context, id string) (SkillProposal, error) {

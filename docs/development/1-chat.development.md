@@ -38,11 +38,15 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - `web/src/components/chat/v2/SessionPanel.vue` / `TaskCard.vue` / `TurnContainer.vue` — 主渲染树
 - `web/src/features/chat/composables/useActivityQueries.ts` — 展示层查询门面（组件不直连 Pinia）
 
-> **已删除 / 退役（2026-07-16 v2-only）**：
-> - WS `activity_event` pump、`ActivityBridgeEvent` 生产发布、聊天侧 AF 渲染路径
-> - 前端 legacy message 回落、`AgentWorkPanel.vue`
+> **已删除 / 退役（2026-07-16 v2-only + leftover cleanup）**：
+> - WS `activity_event` pump、`ActivityBridgeEvent` / `activity.bridge`、notice↔Activity 兼容工厂
+> - 聊天 Cancel/Confirm 写路径改为 `steps_v2`；Spirit 组装不再 dual-write `activities`
+> - 前端 legacy message 回落、`AgentWorkPanel.vue`；非聊天消费者改 `onV2Event` / `system.notice` 适配
 > - 文档锚点中的 `activity_projector.go` / `activity_event_sequencer.go` / `useActivityTimeline` / `ActivityStream`（已由 v2 取代）
-> - 遗留：`activities` 表 / `ActivityUpserter` / `ActivityEvent` 类型仍可能被兼容适配或读路径引用，**不再作为聊天渲染真相源**
+> - **已 DROP（DDL 20261012）**：`activities` 表 + Ent Activity schema + `activity_repo.go`
+> - Event Inspector 历史/实时均走 v2 steps（`listStepsV2` + `step.*`）；ListActivities RPC 仍保留兼容
+> - Graph 流原生 `system.notice`（`onGraphNotice`）；`messageStore` 仅 revision/hydrate
+> - Memory Path B `ListRecentMessages` 已迁 `tasks_v2` + `steps_v2`；ActivityRepo 接口已删除
 
 > 代码分层、请求流转、Proto 契约、WebSocket 协议详见 [1-chat.design.md](./1-chat.design.md)。
 
@@ -58,7 +62,8 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 停止 / 运行中追加 | ✅ | `StopGeneration` / WS `cancel`；`EnqueueUserMessage` |
 | 待执行 / Follow-up Queue | ✅ | Pending FIFO；`system.run_status` / `system.notice` 刷新 |
 | RunStatus + AwaitUserReply | ✅ | RPC + v2 `system.run_status` |
-| Team / Graph UI | ✅ | typed `team_*` / `graph_*` / `member_session` v2 事件 |
+| Team / Graph UI | ✅ | typed `team_*` / `graph_*` / `member_session` v2 事件；Teams/Monitor 经 `teamRunEventFromV2Event` |
+| 非聊天 WS 消费者 | ✅ | `system.notice` 适配（graph）或原生 `onV2Event`（orch/knowledge/jobs/inbound） |
 | WS 控制消息 | ✅ | `connected`/`pong`/`server_shutdown`；重连 hydrate 走 v2 REST |
 | 工具 / Reasoning UI | ✅ | StepKind `action` / `thinking` → ActionBlock / ThinkingBlock |
 | WS 重连恢复 | ✅ | `activityV2Store.fetchSessionHistory`（v2 REST） |

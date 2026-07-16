@@ -2,12 +2,8 @@ package biz
 
 // StepToActivity converts a v2 Step to the v1 Activity shape.
 //
-// This is a temporary adapter used during Phase 3b-D to migrate v1
-// ActivityReader call sites to the v2 StepV2Reader while the v1
-// Activity model, writer, and event bus are still in place (deleted in
-// Task 15). The mapping is intentionally complete so the downstream v1
-// logic (validations, writer.UpdateActivity, ActivityEvent publish)
-// continues to behave identically.
+// Temporary adapter for ListActivities / session ActivityLister call sites
+// that still speak the Activity DTO. Persistence is steps_v2 only.
 //
 // Field mapping notes:
 //   - Kind: StepKind values overlap ActivityKind for the kinds that

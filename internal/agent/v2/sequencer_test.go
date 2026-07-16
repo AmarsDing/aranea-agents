@@ -272,31 +272,6 @@ func (f *failingRepoSet) UpsertTask(ctx context.Context, t biz.Task) (biz.Task, 
 
 var errTestFailure = errors.New("simulated persist failure")
 
-// fakeActivityUpserter retained for historical Phase 2 tests (removed).
-type fakeActivityUpserter struct {
-	mu         sync.Mutex
-	activities []biz.Activity
-	err        error
-}
-
-func (f *fakeActivityUpserter) UpsertActivity(_ context.Context, a biz.Activity) (biz.Activity, error) {
-	if f.err != nil {
-		return biz.Activity{}, f.err
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.activities = append(f.activities, a)
-	return a, nil
-}
-
-func (f *fakeActivityUpserter) snapshot() []biz.Activity {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := make([]biz.Activity, len(f.activities))
-	copy(out, f.activities)
-	return out
-}
-
 // TestSequencer_PublishSystemNotice verifies system.notice events are
 // fan-out published (not entity-persisted) without ActivityBridge.
 func TestSequencer_PublishSystemNotice(t *testing.T) {

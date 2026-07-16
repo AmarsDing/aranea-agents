@@ -4,6 +4,7 @@ import { useWebhooksStore } from '../webhooks';
 
 vi.mock('../../features/webhooks/api', () => ({
   listWebhooks: vi.fn().mockResolvedValue([]),
+  listWebhooksPaged: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
   createWebhook: vi.fn(),
   updateWebhook: vi.fn(),
   deleteWebhook: vi.fn().mockResolvedValue(undefined),

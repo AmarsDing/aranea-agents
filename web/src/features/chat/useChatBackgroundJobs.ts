@@ -2,15 +2,17 @@ import { onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
 import { listChatBackgroundJobs } from './api';
 import type { ChatBackgroundJobRow } from './types';
 import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from './globalWsHub';
-import type { ActivityEvent } from '../../realtime/activityEvent';
+import type { SystemNoticeEventPayload, V2WsEnvelope } from './v2Types';
 
 // Backoff steps: 5s → 10s → 15s → 30s (max)
 const BACKOFF_STEPS = [5_000, 10_000, 15_000, 30_000];
 
-function isBackgroundJobRefreshActivity(ev: ActivityEvent, sessionId?: string): boolean {
-  const meta = ev.activity.meta ?? {};
-  if (!meta.background_job_refresh && ev.activity.stage !== 'background_job_refresh') return false;
-  const sid = (ev.activity.session_id ?? '').trim();
+function isBackgroundJobRefreshV2(envelope: V2WsEnvelope, sessionId?: string): boolean {
+  if (envelope.kind !== 'system.notice') return false;
+  const payload = envelope.payload as SystemNoticeEventPayload;
+  const meta = payload.Meta ?? {};
+  if (payload.NoticeType !== 'background_job_refresh' && !meta.background_job_refresh) return false;
+  const sid = String(envelope.session_id ?? '').trim();
   if (sessionId && sid && sid !== sessionId.trim()) return false;
   return true;
 }
@@ -117,9 +119,8 @@ export function useChatBackgroundJobs(
     hubId = acquireGlobalWsConsumer({
       channels: ['chat'],
       logEnabled: false,
-      onActivityEvent: (ev) => {
-        if (isBackgroundJobRefreshActivity(ev, sessionId.value)) {
-          // WS event arrived → immediate load + reset backoff
+      onV2Event: (envelope) => {
+        if (isBackgroundJobRefreshV2(envelope, sessionId.value)) {
           cancelPoll();
           void load().then(() => resetBackoffAndStartPoll());
         }

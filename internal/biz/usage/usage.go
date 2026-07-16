@@ -66,11 +66,18 @@ type Query struct {
 	UsageKind    string
 	Status       string
 	Limit        int
+	Offset       int
 	Granularity  string
 	// WorkspaceID filters events by workspace. Empty = no filter (system caller
 	// sees all workspaces); non-empty = restrict to that workspace only.
 	// Service layer injects this from ctx; clients cannot forge it.
 	WorkspaceID string
+}
+
+// EventsResult is a page of usage events plus the filter-scoped total.
+type EventsResult struct {
+	Items []TokenUsageEvent
+	Total int
 }
 
 // Summary aggregates usage statistics.
@@ -311,6 +318,7 @@ type AnalyticsRepo interface {
 	ListTopModelUsage(ctx context.Context, query Query) ([]BreakdownRow, error)
 	ListTopAgentUsage(ctx context.Context, query Query) ([]BreakdownRow, error)
 	ListModelUsageEvents(ctx context.Context, query Query) ([]TokenUsageEvent, error)
+	CountModelUsageEvents(ctx context.Context, query Query) (int, error)
 	ListModelUsageHourlyTrends(ctx context.Context, query Query) ([]TrendPoint, error)
 	GetModelUsageSummaryFromDaily(ctx context.Context, query Query) (Summary, error)
 	ListModelUsageDailyTrends(ctx context.Context, query Query) ([]TrendPoint, error)
@@ -676,9 +684,23 @@ func (u *Usecase) normalizeBreakdownQuery(query BreakdownQuery, now time.Time) B
 	return query
 }
 
-// Events returns raw usage events.
+// Events returns raw usage events (limit/offset honored by the repo).
 func (u *Usecase) Events(ctx context.Context, query Query) ([]TokenUsageEvent, error) {
 	return u.repo.ListModelUsageEvents(ctx, u.normalizeQuery(query, u.now()))
+}
+
+// EventsPage returns a page of usage events and the matching total for pagination UI.
+func (u *Usecase) EventsPage(ctx context.Context, query Query) (EventsResult, error) {
+	q := u.normalizeQuery(query, u.now())
+	total, err := u.repo.CountModelUsageEvents(ctx, q)
+	if err != nil {
+		return EventsResult{}, err
+	}
+	items, err := u.repo.ListModelUsageEvents(ctx, q)
+	if err != nil {
+		return EventsResult{}, err
+	}
+	return EventsResult{Items: items, Total: total}, nil
 }
 
 // PurgeEvents deletes usage events older than retainDays and returns the count of deleted rows.

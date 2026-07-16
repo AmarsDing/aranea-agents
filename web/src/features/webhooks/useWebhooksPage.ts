@@ -1,10 +1,9 @@
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { WEBHOOK_SECRET_MASK, type WebhookRow } from './types';
 import { useWebhooksStore } from '../../stores/webhooks';
-import { useLocalPagination } from '../../composables/useLocalPagination';
 
 interface WebhookDialogExposed {
   reset: () => void;
@@ -16,27 +15,21 @@ export function useWebhooksPage() {
   const { t } = useI18n();
   const $q = useQuasar();
   const webhooksStore = useWebhooksStore();
-  const { webhooks: storeRows, loading: storeLoading } = storeToRefs(webhooksStore);
+  const { webhooks: storeRows, total, loading: storeLoading } = storeToRefs(webhooksStore);
   const loading = storeLoading;
   const saving = ref(false);
   const error = ref('');
   const search = ref('');
+  const page = ref(1);
+  const pageSize = ref(20);
   const editorOpen = ref(false);
   const editingId = ref('');
   const busyId = ref('');
   const dialogRef = ref<WebhookDialogExposed | null>(null);
 
-  const {
-    page,
-    rowsPerPage: pageSize,
-    filteredRows,
-    pagedRows,
-    totalPages: pageMax,
-  } = useLocalPagination<WebhookRow>({
-    rows: storeRows,
-    filter: search,
-    filterFn: (r, q) => r.name.toLowerCase().includes(q) || r.url.toLowerCase().includes(q),
-  });
+  const filteredRows = computed(() => storeRows.value);
+  const pagedRows = computed(() => storeRows.value);
+  const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, total.value) / pageSize.value)));
 
   function isValidWebhookUrl(url: string): boolean {
     try {
@@ -50,11 +43,32 @@ export function useWebhooksPage() {
   async function loadRows() {
     error.value = '';
     try {
-      await webhooksStore.loadWebhooks();
+      await webhooksStore.loadWebhooks({
+        page: page.value,
+        page_size: pageSize.value,
+        search: search.value,
+      });
+      if (page.value > pageMax.value) page.value = pageMax.value;
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
     }
   }
+
+  let skipNextPageWatch = false;
+  watch(search, () => {
+    if (page.value !== 1) {
+      skipNextPageWatch = true;
+      page.value = 1;
+    }
+    void loadRows();
+  });
+  watch([page, pageSize], () => {
+    if (skipNextPageWatch) {
+      skipNextPageWatch = false;
+      return;
+    }
+    void loadRows();
+  });
 
   function openCreate() {
     editingId.value = '';
@@ -92,13 +106,13 @@ export function useWebhooksPage() {
         await webhooksStore.saveWebhook(editingId.value, body);
       } else {
         const created = await webhooksStore.addWebhook(body);
-        // Show plaintext secret if present (only returned on create)
         if (created.secret && created.secret !== WEBHOOK_SECRET_MASK) {
           showSecretReveal(created.secret);
         }
       }
       editorOpen.value = false;
       $q.notify({ type: 'positive', message: t('webhooksPage.notifySaved') });
+      await loadRows();
     } catch (e) {
       $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -127,6 +141,7 @@ export function useWebhooksPage() {
       try {
         await webhooksStore.removeWebhook(row.id);
         $q.notify({ type: 'positive', message: t('webhooksPage.notifyDeleted') });
+        await loadRows();
       } catch (e) {
         $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
       }
@@ -161,6 +176,7 @@ export function useWebhooksPage() {
     dialogRef,
     page,
     pageSize,
+    total,
     filteredRows,
     pagedRows,
     pageMax,

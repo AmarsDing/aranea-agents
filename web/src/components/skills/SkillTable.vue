@@ -75,9 +75,11 @@
           dense
           color="primary"
           :model-value="props.row.enabled"
-          :disable="!props.row.permissions.can_toggle_enabled || togglingId === props.row.id"
+          :disable="!props.row.permissions.can_toggle_enabled || props.row.status !== 'published' || togglingId === props.row.id"
           @update:model-value="emit('toggle-enabled', props.row, Boolean($event))"
-        />
+        >
+          <q-tooltip v-if="props.row.status !== 'published'">仅已发布的 Skill 可启用</q-tooltip>
+        </q-toggle>
       </q-td>
     </template>
 
@@ -117,9 +119,20 @@
             color="primary"
             icon="edit"
             :disable="!props.row.permissions.can_edit"
-            @click="emit('edit', props.row)"
+            @click="emit('edit-meta', props.row)"
           >
-            <q-tooltip>编辑 Skill 文件</q-tooltip>
+            <q-tooltip>编辑元数据</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            color="primary"
+            icon="folder_open"
+            :disable="!props.row.permissions.can_edit"
+            @click="emit('edit-files', props.row)"
+          >
+            <q-tooltip>编辑文件</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -161,7 +174,8 @@ defineProps<{
 const emit = defineEmits<{
   'toggle-enabled': [skill: Skill, enabled: boolean];
   publish: [skill: Skill];
-  edit: [skill: Skill];
+  'edit-meta': [skill: Skill];
+  'edit-files': [skill: Skill];
   delete: [skill: Skill];
 }>();
 

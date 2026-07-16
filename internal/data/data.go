@@ -141,13 +141,8 @@ var ProviderSet = wire.NewSet(
 	NewUnifiedEvolutionRepo,
 	NewPackSeeder,
 	NewCircuitBreakerStateRepo,
-	// AF-BE-04/17: Activity repo for Activity-First architecture
-	NewActivityRepo,
-	wire.Bind(new(biz.ActivityReader), new(biz.ActivityRepo)),
-	wire.Bind(new(biz.ActivityTreeReader), new(biz.ActivityRepo)),
-	wire.Bind(new(biz.ActivityWriter), new(biz.ActivityRepo)),
-	wire.Bind(new(biz.ActivityUpserter), new(biz.ActivityRepo)),
 	// V2 repos for LLM Activity Ordering redesign (Phase 1).
+	// activities table dropped by DDL 20261012; Ent Activity schema removed.
 	// Each New* returns the biz interface directly, so no wire.Bind needed.
 	NewSessionV2Repo,
 	NewTaskV2Repo,

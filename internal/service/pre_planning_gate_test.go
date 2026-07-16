@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -36,32 +35,6 @@ func (f *fakePlanner) ConfirmPlan(_ context.Context, _ string, _ biz.PlanAdjustm
 }
 func (f *fakePlanner) PublishV2Board(_ context.Context, _ *biz.TaskPlan, _ *biz.AllocationPlan, _ string) (biz.PlanBoard, error) {
 	return biz.PlanBoard{}, nil
-}
-
-// gateCaptureBus captures published v1 ActivityEvents for assertion.
-// Used by tests that still call v1-only publishers (PublishRunStatus / PublishSessionStatusChanged).
-// v2-migrated tests use captureEventBus instead.
-type gateCaptureBus struct {
-	mu        sync.Mutex
-	published []biz.ActivityEvent
-}
-
-func (b *gateCaptureBus) Publish(_ context.Context, ev biz.ActivityEvent) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.published = append(b.published, ev)
-}
-func (b *gateCaptureBus) Subscribe(_ biz.ActivityEventSubscribeOptions) (<-chan biz.ActivityEvent, func()) {
-	return nil, func() {}
-}
-func (b *gateCaptureBus) DropCount() uint64 { return 0 }
-
-func (b *gateCaptureBus) events() []biz.ActivityEvent {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	out := make([]biz.ActivityEvent, len(b.published))
-	copy(out, b.published)
-	return out
 }
 
 func TestPrePlanningGate_Evaluate(t *testing.T) {

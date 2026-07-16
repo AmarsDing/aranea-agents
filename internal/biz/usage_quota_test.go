@@ -29,6 +29,9 @@ func (s *stubUsageRepo) ListTopAgentUsage(context.Context, UsageQuery) ([]UsageB
 func (s *stubUsageRepo) ListModelUsageEvents(context.Context, UsageQuery) ([]TokenUsageEvent, error) {
 	panic("not implemented")
 }
+func (s *stubUsageRepo) CountModelUsageEvents(context.Context, UsageQuery) (int, error) {
+	return 0, nil
+}
 func (s *stubUsageRepo) RecordTokenUsageEvent(context.Context, TokenUsageEvent) (TokenUsageEvent, error) {
 	panic("not implemented")
 }

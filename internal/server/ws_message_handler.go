@@ -258,22 +258,11 @@ func buildChatOptions(opts map[string]any) *chatv1.SendMessageOptions {
 	return result
 }
 
-// publishWSErrorActivity publishes a failed ActivityBridgeEvent (wrapping a
-// v1 ActivityEvent with Kind=task, Status=failed, Domain=chat) for WebSocket
-// error scenarios. Replaces the legacy EnvelopeTypeError publish.
-//
-// Phase 3b-D: migrated from v1 ActivityEventBus.Publish to v2 EventBus.Publish
-// via biz.NewActivityBridgeEvent. The v1 ActivityEvent payload (Meta with
-// request_id/error_type, Content=message) is preserved verbatim by the bridge
-// so the chat error rendering and existing test assertions continue to work.
-//
-// P2-05 fix: also publishes synthetic v2 Task/Turn/Step events so the v2
-// timeline can render a stable ErrorBlock. Without this, the bridge event
-// only feeds the v1 system-notification path, and v2-only pages would have
-// no persistent error surface. Synthetic IDs use the "ws-err-" prefix and
-// are NOT persisted (WS-layer publish bypasses the Sequencer), so they
-// vanish on page refresh — which is the intended UX for transient send
-// failures that the user can retry.
+// publishWSErrorActivity publishes a system.notice (ws_error) plus synthetic
+// v2 Task/Turn/Step events so the timeline can render a stable ErrorBlock.
+// Synthetic IDs use the "ws-err-" prefix and are NOT persisted (WS-layer
+// publish bypasses the Sequencer), so they vanish on refresh — intended for
+// transient send failures the user can retry.
 //
 // userContent carries the user's original message text so the synthetic Task
 // can populate UserMessage (visible in TaskCard). Pass "" when the message

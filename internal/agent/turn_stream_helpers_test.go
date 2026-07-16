@@ -2,11 +2,9 @@ package agent
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
-	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -109,32 +107,6 @@ func TestEstimateTokensIfMissing_emptyInputReturnsZeroPrompt(t *testing.T) {
 	if out != RoughTokenEstimate("reply text") {
 		t.Fatalf("completion estimated wrong: out=%d", out)
 	}
-}
-
-// captureActivityBus is a thread-safe ActivityEventBus that records published events.
-type captureActivityBus struct {
-	mu        sync.Mutex
-	published []biz.ActivityEvent
-}
-
-func (b *captureActivityBus) Publish(_ context.Context, ev biz.ActivityEvent) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.published = append(b.published, ev)
-}
-
-func (b *captureActivityBus) Subscribe(_ biz.ActivityEventSubscribeOptions) (<-chan biz.ActivityEvent, func()) {
-	return nil, func() {}
-}
-
-func (b *captureActivityBus) DropCount() uint64 { return 0 }
-
-func (b *captureActivityBus) events() []biz.ActivityEvent {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	out := make([]biz.ActivityEvent, len(b.published))
-	copy(out, b.published)
-	return out
 }
 
 // TestConsumeWithFirstByteGuard_NoHardFailure verifies that the first-byte timeout

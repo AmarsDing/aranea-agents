@@ -99,12 +99,41 @@ func hasExplicitBizCapabilities(c biz.ModelCapabilities) bool {
 }
 
 // ListProviderModels GET /v1/llm-provider-models.
+// Without page/page_size query params this returns the full catalog (pickers/health).
+// Admin registry UIs should pass page/page_size for server-side pagination.
 func (s *LlmProviderModelService) ListProviderModels(ctx context.Context, _ *emptypb.Empty) (*v1.ListProviderModelsResponse, error) {
+	search := searchQueryFromContext(ctx)
+	if page, pageSize, ok := pageQueryFromContext(ctx); ok {
+		limit, offset, page, pageSize := biz.PageToLimitOffset(page, pageSize)
+		result, err := s.uc.ListPaged(ctx, biz.ProviderModelListQuery{
+			Search: search,
+			Limit:  limit,
+			Offset: offset,
+		})
+		if err != nil {
+			return nil, err
+		}
+		resp := &v1.ListProviderModelsResponse{
+			Items:    make([]*v1.ProviderModel, 0, len(result.Items)),
+			Total:    int32(result.Total),
+			Page:     page,
+			PageSize: pageSize,
+		}
+		for i := range result.Items {
+			resp.Items = append(resp.Items, toProtoPM(result.Items[i]))
+		}
+		return resp, nil
+	}
 	items, err := s.uc.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	resp := &v1.ListProviderModelsResponse{Items: make([]*v1.ProviderModel, 0, len(items))}
+	resp := &v1.ListProviderModelsResponse{
+		Items:    make([]*v1.ProviderModel, 0, len(items)),
+		Total:    int32(len(items)),
+		Page:     1,
+		PageSize: int32(len(items)),
+	}
 	for i := range items {
 		resp.Items = append(resp.Items, toProtoPM(items[i]))
 	}

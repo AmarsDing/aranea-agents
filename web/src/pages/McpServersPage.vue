@@ -3,7 +3,7 @@
     <AppPageHero
       kicker="Model Context Protocol"
       title="MCP 服务器"
-      subtitle="管理 Model Context Protocol 服务器连接、传输配置与健康状态。列表为全量加载，下方分页为前端切片。"
+      subtitle="管理 Model Context Protocol 服务器连接、传输配置与健康状态。列表支持服务端分页与搜索。"
     >
       <template #actions>
         <q-btn color="primary" rounded unelevated icon="add" label="添加服务器" @click="openCreate" />
@@ -23,7 +23,7 @@
       >
         <template #prepend><q-icon name="search" /></template>
       </q-input>
-      <div class="app-page-toolbar__meta">共 {{ filteredRows.length }} 个服务器，{{ enabledCount }} 个已启用</div>
+      <div class="app-page-toolbar__meta">共 {{ total }} 个服务器，本页 {{ enabledCount }} 个已启用</div>
     </AppPageToolbar>
 
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
@@ -59,10 +59,10 @@
         v-model:page="page"
         v-model:page-size="pageSize"
         :page-max="pageMax"
-        :total="filteredRows.length"
+        :total="total"
         :loading="loading"
         label="个 MCP 服务器"
-        :page-size-options="[10, 12, 24]"
+        :page-size-options="[10, 20, 50]"
       />
     </template>
 
@@ -98,6 +98,7 @@ const {
   credUserId,
   enabledCount,
   filteredRows,
+  total,
   page,
   pageSize,
   pageMax,

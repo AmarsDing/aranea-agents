@@ -68,6 +68,9 @@ func (s *stubWebhookRepo) Get(context.Context, string) (WebhookConfig, error) {
 	return WebhookConfig{}, nil
 }
 func (s *stubWebhookRepo) List(context.Context) ([]WebhookConfig, error) { return nil, nil }
+func (s *stubWebhookRepo) ListPaged(_ context.Context, q WebhookListQuery) (WebhookListResult, error) {
+	return WebhookListResult{Limit: q.Limit, Offset: q.Offset}, nil
+}
 func (s *stubWebhookRepo) ListEnabled(context.Context) ([]WebhookConfig, error) {
 	return nil, nil
 }

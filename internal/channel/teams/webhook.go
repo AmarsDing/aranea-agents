@@ -1,6 +1,7 @@
 package teams
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -8,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 
 	"aranea-agents/internal/channel/port"
 )
@@ -71,18 +74,24 @@ func ParseInbound(raw []byte) (InboundMessage, error) {
 	}, nil
 }
 
-func VerifyRequest(appID, appSecret string, header http.Header, body []byte) error {
+// VerifyRequest validates a Bot Framework inbound Authorization bearer token.
+// RS256 tokens are verified against Microsoft Bot Framework JWKS; HS256 uses appSecret.
+func VerifyRequest(ctx context.Context, appID, appSecret string, header http.Header, body []byte) error {
+	_ = body // reserved for future body-binding checks
 	authHeader := strings.TrimSpace(header.Get("Authorization"))
 	if authHeader == "" {
 		return errMissingAuthHeader
 	}
-	if appID == "" || appSecret == "" {
+	if strings.TrimSpace(appID) == "" {
 		return port.ErrCredentialsNotConfigured
 	}
-	return verifyBotFrameworkToken(authHeader, appID, appSecret)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return verifyBotFrameworkToken(ctx, authHeader, appID, appSecret)
 }
 
-func verifyBotFrameworkToken(authHeader, appID, appSecret string) error {
+func verifyBotFrameworkToken(ctx context.Context, authHeader, appID, appSecret string) error {
 	parts := strings.SplitN(authHeader, " ", 2)
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 		return errInvalidAuthScheme
@@ -104,6 +113,7 @@ func verifyBotFrameworkToken(authHeader, appID, appSecret string) error {
 	var jwtHeader struct {
 		Alg string `json:"alg"`
 		Typ string `json:"typ"`
+		Kid string `json:"kid"`
 	}
 	if err := json.Unmarshal(headerBytes, &jwtHeader); err != nil {
 		return teamsJWTHeaderJSONError(err)
@@ -119,6 +129,7 @@ func verifyBotFrameworkToken(authHeader, appID, appSecret string) error {
 	}
 	var claims struct {
 		Aud string  `json:"aud"`
+		Iss string  `json:"iss"`
 		Exp float64 `json:"exp"`
 		Iat float64 `json:"iat"`
 	}
@@ -137,11 +148,11 @@ func verifyBotFrameworkToken(authHeader, appID, appSecret string) error {
 	// Verify signature based on algorithm
 	switch alg {
 	case "RS256":
-		// TODO(debt): Full RS256 verification requires fetching Microsoft OpenID metadata
-		// and validating against their public keys via a JWKS client.
-		// Until implemented, we reject RS256 tokens to prevent forgery.
-		return errRS256NotImplemented
+		return verifyRS256(ctx, token, jwtHeader.Kid, appID, claims.Iss)
 	case "HS256":
+		if strings.TrimSpace(appSecret) == "" {
+			return port.ErrCredentialsNotConfigured
+		}
 		// HMAC-SHA256 verification (used by some Bot Framework configurations)
 		signingInput := segments[0] + "." + segments[1]
 		key := deriveSigningKey(appID, appSecret)
@@ -157,7 +168,33 @@ func verifyBotFrameworkToken(authHeader, appID, appSecret string) error {
 	return nil
 }
 
-func deriveSigningKey(appID, appSecret string) []byte {
+func verifyRS256(ctx context.Context, token, kid, appID, iss string) error {
+	if strings.TrimSpace(iss) != "" && !strings.EqualFold(strings.TrimSpace(iss), botFrameworkIssuer) {
+		return errIssuerMismatch
+	}
+	pub, err := defaultJWKS.lookup(ctx, kid)
+	if err != nil {
+		return err
+	}
+	parser := jwt.NewParser(
+		jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}),
+		jwt.WithAudience(strings.TrimSpace(appID)),
+		jwt.WithIssuer(botFrameworkIssuer),
+		jwt.WithLeeway(time.Duration(port.WebhookTimestampToleranceSec)*time.Second),
+	)
+	parsed, err := parser.Parse(token, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, errRS256VerifyFail
+		}
+		return pub, nil
+	})
+	if err != nil || parsed == nil || !parsed.Valid {
+		return errRS256VerifyFail
+	}
+	return nil
+}
+
+func deriveSigningKey(_ string, appSecret string) []byte {
 	// Microsoft Bot Framework uses the appSecret directly or base64-decoded
 	secret := strings.TrimSpace(appSecret)
 	if decoded, err := base64.StdEncoding.DecodeString(secret); err == nil && len(decoded) > 0 {

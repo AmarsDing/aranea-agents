@@ -43,10 +43,26 @@ type WebhookUpdatePatch struct {
 	Enabled        *bool
 }
 
+// WebhookListQuery is the pagination/filter input for admin webhook lists.
+type WebhookListQuery struct {
+	Search string
+	Limit  int
+	Offset int
+}
+
+// WebhookListResult is a page of webhooks plus the filter-scoped total.
+type WebhookListResult struct {
+	Items  []WebhookConfig
+	Total  int
+	Limit  int
+	Offset int
+}
+
 // WebhookReader provides read-only access to webhook configs.
 type WebhookReader interface {
 	Get(ctx context.Context, id string) (WebhookConfig, error)
 	List(ctx context.Context) ([]WebhookConfig, error)
+	ListPaged(ctx context.Context, q WebhookListQuery) (WebhookListResult, error)
 	ListEnabled(ctx context.Context) ([]WebhookConfig, error)
 }
 
@@ -110,6 +126,23 @@ func (uc *WebhookUsecase) List(ctx context.Context) ([]WebhookConfig, error) {
 		return nil, apierror.Internal("GATEWAY", "webhook repository not configured")
 	}
 	return uc.reader.List(ctx)
+}
+
+// ListPaged returns a page of webhooks for the admin registry UI.
+func (uc *WebhookUsecase) ListPaged(ctx context.Context, q WebhookListQuery) (WebhookListResult, error) {
+	if uc == nil || uc.reader == nil {
+		return WebhookListResult{}, apierror.Internal("GATEWAY", "webhook repository not configured")
+	}
+	if q.Limit <= 0 {
+		q.Limit = 20
+	}
+	if q.Limit > 100 {
+		q.Limit = 100
+	}
+	if q.Offset < 0 {
+		q.Offset = 0
+	}
+	return uc.reader.ListPaged(ctx, q)
 }
 
 func (uc *WebhookUsecase) Update(ctx context.Context, patch WebhookUpdatePatch) (WebhookConfig, error) {

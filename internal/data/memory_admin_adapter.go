@@ -2,10 +2,13 @@ package data
 
 import (
 	"context"
+	"sort"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/ent/activity"
+	"aranea-agents/internal/data/ent/stepv2"
+	"aranea-agents/internal/data/ent/taskv2"
 	"aranea-agents/internal/data/vector"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -37,7 +40,8 @@ func NewSessionAdminStoreAdapter(data *Data, vs vector.VectorStore) biz.SessionA
 	}
 }
 
-// recentMessageListerAdapter implements biz.RecentMessageLister using the Ent client.
+// recentMessageListerAdapter implements biz.RecentMessageLister using v2 tables
+// (tasks_v2 + steps_v2). The activities table was dropped (DDL 20261012).
 type recentMessageListerAdapter struct {
 	data *Data
 }
@@ -52,21 +56,24 @@ func NewRecentMessageLister(d *Data) biz.RecentMessageLister {
 	return &recentMessageListerAdapter{data: d}
 }
 
-// activityKindToConsolidateRole maps an Activity kind to a ConsolidateMessage role.
-// Returns ok=false for kinds that don't map to chat messages (thinking/session/etc.).
-func activityKindToConsolidateRole(kind string) (string, bool) {
+// stepKindToConsolidateRole maps a v2 Step kind to a ConsolidateMessage role.
+// Returns ok=false for kinds that don't map to chat messages (thinking/confirm/…).
+func stepKindToConsolidateRole(kind string) (string, bool) {
 	switch strings.TrimSpace(kind) {
-	case "task":
-		return "user", true
 	case "reply":
 		return "assistant", true
 	case "action":
 		return "tool", true
-	case "notice":
+	case "notice", "error":
 		return "system", true
 	default:
 		return "", false
 	}
+}
+
+type timedConsolidateMsg struct {
+	ts  time.Time
+	msg biz.ConsolidateMessage
 }
 
 func (a *recentMessageListerAdapter) ListRecentMessages(ctx context.Context, sessionID string, limit int) ([]biz.ConsolidateMessage, error) {
@@ -77,27 +84,45 @@ func (a *recentMessageListerAdapter) ListRecentMessages(ctx context.Context, ses
 	if limit <= 0 || limit > biz.TimelineMessageMaxFetch {
 		limit = biz.TimelineMessageMaxFetch
 	}
-	// Phase 1c-3: messages table deleted. Recent messages are now sourced from
-	// the activities table. Only chat-shaped kinds (task/reply/action/notice)
-	// are returned; thinking/session/team_stage/etc. are skipped.
-	rows, err := a.data.RW().Read(ctx).Activity.Query().
-		Where(activity.SessionIDEQ(sessionID)).
-		Order(activity.ByTimestamp(entsql.OrderDesc()), activity.BySeq(entsql.OrderDesc())).
-		Limit(limit * 2).All(ctx)
+	client := a.data.RW().Read(ctx)
+	fetchN := limit * 2
+
+	var timed []timedConsolidateMsg
+
+	tasks, err := client.TaskV2.Query().
+		Where(taskv2.SessionIDEQ(sessionID)).
+		Order(taskv2.ByCreatedAt(entsql.OrderDesc()), taskv2.BySeq(entsql.OrderDesc())).
+		Limit(fetchN).
+		All(ctx)
 	if err != nil {
-		return nil, entErrToBizErr(err, "MEMORY_ACTIVITY")
+		return nil, entErrToBizErr(err, "MEMORY_TASK_V2")
 	}
-	// Reverse to chronological order and filter to chat-shaped kinds.
-	out := make([]biz.ConsolidateMessage, 0, len(rows))
-	for i := len(rows) - 1; i >= 0; i-- {
-		row := rows[i]
-		role, ok := activityKindToConsolidateRole(row.Kind)
+	for _, row := range tasks {
+		content := strings.TrimSpace(row.UserMessage)
+		if content == "" {
+			continue
+		}
+		timed = append(timed, timedConsolidateMsg{
+			ts:  row.CreatedAt,
+			msg: biz.ConsolidateMessage{Role: "user", Content: content, MessageID: row.ID},
+		})
+	}
+
+	steps, err := client.StepV2.Query().
+		Where(stepv2.SessionIDEQ(sessionID)).
+		Order(stepv2.ByStartedAt(entsql.OrderDesc()), stepv2.BySeq(entsql.OrderDesc())).
+		Limit(fetchN).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_STEP_V2")
+	}
+	for _, row := range steps {
+		role, ok := stepKindToConsolidateRole(row.Kind)
 		if !ok {
 			continue
 		}
 		content := strings.TrimSpace(row.Content)
 		if role == "tool" {
-			// Tool messages use ToolResult as content (falls back to tool name).
 			if tr := strings.TrimSpace(row.ToolResult); tr != "" {
 				content = tr
 			} else if content == "" {
@@ -107,14 +132,24 @@ func (a *recentMessageListerAdapter) ListRecentMessages(ctx context.Context, ses
 		if content == "" {
 			continue
 		}
-		out = append(out, biz.ConsolidateMessage{
-			Role:      role,
-			Content:   content,
-			MessageID: row.ID,
+		timed = append(timed, timedConsolidateMsg{
+			ts:  row.StartedAt,
+			msg: biz.ConsolidateMessage{Role: role, Content: content, MessageID: row.ID},
 		})
-		if len(out) >= limit {
-			break
+	}
+
+	sort.Slice(timed, func(i, j int) bool {
+		if timed[i].ts.Equal(timed[j].ts) {
+			return timed[i].msg.MessageID < timed[j].msg.MessageID
 		}
+		return timed[i].ts.Before(timed[j].ts)
+	})
+	if len(timed) > limit {
+		timed = timed[len(timed)-limit:]
+	}
+	out := make([]biz.ConsolidateMessage, 0, len(timed))
+	for _, t := range timed {
+		out = append(out, t.msg)
 	}
 	return out, nil
 }

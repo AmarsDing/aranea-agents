@@ -106,23 +106,13 @@ func (s *TeamService) ListSpiritTeams(ctx context.Context, req *v1.ListSpiritTea
 			run = &runs[0]
 		}
 		view := toProtoSpiritTeamView(&teams[i], run)
-		// Phase 3b-D Task 6: load team members via v2 TeamStageV2Reader when
-		// available. The v2 TeamStage.Members field is typed ([]MemberInfo),
-		// eliminating the need to extract from v1 Activity.Meta.
-		// Falls back to v1 activityRepo.GetActivity when the v2 reader is nil
-		// (v1-only deployments) or when no v2 TeamStage record exists yet
-		// (spirit teams are still published via v1 ActivityEventBus; v2
-		// publish migration is Tier 3).
+		// Members come from v2 TeamStage (typed []MemberInfo). Legacy
+		// activities-table fallback was removed with ActivityBridge/dual-write.
 		stageID := string(agent.NewTeamStageActivityID(teams[i].ID))
 		var members []*v1.SpiritMemberView
 		if s.teamStageReader != nil {
 			if ts, err := s.teamStageReader.GetTeamStage(ctx, stageID); err == nil {
 				members = memberInfosToSpiritViews(ts.Members)
-			}
-		}
-		if members == nil && s.activityRepo != nil {
-			if act, err := s.activityRepo.GetActivity(ctx, stageID); err == nil {
-				members = membersFromTeamStageActivity(act.Meta)
 			}
 		}
 		if len(members) > 0 {
@@ -181,41 +171,6 @@ func toProtoSpiritTeamView(t *biz.Team, run *biz.TeamRunRecord) *v1.SpiritTeamVi
 		view.GraphExecutionId = run.GraphExecutionID
 	}
 	return view
-}
-
-// membersFromTeamStageActivity extracts the member list stored in a
-// team_stage activity's meta (written by publishSpiritTeamAssembled). This
-// provides the authoritative agent keys, display names, avatars and session
-// IDs for the frontend sidebar without duplicating the assembly logic.
-func membersFromTeamStageActivity(meta map[string]any) []*v1.SpiritMemberView {
-	if meta == nil {
-		return nil
-	}
-	raw, ok := meta["members"].([]any)
-	if !ok || len(raw) == 0 {
-		return nil
-	}
-	out := make([]*v1.SpiritMemberView, 0, len(raw))
-	for _, item := range raw {
-		m, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		out = append(out, &v1.SpiritMemberView{
-			AgentKey:    stringField(m, "agent_key"),
-			DisplayName: stringField(m, "agent_name"),
-			AvatarUrl:   stringField(m, "avatar_url"),
-			Status:      stringField(m, "status"),
-		})
-	}
-	return out
-}
-
-func stringField(m map[string]any, key string) string {
-	if v, ok := m[key].(string); ok {
-		return v
-	}
-	return ""
 }
 
 // SynthesizeResults merges results from multiple teams (B-4).

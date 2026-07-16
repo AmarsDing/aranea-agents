@@ -21,7 +21,7 @@ type compressReadDepsAdapter struct {
 // ProvideCompressReadDepsAdapter constructs a CompressReadDeps from its parts.
 // Returns nil if sessions is nil; Wire treats nil as a missing binding.
 //
-// If lister is nil (e.g., tests without ActivityReader wired), an empty
+// If lister is nil (e.g., tests without ActivityLister wired), an empty
 // ActivityLister is used so MessageReader calls return empty results instead
 // of panicking.
 func ProvideCompressReadDepsAdapter(
@@ -72,7 +72,7 @@ func ProvideCompressWriteDepsAdapter(
 }
 
 // emptyActivityLister is a local noop ActivityLister used as a fallback when
-// biz/session.ActivityLister is nil (e.g., tests/CLI without ActivityReader
+// biz/session.ActivityLister is nil (e.g., tests/CLI without ActivityLister
 // wired). It returns empty results for all calls.
 type emptyActivityLister struct{}
 

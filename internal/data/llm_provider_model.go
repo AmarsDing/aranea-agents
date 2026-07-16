@@ -79,6 +79,43 @@ func (r *llmProviderModelRepo) ListProviderModels(ctx context.Context) ([]biz.Pr
 	return out, nil
 }
 
+func (r *llmProviderModelRepo) providerModelListQuery(ctx context.Context, q biz.ProviderModelListQuery) *ent.LlmProviderModelQuery {
+	pq := r.data.RW().Read(ctx).LlmProviderModel.Query().Where(llmprovidermodel.DeletedAtEQ(""))
+	if s := strings.TrimSpace(q.Search); s != "" {
+		pq = pq.Where(llmprovidermodel.Or(
+			llmprovidermodel.ModelKeyContainsFold(s),
+			llmprovidermodel.NameContainsFold(s),
+			llmprovidermodel.DescriptionContainsFold(s),
+			llmprovidermodel.ProviderContainsFold(s),
+			llmprovidermodel.ModelContainsFold(s),
+		))
+	}
+	return pq
+}
+
+func (r *llmProviderModelRepo) SearchProviderModels(ctx context.Context, q biz.ProviderModelListQuery) (biz.ProviderModelListResult, error) {
+	total, err := r.providerModelListQuery(ctx, q).Count(ctx)
+	if err != nil {
+		return biz.ProviderModelListResult{}, entErrToBizErr(err, "LLM_PROVIDER_MODEL")
+	}
+	rows, err := r.providerModelListQuery(ctx, q).
+		Order(
+			llmprovidermodel.BySortOrder(),
+			llmprovidermodel.ByCreatedAt(entsql.OrderDesc()),
+		).
+		Limit(q.Limit).
+		Offset(q.Offset).
+		All(ctx)
+	if err != nil {
+		return biz.ProviderModelListResult{}, entErrToBizErr(err, "LLM_PROVIDER_MODEL")
+	}
+	out := make([]biz.ProviderModel, 0, len(rows))
+	for _, e := range rows {
+		out = append(out, entToBizPM(r.data.lg, e))
+	}
+	return biz.ProviderModelListResult{Items: out, Total: total, Limit: q.Limit, Offset: q.Offset}, nil
+}
+
 func (r *llmProviderModelRepo) GetProviderModel(ctx context.Context, id string) (biz.ProviderModel, error) {
 	row, err := r.data.RW().Read(ctx).LlmProviderModel.Query().
 		Where(llmprovidermodel.IDEQ(id), llmprovidermodel.DeletedAtEQ("")).

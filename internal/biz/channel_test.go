@@ -18,6 +18,19 @@ func (s *channelRepoStub) List(_ context.Context) ([]Channel, error) {
 	return append([]Channel(nil), s.channels...), nil
 }
 
+func (s *channelRepoStub) ListPaged(_ context.Context, q ChannelListQuery) (ChannelListResult, error) {
+	items := append([]Channel(nil), s.channels...)
+	total := len(items)
+	if q.Offset >= total {
+		return ChannelListResult{Items: nil, Total: total, Limit: q.Limit, Offset: q.Offset}, nil
+	}
+	end := q.Offset + q.Limit
+	if q.Limit <= 0 || end > total {
+		end = total
+	}
+	return ChannelListResult{Items: items[q.Offset:end], Total: total, Limit: q.Limit, Offset: q.Offset}, nil
+}
+
 func (s *channelRepoStub) Get(_ context.Context, id string) (Channel, error) {
 	for _, c := range s.channels {
 		if c.ID == id {

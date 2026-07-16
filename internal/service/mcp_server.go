@@ -121,17 +121,40 @@ func boolPtr(b bool) *bool { return &b }
 func intPtr(i int) *int { return &i }
 
 func (s *MCPServerService) ListMCPServers(ctx context.Context, _ *emptypb.Empty) (*v1.ListMCPServersResponse, error) {
-	q := biz.MCPListQuery{}
+	q := biz.MCPListQuery{Search: searchQueryFromContext(ctx)}
 	// P2-B: workspace visibility filter.
 	// System caller (cron/admin) sees all; tenant caller sees shared + own.
 	if !workspace.IsSystem(ctx) {
 		q.WorkspaceID = workspace.IDFromContext(ctx)
 	}
+	if page, pageSize, ok := pageQueryFromContext(ctx); ok {
+		limit, offset, page, pageSize := biz.PageToLimitOffset(page, pageSize)
+		q.Limit, q.Offset = limit, offset
+		result, err := s.uc.ListPaged(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		resp := &v1.ListMCPServersResponse{
+			Items:    make([]*v1.MCPServer, 0, len(result.Items)),
+			Total:    int32(result.Total),
+			Page:     page,
+			PageSize: pageSize,
+		}
+		for i := range result.Items {
+			resp.Items = append(resp.Items, toProtoMCP(result.Items[i]))
+		}
+		return resp, nil
+	}
 	items, err := s.uc.List(ctx, q)
 	if err != nil {
 		return nil, err
 	}
-	resp := &v1.ListMCPServersResponse{Items: make([]*v1.MCPServer, 0, len(items))}
+	resp := &v1.ListMCPServersResponse{
+		Items:    make([]*v1.MCPServer, 0, len(items)),
+		Total:    int32(len(items)),
+		Page:     1,
+		PageSize: int32(len(items)),
+	}
 	for i := range items {
 		resp.Items = append(resp.Items, toProtoMCP(items[i]))
 	}

@@ -53,6 +53,9 @@ type hookRepoStub struct {
 }
 
 func (h *hookRepoStub) ListHooks(context.Context) ([]biz.Hook, error) { return h.items, nil }
+func (h *hookRepoStub) ListHooksPaged(_ context.Context, q biz.HookListQuery) (biz.HookListResult, error) {
+	return biz.HookListResult{Items: h.items, Total: len(h.items), Limit: q.Limit, Offset: q.Offset}, nil
+}
 func (h *hookRepoStub) GetHook(context.Context, string) (biz.Hook, error) {
 	return biz.Hook{}, nil
 }

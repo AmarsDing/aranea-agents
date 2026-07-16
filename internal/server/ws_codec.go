@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
 )
 
@@ -20,20 +19,15 @@ type wsUpstream struct {
 }
 
 // wsDownstream represents a server-to-client WebSocket message.
-//
-// Phase 5 Blocker A: the legacy Envelope field used for in-memory replay
-// has been removed. Chat/system events are now carried by ActivityEvent;
-// monitor events by MonitorEvent. Clients that previously relied on the
-// "replay" type and the envelope field should call ListActivities RPC
-// (GET /v1/sessions/{session_id}/activities) to backfill history on
-// reconnect.
+// Chat business events use typed v2_event envelopes (separate from this
+// struct). Monitor events ride MonitorEvent. History hydrate uses v2 REST
+// (tasks/turns/steps) or ListActivities (steps_v2 adapter).
 type wsDownstream struct {
-	Direction     string                 `json:"direction"`
-	Channel       string                 `json:"channel"`
-	Type          string                 `json:"type,omitempty"`
-	Payload       any                    `json:"payload,omitempty"`
-	ActivityEvent *biz.ActivityEvent     `json:"activity_event,omitempty"`
-	MonitorEvent  *contract.MonitorEvent `json:"monitor_event,omitempty"`
+	Direction    string                 `json:"direction"`
+	Channel      string                 `json:"channel"`
+	Type         string                 `json:"type,omitempty"`
+	Payload      any                    `json:"payload,omitempty"`
+	MonitorEvent *contract.MonitorEvent `json:"monitor_event,omitempty"`
 }
 
 // wsProbeMode returns true when the client requests a lightweight probe connection.

@@ -3,36 +3,12 @@ package service
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/loggateway"
 )
-
-// capturingActivityRepo captures UpsertActivity calls so tests can assert on
-// the synchronously-persisted v1 Activity (used by publishSpiritTeamAssembled
-// to store the rich Meta payload that v2 TeamStage drops).
-type capturingActivityRepo struct {
-	mu         sync.Mutex
-	activities []biz.Activity
-}
-
-func (r *capturingActivityRepo) UpsertActivity(_ context.Context, a biz.Activity) (biz.Activity, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.activities = append(r.activities, a)
-	return a, nil
-}
-
-func (r *capturingActivityRepo) snapshot() []biz.Activity {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	out := make([]biz.Activity, len(r.activities))
-	copy(out, r.activities)
-	return out
-}
 
 // stubAgentReaderByKey is an in-memory AgentReader keyed by agent_key.
 // Only GetAgentByAgentKey is exercised by publishSpiritTeamAssembled; the

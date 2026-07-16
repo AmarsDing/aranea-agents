@@ -200,7 +200,8 @@ type SkillMutationWriter interface {
 }
 
 type SkillSyncWriter interface {
-	PublishSkill(ctx context.Context, id string) (Skill, error)
+	// PublishSkill publishes a draft skill and records validationStatus ("pass"|"warn").
+	PublishSkill(ctx context.Context, id string, validationStatus string) (Skill, error)
 	UpsertSkillFromDisk(ctx context.Context, in DiskSyncInput) (Skill, DiskSyncOutcome, error)
 	MarkSkillFilesystemMissing(ctx context.Context, slug string, missing bool) error
 	RecordSkillInvocation(ctx context.Context, in InvocationWrite) error
@@ -422,6 +423,15 @@ func (u *Usecase) ToggleEnabled(ctx context.Context, id string, enabled bool) (S
 	if strings.TrimSpace(id) == "" {
 		return Skill{}, apierror.BadRequest("SKILL", "skill id is required")
 	}
+	if enabled {
+		cur, err := u.repo.GetSkillByID(ctx, id)
+		if err != nil {
+			return Skill{}, err
+		}
+		if !isPublishedStatus(cur.Status) {
+			return Skill{}, apierror.BadRequest("SKILL", "only published skills can be enabled")
+		}
+	}
 	s, err := u.repo.UpdateSkillEnabled(ctx, id, enabled)
 	if err != nil {
 		return Skill{}, err
@@ -589,7 +599,22 @@ func (u *Usecase) Publish(ctx context.Context, id string) (Skill, error) {
 	if err := requireAdminAccess(ctx); err != nil {
 		return Skill{}, err
 	}
-	s, err := u.repo.PublishSkill(ctx, id)
+	cur, err := u.repo.GetSkillByID(ctx, id)
+	if err != nil {
+		return Skill{}, err
+	}
+	if strings.TrimSpace(cur.Status) != "draft" {
+		return Skill{}, apierror.BadRequest("SKILL", "only draft skills can be published")
+	}
+	body, bodyErr := u.repo.GetLatestSkillMarkdown(ctx, id)
+	if bodyErr != nil {
+		body = ""
+	}
+	validationStatus, blockMsg := evaluatePublishValidation(cur, body)
+	if validationStatus == "block" {
+		return Skill{}, apierror.BadRequest("SKILL", blockMsg)
+	}
+	s, err := u.repo.PublishSkill(ctx, id, validationStatus)
 	if err != nil {
 		return Skill{}, err
 	}
@@ -935,11 +960,57 @@ func applySkillPermission(ctx context.Context, s *Skill) {
 		return
 	}
 	if a.HasAdminAccess() {
-		s.Permissions = SkillPermissions{CanEdit: true, CanDelete: true, CanToggleEnabled: true, CanDuplicate: true}
+		s.Permissions = SkillPermissions{
+			CanEdit:          true,
+			CanDelete:        true,
+			CanToggleEnabled: isPublishedStatus(s.Status),
+			CanDuplicate:     true,
+		}
 		return
 	}
 	// Non-admin: read-only permissions (mutation methods require admin)
 	s.Permissions = SkillPermissions{CanEdit: false, CanDelete: false, CanToggleEnabled: false, CanDuplicate: false}
+}
+
+func isPublishedStatus(status string) bool {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "published", "active":
+		return true
+	default:
+		return false
+	}
+}
+
+// evaluatePublishValidation returns pass|warn|block and a block message when blocked.
+// Structural failures block publish; soft issues (e.g. short description) are warn.
+func evaluatePublishValidation(s Skill, body string) (status string, blockMsg string) {
+	body = strings.TrimSpace(body)
+	name := strings.TrimSpace(s.Name)
+	desc := strings.TrimSpace(s.Description)
+	var blocks []string
+	if name == "" {
+		blocks = append(blocks, "skill name is required")
+	}
+	if desc == "" {
+		blocks = append(blocks, "skill description is required")
+	}
+	if body == "" {
+		blocks = append(blocks, "SKILL.md body is required")
+	}
+	if len(blocks) > 0 {
+		return "block", strings.Join(blocks, "; ")
+	}
+	warnings := 0
+	if len([]rune(desc)) < 8 {
+		warnings++
+	}
+	if len([]rune(body)) < 40 {
+		warnings++
+	}
+	if warnings > 0 {
+		return "warn", ""
+	}
+	return "pass", ""
 }
 
 func requireAdminAccess(ctx context.Context) error {

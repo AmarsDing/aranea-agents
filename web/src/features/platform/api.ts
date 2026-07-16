@@ -519,6 +519,38 @@ function mergeProviderModel(base: ProviderModel, patch: Partial<PlatformResource
   };
 }
 
+export type ProviderModelListQuery = {
+  page?: number;
+  page_size?: number;
+  search?: string;
+};
+
+export type ProviderModelListResult = {
+  items: PlatformResource[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+/** Admin models registry — server pagination. Pickers should keep using listPlatformResources (full list). */
+export async function listProviderModelsPaged(
+  query: ProviderModelListQuery = {},
+): Promise<ProviderModelListResult> {
+  const page = query.page ?? 1;
+  const pageSize = query.page_size ?? 20;
+  const res = await llmModels.ListProviderModels({
+    page,
+    pageSize,
+    search: query.search?.trim() || undefined,
+  });
+  return {
+    items: (res.items ?? []).map((row: unknown) => llmProviderWireToPlatform(row)),
+    total: Number(res.total ?? 0),
+    page: Number(res.page ?? page),
+    page_size: Number(res.pageSize ?? pageSize),
+  };
+}
+
 export async function listPlatformResources(resource: PlatformResourceName): Promise<PlatformResource[]> {
   switch (resource) {
     case 'avatar-assets': {
@@ -578,8 +610,8 @@ export async function listPlatformResources(resource: PlatformResourceName): Pro
       return (res.items ?? []).map((row: unknown) => monitorEventWireToPlatform(row));
     }
     case 'monitor-traces': {
-      const events = await listModelUsageEvents({ limit: 200 });
-      return events.map(usageEventToPlatformTrace);
+      const { items } = await listModelUsageEvents({ limit: 200, offset: 0 });
+      return items.map(usageEventToPlatformTrace);
     }
     default:
       return [];

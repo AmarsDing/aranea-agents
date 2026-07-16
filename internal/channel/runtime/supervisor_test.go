@@ -26,6 +26,10 @@ type countingRepo struct {
 func (r *countingRepo) List(_ context.Context) ([]biz.Channel, error) {
 	return append([]biz.Channel(nil), r.channels...), nil
 }
+func (r *countingRepo) ListPaged(_ context.Context, q biz.ChannelListQuery) (biz.ChannelListResult, error) {
+	items := append([]biz.Channel(nil), r.channels...)
+	return biz.ChannelListResult{Items: items, Total: len(items), Limit: q.Limit, Offset: q.Offset}, nil
+}
 func (r *countingRepo) Get(_ context.Context, id string) (biz.Channel, error) {
 	return biz.Channel{}, nil
 }

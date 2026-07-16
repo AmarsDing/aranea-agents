@@ -37,7 +37,7 @@ flowchart LR
 
 1. 先修会写坏数据 / 会误删 / 会看不见资源的 P0。  
 2. 概览与会话/记忆的文案与采样范围一次改清（成本低、信任度高）。  
-3. 中期收敛可观测壳、双配置源、taxonomy 双树、假分页。  
+3. 中期收敛 Chat 拆分；假分页主路径（登记册/Usage/Eval/A2A）已收敛，剩余 Graphs/Memory samples。  
 4. Chat 拆分与 countOnly API 作为结构性改进，勿与 P0 混在同一 PR。
 
 ---
@@ -94,7 +94,7 @@ flowchart LR
 | 双 embedder 配置 | `/knowledge` 与 `/settings` | Settings 热加载 + Knowledge 标明同一写入源 | **已修**（后端热加载 + FE 说明） |
 | Taxonomy 树混用 | Teams 用 `taxonomy`，Agents/Org 用 `organization` | Teams 改为 `organization` 树（department_id） | **已修** |
 | 本地排序不落库 | Agents、Teams | 无 sort_order 字段：禁用拖拽 | **已修**（禁用） |
-| 假分页 / 硬上限 | Usage events 200、Channels/MCP/Hooks/Webhooks/Models 全量、Eval runs、A2A audit | A2A/Eval 接服务端分页；登记册标明全量切片；Usage 标明上限 | **部分**（A2A/Eval **已修**；登记册文案 **已修**；服务端分页仍待） |
+| 假分页 / 硬上限 | Usage events、Channels/MCP/Hooks/Webhooks/Models、Eval runs、A2A audit | 服务端 `page/page_size/total`（无参仍全量，供 picker/health） | **已修** |
 | Chat 过重 | `useChatWorkspace` + 多 store | 按发送/活动/侧栏拆边界；修复 pause sessionId | **部分**（pause sessionId **已修**；拆分仍属中期） |
 | 商城 vs 预设 | `/shop` vs Settings catalog | 文案区分「生态商城」与「行业预设」 | **已修** |
 | 未完成入口 | Agents「迁移」即将推出 | 隐藏假 CTA | **已修** |
@@ -127,9 +127,9 @@ flowchart LR
 | **A UI** | Hero、筛选、事件表、本地分页、导出 CSV、Purge |
 | **B 路径** | `useUsageEventsPage` → `useUsageStore` → `features/usage/api.ts` |
 | **C 后端** | `ListUsageEvents` / `ExportUsageEvents` / `PurgeUsageEvents` |
-| **D 正确性** | 默认 limit 200 + 本地分页 → 静默截断；Purge 已独立 retainDays（P0-2 已修） |
+| **D 正确性** | `ListUsageEvents` 已接 `limit/offset/total` 服务端分页；Purge 已独立 retainDays（P0-2 已修） |
 | **E 架构** | 账本页与 Overview 聚合面职责清晰 |
-| **F 债** | `USAGE_EVENTS_LIMIT` 常量未统一引用 |
+| **F 债** | 登记册 admin 列表已服务端分页；picker/health 无参仍全量 |
 
 #### 5.1.3 `/chat` — ChatPage
 
@@ -223,7 +223,7 @@ flowchart LR
 | **A UI** | Provider 表、向导、趋势 Dialog、加密告警 |
 | **B 路径** | `useResourceManagerPage` → platform store；catalog 直调 API |
 | **C 后端** | `LlmProviderModelService`；趋势走 Usage events |
-| **D 正确性** | 全量拉取 + 客户端分页；筛选不重置 page |
+| **D 正确性** | Models 列表已接 `page/page_size/search/total`；picker 无参仍全量 |
 | **E 架构** | Generic ResourceManager 可扩展；向导耦合高 |
 | **F 债** | TECH-DEBT catalog-bypass |
 
@@ -233,8 +233,8 @@ flowchart LR
 |----|------|
 | **A UI** | 表、启用/测连、Ops（TurnJobs/Deliveries）、编辑器 |
 | **B 路径** | `useChannelsPage` → `useChannelsStore` |
-| **C 后端** | `ChannelService` 全套 |
-| **D 正确性** | 筛选不重置 page；status 与 enabled 双维度易混 |
+| **C 后端** | `ChannelService` 全套（`ListChannels?page=&pageSize=&search=&type=&status=`） |
+| **D 正确性** | 服务端分页；type/status/search 服务端过滤 |
 | **E 架构** | Store 拉 agents/teams 做路由选项（跨模块） |
 | **F 债** | TECH-DEBT channel-store-catalog；locale defaults |
 
@@ -247,9 +247,9 @@ flowchart LR
 | 项 | 内容 |
 |----|------|
 | **A UI** | 服务器表、健康态、凭证 Dialog |
-| **B 路径** | `useMcpServersPage` 本地 `rows` 副本 + mcp store |
-| **C 后端** | `MCPServerService` |
-| **D 正确性** | 本地 rows 与 store 可能漂移；health 依赖 metadata 刷新 |
+| **B 路径** | `useMcpServersPage` → mcp store（`listMcpServersPaged`） |
+| **C 后端** | `MCPServerService`（`page/pageSize/search/total`） |
+| **D 正确性** | 服务端分页；health 依赖 metadata 刷新 |
 | **E 架构** | 缺 i18n / route meta.title |
 | **F 债** | 无标记 TECH-DEBT |
 
@@ -313,9 +313,9 @@ flowchart LR
 | 项 | 内容 |
 |----|------|
 | **A UI** | 表、编辑器、deliveries 链接 |
-| **B 路径** | `useHooksPage` → hooks store |
-| **C 后端** | `HookService` |
-| **D 正确性** | Update 前 Get+merge，竞态窗口 |
+| **B 路径** | `useHooksPage` → hooks store（`listHooksPaged`） |
+| **C 后端** | `HookService`（`page/pageSize/search/callbackPoint/total`） |
+| **D 正确性** | 服务端分页；Update 前 Get+merge 仍有竞态窗口 |
 | **E 架构** | i18n 较好；与 plugin callback 常量共享 |
 | **F 债** | TECH-DEBT：Get+merge，需 field_mask |
 
@@ -324,9 +324,9 @@ flowchart LR
 | 项 | 内容 |
 |----|------|
 | **A UI** | 表、Dialog（URL/secret） |
-| **B 路径** | `useWebhooksPage` → webhooks store |
-| **C 后端** | `GatewayService` Webhook RPCs（工厂名 `createWebhookService`） |
-| **D 正确性** | Update 部分字段依赖后端 merge 不擦 secret |
+| **B 路径** | `useWebhooksPage` → webhooks store（`listWebhooksPaged`） |
+| **C 后端** | `GatewayService`（`page/pageSize/search/total`） |
+| **D 正确性** | 服务端分页；Update 部分字段依赖后端 merge 不擦 secret |
 | **E 架构** | 无投递日志入口（对比 Hooks deliveries） |
 | **F 债** | 无 |
 
@@ -475,7 +475,7 @@ flowchart LR
 | 客户端聚合冒充全局 KPI | Sessions、Memory、Overview（部分）、Chat Spirit tokens |
 | 本地排序不落库 | Agents、Teams（Graphs 已落库） |
 | Taxonomy 双树 | Teams(`taxonomy`) vs Agents/Org(`organization`) |
-| 假分页 / 硬上限 | Usage events、Graphs、Models、Channels、MCP、Hooks、Webhooks、Eval、A2A audit、Memory samples |
+| 假分页 / 硬上限 | Graphs 列表硬顶、Memory samples（登记册/Usage/Eval/A2A 已服务端分页） |
 | 双配置源 | Knowledge embedder ↔ Settings |
 | Store 绕行 | Overview counts、Skills files、Platform catalog、Channels agents/teams |
 | 壳 / 假入口 | Observability stubs、Agents 迁移 |
@@ -487,18 +487,18 @@ flowchart LR
 | 组别 | 页面 | 成熟度 |
 |------|------|--------|
 | Workspace | 概览 | 功能深；语义/采样问题多 |
-| | 用量事件 | 账本正确；假分页 + Purge 危险 |
+| | 用量事件 | 账本正确；服务端分页已接；Purge 需谨慎 |
 | | 聊天 | 核心强；过重 + 语义风险 |
 | | 会话 | CRUD 清晰；KPI 页局部 |
 | | 记忆 | Tab 过多；采样 KPI |
 | Agents | Agent | 列表好；拖拽/迁移债 |
-| | 组织 | CRUD 可用；**Reorder P0** |
-| | Team | 功能全；树/排序/全量列表债 |
-| | Graph | Reorder 正确；**50 硬顶 P0** |
-| Models/Tools | 模型/Channel/MCP | 可用；全量分页模式 |
-| | Tools | 后端 summary 优秀；批量安全差 |
-| | Skills 系 | 混合 REST；进化合并分页 P0 |
-| | Plugin/Hook/Webhook/A2A | 登记册合理；局部债 |
+| | 组织 | CRUD 可用；Reorder 已修 |
+| | Team | 功能全；树/排序债部分已收敛 |
+| | Graph | Reorder 正确；加载更多已接 |
+| Models/Tools | 模型/Channel/MCP | 服务端分页已接 |
+| | Tools | 后端 summary 优秀；批量安全已加固 |
+| | Skills 系 | 混合 REST；进化单类型分页已修 |
+| | Plugin/Hook/Webhook/A2A | 登记册合理；Hook/Webhook/A2A 分页已接 |
 | Knowledge/Ops | 知识/制品/评估 | 可用；依赖与上限 |
 | | 可观测 | 计划查询 + 跳转（已瘦身） |
 | | Cron/监控/设置 | 清晰；监控为权威运维面 |
@@ -514,8 +514,8 @@ flowchart LR
 | P0 修复 | Org Reorder → Usage Purge → Graphs 加载更多 → Evolution 单类型分页 → Tools 批量安全 | **已完成**（2026-07-16） |
 | P1 修复 | 概览/会话/记忆文案与采样语义；Chat Spirit Token 作用域；Skills 空态 | **已完成**（2026-07-16） |
 | P2 修复 | count API、Observability 瘦身、taxonomy、拖拽禁用、embedder 热加载、商城文案、迁移 CTA、Usage 200 上限提示、冲突事实 API、Chat pause sessionId | **已完成**（2026-07-16） |
-| P2+ 分页 | A2A audit / Eval runs+results 服务端分页；Channels/MCP/Hooks/Webhooks/Models 全量切片文案 | **已完成**（2026-07-16）；登记册服务端分页仍属后续 |
-| 中期 | Chat 拆分、Channels/MCP/Hooks/Webhooks/Models/Usage 服务端分页 | 规划项 |
+| P2+ 分页 | A2A audit / Eval runs+results / Usage events / Channels / MCP / Hooks / Webhooks / Models 服务端分页 | **已完成**（2026-07-16） |
+| 中期 | Chat 拆分 | 规划项 |
 
 ---
 
@@ -543,3 +543,5 @@ flowchart LR
 | 2026-07-16 | P1 落地：概览/会话/记忆 KPI 文案与采样说明；Hero 链至用量事件；Spirit Token 限 activeTeam；Skills 空态修正 |
 | 2026-07-16 | P2 落地：Teams `count_only`+SQL count；Overview KPI；Observability 假 Tab 移除；Teams taxonomy→organization；拖拽禁用；Settings embedder 热加载；商城/迁移/Usage 上限文案；Memory 冲突 API；Chat pause 用 sessionId |
 | 2026-07-16 | P2+：A2A audit / Eval runs+results 接服务端分页；Channels/MCP/Hooks/Webhooks/Models 标明全量前端切片；Usage hero 引用 `USAGE_EVENTS_LIMIT` |
+| 2026-07-16 | Usage events：`offset`+`total` 服务端分页（proto/data/biz/service + FE）；去掉前端假切片 |
+| 2026-07-16 | 登记册 Channels/MCP/Hooks/Webhooks/Models：`page/page_size/search/total` 服务端分页；无分页参数保持全量（picker/health）；FE 去掉本地切片 |

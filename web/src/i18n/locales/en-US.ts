@@ -898,7 +898,7 @@ export default {
     kicker: 'Channel management',
     title: 'Channels',
     subtitle:
-      'Manage external messaging channels, credentials, webhooks, and runtime lifecycle. Full list load; pagination is client-side.',
+      'Manage external messaging channels, credentials, webhooks, and runtime lifecycle. Supports server-side pagination and search.',
     add: 'Add channel',
     refresh: 'Refresh',
     searchLabel: 'Search channels',
@@ -1299,7 +1299,7 @@ export default {
     kicker: 'Callbacks',
     title: 'Hook / Callbacks',
     subtitle:
-      'Configure lifecycle callback rules for Agent, Model, Tool, and Runner events (log / notify / block / modify). Full list load; pagination is client-side.',
+      'Configure lifecycle callback rules for Agent, Model, Tool, and Runner events (log / notify / block / modify). Supports server-side pagination and search.',
     btnDeliveries: 'Deliveries',
     btnPluginRuns: 'Run logs',
     btnCreate: 'New Hook',
@@ -1414,7 +1414,7 @@ export default {
     kicker: 'Outbound Webhooks',
     title: 'Webhook Management',
     subtitle:
-      'Configure outbound webhook endpoints to push notifications to external services on Runner events (HMAC-SHA256 signature verification). Full list load; pagination is client-side.',
+      'Configure outbound webhook endpoints to push notifications to external services on Runner events (HMAC-SHA256 signature verification). Supports server-side pagination and search.',
     btnCreate: 'New Webhook',
     search: 'Search',
     btnRefresh: 'Refresh',

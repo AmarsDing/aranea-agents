@@ -10,6 +10,8 @@ type (
 	HookPatch              = hook.HookPatch
 	HookRepo               = hook.Repo
 	HookUsecase            = hook.Usecase
+	HookListQuery          = hook.ListQuery
+	HookListResult         = hook.ListResult
 	HookConfig             = hook.Config
 	HookCondition          = hook.Condition
 	HookAction             = hook.Action

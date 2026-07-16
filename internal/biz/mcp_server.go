@@ -83,10 +83,22 @@ type MCPListQuery struct {
 	// empty = system caller (see all); non-empty = tenant caller
 	// (see shared with workspace_id="" + own with workspace_id==WorkspaceID).
 	WorkspaceID string
+	Search      string
+	Limit       int
+	Offset      int
+}
+
+// MCPListResult is a page of MCP servers plus the filter-scoped total.
+type MCPListResult struct {
+	Items  []MCPServer
+	Total  int
+	Limit  int
+	Offset int
 }
 
 type MCPServerReader interface {
 	ListMCPServers(ctx context.Context, q MCPListQuery) ([]MCPServer, error)
+	ListMCPServersPaged(ctx context.Context, q MCPListQuery) (MCPListResult, error)
 	GetMCPServer(ctx context.Context, id string) (MCPServer, error)
 	GetMCPServerByKey(ctx context.Context, key string) (MCPServer, error)
 }
@@ -121,6 +133,20 @@ func NewMCPServerUsecase(repo MCPServerRepo, credRepo MCPServerUserCredentialRep
 
 func (u *MCPServerUsecase) List(ctx context.Context, q MCPListQuery) ([]MCPServer, error) {
 	return u.repo.ListMCPServers(ctx, q)
+}
+
+// ListPaged returns a page of MCP servers for the admin registry UI.
+func (u *MCPServerUsecase) ListPaged(ctx context.Context, q MCPListQuery) (MCPListResult, error) {
+	if q.Limit <= 0 {
+		q.Limit = 20
+	}
+	if q.Limit > 100 {
+		q.Limit = 100
+	}
+	if q.Offset < 0 {
+		q.Offset = 0
+	}
+	return u.repo.ListMCPServersPaged(ctx, q)
 }
 
 func (u *MCPServerUsecase) Get(ctx context.Context, id string) (MCPServer, error) {

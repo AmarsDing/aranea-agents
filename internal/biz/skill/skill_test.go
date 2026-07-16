@@ -175,12 +175,16 @@ func (m *mockRepo) PatchSkill(ctx context.Context, id string, patch UpdateDraft)
 	return s, nil
 }
 
-func (m *mockRepo) PublishSkill(ctx context.Context, id string) (Skill, error) {
+func (m *mockRepo) PublishSkill(ctx context.Context, id string, validationStatus string) (Skill, error) {
 	s, ok := m.skills[id]
 	if !ok {
 		return Skill{}, errors.New("not found")
 	}
 	s.Status = "published"
+	if s.CurrentVersion == nil {
+		s.CurrentVersion = &SkillVersionSummary{}
+	}
+	s.CurrentVersion.ValidationStatus = validationStatus
 	m.skills[id] = s
 	return s, nil
 }
@@ -569,7 +573,11 @@ func TestPublish_EmptyID(t *testing.T) {
 
 func TestPublish_EmbedCacheInvalidation(t *testing.T) {
 	r := newMockRepo()
-	r.skills["s1"] = sampleSkill("s1", "Test", "test")
+	sk := sampleSkill("s1", "Test Skill", "test")
+	sk.Status = "draft"
+	sk.Description = "A detailed skill description for publish"
+	r.skills["s1"] = sk
+	r.markdown["s1"] = "# Test Skill\n\nThis body is long enough to pass publish validation checks."
 	emb := &mockEmbedder{}
 	u := NewUsecase(r, emb)
 	u.embedCache = map[string]embedEntry{"test": {vector: []float32{0.1, 0.2}, cachedAt: time.Now()}}
@@ -1048,10 +1056,21 @@ func TestApplySkillPermission_NilAuth(t *testing.T) {
 }
 
 func TestApplySkillPermission_AdminAuth(t *testing.T) {
-	s := &Skill{}
+	s := &Skill{Status: "published"}
 	applySkillPermission(adminCtx(), s)
 	if !s.Permissions.CanEdit || !s.Permissions.CanDelete || !s.Permissions.CanToggleEnabled || !s.Permissions.CanDuplicate {
-		t.Error("expected all permissions true for admin")
+		t.Error("expected all permissions true for admin on published skill")
+	}
+}
+
+func TestApplySkillPermission_AdminDraftCannotToggle(t *testing.T) {
+	s := &Skill{Status: "draft"}
+	applySkillPermission(adminCtx(), s)
+	if !s.Permissions.CanEdit || !s.Permissions.CanDelete || !s.Permissions.CanDuplicate {
+		t.Error("expected edit/delete/duplicate for admin draft")
+	}
+	if s.Permissions.CanToggleEnabled {
+		t.Error("expected CanToggleEnabled=false for draft skill")
 	}
 }
 
@@ -1254,7 +1273,11 @@ func TestDelete_Success(t *testing.T) {
 
 func TestPublish_Success(t *testing.T) {
 	r := newMockRepo()
-	r.skills["s1"] = sampleSkill("s1", "Test", "test")
+	sk := sampleSkill("s1", "Test Skill", "test")
+	sk.Status = "draft"
+	sk.Description = "A detailed skill description for publish"
+	r.skills["s1"] = sk
+	r.markdown["s1"] = "# Test Skill\n\nThis body is long enough to pass publish validation checks."
 	u := NewUsecase(r, nil)
 	s, err := u.Publish(adminCtx(), "s1")
 	if err != nil {
@@ -1262,6 +1285,31 @@ func TestPublish_Success(t *testing.T) {
 	}
 	if s.Status != "published" {
 		t.Errorf("expected status published, got %s", s.Status)
+	}
+}
+
+func TestPublish_BlockEmptyBody(t *testing.T) {
+	r := newMockRepo()
+	sk := sampleSkill("s1", "Test Skill", "test")
+	sk.Status = "draft"
+	sk.Description = "A detailed skill description for publish"
+	r.skills["s1"] = sk
+	u := NewUsecase(r, nil)
+	_, err := u.Publish(adminCtx(), "s1")
+	if err == nil {
+		t.Fatal("expected block for empty body")
+	}
+}
+
+func TestToggleEnabled_RejectDraft(t *testing.T) {
+	r := newMockRepo()
+	sk := sampleSkill("s1", "Test", "test")
+	sk.Status = "draft"
+	r.skills["s1"] = sk
+	u := NewUsecase(r, nil)
+	_, err := u.ToggleEnabled(adminCtx(), "s1", true)
+	if err == nil {
+		t.Fatal("expected error enabling draft skill")
 	}
 }
 

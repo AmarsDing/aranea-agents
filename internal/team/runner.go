@@ -89,7 +89,7 @@ func NewRunner(
 	}
 }
 
-// publishEvent routes an ActivityBridgeEvent through the v2 Sequencer when
+// publishEvent routes a v2 Event through the Sequencer when
 // available (FIFO ordering + retry/dead-letter); falls back to EventBus.Publish
 // when Sequencer is nil (test/legacy paths). Returns false when neither is set
 // so callers can short-circuit downstream work.

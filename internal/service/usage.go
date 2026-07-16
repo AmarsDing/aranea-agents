@@ -117,11 +117,14 @@ func (s *UsageService) ListTopAgents(ctx context.Context, in *v1.UsageQuery) (*v
 func (s *UsageService) ListUsageEvents(ctx context.Context, in *v1.UsageQuery) (*v1.ListUsageEventsResponse, error) {
 	q := fromProtoUsageQuery(in)
 	q.WorkspaceID = s.resolveWorkspaceID(ctx)
-	items, err := s.uc.Events(ctx, q)
+	page, err := s.uc.EventsPage(ctx, q)
 	if err != nil {
 		return nil, err
 	}
-	return &v1.ListUsageEventsResponse{Items: toProtoTokenUsageEvents(items)}, nil
+	return &v1.ListUsageEventsResponse{
+		Items: toProtoTokenUsageEvents(page.Items),
+		Total: int32(page.Total),
+	}, nil
 }
 
 func (s *UsageService) GetUsageQuota(ctx context.Context, req *v1.GetUsageQuotaRequest) (*v1.UsageQuota, error) {

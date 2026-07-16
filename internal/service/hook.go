@@ -76,11 +76,39 @@ func patchFromProtoHook(pb *v1.Hook) biz.HookPatch {
 }
 
 func (s *HookService) ListHooks(ctx context.Context, _ *emptypb.Empty) (*v1.ListHooksResponse, error) {
+	search := searchQueryFromContext(ctx)
+	if page, pageSize, ok := pageQueryFromContext(ctx); ok {
+		limit, offset, page, pageSize := biz.PageToLimitOffset(page, pageSize)
+		result, err := s.uc.ListPaged(ctx, biz.HookListQuery{
+			Search:        search,
+			CallbackPoint: queryParamFromContext(ctx, "callback_point", "callbackPoint"),
+			Limit:         limit,
+			Offset:        offset,
+		})
+		if err != nil {
+			return nil, err
+		}
+		resp := &v1.ListHooksResponse{
+			Items:    make([]*v1.Hook, 0, len(result.Items)),
+			Total:    int32(result.Total),
+			Page:     page,
+			PageSize: pageSize,
+		}
+		for i := range result.Items {
+			resp.Items = append(resp.Items, toProtoHook(result.Items[i]))
+		}
+		return resp, nil
+	}
 	items, err := s.uc.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	resp := &v1.ListHooksResponse{Items: make([]*v1.Hook, 0, len(items))}
+	resp := &v1.ListHooksResponse{
+		Items:    make([]*v1.Hook, 0, len(items)),
+		Total:    int32(len(items)),
+		Page:     1,
+		PageSize: int32(len(items)),
+	}
 	for i := range items {
 		resp.Items = append(resp.Items, toProtoHook(items[i]))
 	}

@@ -848,7 +848,7 @@ export default {
     kicker: '出站 Webhook',
     title: 'Webhook 管理',
     subtitle:
-      '配置出站 Webhook 端点，当 Runner 事件触发时向外部服务推送通知（HMAC-SHA256 签名验证）。列表为全量加载，下方分页为前端切片。',
+      '配置出站 Webhook 端点，当 Runner 事件触发时向外部服务推送通知（HMAC-SHA256 签名验证）。列表支持服务端分页与搜索。',
     btnCreate: '新建 Webhook',
     search: '搜索',
     btnRefresh: '刷新',
@@ -955,7 +955,7 @@ export default {
   channelsPage: {
     kicker: 'Channel management',
     title: 'Channel 管理',
-    subtitle: '统一管理外部消息渠道、凭据引用、Webhook 与运行时启停。列表为全量加载，下方分页为前端切片。',
+    subtitle: '统一管理外部消息渠道、凭据引用、Webhook 与运行时启停。列表支持服务端分页与搜索。',
     add: '新增 Channel',
     refresh: '刷新',
     searchLabel: '搜索 Channel',
@@ -1351,7 +1351,7 @@ export default {
     kicker: '回调规则',
     title: 'Hook / 回调规则',
     subtitle:
-      '为 Agent、Model、Tool 和 Runner 生命周期事件配置回调规则（log / notify / block / modify）。列表为全量加载，下方分页为前端切片。',
+      '为 Agent、Model、Tool 和 Runner 生命周期事件配置回调规则（log / notify / block / modify）。列表支持服务端分页与搜索。',
     btnDeliveries: '投递队列',
     btnPluginRuns: '运行记录',
     btnCreate: '新建 Hook',

@@ -21,7 +21,11 @@ func (h *ChannelIngress) handleLINEWebhook(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	channelSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "channel_secret", h.lg)
+	channelSecret, ok := h.loadRequiredCredential(r.Context(), chRow.ID, creds, "channel_secret")
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return nil
+	}
 	if err := line.VerifySignature(channelSecret, raw, r.Header.Get("X-Line-Signature")); err != nil {
 		h.lg.Warn("LINE Webhook 签名验证失败",
 			loggateway.StepID("channel.line.webhook.verify_fail"),
@@ -36,6 +40,9 @@ func (h *ChannelIngress) handleLINEWebhook(w http.ResponseWriter, r *http.Reques
 		w.WriteHeader(http.StatusOK)
 		return nil
 	}
+	// Accept every event first, then write a single HTTP response.
+	// Writing per-message would call WriteHeader multiple times and drop later events.
+	result := inboundHTTPResult{}
 	for _, m := range msgs {
 		peerID := ingressFirstNonEmpty(m.UserID, m.GroupID, m.RoomID)
 		recipient := ingressFirstNonEmpty(m.GroupID, m.RoomID, m.UserID)
@@ -44,13 +51,23 @@ func (h *ChannelIngress) handleLINEWebhook(w http.ResponseWriter, r *http.Reques
 			port.MetaChatID:     recipient,
 			port.MetaReplyToken: m.ReplyToken,
 		}
-		writeInboundHTTPResponse(w, h.processInboundHTTP(r, chRow, port.InboundEvent{
+		one := h.processInboundHTTP(r, chRow, port.InboundEvent{
 			PlatformType:   "line",
 			PeerID:         peerID,
 			Text:           m.Text,
 			IdempotencyKey: "line:" + m.MessageID,
 			OutboundMeta:   meta,
-		}))
+		})
+		if one.Err != nil {
+			result.Err = one.Err
+			h.lg.Warn("LINE inbound accept failed",
+				loggateway.StepID("channel.line.webhook.accept_fail"),
+				loggateway.Str("channel_id", chRow.ID),
+				loggateway.Str("message_id", m.MessageID),
+				loggateway.Err(one.Err),
+			)
+		}
 	}
+	writeInboundHTTPResponse(w, result)
 	return nil
 }

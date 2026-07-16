@@ -551,8 +551,8 @@ type SessionUsecase struct {
 }
 
 // ActivityLister is the local interface for reading Activities.
-// This mirrors biz.ActivityReader to avoid a circular import (biz → biz/session → biz).
-// The wire binding connects this to the real biz.ActivityRepo.
+// This mirrors the former Activity list shape without importing biz.Activity.
+	// Production wiring uses sessionActivityLister over StepV2Reader.
 // Stability:evolving
 type ActivityLister interface {
 	ListBySessionTurn(ctx context.Context, sessionID, turnID string) ([]ActivityEntry, error)
@@ -594,7 +594,7 @@ func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLooku
 	}
 	// Create sub-usecases with shared repo references.
 	uc.compressionUsecase = NewSessionCompressionUsecase(sessions, sessions, sessions, sessions)
-	// Phase 1c-3: Message reads are now backed by ActivityReader (via ActivityMessageReader),
+	// Phase 1c-3: Message reads are backed by ActivityLister (steps_v2 adapter),
 	// and writes are no-ops (ActivityProjector handles persistence). The messages table is deleted.
 	// When activityReader is nil (tests/CLI), a noop lister returns empty results.
 	lister := activityReader

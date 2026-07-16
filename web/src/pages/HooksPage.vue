@@ -74,7 +74,7 @@
         v-model:page="page"
         v-model:page-size="pageSize"
         :page-max="pageMax"
-        :total="filteredRows.length"
+        :total="total"
         :loading="loading"
         :label="t('hooksPage.paginationLabel')"
       />
@@ -154,6 +154,7 @@ const {
   form,
   page,
   pageSize,
+  total,
   filteredRows,
   pagedRows,
   pageMax,

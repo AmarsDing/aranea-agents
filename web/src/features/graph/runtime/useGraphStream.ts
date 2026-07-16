@@ -1,22 +1,18 @@
 /**
- * Graph-specific activity event stream composable.
- * Lifted from features/chat/useEnvelopeStream.ts to eliminate cross-feature dependency.
- * Chat re-exports this for backward compatibility.
- *
- * Migrated from envelope-based `onChannel('graph', ...)` to ActivityEvent-based
- * `onActivityEvent` callback. The backend now publishes graph lifecycle events
- * (node_start/end/error, step, execution_done, checkpoint) as ActivityEvent
- * payloads on the chat channel with `activity.kind = 'graph_stage'` (or
- * `'session'` for checkpoint interrupts).
+ * Graph execution WS stream — consumes v2 `system.notice` directly.
+ * Backend graph bridge publishes NoticeType = stage (node_start/end/…)
+ * with Meta.filter_key = graph/{graphId}/{execId}.
  */
 import { ref } from 'vue';
 import { useEnvelopeStream } from '../../../realtime/useEnvelopeStream';
-import type { ActivityEvent } from '../../../realtime/activityEvent';
+import type { SystemNoticeEventPayload, V2WsEnvelope } from '../../chat/v2Types';
 import type {
   GraphExecutionState,
   GraphStreamExecutionSummary,
   GraphStreamInterrupt,
 } from '../../../realtime/graphState';
+
+export type GraphNoticeListener = (noticeType: string, meta: Record<string, unknown>) => void;
 
 function parseGraphStreamSummary(raw: unknown): GraphStreamExecutionSummary | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -53,8 +49,14 @@ function parseInterruptPrompt(value: unknown): string {
   return '';
 }
 
+function resolveStage(noticeType: string, meta: Record<string, unknown>): string {
+  if (noticeType === 'graph_task_status') return 'task_status';
+  if (noticeType === 'checkpoint' || meta.interrupt_key != null) return 'checkpoint';
+  return noticeType;
+}
+
 export function useGraphStream(sessionId: string, graphId: string, execId: string) {
-  const activityListeners: Array<(ev: ActivityEvent) => void> = [];
+  const noticeListeners: GraphNoticeListener[] = [];
 
   const execution = ref<GraphExecutionState>({
     executionId: execId,
@@ -68,24 +70,22 @@ export function useGraphStream(sessionId: string, graphId: string, execId: strin
 
   const filterKey = `graph/${graphId}/${execId}`;
 
-  function matchesFilter(ev: ActivityEvent): boolean {
-    const metaFilterKey = ev.activity.meta?.filter_key;
+  function matchesFilter(meta: Record<string, unknown>): boolean {
+    const metaFilterKey = meta.filter_key;
     if (typeof metaFilterKey === 'string' && metaFilterKey !== '' && !metaFilterKey.startsWith(filterKey)) {
       return false;
     }
     return true;
   }
 
-  function notifyListeners(ev: ActivityEvent) {
-    for (const listener of activityListeners) {
-      listener(ev);
+  function notifyListeners(noticeType: string, meta: Record<string, unknown>) {
+    for (const listener of noticeListeners) {
+      listener(noticeType, meta);
     }
   }
 
-  function handleGraphStageEvent(ev: ActivityEvent) {
-    if (!matchesFilter(ev)) return;
-    const meta = (ev.activity.meta ?? {}) as Record<string, unknown>;
-    switch (ev.activity.stage) {
+  function handleGraphStage(stage: string, meta: Record<string, unknown>) {
+    switch (stage) {
       case 'node_start': {
         const nodeId = String(meta.node_id ?? '');
         const nodeTypeRaw = typeof meta.node_type === 'string' ? meta.node_type : '';
@@ -157,16 +157,13 @@ export function useGraphStream(sessionId: string, graphId: string, execId: strin
         executionSummary.value = parseGraphStreamSummary(meta.execution_summary);
         break;
       }
+      default:
+        break;
     }
-    notifyListeners(ev);
   }
 
-  function handleCheckpointEvent(ev: ActivityEvent) {
-    if (!matchesFilter(ev)) return;
-    const meta = (ev.activity.meta ?? {}) as Record<string, unknown>;
-    if (!meta.interrupt_key) {
-      return;
-    }
+  function handleCheckpoint(meta: Record<string, unknown>) {
+    if (!meta.interrupt_key) return;
     execution.value.status = 'waiting_human';
     const nodeId = String(meta.node_id ?? '');
     if (nodeId) {
@@ -186,35 +183,42 @@ export function useGraphStream(sessionId: string, graphId: string, execId: strin
       lineageId: String(meta.lineage_id ?? ''),
       interruptValue: meta.interrupt_value,
     };
-    notifyListeners(ev);
   }
 
-  function handleActivityEvent(ev: ActivityEvent) {
-    const kind = ev.activity.kind;
-    if (kind === 'graph_stage') {
-      handleGraphStageEvent(ev);
-    } else if (kind === 'session' && ev.activity.stage === 'checkpoint') {
-      handleCheckpointEvent(ev);
+  function handleV2Event(envelope: V2WsEnvelope) {
+    if (envelope.kind !== 'system.notice') return;
+    const payload = envelope.payload as SystemNoticeEventPayload;
+    const noticeType = String(payload.NoticeType ?? '');
+    const meta = { ...(payload.Meta ?? {}) } as Record<string, unknown>;
+    if (!matchesFilter(meta)) return;
+
+    const stage = resolveStage(noticeType, meta);
+    const kind = String(meta.activity_kind ?? '');
+
+    if (stage === 'checkpoint' || (kind === 'session' && stage === 'checkpoint')) {
+      handleCheckpoint(meta);
+      notifyListeners(stage, meta);
+      return;
+    }
+    if (kind === 'graph_stage' || !kind || stage === 'task_status') {
+      handleGraphStage(stage, meta);
+      notifyListeners(stage, meta);
     }
   }
 
   const stream = useEnvelopeStream({
     sessionId,
     channels: ['chat', 'graph', 'system'],
-    onActivityEvent: handleActivityEvent,
+    onV2Event: handleV2Event,
   });
 
   function clearInterrupt() {
     interrupt.value = null;
   }
 
-  /**
-   * Register a listener for ActivityEvents that match this graph stream's
-   * filters (graph_stage events and checkpoint session events). The listener
-   * is invoked after internal state has been updated.
-   */
-  function onActivityEvent(listener: (ev: ActivityEvent) => void): void {
-    activityListeners.push(listener);
+  /** Register a listener after internal state updates (graph_stage / checkpoint). */
+  function onGraphNotice(listener: GraphNoticeListener): void {
+    noticeListeners.push(listener);
   }
 
   return {
@@ -223,6 +227,6 @@ export function useGraphStream(sessionId: string, graphId: string, execId: strin
     executionSummary,
     interrupt,
     clearInterrupt,
-    onActivityEvent,
+    onGraphNotice,
   };
 }

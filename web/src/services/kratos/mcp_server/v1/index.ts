@@ -19,6 +19,15 @@ export type MCPServer = {
 
 export type ListMCPServersResponse = {
   items: MCPServer[] | undefined;
+  total: number | undefined;
+  page: number | undefined;
+  pageSize: number | undefined;
+};
+
+export type ListMCPServersQuery = {
+  page?: number;
+  pageSize?: number;
+  search?: string;
 };
 
 export type CreateMCPServerRequest = {
@@ -130,16 +139,14 @@ export type DeleteMCPServerUserCredentialRequest = {
 };
 
 export interface MCPServerService {
-  ListMCPServers(request: wellKnownEmpty): Promise<ListMCPServersResponse>;
+  ListMCPServers(request: wellKnownEmpty & ListMCPServersQuery): Promise<ListMCPServersResponse>;
   CreateMCPServer(request: CreateMCPServerRequest): Promise<MCPServer>;
   GetMCPServer(request: GetMCPServerRequest): Promise<MCPServer>;
   UpdateMCPServer(request: UpdateMCPServerRequest): Promise<MCPServer>;
   DeleteMCPServer(request: DeleteMCPServerRequest): Promise<wellKnownEmpty>;
   TestMCPServer(request: TestMCPServerRequest): Promise<MCPServerTestResponse>;
   ValidateMCPServer(request: ValidateMCPServerRequest): Promise<ValidateMCPServerResponse>;
-  ListMCPServerUserCredentials(
-    request: ListMCPServerUserCredentialsRequest,
-  ): Promise<ListMCPServerUserCredentialsResponse>;
+  ListMCPServerUserCredentials(request: ListMCPServerUserCredentialsRequest): Promise<ListMCPServerUserCredentialsResponse>;
   UpsertMCPServerUserCredential(request: UpsertMCPServerUserCredentialRequest): Promise<MCPServerUserCredential>;
   DeleteMCPServerUserCredential(request: DeleteMCPServerUserCredentialRequest): Promise<wellKnownEmpty>;
 }
@@ -150,247 +157,219 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createMCPServerServiceClient(handler: RequestHandler): MCPServerService {
+export function createMCPServerServiceClient(
+  handler: RequestHandler
+): MCPServerService {
   return {
-    ListMCPServers(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListMCPServers(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/mcp-servers`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
+      if (request.page != null) {
+        queryParams.push(`page=${encodeURIComponent(String(request.page))}`);
+      }
+      if (request.pageSize != null) {
+        queryParams.push(`pageSize=${encodeURIComponent(String(request.pageSize))}`);
+      }
+      if (request.search) {
+        queryParams.push(`search=${encodeURIComponent(request.search)}`);
+      }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MCPServerService',
-          method: 'ListMCPServers',
-        },
-      ) as Promise<ListMCPServersResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MCPServerService",
+        method: "ListMCPServers",
+      }) as Promise<ListMCPServersResponse>;
     },
-    CreateMCPServer(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateMCPServer(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/mcp-servers`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'MCPServerService',
-          method: 'CreateMCPServer',
-        },
-      ) as Promise<MCPServer>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "MCPServerService",
+        method: "CreateMCPServer",
+      }) as Promise<MCPServer>;
     },
-    GetMCPServer(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetMCPServer(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/mcp-servers/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MCPServerService',
-          method: 'GetMCPServer',
-        },
-      ) as Promise<MCPServer>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MCPServerService",
+        method: "GetMCPServer",
+      }) as Promise<MCPServer>;
     },
-    UpdateMCPServer(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateMCPServer(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/mcp-servers/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request?.mcpServer ?? {});
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PATCH',
-          body,
-        },
-        {
-          service: 'MCPServerService',
-          method: 'UpdateMCPServer',
-        },
-      ) as Promise<MCPServer>;
+      return handler({
+        path: uri,
+        method: "PATCH",
+        body,
+      }, {
+        service: "MCPServerService",
+        method: "UpdateMCPServer",
+      }) as Promise<MCPServer>;
     },
-    DeleteMCPServer(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteMCPServer(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/mcp-servers/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'MCPServerService',
-          method: 'DeleteMCPServer',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "MCPServerService",
+        method: "DeleteMCPServer",
+      }) as Promise<wellKnownEmpty>;
     },
-    TestMCPServer(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    TestMCPServer(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/mcp-servers/${request.id}/test`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'MCPServerService',
-          method: 'TestMCPServer',
-        },
-      ) as Promise<MCPServerTestResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "MCPServerService",
+        method: "TestMCPServer",
+      }) as Promise<MCPServerTestResponse>;
     },
-    ValidateMCPServer(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ValidateMCPServer(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/mcp-servers/validate`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'MCPServerService',
-          method: 'ValidateMCPServer',
-        },
-      ) as Promise<ValidateMCPServerResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "MCPServerService",
+        method: "ValidateMCPServer",
+      }) as Promise<ValidateMCPServerResponse>;
     },
-    ListMCPServerUserCredentials(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListMCPServerUserCredentials(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.mcpServerId) {
-        throw new Error('missing required field request.mcp_server_id');
+        throw new Error("missing required field request.mcp_server_id");
       }
       const path = `v1/mcp-servers/${request.mcpServerId}/user-credentials`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.userId) {
-        queryParams.push(`userId=${encodeURIComponent(request.userId.toString())}`);
+        queryParams.push(`userId=${encodeURIComponent(request.userId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MCPServerService',
-          method: 'ListMCPServerUserCredentials',
-        },
-      ) as Promise<ListMCPServerUserCredentialsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MCPServerService",
+        method: "ListMCPServerUserCredentials",
+      }) as Promise<ListMCPServerUserCredentialsResponse>;
     },
-    UpsertMCPServerUserCredential(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpsertMCPServerUserCredential(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.mcpServerId) {
-        throw new Error('missing required field request.mcp_server_id');
+        throw new Error("missing required field request.mcp_server_id");
       }
       const path = `v1/mcp-servers/${request.mcpServerId}/user-credentials`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'MCPServerService',
-          method: 'UpsertMCPServerUserCredential',
-        },
-      ) as Promise<MCPServerUserCredential>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "MCPServerService",
+        method: "UpsertMCPServerUserCredential",
+      }) as Promise<MCPServerUserCredential>;
     },
-    DeleteMCPServerUserCredential(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteMCPServerUserCredential(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.mcpServerId) {
-        throw new Error('missing required field request.mcp_server_id');
+        throw new Error("missing required field request.mcp_server_id");
       }
       const path = `v1/mcp-servers/${request.mcpServerId}/user-credentials/delete`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'MCPServerService',
-          method: 'DeleteMCPServerUserCredential',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "MCPServerService",
+        method: "DeleteMCPServerUserCredential",
+      }) as Promise<wellKnownEmpty>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
+
 
 // @@protoc_insertion_point(typescript-http-eof)

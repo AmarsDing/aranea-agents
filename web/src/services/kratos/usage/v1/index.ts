@@ -12,6 +12,7 @@ export type UsageQuery = {
   agentId: string | undefined;
   status: string | undefined;
   limit: number | undefined;
+  offset: number | undefined;
   granularity: string | undefined;
   teamId: string | undefined;
   usageKind: string | undefined;
@@ -190,6 +191,7 @@ export type ListBreakdownResponse = {
 
 export type ListUsageEventsResponse = {
   items: TokenUsageEvent[] | undefined;
+  total: number | undefined;
 };
 
 export type UsageQuota = {
@@ -532,6 +534,9 @@ export function createUsageServiceClient(handler: RequestHandler): UsageService 
       }
       if (request.limit) {
         queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+      }
+      if (request.offset != null && request.offset >= 0) {
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
       }
       if (request.granularity) {
         queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`);

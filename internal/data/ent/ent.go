@@ -3,7 +3,6 @@
 package ent
 
 import (
-	"aranea-agents/internal/data/ent/activity"
 	"aranea-agents/internal/data/ent/admin"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/agentperformance"
@@ -164,7 +163,6 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			activity.Table:                   activity.ValidColumn,
 			admin.Table:                      admin.ValidColumn,
 			agent.Table:                      agent.ValidColumn,
 			agentperformance.Table:           agentperformance.ValidColumn,

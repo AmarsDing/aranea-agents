@@ -64,13 +64,9 @@ type TeamGraphRunCoordinator struct {
 	teamRunReader   biz.TeamRunReader
 	teamRunWriter   biz.TeamRunWriter
 	runTransitioner biz.TeamRunStatusTransitioner
-	// Phase 3b-D: was biz.ActivityEventBus, migrated to v2 EventBus. The
-	// coordinator subscribes via v2 EventBus.Subscribe and extracts the v1
-	// ActivityEvent from each ActivityBridgeEvent for handleGraphWatchActivity
-	// (which deeply inspects v1 Kind/Stage/Meta/Event/Content to drive the
-	// graph watch state machine). All publish sites also use NewActivityBridgeEvent.
+	// v2 EventBus: subscribe SystemNoticeEvent for graph watch; publish via seq.
 	eventBus        biz.EventBus
-	seq             rt.EventPublisher // Phase 2: Publish via v2 Sequencer (FIFO + retry); eventBus retained for Subscribe
+	seq             rt.EventPublisher // Publish via v2 Sequencer (FIFO + retry); eventBus retained for Subscribe
 	finisher        *TeamRunMediator
 	sessionRepo     biz.TeamGraphSessionRepo
 	cfg             CoordinatorConfig
@@ -125,8 +121,8 @@ func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader 
 	}
 }
 
-// publishEvent routes an ActivityBridgeEvent through the v2 Sequencer when
-// available; falls back to EventBus.Publish when Sequencer is nil.
+// publishEvent routes a v2 Event through the Sequencer when available;
+// falls back to EventBus.Publish when Sequencer is nil.
 func (c *TeamGraphRunCoordinator) publishEvent(ctx context.Context, e biz.Event) {
 	if c == nil {
 		return

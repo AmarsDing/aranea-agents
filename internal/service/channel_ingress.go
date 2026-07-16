@@ -344,3 +344,19 @@ func resolveCredentialPlain(ctx context.Context, channels *biz.ChannelUsecase, c
 	}
 	return "", apierror.NotFound(apierror.DomainChannel, fmt.Sprintf("credential key %q not found", key))
 }
+
+// loadRequiredCredential resolves a credential and fails closed when missing/unresolved.
+// Callers should return HTTP 403 when ok is false.
+func (h *ChannelIngress) loadRequiredCredential(ctx context.Context, channelID string, creds []biz.ChannelCredential, key string) (string, bool) {
+	val, err := resolveCredentialPlain(ctx, h.channels, creds, key, h.lg)
+	if err != nil || strings.TrimSpace(val) == "" {
+		h.lg.Warn("channel credential missing or unresolved",
+			loggateway.StepID("channel.credential.resolve_fail"),
+			loggateway.Str("channel_id", channelID),
+			loggateway.Str("credential_key", key),
+			loggateway.Err(err),
+		)
+		return "", false
+	}
+	return val, true
+}

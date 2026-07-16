@@ -18,6 +18,9 @@ type stubProviderModelReaderForDelete struct {
 func (s *stubProviderModelReaderForDelete) ListProviderModels(context.Context) ([]ProviderModel, error) {
 	return nil, nil
 }
+func (s *stubProviderModelReaderForDelete) SearchProviderModels(_ context.Context, q ProviderModelListQuery) (ProviderModelListResult, error) {
+	return ProviderModelListResult{Limit: q.Limit, Offset: q.Offset}, nil
+}
 func (s *stubProviderModelReaderForDelete) GetProviderModel(context.Context, string) (ProviderModel, error) {
 	return s.model, s.err
 }

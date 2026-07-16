@@ -135,7 +135,7 @@ func (m *memSkillRepo) PatchSkill(_ context.Context, id string, patch biz.SkillU
 	return s, nil
 }
 
-func (m *memSkillRepo) PublishSkill(_ context.Context, id string) (biz.Skill, error) {
+func (m *memSkillRepo) PublishSkill(_ context.Context, id string, _ string) (biz.Skill, error) {
 	s, ok := m.items[id]
 	if !ok {
 		return biz.Skill{}, fmt.Errorf("skill not found: %s", id)

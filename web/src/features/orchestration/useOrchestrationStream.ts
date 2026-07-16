@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { createEnvelopeStream } from '../../realtime/useEnvelopeStream';
-import type { ActivityEvent } from '../../realtime/activityEvent';
+import type { SystemNoticeEventPayload, V2WsEnvelope } from '../chat/v2Types';
 import { agentNodeStateFromMetadata, type AgentNodeState, type OrchestrationAgentStatusMetadata } from './types';
 
 export function useOrchestrationStream(sessionId: string, runId: string) {
@@ -22,15 +22,12 @@ export function useOrchestrationStream(sessionId: string, runId: string) {
     connected.value = false;
   }
 
-  // ActivityEvent migration: orchestration_agent_status envelopes are now
-  // published as ActivityEvent payloads with kind='notice' and
-  // stage='orchestration_status' (see internal/team/status_projector.go).
-  // The activity.meta carries the same OrchestrationAgentStatusMetadata
-  // fields as the legacy envelope metadata.
-  function applyActivityEvent(ev: ActivityEvent) {
-    if (ev.activity.kind !== 'notice') return;
-    if (ev.activity.stage !== 'orchestration_status') return;
-    const meta = (ev.activity.meta ?? {}) as OrchestrationAgentStatusMetadata;
+  // Backend: NewSystemNoticeEvent(sessionID, "orchestration_status", "", meta)
+  function applyV2(envelope: V2WsEnvelope) {
+    if (envelope.kind !== 'system.notice') return;
+    const payload = envelope.payload as SystemNoticeEventPayload;
+    if (payload.NoticeType !== 'orchestration_status') return;
+    const meta = (payload.Meta ?? {}) as OrchestrationAgentStatusMetadata;
     if (String(meta.run_id ?? '') !== runId) return;
     const state = agentNodeStateFromMetadata(meta);
     if (!state.node_id) return;
@@ -50,7 +47,7 @@ export function useOrchestrationStream(sessionId: string, runId: string) {
       sessionId,
       channels: ['team', 'graph', 'monitor'],
       autoConnect: false,
-      onActivityEvent: applyActivityEvent,
+      onV2Event: applyV2,
     });
     stream.connect();
     connected.value = true;

@@ -25,8 +25,14 @@ func (r *ingressChannelRepo) AddDeliveryIfNotExists(_ context.Context, d biz.Cha
 	return d, true, nil
 }
 
+type claimAllInboundReceipts struct{}
+
+func (claimAllInboundReceipts) TryClaim(_ context.Context, _, _, _, _ string) (bool, error) {
+	return true, nil
+}
+
 func testIngressChannelUsecase(repo *ingressChannelRepo) *biz.ChannelUsecase {
-	peerUc := biz.NewChannelPeerUsecase(nil, nil, loggateway.NewNoop())
+	peerUc := biz.NewChannelPeerUsecase(nil, claimAllInboundReceipts{}, loggateway.NewNoop())
 	return biz.NewChannelUsecase(repo, repo, repo, repo, peerUc, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
 }
 

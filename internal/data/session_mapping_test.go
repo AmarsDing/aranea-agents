@@ -188,16 +188,6 @@ func TestEntTeamRunStepToBizFieldCoverage(t *testing.T) {
 	)
 }
 
-func TestEntActivityToBizFieldCoverage(t *testing.T) {
-	assertFieldCoverage(t,
-		structFields(reflect.TypeOf(ent.Activity{})),
-		structFields(reflect.TypeOf(biz.Activity{})),
-		nil, // 所有字段名完全一致
-		nil,
-		"Activity",
-	)
-}
-
 func structFields(t reflect.Type) map[string]bool {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()

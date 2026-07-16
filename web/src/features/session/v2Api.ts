@@ -4,9 +4,8 @@
 // (GET /v2/sessions/{id}/tasks, /v2/tasks/{id}/turns, /v2/sessions/{id}/steps)
 // and maps proto JSON (camelCase, base64 bytes) to v2Types.ts PascalCase shapes.
 //
-// Kept separate from v1 `api.ts` to avoid coupling during the Phase 3b-D
-// migration; once v1 ListActivities callers are removed (Task 15), the two
-// files can be reconciled if desired.
+// Chat hydrate + Event Inspector use these helpers. ListActivities remains
+// as a backend compat RPC but the frontend inspector no longer calls it.
 
 import { kratosApi } from '../../services';
 import type {

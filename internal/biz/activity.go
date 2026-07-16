@@ -131,53 +131,8 @@ type ActivityPlanStep struct {
 	DependsOn []string       `json:"dependsOn,omitempty"`
 }
 
-// ActivityReader provides single-session read access to Activity records.
-// Stability:evolving
-type ActivityReader interface {
-	ListBySessionTurn(ctx context.Context, sessionID, turnID string) ([]Activity, error)
-	ListBySession(ctx context.Context, sessionID string) ([]Activity, error)
-	GetActivity(ctx context.Context, id string) (Activity, error)
-}
-
-// ActivityTreeReader provides cross-session read access to Activity records
-// (spirit session tree, team scope, parent-child session tree).
-// Stability:evolving
-type ActivityTreeReader interface {
-	// ListBySpiritSession returns all activities under a spirit session tree
-	// (across team/agent sub-sessions). Uses spirit_session_id index.
-	ListBySpiritSession(ctx context.Context, spiritSessionID string) ([]Activity, error)
-
-	// ListByTeam returns all activities for a given team.
-	ListByTeam(ctx context.Context, teamID string) ([]Activity, error)
-
-	// ListByParentSession returns activities whose session_id belongs to direct
-	// child sessions of parentSessionID. Used for member session activity loading.
-	ListByParentSession(ctx context.Context, parentSessionID string) ([]Activity, error)
-}
-
-// ActivityWriter provides create/update access to Activity records.
-// Stability:evolving
-type ActivityWriter interface {
-	CreateActivity(ctx context.Context, a Activity) (Activity, error)
-	UpdateActivity(ctx context.Context, a Activity) (Activity, error)
-}
-
-// ActivityUpserter provides idempotent upsert access to Activity records.
-// Stability:evolving
-type ActivityUpserter interface {
-	UpsertActivity(ctx context.Context, a Activity) (Activity, error)
-}
-
-// ActivityRepo is the composite interface for Wire binding.
-// Stability:evolving
-type ActivityRepo interface {
-	ActivityReader
-	ActivityTreeReader
-	ActivityWriter
-	ActivityUpserter
-}
-
-// ActivityConfirmParams holds parameters for creating a confirm Activity.
+// ActivityConfirmParams holds parameters for creating a confirm Activity
+// (legacy name; EmitConfirmRequest persists a v2 Step kind=confirm).
 type ActivityConfirmParams struct {
 	ToolName      string
 	ToolArguments string

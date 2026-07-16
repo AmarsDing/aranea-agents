@@ -49,7 +49,7 @@ func (w *NoopMessageStatusWriter) UpdateChatMessageStatus(ctx context.Context, s
 }
 
 // noopActivityLister returns empty results for all Activity list calls.
-// Used as a fallback when no ActivityReader is wired (tests/CLI).
+// Used as a fallback when no ActivityLister is wired (tests/CLI).
 type noopActivityLister struct{}
 
 func (noopActivityLister) ListBySessionTurn(ctx context.Context, sessionID, turnID string) ([]ActivityEntry, error) {

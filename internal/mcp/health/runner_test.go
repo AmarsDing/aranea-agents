@@ -17,6 +17,10 @@ type stubMCPServerRepo struct {
 func (r *stubMCPServerRepo) ListMCPServers(_ context.Context, _ biz.MCPListQuery) ([]biz.MCPServer, error) {
 	return []biz.MCPServer{r.server}, nil
 }
+func (r *stubMCPServerRepo) ListMCPServersPaged(_ context.Context, q biz.MCPListQuery) (biz.MCPListResult, error) {
+	items := []biz.MCPServer{r.server}
+	return biz.MCPListResult{Items: items, Total: len(items), Limit: q.Limit, Offset: q.Offset}, nil
+}
 func (r *stubMCPServerRepo) GetMCPServer(_ context.Context, _ string) (biz.MCPServer, error) {
 	return r.server, nil
 }

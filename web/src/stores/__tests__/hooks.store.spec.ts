@@ -4,6 +4,7 @@ import { useHooksStore } from '../hooks';
 
 vi.mock('../../features/hooks/api', () => ({
   listHooks: vi.fn().mockResolvedValue([]),
+  listHooksPaged: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
   createHook: vi.fn(),
   updateHook: vi.fn(),
   deleteHook: vi.fn().mockResolvedValue(undefined),

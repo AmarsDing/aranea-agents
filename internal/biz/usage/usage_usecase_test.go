@@ -70,6 +70,9 @@ func (m *mockUsageRepo) ListModelUsageEvents(ctx context.Context, q Query) ([]To
 	}
 	return nil, nil
 }
+func (m *mockUsageRepo) CountModelUsageEvents(context.Context, Query) (int, error) {
+	return 0, nil
+}
 
 func (m *mockUsageRepo) ListModelUsageHourlyTrends(ctx context.Context, q Query) ([]TrendPoint, error) {
 	if m.listModelUsageHourlyTrendsFn != nil {

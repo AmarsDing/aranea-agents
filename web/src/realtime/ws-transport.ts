@@ -11,22 +11,21 @@
 import { buildWsUrl } from '../config/runtime';
 import type { ActivityEvent } from './activityEvent';
 import type { MonitorEvent } from './monitorEvent';
-import type { V2WsEnvelope } from '../features/chat/v2Types';
+import type { SystemNoticeEventPayload, V2WsEnvelope } from '../features/chat/v2Types';
+import { activityEventFromSystemNotice } from './systemNoticeAdapter';
 
 /**
  * WS downstream message shape. The single source of truth for what the
  * backend sends over `/v1/ws`. Carries one of:
  * - control messages (connected/pong/server_shutdown/replay_*)
- * - business events (activity_event for chat/system, monitor_event for monitor)
- *
- * The legacy `envelope?` field has been removed (Phase 5 Blocker G frontend).
+ * - monitor_event for monitor channel
+ * Chat business events arrive as separate `v2_event` frames (not WsDownstream).
  */
 export type WsDownstream = {
   direction: 'server_to_client';
   channel: string;
   type?: string;
   payload?: unknown;
-  activity_event?: ActivityEvent;
   monitor_event?: MonitorEvent;
 };
 
@@ -187,12 +186,12 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
         if (raw.type === 'v2_event') {
           const envelope = raw as unknown as V2WsEnvelope;
           opts.onV2Event?.(envelope);
-          // Compat: unwrap activity.bridge so non-chat consumers that still
-          // listen on onActivityEvent (graph/teams/monitor) keep working
-          // until the backend bridge is removed.
-          if (envelope.kind === 'activity.bridge' && opts.onActivityEvent) {
-            const bridged = (envelope.payload as { Event?: ActivityEvent } | undefined)?.Event;
-            if (bridged) opts.onActivityEvent(bridged);
+          // Compat: adapt system.notice → synthetic ActivityEvent for non-chat
+          // consumers that still use onActivityEvent (graph/orchestration/knowledge).
+          if (envelope.kind === 'system.notice' && opts.onActivityEvent) {
+            opts.onActivityEvent(
+              activityEventFromSystemNotice(envelope, envelope.payload as SystemNoticeEventPayload),
+            );
           }
           return;
         }
@@ -220,12 +219,6 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
         if (msg.type === 'monitor.backpressure') {
           opts.onBackpressure?.((msg.payload ?? {}) as MonitorBackpressurePayload);
           return;
-        }
-
-        // Legacy activity_event frames: optional callback for non-chat pages.
-        // Chat UI does not pass onActivityEvent (v2-only).
-        if (msg.activity_event) {
-          opts.onActivityEvent?.(msg.activity_event);
         }
 
         // Monitor channel: dispatch monitor events (log, flow_log, mcp,

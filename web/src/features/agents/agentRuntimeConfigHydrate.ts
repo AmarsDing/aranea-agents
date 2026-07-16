@@ -189,6 +189,7 @@ export function hydrateRuntimeFromSettings(
       rollback_on_decline_percent: settings.guardrail_rollback_on_decline_percent,
     },
     skillRuntime: parseSkillRuntimeForm(settings.skill_runtime_json),
+    skill_load_mode: settings.skill_load_mode || 'turn',
     code_executor_type: settings.code_executor_type || 'local',
     intent_pass: {
       enabled: settings.intent_pass_enabled ?? true,

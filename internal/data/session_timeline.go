@@ -89,10 +89,8 @@ func buildTimelineUnionSQL(sessionID, kindFilter string, dialect Dialect) (strin
 	appendMCP := kindFilter == "" || kindFilter == "mcp"
 
 	if appendMessage {
-		// Activity-First architecture: messages are now StepV2 rows with
-		// kind IN ('task','reply'). The legacy `messages` table was dropped
-		// (Phase 3b-D). The `activities` table is reserved for projected
-		// plan/stage metadata only — chat-shaped messages live in steps_v2.
+		// Chat-shaped timeline rows live in steps_v2 (kind reply; user text
+		// is on tasks_v2). The legacy messages/activities tables were dropped.
 		// Filter by spirit_session_id (root Spirit session) and use
 		// started_at as occurred_at.
 		//

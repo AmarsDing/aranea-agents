@@ -38,10 +38,44 @@ function mcpRowToPlatform(raw: unknown): PlatformResource {
   };
 }
 
+export type McpServerListQuery = {
+  page?: number;
+  page_size?: number;
+  search?: string;
+};
+
+export type McpServerListResult = {
+  items: PlatformResource[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+/** Full catalog (no page params) — pickers / platform resource manager. */
 export async function listMcpServers(): Promise<PlatformResource[]> {
   const res = asRecord(await svc.ListMCPServers({}));
   const items = res.items ?? res.Items;
   return Array.isArray(items) ? items.map(mcpRowToPlatform) : [];
+}
+
+/** Admin registry page — server pagination. */
+export async function listMcpServersPaged(query: McpServerListQuery = {}): Promise<McpServerListResult> {
+  const page = query.page ?? 1;
+  const pageSize = query.page_size ?? 20;
+  const res = asRecord(
+    await svc.ListMCPServers({
+      page,
+      pageSize,
+      search: query.search?.trim() || undefined,
+    }),
+  );
+  const items = res.items ?? res.Items;
+  return {
+    items: Array.isArray(items) ? items.map(mcpRowToPlatform) : [],
+    total: Number(res.total ?? 0),
+    page: Number(res.page ?? page),
+    page_size: Number(res.pageSize ?? res.page_size ?? pageSize),
+  };
 }
 
 export async function createMcpServer(payload: PlatformResourceInput): Promise<PlatformResource> {

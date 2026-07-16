@@ -1,38 +1,40 @@
 import { onBeforeUnmount, ref, watch, type Ref } from 'vue';
 import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from '../../../realtime/globalWsHub';
-import type { ActivityEvent } from '../../../realtime/activityEvent';
-import { listActivities } from '../../session/api';
+import { listStepsV2 } from '../../session/v2Api';
 import type { Activity } from '../activityTypes';
+import type {
+  Step,
+  StepCreatedPayload,
+  StepStreamingPayload,
+  StepUpdatedPayload,
+  V2WsEnvelope,
+} from '../v2Types';
+import { stepToActivitySnapshot } from '../stepToActivitySnapshot';
 
 const MAX_LIVE_ACTIVITIES = 500;
+
+const STEP_KINDS = new Set([
+  'step.created',
+  'step.updated',
+  'step.completed',
+  'step.failed',
+  'step.streaming',
+]);
 
 export type ChatEventInspectorStreamDeps = {
   ownerKind?: 'agent' | 'team';
   /**
-   * Phase 5 Blocker A: register a callback fired when the WS transport
-   * reconnects for the inspected session. The inspector uses this to
-   * re-fetch historical activities via listActivities RPC after a WS
-   * disconnection window. Returns an unsubscribe function.
+   * Register a callback fired when the WS transport reconnects for the
+   * inspected session. Re-fetches steps via listStepsV2 after a disconnect.
    */
   onReconnect?: (handler: () => void) => () => void;
 };
 
 /**
- * useChatEventInspector provides a unified view of historical Activities
- * (loaded via ListActivities RPC) and live Activities (received via WS
- * activity_event messages) for the session event inspector dialog.
+ * Unified historical + live Activity view for SessionEventInspector.
  *
- * Data sources:
- *   - History: GET /v1/sessions/{id}/activities (listActivities) — reads
- *     from the activities/steps_v2 table, returns all Activities for the
- *     session sorted by turn_id + parent_activity_id + timestamp.
- *   - Live: WS activity_event messages — the global WS hub dispatches
- *     ActivityEvent payloads (full Activity snapshot) to all consumers.
- *     We filter by session_id and upsert into the liveActivities ref.
- *
- * Both refs use the unified Activity domain model (kind/status/agent_name/
- * tool_name/content/reasoning) so the inspector UI renders business-semantic
- * information instead of transport-layer envelope fields.
+ * - History: GET /v2/sessions/{id}/steps → stepToActivitySnapshot
+ * - Live: v2 `step.*` WS events mapped via stepToActivitySnapshot
  */
 export function useChatEventInspector(
   sessionId: Ref<string | null | undefined>,
@@ -48,12 +50,10 @@ export function useChatEventInspector(
   let wsConsumerId: string | null = null;
   let unsubReconnect: (() => void) | null = null;
 
-  /** Upserts an Activity into the live stream (dedup by id, cap at MAX_LIVE_ACTIVITIES). */
   function upsertLiveActivity(act: Activity): void {
     if (paused.value) return;
     const idx = liveActivities.value.findIndex((a) => a.id === act.id);
     if (idx >= 0) {
-      // Replace existing snapshot (later events carry updated status/content).
       const next = [...liveActivities.value];
       next[idx] = act;
       liveActivities.value = next;
@@ -62,21 +62,68 @@ export function useChatEventInspector(
     liveActivities.value = [act, ...liveActivities.value].slice(0, MAX_LIVE_ACTIVITIES);
   }
 
-  /** Handles an ActivityEvent from the WS hub: filters by session and upserts. */
-  function handleActivityEvent(ev: ActivityEvent): void {
-    const sid = sessionId.value;
-    if (!sid) return;
-    if (ev.activity.session_id !== sid) return;
-    upsertLiveActivity(ev.activity as unknown as Activity);
+  function sessionMatches(stepSession: string, spiritSession: string): boolean {
+    const sid = sessionId.value?.trim() ?? '';
+    if (!sid) return false;
+    return stepSession === sid || spiritSession === sid;
+  }
+
+  function handleStepSnapshot(step: Step): void {
+    if (!sessionMatches(step.SessionID ?? '', step.SpiritSessionID ?? '')) return;
+    upsertLiveActivity(stepToActivitySnapshot(step));
+  }
+
+  function handleStepStreaming(payload: StepStreamingPayload): void {
+    if (paused.value) return;
+    const stepId = payload.StepID;
+    if (!stepId) return;
+    const idx = liveActivities.value.findIndex((a) => a.id === stepId);
+    if (idx < 0) return;
+    // Streaming deltas only update an already-seen step; no session filter
+    // needed beyond id match (created event already scoped the row).
+    const prev = liveActivities.value[idx];
+    const field = payload.DeltaField;
+    const chunk = payload.DeltaChunk ?? '';
+    const next: Activity = { ...prev };
+    if (field === 'reasoning') {
+      next.reasoning = `${prev.reasoning ?? ''}${chunk}`;
+    } else {
+      next.content = `${prev.content ?? ''}${chunk}`;
+    }
+    const copy = [...liveActivities.value];
+    copy[idx] = next;
+    liveActivities.value = copy;
+  }
+
+  function handleV2Event(envelope: V2WsEnvelope): void {
+    if (!STEP_KINDS.has(envelope.kind)) return;
+
+    switch (envelope.kind) {
+      case 'step.created':
+      case 'step.updated':
+      case 'step.completed':
+      case 'step.failed': {
+        const step = (envelope.payload as StepCreatedPayload | StepUpdatedPayload).Step;
+        if (!step) return;
+        handleStepSnapshot(step);
+        break;
+      }
+      case 'step.streaming':
+        handleStepStreaming(envelope.payload as StepStreamingPayload);
+        break;
+      default:
+        break;
+    }
   }
 
   async function loadHistory(id: string): Promise<void> {
     loading.value = true;
     error.value = '';
     try {
-      activities.value = await listActivities(id);
+      const steps = await listStepsV2(id);
+      activities.value = steps.map(stepToActivitySnapshot);
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load activities';
+      error.value = err instanceof Error ? err.message : 'Failed to load steps';
       activities.value = [];
     } finally {
       loading.value = false;
@@ -85,16 +132,11 @@ export function useChatEventInspector(
 
   function connectStream(id: string): void {
     disconnectStream();
-    // Subscribe to the global WS hub for activity_event messages.
-    // The hub dispatches ActivityEvent payloads to all consumers; we filter
-    // by session_id inside handleActivityEvent.
     wsConsumerId = acquireGlobalWsConsumer({
       channels: ['chat'],
       logEnabled: false,
-      onActivityEvent: handleActivityEvent,
+      onV2Event: handleV2Event,
     });
-    // On WS reconnect, re-fetch history to backfill any events missed
-    // during the disconnection window.
     unsubReconnect =
       streamDeps?.onReconnect?.(() => {
         void loadHistory(id);
@@ -132,9 +174,7 @@ export function useChatEventInspector(
   }
 
   return {
-    /** Historical activities loaded from the backend (ListActivities RPC). */
     activities,
-    /** Live activities received via WS activity_event messages. */
     liveActivities,
     paused,
     loading,

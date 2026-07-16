@@ -1,8 +1,8 @@
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { storeToRefs } from 'pinia';
-import { channelConfig, channelMetadata, copyChannelWebhookURL } from '../../components/channels/channelUi';
+import { copyChannelWebhookURL } from '../../components/channels/channelUi';
 import { useChannelsStore } from '../../stores/channels';
 import type { ChannelCredential, ChannelRow } from './types';
 
@@ -10,12 +10,14 @@ export function useChannelsPage() {
   const { t } = useI18n();
   const $q = useQuasar();
   const channelsStore = useChannelsStore();
-  const { channels: rows, catalog, loading } = storeToRefs(channelsStore);
+  const { channels: rows, total, catalog, loading } = storeToRefs(channelsStore);
 
   const error = ref('');
   const search = ref('');
   const typeFilter = ref('');
   const statusFilter = ref('');
+  const page = ref(1);
+  const pageSize = ref(20);
   const togglingId = ref('');
   const testingId = ref('');
   const editorOpen = ref(false);
@@ -32,50 +34,52 @@ export function useChannelsPage() {
     { label: t('channelsPage.statusError'), value: 'error' },
   ]);
 
-  const filteredRows = computed(() => {
-    const keyword = search.value.trim().toLowerCase();
-    return rows.value.filter((row) => {
-      const cfg = channelConfig(row);
-      const meta = channelMetadata(row);
-      if (typeFilter.value && cfg.type !== typeFilter.value) return false;
-      if (statusFilter.value === 'enabled' && !row.enabled) return false;
-      if (statusFilter.value === 'disabled' && row.enabled) return false;
-      if (!['', 'enabled', 'disabled'].includes(statusFilter.value) && row.status !== statusFilter.value) return false;
-      if (!keyword) return true;
-      return [row.name, row.key, row.description, cfg.type, meta.external_id].some((value) =>
-        String(value || '')
-          .toLowerCase()
-          .includes(keyword),
-      );
-    });
-  });
-
-  const page = ref(1);
-  const pageSize = ref(12);
-  const pageMax = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)));
-  const pagedRows = computed(() => {
-    const start = (page.value - 1) * pageSize.value;
-    return filteredRows.value.slice(start, start + pageSize.value);
-  });
+  const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, total.value) / pageSize.value)));
+  const pagedRows = computed(() => rows.value);
+  const filteredRows = computed(() => rows.value);
   const opsChannel = computed(() => rows.value.find((row) => row.id === opsChannelId.value) ?? null);
 
-  onMounted(() => void loadAll());
+  async function loadAll() {
+    error.value = '';
+    try {
+      await channelsStore.loadAll({
+        page: page.value,
+        page_size: pageSize.value,
+        search: search.value,
+        type: typeFilter.value,
+        status: statusFilter.value,
+      });
+      if (page.value > pageMax.value) page.value = pageMax.value;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : t('channelsPage.loadFailed');
+    }
+  }
 
   function resetFilters() {
     search.value = '';
     typeFilter.value = '';
     statusFilter.value = '';
     page.value = 1;
+    void loadAll();
   }
 
-  async function loadAll() {
-    error.value = '';
-    try {
-      await channelsStore.loadAll();
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : t('channelsPage.loadFailed');
+  let skipNextPageWatch = false;
+  watch([search, typeFilter, statusFilter], () => {
+    if (page.value !== 1) {
+      skipNextPageWatch = true;
+      page.value = 1;
     }
-  }
+    void loadAll();
+  });
+  watch([page, pageSize], () => {
+    if (skipNextPageWatch) {
+      skipNextPageWatch = false;
+      return;
+    }
+    void loadAll();
+  });
+
+  onMounted(() => void loadAll());
 
   function openCreate() {
     editingRow.value = null;
@@ -89,8 +93,8 @@ export function useChannelsPage() {
     editorOpen.value = true;
   }
 
-  function onSaved(row: ChannelRow) {
-    channelsStore.upsertChannel(row);
+  function onSaved(_row: ChannelRow) {
+    void loadAll();
   }
 
   function openOps(row: ChannelRow) {
@@ -104,12 +108,12 @@ export function useChannelsPage() {
   async function toggleRow(row: ChannelRow, enabled: boolean) {
     togglingId.value = row.id;
     try {
-      const updated = await channelsStore.toggle(row.id, enabled);
-      onSaved(updated);
+      await channelsStore.toggle(row.id, enabled);
       $q.notify({
         type: 'positive',
         message: enabled ? t('channelsPage.toggleOkEnabled') : t('channelsPage.toggleOkDisabled'),
       });
+      await loadAll();
     } catch (err) {
       $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('channelsPage.toggleFailed') });
     } finally {
@@ -155,6 +159,7 @@ export function useChannelsPage() {
           closeOps();
         }
         $q.notify({ type: 'positive', message: t('channelsPage.deleteOk') });
+        await loadAll();
       } catch (err) {
         $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('channelsPage.deleteFailed') });
       }
@@ -169,6 +174,7 @@ export function useChannelsPage() {
     page,
     pageSize,
     pageMax,
+    total,
     loading,
     error,
     search,

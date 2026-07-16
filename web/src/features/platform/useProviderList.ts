@@ -4,6 +4,7 @@ import type { PlatformResource, PlatformResourceName } from './types';
 import { errorMessage, getConfig, getCategories } from './providerUtils';
 import { usePlatformStore } from '../../stores/platform';
 import { useProviderTrendDialog } from '../usage/useProviderTrendDialog';
+import { listProviderModelsPaged } from './api';
 
 export function useProviderList(deps: {
   resource: ComputedRef<PlatformResourceName>;
@@ -14,6 +15,7 @@ export function useProviderList(deps: {
   const $q = useQuasar();
 
   const rows = ref<PlatformResource[]>([]);
+  const total = ref(0);
   const loading = ref(false);
   const keyword = ref('');
   const page = ref(1);
@@ -69,8 +71,17 @@ export function useProviderList(deps: {
   const providerTrend = useProviderTrendDialog(trendDialogOpen, trendRow);
 
   const filteredRows = computed(() => {
+    if (deps.isProviderResource.value) {
+      // Server already applied search; optional type filter on the current page.
+      let list = rows.value;
+      if (providerTypeFilter.value.length) {
+        const allowed = new Set(providerTypeFilter.value.map((v) => v.toLowerCase()));
+        list = list.filter((row) => allowed.has((getConfig(row).provider_type || 'openai').toLowerCase()));
+      }
+      return list;
+    }
     let list = rows.value;
-    if (deps.isProviderResource.value && providerTypeFilter.value.length) {
+    if (providerTypeFilter.value.length) {
       const allowed = new Set(providerTypeFilter.value.map((v) => v.toLowerCase()));
       list = list.filter((row) => allowed.has((getConfig(row).provider_type || 'openai').toLowerCase()));
     }
@@ -90,23 +101,39 @@ export function useProviderList(deps: {
     );
   });
 
-  const pageCount = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / rowsPerPage.value)));
+  const pageCount = computed(() => {
+    if (deps.isProviderResource.value) {
+      return Math.max(1, Math.ceil(Math.max(0, total.value) / rowsPerPage.value));
+    }
+    return Math.max(1, Math.ceil(filteredRows.value.length / rowsPerPage.value));
+  });
   const pagedProviderRows = computed(() => {
+    if (deps.isProviderResource.value) {
+      return filteredRows.value;
+    }
     const start = (page.value - 1) * rowsPerPage.value;
     return filteredRows.value.slice(start, start + rowsPerPage.value);
-  });
-
-  watch(filteredRows, () => {
-    if (page.value > pageCount.value) page.value = pageCount.value;
   });
 
   async function loadRows() {
     if (!deps.resource.value) return;
     loading.value = true;
     try {
-      rows.value = await platformStore.loadResource(deps.resource.value);
-      if (deps.isProviderResource.value && platformStore.credentialEncryptionAvailable === null) {
-        void platformStore.loadCredentialStatus();
+      if (deps.isProviderResource.value) {
+        const result = await listProviderModelsPaged({
+          page: page.value,
+          page_size: rowsPerPage.value,
+          search: keyword.value,
+        });
+        rows.value = result.items;
+        total.value = result.total;
+        if (page.value > pageCount.value) page.value = pageCount.value;
+        if (platformStore.credentialEncryptionAvailable === null) {
+          void platformStore.loadCredentialStatus();
+        }
+      } else {
+        rows.value = await platformStore.loadResource(deps.resource.value);
+        total.value = rows.value.length;
       }
     } catch (error) {
       $q.notify({ type: 'negative', message: errorMessage(error) || '加载资源列表失败' });
@@ -114,6 +141,31 @@ export function useProviderList(deps: {
       loading.value = false;
     }
   }
+
+  let skipNextPageWatch = false;
+  watch([keyword, providerTypeFilter], () => {
+    if (!deps.isProviderResource.value) {
+      page.value = 1;
+      return;
+    }
+    if (page.value !== 1) {
+      skipNextPageWatch = true;
+      page.value = 1;
+    }
+    void loadRows();
+  });
+  watch([page, rowsPerPage], () => {
+    if (!deps.isProviderResource.value) return;
+    if (skipNextPageWatch) {
+      skipNextPageWatch = false;
+      return;
+    }
+    void loadRows();
+  });
+  watch(filteredRows, () => {
+    if (deps.isProviderResource.value) return;
+    if (page.value > pageCount.value) page.value = pageCount.value;
+  });
 
   async function toggleEnabled(row: PlatformResource, enabled: boolean) {
     deps.saving.value = true;
@@ -142,7 +194,9 @@ export function useProviderList(deps: {
     try {
       await platformStore.removeResource(deps.resource.value, row.id);
       rows.value = rows.value.filter((item) => item.id !== row.id);
+      total.value = Math.max(0, total.value - 1);
       $q.notify({ type: 'positive', message: '已删除' });
+      if (deps.isProviderResource.value) await loadRows();
     } catch (error) {
       $q.notify({ type: 'negative', message: errorMessage(error) || '删除失败' });
     }
@@ -155,6 +209,7 @@ export function useProviderList(deps: {
 
   return {
     rows,
+    total,
     loading,
     keyword,
     page,

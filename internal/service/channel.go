@@ -271,6 +271,32 @@ func (s *ChannelService) ListChannelTypes(ctx context.Context, _ *emptypb.Empty)
 }
 
 func (s *ChannelService) ListChannels(ctx context.Context, _ *emptypb.Empty) (*v1.ListChannelsResponse, error) {
+	search := searchQueryFromContext(ctx)
+	if page, pageSize, ok := pageQueryFromContext(ctx); ok {
+		limit, offset, page, pageSize := biz.PageToLimitOffset(page, pageSize)
+		result, err := s.uc.ListPaged(ctx, biz.ChannelListQuery{
+			Search: search,
+			Type:   queryParamFromContext(ctx, "type"),
+			Status: queryParamFromContext(ctx, "status"),
+			Limit:  limit,
+			Offset: offset,
+		})
+		if err != nil {
+			return nil, err
+		}
+		// Data ListPaged already applies workspace visibility via channelWorkspacePredicate.
+		out := make([]*v1.Channel, 0, len(result.Items))
+		for _, c := range result.Items {
+			out = append(out, channelRowToProto(c, s.runtimeMetadataPatch(c.ID)))
+		}
+		return &v1.ListChannelsResponse{
+			Items:    out,
+			Total:    int32(result.Total),
+			Page:     page,
+			PageSize: pageSize,
+		}, nil
+	}
+
 	items, err := s.uc.List(ctx)
 	if err != nil {
 		return nil, err
@@ -288,11 +314,28 @@ func (s *ChannelService) ListChannels(ctx context.Context, _ *emptypb.Empty) (*v
 		}
 		items = filtered
 	}
+	if search != "" {
+		needle := strings.ToLower(strings.TrimSpace(search))
+		filtered := make([]biz.Channel, 0, len(items))
+		for _, c := range items {
+			if strings.Contains(strings.ToLower(c.Key), needle) ||
+				strings.Contains(strings.ToLower(c.Name), needle) ||
+				strings.Contains(strings.ToLower(c.Description), needle) {
+				filtered = append(filtered, c)
+			}
+		}
+		items = filtered
+	}
 	out := make([]*v1.Channel, 0, len(items))
 	for _, c := range items {
 		out = append(out, channelRowToProto(c, s.runtimeMetadataPatch(c.ID)))
 	}
-	return &v1.ListChannelsResponse{Items: out}, nil
+	return &v1.ListChannelsResponse{
+		Items:    out,
+		Total:    int32(len(out)),
+		Page:     1,
+		PageSize: int32(len(out)),
+	}, nil
 }
 
 func (s *ChannelService) GetChannel(ctx context.Context, req *v1.GetChannelRequest) (*v1.Channel, error) {

@@ -37,7 +37,7 @@ type SessionTree struct {
 // Each node contains a session and its child nodes (recursively).
 //
 // Activities are not embedded here to avoid an import cycle on internal/biz.
-// Callers load activities separately via biz.ActivityReader.ListBySession
+// Callers load step/activity history separately via StepV2Reader / ListActivities
 // when a node is expanded in the UI.
 type SessionTreeNode struct {
 	Session  Session            // Current session (team or agent)

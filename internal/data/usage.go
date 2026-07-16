@@ -97,7 +97,7 @@ func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery)
 
 func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQuery) ([]biz.TokenUsageEvent, error) {
 	where, args := usageWhere(query, false)
-	args = append(args, usageLimit(query.Limit))
+	args = append(args, usageLimit(query.Limit), usageOffset(query.Offset))
 	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, occurred_at, date_key, hour_key, workspace_id, user_id, team_id, agent_id, agent_key, session_id, message_id, request_id,
 		 provider_code, COALESCE(canonical_provider_code, ''), provider_type, provider_display_name, model_api_id, model_display_name, model_category_json, usage_kind, call_count,
 		 input_tokens, output_tokens, cached_input_tokens, COALESCE(cache_write_tokens, 0), reasoning_tokens, embedding_tokens, total_tokens,
@@ -105,7 +105,7 @@ func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQue
 		 input_cost_micro_usd, output_cost_micro_usd, cached_input_cost_micro_usd, COALESCE(cache_write_cost_micro_usd, 0), reasoning_cost_micro_usd, embedding_cost_micro_usd, total_cost_micro_usd,
 		 latency_ms, time_to_first_token_ms, tokens_per_second, status, error_code, error_message, retry_count,
 		 prompt_mode, max_output_tokens, context_window_k, stream_enabled, metadata_json, created_at
-		 FROM model_token_usage_events` + where + ` ORDER BY occurred_at DESC LIMIT ?`)
+		 FROM model_token_usage_events` + where + ` ORDER BY occurred_at DESC LIMIT ? OFFSET ?`)
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainData)
@@ -120,6 +120,16 @@ func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQue
 		result = append(result, aliasUsageEvent(event))
 	}
 	return result, entErrToBizErr(rows.Err(), apierror.DomainData)
+}
+
+func (r *usageRepo) CountModelUsageEvents(ctx context.Context, query biz.UsageQuery) (int, error) {
+	where, args := usageWhere(query, false)
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) FROM model_token_usage_events` + where)
+	var n int
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, args, &n); err != nil {
+		return 0, entErrToBizErr(err, apierror.DomainData)
+	}
+	return n, nil
 }
 
 func (r *usageRepo) ListTopAgentUsage(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
@@ -230,4 +240,11 @@ func usageLimit(limit int) int {
 		return 200
 	}
 	return limit
+}
+
+func usageOffset(offset int) int {
+	if offset < 0 {
+		return 0
+	}
+	return offset
 }

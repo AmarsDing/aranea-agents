@@ -138,8 +138,26 @@ func (f ChannelLiveTesterFunc) TestLive(ctx context.Context, configJSON string, 
 }
 
 // Stability:stable
+// ChannelListQuery is the pagination/filter input for admin channel lists.
+type ChannelListQuery struct {
+	Search  string
+	Type    string // channel config.type (matched via config_json contains)
+	Status  string // row status, or "enabled"/"disabled" for the enabled flag
+	Limit   int
+	Offset  int
+}
+
+// ChannelListResult is a page of channels plus the filter-scoped total.
+type ChannelListResult struct {
+	Items  []Channel
+	Total  int
+	Limit  int
+	Offset int
+}
+
 type ChannelReader interface {
 	List(ctx context.Context) ([]Channel, error)
+	ListPaged(ctx context.Context, q ChannelListQuery) (ChannelListResult, error)
 	Get(ctx context.Context, id string) (Channel, error)
 	GetByKey(ctx context.Context, channelKey string) (Channel, error)
 }
@@ -261,6 +279,20 @@ func (u *ChannelUsecase) ChannelTypes() []ChannelTypeItem {
 
 func (u *ChannelUsecase) List(ctx context.Context) ([]Channel, error) {
 	return u.reader.List(ctx)
+}
+
+// ListPaged returns a page of channels for the admin registry UI.
+func (u *ChannelUsecase) ListPaged(ctx context.Context, q ChannelListQuery) (ChannelListResult, error) {
+	if q.Limit <= 0 {
+		q.Limit = 20
+	}
+	if q.Limit > 100 {
+		q.Limit = 100
+	}
+	if q.Offset < 0 {
+		q.Offset = 0
+	}
+	return u.reader.ListPaged(ctx, q)
 }
 
 func (u *ChannelUsecase) DecryptSecretRef(ctx context.Context, ref string) (string, error) {
