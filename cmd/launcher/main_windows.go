@@ -56,9 +56,14 @@ func init() {
 		const mbOK = 0x00000000
 		const mbIconError = 0x00000010
 		const mbIconInfo = 0x00000040
-		flags := uintptr(mbOK | mbIconInfo)
+		// MB_TOPMOST | MB_SETFOREGROUND | MB_TASKMODAL: 保证 MessageBox 永远在前台可见。
+		// 否则在 NSIS 后台调用或 start.bat 启动时，窗口会被遮盖，用户找不到导致"卡住"。
+		const mbTopmost = 0x00040000
+		const mbSetForeground = 0x00010000
+		const mbTaskModal = 0x00002000
+		flags := uintptr(mbOK | mbIconInfo | mbTopmost | mbSetForeground | mbTaskModal)
 		if isError {
-			flags = mbOK | mbIconError
+			flags = uintptr(mbOK | mbIconError | mbTopmost | mbSetForeground | mbTaskModal)
 		}
 		_, _, _ = proc.Call(0, uintptr(unsafe.Pointer(m)), uintptr(unsafe.Pointer(t)), flags)
 	}

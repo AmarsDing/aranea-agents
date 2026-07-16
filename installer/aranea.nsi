@@ -1,4 +1,4 @@
-﻿; ─── Aranea-Agents NSIS 安装脚本 ──────────────────────────────
+; ─── Aranea-Agents NSIS 安装脚本 ──────────────────────────────
 ; 用法：makensis /DVERSION=v1.0.0 /DSTAGING_DIR=build\staging /DOUT_DIR=release aranea.nsi
 ;
 ; UX 原则：
@@ -97,9 +97,9 @@ Section "MainSection" SecMain
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\启动（调试控制台）.lnk" "$INSTDIR\start.bat" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\卸载.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
 
-  ; 安装结束弹出环境检查报告（写 logs\preflight.txt + MessageBox；不启动服务）
-  DetailPrint "Running environment check..."
-  nsExec::ExecToLog '"$INSTDIR\AraneaLauncher.exe" -check'
+  ; 安装结束运行环境检查（写 logs\preflight.txt，不弹 MessageBox，避免阻塞 NSIS）
+  DetailPrint "Running quiet environment check..."
+  nsExec::ExecToLog '"$INSTDIR\AraneaLauncher.exe" -check -quiet'
 
   ; 桌面快捷方式 → 静默 launcher
   CreateShortcut "$DESKTOP\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"

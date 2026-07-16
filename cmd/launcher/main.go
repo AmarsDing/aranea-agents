@@ -43,18 +43,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	logPath := filepath.Join(root, "logs", "launcher.log")
-	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
-	logf, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		showError("无法写日志", err.Error())
-		os.Exit(1)
-	}
+	logPath, logf := openLauncherLog(root)
 	defer logf.Close()
 	logger := func(format string, args ...any) {
 		line := fmt.Sprintf("%s %s\n", time.Now().Format("2006-01-02 15:04:05"), fmt.Sprintf(format, args...))
 		_, _ = io.WriteString(logf, line)
 	}
+	logger("launcher start: root=%s logPath=%s args=%v", root, logPath, os.Args[1:])
 
 	if *stop {
 		logger("stop requested")
@@ -162,6 +157,39 @@ func installRoot() (string, error) {
 		return "", err
 	}
 	return filepath.Dir(exe), nil
+}
+
+// openLauncherLog opens the launcher log file, falling back to %TEMP% if the
+// installation directory is not writable (e.g. user installed to a path under
+// Program Files without elevation). Without this fallback, launcher would
+// silently os.Exit(1) before writing any log, leaving users with no clue why
+// the app "flashes and disappears".
+//
+// Returns the effective log path and an open *os.File (never nil on success).
+// On total failure, calls showError + os.Exit(1).
+//
+// 注意：此函数不弹任何 MessageBox（即使在 fallback 时），避免在 NSIS -quiet 模式下
+// 阻塞安装器。日志路径会在 -check 报告和 showError 消息中体现，用户可据此查找日志。
+func openLauncherLog(root string) (string, *os.File) {
+	preferred := filepath.Join(root, "logs", "launcher.log")
+	_ = os.MkdirAll(filepath.Dir(preferred), 0o755)
+	if f, err := os.OpenFile(preferred, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+		return preferred, f
+	}
+	// Fallback: %TEMP%\aranea-launcher.log (user-temp is always writable).
+	fallback := filepath.Join(os.TempDir(), "aranea-launcher.log")
+	if f, err := os.OpenFile(fallback, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+		// 写一行标记到日志，让用户在查看日志时知道为什么日志在 %TEMP%
+		_, _ = io.WriteString(f, fmt.Sprintf("%s [WARN] 安装目录不可写，日志已 fallback 到 %s\n",
+			time.Now().Format("2006-01-02 15:04:05"), fallback))
+		return fallback, f
+	}
+	// Both paths failed — extremely rare. Surface the error and exit.
+	showError("无法写日志",
+		"无法在以下位置创建日志:\n"+preferred+"\n"+fallback+
+			"\n\n请检查文件系统权限或磁盘空间。")
+	os.Exit(1)
+	return "", nil // unreachable
 }
 
 func startBackend(root string, env *runtimeEnv, log func(string, ...any)) error {
