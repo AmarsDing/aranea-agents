@@ -645,6 +645,12 @@ func TestHandleEventStateTransitions(t *testing.T) {
 				{index: 1, cancel: func() { loserCanceled = true }},
 			},
 			winnerIndex: -1,
+			hedge: &hedgeModel{
+				candidates: []model.Model{
+					&scriptedIterModel{name: "primary"},
+					&scriptedIterModel{name: "backup"},
+				},
+			},
 		}
 		done := run.handleEvent(attemptEvent{
 			index:    0,
@@ -653,6 +659,45 @@ func TestHandleEventStateTransitions(t *testing.T) {
 		assert.False(t, done)
 		assert.Equal(t, 0, run.winnerIndex)
 		assert.True(t, loserCanceled)
+	})
+	t.Run("fires switch callback when non-primary wins", func(t *testing.T) {
+		var switched bool
+		var toIdx int
+		var toName string
+		run := &hedgeRun{
+			yield: func(*model.Response) bool {
+				return true
+			},
+			cancel: func() {},
+			attempts: []*attempt{
+				{index: 0, cancel: func() {}},
+				{index: 1, cancel: func() {}},
+			},
+			winnerIndex: -1,
+			hedge: &hedgeModel{
+				candidates: []model.Model{
+					&scriptedIterModel{name: "primary"},
+					&scriptedIterModel{name: "backup"},
+				},
+				onSwitch: func(fromIndex, toIndex int, fromName, name, reason string) {
+					switched = true
+					toIdx = toIndex
+					toName = name
+					assert.Equal(t, 0, fromIndex)
+					assert.Equal(t, "primary", fromName)
+					assert.Equal(t, "hedge_winner", reason)
+				},
+			},
+		}
+		done := run.handleEvent(attemptEvent{
+			index:    1,
+			response: assistantResponse("backup-wins", true),
+		})
+		assert.False(t, done)
+		assert.Equal(t, 1, run.winnerIndex)
+		require.True(t, switched)
+		assert.Equal(t, 1, toIdx)
+		assert.Equal(t, "backup", toName)
 	})
 	t.Run("record pre-winner failure", func(t *testing.T) {
 		run := &hedgeRun{

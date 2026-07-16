@@ -275,6 +275,18 @@ export function subscribeMonitorRuntimeEventsWs(
 
 function traceRowFromWire(raw: unknown): MonitorTraceRow {
   const r = obj(raw);
+  const configJson = String(r.config_json ?? r.configJson ?? '{}');
+  let durationMs = 0;
+  let totalTokens = 0;
+  let totalCostUsd = 0;
+  try {
+    const cfg = JSON.parse(configJson || '{}') as Record<string, unknown>;
+    durationMs = Number(cfg.duration_ms ?? 0);
+    totalTokens = Number(cfg.total_tokens ?? 0);
+    totalCostUsd = Number(cfg.total_cost_usd ?? 0);
+  } catch {
+    /* ignore */
+  }
   return {
     id: String(r.id ?? ''),
     resource: String(r.resource ?? 'monitor-traces'),
@@ -289,11 +301,14 @@ function traceRowFromWire(raw: unknown): MonitorTraceRow {
     agent_id: String(r.agent_id ?? r.agentId ?? ''),
     provider: String(r.provider ?? ''),
     model: String(r.model ?? ''),
-    config_json: String(r.config_json ?? r.configJson ?? '{}'),
+    config_json: configJson,
     metadata_json: String(r.metadata_json ?? r.metadataJson ?? '{}'),
     created_at: String(r.created_at ?? r.createdAt ?? ''),
     updated_at: String(r.updated_at ?? r.updatedAt ?? ''),
     deleted_at: String(r.deleted_at ?? r.deletedAt ?? ''),
+    duration_ms: durationMs,
+    total_tokens: totalTokens,
+    total_cost_usd: totalCostUsd,
   };
 }
 

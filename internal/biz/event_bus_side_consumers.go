@@ -93,26 +93,27 @@ func monitorLogFields(ev contract.MonitorEvent) (sessionID, typeName, eventID st
 	return ev.SessionID, string(ev.Type), ev.ID
 }
 
-// runActivityBridgeConsumerWithOpts subscribes to v2 EventBus, extracts the v1
-// ActivityEvent from ActivityBridgeEvent payloads, applies a filter, and
-// dispatches matching events to fn via an async worker with bounded queue.
-//
-// Phase 3b-D: replaces runActivityConsumerWithOpts for consumers that need
-// v1 ActivityEvent shape (filter on Kind/Stage/Meta) but receive events from
-// the v2 EventBus. Non-bridge events are skipped.
-func runActivityBridgeConsumerWithOpts(
+// runSystemNoticeConsumerWithOpts subscribes to v2 EventBus, filters
+// SystemNoticeEvent payloads, and dispatches matches to fn via an async worker.
+func runSystemNoticeConsumerWithOpts(
 	ctx context.Context,
 	name string,
 	bus EventBus,
-	filter func(ActivityEvent) bool,
-	fn func(context.Context, ActivityEvent),
-	offerOpts offerOption[ActivityEvent],
+	filter func(*SystemNoticeEvent) bool,
+	fn func(context.Context, *SystemNoticeEvent),
+	offerOpts offerOption[*SystemNoticeEvent],
 	logger SessionLogWriter,
 ) {
 	if bus == nil || fn == nil {
 		return
 	}
-	worker := newAsyncEventWorker(name, sideConsumerQueueSize(), 0, logger, activityLogFields)
+	logFields := func(ev *SystemNoticeEvent) (sessionID, typeName, eventID string) {
+		if ev == nil {
+			return "", "", ""
+		}
+		return ev.SpiritSessionID(), ev.NoticeType, ev.SpiritSessionID()
+	}
+	worker := newAsyncEventWorker(name, sideConsumerQueueSize(), 0, logger, logFields)
 	worker.Start(ctx, fn)
 	ch, unsub := bus.Subscribe(EventSubscribeOptions{})
 	safego.Go(ctx, name, func() {
@@ -125,14 +126,14 @@ func runActivityBridgeConsumerWithOpts(
 				if !ok {
 					return
 				}
-				bridge, ok := e.(*ActivityBridgeEvent)
+				notice, ok := e.(*SystemNoticeEvent)
 				if !ok {
 					continue
 				}
-				if filter != nil && !filter(bridge.Event) {
+				if filter != nil && !filter(notice) {
 					continue
 				}
-				worker.OfferWithOptions(ctx, bridge.Event, offerOpts)
+				worker.OfferWithOptions(ctx, notice, offerOpts)
 			}
 		}
 	})

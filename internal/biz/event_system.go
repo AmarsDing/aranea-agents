@@ -120,6 +120,10 @@ type ActivityBridgeEvent struct {
 }
 
 // NewActivityBridgeEvent constructs an ActivityBridgeEvent from a v1 ActivityEvent.
+//
+// Deprecated (2026-07-16): production publishers no longer emit ActivityBridgeEvent.
+// Chat/Team/Graph use typed v2 events or system.notice. Kept temporarily for
+// decode/tests; do not add new call sites.
 // spiritSessionID is derived from Event.Activity.SpiritSessionID (falls back to
 // SessionID) so the v2 EventBus can route the event to the correct WS subscribers.
 func NewActivityBridgeEvent(ev ActivityEvent) *ActivityBridgeEvent {

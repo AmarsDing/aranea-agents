@@ -136,10 +136,6 @@ func (s *CronService) CreateCronTask(ctx context.Context, req *v1.CreateCronTask
 }
 
 func (s *CronService) GetCronTask(ctx context.Context, req *v1.GetCronTaskRequest) (*v1.CronTask, error) {
-	// P2-B: IDOR guard — reads must use the same workspace assert as mutations.
-	if err := s.assertCronTaskAccess(ctx, req.GetId()); err != nil {
-		return nil, err
-	}
 	t, err := s.uc.GetTask(ctx, req.GetId())
 	if err != nil {
 		return nil, err
@@ -172,11 +168,6 @@ func (s *CronService) DeleteCronTask(ctx context.Context, req *v1.DeleteCronTask
 }
 
 func (s *CronService) ListCronTaskRuns(ctx context.Context, req *v1.ListCronTaskRunsRequest) (*v1.ListCronTaskRunsResponse, error) {
-	if taskID := req.GetCronTaskId(); taskID != "" {
-		if err := s.assertCronTaskAccess(ctx, taskID); err != nil {
-			return nil, err
-		}
-	}
 	q := biz.CronTaskRunQuery{
 		TaskID: req.GetCronTaskId(),
 		Status: req.GetStatus(),

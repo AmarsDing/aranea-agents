@@ -89,6 +89,30 @@ type SpawnRequest struct {
 	SummaryRunes int
 }
 
+// ModeBStartedInfo is emitted when a background subagent child session starts
+// (Mode B agent-card: orphan MemberSession with empty TeamRunID).
+type ModeBStartedInfo struct {
+	RunID           string
+	ParentSessionID string
+	ChildSessionID  string
+	Task            string
+}
+
+// ModeBFinishedInfo is emitted when a Mode B subagent run reaches a terminal status.
+type ModeBFinishedInfo struct {
+	RunID          string
+	ChildSessionID string
+	Status         string // completed | failed | cancelled
+	Error          string
+}
+
+// ModeBStartedHook is invoked after a subagent child session is allocated.
+// Implementations must be non-blocking / best-effort.
+type ModeBStartedHook func(ctx context.Context, info ModeBStartedInfo)
+
+// ModeBFinishedHook is invoked after a subagent run finishes.
+type ModeBFinishedHook func(ctx context.Context, info ModeBFinishedInfo)
+
 type Service struct {
 	path           string
 	runner         trpcrunner.Runner
@@ -114,6 +138,11 @@ type Service struct {
 	// Defaults to defaultMaxConcurrentSubAgents; overridable via
 	// ARANEA_SUBAGENT_MAX_CONCURRENCY env var (P1 fix 2026-06-18).
 	maxConcurrent int
+
+	// onModeBStarted publishes orphan MemberSession cards for Mode B UI.
+	// Optional; nil disables Mode B projection.
+	onModeBStarted  ModeBStartedHook
+	onModeBFinished ModeBFinishedHook
 }
 
 // runesManager manages per-session rune limits for subagent results.
@@ -213,6 +242,25 @@ func (s *Service) SetRunner(r trpcrunner.Runner) {
 	if s != nil {
 		s.mu.Lock()
 		s.runner = r
+		s.mu.Unlock()
+	}
+}
+
+// SetModeBStartedHook registers a best-effort callback for Mode B agent-card
+// projection (orphan MemberSession). Safe to call before Start.
+func (s *Service) SetModeBStartedHook(hook ModeBStartedHook) {
+	if s != nil {
+		s.mu.Lock()
+		s.onModeBStarted = hook
+		s.mu.Unlock()
+	}
+}
+
+// SetModeBFinishedHook registers a best-effort callback when a Mode B run ends.
+func (s *Service) SetModeBFinishedHook(hook ModeBFinishedHook) {
+	if s != nil {
+		s.mu.Lock()
+		s.onModeBFinished = hook
 		s.mu.Unlock()
 	}
 }
@@ -612,7 +660,61 @@ func (s *Service) markRunning(
 		s.mu.Unlock()
 		return nil, nil, runningRun{}, apierror.Internal(apierror.DomainSubagent, "persist: "+err.Error())
 	}
+	s.emitModeBStarted(parent, ModeBStartedInfo{
+		RunID:           clone.ID,
+		ParentSessionID: clone.ParentSessionID,
+		ChildSessionID:  started.childSession,
+		Task:            clone.Task,
+	})
 	return clone, runCtx, started, nil
+}
+
+func (s *Service) emitModeBStarted(ctx context.Context, info ModeBStartedInfo) {
+	if s == nil {
+		return
+	}
+	s.mu.RLock()
+	hook := s.onModeBStarted
+	s.mu.RUnlock()
+	if hook == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			s.lg.Warn("mode B started hook panic",
+				loggateway.Str("run_id", info.RunID),
+				loggateway.Str("panic", fmt.Sprint(r)),
+			)
+		}
+	}()
+	hook(ctx, info)
+}
+
+func (s *Service) emitModeBFinished(ctx context.Context, info ModeBFinishedInfo) {
+	if s == nil {
+		return
+	}
+	s.mu.RLock()
+	hook := s.onModeBFinished
+	s.mu.RUnlock()
+	if hook == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			s.lg.Warn("mode B finished hook panic",
+				loggateway.Str("run_id", info.RunID),
+				loggateway.Str("panic", fmt.Sprint(r)),
+			)
+		}
+	}()
+	hook(ctx, info)
 }
 
 func (s *Service) finishRun(runID string, output string, runErr error, summaryRunes int) {
@@ -657,6 +759,20 @@ func (s *Service) finishRun(runID string, output string, runErr error, summaryRu
 			loggateway.Str("run_id", runID),
 			loggateway.Err(err))
 	}
+
+	finishedStatus := "completed"
+	switch record.Status {
+	case trpcsubagent.StatusFailed:
+		finishedStatus = "failed"
+	case trpcsubagent.StatusCanceled:
+		finishedStatus = "cancelled"
+	}
+	s.emitModeBFinished(context.Background(), ModeBFinishedInfo{
+		RunID:          record.ID,
+		ChildSessionID: record.ChildSessionID,
+		Status:         finishedStatus,
+		Error:          record.Error,
+	})
 
 	// Notify via outbound router if configured.
 	// Clone the record under lock so doNotifyCompletion reads a

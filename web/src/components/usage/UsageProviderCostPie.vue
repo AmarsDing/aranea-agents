@@ -14,6 +14,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { EChartsCoreOption } from 'echarts/core';
 import type { ModelUsageBreakdownRow } from '../../features/usage/types';
 import { usageChartPalette } from '../../features/usage/usageEcharts';
@@ -25,6 +26,8 @@ import {
   type UsageBreakdownSlice,
 } from '../../features/usage/usageBreakdownSlices';
 
+const { t } = useI18n();
+
 const props = defineProps<{
   topModels: ModelUsageBreakdownRow[];
 }>();
@@ -32,7 +35,9 @@ const props = defineProps<{
 const providerSlices = computed(() => buildProviderCostSlicesFromTopModels(props.topModels));
 const providerChartEl = ref<HTMLElement | null>(null);
 
-const providerCaption = computed(() => `基于概览 Top 模型样本聚合（最多 ${USAGE_BREAKDOWN_TOP_N} 个 Provider）`);
+const providerCaption = computed(() =>
+  t('overviewPage.providerPieCaption', { n: USAGE_BREAKDOWN_TOP_N }),
+);
 
 function pieOption(slices: UsageBreakdownSlice[]): EChartsCoreOption {
   const palette = usageChartPalette();

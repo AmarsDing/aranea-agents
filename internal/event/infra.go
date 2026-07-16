@@ -12,21 +12,18 @@ import (
 // Phase 1c-2: WAL and CrossProcessStore fields have been removed along with
 // the deletion of the event_store subsystem. Important events no longer have
 // WBPF (Write-Before-Publish-Fanout) protection; subscribers must be
-// idempotent. Cross-process WS reconnect replay now relies on Activity
-// records fetched via the ListActivities RPC (see service.SessionService).
+// idempotent. Cross-process WS reconnect hydrate uses v2 REST
+// (/v2/sessions/... tasks/turns/steps) via activityV2Store.fetchSessionHistory.
 //
 // Phase 5 Blocker E: the Buffer field has been removed. Blocker A deleted the
 // WS replay path (Buffer.Replay is no longer called); the buffer was
 // write-only with no reader. All Append callsites were dead writes and have
 // been cleaned up (FlowTracker.emit / EventBusConsumer.handleEnvelope).
 //
-// Phase 5 Blocker F (2026-06-26): the legacy envelope-based SessionBus has
-// been removed. All chat/session event publishers and subscribers now use
-// biz.ActivityEventBus (transporting biz.ActivityEvent). The legacy
-// envelope-based MonitorBus was also removed; all monitor publishers and
-// subscribers (FlowFileAppender, SelfHealObserver, TraceProjector,
-// FlowTracker) now use the typed MonitorEventBus carrying
-// contract.MonitorEvent.
+// Phase 5 Blocker F (2026-06-26): legacy envelope SessionBus removed.
+// 2026-07-16: chat/session realtime uses biz.EventBus (v2 events → WS v2_event);
+// ActivityEventBus is retired from the production publish path. Monitor stays
+ // on typed MonitorEventBus (contract.MonitorEvent).
 type Infra struct {
 	MonitorEventBus contract.MonitorBus // typed monitor event bus
 	lg              loggateway.Logger
@@ -52,10 +49,7 @@ func ProvideMonitorEventBus(infra *Infra) contract.MonitorBus {
 
 // InfraProviderSet is the wire set for event infrastructure.
 //
-// Phase 5 Blocker F: the legacy ProvideSessionBus (envelope-based) has been
-// removed along with Infra.SessionBus. All chat/session subscribers now
-// consume biz.ActivityEventBus; all monitor subscribers consume
-// contract.MonitorBus via ProvideMonitorEventBus.
+// Chat/session: biz.EventBus (v2). Monitor: contract.MonitorBus.
 var InfraProviderSet = wire.NewSet(
 	NewInfra,
 	ProvideMonitorEventBus,

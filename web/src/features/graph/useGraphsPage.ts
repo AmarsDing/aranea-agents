@@ -36,11 +36,13 @@ export function useGraphsPage() {
   const router = useRouter();
   const graphStore = useGraphStore();
   const graphExecute = useGraphExecute(router);
-  const { graphs: rows, loading } = storeToRefs(graphStore);
+  const { graphs: rows, loading, graphsNextPageToken } = storeToRefs(graphStore);
 
   const isDark = computed(() => $q.dark.isActive);
   const error = ref('');
   const runDialogGraph = ref<GraphDefinition | null>(null);
+  const hasNextPage = computed(() => Boolean(graphsNextPageToken.value));
+  const loadingMore = ref(false);
 
   const selectedGraphId = ref<string | null>(null);
   const ctxMenuVisible = ref(false);
@@ -115,6 +117,19 @@ export function useGraphsPage() {
       await graphStore.loadGraphs();
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载 Graph 列表失败';
+    }
+  }
+
+  async function loadMore() {
+    if (!graphsNextPageToken.value || loadingMore.value) return;
+    error.value = '';
+    loadingMore.value = true;
+    try {
+      await graphStore.loadGraphs(undefined, true);
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '加载更多 Graph 失败';
+    } finally {
+      loadingMore.value = false;
     }
   }
 
@@ -284,6 +299,8 @@ export function useGraphsPage() {
     rows,
     filteredRows,
     loading,
+    loadingMore,
+    hasNextPage,
     error,
     searchQuery,
     engineFilter,
@@ -307,6 +324,7 @@ export function useGraphsPage() {
     ctxMenuY,
     ctxMenuItems,
     loadRows,
+    loadMore,
     openCreate,
     openEditor,
     openRunDialog,

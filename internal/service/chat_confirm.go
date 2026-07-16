@@ -116,20 +116,26 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 		return nil, err
 	}
 
-	// Publish ActivityEvent (completed/cancelled) via ActivityEventBus so the
-	// frontend's unified rendering pipeline receives the lifecycle transition.
-	// This replaces the legacy EnvelopeTypeActivityDone envelope.
-	//
-	// Phase 3b-D: migrated to v2 EventBus via ActivityBridgeEvent.
+	// Publish confirm outcome as system.notice for WS subscribers.
 	if bus := s.orch.td().Pipeline.EventBus; bus != nil {
-		eventType := biz.ActivityEventCompleted
+		decision := "approved"
+		noticeType := "tool_confirm_approved"
 		if !req.GetApproved() {
-			eventType = biz.ActivityEventCancelled
+			decision = "rejected"
+			noticeType = "tool_confirm_rejected"
 		}
-		bus.Publish(ctx, biz.NewActivityBridgeEvent(biz.ActivityEvent{
-			Event:    eventType,
-			Activity: activity,
-		}))
+		meta := map[string]any{
+			"activity_id": activity.ID,
+			"decision":    decision,
+			"status":      string(activity.Status),
+			"kind":        string(activity.Kind),
+		}
+		if activity.Meta != nil {
+			for k, v := range activity.Meta {
+				meta[k] = v
+			}
+		}
+		bus.Publish(ctx, biz.NewSystemNoticeEvent(activity.SessionID, noticeType, "", meta))
 	}
 
 	// Resume the awaiting run by sending the approval/rejection through the await channel.

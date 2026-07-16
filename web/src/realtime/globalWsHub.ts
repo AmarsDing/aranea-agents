@@ -8,7 +8,7 @@
  */
 
 import { GLOBAL_WS_SESSION_ID } from '../config/runtime';
-import { createWsTransport, type WsTransport } from './ws-transport';
+import { createWsTransport, type MonitorBackpressurePayload, type WsTransport } from './ws-transport';
 import type { ActivityEvent } from './activityEvent';
 import type { MonitorEvent } from './monitorEvent';
 import type { V2WsEnvelope } from '../features/chat/v2Types';
@@ -21,6 +21,8 @@ export type GlobalWsConsumer = {
   onActivityEvent?: (ev: ActivityEvent) => void;
   /** Monitor channel: called when a monitor_event message arrives. */
   onMonitorEvent?: (event: MonitorEvent) => void;
+  /** MON-OPT-04 backpressure notification. */
+  onBackpressure?: (payload: MonitorBackpressurePayload) => void;
   /** v2 chat events: called when a v2_event envelope arrives. */
   onV2Event?: (envelope: V2WsEnvelope) => void;
   onConnected?: () => void;
@@ -74,6 +76,11 @@ function ensureHubTransport(): WsTransport {
         c.onMonitorEvent?.(event);
       }
     },
+    onBackpressure: (payload) => {
+      for (const c of consumers.values()) {
+        c.onBackpressure?.(payload);
+      }
+    },
     onV2Event: (envelope) => {
       // v2 chat events: dispatch to all consumers that have opted in.
       for (const c of consumers.values()) {
@@ -120,6 +127,7 @@ export function acquireGlobalWsConsumer(
     logEnabled: opts.logEnabled,
     onActivityEvent: opts.onActivityEvent,
     onMonitorEvent: opts.onMonitorEvent,
+    onBackpressure: opts.onBackpressure,
     onV2Event: opts.onV2Event,
     onConnected: opts.onConnected,
     onDisconnected: opts.onDisconnected,

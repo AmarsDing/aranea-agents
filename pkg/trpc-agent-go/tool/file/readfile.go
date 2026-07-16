@@ -39,6 +39,7 @@ type readFileResponse struct {
 	FileName      string `json:"file_name"`
 	Contents      string `json:"contents"`
 	Message       string `json:"message"`
+	MtimeMs       int64  `json:"mtime_ms,omitempty"`
 }
 
 // readFile performs the read file operation.
@@ -248,6 +249,8 @@ func (f *fileToolSet) readFileFromDiskOrCache(
 		rsp.Message = fmt.Sprintf("Error: %v", err)
 		return err
 	}
+	rsp.MtimeMs = stat.ModTime().UnixMilli()
+	f.storeFileViewAfterRead(ctx, filePath, string(contents), rsp.MtimeMs, stat.Mode(), contents)
 	chunk, startLine, endLine, total, empty, err := f.sliceReadFile(
 		req,
 		string(contents),

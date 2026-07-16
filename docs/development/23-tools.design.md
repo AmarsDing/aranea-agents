@@ -16,7 +16,7 @@
 - 工具调用记录（ToolInvocation）查询与审计（ToolInvocationAudit）
 - 运行时工具挂载（trpc-agent-go Tool/ToolSet 适配）
 - 工具工作区统一（file / shell / claude_code 共用 `workspace_root`）
-- 片段级文件编辑（`diff_edit` / `patch_file`）— catalog 已就绪、运行时工具待补
+- 片段级文件编辑（`diff_edit` / `patch_file`）— catalog + 运行时已实现
 
 ---
 
@@ -2632,21 +2632,21 @@ type RetryPolicy struct {
 
 ## 十三、片段级文件编辑（扩展）
 
-> **状态**：catalog 已就绪、运行时工具待补
+> **状态**：✅ catalog + 运行时工具已实现
 > **需求**：[23-tools.md §子模块 Tools Fragment Edit](./23-tools.md) · **开发计划**：[23-tools.development.md §Phase 4](./23-tools.development.md)
 
 在 §7 运行时层 `file` ToolSet 上扩展两个 CallableTool：
 
 | 工具 | 职责 | 运行时状态 |
 |------|------|-----------|
-| `diff_edit` | 多片段 SEARCH/REPLACE，内存原子 apply | ⏳ 运行时工具未实现 |
-| `patch_file` | unified diff 或结构化 hunk 应用 | ⏳ 运行时工具未实现 |
+| `diff_edit` | 多片段 SEARCH/REPLACE，内存原子 apply | ✅ 已实现 |
+| `patch_file` | unified diff 或结构化 hunk 应用 | ✅ 已实现 |
 
-**已就绪部分**（catalog 与策略层）：
+**已就绪部分**（catalog / 策略 / 运行时）：
 
 | 位置 | 状态 | 说明 |
 |------|------|------|
-| `internal/data/builtin_tools_seed.go` | ✅ | `diff_edit` / `patch_file` seed 已添加（registryName=`file`） |
+| `internal/data/builtin_tools_seed.go` | ✅ | `diff_edit` / `patch_file` seed（默认启用，registryName=`file`） |
 | `internal/biz/agent_effective_tools.go` | ✅ | `toolGroupsFilesystem` 含 `diff_edit` / `patch_file` |
 | `internal/biz/tool/tool_policy_keys.go` | ✅ | `edit_file` → `diff_edit` policy alias |
 | `internal/tools/alias/alias.go` | ✅ | `edit_file` → `diff_edit` runtime alias |
@@ -2654,18 +2654,13 @@ type RetryPolicy struct {
 | `internal/tools/trpc/effective_config.go` | ✅ | effective key 映射 |
 | `internal/tools/trpc/runtime_config.go` | ✅ | runtime config 映射 |
 | `internal/agent/activity_meta.go` | ✅ | `diff_edit` → 片段编辑、`patch_file` → 应用补丁 中文标签 |
-| `internal/agent/prompt.go` | ✅ | `diff_edit` / `patch_file` 工作流提示 |
-
-**未实现部分**（运行时工具实现）：
-
-| 计划位置 | 状态 | 说明 |
-|----------|------|------|
-| `pkg/trpc-agent-go/tool/file/diffedit.go` | ❌ 不存在 | `diff_edit` 工具实现 |
-| `pkg/trpc-agent-go/tool/file/patchfile.go` | ❌ 不存在 | `patch_file` 工具实现 |
-| `pkg/trpc-agent-go/tool/file/editcontent.go` | ❌ 不存在 | load/commit 编排 + SessionFileState |
-| `pkg/trpc-agent-go/tool/file/patch/` | ❌ 不存在 | hunk 类型 / apply / unified 解析 / validate |
-| `pkg/trpc-agent-go/tool/internal/textfile/` | ❌ 不存在 | 共享编码 / 行结束 / 引号 fuzzy |
-| `internal/toolcache/file_views.go` | ❌ 不存在 | per-invocation FileView 存取 |
+| `internal/agent/prompt.go` | ✅ | Effective keys 含片段编辑时引导 diff_edit 工作流 |
+| `pkg/trpc-agent-go/tool/file/diffedit.go` | ✅ | `diff_edit` 工具实现 |
+| `pkg/trpc-agent-go/tool/file/patchfile.go` | ✅ | `patch_file` 工具实现 |
+| `pkg/trpc-agent-go/tool/file/editcontent.go` | ✅ | load/commit 编排 + SessionFileState |
+| `pkg/trpc-agent-go/tool/file/patch/` | ✅ | hunk 类型 / apply / unified 解析 |
+| `pkg/trpc-agent-go/tool/internal/textfile/` | ✅ | 共享编码 / 行结束 / 引号 fuzzy |
+| `pkg/trpc-agent-go/internal/toolcache/file_views.go` | ✅ | per-invocation FileView 存取 |
 
 **实现红线**：
 

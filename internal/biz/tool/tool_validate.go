@@ -67,7 +67,8 @@ func requireJSONObject(field, raw string) error {
 }
 
 func assertToolMutable(existing Tool, in ToolUpsertInput) error {
-	if !existing.Readonly {
+	locked := existing.Readonly || strings.EqualFold(strings.TrimSpace(existing.Source), "builtin")
+	if !locked {
 		return nil
 	}
 	if strings.TrimSpace(in.Key) != existing.Key {
@@ -75,6 +76,12 @@ func assertToolMutable(existing Tool, in ToolUpsertInput) error {
 	}
 	if in.Source != "" && !strings.EqualFold(in.Source, existing.Source) {
 		return apierror.BadRequest("TOOL", "readonly tool source cannot change")
+	}
+	// UX-06: builtin / registry-synced policy fields are server-owned.
+	if in.RequiresConfirmation != existing.RequiresConfirmation ||
+		in.SupportsStreaming != existing.SupportsStreaming ||
+		in.SupportsConcurrency != existing.SupportsConcurrency {
+		return apierror.BadRequest("TOOL", "builtin tool policy fields are read-only (requires_confirmation/supports_streaming/supports_concurrency)")
 	}
 	return nil
 }

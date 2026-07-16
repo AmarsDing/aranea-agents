@@ -1,5 +1,11 @@
 // Package llmcompat provides OpenAI-compatible LLM chat helpers extracted from
 // the agent package to break import cycles.
+//
+// BR10 note: this package intentionally builds lightweight models via
+// trpcprovider.Model + WrapModelWithMetrics for side-channel calls (intent,
+// prompt helpers) that only have inline ProviderAPIConfig (base URL + API key).
+// Full catalog path (HA / retry / CB / decrypt) remains TRPCModelForProviderModel
+// for Agent runtime turns. Do not expand this bypass for primary chat/team runs.
 package llmcompat
 
 import (
@@ -161,7 +167,11 @@ func trpcCompatModel(cfg ProviderAPIConfig, hc *http.Client, modelName string) (
 	if hc != nil && hc.Transport != nil {
 		opts = append(opts, trpcprovider.WithHTTPClientTransport(hc.Transport))
 	}
-	return trpcprovider.Model(providerName, modelName, opts...)
+	m, err := trpcprovider.Model(providerName, modelName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return provider.WrapModelWithMetrics(m, providerName, modelName), nil
 }
 
 func extractFromTRPCResponse(resp *trpcmodel.Response, _ string) (text string, reasoning string, promptTok, completionTok int, err error) {

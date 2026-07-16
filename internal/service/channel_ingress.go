@@ -25,8 +25,7 @@ type ChannelIngress struct {
 	chat           biz.ChannelTurnGateway
 	graphs         biz.GraphExecutor
 	cron           biz.CronTriggerGateway
-	activityBus    biz.ActivityEventBus // v1: retained for graph_stage subscription (channel_ingress_async.go)
-	eventBus       biz.EventBus          // v2: for PublishRunStatus + PublishBackgroundJobRefresh (Phase 3b-D Task 9)
+	eventBus       biz.EventBus // v2: run_status + graph completion watch + notices
 	http           *http.Client
 	deduplicator   biz.IngressDeduplicator
 	peerDebouncer  biz.PeerDebouncer
@@ -51,7 +50,6 @@ func NewChannelIngress(
 	chat biz.ChannelTurnGateway,
 	graphs biz.GraphExecutor,
 	cron biz.CronTriggerGateway,
-	activityBus biz.ActivityEventBus,
 	eventBus biz.EventBus,
 	deduplicator biz.IngressDeduplicator,
 	peerDebouncer biz.PeerDebouncer,
@@ -68,7 +66,6 @@ func NewChannelIngress(
 		chat:           chat,
 		graphs:         graphs,
 		cron:           cron,
-		activityBus:    activityBus,
 		eventBus:       eventBus,
 		lg:             lg,
 		http:            lark.DefaultHTTPClient(),

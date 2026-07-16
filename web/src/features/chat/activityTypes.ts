@@ -25,7 +25,7 @@ export type ActivityKind =
   | 'confirm' // User confirmation required
   // Phase 3: Stage kinds for unified Team/Graph/Session rendering
   | 'team_stage' // Team formation/execution/completion stage
-  | 'graph_stage' // Graph DAG execution stage
+  | 'graph_stage' // Workflow Graph execution stage (M36); Chat PlanDAG uses v2 GraphStage entities
   | 'session'; // Child session creation/execution
 
 // === ActivityStatus ===

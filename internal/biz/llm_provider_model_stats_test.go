@@ -3,6 +3,7 @@ package biz
 import (
 	"math"
 	"testing"
+	"time"
 )
 
 // TestComputeHotness_EmptyStats 空统计列表返回空 map。
@@ -13,8 +14,8 @@ func TestComputeHotness_EmptyStats(t *testing.T) {
 	}
 }
 
-// TestComputeHotness_SingleModel 单个模型：调用/Token/费用标准分给满分（min=max 时给 50），成功率直接按值映射。
-// 预期分数 = 50*0.50 + 50*0.25 + 50*0.15 + success_rate*100*0.10 = 50 + success_rate*10
+// TestComputeHotness_SingleModel 单个模型：调用/Token/费用标准分给 50（min=max），成功率按值，无最近使用时 recency=0。
+// 预期 = 50*0.45 + 50*0.25 + 50*0.15 + 90*0.10 + 0*0.05 = 51.5
 func TestComputeHotness_SingleModel(t *testing.T) {
 	stats := []ModelUsageStats{
 		{ProviderCode: "openai", ModelAPIID: "gpt-4o", CallCount: 100, TotalTokens: 1000, TotalCostMicroUSD: 5000, SuccessRate: 0.9},
@@ -24,8 +25,7 @@ func TestComputeHotness_SingleModel(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected key openai/gpt-4o, got %v", got)
 	}
-	// 50*0.50 + 50*0.25 + 50*0.15 + 90*0.10 = 25 + 12.5 + 7.5 + 9 = 54
-	want := 25.0 + 12.5 + 7.5 + 9.0
+	want := 22.5 + 12.5 + 7.5 + 9.0
 	if math.Abs(score-want) > 0.01 {
 		t.Fatalf("expected %.2f, got %.2f", want, score)
 	}
@@ -43,15 +43,15 @@ func TestComputeHotness_TwoModelsHigherCallsWins(t *testing.T) {
 	}
 }
 
-// TestComputeHotness_AllEqualValues 所有维度值相同的多个模型：标准分给 50（中等），热度由成功率决定。
+// TestComputeHotness_AllEqualValues 所有维度值相同的多个模型：标准分给 50，热度由成功率决定。
 func TestComputeHotness_AllEqualValues(t *testing.T) {
 	stats := []ModelUsageStats{
 		{ProviderCode: "openai", ModelAPIID: "a", CallCount: 100, TotalTokens: 1000, TotalCostMicroUSD: 5000, SuccessRate: 0.8},
 		{ProviderCode: "openai", ModelAPIID: "b", CallCount: 100, TotalTokens: 1000, TotalCostMicroUSD: 5000, SuccessRate: 0.8},
 	}
 	got := ComputeHotness(stats)
-	// min=max 时标准分给 50：50*0.50 + 50*0.25 + 50*0.15 + 80*0.10 = 25+12.5+7.5+8 = 53
-	want := 25.0 + 12.5 + 7.5 + 8.0
+	// 50*0.45 + 50*0.25 + 50*0.15 + 80*0.10 + 0 = 50.5
+	want := 22.5 + 12.5 + 7.5 + 8.0
 	if math.Abs(got["openai/a"]-want) > 0.01 {
 		t.Fatalf("a: expected %.2f, got %.2f", want, got["openai/a"])
 	}
@@ -72,12 +72,25 @@ func TestComputeHotness_SuccessRateImpact(t *testing.T) {
 	}
 }
 
+// TestComputeHotness_RecencyBoost 最近有调用的模型热度更高（§3.1 最近使用时间修正 0.05）。
+func TestComputeHotness_RecencyBoost(t *testing.T) {
+	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	stats := []ModelUsageStats{
+		{ProviderCode: "openai", ModelAPIID: "stale", CallCount: 50, TotalTokens: 500, TotalCostMicroUSD: 2500, SuccessRate: 0.9, LastActiveDate: "2026-06-01"},
+		{ProviderCode: "openai", ModelAPIID: "fresh", CallCount: 50, TotalTokens: 500, TotalCostMicroUSD: 2500, SuccessRate: 0.9, LastActiveDate: "2026-07-16"},
+	}
+	got := ComputeHotnessAt(stats, now)
+	if got["openai/stale"] >= got["openai/fresh"] {
+		t.Fatalf("expected fresh hotter, got stale=%.2f fresh=%.2f", got["openai/stale"], got["openai/fresh"])
+	}
+}
+
 // TestComputeHotness_ScoreRangeInBounds 多模型场景下所有分数在 [0, 100] 范围内。
 func TestComputeHotness_ScoreRangeInBounds(t *testing.T) {
 	stats := []ModelUsageStats{
-		{ProviderCode: "p1", ModelAPIID: "m1", CallCount: 1000, TotalTokens: 100000, TotalCostMicroUSD: 500000, SuccessRate: 1.0},
+		{ProviderCode: "p1", ModelAPIID: "m1", CallCount: 1000, TotalTokens: 100000, TotalCostMicroUSD: 500000, SuccessRate: 1.0, LastActiveDate: "2026-07-16"},
 		{ProviderCode: "p2", ModelAPIID: "m2", CallCount: 1, TotalTokens: 10, TotalCostMicroUSD: 1, SuccessRate: 0.0},
-		{ProviderCode: "p3", ModelAPIID: "m3", CallCount: 500, TotalTokens: 50000, TotalCostMicroUSD: 250000, SuccessRate: 0.7},
+		{ProviderCode: "p3", ModelAPIID: "m3", CallCount: 500, TotalTokens: 50000, TotalCostMicroUSD: 250000, SuccessRate: 0.7, LastActiveDate: "2026-07-01"},
 	}
 	got := ComputeHotness(stats)
 	for k, v := range got {
@@ -100,7 +113,6 @@ func TestComputeHotness_KeyFormat(t *testing.T) {
 
 // TestStandardizeMinMax 验证 Min-Max 标准化函数。
 func TestStandardizeMinMax(t *testing.T) {
-	// value=min → 0, value=max → 100, value=mid → 50
 	if got := standardize(0, 0, 100); math.Abs(got-0) > 0.01 {
 		t.Fatalf("min: expected 0, got %.2f", got)
 	}
@@ -110,7 +122,6 @@ func TestStandardizeMinMax(t *testing.T) {
 	if got := standardize(50, 0, 100); math.Abs(got-50) > 0.01 {
 		t.Fatalf("mid: expected 50, got %.2f", got)
 	}
-	// min=max 时给 50（中等）
 	if got := standardize(42, 42, 42); math.Abs(got-50) > 0.01 {
 		t.Fatalf("equal: expected 50, got %.2f", got)
 	}

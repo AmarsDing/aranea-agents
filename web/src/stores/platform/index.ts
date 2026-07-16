@@ -10,6 +10,7 @@ import {
   validateModel,
   inspectProviderModel,
   reorderTaxonomy,
+  reorderOrganization,
 } from '../../features/platform/api';
 import { getSystemSettings } from '../../features/system-settings/api';
 import { patchTaxonomyTreeNode } from '../../features/platform/taxonomyTreeUtils';
@@ -107,6 +108,10 @@ export const usePlatformStore = defineStore('platform', () => {
     return reorderTaxonomy(ids);
   }
 
+  async function reorderOrganizationNodes(ids: string[]) {
+    return reorderOrganization(ids);
+  }
+
   function setTaxonomyTree(tree: PlatformResourceTreeNode[]) {
     taxonomyTree.value = tree;
   }
@@ -135,6 +140,7 @@ export const usePlatformStore = defineStore('platform', () => {
     editResource,
     removeResource,
     reorderTaxonomyNodes,
+    reorderOrganizationNodes,
     setTaxonomyTree,
     applyTaxonomyTreePatch,
     removeTaxonomyTreeNode,

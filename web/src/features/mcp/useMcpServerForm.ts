@@ -21,6 +21,11 @@ const authTypeOptions = [
   { label: 'OAuth2 Refresh Token', value: 'oauth2_refresh' },
 ];
 
+const probeModeOptions = [
+  { label: '连通性（默认）', value: 'connectivity' },
+  { label: '带认证探活', value: 'auth_aware' },
+];
+
 function emptyForm(): McpServerFormValue {
   return {
     name: '',
@@ -46,6 +51,8 @@ function emptyForm(): McpServerFormValue {
     auth_refresh_token: '',
     enabled: true,
     require_user_credentials: false,
+    allow_adhoc_http: false,
+    probe_mode: 'connectivity',
   };
 }
 
@@ -140,6 +147,8 @@ export function useMcpServerForm(
       auth_refresh_token: config.auth?.refresh_token || '',
       enabled: row?.enabled ?? true,
       require_user_credentials: Boolean(config.require_user_credentials),
+      allow_adhoc_http: Boolean(config.allow_adhoc_http),
+      probe_mode: config.probe_mode === 'auth_aware' ? 'auth_aware' : 'connectivity',
     });
   }
 
@@ -218,6 +227,8 @@ export function useMcpServerForm(
       timeout_sec: Number(form.timeout_sec) || 60,
       session_reconnect_max: Number(form.session_reconnect_max) || 0,
       require_user_credentials: form.require_user_credentials,
+      allow_adhoc_http: form.allow_adhoc_http,
+      probe_mode: form.probe_mode || 'connectivity',
     };
     if (form.auth_type) {
       const auth: McpServerConfig['auth'] = {
@@ -266,6 +277,7 @@ export function useMcpServerForm(
     isOAuthAuth,
     transportOptions,
     authTypeOptions,
+    probeModeOptions,
     save,
     runValidate,
     saveAndTest,

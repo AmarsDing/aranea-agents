@@ -235,7 +235,7 @@ func buildFromResolvedWithNodeAgents(ctx context.Context, rbc *resolvedBuildConf
 	sg := trpcgraph.NewStateGraph(schema)
 
 	for _, n := range rbc.nodes {
-		extras, err := wireNode(ctx, sg, n, deps, lg)
+		extras, err := wireNode(ctx, sg, n, cfg, deps, lg)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -335,7 +335,7 @@ func NewGraphAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, subAg
 	return NewGraphAgentWithSubAgents(name, g, enableCheckpoint, nil, subAgents)
 }
 
-func NewGraphAgentWithSubAgents(name string, g *trpcgraph.Graph, enableCheckpoint bool, saver trpcgraph.CheckpointSaver, subAgents []trpcagent.Agent) (*GraphAgent, error) {
+func NewGraphAgentWithSubAgents(name string, g *trpcgraph.Graph, enableCheckpoint bool, saver trpcgraph.CheckpointSaver, subAgents []trpcagent.Agent, extraOpts ...trpcgraph.ExecutorOption) (*GraphAgent, error) {
 	var execOpts []trpcgraph.ExecutorOption
 	if enableCheckpoint && saver == nil {
 		saver = trpcgraphcheckpoint.NewSaver()
@@ -343,6 +343,7 @@ func NewGraphAgentWithSubAgents(name string, g *trpcgraph.Graph, enableCheckpoin
 	if saver != nil {
 		execOpts = append(execOpts, trpcgraph.WithCheckpointSaver(saver))
 	}
+	execOpts = append(execOpts, extraOpts...)
 	exec, err := trpcgraph.NewExecutor(g, execOpts...)
 	if err != nil {
 		return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph agent: %v", err))
@@ -356,7 +357,7 @@ func NewGraphAgentWithSubAgents(name string, g *trpcgraph.Graph, enableCheckpoin
 	}, nil
 }
 
-func NewGraphAgentWithSaver(name string, g *trpcgraph.Graph, saver trpcgraph.CheckpointSaver, engine ExecutionEngineType, subAgents ...trpcagent.Agent) (*GraphAgent, error) {
+func NewGraphAgentWithSaver(name string, g *trpcgraph.Graph, saver trpcgraph.CheckpointSaver, engine ExecutionEngineType, subAgents []trpcagent.Agent, extraOpts ...trpcgraph.ExecutorOption) (*GraphAgent, error) {
 	var execOpts []trpcgraph.ExecutorOption
 	if saver != nil {
 		execOpts = append(execOpts, trpcgraph.WithCheckpointSaver(saver))
@@ -367,6 +368,7 @@ func NewGraphAgentWithSaver(name string, g *trpcgraph.Graph, saver trpcgraph.Che
 	default:
 		execOpts = append(execOpts, trpcgraph.WithExecutionEngine(trpcgraph.ExecutionEngineBSP))
 	}
+	execOpts = append(execOpts, extraOpts...)
 	exec, err := trpcgraph.NewExecutor(g, execOpts...)
 	if err != nil {
 		return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph agent: %v", err))
@@ -380,7 +382,7 @@ func NewGraphAgentWithSaver(name string, g *trpcgraph.Graph, saver trpcgraph.Che
 	}, nil
 }
 
-func NewGraphAgentWithEngine(name string, g *trpcgraph.Graph, enableCheckpoint bool, engine ExecutionEngineType, subAgents ...trpcagent.Agent) (*GraphAgent, error) {
+func NewGraphAgentWithEngine(name string, g *trpcgraph.Graph, enableCheckpoint bool, engine ExecutionEngineType, subAgents []trpcagent.Agent, extraOpts ...trpcgraph.ExecutorOption) (*GraphAgent, error) {
 	var execOpts []trpcgraph.ExecutorOption
 	var saver trpcgraph.CheckpointSaver
 	if enableCheckpoint {
@@ -393,6 +395,7 @@ func NewGraphAgentWithEngine(name string, g *trpcgraph.Graph, enableCheckpoint b
 	default:
 		execOpts = append(execOpts, trpcgraph.WithExecutionEngine(trpcgraph.ExecutionEngineBSP))
 	}
+	execOpts = append(execOpts, extraOpts...)
 	exec, err := trpcgraph.NewExecutor(g, execOpts...)
 	if err != nil {
 		return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph agent: %v", err))

@@ -289,20 +289,7 @@ func (s *WSServer) publishWSErrorActivity(sessionID, requestID, errorType, messa
 	if requestID != "" {
 		meta["request_id"] = requestID
 	}
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventFailed,
-		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindTask,
-			Status:    biz.ActivityStatusFailed,
-			SessionID: sessionID,
-			Timestamp: time.Now().UTC(),
-			Content:   message,
-			Meta:      meta,
-		},
-		Domain: biz.ActivityDomainChat,
-	}
-	s.eventBus.Publish(context.Background(), biz.NewActivityBridgeEvent(ev))
+	s.eventBus.Publish(context.Background(), biz.NewSystemNoticeEvent(sessionID, "ws_error", message, meta))
 
 	// P2-05: emit synthetic v2 Task/Turn/Step events so the v2 timeline
 	// (ActivityStream / TaskCard / TurnContainer / ErrorBlock) can render a

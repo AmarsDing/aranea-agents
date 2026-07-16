@@ -3,8 +3,10 @@ package biz
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -228,4 +230,192 @@ func TestL4CascadeUsecase_Approve(t *testing.T) {
 	if !applied {
 		t.Fatal("expected trigger entity renamed on approve")
 	}
+}
+
+// cascadeCompensateStore tracks in-memory saga step state and forces
+// ReplaceFacts to fail so Approve must auto-compensate earlier successes.
+type cascadeCompensateStore struct {
+	cascadeApproveStore
+	steps         []CascadeSagaStep
+	stepStates    map[string]string
+	replaceErr    error
+	statusHistory []string
+}
+
+func (m *cascadeCompensateStore) InitCascadeSagaSteps(_ context.Context, proposalID string, steps []CascadeSagaStep) error {
+	m.steps = make([]CascadeSagaStep, len(steps))
+	m.stepStates = make(map[string]string)
+	for i, s := range steps {
+		s.ID = fmt.Sprintf("step-%d", i+1)
+		s.ProposalID = proposalID
+		s.StepIndex = i
+		s.State = "pending"
+		m.steps[i] = s
+		m.stepStates[s.ID] = "pending"
+	}
+	return nil
+}
+
+func (m *cascadeCompensateStore) GetCascadeSagaSteps(_ context.Context, _ string) ([]CascadeSagaStep, error) {
+	out := make([]CascadeSagaStep, len(m.steps))
+	copy(out, m.steps)
+	for i := range out {
+		if st, ok := m.stepStates[out[i].ID]; ok {
+			out[i].State = st
+		}
+	}
+	return out, nil
+}
+
+func (m *cascadeCompensateStore) UpdateSagaStepState(_ context.Context, stepID string, state, _ string) error {
+	if m.stepStates == nil {
+		m.stepStates = make(map[string]string)
+	}
+	m.stepStates[stepID] = state
+	for i := range m.steps {
+		if m.steps[i].ID == stepID {
+			m.steps[i].State = state
+		}
+	}
+	return nil
+}
+
+func (m *cascadeCompensateStore) ReplaceNameInAgentFacts(context.Context, string, string, string) ([][]byte, int, error) {
+	if m.replaceErr != nil {
+		return nil, 0, m.replaceErr
+	}
+	return nil, 0, nil
+}
+
+func (m *cascadeCompensateStore) UpdateCascadeProposalStatus(_ context.Context, id, status, reviewer, note string) ([]byte, error) {
+	m.statusHistory = append(m.statusHistory, status)
+	return json.Marshal(map[string]any{"id": id, "status": status, "reviewed_by": reviewer, "review_note": note})
+}
+
+func TestL4CascadeUsecase_Approve_CriticalFailCompensatesPriorSteps(t *testing.T) {
+	repo := &mockL4GraphRepo{}
+	store := &cascadeCompensateStore{
+		cascadeApproveStore: cascadeApproveStore{
+			proposal: []byte(`{
+				"id":"cp1","agent_id":"ag1","status":"pending",
+				"trigger_entity_id":"ent1","old_value":"Alice","new_value":"Bob",
+				"affected_json":"[]"
+			}`),
+		},
+		replaceErr: apierror.Internal("MEMORY", "forced replace failure"),
+	}
+	uc := NewL4CascadeUsecase(L4CascadeDeps{
+		Proposals: store, Reader: store, Mutator: store, Saga: store,
+		EntityWriter: repo, LG: loggateway.NewNoop(),
+	})
+	_, err := uc.Approve(context.Background(), "cp1", "reviewer-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// UpsertEntity (step-1) succeeded then must be compensated after ReplaceFacts fails.
+	if got := store.stepStates["step-1"]; got != "compensated" {
+		t.Fatalf("expected step-1 compensated, got %q (states=%v)", got, store.stepStates)
+	}
+	if got := store.stepStates["step-3"]; got != "failed" {
+		t.Fatalf("expected step-3 failed, got %q", got)
+	}
+	// Compensation restores old name via UpsertEntity.
+	var restored bool
+	for _, e := range repo.entities {
+		if e.ID == "ent1" && e.Name == "Alice" {
+			restored = true
+		}
+	}
+	if !restored {
+		t.Fatalf("expected entity restored to Alice after compensate; entities=%+v", repo.entities)
+	}
+	var sawPartial bool
+	for _, s := range store.statusHistory {
+		if s == "partial" {
+			sawPartial = true
+		}
+	}
+	if !sawPartial {
+		t.Fatalf("expected proposal status partial after critical failure; history=%v", store.statusHistory)
+	}
+}
+
+func TestL4CascadeUsecase_Approve_InitSagaFailRollsBackRunning(t *testing.T) {
+	store := &cascadeInitFailStore{
+		cascadeApproveStore: cascadeApproveStore{
+			proposal: []byte(`{
+				"id":"cp1","agent_id":"ag1","status":"pending",
+				"trigger_entity_id":"ent1","old_value":"Alice","new_value":"Bob",
+				"affected_json":"[]"
+			}`),
+		},
+		initErr: apierror.Internal("MEMORY", "init saga failed"),
+	}
+	uc := NewL4CascadeUsecase(L4CascadeDeps{
+		Proposals: store, Reader: store, Mutator: store, Saga: store,
+		EntityWriter: &mockL4GraphRepo{}, LG: loggateway.NewNoop(),
+	})
+	_, err := uc.Approve(context.Background(), "cp1", "reviewer-1")
+	if err == nil {
+		t.Fatal("expected init error")
+	}
+	if len(store.statusHistory) == 0 || store.statusHistory[len(store.statusHistory)-1] != "pending" {
+		t.Fatalf("expected rollback to pending, got history=%v", store.statusHistory)
+	}
+}
+
+type cascadeInitFailStore struct {
+	cascadeApproveStore
+	initErr       error
+	statusHistory []string
+}
+
+func (m *cascadeInitFailStore) InitCascadeSagaSteps(context.Context, string, []CascadeSagaStep) error {
+	return m.initErr
+}
+
+func (m *cascadeInitFailStore) UpdateCascadeProposalStatus(_ context.Context, id, status, reviewer, note string) ([]byte, error) {
+	m.statusHistory = append(m.statusHistory, status)
+	return json.Marshal(map[string]any{"id": id, "status": status, "reviewed_by": reviewer, "review_note": note})
+}
+
+func TestL4CascadeUsecase_Reject_CAS(t *testing.T) {
+	t.Run("pending_ok", func(t *testing.T) {
+		store := &cascadeRejectStore{currentStatus: "pending", casOK: true}
+		uc := NewL4CascadeUsecase(L4CascadeDeps{Proposals: store, Reader: store, Mutator: store, Saga: store, LG: loggateway.NewNoop()})
+		raw, err := uc.Reject(context.Background(), "cp1", "r1", "nope")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var row map[string]any
+		if err := json.Unmarshal(raw, &row); err != nil {
+			t.Fatal(err)
+		}
+		if row["status"] != "rejected" {
+			t.Fatalf("got status %v", row["status"])
+		}
+	})
+	t.Run("applied_blocked", func(t *testing.T) {
+		store := &cascadeRejectStore{currentStatus: "applied", casOK: false}
+		uc := NewL4CascadeUsecase(L4CascadeDeps{Proposals: store, Reader: store, Mutator: store, Saga: store, LG: loggateway.NewNoop()})
+		_, err := uc.Reject(context.Background(), "cp1", "r1", "nope")
+		if err != ErrCascadeRejectNotAllowed {
+			t.Fatalf("expected ErrCascadeRejectNotAllowed, got %v", err)
+		}
+	})
+}
+
+type cascadeRejectStore struct {
+	cascadeGraphStoreMock
+	currentStatus string
+	casOK         bool
+}
+
+func (m *cascadeRejectStore) CompareAndSwapProposalStatus(_ context.Context, id string, _ []string, toStatus, reviewer, note string) ([]byte, bool, error) {
+	if !m.casOK {
+		b, _ := json.Marshal(map[string]any{"id": id, "status": m.currentStatus})
+		return b, false, nil
+	}
+	b, _ := json.Marshal(map[string]any{"id": id, "status": toStatus, "reviewed_by": reviewer, "review_note": note})
+	return b, true, nil
 }

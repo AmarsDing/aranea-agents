@@ -21,16 +21,18 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 | `internal/biz` | `MemoryAdminUsecase`、`L4GraphUsecase`、`MemoryUsecase`(pgvector)、`memory_worker.go` |
 | `internal/agent` | `trpc_build.go`、`l4_prompt.go` |
 | `internal/memory/trpc` | `sqlite_adapter.go` |
-| `internal/data/sessionmemory` | L0–L4 表；Admin + 框架 adapter **共用** |
+| `internal/data/memory_shim_*.go` | L0–L4 表；Admin + 框架 adapter **共用**（原 `sessionmemory` 包已折叠） |
 | `internal/runtime` | `memory_set.go` |
 
 ### 1.2 主从关系（已定稿）
 
-- **Runner**：`MemorySet.TRPC` = `NewSQLiteMemoryService(sessionmemory.Store)`
-- **治理**：`MemorySet.Admin` = `SessionAdminStore`（L0–L4 子接口组合）
-- **Prompt 注入**：`MemorySet.L2Recall` / `L3Recall` = `MemoryL2RecallUsecase` / `MemoryL3RecallUsecase`
+- **Runner**：`MemorySet.TRPC` = `memtrpc.NewMemoryService(L3FactReader, L3FactWriter, …)`
+- **治理**：`MemorySet.Admin` = `SessionAdminStore`（L0–L4 子接口组合；细粒度端口渐进采用）
+- **Prompt 注入**：`MemorySet.L2Recall` / `L3Recall` / `CompositeRecall` = recall usecases
 - **L3 索引**：`data.NewMemoryFactIndexSync` → pgvector（可选）+ `memory_facts.embedding_blob`
 - **可选 pgvector**：`MemoryUsecase`；trpc Search 可选轨，**非** prompt 主路径
+- **写策略**：trpc Add/Update/Delete/Clear 经 `assertL3WriteAllowed`；AutoMemory/feedback 尊重 `WriteL3Facts`/`AnyWrite`
+- **Admin ACL**：scope 类 RPC 经 `authorizeMemoryScope`（user/workspace/global + workspace 字段）
 
 ### 1.3 全局代码锚点
 
@@ -78,7 +80,7 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 | TurnMemoryWorker 入队 | ✅ |
 | LLM 提取管道 | ✅ MVP（LLM→启发式链 + fallback 指标） |
 | AutoMemoryQueue 优先级 / Dead-Letter（MEM-OPT-03） | ✅ 三优先级 + 租户配额 + Dead-Letter 持久化 + Replay RPC + 自动重放 cron + Wire Sink 连通 |
-| Auto-memory upsert 失败重试 | ✅ 任一 fact 失败 fail job |
+| Auto-memory upsert 失败重试 | ✅ 任一 fact/episode upsert 失败 → 事务失败 → job 可重试/死信（`memory_maintenance_adapter`） |
 | SessionAdminStore 子接口拆分 | 🟡 L0–L4 接口已拆；typed RecallHit 渐进 |
 | Memory Center 前端 | ✅ Cascade Tab + Knowledge/Session/Debug/WorkerStatus/DeadLetter/PlatformSettings 已接入；Graph Tab 需 feature flag；Store action 全覆盖（31 RPC → Store 封装）；前后端契约对齐（types.ts + api.ts wire key = proto snake_case） |
 | 存储三写收敛 | ✅ facts 权威 + legacy backfill + pgvector 索引 |
@@ -204,7 +206,7 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 
 | 路径 | 说明 |
 |------|------|
-| `internal/data/sessionmemory/store_legacy_backfill.go` | Legacy entity → `memory_facts` |
+| `internal/data/memory_migrate.go` | Legacy entity → `memory_facts`（含 backfill） |
 | `internal/data/schema_migrations.go` | Ent `SchemaMigration` 读写 · version gate |
 | `internal/cronrunner/jobs/memory_data_migration.go` | HTTP listen 后一次性数据迁移 worker |
 | `internal/data/memory_migrate.go` | `RunLegacyTRPCMemoryMigration` |

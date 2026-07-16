@@ -106,9 +106,13 @@ func (s *MemoryService) ListPIIFlaggedFacts(ctx context.Context, req *v1.ListPII
 	if scopeType == "" {
 		return nil, apierror.BadRequest(apierror.DomainMemory, "scope_type is required")
 	}
+	scopeID, err := authorizeMemoryScope(ctx, scopeType, req.GetScopeId(), false)
+	if err != nil {
+		return nil, err
+	}
 	rows, total, err := s.admin.ListPIIFlaggedFacts(ctx,
 		scopeType,
-		strings.TrimSpace(req.GetScopeId()),
+		scopeID,
 		req.GetLimit(),
 		req.GetOffset(),
 	)
@@ -139,9 +143,13 @@ func (s *MemoryService) ListConflictingFacts(ctx context.Context, req *v1.ListCo
 	if scopeType == "" {
 		return nil, apierror.BadRequest(apierror.DomainMemory, "scope_type is required")
 	}
+	scopeID, err := authorizeMemoryScope(ctx, scopeType, req.GetScopeId(), false)
+	if err != nil {
+		return nil, err
+	}
 	rows, total, err := s.admin.ListConflictingFacts(ctx,
 		scopeType,
-		strings.TrimSpace(req.GetScopeId()),
+		scopeID,
 		req.GetLimit(),
 		req.GetOffset(),
 	)
@@ -278,9 +286,18 @@ func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryF
 	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
+	scopeType := strings.TrimSpace(req.GetScopeType())
+	scopeID, err := authorizeMemoryScope(ctx, scopeType, req.GetScopeId(), false)
+	if err != nil {
+		return nil, err
+	}
+	// Non-admin empty scope_type is forced to user scope by authorizeMemoryScope.
+	if scopeType == "" && scopeID != "" {
+		scopeType = "user"
+	}
 	rows, total, lim, off, err := s.admin.ListFactRows(ctx, biz.ListFactRowsParams{
-		ScopeType: strings.TrimSpace(req.GetScopeType()),
-		ScopeID:   strings.TrimSpace(req.GetScopeId()),
+		ScopeType: scopeType,
+		ScopeID:   scopeID,
 		Kind:      strings.TrimSpace(req.GetKind()),
 		Status:    strings.TrimSpace(req.GetStatus()),
 		Keyword:   strings.TrimSpace(req.GetKeyword()),
@@ -310,10 +327,22 @@ func (s *MemoryService) ListMemoryEntities(ctx context.Context, req *v1.ListMemo
 	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
+	scopeType := strings.TrimSpace(req.GetScopeType())
+	scopeID, err := authorizeMemoryScope(ctx, scopeType, req.GetScopeId(), false)
+	if err != nil {
+		return nil, err
+	}
+	if scopeType == "" && scopeID != "" {
+		scopeType = "user"
+	}
+	wsID, err := authorizeMemoryWorkspaceField(ctx, req.GetWorkspaceId())
+	if err != nil {
+		return nil, err
+	}
 	rows, total, err := s.admin.ListEntityRows(ctx, biz.ListEntityRowsParams{
-		ScopeType:   strings.TrimSpace(req.GetScopeType()),
-		ScopeID:     strings.TrimSpace(req.GetScopeId()),
-		WorkspaceID: strings.TrimSpace(req.GetWorkspaceId()),
+		ScopeType:   scopeType,
+		ScopeID:     scopeID,
+		WorkspaceID: wsID,
 		UserID:      strings.TrimSpace(req.GetUserId()),
 		EntityType:  strings.TrimSpace(req.GetEntityType()),
 		Status:      strings.TrimSpace(req.GetStatus()),
@@ -870,11 +899,20 @@ func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemo
 	if f == nil {
 		return nil, apierror.BadRequest(apierror.DomainMemory, "fact is required")
 	}
+	scopeType := strings.TrimSpace(f.GetScopeType())
+	scopeID, err := authorizeMemoryScope(ctx, scopeType, f.GetScopeId(), true)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := authorizeMemoryWorkspaceField(ctx, f.GetWorkspaceId())
+	if err != nil {
+		return nil, err
+	}
 	raw, err := s.admin.UpsertFactRow(ctx, biz.FactUpsert{
 		ID:                    strings.TrimSpace(f.GetId()),
-		ScopeType:             strings.TrimSpace(f.GetScopeType()),
-		ScopeID:               strings.TrimSpace(f.GetScopeId()),
-		WorkspaceID:           strings.TrimSpace(f.GetWorkspaceId()),
+		ScopeType:             scopeType,
+		ScopeID:               scopeID,
+		WorkspaceID:           wsID,
 		UserID:                strings.TrimSpace(f.GetUserId()),
 		TeamID:                strings.TrimSpace(f.GetTeamId()),
 		AgentID:               strings.TrimSpace(f.GetAgentId()),

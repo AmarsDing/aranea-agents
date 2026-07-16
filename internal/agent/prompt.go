@@ -204,6 +204,8 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 	mcpCue := false
 	mcpBrokerCue := false
 	hasWorkspaceSearch := false
+	hasFragmentEdit := false
+	hasFileWrite := false
 	for _, it := range eff.Items {
 		if it.Enabled {
 			keys = append(keys, it.ToolKey)
@@ -217,6 +219,10 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 				mcpBrokerCue = true
 			case "search_content":
 				hasWorkspaceSearch = true
+			case "diff_edit", "patch_file":
+				hasFragmentEdit = true
+			case "replace_content", "save_file":
+				hasFileWrite = true
 			}
 		}
 	}
@@ -251,7 +257,13 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 		b.WriteString("- IMPORTANT: plan_and_execute is NOT available this session. For multi-step tasks, use subagents_spawn to delegate to sub-agents instead. Do NOT attempt to call plan_and_execute.\n")
 	}
 	if hasWorkspaceSearch && level >= cueLevelFull && !skipToolCue {
-		b.WriteString("- search_content: use to locate symbols or string literals across the workspace before listing directories; preferred order: search_content → read_file (use start_line/end_line for large files) → diff_edit (or patch_file when you have unified diff). Use save_file only for new files or small full rewrites; use replace_content for simple single replacements. Avoid list_file at repo root without a narrowed path or keyword.\n")
+		editStep := "replace_content for targeted edits (or save_file for new files / small full rewrites)"
+		if hasFragmentEdit {
+			editStep = "diff_edit (or patch_file when you have unified diff); use save_file only for new files or small full rewrites; use replace_content for simple single replacements"
+		} else if hasFileWrite {
+			editStep = "replace_content for targeted edits; use save_file for new files or small full rewrites"
+		}
+		b.WriteString("- search_content: use to locate symbols or string literals across the workspace before listing directories; preferred order: search_content → read_file (use start_line/end_line for large files) → " + editStep + ". Avoid list_file at repo root without a narrowed path or keyword.\n")
 	}
 	if level >= cueLevelFull {
 		b.WriteString("- Execution planning: state 3-7 verifiable steps before substantive edits; prefer tests or builds on affected packages when tools allow; if intent_artifact appears in session metadata, align steps with refined_goal and use search_hints for search_content queries.\n")

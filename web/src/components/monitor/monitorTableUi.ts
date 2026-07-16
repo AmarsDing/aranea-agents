@@ -20,15 +20,44 @@ export const MONITOR_EVENTS_TABLE_COLUMNS: QTableColumn<MonitorViewEvent>[] = [
   registryColActions<MonitorViewEvent>(REGISTRY_COL_W.actionsWide, ''),
 ];
 
-/** TraceList 列定义 */
+/** TraceList 列定义 — Runs 列表（OPT-05 monitor_traces 真相源，含 Token/延迟/成本） */
 export const MONITOR_TRACES_TABLE_COLUMNS: QTableColumn<MonitorTrace>[] = [
   registryCol<MonitorTrace>('name', '名称', 'name', 'left', REGISTRY_COL_W.content),
   registryCol<MonitorTrace>('agent', 'Agent', 'agent_id', 'left', REGISTRY_COL_W.nameWide),
   registryCol<MonitorTrace>('provider', 'Provider', 'provider', 'left', REGISTRY_COL_W.nameWide),
   registryCol<MonitorTrace>('model', '模型', 'model', 'left', REGISTRY_COL_W.nameWide),
+  registryCol<MonitorTrace>('tokens', 'Tokens', 'total_tokens', 'right', REGISTRY_COL_W.agent),
+  registryCol<MonitorTrace>('latency', '延迟', 'duration_ms', 'right', REGISTRY_COL_W.agent),
+  registryCol<MonitorTrace>('cost', '成本', 'total_cost_usd', 'right', REGISTRY_COL_W.agent),
   registryCol<MonitorTrace>('time', '时间', 'created_at', 'left', REGISTRY_COL_W.nameWide),
   registryColActions<MonitorTrace>(REGISTRY_COL_W.traceAction, ''),
 ];
+
+/** Extract run metrics packed into config_json by ListMonitorTraces. */
+export function traceRunMetrics(row: {
+  config_json?: string;
+  duration_ms?: number;
+  total_tokens?: number;
+  total_cost_usd?: number;
+}): { duration_ms: number; total_tokens: number; total_cost_usd: number } {
+  if (typeof row.duration_ms === 'number' || typeof row.total_tokens === 'number') {
+    return {
+      duration_ms: Number(row.duration_ms ?? 0),
+      total_tokens: Number(row.total_tokens ?? 0),
+      total_cost_usd: Number(row.total_cost_usd ?? 0),
+    };
+  }
+  try {
+    const cfg = JSON.parse(row.config_json || '{}') as Record<string, unknown>;
+    return {
+      duration_ms: Number(cfg.duration_ms ?? 0),
+      total_tokens: Number(cfg.total_tokens ?? 0),
+      total_cost_usd: Number(cfg.total_cost_usd ?? 0),
+    };
+  } catch {
+    return { duration_ms: 0, total_tokens: 0, total_cost_usd: 0 };
+  }
+}
 
 /** Trace 状态颜色 */
 export function traceStatusColor(status?: string) {

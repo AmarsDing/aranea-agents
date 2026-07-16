@@ -19,6 +19,7 @@ MCP（Model Context Protocol）服务器管理：平台注册、健康探活、A
 | `internal/mcp/metadata` | `metadata_json` 健康与重连字段合并 |
 | `internal/mcp/health` | 后台定时探活 → `MCPServerUsecase.TestMCPServer`（内部 `persistHealth`）；bounded concurrency（semaphore） |
 | `internal/mcp/alert` | 持续健康错误告警：`Publisher.MaybeEmitAfterHealth` → EventBus 信封 |
+| `internal/mcp/lifecycle` | Server 健康 Lifecycle FSM（`Transition` / `EventFromProbeStatus`）；`metadata.ApplyHealth` 经此收敛状态 |
 | `internal/mcp/classify` | MCP 工具调用分类：`IsMCPToolInvocation` + `mcp_call_count` |
 | `internal/mcp/defaults` | 全局默认常量集中（超时、间隔、重连次数等） |
 | `internal/biz` | CRUD、Effective MCP 策略、`AgentMCPTooling`、用户凭据 |
@@ -402,7 +403,8 @@ web/src/pages/McpServersPage.vue
 | `timeout_sec` | `QInput` `type=number` 或 `QSlider` | 默认 60 |
 | `enabled` | `QToggle` | 默认开 |
 | `require_user_credentials` | `QToggle` | 副文案：每个用户须配置自己的凭据，否则无法使用 |
-| `probe_mode` | `QSelect` 或 `QBtnToggle` | `connectivity`（默认）\| `auth_aware` |
+| `probe_mode` | `QSelect` | `connectivity`（默认）\| `auth_aware` |
+| `allow_adhoc_http` | `QToggle` | 服务器级 AdHoc 开关；仍需系统设置 `mcp_allow_adhoc_http` 双门禁 |
 
 **动态键值**：`v-for` 行 + `QInput`×2 + `QBtn` `icon="delete"`；或用小型 `QTable` `hide-pagination` 内嵌编辑。
 

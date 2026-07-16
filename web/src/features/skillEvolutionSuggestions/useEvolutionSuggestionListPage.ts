@@ -12,7 +12,6 @@ export const statusOptions = [
 ];
 
 export const targetTypeOptions = [
-  { label: '全部', value: '' },
   { label: 'Skill', value: 'skill' },
   { label: 'Agent', value: 'agent' },
 ];
@@ -21,7 +20,9 @@ export function useEvolutionSuggestionListPage() {
   const store = useSkillEvolutionStore();
   const auth = useAuthStore();
 
-  const targetType = ref<EvolutionTargetType | ''>('');
+  // Default to a single target type so server pagination totals stay trustworthy.
+  // Dual-source "all" merge cannot paginate correctly across two backends.
+  const targetType = ref<EvolutionTargetType>('skill');
   const status = ref('');
   const targetId = ref('');
   const page = ref(1);
@@ -56,7 +57,7 @@ export function useEvolutionSuggestionListPage() {
   async function loadRows() {
     try {
       await store.loadSuggestions({
-        targetType: targetType.value || undefined,
+        targetType: targetType.value,
         targetId: targetId.value?.trim() || undefined,
         status: status.value?.trim() || undefined,
         page: page.value,
@@ -128,7 +129,7 @@ export function useEvolutionSuggestionListPage() {
   }
 
   function resetFilters() {
-    targetType.value = '';
+    targetType.value = 'skill';
     status.value = '';
     targetId.value = '';
     page.value = 1;

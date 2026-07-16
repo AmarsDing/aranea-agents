@@ -1036,3 +1036,8 @@ export async function reorderTaxonomy(ids: string[]): Promise<void> {
   const svc = createTaxonomyService();
   await svc.ReorderTaxonomy({ ids });
 }
+
+export async function reorderOrganization(ids: string[]): Promise<void> {
+  const svc = createOrganizationService();
+  await svc.ReorderOrganization({ ids });
+}

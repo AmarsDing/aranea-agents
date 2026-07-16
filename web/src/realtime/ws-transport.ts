@@ -30,6 +30,15 @@ export type WsDownstream = {
   monitor_event?: MonitorEvent;
 };
 
+/** Payload for MON-OPT-04 monitor.backpressure frames. */
+export type MonitorBackpressurePayload = {
+  dropped_high?: number;
+  dropped_normal?: number;
+  dropped_low?: number;
+  window_seconds?: number;
+  advice?: string;
+};
+
 /**
  * WS upstream message shape. Sent by the client over `/v1/ws` for
  * user_message/cancel/subscribe/unsubscribe/ping/enable_log/sync_request.
@@ -100,6 +109,10 @@ export type WsTransportOptions = {
    * the legacy envelope-based dispatch for monitor events.
    */
   onMonitorEvent?: (event: MonitorEvent) => void;
+  /**
+   * MON-OPT-04: server reports WS send-queue drops via type=monitor.backpressure.
+   */
+  onBackpressure?: (payload: MonitorBackpressurePayload) => void;
   /**
    * v2 chat events: dispatched when a downstream message carries a v2_event
    * envelope (type="v2_event"). The payload is the raw envelope object.
@@ -172,7 +185,15 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
         // BEFORE the legacy `server_to_client` direction check below —
         // otherwise v2 events would be silently dropped.
         if (raw.type === 'v2_event') {
-          opts.onV2Event?.(raw as unknown as V2WsEnvelope);
+          const envelope = raw as unknown as V2WsEnvelope;
+          opts.onV2Event?.(envelope);
+          // Compat: unwrap activity.bridge so non-chat consumers that still
+          // listen on onActivityEvent (graph/teams/monitor) keep working
+          // until the backend bridge is removed.
+          if (envelope.kind === 'activity.bridge' && opts.onActivityEvent) {
+            const bridged = (envelope.payload as { Event?: ActivityEvent } | undefined)?.Event;
+            if (bridged) opts.onActivityEvent(bridged);
+          }
           return;
         }
 
@@ -196,10 +217,13 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
           return;
         }
 
-        // Activity-First (AF): dispatch business-semantic ActivityEvent.
-        // This replaces the legacy activity_start/delta/done/child_start
-        // envelopes for chat events. The activity_event carries a full
-        // Activity snapshot, eliminating the need for metadata packing.
+        if (msg.type === 'monitor.backpressure') {
+          opts.onBackpressure?.((msg.payload ?? {}) as MonitorBackpressurePayload);
+          return;
+        }
+
+        // Legacy activity_event frames: optional callback for non-chat pages.
+        // Chat UI does not pass onActivityEvent (v2-only).
         if (msg.activity_event) {
           opts.onActivityEvent?.(msg.activity_event);
         }

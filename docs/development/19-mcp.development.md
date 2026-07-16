@@ -1,6 +1,6 @@
 # MCP 协议 — 开发计划
 
-> **版本**：2026-06-17 | **状态**：🟢 Phase 6 大部分已落地，仅 Lifecycle FSM 待规划
+> **版本**：2026-06-17 | **状态**：🟢 Phase 6 已落地；Lifecycle FSM 🟡（状态机 + ApplyHealth 已接入，告警/重连编排可继续收敛）
 > **需求**：[19-mcp.md](./19-mcp.md) · **设计**：[19-mcp.design.md](./19-mcp.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：I4-MCP-01 / I5-MCP-01 ✅
 > **优化计划**：[38-tools-plugin-skill-mcp-optimization.development.md](./38-tools-plugin-skill-mcp-optimization.development.md)
@@ -74,7 +74,7 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 | 探活告警 | ✅ | `mcp/alert` + Monitor 事件 `mcp.health_alert` + 持续错误判定 |
 | URL 预检 API | ✅ | `POST /v1/mcp-servers/validate` 复用 probe |
 | Probe 策略化 | ✅ | `ProbeStrategy` 接口 + `ConnectivityProbe` / `AuthAwareProbe` |
-| Lifecycle FSM | 📋 | 中长期：消除 metadata 并发写 + 告警逻辑散落，需独立 design 文档 |
+| Lifecycle FSM | 🟡 | `internal/mcp/lifecycle` 状态机 + `metadata.ApplyHealth` 经 Transition；告警/重连全量 FSM 编排仍可演进 |
 
 ---
 
@@ -184,7 +184,7 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 |---|-----|------|------|--------|------|
 | 24 | TPM-D-M1 | ~~Transport 类型化 + 单一 Codec~~ | ✅ Transport 类型化 + ToConnectionConfig 委托 + 默认超时保持一致 | P1→P2 | ✅ 2026-05-28 |
 | 25 | TPM-D-M2 | ~~Probe 策略化（Handshake Strategy）~~ | ✅ ProbeStrategy 接口 + ConnectivityProbe + AuthAwareProbe + ProbeMode 配置 + validateHTTPConfig DRY 修复 + auth_aware 无 auth 路径语义修复 | P2 | ✅ 2026-05-28 |
-| 26 | TPM-D-M3 | Health/Reconnect/Alert 统一为 Server Lifecycle FSM | 消除 metadata 并发写 + 告警逻辑散落 | P2→P3 | Wave 4 |
+| 26 | TPM-D-M3 | Health/Reconnect/Alert 统一为 Server Lifecycle FSM | ✅ 落地 `internal/mcp/lifecycle` + ApplyHealth 走 Transition；重连/告警编排可继续收敛 | P2→P3 | Wave 4 🟡 |
 
 ### 10.4 依赖与风险
 

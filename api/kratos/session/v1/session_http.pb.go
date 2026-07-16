@@ -1032,6 +1032,7 @@ func (c *SessionServiceHTTPClientImpl) UpdateSession(ctx context.Context, in *Up
 const OperationSessionV2ServiceListGraphNodes = "/kratos.session.v1.SessionV2Service/ListGraphNodes"
 const OperationSessionV2ServiceListGraphStages = "/kratos.session.v1.SessionV2Service/ListGraphStages"
 const OperationSessionV2ServiceListMemberSessions = "/kratos.session.v1.SessionV2Service/ListMemberSessions"
+const OperationSessionV2ServiceListOrphanMemberSessions = "/kratos.session.v1.SessionV2Service/ListOrphanMemberSessions"
 const OperationSessionV2ServiceListPlanBoards = "/kratos.session.v1.SessionV2Service/ListPlanBoards"
 const OperationSessionV2ServiceListPlanSteps = "/kratos.session.v1.SessionV2Service/ListPlanSteps"
 const OperationSessionV2ServiceListSteps = "/kratos.session.v1.SessionV2Service/ListSteps"
@@ -1044,6 +1045,10 @@ type SessionV2ServiceHTTPServer interface {
 	ListGraphNodes(context.Context, *ListGraphNodesV2Request) (*ListGraphNodesV2Response, error)
 	ListGraphStages(context.Context, *ListGraphStagesV2Request) (*ListGraphStagesV2Response, error)
 	ListMemberSessions(context.Context, *ListMemberSessionsV2Request) (*ListMemberSessionsV2Response, error)
+	// ListOrphanMemberSessions ListOrphanMemberSessions lists Mode B member sessions (empty team_run_id)
+	// for a spirit root session — used by fetchSessionHistory to restore orphan
+	// agent-cards after refresh.
+	ListOrphanMemberSessions(context.Context, *ListOrphanMemberSessionsV2Request) (*ListMemberSessionsV2Response, error)
 	ListPlanBoards(context.Context, *ListPlanBoardsV2Request) (*ListPlanBoardsV2Response, error)
 	ListPlanSteps(context.Context, *ListPlanStepsV2Request) (*ListPlanStepsV2Response, error)
 	// ListSteps ListSteps lists steps for a turn, task, or session.
@@ -1061,19 +1066,20 @@ type SessionV2ServiceHTTPServer interface {
 
 func RegisterSessionV2ServiceHTTPServer(s *http.Server, srv SessionV2ServiceHTTPServer) {
 	r := s.Route("/")
-	r.GET("/v2/sessions/{session_id}/tasks", _SessionV2Service_ListTasks1_HTTP_Handler(srv))
+	r.GET("/v2/sessions/{session_id}/tasks", _SessionV2Service_ListTasks0_HTTP_Handler(srv))
 	r.GET("/v2/tasks/{task_id}/turns", _SessionV2Service_ListTurns0_HTTP_Handler(srv))
 	r.GET("/v2/sessions/{session_id}/steps", _SessionV2Service_ListSteps0_HTTP_Handler(srv))
 	r.GET("/v2/tasks/{task_id}/team_stages", _SessionV2Service_ListTeamStages0_HTTP_Handler(srv))
 	r.GET("/v2/team_stages/{stage_id}/team_runs", _SessionV2Service_ListTeamRuns0_HTTP_Handler(srv))
 	r.GET("/v2/team_runs/{run_id}/member_sessions", _SessionV2Service_ListMemberSessions0_HTTP_Handler(srv))
+	r.GET("/v2/sessions/{session_id}/orphan_member_sessions", _SessionV2Service_ListOrphanMemberSessions0_HTTP_Handler(srv))
 	r.GET("/v2/tasks/{task_id}/plan_boards", _SessionV2Service_ListPlanBoards0_HTTP_Handler(srv))
 	r.GET("/v2/tasks/{task_id}/plan_steps", _SessionV2Service_ListPlanSteps0_HTTP_Handler(srv))
 	r.GET("/v2/tasks/{task_id}/graph_stages", _SessionV2Service_ListGraphStages0_HTTP_Handler(srv))
 	r.GET("/v2/graph_stages/{stage_id}/graph_nodes", _SessionV2Service_ListGraphNodes0_HTTP_Handler(srv))
 }
 
-func _SessionV2Service_ListTasks1_HTTP_Handler(srv SessionV2ServiceHTTPServer) func(ctx http.Context) error {
+func _SessionV2Service_ListTasks0_HTTP_Handler(srv SessionV2ServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListTasksV2Request
 		if err := ctx.BindQuery(&in); err != nil {
@@ -1205,6 +1211,28 @@ func _SessionV2Service_ListMemberSessions0_HTTP_Handler(srv SessionV2ServiceHTTP
 	}
 }
 
+func _SessionV2Service_ListOrphanMemberSessions0_HTTP_Handler(srv SessionV2ServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListOrphanMemberSessionsV2Request
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationSessionV2ServiceListOrphanMemberSessions)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListOrphanMemberSessions(ctx, req.(*ListOrphanMemberSessionsV2Request))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListMemberSessionsV2Response)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _SessionV2Service_ListPlanBoards0_HTTP_Handler(srv SessionV2ServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListPlanBoardsV2Request
@@ -1297,6 +1325,10 @@ type SessionV2ServiceHTTPClient interface {
 	ListGraphNodes(ctx context.Context, req *ListGraphNodesV2Request, opts ...http.CallOption) (rsp *ListGraphNodesV2Response, err error)
 	ListGraphStages(ctx context.Context, req *ListGraphStagesV2Request, opts ...http.CallOption) (rsp *ListGraphStagesV2Response, err error)
 	ListMemberSessions(ctx context.Context, req *ListMemberSessionsV2Request, opts ...http.CallOption) (rsp *ListMemberSessionsV2Response, err error)
+	// ListOrphanMemberSessions ListOrphanMemberSessions lists Mode B member sessions (empty team_run_id)
+	// for a spirit root session — used by fetchSessionHistory to restore orphan
+	// agent-cards after refresh.
+	ListOrphanMemberSessions(ctx context.Context, req *ListOrphanMemberSessionsV2Request, opts ...http.CallOption) (rsp *ListMemberSessionsV2Response, err error)
 	ListPlanBoards(ctx context.Context, req *ListPlanBoardsV2Request, opts ...http.CallOption) (rsp *ListPlanBoardsV2Response, err error)
 	ListPlanSteps(ctx context.Context, req *ListPlanStepsV2Request, opts ...http.CallOption) (rsp *ListPlanStepsV2Response, err error)
 	// ListSteps ListSteps lists steps for a turn, task, or session.
@@ -1351,6 +1383,22 @@ func (c *SessionV2ServiceHTTPClientImpl) ListMemberSessions(ctx context.Context,
 	pattern := "/v2/team_runs/{run_id}/member_sessions"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationSessionV2ServiceListMemberSessions))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListOrphanMemberSessions ListOrphanMemberSessions lists Mode B member sessions (empty team_run_id)
+// for a spirit root session — used by fetchSessionHistory to restore orphan
+// agent-cards after refresh.
+func (c *SessionV2ServiceHTTPClientImpl) ListOrphanMemberSessions(ctx context.Context, in *ListOrphanMemberSessionsV2Request, opts ...http.CallOption) (*ListMemberSessionsV2Response, error) {
+	var out ListMemberSessionsV2Response
+	pattern := "/v2/sessions/{session_id}/orphan_member_sessions"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationSessionV2ServiceListOrphanMemberSessions))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

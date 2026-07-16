@@ -1,6 +1,6 @@
 -- P2-B Phase 2: Add workspace_id to remaining tenant-owned platform tables.
 -- Phase 1 (20261007) covered agents/teams/graph_definitions/plugins.
--- Ent schemas already declare these columns; existing DBs need ALTER.
+-- Ent schemas already declare these columns. Existing DBs need ALTER.
 --
 -- Semantics match 20261007:
 --   * workspace_id = '' — shared / legacy (visible per AssertWorkspaceOrShared)

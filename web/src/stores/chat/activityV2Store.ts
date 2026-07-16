@@ -20,6 +20,7 @@ import {
   listTeamStagesV2,
   listTeamRunsV2,
   listMemberSessionsV2,
+  listOrphanMemberSessionsV2,
   listPlanBoardsV2,
   listPlanStepsV2,
   listGraphStagesV2,
@@ -54,6 +55,8 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   // P2-07: track sub-resource fetch failures so the UI can distinguish
   // "no data" from "failed to load" and show a partial/stale indicator.
   const hydrationErrors = ref<HydrationError[]>([]);
+  /** Cache of member session IDs whose steps were lazy-loaded (A.4.7). */
+  const loadedMemberStepSessions = ref(new Set<string>());
 
   function catchHydrationError<T>(scope: string, parentId: string): (e: unknown) => T[] {
     return (e: unknown) => {
@@ -175,8 +178,20 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   }
 
   function upsertGraphNode(gn: GraphNode) {
-    // GraphNode 没有 Version 字段；直接覆盖（事件顺序保证最新）
-    graphNodes.value.set(gn.ID, { ...gn });
+    const ex = graphNodes.value.get(gn.ID);
+    if (!ex) {
+      graphNodes.value.set(gn.ID, { ...gn });
+      return;
+    }
+    // 合并：终态事件可能不带 TeamStageID/DependsOn/Label，不得用空值擦除已有字段。
+    graphNodes.value.set(gn.ID, {
+      ...ex,
+      ...gn,
+      TeamStageID: gn.TeamStageID || ex.TeamStageID,
+      DependsOn: gn.DependsOn?.length ? gn.DependsOn : ex.DependsOn,
+      Label: gn.Label || ex.Label,
+      DagNodeID: gn.DagNodeID || ex.DagNodeID,
+    });
   }
 
   // === Streaming delta (does NOT bump version) ===
@@ -234,12 +249,23 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
 
   // === Query helpers ===
 
+  /** Primary sort: StartedAt/CreatedAt ASC; Seq as tiebreaker (streaming order). */
+  function compareByTimeThenSeq(
+    a: { Seq: number; StartedAt?: string; CreatedAt?: string },
+    b: { Seq: number; StartedAt?: string; CreatedAt?: string },
+  ): number {
+    const ta = Date.parse(a.StartedAt || a.CreatedAt || '') || 0;
+    const tb = Date.parse(b.StartedAt || b.CreatedAt || '') || 0;
+    if (ta !== tb) return ta - tb;
+    return a.Seq - b.Seq;
+  }
+
   function getSessionTasks(sessionId: string): Task[] {
     const out: Task[] = [];
     for (const t of tasks.value.values()) {
       if (t.SessionID === sessionId) out.push(t);
     }
-    return out.sort((a, b) => a.Seq - b.Seq);
+    return out.sort(compareByTimeThenSeq);
   }
 
   function getTaskTurns(taskId: string): Turn[] {
@@ -247,7 +273,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const t of turns.value.values()) {
       if (t.TaskID === taskId) out.push(t);
     }
-    return out.sort((a, b) => a.Seq - b.Seq);
+    return out.sort(compareByTimeThenSeq);
   }
 
   function getTurnSteps(turnId: string): Step[] {
@@ -255,7 +281,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const s of steps.value.values()) {
       if (s.TurnID === turnId) out.push(s);
     }
-    return out.sort((a, b) => a.Seq - b.Seq);
+    return out.sort(compareByTimeThenSeq);
   }
 
   function getTaskTeamStages(taskId: string): TeamStage[] {
@@ -263,7 +289,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const ts of teamStages.value.values()) {
       if (ts.TaskID === taskId) out.push(ts);
     }
-    return out.sort((a, b) => a.Seq - b.Seq);
+    return out.sort(compareByTimeThenSeq);
   }
 
   // 按触发 turn 查询 team stages（设计稿 §3.6.2：teamStages.filter(ts => ts.turnId === turn.id)）
@@ -272,7 +298,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const ts of teamStages.value.values()) {
       if (ts.TurnID === turnId) out.push(ts);
     }
-    return out.sort((a, b) => a.Seq - b.Seq);
+    return out.sort(compareByTimeThenSeq);
   }
 
   function getTaskPlanBoards(taskId: string): PlanBoard[] {
@@ -280,7 +306,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const pb of planBoards.value.values()) {
       if (pb.TaskID === taskId) out.push(pb);
     }
-    return out.sort((a, b) => a.Seq - b.Seq);
+    return out.sort(compareByTimeThenSeq);
   }
 
   function getTaskGraphStages(taskId: string): GraphStage[] {
@@ -288,7 +314,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const gs of graphStages.value.values()) {
       if (gs.TaskID === taskId) out.push(gs);
     }
-    return out.sort((a, b) => a.Seq - b.Seq);
+    return out.sort(compareByTimeThenSeq);
   }
 
   function getGraphStageByPlanBoard(planBoardId: string): GraphStage | undefined {
@@ -303,32 +329,34 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const ps of planSteps.value.values()) {
       if (ps.PlanID === planBoardId) out.push(ps);
     }
-    return out.sort((a, b) => a.Seq - b.Seq);
+    return out.sort(compareByTimeThenSeq);
   }
 
-  // P1 #7 修复：Step 精确匹配 MemberSession。
-  // 优先通过 Turn.TeamStageID 精确匹配（修复后后端会正确填充 Turn.TeamStageID）：
-  //   1. 找到所有 Turn.TeamStageID === MemberSession.TeamStageID 的 Turn
-  //   2. 收集 Turn ID 集合
-  //   3. 过滤 steps：Step.TurnID 在集合中 && Step.AuthorAgentKey === MemberSession.AgentKey
-  // Fallback（旧数据兼容）：如果精确匹配结果为空（Turn.TeamStageID 未修复或为空），
-  //   回退到 AuthorAgentKey + TaskID 匹配（旧逻辑，存在跨团队污染风险）。
+  // Match steps for a MemberSession.
+  // 1) Prefer Step.SessionID === MemberSession.SessionID (lazy-load / Mode B safe)
+  // 2) Else Turn.TeamStageID + AuthorAgentKey
+  // 3) Fallback AuthorAgentKey + TaskID (legacy; may cross-team)
   function getMemberSessionSteps(memberSession: MemberSession): Step[] {
     const agentKey = memberSession.AgentKey;
     const taskId = memberSession.TaskID;
+    const sessionId = memberSession.SessionID;
     if (!agentKey || !taskId) return [];
 
-    // 精确匹配：通过 Turn.TeamStageID
+    const out: Step[] = [];
+    if (sessionId) {
+      for (const s of steps.value.values()) {
+        if (s.SessionID === sessionId) out.push(s);
+      }
+      if (out.length > 0) return out.sort(compareByTimeThenSeq);
+    }
+
     const turnIds = new Set<string>();
     for (const t of turns.value.values()) {
       if (t.TeamStageID && t.TeamStageID === memberSession.TeamStageID && t.AgentKey === agentKey) {
         turnIds.add(t.ID);
       }
     }
-
-    const out: Step[] = [];
     if (turnIds.size > 0) {
-      // 精确匹配路径
       for (const s of steps.value.values()) {
         if (turnIds.has(s.TurnID) && s.AuthorAgentKey === agentKey) {
           out.push(s);
@@ -336,7 +364,6 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       }
     }
 
-    // Fallback：旧数据兼容（Turn.TeamStageID 未修复或为空时）
     if (out.length === 0) {
       for (const s of steps.value.values()) {
         if (s.AuthorAgentKey === agentKey && s.TaskID === taskId) {
@@ -345,7 +372,46 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       }
     }
 
-    return out.sort((a, b) => a.Seq - b.Seq);
+    return out.sort(compareByTimeThenSeq);
+  }
+
+  /** Mode B / orphan: member sessions on a task not rendered under any TeamRun.
+   *  Also hosts Mode B cards with empty TaskID on the session's running (else latest) task. */
+  function getTaskOrphanMemberSessions(taskId: string): MemberSession[] {
+    const task = tasks.value.get(taskId);
+    if (!task) return [];
+
+    const shown = new Set<string>();
+    for (const tr of teamRuns.value.values()) {
+      if (tr.TaskID !== taskId) continue;
+      for (const ms of memberSessions.value.values()) {
+        if (ms.TeamRunID === tr.ID) shown.add(ms.ID);
+      }
+    }
+
+    const sessionTasks = getSessionTasks(task.SessionID);
+    const host =
+      sessionTasks.find((t) => t.Status === 'running') ?? sessionTasks[sessionTasks.length - 1] ?? null;
+    const isHost = host?.ID === taskId;
+
+    const out: MemberSession[] = [];
+    for (const ms of memberSessions.value.values()) {
+      if (shown.has(ms.ID)) continue;
+      if (ms.TaskID === taskId) {
+        out.push(ms);
+        continue;
+      }
+      // Mode B: empty TaskID + matching spirit session → host on latest/running task
+      if (
+        isHost &&
+        !ms.TaskID &&
+        !ms.TeamRunID &&
+        ms.SpiritSessionID === task.SessionID
+      ) {
+        out.push(ms);
+      }
+    }
+    return out.sort(compareByTimeThenSeq);
   }
 
   function getGraphStageNodes(graphStageId: string): GraphNode[] {
@@ -361,7 +427,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const tr of teamRuns.value.values()) {
       if (tr.TeamStageID === teamStageId) out.push(tr);
     }
-    return out.sort((a, b) => a.Seq - b.Seq);
+    return out.sort(compareByTimeThenSeq);
   }
 
   function getTeamRunMemberSessions(teamRunId: string): MemberSession[] {
@@ -369,7 +435,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const ms of memberSessions.value.values()) {
       if (ms.TeamRunID === teamRunId) out.push(ms);
     }
-    return out.sort((a, b) => a.Seq - b.Seq);
+    return out.sort(compareByTimeThenSeq);
   }
 
   // === Bulk operations ===
@@ -423,21 +489,19 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     planSteps.value.clear();
     graphStages.value.clear();
     graphNodes.value.clear();
+    loadedMemberStepSessions.value.clear();
   }
 
   // === History fetch (page refresh / WS reconnect) ===
 
   /**
-   * fetchSessionHistory loads the full v2 entity tree for a session:
-   *   - Top level (parallel): tasks + steps for the session
-   *   - Per task (parallel): turns + team_stages + plan_boards + plan_steps + graph_stages
-   *   - Per team_stage (parallel): team_runs
-   *   - Per team_run (parallel): member_sessions
-   *   - Per graph_stage (parallel): graph_nodes
-   *
-   * Isolated failures at child levels are caught and recorded in
-   * hydrationErrors (P2-07 fix) so the UI can show a partial/stale
-   * indicator. Top-level task/step failures propagate.
+   * fetchSessionHistory loads the v2 entity tree for a spirit (root) session:
+   *   - Top level: tasks + root-session steps only (SessionID = spirit session)
+   *   - Per task: turns + team_stages + plan_boards + plan_steps + graph_stages
+   *   - Per team_stage: team_runs → member_sessions (metadata only)
+   *   - Mode B: orphan member_sessions (empty TeamRunID) by spirit session
+   *   - Per graph_stage: graph_nodes
+   * Member step content is lazy-loaded via ensureMemberStepsLoaded on expand (A.4.7).
    */
   async function fetchSessionHistory(sessionId: string): Promise<void> {
     // P2-07: clear previous hydration errors at the start of each fetch.
@@ -496,6 +560,12 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       for (const ms of sessions) upsertMemberSession(ms);
     }
 
+    // Mode B: orphan member sessions (empty TeamRunID) for this spirit session.
+    const orphans = await listOrphanMemberSessionsV2(sessionId).catch(
+      catchHydrationError<MemberSession>('orphan_member_sessions', sessionId),
+    );
+    for (const ms of orphans) upsertMemberSession(ms);
+
     // Per graph_stage: fetch graph_nodes (parallel). Isolated failures → [] + error.
     const graphNodeLists = await Promise.all(
       allGraphStages.map((gs) => listGraphNodesV2(gs.ID).catch(catchHydrationError<GraphNode>('graph_nodes', gs.ID))),
@@ -503,6 +573,27 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const nodes of graphNodeLists) {
       for (const gn of nodes) upsertGraphNode(gn);
     }
+  }
+
+  /** Lazy-load steps for member/child sessions (A.4.7). Cache-aware. */
+  async function ensureMemberStepsLoaded(sessionIds: string[]): Promise<void> {
+    const pending = sessionIds.filter((id) => id && !loadedMemberStepSessions.value.has(id));
+    if (pending.length === 0) return;
+    await Promise.all(
+      pending.map(async (sid) => {
+        try {
+          const list = await listStepsV2(sid);
+          for (const s of list) upsertStep(s);
+          loadedMemberStepSessions.value.add(sid);
+        } catch (e) {
+          hydrationErrors.value.push({
+            scope: 'member_steps',
+            parentId: sid,
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }),
+    );
   }
 
   return {
@@ -538,12 +629,14 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     getGraphStageByPlanBoard,
     getPlanBoardSteps,
     getMemberSessionSteps,
+    getTaskOrphanMemberSessions,
     getGraphStageNodes,
     getTeamStageTeamRuns,
     getTeamRunMemberSessions,
     clearSession,
     clearAll,
     fetchSessionHistory,
+    ensureMemberStepsLoaded,
     hydrationErrors,
   };
 });

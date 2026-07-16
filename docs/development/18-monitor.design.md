@@ -24,7 +24,7 @@
 | Runner 指标 | `monitor_events`（`runner.completion` 聚合） | HTTP REST | `GetRunnerMetrics`；Usage Tab 顶部面板 |
 | Events | `monitor_events` 表 + WS 推送 | HTTP REST + WebSocket | 持久化事件 + 实时运行事件（方案 C 过滤 completion） |
 | Usage | `model_token_usage_events` / `model_token_usage_daily` | HTTP REST（`UsageService`） | 模型用量总览、趋势、Top 排行 |
-| Runs（Traces Tab） | `model_token_usage_events`（`metadata_json.spans`） | HTTP REST + WS `flow_log` | 单次运行真相源；瀑布图与 FlowLog **同源 Span 投影** |
+| **Runs（Traces Tab）** | `monitor_traces`（OPT-05 投影；列表含 duration/tokens/cost）+ WS `flow_log` | HTTP REST + WS `flow_log` | 单次运行真相源（方案 C 原写 usage events；OPT-05 后以 traces 投影为主，usage 经 correlation 关联） |
 | **Flow 流程日志** | WS `flow_log` | WebSocket | 业务时间线；Logs **流程** 二级 Tab；[52-flow-logger.design](./52-flow-logger.design.md) |
 | **Process 进程日志** | WS `log` | WebSocket + `enable_log` | Gateway/插件 stderr；Logs **进程** 二级 Tab |
 | **自检 SelfCheck** | 内置 Checker 插件 | 定时（5 min） | 周期性子系统健康检查 + 自动修复 |
@@ -435,7 +435,7 @@ web/src/
 | **Alerts** | `MonitorAlertRules` | `ListMonitorAlertRules` / `PutMonitorAlertRules` |
 | **Audit** | `AuditTable` | `MonitorService.ListAuditLogs` |
 | **Events** | `RealtimeEvents` | WS + `ListMonitorEvents`（告警；completion 降级） |
-| **Runs（Traces）** | `TraceList` | `UsageService.ListUsageEvents`（单次运行真相源） |
+| **Runs（Traces）** | `TraceList` | `MonitorService.ListMonitorTraces`（OPT-05；含 duration/tokens/cost） |
 | **Logs** | `LogStreamPanel` → `FlowLogStream` / `ProcessLogStream` | 共享 WS Hub + `flow_log` / `log` 分流 |
 
 ### 7.3 Quasar 组件映射
@@ -592,7 +592,7 @@ Chat Turn 结束
 | 模块 | 关系 |
 |------|------|
 | [52-flow-logger](./52-flow-logger.design.md) | `trace_id` 对齐；排障在 Runs 详情 Flow Tab |
-| Usage | Runs 列表即 `ListUsageEvents`；与 Events 分流 |
+| Usage | Runs 列表为 `ListMonitorTraces`（OPT-05）；用量明细仍走 `ListUsageEvents`；与 Events 分流 |
 | Alerts / Memory | 仍消费 `runner.completion` 落库 |
 
 ### 9.7 非目标（Phase 1d）

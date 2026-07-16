@@ -88,7 +88,7 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 | §6.2 | Hedge 低延迟 | ✅ | `wrapHedge` + `trpchedge.New` + `WithSwitchCallback` 事件 |
 | §6.3 | TokenTailor | ✅ | `WithEnableTokenTailoring` 透传 + Strategy + SafetyMargin |
 | §6.4 | 多模型注册 | ✅ | 5 种已注册 Provider 可正常调用 |
-| §6.5 | IterModel 优化 | ⏳ 未实现 | 未检查 IterModel 接口支持 |
+| — | IterModel 优化 | ✅ | `WrapModelWithMetrics` 在 inner 实现 `IterModel` 时返回 `metricsIterModel`，保留迭代路径 |
 | — | 5 种原生 Provider + 4 种 Variant | ✅ | `MapProviderType` + `trpcprovider.Model` 工厂 |
 | — | Provider 专属选项构建 | ✅ | `buildOpenAISpecificOptions` / `buildAnthropicSpecificOptions` / `buildGeminiSpecificOptions` / `buildOllamaSpecificOptions` / `buildHunyuanSpecificOptions` |
 | — | ProviderModelConfig 扩展 | ✅ | `catalog.go` ProviderModelConfig 含 Variant / SecretID / SecretKey / AWSRegion / HA / Retry / CB / RateLimit / Capabilities |
@@ -221,8 +221,8 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 | R1 | useProviderWizard 仍 527 行 | P3 | 可继续拆 `populateProviderForm`+`resetProviderForm` → `useProviderFormLifecycle.ts` |
 | R2 | DecryptConfigJSONForRuntime 降级策略 | P3 | 当前解密失败仍返回原 JSON（降级），可考虑在 Inspect 场景返回 error 而非降级 |
 | R3 | AgentRuntimeSettings / RalphLoopSettings 测试失败 | P2 | 非本次改动引起，需单独排查 |
-| R4 | IterModel 优化 | P3 | 当前代码未检查模型是否支持 IterModel 接口，所有模型统一使用 channel 模式 |
-| R5 | HuggingFace / Bedrock Provider 注册 | P3 | trpc provider 工厂未注册；前端预设已预留；register_extra.go + MapProviderType 已就绪 |
+| R4 | IterModel 优化 | ✅ | `WrapModelWithMetrics` 透传 IterModel（`metricsIterModel`） |
+| R5 | HuggingFace / Bedrock Provider 注册 | ✅ | `RegisterExtraProviders` 启动注册；前端预设已预留 |
 
 ---
 
@@ -349,8 +349,8 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 | P1 | 接入层限流与配额统一；决策层路由引擎（能力/成本/延迟策略） | Provider 类型枚举统一 | ⏳ |
 | P2 | 跨厂商降级链配置化；熔断策略 LLM 特化；负载均衡按 token 加权 | P1 | ⏳ |
 | P3 | 语义缓存（可选）；全链路 trace 与成本归因；独立路由服务（可选） | P2 | ⏳ |
-| P3 | IterModel 优化（支持迭代模式减少 channel 开销） | trpc-agent-go 框架支持 | ⏳ |
-| P3 | HuggingFace / Bedrock Provider 启用 | trpc 上游注册到 provider 工厂 | ⏳ |
+| P3 | IterModel 优化（支持迭代模式减少 channel 开销） | ✅ WrapModelWithMetrics 透传 | ✅ |
+| P3 | HuggingFace / Bedrock Provider 启用 | ✅ RegisterExtraProviders | ✅ |
 
 ---
 

@@ -272,7 +272,7 @@ var (
 type bitemporalSettingsLoader struct{}
 
 func (l *bitemporalSettingsLoader) GetAgentRuntimeSettings(_ context.Context, _ string) (*biz.AgentRuntimeSettings, error) {
-	return &biz.AgentRuntimeSettings{MemoryEnabled: true}, nil
+	return &biz.AgentRuntimeSettings{MemoryEnabled: true, L3Enabled: true}, nil
 }
 
 func newBitemporalService() (trpcmemory.Service, *bitemporalMockStore) {

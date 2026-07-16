@@ -3,11 +3,11 @@
     <q-card-section class="q-pb-sm">
       <div class="command-center-stat-panel__header">
         <q-icon
-          name="chat"
+          name="toll"
           size="16px"
           class="command-center-stat-panel__icon command-center-stat-panel__icon--session"
         />
-        <span class="command-center-stat-panel__title">今日调用</span>
+        <span class="command-center-stat-panel__title">{{ t('overviewPage.sessionPanelTitle') }}</span>
       </div>
     </q-card-section>
     <q-card-section class="q-pt-none">
@@ -16,7 +16,7 @@
       </div>
       <template v-else>
         <div class="command-center-stat-panel__big-value">{{ todayCallCount }}</div>
-        <div class="command-center-stat-panel__caption">模型调用次数 · 近期趋势</div>
+        <div class="command-center-stat-panel__caption">{{ sparklineCaption }}</div>
         <div v-if="sparkline.length > 1" class="command-center-stat-panel__sparkline">
           <svg viewBox="0 0 100 24" preserveAspectRatio="none" class="command-center-stat-panel__sparkline-svg">
             <polyline
@@ -36,12 +36,22 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   todayCallCount: number;
   sparkline: number[];
+  sparklineGranularity?: 'hour' | 'day' | string;
   loading: boolean;
 }>();
+
+const sparklineCaption = computed(() => {
+  if (props.sparklineGranularity === 'hour') return t('overviewPage.sessionPanelCaptionHour');
+  if (props.sparklineGranularity === 'day') return t('overviewPage.sessionPanelCaptionDay');
+  return t('overviewPage.sessionPanelCaptionRecent');
+});
 
 const sparklinePoints = computed(() => {
   if (props.sparkline.length < 2) return '';

@@ -5,20 +5,20 @@ import (
 	"strings"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	"aranea-agents/internal/biz"
+	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
 // PauseSession pauses a running chat session (running → paused).
 //
-// MVP implementation:
-//  1. Validate session_id.
-//  2. Look up the current run status; if not 'running' or 'streaming',
-//     return Conflict.
-//  3. Cancel the active runner via orch.CancelRun — this stops the in-flight
-//     turn. (trpc-agent-go does not natively support framework-level pause.)
-//  4. Publish run_status notice with status=paused so the frontend AgentCard
-//     re-renders with the resume affordance.
+// Implementation:
+//  1. Validate session_id and active run status (running/streaming).
+//  2. Cancel the active runner via orch.CancelRun.
+//  3. Sync MemberSession v2 status → paused (when session is a team member).
+//  4. Publish run_status on the spirit root session (WS subscribers watch spirit),
+//     with Meta.chat_session_id so the frontend can patch MemberSession cards.
 //
 // Note: true "resume from checkpoint" requires trpc-agent-go native pause
 // support. ResumeSession therefore relies on the user sending a new message
@@ -32,7 +32,6 @@ func (s *ChatService) PauseSession(ctx context.Context, req *chatv1.PauseSession
 		return nil, apierror.Internal(apierror.DomainChat, "orchestrator not configured")
 	}
 
-	// Validate there is an active run that can be paused.
 	runID, status, _, _, ok := s.orch.GetRunStatus(ctx, sessionID)
 	if !ok {
 		return nil, apierror.Conflict(apierror.DomainChat, "session %s has no active run to pause", sessionID)
@@ -53,30 +52,21 @@ func (s *ChatService) PauseSession(ctx context.Context, req *chatv1.PauseSession
 		)
 	}
 
-	// Publish run_status notice (paused) so the frontend re-renders the
-	// AgentCard tail with the resume affordance. We use a fresh runID from
-	// GetRunStatus (in case CancelRun cleared it).
 	publishRunID := runID
 	if publishRunID == "" {
 		publishRunID = sessionID
 	}
-	s.setRunStatus(ctx, sessionID, publishRunID, "paused", "")
+	s.syncMemberSessionStatus(ctx, sessionID, biz.MemberSessionStatusPaused)
+	s.publishPauseResumeStatus(ctx, sessionID, publishRunID, "paused")
 
 	return &chatv1.PauseSessionResponse{Paused: true}, nil
 }
 
 // ResumeSession resumes a paused chat session (paused → running).
 //
-// MVP implementation:
-//  1. Validate session_id.
-//  2. Look up the current run status; if not 'paused', return Conflict.
-//  3. Publish run_status notice with status=running so the frontend
-//     AgentCard re-renders with the pause affordance.
-//
-// Note: MVP does NOT automatically re-trigger execution. The user must send
-// a new message to actually restart the turn. This RPC exists primarily to
-// flip the run-status marker so the UI affordance switches back to "running"
-// state (showing pause + dialog, hiding resume).
+// MVP does NOT automatically re-trigger execution. The user must send a new
+// message to actually restart the turn. This RPC flips the run-status marker
+// and MemberSession status so the UI affordance switches back to running.
 func (s *ChatService) ResumeSession(ctx context.Context, req *chatv1.ResumeSessionRequest) (*chatv1.ResumeSessionResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
@@ -98,7 +88,67 @@ func (s *ChatService) ResumeSession(ctx context.Context, req *chatv1.ResumeSessi
 	if publishRunID == "" {
 		publishRunID = sessionID
 	}
-	s.setRunStatus(ctx, sessionID, publishRunID, "running", "")
+	s.syncMemberSessionStatus(ctx, sessionID, biz.MemberSessionStatusRunning)
+	s.publishPauseResumeStatus(ctx, sessionID, publishRunID, "running")
 
 	return &chatv1.ResumeSessionResponse{Resumed: true}, nil
+}
+
+// resolveSpiritSessionID returns RootSessionID when present, otherwise sessionID.
+func (s *ChatService) resolveSpiritSessionID(ctx context.Context, sessionID string) string {
+	if s.orch == nil {
+		return sessionID
+	}
+	sess, err := s.orch.td().Sessions.Get(ctx, sessionID)
+	if err != nil {
+		return sessionID
+	}
+	if root := strings.TrimSpace(sess.RootSessionID); root != "" {
+		return root
+	}
+	return sessionID
+}
+
+// publishPauseResumeStatus updates the run registry for chatSessionID and
+// publishes run_status on the spirit root so Chat WS subscribers receive it.
+// Meta.chat_session_id identifies the member/chat session that was paused/resumed.
+func (s *ChatService) publishPauseResumeStatus(ctx context.Context, chatSessionID, runID, status string) {
+	spiritID := s.resolveSpiritSessionID(ctx, chatSessionID)
+	// Registry key must remain the chat session so ResumeSession GetRunStatus works.
+	if s.orch.runs != nil {
+		s.orch.runs.SetStatus(chatSessionID, runID, status, "")
+	}
+	_ = s.orch.runStatus().PersistRunStatus(ctx, chatSessionID, runID, status, "")
+	meta := map[string]any{
+		"run_id":          runID,
+		"status":          status,
+		"chat_session_id": chatSessionID,
+		"notice_type":     "info",
+	}
+	if bus := s.orch.td().Pipeline.EventBus; bus != nil {
+		bus.Publish(ctx, biz.NewRunStatusEvent(spiritID, runID, status, meta))
+	}
+}
+
+// syncMemberSessionStatus publishes member_session.updated via Sequencer
+// (persist + WS) when the paused/resumed session belongs to a team member.
+func (s *ChatService) syncMemberSessionStatus(ctx context.Context, chatSessionID string, status biz.MemberSessionStatus) {
+	repo := s.memberSessions
+	if repo == nil && s.orch != nil {
+		repo = s.orch.memberSessions()
+	}
+	var seq rt.EventPublisher
+	if s.orch != nil {
+		seq = s.orch.v2Seq
+	}
+	if repo == nil || seq == nil {
+		return
+	}
+	ms, err := repo.GetMemberSessionByChatSessionID(ctx, chatSessionID)
+	if err != nil {
+		return
+	}
+	ms.Status = status
+	ms.Version++
+	seq.Publish(ctx, biz.NewMemberSessionUpdatedEvent(ms))
 }

@@ -15,6 +15,8 @@
       :team-run="tr"
       @pause-agent="(sid) => $emit('pause-agent', sid)"
       @inject-agent="(p) => $emit('inject-agent', p)"
+      @retry-team="(teamId) => $emit('retry-team', teamId)"
+      @expand="(ids) => $emit('expand', ids)"
     />
   </div>
 </template>
@@ -30,6 +32,8 @@ const props = defineProps<{ teamStage: TeamStage }>();
 defineEmits<{
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
+  'retry-team': [teamId: string];
+  expand: [sessionIds: string[]];
 }>();
 const store = useActivityQueries();
 const teamRuns = computed(() => store.getTeamStageTeamRuns(props.teamStage.ID));

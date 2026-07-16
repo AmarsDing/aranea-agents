@@ -26,7 +26,7 @@ type CompositeRecallHit struct {
 	Version        int
 }
 
-// SessionCompositeRecallStore loads fused L2+L3 candidates (implemented by sessionmemory.Store).
+// SessionCompositeRecallStore loads fused L2+L3 candidates (implemented by data memory_shim adapters).
 type SessionCompositeRecallStore interface {
 	CompositeSearchMemories(ctx context.Context, agentID, sessionID, userID, query string, limit int32) ([]CompositeRecallStoreRow, error)
 }

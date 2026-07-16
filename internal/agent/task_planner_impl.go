@@ -12,6 +12,7 @@ import (
 
 	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -23,7 +24,6 @@ type taskPlannerImpl struct {
 	repo           biz.TaskPlanRepository
 	catalog        *biz.LlmProviderModelUsecase
 	httpClient     *http.Client
-	bus            biz.ActivityEventBus
 	orchCache      *biz.OrchestrationCache
 	lg             loggateway.Logger
 	plannerSetting PlannerModelLookup
@@ -35,7 +35,7 @@ type taskPlannerImpl struct {
 var _ biz.TaskPlannerPort = (*taskPlannerImpl)(nil)
 
 // NewTaskPlanner creates a new TaskPlanner implementation.
-func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, bus biz.ActivityEventBus, orchCache *biz.OrchestrationCache, lg loggateway.Logger, plannerSetting PlannerModelLookup, seq v2.SequencerPublisher) biz.TaskPlannerPort {
+func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, orchCache *biz.OrchestrationCache, lg loggateway.Logger, plannerSetting PlannerModelLookup, seq v2.SequencerPublisher) biz.TaskPlannerPort {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
@@ -43,7 +43,6 @@ func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUs
 		repo:           repo,
 		catalog:        catalog,
 		httpClient:     httpClient,
-		bus:            bus,
 		orchCache:      orchCache,
 		lg:             lg,
 		plannerSetting: plannerSetting,
@@ -1190,75 +1189,14 @@ func stripDecompositionFences(s string) string {
 	return s
 }
 
-// publishPlanCreated publishes the spirit_plan_created event after a TaskPlan is persisted.
-// The spirit_team_assembled event is NOT published here — it is only published by
-// SpiritTeamAssembler when a real team is actually created, preventing ghost team
-// entries in the frontend with fake plan IDs.
+// publishPlanCreated is retained as a no-op hook after TaskPlan persist.
+// UI plan/graph boards are published exclusively via PublishV2Board (v2
+// PlanBoard/GraphStage events). The legacy ActivityEventBus plan activity
+// path has been removed.
 func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.TaskPlan, chatSessionID string) {
-	if impl.bus == nil || plan == nil {
-		return
-	}
-	spiritSessionID := plan.SpiritSessionID
-
-	// Use chatSessionID as the primary SessionID so the plan activity appears
-	// in the chat session timeline. The frontend WebSocket subscription filters
-	// by chat session ID, so plan status updates (from updatePlanStepForTeam)
-	// must also use this SessionID to reach the frontend in real time.
-	// Falls back to spiritSessionID when chatSessionID is empty (pre-existing
-	// behavior for paths that don't have the chat session ID).
-	sessionID := chatSessionID
-	if sessionID == "" {
-		sessionID = spiritSessionID
-	}
-
-	// Map plan.SubTasks → []ActivityPlanStep so the frontend PlanBlock can render
-	// the task decomposition list (design m59-chat-ui-v7.html "任务拆解" section).
-	// Without this, the PlanBlock only shows an empty header.
-	steps := make([]biz.ActivityPlanStep, 0, len(plan.SubTasks))
-	for _, st := range plan.SubTasks {
-		steps = append(steps, biz.ActivityPlanStep{
-			ID:        st.ID,
-			Label:     st.Name,
-			Status:    biz.ActivityStatusPending,
-			DependsOn: st.DependsOn,
-		})
-	}
-
-	// Resolve the root task activity ID from context so the plan nests under
-	// the task in the Activity tree (frontend ActivityStream recursive rendering).
-	// Without ParentActivityID, the plan becomes a root-level sibling of the task,
-	// causing it to render below all task children (team_stage/graph_stage) instead
-	// of between the task and its children.
-	rootTaskID := string(RootTaskActivityIDFromCtx(ctx))
-
-	// spirit_plan_created: the canonical event for plan creation.
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventCreated,
-		Activity: biz.Activity{
-			ID:               uuid.NewString(),
-			Kind:             biz.ActivityKindPlan,
-			Status:           biz.ActivityStatusPending,
-			Stage:            "created",
-			Timestamp:        time.Now().UTC(),
-			SpiritSessionID:  spiritSessionID,
-			SessionID:        sessionID,
-			ParentActivityID: rootTaskID,
-			AgentKey:         "task-planner",
-			Meta: map[string]any{
-				"plan_id":           plan.ID,
-				"spirit_session_id": spiritSessionID,
-				"complexity_level":  string(plan.ComplexityLevel),
-				"complexity_score":  plan.ComplexityScore,
-				"strategy":          string(plan.Strategy),
-				"strategy_reason":   plan.StrategyReason,
-				"topology_hint":     string(plan.TopologyHint),
-				"subtask_count":     len(plan.SubTasks),
-				"steps":             steps,
-			},
-		},
-		Domain: biz.ActivityDomainChat,
-	}
-	impl.bus.Publish(ctx, ev)
+	_ = ctx
+	_ = plan
+	_ = chatSessionID
 }
 
 // PublishV2Board 通过 v2 Sequencer 发布 PlanBoard + PlanStep + GraphStage + GraphNode
@@ -1278,8 +1216,9 @@ func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.T
 // 发布时 allocPlan 不存在，导致 RealTeamOrchestrator 无法获取 LLM 分配结果，
 // 退回查 DB 取错 agent（所有 team 用同一 agent）。
 //
-// 注意：此处仅发布 created 事件（status=pending/running）。后续生命周期事件
-// （completed/failed）由 spirit_team.go 在团队状态变更时发布。
+// 注意：此处仅发布 created 事件（status=pending/running）。后续节点状态与
+// GraphStage terminal（completed/failed/interrupted）由 PlanExecutor 发布。
+// spirit_team 的 v1 graph_stage 快照路径已废弃（2026-07-16）。
 func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskPlan, allocPlan *biz.AllocationPlan, chatSessionID string) (biz.PlanBoard, error) {
 	if impl.seq == nil || plan == nil {
 		return biz.PlanBoard{}, nil
@@ -1308,7 +1247,16 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 		sessionID = spiritSessionID
 	}
 	now := time.Now()
-	pbID := "pb_" + uuid.NewString()
+	// 同 turn/task 固定 PlanBoard ID：重复 PublishV2Board 更新原面板，不新建。
+	// 优先 plan.ID（TaskPlan 稳定主键），否则用 rootTaskID；二者皆空时退回随机（不应发生）。
+	pbSeed := plan.ID
+	if pbSeed == "" {
+		pbSeed = rootTaskID
+	}
+	pbID := "pb_" + pbSeed
+	if pbSeed == "" {
+		pbID = "pb_" + uuid.NewString()
+	}
 	// 构建 v2 PlanStep 列表（每个 SubTask 对应一个 PlanStep）。
 	// 2026-07-05 Step 3 修复：从 allocPlan.Allocations 填充 AgentKeys，
 	// 匹配规则：alloc.SubTaskID == SubTask.ID（== PlanStep.ID）。
@@ -1365,7 +1313,7 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 	pb := biz.PlanBoard{
 		ID:        pbID,
 		TaskID:    rootTaskID,
-		TurnID:    "", // TurnID 在 OnTurnStart 时关联；此处不持有 turn 信息
+		TurnID:    event.TurnIDFromContext(ctx), // from event.WithTurnID on the turn ctx
 		SessionID: spiritSessionID,
 		Strategy:  mapV1StrategyToV2(plan.Strategy),
 		Status:    biz.PlanStatusPlanning,
@@ -1377,7 +1325,7 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 	gs := biz.GraphStage{
 		ID:          gsID,
 		TaskID:      rootTaskID,
-		TurnID:      "",
+		TurnID:      event.TurnIDFromContext(ctx),
 		SessionID:   spiritSessionID,
 		PlanBoardID: pbID,
 		Nodes:       graphNodes,

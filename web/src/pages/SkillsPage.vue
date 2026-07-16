@@ -69,7 +69,7 @@
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="psychology" />
         <div class="text-h6 q-mt-md">{{ search ? '没有匹配的 Skill' : '暂无 Skill' }}</div>
-        <div class="text-body2 text-grey-7 q-mt-sm">上传能力将在后续版本启用；当前可先查看已有 Skill 与运行统计。</div>
+        <div class="text-body2 text-grey-7 q-mt-sm">点击右上角「上传」导入 ZIP，或先查看已有 Skill 与运行统计。</div>
       </q-card-section>
     </q-card>
 

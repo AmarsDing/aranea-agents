@@ -84,7 +84,8 @@ OpenAI Provider 通过 `Variant` 区分子类型行为差异，由 `openai.WithV
 | **Failover** | `model/failover` | 按顺序尝试候选模型，首个成功响应即返回；适用于主备切换 | `WithCandidates(m1, m2, ...)` |
 | **Hedge** | `model/hedge` | 并发发起多个候选请求，首个有效响应即返回；可配置延迟启动偏移；适用于降低尾部延迟 | `WithCandidates(...)`、`WithDelay(100ms)`、`WithDelays(...)`、`WithName(...)`、`WithContextWindow(...)` |
 
-> **注**：trpc-agent-go 的 `model/failover` 和 `model/hedge` 包当前未提供 `WithSwitchCallback` 选项。HA 切换的可观测性通过 `WrapModelWithMetrics`（Prometheus 指标）和候选构建失败时的 `lg.Warn` 日志实现。
+> **注**：trpc-agent-go 的 `model/failover` 和 `model/hedge` 包提供 `WithSwitchCallback`。
+> HA 切换可观测性：运行时切换经回调写入 `loggateway`（step ID `system.provider.ha_failover` / `system.provider.ha_hedge`，Monitor FlowLog 已注册标题）+ `WrapModelWithMetrics` Prometheus 指标；候选构建失败时 `lg.Warn`。
 
 ### 2.4 通用能力（provider.Option）
 
@@ -1008,6 +1009,8 @@ func ModelSupportsImageAttachments(ctx context.Context, catalog biz.TeamModelCat
 // ModelSupportsFileAttachments 判断模型是否支持文件附件
 func ModelSupportsFileAttachments(ctx context.Context, catalog biz.TeamModelCatalog, prov, model string, lg loggateway.Logger) bool
 ```
+
+**BR10 例外（显式豁免）**：`internal/agent/llmcompat` 仅用于意图识别等侧信道调用，在仅有 inline `ProviderAPIConfig`（无 catalog 行）时走 `trpcprovider.Model` + `WrapModelWithMetrics`。主对话/Team/Graph 运行时必须经 `TRPCModelForProviderModel`。
 
 ### 7.6 HTTP Transport 链
 

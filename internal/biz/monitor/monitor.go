@@ -161,6 +161,7 @@ type AlertRule struct {
 	NotifyWebhookURL string
 	NotifyChannelID  string
 	CooldownMinutes  int
+	ReminderMinutes  int // while firing: re-notify interval; default 30
 	CreatedAt        string
 	UpdatedAt        string
 
@@ -180,12 +181,13 @@ type AlertNotifier interface {
 
 // RunnerCompletionRow represents a runner completion record.
 type RunnerCompletionRow struct {
-	TraceID   string
-	SessionID string
-	RunID     string
-	AgentID   string
-	Status    string
-	CreatedAt string
+	TraceID    string
+	SessionID  string
+	RunID      string
+	AgentID    string
+	Status     string
+	DurationMs int64
+	CreatedAt  string
 }
 
 // AuditRepo handles audit log persistence.
@@ -270,6 +272,8 @@ type Usecase struct {
 	ringBuffer       *MetricRingBuffer
 	evalWorker       *AlertEvalWorker
 	registry         *AlertMetricRegistry
+	traceProjector   *TraceProjector
+	flowFileAppender *FlowFileAppender
 }
 
 const rulesCacheTTL = 5 * time.Minute
@@ -310,6 +314,18 @@ func NewUsecase(audit AuditRepo, event EventRepo, trace TraceRepo, alert AlertRe
 func (u *Usecase) SetEvalWorker(w *AlertEvalWorker) {
 	if u != nil {
 		u.evalWorker = w
+	}
+}
+
+func (u *Usecase) SetTraceProjector(p *TraceProjector) {
+	if u != nil {
+		u.traceProjector = p
+	}
+}
+
+func (u *Usecase) SetFlowFileAppender(a *FlowFileAppender) {
+	if u != nil {
+		u.flowFileAppender = a
 	}
 }
 
@@ -526,6 +542,32 @@ func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value
 	if value < rule.Threshold {
 		return
 	}
+	// Already firing: only send periodic reminders; never re-enter threshold_exceeded transition.
+	if rule.FiringState == AlertFiringStateFiring {
+		if !u.shouldRemindAlert(rule, now) {
+			return
+		}
+		u.touchAlertReminder(ctx, rule, now, value)
+		meta, _ := json.Marshal(map[string]any{
+			"rule_id": rule.ID, "metric_key": rule.MetricKey, "value": value, "threshold": rule.Threshold, "reminder": true,
+		})
+		if err := u.RecordMonitorEvent(ctx, EventWrite{
+			EventKey: "alert.fired", Name: rule.Name,
+			Description: fmt.Sprintf("%s %.2f >= %.2f (reminder)", rule.MetricKey, value, rule.Threshold),
+			Status:      strings.TrimSpace(rule.Severity), MetadataJSON: string(meta),
+		}); err != nil {
+			u.lg.Warn("RecordMonitorEvent for alert.fired reminder failed",
+				loggateway.StepID("monitor.alert_fired_persist_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
+		}
+		if u.notifier != nil {
+			u.notifier.Notify(ctx, rule, map[string]any{
+				"rule_id": rule.ID, "name": rule.Name, "metric_key": rule.MetricKey,
+				"value": value, "threshold": rule.Threshold, "reminder": true,
+				"severity": strings.TrimSpace(rule.Severity), "fired_at": now.Format(time.RFC3339),
+			})
+		}
+		return
+	}
 	if !u.ShouldFireAlert(rule, now) {
 		return
 	}
@@ -656,6 +698,40 @@ func (u *Usecase) ShouldFireAlert(rule AlertRule, now time.Time) bool {
 		}
 	}
 	return true
+}
+
+const defaultReminderMinutes = 30
+
+func reminderInterval(rule AlertRule) time.Duration {
+	mins := rule.ReminderMinutes
+	if mins <= 0 {
+		mins = defaultReminderMinutes
+	}
+	return time.Duration(mins) * time.Minute
+}
+
+func (u *Usecase) shouldRemindAlert(rule AlertRule, now time.Time) bool {
+	if rule.LastFiredAt == nil {
+		return true
+	}
+	return now.Sub(*rule.LastFiredAt) >= reminderInterval(rule)
+}
+
+// touchAlertReminder refreshes LastFiredAt while staying in firing state (reminder path).
+func (u *Usecase) touchAlertReminder(ctx context.Context, rule AlertRule, now time.Time, metricValue float64) {
+	if u == nil || u.alertRepo == nil {
+		return
+	}
+	u.lastFired.Store(rule.ID, now)
+	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, AlertFiringStateFiring, &now, metricValue, nil); err != nil {
+		u.lg.Warn("touchAlertReminder: DB update failed",
+			loggateway.StepID("monitor.alert_reminder_db_fail"),
+			loggateway.Str("rule_id", rule.ID),
+			loggateway.Err(err))
+	}
+	u.rulesMu.Lock()
+	u.rulesExpire = time.Time{}
+	u.rulesMu.Unlock()
 }
 
 // MarkAlertFired records the firing event both in-memory (fast path) and in the DB
@@ -828,6 +904,8 @@ type RunnerCompletionLinkParams struct {
 	InvocationID string
 	UsageEventID string
 	TraceID      string
+	Status       string
+	DurationMs   int64
 	Bridge       RunnerCompletionBridge
 }
 
@@ -835,6 +913,13 @@ type RunnerCompletionLinkParams struct {
 func (u *Usecase) RecordRunnerCompletion(ctx context.Context, write EventWrite, p RunnerCompletionLinkParams) error {
 	if u == nil || u.eventRepo == nil {
 		return nil
+	}
+	status := strings.TrimSpace(p.Status)
+	if status == "" {
+		status = strings.TrimSpace(write.Status)
+	}
+	if status == "" {
+		status = "ok"
 	}
 	if p.SessionID != "" && p.InvocationID != "" {
 		exists, err := u.runnerCompletion.ExistsRunnerCompletion(ctx, p.SessionID, p.InvocationID)
@@ -849,6 +934,7 @@ func (u *Usecase) RecordRunnerCompletion(ctx context.Context, write EventWrite, 
 			if patched || strings.TrimSpace(p.UsageEventID) != "" {
 				p.Bridge.ClearTurn(p.SessionID, p.RunID)
 			}
+			u.notifyCompletionSideEffects(ctx, status, p.DurationMs, p.TraceID)
 			return nil
 		}
 	}
@@ -862,7 +948,33 @@ func (u *Usecase) RecordRunnerCompletion(ctx context.Context, write EventWrite, 
 	if patched || strings.TrimSpace(p.UsageEventID) != "" {
 		p.Bridge.ClearTurn(p.SessionID, p.RunID)
 	}
+	u.notifyCompletionSideEffects(ctx, status, p.DurationMs, p.TraceID)
 	return nil
+}
+
+// notifyCompletionSideEffects feeds live alert metrics, closes traces, and writes TRACE-01 files.
+func (u *Usecase) notifyCompletionSideEffects(ctx context.Context, status string, durationMs int64, traceID string) {
+	if u == nil {
+		return
+	}
+	if u.evalWorker != nil {
+		u.evalWorker.OnCompletion(status, durationMs)
+	}
+	traceID = strings.TrimSpace(traceID)
+	if traceID == "" {
+		return
+	}
+	if u.traceProjector != nil {
+		u.traceProjector.OnRunnerCompletion(ctx, traceID, status, durationMs)
+	}
+	if u.flowFileAppender != nil {
+		u.flowFileAppender.WriteTraceComplete(map[string]any{
+			"schema_version": "trace_complete/v1",
+			"trace_id":       traceID,
+			"status":         status,
+			"duration_ms":    durationMs,
+		})
+	}
 }
 
 // LinkRunnerCompletionUsage patches the latest completion row with usage_event_id.

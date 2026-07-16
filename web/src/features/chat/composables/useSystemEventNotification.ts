@@ -70,11 +70,14 @@ export function useSystemEventNotification(deps: UseSystemEventNotificationDeps)
   /**
    * Team/graph/plan/session orchestration events need both inbound-sync state
    * updates (spirit store) and Activity timeline rendering.
+   *
+   * kind=graph_stage here means **workflow Graph** node progress (M36), not the
+   * Chat PlanDAG GraphStageBlock (v2 entity events: graph_stage.created/…).
    */
   function isOrchestrationActivityEvent(ev: AFActivityEvent): boolean {
     const { kind, stage } = ev.activity;
     if (kind === 'team_stage') return true;
-    if (kind === 'graph_stage') return true;
+    if (kind === 'graph_stage') return true; // workflow Graph execution stream
     if (kind === 'plan') return true;
     if (kind === 'session') {
       return (

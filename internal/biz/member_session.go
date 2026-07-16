@@ -28,6 +28,7 @@ type MemberSessionStatus string
 const (
 	MemberSessionStatusPending   MemberSessionStatus = "pending"
 	MemberSessionStatusRunning   MemberSessionStatus = "running"
+	MemberSessionStatusPaused    MemberSessionStatus = "paused"
 	MemberSessionStatusCompleted MemberSessionStatus = "completed"
 	MemberSessionStatusFailed    MemberSessionStatus = "failed"
 	MemberSessionStatusSkipped   MemberSessionStatus = "skipped"

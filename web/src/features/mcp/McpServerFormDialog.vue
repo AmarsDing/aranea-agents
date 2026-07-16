@@ -92,11 +92,27 @@
             hint="0=关闭"
           />
           <q-toggle v-model="form.enabled" color="primary" label="启用" />
+          <q-select
+            v-model="form.probe_mode"
+            dense
+            outlined
+            emit-value
+            map-options
+            label="探活模式"
+            :options="probeModeOptions"
+            hint="connectivity=仅网络；auth_aware=带 OAuth/API Key"
+          />
           <q-toggle
             v-model="form.require_user_credentials"
             class="app-grid-span-full"
             color="primary"
             label="每个用户须配置自己的凭据，否则无法使用"
+          />
+          <q-toggle
+            v-model="form.allow_adhoc_http"
+            class="app-grid-span-full"
+            color="warning"
+            label="允许 Broker AdHoc HTTP（仍需系统设置 mcp_allow_adhoc_http 开启）"
           />
 
           <div v-if="usesUrl" class="app-grid-span-full">
@@ -294,6 +310,7 @@ const {
   isOAuthAuth,
   transportOptions,
   authTypeOptions,
+  probeModeOptions,
   save,
   runValidate,
   saveAndTest,

@@ -36,10 +36,11 @@ func isInFlightActivity(s biz.ActivityStatus) bool {
 // CancelRunningActivityMessages marks in-flight activity cards (running /
 // tool_running / tool_blocked) as cancelled when the user stops generation.
 //
-// Phase 3b-D Task 7: reads via v2 StepV2Reader.ListStepsBySession and converts
-// each Step to the v1 Activity shape for the v1 ActivityWriter (writer migration
-// is Tier 3). The v1 ActivityWriter is retained because cancel persists status
-// transitions via the v1 write path.
+// Phase 3b-D Task 7: reads via v2 StepV2Reader.ListStepsBySpiritSession (spirit
+// root aggregation for Stop) with ListStepsBySession fallback (member-only
+// cancel), and converts each Step to the v1 Activity shape for the v1
+// ActivityWriter (writer migration is Tier 3). The v1 ActivityWriter is
+// retained because cancel persists status transitions via the v1 write path.
 //
 // The returned count is the number of activities successfully transitioned
 // to cancelled status.
@@ -57,9 +58,17 @@ func CancelRunningActivityMessages(
 	if sessionID == "" {
 		return 0, nil
 	}
-	steps, err := stepReader.ListStepsBySession(ctx, sessionID)
+	steps, err := stepReader.ListStepsBySpiritSession(ctx, sessionID)
 	if err != nil {
 		return 0, err
+	}
+	// Member-only cancel: SpiritSessionID filter returns empty when sessionID is
+	// a child chat session; fall back to SessionID column.
+	if len(steps) == 0 {
+		steps, err = stepReader.ListStepsBySession(ctx, sessionID)
+		if err != nil {
+			return 0, err
+		}
 	}
 	cancelled := 0
 	for i := range steps {

@@ -17,6 +17,10 @@ var ErrCascadeUnavailable = apierror.BadRequest("MEMORY", "cascade store not ava
 
 var ErrCascadeSagaInProgress = apierror.Conflict("MEMORY", "cascade saga already in progress")
 
+// ErrCascadeRejectNotAllowed is returned when Reject CAS fails because the
+// proposal is not in a rejectable status (pending/partial/failed).
+var ErrCascadeRejectNotAllowed = apierror.Conflict("MEMORY", "cascade proposal cannot be rejected in its current status")
+
 type CascadeProposalStore interface {
 	InsertCascadeProposal(ctx context.Context, in CascadeProposalInsert) ([]byte, error)
 	ListCascadeProposalRows(ctx context.Context, agentID, status string, limit int32) ([][]byte, error)
@@ -405,6 +409,13 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 			{StepName: SagaStepSyncIndex, IsCritical: false, PayloadJSON: string(syncPayload)},
 		}
 		if err := uc.saga.InitCascadeSagaSteps(ctx, id, steps); err != nil {
+			// Roll back "running" so Approve can be retried after init failure.
+			if _, rbErr := uc.proposals.UpdateCascadeProposalStatus(ctx, id, status, reviewer, "saga init failed: "+err.Error()); rbErr != nil {
+				uc.lg.Warn("cascade: failed to roll back running after saga init error",
+					loggateway.StepID("memory.cascade_init_rollback"),
+					loggateway.Str("proposal_id", id),
+					loggateway.Err(rbErr))
+			}
 			return nil, err
 		}
 	}
@@ -456,6 +467,9 @@ func (uc *L4CascadeUsecase) executeSagaStep(ctx context.Context, step *CascadeSa
 	if err := uc.saga.UpdateSagaStepState(ctx, step.ID, "running", ""); err != nil {
 		return err
 	}
+	// Keep in-memory State in sync with DB so compensateCompletedSteps can see
+	// successes from earlier steps in the same Approve call.
+	step.State = "running"
 
 	var execErr error
 	switch step.StepName {
@@ -476,9 +490,14 @@ func (uc *L4CascadeUsecase) executeSagaStep(ctx context.Context, step *CascadeSa
 			uc.lg.Warn("failed to mark saga step as failed",
 				loggateway.StepID("memory.saga_step_fail"), loggateway.Str("step_id", fmt.Sprint(step.ID)), loggateway.Err(err))
 		}
+		step.State = "failed"
 		return execErr
 	}
-	return uc.saga.UpdateSagaStepState(ctx, step.ID, "succeeded", "")
+	if err := uc.saga.UpdateSagaStepState(ctx, step.ID, "succeeded", ""); err != nil {
+		return err
+	}
+	step.State = "succeeded"
+	return nil
 }
 
 func (uc *L4CascadeUsecase) execUpsertEntity(ctx context.Context, row map[string]any) error {
@@ -886,7 +905,17 @@ func (uc *L4CascadeUsecase) Reject(ctx context.Context, id, reviewer, reason str
 	if note == "" {
 		note = "rejected"
 	}
-	return uc.proposals.UpdateCascadeProposalStatus(ctx, id, "rejected", reviewer, note)
+	// CAS: only pending/partial/failed can be rejected. Prevents overwriting
+	// applied/running proposals without compensation.
+	raw, swapped, err := uc.proposals.CompareAndSwapProposalStatus(ctx, id,
+		[]string{"pending", "partial", "failed"}, "rejected", reviewer, note)
+	if err != nil {
+		return nil, err
+	}
+	if !swapped {
+		return nil, ErrCascadeRejectNotAllowed
+	}
+	return raw, nil
 }
 
 func cascadeNowRFC3339() string {

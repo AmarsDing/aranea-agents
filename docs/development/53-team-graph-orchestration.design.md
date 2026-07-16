@@ -963,7 +963,7 @@ Team A 内某 Agent 调 call_agent(b)
 > 详见 [53-team-graph-orchestration.development.md §3 开发阶段](./53-team-graph-orchestration.development.md#3-开发阶段) 与 [§Phase 8 架构优化](./53-team-graph-orchestration.development.md#phase-8--架构优化2026-05-28启动)
 >
 > 任务编号承接 M53 / M36 已有 ID（TG-RT-* / G-* / TEAM-*）+ 新增前缀 `OPS-` 表示运维/可观测、`UX-` 表示前端体验。
-> 待实施任务（Phase 8.9）：BL-05（Step 持久化事件驱动统一）、BL-09（Observer 单订阅化）、FP-02（Circuit Breaker）、FP-04（死信表）。
+> Phase 8.9 已完成：BL-05（bulk persist 退役）、BL-09（`teamRunPipeline`）、FP-02（CB + 持久化）、FP-04（死信 UI）、Swarm Graph 安全接线。
 > **注意**：OPS-TRACE-01（trace_id 持久化）已实现（`team_runs.trace_id` 字段 + `UpdateTeamRunTraceID`）。
 
 ---

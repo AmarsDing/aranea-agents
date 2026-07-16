@@ -122,14 +122,28 @@ func Middleware(lg loggateway.Logger) httpm.FilterFunc {
 	}
 }
 
-// SetCookie sets the login cookie in the HTTP response, binding the principal
-// to DefaultWorkspaceID (legacy callers). Prefer SetCookieForWorkspace.
+// SetCookie sets the login cookie in the HTTP response.
 func SetCookie(ctx context.Context, userID int64, access string, expiresAt time.Time) error {
-	return SetCookieForWorkspace(ctx, userID, access, DefaultWorkspaceID, expiresAt)
+	tr, ok := transport.FromServerContext(ctx)
+	if !ok {
+		return fmt.Errorf("failed to get transport from context")
+	}
+	token, err := GenerateToken(userID, access, authSecretKey, expiresAt)
+	if err != nil {
+		return err
+	}
+	tr.ReplyHeader().Add("Set-Cookie", newSessionCookie(token, expiresAt).String())
+	return nil
 }
 
-// SetCookieForWorkspace sets the login cookie with an explicit workspace membership
-// claim (B-01). Empty workspaceID falls back to DefaultWorkspaceID.
+// SetCookieForWorkspace sets the login cookie with a JWT bound to the given
+// workspaceID. This is the B-01 P2-A entry point: workspace membership is
+// stamped into the JWT claim at login so subsequent requests carry it via
+// cookie, not via forgeable client headers (see middleware/workspace.go).
+//
+// Use this instead of SetCookie when the principal has a bound workspace
+// (e.g. admin login flows admin.WorkspaceID into the JWT). An empty
+// workspaceID is normalized to DefaultWorkspaceID by GenerateTokenForWorkspace.
 func SetCookieForWorkspace(ctx context.Context, userID int64, access, workspaceID string, expiresAt time.Time) error {
 	tr, ok := transport.FromServerContext(ctx)
 	if !ok {

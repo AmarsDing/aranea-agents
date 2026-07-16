@@ -191,6 +191,14 @@ func TestAssertToolMutable(t *testing.T) {
 			wantErr:  false,
 		},
 		{
+			name:     "builtin policy field change rejected",
+			existing: Tool{Key: "read_file", Source: "builtin", Readonly: true, RequiresConfirmation: false},
+			input:    ToolUpsertInput{Key: "read_file", Source: "builtin", RequiresConfirmation: true},
+			wantErr:  true,
+			reason:   "TOOL",
+			message:  "builtin tool policy fields are read-only (requires_confirmation/supports_streaming/supports_concurrency)",
+		},
+		{
 			name:     "readonly tool source change rejected",
 			existing: Tool{Key: "read_file", Source: "builtin", Readonly: true},
 			input:    ToolUpsertInput{Key: "read_file", Source: "custom"},

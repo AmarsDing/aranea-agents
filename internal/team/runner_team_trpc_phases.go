@@ -156,32 +156,21 @@ func (r *Runner) publishTeamRunStartedEvent(ctx context.Context, sess biz.Sessio
 		"team_name": teamRow.DisplayName,
 	}
 
-	// SessionID must be the spirit session ID (not sess.ID which is the team
-	// session ID) so the frontend's WebSocket filter (ev.Activity.SessionID ==
-	// spiritSessionID) and listActivities(spiritSessionID) API both return this
-	// team_stage activity. This matches publishSpiritTeamAssembled's canonical
-	// setup (SessionID: spiritSessionID). Without this, team_stage progress/
-	// completed/failed events are filtered out and never reach the frontend.
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventCreated,
-		Activity: biz.Activity{
-			ID:               string(agent.NewTeamStageActivityID(teamRow.ID)),
-			Kind:             biz.ActivityKindTeamStage,
-			Status:           biz.ActivityStatusRunning,
-			SessionID:        spiritSID,
-			SpiritSessionID:  spiritSID,
-			TeamID:           teamRow.ID,
-			ParentActivityID: string(agent.NewGraphStageActivityID(spiritSID)),
-			Timestamp:        time.Now().UTC(),
-			Stage:            "assembled",
-			Meta:             meta,
-		},
-		Domain: biz.ActivityDomainChat,
+	// Prefer typed TeamStageUpdated (assembled). Spirit flow already publishes
+	// TeamStageCreated via publishSpiritTeamAssembled; this covers standalone
+	// team runs and progress updates under the graph parent.
+	ts := biz.TeamStage{
+		ID:        string(agent.NewTeamStageActivityID(teamRow.ID)),
+		TeamID:    teamRow.ID,
+		TeamName:  teamRow.DisplayName,
+		SessionID: spiritSID,
+		Status:    biz.TeamStageStatusRunning,
+		Stage:     biz.TeamStageStageAssembled,
+		StartedAt: time.Now().UTC(),
+		Version:   1,
 	}
-	// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves all
-	// v1 fields (Meta.run_id, ParentActivityID, Stage="assembled") so the
-	// frontend team_stage lifecycle renders correctly under the graph_stage parent.
-	r.publishEvent(ctx, biz.NewActivityBridgeEvent(ev))
+	r.publishEvent(ctx, biz.NewTeamStageUpdatedEvent(ts))
+	r.publishEvent(ctx, biz.NewSystemNoticeEvent(spiritSID, "team_stage_assembled", "", meta))
 }
 
 // buildTeamBuilderDeps assembles the TRPCBuilderDeps from runner configuration and anchor resolution.

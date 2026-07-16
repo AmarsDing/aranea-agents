@@ -372,6 +372,7 @@ func (r *monitorRepo) ListRecentRunnerCompletions(ctx context.Context, since tim
 	sessionIDExpr := d.JSONExtract("metadata_json", "session_id")
 	runIDExpr := d.JSONExtract("metadata_json", "run_id")
 	agentIDExpr := d.JSONExtract("metadata_json", "agent_id")
+	durationExpr := d.JSONExtract("metadata_json", "duration_ms")
 	var sql string
 	var args []any
 	if d.IsPostgres() {
@@ -380,11 +381,12 @@ func (r *monitorRepo) ListRecentRunnerCompletions(ctx context.Context, since tim
 		        COALESCE(%s, '') AS run_id,
 		        COALESCE(meta_agent_id, %s, '') AS agent_id,
 		        CASE WHEN status = 'error' THEN 'error' ELSE 'ok' END AS status,
+		        COALESCE(CAST(%s AS BIGINT), 0) AS duration_ms,
 		        created_at
 		 FROM monitor_events
 		 WHERE event_key = 'runner.completion' AND created_at >= $1 AND deleted_at = ''
 		 ORDER BY created_at DESC
-		 LIMIT $2`, traceIDExpr, sessionIDExpr, runIDExpr, agentIDExpr)
+		 LIMIT $2`, traceIDExpr, sessionIDExpr, runIDExpr, agentIDExpr, durationExpr)
 		args = []any{sinceStr, limit}
 	} else {
 		sql = fmt.Sprintf(`SELECT COALESCE(meta_trace_id, %s, '') AS trace_id,
@@ -392,11 +394,12 @@ func (r *monitorRepo) ListRecentRunnerCompletions(ctx context.Context, since tim
 		        COALESCE(%s, '') AS run_id,
 		        COALESCE(meta_agent_id, %s, '') AS agent_id,
 		        CASE WHEN status = 'error' THEN 'error' ELSE 'ok' END AS status,
+		        COALESCE(%s, 0) AS duration_ms,
 		        created_at
 		 FROM monitor_events
 		 WHERE event_key = 'runner.completion' AND created_at >= ? AND deleted_at = ''
 		 ORDER BY created_at DESC
-		 LIMIT ?`, traceIDExpr, sessionIDExpr, runIDExpr, agentIDExpr)
+		 LIMIT ?`, traceIDExpr, sessionIDExpr, runIDExpr, agentIDExpr, durationExpr)
 		args = []any{sinceStr, limit}
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sql, args...)
@@ -407,7 +410,7 @@ func (r *monitorRepo) ListRecentRunnerCompletions(ctx context.Context, since tim
 	var out []biz.RunnerCompletionRow
 	for rows.Next() {
 		var row biz.RunnerCompletionRow
-		if err := rows.Scan(&row.TraceID, &row.SessionID, &row.RunID, &row.AgentID, &row.Status, &row.CreatedAt); err != nil {
+		if err := rows.Scan(&row.TraceID, &row.SessionID, &row.RunID, &row.AgentID, &row.Status, &row.DurationMs, &row.CreatedAt); err != nil {
 			return nil, entErrToBizErr(err, "monitor")
 		}
 		out = append(out, row)

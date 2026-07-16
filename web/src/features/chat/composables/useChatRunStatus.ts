@@ -2,7 +2,14 @@ import { ref, type Ref } from 'vue';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import type { RunStatus, RunStatusValue } from '../types';
 import type { ActivityEvent } from '../../../realtime/activityEvent';
-import { runStatusFromActivityEvent, messageQueuedFromActivityEvent } from '../activityRunStatus';
+import type { RunStatusEventPayload } from '../v2Types';
+import {
+  runStatusFromActivityEvent,
+  messageQueuedFromActivityEvent,
+  runStatusFromV2Payload,
+  messageQueuedFromV2Payload,
+  type RunStatusFromWs,
+} from '../activityRunStatus';
 
 const HYDRATE_DELAY_MS = 400;
 
@@ -37,11 +44,7 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
     runMeta.value = null;
   }
 
-  /** Activity-First: apply run status from an ActivityEvent (stage=run_status). */
-  function applyFromActivityEvent(ev: ActivityEvent) {
-    if (messageQueuedFromActivityEvent(ev)) return;
-    const rs = runStatusFromActivityEvent(ev);
-    if (!rs) return;
+  function applyRunStatusFields(rs: RunStatusFromWs) {
     wsAuthoritative = true;
     clearHydrateTimer();
     runStatus.value = rs.status;
@@ -56,6 +59,22 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
     };
     runMeta.value = meta;
     deps.applyAwaitRunStatus(meta);
+  }
+
+  /** Apply run status from a v2 system.run_status payload. */
+  function applyFromV2RunStatus(payload: RunStatusEventPayload) {
+    if (messageQueuedFromV2Payload(payload)) return;
+    const rs = runStatusFromV2Payload(payload);
+    if (!rs) return;
+    applyRunStatusFields(rs);
+  }
+
+  /** Legacy: apply run status from an ActivityEvent (stage=run_status). */
+  function applyFromActivityEvent(ev: ActivityEvent) {
+    if (messageQueuedFromActivityEvent(ev)) return;
+    const rs = runStatusFromActivityEvent(ev);
+    if (!rs) return;
+    applyRunStatusFields(rs);
   }
 
   function scheduleHttpHydrate(sessionId: string) {
@@ -114,6 +133,7 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
   return {
     runStatus,
     runMeta,
+    applyFromV2RunStatus,
     applyFromActivityEvent,
     onSessionSwitch,
     refreshRunStatus,

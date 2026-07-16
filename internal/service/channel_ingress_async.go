@@ -116,7 +116,7 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 }
 
 func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, sessionID, execID string) {
-	if h == nil || h.activityBus == nil {
+	if h == nil || h.eventBus == nil {
 		return
 	}
 	jobID := channelTurnJobIDFromContext(ctx)
@@ -128,9 +128,8 @@ func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow bi
 	watchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), asyncWatchTimeout)
 	safego.Go(context.WithoutCancel(ctx), "channel.async.graph.watch", func() {
 		defer cancel()
-		ch, unsub := h.activityBus.Subscribe(biz.ActivityEventSubscribeOptions{
-			SessionID:  sessionID,
-			BufferSize: 32,
+		ch, unsub := h.eventBus.Subscribe(biz.EventSubscribeOptions{
+			SpiritSessionID: sessionID,
 		})
 		defer unsub()
 		for {
@@ -138,11 +137,16 @@ func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow bi
 			case <-watchCtx.Done():
 				h.finishAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", watchCtx.Err())
 				return
-			case aev, ok := <-ch:
+			case e, ok := <-ch:
 				if !ok {
-					h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", errors.New("activity bus subscription closed"))
+					h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", errors.New("event bus subscription closed"))
 					return
 				}
+				notice, ok := e.(*biz.SystemNoticeEvent)
+				if !ok {
+					continue
+				}
+				aev := biz.ActivityEventFromSystemNotice(notice)
 				if aev.Activity.Kind != biz.ActivityKindGraphStage {
 					continue
 				}

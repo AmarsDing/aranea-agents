@@ -311,6 +311,11 @@ func (u *TeamUsecase) ListByWorkspace(ctx context.Context, workspaceID string) (
 	return u.reader.ListTeamsByWorkspace(ctx, workspaceID)
 }
 
+// CountByWorkspace returns how many teams are visible to the workspace (P2-B).
+func (u *TeamUsecase) CountByWorkspace(ctx context.Context, workspaceID string) (int, error) {
+	return u.reader.CountTeamsByWorkspace(ctx, workspaceID)
+}
+
 func (u *TeamUsecase) Get(ctx context.Context, id string) (Team, error) {
 	id, err := requireNonEmpty(id, "TEAM", "id")
 	if err != nil {

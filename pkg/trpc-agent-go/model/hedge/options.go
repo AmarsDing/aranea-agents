@@ -17,12 +17,18 @@ import (
 
 const defaultDelay = 100 * time.Millisecond
 
+// SwitchCallback is invoked when hedge commits a winner that is not the
+// primary (index-0) candidate. fromIndex is always 0 (primary); toIndex is
+// the winning candidate index; reason is a short machine-readable cause.
+type SwitchCallback func(fromIndex, toIndex int, fromName, toName, reason string)
+
 type options struct {
 	candidates    []model.Model
 	name          string
 	contextWindow int
 	delay         time.Duration
 	delays        []time.Duration
+	onSwitch      SwitchCallback
 }
 
 func newOptions(opt ...Option) options {
@@ -76,5 +82,13 @@ func WithDelays(delays ...time.Duration) Option {
 	return func(o *options) {
 		o.delays = make([]time.Duration, len(delays))
 		copy(o.delays, delays)
+	}
+}
+
+// WithSwitchCallback registers a callback fired when a non-primary hedge
+// candidate wins.
+func WithSwitchCallback(cb SwitchCallback) Option {
+	return func(o *options) {
+		o.onSwitch = cb
 	}
 }

@@ -168,14 +168,22 @@ func enrichRunnerCompletionFromBridge(de *DomainEvent) {
 		return
 	}
 	usageID, traceID, ok := DefaultTurnCompletionBridge().PendingUsage(de.SessionID, de.RunID)
-	if !ok {
-		return
+	if ok {
+		if strings.TrimSpace(de.UsageEventID) == "" {
+			de.UsageEventID = usageID
+		}
+		if strings.TrimSpace(de.TraceID) == "" {
+			de.TraceID = traceID
+		}
 	}
-	if strings.TrimSpace(de.UsageEventID) == "" {
-		de.UsageEventID = usageID
-	}
-	if strings.TrimSpace(de.TraceID) == "" {
-		de.TraceID = traceID
+	if de.DurationMS <= 0 {
+		runID := strings.TrimSpace(de.RunID)
+		if runID == "" {
+			runID = strings.TrimSpace(de.InvocationID)
+		}
+		if started, ok := DefaultTurnCompletionBridge().TurnStart(de.SessionID, runID); ok {
+			de.DurationMS = CompletionDurationMS(*de, started)
+		}
 	}
 }
 
@@ -364,6 +372,8 @@ func RecordRunnerCompletion(ctx context.Context, u *MonitorUsecase, de DomainEve
 		InvocationID: invocationID,
 		UsageEventID: de.UsageEventID,
 		TraceID:      de.TraceID,
+		Status:       status,
+		DurationMs:   de.DurationMS,
 		Bridge:       DefaultTurnCompletionBridge(),
 	})
 }

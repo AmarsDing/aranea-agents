@@ -71,29 +71,23 @@ func (g *SessionStatusGuard) recoverOrphanedRunningTeams(ctx context.Context) er
 	// Publish spirit_team_interrupted events for each recovered team
 	if g.bus != nil {
 		for _, team := range recovered {
-			ev := biz.ActivityEvent{
-				Event: biz.ActivityEventFailed,
-				Activity: biz.Activity{
-					ID:              uuid.NewString(),
-					Kind:            biz.ActivityKindTeamStage,
-					Status:          biz.ActivityStatusInterrupted,
-					Stage:           "interrupted",
-					Timestamp:       time.Now().UTC(),
-					SpiritSessionID: team.SpiritSessionID,
-					TeamID:          team.ID,
-					AgentKey:        "session-status-guard",
-					Meta: map[string]any{
-						"team_id":          team.ID,
-						"team_name":        team.DisplayName,
-						"status":           biz.TeamStatusInterrupted,
-						"interrupt_reason": team.InterruptReason,
-					},
-				},
-				Domain: biz.ActivityDomainChat,
+			ts := biz.TeamStage{
+				ID:        uuid.NewString(),
+				TeamID:    team.ID,
+				TeamName:  team.DisplayName,
+				SessionID: team.SpiritSessionID,
+				Status:    biz.TeamStageStatusFailed,
+				Stage:     biz.TeamStageStageFailed,
+				StartedAt: time.Now().UTC(),
+				Version:   1,
 			}
-			// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves
-			// the v1 TeamStage Interrupted activity (Meta carries recovery info).
-			g.bus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+			g.bus.Publish(ctx, biz.NewTeamStageFailedEvent(ts))
+			g.bus.Publish(ctx, biz.NewSystemNoticeEvent(team.SpiritSessionID, "spirit_team_interrupted", "", map[string]any{
+				"team_id":          team.ID,
+				"team_name":        team.DisplayName,
+				"status":           biz.TeamStatusInterrupted,
+				"interrupt_reason": team.InterruptReason,
+			}))
 		}
 	}
 	g.lg.Info("session status guard: orphaned teams recovered", loggateway.Int("count", len(teams)))

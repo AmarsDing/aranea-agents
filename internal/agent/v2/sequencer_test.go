@@ -272,8 +272,7 @@ func (f *failingRepoSet) UpsertTask(ctx context.Context, t biz.Task) (biz.Task, 
 
 var errTestFailure = errors.New("simulated persist failure")
 
-// fakeActivityUpserter captures UpsertActivity calls for verifying Phase 2
-// ActivityBridgeEvent persistence.
+// fakeActivityUpserter retained for historical Phase 2 tests (removed).
 type fakeActivityUpserter struct {
 	mu         sync.Mutex
 	activities []biz.Activity
@@ -298,62 +297,12 @@ func (f *fakeActivityUpserter) snapshot() []biz.Activity {
 	return out
 }
 
-// TestSequencer_PublishActivityBridgeEvent_Persist verifies that an
-// ActivityBridgeEvent payload is persisted via the wired ActivityUpserter
-// (Phase 2 Step 2a) and that Seq is auto-allocated per SpiritSessionID
-// (Phase 2 Step 2b).
-func TestSequencer_PublishActivityBridgeEvent_Persist(t *testing.T) {
+// TestSequencer_PublishSystemNotice verifies system.notice events are
+// fan-out published (not entity-persisted) without ActivityBridge.
+func TestSequencer_PublishSystemNotice(t *testing.T) {
 	t.Parallel()
 	rs := &fakeRepoSet{}
 	bus := &fakeBus{}
-	au := &fakeActivityUpserter{}
-	s := NewSequencer(rs, bus, loggateway.NewNoop(),
-		WithPublishBuffer(16),
-		WithPersistBuffer(16),
-		WithDeltaBatchInterval(time.Millisecond*4),
-		WithActivityUpserter(au),
-	)
-	t.Cleanup(func() { _ = s.Close() })
-
-	ctx := context.Background()
-	ev := biz.NewActivityBridgeEvent(biz.ActivityEvent{
-		Event: biz.ActivityEventUpdated,
-		Activity: biz.Activity{
-			ID:              "act-1",
-			Kind:            biz.ActivityKindNotice,
-			Status:          biz.ActivityStatusRunning,
-			SessionID:       "spirit-1",
-			SpiritSessionID: "spirit-1",
-			Stage:           "team_dag_snapshot",
-		},
-		Domain: biz.ActivityDomainChat,
-	})
-	s.Publish(ctx, ev)
-
-	if err := s.Flush(ctx); err != nil {
-		t.Fatalf("Flush: %v", err)
-	}
-
-	persisted := au.snapshot()
-	if len(persisted) != 1 {
-		t.Fatalf("expected 1 persisted activity, got %d", len(persisted))
-	}
-	if persisted[0].ID != "act-1" {
-		t.Errorf("persisted activity ID = %q, want %q", persisted[0].ID, "act-1")
-	}
-	if persisted[0].Seq == 0 {
-		t.Errorf("persisted activity Seq not auto-allocated; expected non-zero")
-	}
-}
-
-// TestSequencer_PublishActivityBridgeEvent_NoUpserter verifies that an
-// ActivityBridgeEvent payload is NOT persisted when ActivityUpserter is nil
-// (skipped gracefully, no error, no panic).
-func TestSequencer_PublishActivityBridgeEvent_NoUpserter(t *testing.T) {
-	t.Parallel()
-	rs := &fakeRepoSet{}
-	bus := &fakeBus{}
-	// No WithActivityUpserter: au is nil
 	s := NewSequencer(rs, bus, loggateway.NewNoop(),
 		WithPublishBuffer(16),
 		WithPersistBuffer(16),
@@ -362,69 +311,24 @@ func TestSequencer_PublishActivityBridgeEvent_NoUpserter(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 
 	ctx := context.Background()
-	ev := biz.NewActivityBridgeEvent(biz.ActivityEvent{
-		Event: biz.ActivityEventUpdated,
-		Activity: biz.Activity{
-			ID:              "act-2",
-			Kind:            biz.ActivityKindNotice,
-			SpiritSessionID: "spirit-2",
-		},
-		Domain: biz.ActivityDomainChat,
-	})
+	ev := biz.NewSystemNoticeEvent("spirit-1", "team_summary", "", map[string]any{"run_id": "r1"})
 	s.Publish(ctx, ev)
 
 	if err := s.Flush(ctx); err != nil {
 		t.Fatalf("Flush: %v", err)
 	}
 
-	// bus still receives the event
 	bus.mu.Lock()
 	defer bus.mu.Unlock()
 	if len(bus.pub) != 1 {
-		t.Errorf("expected 1 bus publish, got %d", len(bus.pub))
+		t.Fatalf("expected 1 bus publish, got %d", len(bus.pub))
 	}
-}
-
-// TestSequencer_PublishActivityBridgeEvent_SeqMonotonic verifies that Seq
-// auto-allocation is monotonic per SpiritSessionID.
-func TestSequencer_PublishActivityBridgeEvent_SeqMonotonic(t *testing.T) {
-	t.Parallel()
-	rs := &fakeRepoSet{}
-	bus := &fakeBus{}
-	au := &fakeActivityUpserter{}
-	s := NewSequencer(rs, bus, loggateway.NewNoop(),
-		WithPublishBuffer(32),
-		WithPersistBuffer(32),
-		WithDeltaBatchInterval(time.Millisecond*4),
-		WithActivityUpserter(au),
-	)
-	t.Cleanup(func() { _ = s.Close() })
-
-	ctx := context.Background()
-	for i := 0; i < 3; i++ {
-		ev := biz.NewActivityBridgeEvent(biz.ActivityEvent{
-			Event: biz.ActivityEventUpdated,
-			Activity: biz.Activity{
-				ID:              "act-" + string(rune('a'+i)),
-				Kind:            biz.ActivityKindNotice,
-				SpiritSessionID: "spirit-seq",
-			},
-			Domain: biz.ActivityDomainChat,
-		})
-		s.Publish(ctx, ev)
+	got, ok := bus.pub[0].(*biz.SystemNoticeEvent)
+	if !ok {
+		t.Fatalf("expected *SystemNoticeEvent, got %T", bus.pub[0])
 	}
-	if err := s.Flush(ctx); err != nil {
-		t.Fatalf("Flush: %v", err)
-	}
-
-	persisted := au.snapshot()
-	if len(persisted) != 3 {
-		t.Fatalf("expected 3 persisted activities, got %d", len(persisted))
-	}
-	for i, a := range persisted {
-		if a.Seq != int64(i+1) {
-			t.Errorf("persisted[%d].Seq = %d, want %d", i, a.Seq, i+1)
-		}
+	if got.NoticeType != "team_summary" {
+		t.Errorf("NoticeType=%q want team_summary", got.NoticeType)
 	}
 }
 

@@ -11,6 +11,9 @@ import {
   injectSpiritTeam,
   pauseAgentSession,
   injectAgentSession,
+  cancelAgentSession,
+  resumeAgentSession,
+  retryAgentSession,
 } from '../../features/spirit/api';
 import { i18n } from '../../i18n';
 import type {
@@ -128,6 +131,18 @@ function mergeTeamFields(existing: SpiritTeam, incoming: SpiritTeam) {
           }
           if (!existingMember.role && inMember.role) {
             existingMember.role = inMember.role;
+          }
+          // API carries catalog agent_id; do not overwrite a session-shaped agentId used for UI selection
+          // once chatSessionId is known — prefer filling chatSessionId / agentId carefully.
+          if (inMember.agentId && !existingMember.chatSessionId) {
+            // Existing member has no session yet; adopt API agentId as catalog id.
+            if (!existingMember.agentId) existingMember.agentId = inMember.agentId;
+          } else if (inMember.agentId && existingMember.chatSessionId) {
+            // Prefer catalog agentId from API once we already have the chat session id.
+            existingMember.agentId = inMember.agentId;
+          }
+          if (!existingMember.chatSessionId && inMember.chatSessionId) {
+            existingMember.chatSessionId = inMember.chatSessionId;
           }
         }
       }
@@ -422,6 +437,30 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     }
   }
 
+  async function cancelAgent(sessionId: string): Promise<void> {
+    try {
+      await cancelAgentSession(sessionId);
+    } catch {
+      Notify.create({ type: 'warning', message: i18n.global.t('chat.sessionStage.cancelFailed'), position: 'top' });
+    }
+  }
+
+  async function resumeAgent(sessionId: string): Promise<void> {
+    try {
+      await resumeAgentSession(sessionId);
+    } catch {
+      Notify.create({ type: 'warning', message: i18n.global.t('chat.sessionStage.resumeFailed'), position: 'top' });
+    }
+  }
+
+  async function retryAgent(sessionId: string): Promise<void> {
+    try {
+      await retryAgentSession(sessionId);
+    } catch {
+      Notify.create({ type: 'warning', message: i18n.global.t('chat.sessionStage.retryFailed'), position: 'top' });
+    }
+  }
+
   // injectAgent enqueues a user message to a sub-agent session's pending queue
   // (POST /v1/chat/enqueue). Used by MemberSessionPanel input bar's send button.
   async function injectAgent(sessionId: string, message: string): Promise<boolean> {
@@ -597,6 +636,78 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         // Previously this was a no-op, leaving the "orchestrating" loading
         // message stuck because orchestration_completed was published
         // prematurely (before DAG execution) from spirit_tools.go.
+        orchestrationPhase.value = 'completed';
+        break;
+      case 'butler.orchestration.failed':
+        if (teamId) {
+          const existing = teams.value.find((t) => t.id === teamId);
+          if (existing && !['completed', 'failed', 'cancelled'].includes(existing.status)) {
+            updateTeamStatus(teamId, 'failed');
+          }
+        }
+        break;
+    }
+  }
+
+  /**
+   * Handle a v2 system.notice for spirit/orchestration side-effects.
+   * NoticeType matches the former ActivityEvent.stage values.
+   */
+  function handleSystemNotice(noticeType: string, meta: Record<string, unknown> = {}) {
+    const teamId = String(meta.team_id ?? '');
+    let envType = '';
+    switch (noticeType) {
+      case 'plan_created':
+        envType = 'spirit_plan_created';
+        break;
+      case 'allocation_created':
+        envType = 'spirit_allocation_created';
+        break;
+      case 'orchestration_started':
+        envType = 'spirit_orchestration_started';
+        break;
+      case 'orchestration_checkpoint':
+        envType = 'spirit_orchestration_checkpoint';
+        break;
+      case 'orchestration_interrupted':
+        envType = 'spirit_orchestration_interrupted';
+        break;
+      case 'synthesis_completed':
+        envType = 'spirit_synthesis_completed';
+        break;
+      case 'orchestration_completed':
+        envType = 'butler.orchestration.completed';
+        break;
+      case 'orchestration_failed':
+        envType = 'butler.orchestration.failed';
+        break;
+      default:
+        return;
+    }
+
+    switch (envType) {
+      case 'spirit_synthesis_completed':
+        handleSynthesisCompleted(meta);
+        break;
+      case 'spirit_plan_created':
+        planCreated.value = meta as unknown as SpiritPlanCreatedPayload;
+        orchestrationPhase.value = 'planning';
+        break;
+      case 'spirit_allocation_created':
+        allocationCreated.value = meta as unknown as SpiritAllocationCreatedPayload;
+        orchestrationPhase.value = 'allocating';
+        break;
+      case 'spirit_orchestration_started':
+        handleOrchestrationStarted(meta);
+        break;
+      case 'spirit_orchestration_checkpoint':
+        lastCheckpoint.value = meta as unknown as SpiritOrchestrationCheckpointPayload;
+        break;
+      case 'spirit_orchestration_interrupted':
+        orchestrationInterrupted.value = meta as unknown as SpiritOrchestrationInterruptedPayload;
+        orchestrationPhase.value = 'interrupted';
+        break;
+      case 'butler.orchestration.completed':
         orchestrationPhase.value = 'completed';
         break;
       case 'butler.orchestration.failed':
@@ -841,7 +952,10 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     if (!ts.TeamID) return;
 
     const members: SpiritMember[] = (ts.Members ?? []).map((m) => ({
+      // Historically agentId was overloaded with ChildSessionID for selectMember lookup.
+      // Keep that fallback identity; chatSessionId is the authoritative Pause/Resume target.
       agentId: m.ChildSessionID ?? '',
+      chatSessionId: m.ChildSessionID ?? '',
       agentKey: m.AgentKey ?? '',
       displayName: m.AgentName ?? '',
       role: '',
@@ -879,6 +993,9 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
             }
             if (!existingMember.agentId && inMember.agentId) {
               existingMember.agentId = inMember.agentId;
+            }
+            if (!existingMember.chatSessionId && inMember.chatSessionId) {
+              existingMember.chatSessionId = inMember.chatSessionId;
             }
           }
         }
@@ -929,7 +1046,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         member.status = ms.Status ?? member.status;
         if (ms.AgentName && !member.displayName) member.displayName = ms.AgentName;
         if (ms.AvatarURL && !member.avatarUrl) member.avatarUrl = ms.AvatarURL;
-        if (ms.SessionID && !member.agentId) member.agentId = ms.SessionID;
+        if (ms.SessionID) member.chatSessionId = ms.SessionID;
         return;
       }
     }
@@ -977,6 +1094,9 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     unpauseTeam,
     injectTeam,
     pauseAgent,
+    cancelAgent,
+    resumeAgent,
+    retryAgent,
     injectAgent,
     archiveTeam,
     retryTeam,
@@ -984,6 +1104,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     updateTeamStatus,
     addTeam,
     handleSpiritActivityEvent,
+    handleSystemNotice,
     upsertTeamFromV2TeamStage,
     updateMemberFromV2MemberSession,
   };

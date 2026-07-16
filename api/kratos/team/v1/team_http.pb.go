@@ -134,7 +134,12 @@ func _TeamService_ListTeams0_HTTP_Handler(srv TeamServiceHTTPServer) func(ctx ht
 			return err
 		}
 		reply := out.(*ListTeamsResponse)
-		return ctx.Result(200, reply)
+		// Emit total explicitly for JSON clients until proto descriptor is regenerated
+		// with field 2 (ListTeamsResponse.total). Keep protobuf reply for gRPC.
+		return ctx.Result(200, map[string]any{
+			"items": reply.GetItems(),
+			"total": reply.GetTotal(),
+		})
 	}
 }
 

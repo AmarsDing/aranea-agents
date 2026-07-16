@@ -69,6 +69,21 @@
             <span class="app-registry-cell-sub">{{ slotProps.row.model || '-' }}</span>
           </q-td>
         </template>
+        <template #body-cell-tokens="slotProps">
+          <q-td :props="slotProps">
+            <span class="app-registry-cell-sub">{{ formatTokens(slotProps.row) }}</span>
+          </q-td>
+        </template>
+        <template #body-cell-latency="slotProps">
+          <q-td :props="slotProps">
+            <span class="app-registry-cell-sub">{{ formatLatency(slotProps.row) }}</span>
+          </q-td>
+        </template>
+        <template #body-cell-cost="slotProps">
+          <q-td :props="slotProps">
+            <span class="app-registry-cell-sub">{{ formatCost(slotProps.row) }}</span>
+          </q-td>
+        </template>
         <template #body-cell-time="slotProps">
           <q-td :props="slotProps">
             <span class="app-registry-cell-sub">{{ formatDate(slotProps.row.created_at) }}</span>
@@ -219,7 +234,7 @@ import FlowLogExportButton from './FlowLogExportButton.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppPageToolbar from '../layout/AppPageToolbar.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
-import { MONITOR_TRACES_TABLE_COLUMNS, traceStatusColor as statusColor } from './monitorTableUi';
+import { MONITOR_TRACES_TABLE_COLUMNS, traceRunMetrics, traceStatusColor as statusColor } from './monitorTableUi';
 
 type TreeNode = {
   id: string;
@@ -227,6 +242,24 @@ type TreeNode = {
   caption?: string;
   children?: TreeNode[];
 };
+
+function formatTokens(row: MonitorTrace): string {
+  const n = traceRunMetrics(row).total_tokens;
+  return n > 0 ? String(n) : '-';
+}
+
+function formatLatency(row: MonitorTrace): string {
+  const ms = traceRunMetrics(row).duration_ms;
+  if (ms <= 0) return '-';
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function formatCost(row: MonitorTrace): string {
+  const usd = traceRunMetrics(row).total_cost_usd;
+  if (usd <= 0) return '-';
+  return `$${usd.toFixed(4)}`;
+}
 
 const props = defineProps<{
   rows: MonitorTrace[];

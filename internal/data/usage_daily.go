@@ -68,7 +68,8 @@ func (r *usageRepo) ListTopModelUsageFromDaily(ctx context.Context, query biz.Us
 		 COALESCE(SUM(total_cost_micro_usd), 0),
 		 COALESCE(SUM(avg_latency_ms * request_count) / NULLIF(SUM(request_count), 0), 0),
 		 COALESCE(SUM(avg_tokens_per_second * request_count) / NULLIF(SUM(request_count), 0), 0),
-		 COALESCE(1.0 * SUM(success_count) / NULLIF(SUM(request_count), 0), 0)
+		 COALESCE(1.0 * SUM(success_count) / NULLIF(SUM(request_count), 0), 0),
+		 COALESCE(MAX(date_key), '')
 		 FROM model_token_usage_daily` + where + ` GROUP BY provider_code, model_api_id ORDER BY SUM(total_cost_micro_usd) DESC, SUM(call_count) DESC LIMIT ?`)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
@@ -78,7 +79,7 @@ func (r *usageRepo) ListTopModelUsageFromDaily(ctx context.Context, query biz.Us
 	var result []biz.UsageBreakdownRow
 	for rows.Next() {
 		var item biz.UsageBreakdownRow
-		if err = rows.Scan(&item.ProviderCode, &item.ModelAPIID, &item.CallCount, &item.InputTokens, &item.OutputTokens, &item.TotalTokens, &item.TotalCostMicroUSD, &item.AvgLatencyMS, &item.AvgTokensPerSecond, &item.SuccessRate); err != nil {
+		if err = rows.Scan(&item.ProviderCode, &item.ModelAPIID, &item.CallCount, &item.InputTokens, &item.OutputTokens, &item.TotalTokens, &item.TotalCostMicroUSD, &item.AvgLatencyMS, &item.AvgTokensPerSecond, &item.SuccessRate, &item.LastActiveDate); err != nil {
 			return nil, entErrToBizErr(err, apierror.DomainData)
 		}
 		item.ModelDisplayName = item.ModelAPIID

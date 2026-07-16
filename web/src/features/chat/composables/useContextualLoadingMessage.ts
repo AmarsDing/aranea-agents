@@ -133,6 +133,47 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
     }
   }
 
+  /** Apply contextual loading from a v2 system.notice NoticeType. */
+  function onSpiritNoticeType(noticeType: string): void {
+    if (isReplaying.value) return;
+    const envType = noticeTypeToLoadingType(noticeType);
+    if (!envType) return;
+    const orchestrationConfig = ORCHESTRATION_LOADING_MAP.find((c) => c.eventPattern === envType);
+    if (orchestrationConfig) {
+      loadingMessage.value = {
+        text: orchestrationConfig.messageTemplate,
+        icon: orchestrationConfig.icon,
+        color: orchestrationConfig.color,
+      };
+      return;
+    }
+    if (
+      envType === 'butler.orchestration.completed' ||
+      envType === 'butler.orchestration.failed'
+    ) {
+      loadingMessage.value = null;
+    }
+  }
+
+  function noticeTypeToLoadingType(noticeType: string): string {
+    switch (noticeType) {
+      case 'plan_created':
+        return 'spirit_plan_created';
+      case 'allocation_created':
+        return 'spirit_allocation_created';
+      case 'orchestration_started':
+        return 'spirit_orchestration_started';
+      case 'synthesis_completed':
+        return 'spirit_synthesis_completed';
+      case 'orchestration_completed':
+        return 'butler.orchestration.completed';
+      case 'orchestration_failed':
+        return 'butler.orchestration.failed';
+      default:
+        return '';
+    }
+  }
+
   /** Manually clear the loading message. */
   function clearMessage(): void {
     loadingMessage.value = null;
@@ -141,6 +182,7 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
   return {
     loadingMessage,
     onSpiritActivityEvent,
+    onSpiritNoticeType,
     clearMessage,
   };
 }

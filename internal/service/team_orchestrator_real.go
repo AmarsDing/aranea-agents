@@ -25,8 +25,13 @@ type RealTeamOrchestrator struct {
 	assembler *SpiritTeamAssembler
 	starter   biz.TeamStarterPort
 	agentRdr  biz.AgentReader
-	pending   sync.Map // teamID → chan biz.TeamCompleteEvent
+	pending   sync.Map // teamID → pendingTeamCompletion
 	lg        loggateway.Logger
+}
+
+type pendingTeamCompletion struct {
+	ch     chan biz.TeamCompleteEvent
+	stepID string
 }
 
 // NewRealTeamOrchestrator constructs a RealTeamOrchestrator.
@@ -106,7 +111,7 @@ func (o *RealTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanSte
 	}
 	// 创建 channel 并存入 pending map（必须在 StartTeamTurn 之前）。
 	ch := make(chan biz.TeamCompleteEvent, 1)
-	o.pending.Store(team.ID, ch)
+	o.pending.Store(team.ID, pendingTeamCompletion{ch: ch, stepID: step.ID})
 	o.lg.Info("team_run 已创建，等待完成",
 		loggateway.Str("team_id", team.ID),
 		loggateway.Str("step_id", step.ID),
@@ -120,12 +125,12 @@ func (o *RealTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanSte
 					loggateway.Str("team_id", team.ID),
 					loggateway.Err(startErr))
 				// 失败时发送失败事件到 channel，避免 dispatchStep 永久阻塞。
-				o.NotifyTeamCompletion(team.ID, false, startErr.Error())
+				o.NotifyTeamCompletion(team.ID, "", false, startErr.Error())
 			}
 		})
 	} else {
 		// 没有 starter 或 session，直接失败。
-		o.NotifyTeamCompletion(team.ID, false, "starter or session missing")
+		o.NotifyTeamCompletion(team.ID, "", false, "starter or session missing")
 	}
 	// 2026-07-04 问题 4 修复：返回 team + memberSessions + TeamStageID 让
 	// dispatchStep 能更新同一 TeamStage 记录（与 publishSpiritTeamAssembled
@@ -144,25 +149,31 @@ func (o *RealTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanSte
 // NotifyTeamCompletion sends a TeamCompleteEvent to the waiting channel.
 // Called by PlanExecutor.NotifyTeamCompletion (forwarded from
 // TeamStarter.HandleTeamTurnResult).
-func (o *RealTeamOrchestrator) NotifyTeamCompletion(teamID string, success bool, errMsg string) {
+func (o *RealTeamOrchestrator) NotifyTeamCompletion(teamID, teamRunID string, success bool, errMsg string) {
 	v, ok := o.pending.LoadAndDelete(teamID)
 	if !ok {
 		return // 没有 pending 的 channel，可能是 v1 路径的 team_run
 	}
-	ch := v.(chan biz.TeamCompleteEvent)
+	pc, ok := v.(pendingTeamCompletion)
+	if !ok {
+		return
+	}
 	ev := biz.TeamCompleteEvent{
-		TeamRunID: teamID,
+		StepID:    pc.stepID,
+		TeamRunID: teamRunID,
 		Success:   success,
 		ErrorMsg:  errMsg,
 	}
 	select {
-	case ch <- ev:
+	case pc.ch <- ev:
 	default:
 		// channel 已满（buffer=1）， shouldn't happen
 	}
-	close(ch)
+	close(pc.ch)
 	o.lg.Info("team_run 完成通知已发送",
 		loggateway.Str("team_id", teamID),
+		loggateway.Str("team_run_id", teamRunID),
+		loggateway.Str("step_id", pc.stepID),
 		loggateway.Bool("success", success))
 }
 

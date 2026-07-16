@@ -68,7 +68,7 @@
               icon="stop"
               color="negative"
               :aria-label="t('chat.v2.pause')"
-              @click.stop="$emit('pause-agent', memberSession.ID)"
+              @click.stop="$emit('pause-agent', memberSession.SessionID)"
             />
             <q-btn
               v-else
@@ -88,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, inject, watch, type Ref } from 'vue';
+import { ref, computed, inject, watch, onMounted, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
@@ -115,10 +115,17 @@ const props = defineProps<{ memberSession: MemberSession }>();
 const emit = defineEmits<{
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
+  /** Lazy-load member session steps (A.4.7). Emits chat SessionID, not entity ID. */
+  expand: [sessionIds: string[]];
 }>();
 
 const { t } = useSafeI18n();
 const store = useActivityQueries();
+
+function emitExpandIfNeeded() {
+  const sid = props.memberSession.SessionID?.trim();
+  if (sid) emit('expand', [sid]);
+}
 
 // 查询 member session 对应的 agent 内部活动 steps
 const memberSteps = computed(() => {
@@ -159,7 +166,7 @@ const latestAction = computed(() => {
 
 // 折叠状态：running 默认展开，终态默认折叠，用户意图优先
 // 与 TeamRunCard 保持一致的 userToggled 模式
-const collapsed = ref(props.memberSession.Status !== 'running');
+const collapsed = ref(props.memberSession.Status !== 'running' && props.memberSession.Status !== 'paused');
 const userToggled = ref(false);
 
 // 状态变化时自动展开/折叠（仅在用户未手动操作时生效）
@@ -167,7 +174,7 @@ watch(
   () => props.memberSession.Status,
   (newStatus) => {
     if (userToggled.value) return;
-    if (newStatus === 'running') {
+    if (newStatus === 'running' || newStatus === 'paused') {
       collapsed.value = false;
     } else if (newStatus === 'completed' || newStatus === 'failed' || newStatus === 'skipped') {
       collapsed.value = true;
@@ -188,8 +195,15 @@ watch(
 
 function toggleCollapse() {
   userToggled.value = true;
-  collapsed.value = !collapsed.value;
+  const next = !collapsed.value;
+  collapsed.value = next;
+  if (!next) emitExpandIfNeeded();
 }
+
+onMounted(() => {
+  // Default-expanded (running/paused): lazy-load steps on mount (A.4.7)
+  if (!collapsed.value) emitExpandIfNeeded();
+});
 
 // 自动滚动：running + 展开时实时滚到底；用户滚动后 10s 恢复
 const activitiesRef = ref<HTMLElement | null>(null);
@@ -214,7 +228,7 @@ const inputText = ref('');
 function submitInput() {
   const text = inputText.value.trim();
   if (!text || !canInject.value) return;
-  emit('inject-agent', { sessionId: props.memberSession.ID, message: text });
+  emit('inject-agent', { sessionId: props.memberSession.SessionID, message: text });
   inputText.value = '';
 }
 

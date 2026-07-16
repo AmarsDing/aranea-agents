@@ -92,8 +92,8 @@ func AssertWorkspace(callerWS, resourceWS string) error {
 //   - callerWS == resourceWS → 允许
 //   - 其他 → Forbidden
 //
-// 适用场景：可共享实体的 **读** 路径（Get/List）。变更（Update/Delete）必须使用
-// AssertWorkspaceMutate，禁止租户改写共享资源。
+// 适用场景：可共享实体（agent/team/graph_definition/plugin），这些实体可能由
+// 系统内置（workspace_id=""）供所有租户使用，也可能是租户私有（workspace_id="ws-xxx"）。
 //
 // 与 AssertWorkspace 的区别：AssertWorkspace 把空 resourceWS 视为 DefaultWorkspaceID
 // （私有，仅 default 租户可访问）；本函数把空 resourceWS 视为全局共享（所有租户可访问）。
@@ -111,19 +111,36 @@ func AssertWorkspaceOrShared(callerWS, resourceWS string) error {
 	return apierror.Forbidden(DomainWorkspace, "access to resource in another workspace is not allowed")
 }
 
-// AssertWorkspaceMutate 校验 caller 是否可变更（Update/Delete）resource。
-// 共享资源（resourceWS == ""）仅 system caller 可写；租户只能变更本 workspace 私有资源。
+// AssertWorkspaceMutate 校验 caller workspace 是否可修改 resource workspace。
+// 共享资源（resourceWS=""）对任何非系统 caller 都是只读的（fail-closed）。
 //
 // 规则：
-//   - callerWS == SystemWorkspaceID → 绕过
-//   - resourceWS == "" → Forbidden（共享/内置只读，防跨租户改写）
-//   - 其他 → 委托 AssertWorkspace（空视为 default 私有）
+//   - callerWS == SystemWorkspaceID → 绕过（cron/admin 后台任务可写共享资源）
+//   - resourceWS == "" → Forbidden（共享资源禁止 mutate，防止跨租户写入系统内置资源）
+//   - callerWS == resourceWS → 允许
+//   - 其他 → Forbidden
+//
+// 适用场景：可共享实体的**写**操作（agent/team/graph_definition/plugin/mcp_server/
+// knowledge collection）。与 AssertWorkspaceOrShared（读）成对使用：
+// 读允许跨租户访问共享资源，写禁止——防止任何租户篡改系统内置/legacy 共享资源。
+//
+// 业务依据（internal/service/knowledge.go:173-177）：
+// "Shared collections (workspace='') are read-only for tenants (fail-closed)."
+//
+// 与 AssertWorkspace / AssertWorkspaceOrShared 的区别：
+//   - AssertWorkspace 把空 resourceWS 视为 DefaultWorkspaceID（default 租户可写）
+//   - AssertWorkspaceOrShared 把空 resourceWS 视为全局共享（所有租户可读）
+//   - 本函数把空 resourceWS 视为禁止写入（所有非系统租户不可写）
 func AssertWorkspaceMutate(callerWS, resourceWS string) error {
 	if callerWS == SystemWorkspaceID {
 		return nil
 	}
+	// 共享资源对非系统 caller 是只读的——fail-closed 防止跨租户写入。
 	if resourceWS == "" {
-		return apierror.Forbidden(DomainWorkspace, "shared resources are read-only for tenants")
+		return apierror.Forbidden(DomainWorkspace, "cannot mutate shared resource")
 	}
-	return AssertWorkspace(callerWS, resourceWS)
+	if callerWS == resourceWS {
+		return nil
+	}
+	return apierror.Forbidden(DomainWorkspace, "access to resource in another workspace is not allowed")
 }

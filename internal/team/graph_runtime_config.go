@@ -99,8 +99,67 @@ func finalizeRuntimeGraphConfig(cfg biz.GraphBuildConfig, def Definition, rawDef
 	cfg = biz.ApplyFailurePolicy(cfg, policy)
 	cfg = biz.FinalizeGraphFailurePolicy(cfg, policy, parallelBranchIDs)
 	cfg = applyTeamRuntimeExecutionOptions(cfg, def, rawDefinitionJSON)
+	cfg = applySwarmGraphConfig(cfg, def)
 	if def.EnableStateDeliverable {
 		cfg = ensureDeliverableStateField(cfg)
 	}
+	return cfg
+}
+
+// applySwarmGraphConfig maps SwarmConfigDef onto GraphBuildConfig equivalents
+// (graph path cannot use native team.Option from safety_adapter.go).
+func applySwarmGraphConfig(cfg biz.GraphBuildConfig, def Definition) biz.GraphBuildConfig {
+	if def.Swarm == nil {
+		return cfg
+	}
+	swarm := def.Swarm
+	cfg.SwarmSafety = &biz.SwarmSafetySpec{
+		MaxHandoffs:                swarm.MaxHandoffs,
+		RepetitiveHandoffWindow:    swarm.RepetitiveHandoffWindow,
+		RepetitiveHandoffMinUnique: swarm.RepetitiveHandoffMinUnique,
+		CrossRequestTransfer:       swarm.CrossRequestTransfer,
+	}
+	cfg = ensureSwarmSafetyStateFields(cfg)
+
+	timeout := swarm.NodeTimeoutSeconds
+	for i := range cfg.Nodes {
+		nt := strings.ToLower(strings.TrimSpace(cfg.Nodes[i].Type))
+		if nt != biz.NodeTypeAgent && nt != biz.NodeTypeLLM && nt != biz.NodeTypeTool {
+			continue
+		}
+		if timeout > 0 && cfg.Nodes[i].TimeoutSeconds <= 0 {
+			cfg.Nodes[i].TimeoutSeconds = timeout
+		}
+		// Session isolation equivalent: isolate member agent message history.
+		if nt == biz.NodeTypeAgent {
+			cfg.Nodes[i].IsolatedMessages = true
+		}
+	}
+	return cfg
+}
+
+func ensureSwarmSafetyStateFields(cfg biz.GraphBuildConfig) biz.GraphBuildConfig {
+	cfg = ensureStateField(cfg, biz.StateFieldDef{
+		Name:         biz.SwarmHandoffCountStateKey,
+		Type:         "int",
+		Reducer:      biz.ReducerCover,
+		DefaultValue: 0,
+	})
+	cfg = ensureStateField(cfg, biz.StateFieldDef{
+		Name:         biz.SwarmRecentTargetsStateKey,
+		Type:         "[]string",
+		Reducer:      biz.ReducerCover,
+		DefaultValue: []string{},
+	})
+	return cfg
+}
+
+func ensureStateField(cfg biz.GraphBuildConfig, field biz.StateFieldDef) biz.GraphBuildConfig {
+	for _, sf := range cfg.StateFields {
+		if sf.Name == field.Name {
+			return cfg
+		}
+	}
+	cfg.StateFields = append(cfg.StateFields, field)
 	return cfg
 }

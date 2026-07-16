@@ -18,6 +18,13 @@
         <q-btn flat round icon="close" @click="$emit('update:modelValue', false)" />
       </q-card-section>
       <q-separator />
+      <q-tabs v-model="tab" dense align="left" class="q-px-md">
+        <q-tab name="runs" label="运行记录" />
+        <q-tab name="dead" :label="`死信 (${deadLetters?.length ?? 0})`" />
+      </q-tabs>
+      <q-separator />
+      <q-tab-panels v-model="tab" animated>
+        <q-tab-panel name="runs" class="q-pa-none">
       <q-card-section>
         <q-btn flat rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="$emit('refresh')" />
         <q-banner v-if="liveReplaying" dense rounded class="bg-blue-1 text-dark q-mt-sm">
@@ -100,14 +107,57 @@
           暂无运行记录，请先进入 Chat 测试该 Team。
         </div>
       </q-card-section>
+        </q-tab-panel>
+        <q-tab-panel name="dead">
+          <q-btn
+            flat
+            rounded
+            color="primary"
+            icon="refresh"
+            label="刷新死信"
+            :loading="deadLettersLoading"
+            @click="$emit('refreshDeadLetters')"
+          />
+          <q-list class="q-mt-md" separator>
+            <q-item v-for="dl in deadLetters || []" :key="dl.id">
+              <q-item-section>
+                <q-item-label>{{ dl.error_message || '未知错误' }}</q-item-label>
+                <q-item-label caption
+                  >{{ dl.source_type }} · run {{ (dl.team_run_id || '').slice(0, 8) || '-' }} ·
+                  {{ formatDate(dl.created_at) }}</q-item-label
+                >
+              </q-item-section>
+              <q-item-section side>
+                <q-btn
+                  flat
+                  dense
+                  color="primary"
+                  label="解决"
+                  :disable="dl.status === 'resolved'"
+                  @click="$emit('resolveDeadLetter', dl.id)"
+                />
+              </q-item-section>
+            </q-item>
+          </q-list>
+          <div
+            v-if="!deadLettersLoading && !(deadLetters || []).length"
+            class="text-center text-grey-7 q-pa-xl"
+          >
+            暂无待处理死信。
+          </div>
+        </q-tab-panel>
+      </q-tab-panels>
     </q-card>
   </q-dialog>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
 import type { Agent } from '../../features/agents/types';
-import type { Team, TeamRun, TeamRunStep, TeamRunSummary } from '../../features/teams/types';
+import type { Team, TeamRun, TeamRunStep, TeamRunSummary, TaskDeadLetterRow } from '../../features/teams/types';
 import { agentName, formatDate } from './teamUtils';
+
+const tab = ref('runs');
 
 defineProps<{
   modelValue: boolean;
@@ -117,6 +167,8 @@ defineProps<{
   stepsLoading: Record<string, boolean>;
   summariesByRun: Record<string, TeamRunSummary>;
   summariesLoading: Record<string, boolean>;
+  deadLetters?: TaskDeadLetterRow[];
+  deadLettersLoading?: boolean;
   agents: Agent[];
   loading: boolean;
   error: string;
@@ -131,6 +183,8 @@ defineEmits<{
   showSteps: [runID: string];
   loadSummary: [runID: string];
   openObservatory: [runID: string];
+  refreshDeadLetters: [];
+  resolveDeadLetter: [id: string];
 }>();
 
 function formatCost(value?: number) {

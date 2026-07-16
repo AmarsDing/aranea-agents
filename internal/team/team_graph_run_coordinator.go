@@ -301,27 +301,25 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 					}
 				}
 				if c.seq != nil || c.eventBus != nil {
-					ev := biz.ActivityEvent{
-						Event: biz.ActivityEventFailed,
-						Activity: biz.Activity{
-							ID:               string(agent.NewTeamStageActivityID(sess.teamID)),
-						Kind:             biz.ActivityKindTeamStage,
-						Status:           biz.ActivityStatusFailed,
-						SessionID:        sess.sessionID,
-						SpiritSessionID:  sess.spiritSessionID,
-						TeamID:           sess.teamID,
-						Timestamp:        time.Now().UTC(),
-						Stage:            "failed",
-						ParentActivityID: string(agent.NewGraphStageActivityID(sess.spiritSessionID)),
-							Meta: map[string]any{
-								"run_id":        run.ID,
-								"error_message": err.Error(),
-							},
-						},
-						Domain: biz.ActivityDomainChat,
+					now := time.Now().UTC()
+					ts := biz.TeamStage{
+						ID:        string(agent.NewTeamStageActivityID(sess.teamID)),
+						TeamID:    sess.teamID,
+						SessionID: sess.spiritSessionID,
+						Status:    biz.TeamStageStatusFailed,
+						Stage:     biz.TeamStageStageFailed,
+						StartedAt: now,
+						Version:   1,
 					}
-					// Phase 3b-D: bridge to v2 EventBus.
-					c.publishEvent(ctx, biz.NewActivityBridgeEvent(ev))
+					if ts.SessionID == "" {
+						ts.SessionID = sess.sessionID
+					}
+					c.publishEvent(ctx, biz.NewTeamStageFailedEvent(ts))
+					c.publishEvent(ctx, biz.NewSystemNoticeEvent(ts.SessionID, "team_run_failed", err.Error(), map[string]any{
+						"run_id":        run.ID,
+						"team_id":       sess.teamID,
+						"error_message": err.Error(),
+					}))
 				}
 			}
 		}
@@ -382,10 +380,8 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 
 	safego.Go(watchCtx, "team.graph.run.watch", func() {
 		defer cancel()
-		// Phase 3b-D: subscribe via v2 EventBus. Each event is an
-		// *ActivityBridgeEvent wrapping a v1 ActivityEvent; we extract the
-		// inner v1 ActivityEvent and feed it to handleGraphWatchActivity
-		// unchanged (it deeply inspects Kind/Stage/Meta/Event/Content).
+		// Subscribe via v2 EventBus; graph node lifecycle arrives as system.notice
+		// (activity_kind=graph_stage) from graph EventBridge.
 		opts := biz.EventSubscribeOptions{
 			SpiritSessionID: sess.spiritSessionID,
 		}
@@ -429,13 +425,11 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 				if !ok {
 					return
 				}
-				// Extract v1 ActivityEvent from bridge events. Non-bridge
-				// events (Task/Turn/Step/etc.) are ignored by this watcher.
-				bridge, ok := e.(*biz.ActivityBridgeEvent)
+				notice, ok := e.(*biz.SystemNoticeEvent)
 				if !ok {
 					continue
 				}
-				aev := bridge.Event
+				aev := biz.ActivityEventFromSystemNotice(notice)
 				if done, failed, errMsg := c.handleGraphWatchActivity(watchCtx, sess, aev, mode); done {
 					c.finalizeTeamRun(watchCtx, sess, failed, errMsg)
 					return
@@ -650,36 +644,33 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 	}
 	run = updatedRun
 	if c.seq != nil || c.eventBus != nil {
-		var eventType biz.ActivityEventType
-		var status biz.ActivityStatus
-		var stage string
+		now := time.Now().UTC()
+		ts := biz.TeamStage{
+			ID:        string(agent.NewTeamStageActivityID(sess.teamID)),
+			TeamID:    sess.teamID,
+			SessionID: sess.spiritSessionID,
+			StartedAt: now,
+			Version:   1,
+		}
+		if ts.SessionID == "" {
+			ts.SessionID = sess.sessionID
+		}
+		noticeType := "team_stage_completed"
 		if failed {
-			eventType = biz.ActivityEventFailed
-			status = biz.ActivityStatusFailed
-			stage = "failed"
+			ts.Status = biz.TeamStageStatusFailed
+			ts.Stage = biz.TeamStageStageFailed
+			c.publishEvent(ctx, biz.NewTeamStageFailedEvent(ts))
+			noticeType = "team_run_failed"
 		} else {
-			eventType = biz.ActivityEventCompleted
-			status = biz.ActivityStatusCompleted
-			stage = "completed"
+			ts.Status = biz.TeamStageStatusCompleted
+			ts.Stage = biz.TeamStageStageCompleted
+			c.publishEvent(ctx, biz.NewTeamStageCompletedEvent(ts))
 		}
-		ev := biz.ActivityEvent{
-			Event: eventType,
-			Activity: biz.Activity{
-				ID:               string(agent.NewTeamStageActivityID(sess.teamID)),
-			Kind:             biz.ActivityKindTeamStage,
-			Status:           status,
-			SessionID:        sess.sessionID,
-			SpiritSessionID:  sess.spiritSessionID,
-			TeamID:           sess.teamID,
-			Timestamp:        time.Now().UTC(),
-			Stage:            stage,
-			ParentActivityID: string(agent.NewGraphStageActivityID(sess.spiritSessionID)),
-				Meta:             map[string]any{"run_id": run.ID, "run": run},
-			},
-			Domain: biz.ActivityDomainChat,
-		}
-		// Phase 3b-D: bridge to v2 EventBus.
-		c.eventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+		c.publishEvent(ctx, biz.NewSystemNoticeEvent(ts.SessionID, noticeType, errMsg, map[string]any{
+			"run_id":  run.ID,
+			"run":     run,
+			"team_id": sess.teamID,
+		}))
 	}
 	c.evictSession(sess.execID)
 }

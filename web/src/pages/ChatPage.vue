@@ -263,14 +263,15 @@ import { useScrollToActivity } from '../features/chat/composables/useScrollToAct
 import { useBlockedStatus } from '../features/chat/composables/useBlockedStatus';
 import { useSpiritTeamStore } from '../stores/spirit';
 import { useUiConfigStore } from '../stores/uiConfig';
-import { cancelAgentSession, pauseAgentSession, resumeAgentSession, retryAgentSession } from '../features/spirit/api';
-import { enqueueMessage } from '../features/chat/api';
+import { useChatRuntimeStore } from '../stores/chat/runtimeStore';
+import { useChatActivityStore } from '../stores/chat/activityV2Store';
 import type { Agent } from '../features/agents/types';
 
 const SPIRIT_AGENT_KEY = '__spirit__';
 
 const { coreReady, fileRef, layout, entity, session, composer, dialogs, errorBlock } = useChatWorkspace();
 const spiritStore = useSpiritTeamStore();
+const runtimeStore = useChatRuntimeStore();
 const { locate } = useScrollToActivity();
 const uiConfig = useUiConfigStore();
 const blockedStatus = useBlockedStatus(computed(() => session.v2Tasks));
@@ -296,12 +297,14 @@ function onSelectSessionTreeNode(sessionId: string) {
 
 const spiritStatusBar = computed(() => {
   const teams = spiritStore.teams;
+  const activeTeam = spiritStore.activeTeam;
   const running = teams.filter((t) => t.status === 'running' || t.status === 'pending').length;
   const interrupted = teams.filter((t) => t.status === 'interrupted').length;
   const completedTeams = teams.filter((t) => t.status === 'completed');
-  // Aggregate token usage from all teams that have token data; fall back to session-level usage
-  const totalTokenIn = teams.reduce((sum, t) => sum + (t.tokenIn ?? 0), 0);
-  const totalTokenOut = teams.reduce((sum, t) => sum + (t.tokenOut ?? 0), 0);
+  // Prefer active team token usage; fall back to current session composer snapshot.
+  // Do not sum all teams in the store — that mixes unrelated runs.
+  const totalTokenIn = activeTeam?.tokenIn ?? 0;
+  const totalTokenOut = activeTeam?.tokenOut ?? 0;
   const sessionTokens = session.composerUsageSnapshot;
   const tokenUsage =
     totalTokenIn > 0 || totalTokenOut > 0
@@ -389,29 +392,34 @@ function onSidebarLocateAgent(payload: { agentKey: string; teamSessionId: string
   locate(payload.agentKey, payload.teamSessionId, payload.teamId);
 }
 
-/** T8.3: 左侧 Agent 卡片暂停/恢复/取消（基于 agentKey 解析 agentId） */
-function onSidebarPauseAgent(agentKey: string) {
+/** Resolve member chat session ID for Pause/Resume/Cancel (backend expects session_id). */
+function resolveMemberChatSessionId(agentKey: string): string | null {
   const team = spiritStore.teams.find((t) => t.members.some((m) => m.agentKey === agentKey));
   const member = team?.members.find((m) => m.agentKey === agentKey);
-  if (member?.agentId) {
-    pauseAgentSession(member.agentId).catch(() => {});
+  if (!member) return null;
+  if (member.chatSessionId) return member.chatSessionId;
+  // Fallback: session tree lookup (authoritative when member profile only has catalog agentId).
+  const spiritSessionId = team?.spiritSessionId || session.selectedSessionForUi?.id;
+  if (spiritSessionId && session.sessionTree?.findMemberSessionId) {
+    return session.sessionTree.findMemberSessionId(spiritSessionId, agentKey, team?.teamSessionId);
   }
+  return null;
+}
+
+/** T8.3: 左侧 Agent 卡片暂停/恢复/取消 — 必须传 chat session ID，不能传 catalog agentId */
+function onSidebarPauseAgent(agentKey: string) {
+  const sessionId = resolveMemberChatSessionId(agentKey);
+  if (sessionId) void spiritStore.pauseAgent(sessionId);
 }
 
 function onSidebarResumeAgent(agentKey: string) {
-  const team = spiritStore.teams.find((t) => t.members.some((m) => m.agentKey === agentKey));
-  const member = team?.members.find((m) => m.agentKey === agentKey);
-  if (member?.agentId) {
-    resumeAgentSession(member.agentId).catch(() => {});
-  }
+  const sessionId = resolveMemberChatSessionId(agentKey);
+  if (sessionId) void spiritStore.resumeAgent(sessionId);
 }
 
 function onSidebarCancelAgent(agentKey: string) {
-  const team = spiritStore.teams.find((t) => t.members.some((m) => m.agentKey === agentKey));
-  const member = team?.members.find((m) => m.agentKey === agentKey);
-  if (member?.agentId) {
-    cancelAgentSession(member.agentId).catch(() => {});
-  }
+  const sessionId = resolveMemberChatSessionId(agentKey);
+  if (sessionId) void spiritStore.cancelAgent(sessionId);
 }
 
 /** Phase B-4 / §9.1.3: Handle team-member click to expand that member's session.
@@ -448,7 +456,7 @@ function onEnterSession(sessionId: string) {
 function onExpandChildren(sessionIds: string[]) {
   for (const sid of sessionIds) {
     if (!sid) continue;
-    void session.activityStore.fetchSessionHistory(sid);
+    void session.activityStore.ensureMemberStepsLoaded([sid]);
   }
 }
 
@@ -457,52 +465,51 @@ function onExpandChildren(sessionIds: string[]) {
  *  via WS run_status=cancelled events. */
 async function onCancelAgent(sessionId: string) {
   if (!sessionId) return;
-  try {
-    await cancelAgentSession(sessionId);
-  } catch {
-    Notify.create({ type: 'warning', message: layout.t('chat.sessionStage.cancelFailed'), position: 'top' });
-  }
+  await spiritStore.cancelAgent(sessionId);
 }
 
 /** Phase T3 / §B.5.2: Retry a failed/interrupted sub-agent run by
  *  re-enqueuing the last user message in the child session. */
 async function onRetryAgent(sessionId: string) {
   if (!sessionId) return;
-  try {
-    await retryAgentSession(sessionId);
-  } catch {
-    Notify.create({ type: 'warning', message: layout.t('chat.sessionStage.retryFailed'), position: 'top' });
+  await spiritStore.retryAgent(sessionId);
+}
+
+/** Patch MemberSession card status by chat SessionID (not entity ID).
+ *  Returns the previous status when a matching card was found. */
+function patchMemberSessionStatus(sessionId: string, status: 'paused' | 'running'): string | null {
+  const store = useChatActivityStore();
+  for (const ms of store.memberSessions.values()) {
+    if (ms.SessionID === sessionId) {
+      const prev = ms.Status;
+      store.upsertMemberSession({ ...ms, Status: status });
+      return prev;
+    }
   }
+  return null;
 }
 
 /** §B.5.3: Pause an in-flight sub-agent run by childSessionId.
  *  MVP cancels the active turn and marks the session as paused. */
 async function onPauseAgent(sessionId: string) {
   if (!sessionId) return;
-  try {
-    await pauseAgentSession(sessionId);
-  } catch {
-    Notify.create({ type: 'warning', message: layout.t('chat.sessionStage.pauseFailed'), position: 'top' });
-  }
+  patchMemberSessionStatus(sessionId, 'paused');
+  await spiritStore.pauseAgent(sessionId);
 }
 
 /** §B.5.3: Resume a paused sub-agent session.
  *  MVP flips the status marker; user injects a new message to resume execution. */
 async function onResumeAgent(sessionId: string) {
   if (!sessionId) return;
-  try {
-    await resumeAgentSession(sessionId);
-  } catch {
-    Notify.create({ type: 'warning', message: layout.t('chat.sessionStage.resumeFailed'), position: 'top' });
-  }
+  patchMemberSessionStatus(sessionId, 'running');
+  await spiritStore.resumeAgent(sessionId);
 }
 
-/** §B.5.3: Inject a user message into the sub-agent session's pending queue.
- *  Reuses the existing enqueueMessage RPC (HTTP EnqueueUserMessage). */
+/** §B.5.3: Inject a user message into the sub-agent session's pending queue. */
 async function onInjectAgent(payload: { sessionId: string; message: string }) {
   if (!payload.sessionId || !payload.message.trim()) return;
   try {
-    await enqueueMessage(payload.sessionId, payload.message);
+    await runtimeStore.enqueue(payload.sessionId, payload.message);
     Notify.create({ type: 'positive', message: layout.t('chat.sessionStage.injectSent'), position: 'top' });
   } catch {
     Notify.create({ type: 'warning', message: layout.t('chat.sessionStage.injectFailed'), position: 'top' });

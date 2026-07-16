@@ -50,7 +50,7 @@ func TestFromProtoOrchestrationSpec_defaultsGraph(t *testing.T) {
 }
 
 // TestOrchestrationSpec_EmbeddedGraphNodeFields_ProtoGoldenRoundTrip ensures
-// C-21 runtime node fields survive proto ↔ biz mapping (API read→write).
+// C-21 runtime node fields survive proto -> biz mapping (API read->write).
 func TestOrchestrationSpec_EmbeddedGraphNodeFields_ProtoGoldenRoundTrip(t *testing.T) {
 	enabled := true
 	in := &v1.OrchestrationSpec{

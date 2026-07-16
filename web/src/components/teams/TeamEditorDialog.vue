@@ -13,7 +13,16 @@
         <q-btn v-close-popup flat round dense icon="close" />
       </q-card-section>
 
-      <div class="app-glass-dialog__scroll">
+      <q-banner
+        v-if="hasActiveRun"
+        dense
+        rounded
+        class="bg-warning text-dark q-mx-md q-mt-sm"
+      >
+        存在运行中的 TeamRun，编排定义只读；结束后可再编辑。
+      </q-banner>
+
+      <div class="app-glass-dialog__scroll" :class="{ 'team-editor--readonly': hasActiveRun }">
         <div class="team-editor-workspace">
           <div class="team-editor-workspace__main">
             <section class="team-editor-section app-dialog-section">
@@ -395,7 +404,7 @@
           no-caps
           label="保存"
           :loading="saving"
-          :disable="!canSave"
+          :disable="!canSave || hasActiveRun"
           @click="$emit('save')"
         />
       </q-card-actions>
@@ -443,8 +452,9 @@ const props = withDefaults(
     canSave: boolean;
     isDark: boolean;
     isPlatformAdmin?: boolean;
+    hasActiveRun?: boolean;
   }>(),
-  { definitionJSON: '{}', selectedTemplateKey: null, isPlatformAdmin: false },
+  { definitionJSON: '{}', selectedTemplateKey: null, isPlatformAdmin: false, hasActiveRun: false },
 );
 
 const emit = defineEmits<{
@@ -611,3 +621,10 @@ const failureOnError = computed({
   },
 });
 </script>
+
+<style scoped>
+.team-editor--readonly {
+  pointer-events: none;
+  opacity: 0.72;
+}
+</style>

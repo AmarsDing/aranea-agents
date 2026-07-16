@@ -404,7 +404,7 @@ func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID 
 	if mode == "critic_loop" && len(executableIDs) >= 2 && entry != "" && finish != "" {
 		condEdges = append(condEdges, biz.ConditionalEdgeDef{
 			From:        finish,
-			CondFuncRef: biz.CriticLoopCondFuncRef,
+			CondFuncRef: biz.CriticLoopCondFuncRefForThreshold(criticLoopScoreThreshold(def)),
 			PathMap: map[string]string{
 				"approved": finish,
 				"retry":    entry,
@@ -412,6 +412,13 @@ func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID 
 		})
 	}
 	return out, condEdges, entry, finish, branchIDs
+}
+
+func criticLoopScoreThreshold(def Definition) float64 {
+	if def.CriticLoop == nil {
+		return 0
+	}
+	return def.CriticLoop.ScoreThreshold
 }
 
 func embeddedEdgeKind(mode string, e embeddedGraphEdge) string {

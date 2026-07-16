@@ -12,8 +12,6 @@ import (
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	"github.com/google/uuid"
-
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -230,10 +228,8 @@ func (e *TopologyEvolverImpl) markEdgeAdded(execID, edgeKey string) {
 	e.addedEdges[execID][edgeKey] = true
 }
 
-// publishTopologyEvolvedEvent publishes a graph_stage ActivityBridgeEvent
-// (Stage="topology_evolved") so the frontend timeline can render the topology
-// change. Classified as Important (AS-EVT-01): loss causes topology drift but
-// execution continues.
+// publishTopologyEvolvedEvent publishes a graph_topology_evolved system.notice
+// so the frontend timeline can render the topology change.
 func (e *TopologyEvolverImpl) publishTopologyEvolvedEvent(
 	ctx context.Context,
 	exec *biz.GraphExecution,
@@ -243,32 +239,21 @@ func (e *TopologyEvolverImpl) publishTopologyEvolvedEvent(
 	if e.eventBus == nil {
 		return
 	}
-	// Phase 3b-D: bridge to v2 EventBus. graph_stage has no typed v2 EventKind;
-	// ActivityBridgeEvent preserves the v1 payload for the frontend timeline.
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventUpdated,
-		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindGraphStage,
-			Status:          biz.ActivityStatusRunning,
-			SessionID:       exec.SessionID,
-			SpiritSessionID: exec.SpiritSessionID,
-			Timestamp:       time.Now().UTC(),
-			Stage:           "topology_evolved",
-			Meta: map[string]any{
-				"execution_id": exec.ID,
-				"graph_id":     exec.GraphID,
-				"from_node":    edge.From,
-				"to_node":      edge.To,
-				"edge_kind":    edge.Kind,
-				"reason":        insight.Reason,
-				"evidence":     insight.Evidence,
-				"author":       "topology-evolver",
-			},
-		},
-		Domain: biz.ActivityDomainChat,
+	sessionID := exec.SpiritSessionID
+	if sessionID == "" {
+		sessionID = exec.SessionID
 	}
-	e.eventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+	e.eventBus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "topology_evolved", "", map[string]any{
+		"execution_id":  exec.ID,
+		"graph_id":      exec.GraphID,
+		"from_node":     edge.From,
+		"to_node":       edge.To,
+		"edge_kind":     edge.Kind,
+		"reason":        insight.Reason,
+		"evidence":      insight.Evidence,
+		"author":        "topology-evolver",
+		"activity_kind": string(biz.ActivityKindGraphStage),
+	}))
 }
 
 // buildTopologyEvolutionPrompt builds the user prompt for the LLM edge decision.

@@ -95,6 +95,7 @@ func (inj *ModelStatsInjector) loadStats(ctx context.Context) (map[string]ModelU
 			TotalCostMicroUSD: r.TotalCostMicroUSD,
 			SuccessRate:       r.SuccessRate,
 			AvgLatencyMS:      r.AvgLatencyMS,
+			LastActiveDate:    r.LastActiveDate,
 		}
 		statsList = append(statsList, s)
 		statsMap[r.ProviderCode+"/"+r.ModelAPIID] = s

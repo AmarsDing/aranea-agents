@@ -44,16 +44,6 @@
           rounded
           no-caps
           class="monitor-log-toolbar-btn"
-          :icon="hub.processPaused.value ? 'play_arrow' : 'pause'"
-          :label="hub.processPaused.value ? '恢复' : '暂停'"
-          @click="togglePause"
-        />
-        <q-btn
-          dense
-          outline
-          rounded
-          no-caps
-          class="monitor-log-toolbar-btn"
           icon="delete_sweep"
           label="清除"
           @click="hub.clearProcess()"
@@ -159,7 +149,7 @@ const emptyText = computed(() => {
     return '进程日志已在 config.yaml 中关闭（server.monitor.process_log_enabled: false）。';
   }
   if (hub.processPaused.value) {
-    return '已暂停接收，点击「恢复」开始显示进程日志。';
+    return '已暂停接收（切换到本 Tab 后自动恢复）。';
   }
   if (hub.processState.value === 'connected') {
     return '已连接，等待进程日志…';
@@ -169,8 +159,4 @@ const emptyText = computed(() => {
   }
   return '暂无进程日志';
 });
-
-function togglePause() {
-  hub.setProcessPaused(!hub.processPaused.value);
-}
 </script>

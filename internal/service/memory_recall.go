@@ -17,6 +17,15 @@ func (s *MemoryService) DebugMemoryRecall(ctx context.Context, req *v1.DebugMemo
 	if agentID == "" {
 		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
 	}
+	if _, err := authorizeMemoryScope(ctx, "agent", agentID, false); err != nil {
+		return nil, err
+	}
+	userID := strings.TrimSpace(req.GetUserId())
+	if userID != "" {
+		if _, err := authorizeMemoryScope(ctx, "user", userID, false); err != nil {
+			return nil, err
+		}
+	}
 	l2lim := req.GetL2Limit()
 	if l2lim <= 0 {
 		l2lim = 5
@@ -29,7 +38,7 @@ func (s *MemoryService) DebugMemoryRecall(ctx context.Context, req *v1.DebugMemo
 	if err != nil {
 		return nil, err
 	}
-	l3rows, err := s.debugRecaller.RecallL3FactsDebug(ctx, "agent", agentID, strings.TrimSpace(req.GetUserId()), strings.TrimSpace(req.GetQuery()), l3lim)
+	l3rows, err := s.debugRecaller.RecallL3FactsDebug(ctx, "agent", agentID, userID, strings.TrimSpace(req.GetQuery()), l3lim)
 	if err != nil {
 		return nil, err
 	}
@@ -52,11 +61,20 @@ func (s *MemoryService) CompositeSearchMemories(ctx context.Context, req *v1.Com
 	if agentID == "" || query == "" {
 		return nil, apierror.BadRequest("MEMORY", "agent_id and query are required")
 	}
+	if _, err := authorizeMemoryScope(ctx, "agent", agentID, false); err != nil {
+		return nil, err
+	}
+	userID := strings.TrimSpace(req.GetUserId())
+	if userID != "" {
+		if _, err := authorizeMemoryScope(ctx, "user", userID, false); err != nil {
+			return nil, err
+		}
+	}
 	lim := req.GetLimit()
 	if lim <= 0 {
 		lim = 10
 	}
-	rows, err := s.debugRecaller.CompositeSearchMemories(ctx, agentID, strings.TrimSpace(req.GetSessionId()), strings.TrimSpace(req.GetUserId()), query, lim)
+	rows, err := s.debugRecaller.CompositeSearchMemories(ctx, agentID, strings.TrimSpace(req.GetSessionId()), userID, query, lim)
 	if err != nil {
 		return nil, err
 	}

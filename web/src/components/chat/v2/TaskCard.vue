@@ -44,6 +44,8 @@
       :turns="prePlanTurns"
       @pause-agent="(sid) => $emit('pause-agent', sid)"
       @inject-agent="(p) => $emit('inject-agent', p)"
+      @retry-team="(teamId) => $emit('retry-team', teamId)"
+      @expand="(ids) => $emit('expand', ids)"
     />
     <template v-for="pb in planBoards" :key="pb.ID">
       <PlanBoardCard :plan-board="pb" />
@@ -57,12 +59,25 @@
       :team-stage="ts"
       @pause-agent="(sid) => $emit('pause-agent', sid)"
       @inject-agent="(p) => $emit('inject-agent', p)"
+      @retry-team="(teamId) => $emit('retry-team', teamId)"
+      @expand="(ids) => $emit('expand', ids)"
+    />
+    <!-- Mode B: orphan member sessions not under any TeamRun (sub-agent without team shell) -->
+    <MemberSessionPanel
+      v-for="ms in orphanMemberSessions"
+      :key="ms.ID"
+      :member-session="ms"
+      @pause-agent="(sid) => $emit('pause-agent', sid)"
+      @inject-agent="(p) => $emit('inject-agent', p)"
+      @expand="(ids) => $emit('expand', ids)"
     />
     <TurnList
       v-if="postPlanTurns.length"
       :turns="postPlanTurns"
       @pause-agent="(sid) => $emit('pause-agent', sid)"
       @inject-agent="(p) => $emit('inject-agent', p)"
+      @retry-team="(teamId) => $emit('retry-team', teamId)"
+      @expand="(ids) => $emit('expand', ids)"
     />
   </div>
 </template>
@@ -78,6 +93,7 @@ import TurnList from './TurnList.vue';
 import TeamStagePanel from './TeamStagePanel.vue';
 import PlanBoardCard from './PlanBoardCard.vue';
 import GraphStageBlock from './GraphStageBlock.vue';
+import MemberSessionPanel from './MemberSessionPanel.vue';
 
 // Safe i18n wrapper — falls back to the key when the i18n plugin isn't
 // installed (e.g., during unit tests without app.use(i18n)).
@@ -103,6 +119,8 @@ defineEmits<{
   regenerate: [task: Task];
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
+  'retry-team': [teamId: string];
+  expand: [sessionIds: string[]];
 }>();
 
 const { t } = useSafeI18n();
@@ -117,6 +135,7 @@ const orphanTeamStages = computed(() => {
   const turnIds = new Set(turns.value.map((t) => t.ID));
   return all.filter((ts) => !ts.TurnID || !turnIds.has(ts.TurnID));
 });
+const orphanMemberSessions = computed(() => store.getTaskOrphanMemberSessions(props.task.ID));
 const spiritTurns = computed(() => turns.value.filter((t) => !t.TeamStageID));
 const prePlanTurns = computed(() => {
   const pbs = planBoards.value;

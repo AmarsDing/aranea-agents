@@ -5,7 +5,7 @@
       <q-btn
         flat
         dense
-        label="重试"
+        :label="actionLabel"
         class="app-error-banner__action monitor-error-banner__action"
         @click="$emit('retry')"
       />
@@ -14,6 +14,8 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{ message: string }>();
+withDefaults(defineProps<{ message: string; actionLabel?: string }>(), {
+  actionLabel: '重试',
+});
 defineEmits<{ retry: [] }>();
 </script>

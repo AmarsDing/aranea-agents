@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -97,7 +98,31 @@ func containsNegationBeforeWord(s, word string) bool {
 }
 
 func RegisterCriticLoopCondFunc(reg RegistryRegistrar, threshold float64, lg loggateway.Logger) {
-	reg.RegisterCondFuncInstance(biz.CriticLoopCondFuncRef, criticLoopCondFunc(threshold, lg))
+	fn := criticLoopCondFunc(threshold, lg)
+	reg.RegisterCondFuncInstance(biz.CriticLoopCondFuncRef, fn)
+	if threshold > 0 {
+		reg.RegisterCondFuncInstance(biz.CriticLoopCondFuncRefForThreshold(threshold), fn)
+	}
+}
+
+// EnsureCriticLoopCondFuncs registers any threshold-suffixed critic_loop CondFuncRef
+// found in cfg so ResolveBuildConfig succeeds for per-team score_threshold values.
+func EnsureCriticLoopCondFuncs(reg RegistryRegistrar, cfg biz.GraphBuildConfig, lg loggateway.Logger) {
+	if reg == nil {
+		return
+	}
+	for _, ce := range cfg.ConditionalEdges {
+		ref := strings.TrimSpace(ce.CondFuncRef)
+		prefix := biz.CriticLoopCondFuncRef + "@"
+		if !strings.HasPrefix(ref, prefix) {
+			continue
+		}
+		threshold, err := strconv.ParseFloat(strings.TrimPrefix(ref, prefix), 64)
+		if err != nil || threshold <= 0 {
+			continue
+		}
+		reg.RegisterCondFuncInstance(ref, criticLoopCondFunc(threshold, lg))
+	}
 }
 
 type RegistryRegistrar interface {

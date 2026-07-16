@@ -12,19 +12,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// assertGraphAccess 验证 caller 是否可读取目标 graph（P2-B IDOR 防护）。
-// 共享 graph（workspace_id=""）对所有租户可读；变更须用 assertGraphMutateAccess。
+// assertGraphAccess 验证 caller workspace 是否可访问目标 graph（P2-B IDOR 防护）。
+// 使用 AssertWorkspaceOrShared：共享 graph（workspace_id=""）对所有租户可见，
+// 租户私有 graph（workspace_id="ws-xxx"）仅归属租户可见。
+// 失败时返回 NotFound（避免泄露资源存在性），并记录 Warn 日志。
 func (s *GraphService) assertGraphAccess(ctx context.Context, graphID string) error {
-	return s.checkGraphAccess(ctx, graphID, false)
-}
-
-// assertGraphMutateAccess 验证 caller 是否可变更目标 graph。
-// 共享 graph（workspace_id=""）对租户只读（fail-closed）。
-func (s *GraphService) assertGraphMutateAccess(ctx context.Context, graphID string) error {
-	return s.checkGraphAccess(ctx, graphID, true)
-}
-
-func (s *GraphService) checkGraphAccess(ctx context.Context, graphID string, mutate bool) error {
 	if graphID == "" {
 		return nil
 	}
@@ -35,17 +27,11 @@ func (s *GraphService) checkGraphAccess(ctx context.Context, graphID string, mut
 		}
 		return err
 	}
-	callerWS := workspace.IDFromContext(ctx)
-	if mutate {
-		err = workspace.AssertWorkspaceMutate(callerWS, def.WorkspaceID)
-	} else {
-		err = workspace.AssertWorkspaceOrShared(callerWS, def.WorkspaceID)
-	}
-	if err != nil {
+	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), def.WorkspaceID); err != nil {
 		s.lg.Warn("graph access denied: workspace mismatch",
 			loggateway.StepID("graph.idor"),
 			loggateway.Str("graph_id", graphID),
-			loggateway.Str("caller_ws", callerWS))
+			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
 		return apierror.NotFound("GRAPH", "graph definition not found")
 	}
 	return nil
@@ -150,7 +136,7 @@ func (s *GraphService) ListGraphs(ctx context.Context, req *graphv1.ListGraphsRe
 }
 
 func (s *GraphService) UpdateGraph(ctx context.Context, req *graphv1.UpdateGraphRequest) (*graphv1.UpdateGraphResponse, error) {
-	if err := s.assertGraphMutateAccess(ctx, req.Id); err != nil { // P2-B: IDOR
+	if err := s.assertGraphAccess(ctx, req.Id); err != nil { // P2-B: IDOR
 		return nil, err
 	}
 	def := &biz.GraphDefinition{
@@ -212,7 +198,7 @@ func (s *GraphService) UpdateGraph(ctx context.Context, req *graphv1.UpdateGraph
 }
 
 func (s *GraphService) DeleteGraph(ctx context.Context, req *graphv1.DeleteGraphRequest) (*graphv1.DeleteGraphResponse, error) {
-	if err := s.assertGraphMutateAccess(ctx, req.Id); err != nil { // P2-B: IDOR
+	if err := s.assertGraphAccess(ctx, req.Id); err != nil { // P2-B: IDOR
 		return nil, err
 	}
 	err := s.uc.DeleteGraph(ctx, req.Id)
@@ -226,9 +212,9 @@ func (s *GraphService) ReorderGraphs(ctx context.Context, req *graphv1.ReorderGr
 	if len(req.Ids) == 0 {
 		return &graphv1.ReorderGraphsResponse{}, nil
 	}
-	// P2-B: IDOR — 校验 caller 对所有待排序 graph 的变更权限。
+	// P2-B: IDOR — 校验 caller 对所有待排序 graph 的访问权限。
 	for _, id := range req.Ids {
-		if err := s.assertGraphMutateAccess(ctx, id); err != nil {
+		if err := s.assertGraphAccess(ctx, id); err != nil {
 			return nil, err
 		}
 	}
@@ -373,7 +359,7 @@ func (s *GraphService) ListGraphVersions(ctx context.Context, req *graphv1.ListG
 }
 
 func (s *GraphService) RollbackGraphVersion(ctx context.Context, req *graphv1.RollbackGraphVersionRequest) (*graphv1.RollbackGraphVersionResponse, error) {
-	if err := s.assertGraphMutateAccess(ctx, req.GraphId); err != nil { // P2-B: IDOR
+	if err := s.assertGraphAccess(ctx, req.GraphId); err != nil { // P2-B: IDOR
 		return nil, err
 	}
 	saved, err := s.uc.RollbackGraphVersion(ctx, req.GraphId, int(req.Version))
@@ -388,7 +374,7 @@ func (s *GraphService) RollbackGraphVersion(ctx context.Context, req *graphv1.Ro
 }
 
 func (s *GraphService) SaveGraphAsTemplate(ctx context.Context, req *graphv1.SaveGraphAsTemplateRequest) (*graphv1.SaveGraphAsTemplateResponse, error) {
-	if err := s.assertGraphMutateAccess(ctx, req.GraphId); err != nil { // P2-B: IDOR
+	if err := s.assertGraphAccess(ctx, req.GraphId); err != nil { // P2-B: IDOR
 		return nil, err
 	}
 	meta, err := s.uc.SaveGraphAsTemplate(ctx, req.GraphId, req.TemplateName, req.Category, req.Description)

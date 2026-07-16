@@ -149,31 +149,27 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 	run = updatedRun
 	if r.hasPublisher() {
 		cp := run
-		ev := biz.ActivityEvent{
-			Event: biz.ActivityEventCompleted,
-			Activity: biz.Activity{
-				ID:              string(agent.NewTeamStageActivityID(stepCtx.TeamID)),
-				Kind:            biz.ActivityKindTeamStage,
-				Status:          biz.ActivityStatusCompleted,
-				SessionID:       stepCtx.SessionID,
-				SpiritSessionID: stepCtx.SpiritSessionID,
-				TeamID:          stepCtx.TeamID,
-				Timestamp:       time.Now().UTC(),
-				Stage:           "completed",
-				Meta:            map[string]any{"run_id": run.ID, "run": cp},
-			},
-			Domain: biz.ActivityDomainChat,
+		now := time.Now().UTC()
+		ts := biz.TeamStage{
+			ID:        string(agent.NewTeamStageActivityID(stepCtx.TeamID)),
+			TeamID:    stepCtx.TeamID,
+			SessionID: stepCtx.SpiritSessionID,
+			Status:    biz.TeamStageStatusCompleted,
+			Stage:     biz.TeamStageStageCompleted,
+			StartedAt: now,
+			Version:   1,
 		}
-		// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves the
-		// v1 TeamStage Completed activity (Meta.run_id, Meta.run snapshot) so
-		// the frontend team_stage terminal state renders correctly.
-		r.publishEvent(ctx, biz.NewActivityBridgeEvent(ev))
-		// Finalize session activities for members that were started (session
-		// "created" event published at team start) but never executed in the
-		// graph. Without this, their AgentCards stay in "running" forever even
-		// after the team is marked completed. Only members whose step was
-		// persisted (via PersistGraphRunStep) get a "completed" event during
-		// normal flow; this loop covers the rest.
+		if ts.SessionID == "" {
+			ts.SessionID = stepCtx.SessionID
+		}
+		r.publishEvent(ctx, biz.NewTeamStageCompletedEvent(ts))
+		r.publishEvent(ctx, biz.NewSystemNoticeEvent(ts.SessionID, "team_stage_completed", "", map[string]any{
+			"run_id":  run.ID,
+			"run":     cp,
+			"team_id": stepCtx.TeamID,
+		}))
+		// Finalize session activities for members that were started but never
+		// executed in the graph.
 		r.finalizePendingSessionActivities(ctx, run, stepCtx.TeamID, steps)
 		r.publishTeamRunSummary(ctx, run)
 	}

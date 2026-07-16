@@ -6085,6 +6085,51 @@ func (x *ListMemberSessionsV2Response) GetMemberSessions() []*MemberSessionV2 {
 	return nil
 }
 
+type ListOrphanMemberSessionsV2Request struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Spirit (root) session ID.
+	SessionId     string `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOrphanMemberSessionsV2Request) Reset() {
+	*x = ListOrphanMemberSessionsV2Request{}
+	mi := &file_kratos_session_v1_session_proto_msgTypes[72]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOrphanMemberSessionsV2Request) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOrphanMemberSessionsV2Request) ProtoMessage() {}
+
+func (x *ListOrphanMemberSessionsV2Request) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_session_v1_session_proto_msgTypes[72]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOrphanMemberSessionsV2Request.ProtoReflect.Descriptor instead.
+func (*ListOrphanMemberSessionsV2Request) Descriptor() ([]byte, []int) {
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{72}
+}
+
+func (x *ListOrphanMemberSessionsV2Request) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
 // --- PlanBoard ---
 type PlanBoardV2 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -6105,7 +6150,7 @@ type PlanBoardV2 struct {
 
 func (x *PlanBoardV2) Reset() {
 	*x = PlanBoardV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[72]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6117,7 +6162,7 @@ func (x *PlanBoardV2) String() string {
 func (*PlanBoardV2) ProtoMessage() {}
 
 func (x *PlanBoardV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[72]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6130,7 +6175,7 @@ func (x *PlanBoardV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanBoardV2.ProtoReflect.Descriptor instead.
 func (*PlanBoardV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{72}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *PlanBoardV2) GetId() string {
@@ -6219,7 +6264,7 @@ type ListPlanBoardsV2Request struct {
 
 func (x *ListPlanBoardsV2Request) Reset() {
 	*x = ListPlanBoardsV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[73]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6231,7 +6276,7 @@ func (x *ListPlanBoardsV2Request) String() string {
 func (*ListPlanBoardsV2Request) ProtoMessage() {}
 
 func (x *ListPlanBoardsV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[73]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6244,7 +6289,7 @@ func (x *ListPlanBoardsV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPlanBoardsV2Request.ProtoReflect.Descriptor instead.
 func (*ListPlanBoardsV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{73}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *ListPlanBoardsV2Request) GetTaskId() string {
@@ -6263,7 +6308,7 @@ type ListPlanBoardsV2Response struct {
 
 func (x *ListPlanBoardsV2Response) Reset() {
 	*x = ListPlanBoardsV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[74]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6275,7 +6320,7 @@ func (x *ListPlanBoardsV2Response) String() string {
 func (*ListPlanBoardsV2Response) ProtoMessage() {}
 
 func (x *ListPlanBoardsV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[74]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6288,7 +6333,7 @@ func (x *ListPlanBoardsV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPlanBoardsV2Response.ProtoReflect.Descriptor instead.
 func (*ListPlanBoardsV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{74}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *ListPlanBoardsV2Response) GetPlanBoards() []*PlanBoardV2 {
@@ -6322,7 +6367,7 @@ type PlanStepV2 struct {
 
 func (x *PlanStepV2) Reset() {
 	*x = PlanStepV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[75]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6334,7 +6379,7 @@ func (x *PlanStepV2) String() string {
 func (*PlanStepV2) ProtoMessage() {}
 
 func (x *PlanStepV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[75]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6347,7 +6392,7 @@ func (x *PlanStepV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanStepV2.ProtoReflect.Descriptor instead.
 func (*PlanStepV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{75}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *PlanStepV2) GetId() string {
@@ -6467,7 +6512,7 @@ type StepResultV2 struct {
 
 func (x *StepResultV2) Reset() {
 	*x = StepResultV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[76]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6479,7 +6524,7 @@ func (x *StepResultV2) String() string {
 func (*StepResultV2) ProtoMessage() {}
 
 func (x *StepResultV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[76]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6492,7 +6537,7 @@ func (x *StepResultV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StepResultV2.ProtoReflect.Descriptor instead.
 func (*StepResultV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{76}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *StepResultV2) GetOutput() string {
@@ -6535,7 +6580,7 @@ type StepErrorV2 struct {
 
 func (x *StepErrorV2) Reset() {
 	*x = StepErrorV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[77]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6547,7 +6592,7 @@ func (x *StepErrorV2) String() string {
 func (*StepErrorV2) ProtoMessage() {}
 
 func (x *StepErrorV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[77]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6560,7 +6605,7 @@ func (x *StepErrorV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StepErrorV2.ProtoReflect.Descriptor instead.
 func (*StepErrorV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{77}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *StepErrorV2) GetCode() string {
@@ -6605,7 +6650,7 @@ type MemberReportV2 struct {
 
 func (x *MemberReportV2) Reset() {
 	*x = MemberReportV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[78]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6617,7 +6662,7 @@ func (x *MemberReportV2) String() string {
 func (*MemberReportV2) ProtoMessage() {}
 
 func (x *MemberReportV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[78]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6630,7 +6675,7 @@ func (x *MemberReportV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemberReportV2.ProtoReflect.Descriptor instead.
 func (*MemberReportV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{78}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *MemberReportV2) GetAgentKey() string {
@@ -6686,7 +6731,7 @@ type TokenUsageV2 struct {
 
 func (x *TokenUsageV2) Reset() {
 	*x = TokenUsageV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[79]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6698,7 +6743,7 @@ func (x *TokenUsageV2) String() string {
 func (*TokenUsageV2) ProtoMessage() {}
 
 func (x *TokenUsageV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[79]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6711,7 +6756,7 @@ func (x *TokenUsageV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TokenUsageV2.ProtoReflect.Descriptor instead.
 func (*TokenUsageV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{79}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *TokenUsageV2) GetPromptTokens() int64 {
@@ -6744,7 +6789,7 @@ type ListPlanStepsV2Request struct {
 
 func (x *ListPlanStepsV2Request) Reset() {
 	*x = ListPlanStepsV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[80]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6756,7 +6801,7 @@ func (x *ListPlanStepsV2Request) String() string {
 func (*ListPlanStepsV2Request) ProtoMessage() {}
 
 func (x *ListPlanStepsV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[80]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6769,7 +6814,7 @@ func (x *ListPlanStepsV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPlanStepsV2Request.ProtoReflect.Descriptor instead.
 func (*ListPlanStepsV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{80}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *ListPlanStepsV2Request) GetTaskId() string {
@@ -6788,7 +6833,7 @@ type ListPlanStepsV2Response struct {
 
 func (x *ListPlanStepsV2Response) Reset() {
 	*x = ListPlanStepsV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[81]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6800,7 +6845,7 @@ func (x *ListPlanStepsV2Response) String() string {
 func (*ListPlanStepsV2Response) ProtoMessage() {}
 
 func (x *ListPlanStepsV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[81]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6813,7 +6858,7 @@ func (x *ListPlanStepsV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPlanStepsV2Response.ProtoReflect.Descriptor instead.
 func (*ListPlanStepsV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{81}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *ListPlanStepsV2Response) GetPlanSteps() []*PlanStepV2 {
@@ -6843,7 +6888,7 @@ type GraphStageV2 struct {
 
 func (x *GraphStageV2) Reset() {
 	*x = GraphStageV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[82]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6855,7 +6900,7 @@ func (x *GraphStageV2) String() string {
 func (*GraphStageV2) ProtoMessage() {}
 
 func (x *GraphStageV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[82]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6868,7 +6913,7 @@ func (x *GraphStageV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphStageV2.ProtoReflect.Descriptor instead.
 func (*GraphStageV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{82}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *GraphStageV2) GetId() string {
@@ -6957,7 +7002,7 @@ type ListGraphStagesV2Request struct {
 
 func (x *ListGraphStagesV2Request) Reset() {
 	*x = ListGraphStagesV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[83]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6969,7 +7014,7 @@ func (x *ListGraphStagesV2Request) String() string {
 func (*ListGraphStagesV2Request) ProtoMessage() {}
 
 func (x *ListGraphStagesV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[83]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6982,7 +7027,7 @@ func (x *ListGraphStagesV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGraphStagesV2Request.ProtoReflect.Descriptor instead.
 func (*ListGraphStagesV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{83}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *ListGraphStagesV2Request) GetTaskId() string {
@@ -7001,7 +7046,7 @@ type ListGraphStagesV2Response struct {
 
 func (x *ListGraphStagesV2Response) Reset() {
 	*x = ListGraphStagesV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[84]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7013,7 +7058,7 @@ func (x *ListGraphStagesV2Response) String() string {
 func (*ListGraphStagesV2Response) ProtoMessage() {}
 
 func (x *ListGraphStagesV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[84]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7026,7 +7071,7 @@ func (x *ListGraphStagesV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGraphStagesV2Response.ProtoReflect.Descriptor instead.
 func (*ListGraphStagesV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{84}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *ListGraphStagesV2Response) GetGraphStages() []*GraphStageV2 {
@@ -7052,7 +7097,7 @@ type GraphNodeV2 struct {
 
 func (x *GraphNodeV2) Reset() {
 	*x = GraphNodeV2{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[85]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7064,7 +7109,7 @@ func (x *GraphNodeV2) String() string {
 func (*GraphNodeV2) ProtoMessage() {}
 
 func (x *GraphNodeV2) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[85]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7077,7 +7122,7 @@ func (x *GraphNodeV2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphNodeV2.ProtoReflect.Descriptor instead.
 func (*GraphNodeV2) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{85}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *GraphNodeV2) GetId() string {
@@ -7138,7 +7183,7 @@ type ListGraphNodesV2Request struct {
 
 func (x *ListGraphNodesV2Request) Reset() {
 	*x = ListGraphNodesV2Request{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[86]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7150,7 +7195,7 @@ func (x *ListGraphNodesV2Request) String() string {
 func (*ListGraphNodesV2Request) ProtoMessage() {}
 
 func (x *ListGraphNodesV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[86]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7163,7 +7208,7 @@ func (x *ListGraphNodesV2Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGraphNodesV2Request.ProtoReflect.Descriptor instead.
 func (*ListGraphNodesV2Request) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{86}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *ListGraphNodesV2Request) GetStageId() string {
@@ -7182,7 +7227,7 @@ type ListGraphNodesV2Response struct {
 
 func (x *ListGraphNodesV2Response) Reset() {
 	*x = ListGraphNodesV2Response{}
-	mi := &file_kratos_session_v1_session_proto_msgTypes[87]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7194,7 +7239,7 @@ func (x *ListGraphNodesV2Response) String() string {
 func (*ListGraphNodesV2Response) ProtoMessage() {}
 
 func (x *ListGraphNodesV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_session_v1_session_proto_msgTypes[87]
+	mi := &file_kratos_session_v1_session_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7207,7 +7252,7 @@ func (x *ListGraphNodesV2Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGraphNodesV2Response.ProtoReflect.Descriptor instead.
 func (*ListGraphNodesV2Response) Descriptor() ([]byte, []int) {
-	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{87}
+	return file_kratos_session_v1_session_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *ListGraphNodesV2Response) GetGraphNodes() []*GraphNodeV2 {
@@ -7834,7 +7879,10 @@ const file_kratos_session_v1_session_proto_rawDesc = "" +
 	"\x1bListMemberSessionsV2Request\x12\x1b\n" +
 	"\x06run_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x05runId\"k\n" +
 	"\x1cListMemberSessionsV2Response\x12K\n" +
-	"\x0fmember_sessions\x18\x01 \x03(\v2\".kratos.session.v1.MemberSessionV2R\x0ememberSessions\"\xc5\x02\n" +
+	"\x0fmember_sessions\x18\x01 \x03(\v2\".kratos.session.v1.MemberSessionV2R\x0ememberSessions\"H\n" +
+	"!ListOrphanMemberSessionsV2Request\x12#\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\"\xc5\x02\n" +
 	"\vPlanBoardV2\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x17\n" +
@@ -7966,7 +8014,7 @@ const file_kratos_session_v1_session_proto_rawDesc = "" +
 	"\x11GetCompressStatus\x12+.kratos.session.v1.GetCompressStatusRequest\x1a).kratos.session.v1.GetCompressStatusReply\"1\x82\xd3\xe4\x93\x02+\x12)/v1/sessions/{session_id}/compress-status\x12\xa1\x01\n" +
 	"\x11ListChildSessions\x12+.kratos.session.v1.ListChildSessionsRequest\x1a,.kratos.session.v1.ListChildSessionsResponse\"1\x82\xd3\xe4\x93\x02+\x12)/v1/sessions/{parent_session_id}/children\x12\x94\x01\n" +
 	"\x0eGetSessionTree\x12(.kratos.session.v1.GetSessionTreeRequest\x1a).kratos.session.v1.GetSessionTreeResponse\"-\x82\xd3\xe4\x93\x02'\x12%/v1/sessions/{spirit_session_id}/tree\x12\x93\x01\n" +
-	"\x0eListActivities\x12(.kratos.session.v1.ListActivitiesRequest\x1a).kratos.session.v1.ListActivitiesResponse\",\x82\xd3\xe4\x93\x02&\x12$/v1/sessions/{session_id}/activities2\xa2\f\n" +
+	"\x0eListActivities\x12(.kratos.session.v1.ListActivitiesRequest\x1a).kratos.session.v1.ListActivitiesResponse\",\x82\xd3\xe4\x93\x02&\x12$/v1/sessions/{session_id}/activities2\xe0\r\n" +
 	"\x10SessionV2Service\x12\x83\x01\n" +
 	"\tListTasks\x12%.kratos.session.v1.ListTasksV2Request\x1a&.kratos.session.v1.ListTasksV2Response\"'\x82\xd3\xe4\x93\x02!\x12\x1f/v2/sessions/{session_id}/tasks\x12}\n" +
 	"\tListTurns\x12%.kratos.session.v1.ListTurnsV2Request\x1a&.kratos.session.v1.ListTurnsV2Response\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v2/tasks/{task_id}/turns\x12\x83\x01\n" +
@@ -7974,7 +8022,8 @@ const file_kratos_session_v1_session_proto_rawDesc = "" +
 	"\aGetStep\x12#.kratos.session.v1.GetStepV2Request\x1a$.kratos.session.v1.GetStepV2Response\"\x00\x12\x92\x01\n" +
 	"\x0eListTeamStages\x12*.kratos.session.v1.ListTeamStagesV2Request\x1a+.kratos.session.v1.ListTeamStagesV2Response\"'\x82\xd3\xe4\x93\x02!\x12\x1f/v2/tasks/{task_id}/team_stages\x12\x91\x01\n" +
 	"\fListTeamRuns\x12(.kratos.session.v1.ListTeamRunsV2Request\x1a).kratos.session.v1.ListTeamRunsV2Response\",\x82\xd3\xe4\x93\x02&\x12$/v2/team_stages/{stage_id}/team_runs\x12\xa5\x01\n" +
-	"\x12ListMemberSessions\x12..kratos.session.v1.ListMemberSessionsV2Request\x1a/.kratos.session.v1.ListMemberSessionsV2Response\".\x82\xd3\xe4\x93\x02(\x12&/v2/team_runs/{run_id}/member_sessions\x12\x92\x01\n" +
+	"\x12ListMemberSessions\x12..kratos.session.v1.ListMemberSessionsV2Request\x1a/.kratos.session.v1.ListMemberSessionsV2Response\".\x82\xd3\xe4\x93\x02(\x12&/v2/team_runs/{run_id}/member_sessions\x12\xbb\x01\n" +
+	"\x18ListOrphanMemberSessions\x124.kratos.session.v1.ListOrphanMemberSessionsV2Request\x1a/.kratos.session.v1.ListMemberSessionsV2Response\"8\x82\xd3\xe4\x93\x022\x120/v2/sessions/{session_id}/orphan_member_sessions\x12\x92\x01\n" +
 	"\x0eListPlanBoards\x12*.kratos.session.v1.ListPlanBoardsV2Request\x1a+.kratos.session.v1.ListPlanBoardsV2Response\"'\x82\xd3\xe4\x93\x02!\x12\x1f/v2/tasks/{task_id}/plan_boards\x12\x8e\x01\n" +
 	"\rListPlanSteps\x12).kratos.session.v1.ListPlanStepsV2Request\x1a*.kratos.session.v1.ListPlanStepsV2Response\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v2/tasks/{task_id}/plan_steps\x12\x96\x01\n" +
 	"\x0fListGraphStages\x12+.kratos.session.v1.ListGraphStagesV2Request\x1a,.kratos.session.v1.ListGraphStagesV2Response\"(\x82\xd3\xe4\x93\x02\"\x12 /v2/tasks/{task_id}/graph_stages\x12\x9a\x01\n" +
@@ -7993,97 +8042,98 @@ func file_kratos_session_v1_session_proto_rawDescGZIP() []byte {
 	return file_kratos_session_v1_session_proto_rawDescData
 }
 
-var file_kratos_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 88)
+var file_kratos_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 89)
 var file_kratos_session_v1_session_proto_goTypes = []any{
-	(*Session)(nil),                         // 0: kratos.session.v1.Session
-	(*SessionTimelineSummary)(nil),          // 1: kratos.session.v1.SessionTimelineSummary
-	(*SessionTimelineItem)(nil),             // 2: kratos.session.v1.SessionTimelineItem
-	(*SessionTimeline)(nil),                 // 3: kratos.session.v1.SessionTimeline
-	(*SearchSessionsRequest)(nil),           // 4: kratos.session.v1.SearchSessionsRequest
-	(*SearchSessionsResponse)(nil),          // 5: kratos.session.v1.SearchSessionsResponse
-	(*CreateSessionRequest)(nil),            // 6: kratos.session.v1.CreateSessionRequest
-	(*GetSessionRequest)(nil),               // 7: kratos.session.v1.GetSessionRequest
-	(*UpdateSessionRequest)(nil),            // 8: kratos.session.v1.UpdateSessionRequest
-	(*DeleteSessionRequest)(nil),            // 9: kratos.session.v1.DeleteSessionRequest
-	(*DeleteSessionsByAgentRequest)(nil),    // 10: kratos.session.v1.DeleteSessionsByAgentRequest
-	(*ArchiveSessionRequest)(nil),           // 11: kratos.session.v1.ArchiveSessionRequest
-	(*RestoreSessionRequest)(nil),           // 12: kratos.session.v1.RestoreSessionRequest
-	(*PinSessionRequest)(nil),               // 13: kratos.session.v1.PinSessionRequest
-	(*UnpinSessionRequest)(nil),             // 14: kratos.session.v1.UnpinSessionRequest
-	(*ExportSessionRequest)(nil),            // 15: kratos.session.v1.ExportSessionRequest
-	(*ExportSessionResponse)(nil),           // 16: kratos.session.v1.ExportSessionResponse
-	(*SessionRunRecord)(nil),                // 17: kratos.session.v1.SessionRunRecord
-	(*ListSessionRunsRequest)(nil),          // 18: kratos.session.v1.ListSessionRunsRequest
-	(*ListSessionRunsResponse)(nil),         // 19: kratos.session.v1.ListSessionRunsResponse
-	(*SessionParticipant)(nil),              // 20: kratos.session.v1.SessionParticipant
-	(*ListSessionParticipantsRequest)(nil),  // 21: kratos.session.v1.ListSessionParticipantsRequest
-	(*ListSessionParticipantsResponse)(nil), // 22: kratos.session.v1.ListSessionParticipantsResponse
-	(*GetSessionTimelineRequest)(nil),       // 23: kratos.session.v1.GetSessionTimelineRequest
-	(*ChatMessageRow)(nil),                  // 24: kratos.session.v1.ChatMessageRow
-	(*ListSessionMessagesRequest)(nil),      // 25: kratos.session.v1.ListSessionMessagesRequest
-	(*ListSessionMessagesResponse)(nil),     // 26: kratos.session.v1.ListSessionMessagesResponse
-	(*SearchSessionMessagesRequest)(nil),    // 27: kratos.session.v1.SearchSessionMessagesRequest
-	(*MessageSearchHit)(nil),                // 28: kratos.session.v1.MessageSearchHit
-	(*SearchSessionMessagesResponse)(nil),   // 29: kratos.session.v1.SearchSessionMessagesResponse
-	(*SessionTurn)(nil),                     // 30: kratos.session.v1.SessionTurn
-	(*ListSessionTurnsRequest)(nil),         // 31: kratos.session.v1.ListSessionTurnsRequest
-	(*ListSessionTurnsResponse)(nil),        // 32: kratos.session.v1.ListSessionTurnsResponse
-	(*SessionBatchScope)(nil),               // 33: kratos.session.v1.SessionBatchScope
-	(*BatchPreviewSessionsRequest)(nil),     // 34: kratos.session.v1.BatchPreviewSessionsRequest
-	(*BatchPreviewSessionsResponse)(nil),    // 35: kratos.session.v1.BatchPreviewSessionsResponse
-	(*BatchArchiveSessionsRequest)(nil),     // 36: kratos.session.v1.BatchArchiveSessionsRequest
-	(*BatchDeleteSessionsRequest)(nil),      // 37: kratos.session.v1.BatchDeleteSessionsRequest
-	(*BatchSessionsResponse)(nil),           // 38: kratos.session.v1.BatchSessionsResponse
-	(*CompactSessionRequest)(nil),           // 39: kratos.session.v1.CompactSessionRequest
-	(*CompactSessionResponse)(nil),          // 40: kratos.session.v1.CompactSessionResponse
-	(*GetCompressStatusRequest)(nil),        // 41: kratos.session.v1.GetCompressStatusRequest
-	(*GetCompressStatusReply)(nil),          // 42: kratos.session.v1.GetCompressStatusReply
-	(*ListChildSessionsRequest)(nil),        // 43: kratos.session.v1.ListChildSessionsRequest
-	(*ListChildSessionsResponse)(nil),       // 44: kratos.session.v1.ListChildSessionsResponse
-	(*SessionTreeNode)(nil),                 // 45: kratos.session.v1.SessionTreeNode
-	(*GetSessionTreeRequest)(nil),           // 46: kratos.session.v1.GetSessionTreeRequest
-	(*GetSessionTreeResponse)(nil),          // 47: kratos.session.v1.GetSessionTreeResponse
-	(*Activity)(nil),                        // 48: kratos.session.v1.Activity
-	(*ListActivitiesRequest)(nil),           // 49: kratos.session.v1.ListActivitiesRequest
-	(*ListActivitiesResponse)(nil),          // 50: kratos.session.v1.ListActivitiesResponse
-	(*ListTasksV2Request)(nil),              // 51: kratos.session.v1.ListTasksV2Request
-	(*ListTasksV2Response)(nil),             // 52: kratos.session.v1.ListTasksV2Response
-	(*ListTurnsV2Request)(nil),              // 53: kratos.session.v1.ListTurnsV2Request
-	(*ListTurnsV2Response)(nil),             // 54: kratos.session.v1.ListTurnsV2Response
-	(*ListStepsV2Request)(nil),              // 55: kratos.session.v1.ListStepsV2Request
-	(*ListStepsV2Response)(nil),             // 56: kratos.session.v1.ListStepsV2Response
-	(*GetStepV2Request)(nil),                // 57: kratos.session.v1.GetStepV2Request
-	(*GetStepV2Response)(nil),               // 58: kratos.session.v1.GetStepV2Response
-	(*TaskV2)(nil),                          // 59: kratos.session.v1.TaskV2
-	(*TurnV2)(nil),                          // 60: kratos.session.v1.TurnV2
-	(*StepV2)(nil),                          // 61: kratos.session.v1.StepV2
-	(*TeamStageV2)(nil),                     // 62: kratos.session.v1.TeamStageV2
-	(*MemberInfoV2)(nil),                    // 63: kratos.session.v1.MemberInfoV2
-	(*ListTeamStagesV2Request)(nil),         // 64: kratos.session.v1.ListTeamStagesV2Request
-	(*ListTeamStagesV2Response)(nil),        // 65: kratos.session.v1.ListTeamStagesV2Response
-	(*TeamRunV2)(nil),                       // 66: kratos.session.v1.TeamRunV2
-	(*ListTeamRunsV2Request)(nil),           // 67: kratos.session.v1.ListTeamRunsV2Request
-	(*ListTeamRunsV2Response)(nil),          // 68: kratos.session.v1.ListTeamRunsV2Response
-	(*MemberSessionV2)(nil),                 // 69: kratos.session.v1.MemberSessionV2
-	(*ListMemberSessionsV2Request)(nil),     // 70: kratos.session.v1.ListMemberSessionsV2Request
-	(*ListMemberSessionsV2Response)(nil),    // 71: kratos.session.v1.ListMemberSessionsV2Response
-	(*PlanBoardV2)(nil),                     // 72: kratos.session.v1.PlanBoardV2
-	(*ListPlanBoardsV2Request)(nil),         // 73: kratos.session.v1.ListPlanBoardsV2Request
-	(*ListPlanBoardsV2Response)(nil),        // 74: kratos.session.v1.ListPlanBoardsV2Response
-	(*PlanStepV2)(nil),                      // 75: kratos.session.v1.PlanStepV2
-	(*StepResultV2)(nil),                    // 76: kratos.session.v1.StepResultV2
-	(*StepErrorV2)(nil),                     // 77: kratos.session.v1.StepErrorV2
-	(*MemberReportV2)(nil),                  // 78: kratos.session.v1.MemberReportV2
-	(*TokenUsageV2)(nil),                    // 79: kratos.session.v1.TokenUsageV2
-	(*ListPlanStepsV2Request)(nil),          // 80: kratos.session.v1.ListPlanStepsV2Request
-	(*ListPlanStepsV2Response)(nil),         // 81: kratos.session.v1.ListPlanStepsV2Response
-	(*GraphStageV2)(nil),                    // 82: kratos.session.v1.GraphStageV2
-	(*ListGraphStagesV2Request)(nil),        // 83: kratos.session.v1.ListGraphStagesV2Request
-	(*ListGraphStagesV2Response)(nil),       // 84: kratos.session.v1.ListGraphStagesV2Response
-	(*GraphNodeV2)(nil),                     // 85: kratos.session.v1.GraphNodeV2
-	(*ListGraphNodesV2Request)(nil),         // 86: kratos.session.v1.ListGraphNodesV2Request
-	(*ListGraphNodesV2Response)(nil),        // 87: kratos.session.v1.ListGraphNodesV2Response
-	(*emptypb.Empty)(nil),                   // 88: google.protobuf.Empty
+	(*Session)(nil),                           // 0: kratos.session.v1.Session
+	(*SessionTimelineSummary)(nil),            // 1: kratos.session.v1.SessionTimelineSummary
+	(*SessionTimelineItem)(nil),               // 2: kratos.session.v1.SessionTimelineItem
+	(*SessionTimeline)(nil),                   // 3: kratos.session.v1.SessionTimeline
+	(*SearchSessionsRequest)(nil),             // 4: kratos.session.v1.SearchSessionsRequest
+	(*SearchSessionsResponse)(nil),            // 5: kratos.session.v1.SearchSessionsResponse
+	(*CreateSessionRequest)(nil),              // 6: kratos.session.v1.CreateSessionRequest
+	(*GetSessionRequest)(nil),                 // 7: kratos.session.v1.GetSessionRequest
+	(*UpdateSessionRequest)(nil),              // 8: kratos.session.v1.UpdateSessionRequest
+	(*DeleteSessionRequest)(nil),              // 9: kratos.session.v1.DeleteSessionRequest
+	(*DeleteSessionsByAgentRequest)(nil),      // 10: kratos.session.v1.DeleteSessionsByAgentRequest
+	(*ArchiveSessionRequest)(nil),             // 11: kratos.session.v1.ArchiveSessionRequest
+	(*RestoreSessionRequest)(nil),             // 12: kratos.session.v1.RestoreSessionRequest
+	(*PinSessionRequest)(nil),                 // 13: kratos.session.v1.PinSessionRequest
+	(*UnpinSessionRequest)(nil),               // 14: kratos.session.v1.UnpinSessionRequest
+	(*ExportSessionRequest)(nil),              // 15: kratos.session.v1.ExportSessionRequest
+	(*ExportSessionResponse)(nil),             // 16: kratos.session.v1.ExportSessionResponse
+	(*SessionRunRecord)(nil),                  // 17: kratos.session.v1.SessionRunRecord
+	(*ListSessionRunsRequest)(nil),            // 18: kratos.session.v1.ListSessionRunsRequest
+	(*ListSessionRunsResponse)(nil),           // 19: kratos.session.v1.ListSessionRunsResponse
+	(*SessionParticipant)(nil),                // 20: kratos.session.v1.SessionParticipant
+	(*ListSessionParticipantsRequest)(nil),    // 21: kratos.session.v1.ListSessionParticipantsRequest
+	(*ListSessionParticipantsResponse)(nil),   // 22: kratos.session.v1.ListSessionParticipantsResponse
+	(*GetSessionTimelineRequest)(nil),         // 23: kratos.session.v1.GetSessionTimelineRequest
+	(*ChatMessageRow)(nil),                    // 24: kratos.session.v1.ChatMessageRow
+	(*ListSessionMessagesRequest)(nil),        // 25: kratos.session.v1.ListSessionMessagesRequest
+	(*ListSessionMessagesResponse)(nil),       // 26: kratos.session.v1.ListSessionMessagesResponse
+	(*SearchSessionMessagesRequest)(nil),      // 27: kratos.session.v1.SearchSessionMessagesRequest
+	(*MessageSearchHit)(nil),                  // 28: kratos.session.v1.MessageSearchHit
+	(*SearchSessionMessagesResponse)(nil),     // 29: kratos.session.v1.SearchSessionMessagesResponse
+	(*SessionTurn)(nil),                       // 30: kratos.session.v1.SessionTurn
+	(*ListSessionTurnsRequest)(nil),           // 31: kratos.session.v1.ListSessionTurnsRequest
+	(*ListSessionTurnsResponse)(nil),          // 32: kratos.session.v1.ListSessionTurnsResponse
+	(*SessionBatchScope)(nil),                 // 33: kratos.session.v1.SessionBatchScope
+	(*BatchPreviewSessionsRequest)(nil),       // 34: kratos.session.v1.BatchPreviewSessionsRequest
+	(*BatchPreviewSessionsResponse)(nil),      // 35: kratos.session.v1.BatchPreviewSessionsResponse
+	(*BatchArchiveSessionsRequest)(nil),       // 36: kratos.session.v1.BatchArchiveSessionsRequest
+	(*BatchDeleteSessionsRequest)(nil),        // 37: kratos.session.v1.BatchDeleteSessionsRequest
+	(*BatchSessionsResponse)(nil),             // 38: kratos.session.v1.BatchSessionsResponse
+	(*CompactSessionRequest)(nil),             // 39: kratos.session.v1.CompactSessionRequest
+	(*CompactSessionResponse)(nil),            // 40: kratos.session.v1.CompactSessionResponse
+	(*GetCompressStatusRequest)(nil),          // 41: kratos.session.v1.GetCompressStatusRequest
+	(*GetCompressStatusReply)(nil),            // 42: kratos.session.v1.GetCompressStatusReply
+	(*ListChildSessionsRequest)(nil),          // 43: kratos.session.v1.ListChildSessionsRequest
+	(*ListChildSessionsResponse)(nil),         // 44: kratos.session.v1.ListChildSessionsResponse
+	(*SessionTreeNode)(nil),                   // 45: kratos.session.v1.SessionTreeNode
+	(*GetSessionTreeRequest)(nil),             // 46: kratos.session.v1.GetSessionTreeRequest
+	(*GetSessionTreeResponse)(nil),            // 47: kratos.session.v1.GetSessionTreeResponse
+	(*Activity)(nil),                          // 48: kratos.session.v1.Activity
+	(*ListActivitiesRequest)(nil),             // 49: kratos.session.v1.ListActivitiesRequest
+	(*ListActivitiesResponse)(nil),            // 50: kratos.session.v1.ListActivitiesResponse
+	(*ListTasksV2Request)(nil),                // 51: kratos.session.v1.ListTasksV2Request
+	(*ListTasksV2Response)(nil),               // 52: kratos.session.v1.ListTasksV2Response
+	(*ListTurnsV2Request)(nil),                // 53: kratos.session.v1.ListTurnsV2Request
+	(*ListTurnsV2Response)(nil),               // 54: kratos.session.v1.ListTurnsV2Response
+	(*ListStepsV2Request)(nil),                // 55: kratos.session.v1.ListStepsV2Request
+	(*ListStepsV2Response)(nil),               // 56: kratos.session.v1.ListStepsV2Response
+	(*GetStepV2Request)(nil),                  // 57: kratos.session.v1.GetStepV2Request
+	(*GetStepV2Response)(nil),                 // 58: kratos.session.v1.GetStepV2Response
+	(*TaskV2)(nil),                            // 59: kratos.session.v1.TaskV2
+	(*TurnV2)(nil),                            // 60: kratos.session.v1.TurnV2
+	(*StepV2)(nil),                            // 61: kratos.session.v1.StepV2
+	(*TeamStageV2)(nil),                       // 62: kratos.session.v1.TeamStageV2
+	(*MemberInfoV2)(nil),                      // 63: kratos.session.v1.MemberInfoV2
+	(*ListTeamStagesV2Request)(nil),           // 64: kratos.session.v1.ListTeamStagesV2Request
+	(*ListTeamStagesV2Response)(nil),          // 65: kratos.session.v1.ListTeamStagesV2Response
+	(*TeamRunV2)(nil),                         // 66: kratos.session.v1.TeamRunV2
+	(*ListTeamRunsV2Request)(nil),             // 67: kratos.session.v1.ListTeamRunsV2Request
+	(*ListTeamRunsV2Response)(nil),            // 68: kratos.session.v1.ListTeamRunsV2Response
+	(*MemberSessionV2)(nil),                   // 69: kratos.session.v1.MemberSessionV2
+	(*ListMemberSessionsV2Request)(nil),       // 70: kratos.session.v1.ListMemberSessionsV2Request
+	(*ListMemberSessionsV2Response)(nil),      // 71: kratos.session.v1.ListMemberSessionsV2Response
+	(*ListOrphanMemberSessionsV2Request)(nil), // 72: kratos.session.v1.ListOrphanMemberSessionsV2Request
+	(*PlanBoardV2)(nil),                       // 73: kratos.session.v1.PlanBoardV2
+	(*ListPlanBoardsV2Request)(nil),           // 74: kratos.session.v1.ListPlanBoardsV2Request
+	(*ListPlanBoardsV2Response)(nil),          // 75: kratos.session.v1.ListPlanBoardsV2Response
+	(*PlanStepV2)(nil),                        // 76: kratos.session.v1.PlanStepV2
+	(*StepResultV2)(nil),                      // 77: kratos.session.v1.StepResultV2
+	(*StepErrorV2)(nil),                       // 78: kratos.session.v1.StepErrorV2
+	(*MemberReportV2)(nil),                    // 79: kratos.session.v1.MemberReportV2
+	(*TokenUsageV2)(nil),                      // 80: kratos.session.v1.TokenUsageV2
+	(*ListPlanStepsV2Request)(nil),            // 81: kratos.session.v1.ListPlanStepsV2Request
+	(*ListPlanStepsV2Response)(nil),           // 82: kratos.session.v1.ListPlanStepsV2Response
+	(*GraphStageV2)(nil),                      // 83: kratos.session.v1.GraphStageV2
+	(*ListGraphStagesV2Request)(nil),          // 84: kratos.session.v1.ListGraphStagesV2Request
+	(*ListGraphStagesV2Response)(nil),         // 85: kratos.session.v1.ListGraphStagesV2Response
+	(*GraphNodeV2)(nil),                       // 86: kratos.session.v1.GraphNodeV2
+	(*ListGraphNodesV2Request)(nil),           // 87: kratos.session.v1.ListGraphNodesV2Request
+	(*ListGraphNodesV2Response)(nil),          // 88: kratos.session.v1.ListGraphNodesV2Response
+	(*emptypb.Empty)(nil),                     // 89: google.protobuf.Empty
 }
 var file_kratos_session_v1_session_proto_depIdxs = []int32{
 	2,  // 0: kratos.session.v1.SessionTimeline.items:type_name -> kratos.session.v1.SessionTimelineItem
@@ -8110,18 +8160,18 @@ var file_kratos_session_v1_session_proto_depIdxs = []int32{
 	62, // 21: kratos.session.v1.ListTeamStagesV2Response.team_stages:type_name -> kratos.session.v1.TeamStageV2
 	66, // 22: kratos.session.v1.ListTeamRunsV2Response.team_runs:type_name -> kratos.session.v1.TeamRunV2
 	69, // 23: kratos.session.v1.ListMemberSessionsV2Response.member_sessions:type_name -> kratos.session.v1.MemberSessionV2
-	75, // 24: kratos.session.v1.PlanBoardV2.steps:type_name -> kratos.session.v1.PlanStepV2
-	72, // 25: kratos.session.v1.ListPlanBoardsV2Response.plan_boards:type_name -> kratos.session.v1.PlanBoardV2
-	76, // 26: kratos.session.v1.PlanStepV2.result:type_name -> kratos.session.v1.StepResultV2
-	77, // 27: kratos.session.v1.PlanStepV2.error:type_name -> kratos.session.v1.StepErrorV2
-	78, // 28: kratos.session.v1.StepResultV2.member_reports:type_name -> kratos.session.v1.MemberReportV2
-	79, // 29: kratos.session.v1.StepResultV2.tokens_used:type_name -> kratos.session.v1.TokenUsageV2
-	78, // 30: kratos.session.v1.StepErrorV2.failed_member:type_name -> kratos.session.v1.MemberReportV2
-	79, // 31: kratos.session.v1.MemberReportV2.tokens_used:type_name -> kratos.session.v1.TokenUsageV2
-	75, // 32: kratos.session.v1.ListPlanStepsV2Response.plan_steps:type_name -> kratos.session.v1.PlanStepV2
-	85, // 33: kratos.session.v1.GraphStageV2.nodes:type_name -> kratos.session.v1.GraphNodeV2
-	82, // 34: kratos.session.v1.ListGraphStagesV2Response.graph_stages:type_name -> kratos.session.v1.GraphStageV2
-	85, // 35: kratos.session.v1.ListGraphNodesV2Response.graph_nodes:type_name -> kratos.session.v1.GraphNodeV2
+	76, // 24: kratos.session.v1.PlanBoardV2.steps:type_name -> kratos.session.v1.PlanStepV2
+	73, // 25: kratos.session.v1.ListPlanBoardsV2Response.plan_boards:type_name -> kratos.session.v1.PlanBoardV2
+	77, // 26: kratos.session.v1.PlanStepV2.result:type_name -> kratos.session.v1.StepResultV2
+	78, // 27: kratos.session.v1.PlanStepV2.error:type_name -> kratos.session.v1.StepErrorV2
+	79, // 28: kratos.session.v1.StepResultV2.member_reports:type_name -> kratos.session.v1.MemberReportV2
+	80, // 29: kratos.session.v1.StepResultV2.tokens_used:type_name -> kratos.session.v1.TokenUsageV2
+	79, // 30: kratos.session.v1.StepErrorV2.failed_member:type_name -> kratos.session.v1.MemberReportV2
+	80, // 31: kratos.session.v1.MemberReportV2.tokens_used:type_name -> kratos.session.v1.TokenUsageV2
+	76, // 32: kratos.session.v1.ListPlanStepsV2Response.plan_steps:type_name -> kratos.session.v1.PlanStepV2
+	86, // 33: kratos.session.v1.GraphStageV2.nodes:type_name -> kratos.session.v1.GraphNodeV2
+	83, // 34: kratos.session.v1.ListGraphStagesV2Response.graph_stages:type_name -> kratos.session.v1.GraphStageV2
+	86, // 35: kratos.session.v1.ListGraphNodesV2Response.graph_nodes:type_name -> kratos.session.v1.GraphNodeV2
 	4,  // 36: kratos.session.v1.SessionService.SearchSessions:input_type -> kratos.session.v1.SearchSessionsRequest
 	6,  // 37: kratos.session.v1.SessionService.CreateSession:input_type -> kratos.session.v1.CreateSessionRequest
 	10, // 38: kratos.session.v1.SessionService.DeleteSessionsByAgent:input_type -> kratos.session.v1.DeleteSessionsByAgentRequest
@@ -8154,48 +8204,50 @@ var file_kratos_session_v1_session_proto_depIdxs = []int32{
 	64, // 65: kratos.session.v1.SessionV2Service.ListTeamStages:input_type -> kratos.session.v1.ListTeamStagesV2Request
 	67, // 66: kratos.session.v1.SessionV2Service.ListTeamRuns:input_type -> kratos.session.v1.ListTeamRunsV2Request
 	70, // 67: kratos.session.v1.SessionV2Service.ListMemberSessions:input_type -> kratos.session.v1.ListMemberSessionsV2Request
-	73, // 68: kratos.session.v1.SessionV2Service.ListPlanBoards:input_type -> kratos.session.v1.ListPlanBoardsV2Request
-	80, // 69: kratos.session.v1.SessionV2Service.ListPlanSteps:input_type -> kratos.session.v1.ListPlanStepsV2Request
-	83, // 70: kratos.session.v1.SessionV2Service.ListGraphStages:input_type -> kratos.session.v1.ListGraphStagesV2Request
-	86, // 71: kratos.session.v1.SessionV2Service.ListGraphNodes:input_type -> kratos.session.v1.ListGraphNodesV2Request
-	5,  // 72: kratos.session.v1.SessionService.SearchSessions:output_type -> kratos.session.v1.SearchSessionsResponse
-	0,  // 73: kratos.session.v1.SessionService.CreateSession:output_type -> kratos.session.v1.Session
-	88, // 74: kratos.session.v1.SessionService.DeleteSessionsByAgent:output_type -> google.protobuf.Empty
-	0,  // 75: kratos.session.v1.SessionService.GetSession:output_type -> kratos.session.v1.Session
-	0,  // 76: kratos.session.v1.SessionService.UpdateSession:output_type -> kratos.session.v1.Session
-	88, // 77: kratos.session.v1.SessionService.DeleteSession:output_type -> google.protobuf.Empty
-	88, // 78: kratos.session.v1.SessionService.ArchiveSession:output_type -> google.protobuf.Empty
-	0,  // 79: kratos.session.v1.SessionService.RestoreSession:output_type -> kratos.session.v1.Session
-	0,  // 80: kratos.session.v1.SessionService.PinSession:output_type -> kratos.session.v1.Session
-	0,  // 81: kratos.session.v1.SessionService.UnpinSession:output_type -> kratos.session.v1.Session
-	16, // 82: kratos.session.v1.SessionService.ExportSession:output_type -> kratos.session.v1.ExportSessionResponse
-	19, // 83: kratos.session.v1.SessionService.ListSessionRuns:output_type -> kratos.session.v1.ListSessionRunsResponse
-	22, // 84: kratos.session.v1.SessionService.ListSessionParticipants:output_type -> kratos.session.v1.ListSessionParticipantsResponse
-	3,  // 85: kratos.session.v1.SessionService.GetSessionTimeline:output_type -> kratos.session.v1.SessionTimeline
-	26, // 86: kratos.session.v1.SessionService.ListSessionMessages:output_type -> kratos.session.v1.ListSessionMessagesResponse
-	29, // 87: kratos.session.v1.SessionService.SearchSessionMessages:output_type -> kratos.session.v1.SearchSessionMessagesResponse
-	32, // 88: kratos.session.v1.SessionService.ListSessionTurns:output_type -> kratos.session.v1.ListSessionTurnsResponse
-	35, // 89: kratos.session.v1.SessionService.BatchPreviewSessions:output_type -> kratos.session.v1.BatchPreviewSessionsResponse
-	38, // 90: kratos.session.v1.SessionService.BatchArchiveSessions:output_type -> kratos.session.v1.BatchSessionsResponse
-	38, // 91: kratos.session.v1.SessionService.BatchDeleteSessions:output_type -> kratos.session.v1.BatchSessionsResponse
-	40, // 92: kratos.session.v1.SessionService.CompactSession:output_type -> kratos.session.v1.CompactSessionResponse
-	42, // 93: kratos.session.v1.SessionService.GetCompressStatus:output_type -> kratos.session.v1.GetCompressStatusReply
-	44, // 94: kratos.session.v1.SessionService.ListChildSessions:output_type -> kratos.session.v1.ListChildSessionsResponse
-	47, // 95: kratos.session.v1.SessionService.GetSessionTree:output_type -> kratos.session.v1.GetSessionTreeResponse
-	50, // 96: kratos.session.v1.SessionService.ListActivities:output_type -> kratos.session.v1.ListActivitiesResponse
-	52, // 97: kratos.session.v1.SessionV2Service.ListTasks:output_type -> kratos.session.v1.ListTasksV2Response
-	54, // 98: kratos.session.v1.SessionV2Service.ListTurns:output_type -> kratos.session.v1.ListTurnsV2Response
-	56, // 99: kratos.session.v1.SessionV2Service.ListSteps:output_type -> kratos.session.v1.ListStepsV2Response
-	58, // 100: kratos.session.v1.SessionV2Service.GetStep:output_type -> kratos.session.v1.GetStepV2Response
-	65, // 101: kratos.session.v1.SessionV2Service.ListTeamStages:output_type -> kratos.session.v1.ListTeamStagesV2Response
-	68, // 102: kratos.session.v1.SessionV2Service.ListTeamRuns:output_type -> kratos.session.v1.ListTeamRunsV2Response
-	71, // 103: kratos.session.v1.SessionV2Service.ListMemberSessions:output_type -> kratos.session.v1.ListMemberSessionsV2Response
-	74, // 104: kratos.session.v1.SessionV2Service.ListPlanBoards:output_type -> kratos.session.v1.ListPlanBoardsV2Response
-	81, // 105: kratos.session.v1.SessionV2Service.ListPlanSteps:output_type -> kratos.session.v1.ListPlanStepsV2Response
-	84, // 106: kratos.session.v1.SessionV2Service.ListGraphStages:output_type -> kratos.session.v1.ListGraphStagesV2Response
-	87, // 107: kratos.session.v1.SessionV2Service.ListGraphNodes:output_type -> kratos.session.v1.ListGraphNodesV2Response
-	72, // [72:108] is the sub-list for method output_type
-	36, // [36:72] is the sub-list for method input_type
+	72, // 68: kratos.session.v1.SessionV2Service.ListOrphanMemberSessions:input_type -> kratos.session.v1.ListOrphanMemberSessionsV2Request
+	74, // 69: kratos.session.v1.SessionV2Service.ListPlanBoards:input_type -> kratos.session.v1.ListPlanBoardsV2Request
+	81, // 70: kratos.session.v1.SessionV2Service.ListPlanSteps:input_type -> kratos.session.v1.ListPlanStepsV2Request
+	84, // 71: kratos.session.v1.SessionV2Service.ListGraphStages:input_type -> kratos.session.v1.ListGraphStagesV2Request
+	87, // 72: kratos.session.v1.SessionV2Service.ListGraphNodes:input_type -> kratos.session.v1.ListGraphNodesV2Request
+	5,  // 73: kratos.session.v1.SessionService.SearchSessions:output_type -> kratos.session.v1.SearchSessionsResponse
+	0,  // 74: kratos.session.v1.SessionService.CreateSession:output_type -> kratos.session.v1.Session
+	89, // 75: kratos.session.v1.SessionService.DeleteSessionsByAgent:output_type -> google.protobuf.Empty
+	0,  // 76: kratos.session.v1.SessionService.GetSession:output_type -> kratos.session.v1.Session
+	0,  // 77: kratos.session.v1.SessionService.UpdateSession:output_type -> kratos.session.v1.Session
+	89, // 78: kratos.session.v1.SessionService.DeleteSession:output_type -> google.protobuf.Empty
+	89, // 79: kratos.session.v1.SessionService.ArchiveSession:output_type -> google.protobuf.Empty
+	0,  // 80: kratos.session.v1.SessionService.RestoreSession:output_type -> kratos.session.v1.Session
+	0,  // 81: kratos.session.v1.SessionService.PinSession:output_type -> kratos.session.v1.Session
+	0,  // 82: kratos.session.v1.SessionService.UnpinSession:output_type -> kratos.session.v1.Session
+	16, // 83: kratos.session.v1.SessionService.ExportSession:output_type -> kratos.session.v1.ExportSessionResponse
+	19, // 84: kratos.session.v1.SessionService.ListSessionRuns:output_type -> kratos.session.v1.ListSessionRunsResponse
+	22, // 85: kratos.session.v1.SessionService.ListSessionParticipants:output_type -> kratos.session.v1.ListSessionParticipantsResponse
+	3,  // 86: kratos.session.v1.SessionService.GetSessionTimeline:output_type -> kratos.session.v1.SessionTimeline
+	26, // 87: kratos.session.v1.SessionService.ListSessionMessages:output_type -> kratos.session.v1.ListSessionMessagesResponse
+	29, // 88: kratos.session.v1.SessionService.SearchSessionMessages:output_type -> kratos.session.v1.SearchSessionMessagesResponse
+	32, // 89: kratos.session.v1.SessionService.ListSessionTurns:output_type -> kratos.session.v1.ListSessionTurnsResponse
+	35, // 90: kratos.session.v1.SessionService.BatchPreviewSessions:output_type -> kratos.session.v1.BatchPreviewSessionsResponse
+	38, // 91: kratos.session.v1.SessionService.BatchArchiveSessions:output_type -> kratos.session.v1.BatchSessionsResponse
+	38, // 92: kratos.session.v1.SessionService.BatchDeleteSessions:output_type -> kratos.session.v1.BatchSessionsResponse
+	40, // 93: kratos.session.v1.SessionService.CompactSession:output_type -> kratos.session.v1.CompactSessionResponse
+	42, // 94: kratos.session.v1.SessionService.GetCompressStatus:output_type -> kratos.session.v1.GetCompressStatusReply
+	44, // 95: kratos.session.v1.SessionService.ListChildSessions:output_type -> kratos.session.v1.ListChildSessionsResponse
+	47, // 96: kratos.session.v1.SessionService.GetSessionTree:output_type -> kratos.session.v1.GetSessionTreeResponse
+	50, // 97: kratos.session.v1.SessionService.ListActivities:output_type -> kratos.session.v1.ListActivitiesResponse
+	52, // 98: kratos.session.v1.SessionV2Service.ListTasks:output_type -> kratos.session.v1.ListTasksV2Response
+	54, // 99: kratos.session.v1.SessionV2Service.ListTurns:output_type -> kratos.session.v1.ListTurnsV2Response
+	56, // 100: kratos.session.v1.SessionV2Service.ListSteps:output_type -> kratos.session.v1.ListStepsV2Response
+	58, // 101: kratos.session.v1.SessionV2Service.GetStep:output_type -> kratos.session.v1.GetStepV2Response
+	65, // 102: kratos.session.v1.SessionV2Service.ListTeamStages:output_type -> kratos.session.v1.ListTeamStagesV2Response
+	68, // 103: kratos.session.v1.SessionV2Service.ListTeamRuns:output_type -> kratos.session.v1.ListTeamRunsV2Response
+	71, // 104: kratos.session.v1.SessionV2Service.ListMemberSessions:output_type -> kratos.session.v1.ListMemberSessionsV2Response
+	71, // 105: kratos.session.v1.SessionV2Service.ListOrphanMemberSessions:output_type -> kratos.session.v1.ListMemberSessionsV2Response
+	75, // 106: kratos.session.v1.SessionV2Service.ListPlanBoards:output_type -> kratos.session.v1.ListPlanBoardsV2Response
+	82, // 107: kratos.session.v1.SessionV2Service.ListPlanSteps:output_type -> kratos.session.v1.ListPlanStepsV2Response
+	85, // 108: kratos.session.v1.SessionV2Service.ListGraphStages:output_type -> kratos.session.v1.ListGraphStagesV2Response
+	88, // 109: kratos.session.v1.SessionV2Service.ListGraphNodes:output_type -> kratos.session.v1.ListGraphNodesV2Response
+	73, // [73:110] is the sub-list for method output_type
+	36, // [36:73] is the sub-list for method input_type
 	36, // [36:36] is the sub-list for extension type_name
 	36, // [36:36] is the sub-list for extension extendee
 	0,  // [0:36] is the sub-list for field type_name
@@ -8213,7 +8265,7 @@ func file_kratos_session_v1_session_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_session_v1_session_proto_rawDesc), len(file_kratos_session_v1_session_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   88,
+			NumMessages:   89,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

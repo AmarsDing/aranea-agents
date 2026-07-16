@@ -38,6 +38,9 @@ const (
 
 // GraphNode 是 GraphStage 内的一个节点，对应一个 PlanStep。
 // 节点状态由 PlanStep.Status 通过 MapPlanStepToGraphNodeStatus 映射得到。
+//
+// TeamStageID：dispatch 时回填；后续 status-only 更新必须保留（不得用空串擦除）。
+// DependsOn：派生自 PlanStep，事件载荷携带；DB 不持久化（List 时从 PlanStep 回填）。
 type GraphNode struct {
 	ID           string // 通常 = plan_step.id（确定性派生）
 	GraphStageID string

@@ -1,9 +1,15 @@
 package team
 
-// TECH-DEBT(P2-19/20): SwarmSafetyOptions/SessionIsolationOptions/MemberToolOptions
-// 适配器已实现但未接入生产路径。项目 Team 编排当前使用自建安全策略与
-// 会话隔离机制，未切换到框架 team.Option 方案。适配器保留作为未来
-// 切换到框架 Team 安全机制的桥接点（alignment-plan.md §四 协同包 C）。
+// SwarmSafetyOptions converts the project's SwarmConfigDef into framework
+// team.Option functions that enable the framework's Swarm safety mechanisms.
+//
+// Graph path equivalents (production):
+//   - MaxHandoffs / RepetitiveHandoff* → applySwarmGraphConfig + swarmSafetyOptions
+//   - NodeTimeoutSeconds → NodeDef.TimeoutSeconds + Executor WithNodeTimeout
+//   - CrossRequestTransfer → applyCrossRequestEntryOverride + session metadata
+//   - Session isolation → NodeDef.IsolatedMessages
+//
+// These native team.Option helpers remain for reference / emergency native paths.
 
 import (
 	"time"
@@ -11,17 +17,8 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/team"
 )
 
-// SwarmSafetyOptions converts the project's SwarmConfigDef into framework
-// team.Option functions that enable the framework's Swarm safety mechanisms.
-//
-// TECH-DEBT(P2-19): 未接入生产路径，见文件头说明。
-//
-// P2-19: This adapter enables the framework's built-in Swarm safety:
-//   - MaxHandoffs: limits total transfers in a single run
-//   - NodeTimeout: limits how long a single member may run after transfer
-//   - RepetitiveHandoffWindow + RepetitiveHandoffMinUnique: detects loops
-//
-// When the SwarmConfigDef is nil (non-swarm team), no options are returned.
+// SwarmSafetyOptions enables native team.Option Swarm safety (reference / emergency).
+// Production Graph path uses applySwarmGraphConfig + swarmSafetyOptions instead.
 func SwarmSafetyOptions(swarm *SwarmConfigDef) []team.Option {
 	if swarm == nil {
 		return nil

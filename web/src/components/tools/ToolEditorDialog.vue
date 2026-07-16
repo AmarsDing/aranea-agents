@@ -448,7 +448,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { TOOL_CREATE_TEMPLATES, TOOL_FIELD_HINTS, isRegistryLockedTool } from '../../features/tools/toolEditorCopy';
 import { configExtraKeys, configDiffSummary } from '../../features/tools/jsonSchemaBuilder';
@@ -467,6 +467,7 @@ const props = defineProps<{
   dirty: boolean;
   jsonErrors: Record<string, string>;
   selectedTemplate: string;
+  activeSection?: string;
 }>();
 
 const emit = defineEmits<{
@@ -475,13 +476,33 @@ const emit = defineEmits<{
   close: [];
   'apply-template': [id: string];
   'patch-form': [p: Record<string, unknown>];
+  'update:activeSection': [value: string];
 }>();
 
 const $q = useQuasar();
 
 const helpOpen = ref(false);
-const activeSection = ref('basic');
+const localSection = ref('basic');
+const activeSection = computed({
+  get: () => props.activeSection || localSection.value,
+  set: (v: string) => {
+    localSection.value = v;
+    emit('update:activeSection', v);
+  },
+});
 const scrollContainer = ref<HTMLElement | null>(null);
+
+watch(
+  () => props.activeSection,
+  (id) => {
+    if (!id || !props.open) return;
+    localSection.value = id;
+    const el = document.getElementById(`section-${id}`);
+    if (el && scrollContainer.value) {
+      scrollContainer.value.scrollTo({ top: el.offsetTop - 16, behavior: 'smooth' });
+    }
+  },
+);
 
 const hints = TOOL_FIELD_HINTS;
 const templates = TOOL_CREATE_TEMPLATES;

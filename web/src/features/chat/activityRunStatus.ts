@@ -1,14 +1,13 @@
 /**
- * activityRunStatus — Run-status extraction from ActivityEvent payloads.
+ * activityRunStatus — Run-status extraction from WS payloads.
  *
- * The backend sends run_status events as ActivityEvent with
- * `activity.stage = 'run_status'` on the WS chat channel. The fields
- * previously carried on `envelope.metadata` (status, run_id, error_message,
- * await_kind, await_tool_key, await_tool_call_id, hint) now live on
- * `activity.meta`.
+ * Primary path: v2 `system.run_status` (RunStatusEventPayload).
+ * Legacy path: ActivityEvent with `activity.stage = 'run_status'` (still used
+ * by non-chat consumers that unwrap activity.bridge).
  */
 import type { ActivityEvent } from '../../realtime/activityEvent';
 import type { RunStatusValue } from './types';
+import type { RunStatusEventPayload } from './v2Types';
 import { AWAIT_KIND_REPLY, AWAIT_KIND_TOOL_CONFIRM } from './awaitConstants';
 
 export type RunStatusFromWs = {
@@ -22,33 +21,39 @@ export type RunStatusFromWs = {
 
 export { AWAIT_KIND_REPLY, AWAIT_KIND_TOOL_CONFIRM };
 
-/**
- * Extract run-status fields from an ActivityEvent whose
- * `activity.stage === 'run_status'`. Returns null for any other stage.
- *
- * Field mapping (envelope → activity):
- *   env.metadata.status             → ev.activity.meta.status
- *   env.metadata.run_id             → ev.activity.meta.run_id
- *   env.metadata.error_message      → ev.activity.meta.error_message
- *   env.metadata.await_kind         → ev.activity.meta.await_kind
- *   env.metadata.await_tool_key     → ev.activity.meta.await_tool_key
- *   env.metadata.await_tool_call_id → ev.activity.meta.await_tool_call_id
- */
-export function runStatusFromActivityEvent(ev: ActivityEvent): RunStatusFromWs | null {
-  if (ev.activity.stage !== 'run_status') return null;
-  const meta = ev.activity.meta ?? {};
-  let status = String(meta.status ?? 'idle');
+function normalizeRunStatusFields(meta: Record<string, unknown>, fallbacks?: { status?: string; runId?: string }): RunStatusFromWs | null {
+  let status = String(meta.status ?? fallbacks?.status ?? 'idle');
   // TECH-DEBT: legacy escalating→durable mapping, remove after DB migration completes
   if (status === 'escalating') status = 'durable';
   if (status === 'background_job') return null;
   return {
     status: status as RunStatusValue,
-    runId: String(meta.run_id ?? ''),
+    runId: String(meta.run_id ?? fallbacks?.runId ?? ''),
     errorMessage: String(meta.error_message ?? ''),
     awaitKind: meta.await_kind != null ? String(meta.await_kind) : undefined,
     awaitToolKey: meta.await_tool_key != null ? String(meta.await_tool_key) : undefined,
     awaitToolCallId: meta.await_tool_call_id != null ? String(meta.await_tool_call_id) : undefined,
   };
+}
+
+/** Extract run-status fields from a v2 system.run_status payload. */
+export function runStatusFromV2Payload(payload: RunStatusEventPayload): RunStatusFromWs | null {
+  const meta = { ...(payload.Meta ?? {}) };
+  return normalizeRunStatusFields(meta, { status: payload.Status, runId: payload.RunID });
+}
+
+/** True when a follow-up message was accepted into the active run queue (v2). */
+export function messageQueuedFromV2Payload(payload: RunStatusEventPayload): boolean {
+  return String(payload.Meta?.hint ?? '') === 'message_queued';
+}
+
+/**
+ * Extract run-status fields from an ActivityEvent whose
+ * `activity.stage === 'run_status'`. Returns null for any other stage.
+ */
+export function runStatusFromActivityEvent(ev: ActivityEvent): RunStatusFromWs | null {
+  if (ev.activity.stage !== 'run_status') return null;
+  return normalizeRunStatusFields(ev.activity.meta ?? {});
 }
 
 /** True when a follow-up message was accepted into the active run queue. */

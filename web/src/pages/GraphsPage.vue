@@ -184,6 +184,18 @@
             </div>
           </template>
         </draggable>
+
+        <div v-if="hasNextPage" class="row justify-center q-py-md">
+          <q-btn
+            flat
+            rounded
+            no-caps
+            icon="expand_more"
+            :label="t('graphs.loadMore')"
+            :loading="loadingMore"
+            @click="loadMore"
+          />
+        </div>
       </div>
 
       <GraphDetailPanel
@@ -290,6 +302,8 @@ const {
   rows,
   filteredRows,
   loading,
+  loadingMore,
+  hasNextPage,
   error,
   searchQuery,
   engineFilter,
@@ -313,6 +327,7 @@ const {
   ctxMenuY,
   ctxMenuItems,
   loadRows,
+  loadMore,
   openCreate,
   openEditor,
   openRunDialog,

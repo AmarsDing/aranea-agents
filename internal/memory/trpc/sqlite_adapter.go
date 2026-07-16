@@ -131,6 +131,9 @@ func (s *memoryService) AddMemory(ctx context.Context, uk trpcmemory.UserKey, me
 	if err := s.requireStore(); err != nil {
 		return err
 	}
+	if err := assertL3WriteAllowed(ctx, s.settingsLoader, uk.AppName); err != nil {
+		return err
+	}
 	meta := trpcmemory.ResolveAddOptions(opts)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	factKind := "fact"
@@ -153,6 +156,9 @@ func (s *memoryService) AddMemory(ctx context.Context, uk trpcmemory.UserKey, me
 
 func (s *memoryService) UpdateMemory(ctx context.Context, mk trpcmemory.Key, mem string, topics []string, opts ...trpcmemory.UpdateOption) error {
 	if err := s.requireStore(); err != nil {
+		return err
+	}
+	if err := assertL3WriteAllowed(ctx, s.settingsLoader, mk.AppName); err != nil {
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -253,11 +259,17 @@ func (s *memoryService) DeleteMemory(ctx context.Context, mk trpcmemory.Key) err
 	if err := s.requireStore(); err != nil {
 		return err
 	}
+	if err := assertL3WriteAllowed(ctx, s.settingsLoader, mk.AppName); err != nil {
+		return err
+	}
 	return s.factWriter.DeleteFactRow(ctx, mk.MemoryID)
 }
 
 func (s *memoryService) ClearMemories(ctx context.Context, uk trpcmemory.UserKey) error {
 	if err := s.requireStore(); err != nil {
+		return err
+	}
+	if err := assertL3WriteAllowed(ctx, s.settingsLoader, uk.AppName); err != nil {
 		return err
 	}
 	// Delegate to L3FactWriter so that both SQLite rows and pgvector

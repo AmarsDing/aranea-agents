@@ -43,5 +43,7 @@ func (MemberSessionV2) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("team_run_id", "seq").StorageKey("idx_member_sessions_v2_run_seq"),
 		index.Fields("agent_key").StorageKey("idx_member_sessions_v2_agent"),
+		// Mode B orphan hydrate: ListOrphanMemberSessionsBySpiritSession
+		index.Fields("spirit_session_id", "team_run_id").StorageKey("idx_member_sessions_v2_spirit_orphan"),
 	}
 }

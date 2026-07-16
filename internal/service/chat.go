@@ -10,10 +10,12 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/outbound"
 	rt "aranea-agents/internal/runtime"
+	subagenttool "aranea-agents/internal/tools/subagent"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
 
+	"github.com/google/uuid"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
@@ -23,19 +25,16 @@ import (
 type ChatService struct {
 	chatv1.UnimplementedChatServiceServer
 
-	orch         *ChatOrchestrator
-	turnPipeline *TurnPipeline
-	// sessions is the concrete *biz.SessionUsecase wired via TurnDeps.Sessions
-	// (typed as biz.SessionTurnManager interface). Used by RetrySession to look
-	// up the last user message before re-enqueuing. Nil when the wired
-	// Sessions implementation is not *biz.SessionUsecase (test stubs).
-	sessions *biz.SessionUsecase
-	lg       loggateway.Logger
+	orch           *ChatOrchestrator
+	turnPipeline   *TurnPipeline
+	sessions       *biz.SessionUsecase
+	memberSessions biz.MemberSessionV2Repo
+	lg             loggateway.Logger
 }
 
 func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 	orch := NewChatOrchestrator(deps)
-	svc := &ChatService{orch: orch, lg: deps.Infra.LG}
+	svc := &ChatService{orch: orch, lg: deps.Infra.LG, memberSessions: deps.Infra.MemberSessions}
 	// Extract the concrete *biz.SessionUsecase for RetrySession. In production
 	// this is always satisfied (Wire binds *biz.SessionUsecase). Test stubs
 	// may use other implementations; in that case sessions stays nil and
@@ -70,11 +69,71 @@ func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 			}, true
 		})
 	}
-	// Start SubAgentService lifecycle.
+	// Start SubAgentService lifecycle + Mode B agent-card projection.
 	if deps.Turn.RT.SubAgentService != nil {
+		deps.Turn.RT.SubAgentService.SetModeBStartedHook(svc.publishModeBMemberSession)
+		deps.Turn.RT.SubAgentService.SetModeBFinishedHook(svc.finishModeBMemberSession)
 		deps.Turn.RT.SubAgentService.Start(context.Background())
 	}
 	return svc
+}
+
+// publishModeBMemberSession projects a background subagent start as an orphan
+// MemberSession (empty TeamRunID/TeamStageID) for Mode B agent-card UI.
+func (s *ChatService) publishModeBMemberSession(ctx context.Context, info subagenttool.ModeBStartedInfo) {
+	if s == nil || s.orch == nil || s.orch.v2Seq == nil {
+		return
+	}
+	parent := strings.TrimSpace(info.ParentSessionID)
+	child := strings.TrimSpace(info.ChildSessionID)
+	if parent == "" || child == "" {
+		return
+	}
+	spiritID := s.resolveSpiritSessionID(ctx, parent)
+	now := time.Now().UTC()
+	agentKey := "subagent:" + strings.TrimSpace(info.RunID)
+	if agentKey == "subagent:" {
+		agentKey = "subagent:" + child
+	}
+	msID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.member_session.v2:modeb:"+child)).String()
+	name := strings.TrimSpace(info.Task)
+	if name == "" {
+		name = "Sub-agent"
+	} else if len([]rune(name)) > 48 {
+		name = string([]rune(name)[:48]) + "…"
+	}
+	ms := biz.MemberSession{
+		ID:              msID,
+		TeamRunID:       "",
+		TeamStageID:     "",
+		TaskID:          "", // frontend hosts on latest/running spirit task
+		SessionID:       child,
+		SpiritSessionID: spiritID,
+		AgentKey:        agentKey,
+		AgentName:       name,
+		Status:          biz.MemberSessionStatusRunning,
+		StartedAt:       now,
+		Version:         1,
+	}
+	s.orch.v2Seq.Publish(ctx, biz.NewMemberSessionCreatedEvent(ms))
+}
+
+func (s *ChatService) finishModeBMemberSession(ctx context.Context, info subagenttool.ModeBFinishedInfo) {
+	if s == nil {
+		return
+	}
+	child := strings.TrimSpace(info.ChildSessionID)
+	if child == "" {
+		return
+	}
+	status := biz.MemberSessionStatusCompleted
+	switch strings.TrimSpace(info.Status) {
+	case "failed":
+		status = biz.MemberSessionStatusFailed
+	case "cancelled":
+		status = biz.MemberSessionStatusSkipped
+	}
+	s.syncMemberSessionStatus(ctx, child, status)
 }
 
 // assertSessionAccess verifies the authenticated caller owns sessionID (E2E-P0-01).

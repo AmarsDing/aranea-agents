@@ -82,6 +82,16 @@
         :options="statusOptions"
         @update:model-value="onFilterChange"
       />
+      <q-select
+        v-model="retainDays"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        emit-value
+        map-options
+        label="清理保留天数"
+        :options="retainDayOptions"
+      />
       <template #actions>
         <q-btn flat rounded no-caps label="重置" icon="restart_alt" @click="onResetFilters" />
         <q-btn flat rounded no-caps label="查询" icon="manage_search" :loading="loading" @click="load" />
@@ -165,6 +175,8 @@ const {
   rangeOptions,
   statusOptions,
   usageKindOptions,
+  retainDays,
+  retainDayOptions,
   purging,
   load,
   exportCsv,

@@ -29,6 +29,7 @@ type hedgeModel struct {
 	name          string
 	contextWindow int
 	launchOffsets []time.Duration
+	onSwitch      SwitchCallback
 }
 
 type attempt struct {
@@ -91,6 +92,7 @@ func New(opt ...Option) (model.Model, error) {
 		name:          name,
 		contextWindow: contextWindow,
 		launchOffsets: launchOffsets,
+		onSwitch:      opts.onSwitch,
 	}, nil
 }
 
@@ -263,6 +265,15 @@ func (r *hedgeRun) handleEvent(event attemptEvent) bool {
 			r.winnerIndex = event.index
 			r.cancelLosers(event.index)
 			r.stopLaunchTimer()
+			if r.hedge.onSwitch != nil && event.index > 0 && event.index < len(r.hedge.candidates) {
+				r.hedge.onSwitch(
+					0,
+					event.index,
+					r.hedge.candidates[0].Info().Name,
+					r.hedge.candidates[event.index].Info().Name,
+					"hedge_winner",
+				)
+			}
 			if r.yield(event.response) {
 				return false
 			}

@@ -1040,17 +1040,18 @@ var SessionService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	SessionV2Service_ListTasks_FullMethodName          = "/kratos.session.v1.SessionV2Service/ListTasks"
-	SessionV2Service_ListTurns_FullMethodName          = "/kratos.session.v1.SessionV2Service/ListTurns"
-	SessionV2Service_ListSteps_FullMethodName          = "/kratos.session.v1.SessionV2Service/ListSteps"
-	SessionV2Service_GetStep_FullMethodName            = "/kratos.session.v1.SessionV2Service/GetStep"
-	SessionV2Service_ListTeamStages_FullMethodName     = "/kratos.session.v1.SessionV2Service/ListTeamStages"
-	SessionV2Service_ListTeamRuns_FullMethodName       = "/kratos.session.v1.SessionV2Service/ListTeamRuns"
-	SessionV2Service_ListMemberSessions_FullMethodName = "/kratos.session.v1.SessionV2Service/ListMemberSessions"
-	SessionV2Service_ListPlanBoards_FullMethodName     = "/kratos.session.v1.SessionV2Service/ListPlanBoards"
-	SessionV2Service_ListPlanSteps_FullMethodName      = "/kratos.session.v1.SessionV2Service/ListPlanSteps"
-	SessionV2Service_ListGraphStages_FullMethodName    = "/kratos.session.v1.SessionV2Service/ListGraphStages"
-	SessionV2Service_ListGraphNodes_FullMethodName     = "/kratos.session.v1.SessionV2Service/ListGraphNodes"
+	SessionV2Service_ListTasks_FullMethodName                = "/kratos.session.v1.SessionV2Service/ListTasks"
+	SessionV2Service_ListTurns_FullMethodName                = "/kratos.session.v1.SessionV2Service/ListTurns"
+	SessionV2Service_ListSteps_FullMethodName                = "/kratos.session.v1.SessionV2Service/ListSteps"
+	SessionV2Service_GetStep_FullMethodName                  = "/kratos.session.v1.SessionV2Service/GetStep"
+	SessionV2Service_ListTeamStages_FullMethodName           = "/kratos.session.v1.SessionV2Service/ListTeamStages"
+	SessionV2Service_ListTeamRuns_FullMethodName             = "/kratos.session.v1.SessionV2Service/ListTeamRuns"
+	SessionV2Service_ListMemberSessions_FullMethodName       = "/kratos.session.v1.SessionV2Service/ListMemberSessions"
+	SessionV2Service_ListOrphanMemberSessions_FullMethodName = "/kratos.session.v1.SessionV2Service/ListOrphanMemberSessions"
+	SessionV2Service_ListPlanBoards_FullMethodName           = "/kratos.session.v1.SessionV2Service/ListPlanBoards"
+	SessionV2Service_ListPlanSteps_FullMethodName            = "/kratos.session.v1.SessionV2Service/ListPlanSteps"
+	SessionV2Service_ListGraphStages_FullMethodName          = "/kratos.session.v1.SessionV2Service/ListGraphStages"
+	SessionV2Service_ListGraphNodes_FullMethodName           = "/kratos.session.v1.SessionV2Service/ListGraphNodes"
 )
 
 // SessionV2ServiceClient is the client API for SessionV2Service service.
@@ -1074,6 +1075,10 @@ type SessionV2ServiceClient interface {
 	ListTeamStages(ctx context.Context, in *ListTeamStagesV2Request, opts ...grpc.CallOption) (*ListTeamStagesV2Response, error)
 	ListTeamRuns(ctx context.Context, in *ListTeamRunsV2Request, opts ...grpc.CallOption) (*ListTeamRunsV2Response, error)
 	ListMemberSessions(ctx context.Context, in *ListMemberSessionsV2Request, opts ...grpc.CallOption) (*ListMemberSessionsV2Response, error)
+	// ListOrphanMemberSessions lists Mode B member sessions (empty team_run_id)
+	// for a spirit root session — used by fetchSessionHistory to restore orphan
+	// agent-cards after refresh.
+	ListOrphanMemberSessions(ctx context.Context, in *ListOrphanMemberSessionsV2Request, opts ...grpc.CallOption) (*ListMemberSessionsV2Response, error)
 	ListPlanBoards(ctx context.Context, in *ListPlanBoardsV2Request, opts ...grpc.CallOption) (*ListPlanBoardsV2Response, error)
 	ListPlanSteps(ctx context.Context, in *ListPlanStepsV2Request, opts ...grpc.CallOption) (*ListPlanStepsV2Response, error)
 	ListGraphStages(ctx context.Context, in *ListGraphStagesV2Request, opts ...grpc.CallOption) (*ListGraphStagesV2Response, error)
@@ -1158,6 +1163,16 @@ func (c *sessionV2ServiceClient) ListMemberSessions(ctx context.Context, in *Lis
 	return out, nil
 }
 
+func (c *sessionV2ServiceClient) ListOrphanMemberSessions(ctx context.Context, in *ListOrphanMemberSessionsV2Request, opts ...grpc.CallOption) (*ListMemberSessionsV2Response, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMemberSessionsV2Response)
+	err := c.cc.Invoke(ctx, SessionV2Service_ListOrphanMemberSessions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *sessionV2ServiceClient) ListPlanBoards(ctx context.Context, in *ListPlanBoardsV2Request, opts ...grpc.CallOption) (*ListPlanBoardsV2Response, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListPlanBoardsV2Response)
@@ -1219,6 +1234,10 @@ type SessionV2ServiceServer interface {
 	ListTeamStages(context.Context, *ListTeamStagesV2Request) (*ListTeamStagesV2Response, error)
 	ListTeamRuns(context.Context, *ListTeamRunsV2Request) (*ListTeamRunsV2Response, error)
 	ListMemberSessions(context.Context, *ListMemberSessionsV2Request) (*ListMemberSessionsV2Response, error)
+	// ListOrphanMemberSessions lists Mode B member sessions (empty team_run_id)
+	// for a spirit root session — used by fetchSessionHistory to restore orphan
+	// agent-cards after refresh.
+	ListOrphanMemberSessions(context.Context, *ListOrphanMemberSessionsV2Request) (*ListMemberSessionsV2Response, error)
 	ListPlanBoards(context.Context, *ListPlanBoardsV2Request) (*ListPlanBoardsV2Response, error)
 	ListPlanSteps(context.Context, *ListPlanStepsV2Request) (*ListPlanStepsV2Response, error)
 	ListGraphStages(context.Context, *ListGraphStagesV2Request) (*ListGraphStagesV2Response, error)
@@ -1253,6 +1272,9 @@ func (UnimplementedSessionV2ServiceServer) ListTeamRuns(context.Context, *ListTe
 }
 func (UnimplementedSessionV2ServiceServer) ListMemberSessions(context.Context, *ListMemberSessionsV2Request) (*ListMemberSessionsV2Response, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListMemberSessions not implemented")
+}
+func (UnimplementedSessionV2ServiceServer) ListOrphanMemberSessions(context.Context, *ListOrphanMemberSessionsV2Request) (*ListMemberSessionsV2Response, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListOrphanMemberSessions not implemented")
 }
 func (UnimplementedSessionV2ServiceServer) ListPlanBoards(context.Context, *ListPlanBoardsV2Request) (*ListPlanBoardsV2Response, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListPlanBoards not implemented")
@@ -1413,6 +1435,24 @@ func _SessionV2Service_ListMemberSessions_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SessionV2Service_ListOrphanMemberSessions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOrphanMemberSessionsV2Request)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SessionV2ServiceServer).ListOrphanMemberSessions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SessionV2Service_ListOrphanMemberSessions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SessionV2ServiceServer).ListOrphanMemberSessions(ctx, req.(*ListOrphanMemberSessionsV2Request))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SessionV2Service_ListPlanBoards_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListPlanBoardsV2Request)
 	if err := dec(in); err != nil {
@@ -1519,6 +1559,10 @@ var SessionV2Service_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListMemberSessions",
 			Handler:    _SessionV2Service_ListMemberSessions_Handler,
+		},
+		{
+			MethodName: "ListOrphanMemberSessions",
+			Handler:    _SessionV2Service_ListOrphanMemberSessions_Handler,
 		},
 		{
 			MethodName: "ListPlanBoards",

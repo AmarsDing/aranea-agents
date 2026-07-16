@@ -271,7 +271,7 @@ export const useMemoryStore = defineStore('memory', () => {
     scopeId: string,
     limit = 50,
     offset = 0,
-  ): Promise<MemoryFact[]> {
+  ): Promise<{ items: MemoryFact[]; total: number }> {
     return listConflictingFacts(scopeType, scopeId, limit, offset);
   }
 

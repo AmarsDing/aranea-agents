@@ -40,16 +40,12 @@ type EventBus interface {
 //  2. step.streaming events are NOT persisted (only WS-published); same
 //     StepID + DeltaField within the 16ms batch window are merged.
 //  3. Persist worker: 5x exponential backoff retries + 512-cap dead-letter.
-//  4. Phase 2: ActivityBridgeEvent payloads (wrapping v1 ActivityEvent) are
-//     persisted via the optional activityRepo (biz.ActivityUpserter). When
-//     nil, persistence is skipped (the v1 ActivityEventBus path handles it).
 type Sequencer struct {
-	repoSet      RepoSet
-	activityRepo biz.ActivityUpserter // Phase 2: optional, for ActivityBridgeEvent persist
-	outbox       biz.EventDeliveryOutboxRepo // B-06: durable critical-event outbox (optional)
-	bus          EventBus
-	lg           loggateway.Logger
-	seqAssigner  SeqAssigner // shared with Projector (v2-local defaultSeqAssigner; breaks agent→v2 cycle)
+	repoSet     RepoSet
+	outbox      biz.EventDeliveryOutboxRepo // B-06: durable critical-event outbox (optional)
+	bus         EventBus
+	lg          loggateway.Logger
+	seqAssigner SeqAssigner // shared with Projector (v2-local defaultSeqAssigner; breaks agent→v2 cycle)
 
 	publishQueue chan publishTask
 	persistChan  chan persistItem
@@ -85,7 +81,6 @@ type config struct {
 	persistMaxRetries  int
 	persistBackoff     time.Duration
 	deadLetterCapacity int
-	activityUpserter   biz.ActivityUpserter // Phase 2: optional v1 Activity persistence for ActivityBridgeEvent
 	outbox             biz.EventDeliveryOutboxRepo
 }
 
@@ -100,14 +95,6 @@ func WithDeltaBatchInterval(d time.Duration) Option {
 func WithPersistMaxRetries(n int) Option        { return func(c *config) { c.persistMaxRetries = n } }
 func WithPersistBackoff(d time.Duration) Option { return func(c *config) { c.persistBackoff = d } }
 func WithDeadLetterCapacity(n int) Option       { return func(c *config) { c.deadLetterCapacity = n } }
-
-// WithActivityUpserter injects the v1 ActivityUpserter used to persist
-// ActivityBridgeEvent payloads (Phase 2). Optional — when not set, the
-// Sequencer skips persistence for ActivityBridgeEvent and relies on the
-// v1 ActivityEventBus path or other subscribers to persist.
-func WithActivityUpserter(au biz.ActivityUpserter) Option {
-	return func(c *config) { c.activityUpserter = au }
-}
 
 // WithEventOutbox injects the durable critical-event outbox (B-06).
 // When set, critical events are written to the outbox after entity persist
@@ -132,7 +119,6 @@ func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, opts ...Option
 
 	s := &Sequencer{
 		repoSet:            rs,
-		activityRepo:       cfg.activityUpserter,
 		outbox:             cfg.outbox,
 		bus:                bus,
 		lg:                 lg.With(loggateway.Domain("sequencer_v2")),
@@ -158,17 +144,11 @@ func (s *Sequencer) SeqAssigner() SeqAssigner { return s.seqAssigner }
 
 // Publish enqueues an event for FIFO processing.
 // Safe for concurrent use.
-//
-// Phase 2: for ActivityBridgeEvent payloads with Seq == 0, auto-allocates
-// a monotonic Seq per SpiritSessionID before enqueue. This mirrors what
-// the ActivityProjector does for v2 typed events (turn/step/team_stage) and
-// ensures team package direct-publish events participate in FIFO ordering.
 func (s *Sequencer) Publish(ctx context.Context, e biz.Event) {
 	if s.closed.Load() {
 		s.lg.Warn("sequencer closed, event dropped", loggateway.Str("kind", string(e.EventKind())))
 		return
 	}
-	e = s.assignSeqIfBridge(e)
 	persist := s.shouldPersist(e)
 	select {
 	case s.publishQueue <- publishTask{event: e, persist: persist, enqueuedAt: time.Now()}:
@@ -178,36 +158,15 @@ func (s *Sequencer) Publish(ctx context.Context, e biz.Event) {
 	}
 }
 
-// assignSeqIfBridge pre-allocates Seq for ActivityBridgeEvent payloads whose
-// Activity.Seq is zero. Returns the event unchanged for other types or when
-// the SeqAssigner is nil. Mutates the wrapped Activity in place when assigning.
-//
-// This centralizes Seq allocation at the v2 publish boundary so team package
-// callers do not need to depend on SeqAssigner directly.
-func (s *Sequencer) assignSeqIfBridge(e biz.Event) biz.Event {
-	if s.seqAssigner == nil {
-		return e
-	}
-	bridge, ok := e.(*biz.ActivityBridgeEvent)
-	if !ok {
-		return e
-	}
-	if bridge.Event.Activity.Seq != 0 {
-		return e
-	}
-	// Prefer SpiritSessionID for per-session monotonicity; fall back to SessionID.
-	spiritSessionID := bridge.Event.Activity.SpiritSessionID
-	if spiritSessionID == "" {
-		spiritSessionID = bridge.Event.Activity.SessionID
-	}
-	bridge.Event.Activity.Seq = s.seqAssigner.NextSeq(spiritSessionID)
-	return bridge
-}
-
-// shouldPersist returns false for streaming chunks (only bus-published).
+// shouldPersist returns false for streaming chunks and ephemeral system events
+// (only bus-published; no entity Upsert).
 func (s *Sequencer) shouldPersist(e biz.Event) bool {
-	_, ok := e.(*biz.StepStreamingEvent)
-	return !ok
+	switch e.(type) {
+	case *biz.StepStreamingEvent, *biz.SystemNoticeEvent, *biz.HeartbeatEvent, *biz.RunStatusEvent:
+		return false
+	default:
+		return true
+	}
 }
 
 // Flush blocks until all queued events are processed (publish + persist).
@@ -365,7 +324,7 @@ func (s *Sequencer) processTask(task publishTask) {
 		if biz.IsCriticalDeliveryEvent(task.event) {
 			// P1-04: WBPF for critical/terminal events — try synchronous persist first.
 			persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
-			_, err := persistAction(persistCtx, s.repoSet, s.activityRepo, task.event)
+			_, err := persistAction(persistCtx, s.repoSet, task.event)
 			persistCancel()
 			if err == nil {
 				// Sync persist succeeded — durable outbox then publish (B-06).
@@ -483,7 +442,7 @@ func (s *Sequencer) persistWithRetry(e biz.Event) {
 	var lastErr error
 	for attempt := 0; attempt < s.persistMaxRetries; attempt++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		_, err := persistAction(ctx, s.repoSet, s.activityRepo, e)
+		_, err := persistAction(ctx, s.repoSet, e)
 		cancel()
 		if err == nil {
 			return

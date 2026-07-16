@@ -60,7 +60,13 @@ export type SpiritStatusBarData = {
 };
 
 export type SpiritMember = {
+  /** Catalog / entity agent ID (not the chat session ID). */
   agentId: string;
+  /**
+   * Member chat session ID used by Pause/Resume/Cancel RPCs.
+   * Populated from v2 TeamStage.ChildSessionID or MemberSession.SessionID.
+   */
+  chatSessionId?: string;
   agentKey: string;
   displayName: string;
   role: string;

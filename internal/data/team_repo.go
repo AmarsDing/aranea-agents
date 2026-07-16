@@ -185,6 +185,23 @@ func (r *TeamRepo) ListTeamsByWorkspace(ctx context.Context, workspaceID string)
 	return out, nil
 }
 
+// CountTeamsByWorkspace returns the number of teams visible to the workspace (P2-B).
+func (r *TeamRepo) CountTeamsByWorkspace(ctx context.Context, workspaceID string) (int, error) {
+	c := r.data.RW().Read(ctx)
+	query := c.Team.Query().Where(team.DeletedAtEQ(""))
+	if workspaceID != "" {
+		query = query.Where(team.Or(
+			team.WorkspaceIDEQ(""),
+			team.WorkspaceIDEQ(workspaceID),
+		))
+	}
+	n, err := query.Count(ctx)
+	if err != nil {
+		return 0, entErrToBizErr(err, "TEAM")
+	}
+	return n, nil
+}
+
 func (r *TeamRepo) GetTeamByID(ctx context.Context, id string) (biz.Team, error) {
 	c := r.data.RW().Read(ctx)
 	preds := []predicate.Team{team.IDEQ(id), team.DeletedAtEQ("")}

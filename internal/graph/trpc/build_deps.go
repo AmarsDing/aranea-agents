@@ -3,6 +3,8 @@ package graph
 import (
 	"context"
 
+	"aranea-agents/internal/biz"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -33,8 +35,9 @@ type FunctionResolver interface {
 // GraphNodeResolverSet groups all resolver interfaces for graph node types.
 // Wire assembles this set in internal/service; graph/trpc consumes it.
 type GraphNodeResolverSet struct {
-	Models    ModelResolver
-	Tools     ToolResolver
-	Agents    AgentResolver
-	Functions FunctionResolver
+	Models       ModelResolver
+	Tools        ToolResolver
+	Agents       AgentResolver
+	Functions    FunctionResolver
+	NodeBreakers *biz.NodeCircuitBreakerRegistry
 }

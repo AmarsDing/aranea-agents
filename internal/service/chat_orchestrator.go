@@ -273,6 +273,12 @@ func (o *ChatOrchestrator) deadLetterQueue() *lifecycle.DeadLetterQueue {
 	return o.infraDeps.DeadLetterQueue
 }
 
+// memberSessions returns the Wire-injected MemberSessionV2Repo, or nil when
+// not configured. Used by PauseSession/ResumeSession to sync v2 status.
+func (o *ChatOrchestrator) memberSessions() biz.MemberSessionV2Repo {
+	return o.infraDeps.MemberSessions
+}
+
 // Sub-manager accessors delegate to the composite interfaces.
 func (o *ChatOrchestrator) sessionStateMgr() sessionStateTransitor { return o.turnLC }
 func (o *ChatOrchestrator) turnMetrics() turnRecorder              { return o.turnLC }
@@ -349,6 +355,9 @@ type ChatInfraDeps struct {
 	// SeqAssigner so Seq allocation remains globally monotonic per spirit
 	// session. Wired via Wire DI; nil = v2 disabled.
 	V2ProjectorFactory *v2.ProjectorFactory
+	// MemberSessions looks up/upserts v2 MemberSession rows (PauseSession /
+	// ResumeSession sync). Optional: nil disables member pause projection.
+	MemberSessions biz.MemberSessionV2Repo
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.

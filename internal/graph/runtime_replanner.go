@@ -5,15 +5,12 @@ package graph
 import (
 	"context"
 	"strings"
-	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/runtime/lifecycle"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/google/uuid"
 )
 
 // ReplanType identifies the kind of replan action to take after a node failure.
@@ -259,9 +256,8 @@ func (r *RuntimeReplannerImpl) buildRebuildSubgraphAction(
 	}
 }
 
-// publishReplanEvent publishes a graph_stage ActivityBridgeEvent (Stage="replanned")
-// so the frontend timeline can render the replan decision. Classified as
-// Important (AS-EVT-01): loss causes topology drift but execution continues.
+// publishReplanEvent publishes a graph_replanned system.notice so the frontend
+// timeline can render the replan decision.
 func (r *RuntimeReplannerImpl) publishReplanEvent(
 	ctx context.Context,
 	exec *biz.GraphExecution,
@@ -272,33 +268,22 @@ func (r *RuntimeReplannerImpl) publishReplanEvent(
 	if r.eventBus == nil {
 		return
 	}
-	// Phase 3b-D: bridge to v2 EventBus. graph_stage has no typed v2 EventKind;
-	// ActivityBridgeEvent preserves the v1 payload for the frontend timeline.
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventUpdated,
-		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindGraphStage,
-			Status:          biz.ActivityStatusRunning,
-			SessionID:       exec.SessionID,
-			SpiritSessionID: exec.SpiritSessionID,
-			Timestamp:       time.Now().UTC(),
-			Stage:           "replanned",
-			Meta: map[string]any{
-				"execution_id":   exec.ID,
-				"graph_id":       exec.GraphID,
-				"failed_node":    failedNode,
-				"replan_type":    string(action.Type),
-				"severity":       analysis.Severity,
-				"reason":         analysis.Reason,
-				"new_node_count": len(action.NewNodes),
-				"skip_nodes":     action.SkipNodes,
-				"author":         "runtime-replanner",
-			},
-		},
-		Domain: biz.ActivityDomainChat,
+	sessionID := exec.SpiritSessionID
+	if sessionID == "" {
+		sessionID = exec.SessionID
 	}
-	r.eventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+	r.eventBus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "replanned", "", map[string]any{
+		"execution_id":   exec.ID,
+		"graph_id":       exec.GraphID,
+		"failed_node":    failedNode,
+		"replan_type":    string(action.Type),
+		"severity":       analysis.Severity,
+		"reason":         analysis.Reason,
+		"new_node_count": len(action.NewNodes),
+		"skip_nodes":     action.SkipNodes,
+		"author":         "runtime-replanner",
+		"activity_kind":  string(biz.ActivityKindGraphStage),
+	}))
 }
 
 // analyzeFailure inspects the error message using keyword rules and returns

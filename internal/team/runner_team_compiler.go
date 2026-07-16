@@ -55,6 +55,10 @@ func (r *Runner) compileTeamRuntime(
 	}
 
 	compiledTeam = ct
+	if ct.GraphBuildConfig.CircuitBreaker != nil && strings.TrimSpace(teamRow.ID) != "" {
+		ct.GraphBuildConfig = biz.WithCircuitBreakerScope(ct.GraphBuildConfig, "team:"+teamRow.ID)
+	}
+	ct.GraphBuildConfig = applyCrossRequestEntryOverride(ct.GraphBuildConfig, def, readSwarmActiveAgent(sess))
 	groot, gerr := r.cfg.GraphRoot.BuildTeamGraphRoot(ctx, ct.GraphBuildConfig)
 	if gerr != nil {
 		r.lg.Warn("GraphAgent 构建失败", loggateway.StepID("team.graph_runtime.build"), loggateway.Err(gerr))

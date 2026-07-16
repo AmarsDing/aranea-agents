@@ -121,6 +121,7 @@
       v-model:form="form"
       v-model:definition="definition"
       :editing-id="editingId"
+      :has-active-run="editingHasActiveRun"
       :definition-json="definitionJSON"
       :agent-options="agentOptions"
       :industry-options="industryOptions"
@@ -142,6 +143,8 @@
       :steps-loading="stepsLoading"
       :summaries-by-run="summariesByRun"
       :summaries-loading="summariesLoading"
+      :dead-letters="deadLetters"
+      :dead-letters-loading="deadLettersLoading"
       :agents="storeAgents"
       :loading="runsLoading"
       :error="runsError"
@@ -151,6 +154,8 @@
       @show-steps="loadRunSteps"
       @load-summary="loadRunSummary"
       @open-observatory="openRunObservatory"
+      @refresh-dead-letters="loadDeadLetters"
+      @resolve-dead-letter="resolveDeadLetter"
     />
 
     <TeamTestDialog
@@ -204,6 +209,7 @@ const {
   editorOpen,
   selectedTeamTemplateKey,
   editingId,
+  editingHasActiveRun,
   runsOpen,
   runsLoading,
   runsError,
@@ -214,6 +220,8 @@ const {
   stepsLoading,
   summariesByRun,
   summariesLoading,
+  deadLetters,
+  deadLettersLoading,
   testOpen,
   testTeam,
   testLoading,
@@ -243,6 +251,8 @@ const {
   openTeamObservatory,
   loadRuns,
   loadRunSteps,
+  loadDeadLetters,
+  resolveDeadLetter,
   reorderTeams,
 } = useTeamsPage();
 

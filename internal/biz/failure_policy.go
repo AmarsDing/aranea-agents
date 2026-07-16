@@ -61,11 +61,14 @@ func ApplyFailurePolicy(cfg GraphBuildConfig, policy *TeamFailurePolicy) GraphBu
 	return cfg
 }
 
-// ApplyCircuitBreakerPolicy annotates nodes with circuit breaker metadata for runtime (FP-02).
+// ApplyCircuitBreakerPolicy attaches CB policy to the build config and ensures
+// executable nodes have a minimum retry floor so consecutive final-failures can
+// be counted by the graph runtime Pre/Post node callbacks (FP-02).
 func ApplyCircuitBreakerPolicy(cfg GraphBuildConfig, policy *CircuitBreakerPolicy) GraphBuildConfig {
 	if policy == nil || policy.FailureThreshold <= 0 {
 		return cfg
 	}
+	cfg.CircuitBreaker = policy
 	for i := range cfg.Nodes {
 		if cfg.Nodes[i].Type != NodeTypeAgent && cfg.Nodes[i].Type != NodeTypeLLM && cfg.Nodes[i].Type != NodeTypeTool {
 			continue
@@ -74,6 +77,12 @@ func ApplyCircuitBreakerPolicy(cfg GraphBuildConfig, policy *CircuitBreakerPolic
 			cfg.Nodes[i].RetryMaxAttempts = 1
 		}
 	}
+	return cfg
+}
+
+// WithCircuitBreakerScope sets the namespace used for graph-node breaker keys.
+func WithCircuitBreakerScope(cfg GraphBuildConfig, scope string) GraphBuildConfig {
+	cfg.CircuitBreakerScope = strings.TrimSpace(scope)
 	return cfg
 }
 

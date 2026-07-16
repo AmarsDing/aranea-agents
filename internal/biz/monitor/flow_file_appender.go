@@ -329,6 +329,19 @@ func (a *FlowFileAppender) routeFileLocked(ev contract.MonitorEvent) *rotatingFi
 	}
 }
 
+// WriteTraceComplete persists a TRACE-01 completion row into trace-*.jsonl.
+func (a *FlowFileAppender) WriteTraceComplete(row map[string]any) {
+	if a == nil || row == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	target := a.ensureFile(&a.traceFile, "trace")
+	if target != nil {
+		a.writeRowLocked(target, row)
+	}
+}
+
 func (a *FlowFileAppender) ensureFile(slot **rotatingFile, prefix string) *rotatingFile {
 	today := time.Now().UTC().Format("2006-01-02")
 	// Fast path: same date and no rotation needed.

@@ -1,21 +1,23 @@
 <!-- web/src/components/chat/v2/GraphStageBlock.vue
   GraphStage 流程图可视化（v2 实体，与 PlanBoard 一对一关联）。
-  替代 v1 GraphStageBlock.vue（通过 activity.bridge 桥接到 v2）。
   设计：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md §3.7.5
-  - 使用 store.getGraphStageNodes 查询辅助（从独立 Map，反映最新状态）
-  - GraphStage.Status 派生自子 nodes 状态（后端只发 created，不发 updated/completed/failed）
-  - CSS 改用 glass tokens 符合主题
+  产品交互：docs/development/1-chat.design.md B.4.4（已对齐 v2：节点=PlanStep，非 team 快照）
+  - store.getGraphStageNodes：独立 Map，反映最新节点状态
+  - 容器 Status：终态优先用 props.graphStage.Status；运行中由子节点聚合
+  - 单节点（无 DAG 价值）不展示，直接依赖 TeamStagePanel
+  - Header 显示 completed/total 进度
 -->
 <template>
-  <div v-if="graphStage" class="graph-stage-block" :data-graph-stage-id="graphStage.ID">
+  <div v-if="shouldShow" class="graph-stage-block" :data-graph-stage-id="graphStage.ID">
     <div class="graph-stage-header">
       <span class="header-label">
         <q-icon name="account_tree" size="16px" class="header-icon" />
         {{ t('chat.v2.graphStageTitle') }}
       </span>
+      <span class="header-progress">{{ completedCount }}/{{ nodes.length }}</span>
       <q-badge :color="stageStatusColor">{{ stageStatusLabel }}</q-badge>
     </div>
-    <svg v-if="nodes.length > 0" :width="width" :height="height" class="graph-stage-svg">
+    <svg :width="width" :height="height" class="graph-stage-svg">
       <!-- Dependency edges -->
       <line
         v-for="edge in edges"
@@ -53,7 +55,6 @@
         </marker>
       </defs>
     </svg>
-    <div v-else class="graph-stage-empty">{{ t('chat.v2.graphStageEmpty') }}</div>
   </div>
 </template>
 
@@ -88,6 +89,13 @@ const maxWidth = 600;
 
 // 不再使用 props.graphStage.Nodes 嵌入数组（创建后永不更新）。
 const nodes = computed(() => store.getGraphStageNodes(props.graphStage.ID));
+
+// B.4.4：单节点无 DAG 可视化价值，直接展示 TeamStagePanel 即可。
+const shouldShow = computed(() => nodes.value.length > 1);
+
+const completedCount = computed(
+  () => nodes.value.filter((n) => n.Status === 'completed').length,
+);
 
 const { layoutDAG } = usePlanDAGLayout();
 const layoutResult = computed(() => layoutDAG(nodes.value, { width: maxWidth, nodeWidth, nodeHeight, gapX, gapY }));
@@ -203,10 +211,16 @@ const edges = computed<Edge[]>(() => {
   return out;
 });
 
-// 后端只发 graph_stage.created（Status=running），不发 updated/completed/failed，
-// 所以容器状态必须从子 node 状态聚合得到。
+function isTerminalStatus(s: GraphStageStatus | string | undefined): boolean {
+  return s === 'completed' || s === 'failed' || s === 'interrupted';
+}
+
+// 终态优先用后端 GraphStage.Status（terminal 事件已持久化）；
+// 运行中由子节点聚合，避免仅依赖 created 时的过期 Status。
 const derivedStatus = computed<GraphStageStatus>(() => {
-  if (nodes.value.length === 0) return props.graphStage.Status || 'running';
+  const backend = props.graphStage.Status;
+  if (isTerminalStatus(backend)) return backend;
+  if (nodes.value.length === 0) return backend || 'running';
   const hasFailed = nodes.value.some((n) => n.Status === 'failed');
   const hasInterrupted = nodes.value.some((n) => n.Status === 'interrupted');
   const allCompleted = nodes.value.every((n) => n.Status === 'completed');
@@ -241,11 +255,8 @@ const stageStatusLabel = computed(() => {
 
 <style lang="sass" scoped>
 .graph-stage-block
-  border: 1px solid var(--glass-border)
-  border-radius: 8px
-  padding: 12px
+  padding: 8px 0
   margin: 8px 0
-  background: var(--glass-surface)
 
 .graph-stage-header
   display: flex
@@ -263,18 +274,14 @@ const stageStatusLabel = computed(() => {
 .header-label
   flex: 1
 
+.header-progress
+  font-size: 12px
+  font-weight: 500
+  color: var(--color-text-secondary)
+
 .graph-stage-svg
   display: block
   max-width: 100%
-  background: var(--glass-elevated, rgba(255, 255, 255, 0.08))
-  border-radius: 6px
-  border: 1px solid var(--glass-border)
-
-.graph-stage-empty
-  padding: 16px
-  text-align: center
-  color: var(--color-text-secondary)
-  font-size: 12px
 
 .graph-edge
   stroke: var(--color-text-secondary, rgba(150, 150, 150, 0.6))

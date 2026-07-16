@@ -166,10 +166,17 @@ function patchToWire(payload: Partial<Team>): WireTeam {
 }
 
 export async function listTeams(): Promise<Team[]> {
+  const res = await listTeamsPaged();
+  return res.items;
+}
+
+/** List teams with server-reported total (same scope as items). */
+export async function listTeamsPaged(): Promise<{ items: Team[]; total: number }> {
   const svc = createTeamService();
   const res = await svc.ListTeams({});
-  const items = res.items ?? [];
-  return items.map(wireTeam);
+  const items = (res.items ?? []).map(wireTeam);
+  const total = typeof res.total === 'number' ? res.total : items.length;
+  return { items, total };
 }
 
 export async function createTeam(payload: Partial<Team>): Promise<Team> {

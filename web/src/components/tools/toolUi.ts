@@ -232,15 +232,13 @@ export const toolEditorJsonKeys = [
 
 export type ToolEditorJsonKey = (typeof toolEditorJsonKeys)[number];
 
-/** Map JSON field → editor tab for validation focus. */
-export function editorTabForJsonKey(key: string): 'schema' | 'advanced' {
-  if (
-    key === 'parameters_schema_json' ||
-    key === 'result_schema_json' ||
-    key === 'config_schema_json' ||
-    key === 'config_json'
-  ) {
-    return 'schema';
+/** Map JSON field → editor section id for validation focus. */
+export function editorTabForJsonKey(key: string): 'params' | 'config' | 'advanced' {
+  if (key === 'parameters_schema_json' || key === 'result_schema_json') {
+    return 'params';
+  }
+  if (key === 'config_schema_json' || key === 'config_json') {
+    return 'config';
   }
   return 'advanced';
 }

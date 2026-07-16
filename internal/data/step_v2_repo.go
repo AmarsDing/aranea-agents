@@ -69,14 +69,33 @@ func (r *stepV2Repo) ListStepsByTask(ctx context.Context, taskID string) ([]biz.
 	return entStepsV2ToBiz(rows), nil
 }
 
-// ListStepsBySession returns all steps for the given session, ordered by started_at asc.
-// Use started_at (not seq) because steps span multiple turns/tasks within a session.
+// ListStepsBySession returns steps whose SessionID equals sessionID, ordered by started_at asc.
+// SessionID is the owning chat session (spirit / member), not SpiritSessionID.
+// Call with the spirit session ID for root-only history; call with a member
+// session ID to lazy-load that member's steps (A.4.7).
 func (r *stepV2Repo) ListStepsBySession(ctx context.Context, sessionID string) ([]biz.Step, error) {
 	if r == nil || r.data == nil {
 		return nil, fmt.Errorf("step v2 repo: database not configured")
 	}
 	rows, err := r.data.RW().Read(ctx).StepV2.Query().
-		Where(stepv2.SpiritSessionID(sessionID)).
+		Where(stepv2.SessionIDEQ(sessionID)).
+		Order(ent.Asc(stepv2.FieldStartedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "STEP_V2")
+	}
+	return entStepsV2ToBiz(rows), nil
+}
+
+// ListStepsBySpiritSession returns all steps under a spirit root session
+// (spirit_session_id column), ordered by started_at asc. Includes member
+// agent steps for StopGeneration cancel coverage.
+func (r *stepV2Repo) ListStepsBySpiritSession(ctx context.Context, spiritSessionID string) ([]biz.Step, error) {
+	if r == nil || r.data == nil {
+		return nil, fmt.Errorf("step v2 repo: database not configured")
+	}
+	rows, err := r.data.RW().Read(ctx).StepV2.Query().
+		Where(stepv2.SpiritSessionID(spiritSessionID)).
 		Order(ent.Asc(stepv2.FieldStartedAt)).
 		All(ctx)
 	if err != nil {

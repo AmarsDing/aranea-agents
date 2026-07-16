@@ -181,9 +181,13 @@ func (f *fakeReposForExecutor) UpsertGraphStage(_ context.Context, gs biz.GraphS
 }
 
 // UpsertGraphNode stores the GraphNode in memory.
+// Mirrors production: empty TeamStageID on update does not wipe an existing value.
 func (f *fakeReposForExecutor) UpsertGraphNode(_ context.Context, gn biz.GraphNode) (biz.GraphNode, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if existing, ok := f.graphNodes[gn.ID]; ok && gn.TeamStageID == "" {
+		gn.TeamStageID = existing.TeamStageID
+	}
 	f.graphNodes[gn.ID] = gn
 	return gn, nil
 }
@@ -471,5 +475,117 @@ func TestPlanExecutor_FailedStepBlocksDownstream(t *testing.T) {
 	}
 	if kinds[biz.EventKindPlanStepSkipped] != 1 {
 		t.Errorf("PlanStepSkipped events = %d, want 1", kinds[biz.EventKindPlanStepSkipped])
+	}
+}
+
+// TestPlanExecutor_GraphNodeKeepsTeamStageIDAfterComplete verifies GS-1:
+// dispatch writes TeamStageID; terminal update with empty teamStageID must not wipe it.
+func TestPlanExecutor_GraphNodeKeepsTeamStageIDAfterComplete(t *testing.T) {
+	t.Parallel()
+	board := biz.PlanBoard{
+		ID:        "board-tsid",
+		TaskID:    "task-tsid",
+		SessionID: "sess-tsid",
+		Status:    biz.PlanStatusExecuting,
+		Steps: []biz.PlanStep{
+			{ID: "ts1", PlanID: "board-tsid", TaskID: "task-tsid", Label: "only", Status: biz.PlanStepStatusPending, Version: 1},
+		},
+	}
+	seq := &fakeSeq{}
+	orch := newFakeOrchestrator().withSeq(seq)
+	repos := newFakeReposForExecutor()
+	seq.repos = repos
+	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+
+	done := make(chan error, 1)
+	go func() { done <- pe.Subscribe(context.Background(), board) }()
+
+	if !orch.waitForCall("ts1", 2*time.Second) {
+		t.Fatal("ts1 was not dispatched")
+	}
+	wantTeamStageID := "fake-team-stage-ts1"
+	// After dispatch, GraphNode should have TeamStageID.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		repos.mu.Lock()
+		gn, ok := repos.graphNodes["ts1"]
+		repos.mu.Unlock()
+		if ok && gn.TeamStageID == wantTeamStageID {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("GraphNode TeamStageID not set after dispatch: ok=%v id=%q", ok, gn.TeamStageID)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	orch.completeStep("ts1", true, "")
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Subscribe timed out")
+	}
+
+	repos.mu.Lock()
+	gn := repos.graphNodes["ts1"]
+	repos.mu.Unlock()
+	if gn.TeamStageID != wantTeamStageID {
+		t.Errorf("TeamStageID after complete = %q, want %q (must not be wiped)", gn.TeamStageID, wantTeamStageID)
+	}
+	if gn.Status != biz.GraphNodeStatusCompleted {
+		t.Errorf("status = %s, want completed", gn.Status)
+	}
+}
+
+// TestPlanExecutor_InitGraphStageDoesNotPublishCreated verifies GS-2 / B.10.5:
+// initGraphStage is Upsert-only; GraphStageCreatedEvent comes only from PublishV2Board.
+func TestPlanExecutor_InitGraphStageDoesNotPublishCreated(t *testing.T) {
+	t.Parallel()
+	board := biz.PlanBoard{
+		ID:        "board-nocreated",
+		TaskID:    "task-nocreated",
+		SessionID: "sess-nocreated",
+		Status:    biz.PlanStatusExecuting,
+		Steps: []biz.PlanStep{
+			{ID: "n1", PlanID: "board-nocreated", TaskID: "task-nocreated", Label: "n1", Status: biz.PlanStepStatusPending, Version: 1},
+			{ID: "n2", PlanID: "board-nocreated", TaskID: "task-nocreated", Label: "n2", DependsOn: []string{"n1"}, Status: biz.PlanStepStatusPending, Version: 1},
+		},
+	}
+	seq := &fakeSeq{}
+	orch := newFakeOrchestrator().withSeq(seq)
+	repos := newFakeReposForExecutor()
+	seq.repos = repos
+	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+
+	done := make(chan error, 1)
+	go func() { done <- pe.Subscribe(context.Background(), board) }()
+
+	if !orch.waitForCall("n1", 2*time.Second) {
+		t.Fatal("n1 not dispatched")
+	}
+	orch.completeStep("n1", true, "")
+	if !orch.waitForCall("n2", 2*time.Second) {
+		t.Fatal("n2 not dispatched")
+	}
+	orch.completeStep("n2", true, "")
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Subscribe timed out")
+	}
+
+	kinds := countingEventKinds(seq.snapshot())
+	if n := kinds[biz.EventKindGraphStageCreated]; n != 0 {
+		t.Errorf("GraphStageCreated events = %d, want 0 (PublishV2Board owns created)", n)
+	}
+	if repos.graphStage == nil || repos.graphStage.ID == "" {
+		t.Fatal("expected initGraphStage to Upsert GraphStage for crash recovery")
 	}
 }

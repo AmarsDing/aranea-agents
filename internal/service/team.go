@@ -8,6 +8,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
+	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
@@ -31,6 +32,9 @@ type TeamService struct {
 	activityRepo    biz.ActivityRepo
 	teamStageReader biz.TeamStageV2Reader // Phase 3b-D Task 6: v2 reader for ListSpiritTeams members
 	stepReader      biz.StepV2Reader      // Phase 3b-D Task 7: v2 step reader for CancelSessionRunSideEffects
+	teamRunV2       biz.TeamRunV2Repo    // optional: PauseTeamRun v2 TeamRun sync
+	memberSessionV2 biz.MemberSessionV2Repo // optional: PauseTeamRun v2 MemberSession sync
+	v2Seq           rt.EventPublisher    // optional: Sequencer for v2 entity events
 }
 
 func NewTeamService(
@@ -46,6 +50,9 @@ func NewTeamService(
 	activityRepo biz.ActivityRepo,
 	teamStageReader biz.TeamStageV2Reader,
 	stepReader biz.StepV2Reader,
+	teamRunV2 biz.TeamRunV2Repo,
+	memberSessionV2 biz.MemberSessionV2Repo,
+	v2Seq rt.EventPublisher,
 ) *TeamService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
@@ -57,6 +64,9 @@ func NewTeamService(
 		activityRepo:    activityRepo,
 		teamStageReader: teamStageReader,
 		stepReader:      stepReader,
+		teamRunV2:       teamRunV2,
+		memberSessionV2: memberSessionV2,
+		v2Seq:           v2Seq,
 	}
 }
 
@@ -290,7 +300,7 @@ func (s *TeamService) ListTeams(ctx context.Context, _ *v1.ListTeamsRequest) (*v
 	if err != nil {
 		return nil, err
 	}
-	out := &v1.ListTeamsResponse{Items: make([]*v1.Team, 0, len(items))}
+	out := &v1.ListTeamsResponse{Items: make([]*v1.Team, 0, len(items)), Total: int32(len(items))}
 	for i := range items {
 		pb := toProtoTeam(items[i])
 		if active, aerr := s.uc.HasActiveRun(ctx, items[i].ID); aerr == nil {

@@ -12,7 +12,7 @@
 | `memory_l1_*` 表 | ✅ | `memory_l1_tasks` / `memory_l1_fields` / `memory_l1_field_history` |
 | Admin ListL1Tasks/Fields | ✅ | `internal/biz/memory_admin_store.go` |
 | working_memory 工具（5 个） | ✅ | `internal/tools/working_memory/tools.go`（read/list/write/patch/delete） |
-| L1 写入 Store | ✅ | `internal/data/sessionmemory/store_l1.go`（StartTask/EndTask/UpsertField/DeleteField/PatchFields/ArchiveTask） |
+| L1 写入 Store | ✅ | `internal/data/memory_shim_l1.go`（StartTask/EndTask/UpsertField/DeleteField/PatchFields/ArchiveTask） |
 | L1 Writer Biz | ✅ | `internal/biz/memory_admin_store.go`（L1Writer 接口 + DTO） |
 | task→episode 归档 hook | ✅ | `internal/biz/memory_admin_usecase.go`（EndL1Task 自动归档 + 创建 L2 Episode） |
 | L1 归档 Worker | ✅ | `internal/cronrunner/jobs/memory_l1_archive.go` |

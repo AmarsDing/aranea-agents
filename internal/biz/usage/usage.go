@@ -119,6 +119,8 @@ type BreakdownRow struct {
 	AvgLatencyMS       float64
 	AvgTokensPerSecond float64
 	SuccessRate        float64
+	// LastActiveDate is YYYY-MM-DD of the most recent daily usage bucket (optional).
+	LastActiveDate string
 }
 
 // BreakdownQuery 是 ListAllModelsBreakdown 的查询参数（分页 + 搜索 + 排序）。

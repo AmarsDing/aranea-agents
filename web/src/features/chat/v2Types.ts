@@ -8,10 +8,10 @@ export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cance
 export type TurnStatus = 'running' | 'completed' | 'failed';
 export type StepKind = 'thinking' | 'action' | 'reply' | 'notice' | 'confirm' | 'error';
 export type StepStatus = 'pending' | 'running' | 'tool_running' | 'tool_blocked' | 'completed' | 'failed' | 'cancelled';
-export type TeamStageStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'waiting_human';
+export type TeamRunStatus = 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+export type MemberSessionStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'skipped';
+export type TeamStageStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'waiting_human';
 export type TeamStageStage = 'assembled' | 'planning' | 'executing' | 'completed' | 'failed';
-export type TeamRunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
-export type MemberSessionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 export type PlanStrategy = 'sequential' | 'parallel' | 'dag' | 'coordinator';
 export type PlanStatus = 'planning' | 'executing' | 'completed' | 'failed' | 'partial_failure';
 export type PlanStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'partial_failure';
@@ -349,8 +349,8 @@ export interface SystemNoticeEventPayload {
 // The bridge is used for v1 publish sites that have not been (or cannot be)
 // mapped to typed v2 entity events: graph_stage / team_stage / session /
 // plan / task_failed / publishWSErrorActivity / TeamGraphRunCoordinator, etc.
-// Frontend routes these through handleActivityEvent (the v1 AF handler) to
-// reuse dedup + system-event routing + sender reset.
+// Frontend ignores these for the chat timeline (typed v2 entity events cover
+// Task/Turn/Step/Team/Graph). Non-chat consumers unwrap Event via ws-transport.
 export interface ActivityBridgeEventPayload {
   Event: AFActivityEvent;
 }

@@ -18,6 +18,7 @@ import { buildMemoryAssemblyTableColumns, buildMemoryFactTableColumns } from './
 import { useAgentsCatalogStore } from '../../stores/agents/catalog';
 import { useSessionStore } from '../../stores/session';
 import { useMemoryStore } from '../../stores/memory';
+import { MEMORY_ENTITY_LIMIT } from '../constants/queryLimits';
 
 export function useMemoryCenterPage() {
   const { notify } = useQuasar();
@@ -66,6 +67,7 @@ export function useMemoryCenterPage() {
   const cascadeActingId = ref<string | null>(null);
   const factsEndpointReady = ref(true);
   const factsTotal = ref(0);
+  const conflictingFactsTotal = ref(0);
   const snapshotDrawer = ref(false);
   const factDrawer = ref(false);
   const cascadePreviewOpen = ref(false);
@@ -91,8 +93,9 @@ export function useMemoryCenterPage() {
   );
 
   const overviewCards = computed(() => {
-    const avgContext = sessions.value.length
-      ? sessions.value.reduce((sum, session) => sum + (session.context_used_ratio || 0), 0) / sessions.value.length
+    const sessionSample = sessions.value.length;
+    const avgContext = sessionSample
+      ? sessions.value.reduce((sum, session) => sum + (session.context_used_ratio || 0), 0) / sessionSample
       : 0;
     const riskySessions = sessions.value.filter((session) =>
       ['warning', 'critical', 'exceeded'].includes(session.context_status),
@@ -102,7 +105,7 @@ export function useMemoryCenterPage() {
       {
         label: '上下文风险',
         value: riskySessions,
-        hint: `平均占用 ${formatPercent(avgContext)}`,
+        hint: `样本≤30 会话 · 平均占用 ${formatPercent(avgContext)}`,
         icon: 'speed',
         color: contextRatioColor(avgContext),
       },
@@ -110,11 +113,17 @@ export function useMemoryCenterPage() {
       {
         label: '长期知识',
         value: factsTotal.value,
-        hint: factsEndpointReady.value ? '已加载 L3 facts' : 'L3 facts 暂不可用',
+        hint: factsEndpointReady.value ? '服务端 facts 总数' : 'L3 facts 暂不可用',
         icon: 'psychology',
         color: 'deep-purple',
       },
-      { label: '图谱实体', value: entities.value.length, hint: 'L4 entities', icon: 'device_hub', color: 'teal' },
+      {
+        label: '图谱实体',
+        value: entities.value.length,
+        hint: `已加载样本（上限 ${MEMORY_ENTITY_LIMIT}）`,
+        icon: 'device_hub',
+        color: 'teal',
+      },
       {
         label: 'Prompt 快照',
         value: snapshots.value.length,
@@ -128,15 +137,15 @@ export function useMemoryCenterPage() {
   const actionItems = computed(() => [
     {
       title: '上下文接近上限',
-      caption: '建议检查摘要阈值和注入片段数量。',
+      caption: '基于已加载会话样本（≤30）；建议检查摘要阈值和注入片段数量。',
       count: sessions.value.filter((s) => ['warning', 'critical', 'exceeded'].includes(s.context_status)).length,
       icon: 'report',
       color: 'warning',
     },
     {
       title: '知识冲突待办',
-      caption: 'L3 conflict API 接入后展示需要仲裁的 facts。',
-      count: facts.value.reduce((sum, fact) => sum + (fact.conflict_count || 0), 0),
+      caption: 'ListConflictingFacts 服务端总数（当前 Agent scope）。',
+      count: conflictingFactsTotal.value,
       icon: 'rule',
       color: 'negative',
     },
@@ -436,6 +445,20 @@ export function useMemoryCenterPage() {
     }
   }
 
+  async function loadConflictingFacts() {
+    const agentID = selectedAgentId.value || agents.value[0]?.id || '';
+    if (!agentID) {
+      conflictingFactsTotal.value = 0;
+      return;
+    }
+    try {
+      const result = await memoryStore.loadConflictingFacts('agent', agentID, 50, 0);
+      conflictingFactsTotal.value = result.total;
+    } catch {
+      conflictingFactsTotal.value = 0;
+    }
+  }
+
   async function loadFacts() {
     loadingFacts.value = true;
     try {
@@ -447,9 +470,11 @@ export function useMemoryCenterPage() {
       });
       factsTotal.value = result.total;
       factsEndpointReady.value = true;
+      await loadConflictingFacts();
     } catch {
       memoryStore.clearFacts();
       factsTotal.value = 0;
+      conflictingFactsTotal.value = 0;
       factsEndpointReady.value = false;
     } finally {
       loadingFacts.value = false;

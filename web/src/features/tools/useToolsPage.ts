@@ -101,15 +101,60 @@ export function useToolsPage() {
   }
 
   async function batchToggle(value: boolean) {
-    for (const tool of selected.value) {
+    const targets = selected.value.slice();
+    if (targets.length === 0) return;
+
+    if (value) {
+      const highRisk = targets.filter((t) => t.risk_level === 'high' || t.risk_level === 'critical');
+      if (highRisk.length > 0) {
+        const names = highRisk
+          .slice(0, 5)
+          .map((t) => t.display_name || t.key)
+          .join('、');
+        const more = highRisk.length > 5 ? ` 等 ${highRisk.length} 个` : '';
+        const confirmed = await new Promise<boolean>((resolve) => {
+          $q.dialog({
+            title: '高风险工具确认',
+            message: `选中项包含高风险工具（${names}${more}）。启用可能带来安全风险，确认继续？`,
+            cancel: true,
+            persistent: true,
+          })
+            .onOk(() => resolve(true))
+            .onCancel(() => resolve(false))
+            .onDismiss(() => resolve(false));
+        });
+        if (!confirmed) return;
+      }
+    }
+
+    const confirmIntent = value ? 'I_UNDERSTAND_RISK' : undefined;
+    let ok = 0;
+    let failed = 0;
+    for (const tool of targets) {
       try {
-        await toolsStore.toggle(tool.id || tool.key, value);
+        const intent =
+          value && (tool.risk_level === 'high' || tool.risk_level === 'critical')
+            ? 'I_UNDERSTAND_RISK'
+            : undefined;
+        await toolsStore.toggle(tool.id || tool.key, value, intent);
+        ok += 1;
       } catch {
-        // continue
+        failed += 1;
       }
     }
     selected.value = [];
     await loadRows();
+    if (failed > 0) {
+      $q.notify({
+        type: 'warning',
+        message: `批量${value ? '启用' : '停用'}完成：成功 ${ok}，失败 ${failed}`,
+      });
+    } else {
+      $q.notify({
+        type: 'positive',
+        message: `已${value ? '启用' : '停用'} ${ok} 个 Tool`,
+      });
+    }
   }
 
   function batchRemove() {
@@ -120,15 +165,24 @@ export function useToolsPage() {
       cancel: true,
       persistent: true,
     }).onOk(async () => {
-      for (const tool of selected.value) {
+      const targets = selected.value.slice();
+      let ok = 0;
+      let failed = 0;
+      for (const tool of targets) {
         try {
           await toolsStore.remove(tool.id || tool.key);
+          ok += 1;
         } catch {
-          // continue
+          failed += 1;
         }
       }
       selected.value = [];
       await loadRows();
+      if (failed > 0) {
+        $q.notify({ type: 'warning', message: `批量删除完成：成功 ${ok}，失败 ${failed}` });
+      } else {
+        $q.notify({ type: 'positive', message: `已删除 ${ok} 个 Tool` });
+      }
     });
   }
 

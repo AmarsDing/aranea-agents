@@ -233,7 +233,17 @@ func TestRunAttemptsFallsBackBeforeFirstNonErrorChunk(t *testing.T) {
 			},
 		},
 	}
-	llm, err := New(WithCandidates(primary, backup))
+	var switched bool
+	var fromIdx, toIdx int
+	var fromName, toName, reason string
+	llm, err := New(
+		WithCandidates(primary, backup),
+		WithSwitchCallback(func(fromIndex, toIndex int, from, to, why string) {
+			switched = true
+			fromIdx, toIdx = fromIndex, toIndex
+			fromName, toName, reason = from, to, why
+		}),
+	)
 	require.NoError(t, err)
 	responses := collectIterResponses(t, llm, &model.Request{
 		Messages: []model.Message{model.NewUserMessage("hello")},
@@ -241,6 +251,12 @@ func TestRunAttemptsFallsBackBeforeFirstNonErrorChunk(t *testing.T) {
 	require.Len(t, responses, 1)
 	assert.Equal(t, "backup", responses[0].Model)
 	assert.Equal(t, "hello", responses[0].Choices[0].Delta.Content)
+	require.True(t, switched)
+	assert.Equal(t, 0, fromIdx)
+	assert.Equal(t, 1, toIdx)
+	assert.Equal(t, "primary", fromName)
+	assert.Equal(t, "backup", toName)
+	assert.Equal(t, "primary failed", reason)
 }
 
 func TestRunAttemptsStopsFallbackAfterFirstNonErrorChunk(t *testing.T) {

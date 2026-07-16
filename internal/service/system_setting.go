@@ -6,6 +6,8 @@ import (
 
 	v1 "aranea-agents/api/kratos/system_setting/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/knowledge"
+	"aranea-agents/pkg/loggateway"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -18,10 +20,32 @@ type SystemSettingService struct {
 	uc            *biz.SystemSettingUsecase
 	a2aPublicBase *A2APublicBaseReloader
 	crypto        *biz.CredentialCrypto
+	// embedderAdmin hot-reloads in-memory knowledge embedder after DB persist (same path as KnowledgeService).
+	embedderAdmin knowledge.EmbedderAdmin
+	lg            loggateway.Logger
 }
 
-func NewSystemSettingService(uc *biz.SystemSettingUsecase, a2aPublicBase *A2APublicBaseReloader, crypto *biz.CredentialCrypto) *SystemSettingService {
-	return &SystemSettingService{uc: uc, a2aPublicBase: a2aPublicBase, crypto: crypto}
+func NewSystemSettingService(
+	uc *biz.SystemSettingUsecase,
+	a2aPublicBase *A2APublicBaseReloader,
+	crypto *biz.CredentialCrypto,
+	embedder knowledge.Embedder,
+	lg loggateway.Logger,
+) *SystemSettingService {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	var admin knowledge.EmbedderAdmin
+	if a, ok := embedder.(knowledge.EmbedderAdmin); ok {
+		admin = a
+	}
+	return &SystemSettingService{
+		uc:            uc,
+		a2aPublicBase: a2aPublicBase,
+		crypto:        crypto,
+		embedderAdmin: admin,
+		lg:            lg,
+	}
 }
 
 func (s *SystemSettingService) GetSystemSettings(ctx context.Context, _ *emptypb.Empty) (*v1.SystemSettings, error) {
@@ -76,6 +100,18 @@ func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1
 	}
 	if s.a2aPublicBase != nil {
 		s.a2aPublicBase.Reload(row.A2APublicBaseURL)
+	}
+	// Keep in-memory knowledge embedder aligned with DB (authoritative for live RAG).
+	if patch.KnowledgeEmbed != nil && s.embedderAdmin != nil {
+		ke := row.KnowledgeEmbed
+		apiKey := ""
+		if patch.KnowledgeEmbedUpdateKey {
+			apiKey = strings.TrimSpace(patch.KnowledgeEmbed.APIKey)
+		}
+		s.embedderAdmin.Update(ke.Provider, ke.BaseURL, apiKey, ke.Model, ke.Dim)
+		s.lg.Info("system settings: knowledge embedder hot-reloaded after persist",
+			loggateway.StepID("system_setting.embedder.reload"),
+		)
 	}
 	return toProtoSystemSettings(row), nil
 }

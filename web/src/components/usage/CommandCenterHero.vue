@@ -52,9 +52,9 @@
           <div class="command-center-hero__stat-label">{{ t('overviewPage.statTeams') }}</div>
         </div>
       </router-link>
-      <router-link to="/chat" class="command-center-hero__stat command-center-hero__stat--link">
+      <router-link to="/usage/events" class="command-center-hero__stat command-center-hero__stat--link">
         <div class="command-center-hero__stat-icon command-center-hero__stat-icon--session">
-          <q-icon name="chat" size="20px" />
+          <q-icon name="toll" size="20px" />
         </div>
         <div class="command-center-hero__stat-body">
           <div class="command-center-hero__stat-value command-center-hero__stat-value--tech">

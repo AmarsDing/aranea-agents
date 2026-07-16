@@ -27,6 +27,7 @@ import (
 // first non-error chunk is observed.
 type failoverModel struct {
 	candidates []model.Model
+	onSwitch   SwitchCallback
 }
 
 // New creates a failover model wrapper.
@@ -45,7 +46,7 @@ func New(opts ...Option) (model.Model, error) {
 		}
 		candidates = append(candidates, candidate)
 	}
-	return &failoverModel{candidates: candidates}, nil
+	return &failoverModel{candidates: candidates, onSwitch: options.onSwitch}, nil
 }
 
 // Info returns the primary candidate model info.
@@ -183,6 +184,19 @@ func (m *failoverModel) runAttempts(
 			if err != nil {
 				yield(buildFailureResponse(failuresFromError(err, failures)))
 				return false
+			}
+			if m.onSwitch != nil {
+				reason := ""
+				if cloned.Error != nil {
+					reason = cloned.Error.Message
+				}
+				m.onSwitch(
+					currentAttempt.index,
+					preparedAttempt.index,
+					currentAttempt.candidate.Info().Name,
+					preparedAttempt.candidate.Info().Name,
+					reason,
+				)
 			}
 			nextAttempt = preparedAttempt
 			return false

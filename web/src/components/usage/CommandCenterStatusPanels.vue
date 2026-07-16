@@ -1,7 +1,12 @@
 <template>
   <div class="command-center-status-panels">
     <StatusPanelAgent :active="agentStats.active" :total="agentStats.total" :loading="loading" />
-    <StatusPanelSession :today-call-count="todayCallCount" :sparkline="sessionSparkline" :loading="loading" />
+    <StatusPanelSession
+      :today-call-count="todayCallCount"
+      :sparkline="sessionSparkline"
+      :sparkline-granularity="sparklineGranularity"
+      :loading="loading"
+    />
     <StatusPanelProvider
       :active="providerHealth.active"
       :degraded="providerHealth.degraded"
@@ -28,6 +33,7 @@ defineProps<{
   agentStats: { active: number; total: number };
   todayCallCount: number;
   sessionSparkline: number[];
+  sparklineGranularity?: 'hour' | 'day' | string;
   providerHealth: { active: number; degraded: number; total: number };
   runnerStats: { totalRuns: number; errorRuns: number; successRate: number; errorRate: number };
   loading: boolean;

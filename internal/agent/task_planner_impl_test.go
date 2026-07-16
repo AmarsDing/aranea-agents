@@ -89,7 +89,6 @@ func TestTaskPlanner_QuickAssess_PureComputation(t *testing.T) {
 		repo:       nil,
 		catalog:    nil,
 		httpClient: nil,
-		bus:        nil,
 		orchCache:  nil,
 		lg:         loggateway.NewNoop(),
 	}
@@ -358,14 +357,22 @@ func TestPublishV2Board_ReturnsPlanBoardID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PublishV2Board: %v", err)
 	}
-	if board.ID == "" || !strings.HasPrefix(board.ID, "pb_") {
-		t.Fatalf("board.ID = %q, want pb_ prefix", board.ID)
+	if board.ID != "pb_tp-pub" {
+		t.Fatalf("board.ID = %q, want pb_tp-pub (stable from plan.ID)", board.ID)
 	}
 	if len(board.Steps) != 2 {
 		t.Fatalf("steps = %d, want 2", len(board.Steps))
 	}
 	if len(seq.events) == 0 {
 		t.Fatal("expected PlanBoard/GraphStage events to be published")
+	}
+	// Re-publish must reuse the same PlanBoard ID (no duplicate panels).
+	board2, err := impl.PublishV2Board(context.Background(), plan, nil, "")
+	if err != nil {
+		t.Fatalf("PublishV2Board 2nd: %v", err)
+	}
+	if board2.ID != board.ID {
+		t.Fatalf("2nd board.ID = %q, want same as first %q", board2.ID, board.ID)
 	}
 }
 

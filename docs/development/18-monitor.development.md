@@ -1,6 +1,6 @@
 # Monitor 监控 — 开发计划
 
-> **版本**：2026-06-06-v4 | **状态**：🟢 核心已通 + **MON-OPT-01~06 ✅ LOG-01/TRACE-01 ✅ DIAG-01/02 ✅ Latency P50/P95/P99 ✅ LOG-03 P0/P1/P2 ✅ REDLINE ✅ QUALITY ✅ 自检/自愈 ✅**；待办为 LOG-02（跨 pkg）、LOOP-01 FR-02/FR-03（P3）
+> **版本**：2026-06-06-v4 | **状态**：🟢 核心已通 + **MON-OPT-01~05 ✅ OPT-06 🟡（Registry 有 / DSL 未做）LOG-01/TRACE-01 ✅ DIAG-01/02 ✅ Latency P50/P95/P99 ✅ LOG-03 P0/P1/P2 ✅ REDLINE ✅ QUALITY ✅ 自检/自愈 ✅**；2026-07-16 修复 completion 副作用接线、firing reminder、Runs 列、反压 banner、进程 Tab；待办为 LOG-02（跨 pkg）、LOOP-01 FR-02/FR-03（P3）、Heal/Diagnose UI
 > **需求**：[18 monitor.md](./18%20monitor.md) · **设计**：[18 monitor.design.md](./18%20monitor.design.md)（§九 方案 C / 子模块 自检与自愈设计 / 子模块 Monitor 优化设计 / 子模块 Monitor AI 闭环设计）
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md)（I8-MON-01/02、MON-01、I5-MON-01/02）· **页面索引**：[frontend-pages.md](./frontend-pages.md) §监控
 
@@ -71,6 +71,12 @@
 | LOOP-01 FR-01 | ✅ | `log.Printf` 红线违规已清零（evolution.go + modelcatalog 已移除） |
 | LOOP-01 FR-02 | 🟡 | cronrunner Kratos `log.Helper` 从 29 处降至 7 处（5 个文件残留） |
 | LOOP-01 FR-03 | ❌ | stepTitleRegistry 22 个 step_id 未注册 |
+| Completion→RingBuffer/TraceClose 接线 | ✅ | 2026-07-16：`RecordRunnerCompletion` → `evalWorker.OnCompletion` + `traceProjector.OnRunnerCompletion` + TRACE-01 `WriteTraceComplete` |
+| Firing 态 reminder（防出站轰炸） | ✅ | 2026-07-16：firing 期间按 `reminder_minutes`（默认 30）提醒，不再非法重入 `threshold_exceeded` |
+| Trace backfill 关闭 running 行 | ✅ | 2026-07-16：`UpdateMonitorTraceCompletion` 覆盖 INSERT OR IGNORE 已有行 |
+| Runs 列表 Token/延迟/成本列 | ✅ | 2026-07-16：`ListMonitorTraces` 投影 duration/tokens/cost；FE TraceList 展示（OPT-05 后真相源为 `monitor_traces`） |
+| WS 反压前端 banner | ✅ | 2026-07-16：消费 `monitor.backpressure` 并在 MonitorPage 展示 |
+| 进程日志 Tab 自动暂停 | ✅ | 2026-07-16：切离暂停/切回恢复；移除手动暂停按钮 |
 
 ---
 
@@ -148,7 +154,7 @@
 | LOG-03 | 关键路径 FlowLog 补全 | P2 | ✅ P0/P1/P2 完成 | P0 红线修复 9 处；P1 补全 Graph/Session/Knowledge；P2 biz 层 fmt.Errorf 全量清理 + admin.go log.Infof |
 | TRACE-01 | Trace 文件落盘 | P1 | ✅ | `runner.completion` → `trace-*.jsonl` |
 | DIAG-01 | AI 诊断包 | P1 | ✅ | `DiagBundleGenerator` + `GenerateDiagnosticBundle` RPC |
-| DIAG-02 | 根因分析规则引擎 | P1 | ✅ | `RootCauseEngine` 5 条内置规则 + 置信度评分 |
+| DIAG-02 | 根因分析规则引擎 | P1 | ✅ | `RootCauseEngine` **12** 条内置规则 + 置信度评分（与设计 RC-001 清单 taxonomy 不完全相同，以代码为准） |
 | LOOP-01 | 系统调试日志闭环 | P2 | 🟡 FR-01 ✅ FR-02 🟡 FR-03 ❌ | FR-01 已完成；FR-02 剩余 7 处 cronrunner `log.Helper`；FR-03 22 个 step_id 未注册 |
 
 > **AI 闭环详细设计**：见 [18 monitor.design.md](./18%20monitor.design.md) 子模块 Monitor AI 闭环设计。
@@ -446,11 +452,11 @@ Monitor 已实现六大 Tab（Audit / Alerts / Events / Runs / Usage / Logs）�
 | ID | 任务 | 优先级 | 状态 | 关键实现 |
 |----|------|--------|------|----------|
 | MON-OPT-01 | FlowLog 流彻底分离到 MonitorBus | P1 | ✅ | ADR-03 Phase 5 后：`FlowTracker` 直接发布到 `MonitorEventBus`（`contract.MonitorEvent`），不再走 `event.Infra.Publish()` 路由表；`SelfHealObserver`/`TraceProjector` 已迁移到 `MonitorEventBus` 订阅；WS 全局连接单 pump |
-| MON-OPT-02 | 告警冷却持久化 + firing 状态机 | P1 | ✅ | `monitor_alert_rules` 新增 `last_fired_at`/`firing_state` 等列；`ShouldFireAlert`/`MarkAlertFiredPersistent`/`MarkAlertRecovered`；`recovery_factor` 默认 0.9 |
-| MON-OPT-03 | 告警评估批量化 + 滑动窗口 | P1 | ✅ | `MetricRingBuffer`（60 个 1 分钟桶）+ `AlertEvalWorker`（30s ticker）+ `singleflight.Group`；`RebuildRingBuffer` 启动时从 DB 加载 |
-| MON-OPT-04 | WS 反压可观测 + 优先级队列 | P1 | ✅ | WS 连接按 ActivityKind/MonitorEventType 分 high/normal/low 优先级 channel；high 永不丢弃；`monitor.backpressure` 反馈客户端（ADR-03 后 envelope 已迁移到 ActivityEvent/MonitorEvent） |
-| MON-OPT-05 | Trace 写入回路 + 历史回填 | P1 | ✅ | `TraceProjector` 订阅 EventBus；`EnsureTraceSchema` 扩展列 + `monitor_trace_spans` 建表；`MonitorTraceBackfillWorker` 6 小时间隔 cron |
-| MON-OPT-06 | 告警规则注册表 | P2 | ✅ | `AlertMetric` 接口 + `AlertMetricRegistry`（`sync.RWMutex`）；`RunnerErrorRateMetric`/`SkillFilesystemMissingMetric`；DSL 解析器（Phase 2）暂未实现 |
+| MON-OPT-02 | 告警冷却持久化 + firing 状态机 | P1 | ✅ | `monitor_alert_rules` 新增 `last_fired_at`/`firing_state` 等列；`ShouldFireAlert`/`MarkAlertFiredPersistent`/`MarkAlertRecovered`；`recovery_factor` 默认 0.9；**2026-07-16** firing 内 reminder 路径防重入轰炸 |
+| MON-OPT-03 | 告警评估批量化 + 滑动窗口 | P1 | ✅ | `MetricRingBuffer`（60 个 1 分钟桶）+ `AlertEvalWorker`（30s ticker）+ `singleflight.Group`；`RebuildRingBuffer` 启动时从 DB 加载；**2026-07-16** live `OnCompletion` 已接到 `RecordRunnerCompletion` |
+| MON-OPT-04 | WS 反压可观测 + 优先级队列 | P1 | ✅ | WS 连接按 ActivityKind/MonitorEventType 分 high/normal/low 优先级 channel；high 永不丢弃；`monitor.backpressure` 反馈客户端；**2026-07-16** 前端 banner 已接 |
+| MON-OPT-05 | Trace 写入回路 + 历史回填 | P1 | ✅ | `TraceProjector` 订阅 EventBus；`EnsureTraceSchema` 扩展列 + `monitor_trace_spans` 建表；`MonitorTraceBackfillWorker`；**2026-07-16** completion 关 Trace + backfill UPDATE running |
+| MON-OPT-06 | 告警规则注册表 | P2 | 🟡 | `AlertMetric` 接口 + `AlertMetricRegistry`；`RunnerErrorRateMetric`/`SkillFilesystemMissingMetric`；**DSL 解析器 / silence_windows / severity_escalation 仍为 Phase 2 未实现** |
 
 ---
 
@@ -535,7 +541,7 @@ Monitor 已实现六大 Tab（Audit / Alerts / Events / Runs / Usage / Logs）�
 | LOG-01 | FlowLog 文件落盘 | P1 | ✅ | `FlowFileAppender` + 按日/大小轮转 + gzip + 30 天清理；路由规则按 EnvelopeType 分发到 flow/system/trace/alert 文件 |
 | LOG-02 | 框架层 zap 日志结构化 | P2 | ❌ | 跨 `pkg/trpc-agent-go` 修改，需独立 PR；目标：ConsoleEncoder → JSONEncoder + context 注入 trace_id |
 | LOG-03 | 关键路径 FlowLog 补全 | P2 | ✅ P0/P1/P2 完成 | P0 红线修复 9 处（Graph/Task/Channel/Admin 域）；P1 补全 Graph/Session/Knowledge；P2 biz 层 fmt.Errorf 全量清理（15 处 → kerrors）+ admin.go log.Infof |
-| TRACE-01 | Trace 文件落盘 | P1 | ✅ | `runner.completion` → `trace-*.jsonl`；`FlowFileAppender` 增加 Trace 完成事件写入 |
+| TRACE-01 | Trace 文件落盘 | P1 | ✅ | `RecordRunnerCompletion` → `FlowFileAppender.WriteTraceComplete` → `trace-*.jsonl`（2026-07-16 接通） |
 | DIAG-01 | AI 诊断包 | P1 | ✅ | `DiagBundleGenerator` + `GenerateDiagnosticBundle` RPC；自动触发规则（critical FlowLog / 告警 firing / 手动） |
 | DIAG-02 | 根因分析规则引擎 | P1 | ✅ | `RootCauseEngine` 5 条内置规则 + 置信度评分（直接匹配 0.4 + 前置条件 0.3 + 时间关联 0.2 + 频率关联 0.1） |
 | LOOP-01 | 系统调试日志闭环 | P2 | 🟡 FR-01 ✅ FR-02 🟡 FR-03 ❌ | FR-01 `log.Printf` 红线违规清零；FR-02 剩余 7 处 cronrunner `log.Helper`（5 个文件）；FR-03 22 个 step_id 未注册 |

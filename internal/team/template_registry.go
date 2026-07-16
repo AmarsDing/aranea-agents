@@ -96,11 +96,15 @@ type adaptiveTemplate struct{}
 
 func (adaptiveTemplate) ID() string { return "adaptive" }
 
-func (adaptiveTemplate) BuildEdges(_ Definition, ids []string) []embeddedGraphEdge {
+func (adaptiveTemplate) BuildEdges(def Definition, ids []string) []embeddedGraphEdge {
 	out := pipelineTemplate{}.BuildEdges(Definition{}, ids)
+	maxEdges := maxAdaptiveTransferEdges
+	if def.Swarm != nil && def.Swarm.MaxHandoffs > 0 {
+		maxEdges = def.Swarm.MaxHandoffs
+	}
 	transferCount := 0
-	for i := 0; i < len(ids) && transferCount < maxAdaptiveTransferEdges; i++ {
-		for j := 0; j < len(ids) && transferCount < maxAdaptiveTransferEdges; j++ {
+	for i := 0; i < len(ids) && transferCount < maxEdges; i++ {
+		for j := 0; j < len(ids) && transferCount < maxEdges; j++ {
 			if i == j || j == i+1 {
 				continue
 			}

@@ -5,7 +5,7 @@
         <q-icon name="dns" class="overview-provider-health__icon" :class="healthIconClass" />
         <div>
           <div class="text-h6 overview-section-title">模型端点健康</div>
-          <div class="text-caption overview-section-caption">模型端点连通性状态</div>
+          <div class="text-caption overview-section-caption">{{ t('overviewPage.providerHealthCaption') }}</div>
         </div>
       </div>
     </q-card-section>
@@ -51,7 +51,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { PlatformResource } from '../../features/platform/types';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   models: PlatformResource[];

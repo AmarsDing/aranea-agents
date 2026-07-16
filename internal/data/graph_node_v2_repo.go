@@ -79,17 +79,20 @@ func (r *graphNodeV2Repo) CreateGraphNode(ctx context.Context, gn biz.GraphNode)
 
 // UpdateGraphNode patches mutable fields.
 // DependsOn is NOT persisted (in-memory only).
+// TeamStageID：仅非空时写入，避免空串擦除已回填关联。
 func (r *graphNodeV2Repo) UpdateGraphNode(ctx context.Context, gn biz.GraphNode) (biz.GraphNode, error) {
 	if r == nil || r.data == nil {
 		return biz.GraphNode{}, fmt.Errorf("graph node v2 repo: database not configured")
 	}
-	row, err := r.data.RW().Write(ctx).GraphNodeV2.UpdateOneID(gn.ID).
+	upd := r.data.RW().Write(ctx).GraphNodeV2.UpdateOneID(gn.ID).
 		SetGraphStageID(gn.GraphStageID).
 		SetDagNodeID(gn.DagNodeID).
-		SetTeamStageID(gn.TeamStageID).
 		SetLabel(gn.Label).
-		SetStatus(string(gn.Status)).
-		Save(ctx)
+		SetStatus(string(gn.Status))
+	if gn.TeamStageID != "" {
+		upd = upd.SetTeamStageID(gn.TeamStageID)
+	}
+	row, err := upd.Save(ctx)
 	if err != nil {
 		return biz.GraphNode{}, entErrToBizErr(err, "GRAPH_NODE_V2")
 	}
@@ -99,18 +102,23 @@ func (r *graphNodeV2Repo) UpdateGraphNode(ctx context.Context, gn biz.GraphNode)
 // UpsertGraphNode applies idempotent upsert for GraphNode.
 // GraphNode has no Version field; uses ConstraintError fallback for idempotency.
 // DependsOn is NOT persisted (in-memory only).
+//
+// TeamStageID：Update 时仅在非空时写入，避免终态 status 更新用空串擦除
+// dispatch 已回填的 team_stage 关联（chat GraphStageBlock 点击跳转依赖此字段）。
 func (r *graphNodeV2Repo) UpsertGraphNode(ctx context.Context, gn biz.GraphNode) (biz.GraphNode, error) {
 	if r == nil || r.data == nil {
 		return biz.GraphNode{}, fmt.Errorf("graph node v2 repo: database not configured")
 	}
 	// Try update first.
-	if err := r.data.RW().Write(ctx).GraphNodeV2.UpdateOneID(gn.ID).
+	upd := r.data.RW().Write(ctx).GraphNodeV2.UpdateOneID(gn.ID).
 		SetGraphStageID(gn.GraphStageID).
 		SetDagNodeID(gn.DagNodeID).
-		SetTeamStageID(gn.TeamStageID).
 		SetLabel(gn.Label).
-		SetStatus(string(gn.Status)).
-		Exec(ctx); err == nil {
+		SetStatus(string(gn.Status))
+	if gn.TeamStageID != "" {
+		upd = upd.SetTeamStageID(gn.TeamStageID)
+	}
+	if err := upd.Exec(ctx); err == nil {
 		row, getErr := r.data.RW().Read(ctx).GraphNodeV2.Get(ctx, gn.ID)
 		if getErr != nil {
 			return biz.GraphNode{}, entErrToBizErr(getErr, "GRAPH_NODE_V2")

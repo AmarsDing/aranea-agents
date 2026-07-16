@@ -14,8 +14,6 @@ import (
 	araneasession "aranea-agents/internal/session"
 	"aranea-agents/pkg/loggateway"
 
-	"github.com/google/uuid"
-
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
@@ -61,23 +59,15 @@ type PersistenceSet struct {
 // called); the buffer was write-only with no reader. All Append callsites
 // (FlowTracker.emit / EventBusConsumer.handleEnvelope) were dead writes.
 //
-// ActivityBus is the bus transporting biz.ActivityEvent for chat
-// lifecycle events (created/streaming/completed/failed/cancelled/child_created).
+// ActivityBus is deprecated and unused; retained as a nil-able field for
+// transitional structs. New publishers use EventBus / Sequencer only.
 // MonitorEventBus is the typed contract.MonitorBus carrying
 // contract.MonitorEvent for monitor-channel events (alerts, logs, etc.).
-//
-// Activity ordering is governed solely by Timestamp ASC (design doc §B.3.3);
-// the legacy SeqAllocator field has been removed. Direct-publish events
-// (team_stage/graph_stage/session/plan) are detected via the
-// ActivityEvent.SequencerHandled flag on the bus.
 type EventPipeline struct {
-	ActivityBus     biz.ActivityEventBus
-	EventBus        biz.EventBus // Phase 3b-D: v2 EventBus for typed Events (replaces ActivityBus for new code)
+	ActivityBus     biz.ActivityEventBus // deprecated: always nil in production DI
+	EventBus        biz.EventBus
 	MonitorEventBus contract.MonitorBus
-	// Sequencer is the v2 publish-only entry point for ActivityBridgeEvent.
-	// team/service packages route Publish through Sequencer to obtain FIFO
-	// ordering + retry/dead-letter; EventBus is retained only for Subscribe.
-	// *v2.Sequencer satisfies this interface; nil = fall back to EventBus.Publish.
+	// Sequencer is the v2 publish-only entry point for typed events + notices.
 	Sequencer EventPublisher
 }
 
@@ -112,8 +102,7 @@ func (d TurnDeps) RoundTrip() *provider.RoundTrip {
 }
 
 // RoundTripForSession returns a provider.RoundTrip with an OnRetry callback
-// that publishes llm_retry events as system-domain ActivityEvents on the
-// EventBus (wrapped via ActivityBridgeEvent). sessionID is captured in the
+// that publishes llm_retry system.notice events. sessionID is captured in the
 // callback so events carry the correct session for frontend routing. If the
 // EventBus is nil, the callback is not set (retry still works, just no event
 // is published).
@@ -129,35 +118,20 @@ func (d TurnDeps) RoundTripForSession(sessionID string) *provider.RoundTrip {
 		if maxRetries > 0 {
 			maxLabel = fmt.Sprintf("%d", maxRetries)
 		}
+		msg := fmt.Sprintf("LLM 调用失败，正在重试（第 %d 次，上限 %s），%v 后重试", attempt, maxLabel, delay)
 		meta := map[string]any{
 			"attempt":     attempt,
 			"max_retries": maxRetries,
 			"delay_ms":    delay.Milliseconds(),
 			"error":       err.Error(),
-			"message":     fmt.Sprintf("LLM 调用失败，正在重试（第 %d 次，上限 %s），%v 后重试", attempt, maxLabel, delay),
+			"message":     msg,
+			"agent_key":   "provider",
 		}
-		ev := biz.ActivityEvent{
-			Event: biz.ActivityEventCreated,
-			Activity: biz.Activity{
-				ID:        uuid.NewString(),
-				Kind:      biz.ActivityKindNotice,
-				Status:    biz.ActivityStatusCompleted,
-				Timestamp: time.Now().UTC(),
-				SessionID: sessionID,
-				AgentKey:  "provider",
-				Stage:     "llm_retry",
-				Meta:      meta,
-			},
-			Domain: biz.ActivityDomainSystem,
-		}
-		// Use the request context if available (carries cancel signal);
-		// fall back to background so the event is still published when the
-		// request context is already cancelled.
 		ctx := req.Context()
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		bus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+		bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "llm_retry", msg, meta))
 		if lg != nil {
 			lg.Warn("LLM 重试事件已发布",
 				loggateway.StepID("provider.llm_retry"),

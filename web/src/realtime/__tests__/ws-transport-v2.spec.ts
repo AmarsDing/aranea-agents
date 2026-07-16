@@ -59,4 +59,34 @@ describe('ws-transport v2_event', () => {
     expect(onV2Event).toHaveBeenCalledTimes(1);
     transport.disconnect();
   });
+
+  it('unwraps activity.bridge to onActivityEvent for non-chat consumers', () => {
+    const mock = new MockWS();
+    const onActivityEvent = vi.fn();
+    const onV2Event = vi.fn();
+    const transport = createWsTransport({
+      sessionId: 's1',
+      url: 'ws://localhost',
+      socketFactory: () => mock as unknown as WebSocket,
+      onActivityEvent,
+      onV2Event,
+    });
+    transport.connect();
+
+    const bridged = {
+      event: 'created',
+      activity: { id: 'a1', kind: 'graph_stage', stage: 'node_start', session_id: 's1' },
+    };
+    const v2Msg = JSON.stringify({
+      type: 'v2_event',
+      kind: 'activity.bridge',
+      payload: { Event: bridged },
+    });
+    mock.onmessage!({ data: v2Msg });
+
+    expect(onV2Event).toHaveBeenCalledTimes(1);
+    expect(onActivityEvent).toHaveBeenCalledTimes(1);
+    expect(onActivityEvent.mock.calls[0][0]).toEqual(bridged);
+    transport.disconnect();
+  });
 });

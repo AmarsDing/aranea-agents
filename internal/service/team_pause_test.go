@@ -14,7 +14,7 @@ import (
 
 // newPauseTestService wires a TeamService with the cancelTeamRunRepo and
 // testRunRegistry configured for pause/unpause/inject scenarios.
-// Helper kept minimal — callers further mutate repo.runs before invoking.
+// Helper kept minimal - callers further mutate repo.runs before invoking.
 func newPauseTestService(t *testing.T, repo *cancelTeamRunRepo, reg *testRunRegistry) (*TeamService, <-chan biz.Event, func()) {
 	t.Helper()
 	bus := event.NewV2Bus()
@@ -28,7 +28,7 @@ func newPauseTestService(t *testing.T, repo *cancelTeamRunRepo, reg *testRunRegi
 		DeadLetter: repo,
 		Lg:         loggateway.NewNoop(),
 	})
-	svc := NewTeamService(uc, nil, nil, nil, nil, reg, bus, loggateway.NewNoop(), nil, nil, nil, nil)
+	svc := NewTeamService(uc, nil, nil, nil, nil, reg, bus, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil)
 	return svc, ch, unsub
 }
 
@@ -172,9 +172,9 @@ func TestInjectTeamMessage_RoutesToActiveRunSession(t *testing.T) {
 		},
 		teamRunsByTeamID: map[string][]biz.TeamRunRecord{
 			"team-A": {
-				// Older completed run — should be skipped.
+				// Older completed run -?should be skipped.
 				{ID: "run-old", SessionID: "sess-old", Status: biz.TeamRunStatusSuccess, CreatedAt: "2026-01-01T00:00:00Z"},
-				// Active running run — should be selected (newer timestamp).
+				// Active running run -?should be selected (newer timestamp).
 				{ID: "run-active", SessionID: "sess-active", Status: biz.TeamRunStatusRunning, CreatedAt: "2026-06-01T00:00:00Z"},
 			},
 		},
@@ -210,7 +210,7 @@ func TestInjectTeamMessage_PrefersPausedRunWhenNoRunning(t *testing.T) {
 		teamRunsByTeamID: map[string][]biz.TeamRunRecord{
 			"team-B": {
 				{ID: "run-paused", SessionID: "sess-paused", Status: biz.TeamRunStatusPaused, CreatedAt: "2026-06-01T00:00:00Z"},
-				// Newer but terminal — should be skipped.
+				// Newer but terminal -?should be skipped.
 				{ID: "run-failed", SessionID: "sess-failed", Status: biz.TeamRunStatusFailed, CreatedAt: "2026-06-02T00:00:00Z"},
 			},
 		},

@@ -32,6 +32,8 @@ export type McpServerConfig = {
   timeout_sec?: number;
   session_reconnect_max?: number;
   require_user_credentials?: boolean;
+  allow_adhoc_http?: boolean;
+  probe_mode?: 'connectivity' | 'auth_aware' | string;
 };
 
 export type McpServerMetadata = {
@@ -67,6 +69,8 @@ export type McpServerFormValue = {
   auth_refresh_token: string;
   enabled: boolean;
   require_user_credentials: boolean;
+  allow_adhoc_http: boolean;
+  probe_mode: 'connectivity' | 'auth_aware';
 };
 
 export type McpServerRow = PlatformResource;

@@ -400,6 +400,19 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	if err != nil {
 		return err
 	}
+	// Respect the same write policy as extract(): feedback must not bypass
+	// WriteL3Facts / AnyWrite when the agent has L3 writes disabled.
+	agentID := strings.TrimSpace(sess.AgentID)
+	var memoryPolicy biz.MemoryRuntimePolicy
+	if w.agents != nil && agentID != "" {
+		if ag, gerr := w.agents.Get(ctx, agentID); gerr == nil && ag.Settings != nil {
+			memoryPolicy = biz.ResolveMemoryRuntimePolicy(ag.Settings)
+		}
+	}
+	if !memoryPolicy.AnyWrite() || !memoryPolicy.WriteL3Facts {
+		w.lg.Debug("反馈记忆跳过：L3 写入策略关闭", loggateway.Str("session_id", sid), loggateway.Str("agent_id", agentID))
+		return nil
+	}
 	msgs, err := w.sessions.ListMessagesRecent(ctx, sid, int(w.memConf.MaxMessages))
 	if err != nil {
 		return err

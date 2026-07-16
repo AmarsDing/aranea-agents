@@ -15,22 +15,21 @@ import (
 
 // --- Fakes ---
 
-// recordingReplanBus is a biz.EventBus that records published events.
-// It extracts the wrapped v1 ActivityEvent from ActivityBridgeEvent payloads
-// so tests can assert on the original ActivityEvent shape.
+// recordingReplanBus is a biz.EventBus that records published system.notice
+// events (reconstructed as ActivityEvent for assertions).
 type recordingReplanBus struct {
 	mu        sync.Mutex
 	published []biz.ActivityEvent
 }
 
 func (b *recordingReplanBus) Publish(_ context.Context, e biz.Event) {
-	bridge, ok := e.(*biz.ActivityBridgeEvent)
+	notice, ok := e.(*biz.SystemNoticeEvent)
 	if !ok {
 		return
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.published = append(b.published, bridge.Event)
+	b.published = append(b.published, biz.ActivityEventFromSystemNotice(notice))
 }
 
 func (b *recordingReplanBus) Subscribe(_ biz.EventSubscribeOptions) (<-chan biz.Event, func()) {

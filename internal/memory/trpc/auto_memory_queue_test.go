@@ -226,6 +226,30 @@ func TestNewFeedbackMemoryEnqueuer_Nil(t *testing.T) {
 	fn("sess", "msg", "pos", "ok", time.Now())
 }
 
+func TestAssertL3WriteAllowed(t *testing.T) {
+	t.Run("nil_loader_fail_closed", func(t *testing.T) {
+		if err := assertL3WriteAllowed(context.Background(), nil, "a1"); err != ErrL3WriteDisabled {
+			t.Fatalf("expected ErrL3WriteDisabled, got %v", err)
+		}
+	})
+	t.Run("l3_disabled", func(t *testing.T) {
+		loader := &mockSettingsLoader{settings: &biz.AgentRuntimeSettings{
+			MemoryEnabled: true, L3Enabled: false,
+		}}
+		if err := assertL3WriteAllowed(context.Background(), loader, "a1"); err != ErrL3WriteDisabled {
+			t.Fatalf("expected ErrL3WriteDisabled, got %v", err)
+		}
+	})
+	t.Run("l3_enabled", func(t *testing.T) {
+		loader := &mockSettingsLoader{settings: &biz.AgentRuntimeSettings{
+			MemoryEnabled: true, L3Enabled: true,
+		}}
+		if err := assertL3WriteAllowed(context.Background(), loader, "a1"); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
 func TestNewAgentRuntimeSettingsLoader_NilGetter(t *testing.T) {
 	loader := NewAgentRuntimeSettingsLoader(nil)
 	if loader != nil {

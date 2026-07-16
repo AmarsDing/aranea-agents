@@ -16,8 +16,6 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
-	"github.com/google/uuid"
-
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
 
@@ -164,25 +162,13 @@ func (r *Runner) prepareUserTurnOptions(
 			RunID:     run.ID,
 			TeamID:    teamRow.ID,
 		}
-		ev := biz.ActivityEvent{
-			Event: biz.ActivityEventCreated,
-			Activity: biz.Activity{
-				ID:              uuid.NewString(),
-				Kind:            biz.ActivityKindNotice,
-				Status:          biz.ActivityStatusCompleted,
-				SessionID:       sess.ID,
-				SpiritSessionID: deriveSpiritSessionID(sess),
-				TeamID:          teamRow.ID,
-				AgentKey:        ar.agent.ID,
-				Timestamp:       time.Now().UTC(),
-				Stage:           "intent_pass",
-				Meta:            intent.BuildIntentPassPayload(intRes, meta),
-			},
-			Domain: biz.ActivityDomainChat,
+		payload := intent.BuildIntentPassPayload(intRes, meta)
+		if payload == nil {
+			payload = map[string]any{}
 		}
-		// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves the
-		// v1 intent_pass Notice activity (Meta carries intent pass payload).
-		r.publishEvent(ctx, biz.NewActivityBridgeEvent(ev))
+		payload["team_id"] = teamRow.ID
+		payload["agent_key"] = ar.agent.ID
+		r.publishEvent(ctx, biz.NewSystemNoticeEvent(deriveSpiritSessionID(sess), "intent_pass", "", payload))
 	}
 	opts = userTurnOptions{
 		userOpts:      userOpts,
@@ -237,28 +223,24 @@ func (r *Runner) finalizeTeamRun(
 	}
 	if r.hasPublisher() {
 		cp := run
-		// SessionID = spirit session ID (not run.SessionID which is the team
-		// session ID) so the frontend WS filter and listActivities API return
-		// this team_stage "completed" event. Matches publishSpiritTeamAssembled.
 		spiritSID := deriveSpiritSessionID(sess)
-		ev := biz.ActivityEvent{
-			Event: biz.ActivityEventCompleted,
-			Activity: biz.Activity{
-				ID:              string(agent.NewTeamStageActivityID(teamRow.ID)),
-				Kind:            biz.ActivityKindTeamStage,
-				Status:          biz.ActivityStatusCompleted,
-				SessionID:       spiritSID,
-				SpiritSessionID: spiritSID,
-				TeamID:          teamRow.ID,
-				Timestamp:       time.Now().UTC(),
-				Stage:           "completed",
-				Meta:            map[string]any{"run_id": run.ID, "run": cp},
-			},
-			Domain: biz.ActivityDomainChat,
+		now := time.Now().UTC()
+		ts := biz.TeamStage{
+			ID:        string(agent.NewTeamStageActivityID(teamRow.ID)),
+			TeamID:    teamRow.ID,
+			TeamName:  teamRow.DisplayName,
+			SessionID: spiritSID,
+			Status:    biz.TeamStageStatusCompleted,
+			Stage:     biz.TeamStageStageCompleted,
+			StartedAt: now,
+			Version:   1,
 		}
-		// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves the
-		// v1 TeamStage Completed activity (Meta.run_id, Meta.run snapshot).
-		r.publishEvent(ctx, biz.NewActivityBridgeEvent(ev))
+		r.publishEvent(ctx, biz.NewTeamStageCompletedEvent(ts))
+		r.publishEvent(ctx, biz.NewSystemNoticeEvent(spiritSID, "team_stage_completed", "", map[string]any{
+			"run_id":  run.ID,
+			"run":     cp,
+			"team_id": teamRow.ID,
+		}))
 		r.publishTeamRunSummary(ctx, run)
 	}
 	return run

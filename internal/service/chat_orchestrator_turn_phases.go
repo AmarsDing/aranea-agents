@@ -104,20 +104,8 @@ func (o *ChatOrchestrator) runIntentPass(
 	}
 	meta := intent.RunMeta{AgentID: ag.ID, SessionID: sessionID}
 	intentPayload := intent.BuildIntentPassPayload(intRes, meta)
-	// Phase 3b-D: migrated to v2 EventBus via ActivityBridgeEvent.
 	if bus := o.td().Pipeline.EventBus; bus != nil {
-		bus.Publish(ctx, biz.NewActivityBridgeEvent(biz.ActivityEvent{
-			Event: biz.ActivityEventCreated,
-			Activity: biz.Activity{
-				ID:        uuid.NewString(),
-				Kind:      biz.ActivityKindNotice,
-				AgentKey:  ag.ID,
-				SessionID: sessionID,
-				Timestamp: time.Now().UTC(),
-				Meta:      intentPayload,
-			},
-			Domain: biz.ActivityDomainChat,
-		}))
+		bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "intent_pass", "", intentPayload))
 	}
 	return intentRunOpts, intRes.Artifact
 }

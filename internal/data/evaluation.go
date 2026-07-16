@@ -143,14 +143,13 @@ func (r *evalRepo) GetDataset(ctx context.Context, id string) (biz.EvalDataset, 
 
 func (r *evalRepo) ListDatasets(ctx context.Context, workspace string, limit, offset int) ([]biz.EvalDataset, int, error) {
 	var total int
-	// Tenant-owned + shared (empty workspace). Empty workspace arg (system) returns all.
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
-		r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) FROM eval_datasets WHERE workspace=? OR workspace='' OR ?=''`), []any{workspace, workspace}, &total); err != nil {
+		r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) FROM eval_datasets WHERE workspace=? OR ?=''`), []any{workspace, workspace}, &total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`SELECT id,name,description,case_count,workspace,created_at,updated_at
-		 FROM eval_datasets WHERE workspace=? OR workspace='' OR ?='' ORDER BY created_at DESC LIMIT ? OFFSET ?`),
+		 FROM eval_datasets WHERE workspace=? OR ?='' ORDER BY created_at DESC LIMIT ? OFFSET ?`),
 		workspace, workspace, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -396,11 +395,9 @@ func (r *evalRepo) ListRuns(ctx context.Context, datasetID, agentID string, limi
 }
 
 func (r *evalRepo) ListTrendPoints(ctx context.Context, agentID, datasetID string, limit int) ([]biz.EvalTrendPoint, error) {
-	wsClause, wsArgs := evalRunsWorkspaceFilter(ctx)
 	q := `SELECT id,created_at,trigger_source,exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,pass_at_k,pass_hat_k
-		FROM eval_runs WHERE agent_id=? AND status='completed'` + wsClause
+		FROM eval_runs WHERE agent_id=? AND status='completed'`
 	args := []any{agentID}
-	args = append(args, wsArgs...)
 	if strings.TrimSpace(datasetID) != "" {
 		q += ` AND dataset_id=?`
 		args = append(args, datasetID)
@@ -429,15 +426,13 @@ func (r *evalRepo) GetRunsByIDs(ctx context.Context, ids []string) ([]biz.EvalRu
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	wsClause, wsArgs := evalRunsWorkspaceFilter(ctx)
 	placeholders := r.data.Dialect().Placeholders(len(ids))
 	args := make([]any, len(ids))
 	for i, id := range ids {
 		args[i] = id
 	}
-	args = append(args, wsArgs...)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(evalRunSelect+` WHERE id IN (`+placeholders+`)`+wsClause), args...)
+		r.data.Dialect().RenumberPlaceholders(evalRunSelect+` WHERE id IN (`+placeholders+`)`), args...)
 	if err != nil {
 		return nil, err
 	}

@@ -257,8 +257,11 @@ func TestApplyCircuitBreakerPolicy(t *testing.T) {
 				{ID: "n4", Type: "router"},
 			},
 		}
-		policy := &CircuitBreakerPolicy{FailureThreshold: 3}
+		policy := &CircuitBreakerPolicy{FailureThreshold: 3, ResetTimeoutSeconds: 60}
 		out := ApplyCircuitBreakerPolicy(cfg, policy)
+		if out.CircuitBreaker == nil || out.CircuitBreaker.FailureThreshold != 3 {
+			t.Fatalf("CircuitBreaker not attached: %+v", out.CircuitBreaker)
+		}
 		if out.Nodes[0].RetryMaxAttempts != 1 {
 			t.Fatalf("agent retry=%d want 1", out.Nodes[0].RetryMaxAttempts)
 		}

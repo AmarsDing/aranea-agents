@@ -148,10 +148,12 @@
       :dirty="editorStore.dirty"
       :json-errors="editorStore.jsonErrors"
       :selected-template="editorStore.selectedTemplate"
+      :active-section="editorStore.activeTab"
       @close="editorStore.closeEditor()"
       @save="editorStore.save()"
       @apply-template="editorStore.applyTemplate($event)"
       @patch-form="onPatchForm"
+      @update:active-section="editorStore.activeTab = $event"
     />
   </q-page>
 </template>

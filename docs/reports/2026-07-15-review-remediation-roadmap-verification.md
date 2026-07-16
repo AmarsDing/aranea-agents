@@ -509,3 +509,7 @@
 | Wave 3 `last_event_id` / 无重连 hydrate | 仍无服务端 replay；前端 reconnect → `fetchSessionHistory` |
 | Task/Turn/Step 无 Version CAS | Upsert 使用 `VersionLT`；三实体均有 VersionGuard 测试 |
 | Wave 3.3 Seq 跨重启不持久 | 增加 `RestoreAtLeast` + turn 启动时 `MaxSeqBySpiritSession` 恢复 |
+| §3.2 / §9.3 UpsertGraphStage 无 VersionLT | **已有** `Where(VersionLT)`（`graph_stage_v2_repo.go`） |
+| §3.3 DAG 环/悬挂依赖静默成功 | **已修**：`validateDAG` fail-closed（`plan_executor.go`） |
+| §3.5 取消不等 worker barrier | **已修**：`<-ctx.Done()` 后仍 `<-done` 再算终态 |
+| GraphStage 双真相源 / TeamStageID 擦除 | **2026-07-16**：停用并删除 v1 快照 + DI bus；删除 v1 GraphStageBlock；TeamStageID 保留；见 `1-chat.design.md` B.10.10 |

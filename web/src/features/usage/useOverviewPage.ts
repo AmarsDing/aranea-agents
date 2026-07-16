@@ -5,17 +5,14 @@ import { useI18n } from 'vue-i18n';
 import { useUsageStore } from '../../stores/usage';
 import { usePlatformStore } from '../../stores/platform';
 import { useMonitorStore } from '../../stores/monitor';
-// TECH-DEBT(O-8): 概览页直接调 agents/teams API 取 total，未走 Store。
-//   原因：Store 的 load 逻辑含分页/过滤，概览只需 total；迁入 Store 需重构 load 签名。
-//   待办：agent/team Store 增加 countOnly 模式后迁入。
+// Overview KPIs use list totals (Agent ListAgents.total with limit=1; Team ListTeams.total).
+// Still bypasses agent/team page stores (they own filter/pagination state).
 import { listAgentsPaged } from '../agents/api';
 import type { AgentListQuery } from '../agents/types';
 import type { ModelUsageQuery } from './types';
 import { formatUsdFromMicro, formatCount as fmtCount, formatPercent as fmtPercent } from './moneyFormat';
 import { useMonitorRunNavigation } from '../monitor/useMonitorRunNavigation';
-// TECH-DEBT(O-9): listTeams 拉取全量数据仅取 length，Team 数量多时有性能问题。
-//   待办：后端 ListTeams 支持分页后改用 total 字段，或新增 CountTeams RPC。
-import { listTeams } from '../teams/api';
+import { listTeamsPaged } from '../teams/api';
 import { allowedGranularitiesForRange, resolveGranularityForRange, type Granularity } from './usageGranularityLinkage';
 
 const VALID_RANGES = new Set(['today', '7d', '30d', 'month']);
@@ -191,8 +188,8 @@ export function useOverviewPage() {
 
   async function loadTeamCount() {
     try {
-      const teams = await listTeams();
-      teamCount.value = teams.length;
+      const { total } = await listTeamsPaged();
+      teamCount.value = total;
     } catch {
       // silent
     }
@@ -224,11 +221,10 @@ export function useOverviewPage() {
     return { active, degraded, total: models.length };
   });
 
-  // 今日模型调用次数（overview.today.call_count）。UI 标签为"今日调用"，非"活跃会话数"。
+  // 今日模型调用次数（overview.today.call_count），非会话数。
   const todayCallCount = computed(() => overview.value?.today?.call_count ?? 0);
 
-  // Sparkline shows the last 24 trend points as "recent trend" context for today's call count.
-  // Semantic depends on granularity: hourly = last 24 hours, daily = last 24 days.
+  // Sparkline: last 24 trend points. Hour granularity ≈ last 24h; day ≈ last 24 days.
   const sessionSparkline = computed(() => {
     const trends = overview.value?.trends ?? [];
     return trends.slice(-24).map((t: { call_count: number }) => t.call_count ?? 0);

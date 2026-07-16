@@ -232,31 +232,29 @@ func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 	for {
 		select {
 		case e := <-ch:
-			bridge, ok := e.(*biz.ActivityBridgeEvent)
+			notice, ok := e.(*biz.SystemNoticeEvent)
 			if !ok {
 				continue
 			}
-			ev := bridge.Event
-			if ev.Event != biz.ActivityEventFailed {
+			if notice.NoticeType != "ws_error" {
 				continue
 			}
-			if got, _ := ev.Activity.Meta["request_id"].(string); got != "pending-user-abc" {
+			if got, _ := notice.Meta["request_id"].(string); got != "pending-user-abc" {
 				t.Fatalf("request_id = %q, want pending-user-abc", got)
 			}
-			if got, _ := ev.Activity.Meta["error_type"].(string); got != "send_failed" {
+			if got, _ := notice.Meta["error_type"].(string); got != "send_failed" {
 				t.Fatalf("error_type = %q, want send_failed", got)
 			}
 			return
 		case <-deadline:
-			t.Fatal("timeout waiting for ActivityBridgeEvent (Failed)")
+			t.Fatal("timeout waiting for system.notice ws_error")
 		}
 	}
 }
 
 func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
-	// Phase 3b-D: publishWSErrorActivity now publishes ActivityBridgeEvent on
-	// v2 EventBus. Subscribe to v2 EventBus and extract the v1 ActivityEvent
-	// from the bridge to assert on the original payload (Kind/Status/Meta).
+	// publishWSErrorActivity publishes system.notice (ws_error) plus synthetic
+	// Task/Turn/Step failed events on the v2 EventBus.
 	v2Bus := event.NewV2Bus()
 	srv := NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
@@ -289,27 +287,30 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 	})
 	srv.handleUpstream(wc, raw)
 
-	select {
-	case e := <-ch:
-		bridge, ok := e.(*biz.ActivityBridgeEvent)
-		if !ok {
-			t.Fatalf("expected *ActivityBridgeEvent, got %T", e)
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case e := <-ch:
+			notice, ok := e.(*biz.SystemNoticeEvent)
+			if !ok {
+				continue
+			}
+			if notice.NoticeType != "ws_error" {
+				continue
+			}
+			if notice.SpiritSessionID() != "sess-turn" {
+				t.Fatalf("expected sessionID=sess-turn, got %s", notice.SpiritSessionID())
+			}
+			if got, _ := notice.Meta["request_id"].(string); got != "pending-user-abc" {
+				t.Fatalf("expected requestID=pending-user-abc, got %s", got)
+			}
+			if got, _ := notice.Meta["error_type"].(string); got != "send_failed" {
+				t.Fatalf("expected error_type=send_failed, got %s", got)
+			}
+			return
+		case <-deadline:
+			t.Fatal("timeout waiting for system.notice ws_error from turn gateway failure")
 		}
-		ev := bridge.Event
-		if ev.Event != biz.ActivityEventFailed {
-			t.Fatalf("expected ActivityEventFailed, got event=%s", ev.Event)
-		}
-		if ev.Activity.SessionID != "sess-turn" {
-			t.Fatalf("expected sessionID=sess-turn, got %s", ev.Activity.SessionID)
-		}
-		if got, _ := ev.Activity.Meta["request_id"].(string); got != "pending-user-abc" {
-			t.Fatalf("expected requestID=pending-user-abc, got %s", got)
-		}
-		if got, _ := ev.Activity.Meta["error_type"].(string); got != "send_failed" {
-			t.Fatalf("expected error_type=send_failed, got %s", got)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for ActivityBridgeEvent from turn gateway failure")
 	}
 }
 

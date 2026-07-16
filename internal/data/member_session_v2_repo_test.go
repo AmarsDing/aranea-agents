@@ -126,3 +126,64 @@ func TestMemberSessionV2Repo_GetMemberSession_NotFound(t *testing.T) {
 		t.Fatalf("expected error for nonexistent member session, got nil")
 	}
 }
+
+func TestMemberSessionV2Repo_ListOrphanMemberSessionsBySpiritSession(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	repo := NewMemberSessionV2Repo(d, loggateway.NewNoop())
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// Team-scoped member (should be excluded).
+	_, err := repo.CreateMemberSession(ctx, biz.MemberSession{
+		ID: "ms-team", TeamRunID: "tr-1", TeamStageID: "ts-1", TaskID: "t-1",
+		SessionID: "s-team", SpiritSessionID: "spirit-1",
+		AgentKey: "coder", Status: biz.MemberSessionStatusRunning,
+		StartedAt: now, Seq: 1, Version: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateMemberSession team: %v", err)
+	}
+	// Mode B orphans for spirit-1.
+	_, err = repo.CreateMemberSession(ctx, biz.MemberSession{
+		ID: "ms-orphan-2", TeamRunID: "", TeamStageID: "", TaskID: "",
+		SessionID: "s-child-2", SpiritSessionID: "spirit-1",
+		AgentKey: "subagent:r2", AgentName: "Task B", Status: biz.MemberSessionStatusRunning,
+		StartedAt: now, Seq: 2, Version: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateMemberSession orphan2: %v", err)
+	}
+	_, err = repo.CreateMemberSession(ctx, biz.MemberSession{
+		ID: "ms-orphan-1", TeamRunID: "", TeamStageID: "", TaskID: "",
+		SessionID: "s-child-1", SpiritSessionID: "spirit-1",
+		AgentKey: "subagent:r1", AgentName: "Task A", Status: biz.MemberSessionStatusCompleted,
+		StartedAt: now, Seq: 1, Version: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateMemberSession orphan1: %v", err)
+	}
+	// Orphan for a different spirit (should be excluded).
+	_, err = repo.CreateMemberSession(ctx, biz.MemberSession{
+		ID: "ms-other", TeamRunID: "", TeamStageID: "", TaskID: "",
+		SessionID: "s-other", SpiritSessionID: "spirit-2",
+		AgentKey: "subagent:rx", Status: biz.MemberSessionStatusRunning,
+		StartedAt: now, Seq: 1, Version: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateMemberSession other: %v", err)
+	}
+
+	orphans, err := repo.ListOrphanMemberSessionsBySpiritSession(ctx, "spirit-1")
+	if err != nil {
+		t.Fatalf("ListOrphanMemberSessionsBySpiritSession: %v", err)
+	}
+	if len(orphans) != 2 {
+		t.Fatalf("want 2 orphans, got %d (%+v)", len(orphans), orphans)
+	}
+	if orphans[0].ID != "ms-orphan-1" || orphans[1].ID != "ms-orphan-2" {
+		t.Fatalf("order/ids: got %s, %s", orphans[0].ID, orphans[1].ID)
+	}
+	if orphans[0].TeamRunID != "" || orphans[1].TeamRunID != "" {
+		t.Fatalf("expected empty TeamRunID: %+v", orphans)
+	}
+}

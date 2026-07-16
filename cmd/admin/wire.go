@@ -39,7 +39,6 @@ import (
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event"
-	"aranea-agents/internal/event/activityevent"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/graph"
 	graphadapter "aranea-agents/internal/graph/adapter"
@@ -88,7 +87,7 @@ func provideEventBusSideConsumers(
 	webhooks *biz.WebhookDispatcher,
 	sessions *biz.SessionUsecase,
 	flowLogs *biz.FlowLogUsecase,
-	monitor *biz.MonitorUsecase,
+	monitorUC *biz.MonitorUsecase,
 	memWorker *biz.TurnMemoryWorker,
 	traceProj *monitor.TraceProjector,
 	fileAppender *monitor.FlowFileAppender,
@@ -99,7 +98,12 @@ func provideEventBusSideConsumers(
 	if infra != nil {
 		monitorEventBus = infra.MonitorEventBus
 	}
-	return biz.NewEventBusSideConsumers(eventBus, monitorEventBus, tools, webhooks, sessions, flowLogs, monitor, memWorker, traceProj, fileAppender, usage, logger)
+	// Wire completion side-effects: ring-buffer feed + trace close + TRACE-01 file sink.
+	if monitorUC != nil {
+		monitorUC.SetTraceProjector(traceProj)
+		monitorUC.SetFlowFileAppender(fileAppender)
+	}
+	return biz.NewEventBusSideConsumers(eventBus, monitorEventBus, tools, webhooks, sessions, flowLogs, monitorUC, memWorker, traceProj, fileAppender, usage, logger)
 }
 
 func provideCronRunnerDeps(
@@ -595,7 +599,6 @@ func provideTeamTurnDeps(
 	sys biz.SystemSettingRepo,
 	persist rt.PersistenceSet,
 	compress biz.NativeTurnCompressor,
-	activityBus biz.ActivityEventBus,
 	eventBus biz.EventBus,
 	monitorEventBus contract.MonitorBus,
 	seq *v2.Sequencer,
@@ -608,7 +611,7 @@ func provideTeamTurnDeps(
 	return rt.TurnDeps{
 		ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
 		Persist:   persist,
-		Pipeline:  rt.EventPipeline{ActivityBus: activityBus, EventBus: eventBus, MonitorEventBus: monitorEventBus, Sequencer: seq},
+		Pipeline:  rt.EventPipeline{EventBus: eventBus, MonitorEventBus: monitorEventBus, Sequencer: seq},
 		LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
 		Sessions:  sessions,
 		Compress:  compress,
@@ -652,7 +655,6 @@ func provideChatServiceDeps(
 	persist rt.PersistenceSet,
 	sessionRT *araneasession.Runtime,
 	compress biz.NativeTurnCompressor,
-	activityBus biz.ActivityEventBus,
 	eventBus biz.EventBus,
 	monitorEventBus contract.MonitorBus,
 	rtDeps service.RuntimeTooling,
@@ -684,6 +686,7 @@ func provideChatServiceDeps(
 	deadLetterQueue *lifecycle.DeadLetterQueue,
 	profileResolver *chatagent.ProfileResolver,
 	v2ProjectorFactory *v2.ProjectorFactory,
+	memberSessions biz.MemberSessionV2Repo,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
@@ -701,7 +704,7 @@ func provideChatServiceDeps(
 			TurnDeps: rt.TurnDeps{
 				ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
 				Persist:   persist,
-				Pipeline:  rt.EventPipeline{ActivityBus: activityBus, EventBus: eventBus, MonitorEventBus: monitorEventBus},
+				Pipeline:  rt.EventPipeline{EventBus: eventBus, MonitorEventBus: monitorEventBus},
 				LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
 				Sessions:  sessions,
 				SessionRT: sessionRT,
@@ -754,6 +757,7 @@ func provideChatServiceDeps(
 			DeadLetterQueue:    deadLetterQueue,
 			ProfileResolver:    profileResolver,
 			V2ProjectorFactory: v2ProjectorFactory,
+			MemberSessions:     memberSessions,
 		},
 	}
 }
@@ -910,10 +914,11 @@ func provideGraphBuildDeps(
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagenttool.Service,
 	a2aUC *biz.A2AUsecase,
+	nodeBreakers *biz.NodeCircuitBreakerRegistry,
 	lg loggateway.Logger,
 ) graphtrpc.GraphNodeResolverSet {
 	if catalog == nil || toolUC == nil {
-		return graphtrpc.GraphNodeResolverSet{}
+		return graphtrpc.GraphNodeResolverSet{NodeBreakers: nodeBreakers}
 	}
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
 	builderDeps := chatagent.TRPCBuilderDeps{
@@ -960,10 +965,11 @@ func provideGraphBuildDeps(
 		},
 	}
 	return graphtrpc.GraphNodeResolverSet{
-		Models:    graphadapter.NewCatalogModelResolver(catalog, rtTrip, lg),
-		Tools:     graphadapter.NewCatalogToolResolver(toolUC, lg),
-		Agents:    graphadapter.NewCatalogAgentResolver(builderDeps, lg),
-		Functions: graphadapter.NewCatalogFunctionResolver(toolUC, lg),
+		Models:       graphadapter.NewCatalogModelResolver(catalog, rtTrip, lg),
+		Tools:        graphadapter.NewCatalogToolResolver(toolUC, lg),
+		Agents:       graphadapter.NewCatalogAgentResolver(builderDeps, lg),
+		Functions:    graphadapter.NewCatalogFunctionResolver(toolUC, lg),
+		NodeBreakers: nodeBreakers,
 	}
 }
 
@@ -1100,7 +1106,6 @@ func provideChannelIngress(
 	chat biz.ChannelTurnGateway,
 	graphs biz.GraphExecutor,
 	cron biz.CronTriggerGateway,
-	activityBus biz.ActivityEventBus,
 	eventBus biz.EventBus,
 	admission *biz.TurnAdmissionUsecase,
 	teamCompiler biz.TeamCompiler,
@@ -1110,7 +1115,7 @@ func provideChannelIngress(
 	debouncer := biz.NewIngressPeerDebouncer(biz.DefaultIngressDebounce, lg)
 	registry := biz.NewTurnPreviewRegistry()
 	gate := biz.NewChannelConcurrentGate()
-	return service.NewChannelIngress(channels, turnJobs, sessions, chat, graphs, cron, activityBus, eventBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
+	return service.NewChannelIngress(channels, turnJobs, sessions, chat, graphs, cron, eventBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
 }
 
 func provideChannelIngressAdmission(
@@ -1798,10 +1803,9 @@ func provideV2RepoSet(
 }
 
 // provideV2Sequencer constructs the v2 Sequencer.
-// Phase 2: injects WithActivityUpserter so ActivityBridgeEvent payloads
-// (team package direct-publish) are persisted via the v1 activities table.
-func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, au biz.ActivityUpserter, outbox biz.EventDeliveryOutboxRepo, lg loggateway.Logger) *v2.Sequencer {
-	return v2.NewSequencer(rs, bus, lg, v2.WithActivityUpserter(au), v2.WithEventOutbox(outbox))
+// ActivityBridge upsert path removed; typed v2 events persist via RepoSet.
+func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, outbox biz.EventDeliveryOutboxRepo, lg loggateway.Logger) *v2.Sequencer {
+	return v2.NewSequencer(rs, bus, lg, v2.WithEventOutbox(outbox))
 }
 
 // provideWSServer constructs the WS server and attaches the durable outbox for
@@ -1930,9 +1934,9 @@ func provideA2AService(
 	return service.NewA2AService(uc, chat, agents, reg, store, limiter, lg)
 }
 
-func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, activityBus biz.ActivityEventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer) biz.TaskPlannerPort {
+func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
-	return chatagent.NewTaskPlanner(repo, catalog, httpClient, activityBus, orchCache, lg, sysUC, seq)
+	return chatagent.NewTaskPlanner(repo, catalog, httpClient, orchCache, lg, sysUC, seq)
 }
 
 func provideAgentAllocator(
@@ -2126,8 +2130,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		event.ProviderSet,
 		araneasession.ProviderSet,
 		service.ProviderSet,
-		activityevent.New,
-		wire.Bind(new(biz.ActivityEventBus), new(*activityevent.Bus)),
 		data.NewPackRepoAdapter,
 		wire.Bind(new(service.PackExporterImporterValidator), new(*data.PackRepoAdapter)),
 		provideEventBusSideConsumers,
@@ -2229,6 +2231,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		providePluginRuntime,
 		graphtrpc.NewRegistry,
 		provideGraphBuildDeps,
+		biz.ProvideNodeCircuitBreakerRegistry,
 		graphadapter.NewGraphBuilderFactory,
 		provideL4CascadeUsecase,
 		provideAutoMemoryWorker,

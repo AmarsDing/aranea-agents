@@ -1,7 +1,7 @@
 <template>
   <div :key="sessionKey" class="chat-messages col column no-wrap" style="min-height: 0">
     <div
-      v-if="!visibleLegacyMessages.length && !hasV2Activities"
+      v-if="!hasV2Activities"
       ref="emptyScrollEl"
       class="col relative-position chat-messages__viewport"
       @click="$emit('messages-click', $event)"
@@ -26,18 +26,8 @@
         </div>
       </div>
     </div>
-    <!--
-      Phase A refactor: ActivityStream renders the full sorted Activity list.
-      DynamicScroller + ConversationTurn + useConversationTimeline removed.
-      Virtual scrolling is a future optimization (YAGNI); for typical chat
-      lengths the native DOM is sufficient. If long-conversation perf returns,
-      wrap ActivityStream items in DynamicScroller with per-activity items.
-      v2 history: also render SessionPanelV2 when the v2 activity store has
-      tasks for this session, even if legacy messages are empty (reconnect
-      hydrate pending or fresh page load before WS connects).
-    -->
     <div
-      v-else-if="hasV2Activities"
+      v-else
       ref="scrollViewportEl"
       class="col chat-messages__viewport chat-messages__viewport--virtual"
       @scroll.passive="$emit('scroll', $event)"
@@ -48,38 +38,9 @@
         @regenerate="(t) => $emit('regenerate-v2', t)"
         @pause-agent="(sid) => $emit('pause-agent', sid)"
         @inject-agent="(p) => $emit('inject-agent', p)"
+        @retry-team="(teamId) => $emit('retry-team', teamId)"
+        @expand="(ids) => $emit('expand', ids)"
       />
-    </div>
-    <!--
-      Legacy message fallback: when v2 activity store is empty but legacy
-      messages exist (e.g. fetchSessionHistory failed or pre-v2 sessions),
-      render messages directly to avoid a blank panel.
-      Filters out:
-        - role='system' (notice/system events like context_usage)
-        - messages whose content matches a system-internal notice type
-    -->
-    <div
-      v-else
-      ref="scrollViewportEl"
-      class="col chat-messages__viewport chat-messages__viewport--virtual"
-      @scroll.passive="$emit('scroll', $event)"
-      @click="$emit('messages-click', $event)"
-    >
-      <div
-        v-for="msg in visibleLegacyMessages"
-        :key="msg.id"
-        class="legacy-msg-row"
-        :class="`legacy-msg-row--${msg.role}`"
-        :data-chat-user-prompt="msg.role === 'user' ? msg.content_markdown : undefined"
-      >
-        <div v-if="msg.role === 'user'" class="legacy-msg-bubble legacy-msg-bubble--user">
-          {{ msg.content_markdown }}
-        </div>
-        <div v-else class="legacy-msg-bubble legacy-msg-bubble--assistant">
-          <!-- eslint-disable-next-line vue/no-v-html -- sanitized via renderLegacyContent/DOMPurify -->
-          <div class="chat-message-prose" v-html="renderLegacyContent(msg)"></div>
-        </div>
-      </div>
     </div>
     <ChatPendingQueue
       :messages="pendingMessages"
@@ -111,8 +72,6 @@ import SessionPanelV2 from './v2/SessionPanel.vue';
 import { useScrollToActivity } from '../../features/chat/composables/useScrollToActivity';
 import { useLocateTeamStage } from '../../features/chat/composables/useLocateTeamStage';
 import { useActivityQueries } from '../../features/chat/composables/useActivityQueries';
-import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
-import { SYSTEM_NOTICE_TYPES } from '../../features/chat/noticeFilter';
 import type { Message, PendingMessage } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
@@ -122,7 +81,8 @@ const AUTO_EXPAND_HOLD_MS = 3000;
 
 const props = defineProps<{
   sessionKey: string;
-  messages: Message[];
+  /** legacy unused; hydrate via v2 store */
+  messages?: Message[];
   pendingMessages: PendingMessage[];
   isDark: boolean;
   isTeamSession?: boolean;
@@ -179,35 +139,10 @@ defineEmits<{
 
 const { t } = useI18n();
 
-// v2 activity store: when legacy messages are empty but the v2 store has
-// tasks for this session (e.g. reconnect hydrate pending, fresh page load),
-// we still render SessionPanelV2 instead of the empty state.
 const activityStore = useActivityQueries();
 const hasV2Activities = computed(() =>
   props.sessionId ? activityStore.getSessionTasks(props.sessionId).length > 0 : false,
 );
-
-/**
- * Legacy messages visible in the fallback panel.
- * Filters out:
- *   - role='system' (notice/system events like context_usage)
- *   - role='tool' (tool result cards; rendered via v2 activity stream)
- *   - messages whose content_markdown matches a system-internal notice type
- *     (e.g. context_usage, token_usage) — backend may not set role='system'
- *     consistently for these.
- */
-const visibleLegacyMessages = computed(() =>
-  props.messages.filter((m) => {
-    if (m.role === 'system' || m.role === 'tool') return false;
-    if (SYSTEM_NOTICE_TYPES.has(m.content_markdown?.trim() ?? '')) return false;
-    return true;
-  }),
-);
-
-/** Render legacy message content as markdown (fallback when v2 store is empty). */
-function renderLegacyContent(msg: Message): string {
-  return renderChatMarkdownForMessage(msg.id, msg.content_markdown, false);
-}
 
 const quickStartHints = [
   { icon: 'edit_note', text: t('chat.hintWrite', '帮我写一段代码') },
@@ -216,11 +151,9 @@ const quickStartHints = [
 ];
 
 const emptyScrollEl = ref<HTMLElement | null>(null);
-// Phase A: native scroll container replacing DynamicScroller.
 const scrollViewportEl = ref<HTMLElement | null>(null);
 
 // T8.6: 点击左侧 Agent 卡片 → 滚动并高亮中间面板对应的 AgentCard。
-// useScrollToActivity 为模块级 ref 单例，ChatEntitySidebar 调用 locate() 触发此处 watch。
 const { locateCommand } = useScrollToActivity();
 const autoExpandFor = ref<{ agentKey: string; teamId: string } | null>(null);
 provide('chat:autoExpandFor', autoExpandFor);
@@ -228,13 +161,11 @@ let autoExpandTimer: ReturnType<typeof setTimeout> | null = null;
 
 watch(locateCommand, async (cmd) => {
   if (!cmd || !scrollViewportEl.value) return;
-  // 触发父级 TeamCard / AgentCard 自动展开，确保目标节点可见
   autoExpandFor.value = { agentKey: cmd.agentKey, teamId: cmd.teamId || '' };
   if (autoExpandTimer) clearTimeout(autoExpandTimer);
   autoExpandTimer = setTimeout(() => {
     autoExpandFor.value = null;
   }, AUTO_EXPAND_HOLD_MS);
-  // 等待数据更新（如展开新会话）渲染到 DOM
   await nextTick();
   let el: HTMLElement | null = null;
   if (cmd.teamId) {
@@ -255,8 +186,6 @@ watch(locateCommand, async (cmd) => {
 });
 
 // P1 #5: GraphNode 点击 → 滚动并高亮对应 TeamStagePanel。
-// GraphStageBlock 调用 locateTeamStage(teamStageId) → 触发此处 watch。
-// 监听 command 对象（每次 locate() 创建新对象引用，确保重复点击同一节点时 watch 仍触发）。
 const { locateTeamStageCommand } = useLocateTeamStage();
 watch(
   () => locateTeamStageCommand.value,
@@ -268,13 +197,11 @@ watch(
     ) as HTMLElement | null;
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    // highlight class 由 TeamStagePanel.vue 响应式管理（避免 Vue 重新渲染清除 DOM class）
   },
 );
 
 /** 转义 agentKey 中可能的 CSS 选择器特殊字符（如点、冒号），避免 querySelector 解析失败。 */
 function cssEscape(value: string): string {
-  // 简单转义：用 CSS.escape（现代浏览器支持），否则回退到双引号包裹
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
     return CSS.escape(value);
   }
@@ -290,13 +217,6 @@ function cssEscape(value: string): string {
  */
 const useVirtualScroll = false;
 
-/**
- * Phase A: `scrollToTurnId` previously used DynamicScroller.scrollToItem.
- * Without virtual scrolling, focus-turn relies on useChatMessageScroll's
- * DOM query (`[data-turn-id="..."]`). This stub keeps the exposed API
- * contract but is a no-op; ChatMessagePanel only calls it when
- * `useVirtualScroll` is true (now always false).
- */
 async function scrollToTurnId(_turnId: string): Promise<boolean> {
   return false;
 }
@@ -308,7 +228,7 @@ defineExpose({
   useVirtualScroll,
   scrollToTurnId,
   getScrollTarget: () => {
-    if (!visibleLegacyMessages.value.length && !hasV2Activities.value) return emptyScrollEl.value;
+    if (!hasV2Activities.value) return emptyScrollEl.value;
     return scrollViewportEl.value;
   },
 });
@@ -327,58 +247,4 @@ defineExpose({
 .activity-locate-highlight
   animation: activity-locate-flash 1s ease-in-out 3
   border-radius: 6px
-
-/* Legacy message fallback bubbles (shown when v2 store is empty) */
-.legacy-msg-row
-  padding: 6px 12px
-  display: flex
-  flex-direction: column
-
-  &--user
-    align-items: flex-end
-
-  &--assistant
-    align-items: flex-start
-
-.legacy-msg-bubble
-  max-width: 80%
-  padding: 10px 14px
-  border-radius: 14px
-  word-break: break-word
-  font-size: 14px
-  line-height: 1.5
-
-  &--user
-    background: var(--glass-surface)
-    border: 1px solid var(--glass-border)
-    border-radius: 14px 14px 4px 14px
-    white-space: pre-wrap
-
-  &--assistant
-    background: transparent
-    border: none
-    border-radius: 4px 14px 14px 14px
-
-    p
-      margin: 0 0 8px
-
-    p:last-child
-      margin-bottom: 0
-
-    code
-      background: rgba(127, 127, 127, 0.15)
-      padding: 1px 4px
-      border-radius: 3px
-      font-size: 13px
-
-    pre
-      background: rgba(0, 0, 0, 0.06)
-      border-radius: 8px
-      padding: 10px 12px
-      overflow-x: auto
-      margin: 6px 0
-
-    pre code
-      background: transparent
-      padding: 0
 </style>

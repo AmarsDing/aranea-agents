@@ -206,7 +206,8 @@ export function useTaxonomyPage() {
 
   async function reorderNodes(ids: string[]) {
     try {
-      await platformStore.reorderTaxonomyNodes(ids);
+      // OrganizationPage uses organization tree; persist via OrganizationService.
+      await platformStore.reorderOrganizationNodes(ids);
     } catch {
       $q.notify({ type: 'negative', message: '排序保存失败' });
     }
@@ -219,7 +220,7 @@ export function useTaxonomyPage() {
   async function onReorderPositions(department: PlatformResourceTreeNode, positions: PlatformResourceTreeNode[]) {
     const ids = positions.map((p) => p.id);
     try {
-      await platformStore.reorderTaxonomyNodes(ids);
+      await platformStore.reorderOrganizationNodes(ids);
       const patchedChildren = positions.map((p, i) => ({ ...p, sort_order: (i + 1) * 10 }));
       platformStore.applyTaxonomyTreePatch(department.id, {
         children: patchedChildren,

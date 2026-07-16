@@ -532,6 +532,7 @@ func wrapFailover(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Mode
 	}
 	fo, err := trpcfailover.New(
 		trpcfailover.WithCandidates(candidates...),
+		trpcfailover.WithSwitchCallback(haSwitchCallback(lg, "failover", "system.provider.ha_failover")),
 	)
 	if err != nil {
 		lg.Warn("HA failover 构建失败，回退到主模型", loggateway.StepID("provider.ha_failover_build_fail"), loggateway.Err(err))
@@ -561,6 +562,7 @@ func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, 
 	}
 	hedgeOpts := []trpchedge.Option{
 		trpchedge.WithCandidates(candidates...),
+		trpchedge.WithSwitchCallback(haSwitchCallback(lg, "hedge", "system.provider.ha_hedge")),
 	}
 	if cfg.HA.HedgeDelayMs > 0 {
 		hedgeOpts = append(hedgeOpts, trpchedge.WithDelay(time.Duration(cfg.HA.HedgeDelayMs)*time.Millisecond))
@@ -571,6 +573,23 @@ func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, 
 		return primary, nil
 	}
 	return h, nil
+}
+
+func haSwitchCallback(lg loggateway.Logger, mode, stepID string) func(fromIndex, toIndex int, fromName, toName, reason string) {
+	return func(fromIndex, toIndex int, fromName, toName, reason string) {
+		if lg == nil {
+			return
+		}
+		lg.Warn("HA 候选模型切换",
+			loggateway.StepID(stepID),
+			loggateway.Str("ha_mode", mode),
+			loggateway.Int("from_index", fromIndex),
+			loggateway.Int("to_index", toIndex),
+			loggateway.Str("from_model", fromName),
+			loggateway.Str("to_model", toName),
+			loggateway.Str("reason", reason),
+		)
+	}
 }
 
 func trpcModelFromCandidate(c HACandidateConfig, parentCfg ProviderModelConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {

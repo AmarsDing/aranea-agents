@@ -226,25 +226,21 @@ func TestTeamGraphRunCoordinator_finalizeTeamRun(t *testing.T) {
 
 	select {
 	case e := <-outCh:
-		bridge, ok := e.(*biz.ActivityBridgeEvent)
-		if !ok {
-			t.Fatalf("expected *ActivityBridgeEvent, got %T", e)
-		}
-		ev := bridge.Event
-		if ev.Event != biz.ActivityEventCompleted {
-			t.Fatalf("event=%s want=%s", ev.Event, biz.ActivityEventCompleted)
-		}
-		if ev.Activity.Kind != biz.ActivityKindTeamStage {
-			t.Fatalf("kind=%s want=%s", ev.Activity.Kind, biz.ActivityKindTeamStage)
-		}
-		if ev.Activity.Stage != "completed" {
-			t.Fatalf("stage=%s want=completed", ev.Activity.Stage)
-		}
-		if ev.Domain != biz.ActivityDomainChat {
-			t.Fatalf("domain=%s want=%s", ev.Domain, biz.ActivityDomainChat)
+		switch ev := e.(type) {
+		case *biz.TeamStageCompletedEvent:
+			if ev.TeamStage.Status != biz.TeamStageStatusCompleted {
+				t.Fatalf("status=%s want=%s", ev.TeamStage.Status, biz.TeamStageStatusCompleted)
+			}
+		case *biz.SystemNoticeEvent:
+			// notice may arrive before or after TeamStageCompleted depending on fan-out order
+			if ev.NoticeType != "team_stage_completed" && ev.NoticeType != "team_run_failed" {
+				t.Fatalf("unexpected notice type %q", ev.NoticeType)
+			}
+		default:
+			t.Fatalf("expected TeamStageCompletedEvent or SystemNoticeEvent, got %T", e)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for team_run_finished ActivityEvent")
+		t.Fatal("timeout waiting for finalize event")
 	}
 	got, err := repo.GetTeamRunByID(ctx, "run-1")
 	if err != nil || got.Status != biz.TeamRunStatusSuccess {

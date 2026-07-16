@@ -77,22 +77,26 @@ func NewCircuitBreaker(name string, cfg CircuitBreakerConfig, opts ...CircuitBre
 // query-with-side-effect, not a pure read.
 func (cb *CircuitBreaker) Allow() (bool, CircuitState) {
 	cb.mu.Lock()
-	defer cb.mu.Unlock()
+	var from, to CircuitState
+	changed := false
+	var allowed bool
+	var st CircuitState
 
 	switch cb.state {
 	case CircuitClosed:
-		return true, cb.state
+		allowed, st = true, cb.state
 	case CircuitOpen:
 		if time.Since(cb.lastFailureTime) > cb.config.recoveryTimeout() {
-			prev := cb.state
+			from, to = cb.state, CircuitHalfOpen
 			cb.state = CircuitHalfOpen
 			cb.successes = 0
 			cb.failures = 0
 			cb.halfOpenProbes = 1
-			cb.emitStateChange(prev, cb.state)
-			return true, cb.state
+			changed = true
+			allowed, st = true, cb.state
+		} else {
+			allowed, st = false, cb.state
 		}
-		return false, cb.state
 	case CircuitHalfOpen:
 		// Reserve a probe slot atomically: increment halfOpenProbes as a
 		// dedicated probe counter so that concurrent Allow() calls cannot
@@ -100,12 +104,18 @@ func (cb *CircuitBreaker) Allow() (bool, CircuitState) {
 		// RecordSuccess() polluting the probe slot counter.
 		if cb.halfOpenProbes < cb.config.HalfOpenMaxProbe {
 			cb.halfOpenProbes++
-			return true, cb.state
+			allowed, st = true, cb.state
+		} else {
+			allowed, st = false, cb.state
 		}
-		return false, cb.state
 	default:
-		return true, cb.state
+		allowed, st = true, cb.state
 	}
+	cb.mu.Unlock()
+	if changed {
+		cb.emitStateChange(from, to)
+	}
+	return allowed, st
 }
 
 // RecordSuccess records a successful call. In Closed state, this resets the
@@ -114,45 +124,58 @@ func (cb *CircuitBreaker) Allow() (bool, CircuitState) {
 // to Closed when HalfOpenMaxProbe successes are reached.
 func (cb *CircuitBreaker) RecordSuccess() {
 	cb.mu.Lock()
-	defer cb.mu.Unlock()
+	var from, to CircuitState
+	changed := false
 
 	switch cb.state {
 	case CircuitHalfOpen:
 		cb.successes++
 		if cb.successes >= cb.config.HalfOpenMaxProbe {
-			prev := cb.state
+			from = cb.state
 			cb.state = CircuitClosed
 			cb.failures = 0
 			cb.successes = 0
 			cb.halfOpenProbes = 0
-			cb.emitStateChange(prev, cb.state)
+			to = cb.state
+			changed = true
 		}
 	case CircuitClosed:
 		cb.failures = 0
 		cb.lastFailureTime = time.Time{}
 	}
+	cb.mu.Unlock()
+	if changed {
+		cb.emitStateChange(from, to)
+	}
 }
 
 func (cb *CircuitBreaker) RecordFailure() {
 	cb.mu.Lock()
-	defer cb.mu.Unlock()
+	var from, to CircuitState
+	changed := false
 
 	cb.failures++
 	cb.lastFailureTime = time.Now()
 
 	switch cb.state {
 	case CircuitHalfOpen:
-		prev := cb.state
+		from = cb.state
 		cb.state = CircuitOpen
 		cb.successes = 0
 		cb.halfOpenProbes = 0
-		cb.emitStateChange(prev, cb.state)
+		to = cb.state
+		changed = true
 	case CircuitClosed:
 		if cb.failures >= cb.config.FailureThreshold {
-			prev := cb.state
+			from = cb.state
 			cb.state = CircuitOpen
-			cb.emitStateChange(prev, cb.state)
+			to = cb.state
+			changed = true
 		}
+	}
+	cb.mu.Unlock()
+	if changed {
+		cb.emitStateChange(from, to)
 	}
 }
 
@@ -164,14 +187,15 @@ func (cb *CircuitBreaker) State() CircuitState {
 
 func (cb *CircuitBreaker) Reset() {
 	cb.mu.Lock()
-	defer cb.mu.Unlock()
 	prev := cb.state
 	cb.state = CircuitClosed
 	cb.failures = 0
 	cb.successes = 0
 	cb.halfOpenProbes = 0
-	if prev != CircuitClosed {
-		cb.emitStateChange(prev, cb.state)
+	changed := prev != CircuitClosed
+	cb.mu.Unlock()
+	if changed {
+		cb.emitStateChange(prev, CircuitClosed)
 	}
 }
 

@@ -29,31 +29,14 @@ func NewEvaluationService(uc *biz.EvalUsecase, runner *evaluation.Runner) *Evalu
 
 // --- Datasets ---
 
-// assertEvalDatasetAccess loads a dataset and verifies the caller's workspace owns it.
-// Returns NotFound on access denial to avoid leaking resource existence (IDOR).
-func (s *EvaluationService) assertEvalDatasetAccess(ctx context.Context, datasetID string) (biz.EvalDataset, error) {
-	d, err := s.uc.GetDataset(ctx, datasetID)
-	if err != nil {
-		return biz.EvalDataset{}, err
-	}
-	if err := workspace.AssertWorkspace(workspace.IDFromContext(ctx), d.Workspace); err != nil {
-		return biz.EvalDataset{}, apierror.NotFound("EVAL", "dataset not found")
-	}
-	return d, nil
-}
-
 func (s *EvaluationService) CreateDataset(ctx context.Context, req *v1.CreateDatasetRequest) (*v1.EvalDataset, error) {
 	if strings.TrimSpace(req.GetName()) == "" {
 		return nil, apierror.BadRequest("EVAL", "name is required")
 	}
-	in := biz.EvalDataset{
+	d, err := s.uc.CreateDataset(ctx, biz.EvalDataset{
 		Name:        req.GetName(),
 		Description: req.GetDescription(),
-	}
-	if !workspace.IsSystem(ctx) {
-		in.Workspace = workspace.IDFromContext(ctx)
-	}
-	d, err := s.uc.CreateDataset(ctx, in)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +44,7 @@ func (s *EvaluationService) CreateDataset(ctx context.Context, req *v1.CreateDat
 }
 
 func (s *EvaluationService) GetDataset(ctx context.Context, req *v1.GetDatasetRequest) (*v1.EvalDataset, error) {
-	d, err := s.assertEvalDatasetAccess(ctx, req.GetId())
+	d, err := s.uc.GetDataset(ctx, req.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -69,11 +52,7 @@ func (s *EvaluationService) GetDataset(ctx context.Context, req *v1.GetDatasetRe
 }
 
 func (s *EvaluationService) ListDatasets(ctx context.Context, req *v1.ListDatasetsRequest) (*v1.ListDatasetsResponse, error) {
-	ws := ""
-	if !workspace.IsSystem(ctx) {
-		ws = workspace.IDFromContext(ctx)
-	}
-	items, total, err := s.uc.ListDatasets(ctx, ws, int(req.GetLimit()), int(req.GetOffset()))
+	items, total, err := s.uc.ListDatasets(ctx, "", int(req.GetLimit()), int(req.GetOffset()))
 	if err != nil {
 		return nil, err
 	}
@@ -85,16 +64,10 @@ func (s *EvaluationService) ListDatasets(ctx context.Context, req *v1.ListDatase
 }
 
 func (s *EvaluationService) DeleteDataset(ctx context.Context, req *v1.DeleteDatasetRequest) (*emptypb.Empty, error) {
-	if _, err := s.assertEvalDatasetAccess(ctx, req.GetId()); err != nil {
-		return nil, err
-	}
 	return &emptypb.Empty{}, s.uc.DeleteDataset(ctx, req.GetId())
 }
 
 func (s *EvaluationService) UpdateDataset(ctx context.Context, req *v1.UpdateDatasetRequest) (*v1.EvalDataset, error) {
-	if _, err := s.assertEvalDatasetAccess(ctx, req.GetId()); err != nil {
-		return nil, err
-	}
 	d, err := s.uc.UpdateDataset(ctx, req.GetId(), req.GetName(), req.GetDescription())
 	if err != nil {
 		return nil, err
@@ -108,9 +81,6 @@ func (s *EvaluationService) UploadCases(ctx context.Context, req *v1.UploadCases
 	}
 	if strings.TrimSpace(req.GetCasesJson()) == "" {
 		return nil, apierror.BadRequest("EVAL", "cases_json is required")
-	}
-	if _, err := s.assertEvalDatasetAccess(ctx, req.GetDatasetId()); err != nil {
-		return nil, err
 	}
 	n, err := s.uc.UploadCases(ctx, req.GetDatasetId(), req.GetCasesJson())
 	if err != nil {
@@ -141,9 +111,6 @@ func (s *EvaluationService) RunEvaluation(ctx context.Context, req *v1.RunEvalua
 	}
 	if strings.TrimSpace(req.GetAgentId()) == "" {
 		return nil, apierror.BadRequest("EVAL", "agent_id is required")
-	}
-	if _, err := s.assertEvalDatasetAccess(ctx, req.GetDatasetId()); err != nil {
-		return nil, err
 	}
 	in := biz.EvalRun{
 		DatasetID: req.GetDatasetId(),
@@ -195,9 +162,6 @@ func (s *EvaluationService) ListRuns(ctx context.Context, req *v1.ListRunsReques
 }
 
 func (s *EvaluationService) GetRunResults(ctx context.Context, req *v1.GetRunResultsRequest) (*v1.GetRunResultsResponse, error) {
-	if _, err := s.assertEvalRunAccess(ctx, req.GetRunId()); err != nil {
-		return nil, err
-	}
 	results, total, err := s.uc.ListCaseResults(ctx, req.GetRunId(), int(req.GetLimit()), int(req.GetOffset()))
 	if err != nil {
 		return nil, err
@@ -214,9 +178,6 @@ func (s *EvaluationService) AnnotateCaseResult(ctx context.Context, req *v1.Anno
 	resultID := strings.TrimSpace(req.GetResultId())
 	if runID == "" || resultID == "" {
 		return nil, apierror.BadRequest("EVAL", "run_id and result_id are required")
-	}
-	if _, err := s.assertEvalRunAccess(ctx, runID); err != nil {
-		return nil, err
 	}
 	by := "system"
 	if a, ok := auth.FromContext(ctx); ok && a.UserID > 0 {
@@ -246,11 +207,6 @@ func (s *EvaluationService) AnnotateCaseResult(ctx context.Context, req *v1.Anno
 }
 
 func (s *EvaluationService) GetAgentEvalTrend(ctx context.Context, req *v1.GetAgentEvalTrendRequest) (*v1.GetAgentEvalTrendResponse, error) {
-	if dsID := strings.TrimSpace(req.GetDatasetId()); dsID != "" {
-		if _, err := s.assertEvalDatasetAccess(ctx, dsID); err != nil {
-			return nil, err
-		}
-	}
 	points, err := s.uc.GetAgentEvalTrend(ctx, req.GetAgentId(), req.GetDatasetId(), int(req.GetLimit()))
 	if err != nil {
 		return nil, err

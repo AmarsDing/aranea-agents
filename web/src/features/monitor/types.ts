@@ -23,6 +23,10 @@ export type MonitorTrace = {
   created_at: string;
   updated_at: string;
   deleted_at: string;
+  /** Denormalized from config_json for table columns (OPT-05 Runs metrics). */
+  duration_ms?: number;
+  total_tokens?: number;
+  total_cost_usd?: number;
 };
 
 /** Monitor trace detail — mirrors backend GetMonitorTrace response. */

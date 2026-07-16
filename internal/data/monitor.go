@@ -165,9 +165,11 @@ const sqlMonitorEventsGet = `SELECT id, event_key, name, description, status, me
 	FROM monitor_events WHERE id = ? AND deleted_at = ''`
 
 const sqlMonitorTracesCount = `SELECT COUNT(*) FROM monitor_traces WHERE deleted_at = ''`
-const sqlMonitorTracesList = `SELECT id, trace_key, name, description, status, agent_id, provider, model, metadata_json, created_at, updated_at, deleted_at
-	FROM monitor_traces WHERE deleted_at = ''`
-const sqlMonitorTracesGet = `SELECT id, trace_key, name, description, status, agent_id, provider, model, metadata_json, created_at, updated_at, deleted_at
+const sqlMonitorTracesList = `SELECT id, trace_key, name, description, status, agent_id, provider, model, metadata_json, created_at, updated_at, deleted_at,
+		 COALESCE(duration_ms, 0), COALESCE(span_count, 0), COALESCE(error_count, 0), COALESCE(total_tokens, 0), COALESCE(total_cost_usd, 0)
+		 FROM monitor_traces WHERE deleted_at = ''`
+const sqlMonitorTracesGet = `SELECT id, trace_key, name, description, status, agent_id, provider, model, metadata_json, created_at, updated_at, deleted_at,
+		 COALESCE(duration_ms, 0), COALESCE(span_count, 0), COALESCE(error_count, 0), COALESCE(total_tokens, 0), COALESCE(total_cost_usd, 0)
 	FROM monitor_traces WHERE id = ? AND deleted_at = ''`
 
 func (r *monitorRepo) ListMonitorEvents(ctx context.Context, query biz.MonitorEventsQuery) (biz.MonitorListResult, error) {
@@ -509,7 +511,7 @@ func scanTraceRows(rows *sql.Rows) ([]biz.MonitorPlatformRow, error) {
 }
 
 // scanTracePlatformRow scans a single monitor_traces row with extended columns
-// (agent_id, provider, model) that are not present in the events table.
+// (agent_id, provider, model, duration/token aggregates) that are not present in the events table.
 func scanTracePlatformRow(row scanner) (biz.MonitorPlatformRow, error) {
 	var (
 		v                               biz.MonitorPlatformRow
@@ -518,11 +520,23 @@ func scanTracePlatformRow(row scanner) (biz.MonitorPlatformRow, error) {
 		agentID, provider, model        string
 		metaJSON                        string
 		createdAt, updatedAt, deletedAt string
+		durationMs                      int64
+		spanCount, errorCount           int
+		totalTokens                     int64
+		totalCostUsd                    float64
 	)
-	err := row.Scan(&id, &key, &name, &description, &status, &agentID, &provider, &model, &metaJSON, &createdAt, &updatedAt, &deletedAt)
+	err := row.Scan(&id, &key, &name, &description, &status, &agentID, &provider, &model, &metaJSON, &createdAt, &updatedAt, &deletedAt,
+		&durationMs, &spanCount, &errorCount, &totalTokens, &totalCostUsd)
 	if err != nil {
 		return biz.MonitorPlatformRow{}, entErrToBizErr(err, "MONITOR")
 	}
+	cfg, _ := json.Marshal(map[string]any{
+		"duration_ms":    durationMs,
+		"span_count":     spanCount,
+		"error_count":    errorCount,
+		"total_tokens":   totalTokens,
+		"total_cost_usd": totalCostUsd,
+	})
 	v.Resource = "monitor-traces"
 	v.ID = id
 	v.Key = key
@@ -535,7 +549,7 @@ func scanTracePlatformRow(row scanner) (biz.MonitorPlatformRow, error) {
 	v.Provider = provider
 	v.Model = model
 	v.MetadataJSON = metaJSON
-	v.ConfigJSON = "{}"
+	v.ConfigJSON = string(cfg)
 	v.CreatedAt = createdAt
 	v.UpdatedAt = updatedAt
 	v.DeletedAt = deletedAt

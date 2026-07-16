@@ -31,7 +31,7 @@
 
 - `internal/service/session_compress.go`
 - `internal/service/memory.go` → ListL0Snapshots
-- `internal/data/sessionmemory/store*.go`
+- `internal/data/memory_shim_*.go`（原 `sessionmemory` 已折叠）
 
 ---
 
@@ -79,8 +79,8 @@
 
 | 层次 | 已实现 | 说明 |
 |------|--------|------|
-| Runner `memory.Service` | ✅ | `internal/memory/trpc/sqlite_adapter.go` — `NewSQLiteMemoryService(sessionmemory.Store)`；无 Store 时框架 `InMemoryService` |
-| SQLite 会话记忆链 | ✅ | `internal/data/sessionmemory` + `memory_chain.sql`（L0 快照、L1–L4、entities） |
+| Runner `memory.Service` | ✅ | `internal/memory/trpc/sqlite_adapter.go` — `memtrpc.NewMemoryService(L3FactReader, L3FactWriter, …)` |
+| SQLite 会话记忆链 | ✅ | `internal/data/memory_shim_*.go` + `memory_chain.sql`（L0 快照、L1–L4、entities） |
 | 管理/观测 API | ✅ | `internal/service/memory.go` → `MemoryAdminUsecase`；**不** import `pkg/trpc-agent-go` |
 | L0 压缩 | ✅ | `internal/service/session_compress.go`（`SessionCompressor.AfterNativeTurn`） |
 | L4 Prompt 注入 | ✅ | `internal/agent/l4_prompt.go` via `trpc_build.go` |

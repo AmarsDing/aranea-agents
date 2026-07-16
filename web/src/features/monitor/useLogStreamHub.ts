@@ -17,6 +17,8 @@ export type MonitorLogHub = {
   processEnabled: Ref<boolean>;
   flowLines: Ref<MonitorLogLine[]>;
   processLines: Ref<MonitorLogLine[]>;
+  backpressureMessage: Ref<string>;
+  clearBackpressure: () => void;
   connect: () => void;
   disconnect: () => void;
   setFlowPaused: (paused: boolean) => void;
@@ -53,6 +55,7 @@ export function createMonitorLogHub(paused: MonitorLogHubPausedRefs): MonitorLog
   const processEnabled = ref(false);
   const flowLines = ref<MonitorLogLine[]>([]);
   const processLines = ref<MonitorLogLine[]>([]);
+  const backpressureMessage = ref('');
   let hasFlowLine = false;
   let hasProcessLine = false;
   let wsConnected = false;
@@ -131,6 +134,14 @@ export function createMonitorLogHub(paused: MonitorLogHubPausedRefs): MonitorLog
           return;
       }
     },
+    onBackpressure: (payload) => {
+      const dropped =
+        Number(payload.dropped_high ?? 0) +
+        Number(payload.dropped_normal ?? 0) +
+        Number(payload.dropped_low ?? 0);
+      const windowSecs = Number(payload.window_seconds ?? 10);
+      backpressureMessage.value = `监控流过载，最近 ${windowSecs}s 丢弃 ${dropped} 条非关键事件，可能影响实时性。`;
+    },
   });
 
   function connect(): void {
@@ -155,6 +166,10 @@ export function createMonitorLogHub(paused: MonitorLogHubPausedRefs): MonitorLog
     processEnabled,
     flowLines,
     processLines,
+    backpressureMessage,
+    clearBackpressure: () => {
+      backpressureMessage.value = '';
+    },
     connect,
     disconnect,
     setFlowPaused: (p: boolean) => {

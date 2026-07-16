@@ -65,20 +65,17 @@ internal/service/turn_outcome.go                     ← ErrTurnMessageQueued / 
 internal/agent/trpc_build.go              ← Agent 构建（BuildTRPCLLMAgent）
 internal/agent/trpc_build_router.go       ← Agent 构建路由
 internal/agent/trpc_runtime.go            ← Runner 构建（NewTRPCRunner + RunTRPCUserTurn）
-internal/agent/activity_projector.go      ← Activity 投影（唯一投影器：trpc event → ActivityEvent）
-internal/agent/activity_event_sequencer.go ← ActivityEvent 序列化（并行异步持久化 + WS 推送 + dead-letter）
-internal/agent/tool_category.go           ← 工具类型识别（ToolCategorizer：注册表 + 前缀兜底）
-internal/agent/activity_meta.go           ← ActivityKind 分类
-internal/agent/activity_meta_resolver.go  ← ActivityMetaResolver 接口
-internal/agent/choice_stream.go           ← 流式 delta
+internal/agent/v2/projector.go            ← **唯一**投影器：trpc event → Task/Turn/Step…
+internal/agent/v2/sequencer.go            ← FIFO 发布（streaming 仅 WS；终态 WBPF + outbox + dead-letter）
 internal/agent/stream_consumer.go         ← turn 消费
+internal/agent/choice_stream.go           ← 流式 delta
 internal/agent/options.go                 ← options_json 构建
 internal/agent/intent/                    ← 意图识别与消息增强
         ↓
-internal/event/activity_event.go          ← ActivityEvent 类型定义（Event/Activity/Domain）
-internal/event/activityevent/bus.go       ← ActivityEventBus（传输 biz.ActivityEvent，chat+system 事件）
-internal/event/contract/monitor_event.go  ← MonitorEvent 类型 + MonitorBus 接口（log/flow_log/mcp/alert）
-internal/event/contract/envelope_types.go ← 活类型提取（EnvelopeError/EnvelopeTokenUsage + 5 个 ErrorCode 常量）
+internal/biz/event.go                     ← v2 Event 接口 + EventKind
+internal/biz/event_system.go              ← system.notice / system.run_status（ActivityBridge 已退役）
+internal/event/contract/monitor_event.go  ← MonitorEvent + MonitorBus（与聊天分离）
+internal/server/ws_v2_subscriber.go       ← EventBus → WS type=v2_event
         ↓
 internal/team/runner.go                   ← Team Runner（Coordinator / Swarm）
 internal/team/trpc_build.go               ← Team 构建（BuildTRPCTeam）
@@ -103,34 +100,36 @@ internal/biz/session/                     ← Session 子包（status / turns / 
 
 ## 三、请求流转
 
+> **2026-07-16**：聊天主链路为 **v2-only**。WS 下行业务事件为 `v2_event`（Task/Turn/Step/Team/Graph/system.*）；`activity_event` / `ActivityBridgeEvent` 生产路径已退役。监控仍走独立 `monitor_event`。
+
 ```
 前端 GET /v1/ws?session_id=... 建立 WebSocket
   → 上行 user_message / enqueue_message / cancel / ping / subscribe / unsubscribe / enable_log
     → WSServer.handleUserMessage() / handleEnqueueMessage()
       → ChatService.SendChatMessage() / EnqueueUserMessage()
-        → ChatOrchestrator.nativeSendChatMessage() → runNativeAgentTurn()
+        → ChatOrchestrator → runNativeAgentTurn()
           → session.owner_type == "team"?
-            → team.Runner.RunTurn() → BuildTRPCTeam → trpc Runner → ActivityProjector → ActivityEventBus
+            → team.Runner.RunTurn() → BuildTRPCTeam → trpc Runner
+              → agent/v2.ActivityProjector → Sequencer → EventBus → WS 下行 v2_event
           → session.owner_type == "agent"?
             → runSingleAgentViaTRPC()
               → BuildTRPCLLMAgentCached() → NewTRPCRunner() → RunTRPCUserTurn()
-              → ActivityProjector → ActivityEventSequencer（并行：persist fire-and-forget + publish 同步）→ ActivityEventBus → WS 下行 ActivityEvent
+              → agent/v2.ActivityProjector → Sequencer
+                  （step.streaming：仅 WS，16ms batch；终态：WBPF + outbox）
+                → EventBus → WSV2Subscriber → WS 下行 type=v2_event
 
 后台/非流式入口：
 POST /v1/chat/messages
   → ChatService.SendChatMessage()
   → 同一 runNativeAgentTurn() 主链路
 
-Channel 入口（飞书/Lark webhook 等）：
-POST /v1/channel/{channel_type}/webhook
-  → ChannelIngress.HandleWebhook()
-    → ChatService.RunNativeTurnUnary()
-      → 同一 runNativeAgentTurn() 主链路
+Channel / Cron：
+  → ChatService.RunNativeTurnUnary() / RunCronTurn()
+  → 同一 runNativeAgentTurn() 主链路
 
-Cron 入口：
-Cron Scheduler
-  → ChatService.RunCronTurn()
-    → 同一 runNativeAgentTurn() 主链路
+前端渲染：
+  v2_event → useChatEventRouter → activityV2Store → SessionPanelV2
+  重连 hydrate：GET /v2/sessions/.../{tasks,turns,steps,...}（非 ListActivities 时间线）
 ```
 
 ---
@@ -3480,6 +3479,8 @@ ActivityEventSequencer (单 publish worker)
 
 #### B.4.1 team-card 布局
 
+> **⚠️ 2026-07-16**：本节尾部按钮设计已被 [B.10.10](#b1010-teamruncard-三段式横向布局-231--membersessionpanel-输入栏2026-07-05-三轮修订) 取代——TeamRunCard 纯展示（无按钮）；失败重试仅在展开区 Error 行；agent 暂停/注入由 MemberSessionPanel 承担。下列 ASCII 图保留作历史对照。
+
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │ team-card 长条                                                        │
@@ -3536,27 +3537,27 @@ ActivityEventSequencer (单 publish worker)
 
 #### B.4.2 agent-card 布局（简化版）
 
+> **2026-07-16 实现锚点**：`web/src/components/chat/v2/MemberSessionPanel.vue`（模式 C 挂在 `TeamRunCard`；模式 B orphan 挂在 `TaskCard`）。  
+> pause/inject 必须传 `MemberSession.SessionID`（chat session），禁止传实体 `ID`。  
+> Mode B 直播：`subagents_spawn` → `SubAgentService.ModeBStartedHook` → orphan `MemberSessionCreatedEvent`（空 TeamRunID/TaskID）→ 前端挂到 spirit 最新/running Task。  
+> Mode B 历史：`ListOrphanMemberSessions`（`GET /v2/sessions/{id}/orphan_member_sessions`）→ `fetchSessionHistory` upsert → 同挂载规则。
+
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ agent-card 简化版                                                     │
-│ ┌──────────────────────────────────────┬────────────────────────────┐ │
-│ │  头部 80%                             │  尾部 20%                   │ │
-│ ├──────────────────────────────────────┼────────────────────────────┤ │
-│ │  [avatar] Agent 名称  [status badge] │  [✕ 取消]                   │ │
-│ │  创建时间 10:30:00                    │  [↻ 重试]                   │ │
-│ └──────────────────────────────────────┴────────────────────────────┘ │
-│                                                                       │
-│ ── 展开后 ────────────────────────────────────────────────────────── │
-│ ├─ 🧠 thinking（折叠）                                              │
-│ ├─ ⚡ action: tool_name（折叠）                                      │
-│ └─ 💬 reply（展开）                                                  │
+│ agent-card 简化版（MemberSessionPanel）                               │
+│ ┌──────────────────────────────────────────────────────────────────┐ │
+│ │  三段式头：avatar+名+status | 最新动作 | 时间                      │ │
+│ └──────────────────────────────────────────────────────────────────┘ │
+│ ── 展开后（max-height 300px）─────────────────────────────────────── │
+│ ├─ thinking / action / reply / …                                   │ │
+│ └─ 底栏（仅 running）：空→stop(pause) / 有字→send(enqueue)          │ │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
 **与 team-card 的区别**：
 - 无团队信息（团队名称、成员列表）
 - 无进度条（单个 agent，直接显示状态）
-- 尾部交互与 team-card 完全一致（暂停/恢复 + 取消/重试 + 对话框）
+- 操作在卡片底栏（pause/inject），不在 team 面板
 
 **尾部按钮按状态切换**（详见 §B.5.3 状态机）：
 
@@ -3641,27 +3642,37 @@ stateDiagram-v2
 
 #### B.4.4 Graph 流程图（GraphStageBlock）
 
-**位置**：在 plan 之后、team-card 之前独立显示
+**位置**：在 plan 之后、team-card 之前独立显示（`TaskCard`：`PlanBoardCard → GraphStageBlock → TeamStagePanel`）
 
-**时机**：Spirit 完成 team 分配后，发送 `graph_stage.created` 事件时创建
+**时机**：`PublishV2Board` 发布 `graph_stage.created` 时创建 v2 `GraphStage`（与 `PlanBoard` 一对一）；`PlanExecutor` 在 step 调度中同步更新 `GraphNode` 状态并发布 terminal。
+
+**与 v2 实体模型的关系**（权威设计见 `docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md` §3.2.2 / §3.7.5）：
+
+| 维度 | 约定 |
+|------|------|
+| 数据来源 | `GraphStage` + `GraphNode`（独立表），非 v1 Activity 快照 |
+| 节点含义 | 每个 `GraphNode` 对应一个 `PlanStep`（`GraphNode.ID = PlanStep.ID`） |
+| 节点状态 | 由 `PlanStep.Status` 经 `MapPlanStepToGraphNodeStatus` 映射；**不是**直接复制 team 状态机 |
+| Team 关联 | `GraphNode.TeamStageID` 在 dispatch 时回填；点击节点跳转到对应 `TeamStagePanel` |
+| 单节点 | 节点数 ≤ 1 时前端不展示 Graph（无 DAG 价值），直接显示 team-card |
+| 始终展开 | GraphStageBlock 不折叠（B.4.5） |
+
+**节点状态视觉**：
+
+| 节点状态 | 来源 PlanStep | 视觉 |
+|---------|---------------|------|
+| pending | pending | 灰色 |
+| running | running | 主题色 + pulse |
+| completed | completed | 绿色 ✓ |
+| failed | failed / partial_failure | 红色 ✗ |
+| interrupted | skipped | 黄色 ⏸ |
+
+> **已废弃（2026-07-16）**：旧方案「后端聚合 team 列表为 v1 `ActivityKindGraphStage` 快照、节点状态跟随 team、不引入独立节点表」。该路径与 v2 双写冲突，已在 `spirit_team` 停用；唯一真相源为 v2 `GraphStage`/`GraphNode`。
 
 **与 team-card 的关系**：
-- Graph 是 team 之间的 DAG 依赖关系可视化（哪些 team 是上游、哪些是下游、哪些可并行）
-- Graph 节点对应 team，**节点状态 = 对应 team 的状态**（不引入独立节点状态表，避免双重状态同步）
-- Graph 节点点击展开 = 跳转到对应 team-card（不在此处展开成员列表，成员列表在 team-card 中）
-- 当 team 数量为 1（无 DAG 依赖）时，可不展示 Graph，直接显示 team-card
-
-**节点状态跟随 team 状态**：
-
-| 节点状态 | 对应 team 状态 | 视觉 | WS 事件来源 |
-|---------|--------------|------|-----------|
-| pending | team 未启动 | 灰色 | `graph_stage.created`（初始） |
-| running | team 执行中 | 蓝色 + pulse | `team_stage.updated` (stage=running) |
-| completed | team 已完成 | 绿色 ✓ | `team_stage.completed` |
-| failed | team 失败 | 红色 ✗ | `team_stage.failed` |
-| interrupted | team 中断 | 黄色 ⏸ | `team_stage.updated` (stage=interrupted) |
-
-> **不引入节点独立状态机**：Graph 节点状态完全跟随对应 team 的状态转换。引入独立节点状态表会与 team-card 状态形成双重来源，造成同步问题。WS 事件统一以 `team_stage.*` 为准，Graph 节点状态从 team 状态派生。
+- Graph 表达 PlanStep DAG 依赖与进度；team-card 列表按 Timestamp 表达创建顺序（B.4.4.1）
+- 二者维度不同，不强制拓扑顺序与列表顺序一致
+- Header 显示 `completed/total` 进度；容器终态优先使用后端 `GraphStage.Status`
 
 #### B.4.4.1 多 team-card / agent-card 之间的排序
 
@@ -3980,16 +3991,12 @@ async function injectAgent(sessionId: string, message: string) { ... }
 - [ ] proto 新增 PauseTeamRun/UnpauseTeamRun/InjectTeamMessage/PauseSession/ResumeSession 5 个 RPC
 - [ ] RunStateMachine 新增 paused 状态 + pause 事件 + 4 个转换
 - [ ] ActivityStatus 新增 paused 值（前端 + 后端）
-- [ ] TeamService.PauseTeamRun/UnpauseTeamRun/InjectTeamMessage 实现
-- [ ] ChatService.PauseSession/ResumeSession 实现
-- [ ] RunRegistry.Pause/Resume 方法实现
-- [ ] spiritService + spirit/api.ts + spiritStore 全链路封装
-- [ ] TeamCard.vue 尾部 UI 完整：暂停/恢复 + 取消/重试 + 对话框
-- [ ] AgentCard.vue 尾部 UI 完整：同 team-card
-- [ ] 状态切换：running ↔ paused ↔ running；paused → cancelled/failed
-- [ ] 注入消息：running/paused 状态可用；终态禁用
-- [ ] 单测覆盖：状态机转换、Pause/Resume/Inject service 方法
-- [ ] vitest 覆盖：UI 状态切换、对话框交互
+- [x] TeamService.PauseTeamRun/UnpauseTeamRun/InjectTeamMessage 实现
+- [x] ChatService.PauseSession/ResumeSession 实现（同步 MemberSessionStatus + Meta.chat_session_id）
+- [x] MemberSessionPanel 底栏：pause/inject 传 SessionID；失败回滚乐观状态
+- [x] Mode B：SubAgentService ModeBStarted/FinishedHook → orphan MemberSession
+- [x] Mode B 历史 hydrate：`ListOrphanMemberSessions` + `fetchSessionHistory` upsert
+- [x] vitest：MemberSessionPanel SessionID emit；activityV2 orphan 查询 / hydrate
 
 ### B.6 WS 协议流
 
@@ -4028,27 +4035,26 @@ async function injectAgent(sessionId: string, message: string) { ... }
 
 #### B.7.1 加载策略
 
-**只加载 spirit 根 session 事件，子 session 事件按需懒加载**
+**只加载 spirit 根 session 实体树，子 session steps 按需懒加载**
 
-**流程**：
+**流程（v2）**：
 1. 用户进入 spirit session
-2. 调用 `ListBySession(spiritSessionID)` 加载 spirit 根 session 的所有 activity
-3. 按 `parentActivityId` 构建 ActivityTree
-4. 按 ActivityStream 渲染规则恢复 UI
-5. team-card 默认折叠（与 B.4.5 一致）：running 与终态均默认折叠，用户手动展开后状态由用户掌控
+2. `fetchSessionHistory(spiritSessionID)`：Task → Turn/Step/TeamStage/Plan/Graph → TeamRun → MemberSession
+3. 额外拉 Mode B orphan：`ListOrphanMemberSessions(spiritSessionID)`（`team_run_id = ''`）并 upsert
+4. 前端按实体树渲染；orphan 经 `getTaskOrphanMemberSessions` 挂到最新/running Task
+5. team-card / MemberSessionPanel 默认折叠规则不变；展开后用户意图优先
 
 #### B.7.2 子 session 懒加载
 
 **触发**：
-- 用户点击 team-card 展开成员列表
-- 或用户点击 agent-card 展开子 agent 会话
+- 用户展开 TeamRun 成员列表中的 MemberSessionPanel
+- 或用户展开 Mode B orphan MemberSessionPanel
 
 **流程**：
-1. 前端检测到 team-card / agent-card 展开
-2. 检查该 team/agent 的子 session activity 是否已加载
-3. 未加载 → 调用 `ListBySession(teamSessionID)` 或 `ListBySession(agentSessionID)`
-4. 加载完成后，合并到 ActivityTree
-5. 渲染成员/子 agent 的 thinking/action/reply
+1. 前端 `expand` → `ensureMemberStepsLoaded(MemberSession.SessionID)`
+2. 检查该 child session 的 steps 是否已加载（缓存）
+3. 未加载 → `listStepsV2(sessionID)` 合并到 store
+4. 渲染成员/子 agent 的 thinking/action/reply
 
 #### B.7.3 后端修复要求
 
@@ -4257,9 +4263,11 @@ synthesis turn 完成 → ActivityProjector.OnTurnEnd
 
 #### B.10.5 GraphStage 创建路径（P-FIX5）
 
-**问题**：`task_planner_impl.go:publishV2PlanBoard` 已发射 `GraphStageCreatedEvent`，`initGraphStage` 又调用 `seq.Publish(NewGraphStageCreatedEvent)`，导致前端收到两次事件。
+**问题**：`PublishV2Board` 已发射 `GraphStageCreatedEvent`，`initGraphStage` 若再 `seq.Publish` 会导致前端收到两次 created。
 
-**方案**：移除 `initGraphStage` 中的 `seq.Publish`。保留同步 `repos.UpsertGraphStage` 作为 **crash recovery fallback**——`newDagRun` 同步查询 GraphStage 需要记录立即可见，不能依赖异步 EventRouter。
+**方案**：`initGraphStage` **只做同步 `UpsertGraphStage`/`UpsertGraphNode`**（crash recovery fallback，保证 `newDagRun` 立即可见），**禁止**再 Publish。created 事件唯一来源为 `PublishV2Board`。
+
+**2026-07-16 复核**：代码已对齐——`initGraphStage` 不再 Publish；`spirit_team` v1 team-based graph_stage 快照已停用。
 
 #### B.10.6 msID 一致性诊断（P-FIX3）
 
@@ -4395,8 +4403,9 @@ PlanStep.DependsOn = ["st_<uuid-A>"]  ← 引用保持一致
 - `PlanStep.ID` 必须为 `st_<uuid>` 格式，全局唯一（不再使用 LLM 生成的 `st_<n>` 格式）
 - `PlanStep.DependsOn` 中的 ID 引用必须与重写后的 `PlanStep.ID` 一致（通过 `idRemap` 保证）
 - `updateGraphNode` 必须填充 `Label/DagNodeID/DependsOn`，不能仅设置 `Status`
+- `updateGraphNode` 在 `teamStageID` 为空时必须回退 `step.MappedTeamStageID`；Repo Update 不得用空串擦除已有 `TeamStageID`
 - `publishGraphStageTerminal` 必须先 `UpsertGraphStage` 再 `seq.Publish`，与 `publishPlanBoardTerminal` 行为对齐
-- `UpsertGraphStage` 的 VersionLT 守卫确保 terminal 状态（Version=3）能盖过 initGraphStage 创建状态（Version=1）
+- `UpsertGraphStage` 的 VersionLT 守卫确保 terminal 状态（`current.Version+1`）能盖过 init 写入
 
 **运行时验证证据**（2026-07-05 14:37）：
 - `plan_steps_v2` 表 3 条记录均为 `st_<uuid>` 格式 ID，无 UNIQUE 冲突 ✅
@@ -4408,6 +4417,22 @@ PlanStep.DependsOn = ["st_<uuid-A>"]  ← 引用保持一致
 - FIX-2：移除 `updateGraphNode` 中对 `stepsByID` 的读取，恢复仅设置 `Status`（会导致 Label/DagNodeID 被空字符串覆盖，不建议回滚）
 - FIX-3：移除 `publishGraphStageTerminal` 中的 `UpsertGraphStage` 调用（会导致 graph_stages_v2.status 永远为 running，不建议回滚）
 
+#### B.10.10 GraphStage 单真相源与 TeamStageID 保留（2026-07-16）
+
+> **背景**：审查发现 (1) `initGraphStage` 注释称已移除 Publish 但仍发 created；(2) 终态 `updateGraphNode(..., "")` 擦除 `TeamStageID`；(3) `spirit_team` v1 team 快照与 v2 GraphStage 双写；(4) B.4.4 仍描述旧「节点=team、无独立表」模型。
+
+| 编号 | 问题 | 修复 |
+|------|------|------|
+| GS-1 | 终态更新清空 `TeamStageID` | `updateGraphNode` 回退 `MappedTeamStageID`；Repo Update 仅非空时 `SetTeamStageID`；前端 upsert 合并保留字段 |
+| GS-2 | `initGraphStage` 重复 created | 移除 Publish，仅同步 Upsert（对齐 B.10.5） |
+| GS-3 | v1 graph_stage 快照双真相源 | 删除快照实现与 DI `bus`；`ActivityKindGraphStage` 仅保留给工作流 Graph |
+| GS-4 | 文档/UI 缺口 | 重写 B.4.4；单节点隐藏 Graph；header `n/N`；终态优先后端 Status |
+| GS-5 | v1 GraphStageBlock 死代码 | 删除 `web/src/components/chat/GraphStageBlock.vue` |
+
+**不变量（新增）**：
+- Chat Graph 块唯一真相源：`PublishV2Board`（created）+ `PlanExecutor`（node/terminal）
+- `GraphNode.TeamStageID` 一经回填，后续 status-only 更新不得清空
+- 前端 `nodes.length <= 1` 时不渲染 `GraphStageBlock`
 **编码验证说明**（2026-07-05 调查结论）：曾怀疑 `plan_steps_v2.label` 存在 UTF-8 编码异常（psql 终端显示 `鏁版嵁宸ョ▼鍥㈤槦`）。经 hex 验证，数据库实际存储的字节是完全正确的 UTF-8（`e695b0 e68dae e5b7a5 e7a88b e59ba2 e9989f` = `数据工程团队`）。乱码根因是 PowerShell 5 默认用 GBK 解码 psql 输出的 UTF-8 字节流（终端显示问题，非数据问题）。前端通过 API 获取并显示的 label 完全正确（Playwright 验证 `plan-step-item__label` textContent = `数据工程团队`）。后端代码、LLM 返回、JSON 解析、PostgreSQL 写入全链路编码正确，无需修复。
 
 #### B.10.10 TeamRunCard 三段式横向布局 2:3:1 + MemberSessionPanel 输入栏（2026-07-05 三轮修订）

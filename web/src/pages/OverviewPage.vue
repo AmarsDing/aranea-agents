@@ -38,6 +38,7 @@
         :agent-stats="agentStats"
         :today-call-count="todayCallCount"
         :session-sparkline="sessionSparkline"
+        :sparkline-granularity="trendGranularity"
         :provider-health="providerHealthSummary"
         :runner-stats="runnerStats"
         :loading="loading"

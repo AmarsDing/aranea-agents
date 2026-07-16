@@ -321,6 +321,8 @@ message ListTeamsRequest {}
 
 message ListTeamsResponse {
   repeated Team items = 1;
+  // Total teams matching the caller workspace visibility (same scope as items).
+  int32 total = 2;
 }
 
 message CreateTeamRequest {

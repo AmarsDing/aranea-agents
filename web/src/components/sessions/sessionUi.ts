@@ -61,11 +61,11 @@ export function buildSessionsSummaryCards(rows: Session[], total: number): Sessi
     : 0;
   const tokens = rows.reduce((sum, item) => sum + (item.total_tokens || 0), 0);
   return [
-    { label: '当前页会话', value: rows.length, hint: `总计 ${total}` },
-    { label: '活跃 / 运行', value: active, hint: '当前页统计' },
-    { label: '置顶', value: pinned, hint: '当前页已置顶' },
-    { label: '平均上下文', value: formatPercent(avgContext), hint: '当前页平均值' },
-    { label: 'Token', value: formatNumber(tokens), hint: '当前页累计' },
+    { label: '本页会话', value: rows.length, hint: `服务端总计 ${total}` },
+    { label: '本页未归档', value: active, hint: '本页非归档且未删除（非 status=running）' },
+    { label: '本页置顶', value: pinned, hint: '本页已置顶' },
+    { label: '本页平均上下文', value: formatPercent(avgContext), hint: '本页平均值' },
+    { label: '本页 Token', value: formatNumber(tokens), hint: '本页累计' },
   ];
 }
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -95,7 +96,9 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 			)
 			if err != nil {
 				a.lg.Warn("consolidation fact upsert failed", loggateway.StepID("memory.consolidation_fact_fail"), loggateway.Err(err))
-				continue
+				// Fail the whole consolidation TX so AutoMemory can retry / dead-letter
+				// the job instead of silently marking success with missing facts.
+				return apierror.Internal("MEMORY", "consolidation fact upsert failed: %s", err.Error())
 			}
 			// Read back by fingerprint within the same tx (sees uncommitted writes).
 			readRows, err := e.QueryContext(txCtx,
@@ -103,25 +106,25 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 				strings.TrimSpace(f.ScopeType), strings.TrimSpace(f.ScopeID), fp)
 			if err != nil {
 				a.lg.Warn("consolidation fact read-back failed", loggateway.StepID("memory.consolidation_fact_readback_fail"), loggateway.Err(err))
-			} else {
-				if readRows.Next() {
-					if b, err := scanFactRowJSON(readRows); err == nil {
-						factRows = append(factRows, b)
-						var row map[string]any
-						if json.Unmarshal(b, &row) == nil {
-							existingID := strings.TrimSpace(fmt.Sprint(row["id"]))
-							if existingID != id {
-								factsDeduped++
-							} else {
-								factsWritten++
-							}
+				return apierror.Internal("MEMORY", "consolidation fact read-back failed: %s", err.Error())
+			}
+			if readRows.Next() {
+				if b, scanErr := scanFactRowJSON(readRows); scanErr == nil {
+					factRows = append(factRows, b)
+					var row map[string]any
+					if json.Unmarshal(b, &row) == nil {
+						existingID := strings.TrimSpace(fmt.Sprint(row["id"]))
+						if existingID != id {
+							factsDeduped++
 						} else {
 							factsWritten++
 						}
+					} else {
+						factsWritten++
 					}
 				}
-				readRows.Close()
 			}
+			_ = readRows.Close()
 		}
 
 		if ep != nil {
@@ -179,20 +182,20 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 			)
 			if err != nil {
 				a.lg.Warn("consolidation episode upsert failed", loggateway.StepID("memory.consolidation_episode_fail"), loggateway.Err(err))
-			} else {
-				readRows, err := e.QueryContext(txCtx, a.data.Dialect().RenumberPlaceholders(sqlEpisodeSelect+` WHERE session_id = ? AND agent_id = ? AND title = ?`),
-					strings.TrimSpace(ep.SessionID), strings.TrimSpace(ep.AgentID), strings.TrimSpace(ep.Title))
-				if err != nil {
-					a.lg.Warn("consolidation episode read-back failed", loggateway.StepID("memory.consolidation_episode_readback_fail"), loggateway.Err(err))
-				} else {
-					if readRows.Next() {
-						if b, err := scanEpisodeRowJSON(readRows); err == nil {
-							episodeRow = b
-						}
-					}
-					readRows.Close()
+				return apierror.Internal("MEMORY", "consolidation episode upsert failed: %s", err.Error())
+			}
+			readRows, err := e.QueryContext(txCtx, a.data.Dialect().RenumberPlaceholders(sqlEpisodeSelect+` WHERE session_id = ? AND agent_id = ? AND title = ?`),
+				strings.TrimSpace(ep.SessionID), strings.TrimSpace(ep.AgentID), strings.TrimSpace(ep.Title))
+			if err != nil {
+				a.lg.Warn("consolidation episode read-back failed", loggateway.StepID("memory.consolidation_episode_readback_fail"), loggateway.Err(err))
+				return apierror.Internal("MEMORY", "consolidation episode read-back failed: %s", err.Error())
+			}
+			if readRows.Next() {
+				if b, scanErr := scanEpisodeRowJSON(readRows); scanErr == nil {
+					episodeRow = b
 				}
 			}
+			_ = readRows.Close()
 		}
 
 		return nil

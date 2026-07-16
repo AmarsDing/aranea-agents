@@ -1,8 +1,8 @@
 # Chat 对话模块 — 需求规格
 
-> 对话框是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话、WebSocket + ActivityEventBus 实时事件、上下文管理、用量记录、停止生成、人工等待回复与待执行队列。
+> 对话框是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话、WebSocket + **v2 EventBus** 实时事件、上下文管理、用量记录、停止生成、人工等待回复与待执行队列。
 >
-> **2026-05-17 现状对齐**：当前代码已移除独立 SSE `/v1/chat/messages/stream` 路由，实时事件以 `/v1/ws` WebSocket + ActivityEvent 为主通道（ADR-02 + ADR-03 完成后，Envelope 通用信封已删除，统一为 ActivityEvent + MonitorEvent 双类型协议）；HTTP `SendChatMessage` 保留为非流式/后台入口，并被 WS 上行、Channel、Cron 等复用。WS 重连改用 `ListActivities` RPC 拉取增量 Activity（替代原 EventBuffer 回放）。
+> **2026-07-16 现状对齐**：实时通道为 `/v1/ws`；聊天业务下行统一为 `v2_event`（Task/Turn/Step/Team/Graph/`system.*`），监控为独立 `monitor_event`。v1 `activity_event` / ActivityBridge 生产路径已退役。HTTP `SendChatMessage` 保留为非流式/后台入口（WS 上行、Channel、Cron 复用）。WS 重连通过 v2 REST（`/v2/sessions/...` tasks/turns/steps）hydrate，前端只渲染 `SessionPanelV2`。
 >
 > **文档边界**：本文档仅包含用户故事、功能需求清单、验收标准、非功能需求与用户视角的交互规格。代码分层、API 契约、WebSocket 协议、数据模型、实现细节见 [1-chat.design.md](./1-chat.design.md)；开发进度、技术债务、任务清单见 [1-chat.development.md](./1-chat.development.md)。
 
@@ -746,37 +746,40 @@ interface Activity {
 
 #### A.4.7 历史加载 
 - **策略**：只加载 spirit 根 session 事件，子 session 事件按需懒加载
-- **流程**：进入 spirit session → ListBySession(spiritSessionID) → 按 parentActivityId 构建 ActivityTree → 渲染
-- **懒加载触发**：点击 team-card/agent-card 展开时，检查子 session activity 是否已加载，未加载则调用 ListBySession(teamSessionID/agentSessionID)
-- **后端修复**：direct-publish 事件（Team/Graph）必须填 SpiritSessionID（当前未填，需修复）
+- **流程（v2）**：进入 spirit session → `fetchSessionHistory` 拉 Task/Turn/Step/Team/Member + Mode B orphan → 渲染实体树
+- **Mode B orphan hydrate**：`GET /v2/sessions/{session_id}/orphan_member_sessions`（SpiritSessionID + 空 TeamRunID）→ upsert 后由 `getTaskOrphanMemberSessions` 挂到 Task
+- **懒加载触发**：点击 MemberSessionPanel 展开时，`ensureMemberStepsLoaded(SessionID)` 拉子 session steps
+- **后端修复**：direct-publish 事件（Team/Graph）必须填 SpiritSessionID（已完成）
 
 ### A.5 验收标准
 
-- [ ] 简单对话：精灵直接 thinking + reply，无 plan/graph/team
-- [ ] Team 模式：plan → graph → team-card 顺序显示
-- [ ] 任务计划面板：固定位置，不重复产生，支持折叠
-- [ ] team-card 布局：头部:中部:尾部 = 2:3:1（33%:50%:17%），符合设计
-- [ ] team-card 头部：团队图标 + 团队名称 + 任务名称 + 创建时间标签
-- [ ] team-card 中部：仅成员头像 chips + 进度条（不含状态/耗时）
-- [ ] team-card 尾部：状态标签（大字号居中）+ 耗时（右下角小字）
-- [ ] team-card 操作按钮：team 面板内**无任何操作按钮**（暂停/恢复/取消/重试/输入框全部移除，纯展示）
-- [ ] team-card 状态映射：running/paused/completed（大标签居中）/failed/cancelled
-- [ ] team-card 展开：显示成员列表（MemberSessionPanel），成员展开显示 thinking/action/reply
-- [ ] agent-card 布局：简化版（头部 + 展开内容 + 底部输入栏），无任何操作按钮
-- [ ] agent-card 展开内容：最大高度 300px，超出显示滚动条
-- [ ] agent-card 底部输入栏：仅 running 状态显示（系统 agent 排除）；输入框为空+running 时按钮为 stop 形态（点击暂停 agent），输入文字后变为 send 形态（点击注入消息）
-- [ ] agent-card 系统 agent 排除：`__spirit__` 及 `__` 前缀 agent 不显示输入栏
-- [ ] agent 暂停 API：`POST /v1/chat/sessions/{id}/pause`（参数为 sessionId）
-- [ ] agent 注入 API：`POST /v1/chat/enqueue`（参数为 session_id + content）
-- [ ] agent-card 自动折叠：agent 完成时自动折叠为终态（用户未操作时）；running 默认展开
-- [ ] agent-card 自动滚动：running + 展开时实时滚动到底部；用户手动滚动后 10s 恢复自动滚动（`useActivityAutoScroll`）
-- [ ] agent-card 标题栏最新动作：三段式 header 中间区域实时显示最新 step 的图标+简短文本（thinking→思考中、action→工具名、reply→回复中）
-- [ ] agent-card 用户意图优先：用户手动展开/折叠后状态由用户掌控，不被状态变化自动覆盖
-- [ ] team-card 展开规则：running 默认展开，终态默认折叠，用户意图优先
-- [ ] plan 状态更新：由 team_stage 事件驱动
-- [ ] 进度计算：X/N 简单实现
-- [ ] Team 失败：手动重试
-- [ ] 历史加载：只加载 spirit 根 session，子 session 懒加载
-- [ ] direct-publish 事件：SpiritSessionID 已填充
-- [ ] 排序：用 Timestamp，无全局 Seq
-- [ ] MaxDepth：从 AgentRuntimeSetting.MaxSessionDepth 读取
+> **2026-07-16 对齐**：实现主路径为 v2 实体树（`SessionPanel` → `TaskCard` → `PlanBoardCard` / `GraphStageBlock` / `TeamRunCard` → `MemberSessionPanel`）。Team 操作遵循 B.10.10（team 纯展示；失败展开区可重试；agent 操作在 MemberSessionPanel）。
+
+- [x] 简单对话：精灵直接 thinking + reply，无 plan/graph/team
+- [x] Team 模式：plan → graph → team-card 顺序显示
+- [x] 任务计划面板：固定位置，不重复产生，支持折叠（PlanBoard ID = `pb_` + plan.ID）
+- [x] team-card 布局：头部:中部:尾部 = 2:3:1（33%:50%:17%），符合设计
+- [x] team-card 头部：团队图标 + 团队名称 + 任务名称 + 创建时间戳
+- [x] team-card 中部：仅成员头像 chips + 进度条（不含状态/耗时）
+- [x] team-card 尾部：状态标签（大字号居中）+ 耗时（右下角小字）
+- [x] team-card 操作按钮：team 面板内无操作按钮（纯展示）；失败时展开区可手动重试
+- [x] team-card 状态映射：running/paused/completed/failed/cancelled
+- [x] team-card 展开：显示成员列表（MemberSessionPanel），成员展开显示 thinking/action/reply
+- [x] agent-card 布局：简化版（头部 + 展开内容 + 底部输入栏）；Mode B orphan member 复用 MemberSessionPanel
+- [x] agent-card 展开内容：最大高度 300px，超出显示滚动条
+- [x] agent-card 底部输入栏：仅 running 显示；空+running→pause（传 SessionID）；有文字→enqueue
+- [x] agent-card 系统 agent 排除：`__spirit__` 及 `__` 前缀不显示输入栏
+- [x] agent 暂停 API：`POST /v1/chat/sessions/{id}/pause`（sessionId = MemberSession.SessionID）
+- [x] agent 注入 API：`POST /v1/chat/enqueue`（session_id + content）
+- [x] agent-card 自动折叠 / running 默认展开 / 用户意图优先
+- [x] agent-card 自动滚动：`useActivityAutoScroll`（10s 恢复）
+- [x] agent-card 标题栏最新动作：thinking/action/reply 摘要
+- [x] team-card 展开规则：running/paused 默认展开，终态默认折叠，用户意图优先
+- [x] plan 状态更新：由 plan_step / team 事件驱动
+- [x] 进度计算：X/N
+- [x] Team 失败：手动重试（`retrySpiritTeam`）
+- [x] 历史加载：根 session steps；子 session steps 展开懒加载（`ensureMemberStepsLoaded`）
+- [x] Mode B 历史 hydrate：`ListOrphanMemberSessions` + `fetchSessionHistory` upsert orphan（刷新后可恢复 agent-card）
+- [x] direct-publish 事件：SpiritSessionID 已填充
+- [x] 排序：StartedAt 主序 + Seq 次序（流式同毫秒 tiebreaker）
+- [x] MaxDepth：Spirit `parallel_config.max_session_depth`（对齐 AgentRuntimeSetting）

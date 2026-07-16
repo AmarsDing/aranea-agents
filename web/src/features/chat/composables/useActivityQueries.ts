@@ -83,6 +83,9 @@ export function useActivityQueries() {
     getMemberSessionSteps(memberSession: MemberSession): Step[] {
       return store.getMemberSessionSteps(memberSession);
     },
+    getTaskOrphanMemberSessions(taskId: string): MemberSession[] {
+      return store.getTaskOrphanMemberSessions(taskId);
+    },
 
     // --- Direct map access (for components that iterate or .get by ID) ---
     /** Read-only view of the steps map. */

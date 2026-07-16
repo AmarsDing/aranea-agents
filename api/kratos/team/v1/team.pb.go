@@ -2669,6 +2669,8 @@ func (*ListTeamsRequest) Descriptor() ([]byte, []int) {
 type ListTeamsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*Team                `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	// Total teams matching the caller workspace visibility (same scope as items).
+	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2708,6 +2710,13 @@ func (x *ListTeamsResponse) GetItems() []*Team {
 		return x.Items
 	}
 	return nil
+}
+
+func (x *ListTeamsResponse) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
 }
 
 type CreateTeamRequest struct {

@@ -65,25 +65,28 @@ func TestPersistStep_EmitsFinished(t *testing.T) {
 	var finished bool
 	select {
 	case e := <-ch:
-		bridge, ok := e.(*biz.ActivityBridgeEvent)
-		if !ok {
-			t.Fatalf("expected *ActivityBridgeEvent, got %T", e)
+		// May receive MemberSessionUpdatedEvent and/or system.notice; accept either.
+		switch ev := e.(type) {
+		case *biz.MemberSessionUpdatedEvent:
+			if ev.MemberSession.AgentName != "Worker A" {
+				t.Fatalf("agent_name=%q want %q", ev.MemberSession.AgentName, "Worker A")
+			}
+			if ev.MemberSession.Status != biz.MemberSessionStatusCompleted {
+				t.Fatalf("status=%q want completed", ev.MemberSession.Status)
+			}
+			finished = true
+		case *biz.SystemNoticeEvent:
+			if ev.NoticeType != "completed" {
+				t.Fatalf("notice=%q want completed", ev.NoticeType)
+			}
+			csid, _ := ev.Meta["child_session_id"].(string)
+			if csid != "sess-1" {
+				t.Fatalf("child_session_id=%q want %q", csid, "sess-1")
+			}
+			finished = true
+		default:
+			t.Fatalf("expected MemberSessionUpdatedEvent or SystemNoticeEvent, got %T", e)
 		}
-		ev := bridge.Event
-		if ev.Activity.Kind != biz.ActivityKindSession {
-			t.Fatalf("kind=%q want session", ev.Activity.Kind)
-		}
-		if ev.Activity.AgentName != "Worker A" {
-			t.Fatalf("agent_name=%q want %q", ev.Activity.AgentName, "Worker A")
-		}
-		csid, _ := ev.Activity.Meta["child_session_id"].(string)
-		if csid != "sess-1" {
-			t.Fatalf("child_session_id=%q want %q", csid, "sess-1")
-		}
-		if ev.Event != biz.ActivityEventCompleted {
-			t.Fatalf("event=%q want completed", ev.Event)
-		}
-		finished = true
 	default:
 	}
 	if !finished {

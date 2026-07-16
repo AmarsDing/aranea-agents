@@ -45,13 +45,7 @@ func (b *EventBridge) Consume(ctx context.Context, eventCh <-chan *trpcevent.Eve
 	for e := range eventCh {
 		ev := b.ConvertEvent(e)
 		if ev != nil && b.eventBus != nil {
-			// Phase 3b-D: bridge to v2 EventBus. graph_stage events have no
-			// direct v2 typed equivalent; ActivityBridgeEvent preserves the
-			// full v1 ActivityEvent payload (Kind/Stage/Meta/Content) so the
-			// frontend Kanban UI and team_graph_run_coordinator's v2 Subscribe
-			// (which extracts the v1 ActivityEvent via type assertion) both
-			// continue to work unchanged.
-			b.eventBus.Publish(ctx, biz.NewActivityBridgeEvent(*ev))
+			biz.PublishSystemNoticeFromActivity(ctx, b.eventBus, *ev)
 		} else if ev == nil {
 			b.lg.Warn("unhandled event dropped",
 				loggateway.StepID("graph.event_bridge"),

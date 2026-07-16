@@ -645,6 +645,12 @@ service SessionV2Service {
   rpc ListMemberSessions(ListMemberSessionsV2Request) returns (ListMemberSessionsV2Response) {
     option (google.api.http) = {get: "/v2/team_runs/{run_id}/member_sessions"};
   }
+  // ListOrphanMemberSessions lists Mode B member sessions (empty team_run_id)
+  // for a spirit root session — used by fetchSessionHistory to restore orphan
+  // agent-cards after refresh.
+  rpc ListOrphanMemberSessions(ListOrphanMemberSessionsV2Request) returns (ListMemberSessionsV2Response) {
+    option (google.api.http) = {get: "/v2/sessions/{session_id}/orphan_member_sessions"};
+  }
   rpc ListPlanBoards(ListPlanBoardsV2Request) returns (ListPlanBoardsV2Response) {
     option (google.api.http) = {get: "/v2/tasks/{task_id}/plan_boards"};
   }
@@ -831,6 +837,11 @@ message ListMemberSessionsV2Request {
 }
 message ListMemberSessionsV2Response {
   repeated MemberSessionV2 member_sessions = 1;
+}
+
+message ListOrphanMemberSessionsV2Request {
+  // Spirit (root) session ID.
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 // --- PlanBoard ---

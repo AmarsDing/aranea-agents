@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
@@ -31,20 +32,14 @@ var (
 
 // TeamStarter manages team turn lifecycle.
 //
-// Phase 3b-D Task 10: dual-bus scheme. `bus` (v1 ActivityEventBus) is retained
-// for graph_stage snapshot events (no v2 EventKind equivalent exists). `eventBus`
-// (v2 EventBus) is used for team_stage and notice events. Once a v2
-// graph_stage event kind is introduced, `bus` can be removed.
-//
-// Phase 2: `seq` (v2 Sequencer) routes graph_stage snapshots through the
-// unified v2 publish entry (FIFO + retry). `bus` is retained as v1 fallback
-// when neither seq nor eventBus is available.
+// 事件总线：`eventBus`/`seq` 发布 team_stage 与 notice。
+// Chat Graph 块由 v2 GraphStage/GraphNode（PublishV2Board + PlanExecutor）维护，
+// 不再注入 v1 ActivityEventBus。
 type TeamStarter struct {
 	sessions         *biz.SessionUsecase
 	team             TeamOrchestrationDeps
-	bus              biz.ActivityEventBus // v1: graph_stage snapshot fallback (no v2 equivalent yet)
-	eventBus         biz.EventBus         // v2: team_stage + notice events
-	seq              rt.EventPublisher    // Phase 2: v2 Sequencer for graph_stage snapshot (FIFO + retry)
+	eventBus         biz.EventBus      // v2: team_stage + notice events
+	seq              rt.EventPublisher // v2 Sequencer（FIFO + retry）
 	activityReader   biz.ActivityReader
 	activityUpserter biz.ActivityUpserter
 	lg               loggateway.Logger
@@ -90,7 +85,6 @@ type TeamStarter struct {
 func NewTeamStarter(
 	sessions *biz.SessionUsecase,
 	team TeamOrchestrationDeps,
-	bus biz.ActivityEventBus,
 	eventBus biz.EventBus,
 	seq rt.EventPublisher,
 	activityReader biz.ActivityReader,
@@ -104,7 +98,6 @@ func NewTeamStarter(
 	return &TeamStarter{
 		sessions:         sessions,
 		team:             team,
-		bus:              bus,
 		eventBus:         eventBus,
 		seq:              seq,
 		activityReader:   activityReader,
@@ -329,9 +322,11 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	s.team.SpiritUC.CancelTimeoutTimer(teamID)
 
 	durationMs := int64(0)
+	teamRunID := ""
 	runs, runErr := s.team.TeamUC.ListRuns(ctx, teamID, 1)
 	if runErr == nil && len(runs) > 0 {
 		durationMs = int64(runs[0].DurationMS)
+		teamRunID = runs[0].ID
 	}
 
 	// Phase 3b-D Task 10: token usage extraction (tokenIn/tokenOut) was removed.
@@ -462,20 +457,8 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 			}
 			s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(progressTs))
 		}
-
-		// B.4.4: After team status change, republish the graph_stage DAG
-		// snapshot so node statuses stay in sync with team statuses.
-		// Phase 3b-D Task 10: graph_stage has no v2 EventKind equivalent;
-		// stays on v1 bus. TODO: migrate once EventKindGraphStage* is added.
-		if allTeams, listErr := s.team.TeamUC.ListBySpiritSessionID(ctx, spiritSessionID); listErr == nil {
-			publishGraphStageSnapshot(ctx, s.seq, s.eventBus, s.bus, s.lg, spiritSessionID, allTeams)
-		} else {
-			s.lg.Warn("graph_stage 快照刷新失败：列出团队失败",
-				loggateway.StepID("spirit.graph_stage.list_fail"),
-				loggateway.Str("spirit_session_id", spiritSessionID),
-				loggateway.Err(listErr),
-			)
-		}
+		// GraphStage / GraphNode 状态由 PlanExecutor 经 v2 事件维护（§3.7.5）。
+		// 不再发布 v1 team-based graph_stage Activity 快照。
 
 	}
 
@@ -492,7 +475,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	// 必须在 checkAllTeamsCompleted 之后调用，确保 synthesis 逻辑先执行。
 	if s.planExecutor != nil && teamID != "" {
 		success := status == biz.TeamStatusCompleted
-		s.planExecutor.NotifyTeamCompletion(teamID, success, errMsg)
+		s.planExecutor.NotifyTeamCompletion(teamID, teamRunID, success, errMsg)
 	}
 
 	// Trigger auto-archive for completed/failed/cancelled teams that have
@@ -793,14 +776,13 @@ func (s *TeamStarter) NotifyAllTeamsCompleted(ctx context.Context, spiritSession
 
 // SpiritTeamAssembler assembles spirit teams.
 //
-// Phase 3b-D Task 10: dual-bus scheme. `bus` (v1) for graph_stage snapshots,
-// `eventBus` (v2) for team_stage + notice events.
+// `eventBus`/`seq` 发布 team_stage。Chat Graph 由 v2 GraphStage/GraphNode 维护，
+// 不再注入 v1 ActivityEventBus。
 type SpiritTeamAssembler struct {
 	spiritUC     *biz.SpiritTeamUsecase
 	orchCache    *biz.OrchestrationCache
-	bus          biz.ActivityEventBus // v1: graph_stage snapshot fallback (no v2 equivalent yet)
-	eventBus     biz.EventBus         // v2: team_stage + notice events
-	seq          rt.EventPublisher    // Phase 2: v2 Sequencer for graph_stage snapshot (FIFO + retry)
+	eventBus     biz.EventBus      // v2: team_stage + notice events
+	seq          rt.EventPublisher // v2 Sequencer
 	activityRepo biz.ActivityUpserter
 	teamStarter  biz.TeamStarterPort
 	agentReader  biz.AgentReader
@@ -814,7 +796,6 @@ type SpiritTeamAssembler struct {
 func NewSpiritTeamAssembler(
 	spiritUC *biz.SpiritTeamUsecase,
 	orchCache *biz.OrchestrationCache,
-	bus biz.ActivityEventBus,
 	eventBus biz.EventBus,
 	seq rt.EventPublisher,
 	activityRepo biz.ActivityUpserter,
@@ -826,7 +807,6 @@ func NewSpiritTeamAssembler(
 	return &SpiritTeamAssembler{
 		spiritUC:     spiritUC,
 		orchCache:    orchCache,
-		bus:          bus,
 		eventBus:     eventBus,
 		seq:          seq,
 		activityRepo: activityRepo,
@@ -996,23 +976,8 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	if !a.v2EventReady() {
 		return
 	}
-	// B.4.4: Publish graph_stage snapshot BEFORE team_stage so the graph appears
-	// between plan and team-card in the timeline (pure Timestamp ASC sort, design
-	// B.3.3). The graph_stage Activity uses a deterministic ID per spirit session,
-	// so the first publish establishes the creation Timestamp (which the frontend
-	// preserves across subsequent updates — see useActivityTimeline timestamp
-	// retention). Publishing graph before team_stage ensures:
-	//   plan (T_plan) → graph_stage (T_graph) → team_stage (T_team)
-	// If published after team_stage, the order would be plan → team → graph,
-	// violating B.4.4's positional requirement.
-	//
-	// The team is already committed to the DB (AssembleTeam runs in a tx that
-	// has committed before this method is called), so ListAllTeams will include
-	// the new team as a pending node in the DAG snapshot.
-	//
-	// Phase 3b-D Task 10: graph_stage has no v2 EventKind equivalent; stays on
-	// v1 bus. TODO: migrate once EventKindGraphStage* is added.
-	a.publishSpiritGraphStageSnapshot(ctx, spiritSessionID)
+	// GraphStage created 由 PublishV2Board 负责；节点状态由 PlanExecutor 更新。
+	// 不再在此发布 v1 team-based graph_stage 快照（与 v2 GraphStage 双真相源冲突）。
 
 	// 2026-07-04 问题 5 修复：在构建 members 数组和发布 v2 MemberSession
 	// created 事件之前过滤系统 Agent。之前仅 AssembleTeam 过滤了系统 Agent
@@ -1144,6 +1109,7 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	ts := biz.TeamStage{
 		ID:        string(agent.NewTeamStageActivityID(team.ID)),
 		TaskID:    string(agent.RootTaskActivityIDFromCtx(ctx)),
+		TurnID:    event.TurnIDFromContext(ctx),
 		TeamID:    team.ID,
 		TeamName:  team.DisplayName,
 		SessionID: spiritSessionID,
@@ -1162,152 +1128,6 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	// 原先仅发布 TeamStage 事件，前端 v2 store 的 teamRuns/memberSessions Map 为空，
 	// 导致 MemberSessionPanel 无法渲染成员会话树。
 	a.publishV2TeamRunAndMemberSessions(ctx, spiritSessionID, team, teamSession, agentKeys, members)
-}
-
-// publishSpiritGraphStageSnapshot publishes a graph_stage Activity carrying
-// the current DAG snapshot (meta.nodes) for a spirit session. The Activity ID
-// is derived deterministically from spiritSessionID via agent.GraphStageActivityID so every
-// call for the same session updates the same GraphStageBlock on the frontend
-// (no dedup logic needed — the upsert keyed by Activity.ID naturally merges).
-//
-// Design B.4.4 (方案A: backend aggregates DAG snapshot):
-//   - Each node corresponds to one team (nodeId = team.ID, label = team.DisplayName)
-//   - Node status is derived from team status (no independent node state machine)
-//   - dependsOn mirrors team.DependsOn for DAG edges
-//   - When team count == 1 (no DAG), frontend may hide Graph per design — still
-//     publish so the data is available
-//
-// Called from publishSpiritTeamAssembled (after team creation) and
-// HandleTeamTurnResult (after team status change) to keep the snapshot fresh.
-//
-// Phase 2: graph_stage snapshots are routed through the v2 Sequencer (FIFO +
-// retry) via ActivityBridgeEvent wrapping. The v1 ActivityEventBus is retained
-// as fallback only when neither seq nor eventBus is available.
-func (a *SpiritTeamAssembler) publishSpiritGraphStageSnapshot(ctx context.Context, spiritSessionID string) {
-	if (a.seq == nil && a.eventBus == nil && a.bus == nil) || spiritSessionID == "" || a.spiritUC == nil {
-		return
-	}
-	teams, err := a.spiritUC.ListAllTeams(ctx, spiritSessionID)
-	if err != nil {
-		a.lg.Warn("graph_stage 快照构建失败：列出团队失败",
-			loggateway.StepID("spirit.graph_stage.list_fail"),
-			loggateway.Str("spirit_session_id", spiritSessionID),
-			loggateway.Err(err),
-		)
-		return
-	}
-	publishGraphStageSnapshot(ctx, a.seq, a.eventBus, a.bus, a.lg, spiritSessionID, teams)
-}
-
-// publishGraphStageSnapshot is the free-function core of
-// publishSpiritGraphStageSnapshot. It accepts an already-fetched team list so
-// callers that have direct access to TeamUsecase (e.g. TeamStarter) can reuse
-// the logic without depending on SpiritTeamUsecase. See
-// publishSpiritGraphStageSnapshot for the full design rationale.
-//
-// Phase 2: graph_stage snapshots are routed through the v2 Sequencer (preferred)
-// → v2 EventBus (fallback) → v1 ActivityEventBus (last resort). The v1
-// ActivityEvent is wrapped in ActivityBridgeEvent so v2 consumers (front-end
-// AgentCard, Kanban) receive the payload unchanged.
-func publishGraphStageSnapshot(ctx context.Context, seq rt.EventPublisher, eventBus biz.EventBus, bus biz.ActivityEventBus, lg loggateway.Logger, spiritSessionID string, teams []biz.Team) {
-	if (seq == nil && eventBus == nil && bus == nil) || spiritSessionID == "" || len(teams) == 0 {
-		return
-	}
-	nodes := make([]map[string]any, 0, len(teams))
-	for _, t := range teams {
-		nodeStatus := "pending"
-		switch t.Status {
-		case biz.TeamStatusRunning:
-			nodeStatus = "running"
-		case biz.TeamStatusCompleted:
-			nodeStatus = "completed"
-		case biz.TeamStatusFailed:
-			nodeStatus = "failed"
-		case biz.TeamStatusCancelled:
-			nodeStatus = "skipped"
-		case biz.TeamStatusInterrupted:
-			nodeStatus = "failed"
-		}
-		node := map[string]any{
-			"nodeId":  t.ID,
-			"label":   t.DisplayName,
-			"status":  nodeStatus,
-			"team_id": t.ID,
-		}
-		if len(t.DependsOn) > 0 {
-			node["dependsOn"] = t.DependsOn
-		}
-		nodes = append(nodes, node)
-	}
-	// Aggregate status: running if any team running; completed if all terminal;
-	// failed if any failed; else pending.
-	aggregateStatus := biz.ActivityStatusCompleted
-	anyRunning := false
-	anyFailed := false
-	allTerminal := true
-	for _, t := range teams {
-		switch t.Status {
-		case biz.TeamStatusRunning, biz.TeamStatusPending:
-			allTerminal = false
-			if t.Status == biz.TeamStatusRunning {
-				anyRunning = true
-			}
-		case biz.TeamStatusFailed, biz.TeamStatusInterrupted:
-			anyFailed = true
-		}
-	}
-	switch {
-	case anyRunning:
-		aggregateStatus = biz.ActivityStatusRunning
-	case anyFailed:
-		aggregateStatus = biz.ActivityStatusFailed
-	case allTerminal:
-		aggregateStatus = biz.ActivityStatusCompleted
-	default:
-		aggregateStatus = biz.ActivityStatusRunning
-	}
-	eventType := biz.ActivityEventUpdated
-	if aggregateStatus == biz.ActivityStatusCompleted {
-		eventType = biz.ActivityEventCompleted
-	} else if aggregateStatus == biz.ActivityStatusFailed {
-		eventType = biz.ActivityEventFailed
-	}
-	// Deterministic Activity ID: same spiritSessionID → same ID across calls
-	// → frontend upsert updates the existing GraphStageBlock instead of creating
-	// a new one each snapshot.
-	activityID := string(agent.NewGraphStageActivityID(spiritSessionID))
-	ev := biz.ActivityEvent{
-		Event: eventType,
-		Activity: biz.Activity{
-			ID:               activityID,
-			Kind:             biz.ActivityKindGraphStage,
-			Status:           aggregateStatus,
-			Stage:            "team_dag_snapshot",
-			Timestamp:        time.Now().UTC(),
-			ParentActivityID: string(agent.RootTaskActivityIDFromCtx(ctx)),
-			SpiritSessionID:  spiritSessionID,
-			SessionID:        spiritSessionID,
-			AgentKey:         "spirit-graph-snapshot",
-			Content:          "团队 DAG 执行进度",
-			Meta: map[string]any{
-				"nodes":             nodes,
-				"spirit_session_id": spiritSessionID,
-				"source":            "spirit-team-assembler",
-				"team_count":        len(teams),
-			},
-		},
-		Domain: biz.ActivityDomainChat,
-	}
-	// Phase 2: route through v2 Sequencer (FIFO + retry) when available;
-	// fall back to v2 EventBus; last resort v1 ActivityEventBus.
-	switch {
-	case seq != nil:
-		seq.Publish(ctx, biz.NewActivityBridgeEvent(ev))
-	case eventBus != nil:
-		eventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
-	case bus != nil:
-		bus.Publish(ctx, ev)
-	}
 }
 
 // buildV2Members converts the v1 members array (map[string]any, used by v1

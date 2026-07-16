@@ -21,6 +21,12 @@
       </MonitorHeroSection>
 
       <MonitorErrorBanner v-if="error" :message="error" @retry="loadAll" />
+      <MonitorErrorBanner
+        v-if="backpressureMessage"
+        :message="backpressureMessage"
+        action-label="知道了"
+        @retry="clearBackpressure"
+      />
 
       <div class="monitor-tabs-wrap">
         <MonitorGlassPanel>
@@ -175,6 +181,8 @@ const {
   traceDetailOpen,
   // Log stream
   subTab,
+  backpressureMessage,
+  clearBackpressure,
   // SelfCheck
   selfCheckLoading,
   selfCheckTriggering,

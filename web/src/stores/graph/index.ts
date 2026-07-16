@@ -53,9 +53,11 @@ import {
   type TaskEvent,
   type TaskStatus,
 } from '../../features/graph/api';
+import { GRAPH_LIST_PAGE_SIZE } from '../../features/constants/queryLimits';
 
 export const useGraphStore = defineStore('graph', () => {
   const graphs = ref<GraphDefinition[]>([]);
+  const graphsNextPageToken = ref('');
   const activeGraph = ref<GraphDefinition | null>(null);
   const loading = ref(false);
   const templates = ref<GraphTemplateInfo[]>([]);
@@ -65,11 +67,17 @@ export const useGraphStore = defineStore('graph', () => {
   const executionHistoryLoading = ref(false);
   const executionHistoryNextToken = ref('');
 
-  async function loadGraphs(pageSize = 50, pageToken = '') {
+  async function loadGraphs(pageSize = GRAPH_LIST_PAGE_SIZE, append = false) {
     loading.value = true;
     try {
+      const pageToken = append ? graphsNextPageToken.value : '';
       const result = await listGraphs(pageSize, pageToken);
-      graphs.value = result.items ?? [];
+      if (append) {
+        graphs.value.push(...(result.items ?? []));
+      } else {
+        graphs.value = result.items ?? [];
+      }
+      graphsNextPageToken.value = result.nextPageToken ?? '';
     } finally {
       loading.value = false;
     }
@@ -303,6 +311,7 @@ export const useGraphStore = defineStore('graph', () => {
 
   return {
     graphs,
+    graphsNextPageToken,
     activeGraph,
     loading,
     templates,

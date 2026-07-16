@@ -622,6 +622,14 @@ export async function listMemberSessionsV2(runId: string): Promise<MemberSession
   return (resp.data?.memberSessions ?? []).map(mapMemberSession);
 }
 
+/** List Mode B orphan member_sessions for a spirit session. Backend: GET /v2/sessions/{session_id}/orphan_member_sessions. */
+export async function listOrphanMemberSessionsV2(sessionId: string): Promise<MemberSession[]> {
+  const resp = await kratosApi.get<ListMemberSessionsV2Response>(
+    `/v2/sessions/${encodeURIComponent(sessionId)}/orphan_member_sessions`,
+  );
+  return (resp.data?.memberSessions ?? []).map(mapMemberSession);
+}
+
 /** List plan_boards for a task. Backend: GET /v2/tasks/{task_id}/plan_boards. */
 export async function listPlanBoardsV2(taskId: string): Promise<PlanBoard[]> {
   const resp = await kratosApi.get<ListPlanBoardsV2Response>(`/v2/tasks/${encodeURIComponent(taskId)}/plan_boards`);

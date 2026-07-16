@@ -10,6 +10,7 @@ vi.mock('../../features/session/v2Api', () => ({
   listTeamStagesV2: vi.fn(),
   listTeamRunsV2: vi.fn(),
   listMemberSessionsV2: vi.fn(),
+  listOrphanMemberSessionsV2: vi.fn(),
   listPlanBoardsV2: vi.fn(),
   listPlanStepsV2: vi.fn(),
   listGraphStagesV2: vi.fn(),
@@ -24,6 +25,7 @@ import {
   listPlanBoardsV2,
   listPlanStepsV2,
   listGraphStagesV2,
+  listOrphanMemberSessionsV2,
 } from '../../features/session/v2Api';
 import { useChatActivityStore } from '../chat/activityV2Store';
 import type { Task, Step } from '../../features/chat/v2Types';
@@ -131,6 +133,7 @@ describe('useChatActivityStore', () => {
     vi.mocked(listPlanBoardsV2).mockResolvedValue([]);
     vi.mocked(listPlanStepsV2).mockResolvedValue([]);
     vi.mocked(listGraphStagesV2).mockResolvedValue([]);
+    vi.mocked(listOrphanMemberSessionsV2).mockResolvedValue([]);
 
     const s = useChatActivityStore();
     await s.fetchSessionHistory('sess-1');
@@ -144,6 +147,7 @@ describe('useChatActivityStore', () => {
   it('fetchSessionHistory clears hydrationErrors at start', async () => {
     vi.mocked(listTasksV2).mockResolvedValue([]);
     vi.mocked(listStepsV2).mockResolvedValue([]);
+    vi.mocked(listOrphanMemberSessionsV2).mockResolvedValue([]);
 
     const s = useChatActivityStore();
     // Simulate a previous failed fetch.
@@ -154,6 +158,41 @@ describe('useChatActivityStore', () => {
     expect(s.hydrationErrors.length).toBe(0);
   });
 
+  it('fetchSessionHistory hydrates Mode B orphan member sessions', async () => {
+    vi.mocked(listTasksV2).mockResolvedValue([makeTask({ ID: 'task-1', SessionID: 'spirit-1', Status: 'running' })]);
+    vi.mocked(listStepsV2).mockResolvedValue([]);
+    vi.mocked(listTurnsV2).mockResolvedValue([]);
+    vi.mocked(listTeamStagesV2).mockResolvedValue([]);
+    vi.mocked(listPlanBoardsV2).mockResolvedValue([]);
+    vi.mocked(listPlanStepsV2).mockResolvedValue([]);
+    vi.mocked(listGraphStagesV2).mockResolvedValue([]);
+    vi.mocked(listOrphanMemberSessionsV2).mockResolvedValue([
+      {
+        ID: 'ms-orphan',
+        TeamRunID: '',
+        TeamStageID: '',
+        TaskID: '',
+        SessionID: 'child-sess',
+        SpiritSessionID: 'spirit-1',
+        AgentKey: 'subagent:r1',
+        AgentName: 'Do stuff',
+        AvatarURL: '',
+        Status: 'running',
+        Seq: 1,
+        Version: 1,
+        StartedAt: '',
+        FinishedAt: null,
+        Error: '',
+      },
+    ]);
+
+    const s = useChatActivityStore();
+    await s.fetchSessionHistory('spirit-1');
+
+    expect(listOrphanMemberSessionsV2).toHaveBeenCalledWith('spirit-1');
+    expect(s.memberSessions.get('ms-orphan')?.SessionID).toBe('child-sess');
+    expect(s.getTaskOrphanMemberSessions('task-1').map((m) => m.ID)).toEqual(['ms-orphan']);
+  });
   it('appendStepDelta ignores unknown DeltaField without corrupting Reasoning', () => {
     const s = useChatActivityStore();
     const step: Step = {
@@ -183,5 +222,67 @@ describe('useChatActivityStore', () => {
     s.appendStepDelta('s1', 'tool_args', '{"arg":1}');
     expect(s.steps.get('s1')?.Content).toBe('');
     expect(s.steps.get('s1')?.Reasoning).toBe('existing');
+  });
+
+  it('getTaskOrphanMemberSessions returns Mode B cards with empty TeamRunID/TaskID on host task', () => {
+    const s = useChatActivityStore();
+    s.upsertTask(makeTask({ ID: 't1', SessionID: 'spirit-1', Status: 'running', Seq: 1 }));
+    s.upsertMemberSession({
+      ID: 'ms-modeb',
+      TeamRunID: '',
+      TeamStageID: '',
+      TaskID: '',
+      SessionID: 'child-sess',
+      SpiritSessionID: 'spirit-1',
+      AgentKey: 'subagent:run1',
+      AgentName: 'Do stuff',
+      AvatarURL: '',
+      Status: 'running',
+      Seq: 1,
+      Version: 1,
+      StartedAt: '',
+      FinishedAt: null,
+      Error: '',
+    });
+    const orphans = s.getTaskOrphanMemberSessions('t1');
+    expect(orphans.map((m) => m.ID)).toEqual(['ms-modeb']);
+  });
+
+  it('getTaskOrphanMemberSessions excludes members already under a TeamRun', () => {
+    const s = useChatActivityStore();
+    s.upsertTask(makeTask({ ID: 't1', SessionID: 'spirit-1', Status: 'running' }));
+    s.upsertTeamRun({
+      ID: 'tr1',
+      TeamStageID: 'ts1',
+      TaskID: 't1',
+      SessionID: 'spirit-1',
+      SpiritSessionID: 'spirit-1',
+      DagNodeID: '',
+      DependsOn: [],
+      Status: 'running',
+      StartedAt: '',
+      CompletedAt: null,
+      Seq: 1,
+      Version: 1,
+      Error: '',
+    });
+    s.upsertMemberSession({
+      ID: 'ms-team',
+      TeamRunID: 'tr1',
+      TeamStageID: 'ts1',
+      TaskID: 't1',
+      SessionID: 'member-sess',
+      SpiritSessionID: 'spirit-1',
+      AgentKey: 'coder',
+      AgentName: 'Coder',
+      AvatarURL: '',
+      Status: 'running',
+      Seq: 1,
+      Version: 1,
+      StartedAt: '',
+      FinishedAt: null,
+      Error: '',
+    });
+    expect(s.getTaskOrphanMemberSessions('t1')).toEqual([]);
   });
 });

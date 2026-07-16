@@ -1223,10 +1223,13 @@ func mapPlanStepToGraphNodeStatus(ps PlanStepStatus) GraphNodeStatus {
 ```
 
 **与现有 GraphStageBlock.vue 的关系**：
-- 现有 `web/src/components/chat/GraphStageBlock.vue`（323 行）走 v1 `activity.bridge` 路径
-- 新 v2 版本位于 `web/src/components/chat/v2/GraphStageBlock.vue`，从 v2 GraphStage entity 取数据
-- v1 版本在 v2 渲染链完全接入后删除（参考 §九 关键文件清单）
+- ~~`web/src/components/chat/GraphStageBlock.vue`（v1）~~ → **2026-07-16 已删除**
+- v2：`web/src/components/chat/v2/GraphStageBlock.vue`（TaskCard 唯一引用）
+- 单节点（`nodes.length <= 1`）不渲染；header `completed/total`；终态优先 `GraphStage.Status`；`TeamStageID` 在 status-only 更新中保留
 
+**v1 快照路径**：`spirit_team` 的 team-based `ActivityKindGraphStage` 快照与 DI 中的 v1 `bus` 参数已移除（2026-07-16）。唯一真相源为 `PublishV2Board` + `PlanExecutor`。
+
+> 注意：`ActivityKindGraphStage` 仍被 **M36 工作流 Graph**（`event_bridge` / Channel）使用，与 Chat PlanDAG 的 v2 GraphStage 实体事件不同。
 ### 3.8 阻塞判定
 
 #### 3.8.1 简化规则
@@ -1400,7 +1403,7 @@ function detectHITLBlocked(teamStage: TeamStage): BlockedInfo | null {
 - `web/src/components/chat/ActivityStream.vue` → 拆分为按类型组件
 - `web/src/components/chat/PlanBlock.vue` → `PlanBoardCard.vue` + SVG 依赖图
 - `web/src/components/chat/TeamCard.vue`/`AgentCard.vue` → `TeamStagePanel.vue`/`MemberSessionPanel.vue`
-- `web/src/components/chat/GraphStageBlock.vue` → 迁移到 v2 路径 `v2/GraphStageBlock.vue`
+- ~~`web/src/components/chat/GraphStageBlock.vue` → 迁移到 v2~~ → **v1 已删除**（2026-07-16）
 
 **新增**：
 - `internal/service/plan_executor.go`
@@ -1653,8 +1656,9 @@ function detectHITLBlocked(teamStage: TeamStage): BlockedInfo | null {
 - PlanBoardCard 折叠/摘要逻辑（现仅 44 行骨架）
 
 **v1 → v2 迁移点**：
-- `internal/service/spirit_team.go` 的 `publishSpiritGraphStageSnapshot` 当前走 v1 `bus` + v2 `seq` 双路径，需迁移为纯 v2 事件
-- 前端 `useChatWorkspace.ts:151` 的 `activity.bridge` 拦截路径在 graph_stage 完成迁移后可移除
+- ~~`spirit_team` v1 graph_stage 快照 + DI `bus`~~ → **2026-07-16 已删除**（构造函数不再注入 ActivityEventBus）
+- ~~v1 `GraphStageBlock.vue`~~ → **已删除**；主 UI 仅用 `v2/GraphStageBlock.vue`
+- `activity.kind=graph_stage` 保留给 **工作流 Graph（M36）**；Chat PlanDAG 走 v2 `graph_stage.*` 实体事件
 
 ### 12.2 Phase 划分
 
@@ -1665,7 +1669,7 @@ function detectHITLBlocked(teamStage: TeamStage): BlockedInfo | null {
 | Phase 3 | activityV2Store 补齐 graphStages Map + 事件路由 | store + composable | `pnpm lint` | ✅ 完成（合并 Phase 3+4） |
 | Phase 4 | 新增 v2/GraphStageBlock.vue + GraphNode.vue | 组件 | `pnpm build` | ✅ 完成（泛化 usePlanDAGLayout） |
 | Phase 5 | TaskCard 修正渲染顺序 + 接入 GraphStageBlock | 组件 | `pnpm build` | ✅ 完成（顺序 Plan→Graph→Team→Turn） |
-| Phase 6 | 后端发布 v2 graph_stage 事件（替换 v1 路径） | service | `go build` + `go test` | ✅ 完成（PlanExecutor.Subscribe 中 initGraphStage + 6 处 GraphNode 状态更新） |
+| Phase 6 | 后端发布 v2 graph_stage 事件（替换 v1 路径） | service | `go build` + `go test` | ✅ 完成（PlanExecutor；2026-07-16 停用 v1 快照） |
 | Phase 7 | 完善骨架组件（Plan/Team/Agent 三件套） | 组件 | `pnpm build` | ✅ 完成（PlanBoardCard 折叠/摘要 + TeamRunCard 三段式 + MemberSessionPanel 简化布局 + 系统 agent 排除） |
 | Phase 8 | 全量验证 | - | `make build && make test` + `pnpm lint && pnpm build` | ✅ 通过（go build/test + pnpm lint/build 全绿；2 个 Pinia 失败为 ChatMessagePanel.legacy 既有问题） |
 
@@ -1790,7 +1794,7 @@ export interface GraphStage {
 
 **改动文件**：
 - `internal/service/spirit_team.go`（修改）：
-  - 将 `publishSpiritGraphStageSnapshot` 改为发布 v2 `GraphStageCreatedEvent` / `GraphStageUpdatedEvent`（通过 eventBus）
+  - ~~将 `publishSpiritGraphStageSnapshot` 改为发布 v2 事件~~ → **已删除该路径**；created 由 `PublishV2Board`，节点/终态由 `PlanExecutor`
   - 移除 v1 `bus` (ActivityEventBus) 依赖（如果其他事件也完成迁移）
   - 在 `SpiritTeamAssembler` 构造函数中移除 `bus` 字段（如无其他用途）
 - `internal/service/plan_executor.go`（修改）：

@@ -255,10 +255,7 @@ func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg logg
 			sanitizeActivityControlCommand(ev, e)
 		}
 		if ev != nil && bridge.EventBus() != nil {
-			// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves
-			// the v1 ActivityEvent payload (Kind/Stage/Meta) for the frontend
-			// timeline and team_graph_run_coordinator's v2 Subscribe.
-			bridge.EventBus().Publish(context.Background(), biz.NewActivityBridgeEvent(*ev))
+			biz.PublishSystemNoticeFromActivity(context.Background(), bridge.EventBus(), *ev)
 		}
 	}
 
@@ -379,7 +376,7 @@ func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.Grap
 		return nil, err
 	}
 	name := cfg.EntryPoint
-	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, cfg.ExecutionEngine, subAgents, nodeAgents)
+	graphAgent, err := f.createAgent(name, g, cfg, cfg.EnableCheckpoint, cfg.ExecutionEngine, subAgents, nodeAgents)
 	if err != nil {
 		return nil, err
 	}
@@ -737,22 +734,26 @@ func (f *trpcGraphBuilderFactory) FindNodeDef(cfg biz.GraphBuildConfig, taskMeta
 	return nil
 }
 
-func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, ee biz.ExecutionEngineType, subAgents []trpcagent.Agent, nodeAgents map[string]trpcagent.Agent) (*graphtrpc.GraphAgent, error) {
+func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, cfg biz.GraphBuildConfig, enableCheckpoint bool, ee biz.ExecutionEngineType, subAgents []trpcagent.Agent, nodeAgents map[string]trpcagent.Agent) (*graphtrpc.GraphAgent, error) {
 	// P1-8: Force-enable CheckpointSaver for all graph runs when a saver is
 	// available, regardless of the per-graph EnableCheckpoint flag. This
 	// guarantees that every Run can be recovered by RecoveryWorker after a
 	// process restart. The EnableCheckpoint flag is now only a hint for
 	// graph definitions that explicitly opt out (saver == nil).
+	var extraOpts []trpcgraph.ExecutorOption
+	if d := graphtrpc.MaxNodeTimeout(cfg.Nodes); d > 0 {
+		extraOpts = append(extraOpts, trpcgraph.WithNodeTimeout(d))
+	}
 	var (
 		agent *graphtrpc.GraphAgent
 		err   error
 	)
 	if f.saver != nil {
-		agent, err = graphtrpc.NewGraphAgentWithSaver(name, g, f.saver, ee, subAgents...)
+		agent, err = graphtrpc.NewGraphAgentWithSaver(name, g, f.saver, ee, subAgents, extraOpts...)
 	} else if ee != "" && ee != biz.EngineBSP {
-		agent, err = graphtrpc.NewGraphAgentWithEngine(name, g, enableCheckpoint, ee, subAgents...)
+		agent, err = graphtrpc.NewGraphAgentWithEngine(name, g, enableCheckpoint, ee, subAgents, extraOpts...)
 	} else {
-		agent, err = graphtrpc.NewGraphAgent(name, g, enableCheckpoint, subAgents...)
+		agent, err = graphtrpc.NewGraphAgentWithSubAgents(name, g, enableCheckpoint, nil, subAgents, extraOpts...)
 	}
 	if err != nil {
 		return nil, err

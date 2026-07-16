@@ -13,9 +13,8 @@ import { getChannelWsCursor } from '../channelWsCursor';
 export type StreamManagerDeps = {
   runtimeStore: ReturnType<typeof useChatRuntimeStore>;
   /**
-   * Activity-First (AF): called when an activity_event WS message arrives.
-   * Replaces the legacy onActivityEnvelope for chat events. The handler
-   * receives a business-semantic ActivityEvent with a full Activity snapshot.
+   * Optional legacy ActivityEvent callback. Chat does not pass this —
+   * timeline rendering is v2-only via onV2Event.
    */
   onActivityEvent?: (ev: ActivityEvent) => void;
   /** v2 chat events: dispatched when a v2_event WS envelope arrives. */

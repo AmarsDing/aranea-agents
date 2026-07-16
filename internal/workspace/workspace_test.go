@@ -95,8 +95,9 @@ func TestAssertWorkspace_NonSystemCallerWithSystemResource(t *testing.T) {
 	}
 }
 
-// TestAssertWorkspaceMutate_SystemBypass verifies system callers can mutate
-// any resource, including shared (empty workspace) resources.
+// TestAssertWorkspaceMutate_SystemBypass verifies that the system workspace
+// bypasses the mutate check (cron/admin background tasks may write shared
+// resources).
 func TestAssertWorkspaceMutate_SystemBypass(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -104,26 +105,33 @@ func TestAssertWorkspaceMutate_SystemBypass(t *testing.T) {
 		resourceWS string
 	}{
 		{"system caller, non-empty resource", SystemWorkspaceID, "ws-1"},
-		{"system caller, empty (shared) resource", SystemWorkspaceID, ""},
+		{"system caller, empty resource (shared)", SystemWorkspaceID, ""},
 		{"system caller, default resource", SystemWorkspaceID, DefaultWorkspaceID},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			if err := AssertWorkspaceMutate(c.callerWS, c.resourceWS); err != nil {
-				t.Fatalf("system workspace should bypass mutate, got %v", err)
+				t.Fatalf("system workspace should bypass mutate check, got %v", err)
 			}
 		})
 	}
 }
 
-// TestAssertWorkspaceMutate_SharedReadOnlyForTenants verifies fail-closed:
-// empty resourceWS is shared/built-in and tenants must not mutate it.
-func TestAssertWorkspaceMutate_SharedReadOnlyForTenants(t *testing.T) {
-	for _, caller := range []string{"ws-1", DefaultWorkspaceID, "tenant-abc"} {
-		t.Run("caller="+caller, func(t *testing.T) {
-			err := AssertWorkspaceMutate(caller, "")
+// TestAssertWorkspaceMutate_EmptyResourceRejected verifies the fail-closed
+// semantics for shared resources: a non-system caller must NOT mutate a
+// shared (resourceWS="") resource. This is the key difference from
+// AssertWorkspaceOrShared, which permits reads on shared resources.
+//
+// Business intent (knowledge.go:173-177): "Shared collections (workspace='')
+// are read-only for tenants (fail-closed)." The same rule applies to all
+// shareable entities (agent/team/graph/plugin/mcp_server/knowledge).
+func TestAssertWorkspaceMutate_EmptyResourceRejected(t *testing.T) {
+	cases := []string{"ws-1", DefaultWorkspaceID, "tenant-abc"}
+	for _, callerWS := range cases {
+		t.Run("caller="+callerWS, func(t *testing.T) {
+			err := AssertWorkspaceMutate(callerWS, "")
 			if err == nil {
-				t.Fatal("expected Forbidden for tenant mutating shared resource, got nil")
+				t.Fatal("expected error for non-system caller mutating shared resource, got nil")
 			}
 			ae, ok := apierror.From(err)
 			if !ok {
@@ -139,17 +147,22 @@ func TestAssertWorkspaceMutate_SharedReadOnlyForTenants(t *testing.T) {
 	}
 }
 
-// TestAssertWorkspaceMutate_SameWorkspaceAllowed verifies tenants can mutate
-// resources owned by their own workspace.
-func TestAssertWorkspaceMutate_SameWorkspaceAllowed(t *testing.T) {
-	if err := AssertWorkspaceMutate("ws-1", "ws-1"); err != nil {
-		t.Fatalf("same workspace mutate should pass, got %v", err)
+// TestAssertWorkspaceMutate_SameWorkspace verifies that a caller can
+// mutate a resource in the same workspace.
+func TestAssertWorkspaceMutate_SameWorkspace(t *testing.T) {
+	cases := []string{"ws-1", "default", "tenant-abc"}
+	for _, ws := range cases {
+		t.Run("caller="+ws, func(t *testing.T) {
+			if err := AssertWorkspaceMutate(ws, ws); err != nil {
+				t.Fatalf("same workspace %q mutate should pass, got %v", ws, err)
+			}
+		})
 	}
 }
 
-// TestAssertWorkspaceMutate_CrossWorkspaceForbidden verifies tenants cannot
-// mutate resources owned by another workspace.
-func TestAssertWorkspaceMutate_CrossWorkspaceForbidden(t *testing.T) {
+// TestAssertWorkspaceMutate_DifferentWorkspace verifies that cross-tenant
+// mutate is rejected with Forbidden.
+func TestAssertWorkspaceMutate_DifferentWorkspace(t *testing.T) {
 	err := AssertWorkspaceMutate("ws-1", "ws-2")
 	if err == nil {
 		t.Fatal("expected error for cross-workspace mutate, got nil")

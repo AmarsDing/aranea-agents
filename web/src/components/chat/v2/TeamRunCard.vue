@@ -72,7 +72,20 @@
 
     <!-- 展开后：成员列表（每个 MemberSessionPanel 自带底部输入栏） -->
     <div v-show="!collapsed" class="team-run-expand">
-      <div v-if="teamRun.Error" class="team-run-error">{{ teamRun.Error }}</div>
+      <div v-if="teamRun.Error" class="team-run-error">
+        <span>{{ teamRun.Error }}</span>
+        <q-btn
+          v-if="teamRun.Status === 'failed' && retryTeamId"
+          flat
+          dense
+          size="sm"
+          color="negative"
+          icon="refresh"
+          :label="t('chat.v2.retry')"
+          class="team-run-error__retry"
+          @click.stop="onRetry"
+        />
+      </div>
       <div v-if="memberSessions.length === 0" class="team-run-empty">
         {{ t('chat.v2.noMembers') }}
       </div>
@@ -82,6 +95,7 @@
         :member-session="ms"
         @pause-agent="(sid) => $emit('pause-agent', sid)"
         @inject-agent="(p) => $emit('inject-agent', p)"
+        @expand="(ids) => $emit('expand', ids)"
       />
     </div>
   </div>
@@ -104,15 +118,25 @@ function useSafeI18n() {
 }
 
 const props = defineProps<{ teamRun: TeamRun }>();
-defineEmits<{
+const emit = defineEmits<{
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
+  'retry-team': [teamId: string];
+  expand: [sessionIds: string[]];
 }>();
 
 const { t } = useSafeI18n();
 const store = useActivityQueries();
 const memberSessions = computed(() => store.getTeamRunMemberSessions(props.teamRun.ID));
 
+const retryTeamId = computed(() => {
+  const ts = store.teamStages().get(props.teamRun.TeamStageID);
+  return ts?.TeamID || '';
+});
+
+function onRetry() {
+  if (retryTeamId.value) emit('retry-team', retryTeamId.value);
+}
 // 显示标题：优先 TeamStage.TeamName → PlanStep.Label → DagNodeID → ID
 const displayTitle = computed(() => {
   const ts = store.teamStages().get(props.teamRun.TeamStageID);
@@ -185,11 +209,20 @@ function formatDuration(ms: number): string {
   return `${hr}h${minRem}m`;
 }
 
+// 折叠状态：running/paused 默认展开，终态默认折叠
+const collapsed = ref(props.teamRun.Status !== 'running' && props.teamRun.Status !== 'paused');
+const userToggled = ref(false);
+
 onMounted(() => {
   if (props.teamRun.Status === 'running') {
     timer = setInterval(() => {
       now.value = Date.now();
     }, 1000);
+  }
+  // Default-expanded: lazy-load member steps on mount (A.4.7)
+  if (!collapsed.value) {
+    const ids = memberSessions.value.map((ms) => ms.SessionID).filter(Boolean);
+    if (ids.length) emit('expand', ids);
   }
 });
 
@@ -199,10 +232,6 @@ onUnmounted(() => {
     timer = null;
   }
 });
-
-// 折叠状态：running 默认展开，终态默认折叠
-const collapsed = ref(props.teamRun.Status !== 'running');
-const userToggled = ref(false);
 
 // 响应 ChatMessageList 的 autoExpandFor
 const autoExpandFor = inject<Ref<{ agentKey: string; teamId: string } | null>>('chat:autoExpandFor', ref(null));
@@ -218,7 +247,13 @@ watch(
 
 function toggleCollapse() {
   userToggled.value = true;
-  collapsed.value = !collapsed.value;
+  const next = !collapsed.value;
+  collapsed.value = next;
+  if (!next) {
+    // Expanding: lazy-load member session steps (A.4.7)
+    const ids = memberSessions.value.map((ms) => ms.SessionID).filter(Boolean);
+    if (ids.length) emit('expand', ids);
+  }
 }
 
 // 状态色映射
@@ -226,6 +261,7 @@ const statusColor = computed(
   () =>
     ({
       running: 'blue',
+      paused: 'warning',
       completed: 'green',
       failed: 'red',
       cancelled: 'grey',
@@ -235,6 +271,7 @@ const statusColor = computed(
 const statusLabel = computed(() => {
   const map: Record<string, string> = {
     running: t('chat.v2.statusRunning'),
+    paused: t('chat.v2.statusPaused'),
     completed: t('chat.v2.statusCompleted'),
     failed: t('chat.v2.statusFailed'),
     cancelled: t('chat.v2.statusCancelled'),
@@ -488,4 +525,11 @@ const formattedTime = computed(() => {
   padding: 4px 6px
   background: rgba(229, 92, 92, 0.08)
   border-radius: 3px
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 8px
+
+  &__retry
+    flex-shrink: 0
 </style>

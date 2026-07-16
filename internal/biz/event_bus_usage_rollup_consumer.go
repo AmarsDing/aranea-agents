@@ -2,19 +2,12 @@ package biz
 
 import (
 	"context"
-	"time"
 
 	"aranea-agents/internal/event/contract"
 )
 
-// usageRollupConsumer rolls up token usage statistics from ActivityEvents.
-//
-// Phase 3b-D: migrated from v1 ActivityEventBus to v2 EventBus. The
-// token_usage publisher (biz.PublishTokenUsageEnvelope) emits
-// ActivityEvent{Stage:"token_usage", Meta:{"token_usage":<EnvelopeTokenUsage>}}
-// wrapped in ActivityBridgeEvent on the v2 EventBus. This consumer extracts
-// the v1 ActivityEvent from the bridge, filters by Stage=="token_usage", and
-// extracts the EnvelopeTokenUsage from Meta.
+// usageRollupConsumer rolls up token usage statistics from system.notice
+// events with NoticeType=token_usage.
 type usageRollupConsumer struct {
 	bus    EventBus
 	usage  *UsageUsecase
@@ -32,21 +25,21 @@ func (c *usageRollupConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runActivityBridgeConsumerWithOpts(ctx, "event-bus-usage-rollup", c.bus,
-		func(ev ActivityEvent) bool {
-			return ev.Activity.Stage == "token_usage"
+	runSystemNoticeConsumerWithOpts(ctx, "event-bus-usage-rollup", c.bus,
+		func(n *SystemNoticeEvent) bool {
+			return n != nil && n.NoticeType == "token_usage"
 		},
 		c.handle,
-		offerOption[ActivityEvent]{FallbackSync: true, FallbackFn: c.handle},
+		offerOption[*SystemNoticeEvent]{FallbackSync: true, FallbackFn: c.handle},
 		c.logger,
 	)
 }
 
-func (c *usageRollupConsumer) handle(ctx context.Context, ev ActivityEvent) {
-	if c == nil || c.usage == nil {
+func (c *usageRollupConsumer) handle(ctx context.Context, n *SystemNoticeEvent) {
+	if c == nil || c.usage == nil || n == nil {
 		return
 	}
-	tu, ok := ev.Activity.Meta["token_usage"]
+	tu, ok := n.Meta["token_usage"]
 	if !ok || tu == nil {
 		return
 	}
@@ -56,7 +49,7 @@ func (c *usageRollupConsumer) handle(ctx context.Context, ev ActivityEvent) {
 	}
 	e := tokenUsageFromEnvelope(&envTU)
 	if err := c.usage.RollupDailyHourly(ctx, e); err != nil && c.logger != nil {
-		c.logger.LogSessionWarn(ctx, ev.Activity.SessionID, "usage.rollup_failed", "用量汇总写入失败",
+		c.logger.LogSessionWarn(ctx, n.SpiritSessionID(), "usage.rollup_failed", "用量汇总写入失败",
 			LogPair{Key: "error", Value: err})
 	}
 }
@@ -179,27 +172,15 @@ func TokenUsageEventToEnvelope(e TokenUsageEvent) contract.EnvelopeTokenUsage {
 	}
 }
 
-// PublishTokenUsageEnvelope publishes a token_usage ActivityEvent on the v2
-// EventBus via ActivityBridgeEvent. Phase 3b-D: migrated from v1 ActivityEventBus.
+// PublishTokenUsageEnvelope publishes a token_usage system.notice on the v2 EventBus.
 func PublishTokenUsageEnvelope(ctx context.Context, bus EventBus, e TokenUsageEvent) {
 	if bus == nil {
 		return
 	}
 	tu := TokenUsageEventToEnvelope(e)
-	ev := ActivityEvent{
-		Event: ActivityEventUpdated,
-		Activity: Activity{
-			ID:        e.ID,
-			Kind:      ActivityKindNotice,
-			Status:    ActivityStatusCompleted,
-			SessionID: e.SessionID,
-			TeamID:    e.TeamID,
-			AgentKey:  e.AgentKey,
-			Timestamp: time.Now().UTC(),
-			Stage:     "token_usage",
-			Meta:      map[string]any{"token_usage": tu},
-		},
-		Domain: ActivityDomainSystem,
-	}
-	bus.Publish(ctx, NewActivityBridgeEvent(ev))
+	bus.Publish(ctx, NewSystemNoticeEvent(e.SessionID, "token_usage", "", map[string]any{
+		"token_usage": tu,
+		"team_id":     e.TeamID,
+		"agent_key":   e.AgentKey,
+	}))
 }

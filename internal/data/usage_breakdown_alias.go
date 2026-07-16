@@ -29,6 +29,9 @@ func mergeUsageBreakdownByAlias(rows []biz.UsageBreakdownRow) []biz.UsageBreakdo
 			if row.ModelDisplayName != "" {
 				ex.ModelDisplayName = row.ModelDisplayName
 			}
+			if row.LastActiveDate > ex.LastActiveDate {
+				ex.LastActiveDate = row.LastActiveDate
+			}
 			continue
 		}
 		copy := row

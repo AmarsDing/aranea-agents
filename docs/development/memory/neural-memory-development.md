@@ -1,6 +1,7 @@
 # 神经记忆系统 — 开发计划
 
-> **版本**：2026-05-28 | **状态**：❌ 未启动
+> **版本**：2026-07-16 | **状态**：❌ 专用模块计划未启动（48 项任务仍以本表为准）
+> **旁路落地说明**：编排升级 / Phase6 已部分实现重叠能力（L3 bi-temporal 列、A-MEM links、Ebbinghaus decay、sleep-time、spreading activation / Hebbian）。**勿双重记账为「Neural 已完成」**——下列任务包与 `memory_neural.go` 等专用落点仍未启动。
 > **需求**：[`neural-memory.md`](./neural-memory.md) · **设计**：[`neural-memory.design.md`](./neural-memory.design.md)
 > **前置开发计划**：[`memory-development.md`](./memory-development.md)
 > **运行时边界**：[AGENT_RUNTIME_BOUNDARY.md](../../AGENT_RUNTIME_BOUNDARY.md)
@@ -19,7 +20,7 @@
 | `internal/service` | `memory_neural.go`（新增 RPC 实现） |
 | `internal/biz` | `memory_temporal.go`、`memory_links.go`、`memory_linked_update.go`、`memory_consolidation.go`、`memory_bio_decay.go`、`memory_reconsolidation.go`、`memory_agent.go` |
 | `internal/agent` | `memory_tools.go`（Agent Memory Tool 装配） |
-| `internal/data/sessionmemory` | `store_fact_temporal.go`、`store_fact_links.go`、`store_evolution_log.go`、`store_consolidation.go` |
+| `internal/data/memory_shim_*.go` | temporal / links / evolution / consolidation 扩展（原计划路径 `sessionmemory` 已折叠） |
 | `internal/cronrunner/jobs` | `memory_consolidation_worker.go`、`memory_bio_decay_worker.go` |
 | `internal/runtime` | `memory_set.go` 扩展（增加 MemoryAgent 等） |
 
@@ -34,7 +35,7 @@
 | 能力 | 现有锚点 | 扩展方式 |
 |------|----------|----------|
 | 提取管道 | `internal/cronrunner/jobs/auto_memory.go` | extract() 末尾增加 temporal + volatility + links |
-| L3 存储 | `internal/data/sessionmemory/store_l3_recall.go` | ALTER TABLE + 新查询方法 |
+| L3 存储 | `internal/data/memory_shim_l3.go` / recall adapters | ALTER TABLE + 新查询方法 |
 | L4 存储 | `internal/data/memory_l4.go` | ALTER TABLE + 双时态查询 |
 | L3 召回 | `internal/biz/memory_l3_fused_recall.go` | 时间过滤 + 再巩固 |
 | L4 召回 | `internal/biz/memory_l4_usecase.go` | valid_until 过滤 |

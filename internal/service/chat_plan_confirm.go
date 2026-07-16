@@ -3,15 +3,12 @@ package service
 import (
 	"context"
 	"strings"
-	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/google/uuid"
 )
 
 // ConfirmPlan handles user confirmation or rejection of a draft TaskPlan created
@@ -158,50 +155,27 @@ func isValidStrategy(s string) bool {
 	return false
 }
 
-// publishPlanEvent publishes a plan_confirmed or plan_rejected event as a
-// Kind=notice ActivityEvent (NOT Kind=plan). The plan confirmation is an
-// informational signal, not a new task plan. Emitting it as Kind=plan created
-// a spurious second PlanBlock on the timeline (B.4.3 dedup-by-turnID would
-// also catch this, but routing to NoticeBlock is semantically correct).
-// Failures are logged but not returned, since event delivery is best-effort
-// for informational events (AS-EVT-01).
-//
-// Phase 3b-D: migrated to v2 EventBus via ActivityBridgeEvent.
+// publishPlanEvent publishes a plan_confirmed or plan_rejected system.notice.
+// Failures are logged but not returned (AS-EVT-01 informational).
 func (s *ChatService) publishPlanEvent(ctx context.Context, sessionID, planID, decision, reason string) {
 	bus := s.orch.td().Pipeline.EventBus
 	if bus == nil {
 		return
 	}
-	noticeType := "success"
-	if decision == "rejected" {
-		noticeType = "warning"
-	}
+	noticeType := "plan_confirmed"
 	message := "计划已确认"
 	if decision == "rejected" {
+		noticeType = "plan_rejected"
 		message = "计划已拒绝"
 	}
 	if reason != "" {
 		message = message + ": " + reason
 	}
-	bus.Publish(ctx, biz.NewActivityBridgeEvent(biz.ActivityEvent{
-		Event: biz.ActivityEventCreated,
-		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindNotice,
-			Status:          biz.ActivityStatusCompleted,
-			SessionID:       sessionID,
-			SpiritSessionID: sessionID,
-			Timestamp:       time.Now().UTC(),
-			Content:         message,
-			Meta: map[string]any{
-				"plan_id":     planID,
-				"decision":    decision,
-				"reason":      reason,
-				"status":      decision,
-				"notice_type": noticeType,
-				"source":      "plan-confirm",
-			},
-		},
-		Domain: biz.ActivityDomainChat,
+	bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, noticeType, message, map[string]any{
+		"plan_id":  planID,
+		"decision": decision,
+		"reason":   reason,
+		"status":   decision,
+		"source":   "plan-confirm",
 	}))
 }

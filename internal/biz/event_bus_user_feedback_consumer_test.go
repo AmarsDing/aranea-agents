@@ -105,21 +105,11 @@ func TestUserFeedbackConsumer_handle(t *testing.T) {
 	// bus is nil because handle is called directly without going through Start.
 	var bus EventBus
 	c := &userFeedbackConsumer{bus: bus, monitor: uc, memWorker: worker}
-	c.handle(context.Background(), ActivityEvent{
-		Event: ActivityEventCreated,
-		Activity: Activity{
-			ID:        "evt-1",
-			Kind:      ActivityKindNotice,
-			SessionID: "sess-1",
-			Meta: map[string]any{
-				"notice_type": "user_feedback",
-				"message_id":  "msg-9",
-				"rating":      "positive",
-				"comment":     "helpful",
-			},
-		},
-		Domain: ActivityDomainChat,
-	})
+	c.handle(context.Background(), NewSystemNoticeEvent("sess-1", "user_feedback", "", map[string]any{
+		"message_id": "msg-9",
+		"rating":     "positive",
+		"comment":    "helpful",
+	}))
 	if len(repo.events) != 1 {
 		t.Fatalf("expected monitor event, got %d", len(repo.events))
 	}

@@ -13,7 +13,6 @@ import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { useChatConversationStore } from '../../../stores/chat/conversationStore';
 import { useSpiritTeamStore } from '../../../stores/spirit';
 import { cancelRunningToolMessages } from '../activityToolCall';
-import { runStatusFromActivityEvent } from '../activityRunStatus';
 import { confirmActivity } from '../api';
 import { useChatRunStatus } from './useChatRunStatus';
 import { useChatStreamManager } from './useChatStreamManager';
@@ -35,7 +34,7 @@ import { useChatTraceDialog, useChatSessionArtifacts } from './useChatTraceAndAr
 import { useChatSettingsDialog } from './useChatSettingsDialog';
 import { useChatDialogs } from './useChatDialogs';
 import { useChatComposerActions } from './useChatComposerActions';
-import { favoriteSessionIDs, toggleFavoriteSession } from '../../../stores/sessionSync';
+import { favoriteSessionIDs, toggleFavoriteSession, emitSessionMutation } from '../../../stores/sessionSync';
 import { agentNeedsSettingsHydration, hydrateAgentSettings } from '../agentPlannerSettings';
 import { parseChannelSessionMeta } from '../channelSessionMeta';
 import { useKnowledgeStore } from '../../../stores/knowledge';
@@ -54,12 +53,11 @@ import type {
   V2WsEnvelope,
   SystemNoticeEventPayload,
   RunStatusEventPayload,
-  ActivityBridgeEventPayload,
 } from '../v2Types';
 import { noteChannelWsEnvelope } from '../channelWsCursor';
 import { useSessionTree } from './useSessionTree';
-import { useSystemEventNotification } from './useSystemEventNotification';
-import type { ActivityEvent as AFActivityEvent } from '../../../realtime/activityEvent';
+import { SESSION_RUN_STATUS } from '../sessionRunStatus';
+import { runStatusFromV2Payload } from '../activityRunStatus';
 
 /**
  * Phase B-3: Resolve which session ID should be active given the current
@@ -143,10 +141,6 @@ export function useChatWorkspace() {
       return;
     }
     if (envelope.kind === 'system.run_status') {
-      // Phase 3b-D: backend PublishRunStatus/PublishRunStatusFull migrated to v2
-      // (commit d5a52ea7e). Route to applyRunStatusFromActivityEvent (follow-up
-      // queue, runStatus ref, tool-message cancellation) and inboundActivityEventHandler
-      // (session refresh, channel focus, stream unseal).
       handleV2RunStatus(envelope.payload as RunStatusEventPayload);
       return;
     }
@@ -156,12 +150,8 @@ export function useChatWorkspace() {
       return;
     }
     if (envelope.kind === 'activity.bridge') {
-      // Phase 3b-D: bridge wraps a v1 ActivityEvent. Route through the
-      // existing v1 AF handler to reuse dedup + system-event routing
-      // (useSystemEventNotification) + contextual loading + sender reset.
-      // The wrapped Event retains all snake_case JSON tags from
-      // biz.ActivityEvent, so it maps directly to AFActivityEvent.
-      handleActivityEvent((envelope.payload as ActivityBridgeEventPayload).Event);
+      // Chat timeline is v2-only. Bridge frames are for non-chat consumers
+      // (graph/teams/monitor) via transport unwrap → onActivityEvent.
       return;
     }
     // Route team/member v2 events to spirit store for left sidebar updates.
@@ -169,6 +159,16 @@ export function useChatWorkspace() {
     // rendering — both paths run in parallel.
     routeTeamEventToSpiritStore(envelope);
     eventRouter.dispatch(envelope);
+
+    // Robust fallback: when the backend completes a turn but the terminal
+    // run_status is missing/late, task.completed/failed still resets sending
+    // so the composer does not stay stuck on "停止生成".
+    if (
+      (envelope.kind === 'task.completed' || envelope.kind === 'task.failed') &&
+      sender.sending.value
+    ) {
+      sender.markSendingDone();
+    }
   };
 
   /**
@@ -198,85 +198,8 @@ export function useChatWorkspace() {
   // Phase B-2: per-spirit-session recursive tree cache for SessionTreeSidebar.
   const sessionTree = useSessionTree();
 
-  // AF-GAP-02: Bounded dedup set for ActivityEvent IDs. Both the real-time
-  // WS stream path (ctx.onActivityEvent) and the inbound-sync path
-  // (useChatInboundSync → deps.onActivityEvent) may forward the same
-  // ActivityEvent for the current session. Without dedup, handleActivityEvent
-  // would process the same event twice, duplicating content in the timeline.
-  // The set is bounded (LRU eviction) to prevent unbounded memory growth.
-  const ACTIVITY_DEDUP_LIMIT = 512;
-  const activityDedupIds = new Set<string>();
-  const activityDedupRing: string[] = [];
-
-  // Forward reference to handleInboundActivityEvent from useChatInboundSync.
-  // Set after useChatInboundSync returns (below). Used by
-  // useSystemEventNotification to route system/control ActivityEvents
-  // (run_status, error, team_*, graph_*, spirit_*) directly to the
-  // ActivityEvent-based inbound pipeline — no Envelope conversion.
-  let inboundActivityEventHandler: ((ev: AFActivityEvent) => void | Promise<void>) | null = null;
-
-  // Phase 3 / ADR-03 D6: useSystemEventNotification handles Domain=system
-  // ActivityEvents by routing them to the inbound-sync pipeline. Event
-  // classification prefers `ev.domain`; falls back to kind/event heuristics
-  // for older backends that don't set the domain field. Chat-rendering
-  // events (task streaming/created/completed, thinking, action, reply,
-  // confirm) bypass this handler and go straight to the Activity timeline.
-  const systemEventNotification = useSystemEventNotification({
-    applyRunStatusFromActivityEvent: (ev) => applyRunStatusFromActivityEvent(ev),
-    getInboundActivityEventHandler: () => inboundActivityEventHandler,
-  });
-
-  // Activity-First (AF): Handler for the new business-semantic ActivityEvent
-  // format (event + full Activity snapshot). This replaces the legacy
-  // activity_start/delta/done/child_start envelopes for chat events.
-  // Dedup is by activity.id + event type for non-streaming events (which
-  // may arrive via both the real-time stream and the inbound-sync path).
-  // Streaming events are NOT deduped — each carries a unique delta chunk.
-  const handleActivityEvent = (ev: AFActivityEvent) => {
-    if (ev.event !== 'streaming') {
-      const dedupKey = `${ev.activity.id}:${ev.event}`;
-      if (activityDedupIds.has(dedupKey)) return;
-      activityDedupIds.add(dedupKey);
-      activityDedupRing.push(dedupKey);
-      if (activityDedupRing.length > ACTIVITY_DEDUP_LIMIT) {
-        const evicted = activityDedupRing.shift();
-        if (evicted) activityDedupIds.delete(evicted);
-      }
-    }
-
-    // Phase 3 / ADR-03 D6: route system/control ActivityEvents through
-    // useSystemEventNotification (run_status, error, team_*, graph_*,
-    // spirit_*, …). Returns true if the event was handled as a system
-    // event; false means it's a chat-rendering event (handled below).
-    if (systemEventNotification.handleSystemEvent(ev)) {
-      return;
-    }
-
-    // Chat-rendering events (task streaming/created/completed, thinking,
-    // action, reply, confirm) are now handled by the v2 event pipeline
-    // (handleV2Event → eventRouter → activityStore). The v1 ActivityEvent
-    // path here only retains dedup + system-event routing + sender reset.
-    // OBS-02: Trigger contextual loading message for tool events (kind=action).
-    if (ev.activity.kind === 'action') {
-      contextualLoading.onSpiritActivityEvent(ev);
-    }
-    // Bugfix P1#4 (robust fallback): when the backend completes a turn but
-    // the terminal run_status event is missing/late/coalesced, the watch on
-    // runStatus alone cannot reset sending. Treat task completed/failed/
-    // cancelled as a definitive turn-end signal and reset sending here.
-    // Without this, the composer stays stuck on "停止生成" after the reply
-    // is fully rendered.
-    if (
-      ev.activity.kind === 'task' &&
-      (ev.event === 'completed' || ev.event === 'failed' || ev.event === 'cancelled') &&
-      sender.sending.value
-    ) {
-      sender.markSendingDone();
-    }
-  };
-
   const runStatusCtrl = useChatRunStatus({ applyAwaitRunStatus });
-  const { runStatus, runMeta, applyFromActivityEvent, onSessionSwitch, refreshRunStatus, forceSetRunStatus } =
+  const { runStatus, runMeta, applyFromV2RunStatus, onSessionSwitch, refreshRunStatus, forceSetRunStatus } =
     runStatusCtrl;
 
   const providerOpts = useChatProviderOptions(appStore);
@@ -408,9 +331,6 @@ export function useChatWorkspace() {
 
   const streamManager = useChatStreamManager({
     runtimeStore,
-    // Activity-First (AF): route new business-semantic ActivityEvent messages
-    // from the WS transport to useActivityTimeline.
-    onActivityEvent: handleActivityEvent,
     onV2Event: handleV2Event,
     refreshRunStatus: refreshRunStatusForUi,
     // B-06: after WS reconnect, re-fetch authoritative v2 entity snapshot.
@@ -570,7 +490,8 @@ export function useChatWorkspace() {
     t,
   });
 
-  const inboundSync = useChatInboundSync({
+  // Channel focus / session list refresh for inbound; chat timeline is v2-only.
+  useChatInboundSync({
     appStore,
     sessionStore,
     messageStore,
@@ -578,11 +499,7 @@ export function useChatWorkspace() {
     selectedAgentId,
     selectedSessionId,
     wsReplaying: streamManager.wsReplaying,
-    // AF: Spirit/team orchestration events now consume ActivityEvent directly.
     onSpiritActivityEvent: contextualLoading.onSpiritActivityEvent,
-    // AF: Route new ActivityEvent messages from the global hub to the same
-    // useActivityTimeline instance. Dedup is handled inside handleActivityEvent.
-    onActivityEvent: handleActivityEvent,
     isChatRoute: () => route.name === 'chat',
     shouldAutoFocusChannel: () => {
       // Default OFF: channel inbound messages no longer auto-focus the session
@@ -597,11 +514,6 @@ export function useChatWorkspace() {
     onTurnComplete: () => {
       jobsRefreshNonce.value += 1;
       inboundHydrateError.value = '';
-      // AF architecture: Activity data is the source of truth for the timeline.
-      // Turn completion must NOT clear it — the AF path uses Activity records
-      // (grouped by turnId) to render each turn's thinking/action/reply in
-      // correct temporal order. Clearing would force degradation to the message
-      // inference path, which cannot reconstruct multi-round ReAct timelines.
     },
     onHydrateError: (sessionId, message) => {
       if (selectedSessionId.value === sessionId) {
@@ -612,11 +524,6 @@ export function useChatWorkspace() {
     ensureTeamStream: streamManager.ensureTeamStream,
     loadTeamSessions: (teamId: string) => entityNav.loadTeamSessions(teamId),
   });
-
-  // AF: Capture handleInboundActivityEvent from useChatInboundSync so
-  // handleActivityEvent can route system/control ActivityEvents directly
-  // to the ActivityEvent-based inbound pipeline (no Envelope conversion).
-  inboundActivityEventHandler = inboundSync.handleInboundActivityEvent;
 
   const pendingMsgRef = { fn: undefined as (() => Promise<void>) | undefined };
 
@@ -654,16 +561,13 @@ export function useChatWorkspace() {
   watch(sender.sending, (val) => followUp.watchSending(val));
 
   /**
-   * Activity-First: Apply run status from an ActivityEvent (stage=run_status).
-   * Consumes ActivityEvent directly, updating the follow-up queue, runStatus
-   * ref, and cancelling tool messages on terminal statuses. Called from
-   * handleActivityEvent for run_status events that arrive via the
-   * ActivityEvent path.
+   * Apply run status from a v2 system.run_status payload (follow-up queue,
+   * runStatus ref, tool-message cancellation on terminal statuses).
    */
-  function applyRunStatusFromActivityEvent(ev: AFActivityEvent) {
-    followUp.onRunStatusActivityEvent(ev);
-    applyFromActivityEvent(ev);
-    const rs = runStatusFromActivityEvent(ev);
+  function applyV2RunStatusSideEffects(payload: RunStatusEventPayload) {
+    followUp.onRunStatusV2(payload);
+    applyFromV2RunStatus(payload);
+    const rs = runStatusFromV2Payload(payload);
     if (rs?.status === 'cancelled' || rs?.status === 'failed') {
       const sid = selectedSessionForUi.value?.id;
       if (sid) {
@@ -673,159 +577,61 @@ export function useChatWorkspace() {
   }
 
   /**
-   * Phase 3b-D Task 12: Route v2 system.notice events to side-effects.
-   *
-   * Backend migrated system-domain notices (orchestration_started, metrics_updated,
-   * knowledge_ingest, etc.) from v1 ActivityEventBus to v2 EventBus. These arrive
-   * as v2_event envelopes but need the same side-effects as v1 (spirit store
-   * updates, session refresh). We adapt the v2 payload to a minimal v1
-   * ActivityEvent and route through inboundActivityEventHandler, which dispatches
-   * to spiritStore and sessionStore based on kind/stage.
-   *
-   * v1 system events (run_status, session_status_changed, graph_stage) still
-   * arrive via the v1 activity_event path and are handled by
-   * useSystemEventNotification — those are NOT touched here.
+   * Route v2 system.notice events to side-effects without AF conversion.
    */
   function handleV2SystemNotice(payload: SystemNoticeEventPayload) {
     const sid = selectedSessionForUi.value?.id;
     if (!sid) return;
-    const afEv = v2NoticeToAFEvent(payload, sid);
-    inboundActivityEventHandler?.(afEv);
-  }
-
-  /**
-   * Build a minimal v1 ActivityEvent from a v2 SystemNoticeEventPayload so it
-   * can be consumed by the existing inbound-sync pipeline (which checks
-   * `activity.kind` and `activity.stage` to dispatch side-effects).
-   *
-   * kind='session' is required for orchestration notices so isSpiritActivityEvent
-   * matches them (it checks kind==='session' for orchestration_* stages).
-   * kind='notice' is used for all other notice types (metrics_updated, etc.).
-   */
-  function v2NoticeToAFEvent(payload: SystemNoticeEventPayload, sessionId: string): AFActivityEvent {
-    const orchestrationStages = new Set([
-      'orchestration_started',
-      'orchestration_checkpoint',
-      'orchestration_interrupted',
-      'orchestration_completed',
-      'orchestration_failed',
-      'synthesis_completed',
-      'plan_created',
-      'allocation_created',
-    ]);
-    const isOrchestration = orchestrationStages.has(payload.NoticeType);
-    return {
-      event: 'created',
-      activity: {
-        id: `v2-sys-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        kind: isOrchestration ? 'session' : 'notice',
-        status: 'running',
-        session_id: sessionId,
-        turn_id: '',
-        parent_activity_id: '',
-        timestamp: new Date().toISOString(),
-        duration_ms: 0,
-        seq: 0,
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        content: payload.Message ?? '',
-        reasoning: '',
-        tool_name: '',
-        tool_category: 'other',
-        tool_call_id: '',
-        tool_arguments: '',
-        tool_result: '',
-        tool_duration_ms: 0,
-        tool_error_code: '',
-        stage: payload.NoticeType,
-        child_board_id: '',
-        spirit_session_id: sessionId,
-        team_id: '',
-        dag_node_id: '',
-        depends_on: [],
-        agent_key: '',
-        agent_name: '',
-        collapsed: false,
-        label: '',
-        meta: { ...(payload.Meta ?? {}), notice_type: payload.NoticeType, message: payload.Message },
-      },
+    const noticeType = String(payload.NoticeType ?? '').trim();
+    if (!noticeType) return;
+    const meta: Record<string, unknown> = {
+      ...(payload.Meta ?? {}),
+      notice_type: noticeType,
+      message: payload.Message,
     };
+
+    if (noticeType === 'metrics_updated') {
+      sessionStore.fetchAndReconcileSession(sid);
+    }
+    if (noticeType === 'session_status_changed') {
+      const status = typeof meta.status === 'string' ? meta.status : '';
+      const statusReason = typeof meta.status_reason === 'string' ? meta.status_reason : '';
+      const statusChangedAt = typeof meta.status_changed_at === 'string' ? meta.status_changed_at : '';
+      if (status) {
+        emitSessionMutation({ type: 'status_changed', id: sid, status, statusReason, statusChangedAt });
+      }
+    }
+    spiritStore.handleSystemNotice(noticeType, meta);
+    contextualLoading.onSpiritNoticeType(noticeType);
   }
 
   /**
-   * Phase 3b-D: Route v2 system.run_status events to side-effects.
-   *
-   * Backend PublishRunStatus/PublishRunStatusFull (commit d5a52ea7e) emit
-   * biz.NewRunStatusEvent on the v2 EventBus. These arrive as v2_event
-   * envelopes but need the same side-effects as v1 stage=run_status events:
-   *   - applyRunStatusFromActivityEvent: follow-up queue, runStatus ref,
-   *     tool-message cancellation on terminal statuses.
-   *   - inboundActivityEventHandler: session refresh, channel focus, stream
-   *     unseal on RUNNING status.
-   *
-   * v1 run_status events still arrive via the v1 activity_event path and are
-   * handled by useSystemEventNotification — those continue to work.
+   * Route v2 system.run_status events to side-effects without AF conversion.
    */
   function handleV2RunStatus(payload: RunStatusEventPayload) {
+    // Patch MemberSession card when pause/resume publishes chat_session_id
+    // (MemberSessionUpdatedEvent is the primary path; this covers race/late WS).
+    const chatSessionId = String(payload.Meta?.chat_session_id ?? '').trim();
+    const status = String(payload.Status ?? payload.Meta?.status ?? '').trim();
+    if (chatSessionId && (status === 'paused' || status === 'running')) {
+      for (const ms of activityStore.memberSessions.values()) {
+        if (ms.SessionID === chatSessionId && ms.Status !== status) {
+          activityStore.upsertMemberSession({ ...ms, Status: status as typeof ms.Status });
+          break;
+        }
+      }
+    }
     const sid = selectedSessionForUi.value?.id;
     if (!sid) return;
-    const afEv = v2RunStatusToAFEvent(payload, sid);
-    applyRunStatusFromActivityEvent(afEv);
-    inboundActivityEventHandler?.(afEv);
-  }
-
-  /**
-   * Build a minimal v1 ActivityEvent from a v2 RunStatusEventPayload so it
-   * can be consumed by runStatusFromActivityEvent (which requires
-   * `activity.stage === 'run_status'` and reads status/run_id/error_message/
-   * await_kind/await_tool_key/await_tool_call_id from `activity.meta`).
-   *
-   * Backend PublishRunStatusFull populates Meta with all await fields plus
-   * run_id/status/error_message/session_run_id/turn_id/notice_type. Top-level
-   * RunID/Status fields are merged as fallback in case Meta is partial.
-   */
-  function v2RunStatusToAFEvent(payload: RunStatusEventPayload, sessionId: string): AFActivityEvent {
-    const meta = {
-      ...(payload.Meta ?? {}),
-      run_id: payload.RunID,
-      status: payload.Status,
-    };
-    return {
-      event: 'created',
-      activity: {
-        id: `v2-rs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        kind: 'session',
-        status: 'running',
-        session_id: sessionId,
-        turn_id: '',
-        parent_activity_id: '',
-        timestamp: new Date().toISOString(),
-        duration_ms: 0,
-        seq: 0,
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        content: '',
-        reasoning: '',
-        tool_name: '',
-        tool_category: 'other',
-        tool_call_id: '',
-        tool_arguments: '',
-        tool_result: '',
-        tool_duration_ms: 0,
-        tool_error_code: '',
-        stage: 'run_status',
-        child_board_id: '',
-        spirit_session_id: sessionId,
-        team_id: '',
-        dag_node_id: '',
-        depends_on: [],
-        agent_key: '',
-        agent_name: '',
-        collapsed: false,
-        label: '',
-        meta,
-      },
-    };
+    applyV2RunStatusSideEffects(payload);
+    const rs = runStatusFromV2Payload(payload);
+    if (rs?.status === SESSION_RUN_STATUS.RUNNING) {
+      if (sessionStore.entityKind === 'team') {
+        streamManager.ensureTeamStream(sid);
+      } else {
+        streamManager.ensureChatStream(sid);
+      }
+    }
   }
 
   const { loadAgentOrder, loadTeamOrder, onEndAgent, onEndTeam, onGroupReorder } = useChatSidebarOrder(

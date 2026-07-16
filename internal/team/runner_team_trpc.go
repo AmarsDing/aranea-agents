@@ -323,17 +323,9 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 	r.finalizeGraphRunStepsFallback(ctx, finishIn)
 
-	// Publish completed session activities for non-graph mode.
-	if graphExecID == "" && r.hasPublisher() {
-		for _, m := range ti.members {
-			ag, lookupErr := r.lookupAgent(ctx, m.AgentID)
-			if lookupErr != nil {
-				continue
-			}
-			agentName := strutil.FirstNonEmpty(ag.DisplayName, ag.AgentKey)
-			r.publishTeamStepActivity(ctx, run, teamRow.ID, ag.AgentKey, agentName,
-				biz.ActivityEventCompleted, biz.ActivityStatusCompleted, "completed", nil)
-		}
+	// Persist swarm active member for CrossRequestTransfer (next turn entry override).
+	if def.Swarm != nil && def.Swarm.CrossRequestTransfer && ar.agent.AgentKey != "" {
+		writeSwarmActiveAgent(ctx, r.td.Sessions, sess, ar.agent.AgentKey)
 	}
 
 	run = r.finalizeTeamRun(ctx, sess, run, teamRow, ar, assistantMsg, promptTok, completionTok, ti.dialogMode, graphExecID, t0, teamEmitter)

@@ -108,8 +108,6 @@ func EventSeq(e Event) int64 {
 		return ev.GraphStage.Seq
 	case *SystemNoticeEvent:
 		return ev.Seq
-	case *ActivityBridgeEvent:
-		return ev.Event.Activity.Seq
 	default:
 		return 0
 	}

@@ -644,6 +644,49 @@ func entLogAdapter(lg loggateway.Logger) func(...any) {
 	}
 }
 
+// preEntSessionTurnIdempotencyBackfill runs BEFORE Ent Schema.Create to
+// backfill empty idempotency_key values on session_turns. This is required
+// on Postgres because Ent adds the column (DEFAULT '') and creates the
+// unique index in one step (L1), before the DDL migration (L2) can backfill.
+// Without this, multiple legacy rows in the same session collide on
+// idempotency_key='' and the unique index creation fails with 23505.
+//
+// On SQLite this is a no-op: Ent does not ADD COLUMN on existing tables,
+// so the column/index are created by DDL migration 20261008 which backfills
+// before creating the index.
+//
+// Idempotent: safe to run multiple times. Non-fatal: errors are logged as
+// warnings so that fresh databases (no session_turns data) proceed normally.
+func preEntSessionTurnIdempotencyBackfill(ctx context.Context, db *sql.DB, d Dialect, lg loggateway.Logger) {
+	if db == nil {
+		return
+	}
+	tableExists, err := d.TableExists(ctx, db, "session_turns")
+	if err != nil || !tableExists {
+		return
+	}
+	colExists, err := d.ColumnExists(ctx, db, "session_turns", "idempotency_key")
+	if err != nil || !colExists {
+		return
+	}
+	// Backfill empty keys with id-scoped sentinels so the unique index on
+	// (session_id, idempotency_key) can be created without 23505 collision.
+	// '__id__:' || id is unique per row because id is the primary key.
+	res, err := db.ExecContext(ctx, d.RenumberPlaceholders(
+		`UPDATE session_turns SET idempotency_key = '__id__:' || id WHERE idempotency_key = '' OR idempotency_key IS NULL`))
+	if err != nil {
+		lg.Warn("pre-ent session_turns idempotency backfill failed (non-fatal)",
+			loggateway.StepID("data.pre_ent.session_turn_idem"),
+			loggateway.Err(err))
+		return
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		lg.Info("pre-ent session_turns idempotency backfilled",
+			loggateway.StepID("data.pre_ent.session_turn_idem"),
+			loggateway.Int("rows_updated", int(n)))
+	}
+}
+
 // initPostgresEnt opens Postgres as the primary Ent database (driver=postgres).
 // Returns write/read Ent clients and write/read *sql.DB handles.
 // The write pool (MaxOpen=16) handles Ent writes + raw SQL writes; the read
@@ -691,6 +734,10 @@ func initPostgresEnt(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, 
 	entClient := ent.NewClient(ent.Driver(writeDrv), ent.Log(entLogAdapter(lg)))
 
 	ctxEnt := context.Background()
+	// Pre-Ent backfill: ensure session_turns.idempotency_key has no empty
+	// values before Ent Schema.Create adds the unique index. Without this,
+	// legacy rows collide on '' and index creation fails with 23505.
+	preEntSessionTurnIdempotencyBackfill(ctxEnt, writeDB, DialectPostgres, lg)
 	if strings.TrimSpace(os.Getenv("DEPLOY_ENV")) == "dev" {
 		entClient, err = migrateDev(ctxEnt, entClient, "postgres(ent)")
 		if err != nil {

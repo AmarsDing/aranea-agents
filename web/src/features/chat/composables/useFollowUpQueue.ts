@@ -1,8 +1,9 @@
 import { onUnmounted, ref, type Ref } from 'vue';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import type { PendingMessage } from '../types';
-import { messageQueuedFromActivityEvent } from '../activityRunStatus';
+import { messageQueuedFromActivityEvent, messageQueuedFromV2Payload } from '../activityRunStatus';
 import type { ActivityEvent } from '../../../realtime/activityEvent';
+import type { RunStatusEventPayload } from '../v2Types';
 
 export function useFollowUpQueue(
   sessionId: Ref<string | undefined>,
@@ -44,15 +45,22 @@ export function useFollowUpQueue(
     }, 500);
   }
 
-  /** Activity-First: WS-driven refresh from an ActivityEvent (stage=run_status). */
+  function refreshOnTerminalOrQueued(status: string, queued: boolean) {
+    if (queued || status === 'completed' || status === 'cancelled' || status === 'failed') {
+      void refreshPendingMessages();
+    }
+  }
+
+  /** WS-driven refresh from a v2 system.run_status payload. */
+  function onRunStatusV2(payload: RunStatusEventPayload) {
+    const status = String(payload.Meta?.status ?? payload.Status ?? '');
+    refreshOnTerminalOrQueued(status, messageQueuedFromV2Payload(payload));
+  }
+
+  /** Legacy: WS-driven refresh from an ActivityEvent (stage=run_status). */
   function onRunStatusActivityEvent(ev: ActivityEvent) {
-    if (messageQueuedFromActivityEvent(ev)) {
-      void refreshPendingMessages();
-    }
-    const rs = String(ev.activity.meta?.status ?? '');
-    if (rs === 'completed' || rs === 'cancelled' || rs === 'failed') {
-      void refreshPendingMessages();
-    }
+    const status = String(ev.activity.meta?.status ?? '');
+    refreshOnTerminalOrQueued(status, messageQueuedFromActivityEvent(ev));
   }
 
   async function onCancelPending(pendingId: string) {
@@ -122,6 +130,7 @@ export function useFollowUpQueue(
   return {
     pendingMessages,
     refreshPendingMessages,
+    onRunStatusV2,
     onRunStatusActivityEvent,
     onCancelPending,
     onInterruptPending,

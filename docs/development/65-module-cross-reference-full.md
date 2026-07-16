@@ -87,15 +87,15 @@
 
 ---
 
-### 1.4 记忆服务 (`internal/memory/` + `internal/service/memory*.go` + `internal/data/sessionmemory/` + `internal/tools/working_memory/`)
+### 1.4 记忆服务 (`internal/memory/` + `internal/service/memory*.go` + `internal/data/memory_shim_*.go` + `internal/tools/working_memory/`)
 
 **职责**：5 层记忆系统适配器，提供记忆 CRUD + 6 个框架记忆工具 + 5 个 working_memory 工具 + 自动提取 + Memory 管理 API 传输桥点。
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `biz`（Memory 类型 + `MemoryDebugRecaller`/`MemoryFactIndexCounter` 端口）、`pkg/trpc-agent-go/memory`（框架记忆 API）、`data`（`memoryDebugRecallAdapter`/`memoryFactIndexCounterAdapter` 适配器）、`data/sessionmemory`（L0-L4 Store 实现） |
+| **上游依赖** | `biz`（Memory 类型 + `MemoryDebugRecaller`/`MemoryFactIndexCounter` 端口）、`pkg/trpc-agent-go/memory`（框架记忆 API）、`data`（`memoryDebugRecallAdapter`/`memoryFactIndexCounterAdapter` + `memory_shim_*` L0–L4 Store 实现） |
 | **下游影响** | `agent`（MemoryService.Tools() 注入记忆工具，统一路径：`Service.Tools()` → 过滤 → `AssemblyConfig.MemoryTools`）、`agent`（working_memory BeforeToolHook 注入 L1TaskWriter/L1FieldWriter/L1AdminReader）、`service/chat`（记忆管理 API）、`service/memory`（L4 级联管理 + Debug Recall + Worker Status） |
-| **核心导出** | `NewSQLiteMemoryService()`、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()`、`NewMemoryService()`（含 `debugRecaller`/`factIndexCounter` biz 端口）、`working_memory.ToolSet`/`Tools()`（5 个 L1 工具） |
+| **核心导出** | `memtrpc.NewMemoryService(...)`（L3FactReader/Writer + settingsLoader）、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()`、`service.NewMemoryService()`（Admin API，含 `debugRecaller`/`factIndexCounter`）、`working_memory.ToolSet`/`Tools()`（5 个 L1 工具） |
 | **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享）、`biz.RecallDebugRow`/`biz.RecallScoreBreakdown`（debug recall DTO）、`biz.L1TaskInsert`/`biz.L1FieldInsert`（L1 写入 DTO） |
 | **事件生产** | 无直接生产（记忆提取通过 EventBus 异步触发） |
 | **事件消费** | 记忆提取 Worker 消费 `runner_completion` 事件 |
@@ -107,7 +107,8 @@
 - 记忆工具通过 `Service.Tools()` 注入（统一路径），不手动构造，不使用 `memorytool.DefaultTools()`
 - **working_memory 工具**通过 `BeforeToolHook` 注入 L1 依赖（L1TaskWriter/L1FieldWriter/L1AdminReader/sessionID/agentID），不在工具构造时传入
 - 修改记忆层级结构时，需同步更新前端 MemoryCenterPage 的 5 个 Tab
-- **Service 层禁止直接依赖 `*sessionmemory.Store`**（data 层类型），需通过 biz 端口接口（`MemoryDebugRecaller`/`MemoryFactIndexCounter`）+ data 层适配器桥接
+- **Service 层禁止直接依赖 data 层 store 具体类型**（原 `sessionmemory.Store` 已折叠为 `internal/data/memory_shim_*.go`），需通过 biz 端口接口（`MemoryDebugRecaller`/`MemoryFactIndexCounter`/`L3FactWriter` 等）+ data 层适配器桥接
+- Memory Admin RPC 须经 `authorizeMemoryScope`（`internal/service/memory_scope.go`）做 scope/workspace ACL；trpc `Add/Update/Delete/Clear` 须经 `assertL3WriteAllowed` 尊重 `WriteL3Facts`
 - `L4CascadeUsecase` 构造函数接收 4 个子接口（`CascadeProposalStore`/`CascadeGraphReader`/`CascadeFactMutator`/`CascadeSagaStore`）+ `L4EntityWriter`，不使用聚合接口 `CascadeGraphStore`（已 Deprecated）
 - `SessionAdminStore` 是向后兼容的组合接口（38 方法），新代码应依赖细粒度子接口（`L1TaskWriter`/`L1FieldWriter`/`L1AdminReader`/`L2ConsolidationStore`/`L3ConflictStore`/`PIIReviewStore`/`L4EntityStore`/`L4EvolutionStore` 等）
 - 新增 biz 端口接口时，需同步创建 data 层适配器 + 更新 `cmd/admin/wire.go` 绑定
@@ -284,26 +285,26 @@
 
 ---
 
-### 1.12 事件系统 (`internal/event/`)
+### 1.12 事件系统 (`internal/event/` + `internal/biz` EventBus)
 
-**职责**：双总线（ActivityEventBus + MonitorEventBus）发布/订阅，Flow Log（ADR-03 Phase 5 后：legacy SessionBus/MonitorBus/Envelope 已删除）。
+**职责**：聊天用 **v2 `biz.EventBus`**（Task/Turn/Step/`system.*` → WS `v2_event`）；监控用 **MonitorEventBus**。v1 ActivityEventBus / ActivityBridge 生产路径已退役（2026-07-16）。
 
 | 维度 | 内容 |
 |------|------|
 | **上游依赖** | 无（基础设施层，不依赖业务模块） |
-| **下游影响** | **所有模块**：chat/channel/team/graph/monitor/memory/plugin 都依赖 ActivityEventBus / MonitorEventBus |
-| **核心导出** | `Infra`（MonitorEventBus）、`ActivityEventBus`（biz 层）、`MonitorBus` 接口（contract 层）、`ActivityEvent`/`ActivityKind`、`MonitorEvent`/`MonitorEventType`、`FlowLog`、`loggateway.Logger`（替代 `SysLog*`） |
-| **共享类型** | `ActivityEvent`（chat/system 事件消费者共享）、`MonitorEvent`（监控事件消费者共享）、`EnvelopeError`/`EnvelopeTokenUsage`（活类型，见 `contract/envelope_types.go`） |
-| **事件生产** | 不生产业务事件（只提供基础设施） |
-| **事件消费** | 不消费业务事件（Bus 本身是传输层） |
-| **数据库** | FlowLogRepo（flow_log_events 表）、ActivityRepo（activities 表） |
-| **前端对应** | MonitorPage（Flow Log 展示）、ChatPage（WS 事件流） |
+| **下游影响** | chat/channel/team/graph/monitor/memory/plugin 依赖 v2 EventBus 和/或 MonitorEventBus |
+| **核心导出** | `Infra`（MonitorEventBus）、`biz.EventBus` / EventKind、`MonitorBus`（contract）、`MonitorEvent`、`FlowLog`、`loggateway.Logger` |
+| **共享类型** | v2 Event（Task/Turn/Step/Team/Graph/system.*）、`MonitorEvent` |
+| **事件生产** | 不生产业务事件（只提供基础设施；投影在 `agent/v2`） |
+| **事件消费** | Bus 是传输层；WS 经 `ws_v2_subscriber` 推送 |
+| **数据库** | FlowLogRepo；v2 实体表（tasks/turns/steps/…）；`activities` 表遗留读路径可能仍在 |
+| **前端对应** | ChatPage（`v2_event` → activityV2Store）、MonitorPage（`monitor_event`） |
 
 **⚠️ 开发注意**：
-- 新增 `ActivityKind` 常量时，必须同步更新前端 `realtime/activityEvent.ts` 的类型定义
-- 修改 `ActivityEvent` 结构体时，影响所有事件消费者（chat/session/monitor/plugin）
-- 修改 Bus 投递策略时，需回归测试 WS 推送的实时性
-- 详见 ADR-03（统一总线架构，已归档）和 [34-event-system.development.md](./34-event-system.development.md)
+- 新增聊天事件用 typed v2 EventKind，禁止再引入 `ActivityBridgeEvent` / `activity_event`
+- 监控事件走 `MonitorEvent`，与聊天总线分离
+- 修改 Sequencer 投递策略时，回归 WS 实时性与终态 WBPF/outbox
+- 详见 [1-chat.design.md](./1-chat.design.md) §三、[34-event-system.development.md](./34-event-system.development.md)
 
 ---
 
@@ -367,12 +368,13 @@
 | **事件生产** | 无直接生产（聚合数据通过 `MetadataJSON()` 供 Usage 记录消费） |
 | **事件消费** | 框架事件流（`ObserveFrameworkEvent` 消费 `trpcevent.Event`） |
 | **数据库** | 无直接访问（聚合数据嵌入 usage.metadata_json） |
-| **前端对应** | UsageEventsPage（usage 记录展示） |
+| **前端对应** | UsageEventsPage（usage 记录展示）；OverviewPage 聚合面消费同一 ledger 的汇总（非本组件直连） |
 
 **⚠️ 开发注意**：
 - `ObserveFrameworkEvent` 是框架事件流的核心消费点，从 `ev.Response.Usage` 提取 token 计数，从 `ev.Response.GetToolCallIDs` 提取工具调用
 - 修改框架 Event 结构时，需检查 `ObserveFrameworkEvent` 是否仍能正确提取 usage 数据
 - `ToolNameFromResponse` 辅助函数从框架 Response 中提取工具名称
+- 概览页（`/overview`）由 UsageService + MonitorService + Agent/Team/Platform 多源拼装，详见 `docs/reports/2026-07-16-review-nav-pages-fullstack-audit.md`
 
 ---
 
@@ -791,20 +793,20 @@
 
 ### 2.1 Chat 域（最复杂的前端域）
 
-**涉及文件**：`features/chat/api.ts`、`stores/chat/`（4 个 Store）、`components/chat/`（35+ 组件）、`realtime/`
+**涉及文件**：`features/chat/api.ts`、`stores/chat/`（含 `activityV2Store`）、`components/chat/v2/`、`realtime/`
 
 | 维度 | 内容 |
 |------|------|
-| **Store 拆分** | `useChatSessionStore`（会话列表）、`useChatMessageStore`（消息）、`useChatRuntimeStore`（运行时控制）、`useChatConversationStore`（WS 投影） |
-| **跨 Store 通信** | `sessionSync` 事件总线（与 SessionStore 同步）、AppStore → ChatSessionStore（Agent 切换重置） |
-| **WS 事件消费** | text_delta、tool_call、tool_result、runner_completion、context_usage、error、run_status、intent_pass、member_message_*、team_run_* |
-| **后端对应** | ChatService（HTTP API + WS /v1/ws） |
-| **共享类型** | `Message`、`ChatOption`、`RunStatus`（定义在 features/chat/api.ts） |
+| **Store 拆分** | `useChatSessionStore`、`useChatMessageStore`（revision/pending 等非主渲染）、`useChatRuntimeStore`、`useChatActivityStore`（**主渲染**）、`useChatConversationStore` |
+| **跨 Store 通信** | `sessionSync` 事件总线；AppStore → ChatSessionStore |
+| **WS 事件消费** | **仅** `v2_event`：`task.*` / `turn.*` / `step.*` / `team_*` / `graph_*` / `system.*` |
+| **后端对应** | ChatService（HTTP + WS `/v1/ws`）+ v2 REST hydrate |
+| **共享类型** | `v2Types.ts`（Task/Turn/Step…）、`RunStatus`、`ChatOption` |
 
 **⚠️ 开发注意**：
-- 消息分组必须使用堆栈模型（`groupMessagesByTurn` 按 `role=user` 边界），禁止使用 `turn_index`
-- in-flight 消息（pending-user-*/ws-stream-*/member-*）排序在持久化消息之后
-- 修改 `Envelope` 类型时，需同步 `realtime/envelope.ts`
+- 聊天渲染只走 SessionPanelV2；禁止 legacy message / activity_event 时间线回落
+- 排序用 `Seq` + 时间戳，禁止 `turn_index` 推算
+- 展示组件经 `useActivityQueries`，禁止直连 Pinia/API
 
 ---
 
@@ -874,14 +876,14 @@
 
 | 维度 | 内容 |
 |------|------|
-| **核心导出** | WS 传输、全局 hub、ActivityEvent / MonitorEvent 分发（v2 bus；非 legacy Envelope fan-out） |
-| **消费方** | Chat（会话流）、Monitor（日志流）、Teams（运行流）、Graph（执行流）、Orchestration（编排流） |
-| **后端对应** | WSServer (`internal/server/ws.go`) + `biz.ActivityEventBus` + `contract.MonitorEventBus`（`internal/event/`） |
+| **核心导出** | WS 传输、全局 hub、`v2_event` / `monitor_event` 分发 |
+| **消费方** | Chat（v2 会话流）、Monitor（日志流）、Teams/Graph/Orchestration（typed v2 或 system.notice） |
+| **后端对应** | WSServer + `biz.EventBus`（v2）+ `contract.MonitorEventBus` |
 
 **⚠️ 开发注意**：
-- 新增聊天/系统事件走 `ActivityEvent`；监控事件走 `MonitorEvent`。勿再新增 legacy `EnvelopeType`。
-- `globalWsHub` 使用引用计数，`acquireGlobalWsConsumer`/`releaseGlobalWsConsumer` 必须配对调用
-- WS 重连历史补全用 `ListActivities` RPC，不走服务端 EventBuffer / EventStore replay
+- 聊天业务事件走 typed v2 EventKind；监控走 `MonitorEvent`。禁止新增 `activity_event` / bridge。
+- `globalWsHub` 引用计数：`acquireGlobalWsConsumer`/`releaseGlobalWsConsumer` 必须配对
+- WS 重连 hydrate 用 v2 REST（`/v2/sessions/...`），不走 EventBuffer replay
 
 ---
 
@@ -968,8 +970,8 @@
 | 后端 Service | Proto 包 | 前端 Service 工厂 | 前端 Store | 前端页面 |
 |-------------|---------|-----------------|-----------|---------|
 | ChatService | chat/v1 | createChatService | useChatSessionStore + useChatMessageStore + useChatRuntimeStore + useChatConversationStore | ChatPage |
-| AgentService | agent/v1 | createAgentService | useAppStore + useAgentsPageStore + useAgentDetailStore | AgentsPage + AgentSettingsPage |
-| TeamService | team/v1 | createTeamService | useTeamsStore + useTeamsPageStore | TeamsPage + TeamOrchestratePage |
+| AgentService | agent/v1 | createAgentService | useAppStore + useAgentsPageStore + useAgentDetailStore | AgentsPage + AgentSettingsPage；OverviewPage（Hero active/total 经 ListAgents.total） |
+| TeamService | team/v1 | createTeamService | useTeamsStore + useTeamsPageStore | TeamsPage + TeamOrchestratePage；OverviewPage（Team 计数，当前全量 ListTeams.length） |
 | GraphService | graph/v1 | createGraphService | useGraphStore | GraphsPage + GraphEditorPage + GraphRunPage + GraphExecutionsPage |
 | SessionService | session/v1 | createSessionService | useSessionStore | SessionsPage |
 | ChannelService | channel/v1 | createChannelService | useChannelsStore | ChannelsPage |
@@ -980,10 +982,10 @@
 | SkillService | skill/v1 | createSkillService | useSkillsStore | SkillsPage |
 | MemoryService | memory/v1 | createMemoryService | useMemoryStore | MemoryCenterPage |
 | KnowledgeService | knowledge/v1 | createKnowledgeService | useKnowledgeStore | KnowledgePage |
-| MonitorService | monitor/v1 | createMonitorService | useMonitorStore | MonitorPage |
+| MonitorService | monitor/v1 | createMonitorService | useMonitorStore | MonitorPage（权威运行时面）；OverviewPage（RunnerMetrics 快捷条，同 GetRunnerMetrics） |
 | A2AService | a2a/v1 | createA2AService | useA2AStore | A2APage |
-| LlmProviderModelService | llm_provider_model/v1 | createLlmProviderModelService | usePlatformStore | ResourceManagerPage |
-| UsageService | usage/v1 | createUsageService | useUsageStore | UsageEventsPage |
+| LlmProviderModelService | llm_provider_model/v1 | createLlmProviderModelService | usePlatformStore | ResourceManagerPage；OverviewPage（Provider 目录健康） |
+| UsageService | usage/v1 | createUsageService | useUsageStore | OverviewPage（GetUsageOverview / trends / all-models-breakdown 主表面）；UsageEventsPage（事件账本） |
 | EvaluationService | evaluation/v1 | createEvaluationService | useEvaluationStore | EvaluationPage |
 | EcosystemService | ecosystem/v1 | createEcosystemService | useEcosystemStore | EcosystemPage |
 | ArtifactService | artifact/v1 | createArtifactService | useArtifactStore | ArtifactsPage |
@@ -999,6 +1001,8 @@
 | CodeExecutorService | monitor/v1 | createMonitorService | useMonitorStore | MonitorPage |
 | OpenAICompatService | — | — | — | — |
 | PersistentTurnService | — | — | — | — |
+
+> **Overview（`/overview`）多源拼装**：主表面为 `UsageService`（概览/趋势/全模型分解）；辅助 KPI 来自 `AgentService` / `TeamService` / `LlmProviderModelService` / Organization 树；Runner 面板复用 `MonitorService.GetRunnerMetrics`。权威运维面仍为 `MonitorPage`。全页评审见 `docs/reports/2026-07-16-review-nav-pages-fullstack-audit.md`。
 
 ---
 

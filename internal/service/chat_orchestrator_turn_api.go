@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
-	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
@@ -14,7 +13,6 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
-	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -59,24 +57,13 @@ func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv
 		out.AgentMessage = st
 	}
 	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
-		// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves the
-		// v1 TeamStage Completed hint activity so the frontend team panel can
-		// close cleanly when SendChatMessage is invoked synchronously (no WS run).
 		if o.td().Pipeline.EventBus != nil {
-			ev := biz.ActivityEvent{
-				Event: biz.ActivityEventCompleted,
-				Activity: biz.Activity{
-					ID:        uuid.NewString(),
-					Kind:      biz.ActivityKindTeamStage,
-					Status:    biz.ActivityStatusCompleted,
-					TeamID:    tid,
-					Timestamp: time.Now().UTC(),
-					Stage:     "completed",
-					Meta:      map[string]any{"hint": true},
-				},
-				Domain: biz.ActivityDomainChat,
-			}
-			o.td().Pipeline.EventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+			o.td().Pipeline.EventBus.Publish(ctx, biz.NewSystemNoticeEvent(req.GetSessionId(), "team_stage_hint", "", map[string]any{
+				"team_id": tid,
+				"hint":    true,
+				"status":  "completed",
+				"stage":   "completed",
+			}))
 		}
 	}
 	return out, nil
@@ -122,24 +109,9 @@ func (o *ChatOrchestrator) submitChatMessageAsync(ctx context.Context, req *chat
 				return
 			}
 			lg.Warn("SubmitChatMessage: turn execution failed", loggateway.Err(err))
-			// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves
-			// the v1 Task Failed activity (Content carries error message,
-			// Meta.error_type for frontend error categorization).
 			if bus := o.td().Pipeline.EventBus; bus != nil {
-				bus.Publish(context.Background(), biz.NewActivityBridgeEvent(biz.ActivityEvent{
-					Event: biz.ActivityEventFailed,
-					Activity: biz.Activity{
-						ID:        uuid.NewString(),
-						Kind:      biz.ActivityKindTask,
-						Status:    biz.ActivityStatusFailed,
-						SessionID: sessionID,
-						Timestamp: time.Now().UTC(),
-						Content:   err.Error(),
-						Meta: map[string]any{
-							"error_type": "send_failed",
-						},
-					},
-					Domain: biz.ActivityDomainChat,
+				bus.Publish(context.Background(), biz.NewSystemNoticeEvent(sessionID, "send_failed", err.Error(), map[string]any{
+					"error_type": "send_failed",
 				}))
 			}
 		}

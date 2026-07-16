@@ -1,16 +1,29 @@
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 import { useUsageStore } from '../../stores/usage';
 import type { ModelUsageQuery } from './types';
 import { formatUsdFromMicro } from './moneyFormat';
 import { downloadBlob } from '../../composables/useFileDownload';
+import { USAGE_EVENTS_LIMIT } from '../constants/queryLimits';
+
+/** Default retention when purging; independent of the view filter range. */
+export const DEFAULT_PURGE_RETAIN_DAYS = 30;
+
+const PURGE_RETAIN_DAY_OPTIONS = [
+  { label: '保留 7 天', value: 7 },
+  { label: '保留 30 天', value: 30 },
+  { label: '保留 90 天', value: 90 },
+  { label: '保留 365 天', value: 365 },
+];
 
 export function useUsageEventsPage() {
   const $q = useQuasar();
   const usageStore = useUsageStore();
   const { events, eventsLoading, eventsError, exporting } = storeToRefs(usageStore);
-  const filters = ref<ModelUsageQuery>({ range: '7d', limit: 200 });
+  const filters = ref<ModelUsageQuery>({ range: '7d', limit: USAGE_EVENTS_LIMIT });
+  /** Purge retention is independent of the list filter `range` (e.g. 24h must not mean 24 days). */
+  const retainDays = ref(DEFAULT_PURGE_RETAIN_DAYS);
 
   const rangeOptions = [
     { label: '24h', value: '24h' },
@@ -30,13 +43,6 @@ export function useUsageEventsPage() {
     { label: 'Team 成员', value: 'team_member' },
     { label: 'Team 整轮', value: 'team_turn' },
   ];
-
-  const retainDays = computed(() => {
-    const r = filters.value.range ?? '7d';
-    const m = r.match(/^(\d+)/);
-    if (!m) return 7;
-    return parseInt(m[1], 10);
-  });
 
   async function load() {
     await usageStore.loadEvents(filters.value);
@@ -58,12 +64,6 @@ export function useUsageEventsPage() {
     return formatUsdFromMicro(value);
   }
 
-  function truncate(msg?: string, max = 80) {
-    const s = (msg ?? '').trim();
-    if (s.length <= max) return s || '—';
-    return `${s.slice(0, max)}…`;
-  }
-
   const purging = ref(false);
 
   function onPurgeConfirm() {
@@ -71,7 +71,7 @@ export function useUsageEventsPage() {
     $q.dialog({
       class: 'app-dialog-card app-dialog-card--sm',
       title: '确认删除',
-      message: `将只保留最近 ${days} 天的数据，其他用量事件将全部删除。此操作不可撤销，确认继续？`,
+      message: `将只保留最近 ${days} 天的用量事件，更早的记录将全部删除。此操作与上方「范围」筛选无关，且不可撤销，确认继续？`,
       cancel: { label: '取消', flat: true, rounded: true, noCaps: true },
       ok: { label: '确认删除', color: 'negative', flat: true, rounded: true, noCaps: true },
       persistent: true,
@@ -89,7 +89,7 @@ export function useUsageEventsPage() {
   }
 
   function resetFilters() {
-    filters.value = { range: '7d', limit: 200 };
+    filters.value = { range: '7d', limit: USAGE_EVENTS_LIMIT };
     void load();
   }
 
@@ -103,6 +103,7 @@ export function useUsageEventsPage() {
     statusOptions,
     usageKindOptions,
     retainDays,
+    retainDayOptions: PURGE_RETAIN_DAY_OPTIONS,
     purging,
     load,
     exportCsv,
@@ -110,6 +111,5 @@ export function useUsageEventsPage() {
     onPurgeConfirm,
     resetFilters,
     formatMoney,
-    truncate,
   };
 }

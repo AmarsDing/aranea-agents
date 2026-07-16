@@ -7,6 +7,8 @@
       :turn="turn"
       @pause-agent="(sid) => $emit('pause-agent', sid)"
       @inject-agent="(p) => $emit('inject-agent', p)"
+      @retry-team="(teamId) => $emit('retry-team', teamId)"
+      @expand="(ids) => $emit('expand', ids)"
     />
   </div>
 </template>
@@ -19,5 +21,7 @@ defineProps<{ turns: Turn[] }>();
 defineEmits<{
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
+  'retry-team': [teamId: string];
+  expand: [sessionIds: string[]];
 }>();
 </script>

@@ -249,16 +249,16 @@ var _ tools.PlanBoardOrchFallback = (*PlanExecutor)(nil)
 // pending team_run completions and notify waiting dispatchStep goroutines.
 // 2026-07-04 问题 4 修复：让 PlanExecutor 转发 team_run 完成通知给 TeamOrchestrator。
 type TeamCompletionNotifier interface {
-	NotifyTeamCompletion(teamID string, success bool, errMsg string)
+	NotifyTeamCompletion(teamID, teamRunID string, success bool, errMsg string)
 }
 
 // NotifyTeamCompletion forwards a team_run completion event to the
 // TeamOrchestrator (if it implements TeamCompletionNotifier). Called by
 // TeamStarter.HandleTeamTurnResult when a team_run reaches terminal status.
 // 2026-07-04 问题 4 修复：让 PlanExecutor 转发 team_run 完成通知。
-func (e *PlanExecutor) NotifyTeamCompletion(teamID string, success bool, errMsg string) {
+func (e *PlanExecutor) NotifyTeamCompletion(teamID, teamRunID string, success bool, errMsg string) {
 	if notifier, ok := e.orch.(TeamCompletionNotifier); ok {
-		notifier.NotifyTeamCompletion(teamID, success, errMsg)
+		notifier.NotifyTeamCompletion(teamID, teamRunID, success, errMsg)
 	}
 }
 
@@ -409,11 +409,9 @@ func (e *PlanExecutor) markPlanBoardExecuting(ctx context.Context, board biz.Pla
 // PlanBoard if it doesn't already exist. Idempotent: if a GraphStage is
 // already associated with the PlanBoard, it's left as-is.
 //
-// 2026-07-04 问题 5 修复：task_planner_impl.go:publishV2PlanBoard 已通过
-// seq.Publish 异步创建 GraphStage + GraphNodes + 发送事件。此处保留同步
-// UpsertGraphStage 作为 crash recovery fallback（确保 newDagRun 的
-// GetGraphStageByPlanBoard 能查到），但移除 seq.Publish 避免重复发送
-// GraphStageCreatedEvent（task_planner 已发）。
+// B.10.5 / P-FIX5：PublishV2Board 已通过 seq.Publish 发送 GraphStageCreatedEvent。
+// 此处仅做同步 Upsert 作为 crash-recovery fallback（确保 newDagRun 的
+// GetGraphStageByPlanBoard 能查到），**禁止**再 Publish，避免重复 created。
 //
 // 设计：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md §3.2.4
 // GraphStage ID 由 planBoardID 确定性派生（uuid.NewSHA1(aranea.graph_stage.v2, planBoardID)）。
@@ -457,7 +455,7 @@ func (e *PlanExecutor) initGraphStage(ctx context.Context, board biz.PlanBoard) 
 	}
 	gs.Nodes = nodes
 	// 持久化 GraphStage（同步，确保 newDagRun 能查到）。
-	// VersionLT 守卫使此写入幂等：若 task_planner 的异步持久化已完成，此写入被拒绝。
+	// VersionLT 守卫使此写入幂等：若 PublishV2Board 的异步持久化已完成，此写入被拒绝。
 	if _, err := e.repos.UpsertGraphStage(ctx, gs); err != nil {
 		e.lg.Warn("upsert graph_stage failed (non-blocking)",
 			loggateway.Str("graph_stage_id", gsID),
@@ -475,8 +473,8 @@ func (e *PlanExecutor) initGraphStage(ctx context.Context, board biz.PlanBoard) 
 			)
 		}
 	}
-	e.seq.Publish(ctx, biz.NewGraphStageCreatedEvent(gs))
-	e.lg.Info("initGraphStage: 同步创建 GraphStage 并发布 created 事件",
+	// 不 Publish GraphStageCreatedEvent（B.10.5）：事件由 PublishV2Board 负责。
+	e.lg.Info("initGraphStage: 同步 Upsert GraphStage（无 created 事件，避免重复）",
 		loggateway.Str("plan_board_id", board.ID),
 		loggateway.Str("graph_stage_id", gsID),
 		loggateway.Int("node_count", len(nodes)),
@@ -1239,6 +1237,9 @@ func (r *dagRun) cascadeSkip(ctx context.Context, failedID string) {
 // 设计：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md §3.7.5
 // GraphNode 状态由 PlanStep.Status 通过 MapPlanStepToGraphNodeStatus 映射得到。
 // TeamStageID 在 dispatchStep 时回填，便于前端高亮显示对应节点。
+//
+// TeamStageID 保留规则：显式传入非空值优先；否则回退到 step.MappedTeamStageID。
+// 终态更新（completed/failed）传入空字符串时不得清空已回填的 TeamStageID。
 func (r *dagRun) updateGraphNode(ctx context.Context, stepID string, status biz.GraphNodeStatus, teamStageID string) {
 	if r.graphStageID == "" {
 		return // GraphStage 未创建，跳过
@@ -1248,14 +1249,16 @@ func (r *dagRun) updateGraphNode(ctx context.Context, stepID string, status biz.
 		GraphStageID: r.graphStageID,
 		Status:       status,
 	}
-	// 2026-07-05 修复：从 stepsByID 读取 step.Label 和 step.ID 填充 gn.Label
-	// 和 gn.DagNodeID，避免 UpsertGraphNode 的 Update 分支用空字符串覆盖
-	// initGraphStage 之前写入的正确值。
+	// 从 stepsByID 读取 Label/DagNodeID/DependsOn/MappedTeamStageID，避免
+	// Upsert 用空字段覆盖 initGraphStage 与 dispatch 已写入的正确值。
 	r.mu.Lock()
 	if step, ok := r.stepsByID[stepID]; ok {
 		gn.Label = step.Label
 		gn.DagNodeID = step.ID
 		gn.DependsOn = append([]string(nil), step.DependsOn...)
+		if teamStageID == "" {
+			teamStageID = step.MappedTeamStageID
+		}
 	}
 	r.mu.Unlock()
 	if teamStageID != "" {

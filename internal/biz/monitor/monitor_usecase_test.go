@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/pkg/loggateway"
 )
 
 type mockRepo struct {
@@ -1927,5 +1928,86 @@ func TestEvaluateAlerts_CooldownPreventsFire(t *testing.T) {
 	uc.EvaluateAlerts(context.Background())
 	if notifyCalled {
 		t.Error("Alert within cooldown should not fire")
+	}
+}
+
+func TestEvaluateAlerts_FiringStateUsesReminderNotSpam(t *testing.T) {
+	notifyCount := 0
+	lastFired := time.Now().Add(-5 * time.Minute) // within default 30m reminder window
+	repo := &mockRepo{
+		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
+			return []monitor.AlertRule{{
+				ID: "r1", MetricKey: "runner.error_rate", Threshold: 0.1,
+				WindowMinutes: 60, Enabled: true, CooldownMinutes: 1,
+				FiringState: monitor.AlertFiringStateFiring, LastFiredAt: &lastFired,
+			}}, nil
+		},
+		countMonitorEventsSinceFn: func(context.Context, string, string, string, string) (int32, error) {
+			return 10, nil
+		},
+		updateAlertFiringStateFn: func(context.Context, string, monitor.AlertFiringState, *time.Time, float64, *time.Time) error {
+			return nil
+		},
+	}
+	notifier := &mockNotifier{notifyFn: func(context.Context, monitor.AlertRule, map[string]any) { notifyCount++ }}
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier)
+	uc.EvaluateAlerts(context.Background())
+	if notifyCount != 0 {
+		t.Fatalf("firing within reminder window should not re-notify, got %d", notifyCount)
+	}
+}
+
+func TestEvaluateAlerts_FiringStateReminderAfterInterval(t *testing.T) {
+	notifyCount := 0
+	lastFired := time.Now().Add(-35 * time.Minute)
+	repo := &mockRepo{
+		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
+			return []monitor.AlertRule{{
+				ID: "r1", MetricKey: "runner.error_rate", Threshold: 0.1,
+				WindowMinutes: 60, Enabled: true, ReminderMinutes: 30,
+				FiringState: monitor.AlertFiringStateFiring, LastFiredAt: &lastFired,
+			}}, nil
+		},
+		countMonitorEventsSinceFn: func(context.Context, string, string, string, string) (int32, error) {
+			return 10, nil
+		},
+		updateAlertFiringStateFn: func(context.Context, string, monitor.AlertFiringState, *time.Time, float64, *time.Time) error {
+			return nil
+		},
+		insertMonitorEventFn: func(context.Context, monitor.EventWrite) error { return nil },
+	}
+	notifier := &mockNotifier{notifyFn: func(context.Context, monitor.AlertRule, map[string]any) { notifyCount++ }}
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier)
+	uc.EvaluateAlerts(context.Background())
+	if notifyCount != 1 {
+		t.Fatalf("firing past reminder interval should notify once, got %d", notifyCount)
+	}
+}
+
+func TestRecordRunnerCompletion_FeedsEvalWorker(t *testing.T) {
+	repo := &mockRepo{
+		existsRunnerCompletionFn: func(context.Context, string, string) (bool, error) { return false, nil },
+		insertMonitorEventFn:     func(context.Context, monitor.EventWrite) error { return nil },
+		patchRunnerCompletionMetadataFn: func(context.Context, string, string, string, string) (bool, error) {
+			return false, nil
+		},
+	}
+	rb := monitor.NewMetricRingBuffer()
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil, monitor.WithRingBuffer(rb))
+	w := monitor.NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
+	uc.SetEvalWorker(w)
+	err := uc.RecordRunnerCompletion(context.Background(),
+		monitor.EventWrite{EventKey: "runner.completion", Status: "error"},
+		monitor.RunnerCompletionLinkParams{
+			SessionID: "s1", RunID: "r1", InvocationID: "i1", TraceID: "t1",
+			Status: "error", DurationMs: 120, Bridge: &mockRunnerCompletionBridge{},
+		},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wr := rb.SumLastN(60)
+	if wr.Total != 1 || wr.Errors != 1 {
+		t.Fatalf("ring buffer not fed: total=%d errors=%d", wr.Total, wr.Errors)
 	}
 }

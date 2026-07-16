@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	"aranea-agents/internal/mcp/lifecycle"
 )
 
 const (
@@ -55,9 +57,18 @@ func Marshal(m map[string]any) (string, error) {
 // The persisted row status remains "active" because the server itself is up.
 func ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, at time.Time) (map[string]any, string) {
 	out := cloneMap(m)
-	out[KeyHealthStatus] = healthStatus
+	prev := lifecycle.Normalize(metaString(out[KeyHealthStatus]))
+	ev := lifecycle.EventFromProbeStatus(healthStatus)
+	if ok && healthStatus != "auth_required" && healthStatus != "degraded" {
+		ev = lifecycle.EventProbeOK
+	}
+	next, err := lifecycle.Transition(prev, ev)
+	if err != nil {
+		next = lifecycle.Normalize(healthStatus)
+	}
+	out[KeyHealthStatus] = string(next)
 	out[KeyLastHealthAt] = at.UTC().Format(time.RFC3339)
-	if ok && healthStatus != "auth_required" {
+	if next == lifecycle.StateOK {
 		out[KeyLastErrorMessage] = ""
 		delete(out, KeyHealthErrorSince)
 		return out, "active"
@@ -66,8 +77,8 @@ func ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, 
 	if _, exists := out[KeyHealthErrorSince]; !exists || strings.TrimSpace(metaString(out[KeyHealthErrorSince])) == "" {
 		out[KeyHealthErrorSince] = at.UTC().Format(time.RFC3339)
 	}
-	if ok {
-		// auth_required: degraded but server is up — persist as "active".
+	if next == lifecycle.StateAuthRequired || next == lifecycle.StateDegraded {
+		// auth_required / degraded: server may still be up — persist as "active".
 		return out, "active"
 	}
 	return out, "error"

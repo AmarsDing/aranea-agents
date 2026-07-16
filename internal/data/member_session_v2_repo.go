@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -51,6 +52,48 @@ func (r *memberSessionV2Repo) ListMemberSessionsByRun(ctx context.Context, runID
 		return nil, entErrToBizErr(err, "MEMBER_SESSION_V2")
 	}
 	return entMemberSessionsV2ToBiz(rows), nil
+}
+
+// ListOrphanMemberSessionsBySpiritSession returns Mode B member sessions
+// (empty TeamRunID) belonging to the given spirit root session.
+func (r *memberSessionV2Repo) ListOrphanMemberSessionsBySpiritSession(ctx context.Context, spiritSessionID string) ([]biz.MemberSession, error) {
+	if r == nil || r.data == nil {
+		return nil, fmt.Errorf("member session v2 repo: database not configured")
+	}
+	spiritSessionID = strings.TrimSpace(spiritSessionID)
+	if spiritSessionID == "" {
+		return nil, fmt.Errorf("member session v2 repo: spirit session id is required")
+	}
+	rows, err := r.data.RW().Read(ctx).MemberSessionV2.Query().
+		Where(
+			membersessionv2.SpiritSessionIDEQ(spiritSessionID),
+			membersessionv2.TeamRunIDEQ(""),
+		).
+		Order(ent.Asc(membersessionv2.FieldSeq)).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "MEMBER_SESSION_V2")
+	}
+	return entMemberSessionsV2ToBiz(rows), nil
+}
+
+// GetMemberSessionByChatSessionID returns the MemberSession whose SessionID
+// equals the member's own chat session ID.
+func (r *memberSessionV2Repo) GetMemberSessionByChatSessionID(ctx context.Context, chatSessionID string) (biz.MemberSession, error) {
+	if r == nil || r.data == nil {
+		return biz.MemberSession{}, fmt.Errorf("member session v2 repo: database not configured")
+	}
+	chatSessionID = strings.TrimSpace(chatSessionID)
+	if chatSessionID == "" {
+		return biz.MemberSession{}, fmt.Errorf("member session v2 repo: chat session id is required")
+	}
+	row, err := r.data.RW().Read(ctx).MemberSessionV2.Query().
+		Where(membersessionv2.SessionIDEQ(chatSessionID)).
+		Only(ctx)
+	if err != nil {
+		return biz.MemberSession{}, entErrToBizErr(err, "MEMBER_SESSION_V2")
+	}
+	return entMemberSessionV2ToBiz(row), nil
 }
 
 // CreateMemberSession inserts a new MemberSession with the caller's claimed Version.

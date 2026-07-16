@@ -1,6 +1,6 @@
 /**
  * Memory：`createMemoryService()` → 网关 **`/v1/...`**。
- * 服务端 **`memory/v1`** 由 **`cmd/admin`** 内 SQLite（`internal/data/sessionmemory`）实现；查询参数与响应字段按 proto **snake_case** 与网关 JSON 对齐。
+ * 服务端 **`memory/v1`** 由 **`cmd/admin`** 内 SQLite（`internal/data/memory_shim_*.go`）实现；查询参数与响应字段按 proto **snake_case** 与网关 JSON 对齐。
  */
 export type {
   AgentIdentity,
@@ -851,11 +851,14 @@ export async function listConflictingFacts(
   scopeId: string,
   limit = 50,
   offset = 0,
-): Promise<MemoryFact[]> {
+): Promise<{ items: MemoryFact[]; total: number }> {
   const raw = await memory.ListConflictingFacts({ scopeType, scopeId, limit, offset });
   const resp = asRecord(raw);
   const items = resp.items ?? [];
-  return (Array.isArray(items) ? items : []).map(mapFact);
+  return {
+    items: (Array.isArray(items) ? items : []).map(mapFact),
+    total: pickI32(resp, 'total', 'total'),
+  };
 }
 
 export async function listPIIFlaggedFacts(

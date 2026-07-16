@@ -227,6 +227,16 @@ func (s *OrchestrationStatusStore) ApplyActivityEvent(aev ActivityEvent, reg Orc
 			if st := s.applyStepFinished(meta, author, reg); st != nil {
 				changed = append(changed, st)
 			}
+		case aev.Activity.Stage == "circuit_opened":
+			if st := s.applyToResolved(meta, author, reg, AgentNodeStatusBlocked, WorkPhaseDoing); st != nil {
+				if msg := strings.TrimSpace(aev.Activity.Content); msg != "" {
+					if stored := s.Nodes[st.NodeID]; stored != nil {
+						stored.ErrorMessage = msg
+						st = cloneNodeState(stored)
+					}
+				}
+				changed = append(changed, st)
+			}
 		}
 	}
 	return changed
@@ -338,6 +348,9 @@ func (s *OrchestrationStatusStore) applyGraphNodeError(meta map[string]any, auth
 	status := AgentNodeStatusFailed
 	if metaBool(meta, "retrying") {
 		status = AgentNodeStatusRetrying
+	}
+	if strings.Contains(strings.ToLower(errorMsg), "circuit breaker") {
+		status = AgentNodeStatusBlocked
 	}
 	st := s.applyGraphNode(meta, author, reg, status, WorkPhaseDoing)
 	if st == nil {

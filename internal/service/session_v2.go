@@ -187,6 +187,24 @@ func (s *SessionV2Service) ListMemberSessions(ctx context.Context, req *v1.ListM
 	return &v1.ListMemberSessionsV2Response{MemberSessions: out}, nil
 }
 
+// ListOrphanMemberSessions returns Mode B member sessions (empty TeamRunID)
+// for a spirit root session — restores orphan agent-cards after refresh.
+func (s *SessionV2Service) ListOrphanMemberSessions(ctx context.Context, req *v1.ListOrphanMemberSessionsV2Request) (*v1.ListMemberSessionsV2Response, error) {
+	sessionID := strings.TrimSpace(req.GetSessionId())
+	if sessionID == "" {
+		return nil, apierror.BadRequest(apierror.DomainShared, "session_id is required")
+	}
+	sessions, err := s.memberSessionReader.ListOrphanMemberSessionsBySpiritSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.MemberSessionV2, 0, len(sessions))
+	for _, ms := range sessions {
+		out = append(out, bizMemberSessionToProto(ms))
+	}
+	return &v1.ListMemberSessionsV2Response{MemberSessions: out}, nil
+}
+
 // ListPlanBoards returns all plan_boards for a task.
 func (s *SessionV2Service) ListPlanBoards(ctx context.Context, req *v1.ListPlanBoardsV2Request) (*v1.ListPlanBoardsV2Response, error) {
 	taskID := strings.TrimSpace(req.GetTaskId())

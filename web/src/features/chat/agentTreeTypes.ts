@@ -1,18 +1,16 @@
 /**
- * Agent Tree Timeline types.
+ * Chat timeline helper types.
  *
- * Each Agent (root or child) is represented as an AgentBlock with a unified
- * internal structure: task → [timeline entries in chronological order] → result.
- * Root Agent blocks contain child Agent blocks in a tree layout.
- *
- * Timeline entries are ordered chronologically: thinking, tool, subagent
- * blocks appear in the order they occurred, not grouped by type.
+ * Legacy AgentBlock / AgentTreeTimeline model is deprecated — Mode B/C agent
+ * cards now use v2 MemberSession + MemberSessionPanel. This file still hosts
+ * ProgressSection / TodoItem / PlanEntry helpers used by chat panels and
+ * TodoBoard surfaces.
  */
 
-// ── Agent Block ──
-
+/** @deprecated Use MemberSession + MemberSessionPanel (v2) instead of AgentBlock. */
 export type AgentBlockStatus = 'running' | 'tool_running' | 'tool_blocked' | 'completed' | 'partial_failure' | 'failed';
 
+/** @deprecated Use MemberSession + MemberSessionPanel (v2) instead of AgentBlock. */
 export interface AgentBlock {
   id: string;
   agentKey: string;

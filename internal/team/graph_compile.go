@@ -119,12 +119,12 @@ func generateModeEdges(ctx context.Context, mode string, def Definition, nodes [
 	} else {
 		modeEdges = pipelineTemplate{}.BuildEdges(def, agentIDs)
 	}
-	trimmed := countTransferEdges(modeEdges) > maxAdaptiveTransferEdges
+	trimmed := countTransferEdges(modeEdges) > adaptiveTransferEdgeLimit(def)
 	if trimmed {
 		lg.Warn("transfer edges trimmed due to member count exceeding limit",
 			loggateway.StepID("team.compile.adaptive_trimmed"),
 			loggateway.Int("member_count", len(agentIDs)),
-			loggateway.Int("max_transfer_edges", maxAdaptiveTransferEdges),
+			loggateway.Int("max_transfer_edges", adaptiveTransferEdgeLimit(def)),
 			loggateway.Str("mode", mode))
 	}
 	out = append(out, modeEdges...)
@@ -141,6 +141,13 @@ func countTransferEdges(edges []embeddedGraphEdge) int {
 		}
 	}
 	return n
+}
+
+func adaptiveTransferEdgeLimit(def Definition) int {
+	if def.Swarm != nil && def.Swarm.MaxHandoffs > 0 {
+		return def.Swarm.MaxHandoffs
+	}
+	return maxAdaptiveTransferEdges
 }
 
 func memberNodeID(m MemberDef, index int) string {

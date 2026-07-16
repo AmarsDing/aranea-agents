@@ -5,9 +5,12 @@ import (
 	"strings"
 
 	v1 "aranea-agents/api/kratos/team/v1"
+	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
 )
 
 // injectTeamRunLookupLimit bounds the look-back window when searching for the
@@ -23,8 +26,8 @@ const injectTeamRunLookupLimit = 10
 //     in-flight member step. (trpc-agent-go does not natively support
 //     framework-level pause; cancel + state marker is the pragmatic MVP.)
 //  3. Transition TeamRun status: running → paused (CAS, state-machine validated).
-//  4. Publish run_status notice with status=paused so the frontend TeamCard
-//     re-renders with the paused affordance (resume / inject).
+//  4. Sync v2 TeamRun / MemberSession status and publish run_status on the
+//     spirit root so Chat WS subscribers (bound to spirit) refresh the UI.
 //
 // Note: true "resume from checkpoint" semantics require trpc-agent-go native
 // pause support, which is not yet available. UnpauseTeamRun therefore relies
@@ -61,11 +64,8 @@ func (s *TeamService) PauseTeamRun(ctx context.Context, req *v1.PauseTeamRunRequ
 		return nil, mapTeamErr(err)
 	}
 
-	// Publish run_status notice (paused) so the frontend re-renders the
-	// TeamCard tail with the resume / inject affordance.
-	if s.eventBus != nil && strings.TrimSpace(updated.SessionID) != "" {
-		PublishRunStatus(s.eventBus, updated.SessionID, updated.ID, "paused", "")
-	}
+	s.syncV2TeamRunStatus(ctx, updated, biz.TeamRunV2StatusPaused, biz.MemberSessionStatusPaused)
+	s.publishTeamPauseResumeStatus(ctx, updated, "paused")
 
 	return &v1.PauseTeamRunResponse{
 		RunId:  updated.ID,
@@ -78,7 +78,7 @@ func (s *TeamService) PauseTeamRun(ctx context.Context, req *v1.PauseTeamRunRequ
 // MVP implementation:
 //  1. Validate team run is in 'paused' status (CAS via state machine).
 //  2. Transition TeamRun status: paused → running (CAS).
-//  3. Publish run_status notice with status=running.
+//  3. Sync v2 TeamRun / MemberSession and publish run_status on spirit root.
 //
 // Note: MVP does NOT automatically re-trigger execution of remaining steps.
 // The user must call InjectTeamMessage to send a new instruction that
@@ -103,16 +103,94 @@ func (s *TeamService) UnpauseTeamRun(ctx context.Context, req *v1.UnpauseTeamRun
 		return nil, mapTeamErr(err)
 	}
 
-	// Publish run_status notice (running) so the frontend re-renders the
-	// TeamCard tail with the pause affordance.
-	if s.eventBus != nil && strings.TrimSpace(updated.SessionID) != "" {
-		PublishRunStatus(s.eventBus, updated.SessionID, updated.ID, "running", "")
-	}
+	s.syncV2TeamRunStatus(ctx, updated, biz.TeamRunV2StatusRunning, biz.MemberSessionStatusRunning)
+	s.publishTeamPauseResumeStatus(ctx, updated, "running")
 
 	return &v1.UnpauseTeamRunResponse{
 		RunId:  updated.ID,
 		Status: updated.Status,
 	}, nil
+}
+
+// resolveSpiritSessionIDForTeam returns RootSessionID when the team session
+// is a child of a spirit root; otherwise returns sessionID.
+func (s *TeamService) resolveSpiritSessionIDForTeam(ctx context.Context, sessionID string) string {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" || s.sessions == nil {
+		return sessionID
+	}
+	sess, err := s.sessions.Get(ctx, sessionID)
+	if err != nil {
+		return sessionID
+	}
+	if root := strings.TrimSpace(sess.RootSessionID); root != "" {
+		return root
+	}
+	return sessionID
+}
+
+// publishTeamPauseResumeStatus publishes run_status on the spirit root so
+// Chat WS subscribers receive it. Meta.team_run_id identifies the legacy run.
+func (s *TeamService) publishTeamPauseResumeStatus(ctx context.Context, run biz.TeamRunRecord, status string) {
+	if s.eventBus == nil || strings.TrimSpace(run.SessionID) == "" {
+		return
+	}
+	spiritID := s.resolveSpiritSessionIDForTeam(ctx, run.SessionID)
+	meta := map[string]any{
+		"run_id":      run.ID,
+		"status":      status,
+		"team_run_id": run.ID,
+		"notice_type": "info",
+	}
+	s.eventBus.Publish(ctx, biz.NewRunStatusEvent(spiritID, run.ID, status, meta))
+}
+
+// syncV2TeamRunStatus updates the v2 TeamRun (+ running/paused MemberSessions)
+// using the same deterministic ID formula as publishV2TeamRunAndMemberSessions.
+// No-op when v2 repos / sequencer are not wired (unit tests).
+func (s *TeamService) syncV2TeamRunStatus(
+	ctx context.Context,
+	legacy biz.TeamRunRecord,
+	trStatus biz.TeamRunV2Status,
+	msStatus biz.MemberSessionStatus,
+) {
+	if s.teamRunV2 == nil || s.v2Seq == nil {
+		return
+	}
+	teamID := strings.TrimSpace(legacy.TeamID)
+	if teamID == "" {
+		return
+	}
+	teamStageID := string(agent.NewTeamStageActivityID(teamID))
+	teamRunID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.team_run.v2:"+teamStageID)).String()
+	tr, err := s.teamRunV2.GetTeamRun(ctx, teamRunID)
+	if err != nil {
+		return
+	}
+	tr.Status = trStatus
+	tr.Version++
+	s.v2Seq.Publish(ctx, biz.NewTeamRunStartedEvent(tr))
+
+	if s.memberSessionV2 == nil {
+		return
+	}
+	members, err := s.memberSessionV2.ListMemberSessionsByRun(ctx, teamRunID)
+	if err != nil {
+		return
+	}
+	for i := range members {
+		ms := members[i]
+		switch {
+		case trStatus == biz.TeamRunV2StatusPaused && ms.Status == biz.MemberSessionStatusRunning:
+			ms.Status = msStatus
+		case trStatus == biz.TeamRunV2StatusRunning && ms.Status == biz.MemberSessionStatusPaused:
+			ms.Status = msStatus
+		default:
+			continue
+		}
+		ms.Version++
+		s.v2Seq.Publish(ctx, biz.NewMemberSessionUpdatedEvent(ms))
+	}
 }
 
 // InjectTeamMessage injects a user message into the active or paused team

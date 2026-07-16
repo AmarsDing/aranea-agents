@@ -28,6 +28,7 @@ type TeamRunV2Status string
 
 const (
 	TeamRunV2StatusRunning   TeamRunV2Status = "running"
+	TeamRunV2StatusPaused    TeamRunV2Status = "paused"
 	TeamRunV2StatusCompleted TeamRunV2Status = "completed"
 	TeamRunV2StatusFailed    TeamRunV2Status = "failed"
 	TeamRunV2StatusCancelled TeamRunV2Status = "cancelled"

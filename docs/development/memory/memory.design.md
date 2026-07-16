@@ -39,9 +39,9 @@ L0 Context Package（每轮 ephemeral）
 | 数据 | 权威存储 | 索引/可选 |
 |------|----------|-----------|
 | L0 内容 | `messages` + `session_summaries` | `memory_l0_assembly_snapshots`（元数据） |
-| L1–L2/L4 | SQLite `sessionmemory` | — |
+| L1–L2/L4 | SQLite（`internal/data/memory_shim_*.go`） | — |
 | L3 facts | SQLite `memory_facts`（权威） | embedding 列或 `memory_fact_index`；**pgvector 仅作可选读索引** |
-| 框架 Memory | **适配** `sessionmemory`，禁止平行第三写入口 | `sqlite_adapter` |
+| 框架 Memory | **适配** L3FactReader/Writer（shim），禁止平行第三写入口 | `sqlite_adapter` → `memtrpc.NewMemoryService` |
 
 **原则**：消除 L3 三写（`memory_facts` / pgvector `agent_memory_*` / trpc event entity 各写各的）。Runner 侧 `trpc-agent-go/memory.Service` 是框架接口真相源；Aranea L0–L4 **实现**该接口并暴露 Admin 治理面。
 
@@ -59,8 +59,8 @@ type MemorySet struct {
 
 | 轨 | 包 | 用途 |
 |----|-----|------|
-| Runner | `internal/memory/trpc` → `sessionmemory.Store` | Turn 内 memory tools、跨会话 recall |
-| 产品 Admin | `MemoryAdminUsecase` → `sessionmemory` | gRPC ListL0/L1/Facts/Entities… |
+| Runner | `internal/memory/trpc` → `L3FactReader`/`L3FactWriter`（`memory_shim_*`） | Turn 内 memory tools、跨会话 recall |
+| 产品 Admin | `MemoryAdminUsecase` → `memory_shim_*` 适配器 | gRPC ListL0/L1/Facts/Entities… |
 | Prompt 注入 | `MemoryL2RecallUsecase` / `MemoryL3RecallUsecase` | **唯一** query embedding 入口；Store 不再内嵌 embedder |
 | L3 向量索引 | `data.NewMemoryFactIndexSync` | 单次 embed → pgvector（可选）+ `memory_facts.embedding_blob`（权威 recall） |
 | 可选 pgvector | `biz.MemoryUsecase` | trpc `SearchMemories` 可选向量轨；**非** prompt 注入主路径 |
@@ -125,7 +125,7 @@ Schema 源：`internal/data/sql/memory_chain.sql` · 分层 SQL：`docs/sql/10_m
 
 **代码锚点（Legacy 桥接，非产品功能）**：
 
-- `internal/data/sessionmemory/store_legacy_backfill.go` — `BackfillLegacyTRPCMemoryEntities`
+- `internal/data/memory_migrate.go`（及关联 shim）— `BackfillLegacyTRPCMemoryEntities`
 - 启动调用链：`internal/data/data.go` → `ensureAllSchemas`（**待拆分**，见 §十一）
 
 **原则**：
@@ -144,7 +144,7 @@ Schema 源：`internal/data/sql/memory_chain.sql` · 分层 SQL：`docs/sql/10_m
 | Service | `internal/service/memory.go`, `session_compress.go` | proto ↔ biz；L0 压缩 |
 | Biz | `memory_admin_*.go`, `memory_l4*.go`, `memory_worker.go` | 领域；**不** import trpc |
 | Agent | `trpc_build.go`, `l4_prompt.go` | Runner 装配、L4 cue 注入 |
-| Data | `internal/data/sessionmemory` | L0–L4 表读写 |
+| Data | `internal/data/memory_shim_*.go` + `memory_helpers.go` | L0–L4 表读写（原 sessionmemory 包已折叠） |
 | Bridge | `internal/memory/trpc/sqlite_adapter.go` | 框架 MemoryService |
 | Runtime | `internal/runtime/memory_set.go` | Wire 组装 MemorySet |
 
@@ -194,9 +194,9 @@ L4 属性变更 → CascadeProposal → 审核 → L3/L4 批量更新
 
 文件：`api/kratos/memory/v1/memory.proto`
 
-**已实现 RPC（摘要）**：`ListL0Snapshots` · `ListL1Tasks/Fields` · `ListMemoryFacts` · `UpsertMemoryFact` · `ListMemoryEntities` · `GetMemoryNeighborhood` · `GetAgentIdentity/Strategy` · `ListEvolutionProposals/Events` · `AppendEvolutionEvent` · `RecallMemories`
+**已实现 RPC（摘要）**：`ListL0Snapshots` · `ListL1Tasks/Fields` · `ListMemoryFacts` · `UpsertMemoryFact` · `ListMemoryEntities` · `GetMemoryNeighborhood` · `SpreadingActivation` · `GetAgentIdentity/Strategy` · `ListEvolutionProposals/Events` · `AppendEvolutionEvent` · `GetEvolutionMetrics` · `ListCascadeProposals` · `Approve/RejectCascadeProposal` · `PreviewCascadeApprove` · `GetCascadeSagaSteps` · `Retry/CompensateCascadeApprove` · `DebugMemoryRecall` · `CompositeSearchMemories` · `GetMemoryWorkerStatus` · `Get/UpdateMemoryPlatformSettings` · `List/Replay/AbandonMemoryDeadLetters` · `ListPIIFlaggedFacts` · `ReviewPIIFact` · `ListConflictingFacts`
 
-**待增 RPC**：`GetMemoryOverview` · `GetMemorySnapshot` · `ListCascadeProposals` · `Approve/RejectCascadeProposal` · `GetMemoryWorkerStatus` · `SearchMemories` · `Confirm/RejectMemoryFact` · `ListMemoryConflicts` · `ResolveMemoryConflict` · `ConsolidateEpisode`
+**仍待增 / 产品缺口 RPC**：`GetMemoryOverview` · `GetMemorySnapshot` · `Confirm/RejectMemoryFact`（非 PII） · `ResolveMemoryConflict` · `ConsolidateEpisode`（Admin 面；内部 consolidator 已存在） · 独立 Admin `SearchMemories`（现有 `CompositeSearchMemories` + 框架 Search）
 
 完整 message 定义见下文 **附录 A §二**；新改动以 proto 源文件为准。
 
@@ -217,7 +217,7 @@ Memory Center 组件与路由详见 **附录 A §九**。
 | 框架概念 | Aranea 落位 |
 |----------|-------------|
 | `session.Session` events | L0 滑动窗口事实源 |
-| `memory.Service` | `sqlite_adapter` → `sessionmemory` |
+| `memory.Service` | `sqlite_adapter` → `L3FactReader`/`L3FactWriter`（`memory_shim_*`） |
 | memory tools (add/search/…) | Agent 装配于 `trpc_build.go` |
 | `AddSessionToMemory` | 待与 L2/L3 写入对齐（P2） |
 

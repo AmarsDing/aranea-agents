@@ -115,7 +115,28 @@ type GraphBuildConfig struct {
 	ExecutionEngine  ExecutionEngineType  `json:"execution_engine"`
 	InterruptBefore  []string             `json:"interrupt_before"`
 	InterruptAfter   []string             `json:"interrupt_after"`
+	// CircuitBreaker is attached by ApplyCircuitBreakerPolicy (FP-02) for graph runtime.
+	CircuitBreaker *CircuitBreakerPolicy `json:"circuit_breaker,omitempty"`
+	// CircuitBreakerScope namespaces breaker keys (e.g. "team:{teamID}").
+	CircuitBreakerScope string `json:"circuit_breaker_scope,omitempty"`
+	// SwarmSafety carries Graph-path swarm limits (MaxHandoffs / repetitive handoff).
+	SwarmSafety *SwarmSafetySpec `json:"swarm_safety,omitempty"`
 }
+
+// SwarmSafetySpec is the Graph-path equivalent of native team.SwarmConfig limits.
+type SwarmSafetySpec struct {
+	MaxHandoffs                int  `json:"max_handoffs"`
+	RepetitiveHandoffWindow    int  `json:"repetitive_handoff_window"`
+	RepetitiveHandoffMinUnique int  `json:"repetitive_handoff_min_unique"`
+	CrossRequestTransfer       bool `json:"cross_request_transfer"`
+}
+
+// Swarm graph state keys (AS-FSM / swarm safety).
+const (
+	SwarmHandoffCountStateKey    = "_swarm_handoff_count"
+	SwarmRecentTargetsStateKey   = "_swarm_recent_targets"
+	SwarmActiveAgentSessionMeta  = "swarm_active_agent"
+)
 
 // GraphExecutor is the biz-level port for executing graphs from other modules.
 // Consumers (Channel, Cron) depend on this interface instead of *GraphService,

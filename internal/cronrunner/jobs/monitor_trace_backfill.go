@@ -77,23 +77,41 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 		return
 	}
 	inserted := 0
+	updated := 0
 	var latestCreatedAt string
 	for _, row := range rows {
 		tw := monitor.TraceWrite{
-			TraceID:   row.TraceID,
-			SessionID: row.SessionID,
-			RunID:     row.RunID,
-			AgentID:   row.AgentID,
-			Name:      "runner.completion",
-			Status:    row.Status,
+			TraceID:    row.TraceID,
+			SessionID:  row.SessionID,
+			RunID:      row.RunID,
+			AgentID:    row.AgentID,
+			Name:       "runner.completion",
+			Status:     row.Status,
+			DurationMs: row.DurationMs,
 		}
 		if tw.TraceID == "" {
 			continue
 		}
 		if err := w.traceRepo.InsertMonitorTrace(ctx, tw); err != nil {
+			w.lg.Warn("backfill: InsertMonitorTrace failed",
+				loggateway.Str("trace_id", tw.TraceID),
+				loggateway.Err(err))
+		} else {
+			inserted++
+		}
+		// Always close/update existing running rows to terminal status (INSERT OR IGNORE
+		// alone cannot advance rows already inserted by TraceProjector).
+		errCount := 0
+		if tw.Status == "error" {
+			errCount = 1
+		}
+		if err := w.traceRepo.UpdateMonitorTraceCompletion(ctx, tw.TraceID, tw.Status, tw.DurationMs, 0, errCount, 0, 0); err != nil {
+			w.lg.Warn("backfill: UpdateMonitorTraceCompletion failed",
+				loggateway.Str("trace_id", tw.TraceID),
+				loggateway.Err(err))
 			continue
 		}
-		inserted++
+		updated++
 	}
 	if len(rows) > 0 {
 		// ListRecentRunnerCompletions returns rows ordered by created_at DESC,
@@ -107,9 +125,10 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 		}
 		w.watermark = latestCreatedAt
 	}
-	if inserted > 0 {
+	if inserted > 0 || updated > 0 {
 		w.lg.Info("monitor trace backfill completed",
 			loggateway.Int("inserted", inserted),
+			loggateway.Int("updated", updated),
 			loggateway.Str("since", since.String()))
 	}
 }

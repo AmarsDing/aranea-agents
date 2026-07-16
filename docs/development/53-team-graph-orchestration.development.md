@@ -1,6 +1,6 @@
 # M53: Team × Graph 编排融合 — 开发计划
 
-> **版本**：2026-06-06 | **状态**：✅ Phase 0.5–8.8 已落地；**Phase 8.9 待实施**（BL-05/BL-09/FP-02/FP-04）
+> **版本**：2026-07-16 | **状态**：✅ Phase 0.5–8.9 已落地（含 BL-05/BL-09、Swarm Graph 安全、CB 持久化）
 > **需求**：[53-team-graph-orchestration.md](./53-team-graph-orchestration.md) · **设计**：[53-team-graph-orchestration.design.md](./53-team-graph-orchestration.design.md)
 
 ---
@@ -238,7 +238,7 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 | Graph 路径 silent fallback Native | Phase 8：`fallback_policy.go` 简化，Native 路径已移除 | ✅ 已解决 |
 | `teamUtils.parseDefinition` 丢 `runtime_engine` | Phase 5 TG-RT-UI：raw merge 保留未知字段 | ✅ 已解决 |
 | trace_id 跨域关联 | `team_runs.trace_id` 字段 + `UpdateTeamRunTraceID` 持久化 | ✅ 已解决 |
-| Circuit Breaker 未实现 | 类型预留，`circuit_breaker.go` 待创建 | 📋 待实施 |
+| Circuit Breaker 未实现 | ✅ FP-02 已落地（graph 运行时 + blocked 投影） | ✅ |
 
 ---
 
@@ -323,14 +323,15 @@ OrchestrationSpec (definition_json)
 | ~~灰度桶 / canary~~ | ✅ Phase 8：`graph_runtime_canary.go` 简化 | Phase 8 ✅ |
 | ~~Native fallback 决策树~~ | ✅ Phase 8：`fallback_policy.go` 简化 | Phase 8 ✅ |
 
-#### F. 待实施（Phase 8.9+）
+#### F. Phase 8.9（已完成）
 
 | 差距 | 现状 | 优先级 |
 |------|------|--------|
-| Circuit Breaker 实现 | 类型预留，`circuit_breaker.go` 待创建 | P1 |
-| 死信表 | `task_dead_letters` 待实施 | P2 |
-| Step 持久化事件驱动统一 | bulk persist 路径待删除 | 中 |
-| Observer 单订阅化 | 当前 4 个订阅，建议 6+ 时再实施 | 低 |
+| ~~Circuit Breaker 实现~~ | ✅ FP-02：Pre/Post + 持久化 registry | P1 ✅ |
+| ~~死信表~~ | ✅ 表/Repo/API + Teams 死信 Tab | P2 ✅ |
+| ~~Step 持久化事件驱动统一~~ | ✅ BL-05：Native bulk persist 已退役 | ✅ |
+| ~~Observer 单订阅化~~ | ✅ BL-09：`teamRunPipeline` + status handler | ✅ |
+| ~~Swarm Graph 安全~~ | ✅ RepetitiveHandoff / CrossRequest / NodeTimeout | ✅ |
 
 ### 8.4 推荐实施顺序
 
@@ -339,10 +340,10 @@ OrchestrationSpec (definition_json)
 ✅ Phase 6  默认 Graph + Checkpoint/HITL + Spec v2
 ✅ Phase 7  移除 Native + Task/Subgraph + 文档/arch 图更新
 ✅ Phase 8.1–8.8  架构优化（状态机 / 协议化 / 单轨化 / mode→template / 配置化 / 错误规范化）
-📋 Phase 8.9  BL-05 / BL-09 / FP-02 / FP-04
+✅ Phase 8.9  BL-05 / BL-09 / FP-02 / FP-04
 ```
 
-**原则**：Phase 0.5–8.8 已完成执行收敛与架构优化；Phase 8.9 为剩余补全项，按优先级逐步实施。
+**原则**：Phase 0.5–8.9 已完成执行收敛、架构优化与剩余补全项。
 
 ### 8.5 配置速查（当前单轨期）
 
@@ -497,14 +498,15 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 | TG-Q-24 | adaptive 裁剪告警解耦：改为基于实际边数检测而非 mode 名硬编码 | `team/graph_compile.go` | ✅ |
 | TG-Q-25 | `UpdateTeamRun` 静默忽略错误全面消除（6 处） | `team/team_graph_run_coordinator.go` + `team/runner_team_turn.go` + `team/runner_helpers.go` + `team/team_graph_run_finisher.go` | ✅ |
 
-### Phase 8.9 — 待实施
+### Phase 8.9 — 已完成
 
-| ID | 任务 | BL | 优先级 | 说明 |
-|----|------|-----|--------|------|
-| BL-05 | Step 持久化事件驱动统一：删除 bulk persist 路径 | 中 | 依赖 Native 完全退役 |
-| BL-09 | Observer 单订阅化：`teamRunPipeline` + `runEventHandler` 接口 | 低 | 减少订阅开销；当前 4 个订阅开销可接受，建议在 Observer 数量增长到 6+ 时再实施 |
-| FP-02 | Circuit Breaker 实现 | P1 | 类型预留，`circuit_breaker.go` 待创建 |
-| FP-04 | 死信表 | P2 | 依赖 M55 Background Job 面板 |
+| ID | 任务 | 优先级 | 说明 |
+|----|------|--------|------|
+| BL-05 | Step 持久化事件驱动统一：删除 Native bulk persist 死路径 | ✅ | Graph 路径仅事件驱动 / finalize fallback |
+| BL-09 | Observer 单订阅化：`teamRunPipeline` + `runEventHandler` | ✅ | `status_projector` 经 pipeline；Graph step watch 仍独立（HITL/finalize） |
+| FP-02 | Circuit Breaker + `circuit_breaker_states` 持久化 | ✅ | Wire `ProvideNodeCircuitBreakerRegistry` + Pre/Post |
+| FP-04 | 死信表 + UI | ✅ | Teams 运行轨迹 Dialog 死信 Tab |
+| Swarm | `RepetitiveHandoff*` / `CrossRequestTransfer` / `NodeTimeout` | ✅ | Graph PreNode + session meta + Executor `WithNodeTimeout` |
 
 ### Phase 8 关键设计决策
 

@@ -23,6 +23,7 @@ func (f *trpcGraphBuilderFactory) BuildTeamGraphRoot(ctx context.Context, cfg bi
 	if f == nil {
 		return nil, apierror.Internal(apierror.DomainGraph, "graph builder factory is nil")
 	}
+	EnsureCriticLoopCondFuncs(f.registry, cfg, f.lg)
 	// Use the NodeAgents variant so team-graph agent nodes can be resolved
 	// by node ID via FindSubAgent (see runtime_adapter.go buildRuntime for
 	// the detailed rationale). Without this, agent node execution fails
@@ -35,5 +36,5 @@ func (f *trpcGraphBuilderFactory) BuildTeamGraphRoot(ctx context.Context, cfg bi
 	if name == "" {
 		name = "team-graph"
 	}
-	return f.createAgent(name, g, cfg.EnableCheckpoint, cfg.ExecutionEngine, subAgents, nodeAgents)
+	return f.createAgent(name, g, cfg, cfg.EnableCheckpoint, cfg.ExecutionEngine, subAgents, nodeAgents)
 }

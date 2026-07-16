@@ -4,14 +4,14 @@
       <div class="row items-center q-gutter-sm">
         <q-icon name="swap_horiz" class="overview-panel__alert-icon" />
         <div>
-          <div class="text-h6 overview-section-title">模型降级事件</div>
-          <div class="text-caption overview-section-caption">Failover / Hedge 切换与费用保护回退</div>
+          <div class="text-h6 overview-section-title">{{ t('overviewPage.fallbackEventsTitle') }}</div>
+          <div class="text-caption overview-section-caption">{{ t('overviewPage.fallbackEventsCaption') }}</div>
         </div>
       </div>
     </q-card-section>
     <q-separator class="overview-separator" />
     <q-card-section>
-      <div v-if="!events.length" class="overview-empty overview-empty--compact">暂无降级事件</div>
+          <div v-if="!events.length" class="overview-empty overview-empty--compact">暂无异常重试事件</div>
       <q-list v-else dense class="overview-rank-list">
         <q-item v-for="(evt, idx) in events" :key="idx">
           <q-item-section avatar class="overview-rank-index">
@@ -32,7 +32,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { ModelTokenUsageEvent } from '../../features/usage/types';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   anomalies: ModelTokenUsageEvent[];

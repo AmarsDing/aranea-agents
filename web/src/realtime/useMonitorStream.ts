@@ -15,6 +15,7 @@
 import type { Ref } from 'vue';
 import { createEnvelopeStream } from './useEnvelopeStream';
 import type { MonitorEvent } from './monitorEvent';
+import type { MonitorBackpressurePayload } from './ws-transport';
 
 export type UseMonitorStreamOptions = {
   sessionId: string;
@@ -24,6 +25,7 @@ export type UseMonitorStreamOptions = {
   onConnected?: () => void;
   onDisconnected?: () => void;
   onMonitorEvent?: (event: MonitorEvent) => void;
+  onBackpressure?: (payload: MonitorBackpressurePayload) => void;
 };
 
 export type UseMonitorStreamReturn = {
@@ -45,6 +47,7 @@ export function createMonitorStream(opts: UseMonitorStreamOptions): UseMonitorSt
     onConnected: () => opts.onConnected?.(),
     onDisconnected: () => opts.onDisconnected?.(),
     onMonitorEvent: opts.onMonitorEvent,
+    onBackpressure: opts.onBackpressure,
   });
 
   return {

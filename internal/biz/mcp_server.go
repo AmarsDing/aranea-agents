@@ -370,8 +370,16 @@ func validateMCPConfigURLs(configJSON string) error {
 	switch transport {
 	case "stdio":
 		cmd, _ := cfg["command"].(string)
-		if strings.TrimSpace(cmd) == "" {
-			return apierror.BadRequest("MCP_SERVER", "mcp stdio transport requires command")
+		if err := validateMCPStdioCommand(cmd); err != nil {
+			return err
+		}
+		if argsRaw, ok := cfg["args"].([]any); ok {
+			for i, a := range argsRaw {
+				s, _ := a.(string)
+				if err := validateMCPStdioArg(s, i); err != nil {
+					return err
+				}
+			}
 		}
 	case "sse", "streamable", "streamable_http":
 		url, _ := cfg["url"].(string)
@@ -393,5 +401,37 @@ func validateMCPConfigURLs(configJSON string) error {
 			}
 		}
 	}
+	return nil
+}
+
+// validateMCPStdioCommand rejects empty commands and shell-injection / path-traversal patterns.
+// Command is passed to exec (not a shell), but we still block metacharacters and ".." to reduce
+// accidental or malicious config that could confuse wrappers or path resolution.
+func validateMCPStdioCommand(cmd string) error {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return apierror.BadRequest("MCP_SERVER", "mcp stdio transport requires command")
+	}
+	if strings.Contains(cmd, "..") {
+		return apierror.BadRequest("MCP_SERVER", "mcp stdio command must not contain path traversal (..)")
+	}
+	if strings.ContainsAny(cmd, ";&|$`\n\r") {
+		return apierror.BadRequest("MCP_SERVER", "mcp stdio command must not contain shell metacharacters")
+	}
+	return nil
+}
+
+func validateMCPStdioArg(arg string, index int) error {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		return nil
+	}
+	if strings.Contains(arg, "..") {
+		return apierror.BadRequest("MCP_SERVER", "mcp stdio args must not contain path traversal (..)")
+	}
+	if strings.ContainsAny(arg, ";&|$`\n\r") {
+		return apierror.BadRequest("MCP_SERVER", "mcp stdio args must not contain shell metacharacters")
+	}
+	_ = index
 	return nil
 }

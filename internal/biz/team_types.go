@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"aranea-agents/pkg/loggateway"
@@ -37,6 +38,25 @@ const OrchestrationControlToolName = "orchestration_control"
 
 // CriticLoopCondFuncRef is kept as an alias for backward compatibility.
 const CriticLoopCondFuncRef = CriticLoopDecisionFunc
+
+// CriticLoopCondFuncRefForThreshold returns a CondFuncRef that embeds the score
+// threshold so graph builds with different critic_loop.score_threshold do not
+// overwrite each other on the shared registry.
+func CriticLoopCondFuncRefForThreshold(threshold float64) string {
+	if threshold <= 0 {
+		return CriticLoopCondFuncRef
+	}
+	return CriticLoopCondFuncRef + "@" + formatCriticThreshold(threshold)
+}
+
+func formatCriticThreshold(threshold float64) string {
+	// Trim trailing zeros for stable refs (0.8 not 0.800000).
+	s := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.4f", threshold), "0"), ".")
+	if s == "" || s == "-" {
+		return "0"
+	}
+	return s
+}
 
 type OrchestrationDecision struct {
 	Action string  `json:"action"`

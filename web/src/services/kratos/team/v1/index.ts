@@ -365,6 +365,7 @@ export type ListTeamsRequest = {};
 
 export type ListTeamsResponse = {
   items: Team[] | undefined;
+  total: number | undefined;
 };
 
 export type CreateTeamRequest = {

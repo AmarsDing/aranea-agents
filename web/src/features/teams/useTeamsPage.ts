@@ -4,7 +4,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
 import type { Agent } from '../agents/types';
-import type { Team, TeamDefinition, TeamRun, TeamRunEvent } from './types';
+import type { Team, TeamDefinition, TeamRun, TeamRunEvent, TaskDeadLetterRow } from './types';
+import { listTaskDeadLetters, resolveTaskDeadLetter } from './api';
 import { useTeamsStore } from '../../stores/teams';
 import { usePlatformStore } from '../../stores/platform';
 import {
@@ -57,6 +58,7 @@ export function useTeamsPage() {
   const editorOpen = ref(false);
   const selectedTeamTemplateKey = ref<TeamTemplateKey | null>(null);
   const editingId = ref('');
+  const editingHasActiveRun = ref(false);
   const saving = ref(false);
   const form = reactive({
     team_key: '',
@@ -79,6 +81,8 @@ export function useTeamsPage() {
   const runsOpen = ref(false);
   const runEventsConnected = ref(false);
   let runEventsSource: ReturnType<typeof store.subscribeRunEvents> | null = null;
+  const deadLetters = ref<TaskDeadLetterRow[]>([]);
+  const deadLettersLoading = ref(false);
 
   // ── Test state ──
   const testOpen = ref(false);
@@ -140,7 +144,8 @@ export function useTeamsPage() {
     error.value = '';
     try {
       const platformStore = usePlatformStore();
-      await Promise.all([store.loadTeams(), store.loadAgents(), platformStore.loadTaxonomyTree()]);
+      // Backend Team.department_id references organization tree nodes (not legacy taxonomy).
+      await Promise.all([store.loadTeams(), store.loadAgents(), platformStore.loadTaxonomyTree('organization')]);
       taxonomyTree.value = platformStore.taxonomyTree;
       openRouteEdit();
     } catch (err) {
@@ -161,6 +166,7 @@ export function useTeamsPage() {
 
   function openCreate() {
     editingId.value = '';
+    editingHasActiveRun.value = false;
     selectedTeamTemplateKey.value = null;
     Object.assign(form, { team_key: '', display_name: '', status: 'pending', app_name: '', taxonomy_industry_id: '' });
     resetDefinition(definition);
@@ -169,6 +175,7 @@ export function useTeamsPage() {
 
   function openEdit(team: Team) {
     editingId.value = team.id;
+    editingHasActiveRun.value = Boolean(team.has_active_run);
     selectedTeamTemplateKey.value = null;
     Object.assign(form, {
       team_key: team.team_key,
@@ -270,13 +277,40 @@ export function useTeamsPage() {
     store.selectedTeam = team;
     runsOpen.value = true;
     store.clearRunsState();
-    await store.loadRuns(team.id, 30);
+    await Promise.all([store.loadRuns(team.id, 30), loadDeadLetters()]);
     openRunEvents(team.id);
   }
 
   async function loadRuns() {
     if (!store.selectedTeam) return;
     await store.loadRuns(store.selectedTeam.id, 30);
+  }
+
+  async function loadDeadLetters() {
+    if (!store.selectedTeam) return;
+    deadLettersLoading.value = true;
+    try {
+      deadLetters.value = await listTaskDeadLetters({
+        teamId: store.selectedTeam.id,
+        status: 'pending',
+        limit: 50,
+      });
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '加载死信失败' });
+      deadLetters.value = [];
+    } finally {
+      deadLettersLoading.value = false;
+    }
+  }
+
+  async function resolveDeadLetter(id: string) {
+    try {
+      await resolveTaskDeadLetter(id);
+      $q.notify({ type: 'positive', message: '死信已标记为已解决' });
+      await loadDeadLetters();
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '解决死信失败' });
+    }
   }
 
   async function loadRunSteps(runID: string) {
@@ -391,6 +425,7 @@ export function useTeamsPage() {
     editorOpen,
     selectedTeamTemplateKey,
     editingId,
+    editingHasActiveRun,
     runsOpen,
     runsLoading,
     runsError,
@@ -401,6 +436,8 @@ export function useTeamsPage() {
     stepsLoading,
     summariesByRun,
     summariesLoading,
+    deadLetters,
+    deadLettersLoading,
     testOpen,
     testTeam,
     testLoading,
@@ -431,6 +468,8 @@ export function useTeamsPage() {
     openTeamObservatory,
     loadRuns,
     loadRunSteps,
+    loadDeadLetters,
+    resolveDeadLetter,
     reorderTeams,
     storeAgents,
   };

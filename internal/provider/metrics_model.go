@@ -18,15 +18,55 @@ type metricsModel struct {
 }
 
 // WrapModelWithMetrics records ProviderRequestTotal and ProviderRequestDuration.
+// When inner implements IterModel, the returned wrapper also implements IterModel
+// so callers can keep the lower-overhead iterator path (P3 IterModel).
 func WrapModelWithMetrics(inner trpcmodel.Model, provider, model string) trpcmodel.Model {
 	if inner == nil {
 		return nil
 	}
-	return &metricsModel{
+	base := &metricsModel{
 		inner:    inner,
 		provider: strings.TrimSpace(provider),
 		model:    strings.TrimSpace(model),
 	}
+	if _, ok := inner.(trpcmodel.IterModel); ok {
+		return &metricsIterModel{metricsModel: base}
+	}
+	return base
+}
+
+type metricsIterModel struct {
+	*metricsModel
+}
+
+func (m *metricsIterModel) GenerateContentIter(ctx context.Context, request *trpcmodel.Request) (trpcmodel.Seq[*trpcmodel.Response], error) {
+	iter, ok := m.inner.(trpcmodel.IterModel)
+	if !ok {
+		return nil, ErrModelNilChannel
+	}
+	start := time.Now()
+	seq, err := iter.GenerateContentIter(ctx, request)
+	if err != nil {
+		m.recordMetrics(start, "error")
+		return nil, err
+	}
+	if seq == nil {
+		m.recordMetrics(start, "error")
+		return nil, ErrModelNilChannel
+	}
+	return func(yield func(*trpcmodel.Response) bool) {
+		status := "ok"
+		seq(func(resp *trpcmodel.Response) bool {
+			if resp != nil && resp.Error != nil {
+				status = "error"
+			}
+			return yield(resp)
+		})
+		if ctx.Err() != nil {
+			status = "cancelled"
+		}
+		m.recordMetrics(start, status)
+	}, nil
 }
 
 func (m *metricsModel) Info() trpcmodel.Info {

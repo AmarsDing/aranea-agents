@@ -3,12 +3,17 @@ import { editorTabForJsonKey, firstInvalidToolJsonKey } from '../../../component
 import { bindingSummaryLine } from '../toolAgentBindingSummary';
 
 describe('editorTabForJsonKey', () => {
-  it('maps schema fields to schema tab', () => {
-    expect(editorTabForJsonKey('parameters_schema_json')).toBe('schema');
-    expect(editorTabForJsonKey('config_json')).toBe('schema');
+  it('maps parameter schema fields to params section', () => {
+    expect(editorTabForJsonKey('parameters_schema_json')).toBe('params');
+    expect(editorTabForJsonKey('result_schema_json')).toBe('params');
   });
 
-  it('maps advanced fields to advanced tab', () => {
+  it('maps config fields to config section', () => {
+    expect(editorTabForJsonKey('config_json')).toBe('config');
+    expect(editorTabForJsonKey('config_schema_json')).toBe('config');
+  });
+
+  it('maps advanced fields to advanced section', () => {
     expect(editorTabForJsonKey('default_config_json')).toBe('advanced');
     expect(editorTabForJsonKey('metadata_json')).toBe('advanced');
   });

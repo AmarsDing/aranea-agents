@@ -597,12 +597,11 @@ export async function listUnifiedEvolutionSuggestions(params: {
   let skillTotal = 0;
   let agentTotal = 0;
 
-  // When targetType is specified, only request that data source — pagination is correct.
-  // When targetType is unspecified, both sources are queried with the same page params;
-  // the combined total is approximate (sum of both totals) and pagination may be
-  // inconsistent across the merge boundary. Consumers should use skillTotal / agentTotal
-  // for display and prefer specifying targetType when accurate pagination is needed.
-  if (!params.targetType || params.targetType === 'skill') {
+  // Require a concrete targetType so page/total map to a single backend.
+  // Callers that omit targetType default to skill-level suggestions.
+  const targetType = params.targetType === 'agent' ? 'agent' : 'skill';
+
+  if (targetType === 'skill') {
     const client = createSkillEvolutionSuggestionService();
     const skillRes = await client.ListSkillEvolutionSuggestions({
       skillId: params.targetId || undefined,
@@ -614,24 +613,21 @@ export async function listUnifiedEvolutionSuggestions(params: {
       items.push(mapProtoEvolutionSuggestionToView(item));
     }
     skillTotal = Number(skillRes.total || 0);
+    return { items, total: skillTotal, skillTotal, agentTotal: 0 };
   }
 
-  // Fetch from SkillEvolutionService (agent-level)
-  if (!params.targetType || params.targetType === 'agent') {
-    const evoClient = createSkillEvolutionService();
-    const agentRes = await evoClient.ListSkillProposals({
-      agentId: params.targetId || undefined,
-      status: params.status || undefined,
-      page: params.page,
-      pageSize: params.pageSize,
-    });
-    for (const item of agentRes.items || []) {
-      items.push(mapProtoSkillProposalToView(item));
-    }
-    agentTotal = Number(agentRes.total || (agentRes.items || []).length);
+  const evoClient = createSkillEvolutionService();
+  const agentRes = await evoClient.ListSkillProposals({
+    agentId: params.targetId || undefined,
+    status: params.status || undefined,
+    page: params.page,
+    pageSize: params.pageSize,
+  });
+  for (const item of agentRes.items || []) {
+    items.push(mapProtoSkillProposalToView(item));
   }
-
-  return { items, total: skillTotal + agentTotal, skillTotal, agentTotal };
+  agentTotal = Number(agentRes.total || (agentRes.items || []).length);
+  return { items, total: agentTotal, skillTotal: 0, agentTotal };
 }
 
 export async function approveUnifiedEvolutionSuggestion(id: string, approvedBy: string): Promise<void> {

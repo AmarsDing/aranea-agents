@@ -9,6 +9,10 @@
 //	Running --> Completed : complete
 //	Running --> Failed : fail
 //	Running --> Cancelled : cancel
+//	Running --> Paused : pause
+//	Paused --> Running : unpause
+//	Paused --> Cancelled : cancel
+//	Paused --> Failed : fail
 //	Completed --> [*]
 //	Failed --> [*]
 //	Cancelled --> [*]
@@ -34,16 +38,23 @@ const (
 	TeamRunV2EventComplete TeamRunV2Event = "complete"
 	TeamRunV2EventFail     TeamRunV2Event = "fail"
 	TeamRunV2EventCancel   TeamRunV2Event = "cancel"
+	TeamRunV2EventPause    TeamRunV2Event = "pause"
+	TeamRunV2EventUnpause  TeamRunV2Event = "unpause"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────
 
 // teamRunV2TransitionRules defines the legal state transitions for a TeamRun v2.
 // Terminal states (completed, failed, cancelled) have no outgoing transitions.
+// Pause/unpause are non-terminal (MVP cancel+marker semantics).
 var teamRunV2TransitionRules = []shared.TransitionRule[TeamRunV2Status, TeamRunV2Event]{
 	{From: TeamRunV2StatusRunning, Event: TeamRunV2EventComplete, To: TeamRunV2StatusCompleted},
 	{From: TeamRunV2StatusRunning, Event: TeamRunV2EventFail, To: TeamRunV2StatusFailed},
 	{From: TeamRunV2StatusRunning, Event: TeamRunV2EventCancel, To: TeamRunV2StatusCancelled},
+	{From: TeamRunV2StatusRunning, Event: TeamRunV2EventPause, To: TeamRunV2StatusPaused},
+	{From: TeamRunV2StatusPaused, Event: TeamRunV2EventUnpause, To: TeamRunV2StatusRunning},
+	{From: TeamRunV2StatusPaused, Event: TeamRunV2EventCancel, To: TeamRunV2StatusCancelled},
+	{From: TeamRunV2StatusPaused, Event: TeamRunV2EventFail, To: TeamRunV2StatusFailed},
 }
 
 // ── TeamRunV2StateMachine ────────────────────────────────────────────────────

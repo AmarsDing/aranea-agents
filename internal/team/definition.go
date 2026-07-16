@@ -34,9 +34,10 @@ type NodeFailureOverride struct {
 }
 
 type CircuitBreakerPolicyDef struct {
-	FailureThreshold int `json:"failure_threshold"`
-	WindowSeconds    int `json:"window_seconds"`
-	HalfOpenMax      int `json:"half_open_max"`
+	FailureThreshold    int `json:"failure_threshold"`
+	WindowSeconds       int `json:"window_seconds"`        // legacy alias
+	ResetTimeoutSeconds int `json:"reset_timeout_seconds"` // frontend / proto field
+	HalfOpenMax         int `json:"half_open_max"`
 }
 
 // Definition mirrors team DefinitionJSON (subset used by native runner).
@@ -74,7 +75,7 @@ type MemberToolDef struct {
 	ToolSetName       string `json:"tool_set_name"`
 }
 
-// CriticLoopConfig matches frontend critic_loop JSON (score_threshold reserved for future routing).
+// CriticLoopConfig matches frontend critic_loop JSON.
 type CriticLoopConfig struct {
 	MaxIterations  int     `json:"max_iterations"`
 	ScoreThreshold float64 `json:"score_threshold"`
@@ -231,9 +232,13 @@ func failurePolicyToBiz(fp *FailurePolicy) *biz.TeamFailurePolicy {
 		}
 	}
 	if fp.CircuitBreaker != nil {
+		reset := fp.CircuitBreaker.ResetTimeoutSeconds
+		if reset <= 0 {
+			reset = fp.CircuitBreaker.WindowSeconds
+		}
 		p.CircuitBreaker = &biz.CircuitBreakerPolicy{
 			FailureThreshold:    fp.CircuitBreaker.FailureThreshold,
-			ResetTimeoutSeconds: fp.CircuitBreaker.WindowSeconds,
+			ResetTimeoutSeconds: reset,
 		}
 	}
 	return p

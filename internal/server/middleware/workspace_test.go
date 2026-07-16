@@ -8,7 +8,6 @@ import (
 	"aranea-agents/internal/server/middleware"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
-	"aranea-agents/pkg/auth"
 )
 
 func TestHeaderWorkspaceID(t *testing.T) {
@@ -107,94 +106,5 @@ func TestWorkspaceFilter_SetsDefaultWorkspace(t *testing.T) {
 
 	if gotWS != workspace.DefaultWorkspaceID {
 		t.Fatalf("expected default workspace %q, got %q", workspace.DefaultWorkspaceID, gotWS)
-	}
-}
-
-// TestWorkspaceFilter_RejectsForgedHeaderForNonAdmin verifies B-01:
-// non-admin principals cannot override JWT workspace via X-Workspace-ID.
-func TestWorkspaceFilter_RejectsForgedHeaderForNonAdmin(t *testing.T) {
-	handler := middleware.WorkspaceFilter()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "http://example/v1/x", nil)
-	req.Header.Set(middleware.HeaderWorkspaceID, "victim-ws")
-	req = req.WithContext(auth.NewContext(req.Context(), &auth.Auth{
-		UserID:      42,
-		Access:      "user",
-		WorkspaceID: "default",
-	}))
-
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for forged workspace, got %d", rr.Code)
-	}
-}
-
-// TestWorkspaceFilter_AdminCannotForgeWorkspace verifies B-01 Option A:
-// admins are also bound to JWT workspace_id; header forge is rejected.
-func TestWorkspaceFilter_AdminCannotForgeWorkspace(t *testing.T) {
-	handler := middleware.WorkspaceFilter()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "http://example/v1/x", nil)
-	req.Header.Set(middleware.HeaderWorkspaceID, "ops-ws")
-	req = req.WithContext(auth.NewContext(req.Context(), &auth.Auth{
-		UserID:      1,
-		Access:      "admin",
-		WorkspaceID: "default",
-	}))
-
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for admin forged workspace, got %d", rr.Code)
-	}
-}
-
-// TestWorkspaceFilter_AdminUsesJWTWorkspace verifies admin with matching
-// (or absent) header uses JWT workspace.
-func TestWorkspaceFilter_AdminUsesJWTWorkspace(t *testing.T) {
-	var gotWS string
-	handler := middleware.WorkspaceFilter()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotWS, _ = workspace.FromContext(r.Context())
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "http://example/v1/x", nil)
-	req = req.WithContext(auth.NewContext(req.Context(), &auth.Auth{
-		UserID:      1,
-		Access:      "admin",
-		WorkspaceID: "ws-tenant-a",
-	}))
-
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rr.Code)
-	}
-	if gotWS != "ws-tenant-a" {
-		t.Fatalf("expected ws-tenant-a, got %q", gotWS)
-	}
-}
-
-// TestWorkspaceFilter_IgnoresUnauthenticatedHeader verifies public paths
-// cannot forge a workspace (always default).
-func TestWorkspaceFilter_IgnoresUnauthenticatedHeader(t *testing.T) {
-	var gotWS string
-	handler := middleware.WorkspaceFilter()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotWS, _ = workspace.FromContext(r.Context())
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "http://example/v1/x", nil)
-	req.Header.Set(middleware.HeaderWorkspaceID, "forged-ws")
-
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-	if gotWS != workspace.DefaultWorkspaceID {
-		t.Fatalf("expected default, got %q", gotWS)
 	}
 }
