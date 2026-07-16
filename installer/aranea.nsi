@@ -48,9 +48,10 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 
-; 完成后直接启动静默 launcher（无黑框）
+; 完成后可选启动（默认不勾选，避免安装器等待启动器完成）
 !define MUI_FINISHPAGE_RUN "$INSTDIR\AraneaLauncher.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "启动 Aranea-Agents"
+!define MUI_FINISHPAGE_RUN_NOTCHECKED
 !define MUI_FINISHPAGE_SHOWREADME "$INSTDIR\README.md"
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "查看 README"
 !define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
@@ -67,14 +68,16 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 Section "MainSection" SecMain
   SetOutPath "$INSTDIR"
 
-  ; 安装前先尝试停止旧实例，避免覆盖运行中的 exe
-  IfFileExists "$INSTDIR\AraneaLauncher.exe" 0 +2
-    nsExec::Exec '"$INSTDIR\AraneaLauncher.exe" -stop'
-  Sleep 1500
+  ; 安装前只杀进程，绝不调用 AraneaLauncher（旧版会因 psql 等密码而挂死 NSIS）
+  DetailPrint "Stopping previous Aranea processes..."
+  nsExec::ExecToLog 'taskkill /IM AraneaAgents.exe /F /T'
+  nsExec::ExecToLog 'taskkill /IM aranea-server.exe /F /T'
+  nsExec::ExecToLog 'taskkill /IM AraneaLauncher.exe /F /T'
+  Sleep 800
 
   File /nonfatal /r "${STAGING_DIR}\*.*"
 
-  ; 校验关键文件已落地（避免装完却缺少启动器，回退到 bat 黑框）
+  ; 校验关键文件已落地
   IfFileExists "$INSTDIR\AraneaLauncher.exe" launcher_ok
     MessageBox MB_OK|MB_ICONSTOP "安装失败：未找到 AraneaLauncher.exe，请重新下载安装包。"
     Abort
@@ -89,19 +92,14 @@ Section "MainSection" SecMain
   electron_ok:
 
   CreateDirectory "$SMPROGRAMS\Aranea-Agents"
-  ; 主入口：静默 launcher（禁止指向 start.bat）
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\环境检查.lnk" "$INSTDIR\AraneaLauncher.exe" "-check" "$INSTDIR\frontend\resources\app\icons\icon.ico"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\停止 Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "-stop" "$INSTDIR\frontend\resources\app\icons\icon.ico"
-  ; 调试入口：可见控制台（start.bat）；日常启动请用 AraneaLauncher.exe
-  CreateShortcut "$SMPROGRAMS\Aranea-Agents\启动（调试控制台）.lnk" "$INSTDIR\start.bat" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\卸载.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
 
-  ; 安装结束运行环境检查（写 logs\preflight.txt，不弹 MessageBox，避免阻塞 NSIS）
-  DetailPrint "Running quiet environment check..."
-  nsExec::ExecToLog '"$INSTDIR\AraneaLauncher.exe" -check -quiet'
+  ; 注意：安装阶段禁止运行 AraneaLauncher -check/-stop。
+  ; 旧版 psql 无 -w 时会在系统 Postgres 要密码处永久挂起（NSIS 卡在 Running quiet environment check）。
 
-  ; 桌面快捷方式 → 静默 launcher
   CreateShortcut "$DESKTOP\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
 
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AraneaAgents" "DisplayName" "Aranea-Agents"

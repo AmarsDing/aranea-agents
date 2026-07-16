@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,7 +16,9 @@ func canConnectPSQL(env *runtimeEnv, db string) bool {
 }
 
 func psqlArgs(env *runtimeEnv, db string, extra ...string) []string {
+	// -w / --no-password: NEVER prompt (prompt hangs forever under windowsgui / NSIS).
 	args := []string{
+		"-w",
 		"-U", env.PGUser,
 		"-h", env.PGHost,
 		"-p", env.PGPort,
@@ -25,16 +28,42 @@ func psqlArgs(env *runtimeEnv, db string, extra ...string) []string {
 }
 
 func runPSQL(env *runtimeEnv, db string, extra ...string) (string, error) {
+	if env.PSQL == "" {
+		return "", fmt.Errorf("psql path empty")
+	}
 	cmd := hiddenCmd(env.PSQL, psqlArgs(env, db, extra...)...)
 	applyPGEnv(cmd, env)
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	return runWithTimeout(cmd, 8*time.Second)
 }
 
 func applyPGEnv(cmd *exec.Cmd, env *runtimeEnv) {
-	cmd.Env = append(os.Environ(), "PGCLIENTENCODING=UTF8")
+	cmd.Env = append(os.Environ(),
+		"PGCLIENTENCODING=UTF8",
+		"PGCONNECT_TIMEOUT=3", // fail fast instead of hanging
+	)
 	if env.PGPass != "" {
 		cmd.Env = append(cmd.Env, "PGPASSWORD="+env.PGPass)
+	}
+}
+
+func runWithTimeout(cmd *exec.Cmd, timeout time.Duration) (string, error) {
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		return buf.String(), err
+	case <-time.After(timeout):
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		<-done
+		return buf.String(), fmt.Errorf("command timed out after %s", timeout)
 	}
 }
 
@@ -107,16 +136,16 @@ func startBundledPostgres(env *runtimeEnv, log func(string, ...any)) error {
 		)
 		cmd.Dir = env.Root
 		cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
-		out, err := cmd.CombinedOutput()
-		_ = os.WriteFile(filepath.Join(logDir, "initdb.log"), out, 0o644)
+		out, err := runWithTimeout(cmd, 120*time.Second)
+		_ = os.WriteFile(filepath.Join(logDir, "initdb.log"), []byte(out), 0o644)
 		if err != nil {
 			cmd = hiddenCmd(initdb, "-D", pgData, "-U", "postgres", "--auth=trust", "--encoding=UTF8")
 			cmd.Dir = env.Root
 			cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
-			out, err = cmd.CombinedOutput()
-			_ = os.WriteFile(filepath.Join(logDir, "initdb.log"), out, 0o644)
+			out, err = runWithTimeout(cmd, 120*time.Second)
+			_ = os.WriteFile(filepath.Join(logDir, "initdb.log"), []byte(out), 0o644)
 			if err != nil {
-				return fmt.Errorf("initdb 失败: %v\n%s", err, trimOut(out))
+				return fmt.Errorf("initdb 失败: %v\n%s", err, trimOut([]byte(out)))
 			}
 		}
 	}
@@ -139,10 +168,10 @@ func startBundledPostgres(env *runtimeEnv, log func(string, ...any)) error {
 		"-w", "-t", "30",
 	)
 	cmd.Dir = env.Root
-	out, err := cmd.CombinedOutput()
-	_ = os.WriteFile(filepath.Join(logDir, "pgctl.log"), out, 0o644)
+	out, err := runWithTimeout(cmd, 60*time.Second)
+	_ = os.WriteFile(filepath.Join(logDir, "pgctl.log"), []byte(out), 0o644)
 	if err != nil && !tcpOpen(env.PGHost, env.PGPort, time.Second) {
-		return fmt.Errorf("pg_ctl start 失败: %v\n%s", err, trimOut(out))
+		return fmt.Errorf("pg_ctl start 失败: %v\n%s", err, trimOut([]byte(out)))
 	}
 	return nil
 }
@@ -151,16 +180,13 @@ func waitPGReady(env *runtimeEnv, timeout time.Duration, log func(string, ...any
 	deadline := time.Now().Add(timeout)
 	pgIsReady := filepath.Join(env.PGBinDir, "pg_isready.exe")
 	for time.Now().Before(deadline) {
-		ready := false
 		if _, err := os.Stat(pgIsReady); err == nil {
-			cmd := hiddenCmd(pgIsReady, "-U", env.PGUser, "-h", env.PGHost, "-p", env.PGPort)
+			cmd := hiddenCmd(pgIsReady, "-U", env.PGUser, "-h", env.PGHost, "-p", env.PGPort, "-t", "2")
 			applyPGEnv(cmd, env)
-			ready = cmd.Run() == nil
+			_, _ = runWithTimeout(cmd, 4*time.Second)
 		}
-		if ready || canConnectPSQL(env, "postgres") {
-			if canConnectPSQL(env, "postgres") {
-				return nil
-			}
+		if canConnectPSQL(env, "postgres") {
+			return nil
 		}
 		time.Sleep(500 * time.Millisecond)
 	}

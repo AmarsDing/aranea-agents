@@ -22,6 +22,14 @@ func TestFindSystemPSQLPrefersExistingInstall(t *testing.T) {
 	}
 }
 
+func TestPSQLArgsNeverPrompt(t *testing.T) {
+	env := &runtimeEnv{PGUser: "postgres", PGHost: "127.0.0.1", PGPort: "5432"}
+	args := psqlArgs(env, "postgres", "-tAc", "SELECT 1")
+	if len(args) == 0 || args[0] != "-w" {
+		t.Fatalf("psql must start with -w to avoid password hang, got %#v", args)
+	}
+}
+
 func TestURLQueryEscape(t *testing.T) {
 	got := urlQueryEscape("Hangshan@123")
 	if got != "Hangshan%40123" {

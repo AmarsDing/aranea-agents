@@ -62,11 +62,8 @@ func main() {
 	}
 
 	if *checkOnly {
+		// Lightweight only: never start services / never block on password prompts.
 		env := detectRuntime(root, logger)
-		// Also probe DB if possible without starting bundled
-		if env.PGMode == "system" && env.PSQL != "" {
-			_ = ensurePostgres(env, logger)
-		}
 		report := env.reportText() + "\n日志: " + logPath
 		_ = os.WriteFile(filepath.Join(root, "logs", "preflight.txt"), []byte(report), 0o644)
 		if !*quiet {
