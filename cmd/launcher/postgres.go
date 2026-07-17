@@ -73,7 +73,7 @@ func ensurePostgres(env *runtimeEnv, log func(string, ...any)) error {
 
 	if env.PGMode == "bundled" {
 		if err := startBundledPostgres(env, log); err != nil {
-			env.add("PostgreSQL 启动", checkFail, err.Error(), true)
+			env.add("PostgreSQL start", checkFail, err.Error(), true)
 			return err
 		}
 	} else {
@@ -81,33 +81,33 @@ func ensurePostgres(env *runtimeEnv, log func(string, ...any)) error {
 	}
 
 	if err := waitPGReady(env, 30*time.Second, log); err != nil {
-		env.add("PostgreSQL 就绪", checkFail, err.Error(), true)
+		env.add("PostgreSQL ready", checkFail, err.Error(), true)
 		return err
 	}
-	env.add("PostgreSQL 就绪", checkOK, fmt.Sprintf("%s:%s 可连接", env.PGHost, env.PGPort), false)
+	env.add("PostgreSQL ready", checkOK, fmt.Sprintf("%s:%s connectable", env.PGHost, env.PGPort), false)
 
 	out, err := runPSQL(env, "postgres", "-tAc", "SELECT 1 FROM pg_database WHERE datname='aranea'")
 	if err != nil {
-		env.add("数据库 aranea", checkFail, "无法查询: "+strings.TrimSpace(out)+" "+err.Error(), true)
+		env.add("Database aranea", checkFail, "query failed: "+strings.TrimSpace(out)+" "+err.Error(), true)
 		return fmt.Errorf("query databases: %w", err)
 	}
 	if !strings.Contains(out, "1") {
 		log("creating database aranea")
 		out, err = runPSQL(env, "postgres", "-c", "CREATE DATABASE aranea")
 		if err != nil {
-			env.add("数据库 aranea", checkFail, "创建失败: "+strings.TrimSpace(out), true)
+			env.add("Database aranea", checkFail, "create failed: "+strings.TrimSpace(out), true)
 			return fmt.Errorf("create database: %w", err)
 		}
 	}
-	env.add("数据库 aranea", checkOK, "已就绪", false)
+	env.add("Database aranea", checkOK, "ready", false)
 
 	if err := ensurePgvector(env, log); err != nil {
-		env.add("pgvector 扩展", checkWarn, err.Error()+"；向量检索可能不可用", false)
+		env.add("pgvector extension", checkWarn, err.Error()+"; vector search may be unavailable", false)
 		env.VectorOK = false
 		log("pgvector warn: %v", err)
 	} else {
 		env.VectorOK = true
-		env.add("pgvector 扩展", checkOK, "CREATE EXTENSION vector 成功", false)
+		env.add("pgvector extension", checkOK, "CREATE EXTENSION vector ok", false)
 	}
 	return nil
 }
@@ -212,7 +212,7 @@ func waitPGReady(env *runtimeEnv, timeout time.Duration, log func(string, ...any
 		if canConnectPSQL(env, "postgres") {
 			return nil
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 	return fmt.Errorf("PostgreSQL 在 %v 内未在 %s:%s 就绪", timeout, env.PGHost, env.PGPort)
 }

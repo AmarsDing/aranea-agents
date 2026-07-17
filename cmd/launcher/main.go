@@ -34,7 +34,8 @@ const (
 func main() {
 	stop := flag.Bool("stop", false, "stop Aranea-Agents services")
 	checkOnly := flag.Bool("check", false, "run environment checks and exit")
-	quiet := flag.Bool("quiet", false, "with -check: write report to file only, no MessageBox")
+	quiet := flag.Bool("quiet", false, "with -check: write report to file only, no UI")
+	noConsole := flag.Bool("no-console", false, "do not open the startup status console")
 	flag.Parse()
 
 	root, err := installRoot()
@@ -45,9 +46,15 @@ func main() {
 
 	logPath, logf := openLauncherLog(root)
 	defer logf.Close()
+
+	var ui *statusConsole
 	logger := func(format string, args ...any) {
-		line := fmt.Sprintf("%s %s\n", time.Now().Format("2006-01-02 15:04:05"), fmt.Sprintf(format, args...))
+		msg := fmt.Sprintf(format, args...)
+		line := fmt.Sprintf("%s %s\n", time.Now().Format("2006-01-02 15:04:05"), msg)
 		_, _ = io.WriteString(logf, line)
+		if ui != nil {
+			ui.Println(msg)
+		}
 	}
 	logger("launcher start: root=%s logPath=%s args=%v", root, logPath, os.Args[1:])
 
@@ -61,12 +68,21 @@ func main() {
 		return
 	}
 
+	wantConsole := !*quiet && !*noConsole
+	if wantConsole {
+		ui = openStatusConsole(appTitle + " - Environment")
+		defer ui.Close()
+	}
+
 	if *checkOnly {
 		// Lightweight only: never start services / never block on password prompts.
 		env := detectRuntime(root, logger)
-		report := env.reportText() + "\n日志: " + logPath
-		_ = os.WriteFile(filepath.Join(root, "logs", "preflight.txt"), []byte(report), 0o644)
-		if !*quiet {
+		report := env.reportText() + "\nLog: " + logPath
+		_ = writeFileUTF8BOM(filepath.Join(root, "logs", "preflight.txt"), report)
+		if ui != nil {
+			ui.Println(report)
+			ui.WaitDismiss("Press Enter to close this window...")
+		} else if !*quiet {
 			showInfo("环境检查", report)
 		}
 		if env.hasFatal() {
@@ -80,9 +96,12 @@ func main() {
 		logger("another launcher holds mutex; waiting for backend health")
 		if waitHealthy(logger) == nil {
 			_ = launchElectron(root, logger)
+			if ui != nil {
+				ui.Println("Desktop already starting — closing console.")
+				time.Sleep(800 * time.Millisecond)
+			}
 			return
 		}
-		// Backend not up — show guidance instead of starting a broken second stack
 		showError("启动器已在运行",
 			"检测到另有启动过程正在进行，但后端尚未就绪。\n\n请稍候桌面窗口出现，或先执行「停止」后再启动。\n\n详见: "+logPath)
 		return
@@ -94,22 +113,48 @@ func main() {
 	_ = os.Setenv("DEPLOY_ENV", "dev")
 	_ = os.Setenv("DAO_VECTOR_PGVECTOR", "1")
 
+	// Fast path: stack already healthy → skip PG/Redis/backend bring-up.
+	if healthy() {
+		logger("fast-path: backend already healthy, launching desktop")
+		if err := launchElectron(root, logger); err != nil {
+			logger("electron error: %v", err)
+			showError("桌面应用启动失败", err.Error()+"\n\n详见: "+logPath)
+			os.Exit(1)
+		}
+		logger("start complete (fast-path)")
+		if ui != nil {
+			time.Sleep(600 * time.Millisecond)
+		}
+		return
+	}
+
 	env := detectRuntime(root, logger)
+	if ui != nil {
+		ui.Println(env.reportText())
+	}
 	if env.hasFatal() {
 		logger("preflight fatal\n%s", env.reportText())
+		_ = writeFileUTF8BOM(filepath.Join(root, "logs", "preflight.txt"), env.reportText()+"\nLog: "+logPath)
+		if ui != nil {
+			ui.WaitDismiss("Environment check FAILED. Press Enter to close...")
+		}
 		showError("环境检查未通过", env.reportText()+"\n详见: "+logPath)
 		os.Exit(1)
 	}
 
+	// Parallel: Redis while Postgres starts/initializes (biggest cold-start win after initdb).
 	logger("ensurePostgres begin mode=%s port=%s", env.PGMode, env.PGPort)
+	logger("ensureRedis begin mode=%s (parallel)", env.RedisMode)
+	redisErrCh := make(chan error, 1)
+	go func() { redisErrCh <- ensureRedis(env, logger) }()
+
 	if err := ensurePostgres(env, logger); err != nil {
 		logger("postgres error: %v\n%s", err, env.reportText())
 		showError("PostgreSQL 未就绪", env.reportText()+"\n\n"+err.Error()+"\n\n详见: "+logPath+"\n与 logs\\postgres.log / initdb.log")
 		os.Exit(1)
 	}
 	logger("ensurePostgres ok")
-	logger("ensureRedis begin mode=%s", env.RedisMode)
-	if err := ensureRedis(env, logger); err != nil {
+	if err := <-redisErrCh; err != nil {
 		logger("redis error: %v", err)
 		showError("Redis 未就绪", env.reportText()+"\n\n"+err.Error()+"\n\n详见: "+logPath)
 		os.Exit(1)
@@ -122,9 +167,9 @@ func main() {
 	}
 	_ = writeModeFile(root, env)
 
-	// Persist check report; do NOT pop MessageBox on normal start (blocks UX / looks like garbled install dialog).
-	_ = os.WriteFile(filepath.Join(root, "logs", "preflight.txt"), []byte(env.reportText()), 0o644)
-	logger("preflight:\n%s", env.reportText())
+	report := env.reportText()
+	_ = writeFileUTF8BOM(filepath.Join(root, "logs", "preflight.txt"), report)
+	logger("preflight saved (UTF-8 BOM)")
 
 	logger("starting backend...")
 	if err := startBackend(root, env, logger); err != nil {
@@ -141,14 +186,21 @@ func main() {
 			"\n\n详见: "+logPath)
 		os.Exit(1)
 	}
-	env.add("后端健康检查", checkOK, healthURL, false)
+	env.add("Backend health", checkOK, healthURL, false)
+	_ = writeFileUTF8BOM(filepath.Join(root, "logs", "preflight.txt"), env.reportText())
 
 	if err := launchElectron(root, logger); err != nil {
 		logger("electron error: %v", err)
 		showError("桌面应用启动失败", err.Error()+"\n\n详见: "+logPath)
 		os.Exit(1)
 	}
-	logger("start complete\n%s", env.reportText())
+	logger("start complete")
+	if ui != nil {
+		ui.Println("")
+		ui.Println("Desktop launched. This console will close shortly...")
+		ui.Println("Tip: Start Menu → Environment Check  to re-open guidance anytime.")
+		time.Sleep(1200 * time.Millisecond)
+	}
 }
 
 func installRoot() (string, error) {
@@ -174,13 +226,14 @@ func openLauncherLog(root string) (string, *os.File) {
 	preferred := filepath.Join(root, "logs", "launcher.log")
 	_ = os.MkdirAll(filepath.Dir(preferred), 0o755)
 	if f, err := os.OpenFile(preferred, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+		ensureLogBOM(f)
 		return preferred, f
 	}
 	// Fallback: %TEMP%\aranea-launcher.log (user-temp is always writable).
 	fallback := filepath.Join(os.TempDir(), "aranea-launcher.log")
 	if f, err := os.OpenFile(fallback, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
-		// 写一行标记到日志，让用户在查看日志时知道为什么日志在 %TEMP%
-		_, _ = io.WriteString(f, fmt.Sprintf("%s [WARN] 安装目录不可写，日志已 fallback 到 %s\n",
+		ensureLogBOM(f)
+		_, _ = io.WriteString(f, fmt.Sprintf("%s [WARN] install dir not writable; log fallback to %s\n",
 			time.Now().Format("2006-01-02 15:04:05"), fallback))
 		return fallback, f
 	}
@@ -195,7 +248,7 @@ func openLauncherLog(root string) (string, *os.File) {
 func startBackend(root string, env *runtimeEnv, log func(string, ...any)) error {
 	if healthy() {
 		log("backend already healthy")
-		env.add("后端服务", checkOK, "已在运行", false)
+		env.add("Backend", checkOK, "already running", false)
 		return nil
 	}
 	_ = killImage("aranea-server.exe")
@@ -226,7 +279,7 @@ func startBackend(root string, env *runtimeEnv, log func(string, ...any)) error 
 		_ = cmd.Wait()
 		_ = stdout.Close()
 	}()
-	env.add("后端服务", checkOK, "已启动进程", false)
+	env.add("Backend", checkOK, "process started", false)
 	return nil
 }
 
@@ -237,7 +290,7 @@ func waitHealthy(log func(string, ...any)) error {
 			log("backend healthy")
 			return nil
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 	return fmt.Errorf("healthz 在 %ds 内未就绪", backendWaitSec)
 }
@@ -269,8 +322,8 @@ func launchElectron(root string, log func(string, ...any)) error {
 		return err
 	}
 	go func() { _ = cmd.Wait() }()
-	// Give the process a moment; if it exits immediately, surface failure.
-	time.Sleep(800 * time.Millisecond)
+	// Brief settle; if it exits immediately, surface failure.
+	time.Sleep(300 * time.Millisecond)
 	if !processRunning("AraneaAgents.exe") {
 		return fmt.Errorf("AraneaAgents.exe 启动后立即退出，请检查 frontend 目录是否完整")
 	}

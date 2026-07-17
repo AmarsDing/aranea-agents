@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,6 +27,8 @@ type checkItem struct {
 }
 
 type runtimeEnv struct {
+	mu sync.Mutex
+
 	Root string
 
 	PGMode   string // system | bundled
@@ -44,10 +47,14 @@ type runtimeEnv struct {
 }
 
 func (e *runtimeEnv) add(name string, level checkLevel, detail string, fatal bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	e.Checks = append(e.Checks, checkItem{Name: name, Level: level, Detail: detail, Fatal: fatal})
 }
 
 func (e *runtimeEnv) hasFatal() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	for _, c := range e.Checks {
 		if c.Fatal || c.Level == checkFail {
 			return true
@@ -57,6 +64,8 @@ func (e *runtimeEnv) hasFatal() bool {
 }
 
 func (e *runtimeEnv) hasWarn() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	for _, c := range e.Checks {
 		if c.Level == checkWarn {
 			return true
@@ -66,13 +75,55 @@ func (e *runtimeEnv) hasWarn() bool {
 }
 
 func (e *runtimeEnv) reportText() string {
+	e.mu.Lock()
+	checks := append([]checkItem(nil), e.Checks...)
+	e.mu.Unlock()
+
 	var b strings.Builder
-	b.WriteString("Aranea-Agents 环境检查\n")
-	b.WriteString(strings.Repeat("─", 36) + "\n")
-	for _, c := range e.Checks {
+	b.WriteString("Aranea-Agents Environment Check\n")
+	b.WriteString(strings.Repeat("-", 44) + "\n")
+	for _, c := range checks {
 		b.WriteString(fmt.Sprintf("[%s] %s\n    %s\n", c.Level, c.Name, c.Detail))
 	}
+	b.WriteString("\n")
+	b.WriteString(e.configGuideText())
 	return b.String()
+}
+
+// configGuideText explains current DB/Redis choice and how to point at system services.
+func (e *runtimeEnv) configGuideText() string {
+	pgPassHint := "(none - bundled uses trust / system needs configs\\pg.password)"
+	if e.PGPass != "" {
+		pgPassHint = "(set via env or configs\\pg.password)"
+	}
+	var b strings.Builder
+	b.WriteString("Database\n")
+	b.WriteString(fmt.Sprintf("  mode : %s\n", emptyDefault(e.PGMode, "unknown")))
+	b.WriteString(fmt.Sprintf("  addr : %s:%s\n", emptyDefault(e.PGHost, "127.0.0.1"), emptyDefault(e.PGPort, "?")))
+	b.WriteString(fmt.Sprintf("  user : %s\n", emptyDefault(e.PGUser, "postgres")))
+	b.WriteString(fmt.Sprintf("  pass : %s\n", pgPassHint))
+	b.WriteString(fmt.Sprintf("  db   : aranea\n"))
+	b.WriteString("\nRedis\n")
+	b.WriteString(fmt.Sprintf("  mode : %s\n", emptyDefault(e.RedisMode, "unknown")))
+	b.WriteString(fmt.Sprintf("  addr : %s\n", emptyDefault(e.RedisAddr, "127.0.0.1:6379")))
+	b.WriteString("\nHow to use system PostgreSQL (:5432)\n")
+	b.WriteString("  1) Ensure PostgreSQL is running and listening on 127.0.0.1:5432\n")
+	b.WriteString("  2) Write the password to ONE line in: configs\\pg.password\n")
+	b.WriteString("     or set user env ARANEA_PG_PASSWORD\n")
+	b.WriteString("  3) Restart AraneaLauncher (Stop first if needed)\n")
+	b.WriteString("  If connect still fails, launcher falls back to bundled :5433.\n")
+	b.WriteString("\nHow to use system Redis (:6379)\n")
+	b.WriteString("  Start Redis on 127.0.0.1:6379 before launching; otherwise bundled Redis starts.\n")
+	b.WriteString("\nLogs (UTF-8 with BOM — open with Notepad / VS Code)\n")
+	b.WriteString("  logs\\launcher.log   logs\\preflight.txt   logs\\server.log\n")
+	return b.String()
+}
+
+func emptyDefault(s, def string) string {
+	if strings.TrimSpace(s) == "" {
+		return def
+	}
+	return s
 }
 
 func (e *runtimeEnv) postgresDSN(db string) string {
@@ -187,38 +238,38 @@ func detectRuntime(root string, log func(string, ...any)) *runtimeEnv {
 	// --- binaries present ---
 	serverExe := filepath.Join(root, "aranea-server.exe")
 	if _, err := os.Stat(serverExe); err != nil {
-		env.add("后端程序", checkFail, "缺少 aranea-server.exe", true)
+		env.add("Backend binary", checkFail, "missing aranea-server.exe", true)
 	} else {
-		env.add("后端程序", checkOK, serverExe, false)
+		env.add("Backend binary", checkOK, serverExe, false)
 	}
 	electronExe := filepath.Join(root, "frontend", "AraneaAgents.exe")
 	if _, err := os.Stat(electronExe); err != nil {
-		env.add("桌面应用", checkFail, "缺少 frontend\\AraneaAgents.exe", true)
+		env.add("Desktop app", checkFail, "missing frontend\\AraneaAgents.exe", true)
 	} else {
-		env.add("桌面应用", checkOK, electronExe, false)
+		env.add("Desktop app", checkOK, electronExe, false)
 	}
 
 	bundledPSQL := filepath.Join(root, "postgres", "bin", "psql.exe")
 	sysBin, sysPSQL := findSystemPSQL()
 	if sysPSQL != "" {
-		env.add("PostgreSQL 客户端", checkOK, "系统: "+sysPSQL, false)
+		env.add("PostgreSQL client", checkOK, "system: "+sysPSQL, false)
 	} else if _, err := os.Stat(bundledPSQL); err == nil {
-		env.add("PostgreSQL 客户端", checkOK, "内置: "+bundledPSQL, false)
+		env.add("PostgreSQL client", checkOK, "bundled: "+bundledPSQL, false)
 	} else {
-		env.add("PostgreSQL 客户端", checkFail, "未找到 psql.exe（系统或内置）", true)
+		env.add("PostgreSQL client", checkFail, "psql.exe not found (system or bundled)", true)
 	}
 
 	// --- PostgreSQL: prefer system :5432 if reachable & connectable ---
-	systemPortOpen := tcpOpen("127.0.0.1", "5432", 800*time.Millisecond)
+	systemPortOpen := tcpOpen("127.0.0.1", "5432", 400*time.Millisecond)
 	if systemPortOpen && sysPSQL != "" {
 		env.PSQL = sysPSQL
 		env.PGBinDir = sysBin
 		env.PGPort = "5432"
 		if canConnectPSQL(env, "postgres") {
 			env.PGMode = "system"
-			env.add("PostgreSQL", checkOK, "使用系统实例 127.0.0.1:5432", false)
+			env.add("PostgreSQL", checkOK, "using system instance 127.0.0.1:5432", false)
 		} else {
-			env.add("PostgreSQL(系统)", checkWarn, "检测到 :5432 但无法无交互连接（可写 configs\\pg.password 或设 ARANEA_PG_PASSWORD）。将改用内置 :5433。", false)
+			env.add("PostgreSQL (system)", checkWarn, "port :5432 is open but non-interactive connect failed (write configs\\pg.password or set ARANEA_PG_PASSWORD). Falling back to bundled :5433.", false)
 			systemPortOpen = false
 		}
 	}
@@ -230,39 +281,39 @@ func detectRuntime(root string, log func(string, ...any)) *runtimeEnv {
 		env.PSQL = bundledPSQL
 		env.PGBinDir = filepath.Join(root, "postgres", "bin")
 		if _, err := os.Stat(filepath.Join(env.PGBinDir, "pg_ctl.exe")); err != nil {
-			env.add("PostgreSQL", checkFail, "内置 PostgreSQL 缺失且系统实例不可用", true)
+			env.add("PostgreSQL", checkFail, "bundled PostgreSQL missing and system instance unavailable", true)
 		} else {
-			detail := "使用内置实例 127.0.0.1:5433"
+			detail := "using bundled instance 127.0.0.1:5433"
 			if systemPortOpen {
-				detail += "（系统 :5432 不可用或无权限）"
+				detail += " (system :5432 unavailable or unauthorized)"
 			}
 			env.add("PostgreSQL", checkOK, detail, false)
 		}
 	}
 
 	// --- Redis: prefer existing :6379 ---
-	if tcpOpen("127.0.0.1", "6379", 500*time.Millisecond) {
+	if tcpOpen("127.0.0.1", "6379", 300*time.Millisecond) {
 		env.RedisMode = "system"
-		env.add("Redis", checkOK, "使用系统/已运行实例 127.0.0.1:6379", false)
+		env.add("Redis", checkOK, "using system/running instance 127.0.0.1:6379", false)
 	} else {
 		env.RedisMode = "bundled"
 		redisExe := filepath.Join(root, "redis", "redis-server.exe")
 		if _, err := os.Stat(redisExe); err != nil {
-			env.add("Redis", checkFail, "未检测到 Redis，且缺少内置 redis-server.exe", true)
+			env.add("Redis", checkFail, "Redis not detected and bundled redis-server.exe missing", true)
 		} else {
-			env.add("Redis", checkOK, "将启动内置 Redis 127.0.0.1:6379", false)
+			env.add("Redis", checkOK, "will start bundled Redis 127.0.0.1:6379", false)
 		}
 	}
 
 	// ports that must be free for backend
-	if tcpOpen("127.0.0.1", "8000", 300*time.Millisecond) {
+	if tcpOpen("127.0.0.1", "8000", 200*time.Millisecond) {
 		if healthy() {
-			env.add("端口 8000", checkInfo, "后端已在运行且健康", false)
+			env.add("Port 8000", checkInfo, "backend already running and healthy", false)
 		} else {
-			env.add("端口 8000", checkWarn, "已被占用但 /healthz 未就绪，启动器将尝试接管", false)
+			env.add("Port 8000", checkWarn, "in use but /healthz not ready; launcher will try to take over", false)
 		}
 	} else {
-		env.add("端口 8000", checkOK, "可用", false)
+		env.add("Port 8000", checkOK, "available", false)
 	}
 
 	_ = log
