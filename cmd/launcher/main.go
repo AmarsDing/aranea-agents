@@ -101,16 +101,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	logger("ensurePostgres begin mode=%s port=%s", env.PGMode, env.PGPort)
 	if err := ensurePostgres(env, logger); err != nil {
 		logger("postgres error: %v\n%s", err, env.reportText())
 		showError("PostgreSQL 未就绪", env.reportText()+"\n\n"+err.Error()+"\n\n详见: "+logPath+"\n与 logs\\postgres.log / initdb.log")
 		os.Exit(1)
 	}
+	logger("ensurePostgres ok")
+	logger("ensureRedis begin mode=%s", env.RedisMode)
 	if err := ensureRedis(env, logger); err != nil {
 		logger("redis error: %v", err)
 		showError("Redis 未就绪", env.reportText()+"\n\n"+err.Error()+"\n\n详见: "+logPath)
 		os.Exit(1)
 	}
+	logger("ensureRedis ok")
 	if err := writeRuntimeConfig(env, logger); err != nil {
 		logger("config error: %v", err)
 		showError("写入配置失败", err.Error())
@@ -118,12 +122,11 @@ func main() {
 	}
 	_ = writeModeFile(root, env)
 
-	// Persist check report for support / 环境检查
+	// Persist check report; do NOT pop MessageBox on normal start (blocks UX / looks like garbled install dialog).
 	_ = os.WriteFile(filepath.Join(root, "logs", "preflight.txt"), []byte(env.reportText()), 0o644)
-	if env.hasWarn() {
-		showInfo("环境检查（有警告，仍将继续启动）", env.reportText()+"\n日志: "+logPath)
-	}
+	logger("preflight:\n%s", env.reportText())
 
+	logger("starting backend...")
 	if err := startBackend(root, env, logger); err != nil {
 		logger("backend error: %v", err)
 		showError("后端服务启动失败", env.reportText()+"\n\n"+err.Error()+"\n\n详见: "+logPath+"\n与 logs\\server.log")

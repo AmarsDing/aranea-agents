@@ -161,17 +161,41 @@ func startBundledPostgres(env *runtimeEnv, log func(string, ...any)) error {
 		}
 	}
 
-	log("starting bundled postgres on :%s", env.PGPort)
+	// IMPORTANT: do NOT use pg_ctl -w here. On Windows, pg_ctl -w with captured
+	// stdout/stderr pipes often hangs forever even after the server is ready
+	// (matches user logs: "starting bundled postgres" then silence).
+	log("starting bundled postgres on :%s (no -w; poll readiness)", env.PGPort)
+	pgctlLog := filepath.Join(logDir, "pgctl.log")
+	outFile, err := os.OpenFile(pgctlLog, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("无法写 pgctl.log: %w", err)
+	}
 	cmd := hiddenCmd(pgCtl, "start", "-D", pgData,
 		"-l", filepath.Join(logDir, "postgres.log"),
 		"-o", "-p "+env.PGPort,
-		"-w", "-t", "30",
 	)
 	cmd.Dir = env.Root
-	out, err := runWithTimeout(cmd, 60*time.Second)
-	_ = os.WriteFile(filepath.Join(logDir, "pgctl.log"), []byte(out), 0o644)
-	if err != nil && !tcpOpen(env.PGHost, env.PGPort, time.Second) {
-		return fmt.Errorf("pg_ctl start 失败: %v\n%s", err, trimOut([]byte(out)))
+	cmd.Stdout = outFile
+	cmd.Stderr = outFile
+	if err := cmd.Start(); err != nil {
+		_ = outFile.Close()
+		return fmt.Errorf("pg_ctl start 失败: %w", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+		_ = outFile.Close()
+	}()
+	select {
+	case err := <-done:
+		if err != nil && !tcpOpen(env.PGHost, env.PGPort, time.Second) {
+			b, _ := os.ReadFile(pgctlLog)
+			return fmt.Errorf("pg_ctl start 失败: %v\n%s", err, trimOut(b))
+		}
+		log("pg_ctl returned (port open=%v)", tcpOpen(env.PGHost, env.PGPort, 300*time.Millisecond))
+	case <-time.After(12 * time.Second):
+		// pg_ctl may still be attached; readiness is confirmed by waitPGReady.
+		log("pg_ctl wait timed out; polling TCP/pg_isready instead")
 	}
 	return nil
 }
