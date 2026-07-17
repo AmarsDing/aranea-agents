@@ -532,8 +532,8 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 	if q.Limit <= 0 {
 		q.Limit = 24
 	}
-	if q.Limit > 100 {
-		q.Limit = 100
+	if q.Limit > 500 {
+		q.Limit = 500
 	}
 	if q.Offset < 0 {
 		q.Offset = 0

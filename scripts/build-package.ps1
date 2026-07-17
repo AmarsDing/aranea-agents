@@ -366,6 +366,8 @@ $requiredSeedPaths = @(
     "internal\scenario\packs\agency-pack",
     "internal\scenario\packs\builtin-templates",
     "internal\scenario\system",
+    "internal\scenario\system\prompts\IDENTITY.md",
+    "internal\scenario\system\prompts\orchestrator.md",
     "data\model-catalog\current.json",
     "data\model-catalog\logos"
 )

@@ -41,7 +41,9 @@ export const useAppStore = defineStore('app', {
       }
     },
     async loadAgents() {
-      this.agents = await listAgents();
+      // High limit so system builtins (精灵助手 etc.) are not pushed off the first page
+      // after agency-pack / large catalogs are seeded.
+      this.agents = await listAgents({ limit: 500 });
       if (!this.selectedAgent && this.agents.length > 0) {
         this.selectedAgent = this.agents.find((a) => a.agent_key === '__spirit__') || this.agents[0];
       }

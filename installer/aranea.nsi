@@ -69,7 +69,7 @@ Section "MainSection" SecMain
   nsExec::ExecToLog 'taskkill /IM AraneaLauncher.exe /F /T'
   Sleep 800
 
-  File /nonfatal /r "${STAGING_DIR}\*.*"
+  File /r "${STAGING_DIR}\"
 
   IfFileExists "$INSTDIR\AraneaLauncher.exe" launcher_ok
     MessageBox MB_OK|MB_ICONSTOP "Install failed: AraneaLauncher.exe missing. Please re-download the package."
@@ -83,6 +83,14 @@ Section "MainSection" SecMain
     MessageBox MB_OK|MB_ICONSTOP "Install failed: frontend\AraneaAgents.exe missing."
     Abort
   electron_ok:
+  IfFileExists "$INSTDIR\internal\scenario\system\prompts\IDENTITY.md" scenario_ok
+    MessageBox MB_OK|MB_ICONSTOP "Install failed: internal\scenario prompts missing. Please re-download the package."
+    Abort
+  scenario_ok:
+  IfFileExists "$INSTDIR\data\model-catalog\current.json" catalog_ok
+    MessageBox MB_OK|MB_ICONSTOP "Install failed: data\model-catalog missing. Please re-download the package."
+    Abort
+  catalog_ok:
 
   CreateDirectory "$SMPROGRAMS\Aranea-Agents"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"

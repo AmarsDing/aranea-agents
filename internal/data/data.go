@@ -914,6 +914,9 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	seedStep("data.seed.skills_agent", func(ctx context.Context) error {
 		return SeedSkillsAgent(ctx, entClient, d.Dialect(), lg)
 	})
+	seedStep("data.seed.system_agent_runtime_settings", func(ctx context.Context) error {
+		return SeedSystemAgentRuntimeSettings(ctx, entClient, d.Dialect(), lg)
+	})
 	seedStep("data.seed.cli_admin_tools", func(ctx context.Context) error {
 		return SeedBuiltinCLIAdminTools(ctx, entClient, d.Dialect(), lg)
 	})
