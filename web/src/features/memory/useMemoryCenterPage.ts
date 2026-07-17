@@ -1,6 +1,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import type { Agent } from '../agents/types';
 import type { Session } from '../session/types';
 import type {
@@ -21,6 +22,7 @@ import { useMemoryStore } from '../../stores/memory';
 
 export function useMemoryCenterPage() {
   const { notify } = useQuasar();
+  const { t } = useI18n();
   const agentsCatalog = useAgentsCatalogStore();
   const sessionStore = useSessionStore();
   const memoryStore = useMemoryStore();
@@ -100,25 +102,37 @@ export function useMemoryCenterPage() {
     const activeTasks = tasks.value.filter((task) => task.status === 'active' || task.status === 'paused').length;
     return [
       {
-        label: '上下文风险',
+        label: t('memory.metrics.contextRisk'),
         value: riskySessions,
-        hint: `平均占用 ${formatPercent(avgContext)}`,
+        hint: t('memory.metrics.avgUsage', { percent: formatPercent(avgContext) }),
         icon: 'speed',
         color: contextRatioColor(avgContext),
       },
-      { label: '活跃任务', value: activeTasks, hint: 'L1 working memory tasks', icon: 'assignment', color: 'primary' },
       {
-        label: '长期知识',
+        label: t('memory.metrics.activeTasks'),
+        value: activeTasks,
+        hint: t('memory.metrics.l1TasksHint'),
+        icon: 'assignment',
+        color: 'primary',
+      },
+      {
+        label: t('memory.metrics.longTermKnowledge'),
         value: factsTotal.value,
-        hint: factsEndpointReady.value ? '已加载 L3 facts' : 'L3 facts 暂不可用',
+        hint: factsEndpointReady.value ? t('memory.metrics.l3FactsLoaded') : t('memory.metrics.l3FactsUnavailable'),
         icon: 'psychology',
         color: 'deep-purple',
       },
-      { label: '图谱实体', value: entities.value.length, hint: 'L4 entities', icon: 'device_hub', color: 'teal' },
       {
-        label: 'Prompt 快照',
+        label: t('memory.metrics.graphEntities'),
+        value: entities.value.length,
+        hint: t('memory.metrics.l4EntitiesHint'),
+        icon: 'device_hub',
+        color: 'teal',
+      },
+      {
+        label: t('memory.metrics.promptSnapshots'),
         value: snapshots.value.length,
-        hint: '最近 L0 assembly snapshots',
+        hint: t('memory.metrics.l0SnapshotsHint'),
         icon: 'preview',
         color: 'blue-grey',
       },
@@ -127,29 +141,29 @@ export function useMemoryCenterPage() {
 
   const actionItems = computed(() => [
     {
-      title: '上下文接近上限',
-      caption: '建议检查摘要阈值和注入片段数量。',
+      title: t('memory.overview.actions.contextNearLimit'),
+      caption: t('memory.overview.actions.contextNearLimitCaption'),
       count: sessions.value.filter((s) => ['warning', 'critical', 'exceeded'].includes(s.context_status)).length,
       icon: 'report',
       color: 'warning',
     },
     {
-      title: '知识冲突待办',
-      caption: 'L3 conflict API 接入后展示需要仲裁的 facts。',
+      title: t('memory.overview.actions.knowledgeConflict'),
+      caption: t('memory.overview.actions.knowledgeConflictCaption'),
       count: facts.value.reduce((sum, fact) => sum + (fact.conflict_count || 0), 0),
       icon: 'rule',
       color: 'negative',
     },
     {
-      title: '待审核进化提议',
-      caption: '来自 Agent Evolution proposal queue。',
+      title: t('memory.overview.actions.pendingEvolution'),
+      caption: t('memory.overview.actions.pendingEvolutionCaption'),
       count: evolutionProposals.value.length,
       icon: 'auto_awesome',
       color: 'info',
     },
     {
-      title: 'Cascade 更名待审',
-      caption: 'L4 冲突门控产生的图谱/L3 级联审核。',
+      title: t('memory.overview.actions.cascadeRename'),
+      caption: t('memory.overview.actions.cascadeRenameCaption'),
       count: cascadeProposals.value.filter((p) => p.status === 'pending').length,
       icon: 'sync_alt',
       color: 'deep-orange',
@@ -159,56 +173,59 @@ export function useMemoryCenterPage() {
   const memoryLayers = computed(() => [
     {
       key: 'l0',
-      title: '上下文窗口 L0',
-      caption: '下一次模型调用实际看到的材料。',
+      title: t('memory.overview.layers.l0Title'),
+      caption: t('memory.overview.layers.l0Caption'),
       icon: 'preview',
       color: 'primary',
-      status: '已接入',
+      status: t('memory.overview.status.connected'),
       statusColor: 'positive',
     },
     {
       key: 'l1',
-      title: '工作记忆 L1',
-      caption: '当前任务目标、约束、决策和中间结果。',
+      title: t('memory.overview.layers.l1Title'),
+      caption: t('memory.overview.layers.l1Caption'),
       icon: 'assignment',
       color: 'indigo',
-      status: '已接入',
+      status: t('memory.overview.status.connected'),
       statusColor: 'positive',
     },
     {
       key: 'l2',
-      title: '事件记忆 L2',
-      caption: '会话 timeline、episode、marks 与巩固队列。',
+      title: t('memory.overview.layers.l2Title'),
+      caption: t('memory.overview.layers.l2Caption'),
       icon: 'timeline',
       color: 'teal',
-      status: '已接入',
+      status: t('memory.overview.status.connected'),
       statusColor: 'positive',
     },
     {
       key: 'l3',
-      title: '知识记忆 L3',
-      caption: '跨会话 facts、偏好、规则、冲突与反馈。',
+      title: t('memory.overview.layers.l3Title'),
+      caption: t('memory.overview.layers.l3Caption'),
       icon: 'psychology',
       color: 'deep-purple',
-      status: factsEndpointReady.value ? '已接入' : '不可用',
+      status: factsEndpointReady.value ? t('memory.overview.status.connected') : t('memory.overview.status.unavailable'),
       statusColor: factsEndpointReady.value ? 'positive' : 'warning',
     },
     {
       key: 'l4',
-      title: '图谱与进化 L4',
-      caption: '实体关系、Agent identity、strategy 和 proposal。',
+      title: t('memory.overview.layers.l4Title'),
+      caption: t('memory.overview.layers.l4Caption'),
       icon: 'auto_awesome',
       color: 'orange',
-      status: entities.value.length || agentIdentity.value ? '已接入' : '已注册',
+      status:
+        entities.value.length || agentIdentity.value
+          ? t('memory.overview.status.connected')
+          : t('memory.overview.status.registered'),
       statusColor: 'positive',
     },
   ]);
 
   const evolutionPanels = computed(() => [
     {
-      title: '知识图谱',
-      caption: '实体、关系、证据链和邻居召回。',
-      state: `${entities.value.length} 个实体已加载`,
+      title: t('memory.evolution.graphTitle'),
+      caption: t('memory.evolution.graphCaption'),
+      state: t('memory.evolution.entitiesLoaded', { count: entities.value.length }),
       icon: 'device_hub',
       color: 'teal',
       items: entities.value
@@ -216,40 +233,53 @@ export function useMemoryCenterPage() {
         .map((entity) => `${entity.name} · ${entity.entity_type} · ${entity.scope_type}`),
     },
     {
-      title: 'Agent Identity',
-      caption: 'persona、values、tone、domains 和用户期望。',
+      title: t('memory.evolution.identityTitle'),
+      caption: t('memory.evolution.identityCaption'),
       state: agentIdentity.value
-        ? `${agentIdentity.value.current_phase || 'active'} · ${agentIdentity.value.tone || 'tone unset'}`
-        : '选择 Agent 后加载 identity',
+        ? t('memory.evolution.identityState', {
+            phase: agentIdentity.value.current_phase || 'active',
+            tone: agentIdentity.value.tone || 'tone unset',
+          })
+        : t('memory.evolution.identityEmpty'),
       icon: 'badge',
       color: 'primary',
       items: agentIdentity.value
         ? [
-            agentIdentity.value.persona || 'Persona 尚未填写',
-            ...(agentIdentity.value.domains || []).slice(0, 4).map((domain) => `Domain: ${domain}`),
+            agentIdentity.value.persona || t('memory.evolution.personaEmpty'),
+            ...(agentIdentity.value.domains || [])
+              .slice(0, 4)
+              .map((domain) => t('memory.evolution.domainLabel', { domain })),
           ]
         : [],
     },
     {
-      title: 'Strategy Profile',
-      caption: '探索度、简洁度、谨慎度、工具偏好和模型偏好。',
+      title: t('memory.evolution.strategyTitle'),
+      caption: t('memory.evolution.strategyCaption'),
       state: agentStrategy.value
-        ? `exploration=${formatScore(agentStrategy.value.exploration)} · caution=${formatScore(agentStrategy.value.caution)}`
-        : '选择 Agent 后加载 strategy',
+        ? t('memory.evolution.strategyState', {
+            exploration: formatScore(agentStrategy.value.exploration),
+            caution: formatScore(agentStrategy.value.caution),
+          })
+        : t('memory.evolution.strategyEmpty'),
       icon: 'tune',
       color: 'deep-purple',
       items: agentStrategy.value
         ? [
-            `conciseness=${formatScore(agentStrategy.value.conciseness)}`,
-            `delegation=${formatScore(agentStrategy.value.delegation)}`,
-            `blacklist=${(agentStrategy.value.tool_blacklist || []).join(', ') || 'empty'}`,
+            t('memory.evolution.concisenessLabel', { value: formatScore(agentStrategy.value.conciseness) }),
+            t('memory.evolution.delegationLabel', { value: formatScore(agentStrategy.value.delegation) }),
+            t('memory.evolution.blacklistLabel', {
+              value: (agentStrategy.value.tool_blacklist || []).join(', ') || t('memory.evolution.blacklistEmpty'),
+            }),
           ]
         : [],
     },
     {
-      title: 'Evolution Proposals',
-      caption: '待审核的自我修正建议和回滚日志。',
-      state: `${evolutionProposals.value.length} pending · ${evolutionMetrics.value?.events_total ?? evolutionEvents.value.length} events`,
+      title: t('memory.evolution.proposalsTitle'),
+      caption: t('memory.evolution.proposalsCaption'),
+      state: t('memory.evolution.proposalsState', {
+        pending: evolutionProposals.value.length,
+        events: evolutionMetrics.value?.events_total ?? evolutionEvents.value.length,
+      }),
       icon: 'rule',
       color: 'orange',
       items: evolutionProposals.value
@@ -262,31 +292,38 @@ export function useMemoryCenterPage() {
   ]);
 
   const settingChecklist = computed(() => [
-    { label: '基础 memory_* 设置', caption: 'Agent 设置页已有旧版记忆启用、结果数和最低分数。', done: true },
-    { label: 'L0 上下文策略', caption: 'Prompt snapshot / preview API 已接入。', done: true },
-    { label: 'L1 工作记忆预算', caption: 'L1 task/field API 已接入。', done: true },
+    { label: t('memory.checklist.basicSettings'), caption: t('memory.checklist.basicSettingsCaption'), done: true },
+    { label: t('memory.checklist.l0Strategy'), caption: t('memory.checklist.l0StrategyCaption'), done: true },
+    { label: t('memory.checklist.l1Budget'), caption: t('memory.checklist.l1BudgetCaption'), done: true },
     {
-      label: 'L3 语义记忆设置',
-      caption: 'Facts / recall：`memory/v1` 由 cmd/admin SQLite（sessionmemory）提供。',
+      label: t('memory.checklist.l3Semantic'),
+      caption: t('memory.checklist.l3SemanticCaption'),
       done: factsEndpointReady.value,
     },
-    { label: '巩固 Worker 模型', caption: 'Agent 设置 → 记忆 Tab：`memory_worker_*` / `l0_compress_*`。', done: true },
+    { label: t('memory.checklist.workerModel'), caption: t('memory.checklist.workerModelCaption'), done: true },
     {
-      label: '平台 Policy Strict / Backfill',
-      caption: '记忆中心 → 设置 Tab：MEMORY_POLICY_STRICT / MEMORY_EPISODE_BACKFILL_DISABLED（DB + env）。',
+      label: t('memory.checklist.platformPolicy'),
+      caption: t('memory.checklist.platformPolicyCaption'),
       done: true,
     },
-    { label: 'L4 图谱与进化设置', caption: 'Entities / neighborhood / evolution API 已注册并在本页读取。', done: true },
+    { label: t('memory.checklist.l4Graph'), caption: t('memory.checklist.l4GraphCaption'), done: true },
   ]);
 
-  const scopeOptions = ['user', 'agent', 'team', 'workspace', 'global'].map((value) => ({ label: value, value }));
-  const factStatusOptions = ['active', 'archived', 'disputed', 'deprecated', 'deleted'].map((value) => ({
-    label: value,
-    value,
-  }));
+  const scopeOptions = computed(() =>
+    ['user', 'agent', 'team', 'workspace', 'global'].map((value) => ({
+      label: t(`memory.knowledge.scope.${value}`),
+      value,
+    })),
+  );
+  const factStatusOptions = computed(() =>
+    ['active', 'archived', 'disputed', 'deprecated', 'deleted'].map((value) => ({
+      label: t(`memory.knowledge.status.${value}`),
+      value,
+    })),
+  );
 
-  const factColumns = buildMemoryFactTableColumns(formatDate);
-  const snapshotColumns = buildMemoryAssemblyTableColumns(formatDate);
+  const factColumns = computed(() => buildMemoryFactTableColumns(formatDate, t));
+  const snapshotColumns = computed(() => buildMemoryAssemblyTableColumns(formatDate, t));
 
   onMounted(loadAll);
 
@@ -305,7 +342,7 @@ export function useMemoryCenterPage() {
       await loadAgents();
       await Promise.all([loadSessions(), loadFacts(), loadEvolution(), loadCascade()]);
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '记忆中心加载失败';
+      error.value = err instanceof Error ? err.message : t('memory.error.loadFailed');
     }
   }
 
@@ -348,7 +385,7 @@ export function useMemoryCenterPage() {
       await memoryStore.approveCascade(row.id);
       await Promise.all([loadCascade(), loadFacts(), loadEvolution()]);
     } catch (e: unknown) {
-      notify({ type: 'negative', message: e instanceof Error ? e.message : 'Cascade 批准失败' });
+      notify({ type: 'negative', message: e instanceof Error ? e.message : t('memory.error.cascadeApproveFailed') });
     } finally {
       cascadeActingId.value = null;
     }
@@ -360,7 +397,7 @@ export function useMemoryCenterPage() {
       await memoryStore.rejectCascade(row.id);
       await loadCascade();
     } catch (e: unknown) {
-      notify({ type: 'negative', message: e instanceof Error ? e.message : 'Cascade 拒绝失败' });
+      notify({ type: 'negative', message: e instanceof Error ? e.message : t('memory.error.cascadeRejectFailed') });
     } finally {
       cascadeActingId.value = null;
     }
@@ -385,7 +422,7 @@ export function useMemoryCenterPage() {
       await memoryStore.retryCascade(row.id);
       await Promise.all([loadCascade(), loadFacts(), loadEvolution()]);
     } catch (e: unknown) {
-      notify({ type: 'negative', message: e instanceof Error ? e.message : 'Cascade 重试失败' });
+      notify({ type: 'negative', message: e instanceof Error ? e.message : t('memory.error.cascadeRetryFailed') });
     } finally {
       cascadeActingId.value = null;
     }
@@ -397,7 +434,7 @@ export function useMemoryCenterPage() {
       await memoryStore.compensateCascade(row.id);
       await Promise.all([loadCascade(), loadFacts(), loadEvolution()]);
     } catch (e: unknown) {
-      notify({ type: 'negative', message: e instanceof Error ? e.message : 'Cascade 补偿失败' });
+      notify({ type: 'negative', message: e instanceof Error ? e.message : t('memory.error.cascadeCompensateFailed') });
     } finally {
       cascadeActingId.value = null;
     }

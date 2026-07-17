@@ -19,7 +19,7 @@
               text-color="white"
               class="team-card__mode-chip"
             >
-              {{ definition.mode }}
+              {{ teamModeLabel(definition.mode) }}
             </q-chip>
             <q-chip v-if="team.is_default" dense square size="sm" color="amber" text-color="black">默认</q-chip>
           </div>
@@ -49,7 +49,7 @@
           >
             <q-avatar size="26px" color="primary" text-color="white" :icon="memberIcon(member.role)" />
             <div class="member-primary ellipsis">
-              <span class="member-role">{{ member.role }}</span>
+              <span class="member-role">{{ teamRoleLabel(member.role) }}</span>
               <span class="member-sep">·</span>
               <span class="member-label">{{ member.name || agentName(agents, member.agent_id) }}</span>
             </div>
@@ -132,6 +132,8 @@ import {
   formatDate,
   memberIcon,
   parseDefinition,
+  teamModeLabel,
+  teamRoleLabel,
   teamStatusMap,
   topologyNodesFromDefinition,
 } from './teamUtils';

@@ -418,6 +418,7 @@ import {
   roleOptionsForMode,
   runtimeEngineOptions,
   statusOptions,
+  teamRoleLabel,
   teamTemplateOptions,
   type TeamTemplateKey,
 } from './teamUtils';

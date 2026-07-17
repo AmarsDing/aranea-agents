@@ -91,6 +91,9 @@ export type SessionTimelineItem = {
   preview: string | undefined;
   detailJson: string | undefined;
   tags: string[] | undefined;
+  // title_key carries the i18n key for fallback titles (e.g. "agent_message"),
+  // empty when the title is a concrete name that needs no translation.
+  titleKey: string | undefined;
 };
 
 export type SessionTimeline = {
@@ -893,678 +896,580 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createSessionServiceClient(handler: RequestHandler): SessionService {
+export function createSessionServiceClient(
+  handler: RequestHandler
+): SessionService {
   return {
-    SearchSessions(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    SearchSessions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/sessions`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.ownerType) {
-        queryParams.push(`ownerType=${encodeURIComponent(request.ownerType.toString())}`);
+        queryParams.push(`ownerType=${encodeURIComponent(request.ownerType.toString())}`)
       }
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       if (request.teamId) {
-        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`);
+        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.contextStatus) {
-        queryParams.push(`contextStatus=${encodeURIComponent(request.contextStatus.toString())}`);
+        queryParams.push(`contextStatus=${encodeURIComponent(request.contextStatus.toString())}`)
       }
       if (request.keyword) {
-        queryParams.push(`keyword=${encodeURIComponent(request.keyword.toString())}`);
+        queryParams.push(`keyword=${encodeURIComponent(request.keyword.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       if (request.page) {
-        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`);
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
       }
       if (request.userId) {
-        queryParams.push(`userId=${encodeURIComponent(request.userId.toString())}`);
+        queryParams.push(`userId=${encodeURIComponent(request.userId.toString())}`)
       }
       if (request.sortBy) {
-        queryParams.push(`sortBy=${encodeURIComponent(request.sortBy.toString())}`);
+        queryParams.push(`sortBy=${encodeURIComponent(request.sortBy.toString())}`)
       }
       if (request.sortOrder) {
-        queryParams.push(`sortOrder=${encodeURIComponent(request.sortOrder.toString())}`);
+        queryParams.push(`sortOrder=${encodeURIComponent(request.sortOrder.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'SearchSessions',
-        },
-      ) as Promise<SearchSessionsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionService",
+        method: "SearchSessions",
+      }) as Promise<SearchSessionsResponse>;
     },
-    CreateSession(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateSession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/sessions`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'CreateSession',
-        },
-      ) as Promise<Session>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "SessionService",
+        method: "CreateSession",
+      }) as Promise<Session>;
     },
-    DeleteSessionsByAgent(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteSessionsByAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/sessions`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'DeleteSessionsByAgent',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "SessionService",
+        method: "DeleteSessionsByAgent",
+      }) as Promise<wellKnownEmpty>;
     },
-    GetSession(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetSession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/sessions/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'GetSession',
-        },
-      ) as Promise<Session>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionService",
+        method: "GetSession",
+      }) as Promise<Session>;
     },
-    UpdateSession(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateSession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/sessions/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PATCH',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'UpdateSession',
-        },
-      ) as Promise<Session>;
+      return handler({
+        path: uri,
+        method: "PATCH",
+        body,
+      }, {
+        service: "SessionService",
+        method: "UpdateSession",
+      }) as Promise<Session>;
     },
-    DeleteSession(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteSession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/sessions/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'DeleteSession',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "SessionService",
+        method: "DeleteSession",
+      }) as Promise<wellKnownEmpty>;
     },
-    ArchiveSession(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ArchiveSession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/sessions/${request.id}/archive`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'ArchiveSession',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "SessionService",
+        method: "ArchiveSession",
+      }) as Promise<wellKnownEmpty>;
     },
-    RestoreSession(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    RestoreSession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/sessions/${request.id}/restore`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'RestoreSession',
-        },
-      ) as Promise<Session>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "SessionService",
+        method: "RestoreSession",
+      }) as Promise<Session>;
     },
-    PinSession(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    PinSession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/sessions/${request.id}/pin`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'PinSession',
-        },
-      ) as Promise<Session>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "SessionService",
+        method: "PinSession",
+      }) as Promise<Session>;
     },
-    UnpinSession(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UnpinSession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/sessions/${request.id}/unpin`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'UnpinSession',
-        },
-      ) as Promise<Session>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "SessionService",
+        method: "UnpinSession",
+      }) as Promise<Session>;
     },
-    ExportSession(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ExportSession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/sessions/${request.id}/export`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.format) {
-        queryParams.push(`format=${encodeURIComponent(request.format.toString())}`);
+        queryParams.push(`format=${encodeURIComponent(request.format.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'ExportSession',
-        },
-      ) as Promise<ExportSessionResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionService",
+        method: "ExportSession",
+      }) as Promise<ExportSessionResponse>;
     },
-    ListSessionRuns(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListSessionRuns(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.sessionId) {
-        throw new Error('missing required field request.session_id');
+        throw new Error("missing required field request.session_id");
       }
       const path = `v1/sessions/${request.sessionId}/runs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'ListSessionRuns',
-        },
-      ) as Promise<ListSessionRunsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionService",
+        method: "ListSessionRuns",
+      }) as Promise<ListSessionRunsResponse>;
     },
-    ListSessionParticipants(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListSessionParticipants(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.sessionId) {
-        throw new Error('missing required field request.session_id');
+        throw new Error("missing required field request.session_id");
       }
       const path = `v1/sessions/${request.sessionId}/participants`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'ListSessionParticipants',
-        },
-      ) as Promise<ListSessionParticipantsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionService",
+        method: "ListSessionParticipants",
+      }) as Promise<ListSessionParticipantsResponse>;
     },
-    GetSessionTimeline(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetSessionTimeline(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/sessions/${request.id}/timeline`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       if (request.kindFilter) {
-        queryParams.push(`kindFilter=${encodeURIComponent(request.kindFilter.toString())}`);
+        queryParams.push(`kindFilter=${encodeURIComponent(request.kindFilter.toString())}`)
       }
       if (request.sortOrder) {
-        queryParams.push(`sortOrder=${encodeURIComponent(request.sortOrder.toString())}`);
+        queryParams.push(`sortOrder=${encodeURIComponent(request.sortOrder.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'GetSessionTimeline',
-        },
-      ) as Promise<SessionTimeline>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionService",
+        method: "GetSessionTimeline",
+      }) as Promise<SessionTimeline>;
     },
-    ListSessionMessages(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListSessionMessages(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/sessions/${request.id}/messages`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       if (request.afterRevision) {
-        queryParams.push(`afterRevision=${encodeURIComponent(request.afterRevision.toString())}`);
+        queryParams.push(`afterRevision=${encodeURIComponent(request.afterRevision.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'ListSessionMessages',
-        },
-      ) as Promise<ListSessionMessagesResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionService",
+        method: "ListSessionMessages",
+      }) as Promise<ListSessionMessagesResponse>;
     },
-    SearchSessionMessages(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    SearchSessionMessages(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/sessions/messages/search`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.sessionId) {
-        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`);
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       if (request.keyword) {
-        queryParams.push(`keyword=${encodeURIComponent(request.keyword.toString())}`);
+        queryParams.push(`keyword=${encodeURIComponent(request.keyword.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'SearchSessionMessages',
-        },
-      ) as Promise<SearchSessionMessagesResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionService",
+        method: "SearchSessionMessages",
+      }) as Promise<SearchSessionMessagesResponse>;
     },
-    ListSessionTurns(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListSessionTurns(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.sessionId) {
-        throw new Error('missing required field request.session_id');
+        throw new Error("missing required field request.session_id");
       }
       const path = `v1/sessions/${request.sessionId}/turns`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'ListSessionTurns',
-        },
-      ) as Promise<ListSessionTurnsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionService",
+        method: "ListSessionTurns",
+      }) as Promise<ListSessionTurnsResponse>;
     },
-    BatchPreviewSessions(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    BatchPreviewSessions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/sessions:batchPreview`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'BatchPreviewSessions',
-        },
-      ) as Promise<BatchPreviewSessionsResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "SessionService",
+        method: "BatchPreviewSessions",
+      }) as Promise<BatchPreviewSessionsResponse>;
     },
-    BatchArchiveSessions(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    BatchArchiveSessions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/sessions:batchArchive`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'BatchArchiveSessions',
-        },
-      ) as Promise<BatchSessionsResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "SessionService",
+        method: "BatchArchiveSessions",
+      }) as Promise<BatchSessionsResponse>;
     },
-    BatchDeleteSessions(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    BatchDeleteSessions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/sessions:batchDelete`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'BatchDeleteSessions',
-        },
-      ) as Promise<BatchSessionsResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "SessionService",
+        method: "BatchDeleteSessions",
+      }) as Promise<BatchSessionsResponse>;
     },
-    CompactSession(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CompactSession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/sessions:compact`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'CompactSession',
-        },
-      ) as Promise<CompactSessionResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "SessionService",
+        method: "CompactSession",
+      }) as Promise<CompactSessionResponse>;
     },
-    GetCompressStatus(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetCompressStatus(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.sessionId) {
-        throw new Error('missing required field request.session_id');
+        throw new Error("missing required field request.session_id");
       }
       const path = `v1/sessions/${request.sessionId}/compress-status`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'GetCompressStatus',
-        },
-      ) as Promise<GetCompressStatusReply>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionService",
+        method: "GetCompressStatus",
+      }) as Promise<GetCompressStatusReply>;
     },
-    ListChildSessions(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListChildSessions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.parentSessionId) {
-        throw new Error('missing required field request.parent_session_id');
+        throw new Error("missing required field request.parent_session_id");
       }
       const path = `v1/sessions/${request.parentSessionId}/children`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'ListChildSessions',
-        },
-      ) as Promise<ListChildSessionsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionService",
+        method: "ListChildSessions",
+      }) as Promise<ListChildSessionsResponse>;
     },
-    GetSessionTree(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetSessionTree(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.spiritSessionId) {
-        throw new Error('missing required field request.spirit_session_id');
+        throw new Error("missing required field request.spirit_session_id");
       }
       const path = `v1/sessions/${request.spiritSessionId}/tree`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'GetSessionTree',
-        },
-      ) as Promise<GetSessionTreeResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionService",
+        method: "GetSessionTree",
+      }) as Promise<GetSessionTreeResponse>;
     },
-    ListActivities(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListActivities(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.sessionId) {
-        throw new Error('missing required field request.session_id');
+        throw new Error("missing required field request.session_id");
       }
       const path = `v1/sessions/${request.sessionId}/activities`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.turnId) {
-        queryParams.push(`turnId=${encodeURIComponent(request.turnId.toString())}`);
+        queryParams.push(`turnId=${encodeURIComponent(request.turnId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionService',
-          method: 'ListActivities',
-        },
-      ) as Promise<ListActivitiesResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionService",
+        method: "ListActivities",
+      }) as Promise<ListActivitiesResponse>;
     },
   };
 }
@@ -1592,253 +1497,215 @@ export interface SessionV2Service {
   ListGraphNodes(request: ListGraphNodesV2Request): Promise<ListGraphNodesV2Response>;
 }
 
-export function createSessionV2ServiceClient(handler: RequestHandler): SessionV2Service {
+export function createSessionV2ServiceClient(
+  handler: RequestHandler
+): SessionV2Service {
   return {
-    ListTasks(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTasks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.sessionId) {
-        throw new Error('missing required field request.session_id');
+        throw new Error("missing required field request.session_id");
       }
       const path = `v2/sessions/${request.sessionId}/tasks`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionV2Service',
-          method: 'ListTasks',
-        },
-      ) as Promise<ListTasksV2Response>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionV2Service",
+        method: "ListTasks",
+      }) as Promise<ListTasksV2Response>;
     },
-    ListTurns(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTurns(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error('missing required field request.task_id');
+        throw new Error("missing required field request.task_id");
       }
       const path = `v2/tasks/${request.taskId}/turns`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionV2Service',
-          method: 'ListTurns',
-        },
-      ) as Promise<ListTurnsV2Response>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionV2Service",
+        method: "ListTurns",
+      }) as Promise<ListTurnsV2Response>;
     },
-    ListSteps(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListSteps(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.sessionId) {
-        throw new Error('missing required field request.session_id');
+        throw new Error("missing required field request.session_id");
       }
       const path = `v2/sessions/${request.sessionId}/steps`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.turnId) {
-        queryParams.push(`turnId=${encodeURIComponent(request.turnId.toString())}`);
+        queryParams.push(`turnId=${encodeURIComponent(request.turnId.toString())}`)
       }
       if (request.taskId) {
-        queryParams.push(`taskId=${encodeURIComponent(request.taskId.toString())}`);
+        queryParams.push(`taskId=${encodeURIComponent(request.taskId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionV2Service',
-          method: 'ListSteps',
-        },
-      ) as Promise<ListStepsV2Response>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionV2Service",
+        method: "ListSteps",
+      }) as Promise<ListStepsV2Response>;
     },
-    ListTeamStages(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTeamStages(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error('missing required field request.task_id');
+        throw new Error("missing required field request.task_id");
       }
       const path = `v2/tasks/${request.taskId}/team_stages`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionV2Service',
-          method: 'ListTeamStages',
-        },
-      ) as Promise<ListTeamStagesV2Response>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionV2Service",
+        method: "ListTeamStages",
+      }) as Promise<ListTeamStagesV2Response>;
     },
-    ListTeamRuns(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTeamRuns(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.stageId) {
-        throw new Error('missing required field request.stage_id');
+        throw new Error("missing required field request.stage_id");
       }
       const path = `v2/team_stages/${request.stageId}/team_runs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionV2Service',
-          method: 'ListTeamRuns',
-        },
-      ) as Promise<ListTeamRunsV2Response>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionV2Service",
+        method: "ListTeamRuns",
+      }) as Promise<ListTeamRunsV2Response>;
     },
-    ListMemberSessions(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListMemberSessions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.runId) {
-        throw new Error('missing required field request.run_id');
+        throw new Error("missing required field request.run_id");
       }
       const path = `v2/team_runs/${request.runId}/member_sessions`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionV2Service',
-          method: 'ListMemberSessions',
-        },
-      ) as Promise<ListMemberSessionsV2Response>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionV2Service",
+        method: "ListMemberSessions",
+      }) as Promise<ListMemberSessionsV2Response>;
     },
-    ListPlanBoards(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListPlanBoards(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error('missing required field request.task_id');
+        throw new Error("missing required field request.task_id");
       }
       const path = `v2/tasks/${request.taskId}/plan_boards`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionV2Service',
-          method: 'ListPlanBoards',
-        },
-      ) as Promise<ListPlanBoardsV2Response>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionV2Service",
+        method: "ListPlanBoards",
+      }) as Promise<ListPlanBoardsV2Response>;
     },
-    ListPlanSteps(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListPlanSteps(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error('missing required field request.task_id');
+        throw new Error("missing required field request.task_id");
       }
       const path = `v2/tasks/${request.taskId}/plan_steps`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionV2Service',
-          method: 'ListPlanSteps',
-        },
-      ) as Promise<ListPlanStepsV2Response>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionV2Service",
+        method: "ListPlanSteps",
+      }) as Promise<ListPlanStepsV2Response>;
     },
-    ListGraphStages(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListGraphStages(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.taskId) {
-        throw new Error('missing required field request.task_id');
+        throw new Error("missing required field request.task_id");
       }
       const path = `v2/tasks/${request.taskId}/graph_stages`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionV2Service',
-          method: 'ListGraphStages',
-        },
-      ) as Promise<ListGraphStagesV2Response>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionV2Service",
+        method: "ListGraphStages",
+      }) as Promise<ListGraphStagesV2Response>;
     },
-    ListGraphNodes(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListGraphNodes(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.stageId) {
-        throw new Error('missing required field request.stage_id');
+        throw new Error("missing required field request.stage_id");
       }
       const path = `v2/graph_stages/${request.stageId}/graph_nodes`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SessionV2Service',
-          method: 'ListGraphNodes',
-        },
-      ) as Promise<ListGraphNodesV2Response>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionV2Service",
+        method: "ListGraphNodes",
+      }) as Promise<ListGraphNodesV2Response>;
     },
   };
 }

@@ -13,21 +13,21 @@
     <div class="session-timeline-entry__card">
       <header class="session-timeline-entry__header">
         <div class="session-timeline-entry__title-row">
-          <h3 class="session-timeline-entry__title">{{ item.title }}</h3>
+          <h3 class="session-timeline-entry__title">{{ titleLabel }}</h3>
           <span
             v-for="tag in item.tags"
             :key="tag"
             class="session-timeline-entry__tag"
             :class="`session-timeline-entry__tag--${tagKind(tag)}`"
           >
-            {{ tag }}
+            {{ tagLabel(tag) }}
           </span>
         </div>
         <div class="session-timeline-entry__meta">
           <time>{{ formatTimelineTime(item.occurred_at) }}</time>
           <span v-if="item.duration_ms">· {{ formatTimelineDuration(item.duration_ms) }}</span>
           <span v-if="item.status && item.status !== 'ok'" class="session-timeline-entry__status">
-            · {{ item.status }}
+            · {{ statusLabel(item.status) }}
           </span>
         </div>
       </header>
@@ -44,11 +44,11 @@
         header-class="session-timeline-entry__expansion-header"
       >
         <div v-if="item.actor_name" class="session-timeline-entry__meta-row">
-          <span class="session-timeline-entry__meta-key">Actor</span>
+          <span class="session-timeline-entry__meta-key">{{ t('sessionDetail.timelineEntry.actor') }}</span>
           <span class="session-timeline-entry__meta-val">{{ item.actor_name }}</span>
         </div>
         <div v-if="item.subtitle && !isMessage" class="session-timeline-entry__meta-row">
-          <span class="session-timeline-entry__meta-key">Source</span>
+          <span class="session-timeline-entry__meta-key">{{ t('sessionDetail.timelineEntry.source') }}</span>
           <span class="session-timeline-entry__meta-val">{{ item.subtitle }}</span>
         </div>
         <pre v-if="item.content_markdown" class="session-timeline-entry__detail">{{ item.content_markdown }}</pre>
@@ -63,6 +63,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { SessionTimelineItem } from '../../features/session/types';
 import {
   formatTimelineDuration,
@@ -74,6 +75,8 @@ import {
   timelineHasDetail,
 } from './sessionTimelineUi';
 
+const { t } = useI18n();
+
 const props = defineProps<{
   item: SessionTimelineItem;
 }>();
@@ -81,6 +84,14 @@ const props = defineProps<{
 const accent = computed(() => timelineEntryAccent(props.item));
 const icon = computed(() => timelineEntryIcon(props.item));
 const isMessage = computed(() => isTimelineMessage(props.item));
+
+const titleLabel = computed(() => {
+  const key = props.item.title_key;
+  if (!key) return props.item.title;
+  const i18nKey = `sessionDetail.timelineItem.${key}`;
+  const translated = t(i18nKey);
+  return translated !== i18nKey ? translated : props.item.title;
+});
 
 const inlinePreview = computed(() => {
   const text = (props.item.preview || props.item.subtitle || '').trim();
@@ -99,6 +110,18 @@ const expansionLabel = computed(() => {
   if (isMessage.value) return '查看完整内容';
   return props.item.preview || props.item.subtitle || '查看详情';
 });
+
+function tagLabel(tag: string): string {
+  const key = `sessionDetail.timelineTag.${tag.toLowerCase()}`;
+  const translated = t(key);
+  return translated !== key ? translated : tag;
+}
+
+function statusLabel(status: string): string {
+  const key = `sessionDetail.timelineStatus.${status}`;
+  const translated = t(key);
+  return translated !== key ? translated : status;
+}
 
 function tagKind(tag: string): string {
   if (tag === 'User') return 'user';

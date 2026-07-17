@@ -12,7 +12,7 @@
         </q-item-section>
         <q-item-section>
           <q-item-label overline class="text-grey-7">
-            Turn #{{ turn.turn_number }}
+            {{ t('sessionDetail.turnLabel', { n: turn.turn_number }) }}
             <span v-if="turn.final_provider || turn.final_model" class="q-ml-sm">
               {{ turn.final_provider }}/{{ turn.final_model }}
             </span>
@@ -28,8 +28,11 @@
         </q-item-section>
         <q-item-section side class="text-right">
           <div class="text-caption text-grey-7">
-            <div>IN {{ turn.input_tokens }} · OUT {{ turn.output_tokens }}</div>
-            <div v-if="turn.total_tokens">Total {{ turn.total_tokens }}</div>
+            <div>
+              {{ t('sessionDetail.tokenIn') }} {{ turn.input_tokens }} · {{ t('sessionDetail.tokenOut') }}
+              {{ turn.output_tokens }}
+            </div>
+            <div v-if="turn.total_tokens">{{ t('sessionDetail.tokenTotal') }} {{ turn.total_tokens }}</div>
             <div class="q-mt-xs">
               <q-badge v-if="turn.model_call_count" color="blue-grey" outline class="q-mr-xs"
                 >模型 {{ turn.model_call_count }}</q-badge
@@ -54,8 +57,11 @@
 
 <script setup lang="ts">
 import { toRef } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useSessionTurnsPanel } from '../../features/session/useSessionTurnsPanel';
 import { formatSessionDate } from './sessionUi';
+
+const { t } = useI18n();
 
 const props = defineProps<{ sessionId: string }>();
 

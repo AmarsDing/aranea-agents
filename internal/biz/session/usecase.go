@@ -209,6 +209,7 @@ type SessionTimelineItem struct {
 	Kind            string
 	Side            string
 	Title           string
+	TitleKey        string
 	Subtitle        string
 	ActorID         string
 	ActorName       string

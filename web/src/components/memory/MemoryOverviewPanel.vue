@@ -4,9 +4,9 @@
     <div class="col-12 col-lg-7">
       <q-card flat bordered class="memory-card">
         <q-card-section>
-          <div class="text-h6">记忆流向</div>
+          <div class="text-h6">{{ t('memory.overview.flowTitle') }}</div>
           <div class="text-caption text-grey-7">
-            L0 负责本次 prompt，L1/L2/L3/L4 分别提供任务状态、事件、知识和长期画像。
+            {{ t('memory.overview.flowCaption') }}
           </div>
         </q-card-section>
         <q-card-section>
@@ -26,8 +26,8 @@
     <div class="col-12 col-lg-5">
       <q-card flat bordered class="memory-card">
         <q-card-section>
-          <div class="text-h6">待处理事项</div>
-          <div class="text-caption text-grey-7">优先处理会影响回答可信度的记忆风险。</div>
+          <div class="text-h6">{{ t('memory.overview.actionTitle') }}</div>
+          <div class="text-caption text-grey-7">{{ t('memory.overview.actionCaption') }}</div>
         </q-card-section>
         <q-list separator>
           <q-item v-for="item in actionItems" :key="item.title">
@@ -49,6 +49,10 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
+
 defineProps<{
   memoryLayers: Array<{
     key: string;

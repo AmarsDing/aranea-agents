@@ -1,6 +1,10 @@
 import type { SessionTimelineItem } from '../../features/session/types';
+import { computed } from 'vue';
+import { i18n } from '../../i18n';
 export type { TimelineStat } from '../../features/session/timelineHelpers';
 export { buildTimelineStats } from '../../features/session/timelineHelpers';
+
+const t = (key: string) => i18n.global.t(key);
 
 export type TimelineAccent = 'user' | 'agent' | 'tool' | 'skill' | 'mcp' | 'error';
 
@@ -65,18 +69,18 @@ export function prettyTimelineJSON(value: string): string {
   }
 }
 
-export const timelineKindFilterOptions = [
-  { label: '全部', value: '' },
-  { label: '消息', value: 'message' },
-  { label: '工具', value: 'tool' },
-  { label: '技能', value: 'skill' },
-  { label: 'MCP', value: 'mcp' },
-];
+export const timelineKindFilterOptions = computed(() => [
+  { label: t('sessionDetail.timelineKinds.all'), value: '' },
+  { label: t('sessionDetail.timelineKinds.message'), value: 'message' },
+  { label: t('sessionDetail.timelineKinds.tool'), value: 'tool' },
+  { label: t('sessionDetail.timelineKinds.skill'), value: 'skill' },
+  { label: t('sessionDetail.timelineKinds.mcp'), value: 'mcp' },
+]);
 
-export const timelineSortOptions = [
-  { label: '最新优先', value: 'desc' },
-  { label: '最早优先', value: 'asc' },
-];
+export const timelineSortOptions = computed(() => [
+  { label: t('sessionDetail.timelineSort.desc'), value: 'desc' },
+  { label: t('sessionDetail.timelineSort.asc'), value: 'asc' },
+]);
 
 export function filterTimelineItems(
   items: SessionTimelineItem[],

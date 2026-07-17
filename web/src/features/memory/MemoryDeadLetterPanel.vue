@@ -4,8 +4,8 @@ handling extracted to useMemoryDeadLetterPanel composable.
   <q-card flat bordered class="memory-card">
     <q-card-section class="row items-center justify-between">
       <div>
-        <div class="text-h6">Dead-Letter 队列</div>
-        <div class="text-caption text-grey-7">失败的记忆提取任务，可重试或放弃。</div>
+        <div class="text-h6">{{ t('memory.deadLetter.title') }}</div>
+        <div class="text-caption text-grey-7">{{ t('memory.deadLetter.subtitle') }}</div>
       </div>
       <q-btn flat dense icon="refresh" :loading="loading" @click="load" />
     </q-card-section>
@@ -13,15 +13,15 @@ handling extracted to useMemoryDeadLetterPanel composable.
       <q-markup-table flat dense bordered>
         <thead>
           <tr>
-            <th>ID</th>
-            <th>Session</th>
-            <th>App</th>
-            <th>优先级</th>
-            <th>原因</th>
-            <th>尝试</th>
-            <th>状态</th>
-            <th>失败时间</th>
-            <th>操作</th>
+            <th>{{ t('memory.deadLetter.columns.id') }}</th>
+            <th>{{ t('memory.deadLetter.columns.session') }}</th>
+            <th>{{ t('memory.deadLetter.columns.app') }}</th>
+            <th>{{ t('memory.deadLetter.columns.priority') }}</th>
+            <th>{{ t('memory.deadLetter.columns.reason') }}</th>
+            <th>{{ t('memory.deadLetter.columns.attempts') }}</th>
+            <th>{{ t('memory.deadLetter.columns.state') }}</th>
+            <th>{{ t('memory.deadLetter.columns.failedAt') }}</th>
+            <th>{{ t('memory.deadLetter.columns.actions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -37,7 +37,7 @@ handling extracted to useMemoryDeadLetterPanel composable.
             </td>
             <td>{{ r.attempts }}</td>
             <td>
-              <q-badge :color="stateColor(r.state)">{{ r.state }}</q-badge>
+              <q-badge :color="stateColor(r.state)">{{ stateLabel(r.state) }}</q-badge>
             </td>
             <td>{{ formatTime(r.failed_at) }}</td>
             <td class="q-gutter-xs">
@@ -50,7 +50,7 @@ handling extracted to useMemoryDeadLetterPanel composable.
                 size="sm"
                 @click="replay(r.id)"
               >
-                <q-tooltip>重试</q-tooltip>
+                <q-tooltip>{{ t('memory.deadLetter.tooltips.retry') }}</q-tooltip>
               </q-btn>
               <q-btn
                 v-if="r.state === 'pending'"
@@ -61,19 +61,24 @@ handling extracted to useMemoryDeadLetterPanel composable.
                 size="sm"
                 @click="abandon(r.id)"
               >
-                <q-tooltip>放弃</q-tooltip>
+                <q-tooltip>{{ t('memory.deadLetter.tooltips.abandon') }}</q-tooltip>
               </q-btn>
             </td>
           </tr>
         </tbody>
       </q-markup-table>
     </q-card-section>
-    <q-card-section v-else-if="!loading" class="text-grey-7 text-caption">暂无 Dead-Letter 条目。</q-card-section>
+    <q-card-section v-else-if="!loading" class="text-grey-7 text-caption">{{
+      t('memory.deadLetter.empty')
+    }}</q-card-section>
   </q-card>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { useMemoryDeadLetterPanel } from './composables/useMemoryDeadLetterPanel';
+
+const { t, te, locale } = useI18n();
 
 const emit = defineEmits<{
   (e: 'replay', id: number): void;
@@ -83,9 +88,9 @@ const emit = defineEmits<{
 const { rows, loading, load } = useMemoryDeadLetterPanel();
 
 function priorityLabel(p: number) {
-  if (p >= 2) return 'High';
-  if (p === 1) return 'Normal';
-  return 'Low';
+  if (p >= 2) return t('memory.deadLetter.priority.high');
+  if (p === 1) return t('memory.deadLetter.priority.normal');
+  return t('memory.deadLetter.priority.low');
 }
 
 function priorityColor(p: number) {
@@ -101,12 +106,17 @@ function stateColor(s: string) {
   return 'dark';
 }
 
-function formatTime(t: string) {
-  if (!t) return '-';
+function stateLabel(s: string) {
+  const key = `memory.deadLetter.state.${s}`;
+  return te(key) ? t(key) : s;
+}
+
+function formatTime(value: string) {
+  if (!value) return '-';
   try {
-    return new Date(t).toLocaleString();
+    return new Date(value).toLocaleString(locale.value);
   } catch {
-    return t;
+    return value;
   }
 }
 

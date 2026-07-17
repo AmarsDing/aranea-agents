@@ -32,9 +32,9 @@
                 <q-avatar :color="runStatusColor(run.status)" text-color="white" :icon="runStatusIcon(run.status)" />
               </q-item-section>
               <q-item-section>
-                <q-item-label>{{ run.mode }} · {{ run.duration_ms }}ms</q-item-label>
+                <q-item-label>{{ teamModeLabel(run.mode) }} · {{ run.duration_ms }}ms</q-item-label>
                 <q-item-label caption
-                  >{{ formatDate(run.created_at) }} · in {{ run.token_in }} / out {{ run.token_out }} ·
+                  >{{ formatDate(run.created_at) }} · 输入 {{ run.token_in }} / 输出 {{ run.token_out }} ·
                   {{ formatCost(run.cost_micro_usd) }}</q-item-label
                 >
               </q-item-section>
@@ -70,7 +70,7 @@
                 <div class="text-caption text-grey-7">结构化汇总</div>
                 <div class="text-body2">
                   成员 {{ summariesByRun[run.id]?.member_count }} · 工具调用
-                  {{ summariesByRun[run.id]?.tool_call_count }} · in {{ summariesByRun[run.id]?.token_in }} / out
+                  {{ summariesByRun[run.id]?.tool_call_count }} · 输入 {{ summariesByRun[run.id]?.token_in }} / 输出
                   {{ summariesByRun[run.id]?.token_out }}
                 </div>
               </div>
@@ -80,10 +80,10 @@
                   <div class="text-weight-medium">
                     {{ step.agent_name || step.agent_key || agentName(agents, step.agent_id) }}
                   </div>
-                  <q-badge rounded :color="stepStatusColor(step.status)">{{ step.status }}</q-badge>
+                  <q-badge rounded :color="stepStatusColor(step.status)">{{ teamRunStatusLabel(step.status) }}</q-badge>
                 </div>
                 <div class="text-caption text-grey-7">
-                  {{ step.role || 'worker' }} · {{ step.duration_ms }}ms · in {{ step.token_in }} / out
+                  {{ teamRoleLabel(step.role || 'worker') }} · {{ step.duration_ms }}ms · 输入 {{ step.token_in }} / 输出
                   {{ step.token_out }}
                   <span v-if="step.tool_call_count"> · 工具 {{ step.tool_call_count }}</span>
                   · {{ formatCost(step.cost_micro_usd) }}
@@ -107,7 +107,7 @@
 <script setup lang="ts">
 import type { Agent } from '../../features/agents/types';
 import type { Team, TeamRun, TeamRunStep, TeamRunSummary } from '../../features/teams/types';
-import { agentName, formatDate } from './teamUtils';
+import { agentName, formatDate, teamModeLabel, teamRoleLabel, teamRunStatusLabel } from './teamUtils';
 
 defineProps<{
   modelValue: boolean;

@@ -99,6 +99,7 @@ export type SessionTimelineItem = {
   kind: 'message' | 'tool' | 'skill' | 'mcp' | string;
   side: 'left' | 'right' | string;
   title: string;
+  title_key: string;
   subtitle: string;
   actor_id: string;
   actor_name: string;

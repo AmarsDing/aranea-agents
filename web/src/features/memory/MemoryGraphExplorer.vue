@@ -4,7 +4,7 @@
     <div class="col-12 col-md-4">
       <q-card flat bordered class="memory-card">
         <q-card-section class="row items-center justify-between">
-          <div class="text-h6">实体列表</div>
+          <div class="text-h6">{{ t('memory.graph.entityList') }}</div>
           <q-btn flat dense icon="refresh" :loading="loadingEntities" @click="$emit('refresh')" />
         </q-card-section>
         <q-list separator dense class="memory-graph-entity-list">
@@ -33,7 +33,7 @@
             </q-item-section>
           </q-item>
           <q-item v-if="!entities.length && !loadingEntities">
-            <q-item-section class="text-grey-7">选择 Agent 后加载 L4 实体。</q-item-section>
+            <q-item-section class="text-grey-7">{{ t('memory.graph.emptyEntities') }}</q-item-section>
           </q-item>
         </q-list>
       </q-card>
@@ -42,13 +42,20 @@
     <div class="col-12 col-md-8">
       <q-card flat bordered class="memory-card">
         <q-card-section class="row items-center q-gutter-sm">
-          <div class="text-h6">Neighborhood BFS</div>
+          <div class="text-h6">{{ t('memory.graph.bfsTitle') }}</div>
           <q-space />
-          <q-select v-model="hops" :options="hopOptions" dense outlined class="memory-graph-hops-select" label="Hops" />
+          <q-select
+            v-model="hops"
+            :options="hopOptions"
+            dense
+            outlined
+            class="memory-graph-hops-select"
+            :label="t('memory.graph.hopsLabel')"
+          />
           <q-btn
             color="primary"
             dense
-            label="展开"
+            :label="t('memory.graph.expand')"
             :loading="loadingGraph"
             :disable="!selectedId"
             @click="loadNeighborhood"
@@ -56,14 +63,12 @@
           <q-btn
             color="secondary"
             dense
-            label="Spreading"
+            :label="t('memory.graph.spreading')"
             :loading="loadingActivation"
             :disable="!selectedId"
             @click="runActivation"
           >
-            <q-tooltip
-              >Run spreading activation from the selected center node; highlights Top-K activated nodes</q-tooltip
-            >
+            <q-tooltip>{{ t('memory.graph.spreadingTooltip') }}</q-tooltip>
           </q-btn>
         </q-card-section>
 
@@ -72,12 +77,18 @@
 
         <q-card-section v-if="neighborhood">
           <div class="text-subtitle2 q-mb-sm">
-            中心：{{ neighborhood.center?.name || selectedId }}
+            {{ t('memory.graph.centerLabel', { name: neighborhood.center?.name || selectedId }) }}
             <span class="text-grey-7">
-              · {{ neighborhood.entities.length }} nodes · {{ neighborhood.relations.length }} edges</span
+              ·
+              {{
+                t('memory.graph.nodesEdges', {
+                  nodes: neighborhood.entities.length,
+                  edges: neighborhood.relations.length,
+                })
+              }}</span
             >
             <span v-if="activationResult" class="text-grey-7">
-              · activated {{ activationResult.items.length }} nodes</span
+              · {{ t('memory.graph.activatedNodes', { count: activationResult.items.length }) }}</span
             >
           </div>
 
@@ -143,11 +154,11 @@
         </q-card-section>
 
         <q-card-section v-else-if="!loadingGraph" class="text-grey-7">
-          点击左侧实体，或使用 Hops 展开 neighborhood 图。
+          {{ t('memory.graph.emptyGraph') }}
         </q-card-section>
 
         <q-card-section v-if="activationResult" class="memory-activation-panel">
-          <div class="text-subtitle2 q-mb-sm">Activation Path Explanation</div>
+          <div class="text-subtitle2 q-mb-sm">{{ t('memory.graph.activationTitle') }}</div>
           <q-list dense separator>
             <q-item v-for="item in activationResult.items" :key="item.node_id" class="memory-activation-item">
               <q-item-section avatar>
@@ -156,16 +167,16 @@
               <q-item-section>
                 <q-item-label>{{ entityName(item.node_id) }}</q-item-label>
                 <q-item-label caption>
-                  hop={{ item.hop_count }}
+                  {{ t('memory.graph.hopLabel', { count: item.hop_count }) }}
                   <span v-if="item.activation_path.length" class="q-ml-sm">
-                    · path:
+                    · {{ t('memory.graph.pathLabel') }}
                     <template v-for="(step, idx) in item.activation_path" :key="idx">
                       <span v-if="idx > 0"> → </span>
                       <span>{{ entityName(step.to_node_id) }}</span>
                       <span class="text-grey-7"> ({{ step.relation_type }}={{ step.edge_weight.toFixed(2) }})</span>
                     </template>
                   </span>
-                  <span v-else class="text-grey-7"> · center node (direct activation)</span>
+                  <span v-else class="text-grey-7"> · {{ t('memory.graph.centerNode') }}</span>
                 </q-item-label>
               </q-item-section>
             </q-item>
@@ -178,12 +189,15 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppRegistryMarkupTable from '../../components/layout/AppRegistryMarkupTable.vue';
-import { RELATION_COLUMNS } from './memoryTableUi';
+import { buildMemoryRelationColumns } from './memoryTableUi';
 import type { MemoryEntity } from './types';
 import type { RegistryTableColumn } from '../ui/registryTableColumns';
 import { useMemoryGraphExplorer } from './composables/useMemoryGraphExplorer';
 import { useSpreadingActivation } from './composables/useSpreadingActivation';
+
+const { t } = useI18n();
 const {
   neighborhood,
   loadingGraph,
@@ -199,7 +213,7 @@ const {
   resetActivation,
 } = useSpreadingActivation();
 
-const relationColumns = RELATION_COLUMNS;
+const relationColumns = computed(() => buildMemoryRelationColumns(t));
 
 const props = defineProps<{
   entities: MemoryEntity[];
@@ -343,9 +357,9 @@ function activationBadgeColor(activation: number): string {
 }
 
 function confidenceTierLabel(confidence: number) {
-  if (confidence >= 0.7) return '高';
-  if (confidence >= 0.4) return '中';
-  return '低';
+  if (confidence >= 0.7) return t('memory.graph.confidence.high');
+  if (confidence >= 0.4) return t('memory.graph.confidence.medium');
+  return t('memory.graph.confidence.low');
 }
 
 function confidenceTierColor(confidence: number) {

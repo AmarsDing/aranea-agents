@@ -55,7 +55,7 @@ export function definitionFromTemplate(template: TeamTemplateKey, agents: Agent[
   if (template === 'critic_loop') {
     return withGraph({
       ...base,
-      description: '生成评审：generator 先产出初稿，critic 评审后按需修订。',
+      description: '生成评审：生成者先产出初稿，评审者评审后按需修订。',
       mode: 'critic_loop',
       max_concurrency: 1,
       critic_loop: { max_iterations: 2, score_threshold: 0.8 },
@@ -68,7 +68,7 @@ export function definitionFromTemplate(template: TeamTemplateKey, agents: Agent[
   if (template === 'coordinator') {
     return withGraph({
       ...base,
-      description: '主控分派：coordinator 先拆解任务，worker 按计划完成分工。',
+      description: '主控分派：协调者先拆解任务，执行成员按计划完成分工。',
       mode: 'coordinator',
       max_concurrency: 2,
       loop_max_iterations: 1,

@@ -613,8 +613,11 @@ type SessionTimelineItem struct {
 	Preview         string                 `protobuf:"bytes,12,opt,name=preview,proto3" json:"preview,omitempty"`
 	DetailJson      string                 `protobuf:"bytes,13,opt,name=detail_json,json=detailJson,proto3" json:"detail_json,omitempty"`
 	Tags            []string               `protobuf:"bytes,14,rep,name=tags,proto3" json:"tags,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// title_key carries the i18n key for fallback titles (e.g. "agent_message"),
+	// empty when the title is a concrete name that needs no translation.
+	TitleKey      string `protobuf:"bytes,15,opt,name=title_key,json=titleKey,proto3" json:"title_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SessionTimelineItem) Reset() {
@@ -743,6 +746,13 @@ func (x *SessionTimelineItem) GetTags() []string {
 		return x.Tags
 	}
 	return nil
+}
+
+func (x *SessionTimelineItem) GetTitleKey() string {
+	if x != nil {
+		return x.TitleKey
+	}
+	return ""
 }
 
 type SessionTimeline struct {
@@ -7302,7 +7312,7 @@ const file_kratos_session_v1_session_proto_rawDesc = "" +
 	"tool_count\x18\x03 \x01(\x05R\ttoolCount\x12\x1f\n" +
 	"\vskill_count\x18\x04 \x01(\x05R\n" +
 	"skillCount\x12\x1b\n" +
-	"\tmcp_count\x18\x05 \x01(\x05R\bmcpCount\"\x8d\x03\n" +
+	"\tmcp_count\x18\x05 \x01(\x05R\bmcpCount\"\xaa\x03\n" +
 	"\x13SessionTimelineItem\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x12\n" +
@@ -7322,7 +7332,8 @@ const file_kratos_session_v1_session_proto_rawDesc = "" +
 	"\apreview\x18\f \x01(\tR\apreview\x12\x1f\n" +
 	"\vdetail_json\x18\r \x01(\tR\n" +
 	"detailJson\x12\x12\n" +
-	"\x04tags\x18\x0e \x03(\tR\x04tags\"\xb3\x01\n" +
+	"\x04tags\x18\x0e \x03(\tR\x04tags\x12\x1b\n" +
+	"\ttitle_key\x18\x0f \x01(\tR\btitleKey\"\xb3\x01\n" +
 	"\x0fSessionTimeline\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12<\n" +

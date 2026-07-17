@@ -4860,3 +4860,154 @@ TeamStageID: m.TeamID, // team member turns are identified by non-empty TeamID
 **回滚方案**：
 - 后端：移除 `ProjectMeta.TeamStageID` 字段，`buildTeamProjectMeta` 不再填入，`V2ProjectMetaFromV1` 改回 `TeamStageID: m.TeamID`。回滚后 `Turn.TeamStageID` 重新变为错误的 `TeamID` 值
 - 前端：`getMemberSessionSteps` 改回 `AuthorAgentKey + TaskID` 匹配。回滚后存在跨团队污染风险，但单 TeamStage 场景下行为正确
+
+### B.10.14 编排实时反馈与 Agent 创建确认（2026-07-18 新增）
+
+**需求来源**：US-ORCH-01 / US-ORCH-02 — 编排三阶段耗时 6-60s+ 但期间无细粒度反馈；AgentFactory 自动创建 Agent 无用户审批。
+
+#### 现状分析
+
+编排链路（`plan_and_execute` 工具内串行同步执行，Spirit LLM 阻塞等待工具返回）：
+
+| 阶段 | 实现 | LLM 调用 | 期间用户可见 |
+|------|------|---------|-------------|
+| Plan | `taskPlannerImpl.Plan` → 记忆查询（本地）+ 复杂度评估（本地）+ `decomposeTask`（LLM，60s 超时） | 1 次 | 仅笼统 loading |
+| Allocate | `agentAllocatorImpl.Allocate` → 每 subtask 串行走 4 层匹配 | 0~2×N 次 | 仅笼统 loading |
+| Factory | `agentFactoryImpl.EnsureAgent` → LLM 生成定义 → 直接落库 | 1 次/创建 | 无感知、无审批 |
+| Orchestrate | `PlanExecutor` → `RealTeamOrchestrator.Orchestrate` → `AssembleTeam` | 0 | team_stage 事件 |
+
+**缺口**：plan 分解中（3-8s）、逐 subtask 匹配中（冷启动 3-10s/个）、创建 Agent 中（3-8s）均无细粒度进度；Agent 创建无用户确认。
+
+#### 设计一：编排细粒度进度事件（P0）
+
+**事件通道**：复用现有 `SystemNoticeEvent` → v2 EventBus → WS → 前端 `useContextualLoadingMessage`（与 `orchestration_started` 同路径，WS-only 不持久化）。
+
+**事件契约**：
+
+| noticeType | meta.phase | meta 其他字段 | 触发点 | 前端文案 |
+|-----------|-----------|--------------|--------|---------|
+| `orchestration_progress` | `decomposing` | — | `Plan()` decomposeTask 前 | 正在分解任务… |
+| `orchestration_progress` | `decomposed` | `sub_task_count` | `Plan()` decomposeTask 后 | 任务分解完成，共 N 个子任务 |
+| `orchestration_progress` | `allocating` | `index`, `total`, `sub_task` | `Allocate()` 每 subtask 匹配完成 | 正在匹配 Agent…（i/N） |
+| `orchestration_progress` | `allocated` | `total` | `Allocate()` 完成 | Agent 分配完成 |
+| `orchestration_progress` | `creating_agent` | `agent_name` | `EnsureAgent()` LLM 生成前 | 正在创建新 Agent "X"… |
+| `orchestration_progress` | `agent_created` | `agent_name`, `agent_key` | `EnsureAgent()` 落库后 | Agent "X" 创建完成 |
+
+**前端映射**：`useContextualLoadingMessage` 新增 `kind=notice && stage=orchestration_progress` 分支，按 `meta.phase` 查 `ORCHESTRATION_LOADING_MAP` 新增条目（消息模板含 `{index}`/`{total}`/`{agentName}` 占位符）。loading 消息替换式更新，不累积。
+
+**发布位置**：
+
+| 组件 | 注入 | 发布点 |
+|------|------|--------|
+| `taskPlannerImpl` | 已有 `bus biz.EventBus`（v2） | `Plan()` decomposeTask 前后 |
+| `agentAllocatorImpl` | 已有 `bus biz.EventBus`（v2） | `Allocate()` 循环内 + 完成时 |
+| `agentFactoryImpl` | 已有 `bus biz.EventBus`（v2） | `EnsureAgent()` 生成前 + 落库后 |
+
+sessionID 获取：planner/allocator/factory 的方法签名已有 `spiritSessionID`（planner.Plan 参数）或可从 subtask 上下文传递；factory 的 `EnsureAgent` 需新增 sessionID 参数用于事件路由。
+
+**nil-safety**：所有组件的 bus 为 nil 时跳过发布（现有模式一致）。
+
+#### 设计二：Agent 创建用户确认（P1）
+
+**核心接口**（biz 层新增）：
+
+```go
+// AgentProposal 待确认的 Agent 创建提案。
+type AgentProposal struct {
+    AgentKey        string
+    DisplayName     string
+    Description     string
+    SystemPrompt    string
+    TaskDescription string // 触发创建的子任务描述
+}
+
+// AgentCreationConfirmer 请求用户确认后创建 Agent。
+// Stability:evolving
+type AgentCreationConfirmer interface {
+    // RequestConfirmation 发布 confirm Activity 并阻塞等待用户决定。
+    // 返回 true=批准，false=拒绝/超时/无确认能力。
+    RequestConfirmation(ctx context.Context, proposal AgentProposal) (approved bool, err error)
+}
+```
+
+**时序**：
+
+```
+allocator.matchSubTask Layer 4 全部失败
+  → factory.EnsureAgent(ctx, subTask, llm)
+    → LLM 生成 Agent 定义（agentKey/displayName/prompt）
+    → confirmer.RequestConfirmation(ctx, proposal)   // nil 时直接批准（兼容旧行为）
+      → 发布 confirm Activity（Kind=confirm, Status=tool_blocked, Meta 含提案详情）
+      → 注册 await channel + session → awaiting_confirmation
+      → 阻塞等待 ConfirmActivity RPC
+    ← 用户批准（"approved"）→ 继续 CreateAgent 落库
+    ← 用户拒绝（"rejected"）→ 返回错误 → allocator fallback（首个可用 agent / Spirit）
+  → 编排继续
+```
+
+**service 层实现**（`agent_creation_confirmer.go` 新增）：
+
+复用现有 await 机制（`chatUC.RegisterAwaitChannel` / `TrySendAwaitChannel` / `sessionState.TransitionStatus`），与 `MakeAwaitReplyFunc` 同模式：
+1. 创建 `AwaitChannel`（buffered 1）并注册到 `chatUC`
+2. 发布 confirm Activity（经 activityWriter 持久化 + bus.Publish）
+3. session 状态 → `SessionStatusAwaitingConfirmation`（reason: `StatusReasonAgentCreation`）
+4. `select` 等待 channel / ctx.Done / 超时（默认 5 分钟）
+5. defer：注销 channel + session 状态恢复 `Running`
+
+**ConfirmActivity 复用**：现有 `ChatService.ConfirmActivity`（chat_confirm.go）已处理 `Kind=confirm + Status=tool_blocked` 的批准/拒绝并经 `TrySendAwaitChannel` 恢复，**无需改动**——confirm Activity 按同一契约发布即可复用整个确认链路。
+
+**串行保证**：P2 并行化后 Layer 1-3 并发执行，但 factory 创建（含确认）在 Allocate 的串行收尾阶段逐个执行，避免多确认卡片并发。
+
+**nil-safety**：`confirmer` 为 nil 时跳过确认直接创建（向后兼容 + 测试便利）。
+
+#### 设计三：Allocate 并行化（P2）
+
+**三阶段重构**：
+
+```
+Phase A（并行，errgroup）：
+  每 subtask → matchLayers（Layer 0 performance → 1 exact → 2 semantic → 3 llmColdStart）
+  命中 → 写入 allocations[i]
+  未命中 → 收集到 pendingFactory[]
+
+Phase B（串行）：
+  遍历 pendingFactory → factory.EnsureAgent（含用户确认）→ 写入 allocations[i]
+
+Phase C（并行，errgroup）：
+  每 subtask → createAllocationRecord（DB Create，失败仅 Warn）
+```
+
+**并发安全**：
+- `allocations []AgentAllocation` 预分配后按索引写入，无竞争
+- `matchSubTask` 只读（perfRepo 查询 / capabilities 读 / embedder 调用），无共享写
+- `repo.Create` 在 Phase C 统一执行（SQLite 单写连接，errgroup 并发度受连接池限制，安全）
+- `factory.EnsureAgent` 在 Phase B 串行执行（含用户确认，必须串行）
+- `selectAdditionalMembers` 在 Phase A 之后统一执行（依赖完整 allocations + capabilities）
+
+**失败语义**：Phase A 中单个 subtask 匹配失败（非"未命中"而是错误）不中断其他 subtask，降级到 factory 路径；与现有"尽力而为"语义一致。
+
+#### 关键设计决策
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 进度事件通道 | `SystemNoticeEvent`（WS-only） | 与 `orchestration_started` 一致；进度为瞬态，无需持久化 |
+| 进度事件粒度 | 每 subtask 一条 allocating | 前端替换式 loading 不累积；N 通常 ≤10 |
+| 确认机制复用 | 现有 await channel + ConfirmActivity RPC | 零 Proto 变更；confirm Activity 契约已成熟 |
+| 确认时机 | factory 生成定义后、落库前 | 用户看到完整提案再决定 |
+| confirmer 为 nil | 直接创建（旧行为） | 向后兼容 + 测试便利 |
+| 并行化范围 | Layer 1-3 并行，factory 串行 | LLM 调用是主要耗时；确认必须串行 |
+| Agent capability embedding 缓存 | 本轮不做 | 需失效机制，记录为后续优化 |
+| 团队库复用（P3） | 本轮不做 | 独立大特性，需 ADR 单独设计 |
+
+#### 改动文件清单
+
+| 文件 | 改动 |
+|------|------|
+| `internal/biz/agent_factory.go` | 新增 `AgentProposal` + `AgentCreationConfirmer` 接口 |
+| `internal/agent/task_planner_impl.go` | `Plan()` decomposeTask 前后发 decomposing/decomposed 事件 |
+| `internal/agent/agent_allocator_impl.go` | `Allocate()` 三阶段重构 + allocating/allocated 事件 |
+| `internal/agent/agent_factory.go` | 注入 `AgentCreationConfirmer` + creating_agent/agent_created 事件 + 确认流程 |
+| `internal/service/agent_creation_confirmer.go` | 新建：confirmer 实现（await channel + confirm Activity） |
+| `internal/service/chat_wire.go` | Wire 注入 confirmer 到 factory |
+| `web/src/features/spirit/observabilityConstants.ts` | `ORCHESTRATION_LOADING_MAP` 新增 6 条进度映射 |
+| `web/src/features/chat/composables/useContextualLoadingMessage.ts` | 新增 `orchestration_progress` 分支（按 meta.phase 映射） |

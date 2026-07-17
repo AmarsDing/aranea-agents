@@ -6,17 +6,20 @@ import (
 )
 
 func messageTimelineItem(msg ChatMessage) SessionTimelineItem {
-	title := "Agent 消息"
+	title := "智能体消息"
+	titleKey := "agent_message"
 	subtitle := msg.Role
 	tags := []string{"Agent"}
 	actorID := ""
 	actorName := ""
 	if msg.Role == "user" {
 		title = "用户消息"
+		titleKey = "user_message"
 		tags = []string{"User"}
 		actorName = "User"
 	} else if strings.EqualFold(msg.Role, "system") {
 		title = "系统消息"
+		titleKey = "system_message"
 		tags = []string{"System"}
 	}
 	var opts struct {
@@ -37,12 +40,14 @@ func messageTimelineItem(msg ChatMessage) SessionTimelineItem {
 		actorName = timelineFirstNonEmpty(opts.TeamMember.Name, opts.Agent.DisplayName, opts.Name, actorName)
 		if opts.TeamMember.Name != "" {
 			title = opts.TeamMember.Name
+			titleKey = ""
 			tags = []string{"Team"}
 			if opts.TeamMember.Role != "" {
 				subtitle = opts.TeamMember.Role
 			}
 		} else if actorName != "" && msg.Role != "user" {
 			title = actorName
+			titleKey = ""
 		}
 	}
 	status := msg.Status
@@ -54,6 +59,7 @@ func messageTimelineItem(msg ChatMessage) SessionTimelineItem {
 		Kind:            "message",
 		Side:            "left",
 		Title:           title,
+		TitleKey:        titleKey,
 		Subtitle:        subtitle,
 		ActorID:         actorID,
 		ActorName:       actorName,
@@ -74,7 +80,17 @@ func toolTimelineItem(run ToolInvocationView) SessionTimelineItem {
 		kind = "mcp"
 		tags = []string{"MCP"}
 	}
-	title := timelineFirstNonEmpty(run.ToolDisplayName, run.ToolKey, "工具调用")
+	fallbackTitle := "工具调用"
+	fallbackKey := "tool_call"
+	if kind == "mcp" {
+		fallbackTitle = "MCP 调用"
+		fallbackKey = "mcp_call"
+	}
+	title := timelineFirstNonEmpty(run.ToolDisplayName, run.ToolKey, fallbackTitle)
+	titleKey := ""
+	if run.ToolDisplayName == "" && run.ToolKey == "" {
+		titleKey = fallbackKey
+	}
 	detail := marshalTimelineDetail(map[string]any{
 		"input_preview":  run.InputPreview,
 		"output_preview": run.OutputPreview,
@@ -88,6 +104,7 @@ func toolTimelineItem(run ToolInvocationView) SessionTimelineItem {
 		Kind:       kind,
 		Side:       "right",
 		Title:      title,
+		TitleKey:   titleKey,
 		Subtitle:   run.ToolKey,
 		ActorID:    run.AgentID,
 		ActorName:  run.AgentDisplayName,
@@ -112,7 +129,8 @@ func skillTimelineItem(run SkillInvocationView) SessionTimelineItem {
 		ID:         run.ID,
 		Kind:       "skill",
 		Side:       "right",
-		Title:      timelineFirstNonEmpty(run.SkillName, "Skill 调用"),
+		Title:      timelineFirstNonEmpty(run.SkillName, "技能调用"),
+		TitleKey:   skillTitleKey(run.SkillName),
 		Subtitle:   run.SkillVersion,
 		ActorID:    run.AgentID,
 		ActorName:  run.AgentDisplayName,
@@ -140,6 +158,13 @@ func previewTimelineText(value string, maxRunes int) string {
 	}
 	runes := []rune(value)
 	return string(runes[:maxRunes]) + "..."
+}
+
+func skillTitleKey(skillName string) string {
+	if strings.TrimSpace(skillName) == "" {
+		return "skill_call"
+	}
+	return ""
 }
 
 func timelineFirstNonEmpty(values ...string) string {

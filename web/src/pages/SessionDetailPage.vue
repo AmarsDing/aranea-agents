@@ -87,7 +87,7 @@
       <q-card flat class="q-mb-md">
         <q-card-section class="row q-col-gutter-md">
           <div class="col-12 col-md-4">
-            <div class="text-caption text-grey-7">Context</div>
+            <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.context') }}</div>
             <q-linear-progress
               rounded
               size="12px"
@@ -101,19 +101,19 @@
             </div>
           </div>
           <div class="col-6 col-md-2">
-            <div class="text-caption text-grey-7">消息</div>
+            <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.messages') }}</div>
             <div class="text-h6" style="color: var(--color-text-primary)">{{ session.message_count }}</div>
           </div>
           <div class="col-6 col-md-2">
-            <div class="text-caption text-grey-7">模型调用</div>
+            <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.modelCalls') }}</div>
             <div class="text-h6" style="color: var(--color-text-primary)">{{ session.model_call_count }}</div>
           </div>
           <div class="col-6 col-md-2">
-            <div class="text-caption text-grey-7">Token</div>
+            <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.token') }}</div>
             <div class="text-h6" style="color: var(--color-text-primary)">{{ formatNumber(session.total_tokens) }}</div>
           </div>
           <div class="col-6 col-md-2">
-            <div class="text-caption text-grey-7">费用</div>
+            <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.cost') }}</div>
             <div class="text-h6" style="color: var(--color-text-primary)">
               {{ formatCostMicroUsd(session.total_cost_micro_usd) }}
             </div>
@@ -130,11 +130,16 @@
         align="left"
         narrow-indicator
       >
-        <q-tab name="turns" icon="sync_alt" label="Turns" />
-        <q-tab name="runs" icon="play_circle" label="Runs" />
-        <q-tab v-if="showParticipants" name="participants" icon="groups" label="Participants" />
-        <q-tab name="messages" icon="chat" label="Messages" />
-        <q-tab name="timeline" icon="timeline" label="Timeline" />
+        <q-tab name="turns" icon="sync_alt" :label="t('sessionDetail.tabs.turns')" />
+        <q-tab name="runs" icon="play_circle" :label="t('sessionDetail.tabs.runs')" />
+        <q-tab
+          v-if="showParticipants"
+          name="participants"
+          icon="groups"
+          :label="t('sessionDetail.tabs.participants')"
+        />
+        <q-tab name="messages" icon="chat" :label="t('sessionDetail.tabs.messages')" />
+        <q-tab name="timeline" icon="timeline" :label="t('sessionDetail.tabs.timeline')" />
       </q-tabs>
 
       <q-separator />
@@ -184,6 +189,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import {
   contextProgressColor,
   formatCostMicroUsd,
@@ -201,6 +207,8 @@ import SessionParticipantsPanel from '../components/sessions/SessionParticipants
 import SessionMessagesPanel from '../components/sessions/SessionMessagesPanel.vue';
 import SessionTimelinePanel from '../components/sessions/SessionTimelinePanel.vue';
 import { useSessionDetailPage } from '../features/session/useSessionDetailPage';
+
+const { t } = useI18n();
 
 const {
   router,

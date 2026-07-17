@@ -1061,7 +1061,7 @@ type SessionV2ServiceHTTPServer interface {
 
 func RegisterSessionV2ServiceHTTPServer(s *http.Server, srv SessionV2ServiceHTTPServer) {
 	r := s.Route("/")
-	r.GET("/v2/sessions/{session_id}/tasks", _SessionV2Service_ListTasks1_HTTP_Handler(srv))
+	r.GET("/v2/sessions/{session_id}/tasks", _SessionV2Service_ListTasks0_HTTP_Handler(srv))
 	r.GET("/v2/tasks/{task_id}/turns", _SessionV2Service_ListTurns0_HTTP_Handler(srv))
 	r.GET("/v2/sessions/{session_id}/steps", _SessionV2Service_ListSteps0_HTTP_Handler(srv))
 	r.GET("/v2/tasks/{task_id}/team_stages", _SessionV2Service_ListTeamStages0_HTTP_Handler(srv))
@@ -1073,7 +1073,7 @@ func RegisterSessionV2ServiceHTTPServer(s *http.Server, srv SessionV2ServiceHTTP
 	r.GET("/v2/graph_stages/{stage_id}/graph_nodes", _SessionV2Service_ListGraphNodes0_HTTP_Handler(srv))
 }
 
-func _SessionV2Service_ListTasks1_HTTP_Handler(srv SessionV2ServiceHTTPServer) func(ctx http.Context) error {
+func _SessionV2Service_ListTasks0_HTTP_Handler(srv SessionV2ServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListTasksV2Request
 		if err := ctx.BindQuery(&in); err != nil {

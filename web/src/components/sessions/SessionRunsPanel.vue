@@ -8,16 +8,18 @@
     <q-list v-else separator>
       <q-item v-for="run in runs" :key="run.id" class="app-interactive-list-item">
         <q-item-section>
-          <q-item-label overline class="text-grey-7">{{ run.phase }} · {{ run.source || 'native' }}</q-item-label>
+          <q-item-label overline class="text-grey-7"
+            >{{ phaseLabel(run.phase) }} · {{ sourceLabel(run.source || 'native') }}</q-item-label
+          >
           <q-item-label>{{ run.id }}</q-item-label>
           <q-item-label caption class="text-grey-6">
-            Turn {{ run.turn_id || '—' }}
+            {{ t('sessionDetail.turnRefLabel', { id: run.turn_id || '—' }) }}
             <span v-if="run.started_at"> · {{ formatSessionDate(run.started_at) }}</span>
             <span v-if="run.error_message" class="text-negative"> · {{ run.error_message }}</span>
           </q-item-label>
         </q-item-section>
         <q-item-section side class="text-right">
-          <q-badge :color="phaseColor(run.phase)" outline>{{ run.phase }}</q-badge>
+          <q-badge :color="phaseColor(run.phase)" outline>{{ phaseLabel(run.phase) }}</q-badge>
         </q-item-section>
       </q-item>
     </q-list>
@@ -32,14 +34,29 @@
 
 <script setup lang="ts">
 import { toRef } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useSessionRunsPanel } from '../../features/session/useSessionRunsPanel';
 import { formatSessionDate } from './sessionUi';
+
+const { t } = useI18n();
 
 const props = defineProps<{ sessionId: string }>();
 
 const { runs, total, loading, error, offset, pageSize, pageLabel, prevPage, nextPage } = useSessionRunsPanel(
   toRef(() => props.sessionId),
 );
+
+function phaseLabel(phase: string) {
+  const key = `sessionDetail.runPhase.${phase}`;
+  const translated = t(key);
+  return translated !== key ? translated : phase;
+}
+
+function sourceLabel(source: string) {
+  const key = `sessionDetail.runSource.${source}`;
+  const translated = t(key);
+  return translated !== key ? translated : source;
+}
 
 function phaseColor(phase: string) {
   if (phase === 'completed') return 'positive';

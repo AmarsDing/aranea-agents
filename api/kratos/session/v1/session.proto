@@ -99,6 +99,9 @@ message SessionTimelineItem {
   string preview = 12;
   string detail_json = 13;
   repeated string tags = 14;
+  // title_key carries the i18n key for fallback titles (e.g. "agent_message"),
+  // empty when the title is a concrete name that needs no translation.
+  string title_key = 15;
 }
 
 message SessionTimeline {

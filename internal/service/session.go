@@ -171,6 +171,7 @@ func toProtoTimelineItem(it biz.SessionTimelineItem) *v1.SessionTimelineItem {
 		Kind:            it.Kind,
 		Side:            it.Side,
 		Title:           it.Title,
+		TitleKey:        it.TitleKey,
 		Subtitle:        it.Subtitle,
 		ActorId:         it.ActorID,
 		ActorName:       it.ActorName,
