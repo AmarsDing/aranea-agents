@@ -285,24 +285,47 @@ func startBackend(root string, env *runtimeEnv, log func(string, ...any)) error 
 
 func waitHealthy(log func(string, ...any)) error {
 	deadline := time.Now().Add(time.Duration(backendWaitSec) * time.Second)
+	var lastBody string
 	for time.Now().Before(deadline) {
-		if healthy() {
+		ok, body := healthStatus()
+		lastBody = body
+		if ok {
 			log("backend healthy")
 			return nil
 		}
+		if body != "" {
+			log("healthz not ready: %s", trimHealthBody(body))
+		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return fmt.Errorf("healthz 在 %ds 内未就绪", backendWaitSec)
+	if lastBody != "" {
+		return fmt.Errorf("healthz not ready within %ds: %s", backendWaitSec, trimHealthBody(lastBody))
+	}
+	return fmt.Errorf("healthz not ready within %ds", backendWaitSec)
 }
 
 func healthy() bool {
+	ok, _ := healthStatus()
+	return ok
+}
+
+func healthStatus() (ok bool, body string) {
 	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get(healthURL)
 	if err != nil {
-		return false
+		return false, ""
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	return resp.StatusCode == http.StatusOK, strings.TrimSpace(string(b))
+}
+
+func trimHealthBody(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) > 500 {
+		return s[:500] + "..."
+	}
+	return s
 }
 
 func launchElectron(root string, log func(string, ...any)) error {

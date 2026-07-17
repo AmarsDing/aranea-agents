@@ -3,6 +3,8 @@
 *.exe
 *.exe~
 *.dll
+# Allow vendored Windows pgvector for portable installer (must match bundled PG major).
+!installer/bundled/**/vector.dll
 *.dylib
 
 # Test binary, built with `go test -c`

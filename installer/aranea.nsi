@@ -1,7 +1,7 @@
 ; Aranea-Agents NSIS installer
 ; NOTE: Keep user-visible strings in ASCII/English to avoid mojibake on finish page
 ; when the .nsi file encoding differs from the builder code page.
-; Usage: makensis /DVERSION=0.1.30 /DSTAGING_DIR=build\staging /DOUT_DIR=release aranea.nsi
+; Usage: makensis /DVERSION=0.1.31 /DSTAGING_DIR=build\staging /DOUT_DIR=release aranea.nsi
 
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
@@ -26,7 +26,7 @@ ShowUnInstDetails show
 InstallDir "$LOCALAPPDATA\AraneaAgents"
 RequestExecutionLevel user
 
-VIProductVersion "0.1.30.0"
+VIProductVersion "0.1.31.0"
 VIAddVersionKey "ProductName" "Aranea-Agents"
 VIAddVersionKey "CompanyName" "AmarsDing"
 VIAddVersionKey "LegalCopyright" "Copyright (C) 2026 AmarsDing"

@@ -787,21 +787,39 @@ func ensurePostgresSchemas(pg *sql.DB, vdim int, lg loggateway.Logger) error {
 	ctxPG := context.Background()
 	if vector.IsPgvector() {
 		if err := vector.EnsureSchema(ctxPG, pg, vdim); err != nil {
-			lg.Error("postgres schema step failed", loggateway.StepID("data.schema.pgvector"), loggateway.Err(err))
-			return err
+			// Portable installs may ship without vector.dll; degrade instead of failing readiness.
+			lg.Warn("pgvector schema skipped; vector search disabled",
+				loggateway.StepID("data.schema.pgvector"), loggateway.Err(err))
 		}
 	} else {
 		lg.Info("pgvector build tag not set, skipping vector schema on Postgres", loggateway.StepID("data.schema.pgvector"))
 	}
 	if err := EnsureKnowledgeSchema(ctxPG, pg, vdim); err != nil {
-		lg.Error("postgres schema step failed", loggateway.StepID("data.schema.knowledge"), loggateway.Err(err))
-		return fmt.Errorf("knowledge schema: %w", err)
+		if isPgvectorExtensionError(err) {
+			lg.Warn("knowledge schema skipped; pgvector extension unavailable",
+				loggateway.StepID("data.schema.knowledge"), loggateway.Err(err))
+		} else {
+			lg.Error("postgres schema step failed", loggateway.StepID("data.schema.knowledge"), loggateway.Err(err))
+			return fmt.Errorf("knowledge schema: %w", err)
+		}
 	}
 	if err := ensurePostgresPhase1Schema(ctxPG, pg, lg); err != nil {
 		lg.Error("postgres phase1 schema step failed", loggateway.StepID("data.schema.postgres_phase1"), loggateway.Err(err))
 		return fmt.Errorf("postgres phase1 schema: %w", err)
 	}
 	return nil
+}
+
+func isPgvectorExtensionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "extension \"vector\"") ||
+		strings.Contains(s, "extension 'vector'") ||
+		strings.Contains(s, "vector.control") ||
+		strings.Contains(s, "create extension vector") ||
+		(strings.Contains(s, "vector") && strings.Contains(s, "not available"))
 }
 
 // ensurePostgresPhase1Schema runs the Phase 1 migration SQL on Postgres.
