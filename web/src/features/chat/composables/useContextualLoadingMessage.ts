@@ -6,8 +6,13 @@
  * Messages are suppressed during WS replay to avoid flicker.
  */
 import { ref, type Ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { ActivityEvent } from '../../../realtime/activityEvent';
-import { ORCHESTRATION_LOADING_MAP, AGENT_LOADING_MAP } from '../../../features/spirit/observabilityConstants';
+import {
+  ORCHESTRATION_LOADING_MAP,
+  AGENT_LOADING_MAP,
+  ORCHESTRATION_PROGRESS_MAP,
+} from '../../../features/spirit/observabilityConstants';
 
 export type ContextualMessage = {
   text: string;
@@ -33,6 +38,8 @@ function activityEventToLoadingType(ev: ActivityEvent): string {
     if (stage === 'orchestration_failed') return 'butler.orchestration.failed';
   }
   if (kind === 'notice' && stage === 'allocation_created') return 'spirit_allocation_created';
+  // P-ORCH.2: fine-grained orchestration progress (decomposing/allocating/etc.).
+  if (kind === 'notice' && stage === 'orchestration_progress') return 'orchestration_progress';
   // Team stages
   if (kind === 'team_stage') {
     if (stage === 'assembled') return 'spirit_team_assembled';
@@ -53,6 +60,7 @@ function activityEventToLoadingType(ev: ActivityEvent): string {
 }
 
 export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
+  const { t } = useI18n();
   const loadingMessage = ref<ContextualMessage | null>(null);
 
   /**
@@ -121,11 +129,47 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
       return;
     }
 
-    // 3. Clear message on team completion/failure
+    // 3. P-ORCH.2: orchestration_progress fine-grained phases.
+    // Backend (TaskPlanner/AgentAllocator/AgentFactory) emits
+    // SystemNoticeEvent(noticeType=orchestration_progress, meta.phase=...).
+    // The chat workspace converts these to ActivityEvent(kind=notice,
+    // stage=orchestration_progress) and routes them here. meta.phase selects
+    // the rendering template; placeholders are filled from meta fields.
+    if (envType === 'orchestration_progress') {
+      const meta = ev.activity.meta ?? {};
+      const phase = typeof meta.phase === 'string' ? meta.phase : '';
+      const config = ORCHESTRATION_PROGRESS_MAP[phase];
+      if (!config) return; // unknown phase → leave loading unchanged
+
+      // Translate the i18n key (returns the key itself when missing — safe fallback).
+      let text = t(config.messageKey);
+      // Number placeholders: coerce to number (0 when missing/invalid).
+      const subTaskCount = typeof meta.sub_task_count === 'number' ? meta.sub_task_count : 0;
+      const index = typeof meta.index === 'number' ? meta.index : 0;
+      const total = typeof meta.total === 'number' ? meta.total : 0;
+      const subTask = typeof meta.sub_task === 'string' ? meta.sub_task : '';
+      const agentName = typeof meta.agent_name === 'string' ? meta.agent_name : '';
+      text = text.replace('{sub_task_count}', String(subTaskCount));
+      text = text.replace('{index}', String(index));
+      text = text.replace('{total}', String(total));
+      text = text.replace('{sub_task}', subTask);
+      text = text.replace('{agent_name}', agentName);
+
+      loadingMessage.value = {
+        text,
+        icon: config.icon,
+        color: config.color,
+      };
+      return;
+    }
+
+    // 4. Clear message on team completion/failure
     if (
       envType === 'spirit_team_completed' ||
       envType === 'spirit_team_failed' ||
-      envType === 'spirit_teams_all_completed'
+      envType === 'spirit_teams_all_completed' ||
+      envType === 'butler.orchestration.completed' ||
+      envType === 'butler.orchestration.failed'
     ) {
       loadingMessage.value = null;
     }

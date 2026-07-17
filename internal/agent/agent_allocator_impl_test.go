@@ -253,3 +253,127 @@ func TestAgentAllocator_Layer2_EmbeddingDimensionMismatch_FallsBackToTFIDF(t *te
 		t.Fatalf("expected reason to indicate TF-IDF fallback, got %q", reason)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// P-ORCH: orchestration progress events + SpiritSessionID propagation
+// ---------------------------------------------------------------------------
+
+// allocatorCaptureBus captures published v2 Events for assertions.
+type allocatorCaptureBus struct {
+	mu        sync.Mutex
+	published []biz.Event
+}
+
+func (b *allocatorCaptureBus) Publish(_ context.Context, ev biz.Event) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.published = append(b.published, ev)
+}
+
+func (b *allocatorCaptureBus) Subscribe(_ biz.EventSubscribeOptions) (<-chan biz.Event, func()) {
+	return nil, func() {}
+}
+
+func (b *allocatorCaptureBus) getPublished() []biz.Event {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]biz.Event, len(b.published))
+	copy(out, b.published)
+	return out
+}
+
+// fakeAllocatorAgentFactory captures TaskProfile for SpiritSessionID assertions.
+type fakeAllocatorAgentFactory struct {
+	profiles []biz.TaskProfile
+	agentKey string
+	err      error
+}
+
+func (f *fakeAllocatorAgentFactory) EnsureAgent(_ context.Context, p biz.TaskProfile) (string, error) {
+	f.profiles = append(f.profiles, p)
+	if f.err != nil {
+		return "", f.err
+	}
+	if f.agentKey != "" {
+		return f.agentKey, nil
+	}
+	return "factory-agent-1", nil
+}
+
+// TestAgentAllocator_PublishOrchestrationProgress verifies the progress event
+// helper publishes a well-formed orchestration_progress SystemNoticeEvent and
+// is nil-safe for both nil bus and empty session.
+func TestAgentAllocator_PublishOrchestrationProgress(t *testing.T) {
+	// nil bus → no panic, no publish.
+	nilBusAllocator := &agentAllocatorImpl{lg: loggateway.NewNoop()}
+	nilBusAllocator.publishOrchestrationProgress(context.Background(), "sess-1", "allocating", map[string]any{"index": 1})
+
+	// empty session → skipped.
+	bus := &allocatorCaptureBus{}
+	a := &agentAllocatorImpl{bus: bus, lg: loggateway.NewNoop()}
+	a.publishOrchestrationProgress(context.Background(), "", "allocating", map[string]any{"index": 1})
+	if len(bus.getPublished()) != 0 {
+		t.Fatal("empty session must skip publish")
+	}
+
+	// normal publish.
+	a.publishOrchestrationProgress(context.Background(), "sess-orch", "allocating", map[string]any{
+		"index":    2,
+		"total":    5,
+		"sub_task": "数据预处理",
+	})
+	published := bus.getPublished()
+	if len(published) != 1 {
+		t.Fatalf("published=%d want 1", len(published))
+	}
+	notice, ok := published[0].(*biz.SystemNoticeEvent)
+	if !ok {
+		t.Fatalf("expected *biz.SystemNoticeEvent, got %T", published[0])
+	}
+	if notice.NoticeType != "orchestration_progress" {
+		t.Errorf("NoticeType=%q want %q", notice.NoticeType, "orchestration_progress")
+	}
+	if notice.Meta["phase"] != "allocating" {
+		t.Errorf("phase=%v want %q", notice.Meta["phase"], "allocating")
+	}
+	if notice.Meta["index"] != 2 {
+		t.Errorf("index=%v want 2", notice.Meta["index"])
+	}
+	if notice.Meta["total"] != 5 {
+		t.Errorf("total=%v want 5", notice.Meta["total"])
+	}
+	if notice.SpiritSessionID() != "sess-orch" {
+		t.Errorf("sessionID=%q want %q", notice.SpiritSessionID(), "sess-orch")
+	}
+}
+
+// TestAgentAllocator_TryAgentFactory_PassesSpiritSessionID verifies the
+// allocator forwards the plan's SpiritSessionID into the factory TaskProfile
+// so the factory can route progress events to the owning session.
+func TestAgentAllocator_TryAgentFactory_PassesSpiritSessionID(t *testing.T) {
+	factory := &fakeAllocatorAgentFactory{agentKey: "factory-agent-x"}
+	a := &agentAllocatorImpl{
+		agentFactory: factory,
+		lg:           loggateway.NewNoop(),
+	}
+	subTask := biz.SubTask{
+		ID:                   "st_1",
+		Name:                 "数据预处理",
+		Description:          "清洗并预处理原始数据",
+		RequiredCapabilities: []string{"data-eng"},
+	}
+
+	alloc, ok := a.tryAgentFactoryForSubTask(context.Background(), subTask, "sess-spirit-9", "trace-1")
+	if !ok {
+		t.Fatal("tryAgentFactoryForSubTask returned ok=false")
+	}
+	if alloc.AssignedKey != "factory-agent-x" {
+		t.Errorf("AssignedKey=%q want %q", alloc.AssignedKey, "factory-agent-x")
+	}
+	if len(factory.profiles) != 1 {
+		t.Fatalf("factory calls=%d want 1", len(factory.profiles))
+	}
+	if factory.profiles[0].SpiritSessionID != "sess-spirit-9" {
+		t.Errorf("SpiritSessionID=%q want %q", factory.profiles[0].SpiritSessionID, "sess-spirit-9")
+	}
+}

@@ -1,4 +1,5 @@
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
@@ -8,18 +9,6 @@ import { NODE_TYPE_STYLES } from './types';
 import { relativeTime } from './utils';
 import { useGraphExecute } from './useGraphExecute';
 import type { ContextMenuItem } from '../../components/graph/GraphContextMenu.vue';
-
-const SORT_OPTIONS = [
-  { label: '更新时间', value: 'updatedAt' },
-  { label: '名称', value: 'name' },
-  { label: '节点数', value: 'nodes' },
-];
-
-const ENGINE_FILTER_OPTIONS = [
-  { label: '全部引擎', value: '' },
-  { label: 'BSP（默认）', value: 'bsp' },
-  { label: 'DAG（并行）', value: 'dag' },
-];
 
 const NODE_TYPE_EMOJI: Record<NodeType, string> = {
   agent: '🤖',
@@ -32,6 +21,7 @@ const NODE_TYPE_EMOJI: Record<NodeType, string> = {
 };
 
 export function useGraphsPage() {
+  const { t } = useI18n();
   const $q = useQuasar();
   const router = useRouter();
   const graphStore = useGraphStore();
@@ -48,16 +38,28 @@ export function useGraphsPage() {
   const ctxMenuY = ref(0);
   const ctxMenuGraph = ref<GraphDefinition | null>(null);
 
+  const SORT_OPTIONS = computed(() => [
+    { label: t('graphs.sortUpdatedAt'), value: 'updatedAt' },
+    { label: t('graphs.sortName'), value: 'name' },
+    { label: t('graphs.sortNodes'), value: 'nodes' },
+  ]);
+
+  const ENGINE_FILTER_OPTIONS = computed(() => [
+    { label: t('graphs.engineFilterAll'), value: '' },
+    { label: t('graphs.engineBSP'), value: 'bsp' },
+    { label: t('graphs.engineDAG'), value: 'dag' },
+  ]);
+
   const selectedGraph = computed(() => {
     if (!selectedGraphId.value) return null;
     return rows.value.find((g) => g.id === selectedGraphId.value) ?? null;
   });
 
   const ctxMenuItems = computed<ContextMenuItem[]>(() => [
-    { icon: '✏️', label: '编辑', shortcut: 'Enter', action: 'edit' },
-    { icon: '▶️', label: '执行', action: 'run', success: true },
-    { icon: '📋', label: '复制', shortcut: 'Ctrl+D', action: 'duplicate' },
-    { icon: '🗑️', label: '删除', shortcut: 'Del', action: 'delete', danger: true },
+    { icon: '✏️', label: t('graphs.ctxEdit'), shortcut: 'Enter', action: 'edit' },
+    { icon: '▶️', label: t('graphs.ctxRun'), action: 'run', success: true },
+    { icon: '📋', label: t('graphs.ctxDuplicate'), shortcut: 'Ctrl+D', action: 'duplicate' },
+    { icon: '🗑️', label: t('graphs.ctxDelete'), shortcut: 'Del', action: 'delete', danger: true },
   ]);
 
   const searchQuery = ref('');
@@ -114,7 +116,7 @@ export function useGraphsPage() {
     try {
       await graphStore.loadGraphs();
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '加载 Graph 列表失败';
+      error.value = err instanceof Error ? err.message : t('graphs.loadFailed');
     }
   }
 
@@ -139,7 +141,7 @@ export function useGraphsPage() {
   async function duplicateGraph(graph: GraphDefinition) {
     try {
       await graphStore.addGraph({
-        name: `${graph.name} (副本)`,
+        name: t('graphs.copySuffix', { name: graph.name }),
         description: graph.description,
         stateFields: graph.stateFields,
         nodes: graph.nodes,
@@ -154,16 +156,16 @@ export function useGraphsPage() {
         interruptAfter: graph.interruptAfter,
         metadata: graph.metadata,
       });
-      $q.notify({ type: 'positive', message: 'Graph 已复制' });
+      $q.notify({ type: 'positive', message: t('graphs.duplicateSuccess') });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '复制失败' });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('graphs.duplicateFailed') });
     }
   }
 
   function confirmRemoveGraph(graph: GraphDefinition) {
     $q.dialog({
-      title: '删除 Graph',
-      message: `确定删除「${graph.name}」？此操作不可撤销。`,
+      title: t('graphs.deleteTitle'),
+      message: t('graphs.deleteConfirm', { name: graph.name }),
       cancel: true,
       persistent: true,
     }).onOk(() => void doRemoveGraph(graph));
@@ -172,9 +174,9 @@ export function useGraphsPage() {
   async function doRemoveGraph(graph: GraphDefinition) {
     try {
       await graphStore.removeGraph(graph.id);
-      $q.notify({ type: 'info', message: 'Graph 已删除' });
+      $q.notify({ type: 'info', message: t('graphs.deleteSuccess') });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('graphs.deleteFailed') });
     }
   }
 
@@ -182,7 +184,7 @@ export function useGraphsPage() {
     try {
       await graphStore.reorderGraphList(ids);
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '排序保存失败' });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('graphs.reorderFailed') });
     }
   }
 
@@ -236,7 +238,7 @@ export function useGraphsPage() {
       await graphStore.loadTemplates();
       templates.value = graphStore.templates;
     } catch {
-      $q.notify({ type: 'negative', message: '加载模板失败' });
+      $q.notify({ type: 'negative', message: t('graphs.loadTemplatesFailed') });
     } finally {
       templatesLoading.value = false;
     }
@@ -251,16 +253,19 @@ export function useGraphsPage() {
 
   async function createFromTemplate() {
     if (!selectedTemplateId.value) return;
-    const tpl = templates.value.find((t) => t.id === selectedTemplateId.value);
+    const tpl = templates.value.find((tt) => tt.id === selectedTemplateId.value);
     if (!tpl) return;
     templateCreating.value = true;
     try {
       const created = await graphStore.instantiateTemplate(selectedTemplateId.value, tpl.name, tpl.description ?? '');
       templateDialogOpen.value = false;
-      $q.notify({ type: 'positive', message: 'Graph 已从模板创建' });
+      $q.notify({ type: 'positive', message: t('graphs.createFromTemplateSuccess') });
       router.push({ name: 'graph-editor', params: { id: created.id } });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '从模板创建失败' });
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : t('graphs.createFromTemplateFailed'),
+      });
     } finally {
       templateCreating.value = false;
     }
@@ -270,10 +275,13 @@ export function useGraphsPage() {
     templateCreating.value = true;
     try {
       const created = await graphStore.instantiateTemplate(tpl.id, tpl.name, tpl.description ?? '');
-      $q.notify({ type: 'positive', message: `已从「${tpl.name}」模板创建 Graph` });
+      $q.notify({ type: 'positive', message: t('graphs.quickCreateSuccess', { name: tpl.name }) });
       router.push({ name: 'graph-editor', params: { id: created.id } });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '从模板创建失败' });
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : t('graphs.createFromTemplateFailed'),
+      });
     } finally {
       templateCreating.value = false;
     }

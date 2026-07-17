@@ -21,7 +21,7 @@
     <div v-else-if="error" class="text-caption text-negative q-pa-sm">{{ error }}</div>
     <template v-else-if="compiled">
       <div class="text-caption q-mb-xs">
-        {{ compiled.mode }} · entry {{ compiled.entry_point }} → {{ compiled.finish_point }}
+        {{ teamModeLabel(compiled.mode) }} · 入口 {{ compiled.entry_point }} → {{ compiled.finish_point }}
       </div>
       <div class="team-compile-preview__graph">
         <div v-for="edge in compiled.edges" :key="`${edge.from}-${edge.to}`" class="team-compile-preview__edge">
@@ -35,7 +35,9 @@
             <q-icon name="smart_toy" size="16px" />
             <div class="min-width-0">
               <div class="ellipsis text-weight-medium">{{ node.description || node.agentName || node.id }}</div>
-              <div class="team-compile-preview__node-meta">{{ node.role || node.type }} · {{ node.id }}</div>
+              <div class="team-compile-preview__node-meta">
+                {{ node.role ? teamRoleLabel(node.role) : node.type }} · {{ node.id }}
+              </div>
             </div>
           </div>
         </div>
@@ -57,6 +59,7 @@
 
 <script setup lang="ts">
 import type { CompileTeamGraphResult } from '../../features/orchestration/compileApi';
+import { teamModeLabel, teamRoleLabel } from './teamUtils';
 
 defineProps<{
   isDark: boolean;

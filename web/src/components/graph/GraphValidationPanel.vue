@@ -2,7 +2,7 @@
   <div v-if="issues.length" class="graph-validation-panel q-mt-md">
     <div class="graph-validation-panel__title row items-center q-gutter-xs">
       <q-icon :name="valid ? 'warning' : 'error'" :color="valid ? 'warning' : 'negative'" size="16px" />
-      <span>{{ valid ? '校验警告' : '校验错误' }}</span>
+      <span>{{ valid ? t('graphs.validationWarnings') : t('graphs.validationErrors') }}</span>
     </div>
     <q-list dense bordered separator class="rounded-borders q-mt-sm">
       <q-item
@@ -17,7 +17,7 @@
         </q-item-section>
         <q-item-section side>
           <q-badge :color="issue.warning ? 'warning' : 'negative'" rounded>
-            {{ issue.warning ? 'WARN' : 'ERR' }}
+            {{ issue.warning ? t('graphs.validationWarn') : t('graphs.validationErr') }}
           </q-badge>
         </q-item-section>
       </q-item>
@@ -26,6 +26,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import type { ValidationError, ValidationWarning } from '../../features/graph/types';
 
 type ValidationIssue = (ValidationError & { warning?: false }) | (ValidationWarning & { warning: true });
@@ -38,4 +39,6 @@ defineProps<{
 defineEmits<{
   selectNode: [nodeId: string | null];
 }>();
+
+const { t } = useI18n();
 </script>

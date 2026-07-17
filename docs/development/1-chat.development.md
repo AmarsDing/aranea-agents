@@ -325,9 +325,9 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 63 | **T-ER.5** 设计文档同步 §12.8 v2 Step 模型 + 空 ReplyStep 过滤 | P2 | ✅ 2026-07-04 |
 | 64 | **P-ORCH.1** 编排细粒度进度事件（后端 planner/allocator/factory 发布 orchestration_progress） | P0 | ⏳ |
 | 65 | **P-ORCH.2** 前端 loading 映射（observabilityConstants + useContextualLoadingMessage） | P0 | ⏳ |
-| 66 | **P-ORCH.3** AgentCreationConfirmer 接口 + service 实现（await channel 复用） | P1 | ⏳ |
-| 67 | **P-ORCH.4** AgentFactory 接入确认流程（生成提案 → 确认 → 创建） | P1 | ⏳ |
-| 68 | **P-ORCH.5** Allocate 三阶段并行化（Layer 1-3 并行 + factory 串行 + record 并行） | P2 | ⏳ |
+| 66 | **P-ORCH.3** Agent 创建确认（EnsureAgent 复用 tool_confirmation 模式：ReplyFunc + ActivityEmitter） | P1 | ⏳ |
+| 67 | **P-ORCH.4** 确认链路验证（ConfirmActivity RPC 复用 + session 状态流转 + 拒绝降级） | P1 | ⏳ |
+| 68 | **P-ORCH.5** Allocate 两阶段并行化（Phase A 并行匹配 + Phase B 串行 factory） | P2 | ⏳ |
 
 ### T8 UI 树形重构（2026-07-01 新增）
 
@@ -496,11 +496,11 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 #### 任务清单
 
-- [ ] P-ORCH.1 后端进度事件：planner `Plan()` 发 decomposing/decomposed；allocator `Allocate()` 发 allocating/allocated；factory `EnsureAgent()` 发 creating_agent/agent_created（SystemNoticeEvent，WS-only）
-- [ ] P-ORCH.2 前端 loading 映射：`observabilityConstants.ts` 新增 6 条 ORCHESTRATION_LOADING_MAP 条目；`useContextualLoadingMessage.ts` 新增 `orchestration_progress` 分支（按 meta.phase + index/total/agentName 渲染）
-- [ ] P-ORCH.3 `AgentCreationConfirmer` 接口（biz）+ service 实现（await channel + confirm Activity + session awaiting_confirmation，复用 ConfirmActivity RPC）
-- [ ] P-ORCH.4 `AgentFactoryImpl` 注入 confirmer：LLM 生成提案后先确认，批准创建/拒绝降级；nil-safe（nil 直接创建）
-- [ ] P-ORCH.5 `Allocate()` 三阶段重构：Phase A 并行 Layer 0-3（errgroup + 索引写入）；Phase B 串行 factory（含确认）；Phase C 并行 createAllocationRecord
+- [ ] P-ORCH.1 后端进度事件：planner `Plan()` 发 decomposing/decomposed（新增 v2 EventBus 注入）；allocator `Allocate()` 发 allocating/allocated；factory `EnsureAgent()` 发 creating_agent/agent_created（SystemNoticeEvent，WS-only）；`TaskProfile` 新增 `SpiritSessionID` 字段
+- [ ] P-ORCH.2 前端 loading 映射：`observabilityConstants.ts` 新增 `ORCHESTRATION_PROGRESS_MAP`（6 条 phase 条目）；`useContextualLoadingMessage.ts` 新增 `orchestration_progress` 分支（按 meta.phase + index/total/agentName 渲染）
+- [ ] P-ORCH.3 Agent 创建确认：`EnsureAgent` 复用 tool_confirmation 模式——ctx 取 `serviceawaitreply.ReplyFunc` + `biz.ActivityEmitter`，LLM 生成提案后 EmitConfirmRequest → 阻塞等待（5min 超时）→ EmitConfirmResult；nil-safe（无 ReplyFunc 直接创建）
+- [ ] P-ORCH.4 确认链路验证：ConfirmActivity RPC 零改动复用；确认期间 session awaiting_confirmation，确认后恢复；拒绝/超时返回错误走 allocator fallback
+- [ ] P-ORCH.5 `Allocate()` 两阶段重构：Phase A 并行 Layer 0-3（errgroup + 索引写入）；Phase B 串行 factory（含确认）→ fallback；收尾串行 selectAdditionalMembers + 单次持久化
 - [ ] 验证：后端 `go build ./...` + `go test ./internal/agent/... ./internal/service/... ./internal/biz/...`；前端 `pnpm lint && pnpm test && pnpm build`
 - [ ] 代码审查（aranea-review SKILL）+ 修复
 
@@ -508,13 +508,12 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 | 文件 | 改动 |
 |------|------|
-| `internal/biz/agent_factory.go` | 新增 `AgentProposal` + `AgentCreationConfirmer` 接口 |
-| `internal/agent/task_planner_impl.go` | `Plan()` decomposeTask 前后发进度事件 |
-| `internal/agent/agent_allocator_impl.go` | `Allocate()` 三阶段重构 + 进度事件 |
-| `internal/agent/agent_factory.go` | 注入 confirmer + 确认流程 + 进度事件 |
-| `internal/service/agent_creation_confirmer.go` | 新建：confirmer 实现 |
-| `internal/service/chat_wire.go` | Wire 注入 confirmer |
-| `web/src/features/spirit/observabilityConstants.ts` | 新增 6 条 loading 映射 |
+| `internal/biz/agent_factory.go` | `TaskProfile` 新增 `SpiritSessionID` 字段 |
+| `internal/agent/task_planner_impl.go` | `Plan()` decomposeTask 前后发进度事件（新增 v2 EventBus 注入） |
+| `internal/agent/agent_allocator_impl.go` | `Allocate()` 两阶段重构 + 进度事件 |
+| `internal/agent/agent_factory.go` | 上下文确认流程（复用 tool_confirmation 模式）+ 进度事件 |
+| `cmd/admin/wire.go` + `wire_gen.go` | `provideTaskPlanner` 新增 v2 EventBus 参数 |
+| `web/src/features/spirit/observabilityConstants.ts` | 新增 `ORCHESTRATION_PROGRESS_MAP`（6 条 phase 映射） |
 | `web/src/features/chat/composables/useContextualLoadingMessage.ts` | 新增 orchestration_progress 分支 |
 
 #### 验收标准
@@ -524,7 +523,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - [ ] 确认期间 session 进入 awaiting_confirmation，确认后自动恢复
 - [ ] 多 subtask 需创建 Agent 时逐个确认（串行）
 - [ ] Allocate 并行化后单测全绿，无数据竞争（`go test -race`）
-- [ ] confirmer 为 nil 时行为与旧版一致（直接创建）
+- [ ] 无 ReplyFunc 上下文时行为与旧版一致（直接创建）
 
 ---
 

@@ -2,7 +2,7 @@
   <div :class="['graph-property-panel', { 'is-dark': isDark }]" :style="panelAccentStyle">
     <template v-if="selectedNode">
       <div class="graph-property-panel__header">
-        <div class="graph-property-panel__title">节点属性</div>
+        <div class="graph-property-panel__title">{{ t('graphs.propertyTitle') }}</div>
         <div class="row items-center q-gutter-xs">
           <q-btn
             flat
@@ -11,7 +11,7 @@
             color="primary"
             size="sm"
             icon="settings"
-            label="Graph 全局设置"
+            :label="t('graphs.propertyGlobalSettings')"
             @click="$emit('deselect')"
           />
           <q-btn flat dense round icon="close" size="sm" @click="$emit('deselect')" />
@@ -22,20 +22,20 @@
       <q-expansion-item
         dense
         expand-separator
-        label="基本信息"
+        :label="t('graphs.propertyGroupBasic')"
         default-opened
         class="graph-property-panel__group graph-property-panel__group--basic"
         header-class="graph-property-panel__group-header"
       >
         <div class="graph-property-panel__group-body q-gutter-sm">
-          <q-input :model-value="selectedNode.id" dense outlined label="节点 ID" disable />
+          <q-input :model-value="selectedNode.id" dense outlined :label="t('graphs.fieldNodeId')" disable />
           <q-select
             :model-value="selectedNode.type"
             dense
             outlined
             emit-value
             map-options
-            label="节点类型"
+            :label="t('graphs.fieldNodeType')"
             :options="nodeTypeOptions"
             @update:model-value="(v: string) => updateNodeField('type', v as NodeType)"
           />
@@ -45,12 +45,12 @@
             outlined
             autogrow
             type="textarea"
-            label="节点描述"
+            :label="t('graphs.fieldNodeDesc')"
             @update:model-value="(v: string | number | null) => updateNodeField('description', String(v ?? ''))"
           />
           <GraphVariablePicker
             :model-value="selectedNode.instruction"
-            label="指令"
+            :label="t('graphs.fieldInstruction')"
             :nodes="allNodes ?? []"
             :state-fields="stateFields ?? []"
             @update:model-value="(v: string) => updateNodeField('instruction', v)"
@@ -60,7 +60,7 @@
             :model-value="selectedNode.funcRef"
             dense
             outlined
-            label="函数引用 (funcRef)"
+            :label="t('graphs.fieldFuncRefFull')"
             @update:model-value="(v: string | number | null) => updateNodeField('funcRef', String(v ?? ''))"
           />
         </div>
@@ -70,7 +70,7 @@
         v-if="selectedNode.type === 'router'"
         dense
         expand-separator
-        label="条件路由"
+        :label="t('graphs.groupConditionalRoute')"
         default-opened
         class="graph-property-panel__group graph-property-panel__group--conditional"
         header-class="graph-property-panel__group-header"
@@ -79,14 +79,14 @@
           <template v-if="routerConditionalEdges.length > 0">
             <div v-for="(ce, ceIdx) in routerConditionalEdges" :key="ceIdx" class="graph-property-panel__section">
               <div class="graph-property-panel__section-title">
-                路由 #{{ ceIdx + 1
+                {{ t('graphs.routeNumberLabel', { n: ceIdx + 1 })
                 }}<span v-if="ce.condFuncRef" class="text-grey-7 q-ml-xs">({{ ce.condFuncRef }})</span>
               </div>
               <q-input
                 :model-value="ce.condFuncRef"
                 dense
                 outlined
-                label="条件函数 (condFuncRef)"
+                :label="t('graphs.fieldCondFuncRef')"
                 @update:model-value="(v: string | number | null) => updateCondFuncRef(ceIdx, String(v ?? ''))"
               />
               <div v-for="(target, label) in ce.pathMap" :key="label" class="row q-col-gutter-xs items-center q-mb-xs">
@@ -95,7 +95,7 @@
                   class="col-5"
                   dense
                   outlined
-                  label="标签"
+                  :label="t('graphs.fieldPathMapLabel')"
                   @update:model-value="(v: string | number | null) => updatePathMapLabel(ceIdx, label, String(v ?? ''))"
                 />
                 <q-select
@@ -105,7 +105,7 @@
                   outlined
                   emit-value
                   map-options
-                  label="目标节点"
+                  :label="t('graphs.fieldPathMapTarget')"
                   :options="destinationOptions"
                   @update:model-value="(v: string) => updatePathMapTarget(ceIdx, label, v)"
                 />
@@ -125,14 +125,22 @@
                 dense
                 color="primary"
                 icon="add"
-                label="添加路由分支"
+                :label="t('graphs.buttonAddRouteBranch')"
                 size="sm"
                 @click="addPathMapEntry(ceIdx)"
               />
             </div>
           </template>
-          <div v-else class="text-caption text-grey-7">暂无条件路由，点击下方添加</div>
-          <q-btn flat dense color="primary" icon="add" label="添加条件路由" size="sm" @click="addConditionalEdge" />
+          <div v-else class="text-caption text-grey-7">{{ t('graphs.emptyConditionalRoute') }}</div>
+          <q-btn
+            flat
+            dense
+            color="primary"
+            icon="add"
+            :label="t('graphs.buttonAddConditionalRoute')"
+            size="sm"
+            @click="addConditionalEdge"
+          />
         </div>
       </q-expansion-item>
 
@@ -140,7 +148,7 @@
         v-if="selectedNode.type === 'llm' || selectedNode.type === 'agent' || selectedNode.type === 'tool'"
         dense
         expand-separator
-        label="模型与 Agent"
+        :label="t('graphs.groupModelAgent')"
         default-opened
         class="graph-property-panel__group graph-property-panel__group--model"
         header-class="graph-property-panel__group-header"
@@ -151,7 +159,7 @@
             :model-value="selectedNode.modelName"
             dense
             outlined
-            label="模型名称"
+            :label="t('graphs.fieldModelName')"
             @update:model-value="(v: string | number | null) => updateNodeField('modelName', String(v ?? ''))"
           />
           <q-input
@@ -159,7 +167,7 @@
             :model-value="selectedNode.agentName"
             dense
             outlined
-            label="Agent 名称"
+            :label="t('graphs.fieldAgentName')"
             @update:model-value="(v: string | number | null) => updateNodeField('agentName', String(v ?? ''))"
           />
           <q-select
@@ -169,7 +177,7 @@
             outlined
             multiple
             use-chips
-            label="工具列表"
+            :label="t('graphs.fieldToolNames')"
             :options="availableTools"
             @update:model-value="(v: string[]) => updateNodeField('toolNames', v)"
           />
@@ -179,7 +187,7 @@
       <q-expansion-item
         dense
         expand-separator
-        label="中断与审批"
+        :label="t('graphs.propertyGroupInterrupt')"
         class="graph-property-panel__group graph-property-panel__group--interrupt"
         header-class="graph-property-panel__group-header"
       >
@@ -187,23 +195,23 @@
           <q-toggle
             :model-value="selectedNode.interruptBefore"
             dense
-            label="执行前中断 (HITL)"
+            :label="t('graphs.fieldInterruptBefore')"
             @update:model-value="(v: boolean) => updateNodeField('interruptBefore', v)"
           />
           <q-toggle
             :model-value="selectedNode.interruptAfter"
             dense
-            label="执行后中断 (HITL)"
+            :label="t('graphs.fieldInterruptAfter')"
             @update:model-value="(v: boolean) => updateNodeField('interruptAfter', v)"
           />
           <template v-if="selectedNode.type === 'hitl' || selectedNode.type === 'agent'">
             <q-separator class="q-my-xs" />
-            <div class="graph-property-panel__section-title">审批与指派</div>
+            <div class="graph-property-panel__section-title">{{ t('graphs.sectionApprovalAssign') }}</div>
             <q-input
               :model-value="selectedNode.requiredRole"
               dense
               outlined
-              label="所需角色 (requiredRole)"
+              :label="t('graphs.fieldRequiredRole')"
               @update:model-value="(v: string | number | null) => updateNodeField('requiredRole', String(v ?? ''))"
             />
             <q-select
@@ -212,7 +220,7 @@
               outlined
               emit-value
               map-options
-              label="指派模式 (assignmentMode)"
+              :label="t('graphs.fieldAssignmentMode')"
               :options="assignmentModeOptions"
               @update:model-value="(v: string) => updateNodeField('assignmentMode', v)"
             />
@@ -220,7 +228,7 @@
               :model-value="selectedNode.assignmentStrategy"
               dense
               outlined
-              label="指派策略 (assignmentStrategy)"
+              :label="t('graphs.fieldAssignmentStrategy')"
               @update:model-value="
                 (v: string | number | null) => updateNodeField('assignmentStrategy', String(v ?? ''))
               "
@@ -229,7 +237,7 @@
               :model-value="selectedNode.reviewerAgent"
               dense
               outlined
-              label="审核 Agent (reviewerAgent)"
+              :label="t('graphs.fieldReviewerAgent')"
               @update:model-value="(v: string | number | null) => updateNodeField('reviewerAgent', String(v ?? ''))"
             />
             <q-input
@@ -238,19 +246,19 @@
               outlined
               autogrow
               type="textarea"
-              label="审核规则 (reviewRules)"
+              :label="t('graphs.fieldReviewRules')"
               @update:model-value="(v: string | number | null) => updateNodeField('reviewRules', String(v ?? ''))"
             />
           </template>
           <template v-if="selectedNode.type === 'hitl' || selectedNode.type === 'agent'">
             <q-separator class="q-my-xs" />
-            <div class="graph-property-panel__section-title">超时与心跳</div>
+            <div class="graph-property-panel__section-title">{{ t('graphs.sectionTimeoutHeartbeat') }}</div>
             <q-input
               :model-value="selectedNode.timeoutSeconds"
               dense
               outlined
               type="number"
-              label="超时秒数 (timeoutSeconds)"
+              :label="t('graphs.fieldTimeoutSeconds')"
               min="0"
               @update:model-value="(v: string | number | null) => updateNodeField('timeoutSeconds', Number(v ?? 0))"
             />
@@ -259,7 +267,7 @@
               dense
               outlined
               type="number"
-              label="心跳间隔秒 (heartbeatInterval)"
+              :label="t('graphs.fieldHeartbeatIntervalFull')"
               min="0"
               @update:model-value="
                 (v: string | number | null) => updateNodeField('heartbeatIntervalSeconds', Number(v ?? 0))
@@ -268,7 +276,7 @@
             <q-toggle
               :model-value="selectedNode.enableLeaseExtension"
               dense
-              label="启用租约延期 (enableLeaseExtension)"
+              :label="t('graphs.fieldEnableLeaseExtension')"
               @update:model-value="(v: boolean) => updateNodeField('enableLeaseExtension', v)"
             />
           </template>
@@ -278,7 +286,7 @@
       <q-expansion-item
         dense
         expand-separator
-        label="高级选项"
+        :label="t('graphs.groupAdvanced')"
         class="graph-property-panel__group graph-property-panel__group--advanced"
         header-class="graph-property-panel__group-header"
       >
@@ -287,13 +295,13 @@
             v-if="selectedNode.type === 'agent' || selectedNode.type === 'router'"
             class="graph-property-panel__section"
           >
-            <div class="graph-property-panel__section-title">RetryPolicy</div>
+            <div class="graph-property-panel__section-title">{{ t('graphs.sectionRetryPolicy') }}</div>
             <q-input
               :model-value="selectedNode.retryMaxAttempts"
               dense
               outlined
               type="number"
-              label="重试次数 max_attempts"
+              :label="t('graphs.fieldRetryMaxAttempts')"
               min="0"
               @update:model-value="(v: string | number | null) => updateNodeField('retryMaxAttempts', Number(v ?? 0))"
             />
@@ -303,7 +311,7 @@
               outlined
               emit-value
               map-options
-              label="失败策略 failure_action"
+              :label="t('graphs.fieldFailureAction')"
               :options="failureActionOptions"
               @update:model-value="(v: string) => updateNodeField('failureAction', v)"
             />
@@ -311,7 +319,7 @@
               :model-value="selectedNode.fallbackAgent"
               dense
               outlined
-              label="Fallback Agent"
+              :label="t('graphs.fieldFallbackAgent')"
               @update:model-value="(v: string | number | null) => updateNodeField('fallbackAgent', String(v ?? ''))"
             />
           </div>
@@ -320,7 +328,7 @@
             v-if="selectedNode.type === 'agent' || selectedNode.type === 'router'"
             class="graph-property-panel__section"
           >
-            <div class="graph-property-panel__section-title">Destinations</div>
+            <div class="graph-property-panel__section-title">{{ t('graphs.sectionDestinations') }}</div>
             <q-select
               :model-value="selectedNode.destinations"
               dense
@@ -329,22 +337,22 @@
               use-chips
               emit-value
               map-options
-              label="GoTo 目标节点"
+              :label="t('graphs.fieldGotoTargets')"
               :options="destinationOptions"
               @update:model-value="(v: string[]) => updateNodeField('destinations', v)"
             />
           </div>
 
           <div v-if="selectedNode.type === 'agent'" class="graph-property-panel__section">
-            <div class="graph-property-panel__section-title">Mapper</div>
+            <div class="graph-property-panel__section-title">{{ t('graphs.sectionMapper') }}</div>
             <q-input
               :model-value="selectedNode.inputMapperJson"
               dense
               outlined
               autogrow
               type="textarea"
-              label="Input Mapper JSON"
-              hint='例：{"messages":"messages"}'
+              :label="t('graphs.fieldInputMapperJson')"
+              :hint="t('graphs.hintInputMapperExample')"
               @update:model-value="(v: string | number | null) => updateNodeField('inputMapperJson', String(v ?? ''))"
             />
             <q-input
@@ -353,29 +361,34 @@
               outlined
               autogrow
               type="textarea"
-              label="Output Mapper JSON"
+              :label="t('graphs.fieldOutputMapperJson')"
               @update:model-value="(v: string | number | null) => updateNodeField('outputMapperJson', String(v ?? ''))"
             />
             <q-toggle
               :model-value="selectedNode.isolatedMessages"
               dense
-              label="隔离子 Agent 消息"
+              :label="t('graphs.fieldIsolatedMessages')"
               @update:model-value="(v: boolean) => updateNodeField('isolatedMessages', v)"
             />
             <q-toggle
               :model-value="selectedNode.inputFromLastResponse"
               dense
-              label="从 last_response 注入输入"
+              :label="t('graphs.fieldInputFromLastResponse')"
               @update:model-value="(v: boolean) => updateNodeField('inputFromLastResponse', v)"
             />
           </div>
 
-          <q-expansion-item dense expand-separator label="缓存" header-class="text-caption text-weight-bold">
+          <q-expansion-item
+            dense
+            expand-separator
+            :label="t('graphs.propertyGroupCache')"
+            header-class="text-caption text-weight-bold"
+          >
             <div class="q-gutter-sm q-pt-xs">
               <q-toggle
                 :model-value="selectedNode.cacheEnabled"
                 dense
-                label="启用节点缓存"
+                :label="t('graphs.fieldEnableNodeCache')"
                 @update:model-value="(v: boolean) => updateNodeField('cacheEnabled', v)"
               />
               <q-input
@@ -384,7 +397,7 @@
                 dense
                 outlined
                 type="number"
-                label="缓存 TTL（秒）"
+                :label="t('graphs.fieldCacheTtl')"
                 min="0"
                 @update:model-value="(v: string | number | null) => updateNodeField('cacheTtlSeconds', Number(v ?? 0))"
               />
@@ -396,14 +409,14 @@
 
     <template v-else-if="graphDef">
       <div class="graph-property-panel__header">
-        <div class="graph-property-panel__title">Graph 属性</div>
+        <div class="graph-property-panel__title">{{ t('graphs.propertyGroupGraph') }}</div>
       </div>
       <q-separator />
 
       <q-expansion-item
         dense
         expand-separator
-        label="Graph 属性"
+        :label="t('graphs.propertyGroupGraph')"
         default-opened
         class="graph-property-panel__group"
         header-class="graph-property-panel__group-header"
@@ -413,7 +426,7 @@
             :model-value="graphDef.name"
             dense
             outlined
-            label="Graph 名称"
+            :label="t('graphs.fieldGraphName')"
             @update:model-value="(v: string | number | null) => updateGraphField('name', String(v ?? ''))"
           />
           <q-input
@@ -422,7 +435,7 @@
             outlined
             autogrow
             type="textarea"
-            label="描述"
+            :label="t('graphs.fieldDescription')"
             @update:model-value="(v: string | number | null) => updateGraphField('description', String(v ?? ''))"
           />
           <q-select
@@ -431,7 +444,7 @@
             outlined
             emit-value
             map-options
-            label="入口节点"
+            :label="t('graphs.fieldEntryNode')"
             :options="nodeIdOptions"
             @update:model-value="(v: string) => updateGraphField('entryPoint', v)"
           />
@@ -441,7 +454,7 @@
             outlined
             emit-value
             map-options
-            label="结束节点"
+            :label="t('graphs.fieldFinishNode')"
             :options="nodeIdOptions"
             @update:model-value="(v: string) => updateGraphField('finishPoint', v)"
           />
@@ -451,24 +464,26 @@
             outlined
             emit-value
             map-options
-            label="执行引擎"
+            :label="t('graphs.fieldExecutionEngine')"
             :options="engineOptions"
             @update:model-value="(v: string) => updateGraphField('executionEngine', v)"
           />
           <q-toggle
             :model-value="graphDef.enableCheckpoint"
             dense
-            label="启用检查点"
+            :label="t('graphs.fieldEnableCheckpoint')"
             @update:model-value="(v: boolean) => updateGraphField('enableCheckpoint', v)"
           />
-          <div v-if="graphDef.version > 0" class="text-caption text-grey-7">当前版本 v{{ graphDef.version }}</div>
+          <div v-if="graphDef.version > 0" class="text-caption text-grey-7">
+            {{ t('graphs.fieldCurrentVersion', { version: graphDef.version }) }}
+          </div>
         </div>
       </q-expansion-item>
 
       <q-expansion-item
         dense
         expand-separator
-        label="State Schema"
+        :label="t('graphs.propertyGroupStateSchema')"
         class="graph-property-panel__group"
         header-class="graph-property-panel__group-header"
       >
@@ -480,7 +495,7 @@
                 class="col-5"
                 dense
                 outlined
-                label="字段名"
+                :label="t('graphs.stateFieldColumnName')"
                 @update:model-value="(v: string | number | null) => updateStateField(idx, 'name', String(v ?? ''))"
               />
               <q-select
@@ -490,7 +505,7 @@
                 outlined
                 emit-value
                 map-options
-                label="类型"
+                :label="t('graphs.stateFieldColumnType')"
                 :options="fieldTypeOptions"
                 @update:model-value="(v: string) => updateStateField(idx, 'type', v)"
               />
@@ -501,7 +516,7 @@
                 outlined
                 emit-value
                 map-options
-                label="Reducer"
+                :label="t('graphs.stateFieldColumnReducer')"
                 :options="reducerOptions"
                 @update:model-value="(v: ReducerType) => updateStateField(idx, 'reducer', v)"
               />
@@ -517,7 +532,14 @@
               />
             </div>
           </div>
-          <q-btn flat dense color="primary" icon="add" label="添加字段" @click="addStateField" />
+          <q-btn
+            flat
+            dense
+            color="primary"
+            icon="add"
+            :label="t('graphs.stateFieldAddButton')"
+            @click="addStateField"
+          />
         </div>
       </q-expansion-item>
 
@@ -532,16 +554,15 @@
     <template v-else>
       <div class="graph-property-panel__empty">
         <q-icon name="touch_app" size="32px" color="grey-6" />
-        <div class="text-caption text-grey-7 q-mt-sm">选中节点查看属性，或编辑 Graph 全局设置</div>
+        <div class="text-caption text-grey-7 q-mt-sm">{{ t('graphs.propertyEmptyHint') }}</div>
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-const selectedNode = defineModel<NodeDef | null>('selectedNode', { required: true });
-const graphDef = defineModel<GraphDefinition | null>('graphDef', { required: true });
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import GraphValidationPanel from './GraphValidationPanel.vue';
 import type {
   NodeDef,
@@ -562,6 +583,11 @@ import {
 import type { useGraphUndoRedo } from '../../features/graph/useGraphUndoRedo';
 import { useConditionalRoutes } from '../../features/graph/useConditionalRoutes';
 import GraphVariablePicker from './GraphVariablePicker.vue';
+
+const { t } = useI18n();
+
+const selectedNode = defineModel<NodeDef | null>('selectedNode', { required: true });
+const graphDef = defineModel<GraphDefinition | null>('graphDef', { required: true });
 
 const props = defineProps<{
   availableTools: string[];
@@ -634,7 +660,7 @@ const panelAccentStyle = computed(() => {
 });
 
 const nodeTypeOptions = computed(() =>
-  Object.entries(NODE_TYPE_STYLES).map(([key, val]) => ({ label: val.label, value: key })),
+  Object.entries(NODE_TYPE_STYLES).map(([key, val]) => ({ label: t(val.labelKey), value: key })),
 );
 
 const nodeIdOptions = computed(() => (graphDef.value?.nodes ?? []).map((n) => ({ label: n.id, value: n.id })));
@@ -645,16 +671,20 @@ const destinationOptions = computed(() =>
     .map((n) => ({ label: `${n.id} (${n.type})`, value: n.id })),
 );
 
-const fieldTypeOptions = STATE_FIELD_TYPE_OPTIONS;
-const reducerOptions = REDUCER_OPTIONS;
-const engineOptions = ENGINE_OPTIONS;
-const failureActionOptions = FAILURE_ACTION_OPTIONS;
-const assignmentModeOptions = [
-  { label: '自动指派', value: 'auto' },
-  { label: '手动指派', value: 'manual' },
-  { label: '轮询指派', value: 'round_robin' },
-  { label: '最少任务优先', value: 'least_busy' },
-];
+const fieldTypeOptions = computed(() =>
+  STATE_FIELD_TYPE_OPTIONS.map((opt) => ({ label: t(opt.labelKey), value: opt.value })),
+);
+const reducerOptions = computed(() => REDUCER_OPTIONS.map((opt) => ({ label: t(opt.labelKey), value: opt.value })));
+const engineOptions = computed(() => ENGINE_OPTIONS.map((opt) => ({ label: t(opt.labelKey), value: opt.value })));
+const failureActionOptions = computed(() =>
+  FAILURE_ACTION_OPTIONS.map((opt) => ({ label: t(opt.labelKey), value: opt.value })),
+);
+const assignmentModeOptions = computed(() => [
+  { label: t('graphs.assignmentModeAuto'), value: 'auto' },
+  { label: t('graphs.assignmentModeManual'), value: 'manual' },
+  { label: t('graphs.assignmentModeRoundRobin'), value: 'round_robin' },
+  { label: t('graphs.assignmentModeLeastBusy'), value: 'least_busy' },
+]);
 
 const {
   routerConditionalEdges,

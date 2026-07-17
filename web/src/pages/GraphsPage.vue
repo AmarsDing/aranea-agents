@@ -163,8 +163,8 @@
                 </div>
                 <div class="row items-center justify-between no-wrap">
                   <div class="graph-card__tags">
-                    <span v-if="graph.executionEngine === 'dag'" class="graph-card__tag">DAG</span>
-                    <span v-else class="graph-card__tag">BSP</span>
+                    <span v-if="graph.executionEngine === 'dag'" class="graph-card__tag">{{ t('graphs.cardDAG') }}</span>
+                    <span v-else class="graph-card__tag">{{ t('graphs.cardBSP') }}</span>
                     <span v-if="graph.enableCheckpoint" class="graph-card__tag">{{ t('graphs.checkpoint') }}</span>
                   </div>
                   <span class="graph-card__summary"

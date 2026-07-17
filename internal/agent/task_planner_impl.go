@@ -24,6 +24,7 @@ type taskPlannerImpl struct {
 	catalog        *biz.LlmProviderModelUsecase
 	httpClient     *http.Client
 	bus            biz.ActivityEventBus
+	eventBus       biz.EventBus // P-ORCH: v2 bus for orchestration_progress notices
 	orchCache      *biz.OrchestrationCache
 	lg             loggateway.Logger
 	plannerSetting PlannerModelLookup
@@ -35,12 +36,13 @@ type taskPlannerImpl struct {
 var _ biz.TaskPlannerPort = (*taskPlannerImpl)(nil)
 
 // NewTaskPlanner creates a new TaskPlanner implementation.
-func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, bus biz.ActivityEventBus, orchCache *biz.OrchestrationCache, lg loggateway.Logger, plannerSetting PlannerModelLookup, seq v2.SequencerPublisher) biz.TaskPlannerPort {
+func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, bus biz.ActivityEventBus, eventBus biz.EventBus, orchCache *biz.OrchestrationCache, lg loggateway.Logger, plannerSetting PlannerModelLookup, seq v2.SequencerPublisher) biz.TaskPlannerPort {
 	return &taskPlannerImpl{
 		repo:           repo,
 		catalog:        catalog,
 		httpClient:     httpClient,
 		bus:            bus,
+		eventBus:       eventBus,
 		orchCache:      orchCache,
 		lg:             lg,
 		plannerSetting: plannerSetting,
@@ -211,6 +213,8 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 	var decomposeReason string
 	if effectiveLevel == biz.ComplexityComplex {
 		var err error
+		// P-ORCH: notify the user that decomposition (LLM call, up to 60s) started.
+		impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decomposing", nil)
 		subTasks, dag, err = impl.decomposeTask(ctx, input.UserMessage, input.IntentArtifact, teamCount)
 		if err != nil {
 			impl.lg.Warn("任务分解失败，降级为 direct 策略",
@@ -222,6 +226,10 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			strategyReason = "任务分解失败，降级为 direct"
 			decomposeReason = "decompose_failed"
 		} else if len(subTasks) > 0 {
+			// P-ORCH: decomposition finished — report the subtask count.
+			impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decomposed", map[string]any{
+				"sub_task_count": len(subTasks),
+			})
 			decomposeReason = fmt.Sprintf("分解为 %d 个子任务", len(subTasks))
 			// 2026-07-04 问题 2 修复：当用户明确请求 N 个 team 但 LLM 产生
 			// 不符数量的 subtask 时，截取前 N 个或记录警告。这是兜底——
@@ -1185,6 +1193,21 @@ func stripDecompositionFences(s string) string {
 		return strings.TrimSpace(m[1])
 	}
 	return s
+}
+
+// publishOrchestrationProgress emits an orchestration_progress
+// SystemNoticeEvent (WS-only, not persisted) so the frontend can render
+// fine-grained loading feedback during planning. Nil bus or empty session
+// → skipped (P-ORCH).
+func (impl *taskPlannerImpl) publishOrchestrationProgress(ctx context.Context, spiritSessionID, phase string, extra map[string]any) {
+	if impl.eventBus == nil || spiritSessionID == "" {
+		return
+	}
+	meta := map[string]any{"phase": phase}
+	for k, v := range extra {
+		meta[k] = v
+	}
+	impl.eventBus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_progress", "orchestration progress: "+phase, meta))
 }
 
 // publishPlanCreated publishes the spirit_plan_created event after a TaskPlan is persisted.

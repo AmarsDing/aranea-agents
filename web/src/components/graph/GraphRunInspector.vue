@@ -1,9 +1,9 @@
 <template>
   <div :class="['graph-run-inspector', { 'is-dark': isDark }]">
     <q-tabs v-model="tab" dense align="left" class="graph-run-inspector__tabs" active-color="primary">
-      <q-tab name="overview" label="监控" />
-      <q-tab name="checkpoints" label="检查点" />
-      <q-tab name="tasks" label="任务" />
+      <q-tab name="overview" :label="t('graphs.runInspectorTabOverview')" />
+      <q-tab name="checkpoints" :label="t('graphs.runInspectorTabCheckpoints')" />
+      <q-tab name="tasks" :label="t('graphs.runInspectorTabTasks')" />
     </q-tabs>
     <q-separator />
     <q-tab-panels v-model="tab" animated class="graph-run-inspector__panels">
@@ -62,11 +62,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import GraphRunSidebar from './GraphRunSidebar.vue';
 import GraphCheckpointPanel from './GraphCheckpointPanel.vue';
 import GraphTimeTravelPanel from './GraphTimeTravelPanel.vue';
 import GraphTaskKanban from './GraphTaskKanban.vue';
 import type { CheckpointInfo, GraphExecution, GraphRunExecutionSummary, Task } from '../../features/graph/types';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   execution: GraphExecution | null;

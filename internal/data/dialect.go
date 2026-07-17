@@ -75,17 +75,21 @@ func (d Dialect) JSONEach(col string) string {
 
 // JSONSet returns a SQL expression that sets a JSON key to a new value.
 // SQLite: json_set(col, '$.key', new_value)
-// Postgres: jsonb_set(col, '{key}', to_jsonb(new_value))
+// Postgres: jsonb_set(col, '{key}', to_jsonb(new_value::text))
 //
 // For Postgres, the new_value must be wrapped in to_jsonb() to ensure JSON
-// compatibility. The caller is responsible for providing the value as a
-// placeholder or expression.
+// compatibility. The ::text cast is required because to_jsonb(anyelement)
+// is polymorphic — without an explicit cast, Postgres cannot infer the
+// placeholder type and errors with 42804 ("could not determine polymorphic
+// type because input type is unknown"). All current callers pass string
+// values (map[string]string or text columns), so ::text is semantically
+// correct.
 //
 // Note: for multiple key updates, Postgres requires nested jsonb_set calls.
 // Use JSONSetChain for multi-key updates.
 func (d Dialect) JSONSet(col, key, newValue string) string {
 	if d.IsPostgres() {
-		return fmt.Sprintf("jsonb_set(%s, '{%s}', to_jsonb(%s))", col, key, newValue)
+		return fmt.Sprintf("jsonb_set(%s, '{%s}', to_jsonb(%s::text))", col, key, newValue)
 	}
 	return fmt.Sprintf("json_set(%s, '$.%s', %s)", col, key, newValue)
 }
@@ -98,7 +102,7 @@ func (d Dialect) JSONSet(col, key, newValue string) string {
 // pairs is a slice of (key, value) tuples where value is a placeholder or expression.
 //
 // Example (SQLite): json_set(col, '$.k1', v1, '$.k2', v2)
-// Example (Postgres): jsonb_set(jsonb_set(col, '{k1}', to_jsonb(v1)), '{k2}', to_jsonb(v2))
+// Example (Postgres): jsonb_set(jsonb_set(col, '{k1}', to_jsonb(v1::text)), '{k2}', to_jsonb(v2::text))
 func (d Dialect) JSONSetMulti(col string, pairs ...[2]string) string {
 	if len(pairs) == 0 {
 		return col
@@ -106,7 +110,7 @@ func (d Dialect) JSONSetMulti(col string, pairs ...[2]string) string {
 	if d.IsPostgres() {
 		result := col
 		for _, p := range pairs {
-			result = fmt.Sprintf("jsonb_set(%s, '{%s}', to_jsonb(%s))", result, p[0], p[1])
+			result = fmt.Sprintf("jsonb_set(%s, '{%s}', to_jsonb(%s::text))", result, p[0], p[1])
 		}
 		return result
 	}
@@ -115,6 +119,23 @@ func (d Dialect) JSONSetMulti(col string, pairs ...[2]string) string {
 		parts = append(parts, fmt.Sprintf("'$.%s'", p[0]), p[1])
 	}
 	return fmt.Sprintf("json_set(%s, %s)", col, strings.Join(parts, ", "))
+}
+
+// JSONRemove returns a SQL expression that removes a top-level key from a JSON
+// column, plus the argument to pass for the key placeholder.
+//
+// SQLite: json_remove(expr, '$.key')  — arg = "$.key"
+// Postgres: expr - ?::text            — arg = "key"
+//
+// Postgres uses the jsonb `-` operator (delete top-level key by text name).
+// The ::text cast is required for the same polymorphic-type reason as JSONSet.
+// Note: only top-level keys are supported; for nested paths use #- with a
+// text[] literal (not a placeholder).
+func (d Dialect) JSONRemove(expr, key string) (sqlExpr, arg string) {
+	if d.IsPostgres() {
+		return fmt.Sprintf("%s - ?::text", expr), key
+	}
+	return fmt.Sprintf("json_remove(%s, ?)", expr), "$." + key
 }
 
 // TableExistsQuery returns the SQL query and args to check if a table exists.

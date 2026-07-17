@@ -45,6 +45,7 @@ import { computed } from 'vue';
 import WorkflowKanbanBoard from '../workflow/WorkflowKanbanBoard.vue';
 import type { CompileTeamGraphResult } from '../../features/orchestration/compileApi';
 import { resolveTeamNodeDisplay } from '../../features/orchestration/teamNodeDisplay';
+import { teamRoleLabel } from './teamUtils';
 import type { NodeDef } from '../../features/graph/types';
 import type { TeamDefinition } from '../../features/teams/types';
 
@@ -130,7 +131,7 @@ const memberCards = computed<MemberCard[]>(() => {
     key: `${member.agent_id}-${member.role}`,
     label: member.name || member.agent_id,
     role: member.role,
-    roleLabel: member.role,
+    roleLabel: teamRoleLabel(member.role),
     agentKey: member.agent_id,
     nodeType: member.enabled ? 'enabled' : 'disabled',
     responsibility: member.name || '执行分配任务',

@@ -1,17 +1,17 @@
 <template>
-  <WorkflowKanbanBoard :columns="columns" :is-dark="isDark" empty-label="暂无任务">
+  <WorkflowKanbanBoard :columns="columns" :is-dark="isDark" :empty-label="t('graphs.kanbanNoTasks')">
     <template #header>
       <div class="row items-center q-gutter-sm q-mb-md">
-        <div class="text-subtitle2">任务看板</div>
-        <q-badge v-if="liveConnected" rounded class="graph-kanban-live">实时</q-badge>
+        <div class="text-subtitle2">{{ t('graphs.kanbanTitle') }}</div>
+        <q-badge v-if="liveConnected" rounded class="graph-kanban-live">{{ t('graphs.kanbanLive') }}</q-badge>
         <q-space />
         <q-btn flat dense round icon="refresh" :loading="loading" @click="$emit('refresh')">
-          <q-tooltip>刷新</q-tooltip>
+          <q-tooltip>{{ t('graphs.checkpointPanelRefresh') }}</q-tooltip>
         </q-btn>
       </div>
       <div v-if="!loading && tasks.length === 0" class="graph-kanban-empty q-mb-md">
-        <div class="text-body2">{{ emptyHint.title }}</div>
-        <div class="text-caption text-grey-7 q-mt-xs">{{ emptyHint.detail }}</div>
+        <div class="text-body2">{{ t(emptyHint.titleKey) }}</div>
+        <div class="text-caption text-grey-7 q-mt-xs">{{ t(emptyHint.detailKey) }}</div>
       </div>
       <q-spinner v-if="loading" color="primary" size="28px" class="q-mb-md" />
     </template>
@@ -36,13 +36,16 @@
           />
         </template>
       </draggable>
-      <div v-if="columnItems(column.key).length === 0" class="workflow-kanban-board__empty">暂无任务</div>
+      <div v-if="columnItems(column.key).length === 0" class="workflow-kanban-board__empty">
+        {{ t('graphs.kanbanNoTasks') }}
+      </div>
     </template>
   </WorkflowKanbanBoard>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch, type ComponentPublicInstance } from 'vue';
+import { useI18n } from 'vue-i18n';
 import draggable from 'vuedraggable';
 import type { Task } from '../../features/graph/types';
 import {
@@ -52,6 +55,8 @@ import {
 } from '../../features/graph/tasks/kanbanColumns';
 import WorkflowKanbanBoard from '../workflow/WorkflowKanbanBoard.vue';
 import GraphTaskKanbanCard from './GraphTaskKanbanCard.vue';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   tasks: Task[];
@@ -90,7 +95,7 @@ watch(() => props.tasks, syncColumns, { immediate: true, deep: true });
 const columns = computed(() =>
   COLUMN_DEFS.map((column) => ({
     key: column.key,
-    label: column.label,
+    label: t(column.labelKey),
     items: columnLists[column.key] ?? [],
   })),
 );

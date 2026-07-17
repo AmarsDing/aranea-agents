@@ -9,13 +9,13 @@
       <q-icon name="drag_indicator" size="16px" class="graph-task-card__drag-handle q-mr-xs" />
       <div class="col min-width-0">
         <div class="text-weight-medium">{{ task.nodeId || task.taskId }}</div>
-        <div class="text-caption app-text-secondary">{{ task.requiredRole || 'worker' }}</div>
+        <div class="text-caption app-text-secondary">{{ task.requiredRole || t('graphs.taskWorkerFallback') }}</div>
       </div>
       <q-badge rounded :color="statusColor">{{ statusLabel }}</q-badge>
     </q-card-section>
     <q-separator />
     <q-card-section class="q-gutter-xs">
-      <div v-if="task.assignee" class="text-caption">执行者：{{ task.assignee }}</div>
+      <div v-if="task.assignee" class="text-caption">{{ t('graphs.taskAssigneeLabel', { name: task.assignee }) }}</div>
       <div v-if="task.summary" class="text-body2">{{ task.summary }}</div>
       <div v-else-if="task.input" class="text-caption app-text-secondary">{{ truncate(task.input) }}</div>
     </q-card-section>
@@ -24,9 +24,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { Task } from '../../features/graph/types';
-import { TASK_STATUS_COLORS, TASK_STATUS_LABELS } from '../../features/graph/types';
+import { TASK_STATUS_COLORS, TASK_STATUS_LABEL_KEYS } from '../../features/graph/types';
 import { truncate } from '../../features/graph/utils';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   task: Task;
@@ -36,6 +39,6 @@ const props = defineProps<{
 
 defineEmits<{ select: [] }>();
 
-const statusLabel = computed(() => TASK_STATUS_LABELS[props.task.status] ?? props.task.status);
+const statusLabel = computed(() => t(TASK_STATUS_LABEL_KEYS[props.task.status]) ?? props.task.status);
 const statusColor = computed(() => TASK_STATUS_COLORS[props.task.status] ?? 'grey');
 </script>

@@ -6,7 +6,7 @@
       dense
       outlined
       clearable
-      placeholder="搜索节点…"
+      :placeholder="t('graphs.nodeSearchPlaceholder')"
       class="graph-node-search__input app-glass-control app-glass-control--sm"
       @update:model-value="$emit('search', query)"
       @keydown.escape.prevent="$emit('close')"
@@ -32,7 +32,10 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { QInput } from 'quasar';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   visible: boolean;
@@ -59,4 +62,6 @@ watch(
     }
   },
 );
+
+void t;
 </script>

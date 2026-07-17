@@ -26,17 +26,7 @@
         class="graph-flow-diamond__status-badge"
         :class="diamondStatusBadgeClass"
       >
-        {{
-          data.execStatus === 'running'
-            ? '运行'
-            : data.execStatus === 'completed'
-              ? '完成'
-              : data.execStatus === 'failed' || data.execStatus === 'error'
-                ? '失败'
-                : data.execStatus === 'interrupted'
-                  ? '中断'
-                  : data.execStatus
-        }}
+        {{ statusLabel }}
       </q-badge>
     </div>
     <Handle type="source" :position="Position.Bottom" :style="{ left: '50%', bottom: '0' }" />
@@ -57,20 +47,23 @@
     <span
       v-if="data.nodeType === 'router'"
       class="graph-flow-diamond__branch-label graph-flow-diamond__branch-label--yes"
-      >是</span
+      >{{ t('graphs.flowBranchYes') }}</span
     >
     <span
       v-if="data.nodeType === 'router'"
       class="graph-flow-diamond__branch-label graph-flow-diamond__branch-label--no"
-      >否</span
+      >{{ t('graphs.flowBranchNo') }}</span
     >
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { Handle, Position } from '@vue-flow/core';
-import { NODE_TYPE_STYLES, type NodeType } from '../../features/graph/types';
+import { NODE_TYPE_STYLES, EXECUTION_STATUS_STYLES, type NodeType } from '../../features/graph/types';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   id: string;
@@ -89,6 +82,12 @@ const diamondStyle = computed(() => ({
   '--node-fill': styleConfig.value.fillColor,
   '--node-border': styleConfig.value.borderColor,
 }));
+
+const statusLabel = computed(() => {
+  const status = props.data.execStatus ?? 'idle';
+  const cfg = EXECUTION_STATUS_STYLES[status] ?? EXECUTION_STATUS_STYLES.idle;
+  return t(cfg.labelKey);
+});
 
 const diamondStatusBadgeClass = computed(() => {
   const s = props.data.execStatus;

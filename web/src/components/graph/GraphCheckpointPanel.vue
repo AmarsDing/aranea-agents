@@ -1,14 +1,16 @@
 <template>
   <div class="graph-checkpoint-panel">
     <div class="graph-checkpoint-panel__header row items-center q-gutter-sm q-mb-sm">
-      <div class="graph-checkpoint-panel__title">检查点</div>
+      <div class="graph-checkpoint-panel__title">{{ t('graphs.checkpointPanelTitle') }}</div>
       <q-space />
       <q-btn flat dense round icon="refresh" :loading="loading" @click="$emit('refresh')">
-        <q-tooltip>刷新</q-tooltip>
+        <q-tooltip>{{ t('graphs.checkpointPanelRefresh') }}</q-tooltip>
       </q-btn>
     </div>
     <q-spinner v-if="loading" color="primary" size="28px" />
-    <div v-else-if="!checkpoints.length" class="text-caption app-text-secondary">暂无检查点记录。</div>
+    <div v-else-if="!checkpoints.length" class="text-caption app-text-secondary">
+      {{ t('graphs.checkpointPanelEmpty') }}
+    </div>
     <q-list v-else dense bordered separator class="rounded-borders">
       <q-item
         v-for="cp in checkpoints"
@@ -20,7 +22,9 @@
       >
         <q-item-section>
           <q-item-label class="graph-checkpoint-panel__mono">{{ cp.checkpointId }}</q-item-label>
-          <q-item-label caption> step {{ cp.step }} · {{ cp.source || 'checkpoint' }} </q-item-label>
+          <q-item-label caption>
+            step {{ cp.step }} · {{ cp.source || t('graphs.hitlDialogCheckpointLabel') }}
+          </q-item-label>
           <q-item-label caption>{{ formatTime(cp.timestamp) }}</q-item-label>
         </q-item-section>
         <q-item-section side>
@@ -32,11 +36,11 @@
     <div v-if="stateSnapshot" class="graph-checkpoint-panel__preview q-mt-md">
       <div class="graph-checkpoint-panel__preview-title row items-center q-gutter-xs">
         <q-icon name="visibility" size="16px" />
-        <span>状态预览</span>
+        <span>{{ t('graphs.checkpointPanelPreview') }}</span>
       </div>
       <div class="graph-checkpoint-panel__json">{{ snapshotJson }}</div>
       <div v-if="nextNodes?.length" class="graph-checkpoint-panel__next q-mt-xs">
-        <span class="text-caption">下一步节点：</span>
+        <span class="text-caption">{{ t('graphs.checkpointPanelNextNodes') }}</span>
         <q-badge v-for="n in nextNodes" :key="n" rounded color="primary" :label="n" class="q-mr-xs" />
       </div>
       <q-btn
@@ -45,7 +49,7 @@
         rounded
         color="accent"
         icon="restore"
-        label="回退至此检查点"
+        :label="t('graphs.checkpointPanelRestoreButton')"
         class="q-mt-sm"
         :loading="restoring"
         @click="confirmRestore"
@@ -56,6 +60,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { CheckpointInfo } from '../../features/graph/types';
 import { formatTime } from '../../features/graph/utils';
@@ -75,6 +80,7 @@ const emit = defineEmits<{
   restore: [checkpoint: CheckpointInfo];
 }>();
 
+const { t } = useI18n();
 const $q = useQuasar();
 
 const snapshotJson = computed(() => {
@@ -90,8 +96,8 @@ function confirmRestore() {
   const cp = props.checkpoints.find((c) => c.checkpointId === props.selectedCheckpointId);
   if (!cp) return;
   $q.dialog({
-    title: '确认回退',
-    message: `将回退至检查点 ${cp.checkpointId}（step ${cp.step}），当前执行状态将被替换。确定继续？`,
+    title: t('graphs.checkpointPanelConfirmTitle'),
+    message: t('graphs.checkpointPanelConfirmMessage', { id: cp.checkpointId, step: cp.step }),
     cancel: true,
     persistent: true,
   }).onOk(() => {

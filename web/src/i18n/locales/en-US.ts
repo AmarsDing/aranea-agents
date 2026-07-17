@@ -108,6 +108,14 @@ export default {
       allCompleted: '✓ All completed',
       progressSummary: '{completed}/{total} completed',
     },
+    orchestrationProgress: {
+      decomposing: 'Decomposing task…',
+      decomposed: 'Task decomposed into {sub_task_count} subtasks',
+      allocating: 'Matching agents… ({index}/{total}) {sub_task}',
+      allocated: 'Agent allocation complete ({total} total)',
+      creatingAgent: 'Creating new agent "{agent_name}"…',
+      agentCreated: 'Agent "{agent_name}" created',
+    },
     agentSidebar: {
       statusRunning: 'Running',
       statusCompleted: 'Completed',
@@ -805,7 +813,8 @@ export default {
     hero: {
       kicker: 'Memory Center',
       title: 'Memory Center',
-      subtitle: 'Explains why the Agent answers the way it does from five perspectives: context, working memory, session events, long-term knowledge, and Agent evolution.',
+      subtitle:
+        'Explains why the Agent answers the way it does from five perspectives: context, working memory, session events, long-term knowledge, and Agent evolution.',
       agentLabel: 'Agent',
       refresh: 'Refresh',
     },
@@ -840,7 +849,8 @@ export default {
     },
     overview: {
       flowTitle: 'Memory Flow',
-      flowCaption: 'L0 handles the current prompt; L1/L2/L3/L4 provide task state, events, knowledge, and long-term profile.',
+      flowCaption:
+        'L0 handles the current prompt; L1/L2/L3/L4 provide task state, events, knowledge, and long-term profile.',
       actionTitle: 'Action Items',
       actionCaption: 'Prioritize memory risks that affect answer credibility.',
       layers: {
@@ -873,7 +883,8 @@ export default {
     },
     cascade: {
       title: 'Cascade Review',
-      subtitle: 'L4 entity rename conflict gating: preview impact → confirm execution. Supports Saga step tracking and compensation.',
+      subtitle:
+        'L4 entity rename conflict gating: preview impact → confirm execution. Supports Saga step tracking and compensation.',
       refresh: 'Refresh',
       selectAgentFirst: 'Please select an Agent first.',
       empty: 'No Cascade proposals.',
@@ -942,7 +953,8 @@ export default {
     },
     platformSettings: {
       title: 'Platform Memory Policy',
-      subtitle: 'Persisted to system_settings; process env vars (MEMORY_POLICY_STRICT / MEMORY_EPISODE_BACKFILL_DISABLED) take precedence over UI values.',
+      subtitle:
+        'Persisted to system_settings; process env vars (MEMORY_POLICY_STRICT / MEMORY_EPISODE_BACKFILL_DISABLED) take precedence over UI values.',
       policyStrict: 'Policy Strict (audit failure blocks write path)',
       policyStrictEnvHint: 'Forced on by env var MEMORY_POLICY_STRICT=1; cannot be disabled in UI.',
       backfillDisabled: 'Disable Episode Embedding Backfill',
@@ -978,7 +990,8 @@ export default {
     },
     recall: {
       title: 'Recall Debugger',
-      subtitle: 'Enter a query to see L2/L3 rerank score breakdown (keyword / vector / importance / recency / cross-encoder).',
+      subtitle:
+        'Enter a query to see L2/L3 rerank score breakdown (keyword / vector / importance / recency / cross-encoder).',
       queryLabel: 'Query',
       l2Limit: 'L2 limit',
       l3Limit: 'L3 limit',
@@ -993,7 +1006,8 @@ export default {
       compositeFailed: 'Composite search failed',
     },
     knowledge: {
-      unavailableBanner: 'L3 facts are temporarily unavailable. Check the `memory/v1` gateway (`GET /v1/memory/l3/facts`) or filter conditions.',
+      unavailableBanner:
+        'L3 facts are temporarily unavailable. Check the `memory/v1` gateway (`GET /v1/memory/l3/facts`) or filter conditions.',
       searchPlaceholder: 'Search knowledge, preferences, or rules',
       scopeLabel: 'Scope',
       statusLabel: 'Status',
@@ -1098,7 +1112,8 @@ export default {
     },
     settingsStatus: {
       title: 'Memory Settings Implementation Status',
-      subtitle: 'Agent settings page already has basic memory fields; the full L0–L4 settings tab will be expanded per `docs/需求/memory.md` and `12`–`16` memory-L*-*.md.',
+      subtitle:
+        'Agent settings page already has basic memory fields; the full L0–L4 settings tab will be expanded per `docs/需求/memory.md` and `12`–`16` memory-L*-*.md.',
     },
     checklist: {
       basicSettings: 'Basic memory_* settings',
@@ -1112,7 +1127,8 @@ export default {
       workerModel: 'Consolidation Worker Model',
       workerModelCaption: 'Agent Settings → Memory Tab: `memory_worker_*` / `l0_compress_*`.',
       platformPolicy: 'Platform Policy Strict / Backfill',
-      platformPolicyCaption: 'Memory Center → Settings Tab: MEMORY_POLICY_STRICT / MEMORY_EPISODE_BACKFILL_DISABLED (DB + env).',
+      platformPolicyCaption:
+        'Memory Center → Settings Tab: MEMORY_POLICY_STRICT / MEMORY_EPISODE_BACKFILL_DISABLED (DB + env).',
       l4Graph: 'L4 Graph & Evolution Settings',
       l4GraphCaption: 'Entities / neighborhood / evolution API registered and read on this page.',
     },
@@ -2090,6 +2106,399 @@ export default {
     createFromTemplateSubtitle: 'Choose a built-in template to get started quickly',
     noTemplates: 'No templates available',
     noDescription: 'No description',
+
+    // List - sort & filter
+    sortUpdatedAt: 'Updated',
+    sortName: 'Name',
+    sortNodes: 'Node count',
+    engineFilterAll: 'All engines',
+    engineBSP: 'BSP (default)',
+    engineDAG: 'DAG (parallel)',
+
+    // List card
+    cardDAG: 'DAG',
+    cardBSP: 'BSP',
+
+    // Context menu
+    ctxEdit: 'Edit',
+    ctxRun: 'Run',
+    ctxDuplicate: 'Duplicate',
+    ctxDelete: 'Delete',
+
+    // Notify messages
+    loadFailed: 'Failed to load graph list',
+    duplicateSuccess: 'Graph duplicated',
+    duplicateFailed: 'Duplicate failed',
+    deleteTitle: 'Delete Graph',
+    deleteConfirm: 'Delete "{name}"? This cannot be undone.',
+    deleteSuccess: 'Graph deleted',
+    deleteFailed: 'Delete failed',
+    reorderFailed: 'Failed to save order',
+    loadTemplatesFailed: 'Failed to load templates',
+    createFromTemplateSuccess: 'Graph created from template',
+    createFromTemplateFailed: 'Failed to create from template',
+    quickCreateSuccess: 'Created graph from "{name}" template',
+    copySuffix: '{name} (copy)',
+
+    // Detail panel
+    detailEmptyHint: 'Click a card to view details',
+    detailEmptySubHint: 'Right-click a card for actions',
+    detailSectionBasic: 'Basic Info',
+    detailSectionStats: 'Node Stats',
+    detailSectionStateFields: 'State Fields',
+    detailLabelEngine: 'Engine',
+    detailLabelVersion: 'Version',
+    detailLabelEntry: 'Entry',
+    detailLabelFinish: 'Finish',
+    detailLabelCheckpoint: 'Checkpoint',
+    detailLabelCreatedAt: 'Created At',
+    detailLabelUpdatedAt: 'Updated At',
+    detailCheckpointEnabled: 'Enabled',
+    detailCheckpointDisabled: 'Disabled',
+    detailLabelNodes: 'Nodes',
+    detailLabelEdges: 'Edges',
+    detailLabelConditionalEdges: 'Conditional Edges',
+    detailActionEdit: 'Edit',
+    detailActionRun: 'Run',
+    detailActionDuplicate: 'Duplicate',
+    detailActionDelete: 'Delete',
+
+    // Node types
+    nodeTypeFunction: 'Function',
+    nodeTypeLLM: 'LLM',
+    nodeTypeTool: 'Tool',
+    nodeTypeAgent: 'Agent',
+    nodeTypeRouter: 'Router',
+    nodeTypeJoin: 'Join',
+    nodeTypeHITL: 'HITL',
+
+    // Node palette
+    paletteTitle: 'Components',
+    paletteSubtitle: 'Drag onto canvas to add a node',
+    paletteSearchPlaceholder: 'Search node type...',
+    paletteGroupAgent: 'Agents',
+    paletteGroupControl: 'Control Flow',
+    paletteDescAgent: 'Reference an agent from the catalog',
+    paletteDescLLM: 'Lightweight LLM call',
+    paletteDescTool: 'Invoke a tool directly',
+    paletteDescFunction: 'Pure logic / data transform',
+    paletteDescRouter: 'Conditional routing branch',
+    paletteDescJoin: 'Merge parallel branches',
+    paletteDescHITL: 'Human approval / review',
+
+    // Property panel
+    propertyTitle: 'Node Properties',
+    propertyGlobalSettings: 'Graph Settings',
+    propertyGroupBasic: 'Basic Info',
+    propertyGroupInterrupt: 'Interrupt & Approval',
+    propertyGroupCache: 'Cache',
+    propertyGroupGraph: 'Graph Properties',
+    propertyGroupStateSchema: 'State Schema',
+    propertyEmptyHint: 'Select a node to view properties, or edit Graph settings',
+    fieldNodeId: 'Node ID',
+    fieldNodeType: 'Node Type',
+    fieldNodeDesc: 'Description',
+    fieldInstruction: 'Instruction',
+    fieldFuncRef: 'Function Ref',
+    fieldModelName: 'Model Name',
+    fieldAgentName: 'Agent Name',
+    fieldInterruptBefore: 'Interrupt before (HITL)',
+    fieldInterruptAfter: 'Interrupt after (HITL)',
+    fieldRequiredRole: 'Required Role (requiredRole)',
+    fieldAssignmentMode: 'Assignment Mode (assignmentMode)',
+    fieldAssignmentStrategy: 'Assignment Strategy (assignmentStrategy)',
+    fieldReviewerAgent: 'Reviewer Agent (reviewerAgent)',
+    fieldReviewRules: 'Review Rules (reviewRules)',
+    fieldTimeoutSeconds: 'Timeout (seconds, timeoutSeconds)',
+    fieldHeartbeatInterval: 'Heartbeat Interval (heartbeatIntervalSeconds)',
+    fieldCacheEnabled: 'Enable Cache',
+    fieldCacheTtl: 'Cache TTL (seconds)',
+    fieldGraphName: 'Graph Name',
+    fieldDescription: 'Description',
+    fieldEntryNode: 'Entry Node',
+    fieldFinishNode: 'Finish Node',
+    fieldExecutionEngine: 'Execution Engine',
+    fieldEnableCheckpoint: 'Enable Checkpoint',
+    fieldCurrentVersion: 'Current version v{version}',
+    stateFieldColumnName: 'Field Name',
+    stateFieldColumnType: 'Type',
+    stateFieldColumnReducer: 'Reducer',
+    stateFieldAddButton: 'Add Field',
+    sectionApprovalAssign: 'Approval & Assignment',
+    sectionTimeoutHeartbeat: 'Timeout & Heartbeat',
+
+    // Assignment modes
+    assignmentModeAuto: 'Auto',
+    assignmentModeManual: 'Manual',
+    assignmentModeRoundRobin: 'Round Robin',
+    assignmentModeLeastBusy: 'Least Busy',
+
+    // State field types (programming types preserved)
+    stateTypeString: 'String',
+    stateTypeInteger: 'Integer',
+    stateTypeFloat: 'Float',
+    stateTypeBoolean: 'Boolean',
+    stateTypeArray: 'Array',
+    stateTypeObject: 'Object',
+
+    // Failure actions
+    failureActionDefault: 'Default (retry_then_block)',
+    failureActionSkipOnFailure: 'Skip downstream (skip_on_failure)',
+    failureActionSkip: 'Skip node (skip)',
+    failureActionFailFast: 'Fail fast (fail_fast)',
+    failureActionRetryThenBlock: 'Retry then block (retry_then_block)',
+
+    // Reducer options
+    reducerAppend: 'Append',
+    reducerCover: 'Cover',
+    reducerMerge: 'Merge',
+    reducerDefault: 'Default',
+
+    // Execution status
+    executionStatusIdle: 'Idle',
+    executionStatusRunning: 'Running',
+    executionStatusCompleted: 'Completed',
+    executionStatusFailed: 'Failed',
+    executionStatusInterrupted: 'Interrupted',
+    executionStatusWaiting: 'Waiting',
+
+    // Run dialog
+    runDialogTitle: 'Run Graph',
+    runDialogSubtitle: 'Start an execution for {name}',
+    runDialogSessionId: 'Session ID',
+    runDialogSessionIdHint: 'Associated session ID',
+    runDialogInitialState: 'Initial State (JSON)',
+    runDialogInitialStateHint: 'Optional, JSON-formatted initial state',
+    runDialogCancel: 'Cancel',
+    runDialogExecute: 'Run',
+
+    // HITL dialog
+    hitlDialogTitle: 'Human Approval',
+    hitlDialogSubtitle: 'Node {nodeId} is awaiting approval to continue',
+    hitlDialogLineageLabel: 'lineage',
+    hitlDialogCheckpointLabel: 'checkpoint',
+    hitlDialogAdvanced: 'Advanced: custom resume JSON',
+    hitlDialogResumeValue: 'Resume Value (JSON)',
+    hitlDialogResumeValueHint: 'Leave empty to use resume_map + lineage/checkpoint',
+    hitlDialogDismiss: 'Dismiss',
+    hitlDialogApprove: 'Approve & Continue',
+
+    // Time travel panel
+    timeTravelTitle: 'State Time Travel',
+    timeTravelStepIndex: 'Step Index',
+    timeTravelButton: 'Travel',
+    timeTravelSelectedCheckpoint: 'Selected checkpoint',
+    timeTravelSnapshotLabel: 'State snapshot / edit JSON',
+    timeTravelApplyEdit: 'Apply Edit',
+    timeTravelEmptyHint: 'Pick a checkpoint or step index to view state.',
+
+    // Task statuses
+    taskStatusPending: 'Pending',
+    taskStatusClaimed: 'In Progress',
+    taskStatusComplete: 'Completed',
+    taskStatusBlocked: 'Blocked',
+    taskStatusReviewRequired: 'Awaiting Review',
+    taskStatusFailed: 'Failed',
+    taskStatusTimedOut: 'Timed Out',
+    taskStatusCancelled: 'Cancelled',
+    taskStatusCrashed: 'Crashed',
+    taskStatusPendingAssignment: 'Pending Assignment',
+
+    // Task kanban
+    kanbanTitle: 'Task Board',
+    kanbanLive: 'Live',
+    kanbanEmptyTitle: 'No task cards yet while the graph is executing.',
+    kanbanEmptyDetail:
+      'Graphs with Agent nodes will create tasks automatically when nodes activate; Worker Agents can update status via kanban_* tools.',
+    kanbanColumnPending: 'Pending',
+    kanbanColumnActive: 'Active',
+    kanbanColumnReview: 'Review',
+    kanbanColumnDone: 'Done',
+    kanbanColumnIssue: 'Issues',
+    kanbanNoTasks: 'No tasks',
+
+    // Task detail drawer
+    taskDrawerTitle: 'Task Detail',
+    taskDrawerTabDetail: 'Detail',
+    taskDrawerTabComments: 'Comments',
+    taskDrawerTabEvents: 'Events',
+    taskDrawerTabLogs: 'Logs',
+    taskDrawerTabRuns: 'Runs',
+    taskAgentKeyLabel: 'Agent Key',
+    taskAgentKeyHint: 'Used when claiming the task',
+    taskInputLabel: 'Input',
+    taskOutputLabel: 'Output (submit)',
+    taskSummaryLabel: 'Summary (submit)',
+    taskClaimButton: 'Claim',
+    taskSubmitButton: 'Submit Result',
+    taskReportBlockedButton: 'Report Blocked',
+    taskUnblockButton: 'Unblock',
+    taskBlockedReasonLabel: 'Blocked reason (optional)',
+    taskUnblockCommentLabel: 'Unblock comment (optional)',
+    taskReviewSection: 'Review',
+    taskReviewerAgentLabel: 'Reviewer Agent',
+    taskReviewCommentLabel: 'Review Comment',
+    taskReviewApprove: 'Approve',
+    taskReviewReject: 'Reject',
+    taskCommentAuthorLabel: 'Author',
+    taskCommentContentLabel: 'Comment',
+    taskAddCommentButton: 'Add Comment',
+    taskNoEvents: 'No events recorded',
+    taskAssigneeLabel: 'Assignee: {name}',
+    taskWorkerFallback: 'worker',
+
+    // Node toolbar
+    nodeToolbarRunToHere: 'Run to here',
+    nodeToolbarFreeze: 'Freeze node (skip execution)',
+    nodeToolbarUnfreeze: 'Unfreeze node',
+    nodeToolbarDelete: 'Delete node',
+    nodeToolbarDuplicate: 'Duplicate node',
+    nodeToolbarSetEntry: 'Set as entry node',
+    nodeToolbarSetFinish: 'Set as finish node',
+    nodeToolbarDisconnect: 'Disconnect all edges',
+
+    // Node search
+    nodeSearchPlaceholder: 'Search nodes...',
+    nodeSearchNoMatch: 'No match',
+
+    // Run panel
+    runPanelTitle: 'Run Panel',
+    runPanelExecute: 'Run',
+    runPanelStop: 'Stop',
+    runPanelRunning: 'Running',
+    runPanelCompleted: 'Completed',
+    runPanelFailed: 'Failed',
+    runPanelTabState: 'State',
+    runPanelTabCheckpoints: 'Checkpoints',
+    runPanelTabHitl: 'Approval',
+    runPanelStateEmpty: 'State snapshot will appear after execution',
+    runPanelCheckpointsEmpty: 'Checkpoints will appear after execution',
+    runPanelHitlEmpty: 'No items awaiting approval',
+    runPanelHitlNode: 'Node: {nodeId}',
+    runPanelHitlApprove: 'Approve',
+
+    // Run sidebar
+    runSidebarTitle: 'Execution Detail',
+    runSidebarLive: 'Live',
+    runSidebarExecId: 'Execution ID',
+    runSidebarInterruptNode: 'Interrupt Node',
+    runSidebarStartedAt: 'Started At',
+    runSidebarFinishedAt: 'Finished At',
+    runSidebarSummary: 'Execution Summary',
+    runSidebarTotalSteps: 'Total Steps',
+    runSidebarDuration: 'Duration',
+    runSidebarStepsTimeline: 'Step Timeline',
+    runSidebarCollapseAll: 'Collapse All',
+    runSidebarExpandAll: 'Expand All',
+    runSidebarInputState: 'Input State',
+    runSidebarOutputState: 'Output State',
+    runSidebarNoSteps: 'No step records.',
+    runSidebarJsonTruncated: '… (truncated, {count} chars total)',
+
+    // Run inspector
+    runInspectorTabOverview: 'Overview',
+    runInspectorTabCheckpoints: 'Checkpoints',
+    runInspectorTabTasks: 'Tasks',
+
+    // Checkpoint panel
+    checkpointPanelTitle: 'Checkpoints',
+    checkpointPanelRefresh: 'Refresh',
+    checkpointPanelEmpty: 'No checkpoint records.',
+    checkpointPanelPreview: 'State Preview',
+    checkpointPanelNextNodes: 'Next nodes:',
+    checkpointPanelRestoreButton: 'Restore to this checkpoint',
+    checkpointPanelConfirmTitle: 'Confirm Restore',
+    checkpointPanelConfirmMessage:
+      'Restoring to checkpoint {id} (step {step}) will replace the current execution state. Continue?',
+
+    // Validation panel
+    validationWarnings: 'Validation Warnings',
+    validationErrors: 'Validation Errors',
+    validationWarn: 'WARN',
+    validationErr: 'ERR',
+
+    // Version panel
+    versionPanelTitle: 'Version History',
+    versionPanelEmpty: 'No history yet (saving creates a snapshot automatically)',
+    versionPanelUnnamed: 'Unnamed',
+    versionPanelRollback: 'Rollback',
+    versionPanelConfirmTitle: 'Rollback Version',
+    versionPanelConfirmMessage: 'Rollback to v{version}? Current version will be overwritten.',
+
+    // Template picker
+    templatePickerTitle: 'Create from Template',
+    templatePickerButton: 'Choose Template',
+    templatePickerDialogTitle: 'Graph Templates',
+    templatePickerDialogSubtitle: 'Choose a built-in pattern to start quickly',
+    templatePickerEmpty: 'No templates available.',
+    templatePickerClose: 'Close',
+    templatePickerNodesCount: '{count} nodes',
+
+    // Edge kind labels
+    edgeKindTransfer: 'Transfer',
+    edgeKindDispatch: 'Dispatch',
+
+    // Flow node
+    flowBranchYes: 'Yes',
+    flowBranchNo: 'No',
+
+    // Edge type options (router pathMap)
+    pathMapYesLabel: 'Yes',
+    pathMapNoLabel: 'No',
+
+    // Property panel - extended field labels
+    fieldFuncRefFull: 'Function Ref (funcRef)',
+    groupConditionalRoute: 'Conditional Route',
+    routeNumberLabel: 'Route #{n}',
+    fieldCondFuncRef: 'Condition Function (condFuncRef)',
+    fieldPathMapLabel: 'Label',
+    fieldPathMapTarget: 'Target Node',
+    buttonAddRouteBranch: 'Add Route Branch',
+    emptyConditionalRoute: 'No conditional routes yet. Click below to add.',
+    buttonAddConditionalRoute: 'Add Conditional Route',
+    groupModelAgent: 'Model & Agent',
+    fieldToolNames: 'Tools',
+    fieldRetryMaxAttempts: 'Retry count (max_attempts)',
+    fieldFailureAction: 'Failure action (failure_action)',
+    fieldFallbackAgent: 'Fallback Agent',
+    groupAdvanced: 'Advanced',
+    sectionRetryPolicy: 'RetryPolicy',
+    sectionDestinations: 'Destinations',
+    fieldGotoTargets: 'GoTo target nodes',
+    sectionMapper: 'Mapper',
+    fieldInputMapperJson: 'Input Mapper JSON',
+    fieldOutputMapperJson: 'Output Mapper JSON',
+    fieldIsolatedMessages: 'Isolate sub-Agent messages',
+    fieldInputFromLastResponse: 'Inject input from last_response',
+    fieldEnableNodeCache: 'Enable node cache',
+    fieldHeartbeatIntervalFull: 'Heartbeat Interval (seconds)',
+    fieldEnableLeaseExtension: 'Enable lease extension (enableLeaseExtension)',
+    hintInputMapperExample: 'e.g., {"messages":"messages"}',
+
+    // Canvas toolbar and menus
+    canvasZoomIn: 'Zoom In',
+    canvasZoomOut: 'Zoom Out',
+    canvasCtxViewProps: 'View Properties',
+    canvasCtxDuplicate: 'Duplicate Node',
+    canvasCtxDelete: 'Delete Node',
+    canvasCtxDisconnect: 'Disconnect All Edges',
+    canvasCtxSetEntry: 'Set as Entry Node',
+    canvasCtxSetFinish: 'Set as Finish Node',
+    canvasPaneAutoLayout: 'Auto Layout',
+    canvasPaneSelectAll: 'Select All Nodes',
+    canvasPaneDeleteSelected: 'Delete {count} Selected Nodes',
+    canvasEdgeMenuDelete: 'Delete Edge',
+    canvasDeleteNodeTitle: 'Delete Node',
+    canvasDeleteNodeConfirm: 'Delete node "{name}"{edgeHint}?',
+    canvasDeleteNodeEdgeHint: ', also removing {count} edge(s)',
+    canvasBatchDeleteTitle: 'Batch Delete Nodes',
+    canvasBatchDeleteConfirm: 'Delete {count} selected nodes?',
+    canvasDuplicateNodeSuffix: ' (copy)',
+
+    // Flow node IO preview
+    flowNodeIoReceive: 'In: {value}',
+    flowNodeIoDeliver: 'Out: {value}',
+    flowNodeIoDoing: 'Doing: {value}',
   },
 
   cron: {

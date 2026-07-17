@@ -83,7 +83,8 @@
                   <q-badge rounded :color="stepStatusColor(step.status)">{{ teamRunStatusLabel(step.status) }}</q-badge>
                 </div>
                 <div class="text-caption text-grey-7">
-                  {{ teamRoleLabel(step.role || 'worker') }} · {{ step.duration_ms }}ms · 输入 {{ step.token_in }} / 输出
+                  {{ teamRoleLabel(step.role || 'worker') }} · {{ step.duration_ms }}ms · 输入 {{ step.token_in }} /
+                  输出
                   {{ step.token_out }}
                   <span v-if="step.tool_call_count"> · 工具 {{ step.tool_call_count }}</span>
                   · {{ formatCost(step.cost_micro_usd) }}

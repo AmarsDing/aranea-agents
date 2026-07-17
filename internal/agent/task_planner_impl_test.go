@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -328,6 +329,76 @@ func TestDetectTeamCount(t *testing.T) {
 				t.Errorf("detectTeamCount(%q) = %d, want %d", tt.message, got, tt.want)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P-ORCH: orchestration progress events
+// ---------------------------------------------------------------------------
+
+// plannerCaptureBus captures published v2 Events for assertions.
+type plannerCaptureBus struct {
+	mu        sync.Mutex
+	published []biz.Event
+}
+
+func (b *plannerCaptureBus) Publish(_ context.Context, ev biz.Event) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.published = append(b.published, ev)
+}
+
+func (b *plannerCaptureBus) Subscribe(_ biz.EventSubscribeOptions) (<-chan biz.Event, func()) {
+	return nil, func() {}
+}
+
+func (b *plannerCaptureBus) getPublished() []biz.Event {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]biz.Event, len(b.published))
+	copy(out, b.published)
+	return out
+}
+
+// TestTaskPlanner_PublishOrchestrationProgress verifies the progress event
+// helper publishes a well-formed orchestration_progress SystemNoticeEvent and
+// is nil-safe for both nil bus and empty session.
+func TestTaskPlanner_PublishOrchestrationProgress(t *testing.T) {
+	// nil bus → no panic.
+	nilBusPlanner := &taskPlannerImpl{lg: loggateway.NewNoop()}
+	nilBusPlanner.publishOrchestrationProgress(context.Background(), "sess-1", "decomposing", nil)
+
+	// empty session → skipped.
+	bus := &plannerCaptureBus{}
+	p := &taskPlannerImpl{eventBus: bus, lg: loggateway.NewNoop()}
+	p.publishOrchestrationProgress(context.Background(), "", "decomposing", nil)
+	if len(bus.getPublished()) != 0 {
+		t.Fatal("empty session must skip publish")
+	}
+
+	// normal publish.
+	p.publishOrchestrationProgress(context.Background(), "sess-orch", "decomposed", map[string]any{
+		"sub_task_count": 4,
+	})
+	published := bus.getPublished()
+	if len(published) != 1 {
+		t.Fatalf("published=%d want 1", len(published))
+	}
+	notice, ok := published[0].(*biz.SystemNoticeEvent)
+	if !ok {
+		t.Fatalf("expected *biz.SystemNoticeEvent, got %T", published[0])
+	}
+	if notice.NoticeType != "orchestration_progress" {
+		t.Errorf("NoticeType=%q want %q", notice.NoticeType, "orchestration_progress")
+	}
+	if notice.Meta["phase"] != "decomposed" {
+		t.Errorf("phase=%v want %q", notice.Meta["phase"], "decomposed")
+	}
+	if notice.Meta["sub_task_count"] != 4 {
+		t.Errorf("sub_task_count=%v want 4", notice.Meta["sub_task_count"])
+	}
+	if notice.SpiritSessionID() != "sess-orch" {
+		t.Errorf("sessionID=%q want %q", notice.SpiritSessionID(), "sess-orch")
 	}
 }
 

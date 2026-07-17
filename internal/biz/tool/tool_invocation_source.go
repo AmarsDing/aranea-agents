@@ -4,4 +4,5 @@ package tool
 const (
 	ToolInvocationSourceRuntime  = "trpc"      // trpc-agent-go AfterTool hook
 	ToolInvocationSourceEventBus = "event_bus" // EventBus tool_result consumer
+	ToolInvocationSourceMCP      = "mcp"       // trpc-agent-go AfterTool hook for MCP tools
 )

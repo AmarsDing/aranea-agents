@@ -94,7 +94,8 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 	// Match each subtask
 	isDAG := taskPlan.Strategy == biz.StrategyDAG
 	var allocations []biz.TaskAllocation
-	for _, subTask := range taskPlan.SubTasks {
+	totalSubTasks := len(taskPlan.SubTasks)
+	for i, subTask := range taskPlan.SubTasks {
 		allocation, err := impl.matchSubTask(ctx, subTask, capabilities, traceID)
 		if err != nil {
 			impl.lg.Warn("子任务匹配失败，尝试 AgentFactory",
@@ -104,8 +105,9 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 				loggateway.Err(err),
 			)
 			// P1-4: 4-layer matching failed → try AgentFactory before fallback.
-			if factoryAlloc, ok := impl.tryAgentFactoryForSubTask(ctx, subTask, traceID); ok {
+			if factoryAlloc, ok := impl.tryAgentFactoryForSubTask(ctx, subTask, taskPlan.SpiritSessionID, traceID); ok {
 				allocations = append(allocations, factoryAlloc)
+				impl.publishAllocatingProgress(ctx, taskPlan.SpiritSessionID, i+1, totalSubTasks, subTask.Name)
 				continue
 			}
 			// AgentFactory unavailable/failed → fallback to first available agent
@@ -129,6 +131,8 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 			}
 		}
 		allocations = append(allocations, allocation)
+		// P-ORCH: per-subtask progress (frontend renders replace-style).
+		impl.publishAllocatingProgress(ctx, taskPlan.SpiritSessionID, i+1, totalSubTasks, subTask.Name)
 	}
 
 	// If no subtasks (simple/moderate), allocate the whole plan to a single agent
@@ -152,6 +156,11 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 		loggateway.Str("trace_id", traceID),
 		loggateway.Int("allocation_count", len(allocations)),
 	)
+
+	// P-ORCH: allocation finished progress event.
+	impl.publishOrchestrationProgress(ctx, taskPlan.SpiritSessionID, "allocated", map[string]any{
+		"total": len(allocations),
+	})
 
 	// Build and persist AllocationPlan
 	plan := &biz.AllocationPlan{
@@ -929,7 +938,7 @@ func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPla
 // when 4-layer matching fails for a subtask (P1-4). Returns the allocation
 // and true on success; returns zero value and false when AgentFactory is
 // unavailable or creation fails (caller should fall back).
-func (impl *agentAllocatorImpl) tryAgentFactoryForSubTask(ctx context.Context, subTask biz.SubTask, traceID string) (biz.TaskAllocation, bool) {
+func (impl *agentAllocatorImpl) tryAgentFactoryForSubTask(ctx context.Context, subTask biz.SubTask, spiritSessionID, traceID string) (biz.TaskAllocation, bool) {
 	if impl.agentFactory == nil {
 		return biz.TaskAllocation{}, false
 	}
@@ -941,6 +950,7 @@ func (impl *agentAllocatorImpl) tryAgentFactoryForSubTask(ctx context.Context, s
 		RequiredCapabilities: subTask.RequiredCapabilities,
 		Domain:               "engineering",
 		TaskDescription:      desc,
+		SpiritSessionID:      spiritSessionID,
 	}
 	agentKey, err := impl.agentFactory.EnsureAgent(ctx, profile)
 	if err != nil {
@@ -980,6 +990,7 @@ func (impl *agentAllocatorImpl) tryAgentFactoryForPlan(ctx context.Context, task
 		RequiredCapabilities: extractCapabilityHints(taskPlan.UserMessage),
 		Domain:               "engineering",
 		TaskDescription:      taskPlan.UserMessage,
+		SpiritSessionID:      taskPlan.SpiritSessionID,
 	}
 	agentKey, err := impl.agentFactory.EnsureAgent(ctx, profile)
 	if err != nil {
@@ -1179,4 +1190,29 @@ func (impl *agentAllocatorImpl) publishAllocationCreated(ctx context.Context, pl
 		"agent_key":          "agent-allocator",
 	}
 	impl.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "allocation_created", "", meta))
+}
+
+// publishAllocatingProgress emits a per-subtask allocating progress event
+// (P-ORCH). index is 1-based; total is the number of subtasks.
+func (impl *agentAllocatorImpl) publishAllocatingProgress(ctx context.Context, spiritSessionID string, index, total int, subTaskName string) {
+	impl.publishOrchestrationProgress(ctx, spiritSessionID, "allocating", map[string]any{
+		"index":    index,
+		"total":    total,
+		"sub_task": subTaskName,
+	})
+}
+
+// publishOrchestrationProgress emits an orchestration_progress
+// SystemNoticeEvent (WS-only, not persisted) so the frontend can render
+// fine-grained loading feedback during allocation. Nil bus or empty session
+// → skipped.
+func (impl *agentAllocatorImpl) publishOrchestrationProgress(ctx context.Context, spiritSessionID, phase string, extra map[string]any) {
+	if impl.bus == nil || spiritSessionID == "" {
+		return
+	}
+	meta := map[string]any{"phase": phase}
+	for k, v := range extra {
+		meta[k] = v
+	}
+	impl.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_progress", "orchestration progress: "+phase, meta))
 }

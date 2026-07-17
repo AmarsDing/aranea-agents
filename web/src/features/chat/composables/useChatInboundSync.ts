@@ -282,6 +282,17 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       deps.onSpiritActivityEvent?.(ev);
     }
 
+    // P-ORCH.2: Route orchestration_progress notices to the contextual loading
+    // message composable. These events arrive as kind=notice (set by
+    // v2NoticeToAFEvent in useChatWorkspace for non-orchestration NoticeTypes),
+    // so isSpiritActivityEvent above does not match them. Without this branch
+    // the fine-grained progress (decomposing/allocating/creating_agent/etc.)
+    // emitted by TaskPlanner/AgentAllocator/AgentFactory would never reach the
+    // loading message bar.
+    if (ev.activity.kind === 'notice' && ev.activity.stage === 'orchestration_progress') {
+      deps.onSpiritActivityEvent?.(ev);
+    }
+
     // P1: Register default handlers for previously-unhandled event types
     if (ev.activity.stage === 'mcp.session.reconnect' || ev.activity.stage === 'mcp.health.alert') {
       console.info(`[activity] ${ev.activity.stage} received`, { sessionId, agentKey: ev.activity.agent_key });

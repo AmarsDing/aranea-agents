@@ -31,4 +31,7 @@ type TaskProfile struct {
 	// PreferredModel is an optional provider/model hint (e.g. "gpt-4.1-mini").
 	// Empty falls back to the default catalog model.
 	PreferredModel string
+	// SpiritSessionID routes orchestration progress events to the owning
+	// Spirit session (P-ORCH). Empty disables progress event publishing.
+	SpiritSessionID string
 }

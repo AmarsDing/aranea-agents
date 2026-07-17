@@ -43,6 +43,34 @@ func TestClassifyToolInvocationMCPResultMeta(t *testing.T) {
 	}
 }
 
+// TestClassifyToolInvocationMCPResultNilMeta pins the fix that relaxed the
+// metaGetter nil check. Playwright MCP tools (playwright_browser_*) return no
+// Meta, so the previous `mg.GetMeta() != nil` guard made them fall through to
+// the non-MCP path — leaving mcpCount=0 and source="trpc" in tool_invocations.
+// The result type assertion alone is a reliable MCP marker because only
+// *mcp.Tool.mcpToolResult implements GetMeta() in trpc-agent-go.
+func TestClassifyToolInvocationMCPResultNilMeta(t *testing.T) {
+	t.Parallel()
+	// Direct classifier check: nil-meta MCP result is MCP.
+	if !classify.IsMCPToolInvocation("playwright_browser_navigate", classifyTestMCPResult{meta: nil}) {
+		t.Fatal("expected MCP via nil-meta result type marker")
+	}
+	// Agent-layer wrapper must agree so that recordToolInvocationWrite sets
+	// write.Source = biz.ToolInvocationSourceMCP and bumps mcpDelta.
+	mcp, skill := classifyToolInvocation(
+		context.Background(),
+		"playwright_browser_navigate",
+		classifyTestMCPResult{meta: nil},
+		TRPCBuilderDeps{},
+	)
+	if !mcp {
+		t.Fatal("classifyToolInvocation: nil-meta MCP result should classify as MCP")
+	}
+	if skill {
+		t.Fatal("classifyToolInvocation: nil-meta MCP result should not classify as skill")
+	}
+}
+
 type classifyTestMCPResult struct{ meta map[string]any }
 
 func (c classifyTestMCPResult) GetMeta() map[string]any { return c.meta }

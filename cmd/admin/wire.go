@@ -1903,9 +1903,9 @@ func provideA2AService(
 	return service.NewA2AService(uc, chat, agents, reg, store, limiter, lg)
 }
 
-func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, activityBus biz.ActivityEventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer) biz.TaskPlannerPort {
+func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, activityBus biz.ActivityEventBus, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
-	return chatagent.NewTaskPlanner(repo, catalog, httpClient, activityBus, orchCache, lg, sysUC, seq)
+	return chatagent.NewTaskPlanner(repo, catalog, httpClient, activityBus, eventBus, orchCache, lg, sysUC, seq)
 }
 
 func provideAgentAllocator(

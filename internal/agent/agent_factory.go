@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/internal/metrics"
+	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -103,8 +104,23 @@ func (f *AgentFactoryImpl) EnsureAgent(ctx context.Context, profile biz.TaskProf
 		return "", apierror.Internal(apierror.DomainAgent, "AgentFactory LLM not configured")
 	}
 
+	// P-ORCH: publish creating_agent progress before the LLM call so the user
+	// sees fine-grained feedback during the generation window. The display
+	// name is not yet known, so the task description stands in as the label.
+	f.publishOrchestrationProgress(ctx, profile, "creating_agent", map[string]any{
+		"agent_name": truncateText(profile.TaskDescription, 30),
+	})
+
 	def, err := f.generateAgentDefinition(ctx, profile)
 	if err != nil {
+		return "", err
+	}
+
+	// P-ORCH: user confirmation gate — reuses the tool_confirmation context
+	// pattern (ReplyFunc + ActivityEmitter from ctx). A nil ReplyFunc means
+	// the caller cannot confirm (CLI/tests/non-chat contexts) → legacy
+	// direct creation is preserved.
+	if err := f.confirmAgentCreation(ctx, profile, def); err != nil {
 		return "", err
 	}
 
@@ -130,6 +146,10 @@ func (f *AgentFactoryImpl) EnsureAgent(ctx context.Context, profile biz.TaskProf
 	}
 
 	f.publishAgentCreated(ctx, created, profile.TaskDescription)
+	f.publishOrchestrationProgress(ctx, profile, "agent_created", map[string]any{
+		"agent_name": created.DisplayName,
+		"agent_key":  created.AgentKey,
+	})
 	metrics.AgentFactoryCreated.Inc()
 
 	f.lg.Info("AgentFactory 创建新 Agent",
@@ -270,6 +290,90 @@ func (f *AgentFactoryImpl) publishAgentCreated(ctx context.Context, agent biz.Ag
 		"trigger":      trigger,
 	}
 	f.eventBus.Publish(ctx, biz.NewSystemNoticeEvent("", "agent_created", "Agent dynamically created by AgentFactory", meta))
+}
+
+// confirmAgentCreation asks the user to approve the LLM-generated agent
+// proposal before persistence (P-ORCH). It reuses the tool_confirmation
+// context pattern: serviceawaitreply.ReplyFunc blocks until the user responds
+// via the ConfirmActivity RPC, and biz.ActivityEmitter renders the confirm
+// card in the activity timeline. A nil ReplyFunc (CLI/tests/non-chat ctx)
+// skips the gate and preserves the legacy direct-creation behavior.
+func (f *AgentFactoryImpl) confirmAgentCreation(ctx context.Context, profile biz.TaskProfile, def GeneratedAgentDefinition) error {
+	fn := serviceawaitreply.ReplyFuncFromContext(ctx)
+	if fn == nil {
+		return nil
+	}
+
+	proposal := map[string]any{
+		"display_name": def.DisplayName,
+		"description":  def.Description,
+		"provider":     def.Provider,
+		"model":        def.Model,
+		"capabilities": profile.RequiredCapabilities,
+		"domain":       profile.Domain,
+		"task":         profile.TaskDescription,
+	}
+	proposalJSON, err := json.Marshal(proposal)
+	if err != nil {
+		return apierror.Internal(apierror.DomainAgent, "marshal agent proposal").WithCause(err)
+	}
+
+	emitter := biz.ActivityEmitterFromContext(ctx)
+	var confirmActivityID string
+	if emitter != nil {
+		content := fmt.Sprintf("未匹配到合适的 Agent，需要创建新 Agent「%s」（%s / %s）", def.DisplayName, def.Provider, def.Model)
+		id, emitErr := emitter.EmitConfirmRequest(ctx, biz.ActivityConfirmParams{
+			ToolName:      "agent_factory",
+			ToolArguments: string(proposalJSON),
+			Content:       content,
+		})
+		if emitErr != nil {
+			f.lg.Warn("AgentFactory EmitConfirmRequest failed",
+				loggateway.StepID("agent_factory.confirm"),
+				loggateway.Err(emitErr))
+		} else {
+			confirmActivityID = id
+		}
+	}
+
+	confirmCtx, cancel := context.WithTimeout(ctx, defaultToolConfirmationTimeout)
+	defer cancel()
+	reply, err := fn(confirmCtx)
+	approved := err == nil && toolConfirmApproved(reply)
+
+	if emitter != nil && confirmActivityID != "" {
+		if emitErr := emitter.EmitConfirmResult(ctx, confirmActivityID, approved); emitErr != nil {
+			f.lg.Warn("AgentFactory EmitConfirmResult failed",
+				loggateway.StepID("agent_factory.confirm"),
+				loggateway.Err(emitErr))
+		}
+	}
+
+	if err != nil {
+		return apierror.Internal(apierror.DomainAgent, "await agent creation confirmation").WithCause(err)
+	}
+	if !approved {
+		f.lg.Info("AgentFactory 用户拒绝创建 Agent",
+			loggateway.StepID("agent_factory.confirm"),
+			loggateway.Str("display_name", def.DisplayName),
+		)
+		return apierror.Forbidden(apierror.DomainAgent, "agent creation rejected by user")
+	}
+	return nil
+}
+
+// publishOrchestrationProgress emits an orchestration_progress SystemNoticeEvent
+// (WS-only, not persisted) so the frontend can render fine-grained loading
+// feedback during agent creation. Nil bus or empty session → skipped.
+func (f *AgentFactoryImpl) publishOrchestrationProgress(ctx context.Context, profile biz.TaskProfile, phase string, extra map[string]any) {
+	if f.eventBus == nil || profile.SpiritSessionID == "" {
+		return
+	}
+	meta := map[string]any{"phase": phase}
+	for k, v := range extra {
+		meta[k] = v
+	}
+	f.eventBus.Publish(ctx, biz.NewSystemNoticeEvent(profile.SpiritSessionID, "orchestration_progress", "orchestration progress: "+phase, meta))
 }
 
 // buildAgentFactoryPrompt builds the user prompt for LLM generation.

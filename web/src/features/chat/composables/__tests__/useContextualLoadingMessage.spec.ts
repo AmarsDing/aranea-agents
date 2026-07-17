@@ -459,4 +459,242 @@ describe('useContextualLoadingMessage', () => {
       expect(loadingMessage.value).toBeNull();
     });
   });
+
+  // P-ORCH.2: orchestration_progress fine-grained phases.
+  // Backend (TaskPlanner/AgentAllocator/AgentFactory) publishes SystemNoticeEvent
+  // with NoticeType="orchestration_progress" and meta.phase ∈ {decomposing, decomposed,
+  // allocating, allocated, creating_agent, agent_created}. Frontend converts these
+  // to ActivityEvent with kind=notice, stage=orchestration_progress, and the meta
+  // payload preserved (phase, index, total, sub_task, agent_name, agent_key,
+  // sub_task_count).
+  describe('orchestration_progress phases (P-ORCH.2)', () => {
+    it('decomposing phase renders "正在分解任务…"', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'decomposing' },
+        }),
+      );
+
+      expect(loadingMessage.value).not.toBeNull();
+      expect(loadingMessage.value!.text).toBe('正在分解任务…');
+      expect(loadingMessage.value!.icon).toBe('split');
+      expect(loadingMessage.value!.color).toBe('blue');
+    });
+
+    it('decomposed phase renders sub_task_count placeholder', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'decomposed', sub_task_count: 4 },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toBe('任务分解完成，共 4 个子任务');
+    });
+
+    it('decomposed phase with missing sub_task_count shows 0', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'decomposed' },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toBe('任务分解完成，共 0 个子任务');
+    });
+
+    it('allocating phase renders index/total/sub_task placeholders', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'allocating', index: 2, total: 3, sub_task: '数据分析' },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toBe('正在匹配 Agent…（2/3）数据分析');
+      expect(loadingMessage.value!.icon).toBe('people');
+      expect(loadingMessage.value!.color).toBe('purple');
+    });
+
+    it('allocating phase with missing index/total shows bare template', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'allocating' },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toBe('正在匹配 Agent…（0/0）');
+    });
+
+    it('allocated phase renders total placeholder', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'allocated', total: 3 },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toBe('Agent 分配完成（共 3 个）');
+      expect(loadingMessage.value!.icon).toBe('check_circle');
+    });
+
+    it('creating_agent phase renders agent_name placeholder', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'creating_agent', agent_name: '写手' },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toBe('正在创建新 Agent "写手"…');
+      expect(loadingMessage.value!.icon).toBe('add_circle');
+      expect(loadingMessage.value!.color).toBe('orange');
+    });
+
+    it('creating_agent phase with missing agent_name shows empty quotes', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'creating_agent' },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toBe('正在创建新 Agent ""…');
+    });
+
+    it('agent_created phase renders agent_name placeholder', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'agent_created', agent_name: '写手', agent_key: 'agent_x' },
+        }),
+      );
+
+      expect(loadingMessage.value!.text).toBe('Agent "写手" 创建完成');
+      expect(loadingMessage.value!.icon).toBe('check_circle');
+      expect(loadingMessage.value!.color).toBe('green');
+    });
+
+    it('unknown phase does not change loadingMessage', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'unknown_phase' },
+        }),
+      );
+
+      expect(loadingMessage.value).toBeNull();
+    });
+
+    it('missing meta.phase does not change loadingMessage', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: {},
+        }),
+      );
+
+      expect(loadingMessage.value).toBeNull();
+    });
+
+    it('replay suppression applies to orchestration_progress', () => {
+      const isReplaying = ref(true);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'decomposing' },
+        }),
+      );
+
+      expect(loadingMessage.value).toBeNull();
+    });
+  });
+
+  describe('orchestration completion clears loadingMessage', () => {
+    it('butler.orchestration.completed clears loadingMessage set by orchestration_progress', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'creating_agent', agent_name: 'X' },
+        }),
+      );
+      expect(loadingMessage.value).not.toBeNull();
+
+      onSpiritActivityEvent(
+        makeActivityEvent({ kind: 'session', stage: 'orchestration_completed', event: 'completed' }),
+      );
+      expect(loadingMessage.value).toBeNull();
+    });
+
+    it('butler.orchestration.failed clears loadingMessage set by orchestration_progress', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({
+          kind: 'notice',
+          stage: 'orchestration_progress',
+          meta: { phase: 'creating_agent', agent_name: 'X' },
+        }),
+      );
+
+      onSpiritActivityEvent(
+        makeActivityEvent({ kind: 'session', stage: 'orchestration_failed', event: 'failed' }),
+      );
+      expect(loadingMessage.value).toBeNull();
+    });
+  });
 });

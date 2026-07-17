@@ -57,6 +57,7 @@ var (
 const (
 	ToolInvocationSourceEventBus = tool.ToolInvocationSourceEventBus
 	ToolInvocationSourceRuntime  = tool.ToolInvocationSourceRuntime
+	ToolInvocationSourceMCP      = tool.ToolInvocationSourceMCP
 	ToolAuditRetentionDays       = tool.ToolAuditRetentionDays
 )
 

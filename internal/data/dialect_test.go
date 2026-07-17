@@ -49,6 +49,125 @@ func TestDialect_JSONExtract(t *testing.T) {
 	}
 }
 
+// TestDialect_JSONSet verifies the Postgres branch emits the ::text cast on the
+// new-value placeholder. Without this cast, to_jsonb(anyelement) fails with
+// SQLSTATE 42804 ("could not determine polymorphic type because input type is
+// unknown") when the placeholder type is unknown. See internal/data/dialect.go
+// JSONSet doc comment for the full rationale.
+func TestDialect_JSONSet(t *testing.T) {
+	tests := []struct {
+		dialect  Dialect
+		col      string
+		key      string
+		newValue string
+		want     string
+	}{
+		{
+			DialectSQLite, "state_json", "run_id", "?",
+			"json_set(state_json, '$.run_id', ?)",
+		},
+		{
+			DialectPostgres, "state_json", "run_id", "?",
+			"jsonb_set(state_json, '{run_id}', to_jsonb(?::text))",
+		},
+	}
+	for _, tt := range tests {
+		got := tt.dialect.JSONSet(tt.col, tt.key, tt.newValue)
+		if got != tt.want {
+			t.Errorf("%s.JSONSet(%q, %q, %q) = %q, want %q", tt.dialect, tt.col, tt.key, tt.newValue, got, tt.want)
+		}
+	}
+}
+
+// TestDialect_JSONSetMulti verifies that:
+//   - empty pairs returns the column unchanged (no wrapping);
+//   - Postgres nests jsonb_set calls with ::text cast on each value placeholder;
+//   - SQLite builds a single json_set with '$.key' literals and value placeholders.
+func TestDialect_JSONSetMulti(t *testing.T) {
+	// empty pairs → column unchanged for both dialects
+	if got := DialectSQLite.JSONSetMulti("state_json"); got != "state_json" {
+		t.Errorf("SQLite JSONSetMulti(empty) = %q, want %q", got, "state_json")
+	}
+	if got := DialectPostgres.JSONSetMulti("state_json"); got != "state_json" {
+		t.Errorf("Postgres JSONSetMulti(empty) = %q, want %q", got, "state_json")
+	}
+
+	tests := []struct {
+		dialect Dialect
+		col     string
+		pairs   [][2]string
+		want    string
+	}{
+		{
+			DialectSQLite, "state_json",
+			[][2]string{{"run_id", "?"}},
+			"json_set(state_json, '$.run_id', ?)",
+		},
+		{
+			DialectPostgres, "state_json",
+			[][2]string{{"run_id", "?"}},
+			"jsonb_set(state_json, '{run_id}', to_jsonb(?::text))",
+		},
+		{
+			DialectSQLite, "state_json",
+			[][2]string{{"run_id", "?"}, {"status", "?"}},
+			"json_set(state_json, '$.run_id', ?, '$.status', ?)",
+		},
+		{
+			DialectPostgres, "state_json",
+			[][2]string{{"run_id", "?"}, {"status", "?"}},
+			"jsonb_set(jsonb_set(state_json, '{run_id}', to_jsonb(?::text)), '{status}', to_jsonb(?::text))",
+		},
+	}
+	for _, tt := range tests {
+		got := tt.dialect.JSONSetMulti(tt.col, tt.pairs...)
+		if got != tt.want {
+			t.Errorf("%s.JSONSetMulti(%q, %v) = %q, want %q", tt.dialect, tt.col, tt.pairs, got, tt.want)
+		}
+	}
+}
+
+// TestDialect_JSONRemove verifies the dialect-aware key-removal expression and
+// its placeholder arg. Postgres uses the jsonb `-` operator with a ::text cast
+// (same polymorphic-type reason as JSONSet); SQLite uses json_remove with a
+// '$.key' path arg. The (sqlExpr, arg) shape lets callers thread the arg into
+// their own args slice while embedding the expr into a larger UPDATE.
+func TestDialect_JSONRemove(t *testing.T) {
+	tests := []struct {
+		dialect  Dialect
+		expr     string
+		key      string
+		wantExpr string
+		wantArg  string
+	}{
+		{
+			DialectSQLite, "state_json", "run_id",
+			"json_remove(state_json, ?)", "$.run_id",
+		},
+		{
+			DialectSQLite, "json_set(state_json, '$.k', ?)", "run_id",
+			"json_remove(json_set(state_json, '$.k', ?), ?)", "$.run_id",
+		},
+		{
+			DialectPostgres, "state_json", "run_id",
+			"state_json - ?::text", "run_id",
+		},
+		{
+			DialectPostgres, "jsonb_set(state_json, '{k}', to_jsonb(?::text))", "run_id",
+			"jsonb_set(state_json, '{k}', to_jsonb(?::text)) - ?::text", "run_id",
+		},
+	}
+	for _, tt := range tests {
+		gotExpr, gotArg := tt.dialect.JSONRemove(tt.expr, tt.key)
+		if gotExpr != tt.wantExpr {
+			t.Errorf("%s.JSONRemove(%q, %q) expr = %q, want %q", tt.dialect, tt.expr, tt.key, gotExpr, tt.wantExpr)
+		}
+		if gotArg != tt.wantArg {
+			t.Errorf("%s.JSONRemove(%q, %q) arg = %q, want %q", tt.dialect, tt.expr, tt.key, gotArg, tt.wantArg)
+		}
+	}
+}
+
 func TestDialect_JSONExtractPath(t *testing.T) {
 	tests := []struct {
 		dialect Dialect

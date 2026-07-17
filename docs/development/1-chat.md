@@ -361,7 +361,7 @@ interface Activity {
 
 - 编排三阶段（plan/allocate/orchestrate）关键节点发布 `SystemNoticeEvent`（`orchestration_progress`），meta 携带 `phase`（decomposing/decomposed/allocating/allocated/creating_agent/agent_created）及上下文（index/total/agent_name）。
 - 前端 `useContextualLoadingMessage` 消费进度事件，替换式更新 loading 文案；编排完成/失败时清除。
-- 4 层匹配（performance → exact → semantic → LLM cold start）全部失败时，`AgentFactory` 通过 `AgentCreationConfirmer` 接口请求用户确认：发布 `Kind=confirm` Activity（`tool_blocked`）携带提案详情，session 进入 `awaiting_confirmation`。
+- 4 层匹配（performance → exact → semantic → LLM cold start）全部失败时，`AgentFactory` 复用工具确认链路请求用户确认：发布 `Kind=confirm` Activity（`tool_blocked`）携带提案详情，session 进入 `awaiting_confirmation`。
 - 用户批准后创建 Agent 并继续编排；拒绝后降级使用现有 Agent（首个可用或 Spirit）。
 - 进度事件为 WS-only（不持久化），confirm Activity 持久化以支持刷新恢复。
 

@@ -40,7 +40,7 @@
         outlined
         emit-value
         map-options
-        label="runtime_engine"
+        label="执行引擎"
         :options="filteredRuntimeOptions"
         @update:model-value="emitRuntime"
       />
@@ -51,7 +51,7 @@
         emit-value
         map-options
         clearable
-        label="failure_policy.default"
+        label="默认失败策略"
         :options="failureDefaultOptions"
         @update:model-value="emitFailure"
       />
@@ -62,7 +62,7 @@
         type="number"
         min="0"
         max="10"
-        label="retry.max_attempts"
+        label="默认重试次数"
         @update:model-value="emitFailure"
       />
     </div>

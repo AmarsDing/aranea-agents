@@ -89,11 +89,11 @@
     />
     <div class="graph-editor-canvas__zoom-indicator">
       <q-btn flat dense round icon="remove" size="xs" @click="zoomOut">
-        <q-tooltip>缩小</q-tooltip>
+        <q-tooltip>{{ t('graphs.canvasZoomOut') }}</q-tooltip>
       </q-btn>
       <span class="graph-editor-canvas__zoom-text" @click="zoomToFit">{{ zoomLabel }}</span>
       <q-btn flat dense round icon="add" size="xs" @click="zoomIn">
-        <q-tooltip>放大</q-tooltip>
+        <q-tooltip>{{ t('graphs.canvasZoomIn') }}</q-tooltip>
       </q-btn>
     </div>
   </div>
@@ -103,6 +103,7 @@
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, markRaw } from 'vue';
 import type { Ref, Component } from 'vue';
 import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import {
   VueFlow,
   useVueFlow,
@@ -183,6 +184,7 @@ const internalNodes = ref<Node[]>([]);
 const internalEdges = ref<Edge[]>([]);
 const { snapLines, computeSnapLines, clearSnapLines } = useSnapGuide(internalNodes as Ref<SnapGuideNode[]>);
 const $q = useQuasar();
+const { t } = useI18n();
 
 const ctxMenuVisible = ref(false);
 const ctxMenuX = ref(0);
@@ -271,9 +273,9 @@ function miniMapNodeColor(node: Node): string {
 function edgeKindLabel(kind?: string): string | undefined {
   switch ((kind ?? '').toLowerCase()) {
     case 'transfer':
-      return '移交';
+      return t('graphs.edgeKindTransfer');
     case 'dispatch':
-      return '分派';
+      return t('graphs.edgeKindDispatch');
     case 'flow':
       return undefined;
     default:
@@ -340,7 +342,9 @@ function buildEdges(): Edge[] {
       class: edgeClass,
       data: { edgeClass },
       style: { stroke: 'var(--graph-edge-normal)', strokeWidth: 1 },
-      label: edgeKindLabel(e.kind) ?? (isTransfer ? '移交' : isDispatch ? '分派' : undefined),
+      label:
+        edgeKindLabel(e.kind) ??
+        (isTransfer ? t('graphs.edgeKindTransfer') : isDispatch ? t('graphs.edgeKindDispatch') : undefined),
       labelStyle: { fill: 'var(--graph-ctx-text)', fontSize: 10, fontWeight: 600 },
       labelBgStyle: {
         fill: 'var(--graph-ctx-bg)',
@@ -516,13 +520,13 @@ const paneMenuItems = computed<ContextMenuItem[]>(() => {
   const count = getSelectedNodes.value.length;
   const items: ContextMenuItem[] = [];
   if (!readOnly.value) {
-    items.push({ icon: '⊞', label: '自动布局', action: 'autoLayout' });
+    items.push({ icon: '⊞', label: t('graphs.canvasPaneAutoLayout'), action: 'autoLayout' });
   }
-  items.push({ icon: '▣', label: '全选节点', shortcut: 'Ctrl+A', action: 'selectAll' });
+  items.push({ icon: '▣', label: t('graphs.canvasPaneSelectAll'), shortcut: 'Ctrl+A', action: 'selectAll' });
   if (count > 1 && !readOnly.value) {
     items.push({
       icon: '✕',
-      label: `删除选中 ${count} 个节点`,
+      label: t('graphs.canvasPaneDeleteSelected', { count }),
       shortcut: 'Del',
       danger: true,
       action: 'deleteSelected',
@@ -532,14 +536,16 @@ const paneMenuItems = computed<ContextMenuItem[]>(() => {
 });
 
 const ctxMenuItems = computed<ContextMenuItem[]>(() => {
-  const items: ContextMenuItem[] = [{ icon: '✎', label: '查看属性', shortcut: 'Enter', action: 'edit' }];
+  const items: ContextMenuItem[] = [
+    { icon: '✎', label: t('graphs.canvasCtxViewProps'), shortcut: 'Enter', action: 'edit' },
+  ];
   if (!readOnly.value) {
     items.push(
-      { icon: '⧉', label: '复制节点', shortcut: 'Ctrl+D', action: 'duplicate' },
-      { icon: '✕', label: '删除节点', shortcut: 'Del', danger: true, action: 'delete' },
-      { icon: '⟂', label: '断开所有连线', action: 'disconnect' },
-      { icon: '▷', label: '设为入口节点', success: true, action: 'setEntry' },
-      { icon: '◻', label: '设为结束节点', danger: true, action: 'setFinish' },
+      { icon: '⧉', label: t('graphs.canvasCtxDuplicate'), shortcut: 'Ctrl+D', action: 'duplicate' },
+      { icon: '✕', label: t('graphs.canvasCtxDelete'), shortcut: 'Del', danger: true, action: 'delete' },
+      { icon: '⟂', label: t('graphs.canvasCtxDisconnect'), action: 'disconnect' },
+      { icon: '▷', label: t('graphs.canvasCtxSetEntry'), success: true, action: 'setEntry' },
+      { icon: '◻', label: t('graphs.canvasCtxSetFinish'), danger: true, action: 'setFinish' },
     );
   }
   return items;
@@ -615,7 +621,13 @@ function onCtxMenuClose() {
 const edgeMenuItems = computed<ContextMenuItem[]>(() => {
   const items: ContextMenuItem[] = [];
   if (!readOnly.value) {
-    items.push({ icon: '✕', label: '删除连线', shortcut: 'Del', danger: true, action: 'deleteEdge' });
+    items.push({
+      icon: '✕',
+      label: t('graphs.canvasEdgeMenuDelete'),
+      shortcut: 'Del',
+      danger: true,
+      action: 'deleteEdge',
+    });
   }
   return items;
 });
@@ -723,7 +735,8 @@ function duplicateNode(nodeId: string) {
   const src = graphDef.value.nodes.find((n) => n.id === nodeId);
   if (!src) return;
   const newId = `${src.type}_${Date.now()}`;
-  const dup: NodeDef = { ...src, id: newId, description: `${src.description || src.id} (副本)` };
+  const baseDesc = src.description || src.id;
+  const dup: NodeDef = { ...src, id: newId, description: `${baseDesc}${t('graphs.canvasDuplicateNodeSuffix')}` };
   const index = graphDef.value.nodes.length;
   graphDef.value.nodes.push(dup);
 
@@ -749,10 +762,10 @@ function deleteNode(nodeId: string) {
     (e) => e.from === nodeId || Object.values(e.pathMap ?? {}).includes(nodeId),
   );
   const totalEdges = connectedEdges.length + connectedCondEdges.length;
-  const edgeHint = totalEdges > 0 ? `，同时移除 ${totalEdges} 条连线` : '';
+  const edgeHint = totalEdges > 0 ? t('graphs.canvasDeleteNodeEdgeHint', { count: totalEdges }) : '';
   $q.dialog({
-    title: '删除节点',
-    message: `确定删除节点「${nodeLabel}」${edgeHint}？`,
+    title: t('graphs.canvasDeleteNodeTitle'),
+    message: t('graphs.canvasDeleteNodeConfirm', { name: nodeLabel, edgeHint }),
     cancel: true,
     persistent: true,
   }).onOk(() => {
@@ -803,8 +816,8 @@ function deleteSelectedNodes() {
   }
   const ids = selected.map((n) => n.id);
   $q.dialog({
-    title: '批量删除节点',
-    message: `确定删除选中的 ${ids.length} 个节点？`,
+    title: t('graphs.canvasBatchDeleteTitle'),
+    message: t('graphs.canvasBatchDeleteConfirm', { count: ids.length }),
     cancel: true,
     persistent: true,
   }).onOk(() => {

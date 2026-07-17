@@ -70,15 +70,17 @@ func (r *sessionRepo) PatchSessionState(ctx context.Context, sessionID string, s
 	orderedKeys := sortedKeys(sets)
 	for _, k := range orderedKeys {
 		// SQLite: json_set(state_json, '$.key', ?)
-		// Postgres: jsonb_set(state_json, '{key}', to_jsonb(?))
+		// Postgres: jsonb_set(state_json, '{key}', to_jsonb(?::text))
 		// d.JSONSet embeds the key directly into the SQL, so only the value
-		// is passed as a placeholder arg.
+		// is passed as a placeholder arg. The ::text cast resolves Postgres
+		// polymorphic-type inference for to_jsonb(anyelement).
 		expr = d.JSONSet(expr, k, "?")
 		args = append(args, sets[k])
 	}
 	for _, k := range deletes {
-		expr = fmt.Sprintf("json_remove(%s, ?)", expr)
-		args = append(args, "$."+k)
+		sqlExpr, arg := d.JSONRemove(expr, k)
+		expr = sqlExpr
+		args = append(args, arg)
 	}
 
 	args = append(args, nowRFC3339(), sessionID)
