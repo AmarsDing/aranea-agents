@@ -68,7 +68,20 @@
 | `cmd/launcher/utf8file.go` | UTF-8 BOM 写盘 |
 | `installer/aranea.nsi` | 英文完成页 + 用户目录安装 |
 | `web/src-electron/electron-main.ts` | 同源反代 |
-| `scripts/build-package.ps1` | 打包 |
+| `scripts/build-package.ps1` | 打包（含 `internal/scenario` + `data/model-catalog`） |
+| `internal/biz/avatar_missing.go` | 头像种子识别 apierror.NotFound |
+
+## 运行时种子资源（安装目录相对路径）
+
+| 路径 | 用途 |
+|------|------|
+| `internal/scenario/packs/agency-pack` | Agent + 公司/部门架构导入 |
+| `internal/scenario/packs/builtin-templates` | 内置模板 |
+| `internal/scenario/system` | Spirit/Butler/部门负责人 prompt |
+| `data/model-catalog/` | Provider 目录 + `logos/` 厂商图标 |
+| 二进制内嵌 `channelicons`/`agenticons` | Channel/Agent 头像 PNG（go:embed） |
+
+头像种子曾因 `GetAvatarAssetByKey` 返回 `apierror.NotFound` 而 `shared.ErrNotFound` 不匹配，导致首次启动未写入 `avatar_assets`（v0.1.33 已修）。
 
 ## 验收
 
@@ -76,4 +89,7 @@
 - [x] v0.1.24+ 静默启动 / 环境探测
 - [x] v0.1.28 修复安装期 `psql` 挂起
 - [x] v0.1.29 修复 `pg_ctl -w` 挂起 + 完成页乱码
-- [ ] 下一版：UTF-8 BOM 日志 + 启动控制台引导 + P0 加速
+- [x] v0.1.30+ UTF-8 BOM 日志 + 启动控制台 + P0 加速
+- [x] v0.1.31 pgvector + PG18
+- [x] v0.1.32 Electron preload 路径
+- [ ] v0.1.33 打包 scenario/model-catalog + 头像种子 NotFound 修复

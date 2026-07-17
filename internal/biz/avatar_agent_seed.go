@@ -2,11 +2,9 @@ package biz
 
 import (
 	"context"
-	"errors"
 
 	"aranea-agents/internal/biz/agenticons"
 	"aranea-agents/internal/biz/avatar"
-	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
 )
 
@@ -40,7 +38,7 @@ func ensureOneAgentAvatar(ctx context.Context, repo AvatarRepo, spec AgentAvatar
 		}
 		return repo.UpdateAvatarAssetImages(ctx, existing.ID, main, thumb, mime, w, h, len(main))
 	}
-	if err != nil && !errors.Is(err, shared.ErrNotFound) {
+	if err != nil && !isAvatarAssetMissing(err) {
 		return err
 	}
 
