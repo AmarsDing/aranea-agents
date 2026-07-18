@@ -60,3 +60,24 @@ func TestRegistryNotFound(t *testing.T) {
 		t.Fatal("expected error for unregistered provider")
 	}
 }
+
+func TestQwenProviderName(t *testing.T) {
+	p := NewQwenProvider(ProviderConfig{
+		ProviderType: "qwen",
+		APIKey:       "test-key",
+		BaseURL:      "https://dashscope.aliyuncs.com",
+	})
+	if p.Name() != "qwen" {
+		t.Errorf("expected name 'qwen', got %q", p.Name())
+	}
+}
+
+func TestComfyUILocalProviderName(t *testing.T) {
+	p := NewComfyUILocalProvider(ProviderConfig{
+		ProviderType: "comfyui_local",
+		BaseURL:      "http://127.0.0.1:8188",
+	})
+	if p.Name() != "comfyui_local" {
+		t.Errorf("expected name 'comfyui_local', got %q", p.Name())
+	}
+}
