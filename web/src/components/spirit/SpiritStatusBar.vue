@@ -88,6 +88,28 @@
         <span :style="{ color: dqScoreColor }">DQ: {{ dqScore.toFixed(2) }}</span>
         <q-tooltip :delay="300">{{ t('spirit.dqScoreTooltip') }}</q-tooltip>
       </div>
+      <!-- View toggle button -->
+      <div class="spirit-status-bar__item spirit-status-bar__item--clickable" @click="emit('toggle-view')">
+        <q-icon
+          :name="viewMode === 'observe' ? 'chat' : 'visibility'"
+          size="14px"
+          :style="{ color: viewMode === 'observe' ? 'var(--color-primary)' : 'var(--color-text-tertiary)' }"
+        />
+        <span>{{ viewMode === 'observe' ? t('spirit.backToChat') : t('spirit.observeView') }}</span>
+      </div>
+
+      <!-- Composer toggle (only in observe mode) -->
+      <div
+        v-if="viewMode === 'observe'"
+        class="spirit-status-bar__item spirit-status-bar__item--clickable"
+        @click="emit('toggle-composer')"
+      >
+        <q-icon
+          :name="composerVisible ? 'keyboard' : 'keyboard_hide'"
+          size="14px"
+          :style="{ color: 'var(--color-text-tertiary)' }"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -126,11 +148,17 @@ const props = defineProps<{
   checkpointStep?: string | null;
   /** Last DQ score from spirit_team_completed event. */
   dqScore?: number | null;
+  /** Current view mode (chat / observe). */
+  viewMode?: 'chat' | 'observe';
+  /** Whether the composer is visible. */
+  composerVisible?: boolean;
 }>();
 
 const emit = defineEmits<{
   'click-running': [];
   'click-interrupted': [];
+  'toggle-view': [];
+  'toggle-composer': [];
 }>();
 
 const visible = computed(
