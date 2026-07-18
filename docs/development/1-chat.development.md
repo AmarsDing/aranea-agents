@@ -323,11 +323,11 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 61 | **T-ER.3** 前端 `TurnContainer.visibleSteps` 兜底过滤空 reply step（非 running 且 Content trim 后为空） | P1 | ✅ 2026-07-04 |
 | 62 | **T-ER.4** spec `2026-07-02-llm-activity-ordering-design.md` §3.2.1 图示更新为多轮模式 | P2 | ✅ 2026-07-04 |
 | 63 | **T-ER.5** 设计文档同步 §12.8 v2 Step 模型 + 空 ReplyStep 过滤 | P2 | ✅ 2026-07-04 |
-| 64 | **P-ORCH.1** 编排细粒度进度事件（后端 planner/allocator/factory 发布 orchestration_progress） | P0 | ⏳ |
-| 65 | **P-ORCH.2** 前端 loading 映射（observabilityConstants + useContextualLoadingMessage） | P0 | ⏳ |
-| 66 | **P-ORCH.3** Agent 创建确认（EnsureAgent 复用 tool_confirmation 模式：ReplyFunc + ActivityEmitter） | P1 | ⏳ |
-| 67 | **P-ORCH.4** 确认链路验证（ConfirmActivity RPC 复用 + session 状态流转 + 拒绝降级） | P1 | ⏳ |
-| 68 | **P-ORCH.5** Allocate 两阶段并行化（Phase A 并行匹配 + Phase B 串行 factory） | P2 | ⏳ |
+| 64 | **P-ORCH.1** 编排细粒度进度事件（后端 planner/allocator/factory 发布 orchestration_progress） | P0 | ✅ 2026-07-18 |
+| 65 | **P-ORCH.2** 前端 loading 映射（observabilityConstants + useContextualLoadingMessage） | P0 | ✅ 2026-07-18 |
+| 66 | **P-ORCH.3** Agent 创建确认（EnsureAgent 复用 tool_confirmation 模式：ReplyFunc + ActivityEmitter） | P1 | ✅ 2026-07-18 |
+| 67 | **P-ORCH.4** 确认链路验证（ConfirmActivity RPC 复用 + session 状态流转 + 拒绝降级） | P1 | 🟡 单测覆盖，运行时端到端待验证 |
+| 68 | **P-ORCH.5** Allocate 两阶段并行化（Phase A 并行匹配 + Phase B 串行 factory） | P2 | ✅ 2026-07-18 |
 
 ### T8 UI 树形重构（2026-07-01 新增）
 
@@ -496,13 +496,13 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 #### 任务清单
 
-- [ ] P-ORCH.1 后端进度事件：planner `Plan()` 发 decomposing/decomposed（新增 v2 EventBus 注入）；allocator `Allocate()` 发 allocating/allocated；factory `EnsureAgent()` 发 creating_agent/agent_created（SystemNoticeEvent，WS-only）；`TaskProfile` 新增 `SpiritSessionID` 字段
-- [ ] P-ORCH.2 前端 loading 映射：`observabilityConstants.ts` 新增 `ORCHESTRATION_PROGRESS_MAP`（6 条 phase 条目）；`useContextualLoadingMessage.ts` 新增 `orchestration_progress` 分支（按 meta.phase + index/total/agentName 渲染）
-- [ ] P-ORCH.3 Agent 创建确认：`EnsureAgent` 复用 tool_confirmation 模式——ctx 取 `serviceawaitreply.ReplyFunc` + `biz.ActivityEmitter`，LLM 生成提案后 EmitConfirmRequest → 阻塞等待（5min 超时）→ EmitConfirmResult；nil-safe（无 ReplyFunc 直接创建）
-- [ ] P-ORCH.4 确认链路验证：ConfirmActivity RPC 零改动复用；确认期间 session awaiting_confirmation，确认后恢复；拒绝/超时返回错误走 allocator fallback
-- [ ] P-ORCH.5 `Allocate()` 两阶段重构：Phase A 并行 Layer 0-3（errgroup + 索引写入）；Phase B 串行 factory（含确认）→ fallback；收尾串行 selectAdditionalMembers + 单次持久化
-- [ ] 验证：后端 `go build ./...` + `go test ./internal/agent/... ./internal/service/... ./internal/biz/...`；前端 `pnpm lint && pnpm test && pnpm build`
-- [ ] 代码审查（aranea-review SKILL）+ 修复
+- [x] P-ORCH.1 后端进度事件：planner `Plan()` 发 decomposing/decomposed（新增 v2 EventBus 注入）；allocator `Allocate()` 发 allocating/allocated；factory `EnsureAgent()` 发 creating_agent/agent_created（SystemNoticeEvent，WS-only）；`TaskProfile` 新增 `SpiritSessionID` 字段
+- [x] P-ORCH.2 前端 loading 映射：`observabilityConstants.ts` 新增 `ORCHESTRATION_PROGRESS_MAP`（6 条 phase 条目）；`useContextualLoadingMessage.ts` 新增 `orchestration_progress` 分支（按 meta.phase + index/total/agentName 渲染）
+- [x] P-ORCH.3 Agent 创建确认：`EnsureAgent` 复用 tool_confirmation 模式——ctx 取 `serviceawaitreply.ReplyFunc` + `biz.ActivityEmitter`，LLM 生成提案后 EmitConfirmRequest → 阻塞等待（5min 超时）→ EmitConfirmResult；nil-safe（无 ReplyFunc 直接创建）
+- [x] P-ORCH.4 确认链路验证：ConfirmActivity RPC 零改动复用；确认期间 session awaiting_confirmation，确认后恢复；拒绝/超时返回错误走 allocator fallback（单测覆盖确认门禁逻辑；真实用户确认的运行时端到端验证待补）
+- [x] P-ORCH.5 `Allocate()` 两阶段重构：Phase A 并行 Layer 0-3（errgroup + 索引写入，提取为 `runPhaseAMatch`）；Phase B 串行 factory（含确认）→ fallback；收尾串行 selectAdditionalMembers + 单次持久化
+- [x] 验证：后端 `go build ./...` + `go test ./internal/agent/... -race` + `go test ./internal/biz/...`；前端 `pnpm vitest run useContextualLoadingMessage.spec`（43/43）
+- [x] 代码审查（aranea-review SKILL）+ 修复（2026-07-18：修复 DOC-SYNC-5 状态同步；提取 runPhaseAMatch 收敛 Allocate 长度）
 
 #### 改动文件清单
 

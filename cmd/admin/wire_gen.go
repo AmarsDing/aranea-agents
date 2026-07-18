@@ -312,7 +312,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	verificationGateExecutor := provideVerificationGateExecutor(deptLeadManager, dynamicLLMCaller, loggatewayLogger)
 	spiritTeamUsecase := provideSpiritTeamUsecase(teamUsecase, sessionUsecase, agentUsecase, spiritTransactor, orchestrationCache, evolutionSuggestionRepo, verificationGateExecutor, deptLeadManager, loggatewayLogger)
 	taskPlanRepository := data.NewTaskPlanRepo(dataData, loggatewayLogger)
-	taskPlannerPort := provideTaskPlanner(taskPlanRepository, llmProviderModelUsecase, orchestrationCache, bus, loggatewayLogger, systemSettingUsecase, sequencer)
+	taskPlannerPort := provideTaskPlanner(taskPlanRepository, llmProviderModelUsecase, orchestrationCache, bus, v2Bus, loggatewayLogger, systemSettingUsecase, sequencer)
 	allocationPlanRepository := data.NewAllocationPlanRepo(dataData, loggatewayLogger)
 	agentPerformanceRepository := data.NewAgentPerformanceRepo(dataData, loggatewayLogger)
 	agentFactory := provideAgentFactory(agentRepository, agentRepository, agentTemplateRepo, v2Bus, llmProviderModelUsecase, systemSettingUsecase, loggatewayLogger)
@@ -2328,9 +2328,9 @@ func provideA2AService(
 	return service.NewA2AService(uc, chat, agents, reg, store, limiter, lg)
 }
 
-func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, activityBus biz.ActivityEventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer) biz.TaskPlannerPort {
+func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, activityBus biz.ActivityEventBus, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
-	return agent.NewTaskPlanner(repo, catalog, httpClient, activityBus, orchCache, lg, sysUC, seq)
+	return agent.NewTaskPlanner(repo, catalog, httpClient, activityBus, eventBus, orchCache, lg, sysUC, seq)
 }
 
 func provideAgentAllocator(

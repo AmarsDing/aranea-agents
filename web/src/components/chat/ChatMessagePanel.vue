@@ -118,12 +118,13 @@
     </div>
     <div class="col row no-wrap chat-messages-area" style="min-height: 0">
       <div class="col column no-wrap chat-messages-main" style="min-height: 0">
-        <TodoKanbanBoard
-          v-if="(showToolCalls ?? true) && (!panelMode || panelMode === 'spirit')"
-          :board-state="todoBoardState"
-        />
-        <ChatMessageList
-          ref="messageListRef"
+        <template v-if="isChatView">
+          <TodoKanbanBoard
+            v-if="(showToolCalls ?? true) && (!panelMode || panelMode === 'spirit')"
+            :board-state="todoBoardState"
+          />
+          <ChatMessageList
+            ref="messageListRef"
           :session-key="sessionKey"
           :messages="props.messages"
           :pending-messages="props.pendingMessages ?? []"
@@ -177,9 +178,20 @@
           :status="compressStatus"
           class="q-mx-md q-mb-sm"
         />
+        </template>
+
+        <!-- Observe mode: ComfyUI-style observation canvas replaces message list -->
+        <ObservationPanel
+          v-else
+          class="col"
+          :session-id="sessionId ?? ''"
+          :spirit-session-id="sessionId ?? ''"
+          :is-dark="isDark"
+          :ws-connected="wsConnected"
+        />
 
         <ChatComposer
-          v-if="!panelMode || panelMode === 'spirit'"
+          v-if="(!panelMode || panelMode === 'spirit') && (composerVisible ?? true)"
           :model-value="modelValue"
           :attachments="attachments"
           :dialog-mode="dialogMode"
@@ -240,6 +252,10 @@
       :complexity-reason="spiritStatusBar.complexityReason"
       :checkpoint-step="spiritStatusBar.checkpointStep"
       :dq-score="spiritStatusBar.dqScore"
+      :view-mode="viewMode ?? 'chat'"
+      :composer-visible="composerVisible ?? true"
+      @toggle-view="emit('toggle-view')"
+      @toggle-composer="emit('toggle-composer')"
       @click-running="emit('status-bar-click-running')"
       @click-interrupted="emit('status-bar-click-interrupted')"
     />

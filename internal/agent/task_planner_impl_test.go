@@ -401,4 +401,3 @@ func TestTaskPlanner_PublishOrchestrationProgress(t *testing.T) {
 		t.Errorf("sessionID=%q want %q", notice.SpiritSessionID(), "sess-orch")
 	}
 }
-

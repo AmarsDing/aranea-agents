@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { ref } from 'vue';
+import { i18n } from '../../../../i18n';
 import { useContextualLoadingMessage } from '../useContextualLoadingMessage';
 import type {
   ActivityEvent,
@@ -8,6 +9,14 @@ import type {
   ActivityStatus,
   ActivityEventType,
 } from '../../../../realtime/activityEvent';
+
+// Force zh-CN locale for assertion stability. The composable reads message
+// templates from the global i18n instance; without this the default locale
+// (read from localStorage in production) is undefined in the test environment
+// and assertions on Chinese strings would fail.
+beforeAll(() => {
+  i18n.global.locale = 'zh-CN';
+});
 
 /**
  * Build a minimal ActivityEvent for testing. Only the fields accessed by
@@ -691,9 +700,7 @@ describe('useContextualLoadingMessage', () => {
         }),
       );
 
-      onSpiritActivityEvent(
-        makeActivityEvent({ kind: 'session', stage: 'orchestration_failed', event: 'failed' }),
-      );
+      onSpiritActivityEvent(makeActivityEvent({ kind: 'session', stage: 'orchestration_failed', event: 'failed' }));
       expect(loadingMessage.value).toBeNull();
     });
   });

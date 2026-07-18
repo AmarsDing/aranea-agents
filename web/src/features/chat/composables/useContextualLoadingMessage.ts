@@ -6,7 +6,7 @@
  * Messages are suppressed during WS replay to avoid flicker.
  */
 import { ref, type Ref } from 'vue';
-import { useI18n } from 'vue-i18n';
+import { i18n } from '../../../i18n';
 import type { ActivityEvent } from '../../../realtime/activityEvent';
 import {
   ORCHESTRATION_LOADING_MAP,
@@ -60,7 +60,10 @@ function activityEventToLoadingType(ev: ActivityEvent): string {
 }
 
 export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
-  const { t } = useI18n();
+  // Use the global i18n instance (instead of useI18n()) so this composable
+  // can be called from non-component contexts (tests, helpers). The global
+  // instance is created once at app bootstrap (src/i18n/index.ts).
+  const t = i18n.global.t.bind(i18n.global);
   const loadingMessage = ref<ContextualMessage | null>(null);
 
   /**
@@ -141,19 +144,21 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
       const config = ORCHESTRATION_PROGRESS_MAP[phase];
       if (!config) return; // unknown phase → leave loading unchanged
 
-      // Translate the i18n key (returns the key itself when missing — safe fallback).
-      let text = t(config.messageKey);
-      // Number placeholders: coerce to number (0 when missing/invalid).
+      // Build named params for vue-i18n. Meta uses snake_case; i18n templates
+      // use camelCase. Missing values default to 0 / '' so vue-i18n does not
+      // strip the placeholder.
       const subTaskCount = typeof meta.sub_task_count === 'number' ? meta.sub_task_count : 0;
       const index = typeof meta.index === 'number' ? meta.index : 0;
       const total = typeof meta.total === 'number' ? meta.total : 0;
       const subTask = typeof meta.sub_task === 'string' ? meta.sub_task : '';
       const agentName = typeof meta.agent_name === 'string' ? meta.agent_name : '';
-      text = text.replace('{sub_task_count}', String(subTaskCount));
-      text = text.replace('{index}', String(index));
-      text = text.replace('{total}', String(total));
-      text = text.replace('{sub_task}', subTask);
-      text = text.replace('{agent_name}', agentName);
+      const text = t(config.messageKey, {
+        subTaskCount,
+        index,
+        total,
+        subTask,
+        agentName,
+      }) as string;
 
       loadingMessage.value = {
         text,

@@ -377,3 +377,159 @@ func TestAgentAllocator_TryAgentFactory_PassesSpiritSessionID(t *testing.T) {
 		t.Errorf("SpiritSessionID=%q want %q", factory.profiles[0].SpiritSessionID, "sess-spirit-9")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// P-ORCH.5: Allocate() two-phase parallelization tests.
+//
+// Phase A parallelizes matchSubTask across subtasks (errgroup + index writes).
+// Phase B serializes factory creation (which needs user confirmation). The
+// final allocations slice must preserve subtask input order regardless of
+// parallel execution timing.
+// ---------------------------------------------------------------------------
+
+// fakeAllocatorRepo is an in-memory AllocationPlanRepository for Allocate tests.
+type fakeAllocatorRepo struct {
+	saved *biz.AllocationPlan
+}
+
+func (f *fakeAllocatorRepo) Create(_ context.Context, plan *biz.AllocationPlan) (*biz.AllocationPlan, error) {
+	f.saved = plan
+	plan.ID = "ap_test"
+	return plan, nil
+}
+func (f *fakeAllocatorRepo) GetByID(_ context.Context, _ string) (*biz.AllocationPlan, error) {
+	return f.saved, nil
+}
+func (f *fakeAllocatorRepo) Update(_ context.Context, plan *biz.AllocationPlan) (*biz.AllocationPlan, error) {
+	f.saved = plan
+	return plan, nil
+}
+func (f *fakeAllocatorRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]*biz.AllocationPlan, error) {
+	if f.saved == nil {
+		return nil, nil
+	}
+	return []*biz.AllocationPlan{f.saved}, nil
+}
+
+// TestAgentAllocator_Allocate_PreservesOrder_ParallelMatch verifies that
+// when Allocate processes multiple subtasks in parallel (Phase A), the
+// resulting allocations slice preserves the input subtask order.
+//
+// Without index-based writes, parallel goroutines appending to a shared slice
+// would produce nondeterministic order. This test catches that regression by
+// checking SubTaskID order matches the input.
+func TestAgentAllocator_Allocate_PreservesOrder_ParallelMatch(t *testing.T) {
+	agents := []biz.Agent{
+		{AgentKey: "agent-a", DisplayName: "Agent A", Roles: []string{"backend"}, Status: "active"},
+		{AgentKey: "agent-b", DisplayName: "Agent B", Roles: []string{"frontend"}, Status: "active"},
+		{AgentKey: "agent-c", DisplayName: "Agent C", Roles: []string{"data"}, Status: "active"},
+	}
+	reader := &stubAgentReader{agents: agents}
+	capBuilder := NewAgentCapabilityBuilder(reader, loggateway.NewNoop())
+	repo := &fakeAllocatorRepo{}
+
+	impl := &agentAllocatorImpl{
+		repo:        repo,
+		agentReader: reader,
+		capBuilder:  capBuilder,
+		lg:          loggateway.NewNoop(),
+		// nil perfRepo/embedder/httpClient → Layer 1 exact match is the only
+		// path that can succeed; Layer 2 falls back to TF-IDF (no overlap → 0),
+		// Layer 3 returns empty (nil httpClient).
+	}
+
+	subTasks := []biz.SubTask{
+		{ID: "st_1", Name: "后端", RequiredCapabilities: []string{"backend"}},
+		{ID: "st_2", Name: "前端", RequiredCapabilities: []string{"frontend"}},
+		{ID: "st_3", Name: "数据", RequiredCapabilities: []string{"data"}},
+	}
+
+	plan := &biz.TaskPlan{
+		ID:              "tp_test",
+		SpiritSessionID: "sess-orch-par",
+		TraceID:         "trace-par",
+		SubTasks:        subTasks,
+		Strategy:        biz.StrategyParallel,
+	}
+
+	saved, err := impl.Allocate(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("Allocate returned error: %v", err)
+	}
+	if len(saved.Allocations) != 3 {
+		t.Fatalf("allocations count=%d want 3", len(saved.Allocations))
+	}
+
+	// Verify order preserved.
+	wantIDs := []string{"st_1", "st_2", "st_3"}
+	gotIDs := []string{saved.Allocations[0].SubTaskID, saved.Allocations[1].SubTaskID, saved.Allocations[2].SubTaskID}
+	for i, want := range wantIDs {
+		if saved.Allocations[i].SubTaskID != want {
+			t.Errorf("allocations[%d].SubTaskID=%q want %q (full order: %v)", i, saved.Allocations[i].SubTaskID, want, gotIDs)
+		}
+	}
+
+	// Verify each subtask matched the correct agent.
+	wantKeys := map[string]string{"st_1": "agent-a", "st_2": "agent-b", "st_3": "agent-c"}
+	for _, alloc := range saved.Allocations {
+		want := wantKeys[alloc.SubTaskID]
+		if alloc.AssignedKey != want {
+			t.Errorf("SubTaskID=%s AssignedKey=%q want %q", alloc.SubTaskID, alloc.AssignedKey, want)
+		}
+	}
+}
+
+// TestAgentAllocator_Allocate_FactorySerial_OnAllFailed verifies that when
+// all subtasks fail Phase A matching, Phase B invokes the factory serially
+// (one factory call per subtask) and the allocations preserve input order.
+//
+// Setup: agents list is empty so every Layer 1-3 match fails → factory is
+// the only path. fakeAllocatorAgentFactory returns a deterministic key per
+// call. We assert factory.profiles length == subtask count and allocations
+// are in input order.
+func TestAgentAllocator_Allocate_FactorySerial_OnAllFailed(t *testing.T) {
+	reader := &stubAgentReader{agents: nil} // empty catalog → all matches fail
+	capBuilder := NewAgentCapabilityBuilder(reader, loggateway.NewNoop())
+	repo := &fakeAllocatorRepo{}
+	factory := &fakeAllocatorAgentFactory{agentKey: "factory-agent"}
+
+	impl := &agentAllocatorImpl{
+		repo:         repo,
+		agentReader:  reader,
+		capBuilder:   capBuilder,
+		agentFactory: factory,
+		lg:           loggateway.NewNoop(),
+	}
+
+	subTasks := []biz.SubTask{
+		{ID: "st_1", Name: "任务1", RequiredCapabilities: []string{"x"}},
+		{ID: "st_2", Name: "任务2", RequiredCapabilities: []string{"y"}},
+	}
+
+	plan := &biz.TaskPlan{
+		ID:              "tp_factory",
+		SpiritSessionID: "sess-orch-fac",
+		TraceID:         "trace-fac",
+		SubTasks:        subTasks,
+		Strategy:        biz.StrategyParallel,
+	}
+
+	saved, err := impl.Allocate(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("Allocate returned error: %v", err)
+	}
+	if len(saved.Allocations) != 2 {
+		t.Fatalf("allocations count=%d want 2", len(saved.Allocations))
+	}
+
+	// Factory called exactly once per subtask (serial).
+	if len(factory.profiles) != 2 {
+		t.Errorf("factory calls=%d want 2 (serial)", len(factory.profiles))
+	}
+
+	// Order preserved.
+	if saved.Allocations[0].SubTaskID != "st_1" || saved.Allocations[1].SubTaskID != "st_2" {
+		t.Errorf("order not preserved: got %s, %s",
+			saved.Allocations[0].SubTaskID, saved.Allocations[1].SubTaskID)
+	}
+}

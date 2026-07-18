@@ -2094,6 +2094,7 @@ func provideEcosystemPresetScenarioDir() string {
 func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
 	panic(wire.Build(
 		server.ProviderSet,
+		server.NewSessionAuthorizer,
 		data.ProviderSet,
 		biz.ProviderSet,
 		event.ProviderSet,

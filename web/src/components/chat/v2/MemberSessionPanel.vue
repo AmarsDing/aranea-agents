@@ -61,7 +61,7 @@
         >
           <template #append>
             <q-btn
-              v-if="!inputText.trim()"
+              v-if="!inputText.trim() && memberSession.Status === 'running'"
               flat
               dense
               round
@@ -71,7 +71,7 @@
               @click.stop="$emit('pause-agent', memberSession.ID)"
             />
             <q-btn
-              v-else
+              v-else-if="inputText.trim()"
               flat
               dense
               round
@@ -224,8 +224,12 @@ const isSystemAgent = computed(() => {
   return key === '__spirit__' || key.startsWith('__');
 });
 
-// 输入栏仅在 running 状态显示（用户 spec：agent 正在执行时显示）
-const canInject = computed(() => !isSystemAgent.value && props.memberSession.Status === 'running');
+// 输入栏在 running / paused 状态显示（用户 spec：agent 正在执行时显示；
+// paused 时保留输入栏以便注入新指令恢复执行——后端 resume 依赖新消息重触发，
+// 见 internal/service/chat_pause.go）
+const canInject = computed(
+  () => !isSystemAgent.value && (props.memberSession.Status === 'running' || props.memberSession.Status === 'paused'),
+);
 
 // 状态映射：running/paused/completed/failed/cancelled
 const statusColor = computed(

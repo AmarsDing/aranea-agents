@@ -363,3 +363,66 @@ func (m *mockToolSetForAlias) Tools(_ context.Context) []trpctool.Tool {
 	}
 	return out
 }
+
+// mockStreamableForAlias is both callable and streamable.
+type mockStreamableForAlias struct {
+	decl *Declaration
+}
+
+func (m *mockStreamableForAlias) Declaration() *Declaration { return m.decl }
+func (m *mockStreamableForAlias) Call(_ context.Context, _ []byte) (any, error) {
+	return "called", nil
+}
+func (m *mockStreamableForAlias) StreamableCall(_ context.Context, _ []byte) (*trpctool.StreamReader, error) {
+	s := trpctool.NewStream(1)
+	go func() {
+		s.Writer.Send(trpctool.StreamChunk{Content: "chunk"}, nil)
+		s.Writer.Close()
+	}()
+	return s.Reader, nil
+}
+
+// Regression (2026-07-18): an alias wrapping a non-streamable inner tool must
+// NOT satisfy trpctool.StreamableTool. Otherwise the framework's
+// executeTool/isStreamable classification routes the call to StreamableCall,
+// which fails with "inner tool is not streamable" — breaking every aliased
+// non-streaming tool (todo, list_files, ...) after the P2-02 stream decorator
+// started preserving the StreamableTool interface.
+func TestApplyRuntimeNameAliases_nonStreamableInner_notMisclassified(t *testing.T) {
+	inner := &mockCallableForAlias{decl: &Declaration{Name: "todo_write"}}
+	out := &AssembledToolsets{Tools: []Tool{inner}}
+	ApplyRuntimeNameAliases(context.Background(), out)
+	for _, tool := range out.Tools {
+		d := tool.Declaration()
+		if d == nil || d.Name != "todo" {
+			continue
+		}
+		if _, ok := tool.(trpctool.StreamableTool); ok {
+			t.Fatal("alias of non-streamable inner must not satisfy StreamableTool")
+		}
+		return
+	}
+	t.Fatal("expected todo alias to be registered")
+}
+
+func TestApplyRuntimeNameAliases_streamableInner_staysStreamable(t *testing.T) {
+	inner := &mockStreamableForAlias{decl: &Declaration{Name: "todo_write"}}
+	out := &AssembledToolsets{Tools: []Tool{inner}}
+	ApplyRuntimeNameAliases(context.Background(), out)
+	for _, tool := range out.Tools {
+		d := tool.Declaration()
+		if d == nil || d.Name != "todo" {
+			continue
+		}
+		st, ok := tool.(trpctool.StreamableTool)
+		if !ok {
+			t.Fatal("alias of streamable inner must satisfy StreamableTool")
+		}
+		r, err := st.StreamableCall(context.Background(), []byte(`{}`))
+		if err != nil || r == nil {
+			t.Fatalf("StreamableCall should delegate to inner: err=%v reader=%v", err, r)
+		}
+		return
+	}
+	t.Fatal("expected todo alias to be registered")
+}

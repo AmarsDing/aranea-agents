@@ -49,10 +49,22 @@ func (a *aliasTool) Call(ctx context.Context, jsonArgs []byte) (any, error) {
 	return nil, fmt.Errorf("tool alias %q: inner tool is not callable", a.name)
 }
 
-// StreamableCall mirrors Call: explicit error replaces silent (nil, nil) (TPM-P1-02).
-func (a *aliasTool) StreamableCall(ctx context.Context, jsonArgs []byte) (*trpctool.StreamReader, error) {
-	if a == nil || a.inner == nil {
-		return nil, fmt.Errorf("tool alias %q: inner tool is nil", aliasNameOrUnknown(a))
+// streamableAliasTool adds StreamableCall to aliasTool. It exists as a
+// separate type (rather than defining StreamableCall on *aliasTool) so that
+// only aliases whose inner tool is streamable satisfy StreamableTool —
+// preventing the framework from misclassifying non-streaming aliases and
+// routing them to StreamableCall (2026-07-18 regression fix; mirrors the
+// streamableToolDecorator pattern in decorator.go).
+type streamableAliasTool struct {
+	*aliasTool
+}
+
+// StreamableCall delegates to the inner streamable tool. Construction is
+// guarded by ApplyRuntimeNameAliases, which only builds this variant when the
+// inner tool satisfies StreamableTool.
+func (a *streamableAliasTool) StreamableCall(ctx context.Context, jsonArgs []byte) (*trpctool.StreamReader, error) {
+	if a == nil || a.aliasTool == nil || a.inner == nil {
+		return nil, fmt.Errorf("tool alias %q: inner tool is nil", aliasNameOrUnknown(a.aliasTool))
 	}
 	if st, ok := a.inner.(StreamableTool); ok {
 		return st.StreamableCall(ctx, jsonArgs)
@@ -142,7 +154,11 @@ func ApplyRuntimeNameAliases(ctx context.Context, out *AssembledToolsets) {
 			}
 			visited[resolved] = true
 			if target, ok := byName[resolved]; ok {
-				aliasT := &aliasTool{name: alias, inner: target}
+				base := &aliasTool{name: alias, inner: target}
+				var aliasT Tool = base
+				if _, streamable := target.(StreamableTool); streamable {
+					aliasT = &streamableAliasTool{aliasTool: base}
+				}
 				out.Tools = append(out.Tools, aliasT)
 				byName[alias] = target // allow further aliases to chain off this one
 				break

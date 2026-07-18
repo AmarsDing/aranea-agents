@@ -73,7 +73,15 @@ func ApplyDisambiguationHints(tools []trpctool.Tool) {
 			}
 			// Wrap the tool with a decorator that returns the cloned Declaration
 			// instead of mutating the shared Declaration object.
-			tools[i] = &disambiguatedTool{inner: t, decl: &clone}
+			base := &disambiguatedTool{inner: t, decl: &clone}
+			// Only preserve the StreamableTool interface when the inner tool is
+			// actually streamable — otherwise the framework misclassifies the
+			// wrapper and routes calls to StreamableCall (2026-07-18 fix).
+			if _, streamable := t.(trpctool.StreamableTool); streamable {
+				tools[i] = &streamableDisambiguatedTool{disambiguatedTool: base}
+			} else {
+				tools[i] = base
+			}
 			break
 		}
 	}
@@ -97,7 +105,14 @@ func (d *disambiguatedTool) Call(ctx context.Context, jsonArgs []byte) (any, err
 	return nil, fmt.Errorf("tool %q is not callable", d.decl.Name)
 }
 
-func (d *disambiguatedTool) StreamableCall(ctx context.Context, jsonArgs []byte) (*trpctool.StreamReader, error) {
+// streamableDisambiguatedTool adds StreamableCall to disambiguatedTool. It is
+// a separate type so that only disambiguated tools whose inner is streamable
+// satisfy trpctool.StreamableTool (mirrors streamableToolDecorator).
+type streamableDisambiguatedTool struct {
+	*disambiguatedTool
+}
+
+func (d *streamableDisambiguatedTool) StreamableCall(ctx context.Context, jsonArgs []byte) (*trpctool.StreamReader, error) {
 	if st, ok := d.inner.(trpctool.StreamableTool); ok {
 		return st.StreamableCall(ctx, jsonArgs)
 	}

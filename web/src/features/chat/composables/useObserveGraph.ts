@@ -23,6 +23,30 @@ export function useObserveGraph(spiritSessionId: Ref<string>) {
   const activityStore = useChatActivityStore();
   const nodeOutputStore = useNodeOutputStore();
 
+  /**
+   * Extract the latest media progress for a node from activity steps.
+   * Steps carry no TeamStageID; matching follows the same convention as
+   * mediaOutput sync in activityV2Store.upsertStep (AuthorAgentKey → node key).
+   * Progress is read defensively from ToolResult.progress (backend progress
+   * push is still a stub); returns undefined when nothing usable is found.
+   */
+  function extractProgress(nodeKey: string): { value: number; max: number; label?: string } | undefined {
+    let latest: { value: number; max: number; label?: string } | undefined;
+    let latestSeq = -1;
+    for (const step of activityStore.steps.values()) {
+      if (step.AuthorAgentKey !== nodeKey) continue;
+      const p = (step.ToolResult as Record<string, unknown> | null)?.progress;
+      if (p && typeof p === 'object') {
+        const po = p as { value?: number; max?: number; label?: string };
+        if (typeof po.value === 'number' && typeof po.max === 'number' && step.Seq >= latestSeq) {
+          latestSeq = step.Seq;
+          latest = { value: po.value, max: po.max, label: po.label };
+        }
+      }
+    }
+    return latest;
+  }
+
   // Find the GraphStage for this spirit session
   const graphStage = computed<GraphStage | null>(() => {
     for (const [, gs] of activityStore.graphStages) {
@@ -60,6 +84,7 @@ export function useObserveGraph(spiritSessionId: Ref<string>) {
           status: n.Status,
           dependsOn: n.DependsOn,
           mediaOutput: nodeOutputStore.getNodeOutput(n.TeamStageID || n.ID),
+          progress: extractProgress(n.TeamStageID || n.ID),
         },
       };
     }),
