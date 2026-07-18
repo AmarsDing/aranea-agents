@@ -25,6 +25,8 @@ import {
   listGraphStagesV2,
   listGraphNodesV2,
 } from '../../features/session/v2Api';
+import { useNodeOutputStore } from './nodeOutputStore';
+import type { MediaArtifact } from '../../features/chat/mediaTypes';
 
 /**
  * useChatActivityStore holds all v2 chat entities in flat Maps keyed by ID.
@@ -43,6 +45,8 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   const planSteps = ref(new Map<string, PlanStep>());
   const graphStages = ref(new Map<string, GraphStage>());
   const graphNodes = ref(new Map<string, GraphNode>());
+
+  const nodeOutputStore = useNodeOutputStore();
 
   // === Upsert helpers (optimistic-concurrency guarded) ===
 
@@ -88,6 +92,22 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       steps.value.set(s.ID, { ...ex, ...s });
     } else {
       steps.value.set(s.ID, { ...s });
+    }
+    // Sync media outputs to nodeOutputStore for observation canvas.
+    // When a media tool completes, extract artifacts from ToolResult and map to the node.
+    if (s.Kind === 'action' && s.Status === 'completed' && s.ToolName) {
+      const mediaTools = ['generate_image', 'generate_video', 'image_to_video'];
+      if (mediaTools.includes(s.ToolName)) {
+        const result = s.ToolResult as Record<string, unknown> | null;
+        const artifacts = result?.artifacts;
+        if (Array.isArray(artifacts) && artifacts.length > 0) {
+          // Step has no TeamStageID field; map agent key to node ID.
+          const nodeId = s.AuthorAgentKey;
+          if (nodeId) {
+            nodeOutputStore.setNodeOutput(nodeId, artifacts as MediaArtifact[]);
+          }
+        }
+      }
     }
   }
 
