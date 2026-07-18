@@ -127,6 +127,10 @@ var ddlMigrations = []ddlMigration{
 	// entities (agents/teams/graph_definitions/plugins) for P2-B repo 层硬隔离.
 	// empty = shared/legacy (visible to all workspaces); non-empty = tenant-private.
 	{Version: 20261007, Name: "tenant_owned_workspace_id", SQL: "sql/migrations/20261007_tenant_owned_workspace_id.sql"},
+	// 20261008 media_providers: media generation provider configs (media generation
+	// observation view). Version 20260718 was already taken by ecosystem_preset_schema,
+	// so the next available sequence number is used.
+	{Version: 20261008, Name: "media_providers", SQL: "sql/migrations/20261008_media_providers.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

@@ -94,6 +94,8 @@ type Tx struct {
 	HealRecord *HealRecordClient
 	// LlmProviderModel is the client for interacting with the LlmProviderModel builders.
 	LlmProviderModel *LlmProviderModelClient
+	// MediaProvider is the client for interacting with the MediaProvider builders.
+	MediaProvider *MediaProviderClient
 	// MemberSessionV2 is the client for interacting with the MemberSessionV2 builders.
 	MemberSessionV2 *MemberSessionV2Client
 	// ModelPricingRule is the client for interacting with the ModelPricingRule builders.
@@ -367,6 +369,7 @@ func (tx *Tx) init() {
 	tx.GraphTaskRun = NewGraphTaskRunClient(tx.config)
 	tx.HealRecord = NewHealRecordClient(tx.config)
 	tx.LlmProviderModel = NewLlmProviderModelClient(tx.config)
+	tx.MediaProvider = NewMediaProviderClient(tx.config)
 	tx.MemberSessionV2 = NewMemberSessionV2Client(tx.config)
 	tx.ModelPricingRule = NewModelPricingRuleClient(tx.config)
 	tx.ModelTokenUsageHourly = NewModelTokenUsageHourlyClient(tx.config)

@@ -51,6 +51,7 @@ import (
 	"aranea-agents/internal/data/ent/graphtaskrun"
 	"aranea-agents/internal/data/ent/healrecord"
 	"aranea-agents/internal/data/ent/llmprovidermodel"
+	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
 	"aranea-agents/internal/data/ent/modelpricingrule"
 	"aranea-agents/internal/data/ent/modeltokenusagehourly"
@@ -196,6 +197,8 @@ type Client struct {
 	HealRecord *HealRecordClient
 	// LlmProviderModel is the client for interacting with the LlmProviderModel builders.
 	LlmProviderModel *LlmProviderModelClient
+	// MediaProvider is the client for interacting with the MediaProvider builders.
+	MediaProvider *MediaProviderClient
 	// MemberSessionV2 is the client for interacting with the MemberSessionV2 builders.
 	MemberSessionV2 *MemberSessionV2Client
 	// ModelPricingRule is the client for interacting with the ModelPricingRule builders.
@@ -349,6 +352,7 @@ func (c *Client) init() {
 	c.GraphTaskRun = NewGraphTaskRunClient(c.config)
 	c.HealRecord = NewHealRecordClient(c.config)
 	c.LlmProviderModel = NewLlmProviderModelClient(c.config)
+	c.MediaProvider = NewMediaProviderClient(c.config)
 	c.MemberSessionV2 = NewMemberSessionV2Client(c.config)
 	c.ModelPricingRule = NewModelPricingRuleClient(c.config)
 	c.ModelTokenUsageHourly = NewModelTokenUsageHourlyClient(c.config)
@@ -532,6 +536,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		GraphTaskRun:               NewGraphTaskRunClient(cfg),
 		HealRecord:                 NewHealRecordClient(cfg),
 		LlmProviderModel:           NewLlmProviderModelClient(cfg),
+		MediaProvider:              NewMediaProviderClient(cfg),
 		MemberSessionV2:            NewMemberSessionV2Client(cfg),
 		ModelPricingRule:           NewModelPricingRuleClient(cfg),
 		ModelTokenUsageHourly:      NewModelTokenUsageHourlyClient(cfg),
@@ -642,6 +647,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		GraphTaskRun:               NewGraphTaskRunClient(cfg),
 		HealRecord:                 NewHealRecordClient(cfg),
 		LlmProviderModel:           NewLlmProviderModelClient(cfg),
+		MediaProvider:              NewMediaProviderClient(cfg),
 		MemberSessionV2:            NewMemberSessionV2Client(cfg),
 		ModelPricingRule:           NewModelPricingRuleClient(cfg),
 		ModelTokenUsageHourly:      NewModelTokenUsageHourlyClient(cfg),
@@ -731,18 +737,18 @@ func (c *Client) Use(hooks ...Hook) {
 		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
 		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
 		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
-		c.HealRecord, c.LlmProviderModel, c.MemberSessionV2, c.ModelPricingRule,
-		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
-		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
-		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
-		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.SchemaMigration, c.SelfCheckReport,
-		c.Session, c.SessionMetrics, c.SessionParticipant, c.SessionRun,
-		c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn, c.SessionV2,
-		c.SkillEvolutionSuggestion, c.SkillImportJob, c.SkillInvocation,
-		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
-		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
-		c.ToolAgentOverride, c.ToolInvocation, c.ToolInvocationAudit,
+		c.HealRecord, c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2,
+		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
+		c.OrchestrationStep, c.Organization, c.PlanBoardV2, c.PlanStepV2,
+		c.PlatformChannel, c.PlatformChannelCredential, c.PlatformChannelDelivery,
+		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
+		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
+		c.SchemaMigration, c.SelfCheckReport, c.Session, c.SessionMetrics,
+		c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime,
+		c.SessionTurn, c.SessionV2, c.SkillEvolutionSuggestion, c.SkillImportJob,
+		c.SkillInvocation, c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter,
+		c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2,
+		c.TeamStageV2, c.ToolAgentOverride, c.ToolInvocation, c.ToolInvocationAudit,
 		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
 		c.UsageQuota, c.UserEmbeddingSetting,
 	} {
@@ -763,18 +769,18 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
 		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
 		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
-		c.HealRecord, c.LlmProviderModel, c.MemberSessionV2, c.ModelPricingRule,
-		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
-		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
-		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
-		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.SchemaMigration, c.SelfCheckReport,
-		c.Session, c.SessionMetrics, c.SessionParticipant, c.SessionRun,
-		c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn, c.SessionV2,
-		c.SkillEvolutionSuggestion, c.SkillImportJob, c.SkillInvocation,
-		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
-		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
-		c.ToolAgentOverride, c.ToolInvocation, c.ToolInvocationAudit,
+		c.HealRecord, c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2,
+		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
+		c.OrchestrationStep, c.Organization, c.PlanBoardV2, c.PlanStepV2,
+		c.PlatformChannel, c.PlatformChannelCredential, c.PlatformChannelDelivery,
+		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
+		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
+		c.SchemaMigration, c.SelfCheckReport, c.Session, c.SessionMetrics,
+		c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime,
+		c.SessionTurn, c.SessionV2, c.SkillEvolutionSuggestion, c.SkillImportJob,
+		c.SkillInvocation, c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter,
+		c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2,
+		c.TeamStageV2, c.ToolAgentOverride, c.ToolInvocation, c.ToolInvocationAudit,
 		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
 		c.UsageQuota, c.UserEmbeddingSetting,
 	} {
@@ -865,6 +871,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.HealRecord.mutate(ctx, m)
 	case *LlmProviderModelMutation:
 		return c.LlmProviderModel.mutate(ctx, m)
+	case *MediaProviderMutation:
+		return c.MediaProvider.mutate(ctx, m)
 	case *MemberSessionV2Mutation:
 		return c.MemberSessionV2.mutate(ctx, m)
 	case *ModelPricingRuleMutation:
@@ -6417,6 +6425,139 @@ func (c *LlmProviderModelClient) mutate(ctx context.Context, m *LlmProviderModel
 		return (&LlmProviderModelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown LlmProviderModel mutation op: %q", m.Op())
+	}
+}
+
+// MediaProviderClient is a client for the MediaProvider schema.
+type MediaProviderClient struct {
+	config
+}
+
+// NewMediaProviderClient returns a client for the MediaProvider from the given config.
+func NewMediaProviderClient(c config) *MediaProviderClient {
+	return &MediaProviderClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `mediaprovider.Hooks(f(g(h())))`.
+func (c *MediaProviderClient) Use(hooks ...Hook) {
+	c.hooks.MediaProvider = append(c.hooks.MediaProvider, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `mediaprovider.Intercept(f(g(h())))`.
+func (c *MediaProviderClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MediaProvider = append(c.inters.MediaProvider, interceptors...)
+}
+
+// Create returns a builder for creating a MediaProvider entity.
+func (c *MediaProviderClient) Create() *MediaProviderCreate {
+	mutation := newMediaProviderMutation(c.config, OpCreate)
+	return &MediaProviderCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MediaProvider entities.
+func (c *MediaProviderClient) CreateBulk(builders ...*MediaProviderCreate) *MediaProviderCreateBulk {
+	return &MediaProviderCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MediaProviderClient) MapCreateBulk(slice any, setFunc func(*MediaProviderCreate, int)) *MediaProviderCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MediaProviderCreateBulk{err: fmt.Errorf("calling to MediaProviderClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MediaProviderCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MediaProviderCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MediaProvider.
+func (c *MediaProviderClient) Update() *MediaProviderUpdate {
+	mutation := newMediaProviderMutation(c.config, OpUpdate)
+	return &MediaProviderUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MediaProviderClient) UpdateOne(_m *MediaProvider) *MediaProviderUpdateOne {
+	mutation := newMediaProviderMutation(c.config, OpUpdateOne, withMediaProvider(_m))
+	return &MediaProviderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MediaProviderClient) UpdateOneID(id string) *MediaProviderUpdateOne {
+	mutation := newMediaProviderMutation(c.config, OpUpdateOne, withMediaProviderID(id))
+	return &MediaProviderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MediaProvider.
+func (c *MediaProviderClient) Delete() *MediaProviderDelete {
+	mutation := newMediaProviderMutation(c.config, OpDelete)
+	return &MediaProviderDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MediaProviderClient) DeleteOne(_m *MediaProvider) *MediaProviderDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MediaProviderClient) DeleteOneID(id string) *MediaProviderDeleteOne {
+	builder := c.Delete().Where(mediaprovider.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MediaProviderDeleteOne{builder}
+}
+
+// Query returns a query builder for MediaProvider.
+func (c *MediaProviderClient) Query() *MediaProviderQuery {
+	return &MediaProviderQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMediaProvider},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MediaProvider entity by its id.
+func (c *MediaProviderClient) Get(ctx context.Context, id string) (*MediaProvider, error) {
+	return c.Query().Where(mediaprovider.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MediaProviderClient) GetX(ctx context.Context, id string) *MediaProvider {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MediaProviderClient) Hooks() []Hook {
+	return c.hooks.MediaProvider
+}
+
+// Interceptors returns the client interceptors.
+func (c *MediaProviderClient) Interceptors() []Interceptor {
+	return c.inters.MediaProvider
+}
+
+func (c *MediaProviderClient) mutate(ctx context.Context, m *MediaProviderMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MediaProviderCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MediaProviderUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MediaProviderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MediaProviderDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown MediaProvider mutation op: %q", m.Op())
 	}
 }
 
@@ -13214,18 +13355,18 @@ type (
 		FailurePattern, FlowLogEvent, GatewayWebhook, GraphDefinition, GraphExecution,
 		GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment, GraphTaskEvent,
 		GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord, LlmProviderModel,
-		MemberSessionV2, ModelPricingRule, ModelTokenUsageHourly, Orchestration,
-		OrchestrationStep, Organization, PlanBoardV2, PlanStepV2, PlatformChannel,
-		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
-		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
-		PlatformSkill, PlatformTool, SchemaMigration, SelfCheckReport, Session,
-		SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
-		SessionRuntime, SessionTurn, SessionV2, SkillEvolutionSuggestion,
-		SkillImportJob, SkillInvocation, SkillVersion, StepV2, SystemSetting,
-		TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2,
-		TeamStageV2, ToolAgentOverride, ToolInvocation, ToolInvocationAudit,
-		ToolInvocationParam, ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
-		UserEmbeddingSetting []ent.Hook
+		MediaProvider, MemberSessionV2, ModelPricingRule, ModelTokenUsageHourly,
+		Orchestration, OrchestrationStep, Organization, PlanBoardV2, PlanStepV2,
+		PlatformChannel, PlatformChannelCredential, PlatformChannelDelivery,
+		PlatformChannelPeerSession, PlatformHook, PlatformMCPServer,
+		PlatformMCPUserCredential, PlatformPlugin, PlatformSkill, PlatformTool,
+		SchemaMigration, SelfCheckReport, Session, SessionMetrics, SessionParticipant,
+		SessionRun, SessionRunCheckpoint, SessionRuntime, SessionTurn, SessionV2,
+		SkillEvolutionSuggestion, SkillImportJob, SkillInvocation, SkillVersion,
+		StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun,
+		TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolInvocation,
+		ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
+		ToolResultReplacement, TurnV2, UsageQuota, UserEmbeddingSetting []ent.Hook
 	}
 	inters struct {
 		Activity, Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
@@ -13236,17 +13377,18 @@ type (
 		FailurePattern, FlowLogEvent, GatewayWebhook, GraphDefinition, GraphExecution,
 		GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment, GraphTaskEvent,
 		GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord, LlmProviderModel,
-		MemberSessionV2, ModelPricingRule, ModelTokenUsageHourly, Orchestration,
-		OrchestrationStep, Organization, PlanBoardV2, PlanStepV2, PlatformChannel,
-		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
-		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
-		PlatformSkill, PlatformTool, SchemaMigration, SelfCheckReport, Session,
-		SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
-		SessionRuntime, SessionTurn, SessionV2, SkillEvolutionSuggestion,
-		SkillImportJob, SkillInvocation, SkillVersion, StepV2, SystemSetting,
-		TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2,
-		TeamStageV2, ToolAgentOverride, ToolInvocation, ToolInvocationAudit,
-		ToolInvocationParam, ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
+		MediaProvider, MemberSessionV2, ModelPricingRule, ModelTokenUsageHourly,
+		Orchestration, OrchestrationStep, Organization, PlanBoardV2, PlanStepV2,
+		PlatformChannel, PlatformChannelCredential, PlatformChannelDelivery,
+		PlatformChannelPeerSession, PlatformHook, PlatformMCPServer,
+		PlatformMCPUserCredential, PlatformPlugin, PlatformSkill, PlatformTool,
+		SchemaMigration, SelfCheckReport, Session, SessionMetrics, SessionParticipant,
+		SessionRun, SessionRunCheckpoint, SessionRuntime, SessionTurn, SessionV2,
+		SkillEvolutionSuggestion, SkillImportJob, SkillInvocation, SkillVersion,
+		StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun,
+		TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolInvocation,
+		ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
+		ToolResultReplacement, TurnV2, UsageQuota,
 		UserEmbeddingSetting []ent.Interceptor
 	}
 )

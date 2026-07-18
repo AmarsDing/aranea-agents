@@ -43,6 +43,7 @@ import (
 	"aranea-agents/internal/data/ent/graphtaskrun"
 	"aranea-agents/internal/data/ent/healrecord"
 	"aranea-agents/internal/data/ent/llmprovidermodel"
+	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
 	"aranea-agents/internal/data/ent/modelpricingrule"
 	"aranea-agents/internal/data/ent/modeltokenusagehourly"
@@ -2641,6 +2642,48 @@ func init() {
 	llmprovidermodelDescID := llmprovidermodelFields[0].Descriptor()
 	// llmprovidermodel.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	llmprovidermodel.IDValidator = llmprovidermodelDescID.Validators[0].(func(string) error)
+	mediaproviderFields := schema.MediaProvider{}.Fields()
+	_ = mediaproviderFields
+	// mediaproviderDescName is the schema descriptor for name field.
+	mediaproviderDescName := mediaproviderFields[1].Descriptor()
+	// mediaprovider.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	mediaprovider.NameValidator = mediaproviderDescName.Validators[0].(func(string) error)
+	// mediaproviderDescProviderType is the schema descriptor for provider_type field.
+	mediaproviderDescProviderType := mediaproviderFields[2].Descriptor()
+	// mediaprovider.ProviderTypeValidator is a validator for the "provider_type" field. It is called by the builders before save.
+	mediaprovider.ProviderTypeValidator = mediaproviderDescProviderType.Validators[0].(func(string) error)
+	// mediaproviderDescBaseURL is the schema descriptor for base_url field.
+	mediaproviderDescBaseURL := mediaproviderFields[3].Descriptor()
+	// mediaprovider.DefaultBaseURL holds the default value on creation for the base_url field.
+	mediaprovider.DefaultBaseURL = mediaproviderDescBaseURL.Default.(string)
+	// mediaproviderDescAPIKey is the schema descriptor for api_key field.
+	mediaproviderDescAPIKey := mediaproviderFields[4].Descriptor()
+	// mediaprovider.DefaultAPIKey holds the default value on creation for the api_key field.
+	mediaprovider.DefaultAPIKey = mediaproviderDescAPIKey.Default.(string)
+	// mediaproviderDescConfigJSON is the schema descriptor for config_json field.
+	mediaproviderDescConfigJSON := mediaproviderFields[5].Descriptor()
+	// mediaprovider.DefaultConfigJSON holds the default value on creation for the config_json field.
+	mediaprovider.DefaultConfigJSON = mediaproviderDescConfigJSON.Default.(string)
+	// mediaproviderDescCapabilities is the schema descriptor for capabilities field.
+	mediaproviderDescCapabilities := mediaproviderFields[6].Descriptor()
+	// mediaprovider.DefaultCapabilities holds the default value on creation for the capabilities field.
+	mediaprovider.DefaultCapabilities = mediaproviderDescCapabilities.Default.(string)
+	// mediaproviderDescStatus is the schema descriptor for status field.
+	mediaproviderDescStatus := mediaproviderFields[7].Descriptor()
+	// mediaprovider.DefaultStatus holds the default value on creation for the status field.
+	mediaprovider.DefaultStatus = mediaproviderDescStatus.Default.(string)
+	// mediaproviderDescCreatedAt is the schema descriptor for created_at field.
+	mediaproviderDescCreatedAt := mediaproviderFields[8].Descriptor()
+	// mediaprovider.DefaultCreatedAt holds the default value on creation for the created_at field.
+	mediaprovider.DefaultCreatedAt = mediaproviderDescCreatedAt.Default.(string)
+	// mediaproviderDescUpdatedAt is the schema descriptor for updated_at field.
+	mediaproviderDescUpdatedAt := mediaproviderFields[9].Descriptor()
+	// mediaprovider.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	mediaprovider.DefaultUpdatedAt = mediaproviderDescUpdatedAt.Default.(string)
+	// mediaproviderDescID is the schema descriptor for id field.
+	mediaproviderDescID := mediaproviderFields[0].Descriptor()
+	// mediaprovider.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	mediaprovider.IDValidator = mediaproviderDescID.Validators[0].(func(string) error)
 	membersessionv2Fields := schema.MemberSessionV2{}.Fields()
 	_ = membersessionv2Fields
 	// membersessionv2DescTeamRunID is the schema descriptor for team_run_id field.

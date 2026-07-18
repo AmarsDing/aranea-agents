@@ -1481,6 +1481,25 @@ var (
 			},
 		},
 	}
+	// MediaProvidersColumns holds the columns for the "media_providers" table.
+	MediaProvidersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "provider_type", Type: field.TypeString},
+		{Name: "base_url", Type: field.TypeString, Default: ""},
+		{Name: "api_key", Type: field.TypeString, Default: ""},
+		{Name: "config_json", Type: field.TypeString, Default: "{}"},
+		{Name: "capabilities", Type: field.TypeString, Default: "[]"},
+		{Name: "status", Type: field.TypeString, Default: "active"},
+		{Name: "created_at", Type: field.TypeString, Default: ""},
+		{Name: "updated_at", Type: field.TypeString, Default: ""},
+	}
+	// MediaProvidersTable holds the schema information for the "media_providers" table.
+	MediaProvidersTable = &schema.Table{
+		Name:       "media_providers",
+		Columns:    MediaProvidersColumns,
+		PrimaryKey: []*schema.Column{MediaProvidersColumns[0]},
+	}
 	// MemberSessionsV2Columns holds the columns for the "member_sessions_v2" table.
 	MemberSessionsV2Columns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
@@ -3389,6 +3408,7 @@ var (
 		GraphTaskRunsTable,
 		HealRecordsTable,
 		LlmProviderModelsTable,
+		MediaProvidersTable,
 		MemberSessionsV2Table,
 		ModelPricingRulesTable,
 		ModelTokenUsageHourlyTable,
@@ -3564,6 +3584,9 @@ func init() {
 	}
 	LlmProviderModelsTable.Annotation = &entsql.Annotation{
 		Table: "llm_provider_models",
+	}
+	MediaProvidersTable.Annotation = &entsql.Annotation{
+		Table: "media_providers",
 	}
 	MemberSessionsV2Table.Annotation = &entsql.Annotation{
 		Table: "member_sessions_v2",
