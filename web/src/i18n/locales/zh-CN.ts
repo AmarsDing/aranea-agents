@@ -107,11 +107,11 @@ export default {
     },
     orchestrationProgress: {
       decomposing: '正在分解任务…',
-      decomposed: '任务分解完成，共 {sub_task_count} 个子任务',
-      allocating: '正在匹配 Agent…（{index}/{total}）{sub_task}',
+      decomposed: '任务分解完成，共 {subTaskCount} 个子任务',
+      allocating: '正在匹配 Agent…（{index}/{total}）{subTask}',
       allocated: 'Agent 分配完成（共 {total} 个）',
-      creatingAgent: '正在创建新 Agent "{agent_name}"…',
-      agentCreated: 'Agent "{agent_name}" 创建完成',
+      creatingAgent: '正在创建新 Agent "{agentName}"…',
+      agentCreated: 'Agent "{agentName}" 创建完成',
     },
     agentSidebar: {
       statusRunning: '执行中',
@@ -377,6 +377,8 @@ export default {
       taskList: '任务列表',
       // Generic
       toolName: '工具名',
+      mediaOutputs: '媒体产出',
+      prompt: '提示词',
     },
     spiritLabel: '精灵',
     connectionDisconnected: '连接已断开',
@@ -2075,6 +2077,21 @@ export default {
     noAgentDetails: '暂无成员详情',
     online: '在线',
     waitingForPredecessor: '等待前置任务完成…',
+    observeView: '观测视图',
+    backToChat: '返回聊天',
+  },
+  observe: {
+    refresh: '刷新',
+    live: '实时',
+    noActiveGraph: '当前无活跃的团队执行',
+    mediaOutputs: '媒体产出',
+    activityStream: '活动流',
+    nodeInfo: '节点信息',
+    statusPending: '等待中',
+    statusRunning: '运行中',
+    statusCompleted: '已完成',
+    statusFailed: '失败',
+    statusInterrupted: '已中断',
   },
   orchestration: {
     timeline: {

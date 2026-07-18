@@ -110,11 +110,11 @@ export default {
     },
     orchestrationProgress: {
       decomposing: 'Decomposing task…',
-      decomposed: 'Task decomposed into {sub_task_count} subtasks',
-      allocating: 'Matching agents… ({index}/{total}) {sub_task}',
+      decomposed: 'Task decomposed into {subTaskCount} subtasks',
+      allocating: 'Matching agents… ({index}/{total}) {subTask}',
       allocated: 'Agent allocation complete ({total} total)',
-      creatingAgent: 'Creating new agent "{agent_name}"…',
-      agentCreated: 'Agent "{agent_name}" created',
+      creatingAgent: 'Creating new agent "{agentName}"…',
+      agentCreated: 'Agent "{agentName}" created',
     },
     agentSidebar: {
       statusRunning: 'Running',
@@ -382,6 +382,8 @@ export default {
       taskList: 'Task List',
       // Generic
       toolName: 'Tool Name',
+      mediaOutputs: 'Media Outputs',
+      prompt: 'Prompt',
     },
     spiritLabel: 'Spirit',
     connectionDisconnected: 'Disconnected',
@@ -2075,6 +2077,21 @@ export default {
     noAgentDetails: 'No agent details',
     online: 'Online',
     waitingForPredecessor: 'Waiting for predecessor to complete…',
+    observeView: 'Observe',
+    backToChat: 'Back to Chat',
+  },
+  observe: {
+    refresh: 'Refresh',
+    live: 'Live',
+    noActiveGraph: 'No active team execution',
+    mediaOutputs: 'Media Outputs',
+    activityStream: 'Activity Stream',
+    nodeInfo: 'Node Info',
+    statusPending: 'Pending',
+    statusRunning: 'Running',
+    statusCompleted: 'Completed',
+    statusFailed: 'Failed',
+    statusInterrupted: 'Interrupted',
   },
   orchestration: {
     timeline: {
