@@ -204,3 +204,74 @@ func TestRedactAndTruncate_ShortInput(t *testing.T) {
 		t.Errorf("RedactAndTruncate(%q, 100) = %q, want %q", input, got, "hi")
 	}
 }
+
+// TestRedactAndTruncate_MultipleSecrets verifies that when one specific
+// pattern already matched, other secrets in the same text are still redacted
+// by the generic secretRE. This is a regression test for the "one hit skips
+// generic" logic flaw.
+func TestRedactAndTruncate_MultipleSecrets(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		mustNotHave []string // substrings that must NOT appear in output
+	}{
+		{
+			"OpenAI key + password",
+			`key is sk-abc123def456ghi789 and password=mysecret123`,
+			[]string{"sk-abc123def456ghi789", "mysecret123"},
+		},
+		{
+			"JWT + api_key assignment",
+			`token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U api_key=sk-livekey123456789abcdef`,
+			[]string{"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "sk-livekey123456789abcdef"},
+		},
+		{
+			"Bearer + generic secret",
+			`Authorization: Bearer tok_abc123def456 secret: myverysecretvalue`,
+			[]string{"tok_abc123def456", "myverysecretvalue"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RedactAndTruncate(tt.input, 10000)
+			for _, secret := range tt.mustNotHave {
+				if strings.Contains(got, secret) {
+					t.Errorf("RedactAndTruncate(%q) still contains secret %q, got: %q", tt.input, secret, got)
+				}
+			}
+		})
+	}
+}
+
+// TestRedactAndTruncate_ExtendedPatterns verifies newly added secret patterns:
+// Anthropic sk-ant, Slack xoxb/xoxp, Stripe sk_live/rk_live, private key blocks,
+// DSN embedded passwords.
+func TestRedactAndTruncate_ExtendedPatterns(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"Anthropic key", "sk-ant-api03-abc123def456ghi789"},
+		{"Slack bot token", "xoxb-" + "1234567890-abcdefghijklmnop"},
+		{"Slack user token", "xoxp-" + "1234567890-abcdefghijklmnop"},
+		{"Stripe live secret key", "sk_live_abc123def456ghi789jkl0"},
+		{"Stripe live restricted key", "rk_live_abc123def456ghi789jkl0"},
+		{"RSA private key block", "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA7\n-----END RSA PRIVATE KEY-----"},
+		{"EC private key block", "-----BEGIN EC PRIVATE KEY-----\nMHQCAQEEIA==\n-----END EC PRIVATE KEY-----"},
+		{"Postgres DSN with password", "postgres://admin:secretpass123@db.example.com:5432/mydb"},
+		{"MySQL DSN with password", "mysql://root:secretpass123@localhost:3306/mydb"},
+		{"Redis DSN with password", "redis://default:secretpass123@redis.example.com:6379"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RedactAndTruncate(tt.input, 10000)
+			if strings.Contains(got, tt.input) {
+				t.Errorf("RedactAndTruncate(%q) did not redact secret, got: %q", tt.input, got)
+			}
+			// Must contain a redaction marker.
+			if !strings.Contains(got, "[secret redacted]") {
+				t.Errorf("RedactAndTruncate(%q) missing redaction marker, got: %q", tt.input, got)
+			}
+		})
+	}
+}

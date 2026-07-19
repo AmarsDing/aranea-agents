@@ -13,11 +13,21 @@ Aranea-Agents 是基于 trpc-agent-go 的企业级多智能体编排平台。以
 
 **技术栈**：Go + Kratos v2（HTTP/gRPC/WebSocket）| trpc-agent-go（Agent 运行时）| Vue 3 + Quasar + Pinia + TypeScript | SQLite（Ent ORM）| Wire（编译期 DI）
 
+**核心差异化**：
+- **五层记忆架构**：L0~L4 完整覆盖（会话窗口→工作记忆→情景向量→语义事实→知识图谱），业界最完整的 Agent 记忆系统
+- **三层编排引擎**：Team 六模式 + Graph 图编排 + Spirit 动态编排，覆盖从简单对话到企业级复杂任务的全场景
+- **自动进化闭环**：LearningLoop → Agent Evolution → Skill Evolution，Agent 和技能都能从运行数据中持续学习优化
+- **全链路可观测**：Trace + Flow Log + 根因分析 + 自动自愈 + TimeTravel，从故障检测到修复的完整闭环
+- **精细成本管控**：六维定价 × 微美元精度 × 三级配额 × 预算告警，Token 消费全透明
+- **13 通道统一接入**：飞书/钉钉/企微/Slack/Discord 等一键接入，Agent 一次创建全平台可用
+- **A2A 联邦协议**：基于 Google A2A 标准的跨组织 Agent 互操作，打破 Agent 孤岛
+- **一人当总裁**：Spirit 动态编排 + 组织架构模拟，一人通过精灵控制 N 家虚拟公司
+
 ---
 
 ## 二、业务模块总览
 
-Aranea-Agents 包含 **36+ 个业务，横跨以下核心业务域：
+Aranea-Agents 包含 **45+ 个业务模块**，横跨以下核心业务域：
 
 | 序号 | 模块 | 核心功能 |
 |------|------|----------|
@@ -37,6 +47,7 @@ Aranea-Agents 包含 **36+ 个业务，横跨以下核心业务域：
 | 14 | Agent 设置 | 50+ 运行时参数、细粒度配置 |
 | 15 | 评估系统 | LLM Judge、PromptIter 优化、质量闭环 |
 | 16 | 内置行业 | 金融/自媒体/软件开发三大行业、预置团队与岗位 |
+| 17 | CLI 工具 | 交互式 REPL、30+ 命令、跨平台支持 |
 
 ---
 
@@ -651,6 +662,39 @@ detected pattern → pending → approved → registered
 
 ---
 
+### 3.17 CLI 工具
+
+Aranea-Agents 提供功能完整的命令行工具 `aranea`，让你无需打开浏览器即可管理 Agent、发起对话、监控运行状态。
+
+**功能**：
+- **交互式 REPL**：`/agent`、`/session`、`/send` 等斜杠命令，类似 Claude Code 的交互体验
+- **30+ 命令**：覆盖 Agent / Team / Graph / Skill / MCP / Channel / Tool / Cron / Pack / Monitor 全模块
+- **WebSocket 实时流**：chat 命令通过 WebSocket 接收流式响应，支持 thinking / tool / reply 事件
+- **多输出格式**：table / json / kv / text，适配脚本和人工阅读场景
+- **配置管理**：`~/.aranea/config.yaml` 管理 endpoint、token、默认 agent
+- **跨平台**：Windows / Linux / macOS，自动检测终端能力（颜色 / Unicode / TTY）
+- **批量操作**：`agent batch-update`、`session batch-delete` 等批量命令
+- **导入导出**：`pack export` / `pack import` 一键迁移 Agent 配置
+
+**命令分类**：
+
+| 类别 | 命令 |
+|------|------|
+| Agent 管理 | `agent list` / `create` / `update` / `delete` / `batch-update` |
+| Team 编排 | `team list` / `run` / `status` / `cancel` / `resume` |
+| Graph 编排 | `graph list` / `run` / `status` / `cancel` / `resume` |
+| Skill 管理 | `skill list` / `import` / `export` / `evolve` / `health` |
+| 会话对话 | `chat` / `session list` / `messages` / `rename` |
+| 系统监控 | `monitor dashboard` / `flow-log` / `trace` / `heal` |
+| 系统管理 | `system info` / `version` / `login` / `logout` |
+
+**优势**：
+- **Claude Code 式体验**：熟悉的斜杠命令 + 流式输出，降低学习成本
+- **全功能覆盖**：Web 端能做的，CLI 都能做
+- **脚本友好**：JSON 输出 + 退出码，便于 CI/CD 集成
+
+---
+
 ## 四、竞品痛点与 Aranea-Agents 的解决方案
 
 ### 4.1 竞品痛点
@@ -707,6 +751,8 @@ detected pattern → pending → approved → registered
 
 10. **一人当总裁**：Spirit 动态编排 + 组织架构模拟，一人通过精灵控制 N 家虚拟公司，分行业/部门/岗位，专人专事——助力做你想做不敢做的事
 
+11. **全功能 CLI**：Claude Code 式交互体验，30+ 命令覆盖全模块，WebSocket 实时流，脚本友好，让管理 Agent 像聊天一样简单
+
 ---
 
 ## 六、系统架构概览
@@ -714,18 +760,18 @@ detected pattern → pending → approved → registered
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        前端 (Vue 3 + Quasar)                      │
-│  43 Store · 37+ 页面 · 45 种 Envelope 事件 · WebSocket 实时通信    │
+│  35 Store · 45+ 页面 · 45 种 Envelope 事件 · WebSocket 实时通信    │
 ├─────────────────────────────────────────────────────────────────┤
 │                     传输层 (Kratos v2)                            │
 │           HTTP · gRPC · WebSocket · 中间件链 · Wire DI            │
 ├─────────────────────────────────────────────────────────────────┤
-│                      Service 层 (38+ Service)                     │
+│                      Service 层 (50+ Service)                     │
 │    ChatService(核心编排器) · AgentService · TeamService · ...      │
 ├─────────────────────────────────────────────────────────────────┤
-│                       Biz 层 (36+ Usecase)                        │
+│                       Biz 层 (45+ Usecase)                        │
 │  AgentUsecase · ChatUsecase · TeamUsecase · MemoryUsecase · ...   │
 ├─────────────────────────────────────────────────────────────────┤
-│                      Data 层 (60+ Repo)                           │
+│                      Data 层 (95+ Repo)                           │
 │          Ent ORM + 原生 SQL · SQLite + PostgreSQL(向量)            │
 ├─────────────────────────────────────────────────────────────────┤
 │                   运行时 (trpc-agent-go)                           │
@@ -733,8 +779,40 @@ detected pattern → pending → approved → registered
 ├─────────────────────────────────────────────────────────────────┤
 │                     基础设施层                                     │
 │  Provider(12+) · Channel(13) · MCP · Hook · Plugin(11) · A2A      │
+├─────────────────────────────────────────────────────────────────┤
+│                        CLI 工具                                    │
+│        aranea CLI · 30+ 命令 · REPL · WebSocket 实时流             │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 七、测试与质量保证
+
+Aranea-Agents 拥有完善的测试基础设施，确保代码质量和功能稳定性：
+
+**后端测试**：
+- **单元测试**：`go test ./...` 覆盖 biz / service / data 各层
+- **集成测试**：`go test -tags=integration ./...` 覆盖跨模块交互
+- **数据库测试**：SQLite 内存模式 + 真实迁移路径测试
+- **并发测试**：race detector 检测竞态条件
+- **Mock 策略**：biz 层接口窄化（≤5 方法），便于 mock
+
+**前端测试**：
+- **单元测试**：Vitest + Vue Test Utils
+- **E2E 测试**：Playwright 覆盖核心用户流程
+- **类型检查**：TypeScript strict 模式
+
+**代码质量**：
+- **Lint**：golangci-lint + ESLint + Stylelint
+- **架构守护**：`make archlint` 验证依赖方向、接口窄化、认知复杂度
+- **边界检查**：`make runtime-boundary` 确保 biz 层不依赖框架运行时
+- **FieldGuide Lint**：验证 prompt 模板质量
+
+**CI/CD**：
+- **GitHub Actions**：自动化测试 + lint + build
+- **CodeQL**：安全漏洞扫描
+- **架构 Fitness Function**：依赖方向 / 分层隔离 / 接口窄化 / 状态机覆盖 / 认知复杂度自动验证
 
 ---
 
@@ -756,110 +834,11 @@ make all
 
 ```bash
 # 开发模式 A：免登录（最快）
-13:21
-用户8128084130
-检查项目进度和完成情况，规划下一步完善的模块功能
-Agent
-思考过程
-我将先检查项目进度文档和开发计划,然后规划下一步工作。
-
-aranea-agents\docs\development
-Thought
-项目文档很多,我需要并行读取关键进度文件来了解整体状态。
-
-docs\development\README.md
-Thought
-docs\development\phase1-补齐框架能力缺口\实施进度.md
-docs\development\phase2-增强自主性\实施进度.md
-docs\development\phase3-进化能力\实施进度.md
-docs\development\phase4-生产级增强\实施进度.md
-docs\development\phase5-差异化创新\实施进度.md
-docs\development\phase6-记忆系统增强\实施进度.md
-Thought
-让我再查看记忆系统实施进度和聊天模块的开发状态,以便更全面地了解项目现状。
-
-docs\development\memory\实施进度.md
-现在我对整体进度已有清晰认识。让我再快速查看聊天模块和团队编排的开发状态,这两个是近期活跃的模块。
-
-docs\development\1-chat.development.md
-docs\development\1-chat.development.md
-docs\development\53-team-graph-orchestration.development.md
-Thought
-我已全面检查了项目进度。以下是完整的进度分析和下一步规划建议。
-
-一、项目整体进度概览
-阶段	主题	整体进度	状态
-Phase 1	补齐框架能力缺口	100%	✅ 全部完成 (8/8)
-Phase 2	增强自主性	90%	🟡 4/5 基本完成,浏览器工具仅 30%
-Phase 3	进化能力	66%	🟡 3/5 完成,Persona 30%,Skill 市场 0%
-Phase 4	生产级增强	73%	🟡 3/7 完成,3 个部分实现,Session 分布式 0%
-Phase 5	差异化创新	0%	❌ 全部未开始 (5/5)
-Phase 6	记忆系统增强	0%	❌ 全部未开始 (10/10,RL 为研究阶段)
-Memory 核心	L0-L4 + Worker	85%	🟡 基础完整,Neural Memory 仅 5%
-Chat 模块	对话核心	~95%	✅ ADR-02/03 完成,遗留 P3 优化项
-二、关键缺口分析(按优先级)
-P0 — 高 ROI 收尾项(已投入 90%+,差最后一步)
-模块	缺口	工作量	价值
-Phase 2-03 浏览器工具	Driver 接口抽象层未实现(P3-04~08),仅有 GuardedToolset 包装	中	浏览器自动化能力补齐
-Phase 3-04 Persona 角色系统	缺独立领域模型/Usecase/前端 UI,仅 Evolution 子集	中	角色切换体验
-Phase 4-06 Langfuse	Baggage 注入显式化(T6 🟡)	小	可观测性完整性
-Phase 4-03 GraphCache	图节点级缓存未实现,仅工具级 ResultCache	中	跨请求性能
-P1 — 关键基础设施缺口(阻塞后续阶段)
-模块	缺口	阻塞影响
-Phase 4-01 Session 分布式存储	0% 完全未实现	阻塞 Phase 6 双时序模型(依赖 pgvector)、多实例部署
-Phase 4-02 Memory 向量存储	50%,缺 MemoryFactory 抽象 + Mem0 集成	阻塞 Phase 6-10 外挂记忆集成
-Memory L0 Team 隔离	ListL0SnapshotRows 未按 agent 过滤	Team 多 Agent 场景 L0 混淆
-Memory L2 跨表视图	ListEvents 仅查单表,设计要求 UNION ALL	事件时间线不完整
-P2 — 新功能启动(高价值新方向)
-模块	价值	前置依赖
-Phase 6A-02 Agent 自主编辑记忆	memory_replace/rethink/insert 工具	无,可独立启动
-Phase 6A-04 递归摘要与上下文压缩	/compact 命令 + 自动压缩	无,可独立启动
-Phase 3-03 Skill 市场生态	技能分发闭环	技能自创建已完成 ✅
-Phase 2-05 OutboundRouter 前端 UI	出站路由配置可视化	后端已完成 95%
-三、下一步规划建议
-基于依赖关系和 ROI,我建议按以下顺序推进:
-
-第一优先级:Memory 系统收尾 + Phase 6A 启动
-理由:Memory 核心 85%,投入产出比最高,且 Phase 6A 两项无前置依赖
-
-Memory 缺口收尾(P1):
-
-L0 Team 多 Agent 隔离(查询过滤)
-L2 跨表 UNION ALL 视图
-L3 pgvector HNSW 索引(性能)
-L4 Graph Tab 前端启用
-Phase 6A-02 Agent 自主编辑记忆(P2,无依赖):
-
-memory_replace / memory_rethink / memory_insert 三个工具
-操作日志 + 索引同步
-Phase 6A-04 递归摘要(P2,无依赖):
-
-ContextCompressor + BeforeModel Hook
-/compact 命令
-第二优先级:Phase 4 分布式基础设施
-理由:阻塞 Phase 6 后续和多实例部署
-
-Phase 4-02 Memory 向量存储(MemoryFactory 抽象 + 配置驱动)
-Phase 4-01 Session 分布式存储(Postgres 抽象)
-第三优先级:用户体验补齐
-Phase 3-04 Persona 角色系统(完整动态注入)
-Phase 2-05 OutboundRouter 前端 UI
-Phase 2-03 浏览器工具 Driver 抽象
-请选择您希望优先推进的方向,我将进一步细化实施计划。
-
-
-正在等待你的操作# Windows PowerShell:
+# Windows PowerShell:
 $env:DEPLOY_ENV="dev"
 $env:DAO_VECTOR_PGVECTOR="1"
 $env:KRATOS_HTTP_AUTH_DISABLED="1"
 go run -tags pgvector ./cmd/admin -conf ./configs/config.yaml
-
-$env:KRATOS_AUTH_SECRET = "your-random-secret-at-least-32-chars"
-go run -tags pgvector ./cmd/admin -conf ./configs/config.yaml
-
-- 用户名 ： admin
-- 密码 ： changeme
-- 邮箱 ： admin@aranea.local
 
 # Linux / macOS:
 # DEPLOY_ENV=dev KRATOS_HTTP_AUTH_DISABLED=1 go run ./cmd/admin -conf ./configs/config.yaml
@@ -882,6 +861,22 @@ WebSocket 走 HTTP 同端口 `ws://localhost:8000/v1/ws`（前端 dev 代理为 
 cd web && npm install && npm run dev
 # 浏览器打开 http://localhost:9001（:9000 为 gRPC，勿混用）
 ```
+
+### 构建 CLI 工具
+
+```bash
+# 构建 aranea CLI
+make cli
+
+# 或者手动构建
+go build -o aranea ./cmd/aranea
+
+# 使用 CLI
+./aranea login --endpoint http://localhost:8000 --token dev
+./aranea agent list
+./aranea chat --agent spirit "你好，帮我分析一下市场趋势"
+```
+
 ---
 ## License
 

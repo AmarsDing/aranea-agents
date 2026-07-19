@@ -42,6 +42,53 @@ type ToolRegistration struct {
 	Deferred             bool
 	Examples             []ToolUseExample
 	Group                string
+	// BehaviorVersion identifies the tool's behavior contract version. When a
+	// tool's behavior changes incompatibly, register a new ToolRegistration
+	// with an incremented BehaviorVersion instead of replacing the old one, so
+	// sessions pinned to an older version keep reproducible behavior.
+	// Zero value means unversioned and resolves as version 1.
+	BehaviorVersion int
+}
+
+// effectiveVersion normalizes the unversioned zero value to 1.
+func (r *ToolRegistration) effectiveVersion() int {
+	if r == nil || r.BehaviorVersion <= 0 {
+		return 1
+	}
+	return r.BehaviorVersion
+}
+
+// ResolveRegistration picks the registration for name with the exact behavior
+// version. version <= 0 means "unpinned" and resolves the latest registered
+// version. Returns nil when no registration matches.
+func ResolveRegistration(regs []*ToolRegistration, name string, version int) *ToolRegistration {
+	if version <= 0 {
+		latest := LatestBehaviorVersion(regs, name)
+		if latest == 0 {
+			return nil
+		}
+		version = latest
+	}
+	for _, r := range regs {
+		if r != nil && r.Name == name && r.effectiveVersion() == version {
+			return r
+		}
+	}
+	return nil
+}
+
+// LatestBehaviorVersion returns the highest registered behavior version for
+// name, or 0 when the tool is not registered.
+func LatestBehaviorVersion(regs []*ToolRegistration, name string) int {
+	latest := 0
+	for _, r := range regs {
+		if r != nil && r.Name == name {
+			if v := r.effectiveVersion(); v > latest {
+				latest = v
+			}
+		}
+	}
+	return latest
 }
 
 func NewToolRegistration(name, description string, factory func(ctx context.Context) (Tool, error)) *ToolRegistration {

@@ -91,11 +91,38 @@ func (a *MemoryCompositeRecallAdapter) CompositeSearchMemories(ctx context.Conte
 	}
 
 	sort.Slice(all, func(i, j int) bool { return all[i].Score > all[j].Score })
+
+	// MMR diversity rerank: push near-duplicates down so the final result
+	// covers diverse topics rather than clustering around one theme.
+	if len(all) > 1 {
+		texts := make([]string, len(all))
+		scores := make([]float64, len(all))
+		for i, row := range all {
+			texts[i] = compositeMMRText(row)
+			scores[i] = row.Score
+		}
+		mmrOrder := mmrRerankTexts(texts, scores, int(limit), mmrLambda)
+		reranked := make([]biz.CompositeRecallStoreRow, 0, len(mmrOrder))
+		for _, idx := range mmrOrder {
+			reranked = append(reranked, all[idx])
+		}
+		all = reranked
+	}
+
 	if len(all) > int(limit) {
 		all = all[:limit]
 	}
 	return all, nil
 }
 
-// ensure strings is referenced
-var _ = strings.TrimSpace
+// mmrLambda controls the relevance-vs-diversity trade-off in composite MMR
+// rerank. 0.7 = 70% relevance weight + 30% diversity penalty.
+const mmrLambda = 0.7
+
+// compositeMMRText builds the text used for MMR similarity comparison.
+func compositeMMRText(row biz.CompositeRecallStoreRow) string {
+	if row.Layer == "L2" {
+		return strings.TrimSpace(row.Title + " " + row.Summary)
+	}
+	return strings.TrimSpace(row.Statement)
+}

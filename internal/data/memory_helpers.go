@@ -961,6 +961,29 @@ func factRecencyDecay(updatedAt string, now time.Time) float64 {
 	return math.Pow(0.5, days/l3DecayHalfLifeDays)
 }
 
+// isEvergreenFactKind reports whether the fact kind represents stable,
+// long-lived knowledge that should not decay over time.
+// Evergreen kinds: user identity, user preference, agent instruction,
+// domain knowledge — these are set once and remain valid.
+func isEvergreenFactKind(kind string) bool {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "user_identity", "user_preference", "agent_instruction", "domain_knowledge":
+		return true
+	default:
+		return false
+	}
+}
+
+// factDecayWithKind returns the recency decay factor for a fact, applying
+// the evergreen exemption: evergreen fact kinds always return 1.0 (no decay),
+// while non-evergreen kinds use the standard half-life decay.
+func factDecayWithKind(factKind, updatedAt string, now time.Time) float64 {
+	if isEvergreenFactKind(factKind) {
+		return 1.0
+	}
+	return factRecencyDecay(updatedAt, now)
+}
+
 func recencyBoost(updatedAt string, now time.Time) float64 {
 	updatedAt = strings.TrimSpace(updatedAt)
 	if updatedAt == "" {
