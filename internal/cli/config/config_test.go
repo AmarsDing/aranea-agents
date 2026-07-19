@@ -115,3 +115,76 @@ func TestDefaultPath(t *testing.T) {
 	}
 	t.Logf("DefaultPath: %s", path)
 }
+
+// TestLoad_ConfigInvalidError_RedactsSecrets verifies that when a TOML config
+// file contains sensitive values (API keys, tokens), the parse error message
+// does NOT echo the raw secret. The toml.DecodeError.String() method echoes
+// the full source line, which could leak tokens.
+func TestLoad_ConfigInvalidError_RedactsSecrets(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	// Write a TOML config with a token that will cause a parse error.
+	// The error message from toml.DecodeError echoes the source line.
+	content := `[backend]
+base_url = "http://localhost:8080"
+token = "sk-livekey123456789abcdef" oops this is invalid toml
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("Load: expected error for invalid TOML, got nil")
+	}
+
+	errMsg := err.Error()
+	// The error should mention the file path and that parsing failed.
+	if !strings.Contains(errMsg, "CONFIG_INVALID") {
+		t.Errorf("expected CONFIG_INVALID prefix, got: %s", errMsg)
+	}
+	// The error must NOT contain the raw API key.
+	if strings.Contains(errMsg, "sk-livekey123456789abcdef") {
+		t.Errorf("error message leaks API key: %s", errMsg)
+	}
+	// The error should indicate the secret was redacted.
+	if !strings.Contains(errMsg, "[secret redacted]") {
+		t.Errorf("expected [secret redacted] marker in error, got: %s", errMsg)
+	}
+}
+
+// TestLoad_ConfigInvalidError_UnwrapSafe verifies that Unwrap() still works
+// (for errors.As compatibility) but the Error() string is redacted.
+func TestLoad_ConfigInvalidError_UnwrapSafe(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	content := `[backend]
+token = "sk-ant-api03-secretkey123" invalid toml here
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("Load: expected error, got nil")
+	}
+
+	// Error() should be redacted.
+	errMsg := err.Error()
+	if strings.Contains(errMsg, "sk-ant-api03-secretkey123") {
+		t.Errorf("error message leaks Anthropic key: %s", errMsg)
+	}
+
+	// Unwrap should still return a non-nil cause (for errors.As compatibility).
+	type unwrapper interface{ Unwrap() error }
+	if u, ok := err.(unwrapper); ok {
+		if u.Unwrap() == nil {
+			t.Error("Unwrap() returned nil, expected non-nil cause")
+		}
+	} else {
+		t.Error("error does not implement Unwrap()")
+	}
+}
