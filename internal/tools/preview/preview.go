@@ -15,17 +15,30 @@ var (
 
 	// API key patterns with word-boundary anchoring to prevent false positives
 	// (e.g. task-, disk-, risk- prefixed words that end in -sk).
-	openAIKeyRE = regexp.MustCompile(`\bsk-[a-zA-Z0-9]{10,}\b`)
-	xaiKeyRE    = regexp.MustCompile(`\bxai-[a-zA-Z0-9]{8,}\b`)
-	awsAKIARE   = regexp.MustCompile(`\bAKIA[A-Z0-9]{16}\b`)
-	githubPATRE = regexp.MustCompile(`\bghp_[a-zA-Z0-9]{20,}\b`)
-	googleKeyRE = regexp.MustCompile(`\bAIza[0-9A-Za-z\-_]{30,}\b`)
+	openAIKeyRE    = regexp.MustCompile(`\bsk-[a-zA-Z0-9]{10,}\b`)
+	anthropicKeyRE = regexp.MustCompile(`\bsk-ant-[a-zA-Z0-9\-]{10,}\b`)
+	xaiKeyRE       = regexp.MustCompile(`\bxai-[a-zA-Z0-9]{8,}\b`)
+	awsAKIARE      = regexp.MustCompile(`\bAKIA[A-Z0-9]{16}\b`)
+	githubPATRE    = regexp.MustCompile(`\bghp_[a-zA-Z0-9]{20,}\b`)
+	googleKeyRE    = regexp.MustCompile(`\bAIza[0-9A-Za-z\-_]{30,}\b`)
+
+	// Slack tokens: xoxb- (bot), xoxp- (user), xoxa- (app), xoxr- (refresh).
+	slackTokenRE = regexp.MustCompile(`\bxox[bpar]-[a-zA-Z0-9\-]{10,}\b`)
+
+	// Stripe keys: sk_live_, rk_live_, sk_test_, rk_test_.
+	stripeKeyRE = regexp.MustCompile(`\b[sr]k_(live|test)_[a-zA-Z0-9]{10,}\b`)
 
 	// Authorization: Bearer <token> pattern (very common in HTTP headers).
 	authBearerRE = regexp.MustCompile(`(?i)authorization\s*:\s*bearer\s+\S{8,}`)
 
 	// JWT pattern: three base64url segments separated by dots.
 	jwtRE = regexp.MustCompile(`\beyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\b`)
+
+	// PEM private key blocks.
+	privateKeyRE = regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----[^-]*-----END [A-Z ]*PRIVATE KEY-----`)
+
+	// DSN with embedded password: scheme://user:password@host
+	dsnPasswordRE = regexp.MustCompile(`(?i)(postgres|mysql|redis|mongodb|amqp|nats)://[^:]+:[^@]+@`)
 )
 
 // RedactAndTruncate masks common sensitive patterns then truncates to maxLen.

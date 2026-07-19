@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"aranea-agents/internal/tools/preview"
+
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -216,6 +218,18 @@ type configInvalidError struct {
 }
 
 func (e *configInvalidError) Error() string {
-	return fmt.Sprintf("CONFIG_INVALID: cannot parse %s: %v", e.path, e.cause)
+	return fmt.Sprintf("CONFIG_INVALID: cannot parse %s: %s", e.path, sanitizeConfigError(e.cause.Error()))
 }
 func (e *configInvalidError) Unwrap() error { return e.cause }
+
+// sanitizeConfigError redacts sensitive values from configuration error
+// messages. TOML parse errors may echo source lines containing API keys or
+// tokens; this function ensures they are redacted before display.
+func sanitizeConfigError(msg string) string {
+	return preview.RedactAndTruncate(msg, 0)
+}
+
+// SanitizeConfigErrorForTest exposes sanitizeConfigError for external tests.
+func SanitizeConfigErrorForTest(msg string) string {
+	return sanitizeConfigError(msg)
+}
