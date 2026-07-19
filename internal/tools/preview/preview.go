@@ -52,23 +52,27 @@ func RedactAndTruncate(raw string, maxLen int) string {
 	}
 	// Apply specific API key patterns first (more precise than generic secretRE).
 	s = openAIKeyRE.ReplaceAllString(s, "[secret redacted]")
+	s = anthropicKeyRE.ReplaceAllString(s, "[secret redacted]")
 	s = xaiKeyRE.ReplaceAllString(s, "[secret redacted]")
 	s = awsAKIARE.ReplaceAllString(s, "[secret redacted]")
 	s = githubPATRE.ReplaceAllString(s, "[secret redacted]")
 	s = googleKeyRE.ReplaceAllString(s, "[secret redacted]")
+	s = slackTokenRE.ReplaceAllString(s, "[secret redacted]")
+	s = stripeKeyRE.ReplaceAllString(s, "[secret redacted]")
 	s = authBearerRE.ReplaceAllString(s, "[secret redacted]")
 	s = jwtRE.ReplaceAllString(s, "[secret redacted]")
+	s = privateKeyRE.ReplaceAllString(s, "[secret redacted]")
+	s = dsnPasswordRE.ReplaceAllString(s, "[secret redacted]")
 
 	// Then apply generic patterns (email, phone, key-value secrets).
 	s = emailRE.ReplaceAllString(s, "[email redacted]")
 	s = phoneRE.ReplaceAllString(s, "[phone redacted]")
 	s = secretKVRE.ReplaceAllString(s, `"[secret redacted]"`)
-	// Only apply generic secretRE if no specific pattern matched above.
-	// The 8-character minimum on the value prevents short tokens like "abc"
-	// from being redacted (avoiding false positives).
-	if !strings.Contains(s, "[secret redacted]") {
-		s = secretRE.ReplaceAllString(s, "[secret redacted]")
-	}
+	// Always apply generic secretRE — it catches assignments (password=xxx)
+	// that were not matched by any specific pattern above. The 8-character
+	// minimum on the value prevents short tokens like "abc" from being
+	// redacted, avoiding false positives.
+	s = secretRE.ReplaceAllString(s, "[secret redacted]")
 	runes := []rune(s)
 	if len(runes) > maxLen {
 		return string(runes[:maxLen])
