@@ -58,6 +58,16 @@ export function useUsageEventsPage() {
     return formatUsdFromMicro(value);
   }
 
+  /** 延迟列：原始毫秒格式化为可读时长（如 4m27s / 267.0s / 320ms） */
+  function formatLatency(ms?: number) {
+    if (ms == null || Number.isNaN(ms)) return '—';
+    if (ms < 1000) return `${Math.round(ms)}ms`;
+    const s = ms / 1000;
+    if (s < 60) return `${s.toFixed(1)}s`;
+    const m = Math.floor(s / 60);
+    return `${m}m${Math.round(s % 60)}s`;
+  }
+
   function truncate(msg?: string, max = 80) {
     const s = (msg ?? '').trim();
     if (s.length <= max) return s || '—';
@@ -110,6 +120,7 @@ export function useUsageEventsPage() {
     onPurgeConfirm,
     resetFilters,
     formatMoney,
+    formatLatency,
     truncate,
   };
 }

@@ -131,6 +131,12 @@ var ddlMigrations = []ddlMigration{
 	// observation view). Version 20260718 was already taken by ecosystem_preset_schema,
 	// so the next available sequence number is used.
 	{Version: 20261008, Name: "media_providers", SQL: "sql/migrations/20261008_media_providers.sql"},
+	// 20261106 learning_loop_schema: learning_observations/learning_patterns/learning_proposals
+	// tables were never wired into the migration registry (EnsureLearningLoopSchema was
+	// defined but never called), causing 500 on /v1/agents/{id}/learning/* endpoints.
+	// NOTE: version must exceed the max version already recorded in the target DB's
+	// schema_migrations (20261105 at time of writing), otherwise it is skipped as applied.
+	{Version: 20261106, Name: "learning_loop_schema", Func: ddlLearningLoopSchema},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -391,6 +397,10 @@ func ddlCompiledTeamSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Cl
 
 func ddlSkillEvolutionSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureSkillEvolutionSchema(ctx, entClient)
+}
+
+func ddlLearningLoopSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
+	return EnsureLearningLoopSchema(ctx, entClient)
 }
 
 func ddlTaskPlanSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {

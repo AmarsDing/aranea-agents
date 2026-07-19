@@ -386,7 +386,7 @@
   "pages/ToolRunsPage.vue": 5,
   "pages/ToolsPage.vue": 11,
   "pages/UsageEventsPage.vue": 13,
-  "pages/agent-settings/AgentSettingsAgentTab.vue": 60,
+  "pages/agent-settings/AgentSettingsAgentTab.vue": 61,
   "pages/agent-settings/AgentSettingsMemoryTab.vue": 3,
   "pages/agent-settings/AgentSettingsPromptSection.vue": 2,
   "pages/agent-settings/AgentSettingsSkillsTab.vue": 48,

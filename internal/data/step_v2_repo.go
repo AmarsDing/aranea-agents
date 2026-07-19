@@ -221,7 +221,7 @@ func (r *stepV2Repo) UpsertStep(ctx context.Context, s biz.Step) (biz.Step, erro
 	}
 	row, err := cb.Save(ctx)
 	if err != nil {
-		if ent.IsConstraintError(err) {
+		if ent.IsConstraintError(err) || isPgUniqueViolation(err) {
 			existing, getErr := r.data.RW().Read(ctx).StepV2.Get(ctx, s.ID)
 			if getErr != nil {
 				return biz.Step{}, entErrToBizErr(getErr, "STEP_V2")

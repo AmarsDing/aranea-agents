@@ -22,6 +22,7 @@ import (
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	knowledgev1 "aranea-agents/api/kratos/knowledge/v1"
+	learningloopv1 "aranea-agents/api/kratos/learning_loop/v1"
 	llmprovidermodelv1 "aranea-agents/api/kratos/llm_provider_model/v1"
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
@@ -143,6 +144,9 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	skillevosuggv1.RegisterSkillEvolutionSuggestionServiceHTTPServer(srv, s.SkillEvoSuggestion)
 	packv1.RegisterPackServiceHTTPServer(srv, s.Pack)
 	runtimeprofilev1.RegisterRuntimeProfileServiceHTTPServer(srv, s.RuntimeProfile)
+	if s.LearningLoop != nil {
+		learningloopv1.RegisterLearningLoopServiceHTTPServer(srv, s.LearningLoop)
+	}
 }
 
 // registerCustomRoutes registers cross-cutting operational routes that bypass proto

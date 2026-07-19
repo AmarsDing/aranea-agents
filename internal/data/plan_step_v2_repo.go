@@ -210,7 +210,7 @@ func (r *planStepV2Repo) UpsertPlanStep(ctx context.Context, ps biz.PlanStep) (b
 	}
 	row, err := cb.Save(ctx)
 	if err != nil {
-		if ent.IsConstraintError(err) {
+		if ent.IsConstraintError(err) || isPgUniqueViolation(err) {
 			existing, getErr := r.data.RW().Read(ctx).PlanStepV2.Get(ctx, ps.ID)
 			if getErr != nil {
 				return biz.PlanStep{}, entErrToBizErr(getErr, "PLAN_STEP_V2")

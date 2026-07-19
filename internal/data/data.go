@@ -470,9 +470,14 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 		} else {
 			vs = pgvs
 		}
-	} else {
+	} else if pg == nil {
 		cleanup()
-		return nil, nil, fmt.Errorf("pgvector is required: set data.postgres.source and enable DAO_VECTOR_PGVECTOR")
+		return nil, nil, fmt.Errorf("pgvector is required: set data.postgres.source")
+	} else {
+		// pgvector not enabled via DAO_VECTOR_PGVECTOR: degrade gracefully.
+		// Vector search will be disabled, but the app can still start.
+		lg.Warn("pgvector not enabled (DAO_VECTOR_PGVECTOR not set), vector search disabled",
+			loggateway.StepID("data.vector"))
 	}
 
 	p1Ctx, p1Cancel := context.WithCancel(context.Background())

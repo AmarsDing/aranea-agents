@@ -88,6 +88,11 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
     emitSessionMutation({ type: 'agents_dependencies_loaded' });
   }
 
+  async function ensureTaxonomyTree() {
+    if (taxonomyTree.value.length > 0) return;
+    taxonomyTree.value = await listPlatformResourceTree('organization');
+  }
+
   async function removeListedAgent(id: string) {
     await deleteAgentApi(id);
     await loadAgentList();
@@ -171,6 +176,7 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
     tableColumns,
     loadAgentList,
     loadAgentsDependencies,
+    ensureTaxonomyTree,
     removeListedAgent,
     toggleAgentFavorite,
     validateCreateModel,

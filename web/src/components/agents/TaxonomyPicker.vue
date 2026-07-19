@@ -1,36 +1,42 @@
 <template>
-  <q-field
-    :model-value="displayLabel"
-    :class="['taxonomy-field', controlClass]"
-    dense
-    outlined
-    stack-label
-    :label="label"
-    :disable="disable"
-    @click="menuOpen = true"
-  >
-    <template #control>
-      <div
-        class="taxonomy-field__hit row items-center full-width cursor-pointer"
-        :class="{ 'is-placeholder': !displayLabel }"
-        @click="menuOpen = true"
+  <div class="taxonomy-picker" @click="!disable && (menuOpen = !menuOpen)">
+    <q-field
+      :model-value="displayLabel"
+      :class="['taxonomy-field', controlClass]"
+      dense
+      outlined
+      :label="label"
+      :disable="disable"
+    >
+      <template #control>
+        <div
+          class="taxonomy-field__hit row items-center full-width cursor-pointer"
+          :class="{ 'is-placeholder': !displayLabel }"
+        >
+          <span class="col ellipsis">{{ displayLabel || placeholder }}</span>
+          <q-icon :name="icon" size="18px" color="primary" />
+        </div>
+      </template>
+
+      <template #append>
+        <q-icon
+          v-if="clearable && displayLabel"
+          name="close"
+          size="16px"
+          class="cursor-pointer taxonomy-field__clear"
+          @click.stop="clearSelection"
+        />
+      </template>
+
+      <q-menu
+        v-model="menuOpen"
+        no-parent-event
+        anchor="bottom left"
+        self="top left"
+        fit
+        :offset="[0, 6]"
+        class="taxonomy-field-menu"
       >
-        <span class="col ellipsis">{{ displayLabel || placeholder }}</span>
-        <q-icon :name="icon" size="18px" color="primary" />
-      </div>
-    </template>
-
-    <template #append>
-      <q-icon
-        v-if="clearable && displayLabel"
-        name="close"
-        size="16px"
-        class="cursor-pointer taxonomy-field__clear"
-        @click.stop="clearSelection"
-      />
-    </template>
-
-    <q-menu v-model="menuOpen" anchor="bottom left" self="top left" fit :offset="[0, 6]" class="taxonomy-field-menu">
       <q-card flat class="taxonomy-field-menu__card">
         <q-card-section class="q-pb-sm">
           <q-input
@@ -87,7 +93,8 @@
         </q-scroll-area>
       </q-card>
     </q-menu>
-  </q-field>
+    </q-field>
+  </div>
 </template>
 
 <script setup lang="ts">

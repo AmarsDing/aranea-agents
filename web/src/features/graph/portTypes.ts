@@ -146,8 +146,9 @@ export function getNodePorts(node: NodeDef, stateFields: StateFieldDef[]): { rea
       const writes: PortInfo[] = [
         {
           direction: 'writes',
-          field: 'response',
-          fieldType: findFieldType(stateFields, 'response'),
+          // 与后端 trpc-agent-go graph 的 StateKeyLastResponse 保持一致
+          field: 'last_response',
+          fieldType: findFieldType(stateFields, 'last_response'),
           nodeId: node.id,
         },
       ];

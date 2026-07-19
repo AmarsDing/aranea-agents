@@ -31,6 +31,10 @@
   -webkit-backdrop-filter: blur(12px)
   transition: background 220ms ease, border-color 220ms ease, box-shadow 220ms ease
 
+  @media (width <= 599px)
+    padding: 16px
+    border-radius: 14px
+
 .settings-section--muted
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
 
@@ -90,7 +94,7 @@
   display: grid
   gap: 12px
 
-  @media (width >= 900px)
+  @media (width >= 768px)
     grid-template-columns: repeat(2, minmax(0, 1fr))
 
 .settings-subsection
@@ -98,6 +102,9 @@
   border: 1px solid var(--glass-border)
   border-radius: 14px
   background: color-mix(in srgb, var(--glass-surface) 48%, transparent)
+
+.settings-subsection--span
+  grid-column: 1 / -1
 
 .settings-subsection--flat
   background: transparent
@@ -534,17 +541,22 @@ body.body--dark
 .settings-panels .q-tab-panel
   padding: 20px
 
+  @media (width <= 599px)
+    padding: 12px
+
 .prompt-mode-grid
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))
 
 .prompt-mode-card
   height: 100%
+  min-height: 120px
   border-color: var(--glass-border)
   border-radius: 18px
   background: var(--glass-elevated, rgb(255 255 255 / 72%))
   backdrop-filter: blur(12px)
   -webkit-backdrop-filter: blur(12px)
   transition: transform 180ms ease, border-color 180ms ease, background 180ms ease
+  overflow: hidden
 
 .prompt-mode-card:hover
   transform: translateY(-2px)
@@ -566,6 +578,10 @@ body.body--dark
   font-size: 12px
   line-height: 1.45
   color: var(--color-text-secondary)
+  display: -webkit-box
+  -webkit-line-clamp: 3
+  -webkit-box-orient: vertical
+  overflow: hidden
 
 .prompt-dialog
   width: 860px

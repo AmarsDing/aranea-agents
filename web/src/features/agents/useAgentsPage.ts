@@ -1,6 +1,7 @@
 import { storeToRefs } from 'pinia';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router';
 import { copyToClipboard, useQuasar } from 'quasar';
 import { mapAgentCreateFieldErrors, parseKratosApiError } from '../../utils/kratosError';
 import type { Agent, AgentKind, A2AProxyConfig, AgentTemplatePreset } from './types';
@@ -31,6 +32,8 @@ const LS_VIEW = 'agents.viewMode';
 export function useAgentsPage() {
   const $q = useQuasar();
   const { t } = useI18n();
+  const route = useRoute();
+  const router = useRouter();
   const appStore = useAppStore();
   const avatarCatalog = useAvatarCatalogStore();
   const pageStore = useAgentsPageStore();
@@ -57,6 +60,32 @@ export function useAgentsPage() {
   } = storeToRefs(pageStore);
 
   const taxonomyLabel = pageStore.taxonomyLabel;
+
+  // ISSUE-004：筛选/分页状态同步 URL query，刷新与分享链接后恢复
+  {
+    const q = route.query;
+    if (typeof q.q === 'string' && q.q) keyword.value = q.q;
+    if (typeof q.status === 'string' && q.status) selectedStatus.value = q.status;
+    if (typeof q.provider === 'string' && q.provider) selectedProvider.value = q.provider;
+    if (typeof q.org === 'string' && q.org) selectedTaxonomy.value = q.org;
+    if (typeof q.creator === 'string' && q.creator) selectedCreator.value = q.creator;
+    const urlPage = Number(q.page);
+    if (Number.isInteger(urlPage) && urlPage > 1) page.value = urlPage;
+    const urlSize = Number(q.size);
+    if ([10, 20, 50].includes(urlSize)) rowsPerPage.value = urlSize;
+  }
+
+  function syncListQueryToUrl() {
+    const query: LocationQueryRaw = {};
+    if (keyword.value) query.q = keyword.value;
+    if (selectedStatus.value) query.status = selectedStatus.value;
+    if (selectedProvider.value) query.provider = selectedProvider.value;
+    if (selectedTaxonomy.value) query.org = selectedTaxonomy.value;
+    if (selectedCreator.value) query.creator = selectedCreator.value;
+    if (page.value > 1) query.page = String(page.value);
+    if (rowsPerPage.value !== 20) query.size = String(rowsPerPage.value);
+    void router.replace({ query });
+  }
 
   const isDark = computed(() => $q.dark.isActive);
   const loading = listLoading;
@@ -141,11 +170,16 @@ export function useAgentsPage() {
   watch(viewMode, (value) => localStorage.setItem(LS_VIEW, value));
   watch(rowsPerPage, () => {
     page.value = 1;
+    syncListQueryToUrl();
     void runLoadList();
   });
-  watch(page, () => void runLoadList());
+  watch(page, () => {
+    syncListQueryToUrl();
+    void runLoadList();
+  });
   watch([keyword, selectedStatus, selectedProvider, selectedTaxonomy, selectedCreator], () => {
     page.value = 1;
+    syncListQueryToUrl();
     void runLoadList();
   });
   watch(

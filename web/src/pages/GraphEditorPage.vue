@@ -17,32 +17,23 @@
       </q-btn>
       <q-chip v-if="dirty" dense square class="graph-workbench__dirty-chip">未保存</q-chip>
       <q-chip v-if="!mergedValidationValid" dense square color="negative" text-color="white">校验未通过</q-chip>
-      <q-btn v-if="!isNew" flat dense icon="more_vert">
-        <q-menu anchor="bottom right" self="top right">
-          <q-list dense style="min-width: 180px">
-            <q-item v-close-popup clickable @click="exportCurrentGraph">
-              <q-item-section avatar><q-icon name="download" /></q-item-section>
-              <q-item-section>导出 JSON</q-item-section>
-            </q-item>
-            <q-item v-close-popup clickable @click="triggerImport">
-              <q-item-section avatar><q-icon name="upload" /></q-item-section>
-              <q-item-section>导入 JSON</q-item-section>
-            </q-item>
-            <q-item v-close-popup clickable @click="autoLayout">
-              <q-item-section avatar><q-icon name="account_tree" /></q-item-section>
-              <q-item-section>自动布局</q-item-section>
-            </q-item>
-            <q-item v-if="graphDef.id" v-close-popup clickable @click="openVersionDialog">
-              <q-item-section avatar><q-icon name="history" /></q-item-section>
-              <q-item-section>版本历史</q-item-section>
-            </q-item>
-            <q-item v-if="graphDef.id" v-close-popup clickable @click="openTemplateDialog">
-              <q-item-section avatar><q-icon name="bookmark_add" /></q-item-section>
-              <q-item-section>保存为模板</q-item-section>
-            </q-item>
-          </q-list>
-        </q-menu>
-      </q-btn>
+      <template v-if="!isNew">
+        <q-btn flat dense round icon="download" @click="exportCurrentGraph">
+          <q-tooltip>导出 JSON</q-tooltip>
+        </q-btn>
+        <q-btn flat dense round icon="upload" @click="triggerImport">
+          <q-tooltip>导入 JSON</q-tooltip>
+        </q-btn>
+        <q-btn flat dense round icon="account_tree" @click="autoLayout">
+          <q-tooltip>自动布局</q-tooltip>
+        </q-btn>
+        <q-btn v-if="graphDef.id" flat dense round icon="restore" @click="openVersionDialog">
+          <q-tooltip>版本历史</q-tooltip>
+        </q-btn>
+        <q-btn v-if="graphDef.id" flat dense round icon="bookmark_add" @click="openTemplateDialog">
+          <q-tooltip>保存为模板</q-tooltip>
+        </q-btn>
+      </template>
       <q-btn flat dense round icon="save" color="primary" :loading="saving" :disable="!canSave" @click="save">
         <q-tooltip>保存</q-tooltip>
       </q-btn>

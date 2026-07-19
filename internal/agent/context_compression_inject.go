@@ -182,13 +182,20 @@ func partitionMessagesForCompression(messages []trpcmodel.Message, keepRatio flo
 	}
 
 	// Split: first (len - keepCount) are evicted, last keepCount are kept.
+	// Then snap the boundary to avoid splitting tool-call / tool-result pairs.
 	evictCount := len(nonSystem) - keepCount
 	evictSet := make(map[int]bool, evictCount)
 	for i := 0; i < evictCount; i++ {
 		evictSet[nonSystem[i].index] = true
 	}
 
-	keepMsgs = make([]trpcmodel.Message, 0, len(messages)-evictCount)
+	// Tool-pair safety: snap the evict boundary so that no tool_call/tool_result
+	// pair is split across the keep/evicted boundary. When a boundary would
+	// split a pair, move the boundary so the pair stays together in the keep
+	// side (safer — keeps the most recent context intact).
+	evictSet = snapToSafeBoundary(messages, evictSet)
+
+	keepMsgs = make([]trpcmodel.Message, 0, len(messages)-len(evictSet))
 	for i, m := range messages {
 		if !evictSet[i] {
 			keepMsgs = append(keepMsgs, m)
@@ -197,6 +204,50 @@ func partitionMessagesForCompression(messages []trpcmodel.Message, keepRatio flo
 		}
 	}
 	return keepMsgs, evictedMsgs
+}
+
+// snapToSafeBoundary adjusts the evict set so that no tool-call / tool-result
+// pair is split across the keep/evicted boundary. The strategy is: if an
+// assistant message with ToolCalls is in the evict set but its corresponding
+// tool-result is not (or vice versa), remove the entire pair from the evict
+// set (moving them to the keep side). This is the safer choice because the
+// keep side contains the most recent context that the LLM sees.
+func snapToSafeBoundary(messages []trpcmodel.Message, evictSet map[int]bool) map[int]bool {
+	// Build index maps for tool calls and tool results.
+	// toolCallIdx[toolCallID] = index of the assistant message containing this tool call.
+	toolCallIdx := make(map[string]int)
+	// toolResultIdx[toolCallID] = index of the tool result message.
+	toolResultIdx := make(map[string]int)
+	for i, m := range messages {
+		for _, tc := range m.ToolCalls {
+			toolCallIdx[tc.ID] = i
+		}
+		if m.Role == trpcmodel.RoleTool && m.ToolID != "" {
+			toolResultIdx[m.ToolID] = i
+		}
+	}
+
+	// Find pairs that are split by the evict boundary.
+	// Iterate until no more changes (a single assistant message may have
+	// multiple tool calls whose results are scattered across the boundary).
+	for changed := true; changed; {
+		changed = false
+		for id, callIdx := range toolCallIdx {
+			resultIdx, hasResult := toolResultIdx[id]
+			if !hasResult {
+				continue
+			}
+			callEvicted := evictSet[callIdx]
+			resultEvicted := evictSet[resultIdx]
+			if callEvicted != resultEvicted {
+				// Pair is split — keep both in the keep side.
+				delete(evictSet, callIdx)
+				delete(evictSet, resultIdx)
+				changed = true
+			}
+		}
+	}
+	return evictSet
 }
 
 // toConsolidateMessages converts trpcmodel.Message slice to biz.ConsolidateMessage

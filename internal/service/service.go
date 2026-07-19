@@ -136,6 +136,7 @@ var ProviderSet = wire.NewSet(
 	NewOpenAISessionCompatService,
 	NewA2AExtensionCompatService,
 	NewRuntimeProfileService,
+	NewLearningLoopService,
 )
 
 func ProvideSkillResolveRootFn(sys biz.SystemSettingRepo) func(ctx context.Context) string {

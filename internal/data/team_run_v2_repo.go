@@ -163,7 +163,7 @@ func (r *teamRunV2Repo) UpsertTeamRun(ctx context.Context, tr biz.TeamRun) (biz.
 	}
 	row, err := cb.Save(ctx)
 	if err != nil {
-		if ent.IsConstraintError(err) {
+		if ent.IsConstraintError(err) || isPgUniqueViolation(err) {
 			existing, getErr := r.data.RW().Read(ctx).TeamRunV2.Get(ctx, tr.ID)
 			if getErr != nil {
 				return biz.TeamRun{}, entErrToBizErr(getErr, "TEAM_RUN_V2")

@@ -38,20 +38,21 @@ func initLogging(bc *conf.Bootstrap, logger log.Logger) (loggateway.Logger, logp
 				logger.Log(log.LevelWarn, "msg", "failed to create sink from config", "sink", cfg.Name, "error", err.Error())
 				continue
 			}
-			pipeline.AddSink(sink)
+			// Wrap with sanitizing sink to prevent secrets from leaking into logs.
+			pipeline.AddSink(logpipeline.NewSanitizingSink(sink))
 		}
 	} else {
 		// Default (backward-compatible) sink setup
 		if bc.Logging.GetStdoutEnabled() {
-			pipeline.AddSink(logpipeline.NewStdoutSink("debug"))
+			pipeline.AddSink(logpipeline.NewSanitizingSink(logpipeline.NewStdoutSink("debug")))
 		}
-		pipeline.AddSink(logpipeline.NewFileSink(logpipeline.FileSinkConfig{
+		pipeline.AddSink(logpipeline.NewSanitizingSink(logpipeline.NewFileSink(logpipeline.FileSinkConfig{
 			OutputDir:  bc.Logging.GetOutputDir(),
 			MaxSizeMB:  int(bc.Logging.GetMaxSizeMb()),
 			MaxBackups: int(bc.Logging.GetMaxBackups()),
 			MaxAgeDays: int(bc.Logging.GetMaxAgeDays()),
 			Compress:   bc.Logging.GetCompress(),
-		}))
+		})))
 	}
 
 	lg = loggateway.New(loggateway.LoggingConfig{

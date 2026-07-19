@@ -49,6 +49,10 @@ type EventStreamResult struct {
 	LastError string
 	// HasContent is true when at least one message with non-empty text was received.
 	HasContent bool
+	// DoomLoopDetected is true when the stream consumer aborted the turn after
+	// detecting repetitive LLM output (doom loop). Callers should treat the
+	// reply as truncated and may retry with different sampling parameters.
+	DoomLoopDetected bool
 }
 
 func NewRunnerDepsFromRuntime(trpcSession trpcsession.Service, memory trpcmemory.Service, artifact trpcartifact.Service, plugins ...trpcplugin.Plugin) TRPCRunnerDeps {

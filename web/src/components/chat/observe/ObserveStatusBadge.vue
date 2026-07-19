@@ -32,7 +32,7 @@ const statusLabel = computed(() => t(STATUS_MAP[props.status] || props.status));
   font-weight: 500
 
   &--pending
-    background: var(--color-surface)
+    background: var(--color-surface-soft)
     color: var(--color-text-tertiary)
 
   &--running
@@ -40,12 +40,12 @@ const statusLabel = computed(() => t(STATUS_MAP[props.status] || props.status));
     color: var(--color-warning)
 
   &--completed
-    background: color-mix(in srgb, var(--color-positive) 20%, transparent)
-    color: var(--color-positive)
+    background: color-mix(in srgb, var(--color-success) 20%, transparent)
+    color: var(--color-success)
 
   &--failed
-    background: color-mix(in srgb, var(--color-negative) 20%, transparent)
-    color: var(--color-negative)
+    background: color-mix(in srgb, var(--color-danger) 20%, transparent)
+    color: var(--color-danger)
 
   &--interrupted
     background: color-mix(in srgb, var(--color-warning) 15%, transparent)

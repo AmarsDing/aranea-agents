@@ -155,7 +155,7 @@ func (r *turnV2Repo) UpsertTurn(ctx context.Context, t biz.Turn) (biz.Turn, erro
 	}
 	row, err := cb.Save(ctx)
 	if err != nil {
-		if ent.IsConstraintError(err) {
+		if ent.IsConstraintError(err) || isPgUniqueViolation(err) {
 			existing, getErr := r.data.RW().Read(ctx).TurnV2.Get(ctx, t.ID)
 			if getErr != nil {
 				return biz.Turn{}, entErrToBizErr(getErr, "TURN_V2")

@@ -275,6 +275,7 @@ import ChatReasoningDrawer from './ChatReasoningDrawer.vue';
 import TodoKanbanBoard from './TodoKanbanBoard.vue';
 import ContextIndicator from '../sessions/ContextIndicator.vue';
 import SpiritStatusBar from '../spirit/SpiritStatusBar.vue';
+import ObservationPanel from './observe/ObservationPanel.vue';
 import type { RunStatusValue } from '../../features/chat/types';
 import { TOOL_DISPLAY_KEY } from '../../features/chat/types';
 import type { CompressStatus } from '../../features/session/types';
@@ -349,6 +350,10 @@ const props = defineProps<{
   spiritStatusBar?: SpiritStatusBarData | null;
   compressStatus?: CompressStatus;
   showToolCalls?: boolean;
+  /** View mode: 'chat' (default) shows message list; 'observe' shows observation canvas. */
+  viewMode?: 'chat' | 'observe';
+  /** Whether the composer is visible (used in observe mode to toggle input bar). */
+  composerVisible?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -391,6 +396,8 @@ const emit = defineEmits<{
   'return-to-team': [];
   'cancel-team': [teamId: string];
   'retry-team': [teamId: string];
+  'toggle-view': [];
+  'toggle-composer': [];
   'pause-team': [teamId: string];
   'unpause-team': [teamId: string];
   'inject-team': [payload: { teamId: string; message: string }];
@@ -430,6 +437,9 @@ const { t } = useI18n();
 // design prototype where unified-panel content is generated in conversation order.
 
 const messagesRef = computed(() => props.messages);
+
+/** True when the view is in chat mode (default); false in observe mode. */
+const isChatView = computed(() => (props.viewMode ?? 'chat') === 'chat');
 
 // ── Team member lanes ──
 const teamMemberLanes = computed((): TeamMemberLane[] => {

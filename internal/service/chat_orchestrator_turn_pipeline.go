@@ -182,6 +182,30 @@ func (p *turnPipeline) persistTurn(
 		return turnPersistResult{}, p.handleEmptyReply(*ctx, ag, admit, emitter, result, turnStart, turnStatus, turnErr, turnErrMsg, sessionID)
 	}
 
+	// Immediate fact extraction: detect <fact> tags in agent response and persist to memory_fact.
+	// This bridges the async gap between conversation and Sleep-time consolidation.
+	// The tags are removed from the display text sent to the user.
+	cleanDisplay, facts := biz.ParseFactMarks(displayMarkdown)
+	if len(facts) > 0 {
+		p.lg().Info("即时事实提取",
+			loggateway.StepID("chat.immediate_fact"),
+			loggateway.SessionID(sessionID),
+			loggateway.Int("fact_count", len(facts)),
+			loggateway.Str("facts_preview", func() string {
+				if len(cleanDisplay) > 200 {
+					return cleanDisplay[:200] + "..."
+				}
+				return cleanDisplay
+			}()))
+		// Use the cleaned display text (without fact tags) for user display
+		displayMarkdown = cleanDisplay
+		// Fire-and-forget: write facts asynchronously
+		if fw := p.factWriter(); fw != nil {
+			userID := strings.TrimSpace(sess.UserID)
+			fw.WriteFacts(*ctx, sessionID, ag.ID, userID, execResult.userMsg.ID, facts)
+		}
+	}
+
 	// Pass user content as inputPreview so prompt token estimation works when the
 	// model omits usage. Previously passed "" which suppressed estimation and caused
 	// the buggy fallback to estimate prompt from output (prompt≈completion tokens).

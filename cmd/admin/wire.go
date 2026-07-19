@@ -682,6 +682,7 @@ func provideChatServiceDeps(
 	deadLetterQueue *lifecycle.DeadLetterQueue,
 	profileResolver *chatagent.ProfileResolver,
 	v2ProjectorFactory *v2.ProjectorFactory,
+	memoryConsolidationWriter biz.MemoryConsolidationWriter,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
@@ -752,6 +753,7 @@ func provideChatServiceDeps(
 			DeadLetterQueue:    deadLetterQueue,
 			ProfileResolver:    profileResolver,
 			V2ProjectorFactory: v2ProjectorFactory,
+			MemoryConsolidationWriter: memoryConsolidationWriter,
 		},
 	}
 }

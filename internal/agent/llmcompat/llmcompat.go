@@ -68,7 +68,17 @@ func openAICompatToTRPCMessages(msgs []OpenAICompatMessage) []trpcmodel.Message 
 	return out
 }
 
-func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage) (text string, reasoning string, promptTok, completionTok int, err error) {
+// providerResponseError wraps a provider error preserving the original
+// *trpcmodel.ResponseError in the error chain (apierror.Wrap sets Cause), so
+// upstream retry classification can inspect Type/Code via errors.As.
+func providerResponseError(respErr *trpcmodel.ResponseError) error {
+	if respErr == nil {
+		return nil
+	}
+	return apierror.Wrap(respErr, apierror.CodeInternal, apierror.DomainProvider)
+}
+
+func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage) (fullText string, reasoningText string, promptTok, completionTok int, err error) {
 	m, err := trpcCompatModel(cfg, hc, modelName)
 	if err != nil {
 		return "", "", 0, 0, err
@@ -86,7 +96,7 @@ func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIC
 	var last *trpcmodel.Response
 	for resp := range respCh {
 		if resp.Error != nil {
-			return "", "", 0, 0, apierror.Internal(apierror.DomainProvider, resp.Error.Message)
+			return "", "", 0, 0, providerResponseError(resp.Error)
 		}
 		last = resp
 	}
@@ -115,7 +125,7 @@ func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg Provid
 	var accText, accReason strings.Builder
 	for resp := range respCh {
 		if resp.Error != nil {
-			return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, apierror.Internal(apierror.DomainProvider, resp.Error.Message)
+			return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, providerResponseError(resp.Error)
 		}
 		if len(resp.Choices) == 0 {
 			continue
@@ -233,7 +243,7 @@ func CallOpenAICompatChatWithTools(ctx context.Context, hc *http.Client, cfg Pro
 	var last *trpcmodel.Response
 	for resp := range respCh {
 		if resp.Error != nil {
-			return "", nil, 0, 0, apierror.Internal(apierror.DomainProvider, resp.Error.Message)
+			return "", nil, 0, 0, providerResponseError(resp.Error)
 		}
 		last = resp
 	}

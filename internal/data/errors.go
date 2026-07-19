@@ -11,6 +11,18 @@ import (
 	"github.com/lib/pq"
 )
 
+// isPgUniqueViolation reports whether err is a PostgreSQL unique-constraint
+// violation (SQLSTATE 23505). This is needed because ent's IsConstraintError
+// relies on string matching against the driver's error message, which fails
+// when the server returns localized (e.g. Chinese) messages.
+func isPgUniqueViolation(err error) bool {
+	var pgErr *pq.Error
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505"
+	}
+	return false
+}
+
 // entErrToBizErr translates a data-layer error (Ent, raw SQL, Postgres, or biz
 // sentinel) into a domain error (apierror.Error). It preserves the original
 // error via the Cause field so the error chain is not lost.

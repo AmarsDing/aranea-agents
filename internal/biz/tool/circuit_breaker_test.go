@@ -196,6 +196,29 @@ func TestCircuitBreaker_SuccessResetsFailures(t *testing.T) {
 	}
 }
 
+func TestCircuitBreaker_ProbeAbandonmentRecovery(t *testing.T) {
+	cb := NewCircuitBreaker("test", CircuitBreakerConfig{
+		FailureThreshold:   1,
+		RecoveryTimeoutSec: 1,
+		HalfOpenMaxProbe:   1,
+	})
+	cb.RecordFailure() // Open
+	time.Sleep(1100 * time.Millisecond)
+	// First Allow transitions to HalfOpen and reserves the only probe slot.
+	allowed, _ := cb.Allow()
+	if !allowed {
+		t.Fatal("expected Allow after recovery timeout")
+	}
+	// Simulate probe abandonment: the caller never invokes RecordSuccess/RecordFailure
+	// (e.g. its future was cancelled). Wait for the recovery timeout again.
+	time.Sleep(1100 * time.Millisecond)
+	// Without abandonment recovery, the leaked probe slot would block this forever.
+	allowed2, _ := cb.Allow()
+	if !allowed2 {
+		t.Fatal("expected Allow after probe abandonment recovery")
+	}
+}
+
 func TestCircuitBreaker_Reset(t *testing.T) {
 	cb := NewCircuitBreaker("test", CircuitBreakerConfig{
 		FailureThreshold:   1,

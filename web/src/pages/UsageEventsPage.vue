@@ -130,6 +130,11 @@
         <template #body-cell-total_cost_micro_usd="props">
           <q-td :props="props">{{ formatMoney(props.row.total_cost_micro_usd) }}</q-td>
         </template>
+        <template #body-cell-latency_ms="props">
+          <q-td :props="props">
+            <span :title="`${props.row.latency_ms}ms`">{{ formatLatency(props.row.latency_ms) }}</span>
+          </q-td>
+        </template>
       </AppRegistryTable>
 
       <AppRegistryPagination
@@ -171,6 +176,7 @@ const {
   onPurgeConfirm,
   resetFilters,
   formatMoney,
+  formatLatency,
 } = useUsageEventsPage();
 
 const {

@@ -1737,6 +1737,16 @@ export default {
     card: {
       deleteAriaLabel: 'Delete Agent',
     },
+    actions: {
+      edit: 'Edit',
+      settings: 'Settings',
+      duplicate: 'Duplicate',
+      delete: 'Delete',
+      favorite: 'Favorite',
+      unfavorite: 'Unfavorite',
+      builtin: 'Built-in',
+      builtinTip: 'System built-in Agent. Settings are view-only.',
+    },
     create: {
       hintDisplayNameAndKey: 'Please enter display name and Agent key',
       hintA2aUrl: 'Please enter remote A2A URL',
@@ -2087,11 +2097,17 @@ export default {
     mediaOutputs: 'Media Outputs',
     activityStream: 'Activity Stream',
     nodeInfo: 'Node Info',
+    members: 'Members',
+    errorDetail: 'Error Details',
+    duration: 'Duration',
     statusPending: 'Pending',
     statusRunning: 'Running',
     statusCompleted: 'Completed',
     statusFailed: 'Failed',
     statusInterrupted: 'Interrupted',
+    statusSkipped: 'Skipped',
+    description: 'Description',
+    textOutput: 'Text Output',
   },
   orchestration: {
     timeline: {

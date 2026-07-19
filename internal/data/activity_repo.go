@@ -349,7 +349,7 @@ func (r *activityRepo) UpsertActivity(ctx context.Context, a biz.Activity) (biz.
 	}
 	row, err := b.Save(ctx)
 	if err != nil {
-		if ent.IsConstraintError(err) {
+		if ent.IsConstraintError(err) || isPgUniqueViolation(err) {
 			existing, getErr := r.data.RW().Read(ctx).Activity.Get(ctx, a.ID)
 			if getErr != nil {
 				return biz.Activity{}, entErrToBizErr(getErr, "ACTIVITY")

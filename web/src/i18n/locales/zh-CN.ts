@@ -1784,6 +1784,16 @@ export default {
     card: {
       deleteAriaLabel: '删除 Agent',
     },
+    actions: {
+      edit: '编辑',
+      settings: '设置',
+      duplicate: '复制',
+      delete: '删除',
+      favorite: '收藏',
+      unfavorite: '取消收藏',
+      builtin: '内置',
+      builtinTip: '系统内置 Agent，仅可查看设置',
+    },
     create: {
       hintDisplayNameAndKey: '请填写显示名称和 Agent 标识',
       hintA2aUrl: '请填写远程 A2A URL',
@@ -2087,11 +2097,17 @@ export default {
     mediaOutputs: '媒体产出',
     activityStream: '活动流',
     nodeInfo: '节点信息',
+    members: '成员',
+    errorDetail: '错误详情',
+    duration: '耗时',
     statusPending: '等待中',
     statusRunning: '运行中',
     statusCompleted: '已完成',
     statusFailed: '失败',
     statusInterrupted: '已中断',
+    statusSkipped: '已跳过',
+    description: '描述',
+    textOutput: '文本产出',
   },
   orchestration: {
     timeline: {

@@ -54,6 +54,7 @@ type ServiceRegistry struct {
 	A2AExtension  *service.A2AExtensionCompatService
 	// RuntimeProfileService manages per-agent runtime configuration profiles.
 	RuntimeProfile *service.RuntimeProfileService
+	LearningLoop   *service.LearningLoopService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -101,6 +102,7 @@ func NewServiceRegistry(
 	openaiSession *service.OpenAISessionCompatService,
 	a2aExtension *service.A2AExtensionCompatService,
 	runtimeProfile *service.RuntimeProfileService,
+	learningLoop *service.LearningLoopService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:              admin,
@@ -145,5 +147,6 @@ func NewServiceRegistry(
 		OpenAISession:      openaiSession,
 		A2AExtension:       a2aExtension,
 		RuntimeProfile:     runtimeProfile,
+		LearningLoop:       learningLoop,
 	}
 }

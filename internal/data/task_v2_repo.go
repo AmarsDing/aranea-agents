@@ -164,7 +164,7 @@ func (r *taskV2Repo) UpsertTask(ctx context.Context, t biz.Task) (biz.Task, erro
 	}
 	row, err := cb.Save(ctx)
 	if err != nil {
-		if ent.IsConstraintError(err) {
+		if ent.IsConstraintError(err) || isPgUniqueViolation(err) {
 			// Race: another writer inserted first; return the winner.
 			existing, getErr := r.data.RW().Read(ctx).TaskV2.Get(ctx, t.ID)
 			if getErr != nil {

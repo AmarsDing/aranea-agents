@@ -43,11 +43,11 @@ const displayArtifacts = computed(() => props.artifacts.slice(0, 3));
   border-radius: 4px
   overflow: hidden
   cursor: pointer
-  border: 1px solid var(--color-border)
+  border: 1px solid var(--color-border-soft)
   flex-shrink: 0
 
   &:hover
-    border-color: var(--color-primary)
+    border-color: var(--q-primary)
 
 .node-media-preview__media
   width: 100%

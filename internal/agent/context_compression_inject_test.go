@@ -14,6 +14,136 @@ import (
 
 // --- partitionMessagesForCompression tests ---
 
+// TestPartitionMessagesForCompression_ToolPairSafety verifies that the
+// partition never splits a tool-call / tool-result pair across the
+// keep/evicted boundary. When an assistant message with ToolCalls is
+// evicted, its corresponding tool-result messages must also be evicted
+// (and vice versa). Splitting them causes the LLM API to reject the
+// request with a 400 error (orphan tool result).
+func TestPartitionMessagesForCompression_ToolPairSafety(t *testing.T) {
+	msgs := []trpcmodel.Message{
+		{Role: trpcmodel.RoleSystem, Content: "sys"},
+		{Role: trpcmodel.RoleUser, Content: "u1"},
+		{Role: trpcmodel.RoleAssistant, Content: "a1", ToolCalls: []trpcmodel.ToolCall{{ID: "tc1", Function: trpcmodel.FunctionDefinitionParam{Name: "read"}}}},
+		{Role: trpcmodel.RoleTool, Content: "r1", ToolID: "tc1"},
+		{Role: trpcmodel.RoleUser, Content: "u2"},
+		{Role: trpcmodel.RoleAssistant, Content: "a2"},
+	}
+	keep, evicted := partitionMessagesForCompression(msgs, 0.30)
+	// With 5 non-system messages, keepCount = ceil(5*0.30) = 2, evictCount = 3.
+	// Without tool-pair awareness, evicted would contain: u1, a1(tc1), r1(tc1)
+	// and keep would contain: u2, a2 — which is actually fine here.
+	// Let's force a boundary split: use keepRatio=0.60 → keepCount=3, evictCount=2.
+	// Without tool-pair awareness, evicted would be: u1, a1(tc1)
+	// and keep would be: r1(tc1), u2, a2 — which splits the pair!
+	keep2, evicted2 := partitionMessagesForCompression(msgs, 0.60)
+	assertNoOrphanToolPairs(t, keep2, "keep")
+	assertNoOrphanToolPairs(t, evicted2, "evicted")
+	_ = keep
+	_ = evicted
+}
+
+// TestPartitionMessagesForCompression_ToolPairBoundaryAtKeepSide verifies
+// that when the boundary falls between a tool-call and its tool-result,
+// the pair is kept together (the safer choice is to keep them in the
+// recent/keep side since they are the most recent messages).
+func TestPartitionMessagesForCompression_ToolPairBoundaryAtKeepSide(t *testing.T) {
+	msgs := []trpcmodel.Message{
+		{Role: trpcmodel.RoleSystem, Content: "sys"},
+		{Role: trpcmodel.RoleUser, Content: "u1"},
+		{Role: trpcmodel.RoleUser, Content: "u2"},
+		{Role: trpcmodel.RoleAssistant, Content: "a1", ToolCalls: []trpcmodel.ToolCall{{ID: "tc1", Function: trpcmodel.FunctionDefinitionParam{Name: "read"}}}},
+		{Role: trpcmodel.RoleTool, Content: "r1", ToolID: "tc1"},
+		{Role: trpcmodel.RoleUser, Content: "u3"},
+	}
+	// Non-system: 5 messages. keepRatio=0.40 → keepCount=2, evictCount=3.
+	// Without tool-pair awareness: evicted = u1, u2, a1(tc1); keep = r1(tc1), u3
+	// This splits the pair! The tool result r1 is orphaned in keep.
+	keep, evicted := partitionMessagesForCompression(msgs, 0.40)
+	assertNoOrphanToolPairs(t, keep, "keep")
+	assertNoOrphanToolPairs(t, evicted, "evicted")
+}
+
+// TestPartitionMessagesForCompression_MultipleToolCalls verifies that
+// multiple tool calls from a single assistant message are all kept
+// together with their results.
+func TestPartitionMessagesForCompression_MultipleToolCalls(t *testing.T) {
+	msgs := []trpcmodel.Message{
+		{Role: trpcmodel.RoleSystem, Content: "sys"},
+		{Role: trpcmodel.RoleUser, Content: "u1"},
+		{Role: trpcmodel.RoleAssistant, Content: "a1", ToolCalls: []trpcmodel.ToolCall{
+			{ID: "tc1", Function: trpcmodel.FunctionDefinitionParam{Name: "read"}},
+			{ID: "tc2", Function: trpcmodel.FunctionDefinitionParam{Name: "write"}},
+		}},
+		{Role: trpcmodel.RoleTool, Content: "r1", ToolID: "tc1"},
+		{Role: trpcmodel.RoleTool, Content: "r2", ToolID: "tc2"},
+		{Role: trpcmodel.RoleUser, Content: "u2"},
+	}
+	// Non-system: 5. keepRatio=0.40 → keepCount=2, evictCount=3.
+	// Without tool-pair awareness: evicted = u1, a1(tc1,tc2), r1(tc1)
+	// and keep = r2(tc2), u2 — splits tc2!
+	keep, evicted := partitionMessagesForCompression(msgs, 0.40)
+	assertNoOrphanToolPairs(t, keep, "keep")
+	assertNoOrphanToolPairs(t, evicted, "evicted")
+}
+
+// TestPartitionMessagesForCompression_NoToolMessages verifies that
+// the tool-pair safety logic does not affect messages without tool calls.
+func TestPartitionMessagesForCompression_NoToolMessages(t *testing.T) {
+	msgs := []trpcmodel.Message{
+		{Role: trpcmodel.RoleSystem, Content: "sys"},
+		{Role: trpcmodel.RoleUser, Content: "u1"},
+		{Role: trpcmodel.RoleAssistant, Content: "a1"},
+		{Role: trpcmodel.RoleUser, Content: "u2"},
+		{Role: trpcmodel.RoleAssistant, Content: "a2"},
+		{Role: trpcmodel.RoleUser, Content: "u3"},
+	}
+	// Non-system: 5. keepRatio=0.40 → keepCount=2, evictCount=3.
+	// No tool calls → same behavior as before.
+	keep, evicted := partitionMessagesForCompression(msgs, 0.40)
+	if len(evicted) != 3 {
+		t.Fatalf("expected 3 evicted, got %d", len(evicted))
+	}
+	if nonSystemCount(keep) != 2 {
+		t.Fatalf("expected 2 non-system in keep, got %d", nonSystemCount(keep))
+	}
+}
+
+// assertNoOrphanToolPairs checks that every tool-call in msgs has its
+// tool-result also in msgs, and vice versa.
+func assertNoOrphanToolPairs(t *testing.T, msgs []trpcmodel.Message, side string) {
+	t.Helper()
+	// Build set of all tool_call IDs in msgs.
+	toolCallIDs := make(map[string]bool)
+	for _, m := range msgs {
+		for _, tc := range m.ToolCalls {
+			toolCallIDs[tc.ID] = true
+		}
+	}
+	// Check every tool result has its tool call.
+	for _, m := range msgs {
+		if m.Role == trpcmodel.RoleTool && m.ToolID != "" {
+			if !toolCallIDs[m.ToolID] {
+				t.Fatalf("%s: orphan tool_result %q (no matching tool_call in %s)", side, m.ToolID, side)
+			}
+		}
+	}
+	// Check every tool call has its tool result.
+	toolResultIDs := make(map[string]bool)
+	for _, m := range msgs {
+		if m.Role == trpcmodel.RoleTool && m.ToolID != "" {
+			toolResultIDs[m.ToolID] = true
+		}
+	}
+	for _, m := range msgs {
+		for _, tc := range m.ToolCalls {
+			if !toolResultIDs[tc.ID] {
+				t.Fatalf("%s: orphan tool_call %q (no matching tool_result in %s)", side, tc.ID, side)
+			}
+		}
+	}
+}
+
 func TestPartitionMessagesForCompression_KeepsAllSystemMessages(t *testing.T) {
 	msgs := []trpcmodel.Message{
 		{Role: trpcmodel.RoleSystem, Content: "identity"},
