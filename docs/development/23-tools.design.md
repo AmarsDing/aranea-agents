@@ -16,7 +16,7 @@
 - 工具调用记录（ToolInvocation）查询与审计（ToolInvocationAudit）
 - 运行时工具挂载（trpc-agent-go Tool/ToolSet 适配）
 - 工具工作区统一（file / shell / claude_code 共用 `workspace_root`）
-- 片段级文件编辑（`diff_edit` / `patch_file`）— catalog 已就绪、运行时工具待补
+- 片段级文件编辑（`diff_edit` / `patch_file`）— catalog 与运行时工具均已实现
 
 ---
 
@@ -1228,7 +1228,7 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 - `model_registry_sync`、`browser`、`read_tool_result`
 - `plan_and_execute`、`check_progress`、`cancel_orchestration`、`synthesize_results`、`build_orchestration_graph`
 
-> **注意**：`message` 和 `subagents_*` 在 Registry 中已注册，但种子表暂缺条目（见开发计划 §8 P2 #10）。
+> **注意**：`message` 与 `subagents_*`（spawn/list/get/cancel）种子条目已补齐（默认停用，`subagents_cancel` 需确认），分类为 `orchestration` / `session`。
 
 ---
 
@@ -1440,7 +1440,7 @@ type AssembledToolsets struct {
 }
 ```
 
-**Registry() 注册的工具**（29 项）：
+**Registry() 注册的工具**（31 项）：
 
 | 注册名 | Category | 类型 | 风险 | 默认启用 | Deferred | Group | 框架包 |
 |--------|----------|------|------|----------|----------|-------|--------|
@@ -1472,7 +1472,9 @@ type AssembledToolsets struct {
 | `read_spreadsheet` | media | — | medium | ✅ | — | — | 表格读取 |
 | `read_tool_result` | system | Tool | low | ✅ | ✅ | — | 延迟工具结果读取 |
 | `working_memory` | memory | ToolSet | low | ✅ | — | — | `internal/tools/working_memory` |
+| `deliverable` | team | ToolSet | low | ❌ | — | — | `deliverabletools.ToolSet`（set/get_deliverable 跨 Agent 交付） |
 | `datetime` | system | Tool | low | ✅ | — | — | 内置时间工具 |
+| `media` | media | Tool | medium | ✅ | — | — | 媒体生成（文生图/文生视频/图生视频）；Factory 返回 nil，经 MediaProvider 在 Agent 级装配 |
 
 **Assemble 流程**：
 
@@ -1613,22 +1615,18 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 
 从 `loadEffectiveToolKeys` 获取生效工具 key 集合，映射到 `ToolsetConfig` 的布尔字段，调用 `BuildToolsets`。
 
-**buildToolCallbacks**：
+**工具记录回调**（`internal/agent/callback_chain.go`）：
+
+记录器已迁移至产品回调链装配：`productCallbackChainWithRegistry` 在 `ag.Settings.ToolsEnabled` 时注册 `callbacks.NewToolRecorderCallback(50, ...)`，工具执行完成后异步记录调用：
 
 ```go
-func buildToolCallbacks(s *biz.AgentRuntimeSettings, ag biz.Agent, deps TRPCBuilderDeps) *trpctool.Callbacks
-```
-
-注册 `AfterTool` 回调，在工具执行完成后异步记录调用：
-
-```go
-callbacks.RegisterAfterTool(func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
-    recordToolInvocationAsync(ctx, args, ag, deps)
+entries = append(entries, callbacks.NewToolRecorderCallback(50, func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
+    recordToolInvocationAfter(ctx, args, ag, deps)
     return &trpctool.AfterToolResult{}, nil
-})
+}))
 ```
 
-**recordToolInvocationAsync**（`internal/agent/tool_invocation_recorder.go`）：
+**recordToolInvocationAfter**（`internal/agent/tool_invocation_recorder.go`）：
 
 - 从 `trpcagent.InvocationFromContext(ctx)` 提取 sessionID、userID、agentKey
 - `previewFromArgs` / `previewFromResult` 截断至 2000 字符
@@ -2582,12 +2580,11 @@ type Callbacks struct {
     // ToolResultMessagesFunc: 自定义工具结果 → 模型消息转换
 }
 
-// 项目集成：buildToolCallbacks → AfterTool → recordToolInvocationAsync
-callbacks := trpctool.NewCallbacks()
-callbacks.RegisterAfterTool(func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
-    recordToolInvocationAsync(ctx, args, ag, deps)
+// 项目集成：callback_chain.go → NewToolRecorderCallback(50) → recordToolInvocationAfter
+entries = append(entries, callbacks.NewToolRecorderCallback(50, func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
+    recordToolInvocationAfter(ctx, args, ag, deps)
     return &trpctool.AfterToolResult{}, nil
-})
+}))
 ```
 
 ### 12.2 Filter（动态工具可见性控制）
@@ -2632,17 +2629,17 @@ type RetryPolicy struct {
 
 ## 十三、片段级文件编辑（扩展）
 
-> **状态**：catalog 已就绪、运行时工具待补
+> **状态**：✅ catalog 与运行时工具均已实现
 > **需求**：[23-tools.md §子模块 Tools Fragment Edit](./23-tools.md) · **开发计划**：[23-tools.development.md §Phase 4](./23-tools.development.md)
 
 在 §7 运行时层 `file` ToolSet 上扩展两个 CallableTool：
 
 | 工具 | 职责 | 运行时状态 |
 |------|------|-----------|
-| `diff_edit` | 多片段 SEARCH/REPLACE，内存原子 apply | ⏳ 运行时工具未实现 |
-| `patch_file` | unified diff 或结构化 hunk 应用 | ⏳ 运行时工具未实现 |
+| `diff_edit` | 多片段 SEARCH/REPLACE，内存原子 apply | ✅ 已实现 |
+| `patch_file` | unified diff 或结构化 hunk 应用 | ✅ 已实现 |
 
-**已就绪部分**（catalog 与策略层）：
+**catalog 与策略层**：
 
 | 位置 | 状态 | 说明 |
 |------|------|------|
@@ -2656,16 +2653,19 @@ type RetryPolicy struct {
 | `internal/agent/activity_meta.go` | ✅ | `diff_edit` → 片段编辑、`patch_file` → 应用补丁 中文标签 |
 | `internal/agent/prompt.go` | ✅ | `diff_edit` / `patch_file` 工作流提示 |
 
-**未实现部分**（运行时工具实现）：
+**运行时工具实现**：
 
-| 计划位置 | 状态 | 说明 |
+| 位置 | 状态 | 说明 |
 |----------|------|------|
-| `pkg/trpc-agent-go/tool/file/diffedit.go` | ❌ 不存在 | `diff_edit` 工具实现 |
-| `pkg/trpc-agent-go/tool/file/patchfile.go` | ❌ 不存在 | `patch_file` 工具实现 |
-| `pkg/trpc-agent-go/tool/file/editcontent.go` | ❌ 不存在 | load/commit 编排 + SessionFileState |
-| `pkg/trpc-agent-go/tool/file/patch/` | ❌ 不存在 | hunk 类型 / apply / unified 解析 / validate |
-| `pkg/trpc-agent-go/tool/internal/textfile/` | ❌ 不存在 | 共享编码 / 行结束 / 引号 fuzzy |
-| `internal/toolcache/file_views.go` | ❌ 不存在 | per-invocation FileView 存取 |
+| `pkg/trpc-agent-go/tool/file/diffedit.go` | ✅ | `diff_edit` 工具：多 edit 内存原子 apply + 结构化错误（`edit_not_unique` / `edit_not_found`） |
+| `pkg/trpc-agent-go/tool/file/patchfile.go` | ✅ | `patch_file` 工具：patch/hunks 互斥校验 + 原子写盘 + `hunk_mismatch` 结构化错误 |
+| `pkg/trpc-agent-go/tool/file/editcontent.go` | ✅ | load/commit 编排 + SessionFileState + 原子写盘（temp + rename） |
+| `pkg/trpc-agent-go/tool/file/patch/` | ✅ | hunk 类型 / apply（drift tolerance）/ unified 解析 / validate |
+| `pkg/trpc-agent-go/tool/internal/textfile/` | ✅ | 共享编码 / 行结束 / 引号 fuzzy（claudecode 复用） |
+| `pkg/trpc-agent-go/internal/toolcache/file_views.go` | ✅ | per-invocation FileView 存取（`agent.Invocation.State`） |
+| `pkg/trpc-agent-go/tool/file/file.go` | ✅ | `diff_edit` / `patch_file` 注册 + `WithDiffEditEnabled` / `WithPatchFileEnabled` |
+| `pkg/trpc-agent-go/tool/file/readfile.go` | ✅ | 响应含 `mtime_ms`；读后缓存 FileView |
+| `pkg/trpc-agent-go/tool/file/savefile.go` / `replacecontent.go` | ✅ | 写盘后刷新 FileView（读回磁盘解码） |
 
 **实现红线**：
 
@@ -2673,7 +2673,7 @@ type RetryPolicy struct {
 - `internal/tools` 仅做装配、别名、catalog，不写 patch 算法
 - `runtime_alias.go`（实际为 `internal/tools/alias/alias.go`）与 `tool_policy_keys.go`（实际为 `internal/biz/tool/tool_policy_keys.go`）须同步
 
-**详细设计**（待运行时工具实现时参考）：
+**详细设计**（与运行时实现一致）：
 
 ### 13.1 工具 API
 
@@ -2754,10 +2754,10 @@ Declaration name：`patch_file`
 
 ### 13.2 SessionFileState
 
-**数据结构**（计划实现于 `editcontent.go` + `internal/toolcache/file_views.go`）：
+**数据结构**（实现于 `editcontent.go` + `pkg/trpc-agent-go/internal/toolcache/file_views.go`）：
 
 ```go
-// internal/toolcache/file_views.go（计划）
+// pkg/trpc-agent-go/internal/toolcache/file_views.go
 type FileView struct {
     Content    string
     MtimeMs    int64
@@ -2909,4 +2909,4 @@ Data 层统一使用 `kerrors` 返回错误，禁止 `errors.New` / `sql.ErrNoRo
 
 ---
 
-*文档版本：4.0 — 按三件套边界重组，与代码对齐（2026-06-17）。*
+*文档版本：4.2 — Phase 4 片段编辑运行时工具实现完成（diffedit/patchfile/editcontent/patch/textfile/file_views），同步代码漂移：Registry 31 项（+deliverable/media）、记录回调函数名、种子表补全说明（2026-07-20）。*

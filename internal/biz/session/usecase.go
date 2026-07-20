@@ -443,6 +443,10 @@ type SummaryReader interface {
 // Stability:stable
 type SummaryWriter interface {
 	InsertSessionSummary(ctx context.Context, row SessionSummary) error
+	// DeleteSessionSummaries removes all rolling summary rows for the session.
+	// Used by recursive-merge compression: absorbed prior rows are replaced by
+	// a single merged row inside the same transaction.
+	DeleteSessionSummaries(ctx context.Context, sessionID string) error
 	UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
 	SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
 }

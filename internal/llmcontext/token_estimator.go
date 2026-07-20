@@ -79,6 +79,8 @@ var shared = NewTokenEstimator()
 
 // RecordAuthoritativeUsage calibrates the shared estimator with a
 // provider-reported token count for a known char count.
+// 注意：共享估算器是进程级单例，多模型混用时比率会漂移（后一次校准覆盖前一次）。
+// 与 Grok 同语义（单一比率），接受此近似——压缩场景的 token 估算不需要 per-model 精度。
 func RecordAuthoritativeUsage(tokens, chars int) {
 	shared.RecordAuthoritative(tokens, chars)
 }
@@ -88,4 +90,10 @@ func RecordAuthoritativeUsage(tokens, chars int) {
 // estimates share one calibrated ratio.
 func EstimateTokensFromChars(chars int) int {
 	return shared.EstimateChars(chars)
+}
+
+// resetSharedEstimatorForTest restores the shared estimator to its default
+// state. For tests only.
+func resetSharedEstimatorForTest() {
+	shared = NewTokenEstimator()
 }

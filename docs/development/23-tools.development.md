@@ -1,6 +1,6 @@
 # Tools 工具 — 开发计划
 
-> **版本**：9.0（2026-06-17）| **状态**：✅ 核心已实现；**Phase 4 片段编辑 部分实现**（catalog/策略层就绪，运行时工具待补）；**Phase 5 工作区统一 ✅**；**Phase 6 架构优化 ✅**；**Phase 7 质量加固 ✅**；**Phase 8 ISP + 测试 + Knowledge ✅**；**Round 5 Wire 窄接口 + 错误规范 ✅**
+> **版本**：9.2（2026-07-20）| **状态**：✅ 核心已实现；**Phase 4 片段编辑 ✅**（catalog/策略层 + 运行时工具全部实现）；**Phase 5 工作区统一 ✅**；**Phase 6 架构优化 ✅**；**Phase 7 质量加固 ✅**；**Phase 8 ISP + 测试 + Knowledge ✅**；**Round 5 Wire 窄接口 + 错误规范 ✅**
 > **需求**：[23-tools.md](./23-tools.md) · **设计**：[23-tools.design.md](./23-tools.design.md)
 
 ---
@@ -30,7 +30,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | Data | `internal/data/builtin_tools_seed.go` | 内置工具种子数据 |
 | Ent Schema | `internal/data/ent/schema/platform_tool.go` | `tools` 表（fallback_config_json StorageKey=default_config_json） |
 | Ent Schema | `internal/data/ent/schema/tool_invocation.go` | `tool_invocations` 表（含 streaming/chunk_count/deleted_at） |
-| Ent Schema | `internal/data/ent/schema/tool_invocation_audit.go` | `tool_invocation_audits` 表 |
+| Ent Schema | `internal/data/ent/schema/tool_invocation_audit.go` | `tool_invocation_audit` 表 |
 | Ent Schema | `internal/data/ent/schema/tool_agent_override.go` | `tool_agent_overrides` 表 |
 | Registry | `internal/tools/toolset.go` | Registry() + Assemble() 编排调度 + 12 子装配器 |
 | Tags | `internal/tools/tool.go` | ToolRegistration（含 Deferred/Examples/Group）+ RegistryByTag / RegistryByCategory |
@@ -90,7 +90,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | **工具调用审计** | ✅ 已实现 | `tool_invocation_audit` 表 + ListToolInvocationAudits API + 前端 `/tools/audits` |
 | **Profile 扩展** | ✅ 已实现 | 9 种 profile（新增 minimal/safe/system_admin/spirit） |
 | **片段编辑 catalog/策略层** | ✅ 已实现 | seed 含 `diff_edit`/`patch_file`；testexec/prompt/alias/diffEditHelpers 已就绪 |
-| **片段编辑运行时工具** | ❌ 未实现 | `diffedit.go`/`patchfile.go`/`editcontent.go`/`patch/`/`textfile/`/`internal/toolcache/file_views.go` 均不存在 |
+| **片段编辑运行时工具** | ✅ 已实现 | `diffedit.go`/`patchfile.go`/`editcontent.go`/`patch/`/`textfile/`/`internal/toolcache/file_views.go` 全部实现；种子启用 |
 
 ---
 
@@ -114,9 +114,9 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 14 | **P1** | effective key → ToolsetConfig 映射 | ✅ `ToolsetConfigFromEffectiveKeys` |
 | 15 | **P2** | MCP 默认超时 | ✅ `normalizeMCPServerTimeout`（60s） |
 | 16 | **P4** | `streaming` / `chunk_count` | ✅ `tool_invocations` 列 + 记录器 + Proto |
-| 17 | **P1** | 片段级文件编辑 `diff_edit` 运行时工具 | 📋 catalog 已就绪；运行时工具 `diffedit.go` 未实现 |
-| 18 | **P1** | unified / hunk 补丁 `patch_file` 运行时工具 | 📋 catalog 已就绪；运行时工具 `patchfile.go` 未实现 |
-| 19 | **P1** | SessionFileState 会话缓存 | 📋 `internal/toolcache/file_views.go` 未实现 |
+| 17 | **P1** | 片段级文件编辑 `diff_edit` 运行时工具 | ✅ `diffedit.go` 已实现（多 edit 原子 apply + 结构化错误） |
+| 18 | **P1** | unified / hunk 补丁 `patch_file` 运行时工具 | ✅ `patchfile.go` 已实现（patch/hunks 互斥 + hunk_mismatch 错误） |
+| 19 | **P1** | SessionFileState 会话缓存 | ✅ `internal/toolcache/file_views.go` 已实现（per-invocation FileView） |
 | 20 | **P2** | `edit_file` 别名迁移至 `diff_edit` | ✅ `internal/tools/alias/alias.go` + `internal/biz/tool/tool_policy_keys.go` 已同步 |
 | 21 | **P2** | 大文件行区间 patch | 📋 >1MB 仅加载 hunk ±context |
 | 22 | **P2** | Activity diff 预览 | 📋 消费 `structured_patch` 字段 |
@@ -218,21 +218,21 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - [x] 审计日志支持按 Agent / 工具 / 时间范围查询
 - [x] 审计日志有自动清理策略（默认保留 90 天）
 
-### Phase 4：片段级文件编辑（P1）— 部分实现
+### Phase 4：片段级文件编辑（P1）✅
 
 **目标**：在默认 `file` ToolSet 内提供 Cursor 式片段编辑（`diff_edit` / `patch_file`）与会话缓存，降低 token 与磁盘往返。需求见 [23-tools.md](./23-tools.md) §5，设计见 [23-tools.design.md](./23-tools.design.md) §13。
 
-**当前状态**：catalog/策略层已就绪，运行时工具未实现。
+**当前状态**：✅ 全部实现（catalog/策略层 + 运行时工具）。
 
 **任务**：
 
 | # | 任务 | 涉及文件 | 验收标准 | 状态 |
 |---|------|----------|----------|------|
-| 4.1 | 抽取 `textfile` 共享包（encoding / line ending / quote fuzzy） | `pkg/trpc-agent-go/tool/internal/textfile/` · `tool/claudecode/` 改 import | claudecode 复用 textfile | ❌ 目录不存在 |
-| 4.2 | 实现 `patch` 包（hunk 类型、apply、unified 解析） | `pkg/trpc-agent-go/tool/file/patch/` | `patch_test.go` | ❌ 目录不存在 |
-| 4.3 | 实现 `patch_file` 工具 | `pkg/trpc-agent-go/tool/file/patchfile.go` · `file.go` | unified + hunk；原子写盘 | ❌ 文件不存在 |
-| 4.4 | 实现 `diff_edit` 工具 | `pkg/trpc-agent-go/tool/file/diffedit.go` | 多 edit 原子；结构化错误 | ❌ 文件不存在 |
-| 4.5 | 实现 SessionFileState | `pkg/trpc-agent-go/tool/file/editcontent.go` · `pkg/trpc-agent-go/internal/toolcache/file_views.go` | `TestFileViewCache_SkipsSecondRead` | ❌ 文件不存在 |
+| 4.1 | 抽取 `textfile` 共享包（encoding / line ending / quote fuzzy） | `pkg/trpc-agent-go/tool/internal/textfile/` · `tool/claudecode/` 改 import | claudecode 复用 textfile | ✅ |
+| 4.2 | 实现 `patch` 包（hunk 类型、apply、unified 解析） | `pkg/trpc-agent-go/tool/file/patch/` | `patch_test.go` | ✅ |
+| 4.3 | 实现 `patch_file` 工具 | `pkg/trpc-agent-go/tool/file/patchfile.go` · `file.go` | unified + hunk；原子写盘 | ✅ |
+| 4.4 | 实现 `diff_edit` 工具 | `pkg/trpc-agent-go/tool/file/diffedit.go` | 多 edit 原子；结构化错误 | ✅ |
+| 4.5 | 实现 SessionFileState | `pkg/trpc-agent-go/tool/file/editcontent.go` · `pkg/trpc-agent-go/internal/toolcache/file_views.go` | `TestFileViewCache_SkipsSecondRead` | ✅ |
 | 4.6 | catalog 种子 + Effective Tools 组 | `internal/data/builtin_tools_seed.go` · `internal/biz/agent_effective_tools.go` | filesystem 组含 `diff_edit`/`patch_file` | ✅ |
 | 4.7 | testexec + Activity 标签 | `internal/tools/testexec/config.go` · `activity_meta.go` | 在线测试 case + 活动流中文名 | ✅ |
 | 4.8 | Agent Prompt 工作流 | `internal/agent/prompt.go` | diff_edit 优先工作流提示 | ✅ |
@@ -241,14 +241,14 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 
 **验收**（与需求 §5 对齐）：
 
-- [ ] `diff_edit` 单调用多片段替换且原子提交（运行时工具未实现）
-- [ ] `patch_file` unified diff 应用；hunk mismatch 零副作用（运行时工具未实现）
-- [ ] SessionFileState 命中；外部 mtime 变化拒绝覆盖（运行时工具未实现）
+- [x] `diff_edit` 单调用多片段替换且原子提交
+- [x] `patch_file` unified diff 应用；hunk mismatch 零副作用
+- [x] SessionFileState 命中；外部 mtime 变化拒绝覆盖（`expected_mtime_ms` 乐观锁）
 - [x] `replace_content` / `save_file` 无破坏性变更
 - [x] catalog 种子含 `diff_edit`/`patch_file`；testexec/prompt/alias/前端已就绪
-- [ ] `go test ./tool/file/... ./tool/file/patch/...`（在 `pkg/trpc-agent-go` 模块内）— 待运行时工具实现后
+- [x] `go test ./tool/file/... ./tool/file/patch/...`（在 `pkg/trpc-agent-go` 模块内）— 新增 43 测试全过；`read_file` 响应含 `mtime_ms`；`save_file`/`replace_content` 写盘后刷新 FileView
 
-**建议迭代顺序**：4.1 → 4.2 → 4.3 → 4.4 → 4.5（运行时工具待补）→ 4.6–4.10（已完成）
+**迭代顺序**（已执行）：4.1 → 4.2 → 4.5（editcontent + file_views）→ 4.4 → 4.3 → file.go 注册 + read/save/replace FileView 集成 → 4.6–4.10（已完成）
 
 ---
 
@@ -477,10 +477,10 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - [x] 自定义工具可在配置时在线测试（`POST /v1/tools/{id}/test`）
 - [x] 工具调用可审计追溯（`GET /v1/tools/audits`；保留策略运维侧 90 天）
 
-### Phase 4（片段级文件编辑）— 部分实现
+### Phase 4（片段级文件编辑）✅
 
-- [ ] `diff_edit` / `patch_file` 运行时可用（运行时工具未实现）
-- [ ] SessionFileState 同 invocation 缓存生效（`internal/toolcache/file_views.go` 未实现）
+- [x] `diff_edit` / `patch_file` 运行时可用
+- [x] SessionFileState 同 invocation 缓存生效（`internal/toolcache/file_views.go`）
 - [x] catalog / Effective Tools / Prompt / Activity / 别名 / 前端集成完成
 
 ### Phase 5（工具工作区统一）✅
@@ -573,20 +573,18 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 6 | BM25 分数归一化 | `mergeBM25Results` 直接拼接 tsvector 和 trigram 结果，分数尺度不同可能导致排序偏差 |
 | 7 | `AdaptiveRouter.Search` 签名简化 | 调用方常传 `nil` + `""`，考虑提供简化签名 |
 | 8 | `slugify("")` 全局唯一 slug 生成 | 空 slug 已在 `CreateSkillDir` 校验拦截，但 `slugify` 本身仍生成 "skill-0" 非唯一值 |
-| 9 | `message` / `subagents_*` 种子表补全 | Registry 有注册但种子表缺 `message` 和 `subagents_*` 条目（`browser` 已有） |
-| 10 | `browser` / `kanban` / `spirit` 纳入 toolGroup | 当前 `toolGroupsIntegration` 不含 browser/kanban；无 `toolGroupsSpirit`；`full` profile 不含 browser |
-| 11 | 大文件行区间 patch | >1MB 仅加载 hunk ±context |
-| 12 | Activity diff 预览 | 消费 `structured_patch` 字段 |
+| 9 | `kanban` / `spirit` 纳入 toolGroup | `toolGroupsBrowser` / `group:subagent` 已建且 `full` profile 已包含；剩余：kanban 无独立组（现经 KanbanBridge 特殊装配）、无 `toolGroupsSpirit`（spirit profile 直接枚举 key，无法 `group:spirit` 引用） |
+| 10 | 大文件行区间 patch | >1MB 仅加载 hunk ±context |
+| 11 | Activity diff 预览 | 消费 `structured_patch` 字段 |
 
 ### P3（低优先级）
 
 | # | 任务 | 说明 |
 |---|------|------|
-| 13 | `BuildToolsets` 集成测试 | 核心桥接函数需 mock-heavy 测试 |
-| 14 | E2E 全链路测试 | `read_file` → `diff_edit` → shell 读同路径（依赖片段编辑运行时工具实现） |
-| 15 | `AgentPromptFileRepo` 监控 | 恰好 5 方法处于红线边界，新增方法需立即拆分 |
-| 16 | `biz/` 预存测试失败修复 | `TestRecordReconnectMetadata`/`TestAgentRuntimeSettings_DomainAccessors`/`TestValidateRalphLoopSettings` 3 个测试失败 |
-| 17 | spirit 工具 group 变量化 | spirit profile 直接枚举 key，无法通过 `group:spirit` 引用 |
+| 12 | `BuildToolsets` 集成测试 | 核心桥接函数需 mock-heavy 测试 |
+| 13 | E2E 全链路测试 | `read_file` → `diff_edit` → shell 读同路径（依赖片段编辑运行时工具实现） |
+| 14 | `AgentPromptFileRepo` 监控 | 恰好 5 方法处于红线边界，新增方法需立即拆分 |
+| 15 | `biz/` 预存测试失败修复 | `TestRecordReconnectMetadata`/`TestAgentRuntimeSettings_DomainAccessors`/`TestValidateRalphLoopSettings` 3 个测试失败 |
 
 ---
 
@@ -608,9 +606,9 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - `internal/agent/tool_assembly.go` — Override 配置合并
 - 前端：`web/src/features/tools/` / `web/src/features/agents/` — Override 管理 + 审计页
 
-### Phase 4（部分实现 — catalog/策略层已就绪，运行时工具待补）
+### Phase 4（已实现）
 
-已实现：
+catalog/策略层：
 - `internal/data/builtin_tools_seed.go` — `diff_edit`/`patch_file` 种子条目
 - `internal/tools/testexec/config.go` — diff_edit/patch_file case
 - `internal/agent/prompt.go` — diff_edit 优先工作流提示
@@ -619,13 +617,16 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - `web/src/features/chat/diffEditHelpers.ts` — diff_edit/patch_file 事件处理
 - `web/src/features/agents/useAgentToolsCatalog.ts` — defaultNativeToolKeys
 
-待创建：
-- `pkg/trpc-agent-go/tool/internal/textfile/` — 共享编码/行尾/quote fuzzy
-- `pkg/trpc-agent-go/tool/file/patch/` — hunk 类型 + apply + unified 解析
-- `pkg/trpc-agent-go/tool/file/patchfile.go` — patch_file 运行时工具
-- `pkg/trpc-agent-go/tool/file/diffedit.go` — diff_edit 运行时工具
-- `pkg/trpc-agent-go/tool/file/editcontent.go` — SessionFileState 编解码
-- `pkg/trpc-agent-go/internal/toolcache/file_views.go` — FileView 缓存
+运行时工具：
+- `pkg/trpc-agent-go/tool/internal/textfile/` — 共享编码/行尾/quote fuzzy（claudecode 已复用）
+- `pkg/trpc-agent-go/tool/file/patch/` — hunk 类型 + apply + unified 解析 + validate
+- `pkg/trpc-agent-go/tool/file/patchfile.go` — patch_file 运行时工具（patch/hunks 互斥 + 原子写盘）
+- `pkg/trpc-agent-go/tool/file/diffedit.go` — diff_edit 运行时工具（多 edit 原子 + 结构化错误）
+- `pkg/trpc-agent-go/tool/file/editcontent.go` — SessionFileState load/commit 编排 + 原子写盘
+- `pkg/trpc-agent-go/internal/toolcache/file_views.go` — per-invocation FileView 缓存
+- `pkg/trpc-agent-go/tool/file/file.go` — `diff_edit`/`patch_file` 注册 + `WithDiffEditEnabled`/`WithPatchFileEnabled`
+- `pkg/trpc-agent-go/tool/file/readfile.go` — 响应含 `mtime_ms` + 读后缓存 FileView
+- `pkg/trpc-agent-go/tool/file/savefile.go` / `replacecontent.go` — 写盘后刷新 FileView
 
 ### Phase 5（已实现）
 

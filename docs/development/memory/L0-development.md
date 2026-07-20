@@ -145,7 +145,7 @@
 | 记忆工具业务含义 | `load_memory`/`preload_memory` 走 trpc 默认语义 | `RuntimeCapabilityCue` 需如实描述 Store 是否就绪 |
 | 向量记忆与 Runner 统一 | pgvector 独立业务线 | P2：显式工具或统一 `SearchMemory` 聚合 |
 | 闭环会话记忆 | `AddSessionToMemory` 对齐待完善 | 与 L2/L3 写入路径一致；`memory/v1` 作观测面 |
-| 摘要多条记录合并 | 首版采用区间链式（保留多条记录，装配时按 `from_turn` 排序拼接） | 二期可演进为单条滚动（每次压缩后把旧摘要 + 新区间对话一并输入，产出一条覆盖 `[0, current_to]` 的新摘要） |
+| 摘要多条记录合并 | ✅ 已实现单条滚动：LLM 压缩传入 `PriorSummary` 吸收合并历史摘要，事务内删除旧摘要行、写入单行合并行（`compressor.go` + `session_repo_summaries.go`） | ~~二期可演进为单条滚动~~ 已完成（2026-07-20，Grok 借鉴 Phase 2） |
 | 压缩调用成本 | 压缩模型与对话模型共用 | 可配置更小模型、更长触发间隔、批量区间合并以控 latency/cost |
 
 

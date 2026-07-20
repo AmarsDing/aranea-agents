@@ -71,6 +71,10 @@ func (r *testRepo) InsertSessionSummary(ctx context.Context, row SessionSummary)
 	return r.mockSessionRepo.InsertSessionSummary(ctx, row)
 }
 
+func (r *testRepo) DeleteSessionSummaries(ctx context.Context, sessionID string) error {
+	return r.mockSessionRepo.DeleteSessionSummaries(ctx, sessionID)
+}
+
 func (r *testRepo) ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error) {
 	if r.listSessionSummariesFn != nil {
 		return r.listSessionSummariesFn(ctx, sessionID)

@@ -124,6 +124,22 @@ func WithReplaceContentEnabled(e bool) Option {
 	}
 }
 
+// WithDiffEditEnabled enables or disables the diff edit functionality,
+// default is true.
+func WithDiffEditEnabled(e bool) Option {
+	return func(f *fileToolSet) {
+		f.diffEditEnabled = e
+	}
+}
+
+// WithPatchFileEnabled enables or disables the patch file
+// functionality, default is true.
+func WithPatchFileEnabled(e bool) Option {
+	return func(f *fileToolSet) {
+		f.patchFileEnabled = e
+	}
+}
+
 // WithCreateDirMode sets the permission mode for creating directory,
 // default is 0755 (rwxr-xr-x).
 func WithCreateDirMode(m os.FileMode) Option {
@@ -165,6 +181,8 @@ type fileToolSet struct {
 	searchFileEnabled        bool
 	searchContentEnabled     bool
 	replaceContentEnabled    bool
+	diffEditEnabled          bool
+	patchFileEnabled         bool
 	createDirMode            os.FileMode
 	createFileMode           os.FileMode
 	maxFileSize              int64
@@ -201,6 +219,8 @@ func NewToolSet(opts ...Option) (tool.ToolSet, error) {
 		searchFileEnabled:        true,
 		searchContentEnabled:     true,
 		replaceContentEnabled:    true,
+		diffEditEnabled:          true,
+		patchFileEnabled:         true,
 		createDirMode:            defaultCreateDirMode,
 		createFileMode:           defaultCreateFileMode,
 		maxFileSize:              defaultMaxFileSize,
@@ -254,6 +274,12 @@ func NewToolSet(opts ...Option) (tool.ToolSet, error) {
 	}
 	if fileToolSet.replaceContentEnabled {
 		tools = append(tools, fileToolSet.replaceContentTool())
+	}
+	if fileToolSet.diffEditEnabled {
+		tools = append(tools, fileToolSet.diffEditTool())
+	}
+	if fileToolSet.patchFileEnabled {
+		tools = append(tools, fileToolSet.patchFileTool())
 	}
 	fileToolSet.tools = tools
 	return fileToolSet, nil

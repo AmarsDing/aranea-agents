@@ -179,6 +179,9 @@ func (m *ingressSessionRepo) UpdateSessionContextAfterCompression(context.Contex
 func (m *ingressSessionRepo) InsertSessionSummary(context.Context, biz.SessionSummary) error {
 	return nil
 }
+func (m *ingressSessionRepo) DeleteSessionSummaries(context.Context, string) error {
+	return nil
+}
 func (m *ingressSessionRepo) MaxSessionSummaryToTurn(context.Context, string) (int, error) {
 	return 0, nil
 }

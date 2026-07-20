@@ -52,3 +52,17 @@ func TestTokenEstimator_AuthoritativeResetsIncremental(t *testing.T) {
 		t.Fatalf("expected 200 after re-anchor, got %d", got)
 	}
 }
+
+func TestSharedEstimatorCalibratedByAuthoritativeUsage(t *testing.T) {
+	resetSharedEstimatorForTest()
+	defer resetSharedEstimatorForTest()
+	// 默认 2.5 chars/token
+	if got := EstimateTokensFromChars(1000); got != 400 {
+		t.Fatalf("default estimate = %d, want 400", got)
+	}
+	// 权威锚点：2000 chars 实测 1000 tokens → 2.0 chars/token
+	RecordAuthoritativeUsage(1000, 2000)
+	if got := EstimateTokensFromChars(1000); got != 500 {
+		t.Fatalf("calibrated estimate = %d, want 500", got)
+	}
+}

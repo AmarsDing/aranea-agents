@@ -190,6 +190,10 @@ func (m *mockSessionRepo) InsertSessionSummary(_ context.Context, _ SessionSumma
 	return nil
 }
 
+func (m *mockSessionRepo) DeleteSessionSummaries(_ context.Context, _ string) error {
+	return nil
+}
+
 func (m *mockSessionRepo) UpdateSessionListSummary(_ context.Context, _, _ string) error {
 	return nil
 }

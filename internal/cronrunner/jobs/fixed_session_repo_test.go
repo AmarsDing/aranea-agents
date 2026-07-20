@@ -108,6 +108,9 @@ func (fixedSessionRepo) UpdateSessionContextAfterCompression(context.Context, st
 func (fixedSessionRepo) InsertSessionSummary(context.Context, sessionsess.SessionSummary) error {
 	return nil
 }
+func (fixedSessionRepo) DeleteSessionSummaries(context.Context, string) error {
+	return nil
+}
 func (fixedSessionRepo) MaxSessionSummaryToTurn(context.Context, string) (int, error) { return 0, nil }
 func (fixedSessionRepo) ListSessionSummaries(context.Context, string) ([]sessionsess.SessionSummary, error) {
 	return nil, nil

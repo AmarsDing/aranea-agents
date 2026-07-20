@@ -289,6 +289,13 @@ func compressProviderModel(sess biz.Session, ag biz.Agent) (prov, mod string) {
 	return compressProviderModelPolicy(CompressPolicyFromAgent(ag), sess, ag)
 }
 
+// compressProviderModelKey returns the "provider/model" identity of the
+// compression model, used as the suppression key (model switch clears suppression).
+func compressProviderModelKey(sess biz.Session, ag biz.Agent) string {
+	p, m := compressProviderModel(sess, ag)
+	return p + "/" + m
+}
+
 // compressMinGapFromAgentPolicy returns the minimum gap between compressions from CompressPolicy.
 func compressMinGapFromAgentPolicy(p CompressPolicy) time.Duration {
 	return p.Timing.MinGap

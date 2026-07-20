@@ -30,6 +30,11 @@
 | L1/L2 单元测试 | ✅ | `micro_compact_test.go`（8 用例）+ `memory_compact_test.go`（9 用例） |
 | LLM 压缩响应缓存 | ✅ | `internal/compress/cache.go`（CompressCache + CachingCompressor 装饰器） |
 | 手动压缩 API | ✅ | `POST /v1/sessions:compact` + `biz.ManualCompressor` + 前端压缩按钮 |
+| **tail 保留修复** | ✅ | `loadCompressBody` 返回 body+tail 穿透至事务，压缩后快照保留近期轮次（修复 tail 恒为空缺陷） |
+| **递归滚动摘要** | ✅ | LLM 压缩传入 `PriorSummary` 吸收合并历史摘要；事务内 `DeleteSessionSummaries` + 写入单行合并摘要，根治无限拼接 |
+| **摘要质量门** | ✅ | `compress_quality.go`：退化检测（<200 runes vs ≥1000 runes 原文）+ 减量守卫（≥80% 丢弃）+ 错误分类（deterministic/transient） |
+| **压缩失败抑制** | ✅ | `compress_suppress.go`：deterministic sticky（按压缩模型）+ transient minGap 退避；forced 触发绕过 |
+| **双锚点 token 校准** | ✅ | `compress/service.go` 压缩成功路径调用 `llmcontext.RecordAuthoritativeUsage`，共享估算器从 2.5 chars/token 默认值校准到真实比率 |
 | 记忆操作语义化 | ❌ | 只有 ADD |
 | 时间维度 | ❌ | 不存在 |
 | 动态链接 | ❌ | 不存在 |

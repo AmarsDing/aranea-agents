@@ -98,6 +98,8 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | `internal/session/runtime.go` | trpc Runtime 桥接 |
 | `internal/session/memory_compact.go` | 记忆压缩 |
 | `internal/session/micro_compact.go` | 微压缩 |
+| `internal/session/compress_quality.go` | 摘要质量门（退化检测/减量守卫/错误分类纯函数） |
+| `internal/session/compress_suppress.go` | 压缩失败抑制（deterministic sticky + transient 退避） |
 | `internal/session/context_update.go` | 上下文更新 |
 | `internal/session/snapshot.go` | Runner Snapshot 同步 |
 | `internal/session/token_estimate.go` | Token 估算 |
@@ -164,6 +166,11 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | **ActivityEventBus + MonitorEventBus 双总线** | ✅ | AF-02 — 替换 SessionBus + Envelope MonitorBus（详见 ADR-03） |
 | **ActivityEventBus 并行异步持久化 + 三级补偿** | ✅ | AF-03 — persistChan fire-and-forget + 死信缓冲 + API Backfill（详见 ADR-02） |
 | CompactSession / GetCompressStatus | ✅ | 手动压缩 + 状态查询 RPC |
+| **压缩 tail 保留** | ✅ | `loadCompressBody` 返回 body+tail 穿透事务，近期轮次写入快照（修复 tail 恒为空） |
+| **递归滚动摘要** | ✅ | LLM 传入 `PriorSummary` 吸收合并，事务内删旧写新，防止无限拼接 |
+| **摘要质量门** | ✅ | `compress_quality.go`：退化检测 + 减量守卫 + 错误分类（纯函数） |
+| **压缩失败抑制** | ✅ | `compress_suppress.go`：deterministic sticky + transient 退避 |
+| **双锚点 token 校准** | ✅ | `compress/service.go` → `llmcontext.RecordAuthoritativeUsage`，校准共享估算器 |
 | Session 状态机（5 状态） | ✅ | `status_machine.go` + `session_state_machine.go` |
 | SessionRuntime / SessionMetrics 拆分表 | ✅ | 高频字段拆出，减少写放大 |
 | session_participants 增量写 | 🟡 | 表 + 读时 Sync；Team 详情 Tab；**无 turn 增量写** |
@@ -304,7 +311,7 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | TimelineReader | 4 | 时间线读取 |
 | InvocationReader | 2 | 工具/Skill 调用读取 |
 | SummaryReader | 3 | 摘要读取 |
-| SummaryWriter | 3 | 摘要写入 |
+| SummaryWriter | 4 | 摘要写入（含 DeleteSessionSummaries 递归合并删除） |
 | StateRepo | 3 | KV 状态（Get/Save/Patch） |
 | TurnRepo | 4 | Turn 读写 |
 | ContextUpdater | 5 | 上下文更新（含 ApplyMetricsDelta） |

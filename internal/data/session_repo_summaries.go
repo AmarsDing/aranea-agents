@@ -30,6 +30,19 @@ VALUES (?,?,?,?,?,?,?)`)
 	return err
 }
 
+// DeleteSessionSummaries removes all rolling summary rows for a session.
+// Called inside CompressSessionInTx when the LLM absorbed prior summaries into
+// a single merged row (recursive rolling summary).
+func (r *sessionRepo) DeleteSessionSummaries(ctx context.Context, sessionID string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return apierror.BadRequest("SESSION", "session id is required")
+	}
+	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`DELETE FROM session_summaries WHERE session_id = ?`), sessionID)
+	return entErrToBizErr(err, apierror.DomainSession)
+}
+
 func (r *sessionRepo) MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {

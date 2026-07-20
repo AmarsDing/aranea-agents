@@ -50,6 +50,11 @@ func (uc *SessionCompressionUsecase) InsertSessionSummary(ctx context.Context, r
 	return uc.summaryWriter.InsertSessionSummary(ctx, row)
 }
 
+// DeleteSessionSummaries removes all rolling summary rows for the session (recursive merge).
+func (uc *SessionCompressionUsecase) DeleteSessionSummaries(ctx context.Context, sessionID string) error {
+	return uc.summaryWriter.DeleteSessionSummaries(ctx, sessionID)
+}
+
 // MaxSessionSummaryToTurn returns the largest to_turn stored for the session (0 if none).
 func (uc *SessionCompressionUsecase) MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error) {
 	return uc.summaryReader.MaxSessionSummaryToTurn(ctx, sessionID)

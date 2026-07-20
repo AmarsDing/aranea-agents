@@ -43,7 +43,7 @@ type replaceContentResponse struct {
 
 // replaceContent performs the replace content operation.
 func (f *fileToolSet) replaceContent(
-	_ context.Context,
+	ctx context.Context,
 	req *replaceContentRequest,
 ) (*replaceContentResponse, error) {
 	rsp := &replaceContentResponse{
@@ -140,6 +140,7 @@ func (f *fileToolSet) replaceContent(
 		rsp.Message = fmt.Sprintf("Error: writing file '%s': %v", req.FileName, err)
 		return rsp, fmt.Errorf("writing file '%s': %w", req.FileName, err)
 	}
+	f.storeFileViewFromDisk(ctx, filePath)
 	rsp.Message = fmt.Sprintf(
 		"Successfully replaced %d of %d in '%s'",
 		numReplacements,

@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/llmcontext"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -108,5 +110,18 @@ func (s *LLMService) Compress(ctx context.Context, req Request) (Result, error) 
 	out.Markdown = strings.TrimSpace(text)
 	out.PromptTokens = ptok
 	out.CompletionTokens = ctok
+	if ptok > 0 {
+		// 双锚点校准：用权威 prompt_tokens 回填共享估算器（rune 数与调用点单位一致）。
+		llmcontext.RecordAuthoritativeUsage(ptok, inputChars(sys, req.PriorSummary, transcript))
+	}
 	return out, nil
+}
+
+// inputChars sums rune counts of prompt input parts (authoritative anchor chars).
+func inputChars(parts ...string) int {
+	n := 0
+	for _, p := range parts {
+		n += utf8.RuneCountInString(p)
+	}
+	return n
 }
