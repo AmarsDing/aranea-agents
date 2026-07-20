@@ -83,7 +83,7 @@ func TestIsEvergreenFactKind(t *testing.T) {
 		{"fact", false},
 		{"episodic", false},
 		{"", false},
-		{"USER_IDENTITY", true}, // case-insensitive
+		{"USER_IDENTITY", true},   // case-insensitive
 		{" user_identity ", true}, // whitespace-tolerant
 	}
 	for _, tt := range tests {
@@ -107,8 +107,8 @@ func TestMMRRerank_DiversityOrdering(t *testing.T) {
 	// With MMR (λ=0.7): A first, then C (diverse), then B (redundant with A)
 	texts := []string{
 		"cats are cute fluffy animals that purr",
-		"cats are cute fluffy animals that purr and meow",   // near-dup of A
-		"quantum computing advances in error correction",     // completely different
+		"cats are cute fluffy animals that purr and meow", // near-dup of A
+		"quantum computing advances in error correction",  // completely different
 	}
 	scores := []float64{0.9, 0.85, 0.80}
 

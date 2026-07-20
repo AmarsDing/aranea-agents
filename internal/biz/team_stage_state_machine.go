@@ -33,12 +33,12 @@ import (
 type TeamStageEvent string
 
 const (
-	TeamStageEventStart    TeamStageEvent = "start"
-	TeamStageEventComplete TeamStageEvent = "complete"
-	TeamStageEventFail     TeamStageEvent = "fail"
-	TeamStageEventCancel   TeamStageEvent = "cancel"
+	TeamStageEventStart     TeamStageEvent = "start"
+	TeamStageEventComplete  TeamStageEvent = "complete"
+	TeamStageEventFail      TeamStageEvent = "fail"
+	TeamStageEventCancel    TeamStageEvent = "cancel"
 	TeamStageEventInterrupt TeamStageEvent = "interrupt"
-	TeamStageEventResume   TeamStageEvent = "resume"
+	TeamStageEventResume    TeamStageEvent = "resume"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────

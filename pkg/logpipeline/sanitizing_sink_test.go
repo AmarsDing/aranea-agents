@@ -16,7 +16,7 @@ type fakeSink struct {
 func (f *fakeSink) Write(entry LogEntry) {
 	f.entries = append(f.entries, entry)
 }
-func (f *fakeSink) Flush()      { f.flushed = true }
+func (f *fakeSink) Flush()       { f.flushed = true }
 func (f *fakeSink) Close() error { f.closed = true; return nil }
 
 func TestSanitizingSink_RedactsMessage(t *testing.T) {
@@ -47,8 +47,8 @@ func TestSanitizingSink_RedactsStringFields(t *testing.T) {
 	sink := NewSanitizingSink(base)
 
 	sink.Write(LogEntry{
-		Kind:   KindLog,
-		Level:  "info",
+		Kind:    KindLog,
+		Level:   "info",
 		Message: "tool result",
 		Fields: map[string]any{
 			"api_key": "sk-abc123def456ghi789",

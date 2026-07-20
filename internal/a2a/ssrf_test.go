@@ -34,9 +34,9 @@ func TestIsBlockedIP_PrivateAddresses(t *testing.T) {
 // TestIsBlockedIP_PublicAddresses asserts that public IPs are allowed.
 func TestIsBlockedIP_PublicAddresses(t *testing.T) {
 	allowed := []string{
-		"8.8.8.8",        // Google DNS
-		"1.1.1.1",        // Cloudflare DNS
-		"203.0.113.1",    // TEST-NET-3 (documentation, but public range)
+		"8.8.8.8",              // Google DNS
+		"1.1.1.1",              // Cloudflare DNS
+		"203.0.113.1",          // TEST-NET-3 (documentation, but public range)
 		"2001:4860:4860::8888", // Google DNS IPv6
 	}
 	for _, ipStr := range allowed {

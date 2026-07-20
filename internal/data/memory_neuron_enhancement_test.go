@@ -251,4 +251,3 @@ func abs(x float64) float64 {
 
 // Ensure loggateway noop is used (avoids deprecated Global()).
 var _ = loggateway.NewNoop
-

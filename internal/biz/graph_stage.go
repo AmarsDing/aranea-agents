@@ -41,9 +41,9 @@ const (
 type GraphNode struct {
 	ID           string // 通常 = plan_step.id（确定性派生）
 	GraphStageID string
-	Label        string   // 取自 PlanStep.Label
-	DagNodeID    string   // 对应 plan_step.id
-	TeamStageID  string   // 关联的 team_stage（如已创建，否则空）
+	Label        string // 取自 PlanStep.Label
+	DagNodeID    string // 对应 plan_step.id
+	TeamStageID  string // 关联的 team_stage（如已创建，否则空）
 	Status       GraphNodeStatus
 	DependsOn    []string // 取自 PlanStep.DependsOn（派生，不持久化）
 }
@@ -54,8 +54,8 @@ const (
 	GraphNodeStatusPending     GraphNodeStatus = "pending"     // 灰色
 	GraphNodeStatusRunning     GraphNodeStatus = "running"     // 青色脉冲
 	GraphNodeStatusCompleted   GraphNodeStatus = "completed"   // 绿色 ✓
-	GraphNodeStatusFailed      GraphNodeStatus = "failed"       // 红色 ✗
-	GraphNodeStatusInterrupted GraphNodeStatus = "interrupted"  // 黄色 ⏸（需求 §A.4.2）
+	GraphNodeStatusFailed      GraphNodeStatus = "failed"      // 红色 ✗
+	GraphNodeStatusInterrupted GraphNodeStatus = "interrupted" // 黄色 ⏸（需求 §A.4.2）
 )
 
 // MapPlanStepToGraphNodeStatus 将 PlanStep.Status 映射为 GraphNodeStatus。

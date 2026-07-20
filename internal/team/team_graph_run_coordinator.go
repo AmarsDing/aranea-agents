@@ -69,13 +69,13 @@ type TeamGraphRunCoordinator struct {
 	// ActivityEvent from each ActivityBridgeEvent for handleGraphWatchActivity
 	// (which deeply inspects v1 Kind/Stage/Meta/Event/Content to drive the
 	// graph watch state machine). All publish sites also use NewActivityBridgeEvent.
-	eventBus        biz.EventBus
-	seq             rt.EventPublisher // Phase 2: Publish via v2 Sequencer (FIFO + retry); eventBus retained for Subscribe
-	finisher        *TeamRunMediator
-	sessionRepo     biz.TeamGraphSessionRepo
-	cfg             CoordinatorConfig
-	lg              loggateway.Logger
-	agentKeyFn      func(agentID string) string
+	eventBus    biz.EventBus
+	seq         rt.EventPublisher // Phase 2: Publish via v2 Sequencer (FIFO + retry); eventBus retained for Subscribe
+	finisher    *TeamRunMediator
+	sessionRepo biz.TeamGraphSessionRepo
+	cfg         CoordinatorConfig
+	lg          loggateway.Logger
+	agentKeyFn  func(agentID string) string
 
 	mu       sync.RWMutex
 	sessions map[string]*teamGraphRunSession
@@ -305,14 +305,14 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 						Event: biz.ActivityEventFailed,
 						Activity: biz.Activity{
 							ID:               string(agent.NewTeamStageActivityID(sess.teamID)),
-						Kind:             biz.ActivityKindTeamStage,
-						Status:           biz.ActivityStatusFailed,
-						SessionID:        sess.sessionID,
-						SpiritSessionID:  sess.spiritSessionID,
-						TeamID:           sess.teamID,
-						Timestamp:        time.Now().UTC(),
-						Stage:            "failed",
-						ParentActivityID: string(agent.NewGraphStageActivityID(sess.spiritSessionID)),
+							Kind:             biz.ActivityKindTeamStage,
+							Status:           biz.ActivityStatusFailed,
+							SessionID:        sess.sessionID,
+							SpiritSessionID:  sess.spiritSessionID,
+							TeamID:           sess.teamID,
+							Timestamp:        time.Now().UTC(),
+							Stage:            "failed",
+							ParentActivityID: string(agent.NewGraphStageActivityID(sess.spiritSessionID)),
 							Meta: map[string]any{
 								"run_id":        run.ID,
 								"error_message": err.Error(),
@@ -666,14 +666,14 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 			Event: eventType,
 			Activity: biz.Activity{
 				ID:               string(agent.NewTeamStageActivityID(sess.teamID)),
-			Kind:             biz.ActivityKindTeamStage,
-			Status:           status,
-			SessionID:        sess.sessionID,
-			SpiritSessionID:  sess.spiritSessionID,
-			TeamID:           sess.teamID,
-			Timestamp:        time.Now().UTC(),
-			Stage:            stage,
-			ParentActivityID: string(agent.NewGraphStageActivityID(sess.spiritSessionID)),
+				Kind:             biz.ActivityKindTeamStage,
+				Status:           status,
+				SessionID:        sess.sessionID,
+				SpiritSessionID:  sess.spiritSessionID,
+				TeamID:           sess.teamID,
+				Timestamp:        time.Now().UTC(),
+				Stage:            stage,
+				ParentActivityID: string(agent.NewGraphStageActivityID(sess.spiritSessionID)),
 				Meta:             map[string]any{"run_id": run.ID, "run": run},
 			},
 			Domain: biz.ActivityDomainChat,

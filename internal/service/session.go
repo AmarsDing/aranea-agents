@@ -634,7 +634,7 @@ func (s *SessionService) ListActivities(ctx context.Context, req *v1.ListActivit
 
 	resp, err := s.sessionV2.ListSteps(ctx, &v1.ListStepsV2Request{
 		SessionId: sessionID,
-		TurnId:   strings.TrimSpace(req.GetTurnId()),
+		TurnId:    strings.TrimSpace(req.GetTurnId()),
 	})
 	if err != nil {
 		return nil, mapSessionErr(err)

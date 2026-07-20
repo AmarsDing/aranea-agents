@@ -23,7 +23,7 @@ const maxCrossDeptRatio = 0.5
 
 // DeptLeadManagerOpts holds the dependencies for DeptLeadManager.
 type DeptLeadManagerOpts struct {
-	OrgRepo   OrganizationRepo
+	OrgRepo    OrganizationRepo
 	BorrowRepo BorrowRequestRepo
 	AgentRepo  AgentRepository
 	AgentUC    *AgentUsecase

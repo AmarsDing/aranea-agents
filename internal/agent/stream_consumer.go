@@ -93,15 +93,15 @@ func V2ProjectMetaFromV1(m ProjectMeta) v2.ProjectMeta {
 		// 而非 m.TeamID。Turn.TeamStageID 应指向 TeamStage.ID，与 TeamStage.TeamID 不同。
 		// 旧代码 TeamStageID: m.TeamID 导致 Turn.TeamStageID == Turn.TeamID，
 		// 前端无法通过 TeamStageID 精确匹配 member steps。
-		TeamStageID:     m.TeamStageID,
-		TeamRunID:       "",
-		TeamID:          m.TeamID,
-		MemberSessionID: m.ParentSessionID,
-		AgentKey:        m.AgentID,
-		AgentName:       m.AgentDisplayName,
-		MemberAgentKeys: m.MemberAgentKeys,
-		TaskContent:     m.TaskContent,
-		ParentTaskID:    m.ParentTaskID,
+		TeamStageID:      m.TeamStageID,
+		TeamRunID:        "",
+		TeamID:           m.TeamID,
+		MemberSessionID:  m.ParentSessionID,
+		AgentKey:         m.AgentID,
+		AgentName:        m.AgentDisplayName,
+		MemberAgentKeys:  m.MemberAgentKeys,
+		TaskContent:      m.TaskContent,
+		ParentTaskID:     m.ParentTaskID,
 		NodeIDToAgentKey: m.NodeIDToAgentKey,
 	}
 }

@@ -298,8 +298,10 @@
 | `pkg/logpipeline/file_sink.go` | FileSink（lumberjack JSON 轮转，默认文件名 `aranea-pipeline.log`） | ✅ |
 | `pkg/logpipeline/stdout_sink.go` | StdoutSink（stdout JSON） | ✅ |
 | `pkg/logpipeline/sink_factory.go` | Sink 工厂（`NewSinkFromConfig` + `SinkConfig` + `SinkFactoryDeps`） | ✅ |
+| `pkg/logpipeline/sanitizing_sink.go` | SanitizingSink（密钥清洗包装：msg + string fields 经 `preview.RedactAndTruncate`，12 类模式） | ✅ |
 | `pkg/logpipeline/pipeline_test.go` | Pipeline 测试（8 场景） | ✅ |
 | `pkg/logpipeline/sink_test.go` | Sink 测试（9 场景） | ✅ |
+| `pkg/logpipeline/sanitizing_sink_test.go` | SanitizingSink 密钥清洗测试 | ✅ |
 
 ### 6.3 internal/event 包
 
@@ -374,6 +376,7 @@ P3 方式：`loggateway.Logger` + `With()` 预设字段替代 CtxFlowLog*，CtxF
 | 3 | Flow Log 迁移 + EventBus Bug #6/#7/#9/#11 修复 | ✅ |
 | 4 | 构造函数注入 + 测试覆盖（Bug #8 修复） | ✅ |
 | 5 | 功能增强（AtomicLevel, Pipeline 采样, 监控指标, 配置驱动 Sink, RuntimeLogAdapter, SinkGroup） | ✅ |
+| 6 | 密钥清洗入 Pipeline（SanitizingSink + preview 12 类模式，Grok Build 借鉴） | ✅ 2026-07-20 |
 
 ### 7.3 Bug 修复记录
 
@@ -469,6 +472,8 @@ P3 方式：`loggateway.Logger` + `With()` 预设字段替代 CtxFlowLog*，CtxF
 - `pkg/logpipeline/file_sink.go` — FileSink (lumberjack)
 - `pkg/logpipeline/stdout_sink.go` — StdoutSink
 - `pkg/logpipeline/sink_factory.go` — Sink 工厂
+- `pkg/logpipeline/sanitizing_sink.go` — SanitizingSink 密钥清洗包装（Phase 6，2026-07-20 Grok Build 借鉴）
+- `internal/tools/preview/preview.go` — `RedactAndTruncate` 扩至 12 类密钥模式（厂商 key / AWS / GitHub PAT / Anthropic / Slack / Stripe / Google / PEM 私钥 / Bearer / JWT / DSN / 赋值）
 - `internal/event/flow_tracker.go` — FlowTracker 流程追踪核心
 - `internal/event/span_collector.go` — SpanCollector
 - `internal/event/usage_aggregator.go` — UsageAggregator

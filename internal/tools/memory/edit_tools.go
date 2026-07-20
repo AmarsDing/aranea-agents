@@ -286,9 +286,9 @@ func NewRethinkTool() trpctool.Tool {
 
 // InsertInput is the input for memory_insert.
 type InsertInput struct {
-	MemoryID    string `json:"memory_id" jsonschema:"description=The ID of the memory fact to insert into,required"`
-	AfterText   string `json:"after_text" jsonschema:"description=The text after which to insert the new content,required"`
-	InsertText  string `json:"insert_text" jsonschema:"description=The text to insert,required"`
+	MemoryID   string `json:"memory_id" jsonschema:"description=The ID of the memory fact to insert into,required"`
+	AfterText  string `json:"after_text" jsonschema:"description=The text after which to insert the new content,required"`
+	InsertText string `json:"insert_text" jsonschema:"description=The text to insert,required"`
 }
 
 // InsertOutput is the output for memory_insert.

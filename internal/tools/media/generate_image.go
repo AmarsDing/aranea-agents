@@ -6,8 +6,8 @@ import (
 
 	"aranea-agents/internal/provider/media"
 
-	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
 // GenerateImageInput is the input for the generate_image tool.

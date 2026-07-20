@@ -97,7 +97,7 @@ type LinkEvolutionServiceImpl struct {
 	factWriter      biz.L3FactWriter
 	queue           EvolutionQueue
 	tx              TxProvider
-	relationWriter  L4RelationWriter  // optional: nil → skip L4 relation creation
+	relationWriter  L4RelationWriter          // optional: nil → skip L4 relation creation
 	actionLogWriter biz.MemoryActionLogWriter // optional: nil → skip action_log
 	lg              loggateway.Logger
 

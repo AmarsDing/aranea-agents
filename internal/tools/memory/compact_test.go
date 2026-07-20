@@ -10,10 +10,10 @@ import (
 
 // fakeManualCompressor implements biz.ManualCompressor for testing.
 type fakeManualCompressor struct {
-	result *biz.CompactResult
-	err    error
-	called bool
-	lastSid string
+	result       *biz.CompactResult
+	err          error
+	called       bool
+	lastSid      string
 	lastPreserve string
 }
 

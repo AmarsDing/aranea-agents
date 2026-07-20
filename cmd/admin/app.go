@@ -194,12 +194,12 @@ func startReadinessDependentServices(
 						continue
 					}
 					// Wrap with sanitizing sink to prevent secrets from leaking into event bus logs.
-				pipeline.AddSink(logpipeline.NewSanitizingSink(sink))
+					pipeline.AddSink(logpipeline.NewSanitizingSink(sink))
+				}
+			} else {
+				// Default: add eventbus sink with "info" level
+				pipeline.AddSink(logpipeline.NewSanitizingSink(logpipeline.NewEventBusSink(event.NewLogPipelinePublisher(eventInfra.MonitorEventBus), "info")))
 			}
-		} else {
-			// Default: add eventbus sink with "info" level
-			pipeline.AddSink(logpipeline.NewSanitizingSink(logpipeline.NewEventBusSink(event.NewLogPipelinePublisher(eventInfra.MonitorEventBus), "info")))
-		}
 		}
 	}
 	lg.Info("event infra bound for monitor flow logs", loggateway.StepID("startup.event_infra"))

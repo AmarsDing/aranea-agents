@@ -497,8 +497,8 @@ func scanEntityRowJSON(rows *sql.Rows, lg loggateway.Logger) ([]byte, error) {
 		embNorm                                                                   float64
 		status, merged, meta, ca, ua, arch, del                                   string
 		// 20261005 neuron enhancement fields
-		activation, valence, arousal                                              float64
-		activationUpdatedAt, sourceType                                           string
+		activation, valence, arousal    float64
+		activationUpdatedAt, sourceType string
 	)
 	if err := rows.Scan(
 		&id, &scopeType, &scopeID, &wid, &uid, &etype, &name, &nnorm, &aliases, &desc, &attr,
@@ -547,8 +547,8 @@ func scanRelationRowJSON(rows *sql.Rows) ([]byte, error) {
 		validFrom, validTo                         string
 		ca, ua, arch, del                          string
 		// 20261005 neuron enhancement fields
-		coActCount                                 int
-		lastReinforcedAt, contextNote              string
+		coActCount                    int
+		lastReinforcedAt, contextNote string
 	)
 	if err := rows.Scan(
 		&id, &stype, &sid, &wid, &srcID, &tgtID, &relType, &bidir,
@@ -568,8 +568,8 @@ func scanRelationRowJSON(rows *sql.Rows) ([]byte, error) {
 		"status": status, "source_kind": srcKind,
 		"metadata_json": metaJ,
 		"valid_from":    validFrom,
-		"valid_to":     validTo,
-		"created_at":   ca, "updated_at": ua,
+		"valid_to":      validTo,
+		"created_at":    ca, "updated_at": ua,
 		"archived_at": arch, "deleted_at": del,
 		// 20261005 neuron enhancement fields
 		"co_activation_count": coActCount,

@@ -25,7 +25,6 @@ func NewStreamConsumeOptions(v2Projector *v2.ActivityProjector) *chatagent.Strea
 // the v2 projector factory needed to construct StreamConsumeOptions.
 // Inject this into the team Runner via SetStreamOptsFactory to eliminate
 // the team→chatactivity direct import.
-//
 type StreamOptsFactoryAdapter struct {
 	// V2ProjectorFactory produces per-turn v2 ActivityProjector instances.
 	// When nil, NewStreamConsumeOptions returns nil (v2 path disabled).

@@ -163,7 +163,7 @@ type L1IdleTaskReader interface {
 	ListIdleL1Tasks(ctx context.Context, cutoffRFC3339 string) ([][]byte, error)
 }
 
-// L1ExpiredFieldCleaner batch-deletes expired L1 fields (where expires_at != ''
+// L1ExpiredFieldCleaner batch-deletes expired L1 fields (where expires_at != ”
 // and expires_at < now). Used by the auto-archive worker for periodic cleanup
 // so expired fields don't accumulate in the database.
 type L1ExpiredFieldCleaner interface {

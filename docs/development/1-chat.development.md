@@ -1201,3 +1201,39 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 - [x] direct-publish 事件：SpiritSessionID 已填充（T1.2/T1.3/T1.3.1 完成）
 - [ ] 排序：用 Timestamp，无全局 Seq
 - [ ] MaxDepth：从 AgentRuntimeSetting.MaxSessionDepth 读取
+
+---
+
+## 子模块：Grok Build 借鉴（P0/P1 加固，2026-07-20）
+
+> **状态**：✅ 已完成 | **对比分析**：[2026-07-19-analysis-grok-build-function-by-function-comparison.md](../reports/2026-07-19-analysis-grok-build-function-by-function-comparison.md) | **实施计划**：[2026-07-19-grok-insights-p0-p1-implementation.md](../superpowers/plans/2026-07-19-grok-insights-p0-p1-implementation.md)
+
+### D.1 范围
+
+Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
+
+| # | 功能 | 优先级 | 问题/收益 |
+|---|------|--------|----------|
+| D-1 | Tool-pair 安全切分 | P0 | 上下文压缩拆散 assistant tool_call 与 tool result 配对 → API 400 |
+| D-2 | 双锚点 token 估算收口 | P0 | 统一 2.5 chars/token 比率不准确，多处独立估算 |
+| D-3 | Doom Loop 检测 | P1 | 无 LLM 层重复输出循环检测 |
+
+### D.2 代码锚点
+
+| 文件 | 职责 | 状态 |
+|------|------|------|
+| `internal/agent/context_compression_inject.go` | `partitionMessagesForCompression` 边界吸附：跨边界的 tool_call/tool_result 配对整体保留在 keep 侧 | ✅ |
+| `internal/agent/context_compression_inject_test.go` | Tool-pair 安全回归测试（含多 tool call / 异常顺序边界用例） | ✅ |
+| `internal/llmcontext/token_estimator.go` | 统一双锚点估算器：模型权威值回填（RecordAuthoritative）+ 增量字节估算（RecordIncremental）；默认 2.5 chars/token 兜底 | ✅ |
+| `internal/llmcontext/token_estimator_test.go` | 估算器单测 | ✅ |
+| `internal/agent/prompt_snapshot.go` | `estTokensFromChars` 替换为统一估算器 | ✅ |
+| `internal/agent/doom_loop_detector.go` | `DoomLoopDetector`：滑窗 + Jaccard 相似度，连续 N 条高相似输出判定 doom loop | ✅ |
+| `internal/agent/doom_loop_detector_test.go` | 重复/近重复检测测试 | ✅ |
+
+### D.3 验收
+
+- [x] `go test ./internal/agent/ -run TestPartitionMessagesForCompression -count=1` 通过（Tool-pair 不拆分）
+- [x] `go test ./internal/llmcontext/ -count=1` 通过（双锚点估算）
+- [x] `go test ./internal/agent/ -run TestDoomLoopDetector -count=1` 通过
+- [x] TDD 流程：失败测试 → 最小实现 → 回归测试
+- [x] 向后兼容：压缩策略与快照行为默认值不变

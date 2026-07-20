@@ -28,12 +28,12 @@ type tVariant struct {
 }
 
 type tPosition struct {
-	Key           string    `yaml:"key"`
-	Name          string    `yaml:"name"`
-	Description   string    `yaml:"description"`
-	SortOrder     int       `yaml:"sort_order"`
-	SeniorityLevel string   `yaml:"seniority_level"`
-	Variants      []tVariant `yaml:"variants"`
+	Key            string     `yaml:"key"`
+	Name           string     `yaml:"name"`
+	Description    string     `yaml:"description"`
+	SortOrder      int        `yaml:"sort_order"`
+	SeniorityLevel string     `yaml:"seniority_level"`
+	Variants       []tVariant `yaml:"variants"`
 }
 
 type tDepartment struct {

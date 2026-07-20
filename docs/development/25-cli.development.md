@@ -46,6 +46,7 @@
 | REPL | **已实现** | `internal/cli/repl/` 含 repl.go / slash.go / render.go / history.go |
 | 额外命令（实施中新增） | **已实现** | `graph` / `pkg` / `import` / `pack` 命令已存在 |
 | `--timeout` 全局 flag | **已实现** | `cmd/aranea/main.go:160` 注册为 PersistentFlag，默认 60s |
+| 配置错误脱敏 | **已实现** | `internal/cli/config/config.go::sanitizeConfigError`：配置解析错误信息经 `preview.RedactAndTruncate` 脱敏，防止 API key/token 泄漏到错误输出（2026-07-20 Grok Build 借鉴） |
 
 > 结论：P0 核心任务（CLI-01~13）已基本完成（R12 lint 已上线、quickstart 已落地）；P1 部分任务（CLI-20/21/22/23/27）已实现（CLI-27 全部 7 类资源完成）；主要缺口为 `tool.error` envelope、`SystemInfoResponse` 字段补齐、CLI-28/29/30。
 

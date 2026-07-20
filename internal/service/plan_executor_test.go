@@ -13,7 +13,6 @@ import (
 
 // fakeOrchestrator implements TeamOrchestrator for testing.
 // It records Orchestrate calls and provides completeStep to signal completion.
-//
 type fakeOrchestrator struct {
 	mu      sync.Mutex
 	pending map[string]chan biz.TeamCompleteEvent
@@ -103,12 +102,12 @@ func (f *fakeOrchestrator) waitForCall(stepID string, timeout time.Duration) boo
 
 // fakeReposForExecutor implements executorRepos for testing.
 type fakeReposForExecutor struct {
-	mu          sync.Mutex
-	steps       map[string]biz.PlanStep
-	stages      map[string]biz.TeamStage
-	board       *biz.PlanBoard
-	graphStage  *biz.GraphStage
-	graphNodes  map[string]biz.GraphNode
+	mu         sync.Mutex
+	steps      map[string]biz.PlanStep
+	stages     map[string]biz.TeamStage
+	board      *biz.PlanBoard
+	graphStage *biz.GraphStage
+	graphNodes map[string]biz.GraphNode
 }
 
 func newFakeReposForExecutor() *fakeReposForExecutor {

@@ -207,6 +207,7 @@ func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 		nil,
 		loggateway.NewNoop(),
 		v2Bus,
+		nil,
 	)
 	wc := &wsConn{
 		sessionID: "sess-user",
@@ -266,6 +267,7 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 		nil,
 		loggateway.NewNoop(),
 		v2Bus,
+		nil,
 	)
 	wc := &wsConn{
 		sessionID: "sess-turn",

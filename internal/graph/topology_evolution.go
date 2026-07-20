@@ -46,9 +46,9 @@ type TopologyEvolver interface {
 // TopologyEvolverImpl implements TopologyEvolver using LLM-based edge decisions.
 // It tracks edges added per execution ID to prevent duplicates.
 type TopologyEvolverImpl struct {
-	llm       trpcmodel.Model
-	eventBus  biz.EventBus
-	lg        loggateway.Logger
+	llm      trpcmodel.Model
+	eventBus biz.EventBus
+	lg       loggateway.Logger
 
 	mu         sync.Mutex
 	addedEdges map[string]map[string]bool // execID -> "from->to" -> added
@@ -261,7 +261,7 @@ func (e *TopologyEvolverImpl) publishTopologyEvolvedEvent(
 				"from_node":    edge.From,
 				"to_node":      edge.To,
 				"edge_kind":    edge.Kind,
-				"reason":        insight.Reason,
+				"reason":       insight.Reason,
 				"evidence":     insight.Evidence,
 				"author":       "topology-evolver",
 			},

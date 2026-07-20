@@ -20,10 +20,10 @@ const (
 )
 
 type checkItem struct {
-	Name    string
-	Level   checkLevel
-	Detail  string
-	Fatal   bool
+	Name   string
+	Level  checkLevel
+	Detail string
+	Fatal  bool
 }
 
 type runtimeEnv struct {

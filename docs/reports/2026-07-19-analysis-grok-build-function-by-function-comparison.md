@@ -1402,23 +1402,25 @@ Idle → Locked → Settling(500ms) → Completed{head_changed} → Cooldown(500
 
 ### P0 — 必须立即修复（有明确缺陷）
 
-| # | 功能 | 来源模块 | 问题 | 改动文件 |
-|---|------|---------|------|---------|
-| 1 | **Tool-pair 安全切分** | compaction | 压缩拆散 tool_call/tool_result 配对 → API 400 | `context_compression_inject.go`, `compressor.go` |
-| 2 | **日志密钥清洗入 Pipeline** | secrets | API key 可能泄漏到日志/遥测 | `preview.go`, `logpipeline/` |
-| 3 | **熔断器探针遗弃回收** | circuit-breaker | HalfOpen 状态死锁 | `circuit_breaker_transport.go`, `tool/circuit_breaker.go` |
-| 4 | **双锚点 token 估算收口** | chat-state | 单比率 2.5 chars/token 不准确 | `prompt_snapshot.go`, `context_compression_inject.go` |
+| # | 功能 | 来源模块 | 问题 | 改动文件 | 实施状态 |
+|---|------|---------|------|---------|---------|
+| 1 | **Tool-pair 安全切分** | compaction | 压缩拆散 tool_call/tool_result 配对 → API 400 | `context_compression_inject.go`, `compressor.go` | ✅ 已完成（2026-07-20，`partitionMessagesForCompression` 边界吸附 + 回归测试） |
+| 2 | **日志密钥清洗入 Pipeline** | secrets | API key 可能泄漏到日志/遥测 | `preview.go`, `logpipeline/` | ✅ 已完成（2026-07-20，`preview.RedactAndTruncate` 扩至 12 类模式 + `SanitizingSink` 接入 Pipeline） |
+| 3 | **熔断器探针遗弃回收** | circuit-breaker | HalfOpen 状态死锁 | `circuit_breaker_transport.go`, `tool/circuit_breaker.go` | ✅ 已完成（2026-07-20，`probeClaimedAt` 追踪 + 超时回收） |
+| 4 | **双锚点 token 估算收口** | chat-state | 单比率 2.5 chars/token 不准确 | `prompt_snapshot.go`, `context_compression_inject.go` | ✅ 已完成（2026-07-20，`internal/llmcontext/token_estimator.go` 统一估算器） |
 
 ### P1 — 短期显著收益（1-2 周）
 
-| # | 功能 | 来源模块 | 收益 | 改动范围 |
-|---|------|---------|------|---------|
-| 5 | **LLM 重试分类纯函数** | sampler | 减少无效重试，加速故障恢复 | `retry_transport.go`, `llmcompat.go` |
-| 6 | **Doom Loop 检测** | sampler | 提升 Agent 执行可靠性 | `stream_consumer.go` 或 trpc-agent-go |
-| 7 | **Reminder 机制** | tools | 工具副作用反馈闭环 | `tool_invocation_recorder.go` |
-| 8 | **工具行为版本化** | tools | 会话复现一致性 | `toolset.go`, `session.go` |
-| 9 | **记忆搜索管线增强** | memory | FTS + 向量 + 时间衰减 + MMR | `memory_search.go` |
-| 10 | **配置错误脱敏** | config | 防止配置内容泄漏到错误信息 | 配置加载错误处理 |
+| # | 功能 | 来源模块 | 收益 | 改动范围 | 实施状态 |
+|---|------|---------|------|---------|---------|
+| 5 | **LLM 重试分类纯函数** | sampler | 减少无效重试，加速故障恢复 | `retry_transport.go`, `llmcompat.go` | ✅ 已完成（2026-07-20，`internal/provider/retry_classifier.go` 6 态纯函数） |
+| 6 | **Doom Loop 检测** | sampler | 提升 Agent 执行可靠性 | `stream_consumer.go` 或 trpc-agent-go | ✅ 已完成（2026-07-20，`internal/agent/doom_loop_detector.go`） |
+| 7 | **Reminder 机制** | tools | 工具副作用反馈闭环 | `tool_invocation_recorder.go` | ✅ 已完成（2026-07-20，`internal/agent/tool_reminder.go`） |
+| 8 | **工具行为版本化** | tools | 会话复现一致性 | `toolset.go`, `session.go` | ✅ 已完成（2026-07-20，Registry 按 `(name, behavior_version)` 索引） |
+| 9 | **记忆搜索管线增强** | memory | FTS + 向量 + 时间衰减 + MMR | `memory_search.go` | ✅ 已完成（2026-07-20，evergreen 豁免时间衰减 + MMR 多样性重排） |
+| 10 | **配置错误脱敏** | config | 防止配置内容泄漏到错误信息 | 配置加载错误处理 | ✅ 已完成（2026-07-20，`internal/cli/config` `sanitizeConfigError`） |
+
+> **实施验证**：全部 10 项均通过 TDD 流程（失败测试 → 最小实现 → 回归测试），单测覆盖于 `internal/agent/`、`internal/provider/`、`internal/llmcontext/`、`internal/biz/tool/`、`internal/data/`、`internal/cli/config/`、`internal/tools/preview/` 对应 `_test.go` 文件。
 
 ### P2 — 中期优化（2-4 周）
 

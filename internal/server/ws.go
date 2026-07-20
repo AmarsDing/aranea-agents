@@ -75,8 +75,8 @@ type SessionAuthorizer interface {
 //   - ws_event.go        — event subscription and connected handshake
 //   - ws_priority.go     — three-priority send queue with backpressure
 type WSServer struct {
-	store                 *connStore
-	monitorBus            contract.MonitorBus
+	store      *connStore
+	monitorBus contract.MonitorBus
 	// eventBus is the v2 typed EventBus (Phase 3b-D). Used by publishWSErrorActivity
 	// to emit ActivityBridgeEvent payloads (wrapping v1 ActivityEvent) for the
 	// chat error activity. The v2 WSV2Subscriber fans these out to WS clients.

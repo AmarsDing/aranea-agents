@@ -113,7 +113,7 @@ type ActivityBridgeEvent struct {
 	sessionID string
 	// Event is the wrapped v1 ActivityEvent (the source of truth for routing,
 	// persistence, and frontend rendering). Carries Activity.Kind/Stage/Meta.
-	Event ActivityEvent
+	Event      ActivityEvent
 	occurredAt time.Time
 }
 

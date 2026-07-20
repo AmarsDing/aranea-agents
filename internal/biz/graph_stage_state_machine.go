@@ -27,9 +27,9 @@ import (
 type GraphStageEvent string
 
 const (
-	GraphStageEventComplete   GraphStageEvent = "complete"
-	GraphStageEventFail       GraphStageEvent = "fail"
-	GraphStageEventInterrupt  GraphStageEvent = "interrupt"
+	GraphStageEventComplete  GraphStageEvent = "complete"
+	GraphStageEventFail      GraphStageEvent = "fail"
+	GraphStageEventInterrupt GraphStageEvent = "interrupt"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────

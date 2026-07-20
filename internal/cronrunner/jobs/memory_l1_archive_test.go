@@ -28,12 +28,12 @@ func (m *mockL1IdleTaskReader) ListIdleL1Tasks(ctx context.Context, cutoffRFC333
 }
 
 type mockL1TaskWriter struct {
-	endFn      func(ctx context.Context, sessionID, taskID, status string) ([]byte, error)
-	archiveFn  func(ctx context.Context, sessionID, taskID string, episode biz.L1ArchiveEpisodeInsert) ([]byte, error)
-	startFn    func(ctx context.Context, in biz.L1TaskInsert) ([]byte, error)
-	getFn      func(ctx context.Context, sessionID, id string) ([]byte, error)
-	archFn     func(ctx context.Context, sessionID, taskID string) ([]byte, error)
-	unarchFn   func(ctx context.Context, sessionID, taskID string) error
+	endFn     func(ctx context.Context, sessionID, taskID, status string) ([]byte, error)
+	archiveFn func(ctx context.Context, sessionID, taskID string, episode biz.L1ArchiveEpisodeInsert) ([]byte, error)
+	startFn   func(ctx context.Context, in biz.L1TaskInsert) ([]byte, error)
+	getFn     func(ctx context.Context, sessionID, id string) ([]byte, error)
+	archFn    func(ctx context.Context, sessionID, taskID string) ([]byte, error)
+	unarchFn  func(ctx context.Context, sessionID, taskID string) error
 }
 
 func (m *mockL1TaskWriter) StartL1Task(ctx context.Context, in biz.L1TaskInsert) ([]byte, error) {
@@ -128,8 +128,8 @@ func (c *compositeStore) ListL1FieldRows(_ context.Context, _ string, _ bool, _ 
 func newTestWorker(t *testing.T, interval time.Duration, idleReader biz.L1IdleTaskReader, writer biz.L1TaskWriter, cleaner biz.L1ExpiredFieldCleaner) *jobs.MemoryL1ArchiveWorker {
 	t.Helper()
 	store := &compositeStore{
-		L1IdleTaskReader:     idleReader,
-		L1TaskWriter:         writer,
+		L1IdleTaskReader:      idleReader,
+		L1TaskWriter:          writer,
 		L1ExpiredFieldCleaner: cleaner,
 	}
 	return jobs.NewMemoryL1ArchiveWorker(interval, store, nil, loggateway.NewNoop())
@@ -413,7 +413,7 @@ func TestNewMemoryL1ArchiveWorker_DefaultInterval(t *testing.T) {
 
 func TestMemoryL1ArchiveDisabled_EnvVar(t *testing.T) {
 	tests := []struct {
-		env string
+		env  string
 		want bool
 	}{
 		{"", false},

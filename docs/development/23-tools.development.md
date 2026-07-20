@@ -153,6 +153,9 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 53 | **P2** | 子代理工具 | ✅ `subagents_*` + SubAgentService |
 | 54 | **P2** | 延迟工具机制 | ✅ `read_tool_result` Deferred 通道 |
 | 55 | **P3** | Profile 扩展 | ✅ 9 种 profile（minimal/safe/system_admin/spirit） |
+| 56 | **P0** | 熔断器 HalfOpen 探针遗弃回收 | ✅ Phase 9：`probeClaimedAt` 追踪 + 超时回收（`circuit_breaker.go`） |
+| 57 | **P1** | 工具行为版本化 | ✅ Phase 9：`ToolRegistration.BehaviorVersion` + Registry `(name, version)` 索引（`internal/tools/tool.go`） |
+| 58 | **P1** | Reminder 机制（工具副作用反馈闭环） | ✅ Phase 9：`internal/agent/tool_reminder.go`（文件修改后提醒跑测试） |
 
 > **说明**：曾起草「53 Desktop App」文档，**不实施**；Shell 工作区优化归属本模块 Phase 5，不涉及 Electron/App 打包。
 
@@ -393,6 +396,25 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - [x] wire.go 中 SkillUsecase 具体类型已替换为窄接口
 - [x] 业务错误统一使用 kerrors（BE1 合规）
 
+### Phase 9：Grok Build 借鉴（P0/P1 加固，2026-07-20）✅
+
+**目标**：借鉴 Grok Build 对比分析（`docs/reports/2026-07-19-analysis-grok-build-function-by-function-comparison.md`），落地 tools 域 3 项改进。
+
+**任务**：
+
+| ID | 任务 | 涉及文件 | 验收 | 状态 |
+|----|------|----------|------|------|
+| TO-9-01 | 熔断器 HalfOpen 探针遗弃回收 | `internal/biz/tool/circuit_breaker.go` | `probeClaimedAt` 追踪探针认领时间；超过 recoveryTimeout 未上报结果的探针槽位自动回收，不再困死 HalfOpen | ✅ |
+| TO-9-02 | 工具行为版本化 | `internal/tools/tool.go` | `ToolRegistration.BehaviorVersion` 字段；Registry 按 `(name, behavior_version)` 索引，`Resolve(name, version)` 锁定版本保证会话复现一致 | ✅ |
+| TO-9-03 | Reminder 机制（工具副作用反馈） | `internal/agent/tool_reminder.go` | 跟踪 edit/write 类工具调用；turn 结束时若未观察到测试运行则生成 reminder 注入上下文 | ✅ |
+
+**Phase 9 验收**：
+
+- [x] `go test ./internal/biz/tool/ -run TestCircuitBreaker -count=1` 通过（含探针遗弃回归用例）
+- [x] `go test ./internal/tools/ -run TestToolRegistry_BehaviorVersioning -count=1` 通过
+- [x] `go test ./internal/agent/ -run TestToolReminder -count=1` 通过
+- [x] TDD 流程：失败测试 → 最小实现 → 回归测试
+
 ---
 
 ## 5. 任务清单
@@ -431,6 +453,9 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 30 | AgentRepository ISP 拆分 | P2 | 8 | — | ✅ `internal/biz/agent_usecase.go` 4 子接口 + 2 独立 | ✅ |
 | 31 | ToolFilterForPrefix 测试 | P3 | 8 | — | ✅ `internal/tools/toolset_filter_test.go` 7 用例 | ✅ |
 | 32 | effective_config 测试扩展 | P3 | 8 | — | ✅ `internal/tools/trpc/effective_config_test.go` 15 映射 + 20 分支 | ✅ |
+| 33 | 熔断器探针遗弃回收 | **P0** | 9 | — | ✅ `internal/biz/tool/circuit_breaker.go` probeClaimedAt | ✅ |
+| 34 | 工具行为版本化 | **P1** | 9 | — | ✅ `internal/tools/tool.go` BehaviorVersion + Resolve(name, version) | ✅ |
+| 35 | Reminder 机制 | **P1** | 9 | — | ✅ `internal/agent/tool_reminder.go` | ✅ |
 
 ---
 
@@ -650,3 +675,12 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - `internal/biz/skill/skill.go` — CreateSkillDir 校验 + SkillReader/Writer
 - `internal/tools/testexec/` / `internal/tools/trpc/` — 3 处 fmt.Errorf → kerrors
 - `internal/biz/` — RunHealthChecks 闭包变量修复
+
+### Phase 9（已实现，2026-07-20 Grok Build 借鉴）
+
+- `internal/biz/tool/circuit_breaker.go` — HalfOpen 探针 `probeClaimedAt` 追踪 + 超时回收
+- `internal/biz/tool/circuit_breaker_test.go` — 探针遗弃回归用例
+- `internal/tools/tool.go` — `ToolRegistration.BehaviorVersion` + Registry `(name, behavior_version)` 索引
+- `internal/tools/tool_version_test.go` — 版本锁定解析测试
+- `internal/agent/tool_reminder.go` — Reminder 机制（文件修改 → 测试提醒闭环）
+- `internal/agent/tool_reminder_test.go` — Reminder 收集测试

@@ -66,4 +66,3 @@ func TestBuildTimelineUnionSQL_messageBranchUsesStepsV2(t *testing.T) {
 		t.Fatalf("sqlite message branch should not use to_char, got %q", sqliteSQL)
 	}
 }
-

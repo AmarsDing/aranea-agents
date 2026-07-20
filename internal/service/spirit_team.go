@@ -237,8 +237,8 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		newStatus, newVersion := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
 			tsID, biz.TeamStageEventStart, biz.TeamStageStatusRunning, s.lg)
 		ts := biz.TeamStage{
-			ID:        tsID,
-			TeamID:    teamID,
+			ID:     tsID,
+			TeamID: teamID,
 			// 2026-07-06 修复：补全 TaskID。之前 StartTeamTurn 创建 TeamStage 时
 			// 未设置 TaskID（仅 publishSpiritTeamAssembled 设置了），但
 			// resolveTeamStageUpdate fallback 会返回 Version=100，大于

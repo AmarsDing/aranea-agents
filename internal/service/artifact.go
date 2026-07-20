@@ -300,7 +300,7 @@ func (s *ArtifactService) SignDownloadUrl(ctx context.Context, req *v1.SignDownl
 		ttl = 15 * time.Minute
 	}
 	if ttl > 24*time.Hour {
-		ttl = 24*time.Hour
+		ttl = 24 * time.Hour
 	}
 	expires := time.Now().UTC().Add(ttl)
 	token, err := s.signer.DownloadToken(id, version, expires)

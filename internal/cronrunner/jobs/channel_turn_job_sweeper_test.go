@@ -89,7 +89,7 @@ func (g *sweeperGraphExec) GetExecution(_ context.Context, _ string) (*biz.Graph
 
 type sweeperCron struct {
 	run cron.TaskRun
-	err  error
+	err error
 }
 
 func (c *sweeperCron) TriggerCronTask(_ context.Context, _ string) (cron.TaskRun, error) {

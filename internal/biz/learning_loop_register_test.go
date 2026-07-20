@@ -158,12 +158,12 @@ func (m *mockUnifiedWriter) ExpireOlderThan(context.Context, time.Time) (int, er
 func TestRegisterKnowledge_CreateSuggestionFailureDoesNotMarkApplied(t *testing.T) {
 	// Set up a proposal in "validated" state (eligible for registration).
 	proposal := KnowledgeProposal{
-		ID:       "prop-1",
-		AgentID:  "agent-1",
-		Kind:     "prompt",
-		Title:    "Improve greeting",
-		Content:  "Add warm greeting",
-		Status:   ProposalStatusValidated,
+		ID:      "prop-1",
+		AgentID: "agent-1",
+		Kind:    "prompt",
+		Title:   "Improve greeting",
+		Content: "Add warm greeting",
+		Status:  ProposalStatusValidated,
 	}
 	propRW := newMockProposalRW(proposal)
 

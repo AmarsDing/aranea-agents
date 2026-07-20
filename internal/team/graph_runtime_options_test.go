@@ -84,9 +84,9 @@ func TestApplyTeamRuntimeExecutionOptions_circuitBreaker(t *testing.T) {
 func TestFinalizeRuntimeGraphConfig_deliverableStateField(t *testing.T) {
 	// Case 1: EnableStateDeliverable=true → StateFields contains deliverable
 	def := Definition{
-		Mode:                    "sequential",
-		EnableStateDeliverable:  true,
-		Members:                 []MemberDef{{AgentID: "a", SortOrder: 1}},
+		Mode:                   "sequential",
+		EnableStateDeliverable: true,
+		Members:                []MemberDef{{AgentID: "a", SortOrder: 1}},
 	}
 	cfg := biz.GraphBuildConfig{
 		Nodes:       []biz.NodeDef{{ID: "member-1", Type: "agent"}},

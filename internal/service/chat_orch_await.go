@@ -6,8 +6,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
-	araneasession "aranea-agents/internal/session"
 	rt "aranea-agents/internal/runtime"
+	araneasession "aranea-agents/internal/session"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
@@ -64,7 +64,6 @@ type awaitCoordinator interface {
 //
 // Phase 3b-D Task 10: migrated from v1 ActivityEventBus to v2 EventBus.
 // PublishAwaitResumed now emits biz.NewStepCreatedEvent (Kind=StepKindNotice).
-//
 type chatAwaitCoordinator struct {
 	chatUC         *biz.ChatUsecase
 	runStatus      runStatusTracker
@@ -133,7 +132,6 @@ func (a *chatAwaitCoordinator) EndResume(sessionID string) {
 // details are dropped. runID was already published via PublishRunStatus
 // (run_status_publish.go, owned by Task 9) before this call, so the run
 // status is independently delivered to WS clients.
-//
 func (a *chatAwaitCoordinator) PublishAwaitResumed(sessionID, runID string) {
 	if a.seq == nil && a.eventBus == nil {
 		return

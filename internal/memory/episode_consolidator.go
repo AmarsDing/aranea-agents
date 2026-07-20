@@ -71,12 +71,12 @@ func NewEpisodeConsolidator(
 		lg = loggateway.NewNoop()
 	}
 	return &EpisodeConsolidator{
-		episodeReader: episodeReader,
-		factWriter:    factWriter,
+		episodeReader:   episodeReader,
+		factWriter:      factWriter,
 		actionLogWriter: actionLogWriter,
-		llm:           llm,
-		lg:            lg.With(loggateway.Domain("episode_consolidator")),
-		minImportance: defaultEpisodeFactMinImportance,
+		llm:             llm,
+		lg:              lg.With(loggateway.Domain("episode_consolidator")),
+		minImportance:   defaultEpisodeFactMinImportance,
 	}
 }
 

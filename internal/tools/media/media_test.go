@@ -9,15 +9,15 @@ import (
 )
 
 type mockMediaProvider struct {
-	imageReq     media.ImageRequest
-	imageResult  *media.ImageResult
-	imageErr     error
-	videoReq     media.VideoRequest
-	videoResult  *media.VideoResult
-	videoErr     error
-	i2vReq       media.ImageToVideoRequest
-	i2vResult    *media.VideoResult
-	i2vErr       error
+	imageReq    media.ImageRequest
+	imageResult *media.ImageResult
+	imageErr    error
+	videoReq    media.VideoRequest
+	videoResult *media.VideoResult
+	videoErr    error
+	i2vReq      media.ImageToVideoRequest
+	i2vResult   *media.VideoResult
+	i2vErr      error
 }
 
 func (m *mockMediaProvider) Name() string { return "mock" }

@@ -143,10 +143,10 @@ func TestHebbianUpdater_UpdateError(t *testing.T) {
 	store := &mockHebbianStore{
 		found: true,
 		relation: biz.L4HebbianRelation{
-			ID:                "rel-3",
-			Weight:            0.5,
-			SourceActivation:  0.8,
-			TargetActivation:  0.6,
+			ID:               "rel-3",
+			Weight:           0.5,
+			SourceActivation: 0.8,
+			TargetActivation: 0.6,
 		},
 		updateErr: expectedErr,
 	}
