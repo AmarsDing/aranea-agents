@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strings"
 
@@ -14,15 +15,9 @@ import (
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
-// compressionSummaryStateKey is the invocation-state key for the current
-// recursive summary. Stored across turns so successive compressions merge
-// the existing summary with newly evicted messages (Letta's recursive
-// summarisation pattern).
-const compressionSummaryStateKey = "aranea:compression_summary"
-
 // compressionMetaStateKey is the invocation-state key for the most recent
 // compression metadata. The L0 snapshot hook reads this to populate
-// TruncateStrategy / SummaryTokenEstimate / etc. on the snapshot row.
+// TruncateStrategy / TruncatedMessageCount on the snapshot row.
 const compressionMetaStateKey = "aranea:compression_meta"
 
 // CompressionMeta records the outcome of the most recent compression pass.
@@ -31,13 +26,14 @@ const compressionMetaStateKey = "aranea:compression_meta"
 type CompressionMeta struct {
 	// Occurred is true when compression ran successfully this model-call.
 	Occurred bool
-	// EvictedCount is the number of messages folded into the summary.
+	// EvictedCount is the number of messages dropped by emergency truncation.
 	EvictedCount int
-	// BeforeChars is the total char count of evicted messages + existing summary.
+	// BeforeChars is the total char count of evicted messages.
 	BeforeChars int
-	// AfterChars is len(summary).
+	// AfterChars is 0 for deterministic truncation (no summary is produced).
 	AfterChars int
-	// SummaryText is the generated summary (for token estimation by the snapshot).
+	// SummaryText is always empty for deterministic truncation (kept for the
+	// L0 snapshot overlay contract).
 	SummaryText string
 }
 
@@ -46,35 +42,37 @@ type CompressionMeta struct {
 // Letta uses ~30%; we follow the same default.
 const defaultKeepRatio = 0.30
 
-// newContextCompressionBeforeHook creates a BeforeModel hook that triggers
-// recursive context compression when the token usage ratio crosses the
-// threshold configured in MemoryRuntimePolicy (default 0.80).
+// newContextCompressionBeforeHook creates a BeforeModel hook that performs
+// deterministic emergency truncation when the token usage ratio crosses the
+// per-agent hard threshold (HardTriggerRatio, default 0.90 — mirroring
+// CompressPolicy in internal/session; duplicated here to avoid a package
+// dependency from agent → session).
+//
+// Architecture (ADR: dual-compression unification, 2026-07-20):
+//   - This hook is the intra-turn last-ditch guard: it fires before every
+//     model call (including mid-turn tool loops that the Session Compressor
+//     cannot intercept) and mechanically drops the oldest messages with
+//     tool-pair-safe boundaries. NO LLM call, NO summary — deterministic,
+//     no failure modes.
+//   - The Session Compressor (internal/session) owns inter-turn durable
+//     compression with LLM rolling summaries, quality gates, suppression
+//     and caching.
 //
 // The hook runs at priority 3 (before memory inject at 5 and prompt snapshot
 // at 10) so that:
-//  1. Old conversation messages are evicted and replaced with a summary.
-//  2. Memory inject then adds fresh L1/L2/L3/L4 memory on top of the
-//     compressed context.
-//  3. Prompt snapshot observes the final (post-compression, post-inject)
+//  1. Old conversation messages are dropped and a truncation marker inserted.
+//  2. Memory inject then adds fresh L1/L2/L3/L4 memory on top.
+//  3. Prompt snapshot observes the final (post-truncation, post-inject)
 //     prompt for L0 Assembly Snapshot persistence.
 //
-// Returns nil when ContextCompressor is not wired (no-op).
+// Returns nil when compression is disabled for the agent
+// (L0SnapshotMode=off without ContextCompactionEnabled).
 func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
-	if deps.ContextCompressor == nil {
+	if !contextCompressionEnabledForAgent(ag) {
 		return nil
 	}
-	// Resolve the memory runtime policy once at hook creation. Compression
-	// defaults are always populated (even when memory is disabled) so the
-	// hook has valid thresholds.
-	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
-	threshold := policy.CompressionThreshold
-	if threshold <= 0 {
-		threshold = llmcontext.ContextStatusCriticalThreshold
-	}
-	keepRatio := policy.CompressionKeepRatio
-	if keepRatio <= 0 {
-		keepRatio = defaultKeepRatio
-	}
+	threshold := hardTriggerRatioForAgent(ag)
+	keepRatio := defaultKeepRatio
 	return callbacks.NewBeforeModelHook(3, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
@@ -84,54 +82,63 @@ func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		report := analyzePromptRequest(args.Request.Messages)
 		win := resolveCompressionContextWindow(ctx, deps, ag)
 		ratio := llmcontext.ContextRatio(report.EstTokens, win)
-		// 2. Check if compression is needed (policy-driven threshold).
+		// 2. Check if emergency truncation is needed (hard threshold).
 		if ratio < threshold {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		// 3. Partition messages: keep system + last keepRatio of conversation, evict rest.
+		// 3. Partition messages: keep system + last keepRatio of conversation, drop rest.
 		keepMsgs, evictedMsgs := partitionMessagesForCompression(args.Request.Messages, keepRatio)
 		if len(evictedMsgs) == 0 {
-			// Nothing to evict (e.g. very short conversation) — skip compression.
+			// Nothing to drop (e.g. very short conversation) — skip.
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		// 4. Read existing summary from invocation state (recursive summarisation).
-		existingSummary := loadCompressionSummary(ctx)
-		// 5. Convert evicted messages to ConsolidateMessage for the compressor.
-		evictedConsolidate := toConsolidateMessages(evictedMsgs)
-		// 6. Call the compressor.
-		result, err := deps.ContextCompressor.Compress(ctx, existingSummary, evictedConsolidate)
-		if err != nil {
-			// Graceful degradation: log warn, leave messages unchanged.
-			lg.Warn("context compression failed, skipping (graceful degradation)",
-				loggateway.StepID("agent.context.compress"),
-				loggateway.Str("phase", "compress"),
-				loggateway.Err(err))
-			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		// 4. Rebuild messages with a deterministic truncation marker placed
+		// where the messages were removed (after the last system message).
+		beforeChars := 0
+		for _, m := range evictedMsgs {
+			beforeChars += len(m.Content)
 		}
-		// 7. Store the new summary for the next compression pass.
-		storeCompressionSummary(ctx, result.Summary)
-		// 8. Store compression metadata for the L0 snapshot hook.
+		marker := trpcmodel.NewSystemMessage(buildTruncationMarker(len(evictedMsgs)))
+		args.Request.Messages = insertAfterLastSystem(keepMsgs, marker)
+		// 5. Store compression metadata for the L0 snapshot hook.
 		storeCompressionMeta(ctx, CompressionMeta{
 			Occurred:     true,
-			EvictedCount: result.EvictedCount,
-			BeforeChars:  result.BeforeChars,
-			AfterChars:   result.AfterChars,
-			SummaryText:  result.Summary,
+			EvictedCount: len(evictedMsgs),
+			BeforeChars:  beforeChars,
+			AfterChars:   0,
+			SummaryText:  "",
 		})
-		// 9. Rebuild messages: [keep] + [summary system message].
-		// The summary is injected as a system message after existing system
-		// messages so the LLM treats it as authoritative context.
-		summaryMsg := trpcmodel.NewSystemMessage(buildCompressionSummaryBlock(result.Summary))
-		args.Request.Messages = append(keepMsgs, summaryMsg)
-		lg.Info("context compression completed",
+		lg.Info("context emergency truncation completed",
 			loggateway.StepID("agent.context.compress"),
 			loggateway.Phase("done"),
-			loggateway.Int("evicted_count", result.EvictedCount),
-			loggateway.Int("before_chars", result.BeforeChars),
-			loggateway.Int("after_chars", result.AfterChars),
+			loggateway.Int("evicted_count", len(evictedMsgs)),
+			loggateway.Int("before_chars", beforeChars),
 			loggateway.Any("used_ratio", ratio))
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
+}
+
+// contextCompressionEnabledForAgent mirrors sessionCompressEnabled semantics
+// (internal/session/compress_policy.go): compression is on by default;
+// L0SnapshotMode=off disables it unless ContextCompactionEnabled explicitly
+// opts in. Duplicated locally to avoid an agent → session package dependency.
+func contextCompressionEnabledForAgent(ag biz.Agent) bool {
+	if ag.Settings == nil {
+		return true
+	}
+	if strings.ToLower(strings.TrimSpace(ag.Settings.L0SnapshotMode)) == "off" && !ag.Settings.ContextCompactionEnabled {
+		return false
+	}
+	return true
+}
+
+// hardTriggerRatioForAgent resolves the emergency-truncation threshold from
+// per-agent settings, mirroring CompressPolicy.Threshold.HardTriggerRatio.
+func hardTriggerRatioForAgent(ag biz.Agent) float64 {
+	if ag.Settings != nil && ag.Settings.HardTriggerRatio > 0 {
+		return ag.Settings.HardTriggerRatio
+	}
+	return biz.DefaultHardTriggerRatio
 }
 
 // partitionMessagesForCompression splits the message list into:
@@ -250,42 +257,27 @@ func snapToSafeBoundary(messages []trpcmodel.Message, evictSet map[int]bool) map
 	return evictSet
 }
 
-// toConsolidateMessages converts trpcmodel.Message slice to biz.ConsolidateMessage
-// slice for the compressor. Tool messages are mapped to "tool" role.
-func toConsolidateMessages(msgs []trpcmodel.Message) []biz.ConsolidateMessage {
-	out := make([]biz.ConsolidateMessage, 0, len(msgs))
-	for _, m := range msgs {
-		out = append(out, biz.ConsolidateMessage{
-			Role:    string(m.Role),
-			Content: m.Content,
-		})
-	}
-	return out
+// buildTruncationMarker wraps the truncation notice in a labelled block so
+// the LLM can distinguish it from other system instructions.
+func buildTruncationMarker(evictedCount int) string {
+	return fmt.Sprintf("<context_truncated>\n%d earlier messages were removed to fit the context window.\n</context_truncated>", evictedCount)
 }
 
-// loadCompressionSummary reads the existing recursive summary from the
-// invocation state. Returns empty string if no summary is stored.
-func loadCompressionSummary(ctx context.Context) string {
-	inv, ok := trpcagent.InvocationFromContext(ctx)
-	if !ok || inv == nil {
-		return ""
-	}
-	if v, ok := inv.GetState(compressionSummaryStateKey); ok {
-		if s, ok := v.(string); ok {
-			return s
+// insertAfterLastSystem inserts the marker message after the last system
+// message in msgs (position where the evicted middle used to be). Falls back
+// to the front when no system message exists.
+func insertAfterLastSystem(msgs []trpcmodel.Message, marker trpcmodel.Message) []trpcmodel.Message {
+	pos := 0
+	for i, m := range msgs {
+		if m.Role == trpcmodel.RoleSystem {
+			pos = i + 1
 		}
 	}
-	return ""
-}
-
-// storeCompressionSummary writes the recursive summary to the invocation
-// state for the next compression pass.
-func storeCompressionSummary(ctx context.Context, summary string) {
-	inv, ok := trpcagent.InvocationFromContext(ctx)
-	if !ok || inv == nil {
-		return
-	}
-	inv.SetState(compressionSummaryStateKey, summary)
+	out := make([]trpcmodel.Message, 0, len(msgs)+1)
+	out = append(out, msgs[:pos]...)
+	out = append(out, marker)
+	out = append(out, msgs[pos:]...)
+	return out
 }
 
 // resolveCompressionContextWindow resolves the context window size for
@@ -295,12 +287,6 @@ func resolveCompressionContextWindow(ctx context.Context, deps TRPCBuilderDeps, 
 	prov := strings.TrimSpace(ag.Provider)
 	mod := strings.TrimSpace(ag.Model)
 	return resolveL0ContextWindow(ctx, deps, ag, prov, mod)
-}
-
-// buildCompressionSummaryBlock wraps the summary text in a labelled block
-// so the LLM can distinguish it from other system instructions.
-func buildCompressionSummaryBlock(summary string) string {
-	return "<context_summary>\n" + strings.TrimSpace(summary) + "\n</context_summary>"
 }
 
 // storeCompressionMeta writes compression metadata to the invocation state

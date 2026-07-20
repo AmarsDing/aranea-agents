@@ -231,325 +231,276 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createChannelServiceClient(handler: RequestHandler): ChannelService {
+export function createChannelServiceClient(
+  handler: RequestHandler
+): ChannelService {
   return {
-    ListChannelTypes(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListChannelTypes(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/channels/catalog`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ChannelService',
-          method: 'ListChannelTypes',
-        },
-      ) as Promise<ListChannelTypesResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "ListChannelTypes",
+      }) as Promise<ListChannelTypesResponse>;
     },
-    ListChannels(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListChannels(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/channels`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ChannelService',
-          method: 'ListChannels',
-        },
-      ) as Promise<ListChannelsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "ListChannels",
+      }) as Promise<ListChannelsResponse>;
     },
-    GetChannel(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetChannel(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/channels/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ChannelService',
-          method: 'GetChannel',
-        },
-      ) as Promise<Channel>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "GetChannel",
+      }) as Promise<Channel>;
     },
-    CreateChannel(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateChannel(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/channels`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChannelService',
-          method: 'CreateChannel',
-        },
-      ) as Promise<Channel>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "CreateChannel",
+      }) as Promise<Channel>;
     },
-    UpdateChannel(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateChannel(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/channels/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PATCH',
-          body,
-        },
-        {
-          service: 'ChannelService',
-          method: 'UpdateChannel',
-        },
-      ) as Promise<Channel>;
+      return handler({
+        path: uri,
+        method: "PATCH",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "UpdateChannel",
+      }) as Promise<Channel>;
     },
-    DeleteChannel(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteChannel(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/channels/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'ChannelService',
-          method: 'DeleteChannel',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "DeleteChannel",
+      }) as Promise<wellKnownEmpty>;
     },
-    ToggleChannel(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ToggleChannel(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/channels/${request.id}/toggle`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChannelService',
-          method: 'ToggleChannel',
-        },
-      ) as Promise<Channel>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "ToggleChannel",
+      }) as Promise<Channel>;
     },
-    TestChannel(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    TestChannel(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/channels/${request.id}/test`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChannelService',
-          method: 'TestChannel',
-        },
-      ) as Promise<ChannelTestResult>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "TestChannel",
+      }) as Promise<ChannelTestResult>;
     },
-    ListChannelCredentials(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListChannelCredentials(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/channels/${request.id}/credentials`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ChannelService',
-          method: 'ListChannelCredentials',
-        },
-      ) as Promise<ListChannelCredentialsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "ListChannelCredentials",
+      }) as Promise<ListChannelCredentialsResponse>;
     },
-    UpsertChannelCredentials(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpsertChannelCredentials(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.channelId) {
-        throw new Error('missing required field request.channel_id');
+        throw new Error("missing required field request.channel_id");
       }
       const path = `v1/channels/${request.channelId}/credentials`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PUT',
-          body,
-        },
-        {
-          service: 'ChannelService',
-          method: 'UpsertChannelCredentials',
-        },
-      ) as Promise<ListChannelCredentialsResponse>;
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "UpsertChannelCredentials",
+      }) as Promise<ListChannelCredentialsResponse>;
     },
-    DeleteChannelCredential(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteChannelCredential(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.channelId) {
-        throw new Error('missing required field request.channel_id');
+        throw new Error("missing required field request.channel_id");
       }
       if (!request.credentialKey) {
-        throw new Error('missing required field request.credential_key');
+        throw new Error("missing required field request.credential_key");
       }
       const path = `v1/channels/${request.channelId}/credentials/${request.credentialKey}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'ChannelService',
-          method: 'DeleteChannelCredential',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "DeleteChannelCredential",
+      }) as Promise<wellKnownEmpty>;
     },
-    ListChannelDeliveries(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListChannelDeliveries(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/channels/${request.id}/deliveries`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ChannelService',
-          method: 'ListChannelDeliveries',
-        },
-      ) as Promise<ListChannelDeliveriesResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "ListChannelDeliveries",
+      }) as Promise<ListChannelDeliveriesResponse>;
     },
-    ListChannelTurnJobs(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListChannelTurnJobs(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/channels/${request.id}/turn-jobs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ChannelService',
-          method: 'ListChannelTurnJobs',
-        },
-      ) as Promise<ListChannelTurnJobsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "ListChannelTurnJobs",
+      }) as Promise<ListChannelTurnJobsResponse>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
+
 
 // @@protoc_insertion_point(typescript-http-eof)

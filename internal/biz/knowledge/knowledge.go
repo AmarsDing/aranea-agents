@@ -35,8 +35,14 @@ type Document struct {
 	ChunkCount   int
 	Status       string
 	ErrorMessage string
-	CreatedAt    string
-	UpdatedAt    string
+	// ContentText 是提取/整理后的全文（organized=true 时为结构化 Markdown），供预览与血缘。
+	ContentText string
+	// Organized 标记内容是否经 LLM 整理为 Markdown。
+	Organized bool
+	// AssetURI 是原始文件留存路径（Phase 9 多模态血缘），文本类文档为空。
+	AssetURI    string
+	CreatedAt   string
+	UpdatedAt   string
 }
 
 // Chunk is one indexed text chunk with its embedding.
@@ -254,6 +260,17 @@ func (u *Usecase) ListDocuments(ctx context.Context, collectionID string, limit,
 		limit = 20
 	}
 	return u.documents.ListDocuments(ctx, collectionID, limit, offset)
+}
+
+// GetDocument returns a single document including its extracted/organized content.
+func (u *Usecase) GetDocument(ctx context.Context, id string) (Document, error) {
+	if err := u.requireRepo(); err != nil {
+		return Document{}, err
+	}
+	if strings.TrimSpace(id) == "" {
+		return Document{}, ErrIDRequired
+	}
+	return u.documents.GetDocument(ctx, id)
 }
 
 // DeleteDocument removes a document and its chunks. Repo implementations MUST

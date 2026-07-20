@@ -82,7 +82,6 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 			MemoryService:         s.orch.td().Persist.Memory.TRPC,
 			MemoryAdmin:           s.orch.td().Persist.Memory.Admin,
 			MemoryActionLogWriter: s.orch.td().Persist.Memory.ActionLogWriter,
-			ContextCompressor:     s.orch.td().Persist.Memory.ContextCompressor,
 			ManualCompressor:      biz.ManualCompressorFromNative(s.orch.td().Compress),
 			MemoryL2Recall:        s.orch.td().Persist.Memory.L2Recall,
 			MemoryL3Recall:        s.orch.td().Persist.Memory.L3Recall,

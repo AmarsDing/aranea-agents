@@ -23,9 +23,13 @@ type CompressPolicy struct {
 // CompressSwitches controls which compression stages are active.
 type CompressSwitches struct {
 	Enabled               bool
-	MicroCompactEnabled   bool
 	MemoryCompactEnabled  bool
 	AdaptiveBufferEnabled bool
+	// LLMCacheEnabled gates the LLM compression response cache (per-agent).
+	// The cache itself is a process-wide shared LRU+TTL store sized by global
+	// defaults (256 entries / 600s); per-agent max_entries/ttl_sec settings are
+	// reserved and do NOT resize the shared cache.
+	LLMCacheEnabled bool
 }
 
 // CompressThreshold defines when compression triggers.
@@ -37,6 +41,11 @@ type CompressThreshold struct {
 	BufferRatio       float64 // CompressionBufferRatio
 	KeepTurns         int     // L0SummaryKeepTurns
 	RecentWindowTurns int     // L0RecentWindowTurns
+	// SummaryMaxRows caps stored rolling-summary rows: when the count reaches
+	// the cap, Level 2 (MemoryCompact) is skipped and Level 3 (LLM) is forced
+	// so the LLM absorbs all prior rows back into one (prevents unbounded
+	// accumulation of MemoryCompact marker rows in long sessions). <=0 = no cap.
+	SummaryMaxRows int
 }
 
 // CompressTiming controls compression scheduling.
@@ -68,9 +77,9 @@ func DefaultCompressPolicy() CompressPolicy {
 	return CompressPolicy{
 		Switches: CompressSwitches{
 			Enabled:               true,
-			MicroCompactEnabled:   true,
 			MemoryCompactEnabled:  true,
 			AdaptiveBufferEnabled: true,
+			LLMCacheEnabled:       true,
 		},
 		Threshold: CompressThreshold{
 			SummaryThreshold:  defaultCompressThreshold,
@@ -80,6 +89,7 @@ func DefaultCompressPolicy() CompressPolicy {
 			BufferRatio:       biz.DefaultCompressionBufferRatio,
 			KeepTurns:         defaultKeepTurns,
 			RecentWindowTurns: 0,
+			SummaryMaxRows:    defaultSummaryMaxRows,
 		},
 		Timing: CompressTiming{
 			MinGap:  DefaultCompressMinGap,
@@ -120,9 +130,9 @@ func CompressPolicyFromAgent(ag biz.Agent) CompressPolicy {
 	if s.ContextCompactionEnabled {
 		p.Switches.Enabled = true
 	}
-	p.Switches.MicroCompactEnabled = s.MicroCompactEnabled
 	p.Switches.MemoryCompactEnabled = s.MemoryCompactEnabled
 	p.Switches.AdaptiveBufferEnabled = s.CompressionBufferAdaptive
+	p.Switches.LLMCacheEnabled = s.CompressLLMCacheEnabled
 
 	// Thresholds
 	if s.L0SummaryThreshold > 0 {
@@ -177,6 +187,8 @@ const (
 	defaultCompressThreshold = 0.6
 	forcedCompressThreshold  = 0.35
 	defaultKeepTurns         = 4
+	// defaultSummaryMaxRows: rolling-summary row cap before forcing L3 absorb.
+	defaultSummaryMaxRows = 3
 
 	// Reserved system tokens by ToolsProfile.
 	reservedTokensCoding   = 15000
@@ -212,18 +224,6 @@ func sessionCompressEnabled(ag biz.Agent) bool {
 	return sessionCompressEnabledPolicy(CompressPolicyFromAgent(ag))
 }
 
-// microCompactEnabledPolicy returns whether micro compact is enabled based on CompressPolicy.
-func microCompactEnabledPolicy(p CompressPolicy) bool {
-	if !p.Switches.Enabled {
-		return false
-	}
-	return p.Switches.MicroCompactEnabled
-}
-
-func microCompactEnabled(ag biz.Agent) bool {
-	return microCompactEnabledPolicy(CompressPolicyFromAgent(ag))
-}
-
 // memoryCompactEnabledPolicy returns whether memory compact is enabled based on CompressPolicy.
 func memoryCompactEnabledPolicy(p CompressPolicy) bool {
 	if !p.Switches.Enabled {
@@ -236,17 +236,23 @@ func memoryCompactEnabled(ag biz.Agent) bool {
 	return memoryCompactEnabledPolicy(CompressPolicyFromAgent(ag))
 }
 
-// sessionCompressThresholdPolicy returns the effective compress threshold from CompressPolicy.
-func sessionCompressThresholdPolicy(p CompressPolicy) float64 {
-	mode := strings.ToLower(strings.TrimSpace(p.Model.SnapshotMode))
-	if mode == "always" && p.Threshold.SummaryThreshold > p.Threshold.ForcedThreshold {
-		return p.Threshold.ForcedThreshold
-	}
-	return p.Threshold.SummaryThreshold
+// summaryMaxRowsPolicy returns the rolling-summary row cap from CompressPolicy.
+func summaryMaxRowsPolicy(p CompressPolicy) int {
+	return p.Threshold.SummaryMaxRows
 }
 
-func sessionCompressThreshold(ag biz.Agent) float64 {
-	return sessionCompressThresholdPolicy(CompressPolicyFromAgent(ag))
+func summaryMaxRows(ag biz.Agent) int {
+	return summaryMaxRowsPolicy(CompressPolicyFromAgent(ag))
+}
+
+// compressLLMCacheEnabledPolicy returns whether the LLM compression response
+// cache is enabled based on CompressPolicy.
+func compressLLMCacheEnabledPolicy(p CompressPolicy) bool {
+	return p.Switches.LLMCacheEnabled
+}
+
+func compressLLMCacheEnabled(ag biz.Agent) bool {
+	return compressLLMCacheEnabledPolicy(CompressPolicyFromAgent(ag))
 }
 
 // truncateStrategyPolicy returns the truncate strategy from CompressPolicy.

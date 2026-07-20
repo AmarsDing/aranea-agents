@@ -358,6 +358,31 @@ func TestDialect_AlreadyExistsErr(t *testing.T) {
 	}
 }
 
+func TestDialect_UndefinedObjectErr(t *testing.T) {
+	// SQLite "no such table" detection
+	if !DialectSQLite.UndefinedObjectErr(errors.New("no such table: foo")) {
+		t.Error("SQLite UndefinedObjectErr should detect 'no such table'")
+	}
+
+	// SQLite "no such column" detection (idempotent DROP COLUMN, migration 20261107)
+	if !DialectSQLite.UndefinedObjectErr(errors.New(`no such column: micro_compact_enabled`)) {
+		t.Error("SQLite UndefinedObjectErr should detect 'no such column'")
+	}
+
+	// Non-matching error
+	if DialectSQLite.UndefinedObjectErr(errors.New("syntax error")) {
+		t.Error("SQLite UndefinedObjectErr should not detect 'syntax error'")
+	}
+
+	// Nil error
+	if DialectSQLite.UndefinedObjectErr(nil) {
+		t.Error("UndefinedObjectErr(nil) should be false")
+	}
+	if DialectPostgres.UndefinedObjectErr(nil) {
+		t.Error("UndefinedObjectErr(nil) should be false")
+	}
+}
+
 func TestData_Dialect(t *testing.T) {
 	d := &Data{dialect: DialectPostgres}
 	if d.Dialect() != DialectPostgres {

@@ -2,13 +2,13 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -238,22 +238,17 @@ func TestPartitionMessagesForCompression_FewConversationMessages(t *testing.T) {
 	}
 }
 
-// --- Hook tests ---
+// --- Hook tests（方案 2：确定性紧急截断，无 LLM） ---
 
 // TestCompressionHook_SkipsWhenRatioBelowThreshold verifies that the hook
-// does not modify messages when the ratio is below the compression threshold.
+// does not modify messages when the ratio is below the hard threshold.
 func TestCompressionHook_SkipsWhenRatioBelowThreshold(t *testing.T) {
-	compressor := &fakeContextCompressor{shouldCompressResult: false}
-	deps := TRPCBuilderDeps{
-		TRPCMemoryKnowledgeDeps: TRPCMemoryKnowledgeDeps{
-			ContextCompressor: compressor,
-		},
-	}
-	// Large context window → ratio well below 0.80 threshold.
+	deps := TRPCBuilderDeps{}
+	// Large context window → ratio well below 0.90 hard threshold.
 	ag := biz.Agent{ContextWindow: 10000}
 	hook := newContextCompressionBeforeHook(ag, deps)
 	if hook == nil {
-		t.Fatalf("expected non-nil hook")
+		t.Fatalf("expected non-nil hook（确定性截断无外部依赖）")
 	}
 
 	originalMsgs := []trpcmodel.Message{
@@ -270,34 +265,21 @@ func TestCompressionHook_SkipsWhenRatioBelowThreshold(t *testing.T) {
 	if result == nil {
 		t.Fatalf("expected non-nil result")
 	}
-	// Messages should be unchanged.
 	if len(args.Request.Messages) != len(originalMsgs) {
 		t.Fatalf("expected messages unchanged, got %d messages", len(args.Request.Messages))
 	}
-	if compressor.compressCalled {
-		t.Fatalf("expected Compress NOT to be called (ratio below threshold)")
-	}
 }
 
-// TestCompressionHook_CompressesWhenRatioAboveThreshold verifies that the hook
-// evicts old messages and injects a summary when the ratio is above threshold.
-func TestCompressionHook_CompressesWhenRatioAboveThreshold(t *testing.T) {
-	compressor := &fakeContextCompressor{
-		shouldCompressResult: true,
-		compressResult: biz.ContextCompressionResult{
-			Summary:      "Compressed summary",
-			EvictedCount: 4,
-		},
-	}
+// TestCompressionHook_TruncatesWhenRatioAboveHardThreshold verifies that the
+// hook deterministically drops old messages and inserts a truncation marker
+// when the ratio crosses the hard threshold — no LLM call, no summary.
+func TestCompressionHook_TruncatesWhenRatioAboveHardThreshold(t *testing.T) {
 	deps := TRPCBuilderDeps{
-		TRPCMemoryKnowledgeDeps: TRPCMemoryKnowledgeDeps{
-			ContextCompressor: compressor,
-		},
 		TRPCExtensionDeps: TRPCExtensionDeps{
 			LG: loggateway.NewNoop(),
 		},
 	}
-	// Very small context window → ratio exceeds 0.80 threshold.
+	// Very small context window → ratio exceeds 0.90 hard threshold.
 	ag := biz.Agent{ContextWindow: 10}
 	hook := newContextCompressionBeforeHook(ag, deps)
 	if hook == nil {
@@ -322,102 +304,47 @@ func TestCompressionHook_CompressesWhenRatioAboveThreshold(t *testing.T) {
 		t.Fatalf("expected nil error, got %v", err)
 	}
 
-	if !compressor.compressCalled {
-		t.Fatalf("expected Compress to be called")
+	// Fewer messages than original (old ones dropped).
+	if len(args.Request.Messages) >= len(msgs) {
+		t.Fatalf("expected fewer messages after truncation, got %d (was %d)", len(args.Request.Messages), len(msgs))
 	}
-	// The resulting messages should contain the summary (wrapped in a context_summary block).
-	hasSummary := false
+	// Truncation marker present; LLM summary block absent.
+	hasMarker := false
 	for _, m := range args.Request.Messages {
-		if strings.Contains(m.Content, "Compressed summary") {
-			hasSummary = true
-			break
+		if strings.Contains(m.Content, "<context_truncated>") {
+			hasMarker = true
+		}
+		if strings.Contains(m.Content, "<context_summary>") {
+			t.Fatalf("确定性截断不应产生 LLM 摘要块: %q", m.Content)
 		}
 	}
-	if !hasSummary {
-		t.Fatalf("expected summary in messages, got: %v", args.Request.Messages)
+	if !hasMarker {
+		t.Fatalf("expected <context_truncated> marker, got: %v", args.Request.Messages)
 	}
-	// The result should have fewer messages than original (evicted messages replaced by summary).
-	if len(args.Request.Messages) >= len(msgs) {
-		t.Fatalf("expected fewer messages after compression, got %d (was %d)", len(args.Request.Messages), len(msgs))
-	}
+	// Tool-pair integrity on the surviving messages.
+	assertNoOrphanToolPairs(t, args.Request.Messages, "truncated")
 }
 
-// TestCompressionHook_CompressFailureDoesNotBlock verifies that a compression
-// error does not block the model call (graceful degradation).
-func TestCompressionHook_CompressFailureDoesNotBlock(t *testing.T) {
-	compressor := &fakeContextCompressor{
-		shouldCompressResult: true,
-		compressErr:          errors.New("LLM down"),
-	}
-	deps := TRPCBuilderDeps{
-		TRPCMemoryKnowledgeDeps: TRPCMemoryKnowledgeDeps{
-			ContextCompressor: compressor,
-		},
-		TRPCExtensionDeps: TRPCExtensionDeps{
-			LG: loggateway.NewNoop(),
-		},
-	}
-	// Very small context window → ratio reaches 0.80 threshold.
-	// (4 tokens / 5 window = 0.80)
-	ag := biz.Agent{ContextWindow: 5}
-	hook := newContextCompressionBeforeHook(ag, deps)
-
-	originalMsgs := []trpcmodel.Message{
-		{Role: trpcmodel.RoleSystem, Content: "sys"},
-		{Role: trpcmodel.RoleUser, Content: "hello"},
-		{Role: trpcmodel.RoleAssistant, Content: "hi"},
-	}
-	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: originalMsgs}}
-	hookFn := hook.(interface {
-		HandleBeforeModel(context.Context, *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error)
-	})
-	result, err := hookFn.HandleBeforeModel(context.Background(), args)
-	// Graceful degradation: no error, messages unchanged.
-	if err != nil {
-		t.Fatalf("expected nil error on compress failure, got %v", err)
-	}
-	if result == nil {
-		t.Fatalf("expected non-nil result")
-	}
-	if len(args.Request.Messages) != len(originalMsgs) {
-		t.Fatalf("expected messages unchanged on compress failure, got %d", len(args.Request.Messages))
-	}
-}
-
-// TestCompressionHook_NilCompressorReturnsNil verifies that no hook is created
-// when ContextCompressor is not wired.
-func TestCompressionHook_NilCompressorReturnsNil(t *testing.T) {
-	deps := TRPCBuilderDeps{}
-	ag := biz.Agent{ContextWindow: 10000}
-	if hook := newContextCompressionBeforeHook(ag, deps); hook != nil {
-		t.Fatalf("expected nil hook when ContextCompressor is nil, got %v", hook)
-	}
-}
-
-// TestCompressionHook_PolicyDefaultsApplied verifies that the hook uses
-// MemoryRuntimePolicy defaults (threshold=0.80, keepRatio=0.30) when no
-// agent settings are provided. This ensures the policy-driven configuration
-// is wired correctly and replaces the old hardcoded constants.
-func TestCompressionHook_PolicyDefaultsApplied(t *testing.T) {
-	// With ContextWindow=100 and ~12 tokens of messages, ratio ≈ 0.12 < 0.80.
-	// No compression should occur with the default policy threshold.
-	compressor := &fakeContextCompressor{
-		compressResult: biz.ContextCompressionResult{Summary: "should not be used"},
-	}
-	deps := TRPCBuilderDeps{
-		TRPCMemoryKnowledgeDeps: TRPCMemoryKnowledgeDeps{
-			ContextCompressor: compressor,
-		},
-	}
-	ag := biz.Agent{ContextWindow: 100} // ratio ≈ 12/100 = 0.12 < 0.80
+// TestCompressionHook_DefaultThresholdIsHardRatio verifies the default trigger
+// moved from 0.80 (old MemoryRuntimePolicy) to 0.90 (hard trigger): a ratio of
+// ~0.85 must NOT truncate anymore.
+func TestCompressionHook_DefaultThresholdIsHardRatio(t *testing.T) {
+	deps := TRPCBuilderDeps{TRPCExtensionDeps: TRPCExtensionDeps{LG: loggateway.NewNoop()}}
+	// 51 runes total ≈ 20 est tokens / 24 window ≈ 0.83–0.88 → above old 0.80, below new 0.90.
+	ag := biz.Agent{ContextWindow: 24}
 	hook := newContextCompressionBeforeHook(ag, deps)
 	if hook == nil {
 		t.Fatalf("expected non-nil hook")
 	}
 	msgs := []trpcmodel.Message{
-		{Role: trpcmodel.RoleSystem, Content: "sys"},
-		{Role: trpcmodel.RoleUser, Content: "hello world"},
-		{Role: trpcmodel.RoleAssistant, Content: "hi there"},
+		{Role: trpcmodel.RoleSystem, Content: "system prompt here"},
+		{Role: trpcmodel.RoleUser, Content: "msg1"},
+		{Role: trpcmodel.RoleAssistant, Content: "reply1"},
+		{Role: trpcmodel.RoleUser, Content: "msg2"},
+		{Role: trpcmodel.RoleAssistant, Content: "reply2"},
+		{Role: trpcmodel.RoleUser, Content: "msg3"},
+		{Role: trpcmodel.RoleAssistant, Content: "reply3"},
+		{Role: trpcmodel.RoleUser, Content: "msg4"},
 	}
 	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: msgs}}
 	hookFn := hook.(interface {
@@ -426,8 +353,106 @@ func TestCompressionHook_PolicyDefaultsApplied(t *testing.T) {
 	if _, err := hookFn.HandleBeforeModel(context.Background(), args); err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
-	if compressor.compressCalled {
-		t.Fatalf("expected Compress NOT to be called (ratio below default 0.80 threshold)")
+	if len(args.Request.Messages) != len(msgs) {
+		t.Fatalf("ratio 0.85 不应触发截断（新阈值 0.90）, got %d messages (was %d)", len(args.Request.Messages), len(msgs))
+	}
+}
+
+// TestCompressionHook_CustomHardTriggerRatio verifies the threshold is read
+// from per-agent settings (HardTriggerRatio), mirroring CompressPolicy.
+func TestCompressionHook_CustomHardTriggerRatio(t *testing.T) {
+	deps := TRPCBuilderDeps{TRPCExtensionDeps: TRPCExtensionDeps{LG: loggateway.NewNoop()}}
+	// ratio ≈ 0.12 with window=100; custom hard ratio 0.10 → must truncate.
+	ag := biz.Agent{
+		ContextWindow: 100,
+		Settings:      &biz.AgentRuntimeSettings{HardTriggerRatio: 0.10},
+	}
+	hook := newContextCompressionBeforeHook(ag, deps)
+	if hook == nil {
+		t.Fatalf("expected non-nil hook")
+	}
+	msgs := []trpcmodel.Message{
+		{Role: trpcmodel.RoleSystem, Content: "sys"},
+		{Role: trpcmodel.RoleUser, Content: "msg1"},
+		{Role: trpcmodel.RoleAssistant, Content: "reply1"},
+		{Role: trpcmodel.RoleUser, Content: "msg2"},
+		{Role: trpcmodel.RoleAssistant, Content: "reply2"},
+		{Role: trpcmodel.RoleUser, Content: "msg3"},
+	}
+	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: msgs}}
+	hookFn := hook.(interface {
+		HandleBeforeModel(context.Context, *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error)
+	})
+	if _, err := hookFn.HandleBeforeModel(context.Background(), args); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if len(args.Request.Messages) >= len(msgs) {
+		t.Fatalf("custom HardTriggerRatio=0.10 应触发截断, got %d messages (was %d)", len(args.Request.Messages), len(msgs))
+	}
+}
+
+// TestCompressionHook_DisabledAgentReturnsNilHook verifies the per-agent
+// compression switch is respected: L0SnapshotMode=off without
+// ContextCompactionEnabled disables the hook entirely.
+func TestCompressionHook_DisabledAgentReturnsNilHook(t *testing.T) {
+	deps := TRPCBuilderDeps{}
+	ag := biz.Agent{
+		ContextWindow: 10,
+		Settings:      &biz.AgentRuntimeSettings{L0SnapshotMode: "off"},
+	}
+	if hook := newContextCompressionBeforeHook(ag, deps); hook != nil {
+		t.Fatalf("压缩关闭的 agent 应返回 nil hook, got %v", hook)
+	}
+}
+
+// TestCompressionHook_NilSettingsEnabledByDefault verifies that nil settings
+// mean compression is enabled (default-on) and the hook is created without any
+// external compressor dependency.
+func TestCompressionHook_NilSettingsEnabledByDefault(t *testing.T) {
+	deps := TRPCBuilderDeps{}
+	ag := biz.Agent{ContextWindow: 10000}
+	if hook := newContextCompressionBeforeHook(ag, deps); hook == nil {
+		t.Fatalf("nil settings 默认启用，应返回非 nil hook")
+	}
+}
+
+// TestCompressionHook_MarkerRecordedInMeta verifies truncation writes
+// CompressionMeta (Occurred, EvictedCount) for the L0 snapshot overlay,
+// with an empty SummaryText (no LLM summary anymore).
+func TestCompressionHook_MarkerRecordedInMeta(t *testing.T) {
+	deps := TRPCBuilderDeps{TRPCExtensionDeps: TRPCExtensionDeps{LG: loggateway.NewNoop()}}
+	ag := biz.Agent{ContextWindow: 10}
+	hook := newContextCompressionBeforeHook(ag, deps)
+	if hook == nil {
+		t.Fatalf("expected non-nil hook")
+	}
+	msgs := []trpcmodel.Message{
+		{Role: trpcmodel.RoleSystem, Content: "sys"},
+		{Role: trpcmodel.RoleUser, Content: "msg1"},
+		{Role: trpcmodel.RoleAssistant, Content: "reply1"},
+		{Role: trpcmodel.RoleUser, Content: "msg2"},
+		{Role: trpcmodel.RoleAssistant, Content: "reply2"},
+		{Role: trpcmodel.RoleUser, Content: "msg3"},
+		{Role: trpcmodel.RoleAssistant, Content: "reply3"},
+		{Role: trpcmodel.RoleUser, Content: "msg4"},
+	}
+	args := &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: msgs}}
+	hookFn := hook.(interface {
+		HandleBeforeModel(context.Context, *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error)
+	})
+	ctx := trpcagent.NewInvocationContext(context.Background(), &trpcagent.Invocation{})
+	if _, err := hookFn.HandleBeforeModel(ctx, args); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	meta := LoadCompressionMeta(ctx)
+	if !meta.Occurred {
+		t.Fatal("截断后 CompressionMeta.Occurred 应为 true")
+	}
+	if meta.EvictedCount == 0 {
+		t.Fatal("EvictedCount 应记录被截断的消息数")
+	}
+	if meta.SummaryText != "" {
+		t.Fatalf("确定性截断不应有 SummaryText, got %q", meta.SummaryText)
 	}
 }
 
@@ -451,27 +476,4 @@ func nonSystemMessages(msgs []trpcmodel.Message) []trpcmodel.Message {
 		}
 	}
 	return out
-}
-
-// fakeContextCompressor implements biz.ContextCompressor for testing.
-type fakeContextCompressor struct {
-	shouldCompressResult bool
-	shouldCompressCalled bool
-	compressResult       biz.ContextCompressionResult
-	compressErr          error
-	compressCalled       bool
-	lastExistingSummary  string
-	lastEvictedCount     int
-}
-
-func (f *fakeContextCompressor) ShouldCompress(usedRatio float64) bool {
-	f.shouldCompressCalled = true
-	return f.shouldCompressResult
-}
-
-func (f *fakeContextCompressor) Compress(_ context.Context, existingSummary string, evictedMessages []biz.ConsolidateMessage) (biz.ContextCompressionResult, error) {
-	f.compressCalled = true
-	f.lastExistingSummary = existingSummary
-	f.lastEvictedCount = len(evictedMessages)
-	return f.compressResult, f.compressErr
 }

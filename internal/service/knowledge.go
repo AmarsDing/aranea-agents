@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
@@ -63,12 +64,13 @@ type KnowledgeService struct {
 	embedder      knowledge.Embedder
 	embedderAdmin knowledge.EmbedderAdmin
 	search        KnowledgeSearchDeps
+	organizer     *knowledge.MarkdownOrganizer // LLM 整理为 MD（nil 时跳过整理）
 	eventBus      biz.EventBus
 	systemSetting biz.SystemSettingRepo
 	lg            loggateway.Logger
 }
 
-func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, searchDeps KnowledgeSearchDeps, eventBus biz.EventBus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
+func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, searchDeps KnowledgeSearchDeps, organizer *knowledge.MarkdownOrganizer, eventBus biz.EventBus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
 	var admin knowledge.EmbedderAdmin
 	if a, ok := embedder.(knowledge.EmbedderAdmin); ok {
 		admin = a
@@ -78,6 +80,7 @@ func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, 
 		embedder:      embedder,
 		embedderAdmin: admin,
 		search:        searchDeps,
+		organizer:     organizer,
 		eventBus:      eventBus,
 		systemSetting: systemSetting,
 		lg:            lg,
@@ -152,7 +155,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		return nil, apierror.BadRequest("KNOWLEDGE", "file too large: max 32MB")
 	}
 	detected := http.DetectContentType(raw[:min(512, len(raw))])
-	if !isAllowedIngestMIME(detected) {
+	if !resolveIngestMIMEAllowed(detected, req.GetMimeType(), req.GetSource()) {
 		return nil, apierror.BadRequest("KNOWLEDGE", "unsupported content type: "+detected)
 	}
 	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
@@ -167,7 +170,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		return nil, apierror.BadRequest("KNOWLEDGE", err.Error())
 	}
 
-	text, err := knowledge.ExtractDocumentTextWithOCR(ctx, nil, raw, req.GetSource(), req.GetMimeType())
+	text, err := knowledge.ExtractDocumentText(raw, req.GetSource(), req.GetMimeType())
 	if err != nil {
 		return nil, apierror.BadRequest("KNOWLEDGE", err.Error())
 	}
@@ -175,11 +178,29 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		return nil, apierror.BadRequest("KNOWLEDGE", "document contains no extractable text")
 	}
 
+	// 可选：LLM 整理为结构化 Markdown（unset 默认开启；.md 本身已是 Markdown 跳过）。
+	// 失败一律降级原文本，不阻塞入库（NFR-11）。
+	organized := false
+	if s.organizer != nil && organizeToMarkdownEnabled(req) && !isMarkdownSource(req.GetSource(), req.GetMimeType()) {
+		if md, ok, orgErr := s.organizer.Organize(ctx, text, req.GetSource(), req.GetMimeType()); orgErr != nil {
+			s.lg.Warn("Markdown 整理异常，使用原文本继续",
+				loggateway.StepID("knowledge.ingest.organize_err"),
+				loggateway.Str("source", req.GetSource()),
+				loggateway.Err(orgErr),
+			)
+		} else if ok {
+			text = md
+			organized = true
+		}
+	}
+
 	doc, err := s.uc.CreateDocument(ctx, biz.KnowledgeDocument{
 		CollectionID: req.GetCollectionId(),
 		Source:       req.GetSource(),
 		MimeType:     req.GetMimeType(),
 		SizeBytes:    int64(len(raw)),
+		ContentText:  text,
+		Organized:    organized,
 	})
 	if err != nil {
 		return nil, err
@@ -277,6 +298,19 @@ func (s *KnowledgeService) ListDocuments(ctx context.Context, req *v1.ListDocume
 // DeleteDocument removes a document and its chunks.
 func (s *KnowledgeService) DeleteDocument(ctx context.Context, req *v1.DeleteDocumentRequest) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, s.uc.DeleteDocument(ctx, req.GetId())
+}
+
+// GetDocumentContent returns the full extracted/organized text of one document (preview).
+func (s *KnowledgeService) GetDocumentContent(ctx context.Context, req *v1.GetDocumentContentRequest) (*v1.DocumentContent, error) {
+	doc, err := s.uc.GetDocument(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DocumentContent{
+		Id:          doc.ID,
+		ContentText: doc.ContentText,
+		Organized:   doc.Organized,
+	}, nil
 }
 
 // Search performs a semantic search over a collection.
@@ -443,6 +477,23 @@ func toProtoCollection(c biz.KnowledgeCollection) *v1.KnowledgeCollection {
 	}
 }
 
+// organizeToMarkdownEnabled 解析 organize_to_markdown 开关：unset 默认 true。
+func organizeToMarkdownEnabled(req *v1.IngestDocumentRequest) bool {
+	return req.OrganizeToMarkdown == nil || req.GetOrganizeToMarkdown()
+}
+
+// isMarkdownSource 判定来源本身已是 Markdown（无需再经 LLM 整理）。
+func isMarkdownSource(source, mimeType string) bool {
+	if strings.EqualFold(strings.TrimSpace(mimeType), "text/markdown") {
+		return true
+	}
+	switch strings.ToLower(filepath.Ext(source)) {
+	case ".md", ".markdown":
+		return true
+	}
+	return false
+}
+
 func toProtoDocument(d biz.KnowledgeDocument) *v1.KnowledgeDocument {
 	return &v1.KnowledgeDocument{
 		Id:               d.ID,
@@ -456,6 +507,7 @@ func toProtoDocument(d biz.KnowledgeDocument) *v1.KnowledgeDocument {
 		CreatedAt:        d.CreatedAt,
 		UpdatedAt:        d.UpdatedAt,
 		ExtractSupported: isExtractSupported(d.MimeType),
+		Organized:        d.Organized,
 	}
 }
 
@@ -494,4 +546,30 @@ func isAllowedIngestMIME(detected string) bool {
 		return true
 	}
 	return strings.HasPrefix(detected, "text/")
+}
+
+// ooxmlIngestMIMETypes 是 OOXML（DOCX/XLSX/PPTX）声明 MIME 白名单。
+// 这些文件是 ZIP 容器，http.DetectContentType 返回 application/zip，
+// 必须按声明 MIME 或扩展名二次判定，否则 Office 文件被白名单误拒、
+// 或普通 zip 因 text/* 兜底被误放行。
+var ooxmlIngestMIMETypes = map[string]struct{}{
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   {},
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         {},
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": {},
+}
+
+// resolveIngestMIMEAllowed 判定一次上传是否允许入库。
+// 非 ZIP 直接走 isAllowedIngestMIME；ZIP 容器仅 OOXML 放行（声明 MIME 优先，扩展名兜底）。
+func resolveIngestMIMEAllowed(detected, declared, source string) bool {
+	if detected != "application/zip" {
+		return isAllowedIngestMIME(detected)
+	}
+	if _, ok := ooxmlIngestMIMETypes[strings.ToLower(strings.TrimSpace(declared))]; ok {
+		return true
+	}
+	switch strings.ToLower(filepath.Ext(source)) {
+	case ".docx", ".xlsx", ".pptx":
+		return true
+	}
+	return false
 }

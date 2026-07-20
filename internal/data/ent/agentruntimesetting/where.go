@@ -538,11 +538,6 @@ func ContextCompactionEnabled(v bool) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldContextCompactionEnabled, v))
 }
 
-// MicroCompactEnabled applies equality check predicate on the "micro_compact_enabled" field. It's identical to MicroCompactEnabledEQ.
-func MicroCompactEnabled(v bool) predicate.AgentRuntimeSetting {
-	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldMicroCompactEnabled, v))
-}
-
 // MemoryCompactEnabled applies equality check predicate on the "memory_compact_enabled" field. It's identical to MemoryCompactEnabledEQ.
 func MemoryCompactEnabled(v bool) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldMemoryCompactEnabled, v))
@@ -4391,16 +4386,6 @@ func ContextCompactionEnabledEQ(v bool) predicate.AgentRuntimeSetting {
 // ContextCompactionEnabledNEQ applies the NEQ predicate on the "context_compaction_enabled" field.
 func ContextCompactionEnabledNEQ(v bool) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldContextCompactionEnabled, v))
-}
-
-// MicroCompactEnabledEQ applies the EQ predicate on the "micro_compact_enabled" field.
-func MicroCompactEnabledEQ(v bool) predicate.AgentRuntimeSetting {
-	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldMicroCompactEnabled, v))
-}
-
-// MicroCompactEnabledNEQ applies the NEQ predicate on the "micro_compact_enabled" field.
-func MicroCompactEnabledNEQ(v bool) predicate.AgentRuntimeSetting {
-	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldMicroCompactEnabled, v))
 }
 
 // MemoryCompactEnabledEQ applies the EQ predicate on the "memory_compact_enabled" field.

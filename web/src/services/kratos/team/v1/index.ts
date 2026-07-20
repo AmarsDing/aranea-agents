@@ -355,7 +355,8 @@ export type ResumeTeamRunExecutionResponse = {
   status: string | undefined;
 };
 
-export type ListTeamsRequest = {};
+export type ListTeamsRequest = {
+};
 
 export type ListTeamsResponse = {
   items: Team[] | undefined;
@@ -675,9 +676,7 @@ export interface TeamService {
   ExportTeamStructure(request: ExportTeamStructureRequest): Promise<ExportTeamStructureResponse>;
   GetTeamRunSummary(request: GetTeamRunSummaryRequest): Promise<GetTeamRunSummaryResponse>;
   GetTeamRunObservatory(request: GetTeamRunObservatoryRequest): Promise<GetTeamRunObservatoryResponse>;
-  GetTeamRunObservatoryTimeline(
-    request: GetTeamRunObservatoryTimelineRequest,
-  ): Promise<GetTeamRunObservatoryTimelineResponse>;
+  GetTeamRunObservatoryTimeline(request: GetTeamRunObservatoryTimelineRequest): Promise<GetTeamRunObservatoryTimelineResponse>;
   ResumeTeamRunExecution(request: ResumeTeamRunExecutionRequest): Promise<ResumeTeamRunExecutionResponse>;
   CompileTeamGraph(request: CompileTeamGraphRequest): Promise<CompileTeamGraphResponse>;
   ListTaskDeadLetters(request: ListTaskDeadLettersRequest): Promise<ListTaskDeadLettersResponse>;
@@ -707,673 +706,568 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createTeamServiceClient(handler: RequestHandler): TeamService {
+export function createTeamServiceClient(
+  handler: RequestHandler
+): TeamService {
   return {
-    ListTeams(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTeams(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/teams`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'ListTeams',
-        },
-      ) as Promise<ListTeamsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "TeamService",
+        method: "ListTeams",
+      }) as Promise<ListTeamsResponse>;
     },
-    CreateTeam(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateTeam(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/teams`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'CreateTeam',
-        },
-      ) as Promise<Team>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "TeamService",
+        method: "CreateTeam",
+      }) as Promise<Team>;
     },
-    GetTeam(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetTeam(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/teams/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'GetTeam',
-        },
-      ) as Promise<Team>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "TeamService",
+        method: "GetTeam",
+      }) as Promise<Team>;
     },
-    UpdateTeam(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateTeam(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/teams/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request?.team ?? {});
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PATCH',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'UpdateTeam',
-        },
-      ) as Promise<Team>;
+      return handler({
+        path: uri,
+        method: "PATCH",
+        body,
+      }, {
+        service: "TeamService",
+        method: "UpdateTeam",
+      }) as Promise<Team>;
     },
-    DeleteTeam(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteTeam(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/teams/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'DeleteTeam',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "TeamService",
+        method: "DeleteTeam",
+      }) as Promise<wellKnownEmpty>;
     },
-    DuplicateTeam(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DuplicateTeam(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/teams/${request.id}/duplicate`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'DuplicateTeam',
-        },
-      ) as Promise<Team>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "TeamService",
+        method: "DuplicateTeam",
+      }) as Promise<Team>;
     },
-    ListTeamRuns(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTeamRuns(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/team-runs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.teamId) {
-        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`);
+        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'ListTeamRuns',
-        },
-      ) as Promise<ListTeamRunsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "TeamService",
+        method: "ListTeamRuns",
+      }) as Promise<ListTeamRunsResponse>;
     },
-    ListTeamRunSteps(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTeamRunSteps(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.runId) {
-        throw new Error('missing required field request.run_id');
+        throw new Error("missing required field request.run_id");
       }
       const path = `v1/team-runs/${request.runId}/steps`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'ListTeamRunSteps',
-        },
-      ) as Promise<ListTeamRunStepsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "TeamService",
+        method: "ListTeamRunSteps",
+      }) as Promise<ListTeamRunStepsResponse>;
     },
-    GetTeamRun(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetTeamRun(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/team-runs/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'GetTeamRun',
-        },
-      ) as Promise<TeamRun>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "TeamService",
+        method: "GetTeamRun",
+      }) as Promise<TeamRun>;
     },
-    CancelTeamRun(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CancelTeamRun(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/team-runs/${request.id}/cancel`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'CancelTeamRun',
-        },
-      ) as Promise<TeamRun>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "TeamService",
+        method: "CancelTeamRun",
+      }) as Promise<TeamRun>;
     },
-    RunTeamTest(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    RunTeamTest(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/teams/${request.id}/run-test`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'RunTeamTest',
-        },
-      ) as Promise<RunTeamTestResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "TeamService",
+        method: "RunTeamTest",
+      }) as Promise<RunTeamTestResponse>;
     },
-    UpdateSwarmMembers(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateSwarmMembers(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.teamId) {
-        throw new Error('missing required field request.team_id');
+        throw new Error("missing required field request.team_id");
       }
       const path = `v1/teams/${request.teamId}/swarm-members`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'UpdateSwarmMembers',
-        },
-      ) as Promise<UpdateSwarmMembersResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "TeamService",
+        method: "UpdateSwarmMembers",
+      }) as Promise<UpdateSwarmMembersResponse>;
     },
-    ExportTeamStructure(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ExportTeamStructure(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.teamId) {
-        throw new Error('missing required field request.team_id');
+        throw new Error("missing required field request.team_id");
       }
       const path = `v1/teams/${request.teamId}/structure`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'ExportTeamStructure',
-        },
-      ) as Promise<ExportTeamStructureResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "TeamService",
+        method: "ExportTeamStructure",
+      }) as Promise<ExportTeamStructureResponse>;
     },
-    GetTeamRunSummary(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetTeamRunSummary(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/team-runs/${request.id}/summary`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'GetTeamRunSummary',
-        },
-      ) as Promise<GetTeamRunSummaryResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "TeamService",
+        method: "GetTeamRunSummary",
+      }) as Promise<GetTeamRunSummaryResponse>;
     },
-    GetTeamRunObservatory(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetTeamRunObservatory(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.runId) {
-        throw new Error('missing required field request.run_id');
+        throw new Error("missing required field request.run_id");
       }
       const path = `v1/team-runs/${request.runId}/observatory`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'GetTeamRunObservatory',
-        },
-      ) as Promise<GetTeamRunObservatoryResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "TeamService",
+        method: "GetTeamRunObservatory",
+      }) as Promise<GetTeamRunObservatoryResponse>;
     },
-    GetTeamRunObservatoryTimeline(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetTeamRunObservatoryTimeline(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.runId) {
-        throw new Error('missing required field request.run_id');
+        throw new Error("missing required field request.run_id");
       }
       const path = `v1/team-runs/${request.runId}/observatory/timeline`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.nodeId) {
-        queryParams.push(`nodeId=${encodeURIComponent(request.nodeId.toString())}`);
+        queryParams.push(`nodeId=${encodeURIComponent(request.nodeId.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'GetTeamRunObservatoryTimeline',
-        },
-      ) as Promise<GetTeamRunObservatoryTimelineResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "TeamService",
+        method: "GetTeamRunObservatoryTimeline",
+      }) as Promise<GetTeamRunObservatoryTimelineResponse>;
     },
-    ResumeTeamRunExecution(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ResumeTeamRunExecution(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.runId) {
-        throw new Error('missing required field request.run_id');
+        throw new Error("missing required field request.run_id");
       }
       const path = `v1/team-runs/${request.runId}/resume`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'ResumeTeamRunExecution',
-        },
-      ) as Promise<ResumeTeamRunExecutionResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "TeamService",
+        method: "ResumeTeamRunExecution",
+      }) as Promise<ResumeTeamRunExecutionResponse>;
     },
-    CompileTeamGraph(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CompileTeamGraph(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.teamId) {
-        throw new Error('missing required field request.team_id');
+        throw new Error("missing required field request.team_id");
       }
       const path = `v1/teams/${request.teamId}/compile-graph`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'CompileTeamGraph',
-        },
-      ) as Promise<CompileTeamGraphResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "TeamService",
+        method: "CompileTeamGraph",
+      }) as Promise<CompileTeamGraphResponse>;
     },
-    ListTaskDeadLetters(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTaskDeadLetters(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/task-dead-letters`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.sessionId) {
-        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`);
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       if (request.teamId) {
-        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`);
+        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'ListTaskDeadLetters',
-        },
-      ) as Promise<ListTaskDeadLettersResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "TeamService",
+        method: "ListTaskDeadLetters",
+      }) as Promise<ListTaskDeadLettersResponse>;
     },
-    ResolveTaskDeadLetter(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ResolveTaskDeadLetter(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/task-dead-letters/${request.id}/resolve`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'ResolveTaskDeadLetter',
-        },
-      ) as Promise<ResolveTaskDeadLetterResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "TeamService",
+        method: "ResolveTaskDeadLetter",
+      }) as Promise<ResolveTaskDeadLetterResponse>;
     },
-    ListSpiritTeams(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListSpiritTeams(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.spiritSessionId) {
-        throw new Error('missing required field request.spirit_session_id');
+        throw new Error("missing required field request.spirit_session_id");
       }
       const path = `v1/spirit/${request.spiritSessionId}/teams`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'ListSpiritTeams',
-        },
-      ) as Promise<ListSpiritTeamsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "TeamService",
+        method: "ListSpiritTeams",
+      }) as Promise<ListSpiritTeamsResponse>;
     },
-    SynthesizeResults(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    SynthesizeResults(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.spiritSessionId) {
-        throw new Error('missing required field request.spirit_session_id');
+        throw new Error("missing required field request.spirit_session_id");
       }
       const path = `v1/spirit/${request.spiritSessionId}/synthesize`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'SynthesizeResults',
-        },
-      ) as Promise<SynthesizeResultsResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "TeamService",
+        method: "SynthesizeResults",
+      }) as Promise<SynthesizeResultsResponse>;
     },
-    ArchiveTeam(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ArchiveTeam(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.teamId) {
-        throw new Error('missing required field request.team_id');
+        throw new Error("missing required field request.team_id");
       }
       const path = `v1/teams/${request.teamId}/archive`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'ArchiveTeam',
-        },
-      ) as Promise<ArchiveTeamResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "TeamService",
+        method: "ArchiveTeam",
+      }) as Promise<ArchiveTeamResponse>;
     },
-    RetryTeam(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    RetryTeam(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.teamId) {
-        throw new Error('missing required field request.team_id');
+        throw new Error("missing required field request.team_id");
       }
       const path = `v1/teams/${request.teamId}/retry`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'RetryTeam',
-        },
-      ) as Promise<RetryTeamResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "TeamService",
+        method: "RetryTeam",
+      }) as Promise<RetryTeamResponse>;
     },
-    PauseTeamRun(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    PauseTeamRun(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/team-runs/${request.id}/pause`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'PauseTeamRun',
-        },
-      ) as Promise<PauseTeamRunResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "TeamService",
+        method: "PauseTeamRun",
+      }) as Promise<PauseTeamRunResponse>;
     },
-    UnpauseTeamRun(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UnpauseTeamRun(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/team-runs/${request.id}/unpause`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'UnpauseTeamRun',
-        },
-      ) as Promise<UnpauseTeamRunResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "TeamService",
+        method: "UnpauseTeamRun",
+      }) as Promise<UnpauseTeamRunResponse>;
     },
-    InjectTeamMessage(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    InjectTeamMessage(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.teamId) {
-        throw new Error('missing required field request.team_id');
+        throw new Error("missing required field request.team_id");
       }
       const path = `v1/teams/${request.teamId}/inject`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'TeamService',
-          method: 'InjectTeamMessage',
-        },
-      ) as Promise<InjectTeamMessageResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "TeamService",
+        method: "InjectTeamMessage",
+      }) as Promise<InjectTeamMessageResponse>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
+
 
 // @@protoc_insertion_point(typescript-http-eof)

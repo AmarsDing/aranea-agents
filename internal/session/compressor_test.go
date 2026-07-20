@@ -6,11 +6,13 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
 	bizsession "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/compress"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -24,6 +26,7 @@ type stubCompressReadDeps struct {
 	maxSummarized int
 	msgs          []biz.ChatMessage
 	listSummaries []biz.SessionSummary
+	listErr       error
 }
 
 func (s *stubCompressReadDeps) SearchSessions(_ context.Context, _ biz.SessionSearchQuery) (biz.SessionListResult, error) {
@@ -73,6 +76,9 @@ func (s *stubCompressReadDeps) MaxSessionSummaryToTurn(_ context.Context, _ stri
 	return s.maxSummarized, nil
 }
 func (s *stubCompressReadDeps) ListSessionSummaries(_ context.Context, _ string) ([]biz.SessionSummary, error) {
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
 	return s.listSummaries, nil
 }
 func (s *stubCompressReadDeps) LatestSessionSummaryTime(_ context.Context, _ string) (string, error) {
@@ -576,5 +582,250 @@ func TestRunCompress_forcedBypassesSuppression(t *testing.T) {
 	}
 	if fake.calls != 2 {
 		t.Fatalf("forced 应绕过抑制: calls = %d, want 2", fake.calls)
+	}
+}
+
+// --- 摘要行数累积上限（超限强制 L3） ---
+
+func newCascadeTestCompressor(read *stubCompressReadDeps, fake *scriptedLLMCompressor) *Compressor {
+	return &Compressor{
+		deps:         compressDeps{summaryReader: read},
+		Compress:     fake,
+		memoryReader: &stubMemoryFactReader{facts: []biz.MemoryFactEntry{{Statement: "fact", Scope: "fact"}}},
+		lg:           loggateway.NewNoop(),
+	}
+}
+
+func TestCompressCascade_summaryRowsExceededForcesLLM(t *testing.T) {
+	// 3 行历史摘要 = 默认上限：L2 本可成功，但行数超限必须强制 L3（LLM 吸收合并归一）。
+	read := &stubCompressReadDeps{listSummaries: []biz.SessionSummary{
+		{FromTurn: 1, ToTurn: 2, SummaryMarkdown: "摘要1"},
+		{FromTurn: 3, ToTurn: 4, SummaryMarkdown: "摘要2"},
+		{FromTurn: 5, ToTurn: 5, SummaryMarkdown: "摘要3"},
+	}}
+	fake := &scriptedLLMCompressor{results: []compress.Result{{Markdown: "LLM 合并摘要", Provider: "p", Model: "m"}}}
+	c := newCascadeTestCompressor(read, fake)
+	body := []biz.ChatMessage{
+		{Role: "user", ContentMarkdown: "q6", TurnNumber: 6},
+		{Role: "assistant", ContentMarkdown: "a6", TurnNumber: 6},
+	}
+	out := c.compressCascade(context.Background(), biz.Session{}, biz.Agent{}, body, "sess-1", 5, 0, 0)
+	if out.level != compressLevelLLM {
+		t.Fatalf("level = %v, want LLM（行数超限应强制 L3）", out.level)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("LLM calls = %d, want 1", fake.calls)
+	}
+	if !out.absorbedPriors {
+		t.Fatal("强制 L3 应吸收历史摘要（absorbedPriors=true）")
+	}
+}
+
+func TestCompressCascade_summaryRowsBelowCapKeepsL2(t *testing.T) {
+	// 1 行历史摘要 < 上限：走 L2 MemoryCompact，不调用 LLM。
+	read := &stubCompressReadDeps{listSummaries: []biz.SessionSummary{
+		{FromTurn: 1, ToTurn: 2, SummaryMarkdown: "摘要1"},
+	}}
+	fake := &scriptedLLMCompressor{results: []compress.Result{{Markdown: "不应被调用"}}}
+	c := newCascadeTestCompressor(read, fake)
+	body := []biz.ChatMessage{{Role: "user", ContentMarkdown: "q6", TurnNumber: 6}}
+	out := c.compressCascade(context.Background(), biz.Session{}, biz.Agent{}, body, "sess-1", 5, 0, 0)
+	if out.level != compressLevelMemory {
+		t.Fatalf("level = %v, want Memory（行数未超限应走 L2）", out.level)
+	}
+	if fake.calls != 0 {
+		t.Fatalf("LLM 不应被调用: calls = %d", fake.calls)
+	}
+}
+
+func TestCompressCascade_summaryRowsReadErrorFallsBackToL2(t *testing.T) {
+	// 读取摘要行数失败：非致命，按未超限处理走 L2。
+	read := &stubCompressReadDeps{listErr: fmt.Errorf("db down")}
+	fake := &scriptedLLMCompressor{results: []compress.Result{{Markdown: "不应被调用"}}}
+	c := newCascadeTestCompressor(read, fake)
+	body := []biz.ChatMessage{{Role: "user", ContentMarkdown: "q6", TurnNumber: 6}}
+	out := c.compressCascade(context.Background(), biz.Session{}, biz.Agent{}, body, "sess-1", 5, 0, 0)
+	if out.level != compressLevelMemory {
+		t.Fatalf("level = %v, want Memory（读失败应回退 L2）", out.level)
+	}
+	if fake.calls != 0 {
+		t.Fatalf("LLM 不应被调用: calls = %d", fake.calls)
+	}
+}
+
+// --- LLM 压缩缓存接线（session 隔离 + per-agent 开关 + cache_hit 透传） ---
+
+type stubMonitorBus struct {
+	events []contract.MonitorEvent
+}
+
+func (s *stubMonitorBus) Publish(_ context.Context, ev contract.MonitorEvent) {
+	s.events = append(s.events, ev)
+}
+func (s *stubMonitorBus) Subscribe(_ contract.MonitorSubscribeOptions) (<-chan contract.MonitorEvent, func()) {
+	ch := make(chan contract.MonitorEvent)
+	return ch, func() {}
+}
+func (s *stubMonitorBus) DropCount() uint64 { return 0 }
+
+// newCacheTestCompressor builds a Compressor with the full runCompress success-path
+// mock chain (read/write/tx) and a CachingCompressor wrapping the fake inner LLM.
+// write 不联动 read：priorSummary 恒为空，相同 session 的重复压缩缓存键稳定。
+func newCacheTestCompressor(read *stubCompressReadDeps, write *stubCompressWriteDeps, inner compress.Compressor, cache *compress.CompressCache) *Compressor {
+	return &Compressor{
+		deps: compressDeps{
+			sessionReader: read, messageReader: read, summaryReader: read,
+			summaryWriter: write, messageWriter: write, contextUpdater: write,
+			compressRepo: &stubCompressTxDeps{version: 0},
+		},
+		Compress: compress.NewCachingCompressor(inner, cache, loggateway.NewNoop()),
+		lg:       loggateway.NewNoop(),
+		flight:   newCompressFlightManager(),
+		buf:      newCompressBufferManager(),
+		suppress: newCompressSuppressManager(),
+	}
+}
+
+func cacheEnabledAgent() biz.Agent {
+	// MemoryCompactEnabled=false：级联跳过 L2 直达 L3，聚焦缓存行为断言。
+	return biz.Agent{Settings: &biz.AgentRuntimeSettings{CompressLLMCacheEnabled: true}}
+}
+
+func TestRunCompress_CacheEnabledHitsOnRepeat(t *testing.T) {
+	read := &stubCompressReadDeps{
+		sess:          biz.Session{ID: "sess-1", ContextUsedTokens: 100000, LastContextWindowTokens: 1000},
+		maxSummarized: 0,
+		msgs:          makeTimeline(6),
+	}
+	write := &stubCompressWriteDeps{}
+	fake := &scriptedLLMCompressor{results: []compress.Result{{Markdown: "LLM 合并摘要", Provider: "p", Model: "m"}}}
+	cache := compress.NewCompressCache(16, 10*time.Minute, loggateway.NewNoop())
+	c := newCacheTestCompressor(read, write, fake, cache)
+	ag := cacheEnabledAgent()
+
+	if err := c.runCompress(context.Background(), "sess-1", "u", ag, true); err != nil {
+		t.Fatal(err)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("首次压缩 calls = %d, want 1", fake.calls)
+	}
+	// 相同 session + 相同输入（stub 静态数据）→ 第二次必须命中缓存。
+	if err := c.runCompress(context.Background(), "sess-1", "u", ag, true); err != nil {
+		t.Fatal(err)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("相同输入重复压缩应命中缓存: calls = %d, want 1", fake.calls)
+	}
+}
+
+func TestRunCompress_CacheIsolatesSessions(t *testing.T) {
+	read := &stubCompressReadDeps{
+		sess:          biz.Session{ContextUsedTokens: 100000, LastContextWindowTokens: 1000}, // ID 由 GetSessionByID 按请求填充
+		maxSummarized: 0,
+		msgs:          makeTimeline(6),
+	}
+	write := &stubCompressWriteDeps{}
+	fake := &scriptedLLMCompressor{results: []compress.Result{
+		{Markdown: "LLM 合并摘要", Provider: "p", Model: "m"},
+		{Markdown: "LLM 合并摘要", Provider: "p", Model: "m"},
+	}}
+	cache := compress.NewCompressCache(16, 10*time.Minute, loggateway.NewNoop())
+	c := newCacheTestCompressor(read, write, fake, cache)
+	ag := cacheEnabledAgent()
+
+	if err := c.runCompress(context.Background(), "sess-1", "u", ag, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.runCompress(context.Background(), "sess-2", "u", ag, true); err != nil {
+		t.Fatal(err)
+	}
+	if fake.calls != 2 {
+		t.Fatalf("不同会话相同输入不得共享缓存: calls = %d, want 2（sessionID 必须注入缓存键）", fake.calls)
+	}
+}
+
+func TestRunCompress_CacheDisabledSkipsCache(t *testing.T) {
+	read := &stubCompressReadDeps{
+		sess:          biz.Session{ID: "sess-1", ContextUsedTokens: 100000, LastContextWindowTokens: 1000},
+		maxSummarized: 0,
+		msgs:          makeTimeline(6),
+	}
+	write := &stubCompressWriteDeps{}
+	fake := &scriptedLLMCompressor{results: []compress.Result{
+		{Markdown: "LLM 合并摘要", Provider: "p", Model: "m"},
+		{Markdown: "LLM 合并摘要", Provider: "p", Model: "m"},
+	}}
+	cache := compress.NewCompressCache(16, 10*time.Minute, loggateway.NewNoop())
+	c := newCacheTestCompressor(read, write, fake, cache)
+	ag := biz.Agent{Settings: &biz.AgentRuntimeSettings{CompressLLMCacheEnabled: false}}
+
+	for i := 0; i < 2; i++ {
+		if err := c.runCompress(context.Background(), "sess-1", "u", ag, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if fake.calls != 2 {
+		t.Fatalf("缓存禁用时不应命中: calls = %d, want 2", fake.calls)
+	}
+	if cache.Len() != 0 {
+		t.Fatalf("缓存禁用时不应写入: len = %d, want 0", cache.Len())
+	}
+}
+
+func TestLLMCompress_CacheHitSetsOutcomeFlag(t *testing.T) {
+	read := &stubCompressReadDeps{}
+	fake := &scriptedLLMCompressor{results: []compress.Result{{Markdown: "LLM 合并摘要", Provider: "p", Model: "m"}}}
+	cache := compress.NewCompressCache(16, 10*time.Minute, loggateway.NewNoop())
+	c := &Compressor{
+		deps:     compressDeps{summaryReader: read},
+		Compress: compress.NewCachingCompressor(fake, cache, loggateway.NewNoop()),
+		lg:       loggateway.NewNoop(),
+	}
+	ctx := compress.ContextWithSessionID(context.Background(), "sess-1")
+	body := []biz.ChatMessage{
+		{Role: "user", ContentMarkdown: "q6", TurnNumber: 6},
+		{Role: "assistant", ContentMarkdown: "a6", TurnNumber: 6},
+	}
+	first := c.llmCompress(ctx, biz.Session{}, biz.Agent{}, body, "sess-1")
+	if first.level != compressLevelLLM || first.cacheHit {
+		t.Fatalf("首次应 miss: level=%v cacheHit=%v", first.level, first.cacheHit)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("calls = %d, want 1", fake.calls)
+	}
+	second := c.llmCompress(ctx, biz.Session{}, biz.Agent{}, body, "sess-1")
+	if second.level != compressLevelLLM || !second.cacheHit {
+		t.Fatalf("第二次应命中: level=%v cacheHit=%v", second.level, second.cacheHit)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("命中不应再调 LLM: calls = %d, want 1", fake.calls)
+	}
+}
+
+func TestExecuteCompression_CacheHitInNoticeMetadata(t *testing.T) {
+	read := &stubCompressReadDeps{}
+	write := &stubCompressWriteDeps{}
+	bus := &stubMonitorBus{}
+	c := &Compressor{
+		deps: compressDeps{
+			sessionReader: read, messageReader: read, summaryReader: read,
+			summaryWriter: write, messageWriter: write, contextUpdater: write,
+			compressRepo: &stubCompressTxDeps{version: 0},
+		},
+		monitorBus: bus,
+		lg:         loggateway.NewNoop(),
+	}
+	sess := biz.Session{ID: "sess-1", CompressVersion: 0, RunnerSnapshotJSON: `{"state":{}}`}
+	outcome := compressOutcome{level: compressLevelLLM, markdown: "合并摘要", cacheHit: true}
+	body := []biz.ChatMessage{{Role: "user", ContentMarkdown: "q", TurnNumber: 6}}
+	if err := c.executeCompression(context.Background(), sess, biz.Agent{}, body, nil, outcome, "sess-1", "u"); err != nil {
+		t.Fatal(err)
+	}
+	if len(bus.events) != 1 {
+		t.Fatalf("应发布 1 条压缩通知事件, got %d", len(bus.events))
+	}
+	hit, ok := bus.events[0].Metadata["cache_hit"].(bool)
+	if !ok || !hit {
+		t.Fatalf("metadata cache_hit 应为 true: %v", bus.events[0].Metadata)
 	}
 }

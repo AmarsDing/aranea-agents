@@ -1286,7 +1286,7 @@ Run（提交前纪律）：`make build && make test && make lint`
 
 | # | 事项 | 说明 |
 |---|------|------|
-| 1 | L1 MicroCompact 永不触发 | `loadCompressBody` 只取 user/assistant，`tryMicroCompact` 找 `role=="tool"` 恒为 0。需单独决策：让 body 携带 tool 消息 or 移除 L1。 |
-| 2 | 双压缩系统统一 | 系统 A（BeforeModel hook，内存态）与系统 B（Session Compressor）阈值/存储不通，建议架构决策后统一。 |
-| 3 | 死配置清理 | `compress_llm_cache_*`、`ShouldCompress`、`sessionCompressThreshold`、`shouldUseStructuredCompact` 门控未接线。 |
-| 4 | L1/L2 摘要累积上限 | L3 吸收替换已解决 LLM 路径增长；L1/L2 标记行在长会话仍会累积（每行 ≤2KB，风险低），需要时可加行数上限触发强制 L3。 |
+| 1 | ~~L1 MicroCompact 永不触发~~ ✅ 已移除（2026-07-20） | `loadCompressBody` 只取 user/assistant，`tryMicroCompact` 找 `role=="tool"` 恒为 0。已全链路移除（代码/proto/DB/前端/文档），迁移 20261107 删列。 |
+| 2 | ~~双压缩系统统一~~ ✅ 已完成（2026-07-20，ADR-07） | 系统 A 降级为确定性紧急截断（无 LLM，硬阈值 0.90 + tool-pair 安全切分 + `<context_truncated>` 标记）；系统 B 保留为唯一 LLM 压缩路径。`LLMContextCompressor`/`biz.ContextCompressor`/`provideContextCompressor`/`MEMORY_COMPRESSOR_*` 已全部删除。 |
+| 3 | ~~死配置清理~~ ✅ 已完成（2026-07-20） | ~~`ShouldCompress`、`sessionCompressThreshold`、`shouldUseStructuredCompact`~~ 已删除（门控从未接线）。`compress_llm_cache_*` 选择「实现」：LRU+TTL 缓存已落地（`internal/compress/cache.go` + `CachingCompressor` + per-agent 开关 `CompressLLMCacheEnabled`）。`MemoryRuntimePolicy.CompressionThreshold/CompressionKeepRatio` 死字段已随 ADR-07 删除。 |
+| 4 | ~~L1/L2 摘要累积上限~~ ✅ 已完成（2026-07-20） | `CompressThreshold.SummaryMaxRows`（默认 3）已落地：摘要行数达上限时跳过 L2 MemoryCompact，强制 L3 LLM 吸收合并，防止行数无限增长。 |

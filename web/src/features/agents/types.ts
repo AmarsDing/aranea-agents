@@ -163,7 +163,6 @@ export type AgentRuntimeSettings = {
   ralph_loop_promise_tag_open?: string;
   ralph_loop_promise_tag_close?: string;
   ralph_loop_verify_work_dir?: string;
-  micro_compact_enabled?: boolean;
   memory_compact_enabled?: boolean;
   tool_result_gate_enabled?: boolean;
   tools_circuit_breaker_enabled?: boolean;

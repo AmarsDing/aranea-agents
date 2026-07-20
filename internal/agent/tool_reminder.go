@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -97,15 +98,51 @@ func (r *ToolReminder) Collect() []string {
 	)}
 }
 
+// toolReminderStateKey is the invocation state key holding the per-run
+// ToolReminder instance. The instance is created per invocation (see
+// newToolReminderBeforeAgentHook) so concurrent sessions sharing a cached
+// Agent never share reminder state.
+const toolReminderStateKey = "aranea.tool_reminder"
+
+// newToolReminderBeforeAgentHook creates a fresh ToolReminder for every
+// invocation. The companion AfterTool hook (newToolReminderAfterHook)
+// consumes it from invocation state, scoping reminders per run instead of
+// per cached Agent.
+func newToolReminderBeforeAgentHook() callbacks.Callback {
+	return callbacks.NewBeforeAgentHook(0, func(ctx context.Context, args *trpcagent.BeforeAgentArgs) (*trpcagent.BeforeAgentResult, error) {
+		if args != nil && args.Invocation != nil {
+			args.Invocation.SetState(toolReminderStateKey, NewToolReminder())
+		}
+		return &trpcagent.BeforeAgentResult{Context: ctx}, nil
+	})
+}
+
+// toolReminderFromInvocation resolves the per-invocation ToolReminder,
+// lazily creating one when the BeforeAgent hook did not run (defensive).
+func toolReminderFromInvocation(inv *trpcagent.Invocation) *ToolReminder {
+	if v, found := inv.GetState(toolReminderStateKey); found {
+		if r, ok := v.(*ToolReminder); ok && r != nil {
+			return r
+		}
+	}
+	r := NewToolReminder()
+	inv.SetState(toolReminderStateKey, r)
+	return r
+}
+
 // newToolReminderAfterHook appends pending reminders to tool results so the
 // LLM sees the side-effect feedback in the tool response itself.
 // Non-command results carry the reminder; test runs clear it.
 func newToolReminderAfterHook() callbacks.Callback {
-	reminder := NewToolReminder()
 	return callbacks.NewAfterToolHook(60, func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
 		if args == nil {
 			return &trpctool.AfterToolResult{}, nil
 		}
+		inv, ok := trpcagent.InvocationFromContext(ctx)
+		if !ok || inv == nil {
+			return &trpctool.AfterToolResult{}, nil
+		}
+		reminder := toolReminderFromInvocation(inv)
 		params := parseToolArgsParams(args.Arguments)
 		reminder.OnToolExecuted(args.ToolName, params)
 		reminders := reminder.Collect()

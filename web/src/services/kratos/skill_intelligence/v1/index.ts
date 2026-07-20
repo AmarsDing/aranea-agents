@@ -72,69 +72,63 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createSkillIntelligenceServiceClient(handler: RequestHandler): SkillIntelligenceService {
+export function createSkillIntelligenceServiceClient(
+  handler: RequestHandler
+): SkillIntelligenceService {
   return {
-    ListExperienceReports(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListExperienceReports(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/skill-intelligence/experience-reports`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.skillId) {
-        queryParams.push(`skillId=${encodeURIComponent(request.skillId.toString())}`);
+        queryParams.push(`skillId=${encodeURIComponent(request.skillId.toString())}`)
       }
       if (request.startTime) {
-        queryParams.push(`startTime=${encodeURIComponent(request.startTime.toString())}`);
+        queryParams.push(`startTime=${encodeURIComponent(request.startTime.toString())}`)
       }
       if (request.endTime) {
-        queryParams.push(`endTime=${encodeURIComponent(request.endTime.toString())}`);
+        queryParams.push(`endTime=${encodeURIComponent(request.endTime.toString())}`)
       }
       if (request.page) {
-        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`);
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SkillIntelligenceService',
-          method: 'ListExperienceReports',
-        },
-      ) as Promise<ListExperienceReportsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SkillIntelligenceService",
+        method: "ListExperienceReports",
+      }) as Promise<ListExperienceReportsResponse>;
     },
-    GetExperienceReport(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetExperienceReport(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/skill-intelligence/experience-reports/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'SkillIntelligenceService',
-          method: 'GetExperienceReport',
-        },
-      ) as Promise<GetExperienceReportResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SkillIntelligenceService",
+        method: "GetExperienceReport",
+      }) as Promise<GetExperienceReportResponse>;
     },
   };
 }

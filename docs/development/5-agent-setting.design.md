@@ -107,7 +107,7 @@ message AgentPromptFile {
 | Tools | `tools_enabled`, `tools_profile`, `tools_tool_call_prefix`, `tools_allow_json`, `tools_deny_json`, `tools_concurrent_allow_json`, `tools_retry_*`, `tools_parallel_enabled`, `tools_streaming_enabled`, `tools_circuit_breaker_*`, `tools_deferred_json`, `tools_command_safety_enabled`, `tools_execution_timeout_sec` | 工具策略 + 重试 + 并行 + 熔断 |
 | Skills | `skill_runtime_json`, `intent_pass_enabled`, `skill_load_mode`, `code_executor_type` | 技能运行时 |
 | Evolution | `self_evolve`, `subagents_*`, `evolution_*`, `guardrail_*`, `evo_*` | 进化 + 子 Agent + 守卫 |
-| Context | `context_compaction_enabled`, `micro_compact_enabled`, `memory_compact_enabled`, `tool_result_gate_enabled`, `compress_llm_cache_*`, `compression_buffer_ratio`, `soft_trigger_ratio`, `hard_trigger_ratio`, `session_summary_enabled`, `output_schema_json`, `model_selector` | 上下文压缩 |
+| Context | `context_compaction_enabled`, `memory_compact_enabled`, `tool_result_gate_enabled`, `compress_llm_cache_*`, `compression_buffer_ratio`, `soft_trigger_ratio`, `hard_trigger_ratio`, `session_summary_enabled`, `output_schema_json`, `model_selector` | 上下文压缩 |
 | Planner | `planner_kind`, `planner_config_json` | 规划器 |
 | Ralph Loop | `ralph_loop_max_iterations`, `ralph_loop_completion_promise`, `ralph_loop_verify_command`, `ralph_loop_verify_timeout_seconds`, `ralph_loop_promise_tag_open/close`, `ralph_loop_verify_work_dir` | Ralph 循环 |
 

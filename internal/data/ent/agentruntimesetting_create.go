@@ -1352,20 +1352,6 @@ func (_c *AgentRuntimeSettingCreate) SetNillableContextCompactionEnabled(v *bool
 	return _c
 }
 
-// SetMicroCompactEnabled sets the "micro_compact_enabled" field.
-func (_c *AgentRuntimeSettingCreate) SetMicroCompactEnabled(v bool) *AgentRuntimeSettingCreate {
-	_c.mutation.SetMicroCompactEnabled(v)
-	return _c
-}
-
-// SetNillableMicroCompactEnabled sets the "micro_compact_enabled" field if the given value is not nil.
-func (_c *AgentRuntimeSettingCreate) SetNillableMicroCompactEnabled(v *bool) *AgentRuntimeSettingCreate {
-	if v != nil {
-		_c.SetMicroCompactEnabled(*v)
-	}
-	return _c
-}
-
 // SetMemoryCompactEnabled sets the "memory_compact_enabled" field.
 func (_c *AgentRuntimeSettingCreate) SetMemoryCompactEnabled(v bool) *AgentRuntimeSettingCreate {
 	_c.mutation.SetMemoryCompactEnabled(v)
@@ -2445,10 +2431,6 @@ func (_c *AgentRuntimeSettingCreate) defaults() {
 		v := agentruntimesetting.DefaultContextCompactionEnabled
 		_c.mutation.SetContextCompactionEnabled(v)
 	}
-	if _, ok := _c.mutation.MicroCompactEnabled(); !ok {
-		v := agentruntimesetting.DefaultMicroCompactEnabled
-		_c.mutation.SetMicroCompactEnabled(v)
-	}
 	if _, ok := _c.mutation.MemoryCompactEnabled(); !ok {
 		v := agentruntimesetting.DefaultMemoryCompactEnabled
 		_c.mutation.SetMemoryCompactEnabled(v)
@@ -2925,9 +2907,6 @@ func (_c *AgentRuntimeSettingCreate) check() error {
 	}
 	if _, ok := _c.mutation.ContextCompactionEnabled(); !ok {
 		return &ValidationError{Name: "context_compaction_enabled", err: errors.New(`ent: missing required field "AgentRuntimeSetting.context_compaction_enabled"`)}
-	}
-	if _, ok := _c.mutation.MicroCompactEnabled(); !ok {
-		return &ValidationError{Name: "micro_compact_enabled", err: errors.New(`ent: missing required field "AgentRuntimeSetting.micro_compact_enabled"`)}
 	}
 	if _, ok := _c.mutation.MemoryCompactEnabled(); !ok {
 		return &ValidationError{Name: "memory_compact_enabled", err: errors.New(`ent: missing required field "AgentRuntimeSetting.memory_compact_enabled"`)}
@@ -3490,10 +3469,6 @@ func (_c *AgentRuntimeSettingCreate) createSpec() (*AgentRuntimeSetting, *sqlgra
 	if value, ok := _c.mutation.ContextCompactionEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldContextCompactionEnabled, field.TypeBool, value)
 		_node.ContextCompactionEnabled = value
-	}
-	if value, ok := _c.mutation.MicroCompactEnabled(); ok {
-		_spec.SetField(agentruntimesetting.FieldMicroCompactEnabled, field.TypeBool, value)
-		_node.MicroCompactEnabled = value
 	}
 	if value, ok := _c.mutation.MemoryCompactEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldMemoryCompactEnabled, field.TypeBool, value)
@@ -5130,18 +5105,6 @@ func (u *AgentRuntimeSettingUpsert) SetContextCompactionEnabled(v bool) *AgentRu
 // UpdateContextCompactionEnabled sets the "context_compaction_enabled" field to the value that was provided on create.
 func (u *AgentRuntimeSettingUpsert) UpdateContextCompactionEnabled() *AgentRuntimeSettingUpsert {
 	u.SetExcluded(agentruntimesetting.FieldContextCompactionEnabled)
-	return u
-}
-
-// SetMicroCompactEnabled sets the "micro_compact_enabled" field.
-func (u *AgentRuntimeSettingUpsert) SetMicroCompactEnabled(v bool) *AgentRuntimeSettingUpsert {
-	u.Set(agentruntimesetting.FieldMicroCompactEnabled, v)
-	return u
-}
-
-// UpdateMicroCompactEnabled sets the "micro_compact_enabled" field to the value that was provided on create.
-func (u *AgentRuntimeSettingUpsert) UpdateMicroCompactEnabled() *AgentRuntimeSettingUpsert {
-	u.SetExcluded(agentruntimesetting.FieldMicroCompactEnabled)
 	return u
 }
 
@@ -7481,20 +7444,6 @@ func (u *AgentRuntimeSettingUpsertOne) SetContextCompactionEnabled(v bool) *Agen
 func (u *AgentRuntimeSettingUpsertOne) UpdateContextCompactionEnabled() *AgentRuntimeSettingUpsertOne {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateContextCompactionEnabled()
-	})
-}
-
-// SetMicroCompactEnabled sets the "micro_compact_enabled" field.
-func (u *AgentRuntimeSettingUpsertOne) SetMicroCompactEnabled(v bool) *AgentRuntimeSettingUpsertOne {
-	return u.Update(func(s *AgentRuntimeSettingUpsert) {
-		s.SetMicroCompactEnabled(v)
-	})
-}
-
-// UpdateMicroCompactEnabled sets the "micro_compact_enabled" field to the value that was provided on create.
-func (u *AgentRuntimeSettingUpsertOne) UpdateMicroCompactEnabled() *AgentRuntimeSettingUpsertOne {
-	return u.Update(func(s *AgentRuntimeSettingUpsert) {
-		s.UpdateMicroCompactEnabled()
 	})
 }
 
@@ -10111,20 +10060,6 @@ func (u *AgentRuntimeSettingUpsertBulk) SetContextCompactionEnabled(v bool) *Age
 func (u *AgentRuntimeSettingUpsertBulk) UpdateContextCompactionEnabled() *AgentRuntimeSettingUpsertBulk {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateContextCompactionEnabled()
-	})
-}
-
-// SetMicroCompactEnabled sets the "micro_compact_enabled" field.
-func (u *AgentRuntimeSettingUpsertBulk) SetMicroCompactEnabled(v bool) *AgentRuntimeSettingUpsertBulk {
-	return u.Update(func(s *AgentRuntimeSettingUpsert) {
-		s.SetMicroCompactEnabled(v)
-	})
-}
-
-// UpdateMicroCompactEnabled sets the "micro_compact_enabled" field to the value that was provided on create.
-func (u *AgentRuntimeSettingUpsertBulk) UpdateMicroCompactEnabled() *AgentRuntimeSettingUpsertBulk {
-	return u.Update(func(s *AgentRuntimeSettingUpsert) {
-		s.UpdateMicroCompactEnabled()
 	})
 }
 

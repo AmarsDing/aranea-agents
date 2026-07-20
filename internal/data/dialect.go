@@ -305,9 +305,9 @@ func (d Dialect) UndefinedObjectErr(err error) bool {
 		}
 		return false
 	}
-	// SQLite: "no such table"
+	// SQLite: "no such table" / "no such column"
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "no such table")
+	return strings.Contains(msg, "no such table") || strings.Contains(msg, "no such column")
 }
 
 // UniqueConstraintErr reports whether err indicates a unique constraint

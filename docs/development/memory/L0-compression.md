@@ -2,6 +2,8 @@
 
 > **设计**：[`L0-compression.design.md`](./L0-compression.design.md) · **开发计划**：[`L0-compression-development.md`](./L0-compression-development.md) · **L0 基线**：[`L0.md`](./L0.md)
 > **调研来源**：Cursor IDE / Trae IDE / Claude Code 上下文管理机制对比 + 2024-2026 上下文压缩论文（Focus / Memento / A-Mem / Mem0 / ROMEM / LLMLingua-3）
+>
+> **⚠️ 变更通知（2026-07-20）**：L1 MicroCompact 已全链路移除（cascade/policy/biz/proto/DB/前端）。移除原因：`loadCompressBody` 仅保留 user/assistant 消息，工具消息过滤逻辑恒不触发，功能从未生效。下文 F1.7 / N1.1 / N1.5 / F3.6 及 `micro_compact_*` 配置仅作历史记录保留，压缩级联现为两级：L2 Memory Compact → L3 LLM。详见 `docs/superpowers/plans/2026-07-20-session-compression-hardening.md`。
 
 ---
 
@@ -46,7 +48,7 @@ L0 压缩的核心矛盾：**上下文窗口是硬约束，但信息消耗是线
 
 | # | 需求 | 必要性 | 说明 |
 |---|------|--------|------|
-| F1.7 | L1 MicroCompact | 必须 | 每次请求前静默清理旧工具结果（零 API 调用），替换为占位符 |
+| F1.7 | ~~L1 MicroCompact~~ ❌ 已移除（2026-07-20） | — | ~~每次请求前静默清理旧工具结果（零 API 调用），替换为占位符~~ 功能从未生效（body 无 tool 消息），已全链路移除 |
 | F1.8 | L2 Memory Compact | 必须 | 复用 L1 工作记忆 + 自动记忆提取结果作为摘要源（零额外 API 调用） |
 | F1.9 | L3 AutoCompact（升级） | 必须 | 现有 LLM 摘要升级为 9 章节结构 + 用户消息原文保留 |
 | F1.10 | 压缩层级自动升级 | 必须 | L1 估算后仍超阈值 → L2；L2 仍超 → L3 |
@@ -81,11 +83,11 @@ L0 压缩的核心矛盾：**上下文窗口是硬约束，但信息消耗是线
 
 | # | 需求 | 目标值 |
 |---|------|--------|
-| N1.1 | L1 MicroCompact 延迟 P99 | < 5 ms（纯规则，无 API 调用） |
+| N1.1 | ~~L1 MicroCompact 延迟 P99~~ ❌ 已移除 | ~~< 5 ms（纯规则，无 API 调用）~~ |
 | N1.2 | L2 Memory Compact 延迟 P99 | < 50 ms（读记忆 + 拼装，无额外 API 调用） |
 | N1.3 | 工具结果持久化写入延迟 P99 | < 20 ms |
 | N1.4 | 入口管控减少工具结果 token | ≥ 30%（对比无管控基线） |
-| N1.5 | L1 MicroCompact 减少旧工具结果 token | ≥ 20%（对比无 MicroCompact 基线） |
+| N1.5 | ~~L1 MicroCompact 减少旧工具结果 token~~ ❌ 已移除 | ~~≥ 20%（对比无 MicroCompact 基线）~~ |
 | N1.6 | 摘要后信息丢失率 | 用户消息零丢失；关键决策丢失率 < 5% |
 | N1.7 | 替换决策冻结保证 | 同一工具结果在所有后续轮次中预览字符串字节级一致 |
 | N1.8 | LLM 响应缓存命中率 | ≥ 30%（同一会话短时间内的重复压缩请求） |
@@ -99,8 +101,8 @@ L0 压缩的核心矛盾：**上下文窗口是硬约束，但信息消耗是线
 | `tool_result_max_size_chars` | 50000 | 单个工具结果字符上限 |
 | `tool_result_max_per_message_chars` | 200000 | 单条消息内工具结果合计上限 |
 | `tool_result_preview_size_chars` | 2000 | 持久化后保留的预览字符数 |
-| `micro_compact_enabled` | true | L1 MicroCompact 开关 |
-| `micro_compact_min_age_turns` | 2 | 工具结果至少经历 N 轮后才可被 MicroCompact 清理 |
+| ~~`micro_compact_enabled`~~ ❌ 已移除 | ~~true~~ | ~~L1 MicroCompact 开关~~ |
+| ~~`micro_compact_min_age_turns`~~ ❌ 已移除 | ~~2~~ | ~~工具结果至少经历 N 轮后才可被 MicroCompact 清理~~ |
 | `memory_compact_enabled` | true | L2 Memory Compact 开关 |
 | `memory_compact_min_tokens` | 10000 | L2 压缩后至少保留的近期消息 token 数 |
 | `memory_compact_max_tokens` | 40000 | L2 保留消息的硬上限 |
@@ -112,7 +114,7 @@ L0 压缩的核心矛盾：**上下文窗口是硬约束，但信息消耗是线
 
 - 工具结果超过 50K 字符时自动持久化，上下文仅保留预览 + result_id
 - Agent 可通过 ReadToolResult 工具读取持久化内容
-- L1 MicroCompact 在每次请求前自动清理旧工具结果，零 API 调用
+- ~~L1 MicroCompact 在每次请求前自动清理旧工具结果，零 API 调用~~ ❌ 已移除（2026-07-20）
 - L2 Memory Compact 复用已有记忆，零额外 API 调用
 - L3 AutoCompact 摘要包含 9 章节，用户消息原文逐条保留
 - 手动压缩 API 可正常触发，前端有压缩进度提示
@@ -228,7 +230,7 @@ L0 压缩的核心矛盾：**上下文窗口是硬约束，但信息消耗是线
 | # | 需求 | 必要性 | 说明 |
 |---|------|--------|------|
 | F3.5 | 代码骨架提取 | 推荐 | 基于 tree-sitter 提取函数签名 + 类定义 + 类型声明 + import |
-| F3.6 | MicroCompact 代码感知 | 推荐 | L1 MicroCompact 对代码类工具结果自动替换为骨架 |
+| F3.6 | ~~MicroCompact 代码感知~~ ❌ 已移除 | — | ~~L1 MicroCompact 对代码类工具结果自动替换为骨架~~ 随 L1 一并移除 |
 | F3.7 | 骨架→全文按需恢复 | 推荐 | Agent 可通过 ReadFile 工具读取完整实现 |
 
 ### 3.3 非功能需求
@@ -274,7 +276,7 @@ L0 压缩的核心矛盾：**上下文窗口是硬约束，但信息消耗是线
 |------|---------|---------|
 | 工具结果持久化 | `internal/tools`（结果返回路径）、`internal/data`（新表）、`internal/biz`（新端口） | 中 |
 | LLM 压缩响应缓存 | `internal/compress`（缓存装饰器）、`internal/session/compressor.go`（缓存键构建 + 命中判断） | 低 |
-| MicroCompact | `internal/session/compressor.go`（判断链前置） | 低 |
+| ~~MicroCompact~~ ❌ 已移除 | ~~`internal/session/compressor.go`（判断链前置）~~ | — |
 | Memory Compact | `internal/session/compressor.go`（L2 分支）、`internal/memory`（读取记忆） | 中 |
 | 摘要结构升级 | `internal/compress/prompt.go`（系统提示词） | 低 |
 | 手动压缩 API | `api/`（proto）、`internal/service`、`internal/server` | 中 |

@@ -87,6 +87,10 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
 			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		// 统一摄取管线（Phase 8/9）：整理后全文 / LLM 整理标记 / 原始文件血缘。
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS content_text TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS organized BOOLEAN NOT NULL DEFAULT FALSE`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS asset_uri TEXT NOT NULL DEFAULT ''`,
 		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS knowledge_chunks (
 			id            TEXT PRIMARY KEY,
 			doc_id        TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
@@ -183,17 +187,19 @@ func (r *knowledgeRepo) UpdateCollectionCounts(ctx context.Context, id string, d
 func (r *knowledgeRepo) CreateDocument(ctx context.Context, d biz.KnowledgeDocument) (biz.KnowledgeDocument, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	q := `INSERT INTO knowledge_documents
-		(id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,0,$6,'',$7,$7)
+		(id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message, content_text, organized, asset_uri, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,0,$6,'',$7,$8,$9,$10,$10)
 		RETURNING id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
+		          content_text, organized, asset_uri,
 		          to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		          to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
-	row := r.data.Postgres().QueryRowContext(ctx, q, d.ID, d.CollectionID, d.Source, d.MimeType, d.SizeBytes, d.Status, now)
+	row := r.data.Postgres().QueryRowContext(ctx, q, d.ID, d.CollectionID, d.Source, d.MimeType, d.SizeBytes, d.Status, d.ContentText, d.Organized, d.AssetURI, now)
 	return scanDocument(row)
 }
 
 func (r *knowledgeRepo) GetDocument(ctx context.Context, id string) (biz.KnowledgeDocument, error) {
 	q := `SELECT id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
+		         content_text, organized, asset_uri,
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_documents WHERE id = $1`
@@ -215,6 +221,7 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 		return nil, 0, err
 	}
 	q := `SELECT id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
+		         organized, asset_uri,
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_documents WHERE collection_id = $1 OR $1 = ''
@@ -226,7 +233,7 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 	defer rows.Close()
 	var out []biz.KnowledgeDocument
 	for rows.Next() {
-		d, err := scanDocument(rows)
+		d, err := scanDocumentSummary(rows)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -514,6 +521,16 @@ func scanCollection(row scannable) (biz.KnowledgeCollection, error) {
 func scanDocument(row scannable) (biz.KnowledgeDocument, error) {
 	var d biz.KnowledgeDocument
 	err := row.Scan(&d.ID, &d.CollectionID, &d.Source, &d.MimeType, &d.SizeBytes,
-		&d.ChunkCount, &d.Status, &d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt)
+		&d.ChunkCount, &d.Status, &d.ErrorMessage, &d.ContentText, &d.Organized, &d.AssetURI,
+		&d.CreatedAt, &d.UpdatedAt)
+	return d, err
+}
+
+// scanDocumentSummary 用于列表查询：不取 content_text 大字段（避免列表带宽放大）。
+func scanDocumentSummary(row scannable) (biz.KnowledgeDocument, error) {
+	var d biz.KnowledgeDocument
+	err := row.Scan(&d.ID, &d.CollectionID, &d.Source, &d.MimeType, &d.SizeBytes,
+		&d.ChunkCount, &d.Status, &d.ErrorMessage, &d.Organized, &d.AssetURI,
+		&d.CreatedAt, &d.UpdatedAt)
 	return d, err
 }

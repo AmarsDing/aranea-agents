@@ -153,7 +153,6 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 			MemoryService:         d.td.Persist.Memory.TRPC,
 			MemoryAdmin:           d.td.Persist.Memory.Admin,
 			MemoryActionLogWriter: d.td.Persist.Memory.ActionLogWriter,
-			ContextCompressor:     d.td.Persist.Memory.ContextCompressor,
 			ManualCompressor:      biz.ManualCompressorFromNative(d.td.Compress),
 			MemoryL2Recall:        d.td.Persist.Memory.L2Recall,
 			MemoryL3Recall:        d.td.Persist.Memory.L3Recall,

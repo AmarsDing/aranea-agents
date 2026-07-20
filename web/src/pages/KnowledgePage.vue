@@ -68,12 +68,19 @@
           </div>
           <q-tab-panels v-model="tab" animated class="app-pane-card__body">
             <q-tab-panel name="documents" class="q-pa-md">
+              <knowledge-drop-zone @files-selected="enqueueUploadFiles" />
+              <knowledge-upload-queue
+                :tasks="uploadTasks"
+                @clear-finished="clearFinishedUploadTasks"
+                @remove-task="removeUploadTask"
+              />
               <knowledge-documents-panel
                 :documents="documents"
                 :loading="docsLoading"
                 @open-ingest="ingestOpen = true"
                 @refresh="loadDocuments"
                 @delete-document="confirmDeleteDocument"
+                @preview-document="openDocPreview"
               />
             </q-tab-panel>
             <q-tab-panel name="search" class="q-pa-md">
@@ -122,6 +129,13 @@
       @update:file="onIngestFile"
       @submit="submitIngest"
     />
+    <knowledge-doc-preview-dialog
+      v-model:open="previewOpen"
+      :source="previewDoc?.source ?? ''"
+      :organized="previewOrganized"
+      :content="previewContent"
+      :loading="previewLoading"
+    />
   </q-page>
 </template>
 
@@ -134,6 +148,9 @@ import KnowledgeDocumentsPanel from '../components/knowledge/KnowledgeDocumentsP
 import KnowledgeSearchPanel from '../components/knowledge/KnowledgeSearchPanel.vue';
 import KnowledgeCreateDialog from '../components/knowledge/KnowledgeCreateDialog.vue';
 import KnowledgeIngestDialog from '../components/knowledge/KnowledgeIngestDialog.vue';
+import KnowledgeDropZone from '../components/knowledge/KnowledgeDropZone.vue';
+import KnowledgeUploadQueue from '../components/knowledge/KnowledgeUploadQueue.vue';
+import KnowledgeDocPreviewDialog from '../components/knowledge/KnowledgeDocPreviewDialog.vue';
 import { useKnowledgePage } from '../features/knowledge/useKnowledgePage';
 import { formatKnowledgeTime } from '../features/knowledge/knowledgeUi';
 
@@ -177,6 +194,16 @@ const {
   onIngestFile,
   submitIngest,
   confirmDeleteDocument,
+  previewOpen,
+  previewLoading,
+  previewDoc,
+  previewContent,
+  previewOrganized,
+  openDocPreview,
+  uploadTasks,
+  enqueueUploadFiles,
+  removeUploadTask,
+  clearFinishedUploadTasks,
   runSearch,
 } = useKnowledgePage();
 

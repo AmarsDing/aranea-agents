@@ -75,8 +75,7 @@
       <div class="thinking-block__collapse-wrapper">
         <div class="thinking-block__collapse-inner">
           <div class="thinking-block__body" :class="{ 'thinking-block__body--streaming': streaming }">
-            <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
-            <div class="thinking-block__content chat-message-prose" v-html="renderedHtml" />
+            <div v-segmented-markdown="parts" class="thinking-block__content chat-message-prose" />
             <span v-if="streaming" class="thinking-block__cursor" aria-hidden="true" />
           </div>
         </div>
@@ -89,7 +88,8 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Step } from '../../features/chat/v2Types';
-import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
+import { renderChatMarkdownParts } from '../../features/chat/chatMessageMarkdown';
+import { vSegmentedMarkdown } from '../../features/chat/vSegmentedMarkdown';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import { useCollapseState } from '../../features/chat/composables/useCollapseState';
 
@@ -204,8 +204,8 @@ const formattedDuration = computed(() => (durationMs.value != null ? formatDurat
 
 // --- Rendering ---
 
-const renderedHtml = computed(() => {
-  return renderChatMarkdownForMessage(messageId.value, reasoning.value, Boolean(streaming.value));
+const parts = computed(() => {
+  return renderChatMarkdownParts(messageId.value, reasoning.value, Boolean(streaming.value));
 });
 
 // --- Native scroll management ---

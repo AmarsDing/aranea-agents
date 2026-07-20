@@ -234,6 +234,28 @@ func TestCachingCompressor_InnerError(t *testing.T) {
 	}
 }
 
+func TestCachingCompressor_CacheDisabled_BypassesReadAndWrite(t *testing.T) {
+	mock := &mockCompressor{result: Result{Markdown: "summary"}}
+	cache := NewCompressCache(256, 10*time.Minute, loggateway.NewNoop())
+	cc := NewCachingCompressor(mock, cache, loggateway.NewNoop())
+
+	ctx := ContextWithCacheDisabled(ContextWithSessionID(context.Background(), "sess-1"))
+	req := Request{Transcript: "hello", Provider: "openai", Model: "gpt-4o-mini"}
+
+	if _, err := cc.Compress(ctx, req); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cc.Compress(ctx, req); err != nil {
+		t.Fatal(err)
+	}
+	if mock.calls != 2 {
+		t.Fatalf("禁用缓存时每次都应调用 inner: calls = %d, want 2", mock.calls)
+	}
+	if cache.Len() != 0 {
+		t.Fatalf("禁用缓存时不应写入缓存: len = %d, want 0", cache.Len())
+	}
+}
+
 func TestNewCompressCache_Defaults(t *testing.T) {
 	c := NewCompressCache(0, 0, nil)
 	if c.cap != compressCacheDefaultCap {

@@ -30,6 +30,14 @@ export type KnowledgeDocument = {
   createdAt: string | undefined;
   updatedAt: string | undefined;
   extractSupported: boolean | undefined;
+  organized: boolean | undefined;
+};
+
+// DocumentContent is the full extracted/organized text of one document (preview).
+export type DocumentContent = {
+  id: string | undefined;
+  contentText: string | undefined;
+  organized: boolean | undefined;
 };
 
 // KnowledgeChunk is one indexed text chunk with its embedding vector.
@@ -95,6 +103,15 @@ export type IngestDocumentRequest = {
   chunkOverlap: number | undefined;
   // chunk_strategy: char | token | markdown | json | recursive (empty = char).
   chunkStrategy: string | undefined;
+  // organize_to_markdown: unset/true = organize extracted text into Markdown via LLM
+  // (falls back to raw text when LLM unavailable); false = ingest raw text as-is.
+  organizeToMarkdown?: boolean;
+};
+
+export type GetDocumentContentRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
 };
 
 export type ListDocumentsRequest = {
@@ -136,7 +153,8 @@ export type SearchResponse = {
   chunks: KnowledgeChunk[] | undefined;
 };
 
-export type GetEmbedderConfigRequest = {};
+export type GetEmbedderConfigRequest = {
+};
 
 export type EmbedderConfig = {
   provider: string | undefined;
@@ -168,6 +186,7 @@ export interface KnowledgeService {
   // Documents
   IngestDocument(request: IngestDocumentRequest): Promise<KnowledgeDocument>;
   ListDocuments(request: ListDocumentsRequest): Promise<ListDocumentsResponse>;
+  GetDocumentContent(request: GetDocumentContentRequest): Promise<DocumentContent>;
   DeleteDocument(request: DeleteDocumentRequest): Promise<wellKnownEmpty>;
   // Search
   Search(request: SearchRequest): Promise<SearchResponse>;
@@ -181,247 +200,230 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createKnowledgeServiceClient(handler: RequestHandler): KnowledgeService {
+export function createKnowledgeServiceClient(
+  handler: RequestHandler
+): KnowledgeService {
   return {
-    CreateCollection(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateCollection(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/collections`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'KnowledgeService',
-          method: 'CreateCollection',
-        },
-      ) as Promise<KnowledgeCollection>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "CreateCollection",
+      }) as Promise<KnowledgeCollection>;
     },
-    GetCollection(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetCollection(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/knowledge/collections/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'KnowledgeService',
-          method: 'GetCollection',
-        },
-      ) as Promise<KnowledgeCollection>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "GetCollection",
+      }) as Promise<KnowledgeCollection>;
     },
-    ListCollections(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListCollections(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/collections`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'KnowledgeService',
-          method: 'ListCollections',
-        },
-      ) as Promise<ListCollectionsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ListCollections",
+      }) as Promise<ListCollectionsResponse>;
     },
-    DeleteCollection(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteCollection(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/knowledge/collections/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'KnowledgeService',
-          method: 'DeleteCollection',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "DeleteCollection",
+      }) as Promise<wellKnownEmpty>;
     },
-    IngestDocument(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    IngestDocument(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/documents`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'KnowledgeService',
-          method: 'IngestDocument',
-        },
-      ) as Promise<KnowledgeDocument>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "IngestDocument",
+      }) as Promise<KnowledgeDocument>;
     },
-    ListDocuments(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListDocuments(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/documents`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.collectionId) {
-        queryParams.push(`collectionId=${encodeURIComponent(request.collectionId.toString())}`);
+        queryParams.push(`collectionId=${encodeURIComponent(request.collectionId.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'KnowledgeService',
-          method: 'ListDocuments',
-        },
-      ) as Promise<ListDocumentsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ListDocuments",
+      }) as Promise<ListDocumentsResponse>;
     },
-    DeleteDocument(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetDocumentContent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/knowledge/documents/${request.id}/content`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "GetDocumentContent",
+      }) as Promise<DocumentContent>;
+    },
+    DeleteDocument(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
       }
       const path = `v1/knowledge/documents/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'KnowledgeService',
-          method: 'DeleteDocument',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "DeleteDocument",
+      }) as Promise<wellKnownEmpty>;
     },
-    Search(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    Search(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/search`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'KnowledgeService',
-          method: 'Search',
-        },
-      ) as Promise<SearchResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "Search",
+      }) as Promise<SearchResponse>;
     },
-    GetEmbedderConfig(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetEmbedderConfig(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/embedder-config`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'KnowledgeService',
-          method: 'GetEmbedderConfig',
-        },
-      ) as Promise<EmbedderConfig>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "GetEmbedderConfig",
+      }) as Promise<EmbedderConfig>;
     },
-    UpdateEmbedderConfig(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateEmbedderConfig(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/embedder-config`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PUT',
-          body,
-        },
-        {
-          service: 'KnowledgeService',
-          method: 'UpdateEmbedderConfig',
-        },
-      ) as Promise<UpdateEmbedderConfigResponse>;
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "UpdateEmbedderConfig",
+      }) as Promise<UpdateEmbedderConfigResponse>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
+
 
 // @@protoc_insertion_point(typescript-http-eof)

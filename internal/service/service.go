@@ -91,6 +91,7 @@ var ProviderSet = wire.NewSet(
 	NewKnowledgeRetriever,
 	NewKnowledgeHybridRetriever,
 	NewKnowledgeQueryRewriter,
+	NewKnowledgeMarkdownOrganizer,
 	NewKnowledgeAdaptiveRouter,
 	NewKnowledgeRetrievalEvaluator,
 	NewKnowledgeFederatedRetriever,

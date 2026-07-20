@@ -281,8 +281,6 @@ type AgentRuntimeSettings struct {
 	ModelInstructionsJSON string
 	// ContextCompactionEnabled enables automatic context compaction when tokens approach the limit.
 	ContextCompactionEnabled bool
-	// MicroCompactEnabled enables MicroCompact (zero-API tool result clearing) as the first compression tier.
-	MicroCompactEnabled bool
 	// MemoryCompactEnabled enables MemoryCompact (reuse extracted memory facts) as the second compression tier.
 	MemoryCompactEnabled       bool
 	ToolResultGateEnabled      bool
@@ -542,7 +540,6 @@ func (s *AgentRuntimeSettings) GetEvolution() EvolutionCfg {
 func (s *AgentRuntimeSettings) GetContext() ContextCfg {
 	return ContextCfg{
 		CompactionEnabled:          s.ContextCompactionEnabled,
-		MicroCompactEnabled:        s.MicroCompactEnabled,
 		MemoryCompactEnabled:       s.MemoryCompactEnabled,
 		ToolResultGateEnabled:      s.ToolResultGateEnabled,
 		CompressLLMCacheEnabled:    s.CompressLLMCacheEnabled,

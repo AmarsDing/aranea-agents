@@ -501,501 +501,419 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createChatServiceClient(handler: RequestHandler): ChatService {
+export function createChatServiceClient(
+  handler: RequestHandler
+): ChatService {
   return {
-    SendChatMessage(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    SendChatMessage(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/chat/messages`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'SendChatMessage',
-        },
-      ) as Promise<SendChatMessageResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "SendChatMessage",
+      }) as Promise<SendChatMessageResponse>;
     },
-    SubmitChatMessage(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    SubmitChatMessage(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/chat/messages/submit`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'SubmitChatMessage',
-        },
-      ) as Promise<SubmitChatMessageResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "SubmitChatMessage",
+      }) as Promise<SubmitChatMessageResponse>;
     },
-    GetChatOptions(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetChatOptions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/chat/options`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.type) {
-        queryParams.push(`type=${encodeURIComponent(request.type.toString())}`);
+        queryParams.push(`type=${encodeURIComponent(request.type.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'GetChatOptions',
-        },
-      ) as Promise<GetChatOptionsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ChatService",
+        method: "GetChatOptions",
+      }) as Promise<GetChatOptionsResponse>;
     },
-    StopGeneration(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    StopGeneration(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/chat/stop`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'StopGeneration',
-        },
-      ) as Promise<StopGenerationResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "StopGeneration",
+      }) as Promise<StopGenerationResponse>;
     },
-    RetrySession(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    RetrySession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.sessionId) {
-        throw new Error('missing required field request.session_id');
+        throw new Error("missing required field request.session_id");
       }
       const path = `v1/chat/sessions/${request.sessionId}/retry`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'RetrySession',
-        },
-      ) as Promise<RetrySessionResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "RetrySession",
+      }) as Promise<RetrySessionResponse>;
     },
-    PauseSession(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    PauseSession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.sessionId) {
-        throw new Error('missing required field request.session_id');
+        throw new Error("missing required field request.session_id");
       }
       const path = `v1/chat/sessions/${request.sessionId}/pause`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'PauseSession',
-        },
-      ) as Promise<PauseSessionResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "PauseSession",
+      }) as Promise<PauseSessionResponse>;
     },
-    ResumeSession(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ResumeSession(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.sessionId) {
-        throw new Error('missing required field request.session_id');
+        throw new Error("missing required field request.session_id");
       }
       const path = `v1/chat/sessions/${request.sessionId}/resume`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'ResumeSession',
-        },
-      ) as Promise<ResumeSessionResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "ResumeSession",
+      }) as Promise<ResumeSessionResponse>;
     },
-    GetPendingMessages(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetPendingMessages(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/chat/pending`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.sessionId) {
-        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`);
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'GetPendingMessages',
-        },
-      ) as Promise<GetPendingMessagesResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ChatService",
+        method: "GetPendingMessages",
+      }) as Promise<GetPendingMessagesResponse>;
     },
-    CancelPendingMessage(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CancelPendingMessage(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/chat/pending/cancel`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'CancelPendingMessage',
-        },
-      ) as Promise<CancelPendingMessageResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "CancelPendingMessage",
+      }) as Promise<CancelPendingMessageResponse>;
     },
-    UpdatePendingMessage(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdatePendingMessage(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/chat/pending/update`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'UpdatePendingMessage',
-        },
-      ) as Promise<UpdatePendingMessageResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "UpdatePendingMessage",
+      }) as Promise<UpdatePendingMessageResponse>;
     },
-    InterruptAndSendMessage(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    InterruptAndSendMessage(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/chat/pending/interrupt-and-send`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'InterruptAndSendMessage',
-        },
-      ) as Promise<InterruptAndSendMessageResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "InterruptAndSendMessage",
+      }) as Promise<InterruptAndSendMessageResponse>;
     },
-    GetRunStatus(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetRunStatus(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/chat/run-status`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.sessionId) {
-        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`);
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'GetRunStatus',
-        },
-      ) as Promise<RunStatus>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ChatService",
+        method: "GetRunStatus",
+      }) as Promise<RunStatus>;
     },
-    AwaitUserReply(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    AwaitUserReply(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/chat/await-reply`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'AwaitUserReply',
-        },
-      ) as Promise<AwaitUserReplyResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "AwaitUserReply",
+      }) as Promise<AwaitUserReplyResponse>;
     },
-    EnqueueUserMessage(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    EnqueueUserMessage(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/chat/enqueue`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'EnqueueUserMessage',
-        },
-      ) as Promise<EnqueueUserMessageResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "EnqueueUserMessage",
+      }) as Promise<EnqueueUserMessageResponse>;
     },
-    ListChatBackgroundJobs(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListChatBackgroundJobs(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/chat/jobs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.sessionId) {
-        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`);
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'ListChatBackgroundJobs',
-        },
-      ) as Promise<ListChatBackgroundJobsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ChatService",
+        method: "ListChatBackgroundJobs",
+      }) as Promise<ListChatBackgroundJobsResponse>;
     },
-    CancelChatBackgroundJob(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CancelChatBackgroundJob(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/chat/jobs/${request.id}/cancel`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'CancelChatBackgroundJob',
-        },
-      ) as Promise<CancelChatBackgroundJobResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "CancelChatBackgroundJob",
+      }) as Promise<CancelChatBackgroundJobResponse>;
     },
-    SubmitMessageFeedback(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    SubmitMessageFeedback(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.messageId) {
-        throw new Error('missing required field request.message_id');
+        throw new Error("missing required field request.message_id");
       }
       const path = `v1/chat/messages/${request.messageId}/feedback`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'SubmitMessageFeedback',
-        },
-      ) as Promise<SubmitMessageFeedbackResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "SubmitMessageFeedback",
+      }) as Promise<SubmitMessageFeedbackResponse>;
     },
-    ConfirmActivity(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ConfirmActivity(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.activityId) {
-        throw new Error('missing required field request.activity_id');
+        throw new Error("missing required field request.activity_id");
       }
       const path = `v1/chat/activities/${request.activityId}/confirm`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'ConfirmActivity',
-        },
-      ) as Promise<ConfirmActivityResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "ConfirmActivity",
+      }) as Promise<ConfirmActivityResponse>;
     },
-    ConfirmPlan(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ConfirmPlan(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.planId) {
-        throw new Error('missing required field request.plan_id');
+        throw new Error("missing required field request.plan_id");
       }
       const path = `v1/chat/plans/${request.planId}/confirm`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'ConfirmPlan',
-        },
-      ) as Promise<ConfirmPlanResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "ConfirmPlan",
+      }) as Promise<ConfirmPlanResponse>;
     },
-    ListPlans(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListPlans(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/chat/plans`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.sessionId) {
-        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`);
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'ListPlans',
-        },
-      ) as Promise<ListPlansResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ChatService",
+        method: "ListPlans",
+      }) as Promise<ListPlansResponse>;
     },
-    GetPlan(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetPlan(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.planId) {
-        throw new Error('missing required field request.plan_id');
+        throw new Error("missing required field request.plan_id");
       }
       const path = `v1/chat/plans/${request.planId}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.sessionId) {
-        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`);
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ChatService',
-          method: 'GetPlan',
-        },
-      ) as Promise<GetPlanResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ChatService",
+        method: "GetPlan",
+      }) as Promise<GetPlanResponse>;
     },
   };
 }

@@ -146,9 +146,7 @@ export interface LlmProviderModelService {
   GetProviderModel(request: GetProviderModelRequest): Promise<ProviderModel>;
   // RevealProviderModelCredentials returns decrypted API secrets for admin console edit UI only.
   // Requires the same authentication as other admin APIs; access is audit-logged (no secret values in logs).
-  RevealProviderModelCredentials(
-    request: RevealProviderModelCredentialsRequest,
-  ): Promise<RevealProviderModelCredentialsResponse>;
+  RevealProviderModelCredentials(request: RevealProviderModelCredentialsRequest): Promise<RevealProviderModelCredentialsResponse>;
   UpdateProviderModel(request: UpdateProviderModelRequest): Promise<ProviderModel>;
   DeleteProviderModel(request: DeleteProviderModelRequest): Promise<wellKnownEmpty>;
   InspectProviderModel(request: InspectProviderModelRequest): Promise<InspectProviderModelResponse>;
@@ -161,193 +159,164 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createLlmProviderModelServiceClient(handler: RequestHandler): LlmProviderModelService {
+export function createLlmProviderModelServiceClient(
+  handler: RequestHandler
+): LlmProviderModelService {
   return {
-    ListProviderModels(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListProviderModels(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/llm-provider-models`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'LlmProviderModelService',
-          method: 'ListProviderModels',
-        },
-      ) as Promise<ListProviderModelsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "LlmProviderModelService",
+        method: "ListProviderModels",
+      }) as Promise<ListProviderModelsResponse>;
     },
-    CreateProviderModel(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateProviderModel(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/llm-provider-models`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'LlmProviderModelService',
-          method: 'CreateProviderModel',
-        },
-      ) as Promise<ProviderModel>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "LlmProviderModelService",
+        method: "CreateProviderModel",
+      }) as Promise<ProviderModel>;
     },
-    GetProviderModel(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetProviderModel(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/llm-provider-models/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'LlmProviderModelService',
-          method: 'GetProviderModel',
-        },
-      ) as Promise<ProviderModel>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "LlmProviderModelService",
+        method: "GetProviderModel",
+      }) as Promise<ProviderModel>;
     },
-    RevealProviderModelCredentials(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    RevealProviderModelCredentials(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/llm-provider-models/${request.id}/credentials`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'LlmProviderModelService',
-          method: 'RevealProviderModelCredentials',
-        },
-      ) as Promise<RevealProviderModelCredentialsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "LlmProviderModelService",
+        method: "RevealProviderModelCredentials",
+      }) as Promise<RevealProviderModelCredentialsResponse>;
     },
-    UpdateProviderModel(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateProviderModel(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/llm-provider-models/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request?.providerModel ?? {});
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PATCH',
-          body,
-        },
-        {
-          service: 'LlmProviderModelService',
-          method: 'UpdateProviderModel',
-        },
-      ) as Promise<ProviderModel>;
+      return handler({
+        path: uri,
+        method: "PATCH",
+        body,
+      }, {
+        service: "LlmProviderModelService",
+        method: "UpdateProviderModel",
+      }) as Promise<ProviderModel>;
     },
-    DeleteProviderModel(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteProviderModel(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/llm-provider-models/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'LlmProviderModelService',
-          method: 'DeleteProviderModel',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "LlmProviderModelService",
+        method: "DeleteProviderModel",
+      }) as Promise<wellKnownEmpty>;
     },
-    InspectProviderModel(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    InspectProviderModel(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/llm-provider-models/inspect`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'LlmProviderModelService',
-          method: 'InspectProviderModel',
-        },
-      ) as Promise<InspectProviderModelResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "LlmProviderModelService",
+        method: "InspectProviderModel",
+      }) as Promise<InspectProviderModelResponse>;
     },
-    ValidateProviderPair(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ValidateProviderPair(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/agents/validate-model`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'LlmProviderModelService',
-          method: 'ValidateProviderPair',
-        },
-      ) as Promise<ValidateProviderPairResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "LlmProviderModelService",
+        method: "ValidateProviderPair",
+      }) as Promise<ValidateProviderPairResponse>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
+
 
 // @@protoc_insertion_point(typescript-http-eof)

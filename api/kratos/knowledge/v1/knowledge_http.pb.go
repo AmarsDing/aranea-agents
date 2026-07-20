@@ -24,6 +24,7 @@ const OperationKnowledgeServiceCreateCollection = "/kratos.knowledge.v1.Knowledg
 const OperationKnowledgeServiceDeleteCollection = "/kratos.knowledge.v1.KnowledgeService/DeleteCollection"
 const OperationKnowledgeServiceDeleteDocument = "/kratos.knowledge.v1.KnowledgeService/DeleteDocument"
 const OperationKnowledgeServiceGetCollection = "/kratos.knowledge.v1.KnowledgeService/GetCollection"
+const OperationKnowledgeServiceGetDocumentContent = "/kratos.knowledge.v1.KnowledgeService/GetDocumentContent"
 const OperationKnowledgeServiceGetEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
 const OperationKnowledgeServiceIngestDocument = "/kratos.knowledge.v1.KnowledgeService/IngestDocument"
 const OperationKnowledgeServiceListCollections = "/kratos.knowledge.v1.KnowledgeService/ListCollections"
@@ -37,6 +38,7 @@ type KnowledgeServiceHTTPServer interface {
 	DeleteCollection(context.Context, *DeleteCollectionRequest) (*emptypb.Empty, error)
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error)
 	GetCollection(context.Context, *GetCollectionRequest) (*KnowledgeCollection, error)
+	GetDocumentContent(context.Context, *GetDocumentContentRequest) (*DocumentContent, error)
 	GetEmbedderConfig(context.Context, *GetEmbedderConfigRequest) (*EmbedderConfig, error)
 	// IngestDocument Documents
 	IngestDocument(context.Context, *IngestDocumentRequest) (*KnowledgeDocument, error)
@@ -55,6 +57,7 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.DELETE("/v1/knowledge/collections/{id}", _KnowledgeService_DeleteCollection0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/documents", _KnowledgeService_IngestDocument0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/documents", _KnowledgeService_ListDocuments0_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/documents/{id}/content", _KnowledgeService_GetDocumentContent0_HTTP_Handler(srv))
 	r.DELETE("/v1/knowledge/documents/{id}", _KnowledgeService_DeleteDocument0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/search", _KnowledgeService_Search0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/embedder-config", _KnowledgeService_GetEmbedderConfig0_HTTP_Handler(srv))
@@ -187,6 +190,28 @@ func _KnowledgeService_ListDocuments0_HTTP_Handler(srv KnowledgeServiceHTTPServe
 	}
 }
 
+func _KnowledgeService_GetDocumentContent0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetDocumentContentRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceGetDocumentContent)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetDocumentContent(ctx, req.(*GetDocumentContentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DocumentContent)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _KnowledgeService_DeleteDocument0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in DeleteDocumentRequest
@@ -278,6 +303,7 @@ type KnowledgeServiceHTTPClient interface {
 	DeleteCollection(ctx context.Context, req *DeleteCollectionRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteDocument(ctx context.Context, req *DeleteDocumentRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	GetCollection(ctx context.Context, req *GetCollectionRequest, opts ...http.CallOption) (rsp *KnowledgeCollection, err error)
+	GetDocumentContent(ctx context.Context, req *GetDocumentContentRequest, opts ...http.CallOption) (rsp *DocumentContent, err error)
 	GetEmbedderConfig(ctx context.Context, req *GetEmbedderConfigRequest, opts ...http.CallOption) (rsp *EmbedderConfig, err error)
 	// IngestDocument Documents
 	IngestDocument(ctx context.Context, req *IngestDocumentRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
@@ -341,6 +367,19 @@ func (c *KnowledgeServiceHTTPClientImpl) GetCollection(ctx context.Context, in *
 	pattern := "/v1/knowledge/collections/{id}"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceGetCollection))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *KnowledgeServiceHTTPClientImpl) GetDocumentContent(ctx context.Context, in *GetDocumentContentRequest, opts ...http.CallOption) (*DocumentContent, error) {
+	var out DocumentContent
+	pattern := "/v1/knowledge/documents/{id}/content"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceGetDocumentContent))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

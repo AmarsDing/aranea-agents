@@ -113,7 +113,10 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		}))
 		entries = append(entries, newToolResultCacheAfterHook(deps))
 		// Side-effect feedback: remind the LLM (via tool results) when files
-		// were modified without a subsequent test run.
+		// were modified without a subsequent test run. The BeforeAgent hook
+		// pre-creates a per-invocation ToolReminder so concurrent sessions
+		// sharing a cached Agent never share reminder state.
+		entries = append(entries, newToolReminderBeforeAgentHook())
 		entries = append(entries, newToolReminderAfterHook())
 		if ag.Settings.ToolsCircuitBreakerEnabled {
 			cbRegistry = buildCircuitBreakerRegistry(ag.Settings, lg)

@@ -1,116 +1,112 @@
 package knowledge
 
 import (
-	"bytes"
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
-	"unicode/utf8"
 
-	"aranea-agents/pkg/apierror"
-	trpcdoc "trpc.group/trpc-go/trpc-agent-go/knowledge/document"
+	"golang.org/x/net/html"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader"
 )
 
-// ExtractDocumentText decodes uploaded bytes into plain text for chunking.
-// Binary formats (PDF, DOCX, …) use trpc-agent-go document readers.
-// Image uploads use OCR when KNOWLEDGE_OCR is configured.
-func ExtractDocumentText(raw []byte, source, mimeType string) (string, error) {
-	return ExtractDocumentTextWithOCR(context.Background(), nil, raw, source, mimeType)
+// supportedExtractExts 是服务层/前端用于提示“可提取文本”的扩展名集合（小写、含点）。
+// 图片不在此集合内（Phase 9 由 VisionExtractor 接管，见 extractor.go）。
+var supportedExtractExts = map[string]struct{}{
+	".txt": {}, ".md": {}, ".markdown": {}, ".text": {}, ".log": {},
+	".json": {}, ".csv": {}, ".tsv": {}, ".yaml": {}, ".yml": {}, ".xml": {},
+	".html": {}, ".htm": {},
+	".pdf": {}, ".doc": {}, ".docx": {}, ".xlsx": {}, ".pptx": {},
 }
 
-// ExtractDocumentTextWithOCR allows injecting an OCR provider (tests / Wire).
-func ExtractDocumentTextWithOCR(ctx context.Context, ocr OCRProvider, raw []byte, source, mimeType string) (string, error) {
-	if len(raw) == 0 {
-		return "", apierror.BadRequest(apierror.DomainKnowledge, "document content is empty")
+// ExtractSupported 报告该来源扩展名是否可提取文本（用于前端提示）。
+func ExtractSupported(source string) bool {
+	_, ok := supportedExtractExts[strings.ToLower(filepath.Ext(source))]
+	return ok
+}
+
+// ExtractDocumentText 提取文本内容（兼容保留的包级入口，内部委托 TextExtractor）。
+// 新代码应使用 ExtractorRegistry 路由（见 extractor.go）。
+func ExtractDocumentText(raw []byte, source, mimeType string) (string, error) {
+	return TextExtractor{}.Extract(context.Background(), raw, source, mimeType)
+}
+
+// ExtractVisibleText 从 HTML 提取可见文本：剥离 script/style/noscript 与标签，
+// 折叠空白。解析失败时退化为去除标签的纯文本（尽力而为，不误拒上传）。
+func ExtractVisibleText(raw string) string {
+	node, err := html.Parse(strings.NewReader(raw))
+	if err != nil {
+		return stripTagsFallback(raw)
 	}
-	if ocr == nil {
-		ocr = NewOCRProviderFromEnv()
-	}
-	ext := resolveDocumentExtension(source, mimeType)
-	if isImageMime(mimeType) || ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" {
-		text, err := tryOCR(ctx, ocr, raw, mimeType, source)
-		if err != nil {
-			return "", apierror.BadRequest(apierror.DomainKnowledge,
-				"image document requires OCR but extraction failed: %s", err.Error()).WithCause(err)
+	var b strings.Builder
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode {
+			switch n.Data {
+			case "script", "style", "noscript", "template":
+				return
+			}
 		}
-		return text, nil
+		if n.Type == html.TextNode {
+			if t := strings.TrimSpace(n.Data); t != "" {
+				b.WriteString(t)
+				b.WriteByte(' ')
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
 	}
-	if ext == ".html" || ext == ".htm" {
-		return stripHTML(string(raw)), nil
+	walk(node)
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// stripTagsFallback 在 HTML 解析失败时退化处理：去除 <...> 标签与 script/style 块。
+func stripTagsFallback(raw string) string {
+	var b strings.Builder
+	inTag := false
+	for _, r := range raw {
+		switch r {
+		case '<':
+			inTag = true
+		case '>':
+			inTag = false
+		default:
+			if !inTag {
+				b.WriteRune(r)
+			}
+		}
 	}
-	if isPlainTextExtension(ext) && utf8.Valid(raw) {
-		return string(raw), nil
-	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// extractOfficeText 使用 trpc document/reader 解析 PDF/DOCX 等二进制文档。
+func extractOfficeText(ctx context.Context, raw []byte, source, mimeType string) (string, error) {
+	ext := strings.ToLower(filepath.Ext(source))
 	r, ok := reader.GetReader(ext, reader.WithChunk(false))
 	if !ok {
-		if utf8.Valid(raw) {
-			return string(raw), nil
-		}
-		return "", apierror.BadRequest(apierror.DomainKnowledge, "unsupported document type %q (mime=%q)", ext, mimeType)
+		return "", fmt.Errorf("no document reader for %q (%s)", source, mimeType)
 	}
-	name := strings.TrimSpace(source)
-	if name == "" {
-		name = "upload" + ext
+	name := filepath.Base(source)
+	if name == "" || name == "." {
+		name = "document"
 	}
-	docs, err := r.ReadFromReader(name, bytes.NewReader(raw))
+	docs, err := r.ReadFromReader(name, strings.NewReader(string(raw)))
 	if err != nil {
-		return "", apierror.Internal(apierror.DomainKnowledge, "read document failed").WithCause(err)
-	}
-	return joinDocumentTexts(docs), nil
-}
-
-func resolveDocumentExtension(source, mimeType string) string {
-	ext := strings.ToLower(filepath.Ext(strings.TrimSpace(source)))
-	if ext != "" {
-		return ext
-	}
-	switch strings.ToLower(strings.TrimSpace(mimeType)) {
-	case "application/pdf":
-		return ".pdf"
-	case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-		return ".docx"
-	case "application/msword":
-		return ".doc"
-	case "text/html":
-		return ".html"
-	case "text/markdown":
-		return ".md"
-	case "application/json":
-		return ".json"
-	case "text/plain":
-		return ".txt"
-	default:
-		return ".txt"
-	}
-}
-
-func isPlainTextExtension(ext string) bool {
-	switch ext {
-	case ".txt", ".text", ".md", ".markdown", ".json", ".csv", ".html", ".htm":
-		return true
-	default:
-		return false
-	}
-}
-
-func joinDocumentTexts(docs []*trpcdoc.Document) string {
-	if len(docs) == 0 {
-		return ""
+		return "", fmt.Errorf("read document %q: %w", source, err)
 	}
 	var b strings.Builder
 	for _, d := range docs {
 		if d == nil {
 			continue
 		}
-		text := strings.TrimSpace(d.Content)
-		if text == "" {
-			continue
-		}
-		if b.Len() > 0 {
-			b.WriteString("\n\n")
-		}
-		b.WriteString(text)
+		b.WriteString(d.Content)
+		b.WriteByte('\n')
 	}
-	return b.String()
+	text := strings.TrimSpace(b.String())
+	if text == "" {
+		return "", fmt.Errorf("empty content extracted from %q", source)
+	}
+	_ = ctx // reader 接口暂无 ctx；保留参数便于后续切换
+	return text, nil
 }

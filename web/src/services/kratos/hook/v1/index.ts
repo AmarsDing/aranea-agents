@@ -104,166 +104,145 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createHookServiceClient(handler: RequestHandler): HookService {
+export function createHookServiceClient(
+  handler: RequestHandler
+): HookService {
   return {
-    ListHooks(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListHooks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/hooks`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'HookService',
-          method: 'ListHooks',
-        },
-      ) as Promise<ListHooksResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "HookService",
+        method: "ListHooks",
+      }) as Promise<ListHooksResponse>;
     },
-    CreateHook(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateHook(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/hooks`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'HookService',
-          method: 'CreateHook',
-        },
-      ) as Promise<Hook>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "HookService",
+        method: "CreateHook",
+      }) as Promise<Hook>;
     },
-    ListHookDeliveries(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListHookDeliveries(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/hooks/deliveries`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.hookKey) {
-        queryParams.push(`hookKey=${encodeURIComponent(request.hookKey.toString())}`);
+        queryParams.push(`hookKey=${encodeURIComponent(request.hookKey.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.from) {
-        queryParams.push(`from=${encodeURIComponent(request.from.toString())}`);
+        queryParams.push(`from=${encodeURIComponent(request.from.toString())}`)
       }
       if (request.to) {
-        queryParams.push(`to=${encodeURIComponent(request.to.toString())}`);
+        queryParams.push(`to=${encodeURIComponent(request.to.toString())}`)
       }
       if (request.page) {
-        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`);
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'HookService',
-          method: 'ListHookDeliveries',
-        },
-      ) as Promise<ListHookDeliveriesResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "HookService",
+        method: "ListHookDeliveries",
+      }) as Promise<ListHookDeliveriesResponse>;
     },
-    GetHook(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetHook(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/hooks/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'HookService',
-          method: 'GetHook',
-        },
-      ) as Promise<Hook>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "HookService",
+        method: "GetHook",
+      }) as Promise<Hook>;
     },
-    UpdateHook(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateHook(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/hooks/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request?.hook ?? {});
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PATCH',
-          body,
-        },
-        {
-          service: 'HookService',
-          method: 'UpdateHook',
-        },
-      ) as Promise<Hook>;
+      return handler({
+        path: uri,
+        method: "PATCH",
+        body,
+      }, {
+        service: "HookService",
+        method: "UpdateHook",
+      }) as Promise<Hook>;
     },
-    DeleteHook(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteHook(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/hooks/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'HookService',
-          method: 'DeleteHook',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "HookService",
+        method: "DeleteHook",
+      }) as Promise<wellKnownEmpty>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
+
 
 // @@protoc_insertion_point(typescript-http-eof)

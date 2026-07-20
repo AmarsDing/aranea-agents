@@ -119,7 +119,7 @@ func (r *QueryRewriter) rewriteDecomposition(ctx context.Context, query, provide
 
 	var subQueries []string
 	text = strings.TrimSpace(text)
-	text = stripCodeFenceJSON(text)
+	text = stripCodeFence(text)
 	if err := json.Unmarshal([]byte(text), &subQueries); err != nil || len(subQueries) == 0 {
 		r.lg.Warn("查询分解结果解析失败",
 			loggateway.StepID("knowledge.query_rewrite.decomposition.parse_fail"),
@@ -147,7 +147,7 @@ func (r *QueryRewriter) rewriteMultiQuery(ctx context.Context, query, provider, 
 
 	var variants []string
 	text = strings.TrimSpace(text)
-	text = stripCodeFenceJSON(text)
+	text = stripCodeFence(text)
 	if err := json.Unmarshal([]byte(text), &variants); err != nil || len(variants) == 0 {
 		r.lg.Warn("多查询改写结果解析失败",
 			loggateway.StepID("knowledge.query_rewrite.multi_query.parse_fail"),
@@ -173,7 +173,7 @@ func (r *QueryRewriter) resolveModel(ctx context.Context) (string, string, error
 	return ResolveLLM(ctx, sys, cat, "query rewriting", r.lg)
 }
 
-func stripCodeFenceJSON(s string) string {
+func stripCodeFence(s string) string {
 	s = strings.TrimSpace(s)
 	if !strings.HasPrefix(s, "```") {
 		return s

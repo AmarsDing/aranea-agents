@@ -1,6 +1,6 @@
 # Knowledge 知识库 — 开发计划
 
-> **版本**：2026-06-17 | **状态**：✅ Phase 1-7 已完成，OCR stub/AgenticFilter/多租户待补
+> **版本**：2026-07-20 | **状态**：✅ Phase 1-7 已完成；📋 Phase 8（统一摄取管线-文本类）/ Phase 9（多模态入库）已设计待实施；Phase 10（GraphRAG 旁路）可选
 > **需求**：[37-knowledge.md](./37-knowledge.md) · **设计**：[37-knowledge.design.md](./37-knowledge.design.md)
 
 ---
@@ -43,6 +43,15 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 - `web/src/stores/knowledge/index.ts` — 前端 Store
 - `web/src/features/knowledge/useKnowledgeIngestWs.ts` — 入库 WS 进度
 
+**Phase 8/9 计划新增（待实施）**：
+- `internal/knowledge/extractor.go` — Extractor 接口 + ExtractorRegistry 路由（📋）
+- `internal/knowledge/markdown_organizer.go` — LLM 整理为 Markdown（📋）
+- `internal/knowledge/vision_extractor.go` — 多模态 LLM 图片理解 → MD（📋 Phase 9）
+- `internal/service/knowledge_ingest_pipeline.go` — 摄取管线 Wire 工厂（📋）
+- `web/src/components/knowledge/KnowledgeDropZone.vue` — 拖拽上传区（📋）
+- `web/src/components/knowledge/KnowledgeUploadQueue.vue` — 批量上传队列（📋）
+- `web/src/components/knowledge/KnowledgeDocPreviewDialog.vue` — MD 全文预览（📋）
+
 ---
 
 ## 2. 现状评估
@@ -77,7 +86,11 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | Plan-Then-Retrieve | ✅ | `agent/knowledge_inject.go`（BeforeModel 钩子注入 Collection 摘要） |
 | 联邦搜索 Route 策略 | ✅ | `federated_retriever.go`（`SearchWithOptions` + `routeCollections`） |
 | AgenticFilter | ❌ | 未实现 |
-| OCR / Extractor | ⏳ | `ocr.go` stub 已就位（`KNOWLEDGE_OCR` 环境变量），tesseract/docling 后端待接入 |
+| OCR / Extractor | 📋 重设计 | 2026-07-20 裁决：多模态 LLM 视觉路线取代 tesseract/docling；统一 Extractor 抽象（设计 §5.2/§9.4），Phase 8/9 待实施 |
+| 拖拽批量上传 | 📋 | 前端无 drop zone；KnowledgeDropZone/UploadQueue 已设计待实施 |
+| 整理为 Markdown | 📋 | MarkdownOrganizer 已设计（设计 §5.2b），待实施 |
+| content_text 预览 | 📋 | Schema 加列 + GetDocumentContent RPC 已设计，待实施 |
+| OOXML 上传守卫 | ⚠️ bug | `http.DetectContentType` 对 DOCX/XLSX/PPTX 返回 `application/zip` 被白名单误拒，需二次判定（设计 §7.2） |
 | Reranker | ✅ | `KRATOS_KNOWLEDGE_RERANKER`（topk/cohere/infinity） |
 | 多租户隔离 | ❌ | 未实现 |
 | code_search 工具 | ❌ | 未实现 |
@@ -111,10 +124,18 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | 编号 | 差距 | 优先级 | 说明 |
 |------|------|--------|------|
 | G11 | AgenticFilter | P3 | LLM 动态生成过滤条件 |
-| G12 | OCR 识别 | P3 | `ocr.go` stub 已就位，tesseract/docling 后端待接入 |
+| G12 | OCR 识别 | — | 2026-07-20 并入 G16/G17：多模态 LLM 视觉路线，`ocr.go` stub 废弃 |
 | G13 | 多租户隔离 | P3 | tenant_id 分区 |
 | G14 | code_search 工具 | P3 | 代码语义搜索 |
 | G15 | SourceSync 增量同步 | P3 | 数据源自动增量更新 |
+
+### 3.4 统一摄取管线（2026-07-20 设计，待实施）
+
+| 编号 | 差距 | 优先级 | 说明 | Phase |
+|------|------|--------|------|-------|
+| G16 | 文本类拖拽上传 + LLM 整理为 MD + content_text 预览 | P1 | Extractor 抽象 + MarkdownOrganizer + 前端 DropZone/Queue + OOXML 守卫修复 | 8 |
+| G17 | 多模态图片入库 | P2 | VisionExtractor（多模态 LLM）+ image/* 白名单 + asset_uri 血缘 | 9 |
+| G18 | 知识关联图谱（GraphRAG） | P3 可选 | 旁路非侵入：异步从 chunks 构建实体/关系，不嵌入摄取主链路（用户裁决，设计 §9.6） | 10 |
 
 ---
 
@@ -152,10 +173,42 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 | 任务 | 涉及文件 | 状态 |
 |------|----------|------|
-| OCR 识别（tesseract/docling 后端） | `internal/knowledge/ocr.go`（stub 已就位） | ⏳ |
+| OCR 识别（tesseract/docling 后端） | `internal/knowledge/ocr.go`（stub 已就位） | ⛔ 已废弃（2026-07-20 裁决：由 Phase 9 VisionExtractor 取代） |
 | 多租户隔离 | 修改搜索过滤 + 向量存储 | ❌ |
 | code_search 工具 | 新建 `internal/tools/knowledge/code_search.go` | ❌ |
 | SourceSync 增量同步 | 新建 `internal/knowledge/sync.go` | ❌ |
+
+### Phase 8：统一摄取管线（文本类）— 📋 已设计待实施
+
+> 设计：[37-knowledge.design.md §5.2/§5.2b/§7.2](./37-knowledge.design.md) | 需求：US-12
+
+| 任务 | 涉及文件 | 状态 |
+|------|----------|------|
+| Extractor 接口 + ExtractorRegistry 路由；TextExtractor 收编现有提取逻辑（摘除图片分支） | `internal/knowledge/extractor.go`（新增）、`document_extract.go`、`ocr.go`（废弃 stub） | 📋 |
+| MarkdownOrganizer（LLM 整理为 MD，30s 超时，失败降级原文本） | `internal/knowledge/markdown_organizer.go`（新增） | 📋 |
+| Proto：`organize_to_markdown` 字段 + `GetDocumentContent` RPC | `api/kratos/knowledge/v1/knowledge.proto` + `make api` | 📋 |
+| Schema：`content_text`/`organized`/`asset_uri` 列（幂等 ALTER） | `internal/data/knowledge.go`（EnsureKnowledgeSchema） | 📋 |
+| Biz：Document 模型加字段（CreateDocument 写入 / GetDocument 读出） | `internal/biz/knowledge/knowledge.go`、`internal/data/knowledge.go` | 📋 |
+| Service：IngestDocument 接线 Extract+Organize；OOXML 守卫二次判定；GetDocumentContent 实现 | `internal/service/knowledge.go` | 📋 |
+| Wire：ExtractorRegistry + MarkdownOrganizer 工厂 | `internal/service/knowledge_ingest_pipeline.go`（新增）、`cmd/admin/wire.go` | 📋 |
+| 前端：DropZone 拖拽区 + UploadQueue 批量队列 + api.ts 参数 | `KnowledgeDropZone.vue`/`KnowledgeUploadQueue.vue`（新增）、`KnowledgeDocumentsPanel.vue`、`api.ts` | 📋 |
+| 前端：MD 全文预览对话框 | `KnowledgeDocPreviewDialog.vue`（新增）、`api.ts`（getDocumentContent） | 📋 |
+
+### Phase 9：多模态入库（图片）— 📋 已设计待实施
+
+> 设计：[37-knowledge.design.md §5.2c](./37-knowledge.design.md) | 需求：US-13
+
+| 任务 | 涉及文件 | 状态 |
+|------|----------|------|
+| VisionExtractor（多模态 LLM 图片 → MD 描述，实现 Extractor 接口） | `internal/knowledge/vision_extractor.go`（新增） | 📋 |
+| 白名单放开 image/png、image/jpeg、image/webp | `internal/service/knowledge.go` | 📋 |
+| 原图留存 + asset_uri 血缘 | asset 存储目录、`internal/data/knowledge.go` | 📋 |
+| metadata 写入 modality/extractor 标记 | `internal/service/knowledge.go`（IngestDocument） | 📋 |
+| 前端：图片预览回链（可选增强） | `KnowledgeDocumentsPanel.vue` | 📋 |
+
+### Phase 10：GraphRAG 旁路（可选）— 暂缓
+
+> 裁决（2026-07-20 用户确认）：Phase 3 可选增强；旁路非侵入，绝不嵌入摄取主链路。详见设计 §9.6 与 Roadmap 子模块 Phase 3。
 
 ---
 
@@ -190,6 +243,17 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | 23 | 跨 Collection 联邦搜索 | P1 | — | 6 ✅ |
 | 24 | Plan-Then-Retrieve | P1 | — | 6 ✅ |
 | 25 | 联邦搜索 Route 策略 | P2 | — | 6 ✅ |
+| 26 | Extractor 接口 + Registry + TextExtractor 收编 | P1 | — | 8 📋 |
+| 27 | MarkdownOrganizer（LLM 整理为 MD + 降级） | P1 | — | 8 📋 |
+| 28 | Proto `organize_to_markdown` + `GetDocumentContent` RPC | P1 | — | 8 📋 |
+| 29 | Schema content_text/organized/asset_uri 列 | P1 | — | 8 📋 |
+| 30 | IngestDocument 接线 + OOXML 守卫二次判定修复 | P1 | — | 8 📋 |
+| 31 | 摄取管线 Wire 工厂 | P1 | — | 8 📋 |
+| 32 | 前端拖拽区 + 批量上传队列 | P1 | — | 8 📋 |
+| 33 | 前端 MD 全文预览 | P2 | — | 8 📋 |
+| 34 | VisionExtractor（多模态 LLM 图片 → MD） | P2 | — | 9 📋 |
+| 35 | image/* 白名单放开 + 原图 asset_uri 血缘 | P2 | — | 9 📋 |
+| 36 | GraphRAG 旁路构建（可选，非侵入） | P3 | — | 10 ⏸ |
 
 ---
 
@@ -218,9 +282,30 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 ### Phase 4 — 待实现
 
-- [ ] 图片/PDF 文档可 OCR 识别入库（stub 已就位，tesseract/docling 后端待接入）
+- [ ] ~~图片/PDF 文档可 OCR 识别入库~~（⛔ 2026-07-20 废弃，由 Phase 9 多模态视觉路线取代）
 - [ ] 不同租户搜索不到彼此的知识
 - [ ] Agent 可调用 code_search 工具
+
+### Phase 8 — 📋 待实施（统一摄取管线·文本类）
+
+- [ ] 前端拖拽区域可一次拖入多个文本/Office 文件，逐文件生成上传任务并实时展示状态
+- [ ] txt/md/json/csv/html/xml/yaml + pdf/doc/docx/xlsx/pptx 均可正确提取文本（DOCX/XLSX/PPTX 不再被 `application/zip` 误拒）
+- [ ] 默认开启整理为 Markdown：提取文本经 LLM 结构化后按 markdown 策略分块入库
+- [ ] LLM 不可用/整理失败时降级原文本入库，文档正常 indexed
+- [ ] 整理后 MD 全文写入 `content_text`，`GetDocumentContent` RPC + 前端预览可用
+- [ ] 拖入图片返回明确错误提示（多模态未上线），不静默失败
+
+### Phase 9 — 📋 待实施（多模态入库）
+
+- [ ] png/jpg/jpeg/webp 图片拖入后经多模态 LLM 输出 MD 描述入库，可被语义搜索命中
+- [ ] 原始图片留存，Document `asset_uri` 血缘可追
+- [ ] 文档 metadata 含 modality/extractor 标记，检索结果与文本文档无差别
+- [ ] 未配置多模态 LLM 时图片上传返回明确错误（status=error）
+
+### Phase 10 — ⏸ 可选（GraphRAG 旁路）
+
+- [ ] 图谱构建为异步旁路，摄取主链路无侵入（对照设计 §9.6 架构纪律）
+- [ ] 多跳/实体关系查询可由图遍历增强检索回答
 
 ### Phase 5 — ✅
 
@@ -314,8 +399,9 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 | 优先级 | 问题 | 说明 |
 |--------|------|------|
-| P1 | OCR tesseract/docling 实现 | `ocr.go` stub 已就位，后端待接入（KB-09） |
-| P2 | ListChunks/ReindexDocument/UpdateDocument RPC | 运维调试不便（KB-17） |
+| P1 | 统一摄取管线 Phase 8 | Extractor 抽象 + MarkdownOrganizer + 拖拽上传 + OOXML 守卫修复（G16） |
+| P2 | 多模态入库 Phase 9 | VisionExtractor 多模态 LLM 路线（G17）；原 tesseract/docling OCR 方案废弃 |
+| P2 | ListChunks/ReindexDocument/UpdateDocument RPC | 运维调试不便（KB-17）；content_text 列已为 Reindex 铺路 |
 | P3 | AgenticFilter | 集成 trpc `searchfilter` |
 | P3 | 多租户知识库隔离 | tenant_id 分区 |
 | P3 | code_search 工具 | 代码语义搜索 |
@@ -479,6 +565,8 @@ Agent 生成最终回答
 ---
 
 ### Phase 3：GraphRAG — 知识图谱增强
+
+> **2026-07-20 定位裁决（用户确认）**：Phase 3 可选增强，工程暂缓。**旁路非侵入纪律**：图谱从已入库 chunks 异步构建，绝不嵌入统一摄取管线（Phase 8/9）主链路；检索增强以 GraphAugmentedRetriever 包裹现有 Router 外层。详见 [37-knowledge.design.md §9.6](./37-knowledge.design.md#96-graphrag--知识图谱增强)。
 
 > **预期收益**：多跳/实体关系查询准确率提升 60-70%
 > 架构设计详见 [37-knowledge.design.md §9.6](./37-knowledge.design.md#96-graphrag--知识图谱增强)

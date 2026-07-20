@@ -305,7 +305,6 @@ var (
 		{Name: "variables_json", Type: field.TypeString, Default: "{}"},
 		{Name: "model_instructions_json", Type: field.TypeString, Default: "{}"},
 		{Name: "context_compaction_enabled", Type: field.TypeBool, Default: false},
-		{Name: "micro_compact_enabled", Type: field.TypeBool, Default: true},
 		{Name: "memory_compact_enabled", Type: field.TypeBool, Default: true},
 		{Name: "tool_result_gate_enabled", Type: field.TypeBool, Default: true},
 		{Name: "compress_llm_cache_enabled", Type: field.TypeBool, Default: true},

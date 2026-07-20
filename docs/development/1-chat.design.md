@@ -1839,7 +1839,8 @@ web/src/
 │   ├── executionCardHelpers.ts    ← 执行卡片辅助函数
 │   ├── toolEventMarkdown.ts       ← 工具事件 Markdown 渲染 + toolEventToMessage 共享转换函数
 │   ├── errorCodeHints.ts          ← 错误码 → 用户可读提示映射
-│   ├── chatMessageMarkdown.ts     ← Chat 消息 Markdown
+│   ├── chatMessageMarkdown.ts     ← Chat 消息 Markdown（全量渲染 + 流式分段渲染 renderChatMarkdownParts）
+│   ├── vSegmentedMarkdown.ts      ← v-segmented-markdown 指令（DOM 分段渲染：冻结段不回改，仅尾部重渲染）
 │   ├── sessionContextPatch.ts     ← Session 上下文补丁
 │   ├── contextBreakdown.ts        ← 上下文分解
 │   ├── composerUsageMetrics.ts    ← Composer 用量指标
@@ -2019,18 +2020,34 @@ ChatMessagePanel（ActivityStream + 待执行列表 + 输入框）
 - **后端 ParentActivityID 完整性**：`ActivityProjector` 创建 plan/graph 等 child Activity 时必须设置 `ParentActivityID: p.rootActivityID`，保证前端按 `parentActivityId` 构建的树结构与设计意图一致
 - **重连恢复**：WS 断线重连后，前端记录最后 `updated_at`，调用 `ListActivities?since={updated_at}` 拉取增量 Activity 合并到 Map
 
-#### 11.1.2 MD 渲染策略（2026-06-27 更新，ADR-06）
+#### 11.1.2 MD 渲染策略（2026-07-20 更新：流式增量渲染）
 
-> **架构变更（ADR-06）**：流式与完成态统一走完整 markdown-it + DOMPurify 解析路径，删除 `renderStreamingChatMarkdown` 简化（escape-only）路径。
+> **历史决策（ADR-06）**：流式与完成态统一走完整 markdown-it + DOMPurify 解析路径，删除 `renderStreamingChatMarkdown` 简化（escape-only）路径。
+>
+> **本次演进（2026-07-20，借鉴 xai-grok-markdown）**：在统一解析路径之上引入**块级冻结 + DOM 分段渲染 + 代码高亮 memo**，流式期间只重渲染未确认尾部，已冻结前缀的 DOM 节点永不触碰。
 
-前端 `web/src/features/chat/chatMessageMarkdown.ts:renderChatMarkdownForMessage` 统一走 markdown-it + DOMPurify 完整解析路径，**不再区分流式与完成态**。`streaming` 参数保留仅为 API 兼容。
+前端 `web/src/features/chat/chatMessageMarkdown.ts` 提供两级接口：
+
+| 接口 | 用途 | 语义 |
+|------|------|------|
+| `renderChatMarkdownForMessage(id, content, streaming)` | 字符串级全量渲染 | 400 条 LRU（`markdownCache`）；`streaming` 仅 API 兼容 |
+| `renderChatMarkdownParts(id, content, streaming)` | 分段渲染（流式增量） | 返回 `{ frozenHtml, tailHtml, frozenSegments, frozenEpoch }`；`streaming=false` 为 finish() 兜底——走 LRU 全量渲染并销毁该消息的增量状态 |
+
+**块级冻结规则**（`computeFrozenPrefixEnd`）：仅当顶层块在 depth=0 处闭合（块后有空行且下一块已开始）才产生冻结边界；以下情况禁用/回退冻结——
+- 含链接引用定义（`[x]: y`）→ 整体返回 0（后向引用可回溯改变已渲染前缀）
+- 列表项后空行（松散列表风险）、缩进代码后空行（空行会被吸收进代码块）→ 该边界不冻结
+- fence 未闭合时其前已确认边界仍有效；fence 内空行不产生边界
+- EOF 处空行不冻结（块仍可能生长）
+- 输入非 append-only（消息重写/切换）→ 整体失效，`frozenEpoch +1`，`frozenSegments` 整体替换
+
+**DOM 分段渲染**（`web/src/features/chat/vSegmentedMarkdown.ts` 指令）：`ReplyBlock`/`ThinkingBlock`/`ChatReasoningDrawer` 使用 `v-segmented-markdown`，将 `frozenSegments` 逐段固定为独立 DOM 子树（追加式、不回改），仅 `tailHtml` 所在尾部容器随 delta 重渲染；`frozenEpoch` 作为 key 前缀保证整体失效后旧 DOM 不复用。
+
+**代码高亮 memo**（`web/src/features/chat/lib/detectCodeLanguage.ts`）：`highlight(code, lang)` 与 `detectLanguage(code)` 双 LRU 缓存（各 100 条）；高亮缓存上限 32KB 代码（超出不缓存），语言探测以前 500 字符为 sample key——流式增长期间 sample 稳定后持续命中，导出 `codeHighlightStats`/`resetCodeHighlightStats`/`clearCodeHighlightCaches` 供测试。
 
 **性能验证**：
 - 后端 16ms 批合并（`internal/agent/activity_event_sequencer.go:defaultDeltaBatchInterval = 16 * time.Millisecond`）将前端事件频率封顶到 ≤60fps
-- markdown-it 解析 0.5-2ms/call，远低于帧预算
-- markdownCache（400 条 LRU）进一步降低重复解析开销
-
-**历史决策**：早期版本有 `renderStreamingChatMarkdown` 简化路径（escape-only），因"每 token 跑 markdown-it"性能假设已不成立（16ms 批合并 + LRU 缓存已能稳定支撑实时渲染）而被移除（2026-06-27，ADR-06）。
+- 冻结前缀零重渲染；尾部增量渲染 + LRU 缓存（markdown 400 条 / 高亮 100 条）
+- 不变量：`frozenHtml + tailHtml === renderChatMarkdownForMessage(id, content, true)`，由流式等价性安全网测试保障（`chatMessageMarkdown.spec.ts`：枚举全部码点二分切分 / 逐字符 / 变长 chunk / 4 段组合 / CRLF / 代理对切分 / finish 兜底逐字节一致）
 
 ### 11.2 页面布局
 

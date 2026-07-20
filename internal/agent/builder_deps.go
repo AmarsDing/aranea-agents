@@ -64,10 +64,6 @@ type TRPCMemoryKnowledgeDeps struct {
 	MemoryCompositeRecall biz.MemoryCompositeRecaller
 	KnowledgeRetriever    *knowledge.Retriever
 	KnowledgeUsecase      *biz.KnowledgeUsecase
-	// ContextCompressor handles L0 context-window compression. When wired,
-	// a BeforeModel hook checks the token usage ratio and triggers recursive
-	// summarisation of old conversation messages. May be nil (no-op).
-	ContextCompressor biz.ContextCompressor
 	// ManualCompressor handles session-level compression triggered by the
 	// compact tool. When wired, agents can actively invoke the compact tool
 	// to compress older conversation history into a summary. May be nil

@@ -349,7 +349,7 @@ type compactCoverage struct {
 
 func (c compactCoverage) ICS() float64
 func gradedScore(count, threshold int) float64
-func shouldUseStructuredCompact(coverage compactCoverage, structuredTokens, originalTokens int) bool
+// ~~func shouldUseStructuredCompact(...) bool~~ ❌ 已删除（2026-07-20）：门控从未接线，死代码清理
 ```
 
 #### 1.4.5 事务安全增强

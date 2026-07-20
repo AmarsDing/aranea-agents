@@ -58,6 +58,24 @@ export type IngestDocumentInput = {
   chunk_overlap?: number;
   /** char | token | markdown | json | recursive */
   chunk_strategy?: string;
+  /** unset/true = LLM 整理为 Markdown（失败降级原文本）；false = 原文本入库 */
+  organize_to_markdown?: boolean;
+};
+
+export type KnowledgeDocumentContent = {
+  id: string;
+  content_text: string;
+  organized: boolean;
+};
+
+export type KnowledgeUploadTask = {
+  id: string;
+  name: string;
+  size: number;
+  mime_type: string;
+  /** reading | uploading | success | error */
+  status: string;
+  message?: string;
 };
 
 export type SearchKnowledgeQuery = {

@@ -124,7 +124,7 @@ func truncateString(s string, maxRunes int) string {
 
 func parseAssessment(raw string) (*RetrievalAssessment, error) {
 	raw = strings.TrimSpace(raw)
-	raw = stripCodeFenceJSON(raw)
+	raw = stripCodeFence(raw)
 
 	type assessJSON struct {
 		Sufficient      bool    `json:"sufficient"`

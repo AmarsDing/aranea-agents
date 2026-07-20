@@ -97,7 +97,6 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | `internal/session/compress_policy.go` | 压缩策略（L0CompressMinGapSec 防抖） |
 | `internal/session/runtime.go` | trpc Runtime 桥接 |
 | `internal/session/memory_compact.go` | 记忆压缩 |
-| `internal/session/micro_compact.go` | 微压缩 |
 | `internal/session/compress_quality.go` | 摘要质量门（退化检测/减量守卫/错误分类纯函数） |
 | `internal/session/compress_suppress.go` | 压缩失败抑制（deterministic sticky + transient 退避） |
 | `internal/session/context_update.go` | 上下文更新 |

@@ -482,18 +482,24 @@ func (d *DoomLoopDetector) Observe(text string) bool {
 
 ---
 
-## P1-3: Reminder 机制
+## P1-3: Reminder 机制 ✅（2026-07-20 完成，含隔离性修复）
 
 **问题**: 工具执行后无副作用反馈回 Agent
 
 **Files:**
 - Create: `internal/agent/tool_reminder.go`
-- Modify: `internal/agent/tool_invocation_recorder.go` 或 trpc-agent-go turn 回调
+- Modify: `internal/agent/callback_chain.go`（注册 BeforeAgent + AfterTool 钩子）
 - Test: `internal/agent/tool_reminder_test.go`
+
+**实施记录（与原始计划的偏差）**:
+- Reminder 通过 **AfterTool 钩子追加到工具结果文本**（`[reminder] ...`），而非 turn 结束注入 system message——LLM 在工具响应中直接看到副作用反馈。
+- 测试运行（命令含 "test"）清除提醒；文件修改类工具（write/edit/patch/delete/create/rename/move）武装提醒。
+- **隔离性修复**：初版在闭包内共享单个 `ToolReminder` 实例，随 Agent 缓存被多会话共享 → 跨会话状态污染。修复为 `BeforeAgent` 钩子按 invocation 预创建实例存入 state（`aranea.tool_reminder`），`AfterTool` 从 invocation state 解析（缺失时惰性创建兜底）。子 invocation（Clone）共享父实例为预期行为（同一 run 作用域）。
+- 测试覆盖：5 个结构单测 + 3 个钩子级测试（invocation 隔离、惰性初始化、无 invocation 安全 no-op）。
 
 ### Task P1-3
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestToolReminder_CollectsReminders(t *testing.T) {
@@ -507,9 +513,9 @@ func TestToolReminder_CollectsReminders(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```go
 type ToolReminder struct {
@@ -530,13 +536,13 @@ func (r *ToolReminder) Collect() []string {
 }
 ```
 
-- [ ] **Step 4: Integrate into turn end**
+- [x] **Step 4: Integrate into turn end**
 
-在 turn 结束时，将 reminders 注入 system message 或 context。
+实际实现：AfterTool 钩子追加到工具结果（见上方实施记录）。
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ---
 
@@ -582,17 +588,26 @@ func TestToolRegistry_BehaviorVersioning(t *testing.T) {
 
 ---
 
-## P1-5: 记忆搜索管线增强
+## P1-5: 记忆搜索管线增强 ✅（2026-07-20 核查确认已实现）
 
 **问题**: 搜索管线阶段少于 Grok Build
 
 **Files:**
-- Modify: `internal/memory/memory_search.go`
-- Test: `internal/memory/memory_search_test.go`
+- Implement: `internal/data/memory_helpers.go`（decayFactor / factRecencyDecay / factDecayWithKind / isEvergreenFactKind / recencyBoost）
+- Implement: `internal/data/memory_shim_l2.go`（L2 混合评分接入 decay）、`internal/data/memory_shim_l3.go`（L3 混合评分接入 decay + recency）
+- Implement: `internal/data/memory_composite_adapter.go`（MMR 多样性重排，λ=0.7）
+- Test: `internal/data/memory_mmr_test.go`
+
+**核查结论（2026-07-20）**：全部能力已实现且测试通过（8/8），无需新代码。
+- **session 半衰**：L2 episode `decayFactor(endedAt)` 半衰期 14 天（`l2DecayHalfLifeDays=14.0`），作用于 hybrid 评分 importance 项；同会话行另有 sessionBoost=0.1。
+- **L3 时间衰减**：`factRecencyDecay(updatedAt)` 半衰期 30 天（`l3DecayHalfLifeDays=30.0`）。
+- **evergreen 豁免**：`isEvergreenFactKind` — user_identity / user_preference / agent_instruction / domain_knowledge 四类恒返回 1.0（永不衰减）。
+- **recency boost**：≤7 天 1.0 / ≤30 天 0.5 / 之后 0.1（`l3ScoreWeightRecency=0.15`）。
+- **MMR 多样性重排**：composite recall 在 sort 后执行 `mmrRerankTexts`（λ=0.7）。
 
 ### Task P1-5
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestMemorySearch_TimeDecay(t *testing.T) {
@@ -604,31 +619,37 @@ func TestMemorySearch_MMR(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 增加时间衰减函数（evergreen 豁免、session 半衰）和 MMR 多样性重排。
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ---
 
-## P1-6: 配置错误脱敏
+## P1-6: 配置错误脱敏 ✅（2026-07-20 完成）
 
 **问题**: 配置加载错误可能泄漏敏感配置值
 
 **Files:**
-- Modify: 配置加载相关文件（需定位具体位置）
-- Test: 配置加载测试
+- Modify: `cmd/admin/main.go`（新增 `redactConfigError`，接入 Load/Scan/wireApp 三处 panic 点）
+- Test: `cmd/admin/main_test.go`（新建）
+
+**实施记录**:
+- 现状核查发现 CLI 配置路径已脱敏（`internal/cli/config/config.go` 的 `sanitizeConfigError` → `preview.RedactAndTruncate`），缺口在**服务端启动路径**。
+- YAML v3 类型错误会回显标量值（`cannot unmarshal !!str 'sk-...' into int`），DSN 错误含密码（`postgres://user:pass@host`）——两类泄漏面均由 `preview.RedactAndTruncate` 覆盖。
+- `redactConfigError(op, err)` 包裹三处启动 panic 点：`c.Load()`、`c.Scan(&bc)`、`wireApp(...)`；运行时 `App.Run()` 错误不属配置面，未包裹。
+- 测试覆盖：YAML 值回显脱敏、非 secret 透传、DSN 密码脱敏、nil 安全。
 
 ### Task P1-6
 
-- [ ] **Step 1: Locate config loading error handling**
+- [x] **Step 1: Locate config loading error handling**
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```go
 func TestConfigError_Redacted(t *testing.T) {
@@ -637,15 +658,15 @@ func TestConfigError_Redacted(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
-- [ ] **Step 4: Write minimal implementation**
+- [x] **Step 4: Write minimal implementation**
 
 在配置解析错误处理中，对错误消息调用 `preview.RedactAndTruncate`。
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ---
 

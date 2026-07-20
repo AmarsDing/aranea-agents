@@ -1,13 +1,22 @@
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import { hasIndexingDocuments } from './knowledgeUi';
-import type { KnowledgeChunk, KnowledgeDocument, EmbedderConfig, UpdateEmbedderConfigInput } from './types';
+import { getDocumentContent } from './api';
+import type {
+  KnowledgeChunk,
+  KnowledgeDocument,
+  KnowledgeUploadTask,
+  EmbedderConfig,
+  UpdateEmbedderConfigInput,
+} from './types';
 import { useKnowledgeStore } from '../../stores/knowledge';
 import { useKnowledgeIngestWs } from './useKnowledgeIngestWs';
 
 export function useKnowledgePage() {
   const $q = useQuasar();
+  const { t } = useI18n();
   const knowledgeStore = useKnowledgeStore();
   const selectedId = ref('');
   const docsLoading = ref(false);
@@ -277,6 +286,7 @@ export function useKnowledgePage() {
         chunk_strategy: ingestForm.value.chunk_strategy || undefined,
         chunk_size: ingestForm.value.chunk_size || undefined,
         chunk_overlap: ingestForm.value.chunk_overlap || undefined,
+        organize_to_markdown: true,
       });
       ingestOpen.value = false;
       const submittedMime = ingestForm.value.mime_type || 'text/plain';
@@ -325,6 +335,116 @@ export function useKnowledgePage() {
         $q.notify({ type: 'negative', message: friendlyError(e) || '删除失败' });
       }
     });
+  }
+
+  // ---------- 文档预览（GetDocumentContent） ----------
+
+  const previewOpen = ref(false);
+  const previewLoading = ref(false);
+  const previewDoc = ref<KnowledgeDocument | null>(null);
+  const previewContent = ref('');
+  const previewOrganized = ref(false);
+
+  async function openDocPreview(doc: KnowledgeDocument) {
+    previewDoc.value = doc;
+    previewContent.value = '';
+    previewOrganized.value = false;
+    previewOpen.value = true;
+    previewLoading.value = true;
+    try {
+      const res = await getDocumentContent(doc.id);
+      previewContent.value = res.content_text;
+      previewOrganized.value = res.organized;
+    } catch (e) {
+      previewOpen.value = false;
+      $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.previewLoadFailed') });
+    } finally {
+      previewLoading.value = false;
+    }
+  }
+
+  // ---------- 拖拽批量上传队列 ----------
+
+  const uploadTasks = ref<KnowledgeUploadTask[]>([]);
+
+  function patchUploadTask(id: string, patch: Partial<KnowledgeUploadTask>) {
+    const i = uploadTasks.value.findIndex((t) => t.id === id);
+    if (i >= 0) {
+      uploadTasks.value[i] = { ...uploadTasks.value[i], ...patch };
+    }
+  }
+
+  // Phase 8 验收：图片等多模态格式必须给出明确错误，不静默失败。
+  function validateUploadMime(mime: string): string | null {
+    if (mime.startsWith('image/')) {
+      return t('knowledgePage.uploadImageUnsupported');
+    }
+    if (!isExtractSupported(mime)) {
+      return t('knowledgePage.uploadUnsupportedFormat', { mime });
+    }
+    return null;
+  }
+
+  function readFileAsBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const buf = reader.result as ArrayBuffer | null;
+        if (!buf) {
+          reject(new Error(t('knowledgePage.uploadReadFailed')));
+          return;
+        }
+        resolve(bytesToBase64(new Uint8Array(buf)));
+      };
+      reader.onerror = () => reject(new Error(t('knowledgePage.uploadReadFailed')));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // 顺序上传：逐文件读取 → 入库，避免并发冲击后端；WS 事件并行刷新文档列表。
+  async function enqueueUploadFiles(files: File[]) {
+    if (!selectedId.value || !files.length) return;
+    const collectionId = selectedId.value;
+    for (const file of files) {
+      const mime = inferMime(file);
+      const task: KnowledgeUploadTask = {
+        id: crypto.randomUUID(),
+        name: file.name,
+        size: file.size,
+        mime_type: mime,
+        status: 'reading',
+      };
+      uploadTasks.value.push(task);
+      const invalid = validateUploadMime(mime);
+      if (invalid) {
+        patchUploadTask(task.id, { status: 'error', message: invalid });
+        continue;
+      }
+      try {
+        const b64 = await readFileAsBase64(file);
+        patchUploadTask(task.id, { status: 'uploading' });
+        await knowledgeStore.ingest({
+          collection_id: collectionId,
+          source: file.name,
+          mime_type: mime,
+          content_base64: b64,
+          organize_to_markdown: true,
+        });
+        patchUploadTask(task.id, { status: 'success', message: t('knowledgePage.uploadSubmitted') });
+      } catch (e) {
+        patchUploadTask(task.id, { status: 'error', message: friendlyError(e) || t('knowledgePage.uploadFailed') });
+      }
+    }
+    await loadDocuments();
+    await loadCollections();
+  }
+
+  function removeUploadTask(id: string) {
+    uploadTasks.value = uploadTasks.value.filter((t) => t.id !== id);
+  }
+
+  function clearFinishedUploadTasks() {
+    uploadTasks.value = uploadTasks.value.filter((t) => t.status === 'reading' || t.status === 'uploading');
   }
 
   async function runSearch() {
@@ -441,6 +561,16 @@ export function useKnowledgePage() {
     onIngestFile,
     submitIngest,
     confirmDeleteDocument,
+    previewOpen,
+    previewLoading,
+    previewDoc,
+    previewContent,
+    previewOrganized,
+    openDocPreview,
+    uploadTasks,
+    enqueueUploadFiles,
+    removeUploadTask,
+    clearFinishedUploadTasks,
     runSearch,
   };
 }

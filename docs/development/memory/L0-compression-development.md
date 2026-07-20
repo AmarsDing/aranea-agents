@@ -1,6 +1,8 @@
 # L0 上下文压缩优化 — 开发计划
 
 > **需求**：[`L0-compression.md`](./L0-compression.md) · **设计**：[`L0-compression.design.md`](./L0-compression.design.md)
+>
+> **⚠️ 变更通知（2026-07-20）**：L1 MicroCompact 已全链路移除（代码/配置/proto/DB/前端）。移除原因：`loadCompressBody` 仅保留 user/assistant 消息，工具消息过滤逻辑恒不触发，功能从未生效。压缩级联现为两级：L2 Memory Compact → L3 LLM。详见 `docs/superpowers/plans/2026-07-20-session-compression-hardening.md`。
 
 ---
 
@@ -14,12 +16,12 @@
 | 专用压缩模型 | ✅ | `L0CompressProvider` / `L0CompressModel` |
 | 防抖与去重 | ✅ | `inFlight` / `compressDebounceActive` / `SessionSummaryExists` |
 | 记忆联动 | ✅ | 压缩后 `resyncSessionMemory` |
-| L1 MicroCompact | ✅ | `internal/session/micro_compact.go` |
+| ~~L1 MicroCompact~~ | ❌ 已移除（2026-07-20） | ~~`internal/session/micro_compact.go`~~ 文件已删除；功能从未生效（body 无 tool 消息） |
 | L2 Memory Compact | ✅ | `internal/session/memory_compact.go` + `internal/data/memory_fact_reader.go` |
-| L1/L2 配置开关 | ✅ | `AgentRuntimeSettings.MicroCompactEnabled` / `MemoryCompactEnabled` + `compress_policy.go` |
-| L1/L2 估算升级 | ✅ | `estimateCompactedPromptTokens` + L1→L2→L3 自动升级 |
-| L1 可压缩工具代理 | ✅ | 内容长度 >200 字符作为代理指标 |
-| L1/L2 压缩通知 | ✅ | `publishCompressionNotice` 统一处理 L1/L2/L3 |
+| ~~L1/L2 配置开关~~ | ❌ 部分移除 | ~~`AgentRuntimeSettings.MicroCompactEnabled`~~ 已删；`MemoryCompactEnabled` 保留 + `compress_policy.go` |
+| L2 估算升级 | ✅ | `estimateCompactedPromptTokens` + L2→L3 自动升级（原 L1→L2→L3，L1 层已移除） |
+| ~~L1 可压缩工具代理~~ | ❌ 已移除 | ~~内容长度 >200 字符作为代理指标~~ 随 L1 一并移除 |
+| L2/L3 压缩通知 | ✅ | `publishCompressionNotice` 统一处理 L2/L3（原 L1/L2/L3） |
 | 9 章节摘要 | ✅ | `internal/compress/prompt.go`（v1→v2） |
 | 工具结果持久化 | ✅ | `internal/biz/tool_result_gate.go` + `internal/data/tool_result_repo.go` + Ent schema |
 | ReadToolResult 工具 | ✅ | `internal/tools/custom/read_tool_result.go` + Registry + Seed |
@@ -27,7 +29,7 @@
 | ToolResultGate 配置开关 | ✅ | `AgentRuntimeSettings.ToolResultGateEnabled` |
 | CompressorDeps 拆分 | ✅ | 构造函数直接列出 7 个依赖，消除上帝接口 |
 | ToolResultGate 单元测试 | ✅ | `tool_result_gate_test.go`（8 用例）+ `tool_result_gate_hook_test.go`（9 用例） |
-| L1/L2 单元测试 | ✅ | `micro_compact_test.go`（8 用例）+ `memory_compact_test.go`（9 用例） |
+| L2 单元测试 | ✅ | ~~`micro_compact_test.go`（8 用例）~~ 已随 L1 删除 + `memory_compact_test.go`（9 用例） |
 | LLM 压缩响应缓存 | ✅ | `internal/compress/cache.go`（CompressCache + CachingCompressor 装饰器） |
 | 手动压缩 API | ✅ | `POST /v1/sessions:compact` + `biz.ManualCompressor` + 前端压缩按钮 |
 | **tail 保留修复** | ✅ | `loadCompressBody` 返回 body+tail 穿透至事务，压缩后快照保留近期轮次（修复 tail 恒为空缺陷） |
@@ -65,13 +67,13 @@
 
 | # | 任务 | 依赖 | 估时 | 状态 |
 |---|------|------|------|------|
-| 1B-1 | L1 MicroCompact：`runMicroCompact` 方法实现 | 1A-5 | 1.5d | ✅ `micro_compact.go` |
-| 1B-2 | L1 MicroCompact：集成到 `runCompress` 判断链前置 | 1B-1 | 0.5d | ✅ `compressor.go` L1 分支 |
+| 1B-1 | ~~L1 MicroCompact：`runMicroCompact` 方法实现~~ ❌ 已移除（2026-07-20） | 1A-5 | 1.5d | ~~✅ `micro_compact.go`~~ 文件已删除 |
+| 1B-2 | ~~L1 MicroCompact：集成到 `runCompress` 判断链前置~~ ❌ 已移除（2026-07-20） | 1B-1 | 0.5d | ~~✅ `compressor.go` L1 分支~~ 已删除 |
 | 1B-3 | L2 Memory Compact：`runMemoryCompact` 方法实现 | 无 | 1.5d | ✅ `memory_compact.go` + `memory_fact_reader.go` |
 | 1B-4 | L2 Memory Compact：集成到 `runCompress` 判断链 | 1B-3 | 0.5d | ✅ `compressor.go` L2 分支 |
 | 1B-5 | L1/L2 压缩后的快照更新 + 上下文用量更新 | 1B-2, 1B-4 | 1d | ✅ 复用 L3 事务逻辑 |
 | 1B-6 | 压缩层级自动升级逻辑（L1→L2→L3） | 1B-2, 1B-4 | 0.5d | ✅ `estimateCompactedPromptTokens` + 阈值比较 |
-| 1B-7 | 单元测试 + 集成测试 | 1B-5, 1B-6 | 1d | ✅ `micro_compact_test.go` + `memory_compact_test.go` |
+| 1B-7 | 单元测试 + 集成测试 | 1B-5, 1B-6 | 1d | ✅ ~~`micro_compact_test.go`~~ 已随 L1 删除 + `memory_compact_test.go` |
 
 **Sprint 1B 总估时**：~6.5d
 
@@ -174,7 +176,7 @@
 |---|------|------|------|
 | 3B-1 | 引入 tree-sitter Go 绑定依赖 | 无 | 0.5d |
 | 3B-2 | `CodeSkeleton` 工具：注册 + 实现 | 3B-1 | 2d |
-| 3B-3 | MicroCompact 代码感知：L1 对代码类工具结果自动替换为骨架 | 3B-2, 1B-1 | 1.5d |
+| 3B-3 | ~~MicroCompact 代码感知：L1 对代码类工具结果自动替换为骨架~~ ❌ 已取消（L1 已移除，2026-07-20） | 3B-2, 1B-1 | 1.5d |
 | 3B-4 | 单元测试 + 集成测试 | 3B-2, 3B-3 | 1d |
 
 **Sprint 3B 总估时**：~5d
@@ -245,7 +247,7 @@ Week 10:   阶段三集成测试 + 验收
 | 工具结果持久化 | 构造 > 50K 字符的工具结果，验证自动持久化 + 预览保留 |
 | 替换决策冻结 | 多轮对话后验证同一工具结果的预览字符串字节级一致 |
 | ReadToolResult | Agent 通过工具读取持久化内容，验证内容完整 |
-| L1 MicroCompact | 验证旧工具结果被清理，近期结果保留 |
+| ~~L1 MicroCompact~~ ❌ 已移除 | ~~验证旧工具结果被清理，近期结果保留~~ |
 | L2 Memory Compact | 验证复用记忆生成摘要，零额外 API 调用 |
 | L3 摘要结构 | 验证 9 章节输出，用户消息原文逐条保留 |
 | 手动压缩 API | 调用 CompactSession，验证压缩触发 + 结果返回 |
@@ -281,7 +283,7 @@ Week 10:   阶段三集成测试 + 验收
 | 风险 | 概率 | 影响 | 缓解 |
 |------|------|------|------|
 | 工具结果持久化影响消息历史前缀一致性 | 中 | Prompt Cache 失效 | 替换决策冻结 + 预览字符串字节级一致 |
-| L1 MicroCompact 误清理仍在使用的工具结果 | 低 | Agent 丢失关键上下文 | `min_age_turns` 保护 + 可压缩工具白名单 |
+| ~~L1 MicroCompact 误清理仍在使用的工具结果~~ ❌ 已移除 | — | — | ~~`min_age_turns` 保护 + 可压缩工具白名单~~ |
 | L2 Memory Compact 摘要质量不足 | 中 | 压缩后信息丢失 | 自动升级到 L3 + 质量评估 |
 | 9 章节摘要 token 开销增加 | 低 | 摘要本身占更多 token | 摘要 token 预算控制 + 章节可配置 |
 | LLM 压缩响应缓存一致性 | 低 | PromptVersion 升级后旧缓存返回过时摘要 | 缓存键包含 PromptVersion，自动失效；TTL 兜底 |

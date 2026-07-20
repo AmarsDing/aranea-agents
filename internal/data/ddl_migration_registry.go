@@ -137,6 +137,11 @@ var ddlMigrations = []ddlMigration{
 	// NOTE: version must exceed the max version already recorded in the target DB's
 	// schema_migrations (20261105 at time of writing), otherwise it is skipped as applied.
 	{Version: 20261106, Name: "learning_loop_schema", Func: ddlLearningLoopSchema},
+	// 20261107 drop_micro_compact: drop micro_compact_enabled column from
+	// agent_runtime_settings. L1 MicroCompact retired 2026-07-20 (dead feature:
+	// loadCompressBody keeps only user/assistant messages, so tool-message
+	// filtering never triggered).
+	{Version: 20261107, Name: "drop_micro_compact", SQL: "sql/migrations/20261107_drop_micro_compact.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

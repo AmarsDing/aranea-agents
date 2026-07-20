@@ -188,21 +188,19 @@ func providePersistenceSet(
 	l3Recall biz.MemoryL3Recaller,
 	compositeRecall biz.MemoryCompositeRecaller,
 	adminUC *biz.MemoryAdminUsecase,
-	contextCompressor biz.ContextCompressor,
 	lg loggateway.Logger,
 	deadLetterRepo *data.MemoryJobDeadLetterRepo,
 ) rt.PersistenceSet {
 	var mem rt.MemorySet
 	if d != nil {
 		mem = rt.MemorySet{
-			TRPC:              memSvc,
-			Admin:             data.NewSessionAdminStoreAdapter(d, d.VectorStore()),
-			AdminUsecase:      adminUC,
-			ActionLogWriter:   data.NewMemoryActionLogWriter(d),
-			L2Recall:          l2Recall,
-			L3Recall:          l3Recall,
-			CompositeRecall:   compositeRecall,
-			ContextCompressor: contextCompressor,
+			TRPC:            memSvc,
+			Admin:           data.NewSessionAdminStoreAdapter(d, d.VectorStore()),
+			AdminUsecase:    adminUC,
+			ActionLogWriter: data.NewMemoryActionLogWriter(d),
+			L2Recall:        l2Recall,
+			L3Recall:        l3Recall,
+			CompositeRecall: compositeRecall,
 		}
 		// Connect dead-letter sink so queue overflow is persisted instead of silently dropped.
 		if queue, ok := q.(*memtrpc.MemoryJobQueue); ok && deadLetterRepo != nil {
@@ -214,30 +212,4 @@ func providePersistenceSet(
 		rollback = sessiontrpc.NewRunnerRollbackStore(d.RWDB(), d.Dialect(), lg)
 	}
 	return rt.PersistenceSet{Session: sess, Memory: mem, AgentMCP: mcp, Artifact: artifact, ArtifactUC: artifactUC, RunnerRollback: rollback}
-}
-
-// provideContextCompressor builds the L0 ContextCompressor used by the
-// BeforeModel compression hook. The LLM is resolved from
-// MEMORY_COMPRESSOR_PROVIDER / MEMORY_COMPRESSOR_MODEL env vars; when unset,
-// returns nil and the compression hook becomes a no-op.
-func provideContextCompressor(
-	catalog *biz.LlmProviderModelUsecase,
-	lg loggateway.Logger,
-) biz.ContextCompressor {
-	prov := strings.TrimSpace(os.Getenv("MEMORY_COMPRESSOR_PROVIDER"))
-	mod := strings.TrimSpace(os.Getenv("MEMORY_COMPRESSOR_MODEL"))
-	if prov == "" || mod == "" || catalog == nil {
-		return nil
-	}
-	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}}
-	m, err := provider.TRPCModelForProviderModel(context.Background(), catalog, rtTrip, prov, mod, lg)
-	if err != nil {
-		lg.Warn("context compressor: LLM model build failed, compression disabled",
-			loggateway.StepID("memory.context_compressor.wire"),
-			loggateway.Str("provider", prov),
-			loggateway.Str("model", mod),
-			loggateway.Err(err))
-		return nil
-	}
-	return memory.NewLLMContextCompressor(m, lg)
 }

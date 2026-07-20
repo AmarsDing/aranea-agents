@@ -38,6 +38,14 @@ message KnowledgeDocument {
   string created_at = 9;
   string updated_at = 10;
   bool   extract_supported = 11;  // true when backend can extract text from this MIME type (REV-D)
+  bool   organized = 12;          // true when content was organized into Markdown by LLM
+}
+
+// DocumentContent is the full extracted/organized text of one document (preview).
+message DocumentContent {
+  string id = 1;
+  string content_text = 2;    // organized Markdown (or raw extracted text when not organized)
+  bool   organized = 3;
 }
 
 // KnowledgeChunk is one indexed text chunk with its embedding vector.
@@ -91,6 +99,13 @@ message IngestDocumentRequest {
   int32 chunk_overlap = 7;
   // chunk_strategy: char | token | markdown | json | recursive (empty = char).
   string chunk_strategy = 8;
+  // organize_to_markdown: unset/true = organize extracted text into Markdown via LLM
+  // (falls back to raw text when LLM unavailable); false = ingest raw text as-is.
+  optional bool organize_to_markdown = 9;
+}
+
+message GetDocumentContentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 message ListDocumentsRequest {
@@ -183,6 +198,11 @@ service KnowledgeService {
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse) {
     option (google.api.http) = {
       get: "/v1/knowledge/documents"
+    };
+  }
+  rpc GetDocumentContent(GetDocumentContentRequest) returns (DocumentContent) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/documents/{id}/content"
     };
   }
   rpc DeleteDocument(DeleteDocumentRequest) returns (google.protobuf.Empty) {

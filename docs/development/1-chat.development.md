@@ -189,6 +189,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | P-N | **流式渲染与活动排序修复** | ✅ | 统一 MD 渲染路径 + seq On* 入口预分配 + sequencer v2 单 publish worker（ADR-06） |
 | P-V2LF | **v2 实体生命周期与状态级联修复** | ✅ | P1-P6 + P5 Task 延迟关闭 + Fixes 1-7（seq 注入/msID 诊断/Cancelled 事件/双写消除/GraphStage 去重等）+ P-DBLEXEC 双重执行止血与 PlanStep.AgentKeys 传递（2026-07-05） |
 | 11 | **三种模式数据模型 + WS 协议设计文档** | ✅ | 需求文档 §1.7 + 设计文档 §5.4 + B.2.1（Phase T7） |
+| P-MDINC | **流式 MD 增量渲染（块级冻结 + DOM 分段 + 高亮 memo）** | ✅ | 借鉴 xai-grok-markdown；设计详见 [1-chat.design.md §11.1.2](./1-chat.design.md#1112-md-渲染策略2026-07-20-更新流式增量渲染) |
 
 ### P-N 流式渲染与活动排序修复（2026-06-27）
 
@@ -524,6 +525,28 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - [ ] 多 subtask 需创建 Agent 时逐个确认（串行）
 - [ ] Allocate 并行化后单测全绿，无数据竞争（`go test -race`）
 - [ ] 无 ReplyFunc 上下文时行为与旧版一致（直接创建）
+
+### P-MDINC 流式 MD 增量渲染（2026-07-20）
+
+> **分析来源**：[docs/reports/2026-07-19-analysis-grok-build-insights.md](../reports/2026-07-19-analysis-grok-build-insights.md)
+> **设计**：[1-chat.design.md §11.1.2](./1-chat.design.md#1112-md-渲染策略2026-07-20-更新流式增量渲染)
+
+#### 任务清单
+- [x] T-MDINC.1 块级冻结边界检测（`computeFrozenPrefixEnd`：列表/缩进代码/fence/链接引用定义/EOF 生长规则）
+- [x] T-MDINC.2 分段渲染接口（`renderChatMarkdownParts`：frozenSegments + frozenEpoch + finish() 全量兜底）
+- [x] T-MDINC.3 DOM 分段渲染指令（`vSegmentedMarkdown`：冻结段 DOM 不回改、epoch 前缀隔离整体失效）
+- [x] T-MDINC.4 组件集成（`ReplyBlock`/`ThinkingBlock`/`ChatReasoningDrawer` 替换 v-html）
+- [x] T-MDINC.5 代码高亮 memo（`detectCodeLanguage.ts`：highlight/detectLanguage 双 LRU 各 100 条 + 32KB 上限 + 500 字符 sample key）
+- [x] T-MDINC.6 流式等价性安全网（枚举码点二分/逐字符/变长 chunk/4 段组合/CRLF/代理对/finish 逐字节一致）+ 全量验证（pnpm lint 0 errors / 623 测试通过 / build 成功）
+
+#### 改动文件清单
+- `web/src/features/chat/chatMessageMarkdown.ts`（分段渲染 + finish() 兜底）
+- `web/src/features/chat/vSegmentedMarkdown.ts`（DOM 分段渲染指令，新）
+- `web/src/features/chat/lib/detectCodeLanguage.ts`（高亮/探测 LRU memo）
+- `web/src/components/chat/ReplyBlock.vue`、`ThinkingBlock.vue`、`ChatReasoningDrawer.vue`（指令集成）
+- `web/src/features/chat/__tests__/chatMessageMarkdown.spec.ts`（分段渲染 + 安全网测试）
+- `web/src/features/chat/__tests__/vSegmentedMarkdown.spec.ts`（指令 DOM 测试，新）
+- `web/src/features/chat/__tests__/detectCodeLanguage.spec.ts`（memo 测试）
 
 ---
 

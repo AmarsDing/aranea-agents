@@ -6487,7 +6487,6 @@ type AgentRuntimeSettingMutation struct {
 	variables_json                           *string
 	model_instructions_json                  *string
 	context_compaction_enabled               *bool
-	micro_compact_enabled                    *bool
 	memory_compact_enabled                   *bool
 	tool_result_gate_enabled                 *bool
 	compress_llm_cache_enabled               *bool
@@ -10941,42 +10940,6 @@ func (m *AgentRuntimeSettingMutation) ResetContextCompactionEnabled() {
 	m.context_compaction_enabled = nil
 }
 
-// SetMicroCompactEnabled sets the "micro_compact_enabled" field.
-func (m *AgentRuntimeSettingMutation) SetMicroCompactEnabled(b bool) {
-	m.micro_compact_enabled = &b
-}
-
-// MicroCompactEnabled returns the value of the "micro_compact_enabled" field in the mutation.
-func (m *AgentRuntimeSettingMutation) MicroCompactEnabled() (r bool, exists bool) {
-	v := m.micro_compact_enabled
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldMicroCompactEnabled returns the old "micro_compact_enabled" field's value of the AgentRuntimeSetting entity.
-// If the AgentRuntimeSetting object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentRuntimeSettingMutation) OldMicroCompactEnabled(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldMicroCompactEnabled is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldMicroCompactEnabled requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldMicroCompactEnabled: %w", err)
-	}
-	return oldValue.MicroCompactEnabled, nil
-}
-
-// ResetMicroCompactEnabled resets all changes to the "micro_compact_enabled" field.
-func (m *AgentRuntimeSettingMutation) ResetMicroCompactEnabled() {
-	m.micro_compact_enabled = nil
-}
-
 // SetMemoryCompactEnabled sets the "memory_compact_enabled" field.
 func (m *AgentRuntimeSettingMutation) SetMemoryCompactEnabled(b bool) {
 	m.memory_compact_enabled = &b
@@ -13023,7 +12986,7 @@ func (m *AgentRuntimeSettingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentRuntimeSettingMutation) Fields() []string {
-	fields := make([]string, 0, 143)
+	fields := make([]string, 0, 142)
 	if m.self_evolve != nil {
 		fields = append(fields, agentruntimesetting.FieldSelfEvolve)
 	}
@@ -13308,9 +13271,6 @@ func (m *AgentRuntimeSettingMutation) Fields() []string {
 	}
 	if m.context_compaction_enabled != nil {
 		fields = append(fields, agentruntimesetting.FieldContextCompactionEnabled)
-	}
-	if m.micro_compact_enabled != nil {
-		fields = append(fields, agentruntimesetting.FieldMicroCompactEnabled)
 	}
 	if m.memory_compact_enabled != nil {
 		fields = append(fields, agentruntimesetting.FieldMemoryCompactEnabled)
@@ -13651,8 +13611,6 @@ func (m *AgentRuntimeSettingMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelInstructionsJSON()
 	case agentruntimesetting.FieldContextCompactionEnabled:
 		return m.ContextCompactionEnabled()
-	case agentruntimesetting.FieldMicroCompactEnabled:
-		return m.MicroCompactEnabled()
 	case agentruntimesetting.FieldMemoryCompactEnabled:
 		return m.MemoryCompactEnabled()
 	case agentruntimesetting.FieldToolResultGateEnabled:
@@ -13946,8 +13904,6 @@ func (m *AgentRuntimeSettingMutation) OldField(ctx context.Context, name string)
 		return m.OldModelInstructionsJSON(ctx)
 	case agentruntimesetting.FieldContextCompactionEnabled:
 		return m.OldContextCompactionEnabled(ctx)
-	case agentruntimesetting.FieldMicroCompactEnabled:
-		return m.OldMicroCompactEnabled(ctx)
 	case agentruntimesetting.FieldMemoryCompactEnabled:
 		return m.OldMemoryCompactEnabled(ctx)
 	case agentruntimesetting.FieldToolResultGateEnabled:
@@ -14715,13 +14671,6 @@ func (m *AgentRuntimeSettingMutation) SetField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetContextCompactionEnabled(v)
-		return nil
-	case agentruntimesetting.FieldMicroCompactEnabled:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetMicroCompactEnabled(v)
 		return nil
 	case agentruntimesetting.FieldMemoryCompactEnabled:
 		v, ok := value.(bool)
@@ -16096,9 +16045,6 @@ func (m *AgentRuntimeSettingMutation) ResetField(name string) error {
 		return nil
 	case agentruntimesetting.FieldContextCompactionEnabled:
 		m.ResetContextCompactionEnabled()
-		return nil
-	case agentruntimesetting.FieldMicroCompactEnabled:
-		m.ResetMicroCompactEnabled()
 		return nil
 	case agentruntimesetting.FieldMemoryCompactEnabled:
 		m.ResetMemoryCompactEnabled()

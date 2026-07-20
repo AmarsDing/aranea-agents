@@ -18,7 +18,10 @@ const (
 
 type compressCtxKeyType struct{}
 
-var compressCtxSessionIDKey = compressCtxKeyType{}
+var (
+	compressCtxSessionIDKey     = compressCtxKeyType{}
+	compressCtxCacheDisabledKey = struct{ name string }{name: "cache-disabled"}
+)
 
 func ContextWithSessionID(ctx context.Context, sessionID string) context.Context {
 	return context.WithValue(ctx, compressCtxSessionIDKey, sessionID)
@@ -29,6 +32,18 @@ func SessionIDFromCtx(ctx context.Context) string {
 		return v
 	}
 	return ""
+}
+
+// ContextWithCacheDisabled marks the request to bypass the compression cache
+// entirely (no read, no write). Set by the session compressor when the agent's
+// CompressLLMCacheEnabled switch is off.
+func ContextWithCacheDisabled(ctx context.Context) context.Context {
+	return context.WithValue(ctx, compressCtxCacheDisabledKey, true)
+}
+
+func cacheDisabledFromCtx(ctx context.Context) bool {
+	v, _ := ctx.Value(compressCtxCacheDisabledKey).(bool)
+	return v
 }
 
 func CompressCacheKey(sessionID string, req Request) string {
@@ -160,6 +175,9 @@ func NewCachingCompressor(inner Compressor, cache *CompressCache, lg loggateway.
 var _ Compressor = (*CachingCompressor)(nil)
 
 func (c *CachingCompressor) Compress(ctx context.Context, req Request) (Result, error) {
+	if c.cache == nil || cacheDisabledFromCtx(ctx) {
+		return c.inner.Compress(ctx, req)
+	}
 	sessionID := SessionIDFromCtx(ctx)
 	key := CompressCacheKey(sessionID, req)
 	if hit, ok := c.cache.Get(key); ok {
@@ -176,6 +194,10 @@ func (c *CachingCompressor) Compress(ctx context.Context, req Request) (Result, 
 }
 
 func (c *CachingCompressor) CompressWithCacheHit(ctx context.Context, req Request) (Result, bool, error) {
+	if c.cache == nil || cacheDisabledFromCtx(ctx) {
+		result, err := c.inner.Compress(ctx, req)
+		return result, false, err
+	}
 	sessionID := SessionIDFromCtx(ctx)
 	key := CompressCacheKey(sessionID, req)
 	if hit, ok := c.cache.Get(key); ok {

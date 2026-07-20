@@ -87,7 +87,6 @@ export type AgentRuntimeSettings = {
   variablesJson: string | undefined;
   modelInstructionsJson: string | undefined;
   contextCompactionEnabled: boolean | undefined;
-  microCompactEnabled: boolean | undefined;
   memoryCompactEnabled: boolean | undefined;
   toolResultGateEnabled: boolean | undefined;
   sessionSummaryEnabled: boolean | undefined;
@@ -554,574 +553,489 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createAgentServiceClient(handler: RequestHandler): AgentService {
+export function createAgentServiceClient(
+  handler: RequestHandler
+): AgentService {
   return {
-    ListAgents(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListAgents(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/agents`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.keyword) {
-        queryParams.push(`keyword=${encodeURIComponent(request.keyword.toString())}`);
+        queryParams.push(`keyword=${encodeURIComponent(request.keyword.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.provider) {
-        queryParams.push(`provider=${encodeURIComponent(request.provider.toString())}`);
+        queryParams.push(`provider=${encodeURIComponent(request.provider.toString())}`)
       }
       if (request.orgNodeId) {
-        queryParams.push(`orgNodeId=${encodeURIComponent(request.orgNodeId.toString())}`);
+        queryParams.push(`orgNodeId=${encodeURIComponent(request.orgNodeId.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       if (request.createdBy) {
-        queryParams.push(`createdBy=${encodeURIComponent(request.createdBy.toString())}`);
+        queryParams.push(`createdBy=${encodeURIComponent(request.createdBy.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'ListAgents',
-        },
-      ) as Promise<ListAgentsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "AgentService",
+        method: "ListAgents",
+      }) as Promise<ListAgentsResponse>;
     },
-    CreateAgent(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/agents`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'CreateAgent',
-        },
-      ) as Promise<Agent>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AgentService",
+        method: "CreateAgent",
+      }) as Promise<Agent>;
     },
-    ListAgentCreators(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListAgentCreators(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/agents/creators`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'ListAgentCreators',
-        },
-      ) as Promise<ListAgentCreatorsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "AgentService",
+        method: "ListAgentCreators",
+      }) as Promise<ListAgentCreatorsResponse>;
     },
-    GetAgent(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/agents/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'GetAgent',
-        },
-      ) as Promise<Agent>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "AgentService",
+        method: "GetAgent",
+      }) as Promise<Agent>;
     },
-    UpdateAgent(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/agents/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request?.agent ?? {});
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PATCH',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'UpdateAgent',
-        },
-      ) as Promise<Agent>;
+      return handler({
+        path: uri,
+        method: "PATCH",
+        body,
+      }, {
+        service: "AgentService",
+        method: "UpdateAgent",
+      }) as Promise<Agent>;
     },
-    DeleteAgent(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/agents/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'DeleteAgent',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "AgentService",
+        method: "DeleteAgent",
+      }) as Promise<wellKnownEmpty>;
     },
-    ToggleFavorite(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ToggleFavorite(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/agents/${request.id}/favorite`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PATCH',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'ToggleFavorite',
-        },
-      ) as Promise<Agent>;
+      return handler({
+        path: uri,
+        method: "PATCH",
+        body,
+      }, {
+        service: "AgentService",
+        method: "ToggleFavorite",
+      }) as Promise<Agent>;
     },
-    GetAgentPromptPreview(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetAgentPromptPreview(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/agents/${request.id}/system-prompt/preview`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.mode) {
-        queryParams.push(`mode=${encodeURIComponent(request.mode.toString())}`);
+        queryParams.push(`mode=${encodeURIComponent(request.mode.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'GetAgentPromptPreview',
-        },
-      ) as Promise<GetAgentPromptPreviewResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "AgentService",
+        method: "GetAgentPromptPreview",
+      }) as Promise<GetAgentPromptPreviewResponse>;
     },
-    GetAgentEffectiveTools(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetAgentEffectiveTools(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       const path = `v1/agents/${request.agentId}/tools/effective`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'GetAgentEffectiveTools',
-        },
-      ) as Promise<AgentEffectiveToolsView>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "AgentService",
+        method: "GetAgentEffectiveTools",
+      }) as Promise<AgentEffectiveToolsView>;
     },
-    UpdateAgentToolPolicy(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateAgentToolPolicy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       const path = `v1/agents/${request.agentId}/tools/policy`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PUT',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'UpdateAgentToolPolicy',
-        },
-      ) as Promise<AgentEffectiveToolsView>;
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "AgentService",
+        method: "UpdateAgentToolPolicy",
+      }) as Promise<AgentEffectiveToolsView>;
     },
-    CreateAgentPromptFile(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateAgentPromptFile(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       const path = `v1/agents/${request.agentId}/files`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'CreateAgentPromptFile',
-        },
-      ) as Promise<AgentPromptFile>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AgentService",
+        method: "CreateAgentPromptFile",
+      }) as Promise<AgentPromptFile>;
     },
-    UpdateAgentPromptFile(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateAgentPromptFile(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/agents/${request.agentId}/files/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PATCH',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'UpdateAgentPromptFile',
-        },
-      ) as Promise<AgentPromptFile>;
+      return handler({
+        path: uri,
+        method: "PATCH",
+        body,
+      }, {
+        service: "AgentService",
+        method: "UpdateAgentPromptFile",
+      }) as Promise<AgentPromptFile>;
     },
-    DeleteAgentPromptFile(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteAgentPromptFile(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/agents/${request.agentId}/files/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'DeleteAgentPromptFile',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "AgentService",
+        method: "DeleteAgentPromptFile",
+      }) as Promise<wellKnownEmpty>;
     },
-    EstimateTokens(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    EstimateTokens(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       const path = `v1/agents/${request.agentId}/files/estimate-tokens`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'EstimateTokens',
-        },
-      ) as Promise<EstimateTokensResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AgentService",
+        method: "EstimateTokens",
+      }) as Promise<EstimateTokensResponse>;
     },
-    EditPromptFileByAI(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    EditPromptFileByAI(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       if (!request.fileId) {
-        throw new Error('missing required field request.file_id');
+        throw new Error("missing required field request.file_id");
       }
       const path = `v1/agents/${request.agentId}/files/${request.fileId}/ai-edit`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'EditPromptFileByAI',
-        },
-      ) as Promise<EditPromptFileByAIResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AgentService",
+        method: "EditPromptFileByAI",
+      }) as Promise<EditPromptFileByAIResponse>;
     },
-    ListAgentTemplates(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListAgentTemplates(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/agent-templates`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'ListAgentTemplates',
-        },
-      ) as Promise<ListAgentTemplatesResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "AgentService",
+        method: "ListAgentTemplates",
+      }) as Promise<ListAgentTemplatesResponse>;
     },
-    DuplicateAgent(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DuplicateAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/agents/${request.id}/duplicate`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'DuplicateAgent',
-        },
-      ) as Promise<Agent>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AgentService",
+        method: "DuplicateAgent",
+      }) as Promise<Agent>;
     },
-    CheckAgentKey(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CheckAgentKey(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/agent-keys/check`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.agentKey) {
-        queryParams.push(`agentKey=${encodeURIComponent(request.agentKey.toString())}`);
+        queryParams.push(`agentKey=${encodeURIComponent(request.agentKey.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'CheckAgentKey',
-        },
-      ) as Promise<CheckAgentKeyResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "AgentService",
+        method: "CheckAgentKey",
+      }) as Promise<CheckAgentKeyResponse>;
     },
-    GetAgentEvolutionMetrics(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetAgentEvolutionMetrics(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       const path = `v1/agents/${request.agentId}/evolution/metrics`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.timeRange) {
-        queryParams.push(`timeRange=${encodeURIComponent(request.timeRange.toString())}`);
+        queryParams.push(`timeRange=${encodeURIComponent(request.timeRange.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'GetAgentEvolutionMetrics',
-        },
-      ) as Promise<EvolutionMetricsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "AgentService",
+        method: "GetAgentEvolutionMetrics",
+      }) as Promise<EvolutionMetricsResponse>;
     },
-    GetAgentEvolutionSuggestions(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetAgentEvolutionSuggestions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       const path = `v1/agents/${request.agentId}/evolution/suggestions`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'GetAgentEvolutionSuggestions',
-        },
-      ) as Promise<ListEvolutionSuggestionsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "AgentService",
+        method: "GetAgentEvolutionSuggestions",
+      }) as Promise<ListEvolutionSuggestionsResponse>;
     },
-    ApplyEvolutionSuggestion(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ApplyEvolutionSuggestion(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       if (!request.suggestionId) {
-        throw new Error('missing required field request.suggestion_id');
+        throw new Error("missing required field request.suggestion_id");
       }
       const path = `v1/agents/${request.agentId}/evolution/suggestions/${request.suggestionId}/apply`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'ApplyEvolutionSuggestion',
-        },
-      ) as Promise<EvolutionSuggestion>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AgentService",
+        method: "ApplyEvolutionSuggestion",
+      }) as Promise<EvolutionSuggestion>;
     },
-    RejectEvolutionSuggestion(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    RejectEvolutionSuggestion(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       if (!request.suggestionId) {
-        throw new Error('missing required field request.suggestion_id');
+        throw new Error("missing required field request.suggestion_id");
       }
       const path = `v1/agents/${request.agentId}/evolution/suggestions/${request.suggestionId}/reject`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'AgentService',
-          method: 'RejectEvolutionSuggestion',
-        },
-      ) as Promise<EvolutionSuggestion>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AgentService",
+        method: "RejectEvolutionSuggestion",
+      }) as Promise<EvolutionSuggestion>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
+
 
 // @@protoc_insertion_point(typescript-http-eof)

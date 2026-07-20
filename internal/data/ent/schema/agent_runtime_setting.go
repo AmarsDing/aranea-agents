@@ -119,7 +119,6 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.String("variables_json").Default("{}"),
 		field.String("model_instructions_json").Default("{}"),
 		field.Bool("context_compaction_enabled").Default(false),
-		field.Bool("micro_compact_enabled").Default(true),
 		field.Bool("memory_compact_enabled").Default(true),
 		field.Bool("tool_result_gate_enabled").Default(true),
 		field.Bool("compress_llm_cache_enabled").Default(true),

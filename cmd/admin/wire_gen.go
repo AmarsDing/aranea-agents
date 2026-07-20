@@ -168,9 +168,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	sessionAdminStore := provideSessionAdminStore(dataData)
 	memoryAdminDeps := provideMemoryAdminDeps(sessionAdminStore)
 	memoryAdminUsecase := provideMemoryAdminUsecase(memoryAdminDeps, memoryUsecase, memoryFactIndexSyncer, dataData, loggatewayLogger)
-	contextCompressor := provideContextCompressor(llmProviderModelUsecase, loggatewayLogger)
 	memoryJobDeadLetterRepo := data.NewMemoryJobDeadLetterRepo(dataData)
-	persistenceSet := providePersistenceSet(dataData, agentMCPTooling, sessionService, artifactService, artifactUsecase, memoryService, memoryJobQueue, memoryPolicyEngine, memoryL2Recaller, memoryL3Recaller, memoryCompositeRecaller, memoryAdminUsecase, contextCompressor, loggatewayLogger, memoryJobDeadLetterRepo)
+	persistenceSet := providePersistenceSet(dataData, agentMCPTooling, sessionService, artifactService, artifactUsecase, memoryService, memoryJobQueue, memoryPolicyEngine, memoryL2Recaller, memoryL3Recaller, memoryCompositeRecaller, memoryAdminUsecase, loggatewayLogger, memoryJobDeadLetterRepo)
 	promptFileAIEditor := providePromptFileAIEditor(llmProviderModelUsecase, persistenceSet, loggatewayLogger)
 	agentTemplateRepo := data.NewAgentTemplateRepo(dataData)
 	agentTemplateUsecase := biz.NewAgentTemplateUsecase(agentTemplateRepo)
@@ -353,7 +352,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	runtimeProfileReadWriter := data.NewRuntimeProfileRepo(dataData)
 	runtimeProfileUsecase := biz.NewRuntimeProfileUsecase(runtimeProfileReadWriter)
 	profileResolver := agent.NewProfileResolver(runtimeProfileUsecase, loggatewayLogger)
-	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, persistenceSet, sessionRuntime, sessionCompressor, bus, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillEvolutionUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, activityRepo, activityRepo, activityRepo, stepV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, loggatewayLogger)
+	memoryConsolidationWriter := data.NewMemoryConsolidationWriterAdapter(dataData, loggatewayLogger)
+	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, persistenceSet, sessionRuntime, sessionCompressor, bus, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillEvolutionUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, activityRepo, activityRepo, activityRepo, stepV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memoryConsolidationWriter, loggatewayLogger)
 	realTeamOrchestrator := provideTeamOrchestrator(loggatewayLogger)
 	planExecutor := providePlanExecutor(planStepV2Repo, teamStageV2Repo, planBoardV2Repo, graphStageV2Repo, graphNodeV2Repo, realTeamOrchestrator, sequencer, loggatewayLogger)
 	chatService := service.ProvideChatService(chatOrchestratorDeps, planExecutor, v2Bus, realTeamOrchestrator, agentRepository, graphOrchestrationProjector)
@@ -433,7 +433,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	sessionWorkspaceLookup := service.ProvideSessionWorkspaceLookup(sessionUsecase)
 	serviceArtifactService := service.NewArtifactService(artifactUsecase, signer, sessionWorkspaceLookup)
 	knowledgeSearchDeps := service.ProvideKnowledgeSearchDeps(retriever, adaptiveRouter, retrievalEvaluator)
-	knowledgeService := service.NewKnowledgeService(knowledgeUsecase, multiProviderEmbedder, knowledgeSearchDeps, v2Bus, systemSettingRepo, loggatewayLogger)
+	markdownOrganizer := service.NewKnowledgeMarkdownOrganizer(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
+	knowledgeService := service.NewKnowledgeService(knowledgeUsecase, multiProviderEmbedder, knowledgeSearchDeps, markdownOrganizer, v2Bus, systemSettingRepo, loggatewayLogger)
 	evaluationRepo := data.NewEvalRepoFromData(dataData)
 	evaluationUsecase := evaluation.NewUsecase(evaluationRepo, loggatewayLogger)
 	evaluationRunner := service.ProvideEvaluationRunner(chatService, chatService, evaluationUsecase, llmProviderModelUsecase, systemSettingRepo, loggatewayLogger)
@@ -508,7 +509,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
 	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
-	memoryConsolidationWriter := data.NewMemoryConsolidationWriterAdapter(dataData, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
 	episodeIndexSyncer := provideEpisodeIndexSync(memoryUsecase, dataData)
 	memoryLLMExtractorConfig := provideMemoryLLMExtractorConfig(agentUsecase, sessionUsecase, llmProviderModelUsecase, loggatewayLogger)
@@ -1157,6 +1157,7 @@ func provideChatServiceDeps(
 	deadLetterQueue *lifecycle.DeadLetterQueue,
 	profileResolver *agent.ProfileResolver,
 	v2ProjectorFactory *v2.ProjectorFactory,
+	memoryConsolidationWriter biz.MemoryConsolidationWriter,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 
@@ -1210,17 +1211,18 @@ func provideChatServiceDeps(
 			Evolution: evolution,
 		},
 		Infra: service.ChatInfraDeps{
-			LG:                 lg,
-			OrchCache:          orchCache,
-			A2AUC:              a2aUC,
-			MCPServers:         mcpUC,
-			OutboundRouter:     outboundRouter,
-			SubAgentService:    subAgentSvc,
-			TurnLifecycle:      turnLifecycle,
-			HeartbeatEmitter:   heartbeatEmitter,
-			DeadLetterQueue:    deadLetterQueue,
-			ProfileResolver:    profileResolver,
-			V2ProjectorFactory: v2ProjectorFactory,
+			LG:                        lg,
+			OrchCache:                 orchCache,
+			A2AUC:                     a2aUC,
+			MCPServers:                mcpUC,
+			OutboundRouter:            outboundRouter,
+			SubAgentService:           subAgentSvc,
+			TurnLifecycle:             turnLifecycle,
+			HeartbeatEmitter:          heartbeatEmitter,
+			DeadLetterQueue:           deadLetterQueue,
+			ProfileResolver:           profileResolver,
+			V2ProjectorFactory:        v2ProjectorFactory,
+			MemoryConsolidationWriter: memoryConsolidationWriter,
 		},
 	}
 }
@@ -1399,7 +1401,6 @@ func provideGraphBuildDeps(
 			MemoryService:         persist.Memory.TRPC,
 			MemoryAdmin:           persist.Memory.Admin,
 			MemoryActionLogWriter: persist.Memory.ActionLogWriter,
-			ContextCompressor:     persist.Memory.ContextCompressor,
 			MemoryL2Recall:        persist.Memory.L2Recall,
 			MemoryL3Recall:        persist.Memory.L3Recall,
 			MemoryCompositeRecall: persist.Memory.CompositeRecall,

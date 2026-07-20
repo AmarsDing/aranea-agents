@@ -42,6 +42,17 @@ func NewKnowledgeRetrievalEvaluator(llm biz.LLMCaller, sys *biz.SystemSettingUse
 	return knowledge.NewRetrievalEvaluator(llm, sys, catalog, lg)
 }
 
+// NewKnowledgeMarkdownOrganizer 构造 Markdown 整理器；LLM 不可用返回 nil（service 跳过整理）。
+func NewKnowledgeMarkdownOrganizer(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) *knowledge.MarkdownOrganizer {
+	if llm == nil {
+		lg.Info("LLM 未配置，Markdown 整理已禁用",
+			loggateway.StepID("knowledge.markdown_organizer.init"),
+		)
+		return nil
+	}
+	return knowledge.NewMarkdownOrganizer(llm, sys, catalog, lg)
+}
+
 func NewKnowledgeFederatedRetriever(router *knowledge.AdaptiveRouter, retriever *knowledge.Retriever, uc *biz.KnowledgeUsecase, lg loggateway.Logger) *knowledge.FederatedRetriever {
 	if router == nil && retriever == nil {
 		return nil
