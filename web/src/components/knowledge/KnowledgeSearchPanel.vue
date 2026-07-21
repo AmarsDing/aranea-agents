@@ -10,6 +10,18 @@
       @update:model-value="$emit('update:query', String($event ?? ''))"
     />
     <div class="row q-gutter-sm items-center">
+      <q-select
+        :model-value="scopeId"
+        dense
+        options-dense
+        outlined
+        emit-value
+        map-options
+        :options="scopeOptions"
+        :label="t('knowledgePage.searchScopeLabel')"
+        style="min-width: 180px"
+        @update:model-value="$emit('update:scopeId', String($event ?? ''))"
+      />
       <q-input
         :model-value="topK"
         dense
@@ -91,6 +103,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import type { KnowledgeChunk } from '../../features/knowledge/types';
 import {
   KNOWLEDGE_HYBRID_MODE_OPTIONS,
@@ -104,6 +117,9 @@ defineProps<{
   hybridMode: string;
   rewriteStrategy: string;
   useRerank: boolean;
+  /** US-14：检索范围，空 = 全部知识库（智能路由） */
+  scopeId: string;
+  scopeOptions: Array<{ label: string; value: string }>;
   results: KnowledgeChunk[];
   docSourceMap?: Record<string, string>;
   loading: boolean;
@@ -117,8 +133,11 @@ defineEmits<{
   'update:hybridMode': [value: string];
   'update:rewriteStrategy': [value: string];
   'update:useRerank': [value: boolean];
+  'update:scopeId': [value: string];
   search: [];
 }>();
+
+const { t } = useI18n();
 
 const hybridModeOptions = KNOWLEDGE_HYBRID_MODE_OPTIONS;
 const rewriteStrategyOptions = KNOWLEDGE_REWRITE_STRATEGY_OPTIONS;

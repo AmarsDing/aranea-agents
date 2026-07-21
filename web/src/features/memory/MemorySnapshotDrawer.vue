@@ -13,16 +13,22 @@
       <div class="q-pa-md">
         <div class="row items-center justify-between q-mb-md">
           <div>
-            <div class="text-h6">Prompt 段落统计</div>
+            <div class="text-h6">{{ t('memory.snapshotDrawer.title') }}</div>
             <div class="text-caption text-grey-7">{{ snapshot?.id }}</div>
           </div>
-          <q-btn flat round icon="close" aria-label="关闭快照详情" @click="$emit('update:modelValue', false)" />
+          <q-btn
+            flat
+            round
+            icon="close"
+            :aria-label="t('memory.snapshotDrawer.closeAria')"
+            @click="$emit('update:modelValue', false)"
+          />
         </div>
         <AppRegistryTable
           :shell="false"
           :resizable="false"
           :rows="segmentRows"
-          :columns="MEMORY_SNAPSHOT_SEGMENT_COLUMNS"
+          :columns="segmentColumns"
           row-key="section"
           hide-pagination
           :pagination="{ rowsPerPage: 0 }"
@@ -36,19 +42,19 @@
           <template #body-cell-detail="slotProps">
             <q-td :props="slotProps">
               <span v-if="slotProps.row.field_count != null" class="text-caption text-grey-7">
-                {{ slotProps.row.field_count }} fields
+                {{ t('memory.snapshotDrawer.fields', { count: slotProps.row.field_count }) }}
               </span>
               <span v-if="slotProps.row.fact_count != null" class="text-caption text-grey-7">
-                {{ slotProps.row.fact_count }} facts
+                {{ t('memory.snapshotDrawer.facts', { count: slotProps.row.fact_count }) }}
               </span>
               <span v-if="slotProps.row.entity_count != null" class="text-caption text-grey-7">
-                {{ slotProps.row.entity_count }} entities
+                {{ t('memory.snapshotDrawer.entities', { count: slotProps.row.entity_count }) }}
               </span>
               <span v-if="slotProps.row.result_count != null" class="text-caption text-grey-7">
-                {{ slotProps.row.result_count }} results
+                {{ t('memory.snapshotDrawer.results', { count: slotProps.row.result_count }) }}
               </span>
               <span v-if="slotProps.row.turn_count != null" class="text-caption text-grey-7">
-                {{ slotProps.row.turn_count }} turns
+                {{ t('memory.snapshotDrawer.turns', { count: slotProps.row.turn_count }) }}
               </span>
               <span
                 v-if="slotProps.row.from_turn != null && slotProps.row.to_turn != null"
@@ -61,12 +67,12 @@
           <template #no-data>
             <div class="full-width column items-center q-pa-md text-grey-7">
               <q-icon name="segment" size="32px" />
-              <div class="q-mt-sm">暂无段落数据</div>
+              <div class="q-mt-sm">{{ t('memory.snapshotDrawer.empty') }}</div>
             </div>
           </template>
         </AppRegistryTable>
         <div v-if="totalTokens > 0" class="q-mt-sm text-caption text-grey-7">
-          合计: {{ totalTokens.toLocaleString() }} tokens
+          {{ t('memory.snapshotDrawer.totalTokens', { count: totalTokens.toLocaleString() }) }}
         </div>
       </div>
     </q-scroll-area>
@@ -75,9 +81,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../../components/layout/AppRegistryTable.vue';
-import { MEMORY_SNAPSHOT_SEGMENT_COLUMNS, type MemorySnapshotSegmentRow } from './memoryTableUi';
+import { buildMemorySnapshotSegmentColumns, type MemorySnapshotSegmentRow } from './memoryTableUi';
 import type { L0AssemblySegmentsMap, L0AssemblySnapshot } from './types';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   modelValue: boolean;
@@ -87,6 +96,8 @@ const props = defineProps<{
 defineEmits<{
   'update:modelValue': [value: boolean];
 }>();
+
+const segmentColumns = computed(() => buildMemorySnapshotSegmentColumns(t));
 
 const segmentsMap = computed<L0AssemblySegmentsMap>(() =>
   props.snapshot ? parseJSON<L0AssemblySegmentsMap>(props.snapshot.segments_json, {}) : {},

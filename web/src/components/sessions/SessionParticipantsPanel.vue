@@ -15,12 +15,16 @@
         <q-item-section>
           <q-item-label>{{ row.display_name || row.participant_id }}</q-item-label>
           <q-item-label caption class="text-grey-6">
-            {{ row.participant_type }} · {{ row.role_in_session || 'member' }}
+            {{ participantTypeLabel(row.participant_type) }} ·
+            {{ row.role_in_session || t('sessionDetail.participantRoleFallback') }}
           </q-item-label>
         </q-item-section>
         <q-item-section side class="text-right">
           <div class="text-caption text-grey-7">{{ row.message_count }} 消息</div>
-          <div class="text-caption text-grey-7">IN {{ row.input_tokens }} · OUT {{ row.output_tokens }}</div>
+          <div class="text-caption text-grey-7">
+            {{ t('sessionDetail.tokenIn') }} {{ row.input_tokens }} · {{ t('sessionDetail.tokenOut') }}
+            {{ row.output_tokens }}
+          </div>
         </q-item-section>
       </q-item>
     </q-list>
@@ -29,11 +33,20 @@
 
 <script setup lang="ts">
 import { toRef } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useSessionParticipantsPanel } from '../../features/session/useSessionParticipantsPanel';
+
+const { t } = useI18n();
 
 const props = defineProps<{ sessionId: string }>();
 
 const { participants, loading, error } = useSessionParticipantsPanel(toRef(() => props.sessionId));
+
+function participantTypeLabel(type: string) {
+  const key = `sessionDetail.participantType.${type}`;
+  const translated = t(key);
+  return translated !== key ? translated : type;
+}
 
 function avatarLabel(name: string) {
   const trimmed = name.trim();

@@ -8,6 +8,7 @@ import {
   ingestDocument,
   listCollections,
   listDocuments,
+  moveDocument,
   searchKnowledge,
   getEmbedderConfig,
   updateEmbedderConfig,
@@ -78,8 +79,10 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
 
   async function ingest(input: IngestDocumentInput): Promise<KnowledgeDocument> {
     const doc = await ingestDocument(input);
-    const existing = documentsByCollection.value[input.collection_id] ?? [];
-    documentsByCollection.value[input.collection_id] = [doc, ...existing];
+    // US-14：collection_id 留空时由后端落入默认知识库，缓存键以返回文档的实际归属为准。
+    const key = doc.collection_id || input.collection_id;
+    const existing = documentsByCollection.value[key] ?? [];
+    documentsByCollection.value[key] = [doc, ...existing];
     return doc;
   }
 
@@ -88,6 +91,11 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     if (documentsByCollection.value[collectionId]) {
       documentsByCollection.value[collectionId] = documentsByCollection.value[collectionId].filter((d) => d.id !== id);
     }
+  }
+
+  // US-14：跨库移动文档；本地缓存由页面侧 reload 刷新（源/目标库计数均变化）。
+  async function moveDoc(id: string, targetCollectionId: string): Promise<KnowledgeDocument> {
+    return moveDocument(id, targetCollectionId);
   }
 
   async function search(query: SearchKnowledgeQuery): Promise<KnowledgeChunk[]> {
@@ -119,6 +127,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     loadDocuments,
     ingest,
     removeDocument,
+    moveDoc,
     search,
     loadEmbedderConfig,
     saveEmbedderConfig,

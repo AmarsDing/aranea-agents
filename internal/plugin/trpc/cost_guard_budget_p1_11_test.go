@@ -15,10 +15,10 @@ import (
 // biz.PluginCostGuardUsageRepo for testing the persistence paths of
 // CostGuardBudgetTracker.
 type fakeCostGuardRepo struct {
-	mu      sync.Mutex
-	adds    map[string]int // key = day|scope -> total tokens
-	getErr  error
-	addErr  error // when non-nil, AddTokens returns this error
+	mu       sync.Mutex
+	adds     map[string]int // key = day|scope -> total tokens
+	getErr   error
+	addErr   error // when non-nil, AddTokens returns this error
 	addCalls int32
 }
 

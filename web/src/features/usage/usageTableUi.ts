@@ -17,6 +17,6 @@ export const USAGE_EVENT_TABLE_COLUMNS = [
     'right',
     REGISTRY_COL_W.metric,
   ),
-  registryCol<ModelTokenUsageEvent>('latency_ms', '延迟(ms)', 'latency_ms', 'right', REGISTRY_COL_W.metric),
+  registryCol<ModelTokenUsageEvent>('latency_ms', '延迟', 'latency_ms', 'right', REGISTRY_COL_W.metric),
   registryCol<ModelTokenUsageEvent>('status', '状态', 'status', 'left', REGISTRY_COL_W.status),
 ];

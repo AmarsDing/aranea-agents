@@ -14,13 +14,75 @@ export const teamStatusMap: Record<string, { label: string; color: string }> = {
   active: { label: '活跃', color: 'positive' },
 };
 
+/** 编排模式中文映射（UI 展示用；value 保持后端枚举） */
+export const teamModeMap: Record<string, string> = {
+  sequential: '顺序',
+  parallel: '并行',
+  coordinator: '主控',
+  critic_loop: '生成评审',
+  adaptive: '群智',
+  swarm: '群智',
+};
+
+export function teamModeLabel(value?: string): string {
+  const key = String(value || '')
+    .trim()
+    .toLowerCase();
+  return teamModeMap[key] ?? (value || '—');
+}
+
+/** 成员角色中文映射（UI 展示用；value 保持后端枚举） */
+export const teamRoleMap: Record<string, string> = {
+  worker: '执行',
+  coordinator: '协调',
+  synthesizer: '汇总',
+  generator: '生成',
+  critic: '评审',
+};
+
+export function teamRoleLabel(value?: string): string {
+  const key = String(value || '')
+    .trim()
+    .toLowerCase();
+  return teamRoleMap[key] ?? (value || '成员');
+}
+
+/** 失败策略取值中文映射 */
+export const failurePolicyValueMap: Record<string, string> = {
+  retry_then_block: '重试后阻塞',
+  skip: '跳过',
+  fail_fast: '快速失败',
+  continue: '继续',
+  abort: '中止',
+  await_review: '暂停等审核',
+  halt: '终止',
+};
+
+export function failurePolicyValueLabel(value?: string): string {
+  const key = String(value || '')
+    .trim()
+    .toLowerCase();
+  return failurePolicyValueMap[key] ?? (value || '—');
+}
+
+/** 运行 / 步骤状态中文映射（TeamRun / TeamRunStep 展示用） */
+export function teamRunStatusLabel(status?: string): string {
+  const key = String(status || '')
+    .trim()
+    .toLowerCase();
+  if (key === 'success' || key === 'ok') return '已完成';
+  if (key === 'error') return '失败';
+  if (key === 'canceled') return '已取消';
+  return teamStatusMap[key]?.label ?? (status || '—');
+}
+
 export const modeOptions = [
-  { label: '顺序 sequential', value: 'sequential' },
-  { label: '并行 parallel', value: 'parallel' },
-  { label: '主控 coordinator', value: 'coordinator' },
-  { label: '生成评审 critic_loop', value: 'critic_loop' },
+  { label: '顺序', value: 'sequential' },
+  { label: '并行', value: 'parallel' },
+  { label: '主控', value: 'coordinator' },
+  { label: '生成评审', value: 'critic_loop' },
   {
-    label: '群智 adaptive（Swarm）',
+    label: '群智',
     value: 'adaptive',
     description: '成员间 transfer_to_agent 协作；后端与 swarm 共用 Swarm 运行时。',
   },
@@ -53,14 +115,14 @@ export function isValidStatusTransition(from: string, to: string): boolean {
 }
 
 export const roleOptions = ['worker', 'coordinator', 'synthesizer', 'generator', 'critic'].map((value) => ({
-  label: value,
+  label: teamRoleLabel(value),
   value,
 }));
 
 export type TeamTemplateKey = 'sequential' | 'parallel_experts' | 'critic_loop' | 'coordinator';
 
 export const teamTemplateOptions: Array<{ label: string; value: TeamTemplateKey; description: string }> = [
-  { label: '顺序协作', value: 'sequential', description: '多个 worker 按顺序接力处理任务。' },
+  { label: '顺序协作', value: 'sequential', description: '多个执行成员按顺序接力处理任务。' },
   {
     label: '并行专家组',
     value: 'parallel_experts',
@@ -69,7 +131,7 @@ export const teamTemplateOptions: Array<{ label: string; value: TeamTemplateKey;
   {
     label: '生成评审',
     value: 'critic_loop',
-    description: 'generator 与 critic 顺序迭代；迭代次数取自编排里的 critic_loop.max_iterations。',
+    description: '「生成」与「评审」角色顺序迭代；迭代次数取自编排里的 critic_loop.max_iterations。',
   },
   {
     label: '主控分派',
@@ -80,32 +142,31 @@ export const teamTemplateOptions: Array<{ label: string; value: TeamTemplateKey;
 
 export const runtimeEngineOptions = [
   {
-    label: 'Graph（默认，GraphAgent）',
+    label: 'Graph（默认）',
     value: 'graph',
     description: 'CompileToGraphRuntimeConfig → GraphAgent；生产推荐。',
   },
   {
-    label: 'Native（BuildTRPCTeam）',
+    label: 'Native',
     value: 'native',
     description: '按 mode 分发 Chain/Parallel/Swarm；仅 fallback 或调试。',
   },
 ];
 
-export const failureDefaultOptions = [
-  { label: '重试后阻塞 retry_then_block', value: 'retry_then_block' },
-  { label: '跳过 skip', value: 'skip' },
-  { label: '快速失败 fail_fast', value: 'fail_fast' },
-];
+export const failureDefaultOptions = ['retry_then_block', 'skip', 'fail_fast'].map((value) => ({
+  label: failurePolicyValueLabel(value),
+  value,
+}));
 
 export const parallelFailOptions = [
-  { label: '继续 continue（分支失败可跳过）', value: 'continue' },
-  { label: '中止 abort', value: 'abort' },
+  { label: '继续（分支失败可跳过）', value: 'continue' },
+  { label: '中止', value: 'abort' },
 ];
 
-export const failureOnErrorOptions = [
-  { label: '暂停等审核 await_review', value: 'await_review' },
-  { label: '终止 halt', value: 'halt' },
-];
+export const failureOnErrorOptions = ['await_review', 'halt'].map((value) => ({
+  label: failurePolicyValueLabel(value),
+  value,
+}));
 
 export const BuiltinIndustryId = '__builtin__';
 export const PresetIndustryId = '__preset__';

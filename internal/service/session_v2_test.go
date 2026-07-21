@@ -105,13 +105,13 @@ func TestSessionService_ListActivities_DelegatesToV2(t *testing.T) {
 		stepReader: &stubStepV2Reader{
 			steps: []biz.Step{
 				{
-					ID:        "step-1",
-					SessionID: "sess1",
-					TurnID:    "turn1",
-					Kind:      biz.StepKindReply,
-					Content:   "hello world",
-					IsFinal:   true,
-					NoticeType: "model_router",
+					ID:             "step-1",
+					SessionID:      "sess1",
+					TurnID:         "turn1",
+					Kind:           biz.StepKindReply,
+					Content:        "hello world",
+					IsFinal:        true,
+					NoticeType:     "model_router",
 					AuthorAgentKey: "agent-1",
 				},
 			},

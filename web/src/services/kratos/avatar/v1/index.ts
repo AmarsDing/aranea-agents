@@ -57,7 +57,8 @@ export type DeleteAvatarAssetRequest = {
   id: string | undefined;
 };
 
-export type RefreshChannelPlatformIconsRequest = {};
+export type RefreshChannelPlatformIconsRequest = {
+};
 
 export type RefreshChannelPlatformIconsResponse = {
   updated: number | undefined;
@@ -70,9 +71,7 @@ export interface AvatarService {
   GetAvatarFile(request: GetAvatarBlobRequest): Promise<GetAvatarBlobResponse>;
   GetAvatarThumbnail(request: GetAvatarBlobRequest): Promise<GetAvatarBlobResponse>;
   DeleteAvatarAsset(request: DeleteAvatarAssetRequest): Promise<wellKnownEmpty>;
-  RefreshChannelPlatformIcons(
-    request: RefreshChannelPlatformIconsRequest,
-  ): Promise<RefreshChannelPlatformIconsResponse>;
+  RefreshChannelPlatformIcons(request: RefreshChannelPlatformIconsRequest): Promise<RefreshChannelPlatformIconsResponse>;
 }
 
 type RequestType = {
@@ -81,157 +80,136 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createAvatarServiceClient(handler: RequestHandler): AvatarService {
+export function createAvatarServiceClient(
+  handler: RequestHandler
+): AvatarService {
   return {
-    ListAvatarAssets(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListAvatarAssets(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/avatar-assets`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.scope) {
-        queryParams.push(`scope=${encodeURIComponent(request.scope.toString())}`);
+        queryParams.push(`scope=${encodeURIComponent(request.scope.toString())}`)
       }
       if (request.workspaceId) {
-        queryParams.push(`workspaceId=${encodeURIComponent(request.workspaceId.toString())}`);
+        queryParams.push(`workspaceId=${encodeURIComponent(request.workspaceId.toString())}`)
       }
       if (request.ownerUserId) {
-        queryParams.push(`ownerUserId=${encodeURIComponent(request.ownerUserId.toString())}`);
+        queryParams.push(`ownerUserId=${encodeURIComponent(request.ownerUserId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'AvatarService',
-          method: 'ListAvatarAssets',
-        },
-      ) as Promise<ListAvatarAssetsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "AvatarService",
+        method: "ListAvatarAssets",
+      }) as Promise<ListAvatarAssetsResponse>;
     },
-    CreateAvatarAsset(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateAvatarAsset(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/avatar-assets`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'AvatarService',
-          method: 'CreateAvatarAsset',
-        },
-      ) as Promise<AvatarAsset>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AvatarService",
+        method: "CreateAvatarAsset",
+      }) as Promise<AvatarAsset>;
     },
-    GetAvatarFile(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetAvatarFile(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/avatar-assets/${request.id}/file`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'AvatarService',
-          method: 'GetAvatarFile',
-        },
-      ) as Promise<GetAvatarBlobResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "AvatarService",
+        method: "GetAvatarFile",
+      }) as Promise<GetAvatarBlobResponse>;
     },
-    GetAvatarThumbnail(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetAvatarThumbnail(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/avatar-assets/${request.id}/thumbnail`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'AvatarService',
-          method: 'GetAvatarThumbnail',
-        },
-      ) as Promise<GetAvatarBlobResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "AvatarService",
+        method: "GetAvatarThumbnail",
+      }) as Promise<GetAvatarBlobResponse>;
     },
-    DeleteAvatarAsset(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteAvatarAsset(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/avatar-assets/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'AvatarService',
-          method: 'DeleteAvatarAsset',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "AvatarService",
+        method: "DeleteAvatarAsset",
+      }) as Promise<wellKnownEmpty>;
     },
-    RefreshChannelPlatformIcons(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    RefreshChannelPlatformIcons(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/avatar-assets/channel-platform-icons:refresh`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'AvatarService',
-          method: 'RefreshChannelPlatformIcons',
-        },
-      ) as Promise<RefreshChannelPlatformIconsResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AvatarService",
+        method: "RefreshChannelPlatformIcons",
+      }) as Promise<RefreshChannelPlatformIconsResponse>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
+
 
 // @@protoc_insertion_point(typescript-http-eof)

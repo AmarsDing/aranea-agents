@@ -3,9 +3,11 @@ package agent_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/agent"
+	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/pkg/loggateway"
 
@@ -75,7 +77,7 @@ func TestBuildUserMessageFromAttachments_image(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msg, err := agent.BuildUserMessageFromArtifacts(ctx, uc, "sess-1", "see this", []string{saved.ID})
+	msg, err := agent.BuildUserMessageFromArtifacts(ctx, uc, nil, "sess-1", "see this", []string{saved.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,5 +89,134 @@ func TestBuildUserMessageFromAttachments_image(t *testing.T) {
 	}
 	if msg.ContentParts[1].Type != trpcmodel.ContentTypeImage {
 		t.Fatalf("part1 type=%v", msg.ContentParts[1].Type)
+	}
+}
+
+// ── 单轮超限治理 A：巨型文本附件落地 blob ─────────────────────
+
+type stubUserInputGate struct {
+	calls      []stubGateCall
+	preview    string
+	persist    bool
+	err        error
+}
+
+type stubGateCall struct {
+	sessionID string
+	messageID string
+	source    string
+	size      int
+}
+
+func (s *stubUserInputGate) CheckUserInput(_ context.Context, sessionID, messageID, source, fullContent string) (biz.ToolResultGateResult, error) {
+	if s.err != nil {
+		return biz.ToolResultGateResult{}, s.err
+	}
+	s.calls = append(s.calls, stubGateCall{sessionID: sessionID, messageID: messageID, source: source, size: len(fullContent)})
+	if !s.persist {
+		return biz.ToolResultGateResult{}, nil
+	}
+	return biz.ToolResultGateResult{BlobID: "blob-x", PreviewText: s.preview, DidPersist: true}, nil
+}
+
+func TestBuildUserMessageFromAttachments_LargeTextGated(t *testing.T) {
+	repo := &memArtifactRepo{items: map[string]artifactbiz.Artifact{}, data: map[string][]byte{}}
+	uc := artifactbiz.NewUsecase(repo, loggateway.NewNoop())
+	ctx := context.Background()
+	large := strings.Repeat("y", biz.ToolResultSizeThreshold+10)
+	saved, err := uc.Save(ctx, "sess-1", "big.txt", "text/plain", []byte(large))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := &stubUserInputGate{persist: true, preview: "头部预览... [truncated blob_id=blob-x]"}
+	msg, err := agent.BuildUserMessageFromArtifacts(ctx, uc, gate, "sess-1", "see this", []string{saved.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gate.calls) != 1 {
+		t.Fatalf("gate calls = %d, want 1", len(gate.calls))
+	}
+	call := gate.calls[0]
+	if call.source != biz.ToolResultSourceAttachment {
+		t.Fatalf("source = %q, want %q", call.source, biz.ToolResultSourceAttachment)
+	}
+	if call.messageID != saved.ID {
+		t.Fatalf("messageID = %q, want artifact id %q", call.messageID, saved.ID)
+	}
+	if call.sessionID != "sess-1" {
+		t.Fatalf("sessionID = %q, want sess-1", call.sessionID)
+	}
+	// 超限附件应替换为文本 preview part，而非 File part
+	var found bool
+	for _, p := range msg.ContentParts {
+		if p.Type == trpcmodel.ContentTypeText && p.Text != nil && strings.Contains(*p.Text, "truncated") {
+			found = true
+		}
+		if p.Type == trpcmodel.ContentTypeFile {
+			t.Fatal("gated attachment should not remain a File part")
+		}
+	}
+	if !found {
+		t.Fatal("expected a text preview part containing truncation marker")
+	}
+}
+
+func TestBuildUserMessageFromAttachments_SmallTextNotGated(t *testing.T) {
+	repo := &memArtifactRepo{items: map[string]artifactbiz.Artifact{}, data: map[string][]byte{}}
+	uc := artifactbiz.NewUsecase(repo, loggateway.NewNoop())
+	ctx := context.Background()
+	saved, err := uc.Save(ctx, "sess-1", "small.txt", "text/plain", []byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := &stubUserInputGate{persist: true, preview: "should-not-be-used"}
+	msg, err := agent.BuildUserMessageFromArtifacts(ctx, uc, gate, "sess-1", "", []string{saved.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gate.calls) != 0 {
+		t.Fatalf("gate should not be called for small attachment, calls = %d", len(gate.calls))
+	}
+	if msg.ContentParts[0].Type != trpcmodel.ContentTypeFile {
+		t.Fatalf("part0 type=%v, want File", msg.ContentParts[0].Type)
+	}
+}
+
+func TestBuildUserMessageFromAttachments_NilGateKeepsFile(t *testing.T) {
+	repo := &memArtifactRepo{items: map[string]artifactbiz.Artifact{}, data: map[string][]byte{}}
+	uc := artifactbiz.NewUsecase(repo, loggateway.NewNoop())
+	ctx := context.Background()
+	large := strings.Repeat("y", biz.ToolResultSizeThreshold+10)
+	saved, err := uc.Save(ctx, "sess-1", "big.txt", "text/plain", []byte(large))
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, err := agent.BuildUserMessageFromArtifacts(ctx, uc, nil, "sess-1", "", []string{saved.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.ContentParts[0].Type != trpcmodel.ContentTypeFile {
+		t.Fatalf("part0 type=%v, want File (nil gate keeps current behavior)", msg.ContentParts[0].Type)
+	}
+}
+
+func TestBuildUserMessageFromAttachments_ImageNotGated(t *testing.T) {
+	repo := &memArtifactRepo{items: map[string]artifactbiz.Artifact{}, data: map[string][]byte{}}
+	uc := artifactbiz.NewUsecase(repo, loggateway.NewNoop())
+	ctx := context.Background()
+	saved, err := uc.Save(ctx, "sess-1", "pic.png", "image/png", []byte{1, 2, 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := &stubUserInputGate{persist: true, preview: "should-not-be-used"}
+	msg, err := agent.BuildUserMessageFromArtifacts(ctx, uc, gate, "sess-1", "", []string{saved.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gate.calls) != 0 {
+		t.Fatalf("gate should not be called for image attachment, calls = %d", len(gate.calls))
+	}
+	if msg.ContentParts[0].Type != trpcmodel.ContentTypeImage {
+		t.Fatalf("part0 type=%v, want Image", msg.ContentParts[0].Type)
 	}
 }

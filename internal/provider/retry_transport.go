@@ -81,21 +81,26 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		resp, err := t.base.RoundTrip(req)
 		if err != nil {
 			lastErr = err
+			decision := ClassifyRetry(nil, err)
 			if t.lg != nil {
 				t.lg.Warn("provider 请求失败，准备重试",
 					loggateway.StepID("provider.retry"),
 					loggateway.Int("attempt", attempt+1),
 					loggateway.Int("max_retries", t.maxRetries),
+					loggateway.Str("retry_decision", decision.Type.String()),
 					loggateway.Err(err))
 			}
-			if t.shouldRetry(attempt) {
+			if decision.Type == RetryWithBackoff && t.shouldRetry(attempt) {
 				attempt++
 				continue
 			}
 			return nil, lastErr
 		}
-		// Retry on server errors (5xx) and 429 (rate limited).
-		if resp.StatusCode >= 500 || resp.StatusCode == 429 {
+		// Retry on server errors (5xx) and 429 (rate limited); other statuses
+		// are returned to the caller for body parsing (classification decides
+		// retryability at higher layers).
+		decision := ClassifyRetry(resp, nil)
+		if decision.Type == RetryWithBackoff {
 			// 解析 Retry-After header（429 和部分 5xx 可能携带）。
 			if d := parseRetryAfter(resp.Header.Get("Retry-After")); d > 0 {
 				retryAfterDelay = d
@@ -107,6 +112,7 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 					loggateway.StepID("provider.retry"),
 					loggateway.Int("attempt", attempt+1),
 					loggateway.Int("max_retries", t.maxRetries),
+					loggateway.Bool("rate_limited", decision.IsRateLimited),
 					loggateway.Int("status_code", resp.StatusCode))
 			}
 			if t.shouldRetry(attempt) {

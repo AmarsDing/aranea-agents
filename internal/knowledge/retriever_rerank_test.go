@@ -37,10 +37,16 @@ func (s *stubKnowledgeRepo) GetDocument(context.Context, string) (biz.KnowledgeD
 func (s *stubKnowledgeRepo) UpdateDocumentStatus(context.Context, string, string, string, int) error {
 	return nil
 }
+func (s *stubKnowledgeRepo) UpdateDocumentContent(context.Context, string, string, bool) error {
+	return nil
+}
 func (s *stubKnowledgeRepo) ListDocuments(context.Context, string, int, int) ([]biz.KnowledgeDocument, int, error) {
 	return nil, 0, nil
 }
-func (s *stubKnowledgeRepo) DeleteDocument(context.Context, string) error             { return nil }
+func (s *stubKnowledgeRepo) DeleteDocument(context.Context, string) error { return nil }
+func (s *stubKnowledgeRepo) MoveDocument(_ context.Context, id, target string) (biz.KnowledgeDocument, error) {
+	return biz.KnowledgeDocument{ID: id, CollectionID: target}, nil
+}
 func (s *stubKnowledgeRepo) InsertChunks(context.Context, []biz.KnowledgeChunk) error { return nil }
 func (s *stubKnowledgeRepo) DeleteChunksByDocument(context.Context, string) error     { return nil }
 

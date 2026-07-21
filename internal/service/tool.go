@@ -413,6 +413,35 @@ func (s *ToolService) DeleteToolAgentOverride(ctx context.Context, req *v1.Delet
 	return &emptypb.Empty{}, nil
 }
 
+// ListToolGrants lists persisted "always allow" grants for an agent.
+func (s *ToolService) ListToolGrants(ctx context.Context, req *v1.ListToolGrantsRequest) (*v1.ListToolGrantsResponse, error) {
+	grants, err := s.uc.ListToolGrants(ctx, req.GetAgentId())
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*v1.ToolGrant, 0, len(grants))
+	for i := range grants {
+		items = append(items, &v1.ToolGrant{
+			Id:        grants[i].ID,
+			AgentId:   grants[i].AgentID,
+			ToolKey:   grants[i].ToolKey,
+			GrantedBy: grants[i].GrantedBy,
+			CreatedAt: grants[i].CreatedAt,
+		})
+	}
+	return &v1.ListToolGrantsResponse{Items: items}, nil
+}
+
+// DeleteToolGrant revokes a persisted grant. Idempotent. The confirmation
+// decision chain queries grants per decision, so revocation takes effect on
+// the next tool invocation without any build-cache invalidation.
+func (s *ToolService) DeleteToolGrant(ctx context.Context, req *v1.DeleteToolGrantRequest) (*emptypb.Empty, error) {
+	if err := s.uc.RevokeToolGrant(ctx, req.GetAgentId(), req.GetToolKey()); err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
 func (s *ToolService) GetToolInvocationParams(ctx context.Context, req *v1.GetToolInvocationParamsRequest) (*v1.ToolInvocationParam, error) {
 	p, err := s.uc.GetToolInvocationParams(ctx, req.GetInvocationId())
 	if err != nil {

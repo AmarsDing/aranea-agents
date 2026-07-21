@@ -148,6 +148,11 @@ func InputContract(v string) predicate.Team {
 	return predicate.Team(sql.FieldEQ(FieldInputContract, v))
 }
 
+// DeliverablesOutputJSON applies equality check predicate on the "deliverables_output_json" field. It's identical to DeliverablesOutputJSONEQ.
+func DeliverablesOutputJSON(v string) predicate.Team {
+	return predicate.Team(sql.FieldEQ(FieldDeliverablesOutputJSON, v))
+}
+
 // DeptLeadAgentID applies equality check predicate on the "dept_lead_agent_id" field. It's identical to DeptLeadAgentIDEQ.
 func DeptLeadAgentID(v string) predicate.Team {
 	return predicate.Team(sql.FieldEQ(FieldDeptLeadAgentID, v))
@@ -1166,6 +1171,71 @@ func InputContractEqualFold(v string) predicate.Team {
 // InputContractContainsFold applies the ContainsFold predicate on the "input_contract" field.
 func InputContractContainsFold(v string) predicate.Team {
 	return predicate.Team(sql.FieldContainsFold(FieldInputContract, v))
+}
+
+// DeliverablesOutputJSONEQ applies the EQ predicate on the "deliverables_output_json" field.
+func DeliverablesOutputJSONEQ(v string) predicate.Team {
+	return predicate.Team(sql.FieldEQ(FieldDeliverablesOutputJSON, v))
+}
+
+// DeliverablesOutputJSONNEQ applies the NEQ predicate on the "deliverables_output_json" field.
+func DeliverablesOutputJSONNEQ(v string) predicate.Team {
+	return predicate.Team(sql.FieldNEQ(FieldDeliverablesOutputJSON, v))
+}
+
+// DeliverablesOutputJSONIn applies the In predicate on the "deliverables_output_json" field.
+func DeliverablesOutputJSONIn(vs ...string) predicate.Team {
+	return predicate.Team(sql.FieldIn(FieldDeliverablesOutputJSON, vs...))
+}
+
+// DeliverablesOutputJSONNotIn applies the NotIn predicate on the "deliverables_output_json" field.
+func DeliverablesOutputJSONNotIn(vs ...string) predicate.Team {
+	return predicate.Team(sql.FieldNotIn(FieldDeliverablesOutputJSON, vs...))
+}
+
+// DeliverablesOutputJSONGT applies the GT predicate on the "deliverables_output_json" field.
+func DeliverablesOutputJSONGT(v string) predicate.Team {
+	return predicate.Team(sql.FieldGT(FieldDeliverablesOutputJSON, v))
+}
+
+// DeliverablesOutputJSONGTE applies the GTE predicate on the "deliverables_output_json" field.
+func DeliverablesOutputJSONGTE(v string) predicate.Team {
+	return predicate.Team(sql.FieldGTE(FieldDeliverablesOutputJSON, v))
+}
+
+// DeliverablesOutputJSONLT applies the LT predicate on the "deliverables_output_json" field.
+func DeliverablesOutputJSONLT(v string) predicate.Team {
+	return predicate.Team(sql.FieldLT(FieldDeliverablesOutputJSON, v))
+}
+
+// DeliverablesOutputJSONLTE applies the LTE predicate on the "deliverables_output_json" field.
+func DeliverablesOutputJSONLTE(v string) predicate.Team {
+	return predicate.Team(sql.FieldLTE(FieldDeliverablesOutputJSON, v))
+}
+
+// DeliverablesOutputJSONContains applies the Contains predicate on the "deliverables_output_json" field.
+func DeliverablesOutputJSONContains(v string) predicate.Team {
+	return predicate.Team(sql.FieldContains(FieldDeliverablesOutputJSON, v))
+}
+
+// DeliverablesOutputJSONHasPrefix applies the HasPrefix predicate on the "deliverables_output_json" field.
+func DeliverablesOutputJSONHasPrefix(v string) predicate.Team {
+	return predicate.Team(sql.FieldHasPrefix(FieldDeliverablesOutputJSON, v))
+}
+
+// DeliverablesOutputJSONHasSuffix applies the HasSuffix predicate on the "deliverables_output_json" field.
+func DeliverablesOutputJSONHasSuffix(v string) predicate.Team {
+	return predicate.Team(sql.FieldHasSuffix(FieldDeliverablesOutputJSON, v))
+}
+
+// DeliverablesOutputJSONEqualFold applies the EqualFold predicate on the "deliverables_output_json" field.
+func DeliverablesOutputJSONEqualFold(v string) predicate.Team {
+	return predicate.Team(sql.FieldEqualFold(FieldDeliverablesOutputJSON, v))
+}
+
+// DeliverablesOutputJSONContainsFold applies the ContainsFold predicate on the "deliverables_output_json" field.
+func DeliverablesOutputJSONContainsFold(v string) predicate.Team {
+	return predicate.Team(sql.FieldContainsFold(FieldDeliverablesOutputJSON, v))
 }
 
 // DeptLeadAgentIDEQ applies the EQ predicate on the "dept_lead_agent_id" field.

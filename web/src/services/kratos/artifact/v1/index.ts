@@ -140,223 +140,194 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createArtifactServiceClient(handler: RequestHandler): ArtifactService {
+export function createArtifactServiceClient(
+  handler: RequestHandler
+): ArtifactService {
   return {
-    UploadArtifact(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UploadArtifact(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/artifacts`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ArtifactService',
-          method: 'UploadArtifact',
-        },
-      ) as Promise<ArtifactMeta>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ArtifactService",
+        method: "UploadArtifact",
+      }) as Promise<ArtifactMeta>;
     },
-    GetArtifact(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetArtifact(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/artifacts/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.version) {
-        queryParams.push(`version=${encodeURIComponent(request.version.toString())}`);
+        queryParams.push(`version=${encodeURIComponent(request.version.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ArtifactService',
-          method: 'GetArtifact',
-        },
-      ) as Promise<ArtifactData>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ArtifactService",
+        method: "GetArtifact",
+      }) as Promise<ArtifactData>;
     },
-    ListArtifacts(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListArtifacts(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/artifacts`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.sessionId) {
-        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`);
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       if (request.query) {
-        queryParams.push(`query=${encodeURIComponent(request.query.toString())}`);
+        queryParams.push(`query=${encodeURIComponent(request.query.toString())}`)
       }
       if (request.mimeTypePrefix) {
-        queryParams.push(`mimeTypePrefix=${encodeURIComponent(request.mimeTypePrefix.toString())}`);
+        queryParams.push(`mimeTypePrefix=${encodeURIComponent(request.mimeTypePrefix.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ArtifactService',
-          method: 'ListArtifacts',
-        },
-      ) as Promise<ListArtifactsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ArtifactService",
+        method: "ListArtifacts",
+      }) as Promise<ListArtifactsResponse>;
     },
-    DeleteArtifact(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteArtifact(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/artifacts/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'ArtifactService',
-          method: 'DeleteArtifact',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "ArtifactService",
+        method: "DeleteArtifact",
+      }) as Promise<wellKnownEmpty>;
     },
-    DeleteArtifactVersion(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteArtifactVersion(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       if (!request.version) {
-        throw new Error('missing required field request.version');
+        throw new Error("missing required field request.version");
       }
       const path = `v1/artifacts/${request.id}/versions/${request.version}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'ArtifactService',
-          method: 'DeleteArtifactVersion',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "ArtifactService",
+        method: "DeleteArtifactVersion",
+      }) as Promise<wellKnownEmpty>;
     },
-    PreviewArtifact(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    PreviewArtifact(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/artifacts/${request.id}/preview`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.version) {
-        queryParams.push(`version=${encodeURIComponent(request.version.toString())}`);
+        queryParams.push(`version=${encodeURIComponent(request.version.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ArtifactService',
-          method: 'PreviewArtifact',
-        },
-      ) as Promise<PreviewArtifactResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ArtifactService",
+        method: "PreviewArtifact",
+      }) as Promise<PreviewArtifactResponse>;
     },
-    SignDownloadUrl(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    SignDownloadUrl(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/artifacts/${request.id}/sign-download`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ArtifactService',
-          method: 'SignDownloadUrl',
-        },
-      ) as Promise<SignDownloadUrlResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ArtifactService",
+        method: "SignDownloadUrl",
+      }) as Promise<SignDownloadUrlResponse>;
     },
-    ListArtifactVersions(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListArtifactVersions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/artifacts/${request.id}/versions`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ArtifactService',
-          method: 'ListArtifactVersions',
-        },
-      ) as Promise<ListArtifactVersionsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ArtifactService",
+        method: "ListArtifactVersions",
+      }) as Promise<ListArtifactVersionsResponse>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
+
 
 // @@protoc_insertion_point(typescript-http-eof)

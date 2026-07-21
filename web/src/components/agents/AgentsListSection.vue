@@ -123,8 +123,15 @@
               size="sm"
               :color="isFavorite(slotProps.row.id) ? 'amber-8' : 'grey-5'"
               :icon="isFavorite(slotProps.row.id) ? 'star' : 'star_border'"
+              :aria-label="
+                isFavorite(slotProps.row.id) ? t('agentsPage.actions.unfavorite') : t('agentsPage.actions.favorite')
+              "
               @click="$emit('toggle-favorite', slotProps.row.id)"
-            />
+            >
+              <q-tooltip>{{
+                isFavorite(slotProps.row.id) ? t('agentsPage.actions.unfavorite') : t('agentsPage.actions.favorite')
+              }}</q-tooltip>
+            </q-btn>
             <agent-avatar-q :icon="slotProps.row.icon" :alt="slotProps.row.display_name" size="36px" />
             <div class="min-width-0">
               <div class="app-registry-cell-primary ellipsis">
@@ -144,9 +151,15 @@
       </template>
       <template #body-cell-status="slotProps">
         <q-td :props="slotProps">
-          <q-badge rounded :color="slotProps.row.status === 'active' ? 'positive' : 'grey'">{{
-            statusLabel(slotProps.row.status)
-          }}</q-badge>
+          <div class="row items-center no-wrap q-gutter-xs">
+            <q-badge rounded :color="slotProps.row.status === 'active' ? 'positive' : 'grey'">{{
+              statusLabel(slotProps.row.status)
+            }}</q-badge>
+            <q-chip v-if="slotProps.row.readonly" dense square class="agent-card__readonly-chip" icon="verified_user">
+              {{ t('agentsPage.actions.builtin') }}
+              <q-tooltip>{{ t('agentsPage.actions.builtinTip') }}</q-tooltip>
+            </q-chip>
+          </div>
         </q-td>
       </template>
       <template #body-cell-memory_mode="slotProps">
@@ -174,9 +187,10 @@
               round
               color="primary"
               icon="edit"
+              :aria-label="t('agentsPage.actions.edit')"
               :to="`/agents/${slotProps.row.id}/settings`"
             >
-              <q-tooltip>编辑</q-tooltip>
+              <q-tooltip>{{ t('agentsPage.actions.edit') }}</q-tooltip>
             </q-btn>
             <q-btn
               v-if="slotProps.row.readonly"
@@ -185,9 +199,10 @@
               round
               color="primary"
               icon="settings"
+              :aria-label="t('agentsPage.actions.settings')"
               :to="`/agents/${slotProps.row.id}/settings`"
             >
-              <q-tooltip>设置</q-tooltip>
+              <q-tooltip>{{ t('agentsPage.actions.settings') }}</q-tooltip>
             </q-btn>
             <q-btn
               v-if="!slotProps.row.readonly"
@@ -196,9 +211,10 @@
               round
               color="secondary"
               icon="content_copy"
+              :aria-label="t('agentsPage.actions.duplicate')"
               @click="$emit('duplicate', slotProps.row)"
             >
-              <q-tooltip>复制</q-tooltip>
+              <q-tooltip>{{ t('agentsPage.actions.duplicate') }}</q-tooltip>
             </q-btn>
             <q-btn
               v-if="!slotProps.row.readonly"
@@ -207,13 +223,11 @@
               round
               color="negative"
               icon="delete"
+              :aria-label="t('agentsPage.actions.delete')"
               @click="$emit('delete', slotProps.row)"
             >
-              <q-tooltip>删除</q-tooltip>
+              <q-tooltip>{{ t('agentsPage.actions.delete') }}</q-tooltip>
             </q-btn>
-            <q-chip v-if="slotProps.row.readonly" dense square class="agent-card__readonly-chip" icon="verified_user"
-              >内置</q-chip
-            >
           </div>
         </q-td>
       </template>
@@ -223,6 +237,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { QTableColumn } from 'quasar';
 import draggable from 'vuedraggable';
 import type { Agent } from '../../features/agents/types';
@@ -230,6 +245,8 @@ import AgentCard from './AgentCard.vue';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import { formatLastRunContext, isAgentEvolving, statusLabel, MEMORY_TOOL_MODE_LABELS } from './agentUi';
+
+const { t } = useI18n();
 
 type ViewMode = 'grid' | 'list';
 

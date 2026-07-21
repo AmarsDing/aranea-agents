@@ -1,6 +1,8 @@
 # L0 上下文压缩优化 — 设计
 
 > **需求**：[`L0-compression.md`](./L0-compression.md) · **开发计划**：[`L0-compression-development.md`](./L0-compression-development.md)
+>
+> **⚠️ 变更通知（2026-07-20）**：L1 MicroCompact 已全链路移除（§1.2.2 设计、级联第 5 步、`micro_compact_*` 配置列）。移除原因：`loadCompressBody` 仅保留 user/assistant 消息，工具消息过滤逻辑恒不触发，功能从未生效。压缩级联现为两级：L2 Memory Compact → L3 LLM。下文相关章节仅作历史记录保留。详见 `docs/superpowers/plans/2026-07-20-session-compression-hardening.md`。
 
 ---
 
@@ -105,7 +107,25 @@ type ReadToolResultOutput struct {
 
 工具注册走标准 `ToolRegistration` + `builtin_tools_seed.go` 种子流程。
 
-#### 1.1.5 可压缩工具白名单
+#### 1.1.5 单轮超限治理（用户输入 / 文本附件）
+
+工具结果之外，**用户输入正文**与**文本附件**同样可能单轮超窗口。复用同一 Gate 与 blob 存储，`source` 区分来源（`ToolResultSourceUserInput` / `ToolResultSourceAttachment`，写入 `blob.ToolName` 以与工具结果区分）：
+
+```go
+// ToolResultGate.CheckUserInput — 与 Check 同幂等语义（按 sessionID+messageID 查 replacement）
+func (g *ToolResultGate) CheckUserInput(ctx context.Context, sessionID, messageID, source, fullContent string) (ToolResultGateResult, error)
+```
+
+接入点：
+
+| 接入点 | 位置 | 行为 |
+|--------|------|------|
+| 用户输入 | `turnPipeline.gateTurnUserInput`（`internal/service/chat_orchestrator_turn_pipeline.go`） | 消息持久化前调用；gate 未配置 / 未超阈值 / 落地失败时透传原文（不阻断对话）；幂等键取 `RootTaskActivityID`（与持久化用户消息 ID 一致），重试复用 replacement |
+| 文本附件 | `BuildUserMessageFromArtifacts`（`internal/agent/attachments.go`，`gate UserInputGate` 参数） | 超阈值非 image 附件以 preview 文本 part 替换 File part；image 附件走多模态原路径不拦截 |
+
+落地后 LLM 可通过 `read_tool_result` 按 blob_id 分块读取全文（同工具结果路径）。第二道防线为 LLM 调用前裁剪：`enable_token_tailoring` 在 `context_window_k > 0` 且未显式配置时默认启用（见 [9-provider.design.md §6.3](../9-provider.design.md)）。
+
+#### 1.1.6 可压缩工具白名单
 
 ```go
 var compactableTools = map[string]bool{
@@ -133,14 +153,15 @@ runCompress() 判断链
     ├── 3. 防抖检查 → 跳过/继续
     ├── 4. 消息数量检查 → 不足 → 跳过
     ↓
-    【新增】5. L1 MicroCompact
-    ├── 识别可压缩工具的旧结果（age ≥ min_age_turns）
-    ├── 替换为占位符 [Tool result cleared: <tool_name>(<args_summary>)]
-    ├── 估算压缩后 token 数
-    ├── 仍超阈值 → 升级到 L2
-    └── 未超 → 执行 L1 压缩，更新快照，返回
+    ~~【新增】5. L1 MicroCompact~~ ❌ 已移除（2026-07-20，功能从未生效）
+    ~~├── 识别可压缩工具的旧结果（age ≥ min_age_turns）~~
+    ~~├── 替换为占位符 [Tool result cleared: <tool_name>(<args_summary>)]~~
+    ~~├── 估算压缩后 token 数~~
+    ~~├── 仍超阈值 → 升级到 L2~~
+    ~~└── 未超 → 执行 L1 压缩，更新快照，返回~~
     ↓
     【新增】6. L2 Memory Compact
+    ├── 【新增 2026-07-20】摘要行数 ≥ SummaryMaxRows（默认 3）→ 跳过 L2 强制 L3（LLM 吸收合并，行数归一）
     ├── 读取 L1 工作记忆 + 已提取的记忆事实
     ├── 组装为摘要（结构化 Markdown）
     ├── 估算压缩后 token 数
@@ -151,7 +172,9 @@ runCompress() 判断链
     └── 调 LLM 生成 9 章节摘要，CAS + 事务写入
 ```
 
-#### 1.2.2 L1 MicroCompact 设计
+#### 1.2.2 ~~L1 MicroCompact 设计~~ ❌ 已移除（2026-07-20）
+
+> **本节仅作历史记录保留。** 实现从未生效：`loadCompressBody` 仅保留 user/assistant 消息，`role=tool` 过滤恒不触发。代码（`micro_compact.go`、proto 字段、DB 列、前端配置）已全链路删除。
 
 ```go
 type MicroCompactResult struct {
@@ -480,8 +503,8 @@ func (s *ChatService) CompactSession(ctx context.Context, req *pb.CompactSession
 ALTER TABLE agent_runtime_settings ADD COLUMN tool_result_max_size_chars INTEGER NOT NULL DEFAULT 50000;
 ALTER TABLE agent_runtime_settings ADD COLUMN tool_result_max_per_message_chars INTEGER NOT NULL DEFAULT 200000;
 ALTER TABLE agent_runtime_settings ADD COLUMN tool_result_preview_size_chars INTEGER NOT NULL DEFAULT 2000;
-ALTER TABLE agent_runtime_settings ADD COLUMN micro_compact_enabled INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE agent_runtime_settings ADD COLUMN micro_compact_min_age_turns INTEGER NOT NULL DEFAULT 2;
+-- ❌ 已移除（2026-07-20）：micro_compact_enabled / micro_compact_min_age_turns
+--    列已由迁移 20261107_drop_micro_compact 删除
 ALTER TABLE agent_runtime_settings ADD COLUMN memory_compact_enabled INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE agent_runtime_settings ADD COLUMN memory_compact_min_tokens INTEGER NOT NULL DEFAULT 10000;
 ALTER TABLE agent_runtime_settings ADD COLUMN memory_compact_max_tokens INTEGER NOT NULL DEFAULT 40000;

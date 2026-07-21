@@ -16,8 +16,10 @@ type mockRepo struct {
 	docCreateFn   func(ctx context.Context, d Document) (Document, error)
 	docGetFn      func(ctx context.Context, id string) (Document, error)
 	docUpdateFn   func(ctx context.Context, id, status, errMsg string, chunkCount int) error
+	docContentFn  func(ctx context.Context, id, contentText string, organized bool) error
 	docListFn     func(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
 	docDeleteFn   func(ctx context.Context, id string) error
+	docMoveFn     func(ctx context.Context, id, targetCollectionID string) (Document, error)
 	chunkInsertFn func(ctx context.Context, chunks []Chunk) error
 	chunkDeleteFn func(ctx context.Context, docID string) error
 	chunkSearchFn func(ctx context.Context, q SearchQuery, emb []float32) ([]Chunk, error)
@@ -47,11 +49,17 @@ func (m *mockRepo) GetDocument(ctx context.Context, id string) (Document, error)
 func (m *mockRepo) UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error {
 	return m.docUpdateFn(ctx, id, status, errMsg, chunkCount)
 }
+func (m *mockRepo) UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error {
+	return m.docContentFn(ctx, id, contentText, organized)
+}
 func (m *mockRepo) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error) {
 	return m.docListFn(ctx, collectionID, limit, offset)
 }
 func (m *mockRepo) DeleteDocument(ctx context.Context, id string) error {
 	return m.docDeleteFn(ctx, id)
+}
+func (m *mockRepo) MoveDocument(ctx context.Context, id, targetCollectionID string) (Document, error) {
+	return m.docMoveFn(ctx, id, targetCollectionID)
 }
 func (m *mockRepo) InsertChunks(ctx context.Context, chunks []Chunk) error {
 	return m.chunkInsertFn(ctx, chunks)
@@ -73,8 +81,12 @@ func noOpMockRepo() *mockRepo {
 		docCreateFn:   func(_ context.Context, d Document) (Document, error) { return d, nil },
 		docGetFn:      func(_ context.Context, id string) (Document, error) { return Document{ID: id}, nil },
 		docUpdateFn:   func(_ context.Context, _, _, _ string, _ int) error { return nil },
+		docContentFn:  func(_ context.Context, _, _ string, _ bool) error { return nil },
 		docListFn:     func(_ context.Context, _ string, _, _ int) ([]Document, int, error) { return nil, 0, nil },
 		docDeleteFn:   func(_ context.Context, _ string) error { return nil },
+		docMoveFn: func(_ context.Context, id, target string) (Document, error) {
+			return Document{ID: id, CollectionID: target}, nil
+		},
 		chunkInsertFn: func(_ context.Context, _ []Chunk) error { return nil },
 		chunkDeleteFn: func(_ context.Context, _ string) error { return nil },
 		chunkSearchFn: func(_ context.Context, _ SearchQuery, _ []float32) ([]Chunk, error) { return nil, nil },
@@ -490,6 +502,67 @@ func TestUsecase_Search(t *testing.T) {
 			}
 			if tt.check != nil {
 				tt.check(t, capturedQ)
+			}
+		})
+	}
+}
+
+func TestUsecase_GetDocument(t *testing.T) {
+	tests := []struct {
+		name      string
+		id        string
+		repoFn    func(_ context.Context, id string) (Document, error)
+		wantErr   bool
+		wantErrIs error
+		check     func(t *testing.T, got Document)
+	}{
+		{"empty id rejected", "", nil, true, ErrIDRequired, nil},
+		{"whitespace id rejected", "  ", nil, true, ErrIDRequired, nil},
+		{
+			"valid id returns content fields",
+			"doc-1",
+			func(_ context.Context, id string) (Document, error) {
+				return Document{ID: id, ContentText: "# 标题\n正文", Organized: true, AssetURI: ""}, nil
+			},
+			false, nil,
+			func(t *testing.T, got Document) {
+				if got.ID != "doc-1" {
+					t.Errorf("ID = %q, want %q", got.ID, "doc-1")
+				}
+				if got.ContentText != "# 标题\n正文" {
+					t.Errorf("ContentText = %q, want organized markdown", got.ContentText)
+				}
+				if !got.Organized {
+					t.Error("Organized = false, want true")
+				}
+			},
+		},
+		{
+			"repo error propagated",
+			"doc-missing",
+			func(_ context.Context, _ string) (Document, error) { return Document{}, fmt.Errorf("not found") },
+			true, nil, nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mr := noOpMockRepo()
+			if tt.repoFn != nil {
+				mr.docGetFn = tt.repoFn
+			}
+			u := NewUsecaseFromRepo(mr)
+			got, err := u.GetDocument(context.Background(), tt.id)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil && tt.wantErrIs != nil {
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Errorf("error = %v, want errors.Is(err, %v)", err, tt.wantErrIs)
+				}
+			}
+			if tt.check != nil {
+				tt.check(t, got)
 			}
 		})
 	}

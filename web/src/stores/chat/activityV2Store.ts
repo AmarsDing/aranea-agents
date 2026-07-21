@@ -26,6 +26,8 @@ import {
   listGraphStagesV2,
   listGraphNodesV2,
 } from '../../features/session/v2Api';
+import { useNodeOutputStore } from './nodeOutputStore';
+import type { MediaArtifact } from '../../features/chat/mediaTypes';
 
 // P2-07: record sub-resource fetch failures during history hydration.
 export interface HydrationError {
@@ -68,6 +70,8 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       return [] as T[];
     };
   }
+
+  const nodeOutputStore = useNodeOutputStore();
 
   // === Upsert helpers (optimistic-concurrency guarded) ===
 
@@ -113,6 +117,22 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       steps.value.set(s.ID, { ...ex, ...s });
     } else {
       steps.value.set(s.ID, { ...s });
+    }
+    // Sync media outputs to nodeOutputStore for observation canvas.
+    // When a media tool completes, extract artifacts from ToolResult and map to the node.
+    if (s.Kind === 'action' && s.Status === 'completed' && s.ToolName) {
+      const mediaTools = ['generate_image', 'generate_video', 'image_to_video'];
+      if (mediaTools.includes(s.ToolName)) {
+        const result = s.ToolResult as Record<string, unknown> | null;
+        const artifacts = result?.artifacts;
+        if (Array.isArray(artifacts) && artifacts.length > 0) {
+          // Step has no TeamStageID field; map agent key to node ID.
+          const nodeId = s.AuthorAgentKey;
+          if (nodeId) {
+            nodeOutputStore.setNodeOutput(nodeId, artifacts as MediaArtifact[]);
+          }
+        }
+      }
     }
   }
 

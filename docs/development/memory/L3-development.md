@@ -24,6 +24,8 @@
 | 冲突检测 | ✅ | `internal/biz/memory_admin_usecase.go`（DetectFactConflicts 子句级否定匹配 + 指纹去重前置 + IncrementConflictCount） |
 | 冲突 API | ✅ | `api/kratos/memory/v1/memory.proto`（ListConflictingFacts RPC） |
 | quality_score 5维评分 | ✅ | `internal/data/memory_shim_l3.go`（keyword(0.25) + vector(0.30) + importance(0.20) + recency(0.15) + quality(0.10)） |
+| 时间衰减（evergreen 豁免） | ✅ | `internal/data/memory_helpers.go`（`isEvergreenFactKind` + `factDecayWithKind`，2026-07-20 Grok 借鉴） |
+| MMR 多样性重排 | ✅ | `internal/data/memory_mmr.go`（相关性-多样性平衡重排，2026-07-20 Grok 借鉴） |
 | pgvector HNSW 索引 | ❌ | 仅有 B-tree 索引，无 HNSW 向量近似索引 |
 | Conflict UI | ❌ | 冲突检测前端展示 |
 | rerank (Cross-Encoder) | ❌ | P3 |
@@ -52,6 +54,8 @@
 - `internal/biz/memory_admin_usecase.go` — 冲突检测
 - `internal/biz/memory_pii.go` — PII 检测
 - `internal/agent/l3_prompt.go` — L3MemoryCue prompt 注入
+- `internal/data/memory_helpers.go` — `isEvergreenFactKind` + `factDecayWithKind`（evergreen 豁免时间衰减，Grok Build 借鉴）
+- `internal/data/memory_mmr.go` — `mmrRerankTexts` 多样性重排（Grok Build 借鉴）
 - `internal/cronrunner/jobs/memory_l3_decay.go` — Decay Worker
 - `internal/cronrunner/jobs/memory_fact_index_reconciler.go` — 索引 Reconciler
 

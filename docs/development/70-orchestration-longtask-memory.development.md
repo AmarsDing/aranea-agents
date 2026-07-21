@@ -279,6 +279,8 @@
   - 命中时 `MatchLayer="factory"`、`MatchReason="AgentFactory 动态创建"`，便于观测
 - Source 字段对齐：`source="system"`（非 "dynamic"），与 `internal/data/ent/schema/agent.go` enum `user/system/imported` 一致
 
+> **2026-07-18 更新（P-ORCH）**：AgentFactory 增加用户确认流程——LLM 生成提案后通过 `AgentCreationConfirmer` 请求用户批准，批准后创建/拒绝降级；`EnsureAgent` 增加 `creating_agent`/`agent_created` 进度事件；`Allocate()` 重构为三阶段（Layer 0-3 并行 → factory 串行确认 → record 并行）。详见 [1-chat.development.md §P-ORCH](./1-chat.development.md#p-orch-编排实时反馈与-agent-创建确认2026-07-18-新增)。
+
 ### 4.5 P1-5：taskrun 事件透传
 
 **任务**：扩展 taskrun.Controller 增加 Events()

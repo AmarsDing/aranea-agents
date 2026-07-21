@@ -398,6 +398,27 @@ body.body--dark
   .q-field--highlighted .q-field__label
     color: var(--color-accent)
 
+// ── 全局滚动条（随昼夜模式 token 自适配；类级规则可覆盖）──
+*
+  scrollbar-width: thin
+  scrollbar-color: var(--app-scrollbar-thumb) transparent
+
+  &::-webkit-scrollbar
+    width: 6px
+    height: 6px
+
+  &::-webkit-scrollbar-track
+    background: transparent
+
+  &::-webkit-scrollbar-thumb
+    border-radius: 4px
+    border: 1px solid transparent
+    background-clip: content-box
+    background-color: var(--app-scrollbar-thumb)
+
+  &::-webkit-scrollbar-thumb:hover
+    background-color: var(--app-scrollbar-thumb-hover)
+
 // ── QMenu / QSelect 下拉面板滚动条 ──
 .q-menu
   scrollbar-width: thin

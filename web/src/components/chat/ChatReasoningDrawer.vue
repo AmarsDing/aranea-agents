@@ -17,14 +17,12 @@
       </div>
       <q-separator />
       <div ref="viewportRef" class="chat-reasoning-drawer__body" @wheel="onWheel">
-        <!-- eslint-disable vue/no-v-html -- sanitized markdown HTML -->
         <div
+          v-segmented-markdown="parts"
           class="chat-reasoning-drawer__content chat-message-prose"
           :class="{ 'chat-message-content--dark': isDark }"
           :style="contentStyle"
-          v-html="renderedHtml"
         ></div>
-        <!-- eslint-enable vue/no-v-html -->
       </div>
       <div v-if="canScroll && !followTail" class="chat-reasoning-drawer__hint text-caption">
         {{ t('chat.reasoningScrollHint', '滚轮查看更多') }}
@@ -36,7 +34,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
+import { renderChatMarkdownParts } from '../../features/chat/chatMessageMarkdown';
+import { vSegmentedMarkdown } from '../../features/chat/vSegmentedMarkdown';
 
 const props = defineProps<{
   open: boolean;
@@ -59,9 +58,9 @@ const scrollOffset = ref(0);
 const maxScroll = ref(0);
 const followTail = ref(true);
 
-const renderedHtml = computed(() => {
-  if (!props.activeReasoning) return '';
-  return renderChatMarkdownForMessage(
+const parts = computed(() => {
+  if (!props.activeReasoning) return { frozenHtml: '', tailHtml: '', frozenSegments: [], frozenEpoch: 0 };
+  return renderChatMarkdownParts(
     props.activeReasoning.messageId,
     props.activeReasoning.reasoning,
     props.activeReasoning.streaming,

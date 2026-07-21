@@ -14,6 +14,9 @@ var brokerToolNames = map[string]struct{}{
 }
 
 // metaGetter matches MCP tool results that carry CallToolResult metadata.
+// In trpc-agent-go, only *mcp.Tool.mcpToolResult implements this interface,
+// making it a reliable type marker for MCP tool calls regardless of whether
+// the server populates Meta (e.g. Playwright MCP returns no Meta).
 type metaGetter interface {
 	GetMeta() map[string]any
 }
@@ -35,7 +38,11 @@ func IsMCPToolInvocation(toolName string, result any) bool {
 		}
 	}
 	if result != nil {
-		if mg, ok := result.(metaGetter); ok && mg.GetMeta() != nil {
+		// MCP tool results implement GetMeta() — this is a reliable type marker
+		// even when the MCP server returns no Meta (e.g. Playwright MCP tools
+		// like `playwright_browser_navigate`). Only *mcpToolResult implements
+		// this interface, so the assertion is safe without a nil-Meta check.
+		if _, ok := result.(metaGetter); ok {
 			return true
 		}
 	}

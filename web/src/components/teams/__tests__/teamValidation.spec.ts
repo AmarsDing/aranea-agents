@@ -119,7 +119,7 @@ describe('validateTeamDefinition', () => {
       mode: 'coordinator',
       members: [{ agent_id: 'a1', role: 'worker', name: 'W1', enabled: true, sort_order: 10 }],
     });
-    expect(validateTeamDefinition(def)).toContain('synthesizer 或 coordinator');
+    expect(validateTeamDefinition(def)).toContain('「汇总」或「协调」');
   });
 
   it('passes for coordinator with coordinator member', () => {
@@ -141,7 +141,7 @@ describe('validateTeamDefinition', () => {
         { agent_id: 'a2', role: 'synthesizer', name: 'S1', enabled: true, sort_order: 20 },
       ],
     });
-    expect(validateTeamDefinition(def)).toContain('generator 和 critic');
+    expect(validateTeamDefinition(def)).toContain('「生成」和「评审」');
   });
 
   it('passes for critic_loop with generator and critic', () => {

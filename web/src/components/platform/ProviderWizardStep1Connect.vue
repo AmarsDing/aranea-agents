@@ -64,7 +64,7 @@
         </a>
       </div>
       <q-select
-        v-else
+        v-if="providerAddMode === 'custom'"
         :model-value="providerPresetKey"
         dense
         outlined
@@ -84,12 +84,11 @@
           </q-item>
         </template>
       </q-select>
-      <q-select
+      <q-input
         v-if="providerRuntimeLocked"
         dense
         outlined
         readonly
-        disable
         label="运行时类型"
         :model-value="providerRuntimeSummary"
         hint="由 models.dev 目录 / runtime overlay 自动决定，无需手动选择"
@@ -133,17 +132,19 @@
         v-model="providerForm.model_api_id"
         dense
         outlined
-        :use-input="useCatalogModelPicker"
+        :use-input="providerAddMode === 'custom' || useCatalogModelPicker"
+        :new-value-mode="providerAddMode === 'custom' ? 'add-unique' : undefined"
         :fill-input="false"
         :hide-selected="false"
         input-debounce="0"
         emit-value
         map-options
         label="模型"
+        :hint="providerAddMode === 'custom' ? '输入模型 ID 后按回车可添加目录外模型' : undefined"
         :loading="catalogModelsLoading"
         :options="providerModelOptions"
         @filter="onModelFilter"
-        @new-value="$emit('set-custom-model-value', $event)"
+        @new-value="onNewModelValue"
         @update:model-value="$emit('update:model-api-id', $event)"
       >
         <template #append>
@@ -172,7 +173,7 @@
         dense
         outlined
         label="Provider ID *"
-        hint="厂商 ID（如 deepseek），勿填模型名；目录模式下为 models.dev 供应商 id"
+        hint="厂商 ID（如 deepseek），勿填模型名"
         :readonly="providerAddMode === 'catalog'"
         :rules="[providerCodeRule]"
       />
@@ -198,7 +199,7 @@
         outlined
         label="供应商名称"
         :readonly="providerAddMode === 'catalog'"
-        hint="来自 catalog 的 name 字段"
+        :hint="providerAddMode === 'catalog' ? '来自 catalog 的 name 字段' : undefined"
       />
       <q-input v-model="providerForm.model_display_name" dense outlined label="模型展示名" />
       <q-input v-model="providerForm.api_base_url" dense outlined label="API 基础 URL" placeholder="https://..." />
@@ -231,7 +232,7 @@
               dense
               round
               :icon="showSecretKey ? 'visibility_off' : 'visibility'"
-              :aria-label="showSecretKey ? '隐藏 Secret Key' : '显示 Secret Key'"
+              :aria-label="showSecretKey ? 'Hide Secret Key' : 'Show Secret Key'"
               :disable="revealingCredentials"
               @click="$emit('toggle-secret-key-visibility')"
             />
@@ -290,17 +291,21 @@ const props = defineProps<{
   filterCatalogModelsLocal: (val: string, update: (fn: () => void) => void) => void;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   'update:providerAddMode': [value: string];
   'update:catalogProviderSearch': [value: string];
   'update:catalogProviderId': [value: string];
   'update:providerPresetKey': [value: string];
   'toggle-api-key-visibility': [];
-  'set-custom-model-value': [value: string];
+  'set-custom-model-value': [value: string, done?: (value: string, mode?: 'add' | 'add-unique' | 'toggle') => void];
   'update:model-api-id': [value: string | number | null];
   'inspect-current-provider-model': [];
   'toggle-secret-key-visibility': [];
 }>();
+
+function onNewModelValue(value: string, done?: (value: string, mode?: 'add' | 'add-unique' | 'toggle') => void) {
+  emit('set-custom-model-value', value, done);
+}
 
 function onModelFilter(val: string, update: (fn: () => void) => void) {
   if (props.useCatalogModelPicker) {

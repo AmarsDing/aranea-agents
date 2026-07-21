@@ -450,6 +450,9 @@ func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, 
 	}
 	current.DepartmentID = firstNonEmpty(patch.DepartmentID, current.DepartmentID)
 	current.LinkedGraphID = firstNonEmpty(patch.LinkedGraphID, current.LinkedGraphID)
+	// Deliverable outputs accumulate over the team's lifetime; only overwrite
+	// when the patch carries a non-empty value (P0-② deliverable passing).
+	current.DeliverablesOutput = firstNonEmpty(patch.DeliverablesOutput, current.DeliverablesOutput)
 	if err := validateTeamDefinition(current.DefinitionJSON); err != nil {
 		return Team{}, err
 	}

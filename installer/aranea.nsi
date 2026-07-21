@@ -1,10 +1,7 @@
-; ─── Aranea-Agents NSIS 安装脚本 ──────────────────────────────
-; 用法：makensis /DVERSION=v1.0.0 /DSTAGING_DIR=build\staging /DOUT_DIR=release aranea.nsi
-;
-; UX 原则：
-;   - 默认安装到 %LOCALAPPDATA%\AraneaAgents（无需管理员 / 无 UAC）
-;   - 桌面快捷方式指向 AraneaLauncher.exe（无黑框控制台）
-;   - start.bat 仅作调试备用入口
+; Aranea-Agents NSIS installer
+; NOTE: Keep user-visible strings in ASCII/English to avoid mojibake on finish page
+; when the .nsi file encoding differs from the builder code page.
+; Usage: makensis /DVERSION=0.1.32 /DSTAGING_DIR=build\staging /DOUT_DIR=release aranea.nsi
 
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
@@ -26,17 +23,14 @@ Unicode True
 ShowInstDetails show
 ShowUnInstDetails show
 
-; 用户目录安装：普通用户可写 postgres\data / logs，无需管理员提权
 InstallDir "$LOCALAPPDATA\AraneaAgents"
 RequestExecutionLevel user
 
-; VIProductVersion 必须为 X.X.X.X；从 VERSION 粗解析，失败则用 0.1.0.0
-!define /date BUILD_YEAR "%Y"
-VIProductVersion "0.1.25.0"
+VIProductVersion "0.1.32.0"
 VIAddVersionKey "ProductName" "Aranea-Agents"
 VIAddVersionKey "CompanyName" "AmarsDing"
 VIAddVersionKey "LegalCopyright" "Copyright (C) 2026 AmarsDing"
-VIAddVersionKey "FileDescription" "Aranea-Agents - Enterprise Multi-Agent Orchestration Platform"
+VIAddVersionKey "FileDescription" "Aranea-Agents Multi-Agent Platform"
 VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
 
@@ -48,12 +42,12 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 
-; 完成后可选启动（默认不勾选，避免安装器等待启动器完成）
+; ASCII-only finish strings (prevents garbled Chinese on some Windows locales)
 !define MUI_FINISHPAGE_RUN "$INSTDIR\AraneaLauncher.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "启动 Aranea-Agents"
+!define MUI_FINISHPAGE_RUN_TEXT "Start Aranea-Agents"
 !define MUI_FINISHPAGE_RUN_NOTCHECKED
 !define MUI_FINISHPAGE_SHOWREADME "$INSTDIR\README.md"
-!define MUI_FINISHPAGE_SHOWREADME_TEXT "查看 README"
+!define MUI_FINISHPAGE_SHOWREADME_TEXT "Open README"
 !define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
 !insertmacro MUI_PAGE_FINISH
 
@@ -62,43 +56,49 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_UNPAGE_FINISH
 
-!insertmacro MUI_LANGUAGE "SimpChinese"
+; English first as default language to avoid garbled SimpChinese UI from encoding mismatch
 !insertmacro MUI_LANGUAGE "English"
+!insertmacro MUI_LANGUAGE "SimpChinese"
 
 Section "MainSection" SecMain
   SetOutPath "$INSTDIR"
 
-  ; 安装前只杀进程，绝不调用 AraneaLauncher（旧版会因 psql 等密码而挂死 NSIS）
   DetailPrint "Stopping previous Aranea processes..."
   nsExec::ExecToLog 'taskkill /IM AraneaAgents.exe /F /T'
   nsExec::ExecToLog 'taskkill /IM aranea-server.exe /F /T'
   nsExec::ExecToLog 'taskkill /IM AraneaLauncher.exe /F /T'
   Sleep 800
 
-  File /nonfatal /r "${STAGING_DIR}\*.*"
+  File /r "${STAGING_DIR}\"
 
-  ; 校验关键文件已落地
   IfFileExists "$INSTDIR\AraneaLauncher.exe" launcher_ok
-    MessageBox MB_OK|MB_ICONSTOP "安装失败：未找到 AraneaLauncher.exe，请重新下载安装包。"
+    MessageBox MB_OK|MB_ICONSTOP "Install failed: AraneaLauncher.exe missing. Please re-download the package."
     Abort
   launcher_ok:
   IfFileExists "$INSTDIR\aranea-server.exe" server_ok
-    MessageBox MB_OK|MB_ICONSTOP "安装失败：未找到 aranea-server.exe。"
+    MessageBox MB_OK|MB_ICONSTOP "Install failed: aranea-server.exe missing."
     Abort
   server_ok:
   IfFileExists "$INSTDIR\frontend\AraneaAgents.exe" electron_ok
-    MessageBox MB_OK|MB_ICONSTOP "安装失败：未找到 frontend\AraneaAgents.exe。"
+    MessageBox MB_OK|MB_ICONSTOP "Install failed: frontend\AraneaAgents.exe missing."
     Abort
   electron_ok:
+  IfFileExists "$INSTDIR\internal\scenario\system\prompts\IDENTITY.md" scenario_ok
+    MessageBox MB_OK|MB_ICONSTOP "Install failed: internal\scenario prompts missing. Please re-download the package."
+    Abort
+  scenario_ok:
+  IfFileExists "$INSTDIR\data\model-catalog\current.json" catalog_ok
+    MessageBox MB_OK|MB_ICONSTOP "Install failed: data\model-catalog missing. Please re-download the package."
+    Abort
+  catalog_ok:
 
   CreateDirectory "$SMPROGRAMS\Aranea-Agents"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
-  CreateShortcut "$SMPROGRAMS\Aranea-Agents\环境检查.lnk" "$INSTDIR\AraneaLauncher.exe" "-check" "$INSTDIR\frontend\resources\app\icons\icon.ico"
-  CreateShortcut "$SMPROGRAMS\Aranea-Agents\停止 Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "-stop" "$INSTDIR\frontend\resources\app\icons\icon.ico"
-  CreateShortcut "$SMPROGRAMS\Aranea-Agents\卸载.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
+  CreateShortcut "$SMPROGRAMS\Aranea-Agents\Environment Check.lnk" "$INSTDIR\AraneaLauncher.exe" "-check" "$INSTDIR\frontend\resources\app\icons\icon.ico"
+  CreateShortcut "$SMPROGRAMS\Aranea-Agents\Stop Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "-stop" "$INSTDIR\frontend\resources\app\icons\icon.ico"
+  CreateShortcut "$SMPROGRAMS\Aranea-Agents\Uninstall.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
 
-  ; 注意：安装阶段禁止运行 AraneaLauncher -check/-stop。
-  ; 旧版 psql 无 -w 时会在系统 Postgres 要密码处永久挂起（NSIS 卡在 Running quiet environment check）。
+  ; Do NOT run AraneaLauncher during install (can hang NSIS).
 
   CreateShortcut "$DESKTOP\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
 
@@ -123,11 +123,14 @@ Section "MainSection" SecMain
 SectionEnd
 
 Section "Uninstall"
-  IfFileExists "$INSTDIR\AraneaLauncher.exe" 0 +3
-    nsExec::Exec '"$INSTDIR\AraneaLauncher.exe" -stop'
-    Sleep 2000
-  IfFileExists "$INSTDIR\stop.bat" 0 +2
-    nsExec::Exec '"$INSTDIR\stop.bat"'
+  nsExec::ExecToLog 'taskkill /IM AraneaAgents.exe /F /T'
+  nsExec::ExecToLog 'taskkill /IM aranea-server.exe /F /T'
+  nsExec::ExecToLog 'taskkill /IM AraneaLauncher.exe /F /T'
+  nsExec::ExecToLog 'taskkill /IM redis-server.exe /F /T'
+  Sleep 1000
+  IfFileExists "$INSTDIR\postgres\bin\pg_ctl.exe" 0 skip_pg_stop
+    nsExec::ExecToLog '"$INSTDIR\postgres\bin\pg_ctl.exe" stop -D "$INSTDIR\postgres\data" -m fast'
+  skip_pg_stop:
 
   Delete "$DESKTOP\Aranea-Agents.lnk"
   RMDir /r "$SMPROGRAMS\Aranea-Agents"
@@ -152,7 +155,7 @@ Section "Uninstall"
   RMDir /r "$INSTDIR\postgres\share"
 
   IfFileExists "$INSTDIR\postgres\data" 0 skip_data
-    MessageBox MB_YESNO|MB_ICONQUESTION "是否删除数据库数据？这将删除所有 Agent 数据，且不可恢复！" IDNO skip_data
+    MessageBox MB_YESNO|MB_ICONQUESTION "Delete database data? This cannot be undone." IDNO skip_data
     RMDir /r "$INSTDIR\postgres\data"
   skip_data:
 

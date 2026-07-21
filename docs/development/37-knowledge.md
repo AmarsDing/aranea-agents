@@ -114,6 +114,42 @@
 - 自适应路由根据查询复杂度自动选择检索模式。
 - 检索质量评估（CRAG）在结果不足时自动触发补充检索。
 
+### US-12：拖拽上传文档并自动整理入库
+
+**作为**用户，**我希望**将多个 PDF、Word、Markdown、XML 等文本类文档直接拖拽到知识库页面，**以便**系统自动提取内容、整理为结构化 Markdown 文档并完成分块向量化入库，无需手动逐个配置。
+
+**验收标准**：
+- 知识库文档面板提供拖拽区域，支持一次拖入多个文件。
+- 每个文件生成独立上传任务，实时展示状态（pending → indexing → indexed / error）。
+- 文本类（txt/md/json/csv/html/xml/yaml）与 Office 类（pdf/doc/docx/xlsx/pptx）文档均可正确提取文本。
+- 默认开启「整理为 Markdown」：提取文本经 LLM 结构化为 Markdown 后再按标题层级分块入库。
+- LLM 不可用或整理失败时自动降级为原文本入库，不阻塞流程。
+- 整理后的 Markdown 全文可在文档列表中预览。
+- 拖入图片等多模态文件时给出明确提示（多模态支持见 US-13），不静默失败。
+
+### US-13：多模态资料入库（图片）
+
+**作为**用户，**我希望**将图片（png/jpg/jpeg/webp）拖入知识库，**以便**系统通过多模态 LLM 理解图片内容并整理为 Markdown 描述文档入库，与文本文档一样可被语义搜索。
+
+**验收标准**：
+- 图片与文本文档共用同一拖拽入口与上传队列。
+- 图片经多模态 LLM 输出结构化 Markdown 描述（含图中文字、表格、图表含义）后入库。
+- 原始图片留存并与文档记录关联（血缘可追）。
+- 检索结果与文本文档无差别返回；文档 metadata 记录模态与提取方式。
+- 多模态 LLM 不可用时文档状态标记为 `error` 并给出明确错误信息。
+
+### US-14：免选择知识库（存储分类、使用免选）
+
+**作为**用户，**我希望**存入知识库的资料就是我的知识（可分门别类存放），但在会话中使用时**不需要我决定用哪个知识库**——系统自动在我的全部知识中检索，**以便**我无需理解"知识库/Collection"概念即可获得基于私有知识的回答。
+
+**验收标准**：
+- 上传不强制预选 Collection：未选中时自动落入系统「默认知识库」（首个上传自动创建），不静默丢弃文件。
+- 会话中 Agent 检索知识时无需指定 Collection：默认在用户全部 Collection 中智能路由检索（按集合名称/描述与问题的匹配度取 top N 广播 + 结果合并）。
+- `knowledge_search` / `knowledge_reflect` 工具的 Collection 参数改为可选，留空即全库检索。
+- Agent 绑定特定 Collection 保留为高级配置（默认不绑定 = 全库可搜），用于「专属客服只搜产品文档」类精细化场景。
+- 文档可跨 Collection 移动（整理：默认库收件箱 → 分类库归档），移动后检索立即可见于目标库。
+- 调试搜索面板默认「全部知识库」。
+
 ---
 
 ## 2. 功能规格
@@ -132,6 +168,12 @@
 | 功能 | 说明 |
 |------|------|
 | 上传文档 | base64 + 可选 `chunk_strategy`；PDF/DOCX/HTML 自动解析 |
+| 拖拽批量上传 | 文档面板拖拽区域，一次拖入多文件，逐文件生成上传任务 |
+| 整理为 Markdown | 提取文本经 LLM 结构化为 MD 后按标题层级分块入库（默认开启，可关闭；失败降级原文本） |
+| MD 全文预览 | 整理后的 Markdown 全文持久化，文档列表可预览 |
+| 多模态入库 | 图片经多模态 LLM 输出 MD 描述入库（png/jpg/jpeg/webp），原图留存血缘 |
+| 上传免预选 | 未选中 Collection 时自动落「默认知识库」（懒创建），不静默丢弃 |
+| 文档跨库移动 | 文档连同 chunks 移动至目标 Collection，计数同步校正 |
 | 列出文档 | 按集合分页查询 |
 | 删除文档 | 级联删除向量块 |
 | 文档状态 | pending → indexing → indexed / error |
@@ -152,6 +194,7 @@
 | 自适应路由 | 查询复杂度分类 → 自动选择检索模式 |
 | 检索质量评估 | CRAG 式自校验，不足时自动补充检索 |
 | BM25 全文检索 | PostgreSQL ts_vector + pg_trgm 双路检索 + GIN 索引 |
+| 全库免选检索 | Collection 留空 = 全库智能路由（名称/描述匹配取 top N 广播 + RRF 合并），使用时无需选择知识库 |
 
 ### 2.4 分块策略
 
@@ -190,7 +233,7 @@
 | Reranker | 检索结果重排序（TopK/Cohere/Infinity） |
 | SourceSync | 数据源增量同步（未实现） |
 | 多租户隔离 | 租户间知识库完全隔离（未实现） |
-| Extractor | 格式转换（PDF/图片 → 文本/Markdown）（未实现） |
+| Extractor | 格式转换统一抽象：文本类（trpc reader 提取 → LLM 整理为 MD）+ 多模态（视觉 LLM 图片 → MD），产出物归一为 Markdown |
 | 跨 Collection 联邦搜索 | 多集合并行搜索 + 结果合并（Broadcast + Route 策略） |
 | Plan-Then-Retrieve | Agent 系统提示注入 Collection 摘要 |
 
@@ -208,8 +251,11 @@
 | NFR-6 | 联邦搜索支持 Broadcast 和 Route 策略 | Route 策略基于 Collection 名称/描述相关性评分 |
 | NFR-7 | Plan-Then-Retrieve 通过 BeforeModel 钩子注入 | 高频场景下可能增加延迟 |
 | NFR-8 | Embedder 配置优先级 | env `KRATOS_KNOWLEDGE_EMBED_*` > `system_settings` DB > 运行时 Knowledge API/UI |
-| NFR-9 | 上传安全守卫 | 32MB 大小限制 + MIME magic 检测 + 白名单 |
+| NFR-9 | 上传安全守卫 | 32MB 大小限制 + MIME magic 检测 + 白名单；OOXML（zip 容器）按声明 MIME/扩展名二次判定 |
 | NFR-10 | Embedder 超时可配 | `KRATOS_KNOWLEDGE_EMBED_TIMEOUT_SEC` 环境变量，默认 60s |
+| NFR-11 | LLM 整理降级 | 无可用 LLM 或整理失败时透传原文本入库，不阻塞摄取 |
+| NFR-12 | 多模态入库依赖 | 图片理解依赖多模态 LLM Provider，未配置时图片上传返回明确错误 |
+| NFR-13 | 模态归一 | 任何模态提取后归一为 Markdown 文本，下游分块/向量化/检索无模态差异 |
 
 ---
 
@@ -235,6 +281,9 @@
 | 16 | 跨 Collection 联邦搜索（多集合并行 + 结果合并） |
 | 17 | Plan-Then-Retrieve（Agent 系统提示注入 Collection 摘要） |
 | 18 | 联邦搜索 Route 策略（基于相关性智能路由） |
+| 19 | 拖拽批量上传文本类文档，自动整理为 Markdown 入库，状态实时可见 |
+| 20 | 整理后 Markdown 全文持久化，可预览 |
+| 21 | 图片经多模态 LLM 整理为 Markdown 描述入库，原图血缘可追 |
 
 ---
 
@@ -264,3 +313,12 @@
 - 输入：source（文件名/URL/描述）、mime_type、content_base64、metadata_json
 - 分块参数：chunk_size、chunk_overlap、chunk_strategy（char/token/markdown/json/recursive）
 - 上传后立即返回，异步处理进度通过 WS 推送
+
+### 5.5 拖拽上传区
+
+- 文档面板内嵌拖拽区域，高亮提示可拖入文件
+- 支持多文件同时拖入，自动推断 source（文件名）与 mime_type
+- 上传队列逐文件展示：文件名、大小、状态（pending → indexing → indexed / error）、错误信息
+- 默认参数：整理为 Markdown 开启、分块策略 markdown
+- 图片与文本文档共用入口（多模态支持上线前图片给出明确提示）
+- 文档列表提供「预览」入口查看整理后的 Markdown 全文

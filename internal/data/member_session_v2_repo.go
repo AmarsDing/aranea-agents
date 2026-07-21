@@ -218,7 +218,7 @@ func (r *memberSessionV2Repo) UpsertMemberSession(ctx context.Context, ms biz.Me
 	}
 	row, err := cb.Save(ctx)
 	if err != nil {
-		if ent.IsConstraintError(err) {
+		if ent.IsConstraintError(err) || isPgUniqueViolation(err) {
 			existing, getErr := r.data.RW().Read(ctx).MemberSessionV2.Get(ctx, ms.ID)
 			if getErr != nil {
 				return biz.MemberSession{}, entErrToBizErr(getErr, "MEMBER_SESSION_V2")

@@ -11,14 +11,14 @@ import (
 
 // mockReconsolidationStore is a test stub for biz.L4ReconsolidationStore.
 type mockReconsolidationStore struct {
-	boostOK       bool
-	boostErr      error
-	boostDelta    float64
-	boostNodeID   string
+	boostOK        bool
+	boostErr       error
+	boostDelta     float64
+	boostNodeID    string
 	boostTimestamp string
 
-	incrementOK    bool
-	incrementErr   error
+	incrementOK     bool
+	incrementErr    error
 	incrementNodeID string
 }
 
@@ -40,7 +40,7 @@ func (m *mockReconsolidationStore) IncrementUseCount(ctx context.Context, nodeID
 // 3. Hebbian reinforcement for each co-recalled neuron
 func TestReconsolidation_OnRecall(t *testing.T) {
 	store := &mockReconsolidationStore{
-		boostOK:    true,
+		boostOK:     true,
 		incrementOK: true,
 	}
 	hebbianStore := &mockHebbianStore{
@@ -95,7 +95,7 @@ func TestReconsolidation_BoostDelta(t *testing.T) {
 // is not found (BoostActivation returns ok=false).
 func TestReconsolidation_EntityNotFound(t *testing.T) {
 	store := &mockReconsolidationStore{
-		boostOK:    false, // entity not found
+		boostOK:     false, // entity not found
 		incrementOK: true,
 	}
 	hebbian := NewHebbianUpdater(&mockHebbianStore{}, nil)
@@ -112,8 +112,8 @@ func TestReconsolidation_EntityNotFound(t *testing.T) {
 func TestReconsolidation_BoostError(t *testing.T) {
 	expectedErr := errors.New("DB write failed")
 	store := &mockReconsolidationStore{
-		boostOK:    true,
-		boostErr:   expectedErr,
+		boostOK:     true,
+		boostErr:    expectedErr,
 		incrementOK: true,
 	}
 	svc := NewReconsolidationService(store, NewHebbianUpdater(&mockHebbianStore{}, nil), nil)
@@ -128,8 +128,8 @@ func TestReconsolidation_BoostError(t *testing.T) {
 // is logged but does not abort the flow (best-effort).
 func TestReconsolidation_IncrementError(t *testing.T) {
 	store := &mockReconsolidationStore{
-		boostOK:    true,
-		incrementOK: true,
+		boostOK:      true,
+		incrementOK:  true,
 		incrementErr: errors.New("increment failed"),
 	}
 	svc := NewReconsolidationService(store, NewHebbianUpdater(&mockHebbianStore{}, nil), nil)
@@ -145,7 +145,7 @@ func TestReconsolidation_IncrementError(t *testing.T) {
 // for one pair does not abort the flow (best-effort).
 func TestReconsolidation_HebbianError(t *testing.T) {
 	store := &mockReconsolidationStore{
-		boostOK:    true,
+		boostOK:     true,
 		incrementOK: true,
 	}
 	hebbianStore := &mockHebbianStore{
@@ -182,7 +182,7 @@ func TestReconsolidation_NilStore(t *testing.T) {
 // recalledWith is empty.
 func TestReconsolidation_EmptyRecalledWith(t *testing.T) {
 	store := &mockReconsolidationStore{
-		boostOK:    true,
+		boostOK:     true,
 		incrementOK: true,
 	}
 	hebbianStore := &mockHebbianStore{}
@@ -200,7 +200,7 @@ func TestReconsolidation_EmptyRecalledWith(t *testing.T) {
 // TestReconsolidation_TimestampFormat verifies the timestamp is RFC3339.
 func TestReconsolidation_TimestampFormat(t *testing.T) {
 	store := &mockReconsolidationStore{
-		boostOK:    true,
+		boostOK:     true,
 		incrementOK: true,
 	}
 	svc := NewReconsolidationService(store, NewHebbianUpdater(&mockHebbianStore{}, nil), nil)

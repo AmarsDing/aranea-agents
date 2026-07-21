@@ -214,325 +214,276 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createModelCatalogServiceClient(handler: RequestHandler): ModelCatalogService {
+export function createModelCatalogServiceClient(
+  handler: RequestHandler
+): ModelCatalogService {
   return {
-    GetModelCatalogStatus(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetModelCatalogStatus(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/model-catalog/status`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ModelCatalogService',
-          method: 'GetModelCatalogStatus',
-        },
-      ) as Promise<ModelCatalogStatus>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ModelCatalogService",
+        method: "GetModelCatalogStatus",
+      }) as Promise<ModelCatalogStatus>;
     },
-    GetModelCatalogPolicy(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetModelCatalogPolicy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/model-catalog/policy`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ModelCatalogService',
-          method: 'GetModelCatalogPolicy',
-        },
-      ) as Promise<ModelCatalogPolicy>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ModelCatalogService",
+        method: "GetModelCatalogPolicy",
+      }) as Promise<ModelCatalogPolicy>;
     },
-    UpdateModelCatalogPolicy(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateModelCatalogPolicy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/model-catalog/policy`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PUT',
-          body,
-        },
-        {
-          service: 'ModelCatalogService',
-          method: 'UpdateModelCatalogPolicy',
-        },
-      ) as Promise<ModelCatalogPolicy>;
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "ModelCatalogService",
+        method: "UpdateModelCatalogPolicy",
+      }) as Promise<ModelCatalogPolicy>;
     },
-    ListCatalogProviders(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListCatalogProviders(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/model-catalog/providers`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.q) {
-        queryParams.push(`q=${encodeURIComponent(request.q.toString())}`);
+        queryParams.push(`q=${encodeURIComponent(request.q.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ModelCatalogService',
-          method: 'ListCatalogProviders',
-        },
-      ) as Promise<ListCatalogProvidersResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ModelCatalogService",
+        method: "ListCatalogProviders",
+      }) as Promise<ListCatalogProvidersResponse>;
     },
-    ListCatalogModels(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListCatalogModels(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.providerId) {
-        throw new Error('missing required field request.provider_id');
+        throw new Error("missing required field request.provider_id");
       }
       const path = `v1/model-catalog/providers/${request.providerId}/models`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.q) {
-        queryParams.push(`q=${encodeURIComponent(request.q.toString())}`);
+        queryParams.push(`q=${encodeURIComponent(request.q.toString())}`)
       }
       if (request.includeDeprecated) {
-        queryParams.push(`includeDeprecated=${encodeURIComponent(request.includeDeprecated.toString())}`);
+        queryParams.push(`includeDeprecated=${encodeURIComponent(request.includeDeprecated.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ModelCatalogService',
-          method: 'ListCatalogModels',
-        },
-      ) as Promise<ListCatalogModelsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ModelCatalogService",
+        method: "ListCatalogModels",
+      }) as Promise<ListCatalogModelsResponse>;
     },
-    GetModelCatalogRaw(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetModelCatalogRaw(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/model-catalog/raw`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ModelCatalogService',
-          method: 'GetModelCatalogRaw',
-        },
-      ) as Promise<ModelCatalogRawResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ModelCatalogService",
+        method: "GetModelCatalogRaw",
+      }) as Promise<ModelCatalogRawResponse>;
     },
-    SearchCatalogRaw(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    SearchCatalogRaw(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/model-catalog/raw/search`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.q) {
-        queryParams.push(`q=${encodeURIComponent(request.q.toString())}`);
+        queryParams.push(`q=${encodeURIComponent(request.q.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ModelCatalogService',
-          method: 'SearchCatalogRaw',
-        },
-      ) as Promise<SearchCatalogRawResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ModelCatalogService",
+        method: "SearchCatalogRaw",
+      }) as Promise<SearchCatalogRawResponse>;
     },
-    ListModelCatalogSyncLogs(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListModelCatalogSyncLogs(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/model-catalog/sync-logs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ModelCatalogService',
-          method: 'ListModelCatalogSyncLogs',
-        },
-      ) as Promise<ListModelCatalogSyncLogsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ModelCatalogService",
+        method: "ListModelCatalogSyncLogs",
+      }) as Promise<ListModelCatalogSyncLogsResponse>;
     },
-    SyncModelCatalog(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    SyncModelCatalog(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/model-catalog/sync`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ModelCatalogService',
-          method: 'SyncModelCatalog',
-        },
-      ) as Promise<SyncModelCatalogResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ModelCatalogService",
+        method: "SyncModelCatalog",
+      }) as Promise<SyncModelCatalogResponse>;
     },
-    PreviewMigration(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    PreviewMigration(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/model-catalog/preview-migration`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ModelCatalogService',
-          method: 'PreviewMigration',
-        },
-      ) as Promise<PreviewMigrationResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ModelCatalogService",
+        method: "PreviewMigration",
+      }) as Promise<PreviewMigrationResponse>;
     },
-    GetCatalogProviderLogo(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetCatalogProviderLogo(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.providerId) {
-        throw new Error('missing required field request.provider_id');
+        throw new Error("missing required field request.provider_id");
       }
       const path = `v1/model-catalog/logos/${request.providerId}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ModelCatalogService',
-          method: 'GetCatalogProviderLogo',
-        },
-      ) as Promise<GetCatalogProviderLogoResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ModelCatalogService",
+        method: "GetCatalogProviderLogo",
+      }) as Promise<GetCatalogProviderLogoResponse>;
     },
-    ApplyProviderMigration(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ApplyProviderMigration(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/model-catalog/apply-migration`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ModelCatalogService',
-          method: 'ApplyProviderMigration',
-        },
-      ) as Promise<ApplyProviderMigrationResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ModelCatalogService",
+        method: "ApplyProviderMigration",
+      }) as Promise<ApplyProviderMigrationResponse>;
     },
-    GetProviderMigrationRules(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetProviderMigrationRules(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/model-catalog/provider-migration`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ModelCatalogService',
-          method: 'GetProviderMigrationRules',
-        },
-      ) as Promise<ProviderMigrationRulesResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ModelCatalogService",
+        method: "GetProviderMigrationRules",
+      }) as Promise<ProviderMigrationRulesResponse>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
+
 
 // @@protoc_insertion_point(typescript-http-eof)

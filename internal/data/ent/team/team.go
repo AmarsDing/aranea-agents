@@ -51,6 +51,8 @@ const (
 	FieldDeliverables = "deliverables"
 	// FieldInputContract holds the string denoting the input_contract field in the database.
 	FieldInputContract = "input_contract"
+	// FieldDeliverablesOutputJSON holds the string denoting the deliverables_output_json field in the database.
+	FieldDeliverablesOutputJSON = "deliverables_output_json"
 	// FieldDeptLeadAgentID holds the string denoting the dept_lead_agent_id field in the database.
 	FieldDeptLeadAgentID = "dept_lead_agent_id"
 	// FieldCrossDeptMemberIds holds the string denoting the cross_dept_member_ids field in the database.
@@ -93,6 +95,7 @@ var Columns = []string{
 	FieldSource,
 	FieldDeliverables,
 	FieldInputContract,
+	FieldDeliverablesOutputJSON,
 	FieldDeptLeadAgentID,
 	FieldCrossDeptMemberIds,
 	FieldLinkedGraphID,
@@ -154,6 +157,8 @@ var (
 	DefaultDeliverables string
 	// DefaultInputContract holds the default value on creation for the "input_contract" field.
 	DefaultInputContract string
+	// DefaultDeliverablesOutputJSON holds the default value on creation for the "deliverables_output_json" field.
+	DefaultDeliverablesOutputJSON string
 	// DefaultDeptLeadAgentID holds the default value on creation for the "dept_lead_agent_id" field.
 	DefaultDeptLeadAgentID string
 	// DefaultCrossDeptMemberIds holds the default value on creation for the "cross_dept_member_ids" field.
@@ -333,6 +338,11 @@ func ByDeliverables(opts ...sql.OrderTermOption) OrderOption {
 // ByInputContract orders the results by the input_contract field.
 func ByInputContract(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldInputContract, opts...).ToFunc()
+}
+
+// ByDeliverablesOutputJSON orders the results by the deliverables_output_json field.
+func ByDeliverablesOutputJSON(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDeliverablesOutputJSON, opts...).ToFunc()
 }
 
 // ByDeptLeadAgentID orders the results by the dept_lead_agent_id field.

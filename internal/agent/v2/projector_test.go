@@ -329,7 +329,7 @@ func TestEmitSystemEvent(t *testing.T) {
 	capture.events = nil
 
 	p.EmitSystemEvent(context.Background(), biz.ActivityKindNotice, "context_usage", map[string]any{
-		"type":         "context_window",
+		"type":          "context_window",
 		"prompt_tokens": 1000,
 	})
 

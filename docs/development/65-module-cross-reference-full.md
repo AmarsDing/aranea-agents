@@ -499,18 +499,18 @@
 
 ### 1.13 知识库 (`internal/knowledge/`)
 
-**职责**：文档摄入管线（上传 → OCR → 分块 → Embedding → pgvector → 检索）。
+**职责**：统一摄取管线（上传 → Extractor 模态路由（文本/多模态）→ LLM 整理为 Markdown → 分块 → Embedding → pgvector → 检索）。
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `biz`（Knowledge 类型）、`provider`（Embedding 模型） |
+| **上游依赖** | `biz`（Knowledge 类型 + LLMCaller）、`provider`（Embedding/LLM 模型） |
 | **下游影响** | `agent`（知识注入 Prompt L4 层）、`service/knowledge`（Knowledge API） |
-| **核心导出** | `Ingest()`、`Retriever`、`Chunker` |
+| **核心导出** | `Ingest()`、`Retriever`、`Chunker`、`ExtractorRegistry`、`MarkdownOrganizer`（Phase 8/9 计划新增，见 37-knowledge.development.md） |
 | **共享类型** | `Chunk`、`RetrievalResult` |
 | **事件生产** | `knowledge_ingest` |
 | **事件消费** | 无 |
-| **数据库** | 通过 biz KnowledgeUsecase 访问（knowledge_bases/knowledge_documents + pgvector chunks） |
-| **前端对应** | KnowledgePage |
+| **数据库** | 通过 biz KnowledgeUsecase 访问（knowledge_collections/knowledge_documents + pgvector chunks） |
+| **前端对应** | KnowledgePage（含拖拽上传区/上传队列/MD 预览，Phase 8 计划新增） |
 
 ---
 

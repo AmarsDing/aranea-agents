@@ -135,6 +135,10 @@ func (s *stubStepReader) ListStepsBySpiritSession(_ context.Context, _ string) (
 	return s.steps, nil
 }
 
+func (s *stubStepReader) ListStepsBySessionID(_ context.Context, _ string) ([]biz.Step, error) {
+	return s.steps, nil
+}
+
 type stubStepWriter struct {
 	updated   []biz.Step
 	updateErr error

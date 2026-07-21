@@ -177,7 +177,7 @@ export type NodeStyleConfig = {
   fillColor: string;
   borderColor: string;
   icon: string;
-  label: string;
+  labelKey: string;
 };
 
 export const NODE_TYPE_STYLES: Record<NodeType, NodeStyleConfig> = {
@@ -186,88 +186,88 @@ export const NODE_TYPE_STYLES: Record<NodeType, NodeStyleConfig> = {
     fillColor: 'var(--graph-node-function-fill)',
     borderColor: 'var(--graph-node-function-border)',
     icon: 'functions',
-    label: 'Function',
+    labelKey: 'graphs.nodeTypeFunction',
   },
   llm: {
     shape: 'box',
     fillColor: 'var(--graph-node-llm-fill)',
     borderColor: 'var(--graph-node-llm-border)',
     icon: 'psychology',
-    label: 'LLM',
+    labelKey: 'graphs.nodeTypeLLM',
   },
   tool: {
     shape: 'box',
     fillColor: 'var(--graph-node-tool-fill)',
     borderColor: 'var(--graph-node-tool-border)',
     icon: 'build',
-    label: 'Tool',
+    labelKey: 'graphs.nodeTypeTool',
   },
   agent: {
     shape: 'box',
     fillColor: 'var(--graph-node-agent-fill)',
     borderColor: 'var(--graph-node-agent-border)',
     icon: 'smart_toy',
-    label: 'Agent',
+    labelKey: 'graphs.nodeTypeAgent',
   },
   router: {
     shape: 'diamond',
     fillColor: 'var(--graph-node-router-fill)',
     borderColor: 'var(--graph-node-router-border)',
     icon: 'alt_route',
-    label: 'Router',
+    labelKey: 'graphs.nodeTypeRouter',
   },
   join: {
     shape: 'diamond',
     fillColor: 'var(--graph-node-join-fill)',
     borderColor: 'var(--graph-node-join-border)',
     icon: 'merge_type',
-    label: 'Join',
+    labelKey: 'graphs.nodeTypeJoin',
   },
   hitl: {
     shape: 'box',
     fillColor: 'var(--graph-node-hitl-fill)',
     borderColor: 'var(--graph-node-hitl-border)',
     icon: 'front_hand',
-    label: 'HITL',
+    labelKey: 'graphs.nodeTypeHITL',
   },
 };
 
-export const EXECUTION_STATUS_STYLES: Record<string, { color: string; icon: string; label: string }> = {
-  idle: { color: 'grey', icon: 'radio_button_unchecked', label: '等待' },
-  running: { color: 'cyan', icon: 'sync', label: '运行中' },
-  completed: { color: 'emerald', icon: 'check_circle', label: '完成' },
-  failed: { color: 'pink', icon: 'error', label: '失败' },
-  interrupted: { color: 'amber', icon: 'pause_circle', label: '中断' },
-  waiting: { color: 'grey-6', icon: 'schedule', label: '等待' },
+export const EXECUTION_STATUS_STYLES: Record<string, { color: string; icon: string; labelKey: string }> = {
+  idle: { color: 'grey', icon: 'radio_button_unchecked', labelKey: 'graphs.executionStatusIdle' },
+  running: { color: 'cyan', icon: 'sync', labelKey: 'graphs.executionStatusRunning' },
+  completed: { color: 'emerald', icon: 'check_circle', labelKey: 'graphs.executionStatusCompleted' },
+  failed: { color: 'pink', icon: 'error', labelKey: 'graphs.executionStatusFailed' },
+  interrupted: { color: 'amber', icon: 'pause_circle', labelKey: 'graphs.executionStatusInterrupted' },
+  waiting: { color: 'grey-6', icon: 'schedule', labelKey: 'graphs.executionStatusWaiting' },
 };
 
-export const REDUCER_OPTIONS: Array<{ label: string; value: ReducerType }> = [
-  { label: '追加', value: 'append' },
-  { label: '覆盖', value: 'cover' },
-  { label: '合并', value: 'merge' },
-  { label: '默认', value: 'default' },
+export const REDUCER_OPTIONS: Array<{ labelKey: string; value: ReducerType }> = [
+  { labelKey: 'graphs.reducerAppend', value: 'append' },
+  { labelKey: 'graphs.reducerCover', value: 'cover' },
+  { labelKey: 'graphs.reducerMerge', value: 'merge' },
+  { labelKey: 'graphs.reducerDefault', value: 'default' },
 ];
 
-export const STATE_FIELD_TYPE_OPTIONS: Array<{ label: string; value: string }> = [
-  { label: 'String', value: 'string' },
-  { label: 'Integer', value: 'integer' },
-  { label: 'Float', value: 'float' },
-  { label: 'Boolean', value: 'boolean' },
-  { label: 'Array', value: 'array' },
-  { label: 'Object', value: 'object' },
+export const STATE_FIELD_TYPE_OPTIONS: Array<{ labelKey: string; value: string }> = [
+  { labelKey: 'graphs.stateTypeString', value: 'string' },
+  { labelKey: 'graphs.stateTypeInteger', value: 'integer' },
+  { labelKey: 'graphs.stateTypeFloat', value: 'float' },
+  { labelKey: 'graphs.stateTypeBoolean', value: 'boolean' },
+  { labelKey: 'graphs.stateTypeArray', value: 'array' },
+  { labelKey: 'graphs.stateTypeObject', value: 'object' },
 ];
 
-export const ENGINE_OPTIONS: Array<{ label: string; value: string }> = [
-  { label: 'BSP（默认）', value: 'bsp' },
-  { label: 'DAG（并行）', value: 'dag' },
+export const ENGINE_OPTIONS: Array<{ labelKey: string; value: string }> = [
+  { labelKey: 'graphs.engineBSP', value: 'bsp' },
+  { labelKey: 'graphs.engineDAG', value: 'dag' },
 ];
 
-export const FAILURE_ACTION_OPTIONS: Array<{ label: string; value: string }> = [
-  { label: '默认（retry_then_block）', value: '' },
-  { label: '跳过后续（skip_on_failure）', value: 'skip_on_failure' },
-  { label: '跳过节点（skip）', value: 'skip' },
-  { label: '快速失败（fail_fast）', value: 'fail_fast' },
-  { label: '重试后阻塞（retry_then_block）', value: 'retry_then_block' },
+export const FAILURE_ACTION_OPTIONS: Array<{ labelKey: string; value: string }> = [
+  { labelKey: 'graphs.failureActionDefault', value: '' },
+  { labelKey: 'graphs.failureActionSkipOnFailure', value: 'skip_on_failure' },
+  { labelKey: 'graphs.failureActionSkip', value: 'skip' },
+  { labelKey: 'graphs.failureActionFailFast', value: 'fail_fast' },
+  { labelKey: 'graphs.failureActionRetryThenBlock', value: 'retry_then_block' },
 ];
 
 export type GraphVersionInfo = {
@@ -388,17 +388,34 @@ export type TaskEvent = {
   timestamp: string;
 };
 
+export const TASK_STATUS_LABEL_KEYS: Record<TaskStatus, string> = {
+  TASK_PENDING: 'graphs.taskStatusPending',
+  TASK_CLAIMED: 'graphs.taskStatusClaimed',
+  TASK_COMPLETE: 'graphs.taskStatusComplete',
+  TASK_BLOCKED: 'graphs.taskStatusBlocked',
+  TASK_REVIEW_REQUIRED: 'graphs.taskStatusReviewRequired',
+  TASK_FAILED: 'graphs.taskStatusFailed',
+  TASK_TIMED_OUT: 'graphs.taskStatusTimedOut',
+  TASK_CANCELLED: 'graphs.taskStatusCancelled',
+  TASK_CRASHED: 'graphs.taskStatusCrashed',
+  TASK_PENDING_ASSIGNMENT: 'graphs.taskStatusPendingAssignment',
+};
+
+/**
+ * @deprecated Use {@link TASK_STATUS_LABEL_KEYS} with `t()` for i18n support.
+ * Kept as fallback returning the i18n key when runtime translation is unavailable.
+ */
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  TASK_PENDING: '等待中',
-  TASK_CLAIMED: '执行中',
-  TASK_COMPLETE: '已完成',
-  TASK_BLOCKED: '阻塞',
-  TASK_REVIEW_REQUIRED: '待审核',
-  TASK_FAILED: '失败',
-  TASK_TIMED_OUT: '超时',
-  TASK_CANCELLED: '已取消',
-  TASK_CRASHED: '崩溃',
-  TASK_PENDING_ASSIGNMENT: '待指派',
+  TASK_PENDING: 'graphs.taskStatusPending',
+  TASK_CLAIMED: 'graphs.taskStatusClaimed',
+  TASK_COMPLETE: 'graphs.taskStatusComplete',
+  TASK_BLOCKED: 'graphs.taskStatusBlocked',
+  TASK_REVIEW_REQUIRED: 'graphs.taskStatusReviewRequired',
+  TASK_FAILED: 'graphs.taskStatusFailed',
+  TASK_TIMED_OUT: 'graphs.taskStatusTimedOut',
+  TASK_CANCELLED: 'graphs.taskStatusCancelled',
+  TASK_CRASHED: 'graphs.taskStatusCrashed',
+  TASK_PENDING_ASSIGNMENT: 'graphs.taskStatusPendingAssignment',
 };
 
 export const TASK_STATUS_COLORS: Record<TaskStatus, string> = {

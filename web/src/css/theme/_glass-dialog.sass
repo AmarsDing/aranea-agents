@@ -47,23 +47,25 @@ body:not(.body--dark) .q-dialog:has(.app-glass-dialog) > .q-dialog__backdrop
   -webkit-backdrop-filter: blur(10px)
 
 // ── 宽度阶梯（与业务修饰符叠加）──
-.app-dialog-card
+// 须在 .q-dialog 内声明：Quasar 的 @media (min-width:600px) { .q-dialog__inner--minimized > div { max-width: 560px } }
+// 特异性 (0-1-1) 高于单类名 (0-1-0)，会静默把所有阶梯宽度压回 560px
+.q-dialog .q-card.app-dialog-card
   width: 860px
   max-width: min(860px, 94vw)
 
-.app-dialog-card--sm
+.q-dialog .q-card.app-dialog-card--sm
   width: 640px
   max-width: min(640px, 94vw)
 
-.app-dialog-card--md
+.q-dialog .q-card.app-dialog-card--md
   width: 720px
   max-width: min(720px, 94vw)
 
-.app-dialog-card--lg
+.q-dialog .q-card.app-dialog-card--lg
   width: 880px
   max-width: min(880px, 94vw)
 
-.app-dialog-card--xl
+.q-dialog .q-card.app-dialog-card--xl
   width: 980px
   max-width: min(980px, 94vw)
 

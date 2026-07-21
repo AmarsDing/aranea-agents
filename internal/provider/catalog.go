@@ -166,8 +166,11 @@ func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) ProviderModelCo
 			RecoverySec:      c.CircuitBreakerRecoverySec,
 		},
 	}
+	// 显式配置优先；未配置但有窗口数据时默认启用 tailoring（截断优于 API 上下文溢出硬错误）。
 	if c.EnableTokenTailoring != nil {
 		cfg.EnableTokenTailoring = *c.EnableTokenTailoring
+	} else {
+		cfg.EnableTokenTailoring = c.ContextWindowK > 0
 	}
 	cfg.TokenTailoringStrategy = strings.TrimSpace(c.TokenTailoringStrategy)
 	cfg.TokenTailoringSafetyMargin = c.TokenTailoringSafetyMargin

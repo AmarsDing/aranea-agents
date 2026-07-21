@@ -37,6 +37,10 @@ type (
 	ToolUsecase              = tool.ToolUsecase
 	ToolTestResult           = tool.ToolTestResult
 	ToolSettingRepo          = tool.SettingRepo
+	ToolGrant                = tool.ToolGrant
+	ToolGrantReader          = tool.ToolGrantReader
+	ToolGrantWriter          = tool.ToolGrantWriter
+	ToolGrantStore           = tool.ToolGrantStore
 	WebResearchReadinessFunc = tool.WebResearchReadinessFunc
 )
 
@@ -57,6 +61,7 @@ var (
 const (
 	ToolInvocationSourceEventBus = tool.ToolInvocationSourceEventBus
 	ToolInvocationSourceRuntime  = tool.ToolInvocationSourceRuntime
+	ToolInvocationSourceMCP      = tool.ToolInvocationSourceMCP
 	ToolAuditRetentionDays       = tool.ToolAuditRetentionDays
 )
 

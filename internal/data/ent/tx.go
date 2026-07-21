@@ -94,6 +94,8 @@ type Tx struct {
 	HealRecord *HealRecordClient
 	// LlmProviderModel is the client for interacting with the LlmProviderModel builders.
 	LlmProviderModel *LlmProviderModelClient
+	// MediaProvider is the client for interacting with the MediaProvider builders.
+	MediaProvider *MediaProviderClient
 	// MemberSessionV2 is the client for interacting with the MemberSessionV2 builders.
 	MemberSessionV2 *MemberSessionV2Client
 	// ModelPricingRule is the client for interacting with the ModelPricingRule builders.
@@ -180,6 +182,8 @@ type Tx struct {
 	TeamStageV2 *TeamStageV2Client
 	// ToolAgentOverride is the client for interacting with the ToolAgentOverride builders.
 	ToolAgentOverride *ToolAgentOverrideClient
+	// ToolGrant is the client for interacting with the ToolGrant builders.
+	ToolGrant *ToolGrantClient
 	// ToolInvocation is the client for interacting with the ToolInvocation builders.
 	ToolInvocation *ToolInvocationClient
 	// ToolInvocationAudit is the client for interacting with the ToolInvocationAudit builders.
@@ -367,6 +371,7 @@ func (tx *Tx) init() {
 	tx.GraphTaskRun = NewGraphTaskRunClient(tx.config)
 	tx.HealRecord = NewHealRecordClient(tx.config)
 	tx.LlmProviderModel = NewLlmProviderModelClient(tx.config)
+	tx.MediaProvider = NewMediaProviderClient(tx.config)
 	tx.MemberSessionV2 = NewMemberSessionV2Client(tx.config)
 	tx.ModelPricingRule = NewModelPricingRuleClient(tx.config)
 	tx.ModelTokenUsageHourly = NewModelTokenUsageHourlyClient(tx.config)
@@ -410,6 +415,7 @@ func (tx *Tx) init() {
 	tx.TeamRunV2 = NewTeamRunV2Client(tx.config)
 	tx.TeamStageV2 = NewTeamStageV2Client(tx.config)
 	tx.ToolAgentOverride = NewToolAgentOverrideClient(tx.config)
+	tx.ToolGrant = NewToolGrantClient(tx.config)
 	tx.ToolInvocation = NewToolInvocationClient(tx.config)
 	tx.ToolInvocationAudit = NewToolInvocationAuditClient(tx.config)
 	tx.ToolInvocationParam = NewToolInvocationParamClient(tx.config)

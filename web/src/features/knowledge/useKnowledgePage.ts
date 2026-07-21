@@ -1,13 +1,22 @@
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import { hasIndexingDocuments } from './knowledgeUi';
-import type { KnowledgeChunk, KnowledgeDocument, EmbedderConfig, UpdateEmbedderConfigInput } from './types';
+import { getDocumentContent } from './api';
+import type {
+  KnowledgeChunk,
+  KnowledgeDocument,
+  KnowledgeUploadTask,
+  EmbedderConfig,
+  UpdateEmbedderConfigInput,
+} from './types';
 import { useKnowledgeStore } from '../../stores/knowledge';
 import { useKnowledgeIngestWs } from './useKnowledgeIngestWs';
 
 export function useKnowledgePage() {
   const $q = useQuasar();
+  const { t } = useI18n();
   const knowledgeStore = useKnowledgeStore();
   const selectedId = ref('');
   const docsLoading = ref(false);
@@ -184,6 +193,7 @@ export function useKnowledgePage() {
 
   // REV-D: mirrors backend extractSupportedMimes — keep in sync with
   // internal/service/knowledge.go:extractSupportedMimes.
+  // Phase 9：image/png|jpeg|webp 经 VisionExtractor（多模态 LLM）入库。
   const EXTRACT_SUPPORTED_MIMES = new Set([
     'text/plain',
     'text/markdown',
@@ -197,6 +207,9 @@ export function useKnowledgePage() {
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'image/png',
+    'image/jpeg',
+    'image/webp',
   ]);
 
   function isExtractSupported(mimeType: string): boolean {
@@ -220,7 +233,10 @@ export function useKnowledgePage() {
     if (lower.endsWith('.doc')) return 'application/msword';
     if (lower.endsWith('.pptx')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
     if (lower.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    // TODO(debt): image MIME removed until OCR is implemented on the backend.
+    // Phase 9：图片经 VisionExtractor 入库。
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.webp')) return 'image/webp';
     return 'application/octet-stream';
   }
 
@@ -277,6 +293,7 @@ export function useKnowledgePage() {
         chunk_strategy: ingestForm.value.chunk_strategy || undefined,
         chunk_size: ingestForm.value.chunk_size || undefined,
         chunk_overlap: ingestForm.value.chunk_overlap || undefined,
+        organize_to_markdown: true,
       });
       ingestOpen.value = false;
       const submittedMime = ingestForm.value.mime_type || 'text/plain';
@@ -327,13 +344,137 @@ export function useKnowledgePage() {
     });
   }
 
+  // ---------- 文档预览（GetDocumentContent） ----------
+
+  const previewOpen = ref(false);
+  const previewLoading = ref(false);
+  const previewDoc = ref<KnowledgeDocument | null>(null);
+  const previewContent = ref('');
+  const previewOrganized = ref(false);
+
+  async function openDocPreview(doc: KnowledgeDocument) {
+    previewDoc.value = doc;
+    previewContent.value = '';
+    previewOrganized.value = false;
+    previewOpen.value = true;
+    previewLoading.value = true;
+    try {
+      const res = await getDocumentContent(doc.id);
+      previewContent.value = res.content_text;
+      previewOrganized.value = res.organized;
+    } catch (e) {
+      previewOpen.value = false;
+      $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.previewLoadFailed') });
+    } finally {
+      previewLoading.value = false;
+    }
+  }
+
+  // ---------- 拖拽批量上传队列 ----------
+
+  const uploadTasks = ref<KnowledgeUploadTask[]>([]);
+
+  function patchUploadTask(id: string, patch: Partial<KnowledgeUploadTask>) {
+    const i = uploadTasks.value.findIndex((t) => t.id === id);
+    if (i >= 0) {
+      uploadTasks.value[i] = { ...uploadTasks.value[i], ...patch };
+    }
+  }
+
+  // 不支持的格式（含未放开的图片类型如 gif）给出明确错误，不静默失败。
+  function validateUploadMime(mime: string): string | null {
+    if (!isExtractSupported(mime)) {
+      return t('knowledgePage.uploadUnsupportedFormat', { mime });
+    }
+    return null;
+  }
+
+  function readFileAsBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const buf = reader.result as ArrayBuffer | null;
+        if (!buf) {
+          reject(new Error(t('knowledgePage.uploadReadFailed')));
+          return;
+        }
+        resolve(bytesToBase64(new Uint8Array(buf)));
+      };
+      reader.onerror = () => reject(new Error(t('knowledgePage.uploadReadFailed')));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // 顺序上传：逐文件读取 → 入库，避免并发冲击后端；WS 事件并行刷新文档列表。
+  // US-14 免预选：未选中集合时不传 collection_id，后端自动落入「默认知识库」；
+  // 上传完成后自动选中该库并刷新列表（存储可分类，使用免选）。
+  async function enqueueUploadFiles(files: File[]) {
+    if (!files.length) return;
+    const targetId = selectedId.value; // 可能为空（免预选 → 默认知识库）
+    let firstIngestedCollectionId = '';
+    for (const file of files) {
+      const mime = inferMime(file);
+      const task: KnowledgeUploadTask = {
+        id: crypto.randomUUID(),
+        name: file.name,
+        size: file.size,
+        mime_type: mime,
+        status: 'reading',
+        collection_label: targetId ? undefined : t('knowledgePage.defaultCollectionBadge'),
+      };
+      uploadTasks.value.push(task);
+      const invalid = validateUploadMime(mime);
+      if (invalid) {
+        patchUploadTask(task.id, { status: 'error', message: invalid });
+        continue;
+      }
+      try {
+        const b64 = await readFileAsBase64(file);
+        patchUploadTask(task.id, { status: 'uploading' });
+        const doc = await knowledgeStore.ingest({
+          collection_id: targetId,
+          source: file.name,
+          mime_type: mime,
+          content_base64: b64,
+          organize_to_markdown: true,
+        });
+        if (!firstIngestedCollectionId) firstIngestedCollectionId = doc.collection_id;
+        patchUploadTask(task.id, { status: 'success', message: t('knowledgePage.uploadSubmitted') });
+      } catch (e) {
+        patchUploadTask(task.id, { status: 'error', message: friendlyError(e) || t('knowledgePage.uploadFailed') });
+      }
+    }
+    await loadCollections();
+    if (targetId) {
+      await loadDocuments();
+    } else if (firstIngestedCollectionId) {
+      // 免预选上传：自动选中默认知识库（watch(selectedId) 触发 loadDocuments）。
+      selectedId.value = firstIngestedCollectionId;
+    }
+  }
+
+  function removeUploadTask(id: string) {
+    uploadTasks.value = uploadTasks.value.filter((t) => t.id !== id);
+  }
+
+  function clearFinishedUploadTasks() {
+    uploadTasks.value = uploadTasks.value.filter((t) => t.status === 'reading' || t.status === 'uploading');
+  }
+
+  // US-14 检索免选择：searchScopeId 空 = 全部知识库（后端 FederatedRetriever 智能路由），默认全库。
+  const searchScopeId = ref('');
+  const searchScopeOptions = computed(() => [
+    { label: t('knowledgePage.searchScopeAll'), value: '' },
+    ...collections.value.map((c) => ({ label: c.name || c.id, value: c.id })),
+  ]);
+
   async function runSearch() {
-    if (!selectedId.value || !searchQuery.value.trim()) return;
+    if (!searchQuery.value.trim()) return;
     searchLoading.value = true;
     searchRan.value = true;
     try {
       searchResults.value = await knowledgeStore.search({
-        collection_id: selectedId.value,
+        collection_id: searchScopeId.value,
         query: searchQuery.value.trim(),
         top_k: searchTopK.value,
         min_score: searchMinScore.value || undefined,
@@ -345,6 +486,50 @@ export function useKnowledgePage() {
       $q.notify({ type: 'negative', message: friendlyError(e) || '检索失败' });
     } finally {
       searchLoading.value = false;
+    }
+  }
+
+  // ---------- 文档跨库移动（US-14 整理归档） ----------
+
+  const moveOpen = ref(false);
+  const moveLoading = ref(false);
+  const movingDoc = ref<KnowledgeDocument | null>(null);
+  const moveTargetId = ref('');
+
+  // 目标库选项：排除当前库；dim 不一致的禁用（pgvector 列维度固定，跨 dim 移动向量不可检索）。
+  const moveTargetOptions = computed(() => {
+    const current = selectedCollection.value;
+    return collections.value
+      .filter((c) => c.id !== selectedId.value)
+      .map((c) => ({
+        label: c.name || c.id,
+        value: c.id,
+        disable: !!current && c.dim !== current.dim,
+        dim: c.dim,
+      }));
+  });
+
+  function openMoveDialog(doc: KnowledgeDocument) {
+    movingDoc.value = doc;
+    moveTargetId.value = '';
+    moveOpen.value = true;
+  }
+
+  async function submitMove() {
+    const doc = movingDoc.value;
+    if (!doc || !moveTargetId.value) return;
+    moveLoading.value = true;
+    try {
+      await knowledgeStore.moveDoc(doc.id, moveTargetId.value);
+      moveOpen.value = false;
+      const target = collections.value.find((c) => c.id === moveTargetId.value);
+      await loadDocuments();
+      await loadCollections();
+      $q.notify({ type: 'positive', message: t('knowledgePage.moveSuccess', { name: target?.name ?? '' }) });
+    } catch (e) {
+      $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.moveFailed') });
+    } finally {
+      moveLoading.value = false;
     }
   }
 
@@ -441,6 +626,25 @@ export function useKnowledgePage() {
     onIngestFile,
     submitIngest,
     confirmDeleteDocument,
+    previewOpen,
+    previewLoading,
+    previewDoc,
+    previewContent,
+    previewOrganized,
+    openDocPreview,
+    uploadTasks,
+    enqueueUploadFiles,
+    removeUploadTask,
+    clearFinishedUploadTasks,
+    searchScopeId,
+    searchScopeOptions,
     runSearch,
+    moveOpen,
+    moveLoading,
+    movingDoc,
+    moveTargetId,
+    moveTargetOptions,
+    openMoveDialog,
+    submitMove,
   };
 }

@@ -35,7 +35,6 @@ type turnEventPublisher interface {
 // biz.NewTaskFailedEvent. Session revision bumps go directly to the
 // SessionRevisionBumper (DB increment) — the legacy Envelope publish path was
 // removed in ADR-03 Phase 5 Blocker D (SessionBus had no live subscriber).
-//
 type chatTurnEventPublisher struct {
 	sessions biz.SessionTurnManager
 	eventBus biz.EventBus
@@ -60,7 +59,6 @@ var _ turnEventPublisher = (*chatTurnEventPublisher)(nil)
 // are dropped here. The error message is still available via the caller's
 // logging path (turnPipeline.handleStreamError / publishTurnFailure callers
 // log the error before calling this method).
-//
 func (p *chatTurnEventPublisher) PublishTurnFailure(sessionID, runID, source string, err error, pendingID string) {
 	if p == nil || err == nil {
 		return

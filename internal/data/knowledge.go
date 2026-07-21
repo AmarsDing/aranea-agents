@@ -88,6 +88,10 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
 			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		// 统一摄取管线（Phase 8/9）：整理后全文 / LLM 整理标记 / 原始文件血缘。
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS content_text TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS organized BOOLEAN NOT NULL DEFAULT FALSE`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS asset_uri TEXT NOT NULL DEFAULT ''`,
 		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS knowledge_chunks (
 			id            TEXT PRIMARY KEY,
 			doc_id        TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
@@ -193,18 +197,20 @@ func (r *knowledgeRepo) UpdateCollectionCounts(ctx context.Context, id string, d
 func (r *knowledgeRepo) CreateDocument(ctx context.Context, d biz.KnowledgeDocument) (biz.KnowledgeDocument, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	q := `INSERT INTO knowledge_documents
-		(id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,0,$6,'',$7,$7)
+		(id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message, content_text, organized, asset_uri, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,0,$6,'',$7,$8,$9,$10,$10)
 		RETURNING id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
+		          content_text, organized, asset_uri,
 		          to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		          to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
-	row := r.data.Postgres().QueryRowContext(ctx, q, d.ID, d.CollectionID, d.Source, d.MimeType, d.SizeBytes, d.Status, now)
+	row := r.data.Postgres().QueryRowContext(ctx, q, d.ID, d.CollectionID, d.Source, d.MimeType, d.SizeBytes, d.Status, d.ContentText, d.Organized, d.AssetURI, now)
 	return scanDocument(row)
 }
 
 func (r *knowledgeRepo) GetDocument(ctx context.Context, id string) (biz.KnowledgeDocument, error) {
 	// C-25: documents inherit collection workspace; filter via JOIN.
 	q := `SELECT d.id, d.collection_id, d.source, d.mime_type, d.size_bytes, d.chunk_count, d.status, d.error_message,
+		         d.content_text, d.organized, d.asset_uri,
 		         to_char(d.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_documents d
@@ -227,6 +233,15 @@ func (r *knowledgeRepo) UpdateDocumentStatus(ctx context.Context, id, status, er
 	return err
 }
 
+// UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
+func (r *knowledgeRepo) UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error {
+	_, err := r.data.Postgres().ExecContext(ctx,
+		`UPDATE knowledge_documents
+		 SET content_text = $2, organized = $3, updated_at = NOW()
+		 WHERE id = $1`, id, contentText, organized)
+	return err
+}
+
 func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]biz.KnowledgeDocument, int, error) {
 	var total int
 	if err := r.data.Postgres().QueryRowContext(ctx,
@@ -234,6 +249,7 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 		return nil, 0, err
 	}
 	q := `SELECT id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
+		         organized, asset_uri,
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_documents WHERE collection_id = $1 OR $1 = ''
@@ -245,7 +261,7 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 	defer rows.Close()
 	var out []biz.KnowledgeDocument
 	for rows.Next() {
-		d, err := scanDocument(rows)
+		d, err := scanDocumentSummary(rows)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -344,6 +360,65 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 func (r *knowledgeRepo) DeleteChunksByDocument(ctx context.Context, docID string) error {
 	_, err := r.data.Postgres().ExecContext(ctx, `DELETE FROM knowledge_chunks WHERE doc_id = $1`, docID)
 	return err
+}
+
+// MoveDocument moves a document (and its chunks) to another collection in one
+// transaction, keeping both collections' cached counters in sync (US-14).
+//
+// Counter rules mirror DeleteDocument: document_count shifts only when the
+// document was successfully indexed (pending/indexing/error docs were never
+// counted); chunk_count shifts by the document's recorded chunk_count,
+// GREATEST-guarded on the source side against drift below zero.
+func (r *knowledgeRepo) MoveDocument(ctx context.Context, id, targetCollectionID string) (biz.KnowledgeDocument, error) {
+	err := r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		var sourceCollectionID string
+		var chunkCount int
+		var status string
+		err := tx.QueryRowContext(ctx,
+			`SELECT collection_id, chunk_count, status FROM knowledge_documents WHERE id = $1`, id).
+			Scan(&sourceCollectionID, &chunkCount, &status)
+		if err != nil {
+			return err
+		}
+		if sourceCollectionID == targetCollectionID {
+			return nil // 同库 no-op（biz 已守卫，此处防御并发改写）
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_documents SET collection_id = $2, updated_at = NOW() WHERE id = $1`,
+			id, targetCollectionID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_chunks SET collection_id = $2 WHERE doc_id = $1`,
+			id, targetCollectionID); err != nil {
+			return err
+		}
+		docDelta := 0
+		if status == "indexed" {
+			docDelta = 1
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_collections
+			 SET document_count = GREATEST(document_count - $2, 0),
+			     chunk_count    = GREATEST(chunk_count    - $3, 0),
+			     updated_at     = NOW()
+			 WHERE id = $1`, sourceCollectionID, docDelta, chunkCount); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_collections
+			 SET document_count = document_count + $2,
+			     chunk_count    = chunk_count    + $3,
+			     updated_at     = NOW()
+			 WHERE id = $1`, targetCollectionID, docDelta, chunkCount); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return biz.KnowledgeDocument{}, err
+	}
+	return r.GetDocument(ctx, id)
 }
 
 func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQuery, queryEmbedding []float32) ([]biz.KnowledgeChunk, error) {
@@ -533,6 +608,16 @@ func scanCollection(row scannable) (biz.KnowledgeCollection, error) {
 func scanDocument(row scannable) (biz.KnowledgeDocument, error) {
 	var d biz.KnowledgeDocument
 	err := row.Scan(&d.ID, &d.CollectionID, &d.Source, &d.MimeType, &d.SizeBytes,
-		&d.ChunkCount, &d.Status, &d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt)
+		&d.ChunkCount, &d.Status, &d.ErrorMessage, &d.ContentText, &d.Organized, &d.AssetURI,
+		&d.CreatedAt, &d.UpdatedAt)
+	return d, err
+}
+
+// scanDocumentSummary 用于列表查询：不取 content_text 大字段（避免列表带宽放大）。
+func scanDocumentSummary(row scannable) (biz.KnowledgeDocument, error) {
+	var d biz.KnowledgeDocument
+	err := row.Scan(&d.ID, &d.CollectionID, &d.Source, &d.MimeType, &d.SizeBytes,
+		&d.ChunkCount, &d.Status, &d.ErrorMessage, &d.Organized, &d.AssetURI,
+		&d.CreatedAt, &d.UpdatedAt)
 	return d, err
 }

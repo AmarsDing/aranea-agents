@@ -64,6 +64,26 @@
               flat
               dense
               round
+              color="primary"
+              icon="visibility"
+              :aria-label="t('knowledgePage.previewAria')"
+              @click="$emit('preview-document', slotProps.row)"
+            />
+            <q-btn
+              flat
+              dense
+              round
+              color="primary"
+              icon="drive_file_move"
+              :aria-label="t('knowledgePage.moveTo')"
+              @click="$emit('move-document', slotProps.row)"
+            >
+              <q-tooltip>{{ t('knowledgePage.moveTo') }}</q-tooltip>
+            </q-btn>
+            <q-btn
+              flat
+              dense
+              round
               color="negative"
               icon="delete"
               aria-label="删除"
@@ -86,6 +106,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppPageToolbar from '../layout/AppPageToolbar.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
@@ -107,10 +128,13 @@ defineEmits<{
   'open-ingest': [];
   refresh: [];
   'delete-document': [doc: KnowledgeDocument];
+  'preview-document': [doc: KnowledgeDocument];
+  'move-document': [doc: KnowledgeDocument];
 }>();
 
 const columns = KNOWLEDGE_DOC_TABLE_COLUMNS;
 const statusColor = knowledgeStatusColor;
+const { t } = useI18n();
 
 const page = ref(1);
 const pageSize = ref(10);

@@ -162,6 +162,7 @@ type KnowledgeDocument struct {
 	CreatedAt        string                 `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt        string                 `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	ExtractSupported bool                   `protobuf:"varint,11,opt,name=extract_supported,json=extractSupported,proto3" json:"extract_supported,omitempty"` // true when backend can extract text from this MIME type (REV-D)
+	Organized        bool                   `protobuf:"varint,12,opt,name=organized,proto3" json:"organized,omitempty"`                                       // true when content was organized into Markdown by LLM
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -273,6 +274,74 @@ func (x *KnowledgeDocument) GetExtractSupported() bool {
 	return false
 }
 
+func (x *KnowledgeDocument) GetOrganized() bool {
+	if x != nil {
+		return x.Organized
+	}
+	return false
+}
+
+// DocumentContent is the full extracted/organized text of one document (preview).
+type DocumentContent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ContentText   string                 `protobuf:"bytes,2,opt,name=content_text,json=contentText,proto3" json:"content_text,omitempty"` // organized Markdown (or raw extracted text when not organized)
+	Organized     bool                   `protobuf:"varint,3,opt,name=organized,proto3" json:"organized,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DocumentContent) Reset() {
+	*x = DocumentContent{}
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DocumentContent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DocumentContent) ProtoMessage() {}
+
+func (x *DocumentContent) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DocumentContent.ProtoReflect.Descriptor instead.
+func (*DocumentContent) Descriptor() ([]byte, []int) {
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *DocumentContent) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *DocumentContent) GetContentText() string {
+	if x != nil {
+		return x.ContentText
+	}
+	return ""
+}
+
+func (x *DocumentContent) GetOrganized() bool {
+	if x != nil {
+		return x.Organized
+	}
+	return false
+}
+
 // KnowledgeChunk is one indexed text chunk with its embedding vector.
 type KnowledgeChunk struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -290,7 +359,7 @@ type KnowledgeChunk struct {
 
 func (x *KnowledgeChunk) Reset() {
 	*x = KnowledgeChunk{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[2]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -302,7 +371,7 @@ func (x *KnowledgeChunk) String() string {
 func (*KnowledgeChunk) ProtoMessage() {}
 
 func (x *KnowledgeChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[2]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -315,7 +384,7 @@ func (x *KnowledgeChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KnowledgeChunk.ProtoReflect.Descriptor instead.
 func (*KnowledgeChunk) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{2}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *KnowledgeChunk) GetId() string {
@@ -385,7 +454,7 @@ type CreateCollectionRequest struct {
 
 func (x *CreateCollectionRequest) Reset() {
 	*x = CreateCollectionRequest{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[3]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -397,7 +466,7 @@ func (x *CreateCollectionRequest) String() string {
 func (*CreateCollectionRequest) ProtoMessage() {}
 
 func (x *CreateCollectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[3]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -410,7 +479,7 @@ func (x *CreateCollectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateCollectionRequest.ProtoReflect.Descriptor instead.
 func (*CreateCollectionRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{3}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CreateCollectionRequest) GetName() string {
@@ -443,7 +512,7 @@ type GetCollectionRequest struct {
 
 func (x *GetCollectionRequest) Reset() {
 	*x = GetCollectionRequest{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[4]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -455,7 +524,7 @@ func (x *GetCollectionRequest) String() string {
 func (*GetCollectionRequest) ProtoMessage() {}
 
 func (x *GetCollectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[4]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -468,7 +537,7 @@ func (x *GetCollectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCollectionRequest.ProtoReflect.Descriptor instead.
 func (*GetCollectionRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{4}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetCollectionRequest) GetId() string {
@@ -488,7 +557,7 @@ type ListCollectionsRequest struct {
 
 func (x *ListCollectionsRequest) Reset() {
 	*x = ListCollectionsRequest{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[5]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -500,7 +569,7 @@ func (x *ListCollectionsRequest) String() string {
 func (*ListCollectionsRequest) ProtoMessage() {}
 
 func (x *ListCollectionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[5]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -513,7 +582,7 @@ func (x *ListCollectionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCollectionsRequest.ProtoReflect.Descriptor instead.
 func (*ListCollectionsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{5}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListCollectionsRequest) GetLimit() int32 {
@@ -540,7 +609,7 @@ type ListCollectionsResponse struct {
 
 func (x *ListCollectionsResponse) Reset() {
 	*x = ListCollectionsResponse{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[6]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -552,7 +621,7 @@ func (x *ListCollectionsResponse) String() string {
 func (*ListCollectionsResponse) ProtoMessage() {}
 
 func (x *ListCollectionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[6]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -565,7 +634,7 @@ func (x *ListCollectionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCollectionsResponse.ProtoReflect.Descriptor instead.
 func (*ListCollectionsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{6}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListCollectionsResponse) GetItems() []*KnowledgeCollection {
@@ -591,7 +660,7 @@ type DeleteCollectionRequest struct {
 
 func (x *DeleteCollectionRequest) Reset() {
 	*x = DeleteCollectionRequest{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[7]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -603,7 +672,7 @@ func (x *DeleteCollectionRequest) String() string {
 func (*DeleteCollectionRequest) ProtoMessage() {}
 
 func (x *DeleteCollectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[7]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -616,7 +685,7 @@ func (x *DeleteCollectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteCollectionRequest.ProtoReflect.Descriptor instead.
 func (*DeleteCollectionRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{7}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *DeleteCollectionRequest) GetId() string {
@@ -627,10 +696,11 @@ func (x *DeleteCollectionRequest) GetId() string {
 }
 
 type IngestDocumentRequest struct {
-	state        protoimpl.MessageState `protogen:"open.v1"`
-	CollectionId string                 `protobuf:"bytes,1,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	Source       string                 `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
-	MimeType     string                 `protobuf:"bytes,3,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// US-14: optional. Empty = auto-fall into the lazily-created "默认知识库" (default collection).
+	CollectionId string `protobuf:"bytes,1,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
+	Source       string `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	MimeType     string `protobuf:"bytes,3,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
 	// content_base64 is the raw document payload (base64-encoded).
 	ContentBase64 string `protobuf:"bytes,4,opt,name=content_base64,json=contentBase64,proto3" json:"content_base64,omitempty"`
 	MetadataJson  string `protobuf:"bytes,5,opt,name=metadata_json,json=metadataJson,proto3" json:"metadata_json,omitempty"`
@@ -640,13 +710,16 @@ type IngestDocumentRequest struct {
 	ChunkOverlap int32 `protobuf:"varint,7,opt,name=chunk_overlap,json=chunkOverlap,proto3" json:"chunk_overlap,omitempty"`
 	// chunk_strategy: char | token | markdown | json | recursive (empty = char).
 	ChunkStrategy string `protobuf:"bytes,8,opt,name=chunk_strategy,json=chunkStrategy,proto3" json:"chunk_strategy,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// organize_to_markdown: unset/true = organize extracted text into Markdown via LLM
+	// (falls back to raw text when LLM unavailable); false = ingest raw text as-is.
+	OrganizeToMarkdown *bool `protobuf:"varint,9,opt,name=organize_to_markdown,json=organizeToMarkdown,proto3,oneof" json:"organize_to_markdown,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *IngestDocumentRequest) Reset() {
 	*x = IngestDocumentRequest{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[8]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -658,7 +731,7 @@ func (x *IngestDocumentRequest) String() string {
 func (*IngestDocumentRequest) ProtoMessage() {}
 
 func (x *IngestDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[8]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -671,7 +744,7 @@ func (x *IngestDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IngestDocumentRequest.ProtoReflect.Descriptor instead.
 func (*IngestDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{8}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *IngestDocumentRequest) GetCollectionId() string {
@@ -730,6 +803,57 @@ func (x *IngestDocumentRequest) GetChunkStrategy() string {
 	return ""
 }
 
+func (x *IngestDocumentRequest) GetOrganizeToMarkdown() bool {
+	if x != nil && x.OrganizeToMarkdown != nil {
+		return *x.OrganizeToMarkdown
+	}
+	return false
+}
+
+type GetDocumentContentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDocumentContentRequest) Reset() {
+	*x = GetDocumentContentRequest{}
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDocumentContentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDocumentContentRequest) ProtoMessage() {}
+
+func (x *GetDocumentContentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDocumentContentRequest.ProtoReflect.Descriptor instead.
+func (*GetDocumentContentRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetDocumentContentRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
 type ListDocumentsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CollectionId  string                 `protobuf:"bytes,1,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
@@ -741,7 +865,7 @@ type ListDocumentsRequest struct {
 
 func (x *ListDocumentsRequest) Reset() {
 	*x = ListDocumentsRequest{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[9]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -753,7 +877,7 @@ func (x *ListDocumentsRequest) String() string {
 func (*ListDocumentsRequest) ProtoMessage() {}
 
 func (x *ListDocumentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[9]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -766,7 +890,7 @@ func (x *ListDocumentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDocumentsRequest.ProtoReflect.Descriptor instead.
 func (*ListDocumentsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{9}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListDocumentsRequest) GetCollectionId() string {
@@ -800,7 +924,7 @@ type ListDocumentsResponse struct {
 
 func (x *ListDocumentsResponse) Reset() {
 	*x = ListDocumentsResponse{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[10]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -812,7 +936,7 @@ func (x *ListDocumentsResponse) String() string {
 func (*ListDocumentsResponse) ProtoMessage() {}
 
 func (x *ListDocumentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[10]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -825,7 +949,7 @@ func (x *ListDocumentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDocumentsResponse.ProtoReflect.Descriptor instead.
 func (*ListDocumentsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{10}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListDocumentsResponse) GetItems() []*KnowledgeDocument {
@@ -851,7 +975,7 @@ type DeleteDocumentRequest struct {
 
 func (x *DeleteDocumentRequest) Reset() {
 	*x = DeleteDocumentRequest{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[11]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -863,7 +987,7 @@ func (x *DeleteDocumentRequest) String() string {
 func (*DeleteDocumentRequest) ProtoMessage() {}
 
 func (x *DeleteDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[11]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -876,7 +1000,7 @@ func (x *DeleteDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDocumentRequest.ProtoReflect.Descriptor instead.
 func (*DeleteDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{11}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DeleteDocumentRequest) GetId() string {
@@ -886,15 +1010,70 @@ func (x *DeleteDocumentRequest) GetId() string {
 	return ""
 }
 
+// MoveDocumentRequest moves a document (with its chunks) to another collection (US-14).
+// Rejected with CodeConflict when the target collection dim differs (vector incompatibility).
+type MoveDocumentRequest struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	TargetCollectionId string                 `protobuf:"bytes,2,opt,name=target_collection_id,json=targetCollectionId,proto3" json:"target_collection_id,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *MoveDocumentRequest) Reset() {
+	*x = MoveDocumentRequest{}
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MoveDocumentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MoveDocumentRequest) ProtoMessage() {}
+
+func (x *MoveDocumentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MoveDocumentRequest.ProtoReflect.Descriptor instead.
+func (*MoveDocumentRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *MoveDocumentRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *MoveDocumentRequest) GetTargetCollectionId() string {
+	if x != nil {
+		return x.TargetCollectionId
+	}
+	return ""
+}
+
 type SearchRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	CollectionId     string                 `protobuf:"bytes,1,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	Query            string                 `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
-	TopK             int32                  `protobuf:"varint,3,opt,name=top_k,json=topK,proto3" json:"top_k,omitempty"`                                     // default 5
-	MinScore         float32                `protobuf:"fixed32,4,opt,name=min_score,json=minScore,proto3" json:"min_score,omitempty"`                        // minimum similarity threshold (0 = no filter)
-	FilterJson       string                 `protobuf:"bytes,5,opt,name=filter_json,json=filterJson,proto3" json:"filter_json,omitempty"`                    // optional metadata filter (JSON)
-	UseRerank        *bool                  `protobuf:"varint,6,opt,name=use_rerank,json=useRerank,proto3,oneof" json:"use_rerank,omitempty"`                // unset = use global reranker when configured
-	RerankCandidates int32                  `protobuf:"varint,7,opt,name=rerank_candidates,json=rerankCandidates,proto3" json:"rerank_candidates,omitempty"` // vector candidates before rerank (0 = default)
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// US-14: optional. Empty = federated smart-routing across all collections.
+	CollectionId     string  `protobuf:"bytes,1,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
+	Query            string  `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
+	TopK             int32   `protobuf:"varint,3,opt,name=top_k,json=topK,proto3" json:"top_k,omitempty"`                                     // default 5
+	MinScore         float32 `protobuf:"fixed32,4,opt,name=min_score,json=minScore,proto3" json:"min_score,omitempty"`                        // minimum similarity threshold (0 = no filter)
+	FilterJson       string  `protobuf:"bytes,5,opt,name=filter_json,json=filterJson,proto3" json:"filter_json,omitempty"`                    // optional metadata filter (JSON)
+	UseRerank        *bool   `protobuf:"varint,6,opt,name=use_rerank,json=useRerank,proto3,oneof" json:"use_rerank,omitempty"`                // unset = use global reranker when configured
+	RerankCandidates int32   `protobuf:"varint,7,opt,name=rerank_candidates,json=rerankCandidates,proto3" json:"rerank_candidates,omitempty"` // vector candidates before rerank (0 = default)
 	// rewrite_strategy: hyde | decomposition | multi_query (empty = no rewrite).
 	RewriteStrategy string `protobuf:"bytes,10,opt,name=rewrite_strategy,json=rewriteStrategy,proto3" json:"rewrite_strategy,omitempty"`
 	// hybrid_search: auto | dense | sparse | rrf (empty = auto).
@@ -905,7 +1084,7 @@ type SearchRequest struct {
 
 func (x *SearchRequest) Reset() {
 	*x = SearchRequest{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[12]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -917,7 +1096,7 @@ func (x *SearchRequest) String() string {
 func (*SearchRequest) ProtoMessage() {}
 
 func (x *SearchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[12]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -930,7 +1109,7 @@ func (x *SearchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchRequest.ProtoReflect.Descriptor instead.
 func (*SearchRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{12}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *SearchRequest) GetCollectionId() string {
@@ -1005,7 +1184,7 @@ type SearchResponse struct {
 
 func (x *SearchResponse) Reset() {
 	*x = SearchResponse{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[13]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1017,7 +1196,7 @@ func (x *SearchResponse) String() string {
 func (*SearchResponse) ProtoMessage() {}
 
 func (x *SearchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[13]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1030,7 +1209,7 @@ func (x *SearchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchResponse.ProtoReflect.Descriptor instead.
 func (*SearchResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{13}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *SearchResponse) GetChunks() []*KnowledgeChunk {
@@ -1048,7 +1227,7 @@ type GetEmbedderConfigRequest struct {
 
 func (x *GetEmbedderConfigRequest) Reset() {
 	*x = GetEmbedderConfigRequest{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[14]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1060,7 +1239,7 @@ func (x *GetEmbedderConfigRequest) String() string {
 func (*GetEmbedderConfigRequest) ProtoMessage() {}
 
 func (x *GetEmbedderConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[14]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1073,7 +1252,7 @@ func (x *GetEmbedderConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEmbedderConfigRequest.ProtoReflect.Descriptor instead.
 func (*GetEmbedderConfigRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{14}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{17}
 }
 
 type EmbedderConfig struct {
@@ -1090,7 +1269,7 @@ type EmbedderConfig struct {
 
 func (x *EmbedderConfig) Reset() {
 	*x = EmbedderConfig{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[15]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1102,7 +1281,7 @@ func (x *EmbedderConfig) String() string {
 func (*EmbedderConfig) ProtoMessage() {}
 
 func (x *EmbedderConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[15]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1115,7 +1294,7 @@ func (x *EmbedderConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmbedderConfig.ProtoReflect.Descriptor instead.
 func (*EmbedderConfig) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{15}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *EmbedderConfig) GetProvider() string {
@@ -1173,7 +1352,7 @@ type UpdateEmbedderConfigRequest struct {
 
 func (x *UpdateEmbedderConfigRequest) Reset() {
 	*x = UpdateEmbedderConfigRequest{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[16]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1185,7 +1364,7 @@ func (x *UpdateEmbedderConfigRequest) String() string {
 func (*UpdateEmbedderConfigRequest) ProtoMessage() {}
 
 func (x *UpdateEmbedderConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[16]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1198,7 +1377,7 @@ func (x *UpdateEmbedderConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateEmbedderConfigRequest.ProtoReflect.Descriptor instead.
 func (*UpdateEmbedderConfigRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{16}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *UpdateEmbedderConfigRequest) GetProvider() string {
@@ -1245,7 +1424,7 @@ type UpdateEmbedderConfigResponse struct {
 
 func (x *UpdateEmbedderConfigResponse) Reset() {
 	*x = UpdateEmbedderConfigResponse{}
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[17]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1257,7 +1436,7 @@ func (x *UpdateEmbedderConfigResponse) String() string {
 func (*UpdateEmbedderConfigResponse) ProtoMessage() {}
 
 func (x *UpdateEmbedderConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[17]
+	mi := &file_kratos_knowledge_v1_knowledge_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1270,7 +1449,7 @@ func (x *UpdateEmbedderConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateEmbedderConfigResponse.ProtoReflect.Descriptor instead.
 func (*UpdateEmbedderConfigResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{17}
+	return file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *UpdateEmbedderConfigResponse) GetConfig() *EmbedderConfig {
@@ -1300,7 +1479,7 @@ const file_kratos_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"created_at\x18\n" +
 	" \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\v \x01(\tR\tupdatedAt\"\xe5\x02\n" +
+	"updated_at\x18\v \x01(\tR\tupdatedAt\"\x83\x03\n" +
 	"\x11KnowledgeDocument\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12#\n" +
 	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x16\n" +
@@ -1317,7 +1496,12 @@ const file_kratos_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\n" +
 	" \x01(\tR\tupdatedAt\x12+\n" +
-	"\x11extract_supported\x18\v \x01(\bR\x10extractSupported\"\xf0\x01\n" +
+	"\x11extract_supported\x18\v \x01(\bR\x10extractSupported\x12\x1c\n" +
+	"\torganized\x18\f \x01(\bR\torganized\"b\n" +
+	"\x0fDocumentContent\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
+	"\fcontent_text\x18\x02 \x01(\tR\vcontentText\x12\x1c\n" +
+	"\torganized\x18\x03 \x01(\bR\torganized\"\xf0\x01\n" +
 	"\x0eKnowledgeChunk\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06doc_id\x18\x02 \x01(\tR\x05docId\x12#\n" +
@@ -1341,9 +1525,9 @@ const file_kratos_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"\x05items\x18\x01 \x03(\v2(.kratos.knowledge.v1.KnowledgeCollectionR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\"/\n" +
 	"\x17DeleteCollectionRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\xba\x02\n" +
-	"\x15IngestDocumentRequest\x12)\n" +
-	"\rcollection_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\fcollectionId\x12\x1c\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\x84\x03\n" +
+	"\x15IngestDocumentRequest\x12#\n" +
+	"\rcollection_id\x18\x01 \x01(\tR\fcollectionId\x12\x1c\n" +
 	"\x06source\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06source\x12\x1b\n" +
 	"\tmime_type\x18\x03 \x01(\tR\bmimeType\x12+\n" +
 	"\x0econtent_base64\x18\x04 \x01(\tB\x04\xe2A\x01\x02R\rcontentBase64\x12#\n" +
@@ -1351,7 +1535,11 @@ const file_kratos_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"\n" +
 	"chunk_size\x18\x06 \x01(\x05R\tchunkSize\x12#\n" +
 	"\rchunk_overlap\x18\a \x01(\x05R\fchunkOverlap\x12%\n" +
-	"\x0echunk_strategy\x18\b \x01(\tR\rchunkStrategy\"i\n" +
+	"\x0echunk_strategy\x18\b \x01(\tR\rchunkStrategy\x125\n" +
+	"\x14organize_to_markdown\x18\t \x01(\bH\x00R\x12organizeToMarkdown\x88\x01\x01B\x17\n" +
+	"\x15_organize_to_markdown\"1\n" +
+	"\x19GetDocumentContentRequest\x12\x14\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"i\n" +
 	"\x14ListDocumentsRequest\x12#\n" +
 	"\rcollection_id\x18\x01 \x01(\tR\fcollectionId\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
@@ -1360,9 +1548,12 @@ const file_kratos_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"\x05items\x18\x01 \x03(\v2&.kratos.knowledge.v1.KnowledgeDocumentR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\"-\n" +
 	"\x15DeleteDocumentRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\xd9\x02\n" +
-	"\rSearchRequest\x12)\n" +
-	"\rcollection_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\fcollectionId\x12\x1a\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"c\n" +
+	"\x13MoveDocumentRequest\x12\x14\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x126\n" +
+	"\x14target_collection_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x12targetCollectionId\"\xd3\x02\n" +
+	"\rSearchRequest\x12#\n" +
+	"\rcollection_id\x18\x01 \x01(\tR\fcollectionId\x12\x1a\n" +
 	"\x05query\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x05query\x12\x13\n" +
 	"\x05top_k\x18\x03 \x01(\x05R\x04topK\x12\x1b\n" +
 	"\tmin_score\x18\x04 \x01(\x02R\bminScore\x12\x1f\n" +
@@ -1394,15 +1585,17 @@ const file_kratos_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"\x05model\x18\x04 \x01(\tR\x05model\x12\x10\n" +
 	"\x03dim\x18\x05 \x01(\x05R\x03dim\"[\n" +
 	"\x1cUpdateEmbedderConfigResponse\x12;\n" +
-	"\x06config\x18\x01 \x01(\v2#.kratos.knowledge.v1.EmbedderConfigR\x06config2\x87\v\n" +
+	"\x06config\x18\x01 \x01(\v2#.kratos.knowledge.v1.EmbedderConfigR\x06config2\xb3\r\n" +
 	"\x10KnowledgeService\x12\x90\x01\n" +
 	"\x10CreateCollection\x12,.kratos.knowledge.v1.CreateCollectionRequest\x1a(.kratos.knowledge.v1.KnowledgeCollection\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/knowledge/collections\x12\x8c\x01\n" +
 	"\rGetCollection\x12).kratos.knowledge.v1.GetCollectionRequest\x1a(.kratos.knowledge.v1.KnowledgeCollection\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/knowledge/collections/{id}\x12\x8f\x01\n" +
 	"\x0fListCollections\x12+.kratos.knowledge.v1.ListCollectionsRequest\x1a,.kratos.knowledge.v1.ListCollectionsResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/knowledge/collections\x12\x80\x01\n" +
 	"\x10DeleteCollection\x12,.kratos.knowledge.v1.DeleteCollectionRequest\x1a\x16.google.protobuf.Empty\"&\x82\xd3\xe4\x93\x02 *\x1e/v1/knowledge/collections/{id}\x12\x88\x01\n" +
 	"\x0eIngestDocument\x12*.kratos.knowledge.v1.IngestDocumentRequest\x1a&.kratos.knowledge.v1.KnowledgeDocument\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/knowledge/documents\x12\x87\x01\n" +
-	"\rListDocuments\x12).kratos.knowledge.v1.ListDocumentsRequest\x1a*.kratos.knowledge.v1.ListDocumentsResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/knowledge/documents\x12z\n" +
-	"\x0eDeleteDocument\x12*.kratos.knowledge.v1.DeleteDocumentRequest\x1a\x16.google.protobuf.Empty\"$\x82\xd3\xe4\x93\x02\x1e*\x1c/v1/knowledge/documents/{id}\x12r\n" +
+	"\rListDocuments\x12).kratos.knowledge.v1.ListDocumentsRequest\x1a*.kratos.knowledge.v1.ListDocumentsResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/knowledge/documents\x12\x98\x01\n" +
+	"\x12GetDocumentContent\x12..kratos.knowledge.v1.GetDocumentContentRequest\x1a$.kratos.knowledge.v1.DocumentContent\",\x82\xd3\xe4\x93\x02&\x12$/v1/knowledge/documents/{id}/content\x12z\n" +
+	"\x0eDeleteDocument\x12*.kratos.knowledge.v1.DeleteDocumentRequest\x1a\x16.google.protobuf.Empty\"$\x82\xd3\xe4\x93\x02\x1e*\x1c/v1/knowledge/documents/{id}\x12\x8e\x01\n" +
+	"\fMoveDocument\x12(.kratos.knowledge.v1.MoveDocumentRequest\x1a&.kratos.knowledge.v1.KnowledgeDocument\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/knowledge/documents/{id}/move\x12r\n" +
 	"\x06Search\x12\".kratos.knowledge.v1.SearchRequest\x1a#.kratos.knowledge.v1.SearchResponse\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/knowledge/search\x12\x8e\x01\n" +
 	"\x11GetEmbedderConfig\x12-.kratos.knowledge.v1.GetEmbedderConfigRequest\x1a#.kratos.knowledge.v1.EmbedderConfig\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/knowledge/embedder-config\x12\xa5\x01\n" +
 	"\x14UpdateEmbedderConfig\x120.kratos.knowledge.v1.UpdateEmbedderConfigRequest\x1a1.kratos.knowledge.v1.UpdateEmbedderConfigResponse\"(\x82\xd3\xe4\x93\x02\":\x01*\x1a\x1d/v1/knowledge/embedder-configBE\n" +
@@ -1420,55 +1613,62 @@ func file_kratos_knowledge_v1_knowledge_proto_rawDescGZIP() []byte {
 	return file_kratos_knowledge_v1_knowledge_proto_rawDescData
 }
 
-var file_kratos_knowledge_v1_knowledge_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_kratos_knowledge_v1_knowledge_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_kratos_knowledge_v1_knowledge_proto_goTypes = []any{
 	(*KnowledgeCollection)(nil),          // 0: kratos.knowledge.v1.KnowledgeCollection
 	(*KnowledgeDocument)(nil),            // 1: kratos.knowledge.v1.KnowledgeDocument
-	(*KnowledgeChunk)(nil),               // 2: kratos.knowledge.v1.KnowledgeChunk
-	(*CreateCollectionRequest)(nil),      // 3: kratos.knowledge.v1.CreateCollectionRequest
-	(*GetCollectionRequest)(nil),         // 4: kratos.knowledge.v1.GetCollectionRequest
-	(*ListCollectionsRequest)(nil),       // 5: kratos.knowledge.v1.ListCollectionsRequest
-	(*ListCollectionsResponse)(nil),      // 6: kratos.knowledge.v1.ListCollectionsResponse
-	(*DeleteCollectionRequest)(nil),      // 7: kratos.knowledge.v1.DeleteCollectionRequest
-	(*IngestDocumentRequest)(nil),        // 8: kratos.knowledge.v1.IngestDocumentRequest
-	(*ListDocumentsRequest)(nil),         // 9: kratos.knowledge.v1.ListDocumentsRequest
-	(*ListDocumentsResponse)(nil),        // 10: kratos.knowledge.v1.ListDocumentsResponse
-	(*DeleteDocumentRequest)(nil),        // 11: kratos.knowledge.v1.DeleteDocumentRequest
-	(*SearchRequest)(nil),                // 12: kratos.knowledge.v1.SearchRequest
-	(*SearchResponse)(nil),               // 13: kratos.knowledge.v1.SearchResponse
-	(*GetEmbedderConfigRequest)(nil),     // 14: kratos.knowledge.v1.GetEmbedderConfigRequest
-	(*EmbedderConfig)(nil),               // 15: kratos.knowledge.v1.EmbedderConfig
-	(*UpdateEmbedderConfigRequest)(nil),  // 16: kratos.knowledge.v1.UpdateEmbedderConfigRequest
-	(*UpdateEmbedderConfigResponse)(nil), // 17: kratos.knowledge.v1.UpdateEmbedderConfigResponse
-	(*emptypb.Empty)(nil),                // 18: google.protobuf.Empty
+	(*DocumentContent)(nil),              // 2: kratos.knowledge.v1.DocumentContent
+	(*KnowledgeChunk)(nil),               // 3: kratos.knowledge.v1.KnowledgeChunk
+	(*CreateCollectionRequest)(nil),      // 4: kratos.knowledge.v1.CreateCollectionRequest
+	(*GetCollectionRequest)(nil),         // 5: kratos.knowledge.v1.GetCollectionRequest
+	(*ListCollectionsRequest)(nil),       // 6: kratos.knowledge.v1.ListCollectionsRequest
+	(*ListCollectionsResponse)(nil),      // 7: kratos.knowledge.v1.ListCollectionsResponse
+	(*DeleteCollectionRequest)(nil),      // 8: kratos.knowledge.v1.DeleteCollectionRequest
+	(*IngestDocumentRequest)(nil),        // 9: kratos.knowledge.v1.IngestDocumentRequest
+	(*GetDocumentContentRequest)(nil),    // 10: kratos.knowledge.v1.GetDocumentContentRequest
+	(*ListDocumentsRequest)(nil),         // 11: kratos.knowledge.v1.ListDocumentsRequest
+	(*ListDocumentsResponse)(nil),        // 12: kratos.knowledge.v1.ListDocumentsResponse
+	(*DeleteDocumentRequest)(nil),        // 13: kratos.knowledge.v1.DeleteDocumentRequest
+	(*MoveDocumentRequest)(nil),          // 14: kratos.knowledge.v1.MoveDocumentRequest
+	(*SearchRequest)(nil),                // 15: kratos.knowledge.v1.SearchRequest
+	(*SearchResponse)(nil),               // 16: kratos.knowledge.v1.SearchResponse
+	(*GetEmbedderConfigRequest)(nil),     // 17: kratos.knowledge.v1.GetEmbedderConfigRequest
+	(*EmbedderConfig)(nil),               // 18: kratos.knowledge.v1.EmbedderConfig
+	(*UpdateEmbedderConfigRequest)(nil),  // 19: kratos.knowledge.v1.UpdateEmbedderConfigRequest
+	(*UpdateEmbedderConfigResponse)(nil), // 20: kratos.knowledge.v1.UpdateEmbedderConfigResponse
+	(*emptypb.Empty)(nil),                // 21: google.protobuf.Empty
 }
 var file_kratos_knowledge_v1_knowledge_proto_depIdxs = []int32{
 	0,  // 0: kratos.knowledge.v1.ListCollectionsResponse.items:type_name -> kratos.knowledge.v1.KnowledgeCollection
 	1,  // 1: kratos.knowledge.v1.ListDocumentsResponse.items:type_name -> kratos.knowledge.v1.KnowledgeDocument
-	2,  // 2: kratos.knowledge.v1.SearchResponse.chunks:type_name -> kratos.knowledge.v1.KnowledgeChunk
-	15, // 3: kratos.knowledge.v1.UpdateEmbedderConfigResponse.config:type_name -> kratos.knowledge.v1.EmbedderConfig
-	3,  // 4: kratos.knowledge.v1.KnowledgeService.CreateCollection:input_type -> kratos.knowledge.v1.CreateCollectionRequest
-	4,  // 5: kratos.knowledge.v1.KnowledgeService.GetCollection:input_type -> kratos.knowledge.v1.GetCollectionRequest
-	5,  // 6: kratos.knowledge.v1.KnowledgeService.ListCollections:input_type -> kratos.knowledge.v1.ListCollectionsRequest
-	7,  // 7: kratos.knowledge.v1.KnowledgeService.DeleteCollection:input_type -> kratos.knowledge.v1.DeleteCollectionRequest
-	8,  // 8: kratos.knowledge.v1.KnowledgeService.IngestDocument:input_type -> kratos.knowledge.v1.IngestDocumentRequest
-	9,  // 9: kratos.knowledge.v1.KnowledgeService.ListDocuments:input_type -> kratos.knowledge.v1.ListDocumentsRequest
-	11, // 10: kratos.knowledge.v1.KnowledgeService.DeleteDocument:input_type -> kratos.knowledge.v1.DeleteDocumentRequest
-	12, // 11: kratos.knowledge.v1.KnowledgeService.Search:input_type -> kratos.knowledge.v1.SearchRequest
-	14, // 12: kratos.knowledge.v1.KnowledgeService.GetEmbedderConfig:input_type -> kratos.knowledge.v1.GetEmbedderConfigRequest
-	16, // 13: kratos.knowledge.v1.KnowledgeService.UpdateEmbedderConfig:input_type -> kratos.knowledge.v1.UpdateEmbedderConfigRequest
-	0,  // 14: kratos.knowledge.v1.KnowledgeService.CreateCollection:output_type -> kratos.knowledge.v1.KnowledgeCollection
-	0,  // 15: kratos.knowledge.v1.KnowledgeService.GetCollection:output_type -> kratos.knowledge.v1.KnowledgeCollection
-	6,  // 16: kratos.knowledge.v1.KnowledgeService.ListCollections:output_type -> kratos.knowledge.v1.ListCollectionsResponse
-	18, // 17: kratos.knowledge.v1.KnowledgeService.DeleteCollection:output_type -> google.protobuf.Empty
-	1,  // 18: kratos.knowledge.v1.KnowledgeService.IngestDocument:output_type -> kratos.knowledge.v1.KnowledgeDocument
-	10, // 19: kratos.knowledge.v1.KnowledgeService.ListDocuments:output_type -> kratos.knowledge.v1.ListDocumentsResponse
-	18, // 20: kratos.knowledge.v1.KnowledgeService.DeleteDocument:output_type -> google.protobuf.Empty
-	13, // 21: kratos.knowledge.v1.KnowledgeService.Search:output_type -> kratos.knowledge.v1.SearchResponse
-	15, // 22: kratos.knowledge.v1.KnowledgeService.GetEmbedderConfig:output_type -> kratos.knowledge.v1.EmbedderConfig
-	17, // 23: kratos.knowledge.v1.KnowledgeService.UpdateEmbedderConfig:output_type -> kratos.knowledge.v1.UpdateEmbedderConfigResponse
-	14, // [14:24] is the sub-list for method output_type
-	4,  // [4:14] is the sub-list for method input_type
+	3,  // 2: kratos.knowledge.v1.SearchResponse.chunks:type_name -> kratos.knowledge.v1.KnowledgeChunk
+	18, // 3: kratos.knowledge.v1.UpdateEmbedderConfigResponse.config:type_name -> kratos.knowledge.v1.EmbedderConfig
+	4,  // 4: kratos.knowledge.v1.KnowledgeService.CreateCollection:input_type -> kratos.knowledge.v1.CreateCollectionRequest
+	5,  // 5: kratos.knowledge.v1.KnowledgeService.GetCollection:input_type -> kratos.knowledge.v1.GetCollectionRequest
+	6,  // 6: kratos.knowledge.v1.KnowledgeService.ListCollections:input_type -> kratos.knowledge.v1.ListCollectionsRequest
+	8,  // 7: kratos.knowledge.v1.KnowledgeService.DeleteCollection:input_type -> kratos.knowledge.v1.DeleteCollectionRequest
+	9,  // 8: kratos.knowledge.v1.KnowledgeService.IngestDocument:input_type -> kratos.knowledge.v1.IngestDocumentRequest
+	11, // 9: kratos.knowledge.v1.KnowledgeService.ListDocuments:input_type -> kratos.knowledge.v1.ListDocumentsRequest
+	10, // 10: kratos.knowledge.v1.KnowledgeService.GetDocumentContent:input_type -> kratos.knowledge.v1.GetDocumentContentRequest
+	13, // 11: kratos.knowledge.v1.KnowledgeService.DeleteDocument:input_type -> kratos.knowledge.v1.DeleteDocumentRequest
+	14, // 12: kratos.knowledge.v1.KnowledgeService.MoveDocument:input_type -> kratos.knowledge.v1.MoveDocumentRequest
+	15, // 13: kratos.knowledge.v1.KnowledgeService.Search:input_type -> kratos.knowledge.v1.SearchRequest
+	17, // 14: kratos.knowledge.v1.KnowledgeService.GetEmbedderConfig:input_type -> kratos.knowledge.v1.GetEmbedderConfigRequest
+	19, // 15: kratos.knowledge.v1.KnowledgeService.UpdateEmbedderConfig:input_type -> kratos.knowledge.v1.UpdateEmbedderConfigRequest
+	0,  // 16: kratos.knowledge.v1.KnowledgeService.CreateCollection:output_type -> kratos.knowledge.v1.KnowledgeCollection
+	0,  // 17: kratos.knowledge.v1.KnowledgeService.GetCollection:output_type -> kratos.knowledge.v1.KnowledgeCollection
+	7,  // 18: kratos.knowledge.v1.KnowledgeService.ListCollections:output_type -> kratos.knowledge.v1.ListCollectionsResponse
+	21, // 19: kratos.knowledge.v1.KnowledgeService.DeleteCollection:output_type -> google.protobuf.Empty
+	1,  // 20: kratos.knowledge.v1.KnowledgeService.IngestDocument:output_type -> kratos.knowledge.v1.KnowledgeDocument
+	12, // 21: kratos.knowledge.v1.KnowledgeService.ListDocuments:output_type -> kratos.knowledge.v1.ListDocumentsResponse
+	2,  // 22: kratos.knowledge.v1.KnowledgeService.GetDocumentContent:output_type -> kratos.knowledge.v1.DocumentContent
+	21, // 23: kratos.knowledge.v1.KnowledgeService.DeleteDocument:output_type -> google.protobuf.Empty
+	1,  // 24: kratos.knowledge.v1.KnowledgeService.MoveDocument:output_type -> kratos.knowledge.v1.KnowledgeDocument
+	16, // 25: kratos.knowledge.v1.KnowledgeService.Search:output_type -> kratos.knowledge.v1.SearchResponse
+	18, // 26: kratos.knowledge.v1.KnowledgeService.GetEmbedderConfig:output_type -> kratos.knowledge.v1.EmbedderConfig
+	20, // 27: kratos.knowledge.v1.KnowledgeService.UpdateEmbedderConfig:output_type -> kratos.knowledge.v1.UpdateEmbedderConfigResponse
+	16, // [16:28] is the sub-list for method output_type
+	4,  // [4:16] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
 	4,  // [4:4] is the sub-list for extension extendee
 	0,  // [0:4] is the sub-list for field type_name
@@ -1479,14 +1679,15 @@ func file_kratos_knowledge_v1_knowledge_proto_init() {
 	if File_kratos_knowledge_v1_knowledge_proto != nil {
 		return
 	}
-	file_kratos_knowledge_v1_knowledge_proto_msgTypes[12].OneofWrappers = []any{}
+	file_kratos_knowledge_v1_knowledge_proto_msgTypes[9].OneofWrappers = []any{}
+	file_kratos_knowledge_v1_knowledge_proto_msgTypes[15].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_knowledge_v1_knowledge_proto_rawDesc), len(file_kratos_knowledge_v1_knowledge_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   18,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -68,7 +68,7 @@ func NewChannelIngress(
 		cron:           cron,
 		eventBus:       eventBus,
 		lg:             lg,
-		http:            lark.DefaultHTTPClient(),
+		http:           lark.DefaultHTTPClient(),
 		deduplicator:   deduplicator,
 		peerDebouncer:  peerDebouncer,
 		previewManager: previewManager,

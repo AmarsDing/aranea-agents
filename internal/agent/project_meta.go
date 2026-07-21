@@ -19,19 +19,19 @@ type ProjectMeta struct {
 	// 2026-07-05 P1 #7 修复：之前 V2ProjectMetaFromV1 错误地把 TeamID 赋给
 	// v2.ProjectMeta.TeamStageID，导致 Turn.TeamStageID == Turn.TeamID，
 	// 前端无法通过 TeamStageID 精确匹配 member steps。
-	TeamStageID        string
-	Branch             string
-	FilterKey          string
-	RunID              string
-	TraceID            string
-	AgentID            string
-	AgentDisplayName   string
-	ContextWindow      int
-	TurnPromptTokens   int
-	TurnCompletionTok  int
-	MemberAgentKeys    map[string]struct{} // agent_key set for team member_* envelopes
-	Source             string
-	TaskContent        string // User input text for the root task Activity
+	TeamStageID       string
+	Branch            string
+	FilterKey         string
+	RunID             string
+	TraceID           string
+	AgentID           string
+	AgentDisplayName  string
+	ContextWindow     int
+	TurnPromptTokens  int
+	TurnCompletionTok int
+	MemberAgentKeys   map[string]struct{} // agent_key set for team member_* envelopes
+	Source            string
+	TaskContent       string // User input text for the root task Activity
 
 	// === Session tree hierarchy (Phase 1a) ===
 	// SpiritSessionID is the root spirit session ID for cross-session aggregation.

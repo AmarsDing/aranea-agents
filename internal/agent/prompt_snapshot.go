@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/llmcontext"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -128,17 +129,9 @@ func messageCharLen(m trpcmodel.Message) int {
 }
 
 func estTokensFromChars(chars int) int {
-	if chars <= 0 {
-		return 0
-	}
-	// For CJK text, 1 character ≈ 1-2 tokens; for Latin text, ~4 chars per token.
-	// We use a blended ratio of 2.5 chars/token as a reasonable middle ground
-	// that avoids severe underestimation for CJK-dominant content.
-	it := int(float64(chars) / 2.5)
-	if it == 0 {
-		return 1
-	}
-	return it
+	// Delegate to the shared calibrated estimator (dual-anchor: provider usage
+	// recalibrates the ratio; default blended 2.5 chars/token before any anchor).
+	return llmcontext.EstimateTokensFromChars(chars)
 }
 
 func classifySystemSections(text string) map[string]int {

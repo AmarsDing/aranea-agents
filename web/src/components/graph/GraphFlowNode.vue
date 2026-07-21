@@ -22,7 +22,7 @@
         <div class="graph-flow-node__icon-wrap">
           <q-icon :name="styleConfig.icon" size="14px" />
         </div>
-        <span class="graph-flow-node__type-label">{{ styleConfig.label }}</span>
+        <span class="graph-flow-node__type-label">{{ t(styleConfig.labelKey) }}</span>
         <OrchestrationStatusChip
           v-if="data.nodeType === 'agent' && showStatusChip"
           :display-status="displayStatus"
@@ -43,7 +43,7 @@
       <div v-if="agentKeyLine" class="graph-flow-node__agent-key">{{ agentKeyLine }}</div>
       <div v-if="responsibilityLine" class="graph-flow-node__hint">{{ truncate(responsibilityLine, 56) }}</div>
       <div v-if="toolChips.length" class="graph-flow-node__tools">
-        <span v-for="t in toolChips" :key="t" class="graph-flow-node__tool-chip">{{ t }}</span>
+        <span v-for="toolName in toolChips" :key="toolName" class="graph-flow-node__tool-chip">{{ toolName }}</span>
       </div>
       <div v-if="ioPreviewLine" class="graph-flow-node__io">{{ truncate(ioPreviewLine, 64) }}</div>
       <div v-if="fineStatusLabel && !showStatusChip" class="graph-flow-node__fine-status">{{ fineStatusLabel }}</div>
@@ -54,12 +54,15 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { Handle, Position } from '@vue-flow/core';
 import { NODE_TYPE_STYLES, EXECUTION_STATUS_STYLES, type NodeType } from '../../features/graph/types';
 import { truncate } from '../../features/graph/utils';
 import { AGENT_NODE_STATUS_STYLES, DISPLAY_STATUS_STYLES } from '../../features/orchestration/agentNodeStatusStyles';
 import type { AgentNodeStatus, DisplayStatus } from '../../features/orchestration/types';
 import OrchestrationStatusChip from '../orchestration/OrchestrationStatusChip.vue';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   id: string;
@@ -92,7 +95,7 @@ const statusConfig = computed(() => {
   return EXECUTION_STATUS_STYLES[status] ?? EXECUTION_STATUS_STYLES.idle;
 });
 
-const statusLabel = computed(() => statusConfig.value.label);
+const statusLabel = computed(() => t(statusConfig.value.labelKey));
 
 const showStatusChip = computed(() => props.data.nodeType === 'agent');
 
@@ -129,13 +132,13 @@ const responsibilityLine = computed(() => {
 
 const ioPreviewLine = computed(() => {
   if (props.data.inputPreview) {
-    return `收：${props.data.inputPreview}`;
+    return t('graphs.flowNodeIoReceive', { value: props.data.inputPreview });
   }
   if (props.data.outputPreview) {
-    return `交：${props.data.outputPreview}`;
+    return t('graphs.flowNodeIoDeliver', { value: props.data.outputPreview });
   }
   if (props.data.currentActivity) {
-    return `做：${props.data.currentActivity}`;
+    return t('graphs.flowNodeIoDoing', { value: props.data.currentActivity });
   }
   return '';
 });

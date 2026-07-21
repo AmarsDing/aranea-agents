@@ -770,10 +770,10 @@ func (r *dagRun) publishGraphStageTerminal(ctx context.Context) {
 		SessionID:   r.board.SessionID,
 		PlanBoardID: r.board.ID,
 		Status:      newStatus,
-		StartedAt:   current.StartedAt,    // 保留原 StartedAt
+		StartedAt:   current.StartedAt, // 保留原 StartedAt
 		CompletedAt: &now,
-		Seq:         current.Seq,          // 保留原 Seq
-		Version:     current.Version + 1,  // 递增 Version（替代硬编码 Version=3）
+		Seq:         current.Seq,         // 保留原 Seq
+		Version:     current.Version + 1, // 递增 Version（替代硬编码 Version=3）
 	}
 	var publishEvent biz.Event
 	switch newStatus {

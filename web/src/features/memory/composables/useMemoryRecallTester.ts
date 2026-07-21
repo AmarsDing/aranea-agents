@@ -1,10 +1,12 @@
 // FD4 fix: extract recall debug + composite search data fetching from
 // MemoryRecallTesterPanel.vue into composable so the .vue file only handles template.
 import { ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { CompositeSearchHit, MemoryRecallHit } from '../types';
 import { useMemoryApi } from './useMemoryApi';
 
 export function useMemoryRecallTester(agentId: () => string | null, sessionId: () => string | null | undefined) {
+  const { t } = useI18n();
   const { compositeSearchMemories, debugMemoryRecall } = useMemoryApi();
   const l2Hits = ref<MemoryRecallHit[]>([]);
   const l3Hits = ref<MemoryRecallHit[]>([]);
@@ -36,7 +38,7 @@ export function useMemoryRecallTester(agentId: () => string | null, sessionId: (
       l2Hits.value = res.l2_hits;
       l3Hits.value = res.l3_hits;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Recall debug failed';
+      error.value = err instanceof Error ? err.message : t('memory.recall.debugFailed');
     } finally {
       loadingDebug.value = false;
     }
@@ -55,7 +57,7 @@ export function useMemoryRecallTester(agentId: () => string | null, sessionId: (
         limit: 10,
       });
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Composite search failed';
+      error.value = err instanceof Error ? err.message : t('memory.recall.compositeFailed');
     } finally {
       loadingComposite.value = false;
     }

@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/service"
 	"aranea-agents/internal/telemetry"
+	"aranea-agents/internal/tools/preview"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/auth"
 	loggateway "aranea-agents/pkg/loggateway"
@@ -69,7 +70,7 @@ func main() {
 	defer c.Close()
 
 	if err := c.Load(); err != nil {
-		panic(err)
+		panic(redactConfigError("load config", err))
 	}
 
 	auth.WarnIfBypassEnabled()
@@ -80,7 +81,7 @@ func main() {
 
 	var bc conf.Bootstrap
 	if err := c.Scan(&bc); err != nil {
-		panic(err)
+		panic(redactConfigError("scan config", err))
 	}
 
 	lg, pipeline, loggingSinks := initLogging(&bc, logger)
@@ -99,7 +100,7 @@ func main() {
 
 	out, cleanup, err := wireApp(bc.Server, bc.Data, bc.Runtime, nil, logger, lg, pipeline, loggingSinks)
 	if err != nil {
-		panic(err)
+		panic(redactConfigError("wire app", err))
 	}
 	defer cleanup()
 
@@ -180,4 +181,16 @@ func main() {
 	if err := out.App.Run(); err != nil {
 		panic(err)
 	}
+}
+
+// redactConfigError wraps a startup error with an operation prefix while
+// masking sensitive values. YAML parse/scan errors echo offending source
+// scalars (e.g. cannot unmarshal !!str `sk-...` into int) and DI failures may
+// embed DSNs with passwords; the message is sanitized before it reaches
+// stderr/logs (Grok Build §4.4.2: config errors never leak config content).
+func redactConfigError(op string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %s", op, preview.RedactAndTruncate(err.Error(), 500))
 }

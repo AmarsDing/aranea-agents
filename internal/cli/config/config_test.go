@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/cli/config"
@@ -114,4 +115,114 @@ func TestDefaultPath(t *testing.T) {
 		t.Error("DefaultPath: returned empty string")
 	}
 	t.Logf("DefaultPath: %s", path)
+}
+
+// TestLoad_ConfigInvalidError_RedactsSecrets verifies that configInvalidError
+// sanitizes its cause message via RedactAndTruncate, preventing secret leakage
+// when toml.DecodeError echoes source lines containing tokens.
+func TestLoad_ConfigInvalidError_RedactsSecrets(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	// Write a TOML config with a token that will cause a parse error.
+	content := `[backend]
+base_url = "http://localhost:8080"
+token = "sk-livekey123456789abcdef" oops this is invalid toml
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("Load: expected error for invalid TOML, got nil")
+	}
+
+	errMsg := err.Error()
+	// The error should mention the file path and that parsing failed.
+	if !strings.Contains(errMsg, "CONFIG_INVALID") {
+		t.Errorf("expected CONFIG_INVALID prefix, got: %s", errMsg)
+	}
+	// The error must NOT contain the raw API key.
+	if strings.Contains(errMsg, "sk-livekey123456789abcdef") {
+		t.Errorf("error message leaks API key: %s", errMsg)
+	}
+}
+
+// TestLoad_ConfigInvalidError_UnwrapSafe verifies that Unwrap() still works
+// (for errors.As compatibility) but the Error() string is redacted.
+func TestLoad_ConfigInvalidError_UnwrapSafe(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	content := `[backend]
+token = "sk-ant-api03-secretkey123" invalid toml here
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("Load: expected error, got nil")
+	}
+
+	// Error() should be redacted.
+	errMsg := err.Error()
+	if strings.Contains(errMsg, "sk-ant-api03-secretkey123") {
+		t.Errorf("error message leaks Anthropic key: %s", errMsg)
+	}
+
+	// Unwrap should still return a non-nil cause (for errors.As compatibility).
+	type unwrapper interface{ Unwrap() error }
+	if u, ok := err.(unwrapper); ok {
+		if u.Unwrap() == nil {
+			t.Error("Unwrap() returned nil, expected non-nil cause")
+		}
+	} else {
+		t.Error("error does not implement Unwrap()")
+	}
+}
+
+// TestSanitizeConfigError verifies the sanitizeConfigError helper directly.
+func TestSanitizeConfigError(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string // substring that must be present
+	}{
+		{
+			"OpenAI key in error",
+			`toml: error on line 3: token = "sk-abc123def456ghi789"`,
+			"[secret redacted]",
+		},
+		{
+			"JWT in error",
+			`error: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U is invalid`,
+			"[secret redacted]",
+		},
+		{
+			"Anthropic key in error",
+			`error on line 2: key = "sk-ant-api03-abc123def456"`,
+			"[secret redacted]",
+		},
+		{
+			"password in error",
+			`error: password=mysecret123 is too short`,
+			"[secret redacted]",
+		},
+		{
+			"no secrets",
+			"toml: expected newline but got U+006F 'o'",
+			"toml: expected newline but got U+006F 'o'",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := config.SanitizeConfigErrorForTest(tt.input)
+			if !strings.Contains(got, tt.want) {
+				t.Errorf("sanitizeConfigError(%q) = %q, want to contain %q", tt.input, got, tt.want)
+			}
+		})
+	}
 }

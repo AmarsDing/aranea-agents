@@ -10,7 +10,7 @@
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat color="white" label="重试" @click="loadAll" />
+        <q-btn flat color="white" :label="t('memory.error.retry')" @click="loadAll" />
       </template>
     </q-banner>
 
@@ -26,12 +26,12 @@
         outside-arrows
         mobile-arrows
       >
-        <q-tab name="overview" icon="hub" label="总览" />
-        <q-tab name="knowledge" icon="psychology" label="知识库" />
-        <q-tab name="cascade" icon="sync_alt" label="Cascade" />
-        <q-tab name="sessions" icon="account_tree" label="会话记忆" />
-        <q-tab name="evolution" icon="auto_awesome" label="图谱与进化" />
-        <q-tab name="settings" icon="tune" label="设置" />
+        <q-tab name="overview" icon="hub" :label="t('memory.tabs.overview')" />
+        <q-tab name="knowledge" icon="psychology" :label="t('memory.tabs.knowledge')" />
+        <q-tab name="cascade" icon="sync_alt" :label="t('memory.tabs.cascade')" />
+        <q-tab name="sessions" icon="account_tree" :label="t('memory.tabs.sessions')" />
+        <q-tab name="evolution" icon="auto_awesome" :label="t('memory.tabs.evolution')" />
+        <q-tab name="settings" icon="tune" :label="t('memory.tabs.settings')" />
       </q-tabs>
     </q-card>
 
@@ -60,7 +60,6 @@
       <q-tab-panel name="cascade">
         <memory-cascade-panel
           v-model:preview-open="cascadePreviewOpen"
-          v-model:saga-drawer-open="cascadeSagaDrawerOpen"
           :agent-id="selectedAgentId"
           :rows="cascadeProposals"
           :loading="loadingCascade"
@@ -68,8 +67,6 @@
           :preview-loading="loadingCascadePreview"
           :preview="cascadePreviewData"
           :preview-proposal-id="cascadePreviewProposalId"
-          :saga-loading="loadingCascadeSaga"
-          :saga-steps="sagaSteps"
           @refresh="loadCascade"
           @approve="approveCascade"
           @reject="rejectCascade"
@@ -123,11 +120,13 @@
 
     <memory-snapshot-drawer v-model="snapshotDrawer" :snapshot="selectedSnapshot" />
     <memory-fact-drawer v-model="factDrawer" :fact="selectedFact" />
+    <memory-saga-drawer v-model="cascadeSagaDrawerOpen" :loading="loadingCascadeSaga" :steps="sagaSteps" />
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import MemoryDeadLetterPanel from '../features/memory/MemoryDeadLetterPanel.vue';
 import MemoryPlatformSettingsPanel from '../features/memory/MemoryPlatformSettingsPanel.vue';
 import MemoryGraphExplorer from '../features/memory/MemoryGraphExplorer.vue';
@@ -140,12 +139,14 @@ import MemoryHero from '../components/memory/MemoryHero.vue';
 import MemoryKnowledgePanel from '../features/memory/MemoryKnowledgePanel.vue';
 import MemoryMetricCards from '../components/memory/MemoryMetricCards.vue';
 import MemoryOverviewPanel from '../components/memory/MemoryOverviewPanel.vue';
+import MemorySagaDrawer from '../features/memory/MemorySagaDrawer.vue';
 import MemorySessionsPanel from '../features/memory/MemorySessionsPanel.vue';
 import MemorySettingsStatusPanel from '../components/memory/MemorySettingsStatusPanel.vue';
 import MemorySnapshotDrawer from '../features/memory/MemorySnapshotDrawer.vue';
 import { useMemoryCenterPage } from '../features/memory/useMemoryCenterPage';
 
 const deadLetterPanelRef = ref<InstanceType<typeof MemoryDeadLetterPanel> | null>(null);
+const { t } = useI18n();
 
 const {
   tab,

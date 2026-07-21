@@ -386,59 +386,6 @@ func TestCompressThresholdAndKeep(t *testing.T) {
 	})
 }
 
-func TestSessionCompressThreshold(t *testing.T) {
-	t.Run("default_mode", func(t *testing.T) {
-		ag := biz.Agent{}
-		got := sessionCompressThreshold(ag)
-		if got != defaultCompressThreshold {
-			t.Errorf("default mode threshold = %f, want %f", got, defaultCompressThreshold)
-		}
-	})
-
-	t.Run("always_mode_clamps_high_threshold", func(t *testing.T) {
-		ag := biz.Agent{Settings: &biz.AgentRuntimeSettings{
-			L0SnapshotMode:     "always",
-			L0SummaryThreshold: 0.8,
-		}}
-		got := sessionCompressThreshold(ag)
-		if got != forcedCompressThreshold {
-			t.Errorf("always mode with high threshold = %f, want %f", got, forcedCompressThreshold)
-		}
-	})
-
-	t.Run("always_mode_no_clamp_low_threshold", func(t *testing.T) {
-		ag := biz.Agent{Settings: &biz.AgentRuntimeSettings{
-			L0SnapshotMode:     "always",
-			L0SummaryThreshold: 0.2,
-		}}
-		got := sessionCompressThreshold(ag)
-		if got != 0.2 {
-			t.Errorf("always mode with low threshold = %f, want 0.2", got)
-		}
-	})
-
-	t.Run("always_mode_default_threshold_clamps", func(t *testing.T) {
-		ag := biz.Agent{Settings: &biz.AgentRuntimeSettings{
-			L0SnapshotMode: "always",
-		}}
-		got := sessionCompressThreshold(ag)
-		if got != forcedCompressThreshold {
-			t.Errorf("always mode with default threshold = %f, want %f", got, forcedCompressThreshold)
-		}
-	})
-
-	t.Run("on_warning_mode_no_clamp", func(t *testing.T) {
-		ag := biz.Agent{Settings: &biz.AgentRuntimeSettings{
-			L0SnapshotMode:     "on_warning",
-			L0SummaryThreshold: 0.8,
-		}}
-		got := sessionCompressThreshold(ag)
-		if got != 0.8 {
-			t.Errorf("on_warning mode = %f, want 0.8", got)
-		}
-	})
-}
-
 func TestTruncateStrategy(t *testing.T) {
 	t.Run("nil_settings", func(t *testing.T) {
 		got := truncateStrategy(biz.Agent{})

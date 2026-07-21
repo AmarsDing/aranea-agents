@@ -13,33 +13,42 @@
       <div class="q-pa-md">
         <div class="row items-center justify-between q-mb-md">
           <div>
-            <div class="text-h6">Fact 详情</div>
+            <div class="text-h6">{{ t('memory.factDrawer.title') }}</div>
             <div class="text-caption text-grey-7">{{ fact?.id }}</div>
           </div>
-          <q-btn flat round icon="close" aria-label="关闭知识详情" @click="$emit('update:modelValue', false)" />
+          <q-btn
+            flat
+            round
+            icon="close"
+            :aria-label="t('memory.factDrawer.closeAria')"
+            @click="$emit('update:modelValue', false)"
+          />
         </div>
         <template v-if="fact">
           <div class="text-subtitle1 text-weight-bold">{{ fact.statement }}</div>
           <div class="q-mt-md row q-gutter-sm">
             <q-chip dense color="primary" text-color="white">{{ fact.scope_type }}</q-chip>
             <q-chip dense color="blue-grey" text-color="white">{{ fact.fact_kind || 'fact' }}</q-chip>
-            <q-chip dense :color="scoreColor(fact.confidence)" text-color="white"
-              >confidence {{ formatPercent(fact.confidence) }}</q-chip
-            >
-            <q-chip v-if="fact.quality_score > 0" dense :color="scoreColor(fact.quality_score)" text-color="white"
-              >quality {{ formatPercent(fact.quality_score) }}</q-chip
-            >
-            <q-chip v-if="fact.pii_flag" dense color="negative" text-color="white">PII</q-chip>
+            <q-chip dense :color="scoreColor(fact.confidence)" text-color="white">{{
+              t('memory.factDrawer.confidence', { percent: formatPercent(fact.confidence) })
+            }}</q-chip>
+            <q-chip v-if="fact.quality_score > 0" dense :color="scoreColor(fact.quality_score)" text-color="white">{{
+              t('memory.factDrawer.quality', { percent: formatPercent(fact.quality_score) })
+            }}</q-chip>
+            <q-chip v-if="fact.pii_flag" dense color="negative" text-color="white">{{
+              t('memory.factDrawer.pii')
+            }}</q-chip>
           </div>
           <div v-if="fact.pii_flag && fact.pii_types?.length" class="q-mt-sm">
             <q-badge v-for="t in fact.pii_types" :key="t" color="deep-orange" class="q-mr-xs">{{ t }}</q-badge>
           </div>
           <q-separator class="q-my-md" />
-          <div class="text-caption text-grey-7">Details</div>
-          <pre class="memory-pre">{{ fact.details_markdown || '暂无详情' }}</pre>
-          <div class="text-caption text-grey-7 q-mt-md">Source</div>
+          <div class="text-caption text-grey-7">{{ t('memory.factDrawer.details') }}</div>
+          <pre class="memory-pre">{{ fact.details_markdown || t('memory.factDrawer.noDetails') }}</pre>
+          <div class="text-caption text-grey-7 q-mt-md">{{ t('memory.factDrawer.source') }}</div>
           <div class="text-body2">
-            {{ fact.source_kind || 'unknown' }} · {{ fact.source_session_id || fact.source_episode_id || '无来源引用' }}
+            {{ fact.source_kind || t('memory.factDrawer.unknown') }} ·
+            {{ fact.source_session_id || fact.source_episode_id || t('memory.factDrawer.noSourceRef') }}
           </div>
         </template>
       </div>
@@ -48,7 +57,10 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import type { MemoryFact } from './types';
+
+const { t } = useI18n();
 
 defineProps<{
   modelValue: boolean;

@@ -1,9 +1,11 @@
 // FD4+FB3 fix: extract platform settings data fetching/saving + error handling
 // from MemoryPlatformSettingsPanel.vue into composable so the .vue file only handles template.
 import { onMounted, reactive, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useMemoryApi } from './useMemoryApi';
 
 export function useMemoryPlatformSettings() {
+  const { t } = useI18n();
   const { getMemoryPlatformSettings, updateMemoryPlatformSettings } = useMemoryApi();
 
   const loading = ref(false);
@@ -31,7 +33,7 @@ export function useMemoryPlatformSettings() {
       loaded.value = true;
     } catch (err) {
       loaded.value = false;
-      message.value = err instanceof Error ? err.message : '加载失败';
+      message.value = err instanceof Error ? err.message : t('memory.platformSettings.loadFailed');
       messageOk.value = false;
     } finally {
       loading.value = false;
@@ -50,10 +52,10 @@ export function useMemoryPlatformSettings() {
       form.episode_backfill_disabled = row.episode_backfill_disabled;
       envPolicyStrict.value = row.env_policy_strict_override;
       envBackfillDisabled.value = row.env_episode_backfill_disabled_override;
-      message.value = '已保存';
+      message.value = t('memory.platformSettings.saved');
       messageOk.value = true;
     } catch (err) {
-      message.value = err instanceof Error ? err.message : '保存失败';
+      message.value = err instanceof Error ? err.message : t('memory.platformSettings.saveFailed');
       messageOk.value = false;
     } finally {
       saving.value = false;

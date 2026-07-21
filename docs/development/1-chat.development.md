@@ -171,6 +171,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | P-N | **流式渲染与活动排序修复** | ✅ | 统一 MD 渲染路径 + seq On* 入口预分配 + sequencer v2 单 publish worker（ADR-06） |
 | P-V2LF | **v2 实体生命周期与状态级联修复** | ✅ | P1-P6 + P5 Task 延迟关闭 + Fixes 1-7（seq 注入/msID 诊断/Cancelled 事件/双写消除/GraphStage 去重等）+ P-DBLEXEC 双重执行止血与 PlanStep.AgentKeys 传递（2026-07-05） |
 | 11 | **三种模式数据模型 + WS 协议设计文档** | ✅ | 需求文档 §1.7 + 设计文档 §5.4 + B.2.1（Phase T7） |
+| P-MDINC | **流式 MD 增量渲染（块级冻结 + DOM 分段 + 高亮 memo）** | ✅ | 借鉴 xai-grok-markdown；设计详见 [1-chat.design.md §11.1.2](./1-chat.design.md#1112-md-渲染策略2026-07-20-更新流式增量渲染) |
 
 ### P-N 流式渲染与活动排序修复（2026-06-27）
 
@@ -305,6 +306,11 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 61 | **T-ER.3** 前端 `TurnContainer.visibleSteps` 兜底过滤空 reply step（非 running 且 Content trim 后为空） | P1 | ✅ 2026-07-04 |
 | 62 | **T-ER.4** spec `2026-07-02-llm-activity-ordering-design.md` §3.2.1 图示更新为多轮模式 | P2 | ✅ 2026-07-04 |
 | 63 | **T-ER.5** 设计文档同步 §12.8 v2 Step 模型 + 空 ReplyStep 过滤 | P2 | ✅ 2026-07-04 |
+| 64 | **P-ORCH.1** 编排细粒度进度事件（后端 planner/allocator/factory 发布 orchestration_progress） | P0 | ✅ 2026-07-18 |
+| 65 | **P-ORCH.2** 前端 loading 映射（observabilityConstants + useContextualLoadingMessage） | P0 | ✅ 2026-07-18 |
+| 66 | **P-ORCH.3** Agent 创建确认（EnsureAgent 复用 tool_confirmation 模式：ReplyFunc + ActivityEmitter） | P1 | ✅ 2026-07-18 |
+| 67 | **P-ORCH.4** 确认链路验证（ConfirmActivity RPC 复用 + session 状态流转 + 拒绝降级） | P1 | 🟡 单测覆盖，运行时端到端待验证 |
+| 68 | **P-ORCH.5** Allocate 两阶段并行化（Phase A 并行匹配 + Phase B 串行 factory） | P2 | ✅ 2026-07-18 |
 
 ### T8 UI 树形重构（2026-07-01 新增）
 
@@ -462,6 +468,67 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 4. synthesis continuation turn（`meta.ParentTaskID != ""`）完成时发射 `task.completed`（parent task）并 `ClearTeamDispatch(taskID)`
 
 **依赖**：`PlanExecutor.SetTeamDispatchMarker` 由 `ProvideChatService` 注入 `ProjectorFactory`（后置构造注入，避免 wire 循环）。
+
+---
+
+### P-ORCH 编排实时反馈与 Agent 创建确认（2026-07-18 新增）
+
+> **目标**：编排三阶段（plan → allocate → factory/orchestrate）增加细粒度实时反馈；Agent 自动创建改为用户审批制；Allocate 并行化降低冷启动耗时。
+> **需求**：[1-chat.md §1.8](./1-chat.md#18-编排实时反馈与-agent-创建确认) US-ORCH-01/02
+> **设计**：[1-chat.design.md §B.10.14](./1-chat.design.md#b1014-编排实时反馈与-agent-创建确认2026-07-18-新增)
+
+#### 任务清单
+
+- [x] P-ORCH.1 后端进度事件：planner `Plan()` 发 decomposing/decomposed（新增 v2 EventBus 注入）；allocator `Allocate()` 发 allocating/allocated；factory `EnsureAgent()` 发 creating_agent/agent_created（SystemNoticeEvent，WS-only）；`TaskProfile` 新增 `SpiritSessionID` 字段
+- [x] P-ORCH.2 前端 loading 映射：`observabilityConstants.ts` 新增 `ORCHESTRATION_PROGRESS_MAP`（6 条 phase 条目）；`useContextualLoadingMessage.ts` 新增 `orchestration_progress` 分支（按 meta.phase + index/total/agentName 渲染）
+- [x] P-ORCH.3 Agent 创建确认：`EnsureAgent` 复用 tool_confirmation 模式——ctx 取 `serviceawaitreply.ReplyFunc` + `biz.ActivityEmitter`，LLM 生成提案后 EmitConfirmRequest → 阻塞等待（5min 超时）→ EmitConfirmResult；nil-safe（无 ReplyFunc 直接创建）
+- [x] P-ORCH.4 确认链路验证：ConfirmActivity RPC 零改动复用；确认期间 session awaiting_confirmation，确认后恢复；拒绝/超时返回错误走 allocator fallback（单测覆盖确认门禁逻辑；真实用户确认的运行时端到端验证待补）
+- [x] P-ORCH.5 `Allocate()` 两阶段重构：Phase A 并行 Layer 0-3（errgroup + 索引写入，提取为 `runPhaseAMatch`）；Phase B 串行 factory（含确认）→ fallback；收尾串行 selectAdditionalMembers + 单次持久化
+- [x] 验证：后端 `go build ./...` + `go test ./internal/agent/... -race` + `go test ./internal/biz/...`；前端 `pnpm vitest run useContextualLoadingMessage.spec`（43/43）
+- [x] 代码审查（aranea-review SKILL）+ 修复（2026-07-18：修复 DOC-SYNC-5 状态同步；提取 runPhaseAMatch 收敛 Allocate 长度）
+
+#### 改动文件清单
+
+| 文件 | 改动 |
+|------|------|
+| `internal/biz/agent_factory.go` | `TaskProfile` 新增 `SpiritSessionID` 字段 |
+| `internal/agent/task_planner_impl.go` | `Plan()` decomposeTask 前后发进度事件（新增 v2 EventBus 注入） |
+| `internal/agent/agent_allocator_impl.go` | `Allocate()` 两阶段重构 + 进度事件 |
+| `internal/agent/agent_factory.go` | 上下文确认流程（复用 tool_confirmation 模式）+ 进度事件 |
+| `cmd/admin/wire.go` + `wire_gen.go` | `provideTaskPlanner` 新增 v2 EventBus 参数 |
+| `web/src/features/spirit/observabilityConstants.ts` | 新增 `ORCHESTRATION_PROGRESS_MAP`（6 条 phase 映射） |
+| `web/src/features/chat/composables/useContextualLoadingMessage.ts` | 新增 orchestration_progress 分支 |
+
+#### 验收标准
+
+- [ ] 编排期间用户可见细粒度进度（分解中 → 匹配 i/N → 创建 Agent 中）
+- [ ] 4 层匹配失败时弹出确认卡片，批准创建/拒绝降级
+- [ ] 确认期间 session 进入 awaiting_confirmation，确认后自动恢复
+- [ ] 多 subtask 需创建 Agent 时逐个确认（串行）
+- [ ] Allocate 并行化后单测全绿，无数据竞争（`go test -race`）
+- [ ] 无 ReplyFunc 上下文时行为与旧版一致（直接创建）
+
+### P-MDINC 流式 MD 增量渲染（2026-07-20）
+
+> **分析来源**：[docs/reports/2026-07-19-analysis-grok-build-insights.md](../reports/2026-07-19-analysis-grok-build-insights.md)
+> **设计**：[1-chat.design.md §11.1.2](./1-chat.design.md#1112-md-渲染策略2026-07-20-更新流式增量渲染)
+
+#### 任务清单
+- [x] T-MDINC.1 块级冻结边界检测（`computeFrozenPrefixEnd`：列表/缩进代码/fence/链接引用定义/EOF 生长规则）
+- [x] T-MDINC.2 分段渲染接口（`renderChatMarkdownParts`：frozenSegments + frozenEpoch + finish() 全量兜底）
+- [x] T-MDINC.3 DOM 分段渲染指令（`vSegmentedMarkdown`：冻结段 DOM 不回改、epoch 前缀隔离整体失效）
+- [x] T-MDINC.4 组件集成（`ReplyBlock`/`ThinkingBlock`/`ChatReasoningDrawer` 替换 v-html）
+- [x] T-MDINC.5 代码高亮 memo（`detectCodeLanguage.ts`：highlight/detectLanguage 双 LRU 各 100 条 + 32KB 上限 + 500 字符 sample key）
+- [x] T-MDINC.6 流式等价性安全网（枚举码点二分/逐字符/变长 chunk/4 段组合/CRLF/代理对/finish 逐字节一致）+ 全量验证（pnpm lint 0 errors / 623 测试通过 / build 成功）
+
+#### 改动文件清单
+- `web/src/features/chat/chatMessageMarkdown.ts`（分段渲染 + finish() 兜底）
+- `web/src/features/chat/vSegmentedMarkdown.ts`（DOM 分段渲染指令，新）
+- `web/src/features/chat/lib/detectCodeLanguage.ts`（高亮/探测 LRU memo）
+- `web/src/components/chat/ReplyBlock.vue`、`ThinkingBlock.vue`、`ChatReasoningDrawer.vue`（指令集成）
+- `web/src/features/chat/__tests__/chatMessageMarkdown.spec.ts`（分段渲染 + 安全网测试）
+- `web/src/features/chat/__tests__/vSegmentedMarkdown.spec.ts`（指令 DOM 测试，新）
+- `web/src/features/chat/__tests__/detectCodeLanguage.spec.ts`（memo 测试）
 
 ---
 
@@ -1156,3 +1223,39 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 - [x] direct-publish 事件：SpiritSessionID 已填充（T1.2/T1.3/T1.3.1 完成）
 - [ ] 排序：用 Timestamp，无全局 Seq
 - [ ] MaxDepth：从 AgentRuntimeSetting.MaxSessionDepth 读取
+
+---
+
+## 子模块：Grok Build 借鉴（P0/P1 加固，2026-07-20）
+
+> **状态**：✅ 已完成 | **对比分析**：[2026-07-19-analysis-grok-build-function-by-function-comparison.md](../reports/2026-07-19-analysis-grok-build-function-by-function-comparison.md) | **实施计划**：[2026-07-19-grok-insights-p0-p1-implementation.md](../superpowers/plans/2026-07-19-grok-insights-p0-p1-implementation.md)
+
+### D.1 范围
+
+Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
+
+| # | 功能 | 优先级 | 问题/收益 |
+|---|------|--------|----------|
+| D-1 | Tool-pair 安全切分 | P0 | 上下文压缩拆散 assistant tool_call 与 tool result 配对 → API 400 |
+| D-2 | 双锚点 token 估算收口 | P0 | 统一 2.5 chars/token 比率不准确，多处独立估算 |
+| D-3 | Doom Loop 检测 | P1 | 无 LLM 层重复输出循环检测 |
+
+### D.2 代码锚点
+
+| 文件 | 职责 | 状态 |
+|------|------|------|
+| `internal/agent/context_compression_inject.go` | `partitionMessagesForCompression` 边界吸附：跨边界的 tool_call/tool_result 配对整体保留在 keep 侧 | ✅ |
+| `internal/agent/context_compression_inject_test.go` | Tool-pair 安全回归测试（含多 tool call / 异常顺序边界用例） | ✅ |
+| `internal/llmcontext/token_estimator.go` | 统一双锚点估算器：模型权威值回填（RecordAuthoritative）+ 增量字节估算（RecordIncremental）；默认 2.5 chars/token 兜底 | ✅ |
+| `internal/llmcontext/token_estimator_test.go` | 估算器单测 | ✅ |
+| `internal/agent/prompt_snapshot.go` | `estTokensFromChars` 替换为统一估算器 | ✅ |
+| `internal/agent/doom_loop_detector.go` | `DoomLoopDetector`：滑窗 + Jaccard 相似度，连续 N 条高相似输出判定 doom loop | ✅ |
+| `internal/agent/doom_loop_detector_test.go` | 重复/近重复检测测试 | ✅ |
+
+### D.3 验收
+
+- [x] `go test ./internal/agent/ -run TestPartitionMessagesForCompression -count=1` 通过（Tool-pair 不拆分）
+- [x] `go test ./internal/llmcontext/ -count=1` 通过（双锚点估算）
+- [x] `go test ./internal/agent/ -run TestDoomLoopDetector -count=1` 通过
+- [x] TDD 流程：失败测试 → 最小实现 → 回归测试
+- [x] 向后兼容：压缩策略与快照行为默认值不变

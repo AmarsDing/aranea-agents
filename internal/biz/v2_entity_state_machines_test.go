@@ -167,7 +167,11 @@ func TestTeamStageStateMachine_ValidTransitions(t *testing.T) {
 		want  TeamStageStatus
 	}{
 		{TeamStageStatusPending, TeamStageEventStart, TeamStageStatusRunning},
-		{TeamStageStatusRunning, TeamStageEventComplete, TeamStageStatusCompleted},
+	// 2026-07-21 P0-2：Pending → Failed/Cancelled 与 teams 表状态机对齐
+	//（DAG 依赖失败级联 B-01、编排取消未启动团队）。
+	{TeamStageStatusPending, TeamStageEventFail, TeamStageStatusFailed},
+	{TeamStageStatusPending, TeamStageEventCancel, TeamStageStatusCancelled},
+	{TeamStageStatusRunning, TeamStageEventComplete, TeamStageStatusCompleted},
 		{TeamStageStatusRunning, TeamStageEventFail, TeamStageStatusFailed},
 		{TeamStageStatusRunning, TeamStageEventCancel, TeamStageStatusCancelled},
 		{TeamStageStatusRunning, TeamStageEventInterrupt, TeamStageStatusWaitingHuman},
@@ -206,14 +210,14 @@ func TestTeamStageStateMachine_InvalidTransitions(t *testing.T) {
 		}
 	}
 
-	// Pending cannot directly reach terminal states (must go through running)
+	// Pending cannot reach completed directly (must execute first), and cannot
+	// be interrupted/resumed before running. Fail/cancel from pending ARE legal
+	// (2026-07-21 P0-2：对齐 teams 表 B-01 依赖级联失败与编排取消路径）。
 	invalidFromPending := []struct {
 		event TeamStageEvent
 		name  string
 	}{
 		{TeamStageEventComplete, "pending→complete"},
-		{TeamStageEventFail, "pending→fail"},
-		{TeamStageEventCancel, "pending→cancel"},
 		{TeamStageEventInterrupt, "pending→interrupt"},
 		{TeamStageEventResume, "pending→resume"},
 	}

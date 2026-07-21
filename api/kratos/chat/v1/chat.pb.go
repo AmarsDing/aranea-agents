@@ -2234,7 +2234,12 @@ type ConfirmActivityRequest struct {
 	SessionId  string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	ActivityId string                 `protobuf:"bytes,2,opt,name=activity_id,json=activityId,proto3" json:"activity_id,omitempty"`
 	// approved = true → resume tool execution; approved = false → cancel tool
-	Approved      bool `protobuf:"varint,3,opt,name=approved,proto3" json:"approved,omitempty"`
+	Approved bool `protobuf:"varint,3,opt,name=approved,proto3" json:"approved,omitempty"`
+	// reply is an optional structured confirm token (see
+	// internal/tools/serviceawaitreply: __aranea:tool_confirm:approve |
+	// deny | approve_session | approve_always). When set, it takes
+	// precedence over the approved flag and carries the grant scope.
+	Reply         string `protobuf:"bytes,4,opt,name=reply,proto3" json:"reply,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2288,6 +2293,13 @@ func (x *ConfirmActivityRequest) GetApproved() bool {
 		return x.Approved
 	}
 	return false
+}
+
+func (x *ConfirmActivityRequest) GetReply() string {
+	if x != nil {
+		return x.Reply
+	}
+	return ""
 }
 
 type ConfirmActivityResponse struct {
@@ -3504,13 +3516,14 @@ const file_kratos_chat_v1_chat_proto_rawDesc = "" +
 	"\n" +
 	"\b_comment\";\n" +
 	"\x1dSubmitMessageFeedbackResponse\x12\x1a\n" +
-	"\baccepted\x18\x01 \x01(\bR\baccepted\"\x86\x01\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\"\x9c\x01\n" +
 	"\x16ConfirmActivityRequest\x12#\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\x12%\n" +
 	"\vactivity_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\n" +
 	"activityId\x12 \n" +
-	"\bapproved\x18\x03 \x01(\bB\x04\xe2A\x01\x02R\bapproved\"M\n" +
+	"\bapproved\x18\x03 \x01(\bB\x04\xe2A\x01\x02R\bapproved\x12\x14\n" +
+	"\x05reply\x18\x04 \x01(\tR\x05reply\"M\n" +
 	"\x17ConfirmActivityResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\"\xea\x01\n" +

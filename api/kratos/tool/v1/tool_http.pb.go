@@ -23,10 +23,12 @@ const _ = http.SupportPackageIsVersion1
 const OperationToolServiceCreateTool = "/kratos.tool.v1.ToolService/CreateTool"
 const OperationToolServiceDeleteTool = "/kratos.tool.v1.ToolService/DeleteTool"
 const OperationToolServiceDeleteToolAgentOverride = "/kratos.tool.v1.ToolService/DeleteToolAgentOverride"
+const OperationToolServiceDeleteToolGrant = "/kratos.tool.v1.ToolService/DeleteToolGrant"
 const OperationToolServiceGetTool = "/kratos.tool.v1.ToolService/GetTool"
 const OperationToolServiceGetToolInvocationParams = "/kratos.tool.v1.ToolService/GetToolInvocationParams"
 const OperationToolServiceListToolAgentOverrides = "/kratos.tool.v1.ToolService/ListToolAgentOverrides"
 const OperationToolServiceListToolAgentOverridesByAgent = "/kratos.tool.v1.ToolService/ListToolAgentOverridesByAgent"
+const OperationToolServiceListToolGrants = "/kratos.tool.v1.ToolService/ListToolGrants"
 const OperationToolServiceListToolInvocationAudits = "/kratos.tool.v1.ToolService/ListToolInvocationAudits"
 const OperationToolServiceListToolRuns = "/kratos.tool.v1.ToolService/ListToolRuns"
 const OperationToolServiceListToolRunsForTool = "/kratos.tool.v1.ToolService/ListToolRunsForTool"
@@ -41,10 +43,12 @@ type ToolServiceHTTPServer interface {
 	CreateTool(context.Context, *CreateToolRequest) (*Tool, error)
 	DeleteTool(context.Context, *DeleteToolRequest) (*emptypb.Empty, error)
 	DeleteToolAgentOverride(context.Context, *DeleteToolAgentOverrideRequest) (*emptypb.Empty, error)
+	DeleteToolGrant(context.Context, *DeleteToolGrantRequest) (*emptypb.Empty, error)
 	GetTool(context.Context, *GetToolRequest) (*Tool, error)
 	GetToolInvocationParams(context.Context, *GetToolInvocationParamsRequest) (*ToolInvocationParam, error)
 	ListToolAgentOverrides(context.Context, *ListToolAgentOverridesRequest) (*ListToolAgentOverridesResponse, error)
 	ListToolAgentOverridesByAgent(context.Context, *ListToolAgentOverridesByAgentRequest) (*ListToolAgentOverridesByAgentResponse, error)
+	ListToolGrants(context.Context, *ListToolGrantsRequest) (*ListToolGrantsResponse, error)
 	ListToolInvocationAudits(context.Context, *ListToolInvocationAuditsRequest) (*ListToolInvocationAuditsResponse, error)
 	// ListToolRuns Static GET paths MUST be registered before /v1/tools/{id} to avoid
 	// gorilla/mux matching the variable segment first (e.g. "runs" as {id}).
@@ -72,6 +76,8 @@ func RegisterToolServiceHTTPServer(s *http.Server, srv ToolServiceHTTPServer) {
 	r.GET("/v1/tools/{tool_id}/runs", _ToolService_ListToolRunsForTool0_HTTP_Handler(srv))
 	r.GET("/v1/tools/{tool_id}/agent-overrides", _ToolService_ListToolAgentOverrides0_HTTP_Handler(srv))
 	r.GET("/v1/agents/{agent_id}/tool-overrides", _ToolService_ListToolAgentOverridesByAgent0_HTTP_Handler(srv))
+	r.GET("/v1/agents/{agent_id}/tool-grants", _ToolService_ListToolGrants0_HTTP_Handler(srv))
+	r.DELETE("/v1/agents/{agent_id}/tool-grants/{tool_key}", _ToolService_DeleteToolGrant0_HTTP_Handler(srv))
 	r.PUT("/v1/tools/{tool_id}/agent-overrides/{agent_id}", _ToolService_UpsertToolAgentOverride0_HTTP_Handler(srv))
 	r.DELETE("/v1/tools/{tool_id}/agent-overrides/{agent_id}", _ToolService_DeleteToolAgentOverride0_HTTP_Handler(srv))
 	r.PUT("/v1/tools/{id}/config", _ToolService_UpdateToolConfig0_HTTP_Handler(srv))
@@ -339,6 +345,50 @@ func _ToolService_ListToolAgentOverridesByAgent0_HTTP_Handler(srv ToolServiceHTT
 	}
 }
 
+func _ToolService_ListToolGrants0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListToolGrantsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationToolServiceListToolGrants)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListToolGrants(ctx, req.(*ListToolGrantsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListToolGrantsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _ToolService_DeleteToolGrant0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DeleteToolGrantRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationToolServiceDeleteToolGrant)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteToolGrant(ctx, req.(*DeleteToolGrantRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*emptypb.Empty)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _ToolService_UpsertToolAgentOverride0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in UpsertToolAgentOverrideRequest
@@ -440,10 +490,12 @@ type ToolServiceHTTPClient interface {
 	CreateTool(ctx context.Context, req *CreateToolRequest, opts ...http.CallOption) (rsp *Tool, err error)
 	DeleteTool(ctx context.Context, req *DeleteToolRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteToolAgentOverride(ctx context.Context, req *DeleteToolAgentOverrideRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
+	DeleteToolGrant(ctx context.Context, req *DeleteToolGrantRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	GetTool(ctx context.Context, req *GetToolRequest, opts ...http.CallOption) (rsp *Tool, err error)
 	GetToolInvocationParams(ctx context.Context, req *GetToolInvocationParamsRequest, opts ...http.CallOption) (rsp *ToolInvocationParam, err error)
 	ListToolAgentOverrides(ctx context.Context, req *ListToolAgentOverridesRequest, opts ...http.CallOption) (rsp *ListToolAgentOverridesResponse, err error)
 	ListToolAgentOverridesByAgent(ctx context.Context, req *ListToolAgentOverridesByAgentRequest, opts ...http.CallOption) (rsp *ListToolAgentOverridesByAgentResponse, err error)
+	ListToolGrants(ctx context.Context, req *ListToolGrantsRequest, opts ...http.CallOption) (rsp *ListToolGrantsResponse, err error)
 	ListToolInvocationAudits(ctx context.Context, req *ListToolInvocationAuditsRequest, opts ...http.CallOption) (rsp *ListToolInvocationAuditsResponse, err error)
 	// ListToolRuns Static GET paths MUST be registered before /v1/tools/{id} to avoid
 	// gorilla/mux matching the variable segment first (e.g. "runs" as {id}).
@@ -504,6 +556,19 @@ func (c *ToolServiceHTTPClientImpl) DeleteToolAgentOverride(ctx context.Context,
 	return &out, nil
 }
 
+func (c *ToolServiceHTTPClientImpl) DeleteToolGrant(ctx context.Context, in *DeleteToolGrantRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
+	var out emptypb.Empty
+	pattern := "/v1/agents/{agent_id}/tool-grants/{tool_key}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationToolServiceDeleteToolGrant))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *ToolServiceHTTPClientImpl) GetTool(ctx context.Context, in *GetToolRequest, opts ...http.CallOption) (*Tool, error) {
 	var out Tool
 	pattern := "/v1/tools/{id}"
@@ -548,6 +613,19 @@ func (c *ToolServiceHTTPClientImpl) ListToolAgentOverridesByAgent(ctx context.Co
 	pattern := "/v1/agents/{agent_id}/tool-overrides"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationToolServiceListToolAgentOverridesByAgent))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *ToolServiceHTTPClientImpl) ListToolGrants(ctx context.Context, in *ListToolGrantsRequest, opts ...http.CallOption) (*ListToolGrantsResponse, error) {
+	var out ListToolGrantsResponse
+	pattern := "/v1/agents/{agent_id}/tool-grants"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationToolServiceListToolGrants))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

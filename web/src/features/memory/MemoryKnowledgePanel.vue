@@ -2,7 +2,7 @@
 <template>
   <div>
     <q-banner v-if="!factsEndpointReady" rounded class="memory-info-banner q-mb-md">
-      L3 facts 暂时不可用。请检查 **`memory/v1`** 网关（**`GET /v1/memory/l3/facts`**）或筛选条件。
+      {{ t('memory.knowledge.unavailableBanner') }}
     </q-banner>
     <q-card flat bordered class="memory-card">
       <AppPageToolbar class="memory-knowledge-toolbar">
@@ -13,7 +13,7 @@
           outlined
           clearable
           debounce="300"
-          label="搜索知识、偏好或规则"
+          :label="t('memory.knowledge.searchPlaceholder')"
           @update:model-value="$emit('update:factKeyword', String($event ?? ''))"
         >
           <template #prepend><q-icon name="search" /></template>
@@ -26,7 +26,7 @@
           clearable
           emit-value
           map-options
-          label="Scope"
+          :label="t('memory.knowledge.scopeLabel')"
           :options="scopeOptions"
           @update:model-value="$emit('update:factScope', $event as string | null)"
         />
@@ -38,19 +38,19 @@
           clearable
           emit-value
           map-options
-          label="状态"
+          :label="t('memory.knowledge.statusLabel')"
           :options="factStatusOptions"
           @update:model-value="$emit('update:factStatus', $event as string | null)"
         />
         <template #actions>
-          <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="$emit('reset')" />
+          <q-btn flat rounded no-caps icon="restart_alt" :label="t('memory.knowledge.reset')" @click="$emit('reset')" />
           <q-btn
             unelevated
             rounded
             no-caps
             color="primary"
             icon="manage_search"
-            label="查询"
+            :label="t('memory.knowledge.search')"
             :loading="loadingFacts"
             @click="$emit('search')"
           />
@@ -59,8 +59,8 @@
 
       <q-card-section v-if="!loadingFacts && factRows.length === 0" class="app-registry-empty app-empty-state-center">
         <q-icon name="psychology_alt" size="44px" color="grey-6" />
-        <div class="text-subtitle1 q-mt-sm">暂无长期知识</div>
-        <div class="text-caption text-grey-7">用户确认的偏好、规则和经验会在 L3 facts 写入后出现在这里。</div>
+        <div class="text-subtitle1 q-mt-sm">{{ t('memory.knowledge.emptyTitle') }}</div>
+        <div class="text-caption text-grey-7">{{ t('memory.knowledge.emptyCaption') }}</div>
       </q-card-section>
 
       <template v-else>
@@ -79,7 +79,7 @@
               <q-td :props="slotProps">
                 <AppRegistryHoverTip :text="factHoverText(slotProps.row)">
                   <q-chip dense square color="primary" text-color="white">{{
-                    slotProps.row.scope_type || 'agent'
+                    scopeLabel(slotProps.row.scope_type)
                   }}</q-chip>
                 </AppRegistryHoverTip>
               </q-td>
@@ -114,7 +114,7 @@
                     round
                     icon="visibility"
                     color="primary"
-                    aria-label="查看知识详情"
+                    :aria-label="t('memory.knowledge.detailAria')"
                     @click="$emit('openFact', slotProps.row)"
                   />
                 </div>
@@ -128,7 +128,7 @@
             :page-max="pageMax"
             :total="factRows.length"
             :loading="loadingFacts"
-            label="条知识"
+            :label="t('memory.knowledge.paginationUnit')"
           />
         </div>
       </template>
@@ -138,12 +138,15 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { QTableProps } from 'quasar';
 import AppPageToolbar from '../../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../../components/layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../../components/layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../../components/layout/AppRegistryPagination.vue';
 import type { MemoryFact } from './types';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   factsEndpointReady: boolean;
@@ -208,6 +211,12 @@ function factHoverText(row: MemoryFact) {
   if (row.statement?.trim()) parts.push(row.statement.trim());
   if (row.details_markdown?.trim()) parts.push(row.details_markdown.trim());
   return parts.join('\n\n');
+}
+
+function scopeLabel(scopeType?: string) {
+  const key = `memory.knowledge.scope.${scopeType || 'agent'}`;
+  const translated = t(key);
+  return translated !== key ? translated : scopeType || 'agent';
 }
 </script>
 

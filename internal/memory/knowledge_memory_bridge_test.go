@@ -106,8 +106,8 @@ func TestKnowledgeBridge_KnowledgeRejectPenaltyConstant(t *testing.T) {
 func TestKnowledgeBridge_FindError(t *testing.T) {
 	expectedErr := errors.New("query failed")
 	store := &mockKnowledgeBridgeStore{
-		findErr:   expectedErr,
-		adjustOK:  true,
+		findErr:  expectedErr,
+		adjustOK: true,
 	}
 	bridge := NewKnowledgeMemoryBridge(store, nil)
 

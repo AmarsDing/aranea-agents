@@ -1,0 +1,113 @@
+[0m
+[4mF:\aranea-agents\web\src\components\chat\ActionBlock.vue[24m
+  [2m17:34[22m  [33mwarning[39m  Attribute ":is" should go before "v-if"  [2mvue/attributes-order[22m
+
+[4mF:\aranea-agents\web\src\components\chat\ChatMessageList.vue[24m
+  [2m79:43[22m  [33mwarning[39m  'v-html' directive can lead to XSS attack  [2mvue/no-v-html[22m
+
+[4mF:\aranea-agents\web\src\components\chat\NoticeBlock.vue[24m
+  [2m4:59[22m  [33mwarning[39m  'v-html' directive can lead to XSS attack  [2mvue/no-v-html[22m
+
+[4mF:\aranea-agents\web\src\components\chat\__tests__\ChatMessagePanel.legacy.spec.ts[24m
+  [2m18:36[22m  [33mwarning[39m  There is more than one component in this file  [2mvue/one-component-per-file[22m
+  [2m19:33[22m  [33mwarning[39m  There is more than one component in this file  [2mvue/one-component-per-file[22m
+  [2m20:41[22m  [33mwarning[39m  There is more than one component in this file  [2mvue/one-component-per-file[22m
+  [2m21:40[22m  [33mwarning[39m  There is more than one component in this file  [2mvue/one-component-per-file[22m
+  [2m22:40[22m  [33mwarning[39m  There is more than one component in this file  [2mvue/one-component-per-file[22m
+  [2m23:37[22m  [33mwarning[39m  There is more than one component in this file  [2mvue/one-component-per-file[22m
+  [2m24:40[22m  [33mwarning[39m  There is more than one component in this file  [2mvue/one-component-per-file[22m
+  [2m25:36[22m  [33mwarning[39m  There is more than one component in this file  [2mvue/one-component-per-file[22m
+  [2m26:35[22m  [33mwarning[39m  There is more than one component in this file  [2mvue/one-component-per-file[22m
+  [2m27:42[22m  [33mwarning[39m  There is more than one component in this file  [2mvue/one-component-per-file[22m
+  [2m28:37[22m  [33mwarning[39m  There is more than one component in this file  [2mvue/one-component-per-file[22m
+  [2m29:36[22m  [33mwarning[39m  There is more than one component in this file  [2mvue/one-component-per-file[22m
+  [2m42:43[22m  [33mwarning[39m  There is more than one component in this file  [2mvue/one-component-per-file[22m
+
+[4mF:\aranea-agents\web\src\components\chat\observe\NodeMediaPreview.vue[24m
+  [2m17:11[22m  [33mwarning[39m  Replace `⏎········v-else⏎········:src="art.url"⏎········loading="lazy"⏎········class="node-media-preview__media"⏎·····` with `·v-else·:src="art.url"·loading="lazy"·class="node-media-preview__media"`  [2mprettier/prettier[22m
+  [2m24:72[22m  [33mwarning[39m  Replace `⏎······+{{·artifacts.length·-·3·}}⏎···` with `·+{{·artifacts.length·-·3·}}`                                                                                                                    [2mprettier/prettier[22m
+
+[4mF:\aranea-agents\web\src\components\chat\tools\MediaToolDetail.vue[24m
+  [2m10:13[22m  [33mwarning[39m  Replace `⏎··········v-for="art·in·artifacts"⏎··········:key="art.artifact_id"⏎··········class="media-tool-detail__item"⏎··········@click="onPreview(art)"⏎········` with `·v-for="art·in·artifacts"·:key="art.artifact_id"·class="media-tool-detail__item"·@click="onPreview(art)"`  [2mprettier/prettier[22m
+  [2m24:15[22m  [33mwarning[39m  Replace `⏎············v-else⏎············:src="art.url"⏎············loading="lazy"⏎············class="media-tool-detail__media"⏎·········` with `·v-else·:src="art.url"·loading="lazy"·class="media-tool-detail__media"`                                                             [2mprettier/prettier[22m
+  [2m64:31[22m  [33mwarning[39m  Delete `⏎·····`                                                                                                                                                                                                                                                                      [2mprettier/prettier[22m
+
+[4mF:\aranea-agents\web\src\components\chat\tools\classifyTool.ts[24m
+  [2m106:30[22m  [33mwarning[39m  Replace `⏎··'generate_image',⏎··'generate_video',⏎··'image_to_video',⏎` with `'generate_image',·'generate_video',·'image_to_video'`  [2mprettier/prettier[22m
+
+[4mF:\aranea-agents\web\src\components\chat\v2\__tests__\CoreContainers.spec.ts[24m
+  [2m6:8[22m  [33mwarning[39m  'SessionPanel' is defined but never used  [2m@typescript-eslint/no-unused-vars[22m
+  [2m7:8[22m  [33mwarning[39m  'TaskList' is defined but never used      [2m@typescript-eslint/no-unused-vars[22m
+  [2m9:8[22m  [33mwarning[39m  'TurnList' is defined but never used      [2m@typescript-eslint/no-unused-vars[22m
+
+[4mF:\aranea-agents\web\src\components\chat\v2\__tests__\TeamComponents.spec.ts[24m
+  [2m8:8[22m   [33mwarning[39m  'TeamStagePanel' is defined but never used  [2m@typescript-eslint/no-unused-vars[22m
+  [2m9:39[22m  [33mwarning[39m  'TeamStage' is defined but never used       [2m@typescript-eslint/no-unused-vars[22m
+
+[4mF:\aranea-agents\web\src\components\memory\MemoryHero.vue[24m
+  [2m3:15[22m  [33mwarning[39m  Replace `⏎····:kicker="t('memory.hero.kicker')"⏎····:title="t('memory.hero.title')"⏎····:subtitle="t('memory.hero.subtitle')"⏎··` with `·:kicker="t('memory.hero.kicker')"·:title="t('memory.hero.title')"·:subtitle="t('memory.hero.subtitle')"`  [2mprettier/prettier[22m
+
+[4mF:\aranea-agents\web\src\features\chat\__tests__\v2Types.spec.ts[24m
+   [2m6:3[22m  [33mwarning[39m  'Turn' is defined but never used                 [2m@typescript-eslint/no-unused-vars[22m
+   [2m8:3[22m  [33mwarning[39m  'TeamStage' is defined but never used            [2m@typescript-eslint/no-unused-vars[22m
+   [2m9:3[22m  [33mwarning[39m  'TeamRun' is defined but never used              [2m@typescript-eslint/no-unused-vars[22m
+  [2m10:3[22m  [33mwarning[39m  'MemberSession' is defined but never used        [2m@typescript-eslint/no-unused-vars[22m
+  [2m11:3[22m  [33mwarning[39m  'PlanBoard' is defined but never used            [2m@typescript-eslint/no-unused-vars[22m
+  [2m12:3[22m  [33mwarning[39m  'PlanStep' is defined but never used             [2m@typescript-eslint/no-unused-vars[22m
+  [2m14:3[22m  [33mwarning[39m  'StepStatus' is defined but never used           [2m@typescript-eslint/no-unused-vars[22m
+  [2m15:3[22m  [33mwarning[39m  'TaskStatus' is defined but never used           [2m@typescript-eslint/no-unused-vars[22m
+  [2m16:3[22m  [33mwarning[39m  'TurnStatus' is defined but never used           [2m@typescript-eslint/no-unused-vars[22m
+  [2m17:3[22m  [33mwarning[39m  'TeamStageStatus' is defined but never used      [2m@typescript-eslint/no-unused-vars[22m
+  [2m18:3[22m  [33mwarning[39m  'TeamRunStatus' is defined but never used        [2m@typescript-eslint/no-unused-vars[22m
+  [2m19:3[22m  [33mwarning[39m  'MemberSessionStatus' is defined but never used  [2m@typescript-eslint/no-unused-vars[22m
+  [2m20:3[22m  [33mwarning[39m  'PlanStepStatus' is defined but never used       [2m@typescript-eslint/no-unused-vars[22m
+
+[4mF:\aranea-agents\web\src\features\chat\composables\__tests__\useChatEventRouter.spec.ts[24m
+  [2m6:15[22m  [33mwarning[39m  'V2WsEnvelope' is defined but never used  [2m@typescript-eslint/no-unused-vars[22m
+
+[4mF:\aranea-agents\web\src\features\chat\composables\__tests__\useTaskTree.spec.ts[24m
+  [2m6:21[22m  [33mwarning[39m  'Turn' is defined but never used  [2m@typescript-eslint/no-unused-vars[22m
+  [2m6:27[22m  [33mwarning[39m  'Step' is defined but never used  [2m@typescript-eslint/no-unused-vars[22m
+
+[4mF:\aranea-agents\web\src\features\chat\composables\useChatSender.ts[24m
+  [2m522:90[22m  [33mwarning[39m  Replace `⏎··············(s)·=>·s.id·===·sessionId,` with `(s)·=>·s.id·===·sessionId)`  [2mprettier/prettier[22m
+  [2m524:13[22m  [33mwarning[39m  Replace `)` with `··`                                                                  [2mprettier/prettier[22m
+
+[4mF:\aranea-agents\web\src\features\chat\composables\useTaskTree.ts[24m
+  [2m2:10[22m  [33mwarning[39m  'computed' is defined but never used  [2m@typescript-eslint/no-unused-vars[22m
+
+[4mF:\aranea-agents\web\src\features\memory\MemoryFactDrawer.vue[24m
+  [2m43:29[22m  [33mwarning[39m  Variable 't' is already declared in the upper scope  [2mvue/no-template-shadow[22m
+
+[4mF:\aranea-agents\web\src\features\memory\MemoryRecallTesterPanel.vue[24m
+  [2m14:21[22m  [33mwarning[39m  Replace `·v-model="query"·:label="t('memory.recall.queryLabel')"·dense·outlined·clearable·@keyup.enter="runDebug"` with `⏎··············v-model="query"⏎··············:label="t('memory.recall.queryLabel')"⏎··············dense⏎··············outlined⏎··············clearable⏎··············@keyup.enter="runDebug"⏎···········`  [2mprettier/prettier[22m
+
+[4mF:\aranea-agents\web\src\features\memory\MemorySessionsPanel.vue[24m
+  [2m159:86[22m  [33mwarning[39m  Replace `·taskStatusLabel(task.status)` with `⏎··················taskStatusLabel(task.status)⏎···············`  [2mprettier/prettier[22m
+
+[4mF:\aranea-agents\web\src\features\memory\memoryTableUi.ts[24m
+   [2m83:29[22m  [33mwarning[39m  Replace `'source',·t('memory.table.columns.source'),·'source_kind',·'left',·REGISTRY_COL_W.category,` with `⏎······'source',⏎······t('memory.table.columns.source'),⏎······'source_kind',⏎······'left',⏎······REGISTRY_COL_W.category,⏎·····`  [2mprettier/prettier[22m
+   [2m84:1[22m   [33mwarning[39m  Insert `··`                                                                                                                                                                                                                                    [2mprettier/prettier[22m
+   [2m85:5[22m   [33mwarning[39m  Replace `}` with `··},⏎····`                                                                                                                                                                                                                   [2mprettier/prettier[22m
+   [2m97:37[22m  [33mwarning[39m  Replace `'created',·t('memory.table.columns.time'),·'created_at',·'left',·REGISTRY_COL_W.time,` with `⏎······'created',⏎······t('memory.table.columns.time'),⏎······'created_at',⏎······'left',⏎······REGISTRY_COL_W.time,⏎·····`              [2mprettier/prettier[22m
+   [2m98:1[22m   [33mwarning[39m  Insert `··`                                                                                                                                                                                                                                    [2mprettier/prettier[22m
+   [2m99:7[22m   [33mwarning[39m  Insert `··`                                                                                                                                                                                                                                    [2mprettier/prettier[22m
+  [2m100:5[22m   [33mwarning[39m  Replace `}` with `··},⏎····`                                                                                                                                                                                                                   [2mprettier/prettier[22m
+  [2m109:37[22m  [33mwarning[39m  Replace `'ratio',·t('memory.table.columns.used'),·'used_ratio',·'left',·REGISTRY_COL_W.status,` with `⏎······'ratio',⏎······t('memory.table.columns.used'),⏎······'used_ratio',⏎······'left',⏎······REGISTRY_COL_W.status,⏎·····`              [2mprettier/prettier[22m
+  [2m110:1[22m   [33mwarning[39m  Insert `··`                                                                                                                                                                                                                                    [2mprettier/prettier[22m
+  [2m111:5[22m   [33mwarning[39m  Replace `}` with `··},⏎····`                                                                                                                                                                                                                   [2mprettier/prettier[22m
+  [2m161:33[22m  [33mwarning[39m  Replace `'source_id',·t('memory.table.columns.source'),·'source_id',·'left',·REGISTRY_COL_W.name` with `⏎······'source_id',⏎······t('memory.table.columns.source'),⏎······'source_id',⏎······'left',⏎······REGISTRY_COL_W.name,⏎····`          [2mprettier/prettier[22m
+  [2m163:33[22m  [33mwarning[39m  Replace `'target_id',·t('memory.table.columns.target'),·'target_id',·'left',·REGISTRY_COL_W.name` with `⏎······'target_id',⏎······t('memory.table.columns.target'),⏎······'target_id',⏎······'left',⏎······REGISTRY_COL_W.name,⏎····`          [2mprettier/prettier[22m
+
+[4mF:\aranea-agents\web\src\features\memory\useMemoryCenterPage.ts[24m
+  [2m207:39[22m  [33mwarning[39m  Replace `·?·t('memory.overview.status.connected')` with `⏎········?·t('memory.overview.status.connected')⏎·······`  [2mprettier/prettier[22m
+
+[4mF:\aranea-agents\web\src\pages\GraphsPage.vue[24m
+  [2m166:92[22m  [33mwarning[39m  Replace `·t('graphs.cardDAG')` with `⏎······················t('graphs.cardDAG')⏎···················`  [2mprettier/prettier[22m
+
+[4mF:\aranea-agents\web\src\stores\__tests__\activityV2.store.spec.ts[24m
+  [2m5:21[22m  [33mwarning[39m  'Turn' is defined but never used  [2m@typescript-eslint/no-unused-vars[22m
+
+[33m[1m✖ 65 problems (0 errors, 65 warnings)[22m[39m
+[33m[1m  0 errors and 26 warnings potentially fixable with the `--fix` option.[22m[39m
+[0m

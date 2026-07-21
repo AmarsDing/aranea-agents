@@ -114,6 +114,7 @@ func (f *fileToolSet) saveFile(
 		)
 		return rsp, fmt.Errorf("writing to file '%s': %w", req.FileName, err)
 	}
+	f.storeFileViewFromDisk(ctx, filePath)
 	rsp.Message = fmt.Sprintf("Successfully saved: %s", req.FileName)
 	return rsp, nil
 }

@@ -56,6 +56,8 @@ var ProviderSet = wire.NewSet(
 	NewSkillRepo,
 	NewSessionRepo,
 	NewToolRepo,
+	NewToolGrantRepo,
+	wire.Bind(new(biz.ToolGrantStore), new(*toolGrantRepo)),
 	NewChannelRepo,
 	wire.Bind(new(biz.ChannelReader), new(*channelRepo)),
 	wire.Bind(new(biz.ChannelWriter), new(*channelRepo)),
@@ -470,9 +472,14 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 		} else {
 			vs = pgvs
 		}
-	} else {
+	} else if pg == nil {
 		cleanup()
-		return nil, nil, fmt.Errorf("pgvector is required: set data.postgres.source and enable DAO_VECTOR_PGVECTOR")
+		return nil, nil, fmt.Errorf("pgvector is required: set data.postgres.source")
+	} else {
+		// pgvector not enabled via DAO_VECTOR_PGVECTOR: degrade gracefully.
+		// Vector search will be disabled, but the app can still start.
+		lg.Warn("pgvector not enabled (DAO_VECTOR_PGVECTOR not set), vector search disabled",
+			loggateway.StepID("data.vector"))
 	}
 
 	p1Ctx, p1Cancel := context.WithCancel(context.Background())
@@ -834,21 +841,39 @@ func ensurePostgresSchemas(pg *sql.DB, vdim int, lg loggateway.Logger) error {
 	ctxPG := context.Background()
 	if vector.IsPgvector() {
 		if err := vector.EnsureSchema(ctxPG, pg, vdim); err != nil {
-			lg.Error("postgres schema step failed", loggateway.StepID("data.schema.pgvector"), loggateway.Err(err))
-			return err
+			// Portable installs may ship without vector.dll; degrade instead of failing readiness.
+			lg.Warn("pgvector schema skipped; vector search disabled",
+				loggateway.StepID("data.schema.pgvector"), loggateway.Err(err))
 		}
 	} else {
 		lg.Info("pgvector build tag not set, skipping vector schema on Postgres", loggateway.StepID("data.schema.pgvector"))
 	}
 	if err := EnsureKnowledgeSchema(ctxPG, pg, vdim); err != nil {
-		lg.Error("postgres schema step failed", loggateway.StepID("data.schema.knowledge"), loggateway.Err(err))
-		return fmt.Errorf("knowledge schema: %w", err)
+		if isPgvectorExtensionError(err) {
+			lg.Warn("knowledge schema skipped; pgvector extension unavailable",
+				loggateway.StepID("data.schema.knowledge"), loggateway.Err(err))
+		} else {
+			lg.Error("postgres schema step failed", loggateway.StepID("data.schema.knowledge"), loggateway.Err(err))
+			return fmt.Errorf("knowledge schema: %w", err)
+		}
 	}
 	if err := ensurePostgresPhase1Schema(ctxPG, pg, lg); err != nil {
 		lg.Error("postgres phase1 schema step failed", loggateway.StepID("data.schema.postgres_phase1"), loggateway.Err(err))
 		return fmt.Errorf("postgres phase1 schema: %w", err)
 	}
 	return nil
+}
+
+func isPgvectorExtensionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "extension \"vector\"") ||
+		strings.Contains(s, "extension 'vector'") ||
+		strings.Contains(s, "vector.control") ||
+		strings.Contains(s, "create extension vector") ||
+		(strings.Contains(s, "vector") && strings.Contains(s, "not available"))
 }
 
 // ensurePostgresPhase1Schema runs the Phase 1 migration SQL on Postgres.
@@ -942,6 +967,9 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	})
 	seedStep("data.seed.skills_agent", func(ctx context.Context) error {
 		return SeedSkillsAgent(ctx, entClient, d.Dialect(), lg)
+	})
+	seedStep("data.seed.system_agent_runtime_settings", func(ctx context.Context) error {
+		return SeedSystemAgentRuntimeSettings(ctx, entClient, d.Dialect(), lg)
 	})
 	seedStep("data.seed.cli_admin_tools", func(ctx context.Context) error {
 		return SeedBuiltinCLIAdminTools(ctx, entClient, d.Dialect(), lg)

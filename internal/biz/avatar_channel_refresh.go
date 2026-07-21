@@ -3,7 +3,6 @@ package biz
 import (
 	"bytes"
 	"context"
-	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -13,7 +12,6 @@ import (
 
 	"aranea-agents/internal/biz/avatar"
 	"aranea-agents/internal/biz/channelicons"
-	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
 
 	"github.com/srwiley/oksvg"
@@ -191,7 +189,7 @@ func upsertChannelIconFromPNG(ctx context.Context, repo avatar.Repo, spec Channe
 	if err == nil && existing.ID != "" {
 		return repo.UpdateAvatarAssetImages(ctx, existing.ID, main, thumb, mime, w, h, len(main))
 	}
-	if err != nil && !errors.Is(err, shared.ErrNotFound) {
+	if err != nil && !isAvatarAssetMissing(err) {
 		return err
 	}
 

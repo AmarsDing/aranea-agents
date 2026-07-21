@@ -248,7 +248,7 @@ func (r *monitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, sta
 func (r *monitorRepo) AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error) {
 	var avg sql.NullFloat64
 	d := r.data.Dialect()
-	durExpr := d.JSONExtract("metadata_json", "duration_ms")
+	durExpr := d.JSONExtractNumeric("metadata_json", "duration_ms")
 	query := d.RenumberPlaceholders(`
 SELECT AVG(CAST(COALESCE(meta_duration_ms, ` + durExpr + `) AS REAL))
 FROM monitor_events
@@ -267,7 +267,7 @@ WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
 func (r *monitorRepo) LatencyPercentilesSince(ctx context.Context, sinceRFC3339 string) (p50, p95, p99 float64, err error) {
 	// Count total matching rows first
 	d := r.data.Dialect()
-	durExpr := d.JSONExtract("metadata_json", "duration_ms")
+	durExpr := d.JSONExtractNumeric("metadata_json", "duration_ms")
 	countQuery := d.RenumberPlaceholders(`
 SELECT COUNT(*)
 FROM monitor_events
@@ -304,7 +304,7 @@ func (r *monitorRepo) queryPercentile(ctx context.Context, sinceRFC3339 string, 
 	idx := percentileIndex(total, percentile)
 	var d float64
 	dialect := r.data.Dialect()
-	durExpr := dialect.JSONExtract("metadata_json", "duration_ms")
+	durExpr := dialect.JSONExtractNumeric("metadata_json", "duration_ms")
 	query := dialect.RenumberPlaceholders(`
 SELECT CAST(COALESCE(meta_duration_ms, ` + durExpr + `) AS REAL) AS dur
 FROM monitor_events

@@ -145,3 +145,41 @@ func TestStepV2Repo_GetStep_NotFound(t *testing.T) {
 		t.Fatalf("expected error for nonexistent step, got nil")
 	}
 }
+
+// ListStepsBySessionID filters by the exact session_id column: steps of a
+// sibling session under the same spirit session must not leak in, and the
+// team session's own steps must not appear in the spirit session's result.
+func TestStepV2Repo_ListStepsBySessionID_ExactSession(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	repo := NewStepV2Repo(d, loggateway.NewNoop())
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	seed := []biz.Step{
+		{ID: "st-spirit", TurnID: "turn-1", TaskID: "t-1", SessionID: "spirit-1", SpiritSessionID: "spirit-1", Kind: biz.StepKindReply, Seq: 1, Status: biz.StepStatusCompleted, StartedAt: now, Version: 1},
+		{ID: "st-team", TurnID: "turn-2", TaskID: "t-1", SessionID: "team-1", SpiritSessionID: "spirit-1", Kind: biz.StepKindReply, Seq: 2, Status: biz.StepStatusCompleted, StartedAt: now.Add(time.Second), Version: 1},
+		{ID: "st-member", TurnID: "turn-3", TaskID: "t-1", SessionID: "member-1", SpiritSessionID: "spirit-1", Kind: biz.StepKindReply, Seq: 3, Status: biz.StepStatusCompleted, StartedAt: now.Add(2 * time.Second), Version: 1},
+	}
+	for i, s := range seed {
+		if _, err := repo.CreateStep(ctx, s); err != nil {
+			t.Fatalf("CreateStep[%d]: %v", i, err)
+		}
+	}
+
+	teamSteps, err := repo.ListStepsBySessionID(ctx, "team-1")
+	if err != nil {
+		t.Fatalf("ListStepsBySessionID: %v", err)
+	}
+	if len(teamSteps) != 1 || teamSteps[0].ID != "st-team" {
+		t.Fatalf("exact semantics: expected [st-team], got %+v", teamSteps)
+	}
+
+	// Tree semantics unchanged: the spirit session still sees the whole tree.
+	treeSteps, err := repo.ListStepsBySession(ctx, "spirit-1")
+	if err != nil {
+		t.Fatalf("ListStepsBySession: %v", err)
+	}
+	if len(treeSteps) != 3 {
+		t.Fatalf("tree semantics: expected 3 steps, got %d", len(treeSteps))
+	}
+}

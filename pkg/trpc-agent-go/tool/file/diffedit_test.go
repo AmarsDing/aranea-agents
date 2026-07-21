@@ -14,140 +14,285 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"trpc.group/trpc-go/trpc-agent-go/agent"
+	"trpc.group/trpc-go/trpc-agent-go/internal/toolcache"
 )
 
-func TestDiffEdit_MultiAtomic(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "a.go")
-	if err := os.WriteFile(path, []byte("one\ntwo\nthree\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	ts, err := NewToolSet(WithBaseDir(dir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	ft := ts.(*fileToolSet)
-	inv := agent.NewInvocation()
-	ctx := agent.NewInvocationContext(context.Background(), inv)
+func callDiffEdit(
+	t *testing.T,
+	ctx context.Context,
+	fts *fileToolSet,
+	req *diffEditRequest,
+) *diffEditResponse {
+	t.Helper()
+	rsp, err := fts.diffEdit(ctx, req)
+	require.NoError(t, err)
+	return rsp
+}
 
-	rsp, err := ft.diffEdit(ctx, &diffEditRequest{
-		FileName: "a.go",
+func TestDiffEdit_SingleEdit(t *testing.T) {
+	fts, dir := newEditTestToolSet(t)
+	p := writeTestFile(t, dir, "a.txt", []byte("hello world\n"))
+
+	rsp := callDiffEdit(t, context.Background(), fts, &diffEditRequest{
+		FileName: "a.txt",
 		Edits: []diffEditItem{
-			{Search: "one", Replace: "ONE"},
-			{Search: "three", Replace: "THREE"},
+			{Search: "world", Replace: "claude"},
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rsp.Error != "" {
-		t.Fatalf("error field: %s", rsp.Error)
-	}
-	got, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "ONE\ntwo\nTHREE\n"
-	if string(got) != want {
-		t.Fatalf("got %q want %q", got, want)
-	}
+	assert.Equal(t, 1, rsp.AppliedEdits)
+	assert.Empty(t, rsp.Error)
+	assert.Greater(t, rsp.MtimeMs, int64(0))
+
+	raw, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "hello claude\n", string(raw))
 }
 
-func TestDiffEdit_NotUnique(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "a.txt")
-	if err := os.WriteFile(path, []byte("x\nx\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	ts, err := NewToolSet(WithBaseDir(dir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	ft := ts.(*fileToolSet)
-	rsp, err := ft.diffEdit(context.Background(), &diffEditRequest{
+func TestDiffEdit_MultiEditAppliedInOrder(t *testing.T) {
+	fts, dir := newEditTestToolSet(t)
+	p := writeTestFile(t, dir, "a.txt", []byte("one two three\n"))
+
+	rsp := callDiffEdit(t, context.Background(), fts, &diffEditRequest{
 		FileName: "a.txt",
-		Edits:    []diffEditItem{{Search: "x", Replace: "y"}},
+		Edits: []diffEditItem{
+			{Search: "one", Replace: "1"},
+			{Search: "three", Replace: "3"},
+		},
 	})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if rsp.Error != "edit_not_unique" {
-		t.Fatalf("got error=%q", rsp.Error)
-	}
-	raw, _ := os.ReadFile(path)
-	if string(raw) != "x\nx\n" {
-		t.Fatalf("file should be unchanged, got %q", raw)
-	}
+	assert.Equal(t, 2, rsp.AppliedEdits)
+
+	raw, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "1 two 3\n", string(raw))
 }
 
-func TestFileViewCache_SkipsSecondRead(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "b.txt")
-	if err := os.WriteFile(path, []byte("hello\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	ts, err := NewToolSet(WithBaseDir(dir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	ft := ts.(*fileToolSet)
+func TestDiffEdit_FailingEditLeavesFileUntouched(t *testing.T) {
+	fts, dir := newEditTestToolSet(t)
+	p := writeTestFile(t, dir, "a.txt", []byte("alpha beta\n"))
+
+	rsp := callDiffEdit(t, context.Background(), fts, &diffEditRequest{
+		FileName: "a.txt",
+		Edits: []diffEditItem{
+			{Search: "alpha", Replace: "ALPHA"},
+			{Search: "missing", Replace: "x"},
+		},
+	})
+	assert.Equal(t, "edit_not_found", rsp.Error)
+	require.NotNil(t, rsp.EditIndex)
+	assert.Equal(t, 1, *rsp.EditIndex)
+
+	raw, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "alpha beta\n", string(raw))
+}
+
+func TestDiffEdit_NotUniqueReportsMatchLines(t *testing.T) {
+	fts, dir := newEditTestToolSet(t)
+	writeTestFile(t, dir, "a.txt", []byte("foo\nbar\nfoo\nbaz\nfoo\n"))
+
+	rsp := callDiffEdit(t, context.Background(), fts, &diffEditRequest{
+		FileName: "a.txt",
+		Edits: []diffEditItem{
+			{Search: "foo", Replace: "qux"},
+		},
+	})
+	assert.Equal(t, "edit_not_unique", rsp.Error)
+	assert.Equal(t, 3, rsp.MatchCount)
+	assert.Equal(t, []int{1, 3, 5}, rsp.MatchLines)
+	assert.NotEmpty(t, rsp.Hint)
+}
+
+func TestDiffEdit_ReplaceAll(t *testing.T) {
+	fts, dir := newEditTestToolSet(t)
+	p := writeTestFile(t, dir, "a.txt", []byte("foo bar foo\n"))
+
+	rsp := callDiffEdit(t, context.Background(), fts, &diffEditRequest{
+		FileName: "a.txt",
+		Edits: []diffEditItem{
+			{Search: "foo", Replace: "qux", ReplaceAll: true},
+		},
+	})
+	assert.Equal(t, 1, rsp.AppliedEdits)
+
+	raw, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "qux bar qux\n", string(raw))
+}
+
+func TestDiffEdit_SearchEqualsReplaceIsNoop(t *testing.T) {
+	fts, dir := newEditTestToolSet(t)
+	p := writeTestFile(t, dir, "a.txt", []byte("same\n"))
+	st, err := os.Stat(p)
+	require.NoError(t, err)
+
+	rsp := callDiffEdit(t, context.Background(), fts, &diffEditRequest{
+		FileName: "a.txt",
+		Edits: []diffEditItem{
+			{Search: "same", Replace: "same"},
+		},
+	})
+	assert.Empty(t, rsp.Error)
+	assert.Contains(t, rsp.Message, "no changes")
+
+	after, err := os.Stat(p)
+	require.NoError(t, err)
+	assert.Equal(t, st.ModTime(), after.ModTime())
+}
+
+func TestDiffEdit_QuoteFuzzyMatchPreservesStyle(t *testing.T) {
+	fts, dir := newEditTestToolSet(t)
+	p := writeTestFile(t, dir, "a.txt", []byte("say “hello” now\n"))
+
+	rsp := callDiffEdit(t, context.Background(), fts, &diffEditRequest{
+		FileName: "a.txt",
+		Edits: []diffEditItem{
+			{Search: `say "hello" now`, Replace: `say "bye" now`},
+		},
+	})
+	require.Empty(t, rsp.Error)
+
+	raw, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "say “bye” now\n", string(raw))
+}
+
+func TestDiffEdit_ExpectedMtimeMismatch(t *testing.T) {
+	fts, dir := newEditTestToolSet(t)
+	writeTestFile(t, dir, "a.txt", []byte("x\n"))
+	stale := int64(42)
+
+	rsp := callDiffEdit(t, context.Background(), fts, &diffEditRequest{
+		FileName:        "a.txt",
+		ExpectedMtimeMs: &stale,
+		Edits: []diffEditItem{
+			{Search: "x", Replace: "y"},
+		},
+	})
+	assert.Equal(t, "file_modified_externally", rsp.Error)
+	assert.Contains(t, rsp.Hint, "read_file")
+}
+
+func TestDiffEdit_PreservesCRLF(t *testing.T) {
+	fts, dir := newEditTestToolSet(t)
+	p := writeTestFile(t, dir, "a.txt", []byte("a\r\nb\r\n"))
+
+	rsp := callDiffEdit(t, context.Background(), fts, &diffEditRequest{
+		FileName: "a.txt",
+		Edits: []diffEditItem{
+			{Search: "b", Replace: "c"},
+		},
+	})
+	require.Empty(t, rsp.Error)
+
+	raw, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "a\r\nc\r\n", string(raw))
+}
+
+func TestDiffEdit_UpdatesFileViewCache(t *testing.T) {
+	fts, dir := newEditTestToolSet(t)
+	writeTestFile(t, dir, "a.txt", []byte("old\n"))
+
 	inv := agent.NewInvocation()
 	ctx := agent.NewInvocationContext(context.Background(), inv)
 
-	_, err = ft.readFile(ctx, &readFileRequest{FileName: "b.txt"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	snap1, err := ft.loadEditSnapshot(ctx, "b.txt", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !snap1.FromCache {
-		t.Fatal("expected cache hit after read_file")
-	}
-	_, err = ft.diffEdit(ctx, &diffEditRequest{
-		FileName: "b.txt",
-		Edits:    []diffEditItem{{Search: "hello", Replace: "world"}},
+	rsp := callDiffEdit(t, ctx, fts, &diffEditRequest{
+		FileName: "a.txt",
+		Edits: []diffEditItem{
+			{Search: "old", Replace: "new"},
+		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	snap2, err := ft.loadEditSnapshot(ctx, "b.txt", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !snap2.FromCache {
-		t.Fatal("expected cache hit after diff_edit")
-	}
-	if snap2.Content != "world\n" {
-		t.Fatalf("content=%q", snap2.Content)
-	}
+	require.Empty(t, rsp.Error)
+
+	view, ok := toolcache.LookupFileView(inv, filepath.Join(dir, "a.txt"))
+	require.True(t, ok)
+	assert.Equal(t, "new\n", view.Content)
+	assert.Equal(t, rsp.MtimeMs, view.MtimeMs)
 }
 
-func TestPatchFile_Unified(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "c.txt")
-	if err := os.WriteFile(path, []byte("a\nb\nc\n"), 0o644); err != nil {
-		t.Fatal(err)
+func TestDiffEdit_RejectsTooManyEdits(t *testing.T) {
+	fts, dir := newEditTestToolSet(t)
+	writeTestFile(t, dir, "a.txt", []byte("x\n"))
+
+	edits := make([]diffEditItem, 0, maxEditsPerCall+1)
+	for i := 0; i < maxEditsPerCall+1; i++ {
+		edits = append(edits, diffEditItem{Search: "x", Replace: "y"})
 	}
-	ts, err := NewToolSet(WithBaseDir(dir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	ft := ts.(*fileToolSet)
-	patchText := "@@ -1,3 +1,3 @@\n a\n-b\n+B\n c\n"
-	_, err = ft.patchFile(context.Background(), &patchFileRequest{
-		FileName: "c.txt",
-		Patch:    patchText,
+	_, err := fts.diffEdit(context.Background(), &diffEditRequest{
+		FileName: "a.txt",
+		Edits:    edits,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, _ := os.ReadFile(path)
-	if string(got) != "a\nB\nc\n" {
-		t.Fatalf("got %q", got)
-	}
+	require.Error(t, err)
+}
+
+func TestDiffEdit_RejectsOversizedSearch(t *testing.T) {
+	fts, dir := newEditTestToolSet(t)
+	writeTestFile(t, dir, "a.txt", []byte("x\n"))
+
+	_, err := fts.diffEdit(context.Background(), &diffEditRequest{
+		FileName: "a.txt",
+		Edits: []diffEditItem{
+			{Search: strings.Repeat("s", maxEditSearchBytes+1), Replace: "y"},
+		},
+	})
+	require.Error(t, err)
+}
+
+func TestDiffEdit_RejectsEmptySearch(t *testing.T) {
+	fts, dir := newEditTestToolSet(t)
+	writeTestFile(t, dir, "a.txt", []byte("x\n"))
+
+	_, err := fts.diffEdit(context.Background(), &diffEditRequest{
+		FileName: "a.txt",
+		Edits: []diffEditItem{
+			{Search: "", Replace: "y"},
+		},
+	})
+	require.Error(t, err)
+}
+
+func TestDiffEdit_RejectsRef(t *testing.T) {
+	fts, _ := newEditTestToolSet(t)
+	_, err := fts.diffEdit(context.Background(), &diffEditRequest{
+		FileName: "workspace://a.txt",
+		Edits: []diffEditItem{
+			{Search: "x", Replace: "y"},
+		},
+	})
+	require.Error(t, err)
+}
+
+func TestDiffEdit_FileNotFound(t *testing.T) {
+	fts, _ := newEditTestToolSet(t)
+	_, err := fts.diffEdit(context.Background(), &diffEditRequest{
+		FileName: "missing.txt",
+		Edits: []diffEditItem{
+			{Search: "x", Replace: "y"},
+		},
+	})
+	require.Error(t, err)
+}
+
+func TestDiffEdit_DeletionWithEmptyReplace(t *testing.T) {
+	fts, dir := newEditTestToolSet(t)
+	p := writeTestFile(t, dir, "a.txt", []byte("keep DROP keep\n"))
+
+	rsp := callDiffEdit(t, context.Background(), fts, &diffEditRequest{
+		FileName: "a.txt",
+		Edits: []diffEditItem{
+			{Search: " DROP", Replace: ""},
+		},
+	})
+	require.Empty(t, rsp.Error)
+
+	raw, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "keep keep\n", string(raw))
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
@@ -132,6 +133,9 @@ func (p *turnPipeline) executeTurn(
 	}
 	attN := len(attachmentRefs)
 
+	// Step 1.5: 巨型用户输入落地 blob（单轮超限治理）；后续持久化与 LLM 调用均使用 preview。
+	input.Content = p.gateTurnUserInput(ctx, strings.TrimSpace(input.SessionID), input.Content)
+
 	// Step 2: Persist user message
 	userMsg, userMsgPersisted, err := p.persistTurnUserMessage(ctx, input, ag, admit, emitter, userOpts, attN)
 	if err != nil {
@@ -141,6 +145,32 @@ func (p *turnPipeline) executeTurn(
 	// Step 3: Session run lifecycle + run options + LLM call + stream
 	return p.invokeTurnLLMAndStream(ctx, sess, input, ag, admit, emitter, traceBridge, deps, runner,
 		userMsg, userMsgPersisted, userOpts, intentRunOpts, turnStart)
+}
+
+// gateTurnUserInput 对超阈值的用户输入落地 blob 并返回 preview。
+// 未超限 / gate 未配置 / 落地失败时返回原文（不阻断对话）。幂等键：
+// messageID 取 RootTaskActivityID（与持久化的用户消息 ID 一致），重试复用 replacement。
+// Stability:internal
+func (p *turnPipeline) gateTurnUserInput(ctx context.Context, sessionID, content string) string {
+	gate := p.rt().ToolResultGate
+	if gate == nil || utf8.RuneCountInString(content) <= biz.ToolResultSizeThreshold {
+		return content
+	}
+	msgID := string(chatagent.RootTaskActivityIDFromCtx(ctx))
+	if msgID == "" {
+		msgID = uuid.NewString()
+	}
+	res, err := gate.CheckUserInput(ctx, sessionID, msgID, biz.ToolResultSourceUserInput, content)
+	if err != nil {
+		p.lg().Warn("用户输入落地 blob 失败，使用原文继续",
+			loggateway.StepID("chat.turn.user_input_gate"),
+			loggateway.Err(err))
+		return content
+	}
+	if !res.DidPersist {
+		return content
+	}
+	return res.PreviewText
 }
 
 // ────────────────────────────────────────────────────────────
@@ -180,6 +210,30 @@ func (p *turnPipeline) persistTurn(
 	displayMarkdown, reasoningAsDisplay := chatagent.DisplayMarkdownFromStream(result)
 	if displayMarkdown == "" {
 		return turnPersistResult{}, p.handleEmptyReply(*ctx, ag, admit, emitter, result, turnStart, turnStatus, turnErr, turnErrMsg, sessionID)
+	}
+
+	// Immediate fact extraction: detect <fact> tags in agent response and persist to memory_fact.
+	// This bridges the async gap between conversation and Sleep-time consolidation.
+	// The tags are removed from the display text sent to the user.
+	cleanDisplay, facts := biz.ParseFactMarks(displayMarkdown)
+	if len(facts) > 0 {
+		p.lg().Info("即时事实提取",
+			loggateway.StepID("chat.immediate_fact"),
+			loggateway.SessionID(sessionID),
+			loggateway.Int("fact_count", len(facts)),
+			loggateway.Str("facts_preview", func() string {
+				if len(cleanDisplay) > 200 {
+					return cleanDisplay[:200] + "..."
+				}
+				return cleanDisplay
+			}()))
+		// Use the cleaned display text (without fact tags) for user display
+		displayMarkdown = cleanDisplay
+		// Fire-and-forget: write facts asynchronously
+		if fw := p.factWriter(); fw != nil {
+			userID := strings.TrimSpace(sess.UserID)
+			fw.WriteFacts(*ctx, sessionID, ag.ID, userID, execResult.userMsg.ID, facts)
+		}
 	}
 
 	// Pass user content as inputPreview so prompt token estimation works when the

@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
-
-	"aranea-agents/internal/llmcontext"
 )
 
 const maxL3RecallLimit = 20
@@ -64,15 +62,6 @@ type MemoryRuntimePolicy struct {
 	L2RetentionDays      int
 	L3DecayIntervalHours int
 
-	// CompressionThreshold is the context-window usage ratio at which the
-	// BeforeModel compression hook triggers recursive summarisation.
-	// Default: llmcontext.ContextStatusCriticalThreshold (0.80).
-	CompressionThreshold float64
-	// CompressionKeepRatio is the fraction of recent conversation messages
-	// to retain during compression. Older messages are evicted and folded
-	// into the recursive summary. Default: 0.30 (Letta's pattern).
-	CompressionKeepRatio float64
-
 	// LinkEvolutionEnabled (Phase 6A-03 T9): controls whether A-MEM style
 	// link evolution runs when new L3 facts are written. When false, new
 	// facts are stored without LLM-driven link analysis. Default: true
@@ -112,18 +101,10 @@ func (p MemoryRuntimePolicy) AnyWrite() bool {
 // ResolveMemoryRuntimePolicy maps agent_runtime_settings + optional session context
 // into symmetric read/write gates. Missing settings fail closed.
 func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePolicy {
-	// Compression defaults are always populated because the BeforeModel
-	// compression hook is platform-level (wired when ContextCompressor is
-	// available) and must have valid thresholds even for agents with memory
-	// disabled.
-	p := MemoryRuntimePolicy{
-		CompressionThreshold: llmcontext.ContextStatusCriticalThreshold,
-		CompressionKeepRatio: 0.30,
-	}
 	if settings == nil || !settings.MemoryEnabled {
-		return p
+		return MemoryRuntimePolicy{}
 	}
-	p = MemoryRuntimePolicy{
+	p := MemoryRuntimePolicy{
 		MasterEnabled:          true,
 		InjectL1:               settings.L1Enabled && settings.L0InjectL1,
 		RecallL2:               settings.L2RecallEnabled,
@@ -154,8 +135,6 @@ func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePol
 		MemoryToolMinScore:     settings.MemoryMinScore,
 		L2RetentionDays:        settings.L2RetentionDays,
 		L3DecayIntervalHours:   settings.L3DecayIntervalHours,
-		CompressionThreshold:   llmcontext.ContextStatusCriticalThreshold,
-		CompressionKeepRatio:   0.30,
 		// Phase 6A-03 T9: link evolution is enabled when L3 facts are writable.
 		LinkEvolutionEnabled: settings.L3Enabled,
 		// Phase 6A-06 T8: episode consolidation enabled when memory is on,

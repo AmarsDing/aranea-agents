@@ -41,7 +41,7 @@
           <ActionBlock v-else-if="step.Kind === 'action'" :step="step" />
           <ReplyBlock v-else-if="step.Kind === 'reply'" :step="step" />
           <NoticeBlock v-else-if="step.Kind === 'notice'" :step="step" />
-          <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" />
+          <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" @confirm="(p) => $emit('confirm-step', p)" />
           <ErrorBlock v-else-if="step.Kind === 'error'" :step="step" />
         </template>
       </div>
@@ -61,7 +61,7 @@
         >
           <template #append>
             <q-btn
-              v-if="!inputText.trim()"
+              v-if="!inputText.trim() && memberSession.Status === 'running'"
               flat
               dense
               round
@@ -71,7 +71,7 @@
               @click.stop="$emit('pause-agent', memberSession.SessionID)"
             />
             <q-btn
-              v-else
+              v-else-if="inputText.trim()"
               flat
               dense
               round
@@ -94,6 +94,7 @@ import { useActivityQueries } from '../../../features/chat/composables/useActivi
 import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
 import { useActivityAutoScroll } from '../../../features/chat/composables/useActivityAutoScroll';
 import type { MemberSession } from '../../../features/chat/v2Types';
+import type { ConfirmStepPayload } from '../../../features/chat/types';
 import ThinkingBlock from '../ThinkingBlock.vue';
 import ActionBlock from '../ActionBlock.vue';
 import ReplyBlock from '../ReplyBlock.vue';
@@ -117,6 +118,7 @@ const emit = defineEmits<{
   'inject-agent': [payload: { sessionId: string; message: string }];
   /** Lazy-load member session steps (A.4.7). Emits chat SessionID, not entity ID. */
   expand: [sessionIds: string[]];
+  'confirm-step': [payload: ConfirmStepPayload];
 }>();
 
 const { t } = useSafeI18n();
@@ -238,8 +240,12 @@ const isSystemAgent = computed(() => {
   return key === '__spirit__' || key.startsWith('__');
 });
 
-// 输入栏仅在 running 状态显示（用户 spec：agent 正在执行时显示）
-const canInject = computed(() => !isSystemAgent.value && props.memberSession.Status === 'running');
+// 输入栏在 running / paused 状态显示（用户 spec：agent 正在执行时显示；
+// paused 时保留输入栏以便注入新指令恢复执行——后端 resume 依赖新消息重触发，
+// 见 internal/service/chat_pause.go）
+const canInject = computed(
+  () => !isSystemAgent.value && (props.memberSession.Status === 'running' || props.memberSession.Status === 'paused'),
+);
 
 // 状态映射：running/paused/completed/failed/cancelled
 const statusColor = computed(

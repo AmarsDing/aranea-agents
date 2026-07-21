@@ -173,7 +173,7 @@ func (r *graphStageV2Repo) UpsertGraphStage(ctx context.Context, gs biz.GraphSta
 	}
 	row, err := cb.Save(ctx)
 	if err != nil {
-		if ent.IsConstraintError(err) {
+		if ent.IsConstraintError(err) || isPgUniqueViolation(err) {
 			existing, getErr := r.data.RW().Read(ctx).GraphStageV2.Get(ctx, gs.ID)
 			if getErr != nil {
 				return biz.GraphStage{}, entErrToBizErr(getErr, "GRAPH_STAGE_V2")

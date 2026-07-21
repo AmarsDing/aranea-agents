@@ -42,6 +42,7 @@ const (
 	ToolCategoryCode       ToolCategory = "code"        // Code execution
 	ToolCategoryTodo       ToolCategory = "todo"        // Todo management
 	ToolCategoryOther      ToolCategory = "other"       // Other / unknown
+	ToolCategoryMedia      ToolCategory = "media"       // Media generation (image/video)
 )
 
 // ActivityStatus represents the lifecycle status of an Activity.

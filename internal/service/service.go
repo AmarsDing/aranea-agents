@@ -91,6 +91,9 @@ var ProviderSet = wire.NewSet(
 	NewKnowledgeRetriever,
 	NewKnowledgeHybridRetriever,
 	NewKnowledgeQueryRewriter,
+	NewKnowledgeMarkdownOrganizer,
+	NewKnowledgeExtractorRegistry,
+	NewKnowledgeAssetStore,
 	NewKnowledgeAdaptiveRouter,
 	NewKnowledgeRetrievalEvaluator,
 	NewKnowledgeFederatedRetriever,
@@ -137,6 +140,7 @@ var ProviderSet = wire.NewSet(
 	NewOpenAISessionCompatService,
 	NewA2AExtensionCompatService,
 	NewRuntimeProfileService,
+	NewLearningLoopService,
 )
 
 func ProvideSkillResolveRootFn(sys biz.SystemSettingRepo) func(ctx context.Context) string {

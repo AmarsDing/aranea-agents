@@ -66,6 +66,17 @@ func TestFileTool_InputSchemaDescriptions(t *testing.T) {
 			"new_string":       "Replacement text; supports multi-line content",
 			"num_replacements": "Optional replacement limit; 0 means 1 and negative means replace all matches",
 		},
+		"diff_edit": {
+			"file_name":          "Relative file path under base_directory",
+			"edits":              "Search/replace fragments applied atomically in order",
+			"expected_mtime_ms":  "Optional optimistic lock from a prior read_file mtime_ms",
+		},
+		"patch_file": {
+			"file_name":          "Relative file path under base_directory",
+			"patch":              "Unified diff text; mutually exclusive with hunks",
+			"hunks":              "Structured hunks with ' ' '-' '+' prefixed body lines; mutually exclusive with patch",
+			"expected_mtime_ms":  "Optional optimistic lock from a prior read_file mtime_ms",
+		},
 	}
 
 	for toolName, properties := range expected {

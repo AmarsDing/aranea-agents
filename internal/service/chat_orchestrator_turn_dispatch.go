@@ -208,7 +208,6 @@ func (o *ChatOrchestrator) injectA2AContext(ctx context.Context, callerAgentID s
 // operations (user sending more messages) aren't blocked while a turn runs.
 // After each turn, the loop re-acquires the lock, checks for an active run
 // (e.g. user interrupted with "send now"), and dequeues the next message.
-//
 func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Session, ag biz.Agent, dialogMode, prov, mod string, rootTaskID string) {
 	safego.GoBackground("pending-queue", func() {
 		// Mark the context so turns started from this loop skip the

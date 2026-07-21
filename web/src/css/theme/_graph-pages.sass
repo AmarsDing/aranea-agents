@@ -619,36 +619,80 @@ body:not(.body--dark) .graph-card--add:hover
   overflow: auto
 
 .graph-property-panel
-  width: 320px
-  padding: 16px 12px
+  width: 360px
+  padding: 16px 14px
+  overflow-y: auto
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.04)
+
+.graph-property-panel.is-dark
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.2)
 
 .graph-property-panel__header
   display: flex
   align-items: center
   justify-content: space-between
-  margin-bottom: 8px
+  gap: 8px
+  margin-bottom: 10px
+  padding: 4px 4px 10px
+  border-bottom: 1px solid color-mix(in srgb, var(--node-accent, var(--color-accent)) 20%, var(--glass-border))
+  background: linear-gradient(135deg, color-mix(in srgb, var(--node-accent, var(--color-accent)) 6%, transparent), transparent)
+  border-radius: 8px 8px 0 0
+  margin: -4px -4px 12px
+  padding: 10px 10px 12px
+
+.graph-property-panel__title
+  position: relative
+  padding-left: 12px
+
+.graph-property-panel__title::before
+  content: ""
+  position: absolute
+  left: 0
+  top: 50%
+  transform: translateY(-50%)
+  width: 4px
+  height: 16px
+  border-radius: 2px
+  background: linear-gradient(180deg, var(--node-accent, var(--color-accent)), color-mix(in srgb, var(--node-accent, var(--color-accent)) 50%, transparent))
 
 .graph-property-panel__body
   padding-top: 4px
 
 .graph-property-panel__section
   display: grid
-  gap: 8px
-  padding: 10px 0
-  border-top: 1px solid var(--glass-border)
+  gap: 10px
+  padding: 12px 0
+  border-top: 1px solid color-mix(in srgb, var(--glass-border) 60%, transparent)
 
 .graph-property-panel__section-title
   font-size: 11px
   font-weight: 800
-  letter-spacing: 0.06em
+  letter-spacing: 0.08em
   text-transform: uppercase
   color: var(--color-text-secondary)
+  display: flex
+  align-items: center
+  gap: 8px
+
+.graph-property-panel__section-title::after
+  content: ""
+  flex: 1
+  height: 1px
+  background: linear-gradient(90deg, color-mix(in srgb, var(--node-accent, var(--color-accent)) 25%, transparent), transparent)
 
 .graph-property-panel__group
   border-left: 3px solid var(--group-accent, var(--node-accent, var(--color-accent)))
-  margin: 4px 0
-  border-radius: 0 8px 8px 0
+  margin: 8px 0
+  border-radius: 0 10px 10px 0
   overflow: hidden
+  background: color-mix(in srgb, var(--group-accent, var(--node-accent, var(--color-accent))) 3%, transparent)
+  border: 1px solid color-mix(in srgb, var(--group-accent, var(--node-accent, var(--color-accent))) 12%, transparent)
+  border-left: 3px solid var(--group-accent, var(--node-accent, var(--color-accent)))
+  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease
+
+.graph-property-panel__group:hover
+  background: color-mix(in srgb, var(--group-accent, var(--node-accent, var(--color-accent))) 5%, transparent)
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--group-accent, var(--node-accent, var(--color-accent))) 8%, transparent)
 
 .graph-property-panel__group--basic
   --group-accent: var(--graph-node-llm-border)
@@ -668,12 +712,18 @@ body:not(.body--dark) .graph-card--add:hover
 .graph-property-panel__group-header
   font-size: 11px !important
   font-weight: 800 !important
-  letter-spacing: 0.06em !important
+  letter-spacing: 0.08em !important
   text-transform: uppercase !important
   color: var(--color-text-secondary) !important
+  padding: 10px 12px !important
+  min-height: 38px !important
+  transition: color 160ms ease
+
+.graph-property-panel__group-header:hover
+  color: var(--group-accent, var(--node-accent, var(--color-accent))) !important
 
 .graph-property-panel__group-body
-  padding: 4px 0 8px
+  padding: 6px 12px 14px
 
 .graph-property-panel__empty
   display: flex
@@ -682,12 +732,18 @@ body:not(.body--dark) .graph-card--add:hover
   justify-content: center
   height: 200px
   text-align: center
+  gap: 8px
 
 .graph-property-panel .state-field-row
-  padding: 6px 8px
+  padding: 8px 10px
   border: 1px solid var(--glass-border)
   border-radius: 10px
-  background: color-mix(in srgb, var(--glass-elevated) 40%, transparent)
+  background: color-mix(in srgb, var(--glass-elevated) 50%, transparent)
+  transition: border-color 140ms ease, background 140ms ease
+
+.graph-property-panel .state-field-row:hover
+  border-color: color-mix(in srgb, var(--color-accent) 25%, var(--glass-border))
+  background: color-mix(in srgb, var(--glass-elevated) 70%, transparent)
 
 .graph-property-panel.is-dark .state-field-row
   border-color: var(--glass-border)
@@ -1515,7 +1571,7 @@ body:not(.body--dark) .graph-card--selected
   box-shadow: 0 0 0 1px rgba(220, 160, 62, 0.25), 0 0 16px rgba(220, 160, 62, 0.1), 0 2px 8px rgba(93, 64, 55, 0.07) !important
 
 .graph-detail-panel
-  width: 320px
+  width: 340px
   flex-shrink: 0
   border-left: 1px solid var(--glass-border)
   background: var(--glass-surface)
@@ -1525,65 +1581,117 @@ body:not(.body--dark) .graph-card--selected
   flex-direction: column
   overflow-y: auto
   transition: width 200ms ease
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.04)
 
 .graph-detail-panel.is-dark
   background: color-mix(in srgb, var(--glass-surface) 65%, transparent)
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.2)
 
 .graph-detail-panel__header
   display: flex
   align-items: center
   justify-content: space-between
-  padding: 14px 14px 10px
+  gap: 8px
+  padding: 16px 16px 14px
   border-bottom: 1px solid var(--glass-border)
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 8%, transparent), color-mix(in srgb, var(--color-accent) 2%, transparent))
+  position: relative
+
+.graph-detail-panel__header::after
+  content: ""
+  position: absolute
+  left: 0
+  right: 0
+  bottom: -1px
+  height: 2px
+  background: linear-gradient(90deg, var(--color-accent) 0%, transparent 60%)
+  opacity: 0.5
 
 .graph-detail-panel__title
-  font-size: 14px
+  font-size: 15px
   font-weight: 800
+  letter-spacing: 0.01em
   color: var(--color-text-heading)
   overflow: hidden
   text-overflow: ellipsis
   white-space: nowrap
   min-width: 0
+  flex: 1
+  display: flex
+  align-items: center
+  gap: 8px
+
+.graph-detail-panel__title::before
+  content: ""
+  display: inline-block
+  width: 4px
+  height: 18px
+  border-radius: 2px
+  background: linear-gradient(180deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 50%, transparent))
+  flex-shrink: 0
 
 .graph-detail-panel__body
-  padding: 12px 14px
+  padding: 14px 16px 18px
   display: flex
   flex-direction: column
-  gap: 4px
+  gap: 6px
 
 .graph-detail-panel__desc
   color: var(--color-text-secondary)
   font-size: 12px
-  line-height: 1.5
+  line-height: 1.6
   margin-bottom: 4px
+  padding: 10px 12px
+  border-radius: 10px
+  background: color-mix(in srgb, var(--glass-elevated) 50%, transparent)
+  border: 1px solid color-mix(in srgb, var(--glass-border) 60%, transparent)
+  border-left: 3px solid color-mix(in srgb, var(--color-accent) 40%, transparent)
 
 .graph-detail-panel__section
   display: flex
   flex-direction: column
   gap: 6px
-  padding: 10px 0
-  border-top: 1px solid var(--glass-border)
+  padding: 12px 0
+  border-top: 1px solid color-mix(in srgb, var(--glass-border) 60%, transparent)
 
 .graph-detail-panel__section-title
   font-size: 11px
   font-weight: 800
-  letter-spacing: 0.06em
+  letter-spacing: 0.08em
   text-transform: uppercase
   color: var(--color-text-secondary)
+  display: flex
+  align-items: center
+  gap: 8px
+  margin-bottom: 2px
+
+.graph-detail-panel__section-title::after
+  content: ""
+  flex: 1
+  height: 1px
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 30%, transparent), transparent)
 
 .graph-detail-panel__field
   display: flex
   align-items: baseline
   justify-content: space-between
-  gap: 8px
+  gap: 10px
+  padding: 5px 8px
+  border-radius: 6px
+  transition: background 140ms ease
+
+.graph-detail-panel__field:hover
+  background: color-mix(in srgb, var(--color-accent) 4%, transparent)
 
 .graph-detail-panel__label
   font-size: 11px
   color: var(--color-text-tertiary)
   flex-shrink: 0
+  font-weight: 600
 
 .graph-detail-panel__value
   font-size: 12px
+  font-weight: 600
   color: var(--color-text-primary)
   text-align: right
   min-width: 0
@@ -1594,32 +1702,45 @@ body:not(.body--dark) .graph-card--selected
 .graph-detail-panel__value--mono
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace
   font-size: 11px
+  color: var(--color-text-secondary)
 
 .graph-detail-panel__stats
   display: flex
   flex-wrap: wrap
-  gap: 4px
+  gap: 6px
 
 .graph-detail-panel__stat-chip
   display: inline-flex
   align-items: center
-  padding: 2px 7px
+  gap: 4px
+  padding: 4px 10px
   border: 1px solid var(--glass-border)
   border-radius: 999px
-  background: color-mix(in srgb, var(--glass-elevated) 60%, transparent)
-  font-size: 10px
+  background: color-mix(in srgb, var(--glass-elevated) 70%, transparent)
+  font-size: 11px
   font-weight: 700
-  line-height: 1.4
+  line-height: 1.3
   white-space: nowrap
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04)
+  transition: transform 140ms ease, box-shadow 140ms ease
+
+.graph-detail-panel__stat-chip:hover
+  transform: translateY(-1px)
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08)
 
 .graph-detail-panel__state-row
   display: flex
   align-items: center
-  gap: 6px
-  padding: 4px 8px
+  gap: 8px
+  padding: 7px 10px
   border: 1px solid var(--glass-border)
   border-radius: 8px
-  background: color-mix(in srgb, var(--glass-elevated) 40%, transparent)
+  background: color-mix(in srgb, var(--glass-elevated) 50%, transparent)
+  transition: border-color 140ms ease, background 140ms ease
+
+.graph-detail-panel__state-row:hover
+  border-color: color-mix(in srgb, var(--color-accent) 25%, var(--glass-border))
+  background: color-mix(in srgb, var(--glass-elevated) 70%, transparent)
 
 .graph-detail-panel__state-name
   font-size: 11px
@@ -1629,26 +1750,45 @@ body:not(.body--dark) .graph-card--selected
 
 .graph-detail-panel__state-type
   font-size: 10px
-  color: var(--color-text-tertiary)
+  color: var(--color-on-accent, #fff)
+  background: color-mix(in srgb, var(--color-accent) 70%, transparent)
+  padding: 1px 6px
+  border-radius: 4px
+  font-weight: 700
+  letter-spacing: 0.02em
 
 .graph-detail-panel__state-reducer
   font-size: 10px
   color: var(--color-text-secondary)
   margin-left: auto
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace
+  padding: 1px 6px
+  background: color-mix(in srgb, var(--glass-elevated) 70%, transparent)
+  border-radius: 4px
+  border: 1px solid color-mix(in srgb, var(--glass-border) 60%, transparent)
 
 .graph-detail-panel__actions
   display: flex
-  flex-wrap: wrap
-  gap: 4px
-  padding-top: 10px
-  border-top: 1px solid var(--glass-border)
+  flex-direction: column
+  gap: 6px
+  padding-top: 14px
+  margin-top: 6px
+  border-top: 1px solid color-mix(in srgb, var(--glass-border) 60%, transparent)
+
+.graph-detail-panel__actions .q-btn
+  justify-content: flex-start
+  width: 100%
 
 .graph-detail-panel__action-btn
-  background: var(--color-accent)
+  background: linear-gradient(135deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 80%, #000 5%))
   color: var(--color-on-accent)
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent) 25%, transparent)
+  transition: transform 140ms ease, box-shadow 140ms ease
 
 .graph-detail-panel__action-btn:hover
   background: var(--color-accent-hover)
+  transform: translateY(-1px)
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-accent) 35%, transparent)
 
 .graph-detail-panel__empty
   display: flex
@@ -1659,7 +1799,7 @@ body:not(.body--dark) .graph-card--selected
   min-height: 240px
   text-align: center
   padding: 32px 16px
-  gap: 8px
+  gap: 10px
 
 .graph-detail-panel__empty-text
   font-size: 13px
@@ -1669,6 +1809,7 @@ body:not(.body--dark) .graph-card--selected
 .graph-detail-panel__empty-hint
   font-size: 11px
   color: var(--color-text-tertiary)
+  line-height: 1.5
 
 @media (max-width: 1024px)
   .graphs-page__body

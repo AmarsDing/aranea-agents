@@ -3,9 +3,9 @@
   <q-card flat bordered class="memory-card">
     <q-card-section class="row items-center justify-between">
       <div>
-        <div class="text-h6">Memory Worker 状态</div>
+        <div class="text-h6">{{ t('memory.worker.title') }}</div>
         <div class="text-caption text-grey-7">
-          Auto-memory 队列：完成 / dead-letter / LLM fallback / episode backfill / 队列 / 索引健康。
+          {{ t('memory.worker.subtitle') }}
         </div>
       </div>
       <q-btn flat dense icon="refresh" :loading="loading" @click="emit('refresh')" />
@@ -17,15 +17,15 @@
       </div>
     </q-card-section>
     <q-card-section v-if="status && queueRows.length" class="q-pt-none">
-      <div class="text-caption text-grey-7 q-mb-xs">队列通道</div>
+      <div class="text-caption text-grey-7 q-mb-xs">{{ t('memory.worker.queueTitle') }}</div>
       <q-markup-table flat dense bordered>
         <thead>
           <tr>
-            <th>通道</th>
-            <th>容量</th>
-            <th>在飞</th>
-            <th>丢弃</th>
-            <th>防抖</th>
+            <th>{{ t('memory.worker.columns.lane') }}</th>
+            <th>{{ t('memory.worker.columns.capacity') }}</th>
+            <th>{{ t('memory.worker.columns.inFlight') }}</th>
+            <th>{{ t('memory.worker.columns.dropped') }}</th>
+            <th>{{ t('memory.worker.columns.debounced') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -43,26 +43,33 @@
       v-if="status && (status.fact_index_stale_count || status.fact_index_disabled_count)"
       class="q-pt-none"
     >
-      <div class="text-caption text-grey-7 q-mb-xs">索引健康</div>
+      <div class="text-caption text-grey-7 q-mb-xs">{{ t('memory.worker.indexHealth') }}</div>
       <div class="row q-col-gutter-sm">
         <div v-if="status.fact_index_stale_count" class="col-auto">
-          <q-badge color="warning">Stale {{ status.fact_index_stale_count }}</q-badge>
+          <q-badge color="warning">{{ t('memory.worker.stale', { count: status.fact_index_stale_count }) }}</q-badge>
         </div>
         <div v-if="status.fact_index_disabled_count" class="col-auto">
-          <q-badge color="negative">Disabled {{ status.fact_index_disabled_count }}</q-badge>
+          <q-badge color="negative">{{
+            t('memory.worker.disabled', { count: status.fact_index_disabled_count })
+          }}</q-badge>
         </div>
       </div>
     </q-card-section>
     <q-card-section v-if="status && status.db_available === false" class="q-pt-none">
-      <q-badge color="negative">DB 不可用</q-badge>
+      <q-badge color="negative">{{ t('memory.worker.dbUnavailable') }}</q-badge>
     </q-card-section>
-    <q-card-section v-else-if="!loading" class="text-grey-7 text-caption">Worker 指标暂不可用。</q-card-section>
+    <q-card-section v-else-if="!loading" class="text-grey-7 text-caption">{{
+      t('memory.worker.metricsUnavailable')
+    }}</q-card-section>
   </q-card>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { MemoryWorkerStatus } from '../../features/memory/types';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   status: MemoryWorkerStatus | null;
@@ -77,15 +84,15 @@ const cards = computed(() => {
   if (!props.status) return [];
   const s = props.status;
   return [
-    { label: 'Jobs Done', value: s.jobs_done, class: '' },
+    { label: t('memory.worker.cards.jobsDone'), value: s.jobs_done, class: '' },
     {
-      label: 'Dead Letter',
+      label: t('memory.worker.cards.deadLetter'),
       value: s.dead_letter_pending ?? s.jobs_dead,
       class: (s.dead_letter_pending ?? 0) > 0 ? 'text-negative' : '',
     },
-    { label: 'LLM Fallback', value: s.llm_fallback_total, class: '' },
-    { label: 'Avg Extract (s)', value: s.avg_extraction_seconds.toFixed(2), class: '' },
-    { label: 'Episode Backfill', value: s.episode_backfill_total, class: '' },
+    { label: t('memory.worker.cards.llmFallback'), value: s.llm_fallback_total, class: '' },
+    { label: t('memory.worker.cards.avgExtract'), value: s.avg_extraction_seconds.toFixed(2), class: '' },
+    { label: t('memory.worker.cards.episodeBackfill'), value: s.episode_backfill_total, class: '' },
   ];
 });
 
@@ -95,7 +102,7 @@ const queueRows = computed(() => {
   const rows: { lane: string; capacity: number; inFlight: number; dropped: number; debounced: number }[] = [];
   if (s.queue_high)
     rows.push({
-      lane: 'High',
+      lane: t('memory.worker.lanes.high'),
       capacity: s.queue_high.capacity,
       inFlight: s.queue_high.in_flight,
       dropped: s.queue_high.dropped_total ?? 0,
@@ -103,7 +110,7 @@ const queueRows = computed(() => {
     });
   if (s.queue_normal)
     rows.push({
-      lane: 'Normal',
+      lane: t('memory.worker.lanes.normal'),
       capacity: s.queue_normal.capacity,
       inFlight: s.queue_normal.in_flight,
       dropped: s.queue_normal.dropped_total ?? 0,
@@ -111,7 +118,7 @@ const queueRows = computed(() => {
     });
   if (s.queue_low)
     rows.push({
-      lane: 'Low',
+      lane: t('memory.worker.lanes.low'),
       capacity: s.queue_low.capacity,
       inFlight: s.queue_low.in_flight,
       dropped: s.queue_low.dropped_total ?? 0,

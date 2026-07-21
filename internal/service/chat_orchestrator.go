@@ -177,6 +177,10 @@ type ChatOrchestrator struct {
 	// legacy OrchestrationRepository has no row (C-18). May be nil.
 	planBoardOrch tools.PlanBoardOrchFallback
 
+	// immediateFactWriter persists <fact> tags from agent responses to memory_fact
+	// immediately after each turn, bridging the async gap to Sleep-time consolidation.
+	immediateFactWriter *biz.ImmediateFactWriter
+
 	sweepStop chan struct{}
 }
 
@@ -250,6 +254,10 @@ func (o *ChatOrchestrator) subAgentService() *subagenttool.Service {
 	return o.infraDeps.SubAgentService
 }
 func (o *ChatOrchestrator) lg() loggateway.Logger { return o.infraDeps.LG }
+
+// immediateFactWriter returns the ImmediateFactWriter for persisting <fact> tags.
+// Returns nil when memory consolidation writer is not wired (graceful degradation).
+func (o *ChatOrchestrator) factWriter() *biz.ImmediateFactWriter { return o.immediateFactWriter }
 
 // profileResolver returns the Wire-injected ProfileResolver, or nil when not
 // configured. Callers must nil-check before use.
@@ -352,6 +360,10 @@ type ChatInfraDeps struct {
 	// MemberSessions looks up/upserts v2 MemberSession rows (PauseSession /
 	// ResumeSession sync). Optional: nil disables member pause projection.
 	MemberSessions biz.MemberSessionV2Repo
+	// MemoryConsolidationWriter persists facts to memory_fact. Used to create
+	// ImmediateFactWriter for <fact> tag extraction. When nil, immediate fact
+	// extraction is disabled (graceful degradation).
+	MemoryConsolidationWriter biz.MemoryConsolidationWriter
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
@@ -444,14 +456,15 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			StepReader:  deps.Turn.StepReader,
 			StepWriter:  deps.Turn.StepWriter,
 		},
-		channelDeps:  deps.Channel,
-		usageDeps:    deps.Usage,
-		teamExecDeps: deps.Team,
-		evoDeps:      deps.Evolution,
-		infraDeps:    deps.Infra,
-		runs:         runs,
-		chatUC:       chatUC,
-		v2Seq:        v2Seq,
+		channelDeps:         deps.Channel,
+		usageDeps:           deps.Usage,
+		teamExecDeps:        deps.Team,
+		evoDeps:             deps.Evolution,
+		infraDeps:           deps.Infra,
+		runs:                runs,
+		chatUC:              chatUC,
+		v2Seq:               v2Seq,
+		immediateFactWriter: biz.NewImmediateFactWriter(deps.Infra.MemoryConsolidationWriter, deps.Infra.LG),
 		turnLC: &chatTurnLifecycleImpl{
 			sessionStateTransitor: stateMgr,
 			turnRecorder:          metrics,

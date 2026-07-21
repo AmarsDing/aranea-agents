@@ -201,8 +201,6 @@ const (
 	FieldModelInstructionsJSON = "model_instructions_json"
 	// FieldContextCompactionEnabled holds the string denoting the context_compaction_enabled field in the database.
 	FieldContextCompactionEnabled = "context_compaction_enabled"
-	// FieldMicroCompactEnabled holds the string denoting the micro_compact_enabled field in the database.
-	FieldMicroCompactEnabled = "micro_compact_enabled"
 	// FieldMemoryCompactEnabled holds the string denoting the memory_compact_enabled field in the database.
 	FieldMemoryCompactEnabled = "memory_compact_enabled"
 	// FieldToolResultGateEnabled holds the string denoting the tool_result_gate_enabled field in the database.
@@ -399,7 +397,6 @@ var Columns = []string{
 	FieldVariablesJSON,
 	FieldModelInstructionsJSON,
 	FieldContextCompactionEnabled,
-	FieldMicroCompactEnabled,
 	FieldMemoryCompactEnabled,
 	FieldToolResultGateEnabled,
 	FieldCompressLlmCacheEnabled,
@@ -650,8 +647,6 @@ var (
 	DefaultModelInstructionsJSON string
 	// DefaultContextCompactionEnabled holds the default value on creation for the "context_compaction_enabled" field.
 	DefaultContextCompactionEnabled bool
-	// DefaultMicroCompactEnabled holds the default value on creation for the "micro_compact_enabled" field.
-	DefaultMicroCompactEnabled bool
 	// DefaultMemoryCompactEnabled holds the default value on creation for the "memory_compact_enabled" field.
 	DefaultMemoryCompactEnabled bool
 	// DefaultToolResultGateEnabled holds the default value on creation for the "tool_result_gate_enabled" field.
@@ -1231,11 +1226,6 @@ func ByModelInstructionsJSON(opts ...sql.OrderTermOption) OrderOption {
 // ByContextCompactionEnabled orders the results by the context_compaction_enabled field.
 func ByContextCompactionEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldContextCompactionEnabled, opts...).ToFunc()
-}
-
-// ByMicroCompactEnabled orders the results by the micro_compact_enabled field.
-func ByMicroCompactEnabled(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldMicroCompactEnabled, opts...).ToFunc()
 }
 
 // ByMemoryCompactEnabled orders the results by the memory_compact_enabled field.

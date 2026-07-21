@@ -239,18 +239,19 @@ export type PurgeUsageEventsResponse = {
   deletedCount: number | undefined;
 };
 
-// ListAllModelsBreakdownRequest mirrors api/kratos/usage/v1/usage.proto ListAllModelsBreakdownRequest.
-// Unlike UsageQuery (top-N capped), this supports server-side pagination + LIKE search + dynamic sort.
+// ListAllModelsBreakdownRequest is the paginated query for the full-model consumption overview table.
+// Unlike ListTopModels (capped at 200 rows, fixed cost sort), this RPC supports server-side
+// pagination, dynamic sorting, and LIKE search across provider_code + model_api_id.
 export type ListAllModelsBreakdownRequest = {
-  range?: string; // today | 7d | 30d | month
-  startDate?: string; // YYYY-MM-DD explicit override
-  endDate?: string; // YYYY-MM-DD explicit override
-  providerCode?: string; // exact provider filter
-  search?: string; // LIKE on provider_code + model_api_id
-  sortField?: string; // call_count | total_tokens | total_cost_micro_usd | success_rate | avg_latency_ms
-  sortDir?: string; // asc | desc (default desc)
-  page?: number; // 1-based
-  pageSize?: number; // default 20, max 100
+  range: string | undefined;
+  startDate: string | undefined;
+  endDate: string | undefined;
+  providerCode: string | undefined;
+  search: string | undefined;
+  sortField: string | undefined;
+  sortDir: string | undefined;
+  page: number | undefined;
+  pageSize: number | undefined;
 };
 
 export type ListAllModelsBreakdownResponse = {
@@ -286,555 +287,501 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createUsageServiceClient(handler: RequestHandler): UsageService {
+export function createUsageServiceClient(
+  handler: RequestHandler
+): UsageService {
   return {
-    GetUsageOverview(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetUsageOverview(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/usage/overview`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.range) {
-        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`);
+        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`)
       }
       if (request.startDate) {
-        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`);
+        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`)
       }
       if (request.endDate) {
-        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`);
+        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`)
       }
       if (request.providerCode) {
-        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`);
+        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`)
       }
       if (request.modelApiId) {
-        queryParams.push(`modelApiId=${encodeURIComponent(request.modelApiId.toString())}`);
+        queryParams.push(`modelApiId=${encodeURIComponent(request.modelApiId.toString())}`)
       }
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.granularity) {
-        queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`);
+        queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`)
       }
       if (request.teamId) {
-        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`);
+        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`)
       }
       if (request.usageKind) {
-        queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`);
+        queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'UsageService',
-          method: 'GetUsageOverview',
-        },
-      ) as Promise<UsageOverview>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "UsageService",
+        method: "GetUsageOverview",
+      }) as Promise<UsageOverview>;
     },
-    ListUsageTrends(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListUsageTrends(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/usage/trends`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.range) {
-        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`);
+        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`)
       }
       if (request.startDate) {
-        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`);
+        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`)
       }
       if (request.endDate) {
-        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`);
+        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`)
       }
       if (request.providerCode) {
-        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`);
+        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`)
       }
       if (request.modelApiId) {
-        queryParams.push(`modelApiId=${encodeURIComponent(request.modelApiId.toString())}`);
+        queryParams.push(`modelApiId=${encodeURIComponent(request.modelApiId.toString())}`)
       }
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.granularity) {
-        queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`);
+        queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`)
       }
       if (request.teamId) {
-        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`);
+        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`)
       }
       if (request.usageKind) {
-        queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`);
+        queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'UsageService',
-          method: 'ListUsageTrends',
-        },
-      ) as Promise<ListUsageTrendsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "UsageService",
+        method: "ListUsageTrends",
+      }) as Promise<ListUsageTrendsResponse>;
     },
-    ListTopModels(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTopModels(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/usage/top-models`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.range) {
-        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`);
+        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`)
       }
       if (request.startDate) {
-        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`);
+        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`)
       }
       if (request.endDate) {
-        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`);
+        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`)
       }
       if (request.providerCode) {
-        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`);
+        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`)
       }
       if (request.modelApiId) {
-        queryParams.push(`modelApiId=${encodeURIComponent(request.modelApiId.toString())}`);
+        queryParams.push(`modelApiId=${encodeURIComponent(request.modelApiId.toString())}`)
       }
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.granularity) {
-        queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`);
+        queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`)
       }
       if (request.teamId) {
-        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`);
+        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`)
       }
       if (request.usageKind) {
-        queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`);
+        queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'UsageService',
-          method: 'ListTopModels',
-        },
-      ) as Promise<ListBreakdownResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "UsageService",
+        method: "ListTopModels",
+      }) as Promise<ListBreakdownResponse>;
     },
-    ListTopAgents(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTopAgents(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/usage/top-agents`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.range) {
-        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`);
+        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`)
       }
       if (request.startDate) {
-        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`);
+        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`)
       }
       if (request.endDate) {
-        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`);
+        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`)
       }
       if (request.providerCode) {
-        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`);
+        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`)
       }
       if (request.modelApiId) {
-        queryParams.push(`modelApiId=${encodeURIComponent(request.modelApiId.toString())}`);
+        queryParams.push(`modelApiId=${encodeURIComponent(request.modelApiId.toString())}`)
       }
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.granularity) {
-        queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`);
+        queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`)
       }
       if (request.teamId) {
-        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`);
+        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`)
       }
       if (request.usageKind) {
-        queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`);
+        queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'UsageService',
-          method: 'ListTopAgents',
-        },
-      ) as Promise<ListBreakdownResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "UsageService",
+        method: "ListTopAgents",
+      }) as Promise<ListBreakdownResponse>;
     },
-    ListUsageEvents(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListUsageEvents(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/usage/events`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.range) {
-        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`);
+        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`)
       }
       if (request.startDate) {
-        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`);
+        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`)
       }
       if (request.endDate) {
-        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`);
+        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`)
       }
       if (request.providerCode) {
-        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`);
+        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`)
       }
       if (request.modelApiId) {
-        queryParams.push(`modelApiId=${encodeURIComponent(request.modelApiId.toString())}`);
+        queryParams.push(`modelApiId=${encodeURIComponent(request.modelApiId.toString())}`)
       }
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset != null && request.offset >= 0) {
         queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
       }
       if (request.granularity) {
-        queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`);
+        queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`)
       }
       if (request.teamId) {
-        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`);
+        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`)
       }
       if (request.usageKind) {
-        queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`);
+        queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'UsageService',
-          method: 'ListUsageEvents',
-        },
-      ) as Promise<ListUsageEventsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "UsageService",
+        method: "ListUsageEvents",
+      }) as Promise<ListUsageEventsResponse>;
     },
-    RecordTokenUsageEvent(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    RecordTokenUsageEvent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/usage/token-events`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'UsageService',
-          method: 'RecordTokenUsageEvent',
-        },
-      ) as Promise<TokenUsageEvent>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "UsageService",
+        method: "RecordTokenUsageEvent",
+      }) as Promise<TokenUsageEvent>;
     },
-    GetUsageQuota(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetUsageQuota(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.scopeType) {
-        throw new Error('missing required field request.scope_type');
+        throw new Error("missing required field request.scope_type");
       }
       if (!request.scopeId) {
-        throw new Error('missing required field request.scope_id');
+        throw new Error("missing required field request.scope_id");
       }
       const path = `v1/usage/quotas/${request.scopeType}/${request.scopeId}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'UsageService',
-          method: 'GetUsageQuota',
-        },
-      ) as Promise<UsageQuota>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "UsageService",
+        method: "GetUsageQuota",
+      }) as Promise<UsageQuota>;
     },
-    SetUsageQuota(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    SetUsageQuota(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.scopeType) {
-        throw new Error('missing required field request.scope_type');
+        throw new Error("missing required field request.scope_type");
       }
       if (!request.scopeId) {
-        throw new Error('missing required field request.scope_id');
+        throw new Error("missing required field request.scope_id");
       }
       const path = `v1/usage/quotas/${request.scopeType}/${request.scopeId}`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PUT',
-          body,
-        },
-        {
-          service: 'UsageService',
-          method: 'SetUsageQuota',
-        },
-      ) as Promise<UsageQuota>;
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "UsageService",
+        method: "SetUsageQuota",
+      }) as Promise<UsageQuota>;
     },
-    CheckUsageQuota(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CheckUsageQuota(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.scopeType) {
-        throw new Error('missing required field request.scope_type');
+        throw new Error("missing required field request.scope_type");
       }
       if (!request.scopeId) {
-        throw new Error('missing required field request.scope_id');
+        throw new Error("missing required field request.scope_id");
       }
       const path = `v1/usage/quotas/${request.scopeType}/${request.scopeId}/check`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'UsageService',
-          method: 'CheckUsageQuota',
-        },
-      ) as Promise<CheckUsageQuotaResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "UsageService",
+        method: "CheckUsageQuota",
+      }) as Promise<CheckUsageQuotaResponse>;
     },
-    ListBudgetAlerts(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListBudgetAlerts(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/usage/budget-alerts`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.scopeType) {
-        queryParams.push(`scopeType=${encodeURIComponent(request.scopeType.toString())}`);
+        queryParams.push(`scopeType=${encodeURIComponent(request.scopeType.toString())}`)
       }
       if (request.scopeId) {
-        queryParams.push(`scopeId=${encodeURIComponent(request.scopeId.toString())}`);
+        queryParams.push(`scopeId=${encodeURIComponent(request.scopeId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'UsageService',
-          method: 'ListBudgetAlerts',
-        },
-      ) as Promise<ListBudgetAlertsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "UsageService",
+        method: "ListBudgetAlerts",
+      }) as Promise<ListBudgetAlertsResponse>;
     },
-    SetBudgetAlert(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    SetBudgetAlert(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/usage/budget-alerts`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'UsageService',
-          method: 'SetBudgetAlert',
-        },
-      ) as Promise<BudgetAlert>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "UsageService",
+        method: "SetBudgetAlert",
+      }) as Promise<BudgetAlert>;
     },
-    ExportUsageEvents(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ExportUsageEvents(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/usage/events/export`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.range) {
-        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`);
+        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`)
       }
       if (request.startDate) {
-        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`);
+        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`)
       }
       if (request.endDate) {
-        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`);
+        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`)
       }
       if (request.providerCode) {
-        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`);
+        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`)
       }
       if (request.modelApiId) {
-        queryParams.push(`modelApiId=${encodeURIComponent(request.modelApiId.toString())}`);
+        queryParams.push(`modelApiId=${encodeURIComponent(request.modelApiId.toString())}`)
       }
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.granularity) {
-        queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`);
+        queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`)
       }
       if (request.teamId) {
-        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`);
+        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`)
       }
       if (request.usageKind) {
-        queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`);
+        queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'UsageService',
-          method: 'ExportUsageEvents',
-        },
-      ) as Promise<ExportUsageEventsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "UsageService",
+        method: "ExportUsageEvents",
+      }) as Promise<ExportUsageEventsResponse>;
     },
-    PurgeUsageEvents(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    PurgeUsageEvents(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/usage/events/purge`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'UsageService',
-          method: 'PurgeUsageEvents',
-        },
-      ) as Promise<PurgeUsageEventsResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "UsageService",
+        method: "PurgeUsageEvents",
+      }) as Promise<PurgeUsageEventsResponse>;
     },
-    ListAllModelsBreakdown(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListAllModelsBreakdown(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/usage/all-models-breakdown`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.range) {
-        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`);
+        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`)
       }
       if (request.startDate) {
-        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`);
+        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`)
       }
       if (request.endDate) {
-        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`);
+        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`)
       }
       if (request.providerCode) {
-        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`);
+        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`)
       }
       if (request.search) {
-        queryParams.push(`search=${encodeURIComponent(request.search.toString())}`);
+        queryParams.push(`search=${encodeURIComponent(request.search.toString())}`)
       }
       if (request.sortField) {
-        queryParams.push(`sortField=${encodeURIComponent(request.sortField.toString())}`);
+        queryParams.push(`sortField=${encodeURIComponent(request.sortField.toString())}`)
       }
       if (request.sortDir) {
-        queryParams.push(`sortDir=${encodeURIComponent(request.sortDir.toString())}`);
+        queryParams.push(`sortDir=${encodeURIComponent(request.sortDir.toString())}`)
       }
       if (request.page) {
-        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`);
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'UsageService',
-          method: 'ListAllModelsBreakdown',
-        },
-      ) as Promise<ListAllModelsBreakdownResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "UsageService",
+        method: "ListAllModelsBreakdown",
+      }) as Promise<ListAllModelsBreakdownResponse>;
     },
   };
 }

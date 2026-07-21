@@ -37,6 +37,11 @@ type turnStreamConsumer struct {
 	// 2026-07-04 问题 4 修复：每个 turn（spirit + 每个 team member）由
 	// ProjectorFactory.NewProjector() 创建独立实例，避免共享单例的竞态。
 	v2Projector *v2.ActivityProjector
+
+	// doomDetector watches streamed reply deltas for repetitive output.
+	// On detection the turn aborts early (result.DoomLoopDetected=true)
+	// instead of streaming an unbounded repetitive response.
+	doomDetector *DoomLoopDetector
 }
 
 func newTurnStreamConsumer(
@@ -53,6 +58,10 @@ func newTurnStreamConsumer(
 		opts:              opts,
 		firstByteReceived: firstByteReceived,
 		lg:                lg,
+		// 5 consecutive near-identical substantial deltas (≥20 chars) signals a
+		// doom loop. Short structural deltas ("]", "\n", "1.") repeat legitimately
+		// and are filtered at observation time.
+		doomDetector: NewDoomLoopDetector(5, 0.95),
 	}
 	// v2 path: wire the v2 projector from opts and start the v2 turn.
 	// The v2 projector was pre-configured (Configure) by the chat_orchestrator
@@ -84,15 +93,15 @@ func V2ProjectMetaFromV1(m ProjectMeta) v2.ProjectMeta {
 		// 而非 m.TeamID。Turn.TeamStageID 应指向 TeamStage.ID，与 TeamStage.TeamID 不同。
 		// 旧代码 TeamStageID: m.TeamID 导致 Turn.TeamStageID == Turn.TeamID，
 		// 前端无法通过 TeamStageID 精确匹配 member steps。
-		TeamStageID:     m.TeamStageID,
-		TeamRunID:       "",
-		TeamID:          m.TeamID,
-		MemberSessionID: m.ParentSessionID,
-		AgentKey:        m.AgentID,
-		AgentName:       m.AgentDisplayName,
-		MemberAgentKeys: m.MemberAgentKeys,
-		TaskContent:     m.TaskContent,
-		ParentTaskID:    m.ParentTaskID,
+		TeamStageID:      m.TeamStageID,
+		TeamRunID:        "",
+		TeamID:           m.TeamID,
+		MemberSessionID:  m.ParentSessionID,
+		AgentKey:         m.AgentID,
+		AgentName:        m.AgentDisplayName,
+		MemberAgentKeys:  m.MemberAgentKeys,
+		TaskContent:      m.TaskContent,
+		ParentTaskID:     m.ParentTaskID,
 		NodeIDToAgentKey: m.NodeIDToAgentKey,
 	}
 }
@@ -276,6 +285,20 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 
 	partial := ev.Response.IsPartial
 	for _, choice := range ev.Response.Choices {
+		if c.doomDetector != nil {
+			text, _ := ChoiceStreamContent(choice, partial)
+			// Filter short structural deltas: they repeat legitimately and
+			// would false-positive the similarity check.
+			if len(text) >= 20 && c.doomDetector.Observe(text) {
+				c.result.HasError = true
+				c.result.DoomLoopDetected = true
+				c.result.LastError = "doom loop detected: repetitive LLM output, turn aborted"
+				c.lg.Warn("doom loop detected, aborting turn stream",
+					loggateway.StepID("stream.doom_loop"),
+					loggateway.Str("invocation_id", c.projectMeta.InvocationID))
+				return false
+			}
+		}
 		accumulateChoiceStream(&c.result, choice, partial)
 	}
 	return true

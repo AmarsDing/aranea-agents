@@ -14,5 +14,6 @@ export function contextStatusFromRatio(ratio: number): string {
 
 export function contextRatioFromPrompt(promptTokens: number, contextWindow: number): number | null {
   if (promptTokens <= 0 || contextWindow <= 0) return null;
-  return Math.min(1, promptTokens / contextWindow);
+  // 返回真实比率（不钳制到 1）；ratio > 1 表示已超出上下文窗口。
+  return promptTokens / contextWindow;
 }

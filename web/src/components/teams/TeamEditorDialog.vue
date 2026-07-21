@@ -153,11 +153,7 @@
             </section>
 
             <div class="team-editor-expansion">
-              <q-expansion-item
-                icon="settings"
-                label="运行时 / 失败策略"
-                caption="OrchestrationSpec v2 · runtime_engine · failure_policy"
-              >
+              <q-expansion-item icon="settings" label="运行时 / 失败策略" caption="执行引擎与失败接管配置">
                 <div class="team-editor-expansion__body">
                   <q-banner v-if="nativeLocked" dense rounded class="team-editor-notice q-mb-sm">
                     Native 执行引擎仅平台管理员可选；当前将使用 Graph。
@@ -170,7 +166,7 @@
                       outlined
                       emit-value
                       map-options
-                      label="执行引擎 runtime_engine"
+                      label="执行引擎"
                       hint="Native 需 admin + ARANEA_TEAM_NATIVE=1"
                       :options="filteredRuntimeEngineOptions"
                     />
@@ -226,7 +222,7 @@
                       emit-value
                       map-options
                       clearable
-                      label="错误接管 on_error"
+                      label="错误接管"
                       :options="failureOnErrorOptions"
                     />
                   </div>
@@ -296,7 +292,7 @@
                       min="500"
                       label="最大载荷字符"
                     />
-                    <q-toggle v-model="a2aIncludeTrace" class="app-grid-span-full" label="包含 trace metadata" />
+                    <q-toggle v-model="a2aIncludeTrace" class="app-grid-span-full" label="包含追踪元数据" />
                   </div>
                 </div>
               </q-expansion-item>
@@ -427,6 +423,7 @@ import {
   roleOptionsForMode,
   runtimeEngineOptions,
   statusOptions,
+  teamRoleLabel,
   teamTemplateOptions,
   type TeamTemplateKey,
 } from './teamUtils';
@@ -476,7 +473,7 @@ const intentAnchorOptions = computed(() =>
   definition.value.members
     .filter((m) => m.enabled !== false && String(m.agent_id || '').trim() !== '')
     .map((m) => ({
-      label: [m.name, m.role].filter(Boolean).join(' · ') || String(m.agent_id).slice(0, 8),
+      label: [m.name, teamRoleLabel(m.role)].filter(Boolean).join(' · ') || String(m.agent_id).slice(0, 8),
       value: m.agent_id,
     })),
 );

@@ -178,6 +178,9 @@ func (m *batchSessionRepo) UpdateSessionContextAfterCompression(context.Context,
 func (m *batchSessionRepo) InsertSessionSummary(context.Context, biz.SessionSummary) error {
 	return nil
 }
+func (m *batchSessionRepo) DeleteSessionSummaries(context.Context, string) error {
+	return nil
+}
 func (m *batchSessionRepo) MaxSessionSummaryToTurn(context.Context, string) (int, error) {
 	return 0, nil
 }

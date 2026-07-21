@@ -1,6 +1,9 @@
 package service
 
 import (
+	"os"
+	"strings"
+
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/loggateway"
@@ -42,6 +45,17 @@ func NewKnowledgeRetrievalEvaluator(llm biz.LLMCaller, sys *biz.SystemSettingUse
 	return knowledge.NewRetrievalEvaluator(llm, sys, catalog, lg)
 }
 
+// NewKnowledgeMarkdownOrganizer 构造 Markdown 整理器；LLM 不可用返回 nil（service 跳过整理）。
+func NewKnowledgeMarkdownOrganizer(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) *knowledge.MarkdownOrganizer {
+	if llm == nil {
+		lg.Info("LLM 未配置，Markdown 整理已禁用",
+			loggateway.StepID("knowledge.markdown_organizer.init"),
+		)
+		return nil
+	}
+	return knowledge.NewMarkdownOrganizer(llm, sys, catalog, lg)
+}
+
 func NewKnowledgeFederatedRetriever(router *knowledge.AdaptiveRouter, retriever *knowledge.Retriever, uc *biz.KnowledgeUsecase, lg loggateway.Logger) *knowledge.FederatedRetriever {
 	if router == nil && retriever == nil {
 		return nil
@@ -52,10 +66,35 @@ func NewKnowledgeFederatedRetriever(router *knowledge.AdaptiveRouter, retriever 
 	return knowledge.NewFederatedRetriever(router, retriever, lg)
 }
 
-func ProvideKnowledgeSearchDeps(retriever *knowledge.Retriever, router *knowledge.AdaptiveRouter, evaluator *knowledge.RetrievalEvaluator) KnowledgeSearchDeps {
+func ProvideKnowledgeSearchDeps(retriever *knowledge.Retriever, router *knowledge.AdaptiveRouter, evaluator *knowledge.RetrievalEvaluator, federated *knowledge.FederatedRetriever) KnowledgeSearchDeps {
 	return KnowledgeSearchDeps{
 		Retriever: retriever,
 		Router:    router,
 		Evaluator: evaluator,
+		Federated: federated,
 	}
+}
+
+// NewKnowledgeExtractorRegistry 装配模态路由注册表（Phase 9）：
+// VisionExtractor 优先于 TextExtractor；llm 为 nil 时 Vision 提取返回明确错误（NFR-12），
+// 文本路径不受影响。
+func NewKnowledgeExtractorRegistry(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) *knowledge.ExtractorRegistry {
+	return knowledge.NewExtractorRegistry(
+		knowledge.NewVisionExtractor(llm, sys, catalog, lg),
+		knowledge.NewTextExtractor(),
+	)
+}
+
+// NewKnowledgeAssetStore 装配原图留存存储（Phase 9 血缘）。
+// 根目录优先级：KRATOS_KNOWLEDGE_ASSET_DIR env > ./data/knowledge_assets。
+func NewKnowledgeAssetStore(lg loggateway.Logger) *knowledge.AssetStore {
+	root := strings.TrimSpace(os.Getenv("KRATOS_KNOWLEDGE_ASSET_DIR"))
+	if root == "" {
+		root = "./data/knowledge_assets"
+	}
+	lg.Info("知识库原图留存目录",
+		loggateway.StepID("knowledge.asset_store.init"),
+		loggateway.Str("root", root),
+	)
+	return knowledge.NewAssetStore(root)
 }

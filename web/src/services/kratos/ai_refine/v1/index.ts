@@ -5,13 +5,13 @@
 // RefineScope identifies the field being refined.
 // Must match internal/biz.FieldScope values.
 export type RefineScope =
-  | 'REFINE_SCOPE_UNSPECIFIED'
-  | 'REFINE_SCOPE_CATEGORY_INDUSTRY'
-  | 'REFINE_SCOPE_CATEGORY_DEPT'
-  | 'REFINE_SCOPE_CATEGORY_POSITION'
-  | 'REFINE_SCOPE_AGENT_DESCRIPTION'
-  | 'REFINE_SCOPE_AGENT_FILE'
-  | 'REFINE_SCOPE_SPEC_EXTRACT';
+  | "REFINE_SCOPE_UNSPECIFIED"
+  | "REFINE_SCOPE_CATEGORY_INDUSTRY"
+  | "REFINE_SCOPE_CATEGORY_DEPT"
+  | "REFINE_SCOPE_CATEGORY_POSITION"
+  | "REFINE_SCOPE_AGENT_DESCRIPTION"
+  | "REFINE_SCOPE_AGENT_FILE"
+  | "REFINE_SCOPE_SPEC_EXTRACT";
 export type RefineRequest = {
   // scope identifies which field this refinement targets.
   scope: RefineScope | undefined;
@@ -56,30 +56,28 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createAIRefineServiceClient(handler: RequestHandler): AIRefineService {
+export function createAIRefineServiceClient(
+  handler: RequestHandler
+): AIRefineService {
   return {
-    Refine(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    Refine(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/ai/refine`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'AIRefineService',
-          method: 'Refine',
-        },
-      ) as Promise<RefineResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AIRefineService",
+        method: "Refine",
+      }) as Promise<RefineResponse>;
     },
   };
 }

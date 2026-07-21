@@ -59,7 +59,7 @@ describe('sessionContextPatch', () => {
     ).toBeCloseTo(50_000 / 128_000);
   });
 
-  it('caps ratio at 1', () => {
+  it('returns real ratio above 1 when prompt exceeds the window', () => {
     expect(
       contextRatioFromUsage({
         prompt_tokens: 200_000,
@@ -67,7 +67,7 @@ describe('sessionContextPatch', () => {
         total_tokens: 200_000,
         max_tokens: 128_000,
       }),
-    ).toBe(1);
+    ).toBeCloseTo(200_000 / 128_000);
   });
 
   it('builds patch with turn token increment', () => {

@@ -6,7 +6,7 @@
     >
       <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
         <div class="col min-width-0">
-          <div class="app-glass-dialog__title">任务详情</div>
+          <div class="app-glass-dialog__title">{{ t('graphs.taskDrawerTitle') }}</div>
           <div v-if="task" class="app-glass-dialog__subtitle">{{ task.nodeId }} · {{ statusLabel }}</div>
         </div>
         <q-btn v-close-popup flat dense round icon="close" />
@@ -22,23 +22,44 @@
         </q-card-section>
         <q-card-section v-else-if="task" class="app-dialog-body app-glass-dialog__body">
           <q-tabs v-model="tab" dense align="left" class="q-mb-md">
-            <q-tab name="detail" label="详情" />
-            <q-tab name="comments" label="评论" />
-            <q-tab name="events" label="事件" />
-            <q-tab name="logs" label="日志" />
-            <q-tab name="runs" label="运行" />
+            <q-tab name="detail" :label="t('graphs.taskDrawerTabDetail')" />
+            <q-tab name="comments" :label="t('graphs.taskDrawerTabComments')" />
+            <q-tab name="events" :label="t('graphs.taskDrawerTabEvents')" />
+            <q-tab name="logs" :label="t('graphs.taskDrawerTabLogs')" />
+            <q-tab name="runs" :label="t('graphs.taskDrawerTabRuns')" />
           </q-tabs>
           <q-tab-panels v-model="tab" animated>
             <q-tab-panel name="detail" class="q-pa-none q-gutter-md">
-              <q-input v-model="agentKey" dense outlined label="Agent Key" hint="认领任务时使用" />
-              <q-input :model-value="task.input" dense outlined autogrow type="textarea" label="输入" readonly />
-              <q-input v-model="submitOutput" dense outlined autogrow type="textarea" label="输出（提交）" />
-              <q-input v-model="submitSummary" dense outlined label="摘要（提交）" />
+              <q-input
+                v-model="agentKey"
+                dense
+                outlined
+                :label="t('graphs.taskAgentKeyLabel')"
+                :hint="t('graphs.taskAgentKeyHint')"
+              />
+              <q-input
+                :model-value="task.input"
+                dense
+                outlined
+                autogrow
+                type="textarea"
+                :label="t('graphs.taskInputLabel')"
+                readonly
+              />
+              <q-input
+                v-model="submitOutput"
+                dense
+                outlined
+                autogrow
+                type="textarea"
+                :label="t('graphs.taskOutputLabel')"
+              />
+              <q-input v-model="submitSummary" dense outlined :label="t('graphs.taskSummaryLabel')" />
               <div class="row q-gutter-sm">
                 <q-btn
                   color="primary"
                   outline
-                  label="认领"
+                  :label="t('graphs.taskClaimButton')"
                   :loading="actionLoading"
                   :disable="!canClaim"
                   @click="$emit('claim', { taskId: task.taskId, agentKey })"
@@ -46,7 +67,7 @@
                 <q-btn
                   color="primary"
                   unelevated
-                  label="提交结果"
+                  :label="t('graphs.taskSubmitButton')"
                   :loading="actionLoading"
                   :disable="!canSubmit"
                   @click="$emit('submit', { taskId: task.taskId, output: submitOutput, summary: submitSummary })"
@@ -54,7 +75,7 @@
                 <q-btn
                   color="warning"
                   outline
-                  label="上报阻塞"
+                  :label="t('graphs.taskReportBlockedButton')"
                   :loading="actionLoading"
                   :disable="!canReportBlocked"
                   @click="onReportBlocked"
@@ -63,7 +84,7 @@
                   v-if="canUnblock"
                   color="positive"
                   outline
-                  label="解除阻塞"
+                  :label="t('graphs.taskUnblockButton')"
                   :loading="actionLoading"
                   @click="onUnblock"
                 />
@@ -76,7 +97,7 @@
                 outlined
                 autogrow
                 type="textarea"
-                label="阻塞原因（可选）"
+                :label="t('graphs.taskBlockedReasonLabel')"
               />
               <q-input
                 v-if="canUnblock"
@@ -86,16 +107,35 @@
                 outlined
                 autogrow
                 type="textarea"
-                label="解除阻塞说明（可选）"
+                :label="t('graphs.taskUnblockCommentLabel')"
               />
               <q-separator v-if="canReview" class="q-my-md" />
               <div v-if="canReview" class="q-gutter-sm">
-                <div class="text-subtitle2">审核</div>
-                <q-input v-model="reviewerAgent" dense outlined label="审核 Agent" />
-                <q-input v-model="reviewComment" dense outlined autogrow type="textarea" label="审核意见" />
+                <div class="text-subtitle2">{{ t('graphs.taskReviewSection') }}</div>
+                <q-input v-model="reviewerAgent" dense outlined :label="t('graphs.taskReviewerAgentLabel')" />
+                <q-input
+                  v-model="reviewComment"
+                  dense
+                  outlined
+                  autogrow
+                  type="textarea"
+                  :label="t('graphs.taskReviewCommentLabel')"
+                />
                 <div class="row q-gutter-sm">
-                  <q-btn color="positive" outline label="通过" :loading="actionLoading" @click="onReview(true)" />
-                  <q-btn color="negative" outline label="拒绝" :loading="actionLoading" @click="onReview(false)" />
+                  <q-btn
+                    color="positive"
+                    outline
+                    :label="t('graphs.taskReviewApprove')"
+                    :loading="actionLoading"
+                    @click="onReview(true)"
+                  />
+                  <q-btn
+                    color="negative"
+                    outline
+                    :label="t('graphs.taskReviewReject')"
+                    :loading="actionLoading"
+                    @click="onReview(false)"
+                  />
                 </div>
               </div>
             </q-tab-panel>
@@ -109,13 +149,27 @@
                   </q-item-section>
                 </q-item>
               </q-list>
-              <q-input v-model="commentAuthor" class="q-mt-md" dense outlined label="作者" />
-              <q-input v-model="commentContent" class="q-mt-sm" dense outlined autogrow type="textarea" label="评论" />
+              <q-input
+                v-model="commentAuthor"
+                class="q-mt-md"
+                dense
+                outlined
+                :label="t('graphs.taskCommentAuthorLabel')"
+              />
+              <q-input
+                v-model="commentContent"
+                class="q-mt-sm"
+                dense
+                outlined
+                autogrow
+                type="textarea"
+                :label="t('graphs.taskCommentContentLabel')"
+              />
               <q-btn
                 class="q-mt-sm"
                 flat
                 color="primary"
-                label="添加评论"
+                :label="t('graphs.taskAddCommentButton')"
                 :disable="!commentContent.trim()"
                 @click="$emit('addComment', { taskId: task.taskId, author: commentAuthor, content: commentContent })"
               />
@@ -131,7 +185,7 @@
                   </q-item-section>
                 </q-item>
               </q-list>
-              <div v-else class="text-caption text-grey-7 q-pa-sm">暂无事件记录</div>
+              <div v-else class="text-caption text-grey-7 q-pa-sm">{{ t('graphs.taskNoEvents') }}</div>
             </q-tab-panel>
             <q-tab-panel name="logs" class="q-pa-none">
               <q-spinner v-if="detailLoading" color="primary" size="28px" />
@@ -164,8 +218,11 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { Task, TaskComment, TaskEvent, TaskLog, TaskRun } from '../../features/graph/types';
-import { TASK_STATUS_LABELS } from '../../features/graph/types';
+import { TASK_STATUS_LABEL_KEYS } from '../../features/graph/types';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   open: boolean;
@@ -199,7 +256,9 @@ const reviewComment = ref('');
 const commentAuthor = ref('');
 const commentContent = ref('');
 
-const statusLabel = computed(() => (props.task ? (TASK_STATUS_LABELS[props.task.status] ?? props.task.status) : ''));
+const statusLabel = computed(() =>
+  props.task ? (t(TASK_STATUS_LABEL_KEYS[props.task.status]) ?? props.task.status) : '',
+);
 
 const canClaim = computed(
   () => props.task?.status === 'TASK_PENDING' || props.task?.status === 'TASK_PENDING_ASSIGNMENT',

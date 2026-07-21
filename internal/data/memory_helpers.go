@@ -497,8 +497,8 @@ func scanEntityRowJSON(rows *sql.Rows, lg loggateway.Logger) ([]byte, error) {
 		embNorm                                                                   float64
 		status, merged, meta, ca, ua, arch, del                                   string
 		// 20261005 neuron enhancement fields
-		activation, valence, arousal                                              float64
-		activationUpdatedAt, sourceType                                           string
+		activation, valence, arousal    float64
+		activationUpdatedAt, sourceType string
 	)
 	if err := rows.Scan(
 		&id, &scopeType, &scopeID, &wid, &uid, &etype, &name, &nnorm, &aliases, &desc, &attr,
@@ -547,8 +547,8 @@ func scanRelationRowJSON(rows *sql.Rows) ([]byte, error) {
 		validFrom, validTo                         string
 		ca, ua, arch, del                          string
 		// 20261005 neuron enhancement fields
-		coActCount                                 int
-		lastReinforcedAt, contextNote              string
+		coActCount                    int
+		lastReinforcedAt, contextNote string
 	)
 	if err := rows.Scan(
 		&id, &stype, &sid, &wid, &srcID, &tgtID, &relType, &bidir,
@@ -568,8 +568,8 @@ func scanRelationRowJSON(rows *sql.Rows) ([]byte, error) {
 		"status": status, "source_kind": srcKind,
 		"metadata_json": metaJ,
 		"valid_from":    validFrom,
-		"valid_to":     validTo,
-		"created_at":   ca, "updated_at": ua,
+		"valid_to":      validTo,
+		"created_at":    ca, "updated_at": ua,
 		"archived_at": arch, "deleted_at": del,
 		// 20261005 neuron enhancement fields
 		"co_activation_count": coActCount,
@@ -959,6 +959,29 @@ func factRecencyDecay(updatedAt string, now time.Time) float64 {
 		return 1
 	}
 	return math.Pow(0.5, days/l3DecayHalfLifeDays)
+}
+
+// isEvergreenFactKind reports whether the fact kind represents stable,
+// long-lived knowledge that should not decay over time.
+// Evergreen kinds: user identity, user preference, agent instruction,
+// domain knowledge — these are set once and remain valid.
+func isEvergreenFactKind(kind string) bool {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "user_identity", "user_preference", "agent_instruction", "domain_knowledge":
+		return true
+	default:
+		return false
+	}
+}
+
+// factDecayWithKind returns the recency decay factor for a fact, applying
+// the evergreen exemption: evergreen fact kinds always return 1.0 (no decay),
+// while non-evergreen kinds use the standard half-life decay.
+func factDecayWithKind(factKind, updatedAt string, now time.Time) float64 {
+	if isEvergreenFactKind(factKind) {
+		return 1.0
+	}
+	return factRecencyDecay(updatedAt, now)
 }
 
 func recencyBoost(updatedAt string, now time.Time) float64 {

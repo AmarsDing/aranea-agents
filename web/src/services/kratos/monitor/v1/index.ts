@@ -111,7 +111,8 @@ export type GetMonitorLogsResponse = {
   message: string | undefined;
 };
 
-export type GetMonitorLogsRequest = {};
+export type GetMonitorLogsRequest = {
+};
 
 export type FlowLogEntry = {
   id: string | undefined;
@@ -290,7 +291,8 @@ export type SelfCheckReportEntry = {
   durationMs: number | undefined;
 };
 
-export type TriggerSelfCheckRequest = {};
+export type TriggerSelfCheckRequest = {
+};
 
 export type TriggerSelfCheckResponse = {
   report: SelfCheckReportEntry | undefined;
@@ -306,7 +308,8 @@ export type ListSelfCheckReportsResponse = {
   total: number | undefined;
 };
 
-export type HealStatsRequest = {};
+export type HealStatsRequest = {
+};
 
 export type HealStatsResponse = {
   totalHeals: number | undefined;
@@ -375,474 +378,408 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createMonitorServiceClient(handler: RequestHandler): MonitorService {
+export function createMonitorServiceClient(
+  handler: RequestHandler
+): MonitorService {
   return {
-    ListAuditLogs(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListAuditLogs(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/audit`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       if (request.action) {
-        queryParams.push(`action=${encodeURIComponent(request.action.toString())}`);
+        queryParams.push(`action=${encodeURIComponent(request.action.toString())}`)
       }
       if (request.resource) {
-        queryParams.push(`resource=${encodeURIComponent(request.resource.toString())}`);
+        queryParams.push(`resource=${encodeURIComponent(request.resource.toString())}`)
       }
       if (request.actor) {
-        queryParams.push(`actor=${encodeURIComponent(request.actor.toString())}`);
+        queryParams.push(`actor=${encodeURIComponent(request.actor.toString())}`)
       }
       if (request.keyword) {
-        queryParams.push(`keyword=${encodeURIComponent(request.keyword.toString())}`);
+        queryParams.push(`keyword=${encodeURIComponent(request.keyword.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'ListAuditLogs',
-        },
-      ) as Promise<ListAuditLogsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "ListAuditLogs",
+      }) as Promise<ListAuditLogsResponse>;
     },
-    ListMonitorEvents(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListMonitorEvents(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/events`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       if (request.eventType) {
-        queryParams.push(`eventType=${encodeURIComponent(request.eventType.toString())}`);
+        queryParams.push(`eventType=${encodeURIComponent(request.eventType.toString())}`)
       }
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'ListMonitorEvents',
-        },
-      ) as Promise<ListMonitorEventsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "ListMonitorEvents",
+      }) as Promise<ListMonitorEventsResponse>;
     },
-    GetMonitorEvent(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetMonitorEvent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/monitor/events/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'GetMonitorEvent',
-        },
-      ) as Promise<MonitorPlatformRow>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "GetMonitorEvent",
+      }) as Promise<MonitorPlatformRow>;
     },
-    ListMonitorTraces(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListMonitorTraces(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/traces`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       if (request.provider) {
-        queryParams.push(`provider=${encodeURIComponent(request.provider.toString())}`);
+        queryParams.push(`provider=${encodeURIComponent(request.provider.toString())}`)
       }
       if (request.model) {
-        queryParams.push(`model=${encodeURIComponent(request.model.toString())}`);
+        queryParams.push(`model=${encodeURIComponent(request.model.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'ListMonitorTraces',
-        },
-      ) as Promise<ListMonitorTracesResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "ListMonitorTraces",
+      }) as Promise<ListMonitorTracesResponse>;
     },
-    GetMonitorTrace(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetMonitorTrace(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/monitor/traces/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'GetMonitorTrace',
-        },
-      ) as Promise<MonitorTraceDetail>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "GetMonitorTrace",
+      }) as Promise<MonitorTraceDetail>;
     },
-    GetMonitorLogs(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetMonitorLogs(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/logs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'GetMonitorLogs',
-        },
-      ) as Promise<GetMonitorLogsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "GetMonitorLogs",
+      }) as Promise<GetMonitorLogsResponse>;
     },
-    ListFlowLogs(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListFlowLogs(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/flow-logs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.traceId) {
-        queryParams.push(`traceId=${encodeURIComponent(request.traceId.toString())}`);
+        queryParams.push(`traceId=${encodeURIComponent(request.traceId.toString())}`)
       }
       if (request.sessionId) {
-        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`);
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       if (request.runId) {
-        queryParams.push(`runId=${encodeURIComponent(request.runId.toString())}`);
+        queryParams.push(`runId=${encodeURIComponent(request.runId.toString())}`)
       }
       if (request.severity) {
-        queryParams.push(`severity=${encodeURIComponent(request.severity.toString())}`);
+        queryParams.push(`severity=${encodeURIComponent(request.severity.toString())}`)
       }
       if (request.domain) {
-        queryParams.push(`domain=${encodeURIComponent(request.domain.toString())}`);
+        queryParams.push(`domain=${encodeURIComponent(request.domain.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       if (request.since) {
-        queryParams.push(`since=${encodeURIComponent(request.since.toString())}`);
+        queryParams.push(`since=${encodeURIComponent(request.since.toString())}`)
       }
       if (request.until) {
-        queryParams.push(`until=${encodeURIComponent(request.until.toString())}`);
+        queryParams.push(`until=${encodeURIComponent(request.until.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'ListFlowLogs',
-        },
-      ) as Promise<ListFlowLogsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "ListFlowLogs",
+      }) as Promise<ListFlowLogsResponse>;
     },
-    ListMonitorAlertRules(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListMonitorAlertRules(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/alert-rules`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'ListMonitorAlertRules',
-        },
-      ) as Promise<ListMonitorAlertRulesResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "ListMonitorAlertRules",
+      }) as Promise<ListMonitorAlertRulesResponse>;
     },
-    PutMonitorAlertRules(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    PutMonitorAlertRules(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/alert-rules`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PUT',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'PutMonitorAlertRules',
-        },
-      ) as Promise<PutMonitorAlertRulesResponse>;
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "PutMonitorAlertRules",
+      }) as Promise<PutMonitorAlertRulesResponse>;
     },
-    GetRunnerMetrics(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetRunnerMetrics(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/runner-metrics`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.windowMinutes) {
-        queryParams.push(`windowMinutes=${encodeURIComponent(request.windowMinutes.toString())}`);
+        queryParams.push(`windowMinutes=${encodeURIComponent(request.windowMinutes.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'GetRunnerMetrics',
-        },
-      ) as Promise<RunnerMetricsSummary>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "GetRunnerMetrics",
+      }) as Promise<RunnerMetricsSummary>;
     },
-    GetCodeExecutorCapabilities(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetCodeExecutorCapabilities(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/code-executor-capabilities`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'GetCodeExecutorCapabilities',
-        },
-      ) as Promise<GetCodeExecutorCapabilitiesResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "GetCodeExecutorCapabilities",
+      }) as Promise<GetCodeExecutorCapabilitiesResponse>;
     },
-    GenerateDiagnosticBundle(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GenerateDiagnosticBundle(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/diagnostic-bundle`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'GenerateDiagnosticBundle',
-        },
-      ) as Promise<GenerateDiagnosticBundleResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "GenerateDiagnosticBundle",
+      }) as Promise<GenerateDiagnosticBundleResponse>;
     },
-    DiagnoseAndHeal(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DiagnoseAndHeal(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/diagnose-and-heal`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'DiagnoseAndHeal',
-        },
-      ) as Promise<DiagnoseAndHealResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "DiagnoseAndHeal",
+      }) as Promise<DiagnoseAndHealResponse>;
     },
-    TriggerSelfCheck(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    TriggerSelfCheck(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/self-check`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'TriggerSelfCheck',
-        },
-      ) as Promise<TriggerSelfCheckResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "TriggerSelfCheck",
+      }) as Promise<TriggerSelfCheckResponse>;
     },
-    ListSelfCheckReports(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListSelfCheckReports(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/self-check-reports`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'ListSelfCheckReports',
-        },
-      ) as Promise<ListSelfCheckReportsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "ListSelfCheckReports",
+      }) as Promise<ListSelfCheckReportsResponse>;
     },
-    GetHealStats(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetHealStats(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/heal-stats`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'GetHealStats',
-        },
-      ) as Promise<HealStatsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "GetHealStats",
+      }) as Promise<HealStatsResponse>;
     },
-    ListHealRecords(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListHealRecords(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/heal-records`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       if (request.offset) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       if (request.ruleId) {
-        queryParams.push(`ruleId=${encodeURIComponent(request.ruleId.toString())}`);
+        queryParams.push(`ruleId=${encodeURIComponent(request.ruleId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.sessionId) {
-        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`);
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'MonitorService',
-          method: 'ListHealRecords',
-        },
-      ) as Promise<ListHealRecordsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "ListHealRecords",
+      }) as Promise<ListHealRecordsResponse>;
     },
   };
 }

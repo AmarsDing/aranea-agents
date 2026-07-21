@@ -5,14 +5,14 @@
       <q-card flat bordered class="memory-card">
         <q-card-section class="row items-center justify-between">
           <div>
-            <div class="text-h6">会话记忆</div>
-            <div class="text-caption text-grey-7">选择一个 session 查看 L0 上下文快照与 L1 工作记忆。</div>
+            <div class="text-h6">{{ t('memory.sessions.title') }}</div>
+            <div class="text-caption text-grey-7">{{ t('memory.sessions.subtitle') }}</div>
           </div>
           <q-btn
             flat
             round
             icon="refresh"
-            aria-label="刷新会话"
+            :aria-label="t('memory.sessions.refreshAria')"
             :loading="loadingSessions"
             @click="$emit('refreshSessions')"
           />
@@ -27,8 +27,10 @@
             @click="$emit('update:selectedSessionId', session.id)"
           >
             <q-item-section>
-              <q-item-label>{{ session.title || '未命名会话' }}</q-item-label>
-              <q-item-label caption>{{ session.provider }} / {{ session.model || 'model 未记录' }}</q-item-label>
+              <q-item-label>{{ session.title || t('memory.sessions.untitledSession') }}</q-item-label>
+              <q-item-label caption
+                >{{ session.provider }} / {{ session.model || t('memory.sessions.modelNotRecorded') }}</q-item-label
+              >
               <q-linear-progress
                 rounded
                 size="7px"
@@ -51,14 +53,14 @@
         <q-card-section>
           <div class="row items-center justify-between q-gutter-sm">
             <div>
-              <div class="text-h6">L0 上下文快照</div>
-              <div class="text-caption text-grey-7">展示最近 prompt 装配中的 system、history、L1/L3/L4 段落。</div>
+              <div class="text-h6">{{ t('memory.sessions.l0Title') }}</div>
+              <div class="text-caption text-grey-7">{{ t('memory.sessions.l0Subtitle') }}</div>
             </div>
             <q-btn
               flat
               rounded
               icon="refresh"
-              label="刷新"
+              :label="t('memory.sessions.refresh')"
               :disable="!selectedSessionId"
               :loading="loadingSnapshots"
               @click="$emit('refreshMemory')"
@@ -100,10 +102,10 @@
           <template #body-cell-segments="props">
             <q-td :props="props">
               <q-chip dense square color="blue-grey" text-color="white"
-                >{{ Object.keys(parseSegments(props.row)).length }} 段</q-chip
+                >{{ Object.keys(parseSegments(props.row)).length }} {{ t('memory.sessions.segmentsUnit') }}</q-chip
               >
               <q-chip v-if="parseWarnings(props.row).length" dense square color="warning" text-color="white"
-                >{{ parseWarnings(props.row).length }} warnings</q-chip
+                >{{ parseWarnings(props.row).length }} {{ t('memory.sessions.warningsUnit') }}</q-chip
               >
             </q-td>
           </template>
@@ -116,7 +118,7 @@
                   round
                   icon="visibility"
                   color="primary"
-                  aria-label="查看快照段落"
+                  :aria-label="t('memory.sessions.viewSnapshotAria')"
                   @click="$emit('openSnapshot', props.row)"
                 />
               </div>
@@ -125,7 +127,7 @@
           <template #no-data>
             <div class="full-width column items-center q-pa-lg text-grey-7">
               <q-icon name="preview" size="38px" />
-              <div class="q-mt-sm">暂无 L0 快照。开启快照或触发 warning 后会显示。</div>
+              <div class="q-mt-sm">{{ t('memory.sessions.emptySnapshot') }}</div>
             </div>
           </template>
         </AppRegistryTable>
@@ -133,8 +135,8 @@
 
       <q-card flat bordered class="memory-card">
         <q-card-section>
-          <div class="text-h6">L1 工作记忆</div>
-          <div class="text-caption text-grey-7">当前任务状态、约束、决策和中间结果。</div>
+          <div class="text-h6">{{ t('memory.sessions.l1Title') }}</div>
+          <div class="text-caption text-grey-7">{{ t('memory.sessions.l1Subtitle') }}</div>
         </q-card-section>
         <div v-if="loadingTasks" class="row justify-center q-py-md">
           <q-spinner-dots size="28px" color="primary" />
@@ -143,7 +145,7 @@
           <q-list separator>
             <q-item v-for="task in taskRows" :key="task.id">
               <q-item-section>
-                <q-item-label>{{ task.task_title || task.task_key || '默认任务' }}</q-item-label>
+                <q-item-label>{{ task.task_title || task.task_key || t('memory.sessions.defaultTask') }}</q-item-label>
                 <q-item-label caption>{{ task.task_goal || task.id }}</q-item-label>
                 <q-linear-progress
                   rounded
@@ -154,13 +156,13 @@
                 />
               </q-item-section>
               <q-item-section side>
-                <q-chip dense :color="statusColor(task.status)" text-color="white">{{ task.status }}</q-chip>
+                <q-chip dense :color="statusColor(task.status)" text-color="white">{{ taskStatusLabel(task.status) }}</q-chip>
               </q-item-section>
             </q-item>
           </q-list>
           <q-card-section v-if="!taskRows.length" class="text-center text-grey-7">
             <q-icon name="assignment" size="38px" />
-            <div class="q-mt-sm">暂无工作记忆 task。</div>
+            <div class="q-mt-sm">{{ t('memory.sessions.emptyTasks') }}</div>
           </q-card-section>
         </template>
       </q-card>
@@ -169,11 +171,14 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import type { QTableProps } from 'quasar';
 import AppRegistryTable from '../../components/layout/AppRegistryTable.vue';
 import type { Session } from '../../features/session/types';
 import type { L0AssemblySegmentsMap, L0AssemblySnapshot, L1Task } from '../../features/memory/types';
 import { memorySessionStatusColor as statusColor } from './memoryTableUi';
+
+const { t, te } = useI18n();
 
 defineProps<{
   sessionRows: Session[];
@@ -235,5 +240,11 @@ function contextRatioColor(value?: number) {
 
 function formatPercent(value?: number) {
   return `${Math.round((Number(value) || 0) * 100)}%`;
+}
+
+function taskStatusLabel(status?: string) {
+  if (!status) return '—';
+  const key = `memory.sessions.taskStatus.${status}`;
+  return te(key) ? t(key) : status;
 }
 </script>

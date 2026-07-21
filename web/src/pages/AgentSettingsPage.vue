@@ -48,6 +48,7 @@
               v-model:form="form"
               v-model:config="config"
               :agent-id="agentId"
+              :taxonomy-tree="taxonomyTree"
               :prompt-modes="promptModes"
               :status-options="statusOptions"
               :filtered-provider-model-options="filteredProviderModelOptions"
@@ -208,6 +209,7 @@ const {
   ralphLoopForm,
   saving,
   router,
+  taxonomyTree,
   avatarPickerOpen,
   promptDialog,
   advancedDialog,

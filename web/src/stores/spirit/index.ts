@@ -216,6 +216,26 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   /** Team completion breakdown from spirit_teams_all_completed event. */
   const completionStats = ref<CompletionStats | null>(null);
 
+  // ── Observation view state ──
+
+  /** Current view mode: 'chat' shows the normal message list, 'observe' shows the observation canvas. */
+  const viewMode = ref<'chat' | 'observe'>('chat');
+
+  /** Whether the ChatComposer is visible. Independent of viewMode. */
+  const composerVisible = ref(true);
+
+  function toggleViewMode(): void {
+    viewMode.value = viewMode.value === 'chat' ? 'observe' : 'chat';
+  }
+
+  function toggleComposer(): void {
+    composerVisible.value = !composerVisible.value;
+  }
+
+  function setViewMode(mode: 'chat' | 'observe'): void {
+    viewMode.value = mode;
+  }
+
   const activeTeam = computed(() => teams.value.find((t) => t.id === activeTeamId.value) ?? null);
 
   const activeTeams = computed(() =>
@@ -1076,6 +1096,11 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     lastDqScore,
     lastEvolutionSuggestion,
     completionStats,
+    viewMode,
+    composerVisible,
+    toggleViewMode,
+    toggleComposer,
+    setViewMode,
     activeTeam,
     activeTeams,
     completedTeams,

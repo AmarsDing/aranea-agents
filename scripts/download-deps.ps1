@@ -104,8 +104,8 @@ if ($FromRelease) {
 }
 
 # ─── 模式 3：从官方 URL 下载 ──────────────────────────────────
-# 注意：此模式不包含 pgvector，需要手动添加 vector.dll
-$PgVersion = "17.5-1"
+# Bundled portable Postgres is PG 18.x so it matches installer/bundled/pgvector-pg18.
+$PgVersion = "18.3-1"
 $PgUrl = "https://get.enterprisedb.com/postgresql/postgresql-$PgVersion-windows-x64-binaries.zip"
 $RedisUrl = "https://github.com/tporadowski/redis/releases/download/v5.0.14.1/Redis-x64-5.0.14.1.zip"
 
@@ -153,16 +153,31 @@ if (-not (Test-Path (Join-Path $pgDir "bin\postgres.exe"))) {
     Write-Host "  [SKIP] PostgreSQL already exists" -ForegroundColor Yellow
 }
 
-# 检查 pgvector
+# 检查 / 注入 pgvector（与 bundled PG major 匹配）
 $vectorDll = Join-Path $pgDir "lib\vector.dll"
 if (-not (Test-Path $vectorDll)) {
-    Write-Host ""
-    Write-Host "  [WARN] pgvector (vector.dll) 未找到！" -ForegroundColor Yellow
-    Write-Host "         PostgreSQL 可用但向量搜索功能不可用。" -ForegroundColor Yellow
-    Write-Host "         请手动编译 pgvector 并将 vector.dll 放到:" -ForegroundColor Yellow
-    Write-Host "         $vectorDll" -ForegroundColor Yellow
-    Write-Host "         或使用 -FromRelease 模式下载预打包依赖。" -ForegroundColor Yellow
-    Write-Host ""
+    $bundledVector = Join-Path $RepoRoot "installer\bundled\pgvector-pg18"
+    $srcDll = Join-Path $bundledVector "lib\vector.dll"
+    if (Test-Path $srcDll) {
+        Write-Host "[download-deps] Injecting vendored pgvector-pg18 into postgres/" -ForegroundColor Cyan
+        New-Item -ItemType Directory -Force -Path (Join-Path $pgDir "lib") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $pgDir "share\extension") | Out-Null
+        Copy-Item $srcDll $vectorDll -Force
+        Copy-Item (Join-Path $bundledVector "share\extension\vector*") (Join-Path $pgDir "share\extension\") -Force
+        Write-Host "  [OK] vector.dll + extension files copied" -ForegroundColor Green
+    } else {
+        Write-Host ""
+        Write-Host "  [WARN] pgvector (vector.dll) 未找到！" -ForegroundColor Yellow
+        Write-Host "         PostgreSQL 可用但向量搜索功能不可用。" -ForegroundColor Yellow
+        Write-Host "         Expected vendored files at: $bundledVector" -ForegroundColor Yellow
+        Write-Host ""
+    }
+}
+
+if (-not (Test-Path $vectorDll)) {
+    Write-Host "  [WARN] postgres/lib/vector.dll still missing after inject attempt" -ForegroundColor Yellow
+} else {
+    Write-Host "  [OK] pgvector present: $vectorDll" -ForegroundColor Green
 }
 
 # 下载 Redis

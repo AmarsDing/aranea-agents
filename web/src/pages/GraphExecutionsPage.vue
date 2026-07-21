@@ -90,6 +90,7 @@
 </template>
 
 <script setup lang="ts">
+import AppPageHero from '../components/layout/AppPageHero.vue';
 import { useGraphExecutionsPage } from '../features/graph/useGraphExecutionsPage';
 import { formatTime, execDuration } from '../features/graph/utils';
 import {

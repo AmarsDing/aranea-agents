@@ -40,6 +40,7 @@
         @inject-agent="(p) => $emit('inject-agent', p)"
         @retry-team="(teamId) => $emit('retry-team', teamId)"
         @expand="(ids) => $emit('expand', ids)"
+        @confirm-step="(p) => $emit('confirm-step', p)"
       />
     </div>
     <ChatPendingQueue
@@ -72,7 +73,7 @@ import SessionPanelV2 from './v2/SessionPanel.vue';
 import { useScrollToActivity } from '../../features/chat/composables/useScrollToActivity';
 import { useLocateTeamStage } from '../../features/chat/composables/useLocateTeamStage';
 import { useActivityQueries } from '../../features/chat/composables/useActivityQueries';
-import type { Message, PendingMessage } from '../../features/chat/types';
+import type { Message, PendingMessage, ConfirmStepPayload } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { Step } from '../../features/chat/v2Types';
@@ -113,6 +114,7 @@ defineEmits<{
   'interrupt-pending': [pendingId: string];
   'update-pending': [pendingId: string, content: string];
   confirm: [activityId: string, approved: boolean];
+  'confirm-step': [payload: ConfirmStepPayload];
   'error-retry': [step: Step];
   'error-switch-model': [step: Step];
   'error-rephrase': [step: Step];

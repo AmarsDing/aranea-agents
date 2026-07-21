@@ -152,19 +152,21 @@ func recordToolInvocationWrite(ctx context.Context, write biz.ToolInvocationWrit
 	var toolDelta, mcpDelta, skillDelta int
 	var isSkillCall bool
 	countSession := strings.TrimSpace(sessionID) != "" && deps.Sessions != nil && status != "blocked"
+	// Always classify so we can tag write.Source for MCP tools (needed by the
+	// timeline SQL filter `lower(source) = 'mcp'`). The previous code only
+	// classified when countSession was true, leaving MCP tools with the
+	// default "trpc" source and making them invisible in timeline mcp filter.
+	isMCP, isSkill := classifyToolInvocation(ctx, write.ToolKey, toolResult, deps)
+	isSkillCall = isSkill
+	if isMCP {
+		write.Source = biz.ToolInvocationSourceMCP
+		mcpDelta = 1
+	}
 	if countSession {
 		toolDelta = 1
-		mcp, skill := classifyToolInvocation(ctx, write.ToolKey, toolResult, deps)
-		if mcp {
-			mcpDelta = 1
-		}
-		if skill {
+		if isSkill {
 			skillDelta = 1
 		}
-		isSkillCall = skill
-	} else {
-		// Classify skill even when not counting session, for skill_invocation recording.
-		_, isSkillCall = classifyToolInvocation(ctx, write.ToolKey, toolResult, deps)
 	}
 
 	safego.Go(ctx, "recordToolInvocation", func() {

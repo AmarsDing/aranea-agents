@@ -44,6 +44,7 @@ import (
 	"aranea-agents/internal/data/ent/graphtaskrun"
 	"aranea-agents/internal/data/ent/healrecord"
 	"aranea-agents/internal/data/ent/llmprovidermodel"
+	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
 	"aranea-agents/internal/data/ent/modelpricingrule"
 	"aranea-agents/internal/data/ent/modeltokenusagehourly"
@@ -88,6 +89,7 @@ import (
 	"aranea-agents/internal/data/ent/teamrunv2"
 	"aranea-agents/internal/data/ent/teamstagev2"
 	"aranea-agents/internal/data/ent/toolagentoverride"
+	"aranea-agents/internal/data/ent/toolgrant"
 	"aranea-agents/internal/data/ent/toolinvocation"
 	"aranea-agents/internal/data/ent/toolinvocationaudit"
 	"aranea-agents/internal/data/ent/toolinvocationparam"
@@ -155,6 +157,7 @@ const (
 	TypeGraphTaskRun               = "GraphTaskRun"
 	TypeHealRecord                 = "HealRecord"
 	TypeLlmProviderModel           = "LlmProviderModel"
+	TypeMediaProvider              = "MediaProvider"
 	TypeMemberSessionV2            = "MemberSessionV2"
 	TypeModelPricingRule           = "ModelPricingRule"
 	TypeModelTokenUsageHourly      = "ModelTokenUsageHourly"
@@ -198,6 +201,7 @@ const (
 	TypeTeamRunV2                  = "TeamRunV2"
 	TypeTeamStageV2                = "TeamStageV2"
 	TypeToolAgentOverride          = "ToolAgentOverride"
+	TypeToolGrant                  = "ToolGrant"
 	TypeToolInvocation             = "ToolInvocation"
 	TypeToolInvocationAudit        = "ToolInvocationAudit"
 	TypeToolInvocationParam        = "ToolInvocationParam"
@@ -4329,7 +4333,6 @@ type AgentRuntimeSettingMutation struct {
 	variables_json                           *string
 	model_instructions_json                  *string
 	context_compaction_enabled               *bool
-	micro_compact_enabled                    *bool
 	memory_compact_enabled                   *bool
 	tool_result_gate_enabled                 *bool
 	compress_llm_cache_enabled               *bool
@@ -8783,42 +8786,6 @@ func (m *AgentRuntimeSettingMutation) ResetContextCompactionEnabled() {
 	m.context_compaction_enabled = nil
 }
 
-// SetMicroCompactEnabled sets the "micro_compact_enabled" field.
-func (m *AgentRuntimeSettingMutation) SetMicroCompactEnabled(b bool) {
-	m.micro_compact_enabled = &b
-}
-
-// MicroCompactEnabled returns the value of the "micro_compact_enabled" field in the mutation.
-func (m *AgentRuntimeSettingMutation) MicroCompactEnabled() (r bool, exists bool) {
-	v := m.micro_compact_enabled
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldMicroCompactEnabled returns the old "micro_compact_enabled" field's value of the AgentRuntimeSetting entity.
-// If the AgentRuntimeSetting object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentRuntimeSettingMutation) OldMicroCompactEnabled(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldMicroCompactEnabled is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldMicroCompactEnabled requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldMicroCompactEnabled: %w", err)
-	}
-	return oldValue.MicroCompactEnabled, nil
-}
-
-// ResetMicroCompactEnabled resets all changes to the "micro_compact_enabled" field.
-func (m *AgentRuntimeSettingMutation) ResetMicroCompactEnabled() {
-	m.micro_compact_enabled = nil
-}
-
 // SetMemoryCompactEnabled sets the "memory_compact_enabled" field.
 func (m *AgentRuntimeSettingMutation) SetMemoryCompactEnabled(b bool) {
 	m.memory_compact_enabled = &b
@@ -10865,7 +10832,7 @@ func (m *AgentRuntimeSettingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentRuntimeSettingMutation) Fields() []string {
-	fields := make([]string, 0, 143)
+	fields := make([]string, 0, 142)
 	if m.self_evolve != nil {
 		fields = append(fields, agentruntimesetting.FieldSelfEvolve)
 	}
@@ -11150,9 +11117,6 @@ func (m *AgentRuntimeSettingMutation) Fields() []string {
 	}
 	if m.context_compaction_enabled != nil {
 		fields = append(fields, agentruntimesetting.FieldContextCompactionEnabled)
-	}
-	if m.micro_compact_enabled != nil {
-		fields = append(fields, agentruntimesetting.FieldMicroCompactEnabled)
 	}
 	if m.memory_compact_enabled != nil {
 		fields = append(fields, agentruntimesetting.FieldMemoryCompactEnabled)
@@ -11493,8 +11457,6 @@ func (m *AgentRuntimeSettingMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelInstructionsJSON()
 	case agentruntimesetting.FieldContextCompactionEnabled:
 		return m.ContextCompactionEnabled()
-	case agentruntimesetting.FieldMicroCompactEnabled:
-		return m.MicroCompactEnabled()
 	case agentruntimesetting.FieldMemoryCompactEnabled:
 		return m.MemoryCompactEnabled()
 	case agentruntimesetting.FieldToolResultGateEnabled:
@@ -11788,8 +11750,6 @@ func (m *AgentRuntimeSettingMutation) OldField(ctx context.Context, name string)
 		return m.OldModelInstructionsJSON(ctx)
 	case agentruntimesetting.FieldContextCompactionEnabled:
 		return m.OldContextCompactionEnabled(ctx)
-	case agentruntimesetting.FieldMicroCompactEnabled:
-		return m.OldMicroCompactEnabled(ctx)
 	case agentruntimesetting.FieldMemoryCompactEnabled:
 		return m.OldMemoryCompactEnabled(ctx)
 	case agentruntimesetting.FieldToolResultGateEnabled:
@@ -12557,13 +12517,6 @@ func (m *AgentRuntimeSettingMutation) SetField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetContextCompactionEnabled(v)
-		return nil
-	case agentruntimesetting.FieldMicroCompactEnabled:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetMicroCompactEnabled(v)
 		return nil
 	case agentruntimesetting.FieldMemoryCompactEnabled:
 		v, ok := value.(bool)
@@ -13938,9 +13891,6 @@ func (m *AgentRuntimeSettingMutation) ResetField(name string) error {
 		return nil
 	case agentruntimesetting.FieldContextCompactionEnabled:
 		m.ResetContextCompactionEnabled()
-		return nil
-	case agentruntimesetting.FieldMicroCompactEnabled:
-		m.ResetMicroCompactEnabled()
 		return nil
 	case agentruntimesetting.FieldMemoryCompactEnabled:
 		m.ResetMemoryCompactEnabled()
@@ -45790,6 +45740,770 @@ func (m *LlmProviderModelMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *LlmProviderModelMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown LlmProviderModel edge %s", name)
+}
+
+// MediaProviderMutation represents an operation that mutates the MediaProvider nodes in the graph.
+type MediaProviderMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	name          *string
+	provider_type *string
+	base_url      *string
+	api_key       *string
+	config_json   *string
+	capabilities  *string
+	status        *string
+	created_at    *string
+	updated_at    *string
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*MediaProvider, error)
+	predicates    []predicate.MediaProvider
+}
+
+var _ ent.Mutation = (*MediaProviderMutation)(nil)
+
+// mediaproviderOption allows management of the mutation configuration using functional options.
+type mediaproviderOption func(*MediaProviderMutation)
+
+// newMediaProviderMutation creates new mutation for the MediaProvider entity.
+func newMediaProviderMutation(c config, op Op, opts ...mediaproviderOption) *MediaProviderMutation {
+	m := &MediaProviderMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeMediaProvider,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withMediaProviderID sets the ID field of the mutation.
+func withMediaProviderID(id string) mediaproviderOption {
+	return func(m *MediaProviderMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *MediaProvider
+		)
+		m.oldValue = func(ctx context.Context) (*MediaProvider, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().MediaProvider.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withMediaProvider sets the old MediaProvider of the mutation.
+func withMediaProvider(node *MediaProvider) mediaproviderOption {
+	return func(m *MediaProviderMutation) {
+		m.oldValue = func(context.Context) (*MediaProvider, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m MediaProviderMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m MediaProviderMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of MediaProvider entities.
+func (m *MediaProviderMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *MediaProviderMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *MediaProviderMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().MediaProvider.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetName sets the "name" field.
+func (m *MediaProviderMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *MediaProviderMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the MediaProvider entity.
+// If the MediaProvider object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaProviderMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *MediaProviderMutation) ResetName() {
+	m.name = nil
+}
+
+// SetProviderType sets the "provider_type" field.
+func (m *MediaProviderMutation) SetProviderType(s string) {
+	m.provider_type = &s
+}
+
+// ProviderType returns the value of the "provider_type" field in the mutation.
+func (m *MediaProviderMutation) ProviderType() (r string, exists bool) {
+	v := m.provider_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProviderType returns the old "provider_type" field's value of the MediaProvider entity.
+// If the MediaProvider object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaProviderMutation) OldProviderType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProviderType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProviderType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProviderType: %w", err)
+	}
+	return oldValue.ProviderType, nil
+}
+
+// ResetProviderType resets all changes to the "provider_type" field.
+func (m *MediaProviderMutation) ResetProviderType() {
+	m.provider_type = nil
+}
+
+// SetBaseURL sets the "base_url" field.
+func (m *MediaProviderMutation) SetBaseURL(s string) {
+	m.base_url = &s
+}
+
+// BaseURL returns the value of the "base_url" field in the mutation.
+func (m *MediaProviderMutation) BaseURL() (r string, exists bool) {
+	v := m.base_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBaseURL returns the old "base_url" field's value of the MediaProvider entity.
+// If the MediaProvider object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaProviderMutation) OldBaseURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBaseURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBaseURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBaseURL: %w", err)
+	}
+	return oldValue.BaseURL, nil
+}
+
+// ResetBaseURL resets all changes to the "base_url" field.
+func (m *MediaProviderMutation) ResetBaseURL() {
+	m.base_url = nil
+}
+
+// SetAPIKey sets the "api_key" field.
+func (m *MediaProviderMutation) SetAPIKey(s string) {
+	m.api_key = &s
+}
+
+// APIKey returns the value of the "api_key" field in the mutation.
+func (m *MediaProviderMutation) APIKey() (r string, exists bool) {
+	v := m.api_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKey returns the old "api_key" field's value of the MediaProvider entity.
+// If the MediaProvider object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaProviderMutation) OldAPIKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKey: %w", err)
+	}
+	return oldValue.APIKey, nil
+}
+
+// ResetAPIKey resets all changes to the "api_key" field.
+func (m *MediaProviderMutation) ResetAPIKey() {
+	m.api_key = nil
+}
+
+// SetConfigJSON sets the "config_json" field.
+func (m *MediaProviderMutation) SetConfigJSON(s string) {
+	m.config_json = &s
+}
+
+// ConfigJSON returns the value of the "config_json" field in the mutation.
+func (m *MediaProviderMutation) ConfigJSON() (r string, exists bool) {
+	v := m.config_json
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConfigJSON returns the old "config_json" field's value of the MediaProvider entity.
+// If the MediaProvider object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaProviderMutation) OldConfigJSON(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConfigJSON is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConfigJSON requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConfigJSON: %w", err)
+	}
+	return oldValue.ConfigJSON, nil
+}
+
+// ResetConfigJSON resets all changes to the "config_json" field.
+func (m *MediaProviderMutation) ResetConfigJSON() {
+	m.config_json = nil
+}
+
+// SetCapabilities sets the "capabilities" field.
+func (m *MediaProviderMutation) SetCapabilities(s string) {
+	m.capabilities = &s
+}
+
+// Capabilities returns the value of the "capabilities" field in the mutation.
+func (m *MediaProviderMutation) Capabilities() (r string, exists bool) {
+	v := m.capabilities
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCapabilities returns the old "capabilities" field's value of the MediaProvider entity.
+// If the MediaProvider object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaProviderMutation) OldCapabilities(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCapabilities is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCapabilities requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCapabilities: %w", err)
+	}
+	return oldValue.Capabilities, nil
+}
+
+// ResetCapabilities resets all changes to the "capabilities" field.
+func (m *MediaProviderMutation) ResetCapabilities() {
+	m.capabilities = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *MediaProviderMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *MediaProviderMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the MediaProvider entity.
+// If the MediaProvider object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaProviderMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *MediaProviderMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *MediaProviderMutation) SetCreatedAt(s string) {
+	m.created_at = &s
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *MediaProviderMutation) CreatedAt() (r string, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the MediaProvider entity.
+// If the MediaProvider object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaProviderMutation) OldCreatedAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *MediaProviderMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *MediaProviderMutation) SetUpdatedAt(s string) {
+	m.updated_at = &s
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *MediaProviderMutation) UpdatedAt() (r string, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the MediaProvider entity.
+// If the MediaProvider object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaProviderMutation) OldUpdatedAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *MediaProviderMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the MediaProviderMutation builder.
+func (m *MediaProviderMutation) Where(ps ...predicate.MediaProvider) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the MediaProviderMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *MediaProviderMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.MediaProvider, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *MediaProviderMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *MediaProviderMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (MediaProvider).
+func (m *MediaProviderMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *MediaProviderMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.name != nil {
+		fields = append(fields, mediaprovider.FieldName)
+	}
+	if m.provider_type != nil {
+		fields = append(fields, mediaprovider.FieldProviderType)
+	}
+	if m.base_url != nil {
+		fields = append(fields, mediaprovider.FieldBaseURL)
+	}
+	if m.api_key != nil {
+		fields = append(fields, mediaprovider.FieldAPIKey)
+	}
+	if m.config_json != nil {
+		fields = append(fields, mediaprovider.FieldConfigJSON)
+	}
+	if m.capabilities != nil {
+		fields = append(fields, mediaprovider.FieldCapabilities)
+	}
+	if m.status != nil {
+		fields = append(fields, mediaprovider.FieldStatus)
+	}
+	if m.created_at != nil {
+		fields = append(fields, mediaprovider.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, mediaprovider.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *MediaProviderMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case mediaprovider.FieldName:
+		return m.Name()
+	case mediaprovider.FieldProviderType:
+		return m.ProviderType()
+	case mediaprovider.FieldBaseURL:
+		return m.BaseURL()
+	case mediaprovider.FieldAPIKey:
+		return m.APIKey()
+	case mediaprovider.FieldConfigJSON:
+		return m.ConfigJSON()
+	case mediaprovider.FieldCapabilities:
+		return m.Capabilities()
+	case mediaprovider.FieldStatus:
+		return m.Status()
+	case mediaprovider.FieldCreatedAt:
+		return m.CreatedAt()
+	case mediaprovider.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *MediaProviderMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case mediaprovider.FieldName:
+		return m.OldName(ctx)
+	case mediaprovider.FieldProviderType:
+		return m.OldProviderType(ctx)
+	case mediaprovider.FieldBaseURL:
+		return m.OldBaseURL(ctx)
+	case mediaprovider.FieldAPIKey:
+		return m.OldAPIKey(ctx)
+	case mediaprovider.FieldConfigJSON:
+		return m.OldConfigJSON(ctx)
+	case mediaprovider.FieldCapabilities:
+		return m.OldCapabilities(ctx)
+	case mediaprovider.FieldStatus:
+		return m.OldStatus(ctx)
+	case mediaprovider.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case mediaprovider.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown MediaProvider field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *MediaProviderMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case mediaprovider.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case mediaprovider.FieldProviderType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProviderType(v)
+		return nil
+	case mediaprovider.FieldBaseURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBaseURL(v)
+		return nil
+	case mediaprovider.FieldAPIKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKey(v)
+		return nil
+	case mediaprovider.FieldConfigJSON:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConfigJSON(v)
+		return nil
+	case mediaprovider.FieldCapabilities:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCapabilities(v)
+		return nil
+	case mediaprovider.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case mediaprovider.FieldCreatedAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case mediaprovider.FieldUpdatedAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown MediaProvider field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *MediaProviderMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *MediaProviderMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *MediaProviderMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown MediaProvider numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *MediaProviderMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *MediaProviderMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *MediaProviderMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown MediaProvider nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *MediaProviderMutation) ResetField(name string) error {
+	switch name {
+	case mediaprovider.FieldName:
+		m.ResetName()
+		return nil
+	case mediaprovider.FieldProviderType:
+		m.ResetProviderType()
+		return nil
+	case mediaprovider.FieldBaseURL:
+		m.ResetBaseURL()
+		return nil
+	case mediaprovider.FieldAPIKey:
+		m.ResetAPIKey()
+		return nil
+	case mediaprovider.FieldConfigJSON:
+		m.ResetConfigJSON()
+		return nil
+	case mediaprovider.FieldCapabilities:
+		m.ResetCapabilities()
+		return nil
+	case mediaprovider.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case mediaprovider.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case mediaprovider.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown MediaProvider field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *MediaProviderMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *MediaProviderMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *MediaProviderMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *MediaProviderMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *MediaProviderMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *MediaProviderMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *MediaProviderMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown MediaProvider unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *MediaProviderMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown MediaProvider edge %s", name)
 }
 
 // MemberSessionV2Mutation represents an operation that mutates the MemberSessionV2 nodes in the graph.
@@ -91763,40 +92477,41 @@ func (m *TaskV2Mutation) ResetEdge(name string) error {
 // TeamMutation represents an operation that mutates the Team nodes in the graph.
 type TeamMutation struct {
 	config
-	op                    Op
-	typ                   string
-	id                    *string
-	team_key              *string
-	display_name          *string
-	status                *string
-	is_default            *bool
-	definition_json       *string
-	adk_app_name          *string
-	department_id         *string
-	spirit_session_id     *string
-	task_description      *string
-	auto_created          *bool
-	dag_node_id           *string
-	depends_on_json       *string
-	parallel_config_json  *string
-	topology              *string
-	readonly              *bool
-	kind                  *team.Kind
-	source                *team.Source
-	deliverables          *string
-	input_contract        *string
-	dept_lead_agent_id    *string
-	cross_dept_member_ids *string
-	linked_graph_id       *string
-	interrupt_reason      *string
-	created_at            *string
-	updated_at            *string
-	deleted_at            *string
-	workspace_id          *string
-	clearedFields         map[string]struct{}
-	done                  bool
-	oldValue              func(context.Context) (*Team, error)
-	predicates            []predicate.Team
+	op                       Op
+	typ                      string
+	id                       *string
+	team_key                 *string
+	display_name             *string
+	status                   *string
+	is_default               *bool
+	definition_json          *string
+	adk_app_name             *string
+	department_id            *string
+	spirit_session_id        *string
+	task_description         *string
+	auto_created             *bool
+	dag_node_id              *string
+	depends_on_json          *string
+	parallel_config_json     *string
+	topology                 *string
+	readonly                 *bool
+	kind                     *team.Kind
+	source                   *team.Source
+	deliverables             *string
+	input_contract           *string
+	deliverables_output_json *string
+	dept_lead_agent_id       *string
+	cross_dept_member_ids    *string
+	linked_graph_id          *string
+	interrupt_reason         *string
+	created_at               *string
+	updated_at               *string
+	deleted_at               *string
+	workspace_id             *string
+	clearedFields            map[string]struct{}
+	done                     bool
+	oldValue                 func(context.Context) (*Team, error)
+	predicates               []predicate.Team
 }
 
 var _ ent.Mutation = (*TeamMutation)(nil)
@@ -92587,6 +93302,42 @@ func (m *TeamMutation) ResetInputContract() {
 	m.input_contract = nil
 }
 
+// SetDeliverablesOutputJSON sets the "deliverables_output_json" field.
+func (m *TeamMutation) SetDeliverablesOutputJSON(s string) {
+	m.deliverables_output_json = &s
+}
+
+// DeliverablesOutputJSON returns the value of the "deliverables_output_json" field in the mutation.
+func (m *TeamMutation) DeliverablesOutputJSON() (r string, exists bool) {
+	v := m.deliverables_output_json
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeliverablesOutputJSON returns the old "deliverables_output_json" field's value of the Team entity.
+// If the Team object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamMutation) OldDeliverablesOutputJSON(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeliverablesOutputJSON is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeliverablesOutputJSON requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeliverablesOutputJSON: %w", err)
+	}
+	return oldValue.DeliverablesOutputJSON, nil
+}
+
+// ResetDeliverablesOutputJSON resets all changes to the "deliverables_output_json" field.
+func (m *TeamMutation) ResetDeliverablesOutputJSON() {
+	m.deliverables_output_json = nil
+}
+
 // SetDeptLeadAgentID sets the "dept_lead_agent_id" field.
 func (m *TeamMutation) SetDeptLeadAgentID(s string) {
 	m.dept_lead_agent_id = &s
@@ -92948,7 +93699,7 @@ func (m *TeamMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TeamMutation) Fields() []string {
-	fields := make([]string, 0, 27)
+	fields := make([]string, 0, 28)
 	if m.team_key != nil {
 		fields = append(fields, team.FieldTeamKey)
 	}
@@ -93005,6 +93756,9 @@ func (m *TeamMutation) Fields() []string {
 	}
 	if m.input_contract != nil {
 		fields = append(fields, team.FieldInputContract)
+	}
+	if m.deliverables_output_json != nil {
+		fields = append(fields, team.FieldDeliverablesOutputJSON)
 	}
 	if m.dept_lead_agent_id != nil {
 		fields = append(fields, team.FieldDeptLeadAgentID)
@@ -93076,6 +93830,8 @@ func (m *TeamMutation) Field(name string) (ent.Value, bool) {
 		return m.Deliverables()
 	case team.FieldInputContract:
 		return m.InputContract()
+	case team.FieldDeliverablesOutputJSON:
+		return m.DeliverablesOutputJSON()
 	case team.FieldDeptLeadAgentID:
 		return m.DeptLeadAgentID()
 	case team.FieldCrossDeptMemberIds:
@@ -93139,6 +93895,8 @@ func (m *TeamMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldDeliverables(ctx)
 	case team.FieldInputContract:
 		return m.OldInputContract(ctx)
+	case team.FieldDeliverablesOutputJSON:
+		return m.OldDeliverablesOutputJSON(ctx)
 	case team.FieldDeptLeadAgentID:
 		return m.OldDeptLeadAgentID(ctx)
 	case team.FieldCrossDeptMemberIds:
@@ -93296,6 +94054,13 @@ func (m *TeamMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetInputContract(v)
+		return nil
+	case team.FieldDeliverablesOutputJSON:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeliverablesOutputJSON(v)
 		return nil
 	case team.FieldDeptLeadAgentID:
 		v, ok := value.(string)
@@ -93479,6 +94244,9 @@ func (m *TeamMutation) ResetField(name string) error {
 		return nil
 	case team.FieldInputContract:
 		m.ResetInputContract()
+		return nil
+	case team.FieldDeliverablesOutputJSON:
+		m.ResetDeliverablesOutputJSON()
 		return nil
 	case team.FieldDeptLeadAgentID:
 		m.ResetDeptLeadAgentID()
@@ -99674,6 +100442,500 @@ func (m *ToolAgentOverrideMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *ToolAgentOverrideMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown ToolAgentOverride edge %s", name)
+}
+
+// ToolGrantMutation represents an operation that mutates the ToolGrant nodes in the graph.
+type ToolGrantMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	agent_id      *string
+	tool_key      *string
+	granted_by    *string
+	created_at    *string
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*ToolGrant, error)
+	predicates    []predicate.ToolGrant
+}
+
+var _ ent.Mutation = (*ToolGrantMutation)(nil)
+
+// toolgrantOption allows management of the mutation configuration using functional options.
+type toolgrantOption func(*ToolGrantMutation)
+
+// newToolGrantMutation creates new mutation for the ToolGrant entity.
+func newToolGrantMutation(c config, op Op, opts ...toolgrantOption) *ToolGrantMutation {
+	m := &ToolGrantMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeToolGrant,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withToolGrantID sets the ID field of the mutation.
+func withToolGrantID(id string) toolgrantOption {
+	return func(m *ToolGrantMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ToolGrant
+		)
+		m.oldValue = func(ctx context.Context) (*ToolGrant, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ToolGrant.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withToolGrant sets the old ToolGrant of the mutation.
+func withToolGrant(node *ToolGrant) toolgrantOption {
+	return func(m *ToolGrantMutation) {
+		m.oldValue = func(context.Context) (*ToolGrant, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ToolGrantMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ToolGrantMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ToolGrant entities.
+func (m *ToolGrantMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ToolGrantMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ToolGrantMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ToolGrant.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetAgentID sets the "agent_id" field.
+func (m *ToolGrantMutation) SetAgentID(s string) {
+	m.agent_id = &s
+}
+
+// AgentID returns the value of the "agent_id" field in the mutation.
+func (m *ToolGrantMutation) AgentID() (r string, exists bool) {
+	v := m.agent_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentID returns the old "agent_id" field's value of the ToolGrant entity.
+// If the ToolGrant object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ToolGrantMutation) OldAgentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentID: %w", err)
+	}
+	return oldValue.AgentID, nil
+}
+
+// ResetAgentID resets all changes to the "agent_id" field.
+func (m *ToolGrantMutation) ResetAgentID() {
+	m.agent_id = nil
+}
+
+// SetToolKey sets the "tool_key" field.
+func (m *ToolGrantMutation) SetToolKey(s string) {
+	m.tool_key = &s
+}
+
+// ToolKey returns the value of the "tool_key" field in the mutation.
+func (m *ToolGrantMutation) ToolKey() (r string, exists bool) {
+	v := m.tool_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldToolKey returns the old "tool_key" field's value of the ToolGrant entity.
+// If the ToolGrant object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ToolGrantMutation) OldToolKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldToolKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldToolKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldToolKey: %w", err)
+	}
+	return oldValue.ToolKey, nil
+}
+
+// ResetToolKey resets all changes to the "tool_key" field.
+func (m *ToolGrantMutation) ResetToolKey() {
+	m.tool_key = nil
+}
+
+// SetGrantedBy sets the "granted_by" field.
+func (m *ToolGrantMutation) SetGrantedBy(s string) {
+	m.granted_by = &s
+}
+
+// GrantedBy returns the value of the "granted_by" field in the mutation.
+func (m *ToolGrantMutation) GrantedBy() (r string, exists bool) {
+	v := m.granted_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGrantedBy returns the old "granted_by" field's value of the ToolGrant entity.
+// If the ToolGrant object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ToolGrantMutation) OldGrantedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGrantedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGrantedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGrantedBy: %w", err)
+	}
+	return oldValue.GrantedBy, nil
+}
+
+// ResetGrantedBy resets all changes to the "granted_by" field.
+func (m *ToolGrantMutation) ResetGrantedBy() {
+	m.granted_by = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ToolGrantMutation) SetCreatedAt(s string) {
+	m.created_at = &s
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ToolGrantMutation) CreatedAt() (r string, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ToolGrant entity.
+// If the ToolGrant object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ToolGrantMutation) OldCreatedAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ToolGrantMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the ToolGrantMutation builder.
+func (m *ToolGrantMutation) Where(ps ...predicate.ToolGrant) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ToolGrantMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ToolGrantMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ToolGrant, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ToolGrantMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ToolGrantMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ToolGrant).
+func (m *ToolGrantMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ToolGrantMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.agent_id != nil {
+		fields = append(fields, toolgrant.FieldAgentID)
+	}
+	if m.tool_key != nil {
+		fields = append(fields, toolgrant.FieldToolKey)
+	}
+	if m.granted_by != nil {
+		fields = append(fields, toolgrant.FieldGrantedBy)
+	}
+	if m.created_at != nil {
+		fields = append(fields, toolgrant.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ToolGrantMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case toolgrant.FieldAgentID:
+		return m.AgentID()
+	case toolgrant.FieldToolKey:
+		return m.ToolKey()
+	case toolgrant.FieldGrantedBy:
+		return m.GrantedBy()
+	case toolgrant.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ToolGrantMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case toolgrant.FieldAgentID:
+		return m.OldAgentID(ctx)
+	case toolgrant.FieldToolKey:
+		return m.OldToolKey(ctx)
+	case toolgrant.FieldGrantedBy:
+		return m.OldGrantedBy(ctx)
+	case toolgrant.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ToolGrant field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ToolGrantMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case toolgrant.FieldAgentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentID(v)
+		return nil
+	case toolgrant.FieldToolKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetToolKey(v)
+		return nil
+	case toolgrant.FieldGrantedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGrantedBy(v)
+		return nil
+	case toolgrant.FieldCreatedAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ToolGrant field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ToolGrantMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ToolGrantMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ToolGrantMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ToolGrant numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ToolGrantMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ToolGrantMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ToolGrantMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown ToolGrant nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ToolGrantMutation) ResetField(name string) error {
+	switch name {
+	case toolgrant.FieldAgentID:
+		m.ResetAgentID()
+		return nil
+	case toolgrant.FieldToolKey:
+		m.ResetToolKey()
+		return nil
+	case toolgrant.FieldGrantedBy:
+		m.ResetGrantedBy()
+		return nil
+	case toolgrant.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ToolGrant field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ToolGrantMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ToolGrantMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ToolGrantMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ToolGrantMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ToolGrantMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ToolGrantMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ToolGrantMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ToolGrant unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ToolGrantMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ToolGrant edge %s", name)
 }
 
 // ToolInvocationMutation represents an operation that mutates the ToolInvocation nodes in the graph.

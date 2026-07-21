@@ -13,7 +13,8 @@ import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { useChatConversationStore } from '../../../stores/chat/conversationStore';
 import { useSpiritTeamStore } from '../../../stores/spirit';
 import { cancelRunningToolMessages } from '../activityToolCall';
-import { confirmActivity } from '../api';
+import { runStatusFromActivityEvent } from '../activityRunStatus';
+import { confirmActivity, confirmActivityGrant } from '../api';
 import { useChatRunStatus } from './useChatRunStatus';
 import { useChatStreamManager } from './useChatStreamManager';
 import { useChatInboundSync } from './useChatInboundSync';
@@ -37,7 +38,7 @@ import { useChatComposerActions } from './useChatComposerActions';
 import { favoriteSessionIDs, toggleFavoriteSession, emitSessionMutation } from '../../../stores/sessionSync';
 import { agentNeedsSettingsHydration, hydrateAgentSettings } from '../agentPlannerSettings';
 import { parseChannelSessionMeta } from '../channelSessionMeta';
-import { useKnowledgeStore } from '../../../stores/knowledge';
+
 import { useArtifactStore } from '../../../stores/artifact';
 import type { ComposerUsageSnapshot } from '../composerUsageMetrics';
 import { useContextBreakdown } from './useContextBreakdown';
@@ -105,8 +106,6 @@ export function useChatWorkspace() {
   const displayTeams = ref<TeamRow[]>([]);
   const inputText = ref('');
   const sessionDrafts = reactive(new Map<string, string>());
-  const selectedKnowledgeBases = ref<string[]>([]);
-  const knowledgeBaseOptions = ref<Array<{ label: string; value: string }>>([]);
 
   const awaitReply = useAwaitReply();
   const {
@@ -534,7 +533,6 @@ export function useChatWorkspace() {
     awaitKind,
     runStatus,
     selectedProviderModel,
-    selectedKnowledgeBases,
     ensureChatStream: streamManager.ensureChatStream,
     ensureTeamStream: streamManager.ensureTeamStream,
     sendChatViaWs: streamManager.sendChatViaWs,
@@ -911,6 +909,20 @@ export function useChatWorkspace() {
     }
   }
 
+  async function onConfirmActivityGrant(payload: { sessionId: string; activityId: string; reply: string }) {
+    try {
+      const ok = await confirmActivityGrant(payload);
+      if (!ok) {
+        $q.notify({
+          type: 'warning',
+          message: t('chat.confirmActivity.approveRejected'),
+        });
+      }
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('chat.confirmActivity.failed') });
+    }
+  }
+
   /**
    * P3-4: ErrorBlock inline action handlers.
    *
@@ -1165,22 +1177,7 @@ export function useChatWorkspace() {
       void entityNav.selectAgent(appStore.selectedAgent, { sessionId: routeSession || undefined });
     }
 
-    void Promise.all([
-      entityNav.loadTaxonomyTree(),
-      entityNav.loadTeams(),
-      (async () => {
-        try {
-          const knowledgeStore = useKnowledgeStore();
-          const cols = await knowledgeStore.loadCollections({ limit: 50 });
-          knowledgeBaseOptions.value = cols.items.map((c) => ({
-            label: c.name || c.id,
-            value: c.id,
-          }));
-        } catch {
-          knowledgeBaseOptions.value = [];
-        }
-      })(),
-    ]).then(() => {
+    void Promise.all([entityNav.loadTaxonomyTree(), entityNav.loadTeams()]).then(() => {
       displayTeams.value = loadTeamOrder([...displayTeams.value], defaultTeamId.value);
       const routeTeamID = typeof route.query.team === 'string' ? route.query.team : '';
       const routeTeam = routeTeamID ? displayTeams.value.find((team) => team.id === routeTeamID) : undefined;
@@ -1286,6 +1283,7 @@ export function useChatWorkspace() {
       compactSessionAction: sessionStore.compactSessionAction,
       onCompactSession,
       onConfirmActivity,
+      onConfirmActivityGrant,
       compressStatus,
       activityStore,
       v2Tasks: computed(() => activityStore.getSessionTasks(selectedSessionForUi.value?.id ?? '')),
@@ -1298,8 +1296,6 @@ export function useChatWorkspace() {
       modeOpts,
       provOpts,
       attachments,
-      selectedKnowledgeBases,
-      knowledgeBaseOptions,
       sending: sender.sending,
       inputDisabled: sender.inputDisabled,
       pendingMessages,

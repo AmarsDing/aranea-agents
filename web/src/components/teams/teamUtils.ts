@@ -9,7 +9,14 @@ import { findTaxonomyPath } from '../../features/platform/taxonomyTreeUtils';
 import type { PlatformResourceTreeNode } from '../../features/platform/types';
 import type { Team, TeamDefinition } from '../../features/teams/types';
 import { buildGraphFromDefinition } from '../../features/teams/graphUtils';
-import { runtimeEngineOptions, BuiltinIndustryId, PresetIndustryId } from './teamConstants';
+import {
+  runtimeEngineOptions,
+  BuiltinIndustryId,
+  PresetIndustryId,
+  teamRoleLabel,
+  teamModeLabel,
+  failurePolicyValueLabel,
+} from './teamConstants';
 import { defaultDefinition, defaultA2AConfig, withGraph } from './teamTemplates';
 
 // Re-export from split modules
@@ -28,6 +35,13 @@ export {
   PresetIndustryId,
   validStatusTransitions,
   isValidStatusTransition,
+  teamModeMap,
+  teamModeLabel,
+  teamRoleMap,
+  teamRoleLabel,
+  failurePolicyValueMap,
+  failurePolicyValueLabel,
+  teamRunStatusLabel,
 } from './teamConstants';
 export type { TeamTemplateKey } from './teamConstants';
 export { defaultDefinition, definitionFromTemplate, defaultA2AConfig, withGraph } from './teamTemplates';
@@ -81,9 +95,12 @@ export function roleOptionsForMode(mode: string): Array<{ label: string; value: 
   const allowed = validRolesForMode(mode);
   if (allowed === null) {
     // swarm/adaptive: all roles
-    return ['worker', 'coordinator', 'synthesizer', 'generator', 'critic'].map((v) => ({ label: v, value: v }));
+    return ['worker', 'coordinator', 'synthesizer', 'generator', 'critic'].map((v) => ({
+      label: teamRoleLabel(v),
+      value: v,
+    }));
   }
-  return Array.from(allowed.keys()).map((v) => ({ label: v, value: v }));
+  return Array.from(allowed.keys()).map((v) => ({ label: teamRoleLabel(v), value: v }));
 }
 
 /**
@@ -113,7 +130,7 @@ export function validateTeamDefinition(definition: TeamDefinition): string | nul
       return role && !allowedRoles.has(role);
     });
     if (invalid) {
-      return `角色「${invalid.role}」与模式「${mode}」不兼容`;
+      return `角色「${teamRoleLabel(invalid.role)}」与模式「${teamModeLabel(mode)}」不兼容`;
     }
   }
 
@@ -123,7 +140,7 @@ export function validateTeamDefinition(definition: TeamDefinition): string | nul
     const synthFromRole = enabled.find((m) => String(m.role || '').toLowerCase() === 'synthesizer')?.agent_id?.trim();
     const synth = synthRaw || synthFromRole || '';
     if (!synth) {
-      return '并行模式需要指定汇总 Agent（synthesizer_agent_id 或成员角色 synthesizer）';
+      return '并行模式需要指定汇总 Agent（synthesizer_agent_id 或「汇总」角色成员）';
     }
     const workers = enabled.filter((m) => String(m.agent_id).trim() !== synth);
     if (workers.length === 0) {
@@ -137,7 +154,7 @@ export function validateTeamDefinition(definition: TeamDefinition): string | nul
     const hasCoord = enabled.some((m) => String(m.role || '').toLowerCase() === 'coordinator');
     const hasSynthAgent = String(definition.synthesizer_agent_id || '').trim() !== '';
     if (!hasSynth && !hasCoord && !hasSynthAgent) {
-      return '主控模式需要 synthesizer 或 coordinator 成员，或指定 synthesizer_agent_id';
+      return '主控模式需要「汇总」或「协调」角色成员，或指定 synthesizer_agent_id';
     }
   }
 
@@ -146,7 +163,7 @@ export function validateTeamDefinition(definition: TeamDefinition): string | nul
     const hasGenerator = enabled.some((m) => String(m.role || '').toLowerCase() === 'generator');
     const hasCritic = enabled.some((m) => String(m.role || '').toLowerCase() === 'critic');
     if (!hasGenerator || !hasCritic) {
-      return '生成评审模式需要 generator 和 critic 成员';
+      return '生成评审模式需要「生成」和「评审」角色成员';
     }
   }
 
@@ -162,13 +179,13 @@ export function runtimeEngineLabel(value?: string) {
 
 export function failurePolicySummary(def: TeamDefinition): string {
   const fp = def.failure_policy;
-  if (!fp) return 'retry_then_block（默认）';
+  if (!fp) return '重试后阻塞（默认）';
   const parts: string[] = [];
-  if (fp.default) parts.push(`default: ${fp.default}`);
-  if (def.mode === 'parallel' && fp.parallel_fail) parts.push(`parallel: ${fp.parallel_fail}`);
-  if (fp.retry?.max_attempts != null) parts.push(`retry: ${fp.retry.max_attempts}`);
-  if (fp.circuit_breaker?.failure_threshold) parts.push(`circuit: ${fp.circuit_breaker.failure_threshold}`);
-  if (fp.on_error) parts.push(`on_error: ${fp.on_error}`);
+  if (fp.default) parts.push(`默认: ${failurePolicyValueLabel(fp.default)}`);
+  if (def.mode === 'parallel' && fp.parallel_fail) parts.push(`并行: ${failurePolicyValueLabel(fp.parallel_fail)}`);
+  if (fp.retry?.max_attempts != null) parts.push(`重试: ${fp.retry.max_attempts}`);
+  if (fp.circuit_breaker?.failure_threshold) parts.push(`熔断: ${fp.circuit_breaker.failure_threshold}`);
+  if (fp.on_error) parts.push(`错误接管: ${failurePolicyValueLabel(fp.on_error)}`);
   return parts.length ? parts.join(' · ') : '—';
 }
 
@@ -292,7 +309,7 @@ export function topologyNodesFromDefinition(def: TeamDefinition) {
   if (mode === 'parallel')
     return [
       { icon: 'call_split', label: '并行分派' },
-      { icon: 'groups', label: 'Worker' },
+      { icon: 'groups', label: '并行执行' },
       { icon: 'merge_type', label: '汇总' },
     ];
   if (mode === 'coordinator')

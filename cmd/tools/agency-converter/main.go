@@ -56,12 +56,12 @@ type section struct {
 
 // departmentInfo describes a target department in the Pack taxonomy.
 type departmentInfo struct {
-	CompanyKey   string
-	DeptKey      string
-	DeptName     string
-	DeptDesc     string
-	CompanySort  int
-	DeptSort     int
+	CompanyKey  string
+	DeptKey     string
+	DeptName    string
+	DeptDesc    string
+	CompanySort int
+	DeptSort    int
 }
 
 // promptFileSpec describes a generated prompt file.
@@ -79,7 +79,7 @@ type agentRecord struct {
 	IntroPara    string // paragraph(s) between H1 and first ##
 
 	// Resolved mapping
-	Dept       departmentInfo
+	Dept        departmentInfo
 	PositionKey string // e.g. frontend_developer
 	AgentKey    string // e.g. frontend_developer__general
 
@@ -503,13 +503,13 @@ func containsAny(s string, subs []string) bool {
 
 // nonDivisionDirs are top-level directories that are NOT agent divisions.
 var nonDivisionDirs = map[string]bool{
-	"examples":      true,
-	"integrations":  true,
-	"scripts":       true,
-	"strategy":      true,
-	".github":       true,
-	".git":          true,
-	"node_modules":  true,
+	"examples":     true,
+	"integrations": true,
+	"scripts":      true,
+	"strategy":     true,
+	".github":      true,
+	".git":         true,
+	"node_modules": true,
 }
 
 // -----------------------------------------------------------------------------
@@ -534,8 +534,8 @@ contents:
 func generateTaxonomyYAML(records []agentRecord) string {
 	// Group agents by company → department
 	type deptGroup struct {
-		Info    departmentInfo
-		Agents  []*agentRecord
+		Info   departmentInfo
+		Agents []*agentRecord
 	}
 	type companyGroup struct {
 		Key      string
@@ -869,7 +869,7 @@ func parseAgentFile(path, division string) (agentRecord, error) {
 		FileBasename: basename,
 		Division:     division,
 		Frontmatter:  fm,
-		Sections:      sections,
+		Sections:     sections,
 		IntroPara:    intro,
 		Dept:         dept,
 		PositionKey:  posKey,
@@ -929,7 +929,7 @@ func countCompanies(records []agentRecord) int {
 func countDepartments(records []agentRecord) int {
 	seen := make(map[string]bool)
 	for _, rec := range records {
-		seen[rec.Dept.CompanyKey + "/" + rec.Dept.DeptKey] = true
+		seen[rec.Dept.CompanyKey+"/"+rec.Dept.DeptKey] = true
 	}
 	return len(seen)
 }

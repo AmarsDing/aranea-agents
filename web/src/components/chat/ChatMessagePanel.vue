@@ -118,12 +118,13 @@
     </div>
     <div class="col row no-wrap chat-messages-area" style="min-height: 0">
       <div class="col column no-wrap chat-messages-main" style="min-height: 0">
-        <TodoKanbanBoard
-          v-if="(showToolCalls ?? true) && (!panelMode || panelMode === 'spirit')"
-          :board-state="todoBoardState"
-        />
-        <ChatMessageList
-          ref="messageListRef"
+        <template v-if="isChatView">
+          <TodoKanbanBoard
+            v-if="(showToolCalls ?? true) && (!panelMode || panelMode === 'spirit')"
+            :board-state="todoBoardState"
+          />
+          <ChatMessageList
+            ref="messageListRef"
           :session-key="sessionKey"
           :messages="props.messages"
           :pending-messages="props.pendingMessages ?? []"
@@ -151,6 +152,7 @@
           @interrupt-pending="(id) => emit('interrupt-pending', id)"
           @update-pending="(id, content) => emit('update-pending', id, content)"
           @confirm="(id, approved) => emit('confirm-activity', id, approved)"
+          @confirm-step="(p) => emit('confirm-activity-grant', p)"
           @error-retry="(e) => emit('error-retry', e)"
           @error-switch-model="(e) => emit('error-switch-model', e)"
           @error-rephrase="(e) => emit('error-rephrase', e)"
@@ -177,9 +179,20 @@
           :status="compressStatus"
           class="q-mx-md q-mb-sm"
         />
+        </template>
+
+        <!-- Observe mode: ComfyUI-style observation canvas replaces message list -->
+        <ObservationPanel
+          v-else
+          class="col"
+          :session-id="sessionId ?? ''"
+          :spirit-session-id="sessionId ?? ''"
+          :is-dark="isDark"
+          :ws-connected="wsConnected"
+        />
 
         <ChatComposer
-          v-if="!panelMode || panelMode === 'spirit'"
+          v-if="(!panelMode || panelMode === 'spirit') && (composerVisible ?? true)"
           :model-value="modelValue"
           :attachments="attachments"
           :dialog-mode="dialogMode"
@@ -188,8 +201,6 @@
           :provider-options="providerOptions"
           :context-ratio="contextRatio"
           :context-status="contextStatus"
-          :knowledge-base-options="knowledgeBaseOptions"
-          :selected-knowledge-bases="selectedKnowledgeBases"
           :is-dark="isDark"
           :sending="sending"
           :input-disabled="inputDisabled"
@@ -204,7 +215,6 @@
           @update:model-value="emit('update:modelValue', $event)"
           @update:dialog-mode="emit('update:dialogMode', $event)"
           @update:model-provider="emit('update:modelProvider', $event)"
-          @update:selected-knowledge-bases="emit('update:selectedKnowledgeBases', $event)"
           @remove-attachment="emit('remove-attachment', $event)"
           @pick-file="emit('pick-file')"
           @voice="emit('voice')"
@@ -240,6 +250,10 @@
       :complexity-reason="spiritStatusBar.complexityReason"
       :checkpoint-step="spiritStatusBar.checkpointStep"
       :dq-score="spiritStatusBar.dqScore"
+      :view-mode="viewMode ?? 'chat'"
+      :composer-visible="composerVisible ?? true"
+      @toggle-view="emit('toggle-view')"
+      @toggle-composer="emit('toggle-composer')"
       @click-running="emit('status-bar-click-running')"
       @click-interrupted="emit('status-bar-click-interrupted')"
     />
@@ -259,6 +273,7 @@ import ChatReasoningDrawer from './ChatReasoningDrawer.vue';
 import TodoKanbanBoard from './TodoKanbanBoard.vue';
 import ContextIndicator from '../sessions/ContextIndicator.vue';
 import SpiritStatusBar from '../spirit/SpiritStatusBar.vue';
+import ObservationPanel from './observe/ObservationPanel.vue';
 import type { RunStatusValue } from '../../features/chat/types';
 import { TOOL_DISPLAY_KEY } from '../../features/chat/types';
 import type { CompressStatus } from '../../features/session/types';
@@ -268,7 +283,7 @@ import { useTodoBoard } from '../../features/chat/composables/useTodoBoard';
 import { useChatMessageScroll, useChatCodeCopy } from '../../features/chat/composables/useChatMessageScroll';
 import { useChatScrollTitle } from '../../features/chat/useChatScrollTitle';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
-import type { Message } from '../../features/chat/types';
+import type { Message, ConfirmStepPayload, TOOL_CONFIRM_REPLY } from '../../features/chat/types';
 import type { PromptBreakdown } from '../../features/chat/contextBreakdown';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { ChatAttachment } from './types';
@@ -295,8 +310,6 @@ const props = defineProps<{
   contextRatio: number;
   contextStatus?: string;
   contextBreakdown?: PromptBreakdown | null;
-  knowledgeBaseOptions?: Option[];
-  selectedKnowledgeBases?: string[];
   isDark: boolean;
   sending?: boolean;
   inputDisabled?: boolean;
@@ -333,13 +346,16 @@ const props = defineProps<{
   spiritStatusBar?: SpiritStatusBarData | null;
   compressStatus?: CompressStatus;
   showToolCalls?: boolean;
+  /** View mode: 'chat' (default) shows message list; 'observe' shows observation canvas. */
+  viewMode?: 'chat' | 'observe';
+  /** Whether the composer is visible (used in observe mode to toggle input bar). */
+  composerVisible?: boolean;
 }>();
 
 const emit = defineEmits<{
   'update:modelValue': [value: string];
   'update:dialogMode': [value: string];
   'update:modelProvider': [value: string];
-  'update:selectedKnowledgeBases': [value: string[]];
   'remove-attachment': [id: string];
   'pick-file': [];
   voice: [];
@@ -375,6 +391,8 @@ const emit = defineEmits<{
   'return-to-team': [];
   'cancel-team': [teamId: string];
   'retry-team': [teamId: string];
+  'toggle-view': [];
+  'toggle-composer': [];
   'pause-team': [teamId: string];
   'unpause-team': [teamId: string];
   'inject-team': [payload: { teamId: string; message: string }];
@@ -391,6 +409,7 @@ const emit = defineEmits<{
   'status-bar-click-interrupted': [];
   'toggle-tool-calls': [];
   'confirm-activity': [activityId: string, approved: boolean];
+  'confirm-activity-grant': [payload: ConfirmStepPayload];
   'error-retry': [step: Step];
   'error-switch-model': [step: Step];
   'error-rephrase': [step: Step];
@@ -414,6 +433,9 @@ const { t } = useI18n();
 // design prototype where unified-panel content is generated in conversation order.
 
 const messagesRef = computed(() => props.messages);
+
+/** True when the view is in chat mode (default); false in observe mode. */
+const isChatView = computed(() => (props.viewMode ?? 'chat') === 'chat');
 
 // ── Team member lanes ──
 const teamMemberLanes = computed((): TeamMemberLane[] => {

@@ -54,19 +54,6 @@ func gradedScoreCount(count, threshold int, weight float64) float64 {
 	return 0
 }
 
-// shouldUseStructuredCompact decides whether Level 2 (structured) compression is appropriate.
-func shouldUseStructuredCompact(coverage compactCoverage, structuredTokens, originalTokens int) bool {
-	ics := coverage.ICS()
-	if ics < 0.70 {
-		return false
-	}
-	if originalTokens <= 0 {
-		return true
-	}
-	ratio := float64(structuredTokens) / float64(originalTokens)
-	return ratio <= 0.60
-}
-
 func tryMemoryCompact(ctx context.Context, body []biz.ChatMessage, reader biz.MemoryFactReader, l1Reader biz.L1AdminReader, sessionID string, lg loggateway.Logger) memoryCompactResult {
 	if len(body) == 0 {
 		return memoryCompactResult{}

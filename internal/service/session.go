@@ -171,6 +171,7 @@ func toProtoTimelineItem(it biz.SessionTimelineItem) *v1.SessionTimelineItem {
 		Kind:            it.Kind,
 		Side:            it.Side,
 		Title:           it.Title,
+		TitleKey:        it.TitleKey,
 		Subtitle:        it.Subtitle,
 		ActorId:         it.ActorID,
 		ActorName:       it.ActorName,
@@ -731,7 +732,7 @@ func (s *SessionService) ListActivities(ctx context.Context, req *v1.ListActivit
 
 	resp, err := s.sessionV2.ListSteps(ctx, &v1.ListStepsV2Request{
 		SessionId: sessionID,
-		TurnId:   strings.TrimSpace(req.GetTurnId()),
+		TurnId:    strings.TrimSpace(req.GetTurnId()),
 	})
 	if err != nil {
 		return nil, mapSessionErr(err)

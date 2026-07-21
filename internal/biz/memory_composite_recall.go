@@ -20,10 +20,10 @@ type CompositeRecallHit struct {
 	Line  string
 	Score float64
 	// P2-04: provenance metadata for L3 facts (empty for L2 episodes).
-	FactID         string
-	SourceSession  string
-	Confidence     float64
-	Version        int
+	FactID        string
+	SourceSession string
+	Confidence    float64
+	Version       int
 }
 
 // SessionCompositeRecallStore loads fused L2+L3 candidates (implemented by data memory_shim adapters).
@@ -128,13 +128,13 @@ func (uc *MemoryCompositeRecallUsecase) RecallComposite(ctx context.Context, q C
 			continue
 		}
 		out = append(out, CompositeRecallHit{
-			Layer:        row.Layer,
-			Line:         line,
-			Score:        row.Score,
-			FactID:       row.FactID,
+			Layer:         row.Layer,
+			Line:          line,
+			Score:         row.Score,
+			FactID:        row.FactID,
 			SourceSession: row.SourceSession,
-			Confidence:   row.Confidence,
-			Version:      row.Version,
+			Confidence:    row.Confidence,
+			Version:       row.Version,
 		})
 	}
 	return out, nil

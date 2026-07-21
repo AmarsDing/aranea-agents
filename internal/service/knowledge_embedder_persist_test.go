@@ -122,9 +122,9 @@ func (r *sysSettingRepoStub) UpdatePlannerModel(context.Context, biz.PlannerMode
 // for the audit finding "Embedder 先改内存再持久化，失败仍返回成功" (Domain 4 Claim 4).
 //
 // Previously the flow was:
-//   1. embedderAdmin.Update(...)  — mutate in-memory state
-//   2. PersistKnowledgeEmbed(...) — best-effort, log Warn on failure
-//   3. return success
+//  1. embedderAdmin.Update(...)  — mutate in-memory state
+//  2. PersistKnowledgeEmbed(...) — best-effort, log Warn on failure
+//  3. return success
 //
 // After the fix, persistence must run first; on persist error we must NOT
 // mutate in-memory state and must surface the error to the caller.

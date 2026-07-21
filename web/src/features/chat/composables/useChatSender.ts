@@ -67,7 +67,6 @@ export type SenderDeps = {
       }
     | undefined
   >;
-  selectedKnowledgeBases: Ref<string[]>;
   ensureChatStream: (sessionId: string) => UseEnvelopeStreamReturn;
   ensureTeamStream: (sessionId: string) => UseEnvelopeStreamReturn;
   sendChatViaWs: (stream: UseEnvelopeStreamReturn, upstream: WsUpstream) => void;
@@ -385,13 +384,13 @@ export function useChatSender(deps: SenderDeps) {
       provider: string;
       model: string;
       attachments: ChatAttachment[];
-      knowledgeBases: string[];
     },
   ): Promise<void> {
     // B2: HTTP command channel — submit message and get ACK only.
     // Full message/state data arrives via the WS data channel.
     // Do NOT call loadMessages after HTTP success — the WS data channel
     // is the single source of truth for message data.
+    // US-14：不再随消息发送 knowledge_bases（留空 = 后端全库智能路由）。
     await sendCommand({
       session_id: sessionId,
       agent_key: agentKey,
@@ -402,7 +401,6 @@ export function useChatSender(deps: SenderDeps) {
         provider: options.provider,
         model: options.model,
         attachments: options.attachments.map((a) => ({ id: a.id })),
-        knowledge_bases: options.knowledgeBases,
       },
     });
   }
@@ -445,7 +443,6 @@ export function useChatSender(deps: SenderDeps) {
             provider,
             model,
             attachments: deps.attachments.value.map((item) => ({ id: item.id })),
-            knowledge_bases: deps.selectedKnowledgeBases.value,
           },
         },
       }),
@@ -485,7 +482,6 @@ export function useChatSender(deps: SenderDeps) {
             provider,
             model,
             attachments: deps.attachments.value.map((item) => ({ id: item.id })),
-            knowledge_bases: deps.selectedKnowledgeBases.value,
           },
         },
       }),
@@ -611,7 +607,6 @@ export function useChatSender(deps: SenderDeps) {
               provider,
               model,
               attachments: deps.attachments.value,
-              knowledgeBases: deps.selectedKnowledgeBases.value,
             },
           );
           // B2: HTTP command channel returns ACK only — no loadMessages.

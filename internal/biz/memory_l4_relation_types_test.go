@@ -29,10 +29,10 @@ func TestRelationTypeConstants(t *testing.T) {
 // for each of the 5 relation types.
 func TestRelationTypeProps(t *testing.T) {
 	tests := []struct {
-		relationType      string
-		bidirectional     bool
-		reinforcesTarget  bool
-		inhibitsTarget    bool
+		relationType     string
+		bidirectional    bool
+		reinforcesTarget bool
+		inhibitsTarget   bool
 	}{
 		{RelationRelatedTo, true, true, false},
 		{RelationEvolvedFrom, false, false, true},

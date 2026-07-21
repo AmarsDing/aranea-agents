@@ -3,6 +3,9 @@
 > 对应需求：`37 knowledge.md`
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
 > **2026-06-17 校准**：与实际代码对齐；修正 Embedder 接口/结构体（`Embedder` 为接口，`MultiProviderEmbedder` 为实现）、修正构造函数签名（补充 `lg loggateway.Logger` 参数）、修正 `knowledge_embed_setting.go` 引用（实际逻辑在 `knowledge/knowledge.go` 的 `ApplyEmbedPatch`）、补充 Reranker、Embedder Admin API、摄取 WS 事件、`ingest.go` 流水线拆分、Advanced RAG（查询重写/混合检索/自适应路由/检索评估）、Agentic RAG（联邦搜索/knowledge_reflect 工具）、OCR stub、BM25 双路检索、Biz 子包迁移、KnowledgeSearchDeps 聚合、GraphRAG/Skill Knowledge 待实现设计。
+> **2026-07-20 升级**：统一摄取管线设计——Extractor 接口抽象（§5.2）收编文本提取、MarkdownOrganizer（§5.2b，LLM 整理为 MD）、VisionExtractor（§5.2c，Phase 2 多模态）、`knowledge_documents` 新增 content_text/organized/asset_uri 列、Proto 新增 `organize_to_markdown` 字段与 `GetDocumentContent` RPC、OOXML magic 二次判定修复、前端拖拽批量上传、GraphRAG 裁决为 Phase 3 旁路非侵入可选增强。
+> **2026-07-21 校准（Phase 9 实现）**：图片改「先落文档 + 后台异步提取」（§5.2c/§7.2）——VisionExtractor 在摄取 goroutine 内执行，成功后经新增 `DocumentRepo.UpdateDocumentContent` 回写 content_text/organized；原图留存落地为 `AssetStore`（`internal/knowledge/asset_store.go`）；Wire 工厂 `NewKnowledgeExtractorRegistry`/`NewKnowledgeAssetStore` 就位（§7.3）。
+> **2026-07-21 升级（US-14 免选择知识库，Phase 11）**：「存储可分类，使用免选」——上传免预选（默认知识库懒创建，§7.4）、Search/Ingest 的 collection_id 去 REQUIRED（§2.1）、knowledge_search/knowledge_reflect 工具 collection 参数改可选 + scoped 多库/全库智能路由（§6.1/§6.1b）、文档跨库移动 MoveDocument（§2.1/§3.2/§4.3）。
 
 ---
 
@@ -144,7 +147,8 @@ message DeleteCollectionRequest {
 }
 
 message IngestDocumentRequest {
-  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // US-14：可选。留空 = 自动落「默认知识库」（服务端懒创建），上传免预选。
+  string collection_id = 1;
   string source = 2 [(google.api.field_behavior) = REQUIRED];
   string mime_type = 3;
   string content_base64 = 4 [(google.api.field_behavior) = REQUIRED];
@@ -152,6 +156,17 @@ message IngestDocumentRequest {
   int32 chunk_size = 6;       // 0 = 服务端默认 512
   int32 chunk_overlap = 7;    // 0 = 服务端默认 64
   string chunk_strategy = 8;  // char|token|markdown|json|recursive
+  optional bool organize_to_markdown = 9;  // unset/true = LLM 整理为 MD（默认开启，失败降级原文本）
+}
+
+// GetDocumentContent — 预览整理后的 Markdown 全文（content_text）。
+message GetDocumentContentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+message DocumentContent {
+  string id = 1;
+  string content_text = 2;   // 整理后的 Markdown（未整理时为提取原文）
+  bool   organized = 3;      // 是否经 LLM 整理
 }
 
 message ListDocumentsRequest {
@@ -169,8 +184,16 @@ message DeleteDocumentRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+// MoveDocument — US-14 文档跨库移动（整理：默认库收件箱 → 分类库归档）。
+// 文档连同 chunks 移至目标 Collection，两侧计数同步校正；目标库 dim 不一致时拒绝（向量维度不兼容）。
+message MoveDocumentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_collection_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
 message SearchRequest {
-  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // US-14：可选。留空 = 全库智能路由（Route 策略：名称/描述匹配取 top N 广播 + 结果合并）。
+  string collection_id = 1;
   string query = 2 [(google.api.field_behavior) = REQUIRED];
   int32 top_k = 3;            // default 5
   float min_score = 4;        // 最低相似度阈值（0 = 不过滤）
@@ -213,8 +236,14 @@ service KnowledgeService {
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse) {
     option (google.api.http) = { get: "/v1/knowledge/documents" };
   }
+  rpc GetDocumentContent(GetDocumentContentRequest) returns (DocumentContent) {
+    option (google.api.http) = { get: "/v1/knowledge/documents/{id}/content" };
+  }
   rpc DeleteDocument(DeleteDocumentRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = { delete: "/v1/knowledge/documents/{id}" };
+  }
+  rpc MoveDocument(MoveDocumentRequest) returns (KnowledgeDocument) {
+    option (google.api.http) = { post: "/v1/knowledge/documents/{id}/move" body: "*" };
   }
 
   // Search
@@ -264,6 +293,9 @@ type Document struct {
     ChunkCount   int
     Status       string        // "pending" | "indexing" | "indexed" | "error"
     ErrorMessage string
+    ContentText  string        // 整理后 MD 全文（未整理时为提取原文）
+    Organized    bool          // 是否经 LLM 整理
+    AssetURI     string        // 原始文件留存路径（Phase 2 图片血缘）
     CreatedAt    string
     UpdatedAt    string
 }
@@ -310,9 +342,17 @@ type DocumentRepo interface {
     CreateDocument(ctx context.Context, d Document) (Document, error)
     GetDocument(ctx context.Context, id string) (Document, error)
     UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error
+    // UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
+    UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error
     ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
     DeleteDocument(ctx context.Context, id string) error
+    // MoveDocument 文档连同 chunks 移至目标 Collection（US-14），事务内完成 + 两侧计数校正。
+    // 目标库 dim 与源库不一致时返回错误（向量维度不兼容，需重建索引）。
+    MoveDocument(ctx context.Context, id, targetCollectionID string) (Document, error)
 }
+
+// 注：content_text/organized/asset_uri 随 CreateDocument 写入、GetDocument 读出（预览）；
+// 图片异步提取完成后经 UpdateDocumentContent 回写 content_text/organized（2026-07-21 新增）。
 
 type ChunkRepo interface {
     InsertChunks(ctx context.Context, chunks []Chunk) error
@@ -342,11 +382,16 @@ func (uc *Usecase) GetCollection(ctx context.Context, id string) (Collection, er
 func (uc *Usecase) ListCollections(ctx context.Context, workspace string, limit, offset int) ([]Collection, int, error)
 func (uc *Usecase) DeleteCollection(ctx context.Context, id string) error
 func (uc *Usecase) UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error
+// EnsureDefaultCollection — US-14：返回「默认知识库」，不存在则懒创建（name=默认知识库，
+// embedding_model/dim 取当前 Embedder 配置）。上传免预选的兜底出口。
+func (uc *Usecase) EnsureDefaultCollection(ctx context.Context, embeddingModel string, dim int) (Collection, error)
 
 func (uc *Usecase) CreateDocument(ctx context.Context, d Document) (Document, error)
 func (uc *Usecase) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
 func (uc *Usecase) DeleteDocument(ctx context.Context, id string) error
 func (uc *Usecase) UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error
+// MoveDocument — US-14 文档跨库移动（校验目标库存在且 dim 兼容后委托 Repo 事务）。
+func (uc *Usecase) MoveDocument(ctx context.Context, id, targetCollectionID string) (Document, error)
 
 func (uc *Usecase) InsertChunks(ctx context.Context, chunks []Chunk) error
 func (uc *Usecase) Search(ctx context.Context, q SearchQuery, queryEmbedding []float32) ([]Chunk, error)
@@ -397,6 +442,11 @@ CREATE TABLE IF NOT EXISTS knowledge_documents (
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 2026-07-20 统一摄取管线升级（EnsureKnowledgeSchema 幂等 ALTER）：
+ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS content_text TEXT NOT NULL DEFAULT '';   -- 整理后 MD 全文（未整理时为提取原文），供预览/血缘/Reindex
+ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS organized    BOOLEAN NOT NULL DEFAULT FALSE; -- 是否经 LLM 整理
+ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS asset_uri    TEXT NOT NULL DEFAULT '';       -- 原始文件留存路径（Phase 2 图片血缘）
+
 CREATE TABLE IF NOT EXISTS knowledge_chunks (
     id            TEXT PRIMARY KEY,
     doc_id        TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
@@ -439,6 +489,7 @@ var (
 | `SearchChunks` | `ORDER BY embedding <=> $1::vector LIMIT $3`，支持 `min_score` 和 `filter_json` |
 | `SearchChunksBM25` | 双路 BM25：tsvector 全文检索 + pg_trgm 模糊搜索，合并去重 |
 | `DeleteDocument` | 事务删除 + 计数器修正 |
+| `MoveDocument` | 单事务：documents/chunks collection_id 更新 + 源/目标库计数校正（US-14） |
 
 ### 4.4 搜索过滤
 
@@ -506,7 +557,33 @@ func (c *Chunker) Split(text string) []Chunk
 - `char` / `token`：本地 `chunker.go` 实现。
 - `markdown` / `json` / `recursive`：桥接 trpc `chunking/*`（`chunk_strategy.go`）。
 
-### 5.2 文档解析（internal/knowledge/document_extract.go）
+### 5.2 文档解析与 Extractor 统一抽象（internal/knowledge/extractor.go + document_extract.go）
+
+> **2026-07-20 升级**：为统一「文本类」与「多模态」两条入库路径，引入 Extractor 接口抽象。任何模态提取后归一为 Markdown 文本（NFR-13），下游 Organize/Chunk/Embed/检索完全无模态差异。
+
+```go
+// Extractor 将上传字节按模态提取为文本（Markdown 优先）。
+type Extractor interface {
+    // Supports 判定是否可处理该来源（按扩展名/MIME 路由）。
+    Supports(ext, mimeType string) bool
+    // Extract 提取文本；图片等多模态实现直接输出结构化 Markdown。
+    Extract(ctx context.Context, raw []byte, source, mimeType string) (string, error)
+}
+
+// ExtractorRegistry 按优先级路由到首个 Supports 的实现。
+type ExtractorRegistry struct{ extractors []Extractor }
+
+func (r *ExtractorRegistry) Extract(ctx context.Context, raw []byte, source, mimeType string) (string, error)
+```
+
+**实现矩阵**：
+
+| 实现 | 覆盖范围 | 阶段 |
+|------|----------|------|
+| `TextExtractor` | 文本直读（txt/md/json/csv/html/xml/yaml）+ trpc `document/reader`（pdf/doc/docx/xlsx/pptx）+ HTML 剥离 | Phase 1 |
+| `VisionExtractor` | 图片（png/jpg/jpeg/webp）→ 多模态 LLM 输出结构化 MD 描述 | Phase 2 |
+
+**TextExtractor**（收编现有 `ExtractDocumentText`）：
 
 ```go
 func ExtractDocumentText(raw []byte, source, mimeType string) (string, error)
@@ -515,6 +592,64 @@ func ExtractDocumentText(raw []byte, source, mimeType string) (string, error)
 - PDF / DOCX：trpc `document/reader`（`readers_import.go` 侧载注册）。
 - HTML：`html_text.go` 剥离 script/style 后提取可见文本。
 - 纯文本：UTF-8 直读。
+- 图片分支从 `ExtractDocumentText` 摘除，移交 `VisionExtractor`（Phase 2）；`ocr.go` 的 stub 接口废弃，由 VisionExtractor 取代。
+
+### 5.2b MarkdownOrganizer（internal/knowledge/markdown_organizer.go，新增）
+
+> Phase 1 核心新增：提取文本 → LLM 结构化整理为 Markdown。
+
+```go
+// MarkdownOrganizer 将提取出的原始文本整理为结构化 Markdown。
+type MarkdownOrganizer struct {
+    llm     biz.LLMCaller
+    sys     *biz.SystemSettingUsecase
+    catalog *biz.LlmProviderModelUsecase
+    lg      loggateway.Logger
+}
+
+func NewMarkdownOrganizer(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) *MarkdownOrganizer
+
+// Organize 输入提取文本与来源信息，输出结构化 Markdown。
+// LLM 不可用 / 超时 / 解析失败 → 返回原文本 + organized=false（降级不阻塞，NFR-11）。
+func (o *MarkdownOrganizer) Organize(ctx context.Context, text, source, mimeType string) (md string, organized bool, err error)
+```
+
+**设计决策**：
+- LLM 模型经 `llm_resolver.go` 的 `ResolveLLM` 统一解析（与 QueryRewriter/RetrievalEvaluator 同构）。
+- Prompt 约束：保留全部事实、不增删内容、重建标题层级/列表/表格、输出纯 Markdown。
+- 超时 30s；输入超长时按 chunk_size 窗口分段整理后拼接（窗口内整理，保证标题层级连续）。
+- `organized=false` 时调用方使用原文本继续分块，FlowLog 记录降级原因。
+- Wire 工厂位于 `internal/service/knowledge_advanced.go`（第 7 个 Advanced 组件 Provider）。
+
+### 5.2c VisionExtractor（internal/knowledge/vision_extractor.go，Phase 2 新增）
+
+```go
+// VisionExtractor 使用多模态 LLM 将图片理解结果输出为结构化 Markdown。
+type VisionExtractor struct {
+    llm     biz.LLMCaller
+    sys     *biz.SystemSettingUsecase
+    catalog *biz.LlmProviderModelUsecase
+    lg      loggateway.Logger
+}
+
+func (v *VisionExtractor) Supports(ext, mimeType string) bool // image/* 或 .png/.jpg/.jpeg/.webp
+func (v *VisionExtractor) Extract(ctx context.Context, raw []byte, source, mimeType string) (string, error)
+```
+
+**设计决策**：
+- 实现 Extractor 接口，注册到 ExtractorRegistry（优先级高于 TextExtractor）。
+- 多模态 LLM（gpt-4o / gemini 视觉等）输入图片 base64 + prompt，直接输出 MD（图中文字、表格、图表含义），产出物与文本类同构。
+- 输出已是 Markdown 时可跳过 MarkdownOrganizer（流水线开关控制）。
+- 未配置多模态模型时返回明确错误（NFR-12），文档状态 `error`。
+- 原始图片留存：写入 asset 存储（本地目录），Document 记录 `asset_uri` 血缘。
+- 替代原 `ocr.go` stub 路线（tesseract/docling 不再作为 OCR 依赖；docling 仅留作 PDF 版面保真的后续独立增强）。
+
+**异步提取流程（2026-07-21 实现裁决）**：
+- 图片走「先落文档 + 后台提取」：HTTP 立即返回 `status=pending` 的文档记录（含 `asset_uri` 血缘），视觉 LLM 提取在摄取 goroutine 内执行——与文本类的 chunk/embed 同一异步上下文，不阻塞请求（视觉调用最长 60s）。
+- 提取成功后先经 `DocumentRepo.UpdateDocumentContent(id, contentText, organized=true)` 回写正文（`GetDocumentContent` 预览可用），再走统一 chunk/embed 流程；下游与文本类完全同构。
+- 提取失败（无视觉模型 / LLM 调用失败 / 空响应）置 `status=error` + 明确 `error_message`（NFR-12），与 indexing → indexed/error 状态流一致。
+- 视觉模型解析顺序：catalog 中声明 Vision 能力的启用模型 → 回退 `DefaultRefineLLM`；两者皆无则返回明确错误。
+- 原图留存：创建文档前写入 asset 存储（`KRATOS_KNOWLEDGE_ASSET_DIR` env > `./data/knowledge_assets/{docID}.{ext}`），失败仅降级跳过血缘不阻塞入库。
 
 ### 5.3 Embedder（internal/knowledge/embedder.go）
 
@@ -809,6 +944,7 @@ Wire 经 `NewKnowledgeRetriever` 装配；配置错误时 SysLog 警告并禁用
 ### 6.1 knowledge_search 工具（internal/tools/knowledge/tool.go）
 
 ```go
+// US-14：CollectionID 可选（无 jsonschema required）。留空 = 自动路由。
 type searchInput struct {
     CollectionID string  `json:"collection_id"`
     Query        string  `json:"query"`
@@ -835,12 +971,18 @@ type chunkSummary struct {
 - Retriever/AdaptiveRouter 通过 context 传递（`WithRetriever` / `WithAdaptiveRouter`），避免全局状态。
 - 返回精简的 `chunkSummary`（不含 embedding 向量），减少 Token 消耗。
 - 优先使用 AdaptiveRouter（混合检索 + 自适应路由），不可用时降级为 Retriever。
+- **US-14（2026-07-21）**：`collection_id` 改可选，消除「LLM 不知有哪些库却被迫填 UUID」的死局。留空时按序解析：
+  1. scoped == 1 → 直用该库（现状不变）；
+  2. scoped > 1 → FederatedRetriever Route 策略在 scoped 内智能路由（不再报 "multiple knowledge_bases are scoped" 错误）；
+  3. scoped == 0 → 列出全部 Collection 后 FederatedRetriever Route 全库路由；系统无任何 Collection 时返回空结果（chunks=[]），不报错。
+- 显式传 collection_id 时仍校验必须在 scoped 内（越权防护不变）。
 
 ### 6.1b knowledge_reflect 工具（internal/tools/knowledge/tool.go）
 
 ```go
 type reflectInput struct {
-    CollectionIDs []string `json:"collection_ids" jsonschema:"description=List of collection IDs to search across,required"`
+    // US-14：可选（jsonschema 不再 required）。留空 = scoped 内路由；无 scoped 时全库智能路由。
+    CollectionIDs []string `json:"collection_ids"`
     Query         string   `json:"query" jsonschema:"description=The original user query to reflect on,required"`
     TopK          int      `json:"top_k,omitempty" jsonschema:"description=Maximum number of results to return per collection"`
 }
@@ -860,6 +1002,7 @@ type reflectOutput struct {
 - 当 RetrievalEvaluator 可用时，自动评估检索质量并返回 `sufficient`/`confidence`/`supplement_query`。
 - 评估失败时 FlowLog 警告，降级为 `sufficient=true, confidence=1.0`。
 - Collection 权限校验：`WithKnowledgeCollections` context 限定可访问的集合。
+- **US-14（2026-07-21）**：`collection_ids` 改可选。留空时：scoped 非空 → 在 scoped 内联邦路由；scoped 为空 → 全库智能路由（不再报 "collection_ids is required"）。
 
 ### 6.2 Agent 装配链
 
@@ -927,6 +1070,8 @@ type KnowledgeService struct {
     uc            *biz.KnowledgeUsecase
     embedder      *knowledge.Embedder
     search        KnowledgeSearchDeps
+    extractors    *knowledge.ExtractorRegistry    // 统一摄取管线：模态路由
+    organizer     *knowledge.MarkdownOrganizer    // LLM 整理为 MD（nil 时跳过整理）
     bus           event.Bus
     systemSetting biz.SystemSettingRepo
     lg            loggateway.Logger
@@ -938,7 +1083,8 @@ type KnowledgeService struct {
 | 方法 | 说明 |
 |------|------|
 | `CreateCollection` | 参数校验 → `uc.CreateCollection` |
-| `IngestDocument` | base64 解码 → 创建文档 → `safego.Go` → `BuildIndexedChunks` → 发布 `knowledge_ingest` 事件 |
+| `IngestDocument` | base64 解码 → 守卫（OOXML 二次判定）→ ExtractorRegistry.Extract → 可选 MarkdownOrganizer.Organize → 创建文档（含 content_text）→ `safego.Go` → `BuildIndexedChunks` → 发布 `knowledge_ingest` 事件 |
+| `GetDocumentContent` | 读取 content_text/organized 供前端预览 |
 | `Search` | 查询重写 → AdaptiveRouter/Retriever 检索 → RetrievalEvaluator 评估 → Prometheus 计时 |
 | `GetEmbedderConfig` / `UpdateEmbedderConfig` | 脱敏读取 / 运行时更新 Embedder（EP-KN-01） |
 | `DeleteCollection` | 级联删除（数据库 CASCADE） |
@@ -966,13 +1112,27 @@ Search(req)
 
 ### 7.2 异步摄取流程
 
+> **2026-07-20 升级**：统一摄取管线（模态无关主干）。Extract 经 ExtractorRegistry 路由，文本类与多模态归一为 Markdown 后共用下游。
+> **2026-07-21 校准**：图片提取从同步前移到摄取 goroutine 内（视觉 LLM 最长 60s，同步会阻塞 HTTP），详见 §5.2c「异步提取流程」。
+
 ```
 IngestDocument(req)
-  ├── base64.Decode → ExtractDocumentText(source/mime)
-  ├── NormalizeMetadataJSON
-  ├── uc.CreateDocument(status=pending)
-  └── safego.Go → BuildIndexedChunks(strategy, EmbedBatch) → InsertChunks
+  ├── base64.Decode → 大小/MIME 守卫（OOXML 二次判定）
+  ├── NormalizeMetadataJSON（合并 modality/extractor 标记）
+  ├── 文本类：ExtractorRegistry.Extract（同步，本地解析快，失败即 400 不落孤儿文档）
+  │   └── organize_to_markdown != false ?
+  │       └── MarkdownOrganizer.Organize() → md + organized   ← 失败降级原文本（NFR-11）
+  ├── 图片：跳过同步提取；AssetStore.Save 原图留存（asset_uri 血缘，失败仅降级跳过）
+  ├── uc.CreateDocument(status=pending) + content_text/organized 持久化
+  └── safego.Go → [图片：VisionExtractor.Extract → UpdateDocumentContent 回写；失败 status=error（NFR-12）]
+                → BuildIndexedChunks(strategy=markdown, EmbedBatch) → InsertChunks
 ```
+
+**设计决策**：
+- 整理成功（`organized=true`）时强制 `ChunkByMarkdown` 分块（按标题层级），检索质量最优；降级时沿用请求策略。
+- `content_text` 在 `CreateDocument` 时同步写入（摄取失败也保留提取结果，便于诊断）；`GetDocumentContent` RPC 供前端预览。
+- 图片 `content_text` 初始为空，视觉提取成功后经 `UpdateDocumentContent` 回写（§5.2c）；提取失败置 `status=error` 不回写。
+- OOXML 守卫：`http.DetectContentType` 对 DOCX/XLSX/PPTX 返回 `application/zip`，白名单命中 `application/zip` 时按请求 `mime_type`/扩展名二次判定，避免 Office 文件被误拒。
 
 **错误处理**：任何步骤失败 → `UpdateDocumentStatus(error, errMsg)` → goroutine 退出。
 
@@ -982,13 +1142,16 @@ IngestDocument(req)
 // internal/service/wire_providers.go — Chunker 默认 512/64 char
 // internal/service/knowledge_embedder.go — NewKnowledgeEmbedder(c *conf.Data, sys, lg)
 // internal/service/knowledge_retriever.go — NewKnowledgeRetriever(emb, repo, lg)
-// internal/service/knowledge_advanced.go — Advanced RAG 组件工厂（6 个 Provider）
+// internal/service/knowledge_advanced.go — Advanced RAG 组件工厂
 //   - NewKnowledgeHybridRetriever(retriever, sparse, lg)
 //   - NewKnowledgeQueryRewriter(llm, sys, catalog, lg)
 //   - NewKnowledgeAdaptiveRouter(hybrid, rewriter, lg)
 //   - NewKnowledgeRetrievalEvaluator(llm, sys, catalog, lg)
 //   - NewKnowledgeFederatedRetriever(router, retriever, uc, lg)
 //   - ProvideKnowledgeSearchDeps(retriever, router, evaluator) → KnowledgeSearchDeps
+//   - NewKnowledgeMarkdownOrganizer(llm, sys, catalog, lg) → MarkdownOrganizer（LLM 不可用时返回 nil）
+//   - NewKnowledgeExtractorRegistry(llm, sys, catalog, lg) → ExtractorRegistry（VisionExtractor 优先 + TextExtractor）
+//   - NewKnowledgeAssetStore(lg) → AssetStore（KRATOS_KNOWLEDGE_ASSET_DIR env > ./data/knowledge_assets）
 ```
 
 **Wire 依赖链**：
@@ -1000,6 +1163,47 @@ Embedder + Repo → Retriever → HybridRetriever → AdaptiveRouter → Federat
                                               RetrievalEvaluator
 ```
 
+### 7.4 免选择知识库（US-14，2026-07-21）
+
+> 核心理念：**存储可分类，使用免选**。Collection 是收纳分类工具（文件夹），不是使用门槛。
+
+**四条规则**：
+
+| # | 规则 | 实现位置 |
+|---|------|---------|
+| 1 | 上传免预选：`collection_id` 留空 → `EnsureDefaultCollection` 懒创建「默认知识库」后落入；前端不再静默丢弃文件 | Service `IngestDocument` |
+| 2 | 检索免选择：Search API / 工具 collection 留空 → 全库智能路由 | Service `Search`、`tools/knowledge` |
+| 3 | 智能路由策略：Route（名称/描述与 query 匹配度取 top N=3，阈值 0.3）→ 路由失败/无匹配降级 Broadcast；复用 `FederatedRetriever.SearchWithOptions`（§5.10） | FederatedRetriever |
+| 4 | 文档可归档：MoveDocument 跨库移动（默认库收件箱 → 分类库），chunks 随迁 + 计数校正 | `MoveDocument` RPC |
+
+**全库路由解析顺序**（工具与 Search API 共用）：
+
+```
+collection 留空
+  ├── scoped（Agent 绑定 knowledge_bases）== 1 → 单库直搜（现状）
+  ├── scoped > 1 → FederatedRetriever Route（scoped 内）
+  └── scoped == 0 → ListCollections 全量 → FederatedRetriever Route（全库）
+        ├── 无 Collection → 返回空结果（不报错）
+        ├── Route 无匹配（全部 < 阈值）→ 降级 Broadcast 全库并行
+        └── 部分库失败 → FlowLog 警告，返回成功库结果（§5.10 现状）
+```
+
+**关键设计决策**：
+
+- **默认知识库懒创建**：首个免选上传时创建（`name="默认知识库"`，`embedding_model`/`dim` 取当前 Embedder 配置）；按 name 查找复用，不引入 is_default 标记列（避免 Schema 变更 + 多默认库歧义）。
+- **MoveDocument dim 校验**：目标库 `dim` 与源库不一致时拒绝移动（`CodeConflict`）——pgvector 列维度固定，跨 dim 移动会导致向量不可检索；用户需删除后重新入库。同 dim 移动保留原向量，无需重 embedding。
+- **MoveDocument 事务**：单事务内 `UPDATE knowledge_documents.collection_id` + `UPDATE knowledge_chunks.collection_id` + 源库计数 `-1/-chunkCount` + 目标库计数 `+1/+chunkCount`，失败整体回滚。
+- **工具零库行为**：系统无任何 Collection 时工具返回 `chunks=[]` 空结果而非错误——LLM 可继续无知识回答，不阻塞会话。
+- **scoped 语义不变**：Agent 绑定 knowledge_bases 仍作为范围限定（越权校验保留）；未绑定 = 全库可搜，这是 US-14 的默认路径。
+- **兼容性**：proto 仅去除 REQUIRED 标注（field number 不变），已绑定 Agent 与显式传 collection_id 的调用行为完全不变。
+
+**前端配套**：
+
+- 上传：未选中 Collection 时照常上传（不传 collection_id），队列项标注「默认知识库」；上传完成后自动选中该库刷新列表。
+- 搜索面板：Collection 下拉首项「全部知识库」（值为空），默认选中。
+- 文档列表：行内「移动到…」菜单 → 对话框选目标库（过滤当前库 + dim 不兼容库禁用并提示）→ MoveDocument。
+- Agent 编辑器：knowledge_bases 绑定从基础配置折叠到「高级配置」分区，默认空（全库可搜）。
+
 ---
 
 ## 八、前端集成
@@ -1009,7 +1213,8 @@ Embedder + Repo → Retriever → HybridRetriever → AdaptiveRouter → Federat
 | 函数 | 说明 |
 |------|------|
 | `listCollections` / `getCollection` / `createCollection` / `deleteCollection` | 集合 CRUD |
-| `listDocuments` / `ingestDocument` / `deleteDocument` | 文档 CRUD |
+| `listDocuments` / `ingestDocument` / `deleteDocument` | 文档 CRUD（`ingestDocument` 支持 `organize_to_markdown` 参数） |
+| `getDocumentContent` | 预览整理后 MD 全文（content_text） |
 | `searchKnowledge` | 语义搜索 |
 | `getEmbedderConfig` / `updateEmbedderConfig` | Embedder 管理 |
 
@@ -1020,6 +1225,9 @@ Embedder + Repo → Retriever → HybridRetriever → AdaptiveRouter → Federat
 | `web/src/stores/knowledge/index.ts` | Pinia Store |
 | `web/src/pages/KnowledgePage.vue` | 管理页（路由 `/knowledge`） |
 | `web/src/components/knowledge/*` | 集合列表、文档、检索、Embedder、入库对话框 |
+| `web/src/components/knowledge/KnowledgeDropZone.vue` | 拖拽上传区（多文件批量、自动推断 source/mime、默认整理为 MD） |
+| `web/src/components/knowledge/KnowledgeUploadQueue.vue` | 上传队列（逐文件状态卡片，复用 WS 事件刷新） |
+| `web/src/components/knowledge/KnowledgeDocPreviewDialog.vue` | MD 全文预览对话框 |
 | `web/src/features/knowledge/useKnowledgeIngestWs.ts` | WS 入库进度（EP-KN-02） |
 
 ### 8.3 摄取进度 WS 事件（EP-KN-02）
@@ -1083,18 +1291,19 @@ Factory 负责根据配置构建 `knowledge.Knowledge` 实例：创建 Embedder�
 
 ### 9.4 OCR / Extractor
 
-- OCR：`internal/knowledge/ocr.go` 已实现 `OCRProvider` 接口和工厂函数 `NewOCRProviderFromEnv()`。
-  - 环境变量 `KNOWLEDGE_OCR`：`stub` / `placeholder` / `tesseract` / `docling`。
-  - 当前所有值均回落到 `stubOCR`（返回占位文本），tesseract/docling 后端待接入。
-  - `noopOCR`（默认）：静默返回空字符串。
-  - `ExtractDocumentTextWithOCR` 支持注入自定义 OCR provider。
-- Extractor：集成 `knowledge/extractor/docling`，PDF/图片 → Markdown（未实现）。
+> **2026-07-20 裁决**：OCR 路线由「多模态 LLM 视觉理解」取代 tesseract/docling 依赖。统一摄取管线分两阶段落地：
+> - **Phase 1（文本类）**：Extractor 接口抽象（§5.2）+ TextExtractor + MarkdownOrganizer（§5.2b）+ 拖拽批量上传 + content_text 预览。
+> - **Phase 2（多模态）**：VisionExtractor（§5.2c）+ 白名单放开 image/* + asset_uri 原图血缘。
+> - 原 `ocr.go` stub 废弃；docling 仅留作 PDF 版面保真的后续独立增强（可选）。
 
 ### 9.5 多租户隔离
 
 SearchFilter 增加 `tenant_id`，向量存储按租户分区，API 层强制注入。
 
 ### 9.6 GraphRAG — 知识图谱增强
+
+> **2026-07-20 定位裁决（用户确认）**：GraphRAG 为 **Phase 3 可选增强**，工程上暂缓。
+> **架构纪律：旁路非侵入**——图谱从已入库的 chunks 异步构建（实体/关系提取复用 LLMResolver），写入独立表，检索时以 `GraphAugmentedRetriever` 包裹现有 Router 外层。**绝不嵌入摄取主链路**，统一摄取管线（Phase 1/2）不依赖图谱的任何部分；Chunk metadata 已有的 `doc_id`/`collection_id` 即为图谱回链所需的全部预留。
 
 > 目标：引入知识图谱层，支撑多跳推理和实体关系查询。
 

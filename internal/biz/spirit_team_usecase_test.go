@@ -370,6 +370,9 @@ func (m *memSpiritSessionRepo) LatestSessionSummaryTime(_ context.Context, _ str
 func (m *memSpiritSessionRepo) InsertSessionSummary(_ context.Context, _ SessionSummary) error {
 	return nil
 }
+func (m *memSpiritSessionRepo) DeleteSessionSummaries(_ context.Context, _ string) error {
+	return nil
+}
 func (m *memSpiritSessionRepo) UpdateSessionListSummary(_ context.Context, _, _ string) error {
 	return nil
 }

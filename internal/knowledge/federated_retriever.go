@@ -68,6 +68,29 @@ func (f *FederatedRetriever) Search(ctx context.Context, collectionIDs []string,
 	return f.searchBroadcast(ctx, collectionIDs, q, rewriteResult, modeOverride)
 }
 
+// SearchAll 全库智能路由（US-14 检索免选择）：枚举全部 Collection → Route 策略
+// （名称/描述与 query 匹配度取 top N，阈值 0.3；无匹配自动降级 Broadcast）。
+// 系统无任何 Collection 时返回空结果而非错误——LLM 可继续无知识回答，不阻塞会话。
+func (f *FederatedRetriever) SearchAll(ctx context.Context, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode) ([]biz.KnowledgeChunk, error) {
+	if f.meta == nil {
+		return nil, apierror.Unavailable(apierror.DomainKnowledge, "federated_retriever: collection meta not configured")
+	}
+	cols, _, err := f.meta.ListCollections(ctx, "", 1000, 0)
+	if err != nil {
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainKnowledge)
+	}
+	ids := make([]string, 0, len(cols))
+	for _, c := range cols {
+		ids = append(ids, c.ID)
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	opts := DefaultFederatedSearchOptions()
+	opts.Strategy = FederationRoute
+	return f.SearchWithOptions(ctx, ids, q, rewriteResult, modeOverride, opts)
+}
+
 func (f *FederatedRetriever) SearchWithOptions(ctx context.Context, collectionIDs []string, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode, opts FederatedSearchOptions) ([]biz.KnowledgeChunk, error) {
 	if len(collectionIDs) == 0 {
 		return nil, apierror.BadRequest(apierror.DomainKnowledge, "federated_retriever: at least one collection_id required")

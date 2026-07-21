@@ -603,9 +603,10 @@ type SummaryReader interface {
     LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
 }
 
-// Stability:stable — 摘要写入（3 方法）
+// Stability:stable — 摘要写入（4 方法）
 type SummaryWriter interface {
     InsertSessionSummary(ctx context.Context, row SessionSummary) error
+    DeleteSessionSummaries(ctx context.Context, sessionID string) error // 递归合并时清除被吸收的旧摘要
     UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
     SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
 }
@@ -1775,8 +1776,38 @@ func NewSessionCompressionUsecase(
 
 ### 6.6 多条 session_summaries 合并策略
 
-- **A. 区间链式（首版推荐）**：保留多条记录，装配时按 `from_turn` 排序拼接为一块「历史摘要」文本。逻辑清晰且易于回放；metadata 中记录 `supersedes_id` 以备迁移。
-- **B. 单条滚动（二期演进）**：每次压缩后把旧摘要 + 新区间对话一并输入，产出一条覆盖 `[0, current_to]` 的新摘要并 supersede 旧指针。token 更省，单次成本高。
+- **A. 区间链式（已废弃）**：~~保留多条记录，装配时按 `from_turn` 排序拼接~~。已被 B 替代（2026-07-20，Grok 借鉴 Phase 2）。
+- **B. 单条滚动（已实现 ✅）**：LLM 压缩时传入 `PriorSummary` 吸收合并历史摘要，产出一条覆盖 `[earliest_from, current_to]` 的新摘要；事务内 `DeleteSessionSummaries` 删除旧摘要行、写入单行合并行。防止摘要无限拼接增长。
+  - **吸收条件**：仅当 LLM 真实产出摘要（`llmSucceeded`）才置 `absorbedPriors=true`；hybrid 策略 LLM 失败落兜底标记（`[Earlier turns trimmed per hybrid policy]`）时不吸收、不删旧行（标记不含历史内容，删除会丢数据）。
+
+### 6.6.1 摘要质量门（已实现 ✅）
+
+移植自 Grok `code_compaction/config.rs`，三道防线均为零副作用纯函数（`internal/session/compress_quality.go`）：
+
+| 防线 | 机制 | 参数 |
+|------|------|------|
+| 退化检测 | 摘要 rune 数 < 200 且原文 ≥ 1000 runes → 判退化，重试 | `minSummarySeedChars=200`, `minTranscriptCharsForGuard=1000` |
+| 减量守卫 | 摘要 est tokens ≥ 原文 80% → 丢弃结果 | `maxSummaryReductionRatio=0.8` |
+| 错误分类 | 确定性（上下文溢出/鉴权/参数错误）→ 不重试；瞬态 → 重试 ≤2 次 | `llmCompressMaxAttempts=2` |
+
+### 6.6.2 压缩失败抑制（已实现 ✅）
+
+移植自 Grok `auto_compact_suppressed`（`internal/session/compress_suppress.go`）：
+
+| 失败类型 | 抑制策略 | 解除条件 |
+|----------|----------|----------|
+| 确定性（deterministic） | sticky 抑制（不受 minGap 影响） | 压缩模型切换自动解除 |
+| 瞬态（transient） | minGap 退避 | 超过 minGap 后放行 |
+
+手动 `/compact` 与 durable turn（`forced=true`）绕过抑制。抑制为进程内内存态，重启后重新尝试一次再抑制。
+
+### 6.6.3 双锚点 token 估算校准（已实现 ✅）
+
+压缩 LLM 成功返回后，用权威 `prompt_tokens` 校准共享估算器（`internal/llmcontext/token_estimator.go`）：
+
+- **默认比率**：2.5 chars/token（CJK/英文混合）
+- **校准路径**：`compress/service.go` → `llmcontext.RecordAuthoritativeUsage(ptok, chars)`
+- **注意**：共享估算器为进程级单例，多模型混用时比率漂移（与 Grok 同语义，接受近似）
 
 ### 6.7 与 Runner 会话持久态的关系
 
@@ -1820,7 +1851,11 @@ context_used_ratio = prompt_tokens / context_window_tokens
 4. agent 配置中的 `context_window`
 5. provider preset 的默认值（128000）
 
+**观测/执行路径对齐**：分母解析（观测）与 LLM 实际调用（执行）必须解析到同一模型。`biz.ResolveProviderModel`（`internal/biz/chat_provider_model.go`）解析时校验 catalog：agent/session 配置的 provider/model **不在 catalog** 时按 RefineLLM → 首个启用模型回退（单 Agent 与 Team 路径共用 `ResolveProviderModelWithFallback`），避免「执行用回退模型、观测用配置模型窗口」导致 ratio 失真（如配置 64K 而实际执行模型为 1M 时显示虚高的 100%+）。
+
 **实现**：`llmcontext.ResolveWindow`（`internal/llmcontext/window.go`）在每次 native turn 与 `runner_completion` 投影时解析分母；`context_used_tokens` **仅**由 `UpdateSessionContextFromLLMUsage` 写入本次 LLM 的 `prompt_tokens`（ReAct 多步取 **turn 内最大 prompt**），消息落库时不再累加。
+
+**真实比例（不钳制）**：`llmcontext.ContextRatio` 返回真实值（可 >1），前端 `contextMetrics.ts` 同步不 clamp；超窗口时 UI 显示真实百分比（如 156%），由 `exceeded` 状态色表达，不再封顶 100%。
 
 **WS 契约**：`context_usage` 在 ReAct 多步 LLM 每次 prompt 峰值上升时推送（仅更新 context 条，不累加 session total）；`runner_completion.usage` 携带 `context_prompt_tokens`、`max_tokens`、`turn_total_tokens`。
 

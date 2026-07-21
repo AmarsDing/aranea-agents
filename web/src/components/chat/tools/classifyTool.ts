@@ -22,6 +22,7 @@ export type ToolCategory =
   | 'mcp'
   | 'code'
   | 'todo'
+  | 'media'
   | 'other';
 
 /** Shell command execution tools. */
@@ -101,6 +102,9 @@ const CODE_TOOLS = new Set([
 /** Todo management tools. */
 const TODO_TOOLS = new Set(['todo_write', 'todo_read', 'todo_update', 'task_create', 'task_update', 'task_complete']);
 
+/** Media generation tools. */
+const MEDIA_TOOLS = new Set(['generate_image', 'generate_video', 'image_to_video']);
+
 /** MCP tool name prefix (case-insensitive). */
 const MCP_PREFIXES = ['mcp_', 'mcp.', 'mcp/'];
 
@@ -126,6 +130,8 @@ export function classifyTool(toolName: string | undefined | null): ToolCategory 
   // MCP tools conventionally start with `mcp_` / `mcp.` / `mcp/`.
   if (MCP_PREFIXES.some((p) => name.startsWith(p))) return 'mcp';
 
+  if (MEDIA_TOOLS.has(name)) return 'media';
+
   return 'other';
 }
 
@@ -140,5 +146,6 @@ export const TOOL_CATEGORY_ICON: Record<ToolCategory, string> = {
   mcp: '🔌',
   code: '💻',
   todo: '📋',
+  media: '🎨',
   other: '🔧',
 };

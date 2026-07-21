@@ -24,6 +24,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/internal/toolcache"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
+	"trpc.group/trpc-go/trpc-agent-go/tool/internal/textfile"
 )
 
 // readFileRequest represents the input for the read file operation.
@@ -38,8 +39,8 @@ type readFileResponse struct {
 	BaseDirectory string `json:"base_directory"`
 	FileName      string `json:"file_name"`
 	Contents      string `json:"contents"`
-	Message       string `json:"message"`
 	MtimeMs       int64  `json:"mtime_ms,omitempty"`
+	Message       string `json:"message"`
 }
 
 // readFile performs the read file operation.
@@ -250,7 +251,13 @@ func (f *fileToolSet) readFileFromDiskOrCache(
 		return err
 	}
 	rsp.MtimeMs = stat.ModTime().UnixMilli()
-	f.storeFileViewAfterRead(ctx, filePath, string(contents), rsp.MtimeMs, stat.Mode(), contents)
+	toolcache.StoreFileViewFromContext(ctx, filePath, toolcache.FileView{
+		Content:    textfile.NormalizeNewlines(string(contents)),
+		MtimeMs:    rsp.MtimeMs,
+		Encoding:   "utf8",
+		LineEnding: textfile.DetectLineEnding(contents),
+		Mode:       stat.Mode(),
+	})
 	chunk, startLine, endLine, total, empty, err := f.sliceReadFile(
 		req,
 		string(contents),

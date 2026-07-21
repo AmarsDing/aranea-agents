@@ -276,7 +276,6 @@ func fromEntEvolution(e *ent.AgentRuntimeSetting) biz.EvolutionCfg {
 func fromEntContext(e *ent.AgentRuntimeSetting) biz.ContextCfg {
 	return biz.ContextCfg{
 		CompactionEnabled:          e.ContextCompactionEnabled,
-		MicroCompactEnabled:        e.MicroCompactEnabled,
 		MemoryCompactEnabled:       e.MemoryCompactEnabled,
 		ToolResultGateEnabled:      e.ToolResultGateEnabled,
 		CompressLLMCacheEnabled:    e.CompressLlmCacheEnabled,
@@ -420,7 +419,6 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetVariablesJSON(normalizeJSONObj(v.VariablesJSON)).
 		SetModelInstructionsJSON(normalizeJSONObj(v.ModelInstructionsJSON)).
 		SetContextCompactionEnabled(v.ContextCompactionEnabled).
-		SetMicroCompactEnabled(v.MicroCompactEnabled).
 		SetMemoryCompactEnabled(v.MemoryCompactEnabled).
 		SetToolResultGateEnabled(v.ToolResultGateEnabled).
 		SetCompressLlmCacheEnabled(v.CompressLLMCacheEnabled).
@@ -533,8 +531,8 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 	if q.Limit <= 0 {
 		q.Limit = 24
 	}
-	if q.Limit > 100 {
-		q.Limit = 100
+	if q.Limit > 500 {
+		q.Limit = 500
 	}
 	if q.Offset < 0 {
 		q.Offset = 0

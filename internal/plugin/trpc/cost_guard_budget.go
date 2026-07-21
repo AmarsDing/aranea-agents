@@ -35,14 +35,14 @@ type costGuardPersistEntry struct {
 // The current model treats the in-memory counter as the optimistic
 // reservation and the DB as the authoritative ledger. To keep them
 // consistent:
-//   1. persistAdd escalates to synchronous write when the async channel
-//      is full (no silent drop).
-//   2. TryConsume rolls back the in-memory reservation if both async
-//      queueing and synchronous write fail (fail-closed).
-//   3. flushPersist re-queues failed DB writes to a bounded retry channel
-//      drained by retryWorker with backoff.
-//   4. Close drains both persistCh and retryCh so shutdown does not lose
-//      pending entries.
+//  1. persistAdd escalates to synchronous write when the async channel
+//     is full (no silent drop).
+//  2. TryConsume rolls back the in-memory reservation if both async
+//     queueing and synchronous write fail (fail-closed).
+//  3. flushPersist re-queues failed DB writes to a bounded retry channel
+//     drained by retryWorker with backoff.
+//  4. Close drains both persistCh and retryCh so shutdown does not lose
+//     pending entries.
 type CostGuardBudgetTracker struct {
 	mu       sync.Mutex
 	day      string

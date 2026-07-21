@@ -135,7 +135,7 @@ func (r *graphNodeV2Repo) UpsertGraphNode(ctx context.Context, gn biz.GraphNode)
 		SetStatus(string(gn.Status)).
 		Save(ctx)
 	if err != nil {
-		if ent.IsConstraintError(err) {
+		if ent.IsConstraintError(err) || isPgUniqueViolation(err) {
 			existing, getErr := r.data.RW().Read(ctx).GraphNodeV2.Get(ctx, gn.ID)
 			if getErr != nil {
 				return biz.GraphNode{}, entErrToBizErr(getErr, "GRAPH_NODE_V2")

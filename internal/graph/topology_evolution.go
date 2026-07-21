@@ -44,9 +44,9 @@ type TopologyEvolver interface {
 // TopologyEvolverImpl implements TopologyEvolver using LLM-based edge decisions.
 // It tracks edges added per execution ID to prevent duplicates.
 type TopologyEvolverImpl struct {
-	llm       trpcmodel.Model
-	eventBus  biz.EventBus
-	lg        loggateway.Logger
+	llm      trpcmodel.Model
+	eventBus biz.EventBus
+	lg       loggateway.Logger
 
 	mu         sync.Mutex
 	addedEdges map[string]map[string]bool // execID -> "from->to" -> added

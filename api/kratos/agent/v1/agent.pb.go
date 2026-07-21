@@ -109,7 +109,6 @@ type AgentRuntimeSettings struct {
 	VariablesJson                     string                 `protobuf:"bytes,80,opt,name=variables_json,json=variablesJson,proto3" json:"variables_json,omitempty"`
 	ModelInstructionsJson             string                 `protobuf:"bytes,81,opt,name=model_instructions_json,json=modelInstructionsJson,proto3" json:"model_instructions_json,omitempty"`
 	ContextCompactionEnabled          bool                   `protobuf:"varint,82,opt,name=context_compaction_enabled,json=contextCompactionEnabled,proto3" json:"context_compaction_enabled,omitempty"`
-	MicroCompactEnabled               bool                   `protobuf:"varint,121,opt,name=micro_compact_enabled,json=microCompactEnabled,proto3" json:"micro_compact_enabled,omitempty"`
 	MemoryCompactEnabled              bool                   `protobuf:"varint,122,opt,name=memory_compact_enabled,json=memoryCompactEnabled,proto3" json:"memory_compact_enabled,omitempty"`
 	ToolResultGateEnabled             bool                   `protobuf:"varint,123,opt,name=tool_result_gate_enabled,json=toolResultGateEnabled,proto3" json:"tool_result_gate_enabled,omitempty"`
 	SessionSummaryEnabled             bool                   `protobuf:"varint,83,opt,name=session_summary_enabled,json=sessionSummaryEnabled,proto3" json:"session_summary_enabled,omitempty"`
@@ -791,13 +790,6 @@ func (x *AgentRuntimeSettings) GetModelInstructionsJson() string {
 func (x *AgentRuntimeSettings) GetContextCompactionEnabled() bool {
 	if x != nil {
 		return x.ContextCompactionEnabled
-	}
-	return false
-}
-
-func (x *AgentRuntimeSettings) GetMicroCompactEnabled() bool {
-	if x != nil {
-		return x.MicroCompactEnabled
 	}
 	return false
 }
@@ -3980,7 +3972,7 @@ var File_kratos_agent_v1_agent_proto protoreflect.FileDescriptor
 
 const file_kratos_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x1bkratos/agent/v1/agent.proto\x12\x0fkratos.agent.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x934\n" +
+	"\x1bkratos/agent/v1/agent.proto\x12\x0fkratos.agent.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xe53\n" +
 	"\x14AgentRuntimeSettings\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x1f\n" +
 	"\vself_evolve\x18\x02 \x01(\bR\n" +
@@ -4075,8 +4067,7 @@ const file_kratos_agent_v1_agent_proto_rawDesc = "" +
 	"\x13intent_pass_enabled\x18O \x01(\bH\x00R\x11intentPassEnabled\x88\x01\x01\x12%\n" +
 	"\x0evariables_json\x18P \x01(\tR\rvariablesJson\x126\n" +
 	"\x17model_instructions_json\x18Q \x01(\tR\x15modelInstructionsJson\x12<\n" +
-	"\x1acontext_compaction_enabled\x18R \x01(\bR\x18contextCompactionEnabled\x122\n" +
-	"\x15micro_compact_enabled\x18y \x01(\bR\x13microCompactEnabled\x124\n" +
+	"\x1acontext_compaction_enabled\x18R \x01(\bR\x18contextCompactionEnabled\x124\n" +
 	"\x16memory_compact_enabled\x18z \x01(\bR\x14memoryCompactEnabled\x127\n" +
 	"\x18tool_result_gate_enabled\x18{ \x01(\bR\x15toolResultGateEnabled\x126\n" +
 	"\x17session_summary_enabled\x18S \x01(\bR\x15sessionSummaryEnabled\x12&\n" +
@@ -4125,7 +4116,7 @@ const file_kratos_agent_v1_agent_proto_rawDesc = "" +
 	"\x1esubagents_stored_summary_runes\x18~ \x01(\x05R\x1bsubagentsStoredSummaryRunes\x12>\n" +
 	"\x1bverification_truncate_chars\x18\x7f \x01(\x05R\x19verificationTruncateChars\x12-\n" +
 	"\x12l1_history_enabled\x18\x83\x01 \x01(\bR\x10l1HistoryEnabledB\x16\n" +
-	"\x14_intent_pass_enabled\"\xc1\x01\n" +
+	"\x14_intent_pass_enabledJ\x04\by\x10z\"\xc1\x01\n" +
 	"\x0fAgentPromptFile\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
 	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x12\n" +

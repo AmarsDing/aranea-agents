@@ -11,6 +11,7 @@ import (
 
 	"aranea-agents/internal/data/ent/migrate"
 
+	"aranea-agents/internal/data/ent/activity"
 	"aranea-agents/internal/data/ent/admin"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/agentperformance"
@@ -33,7 +34,6 @@ import (
 	"aranea-agents/internal/data/ent/evalcaseresult"
 	"aranea-agents/internal/data/ent/evaldataset"
 	"aranea-agents/internal/data/ent/evalrun"
-	"aranea-agents/internal/data/ent/eventdeliveryoutbox"
 	"aranea-agents/internal/data/ent/evolutionsuggestion"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/failurepattern"
@@ -51,6 +51,7 @@ import (
 	"aranea-agents/internal/data/ent/graphtaskrun"
 	"aranea-agents/internal/data/ent/healrecord"
 	"aranea-agents/internal/data/ent/llmprovidermodel"
+	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
 	"aranea-agents/internal/data/ent/modelpricingrule"
 	"aranea-agents/internal/data/ent/modeltokenusagehourly"
@@ -94,6 +95,7 @@ import (
 	"aranea-agents/internal/data/ent/teamrunv2"
 	"aranea-agents/internal/data/ent/teamstagev2"
 	"aranea-agents/internal/data/ent/toolagentoverride"
+	"aranea-agents/internal/data/ent/toolgrant"
 	"aranea-agents/internal/data/ent/toolinvocation"
 	"aranea-agents/internal/data/ent/toolinvocationaudit"
 	"aranea-agents/internal/data/ent/toolinvocationparam"
@@ -116,6 +118,8 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// Activity is the client for interacting with the Activity builders.
+	Activity *ActivityClient
 	// Admin is the client for interacting with the Admin builders.
 	Admin *AdminClient
 	// Agent is the client for interacting with the Agent builders.
@@ -160,8 +164,6 @@ type Client struct {
 	EvalDataset *EvalDatasetClient
 	// EvalRun is the client for interacting with the EvalRun builders.
 	EvalRun *EvalRunClient
-	// EventDeliveryOutbox is the client for interacting with the EventDeliveryOutbox builders.
-	EventDeliveryOutbox *EventDeliveryOutboxClient
 	// EvolutionSuggestion is the client for interacting with the EvolutionSuggestion builders.
 	EvolutionSuggestion *EvolutionSuggestionClient
 	// ExperienceReport is the client for interacting with the ExperienceReport builders.
@@ -196,6 +198,8 @@ type Client struct {
 	HealRecord *HealRecordClient
 	// LlmProviderModel is the client for interacting with the LlmProviderModel builders.
 	LlmProviderModel *LlmProviderModelClient
+	// MediaProvider is the client for interacting with the MediaProvider builders.
+	MediaProvider *MediaProviderClient
 	// MemberSessionV2 is the client for interacting with the MemberSessionV2 builders.
 	MemberSessionV2 *MemberSessionV2Client
 	// ModelPricingRule is the client for interacting with the ModelPricingRule builders.
@@ -282,6 +286,8 @@ type Client struct {
 	TeamStageV2 *TeamStageV2Client
 	// ToolAgentOverride is the client for interacting with the ToolAgentOverride builders.
 	ToolAgentOverride *ToolAgentOverrideClient
+	// ToolGrant is the client for interacting with the ToolGrant builders.
+	ToolGrant *ToolGrantClient
 	// ToolInvocation is the client for interacting with the ToolInvocation builders.
 	ToolInvocation *ToolInvocationClient
 	// ToolInvocationAudit is the client for interacting with the ToolInvocationAudit builders.
@@ -309,6 +315,7 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.Activity = NewActivityClient(c.config)
 	c.Admin = NewAdminClient(c.config)
 	c.Agent = NewAgentClient(c.config)
 	c.AgentPerformance = NewAgentPerformanceClient(c.config)
@@ -331,7 +338,6 @@ func (c *Client) init() {
 	c.EvalCaseResult = NewEvalCaseResultClient(c.config)
 	c.EvalDataset = NewEvalDatasetClient(c.config)
 	c.EvalRun = NewEvalRunClient(c.config)
-	c.EventDeliveryOutbox = NewEventDeliveryOutboxClient(c.config)
 	c.EvolutionSuggestion = NewEvolutionSuggestionClient(c.config)
 	c.ExperienceReport = NewExperienceReportClient(c.config)
 	c.FailurePattern = NewFailurePatternClient(c.config)
@@ -349,6 +355,7 @@ func (c *Client) init() {
 	c.GraphTaskRun = NewGraphTaskRunClient(c.config)
 	c.HealRecord = NewHealRecordClient(c.config)
 	c.LlmProviderModel = NewLlmProviderModelClient(c.config)
+	c.MediaProvider = NewMediaProviderClient(c.config)
 	c.MemberSessionV2 = NewMemberSessionV2Client(c.config)
 	c.ModelPricingRule = NewModelPricingRuleClient(c.config)
 	c.ModelTokenUsageHourly = NewModelTokenUsageHourlyClient(c.config)
@@ -392,6 +399,7 @@ func (c *Client) init() {
 	c.TeamRunV2 = NewTeamRunV2Client(c.config)
 	c.TeamStageV2 = NewTeamStageV2Client(c.config)
 	c.ToolAgentOverride = NewToolAgentOverrideClient(c.config)
+	c.ToolGrant = NewToolGrantClient(c.config)
 	c.ToolInvocation = NewToolInvocationClient(c.config)
 	c.ToolInvocationAudit = NewToolInvocationAuditClient(c.config)
 	c.ToolInvocationParam = NewToolInvocationParamClient(c.config)
@@ -492,6 +500,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:                        ctx,
 		config:                     cfg,
+		Activity:                   NewActivityClient(cfg),
 		Admin:                      NewAdminClient(cfg),
 		Agent:                      NewAgentClient(cfg),
 		AgentPerformance:           NewAgentPerformanceClient(cfg),
@@ -514,7 +523,6 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		EvalCaseResult:             NewEvalCaseResultClient(cfg),
 		EvalDataset:                NewEvalDatasetClient(cfg),
 		EvalRun:                    NewEvalRunClient(cfg),
-		EventDeliveryOutbox:        NewEventDeliveryOutboxClient(cfg),
 		EvolutionSuggestion:        NewEvolutionSuggestionClient(cfg),
 		ExperienceReport:           NewExperienceReportClient(cfg),
 		FailurePattern:             NewFailurePatternClient(cfg),
@@ -532,6 +540,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		GraphTaskRun:               NewGraphTaskRunClient(cfg),
 		HealRecord:                 NewHealRecordClient(cfg),
 		LlmProviderModel:           NewLlmProviderModelClient(cfg),
+		MediaProvider:              NewMediaProviderClient(cfg),
 		MemberSessionV2:            NewMemberSessionV2Client(cfg),
 		ModelPricingRule:           NewModelPricingRuleClient(cfg),
 		ModelTokenUsageHourly:      NewModelTokenUsageHourlyClient(cfg),
@@ -575,6 +584,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		TeamRunV2:                  NewTeamRunV2Client(cfg),
 		TeamStageV2:                NewTeamStageV2Client(cfg),
 		ToolAgentOverride:          NewToolAgentOverrideClient(cfg),
+		ToolGrant:                  NewToolGrantClient(cfg),
 		ToolInvocation:             NewToolInvocationClient(cfg),
 		ToolInvocationAudit:        NewToolInvocationAuditClient(cfg),
 		ToolInvocationParam:        NewToolInvocationParamClient(cfg),
@@ -602,6 +612,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:                        ctx,
 		config:                     cfg,
+		Activity:                   NewActivityClient(cfg),
 		Admin:                      NewAdminClient(cfg),
 		Agent:                      NewAgentClient(cfg),
 		AgentPerformance:           NewAgentPerformanceClient(cfg),
@@ -624,7 +635,6 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		EvalCaseResult:             NewEvalCaseResultClient(cfg),
 		EvalDataset:                NewEvalDatasetClient(cfg),
 		EvalRun:                    NewEvalRunClient(cfg),
-		EventDeliveryOutbox:        NewEventDeliveryOutboxClient(cfg),
 		EvolutionSuggestion:        NewEvolutionSuggestionClient(cfg),
 		ExperienceReport:           NewExperienceReportClient(cfg),
 		FailurePattern:             NewFailurePatternClient(cfg),
@@ -642,6 +652,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		GraphTaskRun:               NewGraphTaskRunClient(cfg),
 		HealRecord:                 NewHealRecordClient(cfg),
 		LlmProviderModel:           NewLlmProviderModelClient(cfg),
+		MediaProvider:              NewMediaProviderClient(cfg),
 		MemberSessionV2:            NewMemberSessionV2Client(cfg),
 		ModelPricingRule:           NewModelPricingRuleClient(cfg),
 		ModelTokenUsageHourly:      NewModelTokenUsageHourlyClient(cfg),
@@ -685,6 +696,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		TeamRunV2:                  NewTeamRunV2Client(cfg),
 		TeamStageV2:                NewTeamStageV2Client(cfg),
 		ToolAgentOverride:          NewToolAgentOverrideClient(cfg),
+		ToolGrant:                  NewToolGrantClient(cfg),
 		ToolInvocation:             NewToolInvocationClient(cfg),
 		ToolInvocationAudit:        NewToolInvocationAuditClient(cfg),
 		ToolInvocationParam:        NewToolInvocationParamClient(cfg),
@@ -699,7 +711,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		Admin.
+//		Activity.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -722,16 +734,16 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Admin, c.Agent, c.AgentPerformance, c.AgentPromptFile, c.AgentRuntimeSetting,
-		c.AgentTemplate, c.AllocationPlan, c.AvatarAsset, c.BackgroundJob,
-		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
-		c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam, c.CronTask,
-		c.CronTaskRun, c.EvalCase, c.EvalCaseResult, c.EvalDataset, c.EvalRun,
-		c.EventDeliveryOutbox, c.EvolutionSuggestion, c.ExperienceReport,
-		c.FailurePattern, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
-		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
-		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
-		c.GraphTaskRun, c.HealRecord, c.LlmProviderModel, c.MemberSessionV2,
+		c.Activity, c.Admin, c.Agent, c.AgentPerformance, c.AgentPromptFile,
+		c.AgentRuntimeSetting, c.AgentTemplate, c.AllocationPlan, c.AvatarAsset,
+		c.BackgroundJob, c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt,
+		c.ChannelRuntimeLease, c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam,
+		c.CronTask, c.CronTaskRun, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
+		c.EvalRun, c.EvolutionSuggestion, c.ExperienceReport, c.FailurePattern,
+		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
+		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
+		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
+		c.HealRecord, c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2,
 		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
 		c.OrchestrationStep, c.Organization, c.PlanBoardV2, c.PlanStepV2,
 		c.PlatformChannel, c.PlatformChannelCredential, c.PlatformChannelDelivery,
@@ -742,9 +754,9 @@ func (c *Client) Use(hooks ...Hook) {
 		c.SessionTurn, c.SessionV2, c.SkillEvolutionSuggestion, c.SkillImportJob,
 		c.SkillInvocation, c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter,
 		c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2,
-		c.TeamStageV2, c.ToolAgentOverride, c.ToolInvocation, c.ToolInvocationAudit,
-		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
-		c.UsageQuota, c.UserEmbeddingSetting,
+		c.TeamStageV2, c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation,
+		c.ToolInvocationAudit, c.ToolInvocationParam, c.ToolResultBlob,
+		c.ToolResultReplacement, c.TurnV2, c.UsageQuota, c.UserEmbeddingSetting,
 	} {
 		n.Use(hooks...)
 	}
@@ -754,16 +766,16 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Admin, c.Agent, c.AgentPerformance, c.AgentPromptFile, c.AgentRuntimeSetting,
-		c.AgentTemplate, c.AllocationPlan, c.AvatarAsset, c.BackgroundJob,
-		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
-		c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam, c.CronTask,
-		c.CronTaskRun, c.EvalCase, c.EvalCaseResult, c.EvalDataset, c.EvalRun,
-		c.EventDeliveryOutbox, c.EvolutionSuggestion, c.ExperienceReport,
-		c.FailurePattern, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
-		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
-		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
-		c.GraphTaskRun, c.HealRecord, c.LlmProviderModel, c.MemberSessionV2,
+		c.Activity, c.Admin, c.Agent, c.AgentPerformance, c.AgentPromptFile,
+		c.AgentRuntimeSetting, c.AgentTemplate, c.AllocationPlan, c.AvatarAsset,
+		c.BackgroundJob, c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt,
+		c.ChannelRuntimeLease, c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam,
+		c.CronTask, c.CronTaskRun, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
+		c.EvalRun, c.EvolutionSuggestion, c.ExperienceReport, c.FailurePattern,
+		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
+		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
+		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
+		c.HealRecord, c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2,
 		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
 		c.OrchestrationStep, c.Organization, c.PlanBoardV2, c.PlanStepV2,
 		c.PlatformChannel, c.PlatformChannelCredential, c.PlatformChannelDelivery,
@@ -774,9 +786,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.SessionTurn, c.SessionV2, c.SkillEvolutionSuggestion, c.SkillImportJob,
 		c.SkillInvocation, c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter,
 		c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2,
-		c.TeamStageV2, c.ToolAgentOverride, c.ToolInvocation, c.ToolInvocationAudit,
-		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
-		c.UsageQuota, c.UserEmbeddingSetting,
+		c.TeamStageV2, c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation,
+		c.ToolInvocationAudit, c.ToolInvocationParam, c.ToolResultBlob,
+		c.ToolResultReplacement, c.TurnV2, c.UsageQuota, c.UserEmbeddingSetting,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -785,6 +797,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *ActivityMutation:
+		return c.Activity.mutate(ctx, m)
 	case *AdminMutation:
 		return c.Admin.mutate(ctx, m)
 	case *AgentMutation:
@@ -829,8 +843,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.EvalDataset.mutate(ctx, m)
 	case *EvalRunMutation:
 		return c.EvalRun.mutate(ctx, m)
-	case *EventDeliveryOutboxMutation:
-		return c.EventDeliveryOutbox.mutate(ctx, m)
 	case *EvolutionSuggestionMutation:
 		return c.EvolutionSuggestion.mutate(ctx, m)
 	case *ExperienceReportMutation:
@@ -865,6 +877,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.HealRecord.mutate(ctx, m)
 	case *LlmProviderModelMutation:
 		return c.LlmProviderModel.mutate(ctx, m)
+	case *MediaProviderMutation:
+		return c.MediaProvider.mutate(ctx, m)
 	case *MemberSessionV2Mutation:
 		return c.MemberSessionV2.mutate(ctx, m)
 	case *ModelPricingRuleMutation:
@@ -951,6 +965,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.TeamStageV2.mutate(ctx, m)
 	case *ToolAgentOverrideMutation:
 		return c.ToolAgentOverride.mutate(ctx, m)
+	case *ToolGrantMutation:
+		return c.ToolGrant.mutate(ctx, m)
 	case *ToolInvocationMutation:
 		return c.ToolInvocation.mutate(ctx, m)
 	case *ToolInvocationAuditMutation:
@@ -969,6 +985,139 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserEmbeddingSetting.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// ActivityClient is a client for the Activity schema.
+type ActivityClient struct {
+	config
+}
+
+// NewActivityClient returns a client for the Activity from the given config.
+func NewActivityClient(c config) *ActivityClient {
+	return &ActivityClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `activity.Hooks(f(g(h())))`.
+func (c *ActivityClient) Use(hooks ...Hook) {
+	c.hooks.Activity = append(c.hooks.Activity, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `activity.Intercept(f(g(h())))`.
+func (c *ActivityClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Activity = append(c.inters.Activity, interceptors...)
+}
+
+// Create returns a builder for creating a Activity entity.
+func (c *ActivityClient) Create() *ActivityCreate {
+	mutation := newActivityMutation(c.config, OpCreate)
+	return &ActivityCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Activity entities.
+func (c *ActivityClient) CreateBulk(builders ...*ActivityCreate) *ActivityCreateBulk {
+	return &ActivityCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ActivityClient) MapCreateBulk(slice any, setFunc func(*ActivityCreate, int)) *ActivityCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ActivityCreateBulk{err: fmt.Errorf("calling to ActivityClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ActivityCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ActivityCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Activity.
+func (c *ActivityClient) Update() *ActivityUpdate {
+	mutation := newActivityMutation(c.config, OpUpdate)
+	return &ActivityUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ActivityClient) UpdateOne(_m *Activity) *ActivityUpdateOne {
+	mutation := newActivityMutation(c.config, OpUpdateOne, withActivity(_m))
+	return &ActivityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ActivityClient) UpdateOneID(id string) *ActivityUpdateOne {
+	mutation := newActivityMutation(c.config, OpUpdateOne, withActivityID(id))
+	return &ActivityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Activity.
+func (c *ActivityClient) Delete() *ActivityDelete {
+	mutation := newActivityMutation(c.config, OpDelete)
+	return &ActivityDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ActivityClient) DeleteOne(_m *Activity) *ActivityDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ActivityClient) DeleteOneID(id string) *ActivityDeleteOne {
+	builder := c.Delete().Where(activity.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ActivityDeleteOne{builder}
+}
+
+// Query returns a query builder for Activity.
+func (c *ActivityClient) Query() *ActivityQuery {
+	return &ActivityQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeActivity},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Activity entity by its id.
+func (c *ActivityClient) Get(ctx context.Context, id string) (*Activity, error) {
+	return c.Query().Where(activity.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ActivityClient) GetX(ctx context.Context, id string) *Activity {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ActivityClient) Hooks() []Hook {
+	return c.hooks.Activity
+}
+
+// Interceptors returns the client interceptors.
+func (c *ActivityClient) Interceptors() []Interceptor {
+	return c.inters.Activity
+}
+
+func (c *ActivityClient) mutate(ctx context.Context, m *ActivityMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ActivityCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ActivityUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ActivityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ActivityDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Activity mutation op: %q", m.Op())
 	}
 }
 
@@ -4026,139 +4175,6 @@ func (c *EvalRunClient) mutate(ctx context.Context, m *EvalRunMutation) (Value, 
 	}
 }
 
-// EventDeliveryOutboxClient is a client for the EventDeliveryOutbox schema.
-type EventDeliveryOutboxClient struct {
-	config
-}
-
-// NewEventDeliveryOutboxClient returns a client for the EventDeliveryOutbox from the given config.
-func NewEventDeliveryOutboxClient(c config) *EventDeliveryOutboxClient {
-	return &EventDeliveryOutboxClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `eventdeliveryoutbox.Hooks(f(g(h())))`.
-func (c *EventDeliveryOutboxClient) Use(hooks ...Hook) {
-	c.hooks.EventDeliveryOutbox = append(c.hooks.EventDeliveryOutbox, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `eventdeliveryoutbox.Intercept(f(g(h())))`.
-func (c *EventDeliveryOutboxClient) Intercept(interceptors ...Interceptor) {
-	c.inters.EventDeliveryOutbox = append(c.inters.EventDeliveryOutbox, interceptors...)
-}
-
-// Create returns a builder for creating a EventDeliveryOutbox entity.
-func (c *EventDeliveryOutboxClient) Create() *EventDeliveryOutboxCreate {
-	mutation := newEventDeliveryOutboxMutation(c.config, OpCreate)
-	return &EventDeliveryOutboxCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of EventDeliveryOutbox entities.
-func (c *EventDeliveryOutboxClient) CreateBulk(builders ...*EventDeliveryOutboxCreate) *EventDeliveryOutboxCreateBulk {
-	return &EventDeliveryOutboxCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *EventDeliveryOutboxClient) MapCreateBulk(slice any, setFunc func(*EventDeliveryOutboxCreate, int)) *EventDeliveryOutboxCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &EventDeliveryOutboxCreateBulk{err: fmt.Errorf("calling to EventDeliveryOutboxClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*EventDeliveryOutboxCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &EventDeliveryOutboxCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for EventDeliveryOutbox.
-func (c *EventDeliveryOutboxClient) Update() *EventDeliveryOutboxUpdate {
-	mutation := newEventDeliveryOutboxMutation(c.config, OpUpdate)
-	return &EventDeliveryOutboxUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *EventDeliveryOutboxClient) UpdateOne(_m *EventDeliveryOutbox) *EventDeliveryOutboxUpdateOne {
-	mutation := newEventDeliveryOutboxMutation(c.config, OpUpdateOne, withEventDeliveryOutbox(_m))
-	return &EventDeliveryOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *EventDeliveryOutboxClient) UpdateOneID(id string) *EventDeliveryOutboxUpdateOne {
-	mutation := newEventDeliveryOutboxMutation(c.config, OpUpdateOne, withEventDeliveryOutboxID(id))
-	return &EventDeliveryOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for EventDeliveryOutbox.
-func (c *EventDeliveryOutboxClient) Delete() *EventDeliveryOutboxDelete {
-	mutation := newEventDeliveryOutboxMutation(c.config, OpDelete)
-	return &EventDeliveryOutboxDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *EventDeliveryOutboxClient) DeleteOne(_m *EventDeliveryOutbox) *EventDeliveryOutboxDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *EventDeliveryOutboxClient) DeleteOneID(id string) *EventDeliveryOutboxDeleteOne {
-	builder := c.Delete().Where(eventdeliveryoutbox.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &EventDeliveryOutboxDeleteOne{builder}
-}
-
-// Query returns a query builder for EventDeliveryOutbox.
-func (c *EventDeliveryOutboxClient) Query() *EventDeliveryOutboxQuery {
-	return &EventDeliveryOutboxQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeEventDeliveryOutbox},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a EventDeliveryOutbox entity by its id.
-func (c *EventDeliveryOutboxClient) Get(ctx context.Context, id string) (*EventDeliveryOutbox, error) {
-	return c.Query().Where(eventdeliveryoutbox.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *EventDeliveryOutboxClient) GetX(ctx context.Context, id string) *EventDeliveryOutbox {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// Hooks returns the client hooks.
-func (c *EventDeliveryOutboxClient) Hooks() []Hook {
-	return c.hooks.EventDeliveryOutbox
-}
-
-// Interceptors returns the client interceptors.
-func (c *EventDeliveryOutboxClient) Interceptors() []Interceptor {
-	return c.inters.EventDeliveryOutbox
-}
-
-func (c *EventDeliveryOutboxClient) mutate(ctx context.Context, m *EventDeliveryOutboxMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&EventDeliveryOutboxCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&EventDeliveryOutboxUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&EventDeliveryOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&EventDeliveryOutboxDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown EventDeliveryOutbox mutation op: %q", m.Op())
-	}
-}
-
 // EvolutionSuggestionClient is a client for the EvolutionSuggestion schema.
 type EvolutionSuggestionClient struct {
 	config
@@ -6417,6 +6433,139 @@ func (c *LlmProviderModelClient) mutate(ctx context.Context, m *LlmProviderModel
 		return (&LlmProviderModelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown LlmProviderModel mutation op: %q", m.Op())
+	}
+}
+
+// MediaProviderClient is a client for the MediaProvider schema.
+type MediaProviderClient struct {
+	config
+}
+
+// NewMediaProviderClient returns a client for the MediaProvider from the given config.
+func NewMediaProviderClient(c config) *MediaProviderClient {
+	return &MediaProviderClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `mediaprovider.Hooks(f(g(h())))`.
+func (c *MediaProviderClient) Use(hooks ...Hook) {
+	c.hooks.MediaProvider = append(c.hooks.MediaProvider, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `mediaprovider.Intercept(f(g(h())))`.
+func (c *MediaProviderClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MediaProvider = append(c.inters.MediaProvider, interceptors...)
+}
+
+// Create returns a builder for creating a MediaProvider entity.
+func (c *MediaProviderClient) Create() *MediaProviderCreate {
+	mutation := newMediaProviderMutation(c.config, OpCreate)
+	return &MediaProviderCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MediaProvider entities.
+func (c *MediaProviderClient) CreateBulk(builders ...*MediaProviderCreate) *MediaProviderCreateBulk {
+	return &MediaProviderCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MediaProviderClient) MapCreateBulk(slice any, setFunc func(*MediaProviderCreate, int)) *MediaProviderCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MediaProviderCreateBulk{err: fmt.Errorf("calling to MediaProviderClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MediaProviderCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MediaProviderCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MediaProvider.
+func (c *MediaProviderClient) Update() *MediaProviderUpdate {
+	mutation := newMediaProviderMutation(c.config, OpUpdate)
+	return &MediaProviderUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MediaProviderClient) UpdateOne(_m *MediaProvider) *MediaProviderUpdateOne {
+	mutation := newMediaProviderMutation(c.config, OpUpdateOne, withMediaProvider(_m))
+	return &MediaProviderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MediaProviderClient) UpdateOneID(id string) *MediaProviderUpdateOne {
+	mutation := newMediaProviderMutation(c.config, OpUpdateOne, withMediaProviderID(id))
+	return &MediaProviderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MediaProvider.
+func (c *MediaProviderClient) Delete() *MediaProviderDelete {
+	mutation := newMediaProviderMutation(c.config, OpDelete)
+	return &MediaProviderDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MediaProviderClient) DeleteOne(_m *MediaProvider) *MediaProviderDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MediaProviderClient) DeleteOneID(id string) *MediaProviderDeleteOne {
+	builder := c.Delete().Where(mediaprovider.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MediaProviderDeleteOne{builder}
+}
+
+// Query returns a query builder for MediaProvider.
+func (c *MediaProviderClient) Query() *MediaProviderQuery {
+	return &MediaProviderQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMediaProvider},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MediaProvider entity by its id.
+func (c *MediaProviderClient) Get(ctx context.Context, id string) (*MediaProvider, error) {
+	return c.Query().Where(mediaprovider.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MediaProviderClient) GetX(ctx context.Context, id string) *MediaProvider {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MediaProviderClient) Hooks() []Hook {
+	return c.hooks.MediaProvider
+}
+
+// Interceptors returns the client interceptors.
+func (c *MediaProviderClient) Interceptors() []Interceptor {
+	return c.inters.MediaProvider
+}
+
+func (c *MediaProviderClient) mutate(ctx context.Context, m *MediaProviderMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MediaProviderCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MediaProviderUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MediaProviderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MediaProviderDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown MediaProvider mutation op: %q", m.Op())
 	}
 }
 
@@ -12139,6 +12288,139 @@ func (c *ToolAgentOverrideClient) mutate(ctx context.Context, m *ToolAgentOverri
 	}
 }
 
+// ToolGrantClient is a client for the ToolGrant schema.
+type ToolGrantClient struct {
+	config
+}
+
+// NewToolGrantClient returns a client for the ToolGrant from the given config.
+func NewToolGrantClient(c config) *ToolGrantClient {
+	return &ToolGrantClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `toolgrant.Hooks(f(g(h())))`.
+func (c *ToolGrantClient) Use(hooks ...Hook) {
+	c.hooks.ToolGrant = append(c.hooks.ToolGrant, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `toolgrant.Intercept(f(g(h())))`.
+func (c *ToolGrantClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ToolGrant = append(c.inters.ToolGrant, interceptors...)
+}
+
+// Create returns a builder for creating a ToolGrant entity.
+func (c *ToolGrantClient) Create() *ToolGrantCreate {
+	mutation := newToolGrantMutation(c.config, OpCreate)
+	return &ToolGrantCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ToolGrant entities.
+func (c *ToolGrantClient) CreateBulk(builders ...*ToolGrantCreate) *ToolGrantCreateBulk {
+	return &ToolGrantCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ToolGrantClient) MapCreateBulk(slice any, setFunc func(*ToolGrantCreate, int)) *ToolGrantCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ToolGrantCreateBulk{err: fmt.Errorf("calling to ToolGrantClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ToolGrantCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ToolGrantCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ToolGrant.
+func (c *ToolGrantClient) Update() *ToolGrantUpdate {
+	mutation := newToolGrantMutation(c.config, OpUpdate)
+	return &ToolGrantUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ToolGrantClient) UpdateOne(_m *ToolGrant) *ToolGrantUpdateOne {
+	mutation := newToolGrantMutation(c.config, OpUpdateOne, withToolGrant(_m))
+	return &ToolGrantUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ToolGrantClient) UpdateOneID(id string) *ToolGrantUpdateOne {
+	mutation := newToolGrantMutation(c.config, OpUpdateOne, withToolGrantID(id))
+	return &ToolGrantUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ToolGrant.
+func (c *ToolGrantClient) Delete() *ToolGrantDelete {
+	mutation := newToolGrantMutation(c.config, OpDelete)
+	return &ToolGrantDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ToolGrantClient) DeleteOne(_m *ToolGrant) *ToolGrantDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ToolGrantClient) DeleteOneID(id string) *ToolGrantDeleteOne {
+	builder := c.Delete().Where(toolgrant.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ToolGrantDeleteOne{builder}
+}
+
+// Query returns a query builder for ToolGrant.
+func (c *ToolGrantClient) Query() *ToolGrantQuery {
+	return &ToolGrantQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeToolGrant},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ToolGrant entity by its id.
+func (c *ToolGrantClient) Get(ctx context.Context, id string) (*ToolGrant, error) {
+	return c.Query().Where(toolgrant.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ToolGrantClient) GetX(ctx context.Context, id string) *ToolGrant {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ToolGrantClient) Hooks() []Hook {
+	return c.hooks.ToolGrant
+}
+
+// Interceptors returns the client interceptors.
+func (c *ToolGrantClient) Interceptors() []Interceptor {
+	return c.inters.ToolGrant
+}
+
+func (c *ToolGrantClient) mutate(ctx context.Context, m *ToolGrantMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ToolGrantCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ToolGrantUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ToolGrantUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ToolGrantDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ToolGrant mutation op: %q", m.Op())
+	}
+}
+
 // ToolInvocationClient is a client for the ToolInvocation schema.
 type ToolInvocationClient struct {
 	config
@@ -13206,46 +13488,46 @@ func (c *UserEmbeddingSettingClient) mutate(ctx context.Context, m *UserEmbeddin
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
+		Activity, Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, EvalCase,
-		EvalCaseResult, EvalDataset, EvalRun, EventDeliveryOutbox, EvolutionSuggestion,
-		ExperienceReport, FailurePattern, FlowLogEvent, GatewayWebhook,
-		GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2, GraphTask,
-		GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun,
-		HealRecord, LlmProviderModel, MemberSessionV2, ModelPricingRule,
-		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
-		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
-		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
-		PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin, PlatformSkill,
-		PlatformTool, SchemaMigration, SelfCheckReport, Session, SessionMetrics,
-		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
-		SessionTurn, SessionV2, SkillEvolutionSuggestion, SkillImportJob,
-		SkillInvocation, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
-		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
+		EvalCaseResult, EvalDataset, EvalRun, EvolutionSuggestion, ExperienceReport,
+		FailurePattern, FlowLogEvent, GatewayWebhook, GraphDefinition, GraphExecution,
+		GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment, GraphTaskEvent,
+		GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord, LlmProviderModel,
+		MediaProvider, MemberSessionV2, ModelPricingRule, ModelTokenUsageHourly,
+		Orchestration, OrchestrationStep, Organization, PlanBoardV2, PlanStepV2,
+		PlatformChannel, PlatformChannelCredential, PlatformChannelDelivery,
+		PlatformChannelPeerSession, PlatformHook, PlatformMCPServer,
+		PlatformMCPUserCredential, PlatformPlugin, PlatformSkill, PlatformTool,
+		SchemaMigration, SelfCheckReport, Session, SessionMetrics, SessionParticipant,
+		SessionRun, SessionRunCheckpoint, SessionRuntime, SessionTurn, SessionV2,
+		SkillEvolutionSuggestion, SkillImportJob, SkillInvocation, SkillVersion,
+		StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun,
+		TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
 		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
 		ToolResultReplacement, TurnV2, UsageQuota, UserEmbeddingSetting []ent.Hook
 	}
 	inters struct {
-		Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
+		Activity, Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, EvalCase,
-		EvalCaseResult, EvalDataset, EvalRun, EventDeliveryOutbox, EvolutionSuggestion,
-		ExperienceReport, FailurePattern, FlowLogEvent, GatewayWebhook,
-		GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2, GraphTask,
-		GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun,
-		HealRecord, LlmProviderModel, MemberSessionV2, ModelPricingRule,
-		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
-		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
-		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
-		PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin, PlatformSkill,
-		PlatformTool, SchemaMigration, SelfCheckReport, Session, SessionMetrics,
-		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
-		SessionTurn, SessionV2, SkillEvolutionSuggestion, SkillImportJob,
-		SkillInvocation, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
-		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
+		EvalCaseResult, EvalDataset, EvalRun, EvolutionSuggestion, ExperienceReport,
+		FailurePattern, FlowLogEvent, GatewayWebhook, GraphDefinition, GraphExecution,
+		GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment, GraphTaskEvent,
+		GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord, LlmProviderModel,
+		MediaProvider, MemberSessionV2, ModelPricingRule, ModelTokenUsageHourly,
+		Orchestration, OrchestrationStep, Organization, PlanBoardV2, PlanStepV2,
+		PlatformChannel, PlatformChannelCredential, PlatformChannelDelivery,
+		PlatformChannelPeerSession, PlatformHook, PlatformMCPServer,
+		PlatformMCPUserCredential, PlatformPlugin, PlatformSkill, PlatformTool,
+		SchemaMigration, SelfCheckReport, Session, SessionMetrics, SessionParticipant,
+		SessionRun, SessionRunCheckpoint, SessionRuntime, SessionTurn, SessionV2,
+		SkillEvolutionSuggestion, SkillImportJob, SkillInvocation, SkillVersion,
+		StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun,
+		TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
 		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
 		ToolResultReplacement, TurnV2, UsageQuota,
 		UserEmbeddingSetting []ent.Interceptor

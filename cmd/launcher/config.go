@@ -87,10 +87,15 @@ logging:
 `, dsn, env.RedisAddr)
 
 	path := filepath.Join(cfgDir, "config.yaml")
+	if prev, err := os.ReadFile(path); err == nil && string(prev) == content {
+		log("config unchanged (%s)", path)
+		env.add("Runtime config", checkOK, fmt.Sprintf("postgres %s:%s (%s), redis %s", env.PGHost, env.PGPort, env.PGMode, env.RedisAddr), false)
+		return nil
+	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return err
 	}
 	log("wrote %s (pg=%s:%s mode=%s redis=%s)", path, env.PGHost, env.PGPort, env.PGMode, env.RedisMode)
-	env.add("运行配置", checkOK, fmt.Sprintf("postgres %s:%s (%s), redis %s", env.PGHost, env.PGPort, env.PGMode, env.RedisAddr), false)
+	env.add("Runtime config", checkOK, fmt.Sprintf("postgres %s:%s (%s), redis %s", env.PGHost, env.PGPort, env.PGMode, env.RedisAddr), false)
 	return nil
 }

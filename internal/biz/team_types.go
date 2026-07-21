@@ -151,6 +151,7 @@ type Team struct {
 	DeptLeadAgentID    string
 	Deliverables       string // JSON array of DeliverableContract
 	InputContract      string // JSON array of DeliverableContract (expected from upstream)
+	DeliverablesOutput string // JSON object keyed by dag_node_id: actual deliverable outputs written on team completion (TECH-DEBT #B-03 fix)
 	CrossDeptMemberIDs string // JSON array of cross-department member agent IDs
 	LinkedGraphID      string // FK to graph_definitions; bidirectional reference with graph.team_id
 	SpiritSessionID    string

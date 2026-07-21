@@ -71,6 +71,13 @@ func (m *memKnowledgeRepo) UpdateDocumentStatus(_ context.Context, id, status, e
 	m.documents[id] = d
 	return nil
 }
+func (m *memKnowledgeRepo) UpdateDocumentContent(_ context.Context, id, contentText string, organized bool) error {
+	d := m.documents[id]
+	d.ContentText = contentText
+	d.Organized = organized
+	m.documents[id] = d
+	return nil
+}
 func (m *memKnowledgeRepo) ListDocuments(_ context.Context, _ string, _, _ int) ([]biz.KnowledgeDocument, int, error) {
 	var out []biz.KnowledgeDocument
 	for _, d := range m.documents {
@@ -81,6 +88,15 @@ func (m *memKnowledgeRepo) ListDocuments(_ context.Context, _ string, _, _ int) 
 func (m *memKnowledgeRepo) DeleteDocument(_ context.Context, id string) error {
 	delete(m.documents, id)
 	return nil
+}
+func (m *memKnowledgeRepo) MoveDocument(_ context.Context, id, targetCollectionID string) (biz.KnowledgeDocument, error) {
+	d, ok := m.documents[id]
+	if !ok {
+		return biz.KnowledgeDocument{}, biz.ErrNotFound
+	}
+	d.CollectionID = targetCollectionID
+	m.documents[id] = d
+	return d, nil
 }
 func (m *memKnowledgeRepo) InsertChunks(_ context.Context, chunks []biz.KnowledgeChunk) error {
 	m.chunks = append(m.chunks, chunks...)

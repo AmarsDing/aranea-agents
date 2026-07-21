@@ -7,8 +7,7 @@
       <span v-if="streaming" class="pulse-dot"></span>
     </div>
     <div class="reply-block__content">
-      <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
-      <div class="reply-block__markdown chat-message-prose" v-html="renderedContent"></div>
+      <div v-segmented-markdown="parts" class="reply-block__markdown chat-message-prose"></div>
       <span v-if="streaming" class="cursor-blink"></span>
     </div>
   </div>
@@ -18,7 +17,8 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Step } from '../../features/chat/v2Types';
-import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
+import { renderChatMarkdownParts } from '../../features/chat/chatMessageMarkdown';
+import { vSegmentedMarkdown } from '../../features/chat/vSegmentedMarkdown';
 
 // Safe i18n wrapper — falls back to key/fallback when the i18n plugin isn't
 // installed (e.g., during unit tests without app.use(i18n)).
@@ -44,7 +44,7 @@ const label = computed(() =>
   isFinal.value ? t('chat.agentBlock.finalReply') : t('chat.agentBlock.intermediateReply'),
 );
 
-const renderedContent = computed(() => renderChatMarkdownForMessage(messageId.value, content.value, streaming.value));
+const parts = computed(() => renderChatMarkdownParts(messageId.value, content.value, streaming.value));
 </script>
 
 <style lang="sass" scoped>

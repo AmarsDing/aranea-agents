@@ -110,205 +110,176 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createCronServiceClient(handler: RequestHandler): CronService {
+export function createCronServiceClient(
+  handler: RequestHandler
+): CronService {
   return {
-    ListCronTasks(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListCronTasks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/cron-tasks`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'CronService',
-          method: 'ListCronTasks',
-        },
-      ) as Promise<ListCronTasksResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "CronService",
+        method: "ListCronTasks",
+      }) as Promise<ListCronTasksResponse>;
     },
-    CreateCronTask(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateCronTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/cron-tasks`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'CronService',
-          method: 'CreateCronTask',
-        },
-      ) as Promise<CronTask>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "CronService",
+        method: "CreateCronTask",
+      }) as Promise<CronTask>;
     },
-    GetCronTask(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetCronTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/cron-tasks/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'CronService',
-          method: 'GetCronTask',
-        },
-      ) as Promise<CronTask>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "CronService",
+        method: "GetCronTask",
+      }) as Promise<CronTask>;
     },
-    UpdateCronTask(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateCronTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/cron-tasks/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request?.task ?? {});
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PATCH',
-          body,
-        },
-        {
-          service: 'CronService',
-          method: 'UpdateCronTask',
-        },
-      ) as Promise<CronTask>;
+      return handler({
+        path: uri,
+        method: "PATCH",
+        body,
+      }, {
+        service: "CronService",
+        method: "UpdateCronTask",
+      }) as Promise<CronTask>;
     },
-    DeleteCronTask(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteCronTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/cron-tasks/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'CronService',
-          method: 'DeleteCronTask',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "CronService",
+        method: "DeleteCronTask",
+      }) as Promise<wellKnownEmpty>;
     },
-    ListCronTaskRuns(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListCronTaskRuns(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/cron-task-runs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.cronTaskId) {
-        queryParams.push(`cronTaskId=${encodeURIComponent(request.cronTaskId.toString())}`);
+        queryParams.push(`cronTaskId=${encodeURIComponent(request.cronTaskId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.limit) {
-        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`);
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'CronService',
-          method: 'ListCronTaskRuns',
-        },
-      ) as Promise<ListCronTaskRunsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "CronService",
+        method: "ListCronTaskRuns",
+      }) as Promise<ListCronTaskRunsResponse>;
     },
-    TriggerCronTask(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    TriggerCronTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/cron-tasks/${request.id}/trigger`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'CronService',
-          method: 'TriggerCronTask',
-        },
-      ) as Promise<CronTaskRun>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "CronService",
+        method: "TriggerCronTask",
+      }) as Promise<CronTaskRun>;
     },
-    ResetCronTaskFailures(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ResetCronTaskFailures(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/cron-tasks/${request.id}/reset-failures`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'CronService',
-          method: 'ResetCronTaskFailures',
-        },
-      ) as Promise<CronTask>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "CronService",
+        method: "ResetCronTaskFailures",
+      }) as Promise<CronTask>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
+
 
 // @@protoc_insertion_point(typescript-http-eof)

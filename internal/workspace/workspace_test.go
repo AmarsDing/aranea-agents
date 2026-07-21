@@ -11,8 +11,8 @@ import (
 // of the resource workspace.
 func TestAssertWorkspace_SystemBypass(t *testing.T) {
 	cases := []struct {
-		name      string
-		callerWS  string
+		name       string
+		callerWS   string
 		resourceWS string
 	}{
 		{"system caller, non-empty resource", SystemWorkspaceID, "ws-1"},

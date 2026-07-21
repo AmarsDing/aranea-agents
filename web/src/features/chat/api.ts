@@ -294,3 +294,18 @@ export async function confirmActivity(sessionId: string, activityId: string, app
     wrapChatError(err, 'confirmActivity failed');
   }
 }
+
+/** Confirm a tool-blocked activity with a structured grant scope. */
+export async function confirmActivityGrant(payload: { sessionId: string; activityId: string; reply: string }): Promise<boolean> {
+  try {
+    const data = await chatService.ConfirmActivity({
+      sessionId: payload.sessionId,
+      activityId: payload.activityId,
+      approved: true,
+      reply: payload.reply,
+    });
+    return Boolean(data?.accepted);
+  } catch (err) {
+    wrapChatError(err, 'confirmActivityGrant failed');
+  }
+}

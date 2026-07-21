@@ -45,6 +45,7 @@ type CircuitBreaker struct {
 	failures        int
 	successes       int
 	halfOpenProbes  int
+	probeClaimedAt  time.Time
 	lastFailureTime time.Time
 	config          CircuitBreakerConfig
 	onStateChange   func(name string, from, to CircuitState)
@@ -92,18 +93,29 @@ func (cb *CircuitBreaker) Allow() (bool, CircuitState) {
 			cb.successes = 0
 			cb.failures = 0
 			cb.halfOpenProbes = 1
+			cb.probeClaimedAt = time.Now()
 			changed = true
 			allowed, st = true, cb.state
 		} else {
 			allowed, st = false, cb.state
 		}
 	case CircuitHalfOpen:
+		// Recover abandoned probe slots: if the caller that claimed a slot never
+		// reports RecordSuccess/RecordFailure (e.g. its future was cancelled), the
+		// slot would leak and deadlock the breaker in HalfOpen. Reclaim one slot
+		// per Allow() call once the claim has aged past the recovery timeout.
+		if cb.halfOpenProbes > 0 && !cb.probeClaimedAt.IsZero() &&
+			time.Since(cb.probeClaimedAt) > cb.config.recoveryTimeout() {
+			cb.halfOpenProbes--
+			cb.probeClaimedAt = time.Time{}
+		}
 		// Reserve a probe slot atomically: increment halfOpenProbes as a
 		// dedicated probe counter so that concurrent Allow() calls cannot
 		// exceed HalfOpenMaxProbe. This is separate from successes to avoid
 		// RecordSuccess() polluting the probe slot counter.
 		if cb.halfOpenProbes < cb.config.HalfOpenMaxProbe {
 			cb.halfOpenProbes++
+			cb.probeClaimedAt = time.Now()
 			allowed, st = true, cb.state
 		} else {
 			allowed, st = false, cb.state
@@ -136,6 +148,7 @@ func (cb *CircuitBreaker) RecordSuccess() {
 			cb.failures = 0
 			cb.successes = 0
 			cb.halfOpenProbes = 0
+			cb.probeClaimedAt = time.Time{}
 			to = cb.state
 			changed = true
 		}
@@ -163,6 +176,7 @@ func (cb *CircuitBreaker) RecordFailure() {
 		cb.state = CircuitOpen
 		cb.successes = 0
 		cb.halfOpenProbes = 0
+		cb.probeClaimedAt = time.Time{}
 		to = cb.state
 		changed = true
 	case CircuitClosed:
@@ -192,6 +206,7 @@ func (cb *CircuitBreaker) Reset() {
 	cb.failures = 0
 	cb.successes = 0
 	cb.halfOpenProbes = 0
+	cb.probeClaimedAt = time.Time{}
 	changed := prev != CircuitClosed
 	cb.mu.Unlock()
 	if changed {

@@ -192,13 +192,13 @@ func TestFormatL3Provenance_OnlyFactID(t *testing.T) {
 func TestCompositeMemoryCue_ProvenanceForL3Hits(t *testing.T) {
 	hits := []biz.CompositeRecallHit{
 		{
-			Layer:        "L3",
-			Line:         "User prefers dark mode",
-			Score:        0.9,
-			FactID:       "fact-abc123",
+			Layer:         "L3",
+			Line:          "User prefers dark mode",
+			Score:         0.9,
+			FactID:        "fact-abc123",
 			SourceSession: "sess-1",
-			Confidence:   0.8,
-			Version:      2,
+			Confidence:    0.8,
+			Version:       2,
 		},
 		{
 			Layer: "L2",
@@ -208,10 +208,10 @@ func TestCompositeMemoryCue_ProvenanceForL3Hits(t *testing.T) {
 	}
 	stub := compositeRecallStub{hits: hits}
 	policy := biz.ResolveMemoryRuntimePolicy(&biz.AgentRuntimeSettings{
-		MemoryEnabled: true,
+		MemoryEnabled:   true,
 		L2RecallEnabled: true,
-		L3Enabled:     true,
-		L0InjectL3:    true,
+		L3Enabled:       true,
+		L0InjectL3:      true,
 	})
 	ag := biz.Agent{ID: "ag1"}
 	got := CompositeMemoryCue(context.Background(), stub, ag, policy, biz.MemoryRuntimeContext{AgentID: "ag1"}, "sess-1", "", 5, nil)

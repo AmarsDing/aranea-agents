@@ -189,7 +189,7 @@ func (r *teamStageV2Repo) UpsertTeamStage(ctx context.Context, ts biz.TeamStage)
 	}
 	row, err := cb.Save(ctx)
 	if err != nil {
-		if ent.IsConstraintError(err) {
+		if ent.IsConstraintError(err) || isPgUniqueViolation(err) {
 			existing, getErr := r.data.RW().Read(ctx).TeamStageV2.Get(ctx, ts.ID)
 			if getErr != nil {
 				return biz.TeamStage{}, entErrToBizErr(getErr, "TEAM_STAGE_V2")

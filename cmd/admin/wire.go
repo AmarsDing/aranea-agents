@@ -228,8 +228,8 @@ func provideParallelToolExecutor(lg loggateway.Logger) *tools.ParallelToolExecut
 	return tools.NewParallelToolExecutor(nil, lg)
 }
 
-func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, tester biztool.ToolTester, checker biztool.WebResearchReadinessChecker, lg loggateway.Logger) *biztool.ToolUsecase {
-	return biztool.NewToolUsecase(repo, sys, lg, biztool.WithToolTester(tester), biztool.WithWebResearchChecker(checker))
+func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, tester biztool.ToolTester, checker biztool.WebResearchReadinessChecker, grants biztool.ToolGrantStore, lg loggateway.Logger) *biztool.ToolUsecase {
+	return biztool.NewToolUsecase(repo, sys, lg, biztool.WithToolTester(tester), biztool.WithWebResearchChecker(checker), biztool.WithToolGrantStore(grants))
 }
 
 // provideMCPServerUsecaseWithDeps injects prober and metadata editor via constructor.
@@ -683,6 +683,7 @@ func provideChatServiceDeps(
 	profileResolver *chatagent.ProfileResolver,
 	v2ProjectorFactory *v2.ProjectorFactory,
 	memberSessions biz.MemberSessionV2Repo,
+	memoryConsolidationWriter biz.MemoryConsolidationWriter,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
@@ -740,18 +741,19 @@ func provideChatServiceDeps(
 			Evolution: evolution,
 		},
 		Infra: service.ChatInfraDeps{
-			LG:                 lg,
-			OrchCache:          orchCache,
-			A2AUC:              a2aUC,
-			MCPServers:         mcpUC,
-			OutboundRouter:     outboundRouter,
-			SubAgentService:    subAgentSvc,
-			TurnLifecycle:      turnLifecycle,
-			HeartbeatEmitter:   heartbeatEmitter,
-			DeadLetterQueue:    deadLetterQueue,
-			ProfileResolver:    profileResolver,
-			V2ProjectorFactory: v2ProjectorFactory,
-			MemberSessions:     memberSessions,
+			LG:                        lg,
+			OrchCache:                 orchCache,
+			A2AUC:                     a2aUC,
+			MCPServers:                mcpUC,
+			OutboundRouter:            outboundRouter,
+			SubAgentService:           subAgentSvc,
+			TurnLifecycle:             turnLifecycle,
+			HeartbeatEmitter:          heartbeatEmitter,
+			DeadLetterQueue:           deadLetterQueue,
+			ProfileResolver:           profileResolver,
+			V2ProjectorFactory:        v2ProjectorFactory,
+			MemberSessions:            memberSessions,
+			MemoryConsolidationWriter: memoryConsolidationWriter,
 		},
 	}
 }
@@ -934,7 +936,6 @@ func provideGraphBuildDeps(
 			MemoryService:         persist.Memory.TRPC,
 			MemoryAdmin:           persist.Memory.Admin,
 			MemoryActionLogWriter: persist.Memory.ActionLogWriter,
-			ContextCompressor:     persist.Memory.ContextCompressor,
 			MemoryL2Recall:        persist.Memory.L2Recall,
 			MemoryL3Recall:        persist.Memory.L3Recall,
 			MemoryCompositeRecall: persist.Memory.CompositeRecall,
@@ -1524,13 +1525,14 @@ func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller bi
 	return biz.NewVerificationGateExecutor(deptLeadMgr, caller, lg)
 }
 
-func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionSugg biz.EvolutionSuggestionRepo, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, lg loggateway.Logger) *biz.SpiritTeamUsecase {
+func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionSugg biz.EvolutionSuggestionRepo, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, stepReader biz.StepV2Reader, lg loggateway.Logger) *biz.SpiritTeamUsecase {
 	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg,
 		biz.WithSpiritTransactor(transactor),
 		biz.WithOrchestrationCache(orchCache),
 		biz.WithEvolutionSuggestionRepo(evolutionSugg),
 		biz.WithVerificationGateExecutor(gateExecutor),
 		biz.WithDeptLeadMgr(deptLeadMgr),
+		biz.WithSpiritStepReader(stepReader),
 	)
 }
 
@@ -1928,9 +1930,9 @@ func provideA2AService(
 	return service.NewA2AService(uc, chat, agents, reg, store, limiter, lg)
 }
 
-func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer) biz.TaskPlannerPort {
+func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
-	return chatagent.NewTaskPlanner(repo, catalog, httpClient, orchCache, lg, sysUC, seq)
+	return chatagent.NewTaskPlanner(repo, catalog, httpClient, eventBus, orchCache, lg, sysUC, seq)
 }
 
 func provideAgentAllocator(
@@ -2119,6 +2121,7 @@ func provideEcosystemPresetScenarioDir() string {
 func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
 	panic(wire.Build(
 		server.ProviderSet,
+		server.NewSessionAuthorizer,
 		data.ProviderSet,
 		biz.ProviderSet,
 		event.ProviderSet,
@@ -2153,7 +2156,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideMemoryCompositeRecall,
 		provideMemoryTRPCService,
 		provideLinkEvolutionService,
-		provideContextCompressor,
 		provideFeedbackMemoryEnqueuer,
 		provideMCPProber,
 		provideMCPMetadataEditor,

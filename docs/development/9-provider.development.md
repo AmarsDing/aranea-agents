@@ -214,6 +214,13 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 | O26 | RunHealthChecks goroutine ctx 取消 | 🟡→✅ | goroutine 内写操作改用 `context.WithoutCancel(ctx)`；Channel + Provider 两处 RunHealthChecks 均已修复 |
 | O27 | service 层遗留编译修复 | P1 | 修复 `resolveCredentialPlain`/`ResolveSecretRef` 调用签名（加 `*biz.ChannelUsecase` 参数）；16 个文件；添加 `CompressorDeps`/`MCPServerReader` Wire 绑定 |
 
+### 已完成优化（Phase 10 — 2026-07-20，Grok Build 借鉴）
+
+| # | 优化项 | 优先级 | 变更说明 |
+|---|--------|--------|----------|
+| O28 | LLM 重试分类纯函数 | P1 | 新增 `internal/provider/retry_classifier.go`：`ClassifyRetry(resp, err)` 6 态纯函数（Retry / RetryWithBackoff / RetryWithImageStrip / RetryWithClientRebuild / EmitToSession / RetryFatal），无 I/O 无 logging；`retry_transport.go` 集成 |
+| O29 | 熔断器探针遗弃回收 | P0 | `circuit_breaker_transport.go`：`probeClaimedAt` 追踪探针认领时间，超过 recoveryTimeout 未上报结果的探针槽位自动回收，消除 HalfOpen 死锁（与 tools 域 `biz/tool/circuit_breaker.go` 同步修复） |
+
 ### 剩余优化项
 
 | # | 差距 | 优先级 | 说明 |
@@ -237,6 +244,7 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 - **Phase 7**：架构深度优化（Wire DI / 事务安全 / 并发安全 / 单测 / 降级提示）— ✅ 2026-05-29
 - **Phase 8**：全局状态消除 + HA 事件 + Proto 扩展 + 前端继续拆分 — ✅ 2026-05-29
 - **Phase 9**：建议项清零 + service 层遗留编译修复 — ✅ 2026-05-29
+- **Phase 10**：Grok Build 借鉴（LLM 重试分类 + 熔断器探针回收）— ✅ 2026-07-20
 
 ---
 
@@ -394,6 +402,8 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 - `internal/provider/trpc_llm_variant_test.go`
 - `internal/provider/trpc_llm_fixes_test.go`
 - `internal/provider/stream_delta_test.go`
+- `internal/provider/retry_classifier.go`（Phase 10 新增：6 态重试分类纯函数）
+- `internal/provider/retry_classifier_test.go`（Phase 10 新增）
 
 ### Inspect 层
 - `internal/llminspect/inspect.go`

@@ -206,8 +206,6 @@ type AgentRuntimeSetting struct {
 	ModelInstructionsJSON string `json:"model_instructions_json,omitempty"`
 	// ContextCompactionEnabled holds the value of the "context_compaction_enabled" field.
 	ContextCompactionEnabled bool `json:"context_compaction_enabled,omitempty"`
-	// MicroCompactEnabled holds the value of the "micro_compact_enabled" field.
-	MicroCompactEnabled bool `json:"micro_compact_enabled,omitempty"`
 	// MemoryCompactEnabled holds the value of the "memory_compact_enabled" field.
 	MemoryCompactEnabled bool `json:"memory_compact_enabled,omitempty"`
 	// ToolResultGateEnabled holds the value of the "tool_result_gate_enabled" field.
@@ -310,7 +308,7 @@ func (*AgentRuntimeSetting) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case agentruntimesetting.FieldSelfEvolve, agentruntimesetting.FieldSubagentsEnabled, agentruntimesetting.FieldToolsEnabled, agentruntimesetting.FieldMemoryEnabled, agentruntimesetting.FieldHeartbeatEnabled, agentruntimesetting.FieldEvolutionSelfEvolve, agentruntimesetting.FieldEvolutionSkillEvolve, agentruntimesetting.FieldEvolutionMetricsEnabled, agentruntimesetting.FieldEvolutionSuggestionsEnabled, agentruntimesetting.FieldL0InjectL1, agentruntimesetting.FieldL0InjectL3, agentruntimesetting.FieldL0InjectL4, agentruntimesetting.FieldL0SnapshotEnabled, agentruntimesetting.FieldL1Enabled, agentruntimesetting.FieldL1HistoryEnabled, agentruntimesetting.FieldL2EpisodeEnabled, agentruntimesetting.FieldL2IndexEnabled, agentruntimesetting.FieldL2RecallEnabled, agentruntimesetting.FieldL3Enabled, agentruntimesetting.FieldL4Enabled, agentruntimesetting.FieldL4GraphInjectNeighbors, agentruntimesetting.FieldL4IdentityInject, agentruntimesetting.FieldL4StrategyInject, agentruntimesetting.FieldEvoEnabled, agentruntimesetting.FieldEvoAutoApply, agentruntimesetting.FieldIntentPassEnabled, agentruntimesetting.FieldContextCompactionEnabled, agentruntimesetting.FieldMicroCompactEnabled, agentruntimesetting.FieldMemoryCompactEnabled, agentruntimesetting.FieldToolResultGateEnabled, agentruntimesetting.FieldCompressLlmCacheEnabled, agentruntimesetting.FieldEnableTokenTailoring, agentruntimesetting.FieldCompressionBufferAdaptive, agentruntimesetting.FieldSessionSummaryEnabled, agentruntimesetting.FieldToolsRetryEnabled, agentruntimesetting.FieldToolsRetryJitter, agentruntimesetting.FieldToolsParallelEnabled, agentruntimesetting.FieldToolsStreamingEnabled, agentruntimesetting.FieldToolsCircuitBreakerEnabled, agentruntimesetting.FieldToolsCommandSafetyEnabled:
+		case agentruntimesetting.FieldSelfEvolve, agentruntimesetting.FieldSubagentsEnabled, agentruntimesetting.FieldToolsEnabled, agentruntimesetting.FieldMemoryEnabled, agentruntimesetting.FieldHeartbeatEnabled, agentruntimesetting.FieldEvolutionSelfEvolve, agentruntimesetting.FieldEvolutionSkillEvolve, agentruntimesetting.FieldEvolutionMetricsEnabled, agentruntimesetting.FieldEvolutionSuggestionsEnabled, agentruntimesetting.FieldL0InjectL1, agentruntimesetting.FieldL0InjectL3, agentruntimesetting.FieldL0InjectL4, agentruntimesetting.FieldL0SnapshotEnabled, agentruntimesetting.FieldL1Enabled, agentruntimesetting.FieldL1HistoryEnabled, agentruntimesetting.FieldL2EpisodeEnabled, agentruntimesetting.FieldL2IndexEnabled, agentruntimesetting.FieldL2RecallEnabled, agentruntimesetting.FieldL3Enabled, agentruntimesetting.FieldL4Enabled, agentruntimesetting.FieldL4GraphInjectNeighbors, agentruntimesetting.FieldL4IdentityInject, agentruntimesetting.FieldL4StrategyInject, agentruntimesetting.FieldEvoEnabled, agentruntimesetting.FieldEvoAutoApply, agentruntimesetting.FieldIntentPassEnabled, agentruntimesetting.FieldContextCompactionEnabled, agentruntimesetting.FieldMemoryCompactEnabled, agentruntimesetting.FieldToolResultGateEnabled, agentruntimesetting.FieldCompressLlmCacheEnabled, agentruntimesetting.FieldEnableTokenTailoring, agentruntimesetting.FieldCompressionBufferAdaptive, agentruntimesetting.FieldSessionSummaryEnabled, agentruntimesetting.FieldToolsRetryEnabled, agentruntimesetting.FieldToolsRetryJitter, agentruntimesetting.FieldToolsParallelEnabled, agentruntimesetting.FieldToolsStreamingEnabled, agentruntimesetting.FieldToolsCircuitBreakerEnabled, agentruntimesetting.FieldToolsCommandSafetyEnabled:
 			values[i] = new(sql.NullBool)
 		case agentruntimesetting.FieldMemoryMinScore, agentruntimesetting.FieldGuardrailMaxChangePerPeriod, agentruntimesetting.FieldL0SummaryThreshold, agentruntimesetting.FieldL2EpisodeMinImportance, agentruntimesetting.FieldL3RecallMinScore, agentruntimesetting.FieldL3ArchiveThreshold, agentruntimesetting.FieldTokenTailoringSafetyMargin, agentruntimesetting.FieldCompressionBufferRatio, agentruntimesetting.FieldSoftTriggerRatio, agentruntimesetting.FieldHardTriggerRatio, agentruntimesetting.FieldToolsRetryBackoffFactor:
 			values[i] = new(sql.NullFloat64)
@@ -908,12 +906,6 @@ func (_m *AgentRuntimeSetting) assignValues(columns []string, values []any) erro
 				return fmt.Errorf("unexpected type %T for field context_compaction_enabled", values[i])
 			} else if value.Valid {
 				_m.ContextCompactionEnabled = value.Bool
-			}
-		case agentruntimesetting.FieldMicroCompactEnabled:
-			if value, ok := values[i].(*sql.NullBool); !ok {
-				return fmt.Errorf("unexpected type %T for field micro_compact_enabled", values[i])
-			} else if value.Valid {
-				_m.MicroCompactEnabled = value.Bool
 			}
 		case agentruntimesetting.FieldMemoryCompactEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -1517,9 +1509,6 @@ func (_m *AgentRuntimeSetting) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("context_compaction_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ContextCompactionEnabled))
-	builder.WriteString(", ")
-	builder.WriteString("micro_compact_enabled=")
-	builder.WriteString(fmt.Sprintf("%v", _m.MicroCompactEnabled))
 	builder.WriteString(", ")
 	builder.WriteString("memory_compact_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.MemoryCompactEnabled))

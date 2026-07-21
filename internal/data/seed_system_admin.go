@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
+	systemprompts "aranea-agents/internal/scenario/system"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -65,12 +66,13 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, d Dialect, lg logg
 		position_key, agent_variant
 	) VALUES (
 		'agent___spirit__', ?, '精灵助手', 'openrouter', 'gpt-4.1-mini',
-		'active', FALSE, FALSE, '', '系统内置总管家，用户唯一对话入口，自动组装团队并委派工作。',
+		'active', TRUE, FALSE, '', '系统内置总管家，用户唯一对话入口，自动组装团队并委派工作。',
 		'', 'complete', 0, 0, '{"tools":{"profile":"spirit"}}', '[]', 'system',
 		?, ?, '', TRUE, 'system_builtin', 'system',
 		'spirit', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		status = excluded.status,
+		is_default = excluded.is_default,
 		agent_description = excluded.agent_description,
 		system_prompt_mode = excluded.system_prompt_mode,
 		config_json = excluded.config_json,
@@ -92,13 +94,13 @@ func SeedSpiritPromptFiles(ctx context.Context, client *ent.Client, d Dialect, s
 	if client == nil {
 		return nil
 	}
-	promptDir := filepath.Join(scenarioDir, "system", "prompts")
-	entries, err := os.ReadDir(promptDir)
+	files, err := loadSpiritPromptMarkdown(scenarioDir, lg)
 	if err != nil {
-		lg.Warn("spirit prompt dir not found, skipping",
-			loggateway.StepID("data.seed.spirit_prompt_files"),
-			loggateway.Str("dir", promptDir),
-			loggateway.Err(err))
+		return entErrToBizErr(err, "SEED")
+	}
+	if len(files) == 0 {
+		lg.Warn("spirit prompts empty (filesystem + embed)",
+			loggateway.StepID("data.seed.spirit_prompt_files"))
 		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -112,24 +114,64 @@ func SeedSpiritPromptFiles(ctx context.Context, client *ent.Client, d Dialect, s
 		sort_order = excluded.sort_order,
 		updated_at = excluded.updated_at`
 	sortOrder := 0
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		fileName := strings.TrimSuffix(e.Name(), ".md")
-		data, err := os.ReadFile(filepath.Join(promptDir, e.Name()))
-		if err != nil {
-			lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_prompt_files"), loggateway.Str("file", e.Name()), loggateway.Err(err))
-			return entErrToBizErr(err, "SEED")
-		}
+	for _, f := range files {
+		fileName := strings.TrimSuffix(f.name, ".md")
 		id := "apf_spirit_" + fileName
-		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), id, agentID, fileName, string(data), sortOrder, now, now); err != nil {
+		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), id, agentID, fileName, f.body, sortOrder, now, now); err != nil {
 			lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_prompt_files"), loggateway.Str("file_name", fileName), loggateway.Err(err))
 			return entErrToBizErr(err, "SEED")
 		}
 		sortOrder++
 	}
 	return nil
+}
+
+type promptMDFile struct {
+	name string
+	body string
+}
+
+// loadSpiritPromptMarkdown prefers on-disk scenario prompts, then embedded fallback.
+func loadSpiritPromptMarkdown(scenarioDir string, lg loggateway.Logger) ([]promptMDFile, error) {
+	promptDir := filepath.Join(scenarioDir, "system", "prompts")
+	entries, err := os.ReadDir(promptDir)
+	if err == nil {
+		out := make([]promptMDFile, 0, len(entries))
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+				continue
+			}
+			data, readErr := os.ReadFile(filepath.Join(promptDir, e.Name()))
+			if readErr != nil {
+				return nil, readErr
+			}
+			out = append(out, promptMDFile{name: e.Name(), body: string(data)})
+		}
+		if len(out) > 0 {
+			return out, nil
+		}
+	} else {
+		lg.Warn("spirit prompt dir missing, using embedded prompts",
+			loggateway.StepID("data.seed.spirit_prompt_files"),
+			loggateway.Str("dir", promptDir),
+			loggateway.Err(err))
+	}
+	names, listErr := systemprompts.ListTopLevelMarkdown()
+	if listErr != nil {
+		return nil, listErr
+	}
+	out := make([]promptMDFile, 0, len(names))
+	for _, name := range names {
+		if name == "dept_lead.md" {
+			continue // dept lead is seeded separately onto dept-lead agents
+		}
+		body, readErr := systemprompts.ReadMarkdown(name)
+		if readErr != nil {
+			return nil, readErr
+		}
+		out = append(out, promptMDFile{name: name, body: body})
+	}
+	return out, nil
 }
 
 func SeedMemoryAgent(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
@@ -206,6 +248,37 @@ func SeedSkillsAgent(ctx context.Context, client *ent.Client, d Dialect, lg logg
 	return nil
 }
 
+// SeedSystemAgentRuntimeSettings ensures the four system agents have runtime_settings rows.
+// Missing rows cause GetAgentRuntimeSettings → NOT_FOUND and break evolution/settings UX.
+func SeedSystemAgentRuntimeSettings(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if client == nil {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	agents := []struct {
+		id           string
+		toolsProfile string
+	}{
+		{id: "agent___spirit__", toolsProfile: "spirit"},
+		{id: "agent___system_admin__", toolsProfile: "system_admin"},
+		{id: "agent___memory__", toolsProfile: "system_memory"},
+		{id: "agent___skills__", toolsProfile: "system_skills"},
+	}
+	// Minimal insert: rely on column defaults for the rest of the wide settings row.
+	const q = `INSERT INTO agent_runtime_settings (agent_id, tools_profile, created_at, updated_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT (agent_id) DO UPDATE SET
+			tools_profile = COALESCE(NULLIF(agent_runtime_settings.tools_profile, ''), excluded.tools_profile),
+			updated_at = excluded.updated_at`
+	for _, a := range agents {
+		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), a.id, a.toolsProfile, now, now); err != nil {
+			lg.Warn("seed step failed", loggateway.StepID("data.seed.system_agent_runtime_settings"), loggateway.Str("agent_id", a.id), loggateway.Err(err))
+			return entErrToBizErr(err, "SEED")
+		}
+	}
+	return nil
+}
+
 func SeedButlerPromptFiles(ctx context.Context, client *ent.Client, d Dialect, scenarioDir string, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
@@ -229,28 +302,19 @@ func SeedButlerPromptFiles(ctx context.Context, client *ent.Client, d Dialect, s
 		sort_order = excluded.sort_order,
 		updated_at = excluded.updated_at`
 	for _, b := range butlers {
-		promptDir := filepath.Join(scenarioDir, "system", "prompts", b.dirName)
-		entries, err := os.ReadDir(promptDir)
-		if err != nil {
-			lg.Warn("butler prompt dir not found, skipping",
+		files, loadErr := loadButlerPromptMarkdown(scenarioDir, b.dirName, lg)
+		if loadErr != nil {
+			lg.Warn("butler prompts load failed",
 				loggateway.StepID("data.seed.butler_prompt_files"),
-				loggateway.Str("dir", promptDir),
-				loggateway.Err(err))
+				loggateway.Str("dir", b.dirName),
+				loggateway.Err(loadErr))
 			continue
 		}
 		sortOrder := 0
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-				continue
-			}
-			fileName := strings.TrimSuffix(e.Name(), ".md")
-			data, err := os.ReadFile(filepath.Join(promptDir, e.Name()))
-			if err != nil {
-				lg.Warn("seed step failed", loggateway.StepID("data.seed.butler_prompt_files"), loggateway.Str("file", e.Name()), loggateway.Err(err))
-				return entErrToBizErr(err, "SEED")
-			}
+		for _, f := range files {
+			fileName := strings.TrimSuffix(f.name, ".md")
 			id := b.prefix + fileName
-			if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), id, b.agentID, fileName, string(data), sortOrder, now, now); err != nil {
+			if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), id, b.agentID, fileName, f.body, sortOrder, now, now); err != nil {
 				lg.Warn("seed step failed", loggateway.StepID("data.seed.butler_prompt_files"), loggateway.Str("file_name", fileName), loggateway.Err(err))
 				return entErrToBizErr(err, "SEED")
 			}
@@ -258,6 +322,45 @@ func SeedButlerPromptFiles(ctx context.Context, client *ent.Client, d Dialect, s
 		}
 	}
 	return nil
+}
+
+func loadButlerPromptMarkdown(scenarioDir, dirName string, lg loggateway.Logger) ([]promptMDFile, error) {
+	promptDir := filepath.Join(scenarioDir, "system", "prompts", dirName)
+	entries, err := os.ReadDir(promptDir)
+	if err == nil {
+		out := make([]promptMDFile, 0, len(entries))
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+				continue
+			}
+			data, readErr := os.ReadFile(filepath.Join(promptDir, e.Name()))
+			if readErr != nil {
+				return nil, readErr
+			}
+			out = append(out, promptMDFile{name: e.Name(), body: string(data)})
+		}
+		if len(out) > 0 {
+			return out, nil
+		}
+	} else {
+		lg.Warn("butler prompt dir missing, using embedded prompts",
+			loggateway.StepID("data.seed.butler_prompt_files"),
+			loggateway.Str("dir", promptDir),
+			loggateway.Err(err))
+	}
+	names, listErr := systemprompts.ListSubdirMarkdown(dirName)
+	if listErr != nil {
+		return nil, listErr
+	}
+	out := make([]promptMDFile, 0, len(names))
+	for _, name := range names {
+		body, readErr := systemprompts.ReadMarkdown(dirName + "/" + name)
+		if readErr != nil {
+			return nil, readErr
+		}
+		out = append(out, promptMDFile{name: name, body: body})
+	}
+	return out, nil
 }
 
 func SeedCronTasks(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
@@ -434,11 +537,19 @@ func SeedDeptLeadPromptFiles(ctx context.Context, client *ent.Client, d Dialect,
 	promptPath := filepath.Join(scenarioDir, "system", "prompts", "dept_lead.md")
 	data, err := os.ReadFile(promptPath)
 	if err != nil {
-		lg.Warn("dept_lead.md not found, skipping",
+		body, embErr := systemprompts.ReadMarkdown("dept_lead.md")
+		if embErr != nil {
+			lg.Warn("dept_lead.md not found (disk+embed), skipping",
+				loggateway.StepID("data.seed.dept_lead_prompt_files"),
+				loggateway.Str("path", promptPath),
+				loggateway.Err(err))
+			return nil
+		}
+		lg.Warn("dept_lead.md missing on disk, using embedded prompt",
 			loggateway.StepID("data.seed.dept_lead_prompt_files"),
 			loggateway.Str("path", promptPath),
 			loggateway.Err(err))
-		return nil
+		data = []byte(body)
 	}
 
 	// Find all dept lead agents

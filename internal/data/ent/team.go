@@ -54,6 +54,8 @@ type Team struct {
 	Deliverables string `json:"deliverables,omitempty"`
 	// input contract JSON (expected from upstream teams)
 	InputContract string `json:"input_contract,omitempty"`
+	// deliverable outputs JSON object keyed by dag_node_id (written on team completion for downstream consumption)
+	DeliverablesOutputJSON string `json:"deliverables_output_json,omitempty"`
 	// department lead Agent ID for this team (inherited from department by default)
 	DeptLeadAgentID string `json:"dept_lead_agent_id,omitempty"`
 	// cross-department member Agent ID list JSON
@@ -80,7 +82,7 @@ func (*Team) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case team.FieldIsDefault, team.FieldAutoCreated, team.FieldReadonly:
 			values[i] = new(sql.NullBool)
-		case team.FieldID, team.FieldTeamKey, team.FieldDisplayName, team.FieldStatus, team.FieldDefinitionJSON, team.FieldAdkAppName, team.FieldDepartmentID, team.FieldSpiritSessionID, team.FieldTaskDescription, team.FieldDagNodeID, team.FieldDependsOnJSON, team.FieldParallelConfigJSON, team.FieldTopology, team.FieldKind, team.FieldSource, team.FieldDeliverables, team.FieldInputContract, team.FieldDeptLeadAgentID, team.FieldCrossDeptMemberIds, team.FieldLinkedGraphID, team.FieldInterruptReason, team.FieldCreatedAt, team.FieldUpdatedAt, team.FieldDeletedAt, team.FieldWorkspaceID:
+		case team.FieldID, team.FieldTeamKey, team.FieldDisplayName, team.FieldStatus, team.FieldDefinitionJSON, team.FieldAdkAppName, team.FieldDepartmentID, team.FieldSpiritSessionID, team.FieldTaskDescription, team.FieldDagNodeID, team.FieldDependsOnJSON, team.FieldParallelConfigJSON, team.FieldTopology, team.FieldKind, team.FieldSource, team.FieldDeliverables, team.FieldInputContract, team.FieldDeliverablesOutputJSON, team.FieldDeptLeadAgentID, team.FieldCrossDeptMemberIds, team.FieldLinkedGraphID, team.FieldInterruptReason, team.FieldCreatedAt, team.FieldUpdatedAt, team.FieldDeletedAt, team.FieldWorkspaceID:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -216,6 +218,12 @@ func (_m *Team) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field input_contract", values[i])
 			} else if value.Valid {
 				_m.InputContract = value.String
+			}
+		case team.FieldDeliverablesOutputJSON:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field deliverables_output_json", values[i])
+			} else if value.Valid {
+				_m.DeliverablesOutputJSON = value.String
 			}
 		case team.FieldDeptLeadAgentID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -357,6 +365,9 @@ func (_m *Team) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("input_contract=")
 	builder.WriteString(_m.InputContract)
+	builder.WriteString(", ")
+	builder.WriteString("deliverables_output_json=")
+	builder.WriteString(_m.DeliverablesOutputJSON)
 	builder.WriteString(", ")
 	builder.WriteString("dept_lead_agent_id=")
 	builder.WriteString(_m.DeptLeadAgentID)

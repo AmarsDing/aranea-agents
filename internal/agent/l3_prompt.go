@@ -44,11 +44,11 @@ func L3MemoryCue(ctx context.Context, l3 biz.MemoryL3Recaller, ag biz.Agent, pol
 
 	maxChars := policy.L3MaxPerRecallChars
 	type l3Entry struct {
-		stmt      string
-		factID    string
-		srcSess   string
+		stmt       string
+		factID     string
+		srcSess    string
 		confidence float64
-		version   int
+		version    int
 	}
 	var entries []l3Entry
 	for _, raw := range rows {

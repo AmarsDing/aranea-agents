@@ -122,7 +122,6 @@ func TestEntRuntimeToBiz_FullRoundTrip(t *testing.T) {
 		EvoPersonaMaxChars:                2000,
 		EvoSystemPromptMaxAppends:         3,
 		ContextCompactionEnabled:          true,
-		MicroCompactEnabled:               true,
 		MemoryCompactEnabled:              false,
 		ToolResultGateEnabled:             true,
 		CompressLlmCacheEnabled:           true,
@@ -257,7 +256,7 @@ func TestEntRuntimeToBiz_FullRoundTrip(t *testing.T) {
 	if ctx.PlannerKind != "react" || ctx.PlannerConfigJSON != `{"max_steps":5}` {
 		t.Fatalf("context planner mismatch: %+v", ctx)
 	}
-	if !ctx.MicroCompactEnabled || ctx.MemoryCompactEnabled {
+	if ctx.MemoryCompactEnabled {
 		t.Fatalf("context compact flags mismatch: %+v", ctx)
 	}
 	if !ctx.ToolResultGateEnabled {
@@ -397,7 +396,6 @@ func TestFromEntSkills(t *testing.T) {
 func TestFromEntContext(t *testing.T) {
 	e := &ent.AgentRuntimeSetting{
 		ContextCompactionEnabled:   true,
-		MicroCompactEnabled:        true,
 		MemoryCompactEnabled:       false,
 		ToolResultGateEnabled:      true,
 		CompressLlmCacheEnabled:    true,
@@ -413,7 +411,7 @@ func TestFromEntContext(t *testing.T) {
 		PlannerConfigJSON:          `{"max_steps":5}`,
 	}
 	got := fromEntContext(e)
-	if !got.CompactionEnabled || !got.MicroCompactEnabled || got.MemoryCompactEnabled {
+	if !got.CompactionEnabled || got.MemoryCompactEnabled {
 		t.Fatalf("context compact flags mismatch: %+v", got)
 	}
 	if !got.CompressLLMCacheEnabled || got.CompressLLMCacheMaxEntries != 128 || got.CompressLLMCacheTTLSec != 300 {

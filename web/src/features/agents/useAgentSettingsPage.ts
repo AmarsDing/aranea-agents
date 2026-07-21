@@ -3,7 +3,7 @@ import { copyToClipboard, useQuasar } from 'quasar';
 import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import type { Agent } from './types';
-import { useAgentDetailStore } from '../../stores/agents';
+import { useAgentDetailStore, useAgentsPageStore } from '../../stores/agents';
 import { statusOptions, tokenEstimateFor } from '../../components/agents/agentUi';
 import { useAppStore } from '../../stores/app';
 import { useChannelsStore } from '../../stores/channels';
@@ -28,9 +28,11 @@ export function useAgentSettingsPage() {
   const router = useRouter();
   const store = useAppStore();
   const detailStore = useAgentDetailStore();
+  const agentsPageStore = useAgentsPageStore();
   const channelsStore = useChannelsStore();
   const agentId = computed(() => String(route.params.id ?? '').trim());
   const { saving } = storeToRefs(detailStore);
+  const { taxonomyTree } = storeToRefs(agentsPageStore);
 
   const {
     form: plannerForm,
@@ -199,7 +201,10 @@ export function useAgentSettingsPage() {
   });
 
   // ── Lifecycle ────────────────────────────────────────────────
-  onMounted(() => void persistence.loadInitial());
+  onMounted(() => {
+    void persistence.loadInitial();
+    void agentsPageStore.ensureTaxonomyTree();
+  });
 
   watch(
     () => String(route.params.id ?? '').trim(),
@@ -255,6 +260,7 @@ export function useAgentSettingsPage() {
     ralphLoopForm,
     saving,
     router,
+    taxonomyTree,
     avatarPickerOpen,
     promptDialog,
     advancedDialog: persistence.advancedDialog,

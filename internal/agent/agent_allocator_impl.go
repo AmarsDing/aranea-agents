@@ -15,6 +15,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 )
 
 // agentAllocatorImpl implements biz.AgentAllocatorPort.
@@ -93,23 +94,35 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 
 	// Match each subtask
 	isDAG := taskPlan.Strategy == biz.StrategyDAG
-	var allocations []biz.TaskAllocation
-	for _, subTask := range taskPlan.SubTasks {
-		allocation, err := impl.matchSubTask(ctx, subTask, capabilities, traceID)
-		if err != nil {
+	totalSubTasks := len(taskPlan.SubTasks)
+
+	// P-ORCH.5: two-phase parallelization — Phase A parallel matchSubTask
+	// (Layer 0-3, no factory), Phase B serial factory creation (below).
+	results := impl.runPhaseAMatch(ctx, taskPlan.SubTasks, capabilities, traceID)
+
+	// Phase B — serial factory / fallback for failures, then DAG member
+	// selection, progress publish, and final assembly. Order follows the
+	// input subtask order so the frontend loading sequence (i/N) is stable.
+	allocations := make([]biz.TaskAllocation, 0, totalSubTasks)
+	for i, subTask := range taskPlan.SubTasks {
+		res := results[i]
+		var allocation biz.TaskAllocation
+		if res.matchErr == nil {
+			allocation = res.alloc
+		} else {
 			impl.lg.Warn("子任务匹配失败，尝试 AgentFactory",
 				loggateway.StepID(biz.SpiritStepAllocatorMatch),
 				loggateway.Str("trace_id", traceID),
 				loggateway.Str("sub_task_id", subTask.ID),
-				loggateway.Err(err),
+				loggateway.Err(res.matchErr),
 			)
-			// P1-4: 4-layer matching failed → try AgentFactory before fallback.
-			if factoryAlloc, ok := impl.tryAgentFactoryForSubTask(ctx, subTask, traceID); ok {
-				allocations = append(allocations, factoryAlloc)
-				continue
+			// Phase B: factory creation (serial — contains user confirmation).
+			if factoryAlloc, ok := impl.tryAgentFactoryForSubTask(ctx, subTask, taskPlan.SpiritSessionID, traceID); ok {
+				allocation = factoryAlloc
+			} else {
+				// AgentFactory unavailable/failed → fallback to first available agent.
+				allocation = impl.fallbackAllocation(subTask, capabilities)
 			}
-			// AgentFactory unavailable/failed → fallback to first available agent
-			allocation = impl.fallbackAllocation(subTask, capabilities)
 		}
 		// For dag mode: each subtask becomes a multi-member team (≥2 members).
 		// The primary agent (AssignedKey) is the team lead; selectAdditionalMembers
@@ -129,6 +142,8 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 			}
 		}
 		allocations = append(allocations, allocation)
+		// P-ORCH: per-subtask progress (frontend renders replace-style).
+		impl.publishAllocatingProgress(ctx, taskPlan.SpiritSessionID, i+1, totalSubTasks, subTask.Name)
 	}
 
 	// If no subtasks (simple/moderate), allocate the whole plan to a single agent
@@ -152,6 +167,11 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 		loggateway.Str("trace_id", traceID),
 		loggateway.Int("allocation_count", len(allocations)),
 	)
+
+	// P-ORCH: allocation finished progress event.
+	impl.publishOrchestrationProgress(ctx, taskPlan.SpiritSessionID, "allocated", map[string]any{
+		"total": len(allocations),
+	})
 
 	// Build and persist AllocationPlan
 	plan := &biz.AllocationPlan{
@@ -188,6 +208,35 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 // GetAllocation retrieves an allocation plan by ID.
 func (impl *agentAllocatorImpl) GetAllocation(ctx context.Context, allocationID string) (*biz.AllocationPlan, error) {
 	return impl.repo.GetByID(ctx, allocationID)
+}
+
+// phaseAResult carries one subtask's Phase A match outcome (P-ORCH.5).
+type phaseAResult struct {
+	alloc    biz.TaskAllocation
+	matchErr error
+}
+
+// runPhaseAMatch executes Phase A of the two-phase allocation (P-ORCH.5):
+// parallel matchSubTask (Layer 0-3, no factory) across all subtasks.
+// Each goroutine writes its result to a pre-allocated slice slot so the
+// input subtask order is preserved regardless of completion timing.
+// Match errors are captured per-slot, never returned — Phase B handles them.
+func (impl *agentAllocatorImpl) runPhaseAMatch(ctx context.Context, subTasks []biz.SubTask, capabilities []biz.AgentCapability, traceID string) []phaseAResult {
+	results := make([]phaseAResult, len(subTasks))
+	if len(subTasks) == 0 {
+		return results
+	}
+	g, gctx := errgroup.WithContext(ctx)
+	for i, subTask := range subTasks {
+		i, subTask := i, subTask
+		g.Go(func() error {
+			alloc, err := impl.matchSubTask(gctx, subTask, capabilities, traceID)
+			results[i] = phaseAResult{alloc: alloc, matchErr: err}
+			return nil // never surface matchSubTask errors; Phase B handles them
+		})
+	}
+	_ = g.Wait()
+	return results
 }
 
 // matchSubTask matches a single subtask to the best agent/team.
@@ -929,7 +978,7 @@ func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPla
 // when 4-layer matching fails for a subtask (P1-4). Returns the allocation
 // and true on success; returns zero value and false when AgentFactory is
 // unavailable or creation fails (caller should fall back).
-func (impl *agentAllocatorImpl) tryAgentFactoryForSubTask(ctx context.Context, subTask biz.SubTask, traceID string) (biz.TaskAllocation, bool) {
+func (impl *agentAllocatorImpl) tryAgentFactoryForSubTask(ctx context.Context, subTask biz.SubTask, spiritSessionID, traceID string) (biz.TaskAllocation, bool) {
 	if impl.agentFactory == nil {
 		return biz.TaskAllocation{}, false
 	}
@@ -941,6 +990,7 @@ func (impl *agentAllocatorImpl) tryAgentFactoryForSubTask(ctx context.Context, s
 		RequiredCapabilities: subTask.RequiredCapabilities,
 		Domain:               "engineering",
 		TaskDescription:      desc,
+		SpiritSessionID:      spiritSessionID,
 	}
 	agentKey, err := impl.agentFactory.EnsureAgent(ctx, profile)
 	if err != nil {
@@ -980,6 +1030,7 @@ func (impl *agentAllocatorImpl) tryAgentFactoryForPlan(ctx context.Context, task
 		RequiredCapabilities: extractCapabilityHints(taskPlan.UserMessage),
 		Domain:               "engineering",
 		TaskDescription:      taskPlan.UserMessage,
+		SpiritSessionID:      taskPlan.SpiritSessionID,
 	}
 	agentKey, err := impl.agentFactory.EnsureAgent(ctx, profile)
 	if err != nil {
@@ -1175,8 +1226,33 @@ func (impl *agentAllocatorImpl) publishAllocationCreated(ctx context.Context, pl
 		"task_plan_id":      plan.TaskPlanID,
 		"spirit_session_id": spiritSessionID,
 		"allocation_count":  len(plan.Allocations),
-		"status":             string(plan.Status),
-		"agent_key":          "agent-allocator",
+		"status":            string(plan.Status),
+		"agent_key":         "agent-allocator",
 	}
 	impl.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "allocation_created", "", meta))
+}
+
+// publishAllocatingProgress emits a per-subtask allocating progress event
+// (P-ORCH). index is 1-based; total is the number of subtasks.
+func (impl *agentAllocatorImpl) publishAllocatingProgress(ctx context.Context, spiritSessionID string, index, total int, subTaskName string) {
+	impl.publishOrchestrationProgress(ctx, spiritSessionID, "allocating", map[string]any{
+		"index":    index,
+		"total":    total,
+		"sub_task": subTaskName,
+	})
+}
+
+// publishOrchestrationProgress emits an orchestration_progress
+// SystemNoticeEvent (WS-only, not persisted) so the frontend can render
+// fine-grained loading feedback during allocation. Nil bus or empty session
+// → skipped.
+func (impl *agentAllocatorImpl) publishOrchestrationProgress(ctx context.Context, spiritSessionID, phase string, extra map[string]any) {
+	if impl.bus == nil || spiritSessionID == "" {
+		return
+	}
+	meta := map[string]any{"phase": phase}
+	for k, v := range extra {
+		meta[k] = v
+	}
+	impl.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_progress", "orchestration progress: "+phase, meta))
 }

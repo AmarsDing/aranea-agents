@@ -239,6 +239,35 @@ export type ListToolAgentOverridesByAgentResponse = {
   items: ToolAgentOverride[] | undefined;
 };
 
+// ToolGrant is a persisted "always allow" grant recorded when a user
+// approves a tool confirmation with the always scope.
+export type ToolGrant = {
+  id: string | undefined;
+  agentId: string | undefined;
+  toolKey: string | undefined;
+  grantedBy: string | undefined;
+  createdAt: string | undefined;
+};
+
+export type ListToolGrantsRequest = {
+  //
+  // Behaviors: REQUIRED
+  agentId: string | undefined;
+};
+
+export type ListToolGrantsResponse = {
+  items: ToolGrant[] | undefined;
+};
+
+export type DeleteToolGrantRequest = {
+  //
+  // Behaviors: REQUIRED
+  agentId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  toolKey: string | undefined;
+};
+
 export type UpsertToolAgentOverrideRequest = {
   //
   // Behaviors: REQUIRED
@@ -347,9 +376,9 @@ export interface ToolService {
   ToggleToolEnabled(request: ToggleToolEnabledRequest): Promise<Tool>;
   ListToolRunsForTool(request: ListToolRunsForToolRequest): Promise<ListToolRunsResponse>;
   ListToolAgentOverrides(request: ListToolAgentOverridesRequest): Promise<ListToolAgentOverridesResponse>;
-  ListToolAgentOverridesByAgent(
-    request: ListToolAgentOverridesByAgentRequest,
-  ): Promise<ListToolAgentOverridesByAgentResponse>;
+  ListToolAgentOverridesByAgent(request: ListToolAgentOverridesByAgentRequest): Promise<ListToolAgentOverridesByAgentResponse>;
+  ListToolGrants(request: ListToolGrantsRequest): Promise<ListToolGrantsResponse>;
+  DeleteToolGrant(request: DeleteToolGrantRequest): Promise<wellKnownEmpty>;
   UpsertToolAgentOverride(request: UpsertToolAgentOverrideRequest): Promise<ToolAgentOverride>;
   DeleteToolAgentOverride(request: DeleteToolAgentOverrideRequest): Promise<wellKnownEmpty>;
   UpdateToolConfig(request: UpdateToolConfigRequest): Promise<Tool>;
@@ -362,490 +391,472 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createToolServiceClient(handler: RequestHandler): ToolService {
+export function createToolServiceClient(
+  handler: RequestHandler
+): ToolService {
   return {
-    ListTools(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListTools(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/tools`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.search) {
-        queryParams.push(`search=${encodeURIComponent(request.search.toString())}`);
+        queryParams.push(`search=${encodeURIComponent(request.search.toString())}`)
       }
       if (request.category) {
-        queryParams.push(`category=${encodeURIComponent(request.category.toString())}`);
+        queryParams.push(`category=${encodeURIComponent(request.category.toString())}`)
       }
       if (request.source) {
-        queryParams.push(`source=${encodeURIComponent(request.source.toString())}`);
+        queryParams.push(`source=${encodeURIComponent(request.source.toString())}`)
       }
       if (request.riskLevel) {
-        queryParams.push(`riskLevel=${encodeURIComponent(request.riskLevel.toString())}`);
+        queryParams.push(`riskLevel=${encodeURIComponent(request.riskLevel.toString())}`)
       }
       if (request.enabled) {
-        queryParams.push(`enabled=${encodeURIComponent(request.enabled.toString())}`);
+        queryParams.push(`enabled=${encodeURIComponent(request.enabled.toString())}`)
       }
       if (request.page) {
-        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`);
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
       }
       if (request.sort) {
-        queryParams.push(`sort=${encodeURIComponent(request.sort.toString())}`);
+        queryParams.push(`sort=${encodeURIComponent(request.sort.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'ListTools',
-        },
-      ) as Promise<ListToolsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "ListTools",
+      }) as Promise<ListToolsResponse>;
     },
-    ListToolRuns(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListToolRuns(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/tools/runs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.toolKey) {
-        queryParams.push(`toolKey=${encodeURIComponent(request.toolKey.toString())}`);
+        queryParams.push(`toolKey=${encodeURIComponent(request.toolKey.toString())}`)
       }
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       if (request.sessionId) {
-        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`);
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.from) {
-        queryParams.push(`from=${encodeURIComponent(request.from.toString())}`);
+        queryParams.push(`from=${encodeURIComponent(request.from.toString())}`)
       }
       if (request.to) {
-        queryParams.push(`to=${encodeURIComponent(request.to.toString())}`);
+        queryParams.push(`to=${encodeURIComponent(request.to.toString())}`)
       }
       if (request.page) {
-        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`);
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
       }
       if (request.hasError) {
-        queryParams.push(`hasError=${encodeURIComponent(request.hasError.toString())}`);
+        queryParams.push(`hasError=${encodeURIComponent(request.hasError.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'ListToolRuns',
-        },
-      ) as Promise<ListToolRunsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "ListToolRuns",
+      }) as Promise<ListToolRunsResponse>;
     },
-    ListToolInvocationAudits(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListToolInvocationAudits(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/tools/audits`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.toolKey) {
-        queryParams.push(`toolKey=${encodeURIComponent(request.toolKey.toString())}`);
+        queryParams.push(`toolKey=${encodeURIComponent(request.toolKey.toString())}`)
       }
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       if (request.userId) {
-        queryParams.push(`userId=${encodeURIComponent(request.userId.toString())}`);
+        queryParams.push(`userId=${encodeURIComponent(request.userId.toString())}`)
       }
       if (request.sessionId) {
-        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`);
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.from) {
-        queryParams.push(`from=${encodeURIComponent(request.from.toString())}`);
+        queryParams.push(`from=${encodeURIComponent(request.from.toString())}`)
       }
       if (request.to) {
-        queryParams.push(`to=${encodeURIComponent(request.to.toString())}`);
+        queryParams.push(`to=${encodeURIComponent(request.to.toString())}`)
       }
       if (request.page) {
-        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`);
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'ListToolInvocationAudits',
-        },
-      ) as Promise<ListToolInvocationAuditsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "ListToolInvocationAudits",
+      }) as Promise<ListToolInvocationAuditsResponse>;
     },
-    GetToolInvocationParams(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetToolInvocationParams(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.invocationId) {
-        throw new Error('missing required field request.invocation_id');
+        throw new Error("missing required field request.invocation_id");
       }
       const path = `v1/tools/runs/${request.invocationId}/params`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'GetToolInvocationParams',
-        },
-      ) as Promise<ToolInvocationParam>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "GetToolInvocationParams",
+      }) as Promise<ToolInvocationParam>;
     },
-    GetTool(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    GetTool(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/tools/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'GetTool',
-        },
-      ) as Promise<Tool>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "GetTool",
+      }) as Promise<Tool>;
     },
-    CreateTool(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    CreateTool(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/tools`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'CreateTool',
-        },
-      ) as Promise<Tool>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ToolService",
+        method: "CreateTool",
+      }) as Promise<Tool>;
     },
-    UpdateTool(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateTool(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/tools/${request.id}`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PUT',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'UpdateTool',
-        },
-      ) as Promise<Tool>;
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "ToolService",
+        method: "UpdateTool",
+      }) as Promise<Tool>;
     },
-    DeleteTool(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteTool(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/tools/${request.id}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'DeleteTool',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "ToolService",
+        method: "DeleteTool",
+      }) as Promise<wellKnownEmpty>;
     },
-    ToggleToolEnabled(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ToggleToolEnabled(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/tools/${request.id}/enabled`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PATCH',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'ToggleToolEnabled',
-        },
-      ) as Promise<Tool>;
+      return handler({
+        path: uri,
+        method: "PATCH",
+        body,
+      }, {
+        service: "ToolService",
+        method: "ToggleToolEnabled",
+      }) as Promise<Tool>;
     },
-    ListToolRunsForTool(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListToolRunsForTool(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.toolId) {
-        throw new Error('missing required field request.tool_id');
+        throw new Error("missing required field request.tool_id");
       }
       const path = `v1/tools/${request.toolId}/runs`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.agentId) {
-        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`);
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       if (request.sessionId) {
-        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`);
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
       }
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       if (request.from) {
-        queryParams.push(`from=${encodeURIComponent(request.from.toString())}`);
+        queryParams.push(`from=${encodeURIComponent(request.from.toString())}`)
       }
       if (request.to) {
-        queryParams.push(`to=${encodeURIComponent(request.to.toString())}`);
+        queryParams.push(`to=${encodeURIComponent(request.to.toString())}`)
       }
       if (request.page) {
-        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`);
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
       }
       if (request.pageSize) {
-        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`);
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'ListToolRunsForTool',
-        },
-      ) as Promise<ListToolRunsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "ListToolRunsForTool",
+      }) as Promise<ListToolRunsResponse>;
     },
-    ListToolAgentOverrides(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListToolAgentOverrides(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.toolId) {
-        throw new Error('missing required field request.tool_id');
+        throw new Error("missing required field request.tool_id");
       }
       const path = `v1/tools/${request.toolId}/agent-overrides`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'ListToolAgentOverrides',
-        },
-      ) as Promise<ListToolAgentOverridesResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "ListToolAgentOverrides",
+      }) as Promise<ListToolAgentOverridesResponse>;
     },
-    ListToolAgentOverridesByAgent(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListToolAgentOverridesByAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       const path = `v1/agents/${request.agentId}/tool-overrides`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'ListToolAgentOverridesByAgent',
-        },
-      ) as Promise<ListToolAgentOverridesByAgentResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "ListToolAgentOverridesByAgent",
+      }) as Promise<ListToolAgentOverridesByAgentResponse>;
     },
-    UpsertToolAgentOverride(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListToolGrants(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.agentId) {
+        throw new Error("missing required field request.agent_id");
+      }
+      const path = `v1/agents/${request.agentId}/tool-grants`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "ListToolGrants",
+      }) as Promise<ListToolGrantsResponse>;
+    },
+    DeleteToolGrant(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.agentId) {
+        throw new Error("missing required field request.agent_id");
+      }
+      if (!request.toolKey) {
+        throw new Error("missing required field request.tool_key");
+      }
+      const path = `v1/agents/${request.agentId}/tool-grants/${request.toolKey}`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "ToolService",
+        method: "DeleteToolGrant",
+      }) as Promise<wellKnownEmpty>;
+    },
+    UpsertToolAgentOverride(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.toolId) {
-        throw new Error('missing required field request.tool_id');
+        throw new Error("missing required field request.tool_id");
       }
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       const path = `v1/tools/${request.toolId}/agent-overrides/${request.agentId}`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PUT',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'UpsertToolAgentOverride',
-        },
-      ) as Promise<ToolAgentOverride>;
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "ToolService",
+        method: "UpsertToolAgentOverride",
+      }) as Promise<ToolAgentOverride>;
     },
-    DeleteToolAgentOverride(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    DeleteToolAgentOverride(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.toolId) {
-        throw new Error('missing required field request.tool_id');
+        throw new Error("missing required field request.tool_id");
       }
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       const path = `v1/tools/${request.toolId}/agent-overrides/${request.agentId}`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'DELETE',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'DeleteToolAgentOverride',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "ToolService",
+        method: "DeleteToolAgentOverride",
+      }) as Promise<wellKnownEmpty>;
     },
-    UpdateToolConfig(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    UpdateToolConfig(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/tools/${request.id}/config`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'PUT',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'UpdateToolConfig',
-        },
-      ) as Promise<Tool>;
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "ToolService",
+        method: "UpdateToolConfig",
+      }) as Promise<Tool>;
     },
-    TestTool(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    TestTool(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/tools/${request.id}/test`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'ToolService',
-          method: 'TestTool',
-        },
-      ) as Promise<TestToolResponse>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ToolService",
+        method: "TestTool",
+      }) as Promise<TestToolResponse>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
+
 
 // @@protoc_insertion_point(typescript-http-eof)

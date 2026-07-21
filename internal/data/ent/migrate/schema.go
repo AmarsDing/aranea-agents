@@ -248,7 +248,6 @@ var (
 		{Name: "variables_json", Type: field.TypeString, Default: "{}"},
 		{Name: "model_instructions_json", Type: field.TypeString, Default: "{}"},
 		{Name: "context_compaction_enabled", Type: field.TypeBool, Default: false},
-		{Name: "micro_compact_enabled", Type: field.TypeBool, Default: true},
 		{Name: "memory_compact_enabled", Type: field.TypeBool, Default: true},
 		{Name: "tool_result_gate_enabled", Type: field.TypeBool, Default: true},
 		{Name: "compress_llm_cache_enabled", Type: field.TypeBool, Default: true},
@@ -1470,6 +1469,25 @@ var (
 				Columns: []*schema.Column{LlmProviderModelsColumns[7], LlmProviderModelsColumns[5], LlmProviderModelsColumns[6]},
 			},
 		},
+	}
+	// MediaProvidersColumns holds the columns for the "media_providers" table.
+	MediaProvidersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "provider_type", Type: field.TypeString},
+		{Name: "base_url", Type: field.TypeString, Default: ""},
+		{Name: "api_key", Type: field.TypeString, Default: ""},
+		{Name: "config_json", Type: field.TypeString, Default: "{}"},
+		{Name: "capabilities", Type: field.TypeString, Default: "[]"},
+		{Name: "status", Type: field.TypeString, Default: "active"},
+		{Name: "created_at", Type: field.TypeString, Default: ""},
+		{Name: "updated_at", Type: field.TypeString, Default: ""},
+	}
+	// MediaProvidersTable holds the schema information for the "media_providers" table.
+	MediaProvidersTable = &schema.Table{
+		Name:       "media_providers",
+		Columns:    MediaProvidersColumns,
+		PrimaryKey: []*schema.Column{MediaProvidersColumns[0]},
 	}
 	// MemberSessionsV2Columns holds the columns for the "member_sessions_v2" table.
 	MemberSessionsV2Columns = []*schema.Column{
@@ -2903,6 +2921,7 @@ var (
 		{Name: "source", Type: field.TypeEnum, Enums: []string{"user", "system", "imported"}, Default: "user"},
 		{Name: "deliverables", Type: field.TypeString, Size: 2147483647, Default: "[]"},
 		{Name: "input_contract", Type: field.TypeString, Size: 2147483647, Default: "[]"},
+		{Name: "deliverables_output_json", Type: field.TypeString, Size: 2147483647, Default: "{}"},
 		{Name: "dept_lead_agent_id", Type: field.TypeString, Nullable: true, Default: ""},
 		{Name: "cross_dept_member_ids", Type: field.TypeString, Size: 2147483647, Default: "[]"},
 		{Name: "linked_graph_id", Type: field.TypeString, Nullable: true, Default: ""},
@@ -2921,17 +2940,17 @@ var (
 			{
 				Name:    "idx_teams_spirit_session",
 				Unique:  false,
-				Columns: []*schema.Column{TeamsColumns[8], TeamsColumns[26]},
+				Columns: []*schema.Column{TeamsColumns[8], TeamsColumns[27]},
 			},
 			{
 				Name:    "idx_teams_kind",
 				Unique:  false,
-				Columns: []*schema.Column{TeamsColumns[16], TeamsColumns[26]},
+				Columns: []*schema.Column{TeamsColumns[16], TeamsColumns[27]},
 			},
 			{
 				Name:    "team_workspace_id_deleted_at",
 				Unique:  false,
-				Columns: []*schema.Column{TeamsColumns[27], TeamsColumns[26]},
+				Columns: []*schema.Column{TeamsColumns[28], TeamsColumns[27]},
 			},
 		},
 	}
@@ -3128,6 +3147,32 @@ var (
 				Name:    "toolagentoverride_tool_key",
 				Unique:  false,
 				Columns: []*schema.Column{ToolAgentOverridesColumns[2]},
+			},
+		},
+	}
+	// ToolGrantsColumns holds the columns for the "tool_grants" table.
+	ToolGrantsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
+		{Name: "agent_id", Type: field.TypeString},
+		{Name: "tool_key", Type: field.TypeString},
+		{Name: "granted_by", Type: field.TypeString, Default: ""},
+		{Name: "created_at", Type: field.TypeString},
+	}
+	// ToolGrantsTable holds the schema information for the "tool_grants" table.
+	ToolGrantsTable = &schema.Table{
+		Name:       "tool_grants",
+		Columns:    ToolGrantsColumns,
+		PrimaryKey: []*schema.Column{ToolGrantsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "toolgrant_agent_id_tool_key",
+				Unique:  true,
+				Columns: []*schema.Column{ToolGrantsColumns[1], ToolGrantsColumns[2]},
+			},
+			{
+				Name:    "toolgrant_agent_id",
+				Unique:  false,
+				Columns: []*schema.Column{ToolGrantsColumns[1]},
 			},
 		},
 	}
@@ -3430,6 +3475,7 @@ var (
 		GraphTaskRunsTable,
 		HealRecordsTable,
 		LlmProviderModelsTable,
+		MediaProvidersTable,
 		MemberSessionsV2Table,
 		ModelPricingRulesTable,
 		ModelTokenUsageHourlyTable,
@@ -3473,6 +3519,7 @@ var (
 		TeamRunsV2Table,
 		TeamStagesV2Table,
 		ToolAgentOverridesTable,
+		ToolGrantsTable,
 		ToolInvocationsTable,
 		ToolInvocationAuditTable,
 		ToolInvocationParamsTable,
@@ -3606,6 +3653,9 @@ func init() {
 	LlmProviderModelsTable.Annotation = &entsql.Annotation{
 		Table: "llm_provider_models",
 	}
+	MediaProvidersTable.Annotation = &entsql.Annotation{
+		Table: "media_providers",
+	}
 	MemberSessionsV2Table.Annotation = &entsql.Annotation{
 		Table: "member_sessions_v2",
 	}
@@ -3731,6 +3781,9 @@ func init() {
 	}
 	ToolAgentOverridesTable.Annotation = &entsql.Annotation{
 		Table: "tool_agent_overrides",
+	}
+	ToolGrantsTable.Annotation = &entsql.Annotation{
+		Table: "tool_grants",
 	}
 	ToolInvocationsTable.Annotation = &entsql.Annotation{
 		Table: "tool_invocations",

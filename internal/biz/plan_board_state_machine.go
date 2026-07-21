@@ -29,11 +29,11 @@ import (
 type PlanBoardEvent string
 
 const (
-	PlanBoardEventExecute    PlanBoardEvent = "execute"
-	PlanBoardEventFailEarly  PlanBoardEvent = "fail_early"
-	PlanBoardEventComplete   PlanBoardEvent = "complete"
-	PlanBoardEventFail       PlanBoardEvent = "fail"
-	PlanBoardEventPartial    PlanBoardEvent = "partial"
+	PlanBoardEventExecute   PlanBoardEvent = "execute"
+	PlanBoardEventFailEarly PlanBoardEvent = "fail_early"
+	PlanBoardEventComplete  PlanBoardEvent = "complete"
+	PlanBoardEventFail      PlanBoardEvent = "fail"
+	PlanBoardEventPartial   PlanBoardEvent = "partial"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────

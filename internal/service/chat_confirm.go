@@ -7,10 +7,30 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
+	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
 )
+
+// resolveConfirmReply maps the ConfirmActivity request to the reply token
+// sent through the await channel. A structured reply token (grant-scoped
+// approve/deny) takes precedence over the legacy approved flag so the
+// runtime confirmation gate can record the grant scope.
+func resolveConfirmReply(reqApproved bool, reqReply string) (token string, approved bool, err error) {
+	reqReply = strings.TrimSpace(reqReply)
+	if reqReply == "" {
+		if reqApproved {
+			return "approved", true, nil
+		}
+		return "rejected", false, nil
+	}
+	outcome, structured := serviceawaitreply.ParseToolConfirmOutcome(reqReply)
+	if !structured {
+		return "", false, apierror.BadRequest(apierror.DomainChat, "unknown confirm reply token")
+	}
+	return reqReply, outcome.Approved(), nil
+}
 
 // ConfirmActivity handles user approval/rejection of a tool-blocked confirm Step.
 // It loads from steps_v2, validates kind=confirm + status=tool_blocked,
@@ -71,8 +91,13 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 		return nil, apierror.Internal(apierror.DomainChat, "session store unavailable, cannot verify ownership")
 	}
 
+	replyMsg, approved, err := resolveConfirmReply(req.GetApproved(), req.GetReply())
+	if err != nil {
+		return nil, err
+	}
+
 	transitionEvent := biz.ActivityTransitionDone
-	if !req.GetApproved() {
+	if !approved {
 		transitionEvent = biz.ActivityTransitionCancel
 	}
 	newStatus, err := biz.TransitionActivityStatus(biz.ActivityStatus(step.Status), transitionEvent)
@@ -91,7 +116,7 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 	if bus := s.orch.td().Pipeline.EventBus; bus != nil {
 		decision := "approved"
 		noticeType := "tool_confirm_approved"
-		if !req.GetApproved() {
+		if !approved {
 			decision = "rejected"
 			noticeType = "tool_confirm_rejected"
 		}
@@ -105,10 +130,6 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 		bus.Publish(ctx, biz.NewSystemNoticeEvent(step.SessionID, noticeType, "", meta))
 	}
 
-	replyMsg := "approved"
-	if !req.GetApproved() {
-		replyMsg = "rejected"
-	}
 	runID := ""
 	if _, requestID, active := s.orch.ActiveRunner(sessionID); active {
 		runID = requestID

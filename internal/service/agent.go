@@ -243,7 +243,6 @@ func fromProtoEvolution(pb *v1.AgentRuntimeSettings) biz.EvolutionCfg {
 func fromProtoContext(pb *v1.AgentRuntimeSettings) biz.ContextCfg {
 	return biz.ContextCfg{
 		CompactionEnabled:          pb.GetContextCompactionEnabled(),
-		MicroCompactEnabled:        pb.GetMicroCompactEnabled(),
 		MemoryCompactEnabled:       pb.GetMemoryCompactEnabled(),
 		ToolResultGateEnabled:      pb.GetToolResultGateEnabled(),
 		CompressLLMCacheEnabled:    pb.GetCompressLlmCacheEnabled(),
@@ -365,7 +364,6 @@ func toProtoRuntime(b *biz.AgentRuntimeSettings) *v1.AgentRuntimeSettings {
 		VariablesJson:                     id.VariablesJSON,
 		ModelInstructionsJson:             id.ModelInstructionsJSON,
 		ContextCompactionEnabled:          ctx.CompactionEnabled,
-		MicroCompactEnabled:               ctx.MicroCompactEnabled,
 		MemoryCompactEnabled:              ctx.MemoryCompactEnabled,
 		ToolResultGateEnabled:             ctx.ToolResultGateEnabled,
 		CompressLlmCacheEnabled:           ctx.CompressLLMCacheEnabled,

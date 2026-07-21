@@ -1,5 +1,9 @@
 import type { Session } from '../../features/session/types';
+import { computed } from 'vue';
+import { i18n } from '../../i18n';
 import { REGISTRY_COL_W, registryCol } from '../../features/ui/registryTableColumns';
+
+const t = (key: string) => i18n.global.t(key);
 
 /** 列表摘要卡片（纯展示文案来源） */
 export type SessionsSummaryCard = {
@@ -8,27 +12,24 @@ export type SessionsSummaryCard = {
   hint: string;
 };
 
-export const ownerFilterOptions = [
-  { label: 'Agent', value: 'agent' },
-  { label: 'Team', value: 'team' },
-];
+export const ownerFilterOptions = computed(() => [
+  { label: t('session.ownerType.agent'), value: 'agent' },
+  { label: t('session.ownerType.team'), value: 'team' },
+]);
 
-export const statusFilterOptions = [
-  'idle',
-  'running',
-  'completed',
-  'interrupted',
-  'awaiting_confirmation',
-  'archived',
-].map((value) => ({
-  label: value,
-  value,
-}));
+export const statusFilterOptions = computed(() =>
+  ['idle', 'running', 'completed', 'interrupted', 'awaiting_confirmation', 'archived'].map((value) => ({
+    label: t(`session.status.${value}`),
+    value,
+  })),
+);
 
-export const contextFilterOptions = ['normal', 'warning', 'critical', 'exceeded'].map((value) => ({
-  label: value,
-  value,
-}));
+export const contextFilterOptions = computed(() =>
+  ['normal', 'warning', 'critical', 'exceeded'].map((value) => ({
+    label: t(`session.contextStatus.${value}`),
+    value,
+  })),
+);
 
 export const pageSizeSelectOptions = [10, 20, 50].map((value) => ({
   label: `${value} / 页`,
@@ -74,7 +75,7 @@ export function isSessionPinned(session: Session) {
 }
 
 export function ownerLabel(value: string) {
-  return value === 'team' ? 'Team' : 'Agent';
+  return t(value === 'team' ? 'session.ownerType.team' : 'session.ownerType.agent');
 }
 
 /** Quasar chip：日间 primary / team 用 secondary 语义；与全局主题兼容 */
@@ -92,12 +93,14 @@ export function contextProgressColor(value: string) {
         : 'positive';
 }
 
+/** 进度条值：始终钳制在 0-1，超出部分只通过百分比文字呈现 */
 export function ratioValue(value: number) {
   return Math.max(0, Math.min(1, value || 0));
 }
 
+/** 百分比文字：显示真实比率（超限时 >100%，如 156%） */
 export function formatPercent(value: number) {
-  return `${Math.round(ratioValue(value) * 100)}%`;
+  return `${Math.round(Math.max(0, value || 0) * 100)}%`;
 }
 
 export function formatNumber(value: number) {

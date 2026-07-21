@@ -8,6 +8,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
+
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 // OpenAICompatLLMCaller implements biz.LLMCaller using CallOpenAICompatChat
@@ -48,7 +50,7 @@ func NewOpenAICompatLLMCallerFromProviderConfig(cfg ProviderAPIConfig, timeoutSe
 // so PromptRefiner's decision wins (B-1 fix). The model name is taken from req.Model
 // (B-4 fix) — previously empty string was passed.
 func (c *OpenAICompatLLMCaller) Call(ctx context.Context, req biz.LLMCallRequest) (string, int, error) {
-	msgs := buildMessages(req.System, req.User)
+	msgs := buildMessages(req.System, req.User, req.Images...)
 	cfg := c.cfg
 	if p := strings.TrimSpace(req.Provider); p != "" {
 		cfg.ProviderType = p
@@ -106,7 +108,7 @@ func (c *DynamicLLMCaller) Call(ctx context.Context, req biz.LLMCallRequest) (st
 	if err != nil {
 		return "", 0, err
 	}
-	msgs := buildMessages(req.System, req.User)
+	msgs := buildMessages(req.System, req.User, req.Images...)
 	modelName := strings.TrimSpace(req.Model)
 	text, _, promptTok, completionTok, err := CallOpenAICompatChat(ctx, c.hc, cfg, modelName, msgs)
 	if err != nil {
@@ -200,10 +202,28 @@ func (c *DynamicLLMCaller) resolveCredentials(ctx context.Context, provider, mod
 var _ biz.LLMCaller = (*DynamicLLMCaller)(nil)
 
 // buildMessages converts (system, user) strings into the OpenAI-compat message array.
-func buildMessages(system, user string) []OpenAICompatMessage {
+// images 非空时 user 消息携带多模态 ContentParts（文本 + 图片）。
+func buildMessages(system, user string, images ...biz.LLMImage) []OpenAICompatMessage {
 	msgs := make([]OpenAICompatMessage, 0, 2)
 	if s := strings.TrimSpace(system); s != "" {
 		msgs = append(msgs, OpenAICompatMessage{Role: "system", Content: s})
+	}
+	if len(images) > 0 {
+		parts := make([]trpcmodel.ContentPart, 0, len(images)+1)
+		if u := strings.TrimSpace(user); u != "" {
+			parts = append(parts, trpcmodel.ContentPart{Type: trpcmodel.ContentTypeText, Text: &u})
+		}
+		for _, img := range images {
+			if len(img.Data) == 0 {
+				continue
+			}
+			parts = append(parts, trpcmodel.ContentPart{
+				Type:  trpcmodel.ContentTypeImage,
+				Image: &trpcmodel.Image{Data: img.Data, Format: img.Format},
+			})
+		}
+		msgs = append(msgs, OpenAICompatMessage{Role: "user", ContentParts: parts})
+		return msgs
 	}
 	if u := strings.TrimSpace(user); u != "" {
 		msgs = append(msgs, OpenAICompatMessage{Role: "user", Content: u})

@@ -185,6 +185,8 @@ var registryOptInOnlyKeys = map[string]bool{
 	"browser":             true,
 	"message":             true,
 	"model_registry_sync": true,
+	"mcp_tool_set":        true,
+	"mcp_broker":          true,
 }
 
 func applyRegistryAdminDenials(catalog []Tool, deny map[string]bool) {

@@ -97,9 +97,9 @@ func TestStripCodeFenceJSON(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := stripCodeFenceJSON(tt.input)
+			got := stripCodeFence(tt.input)
 			if got != tt.want {
-				t.Errorf("stripCodeFenceJSON() = %q, want %q", got, tt.want)
+				t.Errorf("stripCodeFence() = %q, want %q", got, tt.want)
 			}
 		})
 	}

@@ -179,7 +179,7 @@ func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.Aut
 			FeedbackRating:    req.FeedbackRating,
 			FeedbackComment:   req.FeedbackComment,
 			Priority:          req.Priority,
-			TenantID:           req.TenantID,
+			TenantID:          req.TenantID,
 		}, biz.MemoryDeadLetterReasonRetryExhausted, errString(lastErr))
 	}
 	w.lg.With(loggateway.SessionID(req.SessionID)).Warn("自动记忆提取重试耗尽", loggateway.Err(lastErr))

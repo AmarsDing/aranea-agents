@@ -22,8 +22,7 @@ import (
 	stdunicode "unicode"
 
 	"golang.org/x/net/html"
-	textunicode "golang.org/x/text/encoding/unicode"
-	"golang.org/x/text/transform"
+	"trpc.group/trpc-go/trpc-agent-go/tool/internal/textfile"
 )
 
 func normalizePath(baseDir string, raw string) (string, string, error) {
@@ -105,25 +104,11 @@ func readHTTPBody(
 }
 
 func countLines(content string) int {
-	if content == "" {
-		return 0
-	}
-	parts := strings.Split(content, "\n")
-	if strings.HasSuffix(content, "\n") {
-		return len(parts) - 1
-	}
-	return len(parts)
+	return textfile.CountLines(content)
 }
 
 func splitTextLines(content string) []string {
-	if content == "" {
-		return []string{}
-	}
-	lines := strings.Split(content, "\n")
-	if strings.HasSuffix(content, "\n") {
-		return lines[:len(lines)-1]
-	}
-	return lines
+	return textfile.SplitTextLines(content)
 }
 
 func sliceLines(content string, offset int, limit *int) (string, int, int) {
@@ -150,48 +135,23 @@ func sliceLines(content string, offset int, limit *int) (string, int, int) {
 }
 
 func normalizeNewlines(content string) string {
-	content = strings.ReplaceAll(content, "\r\n", "\n")
-	content = strings.ReplaceAll(content, "\r", "\n")
-	return content
+	return textfile.NormalizeNewlines(content)
 }
 
 func detectLineEnding(raw []byte) string {
-	if bytes.Contains(raw, []byte("\r\n")) {
-		return "\r\n"
-	}
-	return "\n"
+	return textfile.DetectLineEnding(raw)
 }
 
 func applyLineEnding(content string, lineEnding string) string {
-	if lineEnding == "\r\n" {
-		return strings.ReplaceAll(content, "\n", "\r\n")
-	}
-	return content
+	return textfile.ApplyLineEnding(content, lineEnding)
 }
 
 func decodeTextBytes(raw []byte) (string, string, error) {
-	if len(raw) >= 2 && raw[0] == 0xff && raw[1] == 0xfe {
-		decoder := textunicode.UTF16(textunicode.LittleEndian, textunicode.ExpectBOM).NewDecoder()
-		decoded, _, err := transform.String(decoder, string(raw))
-		if err != nil {
-			return "", "", err
-		}
-		return normalizeNewlines(decoded), "utf16le", nil
-	}
-	return normalizeNewlines(string(raw)), "utf8", nil
+	return textfile.DecodeTextBytes(raw)
 }
 
 func encodeTextBytes(content string, encoding string, lineEnding string) ([]byte, error) {
-	normalized := applyLineEnding(content, lineEnding)
-	if encoding == "utf16le" {
-		encoder := textunicode.UTF16(textunicode.LittleEndian, textunicode.UseBOM).NewEncoder()
-		encoded, _, err := transform.String(encoder, normalized)
-		if err != nil {
-			return nil, err
-		}
-		return []byte(encoded), nil
-	}
-	return []byte(normalized), nil
+	return textfile.EncodeTextBytes(content, encoding, lineEnding)
 }
 
 func fileBase64(raw []byte) string {
@@ -199,15 +159,7 @@ func fileBase64(raw []byte) string {
 }
 
 func isProbablyBinary(raw []byte) bool {
-	if len(raw) >= 2 && raw[0] == 0xff && raw[1] == 0xfe {
-		return false
-	}
-	for _, b := range raw {
-		if b == 0 {
-			return true
-		}
-	}
-	return false
+	return textfile.IsProbablyBinary(raw)
 }
 
 func buildStructuredPatch(oldContent string, newContent string) []patchHunk {

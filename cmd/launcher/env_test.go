@@ -41,7 +41,7 @@ func TestReportTextContainsLevels(t *testing.T) {
 	e := &runtimeEnv{}
 	e.add("PostgreSQL", checkOK, "system :5432", false)
 	e.add("pgvector", checkWarn, "missing", false)
-	e.add("后端", checkFail, "missing exe", true)
+	e.add("Backend", checkFail, "missing exe", true)
 	s := e.reportText()
 	if !containsAll(s, "[OK]", "[WARN]", "[FAIL]", "PostgreSQL") {
 		t.Fatalf("report incomplete: %s", s)

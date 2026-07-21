@@ -36,6 +36,7 @@ import FileSearchToolDetail from './tools/FileSearchToolDetail.vue';
 import WebSearchToolDetail from './tools/WebSearchToolDetail.vue';
 import McpToolDetail from './tools/McpToolDetail.vue';
 import CodeToolDetail from './tools/CodeToolDetail.vue';
+import MediaToolDetail from './tools/MediaToolDetail.vue';
 import { classifyTool, TOOL_CATEGORY_ICON, type ToolCategory } from './tools/classifyTool';
 import { asRecord } from './tools/toolDetailShared';
 
@@ -74,6 +75,8 @@ const detailComponent = computed<Component>(() => {
       return McpToolDetail;
     case 'code':
       return CodeToolDetail;
+    case 'media':
+      return MediaToolDetail;
     default:
       return GenericToolDetail;
   }

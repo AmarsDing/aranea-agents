@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
@@ -35,6 +36,65 @@ type toolConfirmGate struct {
 	catalog   map[string]confirmCatalogEntry
 	plugin    plugintrpc.ConfirmationGuardConfig
 	hasPlugin bool
+	// sessionGrants holds session-scoped "always allow for this session"
+	// grants. It is a process-wide store shared across agent rebuilds;
+	// entries are keyed by (sessionID, agentID, toolKey) so a grant never
+	// leaks across sessions.
+	sessionGrants *toolGrantStore
+	// persistedGrant queries the DB-backed "always allow" grant tier.
+	// A nil function disables the tier (treated as no grant).
+	persistedGrant func(ctx context.Context, agentID, toolKey string) bool
+}
+
+// Confirmation decision reasons, recorded in logs for audit (Grok's
+// decision_reason counterpart).
+const (
+	// confirmReasonDefaultAllow: the tool does not require confirmation.
+	confirmReasonDefaultAllow = "default_allow"
+	// confirmReasonGrantSession: allowed by a session-scoped grant.
+	confirmReasonGrantSession = "grant_session"
+	// confirmReasonGrantPersisted: allowed by a persisted grant.
+	confirmReasonGrantPersisted = "grant_persisted"
+	// confirmReasonPolicyCatalog: confirmation required by catalog policy.
+	confirmReasonPolicyCatalog = "policy_catalog"
+	// confirmReasonPolicyPlugin: confirmation required by plugin guard.
+	confirmReasonPolicyPlugin = "policy_plugin"
+)
+
+// confirmDecision is the outcome of the confirmation decision chain.
+type confirmDecision struct {
+	needsConfirm bool
+	reason       string
+}
+
+// defaultToolGrantStore is the process-wide session-grant store. Session
+// grants are lost on process restart (matching Grok's session grant
+// semantics); the TTL bounds memory growth for long-running processes.
+var defaultToolGrantStore = newToolGrantStore(time.Now)
+
+// decide runs the confirmation decision chain:
+//
+//	policy (catalog/plugin) → persisted grant → session grant → prompt
+//
+// Grants are only consulted for tools that actually require confirmation;
+// other tools short-circuit as default_allow.
+func (g *toolConfirmGate) decide(ctx context.Context, sessionID, agentID, toolName string, args []byte) confirmDecision {
+	toolName = strings.TrimSpace(toolName)
+	needsByCatalog := catalogRequiresConfirm(g.catalog, toolName)
+	needsByPlugin := g.hasPlugin && plugintrpc.MatchConfirmationGuard(g.plugin, toolName, args)
+	if !needsByCatalog && !needsByPlugin {
+		return confirmDecision{needsConfirm: false, reason: confirmReasonDefaultAllow}
+	}
+	if g.persistedGrant != nil && g.persistedGrant(ctx, agentID, toolName) {
+		return confirmDecision{needsConfirm: false, reason: confirmReasonGrantPersisted}
+	}
+	if g.sessionGrants != nil && g.sessionGrants.HasSession(sessionID, agentID, toolName) {
+		return confirmDecision{needsConfirm: false, reason: confirmReasonGrantSession}
+	}
+	if needsByCatalog {
+		return confirmDecision{needsConfirm: true, reason: confirmReasonPolicyCatalog}
+	}
+	return confirmDecision{needsConfirm: true, reason: confirmReasonPolicyPlugin}
 }
 
 func buildToolConfirmGate(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) *toolConfirmGate {
@@ -53,7 +113,16 @@ func buildToolConfirmGate(ctx context.Context, ag biz.Agent, deps TRPCBuilderDep
 	if hasPlugin && len(pluginCfg.ConfirmTools) == 0 && len(pluginCfg.ConfirmPatterns) == 0 && len(catalog) == 0 {
 		return nil
 	}
-	return &toolConfirmGate{catalog: catalog, plugin: pluginCfg, hasPlugin: hasPlugin}
+	gate := &toolConfirmGate{
+		catalog:       catalog,
+		plugin:        pluginCfg,
+		hasPlugin:     hasPlugin,
+		sessionGrants: defaultToolGrantStore,
+	}
+	if deps.ToolUC != nil {
+		gate.persistedGrant = deps.ToolUC.HasToolGrant
+	}
+	return gate
 }
 
 func buildCatalogConfirmTools(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) map[string]confirmCatalogEntry {

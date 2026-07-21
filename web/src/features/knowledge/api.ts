@@ -12,6 +12,7 @@ import type {
   KnowledgeChunk,
   KnowledgeCollection,
   KnowledgeDocument,
+  KnowledgeDocumentContent,
   ListCollectionsResult,
   ListDocumentsResult,
   SearchKnowledgeQuery,
@@ -127,12 +128,28 @@ export async function ingestDocument(input: IngestDocumentInput): Promise<Knowle
     chunkSize: input.chunk_size ?? 0,
     chunkOverlap: input.chunk_overlap ?? 0,
     chunkStrategy: input.chunk_strategy ?? '',
+    organizeToMarkdown: input.organize_to_markdown,
   });
   return mapDocument(raw);
 }
 
+export async function getDocumentContent(id: string): Promise<KnowledgeDocumentContent> {
+  const r = asRecord(await svc.GetDocumentContent({ id }));
+  return {
+    id: pickStr(r, 'id', 'id'),
+    content_text: pickStr(r, 'content_text', 'contentText'),
+    organized: pickBool(r, 'organized', 'organized'),
+  };
+}
+
 export async function deleteDocument(id: string): Promise<void> {
   await svc.DeleteDocument({ id });
+}
+
+// US-14：文档跨库移动（默认库收件箱 → 分类库归档）；目标库 dim 不一致时后端拒绝。
+export async function moveDocument(id: string, targetCollectionId: string): Promise<KnowledgeDocument> {
+  const raw = await svc.MoveDocument({ id, targetCollectionId });
+  return mapDocument(raw);
 }
 
 // ---------- Search ----------

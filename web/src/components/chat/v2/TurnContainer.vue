@@ -9,7 +9,7 @@
       <ActionBlock v-else-if="step.Kind === 'action'" :step="step" />
       <ReplyBlock v-else-if="step.Kind === 'reply'" :step="step" />
       <NoticeBlock v-else-if="step.Kind === 'notice'" :step="step" />
-      <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" />
+      <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" @confirm="(p) => $emit('confirm-step', p)" />
       <ErrorBlock v-else-if="step.Kind === 'error'" :step="step" />
     </template>
     <TeamStagePanel
@@ -20,6 +20,7 @@
       @inject-agent="(p) => $emit('inject-agent', p)"
       @retry-team="(teamId) => $emit('retry-team', teamId)"
       @expand="(ids) => $emit('expand', ids)"
+      @confirm-step="(p) => $emit('confirm-step', p)"
     />
   </div>
 </template>
@@ -28,6 +29,7 @@
 import { computed } from 'vue';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import type { Turn } from '../../../features/chat/v2Types';
+import type { ConfirmStepPayload } from '../../../features/chat/types';
 import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
 import ThinkingBlock from '../ThinkingBlock.vue';
 import ActionBlock from '../ActionBlock.vue';
@@ -43,6 +45,7 @@ defineEmits<{
   'inject-agent': [payload: { sessionId: string; message: string }];
   'retry-team': [teamId: string];
   expand: [sessionIds: string[]];
+  'confirm-step': [payload: ConfirmStepPayload];
 }>();
 const store = useActivityQueries();
 const visibleSteps = computed(() =>

@@ -64,7 +64,63 @@ func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile, mode string
 			b.WriteString("\n</internal_config>\n\n")
 		}
 	}
+
+	// Memory Self-Marking Instructions: inject only when memory is enabled.
+	// This instructs the agent to mark user-stated facts using <fact> tags
+	// so the backend can persist them immediately to memory_fact.
+	if agent.Settings != nil && agent.Settings.MemoryEnabled {
+		b.WriteString(memorySelfMarkingInstructions())
+		b.WriteString("\n\n")
+	}
+
 	return strings.TrimSpace(b.String())
+}
+
+// memorySelfMarkingInstructions returns the standard Memory Self-Marking Instructions
+// that teach the agent to mark user-stated facts using <fact> XML tags.
+// These tags are parsed by the backend and persisted immediately to memory_fact,
+// bridging the async gap between conversation and Sleep-time consolidation.
+func memorySelfMarkingInstructions() string {
+	return `<memory_self_marking>
+## Memory Self-Marking Instructions
+
+When the user explicitly tells you information that should be remembered long-term, you MUST mark it using XML tags in your response. This ensures the information is immediately saved to persistent memory.
+
+### When to Mark
+Mark information when the user:
+1. Tells you their name or preferences ("My name is...", "I like...", "Call me...")
+2. Instructs you to change your behavior or identity ("Your name is...", "You should...", "Remember that...")
+3. Shares important personal facts ("I work at...", "My project is...", "I have a meeting tomorrow")
+
+### How to Mark
+Use the following XML format in your response:
+
+<fact type="CATEGORY" confidence="LEVEL">
+The factual statement in third person, one sentence.
+</fact>
+
+Categories:
+- "identity": User's name, preferences, personal attributes
+- "instruction": Instructions about how you should behave or identify
+- "domain_knowledge": Facts about the user's work, projects, or domain
+
+Confidence:
+- "high": User explicitly stated this
+- "medium": Strongly implied by context
+
+### Rules
+1. Place the <fact> tag at the END of your response, after your normal reply
+2. Do NOT mention the tag to the user unless they ask
+3. If multiple facts, use multiple <fact> tags
+4. Do NOT mark general conversation content
+5. If no facts to remember, do NOT use the tag
+
+### Example
+User: "My name is Alice and I prefer morning meetings"
+Your response: "Nice to meet you, Alice! I'll remember you prefer morning meetings.
+<fact type="identity" confidence="high">The user's name is Alice</fact>
+<fact type="preference" confidence="high">The user prefers morning meetings</fact>"
+</memory_self_marking>`
 }
 
 // PromptFilesForAgent returns hydrated in-memory files when present, otherwise loads from persistence.

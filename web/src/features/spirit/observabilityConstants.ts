@@ -68,6 +68,70 @@ export const AGENT_LOADING_MAP: ContextualLoadingConfig[] = [
   },
 ];
 
+// --- P-ORCH.2: Orchestration Progress Phases ---
+
+/**
+ * Fine-grained orchestration progress phases emitted by the backend
+ * (TaskPlanner / AgentAllocator / AgentFactory) as SystemNoticeEvent with
+ * NoticeType="orchestration_progress". The frontend receives these as
+ * ActivityEvent(kind=notice, stage=orchestration_progress) with meta.phase
+ * selecting the rendering template.
+ *
+ * `messageKey` is an i18n key under `chat.orchestrationProgress.*`. The
+ * composable translates it via `t()` and substitutes placeholders from
+ * `activity.meta`:
+ *   - {sub_task_count}  (decomposed)
+ *   - {index}           (allocating)
+ *   - {total}           (allocating, allocated)
+ *   - {sub_task}        (allocating)
+ *   - {agent_name}      (creating_agent, agent_created)
+ *
+ * Phases align with the backend table in docs/development/1-chat.design.md
+ * (P-ORCH.1). Loading messages replace (not append) the previous one so the
+ * user sees live progress.
+ */
+export type OrchestrationProgressConfig = {
+  /** i18n key under `chat.orchestrationProgress.*`. */
+  messageKey: string;
+  /** Quasar icon name for the loading indicator. */
+  icon: string;
+  /** Left border color (CSS color or Quasar color name). */
+  color: string;
+};
+
+export const ORCHESTRATION_PROGRESS_MAP: Record<string, OrchestrationProgressConfig> = {
+  decomposing: {
+    messageKey: 'chat.orchestrationProgress.decomposing',
+    icon: 'split',
+    color: 'blue',
+  },
+  decomposed: {
+    messageKey: 'chat.orchestrationProgress.decomposed',
+    icon: 'check_circle',
+    color: 'blue',
+  },
+  allocating: {
+    messageKey: 'chat.orchestrationProgress.allocating',
+    icon: 'people',
+    color: 'purple',
+  },
+  allocated: {
+    messageKey: 'chat.orchestrationProgress.allocated',
+    icon: 'check_circle',
+    color: 'purple',
+  },
+  creating_agent: {
+    messageKey: 'chat.orchestrationProgress.creatingAgent',
+    icon: 'add_circle',
+    color: 'orange',
+  },
+  agent_created: {
+    messageKey: 'chat.orchestrationProgress.agentCreated',
+    icon: 'check_circle',
+    color: 'green',
+  },
+};
+
 // --- OBS-05: Sidebar Status Pulse ---
 
 export type PulseConfig = {

@@ -1950,6 +1950,224 @@ func (x *ListToolAgentOverridesByAgentResponse) GetItems() []*ToolAgentOverride 
 	return nil
 }
 
+// ToolGrant is a persisted "always allow" grant recorded when a user
+// approves a tool confirmation with the always scope.
+type ToolGrant struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	AgentId       string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	ToolKey       string                 `protobuf:"bytes,3,opt,name=tool_key,json=toolKey,proto3" json:"tool_key,omitempty"`
+	GrantedBy     string                 `protobuf:"bytes,4,opt,name=granted_by,json=grantedBy,proto3" json:"granted_by,omitempty"`
+	CreatedAt     string                 `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ToolGrant) Reset() {
+	*x = ToolGrant{}
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ToolGrant) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ToolGrant) ProtoMessage() {}
+
+func (x *ToolGrant) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ToolGrant.ProtoReflect.Descriptor instead.
+func (*ToolGrant) Descriptor() ([]byte, []int) {
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *ToolGrant) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ToolGrant) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *ToolGrant) GetToolKey() string {
+	if x != nil {
+		return x.ToolKey
+	}
+	return ""
+}
+
+func (x *ToolGrant) GetGrantedBy() string {
+	if x != nil {
+		return x.GrantedBy
+	}
+	return ""
+}
+
+func (x *ToolGrant) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+type ListToolGrantsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListToolGrantsRequest) Reset() {
+	*x = ListToolGrantsRequest{}
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListToolGrantsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListToolGrantsRequest) ProtoMessage() {}
+
+func (x *ListToolGrantsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListToolGrantsRequest.ProtoReflect.Descriptor instead.
+func (*ListToolGrantsRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *ListToolGrantsRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+type ListToolGrantsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*ToolGrant           `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListToolGrantsResponse) Reset() {
+	*x = ListToolGrantsResponse{}
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListToolGrantsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListToolGrantsResponse) ProtoMessage() {}
+
+func (x *ListToolGrantsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListToolGrantsResponse.ProtoReflect.Descriptor instead.
+func (*ListToolGrantsResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ListToolGrantsResponse) GetItems() []*ToolGrant {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+type DeleteToolGrantRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	ToolKey       string                 `protobuf:"bytes,2,opt,name=tool_key,json=toolKey,proto3" json:"tool_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteToolGrantRequest) Reset() {
+	*x = DeleteToolGrantRequest{}
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteToolGrantRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteToolGrantRequest) ProtoMessage() {}
+
+func (x *DeleteToolGrantRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteToolGrantRequest.ProtoReflect.Descriptor instead.
+func (*DeleteToolGrantRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *DeleteToolGrantRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *DeleteToolGrantRequest) GetToolKey() string {
+	if x != nil {
+		return x.ToolKey
+	}
+	return ""
+}
+
 type UpsertToolAgentOverrideRequest struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	ToolId               string                 `protobuf:"bytes,1,opt,name=tool_id,json=toolId,proto3" json:"tool_id,omitempty"`
@@ -1964,7 +2182,7 @@ type UpsertToolAgentOverrideRequest struct {
 
 func (x *UpsertToolAgentOverrideRequest) Reset() {
 	*x = UpsertToolAgentOverrideRequest{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[19]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1976,7 +2194,7 @@ func (x *UpsertToolAgentOverrideRequest) String() string {
 func (*UpsertToolAgentOverrideRequest) ProtoMessage() {}
 
 func (x *UpsertToolAgentOverrideRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[19]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1989,7 +2207,7 @@ func (x *UpsertToolAgentOverrideRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertToolAgentOverrideRequest.ProtoReflect.Descriptor instead.
 func (*UpsertToolAgentOverrideRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{19}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *UpsertToolAgentOverrideRequest) GetToolId() string {
@@ -2044,7 +2262,7 @@ type DeleteToolAgentOverrideRequest struct {
 
 func (x *DeleteToolAgentOverrideRequest) Reset() {
 	*x = DeleteToolAgentOverrideRequest{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[20]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2056,7 +2274,7 @@ func (x *DeleteToolAgentOverrideRequest) String() string {
 func (*DeleteToolAgentOverrideRequest) ProtoMessage() {}
 
 func (x *DeleteToolAgentOverrideRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[20]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2069,7 +2287,7 @@ func (x *DeleteToolAgentOverrideRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteToolAgentOverrideRequest.ProtoReflect.Descriptor instead.
 func (*DeleteToolAgentOverrideRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{20}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *DeleteToolAgentOverrideRequest) GetToolId() string {
@@ -2100,7 +2318,7 @@ type ToolInvocationParam struct {
 
 func (x *ToolInvocationParam) Reset() {
 	*x = ToolInvocationParam{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[21]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2112,7 +2330,7 @@ func (x *ToolInvocationParam) String() string {
 func (*ToolInvocationParam) ProtoMessage() {}
 
 func (x *ToolInvocationParam) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[21]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2125,7 +2343,7 @@ func (x *ToolInvocationParam) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolInvocationParam.ProtoReflect.Descriptor instead.
 func (*ToolInvocationParam) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{21}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ToolInvocationParam) GetId() string {
@@ -2179,7 +2397,7 @@ type GetToolInvocationParamsRequest struct {
 
 func (x *GetToolInvocationParamsRequest) Reset() {
 	*x = GetToolInvocationParamsRequest{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[22]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2191,7 +2409,7 @@ func (x *GetToolInvocationParamsRequest) String() string {
 func (*GetToolInvocationParamsRequest) ProtoMessage() {}
 
 func (x *GetToolInvocationParamsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[22]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2204,7 +2422,7 @@ func (x *GetToolInvocationParamsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetToolInvocationParamsRequest.ProtoReflect.Descriptor instead.
 func (*GetToolInvocationParamsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{22}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GetToolInvocationParamsRequest) GetInvocationId() string {
@@ -2224,7 +2442,7 @@ type UpdateToolConfigRequest struct {
 
 func (x *UpdateToolConfigRequest) Reset() {
 	*x = UpdateToolConfigRequest{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[23]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2236,7 +2454,7 @@ func (x *UpdateToolConfigRequest) String() string {
 func (*UpdateToolConfigRequest) ProtoMessage() {}
 
 func (x *UpdateToolConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[23]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2249,7 +2467,7 @@ func (x *UpdateToolConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateToolConfigRequest.ProtoReflect.Descriptor instead.
 func (*UpdateToolConfigRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{23}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *UpdateToolConfigRequest) GetId() string {
@@ -2277,7 +2495,7 @@ type TestToolRequest struct {
 
 func (x *TestToolRequest) Reset() {
 	*x = TestToolRequest{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[24]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2289,7 +2507,7 @@ func (x *TestToolRequest) String() string {
 func (*TestToolRequest) ProtoMessage() {}
 
 func (x *TestToolRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[24]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2302,7 +2520,7 @@ func (x *TestToolRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestToolRequest.ProtoReflect.Descriptor instead.
 func (*TestToolRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{24}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *TestToolRequest) GetId() string {
@@ -2338,7 +2556,7 @@ type TestToolResponse struct {
 
 func (x *TestToolResponse) Reset() {
 	*x = TestToolResponse{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[25]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2350,7 +2568,7 @@ func (x *TestToolResponse) String() string {
 func (*TestToolResponse) ProtoMessage() {}
 
 func (x *TestToolResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[25]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2363,7 +2581,7 @@ func (x *TestToolResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestToolResponse.ProtoReflect.Descriptor instead.
 func (*TestToolResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{25}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *TestToolResponse) GetStatus() string {
@@ -2413,7 +2631,7 @@ type ToolInvocationAudit struct {
 
 func (x *ToolInvocationAudit) Reset() {
 	*x = ToolInvocationAudit{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[26]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2425,7 +2643,7 @@ func (x *ToolInvocationAudit) String() string {
 func (*ToolInvocationAudit) ProtoMessage() {}
 
 func (x *ToolInvocationAudit) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[26]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2438,7 +2656,7 @@ func (x *ToolInvocationAudit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolInvocationAudit.ProtoReflect.Descriptor instead.
 func (*ToolInvocationAudit) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{26}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ToolInvocationAudit) GetId() string {
@@ -2535,7 +2753,7 @@ type ListToolInvocationAuditsRequest struct {
 
 func (x *ListToolInvocationAuditsRequest) Reset() {
 	*x = ListToolInvocationAuditsRequest{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[27]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2547,7 +2765,7 @@ func (x *ListToolInvocationAuditsRequest) String() string {
 func (*ListToolInvocationAuditsRequest) ProtoMessage() {}
 
 func (x *ListToolInvocationAuditsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[27]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2560,7 +2778,7 @@ func (x *ListToolInvocationAuditsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListToolInvocationAuditsRequest.ProtoReflect.Descriptor instead.
 func (*ListToolInvocationAuditsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{27}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ListToolInvocationAuditsRequest) GetToolKey() string {
@@ -2638,7 +2856,7 @@ type ListToolInvocationAuditsResponse struct {
 
 func (x *ListToolInvocationAuditsResponse) Reset() {
 	*x = ListToolInvocationAuditsResponse{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[28]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2650,7 +2868,7 @@ func (x *ListToolInvocationAuditsResponse) String() string {
 func (*ListToolInvocationAuditsResponse) ProtoMessage() {}
 
 func (x *ListToolInvocationAuditsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[28]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2663,7 +2881,7 @@ func (x *ListToolInvocationAuditsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListToolInvocationAuditsResponse.ProtoReflect.Descriptor instead.
 func (*ListToolInvocationAuditsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{28}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ListToolInvocationAuditsResponse) GetItems() []*ToolInvocationAudit {
@@ -2907,7 +3125,22 @@ const file_kratos_tool_v1_tool_proto_rawDesc = "" +
 	"$ListToolAgentOverridesByAgentRequest\x12\x1f\n" +
 	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\"`\n" +
 	"%ListToolAgentOverridesByAgentResponse\x127\n" +
-	"\x05items\x18\x01 \x03(\v2!.kratos.tool.v1.ToolAgentOverrideR\x05items\"\xf5\x01\n" +
+	"\x05items\x18\x01 \x03(\v2!.kratos.tool.v1.ToolAgentOverrideR\x05items\"\x8f\x01\n" +
+	"\tToolGrant\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
+	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x19\n" +
+	"\btool_key\x18\x03 \x01(\tR\atoolKey\x12\x1d\n" +
+	"\n" +
+	"granted_by\x18\x04 \x01(\tR\tgrantedBy\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\tR\tcreatedAt\"8\n" +
+	"\x15ListToolGrantsRequest\x12\x1f\n" +
+	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\"I\n" +
+	"\x16ListToolGrantsResponse\x12/\n" +
+	"\x05items\x18\x01 \x03(\v2\x19.kratos.tool.v1.ToolGrantR\x05items\"Z\n" +
+	"\x16DeleteToolGrantRequest\x12\x1f\n" +
+	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12\x1f\n" +
+	"\btool_key\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\atoolKey\"\xf5\x01\n" +
 	"\x1eUpsertToolAgentOverrideRequest\x12\x1d\n" +
 	"\atool_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x06toolId\x12\x1f\n" +
 	"\bagent_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12\x18\n" +
@@ -2974,7 +3207,7 @@ const file_kratos_tool_v1_tool_proto_rawDesc = "" +
 	"\x05items\x18\x01 \x03(\v2#.kratos.tool.v1.ToolInvocationAuditR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x12\n" +
 	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x04 \x01(\x05R\bpageSize2\xaa\x10\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize2\xc1\x12\n" +
 	"\vToolService\x12c\n" +
 	"\tListTools\x12 .kratos.tool.v1.ListToolsRequest\x1a!.kratos.tool.v1.ListToolsResponse\"\x11\x82\xd3\xe4\x93\x02\v\x12\t/v1/tools\x12q\n" +
 	"\fListToolRuns\x12#.kratos.tool.v1.ListToolRunsRequest\x1a$.kratos.tool.v1.ListToolRunsResponse\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/tools/runs\x12\x97\x01\n" +
@@ -2990,7 +3223,9 @@ const file_kratos_tool_v1_tool_proto_rawDesc = "" +
 	"\x11ToggleToolEnabled\x12(.kratos.tool.v1.ToggleToolEnabledRequest\x1a\x14.kratos.tool.v1.Tool\"!\x82\xd3\xe4\x93\x02\x1b:\x01*2\x16/v1/tools/{id}/enabled\x12\x89\x01\n" +
 	"\x13ListToolRunsForTool\x12*.kratos.tool.v1.ListToolRunsForToolRequest\x1a$.kratos.tool.v1.ListToolRunsResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/tools/{tool_id}/runs\x12\xa4\x01\n" +
 	"\x16ListToolAgentOverrides\x12-.kratos.tool.v1.ListToolAgentOverridesRequest\x1a..kratos.tool.v1.ListToolAgentOverridesResponse\"+\x82\xd3\xe4\x93\x02%\x12#/v1/tools/{tool_id}/agent-overrides\x12\xba\x01\n" +
-	"\x1dListToolAgentOverridesByAgent\x124.kratos.tool.v1.ListToolAgentOverridesByAgentRequest\x1a5.kratos.tool.v1.ListToolAgentOverridesByAgentResponse\",\x82\xd3\xe4\x93\x02&\x12$/v1/agents/{agent_id}/tool-overrides\x12\xa7\x01\n" +
+	"\x1dListToolAgentOverridesByAgent\x124.kratos.tool.v1.ListToolAgentOverridesByAgentRequest\x1a5.kratos.tool.v1.ListToolAgentOverridesByAgentResponse\",\x82\xd3\xe4\x93\x02&\x12$/v1/agents/{agent_id}/tool-overrides\x12\x8a\x01\n" +
+	"\x0eListToolGrants\x12%.kratos.tool.v1.ListToolGrantsRequest\x1a&.kratos.tool.v1.ListToolGrantsResponse\")\x82\xd3\xe4\x93\x02#\x12!/v1/agents/{agent_id}/tool-grants\x12\x87\x01\n" +
+	"\x0fDeleteToolGrant\x12&.kratos.tool.v1.DeleteToolGrantRequest\x1a\x16.google.protobuf.Empty\"4\x82\xd3\xe4\x93\x02.*,/v1/agents/{agent_id}/tool-grants/{tool_key}\x12\xa7\x01\n" +
 	"\x17UpsertToolAgentOverride\x12..kratos.tool.v1.UpsertToolAgentOverrideRequest\x1a!.kratos.tool.v1.ToolAgentOverride\"9\x82\xd3\xe4\x93\x023:\x01*\x1a./v1/tools/{tool_id}/agent-overrides/{agent_id}\x12\x99\x01\n" +
 	"\x17DeleteToolAgentOverride\x12..kratos.tool.v1.DeleteToolAgentOverrideRequest\x1a\x16.google.protobuf.Empty\"6\x82\xd3\xe4\x93\x020*./v1/tools/{tool_id}/agent-overrides/{agent_id}\x12s\n" +
 	"\x10UpdateToolConfig\x12'.kratos.tool.v1.UpdateToolConfigRequest\x1a\x14.kratos.tool.v1.Tool\" \x82\xd3\xe4\x93\x02\x1a:\x01*\x1a\x15/v1/tools/{id}/config\x12m\n" +
@@ -3009,7 +3244,7 @@ func file_kratos_tool_v1_tool_proto_rawDescGZIP() []byte {
 	return file_kratos_tool_v1_tool_proto_rawDescData
 }
 
-var file_kratos_tool_v1_tool_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
+var file_kratos_tool_v1_tool_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_kratos_tool_v1_tool_proto_goTypes = []any{
 	(*ToolPermissions)(nil),                       // 0: kratos.tool.v1.ToolPermissions
 	(*Tool)(nil),                                  // 1: kratos.tool.v1.Tool
@@ -3030,17 +3265,21 @@ var file_kratos_tool_v1_tool_proto_goTypes = []any{
 	(*ListToolAgentOverridesResponse)(nil),        // 16: kratos.tool.v1.ListToolAgentOverridesResponse
 	(*ListToolAgentOverridesByAgentRequest)(nil),  // 17: kratos.tool.v1.ListToolAgentOverridesByAgentRequest
 	(*ListToolAgentOverridesByAgentResponse)(nil), // 18: kratos.tool.v1.ListToolAgentOverridesByAgentResponse
-	(*UpsertToolAgentOverrideRequest)(nil),        // 19: kratos.tool.v1.UpsertToolAgentOverrideRequest
-	(*DeleteToolAgentOverrideRequest)(nil),        // 20: kratos.tool.v1.DeleteToolAgentOverrideRequest
-	(*ToolInvocationParam)(nil),                   // 21: kratos.tool.v1.ToolInvocationParam
-	(*GetToolInvocationParamsRequest)(nil),        // 22: kratos.tool.v1.GetToolInvocationParamsRequest
-	(*UpdateToolConfigRequest)(nil),               // 23: kratos.tool.v1.UpdateToolConfigRequest
-	(*TestToolRequest)(nil),                       // 24: kratos.tool.v1.TestToolRequest
-	(*TestToolResponse)(nil),                      // 25: kratos.tool.v1.TestToolResponse
-	(*ToolInvocationAudit)(nil),                   // 26: kratos.tool.v1.ToolInvocationAudit
-	(*ListToolInvocationAuditsRequest)(nil),       // 27: kratos.tool.v1.ListToolInvocationAuditsRequest
-	(*ListToolInvocationAuditsResponse)(nil),      // 28: kratos.tool.v1.ListToolInvocationAuditsResponse
-	(*emptypb.Empty)(nil),                         // 29: google.protobuf.Empty
+	(*ToolGrant)(nil),                             // 19: kratos.tool.v1.ToolGrant
+	(*ListToolGrantsRequest)(nil),                 // 20: kratos.tool.v1.ListToolGrantsRequest
+	(*ListToolGrantsResponse)(nil),                // 21: kratos.tool.v1.ListToolGrantsResponse
+	(*DeleteToolGrantRequest)(nil),                // 22: kratos.tool.v1.DeleteToolGrantRequest
+	(*UpsertToolAgentOverrideRequest)(nil),        // 23: kratos.tool.v1.UpsertToolAgentOverrideRequest
+	(*DeleteToolAgentOverrideRequest)(nil),        // 24: kratos.tool.v1.DeleteToolAgentOverrideRequest
+	(*ToolInvocationParam)(nil),                   // 25: kratos.tool.v1.ToolInvocationParam
+	(*GetToolInvocationParamsRequest)(nil),        // 26: kratos.tool.v1.GetToolInvocationParamsRequest
+	(*UpdateToolConfigRequest)(nil),               // 27: kratos.tool.v1.UpdateToolConfigRequest
+	(*TestToolRequest)(nil),                       // 28: kratos.tool.v1.TestToolRequest
+	(*TestToolResponse)(nil),                      // 29: kratos.tool.v1.TestToolResponse
+	(*ToolInvocationAudit)(nil),                   // 30: kratos.tool.v1.ToolInvocationAudit
+	(*ListToolInvocationAuditsRequest)(nil),       // 31: kratos.tool.v1.ListToolInvocationAuditsRequest
+	(*ListToolInvocationAuditsResponse)(nil),      // 32: kratos.tool.v1.ListToolInvocationAuditsResponse
+	(*emptypb.Empty)(nil),                         // 33: google.protobuf.Empty
 }
 var file_kratos_tool_v1_tool_proto_depIdxs = []int32{
 	0,  // 0: kratos.tool.v1.Tool.permissions:type_name -> kratos.tool.v1.ToolPermissions
@@ -3049,44 +3288,49 @@ var file_kratos_tool_v1_tool_proto_depIdxs = []int32{
 	10, // 3: kratos.tool.v1.ListToolRunsResponse.items:type_name -> kratos.tool.v1.ToolInvocation
 	14, // 4: kratos.tool.v1.ListToolAgentOverridesResponse.items:type_name -> kratos.tool.v1.ToolAgentOverride
 	14, // 5: kratos.tool.v1.ListToolAgentOverridesByAgentResponse.items:type_name -> kratos.tool.v1.ToolAgentOverride
-	26, // 6: kratos.tool.v1.ListToolInvocationAuditsResponse.items:type_name -> kratos.tool.v1.ToolInvocationAudit
-	3,  // 7: kratos.tool.v1.ToolService.ListTools:input_type -> kratos.tool.v1.ListToolsRequest
-	11, // 8: kratos.tool.v1.ToolService.ListToolRuns:input_type -> kratos.tool.v1.ListToolRunsRequest
-	27, // 9: kratos.tool.v1.ToolService.ListToolInvocationAudits:input_type -> kratos.tool.v1.ListToolInvocationAuditsRequest
-	22, // 10: kratos.tool.v1.ToolService.GetToolInvocationParams:input_type -> kratos.tool.v1.GetToolInvocationParamsRequest
-	5,  // 11: kratos.tool.v1.ToolService.GetTool:input_type -> kratos.tool.v1.GetToolRequest
-	6,  // 12: kratos.tool.v1.ToolService.CreateTool:input_type -> kratos.tool.v1.CreateToolRequest
-	7,  // 13: kratos.tool.v1.ToolService.UpdateTool:input_type -> kratos.tool.v1.UpdateToolRequest
-	8,  // 14: kratos.tool.v1.ToolService.DeleteTool:input_type -> kratos.tool.v1.DeleteToolRequest
-	9,  // 15: kratos.tool.v1.ToolService.ToggleToolEnabled:input_type -> kratos.tool.v1.ToggleToolEnabledRequest
-	13, // 16: kratos.tool.v1.ToolService.ListToolRunsForTool:input_type -> kratos.tool.v1.ListToolRunsForToolRequest
-	15, // 17: kratos.tool.v1.ToolService.ListToolAgentOverrides:input_type -> kratos.tool.v1.ListToolAgentOverridesRequest
-	17, // 18: kratos.tool.v1.ToolService.ListToolAgentOverridesByAgent:input_type -> kratos.tool.v1.ListToolAgentOverridesByAgentRequest
-	19, // 19: kratos.tool.v1.ToolService.UpsertToolAgentOverride:input_type -> kratos.tool.v1.UpsertToolAgentOverrideRequest
-	20, // 20: kratos.tool.v1.ToolService.DeleteToolAgentOverride:input_type -> kratos.tool.v1.DeleteToolAgentOverrideRequest
-	23, // 21: kratos.tool.v1.ToolService.UpdateToolConfig:input_type -> kratos.tool.v1.UpdateToolConfigRequest
-	24, // 22: kratos.tool.v1.ToolService.TestTool:input_type -> kratos.tool.v1.TestToolRequest
-	4,  // 23: kratos.tool.v1.ToolService.ListTools:output_type -> kratos.tool.v1.ListToolsResponse
-	12, // 24: kratos.tool.v1.ToolService.ListToolRuns:output_type -> kratos.tool.v1.ListToolRunsResponse
-	28, // 25: kratos.tool.v1.ToolService.ListToolInvocationAudits:output_type -> kratos.tool.v1.ListToolInvocationAuditsResponse
-	21, // 26: kratos.tool.v1.ToolService.GetToolInvocationParams:output_type -> kratos.tool.v1.ToolInvocationParam
-	1,  // 27: kratos.tool.v1.ToolService.GetTool:output_type -> kratos.tool.v1.Tool
-	1,  // 28: kratos.tool.v1.ToolService.CreateTool:output_type -> kratos.tool.v1.Tool
-	1,  // 29: kratos.tool.v1.ToolService.UpdateTool:output_type -> kratos.tool.v1.Tool
-	29, // 30: kratos.tool.v1.ToolService.DeleteTool:output_type -> google.protobuf.Empty
-	1,  // 31: kratos.tool.v1.ToolService.ToggleToolEnabled:output_type -> kratos.tool.v1.Tool
-	12, // 32: kratos.tool.v1.ToolService.ListToolRunsForTool:output_type -> kratos.tool.v1.ListToolRunsResponse
-	16, // 33: kratos.tool.v1.ToolService.ListToolAgentOverrides:output_type -> kratos.tool.v1.ListToolAgentOverridesResponse
-	18, // 34: kratos.tool.v1.ToolService.ListToolAgentOverridesByAgent:output_type -> kratos.tool.v1.ListToolAgentOverridesByAgentResponse
-	14, // 35: kratos.tool.v1.ToolService.UpsertToolAgentOverride:output_type -> kratos.tool.v1.ToolAgentOverride
-	29, // 36: kratos.tool.v1.ToolService.DeleteToolAgentOverride:output_type -> google.protobuf.Empty
-	1,  // 37: kratos.tool.v1.ToolService.UpdateToolConfig:output_type -> kratos.tool.v1.Tool
-	25, // 38: kratos.tool.v1.ToolService.TestTool:output_type -> kratos.tool.v1.TestToolResponse
-	23, // [23:39] is the sub-list for method output_type
-	7,  // [7:23] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	19, // 6: kratos.tool.v1.ListToolGrantsResponse.items:type_name -> kratos.tool.v1.ToolGrant
+	30, // 7: kratos.tool.v1.ListToolInvocationAuditsResponse.items:type_name -> kratos.tool.v1.ToolInvocationAudit
+	3,  // 8: kratos.tool.v1.ToolService.ListTools:input_type -> kratos.tool.v1.ListToolsRequest
+	11, // 9: kratos.tool.v1.ToolService.ListToolRuns:input_type -> kratos.tool.v1.ListToolRunsRequest
+	31, // 10: kratos.tool.v1.ToolService.ListToolInvocationAudits:input_type -> kratos.tool.v1.ListToolInvocationAuditsRequest
+	26, // 11: kratos.tool.v1.ToolService.GetToolInvocationParams:input_type -> kratos.tool.v1.GetToolInvocationParamsRequest
+	5,  // 12: kratos.tool.v1.ToolService.GetTool:input_type -> kratos.tool.v1.GetToolRequest
+	6,  // 13: kratos.tool.v1.ToolService.CreateTool:input_type -> kratos.tool.v1.CreateToolRequest
+	7,  // 14: kratos.tool.v1.ToolService.UpdateTool:input_type -> kratos.tool.v1.UpdateToolRequest
+	8,  // 15: kratos.tool.v1.ToolService.DeleteTool:input_type -> kratos.tool.v1.DeleteToolRequest
+	9,  // 16: kratos.tool.v1.ToolService.ToggleToolEnabled:input_type -> kratos.tool.v1.ToggleToolEnabledRequest
+	13, // 17: kratos.tool.v1.ToolService.ListToolRunsForTool:input_type -> kratos.tool.v1.ListToolRunsForToolRequest
+	15, // 18: kratos.tool.v1.ToolService.ListToolAgentOverrides:input_type -> kratos.tool.v1.ListToolAgentOverridesRequest
+	17, // 19: kratos.tool.v1.ToolService.ListToolAgentOverridesByAgent:input_type -> kratos.tool.v1.ListToolAgentOverridesByAgentRequest
+	20, // 20: kratos.tool.v1.ToolService.ListToolGrants:input_type -> kratos.tool.v1.ListToolGrantsRequest
+	22, // 21: kratos.tool.v1.ToolService.DeleteToolGrant:input_type -> kratos.tool.v1.DeleteToolGrantRequest
+	23, // 22: kratos.tool.v1.ToolService.UpsertToolAgentOverride:input_type -> kratos.tool.v1.UpsertToolAgentOverrideRequest
+	24, // 23: kratos.tool.v1.ToolService.DeleteToolAgentOverride:input_type -> kratos.tool.v1.DeleteToolAgentOverrideRequest
+	27, // 24: kratos.tool.v1.ToolService.UpdateToolConfig:input_type -> kratos.tool.v1.UpdateToolConfigRequest
+	28, // 25: kratos.tool.v1.ToolService.TestTool:input_type -> kratos.tool.v1.TestToolRequest
+	4,  // 26: kratos.tool.v1.ToolService.ListTools:output_type -> kratos.tool.v1.ListToolsResponse
+	12, // 27: kratos.tool.v1.ToolService.ListToolRuns:output_type -> kratos.tool.v1.ListToolRunsResponse
+	32, // 28: kratos.tool.v1.ToolService.ListToolInvocationAudits:output_type -> kratos.tool.v1.ListToolInvocationAuditsResponse
+	25, // 29: kratos.tool.v1.ToolService.GetToolInvocationParams:output_type -> kratos.tool.v1.ToolInvocationParam
+	1,  // 30: kratos.tool.v1.ToolService.GetTool:output_type -> kratos.tool.v1.Tool
+	1,  // 31: kratos.tool.v1.ToolService.CreateTool:output_type -> kratos.tool.v1.Tool
+	1,  // 32: kratos.tool.v1.ToolService.UpdateTool:output_type -> kratos.tool.v1.Tool
+	33, // 33: kratos.tool.v1.ToolService.DeleteTool:output_type -> google.protobuf.Empty
+	1,  // 34: kratos.tool.v1.ToolService.ToggleToolEnabled:output_type -> kratos.tool.v1.Tool
+	12, // 35: kratos.tool.v1.ToolService.ListToolRunsForTool:output_type -> kratos.tool.v1.ListToolRunsResponse
+	16, // 36: kratos.tool.v1.ToolService.ListToolAgentOverrides:output_type -> kratos.tool.v1.ListToolAgentOverridesResponse
+	18, // 37: kratos.tool.v1.ToolService.ListToolAgentOverridesByAgent:output_type -> kratos.tool.v1.ListToolAgentOverridesByAgentResponse
+	21, // 38: kratos.tool.v1.ToolService.ListToolGrants:output_type -> kratos.tool.v1.ListToolGrantsResponse
+	33, // 39: kratos.tool.v1.ToolService.DeleteToolGrant:output_type -> google.protobuf.Empty
+	14, // 40: kratos.tool.v1.ToolService.UpsertToolAgentOverride:output_type -> kratos.tool.v1.ToolAgentOverride
+	33, // 41: kratos.tool.v1.ToolService.DeleteToolAgentOverride:output_type -> google.protobuf.Empty
+	1,  // 42: kratos.tool.v1.ToolService.UpdateToolConfig:output_type -> kratos.tool.v1.Tool
+	29, // 43: kratos.tool.v1.ToolService.TestTool:output_type -> kratos.tool.v1.TestToolResponse
+	26, // [26:44] is the sub-list for method output_type
+	8,  // [8:26] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_kratos_tool_v1_tool_proto_init() }
@@ -3102,7 +3346,7 @@ func file_kratos_tool_v1_tool_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_tool_v1_tool_proto_rawDesc), len(file_kratos_tool_v1_tool_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   29,
+			NumMessages:   33,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

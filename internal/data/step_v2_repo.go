@@ -104,6 +104,23 @@ func (r *stepV2Repo) ListStepsBySpiritSession(ctx context.Context, spiritSession
 	return entStepsV2ToBiz(rows), nil
 }
 
+// ListStepsBySessionID returns steps whose session_id equals the given session
+// exactly (no tree expansion), ordered by started_at asc.
+// Used by deliverable extraction to read a team main session's own reply step.
+func (r *stepV2Repo) ListStepsBySessionID(ctx context.Context, sessionID string) ([]biz.Step, error) {
+	if r == nil || r.data == nil {
+		return nil, fmt.Errorf("step v2 repo: database not configured")
+	}
+	rows, err := r.data.RW().Read(ctx).StepV2.Query().
+		Where(stepv2.SessionIDEQ(sessionID)).
+		Order(ent.Asc(stepv2.FieldStartedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "STEP_V2")
+	}
+	return entStepsV2ToBiz(rows), nil
+}
+
 // MaxSeqBySpiritSession returns the highest Seq stored for the spirit session (0 if none).
 func (r *stepV2Repo) MaxSeqBySpiritSession(ctx context.Context, spiritSessionID string) (int64, error) {
 	if r == nil || r.data == nil {
@@ -262,7 +279,7 @@ func (r *stepV2Repo) UpsertStep(ctx context.Context, s biz.Step) (biz.Step, erro
 	}
 	row, err := cb.Save(ctx)
 	if err != nil {
-		if ent.IsConstraintError(err) {
+		if ent.IsConstraintError(err) || isPgUniqueViolation(err) {
 			existing, getErr := r.data.RW().Read(ctx).StepV2.Get(ctx, s.ID)
 			if getErr != nil {
 				return biz.Step{}, entErrToBizErr(getErr, "STEP_V2")

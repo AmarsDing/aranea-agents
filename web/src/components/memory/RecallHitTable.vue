@@ -11,7 +11,7 @@
     >
       <template #cell-id="{ row }">
         <span class="text-caption">
-          <AppRegistryHoverTip :text="displayText(hitRow(row))" empty-label="暂无文本">
+          <AppRegistryHoverTip :text="displayText(hitRow(row))" :empty-label="t('memory.recall.emptyText')">
             <span>{{ hitRow(row).id.slice(0, 8) }}…</span>
           </AppRegistryHoverTip>
         </span>
@@ -23,17 +23,20 @@
         <span class="text-right">{{ formatScore(hitRow(row).scores.cross_encoder) }}</span>
       </template>
     </AppRegistryMarkupTable>
-    <q-card-section v-else class="text-grey-7 text-caption">暂无结果 — 运行 Debug Recall 后展示。</q-card-section>
+    <q-card-section v-else class="text-grey-7 text-caption">{{ t('memory.recall.emptyHits') }}</q-card-section>
   </q-card>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import AppRegistryMarkupTable from '../layout/AppRegistryMarkupTable.vue';
-import { recallHitColumns } from './recallHitTableUi';
+import { buildRecallHitColumns } from './recallHitTableUi';
 import type { MemoryRecallHit } from '../../features/memory/types';
 import type { RegistryTableColumn } from '../../features/ui/registryTableColumns';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   title: string;
@@ -43,7 +46,7 @@ const props = defineProps<{
 
 const rowRecords = computed(() => props.rows as unknown as Record<string, unknown>[]);
 
-const columns = recallHitColumns;
+const columns = computed(() => buildRecallHitColumns(t));
 
 function hitRow(row: Record<string, unknown>) {
   return row as unknown as MemoryRecallHit;

@@ -35,8 +35,14 @@ type Document struct {
 	ChunkCount   int
 	Status       string
 	ErrorMessage string
-	CreatedAt    string
-	UpdatedAt    string
+	// ContentText 是提取/整理后的全文（organized=true 时为结构化 Markdown），供预览与血缘。
+	ContentText string
+	// Organized 标记内容是否经 LLM 整理为 Markdown。
+	Organized bool
+	// AssetURI 是原始文件留存路径（Phase 9 多模态血缘），文本类文档为空。
+	AssetURI  string
+	CreatedAt string
+	UpdatedAt string
 }
 
 // Chunk is one indexed text chunk with its embedding.
@@ -75,8 +81,13 @@ type DocumentRepo interface {
 	CreateDocument(ctx context.Context, d Document) (Document, error)
 	GetDocument(ctx context.Context, id string) (Document, error)
 	UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error
+	// UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
+	UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error
 	ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
 	DeleteDocument(ctx context.Context, id string) error
+	// MoveDocument 文档连同 chunks 移至目标 Collection（US-14）。
+	// Repo 实现必须在单事务内完成 documents/chunks 的 collection_id 更新与两侧计数校正。
+	MoveDocument(ctx context.Context, id, targetCollectionID string) (Document, error)
 }
 
 type ChunkRepo interface {
@@ -125,7 +136,12 @@ var (
 	ErrQueryRequired          = apierror.BadRequest("KNOWLEDGE", "query is required")
 	ErrDimensionMismatch      = apierror.BadRequest("KNOWLEDGE", "embedding dimension mismatch")
 	ErrEmbeddingEmpty         = apierror.BadRequest("KNOWLEDGE", "embedding is empty")
+	// ErrMoveDimensionMismatch 目标库与源库 dim 不一致，禁止跨库移动（向量维度不兼容）。
+	ErrMoveDimensionMismatch = apierror.Conflict("KNOWLEDGE", "target collection embedding dimension differs; re-ingest the document instead of moving")
 )
+
+// DefaultCollectionName 是 US-14「上传免预选」的兜底知识库名称（懒创建，按 name 复用）。
+const DefaultCollectionName = "默认知识库"
 
 // Usecase implements collection/document/search operations.
 type Usecase struct {
@@ -267,6 +283,17 @@ func (u *Usecase) ListDocuments(ctx context.Context, collectionID string, limit,
 	return u.documents.ListDocuments(ctx, collectionID, limit, offset)
 }
 
+// GetDocument returns a single document including its extracted/organized content.
+func (u *Usecase) GetDocument(ctx context.Context, id string) (Document, error) {
+	if err := u.requireRepo(); err != nil {
+		return Document{}, err
+	}
+	if strings.TrimSpace(id) == "" {
+		return Document{}, ErrIDRequired
+	}
+	return u.documents.GetDocument(ctx, id)
+}
+
 // DeleteDocument removes a document and its chunks. Repo implementations MUST
 // keep `knowledge_collections.document_count / chunk_count` in sync atomically.
 // DAT-02 / KB-04: prior repo implementations only deleted the document row
@@ -330,12 +357,78 @@ func (u *Usecase) UpdateDocumentStatus(ctx context.Context, id, status, errMsg s
 	return u.documents.UpdateDocumentStatus(ctx, id, status, errMsg, chunkCount)
 }
 
+// UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
+func (u *Usecase) UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error {
+	if err := u.requireRepo(); err != nil {
+		return err
+	}
+	return u.documents.UpdateDocumentContent(ctx, id, contentText, organized)
+}
+
 // UpdateCollectionCounts adjusts document/chunk tallies on a collection.
 func (u *Usecase) UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error {
 	if err := u.requireRepo(); err != nil {
 		return err
 	}
 	return u.collections.UpdateCollectionCounts(ctx, id, docDelta, chunkDelta)
+}
+
+// EnsureDefaultCollection 返回「默认知识库」，不存在则按当前 Embedder 配置懒创建（US-14 上传免预选兜底）。
+// 按 name 精确匹配复用——不引入 is_default 标记列，避免多默认库歧义。
+func (u *Usecase) EnsureDefaultCollection(ctx context.Context, embeddingModel string, dim int) (Collection, error) {
+	if err := u.requireRepo(); err != nil {
+		return Collection{}, err
+	}
+	cols, _, err := u.collections.ListCollections(ctx, "", 1000, 0)
+	if err != nil {
+		return Collection{}, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainKnowledge)
+	}
+	for _, c := range cols {
+		if c.Name == DefaultCollectionName {
+			return c, nil
+		}
+	}
+	return u.CreateCollection(ctx, Collection{
+		Name:           DefaultCollectionName,
+		Description:    "未指定知识库的文档自动归入此处",
+		EmbeddingModel: embeddingModel,
+		Dim:            dim,
+	})
+}
+
+// MoveDocument 文档跨库移动（US-14 整理归档：默认库收件箱 → 分类库）。
+// 校验目标库存在且与源库 dim 兼容后，委托 Repo 在单事务内完成 documents/chunks 随迁与计数校正。
+func (u *Usecase) MoveDocument(ctx context.Context, id, targetCollectionID string) (Document, error) {
+	if err := u.requireRepo(); err != nil {
+		return Document{}, err
+	}
+	id = strings.TrimSpace(id)
+	targetCollectionID = strings.TrimSpace(targetCollectionID)
+	if id == "" {
+		return Document{}, ErrIDRequired
+	}
+	if targetCollectionID == "" {
+		return Document{}, ErrCollectionIDRequired
+	}
+	doc, err := u.documents.GetDocument(ctx, id)
+	if err != nil {
+		return Document{}, err
+	}
+	if doc.CollectionID == targetCollectionID {
+		return doc, nil // 同库 no-op
+	}
+	src, err := u.collections.GetCollection(ctx, doc.CollectionID)
+	if err != nil {
+		return Document{}, err
+	}
+	dst, err := u.collections.GetCollection(ctx, targetCollectionID)
+	if err != nil {
+		return Document{}, err
+	}
+	if src.Dim != dst.Dim {
+		return Document{}, ErrMoveDimensionMismatch
+	}
+	return u.documents.MoveDocument(ctx, id, targetCollectionID)
 }
 
 // ── Embed settings ────────────────────────────────────────────────────────────

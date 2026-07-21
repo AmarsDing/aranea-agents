@@ -126,6 +126,9 @@ type HealRecord func(*sql.Selector)
 // LlmProviderModel is the predicate function for llmprovidermodel builders.
 type LlmProviderModel func(*sql.Selector)
 
+// MediaProvider is the predicate function for mediaprovider builders.
+type MediaProvider func(*sql.Selector)
+
 // MemberSessionV2 is the predicate function for membersessionv2 builders.
 type MemberSessionV2 func(*sql.Selector)
 
@@ -254,6 +257,9 @@ type TeamStageV2 func(*sql.Selector)
 
 // ToolAgentOverride is the predicate function for toolagentoverride builders.
 type ToolAgentOverride func(*sql.Selector)
+
+// ToolGrant is the predicate function for toolgrant builders.
+type ToolGrant func(*sql.Selector)
 
 // ToolInvocation is the predicate function for toolinvocation builders.
 type ToolInvocation func(*sql.Selector)

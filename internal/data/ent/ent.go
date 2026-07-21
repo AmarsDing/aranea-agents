@@ -43,6 +43,7 @@ import (
 	"aranea-agents/internal/data/ent/graphtaskrun"
 	"aranea-agents/internal/data/ent/healrecord"
 	"aranea-agents/internal/data/ent/llmprovidermodel"
+	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
 	"aranea-agents/internal/data/ent/modelpricingrule"
 	"aranea-agents/internal/data/ent/modeltokenusagehourly"
@@ -86,6 +87,7 @@ import (
 	"aranea-agents/internal/data/ent/teamrunv2"
 	"aranea-agents/internal/data/ent/teamstagev2"
 	"aranea-agents/internal/data/ent/toolagentoverride"
+	"aranea-agents/internal/data/ent/toolgrant"
 	"aranea-agents/internal/data/ent/toolinvocation"
 	"aranea-agents/internal/data/ent/toolinvocationaudit"
 	"aranea-agents/internal/data/ent/toolinvocationparam"
@@ -203,6 +205,7 @@ func checkColumn(t, c string) error {
 			graphtaskrun.Table:               graphtaskrun.ValidColumn,
 			healrecord.Table:                 healrecord.ValidColumn,
 			llmprovidermodel.Table:           llmprovidermodel.ValidColumn,
+			mediaprovider.Table:              mediaprovider.ValidColumn,
 			membersessionv2.Table:            membersessionv2.ValidColumn,
 			modelpricingrule.Table:           modelpricingrule.ValidColumn,
 			modeltokenusagehourly.Table:      modeltokenusagehourly.ValidColumn,
@@ -246,6 +249,7 @@ func checkColumn(t, c string) error {
 			teamrunv2.Table:                  teamrunv2.ValidColumn,
 			teamstagev2.Table:                teamstagev2.ValidColumn,
 			toolagentoverride.Table:          toolagentoverride.ValidColumn,
+			toolgrant.Table:                  toolgrant.ValidColumn,
 			toolinvocation.Table:             toolinvocation.ValidColumn,
 			toolinvocationaudit.Table:        toolinvocationaudit.ValidColumn,
 			toolinvocationparam.Table:        toolinvocationparam.ValidColumn,

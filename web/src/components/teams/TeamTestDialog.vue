@@ -29,7 +29,8 @@
           <div class="app-code-block team-test-reply">{{ reply }}</div>
         </div>
         <div v-if="run" class="q-mt-sm text-caption text-grey-7">
-          Run {{ run.status }} · {{ run.duration_ms }}ms · in {{ run.token_in }} / out {{ run.token_out }}
+          运行{{ teamRunStatusLabel(run.status) }} · {{ run.duration_ms }}ms · 输入 {{ run.token_in }} / 输出
+          {{ run.token_out }}
         </div>
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
@@ -50,6 +51,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import type { Team, TeamRun } from '../../features/teams/types';
+import { teamRunStatusLabel } from './teamUtils';
 
 const props = defineProps<{
   modelValue: boolean;

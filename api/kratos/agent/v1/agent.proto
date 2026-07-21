@@ -95,7 +95,8 @@ message AgentRuntimeSettings {
   string variables_json = 80;
   string model_instructions_json = 81;
   bool context_compaction_enabled = 82;
-  bool micro_compact_enabled = 121;
+  // 121: removed (micro_compact_enabled, L1 MicroCompact retired 2026-07-20).
+  reserved 121;
   bool memory_compact_enabled = 122;
   bool tool_result_gate_enabled = 123;
   bool session_summary_enabled = 83;

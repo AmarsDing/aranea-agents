@@ -86,13 +86,24 @@ func (s *WSV2Subscriber) run(ctx context.Context, ch <-chan biz.Event) {
 
 // forward serializes the v2 Event as JSON and pushes to the WS hub
 // (broadcasting to clients subscribed to the event's SpiritSessionID).
+//
+// The domain event is first mapped to its explicit wire type (ws_v2_wire.go)
+// so the on-the-wire protocol is decoupled from the domain model. Events
+// without a wire mapping are dropped (fail-closed) with a warning, rather
+// than leaking domain internals via default marshaling.
 func (s *WSV2Subscriber) forward(e biz.Event) {
 	sessionID := e.SpiritSessionID()
+	payload, err := v2EventPayloadToWire(e)
+	if err != nil {
+		s.lg.Warn("ws v2 event has no wire mapping, dropped",
+			loggateway.Str("kind", string(e.EventKind())), loggateway.Err(err))
+		return
+	}
 	envelope := wsEnvelope{
 		Type:      "v2_event",
 		Kind:      string(e.EventKind()),
 		SessionID: sessionID,
-		Payload:   e,
+		Payload:   payload,
 	}
 	// B-06: critical frames carry a stable event_id matching the durable outbox cursor.
 	if biz.IsCriticalDeliveryEvent(e) {
@@ -139,7 +150,7 @@ type wsEnvelope struct {
 	Kind      string `json:"kind"`                 // EventKind value (e.g. "task.created")
 	SessionID string `json:"session_id,omitempty"` // SpiritSessionID for routing
 	EventID   string `json:"event_id,omitempty"`   // B-06 outbox cursor for reconnect replay
-	Payload   any    `json:"payload"`              // the Event or ActivityEvent
+	Payload   any    `json:"payload"`              // wire payload (see ws_v2_wire.go)
 }
 
 // BroadcastToSession enqueues a raw message to all WS connections subscribed to

@@ -43,6 +43,12 @@ type TeamToolLookup interface {
 	ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]tool.ToolAgentOverride, error)
 	RecordToolInvocation(ctx context.Context, in tool.ToolInvocationWrite) error
 	RecordToolInvocationAudit(ctx context.Context, in tool.ToolInvocationAuditWrite) error
+	// HasToolGrant reports whether a persisted "always allow" grant exists
+	// for the (agentID, toolKey) pair. Used by the confirmation decision
+	// chain; store errors degrade to false (fail-closed).
+	HasToolGrant(ctx context.Context, agentID, toolKey string) bool
+	// GrantTool persists an "always allow" grant. Idempotent.
+	GrantTool(ctx context.Context, agentID, toolKey, grantedBy string) error
 }
 
 // TeamModelCatalog captures the subset of LlmProviderModelUsecase needed by the

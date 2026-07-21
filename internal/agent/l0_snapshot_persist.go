@@ -188,8 +188,10 @@ func persistL0AssemblySnapshot(ctx context.Context, deps TRPCBuilderDeps, ag biz
 		CreatedAt:            time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	// Overlay compression metadata when the compression hook fired this call.
+	// Deterministic emergency truncation (no LLM summary) since 2026-07-20
+	// dual-compression unification.
 	if compMeta := LoadCompressionMeta(ctx); compMeta.Occurred {
-		in.TruncateStrategy = "recursive_summary"
+		in.TruncateStrategy = "emergency_truncation"
 		in.TruncatedMessageCount = compMeta.EvictedCount
 		if compMeta.SummaryText != "" {
 			in.SummaryTokenEstimate = estTokensFromChars(utf8.RuneCountInString(compMeta.SummaryText))

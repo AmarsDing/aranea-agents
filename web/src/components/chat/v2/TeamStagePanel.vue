@@ -17,6 +17,7 @@
       @inject-agent="(p) => $emit('inject-agent', p)"
       @retry-team="(teamId) => $emit('retry-team', teamId)"
       @expand="(ids) => $emit('expand', ids)"
+      @confirm-step="(p) => $emit('confirm-step', p)"
     />
   </div>
 </template>
@@ -26,6 +27,7 @@ import { computed, ref, watch, onUnmounted } from 'vue';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import { useLocateTeamStage } from '../../../features/chat/composables/useLocateTeamStage';
 import type { TeamStage } from '../../../features/chat/v2Types';
+import type { ConfirmStepPayload } from '../../../features/chat/types';
 import TeamRunCard from './TeamRunCard.vue';
 
 const props = defineProps<{ teamStage: TeamStage }>();
@@ -34,6 +36,7 @@ defineEmits<{
   'inject-agent': [payload: { sessionId: string; message: string }];
   'retry-team': [teamId: string];
   expand: [sessionIds: string[]];
+  'confirm-step': [payload: ConfirmStepPayload];
 }>();
 const store = useActivityQueries();
 const teamRuns = computed(() => store.getTeamStageTeamRuns(props.teamStage.ID));

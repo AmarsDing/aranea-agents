@@ -159,7 +159,7 @@ func (r *planBoardV2Repo) UpsertPlanBoard(ctx context.Context, pb biz.PlanBoard)
 	}
 	row, err := cb.Save(ctx)
 	if err != nil {
-		if ent.IsConstraintError(err) {
+		if ent.IsConstraintError(err) || isPgUniqueViolation(err) {
 			existing, getErr := r.data.RW().Read(ctx).PlanBoardV2.Get(ctx, pb.ID)
 			if getErr != nil {
 				return biz.PlanBoard{}, entErrToBizErr(getErr, "PLAN_BOARD_V2")

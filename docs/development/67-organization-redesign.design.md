@@ -811,35 +811,43 @@ func (u *SpiritTeamUsecase) EscalateToSpirit(ctx context.Context, teamID string,
 ### 4.6 交付物传递机制
 
 ```go
-// Team 间交付物传递设计：
-// 1. 底层存储：复用 Session State KV（GetSessionState/SaveSessionState），无需新建存储层
-// 2. 业务逻辑：需新建交付物读写逻辑（非已有机制），包括：
-//    a. DeliverableWriter：上游 Team 完成后，将输出写入 Session State
-//       key: "deliverable:{team_id}:{deliverable_name}"
-//       value: 交付物内容（Markdown 或 JSON）
-//    b. DeliverableReader：DAG 调度激活下游 Team 时，读取上游交付物
-//    c. DeliverableInjector：将上游交付物注入下游 Team 的初始输入
-// 3. 数据格式：Markdown 文本（初期），后续可扩展为结构化 JSON
-// 4. 注意：Session State KV 是底层存储原语，交付物读写的业务逻辑完全需要新建
+// Team 间交付物传递设计（2026-07-21 P0 实现版）：
+// 1. 底层存储：teams.deliverables_output_json 专用列（TECH-DEBT #B-03 修复），
+//    JSON object keyed by dag_node_id。不再复用 Session State KV，
+//    也不再超载 parallel_config_json（旧实现字段语义冲突且 Update 白名单不透传，从未真正持久化）。
+// 2. 业务逻辑（internal/biz/spirit_team_usecase.go）：
+//    a. WriteDeliverablesToSession：上游 Team 完成时（RecordTeamCompletion 内联调用，
+//       保证先于下游调度），提取团队输出摘要写入 deliverables_output_json
+//    b. readDeliverableOutput：读取已持久化的交付物输出
+//    c. InjectUpstreamDeliverables：DAG 激活下游 Team 时收集上游交付物，
+//       优先读持久化缓存，未命中回退到 ExtractTeamOutput 即时提取
+//    d. ExtractTeamOutput 数据源（O-4 修复）：主源为 SpiritStepReader
+//       （窄接口，ListStepsBySessionID 精确 session_id 语义，读团队主会话
+//       最后一条 completed reply step）；团队主会话按 SessionType=team 识别
+//       （成员会话共享 team_id 且 Search 无序）；无 stepReader 或无 reply
+//       step 时回退 ListMessagesRecent 读 assistant 消息
+// 3. 数据格式：Markdown 摘要文本（初期），后续可扩展为结构化 JSON
+// 4. 时序保证：service 层 HandleTeamTurnResult 中 recordTeamCompletion（落库）
+//    先于 scheduleDependentTeams / PlanExecutor.NotifyTeamCompletion（下游派发）
 
 // 交付物注入下游 Team 的具体方式：
-// 1. 注入位置：作为下游 Team 的 User Message 前缀
+// 1. 注入位置：作为下游 Team 首个 Turn 的 User Message 前缀
 //    格式：
 //    """
-//    [上游交付物]
-//    来源团队: {team_name} ({team_id})
-//    交付物: {deliverable_name}
-//    ---
+//    --- 上游交付物 ---
+//    ## 上游团队: {team_display_name}
 //    {deliverable_content}
-//    ---
-//    请基于以上上游交付物继续执行任务。
+//    --- 请基于以上上游交付物执行任务 ---
 //    """
-// 2. 注入时机：DAG 调度激活下游 Team 时，在 StartTeamTurn 之前注入
-// 3. 注入路径：DeliverableInjector.InjectUpstreamDeliverables()
-//    → 读取上游 Team 的 Session State 中的交付物
-//    → 构造 User Message 前缀
-//    → 传入 SpiritTeamParams.TaskDescription 作为初始输入
-// 4. 后续迭代：支持注入到 Graph 的 StateFields（结构化数据传递）
+// 2. 注入时机与路径（双路径）：
+//    a. 生产主路径（v2）：PlanExecutor.dagRun → RealTeamOrchestrator.Orchestrate
+//       → 建队时透传 step.DependsOn（P0-① 降级：形式契约待 P1 planner schema 扩展）
+//       → StartTeamTurn 前组装 turnContent = 前缀 + taskDesc（存储的 TaskDescription 保持纯净）
+//    b. 备份路径（v1）：TeamStarter.scheduleDependentTeams
+//       → biz ScheduleDependentTeams 返回 DependentTeamAction.TaskDescription
+//         （前缀 + 原任务描述），service 直接用其启动 Turn
+// 3. 后续迭代（P1）：planner 输出 DeliverableContract，填充 Team.Deliverables/InputContract
+//    并启用契约匹配校验；支持注入到 Graph 的 StateFields（结构化数据传递）
 ```
 
 ### 4.7 Spirit 编排管线适配

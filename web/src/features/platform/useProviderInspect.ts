@@ -71,6 +71,12 @@ export function useProviderInspect(deps: {
     if (!deps.isProviderResource.value) return true;
     if (deps.editingId.value && !providerIdentityChanged.value) return true;
     if (isLocalProviderModel.value) return true;
+    // 编辑模式下身份已变更：必须重新通过「检查」（指纹匹配），catalog 命中不得放行，
+    // 否则把 provider_code 改成未验证的值也能直接保存
+    if (deps.editingId.value) {
+      const savedFingerprint = deps.providerCreateInspectFingerprint.value;
+      return Boolean(savedFingerprint) && savedFingerprint === providerCreateInspectFingerprintValue();
+    }
     if (
       deps.catalogProviderId.value &&
       deps.providerForm.model_api_id.trim() &&
@@ -117,17 +123,13 @@ export function useProviderInspect(deps: {
         aws_region: deps.providerForm.aws_region.trim(),
       });
       if (!result.ok) {
-        if (!deps.editingId.value) {
-          deps.providerCreateInspectFingerprint.value = '';
-        }
+        deps.providerCreateInspectFingerprint.value = '';
         const preset = findModelPreset(deps.currentProviderPreset.value?.key || code, model);
         const catalogModel = deps.findCatalogModel(model);
         if (catalogModel && deps.catalogProviderId.value) {
           deps.applyCatalogModel(catalogModel.id || model);
           deps.providerForm.catalog_managed = true;
-          if (!deps.editingId.value) {
-            deps.providerCreateInspectFingerprint.value = providerCreateInspectFingerprintValue();
-          }
+          deps.providerCreateInspectFingerprint.value = providerCreateInspectFingerprintValue();
           $q.notify({
             type: 'warning',
             message: `${result.message || '未获取到模型参数'}；已使用 models.dev 目录参数回填`,
@@ -148,9 +150,7 @@ export function useProviderInspect(deps: {
         $q.notify({ type: 'warning', message: result.message || '未获取到模型参数，也没有匹配的预设参数' });
         return;
       }
-      if (!deps.editingId.value) {
-        deps.providerCreateInspectFingerprint.value = providerCreateInspectFingerprintValue();
-      }
+      deps.providerCreateInspectFingerprint.value = providerCreateInspectFingerprintValue();
       if (deps.catalogProviderId.value && deps.providerForm.model_api_id.trim()) {
         const cm = deps.findCatalogModel(deps.providerForm.model_api_id.trim());
         if (cm && !deps.providerForm.input_price_usd_per_1m && !deps.providerForm.output_price_usd_per_1m) {
@@ -169,9 +169,7 @@ export function useProviderInspect(deps: {
       }
       $q.notify({ type: 'positive', message: result.message || '已验证 Provider 连通性' });
     } catch (error) {
-      if (!deps.editingId.value) {
-        deps.providerCreateInspectFingerprint.value = '';
-      }
+      deps.providerCreateInspectFingerprint.value = '';
       $q.notify({ type: 'negative', message: errorMessage(error) });
     } finally {
       checkingModel.value = false;

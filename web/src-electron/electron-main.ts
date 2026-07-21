@@ -123,7 +123,7 @@ async function serveStatic(rootDir: string, req: IncomingMessage, res: ServerRes
       filePath = path.join(filePath, 'index.html');
     }
   } catch {
-    // File doesn't exist — SPA fallback to index.html
+    // File doesn't exist 鈥?SPA fallback to index.html
     filePath = path.join(rootDir, 'index.html');
   }
 
@@ -168,6 +168,8 @@ function startStaticServer(rootDir: string): Promise<number> {
 }
 
 async function createWindow() {
+  const preloadPath = resolvePreloadPath();
+
   mainWindow = new BrowserWindow({
     icon: path.resolve(currentDir, 'icons/icon.png'),
     title: 'Aranea-Agents',
@@ -177,19 +179,17 @@ async function createWindow() {
     minHeight: 600,
     useContentSize: true,
     autoHideMenuBar: true,
+    show: false,
     webPreferences: {
       contextIsolation: true,
-      preload: path.resolve(
-        currentDir,
-        path.join(process.env.QUASAR_ELECTRON_PRELOAD_FOLDER, 'electron-preload' + process.env.QUASAR_ELECTRON_PRELOAD_EXTENSION)
-      ),
+      preload: preloadPath,
     },
   });
 
   if (process.env.DEV) {
     await mainWindow.loadURL(process.env.APP_URL);
   } else {
-    // Local HTTP origin + reverse-proxy /v1|/api|/healthz|/v1/ws → backend :8000.
+    // Local HTTP origin + reverse-proxy /v1|/api|/healthz|/v1/ws 鈫?backend :8000.
     // Same-origin cookies work without cross-port CORS; login no longer 401-loops.
     const port = await startStaticServer(currentDir);
     await mainWindow.loadURL(`http://127.0.0.1:${port}/`);
@@ -212,7 +212,24 @@ async function createWindow() {
   });
 }
 
-void app.whenReady().then(createWindow);
+function resolvePreloadPath(): string {
+  // Quasar injects these only in `quasar dev -m electron`. Portable builds must
+  // fall back to the packaged preload written by scripts/build-electron.mjs.
+  const folder = process.env.QUASAR_ELECTRON_PRELOAD_FOLDER;
+  const ext = process.env.QUASAR_ELECTRON_PRELOAD_EXTENSION;
+  if (folder && ext) {
+    return path.resolve(currentDir, folder, 'electron-preload' + ext);
+  }
+  return path.resolve(currentDir, 'preload', 'electron-preload.cjs');
+}
+
+void app.whenReady().then(() =>
+  createWindow().catch((err) => {
+    console.error('Failed to create window:', err);
+    // Keep process from becoming a headless zombie with no UI.
+    app.quit();
+  })
+);
 
 app.on('window-all-closed', () => {
   if (staticServer) {

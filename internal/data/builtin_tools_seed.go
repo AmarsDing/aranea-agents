@@ -65,7 +65,6 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "search_file", displayName: "文件搜索", description: "按文件名模式搜索工作区文件。", category: "filesystem", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"pattern":{"type":"string","description":"glob 匹配模式"},"path":{"type":"string","description":"搜索根目录"}},"required":["pattern"]}`, registryName: "file"},
 	{key: "search_content", displayName: "内容搜索", description: "在工作区内搜索文本内容，结果带路径与行号。", category: "filesystem", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"content_pattern":{"type":"string","description":"正则表达式搜索模式"},"file_pattern":{"type":"string","description":"文件 glob 匹配模式，如 *.go"},"path":{"type":"string","description":"搜索根目录"},"file_case_sensitive":{"type":"boolean","description":"文件匹配是否区分大小写"},"content_case_sensitive":{"type":"boolean","description":"内容匹配是否区分大小写"}},"required":["content_pattern","file_pattern"]}`, registryName: "file"},
 	{key: "replace_content", displayName: "替换内容", description: "按精确匹配替换文件中的文本片段。", category: "filesystem", riskLevel: "medium", enabled: true, paramsSchema: `{"type":"object","properties":{"file_name":{"type":"string","description":"文件路径"},"old_string":{"type":"string","description":"要替换的原始文本"},"new_string":{"type":"string","description":"替换后的文本"},"num_replacements":{"type":"integer","description":"替换次数，0 表示 1，负数表示全部"}},"required":["file_name","old_string","new_string"]}`, registryName: "file"},
-	// TODO(debt): removed — runtime tools now implemented in pkg/trpc-agent-go/tool/file.
 	{key: "diff_edit", displayName: "片段编辑", description: "对已有文件施加一处或多处 search/replace 片段替换，原子提交。", category: "filesystem", riskLevel: "medium", enabled: true, paramsSchema: `{"type":"object","properties":{"file_name":{"type":"string","description":"文件路径"},"edits":{"type":"array","items":{"type":"object","properties":{"search":{"type":"string"},"replace":{"type":"string"},"replace_all":{"type":"boolean"}},"required":["search","replace"]}},"expected_mtime_ms":{"type":"integer","description":"可选，来自 read_file 的 mtime_ms"}},"required":["file_name","edits"]}`, registryName: "file"},
 	{key: "patch_file", displayName: "应用补丁", description: "应用 unified diff 或结构化 hunk 列表修改文件。", category: "filesystem", riskLevel: "medium", enabled: true, paramsSchema: `{"type":"object","properties":{"file_name":{"type":"string","description":"文件路径"},"patch":{"type":"string","description":"Unified diff 文本"},"hunks":{"type":"array","description":"结构化 hunk，与 patch 二选一"},"expected_mtime_ms":{"type":"integer","description":"可选，来自 read_file 的 mtime_ms"}},"required":["file_name"]}`, registryName: "file"},
 	{key: "skill_search", displayName: "Skill 搜索", description: "搜索当前系统可用 Skill。", category: "skill", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}`},
@@ -202,9 +201,11 @@ func syncBuiltinWebToolCatalogPatches(ctx context.Context, client *ent.Client, d
 	return nil
 }
 
-// syncBuiltinFilesystemToolCatalogPatches enables diff_edit/patch_file on existing DBs
-// once runtime tools are available. Seed uses ON CONFLICT DO NOTHING, so existing rows
-// that were previously forced off need an explicit UPDATE to flip enabled to true.
+// syncBuiltinFilesystemToolCatalogPatches enables diff_edit/patch_file on existing DBs.
+// These tools were previously seeded as enabled=false while their runtime implementations
+// were pending; now that diffedit.go/patchfile.go are registered in the file ToolSet,
+// flip existing rows to enabled=1. Seed uses ON CONFLICT DO NOTHING, so existing rows
+// need an explicit UPDATE.
 func syncBuiltinFilesystemToolCatalogPatches(ctx context.Context, client *ent.Client, d Dialect) error {
 	if client == nil {
 		return nil

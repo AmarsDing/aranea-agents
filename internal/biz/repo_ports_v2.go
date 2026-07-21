@@ -75,6 +75,8 @@ type StepV2Reader interface {
 	// ListStepsBySpiritSession returns all steps under a spirit root (steps.spirit_session_id).
 	// Used by StopGeneration cancel to mark in-flight member steps as cancelled.
 	ListStepsBySpiritSession(ctx context.Context, spiritSessionID string) ([]Step, error)
+	// ListStepsBySessionID returns steps whose session_id equals sessionID only (exact match).
+	ListStepsBySessionID(ctx context.Context, sessionID string) ([]Step, error)
 	// MaxSeqBySpiritSession returns MAX(seq) for the spirit session, or 0 if none.
 	// B-06: used to restore SeqAssigner after process restart.
 	MaxSeqBySpiritSession(ctx context.Context, spiritSessionID string) (int64, error)

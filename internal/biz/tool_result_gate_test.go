@@ -247,3 +247,96 @@ func TestFreezePreview_PaginationHint(t *testing.T) {
 		t.Fatal("preview should mention offset parameter")
 	}
 }
+
+// ── CheckUserInput（单轮超限治理 A）────────────────────────────
+
+func TestToolResultGate_CheckUserInput_BelowThreshold(t *testing.T) {
+	gate := NewToolResultGate(&stubBlobReader{}, &stubBlobWriter{}, &stubReplacementReader{}, &stubReplacementWriter{})
+	result, err := gate.CheckUserInput(context.Background(), "sess1", "msg1", ToolResultSourceUserInput, "short content")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.DidPersist {
+		t.Fatal("should not persist below threshold")
+	}
+}
+
+func TestToolResultGate_CheckUserInput_AboveThreshold(t *testing.T) {
+	bw := &stubBlobWriter{}
+	rw := &stubReplacementWriter{}
+	gate := NewToolResultGate(&stubBlobReader{}, bw, &stubReplacementReader{}, rw)
+
+	longContent := makeLongContent(ToolResultSizeThreshold + 1)
+	result, err := gate.CheckUserInput(context.Background(), "sess1", "msg1", ToolResultSourceUserInput, longContent)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.DidPersist {
+		t.Fatal("should persist above threshold")
+	}
+	if bw.saved == nil {
+		t.Fatal("blob should be saved")
+	}
+	if bw.saved.ToolName != ToolResultSourceUserInput {
+		t.Fatalf("blob toolName = %q, want %q", bw.saved.ToolName, ToolResultSourceUserInput)
+	}
+	if bw.saved.SessionID != "sess1" {
+		t.Fatalf("blob sessionID = %q, want sess1", bw.saved.SessionID)
+	}
+	if bw.saved.ContentSizeChars != len(longContent) {
+		t.Fatalf("contentSizeChars = %d, want %d", bw.saved.ContentSizeChars, len(longContent))
+	}
+	if rw.saved == nil {
+		t.Fatal("replacement should be saved")
+	}
+	if rw.saved.MessageID != "msg1" {
+		t.Fatalf("replacement messageID = %q, want msg1", rw.saved.MessageID)
+	}
+	if !strings.Contains(result.PreviewText, result.BlobID) {
+		t.Fatal("preview should reference blob_id")
+	}
+	if !strings.Contains(result.PreviewText, "read_tool_result") {
+		t.Fatal("preview should mention read_tool_result")
+	}
+}
+
+func TestToolResultGate_CheckUserInput_SourcePassthrough(t *testing.T) {
+	bw := &stubBlobWriter{}
+	gate := NewToolResultGate(&stubBlobReader{}, bw, &stubReplacementReader{}, &stubReplacementWriter{})
+
+	_, err := gate.CheckUserInput(context.Background(), "sess1", "att-1", ToolResultSourceAttachment, makeLongContent(ToolResultSizeThreshold+1))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if bw.saved == nil || bw.saved.ToolName != ToolResultSourceAttachment {
+		t.Fatalf("blob toolName = %q, want %q", bw.saved.ToolName, ToolResultSourceAttachment)
+	}
+}
+
+func TestToolResultGate_CheckUserInput_Idempotent(t *testing.T) {
+	existing := &ToolResultReplacement{
+		ID:           "existing-rep-id",
+		SessionID:    "sess1",
+		MessageID:    "msg1",
+		ResultBlobID: "existing-blob-id",
+		PreviewText:  "existing preview",
+	}
+	rr := &stubReplacementReader{result: existing}
+	bw := &stubBlobWriter{}
+	rw := &stubReplacementWriter{}
+	gate := NewToolResultGate(&stubBlobReader{}, bw, rr, rw)
+
+	result, err := gate.CheckUserInput(context.Background(), "sess1", "msg1", ToolResultSourceUserInput, makeLongContent(ToolResultSizeThreshold+1))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.BlobID != "existing-blob-id" {
+		t.Fatalf("BlobID = %q, want existing-blob-id", result.BlobID)
+	}
+	if result.PreviewText != "existing preview" {
+		t.Fatalf("PreviewText = %q, want existing preview", result.PreviewText)
+	}
+	if bw.saved != nil || rw.saved != nil {
+		t.Fatal("should not save new records when replacement already exists")
+	}
+}

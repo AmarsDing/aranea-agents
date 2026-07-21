@@ -17,7 +17,7 @@ export type PlanStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 's
 export type GraphStageStatus = 'running' | 'completed' | 'failed' | 'interrupted';
 export type GraphNodeStatus = 'pending' | 'running' | 'completed' | 'failed' | 'interrupted';
 
-// === Entity structs (PascalCase JSON keys — no json tags on backend) ===
+// === Entity structs (PascalCase JSON keys — locked by backend wire tags) ===
 
 export interface Task {
   ID: string;
@@ -265,9 +265,10 @@ export type EventKind =
   | 'system.notice';
 
 // === Event payload shapes (what's inside envelope.payload) ===
-// Note: backend event structs have NO json tags, so exported fields
-// (PascalCase) are the JSON keys. Unexported fields (taskID, spiritSessionID,
-// occurredAt) are NOT serialized.
+// Note: since 2026-07-20 the backend maps domain events to explicit wire
+// types before serialization (internal/server/ws_v2_wire.go + ws_v2_wire_convert.go).
+// Wire json tags lock the PascalCase keys declared below; unexported domain
+// fields (taskID, spiritSessionID, occurredAt) never reach the wire.
 
 export interface TaskEventPayload {
   Task: Task;

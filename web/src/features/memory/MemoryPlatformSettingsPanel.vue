@@ -4,10 +4,9 @@ fetching/saving + error handling extracted to useMemoryPlatformSettings composab
   <q-card flat bordered class="memory-card">
     <q-card-section class="row items-center justify-between">
       <div>
-        <div class="text-h6">平台记忆策略</div>
+        <div class="text-h6">{{ t('memory.platformSettings.title') }}</div>
         <div class="text-caption text-grey-7">
-          持久化到 system_settings；进程环境变量（MEMORY_POLICY_STRICT / MEMORY_EPISODE_BACKFILL_DISABLED）优先于 UI
-          值。
+          {{ t('memory.platformSettings.subtitle') }}
         </div>
       </div>
       <q-btn flat dense icon="refresh" :loading="loading" @click="load" />
@@ -17,25 +16,25 @@ fetching/saving + error handling extracted to useMemoryPlatformSettings composab
       <q-toggle
         v-model="form.policy_strict"
         color="warning"
-        label="Policy Strict（审计失败阻断写路径）"
+        :label="t('memory.platformSettings.policyStrict')"
         :disable="envPolicyStrict"
       />
       <div v-if="envPolicyStrict" class="text-caption text-orange-8">
-        已由环境变量 MEMORY_POLICY_STRICT=1 强制启用，UI 不可关闭。
+        {{ t('memory.platformSettings.policyStrictEnvHint') }}
       </div>
 
       <q-toggle
         v-model="form.episode_backfill_disabled"
         color="primary"
-        label="禁用 Episode Embedding Backfill"
+        :label="t('memory.platformSettings.backfillDisabled')"
         :disable="envBackfillDisabled"
       />
       <div v-if="envBackfillDisabled" class="text-caption text-orange-8">
-        已由环境变量 MEMORY_EPISODE_BACKFILL_DISABLED=1 强制禁用，UI 不可开启。
+        {{ t('memory.platformSettings.backfillDisabledEnvHint') }}
       </div>
 
       <div class="row q-gutter-sm">
-        <q-btn color="primary" label="保存" :loading="saving" @click="save" />
+        <q-btn color="primary" :label="t('memory.platformSettings.save')" :loading="saving" @click="save" />
       </div>
 
       <q-banner v-if="message" rounded :class="messageOk ? 'bg-positive text-white' : 'bg-negative text-white'">
@@ -43,12 +42,17 @@ fetching/saving + error handling extracted to useMemoryPlatformSettings composab
       </q-banner>
     </q-card-section>
 
-    <q-card-section v-else-if="!loading" class="text-grey-7 text-caption">平台设置加载失败。</q-card-section>
+    <q-card-section v-else-if="!loading" class="text-grey-7 text-caption">{{
+      t('memory.platformSettings.loadFailed')
+    }}</q-card-section>
   </q-card>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import { useMemoryPlatformSettings } from './composables/useMemoryPlatformSettings';
+
+const { t } = useI18n();
 
 const { loading, saving, loaded, envPolicyStrict, envBackfillDisabled, message, messageOk, form, load, save } =
   useMemoryPlatformSettings();

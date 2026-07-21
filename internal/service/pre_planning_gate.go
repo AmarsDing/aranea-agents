@@ -37,7 +37,6 @@ type GateDecision struct {
 // published so the frontend can render the assessment phase.
 //
 // Phase 3b-D Task 10: migrated from v1 ActivityEventBus to v2 EventBus.
-//
 type PrePlanningGate struct {
 	planner  biz.TaskPlannerPort
 	eventBus biz.EventBus

@@ -397,6 +397,20 @@ func Registry() []*ToolRegistration {
 				EnabledByDefault: true,
 				RiskLevel:        "low",
 			},
+			{
+				Name:        "media",
+				Description: "Media generation tools (text-to-image, text-to-video, image-to-video)",
+				Category:    "media",
+				Tags:        []string{"media", "image", "video", "generation"},
+				Factory: func(ctx context.Context) (Tool, error) {
+					// Media tools require MediaProvider which is not available in the
+					// global tool factory context. They are assembled separately via
+					// media.NewGenerateImageTool etc. and injected at the Agent level.
+					return nil, nil
+				},
+				EnabledByDefault: true,
+				RiskLevel:        "medium",
+			},
 		}
 	})
 	// Return a defensive copy so callers cannot mutate the global registry.

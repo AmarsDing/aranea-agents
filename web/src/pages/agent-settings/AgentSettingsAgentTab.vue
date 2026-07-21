@@ -22,6 +22,13 @@
         </q-input>
         <q-select v-model="form.status" dense outlined emit-value map-options label="状态" :options="statusOptions" />
         <q-toggle v-model="form.is_default" label="默认 Agent" />
+        <taxonomy-picker
+          :model-value="form.taxonomy_position_id || null"
+          :tree="taxonomyTree"
+          :label="$t('agentsPage.taxonomy.labelOptional')"
+          placeholder="选择组织 / 部门 / 职位"
+          @update:model-value="form.taxonomy_position_id = $event ?? ''"
+        />
         <div class="app-grid-span-full">
           <q-input
             v-model="form.agent_description"
@@ -231,14 +238,14 @@
           </div>
         </div>
 
-        <div v-if="form.agent_key === '__spirit__'" class="settings-subsection">
+        <div v-if="form.agent_key === '__spirit__'" class="settings-subsection settings-subsection--span">
           <div class="settings-subsection__head">
             <div>
               <div class="settings-subsection__title">精灵并行配置</div>
               <p class="settings-subsection__hint">控制精灵模式下多团队并行编排的配额与超时。</p>
             </div>
           </div>
-          <div class="app-form-field-grid app-form-field-grid--2col">
+          <div class="app-form-field-grid app-form-field-grid--3col">
             <q-input
               v-model.number="config.spirit.max_concurrent_teams"
               dense
@@ -324,6 +331,8 @@ import type { Agent } from '../../features/agents/types';
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 import AgentChannelRefsSection from './AgentChannelRefsSection.vue';
 import AgentSettingsPromptSection from './AgentSettingsPromptSection.vue';
+import TaxonomyPicker from '../../components/agents/TaxonomyPicker.vue';
+import type { PlatformResourceTreeNode } from '../../features/platform/types';
 import AgentPlannerSection from '../../components/agents/AgentPlannerSection.vue';
 import AgentRalphLoopSection from '../../components/agents/AgentRalphLoopSection.vue';
 import AiRefineButton from '../../components/agents/AIRefineButton.vue';
@@ -338,6 +347,7 @@ const selectedProviderModelId = defineModel<string>('selectedProviderModelId', {
 withDefaults(
   defineProps<{
     agentId?: string;
+    taxonomyTree?: PlatformResourceTreeNode[];
     promptModes?: { value: string; label: string; caption: string; tokens: string }[];
     statusOptions?: { label: string; value: string }[];
     filteredProviderModelOptions?: { label: string; value: string; caption?: string }[];
@@ -350,6 +360,7 @@ withDefaults(
   }>(),
   {
     agentId: '',
+    taxonomyTree: () => [],
     promptModes: () => [],
     statusOptions: () => [],
     filteredProviderModelOptions: () => [],

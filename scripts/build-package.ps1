@@ -334,6 +334,51 @@ if (Test-Path $srcRedis) {
 # 创建 logs 目录
 New-Item -ItemType Directory -Force -Path (Join-Path $StagingDir "logs") | Out-Null
 
+# 复制运行时种子资源（相对安装目录 CWD，与 biz.ScenarioDir / modelregistry.Store 一致）
+# 1) internal/scenario：agency-pack / builtin-templates / system prompts → Agent + 公司架构
+# 2) data/model-catalog：厂商目录 + logos → Channel/Provider 资源与图标
+function Copy-RequiredRuntimeAssets {
+    param([string]$SrcRel, [string]$DestRel, [string]$Label)
+
+    $src = Join-Path $RepoRoot $SrcRel
+    $dest = Join-Path $StagingDir $DestRel
+    if (-not (Test-Path $src)) {
+        Write-Error "缺少运行时资源：$SrcRel（$Label）"
+    }
+    $destParent = Split-Path $dest -Parent
+    New-Item -ItemType Directory -Force -Path $destParent | Out-Null
+    if (Test-Path $dest) {
+        Remove-Item $dest -Recurse -Force
+    }
+    Copy-Item $src $dest -Recurse -Force
+    $fileCount = (Get-ChildItem $dest -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
+    if ($fileCount -lt 1) {
+        Write-Error "运行时资源为空：$DestRel（$Label）"
+    }
+    Write-Host "  [OK] $DestRel/ ($fileCount files) — $Label" -ForegroundColor Green
+}
+
+Copy-RequiredRuntimeAssets -SrcRel "internal\scenario" -DestRel "internal\scenario" -Label "packs + prompts (agents/org)"
+Copy-RequiredRuntimeAssets -SrcRel "data\model-catalog" -DestRel "data\model-catalog" -Label "providers + logos"
+
+# 校验关键种子路径（失败则禁止打包）
+$requiredSeedPaths = @(
+    "internal\scenario\packs\agency-pack",
+    "internal\scenario\packs\builtin-templates",
+    "internal\scenario\system",
+    "internal\scenario\system\prompts\IDENTITY.md",
+    "internal\scenario\system\prompts\orchestrator.md",
+    "data\model-catalog\current.json",
+    "data\model-catalog\logos"
+)
+foreach ($rel in $requiredSeedPaths) {
+    $p = Join-Path $StagingDir $rel
+    if (-not (Test-Path $p)) {
+        Write-Error "Staging 缺少必需资源：$rel — 禁止打包"
+    }
+}
+Write-Host "  [OK] seed asset paths verified" -ForegroundColor Green
+
 # 复制启停脚本
 $scriptsDir = Join-Path $RepoRoot "installer\scripts"
 $startBat = Join-Path $scriptsDir "start.bat"

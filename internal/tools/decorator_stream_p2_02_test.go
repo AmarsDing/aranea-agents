@@ -82,7 +82,7 @@ func TestStreamableCall_Passthrough(t *testing.T) {
 	inner := &slowStreamTool{
 		name:         "passthrough_tool",
 		chunkContent: "chunk",
-		interval:    5 * time.Millisecond,
+		interval:     5 * time.Millisecond,
 		chunkCount:   3,
 	}
 	d := NewToolDecorator(inner, ToolDecoratorConfig{
@@ -115,7 +115,7 @@ func TestStreamableCall_BudgetExceeded(t *testing.T) {
 	inner := &slowStreamTool{
 		name:         "budget_tool",
 		chunkContent: strings.Repeat("x", 50),
-		interval:    5 * time.Millisecond,
+		interval:     5 * time.Millisecond,
 		chunkCount:   10,
 	}
 	d := NewToolDecorator(inner, ToolDecoratorConfig{
@@ -153,7 +153,7 @@ func TestStreamableCall_DeadlineExceeded(t *testing.T) {
 	inner := &slowStreamTool{
 		name:         "deadline_tool",
 		chunkContent: "chunk",
-		interval:    20 * time.Millisecond,
+		interval:     20 * time.Millisecond,
 		chunkCount:   100,
 	}
 	d := NewToolDecorator(inner, ToolDecoratorConfig{
@@ -183,7 +183,7 @@ func TestStreamableCall_ContextCancellation(t *testing.T) {
 	inner := &slowStreamTool{
 		name:         "cancel_tool",
 		chunkContent: "chunk",
-		interval:    20 * time.Millisecond,
+		interval:     20 * time.Millisecond,
 		chunkCount:   100,
 	}
 	d := NewToolDecorator(inner, ToolDecoratorConfig{
@@ -267,7 +267,7 @@ func TestStreamableCall_DefaultTimeoutApplied(t *testing.T) {
 	inner := &slowStreamTool{
 		name:         "default_timeout_tool",
 		chunkContent: "chunk",
-		interval:    5 * time.Millisecond,
+		interval:     5 * time.Millisecond,
 		chunkCount:   1,
 	}
 	d := NewToolDecorator(inner, ToolDecoratorConfig{
@@ -306,7 +306,7 @@ func TestStreamableCall_NegativeBudgetDisablesBudget(t *testing.T) {
 	inner := &slowStreamTool{
 		name:         "unlimited_budget_tool",
 		chunkContent: strings.Repeat("x", 50),
-		interval:    5 * time.Millisecond,
+		interval:     5 * time.Millisecond,
 		chunkCount:   5,
 	}
 	d := NewToolDecorator(inner, ToolDecoratorConfig{
@@ -338,10 +338,10 @@ func TestEstimateChunkBytes(t *testing.T) {
 		want    int
 	}{
 		{"nil", nil, 0},
-		{"empty_string", "", 2},           // json.Marshal("") = `""` = 2 bytes
-		{"short_string", "abc", 5},        // json.Marshal("abc") = `"abc"` = 5 bytes
-		{"integer", 42, 2},                 // json.Marshal(42) = `42` = 2 bytes
-		{"slice", []string{"a", "b"}, 9},  // json.Marshal(["a","b"]) = `["a","b"]` = 9 bytes
+		{"empty_string", "", 2},          // json.Marshal("") = `""` = 2 bytes
+		{"short_string", "abc", 5},       // json.Marshal("abc") = `"abc"` = 5 bytes
+		{"integer", 42, 2},               // json.Marshal(42) = `42` = 2 bytes
+		{"slice", []string{"a", "b"}, 9}, // json.Marshal(["a","b"]) = `["a","b"]` = 9 bytes
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

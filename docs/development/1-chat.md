@@ -231,6 +231,38 @@ interface Activity {
 
 ---
 
+### 1.8 编排实时反馈与 Agent 创建确认
+
+> **2026-07-18 新增**：编排三阶段（plan → allocate → orchestrate）耗时较长且缺乏细粒度反馈；Agent 自动创建无用户审批环节。
+
+#### US-ORCH-01 编排过程实时可见
+
+**作为** 用户
+**我希望** 在精灵编排期间看到当前阶段的实时进度（分解任务中 / 匹配 Agent i/N / 创建新 Agent 中）
+**以便** 我知道系统没有卡死，并理解当前在做什么
+
+**验收**：
+
+- plan 阶段：显示"正在分解任务…"→"任务分解完成，共 N 个子任务"
+- allocate 阶段：每个子任务匹配时显示"正在匹配 Agent…（i/N）"
+- factory 阶段：需要创建新 Agent 时显示"正在创建新 Agent "X"…"
+- loading 消息为替换式更新（不刷屏），编排完成后消失
+
+#### US-ORCH-02 新 Agent 创建需用户确认
+
+**作为** 用户
+**我希望** 系统在无法匹配到合适 Agent、需要创建新 Agent 时，先向我展示提案（名称/职责/模型），经我同意后才创建
+**以便** 我的 Agent 库不会被未经审批的自动创建污染
+
+**验收**：
+
+- 4 层匹配（performance → exact → semantic → LLM cold start）全部失败后，弹出确认卡片展示 Agent 提案
+- 用户批准 → 创建 Agent 并继续编排；用户拒绝 → 降级使用现有 Agent 继续
+- 确认期间编排挂起（session 进入 awaiting_confirmation），确认后自动恢复
+- 多个子任务同时需要创建 Agent 时，逐个确认（串行），避免卡片并发
+
+---
+
 ## 二、功能需求清单
 
 ### 2.1 对话发送
@@ -324,6 +356,14 @@ interface Activity {
 - Team 阶段切换通过 `Kind=team_stage` Activity 表达，前端 `TeamStageBlock.vue` 渲染 Coordinator/Swarm 阶段。
 - Graph 节点开始/结束通过 `Kind=graph_stage` Activity 表达，前端 `GraphStageBlock.vue` 渲染 Graph 执行进度。
 - 子 Session 创建通过 `Kind=session` Activity（Event=child_created）表达，前端 `SessionStageBlock.vue` 渲染并可点击进入子 Session。
+
+### 2.15 编排实时反馈与 Agent 创建确认
+
+- 编排三阶段（plan/allocate/orchestrate）关键节点发布 `SystemNoticeEvent`（`orchestration_progress`），meta 携带 `phase`（decomposing/decomposed/allocating/allocated/creating_agent/agent_created）及上下文（index/total/agent_name）。
+- 前端 `useContextualLoadingMessage` 消费进度事件，替换式更新 loading 文案；编排完成/失败时清除。
+- 4 层匹配（performance → exact → semantic → LLM cold start）全部失败时，`AgentFactory` 复用工具确认链路请求用户确认：发布 `Kind=confirm` Activity（`tool_blocked`）携带提案详情，session 进入 `awaiting_confirmation`。
+- 用户批准后创建 Agent 并继续编排；拒绝后降级使用现有 Agent（首个可用或 Spirit）。
+- 进度事件为 WS-only（不持久化），confirm Activity 持久化以支持刷新恢复。
 
 ---
 

@@ -9,7 +9,7 @@
       class="graph-node-toolbar__btn"
       @click.stop="$emit('runToHere', nodeId)"
     >
-      <q-tooltip :delay="500" :offset="[0, 4]">运行至此节点</q-tooltip>
+      <q-tooltip :delay="500" :offset="[0, 4]">{{ t('graphs.nodeToolbarRunToHere') }}</q-tooltip>
     </q-btn>
 
     <q-btn
@@ -22,7 +22,9 @@
       :class="{ 'graph-node-toolbar__btn--active': frozen }"
       @click.stop="$emit('freeze', nodeId)"
     >
-      <q-tooltip :delay="500" :offset="[0, 4]">{{ frozen ? '解冻节点' : '冻结节点（跳过执行）' }}</q-tooltip>
+      <q-tooltip :delay="500" :offset="[0, 4]">{{
+        frozen ? t('graphs.nodeToolbarUnfreeze') : t('graphs.nodeToolbarFreeze')
+      }}</q-tooltip>
     </q-btn>
 
     <q-btn
@@ -34,7 +36,7 @@
       class="graph-node-toolbar__btn graph-node-toolbar__btn--danger"
       @click.stop="$emit('delete', nodeId)"
     >
-      <q-tooltip :delay="500" :offset="[0, 4]">删除节点</q-tooltip>
+      <q-tooltip :delay="500" :offset="[0, 4]">{{ t('graphs.nodeToolbarDelete') }}</q-tooltip>
     </q-btn>
 
     <q-btn flat dense round icon="more_horiz" size="sm" class="graph-node-toolbar__btn">
@@ -44,25 +46,25 @@
             <q-item-section side>
               <q-icon name="content_copy" size="16px" />
             </q-item-section>
-            <q-item-section>复制节点</q-item-section>
+            <q-item-section>{{ t('graphs.nodeToolbarDuplicate') }}</q-item-section>
           </q-item>
           <q-item v-close-popup clickable @click="$emit('setEntry', nodeId)">
             <q-item-section side>
               <q-icon name="play_circle" size="16px" />
             </q-item-section>
-            <q-item-section>设为入口节点</q-item-section>
+            <q-item-section>{{ t('graphs.nodeToolbarSetEntry') }}</q-item-section>
           </q-item>
           <q-item v-close-popup clickable @click="$emit('setFinish', nodeId)">
             <q-item-section side>
               <q-icon name="stop_circle" size="16px" />
             </q-item-section>
-            <q-item-section>设为终点节点</q-item-section>
+            <q-item-section>{{ t('graphs.nodeToolbarSetFinish') }}</q-item-section>
           </q-item>
           <q-item v-close-popup clickable @click="$emit('disconnect', nodeId)">
             <q-item-section side>
               <q-icon name="link_off" size="16px" />
             </q-item-section>
-            <q-item-section>断开所有连线</q-item-section>
+            <q-item-section>{{ t('graphs.nodeToolbarDisconnect') }}</q-item-section>
           </q-item>
         </q-list>
       </q-menu>
@@ -71,6 +73,10 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
+
 defineProps<{
   nodeId: string;
   frozen?: boolean;

@@ -488,6 +488,18 @@ func (f LlmProviderModelFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.LlmProviderModelMutation", m)
 }
 
+// The MediaProviderFunc type is an adapter to allow the use of ordinary
+// function as MediaProvider mutator.
+type MediaProviderFunc func(context.Context, *ent.MediaProviderMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MediaProviderFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.MediaProviderMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MediaProviderMutation", m)
+}
+
 // The MemberSessionV2Func type is an adapter to allow the use of ordinary
 // function as MemberSessionV2 mutator.
 type MemberSessionV2Func func(context.Context, *ent.MemberSessionV2Mutation) (ent.Value, error)
@@ -1002,6 +1014,18 @@ func (f ToolAgentOverrideFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ToolAgentOverrideMutation", m)
+}
+
+// The ToolGrantFunc type is an adapter to allow the use of ordinary
+// function as ToolGrant mutator.
+type ToolGrantFunc func(context.Context, *ent.ToolGrantMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ToolGrantFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ToolGrantMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ToolGrantMutation", m)
 }
 
 // The ToolInvocationFunc type is an adapter to allow the use of ordinary

@@ -193,11 +193,12 @@ func startReadinessDependentServices(
 						lg.Warn("failed to create eventbus sink from config", loggateway.Str("sink", cfg.Name), loggateway.Err(err))
 						continue
 					}
-					pipeline.AddSink(sink)
+					// Wrap with sanitizing sink to prevent secrets from leaking into event bus logs.
+					pipeline.AddSink(logpipeline.NewSanitizingSink(sink))
 				}
 			} else {
 				// Default: add eventbus sink with "info" level
-				pipeline.AddSink(logpipeline.NewEventBusSink(event.NewLogPipelinePublisher(eventInfra.MonitorEventBus), "info"))
+				pipeline.AddSink(logpipeline.NewSanitizingSink(logpipeline.NewEventBusSink(event.NewLogPipelinePublisher(eventInfra.MonitorEventBus), "info")))
 			}
 		}
 	}

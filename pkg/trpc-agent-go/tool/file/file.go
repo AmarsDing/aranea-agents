@@ -124,7 +124,7 @@ func WithReplaceContentEnabled(e bool) Option {
 	}
 }
 
-// WithDiffEditEnabled enables or disables the diff_edit functionality,
+// WithDiffEditEnabled enables or disables the diff edit functionality,
 // default is true.
 func WithDiffEditEnabled(e bool) Option {
 	return func(f *fileToolSet) {
@@ -132,8 +132,8 @@ func WithDiffEditEnabled(e bool) Option {
 	}
 }
 
-// WithPatchFileEnabled enables or disables the patch_file functionality,
-// default is true.
+// WithPatchFileEnabled enables or disables the patch file
+// functionality, default is true.
 func WithPatchFileEnabled(e bool) Option {
 	return func(f *fileToolSet) {
 		f.patchFileEnabled = e

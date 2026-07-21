@@ -46,6 +46,7 @@
       @inject-agent="(p) => $emit('inject-agent', p)"
       @retry-team="(teamId) => $emit('retry-team', teamId)"
       @expand="(ids) => $emit('expand', ids)"
+      @confirm-step="(p) => $emit('confirm-step', p)"
     />
     <template v-for="pb in planBoards" :key="pb.ID">
       <PlanBoardCard :plan-board="pb" />
@@ -61,6 +62,7 @@
       @inject-agent="(p) => $emit('inject-agent', p)"
       @retry-team="(teamId) => $emit('retry-team', teamId)"
       @expand="(ids) => $emit('expand', ids)"
+      @confirm-step="(p) => $emit('confirm-step', p)"
     />
     <!-- Mode B: orphan member sessions not under any TeamRun (sub-agent without team shell) -->
     <MemberSessionPanel
@@ -70,6 +72,7 @@
       @pause-agent="(sid) => $emit('pause-agent', sid)"
       @inject-agent="(p) => $emit('inject-agent', p)"
       @expand="(ids) => $emit('expand', ids)"
+      @confirm-step="(p) => $emit('confirm-step', p)"
     />
     <TurnList
       v-if="postPlanTurns.length"
@@ -78,6 +81,7 @@
       @inject-agent="(p) => $emit('inject-agent', p)"
       @retry-team="(teamId) => $emit('retry-team', teamId)"
       @expand="(ids) => $emit('expand', ids)"
+      @confirm-step="(p) => $emit('confirm-step', p)"
     />
   </div>
 </template>
@@ -89,6 +93,7 @@ import { useQuasar } from 'quasar';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import { useSafeAuth } from '../../../features/chat/composables/useSafeAuth';
 import type { Task } from '../../../features/chat/v2Types';
+import type { ConfirmStepPayload } from '../../../features/chat/types';
 import TurnList from './TurnList.vue';
 import TeamStagePanel from './TeamStagePanel.vue';
 import PlanBoardCard from './PlanBoardCard.vue';
@@ -121,6 +126,7 @@ defineEmits<{
   'inject-agent': [payload: { sessionId: string; message: string }];
   'retry-team': [teamId: string];
   expand: [sessionIds: string[]];
+  'confirm-step': [payload: ConfirmStepPayload];
 }>();
 
 const { t } = useSafeI18n();

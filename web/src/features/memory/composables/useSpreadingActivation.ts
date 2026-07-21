@@ -2,6 +2,7 @@
 // 负责调用 store.fetchSpreadingActivation 并管理 loading / error / 结果状态，
 // 供 MemoryGraphExplorer.vue 在"扩散激活"按钮触发后消费。
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { SpreadingActivationResponse } from '../types';
 import { useMemoryApi } from './useMemoryApi';
 
@@ -11,6 +12,7 @@ export interface SpreadingActivationParams {
 }
 
 export function useSpreadingActivation() {
+  const { t } = useI18n();
   const { getSpreadingActivation } = useMemoryApi();
   const result = ref<SpreadingActivationResponse | null>(null);
   const loadingActivation = ref(false);
@@ -27,7 +29,7 @@ export function useSpreadingActivation() {
       });
     } catch (err) {
       result.value = null;
-      activationError.value = err instanceof Error ? err.message : 'Spreading activation failed';
+      activationError.value = err instanceof Error ? err.message : t('memory.graph.activationFailed');
     } finally {
       loadingActivation.value = false;
     }

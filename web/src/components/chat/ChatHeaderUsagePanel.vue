@@ -93,7 +93,8 @@ const compactLoading = ref(false);
 
 const clampedRatio = computed(() => Math.min(1, Math.max(0, props.contextRatio ?? 0)));
 const showCompactBtn = computed(() => props.sessionId && clampedRatio.value >= 0.4);
-const pctLabel = computed(() => `${Math.round(clampedRatio.value * 100)}%`);
+// 百分比文字显示真实比率（超限时 >100%）；环形进度条仍用 clampedRatio。
+const pctLabel = computed(() => `${Math.round(Math.max(0, props.contextRatio ?? 0) * 100)}%`);
 const ringColor = computed(() => {
   const status = props.contextStatus?.trim();
   if (status) return composerContextColor(status);

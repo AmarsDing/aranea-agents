@@ -31,16 +31,41 @@ func (d Dialect) String() string { return string(d) }
 
 // JSONExtract returns a SQL expression that extracts a JSON object key as text.
 // SQLite: json_extract(col, '$.key')
-// Postgres: CAST(col AS JSONB) ->> 'key'
+// Postgres: COALESCE(NULLIF(col::text, '')::jsonb, '{}'::jsonb) ->> 'key'
 //
-// The CAST is required because monitor_events.metadata_json / monitor_traces.metadata_json
-// are defined as TEXT for cross-dialect compatibility (SQLite has no JSONB type),
-// but PostgreSQL's `->>` operator only works on JSON/JSONB values, not TEXT.
-// COALESCE(NULLIF(col, ”)::jsonb, '{}'::jsonb) guards against empty strings
-// (defensive — default is '{}' and writes are JSON, but legacy rows may differ).
+// The col::text + ::jsonb cast pair is required because cross-dialect JSON
+// columns exist in BOTH physical types after the SQLite→Postgres migration:
+// raw-SQL-managed columns (monitor_events.metadata_json, sessions state_json)
+// are TEXT, while ent field.JSON columns (skill_invocation.token_usage) are
+// native jsonb. col::text is the identity on TEXT and serializes jsonb to its
+// canonical text form, so one expression serves both. COALESCE/NULLIF guards
+// NULL and empty-string rows.
 func (d Dialect) JSONExtract(col, key string) string {
 	if d.IsPostgres() {
-		return fmt.Sprintf("COALESCE(NULLIF(%s, '')::jsonb, '{}'::jsonb) ->> '%s'", col, key)
+		return fmt.Sprintf("COALESCE(NULLIF(%s::text, '')::jsonb, '{}'::jsonb) ->> '%s'", col, key)
+	}
+	return fmt.Sprintf("json_extract(%s, '$.%s')", col, key)
+}
+
+// JSONExtractNumeric returns a SQL expression that extracts a JSON object key
+// as a numeric (DOUBLE PRECISION) value, for use in numeric contexts:
+// COALESCE with a DOUBLE PRECISION column, AVG/SUM, and `>` comparisons.
+//
+// SQLite:   json_extract(col, '$.key')   — returns INTEGER/REAL natively
+// Postgres: CAST(NULLIF(col::jsonb ->> 'key', '') AS DOUBLE PRECISION)
+//
+// Postgres' `->>` always yields text; without the cast, numeric consumers
+// fail with 42804 ("COALESCE types double precision and text cannot be
+// matched") or 42883 ("function avg(text) does not exist"). NULLIF(..., '')
+// guards empty-string values which would otherwise fail the cast; missing
+// keys and NULL rows yield NULL (propagating through COALESCE/AVG as NULL).
+// Non-numeric junk values raise 22P02 — acceptable because writers store
+// numeric JSON (same strictness as the meta_duration_ms generated column).
+// The col::text base handles both TEXT and native jsonb columns (see
+// JSONExtract doc).
+func (d Dialect) JSONExtractNumeric(col, key string) string {
+	if d.IsPostgres() {
+		return fmt.Sprintf("CAST(NULLIF(COALESCE(NULLIF(%s::text, '')::jsonb, '{}'::jsonb) ->> '%s', '') AS DOUBLE PRECISION)", col, key)
 	}
 	return fmt.Sprintf("json_extract(%s, '$.%s')", col, key)
 }
@@ -73,19 +98,57 @@ func (d Dialect) JSONEach(col string) string {
 	return fmt.Sprintf("json_each(%s)", col)
 }
 
+// JSONBBase returns the canonical base expression for JSON write helpers.
+// Cross-dialect JSON columns are physically TEXT (raw-SQL-managed) or jsonb
+// (ent field.JSON) after the SQLite→Postgres migration, so the Postgres write
+// helpers (JSONSet/JSONSetMulti/JSONRemove/JSONRemoveMulti) require their
+// input expression to already be jsonb-typed. JSONBBase normalizes either
+// physical type into such an expression:
+//
+// SQLite:   COALESCE(col, '{}')
+// Postgres: COALESCE(NULLIF(col::text, '')::jsonb, '{}'::jsonb)
+//
+// col::text is the identity on TEXT columns and serializes native jsonb to
+// its canonical text form, so both physical types are accepted. The
+// COALESCE/NULLIF guard tolerates NULL and empty-string rows (both make
+// jsonb_set return NULL or fail the ::jsonb cast). This mirrors the read-side
+// convention in JSONExtract.
+//
+// The resulting expression yields jsonb on Postgres; assigning it back to a
+// TEXT column in UPDATE ... SET relies on Postgres' assignment cast
+// (jsonb→text CoerceViaIO), verified by TestDialectIntegration; assigning to
+// a native jsonb column is a direct jsonb→jsonb assignment.
+func (d Dialect) JSONBBase(col string) string {
+	if d.IsPostgres() {
+		return fmt.Sprintf("COALESCE(NULLIF(%s::text, '')::jsonb, '{}'::jsonb)", col)
+	}
+	return fmt.Sprintf("COALESCE(%s, '{}')", col)
+}
+
 // JSONSet returns a SQL expression that sets a JSON key to a new value.
 // SQLite: json_set(col, '$.key', new_value)
-// Postgres: jsonb_set(col, '{key}', to_jsonb(new_value))
+// Postgres: jsonb_set(col, '{key}', to_jsonb(new_value::text))
 //
 // For Postgres, the new_value must be wrapped in to_jsonb() to ensure JSON
-// compatibility. The caller is responsible for providing the value as a
-// placeholder or expression.
+// compatibility. The ::text cast is required because to_jsonb(anyelement)
+// is polymorphic — without an explicit cast, Postgres cannot infer the
+// placeholder type and errors with 42804 ("could not determine polymorphic
+// type because input type is unknown"). All current callers pass string
+// values (map[string]string or text columns), so ::text is semantically
+// correct.
+//
+// Contract: on Postgres, col MUST be a jsonb-typed expression (produced by
+// JSONBBase or a previous jsonb_set call). Passing a bare TEXT column raises
+// 42883 ("function jsonb_set(text, unknown, jsonb) does not exist") — the
+// historical root cause of run.persist_failed. The guard is applied once at
+// the base (JSONBBase) rather than re-applied here, so chained calls stay
+// cheap.
 //
 // Note: for multiple key updates, Postgres requires nested jsonb_set calls.
-// Use JSONSetChain for multi-key updates.
+// Use JSONSetMulti for multi-key updates.
 func (d Dialect) JSONSet(col, key, newValue string) string {
 	if d.IsPostgres() {
-		return fmt.Sprintf("jsonb_set(%s, '{%s}', to_jsonb(%s))", col, key, newValue)
+		return fmt.Sprintf("jsonb_set(%s, '{%s}', to_jsonb(%s::text))", col, key, newValue)
 	}
 	return fmt.Sprintf("json_set(%s, '$.%s', %s)", col, key, newValue)
 }
@@ -96,9 +159,10 @@ func (d Dialect) JSONSet(col, key, newValue string) string {
 // supports one path at a time.
 //
 // pairs is a slice of (key, value) tuples where value is a placeholder or expression.
+// Contract: same as JSONSet — on Postgres, col must be jsonb-typed (use JSONBBase).
 //
 // Example (SQLite): json_set(col, '$.k1', v1, '$.k2', v2)
-// Example (Postgres): jsonb_set(jsonb_set(col, '{k1}', to_jsonb(v1)), '{k2}', to_jsonb(v2))
+// Example (Postgres): jsonb_set(jsonb_set(base, '{k1}', to_jsonb(v1::text)), '{k2}', to_jsonb(v2::text))
 func (d Dialect) JSONSetMulti(col string, pairs ...[2]string) string {
 	if len(pairs) == 0 {
 		return col
@@ -106,7 +170,7 @@ func (d Dialect) JSONSetMulti(col string, pairs ...[2]string) string {
 	if d.IsPostgres() {
 		result := col
 		for _, p := range pairs {
-			result = fmt.Sprintf("jsonb_set(%s, '{%s}', to_jsonb(%s))", result, p[0], p[1])
+			result = fmt.Sprintf("jsonb_set(%s, '{%s}', to_jsonb(%s::text))", result, p[0], p[1])
 		}
 		return result
 	}
@@ -115,6 +179,49 @@ func (d Dialect) JSONSetMulti(col string, pairs ...[2]string) string {
 		parts = append(parts, fmt.Sprintf("'$.%s'", p[0]), p[1])
 	}
 	return fmt.Sprintf("json_set(%s, %s)", col, strings.Join(parts, ", "))
+}
+
+// JSONRemove returns a SQL expression that removes a top-level key from a JSON
+// column, plus the argument to pass for the key placeholder.
+//
+// SQLite: json_remove(expr, '$.key')  — arg = "$.key"
+// Postgres: expr - ?::text            — arg = "key"
+//
+// Postgres uses the jsonb `-` operator (delete top-level key by text name).
+// The ::text cast is required for the same polymorphic-type reason as JSONSet.
+// Contract: same as JSONSet — on Postgres, expr must be jsonb-typed (use
+// JSONBBase); a bare TEXT column raises 42883 ("operator does not exist:
+// text - text").
+// Note: only top-level keys are supported; for nested paths use #- with a
+// text[] literal (not a placeholder).
+func (d Dialect) JSONRemove(expr, key string) (sqlExpr, arg string) {
+	if d.IsPostgres() {
+		return fmt.Sprintf("%s - ?::text", expr), key
+	}
+	return fmt.Sprintf("json_remove(%s, ?)", expr), "$." + key
+}
+
+// JSONRemoveMulti returns a SQL expression that removes multiple top-level
+// keys in one expression, for developer-supplied constant key sets.
+//
+// SQLite:   json_remove(expr, '$.k1', '$.k2')
+// Postgres: expr - '{k1,k2}'::text[]
+//
+// Keys are embedded as SQL literals (consistent with JSONSet embedding keys
+// into '{key}'); they MUST be code constants, never user input. Contract:
+// same as JSONSet — on Postgres, expr must be jsonb-typed (use JSONBBase).
+func (d Dialect) JSONRemoveMulti(expr string, keys ...string) string {
+	if len(keys) == 0 {
+		return expr
+	}
+	if d.IsPostgres() {
+		return fmt.Sprintf("%s - '{%s}'::text[]", expr, strings.Join(keys, ","))
+	}
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("'$.%s'", k))
+	}
+	return fmt.Sprintf("json_remove(%s, %s)", expr, strings.Join(parts, ", "))
 }
 
 // TableExistsQuery returns the SQL query and args to check if a table exists.
@@ -284,9 +391,9 @@ func (d Dialect) UndefinedObjectErr(err error) bool {
 		}
 		return false
 	}
-	// SQLite: "no such table"
+	// SQLite: "no such table" / "no such column"
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "no such table")
+	return strings.Contains(msg, "no such table") || strings.Contains(msg, "no such column")
 }
 
 // UniqueConstraintErr reports whether err indicates a unique constraint

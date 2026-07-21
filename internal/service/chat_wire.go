@@ -12,12 +12,13 @@ import (
 // the Wire cycle: PlanExecutor → TeamOrchestrator → SpiritTeamAssembler
 // → TeamStarter → ... → ChatService.
 // 2026-07-04 问题 4 修复：
-// - 注入 EventBus 到 PlanExecutor 并启动订阅，让 PlanExecutor 自动响应
-//   PlanBoardCreatedEvent 触发 DAG 执行。
-// - 注入 SpiritTeamAssembler 和 TeamStarter 到 RealTeamOrchestrator，
-//   让 PlanExecutor.dispatchStep 能创建真实的 team + team_run。
-// - 注入 AgentReader 到 RealTeamOrchestrator，让 Orchestrate 能查询
-//   active agent 列表作为团队成员（PlanStep 不携带 AgentKeys）。
+//   - 注入 EventBus 到 PlanExecutor 并启动订阅，让 PlanExecutor 自动响应
+//     PlanBoardCreatedEvent 触发 DAG 执行。
+//   - 注入 SpiritTeamAssembler 和 TeamStarter 到 RealTeamOrchestrator，
+//     让 PlanExecutor.dispatchStep 能创建真实的 team + team_run。
+//   - 注入 AgentReader 到 RealTeamOrchestrator，让 Orchestrate 能查询
+//     active agent 列表作为团队成员（PlanStep 不携带 AgentKeys）。
+//
 // 2026-07-04 问题 1 修复：注入 v2 Sequencer 到 GraphOrchestrationProjector，
 // 让 PublishGraphTaskStatus 的 system.notice 经过持久化（EventRouter →
 // UpsertActivity），避免刷新后丢失。graphProj 在 wire 中先于 sequencer 创建，

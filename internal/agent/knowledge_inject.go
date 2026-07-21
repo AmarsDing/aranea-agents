@@ -88,8 +88,8 @@ func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggate
 	}
 
 	b.WriteString("\n**Search strategy tips:**\n")
-	b.WriteString("- For specific factual questions → `knowledge_search` with the most relevant collection_id\n")
-	b.WriteString("- For broad or multi-topic questions → `knowledge_reflect` with multiple collection_ids\n")
+	b.WriteString("- For specific factual questions → `knowledge_search` (omit collection_id to auto-route across all bases)\n")
+	b.WriteString("- For broad or multi-topic questions → `knowledge_reflect` (omit collection_ids to search all bases and evaluate quality)\n")
 	b.WriteString("- If initial results are insufficient → `knowledge_reflect` will suggest supplementary queries\n")
 
 	result := b.String()

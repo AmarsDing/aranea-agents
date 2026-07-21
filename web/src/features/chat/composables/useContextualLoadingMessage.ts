@@ -6,8 +6,13 @@
  * Messages are suppressed during reconnect hydrate to avoid flicker.
  */
 import { ref, type Ref } from 'vue';
+import { i18n } from '../../../i18n';
 import type { ActivityEvent } from '../../../realtime/activityEvent';
-import { ORCHESTRATION_LOADING_MAP, AGENT_LOADING_MAP } from '../../../features/spirit/observabilityConstants';
+import {
+  ORCHESTRATION_LOADING_MAP,
+  AGENT_LOADING_MAP,
+  ORCHESTRATION_PROGRESS_MAP,
+} from '../../../features/spirit/observabilityConstants';
 
 export type ContextualMessage = {
   text: string;
@@ -33,6 +38,8 @@ function activityEventToLoadingType(ev: ActivityEvent): string {
     if (stage === 'orchestration_failed') return 'butler.orchestration.failed';
   }
   if (kind === 'notice' && stage === 'allocation_created') return 'spirit_allocation_created';
+  // P-ORCH.2: fine-grained orchestration progress (decomposing/allocating/etc.).
+  if (kind === 'notice' && stage === 'orchestration_progress') return 'orchestration_progress';
   // Team stages
   if (kind === 'team_stage') {
     if (stage === 'assembled') return 'spirit_team_assembled';
@@ -53,6 +60,10 @@ function activityEventToLoadingType(ev: ActivityEvent): string {
 }
 
 export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
+  // Use the global i18n instance (instead of useI18n()) so this composable
+  // can be called from non-component contexts (tests, helpers). The global
+  // instance is created once at app bootstrap (src/i18n/index.ts).
+  const t = i18n.global.t.bind(i18n.global);
   const loadingMessage = ref<ContextualMessage | null>(null);
 
   /**
@@ -121,7 +132,43 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
       return;
     }
 
-    // 3. Clear message on team completion/failure
+    // 3. P-ORCH.2: orchestration_progress fine-grained phases.
+    // Backend (TaskPlanner/AgentAllocator/AgentFactory) emits
+    // SystemNoticeEvent(noticeType=orchestration_progress, meta.phase=...).
+    // The chat workspace converts these to ActivityEvent(kind=notice,
+    // stage=orchestration_progress) and routes them here. meta.phase selects
+    // the rendering template; placeholders are filled from meta fields.
+    if (envType === 'orchestration_progress') {
+      const meta = ev.activity.meta ?? {};
+      const phase = typeof meta.phase === 'string' ? meta.phase : '';
+      const config = ORCHESTRATION_PROGRESS_MAP[phase];
+      if (!config) return; // unknown phase → leave loading unchanged
+
+      // Build named params for vue-i18n. Meta uses snake_case; i18n templates
+      // use camelCase. Missing values default to 0 / '' so vue-i18n does not
+      // strip the placeholder.
+      const subTaskCount = typeof meta.sub_task_count === 'number' ? meta.sub_task_count : 0;
+      const index = typeof meta.index === 'number' ? meta.index : 0;
+      const total = typeof meta.total === 'number' ? meta.total : 0;
+      const subTask = typeof meta.sub_task === 'string' ? meta.sub_task : '';
+      const agentName = typeof meta.agent_name === 'string' ? meta.agent_name : '';
+      const text = t(config.messageKey, {
+        subTaskCount,
+        index,
+        total,
+        subTask,
+        agentName,
+      }) as string;
+
+      loadingMessage.value = {
+        text,
+        icon: config.icon,
+        color: config.color,
+      };
+      return;
+    }
+
+    // 4. Clear message on team completion/failure
     if (
       envType === 'spirit_team_completed' ||
       envType === 'spirit_team_failed' ||

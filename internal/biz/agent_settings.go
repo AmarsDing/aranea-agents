@@ -187,7 +187,6 @@ type EvolutionCfg struct {
 // ContextCfg holds context-compaction, output-schema, model-selector, and planner settings.
 type ContextCfg struct {
 	CompactionEnabled          bool    `json:"context_compaction_enabled,omitempty"`
-	MicroCompactEnabled        bool    `json:"micro_compact_enabled,omitempty"`
 	MemoryCompactEnabled       bool    `json:"memory_compact_enabled,omitempty"`
 	ToolResultGateEnabled      bool    `json:"tool_result_gate_enabled,omitempty"`
 	CompressLLMCacheEnabled    bool    `json:"compress_llm_cache_enabled,omitempty"`
@@ -354,7 +353,6 @@ func (s *AgentRuntimeSettings) ApplyEvolution(cfg EvolutionCfg) {
 
 func (s *AgentRuntimeSettings) ApplyContext(cfg ContextCfg) {
 	s.ContextCompactionEnabled = cfg.CompactionEnabled
-	s.MicroCompactEnabled = cfg.MicroCompactEnabled
 	s.MemoryCompactEnabled = cfg.MemoryCompactEnabled
 	s.ToolResultGateEnabled = cfg.ToolResultGateEnabled
 	s.CompressLLMCacheEnabled = cfg.CompressLLMCacheEnabled

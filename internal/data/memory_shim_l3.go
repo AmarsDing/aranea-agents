@@ -452,6 +452,7 @@ func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, user
 		_ = anyFloat(row, "confidence") // confidence not used in L3 hybrid scoring
 		qScore := anyFloat(row, "quality_score")
 		updatedAt, _ := row["updated_at"].(string)
+		factKind, _ := row["fact_kind"].(string)
 
 		kwScore := keywordOverlapScore(tokens, stmt+" "+details)
 		var vecScore float64
@@ -473,7 +474,7 @@ func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, user
 			}
 		}
 		recency := recencyBoost(updatedAt, now)
-		decay := factRecencyDecay(updatedAt, now)
+		decay := factDecayWithKind(factKind, updatedAt, now)
 		total := l3ScoreWeightKeyword*kwScore +
 			l3ScoreWeightVector*vecScore +
 			l3ScoreWeightImport*imp*decay +
@@ -583,11 +584,12 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 		imp := anyFloat(row, "importance")
 		qScore := anyFloat(row, "quality_score")
 		updatedAt, _ := row["updated_at"].(string)
+		factKind, _ := row["fact_kind"].(string)
 
 		vecScore := hitMap[id]
 		kwScore := keywordOverlapScore(tokens, stmt+" "+details)
 		recency := recencyBoost(updatedAt, now)
-		decay := factRecencyDecay(updatedAt, now)
+		decay := factDecayWithKind(factKind, updatedAt, now)
 		total := l3ScoreWeightKeyword*kwScore +
 			l3ScoreWeightVector*vecScore +
 			l3ScoreWeightImport*imp*decay +

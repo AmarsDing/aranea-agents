@@ -110,172 +110,151 @@ type RequestType = {
   body: string | null;
 };
 
-type RequestHandler = (request: RequestType, meta: { service: string; method: string }) => Promise<unknown>;
+type RequestHandler = (request: RequestType, meta: { service: string, method: string }) => Promise<unknown>;
 
-export function createLearningLoopServiceClient(handler: RequestHandler): LearningLoopService {
+export function createLearningLoopServiceClient(
+  handler: RequestHandler
+): LearningLoopService {
   return {
-    ListProposals(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListProposals(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       const path = `v1/agents/${request.agentId}/learning/proposals`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'LearningLoopService',
-          method: 'ListProposals',
-        },
-      ) as Promise<ListProposalsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "LearningLoopService",
+        method: "ListProposals",
+      }) as Promise<ListProposalsResponse>;
     },
-    ListPatterns(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListPatterns(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       const path = `v1/agents/${request.agentId}/learning/patterns`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`);
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'LearningLoopService',
-          method: 'ListPatterns',
-        },
-      ) as Promise<ListPatternsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "LearningLoopService",
+        method: "ListPatterns",
+      }) as Promise<ListPatternsResponse>;
     },
-    ListObservations(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ListObservations(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       const path = `v1/agents/${request.agentId}/learning/observations`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       if (request.since) {
-        queryParams.push(`since=${encodeURIComponent(request.since.toString())}`);
+        queryParams.push(`since=${encodeURIComponent(request.since.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'GET',
-          body,
-        },
-        {
-          service: 'LearningLoopService',
-          method: 'ListObservations',
-        },
-      ) as Promise<ListObservationsResponse>;
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "LearningLoopService",
+        method: "ListObservations",
+      }) as Promise<ListObservationsResponse>;
     },
-    ApproveProposal(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    ApproveProposal(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/agents/${request.agentId}/learning/proposals/${request.id}/approve`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'LearningLoopService',
-          method: 'ApproveProposal',
-        },
-      ) as Promise<KnowledgeProposal>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "LearningLoopService",
+        method: "ApproveProposal",
+      }) as Promise<KnowledgeProposal>;
     },
-    RejectProposal(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    RejectProposal(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       if (!request.id) {
-        throw new Error('missing required field request.id');
+        throw new Error("missing required field request.id");
       }
       const path = `v1/agents/${request.agentId}/learning/proposals/${request.id}/reject`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'LearningLoopService',
-          method: 'RejectProposal',
-        },
-      ) as Promise<KnowledgeProposal>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "LearningLoopService",
+        method: "RejectProposal",
+      }) as Promise<KnowledgeProposal>;
     },
-    RunLoop(request) {
-      // eslint-disable-line @typescript-eslint/no-unused-vars
+    RunLoop(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {
-        throw new Error('missing required field request.agent_id');
+        throw new Error("missing required field request.agent_id");
       }
       const path = `v1/agents/${request.agentId}/learning/run`; // eslint-disable-line quotes
       const body = JSON.stringify(request);
       const queryParams: string[] = [];
       let uri = path;
       if (queryParams.length > 0) {
-        uri += `?${queryParams.join('&')}`;
+        uri += `?${queryParams.join("&")}`
       }
-      return handler(
-        {
-          path: uri,
-          method: 'POST',
-          body,
-        },
-        {
-          service: 'LearningLoopService',
-          method: 'RunLoop',
-        },
-      ) as Promise<wellKnownEmpty>;
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "LearningLoopService",
+        method: "RunLoop",
+      }) as Promise<wellKnownEmpty>;
     },
   };
 }
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
+
 
 // @@protoc_insertion_point(typescript-http-eof)

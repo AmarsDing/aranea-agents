@@ -1,9 +1,9 @@
 // Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <AppPageHero
-    kicker="Memory Center"
-    title="记忆中心"
-    subtitle="从上下文、工作记忆、会话事件、长期知识和 Agent 进化五个视角解释 Agent 为什么这样回答。"
+    :kicker="t('memory.hero.kicker')"
+    :title="t('memory.hero.title')"
+    :subtitle="t('memory.hero.subtitle')"
   >
     <template #actions>
       <q-select
@@ -13,7 +13,7 @@
         clearable
         emit-value
         map-options
-        label="Agent"
+        :label="t('memory.hero.agentLabel')"
         :options="agentOptions"
         class="memory-select"
         @update:model-value="$emit('update:selectedAgentId', $event as string | null)"
@@ -24,7 +24,7 @@
         unelevated
         no-caps
         icon="refresh"
-        label="刷新"
+        :label="t('memory.hero.refresh')"
         :loading="loading"
         @click="$emit('refresh')"
       />
@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import AppPageHero from '../layout/AppPageHero.vue';
 
 defineProps<{
@@ -45,6 +46,8 @@ defineEmits<{
   'update:selectedAgentId': [value: string | null];
   refresh: [];
 }>();
+
+const { t } = useI18n();
 </script>
 
 <style scoped>

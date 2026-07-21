@@ -43,7 +43,7 @@ func (r *flowLogRepo) Insert(ctx context.Context, rec biz.FlowLogRecord) error {
 		SetCreatedAt(rec.CreatedAt).
 		Save(ctx)
 	if err != nil {
-		if ent.IsConstraintError(err) {
+		if ent.IsConstraintError(err) || isPgUniqueViolation(err) {
 			return nil
 		}
 		return entErrToBizErr(err, "FLOW_LOG")

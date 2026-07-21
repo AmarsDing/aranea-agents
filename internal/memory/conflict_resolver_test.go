@@ -212,9 +212,9 @@ func TestConflictResolver_EmptyIDs(t *testing.T) {
 	resolver := NewConflictResolver(store, nil)
 
 	cases := []struct {
-		name    string
-		newID   string
-		oldID   string
+		name  string
+		newID string
+		oldID string
 	}{
 		{"empty new", "", "OLD"},
 		{"empty old", "NEW", ""},

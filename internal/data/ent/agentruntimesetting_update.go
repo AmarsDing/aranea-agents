@@ -1658,20 +1658,6 @@ func (_u *AgentRuntimeSettingUpdate) SetNillableContextCompactionEnabled(v *bool
 	return _u
 }
 
-// SetMicroCompactEnabled sets the "micro_compact_enabled" field.
-func (_u *AgentRuntimeSettingUpdate) SetMicroCompactEnabled(v bool) *AgentRuntimeSettingUpdate {
-	_u.mutation.SetMicroCompactEnabled(v)
-	return _u
-}
-
-// SetNillableMicroCompactEnabled sets the "micro_compact_enabled" field if the given value is not nil.
-func (_u *AgentRuntimeSettingUpdate) SetNillableMicroCompactEnabled(v *bool) *AgentRuntimeSettingUpdate {
-	if v != nil {
-		_u.SetMicroCompactEnabled(*v)
-	}
-	return _u
-}
-
 // SetMemoryCompactEnabled sets the "memory_compact_enabled" field.
 func (_u *AgentRuntimeSettingUpdate) SetMemoryCompactEnabled(v bool) *AgentRuntimeSettingUpdate {
 	_u.mutation.SetMemoryCompactEnabled(v)
@@ -2896,9 +2882,6 @@ func (_u *AgentRuntimeSettingUpdate) sqlSave(ctx context.Context) (_node int, er
 	}
 	if value, ok := _u.mutation.ContextCompactionEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldContextCompactionEnabled, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.MicroCompactEnabled(); ok {
-		_spec.SetField(agentruntimesetting.FieldMicroCompactEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.MemoryCompactEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldMemoryCompactEnabled, field.TypeBool, value)
@@ -4740,20 +4723,6 @@ func (_u *AgentRuntimeSettingUpdateOne) SetNillableContextCompactionEnabled(v *b
 	return _u
 }
 
-// SetMicroCompactEnabled sets the "micro_compact_enabled" field.
-func (_u *AgentRuntimeSettingUpdateOne) SetMicroCompactEnabled(v bool) *AgentRuntimeSettingUpdateOne {
-	_u.mutation.SetMicroCompactEnabled(v)
-	return _u
-}
-
-// SetNillableMicroCompactEnabled sets the "micro_compact_enabled" field if the given value is not nil.
-func (_u *AgentRuntimeSettingUpdateOne) SetNillableMicroCompactEnabled(v *bool) *AgentRuntimeSettingUpdateOne {
-	if v != nil {
-		_u.SetMicroCompactEnabled(*v)
-	}
-	return _u
-}
-
 // SetMemoryCompactEnabled sets the "memory_compact_enabled" field.
 func (_u *AgentRuntimeSettingUpdateOne) SetMemoryCompactEnabled(v bool) *AgentRuntimeSettingUpdateOne {
 	_u.mutation.SetMemoryCompactEnabled(v)
@@ -6008,9 +5977,6 @@ func (_u *AgentRuntimeSettingUpdateOne) sqlSave(ctx context.Context) (_node *Age
 	}
 	if value, ok := _u.mutation.ContextCompactionEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldContextCompactionEnabled, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.MicroCompactEnabled(); ok {
-		_spec.SetField(agentruntimesetting.FieldMicroCompactEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.MemoryCompactEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldMemoryCompactEnabled, field.TypeBool, value)

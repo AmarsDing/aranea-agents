@@ -3,11 +3,13 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/shared"
+	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -439,5 +441,246 @@ func TestAgentFactory_BuildDynamicAgentKey_Deterministic(t *testing.T) {
 	// Key should have "factory-" prefix
 	if key1[:8] != "factory-" {
 		t.Errorf("key prefix=%q want %q", key1[:8], "factory-")
+	}
+}
+
+// --- P-ORCH fakes ---
+
+// fakeFactoryEmitter implements biz.ActivityEmitter for confirmation tests.
+type fakeFactoryEmitter struct {
+	mu             sync.Mutex
+	confirmParams  []biz.ActivityConfirmParams
+	confirmResults []factoryConfirmResult
+	idCounter      int
+}
+
+type factoryConfirmResult struct {
+	activityID string
+	approved   bool
+}
+
+func (e *fakeFactoryEmitter) EmitNotice(_ context.Context, _, _ string) error { return nil }
+
+func (e *fakeFactoryEmitter) EmitConfirmRequest(_ context.Context, p biz.ActivityConfirmParams) (string, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.idCounter++
+	e.confirmParams = append(e.confirmParams, p)
+	return fmt.Sprintf("confirm-%d", e.idCounter), nil
+}
+
+func (e *fakeFactoryEmitter) EmitConfirmResult(_ context.Context, activityID string, approved bool) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.confirmResults = append(e.confirmResults, factoryConfirmResult{activityID: activityID, approved: approved})
+	return nil
+}
+
+// progressPhases extracts orchestration_progress phases from captured events.
+func progressPhases(events []biz.Event) []string {
+	var phases []string
+	for _, ev := range events {
+		notice, ok := ev.(*biz.SystemNoticeEvent)
+		if !ok || notice.NoticeType != "orchestration_progress" {
+			continue
+		}
+		phase, _ := notice.Meta["phase"].(string)
+		phases = append(phases, phase)
+	}
+	return phases
+}
+
+// --- P-ORCH tests ---
+
+func TestAgentFactory_EnsureAgent_PublishesProgressEvents(t *testing.T) {
+	model := &fakeFactoryModel{
+		responses: []*trpcmodel.Response{
+			{Choices: []trpcmodel.Choice{{Message: trpcmodel.Message{Content: validFactoryJSONResponse()}}}},
+		},
+	}
+	store := newFakeFactoryAgentStore()
+	bus := &factoryCaptureBus{}
+	factory := newTestAgentFactory(model, store, defaultFactoryTemplates(), bus)
+
+	profile := biz.TaskProfile{
+		Domain:               "engineering",
+		TaskDescription:      "Write a Go REST API",
+		RequiredCapabilities: []string{"go-backend"},
+		SpiritSessionID:      "sess-orch-1",
+	}
+
+	agentKey, err := factory.EnsureAgent(context.Background(), profile)
+	if err != nil {
+		t.Fatalf("EnsureAgent failed: %v", err)
+	}
+
+	phases := progressPhases(bus.getPublished())
+	if len(phases) != 2 {
+		t.Fatalf("orchestration_progress events=%d want 2 (creating_agent + agent_created), got %v", len(phases), phases)
+	}
+	if phases[0] != "creating_agent" {
+		t.Errorf("phases[0]=%q want %q", phases[0], "creating_agent")
+	}
+	if phases[1] != "agent_created" {
+		t.Errorf("phases[1]=%q want %q", phases[1], "agent_created")
+	}
+
+	// agent_created event must carry the real display name + agent key and
+	// be routed to the spirit session.
+	for _, ev := range bus.getPublished() {
+		notice, ok := ev.(*biz.SystemNoticeEvent)
+		if !ok || notice.NoticeType != "orchestration_progress" {
+			continue
+		}
+		if notice.Meta["phase"] != "agent_created" {
+			continue
+		}
+		if notice.Meta["agent_name"] != "Go 后端助手" {
+			t.Errorf("agent_name=%v want %q", notice.Meta["agent_name"], "Go 后端助手")
+		}
+		if notice.Meta["agent_key"] != agentKey {
+			t.Errorf("agent_key=%v want %q", notice.Meta["agent_key"], agentKey)
+		}
+		if notice.SpiritSessionID() != "sess-orch-1" {
+			t.Errorf("sessionID=%q want %q", notice.SpiritSessionID(), "sess-orch-1")
+		}
+	}
+}
+
+func TestAgentFactory_EnsureAgent_ConfirmApproved(t *testing.T) {
+	model := &fakeFactoryModel{
+		responses: []*trpcmodel.Response{
+			{Choices: []trpcmodel.Choice{{Message: trpcmodel.Message{Content: validFactoryJSONResponse()}}}},
+		},
+	}
+	store := newFakeFactoryAgentStore()
+	bus := &factoryCaptureBus{}
+	factory := newTestAgentFactory(model, store, defaultFactoryTemplates(), bus)
+	emitter := &fakeFactoryEmitter{}
+
+	replyFn := serviceawaitreply.ReplyFunc(func(_ context.Context) (string, error) {
+		return "approved", nil
+	})
+	ctx := serviceawaitreply.WithReplyFunc(context.Background(), replyFn)
+	ctx = biz.WithActivityEmitter(ctx, emitter)
+
+	profile := biz.TaskProfile{
+		Domain:               "engineering",
+		TaskDescription:      "Write a Go REST API",
+		RequiredCapabilities: []string{"go-backend"},
+		SpiritSessionID:      "sess-orch-2",
+	}
+
+	agentKey, err := factory.EnsureAgent(ctx, profile)
+	if err != nil {
+		t.Fatalf("EnsureAgent failed: %v", err)
+	}
+	if agentKey == "" {
+		t.Fatal("agentKey is empty")
+	}
+
+	// Confirm request must have been emitted with the proposal.
+	if len(emitter.confirmParams) != 1 {
+		t.Fatalf("confirmRequests=%d want 1", len(emitter.confirmParams))
+	}
+	if emitter.confirmParams[0].ToolName != "agent_factory" {
+		t.Errorf("ToolName=%q want %q", emitter.confirmParams[0].ToolName, "agent_factory")
+	}
+	if emitter.confirmParams[0].ToolArguments == "" {
+		t.Error("ToolArguments is empty (proposal JSON expected)")
+	}
+
+	// Confirm result must report approved=true.
+	if len(emitter.confirmResults) != 1 {
+		t.Fatalf("confirmResults=%d want 1", len(emitter.confirmResults))
+	}
+	if !emitter.confirmResults[0].approved {
+		t.Error("confirmResults[0].approved=false want true")
+	}
+
+	// Agent must be persisted after approval.
+	if _, err := store.GetAgentByAgentKey(context.Background(), agentKey); err != nil {
+		t.Fatalf("agent not persisted after approval: %v", err)
+	}
+}
+
+func TestAgentFactory_EnsureAgent_ConfirmDenied(t *testing.T) {
+	model := &fakeFactoryModel{
+		responses: []*trpcmodel.Response{
+			{Choices: []trpcmodel.Choice{{Message: trpcmodel.Message{Content: validFactoryJSONResponse()}}}},
+		},
+	}
+	store := newFakeFactoryAgentStore()
+	bus := &factoryCaptureBus{}
+	factory := newTestAgentFactory(model, store, defaultFactoryTemplates(), bus)
+	emitter := &fakeFactoryEmitter{}
+
+	replyFn := serviceawaitreply.ReplyFunc(func(_ context.Context) (string, error) {
+		return "denied", nil
+	})
+	ctx := serviceawaitreply.WithReplyFunc(context.Background(), replyFn)
+	ctx = biz.WithActivityEmitter(ctx, emitter)
+
+	profile := biz.TaskProfile{
+		Domain:          "engineering",
+		TaskDescription: "Write a Go REST API",
+	}
+
+	_, err := factory.EnsureAgent(ctx, profile)
+	if err == nil {
+		t.Fatal("expected error for denied confirmation, got nil")
+	}
+
+	// Confirm result must report approved=false.
+	if len(emitter.confirmResults) != 1 {
+		t.Fatalf("confirmResults=%d want 1", len(emitter.confirmResults))
+	}
+	if emitter.confirmResults[0].approved {
+		t.Error("confirmResults[0].approved=true want false")
+	}
+
+	// No agent may be persisted after denial.
+	if len(store.agents) != 0 {
+		t.Errorf("agents=%d want 0 (no agent on denial)", len(store.agents))
+	}
+
+	// No agent_created progress event may be published after denial.
+	for _, phase := range progressPhases(bus.getPublished()) {
+		if phase == "agent_created" {
+			t.Error("agent_created progress event published after denial")
+		}
+	}
+}
+
+func TestAgentFactory_EnsureAgent_ConfirmReplyError(t *testing.T) {
+	model := &fakeFactoryModel{
+		responses: []*trpcmodel.Response{
+			{Choices: []trpcmodel.Choice{{Message: trpcmodel.Message{Content: validFactoryJSONResponse()}}}},
+		},
+	}
+	store := newFakeFactoryAgentStore()
+	bus := &factoryCaptureBus{}
+	factory := newTestAgentFactory(model, store, defaultFactoryTemplates(), bus)
+	emitter := &fakeFactoryEmitter{}
+
+	replyFn := serviceawaitreply.ReplyFunc(func(_ context.Context) (string, error) {
+		return "", errors.New("confirmation timeout")
+	})
+	ctx := serviceawaitreply.WithReplyFunc(context.Background(), replyFn)
+	ctx = biz.WithActivityEmitter(ctx, emitter)
+
+	profile := biz.TaskProfile{
+		Domain:          "engineering",
+		TaskDescription: "Write a Go REST API",
+	}
+
+	_, err := factory.EnsureAgent(ctx, profile)
+	if err == nil {
+		t.Fatal("expected error for reply failure, got nil")
+	}
+
+	// No agent may be persisted after reply error.
+	if len(store.agents) != 0 {
+		t.Errorf("agents=%d want 0 (no agent on reply error)", len(store.agents))
 	}
 }

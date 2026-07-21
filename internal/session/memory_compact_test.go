@@ -19,6 +19,10 @@ func (s *stubMemoryFactReader) ReadSessionMemoryFacts(_ context.Context, _ strin
 	return s.facts, s.err
 }
 
+func makeMsg(role string, turn int, content string) biz.ChatMessage {
+	return biz.ChatMessage{Role: role, TurnNumber: turn, ContentMarkdown: content}
+}
+
 func TestTryMemoryCompact_emptyBody(t *testing.T) {
 	r := tryMemoryCompact(context.Background(), nil, &stubMemoryFactReader{}, nil, "s1", loggateway.NewNoop())
 	if r.didCompact {
@@ -203,66 +207,6 @@ func TestGradedScoreCount(t *testing.T) {
 				tt.count, tt.threshold, tt.weight, got, tt.want)
 		}
 	}
-}
-
-func TestShouldUseStructuredCompact(t *testing.T) {
-	t.Run("high_ics_acceptable_ratio", func(t *testing.T) {
-		cov := compactCoverage{
-			HasIntent: true, HasState: true, DecisionCount: 3,
-			FileCount: 2, FactCount: 3, HasPending: true,
-		}
-		// ICS = 1.0 >= 0.70, ratio = 5000/10000 = 0.50 <= 0.60
-		got := shouldUseStructuredCompact(cov, 5000, 10000)
-		if !got {
-			t.Error("high ICS with good ratio should use structured compact")
-		}
-	})
-
-	t.Run("low_ics", func(t *testing.T) {
-		cov := compactCoverage{}
-		got := shouldUseStructuredCompact(cov, 1000, 10000)
-		if got {
-			t.Error("low ICS should not use structured compact")
-		}
-	})
-
-	t.Run("high_ics_ratio_too_high", func(t *testing.T) {
-		cov := compactCoverage{
-			HasIntent: true, HasState: true, DecisionCount: 3,
-			FileCount: 2, FactCount: 3, HasPending: true,
-		}
-		// ICS = 1.0 >= 0.70, ratio = 7000/10000 = 0.70 > 0.60
-		got := shouldUseStructuredCompact(cov, 7000, 10000)
-		if got {
-			t.Error("ratio > 0.60 should not use structured compact")
-		}
-	})
-
-	t.Run("zero_original_tokens", func(t *testing.T) {
-		cov := compactCoverage{
-			HasIntent: true, HasState: true, DecisionCount: 3,
-			FileCount: 2, FactCount: 3, HasPending: true,
-		}
-		// originalTokens <= 0 → return true
-		got := shouldUseStructuredCompact(cov, 5000, 0)
-		if !got {
-			t.Error("zero originalTokens with high ICS should use structured compact")
-		}
-	})
-
-	t.Run("boundary_ics", func(t *testing.T) {
-		// Build coverage with ICS exactly 0.70
-		// HasIntent=0.25, HasState=0.20, DecisionCount>=2=0.20, FileCount=1=0.075, total=0.725
-		// Let's compute: 0.25+0.20+0.20+0.075 = 0.725
-		cov := compactCoverage{
-			HasIntent: true, HasState: true, DecisionCount: 2,
-			FileCount: 1,
-		}
-		got := shouldUseStructuredCompact(cov, 5000, 10000)
-		if !got {
-			t.Error("ICS >= 0.70 with good ratio should use structured compact")
-		}
-	})
 }
 
 func TestBuildCompactCoverage(t *testing.T) {

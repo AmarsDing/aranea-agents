@@ -1,6 +1,6 @@
 # Tools 工具管理 — 产品需求
 
-> **版本**：5.1 | **状态**：核心已实现；片段编辑运行时已落地；工作区统一已实现
+> **版本**：5.1 | **状态**：核心已实现；片段编辑 catalog 已就绪、运行时工具待补；工作区统一已实现
 > **设计**：[23-tools.design.md](./23-tools.design.md) · **开发计划**：[23-tools.development.md](./23-tools.development.md)
 
 ---
@@ -25,7 +25,7 @@
 | MCP Tool 发现 | 后续增强 | 已注册 MCP 工具可展示；MCP Broker 运行时发现已实现 |
 | 工具在线测试 | 已实现 | TestTool RPC + 工具详情「在线测试」 |
 | 工具调用审计日志 | 已实现 | 审计表 + ListToolInvocationAudits API；前端审计页已实现 |
-| 片段级文件编辑 | 已实现 | `diff_edit` / `patch_file` catalog + 运行时工具 + SessionFileState；默认启用 |
+| 片段级文件编辑 | 已实现 | `diff_edit` / `patch_file` catalog 种子 + 运行时工具均已实现，种子启用 |
 | 工具工作区统一 | 已实现 | file / shell / claude_code 共用 `workspace_root`；详见设计文档 §7.8 |
 
 > 进度详情与任务状态见 [23-tools.development.md](./23-tools.development.md)。
@@ -183,12 +183,12 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `mcp_tool_set` | MCP 工具集 | integration | medium | 停用 | 挂载已配置的 MCP Server 工具 |
 | `mcp_broker` | MCP Broker | integration | medium | 停用 | 运行时 MCP 发现与调用 |
 | `plan_and_execute` | 规划并执行 | spirit | low | 启用 | 编排式计划与执行 |
-| `check_progress` | 查询编排进度 | spirit | low | 启用 | 查询编排执行进度 |
+| `check_progress` | 查询编排进度 | spirit | low | 停用 | 已由系统推送模式替代（团队完成后自动触发 Spirit 合成），不再对 LLM 暴露 |
 | `cancel_orchestration` | 取消编排 | spirit | medium | 启用 | 取消正在运行的编排 |
 | `synthesize_results` | 合成团队结果 | spirit | low | 启用 | 将所有已完成团队的执行结果合成为综合报告 |
 | `build_orchestration_graph` | 构建编排图 | spirit | low | 启用 | 构建 DAG 编排图，定义子任务依赖关系 |
 
-> 框架注册但不在 catalog 独立列出的工具（如 `subagents_spawn/list/get/cancel`、`message`）见设计文档 §7.2。
+> `subagents_spawn/list/get/cancel`、`message` 已入种子表（默认停用），上表从略；框架注册细节见设计文档 §7.2。
 
 ---
 
@@ -386,7 +386,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `minimal` | 无工具（最简模式） |
 | `safe` | `datetime`、`read_file`、`read_multiple_files`、`list_file`、`search_file`、`search_content`、`todo_write` |
 | `system_admin` | `group:cli_admin`、`web_fetch`、`datetime` |
-| `spirit` | `plan_and_execute`、`check_progress`、`cancel_orchestration`、`synthesize_results`、`build_orchestration_graph`、`memory_search`、`datetime` |
+| `spirit` | `plan_and_execute`、`cancel_orchestration`、`synthesize_results`、`build_orchestration_graph`、`memory_search`、`group:subagent`、`shell_exec`、`datetime` |
 
 ### 6.3 Agent 页 UI
 

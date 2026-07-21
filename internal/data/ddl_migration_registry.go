@@ -146,6 +146,21 @@ var ddlMigrations = []ddlMigration{
 	// plan_steps_v2 (P1 形式契约 B.10.15.2). Crash recovery rebuilds dagRun with
 	// contracts intact; same field.JSON pattern as agent_keys.
 	{Version: 20261013, Name: "plan_step_contracts", SQL: "sql/migrations/20261013_plan_step_contracts.sql"},
+	// 20261014 media_providers: media generation provider configs (media generation
+	// observation view). Originally 20261008 on release/installer-0.1.35; renumbered
+	// to avoid collision with session_turn_idempotency_key on dev.
+	{Version: 20261014, Name: "media_providers", SQL: "sql/migrations/20261008_media_providers.sql"},
+	// 20261106 learning_loop_schema: learning_observations/learning_patterns/learning_proposals
+	// tables were never wired into the migration registry (EnsureLearningLoopSchema was
+	// defined but never called), causing 500 on /v1/agents/{id}/learning/* endpoints.
+	// NOTE: version must exceed the max version already recorded in the target DB's
+	// schema_migrations (20261105 at time of writing), otherwise it is skipped as applied.
+	{Version: 20261106, Name: "learning_loop_schema", Func: ddlLearningLoopSchema},
+	// 20261107 drop_micro_compact: drop micro_compact_enabled column from
+	// agent_runtime_settings. L1 MicroCompact retired 2026-07-20 (dead feature:
+	// loadCompressBody keeps only user/assistant messages, so tool-message
+	// filtering never triggered).
+	{Version: 20261107, Name: "drop_micro_compact", SQL: "sql/migrations/20261107_drop_micro_compact.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -449,6 +464,10 @@ func ddlCompiledTeamSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Cl
 
 func ddlSkillEvolutionSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureSkillEvolutionSchema(ctx, entClient)
+}
+
+func ddlLearningLoopSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
+	return EnsureLearningLoopSchema(ctx, entClient)
 }
 
 func ddlTaskPlanSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {

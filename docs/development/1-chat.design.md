@@ -32,6 +32,7 @@ internal/server/ws_conn_manager.go    ← WS 连接数限制与移除
 internal/service/chat.go              ← ChatService 薄传输桥（委托 ChatOrchestrator）
 internal/service/chat_orchestrator.go ← ChatOrchestrator 编排核心
 internal/service/chat_orchestrator_turn.go          ← Turn 编排
+internal/service/chat_orchestrator_turn_pipeline.go ← Turn 管线（用户输入超限落地 gate）
 internal/service/chat_orchestrator_turn_phases.go   ← Turn 阶段实现
 internal/service/chat_orchestrator_turn_dispatch.go ← Turn 分发
 internal/service/chat_orchestrator_turn_api.go      ← Turn API
@@ -813,6 +814,7 @@ internal/service/
 ├── chat.go                          ← ChatService 薄传输桥（委托 ChatOrchestrator）
 ├── chat_orchestrator.go             ← ChatOrchestrator 编排核心
 ├── chat_orchestrator_turn.go        ← Turn 编排
+├── chat_orchestrator_turn_pipeline.go ← Turn 管线（用户输入超限落地 gate）
 ├── chat_orchestrator_turn_phases.go ← Turn 阶段实现
 ├── chat_orchestrator_turn_dispatch.go ← Turn 分发
 ├── chat_orchestrator_turn_api.go    ← Turn API
@@ -1838,7 +1840,8 @@ web/src/
 │   ├── executionCardHelpers.ts    ← 执行卡片辅助函数
 │   ├── toolEventMarkdown.ts       ← 工具事件 Markdown 渲染 + toolEventToMessage 共享转换函数
 │   ├── errorCodeHints.ts          ← 错误码 → 用户可读提示映射
-│   ├── chatMessageMarkdown.ts     ← Chat 消息 Markdown
+│   ├── chatMessageMarkdown.ts     ← Chat 消息 Markdown（全量渲染 + 流式分段渲染 renderChatMarkdownParts）
+│   ├── vSegmentedMarkdown.ts      ← v-segmented-markdown 指令（DOM 分段渲染：冻结段不回改，仅尾部重渲染）
 │   ├── sessionContextPatch.ts     ← Session 上下文补丁
 │   ├── contextBreakdown.ts        ← 上下文分解
 │   ├── composerUsageMetrics.ts    ← Composer 用量指标
@@ -2018,18 +2021,34 @@ ChatMessagePanel（ActivityStream + 待执行列表 + 输入框）
 - **后端 ParentActivityID 完整性**：`ActivityProjector` 创建 plan/graph 等 child Activity 时必须设置 `ParentActivityID: p.rootActivityID`，保证前端按 `parentActivityId` 构建的树结构与设计意图一致
 - **重连恢复**：WS 断线重连后，前端记录最后 `updated_at`，调用 `ListActivities?since={updated_at}` 拉取增量 Activity 合并到 Map
 
-#### 11.1.2 MD 渲染策略（2026-06-27 更新，ADR-06）
+#### 11.1.2 MD 渲染策略（2026-07-20 更新：流式增量渲染）
 
-> **架构变更（ADR-06）**：流式与完成态统一走完整 markdown-it + DOMPurify 解析路径，删除 `renderStreamingChatMarkdown` 简化（escape-only）路径。
+> **历史决策（ADR-06）**：流式与完成态统一走完整 markdown-it + DOMPurify 解析路径，删除 `renderStreamingChatMarkdown` 简化（escape-only）路径。
+>
+> **本次演进（2026-07-20，借鉴 xai-grok-markdown）**：在统一解析路径之上引入**块级冻结 + DOM 分段渲染 + 代码高亮 memo**，流式期间只重渲染未确认尾部，已冻结前缀的 DOM 节点永不触碰。
 
-前端 `web/src/features/chat/chatMessageMarkdown.ts:renderChatMarkdownForMessage` 统一走 markdown-it + DOMPurify 完整解析路径，**不再区分流式与完成态**。`streaming` 参数保留仅为 API 兼容。
+前端 `web/src/features/chat/chatMessageMarkdown.ts` 提供两级接口：
+
+| 接口 | 用途 | 语义 |
+|------|------|------|
+| `renderChatMarkdownForMessage(id, content, streaming)` | 字符串级全量渲染 | 400 条 LRU（`markdownCache`）；`streaming` 仅 API 兼容 |
+| `renderChatMarkdownParts(id, content, streaming)` | 分段渲染（流式增量） | 返回 `{ frozenHtml, tailHtml, frozenSegments, frozenEpoch }`；`streaming=false` 为 finish() 兜底——走 LRU 全量渲染并销毁该消息的增量状态 |
+
+**块级冻结规则**（`computeFrozenPrefixEnd`）：仅当顶层块在 depth=0 处闭合（块后有空行且下一块已开始）才产生冻结边界；以下情况禁用/回退冻结——
+- 含链接引用定义（`[x]: y`）→ 整体返回 0（后向引用可回溯改变已渲染前缀）
+- 列表项后空行（松散列表风险）、缩进代码后空行（空行会被吸收进代码块）→ 该边界不冻结
+- fence 未闭合时其前已确认边界仍有效；fence 内空行不产生边界
+- EOF 处空行不冻结（块仍可能生长）
+- 输入非 append-only（消息重写/切换）→ 整体失效，`frozenEpoch +1`，`frozenSegments` 整体替换
+
+**DOM 分段渲染**（`web/src/features/chat/vSegmentedMarkdown.ts` 指令）：`ReplyBlock`/`ThinkingBlock`/`ChatReasoningDrawer` 使用 `v-segmented-markdown`，将 `frozenSegments` 逐段固定为独立 DOM 子树（追加式、不回改），仅 `tailHtml` 所在尾部容器随 delta 重渲染；`frozenEpoch` 作为 key 前缀保证整体失效后旧 DOM 不复用。
+
+**代码高亮 memo**（`web/src/features/chat/lib/detectCodeLanguage.ts`）：`highlight(code, lang)` 与 `detectLanguage(code)` 双 LRU 缓存（各 100 条）；高亮缓存上限 32KB 代码（超出不缓存），语言探测以前 500 字符为 sample key——流式增长期间 sample 稳定后持续命中，导出 `codeHighlightStats`/`resetCodeHighlightStats`/`clearCodeHighlightCaches` 供测试。
 
 **性能验证**：
 - 后端 16ms 批合并（`internal/agent/activity_event_sequencer.go:defaultDeltaBatchInterval = 16 * time.Millisecond`）将前端事件频率封顶到 ≤60fps
-- markdown-it 解析 0.5-2ms/call，远低于帧预算
-- markdownCache（400 条 LRU）进一步降低重复解析开销
-
-**历史决策**：早期版本有 `renderStreamingChatMarkdown` 简化路径（escape-only），因"每 token 跑 markdown-it"性能假设已不成立（16ms 批合并 + LRU 缓存已能稳定支撑实时渲染）而被移除（2026-06-27，ADR-06）。
+- 冻结前缀零重渲染；尾部增量渲染 + LRU 缓存（markdown 400 条 / 高亮 100 条）
+- 不变量：`frozenHtml + tailHtml === renderChatMarkdownForMessage(id, content, true)`，由流式等价性安全网测试保障（`chatMessageMarkdown.spec.ts`：枚举全部码点二分切分 / 逐字符 / 变长 chunk / 4 段组合 / CRLF / 代理对切分 / finish 兜底逐字节一致）
 
 ### 11.2 页面布局
 
@@ -4885,3 +4904,340 @@ TeamStageID: m.TeamID, // team member turns are identified by non-empty TeamID
 **回滚方案**：
 - 后端：移除 `ProjectMeta.TeamStageID` 字段，`buildTeamProjectMeta` 不再填入，`V2ProjectMetaFromV1` 改回 `TeamStageID: m.TeamID`。回滚后 `Turn.TeamStageID` 重新变为错误的 `TeamID` 值
 - 前端：`getMemberSessionSteps` 改回 `AuthorAgentKey + TaskID` 匹配。回滚后存在跨团队污染风险，但单 TeamStage 场景下行为正确
+
+### B.10.14 编排实时反馈与 Agent 创建确认（2026-07-18 新增）
+
+**需求来源**：US-ORCH-01 / US-ORCH-02 — 编排三阶段耗时 6-60s+ 但期间无细粒度反馈；AgentFactory 自动创建 Agent 无用户审批。
+
+#### 现状分析
+
+编排链路（`plan_and_execute` 工具内串行同步执行，Spirit LLM 阻塞等待工具返回）：
+
+| 阶段 | 实现 | LLM 调用 | 期间用户可见 |
+|------|------|---------|-------------|
+| Plan | `taskPlannerImpl.Plan` → 记忆查询（本地）+ 复杂度评估（本地）+ `decomposeTask`（LLM，60s 超时） | 1 次 | 仅笼统 loading |
+| Allocate | `agentAllocatorImpl.Allocate` → 每 subtask 串行走 4 层匹配 | 0~2×N 次 | 仅笼统 loading |
+| Factory | `agentFactoryImpl.EnsureAgent` → LLM 生成定义 → 直接落库 | 1 次/创建 | 无感知、无审批 |
+| Orchestrate | `PlanExecutor` → `RealTeamOrchestrator.Orchestrate` → `AssembleTeam` | 0 | team_stage 事件 |
+
+**缺口**：plan 分解中（3-8s）、逐 subtask 匹配中（冷启动 3-10s/个）、创建 Agent 中（3-8s）均无细粒度进度；Agent 创建无用户确认。
+
+#### 设计一：编排细粒度进度事件（P0）
+
+**事件通道**：复用现有 `SystemNoticeEvent` → v2 EventBus → WS → 前端 `useContextualLoadingMessage`（与 `orchestration_started` 同路径，WS-only 不持久化）。
+
+**事件契约**：
+
+| noticeType | meta.phase | meta 其他字段 | 触发点 | 前端文案 |
+|-----------|-----------|--------------|--------|---------|
+| `orchestration_progress` | `decomposing` | — | `Plan()` decomposeTask 前 | 正在分解任务… |
+| `orchestration_progress` | `decomposed` | `sub_task_count` | `Plan()` decomposeTask 后 | 任务分解完成，共 N 个子任务 |
+| `orchestration_progress` | `allocating` | `index`, `total`, `sub_task` | `Allocate()` 每 subtask 匹配完成 | 正在匹配 Agent…（i/N） |
+| `orchestration_progress` | `allocated` | `total` | `Allocate()` 完成 | Agent 分配完成 |
+| `orchestration_progress` | `creating_agent` | `agent_name` | `EnsureAgent()` LLM 生成前 | 正在创建新 Agent "X"… |
+| `orchestration_progress` | `agent_created` | `agent_name`, `agent_key` | `EnsureAgent()` 落库后 | Agent "X" 创建完成 |
+
+**前端映射**：`useContextualLoadingMessage` 新增 `kind=notice && stage=orchestration_progress` 分支，按 `meta.phase` 查 `ORCHESTRATION_LOADING_MAP` 新增条目（消息模板含 `{index}`/`{total}`/`{agentName}` 占位符）。loading 消息替换式更新，不累积。
+
+**发布位置**：
+
+| 组件 | 注入 | 发布点 |
+|------|------|--------|
+| `taskPlannerImpl` | 新增 `eventBus biz.EventBus`（v2）注入（现有 `bus` 为 v1 ActivityEventBus） | `Plan()` decomposeTask 前后 |
+| `agentAllocatorImpl` | 已有 `bus biz.EventBus`（v2） | `Allocate()` 循环内 + 完成时 |
+| `agentFactoryImpl` | 已有 `bus biz.EventBus`（v2） | `EnsureAgent()` 生成前 + 落库后 |
+
+sessionID 获取：planner 从 `input.SpiritSessionID`；allocator 从 `taskPlan.SpiritSessionID`；factory 从 `TaskProfile.SpiritSessionID`（新增字段，allocator 调用点填充）。
+
+**nil-safety**：所有组件的 bus 为 nil 时跳过发布（现有模式一致）。
+
+#### 设计二：Agent 创建用户确认（P1）
+
+**实现路径（2026-07-18 评审修订）**：复用 `tool_confirmation.go` 已验证的上下文确认模式——`plan_and_execute` 工具 ctx 已携带 `serviceawaitreply.ReplyFunc`（`chat_orchestrator_turn_phases.go:381`）与 `biz.ActivityEmitter`（`:235`），与工具确认门禁完全同构。**无需新建 service 层 confirmer、无需 Wire 改动、无需 Proto 改动**。
+
+**时序**：
+
+```
+allocator.matchSubTask Layer 0-3 全部失败
+  → factory.EnsureAgent(ctx, profile)            // ctx 来自 plan_and_execute 工具调用
+    → LLM 生成 Agent 定义（displayName/description/prompt）
+    → fn := serviceawaitreply.ReplyFuncFromContext(ctx)
+      → fn == nil → 直接创建（CLI/测试/无确认能力上下文，兼容旧行为）
+    → emitter.EmitConfirmRequest(ctx, {ToolName:"agent_factory", ToolArguments:提案JSON, Content:提案摘要})
+      → confirm Step（Kind=confirm, Status=tool_blocked）持久化 + WS 推送确认卡片
+    → reply, err := fn(confirmCtx)               // 5min 超时（复用 defaultToolConfirmationTimeout）
+      → MakeAwaitReplyFunc 内部：注册 await channel + session → awaiting_confirmation
+        + 阻塞等待 ConfirmActivity RPC + defer 恢复 Running
+    → emitter.EmitConfirmResult(ctx, id, approved)
+    ← 批准 → 继续 CreateAgent 落库
+    ← 拒绝/超时 → 返回错误 → allocator fallback（首个可用 agent / Spirit）
+  → 编排继续
+```
+
+**ConfirmActivity 复用**：现有 `ChatService.ConfirmActivity`（chat_confirm.go）校验 `Kind=confirm + Status=tool_blocked`、更新状态并经 `TrySendAwaitChannel` 恢复——`MakeAwaitReplyFunc` 注册的正是同一 channel，**整条确认链路零改动复用**。前端 `ConfirmBlock.vue` 对 confirm Step 通用渲染（Content + ToolName + args JSON），无需前端改动。
+
+**串行保证**：P2 并行化后 Layer 0-3 并发执行，但 factory 创建（含确认）在 Allocate 的串行收尾阶段逐个执行，避免多确认卡片并发。
+
+**nil-safety**：`ReplyFuncFromContext` 返回 nil 时跳过确认直接创建（向后兼容 + 测试便利）。
+
+#### 设计三：Allocate 并行化（P2）
+
+**两阶段重构**（2026-07-18 评审修订：原 Phase C 不存在——AllocationPlan 经 `repo.Create` 单次持久化，无逐条 record 创建）：
+
+```
+Phase A（并行，errgroup）：
+  每 subtask → matchSubTask（Layer 0 performance → 1 exact → 2 semantic → 3 llmColdStart）
+  命中 → 写入 allocations[i]（预分配按索引写，无竞争）
+  未命中（error）→ 收集到 pendingFactory[]（索引 + subTask）
+
+Phase B（串行）：
+  遍历 pendingFactory → factory.EnsureAgent（含用户确认）→ 写入 allocations[i]
+  factory 不可用/失败 → fallbackAllocation 写入 allocations[i]
+
+收尾（串行）：
+  DAG 模式 selectAdditionalMembers（依赖全部 primary allocation + capabilities）
+  repo.Create 单次持久化（不变）+ publishAllocationCreated（不变）
+```
+
+**并发安全**：
+- `allocations []TaskAllocation` 预分配后按索引写入，无竞争
+- `matchSubTask` 只读（perfRepo 查询 / capabilities 读 / embedder 调用 / LLM cold start），无共享写
+- `factory.EnsureAgent` 在 Phase B 串行执行（含用户确认，必须串行）
+- `selectAdditionalMembers` 在 Phase A+B 之后统一执行（依赖完整 allocations + capabilities）
+- 进度事件 `allocating` 携带 `index`（原子计数完成数）+ `total`，前端替换式渲染
+
+**失败语义**：Phase A 中单个 subtask 匹配失败（非"未命中"而是错误）不中断其他 subtask，降级到 factory 路径；与现有"尽力而为"语义一致。
+
+#### 关键设计决策
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 进度事件通道 | `SystemNoticeEvent`（WS-only） | 与 `orchestration_started` 一致；进度为瞬态，无需持久化 |
+| 进度事件粒度 | 每 subtask 一条 allocating | 前端替换式 loading 不累积；N 通常 ≤10 |
+| 确认机制复用 | ctx 携带 `ReplyFunc` + `ActivityEmitter`（tool_confirmation 模式） | 与工具确认门禁同构；零新接口/零 Wire/零 Proto 变更；确认链路已生产验证 |
+| 确认时机 | factory 生成定义后、落库前 | 用户看到完整提案再决定 |
+| ReplyFunc 为 nil | 直接创建（旧行为） | 向后兼容 + 测试便利 |
+| 并行化范围 | Layer 0-3 并行，factory 串行 | LLM 调用是主要耗时；确认必须串行 |
+| Agent capability embedding 缓存 | 本轮不做 | 需失效机制，记录为后续优化 |
+| 团队库复用（P3） | 本轮不做 | 独立大特性，需 ADR 单独设计 |
+
+#### 改动文件清单
+
+| 文件 | 改动 |
+|------|------|
+| `internal/biz/agent_factory.go` | `TaskProfile` 新增 `SpiritSessionID` 字段（进度事件路由） |
+| `internal/agent/task_planner_impl.go` | `Plan()` decomposeTask 前后发 decomposing/decomposed 事件（新增 v2 `biz.EventBus` 注入） |
+| `internal/agent/agent_allocator_impl.go` | `Allocate()` 两阶段重构（Phase A 并行匹配 + Phase B 串行 factory）+ allocating/allocated 事件 |
+| `internal/agent/agent_factory.go` | creating_agent/agent_created 进度事件 + 上下文确认流程（复用 tool_confirmation 模式） |
+| `cmd/admin/wire.go` + `wire_gen.go` | `provideTaskPlanner` 新增 v2 EventBus 参数 |
+| `web/src/features/spirit/observabilityConstants.ts` | 新增 `ORCHESTRATION_PROGRESS_MAP`（6 条 phase 进度映射） |
+| `web/src/features/chat/composables/useContextualLoadingMessage.ts` | 新增 `orchestration_progress` 分支（按 meta.phase + index/total/agentName 渲染） |
+
+---
+
+### B.10.15 团队间交付物结构化传递（P1 形式契约 / P2 产物引用化 / Graph StateFields）落地设计（2026-07-21 评审版）
+
+> **背景**：P0 阶段已打通 DAG 团队间交付物主链路（`RecordTeamCompletion` → `WriteDeliverablesToSession` → `teams.deliverables_output_json` → `InjectUpstreamDeliverables` → 下游 taskDesc 前缀）。遗留三项非阻断改进：P1 形式契约由 Planner schema 填充、P2 产物引用化、Graph StateFields 注入。本节基于全链路代码评审（Spirit→Planner→Allocator→PlanExecutor→RealTeamOrchestrator→Team 执行→成果提取→落库→下游注入→Synthesis）给出评审修订后的可落地方案。
+
+#### B.10.15.1 全链路断点定位（评审结论）
+
+**当前生产主路径**：
+
+```
+plan_and_execute
+  → Phase1 TaskPlanner.Plan (decomposeTask → buildDecompositionPrompt → parseDecompositionOutput → SubTask)
+  → Phase2 Allocator.Allocate
+  → PublishV2Board (SubTask → PlanStep，PlanBoardCreatedEvent)
+  → PlanExecutor.dagRun → RealTeamOrchestrator.Orchestrate(step)
+      → AssembleTeam(SpiritTeamParams{DagNodeID, DependsOn})        ← 断点 P1-c：契约不透传
+      → InjectUpstreamDeliverables → turnContent = 前缀 + taskDesc
+  → Team 执行（GraphAgent 编译路径）
+  → HandleTeamTurnResult → RecordTeamCompletion
+      → WriteDeliverablesToSession → ExtractTeamOutput（SpiritStepReader 精确读团队主会话 reply step）
+      → summary = TruncateRunes(content, 500)                       ← 断点 P2：全文仅存于 steps_v2，缓存只有摘要
+      → DeliverablesOutput[dagNodeID] = summary（纯文本）            ← 断点 P2：无引用、无结构化信封
+  → scheduleDependentTeams → 下游 Orchestrate（循环）
+  → 全部完成 → SynthesisUsecase.SynthesizeResults
+```
+
+**三个遗留项的精确断点**：
+
+| 项 | 断点 | 证据 |
+|----|------|------|
+| P1 形式契约 | ① `buildDecompositionPrompt` 未要求 LLM 输出 `deliverables`/`input_contract`；② `parseDecompositionOutput` 的 rawTasks 无契约字段；③ `biz.SubTask` 无契约字段；④ `biz.PlanStep` 无契约字段；⑤ `SpiritTeamParams` 无契约字段 → `AssembleTeam` 创建 Team 时 `Deliverables`/`InputContract` 永远为空；⑥ `ValidateDeliverableContracts` 已实现但**全代码库无调用点** | `task_planner_impl.go:861-890`；`task_plan.go:87-95`；`plan_step.go:7-27`；`spirit_team_usecase.go:91-105,363-376`；`spirit_team_usecase.go:1492`（仅定义） |
+| P2 产物引用化 | `ExtractTeamOutput` 读到的 `st.Content` 截断前是**全文**（steps_v2 表 reply step 完整持久化），但 `WriteDeliverablesToSession` 只写 500 字符摘要；`DeliverablesOutput` 值为 `map[dagNodeID]string`，无引用、无尺寸元数据；下游无任何工具可按需取全文 | `spirit_team_usecase.go:946-958,1705` |
+| Graph StateFields | 团队内 state 通道完整但**双开关均未启用**（工具注册 `EnabledByDefault: false` + `Definition.EnableStateDeliverable` 默认 false）；团队完成后 graph final state → `DeliverablesOutput` 的桥接不存在；`ReducerCover` 为 map 级覆盖（latest writer wins，顺序交接语义） | `toolset.go:378-386`；`graph_runtime_config.go:80-105`；`tools/deliverable/tool.go` |
+
+**评审修订要点**（相对原方案）：
+
+1. **P2 不新建 blob 表**。交付物全文已在 `steps_v2` 表的 reply step 中持久化（`ExtractTeamOutput` 主数据源），新建 `deliverable_blobs` 表会引入数据冗余 + 双写一致性 + 生命周期管理三重负担。复用 steps_v2 引用即可实现"信封+引用"模型，零冗余、随 session 树级联清理。原考虑的 `tool_result_blobs` 基建（`ToolResultBlobReader/Writer`）语义专用（ToolName/TurnNumber 字段），不适用于团队交付物，放弃复用。
+2. **P1 契约生成保留 LLM 输出但加确定性兜底**。LLM 自由生成契约名的可靠性风险（上下游 name 匹配依赖 LLM 一致性）通过两点化解：prompt 强约束"下游 input_contract.name 必须引用上游 deliverables.name"；LLM 未输出契约但存在 DAG 依赖时，从 subtask 确定性派生兜底契约（`{step_id}_output`，document/markdown），保证注入提示可引用、验证器有事可验。
+3. **Graph StateFields 与 P1/P2 解耦**。state 通道作用域明确限定为**团队内成员间**交付（Cover reducer = 顺序交接语义），不试图替代团队间通道；团队间桥接（state → DeliverablesOutput）作为独立可选项，且**以"团队完成后 graph final state 可读性"技术验证为前置**，验证不通过则降级为 prompt 引导（最后写入成员将 deliverable 摘要写入 reply）。
+
+#### B.10.15.2 P1 形式契约由 Planner schema 填充
+
+**目标**：`Team.Deliverables`/`Team.InputContract`（DB 列已存在）从"永远为空"变为由 Planner 产出并在建队时填充；`ValidateDeliverableContracts` 接入调用点，advisory 验证结果对用户可见。
+
+**契约数据流**（修复后）：
+
+```
+decomposeTask
+  → buildDecompositionPrompt 新增契约规则：
+      "每个 subtask 可输出 deliverables（产出契约数组）与 input_contract（输入契约数组）；
+       契约元素: {name, type, format, description}，type ∈ document/code/data，format ∈ markdown/json/zip；
+       若 subtask B depends_on subtask A，则 B.input_contract 中应声明对 A.deliverables 的引用（name 一致）"
+  → parseDecompositionOutput 解析 deliverables/input_contract（缺失/非法 → nil，不阻断，与现有容错一致）
+  → 兜底派生：subtask 有 DependsOn 但 LLM 未输出 input_contract 时，为每个上游派生 {name: "<上游step_id>_output", type: "document", format: "markdown"}
+  → SubTask.Deliverables / SubTask.InputContract（新增字段）
+  → PublishV2Board → PlanStep.Deliverables / PlanStep.InputContract（新增字段，持久化到 plan_steps_v2 新增 JSON 列，crash recovery 需要）
+  → RealTeamOrchestrator.Orchestrate → SpiritTeamParams.Deliverables / InputContract（新增字段）
+  → AssembleTeam → Team.Deliverables / Team.InputContract（DeliverableContractsToJSON 序列化落库）
+  → dagRun 全部团队组建完成后 → ValidateDeliverableContracts(spiritSessionID)
+      → warnings 非空 → 记 Info 日志 + 发 SystemNoticeEvent（contract_mismatch，WS-only 不持久化）→ 前端 PlanBlock 展示黄色提示
+```
+
+**契约在注入文本中的体现**：`InjectUpstreamDeliverables` 前缀升级为包含契约声明，让下游 agent 明确知道该期待什么、实际收到什么：
+
+```
+--- 上游交付物 ---
+## 上游团队: 调研团队
+契约: research_report (document/markdown) — 调研结论报告
+<摘要文本>
+[全文较大，可通过 read_upstream_deliverable(team_id="...") 获取]   ← P2 落地后启用
+--- 请基于以上上游交付物执行任务 ---
+```
+
+**关键设计决策**：
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 契约来源 | LLM 输出 + 确定性兜底 | 与 depends_on 同机制；兜底保证 DAG 场景必有契约可验 |
+| 契约缺失处理 | 降级为空，不阻断规划 | 与 `parseDecompositionOutput` 现有容错一致；契约是 advisory |
+| 验证级别 | advisory（warnings，不阻断派发） | 与 `DeliverableContractValidator.ValidateContractMatch` 返回 warnings 的既有语义一致；blocking 属 P3 之后的策略演进 |
+| 验证调用点 | dagRun 全部团队组建完成后一次性调用 | 此时所有 Team.Deliverables/InputContract 已落库，可全量校验 |
+| PlanStep 契约持久化 | 持久化（新增 JSON 列 + DDL 迁移） | crash recovery 从 DB 重建 dagRun 时契约不丢失；与 `agent_keys` 列同模式 |
+| 与 VerificationGate 的关系 | 互不替代 | 形式契约验证 = schema 匹配（确定性、零成本）；VerificationGate = 部门主管 LLM 语义审批（有成本、按 graph 配置）；两者层级不同 |
+
+#### B.10.15.3 P2 产物引用化（复用 steps_v2 引用）
+
+**目标**：解决"大交付物撑爆下游上下文 / 摘要截断丢信息 / 下游无法按需取全文"。
+
+**信封结构升级**：`DeliverablesOutput` 值从 `map[dagNodeID]string` 升级为 `map[dagNodeID]DeliverableRef`：
+
+```go
+// DeliverableRef 是落库的交付物信封（teams.deliverables_output_json 的值）。
+// 全文不落新表——引用 steps_v2 中已有的 reply step（零冗余，随 session 树级联清理）。
+type DeliverableRef struct {
+    Summary       string `json:"summary"`                  // ≤500 字符摘要（现状行为保留）
+    KeyFindings   string `json:"key_findings,omitempty"`   // 要点列表（extractKeyFindings 已产出，当前被丢弃）
+    TeamID        string `json:"team_id"`                  // 产出团队
+    TeamSessionID string `json:"team_session_id"`          // 团队主会话（读取全文的入口）
+    SizeChars     int    `json:"size_chars"`               // 全文长度（截断前）
+    Truncated     bool   `json:"truncated"`                // 摘要是否截断
+}
+```
+
+**向后兼容读取**：`readDeliverableOutput` 反序列化时先尝试 `DeliverableRef` object，失败再尝试 legacy string（视为 `{Summary: s}`），新旧数据混存不报错。
+
+**新增工具 `read_upstream_deliverable`**（下游团队成员按需取全文）：
+
+| 属性 | 值 |
+|------|-----|
+| 注册 | `toolset.go` 新增注册项，`Category: "team"`，`Tags: ["team","deliverable","retrieval"]`，`EnabledByDefault: true`（只读、低风险；默认关闭则 P2 能力落空） |
+| 输入 | `{team_id: string, max_chars?: int}` |
+| 行为 | 按 team_id 定位团队主会话（SessionType=team）→ `SpiritStepReader.ListStepsBySessionID` 取最后一条 completed reply step → 返回全文 |
+| 护栏 | `max_chars` 默认 50000、上限 200000；超限返回头部 + `...[truncated, total=N chars]` |
+| 实现位置 | `internal/tools/deliverable/upstream_reader.go`（与 set/get_deliverable 同包，共享"deliverable"工具族语义） |
+| 依赖注入 | 构造时注入 `SpiritStepReader` + session 查询（与 `SpiritTeamUsecase.ExtractTeamOutput` 相同的数据源路径） |
+
+**注入文本升级**：仅当 `Truncated=true` 时在注入前缀中附加取全文指引（见 B.10.15.2 格式），避免全量注入撑爆下游上下文——**摘要先行、全文按需**。
+
+**关键设计决策**：
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 全文存储 | 复用 steps_v2 reply step，不新建表 | 全文已持久化；零冗余；随 session 树删除级联清理；无双写一致性问题 |
+| 信封兼容性 | object 优先、string 兜底的双模读取 | 旧数据（纯 string）无需迁移 |
+| KeyFindings 入信封 | 是 | `extractKeyFindings` 已产出但当前被 `WriteDeliverablesToSession` 丢弃（`_`），入信封零成本提升下游信息密度 |
+| 二进制/文件产物 | 本期不支持 | 团队 reply 为文本；文件产物经 file_write 落盘，路径可写入摘要文本；真正的二进制信封属远期 artifact 系统 |
+
+#### B.10.15.4 Graph StateFields 桥接（团队内 → 团队间）
+
+**作用域澄清**（评审修订核心）：
+
+| 通道 | 作用域 | 机制 | 现状 |
+|------|--------|------|------|
+| `deliverable` graph state | **团队内**成员间顺序交接 | `set_deliverable`（StateDelta → CoverReducer，latest writer wins）→ `get_deliverable` | 完整实现，双开关未启用 |
+| `teams.deliverables_output_json` | **团队间**（DAG 上下游） | `WriteDeliverablesToSession` → `InjectUpstreamDeliverables` | P0 已打通（文本摘要） |
+
+两者**不统一为一个抽象**——团队内交接是"流水线半成品"（覆盖语义），团队间交付是"终态快照"（落库信封），语义不同。桥接只做一件事：**团队完成时，若启用了 state 通道，优先从 graph final state 提取结构化 deliverable 充实落库信封**。
+
+**桥接设计**（条件启用，三步）：
+
+1. **前置技术验证（阻断性）**：确认团队执行完成后 graph final state 的可读位置。候选：TeamRunResult / runner completion 事件携带的 state snapshot / SessionService state 读取。**若验证不通过**，桥接降级为 prompt 引导——团队 definition prompt 中要求"最后一名成员将 deliverable 核心结论写入最终 reply"，落库链路（P0/P2）不变。
+2. **桥接函数**：`RecordTeamCompletion` 中，若 `Team.DefinitionJSON` 的 `enable_state_deliverable=true` 且 final state 可读 → 读 `state["deliverable"]`（map）→ `summary` 优先取 `deliverable["summary"]`（string），缺失回退 reply step 提取；`deliverable` map 的其余 key 序列化入 `DeliverableRef` 扩展字段（`StructuredJSON string`，信封可选字段）。
+3. **灰度启用**：双开关默认关闭（`toolset.go` deliverable 注册 `EnabledByDefault: false` + `Definition.EnableStateDeliverable` 默认 false）保持不变；P1/P2 落地稳定后，由 Planner 对 DAG 团队的 definition 选择性开启（或管理后台按团队配置），观察 Cover reducer 在多成员并行写场景的实际行为后再评估是否扩大。
+
+**多成员写冲突语义**：`ReducerCover` 为 map 级整体覆盖（后者覆盖前者），适合 sequential/coordinator 的**顺序交接**；parallel 模式多成员并发写会相互覆盖（last-writer-wins，丢中间产物）——因此 `EnableStateDeliverable` 仅建议对 sequential/coordinator 团队开启，parallel 团队不开启（definition 层约束 + 文档说明）。
+
+#### B.10.15.5 改动文件清单
+
+**P1 形式契约**：
+
+| 文件 | 改动 |
+|------|------|
+| `internal/biz/task_plan.go` | `SubTask` 新增 `Deliverables []DeliverableContract` / `InputContract []DeliverableContract` |
+| `internal/agent/task_planner_impl.go` | `buildDecompositionPrompt` 新增契约输出规则；`parseDecompositionOutput` 解析契约字段 + 兜底派生 |
+| `internal/biz/plan_step.go` | `PlanStep` 新增 `Deliverables` / `InputContract` 字段 |
+| `internal/data/ent/schema/plan_step_v2.go` + `internal/data/plan_step_v2_repo.go` + DDL 迁移 | 新增 `deliverables_json` / `input_contract_json` 两列（与 `agent_keys` 同模式） |
+| `internal/agent/task_planner_impl.go` `PublishV2Board` | SubTask → PlanStep 契约透传 |
+| `internal/biz/spirit_team_usecase.go` | `SpiritTeamParams` 新增契约字段；`AssembleTeam` 落库 `Team.Deliverables`/`InputContract` |
+| `internal/service/team_orchestrator_real.go` | `Orchestrate` 透传契约到 `SpiritTeamParams` |
+| `internal/service/plan_executor.go` | dagRun 全部团队组建完成后调用 `ValidateDeliverableContracts`，warnings 发 `SystemNoticeEvent`（contract_mismatch） |
+| `internal/biz/spirit_team_usecase.go` `InjectUpstreamDeliverables` | 注入前缀包含契约声明（name/type/format） |
+
+**P2 产物引用化**：
+
+| 文件 | 改动 |
+|------|------|
+| `internal/biz/team_types.go`（或新 `deliverable_ref.go`） | 新增 `DeliverableRef` 结构 |
+| `internal/biz/spirit_team_usecase.go` | `WriteDeliverablesToSession` 写 `DeliverableRef`（含 KeyFindings/SizeChars/Truncated/TeamSessionID）；`readDeliverableOutput` 双模兼容读取；`InjectUpstreamDeliverables` 截断时附加取全文指引 |
+| `internal/tools/deliverable/upstream_reader.go` | 新增 `read_upstream_deliverable` 工具 |
+| `internal/tools/toolset.go` | 注册新工具（EnabledByDefault: true） |
+| `cmd/admin/wire.go` | 工具依赖（SpiritStepReader + session 查询）注入 |
+
+**Graph StateFields 桥接**：
+
+| 文件 | 改动 |
+|------|------|
+| `internal/biz/spirit_team_usecase.go` `RecordTeamCompletion` | 条件桥接：enable_state_deliverable 团队从 final state 读 deliverable 充实信封 |
+| （前置）技术验证 | 确认 graph final state 团队完成后可读位置；不可读则降级 prompt 引导（仅文档约束，零代码） |
+
+**测试**：
+
+| 文件 | 覆盖点 |
+|------|--------|
+| `internal/agent/task_planner_impl_test.go` | 契约解析（正常/缺失/非法 JSON）+ 兜底派生 |
+| `internal/biz/spirit_team_deliverable_test.go` | `DeliverableRef` 写入/双模读取/截断指引注入 |
+| `internal/tools/deliverable/upstream_reader_test.go` | 工具全文读取/护栏截断/team 主会话识别 |
+| `internal/service/plan_executor_test.go` | 契约透传链路 + ValidateDeliverableContracts 调用点 |
+
+#### B.10.15.6 不变量
+
+- 契约解析失败/缺失**不得**阻断规划与建队（advisory 语义贯穿始终）
+- `DeliverableRef` 读取必须双模兼容（object 优先，legacy string 兜底），旧数据零迁移
+- `read_upstream_deliverable` 必须走 `SpiritStepReader` 精确 session 语义（与 `ExtractTeamOutput` 主数据源一致），禁止读全树
+- `DeliverablesOutput` 中只存信封（摘要+引用），**禁止**存全文（全文唯一真相源 = steps_v2 reply step）
+- `EnableStateDeliverable` 不得对 parallel 模式团队开启（Cover reducer 丢并发写产物）
+- state 桥接必须以前置技术验证通过为前提；未通过时落库链路行为与 P2 完全一致
+- 注入前缀的总长度需有护栏（建议单上游摘要 ≤500 字符 + 契约行 ≤200 字符），防止多上游场景前缀本身撑爆下游首条消息
+
+#### B.10.15.7 待商定问题（2026-07-21 用户已决策）
+
+| # | 问题 | 选项 | 决策 |
+|---|------|------|------|
+| Q1 | 契约验证级别 | A. advisory（warnings 日志+前端提示，不阻断）；B. blocking（严重不匹配阻断下游派发） | **已定：A**——与 `ValidateContractMatch` 既有 warnings 语义一致；blocking 待契约数据积累后再评估 |
+| Q2 | `read_upstream_deliverable` 工具启用方式 | A. 默认开启（EnabledByDefault: true）；B. 开关控制（默认关闭，随团队配置启用） | **已定：A**——只读低风险；默认关闭则下游无法主动取全文，P2 能力落空 |
+| Q3 | Graph StateFields 桥接前置验证不通过时的降级 | A. prompt 引导（最后成员将 deliverable 写入 reply，零代码）；B. 本轮放弃桥接，仅保留 P1/P2 | **已定：A**——prompt 引导零成本且与现有落库链路兼容 |
+| Q4 | PlanStep 契约字段持久化 | A. 持久化（plan_steps_v2 加 2 个 JSON 列 + DDL 迁移）；B. 仅事件载体（in-memory，不落库） | **已定：A**——crash recovery 从 DB 重建 dagRun 需要契约；与 `agent_keys` 列同模式，成本一致 |
+| Q5 | 实施顺序 | A. P1 → P2 → Graph 桥接（依次落地、各自验证）；B. P1+P2 合并一个迭代，Graph 桥接独立后续 | **已定：A**——R5 小步快跑：P1 改链路最多（6 断点），独立迭代便于定位回归；P2 依赖 P1 的契约名注入文本格式 |

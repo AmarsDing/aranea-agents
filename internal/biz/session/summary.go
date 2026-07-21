@@ -41,6 +41,11 @@ func (uc *SessionUsecase) InsertSessionSummary(ctx context.Context, row SessionS
 	return uc.compressionUsecase.InsertSessionSummary(ctx, row)
 }
 
+// DeleteSessionSummaries delegates to SessionCompressionUsecase (Facade pattern).
+func (uc *SessionUsecase) DeleteSessionSummaries(ctx context.Context, sessionID string) error {
+	return uc.compressionUsecase.DeleteSessionSummaries(ctx, sessionID)
+}
+
 // MaxSessionSummaryToTurn delegates to SessionCompressionUsecase (Facade pattern).
 func (uc *SessionUsecase) MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error) {
 	return uc.compressionUsecase.MaxSessionSummaryToTurn(ctx, sessionID)

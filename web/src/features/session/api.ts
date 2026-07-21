@@ -122,6 +122,7 @@ function kratosTimelineItemToLegacy(it: KratosTimelineItem): SessionTimelineItem
     kind: (it.kind ?? 'message') as SessionTimelineItem['kind'],
     side: (it.side ?? 'left') as SessionTimelineItem['side'],
     title: it.title ?? '',
+    title_key: it.titleKey ?? '',
     subtitle: it.subtitle ?? '',
     actor_id: it.actorId ?? '',
     actor_name: it.actorName ?? '',

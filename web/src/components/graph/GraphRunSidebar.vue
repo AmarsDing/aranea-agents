@@ -1,35 +1,41 @@
 <template>
   <div :class="['graph-run-sidebar', { 'is-dark': isDark, 'graph-run-sidebar--embedded': embedded }]">
     <div class="graph-run-sidebar__header row items-center q-gutter-sm">
-      <div class="graph-run-sidebar__title">执行详情</div>
-      <q-badge v-if="streamConnected" rounded color="positive">实时</q-badge>
+      <div class="graph-run-sidebar__title">{{ t('graphs.runSidebarTitle') }}</div>
+      <q-badge v-if="streamConnected" rounded color="positive">{{ t('graphs.runSidebarLive') }}</q-badge>
       <q-space />
       <q-badge rounded :color="statusColor">{{ displayStatus }}</q-badge>
     </div>
 
     <template v-if="execution">
       <div class="graph-run-sidebar__section q-gutter-sm">
-        <div class="text-caption app-text-secondary">执行 ID</div>
+        <div class="text-caption app-text-secondary">{{ t('graphs.runSidebarExecId') }}</div>
         <div class="graph-run-sidebar__mono">{{ execution.executionId }}</div>
-        <div v-if="execution.interruptNode" class="text-caption app-text-secondary q-mt-sm">中断节点</div>
+        <div v-if="execution.interruptNode" class="text-caption app-text-secondary q-mt-sm">
+          {{ t('graphs.runSidebarInterruptNode') }}
+        </div>
         <div v-if="execution.interruptNode" class="text-body2">{{ execution.interruptNode }}</div>
-        <div v-if="execution.startedAt" class="text-caption app-text-secondary q-mt-sm">开始时间</div>
+        <div v-if="execution.startedAt" class="text-caption app-text-secondary q-mt-sm">
+          {{ t('graphs.runSidebarStartedAt') }}
+        </div>
         <div v-if="execution.startedAt" class="text-body2">{{ formatTime(execution.startedAt) }}</div>
-        <div v-if="execution.finishedAt" class="text-caption app-text-secondary q-mt-sm">结束时间</div>
+        <div v-if="execution.finishedAt" class="text-caption app-text-secondary q-mt-sm">
+          {{ t('graphs.runSidebarFinishedAt') }}
+        </div>
         <div v-if="execution.finishedAt" class="text-body2">{{ formatTime(execution.finishedAt) }}</div>
       </div>
 
       <q-separator class="q-my-md" />
 
       <div v-if="executionSummary" class="graph-run-sidebar__section q-mb-md">
-        <div class="graph-run-sidebar__title q-mb-sm">执行摘要</div>
+        <div class="graph-run-sidebar__title q-mb-sm">{{ t('graphs.runSidebarSummary') }}</div>
         <div class="row q-col-gutter-sm">
           <div class="col-6">
-            <div class="text-caption app-text-secondary">总步数</div>
+            <div class="text-caption app-text-secondary">{{ t('graphs.runSidebarTotalSteps') }}</div>
             <div class="text-body2">{{ executionSummary.totalSteps }}</div>
           </div>
           <div class="col-6">
-            <div class="text-caption app-text-secondary">耗时</div>
+            <div class="text-caption app-text-secondary">{{ t('graphs.runSidebarDuration') }}</div>
             <div class="text-body2">{{ formatDurationMs(executionSummary.durationMs) }}</div>
           </div>
         </div>
@@ -45,7 +51,7 @@
 
       <div class="graph-run-sidebar__section">
         <div class="graph-run-sidebar__title row items-center q-mb-sm">
-          <span>步骤时间线</span>
+          <span>{{ t('graphs.runSidebarStepsTimeline') }}</span>
           <q-space />
           <q-btn
             v-if="execution.steps.length > 1"
@@ -53,7 +59,7 @@
             dense
             no-caps
             size="11px"
-            :label="allExpanded ? '全部折叠' : '全部展开'"
+            :label="allExpanded ? t('graphs.runSidebarCollapseAll') : t('graphs.runSidebarExpandAll')"
             @click="toggleAll"
           />
         </div>
@@ -93,17 +99,17 @@
             <div v-if="step.error" class="graph-run-step__error q-mt-xs">{{ step.error }}</div>
             <div v-if="expandedSteps.has(step.stepIndex)" class="graph-run-step__detail q-mt-sm">
               <div v-if="step.inputState" class="q-mb-sm">
-                <div class="text-caption app-text-secondary">输入状态</div>
+                <div class="text-caption app-text-secondary">{{ t('graphs.runSidebarInputState') }}</div>
                 <pre class="graph-run-step__json">{{ formatJson(step.inputState) }}</pre>
               </div>
               <div v-if="step.outputState">
-                <div class="text-caption app-text-secondary">输出状态</div>
+                <div class="text-caption app-text-secondary">{{ t('graphs.runSidebarOutputState') }}</div>
                 <pre class="graph-run-step__json">{{ formatJson(step.outputState) }}</pre>
               </div>
             </div>
           </q-timeline-entry>
         </q-timeline>
-        <div v-else class="text-caption app-text-secondary">暂无步骤记录。</div>
+        <div v-else class="text-caption app-text-secondary">{{ t('graphs.runSidebarNoSteps') }}</div>
       </div>
     </template>
     <q-spinner v-else color="primary" size="32px" />
@@ -112,8 +118,11 @@
 
 <script setup lang="ts">
 import { reactive, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { GraphExecution, GraphRunExecutionSummary } from '../../features/graph/types';
 import { formatTime, stepIcon, stepColor } from '../../features/graph/utils';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   execution: GraphExecution | null;
@@ -163,7 +172,9 @@ function formatJson(state: Record<string, unknown> | undefined): string {
   if (!state) return '';
   try {
     const raw = JSON.stringify(state, null, 2);
-    return raw.length > JSON_PREVIEW_MAX ? `${raw.slice(0, JSON_PREVIEW_MAX)}\n… (已截断，共 ${raw.length} 字符)` : raw;
+    return raw.length > JSON_PREVIEW_MAX
+      ? `${raw.slice(0, JSON_PREVIEW_MAX)}\n${t('graphs.runSidebarJsonTruncated', { count: raw.length })}`
+      : raw;
   } catch {
     return String(state);
   }
