@@ -43,6 +43,10 @@ const (
 	FieldError = "error"
 	// FieldAgentKeys holds the string denoting the agent_keys field in the database.
 	FieldAgentKeys = "agent_keys"
+	// FieldDeliverables holds the string denoting the deliverables field in the database.
+	FieldDeliverables = "deliverables"
+	// FieldInputContract holds the string denoting the input_contract field in the database.
+	FieldInputContract = "input_contract"
 	// Table holds the table name of the planstepv2 in the database.
 	Table = "plan_steps_v2"
 )
@@ -65,6 +69,8 @@ var Columns = []string{
 	FieldResult,
 	FieldError,
 	FieldAgentKeys,
+	FieldDeliverables,
+	FieldInputContract,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).

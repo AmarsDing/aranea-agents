@@ -24,6 +24,10 @@ type PlanStep struct {
 	// RealTeamOrchestrator 优先使用此字段组建 team，避免查 DB 取到错误 agent。
 	// 2026-07-05 Step 2 修复：解决"所有 team 用同一 agent"问题。
 	AgentKeys []string
+	// P1 形式契约（B.10.15.2）：来自 SubTask，持久化到 plan_steps_v2，
+	// dagRun 启动时做 advisory 契约验证；AssembleTeam 时透传到 Team。
+	Deliverables  []DeliverableContract
+	InputContract []DeliverableContract
 }
 
 type PlanStepStatus string

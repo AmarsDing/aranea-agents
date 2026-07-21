@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent/admin"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/agentperformance"
@@ -54644,6 +54645,10 @@ type PlanStepV2Mutation struct {
 	error                *map[string]interface{}
 	agent_keys           *[]string
 	appendagent_keys     []string
+	deliverables         *[]biz.DeliverableContract
+	appenddeliverables   []biz.DeliverableContract
+	input_contract       *[]biz.DeliverableContract
+	appendinput_contract []biz.DeliverableContract
 	clearedFields        map[string]struct{}
 	done                 bool
 	oldValue             func(context.Context) (*PlanStepV2, error)
@@ -55431,6 +55436,136 @@ func (m *PlanStepV2Mutation) ResetAgentKeys() {
 	delete(m.clearedFields, planstepv2.FieldAgentKeys)
 }
 
+// SetDeliverables sets the "deliverables" field.
+func (m *PlanStepV2Mutation) SetDeliverables(bc []biz.DeliverableContract) {
+	m.deliverables = &bc
+	m.appenddeliverables = nil
+}
+
+// Deliverables returns the value of the "deliverables" field in the mutation.
+func (m *PlanStepV2Mutation) Deliverables() (r []biz.DeliverableContract, exists bool) {
+	v := m.deliverables
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeliverables returns the old "deliverables" field's value of the PlanStepV2 entity.
+// If the PlanStepV2 object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlanStepV2Mutation) OldDeliverables(ctx context.Context) (v []biz.DeliverableContract, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeliverables is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeliverables requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeliverables: %w", err)
+	}
+	return oldValue.Deliverables, nil
+}
+
+// AppendDeliverables adds bc to the "deliverables" field.
+func (m *PlanStepV2Mutation) AppendDeliverables(bc []biz.DeliverableContract) {
+	m.appenddeliverables = append(m.appenddeliverables, bc...)
+}
+
+// AppendedDeliverables returns the list of values that were appended to the "deliverables" field in this mutation.
+func (m *PlanStepV2Mutation) AppendedDeliverables() ([]biz.DeliverableContract, bool) {
+	if len(m.appenddeliverables) == 0 {
+		return nil, false
+	}
+	return m.appenddeliverables, true
+}
+
+// ClearDeliverables clears the value of the "deliverables" field.
+func (m *PlanStepV2Mutation) ClearDeliverables() {
+	m.deliverables = nil
+	m.appenddeliverables = nil
+	m.clearedFields[planstepv2.FieldDeliverables] = struct{}{}
+}
+
+// DeliverablesCleared returns if the "deliverables" field was cleared in this mutation.
+func (m *PlanStepV2Mutation) DeliverablesCleared() bool {
+	_, ok := m.clearedFields[planstepv2.FieldDeliverables]
+	return ok
+}
+
+// ResetDeliverables resets all changes to the "deliverables" field.
+func (m *PlanStepV2Mutation) ResetDeliverables() {
+	m.deliverables = nil
+	m.appenddeliverables = nil
+	delete(m.clearedFields, planstepv2.FieldDeliverables)
+}
+
+// SetInputContract sets the "input_contract" field.
+func (m *PlanStepV2Mutation) SetInputContract(bc []biz.DeliverableContract) {
+	m.input_contract = &bc
+	m.appendinput_contract = nil
+}
+
+// InputContract returns the value of the "input_contract" field in the mutation.
+func (m *PlanStepV2Mutation) InputContract() (r []biz.DeliverableContract, exists bool) {
+	v := m.input_contract
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInputContract returns the old "input_contract" field's value of the PlanStepV2 entity.
+// If the PlanStepV2 object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlanStepV2Mutation) OldInputContract(ctx context.Context) (v []biz.DeliverableContract, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInputContract is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInputContract requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInputContract: %w", err)
+	}
+	return oldValue.InputContract, nil
+}
+
+// AppendInputContract adds bc to the "input_contract" field.
+func (m *PlanStepV2Mutation) AppendInputContract(bc []biz.DeliverableContract) {
+	m.appendinput_contract = append(m.appendinput_contract, bc...)
+}
+
+// AppendedInputContract returns the list of values that were appended to the "input_contract" field in this mutation.
+func (m *PlanStepV2Mutation) AppendedInputContract() ([]biz.DeliverableContract, bool) {
+	if len(m.appendinput_contract) == 0 {
+		return nil, false
+	}
+	return m.appendinput_contract, true
+}
+
+// ClearInputContract clears the value of the "input_contract" field.
+func (m *PlanStepV2Mutation) ClearInputContract() {
+	m.input_contract = nil
+	m.appendinput_contract = nil
+	m.clearedFields[planstepv2.FieldInputContract] = struct{}{}
+}
+
+// InputContractCleared returns if the "input_contract" field was cleared in this mutation.
+func (m *PlanStepV2Mutation) InputContractCleared() bool {
+	_, ok := m.clearedFields[planstepv2.FieldInputContract]
+	return ok
+}
+
+// ResetInputContract resets all changes to the "input_contract" field.
+func (m *PlanStepV2Mutation) ResetInputContract() {
+	m.input_contract = nil
+	m.appendinput_contract = nil
+	delete(m.clearedFields, planstepv2.FieldInputContract)
+}
+
 // Where appends a list predicates to the PlanStepV2Mutation builder.
 func (m *PlanStepV2Mutation) Where(ps ...predicate.PlanStepV2) {
 	m.predicates = append(m.predicates, ps...)
@@ -55465,7 +55600,7 @@ func (m *PlanStepV2Mutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PlanStepV2Mutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 17)
 	if m.plan_id != nil {
 		fields = append(fields, planstepv2.FieldPlanID)
 	}
@@ -55511,6 +55646,12 @@ func (m *PlanStepV2Mutation) Fields() []string {
 	if m.agent_keys != nil {
 		fields = append(fields, planstepv2.FieldAgentKeys)
 	}
+	if m.deliverables != nil {
+		fields = append(fields, planstepv2.FieldDeliverables)
+	}
+	if m.input_contract != nil {
+		fields = append(fields, planstepv2.FieldInputContract)
+	}
 	return fields
 }
 
@@ -55549,6 +55690,10 @@ func (m *PlanStepV2Mutation) Field(name string) (ent.Value, bool) {
 		return m.Error()
 	case planstepv2.FieldAgentKeys:
 		return m.AgentKeys()
+	case planstepv2.FieldDeliverables:
+		return m.Deliverables()
+	case planstepv2.FieldInputContract:
+		return m.InputContract()
 	}
 	return nil, false
 }
@@ -55588,6 +55733,10 @@ func (m *PlanStepV2Mutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldError(ctx)
 	case planstepv2.FieldAgentKeys:
 		return m.OldAgentKeys(ctx)
+	case planstepv2.FieldDeliverables:
+		return m.OldDeliverables(ctx)
+	case planstepv2.FieldInputContract:
+		return m.OldInputContract(ctx)
 	}
 	return nil, fmt.Errorf("unknown PlanStepV2 field %s", name)
 }
@@ -55702,6 +55851,20 @@ func (m *PlanStepV2Mutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetAgentKeys(v)
 		return nil
+	case planstepv2.FieldDeliverables:
+		v, ok := value.([]biz.DeliverableContract)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeliverables(v)
+		return nil
+	case planstepv2.FieldInputContract:
+		v, ok := value.([]biz.DeliverableContract)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInputContract(v)
+		return nil
 	}
 	return fmt.Errorf("unknown PlanStepV2 field %s", name)
 }
@@ -55774,6 +55937,12 @@ func (m *PlanStepV2Mutation) ClearedFields() []string {
 	if m.FieldCleared(planstepv2.FieldAgentKeys) {
 		fields = append(fields, planstepv2.FieldAgentKeys)
 	}
+	if m.FieldCleared(planstepv2.FieldDeliverables) {
+		fields = append(fields, planstepv2.FieldDeliverables)
+	}
+	if m.FieldCleared(planstepv2.FieldInputContract) {
+		fields = append(fields, planstepv2.FieldInputContract)
+	}
 	return fields
 }
 
@@ -55802,6 +55971,12 @@ func (m *PlanStepV2Mutation) ClearField(name string) error {
 		return nil
 	case planstepv2.FieldAgentKeys:
 		m.ClearAgentKeys()
+		return nil
+	case planstepv2.FieldDeliverables:
+		m.ClearDeliverables()
+		return nil
+	case planstepv2.FieldInputContract:
+		m.ClearInputContract()
 		return nil
 	}
 	return fmt.Errorf("unknown PlanStepV2 nullable field %s", name)
@@ -55855,6 +56030,12 @@ func (m *PlanStepV2Mutation) ResetField(name string) error {
 		return nil
 	case planstepv2.FieldAgentKeys:
 		m.ResetAgentKeys()
+		return nil
+	case planstepv2.FieldDeliverables:
+		m.ResetDeliverables()
+		return nil
+	case planstepv2.FieldInputContract:
+		m.ResetInputContract()
 		return nil
 	}
 	return fmt.Errorf("unknown PlanStepV2 field %s", name)

@@ -142,6 +142,10 @@ var ddlMigrations = []ddlMigration{
 	// 20261012 drop_activities_table: v1 activities persistence retired.
 	// Reads already use steps_v2; Ent Activity schema removed; no production writers.
 	{Version: 20261012, Name: "drop_activities_table", SQL: "sql/migrations/20261012_drop_activities_table.sql"},
+	// 20261013 plan_step_contracts: add deliverables / input_contract columns to
+	// plan_steps_v2 (P1 形式契约 B.10.15.2). Crash recovery rebuilds dagRun with
+	// contracts intact; same field.JSON pattern as agent_keys.
+	{Version: 20261013, Name: "plan_step_contracts", SQL: "sql/migrations/20261013_plan_step_contracts.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

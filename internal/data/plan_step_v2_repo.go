@@ -90,7 +90,9 @@ func (r *planStepV2Repo) CreatePlanStep(ctx context.Context, ps biz.PlanStep) (b
 		SetStartedAt(ps.StartedAt).
 		SetSeq(ps.Seq).
 		SetVersion(ps.Version).
-		SetAgentKeys(ps.AgentKeys)
+		SetAgentKeys(ps.AgentKeys).
+		SetDeliverables(ps.Deliverables).
+		SetInputContract(ps.InputContract)
 	if ps.CompletedAt != nil {
 		b.SetCompletedAt(*ps.CompletedAt)
 	}
@@ -124,7 +126,9 @@ func (r *planStepV2Repo) UpdatePlanStep(ctx context.Context, ps biz.PlanStep) (b
 		SetAutoSynthesis(ps.AutoSynthesis).
 		SetSeq(ps.Seq).
 		SetVersion(ps.Version).
-		SetAgentKeys(ps.AgentKeys)
+		SetAgentKeys(ps.AgentKeys).
+		SetDeliverables(ps.Deliverables).
+		SetInputContract(ps.InputContract)
 	if ps.CompletedAt != nil {
 		b.SetCompletedAt(*ps.CompletedAt)
 	}
@@ -158,7 +162,9 @@ func (r *planStepV2Repo) UpsertPlanStep(ctx context.Context, ps biz.PlanStep) (b
 		SetAutoSynthesis(ps.AutoSynthesis).
 		SetSeq(ps.Seq).
 		SetVersion(ps.Version).
-		SetAgentKeys(ps.AgentKeys)
+		SetAgentKeys(ps.AgentKeys).
+		SetDeliverables(ps.Deliverables).
+		SetInputContract(ps.InputContract)
 	if ps.CompletedAt != nil {
 		b.SetCompletedAt(*ps.CompletedAt)
 	}
@@ -198,7 +204,9 @@ func (r *planStepV2Repo) UpsertPlanStep(ctx context.Context, ps biz.PlanStep) (b
 		SetStartedAt(ps.StartedAt).
 		SetSeq(ps.Seq).
 		SetVersion(ps.Version).
-		SetAgentKeys(ps.AgentKeys)
+		SetAgentKeys(ps.AgentKeys).
+		SetDeliverables(ps.Deliverables).
+		SetInputContract(ps.InputContract)
 	if ps.CompletedAt != nil {
 		cb.SetCompletedAt(*ps.CompletedAt)
 	}
@@ -247,6 +255,8 @@ func entPlanStepV2ToBiz(row *ent.PlanStepV2) biz.PlanStep {
 		Result:            stepResultFromEnt(row.Result),
 		Error:             stepErrorFromEnt(row.Error),
 		AgentKeys:         row.AgentKeys,
+		Deliverables:      row.Deliverables,
+		InputContract:     row.InputContract,
 	}
 }
 

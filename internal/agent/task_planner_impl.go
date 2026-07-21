@@ -880,7 +880,9 @@ Rules:
 - required_capabilities must use these predefined tags: go-backend, go-kratos, vue3-frontend, quasar-ui, devops, database, architecture, testing, security, research, documentation, api-design
 - depends_on must only reference IDs of other subtasks in the array
 - No circular dependencies allowed
-- Subtasks should be independently executable where possible`, countRule) + intentContext
+- Subtasks should be independently executable where possible
+- Each subtask MAY include "deliverables" (output contract array) and "input_contract" (input contract array). Contract element: {"name": string, "type": "document"|"code"|"data", "format": "markdown"|"json"|"zip", "description": string}
+- If subtask B depends_on subtask A, B's input_contract SHOULD declare references to A's deliverables using the SAME "name" values`, countRule) + intentContext
 }
 
 // resolvePlannerProviderModel and resolveFallbackProviderModelFromCatalog
@@ -903,13 +905,15 @@ func parseDecompositionOutput(text string) ([]biz.SubTask, error) {
 	}
 
 	var rawTasks []struct {
-		ID                   string   `json:"id"`
-		Name                 string   `json:"name"`
-		Description          string   `json:"description"`
-		DependsOn            []string `json:"depends_on"`
-		RequiredCapabilities []string `json:"required_capabilities"`
-		Priority             int      `json:"priority"`
-		EstimatedComplexity  float64  `json:"estimated_complexity"`
+		ID                   string                     `json:"id"`
+		Name                 string                     `json:"name"`
+		Description          string                     `json:"description"`
+		DependsOn            []string                   `json:"depends_on"`
+		RequiredCapabilities []string                   `json:"required_capabilities"`
+		Priority             int                        `json:"priority"`
+		EstimatedComplexity  float64                    `json:"estimated_complexity"`
+		Deliverables         []biz.DeliverableContract  `json:"deliverables"`
+		InputContract        []biz.DeliverableContract  `json:"input_contract"`
 	}
 
 	if err := json.Unmarshal([]byte(text), &rawTasks); err != nil {
@@ -966,10 +970,80 @@ func parseDecompositionOutput(text string) ([]biz.SubTask, error) {
 			RequiredCapabilities: rt.RequiredCapabilities,
 			Priority:             rt.Priority,
 			EstimatedComplexity:  rt.EstimatedComplexity,
+			Deliverables:         sanitizeContracts(rt.Deliverables),
+			InputContract:        sanitizeContracts(rt.InputContract),
 		})
 	}
 
+	// P1 形式契约（B.10.15.2）兜底派生：LLM 未输出契约但存在 DAG 依赖时，
+	// 从 subtask 确定性派生（{step_id}_output, document/markdown），保证注入
+	// 提示可引用、验证器有事可验。派生名在 DAG 内构造即匹配。
+	deriveFallbackContracts(subTasks)
+
 	return subTasks, nil
+}
+
+// sanitizeContracts drops contract entries with a blank name (advisory
+// contract — malformed entries must not break planning).
+func sanitizeContracts(in []biz.DeliverableContract) []biz.DeliverableContract {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]biz.DeliverableContract, 0, len(in))
+	for _, c := range in {
+		if strings.TrimSpace(c.Name) == "" {
+			continue
+		}
+		out = append(out, c)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// deriveFallbackContracts deterministically derives contracts for DAG edges
+// the LLM left undeclared:
+//   - producer (subtask with dependents, no LLM deliverables) gets
+//     {name: "<step_id>_output", type: document, format: markdown};
+//   - consumer (subtask with depends_on, no LLM input_contract) gets one
+//     derived entry per upstream referencing the same name.
+//
+// Derived names match by construction, so the advisory validator only flags
+// genuine LLM inconsistencies. Subtasks without any dependency edge (neither
+// producer nor consumer) get nothing.
+func deriveFallbackContracts(subTasks []biz.SubTask) {
+	hasDependent := make(map[string]bool, len(subTasks))
+	for _, st := range subTasks {
+		for _, depID := range st.DependsOn {
+			hasDependent[depID] = true
+		}
+	}
+	for i := range subTasks {
+		st := &subTasks[i]
+		if len(st.Deliverables) == 0 && hasDependent[st.ID] {
+			st.Deliverables = []biz.DeliverableContract{{
+				Name:        st.ID + "_output",
+				Type:        "document",
+				Format:      "markdown",
+				Description: "derived fallback deliverable for " + st.Name,
+			}}
+		}
+	}
+	for i := range subTasks {
+		st := &subTasks[i]
+		if len(st.InputContract) > 0 || len(st.DependsOn) == 0 {
+			continue
+		}
+		for _, depID := range st.DependsOn {
+			st.InputContract = append(st.InputContract, biz.DeliverableContract{
+				Name:        depID + "_output",
+				Type:        "document",
+				Format:      "markdown",
+				Description: "derived fallback input from upstream " + depID,
+			})
+		}
+	}
 }
 
 // validateSubTaskDAG checks for cycles and invalid references.
@@ -1266,16 +1340,18 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 	planSteps := make([]biz.PlanStep, 0, len(plan.SubTasks))
 	for i, st := range plan.SubTasks {
 		ps := biz.PlanStep{
-			ID:          st.ID,
-			PlanID:      pbID,
-			TaskID:      rootTaskID,
-			Label:       st.Name,
-			Description: st.Description,
-			DependsOn:   append([]string(nil), st.DependsOn...),
-			Status:      biz.PlanStepStatusPending,
-			StartedAt:   now,
-			Seq:         int64(i + 1),
-			Version:     1,
+			ID:            st.ID,
+			PlanID:        pbID,
+			TaskID:        rootTaskID,
+			Label:         st.Name,
+			Description:   st.Description,
+			DependsOn:     append([]string(nil), st.DependsOn...),
+			Status:        biz.PlanStepStatusPending,
+			StartedAt:     now,
+			Seq:           int64(i + 1),
+			Version:       1,
+			Deliverables:  append([]biz.DeliverableContract(nil), st.Deliverables...),
+			InputContract: append([]biz.DeliverableContract(nil), st.InputContract...),
 		}
 		if allocPlan != nil {
 			for _, alloc := range allocPlan.Allocations {

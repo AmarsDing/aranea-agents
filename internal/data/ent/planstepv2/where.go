@@ -724,6 +724,26 @@ func AgentKeysNotNil() predicate.PlanStepV2 {
 	return predicate.PlanStepV2(sql.FieldNotNull(FieldAgentKeys))
 }
 
+// DeliverablesIsNil applies the IsNil predicate on the "deliverables" field.
+func DeliverablesIsNil() predicate.PlanStepV2 {
+	return predicate.PlanStepV2(sql.FieldIsNull(FieldDeliverables))
+}
+
+// DeliverablesNotNil applies the NotNil predicate on the "deliverables" field.
+func DeliverablesNotNil() predicate.PlanStepV2 {
+	return predicate.PlanStepV2(sql.FieldNotNull(FieldDeliverables))
+}
+
+// InputContractIsNil applies the IsNil predicate on the "input_contract" field.
+func InputContractIsNil() predicate.PlanStepV2 {
+	return predicate.PlanStepV2(sql.FieldIsNull(FieldInputContract))
+}
+
+// InputContractNotNil applies the NotNil predicate on the "input_contract" field.
+func InputContractNotNil() predicate.PlanStepV2 {
+	return predicate.PlanStepV2(sql.FieldNotNull(FieldInputContract))
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.PlanStepV2) predicate.PlanStepV2 {
 	return predicate.PlanStepV2(sql.AndPredicates(predicates...))

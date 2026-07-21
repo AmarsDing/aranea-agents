@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent/planstepv2"
 	"encoding/json"
 	"fmt"
@@ -47,8 +48,12 @@ type PlanStepV2 struct {
 	// StepError JSON
 	Error map[string]interface{} `json:"error,omitempty"`
 	// LLM-allocated agent keys from AllocationPlan
-	AgentKeys    []string `json:"agent_keys,omitempty"`
-	selectValues sql.SelectValues
+	AgentKeys []string `json:"agent_keys,omitempty"`
+	// P1 output contract (DeliverableContract JSON array)
+	Deliverables []biz.DeliverableContract `json:"deliverables,omitempty"`
+	// P1 input contract (DeliverableContract JSON array)
+	InputContract []biz.DeliverableContract `json:"input_contract,omitempty"`
+	selectValues  sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -56,7 +61,7 @@ func (*PlanStepV2) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case planstepv2.FieldDependsOn, planstepv2.FieldResult, planstepv2.FieldError, planstepv2.FieldAgentKeys:
+		case planstepv2.FieldDependsOn, planstepv2.FieldResult, planstepv2.FieldError, planstepv2.FieldAgentKeys, planstepv2.FieldDeliverables, planstepv2.FieldInputContract:
 			values[i] = new([]byte)
 		case planstepv2.FieldAutoSynthesis:
 			values[i] = new(sql.NullBool)
@@ -186,6 +191,22 @@ func (_m *PlanStepV2) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field agent_keys: %w", err)
 				}
 			}
+		case planstepv2.FieldDeliverables:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field deliverables", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Deliverables); err != nil {
+					return fmt.Errorf("unmarshal field deliverables: %w", err)
+				}
+			}
+		case planstepv2.FieldInputContract:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field input_contract", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.InputContract); err != nil {
+					return fmt.Errorf("unmarshal field input_contract: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -268,6 +289,12 @@ func (_m *PlanStepV2) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("agent_keys=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AgentKeys))
+	builder.WriteString(", ")
+	builder.WriteString("deliverables=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Deliverables))
+	builder.WriteString(", ")
+	builder.WriteString("input_contract=")
+	builder.WriteString(fmt.Sprintf("%v", _m.InputContract))
 	builder.WriteByte(')')
 	return builder.String()
 }

@@ -95,6 +95,9 @@ type SubTask struct {
 	RequiredCapabilities []string `json:"required_capabilities"`
 	Priority             int      `json:"priority"`
 	EstimatedComplexity  float64  `json:"estimated_complexity"`
+	// P1 形式契约（B.10.15.2）：LLM 输出 + 确定性兜底派生；advisory，不阻断。
+	Deliverables  []DeliverableContract `json:"deliverables,omitempty"`
+	InputContract []DeliverableContract `json:"input_contract,omitempty"`
 }
 
 // PlanTaskDAG represents the dependency graph of subtasks within a TaskPlan.

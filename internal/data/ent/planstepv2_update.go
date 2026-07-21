@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent/planstepv2"
 	"aranea-agents/internal/data/ent/predicate"
 	"context"
@@ -263,6 +264,42 @@ func (_u *PlanStepV2Update) ClearAgentKeys() *PlanStepV2Update {
 	return _u
 }
 
+// SetDeliverables sets the "deliverables" field.
+func (_u *PlanStepV2Update) SetDeliverables(v []biz.DeliverableContract) *PlanStepV2Update {
+	_u.mutation.SetDeliverables(v)
+	return _u
+}
+
+// AppendDeliverables appends value to the "deliverables" field.
+func (_u *PlanStepV2Update) AppendDeliverables(v []biz.DeliverableContract) *PlanStepV2Update {
+	_u.mutation.AppendDeliverables(v)
+	return _u
+}
+
+// ClearDeliverables clears the value of the "deliverables" field.
+func (_u *PlanStepV2Update) ClearDeliverables() *PlanStepV2Update {
+	_u.mutation.ClearDeliverables()
+	return _u
+}
+
+// SetInputContract sets the "input_contract" field.
+func (_u *PlanStepV2Update) SetInputContract(v []biz.DeliverableContract) *PlanStepV2Update {
+	_u.mutation.SetInputContract(v)
+	return _u
+}
+
+// AppendInputContract appends value to the "input_contract" field.
+func (_u *PlanStepV2Update) AppendInputContract(v []biz.DeliverableContract) *PlanStepV2Update {
+	_u.mutation.AppendInputContract(v)
+	return _u
+}
+
+// ClearInputContract clears the value of the "input_contract" field.
+func (_u *PlanStepV2Update) ClearInputContract() *PlanStepV2Update {
+	_u.mutation.ClearInputContract()
+	return _u
+}
+
 // Mutation returns the PlanStepV2Mutation object of the builder.
 func (_u *PlanStepV2Update) Mutation() *PlanStepV2Mutation {
 	return _u.mutation
@@ -412,6 +449,28 @@ func (_u *PlanStepV2Update) sqlSave(ctx context.Context) (_node int, err error) 
 	}
 	if _u.mutation.AgentKeysCleared() {
 		_spec.ClearField(planstepv2.FieldAgentKeys, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.Deliverables(); ok {
+		_spec.SetField(planstepv2.FieldDeliverables, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedDeliverables(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, planstepv2.FieldDeliverables, value)
+		})
+	}
+	if _u.mutation.DeliverablesCleared() {
+		_spec.ClearField(planstepv2.FieldDeliverables, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.InputContract(); ok {
+		_spec.SetField(planstepv2.FieldInputContract, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedInputContract(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, planstepv2.FieldInputContract, value)
+		})
+	}
+	if _u.mutation.InputContractCleared() {
+		_spec.ClearField(planstepv2.FieldInputContract, field.TypeJSON)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -667,6 +726,42 @@ func (_u *PlanStepV2UpdateOne) ClearAgentKeys() *PlanStepV2UpdateOne {
 	return _u
 }
 
+// SetDeliverables sets the "deliverables" field.
+func (_u *PlanStepV2UpdateOne) SetDeliverables(v []biz.DeliverableContract) *PlanStepV2UpdateOne {
+	_u.mutation.SetDeliverables(v)
+	return _u
+}
+
+// AppendDeliverables appends value to the "deliverables" field.
+func (_u *PlanStepV2UpdateOne) AppendDeliverables(v []biz.DeliverableContract) *PlanStepV2UpdateOne {
+	_u.mutation.AppendDeliverables(v)
+	return _u
+}
+
+// ClearDeliverables clears the value of the "deliverables" field.
+func (_u *PlanStepV2UpdateOne) ClearDeliverables() *PlanStepV2UpdateOne {
+	_u.mutation.ClearDeliverables()
+	return _u
+}
+
+// SetInputContract sets the "input_contract" field.
+func (_u *PlanStepV2UpdateOne) SetInputContract(v []biz.DeliverableContract) *PlanStepV2UpdateOne {
+	_u.mutation.SetInputContract(v)
+	return _u
+}
+
+// AppendInputContract appends value to the "input_contract" field.
+func (_u *PlanStepV2UpdateOne) AppendInputContract(v []biz.DeliverableContract) *PlanStepV2UpdateOne {
+	_u.mutation.AppendInputContract(v)
+	return _u
+}
+
+// ClearInputContract clears the value of the "input_contract" field.
+func (_u *PlanStepV2UpdateOne) ClearInputContract() *PlanStepV2UpdateOne {
+	_u.mutation.ClearInputContract()
+	return _u
+}
+
 // Mutation returns the PlanStepV2Mutation object of the builder.
 func (_u *PlanStepV2UpdateOne) Mutation() *PlanStepV2Mutation {
 	return _u.mutation
@@ -846,6 +941,28 @@ func (_u *PlanStepV2UpdateOne) sqlSave(ctx context.Context) (_node *PlanStepV2, 
 	}
 	if _u.mutation.AgentKeysCleared() {
 		_spec.ClearField(planstepv2.FieldAgentKeys, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.Deliverables(); ok {
+		_spec.SetField(planstepv2.FieldDeliverables, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedDeliverables(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, planstepv2.FieldDeliverables, value)
+		})
+	}
+	if _u.mutation.DeliverablesCleared() {
+		_spec.ClearField(planstepv2.FieldDeliverables, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.InputContract(); ok {
+		_spec.SetField(planstepv2.FieldInputContract, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedInputContract(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, planstepv2.FieldInputContract, value)
+		})
+	}
+	if _u.mutation.InputContractCleared() {
+		_spec.ClearField(planstepv2.FieldInputContract, field.TypeJSON)
 	}
 	_node = &PlanStepV2{config: _u.config}
 	_spec.Assign = _node.assignValues

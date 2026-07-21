@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"aranea-agents/internal/biz"
+
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
@@ -37,6 +39,10 @@ func (PlanStepV2) Fields() []ent.Field {
 		field.JSON("result", map[string]any{}).Optional().Comment("StepResult JSON"),
 		field.JSON("error", map[string]any{}).Optional().Comment("StepError JSON"),
 		field.JSON("agent_keys", []string{}).Optional().Comment("LLM-allocated agent keys from AllocationPlan"),
+		// P1 形式契约（B.10.15.2）：deliverables/input_contract 与 biz.PlanStep
+		// 契约字段对应，crash recovery 重建 dagRun 时需要。
+		field.JSON("deliverables", []biz.DeliverableContract{}).Optional().Comment("P1 output contract (DeliverableContract JSON array)"),
+		field.JSON("input_contract", []biz.DeliverableContract{}).Optional().Comment("P1 input contract (DeliverableContract JSON array)"),
 	}
 }
 

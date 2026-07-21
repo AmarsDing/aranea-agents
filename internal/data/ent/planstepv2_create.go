@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent/planstepv2"
 	"context"
 	"errors"
@@ -182,6 +183,18 @@ func (_c *PlanStepV2Create) SetError(v map[string]interface{}) *PlanStepV2Create
 // SetAgentKeys sets the "agent_keys" field.
 func (_c *PlanStepV2Create) SetAgentKeys(v []string) *PlanStepV2Create {
 	_c.mutation.SetAgentKeys(v)
+	return _c
+}
+
+// SetDeliverables sets the "deliverables" field.
+func (_c *PlanStepV2Create) SetDeliverables(v []biz.DeliverableContract) *PlanStepV2Create {
+	_c.mutation.SetDeliverables(v)
+	return _c
+}
+
+// SetInputContract sets the "input_contract" field.
+func (_c *PlanStepV2Create) SetInputContract(v []biz.DeliverableContract) *PlanStepV2Create {
+	_c.mutation.SetInputContract(v)
 	return _c
 }
 
@@ -417,6 +430,14 @@ func (_c *PlanStepV2Create) createSpec() (*PlanStepV2, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AgentKeys(); ok {
 		_spec.SetField(planstepv2.FieldAgentKeys, field.TypeJSON, value)
 		_node.AgentKeys = value
+	}
+	if value, ok := _c.mutation.Deliverables(); ok {
+		_spec.SetField(planstepv2.FieldDeliverables, field.TypeJSON, value)
+		_node.Deliverables = value
+	}
+	if value, ok := _c.mutation.InputContract(); ok {
+		_spec.SetField(planstepv2.FieldInputContract, field.TypeJSON, value)
+		_node.InputContract = value
 	}
 	return _node, _spec
 }
@@ -689,6 +710,42 @@ func (u *PlanStepV2Upsert) UpdateAgentKeys() *PlanStepV2Upsert {
 // ClearAgentKeys clears the value of the "agent_keys" field.
 func (u *PlanStepV2Upsert) ClearAgentKeys() *PlanStepV2Upsert {
 	u.SetNull(planstepv2.FieldAgentKeys)
+	return u
+}
+
+// SetDeliverables sets the "deliverables" field.
+func (u *PlanStepV2Upsert) SetDeliverables(v []biz.DeliverableContract) *PlanStepV2Upsert {
+	u.Set(planstepv2.FieldDeliverables, v)
+	return u
+}
+
+// UpdateDeliverables sets the "deliverables" field to the value that was provided on create.
+func (u *PlanStepV2Upsert) UpdateDeliverables() *PlanStepV2Upsert {
+	u.SetExcluded(planstepv2.FieldDeliverables)
+	return u
+}
+
+// ClearDeliverables clears the value of the "deliverables" field.
+func (u *PlanStepV2Upsert) ClearDeliverables() *PlanStepV2Upsert {
+	u.SetNull(planstepv2.FieldDeliverables)
+	return u
+}
+
+// SetInputContract sets the "input_contract" field.
+func (u *PlanStepV2Upsert) SetInputContract(v []biz.DeliverableContract) *PlanStepV2Upsert {
+	u.Set(planstepv2.FieldInputContract, v)
+	return u
+}
+
+// UpdateInputContract sets the "input_contract" field to the value that was provided on create.
+func (u *PlanStepV2Upsert) UpdateInputContract() *PlanStepV2Upsert {
+	u.SetExcluded(planstepv2.FieldInputContract)
+	return u
+}
+
+// ClearInputContract clears the value of the "input_contract" field.
+func (u *PlanStepV2Upsert) ClearInputContract() *PlanStepV2Upsert {
+	u.SetNull(planstepv2.FieldInputContract)
 	return u
 }
 
@@ -996,6 +1053,48 @@ func (u *PlanStepV2UpsertOne) UpdateAgentKeys() *PlanStepV2UpsertOne {
 func (u *PlanStepV2UpsertOne) ClearAgentKeys() *PlanStepV2UpsertOne {
 	return u.Update(func(s *PlanStepV2Upsert) {
 		s.ClearAgentKeys()
+	})
+}
+
+// SetDeliverables sets the "deliverables" field.
+func (u *PlanStepV2UpsertOne) SetDeliverables(v []biz.DeliverableContract) *PlanStepV2UpsertOne {
+	return u.Update(func(s *PlanStepV2Upsert) {
+		s.SetDeliverables(v)
+	})
+}
+
+// UpdateDeliverables sets the "deliverables" field to the value that was provided on create.
+func (u *PlanStepV2UpsertOne) UpdateDeliverables() *PlanStepV2UpsertOne {
+	return u.Update(func(s *PlanStepV2Upsert) {
+		s.UpdateDeliverables()
+	})
+}
+
+// ClearDeliverables clears the value of the "deliverables" field.
+func (u *PlanStepV2UpsertOne) ClearDeliverables() *PlanStepV2UpsertOne {
+	return u.Update(func(s *PlanStepV2Upsert) {
+		s.ClearDeliverables()
+	})
+}
+
+// SetInputContract sets the "input_contract" field.
+func (u *PlanStepV2UpsertOne) SetInputContract(v []biz.DeliverableContract) *PlanStepV2UpsertOne {
+	return u.Update(func(s *PlanStepV2Upsert) {
+		s.SetInputContract(v)
+	})
+}
+
+// UpdateInputContract sets the "input_contract" field to the value that was provided on create.
+func (u *PlanStepV2UpsertOne) UpdateInputContract() *PlanStepV2UpsertOne {
+	return u.Update(func(s *PlanStepV2Upsert) {
+		s.UpdateInputContract()
+	})
+}
+
+// ClearInputContract clears the value of the "input_contract" field.
+func (u *PlanStepV2UpsertOne) ClearInputContract() *PlanStepV2UpsertOne {
+	return u.Update(func(s *PlanStepV2Upsert) {
+		s.ClearInputContract()
 	})
 }
 
@@ -1470,6 +1569,48 @@ func (u *PlanStepV2UpsertBulk) UpdateAgentKeys() *PlanStepV2UpsertBulk {
 func (u *PlanStepV2UpsertBulk) ClearAgentKeys() *PlanStepV2UpsertBulk {
 	return u.Update(func(s *PlanStepV2Upsert) {
 		s.ClearAgentKeys()
+	})
+}
+
+// SetDeliverables sets the "deliverables" field.
+func (u *PlanStepV2UpsertBulk) SetDeliverables(v []biz.DeliverableContract) *PlanStepV2UpsertBulk {
+	return u.Update(func(s *PlanStepV2Upsert) {
+		s.SetDeliverables(v)
+	})
+}
+
+// UpdateDeliverables sets the "deliverables" field to the value that was provided on create.
+func (u *PlanStepV2UpsertBulk) UpdateDeliverables() *PlanStepV2UpsertBulk {
+	return u.Update(func(s *PlanStepV2Upsert) {
+		s.UpdateDeliverables()
+	})
+}
+
+// ClearDeliverables clears the value of the "deliverables" field.
+func (u *PlanStepV2UpsertBulk) ClearDeliverables() *PlanStepV2UpsertBulk {
+	return u.Update(func(s *PlanStepV2Upsert) {
+		s.ClearDeliverables()
+	})
+}
+
+// SetInputContract sets the "input_contract" field.
+func (u *PlanStepV2UpsertBulk) SetInputContract(v []biz.DeliverableContract) *PlanStepV2UpsertBulk {
+	return u.Update(func(s *PlanStepV2Upsert) {
+		s.SetInputContract(v)
+	})
+}
+
+// UpdateInputContract sets the "input_contract" field to the value that was provided on create.
+func (u *PlanStepV2UpsertBulk) UpdateInputContract() *PlanStepV2UpsertBulk {
+	return u.Update(func(s *PlanStepV2Upsert) {
+		s.UpdateInputContract()
+	})
+}
+
+// ClearInputContract clears the value of the "input_contract" field.
+func (u *PlanStepV2UpsertBulk) ClearInputContract() *PlanStepV2UpsertBulk {
+	return u.Update(func(s *PlanStepV2Upsert) {
+		s.ClearInputContract()
 	})
 }
 

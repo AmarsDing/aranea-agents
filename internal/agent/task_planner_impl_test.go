@@ -391,3 +391,147 @@ func TestPublishV2Board_EmptySubTasksReturnsZero(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// P1 形式契约（B.10.15.2）：契约解析 + 兜底派生 + PlanStep 透传
+// ---------------------------------------------------------------------------
+
+// TestParseDecompositionOutput_Contracts verifies LLM-output deliverables /
+// input_contract arrays are parsed into SubTask contract fields with names
+// preserved verbatim (advisory contract, no enum enforcement at parse time).
+func TestParseDecompositionOutput_Contracts(t *testing.T) {
+	text := `[
+	  {"id":"st_1","name":"Research","description":"d1","depends_on":[],
+	   "required_capabilities":["research"],"priority":1,"estimated_complexity":0.5,
+	   "deliverables":[{"name":"research_report","type":"document","format":"markdown","description":"调研报告"}]},
+	  {"id":"st_2","name":"Write","description":"d2","depends_on":["st_1"],
+	   "required_capabilities":["documentation"],"priority":2,"estimated_complexity":0.4,
+	   "input_contract":[{"name":"research_report","type":"document","format":"markdown","description":"调研报告"}]}
+	]`
+	subTasks, err := parseDecompositionOutput(text)
+	if err != nil {
+		t.Fatalf("parseDecompositionOutput: %v", err)
+	}
+	if len(subTasks) != 2 {
+		t.Fatalf("subTasks = %d, want 2", len(subTasks))
+	}
+	// 上游：LLM 提供的 deliverables 原样保留（名称不被兜底覆盖）。
+	if len(subTasks[0].Deliverables) != 1 {
+		t.Fatalf("Deliverables = %d, want 1", len(subTasks[0].Deliverables))
+	}
+	d := subTasks[0].Deliverables[0]
+	if d.Name != "research_report" || d.Type != "document" || d.Format != "markdown" || d.Description != "调研报告" {
+		t.Fatalf("Deliverables[0] = %+v, want research_report/document/markdown/调研报告", d)
+	}
+	// 下游：LLM 提供的 input_contract 原样保留，且不再追加兜底派生项。
+	if len(subTasks[1].InputContract) != 1 {
+		t.Fatalf("InputContract = %d, want 1 (LLM 已提供时不追加兜底)", len(subTasks[1].InputContract))
+	}
+	if subTasks[1].InputContract[0].Name != "research_report" {
+		t.Fatalf("InputContract[0].Name = %q, want research_report", subTasks[1].InputContract[0].Name)
+	}
+}
+
+// TestParseDecompositionOutput_ContractFallbackDerivation verifies the
+// deterministic fallback: when the LLM omits contracts on a DAG edge, the
+// producer (subtask with dependents) gets a derived "{step_id}_output"
+// deliverable and the consumer (subtask with depends_on) gets a derived
+// input contract referencing the same name — so derived names match by
+// construction and the validator has something to check.
+func TestParseDecompositionOutput_ContractFallbackDerivation(t *testing.T) {
+	text := `[
+	  {"id":"st_1","name":"Research","depends_on":[]},
+	  {"id":"st_2","name":"Write","depends_on":["st_1"]},
+	  {"id":"st_3","name":"Solo","depends_on":[]}
+	]`
+	subTasks, err := parseDecompositionOutput(text)
+	if err != nil {
+		t.Fatalf("parseDecompositionOutput: %v", err)
+	}
+	if len(subTasks) != 3 {
+		t.Fatalf("subTasks = %d, want 3", len(subTasks))
+	}
+	research, write, solo := subTasks[0], subTasks[1], subTasks[2]
+
+	// 生产者兜底：有下游依赖但 LLM 未输出 deliverables → 派生 {step_id}_output。
+	if len(research.Deliverables) != 1 {
+		t.Fatalf("research.Deliverables = %d, want 1 (fallback derived)", len(research.Deliverables))
+	}
+	wantName := research.ID + "_output"
+	got := research.Deliverables[0]
+	if got.Name != wantName || got.Type != "document" || got.Format != "markdown" {
+		t.Fatalf("research.Deliverables[0] = %+v, want name=%q type=document format=markdown", got, wantName)
+	}
+
+	// 消费者兜底：有 depends_on 但 LLM 未输出 input_contract → 每个上游派生一项，
+	// 名称与上游兜底 deliverable 一致（构造即匹配）。
+	if len(write.InputContract) != 1 {
+		t.Fatalf("write.InputContract = %d, want 1 (fallback derived)", len(write.InputContract))
+	}
+	if write.InputContract[0].Name != wantName {
+		t.Fatalf("write.InputContract[0].Name = %q, want %q (match upstream derived deliverable)",
+			write.InputContract[0].Name, wantName)
+	}
+
+	// 无依赖边：solo 既不是生产者也不是消费者 → 不派生任何契约。
+	if len(solo.Deliverables) != 0 || len(solo.InputContract) != 0 {
+		t.Fatalf("solo contracts = %+v/%+v, want both empty", solo.Deliverables, solo.InputContract)
+	}
+	// 消费者自身若无下游依赖 → 不派生 deliverables。
+	if len(write.Deliverables) != 0 {
+		t.Fatalf("write.Deliverables = %+v, want empty (no dependents)", write.Deliverables)
+	}
+}
+
+// TestParseDecompositionOutput_ContractToleratesInvalid verifies contract
+// entries with a blank name are skipped (not an error), consistent with the
+// parser's existing tolerant semantics.
+func TestParseDecompositionOutput_ContractToleratesInvalid(t *testing.T) {
+	text := `[
+	  {"id":"st_1","name":"A","depends_on":[],
+	   "deliverables":[{"name":"","type":"document","format":"markdown"},{"name":"ok","type":"data","format":"json"}]}
+	]`
+	subTasks, err := parseDecompositionOutput(text)
+	if err != nil {
+		t.Fatalf("parseDecompositionOutput: %v", err)
+	}
+	if len(subTasks) != 1 {
+		t.Fatalf("subTasks = %d, want 1", len(subTasks))
+	}
+	if len(subTasks[0].Deliverables) != 1 || subTasks[0].Deliverables[0].Name != "ok" {
+		t.Fatalf("Deliverables = %+v, want single entry 'ok' (blank-name skipped)", subTasks[0].Deliverables)
+	}
+}
+
+// TestPublishV2Board_ContractPassthrough verifies SubTask contracts are
+// carried onto the corresponding PlanStep so crash-recovery and dagRun
+// validation can read them from plan_steps_v2.
+func TestPublishV2Board_ContractPassthrough(t *testing.T) {
+	impl := &taskPlannerImpl{lg: loggateway.NewNoop(), seq: &fakeSeqPublisher{}}
+	plan := &biz.TaskPlan{
+		ID:              "tp-contract",
+		SpiritSessionID: "spirit-1",
+		Strategy:        biz.StrategyDAG,
+		SubTasks: []biz.SubTask{
+			{ID: "st-1", Name: "A", Deliverables: []biz.DeliverableContract{
+				{Name: "spec", Type: "document", Format: "markdown", Description: "设计稿"},
+			}},
+			{ID: "st-2", Name: "B", DependsOn: []string{"st-1"}, InputContract: []biz.DeliverableContract{
+				{Name: "spec", Type: "document", Format: "markdown"},
+			}},
+		},
+	}
+	board, err := impl.PublishV2Board(context.Background(), plan, nil, "")
+	if err != nil {
+		t.Fatalf("PublishV2Board: %v", err)
+	}
+	if len(board.Steps) != 2 {
+		t.Fatalf("steps = %d, want 2", len(board.Steps))
+	}
+	if len(board.Steps[0].Deliverables) != 1 || board.Steps[0].Deliverables[0].Name != "spec" {
+		t.Fatalf("Steps[0].Deliverables = %+v, want spec", board.Steps[0].Deliverables)
+	}
+	if len(board.Steps[1].InputContract) != 1 || board.Steps[1].InputContract[0].Name != "spec" {
+		t.Fatalf("Steps[1].InputContract = %+v, want spec", board.Steps[1].InputContract)
+	}
+}
+

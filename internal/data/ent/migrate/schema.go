@@ -1745,6 +1745,8 @@ var (
 		{Name: "result", Type: field.TypeJSON, Nullable: true},
 		{Name: "error", Type: field.TypeJSON, Nullable: true},
 		{Name: "agent_keys", Type: field.TypeJSON, Nullable: true},
+		{Name: "deliverables", Type: field.TypeJSON, Nullable: true},
+		{Name: "input_contract", Type: field.TypeJSON, Nullable: true},
 	}
 	// PlanStepsV2Table holds the schema information for the "plan_steps_v2" table.
 	PlanStepsV2Table = &schema.Table{
