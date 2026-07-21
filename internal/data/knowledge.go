@@ -214,6 +214,15 @@ func (r *knowledgeRepo) UpdateDocumentStatus(ctx context.Context, id, status, er
 	return err
 }
 
+// UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
+func (r *knowledgeRepo) UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error {
+	_, err := r.data.Postgres().ExecContext(ctx,
+		`UPDATE knowledge_documents
+		 SET content_text = $2, organized = $3, updated_at = NOW()
+		 WHERE id = $1`, id, contentText, organized)
+	return err
+}
+
 func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]biz.KnowledgeDocument, int, error) {
 	var total int
 	if err := r.data.Postgres().QueryRowContext(ctx,

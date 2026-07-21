@@ -40,9 +40,9 @@ type Document struct {
 	// Organized 标记内容是否经 LLM 整理为 Markdown。
 	Organized bool
 	// AssetURI 是原始文件留存路径（Phase 9 多模态血缘），文本类文档为空。
-	AssetURI    string
-	CreatedAt   string
-	UpdatedAt   string
+	AssetURI  string
+	CreatedAt string
+	UpdatedAt string
 }
 
 // Chunk is one indexed text chunk with its embedding.
@@ -81,6 +81,8 @@ type DocumentRepo interface {
 	CreateDocument(ctx context.Context, d Document) (Document, error)
 	GetDocument(ctx context.Context, id string) (Document, error)
 	UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error
+	// UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
+	UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error
 	ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
 	DeleteDocument(ctx context.Context, id string) error
 }
@@ -334,6 +336,14 @@ func (u *Usecase) UpdateDocumentStatus(ctx context.Context, id, status, errMsg s
 		return err
 	}
 	return u.documents.UpdateDocumentStatus(ctx, id, status, errMsg, chunkCount)
+}
+
+// UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
+func (u *Usecase) UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error {
+	if err := u.requireRepo(); err != nil {
+		return err
+	}
+	return u.documents.UpdateDocumentContent(ctx, id, contentText, organized)
 }
 
 // UpdateCollectionCounts adjusts document/chunk tallies on a collection.

@@ -151,9 +151,10 @@ func TestEntTeamToBizFieldCoverage(t *testing.T) {
 		structFields(reflect.TypeOf(ent.Team{})),
 		structFields(reflect.TypeOf(biz.Team{})),
 		map[string]string{
-			"AdkAppName":         "ADKAppName",
-			"CrossDeptMemberIds": "CrossDeptMemberIDs",
-			"DependsOnJSON":      "DependsOn", // JSON string → []string 反序列化
+			"AdkAppName":             "ADKAppName",
+			"CrossDeptMemberIds":     "CrossDeptMemberIDs",
+			"DependsOnJSON":          "DependsOn",          // JSON string → []string 反序列化
+			"DeliverablesOutputJSON": "DeliverablesOutput", // deliverables_output_json 列 → JSON string
 		},
 		nil,
 		"Team",

@@ -95,6 +95,7 @@ import (
 	"aranea-agents/internal/data/ent/teamrunv2"
 	"aranea-agents/internal/data/ent/teamstagev2"
 	"aranea-agents/internal/data/ent/toolagentoverride"
+	"aranea-agents/internal/data/ent/toolgrant"
 	"aranea-agents/internal/data/ent/toolinvocation"
 	"aranea-agents/internal/data/ent/toolinvocationaudit"
 	"aranea-agents/internal/data/ent/toolinvocationparam"
@@ -285,6 +286,8 @@ type Client struct {
 	TeamStageV2 *TeamStageV2Client
 	// ToolAgentOverride is the client for interacting with the ToolAgentOverride builders.
 	ToolAgentOverride *ToolAgentOverrideClient
+	// ToolGrant is the client for interacting with the ToolGrant builders.
+	ToolGrant *ToolGrantClient
 	// ToolInvocation is the client for interacting with the ToolInvocation builders.
 	ToolInvocation *ToolInvocationClient
 	// ToolInvocationAudit is the client for interacting with the ToolInvocationAudit builders.
@@ -396,6 +399,7 @@ func (c *Client) init() {
 	c.TeamRunV2 = NewTeamRunV2Client(c.config)
 	c.TeamStageV2 = NewTeamStageV2Client(c.config)
 	c.ToolAgentOverride = NewToolAgentOverrideClient(c.config)
+	c.ToolGrant = NewToolGrantClient(c.config)
 	c.ToolInvocation = NewToolInvocationClient(c.config)
 	c.ToolInvocationAudit = NewToolInvocationAuditClient(c.config)
 	c.ToolInvocationParam = NewToolInvocationParamClient(c.config)
@@ -580,6 +584,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		TeamRunV2:                  NewTeamRunV2Client(cfg),
 		TeamStageV2:                NewTeamStageV2Client(cfg),
 		ToolAgentOverride:          NewToolAgentOverrideClient(cfg),
+		ToolGrant:                  NewToolGrantClient(cfg),
 		ToolInvocation:             NewToolInvocationClient(cfg),
 		ToolInvocationAudit:        NewToolInvocationAuditClient(cfg),
 		ToolInvocationParam:        NewToolInvocationParamClient(cfg),
@@ -691,6 +696,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		TeamRunV2:                  NewTeamRunV2Client(cfg),
 		TeamStageV2:                NewTeamStageV2Client(cfg),
 		ToolAgentOverride:          NewToolAgentOverrideClient(cfg),
+		ToolGrant:                  NewToolGrantClient(cfg),
 		ToolInvocation:             NewToolInvocationClient(cfg),
 		ToolInvocationAudit:        NewToolInvocationAuditClient(cfg),
 		ToolInvocationParam:        NewToolInvocationParamClient(cfg),
@@ -748,9 +754,9 @@ func (c *Client) Use(hooks ...Hook) {
 		c.SessionTurn, c.SessionV2, c.SkillEvolutionSuggestion, c.SkillImportJob,
 		c.SkillInvocation, c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter,
 		c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2,
-		c.TeamStageV2, c.ToolAgentOverride, c.ToolInvocation, c.ToolInvocationAudit,
-		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
-		c.UsageQuota, c.UserEmbeddingSetting,
+		c.TeamStageV2, c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation,
+		c.ToolInvocationAudit, c.ToolInvocationParam, c.ToolResultBlob,
+		c.ToolResultReplacement, c.TurnV2, c.UsageQuota, c.UserEmbeddingSetting,
 	} {
 		n.Use(hooks...)
 	}
@@ -780,9 +786,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.SessionTurn, c.SessionV2, c.SkillEvolutionSuggestion, c.SkillImportJob,
 		c.SkillInvocation, c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter,
 		c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2,
-		c.TeamStageV2, c.ToolAgentOverride, c.ToolInvocation, c.ToolInvocationAudit,
-		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
-		c.UsageQuota, c.UserEmbeddingSetting,
+		c.TeamStageV2, c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation,
+		c.ToolInvocationAudit, c.ToolInvocationParam, c.ToolResultBlob,
+		c.ToolResultReplacement, c.TurnV2, c.UsageQuota, c.UserEmbeddingSetting,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -959,6 +965,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.TeamStageV2.mutate(ctx, m)
 	case *ToolAgentOverrideMutation:
 		return c.ToolAgentOverride.mutate(ctx, m)
+	case *ToolGrantMutation:
+		return c.ToolGrant.mutate(ctx, m)
 	case *ToolInvocationMutation:
 		return c.ToolInvocation.mutate(ctx, m)
 	case *ToolInvocationAuditMutation:
@@ -12280,6 +12288,139 @@ func (c *ToolAgentOverrideClient) mutate(ctx context.Context, m *ToolAgentOverri
 	}
 }
 
+// ToolGrantClient is a client for the ToolGrant schema.
+type ToolGrantClient struct {
+	config
+}
+
+// NewToolGrantClient returns a client for the ToolGrant from the given config.
+func NewToolGrantClient(c config) *ToolGrantClient {
+	return &ToolGrantClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `toolgrant.Hooks(f(g(h())))`.
+func (c *ToolGrantClient) Use(hooks ...Hook) {
+	c.hooks.ToolGrant = append(c.hooks.ToolGrant, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `toolgrant.Intercept(f(g(h())))`.
+func (c *ToolGrantClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ToolGrant = append(c.inters.ToolGrant, interceptors...)
+}
+
+// Create returns a builder for creating a ToolGrant entity.
+func (c *ToolGrantClient) Create() *ToolGrantCreate {
+	mutation := newToolGrantMutation(c.config, OpCreate)
+	return &ToolGrantCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ToolGrant entities.
+func (c *ToolGrantClient) CreateBulk(builders ...*ToolGrantCreate) *ToolGrantCreateBulk {
+	return &ToolGrantCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ToolGrantClient) MapCreateBulk(slice any, setFunc func(*ToolGrantCreate, int)) *ToolGrantCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ToolGrantCreateBulk{err: fmt.Errorf("calling to ToolGrantClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ToolGrantCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ToolGrantCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ToolGrant.
+func (c *ToolGrantClient) Update() *ToolGrantUpdate {
+	mutation := newToolGrantMutation(c.config, OpUpdate)
+	return &ToolGrantUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ToolGrantClient) UpdateOne(_m *ToolGrant) *ToolGrantUpdateOne {
+	mutation := newToolGrantMutation(c.config, OpUpdateOne, withToolGrant(_m))
+	return &ToolGrantUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ToolGrantClient) UpdateOneID(id string) *ToolGrantUpdateOne {
+	mutation := newToolGrantMutation(c.config, OpUpdateOne, withToolGrantID(id))
+	return &ToolGrantUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ToolGrant.
+func (c *ToolGrantClient) Delete() *ToolGrantDelete {
+	mutation := newToolGrantMutation(c.config, OpDelete)
+	return &ToolGrantDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ToolGrantClient) DeleteOne(_m *ToolGrant) *ToolGrantDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ToolGrantClient) DeleteOneID(id string) *ToolGrantDeleteOne {
+	builder := c.Delete().Where(toolgrant.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ToolGrantDeleteOne{builder}
+}
+
+// Query returns a query builder for ToolGrant.
+func (c *ToolGrantClient) Query() *ToolGrantQuery {
+	return &ToolGrantQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeToolGrant},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ToolGrant entity by its id.
+func (c *ToolGrantClient) Get(ctx context.Context, id string) (*ToolGrant, error) {
+	return c.Query().Where(toolgrant.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ToolGrantClient) GetX(ctx context.Context, id string) *ToolGrant {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ToolGrantClient) Hooks() []Hook {
+	return c.hooks.ToolGrant
+}
+
+// Interceptors returns the client interceptors.
+func (c *ToolGrantClient) Interceptors() []Interceptor {
+	return c.inters.ToolGrant
+}
+
+func (c *ToolGrantClient) mutate(ctx context.Context, m *ToolGrantMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ToolGrantCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ToolGrantUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ToolGrantUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ToolGrantDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ToolGrant mutation op: %q", m.Op())
+	}
+}
+
 // ToolInvocationClient is a client for the ToolInvocation schema.
 type ToolInvocationClient struct {
 	config
@@ -13364,8 +13505,8 @@ type (
 		SessionRun, SessionRunCheckpoint, SessionRuntime, SessionTurn, SessionV2,
 		SkillEvolutionSuggestion, SkillImportJob, SkillInvocation, SkillVersion,
 		StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun,
-		TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolInvocation,
-		ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
+		TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
+		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
 		ToolResultReplacement, TurnV2, UsageQuota, UserEmbeddingSetting []ent.Hook
 	}
 	inters struct {
@@ -13386,8 +13527,8 @@ type (
 		SessionRun, SessionRunCheckpoint, SessionRuntime, SessionTurn, SessionV2,
 		SkillEvolutionSuggestion, SkillImportJob, SkillInvocation, SkillVersion,
 		StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun,
-		TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolInvocation,
-		ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
+		TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
+		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
 		ToolResultReplacement, TurnV2, UsageQuota,
 		UserEmbeddingSetting []ent.Interceptor
 	}

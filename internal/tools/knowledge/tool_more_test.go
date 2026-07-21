@@ -47,6 +47,9 @@ func (m *mockKnowledgeRepo) GetDocument(_ context.Context, _ string) (biz.Knowle
 func (m *mockKnowledgeRepo) UpdateDocumentStatus(_ context.Context, _, _, _ string, _ int) error {
 	return nil
 }
+func (m *mockKnowledgeRepo) UpdateDocumentContent(_ context.Context, _, _ string, _ bool) error {
+	return nil
+}
 func (m *mockKnowledgeRepo) ListDocuments(_ context.Context, _ string, _, _ int) ([]biz.KnowledgeDocument, int, error) {
 	return nil, 0, nil
 }

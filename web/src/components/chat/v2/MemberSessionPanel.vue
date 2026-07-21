@@ -41,7 +41,7 @@
           <ActionBlock v-else-if="step.Kind === 'action'" :step="step" />
           <ReplyBlock v-else-if="step.Kind === 'reply'" :step="step" />
           <NoticeBlock v-else-if="step.Kind === 'notice'" :step="step" />
-          <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" />
+          <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" @confirm="(p) => $emit('confirm-step', p)" />
           <ErrorBlock v-else-if="step.Kind === 'error'" :step="step" />
         </template>
       </div>
@@ -94,6 +94,7 @@ import { useActivityQueries } from '../../../features/chat/composables/useActivi
 import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
 import { useActivityAutoScroll } from '../../../features/chat/composables/useActivityAutoScroll';
 import type { MemberSession } from '../../../features/chat/v2Types';
+import type { ConfirmStepPayload } from '../../../features/chat/types';
 import ThinkingBlock from '../ThinkingBlock.vue';
 import ActionBlock from '../ActionBlock.vue';
 import ReplyBlock from '../ReplyBlock.vue';
@@ -115,6 +116,7 @@ const props = defineProps<{ memberSession: MemberSession }>();
 const emit = defineEmits<{
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
+  'confirm-step': [payload: ConfirmStepPayload];
 }>();
 
 const { t } = useSafeI18n();

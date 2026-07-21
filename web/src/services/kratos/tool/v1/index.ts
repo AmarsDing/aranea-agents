@@ -239,6 +239,35 @@ export type ListToolAgentOverridesByAgentResponse = {
   items: ToolAgentOverride[] | undefined;
 };
 
+// ToolGrant is a persisted "always allow" grant recorded when a user
+// approves a tool confirmation with the always scope.
+export type ToolGrant = {
+  id: string | undefined;
+  agentId: string | undefined;
+  toolKey: string | undefined;
+  grantedBy: string | undefined;
+  createdAt: string | undefined;
+};
+
+export type ListToolGrantsRequest = {
+  //
+  // Behaviors: REQUIRED
+  agentId: string | undefined;
+};
+
+export type ListToolGrantsResponse = {
+  items: ToolGrant[] | undefined;
+};
+
+export type DeleteToolGrantRequest = {
+  //
+  // Behaviors: REQUIRED
+  agentId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  toolKey: string | undefined;
+};
+
 export type UpsertToolAgentOverrideRequest = {
   //
   // Behaviors: REQUIRED
@@ -348,6 +377,8 @@ export interface ToolService {
   ListToolRunsForTool(request: ListToolRunsForToolRequest): Promise<ListToolRunsResponse>;
   ListToolAgentOverrides(request: ListToolAgentOverridesRequest): Promise<ListToolAgentOverridesResponse>;
   ListToolAgentOverridesByAgent(request: ListToolAgentOverridesByAgentRequest): Promise<ListToolAgentOverridesByAgentResponse>;
+  ListToolGrants(request: ListToolGrantsRequest): Promise<ListToolGrantsResponse>;
+  DeleteToolGrant(request: DeleteToolGrantRequest): Promise<wellKnownEmpty>;
   UpsertToolAgentOverride(request: UpsertToolAgentOverrideRequest): Promise<ToolAgentOverride>;
   DeleteToolAgentOverride(request: DeleteToolAgentOverrideRequest): Promise<wellKnownEmpty>;
   UpdateToolConfig(request: UpdateToolConfigRequest): Promise<Tool>;
@@ -692,6 +723,49 @@ export function createToolServiceClient(
         service: "ToolService",
         method: "ListToolAgentOverridesByAgent",
       }) as Promise<ListToolAgentOverridesByAgentResponse>;
+    },
+    ListToolGrants(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.agentId) {
+        throw new Error("missing required field request.agent_id");
+      }
+      const path = `v1/agents/${request.agentId}/tool-grants`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "ListToolGrants",
+      }) as Promise<ListToolGrantsResponse>;
+    },
+    DeleteToolGrant(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.agentId) {
+        throw new Error("missing required field request.agent_id");
+      }
+      if (!request.toolKey) {
+        throw new Error("missing required field request.tool_key");
+      }
+      const path = `v1/agents/${request.agentId}/tool-grants/${request.toolKey}`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "ToolService",
+        method: "DeleteToolGrant",
+      }) as Promise<wellKnownEmpty>;
     },
     UpsertToolAgentOverride(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.toolId) {

@@ -76,6 +76,45 @@ func TestUsecase_UpdateDocumentStatus_NilUsecase(t *testing.T) {
 	}
 }
 
+// Phase 9：图片异步提取完成后回写 content_text/organized。
+func TestUsecase_UpdateDocumentContent(t *testing.T) {
+	mr := noOpMockRepo()
+	mr.docContentFn = func(_ context.Context, id, contentText string, organized bool) error {
+		if id != "doc-9" {
+			t.Errorf("id = %q, want doc-9", id)
+		}
+		if contentText != "# 图描述" {
+			t.Errorf("contentText = %q", contentText)
+		}
+		if !organized {
+			t.Error("organized = false, want true")
+		}
+		return nil
+	}
+	u := NewUsecaseFromRepo(mr)
+	if err := u.UpdateDocumentContent(context.Background(), "doc-9", "# 图描述", true); err != nil {
+		t.Fatalf("UpdateDocumentContent error: %v", err)
+	}
+
+	mr.docContentFn = func(_ context.Context, _, _ string, _ bool) error {
+		return fmt.Errorf("db boom")
+	}
+	if err := u.UpdateDocumentContent(context.Background(), "doc-9", "x", false); err == nil {
+		t.Fatal("expected repo error propagated")
+	}
+}
+
+func TestUsecase_UpdateDocumentContent_NilUsecase(t *testing.T) {
+	var u *Usecase
+	err := u.UpdateDocumentContent(context.Background(), "doc-1", "x", true)
+	if err == nil {
+		t.Fatal("nil usecase should return error")
+	}
+	if !errors.Is(err, ErrUnavailable) {
+		t.Errorf("expected ErrUnavailable, got %v", err)
+	}
+}
+
 func TestUsecase_UpdateCollectionCounts(t *testing.T) {
 	tests := []struct {
 		name       string

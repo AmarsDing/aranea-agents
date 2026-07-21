@@ -40,11 +40,12 @@
     </div>
     <div v-if="task.Status === 'running'" class="task-status">{{ t('chat.v2.taskProcessing') }}</div>
     <TurnList
-      v-if="prePlanTurns.length"
-      :turns="prePlanTurns"
-      @pause-agent="(sid) => $emit('pause-agent', sid)"
-      @inject-agent="(p) => $emit('inject-agent', p)"
-    />
+        v-if="prePlanTurns.length"
+        :turns="prePlanTurns"
+        @pause-agent="(sid) => $emit('pause-agent', sid)"
+        @inject-agent="(p) => $emit('inject-agent', p)"
+        @confirm-step="(p) => $emit('confirm-step', p)"
+      />
     <template v-for="pb in planBoards" :key="pb.ID">
       <PlanBoardCard :plan-board="pb" />
       <GraphStageBlock v-if="graphStageByPlanBoard(pb.ID)" :graph-stage="graphStageByPlanBoard(pb.ID)!" />
@@ -63,6 +64,7 @@
       :turns="postPlanTurns"
       @pause-agent="(sid) => $emit('pause-agent', sid)"
       @inject-agent="(p) => $emit('inject-agent', p)"
+      @confirm-step="(p) => $emit('confirm-step', p)"
     />
   </div>
 </template>
@@ -74,6 +76,7 @@ import { useQuasar } from 'quasar';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import { useSafeAuth } from '../../../features/chat/composables/useSafeAuth';
 import type { Task } from '../../../features/chat/v2Types';
+import type { ConfirmStepPayload } from '../../../features/chat/types';
 import TurnList from './TurnList.vue';
 import TeamStagePanel from './TeamStagePanel.vue';
 import PlanBoardCard from './PlanBoardCard.vue';
@@ -103,6 +106,7 @@ defineEmits<{
   regenerate: [task: Task];
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
+  'confirm-step': [payload: ConfirmStepPayload];
 }>();
 
 const { t } = useSafeI18n();

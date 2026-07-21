@@ -193,6 +193,7 @@ export function useKnowledgePage() {
 
   // REV-D: mirrors backend extractSupportedMimes — keep in sync with
   // internal/service/knowledge.go:extractSupportedMimes.
+  // Phase 9：image/png|jpeg|webp 经 VisionExtractor（多模态 LLM）入库。
   const EXTRACT_SUPPORTED_MIMES = new Set([
     'text/plain',
     'text/markdown',
@@ -206,6 +207,9 @@ export function useKnowledgePage() {
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'image/png',
+    'image/jpeg',
+    'image/webp',
   ]);
 
   function isExtractSupported(mimeType: string): boolean {
@@ -229,7 +233,10 @@ export function useKnowledgePage() {
     if (lower.endsWith('.doc')) return 'application/msword';
     if (lower.endsWith('.pptx')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
     if (lower.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    // TODO(debt): image MIME removed until OCR is implemented on the backend.
+    // Phase 9：图片经 VisionExtractor 入库。
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.webp')) return 'image/webp';
     return 'application/octet-stream';
   }
 
@@ -374,11 +381,8 @@ export function useKnowledgePage() {
     }
   }
 
-  // Phase 8 验收：图片等多模态格式必须给出明确错误，不静默失败。
+  // 不支持的格式（含未放开的图片类型如 gif）给出明确错误，不静默失败。
   function validateUploadMime(mime: string): string | null {
-    if (mime.startsWith('image/')) {
-      return t('knowledgePage.uploadImageUnsupported');
-    }
     if (!isExtractSupported(mime)) {
       return t('knowledgePage.uploadUnsupportedFormat', { mime });
     }

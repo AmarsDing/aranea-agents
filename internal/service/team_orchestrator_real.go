@@ -88,11 +88,16 @@ func (o *RealTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanSte
 	// 2026-07-04 问题 4 修复：使用 coordinator 模式（默认）让第一个成员
 	// 自动成为 synthesizer，避免 parallel 模式因缺少 synthesizer 被拒。
 	// 参考：internal/biz/team_usecase.go:189 (parallel 模式必须显式指定 synthesizer)
+	//
+	// P0-①: 透传 DAG 依赖（step.DependsOn）到团队记录，下游调度与前端 DAG
+	// 渲染依赖此字段。形式契约（Deliverables/InputContract）由 P1 planner
+	// schema 扩展填充。
 	params := biz.SpiritTeamParams{
 		SpiritSessionID: spiritSessionID,
 		TaskDescription: taskDesc,
 		AgentKeys:       agentKeys,
 		DagNodeID:       step.ID,
+		DependsOn:       step.DependsOn,
 		Mode:            biz.TeamModeCoordinator,
 		AutoStart:       false,
 	}
@@ -112,10 +117,17 @@ func (o *RealTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanSte
 		loggateway.Str("step_id", step.ID),
 		loggateway.Str("session_id", teamSession.ID))
 	// 手动启动 team_run（AutoStart=false 时 AssembleTeam 不会自动启动）。
-	if o.starter != nil && teamSession.ID != "" && taskDesc != "" {
+	// P0-③a: 首轮输入 = 上游交付物前缀 + 任务描述。上游团队在 RecordTeamCompletion
+	// 时已把交付物落库（deliverables_output_json），此处由 biz 层组装前缀；
+	// 存储的 team.TaskDescription 保持纯净，前缀只注入 Turn 输入。
+	turnContent := taskDesc
+	if prefix := o.assembler.InjectUpstreamDeliverables(ctx, spiritSessionID, step.DependsOn); prefix != "" {
+		turnContent = prefix + taskDesc
+	}
+	if o.starter != nil && teamSession.ID != "" && turnContent != "" {
 		safego.Go(ctx, "team_orchestrator.start_turn."+team.ID, func() {
 			startCtx := context.WithoutCancel(ctx)
-			if startErr := o.starter.StartTeamTurn(startCtx, teamSession.ID, taskDesc); startErr != nil {
+			if startErr := o.starter.StartTeamTurn(startCtx, teamSession.ID, turnContent); startErr != nil {
 				o.lg.Warn("StartTeamTurn 失败",
 					loggateway.Str("team_id", team.ID),
 					loggateway.Err(startErr))

@@ -71,6 +71,13 @@ func (m *memKnowledgeRepo) UpdateDocumentStatus(_ context.Context, id, status, e
 	m.documents[id] = d
 	return nil
 }
+func (m *memKnowledgeRepo) UpdateDocumentContent(_ context.Context, id, contentText string, organized bool) error {
+	d := m.documents[id]
+	d.ContentText = contentText
+	d.Organized = organized
+	m.documents[id] = d
+	return nil
+}
 func (m *memKnowledgeRepo) ListDocuments(_ context.Context, _ string, _, _ int) ([]biz.KnowledgeDocument, int, error) {
 	var out []biz.KnowledgeDocument
 	for _, d := range m.documents {

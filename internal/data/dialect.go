@@ -73,6 +73,29 @@ func (d Dialect) JSONEach(col string) string {
 	return fmt.Sprintf("json_each(%s)", col)
 }
 
+// JSONBBase returns the canonical base expression for JSON write helpers.
+// All cross-dialect JSON columns are TEXT (SQLite has no JSONB type), so the
+// Postgres write helpers (JSONSet/JSONSetMulti/JSONRemove/JSONRemoveMulti)
+// require their input expression to already be jsonb-typed. JSONBBase
+// normalizes a TEXT column into such an expression:
+//
+// SQLite:   COALESCE(col, '{}')
+// Postgres: COALESCE(NULLIF(col, '')::jsonb, '{}'::jsonb)
+//
+// The COALESCE/NULLIF guard tolerates NULL and empty-string rows (both make
+// jsonb_set return NULL or fail the ::jsonb cast). This mirrors the read-side
+// convention in JSONExtract.
+//
+// The resulting expression yields jsonb on Postgres; assigning it back to the
+// TEXT column in UPDATE ... SET relies on Postgres' assignment cast
+// (jsonb→text CoerceViaIO), verified by TestDialectIntegration.
+func (d Dialect) JSONBBase(col string) string {
+	if d.IsPostgres() {
+		return fmt.Sprintf("COALESCE(NULLIF(%s, '')::jsonb, '{}'::jsonb)", col)
+	}
+	return fmt.Sprintf("COALESCE(%s, '{}')", col)
+}
+
 // JSONSet returns a SQL expression that sets a JSON key to a new value.
 // SQLite: json_set(col, '$.key', new_value)
 // Postgres: jsonb_set(col, '{key}', to_jsonb(new_value::text))
@@ -85,8 +108,15 @@ func (d Dialect) JSONEach(col string) string {
 // values (map[string]string or text columns), so ::text is semantically
 // correct.
 //
+// Contract: on Postgres, col MUST be a jsonb-typed expression (produced by
+// JSONBBase or a previous jsonb_set call). Passing a bare TEXT column raises
+// 42883 ("function jsonb_set(text, unknown, jsonb) does not exist") — the
+// historical root cause of run.persist_failed. The guard is applied once at
+// the base (JSONBBase) rather than re-applied here, so chained calls stay
+// cheap.
+//
 // Note: for multiple key updates, Postgres requires nested jsonb_set calls.
-// Use JSONSetChain for multi-key updates.
+// Use JSONSetMulti for multi-key updates.
 func (d Dialect) JSONSet(col, key, newValue string) string {
 	if d.IsPostgres() {
 		return fmt.Sprintf("jsonb_set(%s, '{%s}', to_jsonb(%s::text))", col, key, newValue)
@@ -100,9 +130,10 @@ func (d Dialect) JSONSet(col, key, newValue string) string {
 // supports one path at a time.
 //
 // pairs is a slice of (key, value) tuples where value is a placeholder or expression.
+// Contract: same as JSONSet — on Postgres, col must be jsonb-typed (use JSONBBase).
 //
 // Example (SQLite): json_set(col, '$.k1', v1, '$.k2', v2)
-// Example (Postgres): jsonb_set(jsonb_set(col, '{k1}', to_jsonb(v1::text)), '{k2}', to_jsonb(v2::text))
+// Example (Postgres): jsonb_set(jsonb_set(base, '{k1}', to_jsonb(v1::text)), '{k2}', to_jsonb(v2::text))
 func (d Dialect) JSONSetMulti(col string, pairs ...[2]string) string {
 	if len(pairs) == 0 {
 		return col
@@ -129,6 +160,9 @@ func (d Dialect) JSONSetMulti(col string, pairs ...[2]string) string {
 //
 // Postgres uses the jsonb `-` operator (delete top-level key by text name).
 // The ::text cast is required for the same polymorphic-type reason as JSONSet.
+// Contract: same as JSONSet — on Postgres, expr must be jsonb-typed (use
+// JSONBBase); a bare TEXT column raises 42883 ("operator does not exist:
+// text - text").
 // Note: only top-level keys are supported; for nested paths use #- with a
 // text[] literal (not a placeholder).
 func (d Dialect) JSONRemove(expr, key string) (sqlExpr, arg string) {
@@ -136,6 +170,29 @@ func (d Dialect) JSONRemove(expr, key string) (sqlExpr, arg string) {
 		return fmt.Sprintf("%s - ?::text", expr), key
 	}
 	return fmt.Sprintf("json_remove(%s, ?)", expr), "$." + key
+}
+
+// JSONRemoveMulti returns a SQL expression that removes multiple top-level
+// keys in one expression, for developer-supplied constant key sets.
+//
+// SQLite:   json_remove(expr, '$.k1', '$.k2')
+// Postgres: expr - '{k1,k2}'::text[]
+//
+// Keys are embedded as SQL literals (consistent with JSONSet embedding keys
+// into '{key}'); they MUST be code constants, never user input. Contract:
+// same as JSONSet — on Postgres, expr must be jsonb-typed (use JSONBBase).
+func (d Dialect) JSONRemoveMulti(expr string, keys ...string) string {
+	if len(keys) == 0 {
+		return expr
+	}
+	if d.IsPostgres() {
+		return fmt.Sprintf("%s - '{%s}'::text[]", expr, strings.Join(keys, ","))
+	}
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("'$.%s'", k))
+	}
+	return fmt.Sprintf("json_remove(%s, %s)", expr, strings.Join(parts, ", "))
 }
 
 // TableExistsQuery returns the SQL query and args to check if a table exists.

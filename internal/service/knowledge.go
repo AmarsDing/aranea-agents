@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -35,8 +38,10 @@ var allowedIngestMIMEs = map[string]bool{
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   true,
 	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true,
 	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true,
-	// TODO(debt): image/png and image/jpeg removed until OCR is implemented.
-	// Re-add when internal/knowledge/ocr.go has a working provider.
+	// Phase 9：图片经 VisionExtractor（多模态 LLM）入库。
+	"image/png":  true,
+	"image/jpeg": true,
+	"image/webp": true,
 }
 
 var (
@@ -65,12 +70,14 @@ type KnowledgeService struct {
 	embedderAdmin knowledge.EmbedderAdmin
 	search        KnowledgeSearchDeps
 	organizer     *knowledge.MarkdownOrganizer // LLM 整理为 MD（nil 时跳过整理）
+	extractors    *knowledge.ExtractorRegistry // 模态路由（Vision 优先于 Text；nil 时退化 TextExtractor）
+	assets        *knowledge.AssetStore        // 原图留存（nil 时跳过血缘）
 	eventBus      biz.EventBus
 	systemSetting biz.SystemSettingRepo
 	lg            loggateway.Logger
 }
 
-func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, searchDeps KnowledgeSearchDeps, organizer *knowledge.MarkdownOrganizer, eventBus biz.EventBus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
+func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, searchDeps KnowledgeSearchDeps, organizer *knowledge.MarkdownOrganizer, extractors *knowledge.ExtractorRegistry, assets *knowledge.AssetStore, eventBus biz.EventBus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
 	var admin knowledge.EmbedderAdmin
 	if a, ok := embedder.(knowledge.EmbedderAdmin); ok {
 		admin = a
@@ -81,6 +88,8 @@ func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, 
 		embedderAdmin: admin,
 		search:        searchDeps,
 		organizer:     organizer,
+		extractors:    extractors,
+		assets:        assets,
 		eventBus:      eventBus,
 		systemSetting: systemSetting,
 		lg:            lg,
@@ -163,48 +172,74 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		return nil, err
 	}
 
-	// Validate metadata and extract text BEFORE creating the document record.
-	// This avoids orphaned pending documents when validation or extraction fails.
-	metaJSON, err := knowledge.NormalizeMetadataJSON(req.GetMetadataJson())
+	// Validate metadata BEFORE creating the document record.
+	isImage := knowledge.IsImageSource(req.GetSource(), req.GetMimeType())
+	modality, extractorName := "text", "text"
+	if isImage {
+		modality, extractorName = "image", "vision"
+	}
+	metaJSON, err := mergeIngestMetadata(req.GetMetadataJson(), modality, extractorName)
 	if err != nil {
 		return nil, apierror.BadRequest("KNOWLEDGE", err.Error())
 	}
 
-	text, err := knowledge.ExtractDocumentText(raw, req.GetSource(), req.GetMimeType())
-	if err != nil {
-		return nil, apierror.BadRequest("KNOWLEDGE", err.Error())
-	}
-	if strings.TrimSpace(text) == "" {
-		return nil, apierror.BadRequest("KNOWLEDGE", "document contains no extractable text")
-	}
+	// 文本类：同步提取（本地解析快），失败即 400 不落孤儿文档。
+	// 图片：视觉 LLM 提取为耗时远程调用（最长 60s），先落文档后异步提取，
+	// 失败置 status=error（NFR-12），与 indexing → indexed/error 状态流一致。
+	text := ""
+	organized := isImage
+	if !isImage {
+		var extractErr error
+		text, extractErr = s.extractText(ctx, raw, req.GetSource(), req.GetMimeType())
+		if extractErr != nil {
+			return nil, apierror.BadRequest("KNOWLEDGE", extractErr.Error())
+		}
+		if strings.TrimSpace(text) == "" {
+			return nil, apierror.BadRequest("KNOWLEDGE", "document contains no extractable text")
+		}
 
-	// 可选：LLM 整理为结构化 Markdown（unset 默认开启；.md 本身已是 Markdown 跳过）。
-	// 失败一律降级原文本，不阻塞入库（NFR-11）。
-	organized := false
-	if s.organizer != nil && organizeToMarkdownEnabled(req) && !isMarkdownSource(req.GetSource(), req.GetMimeType()) {
-		if md, ok, orgErr := s.organizer.Organize(ctx, text, req.GetSource(), req.GetMimeType()); orgErr != nil {
-			s.lg.Warn("Markdown 整理异常，使用原文本继续",
-				loggateway.StepID("knowledge.ingest.organize_err"),
-				loggateway.Str("source", req.GetSource()),
-				loggateway.Err(orgErr),
-			)
-		} else if ok {
-			text = md
-			organized = true
+		// 可选：LLM 整理为结构化 Markdown（unset 默认开启；.md 本身已是 Markdown 跳过）。
+		// 失败一律降级原文本，不阻塞入库（NFR-11）。
+		if s.organizer != nil && organizeToMarkdownEnabled(req) && !isMarkdownSource(req.GetSource(), req.GetMimeType()) {
+			if md, ok, orgErr := s.organizer.Organize(ctx, text, req.GetSource(), req.GetMimeType()); orgErr != nil {
+				s.lg.Warn("Markdown 整理异常，使用原文本继续",
+					loggateway.StepID("knowledge.ingest.organize_err"),
+					loggateway.Str("source", req.GetSource()),
+					loggateway.Err(orgErr),
+				)
+			} else if ok {
+				text = md
+				organized = true
+			}
 		}
 	}
 
-	doc, err := s.uc.CreateDocument(ctx, biz.KnowledgeDocument{
+	doc := biz.KnowledgeDocument{
 		CollectionID: req.GetCollectionId(),
 		Source:       req.GetSource(),
 		MimeType:     req.GetMimeType(),
 		SizeBytes:    int64(len(raw)),
 		ContentText:  text,
 		Organized:    organized,
-	})
+	}
+	// Phase 9：原图留存血缘（asset_uri）；asset 文件名依赖 doc ID，故提前生成。
+	if isImage && s.assets != nil {
+		doc.ID = uuid.NewString()
+		if uri, saveErr := s.assets.Save(doc.ID, doc.Source, raw); saveErr != nil {
+			s.lg.Warn("原图留存失败，跳过血缘",
+				loggateway.StepID("knowledge.ingest.asset_save"),
+				loggateway.Str("source", doc.Source),
+				loggateway.Err(saveErr),
+			)
+		} else {
+			doc.AssetURI = uri
+		}
+	}
+	created, err := s.uc.CreateDocument(ctx, doc)
 	if err != nil {
 		return nil, err
 	}
+	doc = created
 
 	strategy := knowledge.ParseChunkStrategy(req.GetChunkStrategy())
 	embedder := s.embedder
@@ -231,6 +266,36 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 			)
 		}
 		s.publishKnowledgeIngest(col.ID, doc.ID, "indexing", "", 0)
+
+		// 图片：后台经 VisionExtractor 提取为 Markdown（耗时远程调用，最长 60s），
+		// 成功后回写 content_text/organized（预览可用），再走统一 chunk/embed 流程；
+		// 失败置 status=error（NFR-12）。
+		if isImage {
+			md, extractErr := s.extractors.Extract(ingestCtx, raw, doc.Source, doc.MimeType)
+			if extractErr != nil || strings.TrimSpace(md) == "" {
+				if extractErr == nil {
+					extractErr = fmt.Errorf("vision extract %q: empty response", doc.Source)
+				}
+				if statusErr := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "error", extractErr.Error(), 0); statusErr != nil {
+					s.lg.Error("failed to update document status to error",
+						loggateway.StepID("knowledge.ingest.status_fail"),
+						loggateway.Str("doc_id", doc.ID),
+						loggateway.Err(statusErr),
+						loggateway.Str("original_error", extractErr.Error()),
+					)
+				}
+				s.publishKnowledgeIngest(col.ID, doc.ID, "error", extractErr.Error(), 0)
+				return
+			}
+			if contentErr := uc.UpdateDocumentContent(ingestCtx, doc.ID, md, true); contentErr != nil {
+				s.lg.Warn("图片正文回写失败，继续向量化",
+					loggateway.StepID("knowledge.ingest.content_fail"),
+					loggateway.Str("doc_id", doc.ID),
+					loggateway.Err(contentErr),
+				)
+			}
+			params.Text = md
+		}
 
 		bizChunks, err := knowledge.BuildIndexedChunks(ingestCtx, embedder, params)
 		if err != nil {
@@ -572,4 +637,39 @@ func resolveIngestMIMEAllowed(detected, declared, source string) bool {
 		return true
 	}
 	return false
+}
+
+// extractText 经 ExtractorRegistry 按模态路由提取文本；
+// registry 为 nil 时退化 TextExtractor（单测/兼容路径）。
+func (s *KnowledgeService) extractText(ctx context.Context, raw []byte, source, mimeType string) (string, error) {
+	if s.extractors != nil {
+		return s.extractors.Extract(ctx, raw, source, mimeType)
+	}
+	return knowledge.ExtractDocumentText(raw, source, mimeType)
+}
+
+// isImageIngest 报告本次入库是否为图片模态（委托 knowledge.IsImageSource）。
+func isImageIngest(source, mimeType string) bool {
+	return knowledge.IsImageSource(source, mimeType)
+}
+
+// mergeIngestMetadata 将用户 metadata 与系统模态标记（modality/extractor）
+// 合并为一个 JSON 对象；用户字段与系统键冲突时以系统键为准（血缘可信）。
+func mergeIngestMetadata(userJSON, modality, extractor string) (string, error) {
+	merged := map[string]any{}
+	if s := strings.TrimSpace(userJSON); s != "" {
+		if !json.Valid([]byte(s)) {
+			return "", fmt.Errorf("metadata_json must be valid JSON")
+		}
+		if err := json.Unmarshal([]byte(s), &merged); err != nil {
+			return "", fmt.Errorf("metadata_json must be a JSON object")
+		}
+	}
+	merged["modality"] = modality
+	merged["extractor"] = extractor
+	out, err := json.Marshal(merged)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }

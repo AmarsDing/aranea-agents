@@ -225,6 +225,29 @@ message ListToolAgentOverridesByAgentResponse {
   repeated ToolAgentOverride items = 1;
 }
 
+// ToolGrant is a persisted "always allow" grant recorded when a user
+// approves a tool confirmation with the always scope.
+message ToolGrant {
+  string id = 1;
+  string agent_id = 2;
+  string tool_key = 3;
+  string granted_by = 4;
+  string created_at = 5;
+}
+
+message ListToolGrantsRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListToolGrantsResponse {
+  repeated ToolGrant items = 1;
+}
+
+message DeleteToolGrantRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string tool_key = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
 message UpsertToolAgentOverrideRequest {
   string tool_id = 1 [(google.api.field_behavior) = REQUIRED];
   string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
@@ -350,6 +373,12 @@ service ToolService {
   }
   rpc ListToolAgentOverridesByAgent(ListToolAgentOverridesByAgentRequest) returns (ListToolAgentOverridesByAgentResponse) {
     option (google.api.http) = {get: "/v1/agents/{agent_id}/tool-overrides"};
+  }
+  rpc ListToolGrants(ListToolGrantsRequest) returns (ListToolGrantsResponse) {
+    option (google.api.http) = {get: "/v1/agents/{agent_id}/tool-grants"};
+  }
+  rpc DeleteToolGrant(DeleteToolGrantRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/agents/{agent_id}/tool-grants/{tool_key}"};
   }
   rpc UpsertToolAgentOverride(UpsertToolAgentOverrideRequest) returns (ToolAgentOverride) {
     option (google.api.http) = {

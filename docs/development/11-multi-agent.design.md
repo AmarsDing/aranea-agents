@@ -410,7 +410,7 @@ type Definition struct {
 
 | 表 | Schema 文件 | 关键字段 |
 |----|------------|----------|
-| `teams` | `team.go` | id, team_key (unique), display_name, status, is_default, kind, source, readonly, definition_json, adk_app_name, department_id, spirit_session_id, task_description, auto_created, dag_node_id, depends_on_json, parallel_config_json, topology, deliverables, input_contract, dept_lead_agent_id, cross_dept_member_ids, linked_graph_id, interrupt_reason, deleted_at |
+| `teams` | `team.go` | id, team_key (unique), display_name, status, is_default, kind, source, readonly, definition_json, adk_app_name, department_id, spirit_session_id, task_description, auto_created, dag_node_id, depends_on_json, parallel_config_json, topology, deliverables, input_contract, deliverables_output_json, dept_lead_agent_id, cross_dept_member_ids, linked_graph_id, interrupt_reason, deleted_at |
 | `team_runs` | `team_run.go` | id, team_id, session_id, message_id, mode, status, token_*, cost_micro_usd, duration_ms, topology_json, graph_execution_id, definition_snapshot_json, trace_id |
 | `team_run_steps` | `team_run_step.go` | id, run_id, team_id, agent_id, agent_key, agent_name, role, sort_order, status, token_*, tool_call_count, duration_ms |
 | `orchestration_steps` | `orchestration_step.go` | id, team_run_id, graph_execution_id, node_id, activity_snapshot_json, status, started_at, finished_at |

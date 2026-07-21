@@ -210,7 +210,7 @@ export function useProviderWizard(deps: {
 
   const dialogTitle = computed(() => {
     if (!deps.isProviderResource.value) return deps.editingId.value ? '编辑资源' : '新增资源';
-    return deps.editingId.value ? '编辑Provider' : '添加Provider';
+    return deps.editingId.value ? '编辑 Provider' : '添加 Provider';
   });
 
   const dialogSubtitle = computed(() => {
@@ -293,6 +293,24 @@ export function useProviderWizard(deps: {
     isProviderCodeValid,
   });
 
+  function clearStaleModelFields() {
+    Object.assign(providerForm, {
+      model_api_id: '',
+      model_display_name: '',
+      model_size_label: '',
+      context_window_k: null,
+      max_output_tokens: 4096,
+      input_price_usd_per_1m: 0,
+      output_price_usd_per_1m: 0,
+      cache_read_usd_per_1m: 0,
+      cache_write_usd_per_1m: 0,
+      reasoning_price_usd_per_1m: 0,
+      embedding_price_usd_per_1m: 0,
+      capability_chips: [],
+      model_category: [],
+    });
+  }
+
   async function applyProviderPreset(key: string) {
     const preset = findProviderPreset(key);
     if (!preset) return;
@@ -312,6 +330,11 @@ export function useProviderWizard(deps: {
         catalog.applyCatalogModel(pick.id);
       }
       return;
+    }
+    // 无 catalog 模型时，当前模型若不属于该预设则为残留数据，必须清空，
+    // 避免出现「ollama / claude-sonnet-4-5」这类跨供应商的错误组合
+    if (!preset.models.some((m) => m.id === providerForm.model_api_id)) {
+      clearStaleModelFields();
     }
     if (!providerForm.model_api_id && preset.models[0]) {
       providerForm.model_api_id = preset.models[0].id;

@@ -82,6 +82,7 @@
         :member-session="ms"
         @pause-agent="(sid) => $emit('pause-agent', sid)"
         @inject-agent="(p) => $emit('inject-agent', p)"
+        @confirm-step="(p) => $emit('confirm-step', p)"
       />
     </div>
   </div>
@@ -92,6 +93,7 @@ import { ref, computed, inject, watch, onMounted, onUnmounted, type Ref } from '
 import { useI18n } from 'vue-i18n';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import type { TeamRun } from '../../../features/chat/v2Types';
+import type { ConfirmStepPayload } from '../../../features/chat/types';
 import MemberSessionPanel from './MemberSessionPanel.vue';
 
 // Safe i18n wrapper
@@ -107,6 +109,7 @@ const props = defineProps<{ teamRun: TeamRun }>();
 defineEmits<{
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
+  'confirm-step': [payload: ConfirmStepPayload];
 }>();
 
 const { t } = useSafeI18n();

@@ -49,12 +49,40 @@ func TestDialect_JSONExtract(t *testing.T) {
 	}
 }
 
+// TestDialect_JSONBBase verifies the TEXT→jsonb normalization expression used
+// as the base for all JSON write helpers. All cross-dialect JSON columns are
+// TEXT (SQLite has no JSONB), so Postgres write helpers must cast the column
+// to jsonb before applying jsonb_set / the jsonb `-` operator — otherwise PG
+// raises 42883 ("function jsonb_set(text, unknown, jsonb) does not exist").
+// The COALESCE(NULLIF(col,'')...) guard tolerates NULL and empty-string rows.
+func TestDialect_JSONBBase(t *testing.T) {
+	tests := []struct {
+		dialect Dialect
+		col     string
+		want    string
+	}{
+		{DialectSQLite, "state_json", "COALESCE(state_json, '{}')"},
+		{DialectPostgres, "state_json", "COALESCE(NULLIF(state_json, '')::jsonb, '{}'::jsonb)"},
+		{DialectPostgres, "metadata_json", "COALESCE(NULLIF(metadata_json, '')::jsonb, '{}'::jsonb)"},
+	}
+	for _, tt := range tests {
+		if got := tt.dialect.JSONBBase(tt.col); got != tt.want {
+			t.Errorf("%s.JSONBBase(%q) = %q, want %q", tt.dialect, tt.col, got, tt.want)
+		}
+	}
+}
+
 // TestDialect_JSONSet verifies the Postgres branch emits the ::text cast on the
 // new-value placeholder. Without this cast, to_jsonb(anyelement) fails with
 // SQLSTATE 42804 ("could not determine polymorphic type because input type is
-// unknown") when the placeholder type is unknown. See internal/data/dialect.go
-// JSONSet doc comment for the full rationale.
+// unknown") when the placeholder type is unknown.
+//
+// Contract: on Postgres the input expr must already be jsonb-typed (produced
+// by JSONBBase or a previous jsonb_set). Passing a bare TEXT column is a
+// programming error (42883) — this is NOT re-guarded here so nested calls
+// stay cheap. See internal/data/dialect.go JSONSet doc comment.
 func TestDialect_JSONSet(t *testing.T) {
+	pgBase := DialectPostgres.JSONBBase("state_json")
 	tests := []struct {
 		dialect  Dialect
 		col      string
@@ -63,12 +91,17 @@ func TestDialect_JSONSet(t *testing.T) {
 		want     string
 	}{
 		{
-			DialectSQLite, "state_json", "run_id", "?",
-			"json_set(state_json, '$.run_id', ?)",
+			DialectSQLite, DialectSQLite.JSONBBase("state_json"), "run_id", "?",
+			"json_set(COALESCE(state_json, '{}'), '$.run_id', ?)",
 		},
 		{
-			DialectPostgres, "state_json", "run_id", "?",
-			"jsonb_set(state_json, '{run_id}', to_jsonb(?::text))",
+			DialectPostgres, pgBase, "run_id", "?",
+			"jsonb_set(COALESCE(NULLIF(state_json, '')::jsonb, '{}'::jsonb), '{run_id}', to_jsonb(?::text))",
+		},
+		{
+			// chained: input expr is the jsonb output of a previous jsonb_set
+			DialectPostgres, "jsonb_set(base, '{k}', to_jsonb(?::text))", "run_id", "?",
+			"jsonb_set(jsonb_set(base, '{k}', to_jsonb(?::text)), '{run_id}', to_jsonb(?::text))",
 		},
 	}
 	for _, tt := range tests {
@@ -80,11 +113,11 @@ func TestDialect_JSONSet(t *testing.T) {
 }
 
 // TestDialect_JSONSetMulti verifies that:
-//   - empty pairs returns the column unchanged (no wrapping);
+//   - empty pairs returns the input expr unchanged (no wrapping);
 //   - Postgres nests jsonb_set calls with ::text cast on each value placeholder;
 //   - SQLite builds a single json_set with '$.key' literals and value placeholders.
 func TestDialect_JSONSetMulti(t *testing.T) {
-	// empty pairs → column unchanged for both dialects
+	// empty pairs → expr unchanged for both dialects
 	if got := DialectSQLite.JSONSetMulti("state_json"); got != "state_json" {
 		t.Errorf("SQLite JSONSetMulti(empty) = %q, want %q", got, "state_json")
 	}
@@ -92,6 +125,7 @@ func TestDialect_JSONSetMulti(t *testing.T) {
 		t.Errorf("Postgres JSONSetMulti(empty) = %q, want %q", got, "state_json")
 	}
 
+	pgBase := DialectPostgres.JSONBBase("state_json")
 	tests := []struct {
 		dialect Dialect
 		col     string
@@ -104,9 +138,9 @@ func TestDialect_JSONSetMulti(t *testing.T) {
 			"json_set(state_json, '$.run_id', ?)",
 		},
 		{
-			DialectPostgres, "state_json",
+			DialectPostgres, pgBase,
 			[][2]string{{"run_id", "?"}},
-			"jsonb_set(state_json, '{run_id}', to_jsonb(?::text))",
+			"jsonb_set(COALESCE(NULLIF(state_json, '')::jsonb, '{}'::jsonb), '{run_id}', to_jsonb(?::text))",
 		},
 		{
 			DialectSQLite, "state_json",
@@ -114,9 +148,9 @@ func TestDialect_JSONSetMulti(t *testing.T) {
 			"json_set(state_json, '$.run_id', ?, '$.status', ?)",
 		},
 		{
-			DialectPostgres, "state_json",
+			DialectPostgres, pgBase,
 			[][2]string{{"run_id", "?"}, {"status", "?"}},
-			"jsonb_set(jsonb_set(state_json, '{run_id}', to_jsonb(?::text)), '{status}', to_jsonb(?::text))",
+			"jsonb_set(jsonb_set(COALESCE(NULLIF(state_json, '')::jsonb, '{}'::jsonb), '{run_id}', to_jsonb(?::text)), '{status}', to_jsonb(?::text))",
 		},
 	}
 	for _, tt := range tests {
@@ -132,6 +166,8 @@ func TestDialect_JSONSetMulti(t *testing.T) {
 // (same polymorphic-type reason as JSONSet); SQLite uses json_remove with a
 // '$.key' path arg. The (sqlExpr, arg) shape lets callers thread the arg into
 // their own args slice while embedding the expr into a larger UPDATE.
+//
+// Contract (same as JSONSet): on Postgres the input expr must be jsonb-typed.
 func TestDialect_JSONRemove(t *testing.T) {
 	tests := []struct {
 		dialect  Dialect
@@ -149,12 +185,12 @@ func TestDialect_JSONRemove(t *testing.T) {
 			"json_remove(json_set(state_json, '$.k', ?), ?)", "$.run_id",
 		},
 		{
-			DialectPostgres, "state_json", "run_id",
-			"state_json - ?::text", "run_id",
+			DialectPostgres, DialectPostgres.JSONBBase("state_json"), "run_id",
+			"COALESCE(NULLIF(state_json, '')::jsonb, '{}'::jsonb) - ?::text", "run_id",
 		},
 		{
-			DialectPostgres, "jsonb_set(state_json, '{k}', to_jsonb(?::text))", "run_id",
-			"jsonb_set(state_json, '{k}', to_jsonb(?::text)) - ?::text", "run_id",
+			DialectPostgres, "jsonb_set(base, '{k}', to_jsonb(?::text))", "run_id",
+			"jsonb_set(base, '{k}', to_jsonb(?::text)) - ?::text", "run_id",
 		},
 	}
 	for _, tt := range tests {
@@ -164,6 +200,43 @@ func TestDialect_JSONRemove(t *testing.T) {
 		}
 		if gotArg != tt.wantArg {
 			t.Errorf("%s.JSONRemove(%q, %q) arg = %q, want %q", tt.dialect, tt.expr, tt.key, gotArg, tt.wantArg)
+		}
+	}
+}
+
+// TestDialect_JSONRemoveMulti verifies multi-key removal for constant key sets:
+//   - empty keys returns the input expr unchanged;
+//   - SQLite builds a single json_remove with '$.key' path literals;
+//   - Postgres uses the jsonb `- text[]` operator (keys are developer-supplied
+//     constants, embedded as a text[] literal — never user input).
+func TestDialect_JSONRemoveMulti(t *testing.T) {
+	if got := DialectSQLite.JSONRemoveMulti("state_json"); got != "state_json" {
+		t.Errorf("SQLite JSONRemoveMulti(empty) = %q, want %q", got, "state_json")
+	}
+	if got := DialectPostgres.JSONRemoveMulti("state_json"); got != "state_json" {
+		t.Errorf("Postgres JSONRemoveMulti(empty) = %q, want %q", got, "state_json")
+	}
+
+	tests := []struct {
+		dialect Dialect
+		expr    string
+		keys    []string
+		want    string
+	}{
+		{
+			DialectSQLite, "COALESCE(metadata_json, '{}')",
+			[]string{"a", "b"},
+			"json_remove(COALESCE(metadata_json, '{}'), '$.a', '$.b')",
+		},
+		{
+			DialectPostgres, DialectPostgres.JSONBBase("metadata_json"),
+			[]string{"a", "b"},
+			"COALESCE(NULLIF(metadata_json, '')::jsonb, '{}'::jsonb) - '{a,b}'::text[]",
+		},
+	}
+	for _, tt := range tests {
+		if got := tt.dialect.JSONRemoveMulti(tt.expr, tt.keys...); got != tt.want {
+			t.Errorf("%s.JSONRemoveMulti(%q, %v) = %q, want %q", tt.dialect, tt.expr, tt.keys, got, tt.want)
 		}
 	}
 }

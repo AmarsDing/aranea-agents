@@ -56,7 +56,17 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 	if h.gate.pluginAllowWithoutChannel(toolKey, args.Arguments) {
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
-	if !h.gate.needsConfirm(toolKey, args.Arguments) {
+
+	sessionID := toolConfirmSessionID(ctx)
+	decision := h.gate.decide(ctx, sessionID, h.ag.ID, toolKey, args.Arguments)
+	if !decision.needsConfirm {
+		if decision.reason != confirmReasonDefaultAllow {
+			h.deps.Logger().Info("tool confirmation skipped by grant",
+				loggateway.StepID("agent.tool_confirm"),
+				loggateway.Str("tool", toolKey),
+				loggateway.Str("agent_id", h.ag.ID),
+				loggateway.Str("decision_reason", decision.reason))
+		}
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
 
@@ -119,7 +129,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 					AgentID:      h.ag.ID,
 					Status:       "blocked",
 					ErrorCode:    event.ErrorCodeConfirmationTimeout,
-					ErrorMessage: fmt.Sprintf("tool confirmation timed out after %s", defaultToolConfirmationTimeout),
+					ErrorMessage: fmt.Sprintf("tool confirmation timed out after %s (decision_reason=%s)", defaultToolConfirmationTimeout, decision.reason),
 					InputPreview: previewFromToolArgs(args.Arguments),
 					StartedAt:    time.Now().UTC().Format(time.RFC3339),
 					EndedAt:      time.Now().UTC().Format(time.RFC3339),
@@ -131,7 +141,16 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			return nil, fmt.Errorf("%s: awaiting user confirmation failed: %w", errToolConfirmationRequired, err)
 		}
 		if toolConfirmApproved(reply) {
+			// Grant side effects for grant-scoped approvals. The current
+			// invocation is always allowed; a failed grant write only means
+			// the next invocation prompts again (fail-closed).
+			h.applyGrantOutcome(ctx, sessionID, toolKey, reply)
 			metrics.PluginInvokeTotal.WithLabelValues("confirm_gate", "before_tool", "success").Inc()
+			h.deps.Logger().Info("tool confirmation approved",
+				loggateway.StepID("agent.tool_confirm"),
+				loggateway.Str("tool", toolKey),
+				loggateway.Str("agent_id", h.ag.ID),
+				loggateway.Str("decision_reason", decision.reason))
 			// P1-10: mark context so ConfirmationGuardPlugin skips its own
 			// check. Without this, the plugin (which runs after Chain
 			// callbacks via mergeToolCallbacks) would re-block the tool that
@@ -143,7 +162,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			AgentID:      h.ag.ID,
 			Status:       "blocked",
 			ErrorCode:    event.ErrorCodeConfirmationDenied,
-			ErrorMessage: "user denied tool confirmation",
+			ErrorMessage: fmt.Sprintf("user denied tool confirmation (decision_reason=%s)", decision.reason),
 			InputPreview: previewFromToolArgs(args.Arguments),
 			StartedAt:    time.Now().UTC().Format(time.RFC3339),
 			EndedAt:      time.Now().UTC().Format(time.RFC3339),
@@ -158,7 +177,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		AgentID:      h.ag.ID,
 		Status:       "blocked",
 		ErrorCode:    event.ErrorCodeConfirmationRequired,
-		ErrorMessage: "tool requires user confirmation before execution",
+		ErrorMessage: fmt.Sprintf("tool requires user confirmation before execution (decision_reason=%s)", decision.reason),
 		InputPreview: previewFromToolArgs(args.Arguments),
 		StartedAt:    time.Now().UTC().Format(time.RFC3339),
 		EndedAt:      time.Now().UTC().Format(time.RFC3339),
@@ -166,6 +185,63 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		ToolCallID:   args.ToolCallID,
 	}, nil, h.ag, h.deps)
 	return nil, fmt.Errorf("%s: tool %s requires user confirmation", errToolConfirmationRequired, toolKey)
+}
+
+// toolConfirmSessionID extracts the session ID from the invocation context.
+// Empty when no invocation/session is attached; grant lookups with an empty
+// session ID never match (fail-closed).
+func toolConfirmSessionID(ctx context.Context) string {
+	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil && inv.Session != nil {
+		return inv.Session.ID
+	}
+	return ""
+}
+
+// applyGrantOutcome records session-scoped / persisted grants when the user
+// approved with a grant scope. Grant write failures are logged but never
+// block the already-approved invocation (fail-closed: the next invocation
+// simply prompts again).
+func (h *toolConfirmationBeforeHook) applyGrantOutcome(ctx context.Context, sessionID, toolKey, reply string) {
+	outcome, structured := serviceawaitreply.ParseToolConfirmOutcome(reply)
+	if !structured {
+		return
+	}
+	switch outcome {
+	case serviceawaitreply.ToolConfirmOutcomeApproveSession:
+		if h.gate.sessionGrants != nil {
+			h.gate.sessionGrants.GrantSession(sessionID, h.ag.ID, toolKey)
+			h.deps.Logger().Info("session tool grant recorded",
+				loggateway.StepID("agent.tool_confirm"),
+				loggateway.Str("tool", toolKey),
+				loggateway.Str("agent_id", h.ag.ID),
+				loggateway.Str("decision_reason", confirmReasonGrantSession))
+		}
+	case serviceawaitreply.ToolConfirmOutcomeApproveAlways:
+		if h.deps.ToolUC == nil {
+			return
+		}
+		if err := h.deps.ToolUC.GrantTool(ctx, h.ag.ID, toolKey, toolConfirmUserID(ctx)); err != nil {
+			h.deps.Logger().Warn("persist tool grant failed",
+				loggateway.StepID("agent.tool_confirm"),
+				loggateway.Str("tool", toolKey),
+				loggateway.Str("agent_id", h.ag.ID),
+				loggateway.Err(err))
+			return
+		}
+		h.deps.Logger().Info("persisted tool grant recorded",
+			loggateway.StepID("agent.tool_confirm"),
+			loggateway.Str("tool", toolKey),
+			loggateway.Str("agent_id", h.ag.ID),
+			loggateway.Str("decision_reason", confirmReasonGrantPersisted))
+	}
+}
+
+// toolConfirmUserID returns the session user ID for grant audit attribution.
+func toolConfirmUserID(ctx context.Context) string {
+	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil && inv.Session != nil {
+		return inv.Session.UserID
+	}
+	return ""
 }
 
 // toolConfirmationBypass reports whether tool confirmation should be

@@ -222,8 +222,8 @@ func provideParallelToolExecutor(lg loggateway.Logger) *tools.ParallelToolExecut
 	return tools.NewParallelToolExecutor(nil, lg)
 }
 
-func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, tester biztool.ToolTester, checker biztool.WebResearchReadinessChecker, lg loggateway.Logger) *biztool.ToolUsecase {
-	return biztool.NewToolUsecase(repo, sys, lg, biztool.WithToolTester(tester), biztool.WithWebResearchChecker(checker))
+func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, tester biztool.ToolTester, checker biztool.WebResearchReadinessChecker, grants biztool.ToolGrantStore, lg loggateway.Logger) *biztool.ToolUsecase {
+	return biztool.NewToolUsecase(repo, sys, lg, biztool.WithToolTester(tester), biztool.WithWebResearchChecker(checker), biztool.WithToolGrantStore(grants))
 }
 
 // provideMCPServerUsecaseWithDeps injects prober and metadata editor via constructor.

@@ -1016,6 +1016,18 @@ func (f ToolAgentOverrideFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ToolAgentOverrideMutation", m)
 }
 
+// The ToolGrantFunc type is an adapter to allow the use of ordinary
+// function as ToolGrant mutator.
+type ToolGrantFunc func(context.Context, *ent.ToolGrantMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ToolGrantFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ToolGrantMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ToolGrantMutation", m)
+}
+
 // The ToolInvocationFunc type is an adapter to allow the use of ordinary
 // function as ToolInvocation mutator.
 type ToolInvocationFunc func(context.Context, *ent.ToolInvocationMutation) (ent.Value, error)

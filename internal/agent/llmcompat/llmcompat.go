@@ -45,6 +45,8 @@ type OpenAICompatMessage struct {
 	Role             string `json:"role"`
 	Content          string `json:"content,omitempty"`
 	ReasoningContent string `json:"reasoning_content,omitempty"`
+	// ContentParts 是多模态内容（图片等）；非空时优先于 Content 进入 trpc 请求。
+	ContentParts []trpcmodel.ContentPart `json:"-"`
 }
 
 func openAICompatToTRPCMessages(msgs []OpenAICompatMessage) []trpcmodel.Message {
@@ -62,6 +64,12 @@ func openAICompatToTRPCMessages(msgs []OpenAICompatMessage) []trpcmodel.Message 
 			}
 			out = append(out, msg)
 		default:
+			if len(m.ContentParts) > 0 {
+				msg := trpcmodel.NewUserMessage(body)
+				msg.ContentParts = m.ContentParts
+				out = append(out, msg)
+				continue
+			}
 			out = append(out, trpcmodel.NewUserMessage(body))
 		}
 	}

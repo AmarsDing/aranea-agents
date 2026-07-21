@@ -1159,6 +1159,19 @@ func (u *SpiritTeamUsecase) RecordTeamCompletion(ctx context.Context, team Team,
 	// Cancel timeout timer since team has completed.
 	u.CancelTimeoutTimer(team.ID)
 
+	// P0-②: persist deliverable output BEFORE any downstream scheduling reads
+	// it. Callers guarantee RecordTeamCompletion runs before
+	// ScheduleDependentTeams / PlanExecutor.NotifyTeamCompletion.
+	if team.DagNodeID != "" {
+		if werr := u.WriteDeliverablesToSession(ctx, team.ID); werr != nil {
+			u.lg.Warn("交付物落库失败（下游将回退到即时提取）",
+				loggateway.StepID("spirit.team.completion.deliverables"),
+				loggateway.Str("team_id", team.ID),
+				loggateway.Err(werr),
+			)
+		}
+	}
+
 	if u.orchCache == nil || team.DagNodeID == "" {
 		return 0, ""
 	}
@@ -1213,6 +1226,10 @@ type DependentTeamAction struct {
 	DagNodeID string
 	Action    string // "activate" or "fail"
 	Reason    string
+	// TaskDescription is the full input for the activated team's first turn:
+	// upstream deliverable prefix (if any) + the team's own task description.
+	// Empty for "fail" actions. (P0-③b)
+	TaskDescription string
 }
 
 // ScheduleDependentTeams resolves DAG dependencies after a team completes.
@@ -1284,11 +1301,19 @@ func (u *SpiritTeamUsecase) ScheduleDependentTeams(ctx context.Context, spiritSe
 			)
 			continue
 		}
+		// P0-③b: build the downstream team's first-turn input as
+		// upstream-deliverable prefix + its own task description, so the
+		// activated team receives structured upstream outputs.
+		taskDesc := t.TaskDescription
+		if prefix := u.InjectUpstreamDeliverables(ctx, *t); prefix != "" {
+			taskDesc = prefix + taskDesc
+		}
 		actions = append(actions, DependentTeamAction{
-			TeamID:    t.ID,
-			TeamName:  t.DisplayName,
-			DagNodeID: t.DagNodeID,
-			Action:    "activate",
+			TeamID:          t.ID,
+			TeamName:        t.DisplayName,
+			DagNodeID:       t.DagNodeID,
+			Action:          "activate",
+			TaskDescription: taskDesc,
 		})
 	}
 	return actions
@@ -1579,18 +1604,23 @@ func (u *SpiritTeamUsecase) resolveVerificationGates(ctx context.Context, t Team
 // XC-03b: Deliverable Passing Mechanism
 // ---------------------------------------------------------------------------
 
-// WriteDeliverablesToSession writes upstream team deliverables to the
-// Team's deliverables field so downstream teams can access them.
-// The deliverable content is extracted from the team output and stored
-// in the team record for downstream consumption.
+// WriteDeliverablesToSession persists the team's output summary into the
+// Team's DeliverablesOutput field (JSON object keyed by dag_node_id) so
+// downstream teams can consume it via InjectUpstreamDeliverables.
+//
+// The output is written for every completed DAG team (DagNodeID != ""),
+// regardless of whether formal DeliverableContracts are declared — contract
+// declarations are a P1 planner feature; the persisted output cache must work
+// without them (P0-② / TECH-DEBT #B-03 fix).
+//
 // Domain: Delivery — write upstream team deliverables to team record for downstream consumption.
 func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, teamID string) error {
 	t, err := u.teamUC.Get(ctx, teamID)
 	if err != nil {
 		return err
 	}
-	if t.Deliverables == "" || t.Deliverables == "[]" {
-		return nil // no deliverables defined
+	if t.DagNodeID == "" {
+		return nil // not a DAG node — nothing to key the output by
 	}
 
 	// Extract team output
@@ -1607,46 +1637,28 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 		return nil
 	}
 
-	// Store the deliverable content in the team's metadata
-	// so InjectUpstreamDeliverables can read it from the team record.
-	// We use the team's input_contract field to store the actual output
-	// for downstream consumption (the input_contract defines what the team
-	// expects, but after execution we store what it actually produced).
-	if t.InputContract == "" || t.InputContract == "[]" {
-		t.InputContract = "[]"
+	// Merge into the dedicated deliverables_output_json column.
+	outputs := make(map[string]string)
+	if t.DeliverablesOutput != "" && t.DeliverablesOutput != "{}" {
+		// Tolerate malformed JSON by starting fresh rather than failing the
+		// write — the cache is rebuilt below; a corrupt row must not block
+		// deliverable persistence for downstream teams.
+		if uerr := json.Unmarshal([]byte(t.DeliverablesOutput), &outputs); uerr != nil {
+			u.lg.Warn("交付物输出缓存 JSON 损坏，重建缓存",
+				loggateway.StepID("spirit.write_deliverables"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Err(uerr),
+			)
+			outputs = make(map[string]string)
+		}
 	}
-
-	// Write deliverable output to the team's metadata_json via update
-	// The actual content is stored as a JSON map keyed by dag_node_id
-	// for downstream retrieval.
-	u.lg.Info("团队交付物已就绪，可供下游团队消费",
-		loggateway.StepID("spirit.write_deliverables"),
-		loggateway.Str("team_id", teamID),
-		loggateway.Str("dag_node_id", t.DagNodeID),
-	)
-
-	// Persist the deliverable summary into the team record
-	// so InjectUpstreamDeliverables can read it.
-	// TODO(debt): TECH-DEBT(#B-03) — Deliverable outputs should be stored in a dedicated
-	// field or table, not in ParallelConfigJSON. Current approach overloads the semantics
-	// of this field and makes it harder to query deliverables independently.
-	// Planned fix: add a deliverables_output_json column to the teams table via Ent schema
-	// migration, then move all deliverable_output_* keys to that field.
-	deliverableKey := fmt.Sprintf("deliverable_output_%s", t.DagNodeID)
-	if t.ParallelConfigJSON == "" || t.ParallelConfigJSON == "{}" {
-		t.ParallelConfigJSON = "{}"
-	}
-	var parallelCfg map[string]any
-	if jsonErr := json.Unmarshal([]byte(t.ParallelConfigJSON), &parallelCfg); jsonErr != nil {
-		parallelCfg = make(map[string]any)
-	}
-	parallelCfg[deliverableKey] = summary
-	updatedJSON, marshalErr := json.Marshal(parallelCfg)
+	outputs[t.DagNodeID] = summary
+	updatedJSON, marshalErr := json.Marshal(outputs)
 	if marshalErr != nil {
 		return marshalErr
 	}
-	t.ParallelConfigJSON = string(updatedJSON)
-	_, err = u.teamUC.Update(ctx, t.ID, t)
+
+	_, err = u.teamUC.Update(ctx, t.ID, Team{DeliverablesOutput: string(updatedJSON)})
 	if err != nil {
 		u.lg.Warn("持久化交付物输出失败",
 			loggateway.StepID("spirit.write_deliverables"),
@@ -1655,6 +1667,11 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 		)
 		return err
 	}
+	u.lg.Info("团队交付物已落库，可供下游团队消费",
+		loggateway.StepID("spirit.write_deliverables"),
+		loggateway.Str("team_id", teamID),
+		loggateway.Str("dag_node_id", t.DagNodeID),
+	)
 	return nil
 }
 
@@ -1692,11 +1709,14 @@ func (u *SpiritTeamUsecase) InjectUpstreamDeliverables(ctx context.Context, down
 		// Try to read from persisted deliverable output cache first
 		summary := u.readDeliverableOutput(upstream)
 		if summary == "" {
-			// Fallback: extract from team output directly
-			summary, _, extractErr := u.ExtractTeamOutput(ctx, upstream.ID)
-			if extractErr != nil || summary == "" {
+			// Fallback: extract from team output directly. Note: use plain
+			// assignment (not :=) to avoid shadowing the outer summary —
+			// a previous := shadow made this fallback a no-op.
+			extracted, _, extractErr := u.ExtractTeamOutput(ctx, upstream.ID)
+			if extractErr != nil || extracted == "" {
 				continue
 			}
+			summary = extracted
 		}
 		deliverableParts = append(deliverableParts, fmt.Sprintf("## 上游团队: %s\n%s", upstream.DisplayName, summary))
 	}
@@ -1709,28 +1729,18 @@ func (u *SpiritTeamUsecase) InjectUpstreamDeliverables(ctx context.Context, down
 		strings.Join(deliverableParts, "\n\n"))
 }
 
-// readDeliverableOutput reads the persisted deliverable output from a team's
-// parallel_config_json deliverable_output_{dag_node_id} keys (written by WriteDeliverablesToSession).
-// TODO(debt): TECH-DEBT(#B-03) — See WriteDeliverablesToSession for field semantics concern.
-// Domain: Delivery — read persisted deliverable output from team's parallel_config_json cache.
+// readDeliverableOutput reads the persisted deliverable output from the team's
+// deliverables_output_json column (written by WriteDeliverablesToSession).
+// Domain: Delivery — read persisted deliverable output from team's deliverables_output_json cache.
 func (u *SpiritTeamUsecase) readDeliverableOutput(t Team) string {
-	if t.ParallelConfigJSON == "" || t.ParallelConfigJSON == "{}" {
+	if t.DeliverablesOutput == "" || t.DeliverablesOutput == "{}" {
 		return ""
 	}
-	var cfg map[string]any
-	if err := json.Unmarshal([]byte(t.ParallelConfigJSON), &cfg); err != nil {
+	var outputs map[string]string
+	if err := json.Unmarshal([]byte(t.DeliverablesOutput), &outputs); err != nil {
 		return ""
 	}
-	key := fmt.Sprintf("deliverable_output_%s", t.DagNodeID)
-	val, ok := cfg[key]
-	if !ok {
-		return ""
-	}
-	s, ok := val.(string)
-	if !ok {
-		return ""
-	}
-	return s
+	return outputs[t.DagNodeID]
 }
 
 // ---------------------------------------------------------------------------

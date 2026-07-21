@@ -1,5 +1,4 @@
 <template>
-  <!-- tool_blocked: expanded confirmation UI -->
   <div v-if="step.Status === 'tool_blocked'" class="confirm-block confirm-block--blocked">
     <div class="confirm-block__header">
       <span class="confirm-block__icon">⚠️</span>
@@ -15,23 +14,27 @@
       <pre class="confirm-block__code">{{ toolArgumentsJson }}</pre>
     </div>
     <div class="confirm-block__actions">
-      <button class="confirm-block__btn confirm-block__btn--approve" :disabled="confirming" @click="onApprove">
-        {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approve', '批准') }}
+      <button class="confirm-block__btn confirm-block__btn--approve" :disabled="confirming" @click="onConfirm(TOOL_CONFIRM_REPLY.approve)">
+        {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approve', '允许本次') }}
       </button>
-      <button class="confirm-block__btn confirm-block__btn--reject" :disabled="confirming" @click="onReject">
+      <button class="confirm-block__btn confirm-block__btn--reject" :disabled="confirming" @click="onConfirm(TOOL_CONFIRM_REPLY.deny)">
         {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.reject', '拒绝') }}
+      </button>
+      <button class="confirm-block__btn confirm-block__btn--approve-session" :disabled="confirming" @click="onConfirm(TOOL_CONFIRM_REPLY.approveSession)">
+        {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approveSession', '会话内始终允许') }}
+      </button>
+      <button class="confirm-block__btn confirm-block__btn--approve-always" :disabled="confirming" @click="onConfirm(TOOL_CONFIRM_REPLY.approveAlways)">
+        {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approveAlways', '始终允许') }}
       </button>
     </div>
   </div>
 
-  <!-- completed: collapsed approved -->
   <div v-else-if="step.Status === 'completed'" class="confirm-block confirm-block--approved">
     <span class="confirm-block__icon">✓</span>
     <span class="confirm-block__summary">{{ t('chat.confirm.approved', '已批准') }}</span>
     <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
   </div>
 
-  <!-- cancelled: collapsed rejected -->
   <div v-else-if="step.Status === 'cancelled'" class="confirm-block confirm-block--rejected">
     <span class="confirm-block__icon">✗</span>
     <span class="confirm-block__summary">{{ t('chat.confirm.rejected', '已拒绝') }}</span>
@@ -43,23 +46,22 @@
 import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Step } from '../../features/chat/v2Types';
+import { TOOL_CONFIRM_REPLY, type ToolConfirmReply, type ConfirmStepPayload } from '../../features/chat/types';
 
 const props = defineProps<{
   step: Step;
 }>();
 
 const emit = defineEmits<{
-  confirm: [activityId: string, approved: boolean];
+  confirm: [payload: ConfirmStepPayload];
 }>();
 
 const { t } = useI18n();
 
-// --- Confirm loading state ---
 const confirming = ref(false);
 const CONFIRM_TIMEOUT_MS = 15_000;
 let confirmTimer: ReturnType<typeof setTimeout> | null = null;
 
-// Reset confirming when step status changes (WebSocket will update status)
 watch(
   () => props.step.Status,
   () => {
@@ -71,7 +73,6 @@ watch(
   },
 );
 
-// --- Helpers ---
 const toolArgumentsJson = computed(() => {
   if (props.step.ToolArgs == null) return '';
   if (typeof props.step.ToolArgs === 'string') return props.step.ToolArgs;
@@ -82,22 +83,17 @@ const toolArgumentsJson = computed(() => {
   }
 });
 
-function onApprove() {
+function onConfirm(reply: ToolConfirmReply) {
   if (confirming.value) return;
   confirming.value = true;
   confirmTimer = setTimeout(() => {
     confirming.value = false;
   }, CONFIRM_TIMEOUT_MS);
-  emit('confirm', props.step.ID, true);
-}
-
-function onReject() {
-  if (confirming.value) return;
-  confirming.value = true;
-  confirmTimer = setTimeout(() => {
-    confirming.value = false;
-  }, CONFIRM_TIMEOUT_MS);
-  emit('confirm', props.step.ID, false);
+  emit('confirm', {
+    sessionId: props.step.SessionID,
+    activityId: props.step.ID,
+    reply,
+  });
 }
 </script>
 
@@ -106,14 +102,12 @@ function onReject() {
   border-radius: 8px
   font-size: 13px
 
-  // -- Blocked (waiting for confirmation) --
   &--blocked
     padding: 10px 12px
     background: color-mix(in srgb, var(--color-warning) 8%, transparent)
     border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)
     border-left: 3px solid var(--color-warning)
 
-  // -- Approved (collapsed) --
   &--approved
     display: flex
     align-items: center
@@ -122,7 +116,6 @@ function onReject() {
     border-left: 3px solid var(--color-success)
     background: var(--glass-surface)
 
-  // -- Rejected (collapsed) --
   &--rejected
     display: flex
     align-items: center
@@ -191,16 +184,18 @@ function onReject() {
 
   &__actions
     display: flex
-    gap: 8px
+    flex-wrap: wrap
+    gap: 6px
 
   &__btn
-    padding: 4px 14px
+    padding: 4px 12px
     border-radius: 6px
     border: none
     font-size: 12px
     font-weight: 500
     cursor: pointer
     transition: opacity 0.15s ease
+    white-space: nowrap
 
     &:hover
       opacity: 0.85
@@ -215,6 +210,14 @@ function onReject() {
 
     &--reject
       background: var(--color-danger)
+      color: var(--color-on-accent, #fff)
+
+    &--approve-session
+      background: var(--color-primary)
+      color: var(--color-on-accent, #fff)
+
+    &--approve-always
+      background: var(--color-accent)
       color: var(--color-on-accent, #fff)
 
   &__summary

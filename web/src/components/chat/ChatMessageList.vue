@@ -48,6 +48,7 @@
         @regenerate="(t) => $emit('regenerate-v2', t)"
         @pause-agent="(sid) => $emit('pause-agent', sid)"
         @inject-agent="(p) => $emit('inject-agent', p)"
+        @confirm-step="(p) => $emit('confirm-step', p)"
       />
     </div>
     <!--
@@ -112,7 +113,7 @@ import { useLocateTeamStage } from '../../features/chat/composables/useLocateTea
 import { useActivityQueries } from '../../features/chat/composables/useActivityQueries';
 import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 import { SYSTEM_NOTICE_TYPES } from '../../features/chat/noticeFilter';
-import type { Message, PendingMessage } from '../../features/chat/types';
+import type { Message, PendingMessage, ConfirmStepPayload } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { Step } from '../../features/chat/v2Types';
@@ -152,6 +153,7 @@ defineEmits<{
   'interrupt-pending': [pendingId: string];
   'update-pending': [pendingId: string, content: string];
   confirm: [activityId: string, approved: boolean];
+  'confirm-step': [payload: ConfirmStepPayload];
   'error-retry': [step: Step];
   'error-switch-model': [step: Step];
   'error-rephrase': [step: Step];

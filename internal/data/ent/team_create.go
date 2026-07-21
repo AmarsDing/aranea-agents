@@ -272,6 +272,20 @@ func (_c *TeamCreate) SetNillableInputContract(v *string) *TeamCreate {
 	return _c
 }
 
+// SetDeliverablesOutputJSON sets the "deliverables_output_json" field.
+func (_c *TeamCreate) SetDeliverablesOutputJSON(v string) *TeamCreate {
+	_c.mutation.SetDeliverablesOutputJSON(v)
+	return _c
+}
+
+// SetNillableDeliverablesOutputJSON sets the "deliverables_output_json" field if the given value is not nil.
+func (_c *TeamCreate) SetNillableDeliverablesOutputJSON(v *string) *TeamCreate {
+	if v != nil {
+		_c.SetDeliverablesOutputJSON(*v)
+	}
+	return _c
+}
+
 // SetDeptLeadAgentID sets the "dept_lead_agent_id" field.
 func (_c *TeamCreate) SetDeptLeadAgentID(v string) *TeamCreate {
 	_c.mutation.SetDeptLeadAgentID(v)
@@ -493,6 +507,10 @@ func (_c *TeamCreate) defaults() {
 		v := team.DefaultInputContract
 		_c.mutation.SetInputContract(v)
 	}
+	if _, ok := _c.mutation.DeliverablesOutputJSON(); !ok {
+		v := team.DefaultDeliverablesOutputJSON
+		_c.mutation.SetDeliverablesOutputJSON(v)
+	}
 	if _, ok := _c.mutation.DeptLeadAgentID(); !ok {
 		v := team.DefaultDeptLeadAgentID
 		_c.mutation.SetDeptLeadAgentID(v)
@@ -620,6 +638,9 @@ func (_c *TeamCreate) check() error {
 	}
 	if _, ok := _c.mutation.InputContract(); !ok {
 		return &ValidationError{Name: "input_contract", err: errors.New(`ent: missing required field "Team.input_contract"`)}
+	}
+	if _, ok := _c.mutation.DeliverablesOutputJSON(); !ok {
+		return &ValidationError{Name: "deliverables_output_json", err: errors.New(`ent: missing required field "Team.deliverables_output_json"`)}
 	}
 	if _, ok := _c.mutation.CrossDeptMemberIds(); !ok {
 		return &ValidationError{Name: "cross_dept_member_ids", err: errors.New(`ent: missing required field "Team.cross_dept_member_ids"`)}
@@ -757,6 +778,10 @@ func (_c *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.InputContract(); ok {
 		_spec.SetField(team.FieldInputContract, field.TypeString, value)
 		_node.InputContract = value
+	}
+	if value, ok := _c.mutation.DeliverablesOutputJSON(); ok {
+		_spec.SetField(team.FieldDeliverablesOutputJSON, field.TypeString, value)
+		_node.DeliverablesOutputJSON = value
 	}
 	if value, ok := _c.mutation.DeptLeadAgentID(); ok {
 		_spec.SetField(team.FieldDeptLeadAgentID, field.TypeString, value)
@@ -1067,6 +1092,18 @@ func (u *TeamUpsert) SetInputContract(v string) *TeamUpsert {
 // UpdateInputContract sets the "input_contract" field to the value that was provided on create.
 func (u *TeamUpsert) UpdateInputContract() *TeamUpsert {
 	u.SetExcluded(team.FieldInputContract)
+	return u
+}
+
+// SetDeliverablesOutputJSON sets the "deliverables_output_json" field.
+func (u *TeamUpsert) SetDeliverablesOutputJSON(v string) *TeamUpsert {
+	u.Set(team.FieldDeliverablesOutputJSON, v)
+	return u
+}
+
+// UpdateDeliverablesOutputJSON sets the "deliverables_output_json" field to the value that was provided on create.
+func (u *TeamUpsert) UpdateDeliverablesOutputJSON() *TeamUpsert {
+	u.SetExcluded(team.FieldDeliverablesOutputJSON)
 	return u
 }
 
@@ -1495,6 +1532,20 @@ func (u *TeamUpsertOne) SetInputContract(v string) *TeamUpsertOne {
 func (u *TeamUpsertOne) UpdateInputContract() *TeamUpsertOne {
 	return u.Update(func(s *TeamUpsert) {
 		s.UpdateInputContract()
+	})
+}
+
+// SetDeliverablesOutputJSON sets the "deliverables_output_json" field.
+func (u *TeamUpsertOne) SetDeliverablesOutputJSON(v string) *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetDeliverablesOutputJSON(v)
+	})
+}
+
+// UpdateDeliverablesOutputJSON sets the "deliverables_output_json" field to the value that was provided on create.
+func (u *TeamUpsertOne) UpdateDeliverablesOutputJSON() *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateDeliverablesOutputJSON()
 	})
 }
 
@@ -2109,6 +2160,20 @@ func (u *TeamUpsertBulk) SetInputContract(v string) *TeamUpsertBulk {
 func (u *TeamUpsertBulk) UpdateInputContract() *TeamUpsertBulk {
 	return u.Update(func(s *TeamUpsert) {
 		s.UpdateInputContract()
+	})
+}
+
+// SetDeliverablesOutputJSON sets the "deliverables_output_json" field.
+func (u *TeamUpsertBulk) SetDeliverablesOutputJSON(v string) *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetDeliverablesOutputJSON(v)
+	})
+}
+
+// UpdateDeliverablesOutputJSON sets the "deliverables_output_json" field to the value that was provided on create.
+func (u *TeamUpsertBulk) UpdateDeliverablesOutputJSON() *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateDeliverablesOutputJSON()
 	})
 }
 

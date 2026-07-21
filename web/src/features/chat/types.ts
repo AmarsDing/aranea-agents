@@ -116,6 +116,29 @@ export interface EnqueueUserMessageResult {
   pendingId: string;
 }
 
+/**
+ * Structured tool-confirmation reply tokens. Must stay in sync with the
+ * backend constants in internal/tools/serviceawaitreply/tool_confirm.go.
+ * Sent via ConfirmActivityRequest.reply; the backend derives the grant scope
+ * (once / session / persistent) from the token.
+ */
+export const TOOL_CONFIRM_REPLY = {
+  approve: '__aranea:tool_confirm:approve',
+  deny: '__aranea:tool_confirm:deny',
+  approveSession: '__aranea:tool_confirm:approve_session',
+  approveAlways: '__aranea:tool_confirm:approve_always',
+} as const;
+
+export type ToolConfirmReply = (typeof TOOL_CONFIRM_REPLY)[keyof typeof TOOL_CONFIRM_REPLY];
+
+/** Payload emitted by ConfirmBlock and forwarded up the v2 component chain. */
+export interface ConfirmStepPayload {
+  /** Session that owns the confirm activity (may be a member session). */
+  sessionId: string;
+  activityId: string;
+  reply: ToolConfirmReply;
+}
+
 export type ChatBackgroundJobRow = {
   id: string;
   source: string;

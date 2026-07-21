@@ -87,6 +87,7 @@ import (
 	"aranea-agents/internal/data/ent/teamrunv2"
 	"aranea-agents/internal/data/ent/teamstagev2"
 	"aranea-agents/internal/data/ent/toolagentoverride"
+	"aranea-agents/internal/data/ent/toolgrant"
 	"aranea-agents/internal/data/ent/toolinvocation"
 	"aranea-agents/internal/data/ent/toolinvocationaudit"
 	"aranea-agents/internal/data/ent/toolinvocationparam"
@@ -248,6 +249,7 @@ func checkColumn(t, c string) error {
 			teamrunv2.Table:                  teamrunv2.ValidColumn,
 			teamstagev2.Table:                teamstagev2.ValidColumn,
 			toolagentoverride.Table:          toolagentoverride.ValidColumn,
+			toolgrant.Table:                  toolgrant.ValidColumn,
 			toolinvocation.Table:             toolinvocation.ValidColumn,
 			toolinvocationaudit.Table:        toolinvocationaudit.ValidColumn,
 			toolinvocationparam.Table:        toolinvocationparam.ValidColumn,

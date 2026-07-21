@@ -1,6 +1,6 @@
 # Knowledge 知识库 — 开发计划
 
-> **版本**：2026-07-20 | **状态**：✅ Phase 1-7 已完成；📋 Phase 8（统一摄取管线-文本类）/ Phase 9（多模态入库）已设计待实施；Phase 10（GraphRAG 旁路）可选
+> **版本**：2026-07-21 | **状态**：✅ Phase 1-9 已完成（Phase 9 多模态入库：图片经 VisionExtractor 异步提取为 MD；真实视觉模型端到端待环境就位后复验）；Phase 10（GraphRAG 旁路）可选
 > **需求**：[37-knowledge.md](./37-knowledge.md) · **设计**：[37-knowledge.design.md](./37-knowledge.design.md)
 
 ---
@@ -27,7 +27,7 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 - `internal/knowledge/federated_retriever.go` — 跨 Collection 联邦搜索
 - `internal/knowledge/search_helpers.go` — 检索评估辅助
 - `internal/knowledge/llm_resolver.go` — LLM 模型解析
-- `internal/knowledge/ocr.go` — OCR 提供者接口（stub，KNOWLEDGE_OCR 环境变量）
+- `internal/knowledge/ocr.go` — OCR 提供者接口（⛔ 已废弃，由 Phase 9 VisionExtractor 取代）
 - `internal/knowledge/html_text.go` — HTML 文本剥离
 - `internal/knowledge/chunk_strategy.go` — trpc 高级分块桥接
 - `internal/knowledge/document_extract.go` — PDF/DOCX/HTML 文本提取
@@ -43,14 +43,17 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 - `web/src/stores/knowledge/index.ts` — 前端 Store
 - `web/src/features/knowledge/useKnowledgeIngestWs.ts` — 入库 WS 进度
 
-**Phase 8/9 计划新增（待实施）**：
-- `internal/knowledge/extractor.go` — Extractor 接口 + ExtractorRegistry 路由（📋）
-- `internal/knowledge/markdown_organizer.go` — LLM 整理为 Markdown（📋）
-- `internal/knowledge/vision_extractor.go` — 多模态 LLM 图片理解 → MD（📋 Phase 9）
-- `internal/service/knowledge_ingest_pipeline.go` — 摄取管线 Wire 工厂（📋）
-- `web/src/components/knowledge/KnowledgeDropZone.vue` — 拖拽上传区（📋）
-- `web/src/components/knowledge/KnowledgeUploadQueue.vue` — 批量上传队列（📋）
-- `web/src/components/knowledge/KnowledgeDocPreviewDialog.vue` — MD 全文预览（📋）
+**Phase 8 已新增（✅ 已完成）**：
+- `internal/knowledge/extractor.go` — Extractor 接口 + ExtractorRegistry 路由 + TextExtractor
+- `internal/knowledge/markdown_organizer.go` — LLM 整理为 Markdown（30s 超时，失败降级原文本）
+- `internal/service/knowledge_advanced.go` — MarkdownOrganizer Wire 工厂（`NewKnowledgeMarkdownOrganizer`）
+- `web/src/components/knowledge/KnowledgeDropZone.vue` — 拖拽上传区
+- `web/src/components/knowledge/KnowledgeUploadQueue.vue` — 批量上传队列
+- `web/src/components/knowledge/KnowledgeDocPreviewDialog.vue` — MD 全文预览
+
+**Phase 9 已落地（✅ 2026-07-21）**：
+- `internal/knowledge/vision_extractor.go` — 多模态 LLM 图片理解 → MD（60s 超时，无视觉模型时返回明确错误）
+- `internal/knowledge/asset_store.go` — 原图留存（`KRATOS_KNOWLEDGE_ASSET_DIR` env > `./data/knowledge_assets`）
 
 ---
 
@@ -86,11 +89,11 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | Plan-Then-Retrieve | ✅ | `agent/knowledge_inject.go`（BeforeModel 钩子注入 Collection 摘要） |
 | 联邦搜索 Route 策略 | ✅ | `federated_retriever.go`（`SearchWithOptions` + `routeCollections`） |
 | AgenticFilter | ❌ | 未实现 |
-| OCR / Extractor | 📋 重设计 | 2026-07-20 裁决：多模态 LLM 视觉路线取代 tesseract/docling；统一 Extractor 抽象（设计 §5.2/§9.4），Phase 8/9 待实施 |
-| 拖拽批量上传 | 📋 | 前端无 drop zone；KnowledgeDropZone/UploadQueue 已设计待实施 |
-| 整理为 Markdown | 📋 | MarkdownOrganizer 已设计（设计 §5.2b），待实施 |
-| content_text 预览 | 📋 | Schema 加列 + GetDocumentContent RPC 已设计，待实施 |
-| OOXML 上传守卫 | ⚠️ bug | `http.DetectContentType` 对 DOCX/XLSX/PPTX 返回 `application/zip` 被白名单误拒，需二次判定（设计 §7.2） |
+| OCR / Extractor | ✅ Phase 8/9 | 2026-07-20 裁决：多模态 LLM 视觉路线取代 tesseract/docling；统一 Extractor 抽象（设计 §5.2/§9.4）。TextExtractor + ExtractorRegistry（`extractor.go`）+ VisionExtractor（`vision_extractor.go`）均已落地 |
+| 拖拽批量上传 | ✅ | KnowledgeDropZone/UploadQueue 已实现，多文件逐任务状态展示 |
+| 整理为 Markdown | ✅ | MarkdownOrganizer 已落地（设计 §5.2b），30s 超时 + 失败降级原文本 |
+| content_text 预览 | ✅ | Schema 加列 + GetDocumentContent RPC + KnowledgeDocPreviewDialog 已实现 |
+| OOXML 上传守卫 | ✅ 已修复 | `resolveIngestMIMEAllowed` 声明 MIME + 扩展名二次判定，DOCX/XLSX/PPTX 不再被 `application/zip` 误拒（设计 §7.2） |
 | Reranker | ✅ | `KRATOS_KNOWLEDGE_RERANKER`（topk/cohere/infinity） |
 | 多租户隔离 | ❌ | 未实现 |
 | code_search 工具 | ❌ | 未实现 |
@@ -129,13 +132,13 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | G14 | code_search 工具 | P3 | 代码语义搜索 |
 | G15 | SourceSync 增量同步 | P3 | 数据源自动增量更新 |
 
-### 3.4 统一摄取管线（2026-07-20 设计，待实施）
+### 3.4 统一摄取管线（2026-07-20 设计；Phase 8/9 已落地）
 
 | 编号 | 差距 | 优先级 | 说明 | Phase |
 |------|------|--------|------|-------|
-| G16 | 文本类拖拽上传 + LLM 整理为 MD + content_text 预览 | P1 | Extractor 抽象 + MarkdownOrganizer + 前端 DropZone/Queue + OOXML 守卫修复 | 8 |
-| G17 | 多模态图片入库 | P2 | VisionExtractor（多模态 LLM）+ image/* 白名单 + asset_uri 血缘 | 9 |
-| G18 | 知识关联图谱（GraphRAG） | P3 可选 | 旁路非侵入：异步从 chunks 构建实体/关系，不嵌入摄取主链路（用户裁决，设计 §9.6） | 10 |
+| G16 | 文本类拖拽上传 + LLM 整理为 MD + content_text 预览 | P1 | Extractor 抽象 + MarkdownOrganizer + 前端 DropZone/Queue + OOXML 守卫修复 | 8 ✅ |
+| G17 | 多模态图片入库 | P2 | VisionExtractor（多模态 LLM）+ image/* 白名单 + asset_uri 血缘 + 异步提取回写 | 9 ✅ |
+| G18 | 知识关联图谱（GraphRAG） | P3 可选 | 旁路非侵入：异步从 chunks 构建实体/关系，不嵌入摄取主链路（用户裁决，设计 §9.6） | 10 ⏸ |
 
 ---
 
@@ -178,33 +181,38 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | code_search 工具 | 新建 `internal/tools/knowledge/code_search.go` | ❌ |
 | SourceSync 增量同步 | 新建 `internal/knowledge/sync.go` | ❌ |
 
-### Phase 8：统一摄取管线（文本类）— 📋 已设计待实施
+### Phase 8：统一摄取管线（文本类）— ✅ 已完成
 
 > 设计：[37-knowledge.design.md §5.2/§5.2b/§7.2](./37-knowledge.design.md) | 需求：US-12
 
 | 任务 | 涉及文件 | 状态 |
 |------|----------|------|
-| Extractor 接口 + ExtractorRegistry 路由；TextExtractor 收编现有提取逻辑（摘除图片分支） | `internal/knowledge/extractor.go`（新增）、`document_extract.go`、`ocr.go`（废弃 stub） | 📋 |
-| MarkdownOrganizer（LLM 整理为 MD，30s 超时，失败降级原文本） | `internal/knowledge/markdown_organizer.go`（新增） | 📋 |
-| Proto：`organize_to_markdown` 字段 + `GetDocumentContent` RPC | `api/kratos/knowledge/v1/knowledge.proto` + `make api` | 📋 |
-| Schema：`content_text`/`organized`/`asset_uri` 列（幂等 ALTER） | `internal/data/knowledge.go`（EnsureKnowledgeSchema） | 📋 |
-| Biz：Document 模型加字段（CreateDocument 写入 / GetDocument 读出） | `internal/biz/knowledge/knowledge.go`、`internal/data/knowledge.go` | 📋 |
-| Service：IngestDocument 接线 Extract+Organize；OOXML 守卫二次判定；GetDocumentContent 实现 | `internal/service/knowledge.go` | 📋 |
-| Wire：ExtractorRegistry + MarkdownOrganizer 工厂 | `internal/service/knowledge_ingest_pipeline.go`（新增）、`cmd/admin/wire.go` | 📋 |
-| 前端：DropZone 拖拽区 + UploadQueue 批量队列 + api.ts 参数 | `KnowledgeDropZone.vue`/`KnowledgeUploadQueue.vue`（新增）、`KnowledgeDocumentsPanel.vue`、`api.ts` | 📋 |
-| 前端：MD 全文预览对话框 | `KnowledgeDocPreviewDialog.vue`（新增）、`api.ts`（getDocumentContent） | 📋 |
+| Extractor 接口 + ExtractorRegistry 路由；TextExtractor 收编现有提取逻辑（摘除图片分支） | `internal/knowledge/extractor.go`（新增）、`document_extract.go`、`ocr.go`（废弃 stub） | ✅ |
+| MarkdownOrganizer（LLM 整理为 MD，30s 超时，失败降级原文本） | `internal/knowledge/markdown_organizer.go`（新增） | ✅ |
+| Proto：`organize_to_markdown` 字段 + `GetDocumentContent` RPC | `api/kratos/knowledge/v1/knowledge.proto` + `make api` | ✅ |
+| Schema：`content_text`/`organized`/`asset_uri` 列（幂等 ALTER） | `internal/data/knowledge.go`（EnsureKnowledgeSchema） | ✅ |
+| Biz：Document 模型加字段（CreateDocument 写入 / GetDocument 读出） | `internal/biz/knowledge/knowledge.go`、`internal/data/knowledge.go` | ✅ |
+| Service：IngestDocument 接线 Extract+Organize；OOXML 守卫二次判定；GetDocumentContent 实现 | `internal/service/knowledge.go` | ✅ |
+| Wire：MarkdownOrganizer 工厂（`NewKnowledgeMarkdownOrganizer`） | `internal/service/knowledge_advanced.go`、`cmd/admin/wire.go` | ✅ |
+| 前端：DropZone 拖拽区 + UploadQueue 批量队列 + api.ts 参数 | `KnowledgeDropZone.vue`/`KnowledgeUploadQueue.vue`（新增）、`KnowledgeDocumentsPanel.vue`、`api.ts` | ✅ |
+| 前端：MD 全文预览对话框 | `KnowledgeDocPreviewDialog.vue`（新增）、`api.ts`（getDocumentContent） | ✅ |
 
-### Phase 9：多模态入库（图片）— 📋 已设计待实施
+### Phase 9：多模态入库（图片）— ✅ 已完成（2026-07-21）
 
 > 设计：[37-knowledge.design.md §5.2c](./37-knowledge.design.md) | 需求：US-13
 
 | 任务 | 涉及文件 | 状态 |
 |------|----------|------|
-| VisionExtractor（多模态 LLM 图片 → MD 描述，实现 Extractor 接口） | `internal/knowledge/vision_extractor.go`（新增） | 📋 |
-| 白名单放开 image/png、image/jpeg、image/webp | `internal/service/knowledge.go` | 📋 |
-| 原图留存 + asset_uri 血缘 | asset 存储目录、`internal/data/knowledge.go` | 📋 |
-| metadata 写入 modality/extractor 标记 | `internal/service/knowledge.go`（IngestDocument） | 📋 |
-| 前端：图片预览回链（可选增强） | `KnowledgeDocumentsPanel.vue` | 📋 |
+| VisionExtractor（多模态 LLM 图片 → MD 描述，实现 Extractor 接口） | `internal/knowledge/vision_extractor.go`（新增） | ✅ |
+| 白名单放开 image/png、image/jpeg、image/webp | `internal/service/knowledge.go` | ✅ |
+| 原图留存 + asset_uri 血缘 | `internal/knowledge/asset_store.go`（新增）、`internal/data/knowledge.go` | ✅ |
+| metadata 写入 modality/extractor 标记 | `internal/service/knowledge.go`（mergeIngestMetadata） | ✅ |
+| 图片异步提取：先落文档 + 后台 VisionExtractor + UpdateDocumentContent 回写（NFR-12 失败 status=error） | `internal/service/knowledge.go`、`internal/biz/knowledge/knowledge.go`、`internal/data/knowledge.go` | ✅ |
+| Wire：ExtractorRegistry + AssetStore 工厂 | `internal/service/knowledge_advanced.go`、`cmd/admin/wire_gen.go` | ✅ |
+| 前端：放开图片上传（accept/MIME 白名单/i18n） | `useKnowledgePage.ts`、`KnowledgeDropZone.vue`、`KnowledgeIngestDialog.vue`、locales | ✅ |
+| 前端：图片预览回链（可选增强） | `KnowledgeDocumentsPanel.vue` | 📋 可选 |
+
+> **架构决策（2026-07-21）**：图片入库采用「先落文档 + 后台异步提取」而非同步提取——视觉 LLM 调用最长 60s，同步会阻塞 HTTP；失败置 `status=error`（NFR-12），与 indexing → indexed/error 状态流一致。新增 `UpdateDocumentContent` Repo/Usecase 接口用于提取完成后回写 `content_text`/`organized`。
 
 ### Phase 10：GraphRAG 旁路（可选）— 暂缓
 
@@ -243,16 +251,17 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | 23 | 跨 Collection 联邦搜索 | P1 | — | 6 ✅ |
 | 24 | Plan-Then-Retrieve | P1 | — | 6 ✅ |
 | 25 | 联邦搜索 Route 策略 | P2 | — | 6 ✅ |
-| 26 | Extractor 接口 + Registry + TextExtractor 收编 | P1 | — | 8 📋 |
-| 27 | MarkdownOrganizer（LLM 整理为 MD + 降级） | P1 | — | 8 📋 |
-| 28 | Proto `organize_to_markdown` + `GetDocumentContent` RPC | P1 | — | 8 📋 |
-| 29 | Schema content_text/organized/asset_uri 列 | P1 | — | 8 📋 |
-| 30 | IngestDocument 接线 + OOXML 守卫二次判定修复 | P1 | — | 8 📋 |
-| 31 | 摄取管线 Wire 工厂 | P1 | — | 8 📋 |
-| 32 | 前端拖拽区 + 批量上传队列 | P1 | — | 8 📋 |
-| 33 | 前端 MD 全文预览 | P2 | — | 8 📋 |
-| 34 | VisionExtractor（多模态 LLM 图片 → MD） | P2 | — | 9 📋 |
-| 35 | image/* 白名单放开 + 原图 asset_uri 血缘 | P2 | — | 9 📋 |
+| 26 | Extractor 接口 + Registry + TextExtractor 收编 | P1 | — | 8 ✅ |
+| 27 | MarkdownOrganizer（LLM 整理为 MD + 降级） | P1 | — | 8 ✅ |
+| 28 | Proto `organize_to_markdown` + `GetDocumentContent` RPC | P1 | — | 8 ✅ |
+| 29 | Schema content_text/organized/asset_uri 列 | P1 | — | 8 ✅ |
+| 30 | IngestDocument 接线 + OOXML 守卫二次判定修复 | P1 | — | 8 ✅ |
+| 31 | 摄取管线 Wire 工厂 | P1 | — | 8 ✅ |
+| 32 | 前端拖拽区 + 批量上传队列 | P1 | — | 8 ✅ |
+| 33 | 前端 MD 全文预览 | P2 | — | 8 ✅ |
+| 34 | VisionExtractor（多模态 LLM 图片 → MD） | P2 | — | 9 ✅ |
+| 35 | image/* 白名单放开 + 原图 asset_uri 血缘 | P2 | — | 9 ✅ |
+| 35b | 图片异步提取 + UpdateDocumentContent 回写 | P2 | — | 9 ✅ |
 | 36 | GraphRAG 旁路构建（可选，非侵入） | P3 | — | 10 ⏸ |
 
 ---
@@ -286,21 +295,23 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 - [ ] 不同租户搜索不到彼此的知识
 - [ ] Agent 可调用 code_search 工具
 
-### Phase 8 — 📋 待实施（统一摄取管线·文本类）
+### Phase 8 — ✅ 已完成（统一摄取管线·文本类）
 
-- [ ] 前端拖拽区域可一次拖入多个文本/Office 文件，逐文件生成上传任务并实时展示状态
-- [ ] txt/md/json/csv/html/xml/yaml + pdf/doc/docx/xlsx/pptx 均可正确提取文本（DOCX/XLSX/PPTX 不再被 `application/zip` 误拒）
-- [ ] 默认开启整理为 Markdown：提取文本经 LLM 结构化后按 markdown 策略分块入库
-- [ ] LLM 不可用/整理失败时降级原文本入库，文档正常 indexed
-- [ ] 整理后 MD 全文写入 `content_text`，`GetDocumentContent` RPC + 前端预览可用
-- [ ] 拖入图片返回明确错误提示（多模态未上线），不静默失败
+- [x] 前端拖拽区域可一次拖入多个文本/Office 文件，逐文件生成上传任务并实时展示状态
+- [x] txt/md/json/csv/html/xml/yaml + pdf/doc/docx/xlsx/pptx 均可正确提取文本（DOCX/XLSX/PPTX 不再被 `application/zip` 误拒）
+- [x] 默认开启整理为 Markdown：提取文本经 LLM 结构化后按 markdown 策略分块入库
+- [x] LLM 不可用/整理失败时降级原文本入库，文档正常 indexed
+- [x] 整理后 MD 全文写入 `content_text`，`GetDocumentContent` RPC + 前端预览可用
+- [x] 拖入图片返回明确错误提示（多模态未上线），不静默失败
 
-### Phase 9 — 📋 待实施（多模态入库）
+### Phase 9 — ✅ 已完成（多模态入库）
 
-- [ ] png/jpg/jpeg/webp 图片拖入后经多模态 LLM 输出 MD 描述入库，可被语义搜索命中
-- [ ] 原始图片留存，Document `asset_uri` 血缘可追
-- [ ] 文档 metadata 含 modality/extractor 标记，检索结果与文本文档无差别
-- [ ] 未配置多模态 LLM 时图片上传返回明确错误（status=error）
+- [x] png/jpg/jpeg/webp 图片拖入后经多模态 LLM 输出 MD 描述入库，可被语义搜索命中（代码链路完成 + 单测覆盖；真实视觉模型端到端命中待环境就位后复验）
+- [x] 原始图片留存，Document `asset_uri` 血缘可追（已运行时验证：`data/knowledge_assets/{docID}.{ext}` 落盘）
+- [x] 文档 metadata 含 modality/extractor 标记，检索结果与文本文档无差别
+- [x] 未配置多模态 LLM 时图片上传返回明确错误（status=error）（已运行时验证：`no vision-capable LLM available for vision extract; enable a vision model in the catalog or configure DefaultRefineLLM`）
+
+> **运行时验证记录（2026-07-21）**：① 图片上传 13ms 异步返回（非阻塞）✅；② 无视觉模型时文档 status=error + 明确错误信息 ✅；③ 原图留存落盘 ✅；④ 文本类回归（.md 提取 + content_text 预览）无回归 ✅。验证环境无视觉模型与 embedder，「图片 → MD → 向量命中」全链路需在配置视觉模型（如 gpt-4o / qwen-vl）+ embedder 后复验。
 
 ### Phase 10 — ⏸ 可选（GraphRAG 旁路）
 
@@ -399,8 +410,8 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 | 优先级 | 问题 | 说明 |
 |--------|------|------|
-| P1 | 统一摄取管线 Phase 8 | Extractor 抽象 + MarkdownOrganizer + 拖拽上传 + OOXML 守卫修复（G16） |
-| P2 | 多模态入库 Phase 9 | VisionExtractor 多模态 LLM 路线（G17）；原 tesseract/docling OCR 方案废弃 |
+| ~~P1~~ | ~~统一摄取管线 Phase 8~~ | ✅ 已完成：Extractor 抽象 + MarkdownOrganizer + 拖拽上传 + OOXML 守卫修复（G16） |
+| ~~P2~~ | ~~多模态入库 Phase 9~~ | ✅ 已完成（2026-07-21）：VisionExtractor 多模态 LLM 路线（G17）+ 异步提取 + 原图 asset_uri 血缘；原 tesseract/docling OCR 方案废弃 |
 | P2 | ListChunks/ReindexDocument/UpdateDocument RPC | 运维调试不便（KB-17）；content_text 列已为 Reindex 铺路 |
 | P3 | AgenticFilter | 集成 trpc `searchfilter` |
 | P3 | 多租户知识库隔离 | tenant_id 分区 |

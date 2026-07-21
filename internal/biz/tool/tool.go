@@ -348,6 +348,7 @@ type ToolUsecase struct {
 	sys           SettingRepo
 	tester        ToolTester
 	webResChecker WebResearchReadinessChecker
+	grants        ToolGrantStore
 	lg            loggateway.Logger
 }
 

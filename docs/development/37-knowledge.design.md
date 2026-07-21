@@ -4,6 +4,7 @@
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
 > **2026-06-17 校准**：与实际代码对齐；修正 Embedder 接口/结构体（`Embedder` 为接口，`MultiProviderEmbedder` 为实现）、修正构造函数签名（补充 `lg loggateway.Logger` 参数）、修正 `knowledge_embed_setting.go` 引用（实际逻辑在 `knowledge/knowledge.go` 的 `ApplyEmbedPatch`）、补充 Reranker、Embedder Admin API、摄取 WS 事件、`ingest.go` 流水线拆分、Advanced RAG（查询重写/混合检索/自适应路由/检索评估）、Agentic RAG（联邦搜索/knowledge_reflect 工具）、OCR stub、BM25 双路检索、Biz 子包迁移、KnowledgeSearchDeps 聚合、GraphRAG/Skill Knowledge 待实现设计。
 > **2026-07-20 升级**：统一摄取管线设计——Extractor 接口抽象（§5.2）收编文本提取、MarkdownOrganizer（§5.2b，LLM 整理为 MD）、VisionExtractor（§5.2c，Phase 2 多模态）、`knowledge_documents` 新增 content_text/organized/asset_uri 列、Proto 新增 `organize_to_markdown` 字段与 `GetDocumentContent` RPC、OOXML magic 二次判定修复、前端拖拽批量上传、GraphRAG 裁决为 Phase 3 旁路非侵入可选增强。
+> **2026-07-21 校准（Phase 9 实现）**：图片改「先落文档 + 后台异步提取」（§5.2c/§7.2）——VisionExtractor 在摄取 goroutine 内执行，成功后经新增 `DocumentRepo.UpdateDocumentContent` 回写 content_text/organized；原图留存落地为 `AssetStore`（`internal/knowledge/asset_store.go`）；Wire 工厂 `NewKnowledgeExtractorRegistry`/`NewKnowledgeAssetStore` 就位（§7.3）。
 
 ---
 
@@ -328,11 +329,14 @@ type DocumentRepo interface {
     CreateDocument(ctx context.Context, d Document) (Document, error)
     GetDocument(ctx context.Context, id string) (Document, error)
     UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error
+    // UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
+    UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error
     ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
     DeleteDocument(ctx context.Context, id string) error
 }
 
-// 注：content_text/organized/asset_uri 随 CreateDocument 写入、GetDocument 读出（预览），无新增 Repo 方法。
+// 注：content_text/organized/asset_uri 随 CreateDocument 写入、GetDocument 读出（预览）；
+// 图片异步提取完成后经 UpdateDocumentContent 回写 content_text/organized（2026-07-21 新增）。
 
 type ChunkRepo interface {
     InsertChunks(ctx context.Context, chunks []Chunk) error
@@ -617,6 +621,13 @@ func (v *VisionExtractor) Extract(ctx context.Context, raw []byte, source, mimeT
 - 未配置多模态模型时返回明确错误（NFR-12），文档状态 `error`。
 - 原始图片留存：写入 asset 存储（本地目录），Document 记录 `asset_uri` 血缘。
 - 替代原 `ocr.go` stub 路线（tesseract/docling 不再作为 OCR 依赖；docling 仅留作 PDF 版面保真的后续独立增强）。
+
+**异步提取流程（2026-07-21 实现裁决）**：
+- 图片走「先落文档 + 后台提取」：HTTP 立即返回 `status=pending` 的文档记录（含 `asset_uri` 血缘），视觉 LLM 提取在摄取 goroutine 内执行——与文本类的 chunk/embed 同一异步上下文，不阻塞请求（视觉调用最长 60s）。
+- 提取成功后先经 `DocumentRepo.UpdateDocumentContent(id, contentText, organized=true)` 回写正文（`GetDocumentContent` 预览可用），再走统一 chunk/embed 流程；下游与文本类完全同构。
+- 提取失败（无视觉模型 / LLM 调用失败 / 空响应）置 `status=error` + 明确 `error_message`（NFR-12），与 indexing → indexed/error 状态流一致。
+- 视觉模型解析顺序：catalog 中声明 Vision 能力的启用模型 → 回退 `DefaultRefineLLM`；两者皆无则返回明确错误。
+- 原图留存：创建文档前写入 asset 存储（`KRATOS_KNOWLEDGE_ASSET_DIR` env > `./data/knowledge_assets/{docID}.{ext}`），失败仅降级跳过血缘不阻塞入库。
 
 ### 5.3 Embedder（internal/knowledge/embedder.go）
 
@@ -1072,22 +1083,25 @@ Search(req)
 ### 7.2 异步摄取流程
 
 > **2026-07-20 升级**：统一摄取管线（模态无关主干）。Extract 经 ExtractorRegistry 路由，文本类与多模态归一为 Markdown 后共用下游。
+> **2026-07-21 校准**：图片提取从同步前移到摄取 goroutine 内（视觉 LLM 最长 60s，同步会阻塞 HTTP），详见 §5.2c「异步提取流程」。
 
 ```
 IngestDocument(req)
   ├── base64.Decode → 大小/MIME 守卫（OOXML 二次判定）
-  ├── ExtractorRegistry.Extract(source/mime)        ← TextExtractor / VisionExtractor(Phase 2)
   ├── NormalizeMetadataJSON（合并 modality/extractor 标记）
-  ├── organize_to_markdown != false ?
-  │   └── MarkdownOrganizer.Organize() → md + organized   ← 失败降级原文本（NFR-11）
+  ├── 文本类：ExtractorRegistry.Extract（同步，本地解析快，失败即 400 不落孤儿文档）
+  │   └── organize_to_markdown != false ?
+  │       └── MarkdownOrganizer.Organize() → md + organized   ← 失败降级原文本（NFR-11）
+  ├── 图片：跳过同步提取；AssetStore.Save 原图留存（asset_uri 血缘，失败仅降级跳过）
   ├── uc.CreateDocument(status=pending) + content_text/organized 持久化
-  └── safego.Go → BuildIndexedChunks(strategy=markdown, EmbedBatch) → InsertChunks
+  └── safego.Go → [图片：VisionExtractor.Extract → UpdateDocumentContent 回写；失败 status=error（NFR-12）]
+                → BuildIndexedChunks(strategy=markdown, EmbedBatch) → InsertChunks
 ```
 
 **设计决策**：
 - 整理成功（`organized=true`）时强制 `ChunkByMarkdown` 分块（按标题层级），检索质量最优；降级时沿用请求策略。
 - `content_text` 在 `CreateDocument` 时同步写入（摄取失败也保留提取结果，便于诊断）；`GetDocumentContent` RPC 供前端预览。
-- 图片上传在 Phase 2 前由守卫明确拒绝（提示多模态未上线），不静默失败。
+- 图片 `content_text` 初始为空，视觉提取成功后经 `UpdateDocumentContent` 回写（§5.2c）；提取失败置 `status=error` 不回写。
 - OOXML 守卫：`http.DetectContentType` 对 DOCX/XLSX/PPTX 返回 `application/zip`，白名单命中 `application/zip` 时按请求 `mime_type`/扩展名二次判定，避免 Office 文件被误拒。
 
 **错误处理**：任何步骤失败 → `UpdateDocumentStatus(error, errMsg)` → goroutine 退出。
@@ -1098,16 +1112,16 @@ IngestDocument(req)
 // internal/service/wire_providers.go — Chunker 默认 512/64 char
 // internal/service/knowledge_embedder.go — NewKnowledgeEmbedder(c *conf.Data, sys, lg)
 // internal/service/knowledge_retriever.go — NewKnowledgeRetriever(emb, repo, lg)
-// internal/service/knowledge_advanced.go — Advanced RAG 组件工厂（6 个 Provider）
+// internal/service/knowledge_advanced.go — Advanced RAG 组件工厂
 //   - NewKnowledgeHybridRetriever(retriever, sparse, lg)
 //   - NewKnowledgeQueryRewriter(llm, sys, catalog, lg)
 //   - NewKnowledgeAdaptiveRouter(hybrid, rewriter, lg)
 //   - NewKnowledgeRetrievalEvaluator(llm, sys, catalog, lg)
 //   - NewKnowledgeFederatedRetriever(router, retriever, uc, lg)
 //   - ProvideKnowledgeSearchDeps(retriever, router, evaluator) → KnowledgeSearchDeps
-// internal/service/knowledge_ingest_pipeline.go — 统一摄取管线 Wire 工厂（新增）
-//   - NewExtractorRegistry(llm, sys, catalog, lg) → ExtractorRegistry（TextExtractor + Phase 2 VisionExtractor）
 //   - NewKnowledgeMarkdownOrganizer(llm, sys, catalog, lg) → MarkdownOrganizer（LLM 不可用时返回 nil）
+//   - NewKnowledgeExtractorRegistry(llm, sys, catalog, lg) → ExtractorRegistry（VisionExtractor 优先 + TextExtractor）
+//   - NewKnowledgeAssetStore(lg) → AssetStore（KRATOS_KNOWLEDGE_ASSET_DIR env > ./data/knowledge_assets）
 ```
 
 **Wire 依赖链**：

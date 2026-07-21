@@ -6,10 +6,30 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
+	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
 )
+
+// resolveConfirmReply maps the ConfirmActivity request to the reply token
+// sent through the await channel. A structured reply token (grant-scoped
+// approve/deny) takes precedence over the legacy approved flag so the
+// runtime confirmation gate can record the grant scope.
+func resolveConfirmReply(reqApproved bool, reqReply string) (token string, approved bool, err error) {
+	reqReply = strings.TrimSpace(reqReply)
+	if reqReply == "" {
+		if reqApproved {
+			return "approved", true, nil
+		}
+		return "rejected", false, nil
+	}
+	outcome, structured := serviceawaitreply.ParseToolConfirmOutcome(reqReply)
+	if !structured {
+		return "", false, apierror.BadRequest(apierror.DomainChat, "unknown confirm reply token")
+	}
+	return reqReply, outcome.Approved(), nil
+}
 
 // ConfirmActivity handles user approval/rejection of a tool-blocked confirm Activity.
 // It loads the Activity from DB, validates kind=confirm + status=tool_blocked,

@@ -37,6 +37,10 @@ type (
 	ToolUsecase              = tool.ToolUsecase
 	ToolTestResult           = tool.ToolTestResult
 	ToolSettingRepo          = tool.SettingRepo
+	ToolGrant                = tool.ToolGrant
+	ToolGrantReader          = tool.ToolGrantReader
+	ToolGrantWriter          = tool.ToolGrantWriter
+	ToolGrantStore           = tool.ToolGrantStore
 	WebResearchReadinessFunc = tool.WebResearchReadinessFunc
 )
 

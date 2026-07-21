@@ -152,6 +152,7 @@
           @interrupt-pending="(id) => emit('interrupt-pending', id)"
           @update-pending="(id, content) => emit('update-pending', id, content)"
           @confirm="(id, approved) => emit('confirm-activity', id, approved)"
+          @confirm-step="(p) => emit('confirm-activity-grant', p)"
           @error-retry="(e) => emit('error-retry', e)"
           @error-switch-model="(e) => emit('error-switch-model', e)"
           @error-rephrase="(e) => emit('error-rephrase', e)"
@@ -285,7 +286,7 @@ import { useTodoBoard } from '../../features/chat/composables/useTodoBoard';
 import { useChatMessageScroll, useChatCodeCopy } from '../../features/chat/composables/useChatMessageScroll';
 import { useChatScrollTitle } from '../../features/chat/useChatScrollTitle';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
-import type { Message } from '../../features/chat/types';
+import type { Message, ConfirmStepPayload, TOOL_CONFIRM_REPLY } from '../../features/chat/types';
 import type { PromptBreakdown } from '../../features/chat/contextBreakdown';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { ChatAttachment } from './types';
@@ -414,6 +415,7 @@ const emit = defineEmits<{
   'status-bar-click-interrupted': [];
   'toggle-tool-calls': [];
   'confirm-activity': [activityId: string, approved: boolean];
+  'confirm-activity-grant': [payload: ConfirmStepPayload];
   'error-retry': [step: Step];
   'error-switch-model': [step: Step];
   'error-rephrase': [step: Step];

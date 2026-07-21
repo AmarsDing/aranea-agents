@@ -88,6 +88,7 @@ import (
 	"aranea-agents/internal/data/ent/teamrunv2"
 	"aranea-agents/internal/data/ent/teamstagev2"
 	"aranea-agents/internal/data/ent/toolagentoverride"
+	"aranea-agents/internal/data/ent/toolgrant"
 	"aranea-agents/internal/data/ent/toolinvocation"
 	"aranea-agents/internal/data/ent/toolinvocationaudit"
 	"aranea-agents/internal/data/ent/toolinvocationparam"
@@ -199,6 +200,7 @@ const (
 	TypeTeamRunV2                  = "TeamRunV2"
 	TypeTeamStageV2                = "TeamStageV2"
 	TypeToolAgentOverride          = "ToolAgentOverride"
+	TypeToolGrant                  = "ToolGrant"
 	TypeToolInvocation             = "ToolInvocation"
 	TypeToolInvocationAudit        = "ToolInvocationAudit"
 	TypeToolInvocationParam        = "ToolInvocationParam"
@@ -93197,40 +93199,41 @@ func (m *TaskV2Mutation) ResetEdge(name string) error {
 // TeamMutation represents an operation that mutates the Team nodes in the graph.
 type TeamMutation struct {
 	config
-	op                    Op
-	typ                   string
-	id                    *string
-	team_key              *string
-	display_name          *string
-	status                *string
-	is_default            *bool
-	definition_json       *string
-	adk_app_name          *string
-	department_id         *string
-	spirit_session_id     *string
-	task_description      *string
-	auto_created          *bool
-	dag_node_id           *string
-	depends_on_json       *string
-	parallel_config_json  *string
-	topology              *string
-	readonly              *bool
-	kind                  *team.Kind
-	source                *team.Source
-	deliverables          *string
-	input_contract        *string
-	dept_lead_agent_id    *string
-	cross_dept_member_ids *string
-	linked_graph_id       *string
-	interrupt_reason      *string
-	created_at            *string
-	updated_at            *string
-	deleted_at            *string
-	workspace_id          *string
-	clearedFields         map[string]struct{}
-	done                  bool
-	oldValue              func(context.Context) (*Team, error)
-	predicates            []predicate.Team
+	op                       Op
+	typ                      string
+	id                       *string
+	team_key                 *string
+	display_name             *string
+	status                   *string
+	is_default               *bool
+	definition_json          *string
+	adk_app_name             *string
+	department_id            *string
+	spirit_session_id        *string
+	task_description         *string
+	auto_created             *bool
+	dag_node_id              *string
+	depends_on_json          *string
+	parallel_config_json     *string
+	topology                 *string
+	readonly                 *bool
+	kind                     *team.Kind
+	source                   *team.Source
+	deliverables             *string
+	input_contract           *string
+	deliverables_output_json *string
+	dept_lead_agent_id       *string
+	cross_dept_member_ids    *string
+	linked_graph_id          *string
+	interrupt_reason         *string
+	created_at               *string
+	updated_at               *string
+	deleted_at               *string
+	workspace_id             *string
+	clearedFields            map[string]struct{}
+	done                     bool
+	oldValue                 func(context.Context) (*Team, error)
+	predicates               []predicate.Team
 }
 
 var _ ent.Mutation = (*TeamMutation)(nil)
@@ -94021,6 +94024,42 @@ func (m *TeamMutation) ResetInputContract() {
 	m.input_contract = nil
 }
 
+// SetDeliverablesOutputJSON sets the "deliverables_output_json" field.
+func (m *TeamMutation) SetDeliverablesOutputJSON(s string) {
+	m.deliverables_output_json = &s
+}
+
+// DeliverablesOutputJSON returns the value of the "deliverables_output_json" field in the mutation.
+func (m *TeamMutation) DeliverablesOutputJSON() (r string, exists bool) {
+	v := m.deliverables_output_json
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeliverablesOutputJSON returns the old "deliverables_output_json" field's value of the Team entity.
+// If the Team object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamMutation) OldDeliverablesOutputJSON(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeliverablesOutputJSON is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeliverablesOutputJSON requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeliverablesOutputJSON: %w", err)
+	}
+	return oldValue.DeliverablesOutputJSON, nil
+}
+
+// ResetDeliverablesOutputJSON resets all changes to the "deliverables_output_json" field.
+func (m *TeamMutation) ResetDeliverablesOutputJSON() {
+	m.deliverables_output_json = nil
+}
+
 // SetDeptLeadAgentID sets the "dept_lead_agent_id" field.
 func (m *TeamMutation) SetDeptLeadAgentID(s string) {
 	m.dept_lead_agent_id = &s
@@ -94382,7 +94421,7 @@ func (m *TeamMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TeamMutation) Fields() []string {
-	fields := make([]string, 0, 27)
+	fields := make([]string, 0, 28)
 	if m.team_key != nil {
 		fields = append(fields, team.FieldTeamKey)
 	}
@@ -94439,6 +94478,9 @@ func (m *TeamMutation) Fields() []string {
 	}
 	if m.input_contract != nil {
 		fields = append(fields, team.FieldInputContract)
+	}
+	if m.deliverables_output_json != nil {
+		fields = append(fields, team.FieldDeliverablesOutputJSON)
 	}
 	if m.dept_lead_agent_id != nil {
 		fields = append(fields, team.FieldDeptLeadAgentID)
@@ -94510,6 +94552,8 @@ func (m *TeamMutation) Field(name string) (ent.Value, bool) {
 		return m.Deliverables()
 	case team.FieldInputContract:
 		return m.InputContract()
+	case team.FieldDeliverablesOutputJSON:
+		return m.DeliverablesOutputJSON()
 	case team.FieldDeptLeadAgentID:
 		return m.DeptLeadAgentID()
 	case team.FieldCrossDeptMemberIds:
@@ -94573,6 +94617,8 @@ func (m *TeamMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldDeliverables(ctx)
 	case team.FieldInputContract:
 		return m.OldInputContract(ctx)
+	case team.FieldDeliverablesOutputJSON:
+		return m.OldDeliverablesOutputJSON(ctx)
 	case team.FieldDeptLeadAgentID:
 		return m.OldDeptLeadAgentID(ctx)
 	case team.FieldCrossDeptMemberIds:
@@ -94730,6 +94776,13 @@ func (m *TeamMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetInputContract(v)
+		return nil
+	case team.FieldDeliverablesOutputJSON:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeliverablesOutputJSON(v)
 		return nil
 	case team.FieldDeptLeadAgentID:
 		v, ok := value.(string)
@@ -94913,6 +94966,9 @@ func (m *TeamMutation) ResetField(name string) error {
 		return nil
 	case team.FieldInputContract:
 		m.ResetInputContract()
+		return nil
+	case team.FieldDeliverablesOutputJSON:
+		m.ResetDeliverablesOutputJSON()
 		return nil
 	case team.FieldDeptLeadAgentID:
 		m.ResetDeptLeadAgentID()
@@ -101108,6 +101164,500 @@ func (m *ToolAgentOverrideMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *ToolAgentOverrideMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown ToolAgentOverride edge %s", name)
+}
+
+// ToolGrantMutation represents an operation that mutates the ToolGrant nodes in the graph.
+type ToolGrantMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	agent_id      *string
+	tool_key      *string
+	granted_by    *string
+	created_at    *string
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*ToolGrant, error)
+	predicates    []predicate.ToolGrant
+}
+
+var _ ent.Mutation = (*ToolGrantMutation)(nil)
+
+// toolgrantOption allows management of the mutation configuration using functional options.
+type toolgrantOption func(*ToolGrantMutation)
+
+// newToolGrantMutation creates new mutation for the ToolGrant entity.
+func newToolGrantMutation(c config, op Op, opts ...toolgrantOption) *ToolGrantMutation {
+	m := &ToolGrantMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeToolGrant,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withToolGrantID sets the ID field of the mutation.
+func withToolGrantID(id string) toolgrantOption {
+	return func(m *ToolGrantMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ToolGrant
+		)
+		m.oldValue = func(ctx context.Context) (*ToolGrant, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ToolGrant.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withToolGrant sets the old ToolGrant of the mutation.
+func withToolGrant(node *ToolGrant) toolgrantOption {
+	return func(m *ToolGrantMutation) {
+		m.oldValue = func(context.Context) (*ToolGrant, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ToolGrantMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ToolGrantMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ToolGrant entities.
+func (m *ToolGrantMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ToolGrantMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ToolGrantMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ToolGrant.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetAgentID sets the "agent_id" field.
+func (m *ToolGrantMutation) SetAgentID(s string) {
+	m.agent_id = &s
+}
+
+// AgentID returns the value of the "agent_id" field in the mutation.
+func (m *ToolGrantMutation) AgentID() (r string, exists bool) {
+	v := m.agent_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentID returns the old "agent_id" field's value of the ToolGrant entity.
+// If the ToolGrant object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ToolGrantMutation) OldAgentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentID: %w", err)
+	}
+	return oldValue.AgentID, nil
+}
+
+// ResetAgentID resets all changes to the "agent_id" field.
+func (m *ToolGrantMutation) ResetAgentID() {
+	m.agent_id = nil
+}
+
+// SetToolKey sets the "tool_key" field.
+func (m *ToolGrantMutation) SetToolKey(s string) {
+	m.tool_key = &s
+}
+
+// ToolKey returns the value of the "tool_key" field in the mutation.
+func (m *ToolGrantMutation) ToolKey() (r string, exists bool) {
+	v := m.tool_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldToolKey returns the old "tool_key" field's value of the ToolGrant entity.
+// If the ToolGrant object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ToolGrantMutation) OldToolKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldToolKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldToolKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldToolKey: %w", err)
+	}
+	return oldValue.ToolKey, nil
+}
+
+// ResetToolKey resets all changes to the "tool_key" field.
+func (m *ToolGrantMutation) ResetToolKey() {
+	m.tool_key = nil
+}
+
+// SetGrantedBy sets the "granted_by" field.
+func (m *ToolGrantMutation) SetGrantedBy(s string) {
+	m.granted_by = &s
+}
+
+// GrantedBy returns the value of the "granted_by" field in the mutation.
+func (m *ToolGrantMutation) GrantedBy() (r string, exists bool) {
+	v := m.granted_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGrantedBy returns the old "granted_by" field's value of the ToolGrant entity.
+// If the ToolGrant object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ToolGrantMutation) OldGrantedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGrantedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGrantedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGrantedBy: %w", err)
+	}
+	return oldValue.GrantedBy, nil
+}
+
+// ResetGrantedBy resets all changes to the "granted_by" field.
+func (m *ToolGrantMutation) ResetGrantedBy() {
+	m.granted_by = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ToolGrantMutation) SetCreatedAt(s string) {
+	m.created_at = &s
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ToolGrantMutation) CreatedAt() (r string, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ToolGrant entity.
+// If the ToolGrant object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ToolGrantMutation) OldCreatedAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ToolGrantMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the ToolGrantMutation builder.
+func (m *ToolGrantMutation) Where(ps ...predicate.ToolGrant) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ToolGrantMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ToolGrantMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ToolGrant, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ToolGrantMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ToolGrantMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ToolGrant).
+func (m *ToolGrantMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ToolGrantMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.agent_id != nil {
+		fields = append(fields, toolgrant.FieldAgentID)
+	}
+	if m.tool_key != nil {
+		fields = append(fields, toolgrant.FieldToolKey)
+	}
+	if m.granted_by != nil {
+		fields = append(fields, toolgrant.FieldGrantedBy)
+	}
+	if m.created_at != nil {
+		fields = append(fields, toolgrant.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ToolGrantMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case toolgrant.FieldAgentID:
+		return m.AgentID()
+	case toolgrant.FieldToolKey:
+		return m.ToolKey()
+	case toolgrant.FieldGrantedBy:
+		return m.GrantedBy()
+	case toolgrant.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ToolGrantMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case toolgrant.FieldAgentID:
+		return m.OldAgentID(ctx)
+	case toolgrant.FieldToolKey:
+		return m.OldToolKey(ctx)
+	case toolgrant.FieldGrantedBy:
+		return m.OldGrantedBy(ctx)
+	case toolgrant.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ToolGrant field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ToolGrantMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case toolgrant.FieldAgentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentID(v)
+		return nil
+	case toolgrant.FieldToolKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetToolKey(v)
+		return nil
+	case toolgrant.FieldGrantedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGrantedBy(v)
+		return nil
+	case toolgrant.FieldCreatedAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ToolGrant field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ToolGrantMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ToolGrantMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ToolGrantMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ToolGrant numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ToolGrantMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ToolGrantMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ToolGrantMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown ToolGrant nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ToolGrantMutation) ResetField(name string) error {
+	switch name {
+	case toolgrant.FieldAgentID:
+		m.ResetAgentID()
+		return nil
+	case toolgrant.FieldToolKey:
+		m.ResetToolKey()
+		return nil
+	case toolgrant.FieldGrantedBy:
+		m.ResetGrantedBy()
+		return nil
+	case toolgrant.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ToolGrant field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ToolGrantMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ToolGrantMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ToolGrantMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ToolGrantMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ToolGrantMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ToolGrantMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ToolGrantMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ToolGrant unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ToolGrantMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ToolGrant edge %s", name)
 }
 
 // ToolInvocationMutation represents an operation that mutates the ToolInvocation nodes in the graph.

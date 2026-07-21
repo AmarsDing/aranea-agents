@@ -407,6 +407,8 @@ service ToolService {
 | GET | `/v1/agents/{agent_id}/tool-overrides` | 查询 Agent 的工具覆盖列表 |
 | PUT | `/v1/tools/{tool_id}/agent-overrides/{agent_id}` | 创建/更新 Agent 工具覆盖 |
 | DELETE | `/v1/tools/{tool_id}/agent-overrides/{agent_id}` | 删除 Agent 工具覆盖 |
+| GET | `/v1/agents/{agent_id}/tool-grants` | 查询 Agent 的持久化工具授权列表 |
+| DELETE | `/v1/agents/{agent_id}/tool-grants/{tool_key}` | 撤销 Agent 的工具授权 |
 | PUT | `/v1/tools/{id}/config` | 更新工具配置（`config_json` 必填） |
 | POST | `/v1/tools/{id}/test` | 在线测试工具 |
 
@@ -1749,7 +1751,50 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 | 确认门控 | `tool_confirm_gate` 同时匹配 `shell_exec` 与 `exec_command`（runtime alias） |
 | Prompt | `RuntimeCapabilityCue` 表述默认 cwd=工作区 |
 
-#### 7.8.5 与 Electron / App 打包
+#### 7.8.5 工具授权决策链
+
+基于 Grok 的 8 级决策链借鉴，实现三层授权机制：
+
+**决策链顺序**：
+
+```
+1. 默认允许（catalog/plugin 均不需要确认）→ 直接执行
+2. 持久化授权（persisted grant）→ 直接执行（记录 decision_reason）
+3. 会话授权（session grant）→ 直接执行（记录 decision_reason）
+4. catalog 需要确认 → 弹窗提示（记录 decision_reason）
+5. plugin 需要确认 → 弹窗提示（记录 decision_reason）
+```
+
+**授权类型**：
+
+| 类型 | 存储 | 生命周期 | 作用域 |
+|------|------|---------|--------|
+| 单次批准 | 无 | 当前工具调用 | (agentID, toolKey) |
+| 会话授权 | 内存（sync.Map） | 会话结束 | (sessionID, agentID, toolKey) |
+| 持久化授权 | 数据库（tool_grants 表） | 跨会话 | (agentID, toolKey) |
+
+**关键文件**：
+
+| 文件 | 职责 |
+|------|------|
+| `internal/tools/serviceawaitreply/tool_confirm.go` | 四态确认回复常量（approve/deny/approve_session/approve_always） |
+| `internal/agent/tool_grant_store.go` | 会话级授权存储（TTL 惰性清理） |
+| `internal/data/ent/schema/tool_grant.go` | 持久化授权 Schema |
+| `internal/data/tool_grant.go` | 持久化授权 Repo 实现 |
+| `internal/biz/tool/tool_grant.go` | 持久化授权 Biz 层 |
+| `internal/agent/tool_confirm_gate.go` | 决策链核心逻辑（decide 方法） |
+| `internal/agent/tool_confirmation.go` | 确认回复处理与授权副作用 |
+
+**前端四按钮确认卡片**：
+
+| 按钮 | 回复 Token | 授权效果 |
+|------|-----------|---------|
+| 允许本次 | `__aranea:tool_confirm:approve` | 仅批准当前调用 |
+| 拒绝 | `__aranea:tool_confirm:deny` | 拒绝并取消工具执行 |
+| 会话内始终允许 | `__aranea:tool_confirm:approve_session` | 批准 + 会话级授权 |
+| 始终允许 | `__aranea:tool_confirm:approve_always` | 批准 + 持久化授权 |
+
+#### 7.8.6 与 Electron / App 打包
 
 App 壳、Electron 打包 **不在本模块范围**（曾起草编号 53 文档，**不实施**）。工作区路径仍通过系统设置 / 环境变量 / Tool 配置注入，与是否 Electron 无关。
 

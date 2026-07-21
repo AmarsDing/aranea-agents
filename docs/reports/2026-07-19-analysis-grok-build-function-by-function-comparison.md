@@ -1424,14 +1424,14 @@ Idle → Locked → Settling(500ms) → Completed{head_changed} → Cooldown(500
 
 ### P2 — 中期优化（2-4 周）
 
-| # | 功能 | 来源模块 | 收益 | 改动范围 |
-|---|------|---------|------|---------|
-| 11 | **权限决策链** | workspace | 更细粒度的工具权限控制 | `tool_confirmation.go` |
-| 12 | **Wire/Domain 类型分离** | tool-protocol | 协议演进不破坏内部代码 | `biz/activity_event.go` |
-| 13 | **会话 rewind** | workspace | 支持回退到任意 turn | `session.go` |
-| 14 | **前端流式渲染优化** | markdown | 长流式回复渲染性能 | 前端 Markdown 组件 |
-| 15 | **滑动窗口熔断器** | circuit-breaker | 避免低流量误熔断 | `circuit_breaker_transport.go` |
-| 16 | **MCP 凭证端点隔离** | memory | 增强 MCP 安全性 | `biz/mcp.go` |
+| # | 功能 | 来源模块 | 收益 | 改动范围 | 实施状态 |
+|---|------|---------|------|---------|---------|
+| 11 | **权限决策链** | workspace | 更细粒度的工具权限控制 | `tool_confirmation.go` | |
+| 12 | **Wire/Domain 类型分离** | tool-protocol | 协议演进不破坏内部代码 | `biz/activity_event.go` | ✅ 已完成（2026-07-20，`internal/server/ws_v2_wire.go` + `ws_v2_wire_convert.go` 显式 wire 类型与转换，38 事件 golden 字节一致 + key 契约 + fail-closed；WS v2 通道不再直接序列化领域事件） |
+| 13 | **会话 rewind** | workspace | 支持回退到任意 turn | `session.go` | |
+| 14 | **前端流式渲染优化** | markdown | 长流式回复渲染性能 | 前端 Markdown 组件 | ✅ 已完成（2026-07-19，块级冻结 + DOM 分段渲染 + 代码高亮 memo，安全网测试锁定与全量渲染一致） |
+| 15 | **滑动窗口熔断器** | circuit-breaker | 避免低流量误熔断 | `circuit_breaker_transport.go` | |
+| 16 | **MCP 凭证端点隔离** | memory | 增强 MCP 安全性 | `biz/mcp.go` | |
 
 ### 无需借鉴 — Aranea 已领先或不适用
 

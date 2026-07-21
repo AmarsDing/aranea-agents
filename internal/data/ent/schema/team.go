@@ -41,6 +41,7 @@ func (Team) Fields() []ent.Field {
 		// organization redesign: deliverable contract + dept lead + cross-dept members
 		field.Text("deliverables").Default("[]").Comment("deliverable definitions JSON"),
 		field.Text("input_contract").Default("[]").Comment("input contract JSON (expected from upstream teams)"),
+		field.Text("deliverables_output_json").Default("{}").Comment("deliverable outputs JSON object keyed by dag_node_id (written on team completion for downstream consumption)"),
 		field.String("dept_lead_agent_id").Default("").Optional().Comment("department lead Agent ID for this team (inherited from department by default)"),
 		field.Text("cross_dept_member_ids").Default("[]").Comment("cross-department member Agent ID list JSON"),
 		field.String("linked_graph_id").Default("").Optional().Comment("FK to graph_definitions(id); bidirectional reference with graph.team_id"),

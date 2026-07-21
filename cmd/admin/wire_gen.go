@@ -186,7 +186,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	settingRepo := biz.NewToolSettingRepo(systemSettingRepo)
 	toolTester := provideToolTester(loggatewayLogger)
 	toolWebResearchReadinessChecker := provideWebResearchReadinessChecker()
-	toolUsecase := provideToolUsecaseWithDeps(toolRepo, settingRepo, toolTester, toolWebResearchReadinessChecker, loggatewayLogger)
+	toolGrantRepo := data.NewToolGrantRepo(dataData)
+	toolUsecase := provideToolUsecaseWithDeps(toolRepo, settingRepo, toolTester, toolWebResearchReadinessChecker, toolGrantRepo, loggatewayLogger)
 	plugintrpcRuntime := providePluginRuntime(statsRecorder, costGuardUsageRepo, toolUsecase, deliveryRepo, monitorBus, loggatewayLogger)
 	resolver := hook.NewResolver(hookUsecase, loggatewayLogger)
 	manager := providePluginManager(plugintrpcRuntime, resolver, agentRepository, loggatewayLogger)
@@ -434,7 +435,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	serviceArtifactService := service.NewArtifactService(artifactUsecase, signer, sessionWorkspaceLookup)
 	knowledgeSearchDeps := service.ProvideKnowledgeSearchDeps(retriever, adaptiveRouter, retrievalEvaluator)
 	markdownOrganizer := service.NewKnowledgeMarkdownOrganizer(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
-	knowledgeService := service.NewKnowledgeService(knowledgeUsecase, multiProviderEmbedder, knowledgeSearchDeps, markdownOrganizer, v2Bus, systemSettingRepo, loggatewayLogger)
+	extractorRegistry := service.NewKnowledgeExtractorRegistry(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
+	assetStore := service.NewKnowledgeAssetStore(loggatewayLogger)
+	knowledgeService := service.NewKnowledgeService(knowledgeUsecase, multiProviderEmbedder, knowledgeSearchDeps, markdownOrganizer, extractorRegistry, assetStore, v2Bus, systemSettingRepo, loggatewayLogger)
 	evaluationRepo := data.NewEvalRepoFromData(dataData)
 	evaluationUsecase := evaluation.NewUsecase(evaluationRepo, loggatewayLogger)
 	evaluationRunner := service.ProvideEvaluationRunner(chatService, chatService, evaluationUsecase, llmProviderModelUsecase, systemSettingRepo, loggatewayLogger)
@@ -711,8 +714,8 @@ func provideParallelToolExecutor(lg loggateway.Logger) *tools.ParallelToolExecut
 	return tools.NewParallelToolExecutor(nil, lg)
 }
 
-func provideToolUsecaseWithDeps(repo tool.ToolRepo, sys tool.SettingRepo, tester tool.ToolTester, checker tool.WebResearchReadinessChecker, lg loggateway.Logger) *tool.ToolUsecase {
-	return tool.NewToolUsecase(repo, sys, lg, tool.WithToolTester(tester), tool.WithWebResearchChecker(checker))
+func provideToolUsecaseWithDeps(repo tool.ToolRepo, sys tool.SettingRepo, tester tool.ToolTester, checker tool.WebResearchReadinessChecker, grants tool.ToolGrantStore, lg loggateway.Logger) *tool.ToolUsecase {
+	return tool.NewToolUsecase(repo, sys, lg, tool.WithToolTester(tester), tool.WithWebResearchChecker(checker), tool.WithToolGrantStore(grants))
 }
 
 // provideMCPServerUsecaseWithDeps injects prober and metadata editor via constructor.

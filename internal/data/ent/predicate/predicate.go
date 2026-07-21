@@ -258,6 +258,9 @@ type TeamStageV2 func(*sql.Selector)
 // ToolAgentOverride is the predicate function for toolagentoverride builders.
 type ToolAgentOverride func(*sql.Selector)
 
+// ToolGrant is the predicate function for toolgrant builders.
+type ToolGrant func(*sql.Selector)
+
 // ToolInvocation is the predicate function for toolinvocation builders.
 type ToolInvocation func(*sql.Selector)
 

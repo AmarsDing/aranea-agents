@@ -2,6 +2,7 @@ package logpipeline
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -111,4 +112,71 @@ func TestSanitizingSink_FlushAndClose(t *testing.T) {
 
 func containsStr(s, substr string) bool {
 	return strings.Contains(s, substr)
+}
+
+// TestSanitizingSink_DoesNotMutateOriginalFields guards against the sink
+// mutating the caller-owned Fields map. The Pipeline fans one LogEntry out to
+// multiple SinkGroups, so every SanitizingSink must treat entry.Fields as
+// read-only and write redactions into a copy.
+func TestSanitizingSink_DoesNotMutateOriginalFields(t *testing.T) {
+	base := &fakeSink{}
+	sink := NewSanitizingSink(base)
+
+	original := map[string]any{
+		"api_key": "sk-abc123def456ghi789",
+		"status":  "ok",
+	}
+	sink.Write(LogEntry{
+		Kind:      KindLog,
+		Level:     "info",
+		Message:   "tool result",
+		Fields:    original,
+		Timestamp: time.Now(),
+	})
+
+	if got := original["api_key"]; got != "sk-abc123def456ghi789" {
+		t.Errorf("original Fields map was mutated: api_key=%v", got)
+	}
+	// The base sink must still receive the redacted copy.
+	redacted, ok := base.entries[0].Fields["api_key"].(string)
+	if !ok || redacted == "sk-abc123def456ghi789" {
+		t.Errorf("base sink did not receive redacted copy: %v", base.entries[0].Fields["api_key"])
+	}
+}
+
+// TestSanitizingSink_ConcurrentWriteSharedFields simulates the Pipeline
+// fan-out: multiple SinkGroups (each with its own SanitizingSink) write
+// entries that share the same Fields map. Run with -race; the previous
+// in-place mutation crashed with "concurrent map writes".
+func TestSanitizingSink_ConcurrentWriteSharedFields(t *testing.T) {
+	const groups = 8
+	const writes = 64
+
+	shared := map[string]any{
+		"api_key": "sk-abc123def456ghi789",
+		"status":  "ok",
+	}
+
+	var wg sync.WaitGroup
+	for g := 0; g < groups; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sink := NewSanitizingSink(&fakeSink{})
+			for i := 0; i < writes; i++ {
+				sink.Write(LogEntry{
+					Kind:      KindLog,
+					Level:     "info",
+					Message:   "fan-out entry",
+					Fields:    shared,
+					Timestamp: time.Now(),
+				})
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := shared["api_key"]; got != "sk-abc123def456ghi789" {
+		t.Errorf("shared Fields map was mutated: api_key=%v", got)
+	}
 }

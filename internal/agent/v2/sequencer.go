@@ -352,6 +352,34 @@ func (s *Sequencer) processTask(task publishTask) {
 	if task.persist {
 		if isTerminalEventKind(task.event.EventKind()) {
 			// P1-04: WBPF for terminal events — try synchronous persist first.
+			//
+			// Ordering fix (2026-07-20): the sync persist path bypasses
+			// persistChan, so a terminal event (e.g. turn.completed,
+			// Status=cancelled) could land in the repo BEFORE the still-queued
+			// async persists of earlier non-terminal events (e.g. turn.started,
+			// Status=running). The persistLoop would then overwrite the
+			// terminal state with the stale non-terminal state. Drain
+			// persistChan first (flush marker + wait) so every prior async
+			// persist is applied before the terminal write.
+			//
+			// Deadlock-safe: publishLoop is the sole producer of persistChan
+			// and persistLoop never sends back into publishQueue.
+			drainCh := make(chan struct{})
+			select {
+			case s.persistChan <- persistItem{flushCh: drainCh}:
+				select {
+				case <-drainCh:
+				case <-time.After(5 * time.Second):
+					s.lg.Warn("terminal event persist-drain timed out, proceeding with sync persist",
+						loggateway.Str("kind", string(task.event.EventKind())))
+				}
+			default:
+				// persistChan full: persistLoop is backed up. Skip the drain;
+				// the sync persist still runs (best-effort WBPF) and queued
+				// items retain async retry semantics.
+				s.lg.Warn("persist channel full, skipping pre-terminal drain",
+					loggateway.Str("kind", string(task.event.EventKind())))
+			}
 			persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
 			_, err := persistAction(persistCtx, s.repoSet, s.activityRepo, task.event)
 			persistCancel()

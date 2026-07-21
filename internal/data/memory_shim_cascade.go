@@ -30,6 +30,13 @@ func NewCascadeRepo(data *Data) *cascadeRepo {
 	return &cascadeRepo{data: data}
 }
 
+// renum converts SQLite-style ? placeholders to the active dialect's form
+// ($N on Postgres, unchanged on SQLite). Every raw query in this file must
+// pass through it — lib/pq rejects ? with a syntax error.
+func (r *cascadeRepo) renum(q string) string {
+	return r.data.Dialect().RenumberPlaceholders(q)
+}
+
 // --- CascadeProposalStore ---
 
 func (r *cascadeRepo) InsertCascadeProposal(ctx context.Context, in biz.CascadeProposalInsert) ([]byte, error) {
@@ -46,11 +53,11 @@ func (r *cascadeRepo) InsertCascadeProposal(ctx context.Context, in biz.CascadeP
 	if affected == "" {
 		affected = "[]"
 	}
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_cascade_proposals (
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.renum(`INSERT INTO memory_cascade_proposals (
 		id, agent_id, workspace_id, trigger_entity_id, trigger_entity_name, trigger_attribute,
 		old_value, new_value, affected_json, status, risk_level, rationale, metadata_json,
 		reviewed_by, reviewed_at, expires_at, created_at, updated_at
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		id,
 		strings.TrimSpace(in.AgentID),
 		strings.TrimSpace(in.WorkspaceID),
@@ -136,12 +143,12 @@ func (r *cascadeRepo) UpdateCascadeProposalStatus(ctx context.Context, id, statu
 	// lost-update under concurrent reviews.
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		var meta string
-		if err := queryRowScan(txCtx, r.data.RWDB().ReadDB(txCtx), `SELECT metadata_json FROM memory_cascade_proposals WHERE id = ?`, []any{id}, &meta); err != nil {
+		if err := queryRowScan(txCtx, r.data.RWDB().ReadDB(txCtx), r.renum(`SELECT metadata_json FROM memory_cascade_proposals WHERE id = ?`), []any{id}, &meta); err != nil {
 			return entErrToBizErr(err, "MEMORY_CASCADE")
 		}
 		meta = mergeCascadeReviewNote(meta, status, reviewNote, lg)
 		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-			`UPDATE memory_cascade_proposals SET status = ?, reviewed_by = ?, reviewed_at = ?, metadata_json = ?, updated_at = ? WHERE id = ?`,
+			r.renum(`UPDATE memory_cascade_proposals SET status = ?, reviewed_by = ?, reviewed_at = ?, metadata_json = ?, updated_at = ? WHERE id = ?`),
 			status, reviewedBy, now, meta, now, id,
 		)
 		return entErrToBizErr(execErr, "MEMORY_CASCADE")
@@ -164,7 +171,7 @@ func (r *cascadeRepo) CompareAndSwapProposalStatus(ctx context.Context, id strin
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		// Read metadata within the transaction.
 		var meta string
-		if err := queryRowScan(txCtx, r.data.RWDB().ReadDB(txCtx), `SELECT metadata_json FROM memory_cascade_proposals WHERE id = ?`, []any{id}, &meta); err != nil {
+		if err := queryRowScan(txCtx, r.data.RWDB().ReadDB(txCtx), r.renum(`SELECT metadata_json FROM memory_cascade_proposals WHERE id = ?`), []any{id}, &meta); err != nil {
 			return entErrToBizErr(err, "MEMORY_CASCADE")
 		}
 		meta = mergeCascadeReviewNote(meta, toStatus, reviewNote, lg)
@@ -177,8 +184,8 @@ func (r *cascadeRepo) CompareAndSwapProposalStatus(ctx context.Context, id strin
 		}
 		args = append(args, toStatus, reviewedBy, now, meta, now, id)
 		res, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-			fmt.Sprintf(`UPDATE memory_cascade_proposals SET status = ?, reviewed_by = ?, reviewed_at = ?, metadata_json = ?, updated_at = ? WHERE id = ? AND status IN (%s)`,
-				strings.Join(placeholders, ",")),
+			r.renum(fmt.Sprintf(`UPDATE memory_cascade_proposals SET status = ?, reviewed_by = ?, reviewed_at = ?, metadata_json = ?, updated_at = ? WHERE id = ? AND status IN (%s)`,
+				strings.Join(placeholders, ","))),
 			args...,
 		)
 		if execErr != nil {
@@ -211,7 +218,7 @@ func (r *cascadeRepo) GetEntityRow(ctx context.Context, id string) ([]byte, erro
 		return nil, biz.ErrCascadeUnavailable
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		"SELECT"+sqlEntityCols+" FROM memory_entities WHERE id = ? AND status = 'active' AND deleted_at = ''", id)
+		r.renum("SELECT"+sqlEntityCols+" FROM memory_entities WHERE id = ? AND status = 'active' AND deleted_at = ''"), id)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_CASCADE")
 	}
@@ -234,7 +241,7 @@ func (r *cascadeRepo) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldN
 		return nil, 0, fmt.Errorf("invalid old name pattern: %w", err)
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		sqlFactSelect+` WHERE agent_id = ? AND status = 'active' AND deleted_at = ''`, agentID)
+		r.renum(sqlFactSelect+` WHERE agent_id = ? AND status = 'active' AND deleted_at = ''`), agentID)
 	if err != nil {
 		return nil, 0, entErrToBizErr(err, "MEMORY_CASCADE")
 	}
@@ -282,7 +289,7 @@ func (r *cascadeRepo) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldN
 	err = r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		for _, u := range updates {
 			if _, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-				`UPDATE memory_facts SET statement = ?, statement_normalized = ?, metadata_json = ?, updated_at = ? WHERE id = ?`,
+				r.renum(`UPDATE memory_facts SET statement = ?, statement_normalized = ?, metadata_json = ?, updated_at = ? WHERE id = ?`),
 				u.NewStmt, strings.ToLower(u.NewStmt), u.NewMeta, now, u.ID,
 			); execErr != nil {
 				return entErrToBizErr(execErr, "MEMORY")
@@ -304,7 +311,7 @@ func (r *cascadeRepo) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldN
 		placeholders[i] = "?"
 	}
 	readRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		fmt.Sprintf("%s WHERE id IN (%s)", sqlFactSelect, strings.Join(placeholders, ",")),
+		r.renum(fmt.Sprintf("%s WHERE id IN (%s)", sqlFactSelect, strings.Join(placeholders, ","))),
 		ids...)
 	if err != nil {
 		r.data.lg.Warn("ReplaceNameInAgentFacts: read-back failed after successful update",
@@ -338,10 +345,12 @@ func (r *cascadeRepo) SaveCascadeOriginalStatements(ctx context.Context, agentID
 		args = append(args, id)
 	}
 	d := r.data.Dialect()
-	// SQLite: json_set(COALESCE(metadata_json,'{}'), '$.cascade_original_statement', statement, '$.cascade_original_name', ?, '$.cascade_saved_at', ?)
+	// Base must be json-typed (TEXT column → COALESCE/::jsonb) for the
+	// Postgres jsonb_set chain; see Dialect.JSONBBase.
+	// SQLite: json_set(COALESCE(metadata_json,'{}'), '$.cascade_original_statement', statement, ...)
 	// Postgres: nested jsonb_set(..., to_jsonb(...))
 	jsonExpr := d.JSONSetMulti(
-		"COALESCE(metadata_json,'{}')",
+		d.JSONBBase("metadata_json"),
 		[2]string{"cascade_original_statement", "statement"},
 		[2]string{"cascade_original_name", "?"},
 		[2]string{"cascade_saved_at", "?"},
@@ -360,7 +369,7 @@ func (r *cascadeRepo) RevertCascadeFactStatements(ctx context.Context, agentID s
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	// Find facts with cascade_original_statement in metadata
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		sqlFactSelect+` WHERE agent_id = ? AND status = 'active' AND deleted_at = '' AND metadata_json LIKE '%cascade_original_statement%'`, agentID)
+		r.renum(sqlFactSelect+` WHERE agent_id = ? AND status = 'active' AND deleted_at = '' AND metadata_json LIKE '%cascade_original_statement%'`), agentID)
 	if err != nil {
 		return 0, entErrToBizErr(err, "MEMORY_CASCADE")
 	}
@@ -398,10 +407,13 @@ func (r *cascadeRepo) RevertCascadeFactStatements(ctx context.Context, agentID s
 	}
 
 	// Phase 2: Batch UPDATE in a single transaction.
+	d := r.data.Dialect()
+	rmExpr := d.JSONRemoveMulti(d.JSONBBase("metadata_json"),
+		"cascade_original_statement", "cascade_original_name", "cascade_saved_at")
 	err = r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		for _, item := range items {
 			if _, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-				`UPDATE memory_facts SET statement = ?, statement_normalized = ?, metadata_json = json_remove(metadata_json, '$.cascade_original_statement', '$.cascade_original_name', '$.cascade_saved_at'), updated_at = ? WHERE id = ?`,
+				r.renum(fmt.Sprintf(`UPDATE memory_facts SET statement = ?, statement_normalized = ?, metadata_json = %s, updated_at = ? WHERE id = ?`, rmExpr)),
 				item.OrigStmt, strings.ToLower(item.OrigStmt), now, item.ID,
 			); execErr != nil {
 				return entErrToBizErr(execErr, "MEMORY")
@@ -424,7 +436,7 @@ func (r *cascadeRepo) ListCascadeFactDiffs(ctx context.Context, agentID, oldName
 		return nil, fmt.Errorf("invalid old name pattern: %w", err)
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		sqlFactSelect+` WHERE agent_id = ? AND status = 'active' AND deleted_at = ''`, agentID)
+		r.renum(sqlFactSelect+` WHERE agent_id = ? AND status = 'active' AND deleted_at = ''`), agentID)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_CASCADE")
 	}
@@ -468,7 +480,7 @@ func (r *cascadeRepo) MarkFactsIndexStaleByAgent(ctx context.Context, agentID st
 		return 0, biz.ErrCascadeUnavailable
 	}
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_facts SET embedding_status = 'stale' WHERE agent_id = ? AND status = 'active' AND deleted_at = ''`, agentID)
+		r.renum(`UPDATE memory_facts SET embedding_status = 'stale' WHERE agent_id = ? AND status = 'active' AND deleted_at = ''`), agentID)
 	if err != nil {
 		return 0, entErrToBizErr(err, "MEMORY_CASCADE")
 	}
@@ -495,10 +507,10 @@ func (r *cascadeRepo) InitCascadeSagaSteps(ctx context.Context, proposalID strin
 			if payload == "" {
 				payload = "{}"
 			}
-			if _, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx, `INSERT INTO cascade_saga_steps (
+			if _, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx, r.renum(`INSERT INTO cascade_saga_steps (
 			id, proposal_id, step_index, step_name, state, is_critical, attempts,
 			started_at, finished_at, payload_json, result_json, error, created_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 				id, proposalID, i, s.StepName, s.State, memBoolToInt(s.IsCritical), s.Attempts,
 				s.StartedAt, s.FinishedAt, payload, "", "", now,
 			); execErr != nil {
@@ -515,7 +527,7 @@ func (r *cascadeRepo) GetCascadeSagaSteps(ctx context.Context, proposalID string
 		return nil, biz.ErrCascadeUnavailable
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, proposal_id, step_index, step_name, state, is_critical, attempts, started_at, finished_at, payload_json, result_json, error FROM cascade_saga_steps WHERE proposal_id = ? ORDER BY step_index ASC`, proposalID)
+		r.renum(`SELECT id, proposal_id, step_index, step_name, state, is_critical, attempts, started_at, finished_at, payload_json, result_json, error FROM cascade_saga_steps WHERE proposal_id = ? ORDER BY step_index ASC`), proposalID)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_CASCADE")
 	}
@@ -543,18 +555,18 @@ func (r *cascadeRepo) UpdateSagaStepState(ctx context.Context, stepID string, st
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if state == "running" {
 		_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-			`UPDATE cascade_saga_steps SET state = ?, started_at = ?, attempts = attempts + 1, error = ? WHERE id = ?`,
+			r.renum(`UPDATE cascade_saga_steps SET state = ?, started_at = ?, attempts = attempts + 1, error = ? WHERE id = ?`),
 			state, now, errMsg, stepID)
 		return entErrToBizErr(err, "MEMORY_CASCADE")
 	}
 	if state == "done" || state == "failed" {
 		_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-			`UPDATE cascade_saga_steps SET state = ?, finished_at = ?, error = ? WHERE id = ?`,
+			r.renum(`UPDATE cascade_saga_steps SET state = ?, finished_at = ?, error = ? WHERE id = ?`),
 			state, now, errMsg, stepID)
 		return entErrToBizErr(err, "MEMORY_CASCADE")
 	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE cascade_saga_steps SET state = ?, error = ? WHERE id = ?`,
+		r.renum(`UPDATE cascade_saga_steps SET state = ?, error = ? WHERE id = ?`),
 		state, errMsg, stepID)
 	return entErrToBizErr(err, "MEMORY_CASCADE")
 }
@@ -564,7 +576,7 @@ func (r *cascadeRepo) UpdateSagaStepResult(ctx context.Context, stepID string, r
 		return biz.ErrCascadeUnavailable
 	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE cascade_saga_steps SET result_json = ? WHERE id = ?`, resultJSON, stepID)
+		r.renum(`UPDATE cascade_saga_steps SET result_json = ? WHERE id = ?`), resultJSON, stepID)
 	return entErrToBizErr(err, "MEMORY_CASCADE")
 }
 
@@ -574,7 +586,7 @@ func (r *cascadeRepo) HasCascadeSaga(ctx context.Context, proposalID string) (bo
 	}
 	var count int
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
-		`SELECT COUNT(*) FROM cascade_saga_steps WHERE proposal_id = ?`, []any{proposalID}, &count); err != nil {
+		r.renum(`SELECT COUNT(*) FROM cascade_saga_steps WHERE proposal_id = ?`), []any{proposalID}, &count); err != nil {
 		return false, entErrToBizErr(err, "MEMORY_CASCADE")
 	}
 	return count > 0, nil

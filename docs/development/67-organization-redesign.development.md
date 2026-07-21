@@ -106,7 +106,7 @@
 | XC-02 | 实现 `VerificationGate` 类型和 `VerificationGateExecutor` | `internal/biz/verification_gate.go` | 单测绿（通过/驳回/超重试升级） | ✅ |
 | XC-02b | 实现 `CrossDeptDeliveryGate` 双方审批：输出方主管质量把关 + 接收方主管验收确认，两方都通过才传递交付物 | `internal/biz/verification_gate.go` | ✅ 双方审批已实现，dept lead 缺失返回错误，LLM 解析失败默认拒绝 | ✅ |
 | XC-03 | Spirit 编排管线适配: TaskOrchestrator 扩展，组建 Team DAG 后验证契约 + 注入主管 + 添加门禁 | `internal/biz/spirit_team_usecase.go` | 跨部门任务自动组建 DAG + 契约验证 | 🟡 待核实 |
-| XC-03b | 交付物传递机制: 上游 Team 输出写入 Spirit Session 共享 Memory，DAG 调度激活下游时作为 User Message 前缀注入（含来源团队、交付物名称、内容），后续迭代支持注入 Graph StateFields | `internal/biz/spirit_team_usecase.go` | ✅ WriteDeliverablesToSession 持久化到 ParallelConfigJSON + InjectUpstreamDeliverables 优先读取缓存 | ✅ |
+| XC-03b | 交付物传递机制: 上游 Team 输出写入 Spirit Session 共享 Memory，DAG 调度激活下游时作为 User Message 前缀注入（含来源团队、交付物名称、内容），后续迭代支持注入 Graph StateFields | `internal/biz/spirit_team_usecase.go`、`internal/service/team_orchestrator_real.go`、`internal/service/spirit_team.go` | ✅ 2026-07-21 P0 完成：交付物落库 teams.deliverables_output_json 专用列（TECH-DEBT #B-03 修复，替代原 ParallelConfigJSON 超载方案——该方案因 TeamUsecase.Update 白名单不透传从未真正持久化）；WriteDeliverablesToSession 内联进 RecordTeamCompletion 保证先于下游调度；InjectUpstreamDeliverables 修复 fallback 变量遮蔽 bug 并在双路径接线（v2 主路径 Orchestrate 注入 turnContent + v1 备份路径 DependentTeamAction.TaskDescription）；Orchestrate 透传 step.DependsOn（形式契约填充属 P1 planner schema 扩展） | ✅ |
 | XC-03c | 借调审批事件: BorrowApproved/BorrowRejected/BorrowAutoApproved 事件发布 | `internal/event/` | 事件发布成功 | 🟡 待核实 |
 | XC-04 | 审批驳回返工: 部门主管驳回后标记 Team 为 pending（通过 TransitionStatus），清除执行结果，重新执行整个 Team（初期策略） | `internal/biz/spirit_team_usecase.go` | ✅ HandleTeamRejection 增加 TransitionStatus 调用触发重执行 | ✅ |
 | XC-04b | ReworkStrategy 类型和常量定义（初期仅实现 full_team） | `internal/biz/rework.go` | 类型定义正确 | ✅ |

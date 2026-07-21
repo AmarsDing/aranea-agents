@@ -314,6 +314,11 @@ export type ConfirmActivityRequest = {
   //
   // Behaviors: REQUIRED
   approved: boolean | undefined;
+  // reply is an optional structured confirm token (see
+  // internal/tools/serviceawaitreply: __aranea:tool_confirm:approve |
+  // deny | approve_session | approve_always). When set, it takes
+  // precedence over the approved flag and carries the grant scope.
+  reply: string | undefined;
 };
 
 export type ConfirmActivityResponse = {

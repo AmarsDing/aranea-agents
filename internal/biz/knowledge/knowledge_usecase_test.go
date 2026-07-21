@@ -16,6 +16,7 @@ type mockRepo struct {
 	docCreateFn   func(ctx context.Context, d Document) (Document, error)
 	docGetFn      func(ctx context.Context, id string) (Document, error)
 	docUpdateFn   func(ctx context.Context, id, status, errMsg string, chunkCount int) error
+	docContentFn  func(ctx context.Context, id, contentText string, organized bool) error
 	docListFn     func(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
 	docDeleteFn   func(ctx context.Context, id string) error
 	chunkInsertFn func(ctx context.Context, chunks []Chunk) error
@@ -47,6 +48,9 @@ func (m *mockRepo) GetDocument(ctx context.Context, id string) (Document, error)
 func (m *mockRepo) UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error {
 	return m.docUpdateFn(ctx, id, status, errMsg, chunkCount)
 }
+func (m *mockRepo) UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error {
+	return m.docContentFn(ctx, id, contentText, organized)
+}
 func (m *mockRepo) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error) {
 	return m.docListFn(ctx, collectionID, limit, offset)
 }
@@ -73,6 +77,7 @@ func noOpMockRepo() *mockRepo {
 		docCreateFn:   func(_ context.Context, d Document) (Document, error) { return d, nil },
 		docGetFn:      func(_ context.Context, id string) (Document, error) { return Document{ID: id}, nil },
 		docUpdateFn:   func(_ context.Context, _, _, _ string, _ int) error { return nil },
+		docContentFn:  func(_ context.Context, _, _ string, _ bool) error { return nil },
 		docListFn:     func(_ context.Context, _ string, _, _ int) ([]Document, int, error) { return nil, 0, nil },
 		docDeleteFn:   func(_ context.Context, _ string) error { return nil },
 		chunkInsertFn: func(_ context.Context, _ []Chunk) error { return nil },

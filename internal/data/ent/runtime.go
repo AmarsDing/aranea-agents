@@ -87,6 +87,7 @@ import (
 	"aranea-agents/internal/data/ent/teamrunv2"
 	"aranea-agents/internal/data/ent/teamstagev2"
 	"aranea-agents/internal/data/ent/toolagentoverride"
+	"aranea-agents/internal/data/ent/toolgrant"
 	"aranea-agents/internal/data/ent/toolinvocation"
 	"aranea-agents/internal/data/ent/toolinvocationaudit"
 	"aranea-agents/internal/data/ent/toolinvocationparam"
@@ -5374,38 +5375,42 @@ func init() {
 	teamDescInputContract := teamFields[19].Descriptor()
 	// team.DefaultInputContract holds the default value on creation for the input_contract field.
 	team.DefaultInputContract = teamDescInputContract.Default.(string)
+	// teamDescDeliverablesOutputJSON is the schema descriptor for deliverables_output_json field.
+	teamDescDeliverablesOutputJSON := teamFields[20].Descriptor()
+	// team.DefaultDeliverablesOutputJSON holds the default value on creation for the deliverables_output_json field.
+	team.DefaultDeliverablesOutputJSON = teamDescDeliverablesOutputJSON.Default.(string)
 	// teamDescDeptLeadAgentID is the schema descriptor for dept_lead_agent_id field.
-	teamDescDeptLeadAgentID := teamFields[20].Descriptor()
+	teamDescDeptLeadAgentID := teamFields[21].Descriptor()
 	// team.DefaultDeptLeadAgentID holds the default value on creation for the dept_lead_agent_id field.
 	team.DefaultDeptLeadAgentID = teamDescDeptLeadAgentID.Default.(string)
 	// teamDescCrossDeptMemberIds is the schema descriptor for cross_dept_member_ids field.
-	teamDescCrossDeptMemberIds := teamFields[21].Descriptor()
+	teamDescCrossDeptMemberIds := teamFields[22].Descriptor()
 	// team.DefaultCrossDeptMemberIds holds the default value on creation for the cross_dept_member_ids field.
 	team.DefaultCrossDeptMemberIds = teamDescCrossDeptMemberIds.Default.(string)
 	// teamDescLinkedGraphID is the schema descriptor for linked_graph_id field.
-	teamDescLinkedGraphID := teamFields[22].Descriptor()
+	teamDescLinkedGraphID := teamFields[23].Descriptor()
 	// team.DefaultLinkedGraphID holds the default value on creation for the linked_graph_id field.
 	team.DefaultLinkedGraphID = teamDescLinkedGraphID.Default.(string)
 	// teamDescInterruptReason is the schema descriptor for interrupt_reason field.
-	teamDescInterruptReason := teamFields[23].Descriptor()
+	teamDescInterruptReason := teamFields[24].Descriptor()
 	// team.DefaultInterruptReason holds the default value on creation for the interrupt_reason field.
 	team.DefaultInterruptReason = teamDescInterruptReason.Default.(string)
 	// team.InterruptReasonValidator is a validator for the "interrupt_reason" field. It is called by the builders before save.
 	team.InterruptReasonValidator = teamDescInterruptReason.Validators[0].(func(string) error)
 	// teamDescCreatedAt is the schema descriptor for created_at field.
-	teamDescCreatedAt := teamFields[24].Descriptor()
+	teamDescCreatedAt := teamFields[25].Descriptor()
 	// team.DefaultCreatedAt holds the default value on creation for the created_at field.
 	team.DefaultCreatedAt = teamDescCreatedAt.Default.(string)
 	// teamDescUpdatedAt is the schema descriptor for updated_at field.
-	teamDescUpdatedAt := teamFields[25].Descriptor()
+	teamDescUpdatedAt := teamFields[26].Descriptor()
 	// team.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	team.DefaultUpdatedAt = teamDescUpdatedAt.Default.(string)
 	// teamDescDeletedAt is the schema descriptor for deleted_at field.
-	teamDescDeletedAt := teamFields[26].Descriptor()
+	teamDescDeletedAt := teamFields[27].Descriptor()
 	// team.DefaultDeletedAt holds the default value on creation for the deleted_at field.
 	team.DefaultDeletedAt = teamDescDeletedAt.Default.(string)
 	// teamDescWorkspaceID is the schema descriptor for workspace_id field.
-	teamDescWorkspaceID := teamFields[27].Descriptor()
+	teamDescWorkspaceID := teamFields[28].Descriptor()
 	// team.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
 	team.DefaultWorkspaceID = teamDescWorkspaceID.Default.(string)
 	// teamDescID is the schema descriptor for id field.
@@ -5726,6 +5731,16 @@ func init() {
 	toolagentoverrideDescID := toolagentoverrideFields[0].Descriptor()
 	// toolagentoverride.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	toolagentoverride.IDValidator = toolagentoverrideDescID.Validators[0].(func(string) error)
+	toolgrantFields := schema.ToolGrant{}.Fields()
+	_ = toolgrantFields
+	// toolgrantDescGrantedBy is the schema descriptor for granted_by field.
+	toolgrantDescGrantedBy := toolgrantFields[3].Descriptor()
+	// toolgrant.DefaultGrantedBy holds the default value on creation for the granted_by field.
+	toolgrant.DefaultGrantedBy = toolgrantDescGrantedBy.Default.(string)
+	// toolgrantDescID is the schema descriptor for id field.
+	toolgrantDescID := toolgrantFields[0].Descriptor()
+	// toolgrant.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	toolgrant.IDValidator = toolgrantDescID.Validators[0].(func(string) error)
 	toolinvocationFields := schema.ToolInvocation{}.Fields()
 	_ = toolinvocationFields
 	// toolinvocationDescRequestID is the schema descriptor for request_id field.

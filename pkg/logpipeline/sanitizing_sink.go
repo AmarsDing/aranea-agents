@@ -24,12 +24,21 @@ func NewSanitizingSink(base Sink) *SanitizingSink {
 }
 
 // Write sanitizes the entry then delegates to the base sink.
+//
+// The Pipeline fans one LogEntry out to multiple SinkGroups concurrently, so
+// entry.Fields is shared and must be treated as read-only: redactions are
+// written into a copy, never in place (concurrent map writes crash).
 func (s *SanitizingSink) Write(entry LogEntry) {
 	entry.Message = preview.RedactAndTruncate(entry.Message, 0)
-	for k, v := range entry.Fields {
-		if str, ok := v.(string); ok {
-			entry.Fields[k] = preview.RedactAndTruncate(str, 0)
+	if len(entry.Fields) > 0 {
+		fields := make(map[string]any, len(entry.Fields))
+		for k, v := range entry.Fields {
+			if str, ok := v.(string); ok {
+				v = preview.RedactAndTruncate(str, 0)
+			}
+			fields[k] = v
 		}
+		entry.Fields = fields
 	}
 	s.base.Write(entry)
 }

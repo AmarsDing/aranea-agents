@@ -16,6 +16,15 @@ type LLMCallRequest struct {
 	Model    string // concrete model name, e.g. "gpt-4o", "claude-3-5-sonnet-20241022"
 	System   string
 	User     string
+	// Images 是可选的多模态输入（原始图片字节）；非空时底层实现必须走
+	// 多模态消息（ContentParts），目标模型需具备视觉能力。
+	Images []LLMImage
+}
+
+// LLMImage 承载一张待发送给视觉模型的图片。
+type LLMImage struct {
+	Data   []byte // 原始图片字节
+	Format string // png | jpeg | webp
 }
 
 // LLMCaller is a minimal interface for single-turn LLM completions.

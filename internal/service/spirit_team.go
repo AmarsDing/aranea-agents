@@ -582,7 +582,10 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 				}
 				s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
 			}
-			taskDesc := action.TeamName // DagNodeID is used as task description fallback
+			taskDesc := action.TaskDescription // P0-③b: deliverable prefix + task description
+			if taskDesc == "" {
+				taskDesc = action.TeamName // fallback when biz did not supply a description
+			}
 			depTeamID := action.TeamID
 			safego.Go(ctx, "spirit-schedule-deps", func() {
 				startCtx := context.WithoutCancel(ctx)
@@ -906,6 +909,19 @@ func (a *SpiritTeamAssembler) FindTeamSessionAndStartTurn(ctx context.Context, t
 
 func (a *SpiritTeamAssembler) ListActiveTeams(ctx context.Context, spiritSessionID string) ([]biz.Team, error) {
 	return a.spiritUC.ListActiveTeams(ctx, spiritSessionID)
+}
+
+// InjectUpstreamDeliverables builds the upstream deliverable prefix for a
+// DAG-activated downstream team (P0-③a). Thin passthrough to the biz layer;
+// returns "" when there are no dependencies or nothing to inject.
+func (a *SpiritTeamAssembler) InjectUpstreamDeliverables(ctx context.Context, spiritSessionID string, dependsOn []string) string {
+	if a.spiritUC == nil || len(dependsOn) == 0 {
+		return ""
+	}
+	return a.spiritUC.InjectUpstreamDeliverables(ctx, biz.Team{
+		SpiritSessionID: spiritSessionID,
+		DependsOn:       dependsOn,
+	})
 }
 
 func (a *SpiritTeamAssembler) ListAllTeams(ctx context.Context, spiritSessionID string) ([]biz.Team, error) {

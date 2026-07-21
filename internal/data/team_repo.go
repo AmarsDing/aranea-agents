@@ -52,6 +52,7 @@ func entTeamToBiz(e *ent.Team, lg loggateway.Logger) biz.Team {
 		DeptLeadAgentID:    e.DeptLeadAgentID,
 		Deliverables:       e.Deliverables,
 		InputContract:      e.InputContract,
+		DeliverablesOutput: e.DeliverablesOutputJSON,
 		CrossDeptMemberIDs: e.CrossDeptMemberIds,
 		LinkedGraphID:      e.LinkedGraphID,
 		SpiritSessionID:    e.SpiritSessionID,
@@ -221,6 +222,7 @@ func (r *TeamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetDeptLeadAgentID(t.DeptLeadAgentID).
 		SetDeliverables(t.Deliverables).
 		SetInputContract(t.InputContract).
+		SetDeliverablesOutputJSON(t.DeliverablesOutput).
 		SetCrossDeptMemberIds(t.CrossDeptMemberIDs).
 		SetLinkedGraphID(t.LinkedGraphID).
 		SetSpiritSessionID(t.SpiritSessionID).
@@ -264,6 +266,7 @@ func (r *TeamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetDeptLeadAgentID(t.DeptLeadAgentID).
 		SetDeliverables(t.Deliverables).
 		SetInputContract(t.InputContract).
+		SetDeliverablesOutputJSON(t.DeliverablesOutput).
 		SetCrossDeptMemberIds(t.CrossDeptMemberIDs).
 		SetLinkedGraphID(t.LinkedGraphID).
 		SetSpiritSessionID(t.SpiritSessionID).

@@ -293,6 +293,20 @@ func (_u *TeamUpdate) SetNillableInputContract(v *string) *TeamUpdate {
 	return _u
 }
 
+// SetDeliverablesOutputJSON sets the "deliverables_output_json" field.
+func (_u *TeamUpdate) SetDeliverablesOutputJSON(v string) *TeamUpdate {
+	_u.mutation.SetDeliverablesOutputJSON(v)
+	return _u
+}
+
+// SetNillableDeliverablesOutputJSON sets the "deliverables_output_json" field if the given value is not nil.
+func (_u *TeamUpdate) SetNillableDeliverablesOutputJSON(v *string) *TeamUpdate {
+	if v != nil {
+		_u.SetDeliverablesOutputJSON(*v)
+	}
+	return _u
+}
+
 // SetDeptLeadAgentID sets the "dept_lead_agent_id" field.
 func (_u *TeamUpdate) SetDeptLeadAgentID(v string) *TeamUpdate {
 	_u.mutation.SetDeptLeadAgentID(v)
@@ -568,6 +582,9 @@ func (_u *TeamUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.InputContract(); ok {
 		_spec.SetField(team.FieldInputContract, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DeliverablesOutputJSON(); ok {
+		_spec.SetField(team.FieldDeliverablesOutputJSON, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.DeptLeadAgentID(); ok {
 		_spec.SetField(team.FieldDeptLeadAgentID, field.TypeString, value)
@@ -888,6 +905,20 @@ func (_u *TeamUpdateOne) SetNillableInputContract(v *string) *TeamUpdateOne {
 	return _u
 }
 
+// SetDeliverablesOutputJSON sets the "deliverables_output_json" field.
+func (_u *TeamUpdateOne) SetDeliverablesOutputJSON(v string) *TeamUpdateOne {
+	_u.mutation.SetDeliverablesOutputJSON(v)
+	return _u
+}
+
+// SetNillableDeliverablesOutputJSON sets the "deliverables_output_json" field if the given value is not nil.
+func (_u *TeamUpdateOne) SetNillableDeliverablesOutputJSON(v *string) *TeamUpdateOne {
+	if v != nil {
+		_u.SetDeliverablesOutputJSON(*v)
+	}
+	return _u
+}
+
 // SetDeptLeadAgentID sets the "dept_lead_agent_id" field.
 func (_u *TeamUpdateOne) SetDeptLeadAgentID(v string) *TeamUpdateOne {
 	_u.mutation.SetDeptLeadAgentID(v)
@@ -1193,6 +1224,9 @@ func (_u *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) {
 	}
 	if value, ok := _u.mutation.InputContract(); ok {
 		_spec.SetField(team.FieldInputContract, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DeliverablesOutputJSON(); ok {
+		_spec.SetField(team.FieldDeliverablesOutputJSON, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.DeptLeadAgentID(); ok {
 		_spec.SetField(team.FieldDeptLeadAgentID, field.TypeString, value)

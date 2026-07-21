@@ -138,6 +138,7 @@
         @compact="session.onCompactSession"
         @toggle-tool-calls="uiConfig.setShowToolCalls(!uiConfig.showToolCalls)"
         @confirm-activity="session.onConfirmActivity"
+        @confirm-activity-grant="session.onConfirmActivityGrant"
         @error-retry="errorBlock.onErrorRetry"
         @error-switch-model="errorBlock.onErrorSwitchModel"
         @error-rephrase="errorBlock.onErrorRephrase"

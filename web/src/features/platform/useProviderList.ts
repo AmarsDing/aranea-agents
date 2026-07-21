@@ -74,7 +74,7 @@ export function useProviderList(deps: {
       const allowed = new Set(providerTypeFilter.value.map((v) => v.toLowerCase()));
       list = list.filter((row) => allowed.has((getConfig(row).provider_type || 'openai').toLowerCase()));
     }
-    const q = keyword.value.trim().toLowerCase();
+    const q = (keyword.value ?? '').trim().toLowerCase();
     if (!q) return list;
     return list.filter((row) =>
       [

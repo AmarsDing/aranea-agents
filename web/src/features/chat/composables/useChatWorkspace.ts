@@ -14,7 +14,7 @@ import { useChatConversationStore } from '../../../stores/chat/conversationStore
 import { useSpiritTeamStore } from '../../../stores/spirit';
 import { cancelRunningToolMessages } from '../activityToolCall';
 import { runStatusFromActivityEvent } from '../activityRunStatus';
-import { confirmActivity } from '../api';
+import { confirmActivity, confirmActivityGrant } from '../api';
 import { useChatRunStatus } from './useChatRunStatus';
 import { useChatStreamManager } from './useChatStreamManager';
 import { useChatInboundSync } from './useChatInboundSync';
@@ -1097,6 +1097,20 @@ export function useChatWorkspace() {
     }
   }
 
+  async function onConfirmActivityGrant(payload: { sessionId: string; activityId: string; reply: string }) {
+    try {
+      const ok = await confirmActivityGrant(payload);
+      if (!ok) {
+        $q.notify({
+          type: 'warning',
+          message: t('chat.confirmActivity.approveRejected'),
+        });
+      }
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('chat.confirmActivity.failed') });
+    }
+  }
+
   /**
    * P3-4: ErrorBlock inline action handlers.
    *
@@ -1474,6 +1488,7 @@ export function useChatWorkspace() {
       compactSessionAction: sessionStore.compactSessionAction,
       onCompactSession,
       onConfirmActivity,
+      onConfirmActivityGrant,
       compressStatus,
       activityStore,
       v2Tasks: computed(() => activityStore.getSessionTasks(selectedSessionForUi.value?.id ?? '')),

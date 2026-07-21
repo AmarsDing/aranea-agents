@@ -83,11 +83,22 @@ func (s *WSV2Subscriber) run(ctx context.Context, ch <-chan biz.Event) {
 
 // forward serializes the v2 Event as JSON and pushes to the WS hub
 // (broadcasting to clients subscribed to the event's SpiritSessionID).
+//
+// The domain event is first mapped to its explicit wire type (ws_v2_wire.go)
+// so the on-the-wire protocol is decoupled from the domain model. Events
+// without a wire mapping are dropped (fail-closed) with a warning, rather
+// than leaking domain internals via default marshaling.
 func (s *WSV2Subscriber) forward(e biz.Event) {
+	payload, err := v2EventPayloadToWire(e)
+	if err != nil {
+		s.lg.Warn("ws v2 event has no wire mapping, dropped",
+			loggateway.Str("kind", string(e.EventKind())), loggateway.Err(err))
+		return
+	}
 	envelope := wsEnvelope{
 		Type:    "v2_event",
 		Kind:    string(e.EventKind()),
-		Payload: e,
+		Payload: payload,
 	}
 	msg, err := json.Marshal(envelope)
 	if err != nil {
@@ -116,7 +127,7 @@ func (s *WSV2Subscriber) Close() error {
 type wsEnvelope struct {
 	Type    string `json:"type"`    // "v2_event" or "v1_activity_event"
 	Kind    string `json:"kind"`    // EventKind value (e.g. "task.created")
-	Payload any    `json:"payload"` // the Event or ActivityEvent
+	Payload any    `json:"payload"` // wire payload (see ws_v2_wire.go)
 }
 
 // BroadcastToSession enqueues a raw message to all WS connections subscribed to

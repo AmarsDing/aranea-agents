@@ -15,6 +15,7 @@
       :team-run="tr"
       @pause-agent="(sid) => $emit('pause-agent', sid)"
       @inject-agent="(p) => $emit('inject-agent', p)"
+      @confirm-step="(p) => $emit('confirm-step', p)"
     />
   </div>
 </template>
@@ -24,12 +25,14 @@ import { computed, ref, watch, onUnmounted } from 'vue';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import { useLocateTeamStage } from '../../../features/chat/composables/useLocateTeamStage';
 import type { TeamStage } from '../../../features/chat/v2Types';
+import type { ConfirmStepPayload } from '../../../features/chat/types';
 import TeamRunCard from './TeamRunCard.vue';
 
 const props = defineProps<{ teamStage: TeamStage }>();
 defineEmits<{
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
+  'confirm-step': [payload: ConfirmStepPayload];
 }>();
 const store = useActivityQueries();
 const teamRuns = computed(() => store.getTeamStageTeamRuns(props.teamStage.ID));

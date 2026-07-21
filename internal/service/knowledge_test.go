@@ -16,8 +16,10 @@ func TestIsAllowedIngestMIME(t *testing.T) {
 		{"text/markdown", true},
 		{"application/json", true},
 		{"application/pdf", true},
-		{"image/png", false},
-		{"image/jpeg", false},
+		{"image/png", true},
+		{"image/jpeg", true},
+		{"image/webp", true},
+		{"image/gif", false},
 		{"application/octet-stream", false},
 		{"application/x-executable", false},
 		{"text/x-custom", true},
@@ -76,7 +78,7 @@ func TestResolveIngestMIME(t *testing.T) {
 		{"zip with wrong ext rejected", "application/zip", "", "archive.rar", false},
 		{"pdf passthrough", "application/pdf", "", "doc.pdf", true},
 		{"text passthrough", "text/plain; charset=utf-8", "", "note.txt", true},
-		{"image rejected", "image/png", "image/png", "photo.png", false},
+		{"image allowed", "image/png", "image/png", "photo.png", true},
 		{"exe rejected", "application/x-executable", "", "run.exe", false},
 	}
 	for _, tt := range tests {
@@ -86,5 +88,55 @@ func TestResolveIngestMIME(t *testing.T) {
 					tt.detected, tt.declared, tt.source, got, tt.allowed)
 			}
 		})
+	}
+}
+
+// Phase 9：图片模态判定 —— 图片走 VisionExtractor，跳过 MarkdownOrganizer。
+func TestIsImageIngest(t *testing.T) {
+	tests := []struct {
+		source string
+		mime   string
+		want   bool
+	}{
+		{"photo.png", "image/png", true},
+		{"photo.jpg", "", true},
+		{"photo.jpeg", "", true},
+		{"photo.webp", "", true},
+		{"PHOTO.PNG", "", true},
+		{"note.md", "text/markdown", false},
+		{"doc.pdf", "application/pdf", false},
+		{"archive.bin", "image/png", true}, // 声明 MIME 优先
+	}
+	for _, tt := range tests {
+		if got := isImageIngest(tt.source, tt.mime); got != tt.want {
+			t.Errorf("isImageIngest(%q, %q) = %v, want %v", tt.source, tt.mime, got, tt.want)
+		}
+	}
+}
+
+// Phase 9：metadata 合并 —— 用户 metadata 与系统模态标记合并为一个 JSON 对象。
+func TestMergeIngestMetadata(t *testing.T) {
+	got, err := mergeIngestMetadata(`{"team":"quant"}`, "image", "vision")
+	if err != nil {
+		t.Fatalf("mergeIngestMetadata error: %v", err)
+	}
+	for _, want := range []string{`"team":"quant"`, `"modality":"image"`, `"extractor":"vision"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("merged metadata %q missing %s", got, want)
+		}
+	}
+
+	// 空用户 metadata。
+	got, err = mergeIngestMetadata("", "text", "text")
+	if err != nil {
+		t.Fatalf("mergeIngestMetadata(empty) error: %v", err)
+	}
+	if !strings.Contains(got, `"modality":"text"`) {
+		t.Errorf("merged metadata %q missing modality", got)
+	}
+
+	// 非法用户 metadata 报错（不静默吞掉）。
+	if _, err = mergeIngestMetadata("{bad", "text", "text"); err == nil {
+		t.Error("expected error for invalid user metadata")
 	}
 }
