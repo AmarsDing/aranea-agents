@@ -22,12 +22,12 @@ export function useKnowledgePage() {
   const docsLoading = ref(false);
   const error = ref('');
   const unavailable = ref('');
-  const tab = ref('documents');
+  // 页面级 Tab：documents（文档管理）| search（全库检索调试）| settings（Embedder 配置）
+  const pageTab = ref('documents');
   const createOpen = ref(false);
   const createLoading = ref(false);
   const ingestOpen = ref(false);
   const ingestLoading = ref(false);
-  const ingestFile = ref<File | null>(null);
   const searchQuery = ref('');
   const searchTopK = ref(5);
   const searchMinScore = ref(0);
@@ -43,7 +43,6 @@ export function useKnowledgePage() {
     source: '',
     mime_type: 'text/plain',
     text: '',
-    fileContentBase64: '',
     chunk_strategy: '',
     chunk_size: 0,
     chunk_overlap: 0,
@@ -119,7 +118,6 @@ export function useKnowledgePage() {
 
   function selectCollection(id: string) {
     selectedId.value = id;
-    tab.value = 'documents';
   }
 
   function openCreateCollection() {
@@ -240,86 +238,38 @@ export function useKnowledgePage() {
     return 'application/octet-stream';
   }
 
-  function onIngestFile(file: File | File[] | null) {
-    const picked = Array.isArray(file) ? file[0] : file;
-    ingestForm.value.fileContentBase64 = '';
-    if (!picked) {
-      ingestFile.value = null;
-      return;
-    }
-    ingestFile.value = picked;
-    ingestForm.value.source = ingestForm.value.source || picked.name;
-    const inferred = inferMime(picked);
-    ingestForm.value.mime_type = inferred;
-    const reader = new FileReader();
-    // ArrayBuffer keeps binary payloads (PDF/DOCX/…) intact; we still surface a
-    // textarea preview for text-like MIME so the user can review before submit.
-    reader.onload = () => {
-      const buf = reader.result as ArrayBuffer | null;
-      if (!buf) return;
-      const bytes = new Uint8Array(buf);
-      ingestForm.value.fileContentBase64 = bytesToBase64(bytes);
-      const textLike = /^text\//i.test(inferred) || inferred === 'application/json' || inferred === 'application/xml';
-      if (textLike) {
-        try {
-          ingestForm.value.text = new TextDecoder('utf-8', { fatal: false }).decode(buf);
-        } catch (_e) {
-          ingestForm.value.text = '';
-        }
-      } else {
-        ingestForm.value.text = '';
-      }
-    };
-    reader.readAsArrayBuffer(picked);
-  }
-
+  // 粘贴文本入库（文件统一走 DropZone 拖拽队列）。
   async function submitIngest() {
     if (!selectedId.value) return;
-    const fileBase64 = ingestForm.value.fileContentBase64;
     const text = ingestForm.value.text.trim();
-    if (!fileBase64 && !text) {
-      $q.notify({ type: 'warning', message: '请提供文件或文本内容' });
+    if (!text) {
+      $q.notify({ type: 'warning', message: '请粘贴文本内容' });
       return;
     }
     ingestLoading.value = true;
     try {
-      // Prefer pre-encoded file base64 (binary-safe); fall back to UTF-8 text encoding.
-      const b64 = fileBase64 || utf8ToBase64(text);
       await knowledgeStore.ingest({
         collection_id: selectedId.value,
-        source: ingestForm.value.source || 'upload',
+        source: ingestForm.value.source || 'paste',
         mime_type: ingestForm.value.mime_type || 'text/plain',
-        content_base64: b64,
+        content_base64: utf8ToBase64(text),
         chunk_strategy: ingestForm.value.chunk_strategy || undefined,
         chunk_size: ingestForm.value.chunk_size || undefined,
         chunk_overlap: ingestForm.value.chunk_overlap || undefined,
         organize_to_markdown: true,
       });
       ingestOpen.value = false;
-      const submittedMime = ingestForm.value.mime_type || 'text/plain';
       ingestForm.value = {
         source: '',
         mime_type: 'text/plain',
         text: '',
-        fileContentBase64: '',
         chunk_strategy: '',
         chunk_size: 0,
         chunk_overlap: 0,
       };
-      ingestFile.value = null;
       await loadDocuments();
       await loadCollections();
-      // REV-D: binary formats that require server-side extraction get a softer
-      // success message so users know search availability depends on parsing.
-      if (isExtractSupported(submittedMime)) {
-        $q.notify({ type: 'positive', message: '文档已提交入库，正在后台解析...' });
-      } else {
-        $q.notify({
-          type: 'warning',
-          message: `文档已上传（${submittedMime}），但当前后端可能不支持解析该格式，检索内容可能为空。`,
-          timeout: 8000,
-        });
-      }
+      $q.notify({ type: 'positive', message: '文档已提交入库，正在后台解析...' });
     } catch (e) {
       $q.notify({ type: 'negative', message: friendlyError(e) || '入库失败' });
     } finally {
@@ -544,7 +494,7 @@ export function useKnowledgePage() {
 
   function syncDocPoll() {
     stopDocPoll();
-    if (!selectedId.value || tab.value !== 'documents' || !hasIndexingDocuments(documents.value)) return;
+    if (!selectedId.value || pageTab.value !== 'documents' || !hasIndexingDocuments(documents.value)) return;
     docPollTimer = setInterval(() => {
       if (!selectedId.value || !hasIndexingDocuments(documents.value)) {
         stopDocPoll();
@@ -560,7 +510,7 @@ export function useKnowledgePage() {
   });
 
   watch(
-    () => [documents.value.map((d) => d.status).join(','), tab.value, selectedId.value] as const,
+    () => [documents.value.map((d) => d.status).join(','), pageTab.value, selectedId.value] as const,
     () => syncDocPoll(),
   );
 
@@ -596,12 +546,11 @@ export function useKnowledgePage() {
     docsLoading,
     error,
     unavailable,
-    tab,
+    pageTab,
     createOpen,
     createLoading,
     ingestOpen,
     ingestLoading,
-    ingestFile,
     searchQuery,
     searchTopK,
     searchMinScore,
@@ -623,7 +572,6 @@ export function useKnowledgePage() {
     openCreateCollection,
     submitCreateCollection,
     confirmDeleteCollection,
-    onIngestFile,
     submitIngest,
     confirmDeleteDocument,
     previewOpen,

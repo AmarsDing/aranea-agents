@@ -151,6 +151,15 @@ func (m *memSpiritAgentResolver) List(_ context.Context, _ AgentListQuery) (Agen
 	return AgentListResult{}, nil
 }
 
+// memSpiritAgentLookup is a minimal session.AgentLookup stub: AssembleTeam
+// creates member sessions with OwnerType="agent", and SessionUsecase.Create
+// validates agent existence through this lookup. Always succeeds.
+type memSpiritAgentLookup struct{}
+
+func (m *memSpiritAgentLookup) GetAgentByID(_ context.Context, _ string) (struct{}, error) {
+	return struct{}{}, nil
+}
+
 // memSpiritSessionRepo is a minimal in-memory session repo for SpiritTeamUsecase tests.
 // It implements session.SessionRepo by embedding stub implementations for all sub-interfaces.
 type memSpiritSessionRepo struct {
@@ -160,6 +169,16 @@ type memSpiritSessionRepo struct {
 
 func newMemSpiritSessionRepo() *memSpiritSessionRepo {
 	return &memSpiritSessionRepo{items: make(map[string]Session)}
+}
+
+// seedSpirit pre-creates spirit parent sessions so AssembleTeam's
+// sessionUC.Get(spiritSessionID) + depth validation succeed.
+// Writes items directly (bypasses failAll) since the spirit session is
+// a precondition, not part of the transaction under test.
+func (m *memSpiritSessionRepo) seedSpirit(ids ...string) {
+	for _, id := range ids {
+		m.items[id] = Session{ID: id, OwnerType: "spirit"}
+	}
 }
 
 // --- SessionReader ---
@@ -435,15 +454,26 @@ func (m *memSpiritSessionRepo) CompressSessionInTx(_ context.Context, _ string, 
 }
 
 // memSpiritTransactor tracks transaction calls for testing.
+// snapshot/restore hooks let tests simulate rollback semantics that the
+// in-memory repos lack natively (a real Ent tx rolls back DB writes on error).
 type memSpiritTransactor struct {
 	callCount int
 	fn        func(ctx context.Context) error // the actual function to execute
+	snapshot  func()                          // optional: capture repo state before fn
+	restore   func()                          // optional: restore repo state when fn errors
 }
 
 func (t *memSpiritTransactor) ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error {
 	t.callCount++
 	t.fn = fn
-	return fn(ctx)
+	if t.snapshot != nil {
+		t.snapshot()
+	}
+	err := fn(ctx)
+	if err != nil && t.restore != nil {
+		t.restore()
+	}
+	return err
 }
 
 // ---------------------------------------------------------------------------
@@ -453,10 +483,11 @@ func (t *memSpiritTransactor) ExecInTx(ctx context.Context, fn func(ctx context.
 func TestAssembleTeam_InitialStatus_Pending(t *testing.T) {
 	teamRepo := newMemSpiritTeamRepo()
 	sessionRepo := newMemSpiritSessionRepo()
+	sessionRepo.seedSpirit("spirit-1")
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	sessionUC := NewSessionUsecase(sessionRepo, &memSpiritAgentLookup{}, NewSessionTeamLookup(teamRepo), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()
@@ -495,10 +526,11 @@ func TestAssembleTeam_InitialStatus_Pending(t *testing.T) {
 func TestAssembleTeam_DAGDependentNode_InitialStatus_Pending(t *testing.T) {
 	teamRepo := newMemSpiritTeamRepo()
 	sessionRepo := newMemSpiritSessionRepo()
+	sessionRepo.seedSpirit("spirit-1")
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	sessionUC := NewSessionUsecase(sessionRepo, &memSpiritAgentLookup{}, NewSessionTeamLookup(teamRepo), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()
@@ -530,10 +562,11 @@ func TestAssembleTeam_DAGDependentNode_InitialStatus_Pending(t *testing.T) {
 func TestAssembleTeam_PersistsDeliverableContracts(t *testing.T) {
 	teamRepo := newMemSpiritTeamRepo()
 	sessionRepo := newMemSpiritSessionRepo()
+	sessionRepo.seedSpirit("spirit-1")
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	sessionUC := NewSessionUsecase(sessionRepo, &memSpiritAgentLookup{}, NewSessionTeamLookup(teamRepo), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	result, err := uc.AssembleTeam(context.Background(), SpiritTeamParams{
@@ -679,10 +712,11 @@ func TestTransitionStatus_InterruptedRecovery(t *testing.T) {
 func TestCancelTeam_UsesTransitionStatus(t *testing.T) {
 	teamRepo := newMemSpiritTeamRepo()
 	sessionRepo := newMemSpiritSessionRepo()
+	sessionRepo.seedSpirit("spirit-cancel", "spirit-cancel2")
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	sessionUC := NewSessionUsecase(sessionRepo, &memSpiritAgentLookup{}, NewSessionTeamLookup(teamRepo), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()
@@ -734,10 +768,22 @@ func TestCancelTeam_UsesTransitionStatus(t *testing.T) {
 func TestAssembleTeam_TransactionRollback(t *testing.T) {
 	teamRepo := newMemSpiritTeamRepo()
 	sessionRepo := newMemSpiritSessionRepo()
-	transactor := &memSpiritTransactor{}
+	sessionRepo.seedSpirit("spirit-tx")
+	// Simulate real transaction rollback: snapshot teamRepo before fn runs and
+	// restore it when fn returns an error (in-memory repos have no native tx).
+	var teamSnapshot map[string]Team
+	transactor := &memSpiritTransactor{
+		snapshot: func() {
+			teamSnapshot = make(map[string]Team, len(teamRepo.items))
+			for k, v := range teamRepo.items {
+				teamSnapshot[k] = v
+			}
+		},
+		restore: func() { teamRepo.items = teamSnapshot },
+	}
 
 	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	sessionUC := NewSessionUsecase(sessionRepo, &memSpiritAgentLookup{}, NewSessionTeamLookup(teamRepo), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()
@@ -766,11 +812,9 @@ func TestAssembleTeam_TransactionRollback(t *testing.T) {
 		t.Errorf("expected 1 transaction call, got %d", transactor.callCount)
 	}
 
-	// Verify team was NOT persisted (rolled back)
-	// Note: In the in-memory mock, the transaction callback runs the function
-	// and if it returns an error, the result is not stored in the outer scope.
-	// The real Ent transaction would roll back the DB writes.
-	// Here we verify the result variable was not set (which simulates rollback).
+	// Verify team was NOT persisted (rolled back).
+	// The transactor's snapshot/restore hooks simulate what a real Ent
+	// transaction guarantees: DB writes are rolled back when fn errors.
 	teamsAfter, _ := teamRepo.ListTeams(ctx)
 	if len(teamsAfter) != countBefore {
 		t.Errorf("team count should not change after rollback: before=%d, after=%d", countBefore, len(teamsAfter))
@@ -780,10 +824,11 @@ func TestAssembleTeam_TransactionRollback(t *testing.T) {
 func TestAssembleTeam_TransactionSuccess(t *testing.T) {
 	teamRepo := newMemSpiritTeamRepo()
 	sessionRepo := newMemSpiritSessionRepo()
+	sessionRepo.seedSpirit("spirit-tx-ok")
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	sessionUC := NewSessionUsecase(sessionRepo, &memSpiritAgentLookup{}, NewSessionTeamLookup(teamRepo), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()

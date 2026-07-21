@@ -189,9 +189,7 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
           // Compat: adapt system.notice → synthetic ActivityEvent for non-chat
           // consumers that still use onActivityEvent (graph/orchestration/knowledge).
           if (envelope.kind === 'system.notice' && opts.onActivityEvent) {
-            opts.onActivityEvent(
-              activityEventFromSystemNotice(envelope, envelope.payload as SystemNoticeEventPayload),
-            );
+            opts.onActivityEvent(activityEventFromSystemNotice(envelope, envelope.payload as SystemNoticeEventPayload));
           }
           return;
         }

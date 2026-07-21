@@ -25,9 +25,7 @@ export function useResourceManagerPage() {
   const isProviderResource = computed(() => resource.value === 'llm-provider-models');
   const pageTitle = computed(() => (route.meta.title as string) || '资源管理');
   const pageSubtitle = computed(
-    () =>
-      (route.meta.subtitle as string) ||
-      '管理平台资源、启用状态与运行配置。模型列表支持服务端分页与搜索。',
+    () => (route.meta.subtitle as string) || '管理平台资源、启用状态与运行配置。模型列表支持服务端分页与搜索。',
   );
 
   const list = useProviderList({ resource, isProviderResource, saving });

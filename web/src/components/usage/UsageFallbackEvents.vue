@@ -11,7 +11,7 @@
     </q-card-section>
     <q-separator class="overview-separator" />
     <q-card-section>
-          <div v-if="!events.length" class="overview-empty overview-empty--compact">暂无异常重试事件</div>
+      <div v-if="!events.length" class="overview-empty overview-empty--compact">暂无异常重试事件</div>
       <q-list v-else dense class="overview-rank-list">
         <q-item v-for="(evt, idx) in events" :key="idx">
           <q-item-section avatar class="overview-rank-index">

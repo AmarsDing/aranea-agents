@@ -261,7 +261,7 @@ func (u *Usecase) CreateDocument(ctx context.Context, d Document) (Document, err
 	return u.documents.CreateDocument(ctx, d)
 }
 
-// GetDocument returns a single document by ID.
+// GetDocument returns a single document by ID, including its extracted/organized content.
 func (u *Usecase) GetDocument(ctx context.Context, id string) (Document, error) {
 	if err := u.requireRepo(); err != nil {
 		return Document{}, err
@@ -281,17 +281,6 @@ func (u *Usecase) ListDocuments(ctx context.Context, collectionID string, limit,
 		limit = 20
 	}
 	return u.documents.ListDocuments(ctx, collectionID, limit, offset)
-}
-
-// GetDocument returns a single document including its extracted/organized content.
-func (u *Usecase) GetDocument(ctx context.Context, id string) (Document, error) {
-	if err := u.requireRepo(); err != nil {
-		return Document{}, err
-	}
-	if strings.TrimSpace(id) == "" {
-		return Document{}, ErrIDRequired
-	}
-	return u.documents.GetDocument(ctx, id)
 }
 
 // DeleteDocument removes a document and its chunks. Repo implementations MUST

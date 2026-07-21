@@ -533,9 +533,7 @@ export type ProviderModelListResult = {
 };
 
 /** Admin models registry — server pagination. Pickers should keep using listPlatformResources (full list). */
-export async function listProviderModelsPaged(
-  query: ProviderModelListQuery = {},
-): Promise<ProviderModelListResult> {
+export async function listProviderModelsPaged(query: ProviderModelListQuery = {}): Promise<ProviderModelListResult> {
   const page = query.page ?? 1;
   const pageSize = query.page_size ?? 20;
   const res = await llmModels.ListProviderModels({

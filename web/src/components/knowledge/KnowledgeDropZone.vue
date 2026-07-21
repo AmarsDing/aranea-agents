@@ -30,7 +30,8 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 // 与 KnowledgeIngestDialog 的可解析格式保持一致（图片经 Phase 9 VisionExtractor 入库）。
-const accept = '.txt,.md,.json,.csv,.log,.html,.htm,.xml,.yaml,.yml,.toml,.pdf,.doc,.docx,.pptx,.xlsx,.png,.jpg,.jpeg,.webp';
+const accept =
+  '.txt,.md,.json,.csv,.log,.html,.htm,.xml,.yaml,.yml,.toml,.pdf,.doc,.docx,.pptx,.xlsx,.png,.jpg,.jpeg,.webp';
 
 const fileInput = ref<HTMLInputElement | null>(null);
 const dragOver = ref(false);

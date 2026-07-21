@@ -35,9 +35,7 @@ const props = defineProps<{
 const providerSlices = computed(() => buildProviderCostSlicesFromTopModels(props.topModels));
 const providerChartEl = ref<HTMLElement | null>(null);
 
-const providerCaption = computed(() =>
-  t('overviewPage.providerPieCaption', { n: USAGE_BREAKDOWN_TOP_N }),
-);
+const providerCaption = computed(() => t('overviewPage.providerPieCaption', { n: USAGE_BREAKDOWN_TOP_N }));
 
 function pieOption(slices: UsageBreakdownSlice[]): EChartsCoreOption {
   const palette = usageChartPalette();

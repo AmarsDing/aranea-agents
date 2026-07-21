@@ -51,12 +51,7 @@
           <span class="text-caption text-grey-7">模型评级（1-100，越高表示认为模型越强）</span>
           <span class="text-caption text-weight-medium">{{ providerForm.model_rating ?? 0 }}</span>
         </div>
-        <q-slider
-          v-model="providerForm.model_rating"
-          class="provider-rating-slider"
-          :min="1"
-          :max="100"
-        />
+        <q-slider v-model="providerForm.model_rating" class="provider-rating-slider" :min="1" :max="100" />
       </div>
       <div class="section-label app-grid-span-full">目录能力标签</div>
       <div v-if="providerForm.capability_chips.length" class="app-grid-span-full q-gutter-xs">

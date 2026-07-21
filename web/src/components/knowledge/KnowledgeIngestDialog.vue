@@ -2,7 +2,7 @@
   <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
     <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
       <q-card-section class="app-glass-dialog__head row items-center justify-between">
-        <div class="app-glass-dialog__title">文档入库</div>
+        <div class="app-glass-dialog__title">粘贴文本入库</div>
         <q-btn v-close-popup flat round dense icon="close" />
       </q-card-section>
       <q-separator />
@@ -25,22 +25,13 @@
             placeholder="text/plain"
             @update:model-value="$emit('update:mimeType', String($event ?? ''))"
           />
-          <q-file
-            :model-value="file"
-            label="选择文件"
-            outlined
-            dense
-            accept=".txt,.md,.json,.csv,.log,.html,.htm,.xml,.yaml,.yml,.toml,.pdf,.doc,.docx,.pptx,.xlsx,.png,.jpg,.jpeg,.webp"
-            hint="文本类型可在下方预览编辑；二进制（PDF/DOCX/图片/…）按原字节上传，依赖后端解析支持"
-            @update:model-value="$emit('update:file', $event)"
-          />
           <q-input
             :model-value="text"
             class="app-field-long"
             dense
             outlined
             type="textarea"
-            label="或粘贴文本"
+            label="文本内容（文件请拖拽到页面顶部上传区）"
             autogrow
             @update:model-value="$emit('update:text', String($event ?? ''))"
           />
@@ -106,7 +97,6 @@ defineProps<{
   source: string;
   mimeType: string;
   text: string;
-  file: File | null;
   chunkStrategy: string;
   chunkSize: number;
   chunkOverlap: number;
@@ -117,7 +107,6 @@ defineEmits<{
   'update:source': [value: string];
   'update:mimeType': [value: string];
   'update:text': [value: string];
-  'update:file': [value: File | null];
   'update:chunkStrategy': [value: string];
   'update:chunkSize': [value: number];
   'update:chunkOverlap': [value: number];

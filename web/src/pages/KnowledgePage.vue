@@ -23,12 +23,6 @@
     <q-banner v-if="unavailable" rounded class="app-banner-warning q-mb-md">
       知识库服务不可用：{{ unavailable }}。请确认 Postgres / pgvector 已配置。
     </q-banner>
-    <q-banner rounded class="bg-grey-2 text-grey-8 q-mb-md">
-      Embedder 与系统设置共用同一条 system_settings 记录；也可在
-      <router-link class="text-primary" to="/settings">系统设置</router-link>
-      中配置。保存后后端会热加载到知识库服务。
-    </q-banner>
-    <knowledge-embedder-panel :config="embedderConfig" :saving="embedderSaving" @save="saveEmbedderConfig" />
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
       {{ error }}
       <template #action>
@@ -36,86 +30,111 @@
       </template>
     </q-banner>
 
-    <div class="app-split-layout">
-      <knowledge-collection-list
-        :collections="collections"
-        :selected-id="selectedId"
-        :loading="loading"
-        @select="selectCollection"
-      />
-
-      <div>
-        <!-- US-14 上传免预选：拖拽区常驻右栏顶部，未选中集合时自动落入「默认知识库」 -->
-        <knowledge-drop-zone @files-selected="enqueueUploadFiles" />
-        <knowledge-upload-queue
-          :tasks="uploadTasks"
-          @clear-finished="clearFinishedUploadTasks"
-          @remove-task="removeUploadTask"
-        />
-        <q-card v-if="selectedCollection" flat class="app-pane-card">
-          <q-card-section>
-            <div class="row items-center justify-between">
-              <div>
-                <div class="app-registry-cell-primary text-h6">{{ selectedCollection.name }}</div>
-                <div class="app-registry-cell-sub">{{ selectedCollection.description || '无描述' }}</div>
-              </div>
-              <q-btn flat no-caps color="negative" icon="delete" label="删除集合" @click="confirmDeleteCollection" />
-            </div>
-            <div class="row q-gutter-md q-mt-sm text-caption text-grey-7">
-              <span>模型: {{ selectedCollection.embedding_model }}</span>
-              <span>维度: {{ selectedCollection.dim }}</span>
-              <span>文档: {{ selectedCollection.document_count }}</span>
-              <span>分块: {{ selectedCollection.chunk_count }}</span>
-              <span v-if="selectedCollection.workspace">工作区: {{ selectedCollection.workspace }}</span>
-              <span v-if="selectedCollection.created_at"
-                >创建: {{ formatKnowledgeTime(selectedCollection.created_at) }}</span
-              >
-            </div>
-          </q-card-section>
-          <div class="app-tab-shell app-tab-shell--inset">
-            <q-tabs v-model="tab" dense align="left" class="text-primary">
-              <q-tab name="documents" label="文档" />
-              <q-tab name="search" label="检索" />
-            </q-tabs>
-          </div>
-          <q-tab-panels v-model="tab" animated class="app-pane-card__body">
-            <q-tab-panel name="documents" class="q-pa-md">
-              <knowledge-documents-panel
-                :documents="documents"
-                :loading="docsLoading"
-                @open-ingest="ingestOpen = true"
-                @refresh="loadDocuments"
-                @delete-document="confirmDeleteDocument"
-                @preview-document="openDocPreview"
-                @move-document="openMoveDialog"
-              />
-            </q-tab-panel>
-            <q-tab-panel name="search" class="q-pa-md">
-              <knowledge-search-panel
-                v-model:query="searchQuery"
-                v-model:top-k="searchTopK"
-                v-model:min-score="searchMinScore"
-                v-model:hybrid-mode="searchHybridMode"
-                v-model:rewrite-strategy="searchRewriteStrategy"
-                v-model:use-rerank="searchUseRerank"
-                v-model:scope-id="searchScopeId"
-                :scope-options="searchScopeOptions"
-                :results="searchResults"
-                :doc-source-map="docSourceMap"
-                :loading="searchLoading"
-                :searched="searchRan"
-                @search="runSearch"
-              />
-            </q-tab-panel>
-          </q-tab-panels>
-        </q-card>
-        <div v-else class="app-registry-empty app-pane-card">
-          <q-icon name="library_books" size="48px" color="grey-6" />
-          <div class="text-h6">{{ $t('knowledgePage.emptyTitle') }}</div>
-          <div class="text-body2">{{ $t('knowledgePage.emptyHint') }}</div>
-        </div>
-      </div>
+    <div class="app-tab-shell q-mb-md">
+      <q-tabs v-model="pageTab" dense align="left" class="text-primary">
+        <q-tab name="documents" :label="$t('knowledgePage.tabDocuments')" />
+        <q-tab name="search" :label="$t('knowledgePage.tabSearch')" />
+        <q-tab name="settings" :label="$t('knowledgePage.tabSettings')" />
+      </q-tabs>
     </div>
+
+    <q-tab-panels v-model="pageTab" animated class="bg-transparent">
+      <q-tab-panel name="documents" class="q-pa-none">
+        <div class="app-split-layout">
+          <knowledge-collection-list
+            :collections="collections"
+            :selected-id="selectedId"
+            :loading="loading"
+            @select="selectCollection"
+          />
+
+          <div>
+            <!-- US-14 上传免预选：拖拽区常驻右栏顶部，未选中集合时自动落入「默认知识库」 -->
+            <knowledge-drop-zone @files-selected="enqueueUploadFiles" />
+            <knowledge-upload-queue
+              v-if="uploadTasks.length"
+              :tasks="uploadTasks"
+              @clear-finished="clearFinishedUploadTasks"
+              @remove-task="removeUploadTask"
+            />
+            <q-card v-if="selectedCollection" flat class="app-pane-card">
+              <q-card-section>
+                <div class="row items-center justify-between">
+                  <div>
+                    <div class="app-registry-cell-primary text-h6">{{ selectedCollection.name }}</div>
+                    <div class="app-registry-cell-sub">{{ selectedCollection.description || '无描述' }}</div>
+                  </div>
+                  <q-btn
+                    flat
+                    no-caps
+                    color="negative"
+                    icon="delete"
+                    label="删除集合"
+                    @click="confirmDeleteCollection"
+                  />
+                </div>
+                <div class="row q-gutter-md q-mt-sm text-caption text-grey-7">
+                  <span>模型: {{ selectedCollection.embedding_model }}</span>
+                  <span>维度: {{ selectedCollection.dim }}</span>
+                  <span>文档: {{ selectedCollection.document_count }}</span>
+                  <span>分块: {{ selectedCollection.chunk_count }}</span>
+                  <span v-if="selectedCollection.workspace">工作区: {{ selectedCollection.workspace }}</span>
+                  <span v-if="selectedCollection.created_at"
+                    >创建: {{ formatKnowledgeTime(selectedCollection.created_at) }}</span
+                  >
+                </div>
+              </q-card-section>
+              <div class="app-pane-card__body">
+                <knowledge-documents-panel
+                  :documents="documents"
+                  :loading="docsLoading"
+                  @open-ingest="ingestOpen = true"
+                  @refresh="loadDocuments"
+                  @delete-document="confirmDeleteDocument"
+                  @preview-document="openDocPreview"
+                  @move-document="openMoveDialog"
+                />
+              </div>
+            </q-card>
+            <div v-else class="app-registry-empty app-pane-card">
+              <q-icon name="library_books" size="48px" color="grey-6" />
+              <div class="text-h6">{{ $t('knowledgePage.emptyTitle') }}</div>
+              <div class="text-body2">{{ $t('knowledgePage.emptyHint') }}</div>
+            </div>
+          </div>
+        </div>
+      </q-tab-panel>
+
+      <q-tab-panel name="search" class="q-pa-none">
+        <q-card flat class="app-pane-card">
+          <q-card-section>
+            <knowledge-search-panel
+              v-model:query="searchQuery"
+              v-model:top-k="searchTopK"
+              v-model:min-score="searchMinScore"
+              v-model:hybrid-mode="searchHybridMode"
+              v-model:rewrite-strategy="searchRewriteStrategy"
+              v-model:use-rerank="searchUseRerank"
+              v-model:scope-id="searchScopeId"
+              :scope-options="searchScopeOptions"
+              :results="searchResults"
+              :doc-source-map="docSourceMap"
+              :loading="searchLoading"
+              :searched="searchRan"
+              @search="runSearch"
+            />
+          </q-card-section>
+        </q-card>
+      </q-tab-panel>
+
+      <q-tab-panel name="settings" class="q-pa-none">
+        <q-card flat class="app-pane-card">
+          <q-card-section>
+            <knowledge-embedder-panel :config="embedderConfig" :saving="embedderSaving" @save="saveEmbedderConfig" />
+          </q-card-section>
+        </q-card>
+      </q-tab-panel>
+    </q-tab-panels>
 
     <knowledge-create-dialog
       v-model:open="createOpen"
@@ -130,12 +149,10 @@
       v-model:source="ingestForm.source"
       v-model:mime-type="ingestForm.mime_type"
       v-model:text="ingestForm.text"
-      v-model:file="ingestFile"
       v-model:chunk-strategy="ingestForm.chunk_strategy"
       v-model:chunk-size="ingestForm.chunk_size"
       v-model:chunk-overlap="ingestForm.chunk_overlap"
       :loading="ingestLoading"
-      @update:file="onIngestFile"
       @submit="submitIngest"
     />
     <knowledge-doc-preview-dialog
@@ -182,12 +199,11 @@ const {
   docsLoading,
   error,
   unavailable,
-  tab,
+  pageTab,
   createOpen,
   createLoading,
   ingestOpen,
   ingestLoading,
-  ingestFile,
   searchQuery,
   searchTopK,
   searchMinScore,
@@ -209,7 +225,6 @@ const {
   openCreateCollection,
   submitCreateCollection,
   confirmDeleteCollection,
-  onIngestFile,
   submitIngest,
   confirmDeleteDocument,
   previewOpen,

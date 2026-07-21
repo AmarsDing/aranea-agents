@@ -121,7 +121,8 @@ defineEmits<{
 }>();
 
 const nodeOutputStore = useNodeOutputStore();
-const { extractMembers, extractDuration, extractError, extractDescription, extractTextOutput } = useObserveNodeEnrichment();
+const { extractMembers, extractDuration, extractError, extractDescription, extractTextOutput } =
+  useObserveNodeEnrichment();
 
 const nodeInitial = computed(() => (props.node.Label || '?').charAt(0).toUpperCase());
 

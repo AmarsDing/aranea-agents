@@ -93,9 +93,7 @@ const nodes = computed(() => store.getGraphStageNodes(props.graphStage.ID));
 // B.4.4：单节点无 DAG 可视化价值，直接展示 TeamStagePanel 即可。
 const shouldShow = computed(() => nodes.value.length > 1);
 
-const completedCount = computed(
-  () => nodes.value.filter((n) => n.Status === 'completed').length,
-);
+const completedCount = computed(() => nodes.value.filter((n) => n.Status === 'completed').length);
 
 const { layoutDAG } = usePlanDAGLayout();
 const layoutResult = computed(() => layoutDAG(nodes.value, { width: maxWidth, nodeWidth, nodeHeight, gapX, gapY }));

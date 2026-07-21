@@ -133,9 +133,7 @@ export function useToolsPage() {
     for (const tool of targets) {
       try {
         const intent =
-          value && (tool.risk_level === 'high' || tool.risk_level === 'critical')
-            ? 'I_UNDERSTAND_RISK'
-            : undefined;
+          value && (tool.risk_level === 'high' || tool.risk_level === 'critical') ? 'I_UNDERSTAND_RISK' : undefined;
         await toolsStore.toggle(tool.id || tool.key, value, intent);
         ok += 1;
       } catch {

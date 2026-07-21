@@ -11,7 +11,14 @@
       <q-card-section class="q-gutter-md">
         <div class="row q-col-gutter-md">
           <div class="col-12 col-md-8">
-            <q-input v-model="query" :label="t('memory.recall.queryLabel')" dense outlined clearable @keyup.enter="runDebug" />
+            <q-input
+              v-model="query"
+              :label="t('memory.recall.queryLabel')"
+              dense
+              outlined
+              clearable
+              @keyup.enter="runDebug"
+            />
           </div>
           <div class="col-6 col-md-2">
             <q-input v-model.number="l2Limit" type="number" :label="t('memory.recall.l2Limit')" dense outlined />

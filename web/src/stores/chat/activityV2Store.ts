@@ -410,8 +410,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     }
 
     const sessionTasks = getSessionTasks(task.SessionID);
-    const host =
-      sessionTasks.find((t) => t.Status === 'running') ?? sessionTasks[sessionTasks.length - 1] ?? null;
+    const host = sessionTasks.find((t) => t.Status === 'running') ?? sessionTasks[sessionTasks.length - 1] ?? null;
     const isHost = host?.ID === taskId;
 
     const out: MemberSession[] = [];
@@ -422,12 +421,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
         continue;
       }
       // Mode B: empty TaskID + matching spirit session → host on latest/running task
-      if (
-        isHost &&
-        !ms.TaskID &&
-        !ms.TeamRunID &&
-        ms.SpiritSessionID === task.SessionID
-      ) {
+      if (isHost && !ms.TaskID && !ms.TeamRunID && ms.SpiritSessionID === task.SessionID) {
         out.push(ms);
       }
     }

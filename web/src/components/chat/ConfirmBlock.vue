@@ -14,16 +14,32 @@
       <pre class="confirm-block__code">{{ toolArgumentsJson }}</pre>
     </div>
     <div class="confirm-block__actions">
-      <button class="confirm-block__btn confirm-block__btn--approve" :disabled="confirming" @click="onConfirm(TOOL_CONFIRM_REPLY.approve)">
+      <button
+        class="confirm-block__btn confirm-block__btn--approve"
+        :disabled="confirming"
+        @click="onConfirm(TOOL_CONFIRM_REPLY.approve)"
+      >
         {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approve', '允许本次') }}
       </button>
-      <button class="confirm-block__btn confirm-block__btn--reject" :disabled="confirming" @click="onConfirm(TOOL_CONFIRM_REPLY.deny)">
+      <button
+        class="confirm-block__btn confirm-block__btn--reject"
+        :disabled="confirming"
+        @click="onConfirm(TOOL_CONFIRM_REPLY.deny)"
+      >
         {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.reject', '拒绝') }}
       </button>
-      <button class="confirm-block__btn confirm-block__btn--approve-session" :disabled="confirming" @click="onConfirm(TOOL_CONFIRM_REPLY.approveSession)">
+      <button
+        class="confirm-block__btn confirm-block__btn--approve-session"
+        :disabled="confirming"
+        @click="onConfirm(TOOL_CONFIRM_REPLY.approveSession)"
+      >
         {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approveSession', '会话内始终允许') }}
       </button>
-      <button class="confirm-block__btn confirm-block__btn--approve-always" :disabled="confirming" @click="onConfirm(TOOL_CONFIRM_REPLY.approveAlways)">
+      <button
+        class="confirm-block__btn confirm-block__btn--approve-always"
+        :disabled="confirming"
+        @click="onConfirm(TOOL_CONFIRM_REPLY.approveAlways)"
+      >
         {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approveAlways', '始终允许') }}
       </button>
     </div>

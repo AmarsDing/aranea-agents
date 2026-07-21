@@ -13,12 +13,7 @@
         <q-btn v-close-popup flat round dense icon="close" />
       </q-card-section>
 
-      <q-banner
-        v-if="hasActiveRun"
-        dense
-        rounded
-        class="bg-warning text-dark q-mx-md q-mt-sm"
-      >
+      <q-banner v-if="hasActiveRun" dense rounded class="bg-warning text-dark q-mx-md q-mt-sm">
         存在运行中的 TeamRun，编排定义只读；结束后可再编辑。
       </q-banner>
 

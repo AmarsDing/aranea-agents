@@ -66,12 +66,14 @@ export const useChannelsStore = defineStore('channels', () => {
     try {
       const [catalogData, channelsResult] = await Promise.all([
         listChannelCatalog(),
-        query ? listChannelsPaged(query) : listChannels().then((items) => ({
-          items,
-          total: items.length,
-          page: 1,
-          page_size: items.length,
-        })),
+        query
+          ? listChannelsPaged(query)
+          : listChannels().then((items) => ({
+              items,
+              total: items.length,
+              page: 1,
+              page_size: items.length,
+            })),
       ]);
       catalog.value = catalogData;
       channels.value = channelsResult.items;

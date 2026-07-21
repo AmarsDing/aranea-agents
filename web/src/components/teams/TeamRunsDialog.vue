@@ -25,89 +25,106 @@
       <q-separator />
       <q-tab-panels v-model="tab" animated>
         <q-tab-panel name="runs" class="q-pa-none">
-      <q-card-section>
-        <q-btn flat rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="$emit('refresh')" />
-        <q-banner v-if="liveReplaying" dense rounded class="bg-blue-1 text-dark q-mt-sm">
-          <template #avatar><q-spinner-dots color="primary" size="18px" /></template>
-          正在同步历史 WS 事件…
-        </q-banner>
-        <div v-if="error" class="text-negative q-mt-sm">{{ error }}</div>
-        <q-list v-else class="q-mt-md run-list" separator>
-          <q-expansion-item v-for="run in runs" :key="run.id" group="team-runs" @show="$emit('showSteps', run.id)">
-            <template #header>
-              <q-item-section avatar>
-                <q-avatar :color="runStatusColor(run.status)" text-color="white" :icon="runStatusIcon(run.status)" />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label>{{ teamModeLabel(run.mode) }} · {{ run.duration_ms }}ms</q-item-label>
-                <q-item-label caption
-                  >{{ formatDate(run.created_at) }} · 输入 {{ run.token_in }} / 输出 {{ run.token_out }} ·
-                  {{ formatCost(run.cost_micro_usd) }}</q-item-label
-                >
-              </q-item-section>
-            </template>
-            <div class="run-detail q-pa-md">
-              <div class="text-caption text-grey-7 q-mb-sm">输入</div>
-              <div class="run-preview">{{ run.input_preview || '-' }}</div>
-              <div class="text-caption text-grey-7 q-mt-md q-mb-sm">输出</div>
-              <div class="run-preview">{{ run.output_preview || run.error_message || '-' }}</div>
-              <q-separator class="q-my-md" />
-              <div class="row items-center q-gutter-sm q-mb-sm">
-                <q-btn
-                  flat
-                  dense
-                  size="sm"
-                  color="primary"
-                  icon="summarize"
-                  label="加载汇总"
-                  :loading="Boolean(summariesLoading[run.id])"
-                  @click="$emit('loadSummary', run.id)"
-                />
-                <q-btn
-                  flat
-                  dense
-                  size="sm"
-                  color="primary"
-                  icon="insights"
-                  label="观测台"
-                  @click="$emit('openObservatory', run.id)"
-                />
-              </div>
-              <div v-if="summariesByRun[run.id]" class="run-summary q-mb-md">
-                <div class="text-caption text-grey-7">结构化汇总</div>
-                <div class="text-body2">
-                  成员 {{ summariesByRun[run.id]?.member_count }} · 工具调用
-                  {{ summariesByRun[run.id]?.tool_call_count }} · 输入 {{ summariesByRun[run.id]?.token_in }} / 输出
-                  {{ summariesByRun[run.id]?.token_out }}
-                </div>
-              </div>
-              <q-inner-loading :showing="Boolean(stepsLoading[run.id])" />
-              <div v-for="step in stepsByRun[run.id] || []" :key="step.id" class="run-step">
-                <div class="row items-center justify-between">
-                  <div class="text-weight-medium">
-                    {{ step.agent_name || step.agent_key || agentName(agents, step.agent_id) }}
+          <q-card-section>
+            <q-btn
+              flat
+              rounded
+              color="primary"
+              icon="refresh"
+              label="刷新"
+              :loading="loading"
+              @click="$emit('refresh')"
+            />
+            <q-banner v-if="liveReplaying" dense rounded class="bg-blue-1 text-dark q-mt-sm">
+              <template #avatar><q-spinner-dots color="primary" size="18px" /></template>
+              正在同步历史 WS 事件…
+            </q-banner>
+            <div v-if="error" class="text-negative q-mt-sm">{{ error }}</div>
+            <q-list v-else class="q-mt-md run-list" separator>
+              <q-expansion-item v-for="run in runs" :key="run.id" group="team-runs" @show="$emit('showSteps', run.id)">
+                <template #header>
+                  <q-item-section avatar>
+                    <q-avatar
+                      :color="runStatusColor(run.status)"
+                      text-color="white"
+                      :icon="runStatusIcon(run.status)"
+                    />
+                  </q-item-section>
+                  <q-item-section>
+                    <q-item-label>{{ teamModeLabel(run.mode) }} · {{ run.duration_ms }}ms</q-item-label>
+                    <q-item-label caption
+                      >{{ formatDate(run.created_at) }} · 输入 {{ run.token_in }} / 输出 {{ run.token_out }} ·
+                      {{ formatCost(run.cost_micro_usd) }}</q-item-label
+                    >
+                  </q-item-section>
+                </template>
+                <div class="run-detail q-pa-md">
+                  <div class="text-caption text-grey-7 q-mb-sm">输入</div>
+                  <div class="run-preview">{{ run.input_preview || '-' }}</div>
+                  <div class="text-caption text-grey-7 q-mt-md q-mb-sm">输出</div>
+                  <div class="run-preview">{{ run.output_preview || run.error_message || '-' }}</div>
+                  <q-separator class="q-my-md" />
+                  <div class="row items-center q-gutter-sm q-mb-sm">
+                    <q-btn
+                      flat
+                      dense
+                      size="sm"
+                      color="primary"
+                      icon="summarize"
+                      label="加载汇总"
+                      :loading="Boolean(summariesLoading[run.id])"
+                      @click="$emit('loadSummary', run.id)"
+                    />
+                    <q-btn
+                      flat
+                      dense
+                      size="sm"
+                      color="primary"
+                      icon="insights"
+                      label="观测台"
+                      @click="$emit('openObservatory', run.id)"
+                    />
                   </div>
-                  <q-badge rounded :color="stepStatusColor(step.status)">{{ teamRunStatusLabel(step.status) }}</q-badge>
+                  <div v-if="summariesByRun[run.id]" class="run-summary q-mb-md">
+                    <div class="text-caption text-grey-7">结构化汇总</div>
+                    <div class="text-body2">
+                      成员 {{ summariesByRun[run.id]?.member_count }} · 工具调用
+                      {{ summariesByRun[run.id]?.tool_call_count }} · 输入 {{ summariesByRun[run.id]?.token_in }} / 输出
+                      {{ summariesByRun[run.id]?.token_out }}
+                    </div>
+                  </div>
+                  <q-inner-loading :showing="Boolean(stepsLoading[run.id])" />
+                  <div v-for="step in stepsByRun[run.id] || []" :key="step.id" class="run-step">
+                    <div class="row items-center justify-between">
+                      <div class="text-weight-medium">
+                        {{ step.agent_name || step.agent_key || agentName(agents, step.agent_id) }}
+                      </div>
+                      <q-badge rounded :color="stepStatusColor(step.status)">{{
+                        teamRunStatusLabel(step.status)
+                      }}</q-badge>
+                    </div>
+                    <div class="text-caption text-grey-7">
+                      {{ teamRoleLabel(step.role || 'worker') }} · {{ step.duration_ms }}ms · 输入 {{ step.token_in }} /
+                      输出
+                      {{ step.token_out }}
+                      <span v-if="step.tool_call_count"> · 工具 {{ step.tool_call_count }}</span>
+                      · {{ formatCost(step.cost_micro_usd) }}
+                    </div>
+                    <div class="run-preview q-mt-sm">{{ step.output_preview || step.error_message || '-' }}</div>
+                  </div>
+                  <div
+                    v-if="!stepsLoading[run.id] && !(stepsByRun[run.id] || []).length"
+                    class="text-caption text-grey-7"
+                  >
+                    暂无步骤记录。
+                  </div>
                 </div>
-                <div class="text-caption text-grey-7">
-                  {{ teamRoleLabel(step.role || 'worker') }} · {{ step.duration_ms }}ms · 输入 {{ step.token_in }} /
-                  输出
-                  {{ step.token_out }}
-                  <span v-if="step.tool_call_count"> · 工具 {{ step.tool_call_count }}</span>
-                  · {{ formatCost(step.cost_micro_usd) }}
-                </div>
-                <div class="run-preview q-mt-sm">{{ step.output_preview || step.error_message || '-' }}</div>
-              </div>
-              <div v-if="!stepsLoading[run.id] && !(stepsByRun[run.id] || []).length" class="text-caption text-grey-7">
-                暂无步骤记录。
-              </div>
+              </q-expansion-item>
+            </q-list>
+            <div v-if="!loading && runs.length === 0 && !error" class="text-center text-grey-7 q-pa-xl">
+              暂无运行记录，请先进入 Chat 测试该 Team。
             </div>
-          </q-expansion-item>
-        </q-list>
-        <div v-if="!loading && runs.length === 0 && !error" class="text-center text-grey-7 q-pa-xl">
-          暂无运行记录，请先进入 Chat 测试该 Team。
-        </div>
-      </q-card-section>
+          </q-card-section>
         </q-tab-panel>
         <q-tab-panel name="dead">
           <q-btn
@@ -140,10 +157,7 @@
               </q-item-section>
             </q-item>
           </q-list>
-          <div
-            v-if="!deadLettersLoading && !(deadLetters || []).length"
-            class="text-center text-grey-7 q-pa-xl"
-          >
+          <div v-if="!deadLettersLoading && !(deadLetters || []).length" class="text-center text-grey-7 q-pa-xl">
             暂无待处理死信。
           </div>
         </q-tab-panel>

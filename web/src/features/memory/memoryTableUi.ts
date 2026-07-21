@@ -80,9 +80,16 @@ export function buildMemoryFactTableColumns(formatDate: (value: string) => strin
       REGISTRY_COL_W.category,
       { sortable: false },
     ),
-    registryCol<MemoryFact>('source', t('memory.table.columns.source'), 'source_kind', 'left', REGISTRY_COL_W.category, {
-      sortable: false,
-    }),
+    registryCol<MemoryFact>(
+      'source',
+      t('memory.table.columns.source'),
+      'source_kind',
+      'left',
+      REGISTRY_COL_W.category,
+      {
+        sortable: false,
+      },
+    ),
     registryCol<MemoryFact>('updated', t('memory.table.columns.updated'), 'updated_at', 'left', REGISTRY_COL_W.time, {
       sortable: false,
       format: formatDate,
@@ -94,10 +101,17 @@ export function buildMemoryFactTableColumns(formatDate: (value: string) => strin
 /** MemoryCenter — L0 Assembly 表 */
 export function buildMemoryAssemblyTableColumns(formatDate: (value: string) => string, t: MemoryTranslator) {
   return [
-    registryCol<L0AssemblySnapshot>('created', t('memory.table.columns.time'), 'created_at', 'left', REGISTRY_COL_W.time, {
-      sortable: false,
-      format: formatDate,
-    }),
+    registryCol<L0AssemblySnapshot>(
+      'created',
+      t('memory.table.columns.time'),
+      'created_at',
+      'left',
+      REGISTRY_COL_W.time,
+      {
+        sortable: false,
+        format: formatDate,
+      },
+    ),
     registryCol<L0AssemblySnapshot>(
       'model',
       t('memory.table.columns.model'),
@@ -106,9 +120,16 @@ export function buildMemoryAssemblyTableColumns(formatDate: (value: string) => s
       REGISTRY_COL_W.name,
       { sortable: false },
     ),
-    registryCol<L0AssemblySnapshot>('ratio', t('memory.table.columns.used'), 'used_ratio', 'left', REGISTRY_COL_W.status, {
-      sortable: false,
-    }),
+    registryCol<L0AssemblySnapshot>(
+      'ratio',
+      t('memory.table.columns.used'),
+      'used_ratio',
+      'left',
+      REGISTRY_COL_W.status,
+      {
+        sortable: false,
+      },
+    ),
     registryCol<L0AssemblySnapshot>(
       'segments',
       t('memory.table.columns.segments'),
@@ -158,9 +179,21 @@ export function memoryCascadeStatusColor(status: string) {
 /** MemoryGraphExplorer — Neighborhood BFS 关系列 */
 export function buildMemoryRelationColumns(t: MemoryTranslator): QTableColumn<MemoryRelation>[] {
   return [
-    registryCol<MemoryRelation>('source_id', t('memory.table.columns.source'), 'source_id', 'left', REGISTRY_COL_W.name),
+    registryCol<MemoryRelation>(
+      'source_id',
+      t('memory.table.columns.source'),
+      'source_id',
+      'left',
+      REGISTRY_COL_W.name,
+    ),
     registryCol<MemoryRelation>('relation_type', t('memory.table.columns.relation'), 'relation_type', 'left', '11%'),
-    registryCol<MemoryRelation>('target_id', t('memory.table.columns.target'), 'target_id', 'left', REGISTRY_COL_W.name),
+    registryCol<MemoryRelation>(
+      'target_id',
+      t('memory.table.columns.target'),
+      'target_id',
+      'left',
+      REGISTRY_COL_W.name,
+    ),
     registryCol<MemoryRelation>('weight', t('memory.table.columns.weight'), 'weight', 'right', REGISTRY_COL_W.metric),
   ];
 }

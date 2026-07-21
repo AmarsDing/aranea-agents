@@ -675,7 +675,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
    */
   function handleSystemNotice(noticeType: string, meta: Record<string, unknown> = {}) {
     const teamId = String(meta.team_id ?? '');
-    let envType = '';
+    let envType: string;
     switch (noticeType) {
       case 'plan_created':
         envType = 'spirit_plan_created';

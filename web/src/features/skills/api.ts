@@ -613,8 +613,6 @@ export async function listUnifiedEvolutionSuggestions(params: {
   pageSize?: number;
 }): Promise<{ items: SkillEvolutionView[]; total: number; skillTotal: number; agentTotal: number }> {
   const items: SkillEvolutionView[] = [];
-  let skillTotal = 0;
-  let agentTotal = 0;
 
   // Require a concrete targetType so page/total map to a single backend.
   // Callers that omit targetType default to skill-level suggestions.
@@ -631,7 +629,7 @@ export async function listUnifiedEvolutionSuggestions(params: {
     for (const item of skillRes.items || []) {
       items.push(mapProtoEvolutionSuggestionToView(item));
     }
-    skillTotal = Number(skillRes.total || 0);
+    const skillTotal = Number(skillRes.total || 0);
     return { items, total: skillTotal, skillTotal, agentTotal: 0 };
   }
 
@@ -645,7 +643,7 @@ export async function listUnifiedEvolutionSuggestions(params: {
   for (const item of agentRes.items || []) {
     items.push(mapProtoSkillProposalToView(item));
   }
-  agentTotal = Number(agentRes.total || (agentRes.items || []).length);
+  const agentTotal = Number(agentRes.total || (agentRes.items || []).length);
   return { items, total: agentTotal, skillTotal: 0, agentTotal };
 }
 

@@ -67,9 +67,7 @@ describe('MemberSessionPanel', () => {
     const sendBtn = wrapper.find('.member-input-bar button');
     expect(sendBtn.exists()).toBe(true);
     await sendBtn.trigger('click');
-    expect(wrapper.emitted('inject-agent')?.[0]).toEqual([
-      { sessionId: 'ms-sess', message: 'hello agent' },
-    ]);
+    expect(wrapper.emitted('inject-agent')?.[0]).toEqual([{ sessionId: 'ms-sess', message: 'hello agent' }]);
   });
 
   it('emits expand with SessionID when mounting expanded (running)', () => {

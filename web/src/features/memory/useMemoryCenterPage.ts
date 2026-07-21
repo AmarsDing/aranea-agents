@@ -207,7 +207,9 @@ export function useMemoryCenterPage() {
       caption: t('memory.overview.layers.l3Caption'),
       icon: 'psychology',
       color: 'deep-purple',
-      status: factsEndpointReady.value ? t('memory.overview.status.connected') : t('memory.overview.status.unavailable'),
+      status: factsEndpointReady.value
+        ? t('memory.overview.status.connected')
+        : t('memory.overview.status.unavailable'),
       statusColor: factsEndpointReady.value ? 'positive' : 'warning',
     },
     {

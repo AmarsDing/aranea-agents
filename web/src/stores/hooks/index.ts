@@ -1,6 +1,13 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { createHook, deleteHook, listHooks, listHooksPaged, updateHook, type HookListQuery } from '../../features/hooks/api';
+import {
+  createHook,
+  deleteHook,
+  listHooks,
+  listHooksPaged,
+  updateHook,
+  type HookListQuery,
+} from '../../features/hooks/api';
 import { listHookDeliveries, type HookDeliveryListQuery, type HookDeliveryRow } from '../../features/hooks/deliveries';
 import type { HookRow, HookRuleConfig } from '../../features/hooks/types';
 

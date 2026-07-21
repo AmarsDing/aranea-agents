@@ -194,10 +194,7 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
       };
       return;
     }
-    if (
-      envType === 'butler.orchestration.completed' ||
-      envType === 'butler.orchestration.failed'
-    ) {
+    if (envType === 'butler.orchestration.completed' || envType === 'butler.orchestration.failed') {
       loadingMessage.value = null;
     }
   }

@@ -2,24 +2,12 @@ import { onBeforeUnmount, ref, watch, type Ref } from 'vue';
 import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from '../../../realtime/globalWsHub';
 import { listStepsV2 } from '../../session/v2Api';
 import type { Activity } from '../activityTypes';
-import type {
-  Step,
-  StepCreatedPayload,
-  StepStreamingPayload,
-  StepUpdatedPayload,
-  V2WsEnvelope,
-} from '../v2Types';
+import type { Step, StepCreatedPayload, StepStreamingPayload, StepUpdatedPayload, V2WsEnvelope } from '../v2Types';
 import { stepToActivitySnapshot } from '../stepToActivitySnapshot';
 
 const MAX_LIVE_ACTIVITIES = 500;
 
-const STEP_KINDS = new Set([
-  'step.created',
-  'step.updated',
-  'step.completed',
-  'step.failed',
-  'step.streaming',
-]);
+const STEP_KINDS = new Set(['step.created', 'step.updated', 'step.completed', 'step.failed', 'step.streaming']);
 
 export type ChatEventInspectorStreamDeps = {
   ownerKind?: 'agent' | 'team';

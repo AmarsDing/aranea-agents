@@ -75,7 +75,9 @@
           dense
           color="primary"
           :model-value="props.row.enabled"
-          :disable="!props.row.permissions.can_toggle_enabled || props.row.status !== 'published' || togglingId === props.row.id"
+          :disable="
+            !props.row.permissions.can_toggle_enabled || props.row.status !== 'published' || togglingId === props.row.id
+          "
           @update:model-value="emit('toggle-enabled', props.row, Boolean($event))"
         >
           <q-tooltip v-if="props.row.status !== 'published'">仅已发布的 Skill 可启用</q-tooltip>

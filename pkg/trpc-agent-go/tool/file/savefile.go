@@ -19,7 +19,6 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/internal/fileref"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
-	"trpc.group/trpc-go/trpc-agent-go/tool/internal/textfile"
 )
 
 // saveFileRequest represents the input for the save file operation.
@@ -88,25 +87,12 @@ func (f *fileToolSet) saveFile(
 			)
 		}
 	}
-	snap := &editFileSnapshot{
-		AbsPath:    filePath,
-		Exists:     false,
-		Content:    "",
-		Mode:       f.createFileMode,
-		Encoding:   "utf8",
-		LineEnding: "\n",
-	}
-	if st, err := os.Stat(filePath); err == nil && !st.IsDir() {
-		snap.Exists = true
-		snap.Mode = st.Mode()
-		if raw, readErr := os.ReadFile(filePath); readErr == nil {
-			snap.LineEnding = textfile.DetectLineEnding(raw)
-			if _, enc, decErr := textfile.DecodeBytes(raw); decErr == nil {
-				snap.Encoding = enc
-			}
-		}
-	}
-	if err := f.commitEditSnapshot(ctx, snap, req.Contents); err != nil {
+	// Write the file.
+	if err := os.WriteFile(
+		filePath,
+		[]byte(req.Contents),
+		f.createFileMode,
+	); err != nil {
 		rsp.Message = fmt.Sprintf(
 			"Error: cannot write to file '%s': %v",
 			req.FileName,

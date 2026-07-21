@@ -1,5 +1,11 @@
 <template>
-  <div :class="['observe-node', `observe-node--${data.status}`, { 'observe-node--entry': data.isEntry, 'observe-node--exit': data.isExit }]">
+  <div
+    :class="[
+      'observe-node',
+      `observe-node--${data.status}`,
+      { 'observe-node--entry': data.isEntry, 'observe-node--exit': data.isExit },
+    ]"
+  >
     <!-- Entry/Exit markers -->
     <div v-if="data.isEntry" class="observe-node__entry-marker" />
     <div v-if="data.isExit" class="observe-node__exit-marker" />
@@ -19,12 +25,7 @@
     <!-- Members: single = avatar + name; team = avatar stack + count -->
     <div v-if="data.members?.length" class="observe-node__members">
       <div class="observe-node__avatars">
-        <span
-          v-for="m in displayMembers"
-          :key="m.agentKey"
-          class="observe-node__avatar"
-          :title="m.agentName"
-        >
+        <span v-for="m in displayMembers" :key="m.agentKey" class="observe-node__avatar" :title="m.agentName">
           <img v-if="m.avatarUrl" :src="m.avatarUrl" :alt="m.agentName" class="observe-node__avatar-img" />
           <template v-else>{{ memberInitial(m.agentName) }}</template>
           <span :class="['observe-node__member-dot', `observe-node__member-dot--${m.status}`]" />
@@ -47,14 +48,14 @@
     </div>
 
     <!-- Media preview (partial while running, full when completed) -->
-    <NodeMediaPreview
-      v-if="data.mediaOutput?.length"
-      :artifacts="data.mediaOutput"
-      @preview="onMediaPreview"
-    />
+    <NodeMediaPreview v-if="data.mediaOutput?.length" :artifacts="data.mediaOutput" @preview="onMediaPreview" />
 
     <!-- Text output summary (completed only) -->
-    <div v-if="data.status === 'completed' && data.textOutput" class="observe-node__text-output" :title="data.textOutput">
+    <div
+      v-if="data.status === 'completed' && data.textOutput"
+      class="observe-node__text-output"
+      :title="data.textOutput"
+    >
       <q-icon name="description" size="12px" />
       <span class="observe-node__text-output-text">{{ data.textOutput }}</span>
     </div>
@@ -127,9 +128,7 @@ const MAX_VISIBLE_MEMBERS = 3;
 const isTeamNode = computed(() => (props.data.members?.length || 0) > 1);
 
 const displayMembers = computed(() => (props.data.members || []).slice(0, MAX_VISIBLE_MEMBERS));
-const extraMemberCount = computed(() =>
-  Math.max(0, (props.data.members?.length || 0) - MAX_VISIBLE_MEMBERS),
-);
+const extraMemberCount = computed(() => Math.max(0, (props.data.members?.length || 0) - MAX_VISIBLE_MEMBERS));
 
 const memberNamesLabel = computed(() => {
   const members = props.data.members || [];

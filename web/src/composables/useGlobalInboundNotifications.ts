@@ -6,10 +6,7 @@ import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from '../features/ch
 import { runStatusFromV2Payload } from '../features/chat/activityRunStatus';
 import { parseChannelSessionMeta } from '../features/chat/channelSessionMeta';
 import type { Session } from '../features/session/types';
-import {
-  isChannelInboundSession,
-  resolveInboundSession,
-} from '../features/chat/channelInboundSession';
+import { isChannelInboundSession, resolveInboundSession } from '../features/chat/channelInboundSession';
 import { useInboundNotificationStore } from '../stores/inboundNotifications';
 import { useAppStore } from '../stores/app';
 import { useChatSessionStore } from '../stores/chat/sessionStore';
@@ -20,12 +17,7 @@ import { SESSION_RUN_STATUS } from '../features/chat/sessionRunStatus';
 
 const TOAST_DEDUPE_MS = 4000;
 
-const TERMINAL_KINDS = new Set([
-  'task.completed',
-  'task.failed',
-  'turn.completed',
-  'turn.failed',
-]);
+const TERMINAL_KINDS = new Set(['task.completed', 'task.failed', 'turn.completed', 'turn.failed']);
 
 /**
  * App-wide channel inbound bell + toast. Mounted from MainLayout so notifications
@@ -94,11 +86,15 @@ export function useGlobalInboundNotifications() {
     });
   }
 
-  async function handleInboundSession(sessionId: string, source: string, opts: {
-    running?: boolean;
-    completed?: boolean;
-    toast?: boolean;
-  }) {
+  async function handleInboundSession(
+    sessionId: string,
+    source: string,
+    opts: {
+      running?: boolean;
+      completed?: boolean;
+      toast?: boolean;
+    },
+  ) {
     if (!(await isChannelInbound(sessionId, source))) return;
 
     const sess = await resolveSession(sessionId);

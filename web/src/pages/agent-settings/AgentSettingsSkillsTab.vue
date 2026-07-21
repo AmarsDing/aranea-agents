@@ -32,8 +32,7 @@
             <div class="settings-subsection__title">加载模式</div>
             <p class="settings-subsection__hint">
               Progressive：Prompt 仅注入 Skill 清单（L0），正文经
-              <code>skill_load</code> 按需加载（L1），引用文档经
-              <code>skill_select_docs</code>（L2）。
+              <code>skill_load</code> 按需加载（L1），引用文档经 <code>skill_select_docs</code>（L2）。
             </p>
           </div>
           <q-select

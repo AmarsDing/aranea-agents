@@ -2,7 +2,14 @@
   <div>
     <AppPageToolbar>
       <template #actions>
-        <q-btn flat rounded no-caps icon="upload_file" label="入库文档" @click="$emit('open-ingest')" />
+        <q-btn
+          flat
+          rounded
+          no-caps
+          icon="content_paste"
+          :label="t('knowledgePage.pasteText')"
+          @click="$emit('open-ingest')"
+        />
         <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="$emit('refresh')" />
       </template>
     </AppPageToolbar>
@@ -55,6 +62,11 @@
       <template #body-cell-created_at="slotProps">
         <q-td :props="slotProps">
           <span class="text-caption">{{ formatKnowledgeTime(slotProps.row.created_at) }}</span>
+        </q-td>
+      </template>
+      <template #body-cell-updated_at="slotProps">
+        <q-td :props="slotProps">
+          <span class="text-caption">{{ formatKnowledgeTime(slotProps.row.updated_at) }}</span>
         </q-td>
       </template>
       <template #body-cell-actions="slotProps">

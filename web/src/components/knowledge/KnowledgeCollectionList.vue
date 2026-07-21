@@ -13,7 +13,7 @@
         <q-item-section>
           <q-item-label>{{ col.name }}</q-item-label>
           <q-item-label caption :class="selectedId === col.id ? 'text-white' : ''">
-            {{ col.embedding_model }} · {{ col.document_count }} 文档
+            {{ t('knowledgePage.collectionCounts', { docs: col.document_count, chunks: col.chunk_count }) }}
           </q-item-label>
         </q-item-section>
         <q-item-section side>
@@ -34,6 +34,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import type { KnowledgeCollection } from '../../features/knowledge/types';
 import { knowledgeStatusColor } from '../../features/knowledge/knowledgeUi';
 
@@ -46,4 +47,5 @@ defineProps<{
 defineEmits<{ select: [id: string] }>();
 
 const statusColor = knowledgeStatusColor;
+const { t } = useI18n();
 </script>

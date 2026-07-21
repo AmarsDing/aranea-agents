@@ -37,62 +37,62 @@
         :offset="[0, 6]"
         class="taxonomy-field-menu"
       >
-      <q-card flat class="taxonomy-field-menu__card">
-        <q-card-section class="q-pb-sm">
-          <q-input
-            v-model="menuKeyword"
-            dense
-            outlined
-            clearable
-            debounce="150"
-            placeholder="搜索组织、部门或职位..."
-            class="taxonomy-control"
-          >
-            <template #prepend><q-icon name="search" /></template>
-          </q-input>
-        </q-card-section>
-        <q-separator />
-        <q-scroll-area class="taxonomy-field-menu__scroll">
-          <div class="q-pa-sm">
-            <q-tree
-              :nodes="menuNodes"
-              node-key="id"
-              :expanded="expanded"
+        <q-card flat class="taxonomy-field-menu__card">
+          <q-card-section class="q-pb-sm">
+            <q-input
+              v-model="menuKeyword"
               dense
-              no-connectors
-              @update:expanded="onExpandedUpdate"
+              outlined
+              clearable
+              debounce="150"
+              placeholder="搜索组织、部门或职位..."
+              class="taxonomy-control"
             >
-              <template #default-header="prop">
-                <div
-                  class="app-taxonomy-tree-node row items-center no-wrap full-width"
-                  :class="{
-                    'app-taxonomy-tree-node--selectable': prop.node.selectable || selectableLevel === 'any',
-                    'app-taxonomy-tree-node--selected': modelValue === prop.node.id,
-                    'cursor-pointer': prop.node.selectable || selectableLevel === 'any',
-                  }"
-                  @click.stop="onPick(prop.node)"
-                >
-                  <q-icon :name="prop.node.icon" color="primary" size="16px" class="q-mr-sm" />
-                  <div class="col min-width-0">
-                    <div class="ellipsis">{{ prop.node.label }}</div>
-                    <div v-if="captionMode === 'level'" class="app-taxonomy-tree-node__caption">
-                      {{ levelLabel(prop.node.level) }}
+              <template #prepend><q-icon name="search" /></template>
+            </q-input>
+          </q-card-section>
+          <q-separator />
+          <q-scroll-area class="taxonomy-field-menu__scroll">
+            <div class="q-pa-sm">
+              <q-tree
+                :nodes="menuNodes"
+                node-key="id"
+                :expanded="expanded"
+                dense
+                no-connectors
+                @update:expanded="onExpandedUpdate"
+              >
+                <template #default-header="prop">
+                  <div
+                    class="app-taxonomy-tree-node row items-center no-wrap full-width"
+                    :class="{
+                      'app-taxonomy-tree-node--selectable': prop.node.selectable || selectableLevel === 'any',
+                      'app-taxonomy-tree-node--selected': modelValue === prop.node.id,
+                      'cursor-pointer': prop.node.selectable || selectableLevel === 'any',
+                    }"
+                    @click.stop="onPick(prop.node)"
+                  >
+                    <q-icon :name="prop.node.icon" color="primary" size="16px" class="q-mr-sm" />
+                    <div class="col min-width-0">
+                      <div class="ellipsis">{{ prop.node.label }}</div>
+                      <div v-if="captionMode === 'level'" class="app-taxonomy-tree-node__caption">
+                        {{ levelLabel(prop.node.level) }}
+                      </div>
+                      <div v-else-if="prop.node.caption" class="app-taxonomy-tree-node__caption ellipsis">
+                        {{ prop.node.caption }}
+                      </div>
                     </div>
-                    <div v-else-if="prop.node.caption" class="app-taxonomy-tree-node__caption ellipsis">
-                      {{ prop.node.caption }}
-                    </div>
+                    <q-icon v-if="modelValue === prop.node.id" name="check_circle" color="primary" size="18px" />
                   </div>
-                  <q-icon v-if="modelValue === prop.node.id" name="check_circle" color="primary" size="18px" />
-                </div>
-              </template>
-            </q-tree>
-            <div v-if="menuNodes.length === 0" class="text-caption text-grey-7 q-pa-md text-center">
-              {{ tree.length === 0 ? $t('agentsPage.taxonomy.emptyTree') : $t('agentsPage.taxonomy.noMatch') }}
+                </template>
+              </q-tree>
+              <div v-if="menuNodes.length === 0" class="text-caption text-grey-7 q-pa-md text-center">
+                {{ tree.length === 0 ? $t('agentsPage.taxonomy.emptyTree') : $t('agentsPage.taxonomy.noMatch') }}
+              </div>
             </div>
-          </div>
-        </q-scroll-area>
-      </q-card>
-    </q-menu>
+          </q-scroll-area>
+        </q-card>
+      </q-menu>
     </q-field>
   </div>
 </template>

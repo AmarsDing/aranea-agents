@@ -63,9 +63,7 @@ const styledEdges = computed(() =>
     return {
       ...edge,
       class: isHighlighted ? 'edge--highlighted' : '',
-      style: isHighlighted
-        ? { stroke: 'var(--q-primary)', strokeWidth: 2.5 }
-        : {},
+      style: isHighlighted ? { stroke: 'var(--q-primary)', strokeWidth: 2.5 } : {},
     };
   }),
 );

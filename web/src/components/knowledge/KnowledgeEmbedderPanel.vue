@@ -11,7 +11,12 @@
         <q-btn color="primary" unelevated no-caps :label="t('knowledgeEmbed.save')" :loading="saving" @click="save" />
       </template>
     </knowledge-embedder-fields>
-    <p class="app-settings-section__hint q-mb-none q-mt-md">{{ t('knowledgeEmbed.hint') }}</p>
+    <p class="app-settings-section__hint q-mb-none q-mt-md">
+      {{ t('knowledgePage.embedderSharedHintPre')
+      }}<router-link class="text-primary" to="/settings">{{ t('knowledgePage.embedderSharedHintLink') }}</router-link
+      >{{ t('knowledgePage.embedderSharedHintPost') }}
+    </p>
+    <p class="app-settings-section__hint q-mb-none q-mt-sm">{{ t('knowledgeEmbed.hint') }}</p>
   </section>
 </template>
 

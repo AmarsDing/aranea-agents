@@ -53,35 +53,44 @@
       expand-icon-class="text-grey-6"
     >
       <div class="q-gutter-sm q-pa-sm">
-        <div class="row q-gutter-sm items-center">
-          <q-select
-            :model-value="hybridMode"
-            dense
-            outlined
-            label="检索模式"
-            :options="hybridModeOptions"
-            emit-value
-            map-options
-            style="min-width: 160px"
-            @update:model-value="$emit('update:hybridMode', String($event ?? 'auto'))"
-          />
-          <q-select
-            :model-value="rewriteStrategy"
-            dense
-            outlined
-            label="查询重写"
-            :options="rewriteStrategyOptions"
-            emit-value
-            map-options
-            style="min-width: 160px"
-            @update:model-value="$emit('update:rewriteStrategy', String($event ?? ''))"
-          />
-          <q-toggle
-            :model-value="useRerank"
-            dense
-            label="Rerank"
-            @update:model-value="$emit('update:useRerank', !!$event)"
-          />
+        <div class="row q-gutter-md items-start">
+          <div>
+            <q-select
+              :model-value="hybridMode"
+              dense
+              outlined
+              label="检索模式"
+              :options="hybridModeOptions"
+              emit-value
+              map-options
+              style="min-width: 160px"
+              @update:model-value="$emit('update:hybridMode', String($event ?? 'auto'))"
+            />
+            <div class="text-caption text-grey-7 q-mt-xs">{{ t('knowledgePage.searchHintHybrid') }}</div>
+          </div>
+          <div>
+            <q-select
+              :model-value="rewriteStrategy"
+              dense
+              outlined
+              label="查询重写"
+              :options="rewriteStrategyOptions"
+              emit-value
+              map-options
+              style="min-width: 160px"
+              @update:model-value="$emit('update:rewriteStrategy', String($event ?? ''))"
+            />
+            <div class="text-caption text-grey-7 q-mt-xs">{{ t('knowledgePage.searchHintRewrite') }}</div>
+          </div>
+          <div>
+            <q-toggle
+              :model-value="useRerank"
+              dense
+              label="Rerank"
+              @update:model-value="$emit('update:useRerank', !!$event)"
+            />
+            <div class="text-caption text-grey-7 q-mt-xs">{{ t('knowledgePage.searchHintRerank') }}</div>
+          </div>
         </div>
       </div>
     </q-expansion-item>

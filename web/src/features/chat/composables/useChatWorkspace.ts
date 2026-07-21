@@ -50,11 +50,7 @@ import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import { useChatEventRouter } from './useChatEventRouter';
-import type {
-  V2WsEnvelope,
-  SystemNoticeEventPayload,
-  RunStatusEventPayload,
-} from '../v2Types';
+import type { V2WsEnvelope, SystemNoticeEventPayload, RunStatusEventPayload } from '../v2Types';
 import { noteChannelWsEnvelope } from '../channelWsCursor';
 import { useSessionTree } from './useSessionTree';
 import { SESSION_RUN_STATUS } from '../sessionRunStatus';
@@ -157,10 +153,7 @@ export function useChatWorkspace() {
     // Robust fallback: when the backend completes a turn but the terminal
     // run_status is missing/late, task.completed/failed still resets sending
     // so the composer does not stay stuck on "停止生成".
-    if (
-      (envelope.kind === 'task.completed' || envelope.kind === 'task.failed') &&
-      sender.sending.value
-    ) {
+    if ((envelope.kind === 'task.completed' || envelope.kind === 'task.failed') && sender.sending.value) {
       sender.markSendingDone();
     }
   };

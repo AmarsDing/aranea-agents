@@ -185,7 +185,8 @@ export function useObserveNodeEnrichment() {
 export function useObserveGraph(spiritSessionId: Ref<string>) {
   const activityStore = useChatActivityStore();
   const nodeOutputStore = useNodeOutputStore();
-  const { extractMembers, extractDuration, extractError, extractDescription, extractTextOutput } = useObserveNodeEnrichment();
+  const { extractMembers, extractDuration, extractError, extractDescription, extractTextOutput } =
+    useObserveNodeEnrichment();
 
   /**
    * Extract the latest media progress for a node from activity steps.

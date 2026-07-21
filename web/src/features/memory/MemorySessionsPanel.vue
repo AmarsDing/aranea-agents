@@ -156,7 +156,9 @@
                 />
               </q-item-section>
               <q-item-section side>
-                <q-chip dense :color="statusColor(task.status)" text-color="white">{{ taskStatusLabel(task.status) }}</q-chip>
+                <q-chip dense :color="statusColor(task.status)" text-color="white">{{
+                  taskStatusLabel(task.status)
+                }}</q-chip>
               </q-item-section>
             </q-item>
           </q-list>

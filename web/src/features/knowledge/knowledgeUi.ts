@@ -8,6 +8,7 @@ export const KNOWLEDGE_DOC_TABLE_COLUMNS = [
   registryCol<KnowledgeDocument>('chunk_count', '分块', 'chunk_count', 'right', REGISTRY_COL_W.metric),
   registryCol<KnowledgeDocument>('size_bytes', '大小', 'size_bytes', 'right', REGISTRY_COL_W.metric),
   registryCol<KnowledgeDocument>('created_at', '入库时间', 'created_at', 'left', REGISTRY_COL_W.timeWide),
+  registryCol<KnowledgeDocument>('updated_at', '更新时间', 'updated_at', 'left', REGISTRY_COL_W.timeWide),
   registryColActions<KnowledgeDocument>(REGISTRY_COL_W.actions, ''),
 ];
 

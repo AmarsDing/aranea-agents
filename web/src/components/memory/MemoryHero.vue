@@ -1,10 +1,6 @@
 // Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
-  <AppPageHero
-    :kicker="t('memory.hero.kicker')"
-    :title="t('memory.hero.title')"
-    :subtitle="t('memory.hero.subtitle')"
-  >
+  <AppPageHero :kicker="t('memory.hero.kicker')" :title="t('memory.hero.title')" :subtitle="t('memory.hero.subtitle')">
     <template #actions>
       <q-select
         :model-value="selectedAgentId"

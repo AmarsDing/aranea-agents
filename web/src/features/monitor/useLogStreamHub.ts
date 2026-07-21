@@ -136,9 +136,7 @@ export function createMonitorLogHub(paused: MonitorLogHubPausedRefs): MonitorLog
     },
     onBackpressure: (payload) => {
       const dropped =
-        Number(payload.dropped_high ?? 0) +
-        Number(payload.dropped_normal ?? 0) +
-        Number(payload.dropped_low ?? 0);
+        Number(payload.dropped_high ?? 0) + Number(payload.dropped_normal ?? 0) + Number(payload.dropped_low ?? 0);
       const windowSecs = Number(payload.window_seconds ?? 10);
       backpressureMessage.value = `监控流过载，最近 ${windowSecs}s 丢弃 ${dropped} 条非关键事件，可能影响实时性。`;
     },

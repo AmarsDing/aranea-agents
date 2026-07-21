@@ -38,10 +38,7 @@ function str(v: unknown, fallback = ''): string {
  * Special-case remaps where NoticeType ≠ the historical activity.stage /
  * activity.kind pair that consumers filter on.
  */
-function resolveKindAndStage(
-  noticeType: string,
-  meta: Record<string, unknown>,
-): { kind: ActivityKind; stage: string } {
+function resolveKindAndStage(noticeType: string, meta: Record<string, unknown>): { kind: ActivityKind; stage: string } {
   const metaKind = str(meta.activity_kind);
   if (noticeType === 'checkpoint' || meta.interrupt_key != null) {
     return { kind: 'session', stage: 'checkpoint' };
@@ -57,7 +54,10 @@ function resolveKindAndStage(
   }
   if (TEAM_NOTICE_TYPES.has(noticeType) && (!metaKind || metaKind === 'team_stage' || metaKind === 'notice')) {
     if (noticeType.startsWith('team_stage_') || noticeType === 'intent_pass' || noticeType === 'transfer') {
-      return { kind: noticeType === 'intent_pass' || noticeType === 'transfer' ? 'notice' : 'team_stage', stage: noticeType };
+      return {
+        kind: noticeType === 'intent_pass' || noticeType === 'transfer' ? 'notice' : 'team_stage',
+        stage: noticeType,
+      };
     }
     return { kind: (metaKind as ActivityKind) || 'team_stage', stage: noticeType };
   }

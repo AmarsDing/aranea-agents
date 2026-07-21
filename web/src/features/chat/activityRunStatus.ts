@@ -21,7 +21,10 @@ export type RunStatusFromWs = {
 
 export { AWAIT_KIND_REPLY, AWAIT_KIND_TOOL_CONFIRM };
 
-function normalizeRunStatusFields(meta: Record<string, unknown>, fallbacks?: { status?: string; runId?: string }): RunStatusFromWs | null {
+function normalizeRunStatusFields(
+  meta: Record<string, unknown>,
+  fallbacks?: { status?: string; runId?: string },
+): RunStatusFromWs | null {
   let status = String(meta.status ?? fallbacks?.status ?? 'idle');
   // TECH-DEBT: legacy escalating→durable mapping, remove after DB migration completes
   if (status === 'escalating') status = 'durable';

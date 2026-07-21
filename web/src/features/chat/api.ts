@@ -296,7 +296,11 @@ export async function confirmActivity(sessionId: string, activityId: string, app
 }
 
 /** Confirm a tool-blocked activity with a structured grant scope. */
-export async function confirmActivityGrant(payload: { sessionId: string; activityId: string; reply: string }): Promise<boolean> {
+export async function confirmActivityGrant(payload: {
+  sessionId: string;
+  activityId: string;
+  reply: string;
+}): Promise<boolean> {
   try {
     const data = await chatService.ConfirmActivity({
       sessionId: payload.sessionId,
