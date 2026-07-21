@@ -5007,3 +5007,212 @@ Phase B（串行）：
 | `cmd/admin/wire.go` + `wire_gen.go` | `provideTaskPlanner` 新增 v2 EventBus 参数 |
 | `web/src/features/spirit/observabilityConstants.ts` | 新增 `ORCHESTRATION_PROGRESS_MAP`（6 条 phase 进度映射） |
 | `web/src/features/chat/composables/useContextualLoadingMessage.ts` | 新增 `orchestration_progress` 分支（按 meta.phase + index/total/agentName 渲染） |
+
+---
+
+### B.10.15 团队间交付物结构化传递（P1 形式契约 / P2 产物引用化 / Graph StateFields）落地设计（2026-07-21 评审版）
+
+> **背景**：P0 阶段已打通 DAG 团队间交付物主链路（`RecordTeamCompletion` → `WriteDeliverablesToSession` → `teams.deliverables_output_json` → `InjectUpstreamDeliverables` → 下游 taskDesc 前缀）。遗留三项非阻断改进：P1 形式契约由 Planner schema 填充、P2 产物引用化、Graph StateFields 注入。本节基于全链路代码评审（Spirit→Planner→Allocator→PlanExecutor→RealTeamOrchestrator→Team 执行→成果提取→落库→下游注入→Synthesis）给出评审修订后的可落地方案。
+
+#### B.10.15.1 全链路断点定位（评审结论）
+
+**当前生产主路径**：
+
+```
+plan_and_execute
+  → Phase1 TaskPlanner.Plan (decomposeTask → buildDecompositionPrompt → parseDecompositionOutput → SubTask)
+  → Phase2 Allocator.Allocate
+  → PublishV2Board (SubTask → PlanStep，PlanBoardCreatedEvent)
+  → PlanExecutor.dagRun → RealTeamOrchestrator.Orchestrate(step)
+      → AssembleTeam(SpiritTeamParams{DagNodeID, DependsOn})        ← 断点 P1-c：契约不透传
+      → InjectUpstreamDeliverables → turnContent = 前缀 + taskDesc
+  → Team 执行（GraphAgent 编译路径）
+  → HandleTeamTurnResult → RecordTeamCompletion
+      → WriteDeliverablesToSession → ExtractTeamOutput（SpiritStepReader 精确读团队主会话 reply step）
+      → summary = TruncateRunes(content, 500)                       ← 断点 P2：全文仅存于 steps_v2，缓存只有摘要
+      → DeliverablesOutput[dagNodeID] = summary（纯文本）            ← 断点 P2：无引用、无结构化信封
+  → scheduleDependentTeams → 下游 Orchestrate（循环）
+  → 全部完成 → SynthesisUsecase.SynthesizeResults
+```
+
+**三个遗留项的精确断点**：
+
+| 项 | 断点 | 证据 |
+|----|------|------|
+| P1 形式契约 | ① `buildDecompositionPrompt` 未要求 LLM 输出 `deliverables`/`input_contract`；② `parseDecompositionOutput` 的 rawTasks 无契约字段；③ `biz.SubTask` 无契约字段；④ `biz.PlanStep` 无契约字段；⑤ `SpiritTeamParams` 无契约字段 → `AssembleTeam` 创建 Team 时 `Deliverables`/`InputContract` 永远为空；⑥ `ValidateDeliverableContracts` 已实现但**全代码库无调用点** | `task_planner_impl.go:861-890`；`task_plan.go:87-95`；`plan_step.go:7-27`；`spirit_team_usecase.go:91-105,363-376`；`spirit_team_usecase.go:1492`（仅定义） |
+| P2 产物引用化 | `ExtractTeamOutput` 读到的 `st.Content` 截断前是**全文**（steps_v2 表 reply step 完整持久化），但 `WriteDeliverablesToSession` 只写 500 字符摘要；`DeliverablesOutput` 值为 `map[dagNodeID]string`，无引用、无尺寸元数据；下游无任何工具可按需取全文 | `spirit_team_usecase.go:946-958,1705` |
+| Graph StateFields | 团队内 state 通道完整但**双开关均未启用**（工具注册 `EnabledByDefault: false` + `Definition.EnableStateDeliverable` 默认 false）；团队完成后 graph final state → `DeliverablesOutput` 的桥接不存在；`ReducerCover` 为 map 级覆盖（latest writer wins，顺序交接语义） | `toolset.go:378-386`；`graph_runtime_config.go:80-105`；`tools/deliverable/tool.go` |
+
+**评审修订要点**（相对原方案）：
+
+1. **P2 不新建 blob 表**。交付物全文已在 `steps_v2` 表的 reply step 中持久化（`ExtractTeamOutput` 主数据源），新建 `deliverable_blobs` 表会引入数据冗余 + 双写一致性 + 生命周期管理三重负担。复用 steps_v2 引用即可实现"信封+引用"模型，零冗余、随 session 树级联清理。原考虑的 `tool_result_blobs` 基建（`ToolResultBlobReader/Writer`）语义专用（ToolName/TurnNumber 字段），不适用于团队交付物，放弃复用。
+2. **P1 契约生成保留 LLM 输出但加确定性兜底**。LLM 自由生成契约名的可靠性风险（上下游 name 匹配依赖 LLM 一致性）通过两点化解：prompt 强约束"下游 input_contract.name 必须引用上游 deliverables.name"；LLM 未输出契约但存在 DAG 依赖时，从 subtask 确定性派生兜底契约（`{step_id}_output`，document/markdown），保证注入提示可引用、验证器有事可验。
+3. **Graph StateFields 与 P1/P2 解耦**。state 通道作用域明确限定为**团队内成员间**交付（Cover reducer = 顺序交接语义），不试图替代团队间通道；团队间桥接（state → DeliverablesOutput）作为独立可选项，且**以"团队完成后 graph final state 可读性"技术验证为前置**，验证不通过则降级为 prompt 引导（最后写入成员将 deliverable 摘要写入 reply）。
+
+#### B.10.15.2 P1 形式契约由 Planner schema 填充
+
+**目标**：`Team.Deliverables`/`Team.InputContract`（DB 列已存在）从"永远为空"变为由 Planner 产出并在建队时填充；`ValidateDeliverableContracts` 接入调用点，advisory 验证结果对用户可见。
+
+**契约数据流**（修复后）：
+
+```
+decomposeTask
+  → buildDecompositionPrompt 新增契约规则：
+      "每个 subtask 可输出 deliverables（产出契约数组）与 input_contract（输入契约数组）；
+       契约元素: {name, type, format, description}，type ∈ document/code/data，format ∈ markdown/json/zip；
+       若 subtask B depends_on subtask A，则 B.input_contract 中应声明对 A.deliverables 的引用（name 一致）"
+  → parseDecompositionOutput 解析 deliverables/input_contract（缺失/非法 → nil，不阻断，与现有容错一致）
+  → 兜底派生：subtask 有 DependsOn 但 LLM 未输出 input_contract 时，为每个上游派生 {name: "<上游step_id>_output", type: "document", format: "markdown"}
+  → SubTask.Deliverables / SubTask.InputContract（新增字段）
+  → PublishV2Board → PlanStep.Deliverables / PlanStep.InputContract（新增字段，持久化到 plan_steps_v2 新增 JSON 列，crash recovery 需要）
+  → RealTeamOrchestrator.Orchestrate → SpiritTeamParams.Deliverables / InputContract（新增字段）
+  → AssembleTeam → Team.Deliverables / Team.InputContract（DeliverableContractsToJSON 序列化落库）
+  → dagRun 全部团队组建完成后 → ValidateDeliverableContracts(spiritSessionID)
+      → warnings 非空 → 记 Info 日志 + 发 SystemNoticeEvent（contract_mismatch，WS-only 不持久化）→ 前端 PlanBlock 展示黄色提示
+```
+
+**契约在注入文本中的体现**：`InjectUpstreamDeliverables` 前缀升级为包含契约声明，让下游 agent 明确知道该期待什么、实际收到什么：
+
+```
+--- 上游交付物 ---
+## 上游团队: 调研团队
+契约: research_report (document/markdown) — 调研结论报告
+<摘要文本>
+[全文较大，可通过 read_upstream_deliverable(team_id="...") 获取]   ← P2 落地后启用
+--- 请基于以上上游交付物执行任务 ---
+```
+
+**关键设计决策**：
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 契约来源 | LLM 输出 + 确定性兜底 | 与 depends_on 同机制；兜底保证 DAG 场景必有契约可验 |
+| 契约缺失处理 | 降级为空，不阻断规划 | 与 `parseDecompositionOutput` 现有容错一致；契约是 advisory |
+| 验证级别 | advisory（warnings，不阻断派发） | 与 `DeliverableContractValidator.ValidateContractMatch` 返回 warnings 的既有语义一致；blocking 属 P3 之后的策略演进 |
+| 验证调用点 | dagRun 全部团队组建完成后一次性调用 | 此时所有 Team.Deliverables/InputContract 已落库，可全量校验 |
+| PlanStep 契约持久化 | 持久化（新增 JSON 列 + DDL 迁移） | crash recovery 从 DB 重建 dagRun 时契约不丢失；与 `agent_keys` 列同模式 |
+| 与 VerificationGate 的关系 | 互不替代 | 形式契约验证 = schema 匹配（确定性、零成本）；VerificationGate = 部门主管 LLM 语义审批（有成本、按 graph 配置）；两者层级不同 |
+
+#### B.10.15.3 P2 产物引用化（复用 steps_v2 引用）
+
+**目标**：解决"大交付物撑爆下游上下文 / 摘要截断丢信息 / 下游无法按需取全文"。
+
+**信封结构升级**：`DeliverablesOutput` 值从 `map[dagNodeID]string` 升级为 `map[dagNodeID]DeliverableRef`：
+
+```go
+// DeliverableRef 是落库的交付物信封（teams.deliverables_output_json 的值）。
+// 全文不落新表——引用 steps_v2 中已有的 reply step（零冗余，随 session 树级联清理）。
+type DeliverableRef struct {
+    Summary       string `json:"summary"`                  // ≤500 字符摘要（现状行为保留）
+    KeyFindings   string `json:"key_findings,omitempty"`   // 要点列表（extractKeyFindings 已产出，当前被丢弃）
+    TeamID        string `json:"team_id"`                  // 产出团队
+    TeamSessionID string `json:"team_session_id"`          // 团队主会话（读取全文的入口）
+    SizeChars     int    `json:"size_chars"`               // 全文长度（截断前）
+    Truncated     bool   `json:"truncated"`                // 摘要是否截断
+}
+```
+
+**向后兼容读取**：`readDeliverableOutput` 反序列化时先尝试 `DeliverableRef` object，失败再尝试 legacy string（视为 `{Summary: s}`），新旧数据混存不报错。
+
+**新增工具 `read_upstream_deliverable`**（下游团队成员按需取全文）：
+
+| 属性 | 值 |
+|------|-----|
+| 注册 | `toolset.go` 新增注册项，`Category: "team"`，`Tags: ["team","deliverable","retrieval"]`，`EnabledByDefault: true`（只读、低风险；默认关闭则 P2 能力落空） |
+| 输入 | `{team_id: string, max_chars?: int}` |
+| 行为 | 按 team_id 定位团队主会话（SessionType=team）→ `SpiritStepReader.ListStepsBySessionID` 取最后一条 completed reply step → 返回全文 |
+| 护栏 | `max_chars` 默认 50000、上限 200000；超限返回头部 + `...[truncated, total=N chars]` |
+| 实现位置 | `internal/tools/deliverable/upstream_reader.go`（与 set/get_deliverable 同包，共享"deliverable"工具族语义） |
+| 依赖注入 | 构造时注入 `SpiritStepReader` + session 查询（与 `SpiritTeamUsecase.ExtractTeamOutput` 相同的数据源路径） |
+
+**注入文本升级**：仅当 `Truncated=true` 时在注入前缀中附加取全文指引（见 B.10.15.2 格式），避免全量注入撑爆下游上下文——**摘要先行、全文按需**。
+
+**关键设计决策**：
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 全文存储 | 复用 steps_v2 reply step，不新建表 | 全文已持久化；零冗余；随 session 树删除级联清理；无双写一致性问题 |
+| 信封兼容性 | object 优先、string 兜底的双模读取 | 旧数据（纯 string）无需迁移 |
+| KeyFindings 入信封 | 是 | `extractKeyFindings` 已产出但当前被 `WriteDeliverablesToSession` 丢弃（`_`），入信封零成本提升下游信息密度 |
+| 二进制/文件产物 | 本期不支持 | 团队 reply 为文本；文件产物经 file_write 落盘，路径可写入摘要文本；真正的二进制信封属远期 artifact 系统 |
+
+#### B.10.15.4 Graph StateFields 桥接（团队内 → 团队间）
+
+**作用域澄清**（评审修订核心）：
+
+| 通道 | 作用域 | 机制 | 现状 |
+|------|--------|------|------|
+| `deliverable` graph state | **团队内**成员间顺序交接 | `set_deliverable`（StateDelta → CoverReducer，latest writer wins）→ `get_deliverable` | 完整实现，双开关未启用 |
+| `teams.deliverables_output_json` | **团队间**（DAG 上下游） | `WriteDeliverablesToSession` → `InjectUpstreamDeliverables` | P0 已打通（文本摘要） |
+
+两者**不统一为一个抽象**——团队内交接是"流水线半成品"（覆盖语义），团队间交付是"终态快照"（落库信封），语义不同。桥接只做一件事：**团队完成时，若启用了 state 通道，优先从 graph final state 提取结构化 deliverable 充实落库信封**。
+
+**桥接设计**（条件启用，三步）：
+
+1. **前置技术验证（阻断性）**：确认团队执行完成后 graph final state 的可读位置。候选：TeamRunResult / runner completion 事件携带的 state snapshot / SessionService state 读取。**若验证不通过**，桥接降级为 prompt 引导——团队 definition prompt 中要求"最后一名成员将 deliverable 核心结论写入最终 reply"，落库链路（P0/P2）不变。
+2. **桥接函数**：`RecordTeamCompletion` 中，若 `Team.DefinitionJSON` 的 `enable_state_deliverable=true` 且 final state 可读 → 读 `state["deliverable"]`（map）→ `summary` 优先取 `deliverable["summary"]`（string），缺失回退 reply step 提取；`deliverable` map 的其余 key 序列化入 `DeliverableRef` 扩展字段（`StructuredJSON string`，信封可选字段）。
+3. **灰度启用**：双开关默认关闭（`toolset.go` deliverable 注册 `EnabledByDefault: false` + `Definition.EnableStateDeliverable` 默认 false）保持不变；P1/P2 落地稳定后，由 Planner 对 DAG 团队的 definition 选择性开启（或管理后台按团队配置），观察 Cover reducer 在多成员并行写场景的实际行为后再评估是否扩大。
+
+**多成员写冲突语义**：`ReducerCover` 为 map 级整体覆盖（后者覆盖前者），适合 sequential/coordinator 的**顺序交接**；parallel 模式多成员并发写会相互覆盖（last-writer-wins，丢中间产物）——因此 `EnableStateDeliverable` 仅建议对 sequential/coordinator 团队开启，parallel 团队不开启（definition 层约束 + 文档说明）。
+
+#### B.10.15.5 改动文件清单
+
+**P1 形式契约**：
+
+| 文件 | 改动 |
+|------|------|
+| `internal/biz/task_plan.go` | `SubTask` 新增 `Deliverables []DeliverableContract` / `InputContract []DeliverableContract` |
+| `internal/agent/task_planner_impl.go` | `buildDecompositionPrompt` 新增契约输出规则；`parseDecompositionOutput` 解析契约字段 + 兜底派生 |
+| `internal/biz/plan_step.go` | `PlanStep` 新增 `Deliverables` / `InputContract` 字段 |
+| `internal/data/ent/schema/plan_step_v2.go` + `internal/data/plan_step_v2_repo.go` + DDL 迁移 | 新增 `deliverables_json` / `input_contract_json` 两列（与 `agent_keys` 同模式） |
+| `internal/agent/task_planner_impl.go` `PublishV2Board` | SubTask → PlanStep 契约透传 |
+| `internal/biz/spirit_team_usecase.go` | `SpiritTeamParams` 新增契约字段；`AssembleTeam` 落库 `Team.Deliverables`/`InputContract` |
+| `internal/service/team_orchestrator_real.go` | `Orchestrate` 透传契约到 `SpiritTeamParams` |
+| `internal/service/plan_executor.go` | dagRun 全部团队组建完成后调用 `ValidateDeliverableContracts`，warnings 发 `SystemNoticeEvent`（contract_mismatch） |
+| `internal/biz/spirit_team_usecase.go` `InjectUpstreamDeliverables` | 注入前缀包含契约声明（name/type/format） |
+
+**P2 产物引用化**：
+
+| 文件 | 改动 |
+|------|------|
+| `internal/biz/team_types.go`（或新 `deliverable_ref.go`） | 新增 `DeliverableRef` 结构 |
+| `internal/biz/spirit_team_usecase.go` | `WriteDeliverablesToSession` 写 `DeliverableRef`（含 KeyFindings/SizeChars/Truncated/TeamSessionID）；`readDeliverableOutput` 双模兼容读取；`InjectUpstreamDeliverables` 截断时附加取全文指引 |
+| `internal/tools/deliverable/upstream_reader.go` | 新增 `read_upstream_deliverable` 工具 |
+| `internal/tools/toolset.go` | 注册新工具（EnabledByDefault: true） |
+| `cmd/admin/wire.go` | 工具依赖（SpiritStepReader + session 查询）注入 |
+
+**Graph StateFields 桥接**：
+
+| 文件 | 改动 |
+|------|------|
+| `internal/biz/spirit_team_usecase.go` `RecordTeamCompletion` | 条件桥接：enable_state_deliverable 团队从 final state 读 deliverable 充实信封 |
+| （前置）技术验证 | 确认 graph final state 团队完成后可读位置；不可读则降级 prompt 引导（仅文档约束，零代码） |
+
+**测试**：
+
+| 文件 | 覆盖点 |
+|------|--------|
+| `internal/agent/task_planner_impl_test.go` | 契约解析（正常/缺失/非法 JSON）+ 兜底派生 |
+| `internal/biz/spirit_team_deliverable_test.go` | `DeliverableRef` 写入/双模读取/截断指引注入 |
+| `internal/tools/deliverable/upstream_reader_test.go` | 工具全文读取/护栏截断/team 主会话识别 |
+| `internal/service/plan_executor_test.go` | 契约透传链路 + ValidateDeliverableContracts 调用点 |
+
+#### B.10.15.6 不变量
+
+- 契约解析失败/缺失**不得**阻断规划与建队（advisory 语义贯穿始终）
+- `DeliverableRef` 读取必须双模兼容（object 优先，legacy string 兜底），旧数据零迁移
+- `read_upstream_deliverable` 必须走 `SpiritStepReader` 精确 session 语义（与 `ExtractTeamOutput` 主数据源一致），禁止读全树
+- `DeliverablesOutput` 中只存信封（摘要+引用），**禁止**存全文（全文唯一真相源 = steps_v2 reply step）
+- `EnableStateDeliverable` 不得对 parallel 模式团队开启（Cover reducer 丢并发写产物）
+- state 桥接必须以前置技术验证通过为前提；未通过时落库链路行为与 P2 完全一致
+- 注入前缀的总长度需有护栏（建议单上游摘要 ≤500 字符 + 契约行 ≤200 字符），防止多上游场景前缀本身撑爆下游首条消息
+
+#### B.10.15.7 待商定问题（2026-07-21 用户已决策）
+
+| # | 问题 | 选项 | 决策 |
+|---|------|------|------|
+| Q1 | 契约验证级别 | A. advisory（warnings 日志+前端提示，不阻断）；B. blocking（严重不匹配阻断下游派发） | **已定：A**——与 `ValidateContractMatch` 既有 warnings 语义一致；blocking 待契约数据积累后再评估 |
+| Q2 | `read_upstream_deliverable` 工具启用方式 | A. 默认开启（EnabledByDefault: true）；B. 开关控制（默认关闭，随团队配置启用） | **已定：A**——只读低风险；默认关闭则下游无法主动取全文，P2 能力落空 |
+| Q3 | Graph StateFields 桥接前置验证不通过时的降级 | A. prompt 引导（最后成员将 deliverable 写入 reply，零代码）；B. 本轮放弃桥接，仅保留 P1/P2 | **已定：A**——prompt 引导零成本且与现有落库链路兼容 |
+| Q4 | PlanStep 契约字段持久化 | A. 持久化（plan_steps_v2 加 2 个 JSON 列 + DDL 迁移）；B. 仅事件载体（in-memory，不落库） | **已定：A**——crash recovery 从 DB 重建 dagRun 需要契约；与 `agent_keys` 列同模式，成本一致 |
+| Q5 | 实施顺序 | A. P1 → P2 → Graph 桥接（依次落地、各自验证）；B. P1+P2 合并一个迭代，Graph 桥接独立后续 | **已定：A**——R5 小步快跑：P1 改链路最多（6 断点），独立迭代便于定位回归；P2 依赖 P1 的契约名注入文本格式 |
