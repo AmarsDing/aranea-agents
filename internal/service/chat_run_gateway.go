@@ -316,6 +316,9 @@ func publishMessageQueuedToBus(seq runtime.EventPublisher, eventBus biz.EventBus
 	if seq == nil && eventBus == nil {
 		return
 	}
+	// 2026-07-21 P1-5 F3：直发 notice 无后续更新事件，必须自终态并携带
+	// StartedAt/CompletedAt/Version，否则 DB 残留永久 pending 的僵尸步骤。
+	now := time.Now()
 	step := biz.Step{
 		ID:              uuid.NewString(),
 		SessionID:       sessionID,
@@ -323,7 +326,10 @@ func publishMessageQueuedToBus(seq runtime.EventPublisher, eventBus biz.EventBus
 		Kind:            biz.StepKindNotice,
 		NoticeType:      "info",
 		Content:         "消息已加入队列",
-		Status:          biz.StepStatusPending,
+		Status:          biz.StepStatusCompleted,
+		StartedAt:       now,
+		CompletedAt:     &now,
+		Version:         1,
 		AuthorAgentKey:  "chat-service",
 	}
 	ev := biz.NewStepCreatedEvent(step)

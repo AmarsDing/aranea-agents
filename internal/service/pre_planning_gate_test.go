@@ -98,27 +98,34 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 			if len(published) != tt.wantEventCount {
 				t.Errorf("published events = %d, want %d", len(published), tt.wantEventCount)
 			}
-			// Verify start (running) + done (completed) events as v2 StepCreatedEvents.
+			// 2026-07-21 P1-5 F3：直发 notice step 必须自终态（Completed）且
+			// 携带 StartedAt/CompletedAt/Version，否则 DB 中留下永久 running 的
+			// 僵尸步骤（无后续事件会再更新它）。
 			if len(published) >= 2 {
-				startEv, ok := published[0].(*biz.StepCreatedEvent)
-				if !ok {
-					t.Fatalf("first event type = %T, want *biz.StepCreatedEvent", published[0])
-				}
-				if startEv.EventKind() != biz.EventKindStepCreated {
-					t.Errorf("first event kind = %s, want %s", startEv.EventKind(), biz.EventKindStepCreated)
-				}
-				if startEv.Step.Status != biz.StepStatusRunning {
-					t.Errorf("first step status = %s, want %s", startEv.Step.Status, biz.StepStatusRunning)
-				}
-				doneEv, ok := published[1].(*biz.StepCreatedEvent)
-				if !ok {
-					t.Fatalf("last event type = %T, want *biz.StepCreatedEvent", published[1])
-				}
-				if doneEv.Step.Status != biz.StepStatusCompleted {
-					t.Errorf("last step status = %s, want %s", doneEv.Step.Status, biz.StepStatusCompleted)
+				for i, ev := range published {
+					stepEv, ok := ev.(*biz.StepCreatedEvent)
+					if !ok {
+						t.Fatalf("event[%d] type = %T, want *biz.StepCreatedEvent", i, ev)
+					}
+					if stepEv.EventKind() != biz.EventKindStepCreated {
+						t.Errorf("event[%d] kind = %s, want %s", i, stepEv.EventKind(), biz.EventKindStepCreated)
+					}
+					if stepEv.Step.Status != biz.StepStatusCompleted {
+						t.Errorf("event[%d] step status = %s, want %s", i, stepEv.Step.Status, biz.StepStatusCompleted)
+					}
+					if stepEv.Step.StartedAt.IsZero() {
+						t.Errorf("event[%d] step StartedAt is zero", i)
+					}
+					if stepEv.Step.CompletedAt == nil || stepEv.Step.CompletedAt.IsZero() {
+						t.Errorf("event[%d] step CompletedAt is nil/zero", i)
+					}
+					if stepEv.Step.Version != 1 {
+						t.Errorf("event[%d] step version = %d, want 1", i, stepEv.Step.Version)
+					}
 				}
 				// B.4.3: pre-planning assess phase renders as NoticeBlock (Kind=notice),
 				// not PlanBlock (Kind=plan), to avoid "UI 提前占位" before real plan arrives.
+				startEv := published[0].(*biz.StepCreatedEvent)
 				if startEv.Step.Kind != biz.StepKindNotice {
 					t.Errorf("first step kind = %s, want %s", startEv.Step.Kind, biz.StepKindNotice)
 				}

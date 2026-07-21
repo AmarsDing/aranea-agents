@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
@@ -141,6 +142,9 @@ func (a *chatAwaitCoordinator) PublishAwaitResumed(sessionID, runID string) {
 	if strings.TrimSpace(sessionID) == "" {
 		return
 	}
+	// 2026-07-21 P1-5 F3：直发 notice 无后续更新事件，必须自终态并携带
+	// StartedAt/CompletedAt/Version，否则 DB 残留永久 running 的僵尸步骤。
+	now := time.Now()
 	step := biz.Step{
 		ID:              uuid.NewString(),
 		SessionID:       sessionID,
@@ -148,7 +152,10 @@ func (a *chatAwaitCoordinator) PublishAwaitResumed(sessionID, runID string) {
 		Kind:            biz.StepKindNotice,
 		NoticeType:      "info",
 		Content:         "已恢复运行",
-		Status:          biz.StepStatusRunning,
+		Status:          biz.StepStatusCompleted,
+		StartedAt:       now,
+		CompletedAt:     &now,
+		Version:         1,
 		AuthorAgentKey:  "chat-service",
 	}
 	ev := biz.NewStepCreatedEvent(step)

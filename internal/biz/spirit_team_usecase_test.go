@@ -1,5 +1,3 @@
-//go:build ignore
-
 package biz
 
 import (
@@ -113,6 +111,12 @@ func (m *memSpiritTeamRepo) CreateTeamRun(_ context.Context, r TeamRunRecord) (T
 	return r, nil
 }
 func (m *memSpiritTeamRepo) UpdateTeamRun(_ context.Context, _ TeamRunRecord) error { return nil }
+func (m *memSpiritTeamRepo) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
+func (m *memSpiritTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
 func (m *memSpiritTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error {
 	return nil
 }
@@ -137,6 +141,14 @@ func (m *memSpiritTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (
 }
 func (m *memSpiritTeamRepo) CreateTeamRunStep(_ context.Context, s TeamRunStep) (TeamRunStep, error) {
 	return s, nil
+}
+
+// memSpiritAgentResolver is a minimal SpiritAgentResolver stub: returns an
+// empty active-agent list so resolveAgentKeyToIDMap falls back to "agent_"+key.
+type memSpiritAgentResolver struct{}
+
+func (m *memSpiritAgentResolver) List(_ context.Context, _ AgentListQuery) (AgentListResult, error) {
+	return AgentListResult{}, nil
 }
 
 // memSpiritSessionRepo is a minimal in-memory session repo for SpiritTeamUsecase tests.
@@ -181,10 +193,22 @@ func (m *memSpiritSessionRepo) ListSessionsForBatch(_ context.Context, _ Session
 func (m *memSpiritSessionRepo) ListSessionsByIDs(_ context.Context, _ []string) ([]Session, error) {
 	return nil, nil
 }
+func (m *memSpiritSessionRepo) ListActiveAgentUserKeys(_ context.Context, _ int) ([]session.AgentUserKey, error) {
+	return nil, nil
+}
 
 // --- SessionTreeReader ---
 
 func (m *memSpiritSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([]Session, error) {
+	return nil, nil
+}
+func (m *memSpiritSessionRepo) GetSessionTree(_ context.Context, _ string) (*session.SessionTree, error) {
+	return nil, nil
+}
+func (m *memSpiritSessionRepo) ListChildSessions(_ context.Context, _ string) ([]Session, error) {
+	return nil, nil
+}
+func (m *memSpiritSessionRepo) ListTeamAgentSessions(_ context.Context, _ string) ([]Session, error) {
 	return nil, nil
 }
 
@@ -429,8 +453,8 @@ func TestAssembleTeam_InitialStatus_Pending(t *testing.T) {
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
+	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()
 
@@ -471,8 +495,8 @@ func TestAssembleTeam_DAGDependentNode_InitialStatus_Pending(t *testing.T) {
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
+	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()
 
@@ -494,6 +518,50 @@ func TestAssembleTeam_DAGDependentNode_InitialStatus_Pending(t *testing.T) {
 	}
 	if len(result.Team.DependsOn) != 1 || result.Team.DependsOn[0] != "node-1" {
 		t.Errorf("DAG dependent node should have depends_on=[node-1], got %v", result.Team.DependsOn)
+	}
+}
+
+// TestAssembleTeam_PersistsDeliverableContracts (P1 形式契约 B.10.15.2)
+// verifies SpiritTeamParams contracts are serialized onto the Team record so
+// dagRun advisory validation and downstream injection can read them.
+func TestAssembleTeam_PersistsDeliverableContracts(t *testing.T) {
+	teamRepo := newMemSpiritTeamRepo()
+	sessionRepo := newMemSpiritSessionRepo()
+	transactor := &memSpiritTransactor{}
+
+	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
+	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
+
+	result, err := uc.AssembleTeam(context.Background(), SpiritTeamParams{
+		SpiritSessionID: "spirit-1",
+		TaskDescription: "research task",
+		AgentKeys:       []string{"agent-1"},
+		Mode:            "coordinator",
+		DagNodeID:       "node-1",
+		Deliverables: []DeliverableContract{
+			{Name: "research_report", Type: "document", Format: "markdown", Description: "调研报告"},
+		},
+		InputContract: []DeliverableContract{
+			{Name: "brief", Type: "document", Format: "markdown"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("AssembleTeam failed: %v", err)
+	}
+	deliverables, err := ParseDeliverableContracts(result.Team.Deliverables)
+	if err != nil {
+		t.Fatalf("Team.Deliverables not parseable: %v (raw=%q)", err, result.Team.Deliverables)
+	}
+	if len(deliverables) != 1 || deliverables[0].Name != "research_report" || deliverables[0].Type != "document" || deliverables[0].Format != "markdown" {
+		t.Fatalf("Team.Deliverables = %+v, want research_report/document/markdown", deliverables)
+	}
+	inputs, err := ParseDeliverableContracts(result.Team.InputContract)
+	if err != nil {
+		t.Fatalf("Team.InputContract not parseable: %v (raw=%q)", err, result.Team.InputContract)
+	}
+	if len(inputs) != 1 || inputs[0].Name != "brief" {
+		t.Fatalf("Team.InputContract = %+v, want brief", inputs)
 	}
 }
 
@@ -611,8 +679,8 @@ func TestCancelTeam_UsesTransitionStatus(t *testing.T) {
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
+	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()
 
@@ -666,8 +734,8 @@ func TestAssembleTeam_TransactionRollback(t *testing.T) {
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
+	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()
 
@@ -712,8 +780,8 @@ func TestAssembleTeam_TransactionSuccess(t *testing.T) {
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
+	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()
 

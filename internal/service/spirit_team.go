@@ -653,6 +653,8 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	// The notice_type is preserved as Step.NoticeType, and the message as Step.Content.
 	if s.v2EventReady() {
 		// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
+		// 2026-07-21 P1-5 F3：直发 notice 补全 StartedAt/CompletedAt/Version。
+		now := time.Now()
 		step := biz.Step{
 			ID:              uuid.NewString(),
 			SessionID:       spiritSessionID,
@@ -661,6 +663,9 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 			NoticeType:      "success",
 			Content:         "所有团队已完成",
 			Status:          biz.StepStatusCompleted,
+			StartedAt:       now,
+			CompletedAt:     &now,
+			Version:         1,
 			AuthorAgentKey:  "team-starter",
 		}
 		s.publishV2Event(ctx, biz.NewStepCreatedEvent(step))
@@ -941,11 +946,16 @@ func (a *SpiritTeamAssembler) SuggestTopology(ctx context.Context, taskDescripti
 		// v2 Step also leaves these empty (no spirit session context in SuggestTopology).
 		if a.v2EventReady() {
 			// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
+			// 2026-07-21 P1-5 F3：直发 notice 补全 StartedAt/CompletedAt/Version。
+			now := time.Now()
 			step := biz.Step{
 				ID:             uuid.NewString(),
 				Kind:           biz.StepKindNotice,
 				Content:        "编排缓存命中，推荐拓扑: " + string(topology),
 				Status:         biz.StepStatusCompleted,
+				StartedAt:      now,
+				CompletedAt:    &now,
+				Version:        1,
 				AuthorAgentKey: "spirit-team-assembler",
 			}
 			a.publishV2Event(ctx, biz.NewStepCreatedEvent(step))

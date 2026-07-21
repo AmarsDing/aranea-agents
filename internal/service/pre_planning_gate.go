@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
@@ -119,16 +120,18 @@ func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, status biz.A
 		return
 	}
 	// Map assess status → notice type for NoticeBlock rendering.
+	// 2026-07-21 P1-5 F3：直发 notice 无后续更新事件，必须自终态；
+	// 此前 running 的起始事件在 DB 中永久残留为僵尸步骤。
 	noticeType := "info"
-	stepStatus := biz.StepStatusRunning
+	stepStatus := biz.StepStatusCompleted
 	switch status {
 	case biz.ActivityStatusFailed:
 		noticeType = "warning"
 		stepStatus = biz.StepStatusFailed
 	case biz.ActivityStatusCompleted:
 		noticeType = "success"
-		stepStatus = biz.StepStatusCompleted
 	}
+	now := time.Now()
 	step := biz.Step{
 		ID:              uuid.NewString(),
 		SessionID:       spiritSessionID,
@@ -137,6 +140,9 @@ func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, status biz.A
 		NoticeType:      noticeType,
 		Content:         message,
 		Status:          stepStatus,
+		StartedAt:       now,
+		CompletedAt:     &now,
+		Version:         1,
 		AuthorAgentKey:  "pre-planning-gate",
 	}
 	ev := biz.NewStepCreatedEvent(step)

@@ -100,6 +100,10 @@ func (o *RealTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanSte
 		DagNodeID:       step.ID,
 		Mode:            biz.TeamModeCoordinator,
 		AutoStart:       false,
+		// P1 形式契约（B.10.15.2）：PlanStep → Team 落库，
+		// 供 dagRun advisory 契约验证与下游注入读取。
+		Deliverables:  step.Deliverables,
+		InputContract: step.InputContract,
 	}
 	team, teamSession, memberSessions, err := o.assembler.AssembleTeam(ctx, params)
 	if err != nil {

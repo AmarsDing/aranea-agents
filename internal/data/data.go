@@ -155,6 +155,9 @@ var ProviderSet = wire.NewSet(
 	NewPlanStepV2Repo,
 	NewGraphStageV2Repo,
 	NewGraphNodeV2Repo,
+	// 2026-07-21 P1-5: v2 orphaned-recovery (startup terminalization of
+	// in-flight v2 entities left behind by a process restart).
+	NewV2RecoveryRepo,
 	// B-06: durable critical-event outbox for WS last_event_id replay.
 	NewEventDeliveryOutboxRepoFromData,
 )

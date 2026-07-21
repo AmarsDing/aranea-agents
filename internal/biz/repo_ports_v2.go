@@ -1,6 +1,9 @@
 package biz
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // v2 Repo 窄接口（每个接口方法 ≤ 5，按读写职责拆分）。
 // 复合接口仅用于 Wire 绑定。
@@ -146,6 +149,40 @@ type MemberSessionV2Writer interface {
 type MemberSessionV2Repo interface {
 	MemberSessionV2Reader
 	MemberSessionV2Writer
+}
+
+// === Recovery ===（2026-07-21 P1-5：v2 实体 orphaned-recovery）
+
+// V2RecoveryStats reports how many in-flight rows per v2 table were
+// terminalized by FailOrphanedInFlight.
+type V2RecoveryStats struct {
+	Tasks          int
+	Turns          int
+	Steps          int
+	TeamStages     int
+	TeamRuns       int
+	MemberSessions int
+}
+
+// Total returns the total number of recovered rows across all v2 tables.
+func (s V2RecoveryStats) Total() int {
+	return s.Tasks + s.Turns + s.Steps + s.TeamStages + s.TeamRuns + s.MemberSessions
+}
+
+// V2RecoveryRepo terminalizes v2 entities left in-flight by a process
+// restart (orphaned). Called once at startup before traffic is accepted.
+//
+// In-flight = statuses that require the dead process to make progress.
+// Human-waiting states are NOT orphaned and must be preserved:
+//   - steps_v2.tool_blocked   (tool confirmation, resumable via approve path)
+//   - team_stages_v2.waiting_human (HITL, resumable via resume event)
+//
+// Stability:evolving
+type V2RecoveryRepo interface {
+	// FailOrphanedInFlight batch-transitions all in-flight rows to failed,
+	// incrementing version and stamping completed_at/finished_at with
+	// recoverAt. Terminal rows are untouched. Returns per-table counts.
+	FailOrphanedInFlight(ctx context.Context, recoverAt time.Time) (V2RecoveryStats, error)
 }
 
 // === PlanBoard ===

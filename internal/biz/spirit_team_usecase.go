@@ -94,6 +94,10 @@ type SpiritTeamParams struct {
 	AutoStart               bool
 	DepartmentID            string   // home department for the team
 	CrossDeptMemberAgentIDs []string // agent IDs from other departments requiring borrow approval
+	// P1 形式契约（B.10.15.2）：dagRun 派发时从 PlanStep 透传；
+	// AssembleTeam 序列化落库到 Team 记录，供契约验证与下游注入读取。
+	Deliverables  []DeliverableContract
+	InputContract []DeliverableContract
 }
 
 type SpiritTeamResult struct {
@@ -360,6 +364,8 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 			ParallelConfigJSON: params.ParallelConfigJSON,
 			Topology:           mode,
 			DepartmentID:       params.DepartmentID,
+			Deliverables:       DeliverableContractsToJSON(params.Deliverables),
+			InputContract:      DeliverableContractsToJSON(params.InputContract),
 		})
 		if err != nil {
 			return apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
