@@ -69,14 +69,34 @@ func (r *stepV2Repo) ListStepsByTask(ctx context.Context, taskID string) ([]biz.
 	return entStepsV2ToBiz(rows), nil
 }
 
-// ListStepsBySession returns all steps for the given session, ordered by started_at asc.
-// Use started_at (not seq) because steps span multiple turns/tasks within a session.
+// ListStepsBySession returns all steps of the spirit session TREE rooted at
+// the given session, ordered by started_at asc (filter: spirit_session_id).
+// The frontend history load (fetchSessionHistory) depends on this tree-wide
+// behavior to rebuild member execution panels from a single call.
+// For exact single-session steps use ListStepsBySessionID.
 func (r *stepV2Repo) ListStepsBySession(ctx context.Context, sessionID string) ([]biz.Step, error) {
 	if r == nil || r.data == nil {
 		return nil, fmt.Errorf("step v2 repo: database not configured")
 	}
 	rows, err := r.data.RW().Read(ctx).StepV2.Query().
 		Where(stepv2.SpiritSessionID(sessionID)).
+		Order(ent.Asc(stepv2.FieldStartedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "STEP_V2")
+	}
+	return entStepsV2ToBiz(rows), nil
+}
+
+// ListStepsBySessionID returns steps whose session_id equals the given session
+// exactly (no tree expansion), ordered by started_at asc.
+// Used by deliverable extraction to read a team main session's own reply step.
+func (r *stepV2Repo) ListStepsBySessionID(ctx context.Context, sessionID string) ([]biz.Step, error) {
+	if r == nil || r.data == nil {
+		return nil, fmt.Errorf("step v2 repo: database not configured")
+	}
+	rows, err := r.data.RW().Read(ctx).StepV2.Query().
+		Where(stepv2.SessionIDEQ(sessionID)).
 		Order(ent.Asc(stepv2.FieldStartedAt)).
 		All(ctx)
 	if err != nil {

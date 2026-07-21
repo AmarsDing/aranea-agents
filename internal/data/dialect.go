@@ -31,16 +31,41 @@ func (d Dialect) String() string { return string(d) }
 
 // JSONExtract returns a SQL expression that extracts a JSON object key as text.
 // SQLite: json_extract(col, '$.key')
-// Postgres: CAST(col AS JSONB) ->> 'key'
+// Postgres: COALESCE(NULLIF(col::text, '')::jsonb, '{}'::jsonb) ->> 'key'
 //
-// The CAST is required because monitor_events.metadata_json / monitor_traces.metadata_json
-// are defined as TEXT for cross-dialect compatibility (SQLite has no JSONB type),
-// but PostgreSQL's `->>` operator only works on JSON/JSONB values, not TEXT.
-// COALESCE(NULLIF(col, ”)::jsonb, '{}'::jsonb) guards against empty strings
-// (defensive — default is '{}' and writes are JSON, but legacy rows may differ).
+// The col::text + ::jsonb cast pair is required because cross-dialect JSON
+// columns exist in BOTH physical types after the SQLite→Postgres migration:
+// raw-SQL-managed columns (monitor_events.metadata_json, sessions state_json)
+// are TEXT, while ent field.JSON columns (skill_invocation.token_usage) are
+// native jsonb. col::text is the identity on TEXT and serializes jsonb to its
+// canonical text form, so one expression serves both. COALESCE/NULLIF guards
+// NULL and empty-string rows.
 func (d Dialect) JSONExtract(col, key string) string {
 	if d.IsPostgres() {
-		return fmt.Sprintf("COALESCE(NULLIF(%s, '')::jsonb, '{}'::jsonb) ->> '%s'", col, key)
+		return fmt.Sprintf("COALESCE(NULLIF(%s::text, '')::jsonb, '{}'::jsonb) ->> '%s'", col, key)
+	}
+	return fmt.Sprintf("json_extract(%s, '$.%s')", col, key)
+}
+
+// JSONExtractNumeric returns a SQL expression that extracts a JSON object key
+// as a numeric (DOUBLE PRECISION) value, for use in numeric contexts:
+// COALESCE with a DOUBLE PRECISION column, AVG/SUM, and `>` comparisons.
+//
+// SQLite:   json_extract(col, '$.key')   — returns INTEGER/REAL natively
+// Postgres: CAST(NULLIF(col::jsonb ->> 'key', '') AS DOUBLE PRECISION)
+//
+// Postgres' `->>` always yields text; without the cast, numeric consumers
+// fail with 42804 ("COALESCE types double precision and text cannot be
+// matched") or 42883 ("function avg(text) does not exist"). NULLIF(..., '')
+// guards empty-string values which would otherwise fail the cast; missing
+// keys and NULL rows yield NULL (propagating through COALESCE/AVG as NULL).
+// Non-numeric junk values raise 22P02 — acceptable because writers store
+// numeric JSON (same strictness as the meta_duration_ms generated column).
+// The col::text base handles both TEXT and native jsonb columns (see
+// JSONExtract doc).
+func (d Dialect) JSONExtractNumeric(col, key string) string {
+	if d.IsPostgres() {
+		return fmt.Sprintf("CAST(NULLIF(COALESCE(NULLIF(%s::text, '')::jsonb, '{}'::jsonb) ->> '%s', '') AS DOUBLE PRECISION)", col, key)
 	}
 	return fmt.Sprintf("json_extract(%s, '$.%s')", col, key)
 }
@@ -74,24 +99,28 @@ func (d Dialect) JSONEach(col string) string {
 }
 
 // JSONBBase returns the canonical base expression for JSON write helpers.
-// All cross-dialect JSON columns are TEXT (SQLite has no JSONB type), so the
-// Postgres write helpers (JSONSet/JSONSetMulti/JSONRemove/JSONRemoveMulti)
-// require their input expression to already be jsonb-typed. JSONBBase
-// normalizes a TEXT column into such an expression:
+// Cross-dialect JSON columns are physically TEXT (raw-SQL-managed) or jsonb
+// (ent field.JSON) after the SQLite→Postgres migration, so the Postgres write
+// helpers (JSONSet/JSONSetMulti/JSONRemove/JSONRemoveMulti) require their
+// input expression to already be jsonb-typed. JSONBBase normalizes either
+// physical type into such an expression:
 //
 // SQLite:   COALESCE(col, '{}')
-// Postgres: COALESCE(NULLIF(col, '')::jsonb, '{}'::jsonb)
+// Postgres: COALESCE(NULLIF(col::text, '')::jsonb, '{}'::jsonb)
 //
-// The COALESCE/NULLIF guard tolerates NULL and empty-string rows (both make
+// col::text is the identity on TEXT columns and serializes native jsonb to
+// its canonical text form, so both physical types are accepted. The
+// COALESCE/NULLIF guard tolerates NULL and empty-string rows (both make
 // jsonb_set return NULL or fail the ::jsonb cast). This mirrors the read-side
 // convention in JSONExtract.
 //
-// The resulting expression yields jsonb on Postgres; assigning it back to the
+// The resulting expression yields jsonb on Postgres; assigning it back to a
 // TEXT column in UPDATE ... SET relies on Postgres' assignment cast
-// (jsonb→text CoerceViaIO), verified by TestDialectIntegration.
+// (jsonb→text CoerceViaIO), verified by TestDialectIntegration; assigning to
+// a native jsonb column is a direct jsonb→jsonb assignment.
 func (d Dialect) JSONBBase(col string) string {
 	if d.IsPostgres() {
-		return fmt.Sprintf("COALESCE(NULLIF(%s, '')::jsonb, '{}'::jsonb)", col)
+		return fmt.Sprintf("COALESCE(NULLIF(%s::text, '')::jsonb, '{}'::jsonb)", col)
 	}
 	return fmt.Sprintf("COALESCE(%s, '{}')", col)
 }

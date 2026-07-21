@@ -102,11 +102,14 @@ func (m *deliverableSessionAccessor) Create(_ context.Context, in Session) (Sess
 	return in, nil
 }
 func (m *deliverableSessionAccessor) Search(_ context.Context, q SessionSearchQuery) (SessionListResult, error) {
+	// Extras first: production ordering is not guaranteed (member sessions share
+	// the same team_id), so callers must identify the team session by
+	// SessionType rather than position.
 	var items []Session
+	items = append(items, m.extraByTeam[q.TeamID]...)
 	if s, ok := m.sessionsByTeam[q.TeamID]; ok {
 		items = append(items, s)
 	}
-	items = append(items, m.extraByTeam[q.TeamID]...)
 	if len(items) == 0 {
 		return SessionListResult{}, nil
 	}
@@ -125,7 +128,7 @@ func (deliverableAgentResolver) List(_ context.Context, _ AgentListQuery) (Agent
 	return AgentListResult{}, nil
 }
 
-// deliverableStepReader stubs StepSessionReader: exact session_id semantics.
+// deliverableStepReader stubs SpiritStepReader: exact session_id semantics.
 type deliverableStepReader struct {
 	stepsBySession map[string][]Step // sessionID → steps (chronological)
 }
@@ -165,7 +168,7 @@ func seedCompletedTeamWithSteps(teams *deliverableTeamRepo, sessions *deliverabl
 	}
 	teams.items[id] = t
 	sessID := "sess-" + id
-	sessions.sessionsByTeam[id] = Session{ID: sessID, TeamID: id, ParentSessionID: spiritSessionID}
+	sessions.sessionsByTeam[id] = Session{ID: sessID, TeamID: id, ParentSessionID: spiritSessionID, SessionType: string(SessionTypeTeam)}
 	if assistantContent != "" {
 		sessions.messages[sessID] = []ChatMessage{
 			{Role: "user", ContentMarkdown: "任务"},
@@ -173,7 +176,7 @@ func seedCompletedTeamWithSteps(teams *deliverableTeamRepo, sessions *deliverabl
 		}
 		if steps != nil {
 			steps.stepsBySession[sessID] = []Step{
-				{ID: "step-task-" + id, SessionID: sessID, Kind: StepKindTask, Content: "任务", Status: StepStatusCompleted},
+				{ID: "step-thinking-" + id, SessionID: sessID, Kind: StepKindThinking, Content: "思考中", Status: StepStatusCompleted},
 				{ID: "step-reply-" + id, SessionID: sessID, Kind: StepKindReply, Content: assistantContent, Status: StepStatusCompleted},
 			}
 		}
@@ -396,5 +399,129 @@ func TestScheduleDependentTeams_FailActionUnchanged(t *testing.T) {
 	actions := u.ScheduleDependentTeams(context.Background(), "sp1", failed)
 	if len(actions) != 1 || actions[0].Action != "fail" {
 		t.Fatalf("expected 1 fail action, got %+v", actions)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ExtractTeamOutput: StepV2Reader (exact session_id) as primary data source
+// ---------------------------------------------------------------------------
+
+// Production data source: the team session's final completed reply step.
+// ChatMessage fallback must not shadow the step reader when both exist.
+func TestExtractTeamOutput_PrefersStepReader(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(teams, sessions, steps)
+
+	seedCompletedTeamWithSteps(teams, sessions, steps, "t1", "sp1", "st_1", "分析团队", "步骤成果\n- 发现A")
+	// Divergent legacy message content — must be ignored in favor of the step.
+	sessions.messages["sess-t1"] = []ChatMessage{
+		{Role: "assistant", ContentMarkdown: "消息成果（不应使用）"},
+	}
+
+	summary, keyFindings, err := u.ExtractTeamOutput(context.Background(), "t1")
+	if err != nil {
+		t.Fatalf("ExtractTeamOutput: %v", err)
+	}
+	if !strings.Contains(summary, "步骤成果") {
+		t.Fatalf("summary should come from reply step, got %q", summary)
+	}
+	if !strings.Contains(keyFindings, "发现A") {
+		t.Fatalf("keyFindings should extract bullet lines from reply step, got %q", keyFindings)
+	}
+}
+
+// Non-reply steps (task/thinking/action) must not be treated as output;
+// when no completed reply step exists, fall back to legacy messages.
+func TestExtractTeamOutput_NoReplyStep_FallsBackToMessages(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(teams, sessions, steps)
+
+	seedCompletedTeamWithSteps(teams, sessions, steps, "t1", "sp1", "st_1", "分析团队", "消息成果")
+	// Replace steps: thinking step only, no reply.
+	steps.stepsBySession["sess-t1"] = []Step{
+		{ID: "step-thinking-t1", SessionID: "sess-t1", Kind: StepKindThinking, Content: "思考中", Status: StepStatusCompleted},
+	}
+
+	summary, _, err := u.ExtractTeamOutput(context.Background(), "t1")
+	if err != nil {
+		t.Fatalf("ExtractTeamOutput: %v", err)
+	}
+	if !strings.Contains(summary, "消息成果") {
+		t.Fatalf("summary should fall back to messages, got %q", summary)
+	}
+}
+
+// Member sessions share the same team_id; the extractor must identify the
+// team main session by SessionType and never read a member session's steps.
+func TestExtractTeamOutput_PicksTeamSessionAmongMemberSessions(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(teams, sessions, steps)
+
+	team := seedCompletedTeamWithSteps(teams, sessions, steps, "t1", "sp1", "st_1", "分析团队", "团队主会话成果")
+	// Member session returned by Search BEFORE the team session (extras-first).
+	memberSessID := "sess-member-t1"
+	sessions.extraByTeam["t1"] = []Session{
+		{ID: memberSessID, TeamID: "t1", ParentSessionID: "sess-t1", SessionType: string(SessionTypeAgent)},
+	}
+	steps.stepsBySession[memberSessID] = []Step{
+		{ID: "step-member-reply", SessionID: memberSessID, Kind: StepKindReply, Content: "成员个人成果", Status: StepStatusCompleted},
+	}
+	sessions.messages[memberSessID] = []ChatMessage{
+		{Role: "assistant", ContentMarkdown: "成员个人成果"},
+	}
+
+	summary, _, err := u.ExtractTeamOutput(context.Background(), team.ID)
+	if err != nil {
+		t.Fatalf("ExtractTeamOutput: %v", err)
+	}
+	if !strings.Contains(summary, "团队主会话成果") {
+		t.Fatalf("summary should come from the team main session, got %q", summary)
+	}
+}
+
+// Without a wired step reader (tests/CLI), the legacy message path still works.
+func TestExtractTeamOutput_NoStepReader_UsesMessages(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	seedCompletedTeam(teams, sessions, "t1", "sp1", "st_1", "分析团队", "消息成果")
+
+	summary, _, err := u.ExtractTeamOutput(context.Background(), "t1")
+	if err != nil {
+		t.Fatalf("ExtractTeamOutput: %v", err)
+	}
+	if !strings.Contains(summary, "消息成果") {
+		t.Fatalf("summary should come from messages, got %q", summary)
+	}
+}
+
+// Running (unfinished) reply steps must not be treated as final output.
+func TestExtractTeamOutput_RunningReplyStep_NotUsed(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(teams, sessions, steps)
+
+	seedCompletedTeamWithSteps(teams, sessions, steps, "t1", "sp1", "st_1", "分析团队", "消息成果")
+	steps.stepsBySession["sess-t1"] = []Step{
+		{ID: "step-reply-t1", SessionID: "sess-t1", Kind: StepKindReply, Content: "未完成的回复", Status: StepStatusRunning},
+	}
+
+	summary, _, err := u.ExtractTeamOutput(context.Background(), "t1")
+	if err != nil {
+		t.Fatalf("ExtractTeamOutput: %v", err)
+	}
+	if strings.Contains(summary, "未完成的回复") {
+		t.Fatalf("running reply step must not be used, got %q", summary)
+	}
+	if !strings.Contains(summary, "消息成果") {
+		t.Fatalf("summary should fall back to messages, got %q", summary)
 	}
 }

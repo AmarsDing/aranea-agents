@@ -277,6 +277,179 @@ func TestUsecase_InsertChunks_NilUsecase_EmptySlice(t *testing.T) {
 	}
 }
 
+// US-14：默认知识库懒创建——按 name 复用 / 不存在时创建。
+func TestUsecase_EnsureDefaultCollection(t *testing.T) {
+	t.Run("reuses existing default collection by name", func(t *testing.T) {
+		mr := noOpMockRepo()
+		mr.collListFn = func(_ context.Context, _ string, _, _ int) ([]Collection, int, error) {
+			return []Collection{
+				{ID: "col-a", Name: "产品文档"},
+				{ID: "col-default", Name: DefaultCollectionName, EmbeddingModel: "m1", Dim: 1024},
+			}, 2, nil
+		}
+		mr.collCreateFn = func(_ context.Context, _ Collection) (Collection, error) {
+			t.Error("CreateCollection should not be called when default exists")
+			return Collection{}, nil
+		}
+		u := NewUsecaseFromRepo(mr)
+		got, err := u.EnsureDefaultCollection(context.Background(), "m1", 1024)
+		if err != nil {
+			t.Fatalf("EnsureDefaultCollection error: %v", err)
+		}
+		if got.ID != "col-default" {
+			t.Errorf("ID = %q, want col-default", got.ID)
+		}
+	})
+
+	t.Run("creates default collection when missing", func(t *testing.T) {
+		mr := noOpMockRepo()
+		mr.collListFn = func(_ context.Context, _ string, _, _ int) ([]Collection, int, error) {
+			return []Collection{{ID: "col-a", Name: "产品文档"}}, 1, nil
+		}
+		mr.collCreateFn = func(_ context.Context, c Collection) (Collection, error) {
+			if c.Name != DefaultCollectionName {
+				t.Errorf("Name = %q, want %q", c.Name, DefaultCollectionName)
+			}
+			if c.EmbeddingModel != "text-embedding-3-small" {
+				t.Errorf("EmbeddingModel = %q", c.EmbeddingModel)
+			}
+			if c.Dim != 768 {
+				t.Errorf("Dim = %d, want 768", c.Dim)
+			}
+			c.ID = "col-new-default"
+			return c, nil
+		}
+		u := NewUsecaseFromRepo(mr)
+		got, err := u.EnsureDefaultCollection(context.Background(), "text-embedding-3-small", 768)
+		if err != nil {
+			t.Fatalf("EnsureDefaultCollection error: %v", err)
+		}
+		if got.ID != "col-new-default" {
+			t.Errorf("ID = %q, want col-new-default", got.ID)
+		}
+	})
+
+	t.Run("empty embedding model rejected on create path", func(t *testing.T) {
+		mr := noOpMockRepo()
+		u := NewUsecaseFromRepo(mr)
+		_, err := u.EnsureDefaultCollection(context.Background(), "", 1536)
+		if !errors.Is(err, ErrEmbeddingModelRequired) {
+			t.Errorf("error = %v, want ErrEmbeddingModelRequired", err)
+		}
+	})
+
+	t.Run("nil usecase returns unavailable", func(t *testing.T) {
+		var u *Usecase
+		_, err := u.EnsureDefaultCollection(context.Background(), "m", 1536)
+		if !errors.Is(err, ErrUnavailable) {
+			t.Errorf("error = %v, want ErrUnavailable", err)
+		}
+	})
+}
+
+// US-14：文档跨库移动——dim 兼容校验 + 委托 Repo 事务。
+func TestUsecase_MoveDocument(t *testing.T) {
+	t.Run("empty id rejected", func(t *testing.T) {
+		u := NewUsecaseFromRepo(noOpMockRepo())
+		_, err := u.MoveDocument(context.Background(), "  ", "col-b")
+		if !errors.Is(err, ErrIDRequired) {
+			t.Errorf("error = %v, want ErrIDRequired", err)
+		}
+	})
+
+	t.Run("empty target rejected", func(t *testing.T) {
+		u := NewUsecaseFromRepo(noOpMockRepo())
+		_, err := u.MoveDocument(context.Background(), "doc-1", " ")
+		if !errors.Is(err, ErrCollectionIDRequired) {
+			t.Errorf("error = %v, want ErrCollectionIDRequired", err)
+		}
+	})
+
+	t.Run("same collection is no-op", func(t *testing.T) {
+		mr := noOpMockRepo()
+		mr.docGetFn = func(_ context.Context, id string) (Document, error) {
+			return Document{ID: id, CollectionID: "col-a"}, nil
+		}
+		mr.docMoveFn = func(_ context.Context, _, _ string) (Document, error) {
+			t.Error("repo MoveDocument should not be called for same-collection no-op")
+			return Document{}, nil
+		}
+		u := NewUsecaseFromRepo(mr)
+		got, err := u.MoveDocument(context.Background(), "doc-1", "col-a")
+		if err != nil {
+			t.Fatalf("MoveDocument error: %v", err)
+		}
+		if got.CollectionID != "col-a" {
+			t.Errorf("CollectionID = %q, want col-a", got.CollectionID)
+		}
+	})
+
+	t.Run("dim mismatch rejected with conflict", func(t *testing.T) {
+		mr := noOpMockRepo()
+		mr.docGetFn = func(_ context.Context, id string) (Document, error) {
+			return Document{ID: id, CollectionID: "col-a"}, nil
+		}
+		mr.collGetFn = func(_ context.Context, id string) (Collection, error) {
+			if id == "col-a" {
+				return Collection{ID: "col-a", Dim: 1536}, nil
+			}
+			return Collection{ID: id, Dim: 768}, nil
+		}
+		mr.docMoveFn = func(_ context.Context, _, _ string) (Document, error) {
+			t.Error("repo MoveDocument should not be called on dim mismatch")
+			return Document{}, nil
+		}
+		u := NewUsecaseFromRepo(mr)
+		_, err := u.MoveDocument(context.Background(), "doc-1", "col-b")
+		if !errors.Is(err, ErrMoveDimensionMismatch) {
+			t.Errorf("error = %v, want ErrMoveDimensionMismatch", err)
+		}
+	})
+
+	t.Run("same dim delegates to repo", func(t *testing.T) {
+		mr := noOpMockRepo()
+		mr.docGetFn = func(_ context.Context, id string) (Document, error) {
+			return Document{ID: id, CollectionID: "col-a"}, nil
+		}
+		mr.collGetFn = func(_ context.Context, id string) (Collection, error) {
+			return Collection{ID: id, Dim: 1536}, nil
+		}
+		mr.docMoveFn = func(_ context.Context, id, target string) (Document, error) {
+			if id != "doc-1" || target != "col-b" {
+				t.Errorf("MoveDocument(%q, %q), want (doc-1, col-b)", id, target)
+			}
+			return Document{ID: id, CollectionID: target}, nil
+		}
+		u := NewUsecaseFromRepo(mr)
+		got, err := u.MoveDocument(context.Background(), "doc-1", "col-b")
+		if err != nil {
+			t.Fatalf("MoveDocument error: %v", err)
+		}
+		if got.CollectionID != "col-b" {
+			t.Errorf("CollectionID = %q, want col-b", got.CollectionID)
+		}
+	})
+
+	t.Run("document lookup error propagated", func(t *testing.T) {
+		mr := noOpMockRepo()
+		mr.docGetFn = func(_ context.Context, _ string) (Document, error) {
+			return Document{}, fmt.Errorf("not found")
+		}
+		u := NewUsecaseFromRepo(mr)
+		if _, err := u.MoveDocument(context.Background(), "doc-x", "col-b"); err == nil {
+			t.Fatal("expected error propagated")
+		}
+	})
+
+	t.Run("nil usecase returns unavailable", func(t *testing.T) {
+		var u *Usecase
+		_, err := u.MoveDocument(context.Background(), "doc-1", "col-b")
+		if !errors.Is(err, ErrUnavailable) {
+			t.Errorf("error = %v, want ErrUnavailable", err)
+		}
+	})
+}
+
 func TestUsecase_DeleteDocument(t *testing.T) {
 	tests := []struct {
 		name      string

@@ -817,6 +817,8 @@ func (ModelPricingRule) Indexes() []ent.Index {
 }
 ```
 
+> **Token Tailoring 默认开启**：`enable_token_tailoring` 未显式配置且 `context_window_k > 0` 时，`catalogConfigToConfig`（`internal/provider/catalog.go`）默认启用裁剪（截断优于 API 上下文溢出硬错误）；显式配置 `"enable_token_tailoring": false` 可关闭。
+
 ### 6.4 Data 层 Repo 实现
 
 文件：`internal/data/llm_provider_model.go`

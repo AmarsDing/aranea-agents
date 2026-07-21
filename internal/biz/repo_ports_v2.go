@@ -68,7 +68,8 @@ type StepV2Reader interface {
 	GetStep(ctx context.Context, id string) (Step, error)
 	ListStepsByTurn(ctx context.Context, turnID string) ([]Step, error)
 	ListStepsByTask(ctx context.Context, taskID string) ([]Step, error)
-	ListStepsBySession(ctx context.Context, sessionID string) ([]Step, error) // replaces v1 ListBySession
+	ListStepsBySession(ctx context.Context, sessionID string) ([]Step, error)     // tree semantics: steps of the whole spirit session tree (frontend history load)
+	ListStepsBySessionID(ctx context.Context, sessionID string) ([]Step, error)   // exact semantics: steps whose session_id == sessionID only
 }
 
 type StepV2Writer interface {

@@ -107,7 +107,25 @@ type ReadToolResultOutput struct {
 
 工具注册走标准 `ToolRegistration` + `builtin_tools_seed.go` 种子流程。
 
-#### 1.1.5 可压缩工具白名单
+#### 1.1.5 单轮超限治理（用户输入 / 文本附件）
+
+工具结果之外，**用户输入正文**与**文本附件**同样可能单轮超窗口。复用同一 Gate 与 blob 存储，`source` 区分来源（`ToolResultSourceUserInput` / `ToolResultSourceAttachment`，写入 `blob.ToolName` 以与工具结果区分）：
+
+```go
+// ToolResultGate.CheckUserInput — 与 Check 同幂等语义（按 sessionID+messageID 查 replacement）
+func (g *ToolResultGate) CheckUserInput(ctx context.Context, sessionID, messageID, source, fullContent string) (ToolResultGateResult, error)
+```
+
+接入点：
+
+| 接入点 | 位置 | 行为 |
+|--------|------|------|
+| 用户输入 | `turnPipeline.gateTurnUserInput`（`internal/service/chat_orchestrator_turn_pipeline.go`） | 消息持久化前调用；gate 未配置 / 未超阈值 / 落地失败时透传原文（不阻断对话）；幂等键取 `RootTaskActivityID`（与持久化用户消息 ID 一致），重试复用 replacement |
+| 文本附件 | `BuildUserMessageFromArtifacts`（`internal/agent/attachments.go`，`gate UserInputGate` 参数） | 超阈值非 image 附件以 preview 文本 part 替换 File part；image 附件走多模态原路径不拦截 |
+
+落地后 LLM 可通过 `read_tool_result` 按 blob_id 分块读取全文（同工具结果路径）。第二道防线为 LLM 调用前裁剪：`enable_token_tailoring` 在 `context_window_k > 0` 且未显式配置时默认启用（见 [9-provider.design.md §6.3](../9-provider.design.md)）。
+
+#### 1.1.6 可压缩工具白名单
 
 ```go
 var compactableTools = map[string]bool{

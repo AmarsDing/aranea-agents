@@ -310,7 +310,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	orchestrationCacheRepo := data.NewOrchestrationCacheRepo(dataData)
 	orchestrationCache := biz.NewOrchestrationCache(loggatewayLogger, orchestrationCacheRepo)
 	verificationGateExecutor := provideVerificationGateExecutor(deptLeadManager, dynamicLLMCaller, loggatewayLogger)
-	spiritTeamUsecase := provideSpiritTeamUsecase(teamUsecase, sessionUsecase, agentUsecase, spiritTransactor, orchestrationCache, evolutionSuggestionRepo, verificationGateExecutor, deptLeadManager, loggatewayLogger)
+	spiritTeamUsecase := provideSpiritTeamUsecase(teamUsecase, sessionUsecase, agentUsecase, spiritTransactor, orchestrationCache, evolutionSuggestionRepo, verificationGateExecutor, deptLeadManager, stepV2Repo, loggatewayLogger)
 	taskPlanRepository := data.NewTaskPlanRepo(dataData, loggatewayLogger)
 	taskPlannerPort := provideTaskPlanner(taskPlanRepository, llmProviderModelUsecase, orchestrationCache, bus, v2Bus, loggatewayLogger, systemSettingUsecase, sequencer)
 	allocationPlanRepository := data.NewAllocationPlanRepo(dataData, loggatewayLogger)
@@ -433,7 +433,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	signer := provideArtifactSigner(loggatewayLogger)
 	sessionWorkspaceLookup := service.ProvideSessionWorkspaceLookup(sessionUsecase)
 	serviceArtifactService := service.NewArtifactService(artifactUsecase, signer, sessionWorkspaceLookup)
-	knowledgeSearchDeps := service.ProvideKnowledgeSearchDeps(retriever, adaptiveRouter, retrievalEvaluator)
+	knowledgeSearchDeps := service.ProvideKnowledgeSearchDeps(retriever, adaptiveRouter, retrievalEvaluator, federatedRetriever)
 	markdownOrganizer := service.NewKnowledgeMarkdownOrganizer(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
 	extractorRegistry := service.NewKnowledgeExtractorRegistry(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
 	assetStore := service.NewKnowledgeAssetStore(loggatewayLogger)
@@ -1968,8 +1968,8 @@ func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller bi
 	return biz.NewVerificationGateExecutor(deptLeadMgr, caller, lg)
 }
 
-func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionSugg biz.EvolutionSuggestionRepo, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, lg loggateway.Logger) *biz.SpiritTeamUsecase {
-	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg, biz.WithSpiritTransactor(transactor), biz.WithOrchestrationCache(orchCache), biz.WithEvolutionSuggestionRepo(evolutionSugg), biz.WithVerificationGateExecutor(gateExecutor), biz.WithDeptLeadMgr(deptLeadMgr))
+func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionSugg biz.EvolutionSuggestionRepo, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, stepReader biz.StepV2Reader, lg loggateway.Logger) *biz.SpiritTeamUsecase {
+	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg, biz.WithSpiritTransactor(transactor), biz.WithOrchestrationCache(orchCache), biz.WithEvolutionSuggestionRepo(evolutionSugg), biz.WithVerificationGateExecutor(gateExecutor), biz.WithDeptLeadMgr(deptLeadMgr), biz.WithSpiritStepReader(stepReader))
 }
 
 func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, logger log.Logger) *jobs.ChannelDeliveryWorker {

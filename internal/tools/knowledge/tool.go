@@ -87,8 +87,9 @@ func RetrievalEvaluatorFromContext(ctx context.Context) *knowledge.RetrievalEval
 }
 
 // searchInput is the JSON schema for the knowledge_search tool.
+// US-14：collection_id 可选——留空时按 scoped（Agent 绑定）/全库智能路由，用户无需选库。
 type searchInput struct {
-	CollectionID string  `json:"collection_id" jsonschema:"description=The knowledge collection ID to search,required"`
+	CollectionID string  `json:"collection_id,omitempty" jsonschema:"description=The knowledge collection ID to search. Omit to smart-route across all accessible collections"`
 	Query        string  `json:"query" jsonschema:"description=Natural-language search query,required"`
 	TopK         int     `json:"top_k,omitempty" jsonschema:"description=Maximum number of results to return"`
 	MinScore     float32 `json:"min_score,omitempty" jsonschema:"description=Minimum similarity score threshold"`
@@ -111,27 +112,6 @@ type chunkSummary struct {
 // NewSearchTool returns the knowledge_search tool.
 func NewSearchTool() trpctool.CallableTool {
 	execute := func(ctx context.Context, in searchInput) (searchOutput, error) {
-		if in.CollectionID == "" {
-			if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) == 1 {
-				in.CollectionID = scoped[0]
-			} else if len(scoped) > 1 {
-				return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_search: collection_id is required when multiple knowledge_bases are scoped")
-			} else {
-				return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_search: collection_id is required")
-			}
-		}
-		if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) > 0 {
-			allowed := false
-			for _, id := range scoped {
-				if id == in.CollectionID {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, fmt.Sprintf("knowledge_search: collection_id %q is not in scoped knowledge_bases", in.CollectionID))
-			}
-		}
 		if in.Query == "" {
 			return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_search: query is required")
 		}
@@ -139,24 +119,44 @@ func NewSearchTool() trpctool.CallableTool {
 			in.TopK = 5
 		}
 
+		scoped := knowledgeCollectionsFromContext(ctx)
+
 		q := biz.KnowledgeSearchQuery{
-			CollectionID: in.CollectionID,
-			Query:        in.Query,
-			TopK:         in.TopK,
-			MinScore:     in.MinScore,
-			FilterJSON:   in.FilterJSON,
-			UseRerank:    in.UseRerank,
+			Query:      in.Query,
+			TopK:       in.TopK,
+			MinScore:   in.MinScore,
+			FilterJSON: in.FilterJSON,
+			UseRerank:  in.UseRerank,
 		}
 
 		var chunks []biz.KnowledgeChunk
 		var err error
 
-		if router := AdaptiveRouterFromContext(ctx); router != nil {
-			chunks, err = router.Search(ctx, q, nil, "")
-		} else if ret := RetrieverFromContext(ctx); ret != nil {
-			chunks, err = ret.Search(ctx, q)
-		} else {
-			return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_search: retriever not configured in context")
+		// US-14 全库路由解析顺序：显式 ID → scoped==1 单库 → scoped>1 内路由 → 全库路由。
+		switch {
+		case in.CollectionID != "":
+			if !collectionAllowed(scoped, in.CollectionID) {
+				return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, fmt.Sprintf("knowledge_search: collection_id %q is not in scoped knowledge_bases", in.CollectionID))
+			}
+			q.CollectionID = in.CollectionID
+			chunks, err = searchSingleCollection(ctx, q)
+		case len(scoped) == 1:
+			q.CollectionID = scoped[0]
+			chunks, err = searchSingleCollection(ctx, q)
+		case len(scoped) > 1:
+			fr := FederatedRetrieverFromContext(ctx)
+			if fr == nil {
+				return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_search: federated retriever not configured for multi-collection search")
+			}
+			opts := knowledge.DefaultFederatedSearchOptions()
+			opts.Strategy = knowledge.FederationRoute
+			chunks, err = fr.SearchWithOptions(ctx, scoped, q, nil, "", opts)
+		default:
+			fr := FederatedRetrieverFromContext(ctx)
+			if fr == nil {
+				return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_search: federated retriever not configured for collection-free search")
+			}
+			chunks, err = fr.SearchAll(ctx, q, nil, "")
 		}
 		if err != nil {
 			return searchOutput{}, apierror.Internal(apierror.DomainKnowledge, fmt.Sprintf("knowledge_search: %s", err.Error()))
@@ -176,12 +176,36 @@ func NewSearchTool() trpctool.CallableTool {
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("knowledge_search"),
-		function.WithDescription("Search a knowledge collection for relevant text chunks using semantic similarity. Supports hybrid search (dense + sparse) and adaptive routing when available. Use this when you need factual information from knowledge bases. For multi-collection search or quality verification, use knowledge_reflect instead."),
+		function.WithDescription("Search knowledge bases for relevant text chunks using semantic similarity. Omit collection_id to smart-route across all accessible collections. Supports hybrid search (dense + sparse) and adaptive routing when available. Use this when you need factual information from knowledge bases. For multi-collection search or quality verification, use knowledge_reflect instead."),
 	)
 }
 
+// collectionAllowed 报告显式 collection_id 是否在 scoped 白名单内（scoped 为空 = 不限定）。
+func collectionAllowed(scoped []string, id string) bool {
+	if len(scoped) == 0 {
+		return true
+	}
+	for _, sid := range scoped {
+		if sid == id {
+			return true
+		}
+	}
+	return false
+}
+
+// searchSingleCollection 单库直搜：优先 AdaptiveRouter，退化 Retriever。
+func searchSingleCollection(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
+	if router := AdaptiveRouterFromContext(ctx); router != nil {
+		return router.Search(ctx, q, nil, "")
+	}
+	if ret := RetrieverFromContext(ctx); ret != nil {
+		return ret.Search(ctx, q)
+	}
+	return nil, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_search: retriever not configured in context")
+}
+
 type reflectInput struct {
-	CollectionIDs []string `json:"collection_ids" jsonschema:"description=List of collection IDs to search across,required"`
+	CollectionIDs []string `json:"collection_ids,omitempty" jsonschema:"description=List of collection IDs to search across. Omit to smart-route across all accessible collections"`
 	Query         string   `json:"query" jsonschema:"description=The original user query to reflect on,required"`
 	TopK          int      `json:"top_k,omitempty" jsonschema:"description=Maximum number of results to return per collection"`
 }
@@ -198,23 +222,14 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 		lg = loggateway.NewNoop()
 	}
 	execute := func(ctx context.Context, in reflectInput) (reflectOutput, error) {
-		if len(in.CollectionIDs) == 0 {
-			if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) > 0 {
-				in.CollectionIDs = scoped
-			} else {
-				return reflectOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_reflect: collection_ids is required")
-			}
+		scoped := knowledgeCollectionsFromContext(ctx)
+		// US-14：collection_ids 可选——留空时先用 scoped，仍为空则全库路由。
+		if len(in.CollectionIDs) == 0 && len(scoped) > 0 {
+			in.CollectionIDs = scoped
 		}
-		if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) > 0 {
+		if len(scoped) > 0 {
 			for _, id := range in.CollectionIDs {
-				allowed := false
-				for _, sid := range scoped {
-					if id == sid {
-						allowed = true
-						break
-					}
-				}
-				if !allowed {
+				if !collectionAllowed(scoped, id) {
 					return reflectOutput{}, apierror.BadRequest(apierror.DomainKnowledge, fmt.Sprintf("knowledge_reflect: collection_id %q is not in scoped knowledge_bases", id))
 				}
 			}
@@ -235,7 +250,14 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 		var err error
 
 		if fr := FederatedRetrieverFromContext(ctx); fr != nil {
-			chunks, err = fr.Search(ctx, in.CollectionIDs, q, nil, "")
+			if len(in.CollectionIDs) == 0 {
+				// US-14：无显式 ID 且无 scoped → 全库智能路由（零库返回空结果）。
+				chunks, err = fr.SearchAll(ctx, q, nil, "")
+			} else {
+				chunks, err = fr.Search(ctx, in.CollectionIDs, q, nil, "")
+			}
+		} else if len(in.CollectionIDs) == 0 {
+			return reflectOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_reflect: collection_ids is required")
 		} else if router := AdaptiveRouterFromContext(ctx); router != nil {
 			if len(in.CollectionIDs) == 1 {
 				q.CollectionID = in.CollectionIDs[0]
@@ -289,6 +311,6 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("knowledge_reflect"),
-		function.WithDescription("Reflect on knowledge search results across multiple collections. Evaluates retrieval quality, determines if results are sufficient, and suggests supplementary queries if needed. Use this after knowledge_search when you need to verify result quality or search across multiple knowledge bases."),
+		function.WithDescription("Reflect on knowledge search results across collections. Omit collection_ids to smart-route across all accessible collections. Evaluates retrieval quality, determines if results are sufficient, and suggests supplementary queries if needed. Use this after knowledge_search when you need to verify result quality or search across multiple knowledge bases."),
 	)
 }

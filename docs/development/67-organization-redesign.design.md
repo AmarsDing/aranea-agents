@@ -821,6 +821,11 @@ func (u *SpiritTeamUsecase) EscalateToSpirit(ctx context.Context, teamID string,
 //    b. readDeliverableOutput：读取已持久化的交付物输出
 //    c. InjectUpstreamDeliverables：DAG 激活下游 Team 时收集上游交付物，
 //       优先读持久化缓存，未命中回退到 ExtractTeamOutput 即时提取
+//    d. ExtractTeamOutput 数据源（O-4 修复）：主源为 SpiritStepReader
+//       （窄接口，ListStepsBySessionID 精确 session_id 语义，读团队主会话
+//       最后一条 completed reply step）；团队主会话按 SessionType=team 识别
+//       （成员会话共享 team_id 且 Search 无序）；无 stepReader 或无 reply
+//       step 时回退 ListMessagesRecent 读 assistant 消息
 // 3. 数据格式：Markdown 摘要文本（初期），后续可扩展为结构化 JSON
 // 4. 时序保证：service 层 HandleTeamTurnResult 中 recordTeamCompletion（落库）
 //    先于 scheduleDependentTeams / PlanExecutor.NotifyTeamCompletion（下游派发）

@@ -160,22 +160,6 @@
               </q-item>
             </template>
           </q-select>
-          <q-select
-            v-if="knowledgeBaseOptions?.length"
-            :model-value="selectedKnowledgeBases ?? []"
-            dense
-            options-dense
-            outlined
-            multiple
-            use-chips
-            emit-value
-            map-options
-            :options="knowledgeBaseOptions"
-            :label="t('chat.knowledgeBases')"
-            class="composer-field composer-field--kb"
-            :dark="isDark"
-            @update:model-value="$emit('update:selectedKnowledgeBases', ($event as string[]) ?? [])"
-          />
         </div>
 
         <!-- 输入框 -->
@@ -281,8 +265,6 @@ const props = defineProps<{
   providerOptions: Option[];
   contextRatio: number;
   contextStatus?: string;
-  knowledgeBaseOptions?: Option[];
-  selectedKnowledgeBases?: string[];
   isDark: boolean;
   sending?: boolean;
   inputDisabled?: boolean;
@@ -300,7 +282,6 @@ const emit = defineEmits<{
   'update:modelValue': [value: string];
   'update:dialogMode': [value: string];
   'update:modelProvider': [value: string];
-  'update:selectedKnowledgeBases': [value: string[]];
   'remove-attachment': [id: string];
   'pick-file': [];
   voice: [];
@@ -456,9 +437,6 @@ function onInputKeydown(event: KeyboardEvent) {
 
   &--model
     flex: 0 1 180px
-
-  &--kb
-    flex: 1 1 auto
 
 /* 输入框：保持 hover/focus 状态下背景色与默认一致，不变化 */
 .composer-card :deep(.composer-input .q-field__control)

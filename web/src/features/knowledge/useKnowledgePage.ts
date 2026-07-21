@@ -406,9 +406,12 @@ export function useKnowledgePage() {
   }
 
   // 顺序上传：逐文件读取 → 入库，避免并发冲击后端；WS 事件并行刷新文档列表。
+  // US-14 免预选：未选中集合时不传 collection_id，后端自动落入「默认知识库」；
+  // 上传完成后自动选中该库并刷新列表（存储可分类，使用免选）。
   async function enqueueUploadFiles(files: File[]) {
-    if (!selectedId.value || !files.length) return;
-    const collectionId = selectedId.value;
+    if (!files.length) return;
+    const targetId = selectedId.value; // 可能为空（免预选 → 默认知识库）
+    let firstIngestedCollectionId = '';
     for (const file of files) {
       const mime = inferMime(file);
       const task: KnowledgeUploadTask = {
@@ -417,6 +420,7 @@ export function useKnowledgePage() {
         size: file.size,
         mime_type: mime,
         status: 'reading',
+        collection_label: targetId ? undefined : t('knowledgePage.defaultCollectionBadge'),
       };
       uploadTasks.value.push(task);
       const invalid = validateUploadMime(mime);
@@ -427,20 +431,26 @@ export function useKnowledgePage() {
       try {
         const b64 = await readFileAsBase64(file);
         patchUploadTask(task.id, { status: 'uploading' });
-        await knowledgeStore.ingest({
-          collection_id: collectionId,
+        const doc = await knowledgeStore.ingest({
+          collection_id: targetId,
           source: file.name,
           mime_type: mime,
           content_base64: b64,
           organize_to_markdown: true,
         });
+        if (!firstIngestedCollectionId) firstIngestedCollectionId = doc.collection_id;
         patchUploadTask(task.id, { status: 'success', message: t('knowledgePage.uploadSubmitted') });
       } catch (e) {
         patchUploadTask(task.id, { status: 'error', message: friendlyError(e) || t('knowledgePage.uploadFailed') });
       }
     }
-    await loadDocuments();
     await loadCollections();
+    if (targetId) {
+      await loadDocuments();
+    } else if (firstIngestedCollectionId) {
+      // 免预选上传：自动选中默认知识库（watch(selectedId) 触发 loadDocuments）。
+      selectedId.value = firstIngestedCollectionId;
+    }
   }
 
   function removeUploadTask(id: string) {
@@ -451,13 +461,20 @@ export function useKnowledgePage() {
     uploadTasks.value = uploadTasks.value.filter((t) => t.status === 'reading' || t.status === 'uploading');
   }
 
+  // US-14 检索免选择：searchScopeId 空 = 全部知识库（后端 FederatedRetriever 智能路由），默认全库。
+  const searchScopeId = ref('');
+  const searchScopeOptions = computed(() => [
+    { label: t('knowledgePage.searchScopeAll'), value: '' },
+    ...collections.value.map((c) => ({ label: c.name || c.id, value: c.id })),
+  ]);
+
   async function runSearch() {
-    if (!selectedId.value || !searchQuery.value.trim()) return;
+    if (!searchQuery.value.trim()) return;
     searchLoading.value = true;
     searchRan.value = true;
     try {
       searchResults.value = await knowledgeStore.search({
-        collection_id: selectedId.value,
+        collection_id: searchScopeId.value,
         query: searchQuery.value.trim(),
         top_k: searchTopK.value,
         min_score: searchMinScore.value || undefined,
@@ -469,6 +486,50 @@ export function useKnowledgePage() {
       $q.notify({ type: 'negative', message: friendlyError(e) || '检索失败' });
     } finally {
       searchLoading.value = false;
+    }
+  }
+
+  // ---------- 文档跨库移动（US-14 整理归档） ----------
+
+  const moveOpen = ref(false);
+  const moveLoading = ref(false);
+  const movingDoc = ref<KnowledgeDocument | null>(null);
+  const moveTargetId = ref('');
+
+  // 目标库选项：排除当前库；dim 不一致的禁用（pgvector 列维度固定，跨 dim 移动向量不可检索）。
+  const moveTargetOptions = computed(() => {
+    const current = selectedCollection.value;
+    return collections.value
+      .filter((c) => c.id !== selectedId.value)
+      .map((c) => ({
+        label: c.name || c.id,
+        value: c.id,
+        disable: !!current && c.dim !== current.dim,
+        dim: c.dim,
+      }));
+  });
+
+  function openMoveDialog(doc: KnowledgeDocument) {
+    movingDoc.value = doc;
+    moveTargetId.value = '';
+    moveOpen.value = true;
+  }
+
+  async function submitMove() {
+    const doc = movingDoc.value;
+    if (!doc || !moveTargetId.value) return;
+    moveLoading.value = true;
+    try {
+      await knowledgeStore.moveDoc(doc.id, moveTargetId.value);
+      moveOpen.value = false;
+      const target = collections.value.find((c) => c.id === moveTargetId.value);
+      await loadDocuments();
+      await loadCollections();
+      $q.notify({ type: 'positive', message: t('knowledgePage.moveSuccess', { name: target?.name ?? '' }) });
+    } catch (e) {
+      $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.moveFailed') });
+    } finally {
+      moveLoading.value = false;
     }
   }
 
@@ -575,6 +636,15 @@ export function useKnowledgePage() {
     enqueueUploadFiles,
     removeUploadTask,
     clearFinishedUploadTasks,
+    searchScopeId,
+    searchScopeOptions,
     runSearch,
+    moveOpen,
+    moveLoading,
+    movingDoc,
+    moveTargetId,
+    moveTargetOptions,
+    openMoveDialog,
+    submitMove,
   };
 }

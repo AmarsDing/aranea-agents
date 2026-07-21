@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
@@ -132,6 +133,9 @@ func (p *turnPipeline) executeTurn(
 	}
 	attN := len(attachmentRefs)
 
+	// Step 1.5: 巨型用户输入落地 blob（单轮超限治理）；后续持久化与 LLM 调用均使用 preview。
+	input.Content = p.gateTurnUserInput(ctx, strings.TrimSpace(input.SessionID), input.Content)
+
 	// Step 2: Persist user message
 	userMsg, userMsgPersisted, err := p.persistTurnUserMessage(ctx, input, ag, admit, emitter, userOpts, attN)
 	if err != nil {
@@ -141,6 +145,32 @@ func (p *turnPipeline) executeTurn(
 	// Step 3: Session run lifecycle + run options + LLM call + stream
 	return p.invokeTurnLLMAndStream(ctx, sess, input, ag, admit, emitter, traceBridge, deps, runner,
 		userMsg, userMsgPersisted, userOpts, intentRunOpts, turnStart)
+}
+
+// gateTurnUserInput 对超阈值的用户输入落地 blob 并返回 preview。
+// 未超限 / gate 未配置 / 落地失败时返回原文（不阻断对话）。幂等键：
+// messageID 取 RootTaskActivityID（与持久化的用户消息 ID 一致），重试复用 replacement。
+// Stability:internal
+func (p *turnPipeline) gateTurnUserInput(ctx context.Context, sessionID, content string) string {
+	gate := p.rt().ToolResultGate
+	if gate == nil || utf8.RuneCountInString(content) <= biz.ToolResultSizeThreshold {
+		return content
+	}
+	msgID := string(chatagent.RootTaskActivityIDFromCtx(ctx))
+	if msgID == "" {
+		msgID = uuid.NewString()
+	}
+	res, err := gate.CheckUserInput(ctx, sessionID, msgID, biz.ToolResultSourceUserInput, content)
+	if err != nil {
+		p.lg().Warn("用户输入落地 blob 失败，使用原文继续",
+			loggateway.StepID("chat.turn.user_input_gate"),
+			loggateway.Err(err))
+		return content
+	}
+	if !res.DidPersist {
+		return content
+	}
+	return res.PreviewText
 }
 
 // ────────────────────────────────────────────────────────────

@@ -76,6 +76,8 @@ export type KnowledgeUploadTask = {
   /** reading | uploading | success | error */
   status: string;
   message?: string;
+  /** US-14：免预选上传时标注目标库（未选中集合 = 「默认知识库」）。 */
+  collection_label?: string;
 };
 
 export type SearchKnowledgeQuery = {

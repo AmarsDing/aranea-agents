@@ -89,6 +89,15 @@ func (m *memKnowledgeRepo) DeleteDocument(_ context.Context, id string) error {
 	delete(m.documents, id)
 	return nil
 }
+func (m *memKnowledgeRepo) MoveDocument(_ context.Context, id, targetCollectionID string) (biz.KnowledgeDocument, error) {
+	d, ok := m.documents[id]
+	if !ok {
+		return biz.KnowledgeDocument{}, biz.ErrNotFound
+	}
+	d.CollectionID = targetCollectionID
+	m.documents[id] = d
+	return d, nil
+}
 func (m *memKnowledgeRepo) InsertChunks(_ context.Context, chunks []biz.KnowledgeChunk) error {
 	m.chunks = append(m.chunks, chunks...)
 	return nil

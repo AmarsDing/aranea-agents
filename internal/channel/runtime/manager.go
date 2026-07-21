@@ -80,6 +80,12 @@ type Manager struct {
 	mu      sync.Mutex
 	running map[string]runningInstance
 
+	// reloadMu serializes full Reload passes. Reload is triggered both by
+	// async CRUD hooks (service reloadRuntime) and by the periodic
+	// reconciler; concurrent passes would race stop/start of the same
+	// connector.
+	reloadMu sync.Mutex
+
 	leaseRepo biz.ChannelRuntimeLeaseRepo
 	ownerID   string
 	leaseTTL  time.Duration
@@ -122,6 +128,8 @@ func (m *Manager) Reload(ctx context.Context) error {
 	if m == nil || m.channels == nil || m.handler == nil {
 		return nil
 	}
+	m.reloadMu.Lock()
+	defer m.reloadMu.Unlock()
 	items, err := m.channels.List(ctx)
 	if err != nil {
 		return err

@@ -16,6 +16,12 @@ const (
 	ToolResultPreviewSize   = 2000
 )
 
+// 单轮超限治理：CheckUserInput 的 source 取值（写入 blob.ToolName，与工具结果区分）。
+const (
+	ToolResultSourceUserInput  = "user_input"
+	ToolResultSourceAttachment = "attachment_text"
+)
+
 type ToolResultGateResult struct {
 	BlobID      string
 	PreviewText string
@@ -99,6 +105,14 @@ func (g *ToolResultGate) Check(ctx context.Context, sessionID, messageID, toolNa
 		PreviewText: preview,
 		DidPersist:  true,
 	}, nil
+}
+
+// CheckUserInput 对超阈值的用户输入/附件文本落地 blob，返回 preview。
+// source 取 ToolResultSourceUserInput / ToolResultSourceAttachment，写入
+// blob.ToolName 以与工具结果区分。幂等语义与 Check 一致（按 sessionID+messageID）。
+// Stability:evolving
+func (g *ToolResultGate) CheckUserInput(ctx context.Context, sessionID, messageID, source, fullContent string) (ToolResultGateResult, error) {
+	return g.Check(ctx, sessionID, messageID, source, "", fullContent, 0)
 }
 
 func freezePreview(fullContent, blobID string) string {

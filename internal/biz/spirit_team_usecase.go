@@ -53,6 +53,14 @@ type SpiritAgentResolver interface {
 	List(ctx context.Context, q AgentListQuery) (AgentListResult, error)
 }
 
+// SpiritStepReader provides the step queries needed by SpiritTeamUsecase for
+// deliverable extraction. Narrow subset of StepV2Reader with exact session_id
+// semantics (O-4 fix). Implemented by data.StepV2Repo.
+// Stability:evolving
+type SpiritStepReader interface {
+	ListStepsBySessionID(ctx context.Context, sessionID string) ([]Step, error)
+}
+
 // SpiritTeamController exposes the methods needed by the service layer's
 // TeamOrchestrationDeps for team lifecycle orchestration (timeout, completion,
 // dependency scheduling, and completion checks).
@@ -131,6 +139,10 @@ func WithDeptLeadMgr(m *DeptLeadManager) SpiritTeamUsecaseOption {
 	return func(u *SpiritTeamUsecase) { u.deptLeadMgr = m }
 }
 
+func WithSpiritStepReader(r SpiritStepReader) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) { u.stepReader = r }
+}
+
 // SpiritTeamUsecase manages Spirit team lifecycle.
 // TECH-DEBT(COG): file_lines=1431, limit=500; sync_maps=1, limit=0; needs decomposition into sub-Usecases
 // TODO(debt): DEV-09 — Split into three sub-Usecases:
@@ -152,6 +164,7 @@ type SpiritTeamUsecase struct {
 	contractValidator *DeliverableContractValidator
 	gateExecutor      *VerificationGateExecutor
 	deptLeadMgr       *DeptLeadManager
+	stepReader        SpiritStepReader
 	lg                loggateway.Logger
 
 	timeoutOnce sync.Once
@@ -895,7 +908,7 @@ type TeamProgress struct {
 }
 
 func (u *SpiritTeamUsecase) ExtractTeamOutput(ctx context.Context, teamID string) (summary string, keyFindings string, err error) {
-	result, searchErr := u.sessionUC.Search(ctx, SessionSearchQuery{TeamID: teamID, Limit: 1})
+	result, searchErr := u.sessionUC.Search(ctx, SessionSearchQuery{TeamID: teamID, Limit: 10})
 	if searchErr != nil {
 		u.lg.Warn("搜索团队 session 失败",
 			loggateway.StepID("spirit.extract_output.search_err"),
@@ -907,7 +920,44 @@ func (u *SpiritTeamUsecase) ExtractTeamOutput(ctx context.Context, teamID string
 	if len(result.Items) == 0 {
 		return "", "", nil
 	}
+	// Member agent sessions share the same team_id and Search ordering is not
+	// guaranteed — identify the team main session by SessionType, not position.
 	teamSession := result.Items[0]
+	for _, s := range result.Items {
+		if s.SessionType == string(SessionTypeTeam) {
+			teamSession = s
+			break
+		}
+	}
+
+	// Primary source (production): the team session's final completed reply
+	// step, read with exact session_id semantics. Legacy ChatMessage storage
+	// is only a fallback when no step reader is wired or no reply step exists.
+	if u.stepReader != nil {
+		steps, stepErr := u.stepReader.ListStepsBySessionID(ctx, teamSession.ID)
+		if stepErr != nil {
+			u.lg.Warn("获取团队步骤失败",
+				loggateway.StepID("spirit.extract_output.step_err"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Err(stepErr),
+			)
+			return "", "", stepErr
+		}
+		for i := len(steps) - 1; i >= 0; i-- {
+			st := steps[i]
+			if st.Kind != StepKindReply || st.Status != StepStatusCompleted {
+				continue
+			}
+			content := strings.TrimSpace(st.Content)
+			if content == "" {
+				continue
+			}
+			summary = TruncateRunes(content, MaxSummaryLen)
+			keyFindings = extractKeyFindings(content)
+			return summary, keyFindings, nil
+		}
+	}
+
 	messages, msgErr := u.sessionUC.ListMessagesRecent(ctx, teamSession.ID, SpiritRecentMessageCount)
 	if msgErr != nil {
 		u.lg.Warn("获取团队消息失败",

@@ -201,8 +201,6 @@
           :provider-options="providerOptions"
           :context-ratio="contextRatio"
           :context-status="contextStatus"
-          :knowledge-base-options="knowledgeBaseOptions"
-          :selected-knowledge-bases="selectedKnowledgeBases"
           :is-dark="isDark"
           :sending="sending"
           :input-disabled="inputDisabled"
@@ -217,7 +215,6 @@
           @update:model-value="emit('update:modelValue', $event)"
           @update:dialog-mode="emit('update:dialogMode', $event)"
           @update:model-provider="emit('update:modelProvider', $event)"
-          @update:selected-knowledge-bases="emit('update:selectedKnowledgeBases', $event)"
           @remove-attachment="emit('remove-attachment', $event)"
           @pick-file="emit('pick-file')"
           @voice="emit('voice')"
@@ -313,8 +310,6 @@ const props = defineProps<{
   contextRatio: number;
   contextStatus?: string;
   contextBreakdown?: PromptBreakdown | null;
-  knowledgeBaseOptions?: Option[];
-  selectedKnowledgeBases?: string[];
   isDark: boolean;
   sending?: boolean;
   inputDisabled?: boolean;
@@ -361,7 +356,6 @@ const emit = defineEmits<{
   'update:modelValue': [value: string];
   'update:dialogMode': [value: string];
   'update:modelProvider': [value: string];
-  'update:selectedKnowledgeBases': [value: string[]];
   'remove-attachment': [id: string];
   'pick-file': [];
   voice: [];

@@ -87,7 +87,8 @@ message DeleteCollectionRequest {
 }
 
 message IngestDocumentRequest {
-  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // US-14: optional. Empty = auto-fall into the lazily-created "默认知识库" (default collection).
+  string collection_id = 1;
   string source = 2 [(google.api.field_behavior) = REQUIRED];
   string mime_type = 3;
   // content_base64 is the raw document payload (base64-encoded).
@@ -123,8 +124,16 @@ message DeleteDocumentRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+// MoveDocumentRequest moves a document (with its chunks) to another collection (US-14).
+// Rejected with CodeConflict when the target collection dim differs (vector incompatibility).
+message MoveDocumentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_collection_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
 message SearchRequest {
-  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // US-14: optional. Empty = federated smart-routing across all collections.
+  string collection_id = 1;
   string query = 2 [(google.api.field_behavior) = REQUIRED];
   int32 top_k = 3;            // default 5
   float min_score = 4;        // minimum similarity threshold (0 = no filter)
@@ -208,6 +217,12 @@ service KnowledgeService {
   rpc DeleteDocument(DeleteDocumentRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       delete: "/v1/knowledge/documents/{id}"
+    };
+  }
+  rpc MoveDocument(MoveDocumentRequest) returns (KnowledgeDocument) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/documents/{id}/move"
+      body: "*"
     };
   }
 

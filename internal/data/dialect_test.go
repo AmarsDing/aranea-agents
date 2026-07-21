@@ -39,12 +39,48 @@ func TestDialect_JSONExtract(t *testing.T) {
 		want    string
 	}{
 		{DialectSQLite, "metadata", "session_id", "json_extract(metadata, '$.session_id')"},
-		{DialectPostgres, "metadata", "session_id", "COALESCE(NULLIF(metadata, '')::jsonb, '{}'::jsonb) ->> 'session_id'"},
+		{DialectPostgres, "metadata", "session_id", "COALESCE(NULLIF(metadata::text, '')::jsonb, '{}'::jsonb) ->> 'session_id'"},
 	}
 	for _, tt := range tests {
 		got := tt.dialect.JSONExtract(tt.col, tt.key)
 		if got != tt.want {
 			t.Errorf("%s.JSONExtract(%q, %q) = %q, want %q", tt.dialect, tt.col, tt.key, got, tt.want)
+		}
+	}
+}
+
+// TestDialect_JSONExtractNumeric verifies the numeric variant of JSONExtract.
+// Postgres `->>` always returns text, so numeric consumers (COALESCE with a
+// DOUBLE PRECISION column, AVG, `> 0` comparisons) must cast — otherwise PG
+// raises 42804 ("COALESCE types double precision and text cannot be matched")
+// or 42883 ("function avg(text) does not exist"). NULLIF(..., '') guards
+// empty-string values which would fail the cast; missing keys yield NULL.
+// SQLite json_extract returns INTEGER/REAL natively for numeric JSON values,
+// so no cast is needed there.
+func TestDialect_JSONExtractNumeric(t *testing.T) {
+	tests := []struct {
+		dialect Dialect
+		col     string
+		key     string
+		want    string
+	}{
+		{
+			DialectSQLite, "metadata_json", "duration_ms",
+			"json_extract(metadata_json, '$.duration_ms')",
+		},
+		{
+			DialectPostgres, "metadata_json", "duration_ms",
+			"CAST(NULLIF(COALESCE(NULLIF(metadata_json::text, '')::jsonb, '{}'::jsonb) ->> 'duration_ms', '') AS DOUBLE PRECISION)",
+		},
+		{
+			DialectPostgres, "token_usage", "total",
+			"CAST(NULLIF(COALESCE(NULLIF(token_usage::text, '')::jsonb, '{}'::jsonb) ->> 'total', '') AS DOUBLE PRECISION)",
+		},
+	}
+	for _, tt := range tests {
+		got := tt.dialect.JSONExtractNumeric(tt.col, tt.key)
+		if got != tt.want {
+			t.Errorf("%s.JSONExtractNumeric(%q, %q) = %q, want %q", tt.dialect, tt.col, tt.key, got, tt.want)
 		}
 	}
 }
@@ -62,8 +98,8 @@ func TestDialect_JSONBBase(t *testing.T) {
 		want    string
 	}{
 		{DialectSQLite, "state_json", "COALESCE(state_json, '{}')"},
-		{DialectPostgres, "state_json", "COALESCE(NULLIF(state_json, '')::jsonb, '{}'::jsonb)"},
-		{DialectPostgres, "metadata_json", "COALESCE(NULLIF(metadata_json, '')::jsonb, '{}'::jsonb)"},
+		{DialectPostgres, "state_json", "COALESCE(NULLIF(state_json::text, '')::jsonb, '{}'::jsonb)"},
+		{DialectPostgres, "metadata_json", "COALESCE(NULLIF(metadata_json::text, '')::jsonb, '{}'::jsonb)"},
 	}
 	for _, tt := range tests {
 		if got := tt.dialect.JSONBBase(tt.col); got != tt.want {
@@ -96,7 +132,7 @@ func TestDialect_JSONSet(t *testing.T) {
 		},
 		{
 			DialectPostgres, pgBase, "run_id", "?",
-			"jsonb_set(COALESCE(NULLIF(state_json, '')::jsonb, '{}'::jsonb), '{run_id}', to_jsonb(?::text))",
+			"jsonb_set(COALESCE(NULLIF(state_json::text, '')::jsonb, '{}'::jsonb), '{run_id}', to_jsonb(?::text))",
 		},
 		{
 			// chained: input expr is the jsonb output of a previous jsonb_set
@@ -140,7 +176,7 @@ func TestDialect_JSONSetMulti(t *testing.T) {
 		{
 			DialectPostgres, pgBase,
 			[][2]string{{"run_id", "?"}},
-			"jsonb_set(COALESCE(NULLIF(state_json, '')::jsonb, '{}'::jsonb), '{run_id}', to_jsonb(?::text))",
+			"jsonb_set(COALESCE(NULLIF(state_json::text, '')::jsonb, '{}'::jsonb), '{run_id}', to_jsonb(?::text))",
 		},
 		{
 			DialectSQLite, "state_json",
@@ -150,7 +186,7 @@ func TestDialect_JSONSetMulti(t *testing.T) {
 		{
 			DialectPostgres, pgBase,
 			[][2]string{{"run_id", "?"}, {"status", "?"}},
-			"jsonb_set(jsonb_set(COALESCE(NULLIF(state_json, '')::jsonb, '{}'::jsonb), '{run_id}', to_jsonb(?::text)), '{status}', to_jsonb(?::text))",
+			"jsonb_set(jsonb_set(COALESCE(NULLIF(state_json::text, '')::jsonb, '{}'::jsonb), '{run_id}', to_jsonb(?::text)), '{status}', to_jsonb(?::text))",
 		},
 	}
 	for _, tt := range tests {
@@ -186,7 +222,7 @@ func TestDialect_JSONRemove(t *testing.T) {
 		},
 		{
 			DialectPostgres, DialectPostgres.JSONBBase("state_json"), "run_id",
-			"COALESCE(NULLIF(state_json, '')::jsonb, '{}'::jsonb) - ?::text", "run_id",
+			"COALESCE(NULLIF(state_json::text, '')::jsonb, '{}'::jsonb) - ?::text", "run_id",
 		},
 		{
 			DialectPostgres, "jsonb_set(base, '{k}', to_jsonb(?::text))", "run_id",
@@ -231,7 +267,7 @@ func TestDialect_JSONRemoveMulti(t *testing.T) {
 		{
 			DialectPostgres, DialectPostgres.JSONBBase("metadata_json"),
 			[]string{"a", "b"},
-			"COALESCE(NULLIF(metadata_json, '')::jsonb, '{}'::jsonb) - '{a,b}'::text[]",
+			"COALESCE(NULLIF(metadata_json::text, '')::jsonb, '{}'::jsonb) - '{a,b}'::text[]",
 		},
 	}
 	for _, tt := range tests {

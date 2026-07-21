@@ -73,6 +73,17 @@
               flat
               dense
               round
+              color="primary"
+              icon="drive_file_move"
+              :aria-label="t('knowledgePage.moveTo')"
+              @click="$emit('move-document', slotProps.row)"
+            >
+              <q-tooltip>{{ t('knowledgePage.moveTo') }}</q-tooltip>
+            </q-btn>
+            <q-btn
+              flat
+              dense
+              round
               color="negative"
               icon="delete"
               aria-label="删除"
@@ -118,6 +129,7 @@ defineEmits<{
   refresh: [];
   'delete-document': [doc: KnowledgeDocument];
   'preview-document': [doc: KnowledgeDocument];
+  'move-document': [doc: KnowledgeDocument];
 }>();
 
 const columns = KNOWLEDGE_DOC_TABLE_COLUMNS;

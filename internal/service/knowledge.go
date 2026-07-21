@@ -61,6 +61,8 @@ type KnowledgeSearchDeps struct {
 	Retriever *knowledge.Retriever
 	Router    *knowledge.AdaptiveRouter
 	Evaluator *knowledge.RetrievalEvaluator
+	// Federated 全库智能路由（US-14 检索免选择）：Search collection_id 留空时启用。
+	Federated *knowledge.FederatedRetriever
 }
 
 type KnowledgeService struct {
@@ -167,7 +169,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 	if !resolveIngestMIMEAllowed(detected, req.GetMimeType(), req.GetSource()) {
 		return nil, apierror.BadRequest("KNOWLEDGE", "unsupported content type: "+detected)
 	}
-	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
+	col, err := s.resolveIngestCollection(ctx, req.GetCollectionId())
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +217,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 	}
 
 	doc := biz.KnowledgeDocument{
-		CollectionID: req.GetCollectionId(),
+		CollectionID: col.ID,
 		Source:       req.GetSource(),
 		MimeType:     req.GetMimeType(),
 		SizeBytes:    int64(len(raw)),
@@ -378,6 +380,15 @@ func (s *KnowledgeService) GetDocumentContent(ctx context.Context, req *v1.GetDo
 	}, nil
 }
 
+// MoveDocument moves a document (with its chunks) to another collection (US-14 整理归档).
+func (s *KnowledgeService) MoveDocument(ctx context.Context, req *v1.MoveDocumentRequest) (*v1.KnowledgeDocument, error) {
+	doc, err := s.uc.MoveDocument(ctx, req.GetId(), req.GetTargetCollectionId())
+	if err != nil {
+		return nil, err
+	}
+	return toProtoDocument(doc), nil
+}
+
 // Search performs a semantic search over a collection.
 func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*v1.SearchResponse, error) {
 	timer := prometheus.NewTimer(knowledgeSearchDuration)
@@ -407,7 +418,15 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 	var chunks []biz.KnowledgeChunk
 	var err error
 
-	if s.search.Router != nil {
+	if q.CollectionID == "" {
+		// US-14 检索免选择：collection_id 留空 → 全库智能路由（Route 策略，
+		// 名称/描述匹配度 top N=3、阈值 0.3；无匹配自动降级 Broadcast）。
+		if s.search.Federated == nil {
+			return nil, apierror.Unavailable("KNOWLEDGE", "federated retriever not configured for collection-free search")
+		}
+		modeOverride := knowledge.ParseHybridSearchMode(req.GetHybridSearch())
+		chunks, err = s.search.Federated.SearchAll(ctx, q, nil, modeOverride)
+	} else if s.search.Router != nil {
 		var rewriteResult *knowledge.QueryRewriteResult
 		strategy := knowledge.ParseRewriteStrategy(req.GetRewriteStrategy())
 		if strategy != knowledge.RewriteNone {
@@ -646,6 +665,24 @@ func (s *KnowledgeService) extractText(ctx context.Context, raw []byte, source, 
 		return s.extractors.Extract(ctx, raw, source, mimeType)
 	}
 	return knowledge.ExtractDocumentText(raw, source, mimeType)
+}
+
+// resolveIngestCollection 解析入库目标 Collection（US-14 上传免预选）：
+// collectionID 非空时按原逻辑校验存在性；为空时按当前 Embedder 配置懒创建
+// 「默认知识库」并返回——用户无需在上传前手动建库。
+func (s *KnowledgeService) resolveIngestCollection(ctx context.Context, collectionID string) (biz.KnowledgeCollection, error) {
+	if strings.TrimSpace(collectionID) != "" {
+		return s.uc.GetCollection(ctx, collectionID)
+	}
+	model, dim := "", 0
+	if s.embedderAdmin != nil {
+		_, _, m, d, _, _ := s.embedderAdmin.Config()
+		model, dim = m, d
+	}
+	if model == "" {
+		return biz.KnowledgeCollection{}, apierror.BadRequest("KNOWLEDGE", "embedder not configured; cannot ensure default collection")
+	}
+	return s.uc.EnsureDefaultCollection(ctx, model, dim)
 }
 
 // isImageIngest 报告本次入库是否为图片模态（委托 knowledge.IsImageSource）。

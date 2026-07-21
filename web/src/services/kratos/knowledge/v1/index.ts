@@ -85,8 +85,7 @@ export type DeleteCollectionRequest = {
 };
 
 export type IngestDocumentRequest = {
-  //
-  // Behaviors: REQUIRED
+  // US-14: optional. Empty = auto-fall into the lazily-created "默认知识库" (default collection).
   collectionId: string | undefined;
   //
   // Behaviors: REQUIRED
@@ -131,9 +130,19 @@ export type DeleteDocumentRequest = {
   id: string | undefined;
 };
 
-export type SearchRequest = {
+// MoveDocumentRequest moves a document (with its chunks) to another collection (US-14).
+// Rejected with CodeConflict when the target collection dim differs (vector incompatibility).
+export type MoveDocumentRequest = {
   //
   // Behaviors: REQUIRED
+  id: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  targetCollectionId: string | undefined;
+};
+
+export type SearchRequest = {
+  // US-14: optional. Empty = federated smart-routing across all collections.
   collectionId: string | undefined;
   //
   // Behaviors: REQUIRED
@@ -188,6 +197,7 @@ export interface KnowledgeService {
   ListDocuments(request: ListDocumentsRequest): Promise<ListDocumentsResponse>;
   GetDocumentContent(request: GetDocumentContentRequest): Promise<DocumentContent>;
   DeleteDocument(request: DeleteDocumentRequest): Promise<wellKnownEmpty>;
+  MoveDocument(request: MoveDocumentRequest): Promise<KnowledgeDocument>;
   // Search
   Search(request: SearchRequest): Promise<SearchResponse>;
   GetEmbedderConfig(request: GetEmbedderConfigRequest): Promise<EmbedderConfig>;
@@ -368,6 +378,26 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "DeleteDocument",
       }) as Promise<wellKnownEmpty>;
+    },
+    MoveDocument(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/knowledge/documents/${request.id}/move`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "MoveDocument",
+      }) as Promise<KnowledgeDocument>;
     },
     Search(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/search`; // eslint-disable-line quotes

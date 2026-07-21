@@ -131,6 +131,10 @@ func (s *stubStepReader) ListStepsBySession(_ context.Context, _ string) ([]biz.
 	return s.steps, nil
 }
 
+func (s *stubStepReader) ListStepsBySessionID(_ context.Context, _ string) ([]biz.Step, error) {
+	return s.steps, nil
+}
+
 // stubActivityRepo implements biz.ActivityRepo for cancel tests (writer only).
 // The same instance can serve as both reader and writer.
 type stubActivityRepo struct {

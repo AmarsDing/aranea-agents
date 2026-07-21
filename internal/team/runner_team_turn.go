@@ -30,6 +30,26 @@ type anchorResolution struct {
 	attN    int
 }
 
+// resolveTeamProviderModel resolves the effective provider/model for a team
+// turn. Priority: explicit turn option → session default → anchor agent
+// config, then catalog validation with fallback (RefineLLM → first enabled).
+// The catalog validation keeps the observation path (context window) aligned
+// with the execution path, which falls back to the system default model at
+// agent build time when the configured model is not in the catalog.
+func resolveTeamProviderModel(
+	ctx context.Context,
+	catalog biz.TeamModelCatalog,
+	refine biz.RefineLLMLookup,
+	lg loggateway.Logger,
+	provOpt, modOpt string,
+	sess biz.Session,
+	firstAg biz.Agent,
+) (string, string) {
+	prov := strutil.FirstNonEmpty(provOpt, sess.DefaultProvider, firstAg.Provider)
+	mod := strutil.FirstNonEmpty(modOpt, sess.DefaultModel, firstAg.Model)
+	return biz.ResolveProviderModelWithFallback(ctx, catalog, refine, lg, prov, mod)
+}
+
 func (r *Runner) resolveAnchorAndAttachments(
 	ctx context.Context,
 	members []MemberDef,
@@ -67,8 +87,7 @@ func (r *Runner) resolveAnchorAndAttachments(
 		return
 	}
 
-	prov0 := strutil.FirstNonEmpty(provOpt, sess.DefaultProvider, firstAg.Provider)
-	mod0 := strutil.FirstNonEmpty(modOpt, sess.DefaultModel, firstAg.Model)
+	prov0, mod0 := resolveTeamProviderModel(ctx, r.td.ReadDeps.LLM, r.td.ReadDeps.Settings, r.lg, provOpt, modOpt, sess, firstAg)
 	var attachmentRefs []artifactbiz.Ref
 	attN := 0
 	if r.td.Persist.ArtifactUC != nil && len(artifactbiz.NormalizeAttachmentIDs(input.Options.AttachmentIDs)) > 0 {

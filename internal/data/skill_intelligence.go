@@ -246,7 +246,7 @@ func (r *SkillIntelligenceRepo) GetHealthMetrics(ctx context.Context, skillID st
 
 	// Main aggregation query — computes count, success_count, avg_duration, avg_token_usage in SQL.
 	d := r.data.Dialect()
-	tokenUsageTotal := d.JSONExtract("token_usage", "total")
+	tokenUsageTotal := d.JSONExtractNumeric("token_usage", "total")
 	aggQuery := d.RenumberPlaceholders(`SELECT
   COUNT(*) as invocation_count,
   SUM(CASE WHEN outcome = 'success' OR (outcome = '' AND (status = 'completed' OR status = 'success')) THEN 1 ELSE 0 END) as success_count,

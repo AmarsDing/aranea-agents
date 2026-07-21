@@ -7,6 +7,8 @@
 //
 //	[*] --> Pending
 //	Pending --> Running : start
+//	Pending --> Failed : fail
+//	Pending --> Cancelled : cancel
 //	Running --> Completed : complete
 //	Running --> Failed : fail
 //	Running --> Cancelled : cancel
@@ -20,6 +22,13 @@
 //	WaitingHuman --> [*]
 //
 // ```
+//
+// Notes:
+//   - Pending → Failed / Pending → Cancelled（2026-07-21 P0-2 补齐）：与 teams 表
+//     TeamStateMachine 对齐（team_state_machine.go：Pending → Failed 用于 DAG 依赖
+//     失败级联 B-01，Pending → Cancelled 用于编排取消未启动团队）。原设计
+//     "Pending 必须经 Running 才能到终态"与这两个真实业务路径矛盾，缺失规则会
+//     导致 resolveTeamStageUpdate 状态机拒绝并跳过发布，前端停在 pending。
 package biz
 
 import (
@@ -48,6 +57,8 @@ const (
 // WaitingHuman is non-terminal (can resume or terminate).
 var teamStageTransitionRules = []shared.TransitionRule[TeamStageStatus, TeamStageEvent]{
 	{From: TeamStageStatusPending, Event: TeamStageEventStart, To: TeamStageStatusRunning},
+	{From: TeamStageStatusPending, Event: TeamStageEventFail, To: TeamStageStatusFailed},
+	{From: TeamStageStatusPending, Event: TeamStageEventCancel, To: TeamStageStatusCancelled},
 	{From: TeamStageStatusRunning, Event: TeamStageEventComplete, To: TeamStageStatusCompleted},
 	{From: TeamStageStatusRunning, Event: TeamStageEventFail, To: TeamStageStatusFailed},
 	{From: TeamStageStatusRunning, Event: TeamStageEventCancel, To: TeamStageStatusCancelled},

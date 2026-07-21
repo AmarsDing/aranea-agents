@@ -1,6 +1,6 @@
 # Knowledge 知识库 — 开发计划
 
-> **版本**：2026-07-21 | **状态**：✅ Phase 1-9 已完成（Phase 9 多模态入库：图片经 VisionExtractor 异步提取为 MD；真实视觉模型端到端待环境就位后复验）；Phase 10（GraphRAG 旁路）可选
+> **版本**：2026-07-21 | **状态**：✅ Phase 1-9 已完成（Phase 9 多模态入库：图片经 VisionExtractor 异步提取为 MD；真实视觉模型端到端待环境就位后复验）；✅ Phase 11（US-14 免选择知识库）已完成；Phase 10（GraphRAG 旁路）可选
 > **需求**：[37-knowledge.md](./37-knowledge.md) · **设计**：[37-knowledge.design.md](./37-knowledge.design.md)
 
 ---
@@ -218,6 +218,23 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 > 裁决（2026-07-20 用户确认）：Phase 3 可选增强；旁路非侵入，绝不嵌入摄取主链路。详见设计 §9.6 与 Roadmap 子模块 Phase 3。
 
+### Phase 11：免选择知识库（US-14）— ✅ 已完成（2026-07-21）
+
+> 设计：[37-knowledge.design.md §7.4](./37-knowledge.design.md) | 需求：US-14
+> 核心理念：**存储可分类，使用免选**——Collection 是收纳工具，不是使用门槛。
+
+| 任务 | 涉及文件 | 状态 |
+|------|----------|------|
+| Proto：Ingest/Search collection_id 去 REQUIRED + MoveDocument RPC | `api/kratos/knowledge/v1/knowledge.proto` + `make api` | ✅ |
+| Usecase：EnsureDefaultCollection 懒创建（按 name 查找复用） | `internal/biz/knowledge/knowledge.go` | ✅ |
+| Service：IngestDocument 留空落默认库；Search 留空走 FederatedRetriever Route 全库 | `internal/service/knowledge.go` | ✅ |
+| 工具：collection_id/collection_ids 改可选；scoped 多库路由；无 scoped 全库路由；零库返回空结果 | `internal/tools/knowledge/tool.go` | ✅ |
+| MoveDocument：Repo 事务（documents+chunks 随迁 + 计数校正）+ dim 兼容校验 | `internal/data/knowledge.go`、`internal/biz/knowledge/knowledge.go`、`internal/service/knowledge.go` | ✅ |
+| 前端：上传免预选（不静默丢弃 + 落默认库提示） | `useKnowledgePage.ts`、locales | ✅ |
+| 前端：搜索面板默认「全部知识库」 | `useKnowledgePage.ts` / 搜索面板组件 | ✅ |
+| 前端：文档「移动到…」（dim 不兼容禁用提示） | `KnowledgeDocumentsPanel.vue`、`api.ts`、locales | ✅ |
+| 前端：Agent 编辑器 knowledge_bases 折叠到高级配置 | Agent 编辑组件 | ✅ |
+
 ---
 
 ## 5. 任务清单
@@ -263,6 +280,7 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | 35 | image/* 白名单放开 + 原图 asset_uri 血缘 | P2 | — | 9 ✅ |
 | 35b | 图片异步提取 + UpdateDocumentContent 回写 | P2 | — | 9 ✅ |
 | 36 | GraphRAG 旁路构建（可选，非侵入） | P3 | — | 10 ⏸ |
+| 37 | 免选择知识库：默认库懒创建 + 工具/Search 全库智能路由 + MoveDocument + 前端配套 | P1 | — | 11 ✅ |
 
 ---
 
@@ -317,6 +335,16 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 - [ ] 图谱构建为异步旁路，摄取主链路无侵入（对照设计 §9.6 架构纪律）
 - [ ] 多跳/实体关系查询可由图遍历增强检索回答
+
+### Phase 11 — ✅ 免选择知识库（US-14）
+
+- [x] 上传不预选 Collection：留空自动落「默认知识库」（懒创建），前端不静默丢弃文件
+- [x] `knowledge_search`/`knowledge_reflect` 留空 collection：scoped>1 库内路由、无 scoped 全库路由，不再报 required 错误
+- [x] Search API 留空 collection_id：全库智能路由（Route 策略 + 无匹配降级 Broadcast）
+- [x] 系统无任何 Collection 时工具返回空结果（不阻塞会话）
+- [x] MoveDocument：文档连 chunks 跨库移动、计数同步、dim 不兼容拒绝（CodeConflict）
+- [x] 调试搜索面板默认「全部知识库」；Agent 编辑器知识库绑定折叠到高级配置
+- [x] 兼容性：已绑定 knowledge_bases 的 Agent 与显式传 collection_id 的调用行为不变
 
 ### Phase 5 — ✅
 

@@ -32,6 +32,7 @@ internal/server/ws_conn_manager.go    ← WS 连接数限制与移除
 internal/service/chat.go              ← ChatService 薄传输桥（委托 ChatOrchestrator）
 internal/service/chat_orchestrator.go ← ChatOrchestrator 编排核心
 internal/service/chat_orchestrator_turn.go          ← Turn 编排
+internal/service/chat_orchestrator_turn_pipeline.go ← Turn 管线（用户输入超限落地 gate）
 internal/service/chat_orchestrator_turn_phases.go   ← Turn 阶段实现
 internal/service/chat_orchestrator_turn_dispatch.go ← Turn 分发
 internal/service/chat_orchestrator_turn_api.go      ← Turn API
@@ -814,6 +815,7 @@ internal/service/
 ├── chat.go                          ← ChatService 薄传输桥（委托 ChatOrchestrator）
 ├── chat_orchestrator.go             ← ChatOrchestrator 编排核心
 ├── chat_orchestrator_turn.go        ← Turn 编排
+├── chat_orchestrator_turn_pipeline.go ← Turn 管线（用户输入超限落地 gate）
 ├── chat_orchestrator_turn_phases.go ← Turn 阶段实现
 ├── chat_orchestrator_turn_dispatch.go ← Turn 分发
 ├── chat_orchestrator_turn_api.go    ← Turn API

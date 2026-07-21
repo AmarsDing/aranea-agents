@@ -4,6 +4,7 @@
 > **需求**：[67 organization-redesign.md](./67-organization-redesign.md)
 > **设计**：[67 organization-redesign.design.md](./67-organization-redesign.design.md)
 > **方案报告**：[2026-06-07-proposal-organization-redesign.md](../reports/2026-06-07-proposal-organization-redesign.md)
+> **收尾评审**：[2026-07-21-review-agent-deliverable-transfer.md](../reports/2026-07-21-review-agent-deliverable-transfer.md)（交付物传递 P0 + O-4）
 
 ---
 
@@ -108,6 +109,7 @@
 | XC-03 | Spirit 编排管线适配: TaskOrchestrator 扩展，组建 Team DAG 后验证契约 + 注入主管 + 添加门禁 | `internal/biz/spirit_team_usecase.go` | 跨部门任务自动组建 DAG + 契约验证 | 🟡 待核实 |
 | XC-03b | 交付物传递机制: 上游 Team 输出写入 Spirit Session 共享 Memory，DAG 调度激活下游时作为 User Message 前缀注入（含来源团队、交付物名称、内容），后续迭代支持注入 Graph StateFields | `internal/biz/spirit_team_usecase.go`、`internal/service/team_orchestrator_real.go`、`internal/service/spirit_team.go` | ✅ 2026-07-21 P0 完成：交付物落库 teams.deliverables_output_json 专用列（TECH-DEBT #B-03 修复，替代原 ParallelConfigJSON 超载方案——该方案因 TeamUsecase.Update 白名单不透传从未真正持久化）；WriteDeliverablesToSession 内联进 RecordTeamCompletion 保证先于下游调度；InjectUpstreamDeliverables 修复 fallback 变量遮蔽 bug 并在双路径接线（v2 主路径 Orchestrate 注入 turnContent + v1 备份路径 DependentTeamAction.TaskDescription）；Orchestrate 透传 step.DependsOn（形式契约填充属 P1 planner schema 扩展） | ✅ |
 | XC-03c | 借调审批事件: BorrowApproved/BorrowRejected/BorrowAutoApproved 事件发布 | `internal/event/` | 事件发布成功 | 🟡 待核实 |
+| XC-03d | 交付物提取数据源修复（O-4）：ExtractTeamOutput 主源切换为 SpiritStepReader 窄接口（`ListStepsBySessionID` 精确 session_id 语义，新增于 `StepV2Reader`/`stepV2Repo`；原 `ListStepsBySession` 保留 spirit_session_id 树级语义供前端历史加载）；团队主会话按 SessionType=team 识别；无 reply step 回退消息读取 | `internal/biz/spirit_team_usecase.go`、`internal/biz/repo_ports_v2.go`、`internal/data/step_v2_repo.go`、`cmd/admin/wire.go` | ✅ 2026-07-21 单测绿（deliverable 测试 5 个新行为用例 + step_v2_repo 精确语义用例）；端到端运行时验证通过：两步串行 DAG（调研→写作），上游交付物落库与 reply step 内容一致，下游回复完全基于上游专有内容，write_deliverables 日志双向确认 | ✅ |
 | XC-04 | 审批驳回返工: 部门主管驳回后标记 Team 为 pending（通过 TransitionStatus），清除执行结果，重新执行整个 Team（初期策略） | `internal/biz/spirit_team_usecase.go` | ✅ HandleTeamRejection 增加 TransitionStatus 调用触发重执行 | ✅ |
 | XC-04b | ReworkStrategy 类型和常量定义（初期仅实现 full_team） | `internal/biz/rework.go` | 类型定义正确 | ✅ |
 | XC-05 | 升级处理: 超过 max_retries 后升级给精灵助手（EscalateToSpirit，标记 Team 状态为 failed） | `internal/biz/spirit_team_usecase.go` | 升级事件发布成功 | ✅ |

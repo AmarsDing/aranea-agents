@@ -40,6 +40,13 @@
       />
 
       <div>
+        <!-- US-14 上传免预选：拖拽区常驻右栏顶部，未选中集合时自动落入「默认知识库」 -->
+        <knowledge-drop-zone @files-selected="enqueueUploadFiles" />
+        <knowledge-upload-queue
+          :tasks="uploadTasks"
+          @clear-finished="clearFinishedUploadTasks"
+          @remove-task="removeUploadTask"
+        />
         <q-card v-if="selectedCollection" flat class="app-pane-card">
           <q-card-section>
             <div class="row items-center justify-between">
@@ -68,12 +75,6 @@
           </div>
           <q-tab-panels v-model="tab" animated class="app-pane-card__body">
             <q-tab-panel name="documents" class="q-pa-md">
-              <knowledge-drop-zone @files-selected="enqueueUploadFiles" />
-              <knowledge-upload-queue
-                :tasks="uploadTasks"
-                @clear-finished="clearFinishedUploadTasks"
-                @remove-task="removeUploadTask"
-              />
               <knowledge-documents-panel
                 :documents="documents"
                 :loading="docsLoading"
@@ -81,6 +82,7 @@
                 @refresh="loadDocuments"
                 @delete-document="confirmDeleteDocument"
                 @preview-document="openDocPreview"
+                @move-document="openMoveDialog"
               />
             </q-tab-panel>
             <q-tab-panel name="search" class="q-pa-md">
@@ -91,6 +93,8 @@
                 v-model:hybrid-mode="searchHybridMode"
                 v-model:rewrite-strategy="searchRewriteStrategy"
                 v-model:use-rerank="searchUseRerank"
+                v-model:scope-id="searchScopeId"
+                :scope-options="searchScopeOptions"
                 :results="searchResults"
                 :doc-source-map="docSourceMap"
                 :loading="searchLoading"
@@ -102,8 +106,8 @@
         </q-card>
         <div v-else class="app-registry-empty app-pane-card">
           <q-icon name="library_books" size="48px" color="grey-6" />
-          <div class="text-h6">请选择一个集合</div>
-          <div class="text-body2">从左侧列表选择集合，或点击「新建集合」创建。</div>
+          <div class="text-h6">{{ $t('knowledgePage.emptyTitle') }}</div>
+          <div class="text-body2">{{ $t('knowledgePage.emptyHint') }}</div>
         </div>
       </div>
     </div>
@@ -136,6 +140,14 @@
       :content="previewContent"
       :loading="previewLoading"
     />
+    <knowledge-move-dialog
+      v-model:open="moveOpen"
+      v-model:target-id="moveTargetId"
+      :doc-source="movingDoc?.source ?? ''"
+      :options="moveTargetOptions"
+      :loading="moveLoading"
+      @submit="submitMove"
+    />
   </q-page>
 </template>
 
@@ -151,6 +163,7 @@ import KnowledgeIngestDialog from '../components/knowledge/KnowledgeIngestDialog
 import KnowledgeDropZone from '../components/knowledge/KnowledgeDropZone.vue';
 import KnowledgeUploadQueue from '../components/knowledge/KnowledgeUploadQueue.vue';
 import KnowledgeDocPreviewDialog from '../components/knowledge/KnowledgeDocPreviewDialog.vue';
+import KnowledgeMoveDialog from '../components/knowledge/KnowledgeMoveDialog.vue';
 import { useKnowledgePage } from '../features/knowledge/useKnowledgePage';
 import { formatKnowledgeTime } from '../features/knowledge/knowledgeUi';
 
@@ -204,7 +217,16 @@ const {
   enqueueUploadFiles,
   removeUploadTask,
   clearFinishedUploadTasks,
+  searchScopeId,
+  searchScopeOptions,
   runSearch,
+  moveOpen,
+  moveLoading,
+  movingDoc,
+  moveTargetId,
+  moveTargetOptions,
+  openMoveDialog,
+  submitMove,
 } = useKnowledgePage();
 
 onMounted(() => {

@@ -5,6 +5,7 @@
 > **2026-06-17 校准**：与实际代码对齐；修正 Embedder 接口/结构体（`Embedder` 为接口，`MultiProviderEmbedder` 为实现）、修正构造函数签名（补充 `lg loggateway.Logger` 参数）、修正 `knowledge_embed_setting.go` 引用（实际逻辑在 `knowledge/knowledge.go` 的 `ApplyEmbedPatch`）、补充 Reranker、Embedder Admin API、摄取 WS 事件、`ingest.go` 流水线拆分、Advanced RAG（查询重写/混合检索/自适应路由/检索评估）、Agentic RAG（联邦搜索/knowledge_reflect 工具）、OCR stub、BM25 双路检索、Biz 子包迁移、KnowledgeSearchDeps 聚合、GraphRAG/Skill Knowledge 待实现设计。
 > **2026-07-20 升级**：统一摄取管线设计——Extractor 接口抽象（§5.2）收编文本提取、MarkdownOrganizer（§5.2b，LLM 整理为 MD）、VisionExtractor（§5.2c，Phase 2 多模态）、`knowledge_documents` 新增 content_text/organized/asset_uri 列、Proto 新增 `organize_to_markdown` 字段与 `GetDocumentContent` RPC、OOXML magic 二次判定修复、前端拖拽批量上传、GraphRAG 裁决为 Phase 3 旁路非侵入可选增强。
 > **2026-07-21 校准（Phase 9 实现）**：图片改「先落文档 + 后台异步提取」（§5.2c/§7.2）——VisionExtractor 在摄取 goroutine 内执行，成功后经新增 `DocumentRepo.UpdateDocumentContent` 回写 content_text/organized；原图留存落地为 `AssetStore`（`internal/knowledge/asset_store.go`）；Wire 工厂 `NewKnowledgeExtractorRegistry`/`NewKnowledgeAssetStore` 就位（§7.3）。
+> **2026-07-21 升级（US-14 免选择知识库，Phase 11）**：「存储可分类，使用免选」——上传免预选（默认知识库懒创建，§7.4）、Search/Ingest 的 collection_id 去 REQUIRED（§2.1）、knowledge_search/knowledge_reflect 工具 collection 参数改可选 + scoped 多库/全库智能路由（§6.1/§6.1b）、文档跨库移动 MoveDocument（§2.1/§3.2/§4.3）。
 
 ---
 
@@ -146,7 +147,8 @@ message DeleteCollectionRequest {
 }
 
 message IngestDocumentRequest {
-  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // US-14：可选。留空 = 自动落「默认知识库」（服务端懒创建），上传免预选。
+  string collection_id = 1;
   string source = 2 [(google.api.field_behavior) = REQUIRED];
   string mime_type = 3;
   string content_base64 = 4 [(google.api.field_behavior) = REQUIRED];
@@ -182,8 +184,16 @@ message DeleteDocumentRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+// MoveDocument — US-14 文档跨库移动（整理：默认库收件箱 → 分类库归档）。
+// 文档连同 chunks 移至目标 Collection，两侧计数同步校正；目标库 dim 不一致时拒绝（向量维度不兼容）。
+message MoveDocumentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_collection_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
 message SearchRequest {
-  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // US-14：可选。留空 = 全库智能路由（Route 策略：名称/描述匹配取 top N 广播 + 结果合并）。
+  string collection_id = 1;
   string query = 2 [(google.api.field_behavior) = REQUIRED];
   int32 top_k = 3;            // default 5
   float min_score = 4;        // 最低相似度阈值（0 = 不过滤）
@@ -231,6 +241,9 @@ service KnowledgeService {
   }
   rpc DeleteDocument(DeleteDocumentRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = { delete: "/v1/knowledge/documents/{id}" };
+  }
+  rpc MoveDocument(MoveDocumentRequest) returns (KnowledgeDocument) {
+    option (google.api.http) = { post: "/v1/knowledge/documents/{id}/move" body: "*" };
   }
 
   // Search
@@ -333,6 +346,9 @@ type DocumentRepo interface {
     UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error
     ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
     DeleteDocument(ctx context.Context, id string) error
+    // MoveDocument 文档连同 chunks 移至目标 Collection（US-14），事务内完成 + 两侧计数校正。
+    // 目标库 dim 与源库不一致时返回错误（向量维度不兼容，需重建索引）。
+    MoveDocument(ctx context.Context, id, targetCollectionID string) (Document, error)
 }
 
 // 注：content_text/organized/asset_uri 随 CreateDocument 写入、GetDocument 读出（预览）；
@@ -366,11 +382,16 @@ func (uc *Usecase) GetCollection(ctx context.Context, id string) (Collection, er
 func (uc *Usecase) ListCollections(ctx context.Context, workspace string, limit, offset int) ([]Collection, int, error)
 func (uc *Usecase) DeleteCollection(ctx context.Context, id string) error
 func (uc *Usecase) UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error
+// EnsureDefaultCollection — US-14：返回「默认知识库」，不存在则懒创建（name=默认知识库，
+// embedding_model/dim 取当前 Embedder 配置）。上传免预选的兜底出口。
+func (uc *Usecase) EnsureDefaultCollection(ctx context.Context, embeddingModel string, dim int) (Collection, error)
 
 func (uc *Usecase) CreateDocument(ctx context.Context, d Document) (Document, error)
 func (uc *Usecase) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
 func (uc *Usecase) DeleteDocument(ctx context.Context, id string) error
 func (uc *Usecase) UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error
+// MoveDocument — US-14 文档跨库移动（校验目标库存在且 dim 兼容后委托 Repo 事务）。
+func (uc *Usecase) MoveDocument(ctx context.Context, id, targetCollectionID string) (Document, error)
 
 func (uc *Usecase) InsertChunks(ctx context.Context, chunks []Chunk) error
 func (uc *Usecase) Search(ctx context.Context, q SearchQuery, queryEmbedding []float32) ([]Chunk, error)
@@ -468,6 +489,7 @@ var (
 | `SearchChunks` | `ORDER BY embedding <=> $1::vector LIMIT $3`，支持 `min_score` 和 `filter_json` |
 | `SearchChunksBM25` | 双路 BM25：tsvector 全文检索 + pg_trgm 模糊搜索，合并去重 |
 | `DeleteDocument` | 事务删除 + 计数器修正 |
+| `MoveDocument` | 单事务：documents/chunks collection_id 更新 + 源/目标库计数校正（US-14） |
 
 ### 4.4 搜索过滤
 
@@ -922,6 +944,7 @@ Wire 经 `NewKnowledgeRetriever` 装配；配置错误时 SysLog 警告并禁用
 ### 6.1 knowledge_search 工具（internal/tools/knowledge/tool.go）
 
 ```go
+// US-14：CollectionID 可选（无 jsonschema required）。留空 = 自动路由。
 type searchInput struct {
     CollectionID string  `json:"collection_id"`
     Query        string  `json:"query"`
@@ -948,12 +971,18 @@ type chunkSummary struct {
 - Retriever/AdaptiveRouter 通过 context 传递（`WithRetriever` / `WithAdaptiveRouter`），避免全局状态。
 - 返回精简的 `chunkSummary`（不含 embedding 向量），减少 Token 消耗。
 - 优先使用 AdaptiveRouter（混合检索 + 自适应路由），不可用时降级为 Retriever。
+- **US-14（2026-07-21）**：`collection_id` 改可选，消除「LLM 不知有哪些库却被迫填 UUID」的死局。留空时按序解析：
+  1. scoped == 1 → 直用该库（现状不变）；
+  2. scoped > 1 → FederatedRetriever Route 策略在 scoped 内智能路由（不再报 "multiple knowledge_bases are scoped" 错误）；
+  3. scoped == 0 → 列出全部 Collection 后 FederatedRetriever Route 全库路由；系统无任何 Collection 时返回空结果（chunks=[]），不报错。
+- 显式传 collection_id 时仍校验必须在 scoped 内（越权防护不变）。
 
 ### 6.1b knowledge_reflect 工具（internal/tools/knowledge/tool.go）
 
 ```go
 type reflectInput struct {
-    CollectionIDs []string `json:"collection_ids" jsonschema:"description=List of collection IDs to search across,required"`
+    // US-14：可选（jsonschema 不再 required）。留空 = scoped 内路由；无 scoped 时全库智能路由。
+    CollectionIDs []string `json:"collection_ids"`
     Query         string   `json:"query" jsonschema:"description=The original user query to reflect on,required"`
     TopK          int      `json:"top_k,omitempty" jsonschema:"description=Maximum number of results to return per collection"`
 }
@@ -973,6 +1002,7 @@ type reflectOutput struct {
 - 当 RetrievalEvaluator 可用时，自动评估检索质量并返回 `sufficient`/`confidence`/`supplement_query`。
 - 评估失败时 FlowLog 警告，降级为 `sufficient=true, confidence=1.0`。
 - Collection 权限校验：`WithKnowledgeCollections` context 限定可访问的集合。
+- **US-14（2026-07-21）**：`collection_ids` 改可选。留空时：scoped 非空 → 在 scoped 内联邦路由；scoped 为空 → 全库智能路由（不再报 "collection_ids is required"）。
 
 ### 6.2 Agent 装配链
 
@@ -1132,6 +1162,47 @@ Embedder + Repo → Retriever → HybridRetriever → AdaptiveRouter → Federat
                          SparseSearcher        QueryRewriter
                                               RetrievalEvaluator
 ```
+
+### 7.4 免选择知识库（US-14，2026-07-21）
+
+> 核心理念：**存储可分类，使用免选**。Collection 是收纳分类工具（文件夹），不是使用门槛。
+
+**四条规则**：
+
+| # | 规则 | 实现位置 |
+|---|------|---------|
+| 1 | 上传免预选：`collection_id` 留空 → `EnsureDefaultCollection` 懒创建「默认知识库」后落入；前端不再静默丢弃文件 | Service `IngestDocument` |
+| 2 | 检索免选择：Search API / 工具 collection 留空 → 全库智能路由 | Service `Search`、`tools/knowledge` |
+| 3 | 智能路由策略：Route（名称/描述与 query 匹配度取 top N=3，阈值 0.3）→ 路由失败/无匹配降级 Broadcast；复用 `FederatedRetriever.SearchWithOptions`（§5.10） | FederatedRetriever |
+| 4 | 文档可归档：MoveDocument 跨库移动（默认库收件箱 → 分类库），chunks 随迁 + 计数校正 | `MoveDocument` RPC |
+
+**全库路由解析顺序**（工具与 Search API 共用）：
+
+```
+collection 留空
+  ├── scoped（Agent 绑定 knowledge_bases）== 1 → 单库直搜（现状）
+  ├── scoped > 1 → FederatedRetriever Route（scoped 内）
+  └── scoped == 0 → ListCollections 全量 → FederatedRetriever Route（全库）
+        ├── 无 Collection → 返回空结果（不报错）
+        ├── Route 无匹配（全部 < 阈值）→ 降级 Broadcast 全库并行
+        └── 部分库失败 → FlowLog 警告，返回成功库结果（§5.10 现状）
+```
+
+**关键设计决策**：
+
+- **默认知识库懒创建**：首个免选上传时创建（`name="默认知识库"`，`embedding_model`/`dim` 取当前 Embedder 配置）；按 name 查找复用，不引入 is_default 标记列（避免 Schema 变更 + 多默认库歧义）。
+- **MoveDocument dim 校验**：目标库 `dim` 与源库不一致时拒绝移动（`CodeConflict`）——pgvector 列维度固定，跨 dim 移动会导致向量不可检索；用户需删除后重新入库。同 dim 移动保留原向量，无需重 embedding。
+- **MoveDocument 事务**：单事务内 `UPDATE knowledge_documents.collection_id` + `UPDATE knowledge_chunks.collection_id` + 源库计数 `-1/-chunkCount` + 目标库计数 `+1/+chunkCount`，失败整体回滚。
+- **工具零库行为**：系统无任何 Collection 时工具返回 `chunks=[]` 空结果而非错误——LLM 可继续无知识回答，不阻塞会话。
+- **scoped 语义不变**：Agent 绑定 knowledge_bases 仍作为范围限定（越权校验保留）；未绑定 = 全库可搜，这是 US-14 的默认路径。
+- **兼容性**：proto 仅去除 REQUIRED 标注（field number 不变），已绑定 Agent 与显式传 collection_id 的调用行为完全不变。
+
+**前端配套**：
+
+- 上传：未选中 Collection 时照常上传（不传 collection_id），队列项标注「默认知识库」；上传完成后自动选中该库刷新列表。
+- 搜索面板：Collection 下拉首项「全部知识库」（值为空），默认选中。
+- 文档列表：行内「移动到…」菜单 → 对话框选目标库（过滤当前库 + dim 不兼容库禁用并提示）→ MoveDocument。
+- Agent 编辑器：knowledge_bases 绑定从基础配置折叠到「高级配置」分区，默认空（全库可搜）。
 
 ---
 

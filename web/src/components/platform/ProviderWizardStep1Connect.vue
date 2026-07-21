@@ -232,7 +232,7 @@
               dense
               round
               :icon="showSecretKey ? 'visibility_off' : 'visibility'"
-              :aria-label="showSecretKey ? '隐藏 Secret Key' : '显示 Secret Key'"
+              :aria-label="showSecretKey ? 'Hide Secret Key' : 'Show Secret Key'"
               :disable="revealingCredentials"
               @click="$emit('toggle-secret-key-visibility')"
             />

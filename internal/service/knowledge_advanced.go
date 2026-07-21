@@ -66,11 +66,12 @@ func NewKnowledgeFederatedRetriever(router *knowledge.AdaptiveRouter, retriever 
 	return knowledge.NewFederatedRetriever(router, retriever, lg)
 }
 
-func ProvideKnowledgeSearchDeps(retriever *knowledge.Retriever, router *knowledge.AdaptiveRouter, evaluator *knowledge.RetrievalEvaluator) KnowledgeSearchDeps {
+func ProvideKnowledgeSearchDeps(retriever *knowledge.Retriever, router *knowledge.AdaptiveRouter, evaluator *knowledge.RetrievalEvaluator, federated *knowledge.FederatedRetriever) KnowledgeSearchDeps {
 	return KnowledgeSearchDeps{
 		Retriever: retriever,
 		Router:    router,
 		Evaluator: evaluator,
+		Federated: federated,
 	}
 }
 

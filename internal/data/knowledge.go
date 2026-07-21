@@ -343,6 +343,65 @@ func (r *knowledgeRepo) DeleteChunksByDocument(ctx context.Context, docID string
 	return err
 }
 
+// MoveDocument moves a document (and its chunks) to another collection in one
+// transaction, keeping both collections' cached counters in sync (US-14).
+//
+// Counter rules mirror DeleteDocument: document_count shifts only when the
+// document was successfully indexed (pending/indexing/error docs were never
+// counted); chunk_count shifts by the document's recorded chunk_count,
+// GREATEST-guarded on the source side against drift below zero.
+func (r *knowledgeRepo) MoveDocument(ctx context.Context, id, targetCollectionID string) (biz.KnowledgeDocument, error) {
+	err := r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		var sourceCollectionID string
+		var chunkCount int
+		var status string
+		err := tx.QueryRowContext(ctx,
+			`SELECT collection_id, chunk_count, status FROM knowledge_documents WHERE id = $1`, id).
+			Scan(&sourceCollectionID, &chunkCount, &status)
+		if err != nil {
+			return err
+		}
+		if sourceCollectionID == targetCollectionID {
+			return nil // 同库 no-op（biz 已守卫，此处防御并发改写）
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_documents SET collection_id = $2, updated_at = NOW() WHERE id = $1`,
+			id, targetCollectionID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_chunks SET collection_id = $2 WHERE doc_id = $1`,
+			id, targetCollectionID); err != nil {
+			return err
+		}
+		docDelta := 0
+		if status == "indexed" {
+			docDelta = 1
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_collections
+			 SET document_count = GREATEST(document_count - $2, 0),
+			     chunk_count    = GREATEST(chunk_count    - $3, 0),
+			     updated_at     = NOW()
+			 WHERE id = $1`, sourceCollectionID, docDelta, chunkCount); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_collections
+			 SET document_count = document_count + $2,
+			     chunk_count    = chunk_count    + $3,
+			     updated_at     = NOW()
+			 WHERE id = $1`, targetCollectionID, docDelta, chunkCount); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return biz.KnowledgeDocument{}, err
+	}
+	return r.GetDocument(ctx, id)
+}
+
 func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQuery, queryEmbedding []float32) ([]biz.KnowledgeChunk, error) {
 	if len(queryEmbedding) == 0 {
 		return nil, fmt.Errorf("embedding is empty")

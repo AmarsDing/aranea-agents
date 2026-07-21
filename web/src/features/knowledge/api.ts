@@ -146,6 +146,12 @@ export async function deleteDocument(id: string): Promise<void> {
   await svc.DeleteDocument({ id });
 }
 
+// US-14：文档跨库移动（默认库收件箱 → 分类库归档）；目标库 dim 不一致时后端拒绝。
+export async function moveDocument(id: string, targetCollectionId: string): Promise<KnowledgeDocument> {
+  const raw = await svc.MoveDocument({ id, targetCollectionId });
+  return mapDocument(raw);
+}
+
 // ---------- Search ----------
 
 export async function searchKnowledge(query: SearchKnowledgeQuery): Promise<KnowledgeChunk[]> {

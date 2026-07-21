@@ -28,6 +28,7 @@ const (
 	KnowledgeService_ListDocuments_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
 	KnowledgeService_GetDocumentContent_FullMethodName   = "/kratos.knowledge.v1.KnowledgeService/GetDocumentContent"
 	KnowledgeService_DeleteDocument_FullMethodName       = "/kratos.knowledge.v1.KnowledgeService/DeleteDocument"
+	KnowledgeService_MoveDocument_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
 	KnowledgeService_Search_FullMethodName               = "/kratos.knowledge.v1.KnowledgeService/Search"
 	KnowledgeService_GetEmbedderConfig_FullMethodName    = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
 	KnowledgeService_UpdateEmbedderConfig_FullMethodName = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
@@ -47,6 +48,7 @@ type KnowledgeServiceClient interface {
 	ListDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...grpc.CallOption) (*ListDocumentsResponse, error)
 	GetDocumentContent(ctx context.Context, in *GetDocumentContentRequest, opts ...grpc.CallOption) (*DocumentContent, error)
 	DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	MoveDocument(ctx context.Context, in *MoveDocumentRequest, opts ...grpc.CallOption) (*KnowledgeDocument, error)
 	// Search
 	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
 	GetEmbedderConfig(ctx context.Context, in *GetEmbedderConfigRequest, opts ...grpc.CallOption) (*EmbedderConfig, error)
@@ -141,6 +143,16 @@ func (c *knowledgeServiceClient) DeleteDocument(ctx context.Context, in *DeleteD
 	return out, nil
 }
 
+func (c *knowledgeServiceClient) MoveDocument(ctx context.Context, in *MoveDocumentRequest, opts ...grpc.CallOption) (*KnowledgeDocument, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(KnowledgeDocument)
+	err := c.cc.Invoke(ctx, KnowledgeService_MoveDocument_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *knowledgeServiceClient) Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SearchResponse)
@@ -185,6 +197,7 @@ type KnowledgeServiceServer interface {
 	ListDocuments(context.Context, *ListDocumentsRequest) (*ListDocumentsResponse, error)
 	GetDocumentContent(context.Context, *GetDocumentContentRequest) (*DocumentContent, error)
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error)
+	MoveDocument(context.Context, *MoveDocumentRequest) (*KnowledgeDocument, error)
 	// Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	GetEmbedderConfig(context.Context, *GetEmbedderConfigRequest) (*EmbedderConfig, error)
@@ -222,6 +235,9 @@ func (UnimplementedKnowledgeServiceServer) GetDocumentContent(context.Context, *
 }
 func (UnimplementedKnowledgeServiceServer) DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteDocument not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) MoveDocument(context.Context, *MoveDocumentRequest) (*KnowledgeDocument, error) {
+	return nil, status.Error(codes.Unimplemented, "method MoveDocument not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) Search(context.Context, *SearchRequest) (*SearchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Search not implemented")
@@ -397,6 +413,24 @@ func _KnowledgeService_DeleteDocument_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KnowledgeService_MoveDocument_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MoveDocumentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).MoveDocument(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_MoveDocument_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).MoveDocument(ctx, req.(*MoveDocumentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KnowledgeService_Search_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SearchRequest)
 	if err := dec(in); err != nil {
@@ -489,6 +523,10 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteDocument",
 			Handler:    _KnowledgeService_DeleteDocument_Handler,
+		},
+		{
+			MethodName: "MoveDocument",
+			Handler:    _KnowledgeService_MoveDocument_Handler,
 		},
 		{
 			MethodName: "Search",

@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/channel/slack"
 	"aranea-agents/internal/channel/telegram"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -43,10 +44,20 @@ func (s *ChannelService) buildLiveTesters() map[string]biz.ChannelLiveTester {
 	}
 }
 
+// reloadRuntime triggers an async runtime reconcile. Channel CRUD must not
+// block the API response on connector shutdown — Manager.Reload waits up to
+// runtimeReplaceShutdownWait (15s) for a stale connector to exit after
+// cancel, which previously blocked PATCH for >15s. The reload runs in the
+// background; the periodic reconciler (default 2m, channel_runtime.go) is
+// the safety net if a triggered reload fails.
 func (s *ChannelService) reloadRuntime(ctx context.Context) {
-	if s != nil && s.runtime != nil {
-		s.runtime.Reload(ctx)
+	if s == nil || s.runtime == nil {
+		return
 	}
+	rt := s.runtime
+	safego.Go(context.WithoutCancel(ctx), "channel.reloadRuntime", func() {
+		rt.Reload(context.Background())
+	})
 }
 
 func bizChannelToProto(c biz.Channel) *v1.Channel {

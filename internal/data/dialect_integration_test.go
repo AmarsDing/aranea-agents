@@ -149,6 +149,97 @@ func TestDialectIntegration_JSONRemoveMulti(t *testing.T) {
 	}
 }
 
+// TestDialectIntegration_JSONExtractNumeric executes the exact runner_metrics
+// query shape — COALESCE over a DOUBLE PRECISION generated column and a JSON
+// numeric extraction, plus AVG and `> 0` comparisons — against real Postgres.
+// It guards the 42804 regression ("COALESCE types double precision and text
+// cannot be matched") that SQLite-based tests cannot see because SQLite
+// happily mixes types in COALESCE.
+func TestDialectIntegration_JSONExtractNumeric(t *testing.T) {
+	db := dialectIntegrationDB(t)
+	ctx := context.Background()
+	d := DialectPostgres
+
+	mustExec := func(q string, args ...any) {
+		t.Helper()
+		if _, err := db.ExecContext(ctx, q, args...); err != nil {
+			t.Fatalf("exec failed: %v\nSQL: %s", err, q)
+		}
+	}
+
+	// Mirror monitor_events.meta_duration_ms (DOUBLE PRECISION generated column).
+	mustExec(`CREATE TEMP TABLE t_events_probe (id text PRIMARY KEY, metadata_json text, meta_duration_ms double precision)`)
+	mustExec(`INSERT INTO t_events_probe (id, metadata_json, meta_duration_ms) VALUES
+		('a', '{"duration_ms": 120}', 120),
+		('b', '{"duration_ms": 250}', NULL)`)
+
+	durExpr := d.JSONExtractNumeric("metadata_json", "duration_ms")
+
+	// AvgRunnerCompletionDurationMsSince shape.
+	avgQ := d.RenumberPlaceholders(`
+SELECT AVG(CAST(COALESCE(meta_duration_ms, ` + durExpr + `) AS REAL))
+FROM t_events_probe
+WHERE COALESCE(meta_duration_ms, ` + durExpr + `) IS NOT NULL`)
+	var avg sql.NullFloat64
+	if err := db.QueryRowContext(ctx, avgQ).Scan(&avg); err != nil {
+		t.Fatalf("avg query: %v\nSQL: %s", err, avgQ)
+	}
+	if !avg.Valid || avg.Float64 != 185 {
+		t.Errorf("avg = %v, want 185", avg)
+	}
+
+	// LatencyPercentilesSince / queryPercentile shape: `> 0` comparison and
+	// ORDER BY over the COALESCEd numeric expression.
+	pctQ := d.RenumberPlaceholders(`
+SELECT CAST(COALESCE(meta_duration_ms, ` + durExpr + `) AS REAL) AS dur
+FROM t_events_probe
+WHERE COALESCE(meta_duration_ms, ` + durExpr + `) IS NOT NULL
+  AND COALESCE(meta_duration_ms, ` + durExpr + `) > 0
+ORDER BY dur ASC
+LIMIT 1 OFFSET ?`)
+	var dur float64
+	if err := db.QueryRowContext(ctx, pctQ, 1).Scan(&dur); err != nil {
+		t.Fatalf("percentile query: %v\nSQL: %s", err, pctQ)
+	}
+	if dur != 250 {
+		t.Errorf("dur = %v, want 250", dur)
+	}
+
+	// SkillIntelligenceRepo.GetHealthMetrics shape: AVG over a JSON numeric
+	// extraction (42883 "function avg(text) does not exist" without the cast).
+	// The token_usage column is native jsonb (mirroring ent field.JSON on
+	// Postgres) — this locks in the col::text normalization path for jsonb.
+	mustExec(`CREATE TEMP TABLE t_skill_probe (id text PRIMARY KEY, token_usage jsonb)`)
+	mustExec(`INSERT INTO t_skill_probe VALUES ('s1', '{"total": 100}'), ('s2', '{"total": 300}'), ('s3', NULL)`)
+	tokQ := d.RenumberPlaceholders(`SELECT COALESCE(AVG(CASE WHEN token_usage IS NOT NULL THEN ` +
+		d.JSONExtractNumeric("token_usage", "total") + ` END), 0) FROM t_skill_probe`)
+	var avgTok float64
+	if err := db.QueryRowContext(ctx, tokQ).Scan(&avgTok); err != nil {
+		t.Fatalf("avg token query: %v\nSQL: %s", err, tokQ)
+	}
+	if avgTok != 200 {
+		t.Errorf("avgTok = %v, want 200", avgTok)
+	}
+
+	// TEXT-column variant of the same expression (raw-SQL-managed JSON columns
+	// like monitor_events.metadata_json remain TEXT), including the '' guard.
+	mustExec(`CREATE TEMP TABLE t_skill_probe_text (id text PRIMARY KEY, token_usage text)`)
+	mustExec(`INSERT INTO t_skill_probe_text VALUES ('s1', '{"total": 100}'), ('s2', '{"total": 300}'), ('s3', NULL), ('s4', '')`)
+	tokQText := d.RenumberPlaceholders(`SELECT COALESCE(AVG(CASE WHEN token_usage IS NOT NULL THEN ` +
+		d.JSONExtractNumeric("token_usage", "total") + ` END), 0) FROM t_skill_probe_text`)
+	var avgTokText float64
+	if err := db.QueryRowContext(ctx, tokQText).Scan(&avgTokText); err != nil {
+		t.Fatalf("avg token (text col) query: %v\nSQL: %s", err, tokQText)
+	}
+	if avgTokText != 200 {
+		t.Errorf("avgTokText = %v, want 200", avgTokText)
+	}
+
+	mustExec(`DROP TABLE t_events_probe`)
+	mustExec(`DROP TABLE t_skill_probe`)
+	mustExec(`DROP TABLE t_skill_probe_text`)
+}
+
 // TestDialectIntegration_PlaceholderRenumber locks in the convention that raw
 // SQLite-style ? placeholders are rejected by lib/pq and every raw query must
 // pass through RenumberPlaceholders. If a future driver swap makes ? valid,

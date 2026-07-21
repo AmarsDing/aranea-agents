@@ -38,7 +38,7 @@ import { useChatComposerActions } from './useChatComposerActions';
 import { favoriteSessionIDs, toggleFavoriteSession } from '../../../stores/sessionSync';
 import { agentNeedsSettingsHydration, hydrateAgentSettings } from '../agentPlannerSettings';
 import { parseChannelSessionMeta } from '../channelSessionMeta';
-import { useKnowledgeStore } from '../../../stores/knowledge';
+
 import { useArtifactStore } from '../../../stores/artifact';
 import type { ComposerUsageSnapshot } from '../composerUsageMetrics';
 import { useContextBreakdown } from './useContextBreakdown';
@@ -106,8 +106,6 @@ export function useChatWorkspace() {
   const displayTeams = ref<TeamRow[]>([]);
   const inputText = ref('');
   const sessionDrafts = reactive(new Map<string, string>());
-  const selectedKnowledgeBases = ref<string[]>([]);
-  const knowledgeBaseOptions = ref<Array<{ label: string; value: string }>>([]);
 
   const awaitReply = useAwaitReply();
   const {
@@ -619,7 +617,6 @@ export function useChatWorkspace() {
     awaitKind,
     runStatus,
     selectedProviderModel,
-    selectedKnowledgeBases,
     ensureChatStream: streamManager.ensureChatStream,
     ensureTeamStream: streamManager.ensureTeamStream,
     sendChatViaWs: streamManager.sendChatViaWs,
@@ -1367,22 +1364,7 @@ export function useChatWorkspace() {
       void entityNav.selectAgent(appStore.selectedAgent, { sessionId: routeSession || undefined });
     }
 
-    void Promise.all([
-      entityNav.loadTaxonomyTree(),
-      entityNav.loadTeams(),
-      (async () => {
-        try {
-          const knowledgeStore = useKnowledgeStore();
-          const cols = await knowledgeStore.loadCollections({ limit: 50 });
-          knowledgeBaseOptions.value = cols.items.map((c) => ({
-            label: c.name || c.id,
-            value: c.id,
-          }));
-        } catch {
-          knowledgeBaseOptions.value = [];
-        }
-      })(),
-    ]).then(() => {
+    void Promise.all([entityNav.loadTaxonomyTree(), entityNav.loadTeams()]).then(() => {
       displayTeams.value = loadTeamOrder([...displayTeams.value], defaultTeamId.value);
       const routeTeamID = typeof route.query.team === 'string' ? route.query.team : '';
       const routeTeam = routeTeamID ? displayTeams.value.find((team) => team.id === routeTeamID) : undefined;
@@ -1501,8 +1483,6 @@ export function useChatWorkspace() {
       modeOpts,
       provOpts,
       attachments,
-      selectedKnowledgeBases,
-      knowledgeBaseOptions,
       sending: sender.sending,
       inputDisabled: sender.inputDisabled,
       pendingMessages,

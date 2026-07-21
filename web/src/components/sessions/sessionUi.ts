@@ -93,12 +93,14 @@ export function contextProgressColor(value: string) {
         : 'positive';
 }
 
+/** 进度条值：始终钳制在 0-1，超出部分只通过百分比文字呈现 */
 export function ratioValue(value: number) {
   return Math.max(0, Math.min(1, value || 0));
 }
 
+/** 百分比文字：显示真实比率（超限时 >100%，如 156%） */
 export function formatPercent(value: number) {
-  return `${Math.round(ratioValue(value) * 100)}%`;
+  return `${Math.round(Math.max(0, value || 0) * 100)}%`;
 }
 
 export function formatNumber(value: number) {

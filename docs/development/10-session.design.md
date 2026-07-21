@@ -1851,7 +1851,11 @@ context_used_ratio = prompt_tokens / context_window_tokens
 4. agent 配置中的 `context_window`
 5. provider preset 的默认值（128000）
 
+**观测/执行路径对齐**：分母解析（观测）与 LLM 实际调用（执行）必须解析到同一模型。`biz.ResolveProviderModel`（`internal/biz/chat_provider_model.go`）解析时校验 catalog：agent/session 配置的 provider/model **不在 catalog** 时按 RefineLLM → 首个启用模型回退（单 Agent 与 Team 路径共用 `ResolveProviderModelWithFallback`），避免「执行用回退模型、观测用配置模型窗口」导致 ratio 失真（如配置 64K 而实际执行模型为 1M 时显示虚高的 100%+）。
+
 **实现**：`llmcontext.ResolveWindow`（`internal/llmcontext/window.go`）在每次 native turn 与 `runner_completion` 投影时解析分母；`context_used_tokens` **仅**由 `UpdateSessionContextFromLLMUsage` 写入本次 LLM 的 `prompt_tokens`（ReAct 多步取 **turn 内最大 prompt**），消息落库时不再累加。
+
+**真实比例（不钳制）**：`llmcontext.ContextRatio` 返回真实值（可 >1），前端 `contextMetrics.ts` 同步不 clamp；超窗口时 UI 显示真实百分比（如 156%），由 `exceeded` 状态色表达，不再封顶 100%。
 
 **WS 契约**：`context_usage` 在 ReAct 多步 LLM 每次 prompt 峰值上升时推送（仅更新 context 条，不累加 session total）；`runner_completion.usage` 携带 `context_prompt_tokens`、`max_tokens`、`turn_total_tokens`。
 

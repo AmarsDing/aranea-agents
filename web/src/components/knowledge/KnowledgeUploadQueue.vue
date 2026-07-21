@@ -22,7 +22,12 @@
           <q-icon v-else name="error" color="negative" size="20px" />
         </q-item-section>
         <q-item-section>
-          <q-item-label class="ellipsis">{{ task.name }}</q-item-label>
+          <q-item-label class="ellipsis">
+            {{ task.name }}
+            <q-chip v-if="task.collection_label" dense size="sm" color="primary" text-color="white" class="q-ml-xs">
+              {{ task.collection_label }}
+            </q-chip>
+          </q-item-label>
           <q-item-label caption class="ellipsis" :class="{ 'text-negative': task.status === 'error' }">
             {{ task.message || statusText(task) }}
           </q-item-label>

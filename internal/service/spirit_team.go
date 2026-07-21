@@ -234,29 +234,33 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		// 修复 Version=0 Bug（状态未持久化）。
 		dependsOn := team.DependsOn
 		tsID := string(agent.NewTeamStageActivityID(teamID))
-		newStatus, newVersion := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
+		newStatus, newVersion, tsOK := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
 			tsID, biz.TeamStageEventStart, biz.TeamStageStatusRunning, s.lg)
-		ts := biz.TeamStage{
-			ID:     tsID,
-			TeamID: teamID,
-			// 2026-07-06 修复：补全 TaskID。之前 StartTeamTurn 创建 TeamStage 时
-			// 未设置 TaskID（仅 publishSpiritTeamAssembled 设置了），但
-			// resolveTeamStageUpdate fallback 会返回 Version=100，大于
-			// publishSpiritTeamAssembled 的 Version=1，导致 UpsertTeamStage
-			// 通过 SetTaskID("") 覆盖已有 TaskID，前端 listTeamStagesV2(taskId)
-			// 查询返回空，team 面板无法渲染。
-			// ctx 中携带 RootTaskActivityID 由 PlanExecutor 注入（plan_executor.go
-			// ContextWithRootTaskActivityID），context.WithoutCancel 保留该值。
-			TaskID:    string(agent.RootTaskActivityIDFromCtx(ctx)),
-			TeamName:  team.DisplayName,
-			SessionID: spiritSessionID,
-			Status:    newStatus,
-			Stage:     biz.TeamStageStageExecuting,
-			DependsOn: dependsOn,
-			StartedAt: time.Now().UTC(),
-			Version:   newVersion,
+		if tsOK {
+			ts := biz.TeamStage{
+				ID:     tsID,
+				TeamID: teamID,
+				// 2026-07-06 修复：补全 TaskID。之前 StartTeamTurn 创建 TeamStage 时
+				// 未设置 TaskID（仅 publishSpiritTeamAssembled 设置了），但
+				// resolveTeamStageUpdate fallback 会返回 Version=100，大于
+				// publishSpiritTeamAssembled 的 Version=1，导致 UpsertTeamStage
+				// 通过 SetTaskID("") 覆盖已有 TaskID，前端 listTeamStagesV2(taskId)
+				// 查询返回空，team 面板无法渲染。
+				// ctx 中携带 RootTaskActivityID 由 PlanExecutor 注入（plan_executor.go
+				// ContextWithRootTaskActivityID），context.WithoutCancel 保留该值。
+				TaskID:    string(agent.RootTaskActivityIDFromCtx(ctx)),
+				TeamName:  team.DisplayName,
+				SessionID: spiritSessionID,
+				Status:    newStatus,
+				Stage:     biz.TeamStageStageExecuting,
+				DependsOn: dependsOn,
+				StartedAt: time.Now().UTC(),
+				Version:   newVersion,
+			}
+			s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
 		}
-		s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
+		// P0-2：tsOK=false（状态机拒绝，当前 TeamStage 已终态）时跳过发布，
+		// 不覆盖终态；turn 启动主流程继续。
 	}
 
 	input := biz.TurnInput{
@@ -323,6 +327,28 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	team, err := s.team.TeamUC.Get(ctx, teamID)
 	if err != nil || !team.AutoCreated {
 		return
+	}
+
+	// 2026-07-21 P0-2 取消竞态修复：runner 生命周期终态守卫。
+	// team 已达 completed/failed/cancelled 时，迟到的 runner 回调（如取消后
+	// runner 继续执行至完成，见断链 1：WithoutCancel 启动的 runner 不可取消）
+	// 直接丢弃，防止：(1) team_stages_v2/team_runs_v2 终态被 fallback 覆盖；
+	// (2) recordTeamCompletion 重复计数；(3) scheduleDependentTeams 错误激活
+	// 依赖团队；(4) checkAllTeamsCompleted 错误触发 synthesis。
+	// 与当前状态一致的回调放行（如 CancelTeam 显式发起的 cancelled 清理）。
+	// 注意：不能用 biz.IsTeamTerminal（仅认 Archived）；这里守卫的是 runner
+	// 生命周期终态集合。
+	switch biz.TeamState(team.Status) {
+	case biz.TeamStateCompleted, biz.TeamStateFailed, biz.TeamStateCancelled:
+		if team.Status != status {
+			s.lg.Warn("HandleTeamTurnResult: team 已达终态，丢弃过期回调",
+				loggateway.StepID("spirit.handle_team_turn_result.stale_callback"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Str("current_status", team.Status),
+				loggateway.Str("callback_status", status),
+			)
+			return
+		}
 	}
 
 	// Cancel timeout timer for any terminal status to prevent stale callbacks.
@@ -411,30 +437,52 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		// status updates (assembled → progress → completed/failed/cancelled).
 		// 2026-07-04 问题 3 修复：携带 TeamName 让前端展示团队名称而非 ID。
 		dependsOn := team.DependsOn
-		ts := biz.TeamStage{
-			ID:        string(agent.NewTeamStageActivityID(teamID)),
-			TeamID:    teamID,
-			TeamName:  team.DisplayName,
-			SessionID: spiritSessionID,
-			Status:    primaryStatus,
-			Stage:     biz.TeamStageStage(primaryStage),
-			DependsOn: dependsOn,
-			StartedAt: time.Now().UTC(),
-		}
-		// DATA LOSS: v2 TeamStage has no Meta field, so team_name/duration_ms/
-		// total_token_in/total_token_out/progress_pct/error from v1 Meta are
-		// dropped. The duration/token metrics are still recorded via
-		// recordTeamCompletion above and are available in the TeamRun DB record.
+		// 2026-07-21 P0-3/P0-4 修复：终态 TeamStage 事件缺少 Version（Go 零值=0），
+		// 被 UpsertTeamStage 的 VersionLT(0) 守卫拒绝，终态永不落库。
+		// 使用 resolveTeamStageUpdate 计算正确的 Version 和状态机校验后的 Status。
+		terminalTsID := string(agent.NewTeamStageActivityID(teamID))
+		var tsEvent biz.TeamStageEvent
 		switch primaryStatus {
 		case biz.TeamStageStatusCompleted:
-			s.publishV2Event(ctx, biz.NewTeamStageCompletedEvent(ts))
+			tsEvent = biz.TeamStageEventComplete
 		case biz.TeamStageStatusFailed:
-			s.publishV2Event(ctx, biz.NewTeamStageFailedEvent(ts))
+			tsEvent = biz.TeamStageEventFail
+		case biz.TeamStageStatusCancelled:
+			tsEvent = biz.TeamStageEventCancel
 		default:
-			// cancelled: no NewTeamStageCancelledEvent factory exists; use
-			// NewTeamStageUpdatedEvent as the closest semantic match.
-			s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
+			tsEvent = biz.TeamStageEventFail
 		}
+		newStatus, newVersion, tsOK := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
+			terminalTsID, tsEvent, primaryStatus, s.lg)
+		if tsOK {
+			ts := biz.TeamStage{
+				ID:        terminalTsID,
+				TeamID:    teamID,
+				TeamName:  team.DisplayName,
+				SessionID: spiritSessionID,
+				Status:    newStatus,
+				Stage:     biz.TeamStageStage(primaryStage),
+				DependsOn: dependsOn,
+				StartedAt: time.Now().UTC(),
+				Version:   newVersion,
+			}
+			// DATA LOSS: v2 TeamStage has no Meta field, so team_name/duration_ms/
+			// total_token_in/total_token_out/progress_pct/error from v1 Meta are
+			// dropped. The duration/token metrics are still recorded via
+			// recordTeamCompletion above and are available in the TeamRun DB record.
+			switch primaryStatus {
+			case biz.TeamStageStatusCompleted:
+				s.publishV2Event(ctx, biz.NewTeamStageCompletedEvent(ts))
+			case biz.TeamStageStatusFailed:
+				s.publishV2Event(ctx, biz.NewTeamStageFailedEvent(ts))
+			default:
+				// cancelled: no NewTeamStageCancelledEvent factory exists; use
+				// NewTeamStageUpdatedEvent as the closest semantic match.
+				s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
+			}
+		}
+		// P0-2：tsOK=false（状态机拒绝，当前 TeamStage 已终态，如重复取消回调）
+		// 时跳过发布，不覆盖终态。
 
 		// BUGFIX: the progress event (Status=Running) was published AFTER the
 		// primary terminal event, causing the version-guarded UpsertActivity to
@@ -447,20 +495,22 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		// 为 Version=100，from=Pending 时正常转换 Pending → Running。
 		if status == biz.TeamStatusRunning {
 			progressTsID := string(agent.NewTeamStageActivityID(teamID))
-			newStatus, newVersion := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
+			newStatus, newVersion, tsOK := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
 				progressTsID, biz.TeamStageEventStart, biz.TeamStageStatusRunning, s.lg)
-			progressTs := biz.TeamStage{
-				ID:        progressTsID,
-				TeamID:    teamID,
-				TeamName:  team.DisplayName,
-				SessionID: spiritSessionID,
-				Status:    newStatus,
-				Stage:     biz.TeamStageStageExecuting,
-				DependsOn: dependsOn,
-				StartedAt: time.Now().UTC(),
-				Version:   newVersion,
+			if tsOK {
+				progressTs := biz.TeamStage{
+					ID:        progressTsID,
+					TeamID:    teamID,
+					TeamName:  team.DisplayName,
+					SessionID: spiritSessionID,
+					Status:    newStatus,
+					Stage:     biz.TeamStageStageExecuting,
+					DependsOn: dependsOn,
+					StartedAt: time.Now().UTC(),
+					Version:   newVersion,
+				}
+				s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(progressTs))
 			}
-			s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(progressTs))
 		}
 
 		// B.4.4: After team status change, republish the graph_stage DAG
@@ -530,19 +580,21 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 					// 2026-07-05 P1 #9d-2（AS-FSM-01）：用状态机校验 Running → Failed
 					// 转换，修复 Version=0 Bug（状态未持久化）。
 					failTsID := string(agent.NewTeamStageActivityID(action.TeamID))
-					newStatus, newVersion := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
+					newStatus, newVersion, tsOK := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
 						failTsID, biz.TeamStageEventFail, biz.TeamStageStatusFailed, s.lg)
-					ts := biz.TeamStage{
-						ID:        failTsID,
-						TeamID:    action.TeamID,
-						TeamName:  action.TeamName,
-						SessionID: spiritSessionID,
-						Status:    newStatus,
-						Stage:     biz.TeamStageStageFailed,
-						StartedAt: time.Now().UTC(),
-						Version:   newVersion,
+					if tsOK {
+						ts := biz.TeamStage{
+							ID:        failTsID,
+							TeamID:    action.TeamID,
+							TeamName:  action.TeamName,
+							SessionID: spiritSessionID,
+							Status:    newStatus,
+							Stage:     biz.TeamStageStageFailed,
+							StartedAt: time.Now().UTC(),
+							Version:   newVersion,
+						}
+						s.publishV2Event(ctx, biz.NewTeamStageFailedEvent(ts))
 					}
-					s.publishV2Event(ctx, biz.NewTeamStageFailedEvent(ts))
 				}
 			}
 		} else if action.Action == "activate" {
@@ -568,19 +620,23 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 				// 2026-07-05 P1 #9d-2（AS-FSM-01）：用状态机校验 Pending → Running
 				// 转换，修复 Version=0 Bug（状态未持久化）。
 				activateTsID := string(agent.NewTeamStageActivityID(action.TeamID))
-				newStatus, newVersion := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
+				newStatus, newVersion, tsOK := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
 					activateTsID, biz.TeamStageEventStart, biz.TeamStageStatusRunning, s.lg)
-				ts := biz.TeamStage{
-					ID:        activateTsID,
-					TeamID:    action.TeamID,
-					TeamName:  action.TeamName,
-					SessionID: spiritSessionID,
-					Status:    newStatus,
-					Stage:     biz.TeamStageStageExecuting,
-					StartedAt: time.Now().UTC(),
-					Version:   newVersion,
+				if tsOK {
+					ts := biz.TeamStage{
+						ID:        activateTsID,
+						TeamID:    action.TeamID,
+						TeamName:  action.TeamName,
+						SessionID: spiritSessionID,
+						Status:    newStatus,
+						Stage:     biz.TeamStageStageExecuting,
+						StartedAt: time.Now().UTC(),
+						Version:   newVersion,
+					}
+					s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
 				}
-				s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
+				// P0-2：tsOK=false（状态机拒绝，当前 TeamStage 已终态）时跳过发布，
+				// 不覆盖终态；依赖团队仍会被激活（teams 表状态已转换）。
 			}
 			taskDesc := action.TaskDescription // P0-③b: deliverable prefix + task description
 			if taskDesc == "" {
@@ -950,19 +1006,23 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 		// 2026-07-05 P1 #9d-2（AS-FSM-01）：用状态机校验 Running → Cancelled
 		// 转换，修复 Version=0 Bug（状态未持久化）。
 		cancelTsID := string(agent.NewTeamStageActivityID(teamID))
-		newStatus, newVersion := resolveTeamStageUpdate(ctx, a.teamStageR, a.tsSM,
+		newStatus, newVersion, tsOK := resolveTeamStageUpdate(ctx, a.teamStageR, a.tsSM,
 			cancelTsID, biz.TeamStageEventCancel, biz.TeamStageStatusCancelled, a.lg)
-		ts := biz.TeamStage{
-			ID:        cancelTsID,
-			TeamID:    teamID,
-			TeamName:  team.DisplayName,
-			SessionID: spiritSessionID,
-			Status:    newStatus,
-			Stage:     "cancelled",
-			StartedAt: time.Now().UTC(),
-			Version:   newVersion,
+		if tsOK {
+			ts := biz.TeamStage{
+				ID:        cancelTsID,
+				TeamID:    teamID,
+				TeamName:  team.DisplayName,
+				SessionID: spiritSessionID,
+				Status:    newStatus,
+				Stage:     "cancelled",
+				StartedAt: time.Now().UTC(),
+				Version:   newVersion,
+			}
+			a.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
 		}
-		a.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
+		// P0-2：tsOK=false（状态机拒绝，当前 TeamStage 已终态，如重复取消）时
+		// 跳过发布，不覆盖终态。
 	}
 	if a.teamStarter != nil && spiritSessionID != "" {
 		a.teamStarter.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusCancelled, "", "")
@@ -1507,8 +1567,12 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 
 	// 发布 TeamRun 完成事件。
 	// 2026-07-05 P1 #9e（AS-FSM-01）：用 TeamRunV2StateMachine 校验 Running → terminal
-	// 转换，并修复 Version=2 硬编码 Bug（改为 current.Version+1）。读取失败或状态机
-	// 校验失败时降级为原行为（Version=2），保证主流程不中断。
+	// 转换，并修复 Version=2 硬编码 Bug（改为 current.Version+1）。
+	// 2026-07-21 P0-2 取消竞态修复 3（TeamRun 终态权威）：拆分两类失败——
+	// 读取失败（记录不存在/DB 错误）降级为原行为（Version=2），保证主流程不中断；
+	// 状态机拒绝（当前 TeamRun 已达终态）说明本回调是迟到的过期回调（如取消后
+	// runner 继续执行至完成），必须跳过整个发布（TeamRun + MemberSession），
+	// 防止 team_runs_v2 终态被覆盖（cancelled → completed）。
 	var trEvent biz.TeamRunV2Event
 	switch teamRunStatus {
 	case biz.TeamRunV2StatusCompleted:
@@ -1527,16 +1591,18 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 			loggateway.Str("team_run_id", teamRunID),
 			loggateway.Err(getErr))
 	} else {
-		newVersion = currentTR.Version + 1
-		if ns, smErr := s.trSM.Transition(currentTR.Status, trEvent); smErr == nil {
-			newStatus = ns
-		} else {
-			s.lg.Warn("publishV2TeamRunCompletion: invalid TeamRun transition, fallback",
+		ns, smErr := s.trSM.Transition(currentTR.Status, trEvent)
+		if smErr != nil {
+			// 状态机拒绝：当前 TeamRun 已达终态。终态权威，跳过发布。
+			s.lg.Warn("publishV2TeamRunCompletion: transition rejected by state machine, skip publish",
 				loggateway.Str("team_run_id", teamRunID),
 				loggateway.Str("from_status", string(currentTR.Status)),
 				loggateway.Str("event", string(trEvent)),
 				loggateway.Err(smErr))
+			return
 		}
+		newStatus = ns
+		newVersion = currentTR.Version + 1
 	}
 	tr := biz.TeamRun{
 		ID:              teamRunID,
