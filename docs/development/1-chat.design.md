@@ -473,6 +473,7 @@ GET /v1/ws?session_id=...  →  WSServer.handleWS()
 | `user_message` | 发送用户消息，触发 ChatService.SendChatMessage |
 | `enqueue_message` | 发送用户消息，若当前有 run 则入队 pendingQueue |
 | `cancel` | 取消当前 run（等同于 HTTP StopGeneration） |
+| `resume_task` | 续跑 interrupted 任务（L3，payload `{task_id}`），触发 ChatService.ResumeInterruptedTask（见 B.10.16） |
 | `ping` | 心跳探测，服务端回复 `pong` |
 | `subscribe` | 订阅指定 session/team 的 EventBus 事件 |
 | `unsubscribe` | 取消订阅 |
@@ -5340,7 +5341,7 @@ type DeliverableRef struct {
 - `DeliverableRef` 新增 `StructuredJSON string` 信封可选字段（`json:"structured_json,omitempty"`）——承载 graph final-state `deliverable` map 中除 `summary` 外的其余 key（序列化为 JSON object）；state 通道未启用或无额外 key 时为空，legacy 读取方（双模解析）天然忽略该字段
 - 桥接读取点落在 `WriteDeliverablesToSession` 的信封构造处（由 `RecordTeamCompletion` 唯一调用，时序与设计验证结论一致：runner 完成 → completion StateDelta 已持久化 → 读 state 安全）
 - `enable_state_deliverable=true` 且 state 可读时：信封 summary 优先取 `deliverable["summary"]`（非空 string），缺失/为空回退 reply step 提取；其余 key 经 `marshalNonSummaryStateKeys` 序列化入 `StructuredJSON`；`SizeChars`/`Truncated`/`KeyFindings` 均基于最终 summary 源计算
-- 锚点解析 `stateDeliverableProbe.anchorAgentID()` 镜像 runner 侧锚点决策：`intent_anchor_agent_id` 优先，否则首成员 agent ID——该 ID 即团队 run 持久化 graph state 的 AppName（`biz` 不依赖 `internal/team`，直接探测 DefinitionJSON 相关字段）
+- 锚点解析 `stateDeliverableProbe.anchorAgentID()` 精确镜像 runner 侧锚点决策（`resolveAnchorAndAttachments`）：`intent_anchor_agent_id` **是成员**时优先；意图锚点不在成员列表时与 runner 一致回退首成员 agent ID——该 ID 即团队 run 持久化 graph state 的 AppName（`biz` 不依赖 `internal/team`，直接探测 DefinitionJSON 相关字段）
 - 桥接为 best-effort：通道禁用 / 锚点不可解析 / reader 未装配 / state 读取失败均静默回退 reply 提取路径，不阻塞交付物落库（读取失败记 Warn）
 
 **实际改动文件**：
@@ -5359,13 +5360,51 @@ type DeliverableRef struct {
 |------|--------|
 | `..._GraphStateBridge_EnrichesEnvelope` | state 含 summary：信封 summary 取自 graph state（非 reply step）；`StructuredJSON` 携带其余 key 且排除 summary；`SizeChars`/`Truncated` 基于 state summary；session key 坐标 = {appName: `intent_anchor_agent_id`, sessionID: 团队主会话, userID: ctx 用户} |
 | `..._GraphStateBridge_AnchorFallsBackToFirstMember` | 未设 `intent_anchor_agent_id` 时锚点回退首成员 agent ID |
+| `..._GraphStateBridge_IntentAnchorNotInMembers_FallsBackToFirstMember` | 意图锚点**不在成员列表**时与 runner 一致回退首成员（镜像精确性回归） |
 | `..._GraphStateBridge_NoSummaryKey_KeepsReplySummary` | state 无 summary key：summary 保留 reply 提取源，`StructuredJSON` 仍填充其余 key |
 | `..._GraphStateBridge_StateUnreadable_FallsBack` | state 读取失败：整体回退 reply 提取，无 `StructuredJSON`，落库不阻塞 |
 | `..._GraphStateDisabled_NoStateRead` | 通道未启用：reader 零调用，信封保持 P2 reply 提取形状 |
 
 **验证证据（2026-07-22）**：`go build ./...` exit 0；`go test -count=1`——`internal/biz` ok（8.1s，含桥接 5 例全 PASS）、`internal/service`（仅既有网络依赖用例 `TestModelCatalogService_SyncModelCatalog_*` 2 例失败，git stash 验证与本次改动无关）、`internal/data` ok（20.8s）、`internal/team` ok、`internal/agent/v2` ok、`internal/agent`（仅既有网络依赖用例 `TestModelRegistrySyncAgent_Run_EventsFlow` 失败，同上）。
 
+**审查修订与功能性测试（2026-07-22 二轮 ✅）**：
+
+- 审查（aranea-review 全维度）发现 1 个 🟡：`stateDeliverableProbe.anchorAgentID()` 对"意图锚点不在成员列表"的场景未镜像 runner 的回退决策（runner warn 并取首成员，probe 直接用无效锚点）→ 此类团队桥接静默失效。已按 TDD 修复（先红 `..._IntentAnchorNotInMembers_FallsBackToFirstMember` 后绿），并修正 `..._EnrichesEnvelope` fixture 中"意图锚点非成员"的错误镜像（改为真实成员）
+- 功能性测试（`internal/service/spirit_team_graph_deliverable_test.go`，真实 trpc in-memory session service，8 例全 PASS）：适配器接缝契约——deliverable state 正常解码（F1）、deliverable key 缺失 → (nil,nil)（F2）、**session 不存在 → (nil,nil) 不报错**（F3，inmemory 语义，保证锚点失配时回退静默无误导 warn）、state JSON 损坏 → error 触发 warn 回退（F4）、nil runtime 降级（F5）、空坐标 CheckSessionKey 拒绝（F6）、**AppName 隔离**（F7，锚点坐标契约：错 AppName 读不到 state）、UserID 隔离（F8）
+- 回归验证：`go build ./...` exit 0；`internal/biz` ok（11.0s，桥接 6 例）、`internal/service` ok（6.6s，含适配器 8 例）、`internal/data` ok（20.9s）、`internal/team` ok、`internal/agent/v2` ok；`internal/agent` 仅既有网络依赖 1 例失败（同上）
+
 **实施期修复的关联问题**（验证期发现的构建/测试阻塞，随本轮一并修复）：
 
 - L2/L3 崩溃恢复在途工作遗留：`biz.V2RecoveryRepo.FailOrphanedInFlight` 已升级为三返回值（新增 `[]InterruptedTaskRef`，供启动守卫按会话发布可续跑任务通知），但 `internal/service/session_status_guard_test.go` 的 `stubV2RecoveryRepo` 未同步签名 → 构建失败；已补齐三返回值 stub
 - L3 终态事件改路由（`task.completed`/`task.failed` 走 `CompleteTaskTerminal`，version 自 DB +1）后，`internal/agent/v2/integration_test.go` 两处断言仍只扫 `UpsertTask` 收集面 → `TestEndToEnd_CancelledTurnMarksCancelledStatus`、`TestEndToEnd_V2Pipeline` 失败；已适配为合并扫描 `rs.tasks` + `rs.terminal`（终态面）
+
+### B.10.16 崩溃恢复与中断任务续跑（L2/L3）落地记录（2026-07-22 ✅ 已落地）
+
+**背景**：进程突然关闭导致在途任务终止，用户重开软件后需要能继续对话/续跑任务。方案经用户确认为 L2+L3 全做；L3 续跑语义为「带完整执行轨迹重跑」（已完成的 step 不跳过，轨迹注入 prompt 供 agent 参考）。
+
+**三层机制**：
+
+| 层 | 机制 | 入口 |
+|----|------|------|
+| L1 孤态恢复 | 启动时 `V2RecoveryRepo.FailOrphanedInFlight` 把 in-flight v2 实体终态化：task → `interrupted`（可续跑，新增 `TaskStatusInterrupted`），其余实体（turn/step/team_stage/team_run/member_session）→ `failed`；返回 `[]InterruptedTaskRef` | `internal/data/v2_recovery_repo.go` |
+| L2 关机保护 | 优雅退出时 `EscalateAllActiveToDurable` 把活跃 interactive run 批量升级为 durable（写 checkpoint + 标记自动恢复），由 `SessionRunDurableWorker` 启动后自动续跑 | `internal/service/chat_durable_escalate_all.go`；接线于 `session_status_guard.go` |
+| L3 显式续跑 | 用户在任务卡片点「继续执行」→ WS 上行 `resume_task` → `ChatService.ResumeInterruptedTask`（预检 → CAS `interrupted→running` → `BuildTaskResumeTrace` 组装轨迹 → 异步 `RunNativeTurn(ParentTaskID=taskID)` 重跑） | `internal/service/chat_task_resume.go` |
+
+**关键契约**：
+
+- CAS 防双击/并发复活：`TaskV2Repo.ResumeInterruptedTask` 原子 transition，`!ok` 视为冲突（409）而非错误
+- 终态事件路由：`task.completed`/`task.failed` 走 `CompleteTaskTerminal`（version 自 DB +1，忽略事件 version）——解决续跑 CAS 推高 version 后 synthesis `OnTurnEnd` 硬编码 `Version=2` 被 `UpsertTask` 的 `VersionLT` guard 拒绝、task 永远 running 的问题；已终态任务幂等不覆盖，`interrupted` 可覆盖（恢复占位态，非真终态）
+- 启动通知：`SessionStatusGuard` 按 session 发布 `task_interrupted` 系统 notice（仅对存在可续跑任务的 session）
+- 轨迹注入：`InterruptedResumeUserContent(task.UserMessage, trace)` 把原消息 + 紧凑执行轨迹拼为 content；`ListStepsByTask` 失败降级为空轨迹（plain rerun）不阻塞续跑
+
+**前端入口（L3-F4，2026-07-22 ✅）**：
+
+- `v2Types.ts`：`TaskStatus` 联合类型新增 `'interrupted'`
+- `TaskCard.vue`：`task.Status === 'interrupted'` 时渲染中断提示条（warning 色边框 + ⏸ 图标 + 「任务已中断（服务重启导致）」+「继续执行」按钮），点击 emit `resume-task`
+- 事件冒泡链：`TaskCard → TaskList → SessionPanel → ChatMessageList → ChatMessagePanel → ChatPage`，页面绑定 `@resume-task="session.resumeTask"`
+- `useChatWorkspace.resumeTask`：在任务所属 session 的 chat stream 上发送 WS 上行 `{type:'resume_task', channel:'chat', payload:{task_id}}`；无乐观本地更新——后端 CAS 后发布 `task.updated(running)` 驱动 UI 迁移，失败经 `ws_error` notice 回显
+- i18n：`chat.v2.taskInterrupted` / `resumeTask` / `resumeTaskSent`（zh-CN + en-US）
+
+**验证证据（2026-07-22）**：后端 `go build ./...` exit 0；`go test`——`internal/service`（`TestResumeInterruptedTask_*` 全 PASS）、`internal/data`（Recovery/Resume/Terminal 用例 ok）、`internal/server` ok、`internal/biz` ok、`internal/agent/v2` ok；既有网络依赖（models.dev 不可达，各 ~5s 超时）失败 3 例与本次改动无关：`internal/service` 的 `TestModelCatalogService_SyncModelCatalog_Success`/`_DryRunPath`、`internal/agent` 的 `TestModelRegistrySyncAgent_Run_EventsFlow`（git stash 已验证为预存问题）。前端 `pnpm lint` 0 errors、`pnpm test` 102 文件 651 用例全 PASS、`pnpm build` 成功。
+
+**已知噪声（预存，非本次引入）**：`TestSessionRunDurableWorker_skipsUnclaimedDuplicate` 用裸 `&ChatService{}`（无 `lg`）构造，durable worker 后台 goroutine 调 `ExecuteTurn` 入口日志触发 nil logger panic，由 safego 恢复，不影响断言与生产路径（生产经 Wire 注入 `lg`）。

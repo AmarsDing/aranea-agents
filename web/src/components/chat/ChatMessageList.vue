@@ -36,6 +36,7 @@
       <SessionPanelV2
         :session-id="sessionId ?? ''"
         @regenerate="(t) => $emit('regenerate-v2', t)"
+        @resume-task="(t) => $emit('resume-task', t)"
         @pause-agent="(sid) => $emit('pause-agent', sid)"
         @inject-agent="(p) => $emit('inject-agent', p)"
         @retry-team="(teamId) => $emit('retry-team', teamId)"
@@ -137,6 +138,7 @@ defineEmits<{
   // so ChatPage can lazy-load member/child session activities.
   expand: [sessionIds: string[]];
   'regenerate-v2': [task: import('../../features/chat/v2Types').Task];
+  'resume-task': [task: import('../../features/chat/v2Types').Task];
 }>();
 
 const { t } = useI18n();

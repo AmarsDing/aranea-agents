@@ -532,6 +532,56 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 ---
 
+### P-RECOVER 崩溃恢复与中断任务续跑（L1/L2/L3，2026-07-22）
+
+> **目标**：进程突然关闭导致在途任务终止后，用户重开软件可继续对话/续跑任务。方案经用户确认为 L2+L3 全做；L3 续跑语义为「带完整执行轨迹重跑」（已完成的 step 不跳过，轨迹注入 prompt 供 agent 参考）。
+> **设计**：[1-chat.design.md §B.10.16](./1-chat.design.md#b1016-崩溃恢复与中断任务续跑l2l3落地记录2026-07-22--已落地)
+
+#### 任务清单
+
+- [x] L1 孤态恢复语义调整：`V2RecoveryRepo.FailOrphanedInFlight` 把 in-flight task 终态化为 `interrupted`（新增 `TaskStatusInterrupted`，可续跑）而非 `failed`；其余实体（turn/step/team_stage/team_run/member_session）仍为 `failed`；返回 `[]InterruptedTaskRef` 供启动通知
+- [x] L2 关机保护：`EscalateAllActiveToDurable` 把活跃 interactive run 批量升级为 durable（写 checkpoint + 标记自动恢复）；`SessionStatusGuard` 增加 `SessionRunDurableEscalator` 依赖并在关机路径调用；Wire 绑定 `SessionRunDurableEscalator → ChatService`
+- [x] L3 显式续跑后端：`ChatService.ResumeInterruptedTask`（预检 → `TaskV2Repo.ResumeInterruptedTask` CAS `interrupted→running` → `BuildTaskResumeTrace` 组装轨迹 → 异步 `RunNativeTurn(ParentTaskID=taskID)` 重跑）；WS 上行 `resume_task`（`server.TaskResumer` 本地接口 + `SetTaskResumer` 接线）
+- [x] 终态事件版本冲突修复：`task.completed`/`task.failed` 改走 `CompleteTaskTerminal`（version 自 DB +1，忽略事件 version）——解决续跑 CAS 推高 version 后 synthesis `OnTurnEnd` 硬编码 `Version=2` 被 `UpsertTask` 的 `VersionLT` guard 拒绝、task 永远 running 的问题
+- [x] 启动通知：`SessionStatusGuard` 按 session 发布 `task_interrupted` 系统 notice（仅对存在可续跑任务的 session）
+- [x] L3-F4 前端入口：`v2Types.ts` TaskStatus 加 `interrupted`；`TaskCard.vue` 中断提示条 + 「继续执行」按钮；事件冒泡链 `TaskCard → TaskList → SessionPanel → ChatMessageList → ChatMessagePanel → ChatPage`；`useChatWorkspace.resumeTask` 发送 WS 上行（无乐观更新，`task.updated` 驱动 UI）；i18n zh-CN/en-US 三键
+- [x] 全量验证：后端 `go build ./...` exit 0 + `go test`（service/data/server/biz/agent/v2 全过，仅 3 例既有网络依赖失败与本次无关）；前端 `pnpm lint` 0 errors + `pnpm test` 651 全过 + `pnpm build` 成功
+- [x] 文档同步：`1-chat.design.md` §B.10.16 + §5.1 上行消息表（`resume_task`）；`65-module-cross-reference-full.md` §1.6 Chat 卡片（新增实现接口 + 崩溃恢复开发注意）
+
+#### 改动文件清单
+
+| 文件 | 改动 |
+|------|------|
+| `internal/biz/task.go` | 新增 `TaskStatusInterrupted` |
+| `internal/biz/repo_ports_v2.go` | `TaskV2Writer` 新增 `ResumeInterruptedTask`（CAS）+ `CompleteTaskTerminal` |
+| `internal/biz/task_resume.go` | `BuildTaskResumeTrace` + `InterruptedResumeUserContent`（轨迹注入） |
+| `internal/data/v2_recovery_repo.go` | 孤态恢复 task → `interrupted`，返回 `[]InterruptedTaskRef` |
+| `internal/data/task_v2_repo.go` | `ResumeInterruptedTask` CAS + `CompleteTaskTerminal`（version 自 DB +1） |
+| `internal/agent/v2/event_router.go` | 终态事件路由到 `CompleteTaskTerminal` |
+| `internal/agent/v2/reposet_adapter.go` | RepoSet 适配 `CompleteTaskTerminal` |
+| `internal/service/chat_task_resume.go` | `ChatService.ResumeInterruptedTask`（L3 主流程） |
+| `internal/service/chat_task_resume_test.go` | L3 单测 |
+| `internal/service/chat_durable_escalate_all.go` | `EscalateAllActiveToDurable`（L2 批量升级） |
+| `internal/service/session_status_guard.go` | 新增 `SessionRunDurableEscalator` 接口 + 关机调用 + 启动 `task_interrupted` 通知 |
+| `internal/server/ws.go` / `ws_message_handler.go` | `TaskResumer` 接口 + `resume_task` 上行处理 |
+| `cmd/admin/wire.go` / `wire_gen.go` | `SessionRunDurableEscalator → ChatService` 绑定 + `SetTaskResumer` 接线 |
+| `web/src/features/chat/v2Types.ts` | `TaskStatus` 新增 `'interrupted'` |
+| `web/src/components/chat/v2/TaskCard.vue` | 中断提示条 + 「继续执行」按钮 + `resume-task` emit |
+| `web/src/components/chat/v2/TaskList.vue` / `SessionPanel.vue` / `ChatMessageList.vue` / `ChatMessagePanel.vue` | `resume-task` 事件透传 |
+| `web/src/pages/ChatPage.vue` | `@resume-task="session.resumeTask"` 绑定 |
+| `web/src/features/chat/composables/useChatWorkspace.ts` | `resumeTask`（WS 上行 `resume_task`） |
+| `web/src/i18n/locales/zh-CN.ts` / `en-US.ts` | `taskInterrupted`/`resumeTask`/`resumeTaskSent` |
+
+#### 验收标准
+
+- [x] 崩溃重启后 in-flight task 落库为 `interrupted`（可续跑），其余 v2 实体为 `failed`
+- [x] 优雅退出时活跃 interactive run 批量升级 durable，重启后由 `SessionRunDurableWorker` 自动续跑
+- [x] 任务卡片显示中断条 + 「继续执行」，点击后 CAS `interrupted→running` 并带轨迹重跑；重复点击/并发由 CAS 防住（409）
+- [x] 续跑后 synthesis 终态事件经 `CompleteTaskTerminal` 正常落库（task 不停留在 running）
+- [ ] **运行时端到端验证**（待用户执行）：运行中任务 →  kill 进程 → 重启 → 任务卡片显示「继续执行」→ 点击 → 任务带轨迹重跑至完成
+
+---
+
 ## 7. 验收标准
 
 ### 7.1 核心对话（历史）

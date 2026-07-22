@@ -162,7 +162,7 @@
 | **上游依赖** | `biz`（全部 Turn/Session/Agent/Channel 端口接口 + `SeedVersionRepo`）、`agent`（BuildTRPCAgent/NewTRPCRunner）、`tools`（Assemble）、`provider`（Model）、`runtime`（TurnDeps）、`team`（TeamOrchestrationDeps）、`event`（Infra）、`memory`（MemoryService，`Service.Tools()` → 过滤 → `AssemblyConfig.MemoryTools`）、`session`（SessionService）、`knowledge`（检索）、`plugin/trpc`（Manager）、`skill/trpc`（Filter） |
 | **下游影响** | **几乎所有模块**：Channel/Cron/A2A/WS/DurableWorker 通过端口接口依赖 ChatService |
 | **核心导出** | `ChatService`（实现 7 个 biz 端口接口）、`ChatOrchestrator`（实现 `biz.TurnExecutor`） |
-| **实现接口** | `NativeTurnGateway`、`TurnExecutorGateway`、`TurnRunControlGateway`、`TurnGateway`、`TurnControlGateway`、`DurableResumeGateway`、`A2ARunnerFactory` |
+| **实现接口** | `NativeTurnGateway`、`TurnExecutorGateway`、`TurnRunControlGateway`、`TurnGateway`、`TurnControlGateway`、`DurableResumeGateway`、`A2ARunnerFactory`、`SessionRunDurableEscalator`（L2 关机批量升级 durable）、`TaskResumer`（WS 本地，L3 中断任务续跑） |
 | **共享类型** | `TurnInput`（被 Channel/Cron/A2A/WS 共享的传输中立输入） |
 | **事件生产** | **全部聊天事件**：text_delta、tool_call、tool_result、runner_completion、context_usage、error、run_status 等 |
 | **事件消费** | 会话投影（SessionProjectionAdapter 消费事件持久化消息） |
@@ -174,6 +174,7 @@
 - 新增 Turn 入口点时，必须同步更新 `TurnEntryPointConfig` 和 `ChatOrchestrator.ExecuteTurn` 的准入逻辑
 - 修改 `TurnInput` 结构体时，所有调用方（Channel/Cron/A2A/WS）都需要同步更新
 - 修改 Activity / Monitor 事件形状时，同步前端 `realtime/`（ActivityEvent / MonitorEvent 消费路径）与 `features/chat/`；legacy Envelope 类型已删除（ADR-03）
+- 崩溃恢复三层机制：L1 `V2RecoveryRepo.FailOrphanedInFlight`（task→interrupted，其余→failed）、L2 `EscalateAllActiveToDurable`（关机批量升级 durable，SessionStatusGuard 调用）、L3 WS 上行 `resume_task` → `ResumeInterruptedTask`（CAS interrupted→running + 轨迹重跑）；新增终态事件必须走 `CompleteTaskTerminal`（版本以 DB 为准），详见 [1-chat.design.md](./1-chat.design.md) §B.10.16
 
 ---
 

@@ -917,6 +917,33 @@ export function useChatWorkspace() {
   }
 
   /**
+   * L3: Resume an interrupted task (server-restart recovery).
+   *
+   * Sends a `resume_task` WS upstream on the task's chat stream. The backend
+   * CAS-claims the task (interrupted → running) and reruns it with the
+   * persisted execution trace; the resulting `task.updated` event drives the
+   * UI back to the running state — no optimistic local update needed.
+   * Failures surface as a ws_error notice from the backend.
+   */
+  function resumeTask(task: { ID: string; SessionID: string }) {
+    const sid = task.SessionID || selectedSessionForUi.value?.id;
+    if (!sid || !task.ID) return;
+    try {
+      const stream = streamManager.ensureChatStream(sid);
+      streamManager.sendChatViaWs(stream, {
+        direction: 'client_to_server',
+        channel: 'chat',
+        type: 'resume_task',
+        payload: { task_id: task.ID },
+      });
+      $q.notify({ type: 'info', message: t('chat.v2.resumeTaskSent'), timeout: 1500 });
+    } catch (err) {
+      console.warn('[chat] resume_task send failed', err);
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('chat.sendFailed') });
+    }
+  }
+
+  /**
    * P3-4: ErrorBlock inline action handlers.
    *
    * ErrorBlock emits typed actions based on the resolved `errorCode`. The
@@ -1277,6 +1304,7 @@ export function useChatWorkspace() {
       onCompactSession,
       onConfirmActivity,
       onConfirmActivityGrant,
+      resumeTask,
       compressStatus,
       activityStore,
       v2Tasks: computed(() => activityStore.getSessionTasks(selectedSessionForUi.value?.id ?? '')),

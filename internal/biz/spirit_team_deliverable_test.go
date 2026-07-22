@@ -986,7 +986,7 @@ func TestWriteDeliverablesToSession_GraphStateBridge_EnrichesEnvelope(t *testing
 	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
 
 	seedStateDeliverableTeam(teams, sessions, steps,
-		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"intent_anchor_agent_id":"agent-anchor","members":[{"agent_id":"agent-m1"}]}`,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"intent_anchor_agent_id":"agent-anchor","members":[{"agent_id":"agent-anchor"},{"agent_id":"agent-m1"}]}`,
 		"reply 摘要（不应使用）")
 
 	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
@@ -1039,6 +1039,28 @@ func TestWriteDeliverablesToSession_GraphStateBridge_AnchorFallsBackToFirstMembe
 	}
 	if reader.gotAppName != "agent-m1" {
 		t.Fatalf("anchor should fall back to the first member, got %q", reader.gotAppName)
+	}
+}
+
+// An intent anchor that names NO member is ignored by the runner (it warns
+// and falls back to the first member) — the bridge must mirror that decision,
+// otherwise it reads the state under an AppName the run never persisted to.
+func TestWriteDeliverablesToSession_GraphStateBridge_IntentAnchorNotInMembers_FallsBackToFirstMember(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{"summary": "s"}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"intent_anchor_agent_id":"agent-ghost","members":[{"agent_id":"agent-m1"},{"agent_id":"agent-m2"}]}`,
+		"成果")
+
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	if reader.gotAppName != "agent-m1" {
+		t.Fatalf("intent anchor not in members → fall back to the first member (runner mirror), got %q", reader.gotAppName)
 	}
 }
 

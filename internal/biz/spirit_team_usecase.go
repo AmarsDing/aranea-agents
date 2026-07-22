@@ -1816,19 +1816,27 @@ type stateDeliverableProbe struct {
 }
 
 // anchorAgentID mirrors the runner's anchor resolution
-// (resolveAnchorAndAttachments): intent_anchor_agent_id when set, otherwise
-// the first member's agent ID. The anchor agent ID is the AppName the team
-// run persisted its graph state under.
+// (resolveAnchorAndAttachments): intent_anchor_agent_id wins when it names a
+// member; an intent anchor naming no member is ignored (the runner warns and
+// falls back the same way) and the first member's agent ID is used. The
+// anchor agent ID is the AppName the team run persisted its graph state
+// under — a wrong pick makes the bridge read a session that never existed.
 func (p stateDeliverableProbe) anchorAgentID() string {
-	if id := strings.TrimSpace(p.IntentAnchorAgentID); id != "" {
-		return id
-	}
+	first := ""
 	for _, m := range p.Members {
 		if id := strings.TrimSpace(m.AgentID); id != "" {
-			return id
+			first = id
+			break
 		}
 	}
-	return ""
+	if want := strings.TrimSpace(p.IntentAnchorAgentID); want != "" {
+		for _, m := range p.Members {
+			if strings.TrimSpace(m.AgentID) == want {
+				return want
+			}
+		}
+	}
+	return first
 }
 
 // readGraphStateDeliverable loads the graph final-state "deliverable" map for

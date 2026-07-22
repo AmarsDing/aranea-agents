@@ -39,6 +39,21 @@
       </div>
     </div>
     <div v-if="task.Status === 'running'" class="task-status">{{ t('chat.v2.taskProcessing') }}</div>
+    <!-- L3: 中断任务入口 — 服务重启导致的中断，点击「继续执行」触发 WS resume_task -->
+    <div v-if="task.Status === 'interrupted'" class="task-interrupted">
+      <q-icon name="pause_circle_outline" size="16px" class="task-interrupted__icon" />
+      <span class="task-interrupted__label">{{ t('chat.v2.taskInterrupted') }}</span>
+      <q-btn
+        unelevated
+        dense
+        no-caps
+        size="sm"
+        color="accent"
+        class="task-interrupted__btn"
+        :label="t('chat.v2.resumeTask')"
+        @click="$emit('resume-task', task)"
+      />
+    </div>
     <TurnList
       v-if="prePlanTurns.length"
       :turns="prePlanTurns"
@@ -122,6 +137,7 @@ function useSafeQuasar() {
 const props = defineProps<{ task: Task }>();
 defineEmits<{
   regenerate: [task: Task];
+  'resume-task': [task: Task];
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
   'retry-team': [teamId: string];
@@ -187,6 +203,29 @@ function copyMessage() {
 <style lang="sass" scoped>
 .task-card
   padding: 0
+
+/* L3: 中断任务提示条 */
+.task-interrupted
+  display: flex
+  align-items: center
+  gap: 8px
+  margin: 4px 0 8px
+  padding: 8px 12px
+  border-radius: 10px
+  border: 1px solid var(--color-warning, #ed6c02)
+  background: color-mix(in srgb, var(--color-warning, #ed6c02) 8%, transparent)
+
+  &__icon
+    color: var(--color-warning, #ed6c02)
+    flex-shrink: 0
+
+  &__label
+    flex: 1
+    font-size: 13px
+    color: var(--color-text-secondary)
+
+  &__btn
+    flex-shrink: 0
 
 /* 用户消息统一面板：时间 + 头像 + 名称 + 消息内容 + 操作按钮 */
 .task-user-panel

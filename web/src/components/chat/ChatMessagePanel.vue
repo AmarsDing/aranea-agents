@@ -143,6 +143,7 @@
             @feedback="(p) => emit('feedback', p)"
             @regenerate="(msg) => emit('regenerate', msg)"
             @regenerate-v2="(task) => emit('regenerate-v2', task)"
+            @resume-task="(task) => emit('resume-task', task)"
             @retry="(id) => emit('retry', id)"
             @dismiss-failed="(id) => emit('dismiss-failed', id)"
             @attachment-deleted="(id) => emit('attachment-deleted', id)"
@@ -381,6 +382,7 @@ const emit = defineEmits<{
   'download-artifact': [meta: import('../../features/artifact/types').ArtifactMeta];
   regenerate: [message: Message];
   'regenerate-v2': [task: import('../../features/chat/v2Types').Task];
+  'resume-task': [task: import('../../features/chat/v2Types').Task];
   'cancel-job': [job: { id: string; source: string }];
   'paste-unsupported': [];
   'new-session': [];

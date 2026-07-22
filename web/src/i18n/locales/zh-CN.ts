@@ -506,6 +506,10 @@ export default {
       resultLabel: '结果',
       errorLabel: '错误',
       taskProcessing: '处理中…',
+      // L3: 中断任务续跑
+      taskInterrupted: '任务已中断（服务重启导致）',
+      resumeTask: '继续执行',
+      resumeTaskSent: '已请求继续执行',
     },
     agentTool: {
       longRunningTitle: '工具仍在执行，LLM 尚未收到最终结果',

@@ -490,6 +490,10 @@ export default {
       resultLabel: 'Result',
       errorLabel: 'Error',
       taskProcessing: 'Processing…',
+      // L3: interrupted task resume
+      taskInterrupted: 'Task interrupted (server restart)',
+      resumeTask: 'Continue',
+      resumeTaskSent: 'Resume requested',
     },
     agentTool: {
       longRunningTitle: 'Tool still running, LLM has not received final result',

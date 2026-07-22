@@ -132,6 +132,7 @@
         @retry="composer.retryFailedMessage"
         @dismiss-failed="composer.dismissFailedMessage"
         @regenerate="composer.regenerateMessage"
+        @resume-task="session.resumeTask"
         @compact="session.onCompactSession"
         @toggle-tool-calls="uiConfig.setShowToolCalls(!uiConfig.showToolCalls)"
         @confirm-activity="session.onConfirmActivity"

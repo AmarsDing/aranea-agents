@@ -2,7 +2,7 @@
 
 // === Status / Kind string-literal unions ===
 
-export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
 export type TurnStatus = 'running' | 'completed' | 'failed';
 export type StepKind = 'thinking' | 'action' | 'reply' | 'notice' | 'confirm' | 'error';
 export type StepStatus = 'pending' | 'running' | 'tool_running' | 'tool_blocked' | 'completed' | 'failed' | 'cancelled';

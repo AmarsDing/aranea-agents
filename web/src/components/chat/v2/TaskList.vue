@@ -6,6 +6,7 @@
       :key="task.ID"
       :task="task"
       @regenerate="(t) => $emit('regenerate', t)"
+      @resume-task="(t) => $emit('resume-task', t)"
       @pause-agent="(sid) => $emit('pause-agent', sid)"
       @inject-agent="(p) => $emit('inject-agent', p)"
       @retry-team="(teamId) => $emit('retry-team', teamId)"
@@ -25,6 +26,7 @@ import TaskCard from './TaskCard.vue';
 const props = defineProps<{ sessionId: string }>();
 defineEmits<{
   regenerate: [task: Task];
+  'resume-task': [task: Task];
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
   'retry-team': [teamId: string];
