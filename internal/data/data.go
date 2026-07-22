@@ -162,6 +162,8 @@ var ProviderSet = wire.NewSet(
 	NewV2RecoveryRepo,
 	// B-06: durable critical-event outbox for WS last_event_id replay.
 	NewEventDeliveryOutboxRepoFromData,
+	// Media generation provider catalog (media_providers) for media tool assembly.
+	NewMediaProviderRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.

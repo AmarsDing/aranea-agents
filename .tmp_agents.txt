@@ -1,0 +1,25 @@
+﻿count=24
+agent___spirit__ |  | 
+agent___dept_lead_frontend_dev__ |  | 
+agent___dept_lead_creative_planning__ |  | 
+agent___dept_lead_gis_solutions__ |  | 
+agent___dept_lead_sales_dept__ |  | 
+agent___dept_lead_project_management__ |  | 
+agent___dept_lead_brand_design__ |  | 
+agent___dept_lead_spatial_computing__ |  | 
+agent___dept_lead_paid_promotion__ |  | 
+agent___dept_lead_customer_support__ |  | 
+agent___dept_lead_backend_dev__ |  | 
+agent___dept_lead_game_dev__ |  | 
+agent___dept_lead_finance_dept__ |  | 
+agent___dept_lead_product_dept__ |  | 
+agent___dept_lead_ops__ |  | 
+agent___system_admin__ |  | 
+agent___memory__ |  | 
+agent___dept_lead_mobile_dev__ |  | 
+agent___dept_lead_special_services__ |  | 
+agent___dept_lead_cross_border_ecommerce__ |  | 
+agent___dept_lead_content_creation__ |  | 
+agent___dept_lead_media_operations__ |  | 
+agent___skills__ |  | 
+agent___dept_lead_security_dept__ |  | 

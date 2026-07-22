@@ -7,6 +7,7 @@ type (
 	Artifact        = artifact.Artifact
 	ArtifactRepo    = artifact.Repo
 	ArtifactReader  = artifact.Reader
+	ArtifactSaver   = artifact.Saver
 	ArtifactWriter  = artifact.Writer
 	ArtifactUsecase = artifact.Usecase
 	PreviewKind     = artifact.PreviewKind

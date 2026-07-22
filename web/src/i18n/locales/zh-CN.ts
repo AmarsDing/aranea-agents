@@ -567,6 +567,8 @@ export default {
       label: '需要确认',
       tool: '工具',
       arguments: '参数',
+      remaining: '剩余 {time}',
+      expired: '确认已超时',
       submitting: '提交中…',
       approve: '允许本次',
       reject: '拒绝',

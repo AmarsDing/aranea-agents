@@ -5408,3 +5408,192 @@ type DeliverableRef struct {
 **验证证据（2026-07-22）**：后端 `go build ./...` exit 0；`go test`——`internal/service`（`TestResumeInterruptedTask_*` 全 PASS）、`internal/data`（Recovery/Resume/Terminal 用例 ok）、`internal/server` ok、`internal/biz` ok、`internal/agent/v2` ok；既有网络依赖（models.dev 不可达，各 ~5s 超时）失败 3 例与本次改动无关：`internal/service` 的 `TestModelCatalogService_SyncModelCatalog_Success`/`_DryRunPath`、`internal/agent` 的 `TestModelRegistrySyncAgent_Run_EventsFlow`（git stash 已验证为预存问题）。前端 `pnpm lint` 0 errors、`pnpm test` 102 文件 651 用例全 PASS、`pnpm build` 成功。
 
 **已知噪声（预存，非本次引入）**：`TestSessionRunDurableWorker_skipsUnclaimedDuplicate` 用裸 `&ChatService{}`（无 `lg`）构造，durable worker 后台 goroutine 调 `ExecuteTurn` 入口日志触发 nil logger panic，由 safego 恢复，不影响断言与生产路径（生产经 Wire 注入 `lg`）。
+
+---
+
+### B.10.17 任务执行总结报告（Execution Report）落地设计（2026-07-22）
+
+> **需求**：[1-chat.md §子模块：任务执行总结报告](./1-chat.md)
+> **方案选型**：2026-07-22 与用户确认——扩展现有 Synthesis 管线（方案 A），不新建独立模块；结构化报告卡片形态；仅编排类任务触发；失败/部分失败也出报告，用户主动中断不出。
+
+#### B.10.17.1 现状断点（评审结论）
+
+| # | 断点 | 证据 |
+|---|------|------|
+| 1 | `synthesis_completed` 走 `SystemNoticeEvent`，**不落库**（sequencer `shouldPersist` 返回 false），刷新后丢失 | `internal/agent/v2/sequencer.go:163`；`internal/service/spirit_synthesis.go:102-136` |
+| 2 | 前端 `SynthesisResultCard.vue` 是**孤儿组件**（全工程无 import），综合结果存进 `spiritStore.synthesisResult` 但无任何渲染消费者 | `web/src/components/spirit/SynthesisResultCard.vue`；`web/src/stores/spirit/index.ts:916` |
+| 3 | 报告数据只有 `content + team_results`：无执行概况（耗时/token/成功率）、无交付物清单、无 per-unit 耗时与错误原因 | `internal/biz/spirit_synthesis.go:39-44` |
+| 4 | 用户主动中断（team cancelled）当前也会触发综合与总结 turn，与「中断不出报告」语义冲突 | `internal/biz/spirit_team_usecase.go:1442-1462`（cancelled 计入 AllDone） |
+| 5 | v2 `Step` 无 Meta 字段——报告富数据要持久化必须放 `Step.Content`（JSON 信封） | `internal/biz/step.go:10-33` |
+
+#### B.10.17.2 总体架构与数据流
+
+```
+全部团队终态（HandleTeamTurnResult / 后台 poller → checkAllTeamsCompleted）
+        │  ① 取消守卫：存在 cancelled 团队 → 跳过报告与总结 turn
+        │  ② CAS 防重：synthesisTriggered.LoadOrStore(spiritSessionID)（现状保留）
+        ▼
+SynthesisUsecase.SynthesizeResults（biz，扩展）
+        │  ③ 收集执行单元：ListCompletedAndFailedTeams + BuildCascadeBlockedResults
+        │  ④ 组装 Overview：query / finalStatus / 总耗时（team CreatedAt→UpdatedAt 聚合）
+        │     / 单元计数 / token（复用 CheckAllTeamsCompleted 聚合）
+        │  ⑤ 组装 Deliverables：逐团队 ParseDeliverableRefs → DeliverableItem
+        │  ⑥ per-unit 耗时/错误：TeamRunV2Reader（新窄接口 port，未注入时省略字段）
+        │  ⑦ LLM 结论：SynthesisEngine（C-24 语义不变）；失败 → output.Degraded=true
+        ▼
+PublishSynthesisCompleted（service 层 publisher 改造）
+        │  ⑧ SystemNoticeEvent（WS-only）→ StepCreatedEvent（Kind=notice，
+        │     NoticeType="synthesis_completed"，Content=报告 JSON 信封）
+        │  ⑨ seq.Publish 优先（persist + WS），eventBus 兜底（v1-only）
+        │  ⑩ TaskID 附着最近用户 Task（resolveLatestUserTaskID 同款逻辑提取复用）
+        ▼
+前端：NoticeBlock 分支 → ExecutionReportCard（解析 Step.Content JSON）
+```
+
+**关键设计决策**：
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 触发点 | 保留 `checkAllTeamsCompleted`（不迁移到 plan_executor） | 单团队/多团队均已被覆盖（每个 PlanStep 都会 AssembleTeam）；最小改动；CAS 防重已生产验证 |
+| 持久化载体 | `StepCreatedEvent` + Content=JSON 信封 | SystemNoticeEvent 永不落库（断点 1）；Step 无 Meta，Content 是唯一持久化富文本载体；直发 notice 规范（P1-5 F3：StartedAt/CompletedAt/Version=1/Status=completed） |
+| 简单问答排除 | 天然满足：无团队 → `CheckAllTeamsCompleted` 返回空 → 不触发 | 零代码 |
+| 中断守卫 | `AllTeamsCompletedResult` 新增 `CancelledTeams`；>0 时跳过 | cancelled 当前计入 AllDone（断点 4） |
+| LLM 失败降级 | `SynthesizeResults` 可同返 `(degradedOutput, err)`：发布端用 output，RPC 端返回 err | C-24 生产约束语义保留（engine 仍报错），但报告不整体丢失（FR-6） |
+| Proto/RPC | 本轮不变更 | 报告走事件通道；`SynthesizeResultsResponse` 契约不动（YAGNI） |
+| 旧前端链路 | 移除 `spiritStore.synthesisResult` 及 `handleSynthesisCompleted`（确认无消费者后），删除孤儿组件 `SynthesisResultCard.vue` | R4 全局清理；卡片改为从 Step.Content 渲染 |
+
+#### B.10.17.3 数据模型（biz 扩展）
+
+```go
+// SynthesisOutput 扩展（internal/biz/spirit_synthesis.go）
+type SynthesisOutput struct {
+    Content       string                `json:"content"`
+    Strategy      SynthesisStrategy     `json:"strategy"`
+    TeamResults   []TeamSynthesisResult `json:"team_results"`
+    SynthesizedAt string                `json:"synthesized_at"`
+    // 新增：
+    Overview     *ExecutionOverview `json:"overview,omitempty"`
+    Deliverables []DeliverableItem  `json:"deliverables,omitempty"`
+    Degraded     bool               `json:"degraded,omitempty"` // LLM 结论缺失
+}
+
+type ExecutionOverview struct {
+    Query          string `json:"query"`
+    FinalStatus    string `json:"final_status"` // completed | partial_failure | failed
+    DurationMs     int64  `json:"duration_ms"`
+    TotalUnits     int    `json:"total_units"`
+    CompletedUnits int    `json:"completed_units"`
+    FailedUnits    int    `json:"failed_units"`
+    TokenIn        int    `json:"token_in"`
+    TokenOut       int    `json:"token_out"`
+}
+
+type DeliverableItem struct {
+    NodeID    string `json:"node_id"`
+    UnitName  string `json:"unit_name"`  // 产出团队显示名
+    Summary   string `json:"summary"`
+    Type      string `json:"type,omitempty"`
+    Format    string `json:"format,omitempty"`
+    SizeChars int    `json:"size_chars"`
+}
+
+// TeamSynthesisResult 扩展
+type TeamSynthesisResult struct {
+    // ... 现有字段 ...
+    DurationMs   int64  `json:"duration_ms,omitempty"`
+    ErrorMessage string `json:"error_message,omitempty"`
+}
+
+// AllTeamsCompletedResult 扩展
+type AllTeamsCompletedResult struct {
+    // ... 现有字段 ...
+    CancelledTeams int
+}
+```
+
+**数据来源映射**：
+
+| 字段 | 来源 |
+|------|------|
+| Overview.Query | `SpiritTeamUsecase.GetSpiritQuery`（现状） |
+| Overview.FinalStatus | 单元状态推导：全 completed→`completed`；全 failed/blocked→`failed`；混合→`partial_failure` |
+| Overview.DurationMs | `max(team.UpdatedAt) - min(team.CreatedAt)`（team 覆盖编排全程；Team 无 StartedAt 字段） |
+| Overview.TokenIn/Out、单元计数 | `CheckAllTeamsCompleted` 已有聚合逻辑（提取复用） |
+| TeamSynthesisResult.DurationMs / ErrorMessage | `TeamRunV2Reader`（新窄接口 `SpiritTeamRunStatsReader`，按 teamID 取最新 run；经 `SpiritTeamUsecaseOption` 注入，nil 时省略） |
+| Deliverables | 逐团队 `ParseDeliverableRefs(team.DeliverablesOutput)` → 信封字段映射 |
+
+#### B.10.17.4 事件信封（Step.Content JSON）
+
+```json
+{
+  "version": 1,
+  "kind": "execution_report",
+  "content": "<LLM 结论 markdown，降级时为空>",
+  "strategy": "hybrid",
+  "degraded": false,
+  "overview": { "query": "...", "final_status": "completed", "duration_ms": 12345, "total_units": 3, "completed_units": 3, "failed_units": 0, "token_in": 1000, "token_out": 2000 },
+  "team_results": [ { "team_id": "...", "team_name": "...", "task_name": "...", "status": "completed", "summary": "...", "key_findings": "...", "duration_ms": 8000, "error_message": "" } ],
+  "deliverables": [ { "node_id": "st_1", "unit_name": "调研团队", "summary": "...", "type": "document", "format": "markdown", "size_chars": 500 } ],
+  "synthesized_at": "2026-07-22T..."
+}
+```
+
+**发布契约**：
+- `Step{Kind: notice, NoticeType: "synthesis_completed", Content: <上 JSON>, Status: completed, StartedAt/CompletedAt: now, Version: 1, AuthorAgentKey: "spirit-synthesis", SessionID/SpiritSessionID: spiritSessionID, TaskID: 最近用户 Task}`
+- 走 `seq.Publish`（persist + WS）；v1-only 部署 `eventBus.Publish` 兜底
+- `synthesisEventPublisher` 改造：`NewSpiritSynthesisService` 增加 `seq rt.EventPublisher` + `taskV2Reader biz.TaskV2Reader` 参数（Wire 同步）；`resolveLatestUserTaskID` 逻辑从 `TeamStarter` 提取为 service 包级函数复用
+
+#### B.10.17.5 前端设计
+
+**渲染接入**：`NoticeBlock.vue` 分支——`step.NoticeType === 'synthesis_completed'` 且 Content 可解析为 `kind === 'execution_report'` 信封 → 渲染 `ExecutionReportCard`；解析失败回退默认 notice 渲染（容错）。
+
+**组件**：新建 `web/src/components/chat/ExecutionReportCard.vue`；删除孤儿组件 `web/src/components/spirit/SynthesisResultCard.vue`（R4 全局清理）。
+
+**四板块布局**：
+
+```
+┌──────────────────────────────────────────────────────┐
+│ ✨ 任务执行总结报告          [已完成] [3/3 · 12.3s]  │
+├──────────────────────────────────────────────────────┤
+│ 概况行：需求摘要(单行截断) · token 1.0k↑/2.0k↓       │
+├──────────────────────────────────────────────────────┤
+│ 智能分析结论（markdown 渲染；degraded 时显示          │
+│ 「结论生成失败」warning 提示条）                       │
+├──────────────────────────────────────────────────────┤
+│ ▾ 分步结果明细（默认折叠，N 项）                       │
+│   ✓ 调研团队 · 任务A · 8.0s · 摘要…                  │
+│   ✗ 分析团队 · 任务B · 失败原因…                      │
+├──────────────────────────────────────────────────────┤
+│ ▾ 产物交付物（默认折叠，N 项；无则整区不显示）          │
+│   📄 st_1 · 调研团队 · markdown · 500 字 · 摘要…      │
+└──────────────────────────────────────────────────────┘
+```
+
+| 元素 | 规则 |
+|------|------|
+| 状态 chip | completed→positive / partial_failure→warning / failed→negative（i18n 文案） |
+| 耗时格式 | ≥1s 保留 1 位小数 + `s`，否则 `ms`（与执行过程卡片一致） |
+| 明细/产物区 | 默认折叠；单行截断 + hover 全文 |
+| i18n | `chat.executionReport.*`（zh-CN / en-US） |
+| store 清理 | 移除 `spiritStore.synthesisResult`、`handleSynthesisCompleted` 调用与 `spirit_synthesis_completed` 分支（无渲染消费者）；类型 `SynthesisOutput` 同步清理 |
+
+#### B.10.17.6 错误处理与边界
+
+| 场景 | 行为 |
+|------|------|
+| 报告生成 panic / DB 错误 | 记 error 日志，主流程（终态事件、总结 turn）不受影响 |
+| LLM 结论失败（含生产环境） | engine 返回 err（C-24 语义不变）；`SynthesizeResults` 同返 degraded output + err；发布端发布 degraded 报告；RPC 端仍返回 err |
+| 无交付物 | `deliverables` 为空数组，前端整区不渲染 |
+| TeamRun reader 未注入 | per-unit `duration_ms/error_message` 省略，前端容错显示 `--` |
+| TaskID 解析失败 | TaskID 留空，step 退化为 session 级 notice（与现有直发 notice 一致） |
+| Content JSON 解析失败（前端） | 回退普通 NoticeBlock 渲染 |
+| 同一 session 并发触发 | `synthesisTriggered` CAS 仅放行一次（现状） |
+
+#### B.10.17.7 测试策略
+
+| 层 | 用例 |
+|----|------|
+| biz | Overview 组装（状态推导/时长/token）；Deliverables 解析（信封 + legacy 兼容）；degraded 路径（engine 失败 → output.Degraded + err 同返）；C-24 既有测试适配 |
+| service | publisher 改造：StepCreatedEvent 字段契约（NoticeType/Content JSON/Version/TaskID 附着）；seq 优先 / eventBus 兜底；cancelled 守卫（cancelledTeams>0 → 不触发） |
+| 前端 | `ExecutionReportCard` 四板块渲染 + 状态色 + degraded 提示；`NoticeBlock` 分支（合法信封→卡片，非法→回退）；store 清理后无残留引用 |
+| 契约 | `web/scripts/check-envelope-contract.ts` 事件名清单保持通过 |

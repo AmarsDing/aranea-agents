@@ -3,6 +3,7 @@
     <div class="confirm-block__header">
       <span class="confirm-block__icon">⚠️</span>
       <span class="confirm-block__label">{{ t('chat.confirm.label', '需要确认') }}</span>
+      <span v-if="countdownText" class="confirm-block__countdown">{{ countdownText }}</span>
     </div>
     <div class="confirm-block__content">{{ step.Content }}</div>
     <div class="confirm-block__tool-name">
@@ -16,28 +17,28 @@
     <div class="confirm-block__actions">
       <button
         class="confirm-block__btn confirm-block__btn--approve"
-        :disabled="confirming"
+        :disabled="confirming || expired"
         @click="onConfirm(TOOL_CONFIRM_REPLY.approve)"
       >
         {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approve', '允许本次') }}
       </button>
       <button
         class="confirm-block__btn confirm-block__btn--reject"
-        :disabled="confirming"
+        :disabled="confirming || expired"
         @click="onConfirm(TOOL_CONFIRM_REPLY.deny)"
       >
         {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.reject', '拒绝') }}
       </button>
       <button
         class="confirm-block__btn confirm-block__btn--approve-session"
-        :disabled="confirming"
+        :disabled="confirming || expired"
         @click="onConfirm(TOOL_CONFIRM_REPLY.approveSession)"
       >
         {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approveSession', '会话内始终允许') }}
       </button>
       <button
         class="confirm-block__btn confirm-block__btn--approve-always"
-        :disabled="confirming"
+        :disabled="confirming || expired"
         @click="onConfirm(TOOL_CONFIRM_REPLY.approveAlways)"
       >
         {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approveAlways', '始终允许') }}
@@ -59,7 +60,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Step } from '../../features/chat/v2Types';
 import { TOOL_CONFIRM_REPLY, type ToolConfirmReply, type ConfirmStepPayload } from '../../features/chat/types';
@@ -78,16 +79,71 @@ const confirming = ref(false);
 const CONFIRM_TIMEOUT_MS = 15_000;
 let confirmTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Confirmation window must match backend defaultToolConfirmationTimeout
+// (internal/agent/tool_confirmation.go).
+const CONFIRM_WINDOW_S = 5 * 60;
+const nowTick = ref(Date.now());
+let tickTimer: ReturnType<typeof setInterval> | null = null;
+
+const remainingSeconds = computed(() => {
+  if (props.step.Status !== 'tool_blocked') return 0;
+  const started = Date.parse(props.step.StartedAt);
+  if (!Number.isFinite(started)) return 0;
+  const elapsed = Math.floor((nowTick.value - started) / 1000);
+  return Math.max(0, CONFIRM_WINDOW_S - elapsed);
+});
+
+const expired = computed(() => props.step.Status === 'tool_blocked' && remainingSeconds.value <= 0);
+
+const countdownText = computed(() => {
+  if (props.step.Status !== 'tool_blocked' || !Number.isFinite(Date.parse(props.step.StartedAt))) return '';
+  const s = remainingSeconds.value;
+  if (s <= 0) return t('chat.confirm.expired');
+  const m = Math.floor(s / 60);
+  const sec = String(s % 60).padStart(2, '0');
+  return t('chat.confirm.remaining', { time: `${m}:${sec}` });
+});
+
+function startTick() {
+  if (tickTimer) return;
+  nowTick.value = Date.now();
+  tickTimer = setInterval(() => {
+    nowTick.value = Date.now();
+  }, 1000);
+}
+
+function stopTick() {
+  if (tickTimer) {
+    clearInterval(tickTimer);
+    tickTimer = null;
+  }
+}
+
 watch(
   () => props.step.Status,
-  () => {
+  (status) => {
     confirming.value = false;
     if (confirmTimer) {
       clearTimeout(confirmTimer);
       confirmTimer = null;
     }
+    if (status === 'tool_blocked') startTick();
+    else stopTick();
   },
+  { immediate: true },
 );
+
+watch(remainingSeconds, (s) => {
+  if (s <= 0) stopTick();
+});
+
+onUnmounted(() => {
+  stopTick();
+  if (confirmTimer) {
+    clearTimeout(confirmTimer);
+    confirmTimer = null;
+  }
+});
 
 const toolArgumentsJson = computed(() => {
   if (props.step.ToolArgs == null) return '';

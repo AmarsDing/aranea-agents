@@ -213,6 +213,24 @@ func catalogRequiresConfirm(catalog map[string]confirmCatalogEntry, toolName str
 			}
 		}
 	}
+	// Try segment match: MCP-mounted toolsets expose sub-tools whose runtime
+	// names derive from the catalog key (catalog "browser" → "browser_navigate",
+	// optionally with an MCP ToolPrefix → "playwright_browser_navigate"). Match
+	// when the catalog key appears as a whole underscore-delimited segment of
+	// the runtime name. Consistent with the suffix-based matching used by
+	// internal/tools/decorator.go and browser/guarded_toolset.go for the same
+	// MCP ToolPrefix problem. Over-matching only causes extra confirmation
+	// prompts (fail-safe direction for a security gate).
+	for key, entry := range catalog {
+		if !entry.requiresConfirm {
+			continue
+		}
+		if strings.HasPrefix(toolName, key+"_") ||
+			strings.HasSuffix(toolName, "_"+key) ||
+			strings.Contains(toolName, "_"+key+"_") {
+			return true
+		}
+	}
 	return false
 }
 

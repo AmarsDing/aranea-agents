@@ -3,6 +3,7 @@ package agent
 import (
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
+	bizmedia "aranea-agents/internal/biz/media"
 	biztool "aranea-agents/internal/biz/tool"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/outbound"
@@ -44,6 +45,14 @@ type TRPCToolAssemblyDeps struct {
 	AwaitHook    tooltrpc.ReplyFunc
 	CustomTools  []trpctool.Tool
 	KanbanBridge kanbanpkg.Bridge
+	// MediaProviders resolves media generation provider configs for the
+	// generate_image / generate_video / image_to_video tools. Optional: when
+	// nil, media tools are skipped even if enabled in effective tool keys.
+	MediaProviders bizmedia.ProviderReader
+	// ArtifactWriter persists generated media into the artifact store
+	// (PersistingProvider). Optional: when nil, media results keep their
+	// original remote URLs (best-effort degrade).
+	ArtifactWriter biz.ArtifactSaver
 	// CachedEffectiveTools carries a pre-fetched effective-tools result so
 	// that buildToolsetsForAgent can skip its own GetEffectiveTools call.
 	// When nil, buildToolsetsForAgent falls back to fetching it itself.

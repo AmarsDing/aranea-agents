@@ -47,6 +47,15 @@ type Reader interface {
 	ListBySessionAndName(ctx context.Context, sessionID, name string) ([]Artifact, error)
 }
 
+// Saver is the minimal write contract for persisting artifact bytes.
+// Consumers that only store artifacts (e.g. media PersistingProvider) depend
+// on this narrow interface instead of the full Writer.
+// Stability:stable
+type Saver interface {
+	// Save stores artifact bytes and returns the saved Artifact (with ID, version, SHA256, etc.).
+	Save(ctx context.Context, sessionID, name, mimeType string, data []byte) (Artifact, error)
+}
+
 // Writer is the write persistence interface for artifact metadata + bytes.
 type Writer interface {
 	// Save stores artifact bytes and returns the saved Artifact (with ID, version, SHA256, etc.).

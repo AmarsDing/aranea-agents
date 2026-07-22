@@ -1,0 +1,1 @@
+﻿{"level":"debug","ts":"2026-07-22T16:25:15.906+0800","msg":"auth bypass active: injecting dev principal","kind":"log","level":"warn","message":"auth bypass active: injecting dev principal","step_id":"auth.bypass","fields":{"level":"warn","path":"/v1/sessions/730886c8-8d35-4d07-8420-1ee1ef7ccf7c/compress-status","step_id":"auth.bypass"}}

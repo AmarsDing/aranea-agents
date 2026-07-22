@@ -43,6 +43,38 @@ func TestCatalogRequiresConfirm_nilCatalog(t *testing.T) {
 	}
 }
 
+// MCP-mounted toolsets expose sub-tools whose runtime names derive from the
+// catalog key: catalog "browser" → "browser_navigate", optionally with an MCP
+// ToolPrefix → "playwright_browser_navigate". The gate must treat the catalog
+// key appearing as a whole underscore-delimited segment as a match, otherwise
+// every MCP sub-tool bypasses the confirmation gate.
+func TestCatalogRequiresConfirm_mcpDerivedSubToolNames(t *testing.T) {
+	t.Parallel()
+	catalog := map[string]confirmCatalogEntry{
+		"browser": {requiresConfirm: true},
+	}
+	cases := []struct {
+		name     string
+		toolName string
+		want     bool
+	}{
+		{"exact", "browser", true},
+		{"sub-tool", "browser_navigate", true},
+		{"sub-tool screenshot", "browser_take_screenshot", true},
+		{"mcp prefix + sub-tool", "playwright_browser_navigate", true},
+		{"other mcp prefix", "bw_browser_snapshot", true},
+		{"mcp prefix only", "playwright_browser", true},
+		{"segment not delimited left", "webbrowser_open", false},
+		{"unrelated", "playwright_click", false},
+		{"unrelated with underscore", "web_fetch", false},
+	}
+	for _, tc := range cases {
+		if got := catalogRequiresConfirm(catalog, tc.toolName); got != tc.want {
+			t.Fatalf("%s: catalogRequiresConfirm(%q) = %v, want %v", tc.name, tc.toolName, got, tc.want)
+		}
+	}
+}
+
 func TestToolConfirmGate_needsConfirm_execCommand(t *testing.T) {
 	t.Parallel()
 	g := &toolConfirmGate{catalog: map[string]confirmCatalogEntry{"shell_exec": {requiresConfirm: true}}}

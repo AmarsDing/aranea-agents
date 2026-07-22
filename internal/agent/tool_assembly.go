@@ -69,6 +69,14 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		cfg.CallAgent = eff[biz.ToolKeyCallAgent] && deps.A2AEnabled
 		cfg.AwaitHook = deps.AwaitHook
 
+		// Media generation tools (generate_image / generate_video /
+		// image_to_video) resolve their provider from the media_providers
+		// catalog per capability and persist results as session artifacts.
+		// Missing provider config skips the tool with a warning.
+		if mediaTools := resolveMediaTools(ctx, eff, deps); len(mediaTools) > 0 {
+			cfg.CustomTools = append(cfg.CustomTools, mediaTools...)
+		}
+
 		if ag.Settings.ToolsDeferredJSON != "" {
 			var deferred []string
 			if err := json.Unmarshal([]byte(ag.Settings.ToolsDeferredJSON), &deferred); err == nil {

@@ -542,3 +542,112 @@ a, err := svc.LoadArtifact(ctx, sessionInfo, "output.csv", nil)
 - 制品不在节点间复制。多实例部署需使用共享卷或配置 S3/COS 后端。
 - `data_base64` 编码增加约 33% 开销；大文件（> 10 MB）应优先使用分块流式传输（计划中）。
 - 签名密钥生产环境 fail-closed（缺少密钥返回 503），开发环境回退到不安全密钥。
+
+---
+
+## 十三、Phase 5：媒体产物持久化 + 资源管理器（设计）
+
+> 背景：2026-07-22 多模态现状调研发现两个结构性缺陷——(1) 媒体生成工具产物仅存远程临时 URL（dashscope/ComfyUI），过期即失效且不进制品列表；(2) 音视频制品无内联播放。叠加资源管理诉求（本会话产物直达、跨会话浏览、落盘路径可见、本地打开文件夹），形成 Phase 5。
+
+### 13.1 现状数据流（缺陷标注）
+
+```
+用户上传 → POST /v1/artifacts (base64) → FSArtifactRepo.Save
+    → data/artifacts/<session>/<id>-v<n>.bin + .json
+    → 消息 options_json.attachments[] 引用 → ChatMessageAttachments chip → ArtifactPreview
+
+媒体工具 → MediaProvider.Generate* → MediaArtifact{ArtifactID:"qwen_<task>_0", URL:<远程临时URL>}
+    → 仅写入 step ToolResult JSON → MediaToolDetail 缩略图 → MediaLightbox
+    ✗ 不落盘、不进 TurnCollector、URL 过期后历史消息图片失效
+```
+
+### 13.2 媒体产物持久化（P0）
+
+**方案：MediaProvider 装饰器**（对比：turn pipeline 后处理 tool result —— 需解析每种工具的结果 JSON，耦合脆弱，弃用）。
+
+新增 `internal/provider/media/persist.go`：
+
+```go
+// PersistingProvider 包装 MediaProvider，将生成产物落盘到制品存储。
+type PersistingProvider struct {
+    inner    MediaProvider
+    artifacts artifactbiz.Writer   // biz 窄接口，仅 Save
+    http     *http.Client          // 抓取远程 URL，带超时
+    lg       loggateway.Logger
+}
+```
+
+- `GenerateImage/GenerateVideo/ImageToVideo` 调用 inner 后，对每个 `MediaArtifact`：
+  1. `http.Get(URL)`（30s 超时，大小上限校验复用 `ValidateUploadSize`）
+  2. sessionID 从 ctx 解析（trpc artifact session 上下文，与 `SaveArtifactHelper` 同一机制）
+  3. `artifacts.Save(ctx, sessionID, name, mime, data)` → 经 `Usecase.Save` 自动进 TurnCollector → 挂到消息附件
+  4. 成功：`ArtifactID` 换真实 ID，`URL` 换为 `artifact://<id>` 方案（见 13.3）
+  5. 失败：记 Warn，保留原远程 URL（best-effort 降级，不阻断工具结果）
+- 文件命名：`<tool>-<UTC时间戳>-<序号>.<ext>`（ext 由 mime 推导），同名冲突由版本机制自然处理。
+- Wire：构造 `PersistingProvider` 包装现有 qwen/comfyui provider，注入点不变。
+
+### 13.3 `artifact://` URL 方案（P0）
+
+签名下载 URL 有 TTL（≤24h），不能长期嵌入历史消息。约定：
+
+- 落盘产物的 `MediaArtifact.URL = "artifact://<artifact_id>"`。
+- 前端渲染前经 `resolveMediaUrl(url)` 解析：以 `artifact://` 开头 → 调 `signDownloadUrl(id)` 取新鲜签名直链；`http(s)://` 原样渲染（兼容未落盘降级产物与历史数据）。
+- 解析点：`MediaToolDetail.vue`、`MediaLightbox.vue`、`NodeMediaPreview.vue` 共用 composable `useMediaUrl()`。
+
+### 13.4 音视频预览（P0）
+
+后端：
+- `PreviewKind` 增加 `audio` / `video`（`filter.go` 分类函数按 mime 前缀判定）。
+- audio/video 的 PreviewArtifact **不返回 data_base64**（避免大文件 base64），响应仅含 meta + preview_kind；前端改走签名直链。
+- 签名下载 handler `ServeSignedDownload` 增加 `inline=1` 参数：`Content-Disposition: inline` 并透传 `Content-Type`，支持 `<audio>/<video>` src 直接播放与 Range 请求（视频拖动）。
+
+前端：
+- `useArtifactPreview` + `ArtifactPreview.vue` 增加 audio/video 分支：`<audio controls>` / `<video controls>`，src 为 `artifactDownloadHref(id) + '&inline=1'`。
+
+### 13.5 资源管理器（ArtifactsPage 升级，P1）
+
+页面双视图 Tab：
+
+| Tab | 数据源 | 说明 |
+|-----|--------|------|
+| 会话产物 | `listArtifacts(session_id)` | 现有表格，增强：详情对话框显示完整落盘路径 + 复制按钮 |
+| 全部产物 | `listArtifacts(session_id="")` | 按 session 分组的分区列表（组头 = session ID + 产物数 + 总大小），复用现有跨会话查询能力，无需新 API |
+
+- **路由参数**：`/artifacts?session=<id>` 进入时自动填充 session 筛选并切到「会话产物」Tab。
+- **chat 入口**：chat 页头部（SpiritStatusBar 区域）加「产物」按钮 → `router.push({ name: 'artifacts', query: { session: 当前sessionID } })`。
+- **完整路径**：service 层 `GetArtifact`/详情响应中 `storage_uri` 补绝对路径（`filepath.Abs(root + storage_uri)`，仅 local 后端）；前端 `ArtifactsDetailDialog` 展示 + 复制按钮。
+- **孤儿组件处置**：`ChatSessionArtifactsPanel.vue`（现存但无任何引用）与头部按钮方案二选一；采用头部按钮后该组件保持不引用，是否删除由后续清理任务决定，本 Phase 不动。
+
+### 13.6 本地打开文件夹（P2）
+
+- 新端点 `POST /v1/system/reveal`，body `{ "artifact_id": "<id>" }`。
+- Service：解析绝对路径 → **强制校验位于 artifact root 内**（`filepath.Rel` 防穿越）→ 按 OS 调起：
+  - Windows: `explorer /select,<abs>`
+  - macOS: `open -R <abs>`
+  - Linux: `xdg-open <dir>`
+- **开关**：配置 `features.local_reveal_enabled`（默认 `false`）；未开启时路由不注册（404），前端通过 `GET /v1/system/features`（或复用现有 system setting 查询）得知后隐藏按钮。
+- 纯浏览器/远程部署形态下降级为「复制路径」。
+
+### 13.7 安全约束
+
+| 项 | 约束 |
+|----|------|
+| reveal 路径 | 必须 `filepath.Rel(root, target)` 不以 `..` 开头，否则 400 |
+| inline 播放 | 仅 `audio/*` `video/*` `image/*` 允许 inline；其余强制 attachment，防 HTML/JS 注入 |
+| 媒体抓取 | 仅 http/https；30s 超时；大小上限复用 `ValidateUploadSize`（10MB）；失败降级不落盘 |
+| local_reveal | 默认关闭；生产部署文档明确仅本地单机使用 |
+
+### 13.8 改动文件清单（预估）
+
+后端：
+- `internal/provider/media/persist.go`（新增）+ Wire 注入（`cmd/admin` / `internal/runtime/deps.go`）
+- `internal/biz/artifact/filter.go`（PreviewKind 分类扩展）
+- `internal/service/artifact.go`（ServeSignedDownload inline 参数、storage_uri 绝对路径）
+- `internal/service/system_reveal.go`（新增）+ `internal/server/http.go` 条件注册 + 配置项
+
+前端：
+- `web/src/features/artifact/ArtifactPreview.vue` + `useArtifactPreview.ts`（audio/video）
+- `web/src/features/chat/useMediaUrl.ts`（新增 composable）；`MediaToolDetail.vue` / `MediaLightbox.vue` / `NodeMediaPreview.vue` 接入
+- `web/src/pages/ArtifactsPage.vue` + `useArtifactsPage.ts`（Tab、路由 query、详情路径）
+- chat 头部按钮（SpiritStatusBar 所在组件）
+- `web/src/features/artifact/api.ts`（reveal 调用）

@@ -551,6 +551,8 @@ export default {
       label: 'Requires Confirmation',
       tool: 'Tool',
       arguments: 'Arguments',
+      remaining: '{time} left',
+      expired: 'Confirmation expired',
       submitting: 'Submitting…',
       approve: 'Allow once',
       reject: 'Reject',

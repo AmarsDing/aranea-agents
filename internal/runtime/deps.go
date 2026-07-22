@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizmedia "aranea-agents/internal/biz/media"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/provider"
 	araneasession "aranea-agents/internal/session"
@@ -32,6 +33,10 @@ type TurnReadDeps struct {
 	SkillUC         biz.TeamSkillLookup
 	CLIAdminSkillUC biz.CLIAdminSkillLister
 	Settings        biz.SystemSettingRepo
+	// MediaProviders resolves media generation provider configs
+	// (media_providers catalog) for media tool assembly. Optional: when nil,
+	// media generation tools are unavailable.
+	MediaProviders bizmedia.ProviderReader
 }
 
 // PersistenceSet groups the session and memory persistence services for a turn.

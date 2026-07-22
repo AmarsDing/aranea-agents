@@ -190,9 +190,11 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 			DialogMode: dialogMode,
 		},
 		TRPCToolAssemblyDeps: agent.TRPCToolAssemblyDeps{
-			ToolUC:       r.td.ReadDeps.ToolUC,
-			MCPTooling:   r.td.Persist.AgentMCP,
-			KanbanBridge: r.cfg.KanbanBridge,
+			ToolUC:         r.td.ReadDeps.ToolUC,
+			MCPTooling:     r.td.Persist.AgentMCP,
+			KanbanBridge:   r.cfg.KanbanBridge,
+			MediaProviders: r.td.ReadDeps.MediaProviders,
+			ArtifactWriter: r.td.Persist.ArtifactUC,
 		},
 		TRPCMemoryKnowledgeDeps: agent.TRPCMemoryKnowledgeDeps{
 			HasMemory:             r.td.Persist.Memory.Available(),

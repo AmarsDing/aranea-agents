@@ -1,0 +1,5 @@
+﻿browser [critical]
+send_email [high]
+claude_code [critical]
+shell_exec [critical]
+workspace_exec [critical]
