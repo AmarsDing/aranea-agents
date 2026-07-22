@@ -116,6 +116,9 @@ func (s *stubSpiritTeamController) GetParallelConfig(_ context.Context, _ string
 	return biz.ParallelConfig{}
 }
 func (s *stubSpiritTeamController) AutoArchiveCompletedTeams(_ context.Context, _ string) {}
+func (s *stubSpiritTeamController) ReadUpstreamDeliverable(_ context.Context, _ string, _ int) (biz.UpstreamDeliverableContent, error) {
+	return biz.UpstreamDeliverableContent{}, nil
+}
 
 // capturingEventBus captures published v2 events for assertion.
 type capturingEventBus struct {

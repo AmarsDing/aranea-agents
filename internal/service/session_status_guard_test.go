@@ -115,7 +115,7 @@ func (s *stubV2RecoveryRepo) FailOrphanedInFlight(_ context.Context, _ time.Time
 func TestSessionStatusGuard_OnStartup(t *testing.T) {
 	repo := newStubSessionRepoForGuard("s1", "s2")
 	uc := newTestGuardUC(repo)
-	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	err := g.OnStartup(context.Background())
 	if err != nil {
@@ -137,7 +137,7 @@ func TestSessionStatusGuard_OnStartup(t *testing.T) {
 func TestSessionStatusGuard_OnStartup_NoRunning(t *testing.T) {
 	repo := newStubSessionRepoForGuard()
 	uc := newTestGuardUC(repo)
-	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	err := g.OnStartup(context.Background())
 	if err != nil {
@@ -151,7 +151,7 @@ func TestSessionStatusGuard_OnStartup_NoRunning(t *testing.T) {
 func TestSessionStatusGuard_OnShutdown(t *testing.T) {
 	repo := newStubSessionRepoForGuard("s1")
 	uc := newTestGuardUC(repo)
-	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	err := g.OnShutdown(context.Background())
 	if err != nil {
@@ -178,7 +178,7 @@ func TestSessionStatusGuard_OnShutdown(t *testing.T) {
 func TestSessionStatusGuard_OnShutdown_CanceledContext(t *testing.T) {
 	repo := &ctxAwareSessionRepo{newStubSessionRepoForGuard("s1")}
 	uc := newTestGuardUC(repo)
-	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Kratos cancels server ctx before invoking Stop hooks
@@ -195,7 +195,7 @@ func TestSessionStatusGuard_OnStartup_RecoversV2Entities(t *testing.T) {
 	repo := newStubSessionRepoForGuard()
 	uc := newTestGuardUC(repo)
 	rec := &stubV2RecoveryRepo{stats: biz.V2RecoveryStats{Tasks: 2, Steps: 3}}
-	g := NewSessionStatusGuard(uc, nil, nil, nil, rec, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, nil, rec, nil, loggateway.NewNoop())
 
 	if err := g.OnStartup(context.Background()); err != nil {
 		t.Fatalf("OnStartup: %v", err)
@@ -210,9 +210,39 @@ func TestSessionStatusGuard_OnStartup_V2RecoveryErrorNonFatal(t *testing.T) {
 	repo := newStubSessionRepoForGuard()
 	uc := newTestGuardUC(repo)
 	rec := &stubV2RecoveryRepo{err: errors.New("db down")}
-	g := NewSessionStatusGuard(uc, nil, nil, nil, rec, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, nil, rec, nil, loggateway.NewNoop())
 
 	if err := g.OnStartup(context.Background()); err != nil {
 		t.Fatalf("OnStartup should be non-fatal on v2 recovery error: %v", err)
+	}
+}
+
+// stubDurableEscalator records EscalateAllActiveToDurable calls (2026-07-22 L2).
+type stubDurableEscalator struct {
+	called bool
+	n      int
+}
+
+func (s *stubDurableEscalator) EscalateAllActiveToDurable(_ context.Context) int {
+	s.called = true
+	return s.n
+}
+
+// 2026-07-22 L2：OnShutdown 必须先把活跃 interactive run durable 化（写
+// checkpoint 供重启续跑），再做 running→interrupted 批量兜底。
+func TestSessionStatusGuard_OnShutdown_EscalatesToDurable(t *testing.T) {
+	repo := newStubSessionRepoForGuard("s1")
+	uc := newTestGuardUC(repo)
+	esc := &stubDurableEscalator{n: 1}
+	g := NewSessionStatusGuard(uc, nil, nil, nil, nil, esc, loggateway.NewNoop())
+
+	if err := g.OnShutdown(context.Background()); err != nil {
+		t.Fatalf("OnShutdown: %v", err)
+	}
+	if !esc.called {
+		t.Fatal("expected EscalateAllActiveToDurable to be called on shutdown")
+	}
+	if len(repo.writer.updated) != 1 {
+		t.Fatalf("expected batch interrupt still applied, got %d updates", len(repo.writer.updated))
 	}
 }

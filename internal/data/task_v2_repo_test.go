@@ -124,3 +124,64 @@ func TestTaskV2Repo_GetTask_NotFound(t *testing.T) {
 		t.Fatalf("expected error for nonexistent task, got nil")
 	}
 }
+
+// L3 (2026-07-22)：interrupted → running CAS。只有 interrupted 状态的 task
+// 能被恢复；其他状态 ok=false 且数据不被触碰；重复恢复第二次必须失败
+// （防双击/并发复活两次）。
+func TestTaskV2Repo_ResumeInterruptedTask(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	repo := NewTaskV2Repo(d, loggateway.NewNoop())
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	completedAt := now.Add(-time.Hour)
+
+	if _, err := repo.CreateTask(ctx, biz.Task{
+		ID: "t-resume", SessionID: "s-1", UserMessage: "do it",
+		Status: biz.TaskStatusInterrupted, Seq: 1, Version: 3,
+		CreatedAt: now, UpdatedAt: now, CompletedAt: &completedAt,
+	}); err != nil {
+		t.Fatalf("seed interrupted task: %v", err)
+	}
+	if _, err := repo.CreateTask(ctx, biz.Task{
+		ID: "t-failed", SessionID: "s-1", UserMessage: "nope",
+		Status: biz.TaskStatusFailed, Seq: 2, Version: 1,
+		CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("seed failed task: %v", err)
+	}
+
+	resumeAt := now.Add(time.Minute)
+	got, ok, err := repo.ResumeInterruptedTask(ctx, "t-resume", resumeAt)
+	if err != nil || !ok {
+		t.Fatalf("resume interrupted: ok=%v err=%v", ok, err)
+	}
+	if got.Status != biz.TaskStatusRunning {
+		t.Errorf("status=%s, want running", got.Status)
+	}
+	if got.Version != 4 {
+		t.Errorf("version=%d, want 4 (3+1)", got.Version)
+	}
+	if got.CompletedAt != nil {
+		t.Errorf("completed_at=%v, want cleared", got.CompletedAt)
+	}
+	if !got.UpdatedAt.Equal(resumeAt) {
+		t.Errorf("updated_at=%v, want %v", got.UpdatedAt, resumeAt)
+	}
+
+	// Second resume must fail (already running).
+	if _, ok, err = repo.ResumeInterruptedTask(ctx, "t-resume", resumeAt); err != nil || ok {
+		t.Errorf("second resume: ok=%v err=%v, want ok=false err=nil", ok, err)
+	}
+	// Non-interrupted task must not be touched.
+	if _, ok, err = repo.ResumeInterruptedTask(ctx, "t-failed", resumeAt); err != nil || ok {
+		t.Errorf("resume failed-status task: ok=%v err=%v, want ok=false err=nil", ok, err)
+	}
+	failed, _ := repo.GetTask(ctx, "t-failed")
+	if failed.Status != biz.TaskStatusFailed || failed.Version != 1 {
+		t.Errorf("failed task touched: status=%s version=%d", failed.Status, failed.Version)
+	}
+	// Unknown id: ok=false, err=nil.
+	if _, ok, err = repo.ResumeInterruptedTask(ctx, "t-missing", resumeAt); err != nil || ok {
+		t.Errorf("resume missing task: ok=%v err=%v, want ok=false err=nil", ok, err)
+	}
+}

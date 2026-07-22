@@ -18,9 +18,9 @@ func TestSpiritSessionStatus_Constants(t *testing.T) {
 func TestTaskStatus_Constants(t *testing.T) {
 	cases := []TaskStatus{
 		TaskStatusPending, TaskStatusRunning, TaskStatusCompleted,
-		TaskStatusFailed, TaskStatusCancelled,
+		TaskStatusFailed, TaskStatusCancelled, TaskStatusInterrupted,
 	}
-	expected := []string{"pending", "running", "completed", "failed", "cancelled"}
+	expected := []string{"pending", "running", "completed", "failed", "cancelled", "interrupted"}
 	for i, c := range cases {
 		if string(c) != expected[i] {
 			t.Fatalf("TaskStatus[%d]: expected %s, got %s", i, expected[i], c)

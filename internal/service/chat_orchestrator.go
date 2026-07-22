@@ -491,6 +491,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			tools = append(tools, o.spiritCustomTools(ag)...)
 			tools = append(tools, o.skillsButlerTools(ctx, ag)...)
 			tools = append(tools, o.memoryButlerTools(ctx, ag)...)
+			tools = append(tools, o.deliverableReaderTools()...)
 			return tools
 		},
 		Logger: deps.Infra.LG,

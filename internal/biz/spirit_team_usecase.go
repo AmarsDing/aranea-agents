@@ -71,6 +71,9 @@ type SpiritTeamController interface {
 	CheckAllTeamsCompleted(ctx context.Context, spiritSessionID string) AllTeamsCompletedResult
 	GetParallelConfig(ctx context.Context, spiritSessionID string) ParallelConfig
 	AutoArchiveCompletedTeams(ctx context.Context, spiritSessionID string)
+	// ReadUpstreamDeliverable backs the read_upstream_deliverable tool (P2):
+	// full-text retrieval of a completed upstream team's deliverable.
+	ReadUpstreamDeliverable(ctx context.Context, teamID string, maxChars int) (UpstreamDeliverableContent, error)
 }
 
 // TimeoutHandler is called when a team times out. Implemented by the service
@@ -914,6 +917,25 @@ type TeamProgress struct {
 }
 
 func (u *SpiritTeamUsecase) ExtractTeamOutput(ctx context.Context, teamID string) (summary string, keyFindings string, err error) {
+	full, err := u.extractTeamFullOutput(ctx, teamID)
+	if err != nil || full.Content == "" {
+		return "", "", err
+	}
+	return TruncateRunes(full.Content, MaxSummaryLen), extractKeyFindings(full.Content), nil
+}
+
+// teamFullOutput is the untruncated team output plus its source session —
+// the P2 DeliverableRef envelope needs both (SizeChars / TeamSessionID).
+type teamFullOutput struct {
+	Content   string // full, untruncated deliverable content
+	SessionID string // team main session the content was read from
+}
+
+// extractTeamFullOutput resolves the team main session and returns its final
+// deliverable content WITHOUT truncation. Shared by ExtractTeamOutput
+// (summary view), WriteDeliverablesToSession (P2 envelope) and
+// ReadUpstreamDeliverable (full-text tool).
+func (u *SpiritTeamUsecase) extractTeamFullOutput(ctx context.Context, teamID string) (teamFullOutput, error) {
 	result, searchErr := u.sessionUC.Search(ctx, SessionSearchQuery{TeamID: teamID, Limit: 10})
 	if searchErr != nil {
 		u.lg.Warn("搜索团队 session 失败",
@@ -921,10 +943,10 @@ func (u *SpiritTeamUsecase) ExtractTeamOutput(ctx context.Context, teamID string
 			loggateway.Str("team_id", teamID),
 			loggateway.Err(searchErr),
 		)
-		return "", "", searchErr
+		return teamFullOutput{}, searchErr
 	}
 	if len(result.Items) == 0 {
-		return "", "", nil
+		return teamFullOutput{}, nil
 	}
 	// Member agent sessions share the same team_id and Search ordering is not
 	// guaranteed — identify the team main session by SessionType, not position.
@@ -947,7 +969,7 @@ func (u *SpiritTeamUsecase) ExtractTeamOutput(ctx context.Context, teamID string
 				loggateway.Str("team_id", teamID),
 				loggateway.Err(stepErr),
 			)
-			return "", "", stepErr
+			return teamFullOutput{}, stepErr
 		}
 		for i := len(steps) - 1; i >= 0; i-- {
 			st := steps[i]
@@ -958,9 +980,7 @@ func (u *SpiritTeamUsecase) ExtractTeamOutput(ctx context.Context, teamID string
 			if content == "" {
 				continue
 			}
-			summary = TruncateRunes(content, MaxSummaryLen)
-			keyFindings = extractKeyFindings(content)
-			return summary, keyFindings, nil
+			return teamFullOutput{Content: content, SessionID: teamSession.ID}, nil
 		}
 	}
 
@@ -971,20 +991,14 @@ func (u *SpiritTeamUsecase) ExtractTeamOutput(ctx context.Context, teamID string
 			loggateway.Str("team_id", teamID),
 			loggateway.Err(msgErr),
 		)
-		return "", "", msgErr
-	}
-	if len(messages) == 0 {
-		return "", "", nil
+		return teamFullOutput{}, msgErr
 	}
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role == "assistant" {
-			content := messages[i].ContentMarkdown
-			summary = TruncateRunes(content, MaxSummaryLen)
-			keyFindings = extractKeyFindings(content)
-			return summary, keyFindings, nil
+			return teamFullOutput{Content: messages[i].ContentMarkdown, SessionID: teamSession.ID}, nil
 		}
 	}
-	return "", "", nil
+	return teamFullOutput{}, nil
 }
 
 func extractKeyFindings(content string) string {
@@ -1092,6 +1106,13 @@ const (
 
 	// MaxKeyFindingsCount is the maximum number of key findings extracted.
 	MaxKeyFindingsCount = 5
+
+	// DefaultUpstreamDeliverableMaxChars is the default full-text budget for
+	// ReadUpstreamDeliverable when maxChars is unset/invalid.
+	DefaultUpstreamDeliverableMaxChars = 50000
+	// MaxUpstreamDeliverableChars is the hard cap for a single full-text read
+	// (defense against runaway context consumption).
+	MaxUpstreamDeliverableChars = 200000
 )
 
 // resolveAgentKeyToIDMap maps agentKeys (e.g. "__spirit__") to agent IDs (e.g.
@@ -1660,9 +1681,10 @@ func (u *SpiritTeamUsecase) resolveVerificationGates(ctx context.Context, t Team
 // XC-03b: Deliverable Passing Mechanism
 // ---------------------------------------------------------------------------
 
-// WriteDeliverablesToSession persists the team's output summary into the
-// Team's DeliverablesOutput field (JSON object keyed by dag_node_id) so
-// downstream teams can consume it via InjectUpstreamDeliverables.
+// WriteDeliverablesToSession persists the team's output as a P2 DeliverableRef
+// envelope in the Team's DeliverablesOutput field (JSON object keyed by
+// dag_node_id) so downstream teams can consume it via InjectUpstreamDeliverables
+// and retrieve the full text on demand via read_upstream_deliverable.
 //
 // The output is written for every completed DAG team (DagNodeID != ""),
 // regardless of whether formal DeliverableContracts are declared — contract
@@ -1679,8 +1701,9 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 		return nil // not a DAG node — nothing to key the output by
 	}
 
-	// Extract team output
-	summary, _, extractErr := u.ExtractTeamOutput(ctx, teamID)
+	// Extract full (untruncated) team output — the envelope records the full
+	// size while the summary stays within MaxSummaryLen.
+	full, extractErr := u.extractTeamFullOutput(ctx, teamID)
 	if extractErr != nil {
 		u.lg.Warn("提取团队输出失败，跳过交付物写入",
 			loggateway.StepID("spirit.write_deliverables"),
@@ -1689,12 +1712,28 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 		)
 		return nil
 	}
-	if summary == "" {
+	if full.Content == "" {
 		return nil
 	}
 
-	// Merge into the dedicated deliverables_output_json column.
-	outputs := make(map[string]string)
+	sizeChars := utf8.RuneCountInString(full.Content)
+	ref := DeliverableRef{
+		Summary:       TruncateRunes(full.Content, MaxSummaryLen),
+		KeyFindings:   extractKeyFindings(full.Content),
+		TeamID:        t.ID,
+		TeamSessionID: full.SessionID,
+		SizeChars:     sizeChars,
+		Truncated:     sizeChars > MaxSummaryLen,
+	}
+	refJSON, marshalErr := json.Marshal(ref)
+	if marshalErr != nil {
+		return marshalErr
+	}
+
+	// Merge into the dedicated deliverables_output_json column. Existing
+	// values are preserved as raw messages so legacy plain-string entries
+	// (pre-P2) coexist with P2 envelopes.
+	outputs := make(map[string]json.RawMessage)
 	if t.DeliverablesOutput != "" && t.DeliverablesOutput != "{}" {
 		// Tolerate malformed JSON by starting fresh rather than failing the
 		// write — the cache is rebuilt below; a corrupt row must not block
@@ -1705,10 +1744,10 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 				loggateway.Str("team_id", teamID),
 				loggateway.Err(uerr),
 			)
-			outputs = make(map[string]string)
+			outputs = make(map[string]json.RawMessage)
 		}
 	}
-	outputs[t.DagNodeID] = summary
+	outputs[t.DagNodeID] = refJSON
 	updatedJSON, marshalErr := json.Marshal(outputs)
 	if marshalErr != nil {
 		return marshalErr
@@ -1727,6 +1766,8 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 		loggateway.StepID("spirit.write_deliverables"),
 		loggateway.Str("team_id", teamID),
 		loggateway.Str("dag_node_id", t.DagNodeID),
+		loggateway.Int("size_chars", sizeChars),
+		loggateway.Bool("truncated", ref.Truncated),
 	)
 	return nil
 }
@@ -1763,18 +1804,33 @@ func (u *SpiritTeamUsecase) InjectUpstreamDeliverables(ctx context.Context, down
 		}
 
 		// Try to read from persisted deliverable output cache first
-		summary := u.readDeliverableOutput(upstream)
-		if summary == "" {
-			// Fallback: extract from team output directly. Note: use plain
-			// assignment (not :=) to avoid shadowing the outer summary —
-			// a previous := shadow made this fallback a no-op.
-			extracted, _, extractErr := u.ExtractTeamOutput(ctx, upstream.ID)
-			if extractErr != nil || extracted == "" {
+		ref, refOK := u.readDeliverableRef(upstream)
+		if !refOK || ref.Summary == "" {
+			// Fallback: extract from team output directly and shape it as a
+			// ref so the truncation guidance below applies uniformly.
+			full, extractErr := u.extractTeamFullOutput(ctx, upstream.ID)
+			if extractErr != nil || full.Content == "" {
 				continue
 			}
-			summary = extracted
+			sizeChars := utf8.RuneCountInString(full.Content)
+			ref = DeliverableRef{
+				Summary:       TruncateRunes(full.Content, MaxSummaryLen),
+				TeamID:        upstream.ID,
+				TeamSessionID: full.SessionID,
+				SizeChars:     sizeChars,
+				Truncated:     sizeChars > MaxSummaryLen,
+			}
 		}
-		deliverableParts = append(deliverableParts, fmt.Sprintf("## 上游团队: %s\n%s%s", upstream.DisplayName, contractDeclarationLines(upstream.Deliverables), summary))
+		// Legacy plain-string values carry no team_id; the caller always knows it.
+		if ref.TeamID == "" {
+			ref.TeamID = upstream.ID
+		}
+		part := fmt.Sprintf("## 上游团队: %s\n%s%s", upstream.DisplayName, contractDeclarationLines(upstream.Deliverables), ref.Summary)
+		if ref.Truncated {
+			part += fmt.Sprintf("\n[交付物全文共 %d 字符，以上为截断摘要。需要完整内容时调用 read_upstream_deliverable(team_id=\"%s\") 获取]",
+				ref.SizeChars, ref.TeamID)
+		}
+		deliverableParts = append(deliverableParts, part)
 	}
 
 	if len(deliverableParts) == 0 {
@@ -1806,18 +1862,77 @@ func contractDeclarationLines(deliverablesJSON string) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-// readDeliverableOutput reads the persisted deliverable output from the team's
-// deliverables_output_json column (written by WriteDeliverablesToSession).
-// Domain: Delivery — read persisted deliverable output from team's deliverables_output_json cache.
-func (u *SpiritTeamUsecase) readDeliverableOutput(t Team) string {
-	if t.DeliverablesOutput == "" || t.DeliverablesOutput == "{}" {
-		return ""
+// readDeliverableRef reads the persisted DeliverableRef for the team's own
+// dag_node_id. Dual-mode: P2 envelopes parse with full metadata; legacy
+// plain-string values yield a summary-only ref. ok=false when absent or
+// unparseable.
+// Domain: Delivery — read persisted deliverable envelope from team's cache.
+func (u *SpiritTeamUsecase) readDeliverableRef(t Team) (DeliverableRef, bool) {
+	if t.DagNodeID == "" {
+		return DeliverableRef{}, false
 	}
-	var outputs map[string]string
-	if err := json.Unmarshal([]byte(t.DeliverablesOutput), &outputs); err != nil {
-		return ""
+	ref, ok := ParseDeliverableRefs(t.DeliverablesOutput)[t.DagNodeID]
+	return ref, ok
+}
+
+// UpstreamDeliverableContent is the full-text result of ReadUpstreamDeliverable
+// (the read_upstream_deliverable tool's biz-layer response).
+type UpstreamDeliverableContent struct {
+	Content   string // deliverable text, truncated to the requested budget
+	SizeChars int    // FULL content size in runes (before truncation)
+	Truncated bool   // true when Content was cut to the budget
+	TeamID    string
+	SessionID string // team main session the content was read from
+}
+
+// ReadUpstreamDeliverable returns the full deliverable text of a COMPLETED
+// upstream team, truncated to maxChars (default DefaultUpstreamDeliverableMaxChars,
+// hard cap MaxUpstreamDeliverableChars). Backs the read_upstream_deliverable
+// tool: the injection prefix only carries a truncated summary, and downstream
+// team members call the tool when they genuinely need the full text.
+// Domain: Delivery — full-text retrieval of an upstream team's deliverable.
+func (u *SpiritTeamUsecase) ReadUpstreamDeliverable(ctx context.Context, teamID string, maxChars int) (UpstreamDeliverableContent, error) {
+	teamID = strings.TrimSpace(teamID)
+	if teamID == "" {
+		return UpstreamDeliverableContent{}, apierror.BadRequest("SPIRIT", "team_id is required")
 	}
-	return outputs[t.DagNodeID]
+	if maxChars <= 0 || maxChars > MaxUpstreamDeliverableChars {
+		maxChars = DefaultUpstreamDeliverableMaxChars
+	}
+	t, err := u.teamUC.Get(ctx, teamID)
+	if err != nil {
+		return UpstreamDeliverableContent{}, err
+	}
+	if t.Status != TeamStatusCompleted {
+		return UpstreamDeliverableContent{}, apierror.BadRequest("SPIRIT", "upstream team %s has not completed yet (status=%s)", teamID, t.Status)
+	}
+	full, err := u.extractTeamFullOutput(ctx, teamID)
+	if err != nil {
+		return UpstreamDeliverableContent{}, err
+	}
+	if full.Content == "" {
+		return UpstreamDeliverableContent{}, apierror.NotFound("SPIRIT", "no deliverable content found for team %s", teamID)
+	}
+
+	sizeChars := utf8.RuneCountInString(full.Content)
+	content := full.Content
+	truncated := sizeChars > maxChars
+	if truncated {
+		content = TruncateRunes(content, maxChars) + fmt.Sprintf("\n...[已截断，全文共 %d 字符]", sizeChars)
+	}
+	u.lg.Info("上游交付物全文读取",
+		loggateway.StepID("spirit.read_upstream_deliverable"),
+		loggateway.Str("team_id", teamID),
+		loggateway.Int("size_chars", sizeChars),
+		loggateway.Bool("truncated", truncated),
+	)
+	return UpstreamDeliverableContent{
+		Content:   content,
+		SizeChars: sizeChars,
+		Truncated: truncated,
+		TeamID:    teamID,
+		SessionID: full.SessionID,
+	}, nil
 }
 
 // ---------------------------------------------------------------------------

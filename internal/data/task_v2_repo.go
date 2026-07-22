@@ -207,6 +207,35 @@ func (r *taskV2Repo) UpsertTask(ctx context.Context, t biz.Task) (biz.Task, erro
 	return entTaskV2ToBiz(row), nil
 }
 
+// ResumeInterruptedTask implements biz.TaskV2Writer.ResumeInterruptedTask:
+// single-statement CAS interrupted → running so a double click or concurrent
+// resume cannot resurrect the task twice. completed_at is cleared because the
+// task is active again; version bumps keep the v2 sequencer's VersionLT guard
+// monotonic.
+func (r *taskV2Repo) ResumeInterruptedTask(ctx context.Context, id string, resumeAt time.Time) (biz.Task, bool, error) {
+	if r == nil || r.data == nil {
+		return biz.Task{}, false, fmt.Errorf("task v2 repo: database not configured")
+	}
+	n, err := r.data.RW().Write(ctx).TaskV2.Update().
+		Where(taskv2.ID(id), taskv2.StatusEQ(string(biz.TaskStatusInterrupted))).
+		SetStatus(string(biz.TaskStatusRunning)).
+		ClearCompletedAt().
+		SetUpdatedAt(resumeAt).
+		AddVersion(1).
+		Save(ctx)
+	if err != nil {
+		return biz.Task{}, false, entErrToBizErr(err, "TASK_V2")
+	}
+	if n == 0 {
+		return biz.Task{}, false, nil
+	}
+	row, err := r.data.RW().Read(ctx).TaskV2.Get(ctx, id)
+	if err != nil {
+		return biz.Task{}, false, entErrToBizErr(err, "TASK_V2")
+	}
+	return entTaskV2ToBiz(row), true, nil
+}
+
 // entTaskV2ToBiz converts an Ent TaskV2 row to biz.Task.
 func entTaskV2ToBiz(row *ent.TaskV2) biz.Task {
 	var completedAt *time.Time

@@ -91,6 +91,15 @@ func (u *SessionRunUsecase) ListDurablePending(ctx context.Context, limit int) (
 	return u.repo.ListByPhase(ctx, SessionRunPhaseDurable, limit)
 }
 
+// ListByPhase exposes phase-filtered run listing for service-layer jobs
+// (e.g. shutdown durable escalation listing interactive runs).
+func (u *SessionRunUsecase) ListByPhase(ctx context.Context, phase string, limit int) ([]SessionRun, error) {
+	if u == nil || u.repo == nil {
+		return nil, nil
+	}
+	return u.repo.ListByPhase(ctx, phase, limit)
+}
+
 func (u *SessionRunUsecase) ListForJobs(ctx context.Context, q SessionRunListQuery) ([]SessionRun, error) {
 	if u == nil || u.repo == nil {
 		return nil, nil

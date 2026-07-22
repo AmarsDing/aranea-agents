@@ -11,8 +11,9 @@ import (
 
 // 2026-07-21 P1-5 修复：v2 实体 orphaned-recovery。
 // 进程重启后 in-flight（pending/running/tool_running/paused）实体必须被
-// 批量终态化为 failed，version+1，completed_at/finished_at 落上恢复时间；
+// 批量终态化，version+1，completed_at/finished_at 落上恢复时间；
 // 已是终态的记录不得被触碰。
+// 2026-07-22 L3：task → interrupted（可续跑），其余执行内部实体 → failed。
 
 func TestV2RecoveryRepo_FailOrphanedInFlight(t *testing.T) {
 	d := openTestDataWithRWDB(t)
@@ -82,8 +83,8 @@ func TestV2RecoveryRepo_FailOrphanedInFlight(t *testing.T) {
 
 	// --- 断言 in-flight 记录被终态化 ---
 	task, _ := taskRepo.GetTask(ctx, "t-orphan")
-	if task.Status != biz.TaskStatusFailed {
-		t.Errorf("task status = %s, want failed", task.Status)
+	if task.Status != biz.TaskStatusInterrupted {
+		t.Errorf("task status = %s, want interrupted (L3: resumable)", task.Status)
 	}
 	if task.Version != 4 {
 		t.Errorf("task version = %d, want 4 (3+1)", task.Version)

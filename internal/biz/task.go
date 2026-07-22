@@ -618,4 +618,9 @@ const (
 	TaskStatusCompleted TaskStatus = "completed"
 	TaskStatusFailed    TaskStatus = "failed"
 	TaskStatusCancelled TaskStatus = "cancelled"
+	// TaskStatusInterrupted marks a task terminalized by process restart while
+	// in-flight (L3, 2026-07-22). Unlike failed, interrupted is resumable:
+	// the user can explicitly continue execution via ResumeInterruptedTask,
+	// which reruns the task with its full persisted execution trace.
+	TaskStatusInterrupted TaskStatus = "interrupted"
 )

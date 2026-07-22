@@ -151,7 +151,7 @@ type Team struct {
 	DeptLeadAgentID    string
 	Deliverables       string // JSON array of DeliverableContract
 	InputContract      string // JSON array of DeliverableContract (expected from upstream)
-	DeliverablesOutput string // JSON object keyed by dag_node_id: actual deliverable outputs written on team completion (TECH-DEBT #B-03 fix)
+	DeliverablesOutput string // JSON object keyed by dag_node_id: DeliverableRef envelopes (P2) with legacy plain-string summaries tolerated on read (TECH-DEBT #B-03 fix)
 	CrossDeptMemberIDs string // JSON array of cross-department member agent IDs
 	LinkedGraphID      string // FK to graph_definitions; bidirectional reference with graph.team_id
 	SpiritSessionID    string
@@ -171,6 +171,54 @@ type Team struct {
 	// WorkspaceID is the owning workspace ID for tenant isolation (P2-B).
 	// empty = shared/legacy (visible to all workspaces); non-empty = tenant-private.
 	WorkspaceID string
+}
+
+// ---------------------------------------------------------------------------
+// P2 产物引用化：DeliverableRef 信封
+// ---------------------------------------------------------------------------
+
+// DeliverableRef is the P2 envelope stored per dag_node_id in
+// Team.DeliverablesOutput. Instead of persisting the (already truncated)
+// summary only, the envelope carries enough metadata for downstream teams to
+// decide whether they need the full deliverable — retrievable on demand via
+// the read_upstream_deliverable tool (full text lives in steps_v2, not here).
+type DeliverableRef struct {
+	Summary       string `json:"summary"`
+	KeyFindings   string `json:"key_findings,omitempty"`
+	TeamID        string `json:"team_id"`
+	TeamSessionID string `json:"team_session_id"`
+	SizeChars     int    `json:"size_chars"`
+	Truncated     bool   `json:"truncated"`
+}
+
+// ParseDeliverableRefs parses Team.DeliverablesOutput into per-node refs.
+// Dual-mode: values written before P2 are plain JSON strings (the summary);
+// values written after P2 are DeliverableRef objects. Both forms coexist.
+// Empty/corrupt input yields an empty map; individually invalid values are
+// skipped (tolerant read, consistent with the pre-P2 behavior).
+func ParseDeliverableRefs(deliverablesOutput string) map[string]DeliverableRef {
+	out := make(map[string]DeliverableRef)
+	if deliverablesOutput == "" || deliverablesOutput == "{}" {
+		return out
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(deliverablesOutput), &raw); err != nil {
+		return out
+	}
+	for key, val := range raw {
+		// Legacy form: plain JSON string → summary-only ref.
+		var legacy string
+		if err := json.Unmarshal(val, &legacy); err == nil {
+			out[key] = DeliverableRef{Summary: legacy}
+			continue
+		}
+		var ref DeliverableRef
+		if err := json.Unmarshal(val, &ref); err != nil {
+			continue
+		}
+		out[key] = ref
+	}
+	return out
 }
 
 type TeamRunRecord struct {

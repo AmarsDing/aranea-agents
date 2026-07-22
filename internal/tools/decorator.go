@@ -71,6 +71,11 @@ var builtinResultBudgetOverrides = map[string]*ResultBudget{
 	"browser_take_screenshot": {MaxBytes: 100 * 1024, Mode: "tail"},
 	"browser_screenshot":      {MaxBytes: 100 * 1024, Mode: "tail"},
 	"browser_snapshot":        {MaxBytes: 50 * 1024, Mode: "tail"},
+	// read_upstream_deliverable returns full deliverable text on demand (P2).
+	// The tool self-caps at 200000 runes (~600KB worst-case CJK bytes); the
+	// override must exceed that so the decorator never corrupts the tool's
+	// own truncation contract. Defensive only — it should never fire.
+	"read_upstream_deliverable": {MaxBytes: 620 * 1024, Mode: "tail"},
 }
 
 // budgetOverrideForTool returns the custom result budget for a tool based on

@@ -104,7 +104,8 @@ func (noopSessionRunLifecycle) BeginSessionRunLifecycle(ctx context.Context, _ S
 	return ctx, ""
 }
 func (noopSessionRunLifecycle) FinishSessionRunLifecycle(context.Context, string, string, error) {}
-func (noopSessionRunLifecycle) EscalateToDurableByUser(context.Context, string, string)          {}
+func (noopSessionRunLifecycle) EscalateToDurableByUser(context.Context, string, string) {}
+func (noopSessionRunLifecycle) EscalateToDurableOnShutdown(context.Context, string, string) {}
 func (noopSessionRunLifecycle) ResolveChannelLongTaskConfig(context.Context, biz.Session) biz.ChannelLongTaskConfig {
 	return biz.ChannelLongTaskConfig{}
 }

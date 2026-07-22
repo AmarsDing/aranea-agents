@@ -5246,7 +5246,7 @@ type DeliverableRef struct {
 
 #### B.10.15.8 P1 实施记录与验证结果（2026-07-22 ✅ 已落地）
 
-**实施状态**：P1 形式契约全链路已实施完成，全量验证通过。P2 产物引用化、Graph StateFields 桥接按 Q5 决策顺序待后续迭代。
+**实施状态**：P1 形式契约全链路已实施完成，全量验证通过。P2 产物引用化已按 Q5 顺序接续落地（见 B.10.15.9）；Graph StateFields 桥接待后续迭代。
 
 **实际改动文件**（与设计清单 B.10.15.5 对齐，含实施期偏差说明）：
 
@@ -5280,3 +5280,35 @@ type DeliverableRef struct {
 - `trpc_memory_facts_test`：`enabledSettingsLoader` 补 `L3Enabled: true`，解除 L3 事实写入阻断
 - `task_planner_impl_test.go` 中文乱码批量修复
 - 知识库 `EnsureDefaultCollection` 增加 workspace 参数盖章，修复懒创建默认库被 `assertCollectionMutateAccess` 视为共享只读导致的首次入库 404
+
+#### B.10.15.9 P2 实施记录与验证结果（2026-07-22 ✅ 已落地）
+
+**实施状态**：P2 产物引用化全链路已按 TDD 实施完成，全量验证通过。Graph StateFields 桥接为下一阶段（以阻断性前置技术验证开始）。
+
+**实际改动文件**（与设计清单 B.10.15.5 对齐，含实施期偏差说明）：
+
+| 文件 | 实际改动 |
+|------|----------|
+| `internal/biz/team_types.go` | 新增 `DeliverableRef` 信封结构（Summary/KeyFindings/TeamID/TeamSessionID/SizeChars/Truncated）+ `ParseDeliverableRefs` 双模解析（object 优先、legacy string 兜底，混存不报错） |
+| `internal/biz/spirit_team_usecase.go` | `ExtractTeamOutput` 重构出 `extractTeamFullOutput`（返回全文 + 主会话 ID，Write/Read 两处复用同一数据源路径）；`WriteDeliverablesToSession` 写 `DeliverableRef`（KeyFindings 入信封，既有 legacy 条目保留，坏缓存重建）；`InjectUpstreamDeliverables` 在 `Truncated=true` 时附加 `read_upstream_deliverable(team_id="...")` 取全文指引；新增 `ReadUpstreamDeliverable`（`DefaultUpstreamDeliverableMaxChars=50000`、`MaxUpstreamDeliverableChars=200000`，越界 clamp 到默认值） |
+| `internal/biz/spirit_team_usecase.go` `SpiritTeamController` | 接口新增 `ReadUpstreamDeliverable` 方法（service 层编排依赖契约扩展，测试 stub 同步实现） |
+| `internal/tools/deliverable/upstream_reader.go` | 新增 `read_upstream_deliverable` 工具（输入 `team_id` + 可选 `max_chars`；输出 `content/size_chars/truncated/team_id/session_id`）；`UpstreamDeliverableReader` 窄接口由 `*biz.SpiritTeamUsecase` 满足 |
+| `internal/service/cli_admin_tools.go` | **偏差**：未走 `toolset.go` Registry 注册 + `cmd/admin/wire.go` 注入，改为 `deliverableReaderTools()` 经 `CustomToolFunc` 依赖注入装配（参照 `memory.NewCompactTool()` 先例）；对全部 agent 默认装配（只读低风险），效果等同 Q2 决策的"默认开启" |
+| `internal/service/chat_orchestrator.go` | `CustomToolFunc` 追加 `o.deliverableReaderTools()...` |
+| `internal/tools/decorator.go` | **设计外新增**：`builtinResultBudgetOverrides["read_upstream_deliverable"] = {MaxBytes: 620KB, Mode: "tail"}`——默认 10KB 结果预算会截断工具返回的全文；工具自限 200000 runes（≈600KB CJK 上限），覆盖值仅作防御、正常永不触发 |
+
+**测试覆盖**：
+
+| 测试 | 覆盖点 |
+|------|--------|
+| `internal/biz/spirit_team_deliverable_test.go` | `ParseDeliverableRefs` 4 例（P2 信封/legacy string/混存/空+损坏）；`WriteDeliverablesToSession` 7 例（落库/信封元数据/短内容不截断/legacy 保留/坏缓存重建/无 DagNode NoOp/无 assistant 消息 NoOp）；`readDeliverableRef` 双模 5 子例（envelope/legacy/missing key/corrupt/no dag node）；`InjectUpstreamDeliverables` 7 例（持久化读取/无依赖为空/fallback 提取/截断附指引/未截断或 legacy 不附/fallback 长内容附/短内容不附）；`ReadUpstreamDeliverable` 6 例（全文/按 max_chars 截断/越界 clamp/团队未终态报错/无内容报错/空 team_id 报错） |
+| `internal/tools/deliverable/upstream_reader_test.go` | 工具 8 例：Declaration schema、happy path、max_chars 封顶、缺 team_id、非法 JSON、reader 错误透传、nil reader、输出 JSON 形状 |
+
+**验证证据（2026-07-22）**：`go build ./...` exit 0；`go test -count=1` 全绿——`internal/service` 3.9s、`internal/biz`（含 Deliverable 专项 29 例全 PASS）、`internal/agent` 16.3s、`internal/data` 20.9s、`internal/tools`（含 deliverable 包 8 例），无 FAIL。
+
+**实施期修复的关联问题**（验证期发现的构建阻塞，随本轮一并修复）：
+
+- `SessionRunUsecase.ListByPhase` 透传方法缺失——L2 崩溃保护的 `chat_durable_escalate_all.go` 调用该方法但 Usecase 未暴露（repo 层已存在），补 6 行透传
+- `NewSessionStatusGuard` 新增 `SessionRunDurableEscalator` 参数后 `wire_gen.go` 未重新生成（L2 工作流遗漏），重跑 `wire gen` 恢复构建
+
+**下一阶段**：Graph StateFields 桥接（B.10.15.4）——先做"团队完成后 graph final state 可读性"阻断性前置技术验证；验证不通过则按 Q3 决策降级为 prompt 引导（仅文档约束，零代码）。

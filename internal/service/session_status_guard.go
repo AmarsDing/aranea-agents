@@ -11,17 +11,26 @@ import (
 	"github.com/google/uuid"
 )
 
+// SessionRunDurableEscalator escalates active interactive session runs to
+// durable mode on shutdown (L2 crash protection, 2026-07-22). Implemented by
+// ChatService; kept as a narrow interface for testability (ISP).
+// Stability:evolving
+type SessionRunDurableEscalator interface {
+	EscalateAllActiveToDurable(ctx context.Context) int
+}
+
 type SessionStatusGuard struct {
 	uc           *biz.SessionUsecase
 	teamUC       *biz.TeamUsecase
 	orchestrator biz.TaskOrchestratorPort
 	bus          biz.EventBus // Phase 3b-D: v2 EventBus (originally biz.ActivityEventBus)
 	v2Recovery   biz.V2RecoveryRepo
+	escalator    SessionRunDurableEscalator
 	lg           loggateway.Logger
 }
 
-func NewSessionStatusGuard(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, orchestrator biz.TaskOrchestratorPort, bus biz.EventBus, v2Recovery biz.V2RecoveryRepo, lg loggateway.Logger) *SessionStatusGuard {
-	return &SessionStatusGuard{uc: uc, teamUC: teamUC, orchestrator: orchestrator, bus: bus, v2Recovery: v2Recovery, lg: lg}
+func NewSessionStatusGuard(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, orchestrator biz.TaskOrchestratorPort, bus biz.EventBus, v2Recovery biz.V2RecoveryRepo, escalator SessionRunDurableEscalator, lg loggateway.Logger) *SessionStatusGuard {
+	return &SessionStatusGuard{uc: uc, teamUC: teamUC, orchestrator: orchestrator, bus: bus, v2Recovery: v2Recovery, escalator: escalator, lg: lg}
 }
 
 func (g *SessionStatusGuard) OnStartup(ctx context.Context) error {
@@ -53,6 +62,16 @@ func (g *SessionStatusGuard) OnShutdown(ctx context.Context) error {
 	// （保留 ctx values）并加上界超时，保证清理真正执行完成。
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
+	// 2026-07-22 L2：先把活跃 interactive run 升级为 durable（写 checkpoint
+	// + cancel runner），重启后 SessionRunDurableWorker 自动续跑。必须在
+	// batch interrupt 之前：escalated session 已被标 interrupted
+	// (server_shutdown)，batch 只兜底剩余 running session。
+	if g.escalator != nil {
+		if n := g.escalator.EscalateAllActiveToDurable(shutdownCtx); n > 0 {
+			g.lg.Info("session status guard: active runs escalated to durable on shutdown",
+				loggateway.Int("count", n))
+		}
+	}
 	if err := g.uc.BatchTransitionInterrupted(shutdownCtx, sessstatus.StatusReasonServerShutdown); err != nil {
 		g.lg.Error("session status guard: failed to transition sessions on shutdown", loggateway.Err(err))
 		return err

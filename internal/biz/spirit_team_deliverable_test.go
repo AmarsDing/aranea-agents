@@ -2,7 +2,6 @@ package biz
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -204,16 +203,102 @@ func TestWriteDeliverablesToSession_PersistsToDeliverablesOutput(t *testing.T) {
 	if stored.DeliverablesOutput == "" || stored.DeliverablesOutput == "{}" {
 		t.Fatalf("DeliverablesOutput should be written, got %q", stored.DeliverablesOutput)
 	}
-	var outputs map[string]string
-	if err := json.Unmarshal([]byte(stored.DeliverablesOutput), &outputs); err != nil {
-		t.Fatalf("DeliverablesOutput must be a JSON object: %v", err)
+	refs := ParseDeliverableRefs(stored.DeliverablesOutput)
+	ref, ok := refs["st_1"]
+	if !ok {
+		t.Fatalf("DeliverablesOutput[st_1] missing, got %q", stored.DeliverablesOutput)
 	}
-	if !strings.Contains(outputs["st_1"], "分析完成") {
-		t.Fatalf("DeliverablesOutput[st_1] should contain team summary, got %q", outputs["st_1"])
+	if !strings.Contains(ref.Summary, "分析完成") {
+		t.Fatalf("DeliverablesOutput[st_1].summary should contain team summary, got %q", ref.Summary)
 	}
 	// ParallelConfigJSON must NOT be overloaded with deliverable output keys.
 	if strings.Contains(stored.ParallelConfigJSON, "deliverable_output_") {
 		t.Fatalf("ParallelConfigJSON must not carry deliverable outputs, got %q", stored.ParallelConfigJSON)
+	}
+}
+
+// P2: the written value must be a DeliverableRef envelope carrying metadata
+// for downstream full-text retrieval decisions.
+func TestWriteDeliverablesToSession_WritesDeliverableRefMetadata(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(teams, sessions, steps)
+
+	// Content longer than MaxSummaryLen (500 runes) so the summary truncates.
+	longContent := strings.Repeat("长", 600) + "\n- 关键发现一\n- 关键发现二"
+	seedCompletedTeamWithSteps(teams, sessions, steps, "t1", "sp1", "st_1", "分析团队", longContent)
+
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	refs := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)
+	ref, ok := refs["st_1"]
+	if !ok {
+		t.Fatalf("st_1 ref missing, got %q", teams.items["t1"].DeliverablesOutput)
+	}
+	if ref.TeamID != "t1" {
+		t.Fatalf("team_id should be the owning team, got %q", ref.TeamID)
+	}
+	if ref.TeamSessionID != "sess-t1" {
+		t.Fatalf("team_session_id should be the team main session, got %q", ref.TeamSessionID)
+	}
+	fullSize := len([]rune(longContent))
+	if ref.SizeChars != fullSize {
+		t.Fatalf("size_chars should be the FULL content size %d, got %d", fullSize, ref.SizeChars)
+	}
+	if !ref.Truncated {
+		t.Fatalf("content longer than MaxSummaryLen must mark truncated=true")
+	}
+	if len([]rune(ref.Summary)) > MaxSummaryLen {
+		t.Fatalf("summary must be truncated to MaxSummaryLen, got %d runes", len([]rune(ref.Summary)))
+	}
+	if !strings.Contains(ref.KeyFindings, "关键发现一") {
+		t.Fatalf("key_findings should extract bullet lines, got %q", ref.KeyFindings)
+	}
+}
+
+// Short content fits the summary budget: truncated=false and summary is the
+// full content.
+func TestWriteDeliverablesToSession_ShortContent_NotTruncated(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(teams, sessions, steps)
+
+	seedCompletedTeamWithSteps(teams, sessions, steps, "t1", "sp1", "st_1", "分析团队", "短成果")
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]
+	if ref.Truncated {
+		t.Fatalf("short content must not be marked truncated")
+	}
+	if ref.Summary != "短成果" || ref.SizeChars != len([]rune("短成果")) {
+		t.Fatalf("summary/size mismatch: %+v", ref)
+	}
+}
+
+// A legacy plain-string value for ANOTHER node in the same cache must survive
+// a P2 write (mixed map coexistence).
+func TestWriteDeliverablesToSession_PreservesLegacyEntries(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	team := seedCompletedTeam(teams, sessions, "t1", "sp1", "st_1", "分析团队", "新成果")
+	team.DeliverablesOutput = `{"st_0":"旧节点摘要"}`
+	teams.items["t1"] = team
+
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	refs := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)
+	if refs["st_0"].Summary != "旧节点摘要" {
+		t.Fatalf("legacy entry st_0 must be preserved, got %q", teams.items["t1"].DeliverablesOutput)
+	}
+	if refs["st_1"].Summary != "新成果" || refs["st_1"].TeamID != "t1" {
+		t.Fatalf("new P2 envelope missing, got %q", teams.items["t1"].DeliverablesOutput)
 	}
 }
 
@@ -232,12 +317,12 @@ func TestWriteDeliverablesToSession_CorruptCache_Rebuilds(t *testing.T) {
 		t.Fatalf("WriteDeliverablesToSession: %v", err)
 	}
 	stored := teams.items["t1"]
-	var outputs map[string]string
-	if err := json.Unmarshal([]byte(stored.DeliverablesOutput), &outputs); err != nil {
-		t.Fatalf("rebuilt DeliverablesOutput must be valid JSON, got %q: %v", stored.DeliverablesOutput, err)
+	refs := ParseDeliverableRefs(stored.DeliverablesOutput)
+	if len(refs) == 0 {
+		t.Fatalf("rebuilt DeliverablesOutput must be valid, got %q", stored.DeliverablesOutput)
 	}
-	if outputs["st_1"] != "新成果" {
-		t.Fatalf("rebuilt cache should contain the new summary, got %q", outputs["st_1"])
+	if refs["st_1"].Summary != "新成果" {
+		t.Fatalf("rebuilt cache should contain the new summary, got %q", refs["st_1"].Summary)
 	}
 }
 
@@ -267,23 +352,25 @@ func TestWriteDeliverablesToSession_NoAssistantMessage_NoOp(t *testing.T) {
 	}
 }
 
-func TestReadDeliverableOutput_FromDeliverablesOutput(t *testing.T) {
+func TestReadDeliverableRef_DualMode(t *testing.T) {
 	u := newDeliverableUsecase(newDeliverableTeamRepo(), newDeliverableSessionAccessor())
 	cases := []struct {
-		name string
-		team Team
-		want string
+		name        string
+		team        Team
+		wantSummary string
+		wantOK      bool
 	}{
-		{"present", Team{DagNodeID: "st_1", DeliverablesOutput: `{"st_1":"上游成果"}`}, "上游成果"},
-		{"empty", Team{DagNodeID: "st_1"}, ""},
-		{"empty object", Team{DagNodeID: "st_1", DeliverablesOutput: "{}"}, ""},
-		{"invalid json", Team{DagNodeID: "st_1", DeliverablesOutput: "{bad"}, ""},
-		{"missing key", Team{DagNodeID: "st_2", DeliverablesOutput: `{"st_1":"x"}`}, ""},
+		{"p2 envelope", Team{DagNodeID: "st_1", DeliverablesOutput: `{"st_1":{"summary":"信封摘要","team_id":"t1","team_session_id":"sess-t1","size_chars":100,"truncated":true}}`}, "信封摘要", true},
+		{"legacy string", Team{DagNodeID: "st_1", DeliverablesOutput: `{"st_1":"旧摘要"}`}, "旧摘要", true},
+		{"missing key", Team{DagNodeID: "st_2", DeliverablesOutput: `{"st_1":{"summary":"x"}}`}, "", false},
+		{"corrupt", Team{DagNodeID: "st_1", DeliverablesOutput: "{bad"}, "", false},
+		{"no dag node", Team{DeliverablesOutput: `{"st_1":"x"}`}, "", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := u.readDeliverableOutput(tc.team); got != tc.want {
-				t.Fatalf("readDeliverableOutput = %q, want %q", got, tc.want)
+			ref, ok := u.readDeliverableRef(tc.team)
+			if ok != tc.wantOK || ref.Summary != tc.wantSummary {
+				t.Fatalf("readDeliverableRef = (%+v, %v), want summary %q ok %v", ref, ok, tc.wantSummary, tc.wantOK)
 			}
 		})
 	}
@@ -300,8 +387,8 @@ func TestRecordTeamCompletion_PersistsDeliverableOutput(t *testing.T) {
 	u.RecordTeamCompletion(context.Background(), team, 100)
 
 	stored := teams.items["t1"]
-	var outputs map[string]string
-	if err := json.Unmarshal([]byte(stored.DeliverablesOutput), &outputs); err != nil || outputs["st_1"] == "" {
+	refs := ParseDeliverableRefs(stored.DeliverablesOutput)
+	if refs["st_1"].Summary == "" {
 		t.Fatalf("RecordTeamCompletion should persist deliverable output, got %q", stored.DeliverablesOutput)
 	}
 }
@@ -344,6 +431,267 @@ func TestInjectUpstreamDeliverables_FallbackExtract(t *testing.T) {
 	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
 	if !strings.Contains(prefix, "即时提取的成果") {
 		t.Fatalf("fallback extraction should supply upstream output, got %q", prefix)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P2 产物引用化：截断时附加 read_upstream_deliverable 取全文指引
+// ---------------------------------------------------------------------------
+
+// Persisted P2 envelope with truncated=true → the injection prefix must tell
+// the downstream team how to retrieve the full text.
+func TestInjectUpstreamDeliverables_TruncatedRef_AppendsFullTextGuidance(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	upstream := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "调研团队", "不应使用此消息")
+	upstream.DeliverablesOutput = `{"st_1":{"summary":"摘要（已截断）...","team_id":"t-up","team_session_id":"sess-t-up","size_chars":8000,"truncated":true}}`
+	teams.items["t-up"] = upstream
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	if !strings.Contains(prefix, "摘要（已截断）...") {
+		t.Fatalf("prefix should contain the envelope summary, got %q", prefix)
+	}
+	if !strings.Contains(prefix, `read_upstream_deliverable(team_id="t-up")`) {
+		t.Fatalf("truncated ref should append full-text retrieval guidance, got %q", prefix)
+	}
+	if !strings.Contains(prefix, "8000") {
+		t.Fatalf("guidance should mention the full size, got %q", prefix)
+	}
+}
+
+// Untruncated envelopes and legacy strings carry no retrieval guidance —
+// the summary IS the full content (or its truncation state is unknown).
+func TestInjectUpstreamDeliverables_UntruncatedOrLegacy_NoGuidance(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	up := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "短内容团队", "不应使用")
+	up.DeliverablesOutput = `{"st_1":{"summary":"完整短摘要","team_id":"t-up","team_session_id":"sess-t-up","size_chars":5,"truncated":false}}`
+	teams.items["t-up"] = up
+	legacy := seedCompletedTeam(teams, sessions, "t-legacy", "sp1", "st_0", "旧团队", "不应使用")
+	legacy.DeliverablesOutput = `{"st_0":"旧格式摘要"}`
+	teams.items["t-legacy"] = legacy
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1", "st_0"}}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	if strings.Contains(prefix, "read_upstream_deliverable") {
+		t.Fatalf("untruncated/legacy refs must not append guidance, got %q", prefix)
+	}
+	if !strings.Contains(prefix, "完整短摘要") || !strings.Contains(prefix, "旧格式摘要") {
+		t.Fatalf("both summaries should be present, got %q", prefix)
+	}
+}
+
+// Fallback path (cache missing): long extracted content is also truncated, so
+// the guidance must be appended with the upstream team's ID.
+func TestInjectUpstreamDeliverables_FallbackLongContent_AppendsGuidance(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(teams, sessions, steps)
+
+	longContent := strings.Repeat("详", 800)
+	seedCompletedTeamWithSteps(teams, sessions, steps, "t-up", "sp1", "st_1", "上游团队", longContent)
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	if !strings.Contains(prefix, `read_upstream_deliverable(team_id="t-up")`) {
+		t.Fatalf("fallback extraction with truncated content should append guidance, got %q", prefix)
+	}
+}
+
+// Fallback path with short content: no guidance (nothing was truncated).
+func TestInjectUpstreamDeliverables_FallbackShortContent_NoGuidance(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+	seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "上游团队", "即时提取的成果")
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	if strings.Contains(prefix, "read_upstream_deliverable") {
+		t.Fatalf("short fallback content must not append guidance, got %q", prefix)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P2 产物引用化：ReadUpstreamDeliverable（read_upstream_deliverable 工具的 biz 支撑）
+// ---------------------------------------------------------------------------
+
+// The tool's whole point: return the FULL deliverable text (well beyond the
+// 500-rune summary budget) so downstream teams can consume it on demand.
+func TestReadUpstreamDeliverable_ReturnsFullContent(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(teams, sessions, steps)
+
+	longContent := strings.Repeat("全", 3000) + "\n- 发现X"
+	seedCompletedTeamWithSteps(teams, sessions, steps, "t-up", "sp1", "st_1", "调研团队", longContent)
+
+	out, err := u.ReadUpstreamDeliverable(context.Background(), "t-up", 0)
+	if err != nil {
+		t.Fatalf("ReadUpstreamDeliverable: %v", err)
+	}
+	if out.Content != longContent {
+		t.Fatalf("content should be the FULL text (%d runes), got %d runes", len([]rune(longContent)), len([]rune(out.Content)))
+	}
+	if out.SizeChars != len([]rune(longContent)) {
+		t.Fatalf("size_chars mismatch: %d", out.SizeChars)
+	}
+	if out.Truncated {
+		t.Fatalf("content within default budget must not be marked truncated")
+	}
+	if out.TeamID != "t-up" || out.SessionID != "sess-t-up" {
+		t.Fatalf("ids mismatch: %+v", out)
+	}
+}
+
+func TestReadUpstreamDeliverable_TruncatesToMaxChars(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(teams, sessions, steps)
+
+	longContent := strings.Repeat("详", 3000)
+	seedCompletedTeamWithSteps(teams, sessions, steps, "t-up", "sp1", "st_1", "团队", longContent)
+
+	out, err := u.ReadUpstreamDeliverable(context.Background(), "t-up", 100)
+	if err != nil {
+		t.Fatalf("ReadUpstreamDeliverable: %v", err)
+	}
+	if !out.Truncated {
+		t.Fatalf("3000 runes with maxChars=100 must be truncated")
+	}
+	if len([]rune(out.Content)) > 200 {
+		t.Fatalf("truncated content (with marker) should stay near maxChars, got %d runes", len([]rune(out.Content)))
+	}
+	if out.SizeChars != 3000 {
+		t.Fatalf("size_chars must report the FULL size, got %d", out.SizeChars)
+	}
+}
+
+// maxChars above the hard cap must be clamped to the default budget (defense
+// against runaway context consumption).
+func TestReadUpstreamDeliverable_MaxCharsClamped(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(teams, sessions, steps)
+
+	longContent := strings.Repeat("量", MaxUpstreamDeliverableChars+5000)
+	seedCompletedTeamWithSteps(teams, sessions, steps, "t-up", "sp1", "st_1", "团队", longContent)
+
+	out, err := u.ReadUpstreamDeliverable(context.Background(), "t-up", MaxUpstreamDeliverableChars*2)
+	if err != nil {
+		t.Fatalf("ReadUpstreamDeliverable: %v", err)
+	}
+	if !out.Truncated {
+		t.Fatalf("content beyond the default budget must be truncated after clamping")
+	}
+	if len([]rune(out.Content)) > DefaultUpstreamDeliverableMaxChars+100 {
+		t.Fatalf("clamped budget should be the default %d, got %d runes", DefaultUpstreamDeliverableMaxChars, len([]rune(out.Content)))
+	}
+}
+
+func TestReadUpstreamDeliverable_TeamNotCompleted_Error(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+	teams.items["t-run"] = Team{ID: "t-run", SpiritSessionID: "sp1", DagNodeID: "st_1", Status: TeamStatusRunning}
+
+	if _, err := u.ReadUpstreamDeliverable(context.Background(), "t-run", 0); err == nil {
+		t.Fatalf("running team must reject full-text reads")
+	}
+}
+
+func TestReadUpstreamDeliverable_NoContent_Error(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+	seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "团队", "")
+
+	if _, err := u.ReadUpstreamDeliverable(context.Background(), "t-up", 0); err == nil {
+		t.Fatalf("completed team without deliverable content must error")
+	}
+}
+
+func TestReadUpstreamDeliverable_EmptyTeamID_Error(t *testing.T) {
+	u := newDeliverableUsecase(newDeliverableTeamRepo(), newDeliverableSessionAccessor())
+	if _, err := u.ReadUpstreamDeliverable(context.Background(), "  ", 0); err == nil {
+		t.Fatalf("blank team_id must error")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P2 产物引用化（B.10.16）：DeliverableRef 信封 + 双模兼容读取
+// ---------------------------------------------------------------------------
+
+func TestParseDeliverableRefs_P2Envelope(t *testing.T) {
+	raw := `{"st_1":{"summary":"摘要","key_findings":"- 发现A","team_id":"t1","team_session_id":"sess-t1","size_chars":1200,"truncated":true}}`
+	refs := ParseDeliverableRefs(raw)
+	ref, ok := refs["st_1"]
+	if !ok {
+		t.Fatalf("st_1 ref missing, got %+v", refs)
+	}
+	if ref.Summary != "摘要" || ref.KeyFindings != "- 发现A" {
+		t.Fatalf("summary/key_findings mismatch: %+v", ref)
+	}
+	if ref.TeamID != "t1" || ref.TeamSessionID != "sess-t1" {
+		t.Fatalf("team/session id mismatch: %+v", ref)
+	}
+	if ref.SizeChars != 1200 || !ref.Truncated {
+		t.Fatalf("size/truncated mismatch: %+v", ref)
+	}
+}
+
+// Legacy rows store a plain JSON string per dag node; they must still parse
+// into a summary-only ref so downstream injection keeps working pre-migration.
+func TestParseDeliverableRefs_LegacyString(t *testing.T) {
+	refs := ParseDeliverableRefs(`{"st_1":"旧格式摘要"}`)
+	ref, ok := refs["st_1"]
+	if !ok {
+		t.Fatalf("st_1 ref missing, got %+v", refs)
+	}
+	if ref.Summary != "旧格式摘要" {
+		t.Fatalf("legacy string should become the summary, got %+v", ref)
+	}
+	if ref.Truncated || ref.TeamID != "" || ref.TeamSessionID != "" || ref.SizeChars != 0 {
+		t.Fatalf("legacy ref must carry no P2 metadata, got %+v", ref)
+	}
+}
+
+// A row may mix legacy string values (written before P2) with P2 envelopes
+// (written after); both forms must coexist in one map.
+func TestParseDeliverableRefs_MixedLegacyAndEnvelope(t *testing.T) {
+	raw := `{"st_1":"旧摘要","st_2":{"summary":"新摘要","team_id":"t2","team_session_id":"sess-t2","size_chars":10,"truncated":false}}`
+	refs := ParseDeliverableRefs(raw)
+	if len(refs) != 2 {
+		t.Fatalf("expected 2 refs, got %+v", refs)
+	}
+	if refs["st_1"].Summary != "旧摘要" {
+		t.Fatalf("legacy value mismatch: %+v", refs["st_1"])
+	}
+	if refs["st_2"].Summary != "新摘要" || refs["st_2"].TeamID != "t2" {
+		t.Fatalf("envelope value mismatch: %+v", refs["st_2"])
+	}
+}
+
+func TestParseDeliverableRefs_EmptyAndCorrupt(t *testing.T) {
+	cases := map[string]string{
+		"empty":        "",
+		"empty object": "{}",
+		"corrupt":      "{bad",
+		"wrong value":  `{"st_1":123}`,
+	}
+	for name, raw := range cases {
+		if refs := ParseDeliverableRefs(raw); len(refs) != 0 {
+			t.Fatalf("%s: expected no refs, got %+v", name, refs)
+		}
 	}
 }
 

@@ -37,6 +37,12 @@ const recoveryError = "orphaned by server restart: terminalized at startup"
 // entity tables. All updates run in one transaction: either every orphan is
 // recovered or none is, keeping cross-entity state consistent.
 //
+// Target status differs by entity (L3, 2026-07-22):
+//   - tasks_v2 → interrupted — top-level user-facing work items stay
+//     resumable; the user explicitly continues them via ResumeInterruptedTask.
+//   - turns/steps/team_stages/team_runs/member_sessions → failed — these are
+//     execution internals; rerun reconstructs them from the task level.
+//
 // Human-waiting statuses are deliberately excluded (see biz.V2RecoveryRepo):
 //   - steps_v2.tool_blocked        — resumable via the tool-approve path
 //   - team_stages_v2.waiting_human — resumable via the HITL resume path
@@ -50,7 +56,7 @@ func (r *v2RecoveryRepo) FailOrphanedInFlight(ctx context.Context, recoverAt tim
 
 		n, err := w.TaskV2.Update().
 			Where(taskv2.StatusIn(string(biz.TaskStatusPending), string(biz.TaskStatusRunning))).
-			SetStatus(string(biz.TaskStatusFailed)).
+			SetStatus(string(biz.TaskStatusInterrupted)).
 			SetCompletedAt(recoverAt).
 			SetUpdatedAt(recoverAt).
 			AddVersion(1).

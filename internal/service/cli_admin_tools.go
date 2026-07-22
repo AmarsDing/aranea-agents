@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/cli_admin"
+	deliverabletools "aranea-agents/internal/tools/deliverable"
 	"aranea-agents/internal/tools/memory_butler"
 	orchtools "aranea-agents/internal/tools/orchestrator"
 	"aranea-agents/internal/tools/skills_butler"
@@ -208,6 +209,17 @@ func (o *ChatOrchestrator) memoryButlerTools(_ context.Context, ag biz.Agent) []
 		Agents:      o.td().ReadDeps.Agents,
 		LG:          o.lg(),
 	})
+}
+
+// deliverableReaderTools assembles the P2 read_upstream_deliverable tool for
+// every agent (read-only, low risk). Downstream team members use it to fetch
+// an upstream team's full deliverable text when the injected summary is
+// truncated; the tool is a thin adapter over biz.SpiritTeamController.
+func (o *ChatOrchestrator) deliverableReaderTools() []trpctool.Tool {
+	if o == nil || o.team().SpiritUC == nil {
+		return nil
+	}
+	return []trpctool.Tool{deliverabletools.NewReadUpstreamDeliverableTool(o.team().SpiritUC, o.lg())}
 }
 
 func skillItemFromBiz(s biz.Skill) cli_admin.SkillItem {

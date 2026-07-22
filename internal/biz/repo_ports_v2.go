@@ -40,6 +40,11 @@ type TaskV2Writer interface {
 	CreateTask(ctx context.Context, t Task) (Task, error)
 	UpdateTask(ctx context.Context, t Task) (Task, error)
 	UpsertTask(ctx context.Context, t Task) (Task, error)
+	// ResumeInterruptedTask atomically transitions a task from interrupted
+	// back to running (L3, 2026-07-22). Returns ok=false when the task is not
+	// currently interrupted (already resumed by a concurrent click, or
+	// terminal otherwise) — callers must treat !ok as a conflict, not an error.
+	ResumeInterruptedTask(ctx context.Context, id string, resumeAt time.Time) (t Task, ok bool, err error)
 }
 
 type TaskV2Repo interface {
