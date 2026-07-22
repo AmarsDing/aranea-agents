@@ -93,8 +93,11 @@ func TestEndToEnd_V2Pipeline(t *testing.T) {
 
 	// Verify v2 repos were called.
 	rs.mu.Lock()
-	if len(rs.tasks) < 2 {
-		t.Errorf("expected >=2 task upserts (created+completed), got %d", len(rs.tasks))
+	// L3 (2026-07-22): task.completed routes to CompleteTaskTerminal, so the
+	// created state lands in rs.tasks (UpsertTask) and the terminal state in
+	// rs.terminal — together they replace the former ">=2 upserts" invariant.
+	if len(rs.tasks) < 1 || len(rs.terminal) < 1 {
+		t.Errorf("expected task created (tasks>=1) + completed (terminal>=1), got tasks=%d terminal=%d", len(rs.tasks), len(rs.terminal))
 	}
 	if len(rs.turns) < 2 {
 		t.Errorf("expected >=2 turn upserts (started+completed), got %d", len(rs.turns))
@@ -243,9 +246,19 @@ func TestEndToEnd_CancelledTurnMarksCancelledStatus(t *testing.T) {
 	}
 	var lastTask biz.Task
 	var hasTask bool
+	// L3 (2026-07-22): terminal task events (task.completed incl. Status=
+	// Cancelled) persist via CompleteTaskTerminal into rs.terminal, while
+	// non-terminal states land in rs.tasks via UpsertTask. Scan both and pick
+	// the highest version (production CAS semantics).
 	for i := range rs.tasks {
 		if rs.tasks[i].ID == "task-cancel" && (!hasTask || rs.tasks[i].Version >= lastTask.Version) {
 			lastTask = rs.tasks[i]
+			hasTask = true
+		}
+	}
+	for i := range rs.terminal {
+		if rs.terminal[i].ID == "task-cancel" && (!hasTask || rs.terminal[i].Version >= lastTask.Version) {
+			lastTask = rs.terminal[i]
 			hasTask = true
 		}
 	}

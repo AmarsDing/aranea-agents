@@ -678,6 +678,7 @@ func provideChatServiceDeps(
 	turnLifecycle *biz.TurnLifecycleUsecase,
 	stepReader biz.StepV2Reader,
 	stepWriter biz.StepV2Writer,
+	taskV2Repo biz.TaskV2Repo,
 	heartbeatEmitter *service.RunHeartbeatEmitter,
 	deadLetterQueue *lifecycle.DeadLetterQueue,
 	profileResolver *chatagent.ProfileResolver,
@@ -717,6 +718,7 @@ func provideChatServiceDeps(
 			Admission:    biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{Quota: usage, Agents: agents}),
 			StepReader:   stepReader,
 			StepWriter:   stepWriter,
+			TaskV2:       taskV2Repo,
 		},
 		Usage: service.ChatUsageDeps{
 			Usage:        usage,
@@ -763,6 +765,11 @@ func provideRunCanceller(svc *service.ChatService) server.RunCanceller {
 }
 
 func provideChatSender(svc *service.ChatService) server.ChatSender {
+	return svc
+}
+
+// provideTaskResumer binds ChatService as the WS resume_task handler (L3).
+func provideTaskResumer(svc *service.ChatService) server.TaskResumer {
 	return svc
 }
 
@@ -1525,7 +1532,7 @@ func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller bi
 	return biz.NewVerificationGateExecutor(deptLeadMgr, caller, lg)
 }
 
-func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionSugg biz.EvolutionSuggestionRepo, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, stepReader biz.StepV2Reader, lg loggateway.Logger) *biz.SpiritTeamUsecase {
+func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionSugg biz.EvolutionSuggestionRepo, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, stepReader biz.StepV2Reader, sessionRT *araneasession.Runtime, lg loggateway.Logger) *biz.SpiritTeamUsecase {
 	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg,
 		biz.WithSpiritTransactor(transactor),
 		biz.WithOrchestrationCache(orchCache),
@@ -1533,6 +1540,9 @@ func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUse
 		biz.WithVerificationGateExecutor(gateExecutor),
 		biz.WithDeptLeadMgr(deptLeadMgr),
 		biz.WithSpiritStepReader(stepReader),
+		// B.10.15.4 Graph StateFields bridge: read graph final-state
+		// deliverables for enable_state_deliverable teams.
+		biz.WithGraphDeliverableReader(service.NewGraphDeliverableReader(sessionRT)),
 	)
 }
 
@@ -1817,10 +1827,12 @@ func provideWSServer(
 	eventBus biz.EventBus,
 	sessionAuth server.SessionAuthorizer,
 	outbox biz.EventDeliveryOutboxRepo,
+	resumer server.TaskResumer,
 ) *server.WSServer {
 	srv := server.NewWSServerFromInfra(c, infra, canceller, sender, turnExecutor, runtimeConf, lg, eventBus, sessionAuth)
 	if srv != nil {
 		srv.SetEventOutbox(outbox)
+		srv.SetTaskResumer(resumer)
 	}
 	return srv
 }
@@ -2208,6 +2220,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideChannelNotifierDeps,
 		provideRunCanceller,
 		provideChatSender,
+		provideTaskResumer,
 		provideArtifactRuntimeService,
 		provideArtifactSigner,
 		provideMemoryService,

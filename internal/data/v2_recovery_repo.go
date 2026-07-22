@@ -46,13 +46,31 @@ const recoveryError = "orphaned by server restart: terminalized at startup"
 // Human-waiting statuses are deliberately excluded (see biz.V2RecoveryRepo):
 //   - steps_v2.tool_blocked        — resumable via the tool-approve path
 //   - team_stages_v2.waiting_human — resumable via the HITL resume path
-func (r *v2RecoveryRepo) FailOrphanedInFlight(ctx context.Context, recoverAt time.Time) (biz.V2RecoveryStats, error) {
+func (r *v2RecoveryRepo) FailOrphanedInFlight(ctx context.Context, recoverAt time.Time) (biz.V2RecoveryStats, []biz.InterruptedTaskRef, error) {
 	if r == nil || r.data == nil {
-		return biz.V2RecoveryStats{}, fmt.Errorf("v2 recovery repo: database not configured")
+		return biz.V2RecoveryStats{}, nil, fmt.Errorf("v2 recovery repo: database not configured")
 	}
 	var stats biz.V2RecoveryStats
+	var interrupted []biz.InterruptedTaskRef
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		w := r.data.RW().Write(txCtx)
+
+		// L3: capture the tasks about to be interrupted BEFORE the update so
+		// the startup guard can notify each affected session (resumable hint).
+		orphanTasks, err := w.TaskV2.Query().
+			Where(taskv2.StatusIn(string(biz.TaskStatusPending), string(biz.TaskStatusRunning))).
+			Select(taskv2.FieldID, taskv2.FieldSessionID, taskv2.FieldUserMessage).
+			All(txCtx)
+		if err != nil {
+			return fmt.Errorf("tasks_v2 query orphans: %w", err)
+		}
+		for _, row := range orphanTasks {
+			interrupted = append(interrupted, biz.InterruptedTaskRef{
+				TaskID:      row.ID,
+				SessionID:   row.SessionID,
+				UserMessage: row.UserMessage,
+			})
+		}
 
 		n, err := w.TaskV2.Update().
 			Where(taskv2.StatusIn(string(biz.TaskStatusPending), string(biz.TaskStatusRunning))).
@@ -134,7 +152,7 @@ func (r *v2RecoveryRepo) FailOrphanedInFlight(ctx context.Context, recoverAt tim
 		return nil
 	})
 	if err != nil {
-		return biz.V2RecoveryStats{}, entErrToBizErr(err, "V2_RECOVERY")
+		return biz.V2RecoveryStats{}, nil, entErrToBizErr(err, "V2_RECOVERY")
 	}
 	if stats.Total() > 0 {
 		r.lg.Info("v2 orphaned in-flight entities recovered",
@@ -146,5 +164,5 @@ func (r *v2RecoveryRepo) FailOrphanedInFlight(ctx context.Context, recoverAt tim
 			loggateway.Int("member_sessions", stats.MemberSessions),
 		)
 	}
-	return stats, nil
+	return stats, interrupted, nil
 }

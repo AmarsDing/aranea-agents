@@ -102,14 +102,15 @@ func (r *ctxAwareSessionRepo) UpdateSession(ctx context.Context, id string, fiel
 
 // stubV2RecoveryRepo records FailOrphanedInFlight calls (2026-07-21 P1-5 F1).
 type stubV2RecoveryRepo struct {
-	called bool
-	stats  biz.V2RecoveryStats
-	err    error
+	called      bool
+	stats       biz.V2RecoveryStats
+	interrupted []biz.InterruptedTaskRef
+	err         error
 }
 
-func (s *stubV2RecoveryRepo) FailOrphanedInFlight(_ context.Context, _ time.Time) (biz.V2RecoveryStats, error) {
+func (s *stubV2RecoveryRepo) FailOrphanedInFlight(_ context.Context, _ time.Time) (biz.V2RecoveryStats, []biz.InterruptedTaskRef, error) {
 	s.called = true
-	return s.stats, s.err
+	return s.stats, s.interrupted, s.err
 }
 
 func TestSessionStatusGuard_OnStartup(t *testing.T) {
@@ -226,6 +227,68 @@ type stubDurableEscalator struct {
 func (s *stubDurableEscalator) EscalateAllActiveToDurable(_ context.Context) int {
 	s.called = true
 	return s.n
+}
+
+// stubGuardEventBus captures published events (L3 notice assertions).
+type stubGuardEventBus struct {
+	published []biz.Event
+}
+
+func (s *stubGuardEventBus) Publish(_ context.Context, e biz.Event) {
+	s.published = append(s.published, e)
+}
+
+func (s *stubGuardEventBus) Subscribe(_ biz.EventSubscribeOptions) (<-chan biz.Event, func()) {
+	return make(chan biz.Event), func() {}
+}
+
+// 2026-07-22 L3-F3：启动恢复后必须对每个有 interrupted task 的 session 发
+// 一条 task_interrupted system.notice（按 session 分组，meta 带可续跑 task 列表）。
+func TestSessionStatusGuard_OnStartup_NotifiesInterruptedTasks(t *testing.T) {
+	repo := newStubSessionRepoForGuard()
+	uc := newTestGuardUC(repo)
+	rec := &stubV2RecoveryRepo{
+		stats: biz.V2RecoveryStats{Tasks: 3},
+		interrupted: []biz.InterruptedTaskRef{
+			{TaskID: "t-1", SessionID: "s-a", UserMessage: "写报告"},
+			{TaskID: "t-2", SessionID: "s-a", UserMessage: "翻译"},
+			{TaskID: "t-3", SessionID: "s-b", UserMessage: "查资料"},
+		},
+	}
+	bus := &stubGuardEventBus{}
+	g := NewSessionStatusGuard(uc, nil, nil, bus, rec, nil, loggateway.NewNoop())
+
+	if err := g.OnStartup(context.Background()); err != nil {
+		t.Fatalf("OnStartup: %v", err)
+	}
+	// 2 sessions → 2 notices, grouped per session.
+	var notices []*biz.SystemNoticeEvent
+	for _, e := range bus.published {
+		if n, ok := e.(*biz.SystemNoticeEvent); ok && n.NoticeType == "task_interrupted" {
+			notices = append(notices, n)
+		}
+	}
+	if len(notices) != 2 {
+		t.Fatalf("expected 2 task_interrupted notices, got %d (%+v)", len(notices), bus.published)
+	}
+	bySession := map[string]*biz.SystemNoticeEvent{}
+	for _, n := range notices {
+		bySession[n.SpiritSessionID()] = n
+	}
+	sa, ok := bySession["s-a"]
+	if !ok {
+		t.Fatalf("missing notice for s-a: %+v", bySession)
+	}
+	tasks, _ := sa.Meta["tasks"].([]map[string]any)
+	if len(tasks) != 2 {
+		t.Errorf("s-a notice tasks = %+v, want 2 entries", sa.Meta["tasks"])
+	}
+	if resumable, _ := sa.Meta["resumable"].(bool); !resumable {
+		t.Errorf("s-a notice resumable = %v, want true", sa.Meta["resumable"])
+	}
+	if _, ok := bySession["s-b"]; !ok {
+		t.Errorf("missing notice for s-b")
+	}
 }
 
 // 2026-07-22 L2：OnShutdown 必须先把活跃 interactive run durable 化（写

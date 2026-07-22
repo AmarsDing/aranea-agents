@@ -16,6 +16,7 @@ import (
 type fakeRepoSet struct {
 	mu         sync.Mutex
 	tasks      []biz.Task
+	terminal   []biz.Task // CompleteTaskTerminal calls (L3)
 	turns      []biz.Turn
 	steps      []biz.Step
 	boards     []biz.PlanBoard
@@ -31,6 +32,16 @@ func (f *fakeRepoSet) UpsertTask(_ context.Context, t biz.Task) (biz.Task, error
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.tasks = append(f.tasks, t)
+	return t, nil
+}
+
+// CompleteTaskTerminal captures terminal task events (L3, 2026-07-22).
+// task.completed / task.failed route here instead of UpsertTask so version
+// is bumped from the DB value (see event_router.go).
+func (f *fakeRepoSet) CompleteTaskTerminal(_ context.Context, t biz.Task) (biz.Task, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.terminal = append(f.terminal, t)
 	return t, nil
 }
 func (f *fakeRepoSet) UpsertTurn(_ context.Context, t biz.Turn) (biz.Turn, error) {
@@ -340,16 +351,17 @@ func TestSequencer_TerminalEventWBPF(t *testing.T) {
 		t.Fatalf("Flush: %v", err)
 	}
 
-	// Verify the task was persisted exactly once (WBPF sync persist succeeds,
-	// so the async retry path is NOT taken — no double persist).
+	// Verify the task was persisted exactly once via the terminal path (L3:
+	// task.completed routes to CompleteTaskTerminal, not UpsertTask; WBPF sync
+	// persist succeeds so the async retry path is NOT taken — no double persist).
 	rs.mu.Lock()
-	if len(rs.tasks) != 1 {
+	if len(rs.terminal) != 1 {
 		rs.mu.Unlock()
-		t.Fatalf("expected 1 task persisted (WBPF sync), got %d", len(rs.tasks))
+		t.Fatalf("expected 1 task terminal-persisted (WBPF sync), got %d (upserts=%d)", len(rs.terminal), len(rs.tasks))
 	}
-	if rs.tasks[0].ID != "task-wbpf" || rs.tasks[0].Status != biz.TaskStatusCompleted {
+	if rs.terminal[0].ID != "task-wbpf" || rs.terminal[0].Status != biz.TaskStatusCompleted {
 		rs.mu.Unlock()
-		t.Errorf("persisted task = %+v, want task-wbpf/completed", rs.tasks[0])
+		t.Errorf("persisted task = %+v, want task-wbpf/completed", rs.terminal[0])
 	}
 	rs.mu.Unlock()
 
@@ -415,13 +427,14 @@ func TestSequencer_TerminalEventWBPF_FallbackOnPersistError(t *testing.T) {
 	}
 }
 
-// errorThenSuccessRepoSet fails the first UpsertTask call, then succeeds.
+// errorThenSuccessRepoSet fails the first CompleteTaskTerminal call, then
+// succeeds. (L3: task.failed routes to CompleteTaskTerminal, not UpsertTask.)
 type errorThenSuccessRepoSet struct {
 	fakeRepoSet
 	persistCount int
 }
 
-func (f *errorThenSuccessRepoSet) UpsertTask(ctx context.Context, t biz.Task) (biz.Task, error) {
+func (f *errorThenSuccessRepoSet) CompleteTaskTerminal(ctx context.Context, t biz.Task) (biz.Task, error) {
 	f.mu.Lock()
 	f.persistCount++
 	count := f.persistCount
@@ -429,7 +442,7 @@ func (f *errorThenSuccessRepoSet) UpsertTask(ctx context.Context, t biz.Task) (b
 	if count == 1 {
 		return biz.Task{}, errors.New("simulated persist failure")
 	}
-	return f.fakeRepoSet.UpsertTask(ctx, t)
+	return f.fakeRepoSet.CompleteTaskTerminal(ctx, t)
 }
 
 // fakeOutbox captures critical outbox Insert/MarkPublished for B-06 tests.

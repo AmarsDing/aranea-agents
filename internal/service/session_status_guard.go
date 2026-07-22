@@ -140,7 +140,7 @@ func (g *SessionStatusGuard) recoverOrphanedV2Entities(ctx context.Context) erro
 	if g.v2Recovery == nil {
 		return nil
 	}
-	stats, err := g.v2Recovery.FailOrphanedInFlight(ctx, time.Now().UTC())
+	stats, interrupted, err := g.v2Recovery.FailOrphanedInFlight(ctx, time.Now().UTC())
 	if err != nil {
 		return err
 	}
@@ -155,5 +155,37 @@ func (g *SessionStatusGuard) recoverOrphanedV2Entities(ctx context.Context) erro
 			loggateway.Int("member_sessions", stats.MemberSessions),
 		)
 	}
+	g.notifyInterruptedTasks(ctx, interrupted)
 	return nil
+}
+
+// notifyInterruptedTasks publishes one system.notice per affected session
+// listing the tasks terminalized to interrupted by startup recovery (L3).
+// The notice is a hint only — the durable resume entry point is the task
+// card rendered from DB state, so losing the notice (no WS client connected
+// at startup) is acceptable.
+func (g *SessionStatusGuard) notifyInterruptedTasks(ctx context.Context, interrupted []biz.InterruptedTaskRef) {
+	if g.bus == nil || len(interrupted) == 0 {
+		return
+	}
+	bySession := make(map[string][]biz.InterruptedTaskRef)
+	for _, ref := range interrupted {
+		if ref.SessionID == "" {
+			continue
+		}
+		bySession[ref.SessionID] = append(bySession[ref.SessionID], ref)
+	}
+	for sessionID, refs := range bySession {
+		tasks := make([]map[string]any, 0, len(refs))
+		for _, ref := range refs {
+			tasks = append(tasks, map[string]any{
+				"task_id":      ref.TaskID,
+				"user_message": ref.UserMessage,
+			})
+		}
+		g.bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "task_interrupted", "", map[string]any{
+			"tasks":     tasks,
+			"resumable": true,
+		}))
+	}
 }

@@ -207,6 +207,58 @@ func (r *taskV2Repo) UpsertTask(ctx context.Context, t biz.Task) (biz.Task, erro
 	return entTaskV2ToBiz(row), nil
 }
 
+// CompleteTaskTerminal implements biz.TaskV2Writer.CompleteTaskTerminal:
+// unconditional terminalization with version bumped from the DB value (the
+// event's Version is ignored — terminal events are monotonic by nature, and
+// the synthesis turn's OnTurnEnd hardcodes Version=2 which the UpsertTask
+// guard would reject after a resume CAS). Already-terminal tasks
+// (completed/failed/cancelled) are not overwritten; interrupted is a recovery
+// placeholder and may be terminalized. Unknown IDs fall through to Create so
+// shadow tasks (chatTurnEventPublisher.PublishTurnFailure) keep working.
+func (r *taskV2Repo) CompleteTaskTerminal(ctx context.Context, t biz.Task) (biz.Task, error) {
+	if r == nil || r.data == nil {
+		return biz.Task{}, fmt.Errorf("task v2 repo: database not configured")
+	}
+	now := time.Now().UTC()
+	if !t.UpdatedAt.IsZero() {
+		now = t.UpdatedAt
+	}
+	b := r.data.RW().Write(ctx).TaskV2.Update().
+		Where(
+			taskv2.ID(t.ID),
+			taskv2.StatusNotIn(
+				string(biz.TaskStatusCompleted),
+				string(biz.TaskStatusFailed),
+				string(biz.TaskStatusCancelled),
+			),
+		).
+		SetStatus(string(t.Status)).
+		SetUpdatedAt(now).
+		AddVersion(1)
+	if t.CompletedAt != nil {
+		b.SetCompletedAt(*t.CompletedAt)
+	} else {
+		b.SetCompletedAt(now)
+	}
+	n, err := b.Save(ctx)
+	if err != nil {
+		return biz.Task{}, entErrToBizErr(err, "TASK_V2")
+	}
+	if n > 0 {
+		row, getErr := r.data.RW().Read(ctx).TaskV2.Get(ctx, t.ID)
+		if getErr != nil {
+			return biz.Task{}, entErrToBizErr(getErr, "TASK_V2")
+		}
+		return entTaskV2ToBiz(row), nil
+	}
+	// 0 rows: either already terminal (idempotent — return existing) or the
+	// task does not exist yet (fall through to Create for shadow tasks).
+	if existing, getErr := r.data.RW().Read(ctx).TaskV2.Get(ctx, t.ID); getErr == nil {
+		return entTaskV2ToBiz(existing), nil
+	}
+	return r.CreateTask(ctx, t)
+}
+
 // ResumeInterruptedTask implements biz.TaskV2Writer.ResumeInterruptedTask:
 // single-statement CAS interrupted → running so a double click or concurrent
 // resume cannot resurrect the task twice. completed_at is cleared because the

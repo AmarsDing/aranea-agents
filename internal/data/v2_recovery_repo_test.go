@@ -72,13 +72,17 @@ func TestV2RecoveryRepo_FailOrphanedInFlight(t *testing.T) {
 
 	// --- 执行恢复 ---
 	recoverAt := start.Add(time.Hour)
-	stats, err := repo.FailOrphanedInFlight(ctx, recoverAt)
+	stats, interrupted, err := repo.FailOrphanedInFlight(ctx, recoverAt)
 	if err != nil {
 		t.Fatalf("FailOrphanedInFlight: %v", err)
 	}
 	want := biz.V2RecoveryStats{Tasks: 1, Turns: 1, Steps: 1, TeamStages: 1, TeamRuns: 1, MemberSessions: 1}
 	if stats != want {
 		t.Fatalf("stats = %+v, want %+v", stats, want)
+	}
+	// L3: 被 interrupted 的 task 必须带回 ref（启动 guard 据此发 session notice）。
+	if len(interrupted) != 1 || interrupted[0].TaskID != "t-orphan" || interrupted[0].SessionID != "s-1" {
+		t.Fatalf("interrupted refs = %+v, want [t-orphan/s-1]", interrupted)
 	}
 
 	// --- 断言 in-flight 记录被终态化 ---
@@ -177,11 +181,14 @@ func TestV2RecoveryRepo_FailOrphanedInFlight_NoOrphans(t *testing.T) {
 	repo := NewV2RecoveryRepo(d, loggateway.NewNoop())
 	ctx := context.Background()
 
-	stats, err := repo.FailOrphanedInFlight(ctx, time.Now().UTC())
+	stats, interrupted, err := repo.FailOrphanedInFlight(ctx, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("FailOrphanedInFlight: %v", err)
 	}
 	if stats != (biz.V2RecoveryStats{}) {
 		t.Fatalf("stats = %+v, want zero", stats)
+	}
+	if len(interrupted) != 0 {
+		t.Fatalf("interrupted refs = %+v, want empty", interrupted)
 	}
 }

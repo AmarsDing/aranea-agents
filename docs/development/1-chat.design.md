@@ -5177,10 +5177,28 @@ type DeliverableRef struct {
 **桥接设计**（条件启用，三步）：
 
 1. **前置技术验证（阻断性）**：确认团队执行完成后 graph final state 的可读位置。候选：TeamRunResult / runner completion 事件携带的 state snapshot / SessionService state 读取。**若验证不通过**，桥接降级为 prompt 引导——团队 definition prompt 中要求"最后一名成员将 deliverable 核心结论写入最终 reply"，落库链路（P0/P2）不变。
-2. **桥接函数**：`RecordTeamCompletion` 中，若 `Team.DefinitionJSON` 的 `enable_state_deliverable=true` 且 final state 可读 → 读 `state["deliverable"]`（map）→ `summary` 优先取 `deliverable["summary"]`（string），缺失回退 reply step 提取；`deliverable` map 的其余 key 序列化入 `DeliverableRef` 扩展字段（`StructuredJSON string`，信封可选字段）。
+2. **桥接函数**（✅ 已实施，见 B.10.15.10）：`RecordTeamCompletion` → `WriteDeliverablesToSession` 中，若 `Team.DefinitionJSON` 的 `enable_state_deliverable=true` 且 final state 可读 → 读 `state["deliverable"]`（map）→ `summary` 优先取 `deliverable["summary"]`（string），缺失回退 reply step 提取；`deliverable` map 的其余 key 序列化入 `DeliverableRef` 扩展字段（`StructuredJSON string`，信封可选字段）。
 3. **灰度启用**：双开关默认关闭（`toolset.go` deliverable 注册 `EnabledByDefault: false` + `Definition.EnableStateDeliverable` 默认 false）保持不变；P1/P2 落地稳定后，由 Planner 对 DAG 团队的 definition 选择性开启（或管理后台按团队配置），观察 Cover reducer 在多成员并行写场景的实际行为后再评估是否扩大。
 
 **多成员写冲突语义**：`ReducerCover` 为 map 级整体覆盖（后者覆盖前者），适合 sequential/coordinator 的**顺序交接**；parallel 模式多成员并发写会相互覆盖（last-writer-wins，丢中间产物）——因此 `EnableStateDeliverable` 仅建议对 sequential/coordinator 团队开启，parallel 团队不开启（definition 层约束 + 文档说明）。
+
+**前置技术验证结论（2026-07-22 ✅ 通过）**：
+
+验证问题：团队完成后 biz 层能否读到 graph final state 中的 `deliverable`？
+
+**结论：可行。** 完整证据链：
+
+| 步骤 | 机制 | 关键代码 |
+|------|------|----------|
+| ① state 写入 | `set_deliverable.StateDelta()` 返回 `{deliverable: data}` → flow 层合并到 graph state（CoverReducer） | `internal/tools/deliverable/tool.go:104-123` |
+| ② 完成序列化 | graph completion event 通过 `serializeFinalState()` 序列化所有非内部 state key → `"deliverable"` 不在 `isInternalStateKey`/`isUnsafeStateKey` 排除列表 | `pkg/trpc-agent-go/graph/events.go:1652-1682`、`keys.go:87-123` |
+| ③ runner 持久化 | `handleEventPersistence` → `shouldPersistEvent`（StateDelta 非空 → true）→ `graphCompletionSessionStateDelta` 仅过滤 messages/user_input/last_response 等 → `"deliverable"` 保留 | `pkg/trpc-agent-go/runner/runner.go:2024-2061, 2441-2476` |
+| ④ session 合并 | `AppendEvent` → `UpdateUserSession` → `ApplyEventStateDelta` 将 StateDelta 合并到 `sess.State["deliverable"]` 并持久化 | `pkg/trpc-agent-go/session/session.go:530-551` |
+| ⑤ biz 读取 | `session.Runtime.Service().GetSession(ctx, key)` 可读取 session state；key 需用团队 manager agent ID 作为 AppName（非 DefaultAppName） | `internal/session/runtime.go:36-53` |
+
+**会话定位**：团队 trpc session key = `{AppName: 团队 manager agent ID, UserID: 上下文用户 ID, SessionID: 团队主会话 ID}`。AppName 来自 `TurnRunnerSpec.AppName = ar.agent.ID`（`runner_team_trpc.go:107`），与 `session.Runtime.Get()` 默认使用的 `DefaultAppName` 不同，需手动构造 key。
+
+**时序保证**：runner 完成 → completion event StateDelta 已持久化 → `RecordTeamCompletion` → `WriteDeliverablesToSession`。桥接读取在 `WriteDeliverablesToSession` 时执行，时序安全。
 
 #### B.10.15.5 改动文件清单
 
@@ -5246,7 +5264,7 @@ type DeliverableRef struct {
 
 #### B.10.15.8 P1 实施记录与验证结果（2026-07-22 ✅ 已落地）
 
-**实施状态**：P1 形式契约全链路已实施完成，全量验证通过。P2 产物引用化已按 Q5 顺序接续落地（见 B.10.15.9）；Graph StateFields 桥接待后续迭代。
+**实施状态**：P1 形式契约全链路已实施完成，全量验证通过。P2 产物引用化已按 Q5 顺序接续落地（见 B.10.15.9）；Graph StateFields 桥接已落地（见 B.10.15.10）。
 
 **实际改动文件**（与设计清单 B.10.15.5 对齐，含实施期偏差说明）：
 
@@ -5311,4 +5329,43 @@ type DeliverableRef struct {
 - `SessionRunUsecase.ListByPhase` 透传方法缺失——L2 崩溃保护的 `chat_durable_escalate_all.go` 调用该方法但 Usecase 未暴露（repo 层已存在），补 6 行透传
 - `NewSessionStatusGuard` 新增 `SessionRunDurableEscalator` 参数后 `wire_gen.go` 未重新生成（L2 工作流遗漏），重跑 `wire gen` 恢复构建
 
-**下一阶段**：Graph StateFields 桥接（B.10.15.4）——先做"团队完成后 graph final state 可读性"阻断性前置技术验证；验证不通过则按 Q3 决策降级为 prompt 引导（仅文档约束，零代码）。
+**下一阶段**：~~Graph StateFields 桥接（B.10.15.4）——前置技术验证 ✅ 通过（见 B.10.15.4 验证结论），可进入桥接函数实施阶段。~~ Graph StateFields 桥接已落地（2026-07-22，见 B.10.15.10）。B.10.15 三阶段（P1 形式契约 / P2 产物引用化 / Graph StateFields 桥接）全部完成。
+
+#### B.10.15.10 Graph StateFields 桥接实施记录与验证结果（2026-07-22 ✅ 已落地）
+
+**实施状态**：Graph StateFields 桥接已按 TDD 实施完成，全量验证通过。B.10.15 三阶段（P1 形式契约 / P2 产物引用化 / Graph StateFields 桥接）全部落地；灰度启用策略不变（双开关默认关闭，见 B.10.15.4 第 3 步）。
+
+**实施要点**（对齐 B.10.15.4 桥接设计第 2 步）：
+
+- `DeliverableRef` 新增 `StructuredJSON string` 信封可选字段（`json:"structured_json,omitempty"`）——承载 graph final-state `deliverable` map 中除 `summary` 外的其余 key（序列化为 JSON object）；state 通道未启用或无额外 key 时为空，legacy 读取方（双模解析）天然忽略该字段
+- 桥接读取点落在 `WriteDeliverablesToSession` 的信封构造处（由 `RecordTeamCompletion` 唯一调用，时序与设计验证结论一致：runner 完成 → completion StateDelta 已持久化 → 读 state 安全）
+- `enable_state_deliverable=true` 且 state 可读时：信封 summary 优先取 `deliverable["summary"]`（非空 string），缺失/为空回退 reply step 提取；其余 key 经 `marshalNonSummaryStateKeys` 序列化入 `StructuredJSON`；`SizeChars`/`Truncated`/`KeyFindings` 均基于最终 summary 源计算
+- 锚点解析 `stateDeliverableProbe.anchorAgentID()` 镜像 runner 侧锚点决策：`intent_anchor_agent_id` 优先，否则首成员 agent ID——该 ID 即团队 run 持久化 graph state 的 AppName（`biz` 不依赖 `internal/team`，直接探测 DefinitionJSON 相关字段）
+- 桥接为 best-effort：通道禁用 / 锚点不可解析 / reader 未装配 / state 读取失败均静默回退 reply 提取路径，不阻塞交付物落库（读取失败记 Warn）
+
+**实际改动文件**：
+
+| 文件 | 实际改动 |
+|------|----------|
+| `internal/biz/team_types.go` | `DeliverableRef` 新增 `StructuredJSON` 字段 |
+| `internal/biz/spirit_team_usecase.go` | 新增 `SpiritGraphDeliverableReader` 窄接口（`ReadGraphDeliverable(ctx, appName, userID, sessionID)`，Stability:evolving）+ `WithGraphDeliverableReader` 构造选项；`stateDeliverableProbe` + `anchorAgentID()` 锚点解析；`readGraphStateDeliverable` best-effort 读取；`marshalNonSummaryStateKeys`；`WriteDeliverablesToSession` 整合桥接（summary 源切换 + StructuredJSON 填充） |
+| `internal/service/spirit_team_graph_deliverable.go` | 新增适配器：trpc session service → `biz.SpiritGraphDeliverableReader`；手动构造 session key（AppName=锚点 agent ID，非 DefaultAppName）；nil runtime 降级为 state 缺失（v1-only 部署回退 reply 提取） |
+| `cmd/admin/wire.go` / `wire_gen.go` | `provideSpiritTeamUsecase` 注入 `sessionRT`，经 `WithGraphDeliverableReader(service.NewGraphDeliverableReader(sessionRT))` 装配；重跑 wire gen |
+| `internal/biz/spirit_team_deliverable_test.go` | 桥接测试 5 例（`graphDeliverableReaderStub` 记录调用坐标） |
+
+**测试覆盖**（`internal/biz/spirit_team_deliverable_test.go`）：
+
+| 测试 | 覆盖点 |
+|------|--------|
+| `..._GraphStateBridge_EnrichesEnvelope` | state 含 summary：信封 summary 取自 graph state（非 reply step）；`StructuredJSON` 携带其余 key 且排除 summary；`SizeChars`/`Truncated` 基于 state summary；session key 坐标 = {appName: `intent_anchor_agent_id`, sessionID: 团队主会话, userID: ctx 用户} |
+| `..._GraphStateBridge_AnchorFallsBackToFirstMember` | 未设 `intent_anchor_agent_id` 时锚点回退首成员 agent ID |
+| `..._GraphStateBridge_NoSummaryKey_KeepsReplySummary` | state 无 summary key：summary 保留 reply 提取源，`StructuredJSON` 仍填充其余 key |
+| `..._GraphStateBridge_StateUnreadable_FallsBack` | state 读取失败：整体回退 reply 提取，无 `StructuredJSON`，落库不阻塞 |
+| `..._GraphStateDisabled_NoStateRead` | 通道未启用：reader 零调用，信封保持 P2 reply 提取形状 |
+
+**验证证据（2026-07-22）**：`go build ./...` exit 0；`go test -count=1`——`internal/biz` ok（8.1s，含桥接 5 例全 PASS）、`internal/service`（仅既有网络依赖用例 `TestModelCatalogService_SyncModelCatalog_*` 2 例失败，git stash 验证与本次改动无关）、`internal/data` ok（20.8s）、`internal/team` ok、`internal/agent/v2` ok、`internal/agent`（仅既有网络依赖用例 `TestModelRegistrySyncAgent_Run_EventsFlow` 失败，同上）。
+
+**实施期修复的关联问题**（验证期发现的构建/测试阻塞，随本轮一并修复）：
+
+- L2/L3 崩溃恢复在途工作遗留：`biz.V2RecoveryRepo.FailOrphanedInFlight` 已升级为三返回值（新增 `[]InterruptedTaskRef`，供启动守卫按会话发布可续跑任务通知），但 `internal/service/session_status_guard_test.go` 的 `stubV2RecoveryRepo` 未同步签名 → 构建失败；已补齐三返回值 stub
+- L3 终态事件改路由（`task.completed`/`task.failed` 走 `CompleteTaskTerminal`，version 自 DB +1）后，`internal/agent/v2/integration_test.go` 两处断言仍只扫 `UpsertTask` 收集面 → `TestEndToEnd_CancelledTurnMarksCancelledStatus`、`TestEndToEnd_V2Pipeline` 失败；已适配为合并扫描 `rs.tasks` + `rs.terminal`（终态面）

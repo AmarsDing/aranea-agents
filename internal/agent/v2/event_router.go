@@ -15,6 +15,12 @@ import (
 // Implementations must be safe for concurrent use.
 type RepoSet interface {
 	UpsertTask(ctx context.Context, t biz.Task) (biz.Task, error)
+	// CompleteTaskTerminal persists task.completed / task.failed (L3,
+	// 2026-07-22). Terminal events are monotonic: version is bumped from the
+	// DB value, so a stale event Version (e.g. the synthesis turn's hardcoded
+	// Version=2 after a resume CAS pushed it higher) cannot strand the task
+	// in running. Already-terminal tasks are not overwritten.
+	CompleteTaskTerminal(ctx context.Context, t biz.Task) (biz.Task, error)
 	UpsertTurn(ctx context.Context, t biz.Turn) (biz.Turn, error)
 	UpsertStep(ctx context.Context, s biz.Step) (biz.Step, error)
 	UpsertTeamStage(ctx context.Context, ts biz.TeamStage) (biz.TeamStage, error)
@@ -39,10 +45,13 @@ func persistAction(ctx context.Context, rs RepoSet, e biz.Event) (persisted bool
 		_, err = rs.UpsertTask(ctx, ev.Task)
 		return true, err
 	case *biz.TaskCompletedEvent:
-		_, err = rs.UpsertTask(ctx, ev.Task)
+		// L3: 终态事件走 CompleteTaskTerminal（version 从 DB +1），避免 resume
+		// 后 synthesis OnTurnEnd 硬编码 Version=2 被 VersionLT guard 拒绝导致
+		// task 永远 running。
+		_, err = rs.CompleteTaskTerminal(ctx, ev.Task)
 		return true, err
 	case *biz.TaskFailedEvent:
-		_, err = rs.UpsertTask(ctx, ev.Task)
+		_, err = rs.CompleteTaskTerminal(ctx, ev.Task)
 		return true, err
 
 	case *biz.TurnStartedEvent:

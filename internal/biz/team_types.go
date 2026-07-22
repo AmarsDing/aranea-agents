@@ -189,6 +189,12 @@ type DeliverableRef struct {
 	TeamSessionID string `json:"team_session_id"`
 	SizeChars     int    `json:"size_chars"`
 	Truncated     bool   `json:"truncated"`
+	// StructuredJSON carries the non-summary keys of the graph final-state
+	// deliverable (B.10.15.4 Graph StateFields bridge), serialized as a JSON
+	// object. Empty when the team did not enable the state channel or the
+	// state held no extra keys. Optional envelope field — legacy readers
+	// ignore it.
+	StructuredJSON string `json:"structured_json,omitempty"`
 }
 
 // ParseDeliverableRefs parses Team.DeliverablesOutput into per-node refs.

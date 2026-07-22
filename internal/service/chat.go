@@ -29,12 +29,22 @@ type ChatService struct {
 	turnPipeline   *TurnPipeline
 	sessions       *biz.SessionUsecase
 	memberSessions biz.MemberSessionV2Repo
-	lg             loggateway.Logger
+	// taskV2/stepReader back ResumeInterruptedTask (L3): CAS claim +
+	// execution-trace assembly. Nil in partial test stubs → Internal error.
+	taskV2     biz.TaskV2Repo
+	stepReader biz.StepV2Reader
+	lg         loggateway.Logger
 }
 
 func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 	orch := NewChatOrchestrator(deps)
-	svc := &ChatService{orch: orch, lg: deps.Infra.LG, memberSessions: deps.Infra.MemberSessions}
+	svc := &ChatService{
+		orch:           orch,
+		lg:             deps.Infra.LG,
+		memberSessions: deps.Infra.MemberSessions,
+		taskV2:         deps.Turn.TaskV2,
+		stepReader:     deps.Turn.StepReader,
+	}
 	// Extract the concrete *biz.SessionUsecase for RetrySession. In production
 	// this is always satisfied (Wire binds *biz.SessionUsecase). Test stubs
 	// may use other implementations; in that case sessions stays nil and

@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -930,5 +931,191 @@ func TestExtractTeamOutput_RunningReplyStep_NotUsed(t *testing.T) {
 	}
 	if !strings.Contains(summary, "消息成果") {
 		t.Fatalf("summary should fall back to messages, got %q", summary)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Graph StateFields 桥接（B.10.15.4）：enable_state_deliverable 团队从
+// graph final state 读 deliverable 充实落库信封
+// ---------------------------------------------------------------------------
+
+// graphDeliverableReaderStub stubs SpiritGraphDeliverableReader: returns a
+// fixed deliverable map and records the session-key coordinates it was
+// called with (appName/userID/sessionID).
+type graphDeliverableReaderStub struct {
+	data       map[string]any
+	err        error
+	calls      int
+	gotAppName string
+	gotUserID  string
+	gotSession string
+}
+
+func (s *graphDeliverableReaderStub) ReadGraphDeliverable(_ context.Context, appName, userID, sessionID string) (map[string]any, error) {
+	s.calls++
+	s.gotAppName, s.gotUserID, s.gotSession = appName, userID, sessionID
+	return s.data, s.err
+}
+
+func newDeliverableUsecaseWithGraphReader(teams *deliverableTeamRepo, sessions *deliverableSessionAccessor, steps *deliverableStepReader, reader *graphDeliverableReaderStub) *SpiritTeamUsecase {
+	return NewSpiritTeamUsecase(teams, sessions, deliverableAgentResolver{}, loggateway.NewNoop(),
+		WithSpiritStepReader(steps), WithGraphDeliverableReader(reader))
+}
+
+// seedStateDeliverableTeam seeds a completed team carrying the given
+// DefinitionJSON (the enable_state_deliverable switch lives there).
+func seedStateDeliverableTeam(teams *deliverableTeamRepo, sessions *deliverableSessionAccessor, steps *deliverableStepReader, definitionJSON, assistantContent string) Team {
+	t := seedCompletedTeamWithSteps(teams, sessions, steps, "t1", "sp1", "st_1", "分析团队", assistantContent)
+	t.DefinitionJSON = definitionJSON
+	teams.items["t1"] = t
+	return t
+}
+
+// State deliverable present with a "summary" key: the envelope summary comes
+// from the graph state (not the reply step), and the remaining keys are
+// serialized into StructuredJSON.
+func TestWriteDeliverablesToSession_GraphStateBridge_EnrichesEnvelope(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{
+		"summary":    "state 结构化摘要",
+		"confidence": 0.9,
+		"findings":   []any{"发现A", "发现B"},
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"intent_anchor_agent_id":"agent-anchor","members":[{"agent_id":"agent-m1"}]}`,
+		"reply 摘要（不应使用）")
+
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]
+	if ref.Summary != "state 结构化摘要" {
+		t.Fatalf("summary should come from graph state, got %q", ref.Summary)
+	}
+	if ref.SizeChars != len([]rune("state 结构化摘要")) || ref.Truncated {
+		t.Fatalf("size/truncated should describe the state summary, got %+v", ref)
+	}
+	if ref.StructuredJSON == "" {
+		t.Fatalf("structured_json should carry the non-summary state keys, got %+v", ref)
+	}
+	var structured map[string]any
+	if err := json.Unmarshal([]byte(ref.StructuredJSON), &structured); err != nil {
+		t.Fatalf("structured_json should be valid JSON: %v", err)
+	}
+	if _, ok := structured["confidence"]; !ok {
+		t.Fatalf("structured_json should contain confidence, got %q", ref.StructuredJSON)
+	}
+	if _, ok := structured["summary"]; ok {
+		t.Fatalf("structured_json must exclude the summary key, got %q", ref.StructuredJSON)
+	}
+	// Session-key coordinates: appName = intent_anchor_agent_id, session = team main session.
+	if reader.calls != 1 || reader.gotAppName != "agent-anchor" || reader.gotSession != "sess-t1" {
+		t.Fatalf("reader coordinates mismatch: calls=%d appName=%q session=%q", reader.calls, reader.gotAppName, reader.gotSession)
+	}
+	if reader.gotUserID == "" {
+		t.Fatalf("reader should receive the ctx user ID")
+	}
+}
+
+// Without intent_anchor_agent_id, the runner uses the first member as the
+// anchor (AppName) — the bridge must resolve the same anchor.
+func TestWriteDeliverablesToSession_GraphStateBridge_AnchorFallsBackToFirstMember(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{"summary": "s"}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"},{"agent_id":"agent-m2"}]}`,
+		"成果")
+
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	if reader.gotAppName != "agent-m1" {
+		t.Fatalf("anchor should fall back to the first member, got %q", reader.gotAppName)
+	}
+}
+
+// State deliverable without a "summary" key: reply-step extraction remains
+// the summary source; the whole state map still lands in StructuredJSON.
+func TestWriteDeliverablesToSession_GraphStateBridge_NoSummaryKey_KeepsReplySummary(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{"score": 0.8}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`,
+		"reply 摘要")
+
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]
+	if ref.Summary != "reply 摘要" {
+		t.Fatalf("missing state summary → reply extraction, got %q", ref.Summary)
+	}
+	if ref.SizeChars != len([]rune("reply 摘要")) {
+		t.Fatalf("size should describe the reply content, got %+v", ref)
+	}
+	if !strings.Contains(ref.StructuredJSON, "score") {
+		t.Fatalf("structured_json should carry the state map, got %q", ref.StructuredJSON)
+	}
+}
+
+// State channel enabled but the state is unreadable (session gone / reader
+// error): the write must degrade gracefully to the reply-extraction path.
+func TestWriteDeliverablesToSession_GraphStateBridge_StateUnreadable_FallsBack(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{err: fmt.Errorf("session not found")}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`,
+		"reply 摘要")
+
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]
+	if ref.Summary != "reply 摘要" {
+		t.Fatalf("unreadable state → reply fallback, got %q", ref.Summary)
+	}
+	if ref.StructuredJSON != "" {
+		t.Fatalf("unreadable state → no structured_json, got %q", ref.StructuredJSON)
+	}
+}
+
+// enable_state_deliverable absent/false: the state channel is never read and
+// the envelope keeps its P2 reply-extraction shape.
+func TestWriteDeliverablesToSession_GraphStateDisabled_NoStateRead(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{"summary": "不应读取"}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","members":[{"agent_id":"agent-m1"}]}`,
+		"reply 摘要")
+
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	if reader.calls != 0 {
+		t.Fatalf("state channel disabled → reader must not be called, got %d calls", reader.calls)
+	}
+	ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]
+	if ref.Summary != "reply 摘要" || ref.StructuredJSON != "" {
+		t.Fatalf("disabled channel → legacy envelope, got %+v", ref)
 	}
 }

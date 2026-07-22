@@ -11,6 +11,7 @@ import (
 
 	"aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -59,6 +60,16 @@ type SpiritAgentResolver interface {
 // Stability:evolving
 type SpiritStepReader interface {
 	ListStepsBySessionID(ctx context.Context, sessionID string) ([]Step, error)
+}
+
+// SpiritGraphDeliverableReader reads the graph final-state "deliverable" map
+// of a completed team's trpc session (B.10.15.4 Graph StateFields bridge).
+// appName/userID/sessionID form the trpc session key: appName is the team's
+// anchor (manager) agent ID, NOT the default app scope.
+// Returns (nil, nil) when the session or the deliverable key is absent.
+// Stability:evolving
+type SpiritGraphDeliverableReader interface {
+	ReadGraphDeliverable(ctx context.Context, appName, userID, sessionID string) (map[string]any, error)
 }
 
 // SpiritTeamController exposes the methods needed by the service layer's
@@ -150,6 +161,12 @@ func WithSpiritStepReader(r SpiritStepReader) SpiritTeamUsecaseOption {
 	return func(u *SpiritTeamUsecase) { u.stepReader = r }
 }
 
+// WithGraphDeliverableReader injects the graph final-state deliverable reader
+// for the B.10.15.4 bridge. Nil disables the bridge (reply extraction only).
+func WithGraphDeliverableReader(r SpiritGraphDeliverableReader) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) { u.graphDelivReader = r }
+}
+
 // SpiritTeamUsecase manages Spirit team lifecycle.
 // TECH-DEBT(COG): file_lines=1431, limit=500; sync_maps=1, limit=0; needs decomposition into sub-Usecases
 // TODO(debt): DEV-09 — Split into three sub-Usecases:
@@ -172,6 +189,7 @@ type SpiritTeamUsecase struct {
 	gateExecutor      *VerificationGateExecutor
 	deptLeadMgr       *DeptLeadManager
 	stepReader        SpiritStepReader
+	graphDelivReader  SpiritGraphDeliverableReader
 	lg                loggateway.Logger
 
 	timeoutOnce sync.Once
@@ -1716,14 +1734,28 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 		return nil
 	}
 
-	sizeChars := utf8.RuneCountInString(full.Content)
+	// B.10.15.4 Graph StateFields bridge: teams with enable_state_deliverable
+	// prefer the graph final-state deliverable — its "summary" key becomes the
+	// envelope summary source and the remaining keys land in StructuredJSON.
+	// Any failure degrades to the reply-extraction source above.
+	summarySource := full.Content
+	structuredJSON := ""
+	if stateDeliv := u.readGraphStateDeliverable(ctx, t, full.SessionID); len(stateDeliv) > 0 {
+		if s, ok := stateDeliv["summary"].(string); ok && strings.TrimSpace(s) != "" {
+			summarySource = s
+		}
+		structuredJSON = marshalNonSummaryStateKeys(stateDeliv)
+	}
+
+	sizeChars := utf8.RuneCountInString(summarySource)
 	ref := DeliverableRef{
-		Summary:       TruncateRunes(full.Content, MaxSummaryLen),
-		KeyFindings:   extractKeyFindings(full.Content),
-		TeamID:        t.ID,
-		TeamSessionID: full.SessionID,
-		SizeChars:     sizeChars,
-		Truncated:     sizeChars > MaxSummaryLen,
+		Summary:        TruncateRunes(summarySource, MaxSummaryLen),
+		KeyFindings:    extractKeyFindings(summarySource),
+		TeamID:         t.ID,
+		TeamSessionID:  full.SessionID,
+		SizeChars:      sizeChars,
+		Truncated:      sizeChars > MaxSummaryLen,
+		StructuredJSON: structuredJSON,
 	}
 	refJSON, marshalErr := json.Marshal(ref)
 	if marshalErr != nil {
@@ -1770,6 +1802,82 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 		loggateway.Bool("truncated", ref.Truncated),
 	)
 	return nil
+}
+
+// stateDeliverableProbe is the minimal subset of the team DefinitionJSON the
+// graph-state bridge needs. biz cannot import internal/team (dependency
+// direction), so the relevant fields are probed directly.
+type stateDeliverableProbe struct {
+	EnableStateDeliverable bool   `json:"enable_state_deliverable"`
+	IntentAnchorAgentID    string `json:"intent_anchor_agent_id"`
+	Members                []struct {
+		AgentID string `json:"agent_id"`
+	} `json:"members"`
+}
+
+// anchorAgentID mirrors the runner's anchor resolution
+// (resolveAnchorAndAttachments): intent_anchor_agent_id when set, otherwise
+// the first member's agent ID. The anchor agent ID is the AppName the team
+// run persisted its graph state under.
+func (p stateDeliverableProbe) anchorAgentID() string {
+	if id := strings.TrimSpace(p.IntentAnchorAgentID); id != "" {
+		return id
+	}
+	for _, m := range p.Members {
+		if id := strings.TrimSpace(m.AgentID); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+// readGraphStateDeliverable loads the graph final-state "deliverable" map for
+// teams that enabled the state channel. Returns nil (→ reply-extraction
+// fallback) when the channel is disabled, the anchor is unresolvable, no
+// reader is wired, or the state is unreadable — the bridge is best-effort and
+// never blocks the deliverable write.
+func (u *SpiritTeamUsecase) readGraphStateDeliverable(ctx context.Context, t Team, teamSessionID string) map[string]any {
+	if u.graphDelivReader == nil || teamSessionID == "" || strings.TrimSpace(t.DefinitionJSON) == "" {
+		return nil
+	}
+	var probe stateDeliverableProbe
+	if err := json.Unmarshal([]byte(t.DefinitionJSON), &probe); err != nil || !probe.EnableStateDeliverable {
+		return nil
+	}
+	anchor := probe.anchorAgentID()
+	if anchor == "" {
+		return nil
+	}
+	stateDeliv, err := u.graphDelivReader.ReadGraphDeliverable(ctx, anchor, ctxuser.TRPCUserKey(ctx), teamSessionID)
+	if err != nil {
+		u.lg.Warn("graph state deliverable 读取失败，回退 reply 提取",
+			loggateway.StepID("spirit.write_deliverables"),
+			loggateway.Str("team_id", t.ID),
+			loggateway.Err(err),
+		)
+		return nil
+	}
+	return stateDeliv
+}
+
+// marshalNonSummaryStateKeys serializes every deliverable state key except
+// "summary" into the envelope's StructuredJSON field. "" when nothing remains.
+func marshalNonSummaryStateKeys(stateDeliv map[string]any) string {
+	rest := make(map[string]any, len(stateDeliv))
+	for k, v := range stateDeliv {
+		if k == "summary" {
+			continue
+		}
+		rest[k] = v
+	}
+	if len(rest) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(rest)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // InjectUpstreamDeliverables collects upstream team deliverables and formats

@@ -185,3 +185,84 @@ func TestTaskV2Repo_ResumeInterruptedTask(t *testing.T) {
 		t.Errorf("resume missing task: ok=%v err=%v, want ok=false err=nil", ok, err)
 	}
 }
+
+// L3 (2026-07-22)：CompleteTaskTerminal 无条件终态化（version DB+1，不看事件
+// version）。修复 resume 场景的 version 冲突：synthesis turn 的 OnTurnEnd 硬编码
+// Version=2，而 resume CAS 已把 version 推高，走 UpsertTask 的 VersionLT guard
+// 会被拒绝导致 task 永远 running。终态事件天然单调，不依赖调用方提供正确 version。
+func TestTaskV2Repo_CompleteTaskTerminal(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	repo := NewTaskV2Repo(d, loggateway.NewNoop())
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	if _, err := repo.CreateTask(ctx, biz.Task{
+		ID: "t-run", SessionID: "s-1", UserMessage: "work",
+		Status: biz.TaskStatusRunning, Seq: 1, Version: 5,
+		CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("seed running task: %v", err)
+	}
+
+	// 1) running → completed：事件 version=2 远低于 DB version=5 也必须生效。
+	completedAt := now.Add(time.Minute)
+	got, err := repo.CompleteTaskTerminal(ctx, biz.Task{
+		ID: "t-run", Status: biz.TaskStatusCompleted, CompletedAt: &completedAt, Version: 2,
+	})
+	if err != nil {
+		t.Fatalf("CompleteTaskTerminal: %v", err)
+	}
+	if got.Status != biz.TaskStatusCompleted {
+		t.Errorf("status=%s, want completed", got.Status)
+	}
+	if got.Version != 6 {
+		t.Errorf("version=%d, want 6 (DB 5+1, not event version)", got.Version)
+	}
+	if got.CompletedAt == nil || !got.CompletedAt.Equal(completedAt) {
+		t.Errorf("completed_at=%v, want %v", got.CompletedAt, completedAt)
+	}
+	if got.UserMessage != "work" {
+		t.Errorf("user_message=%q, want preserved", got.UserMessage)
+	}
+
+	// 2) 已终态 → 第二个终态事件不覆盖（幂等）：completed 不被 failed 翻转。
+	got, err = repo.CompleteTaskTerminal(ctx, biz.Task{
+		ID: "t-run", Status: biz.TaskStatusFailed, Version: 7,
+	})
+	if err != nil {
+		t.Fatalf("CompleteTaskTerminal second terminal: %v", err)
+	}
+	if got.Status != biz.TaskStatusCompleted || got.Version != 6 {
+		t.Errorf("terminal overwritten: status=%s version=%d, want completed/6", got.Status, got.Version)
+	}
+
+	// 3) interrupted → completed：interrupted 是恢复占位不是真终态，允许覆盖。
+	if _, err := repo.CreateTask(ctx, biz.Task{
+		ID: "t-int", SessionID: "s-1", UserMessage: "resumable",
+		Status: biz.TaskStatusInterrupted, Seq: 2, Version: 3,
+		CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("seed interrupted task: %v", err)
+	}
+	got, err = repo.CompleteTaskTerminal(ctx, biz.Task{
+		ID: "t-int", Status: biz.TaskStatusCompleted, CompletedAt: &completedAt, Version: 2,
+	})
+	if err != nil {
+		t.Fatalf("CompleteTaskTerminal interrupted: %v", err)
+	}
+	if got.Status != biz.TaskStatusCompleted || got.Version != 4 {
+		t.Errorf("interrupted→completed: status=%s version=%d, want completed/4", got.Status, got.Version)
+	}
+
+	// 4) 不存在的 ID → 按事件内容创建（PublishTurnFailure 的 shadow task 语义）。
+	got, err = repo.CompleteTaskTerminal(ctx, biz.Task{
+		ID: "t-shadow", SessionID: "s-1", Status: biz.TaskStatusFailed,
+		CompletedAt: &completedAt, Version: 1, CreatedAt: now, UpdatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("CompleteTaskTerminal shadow create: %v", err)
+	}
+	if got.Status != biz.TaskStatusFailed || got.ID != "t-shadow" {
+		t.Errorf("shadow task: id=%s status=%s, want t-shadow/failed", got.ID, got.Status)
+	}
+}

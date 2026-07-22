@@ -303,6 +303,9 @@ type ChatTurnDeps struct {
 	Admission    *biz.TurnAdmissionUsecase
 	StepReader   biz.StepV2Reader
 	StepWriter   biz.StepV2Writer
+	// TaskV2 backs interrupted-task resume (L3): GetTask pre-check +
+	// ResumeInterruptedTask CAS. Nil = resume unavailable (Internal error).
+	TaskV2 biz.TaskV2Repo
 }
 
 // ChatUsageDeps groups usage tracking, monitoring, artifact, and analytics dependencies.

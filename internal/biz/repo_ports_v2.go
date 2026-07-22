@@ -45,6 +45,16 @@ type TaskV2Writer interface {
 	// currently interrupted (already resumed by a concurrent click, or
 	// terminal otherwise) — callers must treat !ok as a conflict, not an error.
 	ResumeInterruptedTask(ctx context.Context, id string, resumeAt time.Time) (t Task, ok bool, err error)
+	// CompleteTaskTerminal unconditionally terminalizes a task (L3, 2026-07-22):
+	// sets status/completed_at and bumps version from the DB value, ignoring
+	// t.Version. Terminal events are inherently monotonic, so they must not
+	// depend on the caller supplying a correct version — the synthesis turn's
+	// OnTurnEnd hardcodes Version=2, which the UpsertTask VersionLT guard
+	// would reject after a resume CAS pushed the version higher, leaving the
+	// task running forever. Already-terminal tasks (completed/failed/cancelled)
+	// are NOT overwritten (idempotent); interrupted IS overwritable because it
+	// is a recovery placeholder, not a true terminal state.
+	CompleteTaskTerminal(ctx context.Context, t Task) (Task, error)
 }
 
 type TaskV2Repo interface {
@@ -176,6 +186,15 @@ func (s V2RecoveryStats) Total() int {
 	return s.Tasks + s.Turns + s.Steps + s.TeamStages + s.TeamRuns + s.MemberSessions
 }
 
+// InterruptedTaskRef identifies one task terminalized to interrupted by
+// startup recovery (L3, 2026-07-22). The startup guard uses these refs to
+// notify affected sessions that a resumable task exists.
+type InterruptedTaskRef struct {
+	TaskID      string
+	SessionID   string
+	UserMessage string
+}
+
 // V2RecoveryRepo terminalizes v2 entities left in-flight by a process
 // restart (orphaned). Called once at startup before traffic is accepted.
 //
@@ -186,10 +205,13 @@ func (s V2RecoveryStats) Total() int {
 //
 // Stability:evolving
 type V2RecoveryRepo interface {
-	// FailOrphanedInFlight batch-transitions all in-flight rows to failed,
-	// incrementing version and stamping completed_at/finished_at with
-	// recoverAt. Terminal rows are untouched. Returns per-table counts.
-	FailOrphanedInFlight(ctx context.Context, recoverAt time.Time) (V2RecoveryStats, error)
+	// FailOrphanedInFlight batch-transitions all in-flight rows to terminal
+	// states (tasks → interrupted, other entities → failed), incrementing
+	// version and stamping completed_at/finished_at with recoverAt. Terminal
+	// rows are untouched. Returns per-table counts plus the refs of tasks
+	// transitioned to interrupted (L3: startup guard publishes per-session
+	// resumable-task notices from them).
+	FailOrphanedInFlight(ctx context.Context, recoverAt time.Time) (V2RecoveryStats, []InterruptedTaskRef, error)
 }
 
 // === PlanBoard ===

@@ -51,6 +51,12 @@ type RunCanceller interface {
 	CancelRun(ctx context.Context, sessionID string) bool
 }
 
+// TaskResumer resumes an interrupted v2 task (L3, 2026-07-22). Implemented
+// by *service.ChatService; kept narrow for ISP and testability.
+type TaskResumer interface {
+	ResumeInterruptedTask(ctx context.Context, sessionID, taskID string) error
+}
+
 type ChatSender interface {
 	SendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error)
 	EnqueueUserMessage(ctx context.Context, req *chatv1.EnqueueUserMessageRequest) (*chatv1.EnqueueUserMessageResponse, error)
@@ -86,6 +92,9 @@ type WSServer struct {
 	canceller             RunCanceller
 	sender                ChatSender
 	turnExecutor          WSTurnExecutor
+	// resumer handles "resume_task" upstream messages (L3). Optional: nil
+	// rejects resume requests with a ws_error notice.
+	resumer               TaskResumer
 	sessionAuth           SessionAuthorizer
 	serverConf            *conf.Server
 	runtimeConf           *conf.Runtime
@@ -102,6 +111,14 @@ func (s *WSServer) SetEventOutbox(repo biz.EventDeliveryOutboxRepo) {
 		return
 	}
 	s.outbox = repo
+}
+
+// SetTaskResumer wires the interrupted-task resume handler (L3).
+func (s *WSServer) SetTaskResumer(r TaskResumer) {
+	if s == nil {
+		return
+	}
+	s.resumer = r
 }
 
 // NewWSServerFromInfra uses monitor bus for monitor events and the v2 EventBus

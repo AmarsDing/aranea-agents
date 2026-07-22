@@ -57,6 +57,12 @@ func (a *repoSetAdapter) UpsertTask(ctx context.Context, t biz.Task) (biz.Task, 
 	return a.task.UpsertTask(ctx, t)
 }
 
+// CompleteTaskTerminal delegates terminal task persistence (task.completed /
+// task.failed) — version is bumped from the DB value, not the event (L3).
+func (a *repoSetAdapter) CompleteTaskTerminal(ctx context.Context, t biz.Task) (biz.Task, error) {
+	return a.task.CompleteTaskTerminal(ctx, t)
+}
+
 func (a *repoSetAdapter) UpsertTurn(ctx context.Context, t biz.Turn) (biz.Turn, error) {
 	return a.turn.UpsertTurn(ctx, t)
 }

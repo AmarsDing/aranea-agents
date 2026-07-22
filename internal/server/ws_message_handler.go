@@ -66,6 +66,9 @@ func (s *WSServer) handleUpstream(wc *wsConn, raw []byte) {
 			s.canceller.CancelRun(ctxuser.WithUserID(context.Background(), wc.userID), wc.sessionID)
 		}
 
+	case "resume_task":
+		s.handleResumeTask(wc, up)
+
 	case "enable_log":
 		payload, ok := up.Payload.(map[string]any)
 		if !ok {
@@ -179,6 +182,38 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		if err != nil {
 			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
 			s.publishWSErrorActivity(sessionID, requestID, "send_failed", err.Error(), req.Content)
+		}
+	})
+}
+
+// handleResumeTask processes a resume_task upstream event (L3): the user
+// clicked "continue" on an interrupted task card. Validation, the CAS claim
+// and the asynchronous rerun all live in ChatService.ResumeInterruptedTask;
+// here we only translate transport concerns. Failures surface as a ws_error
+// notice + synthetic error block (transient, not persisted).
+func (s *WSServer) handleResumeTask(wc *wsConn, up wsUpstream) {
+	payload, ok := up.Payload.(map[string]any)
+	if !ok {
+		return
+	}
+	taskID, _ := payload["task_id"].(string)
+	if strings.TrimSpace(taskID) == "" {
+		return
+	}
+	sessionID := wc.sessionID
+	requestID := strings.TrimSpace(up.RequestID)
+	if s.resumer == nil {
+		s.publishWSErrorActivity(sessionID, requestID, "resume_unavailable", "task resume is not available", "")
+		return
+	}
+	// Derive from appctx so the resume outlives the WS connection (aligns
+	// with user_message handling). Propagate the authenticated userID.
+	resumeCtx := ctxuser.WithUserID(appctx.Ctx(), wc.userID)
+	safego.Go(resumeCtx, "ws-resume-task", func() {
+		if err := s.resumer.ResumeInterruptedTask(resumeCtx, sessionID, taskID); err != nil {
+			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 任务续跑失败",
+				loggateway.StepID("ws.resume_task_failed"), loggateway.Err(err))
+			s.publishWSErrorActivity(sessionID, requestID, "resume_failed", err.Error(), "")
 		}
 	})
 }
