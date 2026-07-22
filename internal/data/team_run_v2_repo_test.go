@@ -126,3 +126,83 @@ func TestTeamRunV2Repo_GetTeamRun_NotFound(t *testing.T) {
 		t.Fatalf("expected error for nonexistent team run, got nil")
 	}
 }
+
+// B.10.17 execution report: latest run stats per team via team_stages_v2 join.
+func TestTeamRunV2Repo_ListLatestRunStatsByTeams(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	repo := NewTeamRunV2Repo(d, loggateway.NewNoop())
+	tsRepo := NewTeamStageV2Repo(d, loggateway.NewNoop())
+	ctx := context.Background()
+	base := time.Now().UTC().Truncate(time.Second)
+
+	seedStage := func(id, teamID string, seq int64) {
+		t.Helper()
+		if _, err := tsRepo.CreateTeamStage(ctx, biz.TeamStage{
+			ID: id, TaskID: "task-1", TurnID: "turn-1", SessionID: "spirit-1",
+			TeamID: teamID, Status: biz.TeamStageStatusCompleted,
+			StartedAt: base, Seq: seq, Version: 1,
+		}); err != nil {
+			t.Fatalf("seed stage %s: %v", id, err)
+		}
+	}
+	seedRun := func(id, stageID string, status biz.TeamRunV2Status, startedAt time.Time, completedAt *time.Time, seq int64, runErr string) {
+		t.Helper()
+		if _, err := repo.CreateTeamRun(ctx, biz.TeamRun{
+			ID: id, TeamStageID: stageID, TaskID: "task-1",
+			SessionID: "sess-" + stageID, SpiritSessionID: "spirit-1",
+			Status: status, StartedAt: startedAt,
+			CompletedAt: completedAt, Seq: seq, Version: 1, Error: runErr,
+		}); err != nil {
+			t.Fatalf("seed run %s: %v", id, err)
+		}
+	}
+	completedAt := func(offset time.Duration) *time.Time {
+		ts := base.Add(offset)
+		return &ts
+	}
+
+	// team-1: single stage, two runs — latest (higher started_at) wins.
+	seedStage("stage-t1", "team-1", 1)
+	seedRun("run-t1-old", "stage-t1", biz.TeamRunV2StatusCompleted, base, completedAt(2*time.Second), 1, "")
+	seedRun("run-t1-new", "stage-t1", biz.TeamRunV2StatusCompleted, base.Add(10*time.Second), completedAt(14*time.Second), 2, "")
+
+	// team-2: two stages (re-run) — the newer stage's run wins.
+	seedStage("stage-t2-old", "team-2", 1)
+	seedRun("run-t2-old", "stage-t2-old", biz.TeamRunV2StatusCompleted, base, completedAt(time.Second), 1, "")
+	seedStage("stage-t2-new", "team-2", 2)
+	seedRun("run-t2-new", "stage-t2-new", biz.TeamRunV2StatusFailed, base.Add(20*time.Second), completedAt(25*time.Second), 1, "boom")
+
+	// team-3: stage exists but run not completed → duration 0.
+	seedStage("stage-t3", "team-3", 1)
+	seedRun("run-t3", "stage-t3", biz.TeamRunV2StatusRunning, base.Add(30*time.Second), nil, 1, "")
+
+	// team-4: no stages at all → omitted from the result map.
+
+	statsRepo := repo.(biz.SpiritTeamRunStatsReader)
+	stats, err := statsRepo.ListLatestRunStatsByTeams(ctx, []string{"team-1", "team-2", "team-3", "team-4"})
+	if err != nil {
+		t.Fatalf("ListLatestRunStatsByTeams: %v", err)
+	}
+	if len(stats) != 3 {
+		t.Fatalf("expected 3 teams with stats, got %d: %+v", len(stats), stats)
+	}
+	if s := stats["team-1"]; s.DurationMs != 4000 || s.ErrorMessage != "" {
+		t.Fatalf("team-1 stats mismatch: %+v", s)
+	}
+	if s := stats["team-2"]; s.DurationMs != 5000 || s.ErrorMessage != "boom" {
+		t.Fatalf("team-2 stats mismatch: %+v", s)
+	}
+	if s := stats["team-3"]; s.DurationMs != 0 {
+		t.Fatalf("team-3 uncompleted run must report duration 0, got %+v", s)
+	}
+}
+
+func TestTeamRunV2Repo_ListLatestRunStatsByTeams_EmptyInput(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	repo := NewTeamRunV2Repo(d, loggateway.NewNoop())
+
+	stats, err := repo.(biz.SpiritTeamRunStatsReader).ListLatestRunStatsByTeams(context.Background(), nil)
+	if err != nil || stats != nil {
+		t.Fatalf("empty input must return (nil, nil), got stats=%+v err=%v", stats, err)
+	}
+}

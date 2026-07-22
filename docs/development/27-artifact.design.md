@@ -44,6 +44,10 @@ internal/artifact/sign.go           ← Signer：HMAC-SHA256 签名/验签（生
 internal/artifact/storage_factory.go ← 存储后端工厂：local/s3/cos 选择（S3/COS 委托 trpc-agent-go）
 
 internal/skill/trpc/artifact_executor.go ← artifactSavingExecutor：CodeExecutor 产出物自动保存
+
+internal/provider/media/persist.go     ← PersistingProvider：媒体生成产物（远程临时 URL）下载落盘 + artifact:// URL 重写
+
+internal/service/system_reveal.go      ← POST /v1/system/reveal：本地打开制品所在文件夹（features.local_reveal_enabled 门控）
 ```
 
 依赖方向：service → biz ← data，biz 层禁止 import trpc-agent-go。
@@ -426,18 +430,18 @@ Wire provideArtifactSigner 提供 *artifact.Signer 实例
 | 层 | 文件 | 说明 |
 |----|------|------|
 | 类型 | `features/artifact/types.ts` | ArtifactMeta / ArtifactData / UploadArtifactInput / ListArtifactsParams（含 query/mime_type_prefix） / ListArtifactsResult / ArtifactPreview / SignDownloadUrlResult |
-| API | `features/artifact/api.ts` | listArtifacts / getArtifact / uploadArtifact / deleteArtifact / deleteArtifactVersion / previewArtifact / signDownloadUrl / artifactDownloadHref / listArtifactVersions |
+| API | `features/artifact/api.ts` | listArtifacts / getArtifact / uploadArtifact / deleteArtifact / deleteArtifactVersion / previewArtifact / signDownloadUrl / artifactDownloadHref / listArtifactVersions / revealArtifact / fetchLocalRevealEnabled |
 | Store | `stores/artifact/index.ts` | useArtifactStore：artifacts / total / loading / loadArtifacts / upload / get / remove / removeVersion / listVersions / signDownload / loadPreview / artifactDownloadHref |
-| 预览组件 | `features/artifact/ArtifactPreview.vue` | 独立预览组件：图片 `<img>` / PDF `<iframe>` / 代码 `<pre>` + 下载按钮 |
-| 列表组件 | `features/artifact/ArtifactList.vue` | 制品列表：MIME 图标 + 文件大小 + 版本号 + 预览弹窗 + 签名下载 |
+| 预览组件 | `features/artifact/ArtifactPreview.vue` | 独立预览组件：图片 `<img>` / PDF `<iframe>` / 代码 `<pre>` / 音频 `<audio controls>` / 视频 `<video controls>`（签名直链 `inline=1`）+ 下载按钮 |
 | 上传对话框 | `components/artifact/ArtifactsUploadDialog.vue` | 上传对话框组件 |
-| 详情对话框 | `components/artifact/ArtifactsDetailDialog.vue` | 详情对话框组件（含版本选择） |
-| 管理页面 | `pages/ArtifactsPage.vue` | 完整管理页：列表/上传/预览/签名下载/删除，使用 ArtifactPreview + ArtifactsUploadDialog + ArtifactsDetailDialog |
-| Chat 面板 | `components/chat/ChatSessionArtifactsPanel.vue` | Chat 会话制品面板，使用 ArtifactList 组件 |
+| 详情对话框 | `components/artifact/ArtifactsDetailDialog.vue` | 详情对话框组件（含版本选择 + 完整落盘路径展示/复制 + reveal 按钮） |
+| 管理页面 | `pages/ArtifactsPage.vue` | 资源管理器：会话产物 / 全部产物（按 session 分组）双 Tab + 路由 `?session=<id>` 过滤 + 上传/预览/签名下载/删除 |
+| chat 入口 | `pages/ChatPage.vue` | chat 头部「产物」按钮 → `/artifacts?session=<id>`（原孤儿组件 `ChatSessionArtifactsPanel.vue` 方案已废弃并删除） |
 | 消息附件 | `components/chat/ChatMessageAttachments.vue` | Chat 消息气泡内嵌附件 chip + 预览 Dialog |
-| Composable | `features/artifact/useArtifactList.ts` | 列表 composable |
-| Composable | `features/artifact/useArtifactsPage.ts` | 页面 composable |
-| Composable | `features/artifact/useArtifactPreview.ts` | 预览 composable |
+| 媒体产物 | `components/chat/tools/MediaToolDetail.vue` | 媒体工具产出渲染，`artifact://` 经 `useMediaUrl()` 解析 |
+| Composable | `features/chat/useMediaUrl.ts` | `artifact://<id>` → 新鲜签名直链解析（MediaToolDetail / MediaLightbox / NodeMediaPreview 共用） |
+| Composable | `features/artifact/useArtifactsPage.ts` | 页面 composable（双 Tab / 分组 / 筛选 / 上传 / 详情） |
+| Composable | `features/artifact/useArtifactPreview.ts` | 预览 composable（含 audio/video 分支） |
 | 工具 | `features/artifact/limits.ts` | 上传限制常量 |
 | 工具 | `features/artifact/fileBase64.ts` | Base64 编解码工具 |
 | 工具 | `features/artifact/artifactTableUi.ts` | 表格 UI 配置 |
@@ -463,7 +467,8 @@ Wire provideArtifactSigner 提供 *artifact.Signer 实例
 | `GET`  | `/v1/artifacts/{id}/versions` | 列出制品的全部版本历史 |
 | `GET`  | `/v1/artifacts/{id}/preview` | 预览制品（按 MIME 分类返回），可选 `?version=N` |
 | `POST` | `/v1/artifacts/{id}/sign-download` | 生成签名下载 URL |
-| `GET`  | `/v1/artifacts/download?id=…&token=…&expires=…&version=…` | 签名下载文件流（ServeSignedDownload） |
+| `GET`  | `/v1/artifacts/download?id=…&token=…&expires=…&version=…` | 签名下载文件流（ServeSignedDownload）；`&inline=1` 时 `Content-Disposition: inline` 支持音视频内联播放 |
+| `POST` | `/v1/system/reveal` | 本地打开制品所在文件夹（环境变量 `FEATURES_LOCAL_REVEAL_ENABLED` 默认关闭，未开启时路由不注册返回 404） |
 
 #### 上传请求体
 
@@ -616,7 +621,7 @@ type PersistingProvider struct {
 - **路由参数**：`/artifacts?session=<id>` 进入时自动填充 session 筛选并切到「会话产物」Tab。
 - **chat 入口**：chat 页头部（SpiritStatusBar 区域）加「产物」按钮 → `router.push({ name: 'artifacts', query: { session: 当前sessionID } })`。
 - **完整路径**：service 层 `GetArtifact`/详情响应中 `storage_uri` 补绝对路径（`filepath.Abs(root + storage_uri)`，仅 local 后端）；前端 `ArtifactsDetailDialog` 展示 + 复制按钮。
-- **孤儿组件处置**：`ChatSessionArtifactsPanel.vue`（现存但无任何引用）与头部按钮方案二选一；采用头部按钮后该组件保持不引用，是否删除由后续清理任务决定，本 Phase 不动。
+- **孤儿组件处置**：已采用头部按钮方案；`ChatSessionArtifactsPanel.vue`（连同 `ArtifactList.vue` / `useArtifactList.ts`）已于 2026-07-22 清理删除。
 
 ### 13.6 本地打开文件夹（P2）
 
@@ -625,7 +630,7 @@ type PersistingProvider struct {
   - Windows: `explorer /select,<abs>`
   - macOS: `open -R <abs>`
   - Linux: `xdg-open <dir>`
-- **开关**：配置 `features.local_reveal_enabled`（默认 `false`）；未开启时路由不注册（404），前端通过 `GET /v1/system/features`（或复用现有 system setting 查询）得知后隐藏按钮。
+- **开关**：环境变量 `FEATURES_LOCAL_REVEAL_ENABLED`（默认 `false`，`internal/conf/features_artifact.go`）；未开启时路由不注册（404），前端通过 `GET /v1/system/info` 的 `features.local_reveal` 字段探知后隐藏按钮（探知失败按未启用处理）。
 - 纯浏览器/远程部署形态下降级为「复制路径」。
 
 ### 13.7 安全约束

@@ -8,12 +8,12 @@
       <q-card-section class="media-lightbox__content">
         <video
           v-if="artifact.mime_type.startsWith('video/')"
-          :src="artifact.url"
+          :src="mediaSrc(artifact)"
           controls
           autoplay
           class="media-lightbox__media"
         />
-        <img v-else :src="artifact.url" class="media-lightbox__media" />
+        <img v-else :src="mediaSrc(artifact)" class="media-lightbox__media" />
       </q-card-section>
     </q-card>
   </q-dialog>
@@ -21,9 +21,12 @@
 
 <script setup lang="ts">
 import type { MediaArtifact } from '../../../features/chat/mediaTypes';
+import { useMediaUrl } from '../../../features/chat/useMediaUrl';
 
 defineProps<{ artifact: MediaArtifact }>();
 defineEmits<{ close: [] }>();
+
+const { mediaSrc } = useMediaUrl();
 </script>
 
 <style scoped lang="sass">

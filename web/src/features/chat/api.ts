@@ -288,6 +288,8 @@ export async function confirmActivity(sessionId: string, activityId: string, app
       sessionId,
       activityId,
       approved,
+      // 空 reply 走后端 legacy approved 标志路径（resolveConfirmReply）。
+      reply: '',
     });
     return Boolean(data?.accepted);
   } catch (err) {
@@ -311,5 +313,23 @@ export async function confirmActivityGrant(payload: {
     return Boolean(data?.accepted);
   } catch (err) {
     wrapChatError(err, 'confirmActivityGrant failed');
+  }
+}
+
+/** Submit clarification answers for a kind=clarify step (awaiting_input → completed). */
+export async function submitClarification(payload: {
+  sessionId: string;
+  stepId: string;
+  answers: Array<{ selected: string[]; other: string }>;
+}): Promise<boolean> {
+  try {
+    const data = await chatService.SubmitClarification({
+      sessionId: payload.sessionId,
+      stepId: payload.stepId,
+      answers: payload.answers,
+    });
+    return Boolean(data?.accepted);
+  } catch (err) {
+    wrapChatError(err, 'submitClarification failed');
   }
 }

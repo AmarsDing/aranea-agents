@@ -8,6 +8,9 @@ export function useArtifactPreview(artifactId: () => string, version?: () => num
   const preview = ref<ArtifactPreview | null>(null);
   const loading = ref(false);
   const error = ref('');
+  // Signed URL (with inline=1) for <audio>/<video> playback. Empty for other
+  // preview kinds or when signing fails (header download button still works).
+  const inlineMediaSrc = ref('');
 
   const kindIcon = computed(() => {
     if (!preview.value) return 'insert_drive_file';
@@ -15,6 +18,8 @@ export function useArtifactPreview(artifactId: () => string, version?: () => num
     if (kind === 'text') return 'code';
     if (kind === 'image') return 'image';
     if (kind === 'pdf') return 'picture_as_pdf';
+    if (kind === 'audio') return 'audiotrack';
+    if (kind === 'video') return 'movie';
     return 'insert_drive_file';
   });
 
@@ -32,6 +37,7 @@ export function useArtifactPreview(artifactId: () => string, version?: () => num
     const id = artifactId();
     if (!id) {
       preview.value = null;
+      inlineMediaSrc.value = '';
       return;
     }
     loading.value = true;
@@ -44,11 +50,24 @@ export function useArtifactPreview(artifactId: () => string, version?: () => num
     } finally {
       loading.value = false;
     }
+    inlineMediaSrc.value = await signInlineMedia(id, preview.value);
+  }
+
+  async function signInlineMedia(id: string, p: ArtifactPreview | null): Promise<string> {
+    if (!p || (p.preview_kind !== 'audio' && p.preview_kind !== 'video')) return '';
+    try {
+      const signed = await artifactStore.signDownload(id, version?.());
+      if (!signed.url) return '';
+      const sep = signed.url.includes('?') ? '&' : '?';
+      return artifactStore.artifactDownloadHref(`${signed.url}${sep}inline=1`);
+    } catch {
+      return '';
+    }
   }
 
   watch(() => [artifactId(), version?.()] as const, loadPreview, { immediate: true });
 
-  return { preview, loading, error, kindIcon, imageSrc, pdfSrc, formatBytes, loadPreview };
+  return { preview, loading, error, kindIcon, imageSrc, pdfSrc, inlineMediaSrc, formatBytes, loadPreview };
 }
 
 export type { ArtifactMeta };

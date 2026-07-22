@@ -1937,7 +1937,6 @@ web/src/
 │   ├── ChatHeaderPromptBar.vue    ← 头部 Prompt 栏
 │   ├── ChatContextBreakdownPopover.vue ← 上下文分解弹窗
 │   ├── ChatSectionHeader.vue      ← 区段标题
-│   ├── ChatSessionArtifactsPanel.vue ← Session Artifact 面板
 │   ├── ChatSkillHintBar.vue       ← Skill 提示栏
 │   ├── ChatSkillCatalogStrip.vue  ← Skill Catalog 条
 │   ├── ChatTeamMemberStrip.vue    ← Team 成员条
@@ -3243,11 +3242,13 @@ Turn N
 - 分隔线不显示文字标签（保持视觉简洁）
 - Turn 内的组件之间使用 8px 间距（无分隔线）
 
-**滚动锚点**：
+**滚动锚点**（2026-07-22 状态制重构后落地）：
 
-- 新 Turn 开始时，自动滚动到 UserMessageBubble 顶部（用户能立即看到自己的消息）
-- 进行中的 Turn（如 streaming）保持滚动跟随最新内容
-- 已完成的 Turn 不自动滚动（用户可手动向上浏览历史）
+- 新 Task 创建时（用户发送消息），自动滚动到 TaskCard 的 UserMessage 顶部（`[data-task-id]`，`scrollIntoView({block:'start'})`），用户能立即看到自己的消息
+- FOLLOWING 状态（用户位于距底 ≤80px）时，streaming / 团队执行新内容实时滚底跟随（50ms leading+trailing rAF 节流，内容签名为活动树末端 O(1) 签名）
+- 用户滚离底部（UNFOLLOWED）后**永不**自动滚动，无定时器强拽；滚回底部即恢复跟随
+- 跟随中容器内出现非空选区（用户复制文字）→ 暂停跟随，滚回底部恢复
+- 实现：`web/src/features/chat/composables/useFollowScroll.ts` + `useChatMessageScroll.ts`
 
 **历史加载时**：
 
@@ -3727,7 +3728,7 @@ stateDiagram-v2
 | GraphStageBlock | 展开 | ❌（保留） | 流程图始终可见 |
 | team-card（进行中） | 展开 | — | running 默认展开；用户手动展开/折叠后状态变化不覆盖用户意图（`userToggled` 标志） |
 | team-card（终态） | 折叠 | — | 终态默认折叠；用户未操作时由 status watcher 自动折叠 |
-| agent-card（进行中） | 展开 | — | running 默认展开；展开时自动滚到底部（用户滚动后 10s 恢复，`useActivityAutoScroll`）；标题栏中间显示最新动作图标+文本 |
+| agent-card（进行中） | 展开 | — | running 默认展开；展开时自动滚到底部并跟随（用户滚离底部后永不自动滚动，滚回底部即恢复，`useFollowScroll`）；标题栏中间显示最新动作图标+文本 |
 | agent-card（终态） | 折叠 | ✅ | 终态自动折叠（用户未操作时，status watcher 触发）；用户操作过则保持用户意图 |
 | thinking | 折叠 | ✅ | 推理过程默认折叠，减少噪音 |
 | action | 折叠 | ✅ | 工具调用结果默认折叠 |
@@ -3748,13 +3749,13 @@ stateDiagram-v2
 - PlanBlock 的"自动折叠为摘要"行为仅发生在**初始渲染时**所有 plan item 已完成的情况；运行中变为全部完成不触发自动折叠（保持用户当前展开/折叠状态）
 - 用户手动展开/折叠后，状态由用户掌控，不被状态变化自动覆盖
 
-**agent-card 自动滚动模型**（2026-07-05 新增）：
+**agent-card 自动滚动模型**（2026-07-22 状态制重构，取代 2026-07-05 时间制模型）：
 - 触发条件：`!collapsed && status === 'running'`（展开 + 运行中）
-- 实时滚动：内容变化（新 step 或最后一步内容增长）时自动滚到底部
-- 用户意图优先：用户滚动离开底部时进入 10s 冷却期，期间不自动滚动
-- 恢复机制：10s 内无用户滚动 → 自动滚到底部并恢复实时跟踪；用户滚回底部时立即恢复
-- 实现位置：`web/src/features/chat/composables/useActivityAutoScroll.ts`
-- 与 `useChatMessageScroll` 的区别：后者使用阈值模型（80px 内 stick），前者使用时间模型（10s 恢复），符合"用户不操作了 10s 再自动刷新"的需求
+- 状态制跟随：与外层主聊天共用 `useFollowScroll`——FOLLOWING 中内容变化（新 step 或最后一步内容增长）实时滚底；用户滚离底部（>80px）转 UNFOLLOWED，**永不**自动滚动，滚回底部（≤80px）即恢复
+- 选区保护：跟随中容器内出现非空选区 → 暂停跟随（保护复制）
+- 展开 / agent 启动（enabled false→true）→ 滚底并进入 FOLLOWING；折叠 / 终态 → 停止跟随，不动滚动条
+- 实现位置：`web/src/features/chat/composables/useFollowScroll.ts`（`useActivityAutoScroll.ts` 已删除）
+- 与外层 `useChatMessageScroll` 的关系：后者是 `useFollowScroll` 的薄封装（末端签名 + 新 Task 锚点 + turn 定位高亮），两层共用同一状态机
 
 **agent-card 标题栏最新动作**（2026-07-05 新增）：
 - 三段式 header：左（avatar+name+status badge）| 中（最新动作 icon+text）| 右（时间）
@@ -3766,6 +3767,34 @@ stateDiagram-v2
   - confirm → `help` + "待确认"
   - error → `error` + "错误"
 - running 状态的图标显示脉冲动画（`member-action-pulse` 1.5s 循环）
+
+#### B.4.6 团队区域左边线状态样式体系（2026-07-22 新增）
+
+> 取代三层边框盒套娃（TeamStagePanel[盒] → TeamRunCard[盒] → MemberSessionPanel[盒]）。学习 Cursor/Trae 的「左侧竖线 + 状态色 + 缩进」模式，**DOM 结构不变，仅改样式**。
+
+**层级规则**：
+
+| 元素 | 样式 |
+|------|------|
+| 精灵主流 steps（TurnContainer 直接子级） | 无左边线——无线 = 主流 |
+| TeamStagePanel | 纯语义容器，无边框/背景（保留 `data-team-stage-id` 与 `activity-locate-highlight`） |
+| TeamRunCard | 3px 左状态线 + `padding-left: 10px`；hover 出 `--glass-surface-hover` 微弱背景 |
+| MemberSessionPanel | 3px 左状态线 + `margin-left: 14px`（挂在团队线之下形成视觉树） |
+
+**状态色映射**（左边线与状态徽章同色呼应）：
+
+| 状态 | 左边线 | 动画 |
+|------|--------|------|
+| running | `var(--color-accent)` | 1.6s 呼吸脉冲（承担原"新动态呼吸点"语义） |
+| paused | `var(--color-warning)` | — |
+| completed | `var(--color-success)` | — |
+| failed | `var(--color-danger)` | — |
+| cancelled / skipped | `var(--color-text-tertiary)` | — |
+| pending（仅成员） | `var(--glass-border)` | — |
+
+**背景策略**：容器背景全部去除；成员 ReplyBlock 气泡（`--glass-elevated`）在无色容器上自然浮出，"成员说了什么"不靠提级结构即可辨识。
+
+**内外层级辨识**：有左边线 = 团队子执行树（内部）；无线 = 精灵主流（外部）。
 
 ### B.5 Team 任务栏交互设计
 
@@ -5597,3 +5626,143 @@ type AllTeamsCompletedResult struct {
 | service | publisher 改造：StepCreatedEvent 字段契约（NoticeType/Content JSON/Version/TaskID 附着）；seq 优先 / eventBus 兜底；cancelled 守卫（cancelledTeams>0 → 不触发） |
 | 前端 | `ExecutionReportCard` 四板块渲染 + 状态色 + degraded 提示；`NoticeBlock` 分支（合法信封→卡片，非法→回退）；store 清理后无残留引用 |
 | 契约 | `web/scripts/check-envelope-contract.ts` 事件名清单保持通过 |
+
+### B.10.18 需求澄清提问（Clarification Gate）
+
+> **需求**：[1-chat.md §1.10](./1-chat.md#110-需求澄清提问clarification)（US-CLARIFY-01）
+> **定位**：在 turn 的 Intent Pass 之后、PrePlanning/执行规划之前插入**澄清门**——LLM 判定存在阻塞性歧义时，发布澄清卡片 Step 并挂起 turn，待用户作答后在**同一 turn** 携带澄清上下文续跑。
+
+#### B.10.18.1 总体架构与数据流
+
+```
+用户消息 → ChatOrchestrator.RunTurn
+   → Intent Pass（LLM 意图识别，输出 intent.Artifact）
+        │  ① Artifact 新增 Clarifications[]（结构化问题集）
+        │     + RiskFlags 含 "needs_clarification"
+        ▼
+ClarificationGate（service，新组件）
+        │  ② 判定：clarification_enabled && len(Clarifications)>0
+        │     && RiskFlags 含 needs_clarification
+        │  ③ 不触发 → 透传，走原 PrePlanning 流程
+        ▼ 触发
+publishClarifyStep
+        │  ④ UpsertTask 幂等建任务（Task 先于 Run 存在）
+        │  ⑤ StepCreatedEvent：Kind=clarify，Status=awaiting_input，
+        │     Content=澄清问题 JSON 信封，TaskID 附着，TurnID 空（orphan step）
+        │  ⑥ seq.Publish（persist + WS）
+        │  ⑦ Session → awaiting_confirmation（reason=clarification）
+        ▼
+turn 挂起（RunTurn 返回空回复，不报错）
+        │
+用户提交澄清（POST /v1/chat/clarifications/{step_id} 或输入框自由回复）
+        │  ⑧ 版本守卫：Step.Status 必须仍为 awaiting_input，否则 409
+        │  ⑨ Step.Status → completed，Content 信封回写 answers
+        │  ⑩ Session → running；同一 turn 续跑：
+        │     澄清问答以「用户视角消息」注入 LLM 上下文，进入 PrePlanning
+```
+
+**关键设计决策**：
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 插入位置 | Intent Pass 之后、PrePlanning 之前 | 澄清依赖意图识别产物；避免已规划再澄清造成浪费 |
+| Step 归属 | Task 级 orphan step（TurnID 空） | Run 未开始前需持久化；复用 TaskCard orphan step 渲染通道 |
+| 会话状态 | 复用 `awaiting_confirmation` + 新 reason `clarification` | 不新增状态机状态；前端已有等待态展示 |
+| 未作答问题 | 提交时允许留空，LLM 按 recommended 执行 | 用户明确「可以什么都不输入」 |
+| 自由输入替代 | 等待期间输入框直接发消息视为自由回答 | 与 AwaitUserReply 体验一致 |
+| 幂等 | Step 版本守卫（awaiting_input→completed CAS） | 防重复提交/双击 |
+| 恢复 | clarify step 持久化；重启后 hydration 恢复 awaiting 态 | 与崩溃恢复体系一致 |
+
+#### B.10.18.2 数据契约（biz / intent 扩展）
+
+```go
+// internal/agent/intent/pass.go —— Intent Artifact 扩展
+type ClarificationQuestion struct {
+    Question    string   `json:"question"`
+    Mode        string   `json:"mode"`        // single | multi
+    Options     []string `json:"options"`
+    Recommended []string `json:"recommended"` // 推荐项（须为 Options 子集）
+}
+
+type Artifact struct {
+    // ... 现有字段 ...
+    Clarifications []ClarificationQuestion `json:"clarifications,omitempty"`
+    RiskFlags      []string                `json:"risk_flags,omitempty"` // 含 "needs_clarification"
+}
+```
+
+```go
+// internal/biz/step.go —— 新枚举
+const StepKindClarify StepKind = "clarify"
+const StepStatusAwaitingInput StepStatus = "awaiting_input"
+```
+
+```go
+// sessstatus —— 新等待原因
+const StatusReasonClarification = "clarification"
+```
+
+**Step.Content JSON 信封**：
+
+```json
+{
+  "version": 1,
+  "kind": "clarification",
+  "questions": [
+    { "question": "...", "mode": "single", "options": ["..."], "recommended": ["..."] }
+  ],
+  "answers": null
+}
+```
+
+提交后回写 `answers`：
+
+```json
+{ "answers": [ { "selected": ["..."], "other": "..." } ] }
+```
+
+#### B.10.18.3 提交端点与续跑
+
+| 项 | 契约 |
+|----|------|
+| 端点 | `POST /v1/chat/clarifications/{step_id}`，body：`{ "answers": [{ "selected": [...], "other": "..." }] }`（answers 可为空数组 = 全部按推荐执行） |
+| 守卫 | Step.Kind==clarify 且 Status==awaiting_input，否则 `CodeConflict`；CAS 更新防并发 |
+| 续跑 | 更新 Step → Session 回 running → 同 turn 继续 PrePlanning；注入消息格式：每问一行「Q: … / A: …（未答：按推荐 …）」 |
+| 自由回复 | 等待态下 `SendChatMessage` 命中 awaiting_confirmation(reason=clarification) 时，等价于 answers=[]+other=消息全文 |
+
+#### B.10.18.4 前端设计
+
+**组件**：新建 `web/src/components/chat/v2/ClarifyBlock.vue`，在 `TaskCard.vue` orphan step 区注册渲染（`step.Kind === 'clarify'`）。
+
+**交互**：
+- 分页卡片：每页一问，`上一页 / 下一页`，最后一页为 `完成`；无跳过按钮
+- 单选用 radio、多选用 checkbox；推荐项高亮（`推荐` chip）
+- 每页附「其他」输入框
+- 任何页可留空；提交后卡片变只读摘要（已答/按推荐标记）
+- awaiting 态卡片呼吸边框；提交事件 `submit-clarification` → 调 POST 端点
+- hydration：WS 重连后从 v2 REST steps 恢复卡片与作答态
+
+**i18n**：`chat.clarify.*`（zh-CN / en-US）：标题「需要你的确认」、prev/next/finish/other/recommended/answeredAsRecommended 等。
+
+#### B.10.18.5 错误处理与边界
+
+| 场景 | 行为 |
+|------|------|
+| LLM 输出非法 JSON / 字段缺失 | 澄清门判定不触发（fail-open），走原流程并记 warn |
+| Clarifications 非空但无 needs_clarification 标志 | 不触发（标志为准，防过度打扰） |
+| 重复提交 | CAS 守卫返回 409，前端提示「已提交」 |
+| 提交时 Session 已非等待态 | 409，不续跑 |
+| clarification_enabled=false | 门直接透传 |
+| 重启恢复 | clarify step awaiting_input 持久化 → 会话恢复 awaiting_confirmation(clarification)；前端重新渲染可作答卡片 |
+| 问题数上限 | 超过 5 问截断（防 LLM 过度生成），记 warn |
+
+#### B.10.18.6 测试策略
+
+| 层 | 用例 |
+|----|------|
+| biz | StepKind/StepStatus 枚举序列化；信封 marshal/unmarshal 往返 |
+| intent | prompt 含澄清输出契约；Artifact 解析（合法/非法/缺字段）；needs_clarification 触发与静默 |
+| service | 门判定矩阵（enabled×flags×questions）；publishClarifyStep 字段契约（orphan/TaskID/Version=1/StartedAt）；提交端点 CAS（成功/重复/非等待态）；自由回复等价路径；续跑注入文本格式 |
+| data | 重启后 awaiting_input clarify step 恢复为会话等待态 |
+| 前端 | ClarifyBlock 分页导航/单多选/推荐高亮/other 输入/留空提交/只读摘要；TaskCard 注册渲染；hydration 恢复 |
+| 契约 | `check-envelope-contract.ts` 通过 |

@@ -8,7 +8,7 @@ import (
 )
 
 func TestObserveFrameworkEventDoesNotCloseToolOnResult(t *testing.T) {
-	em := NewTraceEmitter(TraceContext{TraceID: "tr_x", RunID: "r1"}, nil)
+	em := NewTraceEmitter(nil, TraceContext{TraceID: "tr_x", RunID: "r1"}, nil)
 	callEV := &trpcevent.Event{Response: &model.Response{
 		Choices: []model.Choice{{
 			Message: model.Message{

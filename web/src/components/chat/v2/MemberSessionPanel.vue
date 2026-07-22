@@ -2,12 +2,12 @@
   2026-07-05 重构：
   - 头部三段式：左（avatar+名称+status）| 中（最新动作 icon+text）| 右（时间）
   - 折叠规则：running 默认展开，终态默认折叠，用户意图优先（userToggled）
-  - 自动滚动：running + 展开时实时滚到底；用户滚动后 10s 恢复（useActivityAutoScroll）
+  - 自动滚动（状态制）：running + 展开时跟随滚底；用户滚离后永不自动滚动，滚回底部即恢复（useFollowScroll）
   - 底部输入栏：空+running → stop（暂停 agent）；有文字 → send（注入消息）
   - 系统 agent 排除：__spirit__ 及 __ 前缀 agent 不显示输入栏
 -->
 <template>
-  <div class="member-session-panel" :data-agent-key="memberSession.AgentKey">
+  <div class="member-session-panel" :class="`member-session-panel--${memberSession.Status}`" :data-agent-key="memberSession.AgentKey">
     <!-- 头部三段式：左（avatar+名称+status）| 中（最新动作）| 右（时间） -->
     <div class="member-header" @click="toggleCollapse">
       <div class="member-header__left">
@@ -35,7 +35,7 @@
       <div v-if="memberSession.Error" class="member-error">{{ memberSession.Error }}</div>
 
       <!-- agent 内部活动（thinking/action/reply 等 steps），max-height 300px + 滚动条 -->
-      <div v-if="memberSteps.length > 0" ref="activitiesRef" class="member-activities" @scroll="onScroll">
+      <div v-if="memberSteps.length > 0" ref="activitiesRef" class="member-activities" @scroll.passive="onScroll">
         <template v-for="step in memberSteps" :key="step.ID">
           <ThinkingBlock v-if="step.Kind === 'thinking'" :step="step" />
           <ActionBlock v-else-if="step.Kind === 'action'" :step="step" />
@@ -92,7 +92,7 @@ import { ref, computed, inject, watch, onMounted, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
-import { useActivityAutoScroll } from '../../../features/chat/composables/useActivityAutoScroll';
+import { useFollowScroll } from '../../../features/chat/composables/useFollowScroll';
 import type { MemberSession } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload } from '../../../features/chat/types';
 import ThinkingBlock from '../ThinkingBlock.vue';
@@ -207,7 +207,7 @@ onMounted(() => {
   if (!collapsed.value) emitExpandIfNeeded();
 });
 
-// 自动滚动：running + 展开时实时滚到底；用户滚动后 10s 恢复
+// 自动滚动（状态制）：running + 展开时跟随滚底；用户滚离后永不自动滚动，滚回底部即恢复
 const activitiesRef = ref<HTMLElement | null>(null);
 const autoScrollEnabled = computed(() => !collapsed.value && props.memberSession.Status === 'running');
 // 内容签名：steps 数量 + 最后一步 ID + 内容长度（检测流式增长）
@@ -217,7 +217,7 @@ const contentSignature = computed(() => {
   const last = steps[steps.length - 1];
   return `${steps.length}:${last.ID}:${last.Content?.length ?? 0}`;
 });
-const { onScroll } = useActivityAutoScroll({
+const { onScroll } = useFollowScroll({
   scrollEl: activitiesRef,
   contentSignature,
   enabled: autoScrollEnabled,
@@ -285,11 +285,33 @@ const formattedTime = computed(() => {
 </script>
 
 <style lang="sass" scoped>
+// 2026-07-22 左边线体系：去边框+背景，3px 左状态线 + margin-left 14px（挂在团队线之下形成视觉树）
 .member-session-panel
-  border: 1px solid var(--glass-border)
-  border-radius: 4px
-  margin: 4px 0
-  background: var(--glass-surface)
+  margin: 4px 0 4px 14px
+  padding-left: 10px
+  border-left: 3px solid var(--glass-border)
+
+  &--running
+    border-left-color: var(--color-accent)
+    animation: member-border-pulse 1.6s ease-in-out infinite
+
+  &--paused
+    border-left-color: var(--color-warning)
+
+  &--completed
+    border-left-color: var(--color-success)
+
+  &--failed
+    border-left-color: var(--color-danger)
+
+  &--cancelled, &--skipped
+    border-left-color: var(--color-text-tertiary)
+
+@keyframes member-border-pulse
+  0%, 100%
+    border-left-color: var(--color-accent)
+  50%
+    border-left-color: color-mix(in srgb, var(--color-accent) 35%, transparent)
 
 .member-header
   display: flex

@@ -27,6 +27,7 @@ import (
 	"aranea-agents/internal/biz"
 	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/internal/biz/backgroundjob"
+	bizmedia "aranea-agents/internal/biz/media"
 	"aranea-agents/internal/biz/monitor"
 	bizsession "aranea-agents/internal/biz/session"
 	bizskill "aranea-agents/internal/biz/skill"
@@ -572,6 +573,7 @@ func provideTurnReadDeps(
 	llmCatalog *biz.LlmProviderModelUsecase,
 	skillUC *biz.SkillUsecase,
 	sys biz.SystemSettingRepo,
+	mediaProviders bizmedia.ProviderReader,
 ) rt.TurnReadDeps {
 	return rt.TurnReadDeps{
 		Agents:          agents,
@@ -583,6 +585,7 @@ func provideTurnReadDeps(
 		SkillUC:         skillUC,
 		CLIAdminSkillUC: skillUC,
 		Settings:        sys,
+		MediaProviders:  mediaProviders,
 	}
 }
 
@@ -595,6 +598,7 @@ func provideTeamTurnDeps(
 	llmCatalog *biz.LlmProviderModelUsecase,
 	skillUC *biz.SkillUsecase,
 	sys biz.SystemSettingRepo,
+	mediaProviders bizmedia.ProviderReader,
 	persist rt.PersistenceSet,
 	compress biz.NativeTurnCompressor,
 	eventBus biz.EventBus,
@@ -607,7 +611,7 @@ func provideTeamTurnDeps(
 	// can be applied in the LLM call path via context (see trpc_llm.go).
 	timeoutPolicy := provider.NewTimeoutPolicy()
 	return rt.TurnDeps{
-		ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
+		ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys, mediaProviders),
 		Persist:   persist,
 		Pipeline:  rt.EventPipeline{EventBus: eventBus, MonitorEventBus: monitorEventBus, Sequencer: seq},
 		LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
@@ -650,6 +654,7 @@ func provideChatServiceDeps(
 	llmCatalog *biz.LlmProviderModelUsecase,
 	skillUC *biz.SkillUsecase,
 	sys biz.SystemSettingRepo,
+	mediaProviders bizmedia.ProviderReader,
 	persist rt.PersistenceSet,
 	sessionRT *araneasession.Runtime,
 	compress biz.NativeTurnCompressor,
@@ -700,7 +705,7 @@ func provideChatServiceDeps(
 	return service.ChatOrchestratorDeps{
 		Turn: service.ChatTurnDeps{
 			TurnDeps: rt.TurnDeps{
-				ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
+				ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys, mediaProviders),
 				Persist:   persist,
 				Pipeline:  rt.EventPipeline{EventBus: eventBus, MonitorEventBus: monitorEventBus},
 				LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
@@ -1109,6 +1114,7 @@ func provideChannelIngress(
 	graphs biz.GraphExecutor,
 	cron biz.CronTriggerGateway,
 	eventBus biz.EventBus,
+	monitorBus contract.MonitorBus,
 	admission *biz.TurnAdmissionUsecase,
 	teamCompiler biz.TeamCompiler,
 	lg loggateway.Logger,
@@ -1117,7 +1123,7 @@ func provideChannelIngress(
 	debouncer := biz.NewIngressPeerDebouncer(biz.DefaultIngressDebounce, lg)
 	registry := biz.NewTurnPreviewRegistry()
 	gate := biz.NewChannelConcurrentGate()
-	return service.NewChannelIngress(channels, turnJobs, sessions, chat, graphs, cron, eventBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
+	return service.NewChannelIngress(channels, turnJobs, sessions, chat, graphs, cron, eventBus, monitorBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
 }
 
 func provideChannelIngressAdmission(
@@ -1532,7 +1538,7 @@ func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller bi
 	return biz.NewVerificationGateExecutor(deptLeadMgr, caller, lg)
 }
 
-func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionSugg biz.EvolutionSuggestionRepo, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, stepReader biz.StepV2Reader, sessionRT *araneasession.Runtime, lg loggateway.Logger) *biz.SpiritTeamUsecase {
+func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionSugg biz.EvolutionSuggestionRepo, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, stepReader biz.StepV2Reader, runStatsReader biz.SpiritTeamRunStatsReader, sessionRT *araneasession.Runtime, lg loggateway.Logger) *biz.SpiritTeamUsecase {
 	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg,
 		biz.WithSpiritTransactor(transactor),
 		biz.WithOrchestrationCache(orchCache),
@@ -1540,6 +1546,8 @@ func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUse
 		biz.WithVerificationGateExecutor(gateExecutor),
 		biz.WithDeptLeadMgr(deptLeadMgr),
 		biz.WithSpiritStepReader(stepReader),
+		// B.10.17 execution report: per-unit duration/error enrichment.
+		biz.WithSpiritTeamRunStatsReader(runStatsReader),
 		// B.10.15.4 Graph StateFields bridge: read graph final-state
 		// deliverables for enable_state_deliverable teams.
 		biz.WithGraphDeliverableReader(service.NewGraphDeliverableReader(sessionRT)),

@@ -259,49 +259,65 @@
     <div class="gallery-side">
       <div class="gallery-index">01</div>
       <h3>精灵对话工作台</h3>
-      <p class="gallery-desc">聊天是平台的主战场：左侧会话树、中央消息流与计划 DAG、右侧团队面板，一切实时联动。</p>
+      <p class="gallery-desc">聊天是平台的主战场：Agent 列表、计划 DAG 条、团队运行卡与活动流、SESSION 面板，一切实时联动。</p>
       <ul class="feature-list"></ul>
     </div>
     <div class="stage">
       <div class="stage-viewport">
         <div class="stage-canvas mock-chat">
-          <div class="mk-topbar"><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-topbar-title">Aranea Agents — 对话</span></div>
+          <div class="mk-topbar"><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-topbar-title">Aranea Agent Orchestrator — 对话</span><span class="mk-topbar-right">🔔 · 中文</span></div>
           <div class="mk-body">
-            <div class="mk-sidebar" data-cam="sessions">
-              <div class="mk-side-title">会话</div>
-              <div class="mk-side-item active">量化策略研讨</div>
-              <div class="mk-side-item">周报自动撰写</div>
-              <div class="mk-side-item">竞品情报收集</div>
-              <div class="mk-side-item">知识库整理</div>
+            <div class="mk-rail">
+              <i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+            <div class="mk-agents" data-cam="agents">
+              <div class="mk-search">按名称搜索 Agent 或 Team</div>
+              <div class="mk-agent"><span class="mk-avatar cy"></span><div><b>精灵助手</b><em class="st-on">在线</em></div></div>
+              <div class="mk-agent"><span class="mk-avatar v"></span><div><b>学术叙事专家</b><em class="st-idle">空闲</em></div></div>
+              <div class="mk-agent"><span class="mk-avatar g"></span><div><b>部门主管 · 游戏开发</b><em class="st-done">已完成</em></div></div>
+              <div class="mk-agent"><span class="mk-avatar o"></span><div><b>量化研究助理</b><em class="st-idle">空闲</em></div></div>
             </div>
             <div class="mk-main">
               <div class="mk-plan" data-cam="plan">
-                <div class="mk-plan-title">执行计划 · DAG</div>
-                <div class="mk-plan-steps">
-                  <span class="mk-step done">需求解析</span><i></i>
-                  <span class="mk-step done">资料检索</span><i></i>
-                  <span class="mk-step running">策略撰写</span><i></i>
-                  <span class="mk-step">评审定稿</span>
-                </div>
+                <span class="mk-pchip done">✓ 需求解析</span><i></i>
+                <span class="mk-pchip done">✓ 组建团队</span><i></i>
+                <span class="mk-pchip run">诗歌点评与改进团队 · 执行中</span><i></i>
+                <span class="mk-pchip">汇总定稿</span>
               </div>
-              <div class="mk-msgs" data-cam="stream">
-                <div class="mk-msg user">帮我写一份本周量化策略复盘</div>
-                <div class="mk-msg think">思考：需要先拉取本周交易记录与行情数据…</div>
-                <div class="mk-msg action">⚡ 调用工具 knowledge_search</div>
-                <div class="mk-msg reply">已完成数据汇总，正在生成复盘草稿，关键结论如下…<span class="mk-cursor"></span></div>
+              <div class="mk-msgs">
+                <div class="mk-runcard-chat" data-cam="runcard">
+                  <div class="mk-rc-head"><b>诗歌点评与改进团队</b><span class="mk-rc-st">执行中</span></div>
+                  <div class="mk-rc-task">任务：审阅用户创作的一首关于春天的长诗（至少 6 节），并逐节润色</div>
+                  <div class="mk-rc-members">
+                    <span class="mk-rcm done">学术叙事专家</span>
+                    <span class="mk-rcm run">部门主管 · 创意</span>
+                    <span class="mk-rcm">评审员</span>
+                  </div>
+                  <div class="mk-rc-bar"><i></i></div>
+                  <div class="mk-rc-foot"><span>2/3 成员已完成</span><span>1m36s</span></div>
+                </div>
+                <div class="mk-msg reply">好的，我来查一下当前的工作记忆和上下文，了解之前团队的任务情况。</div>
+                <div class="mk-act"><span class="mk-act-ico">🧠</span>memory_search<em>团队 · 编辑 · 任务 · 完成 ✓</em></div>
+                <div class="mk-act"><span class="mk-act-ico">📥</span>memory_load<em>完成 ✓</em></div>
+                <div class="mk-msg reply">已完成数据汇总，正在生成复盘草稿…<span class="mk-cursor"></span></div>
               </div>
               <div class="mk-composer" data-cam="composer">
-                <div class="mk-input">输入消息，@ 提及 Agent…</div>
-                <div class="mk-send">➤</div>
+                <div class="mk-cp-selects"><span>标准对话 ▾</span><span>DeepSeek V4 Flash ▾</span></div>
+                <div class="mk-cp-row">
+                  <div class="mk-input">输入内容，@ 提及 Agent…</div>
+                  <div class="mk-send">➤</div>
+                </div>
               </div>
             </div>
-            <div class="mk-team" data-cam="team">
-              <div class="mk-side-title">策略团队 · 运行中</div>
-              <div class="mk-member"><span class="mk-avatar g"></span>检索员<em>已完成</em></div>
-              <div class="mk-member"><span class="mk-avatar o"></span>撰写员<em>运行中</em></div>
-              <div class="mk-member"><span class="mk-avatar gr"></span>评审员<em>等待中</em></div>
+            <div class="mk-sessions" data-cam="sessions">
+              <div class="mk-side-title">SESSION</div>
+              <div class="mk-ss-group">今天</div>
+              <div class="mk-ss-item active">长诗点评与润色<em>23:31</em><div class="mk-ss-bar"><i style="width:64%"></i></div></div>
+              <div class="mk-ss-item">量化策略研讨<em>21:07</em><div class="mk-ss-bar"><i style="width:100%"></i></div></div>
+              <div class="mk-ss-item">竞品情报收集<em>18:42</em><div class="mk-ss-bar"><i style="width:100%"></i></div></div>
             </div>
           </div>
+          <div class="mk-statusbar"><span>✓ 已完成 1/2</span><span>32.9k / 10M tokens</span><span>观测模式</span></div>
         </div>
         <div class="spotlight"></div>
       </div>
@@ -314,40 +330,52 @@
     <div class="gallery-side">
       <div class="gallery-index">02</div>
       <h3>Team 编排画布</h3>
-      <p class="gallery-desc">团队按 DAG 阶段块流转，阶段宽度随并行层自适应，成员运行卡片内嵌展开，无需跳转页面。</p>
+      <p class="gallery-desc">团队按 DAG 阶段块流转，并行层成员状态独立点亮；成员会话内嵌展开，可暂停、可注入指令，无需跳转页面。</p>
       <ul class="feature-list"></ul>
     </div>
     <div class="stage">
       <div class="stage-viewport">
         <div class="stage-canvas mock-teamcv">
-          <div class="mk-topbar"><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-topbar-title">Team 编排 — 内容生产流水线</span></div>
-          <div class="mk-canvas">
-            <div class="mk-stage-col" data-cam="stage1">
-              <div class="mk-stage-block done">
-                <b>阶段 1 · 调研</b>
-                <div class="mk-mini-member done">情报 Agent</div>
+          <div class="mk-topbar"><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-topbar-title">Team 编排 — 内容生产流水线</span><span class="mk-topbar-right">团队数量 45</span></div>
+          <div class="mk-tcv">
+            <div class="mk-dag" data-cam="dag">
+              <span class="mk-pchip done">✓ 阶段 1 · 调研</span><i></i>
+              <span class="mk-pchip run">阶段 2 · 创作（并行）</span><i></i>
+              <span class="mk-pchip">阶段 3 · 评审</span>
+            </div>
+            <div class="mk-tcv-body">
+              <div class="mk-stagecol done" data-cam="stage1">
+                <div class="mk-sc-head"><b>调研</b><em>已完成</em></div>
+                <div class="mk-sc-m done"><i></i>情报 Agent<em>12.4s</em></div>
+                <div class="mk-sc-bar"><i style="width:100%"></i></div>
+              </div>
+              <div class="mk-tcv-edge"></div>
+              <div class="mk-stagecol run" data-cam="stage2">
+                <div class="mk-sc-head"><b>创作 · 并行</b><em>执行中</em></div>
+                <div class="mk-sc-m done"><i></i>文案 Agent<em>已完成</em></div>
+                <div class="mk-sc-m run"><i></i>视觉 Agent<em>生成中…</em></div>
+                <div class="mk-sc-m"><i></i>排版 Agent<em>等待中</em></div>
+                <div class="mk-sc-bar"><i style="width:58%"></i></div>
+              </div>
+              <div class="mk-tcv-edge"></div>
+              <div class="mk-stagecol">
+                <div class="mk-sc-head"><b>评审</b><em>等待中</em></div>
+                <div class="mk-sc-m"><i></i>评审 Agent<em>—</em></div>
+                <div class="mk-sc-bar"><i style="width:0%"></i></div>
               </div>
             </div>
-            <div class="mk-edges"></div>
-            <div class="mk-stage-col" data-cam="stage2">
-              <div class="mk-stage-block running">
-                <b>阶段 2 · 创作（并行）</b>
-                <div class="mk-mini-member running">文案 Agent</div>
-                <div class="mk-mini-member running">视觉 Agent</div>
-                <div class="mk-mini-member wait">排版 Agent</div>
+            <div class="mk-msession" data-cam="members">
+              <div class="mk-ms-head"><span class="mk-avatar o"></span><b>视觉 Agent</b><em>成员会话 · 运行中</em></div>
+              <div class="mk-ms-lines">
+                <div class="mk-ms-l think">思考：主视觉需呼应「春日」主题，先取配色板…</div>
+                <div class="mk-ms-l act">⚡ text_to_image · 樱花大道概念图 ✓</div>
+                <div class="mk-ms-l act">⚡ artifact_save · vision-v2.png ✓</div>
+                <div class="mk-ms-l reply">第 2 版视觉稿已生成，正在自检构图…<span class="mk-cursor"></span></div>
               </div>
-            </div>
-            <div class="mk-edges"></div>
-            <div class="mk-stage-col" data-cam="stage3">
-              <div class="mk-stage-block wait">
-                <b>阶段 3 · 评审</b>
-                <div class="mk-mini-member wait">评审 Agent</div>
+              <div class="mk-ms-input" data-cam="input">
+                <span class="mk-ms-ph">向成员注入指令…</span>
+                <span class="mk-ms-btn stop">⏹</span>
               </div>
-            </div>
-            <div class="mk-runcard" data-cam="runcard">
-              <b>文案 Agent · 运行中</b>
-              <div class="mk-runline">⚡ 正在生成第 2 节草稿…</div>
-              <div class="mk-runbar"><i></i></div>
             </div>
           </div>
         </div>
@@ -368,32 +396,47 @@
     <div class="stage">
       <div class="stage-viewport">
         <div class="stage-canvas mock-graph">
-          <div class="mk-topbar"><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-topbar-title">Graph 编辑器 — 审批工作流 v3</span></div>
+          <div class="mk-topbar"><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-topbar-title">Graph 编辑器 — 并行评审 v3</span></div>
           <div class="mk-body">
             <div class="mk-palette" data-cam="palette">
-              <div class="mk-side-title">节点</div>
-              <div class="mk-pal-item">Agent 节点</div>
-              <div class="mk-pal-item">条件分支</div>
-              <div class="mk-pal-item">人工介入</div>
-              <div class="mk-pal-item">工具节点</div>
+              <div class="mk-side-title">组件库</div>
+              <div class="mk-search">搜索节点类型…</div>
+              <div class="mk-pal-group">智能体</div>
+              <div class="mk-pal-item">智能体<em>引用 Agent 目录</em></div>
+              <div class="mk-pal-item">LLM<em>轻量级调用</em></div>
+              <div class="mk-pal-item">工具<em>直接调用工具</em></div>
+              <div class="mk-pal-group">控制流</div>
+              <div class="mk-pal-item">函数<em>调度链 · 数据转换</em></div>
+              <div class="mk-pal-item">路由<em>条件分支</em></div>
+              <div class="mk-pal-item">汇聚<em>并行汇聚</em></div>
+              <div class="mk-pal-item hitl">人工干预<em>确认 · 审批</em></div>
             </div>
             <div class="mk-gcanvas" data-cam="gcanvas">
-              <svg viewBox="0 0 460 260" class="mk-gedges">
-                <path d="M90 60 C 150 60, 150 70, 200 75" class="mk-edge"/>
-                <path d="M290 85 C 330 90, 330 60, 370 55" class="mk-edge"/>
-                <path d="M290 95 C 330 110, 330 190, 370 195" class="mk-edge mk-edge-cond"/>
+              <svg viewBox="0 0 790 674" class="mk-gedges" preserveAspectRatio="none">
+                <path d="M176 214 C 236 214, 240 96, 300 96" class="mk-edge"/>
+                <path d="M176 214 C 220 214, 256 218, 300 218" class="mk-edge"/>
+                <path d="M176 214 C 236 214, 240 338, 300 338" class="mk-edge"/>
+                <path d="M440 96 C 490 96, 495 214, 545 214" class="mk-edge"/>
+                <path d="M440 218 C 480 218, 505 214, 545 214" class="mk-edge"/>
+                <path d="M440 338 C 490 338, 495 214, 545 214" class="mk-edge"/>
               </svg>
-              <div class="mk-gnode" style="left:18px;top:42px">开始</div>
-              <div class="mk-gnode mk-gnode-agent" style="left:200px;top:58px">初审 Agent</div>
-              <div class="mk-gnode mk-gnode-hitl" style="left:368px;top:36px">人工复核</div>
-              <div class="mk-gnode" style="left:368px;top:178px">自动归档</div>
+              <div class="mk-fnode" style="left:36px;top:182px"><span class="mk-fn-tag">函数</span><b>任务分发</b><em>拆分为 3 路并行评审</em></div>
+              <div class="mk-fnode sel" style="left:300px;top:64px"><span class="mk-fn-tag">函数</span><b>评审者 A</b><em>结构与韵律</em></div>
+              <div class="mk-fnode" style="left:300px;top:186px"><span class="mk-fn-tag">函数</span><b>评审者 B</b><em>意象与情感</em></div>
+              <div class="mk-fnode" style="left:300px;top:306px"><span class="mk-fn-tag">函数</span><b>评审者 C</b><em>语言与修辞</em></div>
+              <div class="mk-fnode" style="left:545px;top:182px"><span class="mk-fn-tag">汇聚</span><b>汇总结果</b><em>合并评审意见</em></div>
+              <div class="mk-zoom">− &nbsp;115%&nbsp; +</div>
+              <div class="mk-minimap"><i style="left:8px;top:34px"></i><i style="left:40px;top:10px"></i><i style="left:40px;top:34px"></i><i style="left:40px;top:58px"></i><i style="left:74px;top:34px"></i></div>
             </div>
             <div class="mk-props" data-cam="props">
-              <div class="mk-side-title">属性</div>
-              <div class="mk-prop-row"><span>节点</span><b>初审 Agent</b></div>
-              <div class="mk-prop-row"><span>模型</span><b>gpt-x-pro</b></div>
-              <div class="mk-prop-row"><span>失败策略</span><b>重试后阻塞</b></div>
-              <div class="mk-prop-row"><span>超时</span><b>120s</b></div>
+              <div class="mk-side-title">GRAPH 属性</div>
+              <div class="mk-prop-row"><span>名称</span><b>并行评审</b></div>
+              <div class="mk-prop-row"><span>入口节点</span><b>dispatch</b></div>
+              <div class="mk-prop-row"><span>结束节点</span><b>aggregate</b></div>
+              <div class="mk-prop-row"><span>执行引擎</span><b>BSP（默认）</b></div>
+              <div class="mk-prop-row"><span>检查点</span><b class="mk-on">已启用</b></div>
+              <div class="mk-prop-row"><span>当前版本</span><b>v3</b></div>
+              <div class="mk-prop-row"><span>状态字段</span><b>input · reviews</b></div>
             </div>
           </div>
         </div>
@@ -414,27 +457,36 @@
     <div class="stage">
       <div class="stage-viewport">
         <div class="stage-canvas mock-monitor">
-          <div class="mk-topbar"><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-topbar-title">监控中心</span></div>
-          <div class="mk-mon-grid">
+          <div class="mk-topbar"><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-dot"></span><span class="mk-topbar-title">运行监控 — 审计 · 实时事件 · Trace · 日志</span><span class="mk-topbar-right">⟳ 刷新</span></div>
+          <div class="mk-mon">
             <div class="mk-metrics" data-cam="metrics">
-              <div class="mk-metric"><b>128</b><span>活跃 Runner</span></div>
-              <div class="mk-metric"><b>2.4k</b><span>今日事件</span></div>
-              <div class="mk-metric warn"><b>3</b><span>告警</span></div>
+              <div class="mk-metric"><span class="mk-m-ico cy"></span><b>274</b><span>活跃 Agent</span></div>
+              <div class="mk-metric"><span class="mk-m-ico v"></span><b>45</b><span>团队数量</span></div>
+              <div class="mk-metric"><span class="mk-m-ico g"></span><b>1.2k</b><span>今日模型调用</span></div>
+              <div class="mk-metric warn"><span class="mk-m-ico o"></span><b>3</b><span>活跃告警</span></div>
             </div>
-            <div class="mk-logstream" data-cam="logs">
-              <div class="mk-side-title">实时日志流</div>
-              <div class="mk-log"><em>12:03:11</em> [INFO] runner started · agent=spirit</div>
-              <div class="mk-log"><em>12:03:12</em> [INFO] tool invoked · knowledge_search</div>
-              <div class="mk-log ok"><em>12:03:13</em> [INFO] step completed · 482ms</div>
-              <div class="mk-log warnl"><em>12:03:15</em> [WARN] retry · attempt 2/5</div>
-              <div class="mk-log"><em>12:03:16</em> [INFO] event published · team_stage</div>
+            <div class="mk-tabs" data-cam="tabs">
+              <span>Usage</span><span>Alerts</span><span>Audit</span><span>Events</span><span>Traces</span><span class="on">Logs</span>
             </div>
-            <div class="mk-trace" data-cam="trace">
-              <div class="mk-side-title">调用链瀑布</div>
-              <div class="mk-bar" style="--w:88%;--d:0%"><i></i>runner.run · 2.4s</div>
-              <div class="mk-bar" style="--w:60%;--d:8%"><i></i>agent.think · 1.6s</div>
-              <div class="mk-bar" style="--w:34%;--d:20%"><i></i>tool.exec · 0.9s</div>
-              <div class="mk-bar" style="--w:18%;--d:58%"><i></i>memory.recall · 0.4s</div>
+            <div class="mk-mon-grid">
+              <div class="mk-logstream" data-cam="logs">
+                <div class="mk-side-title">实时日志流 · WebSocket 推送</div>
+                <div class="mk-log"><em>12:03:11</em> [INFO] runner started · agent=spirit</div>
+                <div class="mk-log"><em>12:03:12</em> [INFO] tool invoked · text_to_image</div>
+                <div class="mk-log ok"><em>12:03:13</em> [INFO] step completed · 482ms</div>
+                <div class="mk-log warnl"><em>12:03:15</em> [WARN] retry · attempt 2/5 · tool=text_to_image</div>
+                <div class="mk-log"><em>12:03:16</em> [INFO] event published · team_stage.completed</div>
+                <div class="mk-log errl"><em>12:03:18</em> [ERROR] provider timeout · deepseek · 30s</div>
+                <div class="mk-log ok"><em>12:03:19</em> [INFO] fallback switched · gpt-x-pro ✓</div>
+              </div>
+              <div class="mk-trace" data-cam="trace">
+                <div class="mk-side-title">调用链瀑布 · team_run#847</div>
+                <div class="mk-bar" style="--w:88%;--d:0%"><i></i>runner.run · 2.4s</div>
+                <div class="mk-bar" style="--w:60%;--d:8%"><i></i>agent.think · 1.6s</div>
+                <div class="mk-bar" style="--w:34%;--d:20%"><i></i>tool.exec · 0.9s</div>
+                <div class="mk-bar" style="--w:18%;--d:58%"><i></i>memory.recall · 0.4s</div>
+                <div class="mk-bar" style="--w:24%;--d:64%"><i></i>artifact.save · 0.6s</div>
+              </div>
             </div>
           </div>
         </div>

@@ -24,6 +24,7 @@ const (
 
 	StatusReasonToolConfirmation   SessionStatusReason = "tool_confirmation"
 	StatusReasonAgentAwaitingReply SessionStatusReason = "agent_awaiting_reply"
+	StatusReasonClarification      SessionStatusReason = "clarification"
 
 	StatusReasonManualOverride SessionStatusReason = "manual_override"
 )

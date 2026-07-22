@@ -10,6 +10,7 @@
       @retry-team="(teamId) => $emit('retry-team', teamId)"
       @expand="(ids) => $emit('expand', ids)"
       @confirm-step="(p) => $emit('confirm-step', p)"
+      @submit-clarification="(p) => $emit('submit-clarification', p)"
     />
   </div>
 </template>
@@ -17,7 +18,7 @@
 <script setup lang="ts">
 import TaskList from './TaskList.vue';
 import type { Task } from '../../../features/chat/v2Types';
-import type { ConfirmStepPayload } from '../../../features/chat/types';
+import type { ConfirmStepPayload, SubmitClarificationPayload } from '../../../features/chat/types';
 
 defineProps<{ sessionId: string }>();
 defineEmits<{
@@ -28,5 +29,6 @@ defineEmits<{
   'retry-team': [teamId: string];
   expand: [sessionIds: string[]];
   'confirm-step': [payload: ConfirmStepPayload];
+  'submit-clarification': [payload: SubmitClarificationPayload];
 }>();
 </script>

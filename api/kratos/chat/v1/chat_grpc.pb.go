@@ -40,6 +40,7 @@ const (
 	ChatService_ConfirmPlan_FullMethodName             = "/kratos.chat.v1.ChatService/ConfirmPlan"
 	ChatService_ListPlans_FullMethodName               = "/kratos.chat.v1.ChatService/ListPlans"
 	ChatService_GetPlan_FullMethodName                 = "/kratos.chat.v1.ChatService/GetPlan"
+	ChatService_SubmitClarification_FullMethodName     = "/kratos.chat.v1.ChatService/SubmitClarification"
 )
 
 // ChatServiceClient is the client API for ChatService service.
@@ -87,6 +88,9 @@ type ChatServiceClient interface {
 	// GetPlan returns a single TaskPlan by ID with full details (T3.2).
 	// Used by the Observability Dashboard to display plan details.
 	GetPlan(ctx context.Context, in *GetPlanRequest, opts ...grpc.CallOption) (*GetPlanResponse, error)
+	// SubmitClarification submits user answers to a clarification step and
+	// resumes the turn with the clarified context.
+	SubmitClarification(ctx context.Context, in *SubmitClarificationRequest, opts ...grpc.CallOption) (*SubmitClarificationResponse, error)
 }
 
 type chatServiceClient struct {
@@ -307,6 +311,16 @@ func (c *chatServiceClient) GetPlan(ctx context.Context, in *GetPlanRequest, opt
 	return out, nil
 }
 
+func (c *chatServiceClient) SubmitClarification(ctx context.Context, in *SubmitClarificationRequest, opts ...grpc.CallOption) (*SubmitClarificationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SubmitClarificationResponse)
+	err := c.cc.Invoke(ctx, ChatService_SubmitClarification_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ChatServiceServer is the server API for ChatService service.
 // All implementations must embed UnimplementedChatServiceServer
 // for forward compatibility.
@@ -352,6 +366,9 @@ type ChatServiceServer interface {
 	// GetPlan returns a single TaskPlan by ID with full details (T3.2).
 	// Used by the Observability Dashboard to display plan details.
 	GetPlan(context.Context, *GetPlanRequest) (*GetPlanResponse, error)
+	// SubmitClarification submits user answers to a clarification step and
+	// resumes the turn with the clarified context.
+	SubmitClarification(context.Context, *SubmitClarificationRequest) (*SubmitClarificationResponse, error)
 	mustEmbedUnimplementedChatServiceServer()
 }
 
@@ -424,6 +441,9 @@ func (UnimplementedChatServiceServer) ListPlans(context.Context, *ListPlansReque
 }
 func (UnimplementedChatServiceServer) GetPlan(context.Context, *GetPlanRequest) (*GetPlanResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetPlan not implemented")
+}
+func (UnimplementedChatServiceServer) SubmitClarification(context.Context, *SubmitClarificationRequest) (*SubmitClarificationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SubmitClarification not implemented")
 }
 func (UnimplementedChatServiceServer) mustEmbedUnimplementedChatServiceServer() {}
 func (UnimplementedChatServiceServer) testEmbeddedByValue()                     {}
@@ -824,6 +844,24 @@ func _ChatService_GetPlan_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ChatService_SubmitClarification_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubmitClarificationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChatServiceServer).SubmitClarification(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChatService_SubmitClarification_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChatServiceServer).SubmitClarification(ctx, req.(*SubmitClarificationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ChatService_ServiceDesc is the grpc.ServiceDesc for ChatService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -914,6 +952,10 @@ var ChatService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetPlan",
 			Handler:    _ChatService_GetPlan_Handler,
+		},
+		{
+			MethodName: "SubmitClarification",
+			Handler:    _ChatService_SubmitClarification_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

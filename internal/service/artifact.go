@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -128,7 +129,7 @@ func (s *ArtifactService) UploadArtifact(ctx context.Context, req *v1.UploadArti
 	}
 	metrics.ArtifactUploadBytesTotal.Add(float64(len(data)))
 	s.refreshStorageGauge(ctx)
-	return toProtoArtifactMeta(saved), nil
+	return s.protoArtifactMeta(saved), nil
 }
 
 // GetArtifact returns an artifact with its binary payload (base64-encoded).
@@ -151,7 +152,7 @@ func (s *ArtifactService) GetArtifact(ctx context.Context, req *v1.GetArtifactRe
 	}
 	metrics.ArtifactDownloadBytesTotal.Add(float64(len(data)))
 	return &v1.ArtifactData{
-		Meta:       toProtoArtifactMeta(meta),
+		Meta:       s.protoArtifactMeta(meta),
 		DataBase64: base64.StdEncoding.EncodeToString(data),
 	}, nil
 }
@@ -179,7 +180,7 @@ func (s *ArtifactService) ListArtifacts(ctx context.Context, req *v1.ListArtifac
 	}
 	pbItems := make([]*v1.ArtifactMeta, 0, len(items))
 	for _, it := range items {
-		pbItems = append(pbItems, toProtoArtifactMeta(it))
+		pbItems = append(pbItems, s.protoArtifactMeta(it))
 	}
 	return &v1.ListArtifactsResponse{
 		Items: pbItems,
@@ -204,7 +205,7 @@ func (s *ArtifactService) ListArtifactVersions(ctx context.Context, req *v1.List
 	}
 	pbItems := make([]*v1.ArtifactMeta, 0, len(versions))
 	for _, it := range versions {
-		pbItems = append(pbItems, toProtoArtifactMeta(it))
+		pbItems = append(pbItems, s.protoArtifactMeta(it))
 	}
 	return &v1.ListArtifactVersionsResponse{Items: pbItems}, nil
 }
@@ -268,7 +269,7 @@ func (s *ArtifactService) PreviewArtifact(ctx context.Context, req *v1.PreviewAr
 		}
 		return nil, err
 	}
-	resp := &v1.PreviewArtifactResponse{Meta: toProtoArtifactMeta(result.Meta)}
+	resp := &v1.PreviewArtifactResponse{Meta: s.protoArtifactMeta(result.Meta)}
 	switch result.Kind {
 	case artifactbiz.PreviewKindText:
 		resp.PreviewKind = "text"
@@ -279,6 +280,11 @@ func (s *ArtifactService) PreviewArtifact(ctx context.Context, req *v1.PreviewAr
 	case artifactbiz.PreviewKindPDF:
 		resp.PreviewKind = "pdf"
 		resp.DataBase64 = base64.StdEncoding.EncodeToString(result.Data)
+	case artifactbiz.PreviewKindAudio:
+		// No base64 payload: browsers play via signed URL with inline=1.
+		resp.PreviewKind = "audio"
+	case artifactbiz.PreviewKindVideo:
+		resp.PreviewKind = "video"
 	default:
 		resp.PreviewKind = "binary"
 	}
@@ -392,15 +398,36 @@ func (s *ArtifactService) ServeSignedDownload(w http.ResponseWriter, r *http.Req
 	if mime == "" {
 		mime = "application/octet-stream"
 	}
-	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, meta.Name))
-	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-	metrics.ArtifactDownloadBytesTotal.Add(float64(len(data)))
-	if _, err := w.Write(data); err != nil {
-		// Client may have disconnected mid-stream; nothing we can do but log.
-		// Do not treat as a server error since the response headers are already sent.
-		return
+	// inline=1 lets browsers play media via <audio>/<video> src. Restricted to
+	// non-executable media types (design §13.7: no HTML/JS inline injection).
+	disposition := "attachment"
+	if r.URL.Query().Get("inline") == "1" && artifactInlineAllowed(mime) {
+		disposition = "inline"
 	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`%s; filename="%s"`, disposition, meta.Name))
+	metrics.ArtifactDownloadBytesTotal.Add(float64(len(data)))
+	// ServeContent handles Range requests (video seeking) and sets
+	// Content-Length / Content-Range; modtime is best-effort from CreatedAt.
+	http.ServeContent(w, r, meta.Name, artifactModTime(meta.CreatedAt), bytes.NewReader(data))
+}
+
+// artifactInlineAllowed reports whether a MIME type may be served with
+// Content-Disposition: inline. Only media browsers render without script
+// execution risk qualify (audio/video/image); everything else stays
+// attachment even when inline=1 is requested.
+func artifactInlineAllowed(mime string) bool {
+	m := strings.ToLower(strings.TrimSpace(strings.SplitN(mime, ";", 2)[0]))
+	return strings.HasPrefix(m, "audio/") || strings.HasPrefix(m, "video/") || strings.HasPrefix(m, "image/")
+}
+
+// artifactModTime parses CreatedAt (RFC3339) for http.ServeContent. A zero
+// time is returned when unset/unparseable, disabling Last-Modified.
+func artifactModTime(createdAt string) time.Time {
+	if ts, err := time.Parse(time.RFC3339, strings.TrimSpace(createdAt)); err == nil {
+		return ts
+	}
+	return time.Time{}
 }
 
 func toProtoArtifactMeta(a biz.Artifact) *v1.ArtifactMeta {
@@ -416,6 +443,19 @@ func toProtoArtifactMeta(a biz.Artifact) *v1.ArtifactMeta {
 		Version:     int32(a.Version),
 		CreatedAt:   a.CreatedAt,
 	}
+}
+
+// protoArtifactMeta wraps toProtoArtifactMeta and resolves the local on-disk
+// absolute path into storage_uri (local backend only) so detail views can
+// display and copy the full path. Non-local backends keep the raw URI.
+func (s *ArtifactService) protoArtifactMeta(a biz.Artifact) *v1.ArtifactMeta {
+	m := toProtoArtifactMeta(a)
+	if s.uc != nil {
+		if abs := s.uc.ResolveAbsPath(a); abs != "" {
+			m.StorageUri = abs
+		}
+	}
+	return m
 }
 
 func (s *ArtifactService) refreshStorageGauge(ctx context.Context) {

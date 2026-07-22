@@ -91,15 +91,6 @@ export type ListChannelsResponse = {
   pageSize: number | undefined;
 };
 
-/** Optional query for ListChannels (Empty RPC; params ride on the HTTP query string). */
-export type ListChannelsQuery = {
-  page?: number;
-  pageSize?: number;
-  search?: string;
-  type?: string;
-  status?: string;
-};
-
 export type GetChannelRequest = {
   //
   // Behaviors: REQUIRED
@@ -223,7 +214,7 @@ export type ListChannelTurnJobsResponse = {
 
 export interface ChannelService {
   ListChannelTypes(request: wellKnownEmpty): Promise<ListChannelTypesResponse>;
-  ListChannels(request: wellKnownEmpty & ListChannelsQuery): Promise<ListChannelsResponse>;
+  ListChannels(request: wellKnownEmpty): Promise<ListChannelsResponse>;
   GetChannel(request: GetChannelRequest): Promise<Channel>;
   CreateChannel(request: CreateChannelRequest): Promise<Channel>;
   UpdateChannel(request: UpdateChannelRequest): Promise<Channel>;
@@ -270,21 +261,6 @@ export function createChannelServiceClient(
       const path = `v1/channels`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
-      if (request.page != null) {
-        queryParams.push(`page=${encodeURIComponent(String(request.page))}`);
-      }
-      if (request.pageSize != null) {
-        queryParams.push(`pageSize=${encodeURIComponent(String(request.pageSize))}`);
-      }
-      if (request.search) {
-        queryParams.push(`search=${encodeURIComponent(request.search)}`);
-      }
-      if (request.type) {
-        queryParams.push(`type=${encodeURIComponent(request.type)}`);
-      }
-      if (request.status) {
-        queryParams.push(`status=${encodeURIComponent(request.status)}`);
-      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`

@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/teamrunv2"
+	"aranea-agents/internal/data/ent/teamstagev2"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -18,11 +19,21 @@ type teamRunV2Repo struct {
 	lg   loggateway.Logger
 }
 
-var _ biz.TeamRunV2Repo = (*teamRunV2Repo)(nil)
+var (
+	_ biz.TeamRunV2Repo             = (*teamRunV2Repo)(nil)
+	_ biz.SpiritTeamRunStatsReader  = (*teamRunV2Repo)(nil)
+)
 
 // NewTeamRunV2Repo creates a new TeamRunV2Repo.
 // Logger is preset with domain "TEAM_RUN_V2" per loggateway convention.
 func NewTeamRunV2Repo(d *Data, lg loggateway.Logger) biz.TeamRunV2Repo {
+	return &teamRunV2Repo{data: d, lg: lg.With(loggateway.Domain("TEAM_RUN_V2"))}
+}
+
+// NewSpiritTeamRunStatsReader exposes the team run v2 repo through the
+// stats-reader port consumed by the execution report (B.10.17). Returned as
+// the biz interface directly so Wire needs no Bind.
+func NewSpiritTeamRunStatsReader(d *Data, lg loggateway.Logger) biz.SpiritTeamRunStatsReader {
 	return &teamRunV2Repo{data: d, lg: lg.With(loggateway.Domain("TEAM_RUN_V2"))}
 }
 
@@ -51,6 +62,75 @@ func (r *teamRunV2Repo) ListTeamRunsByStage(ctx context.Context, stageID string)
 		return nil, entErrToBizErr(err, "TEAM_RUN_V2")
 	}
 	return entTeamRunsV2ToBiz(rows), nil
+}
+
+// ListLatestRunStatsByTeams implements biz.SpiritTeamRunStatsReader (B.10.17
+// execution report). team_runs_v2 has no direct team_id column — the mapping
+// goes through team_stages_v2 (team_id → stage id → runs). The latest run per
+// team is picked by (started_at, seq) across all of the team's stages.
+func (r *teamRunV2Repo) ListLatestRunStatsByTeams(ctx context.Context, teamIDs []string) (map[string]biz.SpiritTeamRunStats, error) {
+	if r == nil || r.data == nil {
+		return nil, fmt.Errorf("team run v2 repo: database not configured")
+	}
+	if len(teamIDs) == 0 {
+		return nil, nil
+	}
+	stages, err := r.data.RW().Read(ctx).TeamStageV2.Query().
+		Where(teamstagev2.TeamIDIn(teamIDs...)).
+		Select(teamstagev2.FieldID, teamstagev2.FieldTeamID).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "TEAM_RUN_V2")
+	}
+	if len(stages) == 0 {
+		return nil, nil
+	}
+	stageToTeam := make(map[string]string, len(stages))
+	stageIDs := make([]string, 0, len(stages))
+	for _, s := range stages {
+		stageToTeam[s.ID] = s.TeamID
+		stageIDs = append(stageIDs, s.ID)
+	}
+	runs, err := r.data.RW().Read(ctx).TeamRunV2.Query().
+		Where(teamrunv2.TeamStageIDIn(stageIDs...)).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "TEAM_RUN_V2")
+	}
+	latest := make(map[string]*ent.TeamRunV2, len(teamIDs))
+	for _, run := range runs {
+		teamID, ok := stageToTeam[run.TeamStageID]
+		if !ok {
+			continue
+		}
+		cur := latest[teamID]
+		if cur == nil || run.StartedAt.After(cur.StartedAt) ||
+			(run.StartedAt.Equal(cur.StartedAt) && run.Seq > cur.Seq) {
+			latest[teamID] = run
+		}
+	}
+	out := make(map[string]biz.SpiritTeamRunStats, len(latest))
+	for teamID, run := range latest {
+		out[teamID] = biz.SpiritTeamRunStats{
+			TeamID:       teamID,
+			DurationMs:   teamRunV2DurationMs(run),
+			ErrorMessage: run.Error,
+		}
+	}
+	return out, nil
+}
+
+// teamRunV2DurationMs returns completed_at - started_at in milliseconds, or 0
+// when the run has not completed or the timestamps are inverted.
+func teamRunV2DurationMs(run *ent.TeamRunV2) int64 {
+	if run.CompletedAt == nil {
+		return 0
+	}
+	d := run.CompletedAt.Sub(run.StartedAt).Milliseconds()
+	if d < 0 {
+		return 0
+	}
+	return d
 }
 
 // CreateTeamRun inserts a new TeamRun with the caller's claimed Version.

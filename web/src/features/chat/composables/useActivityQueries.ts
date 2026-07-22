@@ -38,6 +38,9 @@ export function useActivityQueries() {
     getTaskTurns(taskId: string): Turn[] {
       return store.getTaskTurns(taskId);
     },
+    getTaskOrphanSteps(taskId: string): Step[] {
+      return store.getTaskOrphanSteps(taskId);
+    },
     getTaskPlanBoards(taskId: string): PlanBoard[] {
       return store.getTaskPlanBoards(taskId);
     },
@@ -95,6 +98,10 @@ export function useActivityQueries() {
     /** Read-only view of the teamStages map. */
     teamStages(): ReadonlyMap<string, TeamStage> {
       return store.teamStages;
+    },
+    /** Read-only view of the teamRuns map. */
+    teamRuns(): ReadonlyMap<string, TeamRun> {
+      return store.teamRuns;
     },
     /** Read-only view of the planSteps map. */
     planSteps(): ReadonlyMap<string, PlanStep> {

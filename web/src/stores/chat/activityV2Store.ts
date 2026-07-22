@@ -304,6 +304,16 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     return out.sort(compareByTimeThenSeq);
   }
 
+  /** Orphan steps owned directly by a task (TurnID empty), e.g. clarification
+   *  gate steps published before the run/turn exists (design: B.10.18). */
+  function getTaskOrphanSteps(taskId: string): Step[] {
+    const out: Step[] = [];
+    for (const s of steps.value.values()) {
+      if (s.TaskID === taskId && !s.TurnID) out.push(s);
+    }
+    return out.sort(compareByTimeThenSeq);
+  }
+
   function getTaskTeamStages(taskId: string): TeamStage[] {
     const out: TeamStage[] = [];
     for (const ts of teamStages.value.values()) {
@@ -636,6 +646,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     getSessionTasks,
     getTaskTurns,
     getTurnSteps,
+    getTaskOrphanSteps,
     getTaskTeamStages,
     getTurnTeamStages,
     getTaskPlanBoards,

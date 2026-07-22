@@ -139,6 +139,15 @@ export interface ConfirmStepPayload {
   reply: ToolConfirmReply;
 }
 
+/** Payload emitted by ClarifyBlock and forwarded up the v2 component chain. */
+export interface SubmitClarificationPayload {
+  /** Spirit (root) session that owns the clarify step. */
+  sessionId: string;
+  stepId: string;
+  /** answers[i] corresponds to questions[i]; empty selected = use recommended. */
+  answers: Array<{ selected: string[]; other: string }>;
+}
+
 export type ChatBackgroundJobRow = {
   id: string;
   source: string;

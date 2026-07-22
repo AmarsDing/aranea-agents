@@ -694,12 +694,13 @@
 | **事件生产** | `spirit_team_assembled`、`spirit_team_completed`、`spirit_team_failed`、`spirit_team_progress`、`spirit_teams_all_completed`、`spirit_synthesis_completed` |
 | **事件消费** | 无 |
 | **数据库** | 无直接访问（通过 biz Usecase 间接访问） |
-| **前端对应** | SpiritEntry/SynthesisResultCard/TeamAssemblyCard/TeamProgressCard/TaskExecutionPanel 组件 |
+| **前端对应** | SpiritEntry/TeamAssemblyCard/TeamProgressCard/TaskExecutionPanel 组件；执行总结报告经 `NoticeBlock` 分支渲染 `ExecutionReportCard`（2026-07-22 P-REPORT，取代未接入的 SynthesisResultCard） |
 
 **⚠️ 开发注意**：
 - Spirit 模式是 Team 的上层编排，不替代 Team，而是动态创建和调度多个 Team
 - 修改 `TeamStarterPort` 接口时，需同步更新 `service/team.go` 的 `TeamStarter` 实现
 - 6 种 Spirit EnvelopeType 被前端 `useSpiritTeamStore` 和 `useOrchestrationStore` 消费
+- **执行总结报告（B.10.17）**：`synthesisEventPublisher` 将报告以 `StepCreatedEvent`（Kind=notice，`NoticeType=synthesis_completed`，Content=ExecutionReportEnvelope JSON）持久化；存在 cancelled 团队时跳过发布；LLM 结论失败时 `degraded=true` 保留结构化板块；前端 `parseExecutionReport` 解析失败回落默认 notice
 
 ---
 

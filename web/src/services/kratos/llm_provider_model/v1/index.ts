@@ -40,12 +40,6 @@ export type ListProviderModelsResponse = {
   pageSize: number | undefined;
 };
 
-export type ListProviderModelsQuery = {
-  page?: number;
-  pageSize?: number;
-  search?: string;
-};
-
 export type CreateProviderModelRequest = {
   //
   // Behaviors: REQUIRED
@@ -150,7 +144,7 @@ export type InspectProviderModelResponse = {
 };
 
 export interface LlmProviderModelService {
-  ListProviderModels(request: wellKnownEmpty & ListProviderModelsQuery): Promise<ListProviderModelsResponse>;
+  ListProviderModels(request: wellKnownEmpty): Promise<ListProviderModelsResponse>;
   CreateProviderModel(request: CreateProviderModelRequest): Promise<ProviderModel>;
   GetProviderModel(request: GetProviderModelRequest): Promise<ProviderModel>;
   // RevealProviderModelCredentials returns decrypted API secrets for admin console edit UI only.
@@ -178,15 +172,6 @@ export function createLlmProviderModelServiceClient(
       const path = `v1/llm-provider-models`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
-      if (request.page != null) {
-        queryParams.push(`page=${encodeURIComponent(String(request.page))}`);
-      }
-      if (request.pageSize != null) {
-        queryParams.push(`pageSize=${encodeURIComponent(String(request.pageSize))}`);
-      }
-      if (request.search) {
-        queryParams.push(`search=${encodeURIComponent(request.search)}`);
-      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`

@@ -138,24 +138,6 @@ export type TaskNode = {
 
 export type TopologyType = 'parallel' | 'sequential' | 'hybrid' | 'coordinator';
 
-export type SynthesisStrategy = 'template' | 'prompt' | 'hybrid';
-
-export type TeamSynthesisResult = {
-  teamId: string;
-  teamName: string;
-  taskName: string;
-  status: SpiritTeamStatus;
-  summary: string;
-  keyFindings?: string;
-};
-
-export type SynthesisOutput = {
-  content: string;
-  strategy: SynthesisStrategy;
-  teamResults: TeamSynthesisResult[];
-  synthesizedAt: string;
-};
-
 /** Verification gate type injected into the orchestration graph. */
 export type VerificationNodeType = 'output_format' | 'task_completion' | 'human_approval';
 

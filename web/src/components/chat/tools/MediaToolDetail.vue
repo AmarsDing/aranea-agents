@@ -10,13 +10,13 @@
         <div v-for="art in artifacts" :key="art.artifact_id" class="media-tool-detail__item" @click="onPreview(art)">
           <video
             v-if="art.mime_type.startsWith('video/')"
-            :src="art.url"
+            :src="mediaSrc(art)"
             :poster="art.thumbnail"
             muted
             preload="metadata"
             class="media-tool-detail__media"
           />
-          <img v-else :src="art.url" loading="lazy" class="media-tool-detail__media" />
+          <img v-else :src="mediaSrc(art)" loading="lazy" class="media-tool-detail__media" />
         </div>
       </div>
     </div>
@@ -32,9 +32,11 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Step } from '../../../features/chat/v2Types';
 import type { MediaArtifact } from '../../../features/chat/mediaTypes';
+import { useMediaUrl } from '../../../features/chat/useMediaUrl';
 import { asRecord } from './toolDetailShared';
 
 const { t } = useI18n();
+const { mediaSrc } = useMediaUrl();
 
 const props = defineProps<{ step: Step }>();
 

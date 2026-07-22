@@ -37,6 +37,14 @@ func NewInfra(lg loggateway.Logger) *Infra {
 	}
 }
 
+// NewInfraFromBus wraps an existing MonitorBus into an Infra. Used at emitter
+// call sites that receive the shared bus (rt.TurnDeps.Pipeline.MonitorEventBus)
+// rather than the Infra itself, so flow_log events reach the same bus the WS
+// server subscribes to.
+func NewInfraFromBus(bus contract.MonitorBus) *Infra {
+	return &Infra{MonitorEventBus: bus}
+}
+
 // ProvideMonitorEventBus exposes the typed MonitorEventBus for wire.
 // This is the canonical monitor bus for new code; it transports
 // contract.MonitorEvent (not legacy Envelope).

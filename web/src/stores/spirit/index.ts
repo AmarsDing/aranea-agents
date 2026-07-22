@@ -23,7 +23,6 @@ import type {
   SpiritTeamMode,
   SpiritTeamStatus,
   TeamProgressView,
-  SynthesisOutput,
   DQScoreBreakdown,
   EvolutionSuggestion,
   CompletionStats,
@@ -83,12 +82,6 @@ import { Notify } from 'quasar';
 
 /** Orchestration phase derived from WS events. */
 export type OrchestrationPhase = 'idle' | 'planning' | 'allocating' | 'orchestrating' | 'completed' | 'interrupted';
-
-const VALID_STRATEGIES = new Set<string>(['template', 'prompt', 'hybrid']);
-
-function isValidStrategy(s: string): boolean {
-  return VALID_STRATEGIES.has(s);
-}
 
 /**
  * Merge fields from an API-fetched team into an existing WS-driven team.
@@ -180,8 +173,6 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   const loading = ref(false);
   const teamProgress = ref<TeamProgressView[]>([]);
   const allTeamsCompleted = ref(false);
-  const synthesisCompleted = ref(false);
-  const synthesisResult = ref<SynthesisOutput | null>(null);
 
   // Aggregated token usage from spirit_teams_all_completed event
   const aggregatedTokenIn = ref(0);
@@ -343,8 +334,6 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     _loadSessionId = null;
     teamProgress.value = [];
     allTeamsCompleted.value = false;
-    synthesisCompleted.value = false;
-    synthesisResult.value = null;
     aggregatedTokenIn.value = 0;
     aggregatedTokenOut.value = 0;
     planCreated.value = null;
@@ -596,7 +585,6 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       else if (stage === 'orchestration_started') envType = 'spirit_orchestration_started';
       else if (stage === 'orchestration_checkpoint') envType = 'spirit_orchestration_checkpoint';
       else if (stage === 'orchestration_interrupted') envType = 'spirit_orchestration_interrupted';
-      else if (stage === 'synthesis_completed') envType = 'spirit_synthesis_completed';
       else if (stage === 'orchestration_completed') envType = 'butler.orchestration.completed';
       else if (stage === 'orchestration_failed') envType = 'butler.orchestration.failed';
     } else if (kind === 'plan') {
@@ -627,10 +615,6 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       case 'spirit_teams_all_completed':
         handleAllTeamsCompleted(md);
         break;
-      case 'spirit_synthesis_completed': {
-        handleSynthesisCompleted(md);
-        break;
-      }
       case 'spirit_plan_created':
         planCreated.value = md as unknown as SpiritPlanCreatedPayload;
         orchestrationPhase.value = 'planning';
@@ -692,9 +676,6 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       case 'orchestration_interrupted':
         envType = 'spirit_orchestration_interrupted';
         break;
-      case 'synthesis_completed':
-        envType = 'spirit_synthesis_completed';
-        break;
       case 'orchestration_completed':
         envType = 'butler.orchestration.completed';
         break;
@@ -706,9 +687,6 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     }
 
     switch (envType) {
-      case 'spirit_synthesis_completed':
-        handleSynthesisCompleted(meta);
-        break;
       case 'spirit_plan_created':
         planCreated.value = meta as unknown as SpiritPlanCreatedPayload;
         orchestrationPhase.value = 'planning';
@@ -750,8 +728,6 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     activityStatus: string,
     timestampMs: number,
   ) {
-    synthesisCompleted.value = false;
-    synthesisResult.value = null;
     allTeamsCompleted.value = false;
     if (!teamId) return;
 
@@ -913,35 +889,6 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     }
   }
 
-  function handleSynthesisCompleted(md: Record<string, unknown>) {
-    synthesisCompleted.value = true;
-    const rawResults = Array.isArray(md.team_results)
-      ? (md.team_results as Array<{
-          team_id: string;
-          team_name: string;
-          task_name: string;
-          status: string;
-          summary: string;
-          key_findings: string;
-        }>)
-      : [];
-    synthesisResult.value = {
-      strategy: isValidStrategy(String(md.strategy ?? 'template'))
-        ? (String(md.strategy ?? 'template') as SynthesisOutput['strategy'])
-        : 'template',
-      content: String(md.content ?? ''),
-      teamResults: rawResults.map((r) => ({
-        teamId: String(r.team_id ?? ''),
-        teamName: String(r.team_name ?? ''),
-        taskName: String(r.task_name ?? ''),
-        status: isValidTeamStatus(String(r.status ?? '')) ? (String(r.status ?? '') as SpiritTeamStatus) : 'failed',
-        summary: String(r.summary ?? ''),
-        keyFindings: String(r.key_findings ?? ''),
-      })),
-      synthesizedAt: new Date().toISOString(),
-    };
-  }
-
   function handleOrchestrationStarted(md: Record<string, unknown>) {
     const payload = md as unknown as SpiritOrchestrationStartedPayload;
     orchestrationStarted.value = payload;
@@ -1081,8 +1028,6 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     loading,
     teamProgress,
     allTeamsCompleted,
-    synthesisCompleted,
-    synthesisResult,
     aggregatedTokenIn,
     aggregatedTokenOut,
     planCreated,

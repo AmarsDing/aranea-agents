@@ -5,6 +5,7 @@
  * 在生产存储未配置时，写接口可能返回错误，前端应做友好提示。
  */
 import { createArtifactService } from '../../services';
+import { requestHandler } from '../../services/axiosHandler';
 import { asRecord, pickI32, pickI64, pickStr } from '../../shared/wireJson';
 import type {
   ArtifactData,
@@ -114,4 +115,24 @@ export async function listArtifactVersions(id: string): Promise<ArtifactMeta[]> 
   const raw = asRecord(await svc.ListArtifactVersions({ id }));
   const itemsRaw = raw.items ?? raw.Items;
   return Array.isArray(itemsRaw) ? itemsRaw.map(mapMeta) : [];
+}
+
+// M27 Phase 5：本地打开文件夹（POST /v1/system/reveal，默认关闭，仅本地单机部署启用）。
+export async function revealArtifact(id: string): Promise<{ path: string }> {
+  const res = asRecord(
+    await requestHandler({ path: '/v1/system/reveal', method: 'POST', body: JSON.stringify({ artifact_id: id }) }),
+  );
+  return { path: pickStr(res, 'path', 'path') };
+}
+
+// fetchLocalRevealEnabled 查询本地 reveal 功能是否启用（GET /v1/system/info →
+// features.local_reveal）。探知失败按未启用处理（前端隐藏按钮）。
+export async function fetchLocalRevealEnabled(): Promise<boolean> {
+  try {
+    const res = asRecord(await requestHandler({ path: '/v1/system/info', method: 'GET', body: null }));
+    const features = asRecord(res.features ?? res.Features);
+    return pickStr(features, 'local_reveal', 'local_reveal') === 'enabled';
+  } catch {
+    return false;
+  }
 }

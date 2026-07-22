@@ -23,8 +23,10 @@ type TraceEmitter struct {
 }
 
 // NewTraceEmitter creates an emitter and opens the root chat.turn span.
-func NewTraceEmitter(tc TraceContext, lg loggateway.Logger) *TraceEmitter {
-	ft := NewFlowTracker(nil, tc, lg)
+// infra carries the shared MonitorEventBus; pass nil in tests that do not
+// exercise bus publication (flow_log events are skipped when infra is nil).
+func NewTraceEmitter(infra *Infra, tc TraceContext, lg loggateway.Logger) *TraceEmitter {
+	ft := NewFlowTracker(infra, tc, lg)
 	return &TraceEmitter{FlowTracker: ft}
 }
 

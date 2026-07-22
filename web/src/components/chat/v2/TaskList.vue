@@ -12,6 +12,7 @@
       @retry-team="(teamId) => $emit('retry-team', teamId)"
       @expand="(ids) => $emit('expand', ids)"
       @confirm-step="(p) => $emit('confirm-step', p)"
+      @submit-clarification="(p) => $emit('submit-clarification', p)"
     />
   </div>
 </template>
@@ -20,7 +21,7 @@
 import { computed } from 'vue';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import type { Task } from '../../../features/chat/v2Types';
-import type { ConfirmStepPayload } from '../../../features/chat/types';
+import type { ConfirmStepPayload, SubmitClarificationPayload } from '../../../features/chat/types';
 import TaskCard from './TaskCard.vue';
 
 const props = defineProps<{ sessionId: string }>();
@@ -32,6 +33,7 @@ defineEmits<{
   'retry-team': [teamId: string];
   expand: [sessionIds: string[]];
   'confirm-step': [payload: ConfirmStepPayload];
+  'submit-clarification': [payload: SubmitClarificationPayload];
 }>();
 const store = useActivityQueries();
 const tasks = computed(() => store.getSessionTasks(props.sessionId));

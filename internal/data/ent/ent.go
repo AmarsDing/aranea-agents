@@ -21,6 +21,7 @@ import (
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
+	"aranea-agents/internal/data/ent/deptleadmessage"
 	"aranea-agents/internal/data/ent/evalcase"
 	"aranea-agents/internal/data/ent/evalcaseresult"
 	"aranea-agents/internal/data/ent/evaldataset"
@@ -62,6 +63,7 @@ import (
 	"aranea-agents/internal/data/ent/platformplugin"
 	"aranea-agents/internal/data/ent/platformskill"
 	"aranea-agents/internal/data/ent/platformtool"
+	"aranea-agents/internal/data/ent/resourceaccessaudit"
 	"aranea-agents/internal/data/ent/schemamigration"
 	"aranea-agents/internal/data/ent/selfcheckreport"
 	"aranea-agents/internal/data/ent/session"
@@ -183,6 +185,7 @@ func checkColumn(t, c string) error {
 			compiledteam.Table:               compiledteam.ValidColumn,
 			crontask.Table:                   crontask.ValidColumn,
 			crontaskrun.Table:                crontaskrun.ValidColumn,
+			deptleadmessage.Table:            deptleadmessage.ValidColumn,
 			evalcase.Table:                   evalcase.ValidColumn,
 			evalcaseresult.Table:             evalcaseresult.ValidColumn,
 			evaldataset.Table:                evaldataset.ValidColumn,
@@ -224,6 +227,7 @@ func checkColumn(t, c string) error {
 			platformplugin.Table:             platformplugin.ValidColumn,
 			platformskill.Table:              platformskill.ValidColumn,
 			platformtool.Table:               platformtool.ValidColumn,
+			resourceaccessaudit.Table:        resourceaccessaudit.ValidColumn,
 			schemamigration.Table:            schemamigration.ValidColumn,
 			selfcheckreport.Table:            selfcheckreport.ValidColumn,
 			session.Table:                    session.ValidColumn,

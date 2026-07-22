@@ -5,6 +5,7 @@ import (
 	nethttp "net/http"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/conf"
 
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 )
@@ -49,6 +50,12 @@ func buildSystemFeatures(crypto *biz.CredentialCrypto) map[string]string {
 		features["credential_encryption"] = "available"
 	} else {
 		features["credential_encryption"] = "unavailable"
+	}
+	// M27 Phase 5: 前端据此决定是否展示「打开文件夹」按钮。
+	if conf.LocalRevealEnabled() {
+		features["local_reveal"] = "enabled"
+	} else {
+		features["local_reveal"] = "disabled"
 	}
 	return features
 }

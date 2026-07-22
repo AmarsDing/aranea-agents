@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -34,6 +35,33 @@ type TeamSynthesisResult struct {
 	Status      string `json:"status"`
 	Summary     string `json:"summary"`
 	KeyFindings string `json:"key_findings,omitempty"`
+	// B.10.17: per-unit run statistics, enriched via SpiritTeamRunStatsReader.
+	// Omitted when the reader is not wired.
+	DurationMs   int64  `json:"duration_ms,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
+}
+
+// ExecutionOverview is the aggregate section of the execution report (B.10.17).
+type ExecutionOverview struct {
+	Query          string `json:"query"`
+	FinalStatus    string `json:"final_status"` // completed | partial_failure | failed
+	DurationMs     int64  `json:"duration_ms"`
+	TotalUnits     int    `json:"total_units"`
+	CompletedUnits int    `json:"completed_units"`
+	FailedUnits    int    `json:"failed_units"`
+	TokenIn        int    `json:"token_in"`
+	TokenOut       int    `json:"token_out"`
+}
+
+// DeliverableItem is one deliverable entry in the execution report (B.10.17),
+// mapped from the team's DeliverableRef envelopes keyed by dag node id.
+type DeliverableItem struct {
+	NodeID    string `json:"node_id"`
+	UnitName  string `json:"unit_name"` // 产出团队显示名
+	Summary   string `json:"summary"`
+	Type      string `json:"type,omitempty"`
+	Format    string `json:"format,omitempty"`
+	SizeChars int    `json:"size_chars"`
 }
 
 type SynthesisOutput struct {
@@ -41,6 +69,13 @@ type SynthesisOutput struct {
 	Strategy      SynthesisStrategy     `json:"strategy"`
 	TeamResults   []TeamSynthesisResult `json:"team_results"`
 	SynthesizedAt string                `json:"synthesized_at"`
+	// B.10.17 execution report sections. Overview is always attached by
+	// SynthesizeResults; Deliverables is empty when no team produced output;
+	// Degraded marks an LLM-conclusion-missing report (structured sections
+	// preserved).
+	Overview     *ExecutionOverview `json:"overview,omitempty"`
+	Deliverables []DeliverableItem  `json:"deliverables,omitempty"`
+	Degraded     bool               `json:"degraded,omitempty"`
 }
 
 // SynthesisEventPublisher is a biz-level port for publishing synthesis completion
@@ -133,15 +168,150 @@ func (u *SynthesisUsecase) SynthesizeResults(ctx context.Context, spiritSessionI
 	// Step 4: Execute synthesis engine.
 	output, err := u.engine.Synthesize(ctx, input)
 	if err != nil {
-		return nil, err
+		// B.10.17 FR-6 degraded path: the LLM conclusion failed (C-24 semantics
+		// — the engine error is still returned to the RPC caller), but the
+		// structured report sections are preserved and published so the user
+		// still gets a reviewable execution summary.
+		degraded := &SynthesisOutput{
+			Strategy:      input.Strategy,
+			TeamResults:   teamResults,
+			SynthesizedAt: time.Now().UTC().Format(time.RFC3339),
+			Degraded:      true,
+		}
+		u.attachReportData(ctx, spiritSessionID, teams, degraded)
+		if u.pub != nil {
+			u.pub.PublishSynthesisCompleted(ctx, spiritSessionID, degraded)
+		}
+		return degraded, err
 	}
 
-	// Step 5: Publish completion event via port.
+	// Step 5: Attach execution report sections (B.10.17).
+	u.attachReportData(ctx, spiritSessionID, teams, output)
+
+	// Step 6: Publish completion event via port.
 	if u.pub != nil {
 		u.pub.PublishSynthesisCompleted(ctx, spiritSessionID, output)
 	}
 
 	return output, nil
+}
+
+// attachReportData populates the execution report sections (overview,
+// deliverables, per-unit run stats) on the synthesis output.
+func (u *SynthesisUsecase) attachReportData(ctx context.Context, spiritSessionID string, teams []Team, output *SynthesisOutput) {
+	output.Overview = u.assembleOverview(ctx, spiritSessionID, teams, output.TeamResults)
+	output.Deliverables = assembleDeliverableItems(teams)
+	u.attachTeamRunStats(ctx, output.TeamResults)
+}
+
+// assembleOverview builds the aggregate overview: status derivation from unit
+// results, duration from team CreatedAt→UpdatedAt span, and token aggregation
+// reused from CheckAllTeamsCompleted.
+func (u *SynthesisUsecase) assembleOverview(ctx context.Context, spiritSessionID string, teams []Team, results []TeamSynthesisResult) *ExecutionOverview {
+	ov := &ExecutionOverview{
+		Query:      u.spiritUC.GetSpiritQuery(ctx, spiritSessionID),
+		TotalUnits: len(results),
+	}
+	for _, r := range results {
+		if r.Status == TeamStatusCompleted {
+			ov.CompletedUnits++
+		} else {
+			ov.FailedUnits++
+		}
+	}
+	switch {
+	case ov.FailedUnits == 0:
+		ov.FinalStatus = TeamStatusCompleted
+	case ov.CompletedUnits == 0:
+		ov.FinalStatus = TeamStatusFailed
+	default:
+		ov.FinalStatus = "partial_failure"
+	}
+	ov.DurationMs = aggregateTeamsDurationMs(teams)
+	// Token aggregation reuses the CheckAllTeamsCompleted read path (terminal
+	// state is consistent by the time synthesis runs).
+	agg := u.spiritUC.CheckAllTeamsCompleted(ctx, spiritSessionID)
+	ov.TokenIn = agg.TotalTokenIn
+	ov.TokenOut = agg.TotalTokenOut
+	return ov
+}
+
+// aggregateTeamsDurationMs computes max(UpdatedAt) - min(CreatedAt) across
+// teams. Team covers the full orchestration span (no StartedAt field).
+// Returns 0 when timestamps are missing/unparseable or inverted.
+func aggregateTeamsDurationMs(teams []Team) int64 {
+	var minCreated, maxUpdated time.Time
+	for _, t := range teams {
+		if c, err := parseTimeFlexible(t.CreatedAt); err == nil {
+			if minCreated.IsZero() || c.Before(minCreated) {
+				minCreated = c
+			}
+		}
+		if u, err := parseTimeFlexible(t.UpdatedAt); err == nil {
+			if u.After(maxUpdated) {
+				maxUpdated = u
+			}
+		}
+	}
+	if minCreated.IsZero() || maxUpdated.IsZero() || !maxUpdated.After(minCreated) {
+		return 0
+	}
+	return maxUpdated.Sub(minCreated).Milliseconds()
+}
+
+// assembleDeliverableItems maps each team's DeliverableRef envelopes to
+// report deliverable items. Node IDs are sorted for deterministic output.
+// Legacy summary-only refs get SizeChars derived from the summary rune count
+// (the legacy string IS the full stored summary).
+func assembleDeliverableItems(teams []Team) []DeliverableItem {
+	var items []DeliverableItem
+	for _, t := range teams {
+		refs := ParseDeliverableRefs(t.DeliverablesOutput)
+		if len(refs) == 0 {
+			continue
+		}
+		nodeIDs := make([]string, 0, len(refs))
+		for id := range refs {
+			nodeIDs = append(nodeIDs, id)
+		}
+		sort.Strings(nodeIDs)
+		for _, nodeID := range nodeIDs {
+			ref := refs[nodeID]
+			size := ref.SizeChars
+			if size == 0 {
+				size = len([]rune(ref.Summary))
+			}
+			items = append(items, DeliverableItem{
+				NodeID:    nodeID,
+				UnitName:  t.DisplayName,
+				Summary:   ref.Summary,
+				SizeChars: size,
+			})
+		}
+	}
+	return items
+}
+
+// attachTeamRunStats enriches per-unit duration and error reason via the
+// SpiritTeamRunStatsReader port. No-op when the reader is not wired.
+func (u *SynthesisUsecase) attachTeamRunStats(ctx context.Context, results []TeamSynthesisResult) {
+	if len(results) == 0 {
+		return
+	}
+	teamIDs := make([]string, 0, len(results))
+	for _, r := range results {
+		teamIDs = append(teamIDs, r.TeamID)
+	}
+	stats := u.spiritUC.ListTeamRunStats(ctx, teamIDs)
+	if len(stats) == 0 {
+		return
+	}
+	for i := range results {
+		if s, ok := stats[results[i].TeamID]; ok {
+			results[i].DurationMs = s.DurationMs
+			results[i].ErrorMessage = s.ErrorMessage
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------

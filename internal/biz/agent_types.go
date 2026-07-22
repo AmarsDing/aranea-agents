@@ -365,8 +365,12 @@ type AgentRuntimeSettings struct {
 	DreamSnapshotJSON string `json:"dream_snapshot_json,omitempty"`
 	// VerificationTruncateChars is the max character count for truncating team output in verification gate prompts (default 2000).
 	VerificationTruncateChars int
-	CreatedAt                 string
-	UpdatedAt                 string
+	// ClarificationEnabled enables the clarification gate: when the intent pass
+	// detects blocking ambiguities, the turn pauses and asks the user for
+	// clarification before proceeding. Default true for new agents.
+	ClarificationEnabled bool
+	CreatedAt            string
+	UpdatedAt            string
 }
 
 // --- Domain view accessors (Q-22: sub-struct API, flat fields as source of truth) ---
@@ -555,6 +559,7 @@ func (s *AgentRuntimeSettings) GetContext() ContextCfg {
 		PlannerKind:                s.PlannerKind,
 		PlannerConfigJSON:          s.PlannerConfigJSON,
 		VerificationTruncateChars:  s.VerificationTruncateChars,
+		ClarificationEnabled:       s.ClarificationEnabled,
 	}
 }
 

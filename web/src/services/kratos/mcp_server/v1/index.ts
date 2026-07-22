@@ -24,12 +24,6 @@ export type ListMCPServersResponse = {
   pageSize: number | undefined;
 };
 
-export type ListMCPServersQuery = {
-  page?: number;
-  pageSize?: number;
-  search?: string;
-};
-
 export type CreateMCPServerRequest = {
   //
   // Behaviors: REQUIRED
@@ -139,7 +133,7 @@ export type DeleteMCPServerUserCredentialRequest = {
 };
 
 export interface MCPServerService {
-  ListMCPServers(request: wellKnownEmpty & ListMCPServersQuery): Promise<ListMCPServersResponse>;
+  ListMCPServers(request: wellKnownEmpty): Promise<ListMCPServersResponse>;
   CreateMCPServer(request: CreateMCPServerRequest): Promise<MCPServer>;
   GetMCPServer(request: GetMCPServerRequest): Promise<MCPServer>;
   UpdateMCPServer(request: UpdateMCPServerRequest): Promise<MCPServer>;
@@ -167,15 +161,6 @@ export function createMCPServerServiceClient(
       const path = `v1/mcp-servers`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
-      if (request.page != null) {
-        queryParams.push(`page=${encodeURIComponent(String(request.page))}`);
-      }
-      if (request.pageSize != null) {
-        queryParams.push(`pageSize=${encodeURIComponent(String(request.pageSize))}`);
-      }
-      if (request.search) {
-        queryParams.push(`search=${encodeURIComponent(request.search)}`);
-      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`

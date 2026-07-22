@@ -115,6 +115,7 @@
         @submit-await-reply="composer.submitAwaitingReply"
         @submit-tool-confirm="composer.submitToolConfirm"
         @open-events="session.openSessionEvents"
+        @open-artifacts-page="onOpenArtifactsPage"
         @open-artifact="session.openSessionArtifact"
         @attachment-deleted="session.onArtifactDeleted"
         @download-artifact="session.downloadArtifact"
@@ -521,6 +522,13 @@ async function onInjectAgent(payload: { sessionId: string; message: string }) {
 
 function onNavigate(route: { name: string; params: Record<string, string> }) {
   router.push(route);
+}
+
+/** 跳转制品管理页：自动填充当前会话筛选并切到「会话产物」Tab。 */
+function onOpenArtifactsPage() {
+  const sid = session.selectedSessionForUi?.id;
+  if (!sid) return;
+  void router.push({ name: 'artifacts', query: { session: sid } });
 }
 
 /** OBS-04: Status bar click handlers — navigate to the first matching team. */

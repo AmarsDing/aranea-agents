@@ -127,54 +127,54 @@
   const MODULE_GROUPS = [
     {
       name: '工作台', en: 'WORKSPACE', mods: [
-        { icon: 'dashboard', name: '概览', en: 'OVERVIEW', desc: '平台运行态势总览大屏，核心指标与系统健康一屏尽览。', feat: 'Agent / 会话 / Token 指标聚合，状态面板实时刷新' },
-        { icon: 'receipt', name: '用量事件', en: 'USAGE EVENTS', desc: 'Token 消耗与费用明细的全量追踪流水。', feat: '按模型 / Agent 多维归因，异常用量自动预警' },
-        { icon: 'chat', name: '聊天', en: 'CHAT', desc: '多智能体对话主战场，人与 Agent 的协同界面。', feat: '流式输出 + 思维链 + 计划 DAG 同屏实时渲染' },
-        { icon: 'history', name: '会话历史', en: 'SESSIONS', desc: '全量会话归档检索，每一次交互都可回放。', feat: '时间线还原交互轮次与工具调用细节' },
-        { icon: 'brain', name: '记忆中心', en: 'MEMORY', desc: '智能体的长期记忆中枢，跨会话的知识沉淀。', feat: '事实 / 知识 / 传奇三级记忆级联，图谱化浏览' }
+        { icon: 'dashboard', name: '概览', en: 'OVERVIEW', desc: '平台忙不忙、错在哪、钱花哪了，一屏说清。', feat: 'Agent / 会话 / Token 指标聚合，根因引擎直指异常源头' },
+        { icon: 'receipt', name: '用量事件', en: 'USAGE EVENTS', desc: 'Token 有没有烧超，不用月底对账才知道。', feat: '月度配额顶盖直接拦截超支会话，费用按模型 / Agent 归因到人' },
+        { icon: 'chat', name: '聊天', en: 'CHAT', desc: '服务重启、任务中断，对话不必从头再来。', feat: '流式 + 思维链 + 计划 DAG 同屏渲染，中断任务一键续跑' },
+        { icon: 'history', name: '会话历史', en: 'SESSIONS', desc: '上下文再长也不爆，每次交互都能倒带复盘。', feat: 'LLM 压缩长上下文 + CAS 版本守卫防写坏，时间线逐轮回放' },
+        { icon: 'brain', name: '记忆中心', en: 'MEMORY', desc: '跨会话的"我记得你"，不是每次都重新认识。', feat: '事实 / 知识 / 传奇三级记忆级联，新会话开场自动注入' }
       ]
     },
     {
       name: '智能体', en: 'AGENTS', mods: [
-        { icon: 'robot', name: 'Agent 管理', en: 'AGENTS', desc: '智能体的创建、装配与配置中心。', feat: '提示词 / 工具 / 技能一站式装配，AI 辅助精炼' },
-        { icon: 'org', name: '组织架构', en: 'ORGANIZATION', desc: '部门与职责的数字化映射。', feat: 'Taxonomy 树定义 Agent 的组织位置与汇报线' },
-        { icon: 'team', name: 'Team 管理', en: 'TEAMS', desc: '多智能体协作团队的编排与运行。', feat: '顺序 / 并行 / 生成评审 / 群智四模式，模板化组队' },
-        { icon: 'graph', name: 'Graph 工作流', en: 'GRAPHS', desc: '可视化 DAG 流程编排与执行观测。', feat: '拖拽连线定义节点流转，支持人工介入节点' }
+        { icon: 'robot', name: 'Agent 管理', en: 'AGENTS', desc: '提示词写不好？让 AI 帮你改到好。', feat: '提示词 AI 精炼迭代，工具 / 技能 / 模型一站式装配' },
+        { icon: 'org', name: '组织架构', en: 'ORGANIZATION', desc: 'Agent 也有编制：谁归谁管，组队自动对号入座。', feat: 'Taxonomy 树映射部门职责，团队组建按组织线选员' },
+        { icon: 'team', name: 'Team 管理', en: 'TEAMS', desc: '一句话任务描述，自动拆 DAG、自动组队。', feat: '顺序 / 并行 / 生成评审 / 群智四模式，惰性组队按需启停' },
+        { icon: 'graph', name: 'Graph 工作流', en: 'GRAPHS', desc: '流程跑到一半失败，不用从零重跑。', feat: '拖拽编排 DAG，人工介入节点 + 断点恢复 + 版本管理' }
       ]
     },
     {
       name: '模型与渠道', en: 'MODELS & CHANNELS', mods: [
-        { icon: 'model', name: '模型管理', en: 'MODELS', desc: 'Provider / Model 可用清单与校验来源。', feat: '多供应商统一编目，健康度检查与降级策略' },
-        { icon: 'channel', name: 'Channel 管理', en: 'CHANNELS', desc: '外部消息渠道的接入与路由配置。', feat: '飞书 / Webhook 凭据托管，消息路由绑定 Agent' }
+        { icon: 'model', name: '模型管理', en: 'MODELS', desc: '某个模型挂了，业务无感切到备胎。', feat: '多 Provider 统一编目，健康检查 + 熔断降级自动切换' },
+        { icon: 'channel', name: 'Channel 管理', en: 'CHANNELS', desc: '飞书消息进来，自动找到该干活的 Agent。', feat: '飞书长连接接入，routing 规则把消息路由给指定 Agent' }
       ]
     },
     {
       name: '工具与集成', en: 'TOOLS & INTEGRATIONS', mods: [
-        { icon: 'mcp', name: 'MCP 管理', en: 'MCP', desc: 'MCP 服务器接入网关，连接外部工具生态。', feat: '标准协议接入，用户级凭据分级托管' },
-        { icon: 'tool', name: '工具管理', en: 'TOOLS', desc: '内置与自定义工具的统一目录。', feat: 'Schema 可视化编辑，运行审计全链路留痕' },
-        { icon: 'skill', name: 'Skill 管理', en: 'SKILLS', desc: '可复用技能资产库，Agent 的能力积木。', feat: '版本化管理，健康度与运行统计闭环' },
-        { icon: 'evolve', name: '进化建议', en: 'EVOLUTION', desc: 'Agent 自我进化引擎，越用越强。', feat: '从运行经验提炼技能改进建议，审核后生效' },
-        { icon: 'report', name: '经验报告', en: 'EXPERIENCE', desc: '运行经验的结构化沉淀与复盘。', feat: '失败标签聚类分析，反哺技能与提示词优化' },
-        { icon: 'plugin', name: 'Plugin 管理', en: 'PLUGINS', desc: '平台能力的扩展插件体系。', feat: '声明式配置 Schema，即插即用' },
-        { icon: 'hook', name: 'Hook / 回调', en: 'HOOKS', desc: '事件驱动的生命周期回调机制。', feat: '钩子 + 投递追踪，失败可重放' },
-        { icon: 'webhook', name: 'Webhook 管理', en: 'WEBHOOKS', desc: '外部系统事件的入站口。', feat: '入站事件路由到 Agent，打通双向集成' },
-        { icon: 'a2a', name: 'A2A', en: 'AGENT-TO-AGENT', desc: '跨系统 Agent 互联协议网关。', feat: '远程 Agent 发现、调用与审计一体化' }
+        { icon: 'mcp', name: 'MCP 管理', en: 'MCP', desc: '外部工具生态接进来，凭据还要管得住。', feat: '标准 MCP 协议接入，用户级凭据分级托管互相隔离' },
+        { icon: 'tool', name: '工具管理', en: 'TOOLS', desc: '危险操作必须人点头，授权一次不烦第二次。', feat: '确认门拦截高危调用 + 会话级授权，执行全链路留痕' },
+        { icon: 'skill', name: 'Skill 管理', en: 'SKILLS', desc: '一次成功任务，自动沉淀成人人可复用的 Skill。', feat: '从执行轨迹提炼步骤与工具调用序列，LLM 总结成 SKILL.md 审核入库' },
+        { icon: 'evolve', name: '进化建议', en: 'EVOLUTION', desc: 'Agent 不是上线即巅峰，而是越用越强。', feat: '学习循环分析历史成败模式（置信度 ≥0.15 立项），LLM 写提案、人审后生效' },
+        { icon: 'report', name: '经验报告', en: 'EXPERIENCE', desc: '哪个工具好用、哪个总拖后腿，用数据说话。', feat: '成功率 50% + 频次 30% + 耗时 20% 加权评分，失败标签聚类反哺优化' },
+        { icon: 'plugin', name: 'Plugin 管理', en: 'PLUGINS', desc: '扩展能力不用改代码，声明一下就插上。', feat: '声明式配置 Schema，即插即用' },
+        { icon: 'hook', name: 'Hook / 回调', en: 'HOOKS', desc: '回调投递失败，不等于事件丢失。', feat: '投递全程追踪，失败自动重放，事件完整可达' },
+        { icon: 'webhook', name: 'Webhook 管理', en: 'WEBHOOKS', desc: '外部系统的事件，直接变成 Agent 的任务。', feat: '入站事件按规则路由绑定 Agent，双向集成闭环' },
+        { icon: 'a2a', name: 'A2A', en: 'AGENT-TO-AGENT', desc: '别的系统的 Agent，也能像本地一样调起来。', feat: '远程 Agent 发现 / 调用 / 审计一体化' }
       ]
     },
     {
       name: '知识与数据', en: 'KNOWLEDGE & DATA', mods: [
-        { icon: 'book', name: '知识库', en: 'KNOWLEDGE', desc: '文档摄取与语义检索管线。', feat: '多模态抽取归一化为 Markdown，向量化索引' },
-        { icon: 'box', name: '制品管理', en: 'ARTIFACTS', desc: 'Agent 产出物的统一仓库。', feat: '文件制品全生命周期管理与在线预览' },
-        { icon: 'eval', name: '评估管理', en: 'EVALUATION', desc: '智能体质量的科学化度量。', feat: '评估集 + 自动打分 + 结果对比导出' }
+        { icon: 'book', name: '知识库', en: 'KNOWLEDGE', desc: 'Word、图片、PPT 扔进来，都能变成可检索的知识。', feat: '多模态统一归一化为 Markdown 再切块向量化；无 LLM 降级原文可检索' },
+        { icon: 'box', name: '制品管理', en: 'ARTIFACTS', desc: 'Agent 产出的文件，链接不会 24 小时就失效。', feat: 'artifact:// 本地持久化 + 在线预览，音视频流式播放' },
+        { icon: 'eval', name: '评估管理', en: 'EVALUATION', desc: 'Agent 质量好不好，让评分体系说话不靠感觉。', feat: '评估集 + LLM 自动打分，多轮结果对比一键导出' }
       ]
     },
     {
       name: '调度与运维', en: 'OPS', mods: [
-        { icon: 'observe', name: '可观测性', en: 'OBSERVABILITY', desc: '运行全景的观测仪表盘。', feat: 'Runner / 会话 / 供应商状态实时聚合' },
-        { icon: 'cron', name: 'Cron 调度', en: 'CRON', desc: '定时任务驱动的自动化执行。', feat: 'Cron 表达式驱动 Agent 周期执行，历史可查' },
-        { icon: 'monitor', name: '监控日志', en: 'MONITOR', desc: '结构化日志流水线与调用链追踪。', feat: '实时日志流 + 调用链瀑布 + 审计追溯' },
-        { icon: 'shop', name: '生态商店', en: 'ECOSYSTEM', desc: '能力包的分发与装配市场。', feat: 'Pack 导入导出，一键装配完整能力' },
-        { icon: 'gear', name: '系统设置', en: 'SETTINGS', desc: '平台级参数的配置中枢。', feat: 'Web Research、评估 LLM 等全局配置' }
+        { icon: 'observe', name: '可观测性', en: 'OBSERVABILITY', desc: '线上出问题，不用登录服务器翻日志。', feat: 'Runner / 会话 / 供应商状态聚合，诊断包一键导出' },
+        { icon: 'cron', name: 'Cron 调度', en: 'CRON', desc: '周期性的活儿，到点自动派给 Agent 干。', feat: 'Cron 表达式驱动周期执行，每次运行历史可查' },
+        { icon: 'monitor', name: '监控日志', en: 'MONITOR', desc: '日志不是事后翻的，是实时推着看的。', feat: '结构化 Pipeline 多 Sink 分发，WebSocket 秒级推送 + 调用链瀑布' },
+        { icon: 'shop', name: '生态商店', en: 'ECOSYSTEM', desc: '一整套能力打包带走，导入不怕半路翻车。', feat: 'Pack 事务化原子导入，一键装配完整能力包' },
+        { icon: 'gear', name: '系统设置', en: 'SETTINGS', desc: '全局开关集中管，改一处全平台生效。', feat: 'Web Research、评估 LLM 等平台级配置中枢' }
       ]
     }
   ];
@@ -216,27 +216,29 @@
 
   const GALLERY_FEATURES = {
     chat: [
-      { cam: 'sessions', zoom: 2.1, title: '会话树侧栏', desc: '多会话并行管理，标题自动取自首条用户消息' },
-      { cam: 'plan', zoom: 2.3, title: '执行计划 DAG', desc: '精灵拆解的任务计划，步骤状态随执行实时点亮' },
-      { cam: 'stream', zoom: 1.75, title: '活动消息流', desc: '思考 / 行动 / 回复分级渲染，流式光标逐字输出' },
-      { cam: 'team', zoom: 2.3, title: '团队成员面板', desc: '成员状态实时聚合，运行中头像呼吸灯提醒' },
-      { cam: 'composer', zoom: 2.6, title: '输入合成器', desc: '@ 提及 Agent，全宽 / 紧凑双模式自由切换' }
+      { cam: 'agents', zoom: 1.9, title: 'Agent 列表', desc: '按名称搜索 Agent / Team，在线 · 空闲 · 已完成状态徽标实时刷新' },
+      { cam: 'plan', zoom: 2.4, title: '计划 DAG 条', desc: '精灵拆解的执行计划，阶段状态随执行逐一点亮' },
+      { cam: 'runcard', zoom: 1.9, title: '团队运行卡', desc: '成员状态 chips + 进度条 + 耗时，内嵌消息流不跳页' },
+      { cam: 'sessions', zoom: 1.9, title: 'SESSION 面板', desc: '今日会话按时间归档，进度条直览每个会话执行进度' },
+      { cam: 'composer', zoom: 2.4, title: '输入合成器', desc: '对话模式与模型随选随切，@ 即可提及 Agent' }
     ],
     team: [
-      { cam: 'stage1', zoom: 2.5, title: '顺序阶段', desc: '已完成阶段绿色收敛，执行轨迹清晰可溯' },
-      { cam: 'stage2', zoom: 2.0, title: '并行阶段', desc: '并行层宽度自适应，成员独立状态灯' },
-      { cam: 'runcard', zoom: 2.3, title: '成员运行卡片', desc: '内嵌展开成员会话，进度条呼吸动画，无需跳页' },
-      { cam: 'stage3', zoom: 2.5, title: '评审阶段', desc: '生成评审模式：产物经评审 Agent 把关后流转' }
+      { cam: 'dag', zoom: 2.4, title: '阶段 DAG 条', desc: '阶段按 DAG 流转：已完成绿色收敛，执行中呼吸高亮' },
+      { cam: 'stage1', zoom: 2.6, title: '已完成阶段', desc: '成员耗时与执行轨迹清晰可溯' },
+      { cam: 'stage2', zoom: 2.3, title: '并行阶段', desc: '并行成员独立状态灯，阶段进度条实时推进' },
+      { cam: 'members', zoom: 1.6, title: '成员会话面板', desc: '思考 / 行动 / 回复流内嵌展开，无需跳转页面' },
+      { cam: 'input', zoom: 2.4, title: '双功能输入栏', desc: '运行中可 ⏹ 暂停 Agent，输入文本即变 ➤ 注入指令' }
     ],
     graph: [
-      { cam: 'palette', zoom: 2.3, title: '节点面板', desc: 'Agent / 条件分支 / 人工介入 / 工具节点拖入画布' },
-      { cam: 'gcanvas', zoom: 1.55, title: '编排画布', desc: '网格画布 + 流动连线，条件分支以琥珀色高亮' },
-      { cam: 'props', zoom: 2.3, title: '属性面板', desc: '节点级模型、失败策略与超时的精细配置' }
+      { cam: 'palette', zoom: 1.8, title: '组件库', desc: '智能体 / 控制流分组拖入画布，人工干预节点琥珀色警示' },
+      { cam: 'gcanvas', zoom: 1.35, title: '编排画布', desc: '点阵网格 + 紫色函数节点 + 流动贝塞尔连线，小地图总览全局' },
+      { cam: 'props', zoom: 1.8, title: 'GRAPH 属性', desc: '入口 / 结束节点、执行引擎、检查点与版本集中配置' }
     ],
     monitor: [
-      { cam: 'metrics', zoom: 1.9, title: '运行指标带', desc: '活跃 Runner、事件量与告警数一目了然' },
-      { cam: 'logs', zoom: 1.85, title: '实时日志流', desc: '结构化日志按级别着色，Pipeline 秒级推送' },
-      { cam: 'trace', zoom: 1.85, title: '调用链瀑布', desc: '每次执行的耗时瀑布图，瓶颈定位一眼可见' }
+      { cam: 'metrics', zoom: 2.2, title: '运行指标卡', desc: '活跃 Agent、团队数量、今日调用与告警一屏直览' },
+      { cam: 'tabs', zoom: 2.6, title: '统一观测入口', desc: 'Usage / Alerts / Audit / Events / Traces / Logs 六视图切换' },
+      { cam: 'logs', zoom: 1.6, title: '实时日志流', desc: '结构化日志按级别着色，WebSocket 秒级推送' },
+      { cam: 'trace', zoom: 1.6, title: '调用链瀑布', desc: '每次执行耗时瀑布呈现，瓶颈定位一眼可见' }
     ]
   };
 

@@ -1,5 +1,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import { ARTIFACT_TABLE_COLUMNS } from './artifactTableUi';
 import type { ArtifactMeta } from './types';
 import { useArtifactStore } from '../../stores/artifact';
@@ -7,13 +9,25 @@ import { validateArtifactFileSize, artifactMaxSizeHint } from './limits';
 import { readFileAsBase64 } from './fileBase64';
 import { formatBytes, formatDate } from '../../shared/format';
 
+export type ArtifactsPageTab = 'session' | 'all';
+
+export type ArtifactSessionGroup = {
+  sessionId: string;
+  items: ArtifactMeta[];
+  totalSize: number;
+};
+
 export function useArtifactsPage() {
   const $q = useQuasar();
+  const route = useRoute();
+  const router = useRouter();
   const artifactStore = useArtifactStore();
+  const { t } = useI18n();
 
   const rows = ref<ArtifactMeta[]>([]);
   const loading = ref(false);
   const error = ref('');
+  const activeTab = ref<ArtifactsPageTab>('all');
   const sessionFilter = ref('');
   const search = ref('');
   const mimeFilter = ref('');
@@ -33,15 +47,41 @@ export function useArtifactsPage() {
 
   const columns = ARTIFACT_TABLE_COLUMNS;
 
-  const mimeFilterOptions = [
-    { label: '全部类型', value: '' },
-    { label: '图片', value: 'image/' },
-    { label: '文本/代码', value: 'text/' },
+  /** 会话 Tab 下未填写 Session ID 时展示提示而非加载全部。 */
+  const sessionFilterRequired = computed(() => activeTab.value === 'session' && !sessionFilter.value.trim());
+
+  /** 「全部产物」Tab：当前页按 session 分组。 */
+  const groupedRows = computed<ArtifactSessionGroup[]>(() => {
+    if (activeTab.value !== 'all') return [];
+    const map = new Map<string, ArtifactSessionGroup>();
+    for (const row of rows.value) {
+      const key = row.session_id || t('artifact.page.noSession');
+      let g = map.get(key);
+      if (!g) {
+        g = { sessionId: key, items: [], totalSize: 0 };
+        map.set(key, g);
+      }
+      g.items.push(row);
+      g.totalSize += row.size;
+    }
+    return [...map.values()].sort((a, b) => b.totalSize - a.totalSize);
+  });
+
+  const mimeFilterOptions = computed(() => [
+    { label: t('artifact.page.mimeAll'), value: '' },
+    { label: t('artifact.page.mimeImage'), value: 'image/' },
+    { label: t('artifact.page.mimeText'), value: 'text/' },
     { label: 'PDF', value: 'application/pdf' },
     { label: 'JSON', value: 'application/json' },
-  ];
+  ]);
 
   async function loadRows() {
+    if (sessionFilterRequired.value) {
+      rows.value = [];
+      tableTotal.value = 0;
+      error.value = '';
+      return;
+    }
     loading.value = true;
     error.value = '';
     try {
@@ -57,10 +97,26 @@ export function useArtifactsPage() {
       rows.value = res.items;
       tableTotal.value = res.total;
     } catch (e) {
-      error.value = e instanceof Error ? e.message : '加载失败';
+      error.value = e instanceof Error ? e.message : t('artifact.page.loadFailed');
     } finally {
       loading.value = false;
     }
+  }
+
+  function onTabChange(tab: ArtifactsPageTab) {
+    if (activeTab.value === tab) return;
+    activeTab.value = tab;
+    page.value = 1;
+    if (tab === 'all') {
+      sessionFilter.value = '';
+      if (route.query.session !== undefined) {
+        void router.replace({ query: { ...route.query, session: undefined } });
+      }
+    } else {
+      const q = route.query.session;
+      if (typeof q === 'string' && q) sessionFilter.value = q;
+    }
+    void loadRows();
   }
 
   function onUploadFile(file: File | null) {
@@ -81,11 +137,11 @@ export function useArtifactsPage() {
 
   async function submitUpload() {
     if (!uploadForm.value.session_id.trim()) {
-      $q.notify({ type: 'warning', message: '请填写 Session ID' });
+      $q.notify({ type: 'warning', message: t('artifact.page.uploadNeedSession') });
       return;
     }
     if (!uploadFile.value) {
-      $q.notify({ type: 'warning', message: '请选择文件' });
+      $q.notify({ type: 'warning', message: t('artifact.page.uploadNeedFile') });
       return;
     }
     const sizeErr = validateArtifactFileSize(uploadFile.value.size);
@@ -106,9 +162,9 @@ export function useArtifactsPage() {
       uploadFile.value = null;
       uploadForm.value = { session_id: '', name: '', mime_type: '' };
       await loadRows();
-      $q.notify({ type: 'positive', message: '上传成功' });
+      $q.notify({ type: 'positive', message: t('artifact.page.uploadSuccess') });
     } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '上传失败' });
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('artifact.page.uploadFailed') });
     } finally {
       uploadLoading.value = false;
     }
@@ -141,7 +197,7 @@ export function useArtifactsPage() {
       const signed = await artifactStore.signDownload(meta.id, meta.version);
       window.open(artifactStore.artifactDownloadHref(signed.url), '_blank', 'noopener,noreferrer');
     } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '获取下载链接失败' });
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('artifact.page.downloadLinkFailed') });
     }
   }
 
@@ -150,22 +206,22 @@ export function useArtifactsPage() {
       const signed = await artifactStore.signDownload(row.id, row.version);
       window.open(artifactStore.artifactDownloadHref(signed.url), '_blank', 'noopener,noreferrer');
     } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '获取下载链接失败' });
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('artifact.page.downloadLinkFailed') });
     }
   }
 
   function confirmDelete(row: ArtifactMeta) {
     $q.dialog({
-      title: '删除制品',
-      message: `确定删除「${row.name}」？`,
+      title: t('artifact.page.deleteTitle'),
+      message: t('artifact.page.deleteConfirm', { name: row.name }),
       cancel: true,
     }).onOk(async () => {
       try {
         await artifactStore.remove(row.id);
         await loadRows();
-        $q.notify({ type: 'positive', message: '已删除' });
+        $q.notify({ type: 'positive', message: t('artifact.page.deleted') });
       } catch (e) {
-        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '删除失败' });
+        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('artifact.page.deleteFailed') });
       }
     });
   }
@@ -181,7 +237,7 @@ export function useArtifactsPage() {
   }
 
   function resetFilters() {
-    sessionFilter.value = '';
+    if (activeTab.value === 'all') sessionFilter.value = '';
     search.value = '';
     mimeFilter.value = '';
     page.value = 1;
@@ -189,6 +245,12 @@ export function useArtifactsPage() {
   }
 
   onMounted(() => {
+    const q = route.query.session;
+    if (typeof q === 'string' && q) {
+      sessionFilter.value = q;
+      activeTab.value = 'session';
+      uploadForm.value.session_id = q;
+    }
     void loadRows();
   });
 
@@ -203,6 +265,9 @@ export function useArtifactsPage() {
     rows,
     loading,
     error,
+    activeTab,
+    sessionFilterRequired,
+    groupedRows,
     sessionFilter,
     search,
     mimeFilter,
@@ -224,6 +289,7 @@ export function useArtifactsPage() {
     formatBytes,
     formatDate,
     loadRows,
+    onTabChange,
     onSearchChange,
     onSessionFilterChange,
     resetFilters,

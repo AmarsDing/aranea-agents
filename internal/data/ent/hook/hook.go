@@ -224,6 +224,18 @@ func (f CronTaskRunFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CronTaskRunMutation", m)
 }
 
+// The DeptLeadMessageFunc type is an adapter to allow the use of ordinary
+// function as DeptLeadMessage mutator.
+type DeptLeadMessageFunc func(context.Context, *ent.DeptLeadMessageMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f DeptLeadMessageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.DeptLeadMessageMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DeptLeadMessageMutation", m)
+}
+
 // The EvalCaseFunc type is an adapter to allow the use of ordinary
 // function as EvalCase mutator.
 type EvalCaseFunc func(context.Context, *ent.EvalCaseMutation) (ent.Value, error)
@@ -714,6 +726,18 @@ func (f PlatformToolFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PlatformToolMutation", m)
+}
+
+// The ResourceAccessAuditFunc type is an adapter to allow the use of ordinary
+// function as ResourceAccessAudit mutator.
+type ResourceAccessAuditFunc func(context.Context, *ent.ResourceAccessAuditMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ResourceAccessAuditFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ResourceAccessAuditMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ResourceAccessAuditMutation", m)
 }
 
 // The SchemaMigrationFunc type is an adapter to allow the use of ordinary

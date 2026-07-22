@@ -24,13 +24,6 @@ export type ListHooksResponse = {
   pageSize: number | undefined;
 };
 
-export type ListHooksQuery = {
-  page?: number;
-  pageSize?: number;
-  search?: string;
-  callbackPoint?: string;
-};
-
 export type CreateHookRequest = {
   //
   // Behaviors: REQUIRED
@@ -97,7 +90,7 @@ export type ListHookDeliveriesResponse = {
 };
 
 export interface HookService {
-  ListHooks(request: wellKnownEmpty & ListHooksQuery): Promise<ListHooksResponse>;
+  ListHooks(request: wellKnownEmpty): Promise<ListHooksResponse>;
   CreateHook(request: CreateHookRequest): Promise<Hook>;
   // Static sub-resource GET paths MUST be registered before /v1/hooks/{id}
   // to avoid gorilla/mux matching the variable segment first
@@ -124,18 +117,6 @@ export function createHookServiceClient(
       const path = `v1/hooks`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
-      if (request.page != null) {
-        queryParams.push(`page=${encodeURIComponent(String(request.page))}`);
-      }
-      if (request.pageSize != null) {
-        queryParams.push(`pageSize=${encodeURIComponent(String(request.pageSize))}`);
-      }
-      if (request.search) {
-        queryParams.push(`search=${encodeURIComponent(request.search)}`);
-      }
-      if (request.callbackPoint) {
-        queryParams.push(`callbackPoint=${encodeURIComponent(request.callbackPoint)}`);
-      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`

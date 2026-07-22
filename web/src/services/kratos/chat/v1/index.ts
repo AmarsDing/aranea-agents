@@ -326,6 +326,37 @@ export type ConfirmActivityResponse = {
   status: string | undefined;
 };
 
+// SubmitClarificationRequest is the request for submitting clarification answers.
+export type SubmitClarificationRequest = {
+  //
+  // Behaviors: REQUIRED
+  sessionId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  stepId: string | undefined;
+  // answers is the user's answers to each clarification question.
+  // The array index corresponds to the question index in the step content.
+  // Empty selected array means the user skipped that question (use recommended).
+  //
+  // Behaviors: REQUIRED
+  answers: ClarificationAnswer[] | undefined;
+};
+
+// ClarificationAnswer represents the user's answer to a single clarification question.
+export type ClarificationAnswer = {
+  // selected contains the selected option values (empty = use recommended).
+  selected: string[] | undefined;
+  // other is an optional free-form text input for additional context.
+  other: string | undefined;
+};
+
+export type SubmitClarificationResponse = {
+  accepted: boolean | undefined;
+  status: string | undefined;
+  // clarified_context is the rendered context text injected into the resumed turn.
+  clarifiedContext: string | undefined;
+};
+
 // ConfirmPlanRequest is the request for confirming or rejecting a draft TaskPlan
 // produced by the pre-planning hard gate (P1-2).
 export type ConfirmPlanRequest = {
@@ -498,6 +529,9 @@ export interface ChatService {
   // GetPlan returns a single TaskPlan by ID with full details (T3.2).
   // Used by the Observability Dashboard to display plan details.
   GetPlan(request: GetPlanRequest): Promise<GetPlanResponse>;
+  // SubmitClarification submits user answers to a clarification step and
+  // resumes the turn with the clarified context.
+  SubmitClarification(request: SubmitClarificationRequest): Promise<SubmitClarificationResponse>;
 }
 
 type RequestType = {
@@ -919,6 +953,26 @@ export function createChatServiceClient(
         service: "ChatService",
         method: "GetPlan",
       }) as Promise<GetPlanResponse>;
+    },
+    SubmitClarification(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.stepId) {
+        throw new Error("missing required field request.step_id");
+      }
+      const path = `v1/chat/clarifications/${request.stepId}`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChatService",
+        method: "SubmitClarification",
+      }) as Promise<SubmitClarificationResponse>;
     },
   };
 }

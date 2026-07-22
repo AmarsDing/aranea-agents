@@ -4,8 +4,16 @@
 
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
 export type TurnStatus = 'running' | 'completed' | 'failed';
-export type StepKind = 'thinking' | 'action' | 'reply' | 'notice' | 'confirm' | 'error';
-export type StepStatus = 'pending' | 'running' | 'tool_running' | 'tool_blocked' | 'completed' | 'failed' | 'cancelled';
+export type StepKind = 'thinking' | 'action' | 'reply' | 'notice' | 'confirm' | 'error' | 'clarify';
+export type StepStatus =
+  | 'pending'
+  | 'running'
+  | 'tool_running'
+  | 'tool_blocked'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'awaiting_input';
 export type TeamRunStatus = 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 export type MemberSessionStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'skipped';
 export type TeamStageStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'waiting_human';
@@ -78,6 +86,32 @@ export interface MemberInfo {
   AvatarURL: string;
   ChildSessionID: string;
   Status: string;
+}
+
+// === Clarification envelope (Step kind=clarify, Content JSON) ===
+// Mirrors internal/biz/step.go ClarificationEnvelope. Published with
+// answers=null; after user submission the backend writes answers back and
+// flips Status to 'completed'.
+
+export type ClarificationMode = 'single' | 'multi';
+
+export interface ClarificationQuestion {
+  question: string;
+  mode: ClarificationMode;
+  options: string[];
+  recommended: string[];
+}
+
+export interface ClarificationAnswer {
+  selected: string[];
+  other?: string;
+}
+
+export interface ClarificationEnvelope {
+  version: number;
+  kind: string; // fixed "clarification"
+  questions: ClarificationQuestion[];
+  answers: ClarificationAnswer[] | null;
 }
 
 export interface TeamStage {

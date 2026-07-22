@@ -56,7 +56,7 @@ func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, in
 		ctx = event.WithEnvelopeSource(ctx, ep)
 	}
 
-	flow := event.NewFlowLogger(sessionID, "", o.lg())
+	flow := event.NewFlowLogger(sessionID, "", o.lg(), event.NewInfraFromBus(o.core.TD.Pipeline.MonitorEventBus))
 	flow.LogStart("chat.receive", "收到用户消息", event.P("content_len", len(content)))
 
 	hasActive := o.runs.HasActive(sessionID)
@@ -287,6 +287,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		Ctx:       ctx,
 		SessionID: sessionID, RunID: runID, AgentKey: ag.AgentKey, AgentID: ag.ID,
 		Domain: event.TraceDomainChat, LG: o.lg(),
+		Infra: event.NewInfraFromBus(o.core.TD.Pipeline.MonitorEventBus),
 	})
 	emitter.SetOtelRefs(traceBridge.TraceID(), traceBridge.RootSpanID())
 	ctx = event.WithTraceEmitter(ctx, emitter)
@@ -405,6 +406,32 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	preGeneratedTaskID := chatagent.RootTaskActivityID(uuid.NewString())
 	ctx = chatagent.ContextWithRootTaskActivityID(ctx, preGeneratedTaskID)
 
+	// ── CLARIFICATION GATE (2026-07-22) ──
+	// After Intent Pass, check if the LLM detected blocking ambiguities that
+	// require user clarification before proceeding. If triggered, publish a
+	// clarify step and pause the turn until the user responds.
+	clarifyStart := time.Now()
+	clarifyDecision, clarifyErr := o.runClarificationGate(ctx, sessionID, intentArtifact, ag, input)
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: runClarificationGate",
+		loggateway.StepID("chat.clarification_gate"),
+		loggateway.Any("elapsed_ms", time.Since(clarifyStart).Milliseconds()),
+		loggateway.Any("triggered", clarifyDecision.Triggered),
+		loggateway.Any("clarify_err", clarifyErr != nil))
+	if clarifyErr != nil {
+		// Clarification gate failure is non-fatal; log and continue with original flow.
+		o.lg().Warn("澄清门执行失败，按原流程继续",
+			loggateway.SessionID(sessionID),
+			loggateway.StepID("chat.clarification_gate"),
+			loggateway.Err(clarifyErr))
+	} else if clarifyDecision.Triggered {
+		// Clarification triggered: publish run status and return empty reply.
+		// The turn will resume when the user submits clarification answers.
+		emitter.LogDone("chat.clarification_gate", "澄清门已触发，等待用户作答",
+			event.P("step_id", clarifyDecision.StepID))
+		o.setRunStatus(ctx, sessionID, runID, "awaiting_confirmation", "")
+		return biz.ChatMessage{}, biz.ChatMessage{}, nil
+	}
+
 	// ── PRE-PLANNING GATE (P1-2) ──
 	// After intent pass, run a quick complexity assessment. If Moderate/Complex,
 	// force the planning path by injecting a system instruction.
@@ -428,6 +455,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		intentRunOpts = append(intentRunOpts, forcedPlanningRunOption(gateDecision))
 	}
 	deps := buildResult.deps
+	// P0 fix: BUILD runs inside the errgroup above, whose derived ctx is
+	// cancelled as soon as eg.Wait() returns. The AwaitHook created during
+	// BUILD captured that ctx (chat_orch_agent_build.go), so the first
+	// tool-confirmation / await-user wait aborted instantly with
+	// "context canceled" (select hit the already-closed runCtx.Done()).
+	// Re-bind the hook to the turn ctx, which lives until the turn ends;
+	// user cancel still propagates through turnCtx → ctx.
+	deps.AwaitHook = o.awaitCoord().MakeAwaitReplyFunc(ctx, sessionID, runID)
 	runner := buildResult.runner
 
 	rollbackDone := false

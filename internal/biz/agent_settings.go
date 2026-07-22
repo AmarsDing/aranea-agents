@@ -203,6 +203,10 @@ type ContextCfg struct {
 	PlannerConfigJSON          string  `json:"planner_config_json,omitempty"`
 	// VerificationTruncateChars is the max character count for truncating team output in verification gate prompts (default 2000).
 	VerificationTruncateChars int `json:"verification_truncate_chars,omitempty"`
+	// ClarificationEnabled enables the clarification gate: when the intent pass
+	// detects blocking ambiguities, the turn pauses and asks the user for
+	// clarification before proceeding. Default true.
+	ClarificationEnabled bool `json:"clarification_enabled,omitempty"`
 }
 
 func (s *AgentRuntimeSettings) ApplyIdentity(cfg IdentityCfg) {
@@ -368,6 +372,7 @@ func (s *AgentRuntimeSettings) ApplyContext(cfg ContextCfg) {
 	s.PlannerKind = cfg.PlannerKind
 	s.PlannerConfigJSON = cfg.PlannerConfigJSON
 	s.VerificationTruncateChars = cfg.VerificationTruncateChars
+	s.ClarificationEnabled = cfg.ClarificationEnabled
 }
 
 func (s *AgentRuntimeSettings) ApplyRalphLoop(cfg RalphLoopCfg) {

@@ -8,7 +8,7 @@
   - 展开折叠：整条 team-run-bar 可点击切换；running 默认展开，终态默认折叠
 -->
 <template>
-  <div class="team-run-card" :data-team-run-id="teamRun.ID">
+  <div class="team-run-card" :class="`team-run-card--${teamRun.Status}`" :data-team-run-id="teamRun.ID">
     <!-- 顶部长条：三段式横向布局 2:3:1 -->
     <div class="team-run-bar" @click="toggleCollapse">
       <!-- 头部 ~33%：groups 图标 + 垂直 1:1:1（团队名 / 任务名 / 创建时间） -->
@@ -293,13 +293,33 @@ const formattedTime = computed(() => {
 </script>
 
 <style lang="sass" scoped>
-// 2026-07-05 重构：三段式 2:3:1 横向布局
+// 2026-07-22 左边线体系：去四周边框+背景，3px 左状态线 + 左内边距
 .team-run-card
-  border: 1px solid var(--glass-border)
-  border-radius: 6px
   margin: 4px 0
-  background: var(--glass-surface)
-  overflow: hidden
+  padding-left: 10px
+  border-left: 3px solid var(--color-text-tertiary)
+
+  &--running
+    border-left-color: var(--color-accent)
+    animation: team-run-border-pulse 1.6s ease-in-out infinite
+
+  &--paused
+    border-left-color: var(--color-warning)
+
+  &--completed
+    border-left-color: var(--color-success)
+
+  &--failed
+    border-left-color: var(--color-danger)
+
+  &--cancelled
+    border-left-color: var(--color-text-tertiary)
+
+@keyframes team-run-border-pulse
+  0%, 100%
+    border-left-color: var(--color-accent)
+  50%
+    border-left-color: color-mix(in srgb, var(--color-accent) 35%, transparent)
 
 // 顶部长条：三段式横向 flex（2:3:1）
 .team-run-bar
@@ -513,7 +533,6 @@ const formattedTime = computed(() => {
 // 展开后成员列表 + 底部输入栏
 .team-run-expand
   padding: 6px 10px
-  border-top: 1px solid var(--glass-border)
 
 .team-run-empty
   font-size: 12px

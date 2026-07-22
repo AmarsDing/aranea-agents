@@ -2,14 +2,18 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
 )
 
 var _ tools.SpiritSynthesisPort = (*SpiritSynthesisService)(nil)
@@ -94,45 +98,86 @@ func (a *synthesisModelAdapter) resolveModel(ctx context.Context) (string, strin
 	return "", "", apierror.Unavailable(apierror.DomainSpirit, "no LLM available for synthesis; configure DefaultRefineLLM in system settings")
 }
 
-// synthesisEventPublisher adapts biz.EventBus (v2) to biz.SynthesisEventPublisher.
+// synthesisEventPublisher adapts the v2 event pipeline to
+// biz.SynthesisEventPublisher (B.10.17): the execution report is published as
+// a persistent StepCreatedEvent (Kind=notice) whose Content carries the JSON
+// envelope, so the report survives page refresh. seq is preferred
+// (persist + WS); eventBus is the v1-only fallback (WS only).
 type synthesisEventPublisher struct {
-	bus biz.EventBus
+	seq          rt.EventPublisher
+	bus          biz.EventBus
+	taskV2Reader biz.TaskV2Reader
+	lg           loggateway.Logger
 }
 
+// executionReportEnvelope is the Step.Content JSON contract (B.10.17.4).
+// Field set mirrors biz.SynthesisOutput plus version/kind discriminator.
+type executionReportEnvelope struct {
+	Version       int                       `json:"version"`
+	Kind          string                    `json:"kind"`
+	Content       string                    `json:"content"`
+	Strategy      biz.SynthesisStrategy     `json:"strategy"`
+	Degraded      bool                      `json:"degraded,omitempty"`
+	Overview      *biz.ExecutionOverview    `json:"overview,omitempty"`
+	TeamResults   []biz.TeamSynthesisResult `json:"team_results"`
+	Deliverables  []biz.DeliverableItem     `json:"deliverables,omitempty"`
+	SynthesizedAt string                    `json:"synthesized_at"`
+}
+
+// executionReportEnvelopeVersion is the envelope schema version.
+const executionReportEnvelopeVersion = 1
+
+// executionReportEnvelopeKind discriminates the notice payload for the
+// frontend NoticeBlock branch.
+const executionReportEnvelopeKind = "execution_report"
+
 func (p *synthesisEventPublisher) PublishSynthesisCompleted(ctx context.Context, spiritSessionID string, output *biz.SynthesisOutput) {
-	if p.bus == nil {
+	if p.seq == nil && p.bus == nil {
 		return
 	}
-	type richResult struct {
-		TeamID      string `json:"team_id"`
-		TeamName    string `json:"team_name"`
-		TaskName    string `json:"task_name"`
-		Status      string `json:"status"`
-		Summary     string `json:"summary"`
-		KeyFindings string `json:"key_findings,omitempty"`
+	if output == nil {
+		return
 	}
-	richResults := make([]richResult, 0, len(output.TeamResults))
-	for _, r := range output.TeamResults {
-		richResults = append(richResults, richResult{
-			TeamID:      r.TeamID,
-			TeamName:    r.TeamName,
-			TaskName:    r.TaskName,
-			Status:      r.Status,
-			Summary:     r.Summary,
-			KeyFindings: r.KeyFindings,
-		})
+	envelope := executionReportEnvelope{
+		Version:       executionReportEnvelopeVersion,
+		Kind:          executionReportEnvelopeKind,
+		Content:       output.Content,
+		Strategy:      output.Strategy,
+		Degraded:      output.Degraded,
+		Overview:      output.Overview,
+		TeamResults:   output.TeamResults,
+		Deliverables:  output.Deliverables,
+		SynthesizedAt: output.SynthesizedAt,
 	}
-	meta := map[string]any{
-		"spirit_session_id": spiritSessionID,
-		"strategy":          string(output.Strategy),
-		"team_count":        len(output.TeamResults),
-		"content":           output.Content,
-		"team_results":      richResults,
-		"agent_key":         "spirit-synthesis",
-		"agent_name":        "结果汇总",
-		"notice_type":       "success",
+	raw, err := json.Marshal(envelope)
+	if err != nil {
+		p.lg.Warn("执行报告信封序列化失败，跳过发布",
+			loggateway.StepID("spirit.synthesis.envelope_marshal_err"),
+			loggateway.Err(err),
+		)
+		return
 	}
-	p.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "synthesis_completed", "结果汇总已完成", meta))
+	now := time.Now()
+	step := biz.Step{
+		ID:              uuid.NewString(),
+		SessionID:       spiritSessionID,
+		SpiritSessionID: spiritSessionID,
+		TaskID:          resolveLatestUserTaskID(ctx, p.taskV2Reader, p.lg, spiritSessionID),
+		Kind:            biz.StepKindNotice,
+		NoticeType:      "synthesis_completed",
+		Content:         string(raw),
+		Status:          biz.StepStatusCompleted,
+		StartedAt:       now,
+		CompletedAt:     &now,
+		Version:         1,
+		AuthorAgentKey:  "spirit-synthesis",
+	}
+	ev := biz.NewStepCreatedEvent(step)
+	if p.seq != nil {
+		p.seq.Publish(ctx, ev)
+		return
+	}
+	p.bus.Publish(ctx, ev)
 }
 
 // SpiritSynthesisService is a thin transport adapter that delegates all business
@@ -146,9 +191,11 @@ func NewSpiritSynthesisService(
 	spiritUC *biz.SpiritTeamUsecase,
 	engine *biz.SynthesisEngine,
 	eventBus biz.EventBus,
+	seq rt.EventPublisher,
+	taskV2Reader biz.TaskV2Reader,
 	lg loggateway.Logger,
 ) *SpiritSynthesisService {
-	pub := &synthesisEventPublisher{bus: eventBus}
+	pub := &synthesisEventPublisher{seq: seq, bus: eventBus, taskV2Reader: taskV2Reader, lg: lg}
 	uc := biz.NewSynthesisUsecase(spiritUC, engine, pub, lg)
 	return &SpiritSynthesisService{uc: uc, lg: lg}
 }

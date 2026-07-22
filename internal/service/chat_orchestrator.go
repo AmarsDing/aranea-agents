@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	chatagent "aranea-agents/internal/agent"
@@ -126,6 +127,7 @@ type chatTurnCoreDeps struct {
 	TurnTimeout time.Duration
 	StepReader  biz.StepV2Reader
 	StepWriter  biz.StepV2Writer
+	TaskV2      biz.TaskV2Repo
 }
 
 // chatTurnLifecycle combines session state transition, turn metrics recording,
@@ -181,7 +183,20 @@ type ChatOrchestrator struct {
 	// immediately after each turn, bridging the async gap to Sleep-time consolidation.
 	immediateFactWriter *biz.ImmediateFactWriter
 
+	// pendingClarifications stores the original turn input for sessions waiting
+	// for clarification submission. Key: sessionID.
+	pendingClarifications sync.Map // map[sessionID]pendingClarification
+
 	sweepStop chan struct{}
+}
+
+// pendingClarification holds the state needed to resume a turn after the user
+// submits clarification answers.
+type pendingClarification struct {
+	Input     biz.TurnInput
+	StepID    string
+	TaskID    string
+	CreatedAt time.Time
 }
 
 // chatTurnLifecycleImpl combines sessionStateTransitor, turnRecorder, and
@@ -221,6 +236,7 @@ func (o *ChatOrchestrator) admission() *biz.TurnAdmissionUsecase { return o.core
 func (o *ChatOrchestrator) turnTimeout() time.Duration           { return o.core.TurnTimeout }
 func (o *ChatOrchestrator) stepReader() biz.StepV2Reader         { return o.core.StepReader }
 func (o *ChatOrchestrator) stepWriter() biz.StepV2Writer         { return o.core.StepWriter }
+func (o *ChatOrchestrator) taskV2Writer() biz.TaskV2Writer       { return o.core.TaskV2 }
 
 func (o *ChatOrchestrator) team() TeamOrchestrationDeps   { return o.teamExecDeps.Team }
 func (o *ChatOrchestrator) chJobs() ChannelTurnJobDeps    { return o.channelDeps.ChJobs }
@@ -458,6 +474,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			TurnTimeout: turnTimeout,
 			StepReader:  deps.Turn.StepReader,
 			StepWriter:  deps.Turn.StepWriter,
+			TaskV2:      deps.Turn.TaskV2,
 		},
 		channelDeps:         deps.Channel,
 		usageDeps:           deps.Usage,

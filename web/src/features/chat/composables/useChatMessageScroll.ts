@@ -1,37 +1,27 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type ComputedRef, type Ref } from 'vue';
 import type { Message } from '../types';
-import type { Task } from '../v2Types';
-
-/** Distance from bottom (px) to consider "at the bottom" for immediate recovery. */
-const NEAR_BOTTOM_THRESHOLD = 20;
-/** Distance from bottom (px) to show the "scroll to bottom" button. */
-const SCROLL_BTN_THRESHOLD = 200;
-/** Idle period after the last user scroll before auto-scroll resumes (ms). */
-const RECOVERY_MS = 10_000;
+import { useFollowScroll } from './useFollowScroll';
 
 export type ChatMessageScrollOpts = {
   sessionKey: Ref<string> | ComputedRef<string>;
   messages: Ref<Message[]>;
   messagesScrollEl: Ref<HTMLElement | null>;
-  /** B-04 / Activity-First: tasks driving v2 SessionPanel rendering.
-   *  Watching its length ensures new tasks trigger auto-scroll just like
-   *  new messages. */
-  tasks?: Ref<Task[]> | ComputedRef<Task[]>;
+  /**
+   * 活动树末端签名（调用方组装，O(1)）：
+   * messages.length : lastMessage.content.length : tasks.length : 末端turn的steps.length
+   *   : 末端step.ID : 末端step.Status : 末端step.Content.length : teamStages.size : teamRuns.size
+   */
+  contentSignature: Ref<string> | ComputedRef<string>;
+  /** session 活动树最新 task ID；新 Task 出现时锚定到其 UserMessage 顶部（G5）。 */
+  lastTaskId: Ref<string> | ComputedRef<string>;
 };
 
 export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
-  const showScrollBtn = ref(false);
-  /**
-   * Time-based auto-scroll model (matching useActivityAutoScroll):
-   * - `recoveryTimer === null`  → auto-scroll is ACTIVE (content changes scroll to bottom)
-   * - `recoveryTimer !== null`  → user scrolled recently, auto-scroll PAUSED (10s cooldown)
-   * - Each user scroll away from bottom resets the 10s timer
-   * - When the timer fires → scroll to bottom & resume auto-scroll
-   * - User scrolls near bottom → clear cooldown (resume immediately)
-   */
-  let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
-  /** Distinguishes programmatic scrollToBottom() from user-initiated scrolls. */
-  let programmaticScroll = false;
+  const follow = useFollowScroll({
+    scrollEl: opts.messagesScrollEl,
+    contentSignature: opts.contentSignature,
+    enabled: computed(() => opts.sessionKey.value.trim().length > 0),
+  });
 
   const highlightedTurnId = ref<string | undefined>(undefined);
   let highlightTimer: ReturnType<typeof setTimeout> | null = null;
@@ -45,217 +35,61 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     }, 2000);
   }
 
-  function maxScrollTop(el: HTMLElement): number {
-    return Math.max(0, el.scrollHeight - el.clientHeight);
-  }
-
-  function distanceFromBottom(el: HTMLElement): number {
-    return maxScrollTop(el) - el.scrollTop;
-  }
-
-  function isNearBottom(el: HTMLElement): boolean {
-    return distanceFromBottom(el) <= NEAR_BOTTOM_THRESHOLD;
-  }
-
-  function activeScrollEl(): HTMLElement | null {
-    return opts.messagesScrollEl.value;
-  }
-
-  function clampScrollTop(el: HTMLElement, preferBottom: boolean): void {
-    const max = maxScrollTop(el);
-    const top = el.scrollTop;
-    if (!Number.isFinite(top) || top < 0 || top > max + 2) {
-      el.scrollTop = preferBottom ? max : 0;
-    }
-  }
-
-  function clearRecoveryTimer() {
-    if (recoveryTimer) {
-      clearTimeout(recoveryTimer);
-      recoveryTimer = null;
-    }
-  }
-
-  /** Whether auto-scroll is currently active (no pending user cooldown). */
-  function isAutoScrollActive(): boolean {
-    return recoveryTimer === null;
-  }
-
-  function onMessagesScroll(event?: Event) {
-    const el = (event?.target as HTMLElement | undefined) ?? activeScrollEl();
-    if (!el) return;
-
-    // Ignore programmatic scrolls (from scrollToBottom).
-    if (programmaticScroll) {
-      programmaticScroll = false;
-      clampScrollTop(el, true);
-      return;
-    }
-
-    clampScrollTop(el, true);
-    const dist = distanceFromBottom(el);
-    showScrollBtn.value = dist > SCROLL_BTN_THRESHOLD;
-
-    // User scrolled near the bottom — treat as "still following", resume immediately.
-    if (isNearBottom(el)) {
-      clearRecoveryTimer();
-      return;
-    }
-
-    // User scrolled away from bottom — (re)start the 10s recovery timer.
-    clearRecoveryTimer();
-    recoveryTimer = setTimeout(() => {
-      recoveryTimer = null;
-      // 10s of no user scrolling — resume auto-scroll immediately.
-      void nextTick(() => {
-        void scrollToBottom(false);
-      });
-    }, RECOVERY_MS);
-  }
-
-  async function scrollToBottom(smooth = false) {
-    const el = opts.messagesScrollEl.value;
-    if (!el) return;
-    clampScrollTop(el, true);
-    const top = maxScrollTop(el);
-    programmaticScroll = true;
-    el.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
-    showScrollBtn.value = false;
-  }
-
-  async function alignMessageScroll(preferBottom: boolean) {
+  /**
+   * 会话切换 / 挂载：多帧重试滚底 + 恢复 FOLLOWING。
+   * 内容可能分帧渲染（WS replay / 懒加载），最多重试 4 帧。
+   */
+  async function alignMessageScroll() {
     for (let attempt = 0; attempt < 4; attempt++) {
       await nextTick();
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      const el = activeScrollEl();
+      const el = opts.messagesScrollEl.value;
       if (!el) continue;
-      clampScrollTop(el, preferBottom);
-      const top = preferBottom ? maxScrollTop(el) : 0;
-      programmaticScroll = true;
-      el.scrollTop = top;
-      if (preferBottom && el.clientHeight > 0 && isNearBottom(el)) {
-        showScrollBtn.value = false;
-        return;
-      }
-      if (!preferBottom && el.scrollTop <= 1) {
+      follow.jumpToLatest();
+      if (el.clientHeight > 0 && el.scrollHeight - el.scrollTop - el.clientHeight <= 80) {
         return;
       }
     }
   }
 
-  // Session switched: clear any user cooldown and scroll to bottom.
+  // G5 新 Task 锚点的会话归属跟踪：仅「同会话新增 Task」（用户发消息）时锚定到 TaskCard 顶部。
+  // 会话切换 / 初始加载导致的 task 变化不锚定——由 alignMessageScroll 滚底负责，
+  // 否则 scrollIntoView(block:'start') 会覆盖滚底（2026-07-22 运行时验证发现的会话切换 bug）。
+  let lastSeenTaskId = opts.lastTaskId.value;
+
+  // 会话切换：滚底 + FOLLOWING。
+  // lastSeenTaskId 同步重置：会话切换后首次 lastTaskId 变化视为「初始加载」而非「新 Task」。
   watch(
     () => opts.sessionKey.value,
     () => {
-      clearRecoveryTimer();
-      showScrollBtn.value = false;
-      void alignMessageScroll(true);
+      lastSeenTaskId = '';
+      void alignMessageScroll();
     },
   );
 
+  // G5 新 Task 锚点：同会话新增 Task → 锚定到 TaskCard（UserMessage）顶部 + FOLLOWING。
   watch(
-    () => opts.messages.value.length,
-    (len, prev) => {
-      if (len === 0) return;
-      if (prev === 0) {
-        // First message — clear cooldown and scroll to bottom.
-        clearRecoveryTimer();
-        void alignMessageScroll(true);
+    () => opts.lastTaskId.value,
+    async (id, prev) => {
+      if (!id || id === prev) return;
+      if (!lastSeenTaskId) {
+        lastSeenTaskId = id; // 初始加载：只记录，不锚定
         return;
       }
-      // Auto-scroll only if no pending user cooldown.
-      if (!isAutoScrollActive()) return;
-      void scrollToBottom(false);
+      lastSeenTaskId = id;
+      await nextTick();
+      const el = opts.messagesScrollEl.value;
+      if (!el) return;
+      const target = el.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(id)}"]`);
+      if (target) follow.jumpToLatest(target);
     },
   );
-
-  // B-04 / Activity-First: auto-scroll when the tasks array grows.
-  // New tasks render in v2 SessionPanel, but messages.length may stay
-  // unchanged, so the messages watcher above would not trigger. This
-  // watcher closes the gap.
-  watch(
-    () => opts.tasks?.value.length ?? 0,
-    (len, prev) => {
-      if (len === 0) return;
-      if (prev === 0) {
-        clearRecoveryTimer();
-        void alignMessageScroll(true);
-        return;
-      }
-      if (!isAutoScrollActive()) return;
-      scheduleScrollToBottom();
-    },
-  );
-
-  // P1#4: auto-scroll when a task transitions to a terminal status. The tasks
-  // array length may not change (a running task transitions to completed), so
-  // the length watcher alone misses it. We watch a signature of the latest
-  // terminal task and throttle the scroll with requestAnimationFrame.
-  const lastFinalReplySignature = computed(() => {
-    const tasks = opts.tasks?.value ?? [];
-    for (let i = tasks.length - 1; i >= 0; i--) {
-      const t = tasks[i];
-      if (t.Status === 'completed' || t.Status === 'failed' || t.Status === 'cancelled') {
-        return `${t.ID}:${t.Status}:${t.CompletedAt ?? ''}`;
-      }
-    }
-    return '';
-  });
-  watch(lastFinalReplySignature, (sig, prev) => {
-    if (!sig || sig === prev) return;
-    if (!isAutoScrollActive()) return;
-    scheduleScrollToBottom();
-  });
 
   onMounted(() => {
-    if (opts.messages.value.length > 0) {
-      clearRecoveryTimer();
-      void alignMessageScroll(true);
-    }
+    void alignMessageScroll();
   });
 
-  // Leading-edge throttle with trailing call: ensures the first delta in each
-  // 50ms window triggers a scroll, and the last delta always gets a trailing
-  // scroll so the view doesn't get stuck mid-stream.
-  let scrollStickRaf = 0;
-  let scrollStickLastRun = 0;
-  let scrollStickTrailingTimer: ReturnType<typeof setTimeout> | null = null;
-  const SCROLL_STICK_THROTTLE_MS = 50;
-  function scheduleScrollToBottom() {
-    if (scrollStickRaf) return;
-    scrollStickRaf = requestAnimationFrame(() => {
-      scrollStickRaf = 0;
-      scrollStickLastRun = Date.now();
-      void scrollToBottom(false);
-    });
-  }
-  watch(
-    () => opts.messages.value[opts.messages.value.length - 1]?.content_markdown ?? '',
-    () => {
-      if (!isAutoScrollActive()) return;
-      const now = Date.now();
-      const elapsed = now - scrollStickLastRun;
-      if (elapsed >= SCROLL_STICK_THROTTLE_MS) {
-        // Leading edge: enough time has passed — scroll immediately
-        scrollStickLastRun = now;
-        scheduleScrollToBottom();
-      } else {
-        // Within throttle window — schedule a trailing scroll after the
-        // remaining wait so the final position is always correct.
-        if (scrollStickTrailingTimer) clearTimeout(scrollStickTrailingTimer);
-        scrollStickTrailingTimer = setTimeout(() => {
-          scrollStickTrailingTimer = null;
-          if (!isAutoScrollActive()) return;
-          scheduleScrollToBottom();
-        }, SCROLL_STICK_THROTTLE_MS - elapsed);
-      }
-    },
-  );
-
   onBeforeUnmount(() => {
-    clearRecoveryTimer();
-    if (scrollStickRaf) cancelAnimationFrame(scrollStickRaf);
-    if (scrollStickTrailingTimer) clearTimeout(scrollStickTrailingTimer);
     if (highlightTimer) clearTimeout(highlightTimer);
   });
 
@@ -273,10 +107,9 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
   }
 
   return {
-    showScrollBtn,
     highlightedTurnId,
-    onMessagesScroll,
-    scrollToBottom,
+    onMessagesScroll: follow.onScroll,
+    scrollToBottom: follow.scrollToBottom,
     scrollToTurnId,
   };
 }

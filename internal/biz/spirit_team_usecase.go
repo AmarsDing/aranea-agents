@@ -167,6 +167,45 @@ func WithGraphDeliverableReader(r SpiritGraphDeliverableReader) SpiritTeamUsecas
 	return func(u *SpiritTeamUsecase) { u.graphDelivReader = r }
 }
 
+// SpiritTeamRunStats is the latest-run statistics for one team, used by the
+// execution report (B.10.17) to enrich per-unit duration and error reason.
+type SpiritTeamRunStats struct {
+	TeamID       string
+	DurationMs   int64
+	ErrorMessage string
+}
+
+// SpiritTeamRunStatsReader reads latest team-run statistics in batch
+// (team_runs_v2 ⋈ team_stages_v2, latest run per team).
+//
+// Stability:evolving
+type SpiritTeamRunStatsReader interface {
+	ListLatestRunStatsByTeams(ctx context.Context, teamIDs []string) (map[string]SpiritTeamRunStats, error)
+}
+
+// WithSpiritTeamRunStatsReader injects the per-team run stats reader used by
+// the execution report (B.10.17). Nil omits per-unit duration/error fields.
+func WithSpiritTeamRunStatsReader(r SpiritTeamRunStatsReader) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) { u.runStatsReader = r }
+}
+
+// ListTeamRunStats returns per-team latest-run stats for report enrichment.
+// Returns nil when the stats reader is not wired (v1-only deployments).
+func (u *SpiritTeamUsecase) ListTeamRunStats(ctx context.Context, teamIDs []string) map[string]SpiritTeamRunStats {
+	if u.runStatsReader == nil || len(teamIDs) == 0 {
+		return nil
+	}
+	stats, err := u.runStatsReader.ListLatestRunStatsByTeams(ctx, teamIDs)
+	if err != nil {
+		u.lg.Warn("查询团队运行统计失败，省略 per-unit 耗时/错误字段",
+			loggateway.StepID("spirit.teams.run_stats_err"),
+			loggateway.Err(err),
+		)
+		return nil
+	}
+	return stats
+}
+
 // SpiritTeamUsecase manages Spirit team lifecycle.
 // TECH-DEBT(COG): file_lines=1431, limit=500; sync_maps=1, limit=0; needs decomposition into sub-Usecases
 // TODO(debt): DEV-09 — Split into three sub-Usecases:
@@ -190,6 +229,7 @@ type SpiritTeamUsecase struct {
 	deptLeadMgr       *DeptLeadManager
 	stepReader        SpiritStepReader
 	graphDelivReader  SpiritGraphDeliverableReader
+	runStatsReader    SpiritTeamRunStatsReader
 	lg                loggateway.Logger
 
 	timeoutOnce sync.Once
@@ -1421,6 +1461,10 @@ type AllTeamsCompletedResult struct {
 	TotalTeams     int
 	CompletedTeams int
 	FailedTeams    int
+	// CancelledTeams counts teams in cancelled state (subset of FailedTeams).
+	// B.10.17: >0 skips the execution report and the synthesis summary turn —
+	// user-initiated interruption must not produce a report.
+	CancelledTeams int
 	TotalTokenIn   int
 	TotalTokenOut  int
 }
@@ -1450,14 +1494,17 @@ func (u *SpiritTeamUsecase) CheckAllTeamsCompleted(ctx context.Context, spiritSe
 	}
 	// All teams are in a terminal state (completed, failed, cancelled, or archived).
 	var teamIDs []string
-	var completedTeams, failedTeams int
+	var completedTeams, failedTeams, cancelledTeams int
 	for _, t := range teams {
 		teamIDs = append(teamIDs, t.ID)
 		switch t.Status {
 		case TeamStatusCompleted:
 			completedTeams++
-		case TeamStatusFailed, TeamStatusCancelled:
+		case TeamStatusFailed:
 			failedTeams++
+		case TeamStatusCancelled:
+			failedTeams++
+			cancelledTeams++
 		}
 	}
 	// Aggregate token usage from child sessions of the spirit session.
@@ -1487,6 +1534,7 @@ func (u *SpiritTeamUsecase) CheckAllTeamsCompleted(ctx context.Context, spiritSe
 		TotalTeams:     len(teams),
 		CompletedTeams: completedTeams,
 		FailedTeams:    failedTeams,
+		CancelledTeams: cancelledTeams,
 		TotalTokenIn:   totalTokenIn,
 		TotalTokenOut:  totalTokenOut,
 	}

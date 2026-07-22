@@ -730,6 +730,13 @@ export type ListMemberSessionsV2Response = {
   memberSessions: MemberSessionV2[] | undefined;
 };
 
+export type ListOrphanMemberSessionsV2Request = {
+  // Spirit (root) session ID.
+  //
+  // Behaviors: REQUIRED
+  sessionId: string | undefined;
+};
+
 // --- PlanBoard ---
 export type PlanBoardV2 = {
   id: string | undefined;
@@ -1491,6 +1498,10 @@ export interface SessionV2Service {
   ListTeamStages(request: ListTeamStagesV2Request): Promise<ListTeamStagesV2Response>;
   ListTeamRuns(request: ListTeamRunsV2Request): Promise<ListTeamRunsV2Response>;
   ListMemberSessions(request: ListMemberSessionsV2Request): Promise<ListMemberSessionsV2Response>;
+  // ListOrphanMemberSessions lists Mode B member sessions (empty team_run_id)
+  // for a spirit root session — used by fetchSessionHistory to restore orphan
+  // agent-cards after refresh.
+  ListOrphanMemberSessions(request: ListOrphanMemberSessionsV2Request): Promise<ListMemberSessionsV2Response>;
   ListPlanBoards(request: ListPlanBoardsV2Request): Promise<ListPlanBoardsV2Response>;
   ListPlanSteps(request: ListPlanStepsV2Request): Promise<ListPlanStepsV2Response>;
   ListGraphStages(request: ListGraphStagesV2Request): Promise<ListGraphStagesV2Response>;
@@ -1625,6 +1636,26 @@ export function createSessionV2ServiceClient(
       }, {
         service: "SessionV2Service",
         method: "ListMemberSessions",
+      }) as Promise<ListMemberSessionsV2Response>;
+    },
+    ListOrphanMemberSessions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.sessionId) {
+        throw new Error("missing required field request.session_id");
+      }
+      const path = `v2/sessions/${request.sessionId}/orphan_member_sessions`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionV2Service",
+        method: "ListOrphanMemberSessions",
       }) as Promise<ListMemberSessionsV2Response>;
     },
     ListPlanBoards(request) { // eslint-disable-line @typescript-eslint/no-unused-vars

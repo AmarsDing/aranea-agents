@@ -29,6 +29,7 @@ import (
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
+	"aranea-agents/internal/data/ent/deptleadmessage"
 	"aranea-agents/internal/data/ent/evalcase"
 	"aranea-agents/internal/data/ent/evalcaseresult"
 	"aranea-agents/internal/data/ent/evaldataset"
@@ -70,6 +71,7 @@ import (
 	"aranea-agents/internal/data/ent/platformplugin"
 	"aranea-agents/internal/data/ent/platformskill"
 	"aranea-agents/internal/data/ent/platformtool"
+	"aranea-agents/internal/data/ent/resourceaccessaudit"
 	"aranea-agents/internal/data/ent/schemamigration"
 	"aranea-agents/internal/data/ent/selfcheckreport"
 	"aranea-agents/internal/data/ent/session"
@@ -154,6 +156,8 @@ type Client struct {
 	CronTask *CronTaskClient
 	// CronTaskRun is the client for interacting with the CronTaskRun builders.
 	CronTaskRun *CronTaskRunClient
+	// DeptLeadMessage is the client for interacting with the DeptLeadMessage builders.
+	DeptLeadMessage *DeptLeadMessageClient
 	// EvalCase is the client for interacting with the EvalCase builders.
 	EvalCase *EvalCaseClient
 	// EvalCaseResult is the client for interacting with the EvalCaseResult builders.
@@ -236,6 +240,8 @@ type Client struct {
 	PlatformSkill *PlatformSkillClient
 	// PlatformTool is the client for interacting with the PlatformTool builders.
 	PlatformTool *PlatformToolClient
+	// ResourceAccessAudit is the client for interacting with the ResourceAccessAudit builders.
+	ResourceAccessAudit *ResourceAccessAuditClient
 	// SchemaMigration is the client for interacting with the SchemaMigration builders.
 	SchemaMigration *SchemaMigrationClient
 	// SelfCheckReport is the client for interacting with the SelfCheckReport builders.
@@ -333,6 +339,7 @@ func (c *Client) init() {
 	c.CompiledTeam = NewCompiledTeamClient(c.config)
 	c.CronTask = NewCronTaskClient(c.config)
 	c.CronTaskRun = NewCronTaskRunClient(c.config)
+	c.DeptLeadMessage = NewDeptLeadMessageClient(c.config)
 	c.EvalCase = NewEvalCaseClient(c.config)
 	c.EvalCaseResult = NewEvalCaseResultClient(c.config)
 	c.EvalDataset = NewEvalDatasetClient(c.config)
@@ -374,6 +381,7 @@ func (c *Client) init() {
 	c.PlatformPlugin = NewPlatformPluginClient(c.config)
 	c.PlatformSkill = NewPlatformSkillClient(c.config)
 	c.PlatformTool = NewPlatformToolClient(c.config)
+	c.ResourceAccessAudit = NewResourceAccessAuditClient(c.config)
 	c.SchemaMigration = NewSchemaMigrationClient(c.config)
 	c.SelfCheckReport = NewSelfCheckReportClient(c.config)
 	c.Session = NewSessionClient(c.config)
@@ -518,6 +526,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		CompiledTeam:               NewCompiledTeamClient(cfg),
 		CronTask:                   NewCronTaskClient(cfg),
 		CronTaskRun:                NewCronTaskRunClient(cfg),
+		DeptLeadMessage:            NewDeptLeadMessageClient(cfg),
 		EvalCase:                   NewEvalCaseClient(cfg),
 		EvalCaseResult:             NewEvalCaseResultClient(cfg),
 		EvalDataset:                NewEvalDatasetClient(cfg),
@@ -559,6 +568,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PlatformPlugin:             NewPlatformPluginClient(cfg),
 		PlatformSkill:              NewPlatformSkillClient(cfg),
 		PlatformTool:               NewPlatformToolClient(cfg),
+		ResourceAccessAudit:        NewResourceAccessAuditClient(cfg),
 		SchemaMigration:            NewSchemaMigrationClient(cfg),
 		SelfCheckReport:            NewSelfCheckReportClient(cfg),
 		Session:                    NewSessionClient(cfg),
@@ -630,6 +640,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		CompiledTeam:               NewCompiledTeamClient(cfg),
 		CronTask:                   NewCronTaskClient(cfg),
 		CronTaskRun:                NewCronTaskRunClient(cfg),
+		DeptLeadMessage:            NewDeptLeadMessageClient(cfg),
 		EvalCase:                   NewEvalCaseClient(cfg),
 		EvalCaseResult:             NewEvalCaseResultClient(cfg),
 		EvalDataset:                NewEvalDatasetClient(cfg),
@@ -671,6 +682,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PlatformPlugin:             NewPlatformPluginClient(cfg),
 		PlatformSkill:              NewPlatformSkillClient(cfg),
 		PlatformTool:               NewPlatformToolClient(cfg),
+		ResourceAccessAudit:        NewResourceAccessAuditClient(cfg),
 		SchemaMigration:            NewSchemaMigrationClient(cfg),
 		SelfCheckReport:            NewSelfCheckReportClient(cfg),
 		Session:                    NewSessionClient(cfg),
@@ -738,8 +750,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AgentTemplate, c.AllocationPlan, c.AvatarAsset, c.BackgroundJob,
 		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
 		c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam, c.CronTask,
-		c.CronTaskRun, c.EvalCase, c.EvalCaseResult, c.EvalDataset, c.EvalRun,
-		c.EventDeliveryOutbox, c.EvolutionSuggestion, c.ExperienceReport,
+		c.CronTaskRun, c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
+		c.EvalRun, c.EventDeliveryOutbox, c.EvolutionSuggestion, c.ExperienceReport,
 		c.FailurePattern, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
 		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
 		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
@@ -749,10 +761,10 @@ func (c *Client) Use(hooks ...Hook) {
 		c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
 		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
 		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.SchemaMigration, c.SelfCheckReport,
-		c.Session, c.SessionMetrics, c.SessionParticipant, c.SessionRun,
-		c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn, c.SessionV2,
-		c.SkillEvolutionSuggestion, c.SkillImportJob, c.SkillInvocation,
+		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
+		c.SelfCheckReport, c.Session, c.SessionMetrics, c.SessionParticipant,
+		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
+		c.SessionV2, c.SkillEvolutionSuggestion, c.SkillImportJob, c.SkillInvocation,
 		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
 		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
 		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
@@ -771,8 +783,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AgentTemplate, c.AllocationPlan, c.AvatarAsset, c.BackgroundJob,
 		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
 		c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam, c.CronTask,
-		c.CronTaskRun, c.EvalCase, c.EvalCaseResult, c.EvalDataset, c.EvalRun,
-		c.EventDeliveryOutbox, c.EvolutionSuggestion, c.ExperienceReport,
+		c.CronTaskRun, c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
+		c.EvalRun, c.EventDeliveryOutbox, c.EvolutionSuggestion, c.ExperienceReport,
 		c.FailurePattern, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
 		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
 		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
@@ -782,10 +794,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
 		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
 		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.SchemaMigration, c.SelfCheckReport,
-		c.Session, c.SessionMetrics, c.SessionParticipant, c.SessionRun,
-		c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn, c.SessionV2,
-		c.SkillEvolutionSuggestion, c.SkillImportJob, c.SkillInvocation,
+		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
+		c.SelfCheckReport, c.Session, c.SessionMetrics, c.SessionParticipant,
+		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
+		c.SessionV2, c.SkillEvolutionSuggestion, c.SkillImportJob, c.SkillInvocation,
 		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
 		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
 		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
@@ -835,6 +847,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.CronTask.mutate(ctx, m)
 	case *CronTaskRunMutation:
 		return c.CronTaskRun.mutate(ctx, m)
+	case *DeptLeadMessageMutation:
+		return c.DeptLeadMessage.mutate(ctx, m)
 	case *EvalCaseMutation:
 		return c.EvalCase.mutate(ctx, m)
 	case *EvalCaseResultMutation:
@@ -917,6 +931,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PlatformSkill.mutate(ctx, m)
 	case *PlatformToolMutation:
 		return c.PlatformTool.mutate(ctx, m)
+	case *ResourceAccessAuditMutation:
+		return c.ResourceAccessAudit.mutate(ctx, m)
 	case *SchemaMigrationMutation:
 		return c.SchemaMigration.mutate(ctx, m)
 	case *SelfCheckReportMutation:
@@ -3381,6 +3397,139 @@ func (c *CronTaskRunClient) mutate(ctx context.Context, m *CronTaskRunMutation) 
 		return (&CronTaskRunDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown CronTaskRun mutation op: %q", m.Op())
+	}
+}
+
+// DeptLeadMessageClient is a client for the DeptLeadMessage schema.
+type DeptLeadMessageClient struct {
+	config
+}
+
+// NewDeptLeadMessageClient returns a client for the DeptLeadMessage from the given config.
+func NewDeptLeadMessageClient(c config) *DeptLeadMessageClient {
+	return &DeptLeadMessageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `deptleadmessage.Hooks(f(g(h())))`.
+func (c *DeptLeadMessageClient) Use(hooks ...Hook) {
+	c.hooks.DeptLeadMessage = append(c.hooks.DeptLeadMessage, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `deptleadmessage.Intercept(f(g(h())))`.
+func (c *DeptLeadMessageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.DeptLeadMessage = append(c.inters.DeptLeadMessage, interceptors...)
+}
+
+// Create returns a builder for creating a DeptLeadMessage entity.
+func (c *DeptLeadMessageClient) Create() *DeptLeadMessageCreate {
+	mutation := newDeptLeadMessageMutation(c.config, OpCreate)
+	return &DeptLeadMessageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of DeptLeadMessage entities.
+func (c *DeptLeadMessageClient) CreateBulk(builders ...*DeptLeadMessageCreate) *DeptLeadMessageCreateBulk {
+	return &DeptLeadMessageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *DeptLeadMessageClient) MapCreateBulk(slice any, setFunc func(*DeptLeadMessageCreate, int)) *DeptLeadMessageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &DeptLeadMessageCreateBulk{err: fmt.Errorf("calling to DeptLeadMessageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*DeptLeadMessageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &DeptLeadMessageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for DeptLeadMessage.
+func (c *DeptLeadMessageClient) Update() *DeptLeadMessageUpdate {
+	mutation := newDeptLeadMessageMutation(c.config, OpUpdate)
+	return &DeptLeadMessageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *DeptLeadMessageClient) UpdateOne(_m *DeptLeadMessage) *DeptLeadMessageUpdateOne {
+	mutation := newDeptLeadMessageMutation(c.config, OpUpdateOne, withDeptLeadMessage(_m))
+	return &DeptLeadMessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *DeptLeadMessageClient) UpdateOneID(id string) *DeptLeadMessageUpdateOne {
+	mutation := newDeptLeadMessageMutation(c.config, OpUpdateOne, withDeptLeadMessageID(id))
+	return &DeptLeadMessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for DeptLeadMessage.
+func (c *DeptLeadMessageClient) Delete() *DeptLeadMessageDelete {
+	mutation := newDeptLeadMessageMutation(c.config, OpDelete)
+	return &DeptLeadMessageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *DeptLeadMessageClient) DeleteOne(_m *DeptLeadMessage) *DeptLeadMessageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *DeptLeadMessageClient) DeleteOneID(id string) *DeptLeadMessageDeleteOne {
+	builder := c.Delete().Where(deptleadmessage.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &DeptLeadMessageDeleteOne{builder}
+}
+
+// Query returns a query builder for DeptLeadMessage.
+func (c *DeptLeadMessageClient) Query() *DeptLeadMessageQuery {
+	return &DeptLeadMessageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeDeptLeadMessage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a DeptLeadMessage entity by its id.
+func (c *DeptLeadMessageClient) Get(ctx context.Context, id string) (*DeptLeadMessage, error) {
+	return c.Query().Where(deptleadmessage.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *DeptLeadMessageClient) GetX(ctx context.Context, id string) *DeptLeadMessage {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *DeptLeadMessageClient) Hooks() []Hook {
+	return c.hooks.DeptLeadMessage
+}
+
+// Interceptors returns the client interceptors.
+func (c *DeptLeadMessageClient) Interceptors() []Interceptor {
+	return c.inters.DeptLeadMessage
+}
+
+func (c *DeptLeadMessageClient) mutate(ctx context.Context, m *DeptLeadMessageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&DeptLeadMessageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&DeptLeadMessageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&DeptLeadMessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&DeptLeadMessageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown DeptLeadMessage mutation op: %q", m.Op())
 	}
 }
 
@@ -8965,6 +9114,139 @@ func (c *PlatformToolClient) mutate(ctx context.Context, m *PlatformToolMutation
 	}
 }
 
+// ResourceAccessAuditClient is a client for the ResourceAccessAudit schema.
+type ResourceAccessAuditClient struct {
+	config
+}
+
+// NewResourceAccessAuditClient returns a client for the ResourceAccessAudit from the given config.
+func NewResourceAccessAuditClient(c config) *ResourceAccessAuditClient {
+	return &ResourceAccessAuditClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `resourceaccessaudit.Hooks(f(g(h())))`.
+func (c *ResourceAccessAuditClient) Use(hooks ...Hook) {
+	c.hooks.ResourceAccessAudit = append(c.hooks.ResourceAccessAudit, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `resourceaccessaudit.Intercept(f(g(h())))`.
+func (c *ResourceAccessAuditClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ResourceAccessAudit = append(c.inters.ResourceAccessAudit, interceptors...)
+}
+
+// Create returns a builder for creating a ResourceAccessAudit entity.
+func (c *ResourceAccessAuditClient) Create() *ResourceAccessAuditCreate {
+	mutation := newResourceAccessAuditMutation(c.config, OpCreate)
+	return &ResourceAccessAuditCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ResourceAccessAudit entities.
+func (c *ResourceAccessAuditClient) CreateBulk(builders ...*ResourceAccessAuditCreate) *ResourceAccessAuditCreateBulk {
+	return &ResourceAccessAuditCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ResourceAccessAuditClient) MapCreateBulk(slice any, setFunc func(*ResourceAccessAuditCreate, int)) *ResourceAccessAuditCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ResourceAccessAuditCreateBulk{err: fmt.Errorf("calling to ResourceAccessAuditClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ResourceAccessAuditCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ResourceAccessAuditCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ResourceAccessAudit.
+func (c *ResourceAccessAuditClient) Update() *ResourceAccessAuditUpdate {
+	mutation := newResourceAccessAuditMutation(c.config, OpUpdate)
+	return &ResourceAccessAuditUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ResourceAccessAuditClient) UpdateOne(_m *ResourceAccessAudit) *ResourceAccessAuditUpdateOne {
+	mutation := newResourceAccessAuditMutation(c.config, OpUpdateOne, withResourceAccessAudit(_m))
+	return &ResourceAccessAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ResourceAccessAuditClient) UpdateOneID(id string) *ResourceAccessAuditUpdateOne {
+	mutation := newResourceAccessAuditMutation(c.config, OpUpdateOne, withResourceAccessAuditID(id))
+	return &ResourceAccessAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ResourceAccessAudit.
+func (c *ResourceAccessAuditClient) Delete() *ResourceAccessAuditDelete {
+	mutation := newResourceAccessAuditMutation(c.config, OpDelete)
+	return &ResourceAccessAuditDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ResourceAccessAuditClient) DeleteOne(_m *ResourceAccessAudit) *ResourceAccessAuditDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ResourceAccessAuditClient) DeleteOneID(id string) *ResourceAccessAuditDeleteOne {
+	builder := c.Delete().Where(resourceaccessaudit.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ResourceAccessAuditDeleteOne{builder}
+}
+
+// Query returns a query builder for ResourceAccessAudit.
+func (c *ResourceAccessAuditClient) Query() *ResourceAccessAuditQuery {
+	return &ResourceAccessAuditQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeResourceAccessAudit},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ResourceAccessAudit entity by its id.
+func (c *ResourceAccessAuditClient) Get(ctx context.Context, id string) (*ResourceAccessAudit, error) {
+	return c.Query().Where(resourceaccessaudit.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ResourceAccessAuditClient) GetX(ctx context.Context, id string) *ResourceAccessAudit {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ResourceAccessAuditClient) Hooks() []Hook {
+	return c.hooks.ResourceAccessAudit
+}
+
+// Interceptors returns the client interceptors.
+func (c *ResourceAccessAuditClient) Interceptors() []Interceptor {
+	return c.inters.ResourceAccessAudit
+}
+
+func (c *ResourceAccessAuditClient) mutate(ctx context.Context, m *ResourceAccessAuditMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ResourceAccessAuditCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ResourceAccessAuditUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ResourceAccessAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ResourceAccessAuditDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ResourceAccessAudit mutation op: %q", m.Op())
+	}
+}
+
 // SchemaMigrationClient is a client for the SchemaMigration schema.
 type SchemaMigrationClient struct {
 	config
@@ -13493,46 +13775,47 @@ type (
 		Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
-		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, EvalCase,
-		EvalCaseResult, EvalDataset, EvalRun, EventDeliveryOutbox, EvolutionSuggestion,
-		ExperienceReport, FailurePattern, FlowLogEvent, GatewayWebhook,
-		GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2, GraphTask,
-		GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun,
-		HealRecord, LlmProviderModel, MediaProvider, MemberSessionV2, ModelPricingRule,
-		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
-		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
-		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
-		PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin, PlatformSkill,
-		PlatformTool, SchemaMigration, SelfCheckReport, Session, SessionMetrics,
-		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
-		SessionTurn, SessionV2, SkillEvolutionSuggestion, SkillImportJob,
-		SkillInvocation, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
-		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
-		ToolGrant, ToolInvocation, ToolInvocationAudit, ToolInvocationParam,
-		ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
-		UserEmbeddingSetting []ent.Hook
+		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, DeptLeadMessage,
+		EvalCase, EvalCaseResult, EvalDataset, EvalRun, EventDeliveryOutbox,
+		EvolutionSuggestion, ExperienceReport, FailurePattern, FlowLogEvent,
+		GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2,
+		GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog,
+		GraphTaskRun, HealRecord, LlmProviderModel, MediaProvider, MemberSessionV2,
+		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
+		Organization, PlanBoardV2, PlanStepV2, PlatformChannel,
+		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
+		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
+		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
+		SelfCheckReport, Session, SessionMetrics, SessionParticipant, SessionRun,
+		SessionRunCheckpoint, SessionRuntime, SessionTurn, SessionV2,
+		SkillEvolutionSuggestion, SkillImportJob, SkillInvocation, SkillVersion,
+		StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun,
+		TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
+		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
+		ToolResultReplacement, TurnV2, UsageQuota, UserEmbeddingSetting []ent.Hook
 	}
 	inters struct {
 		Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
-		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, EvalCase,
-		EvalCaseResult, EvalDataset, EvalRun, EventDeliveryOutbox, EvolutionSuggestion,
-		ExperienceReport, FailurePattern, FlowLogEvent, GatewayWebhook,
-		GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2, GraphTask,
-		GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun,
-		HealRecord, LlmProviderModel, MediaProvider, MemberSessionV2, ModelPricingRule,
-		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
-		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
-		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
-		PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin, PlatformSkill,
-		PlatformTool, SchemaMigration, SelfCheckReport, Session, SessionMetrics,
-		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
-		SessionTurn, SessionV2, SkillEvolutionSuggestion, SkillImportJob,
-		SkillInvocation, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
-		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
-		ToolGrant, ToolInvocation, ToolInvocationAudit, ToolInvocationParam,
-		ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
+		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, DeptLeadMessage,
+		EvalCase, EvalCaseResult, EvalDataset, EvalRun, EventDeliveryOutbox,
+		EvolutionSuggestion, ExperienceReport, FailurePattern, FlowLogEvent,
+		GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2,
+		GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog,
+		GraphTaskRun, HealRecord, LlmProviderModel, MediaProvider, MemberSessionV2,
+		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
+		Organization, PlanBoardV2, PlanStepV2, PlatformChannel,
+		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
+		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
+		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
+		SelfCheckReport, Session, SessionMetrics, SessionParticipant, SessionRun,
+		SessionRunCheckpoint, SessionRuntime, SessionTurn, SessionV2,
+		SkillEvolutionSuggestion, SkillImportJob, SkillInvocation, SkillVersion,
+		StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun,
+		TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
+		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
+		ToolResultReplacement, TurnV2, UsageQuota,
 		UserEmbeddingSetting []ent.Interceptor
 	}
 )

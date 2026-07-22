@@ -88,6 +88,12 @@ export type EmbeddedGraphNode = {
   destinations: string[] | undefined;
   taskPrompt: string | undefined;
   enabled?: boolean;
+  // Runtime node fields (C-21): round-trip through OrchestrationSpec API.
+  retryMaxAttempts: number | undefined;
+  fallbackAgent: string | undefined;
+  reviewerAgent: string | undefined;
+  reviewRules: string | undefined;
+  funcRef: string | undefined;
 };
 
 export type EmbeddedGraphEdge = {
@@ -356,10 +362,15 @@ export type ResumeTeamRunExecutionResponse = {
 };
 
 export type ListTeamsRequest = {
+  // When true, return total only (items empty). Used by Overview KPI without
+  // loading the full team list or HasActiveRun enrichment.
+  countOnly: boolean | undefined;
 };
 
 export type ListTeamsResponse = {
   items: Team[] | undefined;
+  // Total teams matching the caller workspace visibility (same scope as items).
+  total: number | undefined;
 };
 
 export type CreateTeamRequest = {
@@ -716,6 +727,9 @@ export function createTeamServiceClient(
       const path = `v1/teams`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
+      if (request.countOnly) {
+        queryParams.push(`countOnly=${encodeURIComponent(request.countOnly.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`

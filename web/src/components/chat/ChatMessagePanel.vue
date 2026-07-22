@@ -87,6 +87,17 @@
         <div
           class="chat-message-header__actions chat-message-header__actions--right row items-center justify-end no-wrap"
         >
+          <q-btn
+            v-if="sessionId"
+            flat
+            round
+            dense
+            icon="inventory_2"
+            :aria-label="t('chat.artifacts')"
+            @click="emit('open-artifacts-page')"
+          >
+            <q-tooltip>{{ t('chat.artifacts') }}</q-tooltip>
+          </q-btn>
           <q-btn flat round dense icon="bolt" :aria-label="t('chat.sessionEvents')" @click="emit('open-events')">
             <q-tooltip>{{ t('chat.sessionEvents') }}</q-tooltip>
           </q-btn>
@@ -132,13 +143,11 @@
             :is-team-session="props.isTeamSession"
             :planner-kind="props.plannerKind"
             :reasoning-sidebar-open="props.reasoningSidebarOpen"
-            :show-scroll-btn="showScrollBtn"
             :session-id="props.sessionId"
             :agent-map="props.agentMap"
             :run-status="props.runStatus"
             @messages-click="handleMessagesClick"
             @scroll="onMessagesScrollWrapped"
-            @scroll-to-bottom="scrollToBottom"
             @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
             @feedback="(p) => emit('feedback', p)"
             @regenerate="(msg) => emit('regenerate', msg)"
@@ -154,6 +163,7 @@
             @update-pending="(id, content) => emit('update-pending', id, content)"
             @confirm="(id, approved) => emit('confirm-activity', id, approved)"
             @confirm-step="(p) => emit('confirm-activity-grant', p)"
+            @submit-clarification="(p) => emit('submit-clarification', p)"
             @error-retry="(e) => emit('error-retry', e)"
             @error-switch-model="(e) => emit('error-switch-model', e)"
             @error-rephrase="(e) => emit('error-rephrase', e)"
@@ -281,10 +291,11 @@ import type { CompressStatus } from '../../features/session/types';
 import type { SpiritStatusBarData } from '../../features/spirit/types';
 
 import { useTodoBoard } from '../../features/chat/composables/useTodoBoard';
+import { useActivityQueries } from '../../features/chat/composables/useActivityQueries';
 import { useChatMessageScroll, useChatCodeCopy } from '../../features/chat/composables/useChatMessageScroll';
 import { useChatScrollTitle } from '../../features/chat/useChatScrollTitle';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
-import type { Message, ConfirmStepPayload, TOOL_CONFIRM_REPLY } from '../../features/chat/types';
+import type { Message, ConfirmStepPayload, SubmitClarificationPayload, TOOL_CONFIRM_REPLY } from '../../features/chat/types';
 import type { PromptBreakdown } from '../../features/chat/contextBreakdown';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { ChatAttachment } from './types';
@@ -369,6 +380,7 @@ const emit = defineEmits<{
   'submit-await-reply': [];
   'submit-tool-confirm': [approved: boolean];
   'open-events': [];
+  'open-artifacts-page': [];
   'open-artifact': [id: string];
   'paste-file': [file: File];
   'focus-turn': [turnId: string];
@@ -412,6 +424,7 @@ const emit = defineEmits<{
   'toggle-tool-calls': [];
   'confirm-activity': [activityId: string, approved: boolean];
   'confirm-activity-grant': [payload: ConfirmStepPayload];
+  'submit-clarification': [payload: SubmitClarificationPayload];
   'error-retry': [step: Step];
   'error-switch-model': [step: Step];
   'error-rephrase': [step: Step];
@@ -489,10 +502,40 @@ const messagesScrollEl = computed(() => messageListRef.value?.getScrollTarget() 
 const sessionKey = computed(() => props.sessionId?.trim() || props.sessionTitle);
 const sessionTitleRef = computed(() => props.sessionTitle);
 
-const { showScrollBtn, onMessagesScroll, scrollToBottom, scrollToTurnId } = useChatMessageScroll({
+// ── 状态制跟随：组装活动树末端签名（O(1)，不遍历全树）──
+// 外层视口跟随语义 = "跟随主流尾部"：最后一个 task 的最后一个 turn 的最后一步。
+// 历史 task/turn 的局部更新（如重新生成）不改变签名，不触发外层跟随。
+const activityQueries = useActivityQueries();
+const sessionTasks = computed(() => (props.sessionId ? activityQueries.getSessionTasks(props.sessionId) : []));
+const lastTaskId = computed(() => sessionTasks.value[sessionTasks.value.length - 1]?.ID ?? '');
+const chatContentSignature = computed(() => {
+  const tasks = sessionTasks.value;
+  const lastTask = tasks[tasks.length - 1];
+  const turns = lastTask ? activityQueries.getTaskTurns(lastTask.ID) : [];
+  const lastTurn = turns[turns.length - 1];
+  const steps = lastTurn ? activityQueries.getTurnSteps(lastTurn.ID) : [];
+  const lastStep = steps[steps.length - 1];
+  const msgs = props.messages;
+  const lastMsg = msgs[msgs.length - 1];
+  return [
+    msgs.length,
+    lastMsg?.content_markdown?.length ?? 0,
+    tasks.length,
+    steps.length,
+    lastStep?.ID ?? '',
+    lastStep?.Status ?? '',
+    lastStep?.Content?.length ?? 0,
+    activityQueries.teamStages().size,
+    activityQueries.teamRuns().size,
+  ].join(':');
+});
+
+const { onMessagesScroll, scrollToTurnId } = useChatMessageScroll({
   sessionKey,
   messages: messagesRef,
   messagesScrollEl,
+  contentSignature: chatContentSignature,
+  lastTaskId,
 });
 
 const { headerUserPrompt, promptKey, refreshActivePrompt, resetToLatestOrSession } = useChatScrollTitle({

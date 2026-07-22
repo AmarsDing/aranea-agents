@@ -80,6 +80,7 @@ type deliverableSessionAccessor struct {
 	sessionsByTeam map[string]Session
 	extraByTeam    map[string][]Session     // additional sessions returned by Search (e.g. member sessions)
 	messages       map[string][]ChatMessage // sessionID → messages
+	children       []Session                // returned by ListChildSessions (B.10.17 token aggregation tests)
 }
 
 func newDeliverableSessionAccessor() *deliverableSessionAccessor {
@@ -119,7 +120,7 @@ func (m *deliverableSessionAccessor) ListMessagesRecent(_ context.Context, sessi
 	return m.messages[sessionID], nil
 }
 func (m *deliverableSessionAccessor) ListChildSessions(_ context.Context, _ string) ([]Session, error) {
-	return nil, nil
+	return m.children, nil
 }
 
 type deliverableAgentResolver struct{}

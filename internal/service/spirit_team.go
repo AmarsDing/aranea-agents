@@ -669,7 +669,15 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	// blocking concurrent spirit sessions (singleton CAS would poison across
 	// sessions — first session's success would permanently disable synthesis
 	// for all subsequent sessions).
-	if s.synthesisSvc != nil && s.turnGateway != nil {
+	// B.10.17 断点 4 取消守卫：存在 cancelled 团队 = 用户主动中断，
+	// 跳过综合与总结 turn（中断不出报告）。
+	if result.CancelledTeams > 0 {
+		s.lg.Info("存在已取消团队，跳过总结报告与总结 turn（用户主动中断）",
+			loggateway.StepID("spirit.synthesis_skip_cancelled"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Int("cancelled_teams", result.CancelledTeams),
+		)
+	} else if s.synthesisSvc != nil && s.turnGateway != nil {
 		if _, alreadyTriggered := s.synthesisTriggered.LoadOrStore(spiritSessionID, true); !alreadyTriggered {
 			synthesisMsg := s.buildSynthesisMessage(ctx, spiritSessionID)
 			if synthesisMsg != "" {
@@ -783,11 +791,14 @@ func (s *TeamStarter) buildSynthesisMessage(ctx context.Context, spiritSessionID
 // 在 chat_orchestrator_turn.go:401 通过 ContextWithRootTaskActivityID 注入）
 // 作为 fallback。RootTaskActivityID 是根 Task 的 ID，与 team 阶段的 ctx 链
 // 一脉相承，是可靠的内存态真相源。
-func (s *TeamStarter) resolveLatestUserTaskID(ctx context.Context, spiritSessionID string) string {
-	if s.taskV2Reader != nil {
-		tasks, err := s.taskV2Reader.ListTasksBySession(ctx, spiritSessionID)
+//
+// 2026-07-22 B.10.17：提取为包级函数，供 TeamStarter（总结 turn ParentTaskID）
+// 与 synthesisEventPublisher（执行报告 Step.TaskID 附着）复用。
+func resolveLatestUserTaskID(ctx context.Context, reader biz.TaskV2Reader, lg loggateway.Logger, spiritSessionID string) string {
+	if reader != nil {
+		tasks, err := reader.ListTasksBySession(ctx, spiritSessionID)
 		if err != nil {
-			s.lg.Warn("resolveLatestUserTaskID: ListTasksBySession failed",
+			lg.Warn("resolveLatestUserTaskID: ListTasksBySession failed",
 				loggateway.StepID("spirit.synthesis.parent_task_lookup_err"),
 				loggateway.Str("spirit_session_id", spiritSessionID),
 				loggateway.Err(err),
@@ -805,7 +816,7 @@ func (s *TeamStarter) resolveLatestUserTaskID(ctx context.Context, spiritSession
 	// taskV2Reader is nil. RootTaskActivityID is the canonical root task ID
 	// for the current spirit session turn chain.
 	if rtID := string(agent.RootTaskActivityIDFromCtx(ctx)); rtID != "" {
-		s.lg.Info("resolveLatestUserTaskID: fell back to ctx RootTaskActivityID",
+		lg.Info("resolveLatestUserTaskID: fell back to ctx RootTaskActivityID",
 			loggateway.StepID("spirit.synthesis.parent_task_ctx_fallback"),
 			loggateway.Str("spirit_session_id", spiritSessionID),
 			loggateway.Str("root_task_id", rtID),
@@ -813,6 +824,10 @@ func (s *TeamStarter) resolveLatestUserTaskID(ctx context.Context, spiritSession
 		return rtID
 	}
 	return ""
+}
+
+func (s *TeamStarter) resolveLatestUserTaskID(ctx context.Context, spiritSessionID string) string {
+	return resolveLatestUserTaskID(ctx, s.taskV2Reader, s.lg, spiritSessionID)
 }
 
 // HandleTeamTimeout implements biz.TimeoutHandler. Called when a team times out

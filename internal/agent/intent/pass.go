@@ -16,14 +16,55 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// ClarificationQuestion 是澄清问题的 LLM 输出契约（与 biz 持久化契约同型）。
+type ClarificationQuestion = biz.ClarificationQuestion
+
+const (
+	// RiskFlagNeedsClarification 表示 LLM 判定存在阻塞性歧义，需要先向用户澄清。
+	RiskFlagNeedsClarification = "needs_clarification"
+	// MaxClarificationQuestions 澄清问题数上限（防 LLM 过度生成）。
+	MaxClarificationQuestions = 5
+)
+
 // Artifact is the structured output of the intent pass (subset of design doc).
 type Artifact struct {
-	RefinedGoal     string   `json:"refined_goal"`
-	IntentKind      string   `json:"intent_kind"`
-	SuccessCriteria []string `json:"success_criteria"`
-	Ambiguities     []string `json:"ambiguities"`
-	SearchHints     []string `json:"search_hints"`
-	RiskFlags       []string `json:"risk_flags"`
+	RefinedGoal     string                  `json:"refined_goal"`
+	IntentKind      string                  `json:"intent_kind"`
+	SuccessCriteria []string                `json:"success_criteria"`
+	Ambiguities     []string                `json:"ambiguities"`
+	SearchHints     []string                `json:"search_hints"`
+	RiskFlags       []string                `json:"risk_flags"`
+	Clarifications  []ClarificationQuestion `json:"clarifications,omitempty"`
+}
+
+// HasRiskFlag reports whether the artifact carries the given risk flag.
+func (a *Artifact) HasRiskFlag(flag string) bool {
+	if a == nil {
+		return false
+	}
+	for _, f := range a.RiskFlags {
+		if f == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// NeedsClarification reports whether the intent pass requests user clarification
+// with at least one structured question. 仅有问题而无 risk flag 时不触发（防过度打扰）。
+func (a *Artifact) NeedsClarification() bool {
+	return a.HasRiskFlag(RiskFlagNeedsClarification) && len(a.Clarifications) > 0
+}
+
+// ClarificationQuestions returns the questions capped at MaxClarificationQuestions.
+func (a *Artifact) ClarificationQuestions() []ClarificationQuestion {
+	if a == nil {
+		return nil
+	}
+	if len(a.Clarifications) > MaxClarificationQuestions {
+		return a.Clarifications[:MaxClarificationQuestions]
+	}
+	return a.Clarifications
 }
 
 const intentSystemCoding = `You classify and restate the user's request for a coding assistant. Reply with ONE JSON object only, no markdown fences, no commentary. Keys:
@@ -32,7 +73,8 @@ const intentSystemCoding = `You classify and restate the user's request for a co
 - success_criteria (array of strings): measurable checks (e.g. "tests pass").
 - ambiguities (array of strings): questions that still need human clarification, or [].
 - search_hints (array of strings): short literals useful for codebase search (identifiers, error substrings, file name fragments).
-- risk_flags (array of strings): e.g. touches_auth, migrations, or [].`
+- risk_flags (array of strings): e.g. touches_auth, migrations, or []. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
+- clarifications (array of objects, present only when risk_flags contains "needs_clarification", at most 5): blocking questions for the user. Each object: {"question": string, "mode": "single"|"multi", "options": array of strings (2-6), "recommended": array of strings (subset of options, your best default)}. Omit for minor style preferences — never ask when you can reasonably decide yourself.`
 
 const intentSystemGeneral = `You classify and restate the user's request. Reply with ONE JSON object only, no markdown fences, no commentary. Keys:
 - refined_goal (string): one clear sentence of what the user wants.
@@ -40,7 +82,8 @@ const intentSystemGeneral = `You classify and restate the user's request. Reply 
 - success_criteria (array of strings): measurable checks, or [].
 - ambiguities (array of strings): questions that still need human clarification, or [].
 - search_hints (array of strings): short keywords useful for retrieval or search tools, or [].
-- risk_flags (array of strings): e.g. sensitive_data, compliance, or [].`
+- risk_flags (array of strings): e.g. sensitive_data, compliance, or []. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
+- clarifications (array of objects, present only when risk_flags contains "needs_clarification", at most 5): blocking questions for the user. Each object: {"question": string, "mode": "single"|"multi", "options": array of strings (2-6), "recommended": array of strings (subset of options, your best default)}. Omit for minor style preferences — never ask when you can reasonably decide yourself.`
 
 const minIntentPassRunes = 20
 

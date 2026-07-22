@@ -152,6 +152,8 @@ var ProviderSet = wire.NewSet(
 	NewStepV2Repo,
 	NewTeamStageV2Repo,
 	NewTeamRunV2Repo,
+	// B.10.17 execution report: latest-run stats reader (same repo, second port).
+	NewSpiritTeamRunStatsReader,
 	NewMemberSessionV2Repo,
 	NewPlanBoardV2Repo,
 	NewPlanStepV2Repo,

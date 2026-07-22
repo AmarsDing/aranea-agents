@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/lark"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	"aranea-agents/pkg/apierror"
@@ -26,6 +27,7 @@ type ChannelIngress struct {
 	graphs         biz.GraphExecutor
 	cron           biz.CronTriggerGateway
 	eventBus       biz.EventBus // v2: run_status + graph completion watch + notices
+	monitorBus     contract.MonitorBus // typed monitor bus: flow_log events → monitor WS
 	http           *http.Client
 	deduplicator   biz.IngressDeduplicator
 	peerDebouncer  biz.PeerDebouncer
@@ -51,6 +53,7 @@ func NewChannelIngress(
 	graphs biz.GraphExecutor,
 	cron biz.CronTriggerGateway,
 	eventBus biz.EventBus,
+	monitorBus contract.MonitorBus,
 	deduplicator biz.IngressDeduplicator,
 	peerDebouncer biz.PeerDebouncer,
 	previewManager biz.TurnPreviewManager,
@@ -67,6 +70,7 @@ func NewChannelIngress(
 		graphs:         graphs,
 		cron:           cron,
 		eventBus:       eventBus,
+		monitorBus:     monitorBus,
 		lg:             lg,
 		http:           lark.DefaultHTTPClient(),
 		deduplicator:   deduplicator,

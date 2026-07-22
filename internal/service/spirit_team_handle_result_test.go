@@ -95,9 +95,11 @@ func (s *stubTeamStageV2Reader) ListTeamStagesByTask(_ context.Context, _ string
 // stubSpiritTeamController implements biz.SpiritTeamController for testing.
 // Counters track side-effect invocations so tests can assert that stale
 // callbacks do not trigger completion recording or dependent scheduling.
+// completedResult customizes CheckAllTeamsCompleted; zero value = not done.
 type stubSpiritTeamController struct {
 	recordCompletionCalls   int
 	scheduleDependentsCalls int
+	completedResult         biz.AllTeamsCompletedResult
 }
 
 func (s *stubSpiritTeamController) CancelTimeoutTimer(_ string) {}
@@ -110,7 +112,7 @@ func (s *stubSpiritTeamController) ScheduleDependentTeams(_ context.Context, _ s
 	return nil
 }
 func (s *stubSpiritTeamController) CheckAllTeamsCompleted(_ context.Context, _ string) biz.AllTeamsCompletedResult {
-	return biz.AllTeamsCompletedResult{AllDone: false}
+	return s.completedResult
 }
 func (s *stubSpiritTeamController) GetParallelConfig(_ context.Context, _ string) biz.ParallelConfig {
 	return biz.ParallelConfig{}

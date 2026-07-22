@@ -65,7 +65,7 @@ func TestAssembleTurnResult_TurnTimeoutSoftDegradation(t *testing.T) {
 
 	userMsg := biz.ChatMessage{ID: "user-1", SessionID: "sess-1"}
 	result := chatagent.EventStreamResult{}
-	emitter := event.NewTraceEmitter(event.TraceContext{
+	emitter := event.NewTraceEmitter(nil, event.TraceContext{
 		SessionID: "sess-1",
 		RunID:     "run-1",
 	}, loggateway.NewNoop())

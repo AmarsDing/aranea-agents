@@ -60,6 +60,9 @@ type CronTask func(*sql.Selector)
 // CronTaskRun is the predicate function for crontaskrun builders.
 type CronTaskRun func(*sql.Selector)
 
+// DeptLeadMessage is the predicate function for deptleadmessage builders.
+type DeptLeadMessage func(*sql.Selector)
+
 // EvalCase is the predicate function for evalcase builders.
 type EvalCase func(*sql.Selector)
 
@@ -182,6 +185,9 @@ type PlatformSkill func(*sql.Selector)
 
 // PlatformTool is the predicate function for platformtool builders.
 type PlatformTool func(*sql.Selector)
+
+// ResourceAccessAudit is the predicate function for resourceaccessaudit builders.
+type ResourceAccessAudit func(*sql.Selector)
 
 // SchemaMigration is the predicate function for schemamigration builders.
 type SchemaMigration func(*sql.Selector)

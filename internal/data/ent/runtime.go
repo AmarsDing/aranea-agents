@@ -21,6 +21,7 @@ import (
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
+	"aranea-agents/internal/data/ent/deptleadmessage"
 	"aranea-agents/internal/data/ent/evalcase"
 	"aranea-agents/internal/data/ent/evalcaseresult"
 	"aranea-agents/internal/data/ent/evaldataset"
@@ -62,6 +63,7 @@ import (
 	"aranea-agents/internal/data/ent/platformplugin"
 	"aranea-agents/internal/data/ent/platformskill"
 	"aranea-agents/internal/data/ent/platformtool"
+	"aranea-agents/internal/data/ent/resourceaccessaudit"
 	"aranea-agents/internal/data/ent/schema"
 	"aranea-agents/internal/data/ent/selfcheckreport"
 	"aranea-agents/internal/data/ent/session"
@@ -1485,6 +1487,58 @@ func init() {
 	crontaskrunDescID := crontaskrunFields[0].Descriptor()
 	// crontaskrun.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	crontaskrun.IDValidator = crontaskrunDescID.Validators[0].(func(string) error)
+	deptleadmessageFields := schema.DeptLeadMessage{}.Fields()
+	_ = deptleadmessageFields
+	// deptleadmessageDescFromAgentID is the schema descriptor for from_agent_id field.
+	deptleadmessageDescFromAgentID := deptleadmessageFields[1].Descriptor()
+	// deptleadmessage.FromAgentIDValidator is a validator for the "from_agent_id" field. It is called by the builders before save.
+	deptleadmessage.FromAgentIDValidator = deptleadmessageDescFromAgentID.Validators[0].(func(string) error)
+	// deptleadmessageDescFromDeptID is the schema descriptor for from_dept_id field.
+	deptleadmessageDescFromDeptID := deptleadmessageFields[2].Descriptor()
+	// deptleadmessage.FromDeptIDValidator is a validator for the "from_dept_id" field. It is called by the builders before save.
+	deptleadmessage.FromDeptIDValidator = deptleadmessageDescFromDeptID.Validators[0].(func(string) error)
+	// deptleadmessageDescToAgentID is the schema descriptor for to_agent_id field.
+	deptleadmessageDescToAgentID := deptleadmessageFields[3].Descriptor()
+	// deptleadmessage.ToAgentIDValidator is a validator for the "to_agent_id" field. It is called by the builders before save.
+	deptleadmessage.ToAgentIDValidator = deptleadmessageDescToAgentID.Validators[0].(func(string) error)
+	// deptleadmessageDescToDeptID is the schema descriptor for to_dept_id field.
+	deptleadmessageDescToDeptID := deptleadmessageFields[4].Descriptor()
+	// deptleadmessage.ToDeptIDValidator is a validator for the "to_dept_id" field. It is called by the builders before save.
+	deptleadmessage.ToDeptIDValidator = deptleadmessageDescToDeptID.Validators[0].(func(string) error)
+	// deptleadmessageDescSubject is the schema descriptor for subject field.
+	deptleadmessageDescSubject := deptleadmessageFields[5].Descriptor()
+	// deptleadmessage.DefaultSubject holds the default value on creation for the subject field.
+	deptleadmessage.DefaultSubject = deptleadmessageDescSubject.Default.(string)
+	// deptleadmessage.SubjectValidator is a validator for the "subject" field. It is called by the builders before save.
+	deptleadmessage.SubjectValidator = deptleadmessageDescSubject.Validators[0].(func(string) error)
+	// deptleadmessageDescBody is the schema descriptor for body field.
+	deptleadmessageDescBody := deptleadmessageFields[6].Descriptor()
+	// deptleadmessage.DefaultBody holds the default value on creation for the body field.
+	deptleadmessage.DefaultBody = deptleadmessageDescBody.Default.(string)
+	// deptleadmessageDescRefsJSON is the schema descriptor for refs_json field.
+	deptleadmessageDescRefsJSON := deptleadmessageFields[7].Descriptor()
+	// deptleadmessage.DefaultRefsJSON holds the default value on creation for the refs_json field.
+	deptleadmessage.DefaultRefsJSON = deptleadmessageDescRefsJSON.Default.(string)
+	// deptleadmessageDescStatus is the schema descriptor for status field.
+	deptleadmessageDescStatus := deptleadmessageFields[8].Descriptor()
+	// deptleadmessage.DefaultStatus holds the default value on creation for the status field.
+	deptleadmessage.DefaultStatus = deptleadmessageDescStatus.Default.(string)
+	// deptleadmessage.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	deptleadmessage.StatusValidator = deptleadmessageDescStatus.Validators[0].(func(string) error)
+	// deptleadmessageDescReplyToID is the schema descriptor for reply_to_id field.
+	deptleadmessageDescReplyToID := deptleadmessageFields[9].Descriptor()
+	// deptleadmessage.DefaultReplyToID holds the default value on creation for the reply_to_id field.
+	deptleadmessage.DefaultReplyToID = deptleadmessageDescReplyToID.Default.(string)
+	// deptleadmessage.ReplyToIDValidator is a validator for the "reply_to_id" field. It is called by the builders before save.
+	deptleadmessage.ReplyToIDValidator = deptleadmessageDescReplyToID.Validators[0].(func(string) error)
+	// deptleadmessageDescCreatedAt is the schema descriptor for created_at field.
+	deptleadmessageDescCreatedAt := deptleadmessageFields[10].Descriptor()
+	// deptleadmessage.DefaultCreatedAt holds the default value on creation for the created_at field.
+	deptleadmessage.DefaultCreatedAt = deptleadmessageDescCreatedAt.Default.(func() time.Time)
+	// deptleadmessageDescID is the schema descriptor for id field.
+	deptleadmessageDescID := deptleadmessageFields[0].Descriptor()
+	// deptleadmessage.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	deptleadmessage.IDValidator = deptleadmessageDescID.Validators[0].(func(string) error)
 	evalcaseFields := schema.EvalCase{}.Fields()
 	_ = evalcaseFields
 	// evalcaseDescExpectedOutput is the schema descriptor for expected_output field.
@@ -3853,6 +3907,62 @@ func init() {
 	platformtoolDescID := platformtoolFields[0].Descriptor()
 	// platformtool.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	platformtool.IDValidator = platformtoolDescID.Validators[0].(func(string) error)
+	resourceaccessauditFields := schema.ResourceAccessAudit{}.Fields()
+	_ = resourceaccessauditFields
+	// resourceaccessauditDescActorAgentID is the schema descriptor for actor_agent_id field.
+	resourceaccessauditDescActorAgentID := resourceaccessauditFields[1].Descriptor()
+	// resourceaccessaudit.ActorAgentIDValidator is a validator for the "actor_agent_id" field. It is called by the builders before save.
+	resourceaccessaudit.ActorAgentIDValidator = resourceaccessauditDescActorAgentID.Validators[0].(func(string) error)
+	// resourceaccessauditDescActorRole is the schema descriptor for actor_role field.
+	resourceaccessauditDescActorRole := resourceaccessauditFields[2].Descriptor()
+	// resourceaccessaudit.ActorRoleValidator is a validator for the "actor_role" field. It is called by the builders before save.
+	resourceaccessaudit.ActorRoleValidator = resourceaccessauditDescActorRole.Validators[0].(func(string) error)
+	// resourceaccessauditDescAction is the schema descriptor for action field.
+	resourceaccessauditDescAction := resourceaccessauditFields[3].Descriptor()
+	// resourceaccessaudit.ActionValidator is a validator for the "action" field. It is called by the builders before save.
+	resourceaccessaudit.ActionValidator = resourceaccessauditDescAction.Validators[0].(func(string) error)
+	// resourceaccessauditDescTargetAgentID is the schema descriptor for target_agent_id field.
+	resourceaccessauditDescTargetAgentID := resourceaccessauditFields[4].Descriptor()
+	// resourceaccessaudit.DefaultTargetAgentID holds the default value on creation for the target_agent_id field.
+	resourceaccessaudit.DefaultTargetAgentID = resourceaccessauditDescTargetAgentID.Default.(string)
+	// resourceaccessaudit.TargetAgentIDValidator is a validator for the "target_agent_id" field. It is called by the builders before save.
+	resourceaccessaudit.TargetAgentIDValidator = resourceaccessauditDescTargetAgentID.Validators[0].(func(string) error)
+	// resourceaccessauditDescTargetDeptID is the schema descriptor for target_dept_id field.
+	resourceaccessauditDescTargetDeptID := resourceaccessauditFields[5].Descriptor()
+	// resourceaccessaudit.DefaultTargetDeptID holds the default value on creation for the target_dept_id field.
+	resourceaccessaudit.DefaultTargetDeptID = resourceaccessauditDescTargetDeptID.Default.(string)
+	// resourceaccessaudit.TargetDeptIDValidator is a validator for the "target_dept_id" field. It is called by the builders before save.
+	resourceaccessaudit.TargetDeptIDValidator = resourceaccessauditDescTargetDeptID.Validators[0].(func(string) error)
+	// resourceaccessauditDescRelation is the schema descriptor for relation field.
+	resourceaccessauditDescRelation := resourceaccessauditFields[6].Descriptor()
+	// resourceaccessaudit.DefaultRelation holds the default value on creation for the relation field.
+	resourceaccessaudit.DefaultRelation = resourceaccessauditDescRelation.Default.(string)
+	// resourceaccessaudit.RelationValidator is a validator for the "relation" field. It is called by the builders before save.
+	resourceaccessaudit.RelationValidator = resourceaccessauditDescRelation.Validators[0].(func(string) error)
+	// resourceaccessauditDescResourceURI is the schema descriptor for resource_uri field.
+	resourceaccessauditDescResourceURI := resourceaccessauditFields[7].Descriptor()
+	// resourceaccessaudit.DefaultResourceURI holds the default value on creation for the resource_uri field.
+	resourceaccessaudit.DefaultResourceURI = resourceaccessauditDescResourceURI.Default.(string)
+	// resourceaccessaudit.ResourceURIValidator is a validator for the "resource_uri" field. It is called by the builders before save.
+	resourceaccessaudit.ResourceURIValidator = resourceaccessauditDescResourceURI.Validators[0].(func(string) error)
+	// resourceaccessauditDescResult is the schema descriptor for result field.
+	resourceaccessauditDescResult := resourceaccessauditFields[8].Descriptor()
+	// resourceaccessaudit.ResultValidator is a validator for the "result" field. It is called by the builders before save.
+	resourceaccessaudit.ResultValidator = resourceaccessauditDescResult.Validators[0].(func(string) error)
+	// resourceaccessauditDescDenyReason is the schema descriptor for deny_reason field.
+	resourceaccessauditDescDenyReason := resourceaccessauditFields[9].Descriptor()
+	// resourceaccessaudit.DefaultDenyReason holds the default value on creation for the deny_reason field.
+	resourceaccessaudit.DefaultDenyReason = resourceaccessauditDescDenyReason.Default.(string)
+	// resourceaccessaudit.DenyReasonValidator is a validator for the "deny_reason" field. It is called by the builders before save.
+	resourceaccessaudit.DenyReasonValidator = resourceaccessauditDescDenyReason.Validators[0].(func(string) error)
+	// resourceaccessauditDescCreatedAt is the schema descriptor for created_at field.
+	resourceaccessauditDescCreatedAt := resourceaccessauditFields[10].Descriptor()
+	// resourceaccessaudit.DefaultCreatedAt holds the default value on creation for the created_at field.
+	resourceaccessaudit.DefaultCreatedAt = resourceaccessauditDescCreatedAt.Default.(func() time.Time)
+	// resourceaccessauditDescID is the schema descriptor for id field.
+	resourceaccessauditDescID := resourceaccessauditFields[0].Descriptor()
+	// resourceaccessaudit.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	resourceaccessaudit.IDValidator = resourceaccessauditDescID.Validators[0].(func(string) error)
 	selfcheckreportFields := schema.SelfCheckReport{}.Fields()
 	_ = selfcheckreportFields
 	// selfcheckreportDescCheckResultsJSON is the schema descriptor for check_results_json field.

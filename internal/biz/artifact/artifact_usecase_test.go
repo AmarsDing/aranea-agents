@@ -668,6 +668,77 @@ func TestUsecase_ListVersions(t *testing.T) {
 	})
 }
 
+func TestUsecase_Preview(t *testing.T) {
+	load := func(mime string, data []byte) *mockRepo {
+		return &mockRepo{
+			loadFn: func(context.Context, string, int) (artifact.Artifact, []byte, error) {
+				return artifact.Artifact{ID: "a1", SessionID: "s1", Name: "f", MimeType: mime}, data, nil
+			},
+		}
+	}
+
+	t.Run("text", func(t *testing.T) {
+		uc := artifact.NewUsecase(load("text/plain", []byte("hello")), loggateway.NewNoop())
+		got, err := uc.Preview(context.Background(), "a1", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Kind != artifact.PreviewKindText || got.TextContent != "hello" {
+			t.Fatalf("kind=%q text=%q", got.Kind, got.TextContent)
+		}
+	})
+
+	t.Run("image embeds data", func(t *testing.T) {
+		uc := artifact.NewUsecase(load("image/png", []byte("png-bytes")), loggateway.NewNoop())
+		got, err := uc.Preview(context.Background(), "a1", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Kind != artifact.PreviewKindImage || string(got.Data) != "png-bytes" {
+			t.Fatalf("kind=%q data=%q", got.Kind, string(got.Data))
+		}
+	})
+
+	t.Run("audio has no inline data", func(t *testing.T) {
+		uc := artifact.NewUsecase(load("audio/mpeg", []byte("mp3-bytes")), loggateway.NewNoop())
+		got, err := uc.Preview(context.Background(), "a1", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Kind != artifact.PreviewKindAudio {
+			t.Fatalf("kind=%q", got.Kind)
+		}
+		if len(got.Data) != 0 {
+			t.Fatalf("audio preview must not embed bytes, got %d", len(got.Data))
+		}
+	})
+
+	t.Run("video has no inline data", func(t *testing.T) {
+		uc := artifact.NewUsecase(load("video/mp4", []byte("mp4-bytes")), loggateway.NewNoop())
+		got, err := uc.Preview(context.Background(), "a1", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Kind != artifact.PreviewKindVideo {
+			t.Fatalf("kind=%q", got.Kind)
+		}
+		if len(got.Data) != 0 {
+			t.Fatalf("video preview must not embed bytes, got %d", len(got.Data))
+		}
+	})
+
+	t.Run("binary fallback", func(t *testing.T) {
+		uc := artifact.NewUsecase(load("application/zip", []byte("zip")), loggateway.NewNoop())
+		got, err := uc.Preview(context.Background(), "a1", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Kind != artifact.PreviewKindBinary {
+			t.Fatalf("kind=%q", got.Kind)
+		}
+	})
+}
+
 type mockRepoWithStorage struct {
 	*mockRepo
 	storageBytesFn func(ctx context.Context) (int64, error)

@@ -187,6 +187,15 @@ func registerCustomRoutes(
 			artifactSvc.ServeSignedDownload(ctx.Response(), ctx.Request())
 			return nil
 		})
+		// POST /v1/system/reveal — M27 Phase 5 本地打开文件夹；默认关闭
+		// （FEATURES_LOCAL_REVEAL_ENABLED），仅本地单机部署启用。未开启时
+		// 路由不注册（404），前端经 GET /v1/system/info features.local_reveal 探知。
+		if conf.LocalRevealEnabled() {
+			srv.Route("/").POST("/v1/system/reveal", func(ctx kratoshttp.Context) error {
+				artifactSvc.ServeRevealLocal(ctx.Response(), ctx.Request())
+				return nil
+			})
+		}
 	}
 	if a2aPublic != nil {
 		auth.RegisterNoAuthPathPrefix(a2atrpc.PublicPathPrefix)

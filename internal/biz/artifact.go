@@ -33,5 +33,7 @@ const (
 	PreviewKindText   = artifact.PreviewKindText
 	PreviewKindImage  = artifact.PreviewKindImage
 	PreviewKindPDF    = artifact.PreviewKindPDF
+	PreviewKindAudio  = artifact.PreviewKindAudio
+	PreviewKindVideo  = artifact.PreviewKindVideo
 	PreviewKindBinary = artifact.PreviewKindBinary
 )

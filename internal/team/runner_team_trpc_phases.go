@@ -110,6 +110,7 @@ func (r *Runner) setupTeamTracing(ctx context.Context, sess biz.Session, teamRow
 		Ctx:       ctx,
 		SessionID: sess.ID, RunID: run.ID, AgentKey: teamRow.ID,
 		Domain: event.TraceDomainTeam, LG: r.lg,
+		Infra: event.NewInfraFromBus(r.td.Pipeline.MonitorEventBus),
 	})
 	emitter.SetOtelRefs(bridge.TraceID(), bridge.RootSpanID())
 	ctx = event.WithTraceEmitter(ctx, emitter)

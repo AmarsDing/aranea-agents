@@ -8,13 +8,13 @@
     >
       <video
         v-if="art.mime_type.startsWith('video/')"
-        :src="art.url"
+        :src="mediaSrc(art)"
         :poster="art.thumbnail"
         muted
         preload="metadata"
         class="node-media-preview__media"
       />
-      <img v-else :src="art.url" loading="lazy" class="node-media-preview__media" />
+      <img v-else :src="mediaSrc(art)" loading="lazy" class="node-media-preview__media" />
     </div>
     <span v-if="artifacts.length > 3" class="node-media-preview__more"> +{{ artifacts.length - 3 }} </span>
   </div>
@@ -23,9 +23,12 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { MediaArtifact } from '../../../features/chat/mediaTypes';
+import { useMediaUrl } from '../../../features/chat/useMediaUrl';
 
 const props = defineProps<{ artifacts: MediaArtifact[] }>();
 defineEmits<{ preview: [art: MediaArtifact] }>();
+
+const { mediaSrc } = useMediaUrl();
 
 const displayArtifacts = computed(() => props.artifacts.slice(0, 3));
 </script>

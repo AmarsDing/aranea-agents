@@ -717,6 +717,39 @@ var (
 			},
 		},
 	}
+	// DeptLeadMessagesColumns holds the columns for the "dept_lead_messages" table.
+	DeptLeadMessagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "from_agent_id", Type: field.TypeString, Size: 256},
+		{Name: "from_dept_id", Type: field.TypeString, Size: 256},
+		{Name: "to_agent_id", Type: field.TypeString, Size: 256},
+		{Name: "to_dept_id", Type: field.TypeString, Size: 256},
+		{Name: "subject", Type: field.TypeString, Size: 200, Default: ""},
+		{Name: "body", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "refs_json", Type: field.TypeString, Size: 2147483647, Default: "[]"},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "unread"},
+		{Name: "reply_to_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "read_at", Type: field.TypeTime, Nullable: true},
+	}
+	// DeptLeadMessagesTable holds the schema information for the "dept_lead_messages" table.
+	DeptLeadMessagesTable = &schema.Table{
+		Name:       "dept_lead_messages",
+		Columns:    DeptLeadMessagesColumns,
+		PrimaryKey: []*schema.Column{DeptLeadMessagesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idx_deptleadmsg_to_status",
+				Unique:  false,
+				Columns: []*schema.Column{DeptLeadMessagesColumns[3], DeptLeadMessagesColumns[8]},
+			},
+			{
+				Name:    "idx_deptleadmsg_from_created",
+				Unique:  false,
+				Columns: []*schema.Column{DeptLeadMessagesColumns[1], DeptLeadMessagesColumns[10]},
+			},
+		},
+	}
 	// EvalCasesColumns holds the columns for the "eval_cases" table.
 	EvalCasesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -2153,6 +2186,38 @@ var (
 			},
 		},
 	}
+	// ResourceAccessAuditsColumns holds the columns for the "resource_access_audits" table.
+	ResourceAccessAuditsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "actor_agent_id", Type: field.TypeString, Size: 256},
+		{Name: "actor_role", Type: field.TypeString, Size: 32},
+		{Name: "action", Type: field.TypeString, Size: 32},
+		{Name: "target_agent_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "target_dept_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "relation", Type: field.TypeString, Size: 16, Default: "none"},
+		{Name: "resource_uri", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "result", Type: field.TypeString, Size: 8},
+		{Name: "deny_reason", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// ResourceAccessAuditsTable holds the schema information for the "resource_access_audits" table.
+	ResourceAccessAuditsTable = &schema.Table{
+		Name:       "resource_access_audits",
+		Columns:    ResourceAccessAuditsColumns,
+		PrimaryKey: []*schema.Column{ResourceAccessAuditsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idx_raaudit_actor_created",
+				Unique:  false,
+				Columns: []*schema.Column{ResourceAccessAuditsColumns[1], ResourceAccessAuditsColumns[10]},
+			},
+			{
+				Name:    "idx_raaudit_target_created",
+				Unique:  false,
+				Columns: []*schema.Column{ResourceAccessAuditsColumns[4], ResourceAccessAuditsColumns[10]},
+			},
+		},
+	}
 	// SchemaMigrationsColumns holds the columns for the "schema_migrations" table.
 	SchemaMigrationsColumns = []*schema.Column{
 		{Name: "version", Type: field.TypeInt, Increment: true},
@@ -3453,6 +3518,7 @@ var (
 		CompiledTeamsTable,
 		CronTaskTable,
 		CronTaskRunTable,
+		DeptLeadMessagesTable,
 		EvalCasesTable,
 		EvalCaseResultsTable,
 		EvalDatasetsTable,
@@ -3494,6 +3560,7 @@ var (
 		PluginsTable,
 		SkillTable,
 		ToolsTable,
+		ResourceAccessAuditsTable,
 		SchemaMigrationsTable,
 		SelfCheckReportsTable,
 		SessionsTable,
@@ -3582,6 +3649,9 @@ func init() {
 	}
 	CronTaskRunTable.Annotation = &entsql.Annotation{
 		Table: "cron_task_run",
+	}
+	DeptLeadMessagesTable.Annotation = &entsql.Annotation{
+		Table: "dept_lead_messages",
 	}
 	EvalCasesTable.ForeignKeys[0].RefTable = EvalDatasetsTable
 	EvalCasesTable.Annotation = &entsql.Annotation{
@@ -3709,6 +3779,9 @@ func init() {
 	}
 	ToolsTable.Annotation = &entsql.Annotation{
 		Table: "tools",
+	}
+	ResourceAccessAuditsTable.Annotation = &entsql.Annotation{
+		Table: "resource_access_audits",
 	}
 	SchemaMigrationsTable.Annotation = &entsql.Annotation{
 		Table: "schema_migrations",

@@ -39,6 +39,13 @@
       </div>
     </div>
     <div v-if="task.Status === 'running'" class="task-status">{{ t('chat.v2.taskProcessing') }}</div>
+    <!-- 澄清门卡片：orphan step（TurnID 空，澄清在 Run/Turn 创建前发布） -->
+    <ClarifyBlock
+      v-for="s in orphanClarifySteps"
+      :key="s.ID"
+      :step="s"
+      @submit-clarification="(p) => $emit('submit-clarification', p)"
+    />
     <!-- L3: 中断任务入口 — 服务重启导致的中断，点击「继续执行」触发 WS resume_task -->
     <div v-if="task.Status === 'interrupted'" class="task-interrupted">
       <q-icon name="pause_circle_outline" size="16px" class="task-interrupted__icon" />
@@ -108,12 +115,13 @@ import { useQuasar } from 'quasar';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import { useSafeAuth } from '../../../features/chat/composables/useSafeAuth';
 import type { Task } from '../../../features/chat/v2Types';
-import type { ConfirmStepPayload } from '../../../features/chat/types';
+import type { ConfirmStepPayload, SubmitClarificationPayload } from '../../../features/chat/types';
 import TurnList from './TurnList.vue';
 import TeamStagePanel from './TeamStagePanel.vue';
 import PlanBoardCard from './PlanBoardCard.vue';
 import GraphStageBlock from './GraphStageBlock.vue';
 import MemberSessionPanel from './MemberSessionPanel.vue';
+import ClarifyBlock from './ClarifyBlock.vue';
 
 // Safe i18n wrapper — falls back to the key when the i18n plugin isn't
 // installed (e.g., during unit tests without app.use(i18n)).
@@ -143,6 +151,7 @@ defineEmits<{
   'retry-team': [teamId: string];
   expand: [sessionIds: string[]];
   'confirm-step': [payload: ConfirmStepPayload];
+  'submit-clarification': [payload: SubmitClarificationPayload];
 }>();
 
 const { t } = useSafeI18n();
@@ -158,6 +167,10 @@ const orphanTeamStages = computed(() => {
   return all.filter((ts) => !ts.TurnID || !turnIds.has(ts.TurnID));
 });
 const orphanMemberSessions = computed(() => store.getTaskOrphanMemberSessions(props.task.ID));
+// 澄清门 orphan steps（kind=clarify；TurnID 空，澄清在 Run/Turn 创建前发布）
+const orphanClarifySteps = computed(() =>
+  store.getTaskOrphanSteps(props.task.ID).filter((s) => s.Kind === 'clarify'),
+);
 const spiritTurns = computed(() => turns.value.filter((t) => !t.TeamStageID));
 const prePlanTurns = computed(() => {
   const pbs = planBoards.value;

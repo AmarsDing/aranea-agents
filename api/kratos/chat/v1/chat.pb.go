@@ -2354,6 +2354,186 @@ func (x *ConfirmActivityResponse) GetStatus() string {
 	return ""
 }
 
+// SubmitClarificationRequest is the request for submitting clarification answers.
+type SubmitClarificationRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	StepId    string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	// answers is the user's answers to each clarification question.
+	// The array index corresponds to the question index in the step content.
+	// Empty selected array means the user skipped that question (use recommended).
+	Answers       []*ClarificationAnswer `protobuf:"bytes,3,rep,name=answers,proto3" json:"answers,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitClarificationRequest) Reset() {
+	*x = SubmitClarificationRequest{}
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitClarificationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitClarificationRequest) ProtoMessage() {}
+
+func (x *SubmitClarificationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitClarificationRequest.ProtoReflect.Descriptor instead.
+func (*SubmitClarificationRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *SubmitClarificationRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *SubmitClarificationRequest) GetStepId() string {
+	if x != nil {
+		return x.StepId
+	}
+	return ""
+}
+
+func (x *SubmitClarificationRequest) GetAnswers() []*ClarificationAnswer {
+	if x != nil {
+		return x.Answers
+	}
+	return nil
+}
+
+// ClarificationAnswer represents the user's answer to a single clarification question.
+type ClarificationAnswer struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// selected contains the selected option values (empty = use recommended).
+	Selected []string `protobuf:"bytes,1,rep,name=selected,proto3" json:"selected,omitempty"`
+	// other is an optional free-form text input for additional context.
+	Other         string `protobuf:"bytes,2,opt,name=other,proto3" json:"other,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClarificationAnswer) Reset() {
+	*x = ClarificationAnswer{}
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClarificationAnswer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClarificationAnswer) ProtoMessage() {}
+
+func (x *ClarificationAnswer) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClarificationAnswer.ProtoReflect.Descriptor instead.
+func (*ClarificationAnswer) Descriptor() ([]byte, []int) {
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *ClarificationAnswer) GetSelected() []string {
+	if x != nil {
+		return x.Selected
+	}
+	return nil
+}
+
+func (x *ClarificationAnswer) GetOther() string {
+	if x != nil {
+		return x.Other
+	}
+	return ""
+}
+
+type SubmitClarificationResponse struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Accepted bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	Status   string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"` // "completed"
+	// clarified_context is the rendered context text injected into the resumed turn.
+	ClarifiedContext string `protobuf:"bytes,3,opt,name=clarified_context,json=clarifiedContext,proto3" json:"clarified_context,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *SubmitClarificationResponse) Reset() {
+	*x = SubmitClarificationResponse{}
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitClarificationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitClarificationResponse) ProtoMessage() {}
+
+func (x *SubmitClarificationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitClarificationResponse.ProtoReflect.Descriptor instead.
+func (*SubmitClarificationResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *SubmitClarificationResponse) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+func (x *SubmitClarificationResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *SubmitClarificationResponse) GetClarifiedContext() string {
+	if x != nil {
+		return x.ClarifiedContext
+	}
+	return ""
+}
+
 // ConfirmPlanRequest is the request for confirming or rejecting a draft TaskPlan
 // produced by the pre-planning hard gate (P1-2).
 type ConfirmPlanRequest struct {
@@ -2373,7 +2553,7 @@ type ConfirmPlanRequest struct {
 
 func (x *ConfirmPlanRequest) Reset() {
 	*x = ConfirmPlanRequest{}
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[40]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2385,7 +2565,7 @@ func (x *ConfirmPlanRequest) String() string {
 func (*ConfirmPlanRequest) ProtoMessage() {}
 
 func (x *ConfirmPlanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[40]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2398,7 +2578,7 @@ func (x *ConfirmPlanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmPlanRequest.ProtoReflect.Descriptor instead.
 func (*ConfirmPlanRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{40}
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ConfirmPlanRequest) GetPlanId() string {
@@ -2451,7 +2631,7 @@ type ConfirmPlanResponse struct {
 
 func (x *ConfirmPlanResponse) Reset() {
 	*x = ConfirmPlanResponse{}
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[41]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2463,7 +2643,7 @@ func (x *ConfirmPlanResponse) String() string {
 func (*ConfirmPlanResponse) ProtoMessage() {}
 
 func (x *ConfirmPlanResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[41]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2476,7 +2656,7 @@ func (x *ConfirmPlanResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmPlanResponse.ProtoReflect.Descriptor instead.
 func (*ConfirmPlanResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{41}
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ConfirmPlanResponse) GetAccepted() bool {
@@ -2524,7 +2704,7 @@ type ListPlansRequest struct {
 
 func (x *ListPlansRequest) Reset() {
 	*x = ListPlansRequest{}
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[42]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2536,7 +2716,7 @@ func (x *ListPlansRequest) String() string {
 func (*ListPlansRequest) ProtoMessage() {}
 
 func (x *ListPlansRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[42]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2549,7 +2729,7 @@ func (x *ListPlansRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPlansRequest.ProtoReflect.Descriptor instead.
 func (*ListPlansRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{42}
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ListPlansRequest) GetSessionId() string {
@@ -2569,7 +2749,7 @@ type ListPlansResponse struct {
 
 func (x *ListPlansResponse) Reset() {
 	*x = ListPlansResponse{}
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[43]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2581,7 +2761,7 @@ func (x *ListPlansResponse) String() string {
 func (*ListPlansResponse) ProtoMessage() {}
 
 func (x *ListPlansResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[43]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2594,7 +2774,7 @@ func (x *ListPlansResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPlansResponse.ProtoReflect.Descriptor instead.
 func (*ListPlansResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{43}
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *ListPlansResponse) GetPlans() []*TaskPlanSummary {
@@ -2624,7 +2804,7 @@ type TaskPlanSummary struct {
 
 func (x *TaskPlanSummary) Reset() {
 	*x = TaskPlanSummary{}
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[44]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2636,7 +2816,7 @@ func (x *TaskPlanSummary) String() string {
 func (*TaskPlanSummary) ProtoMessage() {}
 
 func (x *TaskPlanSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[44]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2649,7 +2829,7 @@ func (x *TaskPlanSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskPlanSummary.ProtoReflect.Descriptor instead.
 func (*TaskPlanSummary) Descriptor() ([]byte, []int) {
-	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{44}
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *TaskPlanSummary) GetPlanId() string {
@@ -2740,7 +2920,7 @@ type GetPlanRequest struct {
 
 func (x *GetPlanRequest) Reset() {
 	*x = GetPlanRequest{}
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[45]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2752,7 +2932,7 @@ func (x *GetPlanRequest) String() string {
 func (*GetPlanRequest) ProtoMessage() {}
 
 func (x *GetPlanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[45]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2765,7 +2945,7 @@ func (x *GetPlanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPlanRequest.ProtoReflect.Descriptor instead.
 func (*GetPlanRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{45}
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *GetPlanRequest) GetPlanId() string {
@@ -2792,7 +2972,7 @@ type GetPlanResponse struct {
 
 func (x *GetPlanResponse) Reset() {
 	*x = GetPlanResponse{}
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[46]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2804,7 +2984,7 @@ func (x *GetPlanResponse) String() string {
 func (*GetPlanResponse) ProtoMessage() {}
 
 func (x *GetPlanResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[46]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2817,7 +2997,7 @@ func (x *GetPlanResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPlanResponse.ProtoReflect.Descriptor instead.
 func (*GetPlanResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{46}
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *GetPlanResponse) GetPlan() *TaskPlanDetail {
@@ -2854,7 +3034,7 @@ type TaskPlanDetail struct {
 
 func (x *TaskPlanDetail) Reset() {
 	*x = TaskPlanDetail{}
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[47]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2866,7 +3046,7 @@ func (x *TaskPlanDetail) String() string {
 func (*TaskPlanDetail) ProtoMessage() {}
 
 func (x *TaskPlanDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[47]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2879,7 +3059,7 @@ func (x *TaskPlanDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskPlanDetail.ProtoReflect.Descriptor instead.
 func (*TaskPlanDetail) Descriptor() ([]byte, []int) {
-	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{47}
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *TaskPlanDetail) GetPlanId() string {
@@ -3023,7 +3203,7 @@ type DimensionScores struct {
 
 func (x *DimensionScores) Reset() {
 	*x = DimensionScores{}
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[48]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3035,7 +3215,7 @@ func (x *DimensionScores) String() string {
 func (*DimensionScores) ProtoMessage() {}
 
 func (x *DimensionScores) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[48]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3048,7 +3228,7 @@ func (x *DimensionScores) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DimensionScores.ProtoReflect.Descriptor instead.
 func (*DimensionScores) Descriptor() ([]byte, []int) {
-	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{48}
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *DimensionScores) GetSemantic() float64 {
@@ -3109,7 +3289,7 @@ type SubTask struct {
 
 func (x *SubTask) Reset() {
 	*x = SubTask{}
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[49]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3121,7 +3301,7 @@ func (x *SubTask) String() string {
 func (*SubTask) ProtoMessage() {}
 
 func (x *SubTask) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[49]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3134,7 +3314,7 @@ func (x *SubTask) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubTask.ProtoReflect.Descriptor instead.
 func (*SubTask) Descriptor() ([]byte, []int) {
-	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{49}
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *SubTask) GetId() string {
@@ -3198,7 +3378,7 @@ type PlanTaskDAG struct {
 
 func (x *PlanTaskDAG) Reset() {
 	*x = PlanTaskDAG{}
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[50]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3210,7 +3390,7 @@ func (x *PlanTaskDAG) String() string {
 func (*PlanTaskDAG) ProtoMessage() {}
 
 func (x *PlanTaskDAG) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[50]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3223,7 +3403,7 @@ func (x *PlanTaskDAG) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanTaskDAG.ProtoReflect.Descriptor instead.
 func (*PlanTaskDAG) Descriptor() ([]byte, []int) {
-	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{50}
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *PlanTaskDAG) GetNodes() []*SubTask {
@@ -3260,7 +3440,7 @@ type MemoryHit struct {
 
 func (x *MemoryHit) Reset() {
 	*x = MemoryHit{}
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[51]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3272,7 +3452,7 @@ func (x *MemoryHit) String() string {
 func (*MemoryHit) ProtoMessage() {}
 
 func (x *MemoryHit) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_chat_v1_chat_proto_msgTypes[51]
+	mi := &file_kratos_chat_v1_chat_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3285,7 +3465,7 @@ func (x *MemoryHit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryHit.ProtoReflect.Descriptor instead.
 func (*MemoryHit) Descriptor() ([]byte, []int) {
-	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{51}
+	return file_kratos_chat_v1_chat_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *MemoryHit) GetCacheId() string {
@@ -3526,7 +3706,19 @@ const file_kratos_chat_v1_chat_proto_rawDesc = "" +
 	"\x05reply\x18\x04 \x01(\tR\x05reply\"M\n" +
 	"\x17ConfirmActivityResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x16\n" +
-	"\x06status\x18\x02 \x01(\tR\x06status\"\xea\x01\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"\xa5\x01\n" +
+	"\x1aSubmitClarificationRequest\x12#\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\x12\x1d\n" +
+	"\astep_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06stepId\x12C\n" +
+	"\aanswers\x18\x03 \x03(\v2#.kratos.chat.v1.ClarificationAnswerB\x04\xe2A\x01\x02R\aanswers\"G\n" +
+	"\x13ClarificationAnswer\x12\x1a\n" +
+	"\bselected\x18\x01 \x03(\tR\bselected\x12\x14\n" +
+	"\x05other\x18\x02 \x01(\tR\x05other\"~\n" +
+	"\x1bSubmitClarificationResponse\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12+\n" +
+	"\x11clarified_context\x18\x03 \x01(\tR\x10clarifiedContext\"\xea\x01\n" +
 	"\x12ConfirmPlanRequest\x12\x1d\n" +
 	"\aplan_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x06planId\x12#\n" +
 	"\n" +
@@ -3623,7 +3815,7 @@ const file_kratos_chat_v1_chat_proto_rawDesc = "" +
 	"\bcache_id\x18\x01 \x01(\tR\acacheId\x12\x19\n" +
 	"\bdq_score\x18\x02 \x01(\x01R\adqScore\x12#\n" +
 	"\rtopology_used\x18\x03 \x01(\tR\ftopologyUsed\x12&\n" +
-	"\x0fagent_keys_used\x18\x04 \x03(\tR\ragentKeysUsed2\xf7\x16\n" +
+	"\x0fagent_keys_used\x18\x04 \x03(\tR\ragentKeysUsed2\x96\x18\n" +
 	"\vChatService\x12\x80\x01\n" +
 	"\x0fSendChatMessage\x12&.kratos.chat.v1.SendChatMessageRequest\x1a'.kratos.chat.v1.SendChatMessageResponse\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/chat/messages\x12\x8b\x01\n" +
 	"\x11SubmitChatMessage\x12&.kratos.chat.v1.SendChatMessageRequest\x1a).kratos.chat.v1.SubmitChatMessageResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/chat/messages/submit\x12y\n" +
@@ -3645,7 +3837,8 @@ const file_kratos_chat_v1_chat_proto_rawDesc = "" +
 	"\x0fConfirmActivity\x12&.kratos.chat.v1.ConfirmActivityRequest\x1a'.kratos.chat.v1.ConfirmActivityResponse\"4\x82\xd3\xe4\x93\x02.:\x01*\")/v1/chat/activities/{activity_id}/confirm\x12\x83\x01\n" +
 	"\vConfirmPlan\x12\".kratos.chat.v1.ConfirmPlanRequest\x1a#.kratos.chat.v1.ConfirmPlanResponse\"+\x82\xd3\xe4\x93\x02%:\x01*\" /v1/chat/plans/{plan_id}/confirm\x12h\n" +
 	"\tListPlans\x12 .kratos.chat.v1.ListPlansRequest\x1a!.kratos.chat.v1.ListPlansResponse\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/chat/plans\x12l\n" +
-	"\aGetPlan\x12\x1e.kratos.chat.v1.GetPlanRequest\x1a\x1f.kratos.chat.v1.GetPlanResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/chat/plans/{plan_id}B;\n" +
+	"\aGetPlan\x12\x1e.kratos.chat.v1.GetPlanRequest\x1a\x1f.kratos.chat.v1.GetPlanResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/chat/plans/{plan_id}\x12\x9c\x01\n" +
+	"\x13SubmitClarification\x12*.kratos.chat.v1.SubmitClarificationRequest\x1a+.kratos.chat.v1.SubmitClarificationResponse\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/chat/clarifications/{step_id}B;\n" +
 	"\x12api.kratos.chat.v1P\x01Z#aranea-agents/api/kratos/chat/v1;v1b\x06proto3"
 
 var (
@@ -3660,7 +3853,7 @@ func file_kratos_chat_v1_chat_proto_rawDescGZIP() []byte {
 	return file_kratos_chat_v1_chat_proto_rawDescData
 }
 
-var file_kratos_chat_v1_chat_proto_msgTypes = make([]protoimpl.MessageInfo, 52)
+var file_kratos_chat_v1_chat_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_kratos_chat_v1_chat_proto_goTypes = []any{
 	(*SendChatMessageRequest)(nil),          // 0: kratos.chat.v1.SendChatMessageRequest
 	(*SendMessageOptions)(nil),              // 1: kratos.chat.v1.SendMessageOptions
@@ -3702,82 +3895,88 @@ var file_kratos_chat_v1_chat_proto_goTypes = []any{
 	(*SubmitMessageFeedbackResponse)(nil),   // 37: kratos.chat.v1.SubmitMessageFeedbackResponse
 	(*ConfirmActivityRequest)(nil),          // 38: kratos.chat.v1.ConfirmActivityRequest
 	(*ConfirmActivityResponse)(nil),         // 39: kratos.chat.v1.ConfirmActivityResponse
-	(*ConfirmPlanRequest)(nil),              // 40: kratos.chat.v1.ConfirmPlanRequest
-	(*ConfirmPlanResponse)(nil),             // 41: kratos.chat.v1.ConfirmPlanResponse
-	(*ListPlansRequest)(nil),                // 42: kratos.chat.v1.ListPlansRequest
-	(*ListPlansResponse)(nil),               // 43: kratos.chat.v1.ListPlansResponse
-	(*TaskPlanSummary)(nil),                 // 44: kratos.chat.v1.TaskPlanSummary
-	(*GetPlanRequest)(nil),                  // 45: kratos.chat.v1.GetPlanRequest
-	(*GetPlanResponse)(nil),                 // 46: kratos.chat.v1.GetPlanResponse
-	(*TaskPlanDetail)(nil),                  // 47: kratos.chat.v1.TaskPlanDetail
-	(*DimensionScores)(nil),                 // 48: kratos.chat.v1.DimensionScores
-	(*SubTask)(nil),                         // 49: kratos.chat.v1.SubTask
-	(*PlanTaskDAG)(nil),                     // 50: kratos.chat.v1.PlanTaskDAG
-	(*MemoryHit)(nil),                       // 51: kratos.chat.v1.MemoryHit
-	(*structpb.Struct)(nil),                 // 52: google.protobuf.Struct
+	(*SubmitClarificationRequest)(nil),      // 40: kratos.chat.v1.SubmitClarificationRequest
+	(*ClarificationAnswer)(nil),             // 41: kratos.chat.v1.ClarificationAnswer
+	(*SubmitClarificationResponse)(nil),     // 42: kratos.chat.v1.SubmitClarificationResponse
+	(*ConfirmPlanRequest)(nil),              // 43: kratos.chat.v1.ConfirmPlanRequest
+	(*ConfirmPlanResponse)(nil),             // 44: kratos.chat.v1.ConfirmPlanResponse
+	(*ListPlansRequest)(nil),                // 45: kratos.chat.v1.ListPlansRequest
+	(*ListPlansResponse)(nil),               // 46: kratos.chat.v1.ListPlansResponse
+	(*TaskPlanSummary)(nil),                 // 47: kratos.chat.v1.TaskPlanSummary
+	(*GetPlanRequest)(nil),                  // 48: kratos.chat.v1.GetPlanRequest
+	(*GetPlanResponse)(nil),                 // 49: kratos.chat.v1.GetPlanResponse
+	(*TaskPlanDetail)(nil),                  // 50: kratos.chat.v1.TaskPlanDetail
+	(*DimensionScores)(nil),                 // 51: kratos.chat.v1.DimensionScores
+	(*SubTask)(nil),                         // 52: kratos.chat.v1.SubTask
+	(*PlanTaskDAG)(nil),                     // 53: kratos.chat.v1.PlanTaskDAG
+	(*MemoryHit)(nil),                       // 54: kratos.chat.v1.MemoryHit
+	(*structpb.Struct)(nil),                 // 55: google.protobuf.Struct
 }
 var file_kratos_chat_v1_chat_proto_depIdxs = []int32{
 	1,  // 0: kratos.chat.v1.SendChatMessageRequest.options:type_name -> kratos.chat.v1.SendMessageOptions
 	2,  // 1: kratos.chat.v1.SendMessageOptions.attachments:type_name -> kratos.chat.v1.AttachmentRef
-	52, // 2: kratos.chat.v1.SendChatMessageResponse.user_message:type_name -> google.protobuf.Struct
-	52, // 3: kratos.chat.v1.SendChatMessageResponse.agent_message:type_name -> google.protobuf.Struct
+	55, // 2: kratos.chat.v1.SendChatMessageResponse.user_message:type_name -> google.protobuf.Struct
+	55, // 3: kratos.chat.v1.SendChatMessageResponse.agent_message:type_name -> google.protobuf.Struct
 	6,  // 4: kratos.chat.v1.GetChatOptionsResponse.items:type_name -> kratos.chat.v1.ChatOption
 	17, // 5: kratos.chat.v1.GetPendingMessagesResponse.items:type_name -> kratos.chat.v1.PendingMessage
 	32, // 6: kratos.chat.v1.ListChatBackgroundJobsResponse.items:type_name -> kratos.chat.v1.ChatBackgroundJob
-	44, // 7: kratos.chat.v1.ListPlansResponse.plans:type_name -> kratos.chat.v1.TaskPlanSummary
-	47, // 8: kratos.chat.v1.GetPlanResponse.plan:type_name -> kratos.chat.v1.TaskPlanDetail
-	48, // 9: kratos.chat.v1.TaskPlanDetail.dimensions:type_name -> kratos.chat.v1.DimensionScores
-	49, // 10: kratos.chat.v1.TaskPlanDetail.sub_tasks:type_name -> kratos.chat.v1.SubTask
-	50, // 11: kratos.chat.v1.TaskPlanDetail.task_dag:type_name -> kratos.chat.v1.PlanTaskDAG
-	51, // 12: kratos.chat.v1.TaskPlanDetail.memory_hit:type_name -> kratos.chat.v1.MemoryHit
-	49, // 13: kratos.chat.v1.PlanTaskDAG.nodes:type_name -> kratos.chat.v1.SubTask
-	0,  // 14: kratos.chat.v1.ChatService.SendChatMessage:input_type -> kratos.chat.v1.SendChatMessageRequest
-	0,  // 15: kratos.chat.v1.ChatService.SubmitChatMessage:input_type -> kratos.chat.v1.SendChatMessageRequest
-	5,  // 16: kratos.chat.v1.ChatService.GetChatOptions:input_type -> kratos.chat.v1.GetChatOptionsRequest
-	8,  // 17: kratos.chat.v1.ChatService.StopGeneration:input_type -> kratos.chat.v1.StopGenerationRequest
-	10, // 18: kratos.chat.v1.ChatService.RetrySession:input_type -> kratos.chat.v1.RetrySessionRequest
-	12, // 19: kratos.chat.v1.ChatService.PauseSession:input_type -> kratos.chat.v1.PauseSessionRequest
-	14, // 20: kratos.chat.v1.ChatService.ResumeSession:input_type -> kratos.chat.v1.ResumeSessionRequest
-	16, // 21: kratos.chat.v1.ChatService.GetPendingMessages:input_type -> kratos.chat.v1.GetPendingMessagesRequest
-	19, // 22: kratos.chat.v1.ChatService.CancelPendingMessage:input_type -> kratos.chat.v1.CancelPendingMessageRequest
-	21, // 23: kratos.chat.v1.ChatService.UpdatePendingMessage:input_type -> kratos.chat.v1.UpdatePendingMessageRequest
-	23, // 24: kratos.chat.v1.ChatService.InterruptAndSendMessage:input_type -> kratos.chat.v1.InterruptAndSendMessageRequest
-	26, // 25: kratos.chat.v1.ChatService.GetRunStatus:input_type -> kratos.chat.v1.GetRunStatusRequest
-	27, // 26: kratos.chat.v1.ChatService.AwaitUserReply:input_type -> kratos.chat.v1.AwaitUserReplyRequest
-	29, // 27: kratos.chat.v1.ChatService.EnqueueUserMessage:input_type -> kratos.chat.v1.EnqueueUserMessageRequest
-	31, // 28: kratos.chat.v1.ChatService.ListChatBackgroundJobs:input_type -> kratos.chat.v1.ListChatBackgroundJobsRequest
-	34, // 29: kratos.chat.v1.ChatService.CancelChatBackgroundJob:input_type -> kratos.chat.v1.CancelChatBackgroundJobRequest
-	36, // 30: kratos.chat.v1.ChatService.SubmitMessageFeedback:input_type -> kratos.chat.v1.SubmitMessageFeedbackRequest
-	38, // 31: kratos.chat.v1.ChatService.ConfirmActivity:input_type -> kratos.chat.v1.ConfirmActivityRequest
-	40, // 32: kratos.chat.v1.ChatService.ConfirmPlan:input_type -> kratos.chat.v1.ConfirmPlanRequest
-	42, // 33: kratos.chat.v1.ChatService.ListPlans:input_type -> kratos.chat.v1.ListPlansRequest
-	45, // 34: kratos.chat.v1.ChatService.GetPlan:input_type -> kratos.chat.v1.GetPlanRequest
-	3,  // 35: kratos.chat.v1.ChatService.SendChatMessage:output_type -> kratos.chat.v1.SendChatMessageResponse
-	4,  // 36: kratos.chat.v1.ChatService.SubmitChatMessage:output_type -> kratos.chat.v1.SubmitChatMessageResponse
-	7,  // 37: kratos.chat.v1.ChatService.GetChatOptions:output_type -> kratos.chat.v1.GetChatOptionsResponse
-	9,  // 38: kratos.chat.v1.ChatService.StopGeneration:output_type -> kratos.chat.v1.StopGenerationResponse
-	11, // 39: kratos.chat.v1.ChatService.RetrySession:output_type -> kratos.chat.v1.RetrySessionResponse
-	13, // 40: kratos.chat.v1.ChatService.PauseSession:output_type -> kratos.chat.v1.PauseSessionResponse
-	15, // 41: kratos.chat.v1.ChatService.ResumeSession:output_type -> kratos.chat.v1.ResumeSessionResponse
-	18, // 42: kratos.chat.v1.ChatService.GetPendingMessages:output_type -> kratos.chat.v1.GetPendingMessagesResponse
-	20, // 43: kratos.chat.v1.ChatService.CancelPendingMessage:output_type -> kratos.chat.v1.CancelPendingMessageResponse
-	22, // 44: kratos.chat.v1.ChatService.UpdatePendingMessage:output_type -> kratos.chat.v1.UpdatePendingMessageResponse
-	24, // 45: kratos.chat.v1.ChatService.InterruptAndSendMessage:output_type -> kratos.chat.v1.InterruptAndSendMessageResponse
-	25, // 46: kratos.chat.v1.ChatService.GetRunStatus:output_type -> kratos.chat.v1.RunStatus
-	28, // 47: kratos.chat.v1.ChatService.AwaitUserReply:output_type -> kratos.chat.v1.AwaitUserReplyResponse
-	30, // 48: kratos.chat.v1.ChatService.EnqueueUserMessage:output_type -> kratos.chat.v1.EnqueueUserMessageResponse
-	33, // 49: kratos.chat.v1.ChatService.ListChatBackgroundJobs:output_type -> kratos.chat.v1.ListChatBackgroundJobsResponse
-	35, // 50: kratos.chat.v1.ChatService.CancelChatBackgroundJob:output_type -> kratos.chat.v1.CancelChatBackgroundJobResponse
-	37, // 51: kratos.chat.v1.ChatService.SubmitMessageFeedback:output_type -> kratos.chat.v1.SubmitMessageFeedbackResponse
-	39, // 52: kratos.chat.v1.ChatService.ConfirmActivity:output_type -> kratos.chat.v1.ConfirmActivityResponse
-	41, // 53: kratos.chat.v1.ChatService.ConfirmPlan:output_type -> kratos.chat.v1.ConfirmPlanResponse
-	43, // 54: kratos.chat.v1.ChatService.ListPlans:output_type -> kratos.chat.v1.ListPlansResponse
-	46, // 55: kratos.chat.v1.ChatService.GetPlan:output_type -> kratos.chat.v1.GetPlanResponse
-	35, // [35:56] is the sub-list for method output_type
-	14, // [14:35] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	41, // 7: kratos.chat.v1.SubmitClarificationRequest.answers:type_name -> kratos.chat.v1.ClarificationAnswer
+	47, // 8: kratos.chat.v1.ListPlansResponse.plans:type_name -> kratos.chat.v1.TaskPlanSummary
+	50, // 9: kratos.chat.v1.GetPlanResponse.plan:type_name -> kratos.chat.v1.TaskPlanDetail
+	51, // 10: kratos.chat.v1.TaskPlanDetail.dimensions:type_name -> kratos.chat.v1.DimensionScores
+	52, // 11: kratos.chat.v1.TaskPlanDetail.sub_tasks:type_name -> kratos.chat.v1.SubTask
+	53, // 12: kratos.chat.v1.TaskPlanDetail.task_dag:type_name -> kratos.chat.v1.PlanTaskDAG
+	54, // 13: kratos.chat.v1.TaskPlanDetail.memory_hit:type_name -> kratos.chat.v1.MemoryHit
+	52, // 14: kratos.chat.v1.PlanTaskDAG.nodes:type_name -> kratos.chat.v1.SubTask
+	0,  // 15: kratos.chat.v1.ChatService.SendChatMessage:input_type -> kratos.chat.v1.SendChatMessageRequest
+	0,  // 16: kratos.chat.v1.ChatService.SubmitChatMessage:input_type -> kratos.chat.v1.SendChatMessageRequest
+	5,  // 17: kratos.chat.v1.ChatService.GetChatOptions:input_type -> kratos.chat.v1.GetChatOptionsRequest
+	8,  // 18: kratos.chat.v1.ChatService.StopGeneration:input_type -> kratos.chat.v1.StopGenerationRequest
+	10, // 19: kratos.chat.v1.ChatService.RetrySession:input_type -> kratos.chat.v1.RetrySessionRequest
+	12, // 20: kratos.chat.v1.ChatService.PauseSession:input_type -> kratos.chat.v1.PauseSessionRequest
+	14, // 21: kratos.chat.v1.ChatService.ResumeSession:input_type -> kratos.chat.v1.ResumeSessionRequest
+	16, // 22: kratos.chat.v1.ChatService.GetPendingMessages:input_type -> kratos.chat.v1.GetPendingMessagesRequest
+	19, // 23: kratos.chat.v1.ChatService.CancelPendingMessage:input_type -> kratos.chat.v1.CancelPendingMessageRequest
+	21, // 24: kratos.chat.v1.ChatService.UpdatePendingMessage:input_type -> kratos.chat.v1.UpdatePendingMessageRequest
+	23, // 25: kratos.chat.v1.ChatService.InterruptAndSendMessage:input_type -> kratos.chat.v1.InterruptAndSendMessageRequest
+	26, // 26: kratos.chat.v1.ChatService.GetRunStatus:input_type -> kratos.chat.v1.GetRunStatusRequest
+	27, // 27: kratos.chat.v1.ChatService.AwaitUserReply:input_type -> kratos.chat.v1.AwaitUserReplyRequest
+	29, // 28: kratos.chat.v1.ChatService.EnqueueUserMessage:input_type -> kratos.chat.v1.EnqueueUserMessageRequest
+	31, // 29: kratos.chat.v1.ChatService.ListChatBackgroundJobs:input_type -> kratos.chat.v1.ListChatBackgroundJobsRequest
+	34, // 30: kratos.chat.v1.ChatService.CancelChatBackgroundJob:input_type -> kratos.chat.v1.CancelChatBackgroundJobRequest
+	36, // 31: kratos.chat.v1.ChatService.SubmitMessageFeedback:input_type -> kratos.chat.v1.SubmitMessageFeedbackRequest
+	38, // 32: kratos.chat.v1.ChatService.ConfirmActivity:input_type -> kratos.chat.v1.ConfirmActivityRequest
+	43, // 33: kratos.chat.v1.ChatService.ConfirmPlan:input_type -> kratos.chat.v1.ConfirmPlanRequest
+	45, // 34: kratos.chat.v1.ChatService.ListPlans:input_type -> kratos.chat.v1.ListPlansRequest
+	48, // 35: kratos.chat.v1.ChatService.GetPlan:input_type -> kratos.chat.v1.GetPlanRequest
+	40, // 36: kratos.chat.v1.ChatService.SubmitClarification:input_type -> kratos.chat.v1.SubmitClarificationRequest
+	3,  // 37: kratos.chat.v1.ChatService.SendChatMessage:output_type -> kratos.chat.v1.SendChatMessageResponse
+	4,  // 38: kratos.chat.v1.ChatService.SubmitChatMessage:output_type -> kratos.chat.v1.SubmitChatMessageResponse
+	7,  // 39: kratos.chat.v1.ChatService.GetChatOptions:output_type -> kratos.chat.v1.GetChatOptionsResponse
+	9,  // 40: kratos.chat.v1.ChatService.StopGeneration:output_type -> kratos.chat.v1.StopGenerationResponse
+	11, // 41: kratos.chat.v1.ChatService.RetrySession:output_type -> kratos.chat.v1.RetrySessionResponse
+	13, // 42: kratos.chat.v1.ChatService.PauseSession:output_type -> kratos.chat.v1.PauseSessionResponse
+	15, // 43: kratos.chat.v1.ChatService.ResumeSession:output_type -> kratos.chat.v1.ResumeSessionResponse
+	18, // 44: kratos.chat.v1.ChatService.GetPendingMessages:output_type -> kratos.chat.v1.GetPendingMessagesResponse
+	20, // 45: kratos.chat.v1.ChatService.CancelPendingMessage:output_type -> kratos.chat.v1.CancelPendingMessageResponse
+	22, // 46: kratos.chat.v1.ChatService.UpdatePendingMessage:output_type -> kratos.chat.v1.UpdatePendingMessageResponse
+	24, // 47: kratos.chat.v1.ChatService.InterruptAndSendMessage:output_type -> kratos.chat.v1.InterruptAndSendMessageResponse
+	25, // 48: kratos.chat.v1.ChatService.GetRunStatus:output_type -> kratos.chat.v1.RunStatus
+	28, // 49: kratos.chat.v1.ChatService.AwaitUserReply:output_type -> kratos.chat.v1.AwaitUserReplyResponse
+	30, // 50: kratos.chat.v1.ChatService.EnqueueUserMessage:output_type -> kratos.chat.v1.EnqueueUserMessageResponse
+	33, // 51: kratos.chat.v1.ChatService.ListChatBackgroundJobs:output_type -> kratos.chat.v1.ListChatBackgroundJobsResponse
+	35, // 52: kratos.chat.v1.ChatService.CancelChatBackgroundJob:output_type -> kratos.chat.v1.CancelChatBackgroundJobResponse
+	37, // 53: kratos.chat.v1.ChatService.SubmitMessageFeedback:output_type -> kratos.chat.v1.SubmitMessageFeedbackResponse
+	39, // 54: kratos.chat.v1.ChatService.ConfirmActivity:output_type -> kratos.chat.v1.ConfirmActivityResponse
+	44, // 55: kratos.chat.v1.ChatService.ConfirmPlan:output_type -> kratos.chat.v1.ConfirmPlanResponse
+	46, // 56: kratos.chat.v1.ChatService.ListPlans:output_type -> kratos.chat.v1.ListPlansResponse
+	49, // 57: kratos.chat.v1.ChatService.GetPlan:output_type -> kratos.chat.v1.GetPlanResponse
+	42, // 58: kratos.chat.v1.ChatService.SubmitClarification:output_type -> kratos.chat.v1.SubmitClarificationResponse
+	37, // [37:59] is the sub-list for method output_type
+	15, // [15:37] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_kratos_chat_v1_chat_proto_init() }
@@ -3791,14 +3990,14 @@ func file_kratos_chat_v1_chat_proto_init() {
 	file_kratos_chat_v1_chat_proto_msgTypes[31].OneofWrappers = []any{}
 	file_kratos_chat_v1_chat_proto_msgTypes[32].OneofWrappers = []any{}
 	file_kratos_chat_v1_chat_proto_msgTypes[36].OneofWrappers = []any{}
-	file_kratos_chat_v1_chat_proto_msgTypes[40].OneofWrappers = []any{}
+	file_kratos_chat_v1_chat_proto_msgTypes[43].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_chat_v1_chat_proto_rawDesc), len(file_kratos_chat_v1_chat_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   52,
+			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

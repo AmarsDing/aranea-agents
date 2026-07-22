@@ -66,9 +66,7 @@ onUnmounted(() => {
 </script>
 
 <style lang="sass" scoped>
+// 2026-07-22 左边线体系：纯语义容器，无边框/背景（保留 data-team-stage-id 与定位高亮）
 .team-stage-panel
-  border: 1px solid var(--glass-border)
-  border-radius: 6px
   margin: 8px 0
-  background: var(--glass-surface)
 </style>

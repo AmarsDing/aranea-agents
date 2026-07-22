@@ -47,7 +47,7 @@
 - G2：用户滚离底部后，**永不**自动滚动，无任何定时器强拽（修 P2、P4）。
 - G3：内外两层（主聊天 / 成员面板）共用同一套跟随模型与 composable。
 - G4：团队内部层级视觉扁平化：左边线 + 状态色，消除盒子套娃；成员 reply 气泡在无色容器上自然突出（修 P5）。
-- G5：用户发新消息（新 Turn）时滚到自己消息顶部（落实 1-chat.design.md B.2.2 未实现的锚点要求）。
+- G5：用户发新消息（新 Task）时滚到自己消息顶部（落实 1-chat.design.md B.2.2 未实现的锚点要求）。
 
 ### 非目标（YAGNI）
 
@@ -110,7 +110,7 @@ useFollowScroll(opts) → {
   其中「末端 turn / 末端 step」指 session 活动树按时间序的最后一个 task 的最后一个 turn 及其最后一步——外层视口的跟随语义是"跟随主流尾部"，历史 task/turn 的局部更新（如重新生成）不触发外层跟随。
   数据来源 `activityV2Store`（经 `useActivityQueries`），在 ChatMessagePanel 组装后传入——**修复 P1 的 tasks 接线**。
 - `messages.length`（messageStore 持久化消息）变化并入签名，覆盖 turn 边界。
-- **新 Turn 锚点**（G5）：watch 最新 turn ID；新 turn 出现且为用户消息时，`scrollIntoView({ block: 'start' })` 到该 turn 的 `[data-turn-id]` 元素顶部，并进入 FOLLOWING。这是用户自身操作引导的滚动，不属于打扰。
+- **新 Task 锚点**（G5）：watch 最新 task ID；新 task 出现时（用户发送新消息即创建 Task，TaskCard 顶部渲染 `task.UserMessage`，根元素带 `[data-task-id]`），`scrollIntoView({ block: 'start' })` 到该 task 元素顶部，并进入 FOLLOWING。这是用户自身操作引导的滚动，不属于打扰。（v2 数据模型中用户消息挂载在 Task 上，Turn 为 agent 执行单元，故锚点为 Task 而非 Turn。）
 - **会话切换 / 挂载**：滚底 + FOLLOWING（保留现状 `alignMessageScroll` 的 clamp 防 NaN 逻辑）。
 - **删除**：10s RECOVERY 定时器、`showScrollBtn` 及阈值逻辑。
 - **保留**：`scrollToTurnId` + `flashTurnHighlight`（Plan 面板定位功能）、`useChatScrollTitle` 的 scroll 事件转发兼容（`onMessagesScroll` 包装链不变）。
@@ -130,7 +130,7 @@ useFollowScroll(opts) → {
 | 用户滚离底部读历史 | 停止一切自动滚动，无任何 UI 提示 |
 | 跟随中用户选中容器内文字 | 转 UNFOLLOWED（保护复制） |
 | 用户手动滚回底部（≤80px） | 恢复 FOLLOWING |
-| 用户发送新消息（新 Turn） | 滚到新 UserMessage 顶部 + FOLLOWING |
+| 用户发送新消息（新 Task） | 滚到新 Task 的 UserMessage 顶部 + FOLLOWING |
 | 会话切换 / 首次挂载 | 滚底 + FOLLOWING |
 | 成员面板展开 / agent 启动 running | 该面板滚底 + FOLLOWING |
 | 成员面板折叠 / agent 终态 | 停止跟随，不动滚动条 |
@@ -180,7 +180,7 @@ pending（成员）使用浅灰。
 | 文件 | 改动 |
 |------|------|
 | `web/src/features/chat/composables/useFollowScroll.ts` | **新增**：状态制跟随 composable（状态机 + 节流 + 选区保护） |
-| `web/src/features/chat/composables/useChatMessageScroll.ts` | **重写**：基于 useFollowScroll；删 10s 定时器与 showScrollBtn；保留 scrollToTurnId/highlight/scroll 转发；新增末端签名 + 新 Turn 锚点 |
+| `web/src/features/chat/composables/useChatMessageScroll.ts` | **重写**：基于 useFollowScroll；删 10s 定时器与 showScrollBtn；保留 scrollToTurnId/highlight/scroll 转发；新增末端签名 + 新 Task 锚点 |
 | `web/src/features/chat/composables/useActivityAutoScroll.ts` | **删除**（ MemberSessionPanel 改用 useFollowScroll） |
 | `web/src/components/chat/ChatMessagePanel.vue` | 组装 v2 末端签名传入；移除 showScrollBtn 接线 |
 | `web/src/components/chat/ChatMessageList.vue` | 移除 ↓ 回底按钮及 transition；其余不变 |

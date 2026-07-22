@@ -388,6 +388,15 @@ service ChatService {
       get: "/v1/chat/plans/{plan_id}"
     };
   }
+
+  // SubmitClarification submits user answers to a clarification step and
+  // resumes the turn with the clarified context.
+  rpc SubmitClarification(SubmitClarificationRequest) returns (SubmitClarificationResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/clarifications/{step_id}"
+      body: "*"
+    };
+  }
 }
 
 message SubmitMessageFeedbackRequest {
@@ -418,6 +427,31 @@ message ConfirmActivityRequest {
 message ConfirmActivityResponse {
   bool accepted = 1;
   string status = 2; // "completed" or "cancelled"
+}
+
+// SubmitClarificationRequest is the request for submitting clarification answers.
+message SubmitClarificationRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string step_id = 2 [(google.api.field_behavior) = REQUIRED];
+  // answers is the user's answers to each clarification question.
+  // The array index corresponds to the question index in the step content.
+  // Empty selected array means the user skipped that question (use recommended).
+  repeated ClarificationAnswer answers = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ClarificationAnswer represents the user's answer to a single clarification question.
+message ClarificationAnswer {
+  // selected contains the selected option values (empty = use recommended).
+  repeated string selected = 1;
+  // other is an optional free-form text input for additional context.
+  string other = 2;
+}
+
+message SubmitClarificationResponse {
+  bool accepted = 1;
+  string status = 2; // "completed"
+  // clarified_context is the rendered context text injected into the resumed turn.
+  string clarified_context = 3;
 }
 
 // ConfirmPlanRequest is the request for confirming or rejecting a draft TaskPlan

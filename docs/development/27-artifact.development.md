@@ -1,6 +1,6 @@
 # Artifact 产出物 — 开发计划
 
-> **版本**：2026-06-17 | **状态**：🟢 P1–P3 全部完成；Phase 4 S3/COS 生产配置**后续支持**
+> **版本**：2026-07-22 | **状态**：🟢 P1–P3 + Phase 5（P0–P2）全部完成；Phase 4 S3/COS 生产配置**后续支持**
 > **需求**：[27-artifact.md](./27-artifact.md) · **设计**：[27-artifact.design.md](./27-artifact.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-RT-08
 
@@ -19,15 +19,17 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 - `internal/artifact/sign.go` — HMAC-SHA256 签名/验签（生产 fail-closed）
 - `internal/artifact/storage_factory.go` — 存储后端工厂（local/s3/cos 选择）
 - `internal/skill/trpc/artifact_executor.go` — artifactSavingExecutor（CodeExecutor 产出物自动保存）
-- `web/src/features/artifact/ArtifactPreview.vue` — 独立预览组件（图片/PDF/代码）
-- `web/src/features/artifact/ArtifactList.vue` — 制品列表组件（含预览弹窗+签名下载）
-- `web/src/features/artifact/api.ts` — 前端 API（含全部 RPC 对应方法）
+- `internal/provider/media/persist.go` — PersistingProvider（媒体生成产物落盘装饰器 + `artifact://` URL 重写）
+- `internal/conf/features_artifact.go` — `LocalRevealEnabled` 特性开关（默认关闭）
+- `internal/service/system_reveal.go` — `POST /v1/system/reveal`（本地打开所在文件夹，路径防穿越）
+- `web/src/features/artifact/ArtifactPreview.vue` — 独立预览组件（图片/PDF/代码/音视频）
+- `web/src/features/artifact/api.ts` — 前端 API（含全部 RPC 对应方法 + reveal/features 查询）
 - `web/src/features/artifact/types.ts` — 前端类型定义
 - `web/src/stores/artifact/index.ts` — 前端 Pinia Store
-- `web/src/pages/ArtifactsPage.vue` — 管理页面（使用 ArtifactPreview + ArtifactsUploadDialog + ArtifactsDetailDialog）
+- `web/src/pages/ArtifactsPage.vue` — 资源管理器页面（会话产物/全部产物双 Tab + 分组浏览）
 - `web/src/components/artifact/ArtifactsUploadDialog.vue` — 上传对话框组件
-- `web/src/components/artifact/ArtifactsDetailDialog.vue` — 详情对话框组件（含版本选择）
-- `web/src/components/chat/ChatSessionArtifactsPanel.vue` — Chat 会话制品面板（使用 ArtifactList 组件）
+- `web/src/components/artifact/ArtifactsDetailDialog.vue` — 详情对话框组件（含版本选择 + 完整路径复制 + reveal 按钮）
+- `web/src/features/chat/useMediaUrl.ts` — `artifact://` → 签名直链解析 composable（MediaToolDetail/MediaLightbox/NodeMediaPreview 共用）
 - `web/src/components/chat/ChatMessageAttachments.vue` — Chat 消息气泡内嵌附件 chip + 预览
 
 ---
@@ -51,9 +53,9 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 | 管理页面 | ✅ | `ArtifactsPage.vue`；使用 `ArtifactPreview` + `ArtifactsUploadDialog` + `ArtifactsDetailDialog` |
 | PreviewArtifact RPC | ✅ | Proto + Service 层 + 前端 API + ArtifactPreview.vue 组件 |
 | 签名下载 URL | ✅ | `artifact/sign.go`（生产 fail-closed）+ `SignDownloadUrl` RPC + `ServeSignedDownload` HTTP handler + 前端集成 |
-| ArtifactPreview.vue 独立组件 | ✅ | 图片 `<img>` / PDF `<iframe>` / 代码 `<pre>` 渲染 + 下载按钮 |
-| ArtifactList.vue 列表组件 | ✅ | MIME 图标 + 文件大小 + 版本号 + 预览弹窗 + 签名下载 |
-| Chat 会话制品嵌入 | ✅ | `ChatSessionArtifactsPanel` 使用 `ArtifactList` 组件 |
+| ArtifactPreview.vue 独立组件 | ✅ | 图片 `<img>` / PDF `<iframe>` / 代码 `<pre>` / 音频 `<audio>` / 视频 `<video>` 渲染 + 下载按钮 |
+| ArtifactsPage 双 Tab 资源管理器 | ✅ | 会话产物 / 全部产物（按 session 分组）+ 路由 `?session=<id>` 过滤 |
+| chat 头部「产物」直达入口 | ✅ | `ChatPage.vue` 头部按钮跳转 `/artifacts?session=<id>`（孤儿组件 `ChatSessionArtifactsPanel.vue` + `ArtifactList.vue` + `useArtifactList.ts` 已于 2026-07-22 清理删除） |
 | Chat 消息气泡内嵌附件 | ✅ | `options_json.attachments` + `ChatMessageAttachments.vue`（ART-01） |
 | Prometheus 上传/下载/存储指标 | ✅ | `aranea_artifact_*` 于 Service + FS Repo |
 | 跨会话制品列表 | ✅ | `ListArtifacts` 省略 `session_id` 时扫描全部会话 |
@@ -65,6 +67,11 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 | 多模态附件进 LLM | ✅ | `BuildUserMessageFromArtifacts` + `RunTRPCUserTurnMsg` |
 | S3/COS 存储工厂 | ✅ | `storage_factory.go` 委托 trpc-agent-go 框架包；生产配置待 Phase 4 |
 | S3/COS 生产配置 | 📋 后续支持 | 工厂已存在，生产配置与多租户路径隔离依赖 M2（EP-WS-01） |
+| 媒体产物落盘（Phase 5-P0） | ✅ | `PersistingProvider` 装饰器：下载远程临时 URL → `Usecase.Save`（自动进 TurnCollector）→ `artifact://<id>` 重写；失败保留远程 URL 降级 |
+| `artifact://` URL 方案（Phase 5-P0） | ✅ | `useMediaUrl()` 解析为新鲜签名直链；MediaToolDetail / MediaLightbox / NodeMediaPreview 已接入 |
+| 音视频内联预览（Phase 5-P0） | ✅ | PreviewKind 扩展 audio/video + `ServeSignedDownload?inline=1` 直链播放 |
+| 详情完整路径 + 复制（Phase 5-P1） | ✅ | local 后端 `storage_uri` 返回绝对路径；`ArtifactsDetailDialog` 展示 + 复制 |
+| 本地打开文件夹（Phase 5-P2） | ✅ | `POST /v1/system/reveal`（环境变量 `FEATURES_LOCAL_REVEAL_ENABLED` 默认关闭，未开启路由不注册）+ 路径防穿越校验 + 前端按 features 隐藏按钮 |
 
 ---
 
@@ -79,10 +86,10 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 7. ~~**Team 多模态附件**~~：`RunTRPCUserTurnMsg` + 共享 `BuildUserMessageFromArtifacts` ✅
 8. ~~**管理页组件拆分**~~：上传/详情对话框独立组件 ✅
 9. ~~**列表检索过滤**~~：`query` + `mime_type_prefix` 参数 ✅
-10. **媒体生成产物不落盘**（Phase 5-P0）：`generate_image`/`generate_video`/`image_to_video` 产物仅存远程临时 URL（dashscope/ComfyUI），过期失效且不进制品列表；需 PersistingProvider 装饰器落盘 + `artifact://` URL 方案。
-11. **音视频无内联预览**（Phase 5-P0）：`ArtifactPreview` 仅支持 text/image/pdf/binary；需扩展 PreviewKind + 签名直链 inline 播放。
-12. **chat 无制品直达入口**（Phase 5-P1）：`ChatSessionArtifactsPanel.vue` 为孤儿组件（无任何引用）；采用 chat 头部按钮跳转 `/artifacts?session=<id>`。
-13. **落盘路径不可见 / 无法打开文件夹**（Phase 5-P1/P2）：详情需展示绝对路径 + 复制；本地模式增 `POST /v1/system/reveal`（默认关闭）。
+10. ~~**媒体生成产物不落盘**（Phase 5-P0）~~：PersistingProvider 装饰器落盘 + `artifact://` URL 方案 ✅
+11. ~~**音视频无内联预览**（Phase 5-P0）~~：PreviewKind 扩展 + 签名直链 `inline=1` 播放 ✅
+12. ~~**chat 无制品直达入口**（Phase 5-P1）~~：chat 头部按钮跳转 `/artifacts?session=<id>`；孤儿组件 `ChatSessionArtifactsPanel.vue`（连同 `ArtifactList.vue` / `useArtifactList.ts`）已删除 ✅
+13. ~~**落盘路径不可见 / 无法打开文件夹**（Phase 5-P1/P2）~~：详情展示绝对路径 + 复制；`POST /v1/system/reveal`（默认关闭）✅
 
 ---
 
@@ -92,7 +99,7 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 - **Phase 2**：~~管理页列表/基础预览~~（✅）+ ~~PreviewArtifact RPC~~（✅）+ ~~ArtifactPreview.vue~~（✅）+ ~~ArtifactList.vue + Chat 嵌入~~（✅）
 - **Phase 3**：~~签名下载 URL（HMAC-SHA256）~~（✅）+ ~~Chat 气泡附件（ART-01）~~（✅）+ ~~Prometheus 指标~~（✅）+ ~~ListArtifactVersions + DeleteArtifactVersion~~（✅）+ ~~列表检索过滤~~（✅）+ ~~TurnCollector + 多模态附件~~（✅）
 - **Phase 4（后续支持）**：S3/COS 生产配置 + 按租户隔离
-- **Phase 5**：媒体产物持久化 + 音视频预览（P0）→ 资源管理器升级（P1）→ 本地打开文件夹（P2）。设计详见 [27-artifact.design.md §13](./27-artifact.design.md#十三phase-5媒体产物持久化--资源管理器设计)
+- **Phase 5**：~~媒体产物持久化 + 音视频预览（P0）~~（✅）→ ~~资源管理器升级（P1）~~（✅）→ ~~本地打开文件夹（P2）~~（✅）。设计详见 [27-artifact.design.md §13](./27-artifact.design.md#十三phase-5媒体产物持久化--资源管理器设计)
 
 ---
 
@@ -124,13 +131,15 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 | 22 | ArtifactsPage 对话框组件拆分 | P2 | 3 | `ArtifactsUploadDialog` + `ArtifactsDetailDialog` | ✅ |
 | 23 | Biz 层接口拆分 Reader/Writer/Repo | P2 | 3 | `internal/biz/artifact/` 子包 | ✅ |
 | 24 | 签名密钥生产 fail-closed | P3 | 3 | `internal/artifact/sign.go` | ✅ |
-| 25 | 媒体产物持久化 PersistingProvider 装饰器 | P1 | 5 | `internal/provider/media/persist.go`（新增）+ Wire 注入 | 📋 |
-| 26 | `artifact://` URL 方案 + 前端 `useMediaUrl()` 解析 | P1 | 5 | `web/src/features/chat/useMediaUrl.ts`（新增）+ MediaToolDetail/MediaLightbox/NodeMediaPreview 接入 | 📋 |
-| 27 | PreviewKind 扩展 audio/video + 签名直链 inline 播放 | P1 | 5 | `internal/biz/artifact/filter.go` + `internal/service/artifact.go` + `ArtifactPreview.vue` + `useArtifactPreview.ts` | 📋 |
-| 28 | ArtifactsPage 双 Tab（会话产物/全部产物）+ 路由 query 过滤 | P2 | 5 | `web/src/pages/ArtifactsPage.vue` + `useArtifactsPage.ts` | 📋 |
-| 29 | chat 头部「产物」入口按钮 | P1 | 5 | chat 头部组件（SpiritStatusBar 区域） | 📋 |
-| 30 | 制品详情完整落盘路径展示 + 复制 | P2 | 5 | `internal/service/artifact.go`（storage_uri 绝对路径）+ `ArtifactsDetailDialog` | 📋 |
-| 31 | 本地打开文件夹 `POST /v1/system/reveal`（默认关闭） | P2 | 5 | `internal/service/system_reveal.go`（新增）+ `internal/server/http.go` 条件注册 + 配置项 + 前端按钮 | 📋 |
+| 25 | 媒体产物持久化 PersistingProvider 装饰器 | P1 | 5 | `internal/provider/media/persist.go`（新增）+ Wire 注入 | ✅ |
+| 26 | `artifact://` URL 方案 + 前端 `useMediaUrl()` 解析 | P1 | 5 | `web/src/features/chat/useMediaUrl.ts`（新增）+ MediaToolDetail/MediaLightbox/NodeMediaPreview 接入 | ✅ |
+| 27 | PreviewKind 扩展 audio/video + 签名直链 inline 播放 | P1 | 5 | `internal/biz/artifact/filter.go` + `internal/service/artifact.go` + `ArtifactPreview.vue` + `useArtifactPreview.ts` | ✅ |
+| 28 | ArtifactsPage 双 Tab（会话产物/全部产物）+ 路由 query 过滤 | P2 | 5 | `web/src/pages/ArtifactsPage.vue` + `useArtifactsPage.ts` | ✅ |
+| 29 | chat 头部「产物」入口按钮 | P1 | 5 | chat 头部组件（SpiritStatusBar 区域） | ✅ |
+| 30 | 制品详情完整落盘路径展示 + 复制 | P2 | 5 | `internal/service/artifact.go`（storage_uri 绝对路径）+ `ArtifactsDetailDialog` | ✅ |
+| 31 | 本地打开文件夹 `POST /v1/system/reveal`（默认关闭） | P2 | 5 | `internal/service/system_reveal.go`（新增）+ `internal/server/http.go` 条件注册 + `internal/conf/features_artifact.go` 配置项 + 前端按钮 | ✅ |
+| 32 | 孤儿组件清理（ChatSessionArtifactsPanel / ArtifactList / useArtifactList） | P2 | 5 | 删除 3 个无引用文件 + i18n baseline 同步 | ✅ |
+| 33 | 全量验证（go build/test + pnpm lint/test/build）+ 文档同步 | P1 | 5 | 全仓 | ✅ |
 
 ---
 
@@ -141,7 +150,7 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 - [x] 前端可查看/上传/删除制品（ArtifactsPage，Phase 2）
 - [x] PreviewArtifact RPC 可用；前端可调用预览接口（Phase 2）
 - [x] 图片/PDF/代码可在浏览器中预览（ArtifactPreview.vue 独立组件）
-- [x] Chat 会话内可查看关联制品列表（ArtifactList.vue + ChatSessionArtifactsPanel）
+- [x] Chat 会话内可查看关联制品列表（chat 头部「产物」按钮 → `/artifacts?session=<id>`）
 - [x] 下载链接有时效性签名（Phase 3）
 - [x] Chat 消息气泡可内嵌附件 chip 并预览（ART-01）
 - [x] 管理页可跨会话浏览制品（省略 session_id）
@@ -153,13 +162,13 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 - [x] 签名密钥生产环境 fail-closed
 - [x] S3/COS 存储工厂已实现（委托 trpc-agent-go）
 - [ ] S3/COS 生产配置与按租户隔离（Phase 4，**后续支持**）
-- [ ] 媒体生成产物落盘为制品，历史消息中长期可访问（Phase 5-P0）
-- [ ] 落盘产物出现在会话制品列表（TurnCollector 关联）
-- [ ] 音频/视频制品可在浏览器内联播放（Phase 5-P0）
-- [ ] 聊天页一键跳转到按当前会话过滤的制品管理页（Phase 5-P1）
-- [ ] 制品管理页跨会话按 session 分组浏览全部产物（Phase 5-P1）
-- [ ] 制品详情显示完整落盘路径并可复制（Phase 5-P1）
-- [ ] 本地模式开启后可在系统资源管理器中打开制品所在文件夹；未开启时前端隐藏入口（Phase 5-P2）
+- [x] 媒体生成产物落盘为制品，历史消息中长期可访问（Phase 5-P0）
+- [x] 落盘产物出现在会话制品列表（TurnCollector 关联）
+- [x] 音频/视频制品可在浏览器内联播放（Phase 5-P0）
+- [x] 聊天页一键跳转到按当前会话过滤的制品管理页（Phase 5-P1）
+- [x] 制品管理页跨会话按 session 分组浏览全部产物（Phase 5-P1）
+- [x] 制品详情显示完整落盘路径并可复制（Phase 5-P1）
+- [x] 本地模式开启后可在系统资源管理器中打开制品所在文件夹；未开启时前端隐藏入口（Phase 5-P2）
 
 ---
 

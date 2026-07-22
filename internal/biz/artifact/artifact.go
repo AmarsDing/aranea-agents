@@ -210,6 +210,43 @@ func (uc *Usecase) StorageBytes(ctx context.Context) (int64, error) {
 	return r.StorageBytes(ctx)
 }
 
+// absPathResolver is implemented by local filesystem repos that can resolve
+// an artifact's storage URI to an absolute on-disk path.
+type absPathResolver interface {
+	ResolveAbsPath(a Artifact) string
+}
+
+// ResolveAbsPath returns the absolute on-disk path for a locally stored
+// artifact (storage_kind == "local"). Returns "" for non-local backends
+// (S3/COS) or repos without path resolution.
+func (uc *Usecase) ResolveAbsPath(a Artifact) string {
+	if a.StorageKind != "local" {
+		return ""
+	}
+	r, ok := uc.repo.(absPathResolver)
+	if !ok {
+		return ""
+	}
+	return r.ResolveAbsPath(a)
+}
+
+// storageRootReporter is implemented by repos that can report their storage
+// root (local filesystem repos).
+type storageRootReporter interface {
+	Root() string
+}
+
+// StorageRoot returns the artifact storage root for local backends (""
+// when the repo cannot report it). Used by the reveal endpoint (M27 Phase 5)
+// for defense-in-depth containment checks.
+func (uc *Usecase) StorageRoot() string {
+	r, ok := uc.repo.(storageRootReporter)
+	if !ok {
+		return ""
+	}
+	return r.Root()
+}
+
 // PreviewKind describes how an artifact should be rendered in the browser.
 type PreviewKind string
 
@@ -217,6 +254,8 @@ const (
 	PreviewKindText   PreviewKind = "text"
 	PreviewKindImage  PreviewKind = "image"
 	PreviewKindPDF    PreviewKind = "pdf"
+	PreviewKindAudio  PreviewKind = "audio"
+	PreviewKindVideo  PreviewKind = "video"
 	PreviewKindBinary PreviewKind = "binary"
 )
 
@@ -234,6 +273,9 @@ const maxTextPreviewBytes = 512 << 10 // 512 KB
 // Preview returns inline preview content for browser rendering.
 // MIME classification and text truncation are business logic that belongs here,
 // not in the Service layer.
+//
+// Audio/video previews carry no inline bytes: files can be large and browsers
+// play them via the signed download URL with inline=1 (supports Range seeking).
 func (uc *Usecase) Preview(ctx context.Context, id string, version int) (PreviewResult, error) {
 	meta, data, err := uc.repo.Load(ctx, id, version)
 	if err != nil {
@@ -255,6 +297,10 @@ func (uc *Usecase) Preview(ctx context.Context, id string, version int) (Preview
 	case mime == "application/pdf":
 		result.Kind = PreviewKindPDF
 		result.Data = data
+	case strings.HasPrefix(mime, "audio/"):
+		result.Kind = PreviewKindAudio
+	case strings.HasPrefix(mime, "video/"):
+		result.Kind = PreviewKindVideo
 	default:
 		result.Kind = PreviewKindBinary
 	}

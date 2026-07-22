@@ -38,6 +38,7 @@ const OperationChatServiceRetrySession = "/kratos.chat.v1.ChatService/RetrySessi
 const OperationChatServiceSendChatMessage = "/kratos.chat.v1.ChatService/SendChatMessage"
 const OperationChatServiceStopGeneration = "/kratos.chat.v1.ChatService/StopGeneration"
 const OperationChatServiceSubmitChatMessage = "/kratos.chat.v1.ChatService/SubmitChatMessage"
+const OperationChatServiceSubmitClarification = "/kratos.chat.v1.ChatService/SubmitClarification"
 const OperationChatServiceSubmitMessageFeedback = "/kratos.chat.v1.ChatService/SubmitMessageFeedback"
 const OperationChatServiceUpdatePendingMessage = "/kratos.chat.v1.ChatService/UpdatePendingMessage"
 
@@ -81,6 +82,9 @@ type ChatServiceHTTPServer interface {
 	// Use this instead of SendChatMessage when the client is WS-connected and
 	// only needs a fire-and-ack command channel.
 	SubmitChatMessage(context.Context, *SendChatMessageRequest) (*SubmitChatMessageResponse, error)
+	// SubmitClarification SubmitClarification submits user answers to a clarification step and
+	// resumes the turn with the clarified context.
+	SubmitClarification(context.Context, *SubmitClarificationRequest) (*SubmitClarificationResponse, error)
 	SubmitMessageFeedback(context.Context, *SubmitMessageFeedbackRequest) (*SubmitMessageFeedbackResponse, error)
 	UpdatePendingMessage(context.Context, *UpdatePendingMessageRequest) (*UpdatePendingMessageResponse, error)
 }
@@ -108,6 +112,7 @@ func RegisterChatServiceHTTPServer(s *http.Server, srv ChatServiceHTTPServer) {
 	r.POST("/v1/chat/plans/{plan_id}/confirm", _ChatService_ConfirmPlan0_HTTP_Handler(srv))
 	r.GET("/v1/chat/plans", _ChatService_ListPlans0_HTTP_Handler(srv))
 	r.GET("/v1/chat/plans/{plan_id}", _ChatService_GetPlan0_HTTP_Handler(srv))
+	r.POST("/v1/chat/clarifications/{step_id}", _ChatService_SubmitClarification0_HTTP_Handler(srv))
 }
 
 func _ChatService_SendChatMessage0_HTTP_Handler(srv ChatServiceHTTPServer) func(ctx http.Context) error {
@@ -578,6 +583,31 @@ func _ChatService_GetPlan0_HTTP_Handler(srv ChatServiceHTTPServer) func(ctx http
 	}
 }
 
+func _ChatService_SubmitClarification0_HTTP_Handler(srv ChatServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in SubmitClarificationRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationChatServiceSubmitClarification)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.SubmitClarification(ctx, req.(*SubmitClarificationRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*SubmitClarificationResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 type ChatServiceHTTPClient interface {
 	AwaitUserReply(ctx context.Context, req *AwaitUserReplyRequest, opts ...http.CallOption) (rsp *AwaitUserReplyResponse, err error)
 	CancelChatBackgroundJob(ctx context.Context, req *CancelChatBackgroundJobRequest, opts ...http.CallOption) (rsp *CancelChatBackgroundJobResponse, err error)
@@ -618,6 +648,9 @@ type ChatServiceHTTPClient interface {
 	// Use this instead of SendChatMessage when the client is WS-connected and
 	// only needs a fire-and-ack command channel.
 	SubmitChatMessage(ctx context.Context, req *SendChatMessageRequest, opts ...http.CallOption) (rsp *SubmitChatMessageResponse, err error)
+	// SubmitClarification SubmitClarification submits user answers to a clarification step and
+	// resumes the turn with the clarified context.
+	SubmitClarification(ctx context.Context, req *SubmitClarificationRequest, opts ...http.CallOption) (rsp *SubmitClarificationResponse, err error)
 	SubmitMessageFeedback(ctx context.Context, req *SubmitMessageFeedbackRequest, opts ...http.CallOption) (rsp *SubmitMessageFeedbackResponse, err error)
 	UpdatePendingMessage(ctx context.Context, req *UpdatePendingMessageRequest, opts ...http.CallOption) (rsp *UpdatePendingMessageResponse, err error)
 }
@@ -889,6 +922,21 @@ func (c *ChatServiceHTTPClientImpl) SubmitChatMessage(ctx context.Context, in *S
 	pattern := "/v1/chat/messages/submit"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationChatServiceSubmitChatMessage))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SubmitClarification SubmitClarification submits user answers to a clarification step and
+// resumes the turn with the clarified context.
+func (c *ChatServiceHTTPClientImpl) SubmitClarification(ctx context.Context, in *SubmitClarificationRequest, opts ...http.CallOption) (*SubmitClarificationResponse, error) {
+	var out SubmitClarificationResponse
+	pattern := "/v1/chat/clarifications/{step_id}"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationChatServiceSubmitClarification))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

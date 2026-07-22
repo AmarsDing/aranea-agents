@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -104,6 +105,12 @@ func NewFSArtifactRepoAt(root string, lg loggateway.Logger) *FSArtifactRepo {
 }
 
 var _ biz.ArtifactRepo = (*FSArtifactRepo)(nil)
+
+// Root returns the configured artifact storage root. Used by the reveal
+// endpoint (M27 Phase 5) for defense-in-depth containment checks.
+func (r *FSArtifactRepo) Root() string {
+	return r.root
+}
 
 func (r *FSArtifactRepo) sessionDir(sessionID string) string {
 	return filepath.Join(r.root, sessionID)
@@ -273,6 +280,19 @@ func (r *FSArtifactRepo) resolveBinPath(meta artifactMeta) string {
 		return fallback
 	}
 	return abs
+}
+
+// ResolveAbsPath returns the absolute on-disk path of the artifact's binary
+// payload. Reuses resolveBinPath so legacy absolute/root-prefixed URIs and
+// root-containment checks behave identically to reads. The returned path is
+// always under the repo root (canonical fallback when the URI is suspicious).
+func (r *FSArtifactRepo) ResolveAbsPath(a biz.Artifact) string {
+	return r.resolveBinPath(artifactMeta{
+		ID:         a.ID,
+		SessionID:  a.SessionID,
+		StorageURI: a.StorageURI,
+		Version:    a.Version,
+	})
 }
 
 func artifactPathUnderRoot(path, root string) bool {
@@ -566,7 +586,8 @@ func (r *FSArtifactRepo) findMeta(id string, version int) (artifactMeta, error) 
 		}
 	}
 	if best == nil {
-		return artifactMeta{}, fmt.Errorf("artifact not found: %s", id)
+		// CodeNotFound：service 层据此映射 HTTP 404（assertWorkspaceOwnsArtifact）。
+		return artifactMeta{}, apierror.NotFound(apierror.DomainArtifact, "artifact not found: %s", id)
 	}
 	return *best, nil
 }

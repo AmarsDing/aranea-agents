@@ -24,6 +24,9 @@ export type Admin = {
   createTime: wellKnownTimestamp | undefined;
   // The latest timestamp at which the user was updated.
   updateTime: wellKnownTimestamp | undefined;
+  // B-01 / P2-A: 1:1 admin → workspace binding stamped into JWT at login.
+  // Clients cannot switch workspace via Header/Query; membership is JWT-bound.
+  workspaceId: string | undefined;
 };
 
 // Encoded using RFC 3339, where generated output will always be Z-normalized

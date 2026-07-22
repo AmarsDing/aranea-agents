@@ -42,6 +42,7 @@
         @retry-team="(teamId) => $emit('retry-team', teamId)"
         @expand="(ids) => $emit('expand', ids)"
         @confirm-step="(p) => $emit('confirm-step', p)"
+        @submit-clarification="(p) => $emit('submit-clarification', p)"
       />
     </div>
     <ChatPendingQueue
@@ -51,18 +52,6 @@
       @interrupt-pending="(id) => $emit('interrupt-pending', id)"
       @update-pending="(id, content) => $emit('update-pending', id, content)"
     />
-    <transition name="chat-scroll-fade">
-      <q-btn
-        v-if="showScrollBtn"
-        round
-        unelevated
-        color="accent"
-        icon="arrow_downward"
-        class="chat-scroll-bottom"
-        :aria-label="t('chat.scrollToLatest')"
-        @click="$emit('scroll-to-bottom', true)"
-      />
-    </transition>
   </div>
 </template>
 
@@ -74,7 +63,7 @@ import SessionPanelV2 from './v2/SessionPanel.vue';
 import { useScrollToActivity } from '../../features/chat/composables/useScrollToActivity';
 import { useLocateTeamStage } from '../../features/chat/composables/useLocateTeamStage';
 import { useActivityQueries } from '../../features/chat/composables/useActivityQueries';
-import type { Message, PendingMessage, ConfirmStepPayload } from '../../features/chat/types';
+import type { Message, PendingMessage, ConfirmStepPayload, SubmitClarificationPayload } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { Step } from '../../features/chat/v2Types';
@@ -90,7 +79,6 @@ const props = defineProps<{
   isTeamSession?: boolean;
   plannerKind?: string;
   reasoningSidebarOpen?: boolean;
-  showScrollBtn: boolean;
   /** v2: active session id for SessionPanelV2 (renders the v2 task tree). */
   sessionId?: string;
   /** P1#1/2: agent key → display name lookup for TeamCard/AgentCard. */
@@ -102,7 +90,6 @@ const props = defineProps<{
 defineEmits<{
   'messages-click': [event: MouseEvent];
   scroll: [event: Event];
-  'scroll-to-bottom': [smooth: boolean];
   'a2ui-user-action': [payload: A2UIUserActionPayload];
   feedback: [payload: { messageId: string; rating: 'positive' | 'negative' }];
   regenerate: [message: Message];
@@ -116,6 +103,7 @@ defineEmits<{
   'update-pending': [pendingId: string, content: string];
   confirm: [activityId: string, approved: boolean];
   'confirm-step': [payload: ConfirmStepPayload];
+  'submit-clarification': [payload: SubmitClarificationPayload];
   'error-retry': [step: Step];
   'error-switch-model': [step: Step];
   'error-rephrase': [step: Step];

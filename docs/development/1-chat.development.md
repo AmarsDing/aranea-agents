@@ -311,6 +311,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 66 | **P-ORCH.3** Agent 创建确认（EnsureAgent 复用 tool_confirmation 模式：ReplyFunc + ActivityEmitter） | P1 | ✅ 2026-07-18 |
 | 67 | **P-ORCH.4** 确认链路验证（ConfirmActivity RPC 复用 + session 状态流转 + 拒绝降级） | P1 | 🟡 单测覆盖，运行时端到端待验证 |
 | 68 | **P-ORCH.5** Allocate 两阶段并行化（Phase A 并行匹配 + Phase B 串行 factory） | P2 | ✅ 2026-07-18 |
+| 69 | **P-REPORT** 任务执行总结报告（ExecutionReportEnvelope → Step 持久化 + ExecutionReportCard 四板块 + 取消守卫 + LLM 降级） | P1 | ✅ 2026-07-22（运行时端到端待验证） |
 
 ### T8 UI 树形重构（2026-07-01 新增）
 
@@ -579,6 +580,86 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - [x] 任务卡片显示中断条 + 「继续执行」，点击后 CAS `interrupted→running` 并带轨迹重跑；重复点击/并发由 CAS 防住（409）
 - [x] 续跑后 synthesis 终态事件经 `CompleteTaskTerminal` 正常落库（task 不停留在 running）
 - [ ] **运行时端到端验证**（待用户执行）：运行中任务 →  kill 进程 → 重启 → 任务卡片显示「继续执行」→ 点击 → 任务带轨迹重跑至完成
+
+---
+
+### P-CLARIFY 需求澄清提问（Clarification Gate，2026-07-22）
+
+> **目标**：用户输入存在阻塞性歧义时，系统在同一 turn 内先以分页卡片向用户提问澄清，作答（或留空按推荐）后带澄清上下文续跑，避免方向性返工。
+> **需求**：[1-chat.md §1.10](./1-chat.md#110-需求澄清提问clarification)（US-CLARIFY-01）
+> **设计**：[1-chat.design.md §B.10.18](./1-chat.design.md#b1018-需求澄清提问-clarification-gate)
+
+#### 任务清单
+
+- [ ] TDD-biz：`StepKindClarify` + `StepStatusAwaitingInput` + `sessstatus.StatusReasonClarification` 枚举与序列化
+- [ ] TDD-intent：`intent.Artifact` 新增 `Clarifications`/`RiskFlags`；prompt 输出澄清契约（阻塞性歧义才触发，≤5 问）
+- [ ] TDD-service：ClarificationGate 判定矩阵（enabled × needs_clarification × questions 非空）；`publishClarifyStep`（UpsertTask 幂等 + orphan Step Kind=clarify/Status=awaiting_input/Version=1/StartedAt + seq.Publish）；Session → awaiting_confirmation(reason=clarification)；turn 挂起
+- [ ] TDD-service：提交端点 `POST /v1/chat/clarifications/{step_id}`（CAS awaiting_input→completed，重复提交 409）+ 同 turn 续跑注入澄清问答上下文；自由回复等价路径（SendChatMessage 命中 clarification 等待态）
+- [ ] 前端：`ClarifyBlock.vue` 分页卡片（上一页/下一页/完成，无跳过；单选/多选；推荐项高亮；每页「其他」输入；留空可提交；提交后只读摘要）；`TaskCard.vue` orphan step 注册渲染；hydration 恢复；i18n zh-CN/en-US
+- [ ] TDD-data：重启恢复——awaiting_input clarify step 恢复会话等待态；Agent 设置 `clarification_enabled`（默认 true）
+- [ ] 全量验证：`go build ./...` + `go test` 全过；前端 `pnpm lint` + `pnpm test` + `pnpm build` 全过
+- [ ] 文档同步：本块状态标记、§6 任务清单、65 交叉参考 Chat 卡片
+
+#### 验收标准
+
+- [ ] LLM 判定阻塞性歧义时发布 clarify 卡片并挂起 turn；轻微歧义不触发
+- [ ] 卡片分页交互：上一页/下一页/完成；无跳过；可全部留空提交（按推荐执行）
+- [ ] 提交后同一任务续跑，澄清问答注入上下文，不产生新任务卡片
+- [ ] 重复提交被 CAS 拒绝（409）；刷新/重启后卡片与作答进度恢复
+- [ ] `clarification_enabled=false` 时门透传走原流程
+
+---
+
+### P-REPORT 任务执行总结报告（Execution Report，2026-07-22）
+
+> **目标**：编排类任务执行完成（成功/部分失败/失败）后，精灵在聊天时间线给出结构化总结报告卡片（执行概览 + 智能分析结论 + 分步结果明细 + 产物交付物）；用户主动中断（存在 cancelled 团队）时不生成报告；LLM 结论生成失败时降级保留结构化板块。
+> **需求**：[1-chat.md §子模块：任务执行总结报告](./1-chat.md)
+> **设计**：[1-chat.design.md §B.10.17](./1-chat.design.md#b1017-任务执行总结报告execution-report落地设计2026-07-22)
+
+#### 任务清单
+
+- [x] biz 数据模型扩展：`TeamSynthesisResult` 增补 per-unit 运行统计字段；新增 `ExecutionOverview`；`SynthesisOutput` 新增 `Overview`/`Deliverables`；`SynthesizeResults` 统一装配 overview + deliverables
+- [x] biz 取消计数：`CheckAllTeamsCompleted` 将 cancelled 团队从 failed 中分离，`AllTeamsCompletedResult` 新增 `CancelledTeams`
+- [x] biz 端口：`SpiritTeamRunStatsReader`（批量读各团队最近 run 统计）+ `WithSpiritTeamRunStatsReader` 注入
+- [x] data：`TeamRunV2Repo.ListLatestRunStatsByTeams` 实现
+- [x] service 报告发布：`synthesisEventPublisher` 生成 `ExecutionReportEnvelope`（version/kind/content/strategy/degraded/overview/team_results/deliverables/synthesized_at）JSON 写入 `Step.Content`，以 `StepCreatedEvent`（Kind=notice，NoticeType=synthesis_completed）持久化——刷新后可恢复；TaskID 经 `resolveLatestUserTaskID` 挂到最近用户任务
+- [x] 取消守卫：`checkAllTeamsCompleted` 检测 `CancelledTeams > 0` 时跳过报告生成（用户主动中断不出报告）
+- [x] LLM 降级：结论生成失败时 `degraded=true` + 兜底文案，overview/team_results/deliverables 结构化板块完整保留
+- [x] 前端信封解析：`executionReport.ts`（`ExecutionReportEnvelope` 类型 + `parseExecutionReport` 防御式解析，非 JSON/错 kind 返回 null）
+- [x] 前端卡片：`ExecutionReportCard.vue` 四板块（头部：标题+状态 chip+完成单元/耗时；概览行：query+token；分析结论 markdown / 降级提示；分步结果明细、产物交付物默认折叠）
+- [x] 前端分支：`NoticeBlock.vue` 对 `synthesis_completed` + 合法信封渲染 `ExecutionReportCard`，解析失败回落默认 notice
+- [x] 前端清理：删除 spiritStore 旧 synthesis 死代码（`synthesisCompleted`/`synthesisResult`/`handleSynthesisCompleted`）与 `features/spirit/types.ts` legacy 类型
+- [x] i18n：zh-CN / en-US `chat.executionReport.*` 键
+- [x] 测试：biz `spirit_synthesis_report_test.go`（overview 装配/状态推导/取消计数/run stats enrich）；service `spirit_synthesis_report_test.go`（信封发布/取消守卫/降级）；前端 `ExecutionReportCard.spec.ts`（四板块渲染/状态映射/降级/空交付物/解析容错/NoticeBlock 分支）
+- [x] 全量验证：`go build ./...` exit 0 + `go test` 全过；前端 `pnpm lint` + `pnpm test` + `pnpm build` 全过
+- [x] 文档同步：`1-chat.md` 子模块需求 + `1-chat.design.md` §B.10.17 + 本块
+
+#### 改动文件清单
+
+| 文件 | 改动 |
+|------|------|
+| `internal/biz/spirit_synthesis.go` | `TeamSynthesisResult` 扩展 + `ExecutionOverview` + `SynthesisOutput.Overview/Deliverables` + `assembleOverview`/`assembleDeliverableItems` |
+| `internal/biz/spirit_team_usecase.go` | `AllTeamsCompletedResult.CancelledTeams`；`SpiritTeamRunStatsReader` 端口 + 注入 option |
+| `internal/data/team_run_v2_repo.go` | `ListLatestRunStatsByTeams` 批量读最近 run 统计 |
+| `internal/service/spirit_synthesis.go` | `synthesisEventPublisher`：信封 JSON → `StepCreatedEvent` 持久化 + LLM 降级路径 |
+| `internal/service/spirit_team.go` | 取消守卫（`CancelledTeams > 0` 跳过报告）；`resolveLatestUserTaskID` 提取复用 |
+| `cmd/admin/wire.go` / `wire_gen.go` | `NewSpiritSynthesisService`/`provideSpiritTeamUsecase` 新参数（seq/taskV2Reader/runStatsReader）接线 |
+| `web/src/features/chat/executionReport.ts` | 新建：信封类型 + `parseExecutionReport` |
+| `web/src/components/chat/ExecutionReportCard.vue` | 新建：四板块报告卡片 |
+| `web/src/components/chat/NoticeBlock.vue` | `synthesis_completed` + 合法信封 → 报告卡片分支 |
+| `web/src/stores/spirit/index.ts` | 删除旧 synthesis 死代码 |
+| `web/src/features/spirit/types.ts` | 删除 legacy synthesis 类型 |
+| `web/src/i18n/locales/zh-CN.ts` / `en-US.ts` | `chat.executionReport.*` |
+| `internal/biz/spirit_synthesis_report_test.go` / `internal/service/spirit_synthesis_report_test.go` | 后端单测 |
+| `web/src/components/chat/__tests__/ExecutionReportCard.spec.ts` | 前端单测 |
+
+#### 验收标准
+
+- [x] 任务完成（成功/部分失败/失败）后时间线出现报告卡片，含执行概览（状态/完成单元数/耗时/token）、分析结论、分步明细、交付物
+- [x] 存在 cancelled 团队（用户主动中断）时不生成报告
+- [x] LLM 结论失败时卡片显示降级提示，结构化板块仍完整可见
+- [x] 报告以 Step 持久化，刷新页面后仍可见；解析失败回落默认 notice 渲染
+- [ ] **运行时端到端验证**（待用户执行）：发起编排任务 → 完成后查看报告卡片四板块展示
 
 ---
 

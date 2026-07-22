@@ -21,6 +21,7 @@ func TestSessionStatusMachine_TransitionTo_ValidTransitions(t *testing.T) {
 		{SessionStatusRunning, SessionStatusInterrupted, StatusReasonUnexpectedShutdown},
 		{SessionStatusRunning, SessionStatusAwaitingConfirmation, StatusReasonToolConfirmation},
 		{SessionStatusRunning, SessionStatusAwaitingConfirmation, StatusReasonAgentAwaitingReply},
+		{SessionStatusRunning, SessionStatusAwaitingConfirmation, StatusReasonClarification},
 		{SessionStatusAwaitingConfirmation, SessionStatusRunning, ""},
 		{SessionStatusAwaitingConfirmation, SessionStatusInterrupted, StatusReasonUserCancelled},
 		{SessionStatusAwaitingConfirmation, SessionStatusInterrupted, StatusReasonConfirmationTimeout},

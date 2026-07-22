@@ -916,6 +916,23 @@ export function useChatWorkspace() {
     }
   }
 
+  // Clarification Gate (B.10.18): Handle submit-clarification event from
+  // ClarifyBlock → API call. The backend flips the step to completed and
+  // resumes the turn; the WS step.updated event drives the card's summary view.
+  async function onSubmitClarification(payload: SubmitClarificationPayload) {
+    try {
+      const ok = await submitClarification(payload);
+      if (!ok) {
+        $q.notify({
+          type: 'warning',
+          message: t('chat.clarify.submitRejected'),
+        });
+      }
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('chat.clarify.submitFailed') });
+    }
+  }
+
   /**
    * L3: Resume an interrupted task (server-restart recovery).
    *

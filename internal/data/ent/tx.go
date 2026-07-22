@@ -50,6 +50,8 @@ type Tx struct {
 	CronTask *CronTaskClient
 	// CronTaskRun is the client for interacting with the CronTaskRun builders.
 	CronTaskRun *CronTaskRunClient
+	// DeptLeadMessage is the client for interacting with the DeptLeadMessage builders.
+	DeptLeadMessage *DeptLeadMessageClient
 	// EvalCase is the client for interacting with the EvalCase builders.
 	EvalCase *EvalCaseClient
 	// EvalCaseResult is the client for interacting with the EvalCaseResult builders.
@@ -132,6 +134,8 @@ type Tx struct {
 	PlatformSkill *PlatformSkillClient
 	// PlatformTool is the client for interacting with the PlatformTool builders.
 	PlatformTool *PlatformToolClient
+	// ResourceAccessAudit is the client for interacting with the ResourceAccessAudit builders.
+	ResourceAccessAudit *ResourceAccessAuditClient
 	// SchemaMigration is the client for interacting with the SchemaMigration builders.
 	SchemaMigration *SchemaMigrationClient
 	// SelfCheckReport is the client for interacting with the SelfCheckReport builders.
@@ -349,6 +353,7 @@ func (tx *Tx) init() {
 	tx.CompiledTeam = NewCompiledTeamClient(tx.config)
 	tx.CronTask = NewCronTaskClient(tx.config)
 	tx.CronTaskRun = NewCronTaskRunClient(tx.config)
+	tx.DeptLeadMessage = NewDeptLeadMessageClient(tx.config)
 	tx.EvalCase = NewEvalCaseClient(tx.config)
 	tx.EvalCaseResult = NewEvalCaseResultClient(tx.config)
 	tx.EvalDataset = NewEvalDatasetClient(tx.config)
@@ -390,6 +395,7 @@ func (tx *Tx) init() {
 	tx.PlatformPlugin = NewPlatformPluginClient(tx.config)
 	tx.PlatformSkill = NewPlatformSkillClient(tx.config)
 	tx.PlatformTool = NewPlatformToolClient(tx.config)
+	tx.ResourceAccessAudit = NewResourceAccessAuditClient(tx.config)
 	tx.SchemaMigration = NewSchemaMigrationClient(tx.config)
 	tx.SelfCheckReport = NewSelfCheckReportClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)

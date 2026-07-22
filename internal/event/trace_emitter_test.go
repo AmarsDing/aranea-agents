@@ -38,12 +38,10 @@ func TestTraceEmitterPublishesFlowLog(t *testing.T) {
 		Domain:    TraceDomainChat,
 		AgentKey:  "a1",
 	}
-	em := NewTraceEmitter(tc, nil)
-	// B-DEBT-1: flow_log now publishes via the typed MonitorEventBus, not the
-	// legacy SessionBus Envelope fallback. Inject a captureMonitorBus so the
-	// test verifies the new path.
+	// B-DEBT-1: flow_log publishes via the typed MonitorEventBus. Inject a
+	// captureMonitorBus at construction so the test verifies the new path.
 	monBus := &captureMonitorBus{}
-	em.FlowTracker.infra = &Infra{MonitorEventBus: monBus}
+	em := NewTraceEmitter(&Infra{MonitorEventBus: monBus}, tc, nil)
 	em.LogStart("chat.llm.invoke", "正在调用语言模型")
 	em.LogDone("chat.llm.invoke", "模型已返回")
 	time.Sleep(50 * time.Millisecond)
@@ -69,7 +67,7 @@ func TestTraceEmitterPublishesFlowLog(t *testing.T) {
 }
 
 func TestTraceEmitterMetadataJSON(t *testing.T) {
-	em := NewTraceEmitter(TraceContext{TraceID: "tr_x", RunID: "r1"}, nil)
+	em := NewTraceEmitter(nil, TraceContext{TraceID: "tr_x", RunID: "r1"}, nil)
 	em.FinishRoot("ok")
 	raw := em.MetadataJSON()
 	if raw == "" || raw == "{}" {
@@ -87,9 +85,8 @@ func TestFlowLogEntry_carriesSpanIDFromOtelRefs(t *testing.T) {
 		RunID:     "run_1",
 		Domain:    TraceDomainChat,
 	}
-	em := NewTraceEmitter(tc, nil)
 	monBus := &captureMonitorBus{}
-	em.FlowTracker.infra = &Infra{MonitorEventBus: monBus}
+	em := NewTraceEmitter(&Infra{MonitorEventBus: monBus}, tc, nil)
 	em.SetOtelRefs("tr_test", "otel_root_span_123")
 	em.LogDone("chat.llm.invoke", "model returned")
 	time.Sleep(50 * time.Millisecond)
@@ -116,9 +113,8 @@ func TestFlowLogEntry_emptySpanIDWhenOtelRefsNotSet(t *testing.T) {
 		RunID:     "run_1",
 		Domain:    TraceDomainChat,
 	}
-	em := NewTraceEmitter(tc, nil)
 	monBus := &captureMonitorBus{}
-	em.FlowTracker.infra = &Infra{MonitorEventBus: monBus}
+	em := NewTraceEmitter(&Infra{MonitorEventBus: monBus}, tc, nil)
 	em.LogDone("chat.llm.invoke", "model returned")
 	time.Sleep(50 * time.Millisecond)
 
@@ -130,6 +126,39 @@ func TestFlowLogEntry_emptySpanIDWhenOtelRefsNotSet(t *testing.T) {
 	for _, ev := range monBus.evs {
 		if spanID, _ := ev.Metadata["span_id"].(string); spanID != "" {
 			t.Fatalf("expected empty span_id when OtelRefs not set, got %q", spanID)
+		}
+	}
+}
+
+// TestNewTraceEmitterForRunPublishesViaInfraFromBus verifies the production
+// wiring path end-to-end: call sites wrap the shared contract.MonitorBus with
+// NewInfraFromBus and pass it via TraceEmitterOpts.Infra, so flow_log events
+// reach the same bus the WS server subscribes to. Regression test for the
+// missing-infra bug where flow_log events were silently dropped (ft.infra == nil).
+func TestNewTraceEmitterForRunPublishesViaInfraFromBus(t *testing.T) {
+	monBus := &captureMonitorBus{}
+	em := NewTraceEmitterForRun(TraceEmitterOpts{
+		Ctx:       context.Background(),
+		SessionID: "sess_e2e",
+		RunID:     "run_e2e",
+		AgentKey:  "agent_x",
+		Domain:    TraceDomainChat,
+		Infra:     NewInfraFromBus(monBus),
+	})
+	em.LogStart("chat.llm.invoke", "正在调用语言模型")
+	em.LogDone("chat.llm.invoke", "模型已返回")
+
+	monBus.mu.Lock()
+	defer monBus.mu.Unlock()
+	if len(monBus.evs) < 2 {
+		t.Fatalf("expected >=2 flow_log events via NewInfraFromBus path, got %d", len(monBus.evs))
+	}
+	for _, ev := range monBus.evs {
+		if ev.Type != contract.MonitorEventTypeFlowLog {
+			t.Fatalf("expected flow_log, got %s", ev.Type)
+		}
+		if ev.SessionID != "sess_e2e" {
+			t.Fatalf("expected session_id sess_e2e, got %q", ev.SessionID)
 		}
 	}
 }

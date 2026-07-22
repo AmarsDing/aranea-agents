@@ -12,10 +12,11 @@ export type UsageQuery = {
   agentId: string | undefined;
   status: string | undefined;
   limit: number | undefined;
-  offset: number | undefined;
   granularity: string | undefined;
   teamId: string | undefined;
   usageKind: string | undefined;
+  // Offset for ListUsageEvents server-side pagination (ignored by aggregate RPCs).
+  offset: number | undefined;
 };
 
 export type UsageSummary = {
@@ -191,6 +192,7 @@ export type ListBreakdownResponse = {
 
 export type ListUsageEventsResponse = {
   items: TokenUsageEvent[] | undefined;
+  // Total matching rows for the query filters (same scope as items).
   total: number | undefined;
 };
 
@@ -330,6 +332,9 @@ export function createUsageServiceClient(
       if (request.usageKind) {
         queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`)
       }
+      if (request.offset) {
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -379,6 +384,9 @@ export function createUsageServiceClient(
       }
       if (request.usageKind) {
         queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`)
+      }
+      if (request.offset) {
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
@@ -430,6 +438,9 @@ export function createUsageServiceClient(
       if (request.usageKind) {
         queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`)
       }
+      if (request.offset) {
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -480,6 +491,9 @@ export function createUsageServiceClient(
       if (request.usageKind) {
         queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`)
       }
+      if (request.offset) {
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -521,9 +535,6 @@ export function createUsageServiceClient(
       if (request.limit) {
         queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
-      if (request.offset != null && request.offset >= 0) {
-        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`);
-      }
       if (request.granularity) {
         queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`)
       }
@@ -532,6 +543,9 @@ export function createUsageServiceClient(
       }
       if (request.usageKind) {
         queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`)
+      }
+      if (request.offset) {
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
@@ -708,6 +722,9 @@ export function createUsageServiceClient(
       }
       if (request.usageKind) {
         queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`)
+      }
+      if (request.offset) {
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
