@@ -363,17 +363,20 @@ func (u *Usecase) UpdateCollectionCounts(ctx context.Context, id string, docDelt
 }
 
 // EnsureDefaultCollection 返回「默认知识库」，不存在则按当前 Embedder 配置懒创建（US-14 上传免预选兜底）。
-// 按 name 精确匹配复用——不引入 is_default 标记列，避免多默认库歧义。
-func (u *Usecase) EnsureDefaultCollection(ctx context.Context, embeddingModel string, dim int) (Collection, error) {
+// 按 name + workspace 精确匹配复用——不引入 is_default 标记列，避免多默认库歧义。
+// ws 为调用方 workspace（system 调用传 "" 表示共享库）；创建时盖章到 Collection，
+// 与 service 层 CreateCollection 的 C-01 租户盖章行为一致——否则懒创建的默认库
+// workspace="" 会被 assertCollectionMutateAccess 视为共享只读，导致首次入库 404。
+func (u *Usecase) EnsureDefaultCollection(ctx context.Context, embeddingModel string, dim int, ws string) (Collection, error) {
 	if err := u.requireRepo(); err != nil {
 		return Collection{}, err
 	}
-	cols, _, err := u.collections.ListCollections(ctx, "", 1000, 0)
+	cols, _, err := u.collections.ListCollections(ctx, ws, 1000, 0)
 	if err != nil {
 		return Collection{}, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainKnowledge)
 	}
 	for _, c := range cols {
-		if c.Name == DefaultCollectionName {
+		if c.Name == DefaultCollectionName && c.Workspace == ws {
 			return c, nil
 		}
 	}
@@ -382,6 +385,7 @@ func (u *Usecase) EnsureDefaultCollection(ctx context.Context, embeddingModel st
 		Description:    "未指定知识库的文档自动归入此处",
 		EmbeddingModel: embeddingModel,
 		Dim:            dim,
+		Workspace:      ws,
 	})
 }
 

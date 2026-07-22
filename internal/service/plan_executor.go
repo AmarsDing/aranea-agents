@@ -559,6 +559,28 @@ func (r *dagRun) run(ctx context.Context) error {
 		r.publishGraphStageFailed(ctx, err.Error())
 		return err
 	}
+	// P1 形式契约（B.10.15.2）：启动时基于 board.Steps 做 advisory 契约验证。
+	// 团队是惰性组建的（dispatch 时才 AssembleTeam），不存在"全部组建完成"
+	// 的统一时点；而 PlanStep 契约在 PublishV2Board 时已持久化，此处可全量校验。
+	// warnings 不阻断派发：记日志 + 发 SystemNoticeEvent（contract_mismatch，
+	// WS-only 不持久化），供前端 PlanBlock 展示黄色提示。
+	if warnings := biz.ValidatePlanStepContracts(r.board.Steps); len(warnings) > 0 {
+		r.pe.lg.Info("交付物契约 advisory 校验发现不匹配",
+			loggateway.StepID("plan_executor.contract_validate.mismatch"),
+			loggateway.Str("plan_board_id", r.board.ID),
+			loggateway.Int("warning_count", len(warnings)))
+		if r.pe.bus != nil {
+			r.pe.bus.Publish(ctx, biz.NewSystemNoticeEvent(
+				r.board.SessionID,
+				"contract_mismatch",
+				fmt.Sprintf("交付物契约校验发现 %d 处不匹配", len(warnings)),
+				map[string]any{
+					"plan_board_id": r.board.ID,
+					"warnings":      warnings,
+				},
+			))
+		}
+	}
 	// Dispatch root steps (empty DependsOn). Add to WaitGroup before
 	// starting the goroutine to guarantee Wait sees the correct count.
 	for i := range r.board.Steps {

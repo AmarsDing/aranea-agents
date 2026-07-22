@@ -10,6 +10,7 @@ import (
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -141,8 +142,8 @@ func (m *us14MemRepo) MoveDocument(_ context.Context, id, targetCollectionID str
 	return d, nil
 }
 
-func (m *us14MemRepo) InsertChunks(context.Context, []biz.KnowledgeChunk) error     { return nil }
-func (m *us14MemRepo) DeleteChunksByDocument(context.Context, string) error         { return nil }
+func (m *us14MemRepo) InsertChunks(context.Context, []biz.KnowledgeChunk) error { return nil }
+func (m *us14MemRepo) DeleteChunksByDocument(context.Context, string) error     { return nil }
 func (m *us14MemRepo) SearchChunks(context.Context, biz.KnowledgeSearchQuery, []float32) ([]biz.KnowledgeChunk, error) {
 	return nil, nil
 }
@@ -210,10 +211,13 @@ func TestIngestDocument_EmptyCollection_FallsIntoDefaultCollection(t *testing.T)
 func TestIngestDocument_EmptyCollection_ReusesExistingDefaultCollection(t *testing.T) {
 	repo := newUS14MemRepo()
 	uc := biz.NewKnowledgeUsecase(repo, repo, repo)
+	// 生产路径由 service RPC 盖章 workspace（C-01）；测试直调 usecase 需模拟该盖章，
+	// 否则空 workspace 被 assertCollectionMutateAccess 视为共享只读。
 	existing, err := uc.CreateCollection(context.Background(), biz.KnowledgeCollection{
 		Name:           "默认知识库",
 		EmbeddingModel: "text-embedding-3-small",
 		Dim:            1536,
+		Workspace:      workspace.DefaultWorkspaceID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -251,6 +255,7 @@ func TestIngestDocument_ExplicitCollection_Unchanged(t *testing.T) {
 		Name:           "quant",
 		EmbeddingModel: "text-embedding-3-small",
 		Dim:            1536,
+		Workspace:      workspace.DefaultWorkspaceID, // 模拟 service RPC 的 C-01 盖章
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -332,6 +337,12 @@ func TestSearch_EmptyCollection_ZeroCollections_ReturnsEmpty(t *testing.T) {
 func TestSearch_ExplicitCollection_Unchanged(t *testing.T) {
 	repo := newUS14MemRepo()
 	uc := biz.NewKnowledgeUsecase(repo, repo, repo)
+	// C-01 前置校验要求显式 collection 存在；workspace="" 为共享库，读放行。
+	if _, err := uc.CreateCollection(context.Background(), biz.KnowledgeCollection{
+		ID: "col-x", Name: "x", EmbeddingModel: "m", Dim: 3,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	retriever := knowledge.NewRetriever(us14QueryEmbedder{}, repo, nil, loggateway.NewNoop())
 	federated := knowledge.NewFederatedRetrieverWithMeta(nil, retriever, repo, loggateway.NewNoop())
 	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{

@@ -17,6 +17,7 @@ func taskToWire(t biz.Task) taskWire {
 		Status:      t.Status,
 		Seq:         t.Seq,
 		Version:     t.Version,
+		WorkspaceID: t.WorkspaceID,
 		CreatedAt:   t.CreatedAt,
 		UpdatedAt:   t.UpdatedAt,
 		CompletedAt: t.CompletedAt,
@@ -203,6 +204,8 @@ func planStepToWire(ps biz.PlanStep) planStepWire {
 		Result:            stepResultToWire(ps.Result),
 		Error:             stepErrorToWire(ps.Error),
 		AgentKeys:         ps.AgentKeys,
+		Deliverables:      ps.Deliverables,
+		InputContract:     ps.InputContract,
 	}
 }
 
@@ -352,7 +355,7 @@ func v2EventPayloadToWire(e biz.Event) (any, error) {
 	case *biz.HeartbeatEvent:
 		return heartbeatEventWire{Message: ev.Message, Meta: ev.Meta}, nil
 	case *biz.SystemNoticeEvent:
-		return systemNoticeEventWire{NoticeType: ev.NoticeType, Message: ev.Message, Meta: ev.Meta}, nil
+		return systemNoticeEventWire{NoticeType: ev.NoticeType, Message: ev.Message, Meta: ev.Meta, Seq: ev.Seq}, nil
 	// v1 bridge
 	case *biz.ActivityBridgeEvent:
 		return activityBridgeEventWire{Event: ev.Event}, nil

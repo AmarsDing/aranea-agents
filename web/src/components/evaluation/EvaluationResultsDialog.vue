@@ -122,7 +122,7 @@ import { computed, ref } from 'vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
-import { getRunResults } from '../../features/evaluation/api';
+import { useEvaluationStore } from '../../stores/evaluation';
 import { exportEvalRunCsv, exportEvalRunJson } from '../../features/evaluation/exportRunResults';
 import type { EvalCaseResult, EvalRun } from '../../features/evaluation/types';
 import type { RegistryTableColumn } from '../../features/ui/registryTableColumns';
@@ -150,10 +150,11 @@ const emit = defineEmits<{
 
 const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, props.total) / props.pageSize)));
 const exporting = ref(false);
+const evaluationStore = useEvaluationStore();
 
 async function loadAllForExport(): Promise<EvalCaseResult[]> {
   if (!props.run) return [];
-  const res = await getRunResults(props.run.id, { limit: 5000, offset: 0 });
+  const res = await evaluationStore.loadRunResults(props.run.id, { limit: 5000, offset: 0 });
   return res.items;
 }
 

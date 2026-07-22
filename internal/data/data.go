@@ -651,10 +651,10 @@ func entLogAdapter(lg loggateway.Logger) func(...any) {
 
 // preEntSessionTurnIdempotencyBackfill runs BEFORE Ent Schema.Create to
 // backfill empty idempotency_key values on session_turns. This is required
-// on Postgres because Ent adds the column (DEFAULT '') and creates the
+// on Postgres because Ent adds the column (DEFAULT ”) and creates the
 // unique index in one step (L1), before the DDL migration (L2) can backfill.
 // Without this, multiple legacy rows in the same session collide on
-// idempotency_key='' and the unique index creation fails with 23505.
+// idempotency_key=” and the unique index creation fails with 23505.
 //
 // On SQLite this is a no-op: Ent does not ADD COLUMN on existing tables,
 // so the column/index are created by DDL migration 20261008 which backfills

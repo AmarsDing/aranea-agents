@@ -1,0 +1,328 @@
+﻿?   	aranea-agents	[no test files]
+?   	aranea-agents/api/kratos/a2a/v1	[no test files]
+?   	aranea-agents/api/kratos/admin/v1	[no test files]
+?   	aranea-agents/api/kratos/agent/v1	[no test files]
+?   	aranea-agents/api/kratos/ai_refine/v1	[no test files]
+?   	aranea-agents/api/kratos/artifact/v1	[no test files]
+?   	aranea-agents/api/kratos/avatar/v1	[no test files]
+?   	aranea-agents/api/kratos/channel/v1	[no test files]
+?   	aranea-agents/api/kratos/chat/v1	[no test files]
+?   	aranea-agents/api/kratos/cron/v1	[no test files]
+?   	aranea-agents/api/kratos/ecosystem/v1	[no test files]
+?   	aranea-agents/api/kratos/evaluation/v1	[no test files]
+?   	aranea-agents/api/kratos/gateway/v1	[no test files]
+?   	aranea-agents/api/kratos/graph/v1	[no test files]
+?   	aranea-agents/api/kratos/hook/v1	[no test files]
+?   	aranea-agents/api/kratos/industry_taxonomy/v1	[no test files]
+?   	aranea-agents/api/kratos/knowledge/v1	[no test files]
+?   	aranea-agents/api/kratos/learning_loop/v1	[no test files]
+?   	aranea-agents/api/kratos/llm_provider_model/v1	[no test files]
+?   	aranea-agents/api/kratos/mcp_server/v1	[no test files]
+?   	aranea-agents/api/kratos/memory/v1	[no test files]
+?   	aranea-agents/api/kratos/model_catalog/v1	[no test files]
+?   	aranea-agents/api/kratos/monitor/v1	[no test files]
+?   	aranea-agents/api/kratos/organization/v1	[no test files]
+?   	aranea-agents/api/kratos/pack/v1	[no test files]
+?   	aranea-agents/api/kratos/plugin/v1	[no test files]
+?   	aranea-agents/api/kratos/runtime_profile/v1	[no test files]
+?   	aranea-agents/api/kratos/session/v1	[no test files]
+?   	aranea-agents/api/kratos/skill/v1	[no test files]
+?   	aranea-agents/api/kratos/skill_dedup/v1	[no test files]
+?   	aranea-agents/api/kratos/skill_evolution/v1	[no test files]
+?   	aranea-agents/api/kratos/skill_evolution_suggestion/v1	[no test files]
+?   	aranea-agents/api/kratos/skill_intelligence/v1	[no test files]
+?   	aranea-agents/api/kratos/system_setting/v1	[no test files]
+?   	aranea-agents/api/kratos/taxonomy/v1	[no test files]
+?   	aranea-agents/api/kratos/team/v1	[no test files]
+?   	aranea-agents/api/kratos/tool/v1	[no test files]
+?   	aranea-agents/api/kratos/usage/v1	[no test files]
+ok  	aranea-agents/cmd/admin	0.420s
+?   	aranea-agents/cmd/analyze_activities	[no test files]
+?   	aranea-agents/cmd/analyze_session_meta	[no test files]
+?   	aranea-agents/cmd/aranea	[no test files]
+ok  	aranea-agents/cmd/araneactl/fieldguide-lint	0.129s
+?   	aranea-agents/cmd/araneactl/fmtcheck	[no test files]
+ok  	aranea-agents/cmd/araneactl/lint	0.126s
+?   	aranea-agents/cmd/araneactl/resetseed	[no test files]
+?   	aranea-agents/cmd/araneactl/verifyseed	[no test files]
+?   	aranea-agents/cmd/checkdb	[no test files]
+?   	aranea-agents/cmd/dbfix	[no test files]
+?   	aranea-agents/cmd/fetch-channel-icons	[no test files]
+ok  	aranea-agents/cmd/launcher	0.155s
+ok  	aranea-agents/cmd/migrate-sqlite-to-postgres	0.443s
+?   	aranea-agents/cmd/migrate-sqlite-to-postgres/reset_pg	[no test files]
+?   	aranea-agents/cmd/reset_admin_pw	[no test files]
+?   	aranea-agents/cmd/session-consistency-check	[no test files]
+?   	aranea-agents/cmd/tools/agency-converter	[no test files]
+?   	aranea-agents/cmd/tools/agency-yaml-sync	[no test files]
+ok  	aranea-agents/docs/scenarios/scenario/loader	0.188s
+ok  	aranea-agents/internal/a2a	0.354s
+ok  	aranea-agents/internal/a2a/health	0.193s
+ok  	aranea-agents/internal/a2a/trpc	0.288s
+?   	aranea-agents/internal/adapter	[no test files]
+ok  	aranea-agents/internal/agent	14.824s
+ok  	aranea-agents/internal/agent/a2ui	0.195s
+ok  	aranea-agents/internal/agent/callbacks	0.139s
+ok  	aranea-agents/internal/agent/codeexecutor	0.262s
+ok  	aranea-agents/internal/agent/intent	0.335s
+ok  	aranea-agents/internal/agent/llmcompat	0.338s
+ok  	aranea-agents/internal/agent/planner	0.194s
+ok  	aranea-agents/internal/agent/v2	0.317s
+ok  	aranea-agents/internal/archlint	1.616s
+ok  	aranea-agents/internal/artifact	0.149s
+ok  	aranea-agents/internal/artifact/trpc	0.165s
+ok  	aranea-agents/internal/biz	8.930s
+ok  	aranea-agents/internal/biz/a2a	0.267s
+ok  	aranea-agents/internal/biz/agenticons	0.400s
+ok  	aranea-agents/internal/biz/artifact	0.251s
+ok  	aranea-agents/internal/biz/avatar	0.430s
+ok  	aranea-agents/internal/biz/backgroundjob	0.192s
+ok  	aranea-agents/internal/biz/channelicons	0.232s
+ok  	aranea-agents/internal/biz/cron	0.222s
+ok  	aranea-agents/internal/biz/ecosystem	0.233s
+ok  	aranea-agents/internal/biz/evaluation	0.249s
+ok  	aranea-agents/internal/biz/flowlog	0.175s
+ok  	aranea-agents/internal/biz/hook	0.261s
+ok  	aranea-agents/internal/biz/knowledge	0.233s
+ok  	aranea-agents/internal/biz/monitor	0.781s
+ok  	aranea-agents/internal/biz/pack	0.261s
+ok  	aranea-agents/internal/biz/plugin	0.257s
+ok  	aranea-agents/internal/biz/session	0.497s
+ok  	aranea-agents/internal/biz/shared	0.226s
+ok  	aranea-agents/internal/biz/skill	0.150s
+ok  	aranea-agents/internal/biz/tool	7.889s
+?   	aranea-agents/internal/biz/types	[no test files]
+ok  	aranea-agents/internal/biz/usage	0.162s
+ok  	aranea-agents/internal/channel	0.210s
+ok  	aranea-agents/internal/channel/all	0.216s
+ok  	aranea-agents/internal/channel/dingtalk	0.201s
+ok  	aranea-agents/internal/channel/discord	0.196s
+ok  	aranea-agents/internal/channel/lark	0.510s
+ok  	aranea-agents/internal/channel/line	0.167s
+ok  	aranea-agents/internal/channel/mattermost	0.216s
+ok  	aranea-agents/internal/channel/onebot	0.166s
+ok  	aranea-agents/internal/channel/port	0.198s
+ok  	aranea-agents/internal/channel/preview	0.201s
+ok  	aranea-agents/internal/channel/qq	0.228s
+ok  	aranea-agents/internal/channel/runtime	1.005s
+ok  	aranea-agents/internal/channel/slack	0.197s
+ok  	aranea-agents/internal/channel/teams	0.271s
+ok  	aranea-agents/internal/channel/telegram	0.188s
+ok  	aranea-agents/internal/channel/wechat	0.160s
+ok  	aranea-agents/internal/channel/wecom	0.157s
+ok  	aranea-agents/internal/chatactivity	0.480s
+ok  	aranea-agents/internal/cli	0.173s
+ok  	aranea-agents/internal/cli/client	6.146s
+ok  	aranea-agents/internal/cli/clierr	0.098s
+ok  	aranea-agents/internal/cli/cmd	0.207s
+ok  	aranea-agents/internal/cli/config	0.103s
+ok  	aranea-agents/internal/cli/output	0.192s
+ok  	aranea-agents/internal/cli/repl	0.199s
+ok  	aranea-agents/internal/cli/ui	0.108s
+ok  	aranea-agents/internal/compress	0.534s
+ok  	aranea-agents/internal/conf	0.111s
+ok  	aranea-agents/internal/cronrunner	0.186s
+ok  	aranea-agents/internal/cronrunner/jobs	0.428s
+ok  	aranea-agents/internal/data	21.834s
+ok  	aranea-agents/internal/data/artifactfs	0.296s
+?   	aranea-agents/internal/data/ent	[no test files]
+?   	aranea-agents/internal/data/ent/admin	[no test files]
+?   	aranea-agents/internal/data/ent/agent	[no test files]
+?   	aranea-agents/internal/data/ent/agentperformance	[no test files]
+?   	aranea-agents/internal/data/ent/agentpromptfile	[no test files]
+?   	aranea-agents/internal/data/ent/agentruntimesetting	[no test files]
+?   	aranea-agents/internal/data/ent/agenttemplate	[no test files]
+?   	aranea-agents/internal/data/ent/allocationplan	[no test files]
+?   	aranea-agents/internal/data/ent/avatarasset	[no test files]
+?   	aranea-agents/internal/data/ent/backgroundjob	[no test files]
+?   	aranea-agents/internal/data/ent/borrowrequest	[no test files]
+?   	aranea-agents/internal/data/ent/budgetalert	[no test files]
+?   	aranea-agents/internal/data/ent/channelinboundreceipt	[no test files]
+?   	aranea-agents/internal/data/ent/channelruntimelease	[no test files]
+?   	aranea-agents/internal/data/ent/channelturnjob	[no test files]
+?   	aranea-agents/internal/data/ent/circuitbreakerstate	[no test files]
+?   	aranea-agents/internal/data/ent/compiledteam	[no test files]
+?   	aranea-agents/internal/data/ent/crontask	[no test files]
+?   	aranea-agents/internal/data/ent/crontaskrun	[no test files]
+?   	aranea-agents/internal/data/ent/enttest	[no test files]
+?   	aranea-agents/internal/data/ent/evalcase	[no test files]
+?   	aranea-agents/internal/data/ent/evalcaseresult	[no test files]
+?   	aranea-agents/internal/data/ent/evaldataset	[no test files]
+?   	aranea-agents/internal/data/ent/evalrun	[no test files]
+?   	aranea-agents/internal/data/ent/eventdeliveryoutbox	[no test files]
+?   	aranea-agents/internal/data/ent/evolutionsuggestion	[no test files]
+?   	aranea-agents/internal/data/ent/experiencereport	[no test files]
+?   	aranea-agents/internal/data/ent/failurepattern	[no test files]
+?   	aranea-agents/internal/data/ent/flowlogevent	[no test files]
+?   	aranea-agents/internal/data/ent/gatewaywebhook	[no test files]
+?   	aranea-agents/internal/data/ent/graphdefinition	[no test files]
+?   	aranea-agents/internal/data/ent/graphexecution	[no test files]
+?   	aranea-agents/internal/data/ent/graphnodev2	[no test files]
+?   	aranea-agents/internal/data/ent/graphstagev2	[no test files]
+?   	aranea-agents/internal/data/ent/graphtask	[no test files]
+?   	aranea-agents/internal/data/ent/graphtaskcomment	[no test files]
+?   	aranea-agents/internal/data/ent/graphtaskevent	[no test files]
+?   	aranea-agents/internal/data/ent/graphtasklink	[no test files]
+?   	aranea-agents/internal/data/ent/graphtasklog	[no test files]
+?   	aranea-agents/internal/data/ent/graphtaskrun	[no test files]
+?   	aranea-agents/internal/data/ent/healrecord	[no test files]
+?   	aranea-agents/internal/data/ent/hook	[no test files]
+?   	aranea-agents/internal/data/ent/llmprovidermodel	[no test files]
+?   	aranea-agents/internal/data/ent/mediaprovider	[no test files]
+?   	aranea-agents/internal/data/ent/membersessionv2	[no test files]
+?   	aranea-agents/internal/data/ent/migrate	[no test files]
+?   	aranea-agents/internal/data/ent/modelpricingrule	[no test files]
+?   	aranea-agents/internal/data/ent/modeltokenusagehourly	[no test files]
+?   	aranea-agents/internal/data/ent/orchestration	[no test files]
+?   	aranea-agents/internal/data/ent/orchestrationstep	[no test files]
+?   	aranea-agents/internal/data/ent/organization	[no test files]
+?   	aranea-agents/internal/data/ent/planboardv2	[no test files]
+?   	aranea-agents/internal/data/ent/planstepv2	[no test files]
+?   	aranea-agents/internal/data/ent/platformchannel	[no test files]
+?   	aranea-agents/internal/data/ent/platformchannelcredential	[no test files]
+?   	aranea-agents/internal/data/ent/platformchanneldelivery	[no test files]
+?   	aranea-agents/internal/data/ent/platformchannelpeersession	[no test files]
+?   	aranea-agents/internal/data/ent/platformhook	[no test files]
+?   	aranea-agents/internal/data/ent/platformmcpserver	[no test files]
+?   	aranea-agents/internal/data/ent/platformmcpusercredential	[no test files]
+?   	aranea-agents/internal/data/ent/platformplugin	[no test files]
+?   	aranea-agents/internal/data/ent/platformskill	[no test files]
+?   	aranea-agents/internal/data/ent/platformtool	[no test files]
+?   	aranea-agents/internal/data/ent/predicate	[no test files]
+?   	aranea-agents/internal/data/ent/runtime	[no test files]
+?   	aranea-agents/internal/data/ent/schema	[no test files]
+?   	aranea-agents/internal/data/ent/schemamigration	[no test files]
+?   	aranea-agents/internal/data/ent/selfcheckreport	[no test files]
+?   	aranea-agents/internal/data/ent/session	[no test files]
+?   	aranea-agents/internal/data/ent/sessionmetrics	[no test files]
+?   	aranea-agents/internal/data/ent/sessionparticipant	[no test files]
+?   	aranea-agents/internal/data/ent/sessionrun	[no test files]
+?   	aranea-agents/internal/data/ent/sessionruncheckpoint	[no test files]
+?   	aranea-agents/internal/data/ent/sessionruntime	[no test files]
+?   	aranea-agents/internal/data/ent/sessionturn	[no test files]
+?   	aranea-agents/internal/data/ent/sessionv2	[no test files]
+?   	aranea-agents/internal/data/ent/skillevolutionsuggestion	[no test files]
+?   	aranea-agents/internal/data/ent/skillimportjob	[no test files]
+?   	aranea-agents/internal/data/ent/skillinvocation	[no test files]
+?   	aranea-agents/internal/data/ent/skillversion	[no test files]
+?   	aranea-agents/internal/data/ent/stepv2	[no test files]
+?   	aranea-agents/internal/data/ent/systemsetting	[no test files]
+?   	aranea-agents/internal/data/ent/taskdeadletter	[no test files]
+?   	aranea-agents/internal/data/ent/taskplan	[no test files]
+?   	aranea-agents/internal/data/ent/taskv2	[no test files]
+?   	aranea-agents/internal/data/ent/team	[no test files]
+?   	aranea-agents/internal/data/ent/teamrun	[no test files]
+?   	aranea-agents/internal/data/ent/teamrunstep	[no test files]
+?   	aranea-agents/internal/data/ent/teamrunv2	[no test files]
+?   	aranea-agents/internal/data/ent/teamstagev2	[no test files]
+?   	aranea-agents/internal/data/ent/toolagentoverride	[no test files]
+?   	aranea-agents/internal/data/ent/toolgrant	[no test files]
+?   	aranea-agents/internal/data/ent/toolinvocation	[no test files]
+?   	aranea-agents/internal/data/ent/toolinvocationaudit	[no test files]
+?   	aranea-agents/internal/data/ent/toolinvocationparam	[no test files]
+?   	aranea-agents/internal/data/ent/toolresultblob	[no test files]
+?   	aranea-agents/internal/data/ent/toolresultreplacement	[no test files]
+?   	aranea-agents/internal/data/ent/turnv2	[no test files]
+?   	aranea-agents/internal/data/ent/usagequota	[no test files]
+?   	aranea-agents/internal/data/ent/userembeddingsetting	[no test files]
+ok  	aranea-agents/internal/data/pgvector	0.231s
+?   	aranea-agents/internal/data/testhelper	[no test files]
+ok  	aranea-agents/internal/data/vector	0.234s
+?   	aranea-agents/internal/debug	[no test files]
+ok  	aranea-agents/internal/evaluation	0.382s
+ok  	aranea-agents/internal/event	0.615s
+ok  	aranea-agents/internal/event/contract	0.207s
+ok  	aranea-agents/internal/graph	0.260s
+ok  	aranea-agents/internal/graph/adapter	0.573s
+ok  	aranea-agents/internal/graph/trpc	0.330s
+ok  	aranea-agents/internal/knowledge	0.382s
+ok  	aranea-agents/internal/llmcontext	0.201s
+ok  	aranea-agents/internal/llminspect	0.260s
+ok  	aranea-agents/internal/mcp	0.203s
+ok  	aranea-agents/internal/mcp/alert	0.273s
+ok  	aranea-agents/internal/mcp/classify	0.199s
+ok  	aranea-agents/internal/mcp/config	0.203s
+ok  	aranea-agents/internal/mcp/health	0.192s
+ok  	aranea-agents/internal/mcp/lifecycle	0.120s
+ok  	aranea-agents/internal/mcp/metadata	0.122s
+ok  	aranea-agents/internal/mcp/probe	0.144s
+ok  	aranea-agents/internal/memory	0.163s
+ok  	aranea-agents/internal/memory/trpc	0.181s
+ok  	aranea-agents/internal/metrics	0.178s
+ok  	aranea-agents/internal/modelregistry	6.201s
+ok  	aranea-agents/internal/orgimport	0.114s
+ok  	aranea-agents/internal/outbound	0.177s
+ok  	aranea-agents/internal/pkginstall	0.777s
+ok  	aranea-agents/internal/plugin/trpc	2.248s
+ok  	aranea-agents/internal/provider	1.692s
+ok  	aranea-agents/internal/provider/media	0.109s
+ok  	aranea-agents/internal/runtime	0.469s
+ok  	aranea-agents/internal/runtime/lifecycle	0.513s
+ok  	aranea-agents/internal/runtime/turn	0.478s
+ok  	aranea-agents/internal/scenario/loader	0.108s
+ok  	aranea-agents/internal/scenario/system	0.135s
+ok  	aranea-agents/internal/server	0.410s
+ok  	aranea-agents/internal/server/middleware	0.176s
+ok  	aranea-agents/internal/service	3.284s
+ok  	aranea-agents/internal/session	0.470s
+ok  	aranea-agents/internal/session/trpc	0.461s
+ok  	aranea-agents/internal/skill	0.155s
+ok  	aranea-agents/internal/skill/importer	0.223s
+ok  	aranea-agents/internal/skill/manifest	0.163s
+ok  	aranea-agents/internal/skill/render	0.160s
+ok  	aranea-agents/internal/skill/storage	0.183s
+ok  	aranea-agents/internal/skill/trpc	0.188s
+ok  	aranea-agents/internal/skill/watch	0.147s
+ok  	aranea-agents/internal/team	0.570s
+ok  	aranea-agents/internal/telemetry	0.169s
+ok  	aranea-agents/internal/telemetry/turntrace	0.151s
+?   	aranea-agents/internal/testutil	[no test files]
+ok  	aranea-agents/internal/tools	6.560s
+?   	aranea-agents/internal/tools/alias	[no test files]
+ok  	aranea-agents/internal/tools/browser	0.138s
+ok  	aranea-agents/internal/tools/cache	0.176s
+ok  	aranea-agents/internal/tools/cli_admin	0.189s
+ok  	aranea-agents/internal/tools/custom	0.149s
+ok  	aranea-agents/internal/tools/deferred	0.155s
+ok  	aranea-agents/internal/tools/deliverable	0.157s
+?   	aranea-agents/internal/tools/document	[no test files]
+ok  	aranea-agents/internal/tools/hostexec	0.100s
+ok  	aranea-agents/internal/tools/hostexecnorm	0.101s
+ok  	aranea-agents/internal/tools/kanban	0.123s
+ok  	aranea-agents/internal/tools/knowledge	0.275s
+ok  	aranea-agents/internal/tools/mcpobserve	0.097s
+ok  	aranea-agents/internal/tools/media	0.110s
+ok  	aranea-agents/internal/tools/memory	0.173s
+?   	aranea-agents/internal/tools/memory_butler	[no test files]
+ok  	aranea-agents/internal/tools/modelsync	0.167s
+ok  	aranea-agents/internal/tools/orchestrator	0.169s
+ok  	aranea-agents/internal/tools/preview	0.091s
+ok  	aranea-agents/internal/tools/security	0.128s
+ok  	aranea-agents/internal/tools/serviceawaitreply	0.137s
+ok  	aranea-agents/internal/tools/skillrecommend	0.086s
+ok  	aranea-agents/internal/tools/skillrouter	0.078s
+ok  	aranea-agents/internal/tools/skillruntime	0.159s
+?   	aranea-agents/internal/tools/skills_butler	[no test files]
+ok  	aranea-agents/internal/tools/subagent	0.176s
+ok  	aranea-agents/internal/tools/testexec	0.358s
+ok  	aranea-agents/internal/tools/trpc	0.337s
+ok  	aranea-agents/internal/tools/webresearch	0.325s
+ok  	aranea-agents/internal/tools/working_memory	0.174s
+ok  	aranea-agents/internal/workspace	0.138s
+ok  	aranea-agents/pkg/apierror	0.133s
+?   	aranea-agents/pkg/appctx	[no test files]
+ok  	aranea-agents/pkg/auth	0.209s
+ok  	aranea-agents/pkg/ctxuser	0.173s
+?   	aranea-agents/pkg/jsonutil	[no test files]
+ok  	aranea-agents/pkg/loggateway	0.941s
+ok  	aranea-agents/pkg/logpipeline	0.893s
+ok  	aranea-agents/pkg/outboundguard	0.122s
+ok  	aranea-agents/pkg/outboundwebhook	0.095s
+ok  	aranea-agents/pkg/safego	0.074s
+?   	aranea-agents/pkg/startup	[no test files]
+ok  	aranea-agents/pkg/strutil	0.070s
+?   	aranea-agents/pkg/trpcscope	[no test files]
+?   	aranea-agents/pkg/validate	[no test files]
+ok  	aranea-agents/pkg/webhookurl	0.105s
+?   	aranea-agents/web/node_modules/flatted/golang/pkg/flatted	[no test files]
+

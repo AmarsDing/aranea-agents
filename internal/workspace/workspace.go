@@ -125,7 +125,7 @@ func AssertWorkspaceOrShared(callerWS, resourceWS string) error {
 // 读允许跨租户访问共享资源，写禁止——防止任何租户篡改系统内置/legacy 共享资源。
 //
 // 业务依据（internal/service/knowledge.go:173-177）：
-// "Shared collections (workspace='') are read-only for tenants (fail-closed)."
+// "Shared collections (workspace=”) are read-only for tenants (fail-closed)."
 //
 // 与 AssertWorkspace / AssertWorkspaceOrShared 的区别：
 //   - AssertWorkspace 把空 resourceWS 视为 DefaultWorkspaceID（default 租户可写）

@@ -122,7 +122,7 @@ func TestAssertWorkspaceMutate_SystemBypass(t *testing.T) {
 // shared (resourceWS="") resource. This is the key difference from
 // AssertWorkspaceOrShared, which permits reads on shared resources.
 //
-// Business intent (knowledge.go:173-177): "Shared collections (workspace='')
+// Business intent (knowledge.go:173-177): "Shared collections (workspace=”)
 // are read-only for tenants (fail-closed)." The same rule applies to all
 // shareable entities (agent/team/graph/plugin/mcp_server/knowledge).
 func TestAssertWorkspaceMutate_EmptyResourceRejected(t *testing.T) {

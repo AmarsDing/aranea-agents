@@ -88,7 +88,7 @@ func openTestDataForMemory(t *testing.T) (*data.Data, *ent.Client) {
 type enabledSettingsLoader struct{}
 
 func (enabledSettingsLoader) GetAgentRuntimeSettings(_ context.Context, _ string) (*biz.AgentRuntimeSettings, error) {
-	return &biz.AgentRuntimeSettings{MemoryEnabled: true}, nil
+	return &biz.AgentRuntimeSettings{MemoryEnabled: true, L3Enabled: true}, nil
 }
 
 func TestMemoryService_AddMemoryWritesFactVisibleToAdmin(t *testing.T) {

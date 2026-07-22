@@ -1220,12 +1220,14 @@ collection 留空
 
 ### 8.2 Store 与页面
 
+页面结构：`KnowledgePage.vue` 为页面级三 Tab 布局（**文档 | 检索 | 设置**）。文档 Tab 左侧集合列表、右侧操作区自上而下为拖拽上传区（常驻）→ 上传队列 → 集合详情卡 + 文档面板；检索 Tab 为调试搜索面板（高级控件附行内说明）；Embedder 配置收纳于设置 Tab（低频操作，与系统设置页共享配置源，面板内附跳转链接）。文档入库对话框仅保留「粘贴文本」模式，文件上传统一走拖拽区（双入口能力重叠已消除）。
+
 | 路径 | 说明 |
 |------|------|
 | `web/src/stores/knowledge/index.ts` | Pinia Store |
-| `web/src/pages/KnowledgePage.vue` | 管理页（路由 `/knowledge`） |
-| `web/src/components/knowledge/*` | 集合列表、文档、检索、Embedder、入库对话框 |
-| `web/src/components/knowledge/KnowledgeDropZone.vue` | 拖拽上传区（多文件批量、自动推断 source/mime、默认整理为 MD） |
+| `web/src/pages/KnowledgePage.vue` | 管理页（路由 `/knowledge`，三 Tab：文档 / 检索 / 设置） |
+| `web/src/components/knowledge/*` | 集合列表、文档、检索、Embedder、入库对话框（粘贴文本） |
+| `web/src/components/knowledge/KnowledgeDropZone.vue` | 拖拽上传区（文件统一入口：多文件批量、自动推断 source/mime、默认整理为 MD） |
 | `web/src/components/knowledge/KnowledgeUploadQueue.vue` | 上传队列（逐文件状态卡片，复用 WS 事件刷新） |
 | `web/src/components/knowledge/KnowledgeDocPreviewDialog.vue` | MD 全文预览对话框 |
 | `web/src/features/knowledge/useKnowledgeIngestWs.ts` | WS 入库进度（EP-KN-02） |

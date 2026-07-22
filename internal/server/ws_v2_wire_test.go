@@ -325,7 +325,7 @@ func wireGoldenCases() []wireGoldenCase {
 		}, []string{"Message", "Meta"}},
 		{"system.notice", func() biz.Event {
 			return biz.NewSystemNoticeEvent("sess-1", "cost_guard", "msg", map[string]any{"k": "v"})
-		}, []string{"NoticeType", "Message", "Meta"}},
+		}, []string{"NoticeType", "Message", "Meta", "Seq"}},
 		{"activity.bridge", func() biz.Event {
 			return biz.NewActivityBridgeEvent(biz.ActivityEvent{
 				Event:    biz.ActivityEventType("activity.updated"),

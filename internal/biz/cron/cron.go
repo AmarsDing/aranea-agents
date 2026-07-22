@@ -39,9 +39,9 @@ type Task struct {
 	// empty = legacy/system-owned (visible to system caller only);
 	// non-empty = tenant-private (visible only to owning workspace).
 	WorkspaceID string
-	CreatedAt    string
-	UpdatedAt    string
-	DeletedAt    string
+	CreatedAt   string
+	UpdatedAt   string
+	DeletedAt   string
 }
 
 // TaskRun is one row of cron_task_run plus joined task display name and parsed output fields.

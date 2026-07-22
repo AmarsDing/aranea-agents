@@ -213,14 +213,14 @@ func (m *chatRunManagerImpl) Sweep() {
 var _ chatRunManager = (*chatRunManagerImpl)(nil)
 
 // Accessor methods preserve call-site compatibility after field grouping (AS-COG-01).
-func (o *ChatOrchestrator) td() rt.TurnDeps                        { return o.core.TD }
-func (o *ChatOrchestrator) tdPtr() *rt.TurnDeps                    { return &o.core.TD }
-func (o *ChatOrchestrator) rt() RuntimeTooling                     { return o.core.RT }
-func (o *ChatOrchestrator) admitGate() *turn.AdmissionGate         { return o.core.AdmitGate }
-func (o *ChatOrchestrator) admission() *biz.TurnAdmissionUsecase   { return o.core.Admission }
-func (o *ChatOrchestrator) turnTimeout() time.Duration             { return o.core.TurnTimeout }
-func (o *ChatOrchestrator) stepReader() biz.StepV2Reader { return o.core.StepReader }
-func (o *ChatOrchestrator) stepWriter() biz.StepV2Writer { return o.core.StepWriter }
+func (o *ChatOrchestrator) td() rt.TurnDeps                      { return o.core.TD }
+func (o *ChatOrchestrator) tdPtr() *rt.TurnDeps                  { return &o.core.TD }
+func (o *ChatOrchestrator) rt() RuntimeTooling                   { return o.core.RT }
+func (o *ChatOrchestrator) admitGate() *turn.AdmissionGate       { return o.core.AdmitGate }
+func (o *ChatOrchestrator) admission() *biz.TurnAdmissionUsecase { return o.core.Admission }
+func (o *ChatOrchestrator) turnTimeout() time.Duration           { return o.core.TurnTimeout }
+func (o *ChatOrchestrator) stepReader() biz.StepV2Reader         { return o.core.StepReader }
+func (o *ChatOrchestrator) stepWriter() biz.StepV2Writer         { return o.core.StepWriter }
 
 func (o *ChatOrchestrator) team() TeamOrchestrationDeps   { return o.teamExecDeps.Team }
 func (o *ChatOrchestrator) chJobs() ChannelTurnJobDeps    { return o.channelDeps.ChJobs }

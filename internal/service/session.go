@@ -26,7 +26,7 @@ type SessionService struct {
 	runs           *biz.SessionRunUsecase
 	compress       biz.ManualCompressor
 	compressStatus biz.CompressStatusReader
-	metricsCache biz.SessionMetricsReader
+	metricsCache   biz.SessionMetricsReader
 	// sessionV2 is the v2 reader service; ListActivities delegates to it
 	// (steps_v2 via StepToActivity adapter).
 	sessionV2 *SessionV2Service

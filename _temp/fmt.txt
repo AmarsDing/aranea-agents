@@ -1,0 +1,47 @@
+﻿fmtcheck: FAIL — 38 unformatted file(s) (run: gofmt -w .)
+  internal/agent/attachments_test.go
+  internal/agent/task_planner_impl.go
+  internal/biz/channel.go
+  internal/biz/cron/cron.go
+  internal/biz/evaluation/evaluation.go
+  internal/biz/graph.go
+  internal/biz/knowledge/knowledge_usecase_test.go
+  internal/biz/llm_provider_model_stats.go
+  internal/biz/session/usecase.go
+  internal/biz/spirit_synthesis.go
+  internal/biz/spirit_synthesis_c24_test.go
+  internal/biz/spirit_team_deliverable_test.go
+  internal/biz/v2_entity_state_machines_test.go
+  internal/channel/teams/errors.go
+  internal/channel/teams/jwks.go
+  internal/data/data.go
+  internal/data/dialect.go
+  internal/data/dialect_test.go
+  internal/data/evaluation.go
+  internal/data/task_plan_repo.go
+  internal/event/infra.go
+  internal/server/ws.go
+  internal/service/chat_orch_run_status_test.go
+  internal/service/chat_orchestrator.go
+  internal/service/graph_task_status.go
+  internal/service/knowledge_us14_test.go
+  internal/service/service_artifact_knowledge_test.go
+  internal/service/session.go
+  internal/service/spirit_team_handle_result_test.go
+  internal/service/team_test.go
+  internal/team/embedded_graph_test.go
+  internal/team/status_projector.go
+  internal/team/swarm_graph_safety_test.go
+  internal/team/team_graph_run_coordinator.go
+  internal/workspace/workspace.go
+  internal/workspace/workspace_test.go
+  cmd/admin/wire.go
+  pkg/auth/cookie_test.go
+go : exit status 1
+所在位置 行:1 字符: 143
++ ... $LASTEXITCODE"; go run ./cmd/araneactl/fmtcheck --root . 2>&1 | Out-S ...
++                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (exit status 1:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+

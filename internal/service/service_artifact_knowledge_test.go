@@ -185,10 +185,10 @@ func TestIsAllowedIngestMIME(t *testing.T) {
 		{"text_csv", "text/csv", true},
 		{"application_json", "application/json", true},
 		{"application_pdf", "application/pdf", true},
-		{"image_png", "image/png", true},     // Phase 9：VisionExtractor 入库
-		{"image_jpeg", "image/jpeg", true},   // Phase 9：VisionExtractor 入库
-		{"image_webp", "image/webp", true},   // Phase 9：VisionExtractor 入库
-		{"image_gif", "image/gif", false},    // 未支持格式仍拒绝
+		{"image_png", "image/png", true},   // Phase 9：VisionExtractor 入库
+		{"image_jpeg", "image/jpeg", true}, // Phase 9：VisionExtractor 入库
+		{"image_webp", "image/webp", true}, // Phase 9：VisionExtractor 入库
+		{"image_gif", "image/gif", false},  // 未支持格式仍拒绝
 		{"application_msword", "application/msword", true},
 		{"docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", true},
 		{"text_custom_prefix", "text/x-unknown", true},

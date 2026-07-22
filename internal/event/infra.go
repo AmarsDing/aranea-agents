@@ -23,7 +23,7 @@ import (
 // Phase 5 Blocker F (2026-06-26): legacy envelope SessionBus removed.
 // 2026-07-16: chat/session realtime uses biz.EventBus (v2 events → WS v2_event);
 // ActivityEventBus is retired from the production publish path. Monitor stays
- // on typed MonitorEventBus (contract.MonitorEvent).
+// on typed MonitorEventBus (contract.MonitorEvent).
 type Infra struct {
 	MonitorEventBus contract.MonitorBus // typed monitor event bus
 	lg              loggateway.Logger

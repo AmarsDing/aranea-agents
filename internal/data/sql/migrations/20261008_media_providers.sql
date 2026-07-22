@@ -1,5 +1,5 @@
 -- media_providers: media generation provider configs (media generation observation view).
--- Table is also managed by Ent schema (media_provider.go); this DDL ensures existence
+-- Table is also managed by Ent schema (media_provider.go). This DDL ensures existence
 -- on deployments where Ent auto-migration ordering may differ.
 
 CREATE TABLE IF NOT EXISTS media_providers (

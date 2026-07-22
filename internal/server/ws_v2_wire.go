@@ -29,6 +29,7 @@ type taskWire struct {
 	Status      biz.TaskStatus `json:"Status"`
 	Seq         int64          `json:"Seq"`
 	Version     int64          `json:"Version"`
+	WorkspaceID string         `json:"WorkspaceID"`
 	CreatedAt   time.Time      `json:"CreatedAt"`
 	UpdatedAt   time.Time      `json:"UpdatedAt"`
 	CompletedAt *time.Time     `json:"CompletedAt"`
@@ -182,6 +183,9 @@ type planStepWire struct {
 	Result            *stepResultWire    `json:"Result"`
 	Error             *stepErrorWire     `json:"Error"`
 	AgentKeys         []string           `json:"AgentKeys"`
+	// DeliverableContract 自带 snake_case json tag（本身即 wire 定义），直接复用。
+	Deliverables  []biz.DeliverableContract `json:"Deliverables"`
+	InputContract []biz.DeliverableContract `json:"InputContract"`
 }
 
 type planBoardWire struct {
@@ -291,6 +295,7 @@ type systemNoticeEventWire struct {
 	NoticeType string         `json:"NoticeType"`
 	Message    string         `json:"Message"`
 	Meta       map[string]any `json:"Meta"`
+	Seq        int64          `json:"Seq"`
 }
 
 // activityBridgeEventWire 包装 v1 ActivityEvent。biz.ActivityEvent 自带

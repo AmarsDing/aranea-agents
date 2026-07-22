@@ -111,7 +111,13 @@ func (m *memSpiritTeamRepo) CreateTeamRun(_ context.Context, r TeamRunRecord) (T
 	return r, nil
 }
 func (m *memSpiritTeamRepo) UpdateTeamRun(_ context.Context, _ TeamRunRecord) error { return nil }
-func (m *memSpiritTeamRepo) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+func (m *memSpiritTeamRepo) UpdateTeamWhereStatus(_ context.Context, id, newStatus, whereStatus string) (bool, error) {
+	t, ok := m.items[id]
+	if !ok || t.Status != whereStatus {
+		return false, nil
+	}
+	t.Status = newStatus
+	m.items[id] = t
 	return true, nil
 }
 func (m *memSpiritTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
@@ -652,29 +658,40 @@ func TestTransitionStatus_InvalidTransitions(t *testing.T) {
 		t.Error("pending → completed should fail")
 	}
 
-	// pending → failed (invalid: cannot skip running)
-	_, err = uc.TransitionStatus(ctx, team.ID, TeamStatusFailed)
-	if err == nil {
-		t.Error("pending → failed should fail")
-	}
-
 	// pending → interrupted (invalid)
 	_, err = uc.TransitionStatus(ctx, team.ID, TeamStatusInterrupted)
 	if err == nil {
 		t.Error("pending → interrupted should fail")
 	}
 
-	// Transition to running first
-	_, _ = uc.TransitionStatus(ctx, team.ID, TeamStatusRunning)
-
-	// running → pending (invalid: cannot go back)
-	_, err = uc.TransitionStatus(ctx, team.ID, TeamStatusPending)
-	if err == nil {
-		t.Error("running → pending should fail")
+	// pending → failed is a legal transition (B-01: DAG dependency failure or
+	// pending timeout marks the team failed without executing).
+	if _, err = uc.TransitionStatus(ctx, team.ID, TeamStatusFailed); err != nil {
+		t.Errorf("pending → failed should succeed (B-01): %v", err)
+	}
+	// failed → pending (recover) to continue the scenario.
+	if _, err = uc.TransitionStatus(ctx, team.ID, TeamStatusPending); err != nil {
+		t.Fatalf("failed → pending (recover) should succeed: %v", err)
 	}
 
-	// Transition to completed
-	_, _ = uc.TransitionStatus(ctx, team.ID, TeamStatusCompleted)
+	// Transition to running first
+	if _, err = uc.TransitionStatus(ctx, team.ID, TeamStatusRunning); err != nil {
+		t.Fatalf("pending → running should succeed: %v", err)
+	}
+
+	// running → pending is a legal transition (B-02: rework after the
+	// verification gate rejects the team's output).
+	if _, err = uc.TransitionStatus(ctx, team.ID, TeamStatusPending); err != nil {
+		t.Errorf("running → pending should succeed (B-02 rework): %v", err)
+	}
+
+	// Back to running, then to completed
+	if _, err = uc.TransitionStatus(ctx, team.ID, TeamStatusRunning); err != nil {
+		t.Fatalf("pending → running should succeed: %v", err)
+	}
+	if _, err = uc.TransitionStatus(ctx, team.ID, TeamStatusCompleted); err != nil {
+		t.Fatalf("running → completed should succeed: %v", err)
+	}
 
 	// completed → running (invalid: terminal state)
 	_, err = uc.TransitionStatus(ctx, team.ID, TeamStatusRunning)
@@ -742,9 +759,8 @@ func TestCancelTeam_UsesTransitionStatus(t *testing.T) {
 		t.Errorf("expected cancelled, got %q", team.Status)
 	}
 
-	// Cancel again should fail (cancelled → cancelled is same-state, which is allowed)
-	// Actually, same-state transitions are allowed by TeamStateMachine
-	// But let's test that cancelling a completed team fails
+	// Cancelling a completed team must fail: completed has no outgoing
+	// transition to cancelled (only → archived) in the Team state machine.
 	team2, _ := uc.AssembleTeam(ctx, SpiritTeamParams{
 		SpiritSessionID: "spirit-cancel2",
 		TaskDescription: "cancel test 2",

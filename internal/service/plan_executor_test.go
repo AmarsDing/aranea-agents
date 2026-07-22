@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -586,5 +588,162 @@ func TestPlanExecutor_InitGraphStageDoesNotPublishCreated(t *testing.T) {
 	}
 	if repos.graphStage == nil || repos.graphStage.ID == "" {
 		t.Fatal("expected initGraphStage to Upsert GraphStage for crash recovery")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P1 形式契约（B.10.15.2）：dagRun 启动时契约 advisory 验证
+// ---------------------------------------------------------------------------
+
+// collectSystemNotices subscribes to the bus and buffers SystemNoticeEvents
+// until the returned stop func is called.
+func collectSystemNotices(bus biz.EventBus) (notices func() []*biz.SystemNoticeEvent, stop func()) {
+	ch, cancel := bus.Subscribe(biz.EventSubscribeOptions{})
+	var mu sync.Mutex
+	var buf []*biz.SystemNoticeEvent
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for ev := range ch {
+			if n, ok := ev.(*biz.SystemNoticeEvent); ok {
+				mu.Lock()
+				buf = append(buf, n)
+				mu.Unlock()
+			}
+		}
+	}()
+	return func() []*biz.SystemNoticeEvent {
+			mu.Lock()
+			defer mu.Unlock()
+			out := make([]*biz.SystemNoticeEvent, len(buf))
+			copy(out, buf)
+			return out
+		}, func() {
+			cancel()
+			<-done
+		}
+}
+
+func TestDagRun_ContractMismatch_PublishesSystemNotice(t *testing.T) {
+	t.Parallel()
+	board := biz.PlanBoard{
+		ID:        "board-contract-mismatch",
+		TaskID:    "task-contract",
+		SessionID: "sess-contract",
+		Status:    biz.PlanStatusExecuting,
+		Steps: []biz.PlanStep{
+			{ID: "s1", PlanID: "board-contract-mismatch", TaskID: "task-contract", Label: "upstream", Status: biz.PlanStepStatusPending, Version: 1,
+				Deliverables: []biz.DeliverableContract{{Name: "report", Type: "document", Format: "markdown"}}},
+			{ID: "s2", PlanID: "board-contract-mismatch", TaskID: "task-contract", Label: "downstream", DependsOn: []string{"s1"}, Status: biz.PlanStepStatusPending, Version: 1,
+				InputContract: []biz.DeliverableContract{{Name: "data", Type: "data", Format: "json"}}},
+		},
+	}
+	seq := &fakeSeq{}
+	orch := newFakeOrchestrator().withSeq(seq)
+	repos := newFakeReposForExecutor()
+	seq.repos = repos
+	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+	bus := event.NewV2Bus()
+	pe.SetEventBus(bus)
+	notices, stop := collectSystemNotices(bus)
+	defer stop()
+
+	done := make(chan error, 1)
+	go func() { done <- pe.Subscribe(context.Background(), board) }()
+
+	if !orch.waitForCall("s1", 2*time.Second) {
+		t.Fatal("s1 was not dispatched")
+	}
+	orch.completeStep("s1", true, "")
+	if !orch.waitForCall("s2", 2*time.Second) {
+		t.Fatal("s2 was not dispatched")
+	}
+	orch.completeStep("s2", true, "")
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Subscribe timed out")
+	}
+
+	var mismatch *biz.SystemNoticeEvent
+	for _, n := range notices() {
+		if n.NoticeType == "contract_mismatch" {
+			mismatch = n
+			break
+		}
+	}
+	if mismatch == nil {
+		t.Fatal("expected a contract_mismatch SystemNoticeEvent, got none")
+	}
+	if mismatch.SpiritSessionID() != "sess-contract" {
+		t.Errorf("notice session = %q, want sess-contract", mismatch.SpiritSessionID())
+	}
+	warnings, ok := mismatch.Meta["warnings"].([]string)
+	if !ok || len(warnings) == 0 {
+		t.Fatalf("notice meta warnings missing or empty: %v", mismatch.Meta)
+	}
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, `"data"`) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("warnings should mention unmatched contract %q: %v", "data", warnings)
+	}
+}
+
+func TestDagRun_ContractMatch_NoMismatchNotice(t *testing.T) {
+	t.Parallel()
+	board := biz.PlanBoard{
+		ID:        "board-contract-match",
+		TaskID:    "task-contract-ok",
+		SessionID: "sess-contract-ok",
+		Status:    biz.PlanStatusExecuting,
+		Steps: []biz.PlanStep{
+			{ID: "s1", PlanID: "board-contract-match", TaskID: "task-contract-ok", Label: "upstream", Status: biz.PlanStepStatusPending, Version: 1,
+				Deliverables: []biz.DeliverableContract{{Name: "report", Type: "document", Format: "markdown"}}},
+			{ID: "s2", PlanID: "board-contract-match", TaskID: "task-contract-ok", Label: "downstream", DependsOn: []string{"s1"}, Status: biz.PlanStepStatusPending, Version: 1,
+				InputContract: []biz.DeliverableContract{{Name: "report", Type: "document", Format: "markdown"}}},
+		},
+	}
+	seq := &fakeSeq{}
+	orch := newFakeOrchestrator().withSeq(seq)
+	repos := newFakeReposForExecutor()
+	seq.repos = repos
+	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+	bus := event.NewV2Bus()
+	pe.SetEventBus(bus)
+	notices, stop := collectSystemNotices(bus)
+	defer stop()
+
+	done := make(chan error, 1)
+	go func() { done <- pe.Subscribe(context.Background(), board) }()
+
+	if !orch.waitForCall("s1", 2*time.Second) {
+		t.Fatal("s1 was not dispatched")
+	}
+	orch.completeStep("s1", true, "")
+	if !orch.waitForCall("s2", 2*time.Second) {
+		t.Fatal("s2 was not dispatched")
+	}
+	orch.completeStep("s2", true, "")
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Subscribe timed out")
+	}
+
+	for _, n := range notices() {
+		if n.NoticeType == "contract_mismatch" {
+			t.Fatalf("matching contracts should not emit contract_mismatch, got %+v", n)
+		}
 	}
 }

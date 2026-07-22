@@ -5092,9 +5092,11 @@ decomposeTask
   → PublishV2Board → PlanStep.Deliverables / PlanStep.InputContract（新增字段，持久化到 plan_steps_v2 新增 JSON 列，crash recovery 需要）
   → RealTeamOrchestrator.Orchestrate → SpiritTeamParams.Deliverables / InputContract（新增字段）
   → AssembleTeam → Team.Deliverables / Team.InputContract（DeliverableContractsToJSON 序列化落库）
-  → dagRun 全部团队组建完成后 → ValidateDeliverableContracts(spiritSessionID)
+  → dagRun 启动时（validateDAG 之后、dispatch 之前）→ ValidatePlanStepContracts(board.Steps)
       → warnings 非空 → 记 Info 日志 + 发 SystemNoticeEvent（contract_mismatch，WS-only 不持久化）→ 前端 PlanBlock 展示黄色提示
 ```
+
+> **实施修订（2026-07-22）**：验证调用点从原设计的「dagRun 全部团队组建完成后 → `ValidateDeliverableContracts(spiritSessionID)`」调整为「dagRun 启动时基于 `board.Steps` 的 `ValidatePlanStepContracts(steps)`」。根因：团队是**惰性组建**的（dispatch 时才 `AssembleTeam`），不存在"全部组建完成"的统一时点；而 PlanStep 契约在 `PublishV2Board` 时已持久化，启动时即可全量校验，无需读 teams 表。校验数据源从 teams 表改为 board.Steps，语义等价（同一契约的两份落库），且更早暴露不匹配。
 
 **契约在注入文本中的体现**：`InjectUpstreamDeliverables` 前缀升级为包含契约声明，让下游 agent 明确知道该期待什么、实际收到什么：
 
@@ -5114,7 +5116,7 @@ decomposeTask
 | 契约来源 | LLM 输出 + 确定性兜底 | 与 depends_on 同机制；兜底保证 DAG 场景必有契约可验 |
 | 契约缺失处理 | 降级为空，不阻断规划 | 与 `parseDecompositionOutput` 现有容错一致；契约是 advisory |
 | 验证级别 | advisory（warnings，不阻断派发） | 与 `DeliverableContractValidator.ValidateContractMatch` 返回 warnings 的既有语义一致；blocking 属 P3 之后的策略演进 |
-| 验证调用点 | dagRun 全部团队组建完成后一次性调用 | 此时所有 Team.Deliverables/InputContract 已落库，可全量校验 |
+| 验证调用点 | dagRun 启动时基于 `board.Steps` 一次性校验（`ValidatePlanStepContracts`） | 团队惰性组建，无"全部组建完成"时点；PlanStep 契约在 PublishV2Board 时已持久化，启动时即可全量校验（2026-07-22 实施修订） |
 | PlanStep 契约持久化 | 持久化（新增 JSON 列 + DDL 迁移） | crash recovery 从 DB 重建 dagRun 时契约不丢失；与 `agent_keys` 列同模式 |
 | 与 VerificationGate 的关系 | 互不替代 | 形式契约验证 = schema 匹配（确定性、零成本）；VerificationGate = 部门主管 LLM 语义审批（有成本、按 graph 配置）；两者层级不同 |
 
@@ -5189,11 +5191,11 @@ type DeliverableRef struct {
 | `internal/biz/task_plan.go` | `SubTask` 新增 `Deliverables []DeliverableContract` / `InputContract []DeliverableContract` |
 | `internal/agent/task_planner_impl.go` | `buildDecompositionPrompt` 新增契约输出规则；`parseDecompositionOutput` 解析契约字段 + 兜底派生 |
 | `internal/biz/plan_step.go` | `PlanStep` 新增 `Deliverables` / `InputContract` 字段 |
-| `internal/data/ent/schema/plan_step_v2.go` + `internal/data/plan_step_v2_repo.go` + DDL 迁移 | 新增 `deliverables_json` / `input_contract_json` 两列（与 `agent_keys` 同模式） |
+| `internal/data/ent/schema/plan_step_v2.go` + `internal/data/plan_step_v2_repo.go` + DDL 迁移 | 新增 `deliverables` / `input_contract` 两列（JSON TEXT，与 `agent_keys` 同模式） |
 | `internal/agent/task_planner_impl.go` `PublishV2Board` | SubTask → PlanStep 契约透传 |
 | `internal/biz/spirit_team_usecase.go` | `SpiritTeamParams` 新增契约字段；`AssembleTeam` 落库 `Team.Deliverables`/`InputContract` |
 | `internal/service/team_orchestrator_real.go` | `Orchestrate` 透传契约到 `SpiritTeamParams` |
-| `internal/service/plan_executor.go` | dagRun 全部团队组建完成后调用 `ValidateDeliverableContracts`，warnings 发 `SystemNoticeEvent`（contract_mismatch） |
+| `internal/biz/deliverable_contract.go` + `internal/service/plan_executor.go` | 新增 `ValidatePlanStepContracts(steps)`；dagRun 启动时（validateDAG 后、dispatch 前）基于 `board.Steps` 校验，warnings 发 `SystemNoticeEvent`（contract_mismatch） |
 | `internal/biz/spirit_team_usecase.go` `InjectUpstreamDeliverables` | 注入前缀包含契约声明（name/type/format） |
 
 **P2 产物引用化**：
@@ -5241,3 +5243,40 @@ type DeliverableRef struct {
 | Q3 | Graph StateFields 桥接前置验证不通过时的降级 | A. prompt 引导（最后成员将 deliverable 写入 reply，零代码）；B. 本轮放弃桥接，仅保留 P1/P2 | **已定：A**——prompt 引导零成本且与现有落库链路兼容 |
 | Q4 | PlanStep 契约字段持久化 | A. 持久化（plan_steps_v2 加 2 个 JSON 列 + DDL 迁移）；B. 仅事件载体（in-memory，不落库） | **已定：A**——crash recovery 从 DB 重建 dagRun 需要契约；与 `agent_keys` 列同模式，成本一致 |
 | Q5 | 实施顺序 | A. P1 → P2 → Graph 桥接（依次落地、各自验证）；B. P1+P2 合并一个迭代，Graph 桥接独立后续 | **已定：A**——R5 小步快跑：P1 改链路最多（6 断点），独立迭代便于定位回归；P2 依赖 P1 的契约名注入文本格式 |
+
+#### B.10.15.8 P1 实施记录与验证结果（2026-07-22 ✅ 已落地）
+
+**实施状态**：P1 形式契约全链路已实施完成，全量验证通过。P2 产物引用化、Graph StateFields 桥接按 Q5 决策顺序待后续迭代。
+
+**实际改动文件**（与设计清单 B.10.15.5 对齐，含实施期偏差说明）：
+
+| 文件 | 实际改动 |
+|------|----------|
+| `internal/biz/task_plan.go` | `SubTask` 新增 `Deliverables` / `InputContract []DeliverableContract` |
+| `internal/biz/plan_step.go` | `PlanStep` 新增 `Deliverables` / `InputContract` 字段 |
+| `internal/agent/task_planner_impl.go` | `buildDecompositionPrompt` 契约输出规则；`parseDecompositionOutput` 契约解析 + 兜底派生；`PublishV2Board` SubTask → PlanStep 透传 |
+| `internal/data/ent/schema/plan_step_v2.go` + `internal/data/plan_step_v2_repo.go` | 新增 `deliverables` / `input_contract` 两列读写 |
+| `internal/data/sql/migrations/20261013_plan_step_contracts.sql` | DDL 迁移（已注册进 `ddl_migration_registry.go`） |
+| `internal/biz/spirit_team_usecase.go` | `SpiritTeamParams` 契约字段；`AssembleTeam` 落库；`contractDeclarationLines()` 渲染契约声明；`InjectUpstreamDeliverables` 前缀含契约行 |
+| `internal/service/team_orchestrator_real.go` | `Orchestrate` 透传 `step.Deliverables` / `step.InputContract` 到 `SpiritTeamParams` |
+| `internal/biz/deliverable_contract.go` | 新增 `ValidatePlanStepContracts(steps []PlanStep) []string`（基于 PlanStep 的启动时校验，替代原设计的 teams 表校验入口） |
+| `internal/service/plan_executor.go` | `dagRun.run()` 在 `validateDAG()` 之后、dispatch 之前调用校验；warnings 发 `SystemNoticeEvent`（contract_mismatch） |
+
+**测试覆盖**：
+
+| 测试 | 覆盖点 |
+|------|--------|
+| `internal/biz/deliverable_contract_test.go` | `ValidatePlanStepContracts` 7 例：无依赖/匹配/上游缺产出/type+format 不匹配/上游无 deliverables/多上游聚合/无 InputContract 跳过 |
+| `internal/agent/task_planner_impl_test.go` | 契约解析（正常/缺失/非法）+ 兜底派生 |
+| `internal/biz/spirit_team_usecase_test.go` | `TestAssembleTeam_PersistsDeliverableContracts`：契约序列化落库 + 反序列化 round-trip |
+| `internal/service/plan_executor_test.go` | `TestDagRun_ContractMismatch_PublishesSystemNotice`（不匹配发事件）+ 匹配契约不发事件 |
+
+**验证证据（2026-07-22）**：`go build ./...` exit 0；`go test` 全绿——`internal/service` 3.4s、`internal/biz` 8.1s、`internal/agent` 14.3s、`internal/data` 及子包 21.3s，无 FAIL。
+
+**实施期修复的关联问题**（merge 回归与既有缺陷，随本轮一并修复）：
+
+- `memSpiritTeamRepo.UpdateTeamWhereStatus` stub 不持久化状态 → 实现真实 CAS 逻辑；`TestTransitionStatus_*` 预期对齐状态机规则（pending→failed 为 B-01 合法转换、running→pending 为 B-02 返工合法转换）
+- `step_v2_repo_test`：`ListStepsBySession` 已改精确语义，树语义验证迁移到 `ListStepsBySpiritSession`
+- `trpc_memory_facts_test`：`enabledSettingsLoader` 补 `L3Enabled: true`，解除 L3 事实写入阻断
+- `task_planner_impl_test.go` 中文乱码批量修复
+- 知识库 `EnsureDefaultCollection` 增加 workspace 参数盖章，修复懒创建默认库被 `assertCollectionMutateAccess` 视为共享只读导致的首次入库 404

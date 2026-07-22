@@ -65,13 +65,13 @@ type TeamGraphRunCoordinator struct {
 	teamRunWriter   biz.TeamRunWriter
 	runTransitioner biz.TeamRunStatusTransitioner
 	// v2 EventBus: subscribe SystemNoticeEvent for graph watch; publish via seq.
-	eventBus        biz.EventBus
-	seq             rt.EventPublisher // Publish via v2 Sequencer (FIFO + retry); eventBus retained for Subscribe
-	finisher        *TeamRunMediator
-	sessionRepo     biz.TeamGraphSessionRepo
-	cfg             CoordinatorConfig
-	lg              loggateway.Logger
-	agentKeyFn      func(agentID string) string
+	eventBus    biz.EventBus
+	seq         rt.EventPublisher // Publish via v2 Sequencer (FIFO + retry); eventBus retained for Subscribe
+	finisher    *TeamRunMediator
+	sessionRepo biz.TeamGraphSessionRepo
+	cfg         CoordinatorConfig
+	lg          loggateway.Logger
+	agentKeyFn  func(agentID string) string
 
 	mu       sync.RWMutex
 	sessions map[string]*teamGraphRunSession

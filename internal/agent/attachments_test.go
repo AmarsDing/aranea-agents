@@ -95,10 +95,10 @@ func TestBuildUserMessageFromAttachments_image(t *testing.T) {
 // ── 单轮超限治理 A：巨型文本附件落地 blob ─────────────────────
 
 type stubUserInputGate struct {
-	calls      []stubGateCall
-	preview    string
-	persist    bool
-	err        error
+	calls   []stubGateCall
+	preview string
+	persist bool
+	err     error
 }
 
 type stubGateCall struct {

@@ -11,10 +11,10 @@ import (
 
 // stubSynthesisModel is a test double for SynthesisModelPort. C-24 tests.
 type stubSynthesisModel struct {
-	text string
-	err  error
-	called  bool
-	lastSys string
+	text     string
+	err      error
+	called   bool
+	lastSys  string
 	lastUser string
 }
 
@@ -36,7 +36,7 @@ func TestSynthesize_PromptStrategy_CallsModel(t *testing.T) {
 		TeamResults: []TeamSynthesisResult{
 			{TeamID: "t1", TeamName: "团队A", Status: "completed", Summary: "结果A"},
 		},
-		Strategy: SynthesisStrategyPrompt,
+		Strategy:    SynthesisStrategyPrompt,
 		SpiritQuery: "分析销售数据",
 	})
 	if err != nil {
@@ -165,7 +165,7 @@ func TestSynthesize_HybridStrategy_CallsModel(t *testing.T) {
 		TeamResults: []TeamSynthesisResult{
 			{TeamID: "t1", TeamName: "团队A", Status: "completed", Summary: "摘要A"},
 		},
-		Strategy: SynthesisStrategyHybrid,
+		Strategy:    SynthesisStrategyHybrid,
 		SpiritQuery: "混合策略测试",
 	})
 	if err != nil {

@@ -68,3 +68,35 @@ func DeliverableContractsToJSON(contracts []DeliverableContract) string {
 	}
 	return string(b)
 }
+
+// ValidatePlanStepContracts advisory-checks contract matching across plan
+// steps at dagRun startup (before dispatch). PlanStep contracts are persisted
+// at PublishV2Board time, so all contracts are known before any team is
+// lazily assembled — unlike SpiritTeamUsecase.ValidateDeliverableContracts
+// which reads the teams table after assembly.
+//
+// For each step with dependencies and a non-empty InputContract, the
+// deliverables of all its upstream steps are aggregated and matched via
+// DeliverableContractValidator. Returns warnings only (never blocks).
+func ValidatePlanStepContracts(steps []PlanStep) []string {
+	validator := NewDeliverableContractValidator()
+	deliverablesByID := make(map[string][]DeliverableContract, len(steps))
+	for i := range steps {
+		if len(steps[i].Deliverables) > 0 {
+			deliverablesByID[steps[i].ID] = steps[i].Deliverables
+		}
+	}
+	var allWarnings []string
+	for i := range steps {
+		step := &steps[i]
+		if len(step.DependsOn) == 0 || len(step.InputContract) == 0 {
+			continue
+		}
+		var upstream []DeliverableContract
+		for _, depID := range step.DependsOn {
+			upstream = append(upstream, deliverablesByID[depID]...)
+		}
+		allWarnings = append(allWarnings, validator.ValidateContractMatch(upstream, step.InputContract)...)
+	}
+	return allWarnings
+}

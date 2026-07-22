@@ -174,10 +174,20 @@ func TestStepV2Repo_ListStepsBySessionID_ExactSession(t *testing.T) {
 		t.Fatalf("exact semantics: expected [st-team], got %+v", teamSteps)
 	}
 
-	// Tree semantics unchanged: the spirit session still sees the whole tree.
-	treeSteps, err := repo.ListStepsBySession(ctx, "spirit-1")
+	// Exact semantics applies to the spirit session too: only its own step.
+	spiritSteps, err := repo.ListStepsBySession(ctx, "spirit-1")
 	if err != nil {
 		t.Fatalf("ListStepsBySession: %v", err)
+	}
+	if len(spiritSteps) != 1 || spiritSteps[0].ID != "st-spirit" {
+		t.Fatalf("exact semantics: expected [st-spirit], got %+v", spiritSteps)
+	}
+
+	// Tree semantics lives in ListStepsBySpiritSession: the spirit root sees
+	// the whole tree (spirit + team + member steps).
+	treeSteps, err := repo.ListStepsBySpiritSession(ctx, "spirit-1")
+	if err != nil {
+		t.Fatalf("ListStepsBySpiritSession: %v", err)
 	}
 	if len(treeSteps) != 3 {
 		t.Fatalf("tree semantics: expected 3 steps, got %d", len(treeSteps))

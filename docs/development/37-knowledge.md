@@ -292,31 +292,39 @@
 ### 5.1 知识库管理页
 
 - 路由 `/knowledge`，侧栏入口 `menu.knowledge`
+- 页面级三 Tab 结构：**文档 | 检索 | 设置**
+  - 文档 Tab：左侧集合列表 + 右侧操作区（顶部常驻拖拽上传区 → 上传队列 → 选中集合详情卡 + 文档面板）
+  - 检索 Tab：调试搜索面板（见 5.2）
+  - 设置 Tab：Embedder 配置（低频操作收纳，见 5.3）
 - 集合列表：展示名称、嵌入模型、维度、文档数、块数、状态
-- 文档列表：按集合分页展示，显示来源、MIME 类型、大小、状态、错误信息
-- 入库进度：WebSocket 实时推送 `knowledge_ingest` 事件，文档状态自动刷新
+- 文档列表：按集合分页展示，显示来源、MIME 类型、大小、状态、错误信息、入库时间、更新时间
+- 入库进度：WebSocket 实时推送 `knowledge_ingest` 事件，文档状态自动刷新；存在 indexing 中文档且文档 Tab 激活时前端轮询兜底
+- 服务不可用 / 加载错误时以条件横幅提示（非常驻），错误横幅附重试入口
 
 ### 5.2 搜索面板
 
-- 输入：collection_id、query、top_k、min_score、filter_json
-- 高级控件：rewrite_strategy（hyde/decomposition/multi_query）、hybrid_search（auto/dense/sparse/rrf）、use_rerank
+- 位于「检索」Tab
+- 输入：collection_id（默认「全部知识库」）、query、top_k、min_score、filter_json
+- 高级控件：rewrite_strategy（hyde/decomposition/multi_query）、hybrid_search（auto/dense/sparse/rrf）、use_rerank，各控件附一行简要说明
 - 结果展示：按相似度排序的 Chunk 列表，含内容、分数、来源文档 ID
 
 ### 5.3 Embedder 配置面板
 
+- 位于「设置」Tab；面板内注明该配置与系统设置页共享同一配置源，并提供跳转链接
 - 展示当前 Embedder 配置（provider/base_url/model/dim，API Key 脱敏）
 - 运行时更新：修改 provider/base_url/api_key/model/dim 并写回 DB
 - 系统设置页可写 `knowledge_embed` 字段
 
-### 5.4 文档入库对话框
+### 5.4 文档入库对话框（粘贴文本）
 
-- 输入：source（文件名/URL/描述）、mime_type、content_base64、metadata_json
+- 标题「粘贴文本入库」，仅支持文本粘贴模式；文件上传统一走拖拽上传区（文本输入框内提示引导）
+- 输入：source（文件名/URL/描述）、mime_type、text、metadata_json
 - 分块参数：chunk_size、chunk_overlap、chunk_strategy（char/token/markdown/json/recursive）
 - 上传后立即返回，异步处理进度通过 WS 推送
 
-### 5.5 拖拽上传区
+### 5.5 拖拽上传区（文件统一入口）
 
-- 文档面板内嵌拖拽区域，高亮提示可拖入文件
+- 位于文档 Tab 右侧操作区顶部，常驻，高亮提示可拖入文件
 - 支持多文件同时拖入，自动推断 source（文件名）与 mime_type
 - 上传队列逐文件展示：文件名、大小、状态（pending → indexing → indexed / error）、错误信息
 - 默认参数：整理为 Markdown 开启、分块策略 markdown

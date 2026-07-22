@@ -34,10 +34,10 @@ type stubHeader struct {
 	h http.Header
 }
 
-func (s *stubHeader) Get(key string) string        { return s.h.Get(key) }
-func (s *stubHeader) Add(key, value string)        { s.h.Add(key, value) }
-func (s *stubHeader) Set(key, value string)        { s.h.Set(key, value) }
-func (s *stubHeader) Values(key string) []string   { return s.h.Values(key) }
+func (s *stubHeader) Get(key string) string      { return s.h.Get(key) }
+func (s *stubHeader) Add(key, value string)      { s.h.Add(key, value) }
+func (s *stubHeader) Set(key, value string)      { s.h.Set(key, value) }
+func (s *stubHeader) Values(key string) []string { return s.h.Values(key) }
 func (s *stubHeader) Keys() []string {
 	out := make([]string, 0, len(s.h))
 	for k := range s.h {

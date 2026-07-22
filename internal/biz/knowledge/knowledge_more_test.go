@@ -292,7 +292,7 @@ func TestUsecase_EnsureDefaultCollection(t *testing.T) {
 			return Collection{}, nil
 		}
 		u := NewUsecaseFromRepo(mr)
-		got, err := u.EnsureDefaultCollection(context.Background(), "m1", 1024)
+		got, err := u.EnsureDefaultCollection(context.Background(), "m1", 1024, "")
 		if err != nil {
 			t.Fatalf("EnsureDefaultCollection error: %v", err)
 		}
@@ -320,7 +320,7 @@ func TestUsecase_EnsureDefaultCollection(t *testing.T) {
 			return c, nil
 		}
 		u := NewUsecaseFromRepo(mr)
-		got, err := u.EnsureDefaultCollection(context.Background(), "text-embedding-3-small", 768)
+		got, err := u.EnsureDefaultCollection(context.Background(), "text-embedding-3-small", 768, "")
 		if err != nil {
 			t.Fatalf("EnsureDefaultCollection error: %v", err)
 		}
@@ -332,7 +332,7 @@ func TestUsecase_EnsureDefaultCollection(t *testing.T) {
 	t.Run("empty embedding model rejected on create path", func(t *testing.T) {
 		mr := noOpMockRepo()
 		u := NewUsecaseFromRepo(mr)
-		_, err := u.EnsureDefaultCollection(context.Background(), "", 1536)
+		_, err := u.EnsureDefaultCollection(context.Background(), "", 1536, "")
 		if !errors.Is(err, ErrEmbeddingModelRequired) {
 			t.Errorf("error = %v, want ErrEmbeddingModelRequired", err)
 		}
@@ -340,7 +340,7 @@ func TestUsecase_EnsureDefaultCollection(t *testing.T) {
 
 	t.Run("nil usecase returns unavailable", func(t *testing.T) {
 		var u *Usecase
-		_, err := u.EnsureDefaultCollection(context.Background(), "m", 1536)
+		_, err := u.EnsureDefaultCollection(context.Background(), "m", 1536, "")
 		if !errors.Is(err, ErrUnavailable) {
 			t.Errorf("error = %v, want ErrUnavailable", err)
 		}

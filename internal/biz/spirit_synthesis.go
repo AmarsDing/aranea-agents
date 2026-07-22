@@ -66,10 +66,10 @@ type SynthesisUsecase struct {
 }
 
 var (
-	ErrActiveTeamsExist   = apierror.Conflict(apierror.DomainSpirit, "cannot synthesize: active teams still running")
-	ErrNoCompletedTeams   = apierror.BadRequest(apierror.DomainSpirit, "no completed or failed teams to synthesize")
-	ErrNoTeamResults      = apierror.BadRequest(apierror.DomainSpirit, "no team results to synthesize")
-	ErrUnknownStrategy    = apierror.BadRequest(apierror.DomainSpirit, "unknown synthesis strategy")
+	ErrActiveTeamsExist       = apierror.Conflict(apierror.DomainSpirit, "cannot synthesize: active teams still running")
+	ErrNoCompletedTeams       = apierror.BadRequest(apierror.DomainSpirit, "no completed or failed teams to synthesize")
+	ErrNoTeamResults          = apierror.BadRequest(apierror.DomainSpirit, "no team results to synthesize")
+	ErrUnknownStrategy        = apierror.BadRequest(apierror.DomainSpirit, "unknown synthesis strategy")
 	ErrSynthesisModelRequired = apierror.Unavailable(apierror.DomainSpirit, "synthesis model required in production")
 	ErrSynthesisModelFailed   = apierror.Unavailable(apierror.DomainSpirit, "synthesis model generate failed")
 )

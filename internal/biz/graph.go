@@ -133,9 +133,9 @@ type SwarmSafetySpec struct {
 
 // Swarm graph state keys (AS-FSM / swarm safety).
 const (
-	SwarmHandoffCountStateKey    = "_swarm_handoff_count"
-	SwarmRecentTargetsStateKey   = "_swarm_recent_targets"
-	SwarmActiveAgentSessionMeta  = "swarm_active_agent"
+	SwarmHandoffCountStateKey   = "_swarm_handoff_count"
+	SwarmRecentTargetsStateKey  = "_swarm_recent_targets"
+	SwarmActiveAgentSessionMeta = "swarm_active_agent"
 )
 
 // GraphExecutor is the biz-level port for executing graphs from other modules.

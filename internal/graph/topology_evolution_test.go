@@ -83,32 +83,26 @@ func TestTopologyEvolver_AddEdge(t *testing.T) {
 		t.Fatalf("expected 1 published event, got %d", len(events))
 	}
 	ev := events[0]
-	if ev.Event != biz.ActivityEventUpdated {
-		t.Errorf("Event=%q want %q", ev.Event, biz.ActivityEventUpdated)
+	if ev.NoticeType != "topology_evolved" {
+		t.Errorf("NoticeType=%q want %q", ev.NoticeType, "topology_evolved")
 	}
-	if ev.Activity.Kind != biz.ActivityKindGraphStage {
-		t.Errorf("Kind=%q want %q", ev.Activity.Kind, biz.ActivityKindGraphStage)
+	if ev.SpiritSessionID() != exec.SessionID {
+		t.Errorf("SpiritSessionID=%q want %q", ev.SpiritSessionID(), exec.SessionID)
 	}
-	if ev.Activity.Stage != "topology_evolved" {
-		t.Errorf("Stage=%q want %q", ev.Activity.Stage, "topology_evolved")
+	if v, ok := ev.Meta["activity_kind"].(string); !ok || v != string(biz.ActivityKindGraphStage) {
+		t.Errorf("Meta[activity_kind]=%v want %q", ev.Meta["activity_kind"], biz.ActivityKindGraphStage)
 	}
-	if ev.Domain != biz.ActivityDomainChat {
-		t.Errorf("Domain=%q want %q", ev.Domain, biz.ActivityDomainChat)
+	if v, ok := ev.Meta["execution_id"].(string); !ok || v != exec.ID {
+		t.Errorf("Meta[execution_id]=%v want %q", ev.Meta["execution_id"], exec.ID)
 	}
-	if ev.Activity.SessionID != exec.SessionID {
-		t.Errorf("SessionID=%q want %q", ev.Activity.SessionID, exec.SessionID)
+	if v, ok := ev.Meta["from_node"].(string); !ok || v != insight.SourceNode {
+		t.Errorf("Meta[from_node]=%v want %q", ev.Meta["from_node"], insight.SourceNode)
 	}
-	if v, ok := ev.Activity.Meta["execution_id"].(string); !ok || v != exec.ID {
-		t.Errorf("Meta[execution_id]=%v want %q", ev.Activity.Meta["execution_id"], exec.ID)
+	if v, ok := ev.Meta["to_node"].(string); !ok || v != insight.TargetNode {
+		t.Errorf("Meta[to_node]=%v want %q", ev.Meta["to_node"], insight.TargetNode)
 	}
-	if v, ok := ev.Activity.Meta["from_node"].(string); !ok || v != insight.SourceNode {
-		t.Errorf("Meta[from_node]=%v want %q", ev.Activity.Meta["from_node"], insight.SourceNode)
-	}
-	if v, ok := ev.Activity.Meta["to_node"].(string); !ok || v != insight.TargetNode {
-		t.Errorf("Meta[to_node]=%v want %q", ev.Activity.Meta["to_node"], insight.TargetNode)
-	}
-	if v, ok := ev.Activity.Meta["edge_kind"].(string); !ok || v != biz.EdgeKindTransfer {
-		t.Errorf("Meta[edge_kind]=%v want %q", ev.Activity.Meta["edge_kind"], biz.EdgeKindTransfer)
+	if v, ok := ev.Meta["edge_kind"].(string); !ok || v != biz.EdgeKindTransfer {
+		t.Errorf("Meta[edge_kind]=%v want %q", ev.Meta["edge_kind"], biz.EdgeKindTransfer)
 	}
 }
 

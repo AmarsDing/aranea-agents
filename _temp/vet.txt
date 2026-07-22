@@ -1,0 +1,11 @@
+﻿go : internal\agent\task_planner_impl_test.go:16:37: illegal UTF-8 encoding
+所在位置 行:1 字符: 1
++ go vet ./internal/... 2>&1 | Out-String -Width 300 | Out-File -Encodi ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (internal\agent\... UTF-8 encoding:String) [], Remote    Exception
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+# aranea-agents/internal/graph
+# [aranea-agents/internal/graph]
+vet.exe: internal\graph\topology_evolution_test.go:86:8: ev.Event undefined (type *biz.SystemNoticeEvent has no field or method Event)
+

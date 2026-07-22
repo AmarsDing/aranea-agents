@@ -557,7 +557,7 @@ type SessionUsecase struct {
 
 // ActivityLister is the local interface for reading Activities.
 // This mirrors the former Activity list shape without importing biz.Activity.
-	// Production wiring uses sessionActivityLister over StepV2Reader.
+// Production wiring uses sessionActivityLister over StepV2Reader.
 // Stability:evolving
 type ActivityLister interface {
 	ListBySessionTurn(ctx context.Context, sessionID, turnID string) ([]ActivityEntry, error)

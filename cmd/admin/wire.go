@@ -710,13 +710,13 @@ func provideChatServiceDeps(
 				RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
 				Lg:        lg,
 			},
-			Runs:             runs,
-			PendingQueue:     pendingQueue,
-			RT:               rtDeps,
-			TurnTimeout:      0,
-			Admission:  biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{Quota: usage, Agents: agents}),
-			StepReader: stepReader,
-			StepWriter: stepWriter,
+			Runs:         runs,
+			PendingQueue: pendingQueue,
+			RT:           rtDeps,
+			TurnTimeout:  0,
+			Admission:    biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{Quota: usage, Agents: agents}),
+			StepReader:   stepReader,
+			StepWriter:   stepWriter,
 		},
 		Usage: service.ChatUsageDeps{
 			Usage:        usage,
@@ -2121,7 +2121,6 @@ func provideEcosystemPresetScenarioDir() string {
 func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
 	panic(wire.Build(
 		server.ProviderSet,
-		server.NewSessionAuthorizer,
 		data.ProviderSet,
 		biz.ProviderSet,
 		event.ProviderSet,

@@ -62,8 +62,8 @@ type Run struct {
 	FinishedAt         string
 	// WorkspaceID scopes this run to a tenant workspace.
 	// empty = legacy (treated as default workspace); non-empty = tenant-private.
-	WorkspaceID        string
-	CreatedAt          string
+	WorkspaceID string
+	CreatedAt   string
 }
 
 // CaseResult is the outcome for one case in a run.

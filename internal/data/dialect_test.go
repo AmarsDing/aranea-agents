@@ -53,7 +53,7 @@ func TestDialect_JSONExtract(t *testing.T) {
 // Postgres `->>` always returns text, so numeric consumers (COALESCE with a
 // DOUBLE PRECISION column, AVG, `> 0` comparisons) must cast — otherwise PG
 // raises 42804 ("COALESCE types double precision and text cannot be matched")
-// or 42883 ("function avg(text) does not exist"). NULLIF(..., '') guards
+// or 42883 ("function avg(text) does not exist"). NULLIF(..., ”) guards
 // empty-string values which would fail the cast; missing keys yield NULL.
 // SQLite json_extract returns INTEGER/REAL natively for numeric JSON values,
 // so no cast is needed there.
@@ -90,7 +90,7 @@ func TestDialect_JSONExtractNumeric(t *testing.T) {
 // TEXT (SQLite has no JSONB), so Postgres write helpers must cast the column
 // to jsonb before applying jsonb_set / the jsonb `-` operator — otherwise PG
 // raises 42883 ("function jsonb_set(text, unknown, jsonb) does not exist").
-// The COALESCE(NULLIF(col,'')...) guard tolerates NULL and empty-string rows.
+// The COALESCE(NULLIF(col,”)...) guard tolerates NULL and empty-string rows.
 func TestDialect_JSONBBase(t *testing.T) {
 	tests := []struct {
 		dialect Dialect

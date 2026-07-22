@@ -20,20 +20,20 @@ func (p *GraphOrchestrationProjector) PublishGraphTaskStatus(ctx context.Context
 	}
 	graphID = strings.TrimSpace(graphID)
 	meta := map[string]any{
-		"execution_id":   execID,
-		"graph_id":       graphID,
-		"node_id":        task.NodeID,
-		"task_id":        task.TaskID,
-		"task_status":    string(task.Status),
-		"assignee":       task.Assignee,
-		"summary":        task.Summary,
-		"webhook_topic":  "graph.task.status",
-		"filter_key":     "graph/" + graphID + "/" + execID,
-		"channel":        "graph",
-		"author":         "graph-task",
-		"activity_kind":  string(biz.ActivityKindGraphStage),
+		"execution_id":    execID,
+		"graph_id":        graphID,
+		"node_id":         task.NodeID,
+		"task_id":         task.TaskID,
+		"task_status":     string(task.Status),
+		"assignee":        task.Assignee,
+		"summary":         task.Summary,
+		"webhook_topic":   "graph.task.status",
+		"filter_key":      "graph/" + graphID + "/" + execID,
+		"channel":         "graph",
+		"author":          "graph-task",
+		"activity_kind":   string(biz.ActivityKindGraphStage),
 		"activity_status": string(biz.ActivityStatusRunning),
-		"activity_event": string(biz.ActivityEventUpdated),
+		"activity_event":  string(biz.ActivityEventUpdated),
 	}
 	for k, v := range extra {
 		meta[k] = v

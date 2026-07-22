@@ -140,11 +140,11 @@ func (f ChannelLiveTesterFunc) TestLive(ctx context.Context, configJSON string, 
 // Stability:stable
 // ChannelListQuery is the pagination/filter input for admin channel lists.
 type ChannelListQuery struct {
-	Search  string
-	Type    string // channel config.type (matched via config_json contains)
-	Status  string // row status, or "enabled"/"disabled" for the enabled flag
-	Limit   int
-	Offset  int
+	Search string
+	Type   string // channel config.type (matched via config_json contains)
+	Status string // row status, or "enabled"/"disabled" for the enabled flag
+	Limit  int
+	Offset int
 }
 
 // ChannelListResult is a page of channels plus the filter-scoped total.

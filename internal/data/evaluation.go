@@ -349,7 +349,7 @@ func (r *evalRepo) DeleteRun(ctx context.Context, id string) error {
 // evalRunsWorkspaceFilter returns a SQL fragment (prefixed with " AND") and
 // matching args for workspace visibility filtering of eval_runs.
 //   - system caller (workspace.IsSystem): no filtering (sees all rows)
-//   - default workspace caller: sees own rows plus legacy rows (workspace_id='')
+//   - default workspace caller: sees own rows plus legacy rows (workspace_id=”)
 //   - other tenant callers: strict equality (own rows only)
 func evalRunsWorkspaceFilter(ctx context.Context) (string, []any) {
 	if workspace.IsSystem(ctx) {

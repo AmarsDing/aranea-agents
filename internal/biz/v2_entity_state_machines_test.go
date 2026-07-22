@@ -167,11 +167,11 @@ func TestTeamStageStateMachine_ValidTransitions(t *testing.T) {
 		want  TeamStageStatus
 	}{
 		{TeamStageStatusPending, TeamStageEventStart, TeamStageStatusRunning},
-	// 2026-07-21 P0-2：Pending → Failed/Cancelled 与 teams 表状态机对齐
-	//（DAG 依赖失败级联 B-01、编排取消未启动团队）。
-	{TeamStageStatusPending, TeamStageEventFail, TeamStageStatusFailed},
-	{TeamStageStatusPending, TeamStageEventCancel, TeamStageStatusCancelled},
-	{TeamStageStatusRunning, TeamStageEventComplete, TeamStageStatusCompleted},
+		// 2026-07-21 P0-2：Pending → Failed/Cancelled 与 teams 表状态机对齐
+		//（DAG 依赖失败级联 B-01、编排取消未启动团队）。
+		{TeamStageStatusPending, TeamStageEventFail, TeamStageStatusFailed},
+		{TeamStageStatusPending, TeamStageEventCancel, TeamStageStatusCancelled},
+		{TeamStageStatusRunning, TeamStageEventComplete, TeamStageStatusCompleted},
 		{TeamStageStatusRunning, TeamStageEventFail, TeamStageStatusFailed},
 		{TeamStageStatusRunning, TeamStageEventCancel, TeamStageStatusCancelled},
 		{TeamStageStatusRunning, TeamStageEventInterrupt, TeamStageStatusWaitingHuman},

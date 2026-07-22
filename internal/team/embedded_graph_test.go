@@ -361,4 +361,3 @@ func TestCompileToGraphBuildConfig_emptyEdgeEndpointRejected(t *testing.T) {
 		t.Fatal("expected error for empty edge endpoint, got nil")
 	}
 }
-

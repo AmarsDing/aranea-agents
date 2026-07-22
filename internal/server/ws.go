@@ -80,7 +80,7 @@ type WSServer struct {
 	// eventBus is the v2 typed EventBus (Phase 3b-D). Used by publishWSErrorActivity
 	// to emit ActivityBridgeEvent payloads (wrapping v1 ActivityEvent) for the
 	// chat error activity. The v2 WSV2Subscriber fans these out to WS clients.
-	eventBus              biz.EventBus
+	eventBus biz.EventBus
 	// outbox provides durable critical-event replay for last_event_id (B-06). Optional.
 	outbox                biz.EventDeliveryOutboxRepo
 	canceller             RunCanceller

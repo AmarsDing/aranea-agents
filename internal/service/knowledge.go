@@ -472,12 +472,18 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 	timer := prometheus.NewTimer(knowledgeSearchDuration)
 	defer timer.ObserveDuration()
 
-	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
-	if err != nil {
-		return nil, err
-	}
-	if err := s.assertCollectionAccess(ctx, col); err != nil {
-		return nil, err
+	colID := strings.TrimSpace(req.GetCollectionId())
+	if colID != "" {
+		// C-01: 显式单库检索校验存在性 + 读权限（IDOR 防护）。
+		// 留空走 US-14 全库智能路由，无单一 Collection 可校验——
+		// 候选集由 FederatedRetriever 经 workspace 过滤的 ListCollections 派生。
+		col, err := s.uc.GetCollection(ctx, colID)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.assertCollectionAccess(ctx, col); err != nil {
+			return nil, err
+		}
 	}
 	query := strings.TrimSpace(req.GetQuery())
 	if query == "" {
@@ -501,6 +507,7 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 	}
 
 	var chunks []biz.KnowledgeChunk
+	var err error
 
 	if q.CollectionID == "" {
 		// US-14 检索免选择：collection_id 留空 → 全库智能路由（Route 策略，
@@ -766,7 +773,13 @@ func (s *KnowledgeService) resolveIngestCollection(ctx context.Context, collecti
 	if model == "" {
 		return biz.KnowledgeCollection{}, apierror.BadRequest("KNOWLEDGE", "embedder not configured; cannot ensure default collection")
 	}
-	return s.uc.EnsureDefaultCollection(ctx, model, dim)
+	// C-01: 与 CreateCollection 一致的租户盖章——system 创建共享默认库（ws=""），
+	// 租户创建自有默认库，避免懒创建的库被 mutate 检查视为共享只读。
+	ws := ""
+	if !workspace.IsSystem(ctx) {
+		ws = workspace.IDFromContext(ctx)
+	}
+	return s.uc.EnsureDefaultCollection(ctx, model, dim, ws)
 }
 
 // isImageIngest 报告本次入库是否为图片模态（委托 knowledge.IsImageSource）。

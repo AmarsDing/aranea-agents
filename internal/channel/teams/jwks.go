@@ -25,12 +25,12 @@ const (
 )
 
 var (
-	errMissingKid       = apierror.BadRequest(protocolReason, "teams: JWT header missing kid")
-	errJWKSFetchFailed  = apierror.Internal(protocolReason, "teams: failed to fetch Bot Framework JWKS")
-	errJWKSKeyNotFound  = apierror.BadRequest(protocolReason, "teams: signing key not found in JWKS")
-	errIssuerMismatch   = apierror.BadRequest(protocolReason, "teams: issuer mismatch")
-	errRS256VerifyFail  = apierror.BadRequest(protocolReason, "teams: RS256 signature verification failed")
-	errInvalidRSAKey    = apierror.BadRequest(protocolReason, "teams: invalid RSA public key in JWKS")
+	errMissingKid      = apierror.BadRequest(protocolReason, "teams: JWT header missing kid")
+	errJWKSFetchFailed = apierror.Internal(protocolReason, "teams: failed to fetch Bot Framework JWKS")
+	errJWKSKeyNotFound = apierror.BadRequest(protocolReason, "teams: signing key not found in JWKS")
+	errIssuerMismatch  = apierror.BadRequest(protocolReason, "teams: issuer mismatch")
+	errRS256VerifyFail = apierror.BadRequest(protocolReason, "teams: RS256 signature verification failed")
+	errInvalidRSAKey   = apierror.BadRequest(protocolReason, "teams: invalid RSA public key in JWKS")
 )
 
 type openIDMetadata struct {

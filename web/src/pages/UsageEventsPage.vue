@@ -153,7 +153,7 @@
         :page-max="pageMax"
         :total="eventsTotal"
         :loading="loading"
-        label="条事件"
+        :label="t('usageEventsPage.paginationLabel')"
         @update:page="onPage"
         @update:page-size="onPageSize"
       />
@@ -163,6 +163,7 @@
 
 <script setup lang="ts">
 import { onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
@@ -172,6 +173,8 @@ import { useUsageEventsPage } from '../features/usage/useUsageEventsPage';
 import type { ModelTokenUsageEvent } from '../features/usage/types';
 import { type RegistryTableColumn } from '../features/ui/registryTableColumns';
 import { USAGE_EVENT_TABLE_COLUMNS } from '../features/usage/usageTableUi';
+
+const { t } = useI18n();
 
 const {
   events,

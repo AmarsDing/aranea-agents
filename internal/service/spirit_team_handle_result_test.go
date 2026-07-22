@@ -25,7 +25,7 @@ func (s *stubTeamReader) GetTeamByID(_ context.Context, id string) (biz.Team, er
 	}
 	return biz.Team{}, biz.ErrNotFound
 }
-func (s *stubTeamReader) ListTeams(_ context.Context) ([]biz.Team, error)         { return nil, nil }
+func (s *stubTeamReader) ListTeams(_ context.Context) ([]biz.Team, error) { return nil, nil }
 func (s *stubTeamReader) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
@@ -38,13 +38,19 @@ func (s *stubTeamReader) ListBySpiritSessionID(_ context.Context, _ string) ([]b
 func (s *stubTeamReader) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (s *stubTeamReader) ListTeamsByWorkspace(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
+func (s *stubTeamReader) CountTeamsByWorkspace(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
 
 // stubTeamWriter implements biz.TeamWriter for testing.
 type stubTeamWriter struct{}
 
 func (s *stubTeamWriter) CreateTeam(_ context.Context, t biz.Team) (biz.Team, error) { return t, nil }
 func (s *stubTeamWriter) UpdateTeam(_ context.Context, t biz.Team) (biz.Team, error) { return t, nil }
-func (s *stubTeamWriter) DeleteTeam(_ context.Context, _ string) error                { return nil }
+func (s *stubTeamWriter) DeleteTeam(_ context.Context, _ string) error               { return nil }
 func (s *stubTeamWriter) BatchArchiveTeams(_ context.Context, _ []string) (int, error) {
 	return 0, nil
 }
@@ -174,12 +180,12 @@ func TestHandleTeamTurnResult_TerminalEventVersion(t *testing.T) {
 	eventBus := &capturingEventBus{}
 
 	s := &TeamStarter{
-		sessions:  nil, // not needed for this path
-		team:      TeamOrchestrationDeps{TeamUC: teamUC, SpiritUC: &stubSpiritTeamController{}},
-		eventBus:  eventBus,
-		lg:        loggateway.NewNoop(),
+		sessions:   nil, // not needed for this path
+		team:       TeamOrchestrationDeps{TeamUC: teamUC, SpiritUC: &stubSpiritTeamController{}},
+		eventBus:   eventBus,
+		lg:         loggateway.NewNoop(),
 		teamStageR: stubTSReader,
-		tsSM:      biz.NewTeamStageStateMachine(),
+		tsSM:       biz.NewTeamStageStateMachine(),
 	}
 
 	terminalCases := []struct {
@@ -268,11 +274,11 @@ func TestHandleTeamTurnResult_ProgressEventVersion(t *testing.T) {
 	eventBus := &capturingEventBus{}
 
 	s := &TeamStarter{
-		team:      TeamOrchestrationDeps{TeamUC: teamUC, SpiritUC: &stubSpiritTeamController{}},
-		eventBus:  eventBus,
-		lg:        loggateway.NewNoop(),
+		team:       TeamOrchestrationDeps{TeamUC: teamUC, SpiritUC: &stubSpiritTeamController{}},
+		eventBus:   eventBus,
+		lg:         loggateway.NewNoop(),
 		teamStageR: stubTSReader,
-		tsSM:      biz.NewTeamStageStateMachine(),
+		tsSM:       biz.NewTeamStageStateMachine(),
 	}
 
 	s.HandleTeamTurnResult(context.Background(), spiritSessionID, teamID, biz.TeamStatusRunning, "", "")
@@ -416,9 +422,9 @@ func TestPublishV2TeamRunCompletion_SkipsWhenCurrentTerminal(t *testing.T) {
 
 	seq := &capturingSeq{}
 	s := &TeamStarter{
-		team:     TeamOrchestrationDeps{TeamUC: teamUC},
-		seq:      seq,
-		lg:       loggateway.NewNoop(),
+		team: TeamOrchestrationDeps{TeamUC: teamUC},
+		seq:  seq,
+		lg:   loggateway.NewNoop(),
 		teamRunR: &stubTeamRunV2Reader{runs: map[string]biz.TeamRun{
 			trID: {ID: trID, TeamStageID: tsID, Status: biz.TeamRunV2StatusCancelled, Version: 5},
 		}},

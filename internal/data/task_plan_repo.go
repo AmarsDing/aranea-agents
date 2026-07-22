@@ -197,7 +197,7 @@ func (r *taskPlanRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionI
 // taskPlansWorkspaceFilter returns a SQL fragment (prefixed with " AND") and
 // matching args for workspace visibility of task_plans (C-25).
 //   - system caller: no filtering
-//   - default workspace: own rows plus legacy (workspace_id='')
+//   - default workspace: own rows plus legacy (workspace_id=”)
 //   - other tenants: strict equality
 func taskPlansWorkspaceFilter(ctx context.Context) (string, []any) {
 	if workspace.IsSystem(ctx) {

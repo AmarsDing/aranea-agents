@@ -78,7 +78,7 @@ func (m *deliverableTeamRepo) ListRuns(_ context.Context, _ string, _ int) ([]Te
 
 type deliverableSessionAccessor struct {
 	sessionsByTeam map[string]Session
-	extraByTeam    map[string][]Session // additional sessions returned by Search (e.g. member sessions)
+	extraByTeam    map[string][]Session     // additional sessions returned by Search (e.g. member sessions)
 	messages       map[string][]ChatMessage // sessionID → messages
 }
 
@@ -344,6 +344,65 @@ func TestInjectUpstreamDeliverables_FallbackExtract(t *testing.T) {
 	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
 	if !strings.Contains(prefix, "即时提取的成果") {
 		t.Fatalf("fallback extraction should supply upstream output, got %q", prefix)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P1 形式契约（B.10.15.2）：注入前缀包含契约声明（name/type/format）
+// ---------------------------------------------------------------------------
+
+func TestInjectUpstreamDeliverables_IncludesContractDeclaration(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	upstream := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "调研团队", "调研摘要")
+	upstream.Deliverables = `[{"name":"research_report","type":"document","format":"markdown","description":"调研结论报告"}]`
+	teams.items["t-up"] = upstream
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	if !strings.Contains(prefix, "契约: research_report (document/markdown) — 调研结论报告") {
+		t.Fatalf("prefix should declare the upstream contract, got %q", prefix)
+	}
+	if !strings.Contains(prefix, "调研摘要") {
+		t.Fatalf("prefix should still contain the summary, got %q", prefix)
+	}
+}
+
+func TestInjectUpstreamDeliverables_ContractWithoutDescription(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	upstream := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "数据团队", "数据摘要")
+	upstream.Deliverables = `[{"name":"dataset","type":"data","format":"json"}]`
+	teams.items["t-up"] = upstream
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	if !strings.Contains(prefix, "契约: dataset (data/json)") {
+		t.Fatalf("contract without description should render name (type/format), got %q", prefix)
+	}
+	if strings.Contains(prefix, "dataset (data/json) —") {
+		t.Fatalf("no description → no em-dash suffix, got %q", prefix)
+	}
+}
+
+func TestInjectUpstreamDeliverables_NoContract_OmitsDeclarationLine(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+	// Upstream has no contract declared → keep the legacy prefix shape.
+	seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "上游团队", "成果")
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	if strings.Contains(prefix, "契约:") {
+		t.Fatalf("no contract declared → no declaration line, got %q", prefix)
+	}
+	if !strings.Contains(prefix, "上游团队") || !strings.Contains(prefix, "成果") {
+		t.Fatalf("legacy prefix content must be preserved, got %q", prefix)
 	}
 }
 

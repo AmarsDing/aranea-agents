@@ -49,7 +49,7 @@ func recencyScore(lastActiveDate string, now time.Time) float64 {
 	if err != nil {
 		return 0
 	}
-	days := now.UTC().Truncate(24*time.Hour).Sub(d.UTC().Truncate(24 * time.Hour)).Hours() / 24
+	days := now.UTC().Truncate(24*time.Hour).Sub(d.UTC().Truncate(24*time.Hour)).Hours() / 24
 	if days <= 0 {
 		return 100
 	}

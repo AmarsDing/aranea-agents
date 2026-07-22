@@ -913,15 +913,15 @@ func parseDecompositionOutput(text string) ([]biz.SubTask, error) {
 	}
 
 	var rawTasks []struct {
-		ID                   string                     `json:"id"`
-		Name                 string                     `json:"name"`
-		Description          string                     `json:"description"`
-		DependsOn            []string                   `json:"depends_on"`
-		RequiredCapabilities []string                   `json:"required_capabilities"`
-		Priority             int                        `json:"priority"`
-		EstimatedComplexity  float64                    `json:"estimated_complexity"`
-		Deliverables         []biz.DeliverableContract  `json:"deliverables"`
-		InputContract        []biz.DeliverableContract  `json:"input_contract"`
+		ID                   string                    `json:"id"`
+		Name                 string                    `json:"name"`
+		Description          string                    `json:"description"`
+		DependsOn            []string                  `json:"depends_on"`
+		RequiredCapabilities []string                  `json:"required_capabilities"`
+		Priority             int                       `json:"priority"`
+		EstimatedComplexity  float64                   `json:"estimated_complexity"`
+		Deliverables         []biz.DeliverableContract `json:"deliverables"`
+		InputContract        []biz.DeliverableContract `json:"input_contract"`
 	}
 
 	if err := json.Unmarshal([]byte(text), &rawTasks); err != nil {

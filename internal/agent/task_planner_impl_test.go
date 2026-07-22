@@ -13,7 +13,7 @@ import (
 // TestTaskPlanner_QuickAssess verifies P1-2: QuickAssess performs pure-computation
 // complexity assessment without LLM/DB, returning the correct ComplexityLevel.
 func TestTaskPlanner_QuickAssess(t *testing.T) {
-	// Construct planner with nil deps �?QuickAssess is pure computation.
+	// Construct planner with nil deps —QuickAssess is pure computation.
 	impl := &taskPlannerImpl{lg: loggateway.NewNoop()}
 	ctx := context.Background()
 
@@ -33,7 +33,7 @@ func TestTaskPlanner_QuickAssess(t *testing.T) {
 		{
 			name: "moderate medium message with some history",
 			input: biz.PlanInput{
-				UserMessage:    strings.Repeat("请帮我分析这个中等长度的任务，包含一些上下文信息�?, 12),
+				UserMessage:    strings.Repeat("请帮我分析这个中等长度的任务，包含一些上下文信息。", 12),
 				HistoryDQScore: 0.5,
 			},
 			wantLevel: biz.ComplexityModerate,
@@ -42,7 +42,7 @@ func TestTaskPlanner_QuickAssess(t *testing.T) {
 			name: "complex long research message with high history",
 			input: biz.PlanInput{
 				UserMessage: strings.Repeat("1. 研究课题A\n2. 研究课题B\n3. 研究课题C\n", 40) +
-					strings.Repeat("这是一个复杂的研究任务，需要深入分析�?, 30),
+					strings.Repeat("这是一个复杂的研究任务，需要深入分析。", 30),
 				IntentArtifact: &biz.IntentArtifact{
 					IntentKind:  "research",
 					RiskFlags:   []string{"security", "compliance"},
@@ -84,7 +84,7 @@ func TestTaskPlanner_QuickAssess(t *testing.T) {
 }
 
 // TestTaskPlanner_QuickAssess_PureComputation verifies QuickAssess works with nil
-// repo/catalog/httpClient �?proving it's pure computation with no I/O.
+// repo/catalog/httpClient —proving it's pure computation with no I/O.
 func TestTaskPlanner_QuickAssess_PureComputation(t *testing.T) {
 	impl := &taskPlannerImpl{
 		repo:       nil,
@@ -128,15 +128,15 @@ func TestTaskPlanner_QuickAssess_TeamIntentForcesPlanning(t *testing.T) {
 		{"concurrently keyword", "Run these concurrently", true},
 		{"同时工作 keyword", "让两个agent同时工作", true},
 		// Team formation keywords
-		{"组建团队 keyword", "请组建团队完成这个项�?, true},
+		{"组建团队 keyword", "请组建团队完成这个项目", true},
 		{"组建team keyword", "Please build a team to handle this", true},
-		{"团队a团队b keyword", "团队A写诗，团队B写代�?, true},
-		{"多个团队 keyword", "需要多个团队协作完�?, true},
+		{"团队a团队b keyword", "团队A写诗，团队B写代码", true},
+		{"多个团队 keyword", "需要多个团队协作完成", true},
 		// Real-world prompt from the bug report
-		{"real team prompt", "请组建两个团队并行工作：团队A写一首关于春天的五言绝句，团队B写一首关于秋天的五言绝句。两首诗完成后请汇总对比�?, true},
+		{"real team prompt", "请组建两个团队并行工作：团队A写一首关于春天的五言绝句，团队B写一首关于秋天的五言绝句。两首诗完成后请汇总对比。", true},
 		// Non-team messages should NOT be forced
 		{"simple greeting", "你好", false},
-		{"simple question", "今天天气怎么�?, false},
+		{"simple question", "今天天气怎么样", false},
 		{"simple code question", "如何用Python写一个hello world", false},
 	}
 
@@ -159,12 +159,12 @@ func TestTaskPlanner_QuickAssess_TeamIntentForcesPlanning(t *testing.T) {
 
 // TestDetermineStrategy_ModeOverride verifies that an explicit Mode in PlanInput
 // selects the correct strategy. In the three-mode system (direct/parallel/dag),
-// the LLM is the sole decision authority �?complexity no longer drives selection.
+// the LLM is the sole decision authority —complexity no longer drives selection.
 //
 // Mode values (from PlanAndExecuteInput.Mode jsonschema):
 //   - direct: Spirit answers directly, no delegation
 //   - parallel: N independent single-agent subtasks, 1 agent per subtask
-//   - dag: N teams, each team has �? members collaborating
+//   - dag: N teams, each team has ≥2 members collaborating
 //   - empty/auto/unknown: defaults to direct (LLM did not comply with DECISION.md)
 func TestDetermineStrategy_ModeOverride(t *testing.T) {
 	impl := &taskPlannerImpl{lg: loggateway.NewNoop()}
@@ -241,9 +241,9 @@ func TestShouldForceComplex(t *testing.T) {
 // DECISION.md instruction to pass explicit mode=parallel/dag.
 //
 // Mode selection (aligned with DECISION.md three-mode system):
-//   - team formation keywords ("分派N个团�?, "组建团队", "团队协作") �?dag:
-//     user expects one or more multi-member teams (�? members each).
-//   - parallel keywords ("并行", "同时执行") �?parallel: independent concurrent
+//   - team formation keywords ("分派N个团队", "组建团队", "团队协作") → dag:
+//     user expects one or more multi-member teams (≥2 members each).
+//   - parallel keywords ("并行", "同时执行") → parallel: independent concurrent
 //     subtasks, 1 agent per subtask (no multi-member teams).
 //   - Team keywords take precedence over parallel keywords.
 func TestDetectTeamIntent(t *testing.T) {
@@ -252,13 +252,13 @@ func TestDetectTeamIntent(t *testing.T) {
 		message string
 		want    string
 	}{
-		// DAG intent (team formation keywords �?checked first, takes precedence)
-		// "分派N个团�?/"组建团队" implies multi-member teams �?dag
-		{"two teams Chinese", "分派两个团队分别负责代码分析和数据分�?, "dag"},
-		{"two teams English mix", "分派两个team进行，一个负责代码分析，一个负责模拟数据分�?, "dag"},
-		{"multiple teams", "需要多个团队协作完�?, "dag"},
+		// DAG intent (team formation keywords —checked first, takes precedence)
+		// "分派N个团队"/"组建团队" implies multi-member teams → dag
+		{"two teams Chinese", "分派两个团队分别负责代码分析和数据分析", "dag"},
+		{"two teams English mix", "分派两个team进行，一个负责代码分析，一个负责模拟数据分析", "dag"},
+		{"multiple teams", "需要多个团队协作完成", "dag"},
 		{"parallel with team formation", "组建两个团队并行工作：团队A写诗，团队B写诗", "dag"},
-		{"team formation Chinese", "请组建团队完成这个项�?, "dag"},
+		{"team formation Chinese", "请组建团队完成这个项目", "dag"},
 		{"team A and team B", "团队A负责前端，团队B负责后端", "dag"},
 		{"build a team English", "form a team to handle this", "dag"},
 		{"team collaboration", "团队协作完成这个任务", "dag"},
@@ -266,12 +266,12 @@ func TestDetectTeamIntent(t *testing.T) {
 		// Parallel intent (parallel keywords without team formation keywords)
 		{"parallel keyword Chinese", "请并行处理这三个任务", "parallel"},
 		{"parallel English", "please run these concurrently", "parallel"},
-		{"parallel processing keyword", "并行处理多个子任�?, "parallel"},
+		{"parallel processing keyword", "并行处理多个子任务", "parallel"},
 
 		// No team intent
 		{"simple greeting", "你好", ""},
-		{"single task", "写一首关于春天的�?, ""},
-		{"question", "什么是五言绝句�?, ""},
+		{"single task", "写一首关于春天的诗", ""},
+		{"question", "什么是五言绝句？", ""},
 		{"empty message", "", ""},
 	}
 	for _, tt := range tests {
@@ -287,26 +287,27 @@ func TestDetectTeamIntent(t *testing.T) {
 // TestDetectTeamCount verifies that detectTeamCount correctly extracts the
 // user's explicit team count from the message.
 //
-// 2026-07-04 问题 2 修复：detectTeamCount 用于�?decomposeTask 中约�?LLM
-// 生成恰好 N �?subtask，避�?orchestrateDAG 多创�?team�?func TestDetectTeamCount(t *testing.T) {
+// 2026-07-04 问题 2 修复：detectTeamCount 用于在 decomposeTask 中约束 LLM
+// 生成恰好 N 个 subtask，避免 orchestrateDAG 多创建 team。
+func TestDetectTeamCount(t *testing.T) {
 	tests := []struct {
 		name    string
 		message string
 		want    int
 	}{
-		// 阿拉伯数�?+ 量词 + team/团队
-		{"2个团�?, "分派2个团队分别负责代码分析和数据分析", 2},
-		{"3个团�?, "组建3个团队协作完�?, 3},
-		{"2支团�?, "分派2支团�?, 2},
+		// 阿拉伯数字 + 量词 + team/团队
+		{"2个团队", "分派2个团队分别负责代码分析和数据分析", 2},
+		{"3个团队", "组建3个团队协作完成", 3},
+		{"2支团队", "分派2支团队", 2},
 		{"5 teams English", "please dispatch 5 teams to handle this", 5},
 		{"2 team English mix", "分派两个team进行", 2},
-		{"digit without 量词", "我需�?团队", 3},
+		{"digit without 量词", "我需要3团队", 3},
 
 		// 中文数字
 		{"两个团队", "分派两个团队", 2},
 		{"三个团队", "组建三个团队", 3},
 		{"四支团队", "分派四支团队", 4},
-		{"十个团队", "需要十个团�?, 10},
+		{"十个团队", "需要十个团队", 10},
 
 		// 英文单词数字
 		{"two teams", "I need two teams to handle this", 2},
@@ -318,7 +319,7 @@ func TestDetectTeamIntent(t *testing.T) {
 		{"no count generic", "团队协作", 0},
 		{"simple greeting", "你好", 0},
 		{"empty message", "", 0},
-		{"unrelated number", "我需�?分钟完成", 0},
+		{"unrelated number", "我需要5分钟完成", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -414,15 +415,17 @@ func TestParseDecompositionOutput_Contracts(t *testing.T) {
 	if len(subTasks) != 2 {
 		t.Fatalf("subTasks = %d, want 2", len(subTasks))
 	}
-	// 上游：LLM 提供�?deliverables 原样保留（名称不被兜底覆盖）�?	if len(subTasks[0].Deliverables) != 1 {
+	// 上游：LLM 提供的 deliverables 原样保留（名称不被兜底覆盖）。
+	if len(subTasks[0].Deliverables) != 1 {
 		t.Fatalf("Deliverables = %d, want 1", len(subTasks[0].Deliverables))
 	}
 	d := subTasks[0].Deliverables[0]
 	if d.Name != "research_report" || d.Type != "document" || d.Format != "markdown" || d.Description != "调研报告" {
 		t.Fatalf("Deliverables[0] = %+v, want research_report/document/markdown/调研报告", d)
 	}
-	// 下游：LLM 提供�?input_contract 原样保留，且不再追加兜底派生项�?	if len(subTasks[1].InputContract) != 1 {
-		t.Fatalf("InputContract = %d, want 1 (LLM 已提供时不追加兜�?", len(subTasks[1].InputContract))
+	// 下游：LLM 提供的 input_contract 原样保留，且不再追加兜底派生项。
+	if len(subTasks[1].InputContract) != 1 {
+		t.Fatalf("InputContract = %d, want 1 (LLM 已提供时不追加兜底)", len(subTasks[1].InputContract))
 	}
 	if subTasks[1].InputContract[0].Name != "research_report" {
 		t.Fatalf("InputContract[0].Name = %q, want research_report", subTasks[1].InputContract[0].Name)
@@ -433,7 +436,7 @@ func TestParseDecompositionOutput_Contracts(t *testing.T) {
 // deterministic fallback: when the LLM omits contracts on a DAG edge, the
 // producer (subtask with dependents) gets a derived "{step_id}_output"
 // deliverable and the consumer (subtask with depends_on) gets a derived
-// input contract referencing the same name �?so derived names match by
+// input contract referencing the same name —so derived names match by
 // construction and the validator has something to check.
 func TestParseDecompositionOutput_ContractFallbackDerivation(t *testing.T) {
 	text := `[
@@ -450,7 +453,8 @@ func TestParseDecompositionOutput_ContractFallbackDerivation(t *testing.T) {
 	}
 	research, write, solo := subTasks[0], subTasks[1], subTasks[2]
 
-	// 生产者兜底：有下游依赖但 LLM 未输�?deliverables �?派生 {step_id}_output�?	if len(research.Deliverables) != 1 {
+	// 生产者兜底：有下游依赖但 LLM 未输出 deliverables 时，派生 {step_id}_output。
+	if len(research.Deliverables) != 1 {
 		t.Fatalf("research.Deliverables = %d, want 1 (fallback derived)", len(research.Deliverables))
 	}
 	wantName := research.ID + "_output"
@@ -459,8 +463,9 @@ func TestParseDecompositionOutput_ContractFallbackDerivation(t *testing.T) {
 		t.Fatalf("research.Deliverables[0] = %+v, want name=%q type=document format=markdown", got, wantName)
 	}
 
-	// 消费者兜底：�?depends_on �?LLM 未输�?input_contract �?每个上游派生一项，
-	// 名称与上游兜�?deliverable 一致（构造即匹配）�?	if len(write.InputContract) != 1 {
+	// 消费者兜底：当 depends_on 非空且 LLM 未输出 input_contract 时，每个上游派生一项，
+	// 名称与上游兜底 deliverable 一致（构造即匹配）。
+	if len(write.InputContract) != 1 {
 		t.Fatalf("write.InputContract = %d, want 1 (fallback derived)", len(write.InputContract))
 	}
 	if write.InputContract[0].Name != wantName {
@@ -468,10 +473,12 @@ func TestParseDecompositionOutput_ContractFallbackDerivation(t *testing.T) {
 			write.InputContract[0].Name, wantName)
 	}
 
-	// 无依赖边：solo 既不是生产者也不是消费�?�?不派生任何契约�?	if len(solo.Deliverables) != 0 || len(solo.InputContract) != 0 {
+	// 无依赖边：solo 既不是生产者也不是消费者，不派生任何契约。
+	if len(solo.Deliverables) != 0 || len(solo.InputContract) != 0 {
 		t.Fatalf("solo contracts = %+v/%+v, want both empty", solo.Deliverables, solo.InputContract)
 	}
-	// 消费者自身若无下游依�?�?不派�?deliverables�?	if len(write.Deliverables) != 0 {
+	// 消费者自身若无下游依赖，不派生 deliverables。
+	if len(write.Deliverables) != 0 {
 		t.Fatalf("write.Deliverables = %+v, want empty (no dependents)", write.Deliverables)
 	}
 }
@@ -507,7 +514,7 @@ func TestPublishV2Board_ContractPassthrough(t *testing.T) {
 		Strategy:        biz.StrategyDAG,
 		SubTasks: []biz.SubTask{
 			{ID: "st-1", Name: "A", Deliverables: []biz.DeliverableContract{
-				{Name: "spec", Type: "document", Format: "markdown", Description: "设计�?},
+				{Name: "spec", Type: "document", Format: "markdown", Description: "设计稿"},
 			}},
 			{ID: "st-2", Name: "B", DependsOn: []string{"st-1"}, InputContract: []biz.DeliverableContract{
 				{Name: "spec", Type: "document", Format: "markdown"},
@@ -561,11 +568,11 @@ func (b *plannerCaptureBus) getPublished() []biz.Event {
 // helper publishes a well-formed orchestration_progress SystemNoticeEvent and
 // is nil-safe for both nil bus and empty session.
 func TestTaskPlanner_PublishOrchestrationProgress(t *testing.T) {
-	// nil bus �?no panic.
+	// nil bus → no panic.
 	nilBusPlanner := &taskPlannerImpl{lg: loggateway.NewNoop()}
 	nilBusPlanner.publishOrchestrationProgress(context.Background(), "sess-1", "decomposing", nil)
 
-	// empty session �?skipped.
+	// empty session → skipped.
 	bus := &plannerCaptureBus{}
 	p := &taskPlannerImpl{eventBus: bus, lg: loggateway.NewNoop()}
 	p.publishOrchestrationProgress(context.Background(), "", "decomposing", nil)

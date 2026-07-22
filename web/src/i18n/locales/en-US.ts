@@ -1392,6 +1392,9 @@ export default {
     syncFailed: 'Sync failed',
     syncCompleteButApplyFailed: 'Sync complete but apply failed: {errors}',
   },
+  usageEventsPage: {
+    paginationLabel: 'events',
+  },
   channelsPage: {
     kicker: 'Channel management',
     title: 'Channels',

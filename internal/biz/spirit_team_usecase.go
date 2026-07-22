@@ -1774,7 +1774,7 @@ func (u *SpiritTeamUsecase) InjectUpstreamDeliverables(ctx context.Context, down
 			}
 			summary = extracted
 		}
-		deliverableParts = append(deliverableParts, fmt.Sprintf("## 上游团队: %s\n%s", upstream.DisplayName, summary))
+		deliverableParts = append(deliverableParts, fmt.Sprintf("## 上游团队: %s\n%s%s", upstream.DisplayName, contractDeclarationLines(upstream.Deliverables), summary))
 	}
 
 	if len(deliverableParts) == 0 {
@@ -1783,6 +1783,27 @@ func (u *SpiritTeamUsecase) InjectUpstreamDeliverables(ctx context.Context, down
 
 	return fmt.Sprintf("--- 上游交付物 ---\n%s\n--- 请基于以上上游交付物执行任务 ---\n\n",
 		strings.Join(deliverableParts, "\n\n"))
+}
+
+// contractDeclarationLines renders the P1 contract declaration for the
+// injection prefix, one line per declared contract, e.g.
+// "契约: research_report (document/markdown) — 调研结论报告\n".
+// Returns "" when the upstream team has no parseable contract, so the
+// prefix keeps its legacy shape (name + summary only).
+func contractDeclarationLines(deliverablesJSON string) string {
+	contracts, err := ParseDeliverableContracts(deliverablesJSON)
+	if err != nil || len(contracts) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(contracts))
+	for _, c := range contracts {
+		line := fmt.Sprintf("契约: %s (%s/%s)", c.Name, c.Type, c.Format)
+		if c.Description != "" {
+			line += " — " + c.Description
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 // readDeliverableOutput reads the persisted deliverable output from the team's

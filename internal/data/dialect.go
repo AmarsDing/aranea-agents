@@ -31,7 +31,7 @@ func (d Dialect) String() string { return string(d) }
 
 // JSONExtract returns a SQL expression that extracts a JSON object key as text.
 // SQLite: json_extract(col, '$.key')
-// Postgres: COALESCE(NULLIF(col::text, '')::jsonb, '{}'::jsonb) ->> 'key'
+// Postgres: COALESCE(NULLIF(col::text, ”)::jsonb, '{}'::jsonb) ->> 'key'
 //
 // The col::text + ::jsonb cast pair is required because cross-dialect JSON
 // columns exist in BOTH physical types after the SQLite→Postgres migration:
@@ -52,11 +52,11 @@ func (d Dialect) JSONExtract(col, key string) string {
 // COALESCE with a DOUBLE PRECISION column, AVG/SUM, and `>` comparisons.
 //
 // SQLite:   json_extract(col, '$.key')   — returns INTEGER/REAL natively
-// Postgres: CAST(NULLIF(col::jsonb ->> 'key', '') AS DOUBLE PRECISION)
+// Postgres: CAST(NULLIF(col::jsonb ->> 'key', ”) AS DOUBLE PRECISION)
 //
 // Postgres' `->>` always yields text; without the cast, numeric consumers
 // fail with 42804 ("COALESCE types double precision and text cannot be
-// matched") or 42883 ("function avg(text) does not exist"). NULLIF(..., '')
+// matched") or 42883 ("function avg(text) does not exist"). NULLIF(..., ”)
 // guards empty-string values which would otherwise fail the cast; missing
 // keys and NULL rows yield NULL (propagating through COALESCE/AVG as NULL).
 // Non-numeric junk values raise 22P02 — acceptable because writers store
@@ -106,7 +106,7 @@ func (d Dialect) JSONEach(col string) string {
 // physical type into such an expression:
 //
 // SQLite:   COALESCE(col, '{}')
-// Postgres: COALESCE(NULLIF(col::text, '')::jsonb, '{}'::jsonb)
+// Postgres: COALESCE(NULLIF(col::text, ”)::jsonb, '{}'::jsonb)
 //
 // col::text is the identity on TEXT columns and serializes native jsonb to
 // its canonical text form, so both physical types are accepted. The

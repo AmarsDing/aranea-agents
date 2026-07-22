@@ -46,11 +46,11 @@ func TestApplySwarmGraphConfig(t *testing.T) {
 		},
 	}
 	def := Definition{Swarm: &SwarmConfigDef{
-		MaxHandoffs:             5,
-		RepetitiveHandoffWindow: 4,
+		MaxHandoffs:                5,
+		RepetitiveHandoffWindow:    4,
 		RepetitiveHandoffMinUnique: 2,
-		NodeTimeoutSeconds:      30,
-		CrossRequestTransfer:    true,
+		NodeTimeoutSeconds:         30,
+		CrossRequestTransfer:       true,
 	}}
 	got := applySwarmGraphConfig(cfg, def)
 	if got.SwarmSafety == nil || got.SwarmSafety.MaxHandoffs != 5 {

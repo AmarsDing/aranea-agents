@@ -73,17 +73,17 @@ func (m *mockRepo) SearchChunks(ctx context.Context, q SearchQuery, emb []float3
 
 func noOpMockRepo() *mockRepo {
 	return &mockRepo{
-		collCreateFn:  func(_ context.Context, c Collection) (Collection, error) { return c, nil },
-		collGetFn:     func(_ context.Context, id string) (Collection, error) { return Collection{ID: id}, nil },
-		collListFn:    func(_ context.Context, _ string, _, _ int) ([]Collection, int, error) { return nil, 0, nil },
-		collDeleteFn:  func(_ context.Context, _ string) error { return nil },
-		collUpdateFn:  func(_ context.Context, _ string, _, _ int) error { return nil },
-		docCreateFn:   func(_ context.Context, d Document) (Document, error) { return d, nil },
-		docGetFn:      func(_ context.Context, id string) (Document, error) { return Document{ID: id}, nil },
-		docUpdateFn:   func(_ context.Context, _, _, _ string, _ int) error { return nil },
-		docContentFn:  func(_ context.Context, _, _ string, _ bool) error { return nil },
-		docListFn:     func(_ context.Context, _ string, _, _ int) ([]Document, int, error) { return nil, 0, nil },
-		docDeleteFn:   func(_ context.Context, _ string) error { return nil },
+		collCreateFn: func(_ context.Context, c Collection) (Collection, error) { return c, nil },
+		collGetFn:    func(_ context.Context, id string) (Collection, error) { return Collection{ID: id}, nil },
+		collListFn:   func(_ context.Context, _ string, _, _ int) ([]Collection, int, error) { return nil, 0, nil },
+		collDeleteFn: func(_ context.Context, _ string) error { return nil },
+		collUpdateFn: func(_ context.Context, _ string, _, _ int) error { return nil },
+		docCreateFn:  func(_ context.Context, d Document) (Document, error) { return d, nil },
+		docGetFn:     func(_ context.Context, id string) (Document, error) { return Document{ID: id}, nil },
+		docUpdateFn:  func(_ context.Context, _, _, _ string, _ int) error { return nil },
+		docContentFn: func(_ context.Context, _, _ string, _ bool) error { return nil },
+		docListFn:    func(_ context.Context, _ string, _, _ int) ([]Document, int, error) { return nil, 0, nil },
+		docDeleteFn:  func(_ context.Context, _ string) error { return nil },
 		docMoveFn: func(_ context.Context, id, target string) (Document, error) {
 			return Document{ID: id, CollectionID: target}, nil
 		},
