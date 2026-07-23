@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>聊天历史懒加载 — 展示效果设计 v2</title>
+<style>
+  /* ============ 主题 Token（严格对齐项目 UX 规范 §6.4） ============ */
+  :root {
+    --canvas-base: #FEFBF4;
+    --glass-surface: rgba(255, 253, 245, 0.65);
+    --glass-surface-hover: rgba(255, 253, 245, 0.78);
+    --glass-border: rgba(235, 220, 200, 0.7);
+    --glass-elevated: rgba(255, 255, 255, 0.72);
+    --glass-blur-default: 18px;
+    --color-accent: #E9A23B;
+    --color-accent-hover: #D48C1A;
+    --interaction-surface-hover: #FEF3E4;
+    --color-text-primary: #3A322C;
+    --color-text-secondary: #8B7A6B;
+    --color-icon-muted: #B8A590;
+    --color-success: #4CAF7C;
+    --color-warning: #F09B54;
+    --color-danger: #E55C5C;
+    --skeleton-base: rgba(139, 122, 107, 0.14);
+    --skeleton-shine: rgba(139, 122, 107, 0.28);
+  }
+  body.dark {
+    --canvas-base: #090D14;
+    --glass-surface: rgba(18, 24, 34, 0.65);
+    --glass-surface-hover: rgba(22, 28, 40, 0.75);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-elevated: rgba(24, 30, 42, 0.72);
+    --color-accent: #00E5FF;
+    --color-accent-hover: #5aebff;
+    --interaction-surface-hover: rgba(0, 229, 255, 0.06);
+    --color-text-primary: #EBEBF0;
+    --color-text-secondary: #9CA0B0;
+    --color-icon-muted: #5a6070;
+    --color-success: #3FE0A0;
+    --color-warning: #FFAF4D;
+    --color-danger: #FF5E7A;
+    --skeleton-base: rgba(154, 160, 176, 0.10);
+    --skeleton-shine: rgba(154, 160, 176, 0.22);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'SF Pro Text', 'Inter', 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--canvas-base);
+    color: var(--color-text-primary);
+    transition: background .3s, color .3s;
+  }
+
+  /* ============ 顶部工具栏（仅演示用） ============ */
+  .demo-bar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 20px;
+    background: var(--glass-surface);
+    backdrop-filter: blur(var(--glass-blur-default));
+    -webkit-backdrop-filter: blur(var(--glass-blur-default));
+    border-bottom: 1px solid var(--glass-border);
+    font-size: 13px; color: var(--color-text-secondary);
+  }
+  .demo-bar b { color: var(--color-text-primary); font-size: 14px; }
+  .demo-bar .spacer { flex: 1; }
+  .demo-toggle {
+    border: 1px solid var(--glass-border);
+    background: var(--glass-surface);
+    color: var(--color-text-primary);
+    border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer;
+  }
+  .demo-toggle:hover { border-color: var(--color-accent); color: var(--color-accent); }
+  .demo-toggle.on { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+  body.dark .demo-toggle.on { color: #090D14; }
+
+  /* ============ 聊天窗口骨架 ============ */
+  .chat-shell {
+    max-width: 900px; margin: 24px auto 0; padding: 0 20px;
+    display: flex; flex-direction: column; height: calc(100vh - 130px);
+  }
+  .chat-scroll {
+    flex: 1; overflow-y: auto; padding: 8px 4px 16px;
+    scroll-behavior: auto;
+  }
+  .chat-scroll::-webkit-scrollbar { width: 6px; }
+  .chat-scroll::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 3px; }
+
+  /* 顶部哨兵提示 */
+  .top-sentinel {
+    text-align: center; padding: 14px 0 18px;
+    font-size: 12px; color: var(--color-text-secondary);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .top-sentinel .line { flex: 0 0 60px; height: 1px; background: var(--glass-border); }
+  .top-sentinel b { color: var(--color-accent); font-weight: 600; }
+
+  /* ============ 任务卡：公共 ============ */
+  .task-card { margin-bottom: 20px; animation: cardIn .35s ease both; }
+  @keyframes cardIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* —— 用户面板：与现有 TaskCard 完全一致的结构（不改显示方式） —— */
+  .task-user-panel__header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .task-user-panel__time { font-size: 11px; color: var(--color-text-secondary); }
+  .task-user-panel__avatar {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--color-accent); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600;
+  }
+  body.dark .task-user-panel__avatar { color: #090D14; }
+  .task-user-panel__name { font-size: 13px; font-weight: 600; }
+
+  .task-user-panel__body {
+    background: var(--glass-surface);
+    backdrop-filter: blur(var(--glass-blur-default));
+    -webkit-backdrop-filter: blur(var(--glass-blur-default));
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 12px 16px;
+    font-size: 14px; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+    transition: background .2s, border-color .2s;
+  }
+  .task-user-panel__actions { display: flex; gap: 2px; margin-top: 4px; opacity: 0; transition: opacity .15s; }
+  .task-card:hover .task-user-panel__actions { opacity: 1; }
+  .task-user-panel__action-btn {
+    width: 26px; height: 26px; border: none; background: none; cursor: pointer;
+    border-radius: 6px; color: var(--color-icon-muted); font-size: 13px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .task-user-panel__action-btn:hover { color: var(--color-accent); background: var(--interaction-surface-hover); }
+
+  /* ============ 折叠任务卡（历史轮次 · 未水合） ============ */
+  .collapsed-card { cursor: pointer; }
+  .collapsed-card:hover .task-user-panel__body {
+    background: var(--glass-surface-hover);
+    border-color: var(--color-accent);
+  }
+  /* 折叠元信息条：用户面板下方的一行 slim 状态摘要 */
+  .task-meta-bar {
+    display: flex; align-items: center; gap: 10px;
+    margin: 6px 0 0 2px;
+    font-size: 12px; color: var(--color-text-secondary);
+  }
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 980px; font-size: 11px; font-weight: 600;
+  }
+  .status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .status-completed { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 12%, transparent); }
+  .status-failed    { color: var(--color-danger);  background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
+  .status-interrupted { color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 12%, transparent); }
+  .meta-sep { color: var(--glass-border); }
+  .collapsed-error {
+    font-size: 12px; color: var(--color-danger);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+  }
+
+  /* ============ 水合中骨架 ============ */
+  .skeleton-wrap { padding: 10px 0 2px; }
+  .sk-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .sk-icon {
+    width: 22px; height: 22px; border-radius: 6px; flex: none;
+    background: var(--skeleton-base);
+  }
+  .sk-bar {
+    height: 14px; border-radius: 7px;
+    background: linear-gradient(90deg, var(--skeleton-base) 25%, var(--skeleton-shine) 50%, var(--skeleton-base) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.2s infinite linear;
+  }
+  @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+  .sk-label { font-size: 11px; color: var(--color-text-secondary); margin-left: auto; flex: none; }
+
+  /* ============ 已水合内容（模拟现有渲染） ============ */
+  .hydrated-body { animation: fadeSlide .3s ease both; }
+  @keyframes fadeSlide { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .block { margin-top: 10px; }
+  .block-label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 600; color: var(--color-text-secondary);
+    margin-bottom: 5px; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .thinking-block {
+    border-left: 3px solid var(--glass-border);
+    padding: 6px 12px; font-size: 13px; font-style: italic;
+    color: var(--color-text-secondary); line-height: 1.6;
+  }
+  .action-block {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    border-left: 3px solid var(--color-accent);
+    padding: 8px 12px; font-size: 13px;
+    background: var(--interaction-surface-hover);
+    border-radius: 0 10px 10px 0;
+  }
+  .tool-chip {
+    font-family: 'SF Mono', Consolas, monospace; font-size: 12px;
+    border: 1px solid var(--color-accent); color: var(--color-accent);
+    border-radius: 6px; padding: 1px 8px;
+  }
+  .action-dur { margin-left: auto; font-size: 11px; color: var(--color-text-secondary); }
+  .reply-block {
+    background: var(--glass-elevated);
+    backdrop-filter: blur(var(--glass-blur-default));
+    -webkit-backdrop-filter: blur(var(--glass-blur-default));
+    border: 1px solid var(--glass-border);
+    border-radius: 14px; padding: 12px 16px;
+    font-size: 14px; line-height: 1.7;
+  }
+  .reply-block h4 { font-size: 14px; margin: 8px 0 6px; }
+  .reply-block table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 8px 0; }
+  .reply-block th, .reply-block td { border: 1px solid var(--glass-border); padding: 5px 10px; text-align: left; }
+  .reply-block th { color: var(--color-text-secondary); font-weight: 600; }
+  .running-bar {
+    display: flex; align-items: center; gap: 8px; margin-top: 10px;
+    font-size: 12px; color: var(--color-accent); font-weight: 600;
+  }
+  .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent); animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: .3; transform: scale(.8);} 50% { opacity: 1; transform: scale(1);} }
+
+  .collapse-row { text-align: center; margin-top: 8px; }
+  .collapse-btn {
+    font-size: 12px; color: var(--color-text-secondary); cursor: pointer;
+    border: none; background: none; padding: 4px 12px; border-radius: 6px;
+  }
+  .collapse-btn:hover { color: var(--color-accent); background: var(--interaction-surface-hover); }
+
+  /* ============ 底部输入框 ============ */
+  .composer { padding: 12px 0 18px; }
+  .composer-inner {
+    max-width: 900px; margin: 0 auto;
+    display: flex; align-items: center; gap: 10px;
+    background: var(--glass-surface);
+    backdrop-filter: blur(var(--glass-blur-default));
+    -webkit-backdrop-filter: blur(var(--glass-blur-default));
+    border: 1px solid var(--glass-border); border-radius: 16px;
+    padding: 12px 16px; color: var(--color-text-secondary); font-size: 14px;
+  }
+  .send-btn {
+    margin-left: auto; width: 32px; height: 32px; border-radius: 10px;
+    background: var(--color-accent); color: #fff; border: none; cursor: pointer; font-size: 15px;
+  }
+  body.dark .send-btn { color: #090D14; }
+
+  /* ============ 设计标注区 ============ */
+  .notes {
+    max-width: 900px; margin: 0 auto; padding: 28px 20px 60px;
+    font-size: 13px; line-height: 1.8; color: var(--color-text-secondary);
+  }
+  .notes h3 { color: var(--color-text-primary); font-size: 15px; margin-bottom: 12px; }
+  .notes ol { padding-left: 20px; }
+  .notes li { margin-bottom: 8px; }
+  .notes code {
+    font-family: 'SF Mono', Consolas, monospace; font-size: 12px;
+    background: var(--skeleton-base); border-radius: 4px; padding: 1px 6px;
+    color: var(--color-text-primary);
+  }
+  .notes .tag {
+    display: inline-block; font-size: 11px; font-weight: 600; color: var(--color-accent);
+    border: 1px solid var(--color-accent); border-radius: 4px; padding: 0 6px; margin-right: 6px;
+  }
+</style>
+</head>
+<body class="dark">
+
+<div class="demo-bar">
+  <b>聊天历史懒加载 · 展示效果设计 v2</b>
+  <span>场景：打开一个 47 轮对话的长会话</span>
+  <div class="spacer"></div>
+  <button class="demo-toggle on" id="autoToggle" onclick="toggleAuto()">滚动到可视区自动加载：开</button>
+  <button class="demo-toggle" onclick="resetDemo()">重置演示</button>
+  <button class="demo-toggle" id="themeToggle" onclick="toggleTheme()">切换日间</button>
+</div>
+
+<div class="chat-shell">
+  <div class="chat-scroll" id="scroll">
+
+    <div class="top-sentinel">
+      <span class="line"></span>
+      <span>已加载全部 <b>47</b> 轮指令 · 点击卡片查看执行过程</span>
+      <span class="line"></span>
+    </div>
+
+    <div id="tasks"></div>
+
+  </div>
+
+  <div class="composer">
+    <div class="composer-inner">
+      <span>输入消息，@ 提及智能体…</span>
+      <button class="send-btn">➤</button>
+    </div>
+  </div>
+</div>
+
+<div class="notes">
+  <h3>设计标注（v2 · 已按反馈修正）</h3>
+  <ol>
+    <li><span class="tag">指令面板</span>用户指令的显示<b>与现状完全一致</b>：时间 + 头像 + 名称 + 全文正文 + hover 出现的复制/重新生成按钮。折叠卡<b>不改变</b>指令的任何显示方式。</li>
+    <li><span class="tag">折叠卡</span>历史轮次 = 现有指令面板 + 下方一行 slim 状态摘要（状态徽章 + 步数 + 耗时；失败卡追加一行错误摘要）。<b>零 step DOM</b>，无「执行过程」按钮。</li>
+    <li><span class="tag">点击水合</span>点击卡片<b>任意位置</b>立即水合（复制/重新生成按钮除外，不触发）；滚动到可视区停留 <code>500ms</code> 自动水合（顶部可关闭体验纯手动）。快速滑过不触发。</li>
+    <li><span class="tag">骨架屏</span>水合中显示 thinking / action / reply 三条 shimmer 骨架。</li>
+    <li><span class="tag">手动折叠</span>水合后可重新折叠释放 DOM（卡片底部「收起执行过程」）；数据保留在内存，再展开无需重新请求。</li>
+    <li><span class="tag">默认定位</span>打开会话直接停在<b>最底部</b>；视口上方内容展开时补偿 <code>scrollTop</code>，阅读位置不跳动。</li>
+    <li><span class="tag">活跃任务</span>运行中 / 等待确认 / 已中断的任务<b>永远自动水合</b>（中断卡需要「继续执行」按钮，见最底部运行中任务）。</li>
+    <li><span class="tag">失败态</span>水合失败时摘要行显示「加载失败，点击重试」。</li>
+  </ol>
+</div>
+
+<script>
+/* ============ 模拟数据 ============ */
+const TASKS = [
+  { time: '14:02', user: '帮我梳理一下量化交易回测框架的整体目录结构，说明每个模块的职责',
+    status: 'completed', steps: 8, duration: '4.1s',
+    reply: '框架共 5 个模块：<br>· <b>data</b> — 行情数据加载与清洗<br>· <b>strategy</b> — 策略信号基类<br>· <b>backtest</b> — 事件驱动回测引擎<br>· <b>analytics</b> — 绩效指标计算<br>· <b>store</b> — SQLite 结果持久化' },
+  { time: '14:18', user: '基于刚才的框架，帮我实现一个双均线策略的回测模块。要求：\n1. 支持自定义短/长周期参数\n2. 输出夏普比率、最大回撤、年化收益\n3. 用 SQLite 存储回测结果\n4. 给出完整单元测试',
+    status: 'completed', steps: 23, duration: '48.7s',
+    reply: '已完成 <code>DualMaStrategy</code> 实现（strategy/dual_ma.py），23 个工具调用全部成功。单元测试 14 个用例通过，覆盖率 91%。' },
+  { time: '14:41', user: '把回测结果可视化，画出净值曲线和回撤曲线',
+    status: 'failed', steps: 5, duration: '12.3s',
+    error: 'RuntimeError: Matplotlib 后端初始化失败（headless 环境缺少 display）',
+    reply: '已切换至 Agg 后端并重新生成 charts/nav_curve.png。' },
+  { time: '15:05', user: '优化策略参数，对短周期 5-20、长周期 20-120 做网格搜索',
+    status: 'interrupted', steps: 11, duration: '1m 32s',
+    reply: '网格搜索完成 144 组参数，最优组合（12, 60）：夏普 1.83。' },
+  { time: '15:20', user: '用最优参数重新跑一遍完整回测，并对比基准沪深300',
+    status: 'completed', steps: 16, duration: '35.2s',
+    reply: '完整回测完成。策略年化 21.4% vs 基准 6.8%，最大回撤 -8.2% vs -14.5%。' },
+];
+
+const ACTIVE_TASK = {
+  time: '15:47', user: '汇总所有回测结果，生成一份 Markdown 分析报告，包含策略对比表格和结论建议',
+};
+
+/* ============ 渲染 ============ */
+const scrollEl = document.getElementById('scroll');
+const tasksEl = document.getElementById('tasks');
+let autoHydrate = true;
+const timers = new WeakMap();
+
+/* 用户面板：三种状态下结构完全一致（与现状 TaskCard 相同） */
+function userPanelHtml(t) {
+  return `
+    <div class="task-user-panel__header">
+      <span class="task-user-panel__time">${t.time}</span>
+      <div class="task-user-panel__avatar">你</div>
+      <span class="task-user-panel__name">你</span>
+    </div>
+    <div class="task-user-panel__body">${t.user}</div>
+    <div class="task-user-panel__actions">
+      <button class="task-user-panel__action-btn" title="复制" onclick="event.stopPropagation()">📋</button>
+      <button class="task-user-panel__action-btn" title="重新生成" onclick="event.stopPropagation()">🔄</button>
+    </div>`;
+}
+
+function statusBadge(t) {
+  const map = {
+    completed: ['status-completed', '已完成'],
+    failed: ['status-failed', '已失败'],
+    interrupted: ['status-interrupted', '已中断'],
+  };
+  const [cls, label] = map[t.status];
+  return `<span class="status-badge ${cls}">${label}</span>`;
+}
+
+function metaBarHtml(t) {
+  return `
+    <div class="task-meta-bar">
+      ${statusBadge(t)}
+      <span>⚡ ${t.steps} 步</span>
+      <span class="meta-sep">·</span>
+      <span>⏱ ${t.duration}</span>
+      ${t.error ? `<span class="collapsed-error">✗ ${t.error}</span>` : ''}
+    </div>`;
+}
+
+function collapsedHtml(t, i) {
+  return `
+  <div class="task-card collapsed-card" id="task-${i}" data-idx="${i}">
+    ${userPanelHtml(t)}
+    ${metaBarHtml(t)}
+  </div>`;
+}
+
+function skeletonHtml(t, i) {
+  return `
+  <div class="task-card" id="task-${i}" data-idx="${i}">
+    ${userPanelHtml(t)}
+    <div class="skeleton-wrap">
+      <div class="sk-row"><div class="sk-icon"></div><div class="sk-bar" style="width:62%"></div><span class="sk-label">thinking</span></div>
+      <div class="sk-row"><div class="sk-icon"></div><div class="sk-bar" style="width:38%"></div><span class="sk-label">action</span></div>
+      <div class="sk-row"><div class="sk-icon"></div><div class="sk-bar" style="width:81%"></div><span class="sk-label">reply</span></div>
+    </div>
+  </div>`;
+}
+
+function hydratedHtml(t, i) {
+  return `
+  <div class="task-card" id="task-${i}" data-idx="${i}">
+    ${userPanelHtml(t)}
+    <div class="hydrated-body">
+      <div class="block">
+        <div class="block-label">💭 思考</div>
+        <div class="thinking-block">用户要求「${t.user.slice(0, 18)}…」，我先检查前置上下文，再拆解为可执行步骤…</div>
+      </div>
+      <div class="block">
+        <div class="block-label">⚡ 执行 · ${t.steps} 步</div>
+        <div class="action-block"><span class="tool-chip">read_file</span><span class="tool-chip">write_file</span><span class="tool-chip">run_shell</span><span class="action-dur">${t.duration}</span></div>
+      </div>
+      <div class="block">
+        <div class="block-label">💬 回复</div>
+        <div class="reply-block">${t.reply}</div>
+      </div>
+      <div class="collapse-row"><button class="collapse-btn" onclick="event.stopPropagation(); collapseTask(${i})">收起执行过程 ▴</button></div>
+    </div>
+  </div>`;
+}
+
+function activeTaskHtml() {
+  return `
+  <div class="task-card">
+    ${userPanelHtml(ACTIVE_TASK)}
+    <div class="hydrated-body">
+      <div class="block">
+        <div class="block-label">💭 思考</div>
+        <div class="thinking-block">用户需要一份汇总报告。我已读取全部回测结果，现在生成对比表格与结论…</div>
+      </div>
+      <div class="block">
+        <div class="block-label">⚡ 执行</div>
+        <div class="action-block"><span class="tool-chip">read_file</span><span>backtest_results.db</span><span class="action-dur">0.8s</span></div>
+        <div class="action-block" style="margin-top:6px"><span class="tool-chip">write_file</span><span>reports/strategy_analysis.md</span><span class="action-dur">写入中…</span></div>
+      </div>
+      <div class="block">
+        <div class="block-label">💬 回复（流式）</div>
+        <div class="reply-block">
+          <h4>策略回测分析报告</h4>
+          <table>
+            <tr><th>指标</th><th>双均线策略</th><th>沪深300</th></tr>
+            <tr><td>年化收益</td><td><b>21.4%</b></td><td>6.8%</td></tr>
+            <tr><td>夏普比率</td><td><b>1.83</b></td><td>0.52</td></tr>
+            <tr><td>最大回撤</td><td><b>-8.2%</b></td><td>-14.5%</td></tr>
+          </table>
+          策略在收益与风控两个维度均显著优于基准…<span class="pulse-dot" style="display:inline-block;width:6px;height:6px;margin-left:4px"></span>
+        </div>
+      </div>
+      <div class="running-bar"><span class="pulse-dot"></span>任务处理中… 正在生成结论与建议</div>
+    </div>
+  </div>`;
+}
+
+function renderAll() {
+  tasksEl.innerHTML = TASKS.map((t, i) => collapsedHtml(t, i)).join('') + activeTaskHtml();
+  requestAnimationFrame(() => { scrollEl.scrollTop = scrollEl.scrollHeight; });
+  observeCards();
+}
+
+/* ============ 懒加载行为 ============ */
+function hydrateTask(i) {
+  const el = document.getElementById(`task-${i}`);
+  if (!el || !el.classList.contains('collapsed-card')) return;
+  // 记录展开前位置（滚动锚定：视口上方内容变化时补偿 scrollTop）
+  const prevTop = el.getBoundingClientRect().top;
+  el.outerHTML = skeletonHtml(TASKS[i], i);
+  setTimeout(() => {
+    const sk = document.getElementById(`task-${i}`);
+    if (!sk) return;
+    sk.outerHTML = hydratedHtml(TASKS[i], i);
+    const newEl = document.getElementById(`task-${i}`);
+    const delta = newEl.getBoundingClientRect().top - prevTop;
+    if (prevTop < 0 && Math.abs(delta) > 1) scrollEl.scrollTop -= delta;
+  }, 900);
+}
+
+function collapseTask(i) {
+  const el = document.getElementById(`task-${i}`);
+  if (!el) return;
+  el.outerHTML = collapsedHtml(TASKS[i], i);
+  observeCards();
+}
+
+const io = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    const idx = Number(e.target.dataset.idx);
+    if (e.isIntersecting && autoHydrate) {
+      timers.set(e.target, setTimeout(() => hydrateTask(idx), 500));
+    } else {
+      const t = timers.get(e.target);
+      if (t) { clearTimeout(t); timers.delete(e.target); }
+    }
+  }
+}, { root: scrollEl, threshold: 0.4 });
+
+function observeCards() {
+  document.querySelectorAll('.collapsed-card').forEach(el => io.observe(el));
+}
+
+/* 点击折叠卡任意位置立即水合（操作按钮已 stopPropagation） */
+tasksEl.addEventListener('click', (e) => {
+  const card = e.target.closest('.collapsed-card');
+  if (card) hydrateTask(Number(card.dataset.idx));
+});
+
+/* ============ 演示控制 ============ */
+function toggleAuto() {
+  autoHydrate = !autoHydrate;
+  document.getElementById('autoToggle').textContent = `滚动到可视区自动加载：${autoHydrate ? '开' : '关'}`;
+  document.getElementById('autoToggle').classList.toggle('on', autoHydrate);
+}
+function toggleTheme() {
+  const dark = document.body.classList.toggle('dark');
+  document.getElementById('themeToggle').textContent = dark ? '切换日间' : '切换夜间';
+}
+function resetDemo() { renderAll(); }
+
+renderAll();
+</script>
+</body>
+</html>

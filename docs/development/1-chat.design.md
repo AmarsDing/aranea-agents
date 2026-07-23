@@ -5407,6 +5407,30 @@ type DeliverableRef struct {
 - L2/L3 崩溃恢复在途工作遗留：`biz.V2RecoveryRepo.FailOrphanedInFlight` 已升级为三返回值（新增 `[]InterruptedTaskRef`，供启动守卫按会话发布可续跑任务通知），但 `internal/service/session_status_guard_test.go` 的 `stubV2RecoveryRepo` 未同步签名 → 构建失败；已补齐三返回值 stub
 - L3 终态事件改路由（`task.completed`/`task.failed` 走 `CompleteTaskTerminal`，version 自 DB +1）后，`internal/agent/v2/integration_test.go` 两处断言仍只扫 `UpsertTask` 收集面 → `TestEndToEnd_CancelledTurnMarksCancelledStatus`、`TestEndToEnd_V2Pipeline` 失败；已适配为合并扫描 `rs.tasks` + `rs.terminal`（终态面）
 
+#### B.10.15.11 read_upstream_deliverable 运行时契约校验（Phase B，2026-07-23 ✅ 已落地）
+
+**背景**：P1 形式契约在 dagRun 启动时做 advisory 校验（`ValidatePlanStepContracts`，仅警告不阻断）；P2 产物引用化让下游团队经 `read_upstream_deliverable` 按需取上游全文。但工具调用本身此前无契约把关——agent 传错 `team_id` 或上下游契约漂移时，表现为静默读到错误内容，难以诊断。本阶段（Graph Engineering 评审 Phase B）补上运行时工具调用级校验。
+
+**设计**：`ReadUpstreamDeliverable` 在（昂贵的）全文提取**之前**，将 reader 团队声明的 `InputContract` 与上游团队声明的 `Deliverables` 做 name/type/format 匹配；不匹配即返回结构化 `*ContractMismatchError`，错误文案为 LLM-actionable 提示（指明双方团队与每条不匹配项），引导 agent 自动纠正（确认 team_id / 契约协商）后重试。任一侧未声明契约时跳过校验——legacy 无契约团队保持 advisory 语义，不被硬阻断。
+
+**实施要点**：
+
+- `biz.ContractMismatch{Kind: missing|type_mismatch|format_mismatch, Expected, Actual}` + `ValidateContractMatchDetailed`（与 advisory `ValidateContractMatch` 同匹配语义的结构化版本）
+- `biz.ContractMismatchError{ReaderTeamID, UpstreamTeamID, Mismatches}`：`Error()` 逐条渲染不匹配项并给出纠正指引；调用方经 `errors.As` 判定
+- `SpiritTeamUsecase.ReadUpstreamDeliverable` 签名新增 `readerSessionID`：经主会话解析 reader 团队 → `validateUpstreamContract` 在全文提取前校验；reader 侧不可解析（如 CLI 调用）时跳过
+- 工具层 `readerSessionIDFromCtx` 从 trpc invocation context 提取调用方 session ID；非 agent run 场景为空 → biz 层跳过校验
+
+**实际改动文件**：
+
+| 文件 | 实际改动 |
+|------|----------|
+| `internal/biz/deliverable_contract.go` | `ContractMismatch` / `ContractMismatchError` / `ValidateContractMatchDetailed` |
+| `internal/biz/spirit_team_usecase.go` | `ReadUpstreamDeliverable` 新增 `readerSessionID` + `validateUpstreamContract`（提取前校验） |
+| `internal/tools/deliverable/upstream_reader.go` | `UpstreamDeliverableReader` 接口签名同步；`readerSessionIDFromCtx` |
+| `internal/biz/spirit_team_deliverable_test.go` | Phase B 测试：契约匹配放行 / type+format+missing 三类不匹配聚合为单个结构化错误 / 无契约跳过 |
+
+**验证证据（2026-07-23）**：`go build ./...` exit 0；`internal/biz` ok（含 `TestReadUpstreamDeliverable_ContractMismatch_StructuredError` 等 Phase B 用例全 PASS）。
+
 ### B.10.16 崩溃恢复与中断任务续跑（L2/L3）落地记录（2026-07-22 ✅ 已落地）
 
 **背景**：进程突然关闭导致在途任务终止，用户重开软件后需要能继续对话/续跑任务。方案经用户确认为 L2+L3 全做；L3 续跑语义为「带完整执行轨迹重跑」（已完成的 step 不跳过，轨迹注入 prompt 供 agent 参考）。
@@ -5711,14 +5735,15 @@ const StatusReasonClarification = "clarification"
   "questions": [
     { "question": "...", "mode": "single", "options": ["..."], "recommended": ["..."] }
   ],
-  "answers": null
+  "answers": null,
+  "original_input": "触发澄清的原始用户输入（重启后惰性重建续跑用）"
 }
 ```
 
-提交后回写 `answers`：
+提交后回写 `answers`；自由回复路径回写 `free_text`：
 
 ```json
-{ "answers": [ { "selected": ["..."], "other": "..." } ] }
+{ "answers": [ { "selected": ["..."], "other": "..." } ], "free_text": "等待态下输入框直发的消息全文" }
 ```
 
 #### B.10.18.3 提交端点与续跑
@@ -5727,8 +5752,8 @@ const StatusReasonClarification = "clarification"
 |----|------|
 | 端点 | `POST /v1/chat/clarifications/{step_id}`，body：`{ "answers": [{ "selected": [...], "other": "..." }] }`（answers 可为空数组 = 全部按推荐执行） |
 | 守卫 | Step.Kind==clarify 且 Status==awaiting_input，否则 `CodeConflict`；CAS 更新防并发 |
-| 续跑 | 更新 Step → Session 回 running → 同 turn 继续 PrePlanning；注入消息格式：每问一行「Q: … / A: …（未答：按推荐 …）」 |
-| 自由回复 | 等待态下 `SendChatMessage` 命中 awaiting_confirmation(reason=clarification) 时，等价于 answers=[]+other=消息全文 |
+| 续跑 | 更新 Step → Session 回 running → 同 turn 继续 PrePlanning；注入消息格式：每问一行「Q: … / A: …（未答：按推荐 …）」；续跑输入解析见 `resolveResumeInput`（内存 pending 优先，缺失时从信封 `original_input` 惰性重建） |
+| 自由回复 | 等待态下用户直发消息视为自由回答（已实现）：`Execute` 统一入口（Web/WS/Channel/Cron/A2A）首行调 `resolveClarificationFreeText`；判据为内存 pending + step 仍 awaiting_input；命中则按推荐填充空作答、回写 `free_text`、完成 step、恢复 running，输入重写为「澄清上下文 + 原始需求」（基于 pending 存储的原输入，保留 AgentKey 等字段）；非等待态/处理失败原样透传 |
 
 #### B.10.18.4 前端设计
 
@@ -5753,7 +5778,7 @@ const StatusReasonClarification = "clarification"
 | 重复提交 | CAS 守卫返回 409，前端提示「已提交」 |
 | 提交时 Session 已非等待态 | 409，不续跑 |
 | clarification_enabled=false | 门直接透传 |
-| 重启恢复 | clarify step awaiting_input 持久化 → 会话恢复 awaiting_confirmation(clarification)；前端重新渲染可作答卡片 |
+| 重启恢复 | clarify step awaiting_input 持久化 → 前端 hydration 重新渲染可作答卡片；提交时 step CAS 仍有效，续跑输入由 `resolveResumeInput` 从信封 `original_input` 惰性重建（内存 pendingClarifications 重启即失）。自由回复路径重启后 pending 缺失，消息降级为普通新 turn |
 | 问题数上限 | 超过 5 问截断（防 LLM 过度生成），记 warn |
 
 #### B.10.18.6 测试策略
@@ -5766,3 +5791,96 @@ const StatusReasonClarification = "clarification"
 | data | 重启后 awaiting_input clarify step 恢复为会话等待态 |
 | 前端 | ClarifyBlock 分页导航/单多选/推荐高亮/other 输入/留空提交/只读摘要；TaskCard 注册渲染；hydration 恢复 |
 | 契约 | `check-envelope-contract.ts` 通过 |
+
+### B.10.19 长会话历史懒加载落地设计（2026-07-23）
+
+> **需求**：[1-chat.md §子模块：长会话历史懒加载](./1-chat.md#子模块长会话历史懒加载lazy-hydration)（LH.1-LH.4）
+> **定位**：消除长会话打开时的全量水合卡顿——用户指令全量即时渲染，执行过程仅自动水合最后一轮 + 非终态 task，历史轮次折叠为 meta-bar 卡片按需水合（滚入视口 500ms / 点击），默认停在消息底部。
+
+#### B.10.19.1 后端：ListStepsV2 分页契约（唯一协议改动）
+
+```protobuf
+message ListStepsV2Request {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string turn_id = 2;
+  string task_id = 3;
+  int32 limit = 4;        // 0 = 不分页（遗留语义，全量）；>0 仅对 session 级查询生效
+  int64 before_seq = 5;   // 0 = 最新窗口；>0 = 取 seq < before_seq 的上一页（向更早翻页）
+}
+message ListStepsV2Response {
+  repeated StepV2 steps = 1;  // 始终按 seq 升序返回
+  bool has_more = 2;          // limit>0 时有效：是否还有更早的 steps
+}
+```
+
+- **语义**：`limit=0` 保持遗留全量（向后兼容）；`limit>0 && before_seq=0` 返回最新 limit 条；`before_seq>0` 返回 cursor 之前一页。负数 `limit`/`before_seq` 由 service 校验返回 `CodeBadRequest`；limit 服务端上限钳制 500（`listStepsMaxLimit`）。
+- **Repo**：`StepV2Reader.ListStepsBySessionPaged(ctx, sessionID, StepListOptions{Limit, BeforeSeq})`；查询计划 `WHERE session_id=? [AND seq<?] ORDER BY seq DESC LIMIT n+1` → `hasMore = len>n` → 截断后反转为 ASC；`Limit<=0` 降级遗留全量（started_at asc）。错误统一 `entErrToBizErr`（DB-R5）。
+- **索引**：DDL 迁移 20261109 `idx_steps_v2_session_seq ON steps_v2 (session_id, seq)`（幂等）。
+- tasks / turns / team_stages / plan / graph 等 RPC **不改**（task 轻量全量；其余本就 per-task 拉取，天然适配懒加载）。
+
+#### B.10.19.2 Store 分阶段水合（`activityV2Store`）
+
+**新增 state**：
+
+```typescript
+hydratedTaskIds: Ref<Set<string>>                     // 已水合 task；跨 WS 重连保留，仅 clearAll/clearSession 重置
+taskHydration: Ref<Map<string, 'loading' | 'error'>>  // 瞬态水合中/失败
+```
+
+**`fetchSessionHistory(sessionId)` 三阶段**：
+
+```
+Phase 1: listTasksV2(sessionId) + listStepsV2(sessionId, { limit: 100 })  // 最近窗口，覆盖 spirit 级散 steps
+Phase 2: autoHydrate = 最后一个 task
+       + 状态 ∈ {running, pending, awaiting_confirmation, interrupted} 的 task
+       + hydratedTaskIds 中已有的本会话 task（重连保持展开）
+Phase 3: autoHydrate 集合逐 task 调 hydrateTask(taskId)（fire-and-forget 并行）
+```
+
+**`hydrateTask(taskId)`**（幂等：已水合/水合中直接返回）：`taskHydration.set(taskId,'loading')` → 并行拉取 turns / steps(taskId 全量） / team_stages / plan_boards / plan_steps / graph_stages → team_stages 下钻 team_runs/member_sessions，graph_stages 下钻 graph_nodes → 全部 upsert（与 WS 事件同路径，天然去重合并）→ 成功 `hydratedTaskIds.add` 并清瞬态；失败 `taskHydration.set(taskId,'error')`。
+
+**WS 兼容**：事件 handler 无条件 upsert，与是否水合无关；`task.created` 事件即把新 task 加入 `hydratedTaskIds`（活跃任务默认展开）。
+
+#### B.10.19.3 Composable `useLazyTaskHydration`
+
+为 TaskList 提供懒加载编排（无网络请求，请求走 store action）：
+
+- **IntersectionObserver**：root = 消息滚动容器（`ChatMessageList` 经 `provide(CHAT_SCROLL_EL_KEY)` 注入），threshold 0.4；折叠卡入视口启动 500ms dwell 定时器 → `hydrateTask`；离开视口取消（快速滑过不触发）；`syncCards` 增量 observe/unobserve；卸载全量 disconnect。
+- **手动触发**：`expandTask(taskId)` 立即水合；`toggleCollapse(taskId)` 管理手动折叠态（仅 UI 态，不清 store 数据、不移出 `hydratedTaskIds`——再展开零请求）。
+- **滚动锚定**：水合渲染后（nextTick），若卡片原位置在视口上方，按高度差补偿 scrollTop，视口不跳动。
+- **初始定位**：`fetchSessionHistory` 完成 + 已水合卡渲染后 scrollToBottom（instant）。
+
+#### B.10.19.4 TaskCard 四态（展示层，props/emits，不碰 store）
+
+新增 props `hydrated: boolean` / `hydrationState?: 'loading' | 'error'` / `collapsed: boolean`；emits `hydrate` / `toggle-collapse`。
+
+| 态 | 渲染 |
+|----|------|
+| 折叠态（`!hydrated`） | 现有用户面板原样 + 下方 `task-meta-bar`（状态徽章 + ⏱耗时，`color-mix` 状态色，日夜 token；**不含步数/错误摘要**）；整卡 `cursor:pointer`，hover 玻璃提亮 + 边框向 accent 过渡；点击 emit `hydrate`（复制/重新生成按钮 `@click.stop` 不冒泡） |
+| 水合中 | 用户面板 + 3 条 shimmer 骨架（thinking/action/reply，宽 62%/38%/81%） |
+| 失败态 | meta-bar 显示「加载失败，点击重试」（danger 色），点击重新 emit `hydrate` |
+| 水合态 | 现状完整渲染 + 底部「收起执行过程 ▴」文字按钮 emit `toggle-collapse` |
+
+`TaskList.vue` 接入 composable，向 TaskCard 传三态 props 并转发事件；经 `useActivityQueries` 门面访问 `isTaskHydrated`/`taskHydrationState`/`hydrateTask`（组件不直接 import store，过 `check-frontend-layer.mjs`）。
+
+#### B.10.19.5 数据流（红线 #1/#2 合规）
+
+```
+v2Api.ts（limit/beforeSeq 透传）
+  → activityV2Store.fetchSessionHistory / hydrateTask（唯一发请求处）
+    → useLazyTaskHydration（observer + dwell + 锚定，调 store action）
+      → TaskList → TaskCard（props: task/hydrated/hydrationState/collapsed；emits: hydrate/toggle-collapse）
+```
+
+#### B.10.19.6 边界与错误处理
+
+| 场景 | 处理 |
+|------|------|
+| WS 重连 | `hydratedTaskIds` 不清空，已展开卡保持展开；数据 upsert 刷新 |
+| 会话中新建 task | task.created → 加入 `hydratedTaskIds` → 默认展开 |
+| interrupted task | 非终态 → 自动水合 → 「继续执行」直接可见 |
+| 无 step 的 task（纯澄清） | 折叠卡正常显示徽章；水合后渲染澄清卡 |
+| 水合失败 | meta-bar「加载失败，点击重试」；单 task 失败不影响其他 |
+| 单 task 超大（数千 steps） | 协议分页已就位；UI 级「加载更多」YAGNI |
+| spirit 级无归属 steps | Phase 1 limit=100 窗口覆盖；窗口不够再议（YAGNI） |
+| Phase 1 失败 | 沿用现有 `hydrationErrors` 机制，UI 顶部错误条 + 重试 |

@@ -591,14 +591,16 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 #### 任务清单
 
-- [ ] TDD-biz：`StepKindClarify` + `StepStatusAwaitingInput` + `sessstatus.StatusReasonClarification` 枚举与序列化
-- [ ] TDD-intent：`intent.Artifact` 新增 `Clarifications`/`RiskFlags`；prompt 输出澄清契约（阻塞性歧义才触发，≤5 问）
-- [ ] TDD-service：ClarificationGate 判定矩阵（enabled × needs_clarification × questions 非空）；`publishClarifyStep`（UpsertTask 幂等 + orphan Step Kind=clarify/Status=awaiting_input/Version=1/StartedAt + seq.Publish）；Session → awaiting_confirmation(reason=clarification)；turn 挂起
-- [ ] TDD-service：提交端点 `POST /v1/chat/clarifications/{step_id}`（CAS awaiting_input→completed，重复提交 409）+ 同 turn 续跑注入澄清问答上下文；自由回复等价路径（SendChatMessage 命中 clarification 等待态）
-- [ ] 前端：`ClarifyBlock.vue` 分页卡片（上一页/下一页/完成，无跳过；单选/多选；推荐项高亮；每页「其他」输入；留空可提交；提交后只读摘要）；`TaskCard.vue` orphan step 注册渲染；hydration 恢复；i18n zh-CN/en-US
-- [ ] TDD-data：重启恢复——awaiting_input clarify step 恢复会话等待态；Agent 设置 `clarification_enabled`（默认 true）
-- [ ] 全量验证：`go build ./...` + `go test` 全过；前端 `pnpm lint` + `pnpm test` + `pnpm build` 全过
-- [ ] 文档同步：本块状态标记、§6 任务清单、65 交叉参考 Chat 卡片
+- [x] TDD-biz：`StepKindClarify` + `StepStatusAwaitingInput` + `sessstatus.StatusReasonClarification` 枚举与序列化
+- [x] TDD-intent：`intent.Artifact` 新增 `Clarifications`/`RiskFlags`；prompt 输出澄清契约（阻塞性歧义才触发，≤5 问）
+- [x] TDD-service：ClarificationGate 判定矩阵（enabled × needs_clarification × questions 非空）；`publishClarifyStep`（UpsertTask 幂等 + orphan Step Kind=clarify/Status=awaiting_input/Version=1/StartedAt + seq.Publish）；Session → awaiting_confirmation(reason=clarification)；turn 挂起
+- [x] TDD-service：提交端点 `POST /v1/chat/clarifications/{step_id}`（CAS awaiting_input→completed，重复提交 409）+ 同 turn 续跑注入澄清问答上下文
+- [x] TDD-service：自由回复等价路径（`Execute` 统一入口拦截 `resolveClarificationFreeText`：pending+step 双判据 → 按推荐填充空作答 + 回写 `free_text` + 完成 step + 恢复 running + 输入重写为「澄清上下文+原始需求」；非等待态/失败透传；`chat_clarify_freetext_test.go` 4 例）
+- [x] 前端：`ClarifyBlock.vue` 分页卡片（上一页/下一页/完成，无跳过；单选/多选；推荐项高亮；每页「其他」输入；留空可提交；提交后只读摘要）；`TaskCard.vue` orphan step 注册渲染；hydration 恢复；i18n zh-CN/en-US
+- [x] TDD-data：Agent 设置 `clarification_enabled` Ent 持久化（schema 列 + DDL 迁移 20261108 + 双向映射 + 默认值 true）
+- [x] TDD-service：重启恢复——信封持久化 `original_input`，提交时 `resolveResumeInput` 内存 pending 优先、缺失则惰性重建续跑输入（4 例）；自由回复路径重启后 pending 缺失降级为新 turn（设计 B.10.18.5 已载明）
+- [x] 全量验证：`go build ./...` + `go test`（service 4.7s/biz 9.8s/agent 32.6s/data 21.0s）全过（2026-07-23 复跑）；前端 `pnpm lint` + `pnpm test`（699 例）+ `pnpm build` 全过
+- [x] 文档同步：本块状态标记、§6 任务清单、65 交叉参考 Chat 卡片；B.10.18.2/3/5 信封字段与自由回复/重启恢复实现语义（2026-07-23）
 
 #### 验收标准
 
@@ -660,6 +662,53 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - [x] LLM 结论失败时卡片显示降级提示，结构化板块仍完整可见
 - [x] 报告以 Step 持久化，刷新页面后仍可见；解析失败回落默认 notice 渲染
 - [ ] **运行时端到端验证**（待用户执行）：发起编排任务 → 完成后查看报告卡片四板块展示
+
+---
+
+### P-LAZYLOAD 长会话历史懒加载（2026-07-23）
+
+> **目标**：打开长会话秒级可交互——全部用户指令即时渲染，执行过程仅自动水合最后一轮 + 非终态 task，历史轮次折叠为 meta-bar 卡片按需水合（滚入视口 500ms / 点击），默认停在消息底部。
+> **需求**：[1-chat.md §子模块：长会话历史懒加载](./1-chat.md#子模块长会话历史懒加载lazy-hydration)
+> **设计**：[1-chat.design.md §B.10.19](./1-chat.design.md#b1019-长会话历史懒加载落地设计2026-07-23)
+> **实施计划**：`docs/superpowers/plans/2026-07-23-chat-history-lazy-load.md`
+
+#### 代码锚点
+
+| 锚点 | 文件 |
+|------|------|
+| ListStepsV2 分页契约 | `api/kratos/session/v1/session.proto` ListStepsV2Request/Response |
+| 分页 repo | `internal/data/step_v2_repo.go` ListStepsBySessionPaged |
+| 索引迁移 | `internal/data/sql/migrations/20261109_steps_v2_session_seq.sql`（registry 20261109） |
+| service 分发 | `internal/service/session_v2.go` ListSteps |
+| 分阶段水合 + hydrateTask | `web/src/stores/chat/activityV2Store.ts` fetchSessionHistory / hydrateTask |
+| 懒水合编排 | `web/src/features/chat/composables/useLazyTaskHydration.ts` |
+| 折叠卡四态 | `web/src/components/chat/v2/TaskCard.vue` |
+| 接线 | `web/src/components/chat/v2/TaskList.vue`、`web/src/components/chat/ChatMessageList.vue` |
+
+#### 任务清单
+
+- [x] proto：ListStepsV2Request +limit/before_seq，Response +has_more；`make api` 重新生成
+- [x] biz：`StepListOptions{Limit, BeforeSeq}` + `StepV2Reader.ListStepsBySessionPaged`
+- [x] data：分页查询实现（`WHERE session_id=? [AND seq<?] ORDER BY seq DESC LIMIT n+1` → hasMore → 反转 ASC；limit<=0 降级遗留全量）+ PG 分页语义测试 4 用例
+- [x] data：`(session_id, seq)` 索引迁移 20261109（幂等）+ registry 注册
+- [x] service：ListSteps 参数校验（负数 400）+ 分页分发（session 级且 limit>0）+ limit 上限钳制 500 + 5 单测
+- [x] v2Api：`listStepsV2` 透传 limit/beforeSeq
+- [x] store：`hydratedTaskIds`（跨 WS 重连保留）+ `taskHydration` 瞬态；`task.created` 事件标记水合
+- [x] store：`hydrateTask`（幂等，turns/steps/team/plan/graph 并行 + 下钻）+ 分阶段 `fetchSessionHistory`（Phase 1 轻量全量 + steps limit=100 窗口；Phase 3 自动水合集 fire-and-forget）
+- [x] composable：`useLazyTaskHydration`（IntersectionObserver + 500ms dwell + 滚出取消 + 滚动锚定 + 手动折叠态 + 卸载清理）
+- [x] 门面：`useActivityQueries` +isTaskHydrated/taskHydrationState/hydrateTask；i18n `chat.v2.collapseExecution`/`loadFailedRetry`（zh-CN/en-US）
+- [x] TaskCard 四态：折叠（用户面板原样 + meta-bar 状态徽章+耗时）/ 水合中（shimmer×3）/ 失败（meta-bar 重试）/ 水合（完整 + 底部收起按钮）；组件测试 8 用例
+- [x] TaskList 接线 + ChatMessageList `provide(CHAT_SCROLL_EL_KEY)`（经门面过 layer 检查）
+- [x] 全量验证：`go build ./...` exit 0 + `go test ./internal/service/... ./internal/biz/... ./internal/data/...` 全 PASS（PG 实测）；`pnpm lint` + `pnpm test`（727 用例）+ `pnpm build` 全过
+- [x] 文档同步：`1-chat.md` 子模块 + `1-chat.design.md` §B.10.19 + 本块
+
+#### 验收标准
+
+- [x] 首屏仅拉 tasks + steps 最近窗口 + 自动水合集 per-task 请求（单测断言）
+- [x] 折叠卡滚入视口 500ms 自动水合 / 点击立即水合 / 失败可重试（composable + 组件单测）
+- [x] 手动收起仅 UI 态，再展开零请求（store 单测）
+- [x] WS 重连 `hydratedTaskIds` 不清空；task.created 默认展开（store/router 单测）
+- [ ] **运行时端到端验证**（待用户执行）：打开长会话 → 秒级可交互 + 停底部；向上滚动折叠卡自动展开；点击展开/收起；中断任务直接显示「继续执行」
 
 ---
 
