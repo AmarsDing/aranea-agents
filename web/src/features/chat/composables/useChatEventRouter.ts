@@ -22,6 +22,12 @@ export function useChatEventRouter(store: Store) {
     switch (kind) {
       // Task events
       case 'task.created':
+        if (p.Task) {
+          store.upsertTask(p.Task as never);
+          // 会话进行中新建的 task 默认展开（活跃任务永远自动水合，设计 P5/§5）。
+          store.hydratedTaskIds.add((p.Task as { ID: string }).ID);
+        }
+        break;
       case 'task.updated':
       case 'task.completed':
       case 'task.failed':

@@ -113,4 +113,13 @@ describe('useChatEventRouter', () => {
     router.dispatch({ type: 'v2_event', kind: 'unknown.kind' as never, payload: {} as never });
     expect(store.tasks.size).toBe(0);
   });
+
+  it('task.created marks the new task as hydrated (live tasks default expanded)', () => {
+    router.dispatch({
+      type: 'v2_event',
+      kind: 'task.created',
+      payload: { Task: mkTask({ ID: 't-live' }) },
+    });
+    expect(store.hydratedTaskIds.has('t-live')).toBe(true);
+  });
 });

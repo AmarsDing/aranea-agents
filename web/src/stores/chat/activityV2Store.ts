@@ -60,6 +60,14 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   /** Cache of member session IDs whose steps were lazy-loaded (A.4.7). */
   const loadedMemberStepSessions = ref(new Set<string>());
 
+  // === Lazy hydration state (chat history lazy load, 2026-07-23 design) ===
+  // hydratedTaskIds: tasks whose execution subtree has been loaded. Persists
+  // across WS reconnects (fetchSessionHistory never clears it) so expanded
+  // cards stay expanded; only clearAll/clearSession reset it.
+  const hydratedTaskIds = ref(new Set<string>());
+  // taskHydration: transient per-task fetch state ('loading' | 'error').
+  const taskHydration = ref(new Map<string, 'loading' | 'error'>());
+
   function catchHydrationError<T>(scope: string, parentId: string): (e: unknown) => T[] {
     return (e: unknown) => {
       hydrationErrors.value.push({
@@ -70,6 +78,13 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       return [] as T[];
     };
   }
+
+  // Phase 1 recent-steps window — covers spirit-level orphan steps and gives
+  // the latest task immediate context (design §4.2 Phase 1).
+  const HISTORY_STEP_WINDOW = 100;
+  // Non-terminal task statuses always auto-hydrate on session open (P5):
+  // running/pending 进行态 + interrupted（「继续执行」按钮必须直接可见）。
+  const AUTO_HYDRATE_STATUSES = new Set<Task['Status']>(['pending', 'running', 'interrupted']);
 
   const nodeOutputStore = useNodeOutputStore();
 
@@ -466,7 +481,11 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
 
   function clearSession(spiritSessionId: string) {
     for (const [id, t] of tasks.value) {
-      if (t.SessionID === spiritSessionId) tasks.value.delete(id);
+      if (t.SessionID === spiritSessionId) {
+        tasks.value.delete(id);
+        hydratedTaskIds.value.delete(id);
+        taskHydration.value.delete(id);
+      }
     }
     for (const [id, t] of turns.value) {
       if (t.SpiritSessionID === spiritSessionId) turns.value.delete(id);
@@ -514,67 +533,94 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     graphStages.value.clear();
     graphNodes.value.clear();
     loadedMemberStepSessions.value.clear();
+    hydratedTaskIds.value.clear();
+    taskHydration.value.clear();
   }
 
   // === History fetch (page refresh / WS reconnect) ===
 
   /**
-   * fetchSessionHistory loads the v2 entity tree for a spirit (root) session:
-   *   - Top level: tasks + root-session steps only (SessionID = spirit session)
-   *   - Per task: turns + team_stages + plan_boards + plan_steps + graph_stages
-   *   - Per team_stage: team_runs → member_sessions (metadata only)
-   *   - Mode B: orphan member_sessions (empty TeamRunID) by spirit session
-   *   - Per graph_stage: graph_nodes
-   * Member step content is lazy-loaded via ensureMemberStepsLoaded on expand (A.4.7).
+   * fetchSessionHistory loads the v2 entity tree in phases (chat history lazy
+   * load, 2026-07-23 design §4.2):
+   *   Phase 1: tasks (lightweight, all) + recent steps window (limit=100)
+   *   Phase 2: compute auto-hydrate set = last task + non-terminal tasks
+   *            + already-hydrated tasks (WS reconnect keeps them expanded)
+   *   Phase 3: hydrateTask per auto-hydrate task (parallel, fire-and-forget)
+   *   Mode B: orphan member_sessions by spirit session (session-level)
+   * Historical terminal tasks render as collapsed meta-bar cards and hydrate
+   * on demand via hydrateTask (viewport dwell / click).
    */
   async function fetchSessionHistory(sessionId: string): Promise<void> {
     // P2-07: clear previous hydration errors at the start of each fetch.
     hydrationErrors.value = [];
 
-    const [tasksList, stepsList] = await Promise.all([listTasksV2(sessionId), listStepsV2(sessionId)]);
+    const [tasksList, stepsList] = await Promise.all([
+      listTasksV2(sessionId),
+      listStepsV2(sessionId, { limit: HISTORY_STEP_WINDOW }),
+    ]);
     for (const t of tasksList) upsertTask(t);
     for (const s of stepsList) upsertStep(s);
 
-    // Per-task parallel fetch: turns + 4 task-scoped child entities.
-    // Each call catches its own failure → empty array + recorded error,
-    // so one failing task doesn't poison the others and the UI can show
-    // a partial/stale indicator.
-    const perTaskResults = await Promise.all(
-      tasksList.map(async (t) => ({
-        turns: await listTurnsV2(t.ID).catch(catchHydrationError<Turn>('turns', t.ID)),
-        teamStages: await listTeamStagesV2(t.ID).catch(catchHydrationError<TeamStage>('team_stages', t.ID)),
-        planBoards: await listPlanBoardsV2(t.ID).catch(catchHydrationError<PlanBoard>('plan_boards', t.ID)),
-        planSteps: await listPlanStepsV2(t.ID).catch(catchHydrationError<PlanStep>('plan_steps', t.ID)),
-        graphStages: await listGraphStagesV2(t.ID).catch(catchHydrationError<GraphStage>('graph_stages', t.ID)),
-      })),
+    const sorted = [...tasksList].sort(compareByTimeThenSeq);
+    const autoHydrate = new Set<string>();
+    const lastTask = sorted[sorted.length - 1];
+    if (lastTask) autoHydrate.add(lastTask.ID);
+    for (const t of sorted) {
+      if (AUTO_HYDRATE_STATUSES.has(t.Status)) autoHydrate.add(t.ID);
+      if (hydratedTaskIds.value.has(t.ID)) autoHydrate.add(t.ID);
+    }
+    // Fire-and-forget: 首屏不等待执行过程水合，折叠卡即时渲染。
+    for (const id of autoHydrate) {
+      void hydrateTask(id);
+    }
+
+    // Mode B: orphan member sessions (empty TeamRunID) for this spirit session.
+    const orphans = await listOrphanMemberSessionsV2(sessionId).catch(
+      catchHydrationError<MemberSession>('orphan_member_sessions', sessionId),
     );
-    for (const r of perTaskResults) {
-      for (const turn of r.turns) upsertTurn(turn);
-      for (const ts of r.teamStages) upsertTeamStage(ts);
-      for (const pb of r.planBoards) upsertPlanBoard(pb);
-      for (const ps of r.planSteps) upsertPlanStep(ps);
-      for (const gs of r.graphStages) upsertGraphStage(gs);
-    }
+    for (const ms of orphans) upsertMemberSession(ms);
+  }
 
-    // Flatten team_stages and graph_stages across all tasks for next-level fetch.
-    const allTeamStages: TeamStage[] = [];
-    const allGraphStages: GraphStage[] = [];
-    for (const r of perTaskResults) {
-      allTeamStages.push(...r.teamStages);
-      allGraphStages.push(...r.graphStages);
-    }
+  /**
+   * hydrateTask loads one task's full execution subtree (turns + task steps +
+   * team/plan/graph entities + drill-down runs/sessions/nodes). Idempotent:
+   * returns immediately when already hydrated or in flight. On any
+   * sub-resource failure the task enters 'error' state (meta-bar retry) and
+   * is NOT marked hydrated, so a later expand retries the full fetch.
+   */
+  async function hydrateTask(taskId: string): Promise<void> {
+    const task = tasks.value.get(taskId);
+    if (!task) return;
+    if (hydratedTaskIds.value.has(taskId)) return;
+    if (taskHydration.value.get(taskId) === 'loading') return;
+    taskHydration.value.set(taskId, 'loading');
 
-    // Per team_stage: fetch team_runs (parallel). Isolated failures → [] + error.
+    const errorsBefore = hydrationErrors.value.length;
+    const [turnsL, stepsL, teamStagesL, planBoardsL, planStepsL, graphStagesL] = await Promise.all([
+      listTurnsV2(taskId).catch(catchHydrationError<Turn>('turns', taskId)),
+      listStepsV2(task.SessionID, { taskId }).catch(catchHydrationError<Step>('steps', taskId)),
+      listTeamStagesV2(taskId).catch(catchHydrationError<TeamStage>('team_stages', taskId)),
+      listPlanBoardsV2(taskId).catch(catchHydrationError<PlanBoard>('plan_boards', taskId)),
+      listPlanStepsV2(taskId).catch(catchHydrationError<PlanStep>('plan_steps', taskId)),
+      listGraphStagesV2(taskId).catch(catchHydrationError<GraphStage>('graph_stages', taskId)),
+    ]);
+    for (const turn of turnsL) upsertTurn(turn);
+    for (const st of stepsL) upsertStep(st);
+    for (const ts of teamStagesL) upsertTeamStage(ts);
+    for (const pb of planBoardsL) upsertPlanBoard(pb);
+    for (const ps of planStepsL) upsertPlanStep(ps);
+    for (const gs of graphStagesL) upsertGraphStage(gs);
+
+    // Drill-down: team_runs → member_sessions (metadata only; member step
+    // content stays lazy per A.4.7), graph_nodes per graph_stage.
     const teamRunLists = await Promise.all(
-      allTeamStages.map((ts) => listTeamRunsV2(ts.ID).catch(catchHydrationError<TeamRun>('team_runs', ts.ID))),
+      teamStagesL.map((ts) => listTeamRunsV2(ts.ID).catch(catchHydrationError<TeamRun>('team_runs', ts.ID))),
     );
     const allTeamRuns: TeamRun[] = [];
     for (const runs of teamRunLists) {
       for (const tr of runs) upsertTeamRun(tr);
       allTeamRuns.push(...runs);
     }
-
-    // Per team_run: fetch member_sessions (parallel). Isolated failures → [] + error.
     const memberSessionLists = await Promise.all(
       allTeamRuns.map((tr) =>
         listMemberSessionsV2(tr.ID).catch(catchHydrationError<MemberSession>('member_sessions', tr.ID)),
@@ -583,19 +629,18 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const sessions of memberSessionLists) {
       for (const ms of sessions) upsertMemberSession(ms);
     }
-
-    // Mode B: orphan member sessions (empty TeamRunID) for this spirit session.
-    const orphans = await listOrphanMemberSessionsV2(sessionId).catch(
-      catchHydrationError<MemberSession>('orphan_member_sessions', sessionId),
-    );
-    for (const ms of orphans) upsertMemberSession(ms);
-
-    // Per graph_stage: fetch graph_nodes (parallel). Isolated failures → [] + error.
     const graphNodeLists = await Promise.all(
-      allGraphStages.map((gs) => listGraphNodesV2(gs.ID).catch(catchHydrationError<GraphNode>('graph_nodes', gs.ID))),
+      graphStagesL.map((gs) => listGraphNodesV2(gs.ID).catch(catchHydrationError<GraphNode>('graph_nodes', gs.ID))),
     );
     for (const nodes of graphNodeLists) {
       for (const gn of nodes) upsertGraphNode(gn);
+    }
+
+    if (hydrationErrors.value.length > errorsBefore) {
+      taskHydration.value.set(taskId, 'error');
+    } else {
+      hydratedTaskIds.value.add(taskId);
+      taskHydration.value.delete(taskId);
     }
   }
 
@@ -661,7 +706,10 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     clearSession,
     clearAll,
     fetchSessionHistory,
+    hydrateTask,
     ensureMemberStepsLoaded,
     hydrationErrors,
+    hydratedTaskIds,
+    taskHydration,
   };
 });

@@ -1,6 +1,7 @@
 // web/src/stores/__tests__/activityV2.store.spec.ts
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
+import { flushPromises } from '@vue/test-utils';
 
 // P2-07: mock the v2Api so fetchSessionHistory can be tested in isolation.
 vi.mock('../../features/session/v2Api', () => ({
@@ -137,6 +138,7 @@ describe('useChatActivityStore', () => {
 
     const s = useChatActivityStore();
     await s.fetchSessionHistory('sess-1');
+    await flushPromises(); // per-task hydration is fire-and-forget now
 
     expect(s.hydrationErrors.length).toBe(1);
     expect(s.hydrationErrors[0].scope).toBe('turns');
@@ -284,5 +286,159 @@ describe('useChatActivityStore', () => {
       Error: '',
     });
     expect(s.getTaskOrphanMemberSessions('t1')).toEqual([]);
+  });
+
+  it('hydratedTaskIds starts empty and survives upsertTask (no auto-mark on bulk path)', () => {
+    const s = useChatActivityStore();
+    s.upsertTask(makeTask({ ID: 't1' }));
+    // upsertTask 不自动标记——历史任务经 fetchSessionHistory 批量 upsert，不能误判为水合。
+    expect(s.hydratedTaskIds.has('t1')).toBe(false);
+  });
+
+  it('clearAll resets hydration tracking', () => {
+    const s = useChatActivityStore();
+    s.hydratedTaskIds.add('t1');
+    s.taskHydration.set('t1', 'loading');
+    s.clearAll();
+    expect(s.hydratedTaskIds.size).toBe(0);
+    expect(s.taskHydration.size).toBe(0);
+  });
+});
+
+describe('fetchSessionHistory phased hydration', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+    vi.mocked(listOrphanMemberSessionsV2).mockResolvedValue([]);
+  });
+
+  it('Phase 1 fetches steps with limit window, not full list', async () => {
+    vi.mocked(listTasksV2).mockResolvedValue([]);
+    vi.mocked(listStepsV2).mockResolvedValue([]);
+    const s = useChatActivityStore();
+    await s.fetchSessionHistory('sess-1');
+    expect(listStepsV2).toHaveBeenCalledWith('sess-1', { limit: 100 });
+  });
+
+  it('auto-hydrates only last + non-terminal tasks; terminal history stays collapsed', async () => {
+    vi.mocked(listTasksV2).mockResolvedValue([
+      makeTask({ ID: 't-old', SessionID: 'sess-1', Status: 'completed', Seq: 1 }),
+      makeTask({ ID: 't-mid', SessionID: 'sess-1', Status: 'completed', Seq: 2 }),
+      makeTask({ ID: 't-last', SessionID: 'sess-1', Status: 'completed', Seq: 3 }),
+    ]);
+    vi.mocked(listStepsV2).mockResolvedValue([]);
+    vi.mocked(listTurnsV2).mockResolvedValue([]);
+    vi.mocked(listTeamStagesV2).mockResolvedValue([]);
+    vi.mocked(listPlanBoardsV2).mockResolvedValue([]);
+    vi.mocked(listPlanStepsV2).mockResolvedValue([]);
+    vi.mocked(listGraphStagesV2).mockResolvedValue([]);
+
+    const s = useChatActivityStore();
+    await s.fetchSessionHistory('sess-1');
+    await flushPromises();
+
+    // 只有最后一个 task 被自动水合 → listTurnsV2 只调用 1 次
+    expect(listTurnsV2).toHaveBeenCalledTimes(1);
+    expect(listTurnsV2).toHaveBeenCalledWith('t-last');
+    expect(s.hydratedTaskIds.has('t-last')).toBe(true);
+    expect(s.hydratedTaskIds.has('t-old')).toBe(false);
+    expect(s.hydratedTaskIds.has('t-mid')).toBe(false);
+  });
+
+  it('auto-hydrates non-terminal tasks (running/pending/interrupted) regardless of position', async () => {
+    vi.mocked(listTasksV2).mockResolvedValue([
+      makeTask({ ID: 't-run', SessionID: 'sess-1', Status: 'running', Seq: 1 }),
+      makeTask({ ID: 't-int', SessionID: 'sess-1', Status: 'interrupted', Seq: 2 }),
+      makeTask({ ID: 't-done', SessionID: 'sess-1', Status: 'completed', Seq: 3 }),
+    ]);
+    vi.mocked(listStepsV2).mockResolvedValue([]);
+    vi.mocked(listTurnsV2).mockResolvedValue([]);
+    vi.mocked(listTeamStagesV2).mockResolvedValue([]);
+    vi.mocked(listPlanBoardsV2).mockResolvedValue([]);
+    vi.mocked(listPlanStepsV2).mockResolvedValue([]);
+    vi.mocked(listGraphStagesV2).mockResolvedValue([]);
+
+    const s = useChatActivityStore();
+    await s.fetchSessionHistory('sess-1');
+    await flushPromises();
+
+    const hydrated = new Set(vi.mocked(listTurnsV2).mock.calls.map((c) => c[0]));
+    expect(hydrated).toEqual(new Set(['t-run', 't-int', 't-done'])); // t-done 是最后一个
+  });
+
+  it('hydratedTaskIds survive a re-fetch (WS reconnect keeps cards expanded)', async () => {
+    vi.mocked(listTasksV2).mockResolvedValue([makeTask({ ID: 't-1', SessionID: 'sess-1', Status: 'completed' })]);
+    vi.mocked(listStepsV2).mockResolvedValue([]);
+    vi.mocked(listTurnsV2).mockResolvedValue([]);
+    vi.mocked(listTeamStagesV2).mockResolvedValue([]);
+    vi.mocked(listPlanBoardsV2).mockResolvedValue([]);
+    vi.mocked(listPlanStepsV2).mockResolvedValue([]);
+    vi.mocked(listGraphStagesV2).mockResolvedValue([]);
+
+    const s = useChatActivityStore();
+    await s.fetchSessionHistory('sess-1');
+    await flushPromises();
+    expect(s.hydratedTaskIds.has('t-1')).toBe(true);
+
+    // 重连再拉：即便 t-1 已非「最后+非终态」之外的逻辑，仍因已水合而保持
+    await s.fetchSessionHistory('sess-1');
+    await flushPromises();
+    expect(s.hydratedTaskIds.has('t-1')).toBe(true);
+  });
+});
+
+describe('hydrateTask', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+    vi.mocked(listOrphanMemberSessionsV2).mockResolvedValue([]);
+  });
+
+  function seedOneCompletedTask(): ReturnType<typeof useChatActivityStore> {
+    vi.mocked(listTasksV2).mockResolvedValue([makeTask({ ID: 't-1', SessionID: 'sess-1', Status: 'completed' })]);
+    vi.mocked(listStepsV2).mockResolvedValue([]);
+    const s = useChatActivityStore();
+    return s;
+  }
+
+  it('is idempotent: concurrent calls trigger only one fetch round', async () => {
+    const s = seedOneCompletedTask();
+    vi.mocked(listTurnsV2).mockResolvedValue([]);
+    vi.mocked(listTeamStagesV2).mockResolvedValue([]);
+    vi.mocked(listPlanBoardsV2).mockResolvedValue([]);
+    vi.mocked(listPlanStepsV2).mockResolvedValue([]);
+    vi.mocked(listGraphStagesV2).mockResolvedValue([]);
+
+    // 注意：t-1 是最后一个 task，fetchSessionHistory 已触发一次 hydrate；
+    // 这里直接测 store action 本身——先造一个未水合的 task。
+    const s2 = useChatActivityStore();
+    s2.upsertTask(makeTask({ ID: 't-9', SessionID: 'sess-1', Status: 'completed' }));
+    await Promise.all([s2.hydrateTask('t-9'), s2.hydrateTask('t-9')]);
+    const calls = vi.mocked(listTurnsV2).mock.calls.filter((c) => c[0] === 't-9');
+    expect(calls.length).toBe(1);
+    expect(s2.hydratedTaskIds.has('t-9')).toBe(true);
+    void s;
+  });
+
+  it('sets error state on sub-resource failure and allows retry', async () => {
+    const s = useChatActivityStore();
+    s.upsertTask(makeTask({ ID: 't-9', SessionID: 'sess-1', Status: 'completed' }));
+
+    vi.mocked(listTurnsV2).mockRejectedValueOnce(new Error('turns down'));
+    vi.mocked(listStepsV2).mockResolvedValue([]);
+    vi.mocked(listTeamStagesV2).mockResolvedValue([]);
+    vi.mocked(listPlanBoardsV2).mockResolvedValue([]);
+    vi.mocked(listPlanStepsV2).mockResolvedValue([]);
+    vi.mocked(listGraphStagesV2).mockResolvedValue([]);
+
+    await s.hydrateTask('t-9');
+    expect(s.taskHydration.get('t-9')).toBe('error');
+    expect(s.hydratedTaskIds.has('t-9')).toBe(false);
+
+    // 重试成功
+    vi.mocked(listTurnsV2).mockResolvedValue([]);
+    await s.hydrateTask('t-9');
+    expect(s.taskHydration.get('t-9')).toBeUndefined();
+    expect(s.hydratedTaskIds.has('t-9')).toBe(true);
   });
 });

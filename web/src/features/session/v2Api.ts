@@ -235,11 +235,19 @@ export async function listTurnsV2(taskId: string): Promise<Turn[]> {
 /**
  * List steps for a session. Backend: GET /v2/sessions/{session_id}/steps.
  * Optional `turnId` / `taskId` filters are passed as query params.
+ * `limit` / `beforeSeq` enable the paged session-window query (chat history
+ * lazy load Phase 1); has_more is currently unused by the frontend (YAGNI —
+ * spirit-level orphan steps beyond the window are not expected to exist).
  */
-export async function listStepsV2(sessionId: string, opts?: { turnId?: string; taskId?: string }): Promise<Step[]> {
-  const params: Record<string, string> = {};
+export async function listStepsV2(
+  sessionId: string,
+  opts?: { turnId?: string; taskId?: string; limit?: number; beforeSeq?: number },
+): Promise<Step[]> {
+  const params: Record<string, string | number> = {};
   if (opts?.turnId) params.turn_id = opts.turnId;
   if (opts?.taskId) params.task_id = opts.taskId;
+  if (opts?.limit && opts.limit > 0) params.limit = opts.limit;
+  if (opts?.beforeSeq && opts.beforeSeq > 0) params.before_seq = opts.beforeSeq;
   const resp = await kratosApi.get<ListStepsV2Response>(`/v2/sessions/${encodeURIComponent(sessionId)}/steps`, {
     params,
   });
