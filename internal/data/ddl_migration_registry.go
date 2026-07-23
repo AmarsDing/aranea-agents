@@ -161,6 +161,13 @@ var ddlMigrations = []ddlMigration{
 	// loadCompressBody keeps only user/assistant messages, so tool-message
 	// filtering never triggered).
 	{Version: 20261107, Name: "drop_micro_compact", SQL: "sql/migrations/20261107_drop_micro_compact.sql"},
+	// 20261108 agent_runtime_clarification: add clarification_enabled column to
+	// agent_runtime_settings (P-CLARIFY B.10.18). Ent Schema.Create() 不会为已存在表
+	// 新增列，需要 ALTER TABLE 补列；默认 1（门默认开启）。
+	{Version: 20261108, Name: "agent_runtime_clarification", SQL: "sql/migrations/20261108_agent_runtime_clarification.sql"},
+	// 20261109 steps_v2_session_seq: composite index for chat history lazy
+	// load paged session query (WHERE session_id=? ORDER BY seq DESC LIMIT n+1).
+	{Version: 20261109, Name: "steps_v2_session_seq", SQL: "sql/migrations/20261109_steps_v2_session_seq.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
