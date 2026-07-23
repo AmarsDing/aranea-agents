@@ -93,10 +93,17 @@ func (s *SessionV2Service) ListTurns(ctx context.Context, req *v1.ListTurnsV2Req
 	return &v1.ListTurnsV2Response{Turns: out}, nil
 }
 
+// listStepsMaxLimit caps client-supplied page sizes to protect the DB.
+const listStepsMaxLimit = 500
+
 // ListSteps returns steps filtered by turn_id, task_id, or session_id.
 func (s *SessionV2Service) ListSteps(ctx context.Context, req *v1.ListStepsV2Request) (*v1.ListStepsV2Response, error) {
+	if req.GetLimit() < 0 || req.GetBeforeSeq() < 0 {
+		return nil, apierror.BadRequest(apierror.DomainShared, "limit and before_seq must be >= 0")
+	}
 	var steps []biz.Step
 	var err error
+	var hasMore bool
 	switch {
 	case strings.TrimSpace(req.GetTurnId()) != "":
 		steps, err = s.stepReader.ListStepsByTurn(ctx, req.GetTurnId())
@@ -107,7 +114,18 @@ func (s *SessionV2Service) ListSteps(ctx context.Context, req *v1.ListStepsV2Req
 		if sessionID == "" {
 			return nil, apierror.BadRequest(apierror.DomainShared, "session_id is required when turn_id and task_id are empty")
 		}
-		steps, err = s.stepReader.ListStepsBySession(ctx, sessionID)
+		if req.GetLimit() > 0 {
+			limit := int(req.GetLimit())
+			if limit > listStepsMaxLimit {
+				limit = listStepsMaxLimit
+			}
+			steps, hasMore, err = s.stepReader.ListStepsBySessionPaged(ctx, sessionID, biz.StepListOptions{
+				Limit:     limit,
+				BeforeSeq: req.GetBeforeSeq(),
+			})
+		} else {
+			steps, err = s.stepReader.ListStepsBySession(ctx, sessionID)
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -116,7 +134,7 @@ func (s *SessionV2Service) ListSteps(ctx context.Context, req *v1.ListStepsV2Req
 	for _, st := range steps {
 		out = append(out, bizStepToProto(st))
 	}
-	return &v1.ListStepsV2Response{Steps: out}, nil
+	return &v1.ListStepsV2Response{Steps: out, HasMore: hasMore}, nil
 }
 
 // GetStep returns a single step by ID.

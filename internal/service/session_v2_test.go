@@ -67,7 +67,19 @@ func TestSessionV2Service_GetStep_NotFound(t *testing.T) {
 // for these focused unit tests.
 type stubStepV2Reader struct {
 	biz.StepV2Reader
-	steps []biz.Step
+	steps        []biz.Step
+	pagedOpts    *biz.StepListOptions // records last paged call opts
+	pagedHasMore bool
+}
+
+func (s *stubStepV2Reader) ListStepsBySessionPaged(_ context.Context, _ string, opts biz.StepListOptions) ([]biz.Step, bool, error) {
+	o := opts
+	s.pagedOpts = &o
+	return s.steps, s.pagedHasMore, nil
+}
+
+func (s *stubStepV2Reader) ListStepsByTask(_ context.Context, _ string) ([]biz.Step, error) {
+	return s.steps, nil
 }
 
 func (s *stubStepV2Reader) ListStepsBySession(_ context.Context, _ string) ([]biz.Step, error) {
@@ -168,5 +180,88 @@ func TestSessionService_ListActivities_NotConfigured(t *testing.T) {
 	}
 	if !apierror.IsCode(err, apierror.CodeInternal) {
 		t.Fatalf("expected Internal, got %v", err)
+	}
+}
+
+// TestSessionV2Service_ListSteps_Paged verifies limit>0 routes to the paged
+// repo method, clamps to the server cap, and propagates has_more.
+func TestSessionV2Service_ListSteps_Paged(t *testing.T) {
+	stub := &stubStepV2Reader{
+		steps: []biz.Step{
+			{ID: "s1", SessionID: "sess1", Kind: biz.StepKindReply, Content: "hello"},
+		},
+		pagedHasMore: true,
+	}
+	svc := &SessionV2Service{stepReader: stub}
+	resp, err := svc.ListSteps(context.Background(), &v1.ListStepsV2Request{
+		SessionId: "sess1",
+		Limit:     100,
+		BeforeSeq: 42,
+	})
+	if err != nil {
+		t.Fatalf("ListSteps: %v", err)
+	}
+	if stub.pagedOpts == nil {
+		t.Fatal("paged repo method not called")
+	}
+	if stub.pagedOpts.Limit != 100 || stub.pagedOpts.BeforeSeq != 42 {
+		t.Errorf("opts=%+v, want {Limit:100 BeforeSeq:42}", stub.pagedOpts)
+	}
+	if !resp.GetHasMore() {
+		t.Error("has_more=false, want true")
+	}
+}
+
+// TestSessionV2Service_ListSteps_PagedLimitClamp verifies limit>500 is clamped.
+func TestSessionV2Service_ListSteps_PagedLimitClamp(t *testing.T) {
+	stub := &stubStepV2Reader{}
+	svc := &SessionV2Service{stepReader: stub}
+	if _, err := svc.ListSteps(context.Background(), &v1.ListStepsV2Request{SessionId: "sess1", Limit: 99999}); err != nil {
+		t.Fatalf("ListSteps: %v", err)
+	}
+	if stub.pagedOpts == nil || stub.pagedOpts.Limit != 500 {
+		t.Errorf("opts=%+v, want Limit clamped to 500", stub.pagedOpts)
+	}
+}
+
+// TestSessionV2Service_ListSteps_LegacyWhenNoLimit verifies limit=0 keeps the
+// legacy full-list path and never touches the paged method.
+func TestSessionV2Service_ListSteps_LegacyWhenNoLimit(t *testing.T) {
+	stub := &stubStepV2Reader{steps: []biz.Step{{ID: "s1", SessionID: "sess1"}}}
+	svc := &SessionV2Service{stepReader: stub}
+	resp, err := svc.ListSteps(context.Background(), &v1.ListStepsV2Request{SessionId: "sess1"})
+	if err != nil {
+		t.Fatalf("ListSteps: %v", err)
+	}
+	if stub.pagedOpts != nil {
+		t.Error("paged method must not be called when limit=0")
+	}
+	if resp.GetHasMore() {
+		t.Error("has_more=true, want false on legacy path")
+	}
+}
+
+// TestSessionV2Service_ListSteps_RejectsNegativeParams verifies 400 on negative
+// limit / before_seq.
+func TestSessionV2Service_ListSteps_RejectsNegativeParams(t *testing.T) {
+	svc := &SessionV2Service{stepReader: &stubStepV2Reader{}}
+	if _, err := svc.ListSteps(context.Background(), &v1.ListStepsV2Request{SessionId: "s", Limit: -1}); !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Errorf("limit=-1: want BadRequest, got %v", err)
+	}
+	if _, err := svc.ListSteps(context.Background(), &v1.ListStepsV2Request{SessionId: "s", BeforeSeq: -1}); !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Errorf("before_seq=-1: want BadRequest, got %v", err)
+	}
+}
+
+// TestSessionV2Service_ListSteps_TaskBranchIgnoresPaging verifies task_id branch
+// keeps the legacy per-task full list (design: 单 task 有界，不分页).
+func TestSessionV2Service_ListSteps_TaskBranchIgnoresPaging(t *testing.T) {
+	stub := &stubStepV2Reader{steps: []biz.Step{{ID: "s1", TaskID: "t1"}}}
+	svc := &SessionV2Service{stepReader: stub}
+	if _, err := svc.ListSteps(context.Background(), &v1.ListStepsV2Request{SessionId: "sess1", TaskId: "t1", Limit: 5}); err != nil {
+		t.Fatalf("ListSteps: %v", err)
+	}
+	if stub.pagedOpts != nil {
+		t.Error("paged method must not be called for task_id branch")
 	}
 }
