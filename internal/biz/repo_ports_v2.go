@@ -82,11 +82,24 @@ type TurnV2Repo interface {
 
 // === Step ===
 
+// StepListOptions controls paged listing of steps within a session.
+// Limit<=0 means no pagination (full list, legacy semantics);
+// BeforeSeq>0 returns the page with seq < BeforeSeq (walking towards older).
+// Chat history lazy load (2026-07-23 design) Phase 1 uses a Limit window.
+type StepListOptions struct {
+	Limit     int
+	BeforeSeq int64
+}
+
 type StepV2Reader interface {
 	GetStep(ctx context.Context, id string) (Step, error)
 	ListStepsByTurn(ctx context.Context, turnID string) ([]Step, error)
 	ListStepsByTask(ctx context.Context, taskID string) ([]Step, error)
 	ListStepsBySession(ctx context.Context, sessionID string) ([]Step, error) // filters steps.session_id
+	// ListStepsBySessionPaged returns steps of a session with pagination,
+	// always ordered by seq asc; hasMore reports whether older steps remain.
+	// Limit<=0 degrades to the full list (hasMore=false), ordered by started_at asc.
+	ListStepsBySessionPaged(ctx context.Context, sessionID string, opts StepListOptions) (steps []Step, hasMore bool, err error)
 	// ListStepsBySpiritSession returns all steps under a spirit root (steps.spirit_session_id).
 	// Used by StopGeneration cancel to mark in-flight member steps as cancelled.
 	ListStepsBySpiritSession(ctx context.Context, spiritSessionID string) ([]Step, error)

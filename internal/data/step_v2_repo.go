@@ -87,6 +87,47 @@ func (r *stepV2Repo) ListStepsBySession(ctx context.Context, sessionID string) (
 	return entStepsV2ToBiz(rows), nil
 }
 
+// ListStepsBySessionPaged returns a page of steps for the session, always
+// ordered by seq asc. Query plan: WHERE session_id=? [AND seq<before_seq]
+// ORDER BY seq DESC LIMIT n+1 → hasMore = (len > n) → trim → reverse to ASC.
+// Limit<=0 degrades to the legacy full list (started_at asc, hasMore=false).
+func (r *stepV2Repo) ListStepsBySessionPaged(ctx context.Context, sessionID string, opts biz.StepListOptions) ([]biz.Step, bool, error) {
+	if r == nil || r.data == nil {
+		return nil, false, fmt.Errorf("step v2 repo: database not configured")
+	}
+	if opts.Limit <= 0 {
+		rows, err := r.data.RW().Read(ctx).StepV2.Query().
+			Where(stepv2.SessionIDEQ(sessionID)).
+			Order(ent.Asc(stepv2.FieldStartedAt)).
+			All(ctx)
+		if err != nil {
+			return nil, false, entErrToBizErr(err, "STEP_V2")
+		}
+		return entStepsV2ToBiz(rows), false, nil
+	}
+	q := r.data.RW().Read(ctx).StepV2.Query().
+		Where(stepv2.SessionIDEQ(sessionID))
+	if opts.BeforeSeq > 0 {
+		q = q.Where(stepv2.SeqLT(opts.BeforeSeq))
+	}
+	rows, err := q.
+		Order(ent.Desc(stepv2.FieldSeq)).
+		Limit(opts.Limit + 1).
+		All(ctx)
+	if err != nil {
+		return nil, false, entErrToBizErr(err, "STEP_V2")
+	}
+	hasMore := len(rows) > opts.Limit
+	if hasMore {
+		rows = rows[:opts.Limit]
+	}
+	// Reverse DESC → ASC so callers always receive ascending seq order.
+	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+		rows[i], rows[j] = rows[j], rows[i]
+	}
+	return entStepsV2ToBiz(rows), hasMore, nil
+}
+
 // ListStepsBySpiritSession returns all steps under a spirit root session
 // (spirit_session_id column), ordered by started_at asc. Includes member
 // agent steps for StopGeneration cancel coverage.
