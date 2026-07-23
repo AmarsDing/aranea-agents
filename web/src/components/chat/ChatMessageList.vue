@@ -63,6 +63,7 @@ import SessionPanelV2 from './v2/SessionPanel.vue';
 import { useScrollToActivity } from '../../features/chat/composables/useScrollToActivity';
 import { useLocateTeamStage } from '../../features/chat/composables/useLocateTeamStage';
 import { useActivityQueries } from '../../features/chat/composables/useActivityQueries';
+import { CHAT_SCROLL_EL_KEY } from '../../features/chat/composables/useLazyTaskHydration';
 import type { Message, PendingMessage, ConfirmStepPayload, SubmitClarificationPayload } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
@@ -144,6 +145,9 @@ const quickStartHints = [
 
 const emptyScrollEl = ref<HTMLElement | null>(null);
 const scrollViewportEl = ref<HTMLElement | null>(null);
+
+// 懒水合 composable 的 observer root（折叠卡视口感知）。
+provide(CHAT_SCROLL_EL_KEY, scrollViewportEl);
 
 // T8.6: 点击左侧 Agent 卡片 → 滚动并高亮中间面板对应的 AgentCard。
 const { locateCommand } = useScrollToActivity();

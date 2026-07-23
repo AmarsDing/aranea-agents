@@ -90,6 +90,18 @@ export function useActivityQueries() {
       return store.getTaskOrphanMemberSessions(taskId);
     },
 
+    // --- Lazy hydration (chat history lazy load) ---
+    isTaskHydrated(taskId: string): boolean {
+      return store.hydratedTaskIds.has(taskId);
+    },
+    taskHydrationState(taskId: string): 'loading' | 'error' | undefined {
+      return store.taskHydration.get(taskId);
+    },
+    /** 门面转发 store action：components 禁止直访 store（layer 检查）。 */
+    hydrateTask(taskId: string): Promise<void> {
+      return store.hydrateTask(taskId);
+    },
+
     // --- Direct map access (for components that iterate or .get by ID) ---
     /** Read-only view of the steps map. */
     steps(): ReadonlyMap<string, Step> {

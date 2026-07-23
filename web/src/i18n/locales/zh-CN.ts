@@ -515,6 +515,9 @@ export default {
       taskInterrupted: '任务已中断（服务重启导致）',
       resumeTask: '继续执行',
       resumeTaskSent: '已请求继续执行',
+      // 历史轮次懒加载（折叠卡 meta-bar + 收起按钮）
+      collapseExecution: '收起执行过程',
+      loadFailedRetry: '加载失败，点击重试',
     },
     agentTool: {
       longRunningTitle: '工具仍在执行，LLM 尚未收到最终结果',

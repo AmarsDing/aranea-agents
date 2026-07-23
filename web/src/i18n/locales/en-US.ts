@@ -499,6 +499,9 @@ export default {
       taskInterrupted: 'Task interrupted (server restart)',
       resumeTask: 'Continue',
       resumeTaskSent: 'Resume requested',
+      // Lazy-loaded history cards (collapsed meta-bar + collapse button)
+      collapseExecution: 'Collapse execution',
+      loadFailedRetry: 'Load failed, click to retry',
     },
     agentTool: {
       longRunningTitle: 'Tool still running, LLM has not received final result',
