@@ -4638,10 +4638,14 @@ func (x *ListTurnsV2Response) GetTurns() []*TurnV2 {
 }
 
 type ListStepsV2Request struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	TurnId        string                 `protobuf:"bytes,2,opt,name=turn_id,json=turnId,proto3" json:"turn_id,omitempty"`
-	TaskId        string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	TurnId    string                 `protobuf:"bytes,2,opt,name=turn_id,json=turnId,proto3" json:"turn_id,omitempty"`
+	TaskId    string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	// 0 = 不分页（现状语义，全量）；>0 时仅对 session 级查询生效
+	Limit int32 `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
+	// 0 = 最新窗口；>0 = 取 seq < before_seq 的上一页（向更早翻页）
+	BeforeSeq     int64 `protobuf:"varint,5,opt,name=before_seq,json=beforeSeq,proto3" json:"before_seq,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4697,9 +4701,26 @@ func (x *ListStepsV2Request) GetTaskId() string {
 	return ""
 }
 
+func (x *ListStepsV2Request) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListStepsV2Request) GetBeforeSeq() int64 {
+	if x != nil {
+		return x.BeforeSeq
+	}
+	return 0
+}
+
 type ListStepsV2Response struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Steps         []*StepV2              `protobuf:"bytes,1,rep,name=steps,proto3" json:"steps,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 始终按 seq 升序返回
+	Steps []*StepV2 `protobuf:"bytes,1,rep,name=steps,proto3" json:"steps,omitempty"`
+	// limit>0 时有效：是否还有更早的 steps
+	HasMore       bool `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4739,6 +4760,13 @@ func (x *ListStepsV2Response) GetSteps() []*StepV2 {
 		return x.Steps
 	}
 	return nil
+}
+
+func (x *ListStepsV2Response) GetHasMore() bool {
+	if x != nil {
+		return x.HasMore
+	}
+	return false
 }
 
 type GetStepV2Request struct {
@@ -7738,14 +7766,18 @@ const file_kratos_session_v1_session_proto_rawDesc = "" +
 	"\x12ListTurnsV2Request\x12\x1d\n" +
 	"\atask_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x06taskId\"F\n" +
 	"\x13ListTurnsV2Response\x12/\n" +
-	"\x05turns\x18\x01 \x03(\v2\x19.kratos.session.v1.TurnV2R\x05turns\"k\n" +
+	"\x05turns\x18\x01 \x03(\v2\x19.kratos.session.v1.TurnV2R\x05turns\"\xa0\x01\n" +
 	"\x12ListStepsV2Request\x12#\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\x12\x17\n" +
 	"\aturn_id\x18\x02 \x01(\tR\x06turnId\x12\x17\n" +
-	"\atask_id\x18\x03 \x01(\tR\x06taskId\"F\n" +
+	"\atask_id\x18\x03 \x01(\tR\x06taskId\x12\x14\n" +
+	"\x05limit\x18\x04 \x01(\x05R\x05limit\x12\x1d\n" +
+	"\n" +
+	"before_seq\x18\x05 \x01(\x03R\tbeforeSeq\"a\n" +
 	"\x13ListStepsV2Response\x12/\n" +
-	"\x05steps\x18\x01 \x03(\v2\x19.kratos.session.v1.StepV2R\x05steps\"1\n" +
+	"\x05steps\x18\x01 \x03(\v2\x19.kratos.session.v1.StepV2R\x05steps\x12\x19\n" +
+	"\bhas_more\x18\x02 \x01(\bR\ahasMore\"1\n" +
 	"\x10GetStepV2Request\x12\x1d\n" +
 	"\astep_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x06stepId\"B\n" +
 	"\x11GetStepV2Response\x12-\n" +
