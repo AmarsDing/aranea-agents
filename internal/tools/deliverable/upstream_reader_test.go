@@ -9,19 +9,24 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
+
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
 // stubUpstreamReader implements UpstreamDeliverableReader for tool tests.
 type stubUpstreamReader struct {
-	out         biz.UpstreamDeliverableContent
-	err         error
-	gotTeamID   string
-	gotMaxChars int
-	calls       int
+	out                biz.UpstreamDeliverableContent
+	err                error
+	gotReaderSessionID string
+	gotTeamID          string
+	gotMaxChars        int
+	calls              int
 }
 
-func (s *stubUpstreamReader) ReadUpstreamDeliverable(_ context.Context, teamID string, maxChars int) (biz.UpstreamDeliverableContent, error) {
+func (s *stubUpstreamReader) ReadUpstreamDeliverable(_ context.Context, readerSessionID, teamID string, maxChars int) (biz.UpstreamDeliverableContent, error) {
 	s.calls++
+	s.gotReaderSessionID = readerSessionID
 	s.gotTeamID = teamID
 	s.gotMaxChars = maxChars
 	return s.out, s.err
@@ -150,5 +155,38 @@ func TestReadUpstreamDeliverableTool_OutputJSONShape(t *testing.T) {
 		if _, ok := m[key]; !ok {
 			t.Fatalf("output JSON missing key %q: %s", key, b)
 		}
+	}
+}
+
+// The calling agent's session ID (from the invocation context) must be
+// forwarded to the biz reader so it can run the runtime contract check
+// against the reader team's InputContract (Phase B).
+func TestReadUpstreamDeliverableTool_Call_PassesInvocationSessionID(t *testing.T) {
+	reader := &stubUpstreamReader{}
+	tl := NewReadUpstreamDeliverableTool(reader, loggateway.NewNoop())
+
+	inv := trpcagent.NewInvocation()
+	inv.Session = &trpcsession.Session{ID: "  sess-reader-1  "}
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+
+	if _, err := tl.Call(ctx, []byte(`{"team_id":"t-up"}`)); err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if reader.gotReaderSessionID != "sess-reader-1" {
+		t.Fatalf("reader session id should be forwarded (trimmed), got %q", reader.gotReaderSessionID)
+	}
+}
+
+// Without an invocation context (CLI / direct calls), the reader session ID
+// stays empty and the biz layer skips the contract check.
+func TestReadUpstreamDeliverableTool_Call_NoInvocation_EmptyReaderSession(t *testing.T) {
+	reader := &stubUpstreamReader{}
+	tl := NewReadUpstreamDeliverableTool(reader, loggateway.NewNoop())
+
+	if _, err := tl.Call(context.Background(), []byte(`{"team_id":"t-up"}`)); err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if reader.gotReaderSessionID != "" {
+		t.Fatalf("no invocation → empty reader session id, got %q", reader.gotReaderSessionID)
 	}
 }

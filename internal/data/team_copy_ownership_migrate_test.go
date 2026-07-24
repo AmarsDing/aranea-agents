@@ -12,7 +12,7 @@ func TestRunTeamCopyOwnershipMigration(t *testing.T) {
 	ctx := context.Background()
 	lg := loggateway.NewNoop()
 
-	client, _ := testhelper.SetupTestDB(t)
+	client, _ := testhelper.SetupTestPG(t)
 	d := newDataFromClient(client, lg)
 
 	// Create a protected team and a user-made copy that inherited its kind.

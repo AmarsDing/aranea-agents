@@ -502,7 +502,7 @@ func (r *l1WorkingMemoryRepo) insertL1FieldRow(ctx context.Context, id string, i
 		token_estimate = excluded.token_estimate, visibility = excluded.visibility,
 		pin_to_prompt = excluded.pin_to_prompt, source = excluded.source,
 		ttl_seconds = excluded.ttl_seconds, expires_at = excluded.expires_at,
-		revision = revision + 1, updated_at = excluded.updated_at`),
+		revision = memory_l1_fields.revision + 1, updated_at = excluded.updated_at`),
 		id, strings.TrimSpace(in.TaskID),
 		strings.TrimSpace(in.SessionID),
 		strings.TrimSpace(in.AgentID),

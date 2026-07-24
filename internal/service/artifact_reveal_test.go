@@ -16,6 +16,8 @@ import (
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+
+	v1 "aranea-agents/api/kratos/artifact/v1"
 )
 
 // stubRevealLauncher replaces the OS file-manager launcher with a recorder for
@@ -38,7 +40,7 @@ func newRevealService(t *testing.T, lookup sessionWorkspaceLookup) *ArtifactServ
 	t.Helper()
 	repo := artifactfs.NewFSArtifactRepoAt(t.TempDir(), loggateway.NewNoop())
 	uc := biz.NewArtifactUsecase(repo, loggateway.NewNoop())
-	return NewArtifactService(uc, artifact.NewSigner(loggateway.NewNoop()), lookup)
+	return NewArtifactService(uc, artifact.NewSigner(loggateway.NewNoop()), lookup, nil)
 }
 
 // TestArtifactService_RevealLocal verifies the M27 Phase 5 reveal flow:
@@ -161,6 +163,50 @@ func TestArtifactService_ServeRevealLocal_HTTPContract(t *testing.T) {
 	})
 }
 
+// TestArtifactService_StorageUriDisclosureGate verifies OUT-05 / ART-03:
+// absolute host paths appear in API responses only when the local-reveal
+// feature flag is on (local single-user deployments); otherwise responses
+// carry the stored relative URI.
+func TestArtifactService_StorageUriDisclosureGate(t *testing.T) {
+	lookup := &fakeSessionLookup{sessions: map[string]biz.Session{
+		"sess-ok": {ID: "sess-ok", WorkspaceID: "ws-ok"},
+	}}
+
+	upload := func(t *testing.T, svc *ArtifactService, ctx context.Context) string {
+		t.Helper()
+		meta, err := svc.UploadArtifact(ctx, &v1.UploadArtifactRequest{
+			SessionId:  "sess-ok",
+			Name:       "gate-check.txt",
+			MimeType:   "text/plain",
+			DataBase64: "Z2F0ZS1jaGVjaw==",
+		})
+		if err != nil {
+			t.Fatalf("upload: %v", err)
+		}
+		return meta.GetStorageUri()
+	}
+
+	t.Run("flag on returns absolute path", func(t *testing.T) {
+		t.Setenv("FEATURES_LOCAL_REVEAL_ENABLED", "1")
+		svc := newRevealService(t, lookup)
+		ctx := workspace.WithContext(context.Background(), "ws-ok")
+		uri := upload(t, svc, ctx)
+		if !filepath.IsAbs(uri) {
+			t.Fatalf("StorageUri = %q, want absolute path when reveal enabled", uri)
+		}
+	})
+
+	t.Run("flag off returns relative uri", func(t *testing.T) {
+		t.Setenv("FEATURES_LOCAL_REVEAL_ENABLED", "")
+		svc := newRevealService(t, lookup)
+		ctx := workspace.WithContext(context.Background(), "ws-ok")
+		uri := upload(t, svc, ctx)
+		if filepath.IsAbs(uri) {
+			t.Fatalf("StorageUri = %q, must not leak absolute path when reveal disabled", uri)
+		}
+	})
+}
+
 // TestRevealPathWithinRoot verifies the filepath.Rel anti-traversal guard
 // (M27 Phase 5 security constraint: reveal target must stay under artifact root).
 func TestRevealPathWithinRoot(t *testing.T) {
@@ -186,4 +232,32 @@ func TestRevealPathWithinRoot(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("relative root with absolute target", func(t *testing.T) {
+		// Regression: the configured storage root may be relative ("data/artifacts")
+		// while ResolveAbsPath returns an absolute path. The guard must normalize
+		// both sides instead of letting filepath.Rel fail and falsely reject.
+		// The root is created under the cwd so a relative form always exists
+		// (os.TempDir may be on a different drive, where Rel cannot work).
+		relRoot, err := os.MkdirTemp(".", "relroot")
+		if err != nil {
+			t.Fatalf("mktemp: %v", err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(relRoot) })
+		relUnder := filepath.Join(relRoot, "sess", "a-v1.bin")
+		absUnder, err := filepath.Abs(relUnder)
+		if err != nil {
+			t.Fatalf("abs: %v", err)
+		}
+		if !revealPathWithinRoot(relRoot, absUnder) {
+			t.Fatalf("revealPathWithinRoot(%q,%q) = false, want true", relRoot, absUnder)
+		}
+		absEscape, err := filepath.Abs(filepath.Join(relRoot, "..", "evil"))
+		if err != nil {
+			t.Fatalf("abs escape: %v", err)
+		}
+		if revealPathWithinRoot(relRoot, absEscape) {
+			t.Fatalf("revealPathWithinRoot(%q,%q) = true, want false", relRoot, absEscape)
+		}
+	})
 }

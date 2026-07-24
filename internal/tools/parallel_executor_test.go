@@ -339,6 +339,40 @@ func TestParallelExecutor_NilHandlerReturnsFailedResult(t *testing.T) {
 	}
 }
 
+// TestIsolationStrategyForTool verifies that file-write tools (canonical names
+// and UI aliases) are tagged for worktree isolation while read-only and
+// unrelated tools execute directly (Phase C).
+func TestIsolationStrategyForTool(t *testing.T) {
+	cases := []struct {
+		name string
+		want string
+	}{
+		// Write-capable file tools (canonical).
+		{"save_file", IsolationStrategyWorktree},
+		{"diff_edit", IsolationStrategyWorktree},
+		{"patch_file", IsolationStrategyWorktree},
+		{"replace_content", IsolationStrategyWorktree},
+		// UI aliases must resolve to the same strategy.
+		{"write_file", IsolationStrategyWorktree},
+		{"edit_file", IsolationStrategyWorktree},
+		// Read-only file tools execute directly.
+		{"read_file", ""},
+		{"read_multiple_files", ""},
+		{"list_file", ""},
+		{"search_file", ""},
+		{"search_content", ""},
+		// Unrelated tools and empty input execute directly.
+		{"web_research", ""},
+		{"shell_exec", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := IsolationStrategyForTool(c.name); got != c.want {
+			t.Errorf("IsolationStrategyForTool(%q) = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 // TestParallelExecutor_CycleReturnsError verifies that a cyclic dependency
 // causes Execute to return an error without invoking the handler.
 func TestParallelExecutor_CycleReturnsError(t *testing.T) {

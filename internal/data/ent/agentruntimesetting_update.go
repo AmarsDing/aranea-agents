@@ -1546,6 +1546,20 @@ func (_u *AgentRuntimeSettingUpdate) SetNillableIntentPassEnabled(v *bool) *Agen
 	return _u
 }
 
+// SetClarificationEnabled sets the "clarification_enabled" field.
+func (_u *AgentRuntimeSettingUpdate) SetClarificationEnabled(v bool) *AgentRuntimeSettingUpdate {
+	_u.mutation.SetClarificationEnabled(v)
+	return _u
+}
+
+// SetNillableClarificationEnabled sets the "clarification_enabled" field if the given value is not nil.
+func (_u *AgentRuntimeSettingUpdate) SetNillableClarificationEnabled(v *bool) *AgentRuntimeSettingUpdate {
+	if v != nil {
+		_u.SetClarificationEnabled(*v)
+	}
+	return _u
+}
+
 // SetChannelID sets the "channel_id" field.
 func (_u *AgentRuntimeSettingUpdate) SetChannelID(v string) *AgentRuntimeSettingUpdate {
 	_u.mutation.SetChannelID(v)
@@ -2858,6 +2872,9 @@ func (_u *AgentRuntimeSettingUpdate) sqlSave(ctx context.Context) (_node int, er
 	}
 	if value, ok := _u.mutation.IntentPassEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldIntentPassEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ClarificationEnabled(); ok {
+		_spec.SetField(agentruntimesetting.FieldClarificationEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ChannelID(); ok {
 		_spec.SetField(agentruntimesetting.FieldChannelID, field.TypeString, value)
@@ -4611,6 +4628,20 @@ func (_u *AgentRuntimeSettingUpdateOne) SetNillableIntentPassEnabled(v *bool) *A
 	return _u
 }
 
+// SetClarificationEnabled sets the "clarification_enabled" field.
+func (_u *AgentRuntimeSettingUpdateOne) SetClarificationEnabled(v bool) *AgentRuntimeSettingUpdateOne {
+	_u.mutation.SetClarificationEnabled(v)
+	return _u
+}
+
+// SetNillableClarificationEnabled sets the "clarification_enabled" field if the given value is not nil.
+func (_u *AgentRuntimeSettingUpdateOne) SetNillableClarificationEnabled(v *bool) *AgentRuntimeSettingUpdateOne {
+	if v != nil {
+		_u.SetClarificationEnabled(*v)
+	}
+	return _u
+}
+
 // SetChannelID sets the "channel_id" field.
 func (_u *AgentRuntimeSettingUpdateOne) SetChannelID(v string) *AgentRuntimeSettingUpdateOne {
 	_u.mutation.SetChannelID(v)
@@ -5953,6 +5984,9 @@ func (_u *AgentRuntimeSettingUpdateOne) sqlSave(ctx context.Context) (_node *Age
 	}
 	if value, ok := _u.mutation.IntentPassEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldIntentPassEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ClarificationEnabled(); ok {
+		_spec.SetField(agentruntimesetting.FieldClarificationEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ChannelID(); ok {
 		_spec.SetField(agentruntimesetting.FieldChannelID, field.TypeString, value)

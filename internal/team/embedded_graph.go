@@ -276,7 +276,23 @@ func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embedde
 		FinishPoint:      finish,
 		ExecutionEngine:  biz.EngineBSP,
 	}
+	if normalizeCompileMode(def.Mode) == "critic_loop" {
+		cfg.MaxSteps = criticLoopMaxSteps(def, len(executableIDs))
+	}
 	return cfg, taskMeta, branchIDs, nil
+}
+
+// criticLoopMaxSteps computes an explicit graph-execution step ceiling for
+// critic_loop graphs: one loop round walks the entry→finish node chain
+// (≤ nodeCount steps) for at most maxIterations+1 rounds; the formula adds
+// one extra round plus one extra node as headroom for interrupt-resume
+// re-execution. A runaway graph is truncated near the expected iteration
+// count instead of the opaque framework default (100).
+func criticLoopMaxSteps(def Definition, nodeCount int) int {
+	if nodeCount < 1 {
+		nodeCount = 1
+	}
+	return (criticLoopMaxIterations(def) + 2) * (nodeCount + 1)
 }
 
 func compileEmbeddedBizNode(n embeddedGraphNode, base biz.NodeDef) biz.NodeDef {
@@ -403,10 +419,14 @@ func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID 
 	// the strict check in compileFromEmbeddedGraph will reject the graph.
 	if mode == "critic_loop" && len(executableIDs) >= 2 && entry != "" && finish != "" {
 		condEdges = append(condEdges, biz.ConditionalEdgeDef{
-			From:        finish,
-			CondFuncRef: biz.CriticLoopCondFuncRefForThreshold(criticLoopScoreThreshold(def)),
+			From: finish,
+			// nodeID（finish 即 critic 节点）编码进 ref，cond func 按节点隔离
+			// 轮次/反馈，多 critic 图各自独立收敛。
+			CondFuncRef: biz.CriticLoopCondFuncRefForNode(criticLoopScoreThreshold(def), criticLoopMaxIterations(def), finish),
 			PathMap: map[string]string{
-				"approved": finish,
+				// approved 必须终止图（__end__）；映射到 finish 会让 critic
+				// 节点自循环，图永远不结束。
+				"approved": biz.EndNodeID,
 				"retry":    entry,
 			},
 		})
@@ -419,6 +439,17 @@ func criticLoopScoreThreshold(def Definition) float64 {
 		return 0
 	}
 	return def.CriticLoop.ScoreThreshold
+}
+
+// defaultCriticLoopMaxIterations 是未显式配置 critic_loop.max_iterations 时的
+// 默认迭代上限，防止循环无界（此前该配置未接线，是死配置）。
+const defaultCriticLoopMaxIterations = 3
+
+func criticLoopMaxIterations(def Definition) int {
+	if def.CriticLoop == nil || def.CriticLoop.MaxIterations <= 0 {
+		return defaultCriticLoopMaxIterations
+	}
+	return def.CriticLoop.MaxIterations
 }
 
 func embeddedEdgeKind(mode string, e embeddedGraphEdge) string {

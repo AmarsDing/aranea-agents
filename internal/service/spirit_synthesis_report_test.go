@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -236,5 +237,212 @@ func TestCheckAllTeamsCompleted_SkipsSynthesisWhenCancelled(t *testing.T) {
 
 	if gw.executeTurnCalls != 0 {
 		t.Errorf("ExecuteTurn called %d times, want 0 when cancelled teams exist", gw.executeTurnCalls)
+	}
+}
+
+// ── degraded / hard-fail paths (B.10.17 P0 fix) ─────────────────────────────
+
+// stubSynthesisResultService implements synthesisResultService for testing.
+// out/err are returned as-is to drive the degraded (out!=nil && err!=nil) and
+// hard-fail (out==nil && err!=nil) paths.
+type stubSynthesisResultService struct {
+	out   *biz.SynthesisOutput
+	err   error
+	calls int
+}
+
+func (s *stubSynthesisResultService) SynthesizeResults(_ context.Context, _ string, _ string) (*biz.SynthesisOutput, error) {
+	s.calls++
+	return s.out, s.err
+}
+
+// Degraded synthesis (LLM conclusion missing, structured report published) must
+// still return the trigger message so the summary turn fires — otherwise the
+// parent Task stays Running forever (task.completed is deferred to the
+// synthesis continuation turn).
+func TestBuildSynthesisMessage_DegradedStillReturnsTrigger(t *testing.T) {
+	svc := &stubSynthesisResultService{
+		out: &biz.SynthesisOutput{Degraded: true, Strategy: biz.SynthesisStrategyPrompt},
+		err: errors.New("LLM unavailable"),
+	}
+	s := &TeamStarter{synthesisSvc: svc, lg: loggateway.NewNoop()}
+
+	msg, published := s.buildSynthesisMessage(context.Background(), "spirit-1")
+	if msg == "" {
+		t.Fatal("degraded synthesis must still return the trigger message")
+	}
+	if !published {
+		t.Fatal("degraded synthesis must report published=true (report card already published by usecase)")
+	}
+}
+
+// Hard-fail synthesis (no output at all) returns ("", false) so the caller
+// skips the turn and publishes the fallback completion notice instead.
+func TestBuildSynthesisMessage_HardFailReturnsEmpty(t *testing.T) {
+	svc := &stubSynthesisResultService{err: errors.New("active teams still running")}
+	s := &TeamStarter{synthesisSvc: svc, lg: loggateway.NewNoop()}
+
+	msg, published := s.buildSynthesisMessage(context.Background(), "spirit-1")
+	if msg != "" || published {
+		t.Fatalf("hard-fail synthesis = (%q, %v), want (\"\", false)", msg, published)
+	}
+}
+
+// seqEvents returns a copy of the events captured by capturingSeq.
+func seqEvents(seq *capturingSeq) []biz.Event {
+	seq.mu.Lock()
+	defer seq.mu.Unlock()
+	out := make([]biz.Event, len(seq.events))
+	copy(out, seq.events)
+	return out
+}
+
+// newAllDoneTeamStarter builds a TeamStarter whose SpiritUC reports AllDone
+// with no cancelled teams, for checkAllTeamsCompleted path tests.
+func newAllDoneTeamStarter(svc synthesisResultService, gw *stubTurnGateway, seq *capturingSeq, taskReader biz.TaskV2Reader) *TeamStarter {
+	return &TeamStarter{
+		team: TeamOrchestrationDeps{
+			SpiritUC: &stubSpiritTeamController{
+				completedResult: biz.AllTeamsCompletedResult{
+					AllDone:        true,
+					TotalTeams:     2,
+					CompletedTeams: 2,
+				},
+			},
+		},
+		seq:          seq,
+		lg:           loggateway.NewNoop(),
+		synthesisSvc: svc,
+		turnGateway:  gw,
+		taskV2Reader: taskReader,
+	}
+}
+
+// When the report is published (normal or degraded), the legacy "所有团队已完成"
+// notice must NOT be published — the report card is the completion signal.
+func TestCheckAllTeamsCompleted_ReportPublishedSkipsFallbackNotice(t *testing.T) {
+	gw := &stubTurnGateway{}
+	seq := &capturingSeq{}
+	svc := &stubSynthesisResultService{out: &biz.SynthesisOutput{Content: "综合分析", Strategy: biz.SynthesisStrategyHybrid}}
+	s := newAllDoneTeamStarter(svc, gw, seq, &stubTaskV2Reader{tasks: []biz.Task{{ID: "task-1"}}})
+
+	s.checkAllTeamsCompleted(context.Background(), "spirit-ok")
+
+	if gw.executeTurnCalls != 1 {
+		t.Errorf("ExecuteTurn called %d times, want 1", gw.executeTurnCalls)
+	}
+	for _, ev := range seqEvents(seq) {
+		if stepEv, ok := ev.(*biz.StepCreatedEvent); ok && stepEv.Step.NoticeType == "success" {
+			t.Errorf("fallback success notice must not be published when report exists: %+v", stepEv.Step)
+		}
+	}
+}
+
+// When synthesis hard-fails (no report), the fallback "所有团队已完成" notice is
+// published exactly once, attached to the latest user Task (hard constraint:
+// notice events must attach to a task or not display at all).
+func TestCheckAllTeamsCompleted_HardFailPublishesFallbackNoticeWithTaskID(t *testing.T) {
+	gw := &stubTurnGateway{}
+	seq := &capturingSeq{}
+	svc := &stubSynthesisResultService{err: errors.New("synthesis unavailable")}
+	s := newAllDoneTeamStarter(svc, gw, seq, &stubTaskV2Reader{tasks: []biz.Task{{ID: "task-old"}, {ID: "task-latest"}}})
+
+	s.checkAllTeamsCompleted(context.Background(), "spirit-fail")
+
+	if gw.executeTurnCalls != 0 {
+		t.Errorf("ExecuteTurn called %d times, want 0 on hard-fail", gw.executeTurnCalls)
+	}
+	var notice *biz.StepCreatedEvent
+	for _, ev := range seqEvents(seq) {
+		if stepEv, ok := ev.(*biz.StepCreatedEvent); ok && stepEv.Step.NoticeType == "success" {
+			notice = stepEv
+		}
+	}
+	if notice == nil {
+		t.Fatal("fallback success notice must be published on hard-fail")
+	}
+	if notice.Step.TaskID != "task-latest" {
+		t.Errorf("fallback notice TaskID = %q, want task-latest (attached to latest user task)", notice.Step.TaskID)
+	}
+}
+
+// checkAllTeamsCompleted is invoked from both HandleTeamTurnResult and the
+// background poller — the CAS guard must dedupe so synthesis + turn + notice
+// fire exactly once per spirit session lifecycle.
+func TestCheckAllTeamsCompleted_DedupesViaCAS(t *testing.T) {
+	gw := &stubTurnGateway{}
+	seq := &capturingSeq{}
+	svc := &stubSynthesisResultService{out: &biz.SynthesisOutput{Content: "x", Strategy: biz.SynthesisStrategyTemplate}}
+	s := newAllDoneTeamStarter(svc, gw, seq, &stubTaskV2Reader{tasks: []biz.Task{{ID: "task-1"}}})
+
+	s.checkAllTeamsCompleted(context.Background(), "spirit-dedup")
+	s.checkAllTeamsCompleted(context.Background(), "spirit-dedup")
+
+	if svc.calls != 1 {
+		t.Errorf("SynthesizeResults called %d times, want 1 (CAS dedup)", svc.calls)
+	}
+	if gw.executeTurnCalls != 1 {
+		t.Errorf("ExecuteTurn called %d times, want 1 (CAS dedup)", gw.executeTurnCalls)
+	}
+}
+
+// StartTeamTurn resets the CAS guard when a team (re)starts (= a new
+// orchestration round is underway), so the next round's completion triggers
+// synthesis again. Without the reset, round 2 would be permanently blocked
+// and the parent Task would stay Running forever (task.completed is deferred
+// to the synthesis continuation turn).
+func TestCheckAllTeamsCompleted_GuardResetAllowsNextRound(t *testing.T) {
+	gw := &stubTurnGateway{}
+	seq := &capturingSeq{}
+	svc := &stubSynthesisResultService{out: &biz.SynthesisOutput{Content: "x", Strategy: biz.SynthesisStrategyTemplate}}
+	s := newAllDoneTeamStarter(svc, gw, seq, &stubTaskV2Reader{tasks: []biz.Task{{ID: "task-1"}}})
+
+	s.checkAllTeamsCompleted(context.Background(), "spirit-rounds")
+	s.checkAllTeamsCompleted(context.Background(), "spirit-rounds") // same round: dedup
+	if svc.calls != 1 {
+		t.Fatalf("round 1: SynthesizeResults called %d times, want 1", svc.calls)
+	}
+
+	// StartTeamTurn's guard reset for the new round (team (re)start).
+	s.synthesisTriggered.Delete("spirit-rounds")
+
+	s.checkAllTeamsCompleted(context.Background(), "spirit-rounds")
+	if svc.calls != 2 {
+		t.Errorf("round 2 after guard reset: SynthesizeResults called %d times, want 2", svc.calls)
+	}
+	if gw.executeTurnCalls != 2 {
+		t.Errorf("round 2 after guard reset: ExecuteTurn called %d times, want 2", gw.executeTurnCalls)
+	}
+}
+
+// Cancelled teams: no synthesis, no turn, and no fallback success notice either
+// (a green success notice after a user-initiated interrupt is semantically wrong).
+func TestCheckAllTeamsCompleted_CancelledPublishesNoNotice(t *testing.T) {
+	gw := &stubTurnGateway{}
+	seq := &capturingSeq{}
+	s := &TeamStarter{
+		team: TeamOrchestrationDeps{
+			SpiritUC: &stubSpiritTeamController{
+				completedResult: biz.AllTeamsCompletedResult{
+					AllDone:        true,
+					TotalTeams:     2,
+					CompletedTeams: 1,
+					CancelledTeams: 1,
+				},
+			},
+		},
+		seq:          seq,
+		lg:           loggateway.NewNoop(),
+		synthesisSvc: &stubSynthesisResultService{out: &biz.SynthesisOutput{Content: "x"}},
+		turnGateway:  gw,
+	}
+
+	s.checkAllTeamsCompleted(context.Background(), "spirit-cancelled-2")
+
+	if gw.executeTurnCalls != 0 {
+		t.Errorf("ExecuteTurn called %d times, want 0 when cancelled", gw.executeTurnCalls)
+	}
+	if got := seq.count(); got != 0 {
+		t.Errorf("seq published %d events, want 0 when cancelled (no success notice)", got)
 	}
 }

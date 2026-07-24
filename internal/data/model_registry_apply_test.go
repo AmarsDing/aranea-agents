@@ -2,35 +2,16 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
-	"aranea-agents/internal/data/ent"
-	"aranea-agents/internal/data/ent/migrate"
 	"aranea-agents/internal/modelregistry"
-	"aranea-agents/pkg/loggateway"
-
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
-	_ "github.com/glebarez/go-sqlite/compat"
 )
 
+// openTestDataWithRawDB opens a Postgres backed Data instance (isolated test
+// schema) with raw-SQL access via RWDB.
 func openTestDataWithRawDB(t *testing.T) *Data {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.ExecContext(context.Background(), "PRAGMA foreign_keys=ON"); err != nil {
-		t.Fatalf("pragma fk: %v", err)
-	}
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.SQLite, db)))
-	t.Cleanup(func() { _ = client.Close() })
-	if err := client.Schema.Create(context.Background(), migrate.WithDropIndex(true)); err != nil {
-		t.Fatalf("schema create: %v", err)
-	}
-	return &Data{entClient: client, readClient: client, rawDB: db, readDB: db, rw: NewReadWriteClient(client, client), rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop()}
+	return newTestDataPG(t)
 }
 
 func seedAgent(t *testing.T, d *Data, id, agentKey, displayName, provider string) {
@@ -38,7 +19,7 @@ func seedAgent(t *testing.T, d *Data, id, agentKey, displayName, provider string
 	ctx := context.Background()
 	_, err := d.RWDB().WriteHandle().ExecContext(ctx,
 		`INSERT INTO agents (id, agent_key, display_name, provider, model, status, kind, position_key, agent_variant, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, '', 'active', 'user', ?, 'general', datetime('now'), datetime('now'))`,
+		 VALUES ($1, $2, $3, $4, '', 'active', 'user', $5, 'general', now(), now())`,
 		id, agentKey, displayName, provider, agentKey,
 	)
 	if err != nil {
@@ -52,7 +33,7 @@ func TestBatchApply_UpdatesRows(t *testing.T) {
 
 	_, err := d.RWDB().WriteHandle().ExecContext(ctx,
 		`INSERT INTO llm_provider_models (id, provider, model_key, name, model, enabled, config_json, metadata_json, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now())`,
 		"pm-1", "openai", "openai:gpt-4o", "GPT-4o", "gpt-4o", true, `{"catalog_managed":true}`, `{}`,
 	)
 	if err != nil {
@@ -72,7 +53,7 @@ func TestBatchApply_UpdatesRows(t *testing.T) {
 	}
 
 	var name string
-	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT name FROM llm_provider_models WHERE id = ?`, "pm-1").Scan(&name); err != nil {
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT name FROM llm_provider_models WHERE id = $1`, "pm-1").Scan(&name); err != nil {
 		t.Fatal(err)
 	}
 	if name != "GPT-4o Updated" {
@@ -86,7 +67,7 @@ func TestBatchApply_MixedSuccessAndError(t *testing.T) {
 
 	_, err := d.RWDB().WriteHandle().ExecContext(ctx,
 		`INSERT INTO llm_provider_models (id, provider, model_key, name, model, enabled, config_json, metadata_json, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now())`,
 		"pm-1", "openai", "openai:gpt-4o", "GPT-4o", "gpt-4o", true, `{}`, `{}`,
 	)
 	if err != nil {
@@ -130,7 +111,7 @@ func TestBatchMigrate_SkipsRules(t *testing.T) {
 	}
 
 	var provider string
-	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT provider FROM agents WHERE id = ?`, "ag-1").Scan(&provider); err != nil {
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT provider FROM agents WHERE id = $1`, "ag-1").Scan(&provider); err != nil {
 		t.Fatal(err)
 	}
 	if provider != "legacy_provider" {
@@ -168,7 +149,7 @@ func TestBatchMigrate_AppliesRules(t *testing.T) {
 
 	var count int
 	if err := d.RWDB().ReadHandle().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM agents WHERE provider = ?`, "new_provider",
+		`SELECT COUNT(*) FROM agents WHERE provider = $1`, "new_provider",
 	).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
@@ -198,10 +179,10 @@ func TestBatchMigrate_MultipleRules(t *testing.T) {
 	}
 
 	var countA, countB int
-	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE provider = ?`, "new_a").Scan(&countA); err != nil {
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE provider = $1`, "new_a").Scan(&countA); err != nil {
 		t.Fatal(err)
 	}
-	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE provider = ?`, "new_b").Scan(&countB); err != nil {
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE provider = $1`, "new_b").Scan(&countB); err != nil {
 		t.Fatal(err)
 	}
 	if countA != 1 || countB != 1 {
@@ -231,7 +212,7 @@ func TestBatchMigrate_PartialSkip(t *testing.T) {
 	}
 
 	var providerA string
-	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT provider FROM agents WHERE id = ?`, "ag-1").Scan(&providerA); err != nil {
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT provider FROM agents WHERE id = $1`, "ag-1").Scan(&providerA); err != nil {
 		t.Fatal(err)
 	}
 	if providerA != "old_a" {
@@ -239,7 +220,7 @@ func TestBatchMigrate_PartialSkip(t *testing.T) {
 	}
 
 	var providerB string
-	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT provider FROM agents WHERE id = ?`, "ag-2").Scan(&providerB); err != nil {
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT provider FROM agents WHERE id = $1`, "ag-2").Scan(&providerB); err != nil {
 		t.Fatal(err)
 	}
 	if providerB != "new_b" {
@@ -270,7 +251,7 @@ func TestBatchApply_PricingInsert(t *testing.T) {
 
 	var count int
 	if err := d.RWDB().ReadHandle().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM model_pricing_rules WHERE provider_code = ? AND model_api_id = ?`,
+		`SELECT COUNT(*) FROM model_pricing_rules WHERE provider_code = $1 AND model_api_id = $2`,
 		"openai", "gpt-4o",
 	).Scan(&count); err != nil {
 		t.Fatal(err)
@@ -281,7 +262,7 @@ func TestBatchApply_PricingInsert(t *testing.T) {
 
 	var inputMicro int64
 	if err := d.RWDB().ReadHandle().QueryRowContext(ctx,
-		`SELECT input_price_micro_usd_per_1k FROM model_pricing_rules WHERE provider_code = ? AND model_api_id = ?`,
+		`SELECT input_price_micro_usd_per_1k FROM model_pricing_rules WHERE provider_code = $1 AND model_api_id = $2`,
 		"openai", "gpt-4o",
 	).Scan(&inputMicro); err != nil {
 		t.Fatal(err)
@@ -324,7 +305,7 @@ func TestBatchApply_PricingUpsert(t *testing.T) {
 
 	var count int
 	if err := d.RWDB().ReadHandle().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM model_pricing_rules WHERE provider_code = ? AND model_api_id = ?`,
+		`SELECT COUNT(*) FROM model_pricing_rules WHERE provider_code = $1 AND model_api_id = $2`,
 		"openai", "gpt-4o",
 	).Scan(&count); err != nil {
 		t.Fatal(err)
@@ -335,7 +316,7 @@ func TestBatchApply_PricingUpsert(t *testing.T) {
 
 	var inputMicro int64
 	if err := d.RWDB().ReadHandle().QueryRowContext(ctx,
-		`SELECT input_price_micro_usd_per_1k FROM model_pricing_rules WHERE provider_code = ? AND model_api_id = ?`,
+		`SELECT input_price_micro_usd_per_1k FROM model_pricing_rules WHERE provider_code = $1 AND model_api_id = $2`,
 		"openai", "gpt-4o",
 	).Scan(&inputMicro); err != nil {
 		t.Fatal(err)
@@ -368,7 +349,7 @@ func TestBatchApply_PatchesAndPricingTogether(t *testing.T) {
 
 	_, err := d.RWDB().WriteHandle().ExecContext(ctx,
 		`INSERT INTO llm_provider_models (id, provider, model_key, name, model, enabled, config_json, metadata_json, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now())`,
 		"pm-1", "openai", "openai:gpt-4o", "GPT-4o", "gpt-4o", true, `{"catalog_managed":true}`, `{}`,
 	)
 	if err != nil {

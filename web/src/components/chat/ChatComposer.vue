@@ -1,39 +1,6 @@
 <template>
   <q-card-section class="chat-composer" style="padding: 8px var(--chat-edge-gutter, 12px)">
-    <q-banner
-      v-if="isAwaitingUser && awaitKind === AWAIT_KIND_TOOL_CONFIRM"
-      rounded
-      class="q-mb-sm app-banner-warning"
-      dense
-    >
-      <template #avatar>
-        <q-icon name="gpp_maybe" color="warning" />
-      </template>
-      <div class="text-body2">{{ t('chat.toolConfirmHint') }}</div>
-      <div v-if="awaitToolKey" class="text-caption q-mt-xs">
-        {{ t('chat.toolConfirmTool') }}: <code>{{ awaitToolKey }}</code>
-      </div>
-      <template #action>
-        <q-btn
-          flat
-          dense
-          no-caps
-          color="negative"
-          :label="t('chat.toolConfirmDeny')"
-          class="q-mr-xs"
-          @click="$emit('submit-tool-confirm', false)"
-        />
-        <q-btn
-          flat
-          dense
-          no-caps
-          color="accent"
-          :label="t('chat.toolConfirmApprove')"
-          @click="$emit('submit-tool-confirm', true)"
-        />
-      </template>
-    </q-banner>
-    <q-banner v-else-if="isAwaitingUser" rounded class="q-mb-sm app-banner-warning" dense>
+    <q-banner v-if="isAwaitingUser" rounded class="q-mb-sm app-banner-warning" dense>
       <template #avatar>
         <q-icon name="hourglass_top" color="warning" />
       </template>
@@ -250,7 +217,6 @@
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ChatEnqueueMessage from './ChatEnqueueMessage.vue';
-import { AWAIT_KIND_TOOL_CONFIRM } from '../../features/chat/awaitConstants';
 import type { ChatAttachment } from './types';
 import { artifactMaxSizeHint } from '../../features/artifact/limits';
 
@@ -270,8 +236,6 @@ const props = defineProps<{
   inputDisabled?: boolean;
   isRunnerActive?: boolean;
   isAwaitingUser?: boolean;
-  awaitKind?: string;
-  awaitToolKey?: string;
   showEnqueue?: boolean;
   sessionId?: string;
   fileSupported?: boolean;
@@ -289,7 +253,6 @@ const emit = defineEmits<{
   stop: [];
   'enqueue-message': [content: string];
   'submit-await-reply': [];
-  'submit-tool-confirm': [approved: boolean];
   'paste-file': [file: File];
   'paste-unsupported': [];
   'new-session': [];

@@ -97,14 +97,14 @@ export const statusOptions = (
   ['pending', 'running', 'completed', 'failed', 'cancelled', 'interrupted', 'archived'] as const
 ).map((value) => ({ label: teamStatusMap[value]?.label ?? value, value }));
 
-/** 后端 ValidTeamStatusTransition 的前端镜像 */
+/** 后端 team_state_machine.go 的前端镜像（recover/rework 转换已同步） */
 export const validStatusTransitions: Record<string, string[]> = {
-  pending: ['running', 'cancelled'],
-  running: ['completed', 'failed', 'cancelled', 'interrupted'],
+  pending: ['running', 'cancelled', 'failed'],
+  running: ['completed', 'failed', 'cancelled', 'interrupted', 'pending'],
   interrupted: ['running'],
   completed: ['archived'],
-  failed: ['archived'],
-  cancelled: ['archived'],
+  failed: ['archived', 'pending'],
+  cancelled: ['archived', 'pending'],
   archived: [],
 };
 

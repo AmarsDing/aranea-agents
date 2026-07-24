@@ -2,45 +2,17 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
 	bizmonitor "aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/biz/types"
-	"aranea-agents/internal/data/ent"
-	"aranea-agents/internal/data/ent/migrate"
-	"aranea-agents/pkg/loggateway"
-
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
-	_ "github.com/glebarez/go-sqlite/compat"
 )
 
+// openTestDataWithRWDB opens a Postgres backed Data instance (isolated test schema).
 func openTestDataWithRWDB(t *testing.T) *Data {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.ExecContext(context.Background(), "PRAGMA foreign_keys=ON"); err != nil {
-		t.Fatalf("pragma fk: %v", err)
-	}
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.SQLite, db)))
-	t.Cleanup(func() { _ = client.Close() })
-	if err := client.Schema.Create(context.Background(), migrate.WithDropIndex(true)); err != nil {
-		t.Fatalf("schema create: %v", err)
-	}
-	return &Data{
-		entClient:  client,
-		readClient: client,
-		rawDB:      db,
-		readDB:     db,
-		rw:         NewReadWriteClient(client, client),
-		rwDB:       NewReadWriteDB(db, db),
-		lg:         loggateway.NewNoop(),
-	}
+	return newTestDataPG(t)
 }
 
 func TestSelfCheckReportRepo_InsertAndList(t *testing.T) {

@@ -353,6 +353,38 @@ func (p *ActivityProjector) EmitConfirmResult(ctx context.Context, stepID string
 	return nil
 }
 
+// ConfirmTimeoutErrorCode is the ToolErrorCode set on confirm steps that
+// expired without a user response. The frontend renders these as "已超时"
+// instead of "已拒绝".
+const ConfirmTimeoutErrorCode = "confirm_timeout"
+
+// EmitConfirmTimeout marks a confirm step as cancelled due to confirmation
+// deadline expiry. Implements biz.ActivityEmitter.
+func (p *ActivityProjector) EmitConfirmTimeout(ctx context.Context, stepID string) error {
+	if p == nil || p.seq == nil {
+		return nil
+	}
+	now := time.Now()
+	p.mu.Lock()
+	step, ok := p.activeStep[stepID]
+	if !ok {
+		p.mu.Unlock()
+		return fmt.Errorf("confirm step not found: %s", stepID)
+	}
+	if step.Kind != biz.StepKindConfirm {
+		p.mu.Unlock()
+		return fmt.Errorf("expected confirm kind, got %s", step.Kind)
+	}
+	step.Status = biz.StepStatusCancelled
+	step.ToolErrorCode = ConfirmTimeoutErrorCode
+	step.CompletedAt = &now
+	step.Version++
+	delete(p.activeStep, stepID)
+	p.mu.Unlock()
+	p.seq.Publish(ctx, biz.NewStepCompletedEvent(*step))
+	return nil
+}
+
 // compile-time interface check
 var _ biz.ActivityEmitter = (*ActivityProjector)(nil)
 

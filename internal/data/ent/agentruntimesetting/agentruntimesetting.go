@@ -185,6 +185,8 @@ const (
 	FieldSkillRuntimeJSON = "skill_runtime_json"
 	// FieldIntentPassEnabled holds the string denoting the intent_pass_enabled field in the database.
 	FieldIntentPassEnabled = "intent_pass_enabled"
+	// FieldClarificationEnabled holds the string denoting the clarification_enabled field in the database.
+	FieldClarificationEnabled = "clarification_enabled"
 	// FieldChannelID holds the string denoting the channel_id field in the database.
 	FieldChannelID = "channel_id"
 	// FieldChatID holds the string denoting the chat_id field in the database.
@@ -389,6 +391,7 @@ var Columns = []string{
 	FieldEvoSystemPromptMaxAppends,
 	FieldSkillRuntimeJSON,
 	FieldIntentPassEnabled,
+	FieldClarificationEnabled,
 	FieldChannelID,
 	FieldChatID,
 	FieldWorkspace,
@@ -631,6 +634,8 @@ var (
 	DefaultSkillRuntimeJSON string
 	// DefaultIntentPassEnabled holds the default value on creation for the "intent_pass_enabled" field.
 	DefaultIntentPassEnabled bool
+	// DefaultClarificationEnabled holds the default value on creation for the "clarification_enabled" field.
+	DefaultClarificationEnabled bool
 	// DefaultChannelID holds the default value on creation for the "channel_id" field.
 	DefaultChannelID string
 	// DefaultChatID holds the default value on creation for the "chat_id" field.
@@ -1186,6 +1191,11 @@ func BySkillRuntimeJSON(opts ...sql.OrderTermOption) OrderOption {
 // ByIntentPassEnabled orders the results by the intent_pass_enabled field.
 func ByIntentPassEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIntentPassEnabled, opts...).ToFunc()
+}
+
+// ByClarificationEnabled orders the results by the clarification_enabled field.
+func ByClarificationEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClarificationEnabled, opts...).ToFunc()
 }
 
 // ByChannelID orders the results by the channel_id field.

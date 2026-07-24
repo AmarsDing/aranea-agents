@@ -6,28 +6,29 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-
-	_ "github.com/glebarez/go-sqlite/compat"
+	"aranea-agents/internal/data/testhelper"
+	"aranea-agents/pkg/loggateway"
 )
 
 func newTestCompiledTeamRepo(t *testing.T) (biz.CompiledTeamRepo, *sql.DB) {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
 	if err := EnsureCompiledTeamSchema(ctx, db); err != nil {
-		db.Close()
 		t.Fatal(err)
 	}
-	repo := NewCompiledTeamRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db)}, nil)
+	repo := NewCompiledTeamRepo(&Data{
+		rawDB:   db,
+		readDB:  db,
+		rwDB:    NewReadWriteDB(db, db),
+		lg:      loggateway.NewNoop(),
+		dialect: DialectPostgres,
+	}, nil)
 	return repo, db
 }
 
 func TestCompiledTeamRepo_SaveAndLoad(t *testing.T) {
-	repo, db := newTestCompiledTeamRepo(t)
-	defer db.Close()
+	repo, _ := newTestCompiledTeamRepo(t)
 	ctx := context.Background()
 
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{
@@ -56,8 +57,7 @@ func TestCompiledTeamRepo_SaveAndLoad(t *testing.T) {
 }
 
 func TestCompiledTeamRepo_LoadNotFound(t *testing.T) {
-	repo, db := newTestCompiledTeamRepo(t)
-	defer db.Close()
+	repo, _ := newTestCompiledTeamRepo(t)
 	ctx := context.Background()
 
 	_, err := repo.Load(ctx, "nonexistent", "nonexistent")
@@ -67,8 +67,7 @@ func TestCompiledTeamRepo_LoadNotFound(t *testing.T) {
 }
 
 func TestCompiledTeamRepo_Delete(t *testing.T) {
-	repo, db := newTestCompiledTeamRepo(t)
-	defer db.Close()
+	repo, _ := newTestCompiledTeamRepo(t)
 	ctx := context.Background()
 
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{
@@ -92,8 +91,7 @@ func TestCompiledTeamRepo_Delete(t *testing.T) {
 }
 
 func TestCompiledTeamRepo_SaveUpsert(t *testing.T) {
-	repo, db := newTestCompiledTeamRepo(t)
-	defer db.Close()
+	repo, _ := newTestCompiledTeamRepo(t)
 	ctx := context.Background()
 
 	ct1 := biz.NewCompiledTeam(biz.GraphBuildConfig{

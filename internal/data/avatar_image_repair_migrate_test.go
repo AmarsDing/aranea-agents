@@ -11,7 +11,7 @@ import (
 )
 
 func TestRunAvatarImageRepairMigration_repairsCorruptedSystemAvatar(t *testing.T) {
-	client, _ := testhelper.SetupTestDB(t)
+	client, _ := testhelper.SetupTestPG(t)
 	ctx := context.Background()
 
 	// Create a corrupted system avatar asset (not a valid JPEG).
@@ -37,7 +37,7 @@ func TestRunAvatarImageRepairMigration_repairsCorruptedSystemAvatar(t *testing.T
 		t.Fatalf("create corrupted avatar: %v", err)
 	}
 
-	if err := data.RunAvatarImageRepairMigration(ctx, client, data.DialectSQLite, loggateway.NewNoop()); err != nil {
+	if err := data.RunAvatarImageRepairMigration(ctx, client, data.DialectPostgres, loggateway.NewNoop()); err != nil {
 		t.Fatalf("RunAvatarImageRepairMigration: %v", err)
 	}
 
@@ -60,7 +60,7 @@ func TestRunAvatarImageRepairMigration_repairsCorruptedSystemAvatar(t *testing.T
 }
 
 func TestRunAvatarImageRepairMigration_skipsValidJPEG(t *testing.T) {
-	client, _ := testhelper.SetupTestDB(t)
+	client, _ := testhelper.SetupTestPG(t)
 	ctx := context.Background()
 
 	validJPEG := []byte{0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x01}
@@ -85,7 +85,7 @@ func TestRunAvatarImageRepairMigration_skipsValidJPEG(t *testing.T) {
 		t.Fatalf("create valid avatar: %v", err)
 	}
 
-	if err := data.RunAvatarImageRepairMigration(ctx, client, data.DialectSQLite, loggateway.NewNoop()); err != nil {
+	if err := data.RunAvatarImageRepairMigration(ctx, client, data.DialectPostgres, loggateway.NewNoop()); err != nil {
 		t.Fatalf("RunAvatarImageRepairMigration: %v", err)
 	}
 
@@ -99,7 +99,7 @@ func TestRunAvatarImageRepairMigration_skipsValidJPEG(t *testing.T) {
 }
 
 func TestRunAvatarImageRepairMigration_idempotent(t *testing.T) {
-	client, _ := testhelper.SetupTestDB(t)
+	client, _ := testhelper.SetupTestPG(t)
 	ctx := context.Background()
 
 	_, err := client.AvatarAsset.Create().
@@ -123,7 +123,7 @@ func TestRunAvatarImageRepairMigration_idempotent(t *testing.T) {
 		t.Fatalf("create corrupted avatar: %v", err)
 	}
 
-	if err := data.RunAvatarImageRepairMigration(ctx, client, data.DialectSQLite, loggateway.NewNoop()); err != nil {
+	if err := data.RunAvatarImageRepairMigration(ctx, client, data.DialectPostgres, loggateway.NewNoop()); err != nil {
 		t.Fatalf("first RunAvatarImageRepairMigration: %v", err)
 	}
 	first, err := client.AvatarAsset.Get(ctx, "avatar_career_02")
@@ -131,7 +131,7 @@ func TestRunAvatarImageRepairMigration_idempotent(t *testing.T) {
 		t.Fatalf("get first: %v", err)
 	}
 
-	if err := data.RunAvatarImageRepairMigration(ctx, client, data.DialectSQLite, loggateway.NewNoop()); err != nil {
+	if err := data.RunAvatarImageRepairMigration(ctx, client, data.DialectPostgres, loggateway.NewNoop()); err != nil {
 		t.Fatalf("second RunAvatarImageRepairMigration: %v", err)
 	}
 	second, err := client.AvatarAsset.Get(ctx, "avatar_career_02")

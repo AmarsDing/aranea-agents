@@ -80,12 +80,14 @@ describe('teamConstants', () => {
   });
 
   it('validStatusTransitions mirrors backend state machine', () => {
-    expect(validStatusTransitions.pending).toEqual(['running', 'cancelled']);
-    expect(validStatusTransitions.running).toEqual(['completed', 'failed', 'cancelled', 'interrupted']);
+    // Mirrors teamTransitionRules in internal/biz/team_state_machine.go,
+    // including rework (running→pending) and recover (failed/cancelled→pending).
+    expect(validStatusTransitions.pending).toEqual(['running', 'cancelled', 'failed']);
+    expect(validStatusTransitions.running).toEqual(['completed', 'failed', 'cancelled', 'interrupted', 'pending']);
     expect(validStatusTransitions.interrupted).toEqual(['running']);
     expect(validStatusTransitions.completed).toEqual(['archived']);
-    expect(validStatusTransitions.failed).toEqual(['archived']);
-    expect(validStatusTransitions.cancelled).toEqual(['archived']);
+    expect(validStatusTransitions.failed).toEqual(['archived', 'pending']);
+    expect(validStatusTransitions.cancelled).toEqual(['archived', 'pending']);
     expect(validStatusTransitions.archived).toEqual([]);
   });
 

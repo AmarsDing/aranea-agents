@@ -22,6 +22,18 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
 
+// teamTurnBaseRunOptions builds the base run options for a team turn.
+// C5: team_id is injected into the root invocation's RuntimeState; the graph
+// runtime propagates it to member invocations (merged into graph initial
+// state, then carried into each member's RunOptions.RuntimeState), enabling
+// team-scope L3 memory recall via memoryRuntimeContext's RuntimeState fallback.
+func teamTurnBaseRunOptions(teamID, turnQuery string) []trpcagent.RunOption {
+	return []trpcagent.RunOption{
+		skillruntime.RunOptionWithTurnQuery(turnQuery),
+		trpcagent.MergeRuntimeState(map[string]any{"team_id": teamID}),
+	}
+}
+
 func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, input biz.TurnInput, teamRow biz.Team, def Definition, mode string) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
 	// Phase 1: Validate input and extract options
 	ti, err := r.validateTeamTurnInput(input, sess, def)
@@ -220,7 +232,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		return userMsg, biz.ChatMessage{}, err
 	}
 
-	runOpts := append([]trpcagent.RunOption{skillruntime.RunOptionWithTurnQuery(ti.content)}, utOpts.intentRunOpts...)
+	runOpts := append(teamTurnBaseRunOptions(teamRow.ID, ti.content), utOpts.intentRunOpts...)
 	events, err := agent.RunTRPCUserTurnMsg(runCtx, runner, uid, sess.ID, userTurnMsg, runOpts...)
 	if err != nil {
 		logTeamRunError(teamEmitter, "team.run.execute", err.Error(), mode)

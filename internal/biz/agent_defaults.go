@@ -77,6 +77,7 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		EvoSystemPromptMaxAppends:         5,
 		SkillRuntimeJSON:                  "{}",
 		IntentPassEnabled:                 true,
+		ClarificationEnabled:              true,
 		CodeExecutorType:                  "local",
 		PlannerConfigJSON:                 "{}",
 		ToolsRetryEnabled:                 false,

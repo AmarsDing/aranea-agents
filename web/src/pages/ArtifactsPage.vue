@@ -33,17 +33,32 @@
     </q-tabs>
 
     <AppPageToolbar>
-      <q-input
+      <q-select
         v-if="activeTab === 'session'"
         v-model="sessionFilter"
         class="app-page-toolbar__field"
         dense
         outlined
         clearable
-        debounce="300"
+        use-input
+        input-debounce="0"
+        new-value-mode="add-unique"
+        emit-value
+        map-options
+        :options="sessionFilteredOptions"
         :label="t('artifact.page.filterSession')"
+        @filter="filterSessionOptions"
         @update:model-value="onSessionFilterChange"
-      />
+      >
+        <template #option="scope">
+          <q-item v-bind="scope.itemProps">
+            <q-item-section>
+              <q-item-label>{{ scope.opt.label }}</q-item-label>
+              <q-item-label caption>{{ scope.opt.caption }}</q-item-label>
+            </q-item-section>
+          </q-item>
+        </template>
+      </q-select>
       <q-input
         v-model="search"
         class="app-page-toolbar__search"
@@ -105,7 +120,13 @@
       <template v-for="group in tableGroups" :key="group.sessionId">
         <div v-if="group.showHeader" class="artifacts-page__group-header">
           <q-icon name="forum" size="16px" class="text-primary" />
-          <span class="artifacts-page__group-title">{{ group.sessionId }}</span>
+          <span class="artifacts-page__group-title">
+            {{ groupHeaderTitle(group.sessionId) }}
+            <q-tooltip v-if="isTruncated(group.sessionId)">{{ group.sessionId }}</q-tooltip>
+          </span>
+          <span v-if="groupHeaderCaption(group.sessionId)" class="artifacts-page__group-caption">
+            {{ groupHeaderCaption(group.sessionId) }}
+          </span>
           <span class="text-caption text-grey-7">
             {{ t('artifact.page.groupCount', { count: group.items.length }) }} ·
             {{ formatBytes(group.totalSize) }}
@@ -171,6 +192,7 @@
       v-model:mime-type="uploadForm.mime_type"
       :loading="uploadLoading"
       :max-size-hint="artifactMaxSizeHint()"
+      :session-options="uploadSessionOptions"
       @submit="submitUpload"
     />
 
@@ -181,8 +203,10 @@
       :selected-version="detailVersion"
       :versions="detailVersions"
       :format-bytes="formatBytes"
+      :reveal-enabled="revealEnabled"
       @select-version="selectDetailVersion"
       @download="onPreviewDownload"
+      @reveal="revealDetail"
     />
   </q-page>
 </template>
@@ -217,8 +241,14 @@ const {
   detailArtifactId,
   detailVersions,
   detailVersion,
+  revealEnabled,
   mimeFilter,
   mimeFilterOptions,
+  sessionFilteredOptions,
+  filterSessionOptions,
+  uploadSessionOptions,
+  groupHeaderTitle,
+  groupHeaderCaption,
   columns,
   rows,
   tableTotal,
@@ -234,6 +264,7 @@ const {
   resetFilters,
   submitUpload,
   openDetail,
+  revealDetail,
   selectDetailVersion,
   onPreviewDownload,
   downloadRow,
@@ -243,6 +274,11 @@ const {
 
 function handleTabChange(value: string | number) {
   onTabChange(value as ArtifactsPageTab);
+}
+
+/** 组头 tooltip：仅 UUID 被截断时展示完整值。 */
+function isTruncated(sessionId: string) {
+  return sessionId.length > 12;
 }
 
 /** 会话 Tab 单表渲染；全部 Tab 按 session 分组渲染（组头显示统计）。 */
@@ -256,7 +292,7 @@ const tableGroups = computed(() => {
 
 <style scoped>
 .artifacts-page__tabs {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid var(--color-border-soft);
 }
 
 .artifacts-page__group-header {
@@ -270,5 +306,10 @@ const tableGroups = computed(() => {
   font-weight: 600;
   font-size: 13px;
   word-break: break-all;
+}
+
+.artifacts-page__group-caption {
+  font-size: 12px;
+  color: var(--color-text-secondary, rgba(235, 240, 255, 0.55));
 }
 </style>

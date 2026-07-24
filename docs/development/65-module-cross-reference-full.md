@@ -175,6 +175,7 @@
 - 修改 `TurnInput` 结构体时，所有调用方（Channel/Cron/A2A/WS）都需要同步更新
 - 修改 Activity / Monitor 事件形状时，同步前端 `realtime/`（ActivityEvent / MonitorEvent 消费路径）与 `features/chat/`；legacy Envelope 类型已删除（ADR-03）
 - 崩溃恢复三层机制：L1 `V2RecoveryRepo.FailOrphanedInFlight`（task→interrupted，其余→failed）、L2 `EscalateAllActiveToDurable`（关机批量升级 durable，SessionStatusGuard 调用）、L3 WS 上行 `resume_task` → `ResumeInterruptedTask`（CAS interrupted→running + 轨迹重跑）；新增终态事件必须走 `CompleteTaskTerminal`（版本以 DB 为准），详见 [1-chat.design.md](./1-chat.design.md) §B.10.16
+- 需求澄清门（Clarification Gate，§B.10.18）：Intent Pass 后 `chat_clarify_gate.go` 判定阻塞性歧义 → 发布 orphan clarify Step（awaiting_input，信封含 `original_input`）并挂起 turn（`awaiting_confirmation(reason=clarification)`）；提交端点 `SubmitClarification`（CAS 409）→ `resumeTurnWithClarification` 同 turn 续跑（`resolveResumeInput`：内存 pending 优先，缺失从信封 `original_input` 惰性重建）；自由回复等价路径由 `Execute` 统一入口 `resolveClarificationFreeText` 拦截（回写 `free_text` + 按推荐填充 + 输入重写）；开关 `clarification_enabled` 持久化于 `agent_runtime_settings`（迁移 20261108）；orphan Step 前端由 `TaskCard.vue` 渲染 `ClarifyBlock.vue`
 
 ---
 
@@ -788,6 +789,30 @@
 | **前端对应** | 无（后端透明；Header `X-Workspace-ID` 对已登录用户不可伪造） |
 
 **⚠️ 开发注意（B-01）**：已认证请求的 workspace **只**来自 JWT；与 Header/Query 不一致时返回 403。Admin 切租户需换带目标 `workspace_id` 的会话，不能靠 Header。
+
+---
+
+### 1.27 Agent 资源共享 / M71 (`internal/biz/resource_access.go` + `dept_mailbox.go` + `session_search.go` + `internal/service/member_fs.go` + `mailbox_waker.go` + `internal/tools/{memberfs,deptmail,sessionaccess}/`)
+
+**职责**：受控资源访问层——memberfs（部门主管只读员工工作目录）+ deptmail（主管间信箱 + Turn 唤醒）+ sessionaccess（精灵只读检索会话内容）。统一 权限校验 → 范围解析 → 审计落库（fail-closed）。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（AgentRepository/OrganizationReader/DeptTeamLister/SessionReader+Writer）、`internal/workspace`（租户目录解析）、`data`（DeptLeadMessageRepo/ResourceAccessAuditRepo/GlobalMessageSearchRepo） |
+| **下游影响** | `service/chat_orchestrator.go`（CustomToolFunc 按 agent 身份装配 10 个工具）；`service/chat_wire.go`（MailboxWaker.SetTurnGateway setter 注入破环） |
+| **核心导出** | `ResourceAccessUsecase`（ListMemberFiles/ReadMemberFile/SearchMemberFiles）、`DeptMailboxUsecase`（Send/ListInbox/Read/Reply + 5min 唤醒防抖）、`SessionSearchUsecase`（SearchMessages/ListAgentSessions/ReadSessionHistory + 20/min 令牌桶）、`IsDeptLeadAgent`、`MailboxWaker` 端口 |
+| **共享类型** | `DeptLeadMessage`、`AuditEntry`（Result: allowed/denied；Relation: org_home/team_owner；ActorRole: dept_lead/spirit）、`GlobalMessageHit`、`FileEntry`、`SessionMeta`/`SessionMessageView` |
+| **事件生产** | 唤醒经 `TurnExecutorGateway.ExecuteTurn` → 复用 Turn 事件流 |
+| **事件消费** | 无 |
+| **数据库** | SQLite（dept_lead_messages / resource_access_audits，Ent Schema + Indexes()）；全局检索走 steps_v2 `content LIKE`（messages_fts 已于 20260902 移除） |
+| **前端对应** | 无独立 UI；唤醒 Turn 与工具调用以常规 chat activity 呈现在主管/精灵会话时间线 |
+
+**⚠️ 开发注意（M71）**：
+1. 权限 fail-closed：审计写失败 = 访问拒绝；Auditor 为 nil = 拒绝。
+2. dept_lead 身份双判：`AgentVariant=="dept_lead"` 或 AgentKey `__dept_lead_*__` 前后缀；借调可见性经 `Team.CrossDeptMemberIDs`（archived/deleted team 不算）。
+3. 路径安全：service 层 `secureJoin`（拒绝对路径/`..`/符号链接逃逸）+ 二进制嗅探 + UTF-8 校验 + 200KB 截断；隐藏文件与符号链接不进 List/Search。
+4. 唤醒防抖键为「发送方→接收方」对；唤醒失败不阻塞消息落库（NFR-05）。
+5. Wire 环规避：`MailboxWaker` 不接收 TurnExecutorGateway 构造参数，由 `ProvideChatService` 后调 `SetTurnGateway`（同 TeamStarter 模式）。
 
 ---
 

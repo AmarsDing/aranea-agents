@@ -7,6 +7,7 @@ import (
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	deliverabletools "aranea-agents/internal/tools/deliverable"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -37,6 +38,12 @@ func BuildTeamMemberAgents(
 		}
 
 		memberDeps := deps.BuilderDeps
+		// C1/C3: when the team definition enables the deliverable state channel,
+		// inject set_deliverable/get_deliverable tools into every member so
+		// they can pass structured output via graph state.
+		if def.EnableStateDeliverable {
+			memberDeps.CustomTools = append(memberDeps.CustomTools, deliverabletools.Tools()...)
+		}
 		if eff, err := fetchEffectiveTools(ctx, memberDeps, ag.ID); err == nil {
 			memberDeps.CachedEffectiveTools = eff
 			memberDeps.ToolVersionHash = chatagent.ComputeToolVersionHash(eff)

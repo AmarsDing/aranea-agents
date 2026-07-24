@@ -226,30 +226,30 @@ func (d Dialect) JSONRemoveMulti(expr string, keys ...string) string {
 
 // TableExistsQuery returns the SQL query and args to check if a table exists.
 // SQLite: SELECT name FROM sqlite_master WHERE type='table' AND name=?
-// Postgres: SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name=$1
+// Postgres: SELECT table_name FROM information_schema.tables WHERE table_schema=current_schema() AND table_name=$1
 func (d Dialect) TableExistsQuery(table string) (string, []any) {
 	if d.IsPostgres() {
-		return "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1", []any{table}
+		return "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = $1", []any{table}
 	}
 	return "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", []any{table}
 }
 
 // ColumnExistsQuery returns the SQL query and args to check if a column exists.
 // SQLite: SELECT COUNT(*) FROM pragma_table_info(table) WHERE name=?
-// Postgres: SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=$1 AND column_name=$2
+// Postgres: SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=$1 AND column_name=$2
 func (d Dialect) ColumnExistsQuery(table, column string) (string, []any) {
 	if d.IsPostgres() {
-		return "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2", []any{table, column}
+		return "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2", []any{table, column}
 	}
 	return fmt.Sprintf("SELECT COUNT(*) FROM pragma_table_info('%s') WHERE name = ?", table), []any{column}
 }
 
 // IndexExistsQuery returns the SQL query and args to check if an index exists.
 // SQLite: SELECT 1 FROM pragma_index_list(table) WHERE name = ? LIMIT 1
-// Postgres: SELECT index_name FROM pg_indexes WHERE schemaname = 'public' AND tablename = $1 AND indexname = $2 LIMIT 1
+// Postgres: SELECT index_name FROM pg_indexes WHERE schemaname = current_schema() AND tablename = $1 AND indexname = $2 LIMIT 1
 func (d Dialect) IndexExistsQuery(table, indexName string) (string, []any) {
 	if d.IsPostgres() {
-		return "SELECT index_name FROM pg_indexes WHERE schemaname = 'public' AND tablename = $1 AND indexname = $2 LIMIT 1", []any{table, indexName}
+		return "SELECT index_name FROM pg_indexes WHERE schemaname = current_schema() AND tablename = $1 AND indexname = $2 LIMIT 1", []any{table, indexName}
 	}
 	return fmt.Sprintf("SELECT 1 FROM pragma_index_list('%s') WHERE name = ? LIMIT 1", table), []any{indexName}
 }

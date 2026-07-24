@@ -52,6 +52,12 @@
     <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
   </div>
 
+  <div v-else-if="step.Status === 'cancelled' && isConfirmTimeout" class="confirm-block confirm-block--timeout">
+    <span class="confirm-block__icon">⏱</span>
+    <span class="confirm-block__summary">{{ t('chat.confirm.timedOut') }}</span>
+    <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
+  </div>
+
   <div v-else-if="step.Status === 'cancelled'" class="confirm-block confirm-block--rejected">
     <span class="confirm-block__icon">✗</span>
     <span class="confirm-block__summary">{{ t('chat.confirm.rejected', '已拒绝') }}</span>
@@ -75,6 +81,12 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
+/** Backend marks deadline-expired confirmations with this ToolErrorCode
+ * (agent/v2.ConfirmTimeoutErrorCode) so the UI can render "timed out"
+ * instead of "rejected". */
+const CONFIRM_TIMEOUT_ERROR_CODE = 'confirm_timeout';
+const isConfirmTimeout = computed(() => props.step.ToolErrorCode === CONFIRM_TIMEOUT_ERROR_CODE);
+
 const confirming = ref(false);
 const CONFIRM_TIMEOUT_MS = 15_000;
 let confirmTimer: ReturnType<typeof setTimeout> | null = null;
@@ -93,7 +105,15 @@ const remainingSeconds = computed(() => {
   return Math.max(0, CONFIRM_WINDOW_S - elapsed);
 });
 
-const expired = computed(() => props.step.Status === 'tool_blocked' && remainingSeconds.value <= 0);
+// Only treat the card as expired when the start timestamp is valid — a
+// missing/unparseable StartedAt must not disable the buttons (remainingSeconds
+// falls back to 0 in that case, which would otherwise read as "expired").
+const expired = computed(
+  () =>
+    props.step.Status === 'tool_blocked' &&
+    Number.isFinite(Date.parse(props.step.StartedAt)) &&
+    remainingSeconds.value <= 0,
+);
 
 const countdownText = computed(() => {
   if (props.step.Status !== 'tool_blocked' || !Number.isFinite(Date.parse(props.step.StartedAt))) return '';
@@ -194,6 +214,14 @@ function onConfirm(reply: ToolConfirmReply) {
     gap: 6px
     padding: 4px 10px
     border-left: 3px solid var(--color-danger)
+    background: var(--glass-surface)
+
+  &--timeout
+    display: flex
+    align-items: center
+    gap: 6px
+    padding: 4px 10px
+    border-left: 3px solid var(--color-warning)
     background: var(--glass-surface)
 
   &__header

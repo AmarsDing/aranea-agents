@@ -43,6 +43,11 @@ func (o *ChatOrchestrator) runClarificationGate(
 	ag biz.Agent,
 	input biz.TurnInput,
 ) (ClarificationGateDecision, error) {
+	// 续跑 turn（澄清提交/自由回复后 ParentTaskID 非空）不再触发澄清门，防止澄清循环。
+	if input.ParentTaskID != "" {
+		return ClarificationGateDecision{}, nil
+	}
+
 	// 条件 1：Agent 设置检查
 	if ag.Settings == nil || !ag.Settings.ClarificationEnabled {
 		return ClarificationGateDecision{}, nil
@@ -64,12 +69,18 @@ func (o *ChatOrchestrator) runClarificationGate(
 	)
 
 	// 1. UpsertTask 幂等建任务（Task 先于 Run 存在）
-	taskID := string(chatagent.RootTaskActivityID(uuid.NewString()))
+	// 复用 turn 入口预生成的 RootTaskActivityID（chat_orchestrator_turn.go
+	// 在 BUILD/IntentPass 并行后注入 ctx），保证 ctx 链与落库 Task ID 一致；
+	// ctx 缺失时兜底新 UUID。
+	taskID := string(chatagent.RootTaskActivityIDFromCtx(ctx))
+	if taskID == "" {
+		taskID = string(chatagent.RootTaskActivityID(uuid.NewString()))
+	}
 	now := time.Now().UTC()
 	task := biz.Task{
 		ID:          taskID,
 		SessionID:   sessionID,
-		UserMessage: "", // 澄清门在 PrePlanning 之前，尚无 user message
+		UserMessage: input.Content, // 展示用：澄清卡片所属任务显示原始需求
 		Status:      biz.TaskStatusRunning,
 		Seq:         1, // 单任务 session 的 seq=1
 		Version:     1,
@@ -83,10 +94,11 @@ func (o *ChatOrchestrator) runClarificationGate(
 
 	// 2. 构建澄清信封并发布 StepCreatedEvent
 	envelope := biz.ClarificationEnvelope{
-		Version:   1,
-		Kind:      "clarification",
-		Questions: questions,
-		Answers:   nil, // 发布时无答案
+		Version:       1,
+		Kind:          "clarification",
+		Questions:     questions,
+		Answers:       nil,           // 发布时无答案
+		OriginalInput: input.Content, // 持久化原始输入，服务重启后可惰性重建续跑
 	}
 	contentJSON, err := json.Marshal(envelope)
 	if err != nil {
@@ -114,8 +126,12 @@ func (o *ChatOrchestrator) runClarificationGate(
 		return ClarificationGateDecision{}, err
 	}
 
-	// 发布 WS 事件
+	// 发布 WS 事件：task.created 必须先于 step.created——前端 TaskCard 需先
+	// 有 Task 才能挂载 orphan clarify step（getTaskOrphanSteps 按 TaskID 过滤），
+	// 否则澄清卡片永不渲染。UpsertTask 幂等（VersionLT guard），sequencer
+	// 异步落库 task.created 与上方直写不冲突。
 	if o.v2Seq != nil {
+		o.v2Seq.Publish(ctx, biz.NewTaskCreatedEvent(task))
 		o.v2Seq.Publish(ctx, biz.NewStepCreatedEvent(step))
 	}
 

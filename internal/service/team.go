@@ -312,9 +312,17 @@ func (s *TeamService) ListTeams(ctx context.Context, req *v1.ListTeamsRequest) (
 		total = int32(n)
 	}
 	out := &v1.ListTeamsResponse{Items: make([]*v1.Team, 0, len(items)), Total: total}
+	ids := make([]string, 0, len(items))
+	for i := range items {
+		ids = append(ids, items[i].ID)
+	}
+	// Batch active-run lookup (one query); fall back to per-team checks on error.
+	activeByID, aerr := s.uc.ListActiveRunTeamIDs(ctx, ids)
 	for i := range items {
 		pb := toProtoTeam(items[i])
-		if active, aerr := s.uc.HasActiveRun(ctx, items[i].ID); aerr == nil {
+		if aerr == nil {
+			pb.HasActiveRun = activeByID[items[i].ID]
+		} else if active, serr := s.uc.HasActiveRun(ctx, items[i].ID); serr == nil {
 			pb.HasActiveRun = active
 		}
 		out.Items = append(out.Items, pb)

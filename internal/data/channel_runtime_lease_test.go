@@ -2,26 +2,21 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
 	"aranea-agents/internal/biz"
-
-	_ "github.com/glebarez/go-sqlite/compat"
+	"aranea-agents/internal/data/testhelper"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestChannelRuntimeLeaseRepoAcquireRenewRelease(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
 	if err := EnsureChannelRuntimeLeaseSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewChannelRuntimeLeaseRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db)})
+	repo := NewChannelRuntimeLeaseRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop(), dialect: DialectPostgres})
 	now := time.Now().UTC()
 	lease := biz.NewChannelRuntimeLease("ch-1", "lark", "node-a", time.Minute, now)
 	claimed, err := repo.TryAcquireRuntimeLease(ctx, lease)

@@ -29,9 +29,17 @@ func buildRuntimeGraphFromDef(t *testing.T, def Definition) int {
 		t.Fatalf("CompileToGraphRuntimeConfig: %v", err)
 	}
 	reg := graphtrpc.NewRegistry()
-	reg.RegisterCondFuncInstance(biz.CriticLoopCondFuncRef, trpcgraph.ConditionalFunc(func(ctx context.Context, state trpcgraph.State) (string, error) {
+	stubCond := trpcgraph.ConditionalFunc(func(ctx context.Context, state trpcgraph.State) (string, error) {
 		return "approved", nil
-	}))
+	})
+	reg.RegisterCondFuncInstance(biz.CriticLoopCondFuncRef, stubCond)
+	// 与生产路径 EnsureCriticLoopCondFuncs 对齐：注册 cfg 中出现的参数化 ref
+	// （如 critic_loop_decision#3，critic_loop max_iterations 接线后产生）。
+	for _, ce := range cfg.ConditionalEdges {
+		if ce.CondFuncRef != "" {
+			reg.RegisterCondFuncInstance(ce.CondFuncRef, stubCond)
+		}
+	}
 	g, agents, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(context.Background(), cfg, reg, &graphtrpc.GraphNodeResolverSet{
 		Agents: stubAgentResolver{},
 	}, nil)

@@ -27,7 +27,7 @@
 | US-5 | 作为平台运维者，我希望系统能够在 PostgreSQL 不可用时明确报错并拒绝启动，而不是静默降级到不一致的状态，以保证数据一致性。 | P1 |
 | US-6 | 作为平台运维者，我希望数据库错误能够被翻译为统一的业务错误码（404/409/400/500），以便上层模块和前端能够正确处理。 | P0 |
 
-> **注**：SQLite 仅保留用于测试基础设施（in-memory）和离线 CLI 维护工具（OpenSQLiteEntClient/NewCLIData），不再作为生产主库。
+> **注**：SQLite 已完全弃用。生产主库与测试基础设施均使用 PostgreSQL（测试通过 `testhelper.SetupTestPG`/`SetupTestPGRaw` 的 schema-per-test 隔离实现）。SQLite 仅保留在离线迁移工具 `cmd/migrate-sqlite-to-postgres` 与 `cmd/session-consistency-check` 中。
 
 ### 2.2 业务开发者视角
 
@@ -63,7 +63,7 @@
 | FR-2 | 系统必须使用 pgvector 扩展支持向量搜索和知识库 | 配置 PostgreSQL 连接串 + `DAO_VECTOR_PGVECTOR=1`，向量搜索走 pgvector |
 | FR-3 | PostgreSQL 必须启用外键约束 | Ent Schema 创建时自动启用 FK 约束 |
 | FR-4 | PostgreSQL 不可用时必须拒绝启动 | 连接失败或 pgvector 未启用时 NewData 返回错误，不降级 |
-| FR-5 | SQLite 仅用于测试和 CLI 维护工具 | `OpenSQLiteEntClient`/`NewCLIData`/`SetEntClientForTest` 路径保留，不参与生产 |
+| FR-5 | SQLite 完全退出主代码路径 | 测试使用 schema-per-test Postgres 隔离（`testhelper.SetupTestPG`/`SetupTestPGRaw`）；SQLite 驱动仅存于 `cmd/migrate-sqlite-to-postgres`、`cmd/session-consistency-check` 离线工具 |
 
 ### 3.2 读写分离
 
@@ -108,9 +108,9 @@
 
 | 编号 | 需求 | 验收标准 |
 |------|------|---------|
-| FR-25 | 必须支持全文搜索双实现 | SQLite FTS5（测试）+ Postgres tsvector + GIN 索引（生产），按 Dialect 切换 |
-| FR-26 | FTS 不可用时必须回退到 LIKE 查询 | FTS 表/列不存在时使用 `content_markdown LIKE ?` |
-| FR-27 | 必须支持向量存储双实现 | SQLiteVectorStore（测试，Go 余弦）+ PgVectorStore（生产，pgvector） |
+| FR-25 | 全文搜索统一使用 Postgres tsvector | `to_tsvector`/`plainto_tsquery` + GIN 索引 + `ts_rank` 排序（FTS5 实现已随 SQLite 移除） |
+| FR-26 | FTS 不可用时必须回退到 LIKE 查询 | FTS 表/列不存在时使用 `content_markdown LIKE $1` |
+| FR-27 | 向量存储统一使用 PgVectorStore | pgvector 余弦距离检索（SQLiteVectorStore 已随 SQLite 移除） |
 | FR-28 | 必须支持级联删除 | 删除 Agent/Session/Team/Channel 时自动清理关联表 |
 | FR-29 | 必须提供启动就绪门控 | `ReadinessGate` 三态：Pending → Ready / Failed |
 
@@ -125,7 +125,7 @@
 | NFR-1 | PostgreSQL 写连接池支持中等并发 | MaxOpenConns=16, MaxIdleConns=4, ConnMaxLifetime=30min |
 | NFR-2 | PostgreSQL 读连接池支持高并发检索 | MaxOpenConns=32, MaxIdleConns=8, ConnMaxLifetime=30min |
 | NFR-3 | 关键查询路径必须有索引覆盖 | 通过 DDL 迁移补缺失索引 |
-| NFR-4 | 消息全文搜索必须避免 LIKE 全表扫描 | 生产用 Postgres tsvector + GIN 索引 + ts_rank 排序；测试用 SQLite FTS5 + bm25 |
+| NFR-4 | 消息全文搜索必须避免 LIKE 全表扫描 | Postgres tsvector + GIN 索引 + ts_rank 排序 |
 
 ### 4.2 可靠性
 
@@ -161,11 +161,10 @@
 ```
 系统启动
   │
-  ├── 1. 初始化 SQLite 写连接 + PRAGMA + Ent Client
-  ├── 2. 初始化 SQLite 读连接 + PRAGMA + Ent Client
-  ├── 3. 初始化 PostgreSQL 连接（可选，失败降级）
-  ├── 4. 初始化 ReadinessGate（Pending 态）
-  └── 5. 后台 goroutine (P1)
+  ├── 1. 初始化 PostgreSQL 写连接池 + Ent Client（失败拒绝启动）
+  ├── 2. 初始化 PostgreSQL 读连接池 + Ent Client
+  ├── 3. 初始化 ReadinessGate（Pending 态）
+  └── 4. 后台 goroutine (P1)
        ├── ensureSchemaDDL (DDL 迁移)
        ├── ensurePostgresSchemas (pgvector/knowledge)
        ├── runPendingDataMigrations (数据迁移)
@@ -202,18 +201,19 @@ HTTP 请求 → 中间件 → Service → Usecase → Repo
 
 ### 6.1 功能验收
 
-- [x] SQLite 单机模式可启动，全部业务实体 CRUD 正常
-- [x] PostgreSQL 可选模式可启动，向量搜索和知识库走 PostgreSQL
-- [x] PostgreSQL 不可用时降级为纯 SQLite 模式
+- [x] PostgreSQL 主库模式可启动，全部业务实体 CRUD 正常
+- [x] 向量搜索和知识库走 PostgreSQL（pgvector）
+- [x] PostgreSQL 不可用时拒绝启动，不降级
 - [x] 事务原子性保证（全成功或全回滚）
 - [x] 嵌套事务检测正常
 - [x] HTTP 取消不中断事务
 - [x] 三层迁移机制正常工作
 - [x] ReadinessGate 三态门控正常
-- [x] FTS5 全文搜索正常
-- [x] 向量搜索双实现正常
+- [x] Postgres tsvector 全文搜索正常
+- [x] 向量搜索正常（PgVectorStore）
 - [x] 级联删除正常
-- [x] 错误转换统一
+- [x] 错误转换统一（含 pq 23505/23503/23502/23514 → 409/400）
+- [x] 测试基础设施：schema-per-test Postgres 隔离（`testhelper.SetupTestPG`/`SetupTestPGRaw`），并行安全，测试后自动清理 schema
 
 ### 6.2 红线合规
 
@@ -225,9 +225,8 @@ HTTP 请求 → 中间件 → Service → Usecase → Repo
 
 ### 6.3 性能验收
 
-- [x] SQLite 读写分离正常
-- [x] busy_timeout 生效，无 SQLITE_BUSY 错误
-- [x] FTS5 搜索性能优于 LIKE
+- [x] PostgreSQL 读写分离正常
+- [x] tsvector 搜索性能优于 LIKE
 - [x] 关键查询路径有索引覆盖
 
 ---
@@ -236,7 +235,7 @@ HTTP 请求 → 中间件 → Service → Usecase → Repo
 
 | 编号 | 描述 | 影响 | 状态 |
 |------|------|------|------|
-| LIM-1 | SQLite 单写限制，写连接 MaxOpen=1 | 高并发写场景可能成为瓶颈 | 设计决策，SQLite 固有限制 |
+| LIM-1 | 测试依赖本地 PostgreSQL 实例 | 无 PG 环境的开发机无法运行 data 层测试（`ARANEA_TEST_PG_DSN` 可指向远程实例） | 设计决策，方言真实性优先 |
 | LIM-2 | 时间戳用 String 而非 Time | 查询排序需 CAST | 历史遗留，迁移成本高 |
 | LIM-3 | Ent Schema 无 Edge（仅 Eval 域例外） | 级联删除在应用层实现 | 设计决策，灵活性优先 |
 | LIM-4 | pgvector 旧版存储（`internal/data/pgvector/`）已废弃 | 代码冗余 | 待清理 |

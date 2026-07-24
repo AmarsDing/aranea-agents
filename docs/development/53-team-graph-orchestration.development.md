@@ -1,6 +1,6 @@
 # M53: Team × Graph 编排融合 — 开发计划
 
-> **版本**：2026-07-16 | **状态**：✅ Phase 0.5–8.9 已落地（含 BL-05/BL-09、Swarm Graph 安全、CB 持久化）
+> **版本**：2026-07-24 | **状态**：✅ Phase 0.5–8.9 已落地（含 BL-05/BL-09、Swarm Graph 安全、CB 持久化）+ Phase 9 Graph Engineering 评审增强（critic_loop 收敛 / 运行时契约校验 / 并行文件隔离）+ Phase 9.1 critic_loop 运行时收敛修复
 > **需求**：[53-team-graph-orchestration.md](./53-team-graph-orchestration.md) · **设计**：[53-team-graph-orchestration.design.md](./53-team-graph-orchestration.design.md)
 
 ---
@@ -516,3 +516,54 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 4. **HITL SLA 有界延期**：`maxHITLSLAExtensions = 3`，避免无限延期
 5. **CoordinatorConfig 可配置化**：`WatchTimeout` / `HITLSLATimeout` / `SessionMaxAge` / `CleanupInterval` 统一收敛到 `CoordinatorConfig` 结构体，默认值与原常量一致，支持构造后覆盖
 6. **错误处理规范化**：`fmt.Errorf` 统一替换为 `kerrors.BadRequest`；所有 `_ = xxx.UpdateTeamRun` / `_ = xxx.Create` 静默忽略改为 `FlowLog warn`，确保错误可观测
+
+---
+
+## Phase 9 — Graph Engineering 评审增强（✅ 已完成，2026-07-23）
+
+> 来源：Graph Engineering 评审（文章启发 + 代码评审）输出的三项运行期健壮性增强，按 Phase A/B/C 以 TDD 落地。设计详见 [53-team-graph-orchestration.design.md §十一](./53-team-graph-orchestration.design.md#十一graph-engineering-评审增强2026-07-23-已落地)。
+
+| ID | 任务 | 影响域 | 状态 |
+|----|------|--------|------|
+| GE-A1 | critic_loop 迭代上限接线：`CriticLoopCondFuncRefForConfig` 参数化 ref（`critic_loop[@<threshold>][#<maxIterations>]`）+ 编译期写入 + `EnsureCriticLoopCondFuncs` 注册；未配置时默认上限 3 | `biz/team_types.go` · `team/embedded_graph.go` · `graph/adapter/critic_loop_cond.go` | ✅ |
+| GE-A2 | loop-until-dry 提前收敛：连续两轮 critic 反馈归一化相同且非空 → `approved` | `graph/adapter/critic_loop_cond.go` | ✅ |
+| GE-B1 | `read_upstream_deliverable` 运行时契约校验：reader `InputContract` vs 上游 `Deliverables`（name/type/format），结构化 `ContractMismatchError`（LLM-actionable，可自动纠正重试）；任一侧无契约跳过 | `biz/deliverable_contract.go` · `biz/spirit_team_usecase.go` · `tools/deliverable/upstream_reader.go` | ✅ |
+| GE-C1 | `IsolationStrategyForTool` 单一打标点：文件写工具（canonical + UI 别名）→ `IsolationStrategyWorktree` | `tools/parallel_executor.go` | ✅ |
+| GE-C2 | 并行文件写 E2E：两并发 `save_file` 各自 worktree 提交并合并进主仓（ff + --no-ff），HEAD 前进 | `tools/worktree_isolator_test.go` | ✅ |
+
+**测试覆盖**：
+
+- `graph/adapter/critic_loop_cond_test.go`：`MaxIterationsForcesApproval` / `MaxIterationsNotReached` / `DryConvergence` / `DryNotTriggeredWhenFeedbackDiffers`
+- `biz/node_circuit_breaker_test.go`：`TestCriticLoopCondFuncRefForConfig` / `TestParseCriticLoopCondFuncRef`
+- `team/graph_compile_test.go`：编译期参数化 ref 接线
+- `biz/spirit_team_deliverable_test.go`：Phase B——契约匹配放行 / 三类不匹配聚合为单个结构化错误 / 无契约跳过
+- `tools/parallel_executor_test.go`：`TestIsolationStrategyForTool`（canonical/别名/只读/无关分类）
+- `tools/worktree_isolator_test.go`：`TestBatchExecuteSpiritTools_ParallelWorktreeFileOps`
+
+**验证证据（2026-07-23）**：`go build ./...` exit 0；`go test -count=1`——`internal/tools` / `internal/biz` / `internal/graph` / `internal/team` / `internal/service` 全 PASS（service 包一例 flaky panic 经重跑确认与本次改动无关，为既有测试间污染）。
+
+**关联文档同步**：[1-chat.design.md §B.10.15.11](./1-chat.design.md)（Phase B 实施记录）、[70-orchestration-longtask-memory.design.md §8.2](./70-orchestration-longtask-memory.design.md)（Phase C 打标点说明）。
+
+---
+
+## Phase 9.1 — critic_loop 运行时收敛修复（✅ 已完成，2026-07-24）
+
+> 运行时验证发现 GE-A1/A2 在 **team 图（agent 节点 critic）** 路径下不生效：max_iterations=2 实际循环 24+ 次不收敛。四个根因联动修复。
+
+| # | 根因 | 修复 | 影响域 | 状态 |
+|---|------|------|--------|------|
+| FIX-1 | 条件边 `PathMap["approved"]` 映射到 critic 节点自身 → 自循环，图永不终止 | 新增终止哨兵 `biz.EndNodeID`（镜像 trpcgraph.End `__end__`），`approved` 路由到 `__end__`；`validator` 允许哨兵为目标且不参与环检测 | `biz/graph.go` · `team/embedded_graph.go` · `graph/trpc/validator.go` | ✅ |
+| FIX-2 | agent 节点 critic 输出只进 `last_response`/`node_responses`，不进 `messages` → cond func 计不到轮次 | 新增 `criticRoundCaptureCallback`（AfterNodeCallback）：将轮次计数 + 最近两轮评审文本写入 state metadata（`critic_loop_rounds` / `*_last_response` / `*_prev_response`），接线到 critic_loop finish 的 agent 节点 | `graph/trpc/critic_round_capture.go` · `graph/trpc/node_wiring.go` · `biz/team_types.go` | ✅ |
+| FIX-3 | cond func 只读 messages 路径，metadata 轮次未消费 | cond func 优先读 metadata 轮次/反馈（与 messages 路径取 max），评审文本优先 `last_response` | `graph/adapter/critic_loop_cond.go` | ✅ |
+| FIX-4 | 批准判定仅英文 `approved`，中文评审永远 retry 至上限 | 新增中文批准/拒绝词表（拒绝词先判，防「不批准」误判）；裸「通过」不入词表（中文常作介词，误报率高） | `graph/adapter/critic_loop_cond.go` | ✅ |
+
+**测试覆盖**：
+
+- `graph/trpc/critic_round_capture_test.go`（新增 6 例）：finish agent 节点 ID 筛选 / 首轮与次轮 prev 移位 / float64 容错（checkpoint JSON 往返）/ fail-open（nodeErr、非 State 结果、空响应）
+- `graph/adapter/critic_loop_cond_test.go`（新增 8 例）：metadata 轮次上限与未达上限 / metadata 干涸收敛与反馈变化 / 中文批准词、拒绝词、介词「通过」防误判 / `last_response` 优先级
+- `team/graph_compile_test.go`：两个 critic_loop 编译测试新增 `PathMap["approved"] == biz.EndNodeID` 回归断言
+
+**验证证据（2026-07-24）**：
+
+- `go build ./...` exit 0；`go test -count=1`——`internal/graph/adapter` / `internal/graph/trpc` / `internal/team` / `internal/service` / `internal/biz` / `internal/agent` / `internal/data` 全 PASS
+- 运行时：团队 `ge_review_critic_loop_test`（max_iterations=2）run-test HTTP 200 / 23.6s / status=success；pipeline 日志证实 critic（member-2）恰好执行 2 轮后 `critic_loop 达到迭代上限，强制收敛 rounds=2 max_iterations=2`，图经 `approved → __end__` 终止（修复前循环 24+ 次不收敛）

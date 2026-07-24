@@ -290,6 +290,7 @@ func fromEntContext(e *ent.AgentRuntimeSetting) biz.ContextCfg {
 		PlannerKind:                e.PlannerKind,
 		PlannerConfigJSON:          e.PlannerConfigJSON,
 		VerificationTruncateChars:  e.VerificationTruncateChars,
+		ClarificationEnabled:       e.ClarificationEnabled,
 	}
 }
 
@@ -411,6 +412,7 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetToolWeightJSON(normalizeJSONObj(v.ToolWeightJSON)).
 		SetDreamSnapshotJSON(v.DreamSnapshotJSON).
 		SetIntentPassEnabled(v.IntentPassEnabled).
+		SetClarificationEnabled(v.ClarificationEnabled).
 		SetChannelID(v.ChannelID).
 		SetChatID(v.ChatID).
 		SetWorkspace(v.Workspace).

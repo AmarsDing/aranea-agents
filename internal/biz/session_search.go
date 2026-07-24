@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -69,9 +70,12 @@ type HistoryMessage struct {
 
 // GlobalMessageSearcher performs cross-session content search over steps_v2
 // (kind IN task/reply, content LIKE, started_at desc). Implemented in data.
+// workspaceID scopes the search to one tenant workspace; empty means no
+// workspace filter (system callers only — the usecase always resolves one
+// from ctx via workspace.IDFromContext).
 // Stability:evolving
 type GlobalMessageSearcher interface {
-	SearchGlobalMessages(ctx context.Context, keyword, agentID string, limit int) ([]GlobalMessageHit, error)
+	SearchGlobalMessages(ctx context.Context, keyword, agentID, workspaceID string, limit int) ([]GlobalMessageHit, error)
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +143,7 @@ func (u *SessionSearchUsecase) SearchMessages(ctx context.Context, callerAgentID
 	if limit > maxSearchLimit {
 		limit = maxSearchLimit
 	}
-	hits, err := u.searcher.SearchGlobalMessages(ctx, keyword, strings.TrimSpace(agentID), limit)
+	hits, err := u.searcher.SearchGlobalMessages(ctx, keyword, strings.TrimSpace(agentID), workspace.IDFromContext(ctx), limit)
 	if err != nil {
 		return nil, apierror.Internal(domainSessionSearch, "search failed: %s", err)
 	}
@@ -158,10 +162,12 @@ func (u *SessionSearchUsecase) ListAgentSessions(ctx context.Context, callerAgen
 		limit = maxSessionListLimit
 	}
 	res, err := u.sessions.SearchSessions(ctx, SessionSearchQuery{
-		AgentID:   strings.TrimSpace(agentID),
-		Limit:     limit,
-		SortBy:    "updated_at",
-		SortOrder: "desc",
+		AgentID:     strings.TrimSpace(agentID),
+		Status:      "active",
+		WorkspaceID: workspace.IDFromContext(ctx),
+		Limit:       limit,
+		SortBy:      "updated_at",
+		SortOrder:   "desc",
 	})
 	if err != nil {
 		return nil, apierror.Internal(domainSessionSearch, "list sessions failed: %s", err)
@@ -191,6 +197,20 @@ func (u *SessionSearchUsecase) ReadSessionHistory(ctx context.Context, callerAge
 	}
 	if err := u.guardSpirit(ctx, callerAgentID, ActionReadSession, "session:"+sessionID); err != nil {
 		return nil, false, err
+	}
+	// P2-C workspace 隔离（IDOR 防护）：session 是 tenant-owned 私有数据。
+	// 查询失败或 workspace 不匹配一律返回 NotFound，不泄露会话存在性
+	// （镜像 SessionService.assertSessionAccess 语义）。
+	sess, err := u.sessions.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return nil, false, apierror.NotFound(domainSessionSearch, "session not found")
+	}
+	if err := workspace.AssertWorkspace(workspace.IDFromContext(ctx), sess.WorkspaceID); err != nil {
+		u.lg.Warn("sessionaccess denied: workspace mismatch",
+			loggateway.StepID("session_search.idor"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+		return nil, false, apierror.NotFound(domainSessionSearch, "session not found")
 	}
 	if limit <= 0 {
 		limit = defaultHistoryLimit
@@ -317,10 +337,11 @@ func (u *SessionSearchUsecase) auditSessionAccess(ctx context.Context, e AuditEn
 }
 
 // truncateForAudit bounds user-supplied text written into the audit row.
+// Truncates by runes (not bytes) so multi-byte text is never cut mid-rune.
 func truncateForAudit(s string) string {
 	s = strings.TrimSpace(s)
-	if len(s) > 120 {
-		return s[:120]
+	if rs := []rune(s); len(rs) > 120 {
+		return string(rs[:120])
 	}
 	return s
 }

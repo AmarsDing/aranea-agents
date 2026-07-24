@@ -885,3 +885,69 @@ func TestAssembleTeam_TransactionSuccess(t *testing.T) {
 		t.Errorf("expected 1 transaction call, got %d", transactor.callCount)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// C1/C3: enable_state_deliverable auto-enable for multi-member teams
+// ---------------------------------------------------------------------------
+
+func TestBuildSpiritTeamDefinitionJSON_MultiMember_EnableStateDeliverable(t *testing.T) {
+	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a", "agent-b"}, loggateway.NewNoop())
+
+	var def map[string]any
+	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
+		t.Fatalf("definition JSON not parseable: %v", err)
+	}
+	v, ok := def["enable_state_deliverable"]
+	if !ok {
+		t.Fatal("multi-member team should have enable_state_deliverable")
+	}
+	if v != true {
+		t.Fatalf("enable_state_deliverable should be true, got %v", v)
+	}
+}
+
+func TestBuildSpiritTeamDefinitionJSON_SingleMember_NoEnableStateDeliverable(t *testing.T) {
+	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a"}, loggateway.NewNoop())
+
+	var def map[string]any
+	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
+		t.Fatalf("definition JSON not parseable: %v", err)
+	}
+	if _, ok := def["enable_state_deliverable"]; ok {
+		t.Fatal("single-member team should NOT have enable_state_deliverable")
+	}
+}
+
+func TestAssembleTeam_MultiMember_DefinitionJSON_HasEnableStateDeliverable(t *testing.T) {
+	teamRepo := newMemSpiritTeamRepo()
+	sessionRepo := newMemSpiritSessionRepo()
+	sessionRepo.seedSpirit("spirit-esd")
+	transactor := &memSpiritTransactor{}
+
+	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
+	sessionUC := NewSessionUsecase(sessionRepo, &memSpiritAgentLookup{}, NewSessionTeamLookup(teamRepo), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
+
+	result, err := uc.AssembleTeam(context.Background(), SpiritTeamParams{
+		SpiritSessionID: "spirit-esd",
+		TaskDescription: "multi-member deliverable test",
+		AgentKeys:       []string{"agent-1", "agent-2"},
+		Mode:            "coordinator",
+		AutoStart:       false,
+	})
+	if err != nil {
+		t.Fatalf("AssembleTeam failed: %v", err)
+	}
+
+	var def map[string]any
+	if err := json.Unmarshal([]byte(result.Team.DefinitionJSON), &def); err != nil {
+		t.Fatalf("DefinitionJSON not parseable: %v (raw=%q)", err, result.Team.DefinitionJSON)
+	}
+	v, ok := def["enable_state_deliverable"]
+	if !ok {
+		t.Fatal("multi-member team DefinitionJSON should have enable_state_deliverable")
+	}
+	if v != true {
+		t.Fatalf("enable_state_deliverable should be true, got %v", v)
+	}
+}

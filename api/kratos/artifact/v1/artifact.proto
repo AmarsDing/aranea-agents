@@ -46,7 +46,10 @@ message GetArtifactRequest {
 }
 
 message ListArtifactsRequest {
-  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // session_id selects a single session's artifacts.
+  // Empty means "all artifacts" browse scoped to the caller workspace
+  // (system workspace lists across all sessions).
+  string session_id = 1;
   int32 limit = 2;
   int32 offset = 3;
   // query filters by name, session_id, or mime_type (case-insensitive substring).

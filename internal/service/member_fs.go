@@ -185,6 +185,16 @@ func (r *memberFileReader) ReadText(root, rel string, maxBytes int64) (string, b
 	truncated := int64(len(buf)) > maxBytes
 	if truncated {
 		buf = buf[:maxBytes]
+		// 截断点可能落在多字节 UTF-8 字符中间；最多回退 3 字节到完整字符
+		// 边界，否则下方 utf8.Valid 会把正常文本误判为非法 UTF-8 文件。
+		// 上限 3 字节保证真正的非法文件（长串非法尾字节）仍被 utf8.Valid 拒绝。
+		for i := 0; i < utf8.UTFMax-1 && len(buf) > 0; i++ {
+			if r, size := utf8.DecodeLastRune(buf); r == utf8.RuneError && size <= 1 {
+				buf = buf[:len(buf)-1]
+			} else {
+				break
+			}
+		}
 	}
 	if isBinaryContent(buf) {
 		return "", false, fmt.Errorf("binary file rejected: %s", rel)

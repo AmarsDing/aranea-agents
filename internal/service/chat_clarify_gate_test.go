@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
@@ -242,7 +243,12 @@ func TestRunClarificationGate_Triggered(t *testing.T) {
 		},
 	}
 
-	decision, err := orch.runClarificationGate(context.Background(), "sess-1", art, ag, biz.TurnInput{})
+	// 注入 ctx 预生成的 RootTaskActivityID（生产路径由 chat_orchestrator_turn.go
+	// 在 BUILD/IntentPass 并行后注入），澄清门必须复用它而非另造 UUID，
+	// 保证 ctx 链与落库 Task ID 一致。
+	ctxTaskID := "task-pregen-1"
+	ctx := chatagent.ContextWithRootTaskActivityID(context.Background(), chatagent.RootTaskActivityID(ctxTaskID))
+	decision, err := orch.runClarificationGate(ctx, "sess-1", art, ag, biz.TurnInput{SessionID: "sess-1", Content: "帮我做个应用"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -263,6 +269,12 @@ func TestRunClarificationGate_Triggered(t *testing.T) {
 	}
 	if task.Status != biz.TaskStatusRunning {
 		t.Errorf("task.Status = %q, want %q", task.Status, biz.TaskStatusRunning)
+	}
+	if task.UserMessage != "帮我做个应用" {
+		t.Errorf("task.UserMessage = %q, want %q", task.UserMessage, "帮我做个应用")
+	}
+	if task.ID != ctxTaskID {
+		t.Errorf("task.ID = %q, want ctx-carried preGeneratedTaskID %q", task.ID, ctxTaskID)
 	}
 
 	// Verify step was created
@@ -291,13 +303,20 @@ func TestRunClarificationGate_Triggered(t *testing.T) {
 	if len(envelope.Questions) != 2 {
 		t.Errorf("envelope.Questions len = %d, want 2", len(envelope.Questions))
 	}
-
-	// Verify event was published
-	if len(seq.published) != 1 {
-		t.Fatalf("expected 1 event published, got %d", len(seq.published))
+	if envelope.OriginalInput != "帮我做个应用" {
+		t.Errorf("envelope.OriginalInput = %q, want %q", envelope.OriginalInput, "帮我做个应用")
 	}
-	if _, ok := seq.published[0].(*biz.StepCreatedEvent); !ok {
-		t.Errorf("expected StepCreatedEvent, got %T", seq.published[0])
+
+	// Verify events were published: task.created 必须先于 step.created——
+	// 前端 TaskCard 需先有 Task 才能挂载 orphan clarify step，否则澄清卡片不渲染。
+	if len(seq.published) != 2 {
+		t.Fatalf("expected 2 events published, got %d", len(seq.published))
+	}
+	if _, ok := seq.published[0].(*biz.TaskCreatedEvent); !ok {
+		t.Errorf("expected first event TaskCreatedEvent, got %T", seq.published[0])
+	}
+	if _, ok := seq.published[1].(*biz.StepCreatedEvent); !ok {
+		t.Errorf("expected second event StepCreatedEvent, got %T", seq.published[1])
 	}
 
 	// Verify session status was transitioned
@@ -309,6 +328,39 @@ func TestRunClarificationGate_Triggered(t *testing.T) {
 	}
 	if stateMgr.reasons[0] != sessstatus.StatusReasonClarification {
 		t.Errorf("reason = %q, want %q", stateMgr.reasons[0], sessstatus.StatusReasonClarification)
+	}
+}
+
+func TestRunClarificationGate_SkippedForContinuationTurn(t *testing.T) {
+	taskWriter := &stubTaskV2Writer{}
+	stepWriter := &stubStepV2Writer{}
+	seq := &stubEventPublisher{}
+	stateMgr := &stubSessionStateTransitor{}
+	orch := newClarificationTestOrch(taskWriter, stepWriter, seq, stateMgr)
+
+	ag := biz.Agent{
+		Settings: &biz.AgentRuntimeSettings{
+			ClarificationEnabled: true,
+		},
+	}
+	art := &intent.Artifact{
+		RiskFlags: []string{intent.RiskFlagNeedsClarification},
+		Clarifications: []intent.ClarificationQuestion{
+			{Question: "Q1", Mode: "single", Options: []string{"a"}, Recommended: []string{"a"}},
+		},
+	}
+	// 续跑 turn（ParentTaskID 非空）不得再次触发澄清门，否则澄清循环。
+	input := biz.TurnInput{SessionID: "sess-1", Content: "澄清上下文 + 原始需求", ParentTaskID: "task-existing"}
+
+	decision, err := orch.runClarificationGate(context.Background(), "sess-1", art, ag, input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if decision.Triggered {
+		t.Error("expected not triggered for continuation turn (ParentTaskID set)")
+	}
+	if len(stepWriter.created) != 0 {
+		t.Errorf("expected no step created, got %d", len(stepWriter.created))
 	}
 }
 

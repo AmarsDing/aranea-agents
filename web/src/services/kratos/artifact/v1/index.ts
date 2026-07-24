@@ -46,8 +46,9 @@ export type GetArtifactRequest = {
 };
 
 export type ListArtifactsRequest = {
-  //
-  // Behaviors: REQUIRED
+  // session_id selects a single session's artifacts.
+  // Empty means "all artifacts" browse scoped to the caller workspace
+  // (system workspace lists across all sessions).
   sessionId: string | undefined;
   limit: number | undefined;
   offset: number | undefined;

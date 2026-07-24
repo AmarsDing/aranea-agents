@@ -744,6 +744,11 @@ func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, c
 	if d := graphtrpc.MaxNodeTimeout(cfg.Nodes); d > 0 {
 		extraOpts = append(extraOpts, trpcgraph.WithNodeTimeout(d))
 	}
+	// 编译期显式步数天花板（critic_loop 等含环图）：失控图在贴近预期
+	// 迭代数处截断，而非框架默认 100。0 = 框架默认。
+	if cfg.MaxSteps > 0 {
+		extraOpts = append(extraOpts, trpcgraph.WithMaxSteps(cfg.MaxSteps))
+	}
 	var (
 		agent *graphtrpc.GraphAgent
 		err   error

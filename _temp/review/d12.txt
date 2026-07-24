@@ -1,0 +1,48 @@
+diff --git a/web/src/components/chat/tools/MediaToolDetail.vue b/web/src/components/chat/tools/MediaToolDetail.vue
+index c51d456d9..4dd00bc8f 100644
+--- a/web/src/components/chat/tools/MediaToolDetail.vue
++++ b/web/src/components/chat/tools/MediaToolDetail.vue
+@@ -7,7 +7,12 @@
+     <div v-if="artifacts.length" class="tool-detail__row">
+       <div class="tool-detail__label">{{ t('chat.toolDetail.mediaOutputs') }}</div>
+       <div class="media-tool-detail__grid">
+-        <div v-for="art in artifacts" :key="art.artifact_id" class="media-tool-detail__item" @click="onPreview(art)">
++        <div
++          v-for="art in artifacts"
++          :key="art.artifact_id || art.url"
++          class="media-tool-detail__item"
++          @click="onPreview(art)"
++        >
+           <video
+             v-if="art.mime_type.startsWith('video/')"
+             :src="mediaSrc(art)"
+diff --git a/web/src/css/theme/_entity-pages.sass b/web/src/css/theme/_entity-pages.sass
+index 066b62328..eb5f4030d 100644
+--- a/web/src/css/theme/_entity-pages.sass
++++ b/web/src/css/theme/_entity-pages.sass
+@@ -825,7 +825,8 @@ body.body--dark .agent-desc-tooltip
+   box-shadow: 0 24px 64px color-mix(in srgb, var(--color-accent) 22%, transparent)
+   z-index: 9999
+ 
+-.teams-draggable-grid
++.teams-draggable-grid,
++.teams-grid
+   display: grid
+   grid-template-columns: repeat(3, minmax(0, 1fr))
+   gap: 18px
+@@ -833,11 +834,13 @@ body.body--dark .agent-desc-tooltip
+   min-height: 0
+ 
+ @media (width <= 1199px)
+-  .teams-draggable-grid
++  .teams-draggable-grid,
++  .teams-grid
+     grid-template-columns: repeat(2, minmax(0, 1fr))
+ 
+ @media (width <= 767px)
+-  .teams-draggable-grid
++  .teams-draggable-grid,
++  .teams-grid
+     grid-template-columns: minmax(0, 1fr)
+ 
+ .team-card__inner

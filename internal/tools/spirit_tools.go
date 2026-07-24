@@ -591,10 +591,10 @@ func spiritSessionIDFromCtx(ctx context.Context) string {
 // when available, falling back to serial execution when the executor is nil or
 // Execute returns an error (e.g., dependency cycle, context cancellation).
 //
-// The Wire-bound executor provides configuration (maxConcurrency, isolators);
-// the caller-supplied handler dispatches each call to the appropriate tool
-// implementation. A fresh executor is constructed with the handler so the
-// Wire-bound singleton is never mutated.
+// The Wire-bound executor provides configuration (maxConcurrency, worktree
+// isolator, transaction sandbox); the caller-supplied handler dispatches each
+// call to the appropriate tool implementation. A fresh executor is constructed
+// with the handler so the Wire-bound singleton is never mutated.
 //
 // Use this helper for batch tool call scenarios such as multi_tool_use.parallel
 // patterns where multiple independent (or dependency-ordered) tool calls should
@@ -610,9 +610,14 @@ func BatchExecuteSpiritTools(
 		return nil
 	}
 	if exec != nil && handler != nil {
-		// Reuse the Wire-bound executor's concurrency setting; the handler is
+		// Reuse the Wire-bound executor's concurrency setting AND isolation
+		// plumbing (worktree isolator / transaction sandbox); the handler is
 		// caller-supplied because tool dispatch is agent/session-specific.
-		parallelExec := NewParallelToolExecutor(handler, lg, WithMaxConcurrency(exec.maxConcurrency))
+		parallelExec := NewParallelToolExecutor(handler, lg,
+			WithMaxConcurrency(exec.maxConcurrency),
+			WithWorktreeIsolator(exec.worktreeIso),
+			WithTransactionSandbox(exec.txSandbox),
+		)
 		results, err := parallelExec.Execute(ctx, calls)
 		if err == nil {
 			return results

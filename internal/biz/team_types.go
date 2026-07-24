@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"aranea-agents/pkg/loggateway"
@@ -39,6 +40,51 @@ const OrchestrationControlToolName = "orchestration_control"
 // CriticLoopCondFuncRef is kept as an alias for backward compatibility.
 const CriticLoopCondFuncRef = CriticLoopDecisionFunc
 
+// Critic loop runtime state keys (stored under trpcgraph.StateKeyMetadata).
+// Agent-node critics do not append to StateKeyMessages (their output lands in
+// StateKeyLastResponse / StateKeyNodeResponses), so the graph/trpc layer's
+// critic-round capture callback records evaluation rounds and the last two
+// critic responses here for the cond func (internal/graph/adapter) to make
+// max-iterations and loop-until-dry convergence decisions.
+const (
+	// CriticLoopRoundsMetaKey counts completed critic evaluation rounds.
+	CriticLoopRoundsMetaKey = "critic_loop_rounds"
+	// CriticLoopLastResponseMetaKey holds the latest critic response text.
+	CriticLoopLastResponseMetaKey = "critic_loop_last_response"
+	// CriticLoopPrevResponseMetaKey holds the previous critic response text
+	// (for loop-until-dry comparison against the latest).
+	CriticLoopPrevResponseMetaKey = "critic_loop_prev_response"
+)
+
+// CriticLoopMetaKeysForNode returns the metadata keys (rounds, lastResponse,
+// prevResponse) scoped to a specific critic node. Empty nodeID returns the
+// bare keys (bare-ref / legacy-checkpoint path); non-empty nodeID returns
+// "<bare>/<nodeID>" so multiple critic loops in one graph never overwrite
+// each other's round counters and feedback snapshots.
+func CriticLoopMetaKeysForNode(nodeID string) (rounds, lastResp, prevResp string) {
+	if nodeID == "" {
+		return CriticLoopRoundsMetaKey, CriticLoopLastResponseMetaKey, CriticLoopPrevResponseMetaKey
+	}
+	return CriticLoopRoundsMetaKey + "/" + nodeID,
+		CriticLoopLastResponseMetaKey + "/" + nodeID,
+		CriticLoopPrevResponseMetaKey + "/" + nodeID
+}
+
+// CriticLoopMetaInt reads an int from a critic_loop metadata value, tolerating
+// float64 after JSON checkpoint round-trips.
+func CriticLoopMetaInt(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	default:
+		return 0
+	}
+}
+
 // CriticLoopCondFuncRefForThreshold returns a CondFuncRef that embeds the score
 // threshold so graph builds with different critic_loop.score_threshold do not
 // overwrite each other on the shared registry.
@@ -56,6 +102,76 @@ func formatCriticThreshold(threshold float64) string {
 		return "0"
 	}
 	return s
+}
+
+// CriticLoopCondFuncRefForConfig returns a CondFuncRef embedding both the score
+// threshold and max iterations so graph builds with different critic_loop
+// configs do not overwrite each other on the shared registry.
+func CriticLoopCondFuncRefForConfig(threshold float64, maxIterations int) string {
+	ref := CriticLoopCondFuncRefForThreshold(threshold)
+	if maxIterations > 0 {
+		ref += "#" + strconv.Itoa(maxIterations)
+	}
+	return ref
+}
+
+// CriticLoopCondFuncRefForNode returns a CondFuncRef that additionally embeds
+// the critic (From) node ID: "critic_loop[@<threshold>][#<maxIterations>]%<nodeID>".
+// The nodeID lets the registered cond func read node-scoped metadata
+// (CriticLoopMetaKeysForNode), so multiple critic loops in one graph converge
+// independently. Empty nodeID degrades to CriticLoopCondFuncRefForConfig.
+func CriticLoopCondFuncRefForNode(threshold float64, maxIterations int, nodeID string) string {
+	ref := CriticLoopCondFuncRefForConfig(threshold, maxIterations)
+	if nodeID != "" {
+		ref += "%" + nodeID
+	}
+	return ref
+}
+
+// ParseCriticLoopCondFuncRef parses refs produced by
+// CriticLoopCondFuncRefForNode: "critic_loop[@<threshold>][#<maxIterations>][%<nodeID>]".
+// ok=false means the ref is not a critic_loop ref or carries invalid params.
+func ParseCriticLoopCondFuncRef(ref string) (threshold float64, maxIterations int, nodeID string, ok bool) {
+	rest, bare := strings.CutPrefix(ref, CriticLoopCondFuncRef)
+	if !bare {
+		return 0, 0, "", false
+	}
+	// Strip the trailing "%<nodeID>" segment first; the remaining prefix keeps
+	// the legacy "[@<threshold>][#<maxIterations>]" grammar unchanged.
+	if idx := strings.Index(rest, "%"); idx >= 0 {
+		nodeID = rest[idx+1:]
+		if nodeID == "" {
+			return 0, 0, "", false
+		}
+		rest = rest[:idx]
+	}
+	if rest == "" {
+		return 0, 0, nodeID, true
+	}
+	if strings.HasPrefix(rest, "@") {
+		idx := strings.Index(rest, "#")
+		num := rest[1:]
+		if idx >= 0 {
+			num = rest[1:idx]
+		}
+		t, err := strconv.ParseFloat(num, 64)
+		if err != nil || t <= 0 {
+			return 0, 0, "", false
+		}
+		threshold = t
+		if idx < 0 {
+			return threshold, 0, nodeID, true
+		}
+		rest = rest[idx:]
+	}
+	if strings.HasPrefix(rest, "#") {
+		n, err := strconv.Atoi(rest[1:])
+		if err != nil || n <= 0 {
+			return 0, 0, "", false
+		}
+		return threshold, n, nodeID, true
+	}
+	return 0, 0, "", false
 }
 
 type OrchestrationDecision struct {
@@ -177,6 +293,31 @@ type Team struct {
 // P2 产物引用化：DeliverableRef 信封
 // ---------------------------------------------------------------------------
 
+// DeliverableDecision records one decision made by the upstream team while
+// producing the deliverable (C1 cognition envelope).
+type DeliverableDecision struct {
+	Choice     string  `json:"choice"`
+	Rationale  string  `json:"rationale"`
+	Confidence float64 `json:"confidence,omitempty"`
+}
+
+// DeliverableRejection records one option the upstream team considered and
+// rejected, with the reason (C1 cognition envelope).
+type DeliverableRejection struct {
+	Option string `json:"option"`
+	Reason string `json:"reason"`
+}
+
+// DeliverableCognition is the optional cognitive-process record carried by a
+// DeliverableRef envelope (C1): why the conclusion is what it is, not just
+// what it is. All fields are omitempty — legacy envelopes parse unchanged.
+type DeliverableCognition struct {
+	Decisions     []DeliverableDecision  `json:"decisions,omitempty"`
+	Rejected      []DeliverableRejection `json:"rejected,omitempty"`
+	Assumptions   []string               `json:"assumptions,omitempty"`
+	OpenQuestions []string               `json:"open_questions,omitempty"`
+}
+
 // DeliverableRef is the P2 envelope stored per dag_node_id in
 // Team.DeliverablesOutput. Instead of persisting the (already truncated)
 // summary only, the envelope carries enough metadata for downstream teams to
@@ -195,6 +336,13 @@ type DeliverableRef struct {
 	// state held no extra keys. Optional envelope field — legacy readers
 	// ignore it.
 	StructuredJSON string `json:"structured_json,omitempty"`
+	// Cognition carries the upstream team's cognitive process (C1). Bridged
+	// from the reserved "cognition" key of the graph deliverable state map;
+	// nil when the producer did not record one.
+	Cognition *DeliverableCognition `json:"cognition,omitempty"`
+	// DerivedFrom lists the upstream dag_node_ids this deliverable derives
+	// from (C4 provenance chain), filled from Team.DependsOn at write time.
+	DerivedFrom []string `json:"derived_from,omitempty"`
 }
 
 // ParseDeliverableRefs parses Team.DeliverablesOutput into per-node refs.

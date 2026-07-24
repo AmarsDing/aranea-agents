@@ -217,8 +217,6 @@
           :input-disabled="inputDisabled"
           :is-runner-active="isRunnerActive"
           :is-awaiting-user="isAwaitingUser"
-          :await-kind="awaitKind"
-          :await-tool-key="awaitToolKey"
           :show-enqueue="showEnqueue"
           :session-id="sessionId"
           :file-supported="fileSupported"
@@ -233,7 +231,6 @@
           @stop="emit('stop')"
           @enqueue-message="emit('enqueue-message', $event)"
           @submit-await-reply="emit('submit-await-reply')"
-          @submit-tool-confirm="emit('submit-tool-confirm', $event)"
           @paste-file="emit('paste-file', $event)"
           @paste-unsupported="emit('paste-unsupported')"
           @new-session="emit('new-session')"
@@ -327,8 +324,6 @@ const props = defineProps<{
   inputDisabled?: boolean;
   isRunnerActive?: boolean;
   isAwaitingUser?: boolean;
-  awaitKind?: string;
-  awaitToolKey?: string;
   wsReplaying?: boolean;
   sessionLoading?: boolean;
   isTeamSession?: boolean;
@@ -378,7 +373,6 @@ const emit = defineEmits<{
   'interrupt-pending': [pendingId: string];
   'update-pending': [pendingId: string, content: string];
   'submit-await-reply': [];
-  'submit-tool-confirm': [approved: boolean];
   'open-events': [];
   'open-artifacts-page': [];
   'open-artifact': [id: string];

@@ -67,12 +67,23 @@ func (s *ArtifactService) revealLocal(ctx context.Context, artifactID string) (s
 }
 
 // revealPathWithinRoot reports whether target lies within root
-// (filepath.Rel anti-traversal guard).
+// (filepath.Rel anti-traversal guard). Both paths are normalized to absolute
+// first: the configured storage root may be relative (e.g. "data/artifacts")
+// while ResolveAbsPath always returns an absolute path — mixing the two makes
+// filepath.Rel fail and would falsely reject legitimate in-root paths.
 func revealPathWithinRoot(root, target string) bool {
 	if strings.TrimSpace(root) == "" || strings.TrimSpace(target) == "" {
 		return false
 	}
-	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(target))
+	absRoot, err := filepath.Abs(filepath.Clean(root))
+	if err != nil {
+		return false
+	}
+	absTarget, err := filepath.Abs(filepath.Clean(target))
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(absRoot, absTarget)
 	if err != nil {
 		return false
 	}

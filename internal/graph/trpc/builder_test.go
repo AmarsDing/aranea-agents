@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -217,5 +218,24 @@ func TestGraphAgent_Run_InjectsParentAgentState(t *testing.T) {
 			t.Fatalf("Run() failed with sub-agent lookup bug: %v", err)
 		}
 		// Other errors are acceptable for this test (e.g. agent execution issues).
+	}
+}
+
+func TestResolveFieldType_MapStringAny(t *testing.T) {
+	// Regression: "map[string]any" must resolve to a non-nil reflect.Type.
+	// Without this, the deliverable StateField injected by ensureDeliverableStateField
+	// fails graph validation with "field deliverable has nil type".
+	rt := resolveFieldType("map[string]any")
+	if rt == nil {
+		t.Fatal("resolveFieldType(\"map[string]any\") returned nil")
+	}
+	if rt.Kind() != reflect.Map {
+		t.Fatalf("expected map kind, got %v", rt.Kind())
+	}
+
+	// "map" alias must also work.
+	rt2 := resolveFieldType("map")
+	if rt2 == nil {
+		t.Fatal("resolveFieldType(\"map\") returned nil")
 	}
 }

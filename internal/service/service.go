@@ -78,6 +78,9 @@ var ProviderSet = wire.NewSet(
 	// P1-1: 提供 sessionWorkspaceLookup 适配器，让 wire 自动注入到
 	// ArtifactService 做 IDOR 防护。
 	ProvideSessionWorkspaceLookup,
+	// 「全部产物」：提供 sessionWorkspaceSearcher 适配器，让 wire 自动注入到
+	// ArtifactService 做空 session_id 的 workspace 过滤。
+	ProvideSessionWorkspaceSearcher,
 	NewKnowledgeService,
 	NewEvaluationService,
 	NewA2AEndpointBuilder,
@@ -125,6 +128,8 @@ var ProviderSet = wire.NewSet(
 	NewSpiritTeamAssembler,
 	NewSpiritSynthesisService,
 	NewSynthesisModelAdapter,
+	// TeamStarter 依赖的窄接口（包内未导出），绑定到 SpiritSynthesisService。
+	wire.Bind(new(synthesisResultService), new(*SpiritSynthesisService)),
 	NewTeamStarter,
 	NewSkillEvolutionService,
 	NewSkillIntelligenceService,

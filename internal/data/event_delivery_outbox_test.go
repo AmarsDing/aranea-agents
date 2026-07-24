@@ -7,28 +7,44 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/loggateway"
-
-	_ "github.com/glebarez/go-sqlite/compat"
 )
 
 func newEventOutboxTestRepo(t *testing.T, dbName string) (biz.EventDeliveryOutboxRepo, *sql.DB) {
 	t.Helper()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+dbName+"?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if err := EnsureEventDeliveryOutboxSchema(ctx, db); err != nil {
-		t.Fatal(err)
+	db := testhelper.SetupTestPGRaw(t)
+	// DDL mirrors sql/migrations/20261010_event_delivery_outbox.sql (Postgres dialect).
+	for _, s := range []string{
+		`CREATE TABLE IF NOT EXISTS event_delivery_outbox (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL,
+			seq INTEGER NOT NULL,
+			event_id TEXT NOT NULL,
+			kind TEXT NOT NULL DEFAULT '',
+			entity_id TEXT NOT NULL DEFAULT '',
+			payload BYTEA NOT NULL,
+			published_at TEXT,
+			created_at TEXT NOT NULL
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_event_delivery_outbox_session_seq
+			ON event_delivery_outbox(session_id, seq)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_event_delivery_outbox_session_event_id
+			ON event_delivery_outbox(session_id, event_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_event_delivery_outbox_session_id
+			ON event_delivery_outbox(session_id)`,
+	} {
+		if _, err := db.ExecContext(ctx, s); err != nil {
+			t.Fatalf("outbox schema: %v", err)
+		}
 	}
 	d := &Data{
 		rawDB:   db,
 		readDB:  db,
 		rwDB:    NewReadWriteDB(db, db),
 		lg:      loggateway.NewNoop(),
-		dialect: DialectSQLite,
+		dialect: DialectPostgres,
 	}
 	return NewEventDeliveryOutboxRepo(d, loggateway.NewNoop()), db
 }

@@ -45,9 +45,9 @@ func TestGraphTraverseCTE_LinearChain(t *testing.T) {
 		{"ent-D", "concept", "Delta"},
 	}
 	for _, e := range entities {
-		if _, err := client.ExecContext(ctx, `INSERT INTO memory_entities (
+		if _, err := client.ExecContext(ctx, pgRebind(`INSERT INTO memory_entities (
  id, scope_type, scope_id, entity_type, name, name_normalized, status, created_at, updated_at
- ) VALUES (?,?,?,?,?,?,?,?,?)`,
+ ) VALUES (?,?,?,?,?,?,?,?,?)`),
 			e.id, "agent", "agent-1", e.entityType, e.name, e.name,
 			"active", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z"); err != nil {
 			t.Fatalf("insert entity %s: %v", e.id, err)
@@ -63,10 +63,10 @@ func TestGraphTraverseCTE_LinearChain(t *testing.T) {
 		{"rel-CD", "ent-C", "ent-D", 0.9},
 	}
 	for _, r := range relations {
-		if _, err := client.ExecContext(ctx, `INSERT INTO memory_relations (
+		if _, err := client.ExecContext(ctx, pgRebind(`INSERT INTO memory_relations (
  id, scope_type, scope_id, source_id, target_id, relation_type, weight, confidence, importance,
  status, created_at, updated_at
- ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+ ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
 			r.id, "agent", "agent-1", r.source, r.target, "CAUSAL",
 			r.weight, 0.8, 0.5, "active", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z"); err != nil {
 			t.Fatalf("insert relation %s: %v", r.id, err)
@@ -112,7 +112,9 @@ func TestGraphTraverseCTE_LinearChain(t *testing.T) {
 			t.Errorf("missing node %q in result", id)
 			continue
 		}
-		if abs(g.activation-want.activation) > 1e-9 {
+		// Tolerance 1e-6: weight columns are REAL (float4 on Postgres, ~7
+		// significant digits), so exact float8 equality is not achievable.
+		if abs(g.activation-want.activation) > 1e-6 {
 			t.Errorf("node %q activation: got %v, want %v", id, g.activation, want.activation)
 		}
 		if g.hop != want.hop {
@@ -149,9 +151,9 @@ func TestGraphTraverseCTE_TopKLimit(t *testing.T) {
 	d, client := openTestDBForNeuron(t)
 	ctx := context.Background()
 
-	if _, err := client.ExecContext(ctx, `INSERT INTO memory_entities (
+	if _, err := client.ExecContext(ctx, pgRebind(`INSERT INTO memory_entities (
  id, scope_type, scope_id, entity_type, name, name_normalized, status, created_at, updated_at
- ) VALUES (?,?,?,?,?,?,?,?,?)`,
+ ) VALUES (?,?,?,?,?,?,?,?,?)`),
 		"center", "agent", "agent-1", "concept", "Center", "center",
 		"active", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z"); err != nil {
 		t.Fatalf("insert center: %v", err)
@@ -168,17 +170,17 @@ func TestGraphTraverseCTE_TopKLimit(t *testing.T) {
 		{"n5", "Neighbor5", 0.1},
 	}
 	for _, n := range neighbors {
-		if _, err := client.ExecContext(ctx, `INSERT INTO memory_entities (
+		if _, err := client.ExecContext(ctx, pgRebind(`INSERT INTO memory_entities (
  id, scope_type, scope_id, entity_type, name, name_normalized, status, created_at, updated_at
- ) VALUES (?,?,?,?,?,?,?,?,?)`,
+ ) VALUES (?,?,?,?,?,?,?,?,?)`),
 			n.id, "agent", "agent-1", "concept", n.name, n.name,
 			"active", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z"); err != nil {
 			t.Fatalf("insert entity %s: %v", n.id, err)
 		}
-		if _, err := client.ExecContext(ctx, `INSERT INTO memory_relations (
+		if _, err := client.ExecContext(ctx, pgRebind(`INSERT INTO memory_relations (
  id, scope_type, scope_id, source_id, target_id, relation_type, weight, confidence, importance,
  status, created_at, updated_at
- ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+ ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
 			"rel-"+n.id, "agent", "agent-1", "center", n.id, "RELATED_TO",
 			n.weight, 0.8, 0.5, "active", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z"); err != nil {
 			t.Fatalf("insert relation for %s: %v", n.id, err)
@@ -213,9 +215,9 @@ func TestGraphTraverseCTE_HopLimit(t *testing.T) {
 	ctx := context.Background()
 
 	for _, id := range []string{"ent-A", "ent-B", "ent-C"} {
-		if _, err := client.ExecContext(ctx, `INSERT INTO memory_entities (
+		if _, err := client.ExecContext(ctx, pgRebind(`INSERT INTO memory_entities (
  id, scope_type, scope_id, entity_type, name, name_normalized, status, created_at, updated_at
- ) VALUES (?,?,?,?,?,?,?,?,?)`,
+ ) VALUES (?,?,?,?,?,?,?,?,?)`),
 			id, "agent", "agent-1", "concept", id, id,
 			"active", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z"); err != nil {
 			t.Fatalf("insert entity %s: %v", id, err)
@@ -227,10 +229,10 @@ func TestGraphTraverseCTE_HopLimit(t *testing.T) {
 		{"rel-AB", "ent-A", "ent-B"},
 		{"rel-BC", "ent-B", "ent-C"},
 	} {
-		if _, err := client.ExecContext(ctx, `INSERT INTO memory_relations (
+		if _, err := client.ExecContext(ctx, pgRebind(`INSERT INTO memory_relations (
  id, scope_type, scope_id, source_id, target_id, relation_type, weight, confidence, importance,
  status, created_at, updated_at
- ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+ ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
 			r.id, "agent", "agent-1", r.source, r.target, "CAUSAL",
 			0.8, 0.8, 0.5, "active", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z"); err != nil {
 			t.Fatalf("insert relation %s: %v", r.id, err)
@@ -260,9 +262,9 @@ func TestGraphTraverseCTE_EmptyGraph(t *testing.T) {
 	d, client := openTestDBForNeuron(t)
 	ctx := context.Background()
 
-	if _, err := client.ExecContext(ctx, `INSERT INTO memory_entities (
+	if _, err := client.ExecContext(ctx, pgRebind(`INSERT INTO memory_entities (
  id, scope_type, scope_id, entity_type, name, name_normalized, status, created_at, updated_at
- ) VALUES (?,?,?,?,?,?,?,?,?)`,
+ ) VALUES (?,?,?,?,?,?,?,?,?)`),
 		"lonely", "agent", "agent-1", "concept", "Lonely", "lonely",
 		"active", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z"); err != nil {
 		t.Fatalf("insert entity: %v", err)
@@ -302,9 +304,9 @@ func TestGraphTraverseCTE_DefaultParameters(t *testing.T) {
 	d, client := openTestDBForNeuron(t)
 	ctx := context.Background()
 
-	if _, err := client.ExecContext(ctx, `INSERT INTO memory_entities (
+	if _, err := client.ExecContext(ctx, pgRebind(`INSERT INTO memory_entities (
  id, scope_type, scope_id, entity_type, name, name_normalized, status, created_at, updated_at
- ) VALUES (?,?,?,?,?,?,?,?,?)`,
+ ) VALUES (?,?,?,?,?,?,?,?,?)`),
 		"solo", "agent", "agent-1", "concept", "Solo", "solo",
 		"active", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z"); err != nil {
 		t.Fatalf("insert entity: %v", err)

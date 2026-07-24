@@ -52,6 +52,15 @@
       :options="industryOptions"
       @update:model-value="$emit('update:industryFilter', String($event ?? ''))"
     />
+    <q-toggle
+      :model-value="showOrchestrated"
+      dense
+      no-caps
+      :label="t('teamsPage.showOrchestrated')"
+      @update:model-value="$emit('update:showOrchestrated', Boolean($event))"
+    >
+      <q-tooltip>{{ t('teamsPage.showOrchestratedHint') }}</q-tooltip>
+    </q-toggle>
     <template #actions>
       <q-btn
         flat
@@ -59,7 +68,7 @@
         no-caps
         color="primary"
         icon="refresh"
-        label="刷新"
+        :label="t('common.refresh')"
         :loading="loading"
         @click="$emit('refresh')"
       />
@@ -68,14 +77,18 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import AppPageToolbar from '../layout/AppPageToolbar.vue';
 import { modeOptions, statusOptions } from './teamUtils';
+
+const { t } = useI18n();
 
 defineProps<{
   search: string;
   modeFilter: string;
   statusFilter: string;
   industryFilter: string;
+  showOrchestrated: boolean;
   industryOptions: Array<{ label: string; value: string }>;
   loading: boolean;
   isDark: boolean;
@@ -86,6 +99,7 @@ defineEmits<{
   'update:modeFilter': [value: string];
   'update:statusFilter': [value: string];
   'update:industryFilter': [value: string];
+  'update:showOrchestrated': [value: boolean];
   refresh: [];
 }>();
 </script>

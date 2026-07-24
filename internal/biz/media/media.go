@@ -15,8 +15,8 @@ import (
 type Capability string
 
 const (
-	CapabilityImage       Capability = "image"
-	CapabilityVideo       Capability = "video"
+	CapabilityImage        Capability = "image"
+	CapabilityVideo        Capability = "video"
 	CapabilityImageToVideo Capability = "image_to_video"
 )
 

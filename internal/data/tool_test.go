@@ -2,35 +2,20 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"testing"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/ent"
-	"aranea-agents/internal/data/ent/migrate"
+	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/loggateway"
-
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
-	_ "github.com/glebarez/go-sqlite/compat"
 )
 
-// newToolTestRepo opens an in-memory SQLite backed Data instance with the
-// tools and tool_invocations schemas created, ready for toolRepo tests.
+// newToolTestRepo opens a schema-isolated Postgres backed Data instance with
+// the tools and tool_invocations schemas created (via Ent auto-migration),
+// ready for toolRepo tests.
 func newToolTestRepo(t *testing.T) (biz.ToolRepo, *Data) {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	if _, err := db.ExecContext(context.Background(), "PRAGMA foreign_keys=ON"); err != nil {
-		t.Fatalf("pragma fk: %v", err)
-	}
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.SQLite, db)))
-	if err := client.Schema.Create(context.Background(), migrate.WithDropIndex(true)); err != nil {
-		t.Fatalf("schema create: %v", err)
-	}
+	client, db := testhelper.SetupTestPG(t)
 	d := &Data{
 		entClient: client,
 		rw:        NewReadWriteClient(client, client),
@@ -38,7 +23,7 @@ func newToolTestRepo(t *testing.T) (biz.ToolRepo, *Data) {
 		readDB:    db,
 		rwDB:      NewReadWriteDB(db, db),
 		lg:        loggateway.NewNoop(),
-		dialect:   DialectSQLite,
+		dialect:   DialectPostgres,
 	}
 	return NewToolRepo(d), d
 }
@@ -56,7 +41,6 @@ func newToolTestRepo(t *testing.T) (biz.ToolRepo, *Data) {
 func TestToolRepo_SearchTools_P95Regression(t *testing.T) {
 	ctx := context.Background()
 	repo, d := newToolTestRepo(t)
-	defer d.entClient.Close()
 
 	// Seed one tool via the repo (exercises CreateTool path too).
 	tool, err := repo.CreateTool(ctx, biz.ToolUpsertInput{
@@ -79,7 +63,7 @@ func TestToolRepo_SearchTools_P95Regression(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		if _, err := d.rawDB.ExecContext(ctx, `INSERT INTO tool_invocations
 			(id, tool_key, tool_id, status, started_at, duration_ms, source, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, 'adk', ?)`,
+			VALUES ($1, $2, $3, $4, $5, $6, 'adk', $7)`,
 			fmt.Sprintf("%s-inv-%d", tool.ID, i), tool.Key, tool.ID, "success", cutoff, 100+i*10, cutoff); err != nil {
 			t.Fatalf("insert invocation %d: %v", i, err)
 		}
@@ -117,8 +101,7 @@ func TestToolRepo_SearchTools_P95Regression(t *testing.T) {
 // tool_invocations is empty (p95 LEFT JOIN yields NULL → COALESCE 0).
 func TestToolRepo_SearchTools_EmptyInvocations(t *testing.T) {
 	ctx := context.Background()
-	repo, d := newToolTestRepo(t)
-	defer d.entClient.Close()
+	repo, _ := newToolTestRepo(t)
 
 	if _, err := repo.CreateTool(ctx, biz.ToolUpsertInput{
 		Key:         "read_file",

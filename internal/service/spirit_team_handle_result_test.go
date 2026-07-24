@@ -118,7 +118,7 @@ func (s *stubSpiritTeamController) GetParallelConfig(_ context.Context, _ string
 	return biz.ParallelConfig{}
 }
 func (s *stubSpiritTeamController) AutoArchiveCompletedTeams(_ context.Context, _ string) {}
-func (s *stubSpiritTeamController) ReadUpstreamDeliverable(_ context.Context, _ string, _ int) (biz.UpstreamDeliverableContent, error) {
+func (s *stubSpiritTeamController) ReadUpstreamDeliverable(_ context.Context, _, _ string, _ int) (biz.UpstreamDeliverableContent, error) {
 	return biz.UpstreamDeliverableContent{}, nil
 }
 

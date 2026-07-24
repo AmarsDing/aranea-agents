@@ -150,4 +150,44 @@ describe('teamUtils.groupTeamsByIndustry', () => {
     expect(groups[0]?.label).toBe('金融（已停用）');
     expect(groups[0]?.teams).toHaveLength(1);
   });
+
+  it('places uncategorized teams exactly once in 未分类 group', () => {
+    const orphanTeam: Team = {
+      ...team,
+      id: 't-orphan',
+      taxonomy_industry_id: '',
+      definition_json: JSON.stringify({
+        version: 1,
+        mode: 'sequential',
+        members: [],
+      }),
+    };
+    const groups = groupTeamsByIndustry([orphanTeam], [], taxonomyTree);
+    const uncategorized = groups.find((g) => g.id === '__uncategorized__');
+    expect(uncategorized).toBeDefined();
+    expect(uncategorized?.teams).toHaveLength(1);
+    expect(uncategorized?.teams[0]?.id).toBe('t-orphan');
+    // Team must not appear in any other group simultaneously.
+    const totalOccurrences = groups.reduce(
+      (sum, g) => sum + g.teams.filter((t) => t.id === 't-orphan').length,
+      0,
+    );
+    expect(totalOccurrences).toBe(1);
+  });
+
+  it('does not duplicate uncategorized teams alongside categorized teams', () => {
+    const orphanTeam: Team = {
+      ...team,
+      id: 't-orphan',
+      taxonomy_industry_id: '',
+      definition_json: JSON.stringify({
+        version: 1,
+        mode: 'sequential',
+        members: [],
+      }),
+    };
+    const groups = groupTeamsByIndustry([team, orphanTeam], agents, taxonomyTree);
+    const allIds = groups.flatMap((g) => g.teams.map((t) => t.id));
+    expect(allIds.sort()).toEqual(['t-orphan', 't1']);
+  });
 });

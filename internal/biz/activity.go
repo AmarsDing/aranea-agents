@@ -154,6 +154,10 @@ type ActivityEmitter interface {
 	EmitConfirmRequest(ctx context.Context, params ActivityConfirmParams) (activityID string, err error)
 	// EmitConfirmResult updates a confirm Activity with the user's response.
 	EmitConfirmResult(ctx context.Context, activityID string, approved bool) error
+	// EmitConfirmTimeout marks a confirm Activity as timed out (cancelled with
+	// ToolErrorCode=confirm_timeout) so the UI can distinguish "user rejected"
+	// from "no response before the deadline".
+	EmitConfirmTimeout(ctx context.Context, activityID string) error
 }
 
 // activityEmitterKey is the context key for ActivityEmitter.

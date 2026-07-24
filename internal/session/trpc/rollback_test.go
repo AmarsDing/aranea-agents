@@ -2,33 +2,28 @@ package session
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"aranea-agents/internal/data"
+	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/ctxuser"
 	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/trpcscope"
-
-	_ "github.com/glebarez/go-sqlite/compat"
 )
 
 func TestRunnerRollbackStoreSoftDeletesEventsAfterBoundary(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	_, err = db.Exec(`CREATE TABLE trpc_session_events (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		app_name TEXT NOT NULL,
-		user_id TEXT NOT NULL,
-		session_id TEXT NOT NULL,
-		event BLOB NOT NULL,
-		created_at INTEGER NOT NULL,
-		updated_at INTEGER NOT NULL,
-		expires_at INTEGER DEFAULT NULL,
-		deleted_at INTEGER DEFAULT NULL
+	db := testhelper.SetupTestPGRaw(t)
+	// DDL mirrors cmd/migrate-sqlite-to-postgres/framework_schema.go (Postgres dialect).
+	_, err := db.Exec(`CREATE TABLE trpc_session_events (
+		id BIGSERIAL PRIMARY KEY,
+		app_name VARCHAR(255) NOT NULL,
+		user_id VARCHAR(255) NOT NULL,
+		session_id VARCHAR(255) NOT NULL,
+		event JSONB NOT NULL,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		expires_at TIMESTAMP DEFAULT NULL,
+		deleted_at TIMESTAMP DEFAULT NULL
 	)`)
 	if err != nil {
 		t.Fatal(err)
@@ -36,13 +31,13 @@ func TestRunnerRollbackStoreSoftDeletesEventsAfterBoundary(t *testing.T) {
 	ctx := ctxuser.WithUserID(context.Background(), "u1")
 	insertEvent := func() {
 		t.Helper()
-		if _, err := db.Exec(`INSERT INTO trpc_session_events (app_name, user_id, session_id, event, created_at, updated_at) VALUES (?, ?, ?, '{}', 1, 1)`, trpcscope.DefaultAppName, "u1", "s1"); err != nil {
+		if _, err := db.Exec(`INSERT INTO trpc_session_events (app_name, user_id, session_id, event) VALUES ($1, $2, $3, '{}')`, trpcscope.DefaultAppName, "u1", "s1"); err != nil {
 			t.Fatal(err)
 		}
 	}
 	lg := loggateway.NewNoop()
 	rwdb := data.NewReadWriteDB(db, db)
-	dialect := data.DialectSQLite
+	dialect := data.DialectPostgres
 	insertEvent()
 	boundary, err := NewRunnerRollbackStore(rwdb, dialect, lg).MarkBoundary(ctx, "s1", "run-1", "turn-1")
 	if err != nil {

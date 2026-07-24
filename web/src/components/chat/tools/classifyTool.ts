@@ -51,7 +51,7 @@ const BROWSER_TOOLS = new Set([
 ]);
 
 /** File read tools. */
-const FILE_READ_TOOLS = new Set(['read_file', 'file_read_file', 'file_read', 'get_file', 'cat_file', 'view_file']);
+const FILE_READ_TOOLS = new Set(['read_file', 'file_read_file', 'file_read', 'get_file', 'cat_file', 'view_file', 'read_member_file']);
 
 /** File write/edit tools. */
 const FILE_WRITE_TOOLS = new Set([
@@ -75,6 +75,8 @@ const FILE_SEARCH_TOOLS = new Set([
   'list_file',
   'file_search',
   'file_search_search',
+  'list_member_files',
+  'search_member_files',
 ]);
 
 /** Web search tools. */
@@ -85,6 +87,7 @@ const WEB_SEARCH_TOOLS = new Set([
   'google_search',
   'bing_search',
   'duckduckgo_search',
+  'search_messages',
 ]);
 
 /** Code execution tools. */

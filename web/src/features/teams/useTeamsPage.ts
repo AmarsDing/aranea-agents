@@ -2,6 +2,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { copyToClipboard, useQuasar } from 'quasar';
 import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
+import { i18n } from '../../i18n';
 import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
 import type { Agent } from '../agents/types';
 import type { Team, TeamDefinition, TeamRun, TeamRunEvent, TaskDeadLetterRow } from './types';
@@ -50,6 +51,9 @@ export function useTeamsPage() {
   const modeFilter = ref('');
   const statusFilter = ref('');
   const industryFilter = ref('');
+  // Orchestration-generated teams (spirit_session_id set) are hidden by default
+  // on the management page; users opt in via the toolbar toggle.
+  const showOrchestrated = ref(false);
   const taxonomyTree = ref<PlatformResourceTreeNode[]>([]);
   const currentPage = ref(1);
   const pageSize = ref(12);
@@ -66,6 +70,7 @@ export function useTeamsPage() {
     status: 'pending',
     app_name: '',
     taxonomy_industry_id: '',
+    spirit_session_id: '',
   });
   const definition = reactive<TeamDefinition>({
     version: 1,
@@ -100,18 +105,25 @@ export function useTeamsPage() {
   const canSave = computed(() =>
     Boolean(form.team_key && form.display_name && definition.members.some((member) => member.enabled)),
   );
-  const filteredTeams = computed(() => {
+  const matchesListFilters = (team: Team) => {
     const q = search.value.trim().toLowerCase();
-    return store.teams.filter((team) => {
-      const def = parseDefinition(team);
-      const matchesSearch =
-        !q ||
-        [team.display_name, team.team_key, def.description].some((value) => (value || '').toLowerCase().includes(q));
-      const matchesMode = !modeFilter.value || def.mode === modeFilter.value;
-      const matchesStatus = !statusFilter.value || team.status === statusFilter.value;
-      return matchesSearch && matchesMode && matchesStatus;
-    });
-  });
+    const def = parseDefinition(team);
+    const matchesSearch =
+      !q ||
+      [team.display_name, team.team_key, def.description].some((value) => (value || '').toLowerCase().includes(q));
+    const matchesMode = !modeFilter.value || def.mode === modeFilter.value;
+    const matchesStatus = !statusFilter.value || team.status === statusFilter.value;
+    return matchesSearch && matchesMode && matchesStatus;
+  };
+  const isOrchestrated = (team: Team) => String(team.spirit_session_id || '').trim() !== '';
+  const filteredTeams = computed(() =>
+    store.teams.filter((team) => (showOrchestrated.value || !isOrchestrated(team)) && matchesListFilters(team)),
+  );
+  // Orchestrated teams hidden solely by the toggle — surfaced in the empty state
+  // so users don't mistake "filtered out" for "no teams exist".
+  const hiddenOrchestratedCount = computed(() =>
+    showOrchestrated.value ? 0 : store.teams.filter((team) => isOrchestrated(team) && matchesListFilters(team)).length,
+  );
   const industryOptions = computed(() => industryOptionsFromTree(taxonomyTree.value));
   const totalFiltered = computed(() => filteredTeams.value.length);
   const pageMax = computed(() => Math.max(1, Math.ceil(totalFiltered.value / pageSize.value)));
@@ -123,7 +135,7 @@ export function useTeamsPage() {
     groupTeamsByIndustry(paginatedTeams.value, store.agents, taxonomyTree.value, industryFilter.value),
   );
 
-  watch([search, modeFilter, statusFilter, industryFilter], () => {
+  watch([search, modeFilter, statusFilter, industryFilter, showOrchestrated], () => {
     currentPage.value = 1;
   });
 
@@ -168,7 +180,14 @@ export function useTeamsPage() {
     editingId.value = '';
     editingHasActiveRun.value = false;
     selectedTeamTemplateKey.value = null;
-    Object.assign(form, { team_key: '', display_name: '', status: 'pending', app_name: '', taxonomy_industry_id: '' });
+    Object.assign(form, {
+      team_key: '',
+      display_name: '',
+      status: 'pending',
+      app_name: '',
+      taxonomy_industry_id: '',
+      spirit_session_id: '',
+    });
     resetDefinition(definition);
     editorOpen.value = true;
   }
@@ -183,6 +202,7 @@ export function useTeamsPage() {
       status: team.status,
       app_name: team.app_name,
       taxonomy_industry_id: team.taxonomy_industry_id || '',
+      spirit_session_id: team.spirit_session_id || '',
     });
     Object.assign(definition, parseDefinition(team));
     editorOpen.value = true;
@@ -391,9 +411,33 @@ export function useTeamsPage() {
     router.push({ name: 'team-run-observatory', params: { teamId: store.selectedTeam.id, runId: runID } });
   }
 
-  // Reorder UI is disabled (no Team.sort_order / ReorderTeams RPC). Keep no-op for call-site stability.
-  function reorderTeams(_ids: string[]) {
-    /* intentionally no-op */
+  // ── Retry (failed/cancelled → pending via backend state machine) ──
+
+  async function retryTeam(team: Team) {
+    try {
+      await store.retryTeam(team.id);
+      $q.notify({ type: 'positive', message: i18n.global.t('teamsPage.retrySuccess', { name: team.display_name }) });
+    } catch (err) {
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : i18n.global.t('teamsPage.retryFailed'),
+      });
+    }
+  }
+
+  /** Retry from inside the editor dialog; syncs the readonly status display on success. */
+  async function retryEditingTeam() {
+    if (!editingId.value) return;
+    try {
+      const res = await store.retryTeam(editingId.value);
+      form.status = res.status || 'pending';
+      $q.notify({ type: 'positive', message: i18n.global.t('teamsPage.retrySuccessShort') });
+    } catch (err) {
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : i18n.global.t('teamsPage.retryFailed'),
+      });
+    }
   }
 
   return {
@@ -405,6 +449,8 @@ export function useTeamsPage() {
     modeFilter,
     statusFilter,
     industryFilter,
+    showOrchestrated,
+    hiddenOrchestratedCount,
     taxonomyTree,
     industryOptions,
     teamIndustryGroups,
@@ -460,7 +506,8 @@ export function useTeamsPage() {
     loadRunSteps,
     loadDeadLetters,
     resolveDeadLetter,
-    reorderTeams,
+    retryTeam,
+    retryEditingTeam,
     storeAgents,
   };
 }

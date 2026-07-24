@@ -180,6 +180,44 @@ func TestEmitConfirmResult(t *testing.T) {
 	}
 }
 
+func TestEmitConfirmTimeout(t *testing.T) {
+	p, _ := testProjector()
+
+	stepID, _ := p.EmitConfirmRequest(context.Background(), biz.ActivityConfirmParams{
+		ToolName: "shell",
+		Content:  "Allow?",
+	})
+	capture := p.seq.(*capturingSequencer)
+	capture.events = nil
+
+	err := p.EmitConfirmTimeout(context.Background(), stepID)
+	if err != nil {
+		t.Fatalf("EmitConfirmTimeout returned error: %v", err)
+	}
+	if len(capture.events) != 1 {
+		t.Fatalf("expected 1 event for timeout, got %d", len(capture.events))
+	}
+	completed, ok := capture.events[0].(*biz.StepCompletedEvent)
+	if !ok {
+		t.Fatalf("expected StepCompletedEvent, got %T", capture.events[0])
+	}
+	if completed.Step.Status != biz.StepStatusCancelled {
+		t.Errorf("expected status=cancelled, got %s", completed.Step.Status)
+	}
+	if completed.Step.ToolErrorCode != ConfirmTimeoutErrorCode {
+		t.Errorf("expected ToolErrorCode=%q, got %q", ConfirmTimeoutErrorCode, completed.Step.ToolErrorCode)
+	}
+	if completed.Step.CompletedAt == nil {
+		t.Error("expected CompletedAt set")
+	}
+
+	// Test not found
+	err = p.EmitConfirmTimeout(context.Background(), "nonexistent")
+	if err == nil {
+		t.Error("expected error for nonexistent stepID")
+	}
+}
+
 func TestOnError(t *testing.T) {
 	p, capture := testProjector()
 	capture.events = nil // only care about error events

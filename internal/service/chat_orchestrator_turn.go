@@ -391,7 +391,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	} else if biz.IsA2AProxyAgent(ag) {
 		emitter.LogSkip("chat.intent.pass", "A2A Proxy Agent 跳过意图识别", event.P("agent_kind", ag.Kind))
 	} else {
-		emitter.LogSkip("chat.intent.pass", "Intent Pass 未启用或消息过短", event.P("intent_pass_enabled", intent.IntentPassFromAgent(ag)))
+		emitter.LogSkip("chat.intent.pass", "Intent Pass 未启用", event.P("intent_pass_enabled", intent.IntentPassFromAgent(ag)))
 	}
 
 	buildIntentStart := time.Now()
@@ -428,7 +428,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		// The turn will resume when the user submits clarification answers.
 		emitter.LogDone("chat.clarification_gate", "澄清门已触发，等待用户作答",
 			event.P("step_id", clarifyDecision.StepID))
-		o.setRunStatus(ctx, sessionID, runID, "awaiting_confirmation", "")
+		// Run 状态用 awaiting_user（Run FSM 合法态：running→awaiting_user→running），
+		// 与工具确认等待同语义；awaiting_confirmation 是 Session 层状态，
+		// Run FSM 无此态，直接使用会被 FSM 拒绝导致前端停在"运行中"。
+		o.setRunStatus(ctx, sessionID, runID, string(biz.RunStateAwaitingUser), "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, nil
 	}
 

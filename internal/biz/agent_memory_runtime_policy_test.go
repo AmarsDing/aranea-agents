@@ -41,6 +41,39 @@ func TestResolveMemoryRuntimePolicy_ReadWriteSymmetric(t *testing.T) {
 	}
 }
 
+// TestResolveMemoryRuntimePolicy_DefaultRecallScopesIncludeTeam verifies the C5
+// default: when L3RecallScopesJSON is empty, the fallback scopes include "team"
+// so team-scope L3 facts are recallable by default. Without a TeamID in the
+// runtime context, L3ScopeTargets simply skips the team scope (no-op).
+func TestResolveMemoryRuntimePolicy_DefaultRecallScopesIncludeTeam(t *testing.T) {
+	p := ResolveMemoryRuntimePolicy(&AgentRuntimeSettings{
+		MemoryEnabled: true,
+		L3Enabled:     true,
+		L0InjectL3:    true,
+	})
+	want := []string{"agent", "team"}
+	if len(p.L3RecallScopes) != len(want) {
+		t.Fatalf("default L3RecallScopes=%v want %v", p.L3RecallScopes, want)
+	}
+	for i, s := range want {
+		if p.L3RecallScopes[i] != s {
+			t.Fatalf("default L3RecallScopes=%v want %v", p.L3RecallScopes, want)
+		}
+	}
+}
+
+func TestL3ScopeTargets_TeamScopeSkippedWithoutTeamID(t *testing.T) {
+	targets := L3ScopeTargets(MemoryRuntimeContext{AgentID: "ag1"}, []string{"agent", "team"})
+	for _, tg := range targets {
+		if tg.ScopeType == "team" {
+			t.Fatalf("team scope should be skipped when TeamID is empty, got %v", targets)
+		}
+	}
+	if len(targets) != 1 || targets[0].ScopeType != "agent" {
+		t.Fatalf("expected only agent scope, got %v", targets)
+	}
+}
+
 func TestL3ScopeTargets_ResolvesTeamAndWorkspace(t *testing.T) {
 	targets := L3ScopeTargets(MemoryRuntimeContext{
 		AgentID: "ag1", UserID: "u1", TeamID: "team-9", Workspace: "ws-main",

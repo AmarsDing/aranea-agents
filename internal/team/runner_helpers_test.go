@@ -7,6 +7,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
+
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
 
 type stepBusRunWriter struct {
@@ -31,6 +33,21 @@ func (r *stepBusRunWriter) UpdateTeamRunGraphExecutionID(_ context.Context, _, _
 func (r *stepBusRunWriter) UpdateTeamRunTraceID(_ context.Context, _, _ string) error { return nil }
 func (r *stepBusRunWriter) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error {
 	return nil
+}
+
+// TestTeamTurnBaseRunOptions_InjectsTeamIDRuntimeState verifies the C5 root
+// injection: the base run options of a team turn carry team_id in RuntimeState
+// so the graph runtime can propagate it to member invocations.
+func TestTeamTurnBaseRunOptions_InjectsTeamIDRuntimeState(t *testing.T) {
+	opts := teamTurnBaseRunOptions("team-123", "do something")
+	var ro trpcagent.RunOptions
+	for _, opt := range opts {
+		opt(&ro)
+	}
+	got, ok := ro.RuntimeState["team_id"].(string)
+	if !ok || got != "team-123" {
+		t.Fatalf("RuntimeState[team_id]=%v want %q", ro.RuntimeState["team_id"], "team-123")
+	}
 }
 
 func TestPersistStep_EmitsFinished(t *testing.T) {

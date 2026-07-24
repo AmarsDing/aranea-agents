@@ -342,7 +342,15 @@ func (f *AgentFactoryImpl) confirmAgentCreation(ctx context.Context, profile biz
 	approved := err == nil && toolConfirmApproved(reply)
 
 	if emitter != nil && confirmActivityID != "" {
-		if emitErr := emitter.EmitConfirmResult(ctx, confirmActivityID, approved); emitErr != nil {
+		// A deadline expiry is NOT a user rejection — emit the timeout variant
+		// so the UI renders "已超时" instead of "已拒绝".
+		if err != nil && confirmCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
+			if emitErr := emitter.EmitConfirmTimeout(ctx, confirmActivityID); emitErr != nil {
+				f.lg.Warn("AgentFactory EmitConfirmTimeout failed",
+					loggateway.StepID("agent_factory.confirm"),
+					loggateway.Err(emitErr))
+			}
+		} else if emitErr := emitter.EmitConfirmResult(ctx, confirmActivityID, approved); emitErr != nil {
 			f.lg.Warn("AgentFactory EmitConfirmResult failed",
 				loggateway.StepID("agent_factory.confirm"),
 				loggateway.Err(emitErr))

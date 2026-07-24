@@ -2,35 +2,22 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/internal/data/testhelper"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-
-	_ "github.com/glebarez/go-sqlite/compat"
 )
 
-// newTestEntClient creates an in-memory SQLite Ent client for testing.
+// newTestEntClient creates a schema-isolated Postgres Ent client for testing.
+// No tables are created — the tests only exercise client routing and empty
+// transactions, which Postgres allows.
 func newTestEntClient(t *testing.T) *ent.Client {
 	t.Helper()
-	rawDB, err := sql.Open(dialect.SQLite, "file:enttest?mode=memory&cache=shared&_fk=1")
-	if err != nil {
-		t.Fatalf("failed to open test sqlite: %v", err)
-	}
-	t.Cleanup(func() { rawDB.Close() })
-	// Set PRAGMAs required by Ent Schema.Create.
-	for _, pragma := range []string{
-		"PRAGMA foreign_keys=ON",
-		"PRAGMA journal_mode=WAL",
-	} {
-		if _, e := rawDB.ExecContext(context.Background(), pragma); e != nil {
-			t.Fatalf("pragma %s: %v", pragma, e)
-		}
-	}
-	drv := entsql.OpenDB(dialect.SQLite, rawDB)
+	rawDB := testhelper.SetupTestPGRaw(t)
+	drv := entsql.OpenDB(dialect.Postgres, rawDB)
 	client := ent.NewClient(ent.Driver(drv))
 	t.Cleanup(func() { client.Close() })
 	return client

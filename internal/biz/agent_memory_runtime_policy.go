@@ -179,7 +179,10 @@ func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePol
 		p.L3DecayIntervalHours = 24
 	}
 	if len(p.L3RecallScopes) == 0 {
-		p.L3RecallScopes = []string{"agent"}
+		// C5: default scopes include "team" so team-scope L3 facts are recallable
+		// by default. L3ScopeTargets skips the team scope when TeamID is empty,
+		// so non-team sessions are unaffected.
+		p.L3RecallScopes = []string{"agent", "team"}
 	}
 	// P2-04: unified prompt budget and provenance defaults.
 	if p.MemoryPromptTotalBudgetChars <= 0 {

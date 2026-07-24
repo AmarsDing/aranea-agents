@@ -434,6 +434,54 @@ message GetTeamRunObservatoryResponse {
 Runner E2E：EP-TEST-TG-01（Team sequential Run + WS status 序列）。
 ---
 
+## 十一、Graph Engineering 评审增强（2026-07-23 ✅ 已落地）
+
+> 来源：Graph Engineering 评审输出的三项运行期健壮性增强，按 Phase A/B/C 以 TDD 落地。实施任务表见 [53-team-graph-orchestration.development.md Phase 9](./53-team-graph-orchestration.development.md#phase-9--graph-engineering-评审增强-已完成2026-07-23)。
+
+### 11.1 Phase A — critic_loop 收敛语义（迭代上限接线 + loop-until-dry）
+
+**问题**：`CriticLoop.MaxIterations` 此前未接线（死配置），critic 不批准时循环无界；反馈不再有新意见时仍机械迭代。
+
+**设计**：
+
+- **参数化 CondFuncRef**：`biz.CriticLoopCondFuncRefForConfig(threshold, maxIterations)` 生成 `critic_loop[@<threshold>][#<maxIterations>]`，`biz.ParseCriticLoopCondFuncRef` 解析。编译期由 `team/embedded_graph.go` 将 `critic_loop.score_threshold` / `critic_loop.max_iterations`（未配置时默认上限 3）写入 `ConditionalEdgeDef.CondFuncRef`；`graph/adapter.EnsureCriticLoopCondFuncs` 按 ref 注册参数化条件函数实例，`ResolveBuildConfig` 可解析。
+- **迭代上限强制收敛**：critic 轮次 = 携带 `orchestration_control` 工具调用的消息数（`collectCriticMessages`，每轮评估一条）；达到 `maxIterations` 仍未批准 → 返回 `approved` 强制收敛（Info 日志），循环有界。
+- **loop-until-dry 提前收敛**：最近两轮 critic 反馈的归一化内容相同且非空（`criticFeedbackDry`：小写化 + 空白折叠）→ 继续迭代无收益，提前返回 `approved`（Info 日志）。
+- 既有判定链不变：`orchestration_control` 结构化决策 → 关键词 `approved`（含否定排除）→ `score_threshold` 分数判定。
+
+**测试**：`graph/adapter/critic_loop_cond_test.go`（`MaxIterationsForcesApproval` / `MaxIterationsNotReached` / `DryConvergence` / `DryNotTriggeredWhenFeedbackDiffers`）；`biz/node_circuit_breaker_test.go`（ref 格式化/解析）；`team/graph_compile_test.go`（编译期 ref 接线）。
+
+**运行时补全（2026-07-24，Phase 9.1）**：上述设计在 team 图（agent 节点 critic）路径下存在四个断点，修复后收敛语义才真正端到端生效：
+
+- **终止哨兵 `biz.EndNodeID`**（`"__end__"`，镜像 `trpcgraph.End`）：`approved` 必须路由到哨兵终止图；映射到 critic 节点会构成自循环，图永不结束。`graph/trpc/validator` 将哨兵视为合法 PathMap 目标且不参与环检测。
+- **轮次捕获 callback**（`graph/trpc/critic_round_capture.go`）：agent 节点输出只落 `StateKeyLastResponse` / `StateKeyNodeResponses`，不进 `StateKeyMessages`——messages 路径计不到轮次。`criticRoundCaptureCallback` 作为 AfterNodeCallback 接线到 critic_loop finish 的 agent 节点，将轮次计数与最近两轮评审文本写入 `StateKeyMetadata`（`critic_loop_rounds` / `critic_loop_last_response` / `critic_loop_prev_response`，key 定义于 `biz/team_types.go`）。team 图未注册 metadata schema 字段，整体 map 覆写语义，失败静默（fail-open）。
+- **cond func 双数据源**：轮次取 `max(metadata, messages)`；干涸比较先看 metadata 的 prev/last，再看 messages 路径；评审文本优先 `last_response`（agent 节点路径），回退 messages 末条。
+- **中文批准判定**：批准词表（「批准」「评审通过」「审核通过」「结论：通过」等）与拒绝词表（「不批准」「未通过」「驳回」等），拒绝词先判（防「不批准」含「批准」误判）；裸「通过」不入词表（中文常作介词）。英文 `approved` 词界匹配 + 否定窗口判定不变。
+
+### 11.2 Phase B — 跨团队交付物契约的运行时校验
+
+**问题**：P1 形式契约是 dagRun 启动时的 advisory 校验（仅警告）；运行时下游团队经 `read_upstream_deliverable` 读上游产物时无契约把关——agent 传错 `team_id` 或上下游契约漂移表现为静默读到错误内容。
+
+**设计**：工具调用级校验——reader 团队（由调用方 session 解析）声明了 `InputContract` 时，在全文提取**之前**对上游团队声明的 `Deliverables` 做 name/type/format 匹配；不匹配返回结构化 `*biz.ContractMismatchError`（含双方 teamID + 逐条 `ContractMismatch{missing|type_mismatch|format_mismatch}`），错误文案 LLM-actionable，引导 agent 自动纠正后重试。任一侧无契约声明时跳过校验（legacy 团队保持 advisory）。
+
+详细设计与实施记录见 [1-chat.design.md §B.10.15.11](./1-chat.design.md)。
+
+### 11.3 Phase C — 并行成员文件操作的 Worktree 隔离
+
+**问题**：`ParallelToolExecutor` + `WorktreeIsolator`（模块 70 §八）已具备隔离执行能力，但 `ToolCall.IsolationStrategy` 依赖调用方手工标记，缺少统一分类点，文件写工具并发执行存在互踩风险。
+
+**设计**：
+
+- **单一打标点**：`tools.IsolationStrategyForTool(toolName)`——先经 `alias.RuntimeToolNameAliases` 归一化 UI 别名（`write_file→save_file`、`edit_file→diff_edit`），再匹配文件写工具集 `{save_file, diff_edit, patch_file, replace_content}` → `IsolationStrategyWorktree`；只读文件工具（`read_file`/`list_file`/`search_*`）与无关工具返回 `""`（直接执行）。ToolCall 构造点统一经此函数打标，分类保持一致。
+- **执行路由**：`ParallelToolExecutor.executeOne` 按 `IsolationStrategy` 分发——worktree 标记走 `WorktreeIsolator`（成功合并回主仓，失败清理 worktree），空标记直接执行。
+- **E2E 验证**：`TestBatchExecuteSpiritTools_ParallelWorktreeFileOps`——两个并发 `save_file` 各自在独立 worktree 提交不同文件，双双合并进主仓（首个 ff、次个 --no-ff）且 HEAD 前进。
+
+**测试**：`tools/parallel_executor_test.go::TestIsolationStrategyForTool`（canonical/别名/只读/无关工具分类）；`tools/worktree_isolator_test.go::TestBatchExecuteSpiritTools_ParallelWorktreeFileOps`。
+
+执行器与隔离器本体设计见 [70-orchestration-longtask-memory.design.md §八](./70-orchestration-longtask-memory.design.md)。
+
+---
+
 ## 附录：企业级蓝图与 AI 落地指南
 
 > 原 `53-team-graph-orchestration.design.md#附录企业级蓝图与-ai-落地指南` 已并入本文。

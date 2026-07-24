@@ -211,8 +211,3 @@ func TestMonitorLogEntry_WithMeta(t *testing.T) {
 	}
 }
 
-func TestMinIntentPassRunes(t *testing.T) {
-	if minIntentPassRunes != 20 {
-		t.Errorf("minIntentPassRunes = %d, want 20", minIntentPassRunes)
-	}
-}

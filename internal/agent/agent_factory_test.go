@@ -448,10 +448,11 @@ func TestAgentFactory_BuildDynamicAgentKey_Deterministic(t *testing.T) {
 
 // fakeFactoryEmitter implements biz.ActivityEmitter for confirmation tests.
 type fakeFactoryEmitter struct {
-	mu             sync.Mutex
-	confirmParams  []biz.ActivityConfirmParams
-	confirmResults []factoryConfirmResult
-	idCounter      int
+	mu              sync.Mutex
+	confirmParams   []biz.ActivityConfirmParams
+	confirmResults  []factoryConfirmResult
+	confirmTimeouts []string
+	idCounter       int
 }
 
 type factoryConfirmResult struct {
@@ -473,6 +474,13 @@ func (e *fakeFactoryEmitter) EmitConfirmResult(_ context.Context, activityID str
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.confirmResults = append(e.confirmResults, factoryConfirmResult{activityID: activityID, approved: approved})
+	return nil
+}
+
+func (e *fakeFactoryEmitter) EmitConfirmTimeout(_ context.Context, activityID string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.confirmTimeouts = append(e.confirmTimeouts, activityID)
 	return nil
 }
 

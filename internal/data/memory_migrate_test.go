@@ -8,8 +8,9 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// openTestDataForMigration creates a *Data sharing the same SQLite connection
-// for migration testing. It reuses openTestDataForMemory from trpc_memory_facts_test.go.
+// openTestDataForMigration creates a *Data backed by a schema-isolated
+// Postgres test DB for migration testing. It reuses openTestDataForMemory
+// from trpc_memory_facts_test.go.
 func openTestDataForMigration(t *testing.T) *data.Data {
 	t.Helper()
 	d, _ := openTestDataForMemory(t)
@@ -34,11 +35,11 @@ CREATE TABLE IF NOT EXISTS trpc_memory_entities (
 )`); err != nil {
 		t.Fatal(err)
 	}
-	_, err := client.ExecContext(ctx, `
+	_, err := client.ExecContext(ctx, pgRebind(`
 INSERT INTO trpc_memory_entities (
  id, scope_type, scope_id, user_id, agent_id, entity_type, name, statement, details,
  confidence, importance, source_kind, source_session_id, source_message_id, metadata_json, created_at, migrated
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		"leg-gate", "trpc_memory", "agent-gate", "user-gate", "agent-gate",
 		"memory_fact", "Gate test fact", "Gate test fact statement", "Gate test fact",
 		0.7, 0.85, "legacy", "", "", "{}", "2026-01-01T00:00:00Z", 0,
@@ -88,11 +89,11 @@ CREATE TABLE IF NOT EXISTS trpc_memory_entities (
 )`); err != nil {
 		t.Fatal(err)
 	}
-	_, err := client.ExecContext(ctx, `
+	_, err := client.ExecContext(ctx, pgRebind(`
 INSERT INTO trpc_memory_entities (
  id, scope_type, scope_id, user_id, agent_id, entity_type, name, statement, details,
  confidence, importance, source_kind, source_session_id, source_message_id, metadata_json, created_at, migrated
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		"leg-invalid", "trpc_memory", "", "user-x", "",
 		"memory_fact", "", "", "",
 		0.5, 0.85, "legacy", "", "", "{}", "2026-01-01T00:00:00Z", 0,

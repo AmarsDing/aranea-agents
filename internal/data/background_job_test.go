@@ -2,37 +2,16 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
 	"aranea-agents/internal/biz/backgroundjob"
-	"aranea-agents/internal/data/ent"
-	"aranea-agents/internal/data/ent/migrate"
-
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
-	_ "github.com/glebarez/go-sqlite/compat"
 )
 
-// openTestData opens an in-memory SQLite backed Data instance and runs Ent AutoMigrate.
+// openTestData opens a Postgres backed Data instance (isolated test schema).
 func openTestData(t *testing.T) *Data {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	// glebarez/go-sqlite compat does not support _fk=1 in DSN; enable FK via PRAGMA.
-	if _, err := db.ExecContext(context.Background(), "PRAGMA foreign_keys=ON"); err != nil {
-		t.Fatalf("pragma fk: %v", err)
-	}
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.SQLite, db)))
-	t.Cleanup(func() { _ = client.Close() })
-	if err := client.Schema.Create(context.Background(), migrate.WithDropIndex(true)); err != nil {
-		t.Fatalf("schema create: %v", err)
-	}
-	return &Data{entClient: client, rw: NewReadWriteClient(client, client)}
+	return newTestDataPG(t)
 }
 
 func TestBackgroundJobRepo_CreateAndGet(t *testing.T) {

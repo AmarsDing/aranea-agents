@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -535,7 +536,7 @@ func TestReadUpstreamDeliverable_ReturnsFullContent(t *testing.T) {
 	longContent := strings.Repeat("全", 3000) + "\n- 发现X"
 	seedCompletedTeamWithSteps(teams, sessions, steps, "t-up", "sp1", "st_1", "调研团队", longContent)
 
-	out, err := u.ReadUpstreamDeliverable(context.Background(), "t-up", 0)
+	out, err := u.ReadUpstreamDeliverable(context.Background(), "", "t-up", 0)
 	if err != nil {
 		t.Fatalf("ReadUpstreamDeliverable: %v", err)
 	}
@@ -562,7 +563,7 @@ func TestReadUpstreamDeliverable_TruncatesToMaxChars(t *testing.T) {
 	longContent := strings.Repeat("详", 3000)
 	seedCompletedTeamWithSteps(teams, sessions, steps, "t-up", "sp1", "st_1", "团队", longContent)
 
-	out, err := u.ReadUpstreamDeliverable(context.Background(), "t-up", 100)
+	out, err := u.ReadUpstreamDeliverable(context.Background(), "", "t-up", 100)
 	if err != nil {
 		t.Fatalf("ReadUpstreamDeliverable: %v", err)
 	}
@@ -588,7 +589,7 @@ func TestReadUpstreamDeliverable_MaxCharsClamped(t *testing.T) {
 	longContent := strings.Repeat("量", MaxUpstreamDeliverableChars+5000)
 	seedCompletedTeamWithSteps(teams, sessions, steps, "t-up", "sp1", "st_1", "团队", longContent)
 
-	out, err := u.ReadUpstreamDeliverable(context.Background(), "t-up", MaxUpstreamDeliverableChars*2)
+	out, err := u.ReadUpstreamDeliverable(context.Background(), "", "t-up", MaxUpstreamDeliverableChars*2)
 	if err != nil {
 		t.Fatalf("ReadUpstreamDeliverable: %v", err)
 	}
@@ -606,7 +607,7 @@ func TestReadUpstreamDeliverable_TeamNotCompleted_Error(t *testing.T) {
 	u := newDeliverableUsecase(teams, sessions)
 	teams.items["t-run"] = Team{ID: "t-run", SpiritSessionID: "sp1", DagNodeID: "st_1", Status: TeamStatusRunning}
 
-	if _, err := u.ReadUpstreamDeliverable(context.Background(), "t-run", 0); err == nil {
+	if _, err := u.ReadUpstreamDeliverable(context.Background(), "", "t-run", 0); err == nil {
 		t.Fatalf("running team must reject full-text reads")
 	}
 }
@@ -617,14 +618,14 @@ func TestReadUpstreamDeliverable_NoContent_Error(t *testing.T) {
 	u := newDeliverableUsecase(teams, sessions)
 	seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "团队", "")
 
-	if _, err := u.ReadUpstreamDeliverable(context.Background(), "t-up", 0); err == nil {
+	if _, err := u.ReadUpstreamDeliverable(context.Background(), "", "t-up", 0); err == nil {
 		t.Fatalf("completed team without deliverable content must error")
 	}
 }
 
 func TestReadUpstreamDeliverable_EmptyTeamID_Error(t *testing.T) {
 	u := newDeliverableUsecase(newDeliverableTeamRepo(), newDeliverableSessionAccessor())
-	if _, err := u.ReadUpstreamDeliverable(context.Background(), "  ", 0); err == nil {
+	if _, err := u.ReadUpstreamDeliverable(context.Background(), "", "  ", 0); err == nil {
 		t.Fatalf("blank team_id must error")
 	}
 }
@@ -1140,5 +1141,443 @@ func TestWriteDeliverablesToSession_GraphStateDisabled_NoStateRead(t *testing.T)
 	ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]
 	if ref.Summary != "reply 摘要" || ref.StructuredJSON != "" {
 		t.Fatalf("disabled channel → legacy envelope, got %+v", ref)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Phase B: ReadUpstreamDeliverable runtime contract validation
+// (read_upstream_deliverable 工具调用级契约校验：reader 团队的 InputContract
+// 对上游团队声明的 Deliverables 做 name/type/format 校验，不匹配返回结构化
+// *ContractMismatchError 供调用方自动纠正重试)
+// ---------------------------------------------------------------------------
+
+// seedReaderTeamWithContract seeds a downstream (reader) team + its main
+// session carrying the given input contract JSON.
+func seedReaderTeamWithContract(teams *deliverableTeamRepo, sessions *deliverableSessionAccessor, id, spiritSessionID, inputContractJSON string) Team {
+	t := Team{
+		ID:              id,
+		SpiritSessionID: spiritSessionID,
+		DagNodeID:       "st_2",
+		DisplayName:     "下游团队",
+		Status:          TeamStatusRunning,
+		InputContract:   inputContractJSON,
+	}
+	teams.items[id] = t
+	sessions.sessionsByTeam[id] = Session{ID: "sess-" + id, TeamID: id, ParentSessionID: spiritSessionID, SessionType: string(SessionTypeTeam)}
+	return t
+}
+
+// Matching contracts: the read proceeds and returns the full content.
+func TestReadUpstreamDeliverable_ContractMatch_ReturnsContent(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	up := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "设计团队", "设计规格全文")
+	up.Deliverables = `[{"name":"design_spec","type":"document","format":"markdown"}]`
+	teams.items["t-up"] = up
+	seedReaderTeamWithContract(teams, sessions, "t-down", "sp1", `[{"name":"design_spec","type":"document","format":"markdown"}]`)
+
+	out, err := u.ReadUpstreamDeliverable(context.Background(), "sess-t-down", "t-up", 0)
+	if err != nil {
+		t.Fatalf("matching contracts must not block the read: %v", err)
+	}
+	if out.Content != "设计规格全文" {
+		t.Fatalf("content mismatch: %q", out.Content)
+	}
+}
+
+// Mismatched contracts: type + format + missing entry must all be reported
+// in one structured *ContractMismatchError (LLM-actionable, auto-retryable).
+func TestReadUpstreamDeliverable_ContractMismatch_StructuredError(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	up := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "数据团队", "数据全文")
+	up.Deliverables = `[{"name":"design_spec","type":"data","format":"json"}]`
+	teams.items["t-up"] = up
+	seedReaderTeamWithContract(teams, sessions, "t-down", "sp1",
+		`[{"name":"design_spec","type":"document","format":"markdown"},{"name":"api_schema","type":"document","format":"json"}]`)
+
+	_, err := u.ReadUpstreamDeliverable(context.Background(), "sess-t-down", "t-up", 0)
+	if err == nil {
+		t.Fatal("contract mismatch must block the read with a structured error")
+	}
+	var cmErr *ContractMismatchError
+	if !errors.As(err, &cmErr) {
+		t.Fatalf("error should be *ContractMismatchError, got %T: %v", err, err)
+	}
+	if cmErr.ReaderTeamID != "t-down" || cmErr.UpstreamTeamID != "t-up" {
+		t.Fatalf("error team ids mismatch: %+v", cmErr)
+	}
+	if len(cmErr.Mismatches) != 3 {
+		t.Fatalf("expected 3 mismatches (type, format, missing), got %+v", cmErr.Mismatches)
+	}
+	byKind := map[string]ContractMismatch{}
+	for _, m := range cmErr.Mismatches {
+		byKind[m.Kind] = m
+	}
+	if m := byKind[ContractMismatchType]; m.Name != "design_spec" || m.Expected != "document" || m.Actual != "data" {
+		t.Fatalf("type mismatch detail wrong: %+v", m)
+	}
+	if m := byKind[ContractMismatchFormat]; m.Name != "design_spec" || m.Expected != "markdown" || m.Actual != "json" {
+		t.Fatalf("format mismatch detail wrong: %+v", m)
+	}
+	if m := byKind[ContractMismatchMissing]; m.Name != "api_schema" {
+		t.Fatalf("missing mismatch detail wrong: %+v", m)
+	}
+	// The message must be LLM-actionable: name the teams and the entries.
+	msg := err.Error()
+	for _, want := range []string{"t-down", "t-up", "design_spec", "api_schema"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("error message should mention %q, got %q", want, msg)
+		}
+	}
+}
+
+// No reader session (CLI / unresolvable caller): contract check is skipped —
+// declarations stay advisory for callers without a resolvable reader team.
+func TestReadUpstreamDeliverable_ContractCheckSkippedWithoutReaderSession(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	up := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "数据团队", "数据全文")
+	up.Deliverables = `[{"name":"dataset","type":"data","format":"json"}]`
+	teams.items["t-up"] = up
+
+	out, err := u.ReadUpstreamDeliverable(context.Background(), "", "t-up", 0)
+	if err != nil {
+		t.Fatalf("empty reader session must skip the contract check: %v", err)
+	}
+	if out.Content != "数据全文" {
+		t.Fatalf("content mismatch: %q", out.Content)
+	}
+}
+
+// Undeclared contracts on either side: nothing to validate → read proceeds.
+func TestReadUpstreamDeliverable_ContractCheckSkippedWhenUndeclared(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	// Case 1: reader has an input contract but upstream declares nothing.
+	up := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "上游团队", "成果全文")
+	teams.items["t-up"] = up // no Deliverables
+	seedReaderTeamWithContract(teams, sessions, "t-down", "sp1", `[{"name":"design_spec","type":"document","format":"markdown"}]`)
+
+	if _, err := u.ReadUpstreamDeliverable(context.Background(), "sess-t-down", "t-up", 0); err != nil {
+		t.Fatalf("undeclared upstream contract must skip the check: %v", err)
+	}
+
+	// Case 2: upstream declares deliverables but reader has no input contract.
+	up2 := seedCompletedTeam(teams, sessions, "t-up2", "sp1", "st_1", "上游团队2", "成果全文2")
+	up2.Deliverables = `[{"name":"dataset","type":"data","format":"json"}]`
+	teams.items["t-up2"] = up2
+	seedReaderTeamWithContract(teams, sessions, "t-down2", "sp1", "")
+
+	if _, err := u.ReadUpstreamDeliverable(context.Background(), "sess-t-down2", "t-up2", 0); err != nil {
+		t.Fatalf("empty reader input contract must skip the check: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// C1 认知信封 + C4 血缘链（B.10.20.2 / B.10.20.5）
+// ---------------------------------------------------------------------------
+
+// State map with a "cognition" reserved key: the envelope carries the typed
+// Cognition record, the key is excluded from StructuredJSON, and DerivedFrom
+// is filled from Team.DependsOn.
+func TestWriteDeliverablesToSession_GraphStateBridge_CognitionExtracted(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{
+		"summary": "state 摘要",
+		"cognition": map[string]any{
+			"decisions":      []any{map[string]any{"choice": "方案A", "rationale": "成本低", "confidence": 0.8}},
+			"rejected":       []any{map[string]any{"option": "方案B", "reason": "太慢"}},
+			"assumptions":    []any{"数据已封板"},
+			"open_questions": []any{"样本偏差未校正"},
+		},
+		"extra": "kept",
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	team := seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`,
+		"reply 摘要")
+	team.DependsOn = []string{"st_0"}
+	teams.items["t1"] = team
+
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]
+
+	// C1: cognition bridged into the envelope.
+	if ref.Cognition == nil {
+		t.Fatalf("cognition should be extracted from the state map, got %+v", ref)
+	}
+	if len(ref.Cognition.Decisions) != 1 || ref.Cognition.Decisions[0].Choice != "方案A" || ref.Cognition.Decisions[0].Confidence != 0.8 {
+		t.Fatalf("decisions mismatch: %+v", ref.Cognition.Decisions)
+	}
+	if len(ref.Cognition.Rejected) != 1 || ref.Cognition.Rejected[0].Option != "方案B" {
+		t.Fatalf("rejected mismatch: %+v", ref.Cognition.Rejected)
+	}
+	if len(ref.Cognition.Assumptions) != 1 || ref.Cognition.Assumptions[0] != "数据已封板" {
+		t.Fatalf("assumptions mismatch: %+v", ref.Cognition.Assumptions)
+	}
+	if len(ref.Cognition.OpenQuestions) != 1 || ref.Cognition.OpenQuestions[0] != "样本偏差未校正" {
+		t.Fatalf("open_questions mismatch: %+v", ref.Cognition.OpenQuestions)
+	}
+
+	// Reserved keys must not land in StructuredJSON; other keys must.
+	if strings.Contains(ref.StructuredJSON, "cognition") || strings.Contains(ref.StructuredJSON, "summary") {
+		t.Fatalf("structured_json must exclude reserved keys, got %q", ref.StructuredJSON)
+	}
+	if !strings.Contains(ref.StructuredJSON, "extra") {
+		t.Fatalf("structured_json should keep non-reserved keys, got %q", ref.StructuredJSON)
+	}
+
+	// C4: derived_from mirrors Team.DependsOn.
+	if len(ref.DerivedFrom) != 1 || ref.DerivedFrom[0] != "st_0" {
+		t.Fatalf("derived_from should mirror DependsOn, got %+v", ref.DerivedFrom)
+	}
+}
+
+// A malformed cognition entry (wrong shape) is tolerated: nil Cognition, the
+// write still succeeds.
+func TestWriteDeliverablesToSession_GraphStateBridge_MalformedCognition_Tolerated(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{
+		"summary":   "state 摘要",
+		"cognition": "not-an-object",
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`,
+		"reply 摘要")
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("malformed cognition must not block the write: %v", err)
+	}
+	ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]
+	if ref.Cognition != nil {
+		t.Fatalf("malformed cognition → nil, got %+v", ref.Cognition)
+	}
+}
+
+// No DependsOn → DerivedFrom stays empty (omitempty keeps the envelope
+// byte-compatible with pre-C4 writes).
+func TestWriteDeliverablesToSession_NoDependsOn_DerivedFromEmpty(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+	seedCompletedTeam(teams, sessions, "t1", "sp1", "st_1", "团队", "成果")
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	if ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]; len(ref.DerivedFrom) != 0 {
+		t.Fatalf("no DependsOn → empty derived_from, got %+v", ref.DerivedFrom)
+	}
+	if strings.Contains(teams.items["t1"].DeliverablesOutput, "derived_from") {
+		t.Fatalf("empty derived_from must be omitted, got %q", teams.items["t1"].DeliverablesOutput)
+	}
+}
+
+// Envelope with cognition → the injection prefix renders the cognition lines
+// after the summary.
+func TestInjectUpstreamDeliverables_RendersCognition(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	upstream := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "调研团队", "不应使用")
+	upstream.DeliverablesOutput = `{"st_1":{"summary":"结论摘要","team_id":"t-up","team_session_id":"sess-t-up","size_chars":4,"truncated":false,` +
+		`"cognition":{"decisions":[{"choice":"方案A","rationale":"成本低","confidence":0.8}],` +
+		`"rejected":[{"option":"方案B","reason":"太慢"}],` +
+		`"assumptions":["数据已封板"],"open_questions":["样本偏差未校正"]}}}`
+	teams.items["t-up"] = upstream
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	for _, want := range []string{
+		"[上游决策] 选择 方案A（理由: 成本低，置信度 0.8）；否决 方案B（原因: 太慢）",
+		"[上游假设] 数据已封板",
+		"[上游遗留问题] 样本偏差未校正",
+	} {
+		if !strings.Contains(prefix, want) {
+			t.Fatalf("prefix should contain %q, got %q", want, prefix)
+		}
+	}
+}
+
+// Envelope without cognition → the prefix keeps its legacy shape (no
+// cognition lines).
+func TestInjectUpstreamDeliverables_NoCognition_NoCognitionLines(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	upstream := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "调研团队", "成果")
+	upstream.DeliverablesOutput = `{"st_1":{"summary":"摘要","team_id":"t-up","team_session_id":"sess-t-up","size_chars":2,"truncated":false}}`
+	teams.items["t-up"] = upstream
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	if strings.Contains(prefix, "[上游决策]") || strings.Contains(prefix, "[上游假设]") || strings.Contains(prefix, "[上游遗留问题]") {
+		t.Fatalf("no cognition → no cognition lines, got %q", prefix)
+	}
+}
+
+// Overlong cognition items are truncated to cognitionItemMaxRunes so a
+// verbose upstream record cannot blow up the injection prefix.
+func TestRenderCognitionLines_TruncatesLongItems(t *testing.T) {
+	long := strings.Repeat("长", 500)
+	out := renderCognitionLines(&DeliverableCognition{
+		Decisions:   []DeliverableDecision{{Choice: "A", Rationale: long}},
+		Assumptions: []string{long},
+	})
+	if out == "" {
+		t.Fatal("expected rendered cognition")
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if len([]rune(line)) > cognitionItemMaxRunes+len("[上游假设] ")+1 {
+			t.Fatalf("line exceeds truncation budget (%d runes): %q", len([]rune(line)), line)
+		}
+	}
+	if !strings.Contains(out, "[上游决策]") || !strings.Contains(out, "[上游假设]") {
+		t.Fatalf("both aspects should render, got %q", out)
+	}
+}
+
+// nil / empty cognition renders nothing.
+func TestRenderCognitionLines_Empty(t *testing.T) {
+	if got := renderCognitionLines(nil); got != "" {
+		t.Fatalf("nil cognition → empty, got %q", got)
+	}
+	if got := renderCognitionLines(&DeliverableCognition{}); got != "" {
+		t.Fatalf("empty cognition → empty, got %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// C2 契约内容级 Schema 校验（B.10.20.3）
+// ---------------------------------------------------------------------------
+
+// schema_json round-trips through contract parsing; absent schema stays empty.
+func TestParseDeliverableContracts_SchemaJSON(t *testing.T) {
+	contracts, err := ParseDeliverableContracts(`[{"name":"dataset","type":"data","format":"json","schema_json":"{\"type\":\"object\"}"},{"name":"doc","type":"document","format":"markdown"}]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contracts) != 2 {
+		t.Fatalf("expected 2 contracts, got %+v", contracts)
+	}
+	if contracts[0].SchemaJSON != `{"type":"object"}` {
+		t.Fatalf("schema_json mismatch: %q", contracts[0].SchemaJSON)
+	}
+	if contracts[1].SchemaJSON != "" {
+		t.Fatalf("absent schema_json must stay empty, got %q", contracts[1].SchemaJSON)
+	}
+}
+
+// Content satisfying the reader's schema → the read proceeds.
+func TestReadUpstreamDeliverable_SchemaMatch_ReturnsContent(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	up := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "数据团队", `{"budget":100,"currency":"CNY"}`)
+	up.Deliverables = `[{"name":"dataset","type":"data","format":"json"}]`
+	teams.items["t-up"] = up
+	seedReaderTeamWithContract(teams, sessions, "t-down", "sp1",
+		`[{"name":"dataset","type":"data","format":"json","schema_json":"{\"type\":\"object\",\"required\":[\"budget\"]}"}]`)
+
+	out, err := u.ReadUpstreamDeliverable(context.Background(), "sess-t-down", "t-up", 0)
+	if err != nil {
+		t.Fatalf("schema-satisfying content must not be blocked: %v", err)
+	}
+	if !strings.Contains(out.Content, "budget") {
+		t.Fatalf("content mismatch: %q", out.Content)
+	}
+}
+
+// Content violating the reader's schema → structured *ContractMismatchError
+// with a schema_mismatch entry carrying the violation detail.
+func TestReadUpstreamDeliverable_SchemaMismatch_StructuredError(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	up := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "数据团队", `{"cost":5}`)
+	up.Deliverables = `[{"name":"dataset","type":"data","format":"json"}]`
+	teams.items["t-up"] = up
+	seedReaderTeamWithContract(teams, sessions, "t-down", "sp1",
+		`[{"name":"dataset","type":"data","format":"json","schema_json":"{\"type\":\"object\",\"required\":[\"budget\"]}"}]`)
+
+	_, err := u.ReadUpstreamDeliverable(context.Background(), "sess-t-down", "t-up", 0)
+	if err == nil {
+		t.Fatal("schema violation must block the read with a structured error")
+	}
+	var cmErr *ContractMismatchError
+	if !errors.As(err, &cmErr) {
+		t.Fatalf("error should be *ContractMismatchError, got %T: %v", err, err)
+	}
+	if len(cmErr.Mismatches) != 1 {
+		t.Fatalf("expected 1 schema mismatch, got %+v", cmErr.Mismatches)
+	}
+	m := cmErr.Mismatches[0]
+	if m.Kind != ContractMismatchSchema || m.Name != "dataset" {
+		t.Fatalf("mismatch detail wrong: %+v", m)
+	}
+	if !strings.Contains(m.Expected, "budget") {
+		t.Fatalf("mismatch should carry the violation detail, got %q", m.Expected)
+	}
+	if msg := err.Error(); !strings.Contains(msg, "dataset") || !strings.Contains(msg, "schema") {
+		t.Fatalf("error message should be LLM-actionable, got %q", msg)
+	}
+}
+
+// Advisory skips: non-json format entries, non-JSON content, and invalid
+// schema declarations must not block the read.
+func TestReadUpstreamDeliverable_SchemaCheckSkips(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	// Case 1: entry format is markdown → schema ignored even though present.
+	up := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "文档团队", "markdown 全文")
+	up.Deliverables = `[{"name":"doc","type":"document","format":"markdown"}]`
+	teams.items["t-up"] = up
+	seedReaderTeamWithContract(teams, sessions, "t-down", "sp1",
+		`[{"name":"doc","type":"document","format":"markdown","schema_json":"{\"type\":\"object\",\"required\":[\"x\"]}"}]`)
+	if _, err := u.ReadUpstreamDeliverable(context.Background(), "sess-t-down", "t-up", 0); err != nil {
+		t.Fatalf("non-json format must skip schema check: %v", err)
+	}
+
+	// Case 2: json format but content is not valid JSON → skip (advisory).
+	up2 := seedCompletedTeam(teams, sessions, "t-up2", "sp1", "st_1", "数据团队", "不是 JSON 文本")
+	up2.Deliverables = `[{"name":"dataset","type":"data","format":"json"}]`
+	teams.items["t-up2"] = up2
+	seedReaderTeamWithContract(teams, sessions, "t-down2", "sp1",
+		`[{"name":"dataset","type":"data","format":"json","schema_json":"{\"type\":\"object\",\"required\":[\"budget\"]}"}]`)
+	if _, err := u.ReadUpstreamDeliverable(context.Background(), "sess-t-down2", "t-up2", 0); err != nil {
+		t.Fatalf("non-JSON content must skip schema check: %v", err)
+	}
+
+	// Case 3: invalid schema declaration on the reader side → execution error,
+	// advisory skip (the reader's own contract is broken, not the upstream's).
+	up3 := seedCompletedTeam(teams, sessions, "t-up3", "sp1", "st_1", "数据团队", `{"budget":1}`)
+	up3.Deliverables = `[{"name":"dataset","type":"data","format":"json"}]`
+	teams.items["t-up3"] = up3
+	seedReaderTeamWithContract(teams, sessions, "t-down3", "sp1",
+		`[{"name":"dataset","type":"data","format":"json","schema_json":"not-a-schema"}]`)
+	if _, err := u.ReadUpstreamDeliverable(context.Background(), "sess-t-down3", "t-up3", 0); err != nil {
+		t.Fatalf("invalid schema declaration must skip schema check: %v", err)
 	}
 }

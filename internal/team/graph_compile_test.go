@@ -3,6 +3,7 @@ package team
 import (
 	"testing"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -131,6 +132,49 @@ func TestCompileToGraphBuildConfig_criticLoop(t *testing.T) {
 	}
 	if cfg.ConditionalEdges[0].PathMap["retry"] != "member-1" {
 		t.Fatalf("retry path=%q", cfg.ConditionalEdges[0].PathMap["retry"])
+	}
+	// approved 必须路由到终止哨兵 __end__；映射到 critic 节点会造成自循环，
+	// 图永远不结束（critic_loop 不收敛 bug 的回归守卫）。
+	if cfg.ConditionalEdges[0].PathMap["approved"] != biz.EndNodeID {
+		t.Fatalf("approved path=%q want %q", cfg.ConditionalEdges[0].PathMap["approved"], biz.EndNodeID)
+	}
+	// 未配置 CriticLoop 时默认 maxIterations=3（死配置修复：迭代上限必须接线）。
+	// ref 编码 critic 节点 ID（finish=member-2），cond func 按节点隔离轮次。
+	if want := biz.CriticLoopCondFuncRefForNode(0, 3, "member-2"); cfg.ConditionalEdges[0].CondFuncRef != want {
+		t.Fatalf("cond ref=%q want %q", cfg.ConditionalEdges[0].CondFuncRef, want)
+	}
+	// 显式步数天花板：(maxIter+2)*(nodes+1) = (3+2)*(2+1) = 15，
+	// 失控图在贴近预期迭代数处截断，而非框架默认 100。
+	if cfg.MaxSteps != 15 {
+		t.Fatalf("MaxSteps=%d want 15", cfg.MaxSteps)
+	}
+}
+
+func TestCompileToGraphBuildConfig_criticLoopExplicitConfig(t *testing.T) {
+	def := Definition{
+		Mode:       "critic_loop",
+		CriticLoop: &CriticLoopConfig{MaxIterations: 5, ScoreThreshold: 0.8},
+		Members: []MemberDef{
+			{AgentID: "gen", SortOrder: 1, Role: "generator"},
+			{AgentID: "crit", SortOrder: 2, Role: "critic"},
+		},
+	}
+	cfg, _, err := CompileToGraphBuildConfig(def, nil, loggateway.NewNoop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.ConditionalEdges) != 1 {
+		t.Fatalf("cond=%d want 1", len(cfg.ConditionalEdges))
+	}
+	if cfg.ConditionalEdges[0].PathMap["approved"] != biz.EndNodeID {
+		t.Fatalf("approved path=%q want %q", cfg.ConditionalEdges[0].PathMap["approved"], biz.EndNodeID)
+	}
+	if want := biz.CriticLoopCondFuncRefForNode(0.8, 5, "member-2"); cfg.ConditionalEdges[0].CondFuncRef != want {
+		t.Fatalf("cond ref=%q want %q", cfg.ConditionalEdges[0].CondFuncRef, want)
+	}
+	// (5+2)*(2+1) = 21
+	if cfg.MaxSteps != 21 {
+		t.Fatalf("MaxSteps=%d want 21", cfg.MaxSteps)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -17,8 +18,10 @@ import (
 
 // UpstreamDeliverableReader is the biz-layer port backing the tool.
 // *biz.SpiritTeamUsecase satisfies it (via biz.SpiritTeamController).
+// readerSessionID identifies the calling team's main session so the biz layer
+// can run the runtime contract check against its InputContract (Phase B).
 type UpstreamDeliverableReader interface {
-	ReadUpstreamDeliverable(ctx context.Context, teamID string, maxChars int) (biz.UpstreamDeliverableContent, error)
+	ReadUpstreamDeliverable(ctx context.Context, readerSessionID, teamID string, maxChars int) (biz.UpstreamDeliverableContent, error)
 }
 
 // ReadUpstreamDeliverableTool lets a downstream team member retrieve the FULL
@@ -106,7 +109,7 @@ func (t *ReadUpstreamDeliverableTool) Call(ctx context.Context, jsonArgs []byte)
 		maxChars = biz.MaxUpstreamDeliverableChars
 	}
 
-	out, err := t.reader.ReadUpstreamDeliverable(ctx, teamID, maxChars)
+	out, err := t.reader.ReadUpstreamDeliverable(ctx, readerSessionIDFromCtx(ctx), teamID, maxChars)
 	if err != nil {
 		if t.lg != nil {
 			t.lg.Warn("读取上游交付物失败",
@@ -124,6 +127,17 @@ func (t *ReadUpstreamDeliverableTool) Call(ctx context.Context, jsonArgs []byte)
 		TeamID:    out.TeamID,
 		SessionID: out.SessionID,
 	}, nil
+}
+
+// readerSessionIDFromCtx extracts the calling agent's session ID from the
+// invocation context (empty when the tool is invoked outside an agent run,
+// e.g. CLI — the biz layer then skips the runtime contract check).
+func readerSessionIDFromCtx(ctx context.Context) string {
+	inv, ok := trpcagent.InvocationFromContext(ctx)
+	if !ok || inv == nil || inv.Session == nil {
+		return ""
+	}
+	return strings.TrimSpace(inv.Session.ID)
 }
 
 // --- interface guards ---

@@ -23,7 +23,7 @@ import (
 // 让 PublishGraphTaskStatus 的 system.notice 经过持久化（EventRouter →
 // UpsertActivity），避免刷新后丢失。graphProj 在 wire 中先于 sequencer 创建，
 // 需后注入打破循环。
-func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus biz.EventBus, realOrch *RealTeamOrchestrator, agentReader biz.AgentReader, graphProj *GraphOrchestrationProjector) *ChatService {
+func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus biz.EventBus, realOrch *RealTeamOrchestrator, agentReader biz.AgentReader, graphProj *GraphOrchestrationProjector, mbWaker biz.MailboxWaker) *ChatService {
 	deps.Turn.AfterTurn = biz.NoopNativeTurnAfter{}
 	cs := NewChatService(deps)
 	// Backfill turnGateway into TeamStarter to break the Wire cycle:
@@ -31,6 +31,12 @@ func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus
 	// TeamStarter needs TurnGateway for the system-push pattern
 	// (checkAllTeamsCompleted → SynthesizeResults → ExecuteTurn).
 	if setter, ok := deps.Team.TeamStarter.(interface{ SetTurnGateway(biz.TurnGateway) }); ok {
+		setter.SetTurnGateway(cs)
+	}
+	// M71: backfill TurnExecutorGateway into the dept mailbox waker to break
+	// the Wire cycle: ChatService → RuntimeTooling → DeptMailboxUsecase →
+	// MailboxWaker → TurnExecutorGateway → ChatService.
+	if setter, ok := mbWaker.(interface{ SetTurnGateway(biz.TurnExecutorGateway) }); ok {
 		setter.SetTurnGateway(cs)
 	}
 	// Inject the v2 PlanExecutor into TeamStarter. May be nil (v1-only mode);

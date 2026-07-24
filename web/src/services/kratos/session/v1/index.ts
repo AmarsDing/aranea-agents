@@ -594,10 +594,17 @@ export type ListStepsV2Request = {
   sessionId: string | undefined;
   turnId: string | undefined;
   taskId: string | undefined;
+  // 0 = 不分页（现状语义，全量）；>0 时仅对 session 级查询生效
+  limit: number | undefined;
+  // 0 = 最新窗口；>0 = 取 seq < before_seq 的上一页（向更早翻页）
+  beforeSeq: number | undefined;
 };
 
 export type ListStepsV2Response = {
+  // 始终按 seq 升序返回
   steps: StepV2[] | undefined;
+  // limit>0 时有效：是否还有更早的 steps
+  hasMore: boolean | undefined;
 };
 
 // StepV2 mirrors biz.Step. ToolArgs/ToolResult are bytes (json.RawMessage).
@@ -1564,6 +1571,12 @@ export function createSessionV2ServiceClient(
       }
       if (request.taskId) {
         queryParams.push(`taskId=${encodeURIComponent(request.taskId.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      if (request.beforeSeq) {
+        queryParams.push(`beforeSeq=${encodeURIComponent(request.beforeSeq.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

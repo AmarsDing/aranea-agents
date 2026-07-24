@@ -61,8 +61,11 @@ func TestEntErrToBizErr_ConstraintError(t *testing.T) {
 		t.Fatalf("first insert: %v", err)
 	}
 	_, err = client.Session.Create().SetID("dup-session").SetTitle("test").SetStatus("active").Save(ctx)
-	if !ent.IsConstraintError(err) {
-		t.Fatalf("expected ConstraintError, got %v", err)
+	// NOTE: cannot assert ent.IsConstraintError here — it relies on string
+	// matching against the driver message, which fails on localized (e.g.
+	// Chinese) Postgres servers. Assert the SQLSTATE 23505 contract instead.
+	if !isPgUniqueViolation(err) {
+		t.Fatalf("expected pg unique violation (23505), got %v", err)
 	}
 
 	got := entErrToBizErr(err, "SESSION")

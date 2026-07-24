@@ -57,12 +57,32 @@ export function useFollowScroll(opts: FollowScrollOpts) {
     }
   }
 
+  /**
+   * 程序滚动必须瞬时：容器若带 CSS scroll-behavior:smooth（如 .chat-messages__viewport），
+   * scrollTop/scrollIntoView 会变成长达 ~1.5s 的动画，期间持续派发 scroll 事件，
+   * programmaticScroll 标志被首个事件消费后，后续事件被误判为「用户滚离底部」→ following=false
+   * （2026-07-23 运行时验证：会话切换后偶发停在距底 669px）。
+   */
+  function withInstantScroll<T>(el: HTMLElement, fn: () => T): T {
+    const style = el.style;
+    if (!style) return fn(); // 测试桩等元素无 style 时直接执行
+    const prev = style.scrollBehavior;
+    style.scrollBehavior = 'auto';
+    try {
+      return fn();
+    } finally {
+      style.scrollBehavior = prev;
+    }
+  }
+
   function scrollToBottom() {
     const el = opts.scrollEl.value;
     if (!el) return;
     clampScrollTop(el);
     programmaticScroll = true;
-    el.scrollTop = maxScrollTop(el);
+    withInstantScroll(el, () => {
+      el.scrollTop = maxScrollTop(el);
+    });
   }
 
   /** 容器内是否存在非空选区（用户正在选择文字）。 */
@@ -78,6 +98,11 @@ export function useFollowScroll(opts: FollowScrollOpts) {
   }
 
   function performScroll() {
+    // 竞态守卫（2026-07-23 运行时验证发现）：scheduleScroll 注册 rAF 时 following=true，
+    // 但浏览器把 scroll 事件排在同帧 rAF 回调之前派发——流式期间用户滚离的一帧内，
+    // 事件先把 following 置 false，此处若不检查就会「滚回底部 → dist=0 → following 又被置 true」，
+    // 用户被锁死在 FOLLOWING。执行前必须以最新状态为准。
+    if (!following.value || !opts.enabled.value) return;
     lastRun = Date.now();
     scrollToBottom();
   }
@@ -97,7 +122,6 @@ export function useFollowScroll(opts: FollowScrollOpts) {
       if (trailingTimer) clearTimeout(trailingTimer);
       trailingTimer = setTimeout(() => {
         trailingTimer = null;
-        if (!following.value || !opts.enabled.value) return;
         if (rafId) return;
         rafId = requestAnimationFrame(() => {
           rafId = 0;
@@ -152,7 +176,7 @@ export function useFollowScroll(opts: FollowScrollOpts) {
     if (anchorEl) {
       programmaticScroll = true;
       if (typeof anchorEl.scrollIntoView === 'function') {
-        anchorEl.scrollIntoView({ block: 'start' });
+        withInstantScroll(el, () => anchorEl.scrollIntoView({ block: 'start' }));
       }
       return;
     }

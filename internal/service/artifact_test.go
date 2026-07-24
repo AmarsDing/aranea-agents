@@ -98,7 +98,7 @@ func newArtifactService() *service.ArtifactService {
 	repo := newMemArtifactRepo()
 	uc := biz.NewArtifactUsecase(repo, loggateway.NewNoop())
 	signer := artifact.NewSigner(loggateway.NewNoop())
-	return service.NewArtifactService(uc, signer, nil) // P1-1: nil = 跳过 workspace 校验（旧测试向后兼容）
+	return service.NewArtifactService(uc, signer, nil, nil) // P1-1: nil = 跳过 workspace 校验（旧测试向后兼容）
 }
 
 func TestArtifactService_Upload_Get_Delete(t *testing.T) {

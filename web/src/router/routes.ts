@@ -210,4 +210,7 @@ export const routes: RouteRecordRaw[] = [
         : []),
     ],
   },
+  // Catch-all：未匹配路径（如 /teams 笔误或过期书签）重定向到 overview，
+  // 避免 RouterView 渲染 null vnode 导致整页空白崩溃。
+  { path: '/:pathMatch(.*)*', redirect: '/overview' },
 ];

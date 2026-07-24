@@ -180,6 +180,14 @@ func (p *synthesisEventPublisher) PublishSynthesisCompleted(ctx context.Context,
 	p.bus.Publish(ctx, ev)
 }
 
+// synthesisResultService is the narrow 1-method port TeamStarter depends on
+// for the system-push synthesis flow. Satisfied by *SpiritSynthesisService;
+// declared at the consumer side so unit tests can stub the degraded and
+// hard-fail paths without constructing the full biz.SynthesisUsecase graph.
+type synthesisResultService interface {
+	SynthesizeResults(ctx context.Context, spiritSessionID string, strategy string) (*biz.SynthesisOutput, error)
+}
+
 // SpiritSynthesisService is a thin transport adapter that delegates all business
 // logic to biz.SynthesisUsecase and translates domain errors to API errors.
 type SpiritSynthesisService struct {
@@ -203,6 +211,14 @@ func NewSpiritSynthesisService(
 func (s *SpiritSynthesisService) SynthesizeResults(ctx context.Context, spiritSessionID string, strategy string) (*biz.SynthesisOutput, error) {
 	output, err := s.uc.SynthesizeResults(ctx, spiritSessionID, strategy)
 	if err != nil {
+		// B.10.17 degraded path: the usecase returns a non-nil degraded output
+		// alongside the LLM error (structured report already published). Keep
+		// the output so callers (buildSynthesisMessage) can still trigger the
+		// summary turn — without it the parent Task would stay Running forever
+		// (task.completed is deferred to the synthesis continuation turn).
+		if output != nil {
+			return output, err
+		}
 		return nil, translateSynthesisError(err)
 	}
 	return output, nil

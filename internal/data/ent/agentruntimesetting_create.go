@@ -1240,6 +1240,20 @@ func (_c *AgentRuntimeSettingCreate) SetNillableIntentPassEnabled(v *bool) *Agen
 	return _c
 }
 
+// SetClarificationEnabled sets the "clarification_enabled" field.
+func (_c *AgentRuntimeSettingCreate) SetClarificationEnabled(v bool) *AgentRuntimeSettingCreate {
+	_c.mutation.SetClarificationEnabled(v)
+	return _c
+}
+
+// SetNillableClarificationEnabled sets the "clarification_enabled" field if the given value is not nil.
+func (_c *AgentRuntimeSettingCreate) SetNillableClarificationEnabled(v *bool) *AgentRuntimeSettingCreate {
+	if v != nil {
+		_c.SetClarificationEnabled(*v)
+	}
+	return _c
+}
+
 // SetChannelID sets the "channel_id" field.
 func (_c *AgentRuntimeSettingCreate) SetChannelID(v string) *AgentRuntimeSettingCreate {
 	_c.mutation.SetChannelID(v)
@@ -2399,6 +2413,10 @@ func (_c *AgentRuntimeSettingCreate) defaults() {
 		v := agentruntimesetting.DefaultIntentPassEnabled
 		_c.mutation.SetIntentPassEnabled(v)
 	}
+	if _, ok := _c.mutation.ClarificationEnabled(); !ok {
+		v := agentruntimesetting.DefaultClarificationEnabled
+		_c.mutation.SetClarificationEnabled(v)
+	}
 	if _, ok := _c.mutation.ChannelID(); !ok {
 		v := agentruntimesetting.DefaultChannelID
 		_c.mutation.SetChannelID(v)
@@ -2883,6 +2901,9 @@ func (_c *AgentRuntimeSettingCreate) check() error {
 	}
 	if _, ok := _c.mutation.IntentPassEnabled(); !ok {
 		return &ValidationError{Name: "intent_pass_enabled", err: errors.New(`ent: missing required field "AgentRuntimeSetting.intent_pass_enabled"`)}
+	}
+	if _, ok := _c.mutation.ClarificationEnabled(); !ok {
+		return &ValidationError{Name: "clarification_enabled", err: errors.New(`ent: missing required field "AgentRuntimeSetting.clarification_enabled"`)}
 	}
 	if _, ok := _c.mutation.ChannelID(); !ok {
 		return &ValidationError{Name: "channel_id", err: errors.New(`ent: missing required field "AgentRuntimeSetting.channel_id"`)}
@@ -3437,6 +3458,10 @@ func (_c *AgentRuntimeSettingCreate) createSpec() (*AgentRuntimeSetting, *sqlgra
 	if value, ok := _c.mutation.IntentPassEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldIntentPassEnabled, field.TypeBool, value)
 		_node.IntentPassEnabled = value
+	}
+	if value, ok := _c.mutation.ClarificationEnabled(); ok {
+		_spec.SetField(agentruntimesetting.FieldClarificationEnabled, field.TypeBool, value)
+		_node.ClarificationEnabled = value
 	}
 	if value, ok := _c.mutation.ChannelID(); ok {
 		_spec.SetField(agentruntimesetting.FieldChannelID, field.TypeString, value)
@@ -5009,6 +5034,18 @@ func (u *AgentRuntimeSettingUpsert) SetIntentPassEnabled(v bool) *AgentRuntimeSe
 // UpdateIntentPassEnabled sets the "intent_pass_enabled" field to the value that was provided on create.
 func (u *AgentRuntimeSettingUpsert) UpdateIntentPassEnabled() *AgentRuntimeSettingUpsert {
 	u.SetExcluded(agentruntimesetting.FieldIntentPassEnabled)
+	return u
+}
+
+// SetClarificationEnabled sets the "clarification_enabled" field.
+func (u *AgentRuntimeSettingUpsert) SetClarificationEnabled(v bool) *AgentRuntimeSettingUpsert {
+	u.Set(agentruntimesetting.FieldClarificationEnabled, v)
+	return u
+}
+
+// UpdateClarificationEnabled sets the "clarification_enabled" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsert) UpdateClarificationEnabled() *AgentRuntimeSettingUpsert {
+	u.SetExcluded(agentruntimesetting.FieldClarificationEnabled)
 	return u
 }
 
@@ -7332,6 +7369,20 @@ func (u *AgentRuntimeSettingUpsertOne) SetIntentPassEnabled(v bool) *AgentRuntim
 func (u *AgentRuntimeSettingUpsertOne) UpdateIntentPassEnabled() *AgentRuntimeSettingUpsertOne {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateIntentPassEnabled()
+	})
+}
+
+// SetClarificationEnabled sets the "clarification_enabled" field.
+func (u *AgentRuntimeSettingUpsertOne) SetClarificationEnabled(v bool) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetClarificationEnabled(v)
+	})
+}
+
+// UpdateClarificationEnabled sets the "clarification_enabled" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertOne) UpdateClarificationEnabled() *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateClarificationEnabled()
 	})
 }
 
@@ -9948,6 +9999,20 @@ func (u *AgentRuntimeSettingUpsertBulk) SetIntentPassEnabled(v bool) *AgentRunti
 func (u *AgentRuntimeSettingUpsertBulk) UpdateIntentPassEnabled() *AgentRuntimeSettingUpsertBulk {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateIntentPassEnabled()
+	})
+}
+
+// SetClarificationEnabled sets the "clarification_enabled" field.
+func (u *AgentRuntimeSettingUpsertBulk) SetClarificationEnabled(v bool) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetClarificationEnabled(v)
+	})
+}
+
+// UpdateClarificationEnabled sets the "clarification_enabled" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertBulk) UpdateClarificationEnabled() *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateClarificationEnabled()
 	})
 }
 

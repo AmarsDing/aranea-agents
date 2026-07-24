@@ -66,6 +66,18 @@
           >成员 {{ definition.members.length }} · {{ formatDate(team.updated_at) }}</span
         >
         <div class="team-card__action-group">
+          <q-btn
+            v-if="canRetry"
+            flat
+            dense
+            round
+            size="sm"
+            color="warning"
+            icon="replay"
+            @click="$emit('retry', team)"
+          >
+            <q-tooltip>重试（重置为待执行）</q-tooltip>
+          </q-btn>
           <q-btn flat dense round size="sm" color="primary" icon="account_tree" :to="`/teams/${team.id}/orchestrate`">
             <q-tooltip>编排 Graph</q-tooltip>
           </q-btn>
@@ -116,7 +128,7 @@
             :disable="team.is_default || !!team.readonly"
             @click="$emit('remove', team)"
           />
-          <q-chip v-if="team.readonly" dense square size="sm" icon="verified_user">内置</q-chip>
+          <q-chip v-if="team.readonly" dense square size="sm" icon="verified_user">{{ t('teamsPage.builtin') }}</q-chip>
         </div>
       </footer>
     </div>
@@ -125,6 +137,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { Agent } from '../../features/agents/types';
 import type { Team } from '../../features/teams/types';
 import {
@@ -145,6 +158,8 @@ const props = defineProps<{
   isDark: boolean;
 }>();
 
+const { t } = useI18n();
+
 defineEmits<{
   copyKey: [value: string];
   openRuns: [team: Team];
@@ -153,6 +168,7 @@ defineEmits<{
   duplicate: [team: Team];
   edit: [team: Team];
   remove: [team: Team];
+  retry: [team: Team];
 }>();
 
 const definition = computed(() => parseDefinition(props.team));
@@ -161,4 +177,6 @@ const topologyNodes = computed(() => topologyNodesFromDefinition(definition.valu
 const statusConfig = computed(() => teamStatusMap[props.team.status] ?? { label: props.team.status, color: 'grey' });
 const statusColor = computed(() => statusConfig.value.color);
 const statusLabel = computed(() => statusConfig.value.label);
+/** failed/cancelled teams can be reset to pending via RetryTeam RPC (backend state machine recover). */
+const canRetry = computed(() => ['failed', 'cancelled'].includes(props.team.status) && !props.team.readonly);
 </script>

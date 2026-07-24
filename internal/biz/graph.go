@@ -84,6 +84,11 @@ type EdgeDef struct {
 	Kind string `json:"kind"`
 }
 
+// EndNodeID is the graph terminal sentinel mirrored from trpc-agent-go
+// (trpcgraph.End = "__end__"). Conditional edge PathMap targets use it to
+// terminate graph execution instead of scheduling another node.
+const EndNodeID = "__end__"
+
 // ConditionalEdgeDef is a conditional routing edge.
 // CondFunc is resolved in the graph/trpc adapter layer.
 type ConditionalEdgeDef struct {
@@ -121,6 +126,12 @@ type GraphBuildConfig struct {
 	CircuitBreakerScope string `json:"circuit_breaker_scope,omitempty"`
 	// SwarmSafety carries Graph-path swarm limits (MaxHandoffs / repetitive handoff).
 	SwarmSafety *SwarmSafetySpec `json:"swarm_safety,omitempty"`
+	// MaxSteps is an explicit graph-execution step ceiling wired to
+	// trpcgraph.WithMaxSteps. 0 means the framework default (100). Compile
+	// paths that introduce loops (e.g. team critic_loop) set this explicitly
+	// from the loop bound so a runaway graph is truncated close to the
+	// expected iteration count instead of the opaque framework default.
+	MaxSteps int `json:"max_steps,omitempty"`
 }
 
 // SwarmSafetySpec is the Graph-path equivalent of native team.SwarmConfig limits.

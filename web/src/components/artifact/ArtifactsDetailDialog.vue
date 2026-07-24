@@ -1,4 +1,3 @@
-// Container: approved — artifact detail + preview dialog.
 <template>
   <q-dialog :model-value="open" @update:model-value="$emit('update:open', $event)">
     <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog">
@@ -16,7 +15,7 @@
           <q-btn flat dense round size="sm" icon="content_copy" @click="copyPath">
             <q-tooltip>{{ t('artifact.detail.copyPath') }}</q-tooltip>
           </q-btn>
-          <q-btn v-if="revealEnabled" flat dense round size="sm" icon="folder_open" @click="reveal">
+          <q-btn v-if="revealEnabled" flat dense round size="sm" icon="folder_open" @click="$emit('reveal', meta)">
             <q-tooltip>{{ t('artifact.detail.reveal') }}</q-tooltip>
           </q-btn>
         </div>
@@ -54,11 +53,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
 import { copyToClipboard, useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import ArtifactPreview from '../../features/artifact/ArtifactPreview.vue';
-import { fetchLocalRevealEnabled, revealArtifact } from '../../features/artifact/api';
 import type { ArtifactMeta } from '../../features/artifact/types';
 const props = defineProps<{
   open: boolean;
@@ -67,11 +64,14 @@ const props = defineProps<{
   selectedVersion?: number;
   versions: ArtifactMeta[];
   formatBytes: (n: number) => string;
+  /** 本地 reveal 开关（由 Page 经 composable 探测注入）。 */
+  revealEnabled: boolean;
 }>();
 defineEmits<{
   'update:open': [value: boolean];
   'select-version': [meta: ArtifactMeta];
   download: [meta: ArtifactMeta];
+  reveal: [meta: ArtifactMeta];
 }>();
 const $q = useQuasar();
 const { t } = useI18n();
@@ -85,25 +85,6 @@ async function copyPath() {
     $q.notify({ type: 'negative', message: t('artifact.detail.copyFailed') });
   }
 }
-
-// M27 Phase 5：本地打开文件夹。对话框打开时探测功能开关（默认关闭 → 隐藏按钮）。
-const revealEnabled = ref(false);
-watch(
-  () => props.open,
-  async (open) => {
-    if (open) revealEnabled.value = await fetchLocalRevealEnabled();
-  },
-);
-async function reveal() {
-  const id = props.meta?.id;
-  if (!id) return;
-  try {
-    await revealArtifact(id);
-    $q.notify({ type: 'positive', message: t('artifact.detail.revealed') });
-  } catch {
-    $q.notify({ type: 'negative', message: t('artifact.detail.revealFailed') });
-  }
-}
 </script>
 
 <style scoped>
@@ -111,6 +92,13 @@ async function reveal() {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* 长路径换行时保持「路径：」标签完整（否则被挤压成逐字换行） */
+.artifact-detail-path > b {
+  flex: none;
+  white-space: nowrap;
+  align-self: flex-start;
 }
 
 .artifact-detail-path__value {

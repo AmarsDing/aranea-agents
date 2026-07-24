@@ -5832,7 +5832,7 @@ taskHydration: Ref<Map<string, 'loading' | 'error'>>  // 瞬态水合中/失败
 ```
 Phase 1: listTasksV2(sessionId) + listStepsV2(sessionId, { limit: 100 })  // 最近窗口，覆盖 spirit 级散 steps
 Phase 2: autoHydrate = 最后一个 task
-       + 状态 ∈ {running, pending, awaiting_confirmation, interrupted} 的 task
+       + 状态 ∈ {pending, running, interrupted} 的 task（非终态；interrupted 保证「继续执行」直接可见）
        + hydratedTaskIds 中已有的本会话 task（重连保持展开）
 Phase 3: autoHydrate 集合逐 task 调 hydrateTask(taskId)（fire-and-forget 并行）
 ```
@@ -5884,3 +5884,184 @@ v2Api.ts（limit/beforeSeq 透传）
 | 单 task 超大（数千 steps） | 协议分页已就位；UI 级「加载更多」YAGNI |
 | spirit 级无归属 steps | Phase 1 limit=100 窗口覆盖；窗口不够再议（YAGNI） |
 | Phase 1 失败 | 沿用现有 `hydrationErrors` 机制，UI 顶部错误条 + 重试 |
+
+### B.10.20 Agent 间认知传递增强（C1-C5，2026-07-24 评审版）
+
+> **定位**：在既有 P0-P2 交付物链路（B.10.15）与 L0-L4 记忆体系之上，回答「A Agent 的中间认知如何无损传递给 B Agent」。五项增强全部基于现行代码评审后设计，互不依赖、可独立灰度。
+> **评审结论**：C1/C2/C4/C5 按本设计直接落地；C3 修正原方案（原 `deliverable/<topic>` 独立 StateField 不可行——graph state schema 只声明单一 `deliverable` 字段且 topic 是运行期动态值，无法预声明），改为 **map 内命名空间**。
+
+#### B.10.20.1 现状基线（评审确认）
+
+| 机制 | 现状 | 缺口 |
+|------|------|------|
+| 团队内 Graph State 共享 | `set_deliverable`/`get_deliverable` 单 key（`deliverable`，CoverReducer 整体覆盖），`EnableStateDeliverable` 默认关 | 单 key 顺序交接会互相覆盖，无多主题并存 |
+| 团队间 DAG 交付物 | P2 `DeliverableRef` 信封（summary/key_findings/size/truncated/structured_json）+ `read_upstream_deliverable` 全文按需读取 | 只有结论，没有「为什么是这个结论」的认知过程 |
+| 契约校验 | name/type/format 三元组匹配（`ValidateContractMatchDetailed`）+ 运行时 `ContractMismatchError` | 无内容级结构校验（JSON Schema） |
+| 血缘追踪 | 无 | 下游无法知道交付物由哪些上游派生 |
+| L3 记忆 scope | `agent_defaults.go` 默认 `["agent","user","team","workspace"]`；`L3ScopeTargets` 支持 team scope | `team_id` 从未注入团队运行上下文 → team scope 实际解析为空，静默无效 |
+
+#### B.10.20.2 C1 认知信封（Cognition Envelope）
+
+**目标**：`DeliverableRef` 承载决策理由、被否决方案、假设与开放问题，下游团队注入前缀即可感知上游认知过程。
+
+**数据模型**（`internal/biz/team_types.go`）：
+
+```go
+// DeliverableCognition 是可选的认知过程记录（omitempty，向后兼容）。
+// 实现采用命名类型（DeliverableDecision/DeliverableRejection），便于工具
+// 入参直接复用同一类型做 JSON 解码。
+type DeliverableDecision struct {
+    Choice     string  `json:"choice"`
+    Rationale  string  `json:"rationale"`
+    Confidence float64 `json:"confidence,omitempty"`
+}
+type DeliverableRejection struct {
+    Option string `json:"option"`
+    Reason string `json:"reason"`
+}
+type DeliverableCognition struct {
+    Decisions     []DeliverableDecision  `json:"decisions,omitempty"`
+    Rejected      []DeliverableRejection `json:"rejected,omitempty"`
+    Assumptions   []string               `json:"assumptions,omitempty"`
+    OpenQuestions []string               `json:"open_questions,omitempty"`
+}
+
+type DeliverableRef struct {
+    // ... 现有字段 ...
+    Cognition *DeliverableCognition `json:"cognition,omitempty"`
+}
+```
+
+**数据流**：
+
+```
+成员 Agent → set_deliverable(data, note, cognition?)        ← 工具新增可选 cognition 入参
+  → StateDelta 写入 graph state deliverable map 保留键 "cognition"
+  → WriteDeliverablesToSession 桥接：从 state map 提取 "cognition" → ref.Cognition
+    （与 "summary" 同列为保留键；均不再落入 StructuredJSON，避免重复）
+  → InjectUpstreamDeliverables：cognition 非空时在注入前缀渲染摘要
+```
+
+**保留键约定**：deliverable map 中 `summary`（既有）、`cognition`（新增）为系统保留键；业务 data 若自带同名键会被覆盖，工具 Description 中明示。
+
+**注入前缀渲染**（紧凑截断，每项 ≤200 字符）：
+
+```
+## 上游团队: 调研团队
+契约: ...
+<summary>
+[上游决策] 选择 A 方案（理由: …，置信度 0.8）；否决 B 方案（原因: …）
+[上游假设] 数据源 Q3 已封板
+[上游遗留问题] 样本偏差未校正
+```
+
+#### B.10.20.3 C2 契约内容级 Schema 校验
+
+**目标**：name/type/format 之外，下游可用 JSON Schema 对上游交付物**内容**做结构校验，失配时返回 LLM 可行动的结构化错误。
+
+**契约扩展**（`internal/biz/deliverable_contract.go`）：
+
+```go
+type DeliverableContract struct {
+    Name        string `json:"name"`
+    Type        string `json:"type"`
+    Format      string `json:"format"`
+    Description string `json:"description"`
+    SchemaJSON  string `json:"schema_json,omitempty"` // C2 新增：可选 JSON Schema
+}
+```
+
+- 新 mismatch kind：`ContractMismatchSchema = "schema_mismatch"`。
+- 校验点：`ReadUpstreamDeliverable` —— 现有 name/type/format 校验仍在全文提取**前**快速失败；schema 校验在全文提取**后**进行（需要内容），仅对 `format=="json"` 且下游条目带 `schema_json` 的契约执行，复用 `internal/biz/shared.ValidateDocumentAgainstSchema`（gojsonschema 已在依赖中）。失配并入 `ContractMismatchError.Mismatches`（LLM-actionable，可自动修正重试）。
+- 未声明 schema / format 非 json / 内容不是合法 JSON → 跳过（advisory，不阻断遗留团队）。
+
+#### B.10.20.4 C3 团队共享黑板（topic 命名空间，修正设计）
+
+**目标**：团队内多主题并存共享，避免单 key 顺序覆盖丢失中间产物。
+
+**修正后设计**（map 内命名空间，不新增 StateField）：
+
+```
+set_deliverable(data, note, topic?)
+  topic 为空 → 遗留语义：StateDelta 整体覆盖 deliverable map（向后兼容）
+  topic 非空 → Call 内经 invocation 读当前 deliverable map → 合并 map[topic]=data
+             → 输出合并后的完整 map → StateDelta 整体 Cover 写回
+get_deliverable(key?, topic?)
+  topic 非空 → 先取 map[topic] 子对象，再按 key 过滤
+```
+
+**约束与边界**：
+- 读-改-写合并对 sequential/coordinator 顺序交接安全；parallel 并发写不同 topic 仍有竞态（last-writer-wins）——与既有 `EnableStateDeliverable` 适用约束一致，不改变其「不建议 parallel 开启」的结论。
+- topic 子对象作为非 summary 键自然落入 `StructuredJSON` 桥接，下游信封可见。
+- topic 名校验：非空时须匹配 `^[a-z0-9][a-z0-9_-]{0,63}$`，禁止与保留键 `summary`/`cognition` 同名。
+
+#### B.10.20.5 C4 血缘链（derived_from）
+
+**目标**：交付物信封记录派生来源，下游与排障可回溯血缘。
+
+```go
+type DeliverableRef struct {
+    // ... 现有字段 ...
+    DerivedFrom []string `json:"derived_from,omitempty"` // 上游 dag_node_id 列表
+}
+```
+
+`WriteDeliverablesToSession` 直接以 `t.DependsOn`（既有字段）填充；无依赖时为空（omitempty）。零迁移、零新查询。
+
+#### B.10.20.6 C5 团队 scope L3 记忆默认可达
+
+**目标**：团队成员运行时默认能召回 team scope 的 L3 事实（现状是配置了却静默无效）。
+
+**机制链**（评审已逐环验证）：
+
+```
+runner_team_trpc.go runOpts
+  + trpcagent.MergeRuntimeState({"team_id": teamRow.ID})          ← 根 invocation 注入
+  → GraphAgent.Run 合并 RuntimeState 入 graph initialState         ← builder.go:438
+  → executor buildAgentInvocationWithStateScopeAndInputKey
+      runOptions.RuntimeState = runtime                            ← state_graph.go:3763
+  → 成员 invocation.RunOptions.RuntimeState["team_id"] 可见
+  → memoryRuntimeContext：session state 无 "team_id" 时
+      回退读 inv.RunOptions.RuntimeState["team_id"]                ← memory_inject.go
+  → L3ScopeTargets 解析出 {team, teamID} → 融合召回
+```
+
+**改动点**：
+1. `agent_memory_runtime_policy.go`：`L3RecallScopes` 空值回退 `["agent"]` → `["agent","team"]`（无 TeamID 时 `appendScope` 跳过，对非团队场景零影响）。
+2. `runner_team_trpc.go`：runOpts 追加 `MergeRuntimeState({"team_id": teamRow.ID})`。
+3. `memory_inject.go`：`memoryRuntimeContext` 增加 RuntimeState 回退读取（string 断言，空值跳过）。
+
+**限制**：native（非 graph）团队路径成员共享 manager runner，RuntimeState 跨 handoff 传播依赖框架行为，C5 保证 graph runtime 路径（团队默认路径）有效；native 路径退化为 agent scope（现状，无回归）。
+
+#### B.10.20.7 改动文件清单
+
+| 文件 | 改动 |
+|------|------|
+| `internal/biz/team_types.go` | `DeliverableCognition` 类型 + `DeliverableRef.Cognition`/`DerivedFrom` 字段 |
+| `internal/tools/deliverable/tool.go` | set 工具 `cognition`/`topic` 入参 + topic 合并逻辑；get 工具 `topic` 入参 |
+| `internal/biz/spirit_team_usecase.go` | 桥接提取 cognition（排除出 StructuredJSON）+ 注入前缀渲染 + `DerivedFrom` 填充 + schema 内容校验 |
+| `internal/biz/deliverable_contract.go` | `SchemaJSON` 字段 + `ContractMismatchSchema` kind + mismatch 渲染 |
+| `internal/biz/agent_memory_runtime_policy.go` | 默认 scopes `["agent","team"]` |
+| `internal/team/runner_team_trpc.go` | runOpts 注入 team_id RuntimeState |
+| `internal/agent/memory_inject.go` | `memoryRuntimeContext` RuntimeState 回退 |
+| 测试 | tool_test.go / spirit_team_deliverable_test.go / deliverable_contract 相关测试 / agent_memory_runtime_policy_test.go / memory_inject 测试 |
+
+#### B.10.20.8 不变量
+
+1. `DeliverableRef` 新字段全部 omitempty —— 遗留 envelope 与 legacy plain-string 解析不变（`ParseDeliverableRefs` 双模式语义保持）。
+2. `set_deliverable` 无 topic 时字节级行为与现状一致（整体覆盖）。
+3. 保留键 `summary`/`cognition` 不进入 `StructuredJSON`。
+4. C2 未声明 schema 的契约条目行为与现状完全一致（advisory）。
+5. C5 对无团队上下文（TeamID 为空）的会话零行为变化。
+6. 所有新日志走 `loggateway.Logger` 结构化字段，无字符串拼接。
+
+#### B.10.20.9 测试策略
+
+| 层 | 用例 |
+|----|------|
+| tools/deliverable | set：无 topic 兼容；topic 合并（空 map/已有其他 topic/覆盖同 topic）；cognition 落保留键；topic 名校验；get：topic 子对象读取、key 过滤、未命中 |
+| biz | `WriteDeliverablesToSession`：cognition 提取 + StructuredJSON 排除保留键 + DerivedFrom 填充；`InjectUpstreamDeliverables`：cognition 摘要渲染（有/无/截断） |
+| biz contract | SchemaJSON 解析；schema_mismatch 生成与错误文案；format 非 json 跳过；非法 JSON 内容跳过 |
+| biz policy | 空 settings 回退 `["agent","team"]`；`L3ScopeTargets` 无 TeamID 时 team scope 跳过 |
+| agent | `memoryRuntimeContext`：session state 优先 / RuntimeState 回退 / 均无则空 |
+| team runner | runOpts 含 team_id RuntimeState（构造验证） |

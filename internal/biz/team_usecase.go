@@ -86,11 +86,41 @@ type TeamRunRepo interface {
 	TeamRunWriter
 }
 
+// TeamActiveRunLister batch-reports which teams have an active run
+// (pending/running/waiting_human). Used by ListTeams to avoid the
+// per-team HasActiveRun N+1 query.
+// Stability:stable
+type TeamActiveRunLister interface {
+	ListActiveRunTeamIDs(ctx context.Context, teamIDs []string) (map[string]bool, error)
+}
+
+// fallbackActiveRunLister degrades TeamActiveRunLister to per-team
+// HasActiveTeamRun calls when no batch implementation is injected
+// (unit tests constructing TeamUsecase without the optional dep).
+type fallbackActiveRunLister struct {
+	runReader TeamRunReader
+}
+
+func (f fallbackActiveRunLister) ListActiveRunTeamIDs(ctx context.Context, teamIDs []string) (map[string]bool, error) {
+	out := make(map[string]bool, len(teamIDs))
+	for _, id := range teamIDs {
+		active, err := f.runReader.HasActiveTeamRun(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if active {
+			out[id] = true
+		}
+	}
+	return out, nil
+}
+
 type TeamUsecase struct {
 	reader       TeamReader
 	writer       TeamWriter
 	runReader    TeamRunReader
 	runWriter    TeamRunWriter
+	activeLister TeamActiveRunLister
 	stepRepo     OrchestrationStepRepo
 	deadLetter   TaskDeadLetterRepo
 	agentChecker AgentIDExistenceChecker
@@ -108,6 +138,7 @@ type TeamUsecaseOpts struct {
 	Writer       TeamWriter
 	RunReader    TeamRunReader
 	RunWriter    TeamRunWriter
+	ActiveLister TeamActiveRunLister
 	StepRepo     OrchestrationStepRepo
 	DeadLetter   TaskDeadLetterRepo
 	AgentChecker AgentIDExistenceChecker
@@ -118,11 +149,16 @@ type TeamUsecaseOpts struct {
 }
 
 func NewTeamUsecase(opts TeamUsecaseOpts) *TeamUsecase {
+	activeLister := opts.ActiveLister
+	if activeLister == nil {
+		activeLister = fallbackActiveRunLister{runReader: opts.RunReader}
+	}
 	return &TeamUsecase{
 		reader:       opts.Reader,
 		writer:       opts.Writer,
 		runReader:    opts.RunReader,
 		runWriter:    opts.RunWriter,
+		activeLister: activeLister,
 		stepRepo:     opts.StepRepo,
 		deadLetter:   opts.DeadLetter,
 		agentChecker: opts.AgentChecker,
@@ -416,6 +452,15 @@ func (u *TeamUsecase) HasActiveRun(ctx context.Context, teamID string) (bool, er
 		return false, err
 	}
 	return u.runReader.HasActiveTeamRun(ctx, teamID)
+}
+
+// ListActiveRunTeamIDs batch-reports which of the given teams have an active
+// run. One DB round-trip via TeamActiveRunLister (N+1 guard for ListTeams).
+func (u *TeamUsecase) ListActiveRunTeamIDs(ctx context.Context, teamIDs []string) (map[string]bool, error) {
+	if len(teamIDs) == 0 {
+		return map[string]bool{}, nil
+	}
+	return u.activeLister.ListActiveRunTeamIDs(ctx, teamIDs)
 }
 
 func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, error) {

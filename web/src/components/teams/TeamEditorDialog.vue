@@ -16,6 +16,10 @@
       <q-banner v-if="hasActiveRun" dense rounded class="bg-warning text-dark q-mx-md q-mt-sm">
         存在运行中的 TeamRun，编排定义只读；结束后可再编辑。
       </q-banner>
+      <q-banner v-else-if="isSpiritTeam" dense rounded class="team-editor-spirit-banner q-mx-md q-mt-sm">
+        <q-icon name="auto_awesome" size="16px" class="q-mr-xs" />
+        此团队由任务编排自动生成；App Name 与 Team Key 已锁定，成员与参数调整将影响后续编排运行。
+      </q-banner>
 
       <div class="app-glass-dialog__scroll" :class="{ 'team-editor--readonly': hasActiveRun }">
         <div class="team-editor-workspace">
@@ -51,7 +55,8 @@
                   dense
                   outlined
                   label="Team Key *"
-                  hint="小写字母、数字、连字符"
+                  :readonly="isSpiritTeam"
+                  :hint="isSpiritTeam ? '编排生成的团队不可修改' : '小写字母、数字、连字符'"
                 />
                 <q-input
                   v-model.trim="form.app_name"
@@ -59,18 +64,31 @@
                   dense
                   outlined
                   label="App Name"
-                  hint="留空则使用 Team Key"
+                  :readonly="isSpiritTeam"
+                  :hint="isSpiritTeam ? '编排生成的团队不可修改' : '留空则使用 Team Key'"
                 />
-                <q-select
-                  v-model="form.status"
-                  class="team-control"
-                  dense
-                  outlined
-                  emit-value
-                  map-options
-                  label="状态"
-                  :options="statusOptions"
-                />
+                <q-field class="team-control team-status-field" dense outlined label="状态" stack-label>
+                  <template #control>
+                    <div class="team-status-field__body row items-center no-wrap">
+                      <q-badge rounded :color="statusMeta.color" :label="statusMeta.label" />
+                      <span class="team-status-field__hint">自动流转</span>
+                      <q-btn
+                        v-if="canRetryStatus"
+                        flat
+                        dense
+                        no-caps
+                        rounded
+                        size="sm"
+                        color="warning"
+                        icon="replay"
+                        label="重试"
+                        @click="$emit('retry')"
+                      >
+                        <q-tooltip>重置为待执行，可重新发起运行</q-tooltip>
+                      </q-btn>
+                    </div>
+                  </template>
+                </q-field>
                 <q-select
                   v-model="form.taxonomy_industry_id"
                   class="team-control"
@@ -81,6 +99,16 @@
                   clearable
                   label="行业归属"
                   :options="industryOptions"
+                />
+                <q-input
+                  v-model="definition.description"
+                  class="team-control app-grid-span-full"
+                  dense
+                  outlined
+                  autogrow
+                  type="textarea"
+                  label="Team 说明"
+                  :hint="t('teamsPage.descriptionHint')"
                 />
               </div>
             </section>
@@ -98,6 +126,7 @@
                   emit-value
                   map-options
                   label="编排模式"
+                  :hint="modeHint"
                   :options="modeOptions"
                 />
                 <q-input
@@ -134,15 +163,6 @@
                   max="32"
                   label="评审迭代次数"
                   hint="对应 critic_loop.max_iterations"
-                />
-                <q-input
-                  v-model="definition.description"
-                  class="team-control app-grid-span-full"
-                  dense
-                  outlined
-                  autogrow
-                  type="textarea"
-                  label="Team 说明"
                 />
               </div>
             </section>
@@ -366,9 +386,9 @@
             </section>
 
             <div class="team-editor-expansion team-editor-expansion--compact">
-              <q-expansion-item icon="code" label="definition_json 预览" dense>
+              <q-expansion-item icon="code" :label="t('teamsPage.definitionJsonPreview')" dense>
                 <div class="team-editor-expansion__body">
-                  <pre class="team-definition-json">{{ definitionJSON }}</pre>
+                  <pre class="team-definition-json">{{ definitionJson }}</pre>
                 </div>
               </q-expansion-item>
             </div>
@@ -387,13 +407,13 @@
       </div>
 
       <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn v-close-popup flat rounded no-caps label="取消" />
+        <q-btn v-close-popup flat rounded no-caps :label="t('common.cancel')" />
         <q-btn
           class="team-dialog-save"
           rounded
           unelevated
           no-caps
-          label="保存"
+          :label="editingId ? t('teamsPage.save') : t('teamsPage.createTeam')"
           :loading="saving"
           :disable="!canSave || hasActiveRun"
           @click="$emit('save')"
@@ -406,6 +426,7 @@
 <script setup lang="ts">
 const definition = defineModel<TeamDefinition>('definition', { required: true });
 import { computed, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { TeamDefinition } from '../../features/teams/types';
 import { useTeamCompilePreview } from '../../features/teams/useTeamCompilePreview';
@@ -417,13 +438,14 @@ import {
   parallelFailOptions,
   roleOptionsForMode,
   runtimeEngineOptions,
-  statusOptions,
   teamRoleLabel,
+  teamStatusMap,
   teamTemplateOptions,
   type TeamTemplateKey,
 } from './teamUtils';
 
 const $q = useQuasar();
+const { t } = useI18n();
 
 const form = defineModel<{
   team_key: string;
@@ -431,13 +453,14 @@ const form = defineModel<{
   status: string;
   app_name: string;
   taxonomy_industry_id: string;
+  spirit_session_id: string;
 }>('form', { required: true });
 const props = withDefaults(
   defineProps<{
     modelValue: boolean;
     selectedTemplateKey?: TeamTemplateKey | null;
     editingId: string;
-    definitionJSON?: string;
+    definitionJson?: string;
     agentOptions: Array<{ label: string; value: string }>;
     industryOptions: Array<{ label: string; value: string }>;
     saving: boolean;
@@ -446,7 +469,7 @@ const props = withDefaults(
     isPlatformAdmin?: boolean;
     hasActiveRun?: boolean;
   }>(),
-  { definitionJSON: '{}', selectedTemplateKey: null, isPlatformAdmin: false, hasActiveRun: false },
+  { definitionJson: '{}', selectedTemplateKey: null, isPlatformAdmin: false, hasActiveRun: false },
 );
 
 const emit = defineEmits<{
@@ -456,12 +479,22 @@ const emit = defineEmits<{
   removeMember: [index: number];
   applyTemplate: [template: TeamTemplateKey];
   save: [];
+  retry: [];
 }>();
+
+// ── Spirit (orchestration-generated) team guards ──
+const isSpiritTeam = computed(() => String(form.value.spirit_session_id || '').trim() !== '');
+
+// ── Status display (readonly; transitions via lifecycle / RetryTeam RPC) ──
+const statusMeta = computed(
+  () => teamStatusMap[form.value.status] ?? { label: form.value.status || '—', color: 'grey' },
+);
+const canRetryStatus = computed(() => ['failed', 'cancelled'].includes(form.value.status));
 
 // ── Compile preview (delegated to composable) ──
 const { compileResult, compileLoading, compileError, compileIssues } = useTeamCompilePreview(
   () => props.editingId,
-  () => props.definitionJSON,
+  () => props.definitionJson,
 );
 
 const intentAnchorOptions = computed(() =>
@@ -477,14 +510,27 @@ function onTemplatePick(key: TeamTemplateKey | null) {
   emit('update:selectedTemplateKey', key);
   if (!key) return;
   $q.dialog({
-    title: '应用模板',
-    message: '应用模板将覆盖当前配置，确定继续？',
+    title: t('teamsPage.applyTemplate'),
+    message: t('teamsPage.applyTemplateMsg'),
     cancel: true,
     persistent: true,
   }).onOk(() => {
     emit('applyTemplate', key);
   });
 }
+
+// ── Mode guidance: help users pick an orchestration mode ──
+const modeHintKeys: Record<string, string> = {
+  sequential: 'teamsPage.modeHintSequential',
+  parallel: 'teamsPage.modeHintParallel',
+  coordinator: 'teamsPage.modeHintCoordinator',
+  critic_loop: 'teamsPage.modeHintCriticLoop',
+  adaptive: 'teamsPage.modeHintAdaptive',
+};
+const modeHint = computed(() => {
+  const key = modeHintKeys[definition.value.mode || 'sequential'];
+  return key ? t(key) : '';
+});
 
 const filteredRuntimeEngineOptions = computed(() =>
   props.isPlatformAdmin ? runtimeEngineOptions : runtimeEngineOptions.filter((o) => o.value !== 'native'),
@@ -618,5 +664,21 @@ const failureOnError = computed({
 .team-editor--readonly {
   pointer-events: none;
   opacity: 0.72;
+}
+
+.team-editor-spirit-banner {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-text-primary);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 32%, transparent);
+}
+
+.team-status-field__body {
+  gap: 8px;
+  min-height: 24px;
+}
+
+.team-status-field__hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }
 </style>

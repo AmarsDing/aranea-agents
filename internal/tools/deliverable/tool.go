@@ -11,6 +11,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"regexp"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -18,6 +20,31 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
+
+// Reserved keys of the deliverable state map. "summary" is the bridge source
+// for the envelope summary (B.10.15.4); "cognition" carries the C1 cognitive
+// process record. Both are extracted by WriteDeliverablesToSession and never
+// land in StructuredJSON. Business data with the same keys is overwritten.
+const (
+	reservedKeySummary   = "summary"
+	reservedKeyCognition = "cognition"
+)
+
+// topicNamePattern constrains the C3 topic namespace: lowercase slug so the
+// deliverable map stays greppable and collision-free with reserved keys.
+var topicNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+
+// validateTopicName rejects empty-checked topic names that are not slugs or
+// collide with reserved keys. Caller guarantees topic is trimmed non-empty.
+func validateTopicName(topic string) error {
+	if !topicNamePattern.MatchString(topic) {
+		return fmt.Errorf("invalid topic %q: must match ^[a-z0-9][a-z0-9_-]{0,63}$", topic)
+	}
+	if topic == reservedKeySummary || topic == reservedKeyCognition {
+		return fmt.Errorf("invalid topic %q: reserved key", topic)
+	}
+	return nil
+}
 
 // --- set_deliverable ---
 
@@ -31,8 +58,17 @@ type SetDeliverableTool struct{}
 func NewSetDeliverableTool() *SetDeliverableTool { return &SetDeliverableTool{} }
 
 type setDeliverableInput struct {
-	Data map[string]any `json:"data" jsonschema:"description=The deliverable content as a JSON object. This will overwrite the previous deliverable.,required"`
+	Data map[string]any `json:"data" jsonschema:"description=The deliverable content as a JSON object.,required"`
 	Note string         `json:"note" jsonschema:"description=Optional note describing this deliverable for downstream agents"`
+	// Topic enables the C3 shared blackboard: non-empty stores data under
+	// deliverable[topic] (merged with the current map) instead of overwriting
+	// the whole map. Must match ^[a-z0-9][a-z0-9_-]{0,63}$ and not collide
+	// with the reserved keys "summary"/"cognition".
+	Topic string `json:"topic" jsonschema:"description=Optional namespace for this deliverable. When set, data is stored under deliverable[topic] and other topics are preserved. Lowercase slug, e.g. research or draft_v1."`
+	// Cognition is the optional C1 cognitive-process record, stored under the
+	// reserved "cognition" key of the deliverable map and bridged into the
+	// DeliverableRef envelope for downstream teams.
+	Cognition *biz.DeliverableCognition `json:"cognition" jsonschema:"description=Optional record of the cognitive process behind this deliverable: decisions with rationale, rejected options, assumptions, open questions."`
 }
 
 type setDeliverableOutput struct {
@@ -40,6 +76,7 @@ type setDeliverableOutput struct {
 	Data    map[string]any `json:"data"`
 	Keys    int            `json:"keys"`
 	Note    string         `json:"note,omitempty"`
+	Topic   string         `json:"topic,omitempty"`
 }
 
 // Declaration returns the tool metadata.
@@ -48,7 +85,9 @@ func (t *SetDeliverableTool) Declaration() *trpctool.Declaration {
 		Name: "set_deliverable",
 		Description: "Publish structured output to the shared graph state deliverable field. " +
 			"Downstream agents in the same team run can retrieve it via get_deliverable. " +
-			"Each call overwrites the previous deliverable (CoverReducer semantics).",
+			"Without topic, each call overwrites the previous deliverable (CoverReducer semantics). " +
+			"With topic, data is merged under deliverable[topic] so multiple topics coexist. " +
+			"Keys \"summary\" and \"cognition\" are reserved: business data using them is overwritten.",
 		InputSchema: &trpctool.Schema{
 			Type:     "object",
 			Required: []string{"data"},
@@ -61,6 +100,51 @@ func (t *SetDeliverableTool) Declaration() *trpctool.Declaration {
 					Type:        "string",
 					Description: "Optional human-readable note about this deliverable.",
 				},
+				"topic": {
+					Type:        "string",
+					Description: "Optional namespace. When set, data is stored under deliverable[topic] and other topics are preserved. Lowercase slug ^[a-z0-9][a-z0-9_-]{0,63}$, not \"summary\"/\"cognition\".",
+				},
+				"cognition": {
+					Type:        "object",
+					Description: "Optional cognitive-process record: why the deliverable is what it is, not just what it is.",
+					Properties: map[string]*trpctool.Schema{
+						"decisions": {
+							Type:        "array",
+							Description: "Decisions made while producing this deliverable.",
+							Items: &trpctool.Schema{
+								Type: "object",
+								Properties: map[string]*trpctool.Schema{
+									"choice":     {Type: "string", Description: "The chosen option."},
+									"rationale":  {Type: "string", Description: "Why this option was chosen."},
+									"confidence": {Type: "number", Description: "Optional confidence, 0 to 1."},
+								},
+								Required: []string{"choice", "rationale"},
+							},
+						},
+						"rejected": {
+							Type:        "array",
+							Description: "Options considered and rejected.",
+							Items: &trpctool.Schema{
+								Type: "object",
+								Properties: map[string]*trpctool.Schema{
+									"option": {Type: "string", Description: "The rejected option."},
+									"reason": {Type: "string", Description: "Why it was rejected."},
+								},
+								Required: []string{"option", "reason"},
+							},
+						},
+						"assumptions": {
+							Type:        "array",
+							Description: "Assumptions this deliverable relies on.",
+							Items:       &trpctool.Schema{Type: "string"},
+						},
+						"open_questions": {
+							Type:        "array",
+							Description: "Unresolved questions downstream agents should be aware of.",
+							Items:       &trpctool.Schema{Type: "string"},
+						},
+					},
+				},
 			},
 		},
 		OutputSchema: &trpctool.Schema{
@@ -69,9 +153,10 @@ func (t *SetDeliverableTool) Declaration() *trpctool.Declaration {
 			Required:    []string{"written", "keys"},
 			Properties: map[string]*trpctool.Schema{
 				"written": {Type: "boolean", Description: "Whether the deliverable was written."},
-				"data":    {Type: "object", Description: "The deliverable data that was written."},
-				"keys":    {Type: "integer", Description: "Number of top-level keys in the deliverable."},
+				"data":    {Type: "object", Description: "The deliverable map that was written (merged map when topic is set)."},
+				"keys":    {Type: "integer", Description: "Number of top-level keys in the written map."},
 				"note":    {Type: "string", Description: "Optional note echoed back."},
+				"topic":   {Type: "string", Description: "The topic namespace used, if any."},
 			},
 		},
 	}
@@ -79,7 +164,14 @@ func (t *SetDeliverableTool) Declaration() *trpctool.Declaration {
 
 // Call validates input and returns the output. The actual graph state write
 // happens via StateDelta, which the flow layer calls after Call succeeds.
-func (t *SetDeliverableTool) Call(_ context.Context, jsonArgs []byte) (any, error) {
+//
+// C3: with a topic, Call reads the current deliverable map from the session
+// (best-effort; an unreadable map is treated as empty), merges data under
+// map[topic] and returns the merged map so StateDelta's whole-map Cover write
+// preserves other topics. Without a topic the legacy semantics hold: data
+// overwrites the whole map. C1: a provided cognition is stored under the
+// reserved "cognition" key of the written map.
+func (t *SetDeliverableTool) Call(ctx context.Context, jsonArgs []byte) (any, error) {
 	if t == nil {
 		return nil, errors.New("set_deliverable is not configured")
 	}
@@ -90,12 +182,54 @@ func (t *SetDeliverableTool) Call(_ context.Context, jsonArgs []byte) (any, erro
 	if in.Data == nil {
 		return nil, errors.New("data is required and must be a JSON object")
 	}
+	topic := strings.TrimSpace(in.Topic)
+	if topic != "" {
+		if err := validateTopicName(topic); err != nil {
+			return nil, err
+		}
+	}
+
+	merged := in.Data
+	if topic != "" {
+		merged = currentDeliverableMap(ctx)
+		merged[topic] = in.Data
+	}
+	if in.Cognition != nil {
+		if topic == "" {
+			// Copy so the caller's input map is not mutated by the reserved key.
+			merged = make(map[string]any, len(in.Data)+1)
+			for k, v := range in.Data {
+				merged[k] = v
+			}
+		}
+		merged[reservedKeyCognition] = in.Cognition
+	}
 	return setDeliverableOutput{
 		Written: true,
-		Data:    in.Data,
-		Keys:    len(in.Data),
+		Data:    merged,
+		Keys:    len(merged),
 		Note:    strings.TrimSpace(in.Note),
+		Topic:   topic,
 	}, nil
+}
+
+// currentDeliverableMap reads the current deliverable state map from the
+// invocation's session. Missing invocation/state/corrupt JSON yields an empty
+// map — the merge still produces a valid namespaced write.
+func currentDeliverableMap(ctx context.Context) map[string]any {
+	out := make(map[string]any)
+	inv, ok := agent.InvocationFromContext(ctx)
+	if !ok || inv == nil || inv.Session == nil {
+		return out
+	}
+	raw, found := inv.Session.GetState(biz.DeliverableStateKey)
+	if !found || len(raw) == 0 {
+		return out
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return make(map[string]any)
+	}
+	return out
 }
 
 // StateDelta returns the graph state delta after a successful Call.
@@ -133,12 +267,16 @@ func NewGetDeliverableTool() *GetDeliverableTool { return &GetDeliverableTool{} 
 
 type getDeliverableInput struct {
 	Key string `json:"key" jsonschema:"description=Optional specific key to read from the deliverable. Empty returns the full deliverable object."`
+	// Topic selects the C3 namespace: non-empty reads deliverable[topic]
+	// (a sub-object) and applies the key filter within it.
+	Topic string `json:"topic" jsonschema:"description=Optional namespace to read from (the topic used in set_deliverable). Empty reads the top-level deliverable map."`
 }
 
 type getDeliverableOutput struct {
 	Data  map[string]any `json:"data"`
 	Found bool           `json:"found"`
 	Key   string         `json:"key,omitempty"`
+	Topic string         `json:"topic,omitempty"`
 }
 
 // Declaration returns the tool metadata.
@@ -156,6 +294,10 @@ func (t *GetDeliverableTool) Declaration() *trpctool.Declaration {
 					Type:        "string",
 					Description: "Optional specific key to read from the deliverable. Empty returns the full object.",
 				},
+				"topic": {
+					Type:        "string",
+					Description: "Optional namespace to read from (the topic used in set_deliverable). Empty reads the top-level deliverable map.",
+				},
 			},
 		},
 		OutputSchema: &trpctool.Schema{
@@ -163,15 +305,20 @@ func (t *GetDeliverableTool) Declaration() *trpctool.Declaration {
 			Description: "The deliverable data from graph state.",
 			Required:    []string{"found"},
 			Properties: map[string]*trpctool.Schema{
-				"data":  {Type: "object", Description: "The deliverable data (full or single-key depending on input)."},
+				"data":  {Type: "object", Description: "The deliverable data (full, topic-scoped, or single-key depending on input)."},
 				"found": {Type: "boolean", Description: "Whether a deliverable was found."},
 				"key":   {Type: "string", Description: "The specific key requested, if any."},
+				"topic": {Type: "string", Description: "The topic namespace requested, if any."},
 			},
 		},
 	}
 }
 
 // Call reads the deliverable from the session state via the invocation context.
+// C3: with a topic, the read is scoped to the deliverable[topic] sub-object
+// (missing topic or non-object value → found=false); the optional key filter
+// then applies within that sub-object. Topic lookup is deliberately tolerant —
+// an unknown topic yields found=false, not an error.
 func (t *GetDeliverableTool) Call(ctx context.Context, jsonArgs []byte) (any, error) {
 	if t == nil {
 		return nil, errors.New("get_deliverable is not configured")
@@ -181,31 +328,45 @@ func (t *GetDeliverableTool) Call(ctx context.Context, jsonArgs []byte) (any, er
 
 	inv, ok := agent.InvocationFromContext(ctx)
 	if !ok || inv == nil || inv.Session == nil {
-		return getDeliverableOutput{Found: false, Key: in.Key}, nil
+		return getDeliverableOutput{Found: false, Key: in.Key, Topic: in.Topic}, nil
 	}
 	raw, found := inv.Session.GetState(biz.DeliverableStateKey)
 	if !found || len(raw) == 0 {
-		return getDeliverableOutput{Found: false, Key: in.Key}, nil
+		return getDeliverableOutput{Found: false, Key: in.Key, Topic: in.Topic}, nil
 	}
 	var data map[string]any
 	if err := json.Unmarshal(raw, &data); err != nil {
-		return getDeliverableOutput{Found: false, Key: in.Key}, nil
+		return getDeliverableOutput{Found: false, Key: in.Key, Topic: in.Topic}, nil
+	}
+	topic := strings.TrimSpace(in.Topic)
+	if topic != "" {
+		sub, exists := data[topic]
+		if !exists {
+			return getDeliverableOutput{Found: false, Key: in.Key, Topic: topic}, nil
+		}
+		subMap, isMap := sub.(map[string]any)
+		if !isMap {
+			return getDeliverableOutput{Found: false, Key: in.Key, Topic: topic}, nil
+		}
+		data = subMap
 	}
 	key := strings.TrimSpace(in.Key)
 	if key != "" {
 		v, exists := data[key]
 		if !exists {
-			return getDeliverableOutput{Found: false, Key: key}, nil
+			return getDeliverableOutput{Found: false, Key: key, Topic: topic}, nil
 		}
 		return getDeliverableOutput{
 			Data:  map[string]any{key: v},
 			Found: true,
 			Key:   key,
+			Topic: topic,
 		}, nil
 	}
 	return getDeliverableOutput{
 		Data:  data,
 		Found: true,
+		Topic: topic,
 	}, nil
 }
 

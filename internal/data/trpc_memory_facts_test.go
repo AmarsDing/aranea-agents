@@ -2,30 +2,25 @@ package data_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"testing"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/internal/data/testhelper"
 	trpcmem "aranea-agents/internal/memory/trpc"
 	"aranea-agents/pkg/loggateway"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
-	_ "github.com/glebarez/go-sqlite/compat"
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 )
 
+// openTestDataForMemory opens an isolated Postgres test schema with the Ent
+// schema plus the raw-SQL-managed memory tables (DDL-migration managed in
+// production, created here directly for test speed).
 func openTestDataForMemory(t *testing.T) (*data.Data, *ent.Client) {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.SQLite, db)))
+	client, db := testhelper.SetupTestPG(t)
 	ctx := context.Background()
 	for _, stmt := range []string{
 		`CREATE TABLE IF NOT EXISTS memory_facts (
@@ -40,7 +35,7 @@ func openTestDataForMemory(t *testing.T) (*data.Data, *ent.Client) {
  source_message_id TEXT NOT NULL DEFAULT '', source_external TEXT NOT NULL DEFAULT '',
  version INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'active', superseded_by TEXT NOT NULL DEFAULT '',
  embedding_status TEXT NOT NULL DEFAULT 'pending', embedding_model TEXT NOT NULL DEFAULT '', embedding_dim INTEGER NOT NULL DEFAULT 0,
- embedding_blob BLOB, embedding_norm REAL NOT NULL DEFAULT 0,
+ embedding_blob BYTEA, embedding_norm REAL NOT NULL DEFAULT 0,
  pii_flag INTEGER NOT NULL DEFAULT 0, redacted_statement TEXT NOT NULL DEFAULT '', pii_types TEXT NOT NULL DEFAULT '',
  ttl_days INTEGER NOT NULL DEFAULT 0, decay_factor REAL NOT NULL DEFAULT 0.98, next_decay_at TEXT NOT NULL DEFAULT '',
  last_used_at TEXT NOT NULL DEFAULT '', expires_at TEXT NOT NULL DEFAULT '',
@@ -60,7 +55,7 @@ func openTestDataForMemory(t *testing.T) (*data.Data, *ent.Client) {
  description TEXT NOT NULL DEFAULT '', attributes_json TEXT NOT NULL DEFAULT '{}',
  importance REAL NOT NULL DEFAULT 0.5, confidence REAL NOT NULL DEFAULT 0.7, use_count INTEGER NOT NULL DEFAULT 0, source_kind TEXT NOT NULL DEFAULT '',
  embedding_status TEXT NOT NULL DEFAULT 'pending', embedding_model TEXT NOT NULL DEFAULT '', embedding_dim INTEGER NOT NULL DEFAULT 0,
- embedding_blob BLOB, embedding_norm REAL NOT NULL DEFAULT 0,
+ embedding_blob BYTEA, embedding_norm REAL NOT NULL DEFAULT 0,
  status TEXT NOT NULL DEFAULT 'active', merged_into TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}',
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '',
  activation REAL NOT NULL DEFAULT 0, activation_updated_at TEXT NOT NULL DEFAULT '', source_type TEXT NOT NULL DEFAULT '',

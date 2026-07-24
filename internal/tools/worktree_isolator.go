@@ -12,6 +12,11 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// worktreeCleanupTimeout bounds detached cleanup git commands (worktree
+// remove / branch delete / merge --abort) so a hung git process cannot block
+// shutdown or result delivery indefinitely.
+const worktreeCleanupTimeout = 30 * time.Second
+
 // WorktreeHandler executes a tool call inside a worktree directory. The
 // worktreeDir is the absolute path of the freshly-created git worktree;
 // implementations should perform file operations relative to it.
@@ -74,8 +79,14 @@ func (i *WorktreeIsolator) Execute(ctx context.Context, call ToolCall) ToolResul
 		result.DurationMS = time.Since(start).Milliseconds()
 		return result
 	}
-	// Ensure cleanup runs even on panic.
-	defer i.removeWorktree(ctx, worktreePath, branchName)
+	// Ensure cleanup runs even on panic. Use a detached context: when ctx is
+	// already cancelled, git cleanup commands would fail instantly and leak
+	// the worktree dir + branch (project convention: context.WithoutCancel).
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), worktreeCleanupTimeout)
+		defer cancel()
+		i.removeWorktree(cleanupCtx, worktreePath, branchName)
+	}()
 
 	execResult := i.invokeHandler(ctx, worktreePath, call)
 	if !execResult.Success {
@@ -150,7 +161,11 @@ func (i *WorktreeIsolator) mergeWorktree(ctx context.Context, branchName string)
 	if err := i.runGit(ctx, "merge", "--no-ff", "-m",
 		"merge parallel-exec branch "+branchName, branchName); err != nil {
 		// Abort the failed merge to leave HEAD clean for the next call.
-		_ = i.runGit(ctx, "merge", "--abort")
+		// Detached context: the abort must still run when ctx was cancelled
+		// mid-merge, otherwise the repo stays in MERGING state.
+		abortCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), worktreeCleanupTimeout)
+		defer cancel()
+		_ = i.runGit(abortCtx, "merge", "--abort")
 		return apierror.Wrap(err, apierror.CodeInternal, apierror.DomainTool)
 	}
 	i.deleteMergedBranch(ctx, branchName)

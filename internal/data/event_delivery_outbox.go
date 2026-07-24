@@ -41,38 +41,6 @@ func NewEventDeliveryOutboxRepoFromData(d *Data) biz.EventDeliveryOutboxRepo {
 	return NewEventDeliveryOutboxRepo(d, d.lg)
 }
 
-// EnsureEventDeliveryOutboxSchema creates the outbox table when missing (tests / safety net).
-func EnsureEventDeliveryOutboxSchema(ctx context.Context, db *sql.DB) error {
-	if db == nil {
-		return nil
-	}
-	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS event_delivery_outbox (
-			id TEXT PRIMARY KEY,
-			session_id TEXT NOT NULL,
-			seq INTEGER NOT NULL,
-			event_id TEXT NOT NULL,
-			kind TEXT NOT NULL DEFAULT '',
-			entity_id TEXT NOT NULL DEFAULT '',
-			payload BLOB NOT NULL,
-			published_at TEXT,
-			created_at TEXT NOT NULL
-		)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_event_delivery_outbox_session_seq
-			ON event_delivery_outbox(session_id, seq)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_event_delivery_outbox_session_event_id
-			ON event_delivery_outbox(session_id, event_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_event_delivery_outbox_session_id
-			ON event_delivery_outbox(session_id)`,
-	}
-	for _, s := range stmts {
-		if _, err := db.ExecContext(ctx, s); err != nil {
-			return entErrToBizErr(err, "EVENT_OUTBOX")
-		}
-	}
-	return nil
-}
-
 func (r *eventDeliveryOutboxRepo) Insert(ctx context.Context, row biz.EventDeliveryOutboxRow) error {
 	if r == nil || r.data == nil || r.data.RWDB() == nil {
 		return nil

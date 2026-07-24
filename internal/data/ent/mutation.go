@@ -4329,6 +4329,7 @@ type AgentRuntimeSettingMutation struct {
 	addevo_system_prompt_max_appends         *int
 	skill_runtime_json                       *string
 	intent_pass_enabled                      *bool
+	clarification_enabled                    *bool
 	channel_id                               *string
 	chat_id                                  *string
 	workspace                                *string
@@ -8502,6 +8503,42 @@ func (m *AgentRuntimeSettingMutation) ResetIntentPassEnabled() {
 	m.intent_pass_enabled = nil
 }
 
+// SetClarificationEnabled sets the "clarification_enabled" field.
+func (m *AgentRuntimeSettingMutation) SetClarificationEnabled(b bool) {
+	m.clarification_enabled = &b
+}
+
+// ClarificationEnabled returns the value of the "clarification_enabled" field in the mutation.
+func (m *AgentRuntimeSettingMutation) ClarificationEnabled() (r bool, exists bool) {
+	v := m.clarification_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClarificationEnabled returns the old "clarification_enabled" field's value of the AgentRuntimeSetting entity.
+// If the AgentRuntimeSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentRuntimeSettingMutation) OldClarificationEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClarificationEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClarificationEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClarificationEnabled: %w", err)
+	}
+	return oldValue.ClarificationEnabled, nil
+}
+
+// ResetClarificationEnabled resets all changes to the "clarification_enabled" field.
+func (m *AgentRuntimeSettingMutation) ResetClarificationEnabled() {
+	m.clarification_enabled = nil
+}
+
 // SetChannelID sets the "channel_id" field.
 func (m *AgentRuntimeSettingMutation) SetChannelID(s string) {
 	m.channel_id = &s
@@ -10836,7 +10873,7 @@ func (m *AgentRuntimeSettingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentRuntimeSettingMutation) Fields() []string {
-	fields := make([]string, 0, 142)
+	fields := make([]string, 0, 143)
 	if m.self_evolve != nil {
 		fields = append(fields, agentruntimesetting.FieldSelfEvolve)
 	}
@@ -11097,6 +11134,9 @@ func (m *AgentRuntimeSettingMutation) Fields() []string {
 	}
 	if m.intent_pass_enabled != nil {
 		fields = append(fields, agentruntimesetting.FieldIntentPassEnabled)
+	}
+	if m.clarification_enabled != nil {
+		fields = append(fields, agentruntimesetting.FieldClarificationEnabled)
 	}
 	if m.channel_id != nil {
 		fields = append(fields, agentruntimesetting.FieldChannelID)
@@ -11445,6 +11485,8 @@ func (m *AgentRuntimeSettingMutation) Field(name string) (ent.Value, bool) {
 		return m.SkillRuntimeJSON()
 	case agentruntimesetting.FieldIntentPassEnabled:
 		return m.IntentPassEnabled()
+	case agentruntimesetting.FieldClarificationEnabled:
+		return m.ClarificationEnabled()
 	case agentruntimesetting.FieldChannelID:
 		return m.ChannelID()
 	case agentruntimesetting.FieldChatID:
@@ -11738,6 +11780,8 @@ func (m *AgentRuntimeSettingMutation) OldField(ctx context.Context, name string)
 		return m.OldSkillRuntimeJSON(ctx)
 	case agentruntimesetting.FieldIntentPassEnabled:
 		return m.OldIntentPassEnabled(ctx)
+	case agentruntimesetting.FieldClarificationEnabled:
+		return m.OldClarificationEnabled(ctx)
 	case agentruntimesetting.FieldChannelID:
 		return m.OldChannelID(ctx)
 	case agentruntimesetting.FieldChatID:
@@ -12465,6 +12509,13 @@ func (m *AgentRuntimeSettingMutation) SetField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetIntentPassEnabled(v)
+		return nil
+	case agentruntimesetting.FieldClarificationEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClarificationEnabled(v)
 		return nil
 	case agentruntimesetting.FieldChannelID:
 		v, ok := value.(string)
@@ -13871,6 +13922,9 @@ func (m *AgentRuntimeSettingMutation) ResetField(name string) error {
 		return nil
 	case agentruntimesetting.FieldIntentPassEnabled:
 		m.ResetIntentPassEnabled()
+		return nil
+	case agentruntimesetting.FieldClarificationEnabled:
+		m.ResetClarificationEnabled()
 		return nil
 	case agentruntimesetting.FieldChannelID:
 		m.ResetChannelID()

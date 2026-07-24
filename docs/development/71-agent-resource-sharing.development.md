@@ -42,9 +42,9 @@
 | `internal/tools/deptmail/deptmail.go` | 4 工具薄壳（send/list_inbox/read/reply） |
 | `internal/tools/sessionaccess/sessionaccess.go` | 3 工具薄壳（search_messages/list_agent_sessions/read_session_history） |
 | `internal/biz/resource_access_test.go` | 权限矩阵 + 防抖 + 限流 + fail-closed 单测 |
-| `internal/service/member_fs_test.go` | secureJoin 路径穿越/符号链接/二进制/截断单测 |
+| `internal/service/m71_service_test.go` | secureJoin 路径穿越/符号链接/二进制/截断 + MailboxWaker 单测 |
 
-### 修改（4）
+### 修改（6）
 
 | 文件 | 改动 |
 |------|------|
@@ -52,6 +52,8 @@
 | `internal/service/chat_orchestrator.go` | RuntimeTooling +3 字段；CustomToolFunc +2 装配分支 |
 | `cmd/admin/wire.go` | provideRuntimeTooling +3 参数；3 个 biz usecase provider + 2 个 service 实现 provider + wire.Bind |
 | `cmd/admin/wire_gen.go` | `make wire` 重新生成 |
+| `internal/service/service.go` | 补 `synthesisResultService` 绑定（P-REPORT 遗留，修复 `make wire` 不可复现） |
+| `internal/data/team_repo.go` | 修复 `ListActiveRunTeamIDs` Ent API 误用（`Unique(true).Select.Strings` 不存在 → `GroupBy.Scan`） |
 
 ### Ent 生成物
 
@@ -59,17 +61,17 @@
 
 ## 四、任务清单
 
-- [ ] T1 Ent Schema ×2 + `go generate` 通过
-- [ ] T2 data 层 Repo ×3（信箱/审计/全局检索）+ ProviderSet 注册
-- [ ] T3 biz 层 resource_access.go（权限策略 + 审计编排，fail-closed）
-- [ ] T4 biz 层 dept_mailbox.go（收发读回 + 唤醒防抖）
-- [ ] T5 biz 层 session_search.go（spirit 校验 + 限流）
-- [ ] T6 service 层 member_fs.go（路径安全 + 文件读取）
-- [ ] T7 service 层 mailbox_waker.go（session 定位 + Turn 提交）
-- [ ] T8 tools ×3 包（薄壳，装配期身份闭包）
-- [ ] T9 chat_orchestrator 装配 + wire 绑定
-- [ ] T10 单测（biz 策略矩阵/防抖/限流/fail-closed + service 路径安全）
-- [ ] T11 全量验证 `go build ./... && go test ./internal/...` + 文档状态同步
+- [x] T1 Ent Schema ×2 + `go generate` 通过
+- [x] T2 data 层 Repo ×3（信箱/审计/全局检索）+ ProviderSet 注册
+- [x] T3 biz 层 resource_access.go（权限策略 + 审计编排，fail-closed）
+- [x] T4 biz 层 dept_mailbox.go（收发读回 + 唤醒防抖）
+- [x] T5 biz 层 session_search.go（spirit 校验 + 限流）
+- [x] T6 service 层 member_fs.go（路径安全 + 文件读取）
+- [x] T7 service 层 mailbox_waker.go（session 定位 + Turn 提交；SetTurnGateway setter 注入破 Wire 环）
+- [x] T8 tools ×3 包（薄壳，装配期身份闭包）
+- [x] T9 chat_orchestrator 装配 + wire 绑定
+- [x] T10 单测（biz 策略矩阵/防抖/限流/fail-closed + service 路径安全）— 2026-07-23 全绿（biz 21 用例 + service 23 用例）
+- [x] T11 全量验证 `go build ./... && go test ./internal/...` + 文档状态同步 — 2026-07-23 build exit 0；service 7.7s / biz 18.6s / agent 45.7s / data 21.1s 全绿；`make wire` 恢复可复现生成
 
 ## 五、验收标准
 

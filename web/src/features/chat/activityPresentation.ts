@@ -19,6 +19,16 @@ export const builtinLabels: Record<string, string> = {
   grep: '搜索代码',
   search_files: '搜索文件',
   bash: '执行命令',
+  list_member_files: '查看成员文件',
+  read_member_file: '读取成员文件',
+  search_member_files: '搜索成员文件',
+  send_dept_message: '发送部门消息',
+  list_inbox: '查看部门信箱',
+  read_message: '读取消息',
+  reply_message: '回复消息',
+  search_messages: '搜索消息',
+  list_agent_sessions: '查看会话列表',
+  read_session_history: '读取会话历史',
 };
 
 const kindIcons: Record<ActivityKind, string> = {

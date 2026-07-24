@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"aranea-agents/internal/biz/session"
+	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
@@ -84,7 +85,10 @@ type SpiritTeamController interface {
 	AutoArchiveCompletedTeams(ctx context.Context, spiritSessionID string)
 	// ReadUpstreamDeliverable backs the read_upstream_deliverable tool (P2):
 	// full-text retrieval of a completed upstream team's deliverable.
-	ReadUpstreamDeliverable(ctx context.Context, teamID string, maxChars int) (UpstreamDeliverableContent, error)
+	// readerSessionID identifies the calling (downstream) team's main session;
+	// when resolvable, the reader team's InputContract is validated against the
+	// upstream team's declared Deliverables before the read (Phase B).
+	ReadUpstreamDeliverable(ctx context.Context, readerSessionID, teamID string, maxChars int) (UpstreamDeliverableContent, error)
 }
 
 // TimeoutHandler is called when a team times out. Implemented by the service
@@ -1244,6 +1248,11 @@ func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggatewa
 		"max_concurrency":    maxConcurrency,
 		"timeout_seconds":    SpiritTeamDefaultTimeout,
 	}
+	// C1/C3: multi-member teams get the deliverable state channel so members
+	// can pass structured output via set_deliverable/get_deliverable tools.
+	if len(agentKeys) > 1 {
+		def["enable_state_deliverable"] = true
+	}
 	out, err := json.Marshal(def)
 	if err != nil {
 		return "{}"
@@ -1788,11 +1797,13 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 	// Any failure degrades to the reply-extraction source above.
 	summarySource := full.Content
 	structuredJSON := ""
+	var cognition *DeliverableCognition
 	if stateDeliv := u.readGraphStateDeliverable(ctx, t, full.SessionID); len(stateDeliv) > 0 {
-		if s, ok := stateDeliv["summary"].(string); ok && strings.TrimSpace(s) != "" {
+		if s, ok := stateDeliv[deliverableReservedKeySummary].(string); ok && strings.TrimSpace(s) != "" {
 			summarySource = s
 		}
-		structuredJSON = marshalNonSummaryStateKeys(stateDeliv)
+		cognition = extractStateCognition(stateDeliv[deliverableReservedKeyCognition])
+		structuredJSON = marshalNonReservedStateKeys(stateDeliv)
 	}
 
 	sizeChars := utf8.RuneCountInString(summarySource)
@@ -1804,6 +1815,8 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 		SizeChars:      sizeChars,
 		Truncated:      sizeChars > MaxSummaryLen,
 		StructuredJSON: structuredJSON,
+		Cognition:      cognition,
+		DerivedFrom:    t.DependsOn,
 	}
 	refJSON, marshalErr := json.Marshal(ref)
 	if marshalErr != nil {
@@ -1916,12 +1929,44 @@ func (u *SpiritTeamUsecase) readGraphStateDeliverable(ctx context.Context, t Tea
 	return stateDeliv
 }
 
-// marshalNonSummaryStateKeys serializes every deliverable state key except
-// "summary" into the envelope's StructuredJSON field. "" when nothing remains.
-func marshalNonSummaryStateKeys(stateDeliv map[string]any) string {
+// Reserved keys of the graph deliverable state map. Both are extracted into
+// first-class DeliverableRef fields by WriteDeliverablesToSession and are
+// therefore excluded from StructuredJSON.
+const (
+	deliverableReservedKeySummary   = "summary"
+	deliverableReservedKeyCognition = "cognition"
+)
+
+// extractStateCognition converts the reserved "cognition" state-map entry
+// into a DeliverableCognition. The value arrives as a map[string]any (JSON
+// round-trip from graph state), so it is re-marshalled and unmarshalled into
+// the typed struct. Tolerant: nil on absence, wrong shape, or corrupt data —
+// a malformed cognition must never block the deliverable write.
+func extractStateCognition(v any) *DeliverableCognition {
+	if v == nil {
+		return nil
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	var c DeliverableCognition
+	if err := json.Unmarshal(b, &c); err != nil {
+		return nil
+	}
+	if len(c.Decisions) == 0 && len(c.Rejected) == 0 && len(c.Assumptions) == 0 && len(c.OpenQuestions) == 0 {
+		return nil
+	}
+	return &c
+}
+
+// marshalNonReservedStateKeys serializes every deliverable state key except
+// the reserved ones ("summary", "cognition") into the envelope's
+// StructuredJSON field. "" when nothing remains.
+func marshalNonReservedStateKeys(stateDeliv map[string]any) string {
 	rest := make(map[string]any, len(stateDeliv))
 	for k, v := range stateDeliv {
-		if k == "summary" {
+		if k == deliverableReservedKeySummary || k == deliverableReservedKeyCognition {
 			continue
 		}
 		rest[k] = v
@@ -1990,6 +2035,9 @@ func (u *SpiritTeamUsecase) InjectUpstreamDeliverables(ctx context.Context, down
 			ref.TeamID = upstream.ID
 		}
 		part := fmt.Sprintf("## 上游团队: %s\n%s%s", upstream.DisplayName, contractDeclarationLines(upstream.Deliverables), ref.Summary)
+		if cog := renderCognitionLines(ref.Cognition); cog != "" {
+			part += "\n" + cog
+		}
 		if ref.Truncated {
 			part += fmt.Sprintf("\n[交付物全文共 %d 字符，以上为截断摘要。需要完整内容时调用 read_upstream_deliverable(team_id=\"%s\") 获取]",
 				ref.SizeChars, ref.TeamID)
@@ -2026,6 +2074,56 @@ func contractDeclarationLines(deliverablesJSON string) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
+// cognitionItemMaxRunes bounds each rendered cognition item so a verbose
+// upstream record cannot blow up the injection prefix.
+const cognitionItemMaxRunes = 200
+
+// renderCognitionLines renders the C1 cognition block of an upstream
+// deliverable ref for the injection prefix, one line per aspect:
+//
+//	[上游决策] 选择 A 方案（理由: …，置信度 0.8）；否决 B 方案（原因: …）
+//	[上游假设] 数据源 Q3 已封板
+//	[上游遗留问题] 样本偏差未校正
+//
+// Each item is truncated to cognitionItemMaxRunes. "" when cognition is nil
+// or renders to nothing — legacy envelopes keep the prefix unchanged.
+func renderCognitionLines(c *DeliverableCognition) string {
+	if c == nil {
+		return ""
+	}
+	var lines []string
+	var decisions []string
+	for _, d := range c.Decisions {
+		item := fmt.Sprintf("选择 %s（理由: %s", d.Choice, d.Rationale)
+		if d.Confidence > 0 {
+			item += fmt.Sprintf("，置信度 %g", d.Confidence)
+		}
+		item += "）"
+		decisions = append(decisions, TruncateRunes(item, cognitionItemMaxRunes))
+	}
+	for _, r := range c.Rejected {
+		decisions = append(decisions, TruncateRunes(fmt.Sprintf("否决 %s（原因: %s）", r.Option, r.Reason), cognitionItemMaxRunes))
+	}
+	if len(decisions) > 0 {
+		lines = append(lines, "[上游决策] "+strings.Join(decisions, "；"))
+	}
+	if len(c.Assumptions) > 0 {
+		items := make([]string, 0, len(c.Assumptions))
+		for _, a := range c.Assumptions {
+			items = append(items, TruncateRunes(a, cognitionItemMaxRunes))
+		}
+		lines = append(lines, "[上游假设] "+strings.Join(items, "；"))
+	}
+	if len(c.OpenQuestions) > 0 {
+		items := make([]string, 0, len(c.OpenQuestions))
+		for _, q := range c.OpenQuestions {
+			items = append(items, TruncateRunes(q, cognitionItemMaxRunes))
+		}
+		lines = append(lines, "[上游遗留问题] "+strings.Join(items, "；"))
+	}
+	return strings.Join(lines, "\n")
+}
+
 // readDeliverableRef reads the persisted DeliverableRef for the team's own
 // dag_node_id. Dual-mode: P2 envelopes parse with full metadata; legacy
 // plain-string values yield a summary-only ref. ok=false when absent or
@@ -2054,8 +2152,14 @@ type UpstreamDeliverableContent struct {
 // hard cap MaxUpstreamDeliverableChars). Backs the read_upstream_deliverable
 // tool: the injection prefix only carries a truncated summary, and downstream
 // team members call the tool when they genuinely need the full text.
+//
+// Phase B (runtime contract validation): when readerSessionID resolves to a
+// reader team with a declared InputContract, that contract is checked against
+// the upstream team's declared Deliverables BEFORE the (expensive) full-text
+// extraction; a mismatch returns a structured *ContractMismatchError so the
+// calling agent can auto-correct and retry.
 // Domain: Delivery — full-text retrieval of an upstream team's deliverable.
-func (u *SpiritTeamUsecase) ReadUpstreamDeliverable(ctx context.Context, teamID string, maxChars int) (UpstreamDeliverableContent, error) {
+func (u *SpiritTeamUsecase) ReadUpstreamDeliverable(ctx context.Context, readerSessionID, teamID string, maxChars int) (UpstreamDeliverableContent, error) {
 	teamID = strings.TrimSpace(teamID)
 	if teamID == "" {
 		return UpstreamDeliverableContent{}, apierror.BadRequest("SPIRIT", "team_id is required")
@@ -2070,12 +2174,21 @@ func (u *SpiritTeamUsecase) ReadUpstreamDeliverable(ctx context.Context, teamID 
 	if t.Status != TeamStatusCompleted {
 		return UpstreamDeliverableContent{}, apierror.BadRequest("SPIRIT", "upstream team %s has not completed yet (status=%s)", teamID, t.Status)
 	}
+	if err := u.validateUpstreamContract(ctx, readerSessionID, t); err != nil {
+		return UpstreamDeliverableContent{}, err
+	}
 	full, err := u.extractTeamFullOutput(ctx, teamID)
 	if err != nil {
 		return UpstreamDeliverableContent{}, err
 	}
 	if full.Content == "" {
 		return UpstreamDeliverableContent{}, apierror.NotFound("SPIRIT", "no deliverable content found for team %s", teamID)
+	}
+	// C2: content-level schema validation runs AFTER full-text extraction (it
+	// needs the content), unlike the name/type/format check above which fails
+	// fast before the expensive read.
+	if err := u.validateUpstreamContractSchema(ctx, readerSessionID, t, full.Content); err != nil {
+		return UpstreamDeliverableContent{}, err
 	}
 
 	sizeChars := utf8.RuneCountInString(full.Content)
@@ -2097,6 +2210,146 @@ func (u *SpiritTeamUsecase) ReadUpstreamDeliverable(ctx context.Context, teamID 
 		TeamID:    teamID,
 		SessionID: full.SessionID,
 	}, nil
+}
+
+// validateUpstreamContract performs the tool-call level contract check for
+// ReadUpstreamDeliverable: reader team (resolved from readerSessionID) → its
+// InputContract vs the upstream team's declared Deliverables. A mismatch
+// returns *ContractMismatchError; the check is skipped (nil) when the reader
+// side is unresolvable or either side declares no contract — declarations
+// stay advisory for legacy teams without contracts.
+// Domain: Delivery — runtime contract guard for upstream deliverable reads.
+func (u *SpiritTeamUsecase) validateUpstreamContract(ctx context.Context, readerSessionID string, upstream Team) error {
+	reader, inputContracts, ok := u.resolveReaderContracts(ctx, readerSessionID, upstream.ID)
+	if !ok {
+		return nil
+	}
+	upstreamContracts, err := ParseDeliverableContracts(upstream.Deliverables)
+	if err != nil || len(upstreamContracts) == 0 {
+		return nil
+	}
+	validator := u.contractValidator
+	if validator == nil {
+		validator = NewDeliverableContractValidator()
+	}
+	mismatches := validator.ValidateContractMatchDetailed(upstreamContracts, inputContracts)
+	if len(mismatches) == 0 {
+		return nil
+	}
+	u.lg.Warn("上游交付物契约校验不匹配",
+		loggateway.StepID("spirit.read_upstream_deliverable.contract_mismatch"),
+		loggateway.Str("reader_team_id", reader.ID),
+		loggateway.Str("upstream_team_id", upstream.ID),
+		loggateway.Int("mismatch_count", len(mismatches)),
+	)
+	return &ContractMismatchError{ReaderTeamID: reader.ID, UpstreamTeamID: upstream.ID, Mismatches: mismatches}
+}
+
+// resolveReaderContracts resolves the reader team and its parsed input
+// contract for the runtime contract guards. ok=false covers every
+// advisory-skip case: empty session id, unresolvable session/team, a team
+// reading its own deliverable, or no declared input contract.
+func (u *SpiritTeamUsecase) resolveReaderContracts(ctx context.Context, readerSessionID, upstreamTeamID string) (Team, []DeliverableContract, bool) {
+	readerSessionID = strings.TrimSpace(readerSessionID)
+	if readerSessionID == "" {
+		return Team{}, nil, false
+	}
+	sess, err := u.sessionUC.Get(ctx, readerSessionID)
+	if err != nil || sess.TeamID == "" || sess.TeamID == upstreamTeamID {
+		// Unresolvable reader, or a team reading its own deliverable: no check.
+		return Team{}, nil, false
+	}
+	reader, err := u.teamUC.Get(ctx, sess.TeamID)
+	if err != nil {
+		return Team{}, nil, false
+	}
+	inputContracts, err := ParseDeliverableContracts(reader.InputContract)
+	if err != nil || len(inputContracts) == 0 {
+		return Team{}, nil, false
+	}
+	return reader, inputContracts, true
+}
+
+// schemaViolationPrefix is the message prefix produced by
+// shared.ValidateDocumentAgainstSchema on a document/schema mismatch; the
+// mismatch record keeps only the violation detail.
+const schemaViolationPrefix = "config does not match schema: "
+
+// validateUpstreamContractSchema is the C2 content-level contract guard for
+// ReadUpstreamDeliverable. For each reader input-contract entry carrying a
+// schema_json AND declaring format=="json", the upstream deliverable content
+// is validated against that schema. A violation joins a
+// *ContractMismatchError (LLM-actionable, auto-correct-and-retry).
+//
+// Advisory skips (never block legacy teams): entry without schema_json,
+// entry with non-json format, upstream side not declaring the same-named
+// json deliverable, content that is not valid JSON, and schema execution
+// errors (e.g. an invalid schema declaration on the reader side).
+// Domain: Delivery — content-level schema guard for upstream deliverable reads.
+func (u *SpiritTeamUsecase) validateUpstreamContractSchema(ctx context.Context, readerSessionID string, upstream Team, content string) error {
+	reader, inputContracts, ok := u.resolveReaderContracts(ctx, readerSessionID, upstream.ID)
+	if !ok {
+		return nil
+	}
+	needsSchema := false
+	for _, c := range inputContracts {
+		if strings.TrimSpace(c.SchemaJSON) != "" && c.Format == "json" {
+			needsSchema = true
+			break
+		}
+	}
+	if !needsSchema {
+		return nil
+	}
+	if !json.Valid([]byte(content)) {
+		return nil // non-JSON content cannot be schema-validated — advisory skip
+	}
+	upstreamContracts, err := ParseDeliverableContracts(upstream.Deliverables)
+	if err != nil || len(upstreamContracts) == 0 {
+		return nil
+	}
+	upstreamJSONDeclared := make(map[string]bool, len(upstreamContracts))
+	for _, c := range upstreamContracts {
+		if c.Format == "json" {
+			upstreamJSONDeclared[c.Name] = true
+		}
+	}
+
+	var mismatches []ContractMismatch
+	for _, entry := range inputContracts {
+		if strings.TrimSpace(entry.SchemaJSON) == "" || entry.Format != "json" {
+			continue
+		}
+		if !upstreamJSONDeclared[entry.Name] {
+			continue // name/format gaps are reported by the fast-fail check
+		}
+		verr := shared.ValidateDocumentAgainstSchema("SPIRIT", entry.SchemaJSON, content)
+		if verr == nil {
+			continue
+		}
+		if !apierror.IsCode(verr, apierror.CodeBadRequest) {
+			continue // schema execution error (e.g. invalid schema) — advisory skip
+		}
+		detail := verr.Error()
+		if ae, ok := apierror.From(verr); ok {
+			detail = strings.TrimPrefix(ae.Message, schemaViolationPrefix)
+		}
+		mismatches = append(mismatches, ContractMismatch{
+			Name:     entry.Name,
+			Kind:     ContractMismatchSchema,
+			Expected: detail,
+		})
+	}
+	if len(mismatches) == 0 {
+		return nil
+	}
+	u.lg.Warn("上游交付物内容 schema 校验不匹配",
+		loggateway.StepID("spirit.read_upstream_deliverable.schema_mismatch"),
+		loggateway.Str("reader_team_id", reader.ID),
+		loggateway.Str("upstream_team_id", upstream.ID),
+		loggateway.Int("mismatch_count", len(mismatches)),
+	)
+	return &ContractMismatchError{ReaderTeamID: reader.ID, UpstreamTeamID: upstream.ID, Mismatches: mismatches}
 }
 
 // ---------------------------------------------------------------------------

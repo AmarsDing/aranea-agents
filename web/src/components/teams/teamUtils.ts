@@ -448,11 +448,11 @@ export function groupTeamsByIndustry(
     }))
     .filter((group) => group.teams.length > 0);
 
-  const uncategorized = buckets.get(UNCategorizedIndustryId) ?? [];
   const assigned = new Set(groups.flatMap((group) => group.teams.map((team) => team.id)));
-  for (const team of userTeams) {
-    if (!assigned.has(team.id)) uncategorized.push(team);
-  }
+  // Uncategorized = user teams not claimed by any visible industry group.
+  // Filtering from userTeams (instead of appending to the bucket) prevents
+  // double-adding teams already placed in the uncategorized bucket above.
+  const uncategorized = userTeams.filter((team) => !assigned.has(team.id));
   if (uncategorized.length > 0) {
     groups.push({
       id: UNCategorizedIndustryId,

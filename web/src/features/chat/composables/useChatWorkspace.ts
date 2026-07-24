@@ -6,6 +6,7 @@ import type { SessionView, TeamRow } from '../../../components/chat/types';
 import type { Agent } from '../../agents/types';
 import type { CompressStatus } from '../../session/types';
 import type { SpiritPanelMode } from '../../spirit/types';
+import type { SubmitClarificationPayload } from '../types';
 import { useAppStore } from '../../../stores/app';
 import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import { useChatMessageStore } from '../../../stores/chat/messageStore';
@@ -14,7 +15,7 @@ import { useChatConversationStore } from '../../../stores/chat/conversationStore
 import { useSpiritTeamStore } from '../../../stores/spirit';
 import { cancelRunningToolMessages } from '../activityToolCall';
 import { runStatusFromActivityEvent } from '../activityRunStatus';
-import { confirmActivity, confirmActivityGrant } from '../api';
+import { confirmActivity, confirmActivityGrant, submitClarification } from '../api';
 import { useChatRunStatus } from './useChatRunStatus';
 import { useChatStreamManager } from './useChatStreamManager';
 import { useChatInboundSync } from './useChatInboundSync';
@@ -1017,8 +1018,28 @@ export function useChatWorkspace() {
 
   async function pollCompressStatus() {
     const sid = selectedSessionForUi.value?.id;
-    if (!sid) return;
+    if (!sid) {
+      // No session selected (e.g. navigated away from chat): stop the timer
+      // instead of spinning a no-op interval forever.
+      stopCompressPolling();
+      return;
+    }
     await sessionStore.fetchCompressStatus(sid);
+    // The stop-condition must be evaluated here, after every poll, rather
+    // than in a watch on compressStatus: a watch only fires on value change,
+    // so a steady 'normal' never re-triggers it and the cooldown check below
+    // would never run again — polling continued forever (5s interval kept the
+    // network busy, which starved browser-tool readiness on the chat page).
+    if (sessionStore.compressStatus === 'normal') {
+      if (!compressNormalSince) {
+        compressNormalSince = Date.now();
+      }
+      if (Date.now() - compressNormalSince >= COMPRESS_NORMAL_COOLDOWN_MS) {
+        stopCompressPolling();
+      }
+    } else {
+      compressNormalSince = null;
+    }
   }
 
   function startCompressPolling() {
@@ -1037,19 +1058,12 @@ export function useChatWorkspace() {
     compressNormalSince = null;
   }
 
+  // Restart polling if the status ever flips to non-normal while the timer
+  // is stopped (defensive: today only pollCompressStatus updates the status,
+  // but a future WS push path would need this to resume polling).
   watch(compressStatus, (status) => {
-    if (status === 'normal') {
-      if (!compressNormalSince) {
-        compressNormalSince = Date.now();
-      }
-      if (Date.now() - compressNormalSince >= COMPRESS_NORMAL_COOLDOWN_MS) {
-        stopCompressPolling();
-      }
-    } else {
-      compressNormalSince = null;
-      if (!compressPollTimer) {
-        startCompressPolling();
-      }
+    if (status !== 'normal' && !compressPollTimer) {
+      startCompressPolling();
     }
   });
 
@@ -1321,6 +1335,7 @@ export function useChatWorkspace() {
       onCompactSession,
       onConfirmActivity,
       onConfirmActivityGrant,
+      onSubmitClarification,
       resumeTask,
       compressStatus,
       activityStore,

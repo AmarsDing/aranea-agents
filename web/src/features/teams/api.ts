@@ -216,6 +216,13 @@ export async function deleteTeam(id: string): Promise<void> {
   await svc.DeleteTeam({ id });
 }
 
+/** Retry a failed/cancelled team: backend transitions status → pending (recover). */
+export async function retryTeam(id: string): Promise<{ teamId: string; status: string }> {
+  const svc = createTeamService();
+  const res = await svc.RetryTeam({ teamId: id });
+  return { teamId: res.teamId ?? id, status: res.status ?? '' };
+}
+
 export async function listTeamRuns(teamID?: string, limit = 50): Promise<TeamRun[]> {
   const svc = createTeamService();
   const res = await svc.ListTeamRuns({ teamId: teamID, limit });

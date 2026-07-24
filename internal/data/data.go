@@ -25,7 +25,6 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 
-	_ "github.com/glebarez/go-sqlite/compat"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/lib/pq"
 
@@ -166,10 +165,15 @@ var ProviderSet = wire.NewSet(
 	NewEventDeliveryOutboxRepoFromData,
 	// Media generation provider catalog (media_providers) for media tool assembly.
 	NewMediaProviderRepo,
+	// M71: agent resource sharing (dept mailbox / access audit / global message search).
+	NewDeptLeadMessageRepo,
+	NewResourceAccessAuditRepo,
+	NewGlobalMessageSearchRepo,
 )
 
-// Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
-// 复杂原生 SQL 走 *ent.Client 上的 QueryContext（见 sqlite_db.go），不另开 sql.DB。
+// Data: Postgres is the only supported primary database (Ent CRUD + pgvector
+// agent memory share the same pool; see NewData). SQLite remains only in the
+// legacy offline migration tool (cmd/migrate-sqlite-to-postgres).
 type Data struct {
 	entClient   *ent.Client
 	readClient  *ent.Client
@@ -200,9 +204,10 @@ type Data struct {
 }
 
 // Dialect returns the active primary database dialect.
+// Postgres is the only supported primary database; the nil fallback is Postgres.
 func (d *Data) Dialect() Dialect {
-	if d == nil {
-		return DialectSQLite
+	if d == nil || d.dialect == "" {
+		return DialectPostgres
 	}
 	return d.dialect
 }
@@ -217,7 +222,7 @@ func (d *Data) SetEntClientForTest(client *ent.Client, rawDB *sql.DB, lg loggate
 	d.rw = NewReadWriteClient(client, client)
 	d.rwDB = NewReadWriteDB(rawDB, rawDB)
 	d.txTimeout = 30 * time.Second
-	d.dialect = DialectSQLite
+	d.dialect = DialectPostgres
 }
 
 // SetTxTimeout configures the hard deadline for ExecInTx transactions.
@@ -390,10 +395,9 @@ func entSQLDebugEnabled() bool {
 // NewData opens Postgres for Ent CRUD + pgvector.
 // The underlying *sql.DB is shared with trpc session/checkpoint adapters via RawDB().
 //
-// SQLite is no longer supported as a primary database in production. It remains
-// available only for:
-//   - Test infrastructure (testhelper.SetupTestDB uses in-memory SQLite)
-//   - Offline CLI maintenance tools (OpenSQLiteEntClient/NewCLIData)
+// Postgres is the only supported primary database. SQLite remains only in the
+// legacy offline migration tool (cmd/migrate-sqlite-to-postgres). Tests use
+// isolated Postgres schemas via testhelper.SetupTestPG.
 func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 	var entClient *ent.Client
 	var rawDB *sql.DB
@@ -1047,71 +1051,6 @@ func NewEvalRepoFromData(d *Data) biz.EvalRepo {
 
 func NewA2ARepoFromData(d *Data, lg loggateway.Logger) biz.A2ARepo {
 	return NewA2ARepo(d, lg)
-}
-
-// NewCLIData wraps SQLite handles opened by OpenSQLiteEntClient for offline maintenance CLIs.
-func NewCLIData(client *ent.Client, rawDB *sql.DB, lg loggateway.Logger) *Data {
-	var vs vector.VectorStore
-	if rawDB != nil {
-		if s, err := vector.NewSQLiteVectorStore(rawDB, "vector_embeddings", lg); err == nil {
-			vs = s
-		}
-	}
-	return &Data{entClient: client, readClient: client, rawDB: rawDB, readDB: rawDB, rw: NewReadWriteClient(client, client), rwDB: NewReadWriteDB(rawDB, rawDB), vectorStore: vs, reranker: newMemoryReranker(lg), lg: lg, dialect: DialectSQLite}
-}
-
-// OpenSQLiteEntClient opens SQLite for offline CLI maintenance tools (e.g. memory-migrate).
-// Do not use against a DSN while admin is running — use in-process NewData migrations instead.
-func OpenSQLiteEntClient(dsn string, lg loggateway.Logger) (*ent.Client, *sql.DB, func(), error) {
-	dsn = normalizeSQLiteDSN(dsn)
-	rawDB, err := sql.Open(dialect.SQLite, dsn)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("open sqlite: %w", err)
-	}
-	rawDB.SetMaxOpenConns(1)
-	rawDB.SetMaxIdleConns(1)
-	for _, pragma := range []string{
-		"PRAGMA foreign_keys=ON",
-		"PRAGMA journal_mode=WAL",
-		"PRAGMA busy_timeout=5000",
-		"PRAGMA synchronous=NORMAL",
-	} {
-		if _, err := rawDB.ExecContext(context.Background(), pragma); err != nil {
-			rawDB.Close()
-			return nil, nil, nil, fmt.Errorf("sqlite %s: %w", pragma, err)
-		}
-	}
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.SQLite, rawDB)), ent.Log(entLogAdapter(lg)))
-	cleanup := func() {
-		_ = client.Close()
-		_ = rawDB.Close()
-	}
-	return client, rawDB, cleanup, nil
-}
-
-func normalizeSQLiteDSN(dsn string) string {
-	dsn = strings.TrimSpace(dsn)
-	if dsn == "" {
-		return dsn
-	}
-	if strings.HasPrefix(dsn, "file:") {
-		if strings.Contains(dsn, "cache=") && strings.Contains(dsn, "_fk=") {
-			return dsn
-		}
-		sep := "?"
-		if strings.Contains(dsn, "?") {
-			sep = "&"
-		}
-		if !strings.Contains(dsn, "cache=") {
-			dsn += sep + "cache=shared"
-			sep = "&"
-		}
-		if !strings.Contains(dsn, "_fk=") {
-			dsn += sep + "_fk=1"
-		}
-		return dsn
-	}
-	return "file:" + dsn + "?cache=shared&_fk=1"
 }
 
 // generateCatalogID generates a random 24-hex-char ID for agent/team catalog entries.

@@ -209,6 +209,9 @@ func validateTopology(def *GraphBuildConfig, result *ValidationResult) {
 				fmt.Sprintf("条件边源节点 %q 不存在", ce.From))
 		}
 		for label, target := range ce.PathMap {
+			if target == biz.EndNodeID {
+				continue // 终止哨兵，合法目标
+			}
 			if !nodeSet[target] {
 				result.AddError(ValidationErrEdgeTargetMissing, ce.From, fmt.Sprintf("path_map[%s]", label),
 					fmt.Sprintf("条件边目标节点 %q 不存在（标签 %q）", target, label))
@@ -350,6 +353,9 @@ func validateLoopExits(def *GraphBuildConfig, result *ValidationResult) {
 	}
 	for _, ce := range def.ConditionalEdges {
 		for _, target := range ce.PathMap {
+			if target == biz.EndNodeID {
+				continue // 终止哨兵不是真实节点，不参与环检测
+			}
 			adj[ce.From] = append(adj[ce.From], target)
 		}
 	}

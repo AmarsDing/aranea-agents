@@ -15,6 +15,7 @@ import (
 	"aranea-agents/internal/artifact"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	"aranea-agents/internal/conf"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/workspace"
 
@@ -32,25 +33,43 @@ type sessionWorkspaceLookup interface {
 	Get(ctx context.Context, id string) (biz.Session, error)
 }
 
+// sessionWorkspaceSearcher lists sessions within a caller workspace.
+// Used by ListArtifacts for the "all artifacts" browse (empty session_id):
+// the artifact store is keyed by session, so workspace-scoped listing must
+// first resolve which sessions belong to the caller workspace.
+// Satisfied by *biz.SessionUsecase.
+type sessionWorkspaceSearcher interface {
+	Search(ctx context.Context, q biz.SessionSearchQuery) (biz.SessionListResult, error)
+}
+
 // ProvideSessionWorkspaceLookup 适配 *biz.SessionUsecase 到 sessionWorkspaceLookup。
 // 供 wire 注入到 ArtifactService 做 IDOR 防护。
 func ProvideSessionWorkspaceLookup(uc *biz.SessionUsecase) sessionWorkspaceLookup {
 	return uc
 }
 
+// ProvideSessionWorkspaceSearcher 适配 *biz.SessionUsecase 到 sessionWorkspaceSearcher。
+// 供 wire 注入到 ArtifactService 做「全部产物」workspace 过滤。
+func ProvideSessionWorkspaceSearcher(uc *biz.SessionUsecase) sessionWorkspaceSearcher {
+	return uc
+}
+
 // ArtifactService implements kratos artifact.v1.
 type ArtifactService struct {
 	v1.UnimplementedArtifactServiceServer
-	uc            *biz.ArtifactUsecase
-	signer        *artifact.Signer
-	sessionLookup sessionWorkspaceLookup // P1-1: IDOR 防护
+	uc              *biz.ArtifactUsecase
+	signer          *artifact.Signer
+	sessionLookup   sessionWorkspaceLookup   // P1-1: IDOR 防护
+	sessionSearcher sessionWorkspaceSearcher // 「全部产物」workspace 过滤
 }
 
 // NewArtifactService constructs an ArtifactService.
 // sessionLookup 用于 IDOR 防护（P1-1）：解析 session→workspace 做跨租户校验。
 // 传 nil 则跳过 workspace 校验（仅向后兼容旧测试；生产必须由 wire 注入）。
-func NewArtifactService(uc *biz.ArtifactUsecase, signer *artifact.Signer, sl sessionWorkspaceLookup) *ArtifactService {
-	s := &ArtifactService{uc: uc, signer: signer, sessionLookup: sl}
+// sessionSearcher 用于空 session_id 的「全部产物」workspace 过滤；
+// 传 nil 时空 session_id 退化为跨 session 全量（与 nil sessionLookup 的旧语义一致）。
+func NewArtifactService(uc *biz.ArtifactUsecase, signer *artifact.Signer, sl sessionWorkspaceLookup, ss sessionWorkspaceSearcher) *ArtifactService {
+	s := &ArtifactService{uc: uc, signer: signer, sessionLookup: sl, sessionSearcher: ss}
 	s.refreshStorageGauge(context.Background())
 	return s
 }
@@ -158,15 +177,10 @@ func (s *ArtifactService) GetArtifact(ctx context.Context, req *v1.GetArtifactRe
 }
 
 // ListArtifacts returns artifact metadata for a session (no payload).
+// session_id 为空 = 「全部产物」浏览：列出 caller workspace 下所有 session 的产物
+// （system workspace 或 nil sessionSearcher 时退化为跨 session 全量）。
 func (s *ArtifactService) ListArtifacts(ctx context.Context, req *v1.ListArtifactsRequest) (*v1.ListArtifactsResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
-	if sessionID == "" {
-		return nil, apierror.BadRequest(apierror.DomainArtifact, "session_id is required")
-	}
-	// P1-1: IDOR 防护 — 校验 caller workspace 拥有目标 session。
-	if err := s.assertWorkspaceOwnsSession(ctx, sessionID); err != nil {
-		return nil, err
-	}
 	limit := int(req.GetLimit())
 	offset := int(req.GetOffset())
 	if limit <= 0 {
@@ -174,7 +188,21 @@ func (s *ArtifactService) ListArtifacts(ctx context.Context, req *v1.ListArtifac
 	}
 	query := strings.TrimSpace(req.GetQuery())
 	mimePrefix := strings.TrimSpace(req.GetMimeTypePrefix())
-	items, total, err := s.uc.List(ctx, sessionID, limit, offset, query, mimePrefix)
+
+	var (
+		items []artifactbiz.Artifact
+		total int
+		err   error
+	)
+	if sessionID == "" {
+		items, total, err = s.listAllInWorkspace(ctx, limit, offset, query, mimePrefix)
+	} else {
+		// P1-1: IDOR 防护 — 校验 caller workspace 拥有目标 session。
+		if err = s.assertWorkspaceOwnsSession(ctx, sessionID); err != nil {
+			return nil, err
+		}
+		items, total, err = s.uc.List(ctx, sessionID, limit, offset, query, mimePrefix)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -186,6 +214,44 @@ func (s *ArtifactService) ListArtifacts(ctx context.Context, req *v1.ListArtifac
 		Items: pbItems,
 		Total: int32(total),
 	}, nil
+}
+
+// listAllInWorkspace 实现空 session_id 的「全部产物」浏览。
+// system workspace / nil sessionSearcher → 跨 session 全量（旧语义）；
+// 否则先解析 caller workspace 的 session IDs（分页拉取），再按 session 聚合产物。
+func (s *ArtifactService) listAllInWorkspace(ctx context.Context, limit, offset int, query, mimePrefix string) ([]artifactbiz.Artifact, int, error) {
+	callerWS := workspace.IDFromContext(ctx)
+	if s.sessionSearcher == nil || callerWS == workspace.SystemWorkspaceID {
+		return s.uc.List(ctx, "", limit, offset, query, mimePrefix)
+	}
+	sessionIDs, err := s.listWorkspaceSessionIDs(ctx, callerWS)
+	if err != nil {
+		return nil, 0, err
+	}
+	return s.uc.ListBySessions(ctx, sessionIDs, limit, offset, query, mimePrefix)
+}
+
+// listWorkspaceSessionIDs 分页拉取 caller workspace 的全部 session IDs。
+// SessionUsecase.Search 单次上限 100（normalizeSessionSearch），超过需翻页。
+func (s *ArtifactService) listWorkspaceSessionIDs(ctx context.Context, workspaceID string) ([]string, error) {
+	const pageSize = 100
+	ids := make([]string, 0, pageSize)
+	for page := 1; ; page++ {
+		res, err := s.sessionSearcher.Search(ctx, biz.SessionSearchQuery{
+			WorkspaceID: workspaceID,
+			Page:        page,
+			PageSize:    pageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, sess := range res.Items {
+			ids = append(ids, sess.ID)
+		}
+		if len(ids) >= res.Total || len(res.Items) == 0 {
+			return ids, nil
+		}
+	}
 }
 
 // ListArtifactVersions returns all version metadata for an artifact logical file.
@@ -445,12 +511,14 @@ func toProtoArtifactMeta(a biz.Artifact) *v1.ArtifactMeta {
 	}
 }
 
-// protoArtifactMeta wraps toProtoArtifactMeta and resolves the local on-disk
-// absolute path into storage_uri (local backend only) so detail views can
-// display and copy the full path. Non-local backends keep the raw URI.
+// protoArtifactMeta wraps toProtoArtifactMeta and, for local FS backends,
+// resolves the on-disk absolute path into StorageUri. The absolute host path
+// is only disclosed when conf.LocalRevealEnabled() (M27 Phase 5: local
+// single-user deployments); otherwise the stored relative URI is returned so
+// API responses never leak the host filesystem layout (OUT-05 / ART-03).
 func (s *ArtifactService) protoArtifactMeta(a biz.Artifact) *v1.ArtifactMeta {
 	m := toProtoArtifactMeta(a)
-	if s.uc != nil {
+	if s.uc != nil && conf.LocalRevealEnabled() {
 		if abs := s.uc.ResolveAbsPath(a); abs != "" {
 			m.StorageUri = abs
 		}

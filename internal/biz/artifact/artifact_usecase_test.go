@@ -393,6 +393,121 @@ func TestUsecase_List(t *testing.T) {
 	})
 }
 
+func TestUsecase_ListBySessions(t *testing.T) {
+	s1Items := []artifact.Artifact{
+		{ID: "1", Name: "report.csv", MimeType: "text/csv", SessionID: "s1", CreatedAt: "2026-07-20T10:00:00Z"},
+		{ID: "2", Name: "photo.png", MimeType: "image/png", SessionID: "s1", CreatedAt: "2026-07-21T10:00:00Z"},
+	}
+	s2Items := []artifact.Artifact{
+		{ID: "3", Name: "data.json", MimeType: "application/json", SessionID: "s2", CreatedAt: "2026-07-22T10:00:00Z"},
+	}
+
+	t.Run("empty_session_ids_returns_empty", func(t *testing.T) {
+		repo := &mockRepo{
+			listFn: func(context.Context, string, int, int) ([]artifact.Artifact, int, error) {
+				t.Fatal("repo.List should not be called for empty sessionIDs")
+				return nil, 0, nil
+			},
+		}
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
+		items, total, err := uc.ListBySessions(context.Background(), nil, 10, 0, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if total != 0 || len(items) != 0 {
+			t.Fatalf("total=%d len=%d, want 0/0", total, len(items))
+		}
+	})
+
+	t.Run("aggregates_and_sorts_created_at_desc", func(t *testing.T) {
+		repo := &mockRepo{
+			listFn: func(_ context.Context, sessionID string, limit, offset int) ([]artifact.Artifact, int, error) {
+				if limit != 0 || offset != 0 {
+					t.Errorf("expected fetch-all limit=0 offset=0, got limit=%d offset=%d", limit, offset)
+				}
+				switch sessionID {
+				case "s1":
+					return s1Items, len(s1Items), nil
+				case "s2":
+					return s2Items, len(s2Items), nil
+				default:
+					t.Errorf("unexpected sessionID %q", sessionID)
+					return nil, 0, nil
+				}
+			},
+		}
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
+		items, total, err := uc.ListBySessions(context.Background(), []string{"s1", "s2"}, 10, 0, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if total != 3 || len(items) != 3 {
+			t.Fatalf("total=%d len=%d, want 3/3", total, len(items))
+		}
+		// CreatedAt desc: s2(07-22) > s1-photo(07-21) > s1-report(07-20)
+		wantIDs := []string{"3", "2", "1"}
+		for i, w := range wantIDs {
+			if items[i].ID != w {
+				t.Fatalf("items[%d].ID=%q, want %q (order=%v)", i, items[i].ID, w, items)
+			}
+		}
+	})
+
+	t.Run("applies_query_filter_and_pagination", func(t *testing.T) {
+		repo := &mockRepo{
+			listFn: func(_ context.Context, sessionID string, _ int, _ int) ([]artifact.Artifact, int, error) {
+				if sessionID == "s1" {
+					return s1Items, len(s1Items), nil
+				}
+				return s2Items, len(s2Items), nil
+			},
+		}
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
+		items, total, err := uc.ListBySessions(context.Background(), []string{"s1", "s2"}, 1, 0, "", "image/")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if total != 1 || len(items) != 1 || items[0].ID != "2" {
+			t.Fatalf("total=%d items=%v", total, items)
+		}
+	})
+
+	t.Run("offset_beyond_total", func(t *testing.T) {
+		repo := &mockRepo{
+			listFn: func(_ context.Context, sessionID string, _ int, _ int) ([]artifact.Artifact, int, error) {
+				if sessionID == "s1" {
+					return s1Items, len(s1Items), nil
+				}
+				return s2Items, len(s2Items), nil
+			},
+		}
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
+		items, total, err := uc.ListBySessions(context.Background(), []string{"s1", "s2"}, 10, 100, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if total != 3 || len(items) != 0 {
+			t.Fatalf("total=%d len=%d, want 3/0", total, len(items))
+		}
+	})
+
+	t.Run("repo_error_propagates", func(t *testing.T) {
+		repo := &mockRepo{
+			listFn: func(_ context.Context, sessionID string, _ int, _ int) ([]artifact.Artifact, int, error) {
+				if sessionID == "s2" {
+					return nil, 0, fmt.Errorf("disk fail")
+				}
+				return s1Items, len(s1Items), nil
+			},
+		}
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
+		_, _, err := uc.ListBySessions(context.Background(), []string{"s1", "s2"}, 10, 0, "", "")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
 func TestUsecase_Delete(t *testing.T) {
 	t.Run("empty_id_returns_bad_request", func(t *testing.T) {
 		repo := &mockRepo{}

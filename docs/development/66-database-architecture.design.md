@@ -25,10 +25,13 @@
            │                            │
            ▼                            ▼
 ┌─────────────────────┐    ┌─────────────────────────┐
-│  PostgreSQL (主库)   │    │  SQLite (仅测试/CLI)     │
-│  Ent ORM + pgvector  │    │  in-memory / 文件        │
-│  读写分离 + WAL      │    │  testhelper / CLI 工具   │
+│  PostgreSQL (主库)   │    │  PostgreSQL (测试)       │
+│  Ent ORM + pgvector  │    │  schema-per-test 隔离    │
+│  读写分离            │    │  testhelper.SetupTestPG  │
 └─────────────────────┘    └─────────────────────────┘
+
+SQLite 已完全退出主代码路径，仅存于离线工具
+（cmd/migrate-sqlite-to-postgres、cmd/session-consistency-check）。
 ```
 
 ### 1.2 依赖方向
@@ -47,43 +50,35 @@ biz (Repo 接口) ← data (Repo 实现) ← Ent/SQL (数据库)
 
 ## 2. 连接管理设计
 
-### 2.1 SQLite 双连接池
+### 2.1 测试连接（schema-per-test 隔离）
+
+测试基础设施不再使用 in-memory SQLite，而是为每个测试创建独立的
+PostgreSQL schema（`internal/data/testhelper/pg.go`）：
 
 ```
-┌─────────────────────────────────────────────┐
-│                  Data                        │
-│                                              │
-│  writeDB (*sql.DB)     readDB (*sql.DB)      │
-│  MaxOpenConns=1        MaxOpenConns=2        │
-│  MaxIdleConns=1        MaxIdleConns=2        │
-│       │                     │                │
-│  writeClient (*ent.Client)  readClient (*ent.Client)
-│       │                     │                │
-│  Write(ctx) → 事务? → tx.Client() : writeClient
-│  Read(ctx)  → 事务? → tx.Client() : readClient
-└─────────────────────────────────────────────┘
+SetupTestPG(t)                     SetupTestPGRaw(t)
+  │                                  │
+  ├── 创建 schema test_<rand8>        ├── 创建 schema test_<rand8>
+  ├── search_path 指向该 schema       ├── search_path 指向该 schema
+  ├── Ent Schema.Create 自动迁移      ├── 不建表（由测试自行 DDL，
+  ├── 返回 (entClient, *sql.DB)       │   镜像生产迁移文件，TEXT/BYTEA
+  └── t.Cleanup: DROP SCHEMA CASCADE  │   等与 Ent 生成物不同）
+                                      └── 返回 *sql.DB
+                                          t.Cleanup: DROP SCHEMA CASCADE
 ```
 
 **设计决策**：
 
 | 决策 | 原因 |
 |------|------|
-| 写连接 MaxOpen=1 | SQLite 单写限制，多连接并发写会导致 SQLITE_BUSY |
-| 读连接 MaxOpen=2 | WAL 模式允许并发读，2 连接平衡性能和资源 |
-| 事务感知路由 | 事务中必须使用事务客户端，确保读写一致性 |
-| PRAGMA WAL | 允许读写并发，避免读写互斥 |
-| PRAGMA busy_timeout=30s | 避免短暂锁冲突直接报错 |
-| PRAGMA wal_autocheckpoint=500 | WAL 文件达到 500 页自动 checkpoint |
+| schema-per-test 而非共享库 | 并行测试完全隔离，无数据互相污染 |
+| search_path 绑定 | 测试 SQL 无需带 schema 前缀，与生产 SQL 一致 |
+| `current_schema()` 元数据查询 | Dialect 的 TableExists/ColumnExists/IndexExists 查询用 `current_schema()` 而非硬编码 `public`，保证隔离 schema 下检查正确 |
+| DROP SCHEMA CASCADE 清理 | 测试结束后不留残留，数据库长期运行不膨胀 |
+| SetupTestPGRaw 不做 Ent 迁移 | raw-SQL Repo 的生产 DDL（TEXT 时间戳、BYTEA 负载）与 Ent 生成物不同，由测试镜像迁移文件自行建表 |
+| DSN 来自 `ARANEA_TEST_PG_DSN` | 无本地 PG 时跳过或指向远程实例 |
 
-**SQLite PRAGMA 清单**（写连接 + 读连接均设置）：
-
-```sql
-PRAGMA foreign_keys=ON;
-PRAGMA journal_mode=WAL;
-PRAGMA busy_timeout=30000;
-PRAGMA synchronous=NORMAL;
-PRAGMA wal_autocheckpoint=500;
-```
+**已移除的 SQLite 测试路径**：`testhelper.SetupTestDB`（in-memory SQLite）、`OpenSQLiteEntClient`、`NewCLIData`、`SQLiteVectorStore`、messages FTS5 搜索均已删除。
 
 ### 2.2 PostgreSQL 双连接池
 
@@ -99,7 +94,7 @@ ConnMaxIdleTime=5min         ConnMaxIdleTime=5min
      └── DDL migrations
 ```
 
-**当前策略**：PostgreSQL 是生产唯一主库，启动时强制初始化（`data.go`：`Postgres is the only supported primary database`）。SQLite 仅保留用于测试基础设施（`testhelper.SetupTestDB` 使用 in-memory SQLite）和离线 CLI 维护工具（`OpenSQLiteEntClient`/`NewCLIData`）。生产环境不允许降级为 SQLite 模式。
+**当前策略**：PostgreSQL 是生产唯一主库，启动时强制初始化（`data.go`：`Postgres is the only supported primary database`）。测试基础设施使用 schema-per-test PostgreSQL 隔离（见 §2.1），SQLite 仅存于离线迁移工具。生产环境不允许降级为 SQLite 模式。
 
 > **D-06 注**：历史「WAL/EventStore/Checkpoint 写入」路径中的 EventWAL / EventStore 已删除（`20260901_drop_event_store_subsystem.sql`）。Checkpoint 仍由 session_run_checkpoints 承担。
 
@@ -109,7 +104,6 @@ ConnMaxIdleTime=5min         ConnMaxIdleTime=5min
 NewData(bc, lg)
   ├── PostgreSQL 写池 + 读池 → Ping → Ent Client → Schema.Create (自动迁移)
   ├── pgvector.EnsureSchema() + EnsureKnowledgeSchema()
-  ├── SQLite (仅测试模式：testhelper.SetupTestDB 使用 in-memory)
   ├── ReadinessGate 初始化（Pending 态）
   └── 后台 goroutine (P1)
        ├── ensureSchemaDDL (DDL 迁移)
@@ -158,9 +152,9 @@ ExecInTx(ctx, fn)
 | 决策 | 原因 |
 |------|------|
 | 分离上下文 | HTTP 请求取消不应中断数据库事务，事务有独立 30s 超时 |
-| 嵌套事务检测 | SQLite 不支持嵌套事务，已事务中则直接执行 |
+| 嵌套事务检测 | 已在事务中则直接复用外层事务，不创建 savepoint（与 SQLite 时代行为一致） |
 | 调用者取消检测 | fn 执行成功但调用者已放弃，应回滚而非提交 |
-| 30s 硬超时 | SQLite 单写限制下，长事务会阻塞所有写操作 |
+| 30s 硬超时 | 防止长事务无限占用写连接池（可通过 SetTxTimeout(0) 关闭，仅限长迁移） |
 | 双 key 注入 | `txClientKey{}`（Ent 客户端）+ `rawTxKey{}`（Raw SQL execer），确保 Ent 和 Raw SQL 在同一事务 |
 
 ### 3.2 ExecInTxWithRetry 重试包装（T2.1）
@@ -617,7 +611,7 @@ Repo 方法 → ReadWriteClient.Read/Write(ctx)
 |------|------|
 | Ent Schema 无 Edge | 项目设计决策，关系通过字符串外键维护（仅 Eval 域例外） |
 | 灵活性 | 应用层级联可控制删除顺序和策略（软删/硬删混合） |
-| SQLite 限制 | 外键约束在 WAL 模式下性能影响 |
+| 历史 SQLite 限制 | 早期外键约束在 WAL 模式下有性能影响（现 PG 已启用 FK，应用层级联仍保留以控制删除顺序） |
 
 ### 8.2 级联删除实现
 
@@ -671,30 +665,25 @@ type VectorStore interface {
 }
 ```
 
-### 9.2 双实现
+### 9.2 唯一实现：PgVectorStore
 
 ```
 ┌──────────────────────────────────────────────────────┐
 │                  VectorStore 接口                     │
-└──────────┬──────────────────────────┬────────────────┘
-           │                          │
-           ▼                          ▼
-┌─────────────────────┐    ┌─────────────────────────┐
-│ SQLiteVectorStore   │    │ PgVectorStore           │
-│ embedding → JSON    │    │ embedding → vector(1536) │
-│ Go 侧余弦相似度     │    │ DB 侧余弦距离            │
-│ 全表扫描            │    │ 索引加速                 │
-│ 开发/回退           │    │ 生产                     │
-└─────────────────────┘    └─────────────────────────┘
+└──────────┬───────────────────────────────────────────┘
+           │
+           ▼
+┌─────────────────────────┐
+│ PgVectorStore           │
+│ embedding → vector(1536) │
+│ DB 侧余弦距离            │
+│ 索引加速                 │
+│ 生产 + 测试              │
+└─────────────────────────┘
 ```
 
-**选择逻辑**：
-
-```
-conf.DAOVectorPgVector() == true && PostgreSQL 可用?
-  → Yes: PgVectorStore
-  → No:  SQLiteVectorStore
-```
+> SQLiteVectorStore（Go 侧余弦、全表扫描）已随 SQLite 弃用删除
+> （原 `internal/data/vector/sqlite.go`）。
 
 ### 9.3 记忆系统 embedding_blob
 
@@ -796,23 +785,19 @@ Ent 错误 → entErrToBizErr(err, domain)
 | DDL 迁移 `duplicate column` | 视为成功（幂等） |
 | DDL 迁移 `already exists` | 视为成功（幂等） |
 | 数据迁移失败 | `log.Error` + `MarkFailed()` → 健康检查失败 |
-| PostgreSQL 连接失败 | `log.Warn` + 降级为纯 SQLite |
+| PostgreSQL 连接失败 | NewData 返回错误，拒绝启动（不降级） |
 
 ---
 
 ## 13. 性能设计
 
-### 13.1 SQLite 优化
+### 13.1 测试基础设施
 
 | 优化 | 实现 |
 |------|------|
-| WAL 模式 | 允许并发读写 |
-| 读写分离 | 写=1连接，读=2连接 |
-| busy_timeout=30s | 避免短暂锁冲突报错 |
-| synchronous=NORMAL | 平衡性能和安全 |
-| wal_autocheckpoint=500 | WAL 文件自动 checkpoint |
-| FTS5 | 消息全文搜索，避免 LIKE 全表扫描 |
-| 索引 | 关键查询路径均有索引覆盖（DDL 迁移 20260716） |
+| schema-per-test 隔离 | 每测试独立 PG schema，并行安全，无串行锁等待 |
+| DROP SCHEMA CASCADE | 测试后自动清理，无残留 |
+| Ent 自动迁移复用 | SetupTestPG 直接复用生产 Ent Schema，无需维护测试专用 DDL（raw-SQL 测试除外） |
 
 ### 13.2 PostgreSQL 优化
 
@@ -820,7 +805,7 @@ Ent 错误 → entErrToBizErr(err, domain)
 |------|------|
 | pgvector 索引 | 向量搜索使用 IVFFlat/HNSW 索引 |
 | 双连接池 | 写池 16 连接，读池 32 连接 |
-| 降级 | 连接失败不阻断启动 |
+| 故障语义 | 连接失败拒绝启动，无降级路径 |
 
 ### 13.3 查询优化
 
@@ -864,7 +849,9 @@ message Data {
   }
   Database database = 1;
   Redis redis = 2;
-  Sqlite sqlite = 3;
+  // Field 3 was `Sqlite sqlite`, removed in A6 (Postgres is the only primary DB).
+  reserved 3;
+  reserved "sqlite";
   Postgres postgres = 4;
   InitialAdmin initial_admin = 5;
 }
@@ -888,17 +875,15 @@ message Data {
 | `internal/data/schema_migrations.go` | 数据迁移门控 + 迁移记录管理 |
 | `internal/data/cascade_delete.go` | 级联删除逻辑（Agent/Session/Team/Channel） |
 | `internal/data/lazy_seeder.go` | 延迟种子数据 |
-| `internal/data/sqlite_db.go` | SQLite 连接辅助 |
-| `internal/data/sqlite_path.go` | SQLite 路径解析 |
+| `internal/data/testhelper/pg.go` | 测试基础设施：schema-per-test PG 隔离（SetupTestPG/SetupTestPGRaw） |
+| `internal/data/sqlite_db.go` | 通用查询辅助（entQueryRowScan，历史命名残留） |
 | `internal/data/ent/schema/*.go` | 82 个 Ent Schema 定义 |
 | `internal/data/sql/*.sql` | 原生 DDL SQL 文件（非迁移） |
 | `internal/data/sql/migrations/*.sql` | DDL 迁移 SQL 文件（28 个版本化文件） |
 | `internal/data/vector/store.go` | VectorStore 接口 |
-| `internal/data/vector/sqlite.go` | SQLite 向量实现 |
-| `internal/data/vector/pgvector.go` | PgVector 向量实现 |
+| `internal/data/vector/pgvector.go` | PgVector 向量实现（唯一实现） |
 | `internal/data/pgvector/` | 旧版 pgvector 存储（已废弃，待清理） |
 | `internal/data/memory_chain_schema.go` | 记忆系统 Schema 初始化 |
-| `internal/data/message_fts_schema.go` | FTS5 Schema 初始化 |
 | `internal/biz/shared/shared.go` | PageToLimitOffset、ListOptions |
 | `internal/biz/spirit_team_usecase.go` | SpiritTransactor 接口定义 |
 | `internal/conf/conf.proto` | Data 配置 Proto 定义 |

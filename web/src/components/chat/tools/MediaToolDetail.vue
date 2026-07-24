@@ -7,7 +7,12 @@
     <div v-if="artifacts.length" class="tool-detail__row">
       <div class="tool-detail__label">{{ t('chat.toolDetail.mediaOutputs') }}</div>
       <div class="media-tool-detail__grid">
-        <div v-for="art in artifacts" :key="art.artifact_id" class="media-tool-detail__item" @click="onPreview(art)">
+        <div
+          v-for="art in artifacts"
+          :key="art.artifact_id || art.url"
+          class="media-tool-detail__item"
+          @click="onPreview(art)"
+        >
           <video
             v-if="art.mime_type.startsWith('video/')"
             :src="mediaSrc(art)"
@@ -80,7 +85,7 @@ function onPreview(art: MediaArtifact) {
   border-radius: 6px
   overflow: hidden
   cursor: pointer
-  border: 1px solid var(--color-border)
+  border: 1px solid var(--color-border-soft)
   transition: border-color 0.2s
 
   &:hover

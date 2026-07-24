@@ -54,6 +54,14 @@ func nodeOptions(n NodeDef, cfg GraphBuildConfig, resolvedFallback trpcagent.Age
 		opts = append(opts, trpcgraph.WithNodeCachePolicy(pol))
 	}
 	opts = append(opts, agentMapperOptions(n)...)
+	// critic_loop finish (critic) agent nodes capture each evaluation round into
+	// node-scoped state metadata so the cond func can enforce max_iterations /
+	// loop-until-dry per critic node (multi-critic graphs stay isolated).
+	if ids := criticLoopFinishAgentNodeIDs(cfg); len(ids) > 0 {
+		if _, ok := ids[n.ID]; ok {
+			opts = append(opts, trpcgraph.WithPostNodeCallback(criticRoundCaptureCallbackForNode(n.ID)))
+		}
+	}
 	var breakers *biz.NodeCircuitBreakerRegistry
 	if deps != nil {
 		breakers = deps.NodeBreakers

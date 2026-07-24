@@ -451,6 +451,9 @@ func provideRuntimeTooling(
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagenttool.Service,
 	parallelExec *tools.ParallelToolExecutor,
+	resourceAccess *biz.ResourceAccessUsecase,
+	deptMailbox *biz.DeptMailboxUsecase,
+	sessionSearch *biz.SessionSearchUsecase,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
 		PluginRT:                    pluginRT,
@@ -469,7 +472,76 @@ func provideRuntimeTooling(
 		OutboundRouter:              outboundRouter,
 		SubAgentService:             subAgentSvc,
 		ParallelToolExecutor:        parallelExec,
+		ResourceAccess:              resourceAccess,
+		DeptMailbox:                 deptMailbox,
+		SessionSearch:               sessionSearch,
 	}
+}
+
+// ---------------------------------------------------------------------------
+// M71: agent resource sharing providers
+// ---------------------------------------------------------------------------
+
+func provideResourceAccessUsecase(
+	agents biz.AgentReader,
+	org biz.OrganizationReader,
+	teamLister biz.DeptTeamLister,
+	fileReader biz.MemberFileReader,
+	dirResolver biz.MemberDirResolver,
+	auditor biz.AccessAuditor,
+	lg loggateway.Logger,
+) *biz.ResourceAccessUsecase {
+	return biz.NewResourceAccessUsecase(biz.ResourceAccessUsecaseDeps{
+		Agents:      agents,
+		Org:         org,
+		TeamLister:  teamLister,
+		FileReader:  fileReader,
+		DirResolver: dirResolver,
+		Auditor:     auditor,
+		Lg:          lg,
+	})
+}
+
+func provideDeptMailboxUsecase(
+	repo biz.DeptLeadMailboxRepo,
+	agents biz.AgentReader,
+	org biz.OrganizationReader,
+	auditor biz.AccessAuditor,
+	waker biz.MailboxWaker,
+	lg loggateway.Logger,
+) *biz.DeptMailboxUsecase {
+	return biz.NewDeptMailboxUsecase(biz.DeptMailboxUsecaseDeps{
+		Repo:    repo,
+		Agents:  agents,
+		Org:     org,
+		Auditor: auditor,
+		Waker:   waker,
+		Lg:      lg,
+	})
+}
+
+func provideSessionSearchUsecase(
+	agents biz.AgentReader,
+	sessions biz.SessionReader,
+	messages biz.MessageReader,
+	searcher biz.GlobalMessageSearcher,
+	auditor biz.AccessAuditor,
+	lg loggateway.Logger,
+) *biz.SessionSearchUsecase {
+	return biz.NewSessionSearchUsecase(biz.SessionSearchUsecaseDeps{
+		Agents:   agents,
+		Sessions: sessions,
+		Messages: messages,
+		Searcher: searcher,
+		Auditor:  auditor,
+		Lg:       lg,
+	})
+}
+
+// provideM71MessageReader exposes the steps_v2-backed MessageReader (same
+// adapter used by SessionUsecase) for the sessionaccess usecase.
+func provideM71MessageReader(lister bizsession.ActivityLister) biz.MessageReader {
+	return bizsession.NewActivityMessageReader(lister)
 }
 
 func provideTeamOrchestrationDeps(
@@ -2078,6 +2150,7 @@ func provideTeamUsecaseOpts(
 	writer biz.TeamWriter,
 	runReader biz.TeamRunReader,
 	runWriter biz.TeamRunWriter,
+	activeLister biz.TeamActiveRunLister,
 	stepRepo biz.OrchestrationStepRepo,
 	deadLetter biz.TaskDeadLetterRepo,
 	agentChecker biz.AgentIDExistenceChecker,
@@ -2091,6 +2164,7 @@ func provideTeamUsecaseOpts(
 		Writer:       writer,
 		RunReader:    runReader,
 		RunWriter:    runWriter,
+		ActiveLister: activeLister,
 		StepRepo:     stepRepo,
 		DeadLetter:   deadLetter,
 		AgentChecker: agentChecker,
@@ -2193,6 +2267,16 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideRuntimeTooling,
 		provideTeamOrchestrationDeps,
 		provideRunnerConfig,
+		// M71: agent resource sharing (memberfs/deptmail/sessionaccess)
+		provideResourceAccessUsecase,
+		provideDeptMailboxUsecase,
+		provideSessionSearchUsecase,
+		provideM71MessageReader,
+		service.NewMemberDirResolver,
+		service.NewMemberFileReader,
+		service.NewMailboxWaker,
+		wire.Bind(new(biz.OrganizationReader), new(biz.OrganizationRepo)),
+		wire.Bind(new(biz.SessionWriter), new(biz.SessionRepo)),
 		// v2 event pipeline providers (Phase 1 收尾)
 		provideV2EventBus,
 		provideV2RepoSet,
@@ -2377,6 +2461,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(biz.TeamWriter), new(*data.TeamRepo)),
 		wire.Bind(new(biz.TeamRunReader), new(*data.TeamRepo)),
 		wire.Bind(new(biz.TeamRunWriter), new(*data.TeamRepo)),
+		wire.Bind(new(biz.TeamActiveRunLister), new(*data.TeamRepo)),
 		wire.Bind(new(biz.OrchestrationStepRepo), new(*data.TeamRepo)),
 		wire.Bind(new(biz.TaskDeadLetterRepo), new(*data.TeamRepo)),
 		wire.Bind(new(biz.PatternReader), new(biz.PatternReadWriter)),

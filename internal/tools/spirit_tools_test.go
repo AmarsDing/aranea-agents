@@ -257,3 +257,44 @@ func TestExecuteToolCallsSerial_NilHandlerProducesFailure(t *testing.T) {
 		}
 	}
 }
+
+// TestBatchExecuteSpiritTools_InheritsWorktreeIsolator verifies the fresh
+// executor built inside BatchExecuteSpiritTools inherits the Wire-bound
+// executor's worktree isolator: a call tagged IsolationStrategyWorktree must
+// be routed to the isolator, not executed directly (Phase C integration).
+func TestBatchExecuteSpiritTools_InheritsWorktreeIsolator(t *testing.T) {
+	repoRoot, cleanup := initTempGitRepo(t)
+	defer cleanup()
+
+	iso, err := NewWorktreeIsolator(repoRoot, nil, loggateway.NewNoop())
+	if err != nil {
+		t.Fatalf("NewWorktreeIsolator: %v", err)
+	}
+	exec := NewParallelToolExecutor(nil, loggateway.NewNoop(),
+		WithMaxConcurrency(2), WithWorktreeIsolator(iso))
+
+	directHandler := func(_ context.Context, call ToolCall) ToolResult {
+		return ToolResult{CallID: call.ID, Name: call.Name, Success: true, Output: "direct"}
+	}
+	calls := []ToolCall{
+		{ID: "w1", Name: "file_write", IsolationStrategy: IsolationStrategyWorktree},
+		{ID: "d1", Name: "echo"},
+	}
+	results := BatchExecuteSpiritTools(context.Background(), exec, directHandler, calls, loggateway.NewNoop())
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	byID := map[string]ToolResult{}
+	for _, r := range results {
+		byID[r.CallID] = r
+	}
+	// An isolator with nil handler returns the "worktree isolated" marker; if
+	// the isolator were dropped by BatchExecuteSpiritTools, the call would
+	// fall through to the direct handler ("direct").
+	if got := byID["w1"]; !got.Success || got.Output != "worktree isolated" {
+		t.Fatalf("worktree-tagged call should run inside the isolator, got %+v", got)
+	}
+	if got := byID["d1"]; !got.Success || got.Output != "direct" {
+		t.Fatalf("untagged call should run via the direct handler, got %+v", got)
+	}
+}

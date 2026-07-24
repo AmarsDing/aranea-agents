@@ -2,34 +2,27 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/loggateway"
-
-	_ "github.com/glebarez/go-sqlite/compat"
 )
 
-func newChannelTurnJobTestRepo(t *testing.T, dbName string) (biz.ChannelTurnJobRepo, *sql.DB) {
+func newChannelTurnJobTestRepo(t *testing.T) biz.ChannelTurnJobRepo {
 	t.Helper()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+dbName+"?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := testhelper.SetupTestPGRaw(t)
 	if err := EnsureChannelTurnJobSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
 	// Initialize lg to avoid nil pointer panic in ExecInTx (tx.go:22).
-	repo := NewChannelTurnJobRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop()})
-	return repo, db
+	return NewChannelTurnJobRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop(), dialect: DialectPostgres})
 }
 
 func TestChannelTurnJobCreateReturnsStableIDOnConflict(t *testing.T) {
 	ctx := context.Background()
-	repo, db := newChannelTurnJobTestRepo(t, "channel_turn_job_test")
-	defer db.Close()
+	repo := newChannelTurnJobTestRepo(t)
 
 	firstID, err := repo.Create(ctx, biz.ChannelTurnJob{
 		ID:             "job-1",
@@ -60,8 +53,7 @@ func TestChannelTurnJobCreateReturnsStableIDOnConflict(t *testing.T) {
 
 func TestChannelTurnJobCreatePreservesAsyncQueuedOnConflict(t *testing.T) {
 	ctx := context.Background()
-	repo, db := newChannelTurnJobTestRepo(t, "channel_turn_job_async_test")
-	defer db.Close()
+	repo := newChannelTurnJobTestRepo(t)
 
 	id, err := repo.Create(ctx, biz.ChannelTurnJob{
 		ID:             "job-a",
@@ -99,8 +91,7 @@ func TestChannelTurnJobCreatePreservesAsyncQueuedOnConflict(t *testing.T) {
 
 func TestChannelTurnJobUpdateStatusQueued(t *testing.T) {
 	ctx := context.Background()
-	repo, db := newChannelTurnJobTestRepo(t, "channel_turn_job_status_test")
-	defer db.Close()
+	repo := newChannelTurnJobTestRepo(t)
 
 	id, err := repo.Create(ctx, biz.ChannelTurnJob{
 		ID:             "job-q",

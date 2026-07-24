@@ -131,8 +131,12 @@ func (o *ChatOrchestrator) persistTurnUserMessage(
 	if durableCtx.active {
 		userMsg = durableCtx.buildUserMessage(sessionID, userOpts, attN, emitter)
 	} else {
+		// userMsg.ID 规则：根 turn 复用 RootTaskActivityID（消息 ID == Task ID，
+		// v2 模型约定 Task 即用户输入根活动）；续跑 turn 的消息是系统合成的
+		// （synthesisMsg 等），必须发独立 ID——否则与父 Task（即原始用户消息）
+		// 主键冲突，失败路径 UpdateChatMessageStatus 会把原始任务串写为 failed。
 		msgID := string(chatagent.RootTaskActivityIDFromCtx(ctx))
-		if msgID == "" {
+		if msgID == "" || strings.TrimSpace(input.ParentTaskID) != "" {
 			msgID = uuid.NewString()
 		}
 		userMsg = biz.ChatMessage{

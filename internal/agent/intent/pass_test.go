@@ -35,8 +35,12 @@ func TestPassEffective(t *testing.T) {
 
 func TestShouldRun(t *testing.T) {
 	ag := biz.Agent{Settings: &biz.AgentRuntimeSettings{IntentPassEnabled: true}}
-	if ShouldRun(ag, "hi") {
-		t.Fatal("short message should skip")
+	// 2026-07-23: 取消 20 字符下限——短歧义消息（如"帮我做个应用"）正是澄清门的目标场景。
+	if !ShouldRun(ag, "hi") {
+		t.Fatal("short message should run (clarification gate targets short ambiguous messages)")
+	}
+	if ShouldRun(ag, "   ") {
+		t.Fatal("blank message should skip")
 	}
 	if !ShouldRun(ag, "please refactor the auth middleware tests") {
 		t.Fatal("long message should run when enabled")

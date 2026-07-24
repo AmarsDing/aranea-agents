@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"sort"
 	"strings"
 	"sync/atomic"
 
@@ -140,6 +141,36 @@ func (uc *Usecase) List(ctx context.Context, sessionID string, limit, offset int
 		items = items[:limit]
 	}
 	return items, total, nil
+}
+
+// ListBySessions aggregates latest-version artifact metadata across the given
+// sessions (workspace-scoped "all artifacts" browse). Each repo.List call
+// already dedupes to the latest version per session+name, so the merged set
+// only needs sorting (CreatedAt desc), in-memory query/mimePrefix filtering,
+// and pagination. Empty sessionIDs returns an empty result without repo calls.
+func (uc *Usecase) ListBySessions(ctx context.Context, sessionIDs []string, limit, offset int, query, mimePrefix string) ([]Artifact, int, error) {
+	if len(sessionIDs) == 0 {
+		return nil, 0, nil
+	}
+	all := make([]Artifact, 0, len(sessionIDs))
+	for _, sid := range sessionIDs {
+		items, _, err := uc.repo.List(ctx, sid, 0, 0)
+		if err != nil {
+			return nil, 0, err
+		}
+		all = append(all, items...)
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].CreatedAt > all[j].CreatedAt })
+	all = FilterArtifacts(all, query, mimePrefix)
+	total := len(all)
+	if offset >= total {
+		return nil, total, nil
+	}
+	all = all[offset:]
+	if limit > 0 && len(all) > limit {
+		all = all[:limit]
+	}
+	return all, total, nil
 }
 
 // Delete removes an artifact and **all** its sibling versions (same session+name).

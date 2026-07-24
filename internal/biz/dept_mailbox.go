@@ -33,6 +33,10 @@ const mailboxWakeDebounce = 5 * time.Minute
 const defaultInboxLimit = 20
 const maxInboxLimit = 100
 
+// maxSubjectRunes bounds the subject length in runes (not bytes) so multi-byte
+// subjects are never cut mid-rune into invalid UTF-8.
+const maxSubjectRunes = 200
+
 // DeptLeadMessage is the biz model for one mailbox message.
 type DeptLeadMessage struct {
 	ID          string
@@ -144,8 +148,8 @@ func (u *DeptMailboxUsecase) SendMessage(ctx context.Context, fromAgentID, toDep
 	if subject == "" {
 		return DeptLeadMessage{}, apierror.BadRequest(domainDeptMail, "subject is required")
 	}
-	if len(subject) > 200 {
-		subject = subject[:200]
+	if rs := []rune(subject); len(rs) > maxSubjectRunes {
+		subject = string(rs[:maxSubjectRunes])
 	}
 	refs, err := normalizeRefsJSON(refsJSON)
 	if err != nil {
@@ -170,7 +174,7 @@ func (u *DeptMailboxUsecase) SendMessage(ctx context.Context, fromAgentID, toDep
 		return DeptLeadMessage{}, apierror.Internal(domainDeptMail, "persist message failed: %s", err)
 	}
 	u.auditMail(ctx, fromAgentID, toDept.ID, ActionSendMail, "msg:"+saved.ID, ResultAllowed, "")
-	u.wakeDebounced(from.ID, saved.ToAgentID, u.wakeHint(fromDeptID, toDept, subject))
+	u.wakeDebounced(ctx, from.ID, saved.ToAgentID, u.wakeHint(ctx, fromDeptID, subject))
 	return saved, nil
 }
 
@@ -261,7 +265,7 @@ func (u *DeptMailboxUsecase) ReplyMessage(ctx context.Context, callerAgentID, me
 			loggateway.StepID("dept_mail.reply"), loggateway.Str("message_id", orig.ID), loggateway.Err(err))
 	}
 	u.auditMail(ctx, callerAgentID, orig.FromDeptID, ActionReplyMail, "msg:"+saved.ID, ResultAllowed, "")
-	u.wakeDebounced(from.ID, saved.ToAgentID, u.wakeHint(fromDeptID, OrganizationNode{ID: orig.FromDeptID, Name: orig.FromDeptID}, reply.Subject))
+	u.wakeDebounced(ctx, from.ID, saved.ToAgentID, u.wakeHint(ctx, fromDeptID, reply.Subject))
 	return saved, nil
 }
 
@@ -274,11 +278,9 @@ func (u *DeptMailboxUsecase) requireDeptLead(ctx context.Context, agentID string
 	if !IsDeptLeadAgent(a) {
 		return Agent{}, "", apierror.Forbidden(domainDeptMail, "only department lead agents may use the mailbox")
 	}
-	deptID := ""
-	if a.PositionID != "" {
-		if node, err := u.org.GetOrgNode(ctx, a.PositionID); err == nil && node.Level == "department" {
-			deptID = node.ID
-		}
+	deptID, err := resolveAgentDepartment(ctx, u.org, a)
+	if err != nil {
+		return Agent{}, "", apierror.Internal(domainDeptMail, "department lookup failed: %s", err)
 	}
 	if deptID == "" {
 		return Agent{}, "", apierror.Forbidden(domainDeptMail, "caller is not attached to a department")
@@ -288,7 +290,9 @@ func (u *DeptMailboxUsecase) requireDeptLead(ctx context.Context, agentID string
 
 // wakeDebounced wakes the recipient at most once per (from,to) pair per window (US-05).
 // Process restart loses debounce state: acceptable (worst case one extra wake).
-func (u *DeptMailboxUsecase) wakeDebounced(fromAgentID, toAgentID, hint string) {
+// The waker delivers asynchronously; its failure never affects the persisted
+// message (NFR-05).
+func (u *DeptMailboxUsecase) wakeDebounced(ctx context.Context, fromAgentID, toAgentID, hint string) {
 	if u.waker == nil {
 		return
 	}
@@ -302,10 +306,6 @@ func (u *DeptMailboxUsecase) wakeDebounced(fromAgentID, toAgentID, hint string) 
 	u.lastWakeAt[key] = time.Now()
 	u.mu.Unlock()
 
-	// 唤醒失败仅记日志，消息本体不受影响（NFR-05）。使用后台 context：
-	// 唤醒是 fire-and-forget，不应随发信请求的 context 取消而中断。
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 	if err := u.waker.WakeDeptLead(ctx, toAgentID, hint); err != nil {
 		u.lg.Warn("wake dept lead failed",
 			loggateway.StepID("dept_mail.wake"), loggateway.Str("to_agent_id", toAgentID), loggateway.Err(err))
@@ -313,14 +313,10 @@ func (u *DeptMailboxUsecase) wakeDebounced(fromAgentID, toAgentID, hint string) 
 }
 
 // wakeHint builds the system-turn hint text for the recipient lead.
-func (u *DeptMailboxUsecase) wakeHint(fromDeptID string, toDept OrganizationNode, subject string) string {
+func (u *DeptMailboxUsecase) wakeHint(ctx context.Context, fromDeptID, subject string) string {
 	fromName := fromDeptID
-	if fromNode, err := u.org.GetOrgNode(context.Background(), fromDeptID); err == nil && fromNode.Name != "" {
+	if fromNode, err := u.org.GetOrgNode(ctx, fromDeptID); err == nil && fromNode.Name != "" {
 		fromName = fromNode.Name
-	}
-	toName := toDept.Name
-	if toName == "" {
-		toName = toDept.ID
 	}
 	return "【部门信箱】你收到来自「" + fromName + "」主管的消息《" + subject + "》。请使用 list_inbox 工具查收并处理。"
 }

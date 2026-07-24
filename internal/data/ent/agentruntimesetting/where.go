@@ -498,6 +498,11 @@ func IntentPassEnabled(v bool) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldIntentPassEnabled, v))
 }
 
+// ClarificationEnabled applies equality check predicate on the "clarification_enabled" field. It's identical to ClarificationEnabledEQ.
+func ClarificationEnabled(v bool) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldClarificationEnabled, v))
+}
+
 // ChannelID applies equality check predicate on the "channel_id" field. It's identical to ChannelIDEQ.
 func ChannelID(v string) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldChannelID, v))
@@ -3921,6 +3926,16 @@ func IntentPassEnabledEQ(v bool) predicate.AgentRuntimeSetting {
 // IntentPassEnabledNEQ applies the NEQ predicate on the "intent_pass_enabled" field.
 func IntentPassEnabledNEQ(v bool) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldIntentPassEnabled, v))
+}
+
+// ClarificationEnabledEQ applies the EQ predicate on the "clarification_enabled" field.
+func ClarificationEnabledEQ(v bool) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldClarificationEnabled, v))
+}
+
+// ClarificationEnabledNEQ applies the NEQ predicate on the "clarification_enabled" field.
+func ClarificationEnabledNEQ(v bool) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldClarificationEnabled, v))
 }
 
 // ChannelIDEQ applies the EQ predicate on the "channel_id" field.

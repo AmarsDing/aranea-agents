@@ -306,43 +306,6 @@ func TestPlaceholders_Three(t *testing.T) {
 	}
 }
 
-func TestNormalizeSQLiteDSN_Empty(t *testing.T) {
-	got := normalizeSQLiteDSN("")
-	if got != "" {
-		t.Fatalf("expected empty, got %q", got)
-	}
-}
-
-func TestNormalizeSQLiteDSN_WithParams(t *testing.T) {
-	got := normalizeSQLiteDSN("test.db")
-	if !strings.Contains(got, "cache=shared") {
-		t.Fatalf("expected cache=shared, got %q", got)
-	}
-	if !strings.Contains(got, "_fk=1") {
-		t.Fatalf("expected _fk=1, got %q", got)
-	}
-	if !strings.HasPrefix(got, "file:") {
-		t.Fatalf("expected file: prefix, got %q", got)
-	}
-}
-
-func TestNormalizeSQLiteDSN_AlreadyHasCache(t *testing.T) {
-	got := normalizeSQLiteDSN("file:test.db?cache=shared&_fk=1")
-	if got != "file:test.db?cache=shared&_fk=1" {
-		t.Fatalf("expected unchanged, got %q", got)
-	}
-}
-
-func TestNormalizeSQLiteDSN_FilePrefixNoParams(t *testing.T) {
-	got := normalizeSQLiteDSN("file:test.db")
-	if !strings.Contains(got, "cache=shared") {
-		t.Fatalf("expected cache=shared appended, got %q", got)
-	}
-	if !strings.Contains(got, "_fk=1") {
-		t.Fatalf("expected _fk=1 appended, got %q", got)
-	}
-}
-
 // Phase 1c-3: tests for isSQLIdentByte/matchSQLWord/sqlWordBoundaryBefore/
 // sqlWordBoundaryAfter removed — these helpers were deleted with the
 // messages-table FTS5 search code (message_search.go).

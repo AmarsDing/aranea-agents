@@ -110,13 +110,24 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		confirmCtx, confirmCancel := context.WithTimeout(confirmCtx, defaultToolConfirmationTimeout)
 		defer confirmCancel()
 		reply, err := fn(confirmCtx)
-		// N-21: Update the confirm Activity with the user's response.
+		// N-21: Update the confirm Activity with the user's response. A deadline
+		// expiry is NOT a user rejection — emit the timeout variant so the UI
+		// renders "已超时" instead of "已拒绝".
+		confirmationTimedOut := err != nil && confirmCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil
 		if emitter != nil && confirmActivityID != "" {
-			approved := err == nil && toolConfirmApproved(reply)
-			if emitErr := emitter.EmitConfirmResult(ctx, confirmActivityID, approved); emitErr != nil {
-				h.deps.Logger().Warn("EmitConfirmResult failed",
-					loggateway.StepID("agent.tool_confirm"),
-					loggateway.Err(emitErr))
+			if confirmationTimedOut {
+				if emitErr := emitter.EmitConfirmTimeout(ctx, confirmActivityID); emitErr != nil {
+					h.deps.Logger().Warn("EmitConfirmTimeout failed",
+						loggateway.StepID("agent.tool_confirm"),
+						loggateway.Err(emitErr))
+				}
+			} else {
+				approved := err == nil && toolConfirmApproved(reply)
+				if emitErr := emitter.EmitConfirmResult(ctx, confirmActivityID, approved); emitErr != nil {
+					h.deps.Logger().Warn("EmitConfirmResult failed",
+						loggateway.StepID("agent.tool_confirm"),
+						loggateway.Err(emitErr))
+				}
 			}
 		}
 		if err != nil {
@@ -126,7 +137,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			// If the parent context (e.g., tool execution timeout) also expired,
 			// the error is not a confirmation timeout — it will be handled by
 			// the execution timeout logic upstream.
-			if confirmCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
+			if confirmationTimedOut {
 				recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
 					ToolKey:      toolKey,
 					AgentID:      h.ag.ID,

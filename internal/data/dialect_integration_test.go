@@ -261,3 +261,55 @@ func TestDialectIntegration_PlaceholderRenumber(t *testing.T) {
 		t.Errorf("got %d, want 1", one)
 	}
 }
+
+// TestDialectIntegration_GlobalMessageSearch executes the exact matchStepIDs
+// query shape (steps_v2 ⋈ sessions, LOWER() LIKE, workspace/agent filters,
+// timestamptz ordering) against real Postgres. TEMP tables shadow the
+// permanent names inside this single-connection session, so no production
+// data is touched. Guards PG-only parse/type errors that the SQLite unit
+// test cannot see (e.g. || on non-text, parameterized LIMIT).
+func TestDialectIntegration_GlobalMessageSearch(t *testing.T) {
+	db := dialectIntegrationDB(t)
+	ctx := context.Background()
+
+	mustExec := func(q string, args ...any) {
+		t.Helper()
+		if _, err := db.ExecContext(ctx, q, args...); err != nil {
+			t.Fatalf("exec failed: %v\nSQL: %s", err, q)
+		}
+	}
+
+	mustExec(`CREATE TEMP TABLE sessions (id text PRIMARY KEY, workspace_id text NOT NULL DEFAULT '', agent_id text NOT NULL DEFAULT '', deleted_at text NOT NULL DEFAULT '')`)
+	mustExec(`CREATE TEMP TABLE steps_v2 (id text PRIMARY KEY, session_id text NOT NULL, kind text NOT NULL, content text NOT NULL, started_at timestamptz NOT NULL)`)
+	mustExec(`INSERT INTO sessions VALUES ('s1','ws-a','a1',''), ('s2','ws-b','a2',''), ('s3','ws-a','a1','gone')`)
+	mustExec(`INSERT INTO steps_v2 VALUES
+		('st1','s1','reply','Hello 世界', timestamptz '2026-07-20 10:00:00Z'),
+		('st2','s2','reply','hello secret', timestamptz '2026-07-20 11:00:00Z'),
+		('st3','s3','reply','hello deleted', timestamptz '2026-07-20 12:00:00Z'),
+		('st4','s1','thinking','hello think', timestamptz '2026-07-20 13:00:00Z'),
+		('st5','s1','task','hello newer', timestamptz '2026-07-20 14:00:00Z')`)
+
+	repo := &globalMessageSearchRepo{data: &Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), dialect: DialectPostgres}}
+
+	// ws-a 检索：大小写不敏感命中 st5/st1（新→旧），排除 thinking/已删除/跨租户。
+	ids, err := repo.matchStepIDs(ctx, "hello", "", "ws-a", 20)
+	if err != nil {
+		t.Fatalf("matchStepIDs: %v", err)
+	}
+	if len(ids) != 2 || ids[0] != "st5" || ids[1] != "st1" {
+		t.Fatalf("unexpected ids: %v", ids)
+	}
+	// agent 过滤叠加。
+	ids, err = repo.matchStepIDs(ctx, "hello", "a1", "ws-a", 1)
+	if err != nil || len(ids) != 1 || ids[0] != "st5" {
+		t.Fatalf("agent filter + limit: ids=%v err=%v", ids, err)
+	}
+	// 空 workspaceID（system）→ 跨租户可见、仍排除已删除。
+	ids, err = repo.matchStepIDs(ctx, "hello", "", "", 20)
+	if err != nil || len(ids) != 3 {
+		t.Fatalf("system caller ids: %v err=%v", ids, err)
+	}
+
+	mustExec(`DROP TABLE steps_v2`)
+	mustExec(`DROP TABLE sessions`)
+}

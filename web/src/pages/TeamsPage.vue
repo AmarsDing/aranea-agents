@@ -15,6 +15,7 @@
       v-model:mode-filter="modeFilter"
       v-model:status-filter="statusFilter"
       v-model:industry-filter="industryFilter"
+      v-model:show-orchestrated="showOrchestrated"
       class="q-mt-md"
       :industry-options="industryOptions"
       :loading="loading"
@@ -33,38 +34,23 @@
         <h2 class="teams-industry-section__title">{{ group.label }}</h2>
         <q-chip dense square size="sm" class="teams-industry-section__count">{{ group.teams.length }}</q-chip>
       </header>
-      <draggable
-        :list="draggableTeamsMap[group.id]?.value ?? []"
-        item-key="id"
-        class="teams-draggable-grid"
-        ghost-class="team-card--ghost"
-        chosen-class="team-card--chosen"
-        drag-class="team-card--dragging"
-        :animation="200"
-        :delay="100"
-        :disabled="true"
-        @update:list="
-          (val: unknown[]) => {
-            const ref = draggableTeamsMap[group.id];
-            if (ref) ref.value = val as Team[];
-          }
-        "
-      >
-        <template #item="{ element: team }">
-          <TeamCard
-            :team="team"
-            :agents="storeAgents"
-            :is-dark="isDark"
-            @copy-key="copyKey"
-            @open-runs="openRuns"
-            @open-observatory="openTeamObservatory"
-            @run-test="openRunTest"
-            @duplicate="duplicate"
-            @edit="openEdit"
-            @remove="confirmRemove"
-          />
-        </template>
-      </draggable>
+      <div class="teams-grid">
+        <TeamCard
+          v-for="team in group.teams"
+          :key="team.id"
+          :team="team"
+          :agents="storeAgents"
+          :is-dark="isDark"
+          @copy-key="copyKey"
+          @open-runs="openRuns"
+          @open-observatory="openTeamObservatory"
+          @run-test="openRunTest"
+          @duplicate="duplicate"
+          @edit="openEdit"
+          @remove="confirmRemove"
+          @retry="retryTeam"
+        />
+      </div>
     </section>
 
     <q-card
@@ -78,6 +64,23 @@
         <div class="text-h6 q-mt-md">暂无 Team</div>
         <div class="text-body2 app-text-secondary q-mt-sm">
           创建一个 Team，把多个 Agent 组织成顺序、并行或评审闭环。
+        </div>
+        <div
+          v-if="hiddenOrchestratedCount > 0"
+          class="q-mt-md row items-center no-wrap rounded-borders q-px-sm q-py-xs text-caption app-text-secondary"
+          style="border: 1px dashed var(--q-primary)"
+        >
+          <q-icon name="visibility_off" size="16px" class="q-mr-xs" />
+          <span>{{ t('teamsPage.hiddenOrchestrated', { count: hiddenOrchestratedCount }) }}</span>
+          <q-btn
+            flat
+            dense
+            no-caps
+            rounded
+            color="primary"
+            :label="t('teamsPage.showOrchestratedAction')"
+            @click="showOrchestrated = true"
+          />
         </div>
         <q-btn class="q-mt-md" color="primary" rounded unelevated icon="add" label="新增 Team" @click="openCreate" />
       </q-card-section>
@@ -134,6 +137,7 @@
       @remove-member="removeMember"
       @apply-template="applyTemplate"
       @save="save"
+      @retry="retryEditingTeam"
     />
 
     <TeamRunsDialog
@@ -173,8 +177,6 @@
 </template>
 
 <script setup lang="ts">
-import { computed, shallowReactive, watchEffect, type WritableComputedRef } from 'vue';
-import draggable from 'vuedraggable';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import TeamCard from '../components/teams/TeamCard.vue';
 import TeamEditorDialog from '../components/teams/TeamEditorDialog.vue';
@@ -185,8 +187,9 @@ import { useTeamsPage } from '../features/teams/useTeamsPage';
 import { useTeamsStore } from '../stores/teams';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '../stores/auth';
-import type { Team } from '../features/teams/types';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const authStore = useAuthStore();
 const { isPlatformAdmin } = storeToRefs(authStore);
 const teamsStore = useTeamsStore();
@@ -201,6 +204,8 @@ const {
   modeFilter,
   statusFilter,
   industryFilter,
+  showOrchestrated,
+  hiddenOrchestratedCount,
   industryOptions,
   teamIndustryGroups,
   currentPage,
@@ -254,19 +259,7 @@ const {
   loadRunSteps,
   loadDeadLetters,
   resolveDeadLetter,
-  reorderTeams,
+  retryTeam,
+  retryEditingTeam,
 } = useTeamsPage();
-
-const draggableTeamsMap = shallowReactive<Record<string, WritableComputedRef<Team[]>>>({});
-
-watchEffect(() => {
-  for (const group of teamIndustryGroups.value) {
-    if (!draggableTeamsMap[group.id]) {
-      draggableTeamsMap[group.id] = computed({
-        get: () => teamIndustryGroups.value.find((g) => g.id === group.id)?.teams ?? [],
-        set: (val: Team[]) => reorderTeams(val.map((t) => t.id)),
-      });
-    }
-  }
-});
 </script>

@@ -2,9 +2,11 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
-import { ARTIFACT_TABLE_COLUMNS } from './artifactTableUi';
+import { createArtifactColumns } from './artifactTableUi';
 import type { ArtifactMeta } from './types';
 import { useArtifactStore } from '../../stores/artifact';
+import { searchSessions } from '../session/api';
+import type { Session } from '../session/types';
 import { validateArtifactFileSize, artifactMaxSizeHint } from './limits';
 import { readFileAsBase64 } from './fileBase64';
 import { formatBytes, formatDate } from '../../shared/format';
@@ -16,6 +18,18 @@ export type ArtifactSessionGroup = {
   items: ArtifactMeta[];
   totalSize: number;
 };
+
+/** 会话下拉选项：label 为标题（空标题回退「未命名会话」），caption 为短 UUID。 */
+export type SessionSelectOption = {
+  label: string;
+  value: string;
+  caption: string;
+};
+
+/** 组头会话标识：UUID 过长时缩短为前 8 位（完整值经 tooltip 展示）。 */
+export function shortSessionId(sessionId: string) {
+  return sessionId.length > 12 ? sessionId.slice(0, 8) + '…' : sessionId;
+}
 
 export function useArtifactsPage() {
   const $q = useQuasar();
@@ -40,12 +54,86 @@ export function useArtifactsPage() {
   const detailArtifactId = ref('');
   const detailVersions = ref<ArtifactMeta[]>([]);
   const detailVersion = ref<number | undefined>(undefined);
+  const revealEnabled = ref(false);
   const tableTotal = ref(0);
   const page = ref(1);
   const pageSize = ref(15);
   const pageMax = computed(() => Math.max(1, Math.ceil(tableTotal.value / pageSize.value)));
 
-  const columns = ARTIFACT_TABLE_COLUMNS;
+  const columns = computed(() => createArtifactColumns(t));
+
+  /** 工作区会话列表（供组头标题映射 + 会话筛选下拉）。加载失败静默回退为短 UUID。 */
+  const sessionList = ref<Session[]>([]);
+  const sessionTitleMap = computed(() => {
+    const map = new Map<string, string>();
+    for (const s of sessionList.value) {
+      if (s.id && s.title) map.set(s.id, s.title);
+    }
+    return map;
+  });
+
+  /** 组头主标题：会话标题；无标题/未加载到会话时回退短 UUID。 */
+  function groupHeaderTitle(sessionId: string): string {
+    return sessionTitleMap.value.get(sessionId) || shortSessionId(sessionId);
+  }
+
+  /** 组头副标题：有标题时显示短 UUID 便于区分同名会话；无标题时不重复显示。 */
+  function groupHeaderCaption(sessionId: string): string {
+    return sessionTitleMap.value.has(sessionId) ? shortSessionId(sessionId) : '';
+  }
+
+  /** 下拉选项全集；当前筛选值不在最近会话中时补一项，保证选中态可显示。 */
+  const baseSessionOptions = computed<SessionSelectOption[]>(() =>
+    sessionList.value
+      .filter((s) => s.id)
+      .map((s) => ({
+        label: s.title || t('artifact.page.untitledSession'),
+        value: s.id,
+        caption: shortSessionId(s.id),
+      })),
+  );
+
+  /** 当前值不在选项中时补临时项，避免 q-select 选中态显示原始值。 */
+  function withCurrentPatched(opts: SessionSelectOption[], current: string): SessionSelectOption[] {
+    const id = current.trim();
+    if (id && !opts.some((o) => o.value === id)) {
+      return [{ label: shortSessionId(id), value: id, caption: id }, ...opts];
+    }
+    return opts;
+  }
+
+  const sessionSelectOptions = computed<SessionSelectOption[]>(() =>
+    withCurrentPatched(baseSessionOptions.value, sessionFilter.value),
+  );
+
+  /** 上传对话框选项：补丁项跟随 uploadForm.session_id。 */
+  const uploadSessionOptions = computed<SessionSelectOption[]>(() =>
+    withCurrentPatched(baseSessionOptions.value, uploadForm.value.session_id),
+  );
+
+  const sessionFilteredOptions = ref<SessionSelectOption[]>([]);
+
+  /** q-select @filter：按标题或 UUID 子串过滤；update 回调填充过滤结果。 */
+  function filterSessionOptions(val: string, update: (fn: () => void) => void) {
+    update(() => {
+      const needle = val.trim().toLowerCase();
+      sessionFilteredOptions.value = needle
+        ? sessionSelectOptions.value.filter(
+            (o) => o.label.toLowerCase().includes(needle) || o.value.toLowerCase().includes(needle),
+          )
+        : sessionSelectOptions.value;
+    });
+  }
+
+  async function loadSessionOptions() {
+    try {
+      const res = await searchSessions({ limit: 200 });
+      sessionList.value = res.items ?? [];
+    } catch {
+      sessionList.value = [];
+    }
+  }
+
 
   /** 会话 Tab 下未填写 Session ID 时展示提示而非加载全部。 */
   const sessionFilterRequired = computed(() => activeTab.value === 'session' && !sessionFilter.value.trim());
@@ -184,6 +272,20 @@ export function useArtifactsPage() {
       .catch(() => {
         detailVersions.value = [];
       });
+    // M27 Phase 5：对话框打开时探测本地 reveal 开关（默认关闭 → 隐藏按钮）。
+    void artifactStore.loadLocalRevealEnabled().then((enabled) => {
+      revealEnabled.value = enabled;
+    });
+  }
+
+  /** 本地文件管理器打开制品所在目录（emit 自详情对话框）。 */
+  async function revealDetail(meta: ArtifactMeta) {
+    try {
+      await artifactStore.revealLocal(meta.id);
+      $q.notify({ type: 'positive', message: t('artifact.detail.revealed') });
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('artifact.detail.revealFailed') });
+    }
   }
 
   function selectDetailVersion(v: ArtifactMeta) {
@@ -232,6 +334,8 @@ export function useArtifactsPage() {
   }
 
   function onSessionFilterChange() {
+    // clearable q-select 清空时写入 null，归一化为空串避免后续 trim() 抛错。
+    if (sessionFilter.value == null) sessionFilter.value = '';
     page.value = 1;
     void loadRows();
   }
@@ -252,6 +356,12 @@ export function useArtifactsPage() {
       uploadForm.value.session_id = q;
     }
     void loadRows();
+    void loadSessionOptions();
+  });
+
+  /** 选项全集变化时同步过滤结果（初次加载 / 当前值补丁项出现）。 */
+  watch(sessionSelectOptions, (opts) => {
+    sessionFilteredOptions.value = opts;
   });
 
   watch(mimeFilter, () => {
@@ -272,6 +382,12 @@ export function useArtifactsPage() {
     search,
     mimeFilter,
     mimeFilterOptions,
+    sessionFilteredOptions,
+    filterSessionOptions,
+    uploadSessionOptions,
+    groupHeaderTitle,
+    groupHeaderCaption,
+    shortSessionId,
     uploadOpen,
     uploadLoading,
     uploadFile,
@@ -281,6 +397,7 @@ export function useArtifactsPage() {
     detailArtifactId,
     detailVersions,
     detailVersion,
+    revealEnabled,
     tableTotal,
     page,
     pageSize,
@@ -296,6 +413,7 @@ export function useArtifactsPage() {
     onUploadFile,
     submitUpload,
     openDetail,
+    revealDetail,
     selectDetailVersion,
     onPreviewDownload,
     downloadRow,

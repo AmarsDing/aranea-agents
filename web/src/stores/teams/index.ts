@@ -6,6 +6,7 @@ import {
   updateTeam,
   duplicateTeam,
   deleteTeam,
+  retryTeam as retryTeamApi,
   listTeamRuns,
   listTeamRunSteps,
   getTeamRunSummary,
@@ -76,6 +77,14 @@ export const useTeamsStore = defineStore('teams', () => {
     await deleteTeam(id);
     teams.value = teams.value.filter((t) => t.id !== id);
     if (activeTeam.value?.id === id) activeTeam.value = null;
+  }
+
+  /** Retry a failed/cancelled team: backend flips status → pending; refresh list copy. */
+  async function retryTeam(id: string) {
+    const res = await retryTeamApi(id);
+    teams.value = teams.value.map((t) => (t.id === id ? { ...t, status: res.status || 'pending' } : t));
+    if (activeTeam.value?.id === id) activeTeam.value = { ...activeTeam.value, status: res.status || 'pending' };
+    return res;
   }
 
   async function fetchTeam(id: string) {
@@ -198,6 +207,7 @@ export const useTeamsStore = defineStore('teams', () => {
     editTeam,
     copy,
     remove,
+    retryTeam,
     setActiveTeam,
     loadAgents,
     loadRuns,

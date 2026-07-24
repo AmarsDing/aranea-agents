@@ -14,6 +14,38 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// TestResolveRootTaskActivityID pins the ctx invariant consumed by
+// plan_and_execute → PublishV2Board & team projection: the root Task activity ID
+// of a turn must be the pre-generated fresh ID for root turns, and the parent
+// Task ID for continuation turns (synthesis/clarify-resume/resume). Regression:
+// continuation turns used a fresh UUID, so boards/team stages/member sessions/
+// turns/steps were keyed to a "ghost task" absent from tasks_v2, and the
+// frontend lost the whole subtree on refresh (hydration is task_id-centric).
+func TestResolveRootTaskActivityID(t *testing.T) {
+	t.Run("root turn generates fresh non-empty unique ID", func(t *testing.T) {
+		a := resolveRootTaskActivityID(biz.TurnInput{})
+		b := resolveRootTaskActivityID(biz.TurnInput{})
+		if a == "" || b == "" {
+			t.Fatalf("root turn must get non-empty ID, got %q / %q", a, b)
+		}
+		if a == b {
+			t.Fatalf("root turns must get unique IDs, both got %q", a)
+		}
+	})
+	t.Run("continuation turn inherits parent task ID", func(t *testing.T) {
+		got := resolveRootTaskActivityID(biz.TurnInput{ParentTaskID: "task-parent-1"})
+		if got != "task-parent-1" {
+			t.Fatalf("continuation turn must inherit ParentTaskID, got %q", got)
+		}
+	})
+	t.Run("blank ParentTaskID treated as root turn", func(t *testing.T) {
+		got := resolveRootTaskActivityID(biz.TurnInput{ParentTaskID: "   "})
+		if got == "" || got == "   " {
+			t.Fatalf("blank ParentTaskID must fall back to fresh ID, got %q", got)
+		}
+	})
+}
+
 // captureMonitorBus is a thread-safe MonitorBus that records published events.
 type captureMonitorBus struct {
 	mu  sync.Mutex

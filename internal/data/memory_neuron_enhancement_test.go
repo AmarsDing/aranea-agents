@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"strconv"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/data"
@@ -11,8 +13,28 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// openTestDBForNeuron creates an in-memory SQLite DB with memory_entities and
-// memory_relations tables matching the post-20261005 schema (neuron enhancement).
+// pgRebind converts '?' placeholders to Postgres '$N' for raw test SQL.
+// Shared by package data_test files whose production DDL is exercised via
+// hand-written INSERT statements.
+func pgRebind(query string) string {
+	var b strings.Builder
+	b.Grow(len(query) + 8)
+	n := 0
+	for i := 0; i < len(query); i++ {
+		if query[i] == '?' {
+			n++
+			b.WriteByte('$')
+			b.WriteString(strconv.Itoa(n))
+		} else {
+			b.WriteByte(query[i])
+		}
+	}
+	return b.String()
+}
+
+// openTestDBForNeuron creates a schema-isolated Postgres test DB with
+// memory_entities and memory_relations tables matching the post-20261005
+// schema (neuron enhancement).
 func openTestDBForNeuron(t *testing.T) (*data.Data, *ent.Client) {
 	t.Helper()
 	d, client := openTestDataForMemory(t)
@@ -45,10 +67,10 @@ func TestNeuronEntityFields_VerifyScanOutput(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert an entity with non-default neuron values.
-	_, err := client.ExecContext(ctx, `INSERT INTO memory_entities (
+	_, err := client.ExecContext(ctx, pgRebind(`INSERT INTO memory_entities (
  id, scope_type, scope_id, entity_type, name, name_normalized, status, created_at, updated_at,
  activation, activation_updated_at, source_type, valence, arousal
- ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+ ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		"ent-neuron-1", "agent", "agent-1", "concept", "Neuron Test", "neuron test",
 		"active", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z",
 		0.85, "2026-07-14T12:00:00Z", "perception", 0.3, 0.7)
@@ -113,19 +135,19 @@ func TestNeuronRelationFields_VerifyScanOutput(t *testing.T) {
 
 	// Insert two entities to reference.
 	for _, id := range []string{"ent-rel-a", "ent-rel-b"} {
-		if _, err := client.ExecContext(ctx, `INSERT INTO memory_entities (
+		if _, err := client.ExecContext(ctx, pgRebind(`INSERT INTO memory_entities (
  id, scope_type, scope_id, entity_type, name, name_normalized, status, created_at, updated_at
- ) VALUES (?,?,?,?,?,?,?,?,?)`,
+ ) VALUES (?,?,?,?,?,?,?,?,?)`),
 			id, "agent", "agent-1", "concept", id, id, "active", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z"); err != nil {
 			t.Fatalf("insert entity %s: %v", id, err)
 		}
 	}
 
 	// Insert a relation with non-default neuron values.
-	_, err := client.ExecContext(ctx, `INSERT INTO memory_relations (
+	_, err := client.ExecContext(ctx, pgRebind(`INSERT INTO memory_relations (
  id, scope_type, scope_id, source_id, target_id, relation_type, weight, confidence, importance,
  status, created_at, updated_at, co_activation_count, last_reinforced_at, context_note
- ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+ ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		"rel-neuron-1", "agent", "agent-1", "ent-rel-a", "ent-rel-b", "CAUSAL",
 		0.9, 0.8, 0.6, "active", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z",
 		3, "2026-07-14T12:00:00Z", "co-activated during quant task")
@@ -195,9 +217,9 @@ func TestNeuronFields_DefaultValues(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert an entity with only required fields (no neuron columns specified).
-	_, err := client.ExecContext(ctx, `INSERT INTO memory_entities (
+	_, err := client.ExecContext(ctx, pgRebind(`INSERT INTO memory_entities (
  id, scope_type, scope_id, entity_type, name, name_normalized, status, created_at, updated_at
- ) VALUES (?,?,?,?,?,?,?,?,?)`,
+ ) VALUES (?,?,?,?,?,?,?,?,?)`),
 		"ent-default", "agent", "agent-1", "concept", "Default", "default",
 		"active", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z")
 	if err != nil {

@@ -72,6 +72,10 @@ type RuntimeTooling struct {
 	// ParallelToolExecutor enables batch tool call parallelism (B5 integration).
 	// Nil when ARANEA_PARALLEL_AUTO is disabled; callers fall back to serial execution.
 	ParallelToolExecutor *tools.ParallelToolExecutor
+	// M71: agent resource sharing usecases (assembled per-agent via CustomToolFunc).
+	ResourceAccess *biz.ResourceAccessUsecase
+	DeptMailbox    *biz.DeptMailboxUsecase
+	SessionSearch  *biz.SessionSearchUsecase
 }
 
 // TeamOrchestrationDeps groups team execution and graph compilation dependencies.
@@ -512,6 +516,8 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			tools = append(tools, o.skillsButlerTools(ctx, ag)...)
 			tools = append(tools, o.memoryButlerTools(ctx, ag)...)
 			tools = append(tools, o.deliverableReaderTools()...)
+			tools = append(tools, o.memberFSDeptMailTools(ag)...)
+			tools = append(tools, o.sessionAccessTools(ag)...)
 			return tools
 		},
 		Logger: deps.Infra.LG,
@@ -564,6 +570,9 @@ var (
 // Execute implements biz.TurnExecutor — the shared entry point for all turn
 // execution paths (Web, WS, Channel, Cron, A2A).
 func (o *ChatOrchestrator) Execute(ctx context.Context, input biz.TurnInput) (biz.TurnResult, error) {
+	// 澄清等待态自由回复等价路径：pending 存在时消息视为自由回答，
+	// 完成澄清 step 并重写输入续跑同一 turn；非等待态原样透传。
+	input = o.resolveClarificationFreeText(ctx, input)
 	return o.RunNativeAgentTurnWithOutcome(ctx, input)
 }
 

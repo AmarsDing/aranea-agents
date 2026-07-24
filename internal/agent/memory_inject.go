@@ -61,6 +61,14 @@ func memoryRuntimeContext(inv *trpcagent.Invocation, ag biz.Agent) biz.MemoryRun
 		rt.Workspace = sessionStateString(inv.Session.State, "workspace")
 		rt.TeamID = sessionStateString(inv.Session.State, "team_id")
 	}
+	// C5: team graph runtime injects team_id into the root invocation's
+	// RuntimeState; member invocations inherit it via the graph child state.
+	// Fall back to it when the session state carries no team_id.
+	if rt.TeamID == "" && inv != nil && inv.RunOptions.RuntimeState != nil {
+		if teamID, ok := inv.RunOptions.RuntimeState["team_id"].(string); ok {
+			rt.TeamID = strings.TrimSpace(teamID)
+		}
+	}
 	if rt.Workspace == "" && ag.Settings != nil {
 		rt.Workspace = strings.TrimSpace(ag.Settings.Workspace)
 	}

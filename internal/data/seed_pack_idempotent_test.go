@@ -15,7 +15,7 @@ func TestSeedPackBuiltinTemplatesIdempotent(t *testing.T) {
 	ctx := context.Background()
 	lg := loggateway.NewNoop()
 
-	client, _ := testhelper.SetupTestDB(t)
+	client, _ := testhelper.SetupTestPG(t)
 
 	d := newDataFromClient(client, lg)
 	scenarioDir := "../scenario"

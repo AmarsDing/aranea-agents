@@ -68,6 +68,24 @@ describe('useFollowScroll', () => {
     expect(el.scrollTop).toBe(600);
   });
 
+  it('rAF 已注册未执行时用户滚离 → rAF 不再滚底（2026-07-23 流式期间 race 修复）', async () => {
+    const { el, contentSignature, onScroll, following } = setup({ scrollTop: 600 });
+    expect(following.value).toBe(true);
+    // 签名变化 → scheduleScroll 注册 leading rAF（setTimeout stub，尚未执行）
+    contentSignature.value = 'b';
+    await nextTick();
+    // rAF 执行前用户滚离（浏览器保证 scroll 事件先于同帧 rAF 回调派发）
+    el.scrollTop = 100;
+    onScroll();
+    expect(following.value).toBe(false);
+    // 推进定时器 → rAF 回调执行
+    await vi.advanceTimersByTimeAsync(60);
+    // 修复前：performScroll 无 following 检查 → 被拽回 600（且滚回后 dist=0 又置 following=true，锁死跟随）
+    // 修复后：performScroll 检查 following=false → 不滚动
+    expect(el.scrollTop).toBe(100);
+    expect(following.value).toBe(false);
+  });
+
   it('程序滚底（scrollToBottom）产生的事件不切换状态', async () => {
     const { el, onScroll, scrollToBottom, following } = setup();
     el.scrollTop = 100;

@@ -85,8 +85,6 @@ const intentSystemGeneral = `You classify and restate the user's request. Reply 
 - risk_flags (array of strings): e.g. sensitive_data, compliance, or []. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
 - clarifications (array of objects, present only when risk_flags contains "needs_clarification", at most 5): blocking questions for the user. Each object: {"question": string, "mode": "single"|"multi", "options": array of strings (2-6), "recommended": array of strings (subset of options, your best default)}. Omit for minor style preferences — never ask when you can reasonably decide yourself.`
 
-const minIntentPassRunes = 20
-
 // PassEffective returns whether the intent pass should run (extra LLM call).
 // Per-agent default comes from agent_runtime_settings.intent_pass_enabled (default true for new agents, P1-1).
 // ARANEA_INTENT_PASS: unset → follow agent; "0"/"false"/"off"/"no" → off; "1"/"true"/"on"/"yes" → on; other non-empty values → follow agent.
@@ -115,12 +113,13 @@ func IntentPassFromAgent(ag biz.Agent) bool {
 }
 
 // ShouldRun reports whether the intent pass should execute for this agent and user text.
+// 2026-07-23: 取消 20 字符下限——短歧义消息（如"帮我做个应用"）正是澄清门的目标场景，
+// 长度门槛会导致最需要澄清的输入永远走不到澄清门。
 func ShouldRun(ag biz.Agent, userText string) bool {
 	if !PassEffective(IntentPassFromAgent(ag)) {
 		return false
 	}
-	userText = strings.TrimSpace(userText)
-	return len([]rune(userText)) >= minIntentPassRunes
+	return strings.TrimSpace(userText) != ""
 }
 
 // IntentSystemForAgent selects coding vs general classifier prompt.
@@ -224,9 +223,6 @@ func Run(ctx context.Context, agentIntentPassEnabled bool, catalog biz.TeamModel
 func RunForAgent(ctx context.Context, ag biz.Agent, catalog biz.TeamModelCatalog, httpClient *http.Client, provider, model, userText string, lg loggateway.Logger) (res RunResult) {
 	if !ShouldRun(ag, userText) {
 		res.Outcome = "skipped_disabled"
-		if PassEffective(IntentPassFromAgent(ag)) && strings.TrimSpace(userText) != "" && len([]rune(strings.TrimSpace(userText))) < minIntentPassRunes {
-			res.Outcome = "skipped_trivial"
-		}
 		return res
 	}
 	return runWithSystem(ctx, IntentPassFromAgent(ag), IntentSystemForAgent(ag), catalog, httpClient, provider, model, userText, lg)
@@ -259,9 +255,10 @@ func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPromp
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: "User message:\n\n" + userText},
 	}
-	// Intent pass is a lightweight classification call; 1.5s is sufficient.
-	// Keeping the timeout short minimizes first-byte latency for the user.
-	callCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	// Intent pass 超时按设计文档 §8.12.3/§8.28 规定为 45s。该调用与 BUILD
+	// 在 errgroup 中并行，典型延迟被 BUILD 掩盖；45s 仅是 provider 挂死时的
+	// 上限。澄清门依赖本 artifact——超时过短会让澄清功能静默失效（skipped_llm）。
+	callCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 
 	text, _, _, _, err := llmcompat.CallOpenAICompatChat(callCtx, httpClient, cfg, model, msgs)

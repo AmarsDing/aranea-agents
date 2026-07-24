@@ -87,6 +87,10 @@ type ClarificationEnvelope struct {
 	Kind      string                  `json:"kind"` // 固定 "clarification"
 	Questions []ClarificationQuestion `json:"questions"`
 	Answers   []ClarificationAnswer   `json:"answers"`
+	// OriginalInput 是触发澄清的原始用户输入，用于服务重启后惰性重建续跑输入。
+	OriginalInput string `json:"original_input,omitempty"`
+	// FreeText 是用户在澄清等待态直接发消息产生的自由回复内容。
+	FreeText string `json:"free_text,omitempty"`
 }
 
 // ClarificationEnvelopeKind 是信封 Kind 字段的固定值。
@@ -122,6 +126,11 @@ func (e *ClarificationEnvelope) BuildClarifiedContext() string {
 		default:
 			b.WriteString("无偏好")
 		}
+		b.WriteString("\n")
+	}
+	if e.FreeText != "" {
+		b.WriteString("补充说明：")
+		b.WriteString(e.FreeText)
 		b.WriteString("\n")
 	}
 	return b.String()

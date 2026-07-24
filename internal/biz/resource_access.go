@@ -51,11 +51,11 @@ const domainResourceAccess = "RESOURCE_ACCESS"
 
 // memberfs 限制常量。
 const (
-	DefaultMemberDirDepth = 2
-	MaxMemberDirDepth     = 4
+	DefaultMemberDirDepth           = 2
+	MaxMemberDirDepth               = 4
 	DefaultMemberFileMaxBytes int64 = 200 * 1024
 	MaxMemberFileMaxBytes     int64 = 200 * 1024
-	MaxMemberSearchResults        = 200
+	MaxMemberSearchResults          = 200
 )
 
 // AuditEntry is one row in resource_access_audits.
@@ -111,13 +111,13 @@ type AccessAuditor interface {
 
 // ResourceAccessUsecaseDeps groups the dependencies for ResourceAccessUsecase.
 type ResourceAccessUsecaseDeps struct {
-	Agents     AgentReader
-	Org        OrganizationReader
-	TeamLister DeptTeamLister
-	FileReader MemberFileReader
+	Agents      AgentReader
+	Org         OrganizationReader
+	TeamLister  DeptTeamLister
+	FileReader  MemberFileReader
 	DirResolver MemberDirResolver
-	Auditor    AccessAuditor
-	Lg         loggateway.Logger
+	Auditor     AccessAuditor
+	Lg          loggateway.Logger
 }
 
 // ResourceAccessUsecase authorizes and audits memberfs access (FR-01~FR-04).
@@ -306,20 +306,32 @@ func (u *ResourceAccessUsecase) authorizeMemberDir(ctx context.Context, callerAg
 // the org tree (position node itself, or its parent — mirrors
 // DeptLeadManager.agentDepartment).
 func (u *ResourceAccessUsecase) agentDepartment(ctx context.Context, a Agent) (string, error) {
+	deptID, err := resolveAgentDepartment(ctx, u.org, a)
+	if err != nil {
+		return "", apierror.Internal(domainResourceAccess, "department lookup failed: %s", err)
+	}
+	return deptID, nil
+}
+
+// resolveAgentDepartment resolves the department ID for an agent via its
+// position node (the node itself when level=department, otherwise its parent
+// department). Shared by ResourceAccessUsecase and DeptMailboxUsecase (M71) so
+// both apply identical department-attachment semantics.
+func resolveAgentDepartment(ctx context.Context, org OrganizationReader, a Agent) (string, error) {
 	if a.PositionID == "" {
 		return "", nil
 	}
-	pos, err := u.org.GetOrgNode(ctx, a.PositionID)
+	pos, err := org.GetOrgNode(ctx, a.PositionID)
 	if err != nil {
-		return "", apierror.Internal(domainResourceAccess, "position lookup failed: %s", err)
+		return "", err
 	}
 	if pos.Level == "department" {
 		return pos.ID, nil
 	}
 	if pos.ParentID != "" {
-		parent, err := u.org.GetOrgNode(ctx, pos.ParentID)
+		parent, err := org.GetOrgNode(ctx, pos.ParentID)
 		if err != nil {
-			return "", apierror.Internal(domainResourceAccess, "department lookup failed: %s", err)
+			return "", err
 		}
 		if parent.Level == "department" {
 			return parent.ID, nil

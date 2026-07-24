@@ -317,10 +317,13 @@ func (x *GetArtifactRequest) GetVersion() int32 {
 }
 
 type ListArtifactsRequest struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Limit     int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
-	Offset    int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// session_id selects a single session's artifacts.
+	// Empty means "all artifacts" browse scoped to the caller workspace
+	// (system workspace lists across all sessions).
+	SessionId string `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Limit     int32  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset    int32  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	// query filters by name, session_id, or mime_type (case-insensitive substring).
 	Query string `protobuf:"bytes,4,opt,name=query,proto3" json:"query,omitempty"`
 	// mime_type_prefix filters by MIME prefix, e.g. "image/" or "text/".
@@ -902,10 +905,10 @@ const file_kratos_artifact_v1_artifact_proto_rawDesc = "" +
 	"dataBase64\"D\n" +
 	"\x12GetArtifactRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x18\n" +
-	"\aversion\x18\x02 \x01(\x05R\aversion\"\xa9\x01\n" +
-	"\x14ListArtifactsRequest\x12#\n" +
+	"\aversion\x18\x02 \x01(\x05R\aversion\"\xa3\x01\n" +
+	"\x14ListArtifactsRequest\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\x12\x14\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\x03 \x01(\x05R\x06offset\x12\x14\n" +
 	"\x05query\x18\x04 \x01(\tR\x05query\x12(\n" +

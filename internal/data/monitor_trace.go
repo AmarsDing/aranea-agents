@@ -246,12 +246,6 @@ func createMonitorEventsIndexes(ctx context.Context, db execer) error {
 	return nil
 }
 
-// columnExists checks whether a column exists in the given table.
-// Uses dialect-aware system catalog queries.
-func columnExists(ctx context.Context, db execer, table, column string) (bool, error) {
-	return columnExistsWithDialect(ctx, db, table, column, DialectSQLite)
-}
-
 // columnExistsWithDialect is the dialect-aware variant of columnExists.
 // SQLite: pragma_table_info(table) WHERE name = ?
 // Postgres: information_schema.columns WHERE table_name = $1 AND column_name = $2

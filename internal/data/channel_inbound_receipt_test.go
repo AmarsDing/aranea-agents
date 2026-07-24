@@ -2,23 +2,19 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
-	_ "github.com/glebarez/go-sqlite/compat"
+	"aranea-agents/internal/data/testhelper"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestChannelInboundReceipt_TryClaimDedup(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:channel_inbound_test?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
 	if err := EnsureChannelInboundSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewChannelInboundReceiptRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db)})
+	repo := NewChannelInboundReceiptRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop(), dialect: DialectPostgres})
 	claimed, err := repo.TryClaim(ctx, "ch1", "feishu:msg-1", "ou_x", "你好")
 	if err != nil || !claimed {
 		t.Fatalf("first claim: claimed=%v err=%v", claimed, err)

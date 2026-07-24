@@ -1,0 +1,86 @@
+diff --git a/web/src/i18n/locales/zh-CN.ts b/web/src/i18n/locales/zh-CN.ts
+index 86117bff9..24d8a6a9b 100644
+--- a/web/src/i18n/locales/zh-CN.ts
++++ b/web/src/i18n/locales/zh-CN.ts
+@@ -22,6 +22,7 @@ export default {
+     loading: '加载中…',
+     noData: '暂无数据',
+     actions: '操作',
++    refresh: '刷新',
+   },
+   auth: {
+     subtitle: '使用管理员账号登录，会话由 HttpOnly Cookie 保持（同源代理下自动携带）。',
+@@ -170,6 +171,10 @@ export default {
+     send: '发送',
+     stop: '停止生成',
+     inputLabel: '输入内容',
++    copy: '复制',
++    regenerate: '重新生成',
++    compactInput: '精简输入',
++    expandInput: '展开输入',
+     untitledSession: '新对话',
+     emptyMessages: '暂无消息',
+     channelInboundNotify: '飞书/渠道有新回复',
+@@ -580,12 +585,30 @@ export default {
+       approveAlways: '始终允许',
+       approved: '已批准',
+       rejected: '已拒绝',
++      timedOut: '已超时',
+     },
+     confirmActivity: {
+       approveRejected: '批准操作未被接受',
+       denyRejected: '拒绝操作未被接受',
+       failed: '确认操作失败',
+     },
++    clarify: {
++      title: '需要澄清',
++      multiHint: '可多选，留空按推荐执行',
++      singleHint: '单选，留空按推荐执行',
++      recommended: '推荐',
++      otherPlaceholder: '其他（可选）…',
++      prev: '上一页',
++      next: '下一页',
++      finish: '完成',
++      submitting: '提交中…',
++      submitted: '已提交澄清',
++      cancelled: '澄清已取消',
++      asRecommended: '按推荐：{value}',
++      noPreference: '无偏好（按推荐执行）',
++      submitRejected: '澄清已被处理或已过期',
++      submitFailed: '提交澄清失败',
++    },
+     transition: {
+       thinkingToReply: '生成回复',
+     },
+@@ -2687,6 +2710,7 @@ export default {
+       audioLoading: '音频加载中…',
+       videoLoading: '视频加载中…',
+       unsupported: '此类型暂不支持在线预览',
++      loadFailed: '加载预览失败',
+     },
+   },
+   resourceManager: {
+@@ -2785,4 +2809,23 @@ export default {
+     traceId: 'Trace ID',
+     intentArtifact: '意图产物',
+   },
++  teamsPage: {
++    builtin: '内置',
++    applyTemplate: '应用模板',
++    applyTemplateMsg: '应用模板将覆盖当前配置，确定继续？',
++    showOrchestrated: '含编排生成',
++    showOrchestratedHint: '显示由任务编排自动生成的团队',
++    retrySuccess: '「{name}」已重置为待执行',
++    retrySuccessShort: '已重置为待执行，可重新发起运行',
++    retryFailed: '重试失败',
++    createTeam: '创建 Team',
++    save: '保存',
++    descriptionHint: '向协作者说明这个 Team 的用途与适用场景',
++    modeHintSequential: '成员按「顺序」依次执行，上一步输出作为下一步上下文',
++    modeHintParallel: '成员并行执行，可按批大小控制并发，适合互不依赖的子任务',
++    modeHintCoordinator: '主控成员循环分派任务给执行成员，适合需要调度决策的流程',
++    modeHintCriticLoop: '生成→评审闭环迭代，直到达标或达到迭代上限',
++    modeHintAdaptive: '成员间自主 transfer 协作，适合开放式、难预拆解的任务',
++    definitionJsonPreview: 'definition_json 预览',
++  },
+ };

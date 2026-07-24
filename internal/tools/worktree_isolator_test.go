@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -260,5 +261,118 @@ func TestWorktreeIsolator_ContextCancelAbortsCreate(t *testing.T) {
 	result := iso.Execute(ctx, ToolCall{ID: "cancel-1", Name: "x"})
 	if result.Success {
 		t.Error("expected failure for cancelled context")
+	}
+}
+
+// TestWorktreeIsolator_CleanupRunsAfterContextCancel verifies that when the
+// caller's context is cancelled while the handler runs, the deferred cleanup
+// still removes the worktree dir and branch — cleanup uses a detached
+// (context.WithoutCancel) context, so cancellation must not leak artifacts.
+func TestWorktreeIsolator_CleanupRunsAfterContextCancel(t *testing.T) {
+	repoRoot, cleanup := initTempGitRepo(t)
+	defer cleanup()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	handler := func(ctx context.Context, worktreeDir string, call ToolCall) ToolResult {
+		cancel() // simulate cancellation while the handler runs
+		return ToolResult{CallID: call.ID, Name: call.Name, Success: true, Output: "ok"}
+	}
+
+	iso, err := NewWorktreeIsolator(repoRoot, handler, loggateway.NewNoop())
+	if err != nil {
+		t.Fatalf("NewWorktreeIsolator: %v", err)
+	}
+
+	result := iso.Execute(ctx, ToolCall{ID: "cancel-cleanup", Name: "write_file"})
+	// The merge runs with the cancelled ctx and fails; the call reports failure.
+	if result.Success {
+		t.Fatal("expected failure after context cancellation")
+	}
+	// But cleanup must still have removed the worktree dir.
+	worktreePath := filepath.Join(repoRoot, ".git", "worktrees-tmp", worktreeBranchName("cancel-cleanup"))
+	if _, err := os.Stat(worktreePath); !os.IsNotExist(err) {
+		t.Errorf("expected worktree dir removed after ctx cancel, got err=%v", err)
+	}
+	// And the branch must be deleted as well.
+	cmd := exec.Command("git", "branch", "--list", worktreeBranchName("cancel-cleanup"))
+	cmd.Dir = repoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git branch --list: %v", err)
+	}
+	if strings.TrimSpace(string(out)) != "" {
+		t.Errorf("expected branch deleted after ctx cancel, got %q", out)
+	}
+}
+
+// TestBatchExecuteSpiritTools_ParallelWorktreeFileOps is the Phase C end-to-end
+// acceptance test: two worktree-tagged file-write calls run concurrently via
+// BatchExecuteSpiritTools; each commits a distinct file inside its own
+// worktree, and both changes must land in the main repo (ff merge for the
+// first, --no-ff merge commit for the second) without corrupting each other.
+func TestBatchExecuteSpiritTools_ParallelWorktreeFileOps(t *testing.T) {
+	repoRoot, cleanup := initTempGitRepo(t)
+	defer cleanup()
+
+	// WorktreeHandler: each call writes the file named by its Arguments
+	// (JSON string) into the worktree and commits it there.
+	wtHandler := func(ctx context.Context, worktreeDir string, call ToolCall) ToolResult {
+		var name string
+		if err := json.Unmarshal(call.Arguments, &name); err != nil || name == "" {
+			return ToolResult{CallID: call.ID, Name: call.Name, Success: false, Error: "bad arguments"}
+		}
+		if err := os.WriteFile(filepath.Join(worktreeDir, name), []byte("data-"+call.ID), 0o644); err != nil {
+			return ToolResult{CallID: call.ID, Name: call.Name, Success: false, Error: err.Error()}
+		}
+		for _, args := range [][]string{
+			{"add", name},
+			{"commit", "-m", "add " + name},
+		} {
+			cmd := exec.Command("git", args...)
+			cmd.Dir = worktreeDir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return ToolResult{CallID: call.ID, Name: call.Name, Success: false,
+					Error: "git " + strings.Join(args, " ") + ": " + err.Error() + "\n" + string(out)}
+			}
+		}
+		return ToolResult{CallID: call.ID, Name: call.Name, Success: true, Output: "written " + name}
+	}
+
+	iso, err := NewWorktreeIsolator(repoRoot, wtHandler, loggateway.NewNoop())
+	if err != nil {
+		t.Fatalf("NewWorktreeIsolator: %v", err)
+	}
+	parExec := NewParallelToolExecutor(nil, loggateway.NewNoop(),
+		WithMaxConcurrency(2), WithWorktreeIsolator(iso))
+
+	directHandler := func(_ context.Context, call ToolCall) ToolResult {
+		return ToolResult{CallID: call.ID, Name: call.Name, Success: true, Output: "direct"}
+	}
+	calls := []ToolCall{
+		{ID: "f1", Name: "save_file", Arguments: json.RawMessage(`"f1.txt"`),
+			IsolationStrategy: IsolationStrategyForTool("save_file")},
+		{ID: "f2", Name: "save_file", Arguments: json.RawMessage(`"f2.txt"`),
+			IsolationStrategy: IsolationStrategyForTool("save_file")},
+	}
+
+	headBefore := currentHead(t, repoRoot)
+	results := BatchExecuteSpiritTools(context.Background(), parExec, directHandler, calls, loggateway.NewNoop())
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	for _, r := range results {
+		if !r.Success {
+			t.Errorf("call %s failed: %s", r.CallID, r.Error)
+		}
+	}
+	// Both parallel edits must be merged into the main repo.
+	for _, name := range []string{"f1.txt", "f2.txt"} {
+		if !fileExistsInRepo(t, repoRoot, name) {
+			t.Errorf("expected %s to exist in main repo after parallel merge", name)
+		}
+	}
+	if headAfter := currentHead(t, repoRoot); headAfter == headBefore {
+		t.Error("expected HEAD to advance after parallel merges")
 	}
 }

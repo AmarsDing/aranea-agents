@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
+import { defineComponent } from 'vue';
+import { mount } from '@vue/test-utils';
+import { createI18n } from 'vue-i18n';
 import type { ArtifactPreview } from '../types';
 
 vi.mock('../api', () => ({
@@ -16,6 +19,23 @@ vi.mock('../api', () => ({
 
 import { previewArtifact, signDownloadUrl } from '../api';
 import { useArtifactPreview } from '../useArtifactPreview';
+
+const i18n = createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': {} } });
+
+/** Run a composable inside a host component so useI18n() has app context. */
+function withSetup<T>(composable: () => T): T {
+  let result!: T;
+  mount(
+    defineComponent({
+      setup() {
+        result = composable();
+        return () => null;
+      },
+    }),
+    { global: { plugins: [i18n] } },
+  );
+  return result;
+}
 
 function previewOf(kind: string): ArtifactPreview {
   return {
@@ -47,7 +67,7 @@ describe('useArtifactPreview audio/video', () => {
     vi.mocked(previewArtifact).mockResolvedValue(previewOf('audio'));
     vi.mocked(signDownloadUrl).mockResolvedValue({ url: '/v1/artifacts/download?id=a1&token=t', expires_at: '' });
 
-    const { inlineMediaSrc, loadPreview } = useArtifactPreview(() => 'a1');
+    const { inlineMediaSrc, loadPreview } = withSetup(() => useArtifactPreview(() => 'a1'));
     await loadPreview();
 
     expect(signDownloadUrl).toHaveBeenCalledWith('a1', undefined);
@@ -58,7 +78,7 @@ describe('useArtifactPreview audio/video', () => {
     vi.mocked(previewArtifact).mockResolvedValue(previewOf('video'));
     vi.mocked(signDownloadUrl).mockResolvedValue({ url: '/v1/artifacts/download?id=a1&token=t', expires_at: '' });
 
-    const { inlineMediaSrc, loadPreview } = useArtifactPreview(() => 'a1');
+    const { inlineMediaSrc, loadPreview } = withSetup(() => useArtifactPreview(() => 'a1'));
     await loadPreview();
 
     expect(inlineMediaSrc.value).toContain('&inline=1');
@@ -67,7 +87,7 @@ describe('useArtifactPreview audio/video', () => {
   it('does not sign media URL for text previews', async () => {
     vi.mocked(previewArtifact).mockResolvedValue(previewOf('text'));
 
-    const { inlineMediaSrc, loadPreview } = useArtifactPreview(() => 'a1');
+    const { inlineMediaSrc, loadPreview } = withSetup(() => useArtifactPreview(() => 'a1'));
     await loadPreview();
 
     expect(signDownloadUrl).not.toHaveBeenCalled();
@@ -78,7 +98,7 @@ describe('useArtifactPreview audio/video', () => {
     vi.mocked(previewArtifact).mockResolvedValue(previewOf('audio'));
     vi.mocked(signDownloadUrl).mockRejectedValue(new Error('nope'));
 
-    const { inlineMediaSrc, loadPreview, error } = useArtifactPreview(() => 'a1');
+    const { inlineMediaSrc, loadPreview, error } = withSetup(() => useArtifactPreview(() => 'a1'));
     await loadPreview();
 
     expect(inlineMediaSrc.value).toBe('');

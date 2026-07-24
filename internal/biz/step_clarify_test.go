@@ -97,6 +97,43 @@ func TestClarificationEnvelope_BuildClarifiedContext(t *testing.T) {
 	}
 }
 
+func TestClarificationEnvelope_BuildClarifiedContext_FreeText(t *testing.T) {
+	env := ClarificationEnvelope{
+		Version: 1,
+		Kind:    "clarification",
+		Questions: []ClarificationQuestion{
+			{Question: "平台？", Mode: ClarificationModeSingle, Options: []string{"Web", "iOS"}, Recommended: []string{"Web"}},
+		},
+		Answers:  []ClarificationAnswer{{}}, // 自由回复路径：空作答 → 按推荐
+		FreeText: "做成内部工具即可",
+	}
+	ctx := env.BuildClarifiedContext()
+	if !containsAll(ctx, []string{"平台？", "Web"}) {
+		t.Errorf("recommended fallback missing from context: %q", ctx)
+	}
+	if !containsAll(ctx, []string{"做成内部工具即可"}) {
+		t.Errorf("free text missing from context: %q", ctx)
+	}
+}
+
+func TestClarificationEnvelope_OriginalInputRoundTrip(t *testing.T) {
+	raw := `{"version":1,"kind":"clarification","questions":[],"answers":null,"original_input":"帮我做个 CRM"}`
+	var env ClarificationEnvelope
+	if err := json.Unmarshal([]byte(raw), &env); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if env.OriginalInput != "帮我做个 CRM" {
+		t.Errorf("OriginalInput = %q, want %q", env.OriginalInput, "帮我做个 CRM")
+	}
+	out, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !containsAll(string(out), []string{"original_input"}) {
+		t.Errorf("marshaled envelope missing original_input: %s", out)
+	}
+}
+
 func containsAll(s string, subs []string) bool {
 	for _, sub := range subs {
 		found := false

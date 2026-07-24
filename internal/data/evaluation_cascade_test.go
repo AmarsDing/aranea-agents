@@ -2,30 +2,24 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-
-	_ "github.com/glebarez/go-sqlite/compat"
 )
 
 func TestEvalDeleteCascade(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:eval-cascade-test?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
 	if err := EnsureEvalSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop()}, loggateway.NewNoop())
+	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop(), dialect: DialectPostgres}, loggateway.NewNoop())
 
 	ds, err := repo.CreateDataset(ctx, biz.EvalDataset{ID: "ds-1", Name: "test"})
 	if err != nil {
@@ -71,16 +65,12 @@ func TestEvalDeleteCascade(t *testing.T) {
 }
 
 func TestEvalDeleteRun(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:eval-delete-run-test?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
 	if err := EnsureEvalSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop()}, loggateway.NewNoop())
+	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop(), dialect: DialectPostgres}, loggateway.NewNoop())
 	ds, err := repo.CreateDataset(ctx, biz.EvalDataset{ID: "ds-r", Name: "rt"})
 	if err != nil {
 		t.Fatal(err)
@@ -105,16 +95,12 @@ func TestEvalDeleteRun(t *testing.T) {
 }
 
 func TestEvalUpdateDataset(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:eval-update-test?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
 	if err := EnsureEvalSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop()}, loggateway.NewNoop())
+	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop(), dialect: DialectPostgres}, loggateway.NewNoop())
 	if _, err := repo.CreateDataset(ctx, biz.EvalDataset{ID: "ds-2", Name: "old", Description: "desc"}); err != nil {
 		t.Fatal(err)
 	}
@@ -132,20 +118,16 @@ func TestEvalUpdateDataset(t *testing.T) {
 // occurs mid-transaction (e.g. duplicate case ID), both writes must roll back so
 // case_count cannot diverge from the actual row count in eval_cases.
 func TestEvalInsertCasesWithCountUpdateAtomic(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:eval-atomic-test?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
 	if err := EnsureEvalSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
 	// Set up a real ent.Client so ExecInTx actually opens a transaction
 	// (otherwise ExecInTx no-ops when entClient is nil and writes auto-commit).
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.SQLite, db)))
-	defer client.Close()
-	d := &Data{entClient: client, rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop()}
+	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	t.Cleanup(func() { _ = client.Close() })
+	d := &Data{}
 	d.SetEntClientForTest(client, db, loggateway.NewNoop())
 	repo := NewEvalRepo(d, loggateway.NewNoop())
 

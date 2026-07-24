@@ -6,27 +6,24 @@ import (
 	"testing"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/internal/data/testhelper"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-
-	_ "github.com/glebarez/go-sqlite/compat"
 )
 
+// newTestSQLDB returns a schema-isolated Postgres *sql.DB for testing. No
+// tables are created — the tests only exercise DB routing and empty
+// transactions, which Postgres allows.
 func newTestSQLDB(t *testing.T) *sql.DB {
 	t.Helper()
-	rawDB, err := sql.Open(dialect.SQLite, ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open test sqlite: %v", err)
-	}
-	t.Cleanup(func() { rawDB.Close() })
-	return rawDB
+	return testhelper.SetupTestPGRaw(t)
 }
 
 func newTestEntClientWithDB(t *testing.T) (*ent.Client, *sql.DB) {
 	t.Helper()
 	rawDB := newTestSQLDB(t)
-	drv := entsql.OpenDB(dialect.SQLite, rawDB)
+	drv := entsql.OpenDB(dialect.Postgres, rawDB)
 	client := ent.NewClient(ent.Driver(drv))
 	t.Cleanup(func() { client.Close() })
 	return client, rawDB

@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
+	"aranea-agents/internal/tools/alias"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -17,6 +19,33 @@ const (
 	IsolationStrategyWorktree    = "worktree"
 	IsolationStrategyTransaction = "transaction"
 )
+
+// fileWriteToolNames lists the canonical file-tool names that mutate the
+// workspace. Parallel calls to these tools must be isolated in a git worktree
+// so concurrent edits merge cleanly instead of corrupting each other.
+// Read-only file tools (read_file, list_file, search_*) are excluded.
+var fileWriteToolNames = map[string]struct{}{
+	"save_file":       {},
+	"diff_edit":       {},
+	"patch_file":      {},
+	"replace_content": {},
+}
+
+// IsolationStrategyForTool returns the isolation strategy for a tool name.
+// File-write tools (canonical name or UI alias such as write_file/edit_file)
+// are tagged IsolationStrategyWorktree; all other tools return "" (direct
+// execution). ToolCall construction sites use this as the single tagging
+// point so classification stays consistent (Phase C).
+func IsolationStrategyForTool(toolName string) string {
+	name := strings.TrimSpace(toolName)
+	if canonical, ok := alias.RuntimeToolNameAliases[name]; ok {
+		name = canonical
+	}
+	if _, ok := fileWriteToolNames[name]; ok {
+		return IsolationStrategyWorktree
+	}
+	return ""
+}
 
 // ToolCall represents a single tool invocation request for the parallel executor.
 // ID is the unique identifier used by DependsOn to express ordering constraints.

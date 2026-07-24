@@ -960,6 +960,8 @@ func (i *WorktreeIsolator) Execute(ctx, call ToolCall) ToolResult {
 }
 ```
 
+> 打标点落地（2026-07-23，Graph Engineering 评审 Phase C）：`ToolCall.IsolationStrategy` 的统一分类点为 `tools.IsolationStrategyForTool(toolName)`——先经 `alias.RuntimeToolNameAliases` 归一化 UI 别名（`write_file→save_file`、`edit_file→diff_edit`），再匹配文件写工具集 `{save_file, diff_edit, patch_file, replace_content}` → `IsolationStrategyWorktree`；只读文件工具（`read_file`/`list_file`/`search_*`）与无关工具返回 `""` 直接执行。ToolCall 构造点统一经此函数打标，分类保持一致。E2E 验证 `TestBatchExecuteSpiritTools_ParallelWorktreeFileOps`：两个并发 `save_file` 各自在独立 worktree 提交不同文件，双双合并回主仓（首个 ff、次个 --no-ff）且 HEAD 前进。
+
 ### 8.3 TransactionSandbox
 
 ```go

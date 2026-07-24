@@ -97,7 +97,7 @@ func resolveFieldType(typeName string) reflect.Type {
 		return reflect.TypeOf([]int{})
 	case "[]any":
 		return reflect.TypeOf([]any{})
-	case "map":
+	case "map", "map[string]any":
 		return reflect.TypeOf(map[string]any{})
 	default:
 		return nil

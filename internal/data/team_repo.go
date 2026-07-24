@@ -488,6 +488,30 @@ func (r *TeamRepo) HasActiveTeamRun(ctx context.Context, teamID string) (bool, e
 	return count > 0, nil
 }
 
+// ListActiveRunTeamIDs batch-reports teams with an active run in one query
+// (GROUP BY team_id), eliminating the ListTeams N+1 on HasActiveTeamRun.
+func (r *TeamRepo) ListActiveRunTeamIDs(ctx context.Context, teamIDs []string) (map[string]bool, error) {
+	out := make(map[string]bool, len(teamIDs))
+	if len(teamIDs) == 0 {
+		return out, nil
+	}
+	var ids []string
+	err := r.data.RW().Read(ctx).TeamRun.Query().
+		Where(
+			teamrun.TeamIDIn(teamIDs...),
+			teamrun.StatusIn(biz.TeamRunStatusRunning, biz.TeamRunStatusPending, biz.TeamRunStatusWaitingHuman),
+		).
+		GroupBy(teamrun.FieldTeamID).
+		Scan(ctx, &ids)
+	if err != nil {
+		return nil, entErrToBizErr(err, "TEAM")
+	}
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, nil
+}
+
 func (r *TeamRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRunRecord, error) {
 	row, err := r.data.RW().Read(ctx).TeamRun.Get(ctx, id)
 	if err != nil {

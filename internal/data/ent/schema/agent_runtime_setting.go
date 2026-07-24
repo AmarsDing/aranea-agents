@@ -111,6 +111,9 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		// Pre-main LLM pass to classify/refine user intent (extra latency/cost); persisted per agent; env ARANEA_INTENT_PASS can override.
 		// P1-1 default ON: aligns with DDL migration (sql/migrations/20260607_agent_runtime_patches.sql:8) and DefaultAgentRuntimeSettings.
 		field.Bool("intent_pass_enabled").Default(true),
+		// Clarification gate: when intent pass detects blocking ambiguity, ask the user
+		// paginated clarification questions before planning (P-CLARIFY, B.10.18). Default ON.
+		field.Bool("clarification_enabled").Default(true),
 		field.String("channel_id").Default(""),
 		field.String("chat_id").Default(""),
 		field.String("workspace").Default(""),

@@ -24,6 +24,9 @@ const PLACEHOLDER_SRC = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAA
 
 export type MediaSignFn = (artifactId: string) => Promise<string>;
 
+/** Re-sign when the cached signed URL is older than this (backend TTL is 15min). */
+const SIGN_CACHE_TTL_MS = 10 * 60 * 1000;
+
 async function defaultSign(artifactId: string): Promise<string> {
   const signed = await signDownloadUrl(artifactId);
   return signed.url ? artifactDownloadHref(signed.url) : '';
@@ -35,27 +38,38 @@ function keyOf(art: MediaArtifact): string {
 }
 
 export function useMediaUrl(sign: MediaSignFn = defaultSign) {
-  const resolved = reactive(new Map<string, string>());
+  const resolved = reactive(new Map<string, { url: string; at: number }>());
   const inflight = new Map<string, Promise<void>>();
 
+  function freshUrl(key: string): string {
+    const hit = resolved.get(key);
+    if (!hit) return '';
+    if (Date.now() - hit.at > SIGN_CACHE_TTL_MS) {
+      resolved.delete(key);
+      return '';
+    }
+    return hit.url;
+  }
+
   /**
-   * Resolve an artifact:// URL to a signed URL (cached per artifact id).
-   * No-op for http(s) URLs. Failures fall back to the original URL.
+   * Resolve an artifact:// URL to a signed URL (cached per artifact id,
+   * re-signed once the cached URL approaches its TTL). No-op for http(s)
+   * URLs. Failures fall back to the original URL.
    */
   function resolve(art: MediaArtifact): Promise<void> {
     if (!isArtifactUrl(art.url)) return Promise.resolve();
     const key = keyOf(art);
-    if (!key || resolved.has(key)) return Promise.resolve();
+    if (!key || freshUrl(key)) return Promise.resolve();
     const existing = inflight.get(key);
     if (existing) return existing;
     const p = (async () => {
       try {
         const url = await sign(key);
-        resolved.set(key, url || art.url);
+        resolved.set(key, { url: url || art.url, at: Date.now() });
       } catch {
         // Degrade to the original URL; the element renders broken media,
         // matching the behavior of any other dead link.
-        resolved.set(key, art.url);
+        resolved.set(key, { url: art.url, at: Date.now() });
       } finally {
         inflight.delete(key);
       }
@@ -71,7 +85,7 @@ export function useMediaUrl(sign: MediaSignFn = defaultSign) {
    */
   function mediaSrc(art: MediaArtifact): string {
     if (!isArtifactUrl(art.url)) return art.url;
-    const hit = resolved.get(keyOf(art));
+    const hit = freshUrl(keyOf(art));
     if (hit) return hit;
     void resolve(art);
     return PLACEHOLDER_SRC;

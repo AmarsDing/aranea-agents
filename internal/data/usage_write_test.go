@@ -2,27 +2,18 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/internal/data/testhelper"
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-
-	_ "github.com/glebarez/go-sqlite/compat"
 )
 
 func TestRecordTokenUsageEventUpdatesSessionLastModelFields(t *testing.T) {
-	rawDB, err := sql.Open("sqlite", "file:usage_write_test?mode=memory&cache=shared&_fk=1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rawDB.Close()
-	if _, err := rawDB.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		t.Fatal(err)
-	}
+	rawDB := testhelper.SetupTestPGRaw(t)
 
 	ctx := context.Background()
 	for _, stmt := range []string{
@@ -158,13 +149,13 @@ func TestRecordTokenUsageEventUpdatesSessionLastModelFields(t *testing.T) {
 		}
 	}
 
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.SQLite, rawDB)))
+	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, rawDB)))
 	defer client.Close()
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = client.ExecContext(ctx,
+	_, err := client.ExecContext(ctx,
 		`INSERT INTO sessions(id, workspace_id, user_id, agent_id, created_at, updated_at)
-		 VALUES (?, '', '', 'agent-1', ?, ?)`,
+		 VALUES ($1, '', '', 'agent-1', $2, $3)`,
 		"sess-usage-1", now, now,
 	)
 	if err != nil {
@@ -197,7 +188,7 @@ func TestRecordTokenUsageEventUpdatesSessionLastModelFields(t *testing.T) {
 
 	var count int
 	err = entQueryRowScan(client, ctx,
-		`SELECT COUNT(*) FROM model_token_usage_events WHERE id = ?`,
+		`SELECT COUNT(*) FROM model_token_usage_events WHERE id = $1`,
 		[]any{"usage-ev-1"},
 		&count,
 	)
@@ -210,14 +201,7 @@ func TestRecordTokenUsageEventUpdatesSessionLastModelFields(t *testing.T) {
 }
 
 func TestPurgeUsageEventsOlderThanCleansRollups(t *testing.T) {
-	rawDB, err := sql.Open("sqlite", "file:usage_purge_test?mode=memory&cache=shared&_fk=1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rawDB.Close()
-	if _, err := rawDB.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		t.Fatal(err)
-	}
+	rawDB := testhelper.SetupTestPGRaw(t)
 
 	ctx := context.Background()
 	for _, stmt := range []string{
@@ -337,7 +321,7 @@ func TestPurgeUsageEventsOlderThanCleansRollups(t *testing.T) {
 		}
 	}
 
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.SQLite, rawDB)))
+	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, rawDB)))
 	defer client.Close()
 
 	repo := &usageRepo{data: &Data{entClient: client, rw: NewReadWriteClient(client, client)}}
@@ -354,7 +338,7 @@ func TestPurgeUsageEventsOlderThanCleansRollups(t *testing.T) {
 			`INSERT INTO model_token_usage_events(
 				id, occurred_at, date_key, hour_key, agent_id, provider_code, model_api_id,
 				usage_kind, call_count, input_tokens, output_tokens, total_tokens, status, created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, 2, 'success', ?)`,
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 1, 1, 2, 'success', $9)`,
 			id, occurred, dateKey, hourKey, "agent-1", "openai", "gpt-4o-mini", biz.UsageKindChatTurn, occurred,
 		)
 		if err != nil {
@@ -366,7 +350,7 @@ func TestPurgeUsageEventsOlderThanCleansRollups(t *testing.T) {
 			`INSERT INTO model_token_usage_daily(
 				id, date_key, agent_id, provider_code, model_api_id, usage_kind,
 				call_count, request_count, success_count, input_tokens, total_tokens, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, 1, 1, 1, 1, 2, ?, ?)`,
+			) VALUES ($1, $2, $3, $4, $5, $6, 1, 1, 1, 1, 2, $7, $8)`,
 			id, dateKey, "agent-1", "openai", "gpt-4o-mini", biz.UsageKindChatTurn, occurred, occurred,
 		)
 		if err != nil {
@@ -378,7 +362,7 @@ func TestPurgeUsageEventsOlderThanCleansRollups(t *testing.T) {
 			`INSERT INTO model_token_usage_hourly(
 				id, hour_key, agent_id, provider_code, model_api_id, usage_kind,
 				call_count, request_count, success_count, input_tokens, total_tokens, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, 1, 1, 1, 1, 2, ?, ?)`,
+			) VALUES ($1, $2, $3, $4, $5, $6, 1, 1, 1, 1, 2, $7, $8)`,
 			id, hourKey, "agent-1", "openai", "gpt-4o-mini", biz.UsageKindChatTurn, occurred, occurred,
 		)
 		if err != nil {
@@ -413,22 +397,22 @@ func TestPurgeUsageEventsOlderThanCleansRollups(t *testing.T) {
 		return n
 	}
 
-	if got := count("model_token_usage_events", "id = ?", "old-event"); got != 0 {
+	if got := count("model_token_usage_events", "id = $1", "old-event"); got != 0 {
 		t.Fatalf("expected old event deleted, got %d", got)
 	}
-	if got := count("model_token_usage_events", "id = ?", "recent-event"); got != 1 {
+	if got := count("model_token_usage_events", "id = $1", "recent-event"); got != 1 {
 		t.Fatalf("expected recent event retained, got %d", got)
 	}
-	if got := count("model_token_usage_daily", "id = ?", "old-daily"); got != 0 {
+	if got := count("model_token_usage_daily", "id = $1", "old-daily"); got != 0 {
 		t.Fatalf("expected old daily rollup deleted, got %d", got)
 	}
-	if got := count("model_token_usage_daily", "id = ?", "recent-daily"); got != 1 {
+	if got := count("model_token_usage_daily", "id = $1", "recent-daily"); got != 1 {
 		t.Fatalf("expected recent daily rollup retained, got %d", got)
 	}
-	if got := count("model_token_usage_hourly", "id = ?", "old-hourly"); got != 0 {
+	if got := count("model_token_usage_hourly", "id = $1", "old-hourly"); got != 0 {
 		t.Fatalf("expected old hourly rollup deleted, got %d", got)
 	}
-	if got := count("model_token_usage_hourly", "id = ?", "recent-hourly"); got != 1 {
+	if got := count("model_token_usage_hourly", "id = $1", "recent-hourly"); got != 1 {
 		t.Fatalf("expected recent hourly rollup retained, got %d", got)
 	}
 }

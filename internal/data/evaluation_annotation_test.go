@@ -2,24 +2,20 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/loggateway"
 )
 
 func TestEvalCaseResultAnnotation(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:eval-annotation-test?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
 	if err := EnsureEvalSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop()}, loggateway.NewNoop())
+	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop(), dialect: DialectPostgres}, loggateway.NewNoop())
 	runID := "run-1"
 	if err := repo.InsertCaseResult(ctx, biz.EvalCaseResult{
 		ID:     "res-1",

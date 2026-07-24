@@ -1214,25 +1214,27 @@ Expected: 构建成功。
 
 ## Task 9: 运行时验证（R3，必须）
 
-- [ ] **Step 1: 启动前后端**
+- [x] **Step 1: 启动前后端**
 
 后端：`go build ./... && go run ./cmd/admin`（或既有运行实例）；前端：`pnpm --dir web dev`。
 
-- [ ] **Step 2: 逐条目检（对应规格 §7 运行时验证清单）**
+- [x] **Step 2: 逐条目检（对应规格 §7 运行时验证清单）** — 2026-07-23 运行时验证完成（browser 工具 + scrollTop/scroll 事件埋点）
 
-| # | 操作 | 预期 |
-|---|------|------|
-| 1 | 发送消息触发精灵流式 | 跟随中实时滚底；新 Task 出现时先锚定到 UserMessage 顶部 |
-| 2 | 触发团队执行（多成员） | 外层跟随 TeamRunCard 增长；成员面板 300px 区跟随 |
-| 3 | 流式期间滚离底部阅读历史 | 永不打扰；等 10s+ 也不拽回；滚回底部恢复跟随 |
-| 4 | 跟随中选中文字复制 | 不滚动；滚回底部恢复 |
-| 5 | 目检左边线 | running 蓝线脉冲 / completed 绿 / failed 红 / cancelled 灰；精灵主流无线；成员面板相对团队卡缩进 14px |
-| 6 | 折叠成员面板再展开 | 展开滚底跟随；折叠期间不滚动 |
-| 7 | 切换会话 | 滚底 + 恢复跟随 |
+| # | 操作 | 预期 | 结果 |
+|---|------|------|------|
+| 1 | 发送消息触发精灵流式 | 跟随中实时滚底；新 Task 出现时先锚定到 UserMessage 顶部 | ✅ dist=0 持续跟随；G5 锚定同会话新 Task |
+| 2 | 触发团队执行（多成员） | 外层跟随 TeamRunCard 增长；成员面板 300px 区跟随 | ✅ 外层跟随增长；成员面板终态默认折叠 |
+| 3 | 流式期间滚离底部阅读历史 | 永不打扰；等 10s+ 也不拽回；滚回底部恢复跟随 | ✅ 滚离 dist=500 保持 4s+ 无拉回（pulledBackCount=0）；滚回 dist=30 后新内容自动滚底（dist=0） |
+| 4 | 跟随中选中文字复制 | 不滚动；滚回底部恢复 | ✅ 选中后内容增长 700px 未滚动（dist 0→721），仅 1 次 no-op 写入，选区存活 |
+| 5 | 目检左边线 | running 蓝线脉冲 / completed 绿 / failed 红 / cancelled 灰；精灵主流无线；成员面板相对团队卡缩进 14px | ✅ 量化验证：running 脉冲 100%↔75.9% 透明度循环；completed=success 绿；failed=danger 红 |
+| 6 | 折叠成员面板再展开 | 展开滚底跟随；折叠期间不滚动 | 🟡 机制代码级确认（`autoScrollEnabled = !collapsed && Status==='running'`，useFollowScroll enabled watcher 单测覆盖）；当前会话成员面板均为终态+空内容，无法运行时实测内层滚动 |
+| 7 | 切换会话 | 滚底 + 恢复跟随 | ✅ 双向切换均滚底（dist=0）；原会话 14 个 TaskCard 时最后 TaskCard 在视口上方 4364px，未被 scrollIntoView 锚定（07-22 bug 无回归） |
 
-- [ ] **Step 3: 日志检查**
+**测试方法论发现（2026-07-23）**：程序化 `el.scrollTop = X` 赋值受 CSS `scroll-behavior: smooth` 影响会启动平滑动画而非瞬时滚动——动画期间 scrollTop 仍在底部附近（dist≤80），following 保持 true，会误判为「拉回」。真实用户滚轮/键盘/触摸滚动不受 smooth 影响（始终瞬时）。运行时模拟用户滚离必须临时置 `scrollBehavior='auto'` 再赋值。产品代码无此问题——`withInstantScroll` 已在程序滚动路径正确处理。
 
-读 `logs/aranea-pipeline.log` 确认无异常错误。
+- [x] **Step 3: 日志检查**
+
+读 `logs/aranea-pipeline.log` 确认无异常错误。✅ 2026-07-23 检查：仅开发模式预期警告（auth bypass dev principal、2 个 skill 文件缺失），无聊天/滚动/事件相关 ERROR/panic/fatal。
 
 ---
 

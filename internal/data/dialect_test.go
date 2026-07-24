@@ -1,13 +1,8 @@
 package data
 
 import (
-	"context"
-	"database/sql"
 	"errors"
 	"testing"
-
-	"entgo.io/ent/dialect"
-	_ "github.com/glebarez/go-sqlite/compat"
 )
 
 func TestDialect_Constants(t *testing.T) {
@@ -381,64 +376,6 @@ func TestDialect_TableExistsQuery(t *testing.T) {
 	}
 }
 
-func TestDialect_TableExists_SQLite(t *testing.T) {
-	db, err := sql.Open(dialect.SQLite, "file:enttest_dialect?mode=memory&cache=shared&_fk=1")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	defer db.Close()
-
-	ctx := context.Background()
-	if _, err := db.ExecContext(ctx, "CREATE TABLE test_table (id INTEGER PRIMARY KEY)"); err != nil {
-		t.Fatalf("create table: %v", err)
-	}
-
-	exists, err := DialectSQLite.TableExists(ctx, db, "test_table")
-	if err != nil {
-		t.Fatalf("TableExists: %v", err)
-	}
-	if !exists {
-		t.Error("TableExists(test_table) = false, want true")
-	}
-
-	exists, err = DialectSQLite.TableExists(ctx, db, "nonexistent_table")
-	if err != nil {
-		t.Fatalf("TableExists: %v", err)
-	}
-	if exists {
-		t.Error("TableExists(nonexistent_table) = true, want false")
-	}
-}
-
-func TestDialect_ColumnExists_SQLite(t *testing.T) {
-	db, err := sql.Open(dialect.SQLite, "file:enttest_dialect_col?mode=memory&cache=shared&_fk=1")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	defer db.Close()
-
-	ctx := context.Background()
-	if _, err := db.ExecContext(ctx, "CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)"); err != nil {
-		t.Fatalf("create table: %v", err)
-	}
-
-	exists, err := DialectSQLite.ColumnExists(ctx, db, "test_table", "name")
-	if err != nil {
-		t.Fatalf("ColumnExists: %v", err)
-	}
-	if !exists {
-		t.Error("ColumnExists(name) = false, want true")
-	}
-
-	exists, err = DialectSQLite.ColumnExists(ctx, db, "test_table", "nonexistent")
-	if err != nil {
-		t.Fatalf("ColumnExists: %v", err)
-	}
-	if exists {
-		t.Error("ColumnExists(nonexistent) = true, want false")
-	}
-}
-
 func TestDialect_AlreadyExistsErr(t *testing.T) {
 	// SQLite "already exists" detection — simulate error message
 	sqliteErr := errors.New("table users already exists")
@@ -505,7 +442,7 @@ func TestData_Dialect(t *testing.T) {
 
 	// Nil safety
 	var nilData *Data
-	if nilData.Dialect() != DialectSQLite {
-		t.Errorf("nil Data Dialect() = %q, want %q (default)", nilData.Dialect(), DialectSQLite)
+	if nilData.Dialect() != DialectPostgres {
+		t.Errorf("nil Data Dialect() = %q, want %q (default)", nilData.Dialect(), DialectPostgres)
 	}
 }
