@@ -1,101 +1,123 @@
 <!-- web/src/components/chat/v2/ClarifyBlock.vue
   设计：docs/development/1-chat.design.md §B.10.18.4
-  澄清门卡片：分页问答（上一页/下一页/完成），提交后变只读摘要。
+  澄清门卡片：标题「提问」带图标，标题栏按状态配色（等待=accent 淡底+呼吸 / 完成=成功绿淡底）。
+  等待态可人工折叠；分页问答（上一页/下一页/完成），提交后自动折叠为只读摘要，展开可核对已记录的作答。
   留空 = 按 LLM 推荐执行；推荐项带「推荐」chip 高亮。
 -->
 <template>
   <div v-if="envelope && questions.length > 0">
-    <!-- 交互态：等待用户作答 -->
+    <!-- 交互态：等待用户作答（标题栏可点击人工折叠） -->
     <div v-if="step.Status === 'awaiting_input'" class="clarify-block clarify-block--awaiting">
-      <div class="clarify-block__header">
-        <span class="clarify-block__icon">?</span>
-        <span class="clarify-block__label">{{ t('chat.clarify.title') }}</span>
-        <span v-if="questions.length > 1" class="clarify-block__page">{{ page + 1 }}/{{ questions.length }}</span>
-      </div>
-
-      <div class="clarify-block__question">
-        <span class="clarify-block__question-text">{{ currentQuestion.question }}</span>
-        <span class="clarify-block__mode-hint">
-          {{ currentQuestion.mode === 'multi' ? t('chat.clarify.multiHint') : t('chat.clarify.singleHint') }}
+      <button
+        type="button"
+        class="clarify-block__header"
+        :aria-expanded="!collapsed"
+        @click="collapsed = !collapsed"
+      >
+        <span class="clarify-block__icon">
+          <q-icon name="help_outline" size="13px" />
         </span>
-      </div>
+        <span class="clarify-block__label">{{ t('chat.clarify.title') }}</span>
+        <span v-if="collapsed" class="clarify-block__pending">{{ t('chat.clarify.pending') }}</span>
+        <span v-else-if="questions.length > 1" class="clarify-block__page">{{ page + 1 }}/{{ questions.length }}</span>
+        <q-icon
+          name="expand_more"
+          size="18px"
+          class="clarify-block__chevron"
+          :class="{ 'clarify-block__chevron--expanded': !collapsed }"
+          aria-hidden="true"
+        />
+      </button>
 
-      <div class="clarify-block__options" :role="currentQuestion.mode === 'multi' ? 'group' : 'radiogroup'">
-        <div
-          v-for="opt in currentQuestion.options"
-          :key="opt"
-          class="clarify-block__option"
-          :class="{ 'clarify-block__option--selected': isSelected(page, opt) }"
-          role="option"
-          :aria-selected="isSelected(page, opt)"
-          tabindex="0"
-          @click="toggleOption(page, opt)"
-          @keydown.enter.space.prevent="toggleOption(page, opt)"
-        >
-          <span
-            class="clarify-block__option-box"
-            :class="{ 'clarify-block__option-box--radio': currentQuestion.mode !== 'multi' }"
-          >
-            <span v-if="isSelected(page, opt)" class="clarify-block__option-tick">✓</span>
-          </span>
-          <span class="clarify-block__option-label">{{ opt }}</span>
-          <span v-if="isRecommended(currentQuestion, opt)" class="clarify-block__recommended">
-            {{ t('chat.clarify.recommended') }}
+      <div v-show="!collapsed" class="clarify-block__body">
+        <div class="clarify-block__question">
+          <span class="clarify-block__question-text">{{ currentQuestion.question }}</span>
+          <span class="clarify-block__mode-hint">
+            {{ currentQuestion.mode === 'multi' ? t('chat.clarify.multiHint') : t('chat.clarify.singleHint') }}
           </span>
         </div>
-      </div>
 
-      <input
-        v-model="others[page]"
-        type="text"
-        class="clarify-block__other"
-        :placeholder="t('chat.clarify.otherPlaceholder')"
-        :disabled="submitting"
-      />
+        <div class="clarify-block__options" :role="currentQuestion.mode === 'multi' ? 'group' : 'radiogroup'">
+          <div
+            v-for="opt in currentQuestion.options"
+            :key="opt"
+            class="clarify-block__option"
+            :class="{ 'clarify-block__option--selected': isSelected(page, opt) }"
+            role="option"
+            :aria-selected="isSelected(page, opt)"
+            tabindex="0"
+            @click="toggleOption(page, opt)"
+            @keydown.enter.space.prevent="toggleOption(page, opt)"
+          >
+            <span
+              class="clarify-block__option-box"
+              :class="{ 'clarify-block__option-box--radio': currentQuestion.mode !== 'multi' }"
+            >
+              <span v-if="isSelected(page, opt)" class="clarify-block__option-tick">✓</span>
+            </span>
+            <span class="clarify-block__option-label">{{ opt }}</span>
+            <span v-if="isRecommended(currentQuestion, opt)" class="clarify-block__recommended">
+              {{ t('chat.clarify.recommended') }}
+            </span>
+          </div>
+        </div>
 
-      <div class="clarify-block__nav">
-        <button
-          v-if="questions.length > 1"
-          class="clarify-block__btn clarify-block__btn--nav"
-          :disabled="page === 0 || submitting"
-          @click="prevPage"
-        >
-          {{ t('chat.clarify.prev') }}
-        </button>
-        <button
-          v-if="!isLastPage"
-          class="clarify-block__btn clarify-block__btn--nav clarify-block__btn--next"
+        <input
+          v-model="others[page]"
+          type="text"
+          class="clarify-block__other"
+          :placeholder="t('chat.clarify.otherPlaceholder')"
           :disabled="submitting"
-          @click="nextPage"
-        >
-          {{ t('chat.clarify.next') }}
-        </button>
-        <button
-          v-else
-          class="clarify-block__btn clarify-block__btn--finish"
-          :disabled="submitting"
-          @click="onFinish"
-        >
-          {{ submitting ? t('chat.clarify.submitting') : t('chat.clarify.finish') }}
-        </button>
+        />
+
+        <div class="clarify-block__nav">
+          <button
+            v-if="questions.length > 1"
+            class="clarify-block__btn clarify-block__btn--nav"
+            :disabled="page === 0 || submitting"
+            @click="prevPage"
+          >
+            {{ t('chat.clarify.prev') }}
+          </button>
+          <button
+            v-if="!isLastPage"
+            class="clarify-block__btn clarify-block__btn--nav clarify-block__btn--next"
+            :disabled="submitting"
+            @click="nextPage"
+          >
+            {{ t('chat.clarify.next') }}
+          </button>
+          <button
+            v-else
+            class="clarify-block__btn clarify-block__btn--finish"
+            :disabled="submitting"
+            @click="onFinish"
+          >
+            {{ submitting ? t('chat.clarify.submitting') : t('chat.clarify.finish') }}
+          </button>
+        </div>
       </div>
     </div>
 
-    <!-- 只读摘要态：已提交（默认折叠，点击展开查看问答内容） -->
+    <!-- 只读摘要态：已提交（自动折叠，点击标题栏展开核对已记录的作答） -->
     <div v-else-if="step.Status === 'completed'" class="clarify-block clarify-block--completed">
       <button
         type="button"
-        class="clarify-block__header clarify-block__header--toggle"
+        class="clarify-block__header"
         :aria-expanded="summaryExpanded"
         @click="summaryExpanded = !summaryExpanded"
       >
-        <span class="clarify-block__icon clarify-block__icon--done">✓</span>
-        <span class="clarify-block__label">{{ t('chat.clarify.submitted') }}</span>
-        <span
+        <span class="clarify-block__icon clarify-block__icon--done">
+          <q-icon name="check" size="13px" />
+        </span>
+        <span class="clarify-block__label">{{ t('chat.clarify.title') }}</span>
+        <q-icon
+          name="expand_more"
+          size="18px"
           class="clarify-block__chevron"
           :class="{ 'clarify-block__chevron--expanded': summaryExpanded }"
           aria-hidden="true"
-        >›</span>
+        />
       </button>
       <div v-show="summaryExpanded" class="clarify-block__qa-list">
         <div v-for="(q, i) in questions" :key="i" class="clarify-block__qa">
@@ -107,7 +129,7 @@
 
     <!-- 取消/失败：内联弱提示 -->
     <div v-else class="clarify-block clarify-block--closed">
-      <span class="clarify-block__icon">✗</span>
+      <span class="clarify-block__closed-icon">✗</span>
       <span class="clarify-block__summary">{{ t('chat.clarify.cancelled') }}</span>
     </div>
   </div>
@@ -160,7 +182,9 @@ const page = ref(0);
 const selections = ref<string[][]>([]);
 const others = ref<string[]>([]);
 const submitting = ref(false);
-// 完成态摘要默认折叠，点击头部展开查看问答内容
+// 等待态：人工折叠（默认展开待作答）
+const collapsed = ref(false);
+// 完成态摘要：自动折叠，点击标题栏展开查看问答记录
 const summaryExpanded = ref(false);
 const SUBMIT_TIMEOUT_MS = 15_000;
 let submitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -273,106 +297,122 @@ function answerDisplay(i: number): string {
 <style lang="sass" scoped>
 @keyframes clarify-breathe
   0%, 100%
-    border-color: color-mix(in srgb, var(--color-primary) 35%, transparent)
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 20%, transparent)
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 16%, transparent)
   50%
-    border-color: color-mix(in srgb, var(--color-primary) 65%, transparent)
-    box-shadow: 0 0 10px 0 color-mix(in srgb, var(--color-primary) 15%, transparent)
+    box-shadow: 0 0 12px 0 color-mix(in srgb, var(--color-accent) 10%, transparent)
 
 .clarify-block
-  border-radius: 10px
+  border-radius: 12px
+  overflow: hidden
   font-size: 13px
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
   &--awaiting
-    padding: 12px 14px
-    background: var(--glass-surface)
-    border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent)
-    border-left: 3px solid var(--color-primary)
+    border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)
     animation: clarify-breathe 2.4s ease-in-out infinite
 
   &--completed
-    padding: 10px 12px
-    background: var(--glass-surface)
     border: 1px solid var(--glass-border)
-    border-left: 3px solid var(--color-success)
 
   &--closed
     display: flex
     align-items: center
     gap: 6px
-    padding: 4px 10px
-    border-left: 3px solid var(--color-text-tertiary)
-    background: var(--glass-surface)
+    padding: 6px 12px
+    border: 1px solid var(--glass-border)
 
+  // ---- 标题栏（状态配色：等待=accent 淡底 / 完成=成功绿淡底） ----
   &__header
     display: flex
     align-items: center
-    gap: 6px
-    margin-bottom: 8px
+    gap: 8px
+    width: 100%
+    margin: 0
+    padding: 8px 12px
+    border: none
+    cursor: pointer
+    font: inherit
+    text-align: left
+    transition: background 0.15s ease
 
-    &--toggle
-      width: 100%
-      margin-bottom: 0
-      padding: 0
-      border: none
-      background: transparent
-      cursor: pointer
-      font: inherit
-      text-align: left
+    &:focus-visible
+      outline: 2px solid color-mix(in srgb, var(--color-accent) 45%, transparent)
+      outline-offset: -2px
 
-      &:hover .clarify-block__chevron
-        color: var(--color-text-primary)
+    .clarify-block--awaiting > &
+      background: color-mix(in srgb, var(--color-accent) 10%, transparent)
 
-  &__chevron
-    margin-left: auto
-    font-size: 14px
-    line-height: 1
-    color: var(--color-text-tertiary)
-    transition: transform 0.18s ease, color 0.15s ease
-    transform: rotate(0deg)
+      &:hover
+        background: color-mix(in srgb, var(--color-accent) 16%, transparent)
 
-    &--expanded
-      transform: rotate(90deg)
+    .clarify-block--completed > &
+      background: color-mix(in srgb, var(--color-success) 10%, transparent)
 
-  &__qa-list
-    margin-top: 8px
+      &:hover
+        background: color-mix(in srgb, var(--color-success) 16%, transparent)
 
   &__icon
     flex-shrink: 0
-    width: 18px
-    height: 18px
+    width: 20px
+    height: 20px
     border-radius: 50%
     display: flex
     align-items: center
     justify-content: center
-    font-size: 12px
-    font-weight: 600
-    color: var(--color-on-accent, #fff)
-    background: var(--color-primary)
+    color: var(--color-on-accent)
+    background: var(--color-accent)
 
     &--done
       background: var(--color-success)
 
   &__label
-    font-weight: 500
-    color: var(--color-text-primary)
+    font-weight: 600
+    color: var(--color-text-heading)
+
+  &__pending
+    margin-left: auto
+    flex-shrink: 0
+    font-size: 11px
+    padding: 1px 8px
+    border-radius: 999px
+    color: var(--color-text-tertiary)
+    border: 1px solid var(--glass-border)
 
   &__page
     margin-left: auto
+    flex-shrink: 0
     font-size: 11px
     color: var(--color-text-tertiary)
     font-variant-numeric: tabular-nums
+
+  &__chevron
+    flex-shrink: 0
+    color: var(--color-text-tertiary)
+    transition: transform 0.18s ease, color 0.15s ease
+
+    &--expanded
+      transform: rotate(180deg)
+
+    .clarify-block__header:hover &
+      color: var(--color-text-primary)
+
+  // ---- 作答区 ----
+  &__body
+    padding: 12px 14px
+    border-top: 1px solid var(--glass-border)
 
   &__question
     display: flex
     align-items: baseline
     gap: 8px
-    margin-bottom: 8px
+    margin-bottom: 10px
 
   &__question-text
     color: var(--color-text-primary)
     line-height: 1.5
-    font-weight: 500
+    font-weight: 600
 
   &__mode-hint
     flex-shrink: 0
@@ -382,26 +422,27 @@ function answerDisplay(i: number): string {
   &__options
     display: flex
     flex-direction: column
-    gap: 4px
-    margin-bottom: 8px
+    gap: 6px
+    margin-bottom: 10px
 
   &__option
     display: flex
     align-items: center
     gap: 8px
-    padding: 6px 8px
-    border-radius: 8px
+    padding: 8px 10px
+    border-radius: 10px
     border: 1px solid var(--glass-border)
     cursor: pointer
     transition: border-color 0.15s ease, background 0.15s ease
     user-select: none
 
     &:hover
-      border-color: color-mix(in srgb, var(--color-primary) 45%, transparent)
+      border-color: color-mix(in srgb, var(--color-accent) 45%, transparent)
+      background: color-mix(in srgb, var(--color-accent) 5%, transparent)
 
     &--selected
-      border-color: var(--color-primary)
-      background: color-mix(in srgb, var(--color-primary) 8%, transparent)
+      border-color: var(--color-accent)
+      background: color-mix(in srgb, var(--color-accent) 9%, transparent)
 
   &__option-box
     flex-shrink: 0
@@ -418,13 +459,13 @@ function answerDisplay(i: number): string {
       border-radius: 50%
 
     .clarify-block__option--selected &
-      border-color: var(--color-primary)
-      background: var(--color-primary)
+      border-color: var(--color-accent)
+      background: var(--color-accent)
 
   &__option-tick
     font-size: 11px
     line-height: 1
-    color: var(--color-on-accent, #fff)
+    color: var(--color-on-accent)
 
   &__option-label
     flex: 1
@@ -437,16 +478,16 @@ function answerDisplay(i: number): string {
     font-size: 10px
     padding: 1px 6px
     border-radius: 999px
-    color: var(--color-primary)
-    border: 1px solid color-mix(in srgb, var(--color-primary) 45%, transparent)
-    background: color-mix(in srgb, var(--color-primary) 10%, transparent)
+    color: var(--color-accent)
+    border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent)
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent)
 
   &__other
     width: 100%
     box-sizing: border-box
-    padding: 6px 8px
-    margin-bottom: 10px
-    border-radius: 8px
+    padding: 8px 10px
+    margin-bottom: 12px
+    border-radius: 10px
     border: 1px solid var(--glass-border)
     background: transparent
     color: var(--color-text-primary)
@@ -455,7 +496,7 @@ function answerDisplay(i: number): string {
     transition: border-color 0.15s ease
 
     &:focus
-      border-color: var(--color-primary)
+      border-color: var(--color-accent)
 
     &::placeholder
       color: var(--color-text-tertiary)
@@ -463,38 +504,46 @@ function answerDisplay(i: number): string {
   &__nav
     display: flex
     justify-content: flex-end
-    gap: 6px
+    gap: 8px
 
   &__btn
-    padding: 4px 14px
-    border-radius: 6px
-    border: none
+    padding: 6px 16px
+    border-radius: 8px
     font-size: 12px
     font-weight: 500
     cursor: pointer
-    transition: opacity 0.15s ease
+    transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease
     white-space: nowrap
-
-    &:hover
-      opacity: 0.85
 
     &:disabled
       opacity: 0.4
       cursor: not-allowed
 
     &--nav
-      background: var(--glass-border)
+      background: transparent
+      border: 1px solid var(--glass-border)
       color: var(--color-text-secondary)
 
+      &:hover:not(:disabled)
+        border-color: color-mix(in srgb, var(--color-accent) 45%, transparent)
+        background: color-mix(in srgb, var(--color-accent) 8%, transparent)
+
     &--finish
-      background: var(--color-primary)
-      color: var(--color-on-accent, #fff)
+      background: var(--color-accent)
+      border: 1px solid var(--color-accent)
+      color: var(--color-on-accent)
 
-  &__qa
-    margin-bottom: 6px
+      &:hover:not(:disabled)
+        background: var(--color-accent-hover)
+        border-color: var(--color-accent-hover)
 
-    &:last-child
-      margin-bottom: 0
+  // ---- 完成态问答记录 ----
+  &__qa-list
+    display: flex
+    flex-direction: column
+    gap: 10px
+    padding: 10px 14px 12px
+    border-top: 1px solid var(--glass-border)
 
   &__q
     font-size: 12px
@@ -502,9 +551,16 @@ function answerDisplay(i: number): string {
     line-height: 1.4
 
   &__a
+    margin-top: 2px
     font-size: 13px
     color: var(--color-text-primary)
     line-height: 1.5
+
+  // ---- 取消态 ----
+  &__closed-icon
+    flex-shrink: 0
+    font-size: 12px
+    color: var(--color-text-tertiary)
 
   &__summary
     color: var(--color-text-secondary)

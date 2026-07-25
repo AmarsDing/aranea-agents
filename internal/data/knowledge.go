@@ -110,6 +110,49 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
 			ON knowledge_chunks USING GIN (to_tsvector('simple', content))`,
 		`CREATE INDEX IF NOT EXISTS knowledge_chunks_content_trgm_idx
 			ON knowledge_chunks USING GIN (content gin_trgm_ops)`,
+		// --- Vault 升级（P1-1）：Collection → Vault，root_path 唯一（非空时） ---
+		`ALTER TABLE knowledge_collections ADD COLUMN IF NOT EXISTS root_path TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE knowledge_collections ADD COLUMN IF NOT EXISTS sync_state TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE knowledge_collections ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMPTZ`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS knowledge_collections_root_path_key
+			ON knowledge_collections (root_path) WHERE root_path <> ''`,
+		// --- Vault 文档镜像列（P1）：rel_path/content_hash 支撑同步；summary/tags/doc_type 支撑摘要卡 ---
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS rel_path TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS content_hash TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS summary TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS summary_hash TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS tags JSONB`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS doc_type TEXT NOT NULL DEFAULT ''`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS knowledge_documents_rel_path_key
+			ON knowledge_documents (collection_id, rel_path) WHERE rel_path <> ''`,
+		// --- 双轨关联（P2，派生索引纪律：可无状态重建，无业务表耦合） ---
+		`CREATE TABLE IF NOT EXISTS knowledge_links (
+			id            BIGSERIAL PRIMARY KEY,
+			collection_id TEXT NOT NULL REFERENCES knowledge_collections(id) ON DELETE CASCADE,
+			doc_id        TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+			target_doc_id TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+			link_type     TEXT NOT NULL,
+			context       TEXT NOT NULL DEFAULT '',
+			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS knowledge_links_doc_idx ON knowledge_links(doc_id)`,
+		`CREATE INDEX IF NOT EXISTS knowledge_links_target_idx ON knowledge_links(target_doc_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS knowledge_links_unique
+			ON knowledge_links(doc_id, target_doc_id, link_type)`,
+		`CREATE TABLE IF NOT EXISTS knowledge_entities (
+			id            BIGSERIAL PRIMARY KEY,
+			collection_id TEXT NOT NULL REFERENCES knowledge_collections(id) ON DELETE CASCADE,
+			name          TEXT NOT NULL,
+			entity_type   TEXT NOT NULL DEFAULT '',
+			UNIQUE (collection_id, name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS knowledge_doc_entities (
+			collection_id TEXT NOT NULL,
+			doc_id        TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+			entity_id     BIGINT NOT NULL REFERENCES knowledge_entities(id) ON DELETE CASCADE,
+			mentions      INT NOT NULL DEFAULT 1,
+			PRIMARY KEY (doc_id, entity_id)
+		)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
