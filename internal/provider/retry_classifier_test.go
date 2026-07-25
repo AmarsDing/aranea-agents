@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestClassifyRetry_429(t *testing.T) {
@@ -42,6 +43,24 @@ func TestClassifyRetry_ContextCancelled(t *testing.T) {
 	decision := ClassifyRetry(nil, context.Canceled)
 	if decision.Type != RetryFatal {
 		t.Errorf("expected RetryFatal for context.Canceled, got %v", decision.Type)
+	}
+}
+
+func TestClassifyRetry_BareDeadlineExceededStaysFatal(t *testing.T) {
+	decision := ClassifyRetry(nil, context.DeadlineExceeded)
+	if decision.Type != RetryFatal {
+		t.Errorf("expected RetryFatal for bare context.DeadlineExceeded (caller deadline), got %v", decision.Type)
+	}
+}
+
+// TestClassifyRetry_AttemptTimeout verifies that a per-attempt timeout raised
+// by timeoutTransport is retryable (hang reconnect), even though it wraps
+// context.DeadlineExceeded which alone would be fatal.
+func TestClassifyRetry_AttemptTimeout(t *testing.T) {
+	err := &attemptTimeoutError{Timeout: 50 * time.Millisecond, Err: context.DeadlineExceeded}
+	decision := ClassifyRetry(nil, err)
+	if decision.Type != RetryWithBackoff {
+		t.Errorf("expected RetryWithBackoff for attempt timeout, got %v", decision.Type)
 	}
 }
 

@@ -712,10 +712,11 @@ function addStateField() {
       disableDeepCopy: false,
     };
     const idx = graphDef.value.stateFields.length;
-    graphDef.value.stateFields.push(field);
     if (props.undoRedo) {
+      // execute() 会通过 redo() 完成首次插入，此处禁止预改 graphDef
       props.undoRedo.pushAddStateField(field, idx);
     } else {
+      graphDef.value.stateFields.push(field);
       notifyChange();
     }
   }
@@ -725,10 +726,11 @@ function removeStateField(index: number) {
   if (graphDef.value) {
     const field = graphDef.value.stateFields[index];
     if (field) {
-      graphDef.value.stateFields.splice(index, 1);
       if (props.undoRedo) {
+        // execute() 会通过 redo() 完成首次删除，此处禁止预改 graphDef
         props.undoRedo.pushRemoveStateField(field, index);
       } else {
+        graphDef.value.stateFields.splice(index, 1);
         notifyChange();
       }
     }

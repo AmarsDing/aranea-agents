@@ -608,6 +608,6 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 **验证证据（2026-07-25）**：
 
 - 前端：`pnpm vitest run src/components/teams/__tests__ src/features/teams/__tests__` 71/71 PASS；`pnpm eslint` 改动文件 0 问题
-- 后端：`go build ./internal/biz` exit 0；`internal/agent` 存在并发 WIP 未定义符号（`tryDomainRecipe` / `TopLevelDomain` 等，与本次改动无关）导致 `go test ./internal/biz` 测试二进制（经 `team_graph_linked_test.go` → `internal/team` → `internal/agent` 链）暂不可编译，已用 `-overlay` 隔离该文件运行 `TestValidateTeamDefinition` 验证（见 ADR-08 §验证）
+- 后端：`go build ./internal/biz` exit 0；`go test ./internal/biz -run TestValidateTeamDefinition` **31/31 PASS**（0.298s，含 7 个新增 graph 用例）。`internal/agent` 存在并发 WIP 未定义符号（`tryDomainRecipe` / `TopLevelDomain` 等，与本次改动无关）阻塞测试二进制编译（经 `team_graph_linked_test.go` → `internal/team` → `internal/agent` 链），验证时临时移出该文件隔离运行，测后已恢复（见 ADR-08 §验证）
 
 **遗留（Phase B）**：mode 字段只读化（graph 完全接管后 mode 仅存展示）、`definitionToJSON` 中 native 序列化分支清理、`TeamOrchestrateRuntimePanel` native 调试入口随 native 运行时退役移除。

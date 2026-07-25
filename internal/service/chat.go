@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -513,27 +512,17 @@ func (s *ChatService) AwaitUserReply(ctx context.Context, req *chatv1.AwaitUserR
 	}
 	runID := ""
 	if req.RunId != nil {
-		runID = *req.RunId
+		runID = strings.TrimSpace(*req.RunId)
 	}
-	if s.orch.TrySendAwaitChannel(sessionID, biz.AwaitReplyMsg{RunID: runID, Reply: reply}) {
-		return &chatv1.AwaitUserReplyResponse{Accepted: true}, nil
+	// Unified delivery: fast path via in-memory channel, restart recovery via
+	// resumeAwaitAfterRestart. The user's own words serve as resume content.
+	outcome, err := s.orch.submitAwaitReply(ctx, sessionID, awaitReply{
+		runID:         runID,
+		token:         reply,
+		resumeContent: reply,
+	})
+	if err != nil {
+		return nil, err
 	}
-	// Send failed: channel may be full (normal) or closed by GC (race).
-	// If the entry no longer exists in the map, it was cleaned up — try resume.
-	if _, stillExists := s.orch.LoadAwaitChannel(sessionID); !stillExists {
-		runID2, canResume := s.orch.canResumeAwait(ctx, sessionID)
-		if canResume {
-			if req.RunId != nil && strings.TrimSpace(*req.RunId) != "" {
-				runID2 = strings.TrimSpace(*req.RunId)
-			}
-			if err := s.orch.resumeAwaitAfterRestart(ctx, sessionID, reply, runID2); err != nil {
-				if errors.Is(err, errResumeInFlight) {
-					return &chatv1.AwaitUserReplyResponse{Accepted: false}, nil
-				}
-				return nil, err
-			}
-			return &chatv1.AwaitUserReplyResponse{Accepted: true}, nil
-		}
-	}
-	return &chatv1.AwaitUserReplyResponse{Accepted: false}, nil
+	return &chatv1.AwaitUserReplyResponse{Accepted: outcome != awaitReplyRejected}, nil
 }

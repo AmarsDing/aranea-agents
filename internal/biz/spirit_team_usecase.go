@@ -95,6 +95,11 @@ type SpiritTeamController interface {
 	// state deliverable is flipped to failed BEFORE any status transition,
 	// so "no deliverable" can never masquerade as success.
 	HasRealDeliverable(ctx context.Context, team Team) (bool, error)
+	// ListFailedTeamBriefs backs the honest synthesis trigger (2026-07-25
+	// Fix 3): briefs for genuinely failed teams (cancelled excluded),
+	// feeding the summary report with failure reasons and the teams'
+	// unresolved questions (their last replies).
+	ListFailedTeamBriefs(ctx context.Context, spiritSessionID string) []TeamFailureBrief
 }
 
 // TimeoutHandler is called when a team times out. Implemented by the service
@@ -409,7 +414,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 		}
 	}
 
-	defJSON := buildSpiritTeamDefinitionJSON(mode, agentIDs, u.lg, params.ParallelConfigJSON)
+	defJSON := buildSpiritTeamDefinitionJSON(mode, agentIDs, u.lg, params.DagNodeID != "", params.ParallelConfigJSON)
 
 	// Check session tree depth limit before creating team (P1-4: extracted
 	// to session.ValidateDepth for reuse across all child-session creators).
@@ -1230,7 +1235,7 @@ func (u *SpiritTeamUsecase) resolveAgentKeyToIDMap(ctx context.Context, agentKey
 	return out, nil
 }
 
-func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggateway.Logger, parallelCfgJSON ...string) string {
+func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggateway.Logger, requireDeliverable bool, parallelCfgJSON ...string) string {
 	type member struct {
 		AgentKey string `json:"agent_id"`
 		Role     string `json:"role"`
@@ -1267,7 +1272,11 @@ func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggatewa
 	}
 	// C1/C3: multi-member teams get the deliverable state channel so members
 	// can pass structured output via set_deliverable/get_deliverable tools.
-	if len(agentKeys) > 1 {
+	// 2026-07-25 Fix 2b: DAG teams (requireDeliverable, i.e. DagNodeID != "")
+	// get the channel unconditionally — the real-deliverable gate (Fix 1)
+	// judges DAG teams solely by set_deliverable output, so a single-member
+	// DAG team without the channel could never pass.
+	if len(agentKeys) > 1 || requireDeliverable {
 		def["enable_state_deliverable"] = true
 	}
 	out, err := json.Marshal(def)
@@ -1471,13 +1480,10 @@ func (u *SpiritTeamUsecase) ScheduleDependentTeams(ctx context.Context, spiritSe
 			)
 			continue
 		}
-		// P0-③b: build the downstream team's first-turn input as
-		// upstream-deliverable prefix + its own task description, so the
-		// activated team receives structured upstream outputs.
-		taskDesc := t.TaskDescription
-		if prefix := u.InjectUpstreamDeliverables(ctx, *t); prefix != "" {
-			taskDesc = prefix + taskDesc
-		}
+		// P0-③b + 2026-07-25 Fix 2b: build the downstream team's first-turn
+		// input through the single composer — upstream-deliverable prefix +
+		// its own task description + mandatory delivery protocol suffix.
+		taskDesc := u.BuildTeamTurnInput(ctx, *t)
 		actions = append(actions, DependentTeamAction{
 			TeamID:          t.ID,
 			TeamName:        t.DisplayName,
@@ -1573,6 +1579,54 @@ func (u *SpiritTeamUsecase) CheckAllTeamsCompleted(ctx context.Context, spiritSe
 		TotalTokenIn:   totalTokenIn,
 		TotalTokenOut:  totalTokenOut,
 	}
+}
+
+// ListFailedTeamBriefs collects honest failure briefs for the synthesis
+// summary trigger (2026-07-25 Fix 3). Only genuinely failed teams are
+// included — cancelled teams are a user abort and skip the report entirely
+// (checkAllTeamsCompleted returns early when CancelledTeams > 0). Reason
+// comes from latest-run stats; LastReply carries the team's final reply,
+// which is where its unresolved questions live. Best-effort: missing pieces
+// degrade to fallback text rather than failing the whole collection.
+func (u *SpiritTeamUsecase) ListFailedTeamBriefs(ctx context.Context, spiritSessionID string) []TeamFailureBrief {
+	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
+	if err != nil {
+		u.lg.Warn("查询精灵会话团队列表失败，跳过失败简报收集",
+			loggateway.StepID("spirit.teams.failure_briefs_err"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Err(err),
+		)
+		return nil
+	}
+	var failed []Team
+	for _, t := range teams {
+		if t.Status == TeamStatusFailed {
+			failed = append(failed, t)
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	teamIDs := make([]string, 0, len(failed))
+	for _, t := range failed {
+		teamIDs = append(teamIDs, t.ID)
+	}
+	stats := u.ListTeamRunStats(ctx, teamIDs) // nil-safe: reader not wired → nil map
+	briefs := make([]TeamFailureBrief, 0, len(failed))
+	for _, t := range failed {
+		brief := TeamFailureBrief{TeamName: t.DisplayName, TaskName: t.TaskDescription}
+		if s, ok := stats[t.ID]; ok {
+			brief.Reason = s.ErrorMessage
+		}
+		if brief.Reason == "" {
+			brief.Reason = "任务失败（无详细错误记录）"
+		}
+		if summary, _, extErr := u.ExtractTeamOutput(ctx, t.ID); extErr == nil {
+			brief.LastReply = summary
+		}
+		briefs = append(briefs, brief)
+	}
+	return briefs
 }
 
 // parseTimeFlexible tries multiple time formats to parse a timestamp string.
@@ -2104,6 +2158,42 @@ func (u *SpiritTeamUsecase) InjectUpstreamDeliverables(ctx context.Context, down
 		strings.Join(deliverableParts, "\n\n"))
 }
 
+// DeliverableProtocolSuffix renders the mandatory delivery-protocol block
+// appended to a DAG team's first-turn input (2026-07-25 Fix 2b). Without it a
+// team has no way of knowing that "reply text is not a deliverable": the
+// real-deliverable gate (Fix 1) flips completed-without-set_deliverable teams
+// to failed, so the obligation must be declared up front. Non-DAG teams carry
+// no deliverable obligation and get no suffix.
+func (u *SpiritTeamUsecase) DeliverableProtocolSuffix(t Team) string {
+	if t.DagNodeID == "" {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n--- 交付协议（强制） ---\n")
+	sb.WriteString("本团队是 DAG 编排节点。任务完成前必须调用 set_deliverable 提交结构化交付物（只在回复文本中给出内容不算产出）：\n")
+	sb.WriteString("- \"summary\"（保留 key，必填）：交付物摘要，供下游团队消费\n")
+	if contracts := contractDeclarationLines(t.Deliverables); contracts != "" {
+		sb.WriteString("- 交付契约（按 name 逐项提交）：\n")
+		sb.WriteString(contracts)
+	}
+	sb.WriteString("未调用 set_deliverable 的 completed 将被判定为 failed，下游团队不会收到输入；信息不足时在 summary 中如实写明阻塞或待澄清事项，禁止虚构交付物。\n")
+	return sb.String()
+}
+
+// BuildTeamTurnInput composes a DAG team's first-turn input:
+// upstream deliverable prefix + task description + delivery protocol suffix.
+// The stored Team.TaskDescription stays pure — injection happens only on the
+// turn input (both the orchestrator dispatch path and the lazy DAG activation
+// path compose through this single function so the two cannot drift).
+func (u *SpiritTeamUsecase) BuildTeamTurnInput(ctx context.Context, t Team) string {
+	taskDesc := t.TaskDescription
+	if prefix := u.InjectUpstreamDeliverables(ctx, t); prefix != "" {
+		taskDesc = prefix + taskDesc
+	}
+	taskDesc += u.DeliverableProtocolSuffix(t)
+	return taskDesc
+}
+
 // contractDeclarationLines renders the P1 contract declaration for the
 // injection prefix, one line per declared contract, e.g.
 // "契约: research_report (document/markdown) — 调研结论报告\n".
@@ -2204,6 +2294,11 @@ type UpstreamDeliverableContent struct {
 // tool: the injection prefix only carries a truncated summary, and downstream
 // team members call the tool when they genuinely need the full text.
 //
+// 2026-07-25 Fix 7: the content source is the DELIVERABLE itself — graph
+// state first, then the persisted envelope — never the reply text. After the
+// Fix-1 gate "reply is not a deliverable", a reply-sourced full text would
+// contradict the injection prefix (which renders the envelope summary).
+//
 // Phase B (runtime contract validation): when readerSessionID resolves to a
 // reader team with a declared InputContract, that contract is checked against
 // the upstream team's declared Deliverables BEFORE the (expensive) full-text
@@ -2228,7 +2323,7 @@ func (u *SpiritTeamUsecase) ReadUpstreamDeliverable(ctx context.Context, readerS
 	if err := u.validateUpstreamContract(ctx, readerSessionID, t); err != nil {
 		return UpstreamDeliverableContent{}, err
 	}
-	full, err := u.extractTeamFullOutput(ctx, teamID)
+	full, err := u.resolveDeliverableFullContent(ctx, t)
 	if err != nil {
 		return UpstreamDeliverableContent{}, err
 	}
@@ -2261,6 +2356,83 @@ func (u *SpiritTeamUsecase) ReadUpstreamDeliverable(ctx context.Context, readerS
 		TeamID:    teamID,
 		SessionID: full.SessionID,
 	}, nil
+}
+
+// resolveDeliverableFullContent returns the full deliverable content of a
+// completed team, sourced from the DELIVERABLE itself — never the reply
+// (2026-07-25 Fix 7). Priority:
+//  1. graph-state re-read: untruncated, and the same source the envelope was
+//     persisted from, so the full text can never disagree with the injected
+//     summary (the envelope summary is truncated at MaxSummaryLen — only a
+//     state re-read fulfills the tool's "full text" promise);
+//  2. persisted DeliverableRef envelope, when the graph session is
+//     unreadable (StructuredJSON is untruncated; Summary may be);
+//  3. legacy reply extraction, for non-DAG teams and rows completed before
+//     the Fix-1 gate (no envelope can exist for those).
+func (u *SpiritTeamUsecase) resolveDeliverableFullContent(ctx context.Context, t Team) (teamFullOutput, error) {
+	if t.DagNodeID != "" {
+		if full, ok := u.readGraphStateFullContent(ctx, t); ok {
+			return full, nil
+		}
+		if full, ok := u.readEnvelopeFullContent(t); ok {
+			return full, nil
+		}
+	}
+	return u.extractTeamFullOutput(ctx, t.ID)
+}
+
+// readGraphStateFullContent renders the full deliverable from the graph final
+// state: the reserved "summary" key (untruncated, unlike the envelope's) plus
+// the non-reserved keys as a JSON object. ok=false on any gap (channel
+// disabled, no session, read error, empty state) — the caller then degrades
+// to the persisted envelope.
+func (u *SpiritTeamUsecase) readGraphStateFullContent(ctx context.Context, t Team) (teamFullOutput, bool) {
+	anchor, ok := u.stateDeliverableChannel(t)
+	if !ok {
+		return teamFullOutput{}, false
+	}
+	teamSessionID, err := u.resolveTeamMainSessionID(ctx, t.ID)
+	if err != nil || teamSessionID == "" {
+		return teamFullOutput{}, false
+	}
+	stateDeliv, err := u.graphDelivReader.ReadGraphDeliverable(ctx, anchor, ctxuser.TRPCUserKey(ctx), teamSessionID)
+	if err != nil || len(stateDeliv) == 0 {
+		return teamFullOutput{}, false
+	}
+	summary, _ := stateDeliv[deliverableReservedKeySummary].(string)
+	content := strings.TrimSpace(summary)
+	if structured := marshalNonReservedStateKeys(stateDeliv); structured != "" {
+		if content != "" {
+			content += "\n\n"
+		}
+		content += structured
+	}
+	if content == "" {
+		return teamFullOutput{}, false
+	}
+	return teamFullOutput{Content: content, SessionID: teamSessionID}, true
+}
+
+// readEnvelopeFullContent renders full content from the persisted
+// DeliverableRef envelope: the untruncated StructuredJSON, preceded by the
+// Summary when present. ok=false when no envelope exists for the team's node
+// or the envelope carries nothing.
+func (u *SpiritTeamUsecase) readEnvelopeFullContent(t Team) (teamFullOutput, bool) {
+	ref, ok := u.readDeliverableRef(t)
+	if !ok {
+		return teamFullOutput{}, false
+	}
+	content := strings.TrimSpace(ref.Summary)
+	if structured := strings.TrimSpace(ref.StructuredJSON); structured != "" {
+		if content != "" {
+			content += "\n\n"
+		}
+		content += structured
+	}
+	if content == "" {
+		return teamFullOutput{}, false
+	}
+	return teamFullOutput{Content: content, SessionID: ref.TeamSessionID}, true
 }
 
 // validateUpstreamContract performs the tool-call level contract check for

@@ -129,10 +129,8 @@ func (o *RealTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanSte
 	// P0-③a: 首轮输入 = 上游交付物前缀 + 任务描述。上游团队在 RecordTeamCompletion
 	// 时已把交付物落库（deliverables_output_json），此处由 biz 层组装前缀；
 	// 存储的 team.TaskDescription 保持纯净，前缀只注入 Turn 输入。
-	turnContent := taskDesc
-	if prefix := o.assembler.InjectUpstreamDeliverables(ctx, spiritSessionID, step.DependsOn); prefix != "" {
-		turnContent = prefix + taskDesc
-	}
+	// 2026-07-25 Fix 2b: 统一走 BuildTeamTurnInput（前缀 + 描述 + 交付协议后缀）。
+	turnContent := o.assembler.BuildTeamTurnInput(ctx, team)
 	if o.starter != nil && teamSession.ID != "" && turnContent != "" {
 		safego.Go(ctx, "team_orchestrator.start_turn."+team.ID, func() {
 			startCtx := context.WithoutCancel(ctx)

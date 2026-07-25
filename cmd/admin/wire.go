@@ -1922,8 +1922,10 @@ func provideWSServer(
 // gets its own Projector instance, isolating per-turn streaming state.
 // The factory shares the singleton Sequencer + SeqAssigner so Seq allocation
 // remains globally monotonic per spirit session.
-func provideV2ProjectorFactory(seq *v2.Sequencer, lg loggateway.Logger) *v2.ProjectorFactory {
-	return v2.NewProjectorFactory(seq, seq.SeqAssigner(), lg)
+// taskReader 用于 synthesis/cancelled 兜底路径回读父 Task 不可变字段
+// （CreatedAt/Seq/UserMessage），避免 task.completed 事件携带零值时间。
+func provideV2ProjectorFactory(seq *v2.Sequencer, taskReader biz.TaskV2Reader, lg loggateway.Logger) *v2.ProjectorFactory {
+	return v2.NewProjectorFactory(seq, seq.SeqAssigner(), taskReader, lg)
 }
 
 // provideWSV2Subscriber constructs the WS subscriber for v2 Events.

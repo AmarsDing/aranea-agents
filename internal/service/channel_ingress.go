@@ -26,7 +26,7 @@ type ChannelIngress struct {
 	chat           biz.ChannelTurnGateway
 	graphs         biz.GraphExecutor
 	cron           biz.CronTriggerGateway
-	eventBus       biz.EventBus // v2: run_status + graph completion watch + notices
+	eventBus       biz.EventBus        // v2: run_status + graph completion watch + notices
 	monitorBus     contract.MonitorBus // typed monitor bus: flow_log events → monitor WS
 	http           *http.Client
 	deduplicator   biz.IngressDeduplicator

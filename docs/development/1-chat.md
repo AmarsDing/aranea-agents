@@ -1028,9 +1028,9 @@ interface Activity {
 
 ### MM.4 验收标准
 
-- [ ] 同一会话先后发送"写一首关于春天的诗"和"再写一首秋天的诗"：第二次复用第一次的 Agent/配方，不新建 Agent
-- [ ] 全新领域任务（无候选）：factory 创建的新 Agent 落库时含非空 mission_statement 与 domain_path
-- [ ] embedder 未配置环境：匹配管线正常工作（降级路径），不报错
-- [ ] OrchestrationCache 命中时日志出现 `domain_recipe` 匹配层，且组队耗时显著低于全量匹配
-- [ ] 存量 Agent（无使命）参与匹配不崩溃、不阻塞编排
-- [ ] 全部后端测试通过（`internal/agent`、`internal/biz`、`internal/data`）
+- [x] 同一会话先后发送"写一首关于春天的诗"和"再写一首秋天的诗"：第二次复用第一次的 Agent/配方，不新建 Agent
+- [x] 全新领域任务（无候选）：factory 创建的新 Agent 落库时含非空 mission_statement 与 domain_path
+- [x] embedder 未配置环境：匹配管线正常工作（降级路径），不报错
+- [x] OrchestrationCache 命中时日志出现 `domain_recipe` 匹配层，且组队耗时显著低于全量匹配
+- [x] 存量 Agent（无使命）参与匹配不崩溃、不阻塞编排
+- [x] 全部后端测试通过（`internal/agent`、`internal/biz`、`internal/data`）

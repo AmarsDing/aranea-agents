@@ -432,6 +432,37 @@ func TestParseDecompositionOutput_Contracts(t *testing.T) {
 	}
 }
 
+// TestParseDecompositionOutput_DomainPath verifies domain_path is parsed and
+// lexicon-normalized: hit → canonical, unknown deeper path → merged to the
+// nearest known domain, missing → empty (advisory, 不阻断).
+func TestParseDecompositionOutput_DomainPath(t *testing.T) {
+	text := `[
+	  {"id":"st_1","name":"写诗","description":"d1","depends_on":[],"domain_path":"创作/文学"},
+	  {"id":"st_2","name":"中台","description":"d2","depends_on":[],"domain_path":"软件/中台"},
+	  {"id":"st_3","name":"无域","description":"d3","depends_on":[]}
+	]`
+	subTasks, err := parseDecompositionOutput(text)
+	if err != nil {
+		t.Fatalf("parseDecompositionOutput: %v", err)
+	}
+	if len(subTasks) != 3 {
+		t.Fatalf("subTasks = %d, want 3", len(subTasks))
+	}
+	if subTasks[0].DomainPath != "创作/文学" {
+		t.Errorf("st_1.DomainPath = %q, want 创作/文学（词表命中）", subTasks[0].DomainPath)
+	}
+	if subTasks[1].DomainPath != "软件" {
+		t.Errorf("st_2.DomainPath = %q, want 软件（词表外二级域归并一级域）", subTasks[1].DomainPath)
+	}
+	if subTasks[2].DomainPath != "" {
+		t.Errorf("st_3.DomainPath = %q, want 空（LLM 未输出）", subTasks[2].DomainPath)
+	}
+	// plan 级主导域 = 首个非空 subtask 域。
+	if got := PrimaryDomainPath(subTasks); got != "创作/文学" {
+		t.Errorf("PrimaryDomainPath = %q, want 创作/文学", got)
+	}
+}
+
 // TestParseDecompositionOutput_ContractFallbackDerivation verifies the
 // deterministic fallback: when the LLM omits contracts on a DAG edge, the
 // producer (subtask with dependents) gets a derived "{step_id}_output"

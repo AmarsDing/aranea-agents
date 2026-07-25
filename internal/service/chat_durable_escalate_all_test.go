@@ -55,8 +55,8 @@ func TestEscalateAllActiveToDurable_happy(t *testing.T) {
 	svc := newEscalateAllTestService([]biz.SessionRun{
 		{ID: "run-1", SessionID: "sess-1"},
 		{ID: "run-2", SessionID: "sess-2"},
-		{ID: "", SessionID: "sess-3"},  // missing ID: skipped
-		{ID: "run-4", SessionID: ""},   // missing session: skipped
+		{ID: "", SessionID: "sess-3"}, // missing ID: skipped
+		{ID: "run-4", SessionID: ""},  // missing session: skipped
 	}, nil, spy)
 
 	if got := svc.EscalateAllActiveToDurable(context.Background()); got != 2 {

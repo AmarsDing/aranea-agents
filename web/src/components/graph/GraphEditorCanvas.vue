@@ -671,16 +671,17 @@ function deleteEdgeById(edgeId: string) {
   const resolved = resolveConditionalEdgeRemoval(edgeId);
   if (resolved) {
     const ce = graphDef.value.conditionalEdges[resolved.ceIdx];
-    const newPathMap = { ...ce.pathMap };
-    delete newPathMap[resolved.label];
-    if (Object.keys(newPathMap).length === 0) {
-      graphDef.value.conditionalEdges.splice(resolved.ceIdx, 1);
-    } else {
-      ce.pathMap = newPathMap;
-    }
     if (props.undoRedo) {
+      // execute() 会通过 redo() 完成首次删除，此处禁止预改 graphDef
       props.undoRedo.pushDeleteConditionalEdge(ce, resolved.ceIdx, resolved.label);
     } else {
+      const newPathMap = { ...ce.pathMap };
+      delete newPathMap[resolved.label];
+      if (Object.keys(newPathMap).length === 0) {
+        graphDef.value.conditionalEdges.splice(resolved.ceIdx, 1);
+      } else {
+        ce.pathMap = newPathMap;
+      }
       emit('updateGraph');
     }
   } else {
@@ -762,15 +763,16 @@ function duplicateNode(nodeId: string) {
   const baseDesc = src.description || src.id;
   const dup: NodeDef = { ...src, id: newId, description: `${baseDesc}${t('graphs.canvasDuplicateNodeSuffix')}` };
   const index = graphDef.value.nodes.length;
-  graphDef.value.nodes.push(dup);
 
   const srcNode = (internalNodes.value as SnapGuideNode[]).find((n) => n.id === nodeId);
   const pos = srcNode ? { x: srcNode.position.x + 40, y: srcNode.position.y + 40 } : { x: 100, y: 100 };
   writeGraphNodePosition(graphDef.value, newId, pos);
 
   if (props.undoRedo) {
+    // execute() 会通过 redo() 完成首次插入，此处禁止预改 graphDef
     props.undoRedo.pushDuplicateNode(nodeId, dup, index);
   } else {
+    graphDef.value.nodes.push(dup);
     emit('updateGraph');
   }
   emit('selectNode', newId);
@@ -880,10 +882,11 @@ function onConnect(connection: Connection) {
     const existing = graphDef.value.edges.find((e) => e.from === connection.source && e.to === connection.target);
     if (!existing) {
       const edge: EdgeDef = { from: connection.source, to: connection.target, kind: '' };
-      graphDef.value.edges.push(edge);
       if (props.undoRedo) {
+        // execute() 会通过 redo() 完成首次插入，此处禁止预改 graphDef
         props.undoRedo.pushAddEdge(edge);
       } else {
+        graphDef.value.edges.push(edge);
         emit('updateGraph');
       }
     }
@@ -999,13 +1002,14 @@ function onDrop(event: DragEvent) {
   const dropPosition = project({ x: event.clientX, y: event.clientY });
 
   const index = graphDef.value.nodes.length;
-  graphDef.value.nodes.push(newNode);
 
   writeGraphNodePosition(graphDef.value, id, dropPosition);
 
   if (props.undoRedo) {
+    // execute() 会通过 redo() 完成首次插入，此处禁止预改 graphDef
     props.undoRedo.pushAddNode(newNode, index);
   } else {
+    graphDef.value.nodes.push(newNode);
     emit('updateGraph');
   }
   emit('selectNode', id);

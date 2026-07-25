@@ -20,8 +20,8 @@ type teamRunV2Repo struct {
 }
 
 var (
-	_ biz.TeamRunV2Repo             = (*teamRunV2Repo)(nil)
-	_ biz.SpiritTeamRunStatsReader  = (*teamRunV2Repo)(nil)
+	_ biz.TeamRunV2Repo            = (*teamRunV2Repo)(nil)
+	_ biz.SpiritTeamRunStatsReader = (*teamRunV2Repo)(nil)
 )
 
 // NewTeamRunV2Repo creates a new TeamRunV2Repo.

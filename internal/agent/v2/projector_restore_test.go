@@ -9,7 +9,7 @@ import (
 func TestProjectorFactory_RestoreSeqIfNeeded(t *testing.T) {
 	t.Parallel()
 	sa := NewDefaultSeqAssigner()
-	f := NewProjectorFactory(nil, sa, loggateway.NewNoop())
+	f := NewProjectorFactory(nil, sa, nil, loggateway.NewNoop())
 
 	f.RestoreSeqIfNeeded("sess-a", 5)
 	if got := sa.NextSeq("sess-a"); got != 6 {

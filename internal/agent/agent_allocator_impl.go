@@ -273,7 +273,7 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 			return alloc, nil
 		}
 		taskText := subTask.Name + " " + subTask.Description
-		if cap, score, ok := impl.tryMissionMatch(ctx, taskText, subTask.DomainPath, capabilities, traceID); ok {
+		if cap, score, candCount, ok := impl.tryMissionMatch(ctx, taskText, subTask.DomainPath, capabilities, traceID); ok {
 			return biz.TaskAllocation{
 				SubTaskID:    subTask.ID,
 				SubTaskName:  subTask.Name,
@@ -282,7 +282,7 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 				AssignedName: cap.DisplayName,
 				MatchScore:   score,
 				MatchLayer:   "mission",
-				MatchReason:  missionMatchReason(subTask.DomainPath, 0, score),
+				MatchReason:  missionMatchReason(subTask.DomainPath, candCount, score),
 			}, nil
 		}
 	}
@@ -871,7 +871,7 @@ func (impl *agentAllocatorImpl) matchWholePlan(ctx context.Context, taskPlan *bi
 			}
 			return alloc, nil
 		}
-		if cap, score, ok := impl.tryMissionMatch(ctx, taskPlan.UserMessage, taskPlan.DomainPath, capabilities, traceID); ok {
+		if cap, score, candCount, ok := impl.tryMissionMatch(ctx, taskPlan.UserMessage, taskPlan.DomainPath, capabilities, traceID); ok {
 			return biz.TaskAllocation{
 				SubTaskID:    "whole",
 				SubTaskName:  taskPlan.UserMessage,
@@ -880,7 +880,7 @@ func (impl *agentAllocatorImpl) matchWholePlan(ctx context.Context, taskPlan *bi
 				AssignedName: cap.DisplayName,
 				MatchScore:   score,
 				MatchLayer:   "mission",
-				MatchReason:  missionMatchReason(taskPlan.DomainPath, 0, score),
+				MatchReason:  missionMatchReason(taskPlan.DomainPath, candCount, score),
 			}, nil
 		}
 	}

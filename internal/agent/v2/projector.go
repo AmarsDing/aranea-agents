@@ -120,6 +120,10 @@ type ProjectorFactory struct {
 	seq    SequencerPublisher
 	seqAsg SeqAssigner
 	lg     loggateway.Logger
+	// taskReader 用于 synthesis/cancelled 兜底路径回读父 Task 的
+	// CreatedAt/Seq/UserMessage/SessionID（见 terminalTask）。可为 nil
+	// （测试/编译检查场景），读取失败时回退最小载荷。
+	taskReader biz.TaskV2Reader
 	// teamDispatched 跟踪哪些 taskID 已派发 team（system-push 模式）。
 	// key=taskID, value=true。由 PlanExecutor.dispatchStep 调用 MarkTeamDispatched。
 	// OnTurnEnd 检查此表决定是否延迟 task.completed。
@@ -131,12 +135,13 @@ type ProjectorFactory struct {
 
 // NewProjectorFactory constructs a factory that produces per-turn
 // ActivityProjector instances. seq and seqAsg are shared across all turns
-// produced by this factory; lg may be nil (defaults to Noop).
-func NewProjectorFactory(seq SequencerPublisher, seqAsg SeqAssigner, lg loggateway.Logger) *ProjectorFactory {
+// produced by this factory; taskReader is used by OnTurnEnd fallback paths to
+// read back immutable parent-task fields; lg may be nil (defaults to Noop).
+func NewProjectorFactory(seq SequencerPublisher, seqAsg SeqAssigner, taskReader biz.TaskV2Reader, lg loggateway.Logger) *ProjectorFactory {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &ProjectorFactory{seq: seq, seqAsg: seqAsg, lg: lg}
+	return &ProjectorFactory{seq: seq, seqAsg: seqAsg, taskReader: taskReader, lg: lg}
 }
 
 // MarkTeamDispatched 标记一个 task 已派发 team。
@@ -778,14 +783,9 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta, can
 		if meta.TeamStageID == "" {
 			// Synthesis turn: complete (or cancel) the parent task.
 			// 注意：synthesis turn 的 projector 是新实例，activeTask 中没有
-			// parent task（它在 root turn 的 projector 中）。构造最小 Task 对象。
-			task := biz.Task{
-				ID:          meta.ParentTaskID,
-				SessionID:   meta.SpiritSessionID,
-				Status:      taskStatus,
-				CompletedAt: &now,
-				Version:     2, // Version > 1 覆盖 task.created 的 Version=1
-			}
+			// parent task（它在 root turn 的 projector 中）。terminalTask 回读
+			// DB 保留 CreatedAt/Seq/UserMessage。
+			task := p.terminalTask(ctx, meta.ParentTaskID, meta.SpiritSessionID, taskStatus, now)
 			p.seq.Publish(ctx, biz.NewTaskCompletedEvent(task))
 			if p.factory != nil {
 				p.factory.ClearTeamDispatch(meta.ParentTaskID)
@@ -821,18 +821,50 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta, can
 			p.seq.Publish(ctx, biz.NewTaskCompletedEvent(*task))
 		} else if canceled {
 			// Cancelled root turn whose task is not in activeTask (e.g. team
-			// dispatch path where the task was already removed). Construct a
-			// minimal cancelled task so the frontend receives the terminal state.
-			task := biz.Task{
-				ID:          meta.TaskID,
-				SessionID:   meta.SpiritSessionID,
-				Status:      taskStatus,
-				CompletedAt: &now,
-				Version:     2,
-			}
+			// dispatch path where the task was already removed). terminalTask
+			// 回读 DB 保留 CreatedAt/Seq/UserMessage。
+			task := p.terminalTask(ctx, meta.TaskID, meta.SpiritSessionID, taskStatus, now)
 			p.seq.Publish(ctx, biz.NewTaskCompletedEvent(task))
 		}
 	}
+}
+
+// terminalTask constructs the task.completed payload for paths where the task
+// is not in activeTask (synthesis continuation / cancelled fallback). Fields
+// immutable across the task lifecycle (CreatedAt/Seq/UserMessage/SessionID)
+// are read back from the DB so the event payload doesn't carry zero values:
+// a zero CreatedAt serializes to "0001-01-01T00:00:00Z" (truthy), defeating
+// the frontend merge guard (t.CreatedAt || ex.CreatedAt) and corrupting the
+// creation time display ("01-01 08:05"). Best-effort: reader failure keeps
+// the minimal payload (frontend must then rely on its own zero-time guard).
+func (p *ActivityProjector) terminalTask(ctx context.Context, taskID, sessionID string, status biz.TaskStatus, now time.Time) biz.Task {
+	task := biz.Task{
+		ID:          taskID,
+		SessionID:   sessionID,
+		Status:      status,
+		CompletedAt: &now,
+		UpdatedAt:   now,
+		Version:     2, // Version > 1 覆盖 task.created 的 Version=1
+	}
+	if p.factory != nil && p.factory.taskReader != nil {
+		// context.WithoutCancel：synthesis OnTurnEnd 的 ctx 可能已随 turn 结束
+		// 被取消，DB 回读不应被中断（与 CompleteTaskTerminal 的 detached ctx 一致）。
+		readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		existing, err := p.factory.taskReader.GetTask(readCtx, taskID)
+		cancel()
+		if err != nil {
+			p.lg.Warn("terminalTask: 回读父 Task 失败，回退最小载荷",
+				loggateway.Str("task_id", taskID),
+				loggateway.Err(err),
+			)
+			return task
+		}
+		task.SessionID = existing.SessionID
+		task.UserMessage = existing.UserMessage
+		task.Seq = existing.Seq
+		task.CreatedAt = existing.CreatedAt
+	}
+	return task
 }
 
 // completeStep marks the step completed, removes it from the active map, and

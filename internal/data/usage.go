@@ -246,7 +246,7 @@ func usageLimit(limit int) int {
 // usageWorkspaceClause 返回用量事件的 workspace 过滤片段。
 // 与 evaluation.go evalRunsWorkspaceFilter 的 legacy 兼容语义一致：
 //   - 空 WorkspaceID（system caller）→ 无过滤
-//   - default 租户 → workspace_id IN ('default', '')，兼容历史空行
+//   - default 租户 → workspace_id IN ('default', ”)，兼容历史空行
 //     （用量事件写入路径不填 workspace_id，全部 1185 行均为空串）
 //   - 其他租户 → 严格相等，防止跨租户泄漏
 func usageWorkspaceClause(workspaceID string) (string, []any) {

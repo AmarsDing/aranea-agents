@@ -47,6 +47,70 @@ type SynthesisOutput struct {
 	SynthesizedAt string                `json:"synthesized_at"`
 }
 
+// ---------------------------------------------------------------------------
+// 2026-07-25 Fix 3 收尾报告诚实化
+// ---------------------------------------------------------------------------
+
+// TeamFailureBrief is the honest-failure summary fed to the Spirit summary
+// report: team name, its task, the recorded failure reason, and its last
+// reply (which carries the team's unresolved questions — the 19:29 case was
+// an upstream team that only asked clarifying questions yet the final report
+// claimed full success).
+type TeamFailureBrief struct {
+	TeamName  string
+	TaskName  string
+	Reason    string
+	LastReply string
+}
+
+// synthesisSummarySuccessTrigger is the summary-report structure used when
+// every team completed. The LLM reply (a normal reply step, persisted and
+// refresh-safe) IS the summary report — there is no dedicated report UI.
+const synthesisSummarySuccessTrigger = "所有团队已完成。请基于会话中各团队的执行结果，输出最终任务总结报告（Markdown 格式），严格按以下结构：\n" +
+	"## 任务总结\n" +
+	"（一段话概述用户目标与整体完成情况）\n" +
+	"## 各团队结果\n" +
+	"（逐团队列出：团队名称、承担任务、完成状态、核心结论；失败团队需说明失败原因）\n" +
+	"## 综合结论\n" +
+	"（跨团队的核心发现、结论对比与最终答案）\n" +
+	"## 建议与后续行动\n" +
+	"（如无建议可省略本节）"
+
+// BuildSynthesisSummaryTrigger renders the system-push message injected into
+// the Spirit session when all teams reach a terminal state. When failures
+// exist the trigger must be honest: state the real completed/failed counts,
+// list each failed team with its reason and last reply (its unresolved
+// questions), demand an「未解决问题」section, and forbid fabricating
+// conclusions for failed teams. Claiming "所有团队已完成" while teams failed
+// is what made the 19:29 final report a lie (2026-07-25 Fix 3).
+func BuildSynthesisSummaryTrigger(total, completed, failed int, failures []TeamFailureBrief) string {
+	if failed <= 0 {
+		return synthesisSummarySuccessTrigger
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("所有团队已结束：共 %d 个团队，%d 个完成，%d 个失败。请基于会话中各团队的执行结果与下列失败事实，输出最终任务总结报告（Markdown 格式）。\n",
+		total, completed, failed))
+	sb.WriteString("\n失败事实（必须如实呈现，禁止隐瞒）：\n")
+	for _, f := range failures {
+		sb.WriteString(fmt.Sprintf("- 团队「%s」（任务：%s）失败，原因：%s\n", f.TeamName, f.TaskName, f.Reason))
+		if strings.TrimSpace(f.LastReply) != "" {
+			sb.WriteString(fmt.Sprintf("  该团队最后回复（含其遗留疑问）：%s\n", f.LastReply))
+		}
+	}
+	sb.WriteString("\n严格按以下结构输出：\n")
+	sb.WriteString("## 任务总结\n")
+	sb.WriteString("（一段话概述用户目标与整体完成情况；存在失败团队时必须如实说明整体目标未完全达成，禁止声称全部成功）\n")
+	sb.WriteString("## 各团队结果\n")
+	sb.WriteString("（逐团队列出：团队名称、承担任务、完成状态、核心结论；失败团队需说明失败原因）\n")
+	sb.WriteString("## 未解决问题\n")
+	sb.WriteString("（汇总失败团队遗留的疑问与阻塞事项，逐条列出需要用户澄清或决策的内容）\n")
+	sb.WriteString("## 综合结论\n")
+	sb.WriteString("（仅基于已完成团队的真实产出给出结论；禁止为失败团队虚构结论，禁止把失败回复当作产出）\n")
+	sb.WriteString("## 建议与后续行动\n")
+	sb.WriteString("（如无建议可省略本节）")
+	return sb.String()
+}
+
 // SynthesisUsecase orchestrates the synthesis workflow: active team check,
 // completed/failed team collection, cascade blocking, input assembly, and
 // engine execution. The output is returned inline to callers (RPC / tool);
@@ -250,7 +314,7 @@ func (e *SynthesisEngine) synthesizePromptOrModel(ctx context.Context, input Syn
 			loggateway.StepID("spirit.synthesis.model_nil_fallback"))
 		return rawPrompt, nil
 	}
-	systemPrompt := "你是一名资深的多团队协作结果综合分析师。请基于多个团队的执行结果，为用户产出结构化、可执行的综合分析。"
+	systemPrompt := "你是一名资深的多团队协作结果综合分析师。请基于多个团队的执行结果，为用户产出结构化、可执行的综合分析。必须如实反映失败团队与未解决问题，禁止虚构成功。"
 	text, err := e.model.SynthesizeWithModel(ctx, systemPrompt, rawPrompt)
 	if err != nil {
 		if prod {
@@ -299,7 +363,7 @@ func (e *SynthesisEngine) inferStrategy(input SynthesisInput) SynthesisStrategy 
 func (e *SynthesisEngine) synthesizeTemplate(input SynthesisInput) (string, error) {
 	tpl := input.Template
 	if tpl == "" {
-		tpl = e.defaultTemplate()
+		tpl = e.defaultTemplate(hasFailedResults(input.TeamResults))
 	}
 	var sb strings.Builder
 	for i, r := range input.TeamResults {
@@ -321,19 +385,40 @@ func (e *SynthesisEngine) synthesizeTemplate(input SynthesisInput) (string, erro
 	return result, nil
 }
 
+// hasFailedResults reports whether any team result is failed or blocked —
+// the default template closing must not claim full success in that case
+// (2026-07-25 Fix 3).
+func hasFailedResults(results []TeamSynthesisResult) bool {
+	for _, r := range results {
+		if r.Status == "failed" || r.Status == "blocked" {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *SynthesisEngine) synthesizePrompt(input SynthesisInput) string {
 	resultsJSON, _ := json.Marshal(input.TeamResults)
 	return fmt.Sprintf(
 		"请综合以下 %d 个团队的执行结果，回答用户的原始问题。\n\n"+
 			"用户问题: %s\n\n"+
 			"团队结果:\n```json\n%s\n```\n\n"+
-			"请提供结构化的综合分析，包括：1) 核心发现汇总 2) 各团队结论对比 3) 最终建议",
+			"请提供结构化的综合分析，包括：1) 核心发现汇总 2) 各团队结论对比 3) 最终建议。\n"+
+			"诚实性要求：如实反映每个团队的完成状态；存在失败或受阻团队时必须明确说明，"+
+			"禁止虚构其结论或把提问澄清当作产出；如有未解决问题请汇总列出，供用户澄清。",
 		len(input.TeamResults),
 		input.SpiritQuery,
 		string(resultsJSON),
 	)
 }
 
-func (e *SynthesisEngine) defaultTemplate() string {
-	return "# 团队执行结果综合报告\n\n{{results}}\n\n---\n\n基于以上 {{query}} 的多团队并行分析，所有团队已完成任务。"
+// defaultTemplate returns the built-in report template. The closing line is
+// derived from team statuses: with failures it states the partial outcome
+// honestly instead of claiming "所有团队已完成任务" (2026-07-25 Fix 3).
+func (e *SynthesisEngine) defaultTemplate(hasFailed bool) string {
+	closing := "基于以上 {{query}} 的多团队并行分析，所有团队已完成任务。"
+	if hasFailed {
+		closing = "基于以上 {{query}} 的多团队并行分析，部分团队执行失败（详见各团队状态）；结论仅基于成功团队的产出，失败团队的遗留问题需用户关注。"
+	}
+	return "# 团队执行结果综合报告\n\n{{results}}\n\n---\n\n" + closing
 }

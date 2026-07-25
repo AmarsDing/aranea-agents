@@ -331,7 +331,10 @@ type DeliverableCognition struct {
 // Team.DeliverablesOutput. Instead of persisting the (already truncated)
 // summary only, the envelope carries enough metadata for downstream teams to
 // decide whether they need the full deliverable — retrievable on demand via
-// the read_upstream_deliverable tool (full text lives in steps_v2, not here).
+// the read_upstream_deliverable tool. The full text is re-read from the graph
+// final state (the same source this envelope was written from; 2026-07-25
+// Fix 7), with this envelope as the degraded fallback when the graph session
+// is unreadable — never from reply steps.
 type DeliverableRef struct {
 	Summary       string `json:"summary"`
 	KeyFindings   string `json:"key_findings,omitempty"`

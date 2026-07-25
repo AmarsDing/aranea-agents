@@ -598,32 +598,37 @@ R2-P1 体验类（原型已确认）──────────────�
 
 **依赖**：无
 
-### Task R2-5：Graph 卡片方向 A 📋
+### Task R2-5：Graph 卡片方向 A ✅
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
 | `pages/GraphsPage.vue` | 修改 | 卡片结构按原型 01 方向 A：状态色条 / 名称+徽章 / 构成 chips / 描述 / meta |
-| `css/theme/_graph-pages.sass` | 修改 | `.graph-card*` 样式对齐原型 tokens；入场 stagger |
-| `features/graph/useGraphsPage.ts` | 修改 | 卡片数据派生（节点构成聚合、执行次数、状态映射） |
+| `css/theme/_graph-pages.sass` | 修改 | `.graph-card*` 样式对齐原型 tokens；入场 stagger；状态徽章呼吸点；chip 圆点；meta 行；`prefers-reduced-motion` 降级 |
+| `features/graph/utils.ts` | 修改 | 新增 `deriveGraphStatus` + `buildCompositionChips` + `GRAPH_CARD_STATUS_LABEL_KEYS` |
+| `features/graph/useGraphsPage.ts` | 修改 | 卡片数据派生（`cardStatus` / `compositionChips`；执行次数列表页无数据，避免 N+1，meta 行以引擎+checkpoint 徽章替代执行次数/负责人） |
+| `features/graph/__tests__/utils.spec.ts` | 新增 | 8 条单测覆盖状态映射与 chips 排序/折叠 |
 
 **验收标准**：
-- [ ] 对齐原型 01 方向 A 全部验收点（R2-A.1~A.7）
-- [ ] 双主题正常；hover/入场动画流畅
+- [x] 对齐原型 01 方向 A 全部验收点（R2-A.1~A.7；A.1 按设计修订走类型色渐变，draft 退化为灰条；A.5 执行次数/负责人无列表数据，以 BSP/DAG + checkpoint 徽章替代）
+- [x] 双主题正常；hover/入场动画流畅（reduced-motion 降级）
+
+**收尾**：`pnpm lint` 0 errors / `pnpm test` 839 通过 / `pnpm build` 成功。
 
 **依赖**：无
 
-### Task R2-6：详情面板 500+ 重设计 📋
+### Task R2-6：详情面板 500+ 重设计 ✅
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
-| `components/graph/GraphDetailPanel.vue` | 修改 | 按原型 02：紧凑操作条 + 统计行 + 节点 section（搜索/类型 chips/虚拟滚动/行内定位）+ 三 section 可折叠 |
-| `features/graph/` | 新增 composable | `useVirtualRows.ts`：固定行高窗口算法（scrollTop → start/end），供本任务与 R2-8 复用 |
-| `pages/GraphEditorPage.vue` / canvas | 修改 | 接收 `locate-node` 事件 → fitView 居中 + 选中 |
+| `components/graph/GraphDetailPanel.vue` | 修改 | 按原型 02：紧凑操作条 + 统计行 + 节点 section（搜索/类型 chips/虚拟滚动/行内定位）+ 三 section 可折叠（localStorage 持久化） |
+| `features/graph/useVirtualRows.ts` | 新增 | 固定行高窗口算法（scrollTop → start/end，buffer ±5，start 下界钳制 0），供本任务与 R2-8 复用 |
+| `pages/GraphEditorPage.vue` / canvas | 修改 | 接收 `locate-node` 事件 → fitView 居中 + 选中（spotlight query 参数） |
 
 **验收标准**：
-- [ ] 对齐原型 02 全部验收点（R2-B.1~B.7）
-- [ ] 512 节点滚动 ≥ 50fps，DOM 行数 ≈ 可视 + 10
-- [ ] 行内「定位」联动画布
+- [x] 对齐原型 02 全部验收点（R2-B.1~B.7）
+- [x] 虚拟滚动窗口算法单测覆盖（空列表/滚动边界/行过滤），DOM 行数 ≈ 可视 + 10
+- [x] 行内「定位」联动画布
+- [ ] 512 节点滚动 ≥ 50fps（人工性能抽查，R2-9 遗留）
 
 **依赖**：无（虚拟滚动 composable 被 R2-8 复用）
 
@@ -652,26 +657,27 @@ R2-P1 体验类（原型已确认）──────────────�
 
 **依赖**：无
 
-### Task R2-8：State Schema 独立抽屉 📋
+### Task R2-8：State Schema 独立抽屉 ✅
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
-| `components/graph/GraphStateSchemaDrawer.vue` | 新增 | 按原型 05：搜索/三视图/类型 chips/虚拟滚动/未使用检测/内联编辑/批量操作 |
-| `features/graph/portTypes.ts` | 修改 | 提取 `extractFieldRefs(node)` 共享函数（usageMap 派生用） |
-| `pages/GraphEditorPage.vue` | 修改 | 工具栏「状态字段 N」入口 + 抽屉开合状态 |
+| `components/graph/GraphStateSchemaDrawer.vue` | 新增 | 按原型 05：搜索/三视图（平铺/前缀分组/读写分组）/类型 chips/虚拟滚动/未使用检测/内联编辑/批量操作 |
+| `features/graph/portTypes.ts` | 修改 | `extractFieldRefs(node)` + `buildFieldUsageMap`（usageMap 派生，未使用字段检测） |
+| `pages/GraphEditorPage.vue` | 修改 | 工具栏「状态字段 N」入口 + 抽屉开合状态（schema query 参数） |
 | `components/graph/GraphPropertyPanel.vue` | 修改 | State Schema 区「管理全部」入口 |
 
 **验收标准**：
-- [ ] 对齐原型 05 全部验收点（R2-G.1~G.10）
-- [ ] 512 字段滚动流畅；未使用字段正确置灰
-- [ ] 被引用字段禁止删除；编辑写回置 dirty
+- [x] 对齐原型 05 全部验收点（R2-G.1~G.10）
+- [x] 未使用字段正确置灰可删除；被引用字段禁止删除（checkbox disabled）
+- [x] 编辑写回置 dirty；虚拟滚动窗口单测覆盖
+- [ ] 512 字段滚动流畅（人工性能抽查，R2-9 遗留）
 
 **依赖**：Task R2-6（复用 useVirtualRows）
 
-### Task R2-9：R2 集成验证 📋
+### Task R2-9：R2 集成验证 🟡
 
 **验证清单**：
-- [ ] `cd web && pnpm lint && pnpm test && pnpm build` 全绿
+- [x] `cd web && pnpm lint && pnpm test && pnpm build` 全绿（lint 0 errors；test 123 文件 839 通过；build 成功）
 - [ ] 人工四路径回归：拖拽 / 自动布局 / 撤销重做 / 版本回退
 - [ ] 人工验收 8 诉求逐条过（对照原型）
 - [ ] 双主题、暗色模式检查
@@ -684,5 +690,5 @@ R2-P1 体验类（原型已确认）──────────────�
 | 里程碑 | 包含任务 | 交付物 | 状态 |
 |--------|---------|--------|------|
 | R2-M1 修复就绪 | R2-1 ~ R2-4 | 画布控件精简 + 4 类按钮修复 + 引擎 UX | ✅ 已完成 |
-| R2-M2 体验升级 | R2-5 ~ R2-8 | 卡片 + 详情面板 + 校验联动 + Schema 抽屉 | 🟡 进行中（R2-7 ✅，其余待开始） |
-| R2-M3 R2 完成 | R2-9 | 全量验证通过 | 📋 待开始 |
+| R2-M2 体验升级 | R2-5 ~ R2-8 | 卡片 + 详情面板 + 校验联动 + Schema 抽屉 | ✅ 已完成 |
+| R2-M3 R2 完成 | R2-9 | 全量验证通过 | 🟡 自动化验证 ✅，人工验收待用户 |

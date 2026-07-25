@@ -15,6 +15,7 @@ export { useChatConversationStore } from './chat/conversationStore';
 export { useChatSessionStore } from './chat/sessionStore';
 export { useChatRuntimeStore } from './chat/runtimeStore';
 export { useChatMessageStore } from './chat/messageStore';
+export { useLlmRetryStore } from './chat/llmRetryStore';
 export { useCronStore } from './cron';
 export { useGraphStore } from './graph';
 export { useHeartbeatStore } from './heartbeat';

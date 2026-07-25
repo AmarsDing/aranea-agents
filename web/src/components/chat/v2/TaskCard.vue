@@ -14,6 +14,9 @@
         <span class="task-user-panel__time">{{ formattedTime }}</span>
         <div class="task-user-panel__avatar" :aria-label="userLabel">{{ avatarLetter }}</div>
         <span class="task-user-panel__name">{{ userLabel }}</span>
+        <!-- 完成标识 + 耗时（原 meta-bar 内容，移至头部右侧） -->
+        <span class="task-user-panel__badge" :class="`task-user-panel__badge--${statusTone}`">{{ statusLabel }}</span>
+        <span v-if="durationText" class="task-user-panel__duration">{{ durationText }}</span>
       </div>
       <div class="task-user-panel__body" :data-chat-user-prompt="task.UserMessage">
         <div class="task-user-panel__text">{{ task.UserMessage }}</div>
@@ -53,18 +56,15 @@
       <div class="task-card__skeleton-bar" style="width: 81%" />
     </div>
 
-    <!-- 折叠态（未水合 / 水合后手动收起）：slim meta-bar -->
-    <div
-      v-else-if="!hydrated || collapsed"
-      class="task-meta-bar"
-      :class="[`task-meta-bar--${statusTone}`, { 'task-meta-bar--error': hydrationState === 'error' }]"
-    >
-      <span class="task-meta-bar__badge">{{ statusLabel }}</span>
-      <span v-if="durationText" class="task-meta-bar__duration">⏱ {{ durationText }}</span>
-      <span v-if="hydrationState === 'error'" class="task-meta-bar__error-text">
+    <!-- 折叠态（未水合 / 水合后手动收起）：仅 error 时显示 meta-bar -->
+    <div v-else-if="hydrationState === 'error'" class="task-meta-bar task-meta-bar--error">
+      <span class="task-meta-bar__error-text">
         {{ t('chat.v2.loadFailedRetry') }}
       </span>
     </div>
+
+    <!-- 折叠态（非 error）：空内容（状态徽章+耗时已在 header 显示） -->
+    <template v-else-if="!hydrated || collapsed" />
 
     <!-- 水合态：现状完整渲染 + 底部收起按钮 -->
     <template v-else>
@@ -226,13 +226,13 @@ const orphanTeamStages = computed(() => {
 });
 const orphanMemberSessions = computed(() => store.getTaskOrphanMemberSessions(props.task.ID));
 // 澄清门 orphan steps（kind=clarify；TurnID 空，澄清在 Run/Turn 创建前发布）
-const orphanClarifySteps = computed(() =>
-  store.getTaskOrphanSteps(props.task.ID).filter((s) => s.Kind === 'clarify'),
-);
+const orphanClarifySteps = computed(() => store.getTaskOrphanSteps(props.task.ID).filter((s) => s.Kind === 'clarify'));
 // orphan notice steps（kind=notice；TurnID 空，附着到 Task）— 兜底完成通知。
 // 过滤系统内部通知（context_usage 等），与 TurnContainer 保持一致。
 const orphanNoticeSteps = computed(() =>
-  store.getTaskOrphanSteps(props.task.ID).filter((s) => s.Kind === 'notice' && !isSystemInternalNotice(s.Kind, s.NoticeType)),
+  store
+    .getTaskOrphanSteps(props.task.ID)
+    .filter((s) => s.Kind === 'notice' && !isSystemInternalNotice(s.Kind, s.NoticeType)),
 );
 const spiritTurns = computed(() => turns.value.filter((t) => !t.TeamStageID));
 const prePlanTurns = computed(() => {
@@ -373,6 +373,33 @@ function copyMessage() {
     text-overflow: ellipsis
     white-space: nowrap
 
+  /* 状态徽章（头部右侧，原 meta-bar 徽章） */
+  &__badge
+    font-size: 12px
+    font-weight: 500
+    padding: 2px 8px
+    border-radius: 999px
+    white-space: nowrap
+
+    &--success
+      color: var(--color-success, #2e7d32)
+      background: color-mix(in srgb, var(--color-success, #2e7d32) 10%, transparent)
+
+    &--danger
+      color: var(--color-danger, #d32f2f)
+      background: color-mix(in srgb, var(--color-danger, #d32f2f) 10%, transparent)
+
+    &--neutral
+      color: var(--color-text-secondary)
+      background: color-mix(in srgb, var(--color-text-secondary) 10%, transparent)
+
+  /* 耗时（头部右侧，原 meta-bar 耗时） */
+  &__duration
+    font-size: 12px
+    color: var(--color-text-tertiary)
+    font-variant-numeric: tabular-nums
+    white-space: nowrap
+
   &__body
     max-width: 70%
     background: var(--glass-surface)
@@ -409,7 +436,7 @@ function copyMessage() {
     border-color: var(--color-accent)
     background: color-mix(in srgb, var(--glass-surface) 80%, var(--color-accent) 8%)
 
-/* slim meta-bar：状态徽章 + 耗时（color-mix 状态色，日夜 token） */
+/* meta-bar：仅 error 状态使用 */
 .task-meta-bar
   display: flex
   align-items: center
@@ -421,22 +448,6 @@ function copyMessage() {
   font-size: 12px
   border: 1px solid var(--glass-border)
   background: var(--glass-surface)
-
-  &__badge
-    font-weight: 500
-
-  &__duration
-    color: var(--color-text-tertiary)
-    font-variant-numeric: tabular-nums
-
-  &--success &__badge
-    color: var(--color-success, #2e7d32)
-
-  &--danger &__badge
-    color: var(--color-danger, #d32f2f)
-
-  &--neutral &__badge
-    color: var(--color-text-secondary)
 
   &--error
     border-color: var(--color-danger, #d32f2f)

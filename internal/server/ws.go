@@ -88,10 +88,10 @@ type WSServer struct {
 	// chat error activity. The v2 WSV2Subscriber fans these out to WS clients.
 	eventBus biz.EventBus
 	// outbox provides durable critical-event replay for last_event_id (B-06). Optional.
-	outbox                biz.EventDeliveryOutboxRepo
-	canceller             RunCanceller
-	sender                ChatSender
-	turnExecutor          WSTurnExecutor
+	outbox       biz.EventDeliveryOutboxRepo
+	canceller    RunCanceller
+	sender       ChatSender
+	turnExecutor WSTurnExecutor
 	// resumer handles "resume_task" upstream messages (L3). Optional: nil
 	// rejects resume requests with a ws_error notice.
 	resumer               TaskResumer

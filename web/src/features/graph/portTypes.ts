@@ -215,6 +215,31 @@ export function getNodePorts(node: NodeDef, stateFields: StateFieldDef[]): { rea
 }
 
 // ---------------------------------------------------------------------------
+// buildFieldUsageMap — R2-8 Schema 抽屉 usageMap 派生
+// fieldName → { reads: nodeId[], writes: nodeId[] }（复用 getNodePorts 提取逻辑）
+// ---------------------------------------------------------------------------
+
+export type FieldUsage = { reads: string[]; writes: string[] };
+
+export function buildFieldUsageMap(nodes: NodeDef[]): Map<string, FieldUsage> {
+  const map = new Map<string, FieldUsage>();
+  for (const node of nodes) {
+    const { reads, writes } = getNodePorts(node, []);
+    for (const port of reads) {
+      const usage = map.get(port.field) ?? { reads: [], writes: [] };
+      usage.reads.push(port.nodeId);
+      map.set(port.field, usage);
+    }
+    for (const port of writes) {
+      const usage = map.get(port.field) ?? { reads: [], writes: [] };
+      usage.writes.push(port.nodeId);
+      map.set(port.field, usage);
+    }
+  }
+  return map;
+}
+
+// ---------------------------------------------------------------------------
 // State field type → CSS variable for Handle coloring
 // ---------------------------------------------------------------------------
 

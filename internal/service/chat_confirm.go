@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -134,19 +135,37 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 	if _, requestID, active := s.orch.ActiveRunner(sessionID); active {
 		runID = requestID
 	}
-	sent := s.orch.TrySendAwaitChannel(sessionID, biz.AwaitReplyMsg{
-		RunID: runID,
-		Reply: replyMsg,
+	// Unified delivery: the live channel receives the machine token (parsed by
+	// the confirmation gate); if the channel is gone (process restart), the
+	// run is resumed with a semantic natural-language statement of the user's
+	// decision so the LLM receives it as meaningful context (P3 fix —
+	// previously the decision was silently dropped on the restart path).
+	outcome, err := s.orch.submitAwaitReply(ctx, sessionID, awaitReply{
+		runID:         runID,
+		token:         replyMsg,
+		resumeContent: buildConfirmResumeContent(step, approved),
 	})
-	if !sent {
-		return &chatv1.ConfirmActivityResponse{
-			Accepted: false,
-			Status:   string(newStatus),
-		}, nil
+	if err != nil {
+		return nil, err
 	}
 
 	return &chatv1.ConfirmActivityResponse{
-		Accepted: true,
+		Accepted: outcome != awaitReplyRejected,
 		Status:   string(newStatus),
 	}, nil
+}
+
+// buildConfirmResumeContent renders the user's tool-confirmation decision as
+// a self-contained natural-language statement. It is used as the turn content
+// when the awaiting run is resumed after a process restart, so the LLM
+// receives the decision as meaningful context instead of a bare machine token.
+func buildConfirmResumeContent(step biz.Step, approved bool) string {
+	toolName := strings.TrimSpace(step.ToolName)
+	if toolName == "" {
+		toolName = "未知工具"
+	}
+	if approved {
+		return fmt.Sprintf("【工具确认】用户已批准执行工具 %q。请继续完成此前的任务。", toolName)
+	}
+	return fmt.Sprintf("【工具确认】用户已拒绝执行工具 %q。这是用户的明确决定，禁止重试相同或等价的操作；请向用户说明该操作已取消，并询问接下来如何处理。", toolName)
 }

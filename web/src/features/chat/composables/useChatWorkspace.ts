@@ -50,6 +50,7 @@ import { useReasoningSidebar } from './useReasoningSidebar';
 import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
+import { useLlmRetryStore } from '../../../stores/chat/llmRetryStore';
 import { useChatEventRouter } from './useChatEventRouter';
 import type { V2WsEnvelope, SystemNoticeEventPayload, RunStatusEventPayload } from '../v2Types';
 import { noteChannelWsEnvelope } from '../channelWsCursor';
@@ -118,6 +119,7 @@ export function useChatWorkspace() {
   // Phase 2 v2: Activity store + event router for the new v2 event pipeline.
   const activityStore = useChatActivityStore();
   const eventRouter = useChatEventRouter(activityStore);
+  const llmRetryStore = useLlmRetryStore();
 
   // v2 WS event handler — dispatched by the stream manager's onV2Event callback.
   const handleV2Event = (envelope: V2WsEnvelope) => {
@@ -150,6 +152,24 @@ export function useChatWorkspace() {
     // rendering — both paths run in parallel.
     routeTeamEventToSpiritStore(envelope);
     eventRouter.dispatch(envelope);
+
+    // LLM retry banner lifecycle: any sign of stream progress (tokens flowing
+    // again, a new turn starting, or a terminal step/turn/task event) means
+    // the retry loop ended — clear the transient "reconnecting" state.
+    switch (envelope.kind) {
+      case 'step.streaming':
+      case 'step.completed':
+      case 'step.failed':
+      case 'turn.started':
+      case 'turn.completed':
+      case 'turn.failed':
+      case 'task.completed':
+      case 'task.failed': {
+        const sid = String(envelope.session_id ?? '').trim() || selectedSessionForUi.value?.id;
+        if (sid) llmRetryStore.clear(sid);
+        break;
+      }
+    }
 
     // Robust fallback: when the backend completes a turn but the terminal
     // run_status is missing/late, task.completed/failed still resets sending
@@ -588,6 +608,11 @@ export function useChatWorkspace() {
         emitSessionMutation({ type: 'status_changed', id: sid, status, statusReason, statusChangedAt });
       }
     }
+    // Transient reconnect signal from the provider retry transport — surfaced
+    // as a dedicated banner (not an activity node) and cleared on stream resume.
+    if (noticeType === 'llm_retry') {
+      llmRetryStore.noteRetry(sid, meta);
+    }
     spiritStore.handleSystemNotice(noticeType, meta);
     contextualLoading.onSpiritNoticeType(noticeType);
   }
@@ -611,6 +636,16 @@ export function useChatWorkspace() {
     const sid = selectedSessionForUi.value?.id;
     if (!sid) return;
     applyV2RunStatusSideEffects(payload);
+    // Terminal run statuses end any in-flight retry loop — clear the banner.
+    const runStatus = String(payload.Status ?? payload.Meta?.status ?? '').trim();
+    if (
+      runStatus === SESSION_RUN_STATUS.COMPLETED ||
+      runStatus === SESSION_RUN_STATUS.FAILED ||
+      runStatus === SESSION_RUN_STATUS.CANCELLED ||
+      runStatus === SESSION_RUN_STATUS.IDLE
+    ) {
+      llmRetryStore.clear(sid);
+    }
     const rs = runStatusFromV2Payload(payload);
     if (rs?.status === SESSION_RUN_STATUS.RUNNING) {
       if (sessionStore.entityKind === 'team') {
@@ -1378,6 +1413,7 @@ export function useChatWorkspace() {
       retryFailedMessage: sender.retryFailedMessage,
       dismissFailedMessage: composerActions.dismissFailedMessage,
       regenerateMessage: composerActions.regenerateMessage,
+      regenerateV2Task: composerActions.regenerateV2Task,
       cancelBackgroundJob: composerActions.cancelBackgroundJob,
       onPasteUnsupported,
     }),

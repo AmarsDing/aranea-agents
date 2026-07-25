@@ -90,6 +90,11 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
 
   // === Upsert helpers (optimistic-concurrency guarded) ===
 
+  /** Go 零值 time.Time 序列化为 "0001-01-01T00:00:00Z"，merge 时不能覆盖已有值。 */
+  function isZeroTime(s: string): boolean {
+    return !s || s.startsWith('0001-01-01');
+  }
+
   function upsertTask(t: Task) {
     const ex = tasks.value.get(t.ID);
     if (ex && t.Version <= ex.Version) return;
@@ -98,8 +103,8 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
           ...ex,
           ...t,
           UserMessage: t.UserMessage || ex.UserMessage,
-          CreatedAt: t.CreatedAt || ex.CreatedAt,
-          UpdatedAt: t.UpdatedAt || ex.UpdatedAt,
+          CreatedAt: isZeroTime(t.CreatedAt) ? ex.CreatedAt : t.CreatedAt,
+          UpdatedAt: isZeroTime(t.UpdatedAt) ? ex.UpdatedAt : t.UpdatedAt,
           CompletedAt: t.CompletedAt ?? ex.CompletedAt ?? null,
         }
       : { ...t };

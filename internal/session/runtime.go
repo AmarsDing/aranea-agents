@@ -9,6 +9,8 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
@@ -89,6 +91,50 @@ func (r *Runtime) SyncRunnerSnapshot(ctx context.Context, userID, sessionID, sna
 	if err := r.svc.UpdateSessionState(ctx, k, state); err != nil {
 		r.lg.Warn("session sync update failed", loggateway.StepID("session.sync_snapshot"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		return apierror.Internal(apierror.DomainSession, "session sync update").WithCause(err)
+	}
+	return nil
+}
+
+// AppendUserContextEvent injects a user-authored message into the trpc session
+// event stream so subsequent turns include it in the LLM request history. It
+// mirrors the runner's own appendIncomingMessage mechanism (a user-role
+// response event) and is used for out-of-band user decisions (e.g. plan
+// confirmation) that must become LLM context without running a turn.
+// The session is created when missing (e.g. after a process restart) so the
+// decision survives until the next turn. Empty content is rejected before any
+// write.
+func (r *Runtime) AppendUserContextEvent(ctx context.Context, userID, sessionID, invocationID, content string) error {
+	if r == nil || r.svc == nil {
+		return apierror.Internal(apierror.DomainSession, "session runtime unavailable")
+	}
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return apierror.BadRequest(apierror.DomainSession, "content is required")
+	}
+	k := Key(userID, sessionID)
+	if err := k.CheckSessionKey(); err != nil {
+		return err
+	}
+	sess, err := r.svc.GetSession(ctx, k)
+	if err != nil || sess == nil {
+		if sess, err = r.svc.CreateSession(ctx, k, nil); err != nil {
+			r.lg.Warn("session context inject create failed",
+				loggateway.StepID("session.inject_context"),
+				loggateway.SessionID(sessionID),
+				loggateway.Err(err))
+			return apierror.Internal(apierror.DomainSession, "session context inject create").WithCause(err)
+		}
+	}
+	evt := trpcevent.NewResponseEvent(invocationID, "user", &trpcmodel.Response{
+		Done:    false,
+		Choices: []trpcmodel.Choice{{Index: 0, Message: trpcmodel.NewUserMessage(content)}},
+	})
+	if err := r.svc.AppendEvent(ctx, sess, evt); err != nil {
+		r.lg.Warn("session context inject append failed",
+			loggateway.StepID("session.inject_context"),
+			loggateway.SessionID(sessionID),
+			loggateway.Err(err))
+		return apierror.Internal(apierror.DomainSession, "session context inject append").WithCause(err)
 	}
 	return nil
 }

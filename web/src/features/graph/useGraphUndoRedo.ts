@@ -147,10 +147,13 @@ export function useGraphUndoRedo(graphDef: GraphDefinition, markDirty: () => voi
     execute({
       label: `删除条件连线 ${ce.from}→${label}`,
       undo: () => {
-        if (ceIndex < graphDef.conditionalEdges.length) {
-          graphDef.conditionalEdges[ceIndex].pathMap = oldPathMap;
+        const current = graphDef.conditionalEdges[ceIndex];
+        if (current === ce) {
+          // CE 存活（只删了 label）→ 恢复完整 pathMap
+          current.pathMap = { ...oldPathMap };
         } else {
-          graphDef.conditionalEdges.splice(ceIndex, 0, { ...ce, pathMap: oldPathMap });
+          // CE 被整体删除 → 重新插入，禁止覆盖兄弟 CE
+          graphDef.conditionalEdges.splice(ceIndex, 0, { ...ce, pathMap: { ...oldPathMap } });
         }
       },
       redo: () => {

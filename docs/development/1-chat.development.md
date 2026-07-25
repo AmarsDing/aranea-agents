@@ -1464,7 +1464,7 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 | `internal/data/ddl_migration_registry.go` | 注册 20261110 迁移 | ✅ |
 | `internal/data/agent_repo.go` | 新列读写映射（ent→biz / create→ent） | ✅ |
 | `internal/agent/task_planner_impl.go` | `buildDecompositionPrompt` 增加 domain_path 输出约束；`parseDecompositionOutput` 解析+归一化 | ✅ |
-| `internal/agent/agent_allocator_impl.go` + `agent_allocator_domain.go` | `matchSubTask`/`matchWholePlan` 管线重构：新增 L0 domain_recipe / L1 mission 层 | ✅ |
+| `internal/agent/agent_allocator_impl.go` + `agent_domain_match.go` | `matchSubTask`/`matchWholePlan` 管线重构：新增 L0 domain_recipe / L1 mission 层 | ✅ |
 | `internal/agent/agent_factory.go` | `buildDynamicAgentKey` 域派生 key；生成 prompt 输出 mission/domain_path；创建前同域相似复用 | ✅ |
 | `internal/agent/task_orchestrator_impl.go` | `learnFromOrchestration` 域派生配方记录 + AgentPerformance TaskType 语义扩展 | ✅ |
 
@@ -1483,14 +1483,16 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 
 ### MM-D.4 验收标准
 
-- [ ] 同一会话先后发送"写一首关于春天的诗"和"再写一首秋天的诗"：第二次复用第一次的 Agent/配方，不新建 Agent
-- [ ] 全新领域任务（无候选）：factory 创建的新 Agent 落库时含非空 mission_statement 与 domain_path
-- [ ] embedder 未配置环境：匹配管线正常工作（降级路径），不报错
-- [ ] OrchestrationCache 命中时日志出现 `domain_recipe` 匹配层
-- [ ] 存量 Agent（无使命）参与匹配不崩溃、不阻塞编排
-- [ ] `go build ./...` 通过；`go test ./internal/agent/... ./internal/biz/... ./internal/data/...` 全部通过
+- [x] 同一会话先后发送"写一首关于春天的诗"和"再写一首秋天的诗"：第二次复用第一次的 Agent/配方，不新建 Agent（`agent_domain_match_test.go`：L0 配方短路后续层、L1 同域使命复用）
+- [x] 全新领域任务（无候选）：factory 创建的新 Agent 落库时含非空 mission_statement 与 domain_path（`agent_factory_test.go` 出生登记断言；mission 缺省回退 description）
+- [x] embedder 未配置环境：匹配管线正常工作（降级路径），不报错（nil-embedder / embedder 错误 / 维度异常三组用例回退 TF-IDF）
+- [x] OrchestrationCache 命中时日志出现 `domain_recipe` 匹配层（`MatchLayer: "domain_recipe"` + L0 命中日志）
+- [x] 存量 Agent（无使命）参与匹配不崩溃、不阻塞编排（`missionMatchText` 回退 Description；空 DomainPath 跳过 L0/L1 走旧管线）
+- [x] `go build ./...` 通过；`go test ./internal/agent/... ./internal/biz/... ./internal/data/...` 全部通过（2026-07-25 全量验证：agent 55.8s / biz 9.6s / data 173.5s / service 5.4s，`make lint` 全绿）
 
-### MM-D.5 改动文件清单（预计）
+### MM-D.5 改动文件清单（实际）
 
-新建：`internal/agent/domain_lexicon.go`、`internal/agent/domain_lexicon_test.go`、`internal/agent/agent_allocator_domain.go`、`internal/agent/agent_allocator_domain_test.go`、`internal/agent/task_planner_domain_test.go`、`internal/agent/task_orchestrator_learn_test.go`、`internal/biz/spirit_orchestration_cache_test.go`、`internal/data/agent_mission_mapping_test.go`、`internal/data/sql/migrations/20261110_agent_mission_domain.sql`
-修改：`internal/biz/task_plan.go`、`internal/biz/agent_capability.go`、`internal/biz/agent_factory.go`、`internal/biz/agent_types.go`、`internal/biz/spirit_orchestration_cache.go`、`internal/data/ent/schema/agent.go`、`internal/data/ddl_migration_registry.go`、`internal/data/agent_repo.go`、`internal/agent/task_planner_impl.go`、`internal/agent/agent_allocator_impl.go`、`internal/agent/agent_factory.go`、`internal/agent/agent_factory_test.go`、`internal/agent/task_orchestrator_impl.go`、`internal/agent/agent_capability_builder.go`、`cmd/admin/wire.go`、`cmd/admin/wire_gen.go`
+新建：`internal/agent/domain_lexicon.go`、`internal/agent/domain_lexicon_test.go`、`internal/agent/agent_domain_match.go`、`internal/agent/agent_domain_match_test.go`、`internal/biz/spirit_orchestration_cache_test.go`、`internal/data/sql/migrations/20261110_agent_mission_domain.sql`
+修改：`internal/biz/task_plan.go`、`internal/biz/agent_capability.go`、`internal/biz/agent_factory.go`、`internal/biz/agent_types.go`、`internal/biz/spirit_orchestration_cache.go`、`internal/data/ent/schema/agent.go`、`internal/data/ddl_migration_registry.go`、`internal/data/agent_repo.go`、`internal/agent/task_planner_impl.go`、`internal/agent/task_planner_impl_test.go`（domain 解析用例）、`internal/agent/agent_allocator_impl.go`、`internal/agent/agent_factory.go`、`internal/agent/agent_factory_test.go`、`internal/agent/task_orchestrator_impl.go`、`internal/agent/agent_capability_builder.go`、`cmd/admin/wire.go`、`cmd/admin/wire_gen.go`
+
+> 注：learn 闭环（T7）由 `spirit_orchestration_cache_test.go`（配方记录/查询语义）+ `agent_domain_match_test.go`（L0 复用链路）覆盖，未单建 `task_orchestrator_learn_test.go`；repo 列映射（`agent_repo.go`）无独立测试文件，由 ent 生成代码 + 全量 data 包测试覆盖。

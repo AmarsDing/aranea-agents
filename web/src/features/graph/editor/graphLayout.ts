@@ -87,17 +87,18 @@ export function applyAutoLayout(graphDef: GraphDefinition): NodeMoveInfo[] {
   dagre.layout(g);
 
   const moves: NodeMoveInfo[] = [];
-  for (const node of graphDef.nodes) {
+  graphDef.nodes.forEach((node, index) => {
     const pos = g.node(node.id);
     if (pos) {
       const newPos = {
         x: pos.x - (pos.width ?? NODE_DEFAULT_WIDTH) / 2,
         y: pos.y - (pos.height ?? NODE_DEFAULT_HEIGHT) / 2,
       };
-      const oldPos = oldLayout[node.id] ?? { x: 0, y: 0 };
+      // 无已存布局的节点在画布上即默认位，undo 必须还原到默认位而非 (0,0)
+      const oldPos = oldLayout[node.id] ?? defaultNodePosition(index);
       writeGraphNodePosition(graphDef, node.id, newPos);
       moves.push({ nodeId: node.id, oldPos, newPos });
     }
-  }
+  });
   return moves;
 }

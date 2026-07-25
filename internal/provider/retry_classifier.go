@@ -110,6 +110,13 @@ func ClassifyRetry(resp *http.Response, err error) RetryDecision {
 }
 
 func classifyError(err error) RetryDecision {
+	// per-attempt 超时（timeoutTransport 注入的 deadline 触发）属瞬时故障，可重试。
+	// 必须先于 Canceled/DeadlineExceeded 判断——attemptTimeoutError 的 Unwrap 链
+	// 包含 context.DeadlineExceeded，否则会被误判为 RetryFatal。
+	var attemptTimeout *attemptTimeoutError
+	if errors.As(err, &attemptTimeout) {
+		return RetryDecision{Type: RetryWithBackoff, BackoffStrategy: "exponential"}
+	}
 	// Client-side cancellation must not be retried.
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return RetryDecision{Type: RetryFatal, BackoffStrategy: "exponential"}

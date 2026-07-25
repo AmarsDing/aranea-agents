@@ -49,7 +49,7 @@ Phase A 具体改动：
 - **派生模式下角色不可手工覆盖**：用户想给 sequential 成员标 coordinator 角色需切到 adaptive/swarm 或改 graph。补偿：角色在 graph 运行时不影响执行语义（拓扑由边决定），仅作展示/提示。
 - **旧 native 定义打开即归一**：遗留 `runtime_engine=native` 的 Team 在编辑器中打开并保存后永久转为 graph，无 UI 回退路径。缓解：native 主路径已移除（Phase 8），实际运行本就归 graph；编排页保留 admin 调试入口。
 - **离线/编译失败时回退到本地 builder**：回退路径的模板语义依赖前端 `graphUtils`，与后端可能漂移。缓解：仅离线/失败时启用，在线时后端 canonical 覆盖；A2 保留了双实现的对齐测试。
-- **Biz 测试二进制被并发 WIP 阻塞**：落地期间 `internal/agent` 存在并发未定义符号（与本决策无关），`go test ./internal/biz` 经 `team_graph_linked_test.go → internal/team → internal/agent` 链不可编译，A4 后端验证采用 `-overlay` 隔离该文件运行（见 §验证）。
+- **Biz 测试二进制被并发 WIP 阻塞**：落地期间 `internal/agent` 存在并发未定义符号（与本决策无关），`go test ./internal/biz` 经 `team_graph_linked_test.go → internal/team → internal/agent` 链不可编译，A4 后端验证采用临时移出该文件隔离运行（31/31 PASS，见 §验证）。
 
 ## 替代方案
 
@@ -60,7 +60,7 @@ Phase A 具体改动：
 ## 验证
 
 - 前端：`pnpm vitest run src/components/teams/__tests__ src/features/teams/__tests__` **71/71 PASS**（`teamUtils.spec.ts` 派生/指纹/重建；`teamValidation.spec.ts` graph 跳过校验）；`pnpm eslint` 改动文件 0 问题。
-- 后端：`go build ./internal/biz` exit 0；`biz/team_usecase_test.go::TestValidateTeamDefinition` 新增 7 例（graph 跳过三类 mode 要求 / 保留 enabled+agent_id / 空 nodes 不跳过）。因 `internal/agent` 并发 WIP 未定义符号（`tryDomainRecipe` / `TopLevelDomain` 等，与本决策无关）阻塞测试二进制，使用 `go test -overlay` 将 `team_graph_linked_test.go` 替换为空桩运行目标测试（该文件仅经 `internal/team` 链拉入 agent 包，替换不影响被测逻辑）。
+- 后端：`go build ./internal/biz` exit 0；`biz/team_usecase_test.go::TestValidateTeamDefinition` **31/31 PASS**（新增 7 例：graph 跳过三类 mode 要求 / 保留 enabled+agent_id / 空 nodes 不跳过）。因 `internal/agent` 并发 WIP 未定义符号（`tryDomainRecipe` / `TopLevelDomain` 等，与本决策无关）阻塞测试二进制，验证时将 `team_graph_linked_test.go` 临时移出包隔离运行（该文件仅经 `internal/team` 链拉入 agent 包，隔离不影响被测逻辑），测后已恢复。
 - 文档同步：M53 三件套（需求 US-08/US-10 修订 + US-11 新增；设计 §十二；开发计划 Phase 10）。
 
 ## Phase B（遗留）

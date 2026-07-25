@@ -210,4 +210,3 @@ func TestMonitorLogEntry_WithMeta(t *testing.T) {
 		t.Error("msg should contain agent_id")
 	}
 }
-

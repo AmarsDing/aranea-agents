@@ -49,6 +49,13 @@
       <q-banner v-if="session.inboundHydrateError" dense rounded class="app-banner-warning q-mx-sm q-mt-sm">
         {{ session.inboundHydrateError }}
       </q-banner>
+      <LlmRetryBanner
+        v-if="llmRetry"
+        :attempt="llmRetry.attempt"
+        :max-retries="llmRetry.maxRetries"
+        :delay-ms="llmRetry.delayMs"
+        :error="llmRetry.error"
+      />
       <ChatMessagePanel
         v-model="composer.inputText"
         :dialog-mode="composer.dialogMode"
@@ -131,6 +138,7 @@
         @retry="composer.retryFailedMessage"
         @dismiss-failed="composer.dismissFailedMessage"
         @regenerate="composer.regenerateMessage"
+        @regenerate-v2="composer.regenerateV2Task"
         @resume-task="session.resumeTask"
         @compact="session.onCompactSession"
         @toggle-tool-calls="uiConfig.setShowToolCalls(!uiConfig.showToolCalls)"
@@ -256,6 +264,7 @@ import ChatSessionSidebar from '../components/chat/ChatSessionSidebar.vue';
 import ChatSideToggle from '../components/chat/ChatSideToggle.vue';
 import ChatSettingsDialog from '../components/chat/ChatSettingsDialog.vue';
 import ChatWorkspaceShell from '../components/chat/ChatWorkspaceShell.vue';
+import LlmRetryBanner from '../components/chat/LlmRetryBanner.vue';
 import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue';
 import SessionTreeSidebar from '../components/chat/SessionTreeSidebar.vue';
 import { computed, watch } from 'vue';
@@ -268,6 +277,7 @@ import { useSpiritTeamStore } from '../stores/spirit';
 import { useUiConfigStore } from '../stores/uiConfig';
 import { useChatRuntimeStore } from '../stores/chat/runtimeStore';
 import { useChatActivityStore } from '../stores/chat/activityV2Store';
+import { useLlmRetryStore } from '../stores/chat/llmRetryStore';
 import type { Agent } from '../features/agents/types';
 
 const SPIRIT_AGENT_KEY = '__spirit__';
@@ -275,6 +285,12 @@ const SPIRIT_AGENT_KEY = '__spirit__';
 const { coreReady, fileRef, layout, entity, session, composer, dialogs, errorBlock } = useChatWorkspace();
 const spiritStore = useSpiritTeamStore();
 const runtimeStore = useChatRuntimeStore();
+const llmRetryStore = useLlmRetryStore();
+/** Active LLM retry state for the current session — drives the reconnect banner. */
+const llmRetry = computed(() => {
+  const sid = session.selectedSessionForUi?.id;
+  return sid ? llmRetryStore.retryFor(sid) : null;
+});
 const { locate } = useScrollToActivity();
 const uiConfig = useUiConfigStore();
 const blockedStatus = useBlockedStatus(computed(() => session.v2Tasks));

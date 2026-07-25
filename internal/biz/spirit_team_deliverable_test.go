@@ -1702,3 +1702,156 @@ func TestReadUpstreamDeliverable_SchemaCheckSkips(t *testing.T) {
 		t.Fatalf("invalid schema declaration must skip schema check: %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// 2026-07-25 Fix 7：ReadUpstreamDeliverable 内容源 = 交付物本身
+// （graph state → 持久化信封），绝不读 reply —— 与注入前缀（信封摘要）同源，
+// 否则「注入摘要是交付物、全文读取是 reply」自相矛盾。
+// ---------------------------------------------------------------------------
+
+// Graph state holds the full, untruncated deliverable; the reply step holds
+// different text. The tool must return the state content (untruncated summary
+// + structured keys), never the reply.
+func TestReadUpstreamDeliverable_PrefersGraphStateOverReply(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	longSummary := strings.Repeat("摘", 600) // > MaxSummaryLen: the envelope would truncate it
+	reader := &graphDeliverableReaderStub{data: map[string]any{
+		"summary": longSummary,
+		"report":  map[string]any{"budget": 100},
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"intent_anchor_agent_id":"agent-anchor","members":[{"agent_id":"agent-anchor"}]}`,
+		"reply 文本（不是交付物，不应返回）")
+
+	out, err := u.ReadUpstreamDeliverable(context.Background(), "", "t1", 0)
+	if err != nil {
+		t.Fatalf("ReadUpstreamDeliverable: %v", err)
+	}
+	if strings.Contains(out.Content, "reply 文本") {
+		t.Fatalf("content must not come from the reply, got %q", out.Content)
+	}
+	if !strings.HasPrefix(out.Content, longSummary) {
+		t.Fatalf("content should start with the FULL untruncated state summary (600 runes), got %d runes", len([]rune(out.Content)))
+	}
+	if !strings.Contains(out.Content, `"budget":100`) {
+		t.Fatalf("content should carry the structured state keys as JSON, got %q", out.Content)
+	}
+	if out.SessionID != "sess-t1" {
+		t.Fatalf("session id should be the team main session, got %q", out.SessionID)
+	}
+}
+
+// Graph session unreadable (empty state) but a persisted envelope exists →
+// the tool degrades to the envelope content, still never the reply.
+func TestReadUpstreamDeliverable_GraphStateEmpty_FallsBackToEnvelope(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{}} // state gone
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	tm := seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"intent_anchor_agent_id":"agent-anchor","members":[{"agent_id":"agent-anchor"}]}`,
+		"reply 文本（不应返回）")
+	tm.DeliverablesOutput = `{"st_1":{"summary":"信封摘要","structured_json":"{\"a\":1}","team_id":"t1","team_session_id":"sess-t1","size_chars":100}}`
+	teams.items["t1"] = tm
+
+	out, err := u.ReadUpstreamDeliverable(context.Background(), "", "t1", 0)
+	if err != nil {
+		t.Fatalf("ReadUpstreamDeliverable: %v", err)
+	}
+	if !strings.Contains(out.Content, "信封摘要") || !strings.Contains(out.Content, `{"a":1}`) {
+		t.Fatalf("content should come from the envelope, got %q", out.Content)
+	}
+	if strings.Contains(out.Content, "reply 文本") {
+		t.Fatalf("content must not come from the reply, got %q", out.Content)
+	}
+	if out.SessionID != "sess-t1" {
+		t.Fatalf("session id should come from the envelope, got %q", out.SessionID)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 2026-07-25 Fix 2b 交付协议强制化：BuildTeamTurnInput
+// = 上游交付物前缀 + 任务描述 + 交付协议后缀。存储的 TaskDescription 保持纯净。
+// ---------------------------------------------------------------------------
+
+// DAG 团队（无依赖）→ 任务描述后追加交付协议块，告知必须调用 set_deliverable。
+func TestBuildTeamTurnInput_DAGTeam_AppendsProtocol(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	team := Team{SpiritSessionID: "sp1", DagNodeID: "st_2", TaskDescription: "撰写调研报告"}
+	out := u.BuildTeamTurnInput(context.Background(), team)
+
+	if !strings.HasPrefix(out, "撰写调研报告") {
+		t.Fatalf("input should start with the task description, got %q", out)
+	}
+	if !strings.Contains(out, "交付协议") || !strings.Contains(out, "set_deliverable") {
+		t.Fatalf("DAG team input must carry the delivery protocol, got %q", out)
+	}
+	if !strings.Contains(out, "summary") {
+		t.Fatalf("protocol should name the reserved summary key, got %q", out)
+	}
+}
+
+// 声明了交付契约的 DAG 团队 → 协议块列出契约（name/type/format），
+// 让团队知道必须按契约逐项提交。
+func TestBuildTeamTurnInput_Contract_ProtocolDeclaresContract(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	team := Team{
+		SpiritSessionID: "sp1", DagNodeID: "st_2", TaskDescription: "撰写调研报告",
+		Deliverables: `[{"name":"research_report","type":"document","format":"markdown","description":"调研结论报告"}]`,
+	}
+	out := u.BuildTeamTurnInput(context.Background(), team)
+
+	if !strings.Contains(out, "契约: research_report (document/markdown) — 调研结论报告") {
+		t.Fatalf("protocol should declare the team's own contract, got %q", out)
+	}
+}
+
+// 有上游依赖 → 顺序为：上游交付物前缀 → 任务描述 → 交付协议后缀。
+func TestBuildTeamTurnInput_WithUpstream_PrefixDescProtocolOrder(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	up := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "调研团队", "不应使用")
+	up.DeliverablesOutput = `{"st_1":"调研结论"}`
+	teams.items["t-up"] = up
+
+	downstream := Team{SpiritSessionID: "sp1", DagNodeID: "st_2", TaskDescription: "基于调研写报告", DependsOn: []string{"st_1"}}
+	out := u.BuildTeamTurnInput(context.Background(), downstream)
+
+	iPrefix := strings.Index(out, "--- 上游交付物 ---")
+	iDesc := strings.Index(out, "基于调研写报告")
+	iProtocol := strings.Index(out, "交付协议")
+	if iPrefix < 0 || iDesc < 0 || iProtocol < 0 {
+		t.Fatalf("input should contain upstream prefix + task + protocol, got %q", out)
+	}
+	if !(iPrefix < iDesc && iDesc < iProtocol) {
+		t.Fatalf("order must be prefix → task → protocol, got %q", out)
+	}
+}
+
+// 非 DAG 团队（无 DagNodeID）→ 不追加协议，任务描述原样返回。
+func TestBuildTeamTurnInput_NonDAGTeam_NoProtocol(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	team := Team{SpiritSessionID: "sp1", TaskDescription: "临时任务"}
+	out := u.BuildTeamTurnInput(context.Background(), team)
+
+	if out != "临时任务" {
+		t.Fatalf("non-DAG team input must stay untouched, got %q", out)
+	}
+}

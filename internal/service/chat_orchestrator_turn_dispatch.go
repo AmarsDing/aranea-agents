@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -148,6 +149,77 @@ func (o *ChatOrchestrator) RunCronTurn(ctx context.Context, sessionID, content, 
 		return "", "", nil
 	}
 	return tr.UserMsg.ID, tr.AssistantMsg.ID, nil
+}
+
+// awaitReplyOutcome classifies how a user's await reply was delivered.
+type awaitReplyOutcome int
+
+const (
+	// awaitReplyRejected means the reply could not be delivered (channel full,
+	// no await route, or a resume already in flight).
+	awaitReplyRejected awaitReplyOutcome = iota
+	// awaitReplyDelivered means the reply was sent through the in-memory
+	// await channel to the blocked run.
+	awaitReplyDelivered
+	// awaitReplyResumed means the in-memory channel was gone (process
+	// restart) and the awaiting run was resumed via the recovery path.
+	awaitReplyResumed
+)
+
+// awaitReply carries a user reply destined for an awaiting run.
+type awaitReply struct {
+	runID string
+	// token is delivered through the in-memory await channel; it is
+	// machine-parsed by the confirmation gate / await_user_reply tool.
+	token string
+	// resumeContent is used as the turn content when the in-memory channel
+	// is gone (process restart) and the run must be resumed. It must be a
+	// self-contained natural-language statement of the user's decision so
+	// the LLM receives it as meaningful context. Falls back to token.
+	resumeContent string
+}
+
+// submitAwaitReply is the single delivery path for user replies to an
+// awaiting run (tool confirmation, await_user_reply, clarification answers).
+//
+// Delivery contract, in order:
+//  1. Fast path — send the machine token through the in-memory await channel.
+//  2. GC race guard — if the channel entry still exists, it is merely full:
+//     reject without falling through to resume (would double-deliver).
+//  3. Restart recovery — if the entry is gone but the session still persists
+//     an awaiting_user route, resume the run with resumeContent as input.
+//
+// An explicit runID overrides the persisted one. errResumeInFlight maps to
+// awaitReplyRejected without error.
+func (o *ChatOrchestrator) submitAwaitReply(ctx context.Context, sessionID string, msg awaitReply) (awaitReplyOutcome, error) {
+	if o.TrySendAwaitChannel(sessionID, biz.AwaitReplyMsg{RunID: msg.runID, Reply: msg.token}) {
+		return awaitReplyDelivered, nil
+	}
+	if _, stillExists := o.LoadAwaitChannel(sessionID); stillExists {
+		return awaitReplyRejected, nil
+	}
+	persistedRunID, canResume := o.canResumeAwait(ctx, sessionID)
+	if !canResume {
+		return awaitReplyRejected, nil
+	}
+	if trimmed := strings.TrimSpace(msg.runID); trimmed != "" {
+		persistedRunID = trimmed
+	}
+	resumeContent := strings.TrimSpace(msg.resumeContent)
+	if resumeContent == "" {
+		resumeContent = msg.token
+	}
+	resumeFn := o.resumeAwaitFn
+	if resumeFn == nil {
+		resumeFn = o.resumeAwaitAfterRestart
+	}
+	if err := resumeFn(ctx, sessionID, resumeContent, persistedRunID); err != nil {
+		if errors.Is(err, errResumeInFlight) {
+			return awaitReplyRejected, nil
+		}
+		return awaitReplyRejected, err
+	}
+	return awaitReplyResumed, nil
 }
 
 // resumeAwaitAfterRestart resumes an await after process restart.

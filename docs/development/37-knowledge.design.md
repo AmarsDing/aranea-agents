@@ -6,6 +6,7 @@
 > **2026-07-20 升级**：统一摄取管线设计——Extractor 接口抽象（§5.2）收编文本提取、MarkdownOrganizer（§5.2b，LLM 整理为 MD）、VisionExtractor（§5.2c，Phase 2 多模态）、`knowledge_documents` 新增 content_text/organized/asset_uri 列、Proto 新增 `organize_to_markdown` 字段与 `GetDocumentContent` RPC、OOXML magic 二次判定修复、前端拖拽批量上传、GraphRAG 裁决为 Phase 3 旁路非侵入可选增强。
 > **2026-07-21 校准（Phase 9 实现）**：图片改「先落文档 + 后台异步提取」（§5.2c/§7.2）——VisionExtractor 在摄取 goroutine 内执行，成功后经新增 `DocumentRepo.UpdateDocumentContent` 回写 content_text/organized；原图留存落地为 `AssetStore`（`internal/knowledge/asset_store.go`）；Wire 工厂 `NewKnowledgeExtractorRegistry`/`NewKnowledgeAssetStore` 就位（§7.3）。
 > **2026-07-21 升级（US-14 免选择知识库，Phase 11）**：「存储可分类，使用免选」——上传免预选（默认知识库懒创建，§7.4）、Search/Ingest 的 collection_id 去 REQUIRED（§2.1）、knowledge_search/knowledge_reflect 工具 collection 参数改可选 + scoped 多库/全库智能路由（§6.1/§6.1b）、文档跨库移动 MoveDocument（§2.1/§3.2/§4.3）。
+> **2026-07-25 升级（Vault 重设计，评审通过待实施）**：新增 §子模块 Vault 重设计——文件系统即真相源（Vault=本地文件夹，Markdown+frontmatter 摘要卡，PG/pgvector 降级为可重建派生索引）、三层检索（L0 强 BM25 精确层 / L1 导航层 / L2 语义层插件化，embedding 从必需降级为可选增强）、Agent 工具族（navigate/grep/write）、Collection→Vault 迁移；评审 R-1~R-6 已合入为实现契约（§V6）。依据：2026-07-25 评审报告 + 无 embedding 检索调研。
 
 ---
 
@@ -1562,3 +1563,134 @@ Agent 执行轨迹
 | `web/src/stores/knowledge/index.ts` | Pinia Store |
 | `web/src/pages/KnowledgePage.vue` | 管理页（路由 `/knowledge`） |
 | `web/src/components/knowledge/*` | 集合列表、文档、检索、Embedder、入库对话框 |
+
+---
+
+## 子模块：Vault 重设计
+
+> **来源**：2026-07-25 评审**有条件通过**（[评审报告](../reports/2026-07-25-review-knowledge-vault-redesign.md)），方向与架构获批，R-1~R-6 必须修改项已作为实现契约合入本节（§V6）。
+> **决策依据**：[无 Embedding 检索可行性调研](../reports/2026-07-25-research-embedding-free-retrieval.md)（三条无向量路线背书：PageIndex 推理导航 / Claude Code agentic 词法检索 / BM25+rerank 与最佳稠密模型打平）。
+> **状态**：设计已批准，待实施。Phase 计划见 [37-knowledge.development.md §子模块 Vault 重设计 Phase 计划](./37-knowledge.development.md#子模块vault-重设计-phase-计划)。
+> **说明**：原方案文档（research-knowledge-vault-redesign）未落盘，本节为 Vault 重设计的**权威落档**，取代该缺失文件。
+
+### V1. 定位与核心转向
+
+把知识库从「Collection + chunks + 向量」重设计为「**Vault（本地文件夹）+ Markdown 文档 + frontmatter 元数据**」：
+
+- **文件系统即真相源**（D1）：用户知识以通用 `.md` 存在本地路径，可被 Git/编辑器/同步盘自由使用；Postgres/pgvector 降级为**可重建的派生索引**
+- **embedding 从「必需组件」降级为「可选增强插件」**（D5）：三层检索中 L0/L1 完全无向量，L2 语义层可插拔（本地模型 / model2vec 静态查表 / 远程 API 三选一，缺省时系统完整可用）——与 NFR-11「无 LLM 降级」哲学一脉相承
+- **检索引擎零重写**：现有 Retriever/Hybrid/Federated 全家桶保留，改动集中在文档来源层（VaultFiler/SyncEngine）与呈现层
+
+一句话：**把「检索引擎选型焦虑」转化为「文档来源与组织革命」**——瓶颈不在 ANN 算法，而在知识的存在形态。
+
+### V2. 核心概念模型
+
+| 概念 | 定义 | 要点 |
+|------|------|------|
+| **Vault** | 一个本地文件夹路径即一个知识库（多 Vault，每库一路径） | Collection 平滑升级，Agent 绑定 `knowledge_bases` 语义不变；`root_path` 唯一约束防重复挂载；删 Vault 只删索引不动文件 |
+| **文档** | Vault 内的 `.md` 文件（Markdown + YAML frontmatter） | 路径即 ID 的一部分；用户可直接编辑 |
+| **frontmatter 摘要卡** | LLM 预生成的文档摘要，写入 frontmatter | 人可读、机可查、agent 低 token 消费（card ≤200 token）；含 `summary_hash`（被摘要内容的 hash），比对即知过期 |
+| **双轨关联** | links 表三类型：`explicit`（`[[]]` 双链）/ `entity`（LLM 实体共现）/ `semantic`（向量近邻） | 显式优先；无语义层时 semantic 轨降级为「同文件夹 + 共享标签 + 双链共现」 |
+| **派生索引** | chunks 向量（PG）、FTS5/BM25 词法索引、links 表 | 全部无状态可重建，reindex 一键化；与业务表零触发器耦合 |
+
+### V3. 架构与数据流
+
+```
+用户文件夹（真相源）
+   ↑↓ 双向同步（SyncEngine，轮询扫描；fsnotify 为可选加速）
+VaultFiler（KB 侧唯一写文件出口）
+   ↓ 变更事件
+派生索引管道：chunk → embed(可选) → 向量(PG) / 词法索引(FTS5或Bleve) / links 表
+   ↓
+查询意图路由（规则，<5ms）
+  ├── 搜文件/路径/精确短语 ──→ L0 精确层（无向量）：文件名索引 + 强 BM25
+  ├── 浏览/导航/关联追问 ────→ L1 导航层（无向量）：knowledge_navigate 树导航 + 摘要卡 + 双链/实体图遍历 + knowledge_grep
+  └── 概念/模糊/跨语言 ──────→ L2 语义层（可选插件，缺省时 L0+L1 完整可用）
+```
+
+关键组件：
+- **VaultFiler**：KB 写文件的唯一出口（agent 写入、摄取落盘、frontmatter 更新都经它）
+- **SyncEngine**：文件变更同步；对 KB 自写文件打标防 watcher 回环（R-2）；外部删除一律进 `.aranea/trash`
+- **knowledge_navigate** 三级工具：tree（缩进树 ≤1k token）→ card（摘要卡 ≤200 token）→ read（分页全文）= PageIndex 推理导航模式的本地化实现，且真实文件夹树比 PageIndex 的 AI 生成 ToC 更可靠
+
+### V4. 数据模型变化
+
+| 项 | 变化 |
+|----|------|
+| `knowledge_collections` | 升级为 Vault：新增 `root_path`（唯一、规范化：resolve symlink + 绝对路径 + 尾部斜杠归一）、`sync_state`（含 `migrating` 态，S-2）、`sync_config` |
+| frontmatter 受管字段分区（R-1） | KB 独占：`id/summary/tags/type/summary_hash/source/created`；其余归用户自由使用；写入前重读 hash，冲突备份 |
+| `knowledge_links`（新增） | `(vault_id, src_path, dst_path, link_type[explicit/entity/semantic], meta)`；随文档增删级联，可全量重扫重建 |
+| 词法索引 | SQLite FTS5（trigram）或 Bleve（R-5 选型后定），**纯派生索引**：无触发器耦合、无业务表依赖、DROP/REBUILD 无状态（吸取 messages_fts 被连根拔除的教训） |
+| 向量命名空间（S-3） | 按 `(model, dim)` 隔离（现有 schema 已具备维度），为 model2vec→bge 升级预留 reindex 能力 |
+| EmbeddingModel 契约（R-4） | Collection/Vault 的 EmbeddingModel 从必填改**可选**（空 = 无语义层），放开 `ErrEmbeddingModelRequired` 校验与 `ValidateEmbeddingModelDim` |
+
+### V5. 三层检索设计（D5/D6/D7）
+
+| 层 | 技术 | 路由意图 | 备注 |
+|----|------|---------|------|
+| **L0 精确层**（无向量） | 文件名索引 + 强 BM25（CJK bigram+unigram 分词、字段加权 title×20/tags×5/body×1、RM3/LLM 查询扩展） | 搜文件/路径/精确短语 | 分词学术定论：bigram+unigram 与最优中文词切分效果相当（Nie et al.）；查询扩展是收益最大一步（+10%~30%） |
+| **L1 导航层**（无向量） | knowledge_navigate 树导航 + 摘要卡 + 双链/实体图遍历 + knowledge_grep | 浏览/导航/关联追问 | PageIndex 模式；真实文件夹树零自愈成本 |
+| **L2 语义层**（可选插件） | Embedder 接口三实现：本地开源模型（bge-m3/bge-small-zh，ONNX/Ollama）/ model2vec 静态查表（~50MB，纯 Go 查表+均值池化，比 teacher 快 500 倍，质量保留 ~93%）/ 远程 API | 概念/模糊/跨语言 | model2vec 是「自研 embedding」现实最优解：一次性蒸馏为本地资产，无模型推理依赖；定位为语义层零依赖默认实现而非唯一实现 |
+
+**降级矩阵**（R-4 四条契约变更，§V6 引用）：
+1. CreateVault 时 EmbeddingModel 改可选（空 = 无语义层）
+2. 摄取流水线对无 embedding 的 Vault 跳过向量写入
+3. knowledge_search 对无语义层 Vault 自动降级 L0+L1
+4. 前端设置页 embedding 配置改「可选增强」
+
+**向量仍不可替代的场景**（诚实边界）：跨语言检索、同义/模糊概念查询（查询扩展只能部分弥补）、「以文找文」相似推荐（无语义层时降级为同文件夹+共享标签+双链共现）。
+
+**路由规则**：规则表配置化（<5ms，避免 LLM 路由反模式），前后端共享同一份定义，随 badcase 积累迭代；测试矩阵有/无语义层两套。
+
+### V6. 实现契约（R-1~R-6，评审前置条件，实施必须遵守）
+
+| # | 契约 | 归属 |
+|---|------|------|
+| **R-1** | frontmatter 受管字段分区：KB 独占 `id/summary/tags/type/summary_hash/source/created`，其余归用户；**写入前重读 hash，冲突备份**（保守默认：冲突留双份） | D1/D3 |
+| **R-2** | SyncEngine 对 KB 自写文件打标（watcher 回环防护）；**外部删除一律进 `.aranea/trash`**，不物理删除 | D1 |
+| **R-3** | entity 抽取必须做**停用词/频次过滤**（停用实体表 + 频次阈值）；关联区 UI 必须**标注来源类型**（显式/实体/语义），避免用户误以为全是可靠关联 | D4 |
+| **R-4** | Embedder 接口抽象 + CreateVault 的 EmbeddingModel 改可选 + §V5 降级矩阵四条全部落地 | D5 |
+| **R-5** | L0 选型 **spike 前置**：Bleve vs FTS5(trigram) vs 自研倒排，各 200 行验证 + 真实语料质量对比后再定；**禁止直接默认自研** | D6 |
+| **R-6** | knowledge_write 安全契约：路径 sanitize（禁 `..`、禁 symlink 逃逸、限制 vault root 内）+ 覆盖前自动备份到 `.aranea/trash` + 每次写入记审计日志（who/when/what，结构化入 activities）；navigate/grep 只读；watcher 对 KB 自写文件打标防回环重复摄取 | D8 |
+
+**建议项（S 系列，不阻塞）**：S-1 root_path 规范化 + 禁挂系统根目录校验；S-2 迁移期 `migrating` 态期间检索走旧索引；S-3 向量按 `(model,dim)` 命名空间隔离；S-4 目录级 README 自动摘要（二期候选）；S-5 「BM25 召回质量」纳入测试基线（50 条中英查询金标准，防分词器回归）。
+
+### V7. Agent 工具族（D8）
+
+| 工具 | 能力 | 约束 |
+|------|------|------|
+| `knowledge_navigate` | tree（≤1k token）→ card（≤200 token）→ read（分页全文）三级下钻，token 预算 + 超限截断提示 | 只读 |
+| `knowledge_grep` | 内容正则/字面搜索（ripgrep 式），补精确内容搜索 | 只读 |
+| `knowledge_write` | 创建/追加（Letta 式自编辑：agent 自主决定记什么） | **R-6 安全契约前置**；升级路径：创建/追加 → frontmatter 字段级编辑 → 批量整理（agent 图书管理员） |
+
+工具 schema 演进需与 agent 提示词同步；write 审计日志为永久维护项。
+
+### V8. 迁移设计（D9：Collection → Vault）
+
+- 幂等可重入 + 失败单条跳过 + `schema_migrations` 门控（符合项目 L3 数据迁移惯例）
+- content_text 导出 `.md`（文件名清洗 source→合法文件名，冲突处理）；chunks 重建期间检索可用性下降——迁移期 Vault 状态机加 `migrating` 态，期间检索走旧索引、写入排队（S-2）
+- 旧「粘贴文本入库」入口保留降低断裂感；旧表只读兜底一个版本周期；迁移代码完成后可标记废弃
+
+### V9. UI 设计（D10：资源管理器）
+
+- 三栏布局：Vault 切换 + 文件夹树（懒加载）+ 文档列表 + 详情面板（hover 卡 + 详情两级密度）
+- **统一搜索框双区**：即时区（纯前端毫秒，<10k 文档 fzf 式内存索引，多 vault 切换需重建）+ 语义区（亚秒）——正确分离「搜文件/搜知识」两种意图
+- 关联区展示双链/实体/语义三类关联并**标注来源类型**（R-3）
+- 图谱视图放二期（避免 MVP 膨胀）；搜索意图分流规则与后端路由规则共享定义（两处维护）
+
+### V10. 技术升级路径（每层相互独立，接口隔离：Embedder / Retriever / LinkResolver）
+
+```
+L0 精确层:  自研bigram/FTS5 ──→ Bleve ──→ pg_textsearch/Tantivy ──→ SPLADE(远期)
+L1 导航层:  真实文件夹树+摘要卡 ──→ 目录README自动摘要 ──→ 长文档AI ToC(PageIndex式) ──→ vault摘要树(RAPTOR式)
+L2 语义层:  model2vec静态查表 ──→ bge-m3本地(ONNX/Ollama) ──→ 远程API ──→ HNSW(halfvec)索引升级
+关联:      双链+实体共现 ──→ GraphRAG完整版(社区摘要,§9.6设计已备) ──→ KAG式符号推理(远期)
+agent:     navigate/grep/write ──→ frontmatter字段级编辑 ──→ agent图书管理员(批量整理)
+UI:        树+列表+详情+双区搜索 ──→ 局部图谱(二期) ──→ Q&A模式(三期)
+```
+
+### V11. 现状缺陷修正背景（评审代码核验发现）
+
+1. **现有中文全文检索实际已失效**：[knowledge.go:514-517](../../internal/data/knowledge.go#L514-L517) 的 `ts_rank(to_tsvector('simple', ...))` 双重问题——`ts_rank` 无 IDF/无 TF 饱和（弱 BM25）；更严重的是 PG `simple` 分词对 CJK 不切分（需 zhparser/pg_jieba），连续中文归为单一 token，中文查询几乎只能整串精确命中。**强 BM25 自研栈不是「优化」而是「修复」**。
+2. **FTS5 前车之鉴**：项目曾有 `messages_fts`（SQLite FTS5），因虚拟表+触发器与核心业务表耦合，演进时被整体移除（[20260902_drop_messages_subsystem.sql](../../internal/data/sql/migrations/20260902_drop_messages_subsystem.sql)）。知识库词法索引必须设计为完全独立的派生索引。
+3. **embedding 可选化破坏现有契约**：当前 CreateCollection 校验 `ErrEmbeddingModelRequired`（EmbeddingModel 必填）+ `ValidateEmbeddingModelDim`，必须按 §V5 降级矩阵四条变更（R-4）。

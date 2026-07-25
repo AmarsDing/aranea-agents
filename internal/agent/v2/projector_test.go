@@ -2,7 +2,9 @@ package v2
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 )
@@ -387,6 +389,151 @@ func TestEmitSystemEvent(t *testing.T) {
 	}
 	if created.Step.Content != "context_usage" {
 		t.Errorf("expected content=context_usage, got %s", created.Step.Content)
+	}
+}
+
+// === 2026-07-25 回归：synthesis/cancelled 兜底路径的 task.completed 必须保留 ===
+// 父 Task 的 CreatedAt/Seq/UserMessage。最小 Task 对象的零值 CreatedAt 序列化为
+// "0001-01-01T00:00:00Z"（truthy），使前端 merge 守卫 (t.CreatedAt || ex.CreatedAt)
+// 失效，任务创建时间被覆盖显示为 "01-01 08:05"。
+
+type stubTaskV2Reader struct {
+	task biz.Task
+	err  error
+}
+
+func (s stubTaskV2Reader) GetTask(_ context.Context, id string) (biz.Task, error) {
+	if s.err != nil {
+		return biz.Task{}, s.err
+	}
+	if s.task.ID != id {
+		return biz.Task{}, errors.New("task not found")
+	}
+	return s.task, nil
+}
+
+func (s stubTaskV2Reader) ListTasksBySession(_ context.Context, _ string) ([]biz.Task, error) {
+	return nil, nil
+}
+
+func synthesisProjector(capture *capturingSequencer, reader biz.TaskV2Reader) *ActivityProjector {
+	factory := NewProjectorFactory(capture, nil, reader, nil)
+	p := factory.NewProjector()
+	p.OnTurnStart(context.Background(), ProjectMeta{
+		ParentTaskID:    "parent-task-1",
+		TurnID:          "turn-synth",
+		SessionID:       "sess-1",
+		SpiritSessionID: "spirit-1",
+		AgentKey:        "agent-1",
+	})
+	return p
+}
+
+func lastTaskCompleted(events []biz.Event) *biz.TaskCompletedEvent {
+	for i := len(events) - 1; i >= 0; i-- {
+		if ev, ok := events[i].(*biz.TaskCompletedEvent); ok {
+			return ev
+		}
+	}
+	return nil
+}
+
+func TestOnTurnEndSynthesisPreservesParentTaskFields(t *testing.T) {
+	capture := &capturingSequencer{}
+	created := time.Date(2026, 7, 25, 14, 13, 0, 0, time.UTC)
+	p := synthesisProjector(capture, stubTaskV2Reader{task: biz.Task{
+		ID:          "parent-task-1",
+		SessionID:   "spirit-1",
+		UserMessage: "帮我做个方案",
+		Seq:         7,
+		CreatedAt:   created,
+		Status:      biz.TaskStatusRunning,
+		Version:     1,
+	}})
+	capture.events = nil
+
+	p.OnTurnEnd(context.Background(), p.meta, false)
+
+	ev := lastTaskCompleted(capture.events)
+	if ev == nil {
+		t.Fatal("expected TaskCompletedEvent")
+	}
+	if !ev.Task.CreatedAt.Equal(created) {
+		t.Errorf("CreatedAt = %v, want %v (parent task from DB)", ev.Task.CreatedAt, created)
+	}
+	if ev.Task.UserMessage != "帮我做个方案" {
+		t.Errorf("UserMessage = %q, want parent task message", ev.Task.UserMessage)
+	}
+	if ev.Task.Seq != 7 {
+		t.Errorf("Seq = %d, want 7", ev.Task.Seq)
+	}
+	if ev.Task.Status != biz.TaskStatusCompleted {
+		t.Errorf("Status = %s, want completed", ev.Task.Status)
+	}
+	if ev.Task.CompletedAt == nil {
+		t.Error("CompletedAt must be set")
+	}
+	if ev.Task.SessionID != "spirit-1" {
+		t.Errorf("SessionID = %q, want spirit-1", ev.Task.SessionID)
+	}
+}
+
+func TestOnTurnEndSynthesisReaderFailureFallsBack(t *testing.T) {
+	capture := &capturingSequencer{}
+	p := synthesisProjector(capture, stubTaskV2Reader{err: errors.New("db down")})
+	capture.events = nil
+
+	p.OnTurnEnd(context.Background(), p.meta, false)
+
+	ev := lastTaskCompleted(capture.events)
+	if ev == nil {
+		t.Fatal("expected TaskCompletedEvent even when reader fails")
+	}
+	if ev.Task.ID != "parent-task-1" {
+		t.Errorf("ID = %q, want parent-task-1", ev.Task.ID)
+	}
+	if ev.Task.Status != biz.TaskStatusCompleted {
+		t.Errorf("Status = %s, want completed", ev.Task.Status)
+	}
+	if ev.Task.CompletedAt == nil {
+		t.Error("CompletedAt must be set even on fallback")
+	}
+}
+
+func TestOnTurnEndCancelledFallbackPreservesTaskFields(t *testing.T) {
+	capture := &capturingSequencer{}
+	created := time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)
+	factory := NewProjectorFactory(capture, nil, stubTaskV2Reader{task: biz.Task{
+		ID:          "task-x",
+		SessionID:   "spirit-1",
+		UserMessage: "原始需求",
+		Seq:         3,
+		CreatedAt:   created,
+		Status:      biz.TaskStatusRunning,
+		Version:     5,
+	}}, nil)
+	p := factory.NewProjector()
+	// 不调用 OnTurnStart：activeTask 为空，模拟 team dispatch 路径下 task 已被移除。
+	meta := ProjectMeta{
+		TaskID:          "task-x",
+		TurnID:          "turn-x",
+		SessionID:       "sess-1",
+		SpiritSessionID: "spirit-1",
+	}
+	p.OnTurnEnd(context.Background(), meta, true)
+
+	ev := lastTaskCompleted(capture.events)
+	if ev == nil {
+		t.Fatal("expected TaskCompletedEvent for cancelled fallback")
+	}
+	if ev.Task.Status != biz.TaskStatusCancelled {
+		t.Errorf("Status = %s, want cancelled", ev.Task.Status)
+	}
+	if !ev.Task.CreatedAt.Equal(created) {
+		t.Errorf("CreatedAt = %v, want %v", ev.Task.CreatedAt, created)
+	}
+	if ev.Task.UserMessage != "原始需求" {
+		t.Errorf("UserMessage = %q, want parent task message", ev.Task.UserMessage)
 	}
 }
 

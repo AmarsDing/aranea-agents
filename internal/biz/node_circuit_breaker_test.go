@@ -90,8 +90,8 @@ func TestParseCriticLoopCondFuncRef(t *testing.T) {
 		{"other_func", 0, 0, "", false},
 		{CriticLoopCondFuncRef + "@abc", 0, 0, "", false},
 		{CriticLoopCondFuncRef + "#x", 0, 0, "", false},
-		{CriticLoopCondFuncRef + "%", 0, 0, "", false},   // % 后空 nodeID = 畸形
-		{CriticLoopCondFuncRef + "#3%", 0, 0, "", false},  // 同上
+		{CriticLoopCondFuncRef + "%", 0, 0, "", false},                      // % 后空 nodeID = 畸形
+		{CriticLoopCondFuncRef + "#3%", 0, 0, "", false},                    // 同上
 		{CriticLoopCondFuncRef + "@0.8%member-2", 0.8, 0, "member-2", true}, // @/% 间 # 可省略
 	}
 	for _, c := range cases {

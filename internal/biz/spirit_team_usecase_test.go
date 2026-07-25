@@ -892,7 +892,7 @@ func TestAssembleTeam_TransactionSuccess(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestBuildSpiritTeamDefinitionJSON_MultiMember_EnableStateDeliverable(t *testing.T) {
-	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a", "agent-b"}, loggateway.NewNoop())
+	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a", "agent-b"}, loggateway.NewNoop(), false)
 
 	var def map[string]any
 	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
@@ -908,7 +908,7 @@ func TestBuildSpiritTeamDefinitionJSON_MultiMember_EnableStateDeliverable(t *tes
 }
 
 func TestBuildSpiritTeamDefinitionJSON_SingleMember_NoEnableStateDeliverable(t *testing.T) {
-	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a"}, loggateway.NewNoop())
+	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a"}, loggateway.NewNoop(), false)
 
 	var def map[string]any
 	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
@@ -916,6 +916,25 @@ func TestBuildSpiritTeamDefinitionJSON_SingleMember_NoEnableStateDeliverable(t *
 	}
 	if _, ok := def["enable_state_deliverable"]; ok {
 		t.Fatal("single-member team should NOT have enable_state_deliverable")
+	}
+}
+
+// 2026-07-25 Fix 2b：DAG 团队（requireDeliverable=true）即使单成员也必须开启
+// enable_state_deliverable —— 没有交付通道，Fix 1 的真实产出闸门会把所有
+// 单成员 DAG 团队误判为 failed。
+func TestBuildSpiritTeamDefinitionJSON_DAGSingleMember_EnableStateDeliverable(t *testing.T) {
+	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a"}, loggateway.NewNoop(), true)
+
+	var def map[string]any
+	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
+		t.Fatalf("definition JSON not parseable: %v", err)
+	}
+	v, ok := def["enable_state_deliverable"]
+	if !ok {
+		t.Fatal("DAG single-member team should have enable_state_deliverable")
+	}
+	if v != true {
+		t.Fatalf("enable_state_deliverable should be true, got %v", v)
 	}
 }
 
@@ -947,6 +966,43 @@ func TestAssembleTeam_MultiMember_DefinitionJSON_HasEnableStateDeliverable(t *te
 	v, ok := def["enable_state_deliverable"]
 	if !ok {
 		t.Fatal("multi-member team DefinitionJSON should have enable_state_deliverable")
+	}
+	if v != true {
+		t.Fatalf("enable_state_deliverable should be true, got %v", v)
+	}
+}
+
+// 2026-07-25 Fix 2b：DAG 团队（DagNodeID 非空）单成员也必须开启
+// enable_state_deliverable，否则真实产出闸门必然误判 failed。
+func TestAssembleTeam_DAGSingleMember_DefinitionJSON_HasEnableStateDeliverable(t *testing.T) {
+	teamRepo := newMemSpiritTeamRepo()
+	sessionRepo := newMemSpiritSessionRepo()
+	sessionRepo.seedSpirit("spirit-esd-dag")
+	transactor := &memSpiritTransactor{}
+
+	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
+	sessionUC := NewSessionUsecase(sessionRepo, &memSpiritAgentLookup{}, NewSessionTeamLookup(teamRepo), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
+
+	result, err := uc.AssembleTeam(context.Background(), SpiritTeamParams{
+		SpiritSessionID: "spirit-esd-dag",
+		TaskDescription: "dag single-member deliverable test",
+		AgentKeys:       []string{"agent-1"},
+		Mode:            "coordinator",
+		AutoStart:       false,
+		DagNodeID:       "st_1",
+	})
+	if err != nil {
+		t.Fatalf("AssembleTeam failed: %v", err)
+	}
+
+	var def map[string]any
+	if err := json.Unmarshal([]byte(result.Team.DefinitionJSON), &def); err != nil {
+		t.Fatalf("DefinitionJSON not parseable: %v (raw=%q)", err, result.Team.DefinitionJSON)
+	}
+	v, ok := def["enable_state_deliverable"]
+	if !ok {
+		t.Fatal("DAG single-member team DefinitionJSON should have enable_state_deliverable")
 	}
 	if v != true {
 		t.Fatalf("enable_state_deliverable should be true, got %v", v)

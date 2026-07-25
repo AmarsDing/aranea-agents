@@ -4,6 +4,7 @@ import type { useChatMessageStore } from '../../../stores/chat/messageStore';
 import type { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import type { useChatStreamManager } from './useChatStreamManager';
 import type { useChatSender } from './useChatSender';
+import type { Task } from '../v2Types';
 
 export interface ComposerActionDeps {
   sessionStore: ReturnType<typeof useChatSessionStore>;
@@ -80,6 +81,22 @@ export function useChatComposerActions(deps: ComposerActionDeps) {
     }
   }
 
+  /** v2 Task 重新生成：提取 UserMessage 重新发送。 */
+  function regenerateV2Task(task: Task) {
+    const sid = selectedSessionId.value;
+    if (!sid || !task.UserMessage) return;
+    if (runStatus.value === 'running' || runStatus.value === 'pending') {
+      streamManager.cancelActiveStream();
+      sender.stopStreaming(sid);
+    }
+    const entityKind = sessionStore.entityKind;
+    if (entityKind === 'team') {
+      sender.sendTeamMessage(task.UserMessage);
+    } else {
+      sender.sendAgentUserContent(task.UserMessage);
+    }
+  }
+
   async function cancelBackgroundJob(job: { id: string; source: string }) {
     try {
       const ok = await runtimeStore.cancelBackgroundJob(job.id, job.source);
@@ -97,6 +114,7 @@ export function useChatComposerActions(deps: ComposerActionDeps) {
     onSend,
     dismissFailedMessage,
     regenerateMessage,
+    regenerateV2Task,
     cancelBackgroundJob,
   };
 }

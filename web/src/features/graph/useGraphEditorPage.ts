@@ -270,12 +270,14 @@ export function useGraphEditorPage() {
       }
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Z') {
+    // 大小写不敏感：部分环境（IME/远程桌面/E2E）Ctrl+Shift+Z 派发小写 key='z'
+    const key = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && ((e.shiftKey && key === 'z') || key === 'y')) {
       e.preventDefault();
       undoRedo.redo();
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && key === 'z') {
       e.preventDefault();
       undoRedo.undo();
       return;

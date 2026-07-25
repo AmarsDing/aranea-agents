@@ -1,6 +1,7 @@
 # Knowledge 知识库 — 开发计划
 
 > **版本**：2026-07-21 | **状态**：✅ Phase 1-9 已完成（Phase 9 多模态入库：图片经 VisionExtractor 异步提取为 MD；真实视觉模型端到端待环境就位后复验）；✅ Phase 11（US-14 免选择知识库）已完成；Phase 10（GraphRAG 旁路）可选
+> **2026-07-25 新增**：§子模块 Vault 重设计 Phase 计划（P1~P6，含 P4a/P4b 拆分）——Vault 重设计经评审有条件通过，R-1~R-6 已合入设计文档 §V6，待启动实施。
 > **需求**：[37-knowledge.md](./37-knowledge.md) · **设计**：[37-knowledge.design.md](./37-knowledge.design.md)
 
 ---
@@ -770,3 +771,108 @@ Phase 1.4 质量评估 ──────┘
 | `internal/knowledge/skill_distiller.go` | 新增 | 技能蒸馏管线 |
 | `internal/tools/knowledge/navigate_tool.go` | 新增 | 知识导航工具 |
 | `internal/tools/knowledge/drill_tool.go` | 新增 | 知识钻入工具 |
+
+---
+
+## 子模块：Vault 重设计 Phase 计划
+
+> **设计契约**：[37-knowledge.design.md §子模块 Vault 重设计](./37-knowledge.design.md#子模块vault-重设计)（V1~V11，含 R-1~R-6 实现契约）
+> **评审结论**（2026-07-25）：方向与架构通过；R-1~R-6 已合入设计文档 §V6，本计划按评审 §9 微调：**P4 拆为 P4a（L0 强 BM25 栈，含 R-5 选型 spike）+ P4b（L2 语义层插件化，含 R-4 契约变更）；R-6 安全契约并入 P5**。
+> **状态**：📋 待启动 | 与上文 Roadmap 子模块（Phase 1-4 RAG 演进）为独立演进线，编号互不影响。
+
+### 总览
+
+| Phase | 内容 | 关联契约 | 状态 |
+|-------|------|---------|------|
+| **P1** | Vault 基础 + 单向同步（文件→索引） | R-1、S-1 | 📋 |
+| **P2** | 双向同步 + frontmatter 摘要卡 + 双轨关联 | R-1、R-2、R-3 | 📋 |
+| **P3** | 资源管理器 UI（树/列表/详情/双区搜索） | R-3（来源标注） | 📋 |
+| **P4a** | L0 强 BM25 栈（含 R-5 选型 spike） | R-5、S-5 | 📋 |
+| **P4b** | L2 语义层插件化（含 R-4 契约变更） | R-4、S-3 | 📋 |
+| **P5** | Agent 工具族 navigate/grep/write（含 R-6 安全契约） | R-6 | 📋 |
+| **P6** | 迁移 Collection → Vault | S-2 | 📋 |
+
+### P1：Vault 基础 + 单向同步
+
+| # | 任务 |
+|---|------|
+| P1-1 | `knowledge_collections` 升级 Vault：`root_path`（唯一约束 + 规范化：resolve symlink/绝对路径/尾部斜杠归一，禁挂系统根目录 S-1）、`sync_state`、`sync_config`；DDL 迁移注册 |
+| P1-2 | VaultFiler：KB 侧唯一写文件出口（路径 sanitize 基础版） |
+| P1-3 | SyncEngine 单向扫描：文件变更 → chunk → （可选 embed）→ 派生索引；轮询实现，fsnotify 留接口 |
+| P1-4 | 派生索引纪律落地：全部索引无状态可重建，reindex 一键化；禁止与业务表触发器耦合 |
+
+验收：挂载一个本地文件夹为 Vault，新增/修改 .md 后索引自动更新；删 Vault 只删索引不动文件。
+
+### P2：双向同步 + 摘要卡 + 双轨关联
+
+| # | 任务 |
+|---|------|
+| P2-1 | frontmatter 受管字段分区实现（R-1）：KB 独占 `id/summary/tags/type/summary_hash/source/created`；写入前重读 hash，冲突留双份备份 |
+| P2-2 | 摘要卡生成：LLM 预生成摘要写入 frontmatter；`summary_hash` 比对标记 stale，异步重生成 |
+| P2-3 | KB 自写文件打标 + watcher 回环防护（R-2）；外部删除一律进 `.aranea/trash` |
+| P2-4 | `knowledge_links` 表 + explicit（`[[]]` 双链解析）/ entity（LLM 实体共现，停用词+频次过滤 R-3）双轨；semantic 轨待 P4b |
+
+验收：KB 写入与用户外部编辑双向不丢不乱（回环防护生效）；摘要卡随内容过期自动重生成；关联区数据可按来源类型过滤。
+
+### P3：资源管理器 UI
+
+| # | 任务 |
+|---|------|
+| P3-1 | KnowledgePage 重构为三栏：Vault 切换 + 文件夹树（懒加载）+ 文档列表 + 详情面板（hover 卡两级密度） |
+| P3-2 | 统一搜索框双区：即时区（纯前端 fzf 式内存索引 <10k 文档）+ 语义区（走后端检索） |
+| P3-3 | 关联区：双链/实体/语义三类关联展示并标注来源类型（R-3）；搜索意图分流规则与后端路由规则共享定义 |
+
+验收：三栏可用；搜索双区意图分流正确；关联区来源标注完整。
+
+### P4a：L0 强 BM25 栈（含 R-5 选型 spike）
+
+| # | 任务 |
+|---|------|
+| P4a-1 | **R-5 spike（前置，禁止跳过）**：Bleve vs FTS5(trigram) vs 自研倒排三方各 200 行验证 + 真实语料质量对比，产出选型结论 |
+| P4a-2 | 按选型实施：CJK bigram+unigram 分词、字段加权（title×20/tags×5/body×1）、文件名索引 |
+| P4a-3 | 查询扩展（RM3 伪相关反馈 / LLM 关键词扩展） |
+| P4a-4 | S-5 测试基线：50 条中英查询金标准，BM25 召回质量纳入回归 |
+| P4a-5 | 替换/旁路现有失效的 PG `ts_rank` 中文检索路径（设计 §V11-1） |
+
+验收：spike 报告落档；中文查询召回达到金标准基线；索引可 DROP/REBUILD 无状态重建。
+
+### P4b：L2 语义层插件化（含 R-4 契约变更）
+
+| # | 任务 |
+|---|------|
+| P4b-1 | **R-4 契约变更四条**：CreateVault EmbeddingModel 改可选（空=无语义层）；摄取流水线对无 embedding Vault 跳过向量写入；knowledge_search 无语义层自动降级 L0+L1；前端 embedding 配置改「可选增强」 |
+| P4b-2 | Embedder 接口抽象整理：本地模型（ONNX/Ollama）/ model2vec 静态查表 / 远程 API 三实现可插拔 |
+| P4b-3 | model2vec 静态查表后端（自实现查表，不依赖社区移植；向量按 `(model,dim)` 命名空间隔离 S-3） |
+| P4b-4 | semantic 关联轨落地；无语义层时「相关推荐」降级为同文件夹+共享标签+双链共现 |
+| P4b-5 | 有/无语义层双套测试矩阵 |
+
+验收：无 embedding 的 Vault 全功能可用（L0+L1）；配置 model2vec 后语义检索生效；`ErrEmbeddingModelRequired` 契约回归测试通过。
+
+### P5：Agent 工具族（含 R-6 安全契约）
+
+| # | 任务 |
+|---|------|
+| P5-1 | `knowledge_navigate`：tree（≤1k token）→ card（≤200 token）→ read（分页全文）三级下钻 + token 预算 + 超限截断提示 |
+| P5-2 | `knowledge_grep`：内容正则/字面搜索（只读） |
+| P5-3 | **R-6 安全契约**：knowledge_write 路径 sanitize（禁 `..`/symlink 逃逸/限制 vault root 内）+ 覆盖前自动备份 `.aranea/trash` + 审计日志（who/when/what 结构化入 activities）；watcher 对 KB 自写文件打标防回环重复摄取 |
+| P5-4 | 工具经 `internal/tools/` Registry 注册（ToolKeyKnowledge* 常量）+ agent 提示词同步 |
+
+验收：navigate/grep 只读可用；write 越权路径被拒、覆盖有备份、审计可查；agent 写入不触发回环重复摄取。
+
+### P6：迁移 Collection → Vault
+
+| # | 任务 |
+|---|------|
+| P6-1 | 迁移器：content_text 导出 .md（文件名清洗 + 冲突处理），幂等可重入 + 失败单条跳过 + `schema_migrations` 门控 |
+| P6-2 | 迁移期 Vault `migrating` 态：检索走旧索引、写入排队（S-2） |
+| P6-3 | 旧表只读兜底一个版本周期；迁移代码完成后标记废弃 |
+
+验收：存量 Collection 可完整迁移为 Vault，迁移期检索不中断，重复执行幂等。
+
+### 依赖关系
+
+```
+P1（Vault 基础）──→ P2（双向同步+摘要卡+关联）──→ P3（UI）
+                  └──→ P4a（L0 强 BM25，spike 前置）──→ P4b（L2 插件化）──→ P6（迁移）
+                  └──→ P5（Agent 工具族，R-6 前置）可与 P3/P4 并行
+```

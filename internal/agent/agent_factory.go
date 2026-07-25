@@ -25,6 +25,12 @@ const (
 	agentFactorySource     = "system"
 	agentFactoryAuthor     = "agent-factory"
 	agentFactoryLLMTimeout = 60 * time.Second
+
+	// sameDomainReuseMinSim is the cosine threshold for reusing a same-domain
+	// agent by mission similarity before creating a new one（B.10.21.6）。
+	sameDomainReuseMinSim = 0.85
+	// sameDomainReuseScanLimit bounds the active-agent scan for reuse checks.
+	sameDomainReuseScanLimit = 200
 )
 
 // GeneratedAgentDefinition is the LLM-generated agent definition parsed from
@@ -501,7 +507,7 @@ func (f *AgentFactoryImpl) findSameDomainAgent(ctx context.Context, profile biz.
 	if dp == "" || f.embedder == nil {
 		return "", false
 	}
-	res, err := f.agentReader.SearchAgents(ctx, biz.AgentListQuery{Status: "active", Limit: 200})
+	res, err := f.agentReader.SearchAgents(ctx, biz.AgentListQuery{Status: "active", Limit: sameDomainReuseScanLimit})
 	if err != nil || len(res.Items) == 0 {
 		return "", false
 	}
@@ -546,7 +552,7 @@ func (f *AgentFactoryImpl) findSameDomainAgent(ctx context.Context, profile biz.
 			bestSim, bestIdx = sim, i
 		}
 	}
-	if bestIdx < 0 || bestSim < 0.85 {
+	if bestIdx < 0 || bestSim < sameDomainReuseMinSim {
 		return "", false
 	}
 	return cands[bestIdx].AgentKey, true

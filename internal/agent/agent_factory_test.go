@@ -753,8 +753,10 @@ func TestAgentFactory_ParseAgentDefinition_MissionFallback(t *testing.T) {
 // embedFunc 适配器，测试用 fake embedder。
 type embedFunc func(ctx context.Context, texts []string) ([][]float32, error)
 
-func (f embedFunc) Embed(ctx context.Context, texts []string) ([][]float32, error) { return f(ctx, texts) }
-func (f embedFunc) Dim() int                                                       { return 3 }
+func (f embedFunc) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+	return f(ctx, texts)
+}
+func (f embedFunc) Dim() int { return 3 }
 
 func TestAgentFactory_EnsureAgent_SameDomainMissionReuse(t *testing.T) {
 	store := newFakeFactoryAgentStore()

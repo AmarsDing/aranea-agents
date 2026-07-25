@@ -4,21 +4,12 @@ import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useGraphStore } from '../../stores/graph';
-import type { GraphDefinition, GraphTemplateInfo, NodeType } from './types';
+import type { GraphDefinition, GraphExecutionSummary, GraphTemplateInfo } from './types';
 import { NODE_TYPE_STYLES } from './types';
-import { relativeTime } from './utils';
+import { buildCompositionChips, deriveGraphStatus, relativeTime } from './utils';
+import { listGraphExecutions } from './api';
 import { useGraphExecute } from './useGraphExecute';
 import type { ContextMenuItem } from '../../components/graph/GraphContextMenu.vue';
-
-const NODE_TYPE_EMOJI: Record<NodeType, string> = {
-  agent: '🤖',
-  llm: '🧠',
-  router: '🔀',
-  function: '⚙️',
-  tool: '🔧',
-  join: '🔗',
-  hitl: '✋',
-};
 
 export function useGraphsPage() {
   const { t } = useI18n();
@@ -109,6 +100,15 @@ export function useGraphsPage() {
 
   function nodeTypeBorderColor(type: string): string {
     return (NODE_TYPE_STYLES as Record<string, { borderColor: string }>)[type]?.borderColor ?? 'var(--color-accent)';
+  }
+
+  // --- R2-A 卡片数据派生（状态映射 + 构成 chips；执行次数列表页无数据，避免 N+1） ---
+  function cardStatus(graph: GraphDefinition) {
+    return deriveGraphStatus(graph);
+  }
+
+  function compositionChips(graph: GraphDefinition) {
+    return buildCompositionChips(countNodesByType(graph));
   }
 
   onMounted(() => void loadRows());
@@ -205,6 +205,56 @@ export function useGraphsPage() {
 
   function selectGraph(id: string) {
     selectedGraphId.value = selectedGraphId.value === id ? null : id;
+  }
+
+  // --- R2-6 详情面板：执行历史预览（最近 5 条 + hasMore） ---
+  const selectedExecutions = ref<GraphExecutionSummary[]>([]);
+  const selectedExecutionsHasMore = ref(false);
+
+  watch(selectedGraphId, async (id) => {
+    selectedExecutions.value = [];
+    selectedExecutionsHasMore.value = false;
+    if (!id) return;
+    try {
+      const result = await listGraphExecutions(id, 6);
+      selectedExecutions.value = result.items.slice(0, 5);
+      selectedExecutionsHasMore.value = result.items.length > 5 || Boolean(result.nextPageToken);
+    } catch {
+      // 执行历史预览失败不阻断详情面板展示
+    }
+  });
+
+  async function exportGraphJson(graph: GraphDefinition) {
+    try {
+      const result = await graphStore.exportGraphDefinition(graph.id);
+      const blob = new Blob([result.json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${graph.name || graph.id}.graph.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      $q.notify({ type: 'positive', message: t('graphs.assetExported') });
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('graphs.assetExportFailed') });
+    }
+  }
+
+  // R2-6 行内定位：跳转编辑器并聚光灯目标节点
+  function locateNodeInEditor(nodeId: string) {
+    if (!selectedGraphId.value) return;
+    router.push({ name: 'graph-editor', params: { id: selectedGraphId.value }, query: { spotlight: nodeId } });
+  }
+
+  // R2-8 入口：跳转编辑器并打开 State Schema 抽屉
+  function manageSchemaInEditor() {
+    if (!selectedGraphId.value) return;
+    router.push({ name: 'graph-editor', params: { id: selectedGraphId.value }, query: { schema: '1' } });
+  }
+
+  function viewSelectedExecutions() {
+    if (!selectedGraphId.value) return;
+    router.push({ name: 'graph-executions', params: { id: selectedGraphId.value } });
   }
 
   function onCardContextMenu(e: MouseEvent, graph: GraphDefinition) {
@@ -316,9 +366,10 @@ export function useGraphsPage() {
     sortOrder,
     SORT_OPTIONS,
     ENGINE_FILTER_OPTIONS,
-    NODE_TYPE_EMOJI,
     nodeTypeBorderColor,
     countNodesByType,
+    cardStatus,
+    compositionChips,
     relativeTime,
     runDialogOpen: graphExecute.runDialogOpen,
     runDialogGraph,
@@ -327,6 +378,12 @@ export function useGraphsPage() {
     runLoading: graphExecute.runLoading,
     selectedGraphId,
     selectedGraph,
+    selectedExecutions,
+    selectedExecutionsHasMore,
+    exportGraphJson,
+    locateNodeInEditor,
+    manageSchemaInEditor,
+    viewSelectedExecutions,
     ctxMenuVisible,
     ctxMenuX,
     ctxMenuY,

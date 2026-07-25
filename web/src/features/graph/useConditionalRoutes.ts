@@ -82,23 +82,18 @@ export function useConditionalRoutes(
     const globalIdx = findGlobalCeIdx(localIdx);
     if (globalIdx < 0 || !gd) return;
     const ce = gd.conditionalEdges[globalIdx];
-    const oldPathMap = { ...ce.pathMap };
-    const newPathMap = { ...ce.pathMap };
-    delete newPathMap[label];
-    if (Object.keys(newPathMap).length === 0) {
-      gd.conditionalEdges.splice(globalIdx, 1);
-      if (ur) {
-        ur.pushDeleteConditionalEdge(ce, globalIdx, label);
-      } else {
-        notifyChange();
-      }
+    if (ur) {
+      // execute() 会通过 redo() 完成首次删除（含删空时移除整条 CE），此处禁止预改 graphDef
+      ur.pushDeleteConditionalEdge(ce, globalIdx, label);
     } else {
-      ce.pathMap = newPathMap;
-      if (ur) {
-        ur.pushSetConditionalPathMap(globalIdx, oldPathMap, newPathMap);
+      const newPathMap = { ...ce.pathMap };
+      delete newPathMap[label];
+      if (Object.keys(newPathMap).length === 0) {
+        gd.conditionalEdges.splice(globalIdx, 1);
       } else {
-        notifyChange();
+        ce.pathMap = newPathMap;
       }
+      notifyChange();
     }
   }
 
@@ -136,10 +131,11 @@ export function useConditionalRoutes(
       pathMap: { default: toValue(destinationOptions)[0]?.value ?? '' },
     };
     const idx = gd.conditionalEdges.length;
-    gd.conditionalEdges.push(ce);
     if (ur) {
+      // execute() 会通过 redo() 完成首次插入，此处禁止预改 graphDef
       ur.pushAddConditionalEdge(ce, idx);
     } else {
+      gd.conditionalEdges.push(ce);
       notifyChange();
     }
   }

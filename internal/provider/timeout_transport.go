@@ -2,11 +2,27 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"sync"
 	"time"
 )
+
+// attemptTimeoutError 标记「per-attempt 超时」——由 timeoutTransport 注入的
+// deadline 触发，且触发时调用方 ctx 仍存活。它与调用方主动取消/deadline
+// （context.Canceled / 裸 context.DeadlineExceeded，均为 RetryFatal）区分：
+// attemptTimeoutError 属瞬时故障，retry 层按 RetryWithBackoff 重连。
+type attemptTimeoutError struct {
+	Timeout time.Duration
+	Err     error
+}
+
+func (e *attemptTimeoutError) Error() string {
+	return "attempt timeout after " + e.Timeout.String() + ": " + e.Err.Error()
+}
+
+func (e *attemptTimeoutError) Unwrap() error { return e.Err }
 
 // timeoutTransport 在 transport 层为请求添加超时控制。
 //
@@ -47,6 +63,11 @@ func (t *timeoutTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	resp, err := t.base.RoundTrip(req.WithContext(ctx))
 	if err != nil {
 		cancel()
+		// 调用方 ctx 已出错（用户取消/调用方 deadline）：原样上抛，保持 fatal。
+		// 仅当「我们的 per-attempt deadline」单独触发时才标记为可重试的 attemptTimeoutError。
+		if req.Context().Err() == nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, &attemptTimeoutError{Timeout: t.timeout, Err: err}
+		}
 		return nil, err
 	}
 	if resp.Body == nil {

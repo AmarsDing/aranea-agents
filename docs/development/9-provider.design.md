@@ -1016,12 +1016,13 @@ func ModelSupportsFileAttachments(ctx context.Context, catalog biz.TeamModelCata
 
 ### 7.6 HTTP Transport 链
 
-文件：`internal/provider/roundtrip.go`、`rate_limit_transport.go`、`retry_transport.go`、`circuit_breaker_transport.go`
+文件：`internal/provider/roundtrip.go`、`rate_limit_transport.go`、`retry_transport.go`、`circuit_breaker_transport.go`、`timeout_transport.go`、`retry_classifier.go`
 
 Transport 装饰链（按需启用）：
 
 ```
 http.DefaultTransport (或 rt.HTTP.Transport)
+    ↓ newTimeoutTransport (若 rt.HTTP.Timeout > 0；为每次 attempt 注入 deadline，防止无限挂起)
     ↓ wrapRateLimitTransport (若 rate_limit_rpm > 0)
     ↓ wrapRetryTransport (若 retry_max_attempts != 0；T1.2: -1=无限, 0=禁用, >0=有限)
     ↓ wrapCircuitBreakerTransport (若 circuit_breaker_enabled)
@@ -1034,6 +1035,12 @@ http.DefaultTransport (或 rt.HTTP.Transport)
 > - 新增 `RetryCallback` 类型：`func(req *http.Request, attempt, maxRetries int, err error, delay time.Duration)`
 > - 回调在 backoff sleep 前触发，由 `runtime.TurnDeps.RoundTripForSession(sessionID)` 注入，发布 `llm_retry` Envelope 到 chat channel
 > - 分层合规：`provider` 包不导入 `event` 包，回调由 runtime 层桥接事件发布
+>
+> **超时错误分类（2026-07-25）**：
+> - `timeoutTransport` 触发 per-attempt 超时时返回 `attemptTimeoutError`（包装 `context.DeadlineExceeded`），`classifyError` 判定为 `RetryWithBackoff`——挂起重连属瞬时故障
+> - 调用方主动取消/调用方 deadline（裸 `context.Canceled` / `context.DeadlineExceeded`）仍判定 `RetryFatal`，不重试
+> - 判别顺序：`attemptTimeoutError` 必须先于 `context.Canceled/DeadlineExceeded` 检查（其 Unwrap 链含 `DeadlineExceeded`）
+> - 前端配套：`llm_retry` notice → `stores/chat/llmRetryStore` → `LlmRetryBanner` 重连横幅；流恢复（`step.streaming`/`turn.started`）或终态时清除
 
 ---
 

@@ -427,9 +427,9 @@ func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID 
 				// approved 必须终止图（__end__）；映射到 finish 会让 critic
 				// 节点自循环，图永远不结束。approved_forced（迭代上限兜底
 				// 收敛）同样终止图，仅作观测区分。
-				"approved": biz.EndNodeID,
+				"approved":                         biz.EndNodeID,
 				biz.CriticLoopResultApprovedForced: biz.EndNodeID,
-				"retry":    entry,
+				"retry":                            entry,
 			},
 		})
 	}

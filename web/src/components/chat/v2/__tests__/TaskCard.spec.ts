@@ -25,13 +25,14 @@ function mkTask(over: Partial<Task> = {}): Task {
 describe('TaskCard lazy hydration states', () => {
   beforeEach(() => setActivePinia(createPinia()));
 
-  it('collapsed (!hydrated): renders user panel + meta-bar, zero execution DOM', () => {
+  it('collapsed (!hydrated): renders user panel + header badge/duration, zero execution DOM', () => {
     const wrapper = mount(TaskCard, { props: { task: mkTask(), hydrated: false } });
     // 用户指令面板原样
     expect(wrapper.find('.task-user-panel__text').text()).toBe('帮我写一份季度总结');
-    // meta-bar：状态徽章 + 耗时
-    expect(wrapper.find('.task-meta-bar').exists()).toBe(true);
-    expect(wrapper.find('.task-meta-bar__duration').text()).toContain('1m30s');
+    // 2026-07-25：状态徽章 + 耗时移至用户面板头部（原 meta-bar 移除）
+    expect(wrapper.find('.task-user-panel__badge').exists()).toBe(true);
+    expect(wrapper.find('.task-user-panel__duration').text()).toContain('1m30s');
+    expect(wrapper.find('.task-meta-bar').exists()).toBe(false);
     // 零执行过程 DOM
     expect(wrapper.find('.turn-list').exists()).toBe(false);
     expect(wrapper.find('.task-card__collapse-btn').exists()).toBe(false);
@@ -50,7 +51,7 @@ describe('TaskCard lazy hydration states', () => {
     expect(wrapper.emitted('hydrate')).toBeUndefined();
   });
 
-  it('loading state renders shimmer skeleton instead of meta-bar', () => {
+  it('loading state renders shimmer skeleton (header badge stays in user panel)', () => {
     const wrapper = mount(TaskCard, {
       props: { task: mkTask(), hydrated: false, hydrationState: 'loading' },
     });
@@ -79,9 +80,12 @@ describe('TaskCard lazy hydration states', () => {
     expect(wrapper.emitted('toggle-collapse')?.length).toBe(1);
   });
 
-  it('hydrated + collapsed: meta-bar again, click emits toggle-collapse (no refetch)', async () => {
+  it('hydrated + collapsed: header badge again (no meta-bar), click emits toggle-collapse (no refetch)', async () => {
     const wrapper = mount(TaskCard, { props: { task: mkTask(), hydrated: true, collapsed: true } });
-    expect(wrapper.find('.task-meta-bar').exists()).toBe(true);
+    // 2026-07-25：徽章+耗时在头部，不再有独立 meta-bar
+    expect(wrapper.find('.task-meta-bar').exists()).toBe(false);
+    expect(wrapper.find('.task-user-panel__badge').exists()).toBe(true);
+    expect(wrapper.find('.task-user-panel__duration').text()).toContain('1m30s');
     await wrapper.find('.task-card').trigger('click');
     expect(wrapper.emitted('toggle-collapse')?.length).toBe(1);
     expect(wrapper.emitted('hydrate')).toBeUndefined();

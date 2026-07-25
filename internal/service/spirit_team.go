@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	stderrors "errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -723,9 +724,17 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	// corresponds to one user input; system-push Turns are continuation Turns
 	// on the same Task).
 	parentTaskID := s.resolveLatestUserTaskID(ctx, spiritSessionID)
+	// 2026-07-25 Fix 3 诚实化：触发文本由真实完成/失败计数与失败简报动态
+	// 构建 —— 存在失败团队时不得声称「所有团队已完成」，否则 LLM 会幻觉出
+	// 成功报告（19:29 根因链末环）。
+	var failures []biz.TeamFailureBrief
+	if result.FailedTeams > 0 {
+		failures = s.team.SpiritUC.ListFailedTeamBriefs(ctx, spiritSessionID)
+	}
+	trigger := biz.BuildSynthesisSummaryTrigger(result.TotalTeams, result.CompletedTeams, result.FailedTeams, failures)
 	if _, err := s.turnGateway.ExecuteTurn(ctx, biz.TurnInput{
 		SessionID:    spiritSessionID,
-		Content:      synthesisSummaryTrigger,
+		Content:      trigger,
 		ParentTaskID: parentTaskID,
 	}); err != nil {
 		s.lg.Warn("all teams completed: failed to trigger Spirit synthesis turn",
@@ -733,7 +742,7 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 			loggateway.Str("spirit_session_id", spiritSessionID),
 			loggateway.Err(err),
 		)
-		s.publishAllTeamsCompletedFallbackNotice(ctx, spiritSessionID, parentTaskID)
+		s.publishAllTeamsCompletedFallbackNotice(ctx, spiritSessionID, parentTaskID, result.CompletedTeams, result.FailedTeams)
 		return
 	}
 	s.lg.Info("all teams completed: triggered Spirit synthesis turn",
@@ -746,30 +755,24 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	)
 }
 
-// synthesisSummaryTrigger is the system-push message injected into the Spirit
-// session when all teams complete. It asks the Spirit LLM to produce the final
-// summary report in a fixed Markdown structure from team results already in
-// the session context. The LLM reply (a normal reply step, persisted and
-// refresh-safe) IS the summary report — there is no dedicated report UI.
-//
-// The trigger text is not rendered as a user bubble (the Turn attaches to the
-// parent Task as a continuation Turn), so it can be verbose.
-const synthesisSummaryTrigger = "所有团队已完成。请基于会话中各团队的执行结果，输出最终任务总结报告（Markdown 格式），严格按以下结构：\n" +
-	"## 任务总结\n" +
-	"（一段话概述用户目标与整体完成情况）\n" +
-	"## 各团队结果\n" +
-	"（逐团队列出：团队名称、承担任务、完成状态、核心结论；失败团队需说明失败原因）\n" +
-	"## 综合结论\n" +
-	"（跨团队的核心发现、结论对比与最终答案）\n" +
-	"## 建议与后续行动\n" +
-	"（如无建议可省略本节）"
+// The synthesis trigger text is built by biz.BuildSynthesisSummaryTrigger
+// (2026-07-25 Fix 3): all-completed sessions get the standard structure;
+// sessions with failed teams get an honest variant carrying the real counts
+// and each failed team's reason + last reply (its unresolved questions).
+// The LLM reply (a normal reply step, persisted and refresh-safe) IS the
+// summary report — there is no dedicated report UI. The trigger text is not
+// rendered as a user bubble (the Turn attaches to the parent Task as a
+// continuation Turn), so it can be verbose.
 
-// publishAllTeamsCompletedFallbackNotice publishes the "所有团队已完成"
-// notice when the summary turn could not be triggered (the Spirit LLM reply
-// is the normal completion signal; without it the user would see nothing).
-// The notice must attach to the latest user Task — notice events that cannot
-// attach to a task are not rendered by the frontend (hard constraint).
-func (s *TeamStarter) publishAllTeamsCompletedFallbackNotice(ctx context.Context, spiritSessionID, parentTaskID string) {
+// publishAllTeamsCompletedFallbackNotice publishes the terminal notice when
+// the summary turn could not be triggered (the Spirit LLM reply is the
+// normal completion signal; without it the user would see nothing). The
+// notice must be honest (2026-07-25 Fix 3): failures downgrade it to a
+// warning with the real counts — a "所有团队已完成" success notice while
+// teams failed repeats the 19:29 lie. The notice must attach to the latest
+// user Task — notice events that cannot attach to a task are not rendered
+// by the frontend (hard constraint).
+func (s *TeamStarter) publishAllTeamsCompletedFallbackNotice(ctx context.Context, spiritSessionID, parentTaskID string, completed, failed int) {
 	if !s.v2EventReady() {
 		return
 	}
@@ -781,6 +784,12 @@ func (s *TeamStarter) publishAllTeamsCompletedFallbackNotice(ctx context.Context
 			loggateway.Str("spirit_session_id", spiritSessionID),
 		)
 	}
+	content := "所有团队已完成"
+	noticeType := "success"
+	if failed > 0 {
+		content = fmt.Sprintf("团队执行结束：%d 完成 / %d 失败", completed, failed)
+		noticeType = "warning"
+	}
 	now := time.Now()
 	step := biz.Step{
 		ID:              uuid.NewString(),
@@ -788,8 +797,8 @@ func (s *TeamStarter) publishAllTeamsCompletedFallbackNotice(ctx context.Context
 		SpiritSessionID: spiritSessionID,
 		TaskID:          parentTaskID,
 		Kind:            biz.StepKindNotice,
-		NoticeType:      "success",
-		Content:         "所有团队已完成",
+		NoticeType:      noticeType,
+		Content:         content,
 		Status:          biz.StepStatusCompleted,
 		StartedAt:       now,
 		CompletedAt:     &now,
@@ -989,6 +998,16 @@ func (a *SpiritTeamAssembler) InjectUpstreamDeliverables(ctx context.Context, sp
 		SpiritSessionID: spiritSessionID,
 		DependsOn:       dependsOn,
 	})
+}
+
+// BuildTeamTurnInput composes a DAG team's first-turn input (upstream prefix
+// + task description + mandatory delivery protocol, 2026-07-25 Fix 2b). Thin
+// passthrough to the biz layer.
+func (a *SpiritTeamAssembler) BuildTeamTurnInput(ctx context.Context, team biz.Team) string {
+	if a.spiritUC == nil {
+		return team.TaskDescription
+	}
+	return a.spiritUC.BuildTeamTurnInput(ctx, team)
 }
 
 func (a *SpiritTeamAssembler) ListAllTeams(ctx context.Context, spiritSessionID string) ([]biz.Team, error) {

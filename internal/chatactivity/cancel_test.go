@@ -131,6 +131,10 @@ func (s *stubStepReader) ListStepsBySession(_ context.Context, _ string) ([]biz.
 	return s.steps, nil
 }
 
+func (s *stubStepReader) ListStepsBySessionPaged(_ context.Context, _ string, _ biz.StepListOptions) ([]biz.Step, bool, error) {
+	return s.steps, false, nil
+}
+
 func (s *stubStepReader) ListStepsBySpiritSession(_ context.Context, _ string) ([]biz.Step, error) {
 	return s.steps, nil
 }

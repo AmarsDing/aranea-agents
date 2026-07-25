@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -102,6 +104,7 @@ type stubSpiritTeamController struct {
 	completedResult         biz.AllTeamsCompletedResult
 	hasRealDeliverable      bool
 	hasRealDeliverableErr   error
+	failureBriefs           []biz.TeamFailureBrief
 }
 
 func (s *stubSpiritTeamController) CancelTimeoutTimer(_ string) {}
@@ -115,6 +118,9 @@ func (s *stubSpiritTeamController) ScheduleDependentTeams(_ context.Context, _ s
 }
 func (s *stubSpiritTeamController) HasRealDeliverable(_ context.Context, _ biz.Team) (bool, error) {
 	return s.hasRealDeliverable, s.hasRealDeliverableErr
+}
+func (s *stubSpiritTeamController) ListFailedTeamBriefs(_ context.Context, _ string) []biz.TeamFailureBrief {
+	return s.failureBriefs
 }
 func (s *stubSpiritTeamController) CheckAllTeamsCompleted(_ context.Context, _ string) biz.AllTeamsCompletedResult {
 	return s.completedResult
@@ -590,5 +596,148 @@ func TestHandleTeamTurnResult_CompletedWithRealDeliverable_StaysCompleted(t *tes
 	}
 	if !completedFound {
 		t.Errorf("no TeamStageCompletedEvent published for a team with a real deliverable")
+	}
+}
+
+// ── 2026-07-25 Fix 3 收尾报告诚实化 ─────────────────────────────────────────
+// 19:29 根因链末环：存在失败团队时，注入 Spirit 会话的总结触发文本仍声称
+// 「所有团队已完成」，LLM 据此幻觉出成功报告。触发文本必须由真实完成/失败
+// 计数与失败简报动态构建；兜底通知同样不得谎报。
+
+// capturingTurnGateway captures the TurnInput injected by checkAllTeamsCompleted.
+type capturingTurnGateway struct {
+	mu     sync.Mutex
+	inputs []biz.TurnInput
+	err    error
+}
+
+func (g *capturingTurnGateway) ExecuteTurn(_ context.Context, in biz.TurnInput) (biz.TurnResult, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.inputs = append(g.inputs, in)
+	return biz.TurnResult{}, g.err
+}
+func (g *capturingTurnGateway) RunNativeTurn(_ context.Context, _ biz.TurnInput) (biz.ChatMessage, biz.ChatMessage, error) {
+	return biz.ChatMessage{}, biz.ChatMessage{}, nil
+}
+func (g *capturingTurnGateway) RunNativeTurnWithOutcome(_ context.Context, _ biz.TurnInput) (biz.TurnResult, error) {
+	return biz.TurnResult{}, nil
+}
+func (g *capturingTurnGateway) HasActiveRun(_ string) bool                        { return false }
+func (g *capturingTurnGateway) CancelRun(_ context.Context, _ string) bool        { return false }
+func (g *capturingTurnGateway) SetRunStatus(_ context.Context, _, _, _, _ string) {}
+func (g *capturingTurnGateway) LastPendingMessageID(_ string) string              { return "" }
+
+func (g *capturingTurnGateway) snapshot() []biz.TurnInput {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	out := make([]biz.TurnInput, len(g.inputs))
+	copy(out, g.inputs)
+	return out
+}
+
+func newSynthesisStarter(controller *stubSpiritTeamController, gw *capturingTurnGateway, eventBus *capturingEventBus) *TeamStarter {
+	return &TeamStarter{
+		team:        TeamOrchestrationDeps{SpiritUC: controller},
+		eventBus:    eventBus,
+		turnGateway: gw,
+		lg:          loggateway.NewNoop(),
+	}
+}
+
+// 存在失败团队 → 注入的总结触发文本必须诚实：不得声称「所有团队已完成」，
+// 必须携带失败团队简报（名称/原因/遗留疑问）。
+func TestCheckAllTeamsCompleted_WithFailures_InjectsHonestTrigger(t *testing.T) {
+	controller := &stubSpiritTeamController{
+		completedResult: biz.AllTeamsCompletedResult{
+			AllDone: true, TeamIDs: []string{"t1", "t2"},
+			TotalTeams: 2, CompletedTeams: 1, FailedTeams: 1,
+		},
+		failureBriefs: []biz.TeamFailureBrief{{
+			TeamName:  "数据采集团队",
+			TaskName:  "采集竞品价格",
+			Reason:    "团队未通过 set_deliverable 提交真实交付物",
+			LastReply: "需要您澄清：目标竞品名单？",
+		}},
+	}
+	gw := &capturingTurnGateway{}
+	s := newSynthesisStarter(controller, gw, &capturingEventBus{})
+
+	s.checkAllTeamsCompleted(context.Background(), "sp1")
+
+	inputs := gw.snapshot()
+	if len(inputs) != 1 {
+		t.Fatalf("ExecuteTurn called %d times, want 1 (synthesis turn)", len(inputs))
+	}
+	content := inputs[0].Content
+	if strings.Contains(content, "所有团队已完成") {
+		t.Fatalf("synthesis trigger lies when failures exist, got:\n%s", content)
+	}
+	for _, want := range []string{"数据采集团队", "需要您澄清：目标竞品名单？", "## 未解决问题"} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("honest trigger missing %q, got:\n%s", want, content)
+		}
+	}
+}
+
+// 全部完成 → 触发文本保留成功结构。
+func TestCheckAllTeamsCompleted_AllCompleted_InjectsSuccessTrigger(t *testing.T) {
+	controller := &stubSpiritTeamController{
+		completedResult: biz.AllTeamsCompletedResult{
+			AllDone: true, TeamIDs: []string{"t1"},
+			TotalTeams: 1, CompletedTeams: 1,
+		},
+	}
+	gw := &capturingTurnGateway{}
+	s := newSynthesisStarter(controller, gw, &capturingEventBus{})
+
+	s.checkAllTeamsCompleted(context.Background(), "sp1")
+
+	inputs := gw.snapshot()
+	if len(inputs) != 1 {
+		t.Fatalf("ExecuteTurn called %d times, want 1", len(inputs))
+	}
+	content := inputs[0].Content
+	if !strings.Contains(content, "所有团队已完成") {
+		t.Fatalf("all-completed trigger should keep the success opening, got:\n%s", content)
+	}
+	if strings.Contains(content, "## 未解决问题") {
+		t.Fatalf("success trigger must not demand an unresolved-questions section, got:\n%s", content)
+	}
+}
+
+// 总结 turn 触发失败 → 兜底通知同样诚实：warning 级别 + 真实完成/失败计数，
+// 不得发布「所有团队已完成」成功通知。
+func TestCheckAllTeamsCompleted_TurnFails_PublishesHonestFallbackNotice(t *testing.T) {
+	controller := &stubSpiritTeamController{
+		completedResult: biz.AllTeamsCompletedResult{
+			AllDone: true, TeamIDs: []string{"t1", "t2"},
+			TotalTeams: 2, CompletedTeams: 1, FailedTeams: 1,
+		},
+	}
+	gw := &capturingTurnGateway{err: errors.New("turn gateway down")}
+	eventBus := &capturingEventBus{}
+	s := newSynthesisStarter(controller, gw, eventBus)
+
+	s.checkAllTeamsCompleted(context.Background(), "sp1")
+
+	var notice *biz.Step
+	for _, ev := range eventBus.snapshot() {
+		if stepEv, ok := ev.(*biz.StepCreatedEvent); ok && stepEv.Step.Kind == biz.StepKindNotice {
+			s := stepEv.Step
+			notice = &s
+		}
+	}
+	if notice == nil {
+		t.Fatal("no fallback notice published when the synthesis turn fails")
+	}
+	if strings.Contains(notice.Content, "所有团队已完成") {
+		t.Fatalf("fallback notice lies when failures exist, got %q", notice.Content)
+	}
+	if !strings.Contains(notice.Content, "1") {
+		t.Fatalf("fallback notice should carry truthful counts, got %q", notice.Content)
+	}
+	if notice.NoticeType != "warning" {
+		t.Fatalf("fallback notice type = %q, want warning when failures exist", notice.NoticeType)
 	}
 }

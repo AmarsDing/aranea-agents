@@ -135,43 +135,53 @@
           :disabled="!isDefaultSort"
           @end="onDragEnd"
         >
-          <template #item="{ element: graph }">
+          <template #item="{ element: graph, index }">
             <q-card
               flat
-              :class="['graph-card', { 'is-dark': isDark, 'graph-card--selected': selectedGraphId === graph.id }]"
+              :class="[
+                'graph-card',
+                `graph-card--status-${cardStatus(graph)}`,
+                { 'is-dark': isDark, 'graph-card--selected': selectedGraphId === graph.id },
+              ]"
+              :style="{ animationDelay: `${Math.min(index, 12) * 30}ms` }"
               @click="selectGraph(graph.id)"
               @contextmenu="onCardContextMenu($event, graph)"
             >
               <div class="graph-card__inner">
                 <div class="row items-center justify-between no-wrap">
                   <h3 class="graph-card__name col min-width-0 ellipsis">{{ graph.name }}</h3>
-                  <span class="graph-card__time">{{ relativeTime(graph.updatedAt) }}</span>
+                  <span :class="['graph-card__status', `graph-card__status--${cardStatus(graph)}`]">
+                    <i class="graph-card__status-dot" />{{ t(GRAPH_CARD_STATUS_LABEL_KEYS[cardStatus(graph)]) }}
+                  </span>
                 </div>
-                <p v-if="graph.description" class="graph-card__desc ellipsis">{{ graph.description }}</p>
-                <div class="graph-card__chips">
-                  <template v-for="(count, type) in countNodesByType(graph)" :key="type">
-                    <span
-                      v-if="count"
-                      class="graph-card__chip"
-                      :style="{
-                        borderColor: nodeTypeBorderColor(type as string),
-                        color: nodeTypeBorderColor(type as string),
-                      }"
-                      >{{ (NODE_TYPE_EMOJI as any)[type] }}×{{ count }}</span
-                    >
-                  </template>
+                <div v-if="(graph.nodes?.length ?? 0) > 0" class="graph-card__chips">
+                  <span
+                    v-for="chip in compositionChips(graph).chips"
+                    :key="chip.type"
+                    class="graph-card__chip"
+                    :title="t(NODE_TYPE_STYLES[chip.type as NodeType]?.labelKey ?? '')"
+                  >
+                    <i class="graph-card__chip-dot" :style="{ background: nodeTypeBorderColor(chip.type) }" />{{
+                      chip.count
+                    }}
+                  </span>
+                  <span
+                    v-if="compositionChips(graph).overflow > 0"
+                    class="graph-card__chip graph-card__chip--overflow"
+                    >+{{ compositionChips(graph).overflow }}</span
+                  >
                 </div>
-                <div class="row items-center justify-between no-wrap">
-                  <div class="graph-card__tags">
-                    <span v-if="graph.executionEngine === 'dag'" class="graph-card__tag">{{
-                      t('graphs.cardDAG')
-                    }}</span>
-                    <span v-else class="graph-card__tag">{{ t('graphs.cardBSP') }}</span>
-                    <span v-if="graph.enableCheckpoint" class="graph-card__tag">{{ t('graphs.checkpoint') }}</span>
-                  </div>
-                  <span class="graph-card__summary"
-                    >{{ graph.nodes?.length ?? 0 }}{{ t('graphs.nodesUnit') }}·{{ graph.edges?.length ?? 0
-                    }}{{ t('graphs.edgesUnit') }}</span
+                <p :class="['graph-card__desc', { 'graph-card__desc--empty': !graph.description }]">
+                  {{ graph.description || t('graphs.noDescription') }}
+                </p>
+                <div class="graph-card__meta">
+                  <span>v{{ graph.version || 0 }}</span>
+                  <span>{{ relativeTime(graph.updatedAt) }}</span>
+                  <span>{{ graph.executionEngine === 'dag' ? t('graphs.cardDAG') : t('graphs.cardBSP') }}</span>
+                  <span v-if="graph.enableCheckpoint">{{ t('graphs.checkpoint') }}</span>
+                  <span class="graph-card__meta-total"
+                    >{{ graph.nodes?.length ?? 0 }}{{ t('graphs.nodesUnit') }}
+                    {{ (graph.edges?.length ?? 0) + (graph.conditionalEdges?.length ?? 0) }}{{ t('graphs.edgesUnit') }}</span
                   >
                 </div>
               </div>
@@ -205,11 +215,17 @@
         :is-dark="isDark"
         :node-counts="selectedGraphNodeCounts"
         :node-type-border-color="nodeTypeBorderColor"
+        :executions="selectedExecutions"
+        :executions-has-more="selectedExecutionsHasMore"
         @close="selectGraph('')"
         @edit="openEditor"
         @run="openRunDialog"
         @duplicate="duplicateGraph"
+        @export="exportGraphJson"
         @delete="confirmRemoveGraph"
+        @locate-node="locateNodeInEditor"
+        @manage-schema="manageSchemaInEditor"
+        @view-executions="viewSelectedExecutions"
       />
     </div>
 
@@ -295,7 +311,9 @@ import GraphRunDialog from '../components/graph/GraphRunDialog.vue';
 import GraphDetailPanel from '../components/graph/GraphDetailPanel.vue';
 import GraphCardContextMenu from '../components/graph/GraphCardContextMenu.vue';
 import { useGraphsPage } from '../features/graph/useGraphsPage';
-import type { GraphDefinition } from '../features/graph/types';
+import type { GraphDefinition, NodeType } from '../features/graph/types';
+import { NODE_TYPE_STYLES } from '../features/graph/types';
+import { GRAPH_CARD_STATUS_LABEL_KEYS } from '../features/graph/utils';
 
 const { t } = useI18n();
 
@@ -313,9 +331,10 @@ const {
   sortOrder,
   SORT_OPTIONS,
   ENGINE_FILTER_OPTIONS,
-  NODE_TYPE_EMOJI,
   nodeTypeBorderColor,
   countNodesByType,
+  cardStatus,
+  compositionChips,
   relativeTime,
   runDialogOpen,
   runDialogGraph,
@@ -324,6 +343,12 @@ const {
   runLoading,
   selectedGraphId,
   selectedGraph,
+  selectedExecutions,
+  selectedExecutionsHasMore,
+  exportGraphJson,
+  locateNodeInEditor,
+  manageSchemaInEditor,
+  viewSelectedExecutions,
   ctxMenuVisible,
   ctxMenuX,
   ctxMenuY,

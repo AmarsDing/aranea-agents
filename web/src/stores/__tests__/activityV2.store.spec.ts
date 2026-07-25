@@ -76,6 +76,37 @@ describe('useChatActivityStore', () => {
     expect(s.tasks.get('t1')?.Status).toBe('completed');
   });
 
+  // 2026-07-25 回归：Go 零值 time.Time 序列化为 "0001-01-01T00:00:00Z"（truthy），
+  // 不能覆盖已有的 CreatedAt/UpdatedAt（否则任务创建时间显示为 01-01 08:05）。
+  it('upsertTask treats Go zero-time as unset (preserves existing CreatedAt/UpdatedAt)', () => {
+    const s = useChatActivityStore();
+    s.upsertTask(
+      makeTask({
+        ID: 't1',
+        Version: 1,
+        Status: 'running',
+        CreatedAt: '2026-07-25T06:13:00Z',
+        UpdatedAt: '2026-07-25T06:13:00Z',
+      }),
+    );
+    // synthesis turn 的 task.completed 最小载荷（后端 terminalTask 修复前的形态）
+    s.upsertTask(
+      makeTask({
+        ID: 't1',
+        Version: 2,
+        Status: 'completed',
+        CreatedAt: '0001-01-01T00:00:00Z',
+        UpdatedAt: '0001-01-01T00:00:00Z',
+        CompletedAt: '2026-07-25T06:15:00Z',
+      }),
+    );
+    const task = s.tasks.get('t1');
+    expect(task?.Status).toBe('completed');
+    expect(task?.CreatedAt).toBe('2026-07-25T06:13:00Z');
+    expect(task?.UpdatedAt).toBe('2026-07-25T06:13:00Z');
+    expect(task?.CompletedAt).toBe('2026-07-25T06:15:00Z');
+  });
+
   it('upsertStep merges streaming content', () => {
     const s = useChatActivityStore();
     const step: Step = {

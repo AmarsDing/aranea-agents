@@ -159,8 +159,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRoute } from 'vue-router';
 import GraphNodePalette from '../components/graph/GraphNodePalette.vue';
 import GraphEditorCanvas from '../components/graph/GraphEditorCanvas.vue';
 import GraphPropertyPanel from '../components/graph/GraphPropertyPanel.vue';
@@ -244,6 +245,22 @@ function onLocateValidationNode(nodeId: string) {
   onSelectNode(nodeId);
   locateValidationNode(nodeId);
 }
+
+// R2-6：列表页详情面板「定位」跳转 —— 图加载完成后选中并聚光灯目标节点（一次性）
+const route = useRoute();
+let spotlightConsumed = false;
+watch(
+  () => graphDef.nodes?.length ?? 0,
+  (len) => {
+    if (spotlightConsumed || len === 0) return;
+    const target = route.query.spotlight;
+    if (typeof target === 'string' && target) {
+      spotlightConsumed = true;
+      onSelectNode(target);
+      locateValidationNode(target);
+    }
+  },
+);
 
 function handleFocusPropertyPanel(nodeId: string) {
   onFocusPropertyPanel(nodeId, propertyPanelRef.value?.$el ?? null);

@@ -191,6 +191,10 @@ type ChatOrchestrator struct {
 	// for clarification submission. Key: sessionID.
 	pendingClarifications sync.Map // map[sessionID]pendingClarification
 
+	// resumeAwaitFn is a test seam for submitAwaitReply's restart-recovery
+	// branch. Nil in production → resumeAwaitAfterRestart.
+	resumeAwaitFn func(ctx context.Context, sessionID, reply, runID string) error
+
 	sweepStop chan struct{}
 }
 

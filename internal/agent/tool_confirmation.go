@@ -192,8 +192,8 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			Source:       biz.ToolInvocationSourceRuntime,
 			ToolCallID:   args.ToolCallID,
 		}, nil, h.ag, h.deps)
-	return nil, fmt.Errorf("%s: 用户拒绝了工具 \"%s\" 的执行。这是用户的明确决定，不是系统故障。禁止重试相同或等价的工具调用；请直接向用户说明该操作已被取消，并询问接下来如何处理。", errToolConfirmationRequired, toolKey)
-}
+		return nil, fmt.Errorf("%s: 用户拒绝了工具 \"%s\" 的执行。这是用户的明确决定，不是系统故障。禁止重试相同或等价的工具调用；请直接向用户说明该操作已被取消，并询问接下来如何处理。", errToolConfirmationRequired, toolKey)
+	}
 
 	recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
 		ToolKey:      toolKey,
