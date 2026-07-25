@@ -311,7 +311,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 66 | **P-ORCH.3** Agent 创建确认（EnsureAgent 复用 tool_confirmation 模式：ReplyFunc + ActivityEmitter） | P1 | ✅ 2026-07-18 |
 | 67 | **P-ORCH.4** 确认链路验证（ConfirmActivity RPC 复用 + session 状态流转 + 拒绝降级） | P1 | 🟡 单测覆盖，运行时端到端待验证 |
 | 68 | **P-ORCH.5** Allocate 两阶段并行化（Phase A 并行匹配 + Phase B 串行 factory） | P2 | ✅ 2026-07-18 |
-| 69 | **P-REPORT** 任务执行总结报告（ExecutionReportEnvelope → Step 持久化 + ExecutionReportCard 四板块 + 取消守卫 + LLM 降级） | P1 | ✅ 2026-07-22（运行时端到端待验证） |
+| 69 | **P-REPORT** 任务执行总结（2026-07-24 重构：移除报告卡片 UI，改为 system-push 触发精灵 LLM 输出 Markdown 总结回复 + 取消守卫 + CAS 防重 + 兜底 notice） | P1 | ✅ 2026-07-24（运行时端到端已验证） |
 
 ### T8 UI 树形重构（2026-07-01 新增）
 
@@ -612,56 +612,54 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 ---
 
-### P-REPORT 任务执行总结报告（Execution Report，2026-07-22）
+### P-REPORT 任务执行总结（2026-07-22 → 2026-07-24 重构）
 
-> **目标**：编排类任务执行完成（成功/部分失败/失败）后，精灵在聊天时间线给出结构化总结报告卡片（执行概览 + 智能分析结论 + 分步结果明细 + 产物交付物）；用户主动中断（存在 cancelled 团队）时不生成报告；LLM 结论生成失败时降级保留结构化板块。
-> **需求**：[1-chat.md §子模块：任务执行总结报告](./1-chat.md)
-> **设计**：[1-chat.design.md §B.10.17](./1-chat.design.md#b1017-任务执行总结报告execution-report落地设计2026-07-22)
+> **目标**：编排类任务全部执行完成（成功/部分失败/失败）后，精灵自动在聊天时间线给出任务总结；用户主动中断（存在 cancelled 团队）时不触发；同一编排只触发一次。
+> **需求**：[1-chat.md §子模块：任务执行总结](./1-chat.md)
+> **设计**：[1-chat.design.md §B.10.17](./1-chat.design.md#b1017-任务执行总结llm-总结回复落地设计2026-07-22-初版2026-07-24-重构)
+> **演进**：2026-07-22 初版为 ExecutionReportCard 报告卡片（信封 JSON → notice step → 四板块组件）；2026-07-24 与用户确认重构——总结不需要专门 UI，改为 `TeamStarter` 向精灵会话注入 `synthesisSummaryTrigger`（system-push），精灵以普通 reply step 输出四节结构 Markdown 总结。报告卡片全链路已移除（R4 全局清理）。
 
-#### 任务清单
+#### 任务清单（2026-07-24 重构后现状）
 
-- [x] biz 数据模型扩展：`TeamSynthesisResult` 增补 per-unit 运行统计字段；新增 `ExecutionOverview`；`SynthesisOutput` 新增 `Overview`/`Deliverables`；`SynthesizeResults` 统一装配 overview + deliverables
-- [x] biz 取消计数：`CheckAllTeamsCompleted` 将 cancelled 团队从 failed 中分离，`AllTeamsCompletedResult` 新增 `CancelledTeams`
-- [x] biz 端口：`SpiritTeamRunStatsReader`（批量读各团队最近 run 统计）+ `WithSpiritTeamRunStatsReader` 注入
-- [x] data：`TeamRunV2Repo.ListLatestRunStatsByTeams` 实现
-- [x] service 报告发布：`synthesisEventPublisher` 生成 `ExecutionReportEnvelope`（version/kind/content/strategy/degraded/overview/team_results/deliverables/synthesized_at）JSON 写入 `Step.Content`，以 `StepCreatedEvent`（Kind=notice，NoticeType=synthesis_completed）持久化——刷新后可恢复；TaskID 经 `resolveLatestUserTaskID` 挂到最近用户任务
-- [x] 取消守卫：`checkAllTeamsCompleted` 检测 `CancelledTeams > 0` 时跳过报告生成（用户主动中断不出报告）
-- [x] LLM 降级：结论生成失败时 `degraded=true` + 兜底文案，overview/team_results/deliverables 结构化板块完整保留
-- [x] 前端信封解析：`executionReport.ts`（`ExecutionReportEnvelope` 类型 + `parseExecutionReport` 防御式解析，非 JSON/错 kind 返回 null）
-- [x] 前端卡片：`ExecutionReportCard.vue` 四板块（头部：标题+状态 chip+完成单元/耗时；概览行：query+token；分析结论 markdown / 降级提示；分步结果明细、产物交付物默认折叠）
-- [x] 前端分支：`NoticeBlock.vue` 对 `synthesis_completed` + 合法信封渲染 `ExecutionReportCard`，解析失败回落默认 notice
-- [x] 前端清理：删除 spiritStore 旧 synthesis 死代码（`synthesisCompleted`/`synthesisResult`/`handleSynthesisCompleted`）与 `features/spirit/types.ts` legacy 类型
-- [x] i18n：zh-CN / en-US `chat.executionReport.*` 键
-- [x] 测试：biz `spirit_synthesis_report_test.go`（overview 装配/状态推导/取消计数/run stats enrich）；service `spirit_synthesis_report_test.go`（信封发布/取消守卫/降级）；前端 `ExecutionReportCard.spec.ts`（四板块渲染/状态映射/降级/空交付物/解析容错/NoticeBlock 分支）
+- [x] biz 取消计数：`CheckAllTeamsCompleted` 将 cancelled 团队从 failed 中分离，`AllTeamsCompletedResult.CancelledTeams`（2026-07-22 引入，保留）
+- [x] 取消守卫：`checkAllTeamsCompleted` 检测 `CancelledTeams > 0` 时跳过总结触发（用户主动中断不出总结）
+- [x] CAS 防重：`synthesisTriggered.LoadOrStore(spiritSessionID)` 仅放行一次；session 重建时 Delete 复位
+- [x] 总结触发：`synthesisSummaryTrigger` 常量（四节结构 prompt 契约）经 `turnGateway.ExecuteTurn` 注入精灵会话（system-push，不渲染用户气泡）；`ParentTaskID = resolveLatestUserTaskID` 附着最近用户任务
+- [x] 兜底通知：`ExecuteTurn` 失败时 `publishAllTeamsCompletedFallbackNotice` 发布直发 notice「所有团队已完成」（挂同一任务下）
+- [x] biz 清理：`SynthesisOutput` 移除 `Overview`/`Deliverables`/`Degraded`；删除 `SynthesisEventPublisher` 端口；`NewSynthesisUsecase` 构造简化
+- [x] service 清理：`SpiritSynthesisService` 移除 `synthesisEventPublisher`/`executionReportEnvelope` 与报告发布逻辑；`service.go` 移除失效 wire.Bind
+- [x] 前端清理：删除 `ExecutionReportCard.vue`、`executionReport.ts`、`chat.executionReport.*` i18n 键；`NoticeBlock.vue` 移除报告分支（统一默认 notice 渲染）；`useContextualLoadingMessage` 移除 `synthesis_completed` 映射；`CoreContainers.spec.ts` 移除报告用例
+- [x] 测试：service `spirit_team_synthesis_turn_test.go`（触发注入/cancelled 守卫/CAS 防重/兜底 notice/TaskID 回退）；biz `spirit_synthesis_report_test.go` 适配（run stats enrich/engine 错误传播/cancelled 计数）
 - [x] 全量验证：`go build ./...` exit 0 + `go test` 全过；前端 `pnpm lint` + `pnpm test` + `pnpm build` 全过
+- [x] 运行时端到端验证（2026-07-24）：发起编排任务 → 团队并行执行 → 精灵输出四节 Markdown 总结回复 → 刷新后总结在原位置还原
 - [x] 文档同步：`1-chat.md` 子模块需求 + `1-chat.design.md` §B.10.17 + 本块
 
-#### 改动文件清单
+#### 改动文件清单（2026-07-24 重构）
 
 | 文件 | 改动 |
 |------|------|
-| `internal/biz/spirit_synthesis.go` | `TeamSynthesisResult` 扩展 + `ExecutionOverview` + `SynthesisOutput.Overview/Deliverables` + `assembleOverview`/`assembleDeliverableItems` |
-| `internal/biz/spirit_team_usecase.go` | `AllTeamsCompletedResult.CancelledTeams`；`SpiritTeamRunStatsReader` 端口 + 注入 option |
-| `internal/data/team_run_v2_repo.go` | `ListLatestRunStatsByTeams` 批量读最近 run 统计 |
-| `internal/service/spirit_synthesis.go` | `synthesisEventPublisher`：信封 JSON → `StepCreatedEvent` 持久化 + LLM 降级路径 |
-| `internal/service/spirit_team.go` | 取消守卫（`CancelledTeams > 0` 跳过报告）；`resolveLatestUserTaskID` 提取复用 |
-| `cmd/admin/wire.go` / `wire_gen.go` | `NewSpiritSynthesisService`/`provideSpiritTeamUsecase` 新参数（seq/taskV2Reader/runStatsReader）接线 |
-| `web/src/features/chat/executionReport.ts` | 新建：信封类型 + `parseExecutionReport` |
-| `web/src/components/chat/ExecutionReportCard.vue` | 新建：四板块报告卡片 |
-| `web/src/components/chat/NoticeBlock.vue` | `synthesis_completed` + 合法信封 → 报告卡片分支 |
-| `web/src/stores/spirit/index.ts` | 删除旧 synthesis 死代码 |
-| `web/src/features/spirit/types.ts` | 删除 legacy synthesis 类型 |
-| `web/src/i18n/locales/zh-CN.ts` / `en-US.ts` | `chat.executionReport.*` |
-| `internal/biz/spirit_synthesis_report_test.go` / `internal/service/spirit_synthesis_report_test.go` | 后端单测 |
-| `web/src/components/chat/__tests__/ExecutionReportCard.spec.ts` | 前端单测 |
+| `internal/service/spirit_team.go` | 移除 synthesisSvc 依赖；新增 `synthesisSummaryTrigger` 常量 + 直接总结 turn 触发 + `publishAllTeamsCompletedFallbackNotice` |
+| `internal/biz/spirit_synthesis.go` | `SynthesisOutput` 移除 Overview/Deliverables/Degraded；删除 `SynthesisEventPublisher` 端口；构造简化 |
+| `internal/service/spirit_synthesis.go` | 移除 publisher/信封与报告发布逻辑；构造简化 |
+| `internal/service/service.go` | 移除失效 `wire.Bind`（synthesisResultService） |
+| `internal/service/spirit_team_synthesis_turn_test.go` | 新建：总结 turn 触发路径单测（取代 `spirit_synthesis_report_test.go` service 侧） |
+| `internal/biz/spirit_synthesis_report_test.go` | 适配：移除 overview/deliverables 装配断言，保留 run stats/cancelled 计数 |
+| `web/src/components/chat/ExecutionReportCard.vue` | 删除 |
+| `web/src/features/chat/executionReport.ts` | 删除 |
+| `web/src/components/chat/NoticeBlock.vue` | 移除报告卡片分支，统一默认 notice 渲染 |
+| `web/src/components/chat/v2/TaskCard.vue` | 注释更新（总结报告 = Spirit 总结 turn 的普通 reply，无专门 UI） |
+| `web/src/features/chat/composables/useContextualLoadingMessage.ts` | 移除 `synthesis_completed` 阶段映射 |
+| `web/src/i18n/locales/zh-CN.ts` / `en-US.ts` | 移除 `chat.executionReport.*` 键 |
+| `web/src/components/chat/__tests__/ExecutionReportCard.spec.ts` | 删除 |
+| `web/src/components/chat/v2/__tests__/CoreContainers.spec.ts` | 移除报告相关用例 |
 
 #### 验收标准
 
-- [x] 任务完成（成功/部分失败/失败）后时间线出现报告卡片，含执行概览（状态/完成单元数/耗时/token）、分析结论、分步明细、交付物
-- [x] 存在 cancelled 团队（用户主动中断）时不生成报告
-- [x] LLM 结论失败时卡片显示降级提示，结构化板块仍完整可见
-- [x] 报告以 Step 持久化，刷新页面后仍可见；解析失败回落默认 notice 渲染
-- [ ] **运行时端到端验证**（待用户执行）：发起编排任务 → 完成后查看报告卡片四板块展示
+- [x] 任务全部完成（成功/部分失败/失败）后，精灵输出四节结构 Markdown 总结回复（任务总结/各团队结果/综合结论/建议与后续行动）
+- [x] 存在 cancelled 团队（用户主动中断）时不触发总结
+- [x] 总结即普通 reply step 持久化，刷新页面后在原位置完整还原；无专门渲染组件
+- [x] 同一 spirit session 一次编排只触发一次总结（CAS）
+- [x] 总结触发注入失败时，时间线出现兜底「所有团队已完成」通知
 
 ---
 
@@ -1439,3 +1437,60 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 - [x] `go test ./internal/agent/ -run TestDoomLoopDetector -count=1` 通过
 - [x] TDD 流程：失败测试 → 最小实现 → 回归测试
 - [x] 向后兼容：压缩策略与快照行为默认值不变
+
+---
+
+## 子模块：使命驱动的任务匹配与团队配方复用（Mission-Driven Matching）
+
+> **状态**：✅ 已实施（2026-07-25） | **需求**：[1-chat.md §子模块：使命驱动的任务匹配与团队配方复用](./1-chat.md)（MM.1-MM.4） | **设计**：[1-chat.design.md §B.10.21](./1-chat.design.md#b1021-使命驱动的任务匹配与团队配方复用2026-07-25-评审版) | **实施计划**：docs/superpowers/plans/2026-07-25-mission-driven-matching.md
+
+### MM-D.1 模块定位
+
+将编排匹配锚点从"单次任务文本"迁移到"使命（Mission）+ 领域路径（domain_path）+ 履历"，修复同类任务重复创建 Agent/Team 的四条根因（R1 Factory key 文本哈希 / R2 findReusableTeam 仅防重试 / R3 OrchestrationCache write-only / R4 中文任务无匹配通道）。改动全部集中在后端 agent/biz/data 三层，无前端改动。
+
+### MM-D.2 代码锚点
+
+| 文件 | 职责 | 状态 |
+|------|------|------|
+| `internal/agent/domain_lexicon.go` | 领域词表常量 + `NormalizeDomainPath` 归一化（新建） | ✅ |
+| `internal/agent/domain_lexicon_test.go` | 词表归一化单测（新建） | ✅ |
+| `internal/biz/task_plan.go:105` | `biz.SubTask` 新增 `DomainPath` 字段 | ✅ |
+| `internal/biz/agent_capability.go:12` | `AgentCapability` 新增 `Mission`/`DomainPath` | ✅ |
+| `internal/biz/agent_factory.go:37` | `TaskProfile` 新增 `DomainPath`/`Mission` | ✅ |
+| `internal/biz/spirit_orchestration_cache.go:23` | `OrchestrationCacheEntry` 新增 `DomainPath`；新增 `BestRecipeForDomain`/`RecordDomainRecipe` | ✅ |
+| `internal/biz/agent_types.go:148` | `biz.Agent` 新增 `MissionStatement`/`DomainPath` | ✅ |
+| `internal/data/ent/schema/agent.go` | agents 表新增 `mission_statement`/`domain_path` 列 | ✅ |
+| `internal/data/sql/migrations/20261110_agent_mission_domain.sql` | DDL 迁移（幂等加列，新建） | ✅ |
+| `internal/data/ddl_migration_registry.go` | 注册 20261110 迁移 | ✅ |
+| `internal/data/agent_repo.go` | 新列读写映射（ent→biz / create→ent） | ✅ |
+| `internal/agent/task_planner_impl.go` | `buildDecompositionPrompt` 增加 domain_path 输出约束；`parseDecompositionOutput` 解析+归一化 | ✅ |
+| `internal/agent/agent_allocator_impl.go` + `agent_allocator_domain.go` | `matchSubTask`/`matchWholePlan` 管线重构：新增 L0 domain_recipe / L1 mission 层 | ✅ |
+| `internal/agent/agent_factory.go` | `buildDynamicAgentKey` 域派生 key；生成 prompt 输出 mission/domain_path；创建前同域相似复用 | ✅ |
+| `internal/agent/task_orchestrator_impl.go` | `learnFromOrchestration` 域派生配方记录 + AgentPerformance TaskType 语义扩展 | ✅ |
+
+### MM-D.3 任务清单
+
+| # | 任务 | 依赖 | 状态 |
+|---|------|------|------|
+| T1 | 领域词表 `domain_lexicon.go` + 单测（TDD） | — | ✅ |
+| T2 | 数据模型：Ent schema 加列 → DDL 迁移注册 → biz 字段 → repo 映射 | — | ✅ |
+| T3 | OrchestrationCache：`DomainPath` 字段 + `BestRecipeForDomain` + 单测 | T1 | ✅ |
+| T4 | TaskPlanner：prompt 约束 + 解析 domain_path（顺带，零额外 LLM 调用） | T1 | ✅ |
+| T5 | Allocator 管线：L0 domain_recipe + L1 mission 层插入 matchSubTask/matchWholePlan | T2,T3,T4 | ✅ |
+| T6 | AgentFactory：key 修正 + definition 解析 mission/domain_path + 同域复用检查 | T1,T2 | ✅ |
+| T7 | 学习闭环：learnFromOrchestration 域派生 taskPattern + AgentPerformance TaskType 语义扩展 | T1,T3 | ✅ |
+| T8 | 全量验证：build + internal/agent/biz/data 测试 + 回归（DomainPath 空走旧管线） | T1-T7 | ✅ |
+
+### MM-D.4 验收标准
+
+- [ ] 同一会话先后发送"写一首关于春天的诗"和"再写一首秋天的诗"：第二次复用第一次的 Agent/配方，不新建 Agent
+- [ ] 全新领域任务（无候选）：factory 创建的新 Agent 落库时含非空 mission_statement 与 domain_path
+- [ ] embedder 未配置环境：匹配管线正常工作（降级路径），不报错
+- [ ] OrchestrationCache 命中时日志出现 `domain_recipe` 匹配层
+- [ ] 存量 Agent（无使命）参与匹配不崩溃、不阻塞编排
+- [ ] `go build ./...` 通过；`go test ./internal/agent/... ./internal/biz/... ./internal/data/...` 全部通过
+
+### MM-D.5 改动文件清单（预计）
+
+新建：`internal/agent/domain_lexicon.go`、`internal/agent/domain_lexicon_test.go`、`internal/agent/agent_allocator_domain.go`、`internal/agent/agent_allocator_domain_test.go`、`internal/agent/task_planner_domain_test.go`、`internal/agent/task_orchestrator_learn_test.go`、`internal/biz/spirit_orchestration_cache_test.go`、`internal/data/agent_mission_mapping_test.go`、`internal/data/sql/migrations/20261110_agent_mission_domain.sql`
+修改：`internal/biz/task_plan.go`、`internal/biz/agent_capability.go`、`internal/biz/agent_factory.go`、`internal/biz/agent_types.go`、`internal/biz/spirit_orchestration_cache.go`、`internal/data/ent/schema/agent.go`、`internal/data/ddl_migration_registry.go`、`internal/data/agent_repo.go`、`internal/agent/task_planner_impl.go`、`internal/agent/agent_allocator_impl.go`、`internal/agent/agent_factory.go`、`internal/agent/agent_factory_test.go`、`internal/agent/task_orchestrator_impl.go`、`internal/agent/agent_capability_builder.go`、`cmd/admin/wire.go`、`cmd/admin/wire_gen.go`

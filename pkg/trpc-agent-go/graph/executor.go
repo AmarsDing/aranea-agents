@@ -498,10 +498,11 @@ func (e *Executor) executeGraph(
 	}
 
 	var stepsExecuted int
+	var truncated bool
 	var err error
 	switch e.executionEngine {
 	case ExecutionEngineDAG:
-		stepsExecuted, err = e.runDagLoop(
+		stepsExecuted, truncated, err = e.runDagLoop(
 			ctx,
 			invocation,
 			execCtx,
@@ -510,7 +511,7 @@ func (e *Executor) executeGraph(
 			extInterrupt,
 		)
 	default:
-		stepsExecuted, err = e.runBspLoop(
+		stepsExecuted, truncated, err = e.runBspLoop(
 			ctx,
 			invocation,
 			execCtx,
@@ -522,8 +523,13 @@ func (e *Executor) executeGraph(
 	if err != nil {
 		return err
 	}
+	if truncated {
+		log.WarnfContext(ctx,
+			"Graph execution truncated at max steps ceiling (%d) after %d executed steps",
+			e.maxSteps, stepsExecuted)
+	}
 
-	if err := agent.EmitEvent(ctx, invocation, eventChan, e.buildCompletionEvent(execCtx, startTime, stepsExecuted)); err != nil {
+	if err := agent.EmitEvent(ctx, invocation, eventChan, e.buildCompletionEvent(execCtx, startTime, stepsExecuted, truncated)); err != nil {
 		log.WarnfContext(ctx, "Failed to emit graph completion event: %v", err)
 	}
 	return nil
@@ -1017,6 +1023,8 @@ func (e *Executor) buildExecutionContext(
 }
 
 // runBspLoop runs the BSP execution loop from the given start step.
+// truncated reports whether the loop stopped at the MaxSteps ceiling with
+// potential work still pending (as opposed to a natural no-tasks stop).
 func (e *Executor) runBspLoop(
 	ctx context.Context,
 	invocation *agent.Invocation,
@@ -1024,8 +1032,7 @@ func (e *Executor) runBspLoop(
 	checkpointConfig *map[string]any,
 	startStep int,
 	extInterrupt *externalInterruptWatcher,
-) (int, error) {
-	var stepsExecuted int
+) (stepsExecuted int, truncated bool, err error) {
 	for step := startStep; step < e.maxSteps; step++ {
 		stop, executed, err := e.runBspStep(
 			ctx,
@@ -1037,16 +1044,16 @@ func (e *Executor) runBspLoop(
 			extInterrupt,
 		)
 		if err != nil {
-			return stepsExecuted, err
+			return stepsExecuted, false, err
 		}
 		if stop {
-			break
+			return stepsExecuted, false, nil
 		}
 		if executed {
 			stepsExecuted++
 		}
 	}
-	return stepsExecuted, nil
+	return stepsExecuted, true, nil
 }
 
 func (e *Executor) runBspStep(
@@ -1601,10 +1608,12 @@ func (e *Executor) maybeCreateLoopCheckpoint(
 }
 
 // buildCompletionEvent prepares the completion event with a state snapshot.
+// truncated marks executions stopped at the MaxSteps ceiling with pending work.
 func (e *Executor) buildCompletionEvent(
 	execCtx *ExecutionContext,
 	startTime time.Time,
 	stepsExecuted int,
+	truncated bool,
 ) *event.Event {
 	// Take a deep snapshot of the final state under read lock.
 	// IMPORTANT: Skip volatile/non-serializable keys (e.g., Session, callbacks, exec context)
@@ -1622,6 +1631,7 @@ func (e *Executor) buildCompletionEvent(
 		)),
 		WithCompletionEventTotalSteps(stepsExecuted),
 		WithCompletionEventTotalDuration(time.Since(startTime)),
+		WithCompletionEventStepsTruncated(truncated),
 	)
 	return completionEvent
 }

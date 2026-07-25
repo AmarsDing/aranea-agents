@@ -328,8 +328,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	taskPlannerPort := provideTaskPlanner(taskPlanRepository, llmProviderModelUsecase, orchestrationCache, v2Bus, loggatewayLogger, systemSettingUsecase, sequencer)
 	allocationPlanRepository := data.NewAllocationPlanRepo(dataData, loggatewayLogger)
 	agentPerformanceRepository := data.NewAgentPerformanceRepo(dataData, loggatewayLogger)
-	agentFactory := provideAgentFactory(agentRepository, agentRepository, agentTemplateRepo, v2Bus, llmProviderModelUsecase, systemSettingUsecase, loggatewayLogger)
-	agentAllocatorPort := provideAgentAllocator(allocationPlanRepository, agentRepository, agentPerformanceRepository, llmProviderModelUsecase, v2Bus, multiProviderEmbedder, agentFactory, loggatewayLogger, systemSettingUsecase)
+	agentFactory := provideAgentFactory(agentRepository, agentRepository, agentTemplateRepo, v2Bus, llmProviderModelUsecase, systemSettingUsecase, multiProviderEmbedder, loggatewayLogger)
+	agentAllocatorPort := provideAgentAllocator(allocationPlanRepository, agentRepository, agentPerformanceRepository, orchestrationCache, llmProviderModelUsecase, v2Bus, multiProviderEmbedder, agentFactory, loggatewayLogger, systemSettingUsecase)
 	nl2GraphConverter := provideNL2GraphConverter(loggatewayLogger)
 	teamOrchestrationDeps := provideTeamOrchestrationDeps(teamUsecase, teamRunnerWirePort, graphBuilderFactory, graphUsecase, taskUsecase, teamGraphCoordPort, teamMediatorPort, spiritTeamUsecase, taskPlannerPort, agentAllocatorPort, nl2GraphConverter, runtimeReplanner)
 	channelTurnJobRepo := data.NewChannelTurnJobRepo(dataData)
@@ -340,11 +340,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	channelTurnJobDeps := provideChannelTurnJobDeps(channelTurnJobUsecase, sessionRunUsecase, channelUsecase)
 	sessionRunEscalationNotifier := provideChannelRunEscalationNotifier(channelUsecase, v25, loggatewayLogger)
 	channelNotifierDeps := provideChannelNotifierDeps(sessionRunEscalationNotifier)
+	teamStarter := service.NewTeamStarter(v25, teamOrchestrationDeps, v2Bus, sequencer, loggatewayLogger, taskV2Repo, teamStageV2Repo, teamRunV2Repo)
+	spiritTeamAssembler := service.NewSpiritTeamAssembler(spiritTeamUsecase, orchestrationCache, v2Bus, sequencer, teamStarter, agentRepository, loggatewayLogger, teamStageV2Repo, teamStageV2Repo)
 	synthesisModelPort := service.NewSynthesisModelAdapter(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
 	synthesisEngine := biz.NewSynthesisEngine(synthesisModelPort, loggatewayLogger)
-	spiritSynthesisService := service.NewSpiritSynthesisService(spiritTeamUsecase, synthesisEngine, v2Bus, sequencer, taskV2Repo, loggatewayLogger)
-	teamStarter := service.NewTeamStarter(v25, teamOrchestrationDeps, v2Bus, sequencer, loggatewayLogger, spiritSynthesisService, taskV2Repo, teamStageV2Repo, teamRunV2Repo)
-	spiritTeamAssembler := service.NewSpiritTeamAssembler(spiritTeamUsecase, orchestrationCache, v2Bus, sequencer, teamStarter, agentRepository, loggatewayLogger, teamStageV2Repo)
+	spiritSynthesisService := service.NewSpiritSynthesisService(spiritTeamUsecase, synthesisEngine, loggatewayLogger)
 	taskLinkRepo := data.ProvideTaskLinkRepo(taskRepo)
 	webhookRepository := data.NewWebhookRepo(dataData)
 	sessionLogWriter := service.ProvideSessionLogWriter(loggatewayLogger)
@@ -353,7 +353,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	graphService := service.NewGraphService(graphUsecase, taskUsecase, graphExecutionTelemetry, graphOrchestrationProjector, graphTaskRuntime, loggatewayLogger)
 	orchestrationRepository := data.NewOrchestrationRepo(dataData, loggatewayLogger)
 	agentMatcherPort := agent.NewAgentMatcher(agentRepository, loggatewayLogger)
-	taskOrchestratorPort := provideTaskOrchestrator(spiritTeamUsecase, spiritTeamAssembler, orchestrationRepository, agentMatcherPort, llmProviderModelUsecase, agentUsecase, agentRepository, v21, systemSettingRepo, spiritSynthesisService, checkpointSaver, orchestrationCache, agentPerformanceRepository, evolutionSuggestionRepo, v2Bus, nl2GraphConverter, loggatewayLogger)
+	taskOrchestratorPort := provideTaskOrchestrator(spiritTeamUsecase, spiritTeamAssembler, orchestrationRepository, taskPlanRepository, agentMatcherPort, llmProviderModelUsecase, agentUsecase, agentRepository, v21, systemSettingRepo, spiritSynthesisService, checkpointSaver, orchestrationCache, agentPerformanceRepository, evolutionSuggestionRepo, v2Bus, nl2GraphConverter, loggatewayLogger)
 	skillProposalReadWriter := data.NewSkillProposalRepo(dataData)
 	patternReadWriter := data.NewPatternRepo(dataData)
 	skillAutoCreator := provideSkillAutoCreator(dynamicLLMCaller, systemSettingUsecase, loggatewayLogger)
@@ -2468,6 +2468,7 @@ func provideAgentAllocator(
 	repo biz.AllocationPlanRepository,
 	agentReader biz.AgentReader,
 	perfRepo biz.AgentPerformanceRepository,
+	orchCache *biz.OrchestrationCache,
 	catalog *biz.LlmProviderModelUsecase,
 	eventBus biz.EventBus,
 	embedder knowledge2.Embedder,
@@ -2477,7 +2478,7 @@ func provideAgentAllocator(
 ) biz.AgentAllocatorPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	capBuilder := agent.NewAgentCapabilityBuilder(agentReader, lg)
-	return agent.NewAgentAllocator(repo, agentReader, perfRepo, capBuilder, catalog, httpClient, eventBus, lg, embedder, agentFactory, sysUC)
+	return agent.NewAgentAllocator(repo, agentReader, perfRepo, orchCache, capBuilder, catalog, httpClient, eventBus, lg, embedder, agentFactory, sysUC)
 }
 
 // provideAgentFactory constructs the AgentFactory (P1-4). The LLM model is
@@ -2493,6 +2494,7 @@ func provideAgentFactory(
 	eventBus biz.EventBus,
 	catalog *biz.LlmProviderModelUsecase,
 	sysUC *biz.SystemSettingUsecase,
+	embedder knowledge2.Embedder,
 	lg loggateway.Logger,
 ) biz.AgentFactory {
 	rt := &provider.RoundTrip{HTTP: &http.Client{Timeout: 60 * time.Second}}
@@ -2513,13 +2515,14 @@ func provideAgentFactory(
 			lg.Warn("AgentFactory 模型构建失败，EnsureAgent 将返回错误", loggateway.StepID("agent_factory.wire"), loggateway.Str("provider", prov), loggateway.Str("model", mod), loggateway.Err(err))
 		}
 	}
-	return agent.NewAgentFactoryImpl(llm, agentWriter, agentReader, templateRepo, eventBus, lg)
+	return agent.NewAgentFactoryImpl(llm, agentWriter, agentReader, templateRepo, eventBus, embedder, lg)
 }
 
 func provideTaskOrchestrator(
 	spiritUC *biz.SpiritTeamUsecase,
 	assembler *service.SpiritTeamAssembler,
 	repo biz.OrchestrationRepository,
+	taskPlanRepo biz.TaskPlanRepository,
 	matcher biz.AgentMatcherPort,
 	catalog *biz.LlmProviderModelUsecase,
 	agentUC *biz.AgentUsecase,
@@ -2551,7 +2554,7 @@ func provideTaskOrchestrator(
 		},
 	}
 	compiler := agent.NewDAGToGraphCompiler(lg)
-	return agent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionSugg, eventBus, nl2graph, lg)
+	return agent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, taskPlanRepo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionSugg, eventBus, nl2graph, lg)
 }
 
 func provideDeptLeadManager(

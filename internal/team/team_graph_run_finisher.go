@@ -2,16 +2,26 @@ package team
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
 )
+
+// teamMemberFlowStepID returns the per-node flow-log step ID for member
+// execution monitoring. The node suffix keeps FlowContext start/done timing
+// isolated when members execute in parallel; the "team.member" prefix resolves
+// the display title via stepTitleRegistry's prefix fallback.
+func teamMemberFlowStepID(nodeID string) string {
+	return "team.member." + strings.TrimSpace(nodeID)
+}
 
 // PersistGraphRunStep writes a TeamRunStep for a graph member node (initial run or resume).
 func (r *Runner) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepContext, nodeID, outputPreview, errMsg string, skipped bool, toolCallCount int) {
@@ -52,8 +62,24 @@ func (r *Runner) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepC
 		ErrorMessage:    errMsg,
 		CreatedAt:       agent.RFC3339Now(),
 	}
-	r.persistStep(ctx, run, stepCtx.TeamID, stepCtx.SortIndex(nodeID), m, ag, stepCtx.InputPreview, asst, "", "", "default", toolCallCount)
+	r.persistStep(ctx, run, stepCtx.TeamID, stepCtx.SortIndex(nodeID), m, ag, stepCtx.InputPreview, asst, strings.TrimSpace(ag.Provider), strings.TrimSpace(ag.Model), "default", toolCallCount)
 	stepCtx.MarkPersisted(nodeID)
+	if em := event.TraceEmitterFromContext(ctx); em != nil {
+		agentName := strutil.FirstNonEmpty(ag.DisplayName, ag.AgentKey)
+		stepID := teamMemberFlowStepID(nodeID)
+		switch {
+		case skipped:
+			em.LogSkip(stepID, fmt.Sprintf("成员 %s 已跳过", agentName),
+				event.P("node_id", nodeID), event.P("agent_key", ag.AgentKey))
+		case strings.TrimSpace(errMsg) != "":
+			em.LogError(stepID, fmt.Sprintf("成员 %s 执行失败：%s", agentName, errMsg),
+				event.P("node_id", nodeID), event.P("agent_key", ag.AgentKey))
+		default:
+			em.LogDone(stepID, fmt.Sprintf("成员 %s 执行完成", agentName),
+				event.P("node_id", nodeID), event.P("agent_key", ag.AgentKey),
+				event.P("output_len", len(outputPreview)))
+		}
+	}
 }
 
 // PublishTeamStepStarted publishes a session ActivityEvent (kind=session,
@@ -95,6 +121,13 @@ func (r *Runner) PublishTeamStepStarted(ctx context.Context, stepCtx *GraphRunSt
 	// before member thinking/action/reply activities arrive.
 	r.publishTeamStepActivity(ctx, run, stepCtx.TeamID, ag.AgentKey, agentName,
 		biz.ActivityEventCreated, biz.ActivityStatusRunning, "executing", nil)
+	if em := event.TraceEmitterFromContext(ctx); em != nil {
+		em.LogStart(teamMemberFlowStepID(nodeID), fmt.Sprintf("成员 %s 开始执行", agentName),
+			event.P("node_id", nodeID),
+			event.P("agent_key", ag.AgentKey),
+			event.P("team_id", stepCtx.TeamID),
+			event.P("run_id", stepCtx.TeamRunID))
+	}
 }
 
 // FinalizeGraphTeamRun closes a deferred team run and publishes team_summary.
@@ -283,6 +316,7 @@ func (r *Runner) ensureGraphRunStepsFallback(
 	userContent string,
 	assistantMsg biz.ChatMessage,
 	promptTok, completionTok int,
+	prov, mod string,
 ) {
 	if r == nil || r.runReader == nil {
 		return
@@ -300,5 +334,7 @@ func (r *Runner) ensureGraphRunStepsFallback(
 	}
 	stepMsg := assistantMsg
 	stepMsg.TokenIn, stepMsg.TokenOut = promptTok, completionTok
-	r.persistStep(ctx, run, teamID, 0, anchor, anchorAg, userContent, stepMsg, "", "", "default", 0)
+	prov = strutil.FirstNonEmpty(strings.TrimSpace(prov), strings.TrimSpace(anchorAg.Provider))
+	mod = strutil.FirstNonEmpty(strings.TrimSpace(mod), strings.TrimSpace(anchorAg.Model))
+	r.persistStep(ctx, run, teamID, 0, anchor, anchorAg, userContent, stepMsg, prov, mod, "default", 0)
 }

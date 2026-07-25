@@ -15,11 +15,26 @@ export interface DAGLayoutOptions {
   gapY: number;
   /** Horizontal padding inside the SVG (left/right). Default 20. */
   padX?: number;
+  /** Vertical padding inside the SVG (top/bottom). Only used in horizontal orientation. Default 12. */
+  padY?: number;
+  /**
+   * Layout orientation. 'vertical' (default): layers flow top-down, width is
+   * content-driven and capped at `width`. 'horizontal': layers flow left-to-right
+   * (showcase DAG style), width/height are structural (uncapped) — caller should
+   * wrap the canvas in an overflow-x container.
+   */
+  orientation?: 'vertical' | 'horizontal';
 }
 
 export interface NodePosition {
   x: number;
   y: number;
+}
+
+export interface DAGLayoutResult {
+  positions: Map<string, NodePosition>;
+  computedWidth: number;
+  computedHeight: number;
 }
 
 /**
@@ -35,13 +50,12 @@ export interface NodePosition {
  * avoiding wasted horizontal space.
  */
 export function usePlanDAGLayout<T extends LayoutableNode>() {
-  function layoutDAG(
-    steps: T[],
-    opts: DAGLayoutOptions,
-  ): { positions: Map<string, NodePosition>; computedWidth: number } {
+  function layoutDAG(steps: T[], opts: DAGLayoutOptions): DAGLayoutResult {
     const positions = new Map<string, NodePosition>();
     const padX = opts.padX ?? 20;
-    if (steps.length === 0) return { positions, computedWidth: padX * 2 };
+    const padY = opts.padY ?? 12;
+    const horizontal = opts.orientation === 'horizontal';
+    if (steps.length === 0) return { positions, computedWidth: padX * 2, computedHeight: padY * 2 };
 
     // Build dependency graph
     const stepMap = new Map(steps.map((s) => [s.ID, s]));
@@ -69,9 +83,38 @@ export function usePlanDAGLayout<T extends LayoutableNode>() {
       byLayer.get(l)!.push(id);
     }
 
+    const maxLayer = Math.max(...layer.values());
+
+    if (horizontal) {
+      // Horizontal: layer = column (left→right), nodes in a column stack
+      // vertically and are centered against the tallest column.
+      // Width/height are structural (not capped by opts.width).
+      const columnHeight = (l: number) => {
+        const count = (byLayer.get(l) || []).length;
+        return count * opts.nodeHeight + Math.max(0, count - 1) * opts.gapY;
+      };
+      let maxColumnHeight = 0;
+      for (let l = 0; l <= maxLayer; l++) {
+        const h = columnHeight(l);
+        if (h > maxColumnHeight) maxColumnHeight = h;
+      }
+      const computedWidth = padX * 2 + (maxLayer + 1) * opts.nodeWidth + maxLayer * opts.gapX;
+      const computedHeight = padY * 2 + maxColumnHeight;
+      for (let l = 0; l <= maxLayer; l++) {
+        const ids = byLayer.get(l) || [];
+        const startY = padY + (maxColumnHeight - columnHeight(l)) / 2;
+        ids.forEach((id, i) => {
+          positions.set(id, {
+            x: padX + l * (opts.nodeWidth + opts.gapX),
+            y: startY + i * (opts.nodeHeight + opts.gapY),
+          });
+        });
+      }
+      return { positions, computedWidth, computedHeight };
+    }
+
     // Compute the actual width needed: widest layer + padding.
     // For linear chains (1 node per layer), this narrows to nodeWidth + 2*padX.
-    const maxLayer = Math.max(...layer.values());
     let maxLayerWidth = 0;
     for (let l = 0; l <= maxLayer; l++) {
       const ids = byLayer.get(l) || [];
@@ -93,7 +136,8 @@ export function usePlanDAGLayout<T extends LayoutableNode>() {
       });
     }
 
-    return { positions, computedWidth };
+    const computedHeight = (maxLayer + 1) * opts.nodeHeight + maxLayer * opts.gapY;
+    return { positions, computedWidth, computedHeight };
   }
 
   return { layoutDAG };

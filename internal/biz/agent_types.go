@@ -145,6 +145,11 @@ type Agent struct {
 	// WorkspaceID is the owning workspace ID for tenant isolation (P2-B).
 	// empty = shared/legacy (visible to all workspaces); non-empty = tenant-private.
 	WorkspaceID string
+	// MissionStatement 是 Agent 的长期使命（出生登记于 AgentFactory，手工 Agent 可空）。
+	// 匹配时为空回退 AgentDescription（不变量 2）。
+	MissionStatement string
+	// DomainPath 是归一化领域路径（如 "创作/文学"），空 = 未分类（走旧匹配管线）。
+	DomainPath string
 }
 
 // SkipCategoryResponsibility returns true when the agent's metadata_json

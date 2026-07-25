@@ -28,7 +28,11 @@ func (f *trpcGraphBuilderFactory) BuildTeamGraphRoot(ctx context.Context, cfg bi
 	// by node ID via FindSubAgent (see runtime_adapter.go buildRuntime for
 	// the detailed rationale). Without this, agent node execution fails
 	// with "parent agent not found in state for agent node X".
-	g, subAgents, nodeAgents, err := graphtrpc.BuildStateGraphWithRegistryAndNodeAgents(ctx, cfg, f.registry, &f.resolvers, f.lg)
+	// resolversFor injects deliverable tools when the schema carries the
+	// deliverable StateField (C1/C3) — team runs enter the graph through
+	// this path, not through buildRuntime.
+	resolvers := f.resolversFor(cfg)
+	g, subAgents, nodeAgents, err := graphtrpc.BuildStateGraphWithRegistryAndNodeAgents(ctx, cfg, f.registry, &resolvers, f.lg)
 	if err != nil {
 		return nil, err
 	}

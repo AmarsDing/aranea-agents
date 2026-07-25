@@ -106,6 +106,10 @@ export function roleOptionsForMode(mode: string): Array<{ label: string; value: 
 /**
  * 前端 Team 定义校验，对齐后端 biz/validateTeamDefinition。
  * 返回错误提示字符串；null 表示通过。
+ *
+ * ADR-08 A4：definition 携带 embedded graph（custom 路径）时，拓扑以 graph 为
+ * 唯一真相源，跳过 role-mode 耦合校验（角色兼容 / parallel 汇总 / coordinator /
+ * critic_loop 角色要求）；结构问题由 CompileTeamGraph 编译期校验报告。
  */
 export function validateTeamDefinition(definition: TeamDefinition): string | null {
   const mode = String(definition.mode || 'sequential').toLowerCase();
@@ -120,6 +124,11 @@ export function validateTeamDefinition(definition: TeamDefinition): string | nul
   const missingAgent = definition.members.find((m) => m.enabled !== false && !String(m.agent_id || '').trim());
   if (missingAgent) {
     return '所有启用成员必须选择 Agent';
+  }
+
+  // A4：custom graph 路径跳过 role-mode 耦合校验
+  if (definition.graph?.nodes?.length) {
+    return null;
   }
 
   // 角色-模式兼容性
@@ -274,6 +283,186 @@ export function definitionToJSON(definition: TeamDefinition): string {
     graph: definition.graph?.nodes?.length ? definition.graph : buildGraphFromDefinition(definition),
   };
   return JSON.stringify(payload);
+}
+
+// ── ADR-08 A1 派生同步：拓扑字段 → graph 单向派生 ──
+
+/**
+ * 拓扑字段指纹：仅覆盖驱动 graph 结构的字段（mode / synthesizer_agent_id / members 拓扑）。
+ * 非拓扑字段（description / timeout / failure_policy 等）变化不影响返回值；
+ * members 数组顺序不影响（按 sort_order 稳定排序后取指纹）。
+ */
+export function definitionTopologyKey(definition: TeamDefinition): string {
+  const members = (definition.members || [])
+    .map((member, index) => ({ member, index }))
+    .sort((a, b) => (a.member.sort_order ?? 0) - (b.member.sort_order ?? 0) || a.index - b.index)
+    .map(({ member }) =>
+      [
+        String(member.agent_id || '').trim(),
+        String(member.role || '')
+          .trim()
+          .toLowerCase(),
+        String(member.name || '').trim(),
+        member.enabled === false ? '0' : '1',
+        String(member.sort_order ?? 0),
+      ].join(''),
+    )
+    .join('');
+  return [
+    String(definition.mode || 'sequential')
+      .trim()
+      .toLowerCase(),
+    String(definition.synthesizer_agent_id || '').trim(),
+    members,
+  ].join('');
+}
+
+/**
+ * 从拓扑字段重建 embedded graph（ADR-08 A1：杜绝陈旧 graph 覆盖 mode/members 改动）。
+ * layout 未变时保留旧 graph 中存活节点的 x/y，避免画布坐标因重建漂移。
+ * 注意：本地 builder 仅为离线/失败回退（ADR-08 A2）；在线时应以后端
+ * compile 返回的 definition_graph_json 为准（见 definitionGraphFromCompileJSON）。
+ */
+export function rebuildDefinitionGraph(definition: TeamDefinition): NonNullable<TeamDefinition['graph']> {
+  const next = buildGraphFromDefinition(definition);
+  const previous = definition.graph;
+  if (!previous?.nodes?.length || previous.layout !== next.layout) return next;
+  const positions = new Map(previous.nodes.map((node) => [node.id, { x: node.x, y: node.y }]));
+  next.nodes = next.nodes.map((node) => {
+    const position = positions.get(node.id);
+    return position ? { ...node, x: position.x, y: position.y } : node;
+  });
+  return next;
+}
+
+// ── ADR-08 A3 角色派生：mode + 成员顺序 → role / synthesizer_agent_id ──
+
+/** 角色由编排模式派生的模式集合（其余模式角色自由，编辑器中可人工编辑）。 */
+export const derivedRoleModes: ReadonlySet<string> = new Set(['sequential', 'parallel', 'coordinator', 'critic_loop']);
+
+/**
+ * 按 mode + 成员顺序派生启用成员的 role，并同步 synthesizer_agent_id（位置制，
+ * 与 teamTemplates 模板语义一致）：
+ * - sequential：全部 worker
+ * - parallel：sort_order 最后的启用成员 = synthesizer（回写 synthesizer_agent_id），其余 worker
+ * - coordinator：sort_order 首位启用成员 = coordinator，其余 worker
+ * - critic_loop：按 sort_order 交替 generator / critic
+ * - adaptive / swarm：不派生（角色自由）；仅清理残留的 synthesizer_agent_id
+ *
+ * 直接修改 definition；返回是否有任何字段被改动（幂等，二次调用返回 false）。
+ */
+export function deriveMemberRolesForMode(definition: TeamDefinition): boolean {
+  const mode = String(definition.mode || 'sequential')
+    .trim()
+    .toLowerCase();
+  let changed = false;
+  const setRole = (member: TeamDefinition['members'][number], role: string) => {
+    if (member.role !== role) {
+      member.role = role;
+      changed = true;
+    }
+  };
+
+  const enabledSorted = definition.members
+    .map((member, index) => ({ member, index }))
+    .filter(({ member }) => member.enabled !== false)
+    .sort((a, b) => (a.member.sort_order ?? 0) - (b.member.sort_order ?? 0) || a.index - b.index)
+    .map(({ member }) => member);
+
+  if (mode === 'parallel') {
+    const synth = enabledSorted[enabledSorted.length - 1];
+    for (const member of enabledSorted) setRole(member, member === synth ? 'synthesizer' : 'worker');
+    const synthAgentId = String(synth?.agent_id || '').trim();
+    if (String(definition.synthesizer_agent_id || '').trim() !== synthAgentId) {
+      definition.synthesizer_agent_id = synthAgentId || undefined;
+      changed = true;
+    }
+    return changed;
+  }
+
+  if (derivedRoleModes.has(mode)) {
+    enabledSorted.forEach((member, position) => {
+      if (mode === 'sequential') setRole(member, 'worker');
+      else if (mode === 'coordinator') setRole(member, position === 0 ? 'coordinator' : 'worker');
+      else setRole(member, position % 2 === 0 ? 'generator' : 'critic');
+    });
+  }
+  // synthesizer_agent_id 仅 parallel 有意义；其余模式清理残留，保持拓扑指纹干净。
+  if (String(definition.synthesizer_agent_id || '').trim() !== '') {
+    delete definition.synthesizer_agent_id;
+    changed = true;
+  }
+  return changed;
+}
+
+/**
+ * ADR-08 A2：把后端 CompileTeamGraph 返回的 definition_graph_json（模板生成的
+ * canonical embedded spec，含 start/end 装饰节点、无坐标）转换为 definition.graph。
+ * 前端只负责坐标：layout 与 prior 一致时按节点 id 保留旧坐标，新节点给网格坐标。
+ * 返回 null 表示规格不可用（空/非法/无节点），调用方回退 rebuildDefinitionGraph。
+ */
+export function definitionGraphFromCompileJSON(
+  specJSON: string,
+  prior?: TeamDefinition['graph'],
+): NonNullable<TeamDefinition['graph']> | null {
+  const raw = String(specJSON || '').trim();
+  if (!raw) return null;
+  let spec: {
+    version?: number;
+    layout?: string;
+    nodes?: Array<{ id?: string; type?: string; label?: string; agent_id?: string; role?: string }>;
+    edges?: Array<{ id?: string; source?: string; target?: string; label?: string; condition?: string }>;
+  };
+  try {
+    spec = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!spec || !Array.isArray(spec.nodes) || spec.nodes.length === 0) return null;
+
+  const layout = String(spec.layout || '');
+  const keepPositions = Boolean(prior?.nodes?.length) && prior?.layout === layout;
+  const positions = new Map((keepPositions ? prior?.nodes : undefined)?.map((node) => [node.id, node]) ?? []);
+  let bodyIndex = 0;
+  const bodyCount = spec.nodes.filter((node) => {
+    const type = String(node.type || '').toLowerCase();
+    return type !== 'start' && type !== 'end';
+  }).length;
+  const nodes = spec.nodes.map((node) => {
+    const id = String(node.id || '').trim();
+    const type = String(node.type || 'agent').toLowerCase();
+    const isStart = type === 'start';
+    const isEnd = type === 'end';
+    const grid = {
+      x: isStart ? 0 : isEnd ? 160 + bodyCount * 150 : 160 + bodyIndex++ * 150,
+      y: 80,
+    };
+    const kept = positions.get(id);
+    return {
+      id,
+      type: node.type || 'agent',
+      label: node.label || id,
+      ...(node.agent_id ? { agent_id: node.agent_id } : {}),
+      ...(node.role ? { role: node.role } : {}),
+      x: kept?.x ?? grid.x,
+      y: kept?.y ?? grid.y,
+    };
+  });
+  const edges = (Array.isArray(spec.edges) ? spec.edges : [])
+    .map((edge) => {
+      const source = String(edge.source || '').trim();
+      const target = String(edge.target || '').trim();
+      if (!source || !target) return null;
+      return {
+        id: String(edge.id || '').trim() || `${source}-${target}`,
+        source,
+        target,
+        ...(edge.label ? { label: edge.label } : {}),
+        ...(edge.condition ? { condition: edge.condition } : {}),
+      };
+    })
+    .filter((edge): edge is NonNullable<typeof edge> => edge !== null);
+  return { version: spec.version || 1, layout, nodes, edges };
 }
 
 // ── Agent helpers ──

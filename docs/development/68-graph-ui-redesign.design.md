@@ -940,3 +940,216 @@ Aranea 行为：无效重连 → 恢复原边（更安全）
 - Tool 选择器依赖 `useToolsStore`（已有）
 - MCP 信息依赖 `getAgentEffectiveTools` API（已有）
 - 不需要新的后端 API
+
+---
+
+## 子模块：2026-07 编辑器体验优化（R2 轮）
+
+> 需求见 [需求文档 · 同名子模块](./68-graph-ui-redesign.md#子模块2026-07-编辑器体验优化r2-轮)。
+> 视觉/交互以已确认原型为准：`docs/showcase/graph-ui/`（01 卡片 / 02 详情面板 / 03 编辑器三区 / 04 校验联动 / 05 Schema 抽屉），验证截图在同目录 `shots/`。
+
+### R2-D1 设计资产
+
+| 资产 | 路径 | 对应需求 |
+|------|------|---------|
+| 卡片双方向原型 | `docs/showcase/graph-ui/01-graph-cards.html` | R2-A（方向 A 已确认） |
+| 详情面板原型 | `docs/showcase/graph-ui/02-detail-panel.html` | R2-B |
+| 编辑器三区原型 | `docs/showcase/graph-ui/03-editor.html` | R2-C |
+| 校验联动原型 | `docs/showcase/graph-ui/04-validation.html` | R2-F（含定位聚光灯实测） |
+| Schema 抽屉原型 | `docs/showcase/graph-ui/05-state-schema.html` | R2-G |
+
+原型中的 DESIGN TOKENS 复用现有 `--glass-*` / `--graph-*` 体系（`web/src/css/theme/_graph-pages.sass`），实施时直接从原型 `<style>` 块映射到 sass 变量，禁止新造色值。
+
+### R2-D2 Graph 卡片（方向 A · 玻璃信息卡）
+
+**改造对象**：`pages/GraphsPage.vue` 卡片区 + `css/theme/_graph-pages.sass` 的 `.graph-card*`。
+
+**结构**（自上而下）：
+
+```
+┌─ 3px 状态色条（:before，running=--graph-status-running / completed / draft=grey）
+├─ 行1：名称（14px/900，单行截断） + 状态徽章（呼吸点 + 文案）
+├─ 行2：节点构成 chips（类型着色圆点 + 计数，>4 类折叠 +N）
+├─ 行3：描述（11px，两行截断，空则占位）
+└─ 行4：meta（v3 · 2小时前 · 1.2k 次 · 负责人，10px tertiary）
+```
+
+- hover：`translateY(-2px)` + accent 边框 + 阴影加深，160ms ease
+- 入场：`graph-card-in` 已存在，补 stagger（`animation-delay: index * 30ms`）
+- 状态色条走 `:before` 渐变（agent→llm→tool 类型色），不再用单色
+
+### R2-D3 详情面板 500+ 承载重设计
+
+**改造对象**：`components/graph/GraphDetailPanel.vue`。
+
+**布局**（自上而下）：
+
+1. **头部**：名称 + 版本 + 状态徽章
+2. **操作条**：30px 高单行（编辑/执行/复制/导出/删除），icon+11px 小字，替代现有大按钮
+3. **统计行**：节点 / 连线 / 状态字段 / 执行次数 4 格（数字 16px 粗体 + 标签 10px）
+4. **节点 section**（可折叠）：
+   - 搜索框（关键字过滤 ID/名称）
+   - 类型 chips 行（每类型带计数，多选过滤）
+   - **虚拟滚动列表**：行高 32px，可视行数 = ⌈容器高/32⌉，buffer ±5，DOM 行 ≈ 15
+   - 行结构：类型色点 + mono ID + hover 浮出「定位」按钮（emit `locate-node`，画布 `fitView` 居中并选中）
+5. **状态字段 section**（可折叠）：仅显示前 20 条 + 「管理全部 N 个字段 →」入口（打开 R2-D8 抽屉）
+6. **执行历史 section**（可折叠）：最近 5 条 + 「全部 →」
+
+**虚拟滚动实现**：不引第三方库——固定行高 + `scrollTop` 计算窗口（与原型 `renderWindow()` 同算法），容器 `position:relative` + 行 `position:absolute; top: rowIndex*32px`。
+
+### R2-D4 画布控件精简
+
+**改造对象**：`components/graph/GraphEditorCanvas.vue`。
+
+- 删除 `<Controls />` 与 `<MiniMap />` 及其 import、`miniMapNodeColor`
+- 现有自定义 `zoom-indicator` 从原位移至**画布底部居中**，改玻璃拟态深色样式（`background: var(--glass-surface); backdrop-filter: blur(16px); border: 1px solid var(--glass-border); border-radius: 999px`）
+- 控件条内容：`−` / `100%`（点击 `fitView`）/ `＋` / 适配 / 定位选中（有选中节点时启用）
+- 保留 `:zoom-on-scroll` / `:pan-on-drag` 默认值不变
+
+### R2-D5 工具栏按钮修复根因与方案
+
+#### 根因（自动布局 / 撤销重做 / 版本回退 同一根因）
+
+三者都已正确把新坐标写入 `metadata.layout`：
+
+- `editor/graphLayout.ts` `applyAutoLayout()` → `writeGraphNodePosition()`
+- `useGraphUndoRedo.ts` undo/redo → `writeGraphNodePosition()`
+- `useGraphEditorAssets.ts` `rollbackVersion()` → `Object.assign(graphDef, restored)`（含 layout）
+
+`GraphEditorCanvas.vue` 的 layout watcher（§L443-451）也能正确感知签名变化并触发 `rebuildAll()`。**但** `buildNodes()`（§L299）的位置优先级为：
+
+```typescript
+const pos = existingPositions.get(n.id) ?? savedLayout[n.id] ?? defaultNodePosition(index);
+```
+
+内存中 Vue Flow 节点的旧坐标（`existingPositions`）恒优先于刚写入的 `savedLayout`，导致 rebuild 后节点纹丝不动。
+
+#### 修复方案
+
+layout watcher 触发的 rebuild 必须反转优先级。引入一次性标志：
+
+```typescript
+let preferSavedLayout = false;
+
+// layout watcher 内
+lastLayoutSig = sig;
+preferSavedLayout = true;
+rebuildAll();
+
+// buildNodes() 内
+const pos = preferSavedLayout
+  ? (savedLayout[n.id] ?? existingPositions.get(n.id) ?? defaultNodePosition(index))
+  : (existingPositions.get(n.id) ?? savedLayout[n.id] ?? defaultNodePosition(index));
+
+// rebuildAll() 末尾 nextTick 中复位
+preferSavedLayout = false;
+```
+
+安全性：用户拖拽节点时 `onNodeDragStop` 已把新坐标同步写回 metadata（savedLayout 与内存一致），反转优先级不会引起拖拽抖动；节点/边/执行态 watcher 仍走原优先级。
+
+#### 导入二选一（`useGraphEditorAssets.ts`）
+
+现状：`onImportFile` 无条件 `importGraphDefinition()` 创建新图 + `router.replace` 跳转，用户以为是覆盖当前图。
+
+方案：文件读取后弹 `q-dialog` 二选一：
+
+| 选项 | 行为 |
+|------|------|
+| 导入为新建 Graph | 维持现状（调 import API + 跳转新图） |
+| 覆盖当前画布 | 本地 `JSON.parse` → 校验结构 → 替换 `graphDef.nodes/edges/conditionalEdges/stateFields/metadata` → 置 dirty，由用户显式保存 |
+
+#### 执行前置校验（`pages/GraphEditorPage.vue`）
+
+`openRunDialog` 前检查 `mergedValidationValid`，为 false 时执行按钮 `:disable` + tooltip「存在校验错误，请先修复」。
+
+### R2-D6 执行引擎 UX
+
+**改造对象**：`components/graph/GraphPropertyPanel.vue`（图级设置区 §L462）+ `components/graph/GraphDetailPanel.vue`（§L15）。
+
+- `ENGINE_OPTIONS`（`features/graph/types.ts` §L261）每项增加 `descKey`：
+  - BSP → `graphs.engineBSPDesc`：「默认。同步超步调度，支持断点 / 中断恢复」
+  - DAG → `graphs.engineDAGDesc`：「并行调度，吞吐更高；不支持断点」
+- q-select 选项插槽渲染 label + 11px tertiary 描述第二行
+- 选中 DAG 时：checkpoint/HITL 断点相关配置项 `:disable` + 旁注「DAG 引擎不支持断点」
+- 详情面板引擎字段加 `q-tooltip` 显示同样描述；保持只读
+- i18n：zh-CN / en-US 各补 2 个 key
+
+### R2-D7 校验联动设计
+
+**改造对象**：`pages/GraphEditorPage.vue`（静态 chip §L19 → 按钮）、`components/graph/GraphValidationPanel.vue`（重设计为底部面板）、`components/graph/GraphFlowNode.vue`（错误态）、`components/graph/GraphEditorCanvas.vue`（聚光灯）。
+
+#### 数据流
+
+```
+useGraphLocalValidation（本地） + validateGraph API（后端）
+        ↓ 合并为 ValidationIssue[]
+        ↓ { nodeId, level: 'error'|'warning', code, message, suggestion }
+GraphEditorPage（validationIssues state）
+        ├──→ Canvas prop：nodeId → issue 映射 → 节点错误态渲染
+        └──→ ValidationPanel prop：完整列表 → 底部面板
+```
+
+#### 节点错误态（GraphFlowNode）
+
+- `data.issue` 存在时：error → 2px `--graph-status-failed` 边框 + `gnodePulse` 1.2s 无限脉冲（box-shadow 呼吸）；warning → `--graph-status-interrupted` 静态边框
+- 节点底部内联错误条：`⚠` + 单行截断 message，hover 显示完整 tooltip
+- 脉冲动画仅 box-shadow 变化（合成层），不触发布局
+
+#### 底部校验面板（GraphValidationPanel 重设计）
+
+- 工具栏 chip 改为 `q-btn`：「校验未通过 · N」（negative）/「校验通过」（positive，不可点）
+- 面板从画布底部滑出（max-height 40%，transition 200ms），不遮挡工具栏
+- 头部：级别过滤 tabs（全部 / 错误 n / 警告 n）+ 重新校验（F）+ 收起
+- 行：级别图标 + 节点名 + 错误码（mono chip）+ message + suggestion + 「定位」按钮
+
+#### 定位聚光灯（Canvas）
+
+`locateNode(nodeId)`：
+
+1. `fitView({ nodes: [nodeId], padding: 0.4, duration: 280, maxZoom: 1.2 })`
+2. 其余节点加 `graph-node--dimmed`（opacity 0.25，transition 300ms）
+3. 目标节点弹出错误气泡（absolute 定位，含 code + message + suggestion）
+4. Esc / 点击空白 / 面板收起 → 清除 dimmed + 气泡
+
+键盘：面板打开时 `F` 重新校验、`Esc` 收起并清除高亮（`useEventListener('keydown')`，输入框聚焦时忽略）。
+
+### R2-D8 State Schema 独立抽屉
+
+**新增组件**：`components/graph/GraphStateSchemaDrawer.vue`。
+
+**打开入口**：工具栏「状态字段 N」按钮、属性面板 State Schema 区「管理全部」、详情面板字段 section「管理全部 →」。
+
+**结构**：
+
+```
+┌─ 头部：State Schema · N 字段 | [新建字段] | 未使用警告（M 个未被任何节点使用）
+├─ 工具行：搜索框 | 视图切换（平铺/按前缀分组/按读写关系）
+├─ 类型 chips：全部 N | string n | integer n | float n | boolean n | array n | object n
+├─ 虚拟滚动列表（行高 36px，buffer ±5）
+│   行：☑ | mono 字段名 | 类型徽章 | Reducer 徽章 | 默认值（截断）| ↑写 n ↓读 n
+│   点击行 → 展开内联编辑（默认值/描述/Reducer 下拉）
+├─ 分组头（分组视图）：▸ prefix_* (n)，点击折叠
+└─ 底部批量条（有勾选时）：已选 n 项 | [导出 JSON] [删除]
+```
+
+**数据派生**（computed，从 `graphDef.stateFields` + 各节点 inputMapper/outputMapper/instruction 引用）：
+
+- `usageMap: fieldName → { writes: nodeId[], reads: nodeId[] }`（复用 `portTypes.ts` 的字段引用提取逻辑，提取为 `extractFieldRefs(node)` 共享函数）
+- 未使用 = `writes.length + reads.length === 0`
+- 前缀分组：`name.split('_')[0]`，单字段前缀归入「其他」
+
+**编辑写回**：内联编辑直接改 `graphDef.stateFields[i]` → 置 dirty；新建/删除同。批量删除前 `q-dialog` 确认并列出被引用字段（被引用的禁止删除，置灰不可选）。
+
+### R2-D9 影响面汇总（R2 轮）
+
+| 改动 | 涉及文件 | 风险 |
+|------|---------|------|
+| 画布控件精简 | `GraphEditorCanvas.vue`、`_graph-pages.sass` | 低（纯删改 UI） |
+| 位置优先级修复 | `GraphEditorCanvas.vue`（buildNodes + layout watcher） | 中（拖拽回归，需拖拽/布局/撤销/回退四路径人工验证） |
+| 导入对话框 | `useGraphEditorAssets.ts` | 低 |
+| 执行前置校验 | `GraphEditorPage.vue` | 低 |
+| 引擎 UX | `GraphPropertyPanel.vue`、`GraphDetailPanel.vue`、`types.ts`、i18n | 低 |
+| 卡片方向 A | `GraphsPage.vue`、`_graph-pages.sass` | 低 |
+| 详情面板重设计 | `GraphDetailPanel.vue` | 中（虚拟滚动边界） |
+| 校验联动 | `GraphEditorPage.vue`、`GraphValidationPanel.vue`、`GraphFlowNode.vue`、`GraphEditorCanvas.vue`、`useGraphLocalValidation.ts` | 中（动画性能 + 事件清理） |
+| Schema 抽屉 | `GraphStateSchemaDrawer.vue`（新增）、`portTypes.ts`（提取 extractFieldRefs）、`GraphEditorPage.vue` | 中（usageMap 派生正确性） |

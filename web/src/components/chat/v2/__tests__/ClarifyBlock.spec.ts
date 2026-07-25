@@ -78,7 +78,9 @@ describe('ClarifyBlock', () => {
     expect(buttons.some((b) => b.classes().includes('clarify-block__btn--finish'))).toBe(true);
     expect(buttons.some((b) => b.classes().includes('clarify-block__btn--next'))).toBe(false);
     // 上一页返回
-    const prev = wrapper.findAll('.clarify-block__btn').find((b) => !b.classes().includes('clarify-block__btn--finish'));
+    const prev = wrapper
+      .findAll('.clarify-block__btn')
+      .find((b) => !b.classes().includes('clarify-block__btn--finish'));
     await prev!.trigger('click');
     expect(wrapper.find('.clarify-block__page').text()).toBe('1/2');
   });
@@ -143,7 +145,11 @@ describe('ClarifyBlock', () => {
       Status: 'completed',
       Content: envelopeContent({
         questions,
-        answers: [{ selected: ['b'], other: '' }, { selected: [], other: '' }, { selected: [], other: '' }],
+        answers: [
+          { selected: ['b'], other: '' },
+          { selected: null, other: '' },
+          { selected: [], other: '' },
+        ],
       }),
     });
     const wrapper = mount(ClarifyBlock, { props: { step } });
@@ -188,7 +194,9 @@ describe('TaskCard clarify registration', () => {
 
   it('does not render ClarifyBlock for clarify step bound to a turn', () => {
     const store = useChatActivityStore();
-    store.upsertStep(mkStep({ ID: 'step-bound', TurnID: 'turn-1', Content: envelopeContent({ questions: twoQuestions }) }));
+    store.upsertStep(
+      mkStep({ ID: 'step-bound', TurnID: 'turn-1', Content: envelopeContent({ questions: twoQuestions }) }),
+    );
     const task: Task = {
       ID: 'tk1',
       SessionID: 'sess-1',

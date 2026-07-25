@@ -194,3 +194,88 @@ func TestToolConfirmationHook_GrantDoesNotLeakAcrossAgents(t *testing.T) {
 		t.Fatal("agent-2 must not inherit agent-1's persisted grant")
 	}
 }
+
+// TestToolConfirmationHook_DenyMessageIsSemantic verifies the LLM-facing deny
+// message is a semantic user-decision instruction, not a raw internal error
+// code. The model must be able to tell "user deliberately rejected" apart
+// from a retriable system failure, and must be told not to retry.
+// The errToolConfirmationRequired prefix must be preserved because
+// tool_invocation_recorder identifies confirmation errors by it.
+func TestToolConfirmationHook_DenyMessageIsSemantic(t *testing.T) {
+	gate := &toolConfirmGate{
+		catalog:       map[string]confirmCatalogEntry{"bash": {requiresConfirm: true}},
+		sessionGrants: newToolGrantStore(time.Now),
+	}
+	h := newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1"}, TRPCBuilderDeps{})
+	ctx := grantTestCtx("sess-1", func(context.Context) (string, error) {
+		return serviceawaitreply.ReplyDeny, nil
+	})
+	_, err := h.HandleBeforeTool(ctx, bashToolArgs("call-1"))
+	if err == nil {
+		t.Fatal("deny must return an error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, errToolConfirmationRequired) {
+		t.Fatalf("prefix lost: %q", msg)
+	}
+	if !strings.Contains(msg, "用户拒绝") {
+		t.Fatalf("deny message not semantic: %q", msg)
+	}
+	if !strings.Contains(msg, "bash") {
+		t.Fatalf("deny message lacks tool key: %q", msg)
+	}
+	if !strings.Contains(msg, "不要重试") && !strings.Contains(msg, "禁止重试") {
+		t.Fatalf("deny message lacks no-retry guidance: %q", msg)
+	}
+}
+
+// TestToolConfirmationHook_UnavailableMessageIsSemantic verifies the
+// no-reply-channel path tells the LLM that confirmation is required but
+// cannot be requested in the current environment.
+func TestToolConfirmationHook_UnavailableMessageIsSemantic(t *testing.T) {
+	gate := &toolConfirmGate{
+		catalog:       map[string]confirmCatalogEntry{"bash": {requiresConfirm: true}},
+		sessionGrants: newToolGrantStore(time.Now),
+	}
+	h := newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1"}, TRPCBuilderDeps{})
+	ctx := grantTestCtx("sess-1", nil) // no reply func → unavailable path
+	_, err := h.HandleBeforeTool(ctx, bashToolArgs("call-1"))
+	if err == nil {
+		t.Fatal("unavailable path must return an error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, errToolConfirmationRequired) {
+		t.Fatalf("prefix lost: %q", msg)
+	}
+	if !strings.Contains(msg, "需要用户确认") {
+		t.Fatalf("unavailable message not semantic: %q", msg)
+	}
+}
+
+// TestToolConfirmationHook_TimeoutMessageIsSemantic verifies the LLM-facing
+// timeout message explains that the user did not respond (not a rejection)
+// and tells the model to ask the user before retrying.
+func TestToolConfirmationHook_TimeoutMessageIsSemantic(t *testing.T) {
+	gate := &toolConfirmGate{
+		catalog:       map[string]confirmCatalogEntry{"bash": {requiresConfirm: true}},
+		sessionGrants: newToolGrantStore(time.Now),
+	}
+	h := newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1"}, TRPCBuilderDeps{})
+	h.confirmTimeout = 20 * time.Millisecond
+	ctx := grantTestCtx("sess-1", func(ctx context.Context) (string, error) {
+		// Block until the confirmation deadline expires.
+		<-ctx.Done()
+		return "", ctx.Err()
+	})
+	_, err := h.HandleBeforeTool(ctx, bashToolArgs("call-1"))
+	if err == nil {
+		t.Fatal("timeout path must return an error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, errToolConfirmationRequired) {
+		t.Fatalf("prefix lost: %q", msg)
+	}
+	if !strings.Contains(msg, "超时") || !strings.Contains(msg, "不代表用户拒绝") {
+		t.Fatalf("timeout message not semantic: %q", msg)
+	}
+}

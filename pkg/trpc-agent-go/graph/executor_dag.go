@@ -104,7 +104,7 @@ func (e *Executor) runDagLoop(
 	checkpointConfig *map[string]any,
 	startStep int,
 	extInterrupt *externalInterruptWatcher,
-) (int, error) {
+) (int, bool, error) {
 	loop, err := newDagLoop(
 		e,
 		ctx,
@@ -115,19 +115,21 @@ func (e *Executor) runDagLoop(
 		extInterrupt,
 	)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	return loop.run()
 }
 
-func (l *dagLoop) run() (int, error) {
+// run executes the DAG loop. The bool return reports whether execution was
+// truncated at the MaxSteps ceiling with ready work still pending.
+func (l *dagLoop) run() (int, bool, error) {
 	for {
 		l.maybeRequestExternalInterrupt()
 		l.startReadyTasks()
 		l.planIfIdle()
 
 		if done, err := l.tryFinalize(); done {
-			return l.executed, err
+			return l.executed, l.drainMaxStep, err
 		}
 
 		l.waitForEvent()

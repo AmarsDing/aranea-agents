@@ -10,6 +10,7 @@ import (
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/pkg/loggateway"
@@ -86,6 +87,10 @@ type teamGraphRunSession struct {
 	inputPreview    string
 	definitionJSON  string
 	watchStop       context.CancelFunc
+	// emitter is the run-scoped TraceEmitter captured at registration, used to
+	// emit team.member.* flow logs on the resume path where the incoming ctx
+	// (from the task-completion handler) carries no emitter.
+	emitter *event.TraceEmitter
 
 	stepDedup     *graphStepDedup
 	memberByNode  map[string]MemberDef
@@ -164,6 +169,7 @@ func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context
 		sessionID:       strings.TrimSpace(sessionID),
 		spiritSessionID: strings.TrimSpace(spiritSessionID),
 		execID:          execID,
+		emitter:         event.TraceEmitterFromContext(ctx),
 		stepDedup:       newGraphStepDedup(),
 		registeredAt:    time.Now(),
 	}
@@ -367,6 +373,12 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 	}
 	c.stopWatch(sess.execID)
 	watchCtx, cancel := context.WithCancel(ctx)
+	// Ensure the watch goroutine carries the run's TraceEmitter so member-node
+	// flow logs (team.member.*) are emitted even on the resume path, whose
+	// incoming ctx originates from the task-completion handler without one.
+	if event.TraceEmitterFromContext(watchCtx) == nil && sess.emitter != nil {
+		watchCtx = event.WithTraceEmitter(watchCtx, sess.emitter)
+	}
 	// Assign watchStop and update sessions map inside the same lock scope
 	// to prevent concurrent startGraphWatch/stopWatch from observing a nil watchStop.
 	c.mu.Lock()

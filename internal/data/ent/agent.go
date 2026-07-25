@@ -67,7 +67,11 @@ type Agent struct {
 	// human-readable description of this variant
 	VariantDescription string `json:"variant_description,omitempty"`
 	// owning workspace ID; empty = shared/system builtin
-	WorkspaceID  string `json:"workspace_id,omitempty"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	// agent 长期使命陈述（使命驱动匹配）
+	MissionStatement string `json:"mission_statement,omitempty"`
+	// 归一化领域路径（如 创作/文学）
+	DomainPath   string `json:"domain_path,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -80,7 +84,7 @@ func (*Agent) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case agent.FieldContextWindow, agent.FieldBudgetMonthlyCents:
 			values[i] = new(sql.NullInt64)
-		case agent.FieldID, agent.FieldAgentKey, agent.FieldDisplayName, agent.FieldProvider, agent.FieldModel, agent.FieldStatus, agent.FieldIcon, agent.FieldAgentDescription, agent.FieldSystemPromptMode, agent.FieldConfigJSON, agent.FieldRolesJSON, agent.FieldCreatedBy, agent.FieldCreatedAt, agent.FieldUpdatedAt, agent.FieldDeletedAt, agent.FieldKind, agent.FieldSource, agent.FieldPositionKey, agent.FieldPositionID, agent.FieldAgentVariant, agent.FieldVariantDescription, agent.FieldWorkspaceID:
+		case agent.FieldID, agent.FieldAgentKey, agent.FieldDisplayName, agent.FieldProvider, agent.FieldModel, agent.FieldStatus, agent.FieldIcon, agent.FieldAgentDescription, agent.FieldSystemPromptMode, agent.FieldConfigJSON, agent.FieldRolesJSON, agent.FieldCreatedBy, agent.FieldCreatedAt, agent.FieldUpdatedAt, agent.FieldDeletedAt, agent.FieldKind, agent.FieldSource, agent.FieldPositionKey, agent.FieldPositionID, agent.FieldAgentVariant, agent.FieldVariantDescription, agent.FieldWorkspaceID, agent.FieldMissionStatement, agent.FieldDomainPath:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -259,6 +263,18 @@ func (_m *Agent) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.WorkspaceID = value.String
 			}
+		case agent.FieldMissionStatement:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field mission_statement", values[i])
+			} else if value.Valid {
+				_m.MissionStatement = value.String
+			}
+		case agent.FieldDomainPath:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field domain_path", values[i])
+			} else if value.Valid {
+				_m.DomainPath = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -372,6 +388,12 @@ func (_m *Agent) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("workspace_id=")
 	builder.WriteString(_m.WorkspaceID)
+	builder.WriteString(", ")
+	builder.WriteString("mission_statement=")
+	builder.WriteString(_m.MissionStatement)
+	builder.WriteString(", ")
+	builder.WriteString("domain_path=")
+	builder.WriteString(_m.DomainPath)
 	builder.WriteByte(')')
 	return builder.String()
 }

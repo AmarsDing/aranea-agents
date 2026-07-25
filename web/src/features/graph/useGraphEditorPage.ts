@@ -1,7 +1,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
-import type { GraphDefinition, NodeDef, ValidationError, ValidationWarning } from './types';
+import type { GraphDefinition, NodeDef, ValidationError, ValidationIssue, ValidationWarning } from './types';
 import { applyAutoLayout } from './editor/graphLayout';
 import { useGraphStore } from '../../stores/graph';
 import { useToolsStore } from '../../stores/tools';
@@ -9,6 +9,8 @@ import { useGraphEditorAssets } from './useGraphEditorAssets';
 import { useGraphExecute } from './useGraphExecute';
 import { useGraphUndoRedo } from './useGraphUndoRedo';
 import { useGraphLocalValidation } from './useGraphLocalValidation';
+import { buildValidationIssues } from './validationIssues';
+import { useGraphValidationDock } from './useGraphValidationDock';
 
 export function useGraphEditorPage() {
   const $q = useQuasar();
@@ -80,6 +82,18 @@ export function useGraphEditorPage() {
   });
 
   const mergedValidationValid = computed(() => validationValid.value && localValidation.localValid.value);
+
+  // R2-7：统一校验问题（本地+服务端合并、去重、排序）→ 校验 dock + 节点错误态 + 聚光灯
+  const validationIssues = computed<ValidationIssue[]>(() =>
+    buildValidationIssues(mergedValidationErrors.value, mergedValidationWarnings.value, graphDef.nodes),
+  );
+
+  async function revalidateGraph() {
+    if (!graphDef.id) return;
+    await runValidation(graphDef.id);
+  }
+
+  const validationDock = useGraphValidationDock(validationIssues, { onRevalidate: revalidateGraph });
 
   async function loadToolOptions() {
     try {
@@ -308,6 +322,8 @@ export function useGraphEditorPage() {
     mergedValidationErrors,
     mergedValidationWarnings,
     mergedValidationValid,
+    validationIssues,
+    validationDock,
     versionDialogOpen: assets.versionDialogOpen,
     versions: assets.versions,
     versionsLoading: assets.versionsLoading,

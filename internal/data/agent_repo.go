@@ -100,6 +100,8 @@ func entAgentToBiz(a *ent.Agent, lg loggateway.Logger) biz.Agent {
 		UpdatedAt:          a.UpdatedAt,
 		DeletedAt:          a.DeletedAt,
 		WorkspaceID:        a.WorkspaceID,
+		MissionStatement:   a.MissionStatement,
+		DomainPath:         a.DomainPath,
 	}
 	if err := json.Unmarshal([]byte(a.RolesJSON), &agent.Roles); err != nil {
 		lg.Warn("agent roles json unmarshal failed", loggateway.StepID("data.agent"), loggateway.Err(err))
@@ -747,6 +749,8 @@ func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetUpdatedAt(a.UpdatedAt).
 		SetDeletedAt(a.DeletedAt).
 		SetWorkspaceID(a.WorkspaceID).
+		SetMissionStatement(a.MissionStatement).
+		SetDomainPath(a.DomainPath).
 		Save(ctx)
 	if err != nil {
 		if sqlgraph.IsConstraintError(err) && isAgentKeyConstraintError(err) {
@@ -803,6 +807,8 @@ func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetReadonly(a.Readonly).
 		SetKind(agent.Kind(a.Kind)).
 		SetSource(agent.Source(a.Source)).
+		SetMissionStatement(a.MissionStatement).
+		SetDomainPath(a.DomainPath).
 		SetUpdatedAt(a.UpdatedAt).
 		Save(ctx)
 	if err != nil {

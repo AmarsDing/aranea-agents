@@ -53,7 +53,8 @@ func TestCriticLoopCondFunc_ToolCallRetry(t *testing.T) {
 	}
 }
 
-func TestCriticLoopCondFunc_ToolCallScoreAboveThreshold(t *testing.T) {
+func TestCriticLoopCondFunc_ToolCallScoreCannotOverrideRetry(t *testing.T) {
+	// F2 语义：显式 action=retry 优先，score 高于阈值也不得推翻。
 	fn := criticLoopCondFunc(0.7, 0, "", loggateway.NewNoop())
 	state := trpcgraph.State{
 		trpcgraph.StateKeyMessages: []trpcmodel.Message{
@@ -69,8 +70,30 @@ func TestCriticLoopCondFunc_ToolCallScoreAboveThreshold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if result != "retry" {
+		t.Fatalf("expected retry (explicit action wins over score), got %s", result)
+	}
+}
+
+func TestCriticLoopCondFunc_ToolCallEmptyActionScoreFallback(t *testing.T) {
+	// action 为空时 score 才兜底：score >= threshold → approved。
+	fn := criticLoopCondFunc(0.7, 0, "", loggateway.NewNoop())
+	state := trpcgraph.State{
+		trpcgraph.StateKeyMessages: []trpcmodel.Message{
+			{Role: trpcmodel.RoleAssistant, ToolCalls: []trpcmodel.ToolCall{
+				{Function: trpcmodel.FunctionDefinitionParam{
+					Name:      biz.OrchestrationControlToolName,
+					Arguments: []byte(`{"score":0.8,"reason":"no explicit action"}`),
+				}},
+			}},
+		},
+	}
+	result, err := fn(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if result != "approved" {
-		t.Fatalf("expected approved (score >= threshold), got %s", result)
+		t.Fatalf("expected approved (empty action, score >= threshold), got %s", result)
 	}
 }
 
@@ -151,7 +174,8 @@ func criticDecisionMsg(content, args string) trpcmodel.Message {
 	}
 }
 
-func TestCriticLoopCondFunc_MaxIterationsForcesApproval(t *testing.T) {
+func TestCriticLoopCondFunc_MaxIterationsForcedConvergence(t *testing.T) {
+	// F4：结构化 retry 且达上限 → approved_forced（兜底收敛，区别于真实批准）。
 	fn := criticLoopCondFunc(0.8, 2, "", loggateway.NewNoop())
 	state := trpcgraph.State{
 		trpcgraph.StateKeyMessages: []trpcmodel.Message{
@@ -164,8 +188,8 @@ func TestCriticLoopCondFunc_MaxIterationsForcesApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result != "approved" {
-		t.Fatalf("expected approved (max iterations reached), got %s", result)
+	if result != biz.CriticLoopResultApprovedForced {
+		t.Fatalf("expected approved_forced (max iterations reached), got %s", result)
 	}
 }
 
@@ -185,7 +209,9 @@ func TestCriticLoopCondFunc_MaxIterationsNotReached(t *testing.T) {
 	}
 }
 
-func TestCriticLoopCondFunc_DryConvergence(t *testing.T) {
+func TestCriticLoopCondFunc_StructuredRetryBeatsDry(t *testing.T) {
+	// F3：两轮反馈文本相同（heuristic 判 dry），但末条消息带显式
+	// 结构化 retry verdict — 显式信号优先，不得被 dry 收敛推翻。
 	fn := criticLoopCondFunc(0.8, 0, "", loggateway.NewNoop())
 	state := trpcgraph.State{
 		trpcgraph.StateKeyMessages: []trpcmodel.Message{
@@ -198,8 +224,27 @@ func TestCriticLoopCondFunc_DryConvergence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if result != "retry" {
+		t.Fatalf("expected retry (explicit structured verdict beats dry), got %s", result)
+	}
+}
+
+func TestCriticLoopCondFunc_MessagesDryConvergence(t *testing.T) {
+	// 无结构化裁决时（末条为纯文本），messages 路径 dry 仍生效。
+	fn := criticLoopCondFunc(0.8, 0, "", loggateway.NewNoop())
+	state := trpcgraph.State{
+		trpcgraph.StateKeyMessages: []trpcmodel.Message{
+			criticDecisionMsg("Needs more detail in section 2.", `{"action":"retry","reason":"r1"}`),
+			criticDecisionMsg("  needs more detail in section 2. ", `{"action":"retry","reason":"r2"}`),
+			{Role: trpcmodel.RoleAssistant, Content: "generator output v3"},
+		},
+	}
+	result, err := fn(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if result != "approved" {
-		t.Fatalf("expected approved (no new feedback, loop is dry), got %s", result)
+		t.Fatalf("expected approved (messages dry without structured verdict), got %s", result)
 	}
 }
 
@@ -261,8 +306,21 @@ func TestCriticLoopCondFunc_MetadataMaxIterations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if result != biz.CriticLoopResultApprovedForced {
+		t.Fatalf("expected approved_forced (metadata rounds >= max), got %s", result)
+	}
+}
+
+func TestCriticLoopCondFunc_GenuineApprovalAtLimitNotForced(t *testing.T) {
+	// 上限当轮评审文本真实批准 → approved，不得标记 approved_forced。
+	fn := criticLoopCondFunc(0, 2, "", loggateway.NewNoop())
+	state := criticMetaState(2, "r1 feedback", "评审通过", "评审通过，可以发布")
+	result, err := fn(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if result != "approved" {
-		t.Fatalf("expected approved (metadata rounds >= max), got %s", result)
+		t.Fatalf("expected approved (genuine approval at limit round), got %s", result)
 	}
 }
 
@@ -328,6 +386,19 @@ func TestCriticLoopCondFunc_ApprovalKeywordsZH(t *testing.T) {
 		{"予以驳回", "retry"},
 		// 裸「通过」作介词，不得误判为批准。
 		{"通过描绘更多细节可以提升质量", "retry"},
+		// 组合式否定：批准词紧邻否定标记，拒绝词表枚举不到，须前缀否定拦截。
+		{"不能予以通过", "retry"},
+		{"不予评审通过", "retry"},
+		{"难以评审通过", "retry"},
+		{"无法审核通过", "retry"},
+		{"并非通过评审", "retry"},
+		{"尚不能批准", "retry"},
+		// 正文别处的「不」不紧邻批准词，不得误拒。
+		{"问题不复存在，予以通过", "approved"},
+		{"不涉密，同意发布", "approved"},
+		{"经多轮修改已达标，评审通过", "approved"},
+		// 多次出现：第一次被否定、第二次干净，以干净命中为准。
+		{"不予评审通过；修改后评审通过", "approved"},
 	}
 	for _, c := range cases {
 		state := trpcgraph.State{trpcgraph.StateKeyLastResponse: c.content}
@@ -382,8 +453,8 @@ func TestCriticLoopCondFunc_NodeScopedMaxIterations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result != "approved" {
-		t.Fatalf("expected approved (scoped rounds >= max), got %s", result)
+	if result != biz.CriticLoopResultApprovedForced {
+		t.Fatalf("expected approved_forced (scoped rounds >= max), got %s", result)
 	}
 }
 
@@ -420,7 +491,7 @@ func TestCriticLoopCondFunc_NodeScopedBareKeyFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result != "approved" {
-		t.Fatalf("expected approved (legacy bare-key rounds fallback), got %s", result)
+	if result != biz.CriticLoopResultApprovedForced {
+		t.Fatalf("expected approved_forced (legacy bare-key rounds fallback), got %s", result)
 	}
 }

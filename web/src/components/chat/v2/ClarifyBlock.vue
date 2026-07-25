@@ -81,15 +81,27 @@
       </div>
     </div>
 
-    <!-- 只读摘要态：已提交 -->
+    <!-- 只读摘要态：已提交（默认折叠，点击展开查看问答内容） -->
     <div v-else-if="step.Status === 'completed'" class="clarify-block clarify-block--completed">
-      <div class="clarify-block__header">
+      <button
+        type="button"
+        class="clarify-block__header clarify-block__header--toggle"
+        :aria-expanded="summaryExpanded"
+        @click="summaryExpanded = !summaryExpanded"
+      >
         <span class="clarify-block__icon clarify-block__icon--done">✓</span>
         <span class="clarify-block__label">{{ t('chat.clarify.submitted') }}</span>
-      </div>
-      <div v-for="(q, i) in questions" :key="i" class="clarify-block__qa">
-        <div class="clarify-block__q">{{ q.question }}</div>
-        <div class="clarify-block__a">{{ answerDisplay(i) }}</div>
+        <span
+          class="clarify-block__chevron"
+          :class="{ 'clarify-block__chevron--expanded': summaryExpanded }"
+          aria-hidden="true"
+        >›</span>
+      </button>
+      <div v-show="summaryExpanded" class="clarify-block__qa-list">
+        <div v-for="(q, i) in questions" :key="i" class="clarify-block__qa">
+          <div class="clarify-block__q">{{ q.question }}</div>
+          <div class="clarify-block__a">{{ answerDisplay(i) }}</div>
+        </div>
       </div>
     </div>
 
@@ -148,6 +160,8 @@ const page = ref(0);
 const selections = ref<string[][]>([]);
 const others = ref<string[]>([]);
 const submitting = ref(false);
+// 完成态摘要默认折叠，点击头部展开查看问答内容
+const summaryExpanded = ref(false);
 const SUBMIT_TIMEOUT_MS = 15_000;
 let submitTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -240,14 +254,17 @@ onUnmounted(() => {
 function answerDisplay(i: number): string {
   const q = questions.value[i];
   const ans = submittedAnswers.value?.[i];
-  if (ans && (ans.selected.length > 0 || (ans.other ?? '').trim() !== '')) {
-    const parts = [...ans.selected];
-    const other = (ans.other ?? '').trim();
+  // 跳过的问题后端回写 selected=null（Go nil slice），必须空值安全。
+  const selected = ans?.selected ?? [];
+  const other = (ans?.other ?? '').trim();
+  if (selected.length > 0 || other !== '') {
+    const parts = [...selected];
     if (other) parts.push(other);
     return parts.join('、');
   }
-  if (q && q.recommended.length > 0) {
-    return t('chat.clarify.asRecommended', { value: q.recommended.join('、') });
+  const recommended = q?.recommended ?? [];
+  if (recommended.length > 0) {
+    return t('chat.clarify.asRecommended', { value: recommended.join('、') });
   }
   return t('chat.clarify.noPreference');
 }
@@ -292,6 +309,33 @@ function answerDisplay(i: number): string {
     align-items: center
     gap: 6px
     margin-bottom: 8px
+
+    &--toggle
+      width: 100%
+      margin-bottom: 0
+      padding: 0
+      border: none
+      background: transparent
+      cursor: pointer
+      font: inherit
+      text-align: left
+
+      &:hover .clarify-block__chevron
+        color: var(--color-text-primary)
+
+  &__chevron
+    margin-left: auto
+    font-size: 14px
+    line-height: 1
+    color: var(--color-text-tertiary)
+    transition: transform 0.18s ease, color 0.15s ease
+    transform: rotate(0deg)
+
+    &--expanded
+      transform: rotate(90deg)
+
+  &__qa-list
+    margin-top: 8px
 
   &__icon
     flex-shrink: 0

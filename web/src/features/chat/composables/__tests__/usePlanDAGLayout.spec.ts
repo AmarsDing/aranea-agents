@@ -60,4 +60,43 @@ describe('usePlanDAGLayout', () => {
     const { computedWidth } = layoutDAG(steps, { width: 600, nodeWidth: 120, nodeHeight: 60, gapX: 40, gapY: 30 });
     expect(computedWidth).toBe(320);
   });
+
+  describe('horizontal orientation', () => {
+    const H_OPTS = { width: 640, nodeWidth: 156, nodeHeight: 56, gapX: 64, gapY: 16, orientation: 'horizontal' as const, padX: 20, padY: 12 };
+
+    it('lays out sequential steps in a single row (same y, increasing x)', () => {
+      const { layoutDAG } = usePlanDAGLayout();
+      const steps = [mkStep('a'), mkStep('b', ['a']), mkStep('c', ['b'])];
+      const { positions } = layoutDAG(steps, H_OPTS);
+      expect(positions.get('a')?.y).toBe(12);
+      expect(positions.get('b')?.y).toBe(12);
+      expect(positions.get('c')?.y).toBe(12);
+      expect(positions.get('a')?.x).toBe(20);
+      expect(positions.get('b')!.x).toBeGreaterThan(positions.get('a')!.x);
+      expect(positions.get('c')!.x).toBeGreaterThan(positions.get('b')!.x);
+    });
+
+    it('lays out parallel steps in the same column, vertically centered', () => {
+      const { layoutDAG } = usePlanDAGLayout();
+      const steps = [mkStep('a'), mkStep('b', ['a']), mkStep('c', ['a']), mkStep('d', ['b', 'c'])];
+      const { positions } = layoutDAG(steps, H_OPTS);
+      // b and c same column (same x), stacked vertically
+      expect(positions.get('b')?.x).toBe(positions.get('c')?.x);
+      expect(positions.get('b')?.y).toBe(12);
+      expect(positions.get('c')?.y).toBe(12 + 56 + 16);
+      // single-node columns centered against tallest column (2*56+16=128): y = 12 + (128-56)/2 = 48
+      expect(positions.get('a')?.y).toBe(48);
+      expect(positions.get('d')?.y).toBe(48);
+    });
+
+    it('computes structural width/height from layer count and tallest column', () => {
+      const { layoutDAG } = usePlanDAGLayout();
+      const steps = [mkStep('a'), mkStep('b', ['a']), mkStep('c', ['a']), mkStep('d', ['b', 'c'])];
+      const { computedWidth, computedHeight } = layoutDAG(steps, H_OPTS);
+      // width = 2*padX + 3 layers*156 + 2 gaps*64 = 40 + 468 + 128 = 636
+      expect(computedWidth).toBe(636);
+      // height = 2*padY + tallest column (2*56+16) = 24 + 128 = 152
+      expect(computedHeight).toBe(152);
+    });
+  });
 });

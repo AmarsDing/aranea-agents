@@ -2,7 +2,9 @@ package turn
 
 import (
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/runtime"
@@ -11,6 +13,33 @@ import (
 type gateTestLock struct{}
 
 func (gateTestLock) LockSession(string) func() { return func() {} }
+
+// gateSharedLock 模拟生产装配：AdmissionGate 的 SessionLocker 与
+// ChatUsecase.EnqueueUserMessage 内部的 locker 是同一把非可重入互斥锁
+// （chatUCSessionLocker → uc.LockSession → uc.locker.Lock）。
+type gateSharedLock struct {
+	mu *sync.Mutex
+}
+
+func newGateSharedLock() *gateSharedLock { return &gateSharedLock{mu: &sync.Mutex{}} }
+
+func (l *gateSharedLock) LockSession(string) func() {
+	l.mu.Lock()
+	return l.mu.Unlock
+}
+
+// sharedLockEnqueue 模拟 ChatUsecase.EnqueueUserMessage：内部再次获取同一把会话锁。
+type sharedLockEnqueue struct {
+	lock      *gateSharedLock
+	accepted  bool
+	pendingID string
+}
+
+func (e sharedLockEnqueue) EnqueueUserMessage(string, string) (bool, string, string, error) {
+	unlock := e.lock.LockSession("s1")
+	defer unlock()
+	return e.accepted, e.pendingID, "", nil
+}
 
 type gateTestEnqueue struct {
 	accepted     bool
@@ -119,6 +148,37 @@ func TestAdmissionGate_enqueueRejectReason(t *testing.T) {
 	})
 	if v.Action != AdmissionRejectEnqueue || v.RejectReason != biz.ChatEnqueueRejectQueueFull {
 		t.Fatalf("got=%+v", v)
+	}
+}
+
+// TestAdmissionGate_enqueueDoesNotDeadlockWithSharedLock 复现生产死锁：
+// 澄清挂起的 turn 保持 run+runner 注册，用户提交澄清后 resumeTurnWithClarification
+// → Execute → Check 持会话锁 → tryEnqueue → EnqueueUserMessage 重入同一把锁，
+// goroutine 永久阻塞（无任何日志）。修复后 Check 必须在释锁后再调用 Enqueue。
+func TestAdmissionGate_enqueueDoesNotDeadlockWithSharedLock(t *testing.T) {
+	shared := newGateSharedLock()
+	reg := runtime.NewRunRegistry()
+	reg.StoreRunner("s1", "run-1", admissionTestRunner{})
+	g := NewAdmissionGate(AdmissionGateDeps{
+		Runs:    RunRegistryAdapter{Registry: reg},
+		Lock:    shared,
+		Enqueue: sharedLockEnqueue{lock: shared, accepted: true, pendingID: "p-1"},
+	})
+	done := make(chan AdmissionVerdict, 1)
+	go func() {
+		done <- g.Check(biz.TurnInput{
+			SessionID:   "s1",
+			Content:     "follow up",
+			EntryConfig: biz.TurnEntryPointConfig{AllowQueue: true},
+		})
+	}()
+	select {
+	case v := <-done:
+		if v.Action != AdmissionQueued || v.PendingID != "p-1" {
+			t.Fatalf("got=%+v", v)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Check deadlocked: enqueue re-acquired session lock held by gate")
 	}
 }
 

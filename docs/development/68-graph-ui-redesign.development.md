@@ -508,3 +508,181 @@ export function isValidConnectionQuick(
 | M5 - 执行闭环 | Task 7 | RunPanel | ✅ 已完成 |
 | M6 - P0 完成 | Task 8 | 集成测试通过 | ⏳ 未开始 |
 | M7 - P1 完成 | Task 9-13 | 侧边栏 + NodeToolbar + 连线引导 + State 面板 | 🟡 部分完成 |
+
+---
+
+## 子模块：2026-07 编辑器体验优化（R2 轮）· 任务计划
+
+> 需求见 [需求文档 · 同名子模块](./68-graph-ui-redesign.md#子模块2026-07-编辑器体验优化r2-轮)；根因与设计见 [设计文档 · 同名子模块](./68-graph-ui-redesign.design.md#子模块2026-07-编辑器体验优化r2-轮)。
+> 原型（已用户确认）：`docs/showcase/graph-ui/`。
+
+### R2 分期策略
+
+```
+R2-P0 修复类（先做，阻塞基础体验）──────────────────────
+  Task R2-1: 画布控件精简（去 MiniMap/Controls）   ✅ 已完成
+  Task R2-2: 位置渲染优先级修复                   ✅ 已完成
+             （自动布局/撤销重做/版本回退 同一根因）
+  Task R2-3: 导入二选一对话框 + 执行前置校验        ✅ 已完成
+  Task R2-4: 执行引擎 UX（BSP/DAG 说明）          ✅ 已完成
+
+R2-P1 体验类（原型已确认）──────────────────────────────
+  Task R2-5: Graph 卡片方向 A                    📋 待开始
+  Task R2-6: 详情面板 500+ 重设计（虚拟滚动）      📋 待开始
+  Task R2-7: 校验错误节点联动 + 底部校验面板       ✅ 已完成
+  Task R2-8: State Schema 独立抽屉               📋 待开始
+
+  Task R2-9: R2 集成验证                          📋 待开始
+```
+
+### Task R2-1：画布控件精简 ✅
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `components/graph/GraphEditorCanvas.vue` | 修改 | 删除 `<Controls/>`、`<MiniMap/>` 及 import、`miniMapNodeColor`；zoom-indicator 移至底部居中 |
+| `css/theme/_graph-pages.sass` | 修改 | zoom 控件条玻璃拟态深色样式 |
+
+**验收标准**：
+- [x] 画布无 MiniMap、无白色内置 Controls
+- [x] 底部居中控件条：− / %（点击适配）/ ＋ / 适配 / 定位选中
+- [x] 滚轮缩放、拖拽平移正常
+- [x] 双主题正常
+
+**依赖**：无
+
+### Task R2-2：位置渲染优先级修复 ✅
+
+**根因**：`GraphEditorCanvas.vue` `buildNodes()` 中 `existingPositions` 恒优先于 `savedLayout`，导致写入 metadata 的新坐标在 rebuild 时被忽略（设计文档 §R2-D5）。
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `components/graph/GraphEditorCanvas.vue` | 修改 | 引入 `preferSavedLayout` 一次性标志；layout watcher 置位、buildNodes 分支、`rebuildAll()` nextTick 复位 |
+
+**验收标准**：
+- [x] 自动布局：点击后节点按 dagre 重排并立即可见
+- [x] 撤销/重做：拖动节点后 Ctrl+Z / Ctrl+Shift+Z 位置正确往返
+- [x] 版本回退：回退后节点结构与位置正确还原
+- [x] 回归：手动拖拽节点无抖动、无跳位；多选拖拽正常
+- [x] 单测覆盖 buildNodes 优先级分支（若可测）
+
+**依赖**：无
+
+### Task R2-3：导入二选一 + 执行前置校验 ✅
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `features/graph/useGraphEditorAssets.ts` | 修改 | `onImportFile` 读文件后弹二选一对话框；「覆盖当前画布」本地 parse + 结构校验 + 替换 graphDef + 置 dirty |
+| `pages/GraphEditorPage.vue` | 修改 | 执行按钮 `:disable="!mergedValidationValid"` + tooltip |
+| `i18n/locales/zh-CN.ts` / `en-US.ts` | 修改 | 对话框与 tooltip 文案 |
+
+**验收标准**：
+- [x] 导入弹窗二选一，两条路径行为符合设计文档 §R2-D5 表格
+- [x] 覆盖路径 JSON 结构非法时报错且不改动当前画布
+- [x] 校验未通过时执行按钮禁用并提示
+
+**依赖**：无
+
+### Task R2-4：执行引擎 UX ✅
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `features/graph/types.ts` | 修改 | `ENGINE_OPTIONS` 增加 `descKey`（实际以 engineOptions computed 映射 `graphs.engineBSPHint`/`engineDAGHint` 实现） |
+| `components/graph/GraphPropertyPanel.vue` | 修改 | 引擎选项插槽渲染描述第二行；DAG 时断点配置禁用 + 旁注 |
+| `components/graph/GraphDetailPanel.vue` | 修改 | 引擎字段只读展示（标签自带「默认/并行」区分） |
+| `i18n/locales/zh-CN.ts` / `en-US.ts` | 修改 | `graphs.engineBSPHint` / `graphs.engineDAGHint` / `graphs.engineDAGNoCheckpoint` |
+
+**验收标准**：
+- [x] 两个引擎选项均带一句话区别说明
+- [x] 选 DAG 时 checkpoint 配置禁用并说明原因
+- [x] 详情面板引擎只读 + 标签区分
+
+**依赖**：无
+
+### Task R2-5：Graph 卡片方向 A 📋
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `pages/GraphsPage.vue` | 修改 | 卡片结构按原型 01 方向 A：状态色条 / 名称+徽章 / 构成 chips / 描述 / meta |
+| `css/theme/_graph-pages.sass` | 修改 | `.graph-card*` 样式对齐原型 tokens；入场 stagger |
+| `features/graph/useGraphsPage.ts` | 修改 | 卡片数据派生（节点构成聚合、执行次数、状态映射） |
+
+**验收标准**：
+- [ ] 对齐原型 01 方向 A 全部验收点（R2-A.1~A.7）
+- [ ] 双主题正常；hover/入场动画流畅
+
+**依赖**：无
+
+### Task R2-6：详情面板 500+ 重设计 📋
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `components/graph/GraphDetailPanel.vue` | 修改 | 按原型 02：紧凑操作条 + 统计行 + 节点 section（搜索/类型 chips/虚拟滚动/行内定位）+ 三 section 可折叠 |
+| `features/graph/` | 新增 composable | `useVirtualRows.ts`：固定行高窗口算法（scrollTop → start/end），供本任务与 R2-8 复用 |
+| `pages/GraphEditorPage.vue` / canvas | 修改 | 接收 `locate-node` 事件 → fitView 居中 + 选中 |
+
+**验收标准**：
+- [ ] 对齐原型 02 全部验收点（R2-B.1~B.7）
+- [ ] 512 节点滚动 ≥ 50fps，DOM 行数 ≈ 可视 + 10
+- [ ] 行内「定位」联动画布
+
+**依赖**：无（虚拟滚动 composable 被 R2-8 复用）
+
+### Task R2-7：校验错误节点联动 ✅
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `features/graph/validationIssues.ts` | 新增 | 统一 `ValidationIssue` 构建（本地+后端合并、去重、排序、nodeLabel 富化）+ `pickNodeIssueMap` + 修复建议 key 映射 |
+| `features/graph/useGraphValidationDock.ts` | 新增 | 校验 dock 状态 composable：面板开合 / 聚光灯 / 计数 / 重新校验 / Esc 键 |
+| `features/graph/useGraphLocalValidation.ts` | 修改 | 本地校验输出接入统一 issue 管线 |
+| `components/graph/GraphFlowNode.vue` | 修改 | 错误/警告节点态：脉冲边框 + 内联错误条 + 聚光灯气泡（含修复建议） |
+| `components/graph/GraphFlowDiamond.vue` | 修改 | 菱形节点同样支持错误态与气泡（气泡外移避免旋转裁剪） |
+| `components/graph/GraphValidationPanel.vue` | 重设计 | 底部滑出面板：级别过滤 / 问题行 / 定位 / 重新校验 / Esc |
+| `components/graph/GraphEditorCanvas.vue` | 修改 | 聚光灯：dimmed class + fitView 居中（280ms）+ 清除逻辑 |
+| `pages/GraphEditorPage.vue` | 修改 | 校验 chip → 按钮（带计数），联动面板开合与 issues 状态 |
+| `i18n/locales/zh-CN.ts` / `en-US.ts` | 修改 | 校验面板文案 + 7 条修复建议（suggestionXxx） |
+| `css/theme/_graph-pages.sass` | 修改 | `gnodePulse`、dimmed、面板滑出动效、气泡样式 |
+
+**验收标准**：
+- [x] 对齐原型 04 全部验收点（R2-F.1~F.7）
+- [x] 定位动画 280ms 居中 + 其余节点压暗 + 气泡显示修复建议
+- [x] Esc / 点击空白 / 收起面板清除高亮
+- [x] 仅问题节点挂载动画，无全画布重绘
+
+**收尾（R2-7f）**：`pnpm lint`（0 errors，i18n 违规清零并更新 baseline）/ `pnpm test`（801 通过）/ `pnpm build`（成功）。附带修复：`useGraphEditorAssets.ts` 18 处 + `TeamEditorDialog.vue` 2 处硬编码中文迁移至 i18n。
+
+**依赖**：无
+
+### Task R2-8：State Schema 独立抽屉 📋
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `components/graph/GraphStateSchemaDrawer.vue` | 新增 | 按原型 05：搜索/三视图/类型 chips/虚拟滚动/未使用检测/内联编辑/批量操作 |
+| `features/graph/portTypes.ts` | 修改 | 提取 `extractFieldRefs(node)` 共享函数（usageMap 派生用） |
+| `pages/GraphEditorPage.vue` | 修改 | 工具栏「状态字段 N」入口 + 抽屉开合状态 |
+| `components/graph/GraphPropertyPanel.vue` | 修改 | State Schema 区「管理全部」入口 |
+
+**验收标准**：
+- [ ] 对齐原型 05 全部验收点（R2-G.1~G.10）
+- [ ] 512 字段滚动流畅；未使用字段正确置灰
+- [ ] 被引用字段禁止删除；编辑写回置 dirty
+
+**依赖**：Task R2-6（复用 useVirtualRows）
+
+### Task R2-9：R2 集成验证 📋
+
+**验证清单**：
+- [ ] `cd web && pnpm lint && pnpm test && pnpm build` 全绿
+- [ ] 人工四路径回归：拖拽 / 自动布局 / 撤销重做 / 版本回退
+- [ ] 人工验收 8 诉求逐条过（对照原型）
+- [ ] 双主题、暗色模式检查
+- [ ] 500+ 节点 mock 图性能抽查
+
+**依赖**：R2-1 ~ R2-8 全部完成
+
+### R2 里程碑
+
+| 里程碑 | 包含任务 | 交付物 | 状态 |
+|--------|---------|--------|------|
+| R2-M1 修复就绪 | R2-1 ~ R2-4 | 画布控件精简 + 4 类按钮修复 + 引擎 UX | ✅ 已完成 |
+| R2-M2 体验升级 | R2-5 ~ R2-8 | 卡片 + 详情面板 + 校验联动 + Schema 抽屉 | 🟡 进行中（R2-7 ✅，其余待开始） |
+| R2-M3 R2 完成 | R2-9 | 全量验证通过 | 📋 待开始 |

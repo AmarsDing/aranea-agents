@@ -144,9 +144,9 @@ func usageDailyWhere(query biz.UsageQuery) (string, []any) {
 		parts = append(parts, "usage_kind = ?")
 		args = append(args, query.UsageKind)
 	}
-	if query.WorkspaceID != "" {
-		parts = append(parts, "workspace_id = ?")
-		args = append(args, query.WorkspaceID)
+	if clause, wsArgs := usageWorkspaceClause(query.WorkspaceID); clause != "" {
+		parts = append(parts, clause)
+		args = append(args, wsArgs...)
 	}
 	if len(parts) == 0 {
 		return "", args

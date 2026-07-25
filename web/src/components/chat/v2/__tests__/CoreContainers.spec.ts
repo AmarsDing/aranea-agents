@@ -66,52 +66,8 @@ function mkOrphanStep(over: Partial<Step> = {}): Step {
   } as Step;
 }
 
-/** B.10.17 execution report envelope fixture. */
-function mkReportEnvelope(): Record<string, unknown> {
-  return {
-    version: 1,
-    kind: 'execution_report',
-    content: '## 分析结论\n一切正常。',
-    strategy: 'hybrid',
-    degraded: false,
-    overview: {
-      query: '调研量子计算',
-      final_status: 'completed',
-      duration_ms: 12300,
-      total_units: 2,
-      completed_units: 2,
-      failed_units: 0,
-      token_in: 1000,
-      token_out: 2000,
-    },
-    team_results: [
-      { team_id: 'team-1', team_name: '调研团队', task_name: '任务A', status: 'completed', summary: '完成', key_findings: '', duration_ms: 8000 },
-    ],
-    deliverables: [],
-    synthesized_at: '2026-07-22T10:00:00Z',
-  };
-}
-
 describe('v2 Core Containers', () => {
   beforeEach(() => setActivePinia(createPinia()));
-
-  it('TaskCard renders orphan execution-report notice as report card footer', () => {
-    const store = useChatActivityStore();
-    store.upsertStep(
-      mkOrphanStep({
-        NoticeType: 'synthesis_completed',
-        Content: JSON.stringify(mkReportEnvelope()),
-      }),
-    );
-    const wrapper = mount(TaskCard, {
-      props: { task: mkTask() },
-      global: { plugins: [i18n], stubs: quasarStubs },
-    });
-    // ExecutionReportCard renders instead of the default notice pill.
-    expect(wrapper.find('.execution-report-card').exists()).toBe(true);
-    expect(wrapper.text()).toContain('任务执行总结报告');
-    expect(wrapper.text()).toContain('调研量子计算');
-  });
 
   it('TaskCard renders orphan fallback notice but hides system-internal notices', () => {
     const store = useChatActivityStore();

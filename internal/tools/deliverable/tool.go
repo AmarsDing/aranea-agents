@@ -191,7 +191,11 @@ func (t *SetDeliverableTool) Call(ctx context.Context, jsonArgs []byte) (any, er
 
 	merged := in.Data
 	if topic != "" {
-		merged = currentDeliverableMap(ctx)
+		base, _ := readDeliverableMap(ctx)
+		merged = make(map[string]any, len(base)+1)
+		for k, v := range base {
+			merged[k] = v
+		}
 		merged[topic] = in.Data
 	}
 	if in.Cognition != nil {
@@ -204,6 +208,7 @@ func (t *SetDeliverableTool) Call(ctx context.Context, jsonArgs []byte) (any, er
 		}
 		merged[reservedKeyCognition] = in.Cognition
 	}
+	storeLocalDeliverable(ctx, merged)
 	return setDeliverableOutput{
 		Written: true,
 		Data:    merged,
@@ -213,23 +218,68 @@ func (t *SetDeliverableTool) Call(ctx context.Context, jsonArgs []byte) (any, er
 	}, nil
 }
 
-// currentDeliverableMap reads the current deliverable state map from the
-// invocation's session. Missing invocation/state/corrupt JSON yields an empty
-// map — the merge still produces a valid namespaced write.
-func currentDeliverableMap(ctx context.Context) map[string]any {
-	out := make(map[string]any)
+// readDeliverableMap resolves the current deliverable map for tool Calls.
+// Precedence: (1) the invocation's RuntimeState — inside a graph run this is
+// the node-start snapshot of graph state, which carries upstream members'
+// writes (merged via the deliverable StateField reducer) plus same-node
+// read-your-writes installed by set_deliverable; (2) the session state, the
+// only copy outside graph runs and after run completion. When RuntimeState
+// holds the key at all it is authoritative — even as an empty map — so stale
+// session data from a previous turn never leaks into a running graph.
+func readDeliverableMap(ctx context.Context) (map[string]any, bool) {
 	inv, ok := agent.InvocationFromContext(ctx)
-	if !ok || inv == nil || inv.Session == nil {
-		return out
+	if !ok || inv == nil {
+		return nil, false
 	}
-	raw, found := inv.Session.GetState(biz.DeliverableStateKey)
-	if !found || len(raw) == 0 {
-		return out
+	if inv.RunOptions.RuntimeState != nil {
+		if raw, found := inv.RunOptions.RuntimeState[biz.DeliverableStateKey]; found {
+			if m, ok := toDeliverableMap(raw); ok {
+				return m, true
+			}
+		}
 	}
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return make(map[string]any)
+	if inv.Session != nil {
+		if raw, found := inv.Session.GetState(biz.DeliverableStateKey); found && len(raw) > 0 {
+			var out map[string]any
+			if err := json.Unmarshal(raw, &out); err == nil {
+				return out, true
+			}
+		}
 	}
-	return out
+	return nil, false
+}
+
+// toDeliverableMap normalizes a deliverable state value: decoded maps pass
+// through, raw JSON bytes (session-seeded state) are unmarshaled.
+func toDeliverableMap(v any) (map[string]any, bool) {
+	switch t := v.(type) {
+	case map[string]any:
+		return t, true
+	case []byte:
+		if len(t) == 0 {
+			return nil, false
+		}
+		var out map[string]any
+		if err := json.Unmarshal(t, &out); err != nil {
+			return nil, false
+		}
+		return out, true
+	}
+	return nil, false
+}
+
+// storeLocalDeliverable installs the freshly written map into the
+// invocation's RuntimeState so same-node get_deliverable calls observe
+// read-your-writes. The key is replaced (never mutated in place) because the
+// node-start snapshot may share sub-maps with sibling nodes. The
+// authoritative cross-node write still flows via StateDelta → graph channels
+// (CoverReducer); this only affects the node-local view.
+func storeLocalDeliverable(ctx context.Context, merged map[string]any) {
+	inv, ok := agent.InvocationFromContext(ctx)
+	if !ok || inv == nil || inv.RunOptions.RuntimeState == nil {
+		return
+	}
+	inv.RunOptions.RuntimeState[biz.DeliverableStateKey] = merged
 }
 
 // StateDelta returns the graph state delta after a successful Call.
@@ -314,7 +364,9 @@ func (t *GetDeliverableTool) Declaration() *trpctool.Declaration {
 	}
 }
 
-// Call reads the deliverable from the session state via the invocation context.
+// Call reads the deliverable via readDeliverableMap: the graph RuntimeState
+// snapshot first (upstream members' writes mid-run), session state as the
+// non-graph fallback.
 // C3: with a topic, the read is scoped to the deliverable[topic] sub-object
 // (missing topic or non-object value → found=false); the optional key filter
 // then applies within that sub-object. Topic lookup is deliberately tolerant —
@@ -326,16 +378,8 @@ func (t *GetDeliverableTool) Call(ctx context.Context, jsonArgs []byte) (any, er
 	var in getDeliverableInput
 	_ = json.Unmarshal(jsonArgs, &in) // input is optional, empty struct is fine
 
-	inv, ok := agent.InvocationFromContext(ctx)
-	if !ok || inv == nil || inv.Session == nil {
-		return getDeliverableOutput{Found: false, Key: in.Key, Topic: in.Topic}, nil
-	}
-	raw, found := inv.Session.GetState(biz.DeliverableStateKey)
-	if !found || len(raw) == 0 {
-		return getDeliverableOutput{Found: false, Key: in.Key, Topic: in.Topic}, nil
-	}
-	var data map[string]any
-	if err := json.Unmarshal(raw, &data); err != nil {
+	data, found := readDeliverableMap(ctx)
+	if !found {
 		return getDeliverableOutput{Found: false, Key: in.Key, Topic: in.Topic}, nil
 	}
 	topic := strings.TrimSpace(in.Topic)

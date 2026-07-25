@@ -30,6 +30,7 @@ type TaskOrchestratorImpl struct {
 	controller      tools.SpiritTeamControllerPort
 	compiler        *DAGToGraphCompiler
 	repo            biz.OrchestrationRepository
+	taskPlanRepo    biz.TaskPlanRepository
 	matcher         biz.AgentMatcherPort
 	deps            TRPCBuilderDeps
 	synthesis       tools.SpiritSynthesisPort
@@ -52,6 +53,7 @@ func NewTaskOrchestratorImpl(
 	controller tools.SpiritTeamControllerPort,
 	compiler *DAGToGraphCompiler,
 	repo biz.OrchestrationRepository,
+	taskPlanRepo biz.TaskPlanRepository,
 	matcher biz.AgentMatcherPort,
 	deps TRPCBuilderDeps,
 	synthesis tools.SpiritSynthesisPort,
@@ -69,6 +71,7 @@ func NewTaskOrchestratorImpl(
 		controller:      controller,
 		compiler:        compiler,
 		repo:            repo,
+		taskPlanRepo:    taskPlanRepo,
 		matcher:         matcher,
 		deps:            deps,
 		synthesis:       synthesis,
@@ -1048,6 +1051,7 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 	}
 
 	dqScore := computeDQScoreFromSynthesis(synthesis)
+	primaryDomainPath := o.resolvePrimaryDomainPath(ctx, handle)
 
 	o.lg.Info("在线学习: 更新编排缓存和 Agent 性能",
 		loggateway.StepID(biz.SpiritStepOrchestratorLearn),
@@ -1067,14 +1071,25 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 		topology = biz.TopologyHybrid
 	}
 	if o.orchCache != nil {
-		taskPattern := biz.ExtractTaskPattern(handle.ID) // Use orchestration ID as pattern key
 		agentKeys := extractAgentKeysFromHandle(handle)
-		o.orchCache.RecordCompletionWithAgents(ctx, taskPattern, topology, dqScore, len(handle.TeamIDs), 0, agentKeys)
-		o.lg.Info("在线学习: 编排缓存已更新",
-			loggateway.StepID(biz.SpiritStepOrchestratorLearn),
-			loggateway.Str("task_pattern", taskPattern),
-			loggateway.Float64("dq_score", dqScore),
-		)
+		if primaryDomainPath != "" {
+			// B.10.21.7: 配方以 domain key 记录，使同类任务可复用。
+			o.orchCache.RecordDomainRecipe(ctx, primaryDomainPath, topology, dqScore, len(handle.TeamIDs), agentKeys)
+			o.lg.Info("在线学习: 领域配方已更新",
+				loggateway.StepID(biz.SpiritStepOrchestratorLearn),
+				loggateway.Str("domain_path", primaryDomainPath),
+				loggateway.Float64("dq_score", dqScore),
+			)
+		} else {
+			// 无域回退：旧 key 行为（orchestration ID 派生，write-only 兼容）。
+			taskPattern := biz.ExtractTaskPattern(handle.ID)
+			o.orchCache.RecordCompletionWithAgents(ctx, taskPattern, topology, dqScore, len(handle.TeamIDs), 0, agentKeys)
+			o.lg.Info("在线学习: 编排缓存已更新",
+				loggateway.StepID(biz.SpiritStepOrchestratorLearn),
+				loggateway.Str("task_pattern", taskPattern),
+				loggateway.Float64("dq_score", dqScore),
+			)
+		}
 	}
 
 	// 2. Generate evolution suggestion when DQ Score is low
@@ -1084,18 +1099,22 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 
 	// 3. Update AgentPerformance for each agent in the orchestration
 	if o.perfRepo != nil {
+		taskType := string(handle.Strategy)
+		if primaryDomainPath != "" {
+			taskType = "domain:" + primaryDomainPath // B.10.21.2: TaskType 语义扩展
+		}
 		successCount := 0
 		if dqScore >= 0.5 {
 			successCount = 1
 		}
 		agentKeys := extractAgentKeysFromHandle(handle)
 		for _, agentKey := range agentKeys {
-			existing, err := o.perfRepo.Get(ctx, agentKey, string(handle.Strategy))
+			existing, err := o.perfRepo.Get(ctx, agentKey, taskType)
 			if err != nil || existing == nil {
 				// New performance record
 				perf := &biz.AgentPerformance{
 					AgentKey:       agentKey,
-					TaskType:       string(handle.Strategy),
+					TaskType:       taskType,
 					TotalRuns:      1,
 					SuccessRuns:    successCount,
 					SuccessRate:    float64(successCount),
@@ -1130,6 +1149,26 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 			loggateway.Int("agent_count", len(agentKeys)),
 		)
 	}
+}
+
+// resolvePrimaryDomainPath 取 handle 对应 plan 的主导域（首个非空 subtask
+// DomainPath）。查询失败或无域返回空——调用方回退旧 key 行为（B.10.21.7）。
+func (o *TaskOrchestratorImpl) resolvePrimaryDomainPath(ctx context.Context, handle *biz.OrchestrationHandle) string {
+	if o.taskPlanRepo == nil || handle.TaskPlanID == "" {
+		return ""
+	}
+	plan, err := o.taskPlanRepo.GetByID(ctx, handle.TaskPlanID)
+	if err != nil || plan == nil {
+		if err != nil {
+			o.lg.Warn("在线学习: 查询 TaskPlan 失败，跳过领域配方记录",
+				loggateway.StepID(biz.SpiritStepOrchestratorLearn),
+				loggateway.Str("task_plan_id", handle.TaskPlanID),
+				loggateway.Err(err),
+			)
+		}
+		return ""
+	}
+	return PrimaryDomainPath(plan.SubTasks)
 }
 
 // maybeCreateEvolutionSuggestion generates an orchestration_optimization evolution suggestion

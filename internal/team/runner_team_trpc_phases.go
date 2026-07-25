@@ -297,6 +297,7 @@ func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run
 	if requestID == "" {
 		requestID = run.ID
 	}
+	teamStageID := string(agent.NewTeamStageActivityID(teamRow.ID))
 	return agent.ProjectMeta{
 		SessionID:    sess.ID,
 		RequestID:    requestID,
@@ -309,7 +310,7 @@ func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run
 		// TeamStageID = NewTeamStageActivityID(teamRow.ID)，
 		// 与 service/spirit_team.go 的 publishV2TeamRunAndMemberSessions 中
 		// 创建 TeamStage 时使用的 ID 一致。
-		TeamStageID:      string(agent.NewTeamStageActivityID(teamRow.ID)),
+		TeamStageID:      teamStageID,
 		AgentID:          ar.agent.AgentKey,
 		AgentDisplayName: ar.agent.DisplayName,
 		MemberAgentKeys:  memberKeySet,
@@ -325,7 +326,7 @@ func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run
 		// the session activity (kind=session) in the spirit session's tree.
 		// Uses the same deterministic ID as publishTeamStepActivity, ensuring
 		// the frontend can link child activities to the correct parent.
-		ParentActivityID: string(agent.NewSessionActivityID(teamRow.ID, ar.agent.AgentKey)),
+		ParentActivityID: string(agent.NewMemberSessionActivityID(agent.NewTeamRunV2ID(teamStageID), ar.agent.AgentKey)),
 		NodeIDToAgentKey: nodeIDToAgentKey,
 	}
 }

@@ -34,8 +34,6 @@
       @node-drag-stop="onNodeDragStop"
     >
       <Background :gap="16" />
-      <Controls />
-      <MiniMap :node-color="miniMapNodeColor" />
       <template #connection-line="connectionLineProps">
         <GraphConnectionLine v-bind="connectionLineProps" />
       </template>
@@ -116,12 +114,8 @@ import {
   SelectionMode,
 } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
-import { Controls } from '@vue-flow/controls';
-import { MiniMap } from '@vue-flow/minimap';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
-import '@vue-flow/controls/dist/style.css';
-import '@vue-flow/minimap/dist/style.css';
 import GraphFlowNode from './GraphFlowNode.vue';
 import GraphFlowDiamond from './GraphFlowDiamond.vue';
 import GraphFlowEdge from './GraphFlowEdge.vue';
@@ -129,7 +123,7 @@ import GraphConnectionLine from './GraphConnectionLine.vue';
 import GraphContextMenu from './GraphContextMenu.vue';
 import type { ContextMenuItem } from './GraphContextMenu.vue';
 import GraphNodeSearch from './GraphNodeSearch.vue';
-import type { NodeDef, EdgeDef, ConditionalEdgeDef, NodeType, GraphDefinition } from '../../features/graph/types';
+import type { NodeDef, EdgeDef, ConditionalEdgeDef, NodeType, GraphDefinition, NodeIssueInfo } from '../../features/graph/types';
 import { NODE_TYPE_STYLES } from '../../features/graph/types';
 import type { useGraphUndoRedo } from '../../features/graph/useGraphUndoRedo';
 import { defaultNodePosition, readGraphLayout, writeGraphNodePosition } from '../../features/graph/editor/graphLayout';
@@ -157,6 +151,10 @@ const props = defineProps<{
   /** Run/monitor mode: disable editing gestures. */
   readOnly?: boolean;
   undoRedo?: ReturnType<typeof useGraphUndoRedo>;
+  /** nodeId → 校验问题（驱动节点错误态）。 */
+  nodeIssues?: Record<string, NodeIssueInfo>;
+  /** 聚光灯目标节点；设置时其余节点压暗并 fitView 居中。 */
+  spotlightNodeId?: string | null;
 }>();
 
 const EMPTY_EXEC_NODE_STATES: Map<
@@ -177,6 +175,7 @@ const emit = defineEmits<{
   updateGraph: [];
   requestAutoLayout: [];
   focusPropertyPanel: [nodeId: string];
+  clearSpotlight: [];
 }>();
 
 const { project, fitView, getSelectedNodes, onViewportChange, zoomTo, getNodes } = useVueFlow();
@@ -251,25 +250,6 @@ const connectionLineStyle = {
   strokeDasharray: '6 4',
 };
 
-function miniMapNodeColor(node: Node): string {
-  const execState = resolvedExecNodeStates.value.get(node.id);
-  if (execState) {
-    switch (execState.status) {
-      case 'running':
-        return 'var(--graph-status-running)';
-      case 'completed':
-        return 'var(--graph-status-completed)';
-      case 'failed':
-      case 'error':
-        return 'var(--graph-status-failed)';
-      case 'interrupted':
-        return 'var(--graph-status-interrupted)';
-    }
-  }
-  const style = NODE_TYPE_STYLES[node.type as NodeType];
-  return style?.borderColor ?? 'var(--color-accent)';
-}
-
 function edgeKindLabel(kind?: string): string | undefined {
   switch ((kind ?? '').toLowerCase()) {
     case 'transfer':
@@ -284,6 +264,7 @@ function edgeKindLabel(kind?: string): string | undefined {
 }
 
 let syncingFromProp = false;
+let preferSavedLayout = false;
 
 function buildNodes(): Node[] {
   const existingPositions = new Map<string, { x: number; y: number }>();
@@ -296,12 +277,18 @@ function buildNodes(): Node[] {
     const style = NODE_TYPE_STYLES[n.type as NodeType] ?? NODE_TYPE_STYLES.function;
     const isDiamond = n.type === 'router' || n.type === 'join';
     const execState = resolvedExecNodeStates.value.get(n.id);
-    const pos = existingPositions.get(n.id) ?? savedLayout[n.id] ?? defaultNodePosition(index);
+    const issue = props.nodeIssues?.[n.id];
+    const spotlightId = props.spotlightNodeId ?? null;
+    const dimmed = spotlightId !== null && spotlightId !== n.id;
+    const pos = preferSavedLayout
+      ? savedLayout[n.id] ?? existingPositions.get(n.id) ?? defaultNodePosition(index)
+      : existingPositions.get(n.id) ?? savedLayout[n.id] ?? defaultNodePosition(index);
     return {
       id: n.id,
       type: n.type,
       position: pos,
       selected: n.id === props.selectedNodeId,
+      class: dimmed ? 'graph-node--dimmed' : undefined,
       data: {
         nodeId: n.id,
         nodeType: n.type as NodeType,
@@ -316,6 +303,8 @@ function buildNodes(): Node[] {
         outputPreview: execState?.outputPreview,
         currentActivity: execState?.currentActivity,
         toolNames: n.toolNames,
+        issue,
+        spotlighted: spotlightId === n.id,
       },
       style: isDiamond
         ? {
@@ -445,6 +434,7 @@ watch(
   (sig) => {
     if (sig === lastLayoutSig) return;
     lastLayoutSig = sig;
+    preferSavedLayout = true;
     rebuildAll();
   },
   { immediate: false },
@@ -474,12 +464,45 @@ watch(
   },
 );
 
+// 校验问题映射变化 → 刷新节点错误态（错误/警告边框、内联条）
+watch(
+  () =>
+    Object.entries(props.nodeIssues ?? {})
+      .map(([id, i]) => `${id}:${i.level}:${i.code}:${i.message}`)
+      .sort()
+      .join('|'),
+  () => {
+    syncingFromProp = true;
+    internalNodes.value = buildNodes();
+    nextTick(() => {
+      syncingFromProp = false;
+    });
+  },
+);
+
+// 聚光灯：目标节点 fitView 居中 + 其余节点压暗；清除时恢复
+watch(
+  () => props.spotlightNodeId,
+  (nodeId, prev) => {
+    if (nodeId === prev) return;
+    syncingFromProp = true;
+    internalNodes.value = buildNodes();
+    nextTick(() => {
+      syncingFromProp = false;
+    });
+    if (nodeId) {
+      fitView({ nodes: [nodeId], padding: 0.4, duration: 280, maxZoom: 1.2 });
+    }
+  },
+);
+
 function rebuildAll() {
   syncingFromProp = true;
   internalNodes.value = buildNodes();
   internalEdges.value = buildEdges();
   nextTick(() => {
     syncingFromProp = false;
+    preferSavedLayout = false;
   });
 }
 
@@ -503,6 +526,7 @@ function onNodeClick({ node }: { node: Node }) {
 
 function onPaneClick() {
   emit('selectNode', null);
+  emit('clearSpotlight');
   ctxMenuVisible.value = false;
   edgeMenuVisible.value = false;
   paneMenuVisible.value = false;
@@ -1114,3 +1138,44 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onCanvasKeydown, true);
 });
 </script>
+
+<style lang="sass" scoped>
+.graph-editor-canvas
+  position: relative
+  width: 100%
+  height: 100%
+
+  &__zoom-indicator
+    position: absolute
+    bottom: 20px
+    left: 50%
+    transform: translateX(-50%)
+    display: flex
+    align-items: center
+    gap: 8px
+    padding: 6px 12px
+    border-radius: 20px
+    background: var(--glass-surface, rgba(30, 30, 30, 0.7))
+    backdrop-filter: blur(10px)
+    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1))
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2)
+    z-index: 10
+
+  &__zoom-text
+    font-size: 12px
+    font-weight: 500
+    color: var(--text-primary, #fff)
+    cursor: pointer
+    user-select: none
+    min-width: 40px
+    text-align: center
+
+    &:hover
+      color: var(--color-accent, #42a5f5)
+
+// Dark theme adjustments
+.is-dark
+  .graph-editor-canvas__zoom-indicator
+    background: var(--glass-surface-dark, rgba(20, 20, 20, 0.8))
+    border-color: var(--glass-border-dark, rgba(255, 255, 255, 0.08))
+</style>

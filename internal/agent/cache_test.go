@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"aranea-agents/internal/biz"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -348,5 +350,35 @@ func TestBuildCachePutClearsDirty(t *testing.T) {
 	c.mu.Unlock()
 	if e.dirty {
 		t.Fatalf("expected entry to be clean after put")
+	}
+}
+
+// stubDeclTool is a minimal trpctool.Tool carrying only a declaration name.
+type stubDeclTool struct{ name string }
+
+func (s stubDeclTool) Declaration() *trpctool.Declaration {
+	return &trpctool.Declaration{Name: s.name}
+}
+
+// TestBuildCacheKey_CustomToolsAffectKey guards against cache cross-contamination:
+// an agent built with deliverable CustomTools must not share a cache entry with
+// the same agent built without them, otherwise the deliverable toolset leaks
+// into plain builds (or is lost in deliverable builds) depending on build order.
+func TestBuildCacheKey_CustomToolsAffectKey(t *testing.T) {
+	ag := biz.Agent{ID: "agent-cache-key-test"}
+	depsWithTools := func(tools ...trpctool.Tool) TRPCBuilderDeps {
+		return TRPCBuilderDeps{TRPCToolAssemblyDeps: TRPCToolAssemblyDeps{CustomTools: tools}}
+	}
+	plain := BuildCacheKey(ag, TRPCBuilderDeps{}, "toolhash", "", "")
+	withDeliverable := BuildCacheKey(ag, depsWithTools(stubDeclTool{"set_deliverable"}, stubDeclTool{"get_deliverable"}), "toolhash", "", "")
+	if plain == withDeliverable {
+		t.Fatal("CustomTools must participate in the cache key; deliverable and plain builds must not share an entry")
+	}
+
+	// Same tool set in different order must produce the same key (order-insensitive).
+	a := BuildCacheKey(ag, depsWithTools(stubDeclTool{"set_deliverable"}, stubDeclTool{"get_deliverable"}), "toolhash", "", "")
+	b := BuildCacheKey(ag, depsWithTools(stubDeclTool{"get_deliverable"}, stubDeclTool{"set_deliverable"}), "toolhash", "", "")
+	if a != b {
+		t.Fatal("cache key must be order-insensitive over CustomTools declaration names")
 	}
 }

@@ -9,6 +9,8 @@
         'graph-flow-node--completed': data.execStatus === 'completed',
         'graph-flow-node--failed': data.execStatus === 'error' || data.execStatus === 'failed',
         'graph-flow-node--interrupted': data.execStatus === 'interrupted',
+        'graph-flow-node--issue-error': data.issue?.level === 'error',
+        'graph-flow-node--issue-warning': data.issue?.level === 'warning',
       },
     ]"
     role="group"
@@ -47,6 +49,22 @@
       </div>
       <div v-if="ioPreviewLine" class="graph-flow-node__io">{{ truncate(ioPreviewLine, 64) }}</div>
       <div v-if="fineStatusLabel && !showStatusChip" class="graph-flow-node__fine-status">{{ fineStatusLabel }}</div>
+      <div
+        v-if="data.issue"
+        :class="['graph-flow-node__issue-bar', `graph-flow-node__issue-bar--${data.issue.level}`]"
+      >
+        <q-icon :name="data.issue.level === 'error' ? 'error' : 'warning'" size="12px" />
+        <span class="graph-flow-node__issue-text">{{ data.issue.message }}</span>
+        <q-tooltip>{{ data.issue.message }}</q-tooltip>
+      </div>
+    </div>
+    <div v-if="data.spotlighted && data.issue" class="graph-flow-node__bubble">
+      <div class="graph-flow-node__bubble-code">{{ data.issue.code }}</div>
+      <div class="graph-flow-node__bubble-message">{{ data.issue.message }}</div>
+      <div v-if="issueSuggestion" class="graph-flow-node__bubble-suggestion">
+        <q-icon name="lightbulb" size="12px" />
+        <span>{{ issueSuggestion }}</span>
+      </div>
     </div>
     <Handle type="source" :position="Position.Right" class="graph-flow-node__handle" />
   </div>
@@ -56,7 +74,8 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Handle, Position } from '@vue-flow/core';
-import { NODE_TYPE_STYLES, EXECUTION_STATUS_STYLES, type NodeType } from '../../features/graph/types';
+import { NODE_TYPE_STYLES, EXECUTION_STATUS_STYLES, type NodeType, type NodeIssueInfo } from '../../features/graph/types';
+import { validationSuggestionKey } from '../../features/graph/validationIssues';
 import { truncate } from '../../features/graph/utils';
 import { AGENT_NODE_STATUS_STYLES, DISPLAY_STATUS_STYLES } from '../../features/orchestration/agentNodeStatusStyles';
 import type { AgentNodeStatus, DisplayStatus } from '../../features/orchestration/types';
@@ -80,6 +99,8 @@ const props = defineProps<{
     outputPreview?: string;
     currentActivity?: string;
     toolNames?: string[];
+    issue?: NodeIssueInfo;
+    spotlighted?: boolean;
   };
   selected?: boolean;
 }>();
@@ -162,5 +183,12 @@ const statusBadgeClass = computed(() => {
   if (s === 'error' || s === 'failed') return 'graph-flow-node__status-badge--failed';
   if (s === 'interrupted') return 'graph-flow-node__status-badge--interrupted';
   return '';
+});
+
+const issueSuggestion = computed(() => {
+  const issue = props.data.issue;
+  if (!issue) return '';
+  const key = validationSuggestionKey(issue.code);
+  return key ? t(key) : '';
 });
 </script>

@@ -368,6 +368,9 @@ type CompletionMetadata struct {
 	// SnapshotOnly marks terminal completion snapshots that should remain
 	// available to callers but must not be replayed as conversational history.
 	SnapshotOnly bool `json:"snapshotOnly,omitempty"`
+	// StepsTruncated marks executions stopped by the MaxSteps ceiling with
+	// work still pending, as opposed to natural graph completion.
+	StepsTruncated bool `json:"stepsTruncated,omitempty"`
 }
 
 // NodeCustomEventCategory represents the category of node custom events.
@@ -1154,6 +1157,7 @@ type CompletionEventOptions struct {
 	TotalSteps      int
 	TotalDuration   time.Duration
 	SnapshotOnly    bool
+	StepsTruncated  bool
 }
 
 // CompletionEventOption is a function that configures completion event options.
@@ -1200,6 +1204,14 @@ func WithCompletionEventTotalDuration(totalDuration time.Duration) CompletionEve
 func WithCompletionEventSnapshotOnly(snapshotOnly bool) CompletionEventOption {
 	return func(opts *CompletionEventOptions) {
 		opts.SnapshotOnly = snapshotOnly
+	}
+}
+
+// WithCompletionEventStepsTruncated marks the execution as stopped by the
+// MaxSteps ceiling rather than by natural graph completion.
+func WithCompletionEventStepsTruncated(stepsTruncated bool) CompletionEventOption {
+	return func(opts *CompletionEventOptions) {
+		opts.StepsTruncated = stepsTruncated
 	}
 }
 
@@ -1582,6 +1594,7 @@ func addCompletionMetadata(e *event.Event, options *CompletionEventOptions, fina
 		FinalStateKeys:  finalStateKeys,
 		FinalResponseID: options.FinalResponseID,
 		SnapshotOnly:    options.SnapshotOnly,
+		StepsTruncated:  options.StepsTruncated,
 	}
 	if jsonData, err := json.Marshal(completionMetadata); err == nil {
 		e.StateDelta[MetadataKeyCompletion] = jsonData

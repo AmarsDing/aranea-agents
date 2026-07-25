@@ -38,6 +38,14 @@ func TestValidateTeamDefinition(t *testing.T) {
 		{"empty members array", `{"mode":"sequential","members":[]}`, false},
 		{"parallel with synthesizer_agent_id", `{"mode":"parallel","synthesizer_agent_id":"s1","members":[{"agent_id":"a1"},{"agent_id":"a2"}]}`, false},
 		{"coordinator with synthesizer_agent_id", `{"mode":"coordinator","synthesizer_agent_id":"s1","members":[{"agent_id":"a1"},{"agent_id":"a2"}]}`, false},
+		// ADR-08 A4: embedded graph 为拓扑唯一真相源时，跳过 role-mode 耦合校验。
+		{"graph skips role-mode compatibility", `{"mode":"sequential","members":[{"agent_id":"a1","role":"coordinator"}],"graph":{"version":1,"layout":"custom","nodes":[{"id":"n1","type":"agent","agent_id":"a1"}],"edges":[]}}`, false},
+		{"graph skips parallel synthesizer requirement", `{"mode":"parallel","members":[{"agent_id":"a1"},{"agent_id":"a2"}],"graph":{"version":1,"layout":"custom","nodes":[{"id":"n1","type":"agent","agent_id":"a1"},{"id":"n2","type":"agent","agent_id":"a2"}],"edges":[]}}`, false},
+		{"graph skips coordinator requirement", `{"mode":"coordinator","members":[{"agent_id":"a1"},{"agent_id":"a2"}],"graph":{"version":1,"layout":"custom","nodes":[{"id":"n1","type":"agent","agent_id":"a1"},{"id":"n2","type":"agent","agent_id":"a2"}],"edges":[]}}`, false},
+		{"graph skips critic_loop requirement", `{"mode":"critic_loop","members":[{"agent_id":"a1","role":"worker"}],"graph":{"version":1,"layout":"custom","nodes":[{"id":"n1","type":"agent","agent_id":"a1"}],"edges":[]}}`, false},
+		{"graph still requires enabled member", `{"mode":"sequential","members":[{"agent_id":"a1","enabled":false}],"graph":{"version":1,"layout":"custom","nodes":[{"id":"n1","type":"agent","agent_id":"a1"}],"edges":[]}}`, true},
+		{"graph still requires member agent_id", `{"mode":"sequential","members":[{"agent_id":""}],"graph":{"version":1,"layout":"custom","nodes":[{"id":"n1","type":"agent","agent_id":"a1"}],"edges":[]}}`, true},
+		{"graph with empty nodes does not skip", `{"mode":"sequential","members":[{"agent_id":"a1","role":"coordinator"}],"graph":{"version":1,"layout":"custom","nodes":[],"edges":[]}}`, true},
 	}
 
 	for _, tt := range tests {

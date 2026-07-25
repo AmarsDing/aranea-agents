@@ -20,6 +20,9 @@ export type CompileTeamGraphResult = {
   graph_json: string;
   issues: CompileTeamGraphValidationIssue[];
   valid: boolean;
+  // ADR-08 A2: backend template-generated canonical embedded graph spec
+  // ("" when the definition carries its own embedded graph).
+  definition_graph_json: string;
 };
 
 function wireCompile(res: CompileTeamGraphResponse): CompileTeamGraphResult {
@@ -38,6 +41,7 @@ export function wireCompileResponse(res: CompileTeamGraphResponse): CompileTeamG
     graph_json: res.graphJson ?? '',
     issues: res.issues ?? [],
     valid: res.valid ?? false,
+    definition_graph_json: res.definitionGraphJson ?? '',
   };
 }
 

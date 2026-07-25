@@ -116,6 +116,7 @@
             <section class="team-editor-section">
               <header class="team-editor-section__head">
                 <h3 class="team-editor-section__title">编排模式</h3>
+                <p class="team-editor-section__hint">选择模式即按模板生成图谱；成员角色由模式与顺序自动派生。</p>
               </header>
               <div class="app-form-field-grid app-form-field-grid--2col">
                 <q-select
@@ -128,7 +129,16 @@
                   label="编排模式"
                   :hint="modeHint"
                   :options="modeOptions"
-                />
+                >
+                  <template #option="{ itemProps, opt }">
+                    <q-item v-bind="itemProps">
+                      <q-item-section>
+                        <q-item-label>{{ opt.label }}</q-item-label>
+                        <q-item-label caption>{{ opt.description }}</q-item-label>
+                      </q-item-section>
+                    </q-item>
+                  </template>
+                </q-select>
                 <q-input
                   v-if="definition.mode === 'parallel'"
                   v-model.number="definition.max_concurrency"
@@ -140,6 +150,20 @@
                   label="并行批大小"
                   hint="每批同时执行的 Worker 数"
                 />
+                <q-field
+                  v-if="definition.mode === 'parallel'"
+                  class="team-control"
+                  dense
+                  outlined
+                  readonly
+                  stack-label
+                  label="汇总 Agent（派生）"
+                  hint="排序最后的启用成员；调整成员顺序可变更"
+                >
+                  <template #control>
+                    <span class="team-derived-value">{{ synthesizerLabel }}</span>
+                  </template>
+                </q-field>
                 <q-input
                   v-else-if="definition.mode === 'coordinator' || definition.mode === 'adaptive'"
                   v-model.number="definition.loop_max_iterations"
@@ -168,23 +192,9 @@
             </section>
 
             <div class="team-editor-expansion">
-              <q-expansion-item icon="settings" label="运行时 / 失败策略" caption="执行引擎与失败接管配置">
+              <q-expansion-item icon="settings" label="失败策略" caption="失败接管与重试配置（Graph 运行时）">
                 <div class="team-editor-expansion__body">
-                  <q-banner v-if="nativeLocked" dense rounded class="team-editor-notice q-mb-sm">
-                    Native 执行引擎仅平台管理员可选；当前将使用 Graph。
-                  </q-banner>
                   <div class="app-form-field-grid app-form-field-grid--2col">
-                    <q-select
-                      v-model="runtimeEngine"
-                      class="team-control"
-                      dense
-                      outlined
-                      emit-value
-                      map-options
-                      label="执行引擎"
-                      hint="Native 需 admin + ARANEA_TEAM_NATIVE=1"
-                      :options="filteredRuntimeEngineOptions"
-                    />
                     <q-select
                       v-model="failureDefault"
                       class="team-control"
@@ -352,7 +362,22 @@
                       label="Agent"
                       :options="agentOptions"
                     />
+                    <q-field
+                      v-if="roleDerived"
+                      class="team-control"
+                      dense
+                      outlined
+                      readonly
+                      stack-label
+                      label="角色（派生）"
+                      hint="由编排模式与成员顺序自动派生"
+                    >
+                      <template #control>
+                        <span class="team-derived-value">{{ teamRoleLabel(member.role) }}</span>
+                      </template>
+                    </q-field>
                     <q-select
+                      v-else
                       v-model="member.role"
                       class="team-control"
                       dense
@@ -369,7 +394,7 @@
                       dense
                       outlined
                       type="number"
-                      label="顺序"
+                      :label="t('teamsPage.memberSortOrder')"
                     />
                     <q-input
                       v-model="member.task_prompt"
@@ -378,7 +403,7 @@
                       outlined
                       autogrow
                       type="textarea"
-                      label="职责 / 任务说明"
+                      :label="t('teamsPage.memberTaskPrompt')"
                     />
                   </div>
                 </div>
@@ -425,19 +450,19 @@
 
 <script setup lang="ts">
 const definition = defineModel<TeamDefinition>('definition', { required: true });
-import { computed, watch } from 'vue';
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { TeamDefinition } from '../../features/teams/types';
 import { useTeamCompilePreview } from '../../features/teams/useTeamCompilePreview';
 import TeamCompilePreview from './TeamCompilePreview.vue';
 import {
+  derivedRoleModes,
   failureDefaultOptions,
   failureOnErrorOptions,
   modeOptions,
   parallelFailOptions,
   roleOptionsForMode,
-  runtimeEngineOptions,
   teamRoleLabel,
   teamStatusMap,
   teamTemplateOptions,
@@ -466,10 +491,9 @@ const props = withDefaults(
     saving: boolean;
     canSave: boolean;
     isDark: boolean;
-    isPlatformAdmin?: boolean;
     hasActiveRun?: boolean;
   }>(),
-  { definitionJson: '{}', selectedTemplateKey: null, isPlatformAdmin: false, hasActiveRun: false },
+  { definitionJson: '{}', selectedTemplateKey: null, hasActiveRun: false },
 );
 
 const emit = defineEmits<{
@@ -532,24 +556,8 @@ const modeHint = computed(() => {
   return key ? t(key) : '';
 });
 
-const filteredRuntimeEngineOptions = computed(() =>
-  props.isPlatformAdmin ? runtimeEngineOptions : runtimeEngineOptions.filter((o) => o.value !== 'native'),
-);
-
-const nativeLocked = computed(
-  () => !props.isPlatformAdmin && String(definition.value.runtime_engine || 'graph').toLowerCase() === 'native',
-);
-
-watch(
-  nativeLocked,
-  (locked) => {
-    if (locked) {
-      definition.value.runtime_engine = 'graph';
-      definition.value.team_graph_runtime = true;
-    }
-  },
-  { immediate: true },
-);
+// ADR-08 A3：派生模式下角色由 mode + 成员顺序自动派生（拓扑 watcher 回写），编辑器只读展示。
+const roleDerived = computed(() => derivedRoleModes.has(String(definition.value.mode || 'sequential').toLowerCase()));
 
 const a2aFormatOptions = [
   { label: 'Markdown + JSON', value: 'markdown_json' },
@@ -592,14 +600,6 @@ const criticLoopMaxIterations = computed({
     const n = Number.isFinite(value) ? Math.min(32, Math.max(1, Math.floor(value))) : 2;
     const prev = definition.value.critic_loop ?? { max_iterations: 2, score_threshold: 0.8 };
     definition.value.critic_loop = { ...prev, max_iterations: n };
-  },
-});
-
-const runtimeEngine = computed({
-  get: () => (String(definition.value.runtime_engine || 'graph').toLowerCase() === 'native' ? 'native' : 'graph'),
-  set: (value: 'native' | 'graph') => {
-    definition.value.runtime_engine = value;
-    definition.value.team_graph_runtime = value === 'graph';
   },
 });
 

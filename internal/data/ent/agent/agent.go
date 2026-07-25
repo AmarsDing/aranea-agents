@@ -65,6 +65,10 @@ const (
 	FieldVariantDescription = "variant_description"
 	// FieldWorkspaceID holds the string denoting the workspace_id field in the database.
 	FieldWorkspaceID = "workspace_id"
+	// FieldMissionStatement holds the string denoting the mission_statement field in the database.
+	FieldMissionStatement = "mission_statement"
+	// FieldDomainPath holds the string denoting the domain_path field in the database.
+	FieldDomainPath = "domain_path"
 	// Table holds the table name of the agent in the database.
 	Table = "agents"
 )
@@ -98,6 +102,8 @@ var Columns = []string{
 	FieldAgentVariant,
 	FieldVariantDescription,
 	FieldWorkspaceID,
+	FieldMissionStatement,
+	FieldDomainPath,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -155,6 +161,12 @@ var (
 	DefaultVariantDescription string
 	// DefaultWorkspaceID holds the default value on creation for the "workspace_id" field.
 	DefaultWorkspaceID string
+	// DefaultMissionStatement holds the default value on creation for the "mission_statement" field.
+	DefaultMissionStatement string
+	// DefaultDomainPath holds the default value on creation for the "domain_path" field.
+	DefaultDomainPath string
+	// DomainPathValidator is a validator for the "domain_path" field. It is called by the builders before save.
+	DomainPathValidator func(string) error
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
@@ -351,4 +363,14 @@ func ByVariantDescription(opts ...sql.OrderTermOption) OrderOption {
 // ByWorkspaceID orders the results by the workspace_id field.
 func ByWorkspaceID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldWorkspaceID, opts...).ToFunc()
+}
+
+// ByMissionStatement orders the results by the mission_statement field.
+func ByMissionStatement(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMissionStatement, opts...).ToFunc()
+}
+
+// ByDomainPath orders the results by the domain_path field.
+func ByDomainPath(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDomainPath, opts...).ToFunc()
 }

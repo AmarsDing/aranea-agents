@@ -183,6 +183,16 @@ func WorkspaceID(v string) predicate.Agent {
 	return predicate.Agent(sql.FieldEQ(FieldWorkspaceID, v))
 }
 
+// MissionStatement applies equality check predicate on the "mission_statement" field. It's identical to MissionStatementEQ.
+func MissionStatement(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldEQ(FieldMissionStatement, v))
+}
+
+// DomainPath applies equality check predicate on the "domain_path" field. It's identical to DomainPathEQ.
+func DomainPath(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldEQ(FieldDomainPath, v))
+}
+
 // AgentKeyEQ applies the EQ predicate on the "agent_key" field.
 func AgentKeyEQ(v string) predicate.Agent {
 	return predicate.Agent(sql.FieldEQ(FieldAgentKey, v))
@@ -1566,6 +1576,136 @@ func WorkspaceIDEqualFold(v string) predicate.Agent {
 // WorkspaceIDContainsFold applies the ContainsFold predicate on the "workspace_id" field.
 func WorkspaceIDContainsFold(v string) predicate.Agent {
 	return predicate.Agent(sql.FieldContainsFold(FieldWorkspaceID, v))
+}
+
+// MissionStatementEQ applies the EQ predicate on the "mission_statement" field.
+func MissionStatementEQ(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldEQ(FieldMissionStatement, v))
+}
+
+// MissionStatementNEQ applies the NEQ predicate on the "mission_statement" field.
+func MissionStatementNEQ(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldNEQ(FieldMissionStatement, v))
+}
+
+// MissionStatementIn applies the In predicate on the "mission_statement" field.
+func MissionStatementIn(vs ...string) predicate.Agent {
+	return predicate.Agent(sql.FieldIn(FieldMissionStatement, vs...))
+}
+
+// MissionStatementNotIn applies the NotIn predicate on the "mission_statement" field.
+func MissionStatementNotIn(vs ...string) predicate.Agent {
+	return predicate.Agent(sql.FieldNotIn(FieldMissionStatement, vs...))
+}
+
+// MissionStatementGT applies the GT predicate on the "mission_statement" field.
+func MissionStatementGT(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldGT(FieldMissionStatement, v))
+}
+
+// MissionStatementGTE applies the GTE predicate on the "mission_statement" field.
+func MissionStatementGTE(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldGTE(FieldMissionStatement, v))
+}
+
+// MissionStatementLT applies the LT predicate on the "mission_statement" field.
+func MissionStatementLT(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldLT(FieldMissionStatement, v))
+}
+
+// MissionStatementLTE applies the LTE predicate on the "mission_statement" field.
+func MissionStatementLTE(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldLTE(FieldMissionStatement, v))
+}
+
+// MissionStatementContains applies the Contains predicate on the "mission_statement" field.
+func MissionStatementContains(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldContains(FieldMissionStatement, v))
+}
+
+// MissionStatementHasPrefix applies the HasPrefix predicate on the "mission_statement" field.
+func MissionStatementHasPrefix(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldHasPrefix(FieldMissionStatement, v))
+}
+
+// MissionStatementHasSuffix applies the HasSuffix predicate on the "mission_statement" field.
+func MissionStatementHasSuffix(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldHasSuffix(FieldMissionStatement, v))
+}
+
+// MissionStatementEqualFold applies the EqualFold predicate on the "mission_statement" field.
+func MissionStatementEqualFold(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldEqualFold(FieldMissionStatement, v))
+}
+
+// MissionStatementContainsFold applies the ContainsFold predicate on the "mission_statement" field.
+func MissionStatementContainsFold(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldContainsFold(FieldMissionStatement, v))
+}
+
+// DomainPathEQ applies the EQ predicate on the "domain_path" field.
+func DomainPathEQ(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldEQ(FieldDomainPath, v))
+}
+
+// DomainPathNEQ applies the NEQ predicate on the "domain_path" field.
+func DomainPathNEQ(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldNEQ(FieldDomainPath, v))
+}
+
+// DomainPathIn applies the In predicate on the "domain_path" field.
+func DomainPathIn(vs ...string) predicate.Agent {
+	return predicate.Agent(sql.FieldIn(FieldDomainPath, vs...))
+}
+
+// DomainPathNotIn applies the NotIn predicate on the "domain_path" field.
+func DomainPathNotIn(vs ...string) predicate.Agent {
+	return predicate.Agent(sql.FieldNotIn(FieldDomainPath, vs...))
+}
+
+// DomainPathGT applies the GT predicate on the "domain_path" field.
+func DomainPathGT(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldGT(FieldDomainPath, v))
+}
+
+// DomainPathGTE applies the GTE predicate on the "domain_path" field.
+func DomainPathGTE(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldGTE(FieldDomainPath, v))
+}
+
+// DomainPathLT applies the LT predicate on the "domain_path" field.
+func DomainPathLT(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldLT(FieldDomainPath, v))
+}
+
+// DomainPathLTE applies the LTE predicate on the "domain_path" field.
+func DomainPathLTE(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldLTE(FieldDomainPath, v))
+}
+
+// DomainPathContains applies the Contains predicate on the "domain_path" field.
+func DomainPathContains(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldContains(FieldDomainPath, v))
+}
+
+// DomainPathHasPrefix applies the HasPrefix predicate on the "domain_path" field.
+func DomainPathHasPrefix(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldHasPrefix(FieldDomainPath, v))
+}
+
+// DomainPathHasSuffix applies the HasSuffix predicate on the "domain_path" field.
+func DomainPathHasSuffix(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldHasSuffix(FieldDomainPath, v))
+}
+
+// DomainPathEqualFold applies the EqualFold predicate on the "domain_path" field.
+func DomainPathEqualFold(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldEqualFold(FieldDomainPath, v))
+}
+
+// DomainPathContainsFold applies the ContainsFold predicate on the "domain_path" field.
+func DomainPathContainsFold(v string) predicate.Agent {
+	return predicate.Agent(sql.FieldContainsFold(FieldDomainPath, v))
 }
 
 // And groups predicates with the AND operator between them.

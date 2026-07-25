@@ -303,6 +303,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		Strategy:           strategy,
 		StrategyReason:     strategyReason,
 		TopologyHint:       topologyHint,
+		DomainPath:         PrimaryDomainPath(subTasks),
 		MemoryHit:          nil, // Memory hit is handled in Step 0; normal path has no cache hit
 		Status:             biz.TaskPlanStatusDraft,
 	}
@@ -882,15 +883,16 @@ Each subtask will be assigned to one dedicated team, so the subtask count MUST e
 	return fmt.Sprintf(`You are a task decomposition specialist. %s
 
 Rules:
-- Each subtask must have: id (st_1, st_2, etc.), name, description, depends_on (array of other subtask IDs), required_capabilities (from the predefined list), priority (1-5, 1=highest), estimated_complexity (0.0-1.0)
+- Each subtask must have: id (st_1, st_2, etc.), name, description, depends_on (array of other subtask IDs), required_capabilities (from the predefined list), priority (1-5, 1=highest), estimated_complexity (0.0-1.0), domain_path (domain classification from the lexicon below)
 - The "name" field MUST be a short noun-phrase suitable for displaying as a team name (e.g. "Code Analysis Team", "Data Pipeline Builder"), NOT a sentence-length task description. The "name" will be shown to the user as the team's display name; "id" is internal-only and never shown.
 - Output ONLY a JSON array, no markdown fences, no commentary
 - required_capabilities must use these predefined tags: go-backend, go-kratos, vue3-frontend, quasar-ui, devops, database, architecture, testing, security, research, documentation, api-design
+- domain_path must classify the subtask into this domain lexicon (use the most specific entry that fits; if none fits, use a top-level domain or "其他"): %s
 - depends_on must only reference IDs of other subtasks in the array
 - No circular dependencies allowed
 - Subtasks should be independently executable where possible
 - Each subtask MAY include "deliverables" (output contract array) and "input_contract" (input contract array). Contract element: {"name": string, "type": "document"|"code"|"data", "format": "markdown"|"json"|"zip", "description": string}
-- If subtask B depends_on subtask A, B's input_contract SHOULD declare references to A's deliverables using the SAME "name" values`, countRule) + intentContext
+- If subtask B depends_on subtask A, B's input_contract SHOULD declare references to A's deliverables using the SAME "name" values`, countRule, DomainLexiconPromptList()) + intentContext
 }
 
 // resolvePlannerProviderModel and resolveFallbackProviderModelFromCatalog
@@ -922,6 +924,7 @@ func parseDecompositionOutput(text string) ([]biz.SubTask, error) {
 		EstimatedComplexity  float64                   `json:"estimated_complexity"`
 		Deliverables         []biz.DeliverableContract `json:"deliverables"`
 		InputContract        []biz.DeliverableContract `json:"input_contract"`
+		DomainPath           string                    `json:"domain_path"`
 	}
 
 	if err := json.Unmarshal([]byte(text), &rawTasks); err != nil {
@@ -980,6 +983,7 @@ func parseDecompositionOutput(text string) ([]biz.SubTask, error) {
 			EstimatedComplexity:  rt.EstimatedComplexity,
 			Deliverables:         sanitizeContracts(rt.Deliverables),
 			InputContract:        sanitizeContracts(rt.InputContract),
+			DomainPath:           NormalizeDomainPath(rt.DomainPath),
 		})
 	}
 

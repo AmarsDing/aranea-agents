@@ -960,6 +960,8 @@ type AgentMutation struct {
 	agent_variant           *string
 	variant_description     *string
 	workspace_id            *string
+	mission_statement       *string
+	domain_path             *string
 	clearedFields           map[string]struct{}
 	done                    bool
 	oldValue                func(context.Context) (*Agent, error)
@@ -2046,6 +2048,78 @@ func (m *AgentMutation) ResetWorkspaceID() {
 	m.workspace_id = nil
 }
 
+// SetMissionStatement sets the "mission_statement" field.
+func (m *AgentMutation) SetMissionStatement(s string) {
+	m.mission_statement = &s
+}
+
+// MissionStatement returns the value of the "mission_statement" field in the mutation.
+func (m *AgentMutation) MissionStatement() (r string, exists bool) {
+	v := m.mission_statement
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMissionStatement returns the old "mission_statement" field's value of the Agent entity.
+// If the Agent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentMutation) OldMissionStatement(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMissionStatement is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMissionStatement requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMissionStatement: %w", err)
+	}
+	return oldValue.MissionStatement, nil
+}
+
+// ResetMissionStatement resets all changes to the "mission_statement" field.
+func (m *AgentMutation) ResetMissionStatement() {
+	m.mission_statement = nil
+}
+
+// SetDomainPath sets the "domain_path" field.
+func (m *AgentMutation) SetDomainPath(s string) {
+	m.domain_path = &s
+}
+
+// DomainPath returns the value of the "domain_path" field in the mutation.
+func (m *AgentMutation) DomainPath() (r string, exists bool) {
+	v := m.domain_path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDomainPath returns the old "domain_path" field's value of the Agent entity.
+// If the Agent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentMutation) OldDomainPath(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDomainPath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDomainPath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDomainPath: %w", err)
+	}
+	return oldValue.DomainPath, nil
+}
+
+// ResetDomainPath resets all changes to the "domain_path" field.
+func (m *AgentMutation) ResetDomainPath() {
+	m.domain_path = nil
+}
+
 // Where appends a list predicates to the AgentMutation builder.
 func (m *AgentMutation) Where(ps ...predicate.Agent) {
 	m.predicates = append(m.predicates, ps...)
@@ -2080,7 +2154,7 @@ func (m *AgentMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentMutation) Fields() []string {
-	fields := make([]string, 0, 26)
+	fields := make([]string, 0, 28)
 	if m.agent_key != nil {
 		fields = append(fields, agent.FieldAgentKey)
 	}
@@ -2159,6 +2233,12 @@ func (m *AgentMutation) Fields() []string {
 	if m.workspace_id != nil {
 		fields = append(fields, agent.FieldWorkspaceID)
 	}
+	if m.mission_statement != nil {
+		fields = append(fields, agent.FieldMissionStatement)
+	}
+	if m.domain_path != nil {
+		fields = append(fields, agent.FieldDomainPath)
+	}
 	return fields
 }
 
@@ -2219,6 +2299,10 @@ func (m *AgentMutation) Field(name string) (ent.Value, bool) {
 		return m.VariantDescription()
 	case agent.FieldWorkspaceID:
 		return m.WorkspaceID()
+	case agent.FieldMissionStatement:
+		return m.MissionStatement()
+	case agent.FieldDomainPath:
+		return m.DomainPath()
 	}
 	return nil, false
 }
@@ -2280,6 +2364,10 @@ func (m *AgentMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldVariantDescription(ctx)
 	case agent.FieldWorkspaceID:
 		return m.OldWorkspaceID(ctx)
+	case agent.FieldMissionStatement:
+		return m.OldMissionStatement(ctx)
+	case agent.FieldDomainPath:
+		return m.OldDomainPath(ctx)
 	}
 	return nil, fmt.Errorf("unknown Agent field %s", name)
 }
@@ -2471,6 +2559,20 @@ func (m *AgentMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetWorkspaceID(v)
 		return nil
+	case agent.FieldMissionStatement:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMissionStatement(v)
+		return nil
+	case agent.FieldDomainPath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDomainPath(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Agent field %s", name)
 }
@@ -2624,6 +2726,12 @@ func (m *AgentMutation) ResetField(name string) error {
 		return nil
 	case agent.FieldWorkspaceID:
 		m.ResetWorkspaceID()
+		return nil
+	case agent.FieldMissionStatement:
+		m.ResetMissionStatement()
+		return nil
+	case agent.FieldDomainPath:
+		m.ResetDomainPath()
 		return nil
 	}
 	return fmt.Errorf("unknown Agent field %s", name)

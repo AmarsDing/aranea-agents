@@ -46,13 +46,6 @@ type TeamStarter struct {
 	// with synthesis. This replaces the LLM-polling pattern (check_progress
 	// tool) with a system-push pattern.
 	turnGateway biz.TurnGateway
-	// synthesisSvc is used to synthesize team results when all teams
-	// complete. The synthesis output is injected as the content of the
-	// turn message sent via turnGateway.
-	// Narrow 1-method interface (satisfied by *SpiritSynthesisService) for
-	// testability — buildSynthesisMessage/checkAllTeamsCompleted unit tests
-	// stub this port to drive the degraded/hard-fail paths.
-	synthesisSvc synthesisResultService
 	// synthesisTriggered guards against concurrent duplicate synthesis
 	// triggers per spirit session. checkAllTeamsCompleted is called from
 	// both HandleTeamTurnResult (goroutine) and NotifyAllTeamsCompleted
@@ -91,7 +84,6 @@ func NewTeamStarter(
 	eventBus biz.EventBus,
 	seq rt.EventPublisher,
 	lg loggateway.Logger,
-	synthesisSvc synthesisResultService,
 	taskV2Reader biz.TaskV2Reader,
 	teamStageR biz.TeamStageV2Reader,
 	teamRunR biz.TeamRunV2Reader,
@@ -102,7 +94,6 @@ func NewTeamStarter(
 		eventBus:     eventBus,
 		seq:          seq,
 		lg:           lg,
-		synthesisSvc: synthesisSvc,
 		taskV2Reader: taskV2Reader,
 		teamStageR:   teamStageR,
 		tsSM:         biz.NewTeamStageStateMachine(),
@@ -346,6 +337,31 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 				loggateway.Str("callback_status", status),
 			)
 			return
+		}
+	}
+
+	// 2026-07-25 Fix 1+2 真实产出闸门：DAG 团队回调 completed 但从未调用
+	// set_deliverable（无 graph state 交付物）时，在状态转换前把 status 翻转
+	// 为 failed —— 「只提问/只说话」不是产出，不允许无交付物的成功。翻转后
+	// 全链路走既有 failed 路径：team 标 failed、级联调度下游（anyDepFailed
+	// 级联失败）、发布 TeamStageFailedEvent、NotifyTeamCompletion(success=false)。
+	if status == biz.TeamStatusCompleted && team.DagNodeID != "" {
+		has, gateErr := s.team.SpiritUC.HasRealDeliverable(ctx, team)
+		if gateErr != nil {
+			s.lg.Warn("真实交付物校验失败（infra），按无交付物处理",
+				loggateway.StepID("spirit.team.deliverable_gate"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Err(gateErr),
+			)
+		}
+		if gateErr != nil || !has {
+			status = biz.TeamStatusFailed
+			errMsg = "团队未通过 set_deliverable 提交真实交付物（completed 回调无产出，已翻转为 failed）"
+			s.lg.Info("DAG 团队 completed 回调无真实交付物，翻转为 failed",
+				loggateway.StepID("spirit.team.deliverable_gate"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Str("dag_node_id", team.DagNodeID),
+			)
 		}
 	}
 
@@ -693,125 +709,94 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 		)
 		return
 	}
-	if s.synthesisSvc == nil || s.turnGateway == nil {
+	if s.turnGateway == nil {
 		return
 	}
 	if _, alreadyTriggered := s.synthesisTriggered.LoadOrStore(spiritSessionID, true); alreadyTriggered {
 		return
 	}
 
-	synthesisMsg, reportPublished := s.buildSynthesisMessage(ctx, spiritSessionID)
+	// Resolve the most recent user-input Task for this spirit session so the
+	// synthesis Turn attaches as a continuation Turn (ParentTaskID) instead of
+	// creating a new Task. This prevents the synthesis trigger text from being
+	// rendered as a user-input bubble by TaskCard (spec §3.2.1: a Task
+	// corresponds to one user input; system-push Turns are continuation Turns
+	// on the same Task).
 	parentTaskID := s.resolveLatestUserTaskID(ctx, spiritSessionID)
-	if synthesisMsg != "" {
-		// Resolve the most recent user-input Task for this spirit
-		// session so the synthesis Turn attaches as a continuation
-		// Turn (ParentTaskID) instead of creating a new Task. This
-		// prevents the synthesis trigger text from being rendered as
-		// a user-input bubble by TaskCard (spec §3.2.1: a Task
-		// corresponds to one user input; system-push Turns are
-		// continuation Turns on the same Task).
-		if _, err := s.turnGateway.ExecuteTurn(ctx, biz.TurnInput{
-			SessionID:    spiritSessionID,
-			Content:      synthesisMsg,
-			ParentTaskID: parentTaskID,
-		}); err != nil {
-			s.lg.Warn("all teams completed: failed to trigger Spirit synthesis turn",
-				loggateway.StepID("spirit.synthesis_turn_err"),
-				loggateway.Str("spirit_session_id", spiritSessionID),
-				loggateway.Err(err),
-			)
-		} else {
-			s.lg.Info("all teams completed: triggered Spirit synthesis turn",
-				loggateway.StepID("spirit.synthesis_turn_triggered"),
-				loggateway.Str("spirit_session_id", spiritSessionID),
-				loggateway.Str("parent_task_id", parentTaskID),
-				loggateway.Int("total_teams", result.TotalTeams),
-				loggateway.Int("completed_teams", result.CompletedTeams),
-				loggateway.Int("failed_teams", result.FailedTeams),
-			)
-		}
+	if _, err := s.turnGateway.ExecuteTurn(ctx, biz.TurnInput{
+		SessionID:    spiritSessionID,
+		Content:      synthesisSummaryTrigger,
+		ParentTaskID: parentTaskID,
+	}); err != nil {
+		s.lg.Warn("all teams completed: failed to trigger Spirit synthesis turn",
+			loggateway.StepID("spirit.synthesis_turn_err"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Err(err),
+		)
+		s.publishAllTeamsCompletedFallbackNotice(ctx, spiritSessionID, parentTaskID)
+		return
 	}
-
-	// 兜底通知：仅在执行报告未发布时（synthesis 硬失败）发布"所有团队已完成"。
-	// 报告已发布时报告卡本身就是完成信号，再发成功通知会造成视觉冗余。
-	// 注意：通知必须 (a) 在 CAS 守卫内发布（HandleTeamTurnResult 与
-	// NotifyAllTeamsCompleted 双路径只发一次），(b) 附着 TaskID（硬约束：
-	// notice 事件必须正确附着到对应任务，否则前端不渲染）。
-	if !reportPublished && s.v2EventReady() {
-		if parentTaskID == "" {
-			// 硬约束：notice 必须附着 TaskID 否则前端不渲染。parentTaskID 为空
-			// （Task 查询失败且 ctx 无 RootTaskActivityID）时兜底通知静默失效，
-			// 至少留 Warn 便于诊断双重失败（synthesis 硬失败 + Task 查询失败）。
-			s.lg.Warn("all teams completed: 兜底通知 TaskID 为空，前端可能不渲染完成信号",
-				loggateway.StepID("spirit.fallback_notice.empty_task"),
-				loggateway.Str("spirit_session_id", spiritSessionID),
-			)
-		}
-		// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
-		// 2026-07-21 P1-5 F3：直发 notice 补全 StartedAt/CompletedAt/Version。
-		now := time.Now()
-		step := biz.Step{
-			ID:              uuid.NewString(),
-			SessionID:       spiritSessionID,
-			SpiritSessionID: spiritSessionID,
-			TaskID:          parentTaskID,
-			Kind:            biz.StepKindNotice,
-			NoticeType:      "success",
-			Content:         "所有团队已完成",
-			Status:          biz.StepStatusCompleted,
-			StartedAt:       now,
-			CompletedAt:     &now,
-			Version:         1,
-			AuthorAgentKey:  "team-starter",
-		}
-		s.publishV2Event(ctx, biz.NewStepCreatedEvent(step))
-	}
+	s.lg.Info("all teams completed: triggered Spirit synthesis turn",
+		loggateway.StepID("spirit.synthesis_turn_triggered"),
+		loggateway.Str("spirit_session_id", spiritSessionID),
+		loggateway.Str("parent_task_id", parentTaskID),
+		loggateway.Int("total_teams", result.TotalTeams),
+		loggateway.Int("completed_teams", result.CompletedTeams),
+		loggateway.Int("failed_teams", result.FailedTeams),
+	)
 }
 
-// buildSynthesisMessage triggers synthesis and returns a short system-trigger
-// prompt for the Spirit LLM, plus whether the execution report was published.
-// Returns ("", false) only when synthesis hard-fails (no output at all).
+// synthesisSummaryTrigger is the system-push message injected into the Spirit
+// session when all teams complete. It asks the Spirit LLM to produce the final
+// summary report in a fixed Markdown structure from team results already in
+// the session context. The LLM reply (a normal reply step, persisted and
+// refresh-safe) IS the summary report — there is no dedicated report UI.
 //
-// Degraded path (B.10.17 FR-6): the usecase returns a non-nil degraded output
-// alongside the LLM error, and the structured report (overview/team results/
-// deliverables) has already been published. The summary turn MUST still be
-// triggered — task.completed for the parent Task is deferred to the synthesis
-// continuation turn (projector.OnTurnEnd ParentTaskID branch); skipping the
-// turn would leave the Task in Running forever.
-//
-// Design rationale (spec 2026-07-02-llm-activity-ordering-design §3.5.2 step 6
-// + §3.5.5 反馈机制表): the synthesis content is delivered to the frontend
-// via the synthesis_completed event → ExecutionReportCard. We do NOT inject
-// the synthesis content as a user message because:
-//
-//	(a) TaskCard would misrender the synthesis as user input (the bug being
-//	    fixed here), and
-//	(b) it would poison SpiritTeamUsecase.GetSpiritQuery on subsequent
-//	    syntheses — GetSpiritQuery returns the most recent user message,
-//	    which would become the synthesis text itself, recursively corrupting
-//	    the synthesis template's {{query}} substitution.
-//
-// Instead, return a short system-trigger prompt so Spirit LLM generates a
-// final summary based on team replies already in the session context.
-func (s *TeamStarter) buildSynthesisMessage(ctx context.Context, spiritSessionID string) (string, bool) {
-	output, err := s.synthesisSvc.SynthesizeResults(ctx, spiritSessionID, "")
-	if output == nil {
-		s.lg.Warn("all teams completed: synthesis failed",
-			loggateway.StepID("spirit.synthesis_fail"),
-			loggateway.Str("spirit_session_id", spiritSessionID),
-			loggateway.Err(err),
-		)
-		return "", false
+// The trigger text is not rendered as a user bubble (the Turn attaches to the
+// parent Task as a continuation Turn), so it can be verbose.
+const synthesisSummaryTrigger = "所有团队已完成。请基于会话中各团队的执行结果，输出最终任务总结报告（Markdown 格式），严格按以下结构：\n" +
+	"## 任务总结\n" +
+	"（一段话概述用户目标与整体完成情况）\n" +
+	"## 各团队结果\n" +
+	"（逐团队列出：团队名称、承担任务、完成状态、核心结论；失败团队需说明失败原因）\n" +
+	"## 综合结论\n" +
+	"（跨团队的核心发现、结论对比与最终答案）\n" +
+	"## 建议与后续行动\n" +
+	"（如无建议可省略本节）"
+
+// publishAllTeamsCompletedFallbackNotice publishes the "所有团队已完成"
+// notice when the summary turn could not be triggered (the Spirit LLM reply
+// is the normal completion signal; without it the user would see nothing).
+// The notice must attach to the latest user Task — notice events that cannot
+// attach to a task are not rendered by the frontend (hard constraint).
+func (s *TeamStarter) publishAllTeamsCompletedFallbackNotice(ctx context.Context, spiritSessionID, parentTaskID string) {
+	if !s.v2EventReady() {
+		return
 	}
-	if err != nil {
-		// Degraded: structured report published without LLM conclusion.
-		s.lg.Warn("all teams completed: synthesis degraded (LLM conclusion missing), report published",
-			loggateway.StepID("spirit.synthesis_degraded"),
+	if parentTaskID == "" {
+		// Task 查询失败且 ctx 无 RootTaskActivityID 时兜底通知静默失效，
+		// 至少留 Warn 便于诊断双重失败（turn 触发失败 + Task 查询失败）。
+		s.lg.Warn("all teams completed: 兜底通知 TaskID 为空，前端可能不渲染完成信号",
+			loggateway.StepID("spirit.fallback_notice.empty_task"),
 			loggateway.Str("spirit_session_id", spiritSessionID),
-			loggateway.Err(err),
 		)
 	}
-	return "所有团队已完成，请基于已有上下文给出最终总结和分析。", true
+	now := time.Now()
+	step := biz.Step{
+		ID:              uuid.NewString(),
+		SessionID:       spiritSessionID,
+		SpiritSessionID: spiritSessionID,
+		TaskID:          parentTaskID,
+		Kind:            biz.StepKindNotice,
+		NoticeType:      "success",
+		Content:         "所有团队已完成",
+		Status:          biz.StepStatusCompleted,
+		StartedAt:       now,
+		CompletedAt:     &now,
+		Version:         1,
+		AuthorAgentKey:  "team-starter",
+	}
+	s.publishV2Event(ctx, biz.NewStepCreatedEvent(step))
 }
 
 // resolveLatestUserTaskID returns the most recent Task ID for the given spirit
@@ -829,8 +814,8 @@ func (s *TeamStarter) buildSynthesisMessage(ctx context.Context, spiritSessionID
 // 作为 fallback。RootTaskActivityID 是根 Task 的 ID，与 team 阶段的 ctx 链
 // 一脉相承，是可靠的内存态真相源。
 //
-// 2026-07-22 B.10.17：提取为包级函数，供 TeamStarter（总结 turn ParentTaskID）
-// 与 synthesisEventPublisher（执行报告 Step.TaskID 附着）复用。
+// 2026-07-22 B.10.17：提取为包级函数；2026-07-24 报告 UI 移除后仅供
+// TeamStarter（总结 turn ParentTaskID）使用。
 func resolveLatestUserTaskID(ctx context.Context, reader biz.TaskV2Reader, lg loggateway.Logger, spiritSessionID string) string {
 	if reader != nil {
 		tasks, err := reader.ListTasksBySession(ctx, spiritSessionID)
@@ -895,6 +880,7 @@ type SpiritTeamAssembler struct {
 	agentReader biz.AgentReader
 	lg          loggateway.Logger
 	teamStageR  biz.TeamStageV2Reader
+	teamStageW  biz.TeamStageV2Writer
 	tsSM        *biz.TeamStageStateMachine
 }
 
@@ -907,6 +893,7 @@ func NewSpiritTeamAssembler(
 	agentReader biz.AgentReader,
 	lg loggateway.Logger,
 	teamStageR biz.TeamStageV2Reader,
+	teamStageW biz.TeamStageV2Writer,
 ) *SpiritTeamAssembler {
 	return &SpiritTeamAssembler{
 		spiritUC:    spiritUC,
@@ -917,6 +904,7 @@ func NewSpiritTeamAssembler(
 		agentReader: agentReader,
 		lg:          lg,
 		teamStageR:  teamStageR,
+		teamStageW:  teamStageW,
 		tsSM:        biz.NewTeamStageStateMachine(),
 	}
 }
@@ -1193,6 +1181,22 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 		StartedAt: time.Now().UTC(),
 		Version:   1,
 	}
+	// 2026-07-24 竞态修复：TeamStage created(Version=1) 必须同步落库，再发异步事件。
+	// 此前仅 seq.Publish（异步持久化），而 dispatchStep 的 Version=2 Upsert 是
+	// 同步直写 repos——异步 V=1 一旦落后于同步 V=2，V=2 便以 Members=nil 走
+	// CREATE 路径写入 members=null，随后 V=1 被 VersionLT 守卫拒绝，members
+	// 永久丢失（实发事故：team members=null → ListSpiritTeams 返回空成员 →
+	// 左侧边栏成员卡片缺失）。同步 Upsert 幂等：seq 异步重放同版本事件会被
+	// 版本守卫拒绝并返回现有记录，无副作用；同步失败则降级为纯异步事件兜底。
+	if a.teamStageW != nil {
+		if _, err := a.teamStageW.UpsertTeamStage(ctx, ts); err != nil {
+			a.lg.Warn("publishSpiritTeamAssembled: 同步持久化 TeamStage 失败，降级为异步事件",
+				loggateway.StepID("spirit.team.stage_sync_persist_fail"),
+				loggateway.Str("team_id", team.ID),
+				loggateway.Err(err),
+			)
+		}
+	}
 	a.publishV2Event(ctx, biz.NewTeamStageCreatedEvent(ts))
 
 	// 2026-07-04 问题 4 修复：发布 v2 TeamRun + MemberSession 创建事件。
@@ -1264,7 +1268,7 @@ func (a *SpiritTeamAssembler) publishV2TeamRunAndMemberSessions(
 	teamStageID := string(agent.NewTeamStageActivityID(team.ID))
 	now := time.Now().UTC()
 	// 派生 TeamRun ID（基于 teamStageID 确定性派生，确保多次调用产生相同 ID）。
-	teamRunID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.team_run.v2:"+teamStageID)).String()
+	teamRunID := agent.NewTeamRunV2ID(teamStageID)
 	// 构建 v2 TeamRun 实体。
 	tr := biz.TeamRun{
 		ID:              teamRunID,
@@ -1301,7 +1305,7 @@ func (a *SpiritTeamAssembler) publishV2TeamRunAndMemberSessions(
 			memberSessionID = teamSession.ID
 		}
 		// 派生 MemberSession ID（基于 teamRunID + agentKey 确定性派生）。
-		msID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.member_session.v2:"+teamRunID+":"+key)).String()
+		msID := string(agent.NewMemberSessionActivityID(teamRunID, key))
 		ms := biz.MemberSession{
 			ID:              msID,
 			TeamRunID:       teamRunID,
@@ -1363,7 +1367,7 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 
 	rootTaskID := string(agent.RootTaskActivityIDFromCtx(ctx))
 	teamStageID := string(agent.NewTeamStageActivityID(teamID))
-	teamRunID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.team_run.v2:"+teamStageID)).String()
+	teamRunID := agent.NewTeamRunV2ID(teamStageID)
 	now := time.Now().UTC()
 
 	// 获取 team 实体（用于 DependsOn 等字段）。
@@ -1487,7 +1491,7 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 			continue
 		}
 		memberCount++
-		msID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.member_session.v2:"+teamRunID+":"+agentKey)).String()
+		msID := string(agent.NewMemberSessionActivityID(teamRunID, agentKey))
 		s.lg.Info("publishV2TeamRunCompletion: 派生 MemberSession ID",
 			loggateway.StepID("spirit.v2.team_run_completion.msid"),
 			loggateway.Str("team_id", teamID),

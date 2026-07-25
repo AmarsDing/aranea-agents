@@ -475,6 +475,11 @@ message CompileTeamGraphResponse {
   string graph_json = 8;
   repeated CompileTeamGraphValidationIssue issues = 9;
   bool valid = 10;
+  // Canonical embedded graph spec (version/layout/nodes/edges incl. start/end decor
+  // nodes) generated from mode/members by the backend template registry. Empty when
+  // the definition carries its own embedded graph (custom path). ADR-08 A2: frontend
+  // editors consume this instead of re-implementing mode->graph generation locally.
+  string definition_graph_json = 11;
 }
 
 message TaskDeadLetter {

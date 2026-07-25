@@ -31,9 +31,9 @@ type GraphStageActivityID string
 type TeamStageActivityID string
 
 // SessionActivityID is the deterministic member-session activity ID derived
-// from a team ID + agent key. Shared between team runner (parent) and the
-// child session's ActivityProjector (so member thinking/action/reply events
-// parent correctly).
+// from the v2 team run ID + agent key. Shared between the spirit_team service
+// and the team runner so both writers converge on ONE member_sessions_v2 row
+// per member per run (persistence is upsert-by-ID).
 type SessionActivityID string
 
 // rootTaskActivityIDKey is the context key for the root task activity ID.
@@ -87,18 +87,28 @@ func NewTeamStageActivityID(teamID string) TeamStageActivityID {
 	return TeamStageActivityID(uuid.NewSHA1(teamStageNamespace, []byte(teamID)).String())
 }
 
-// sessionActivityNamespace is a fixed UUID used as the namespace for
-// deterministic session Activity IDs. Using deterministic IDs allows the
-// team runner to compute the same session activity ID and pass it to the
-// child session's ActivityProjector as the ParentActivityID for member
-// thinking/action/reply activities.
-var sessionActivityNamespace = uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.session_activity.v1"))
+// NewTeamRunV2ID returns the deterministic v2 team run ID for a given
+// team_stage activity ID. Single source for the formula previously inlined
+// in service/spirit_team.go and service/team_pause.go:
+// uuid.NewSHA1(NameSpaceDNS, "aranea.team_run.v2:"+teamStageID).
+//
+// Being derived from the (team-deterministic) teamStageID, the v2 team run
+// ID is stable for a given team within a spirit session — every writer
+// (service, runner, pause path) computes the same value.
+func NewTeamRunV2ID(teamStageID string) string {
+	return uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.team_run.v2:"+teamStageID)).String()
+}
 
-// NewSessionActivityID returns the deterministic session Activity ID for a
-// given team and agent key. Both the team runner (publishTeamStepActivity)
-// and the child session's ActivityProjector use this to compute the same ID.
-func NewSessionActivityID(teamID, agentKey string) SessionActivityID {
-	return SessionActivityID(uuid.NewSHA1(sessionActivityNamespace, []byte(teamID+":"+agentKey)).String())
+// NewMemberSessionActivityID returns the deterministic member_session Activity
+// ID for a given v2 team run ID and agent key. Single source for the formula:
+// uuid.NewSHA1(NameSpaceDNS, "aranea.member_session.v2:"+teamRunID+":"+agentKey).
+//
+// 2026-07-25 重复行修复：runner 与 service 曾使用两套公式（teamID 作用域 vs
+// teamRunID 作用域），upsert-by-ID 无法收敛导致 member_sessions_v2 每个成员
+// 两行。统一为本函数后双方写入同一行。run 作用域同时保证同一团队重跑时
+// 不与上一次运行的成员行冲突。
+func NewMemberSessionActivityID(teamRunID, agentKey string) SessionActivityID {
+	return SessionActivityID(uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.member_session.v2:"+teamRunID+":"+agentKey)).String())
 }
 
 // sessionActivityIDKey is the context key for the session activity ID.

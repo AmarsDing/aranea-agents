@@ -23,6 +23,7 @@ type agentAllocatorImpl struct {
 	repo           biz.AllocationPlanRepository
 	agentReader    biz.AgentReader
 	perfRepo       biz.AgentPerformanceRepository
+	orchCache      *biz.OrchestrationCache
 	capBuilder     *AgentCapabilityBuilder
 	catalog        *biz.LlmProviderModelUsecase
 	httpClient     *http.Client
@@ -40,6 +41,7 @@ func NewAgentAllocator(
 	repo biz.AllocationPlanRepository,
 	agentReader biz.AgentReader,
 	perfRepo biz.AgentPerformanceRepository,
+	orchCache *biz.OrchestrationCache,
 	capBuilder *AgentCapabilityBuilder,
 	catalog *biz.LlmProviderModelUsecase,
 	httpClient *http.Client,
@@ -53,6 +55,7 @@ func NewAgentAllocator(
 		repo:           repo,
 		agentReader:    agentReader,
 		perfRepo:       perfRepo,
+		orchCache:      orchCache,
 		capBuilder:     capBuilder,
 		catalog:        catalog,
 		httpClient:     httpClient,
@@ -128,7 +131,11 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 		// The primary agent (AssignedKey) is the team lead; selectAdditionalMembers
 		// picks additional agents from the capability pool to fill out the team.
 		if isDAG && allocation.AssignedKey != "" {
-			additional := impl.selectAdditionalMembers(allocation.AssignedKey, capabilities, 1)
+			// L0 配方成员优先（B.10.21.5）；无配方时随机补员（存量行为）。
+			additional := allocation.TeamMemberKeys
+			if len(additional) == 0 {
+				additional = impl.selectAdditionalMembers(allocation.AssignedKey, capabilities, 1)
+			}
 			if len(additional) > 0 {
 				allocation.TeamMemberKeys = additional
 				allocation.AssignedType = "team"
@@ -247,13 +254,54 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 		assignedType = "team"
 	}
 
-	// Priority: use AgentPerformance.GetBestForTaskType if performance data exists.
-	if impl.perfRepo != nil && len(subTask.RequiredCapabilities) > 0 {
-		taskType := subTask.RequiredCapabilities[0]
-		bestPerfs, err := impl.perfRepo.GetBestForTaskType(ctx, taskType, 1)
-		if err == nil && len(bestPerfs) > 0 {
+	// L0/L1: 使命驱动匹配（domain_path 非空时启用；为空直接落入旧管线，不变量 1）。
+	if subTask.DomainPath != "" {
+		if cap, members, dq, ok := impl.tryDomainRecipe(subTask.DomainPath, capabilities, traceID); ok {
+			alloc := biz.TaskAllocation{
+				SubTaskID:    subTask.ID,
+				SubTaskName:  subTask.Name,
+				AssignedType: assignedType,
+				AssignedKey:  cap.AgentKey,
+				AssignedName: cap.DisplayName,
+				MatchScore:   dq,
+				MatchLayer:   "domain_recipe",
+				MatchReason:  fmt.Sprintf("领域配方复用 (domain: %s, DQ %.2f)", subTask.DomainPath, dq),
+			}
+			if len(members) > 0 {
+				alloc.TeamMemberKeys = members
+			}
+			return alloc, nil
+		}
+		taskText := subTask.Name + " " + subTask.Description
+		if cap, score, ok := impl.tryMissionMatch(ctx, taskText, subTask.DomainPath, capabilities, traceID); ok {
+			return biz.TaskAllocation{
+				SubTaskID:    subTask.ID,
+				SubTaskName:  subTask.Name,
+				AssignedType: assignedType,
+				AssignedKey:  cap.AgentKey,
+				AssignedName: cap.DisplayName,
+				MatchScore:   score,
+				MatchLayer:   "mission",
+				MatchReason:  missionMatchReason(subTask.DomainPath, 0, score),
+			}, nil
+		}
+	}
+
+	// L2 performance: domain 履历优先，回退 capability 履历。
+	if impl.perfRepo != nil {
+		taskTypes := make([]string, 0, 2)
+		if subTask.DomainPath != "" {
+			taskTypes = append(taskTypes, "domain:"+subTask.DomainPath)
+		}
+		if len(subTask.RequiredCapabilities) > 0 {
+			taskTypes = append(taskTypes, subTask.RequiredCapabilities[0])
+		}
+		for _, taskType := range taskTypes {
+			bestPerfs, err := impl.perfRepo.GetBestForTaskType(ctx, taskType, 1)
+			if err != nil || len(bestPerfs) == 0 {
+				continue
+			}
 			bestAgentKey := bestPerfs[0].AgentKey
-			// Find the matching capability for display name
 			for _, cap := range capabilities {
 				if cap.AgentKey == bestAgentKey {
 					impl.lg.Info("AgentPerformance.GetBestForTaskType 命中",
@@ -261,6 +309,7 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 						loggateway.Str("trace_id", traceID),
 						loggateway.Str("sub_task_id", subTask.ID),
 						loggateway.Str("agent_key", bestAgentKey),
+						loggateway.Str("task_type", taskType),
 						loggateway.Float64("success_rate", bestPerfs[0].SuccessRate),
 					)
 					return biz.TaskAllocation{
@@ -635,21 +684,12 @@ func (impl *agentAllocatorImpl) matchLayer2ForPlan(ctx context.Context, taskPlan
 // this keyword scorer remains as the graceful-degradation fallback when the
 // embedder is unavailable or fails.
 func computeSemanticScore(taskDesc string, cap biz.AgentCapability) float64 {
-	// Build a text corpus from the agent's capability profile
-	agentText := cap.DisplayName + " " + cap.Description
-	for _, r := range cap.Roles {
-		agentText += " " + r
-	}
-	for _, d := range cap.Domains {
-		agentText += " " + d
-	}
-	for _, t := range cap.Tools {
-		agentText += " " + t
-	}
-	for _, s := range cap.Skills {
-		agentText += " " + s
-	}
+	return semanticScoreText(taskDesc, buildAgentCapabilityText(cap))
+}
 
+// semanticScoreText computes a TF-IDF-like keyword overlap score between a
+// task description and an arbitrary agent text corpus.
+func semanticScoreText(taskDesc, agentText string) float64 {
 	taskTokens := tokenizeForSemantic(taskDesc)
 	agentTokens := tokenizeForSemantic(agentText)
 
@@ -813,32 +853,71 @@ func (impl *agentAllocatorImpl) matchWholePlan(ctx context.Context, taskPlan *bi
 		assignedType = "team"
 	}
 
-	// Priority: use AgentPerformance.GetBestForTaskType if performance data exists.
+	// L0/L1: 使命驱动匹配（plan 级主导域非空时启用）。
+	if taskPlan.DomainPath != "" {
+		if cap, members, dq, ok := impl.tryDomainRecipe(taskPlan.DomainPath, capabilities, traceID); ok {
+			alloc := biz.TaskAllocation{
+				SubTaskID:    "whole",
+				SubTaskName:  taskPlan.UserMessage,
+				AssignedType: assignedType,
+				AssignedKey:  cap.AgentKey,
+				AssignedName: cap.DisplayName,
+				MatchScore:   dq,
+				MatchLayer:   "domain_recipe",
+				MatchReason:  fmt.Sprintf("领域配方复用 (domain: %s, DQ %.2f)", taskPlan.DomainPath, dq),
+			}
+			if len(members) > 0 {
+				alloc.TeamMemberKeys = members
+			}
+			return alloc, nil
+		}
+		if cap, score, ok := impl.tryMissionMatch(ctx, taskPlan.UserMessage, taskPlan.DomainPath, capabilities, traceID); ok {
+			return biz.TaskAllocation{
+				SubTaskID:    "whole",
+				SubTaskName:  taskPlan.UserMessage,
+				AssignedType: assignedType,
+				AssignedKey:  cap.AgentKey,
+				AssignedName: cap.DisplayName,
+				MatchScore:   score,
+				MatchLayer:   "mission",
+				MatchReason:  missionMatchReason(taskPlan.DomainPath, 0, score),
+			}, nil
+		}
+	}
+
+	// L2 performance: domain 履历优先，回退 capability hint 履历。
 	if impl.perfRepo != nil {
 		capHints := extractCapabilityHints(taskPlan.UserMessage)
-		if len(capHints) > 0 {
-			bestPerfs, err := impl.perfRepo.GetBestForTaskType(ctx, capHints[0], 1)
-			if err == nil && len(bestPerfs) > 0 {
-				bestAgentKey := bestPerfs[0].AgentKey
-				for _, cap := range capabilities {
-					if cap.AgentKey == bestAgentKey {
-						impl.lg.Info("AgentPerformance.GetBestForTaskType 命中 (whole plan)",
-							loggateway.StepID(biz.SpiritStepAllocatorMatch),
-							loggateway.Str("trace_id", traceID),
-							loggateway.Str("agent_key", bestAgentKey),
-							loggateway.Float64("success_rate", bestPerfs[0].SuccessRate),
-						)
-						return biz.TaskAllocation{
-							SubTaskID:    "whole",
-							SubTaskName:  taskPlan.UserMessage,
-							AssignedType: assignedType,
-							AssignedKey:  bestAgentKey,
-							AssignedName: cap.DisplayName,
-							MatchScore:   bestPerfs[0].SuccessRate,
-							MatchLayer:   "performance",
-							MatchReason:  fmt.Sprintf("历史性能最优 (成功率 %.2f, DQ %.2f)", bestPerfs[0].SuccessRate, bestPerfs[0].AvgDQScore),
-						}, nil
-					}
+		taskTypes := make([]string, 0, 2)
+		if taskPlan.DomainPath != "" {
+			taskTypes = append(taskTypes, "domain:"+taskPlan.DomainPath)
+		}
+		taskTypes = append(taskTypes, capHints[0])
+		for _, taskType := range taskTypes {
+			bestPerfs, err := impl.perfRepo.GetBestForTaskType(ctx, taskType, 1)
+			if err != nil || len(bestPerfs) == 0 {
+				continue
+			}
+			bestAgentKey := bestPerfs[0].AgentKey
+			for _, cap := range capabilities {
+				if cap.AgentKey == bestAgentKey {
+					impl.lg.Info("AgentPerformance.GetBestForTaskType 命中 (whole plan)",
+						loggateway.StepID(biz.SpiritStepAllocatorMatch),
+						loggateway.Str("trace_id", traceID),
+						loggateway.Str("agent_key", bestAgentKey),
+						loggateway.Str("task_type", taskType),
+						loggateway.Float64("success_rate", bestPerfs[0].SuccessRate),
+					)
+					return biz.TaskAllocation{
+						SubTaskID:    "whole",
+						SubTaskName:  taskPlan.UserMessage,
+						AssignedType: assignedType,
+						AssignedKey:  bestAgentKey,
+						AssignedName: cap.DisplayName,
+						MatchScore:   bestPerfs[0].SuccessRate,
+						MatchLayer:   "performance",
+						MatchReason:  fmt.Sprintf("历史性能最优 (成功率 %.2f, DQ %.2f)", bestPerfs[0].SuccessRate, bestPerfs[0].AvgDQScore),
+					}, nil
 				}
 			}
 		}
@@ -986,9 +1065,14 @@ func (impl *agentAllocatorImpl) tryAgentFactoryForSubTask(ctx context.Context, s
 	if desc == "" {
 		desc = subTask.Name
 	}
+	domain := "engineering"
+	if subTask.DomainPath != "" {
+		domain = TopLevelDomain(subTask.DomainPath)
+	}
 	profile := biz.TaskProfile{
 		RequiredCapabilities: subTask.RequiredCapabilities,
-		Domain:               "engineering",
+		Domain:               domain,
+		DomainPath:           subTask.DomainPath,
 		TaskDescription:      desc,
 		SpiritSessionID:      spiritSessionID,
 	}
@@ -1026,9 +1110,14 @@ func (impl *agentAllocatorImpl) tryAgentFactoryForPlan(ctx context.Context, task
 	if impl.agentFactory == nil {
 		return biz.TaskAllocation{}, false
 	}
+	domain := "engineering"
+	if taskPlan.DomainPath != "" {
+		domain = TopLevelDomain(taskPlan.DomainPath)
+	}
 	profile := biz.TaskProfile{
 		RequiredCapabilities: extractCapabilityHints(taskPlan.UserMessage),
-		Domain:               "engineering",
+		Domain:               domain,
+		DomainPath:           taskPlan.DomainPath,
 		TaskDescription:      taskPlan.UserMessage,
 		SpiritSessionID:      taskPlan.SpiritSessionID,
 	}
@@ -1184,8 +1273,8 @@ Available agents:
 func formatCapabilitiesForPrompt(capabilities []biz.AgentCapability) string {
 	var lines []string
 	for _, cap := range capabilities {
-		line := fmt.Sprintf("- agent_key: %s, display_name: %s, roles: %v, description: %s",
-			cap.AgentKey, cap.DisplayName, cap.Roles, cap.Description)
+		line := fmt.Sprintf("- agent_key: %s, display_name: %s, roles: %v, domain_path: %s, mission: %s, description: %s",
+			cap.AgentKey, cap.DisplayName, cap.Roles, cap.DomainPath, cap.Mission, cap.Description)
 		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n")

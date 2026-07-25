@@ -822,9 +822,15 @@ body.body--dark .agent-file-item--active
 
 .app-settings-tabs
   padding: 8px 16px 0
-  background: var(--glass-elevated)
+  // 与 agent-settings-tabs / 系统导航同系的奶油底色，避免白底与奶油壳层脱节
+  background: var(--nav-bg-light, var(--glass-surface))
   backdrop-filter: blur(var(--glass-blur-default))
   -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+// Quasar q-tab-panels 默认 #fff 实色底（暗色同样生效），会把奶油玻璃壳内
+// 整片内容区刷成白色；改为透明让壳层玻璃底色透出
+.app-settings-shell .q-tab-panels
+  background: transparent
 
 .app-settings-tabs .q-tab
   min-height: 46px

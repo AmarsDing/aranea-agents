@@ -44,6 +44,16 @@
           rounded
           no-caps
           class="monitor-log-toolbar-btn"
+          :icon="hub.processPaused.value ? 'play_arrow' : 'pause'"
+          :label="hub.processPaused.value ? t('monitorPage.resume') : t('monitorPage.pause')"
+          @click="togglePause"
+        />
+        <q-btn
+          dense
+          outline
+          rounded
+          no-caps
+          class="monitor-log-toolbar-btn"
           icon="delete_sweep"
           label="清除"
           @click="hub.clearProcess()"
@@ -72,9 +82,12 @@
 
 <script setup lang="ts">
 import { computed, inject, ref, type Ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { MonitorLogHub } from '../../features/monitor/useLogStreamHub';
 import type { StreamState } from '../../features/monitor/types';
 import LogLevelToggle, { type LogLevel } from './LogLevelToggle.vue';
+
+const { t } = useI18n();
 
 const _hub = inject<MonitorLogHub>('monitorLogHub');
 const _processLogConfigured = inject<Ref<boolean>>('processLogConfigured');
@@ -149,7 +162,7 @@ const emptyText = computed(() => {
     return '进程日志已在 config.yaml 中关闭（server.monitor.process_log_enabled: false）。';
   }
   if (hub.processPaused.value) {
-    return '已暂停接收（切换到本 Tab 后自动恢复）。';
+    return '已暂停接收，点击「恢复」开始接收。';
   }
   if (hub.processState.value === 'connected') {
     return '已连接，等待进程日志…';
@@ -159,4 +172,8 @@ const emptyText = computed(() => {
   }
   return '暂无进程日志';
 });
+
+function togglePause() {
+  hub.setProcessPaused(!hub.processPaused.value);
+}
 </script>

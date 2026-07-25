@@ -168,6 +168,10 @@ var ddlMigrations = []ddlMigration{
 	// 20261109 steps_v2_session_seq: composite index for chat history lazy
 	// load paged session query (WHERE session_id=? ORDER BY seq DESC LIMIT n+1).
 	{Version: 20261109, Name: "steps_v2_session_seq", SQL: "sql/migrations/20261109_steps_v2_session_seq.sql"},
+	// 20261110 agent_mission_domain: add mission_statement/domain_path columns to
+	// agents (B.10.21 mission-driven matching). Ent Schema.Create() 不会为已存在表
+	// 新增列，需要 ALTER TABLE 补列；存量行默认空串（走旧匹配管线）。
+	{Version: 20261110, Name: "agent_mission_domain", SQL: "sql/migrations/20261110_agent_mission_domain.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

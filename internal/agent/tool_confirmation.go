@@ -32,6 +32,9 @@ type toolConfirmationBeforeHook struct {
 	gate *toolConfirmGate
 	ag   biz.Agent
 	deps TRPCBuilderDeps
+	// confirmTimeout bounds the wait for a user decision. Zero means
+	// defaultToolConfirmationTimeout; overridable in tests.
+	confirmTimeout time.Duration
 }
 
 var _ callbacks.BeforeToolHook = (*toolConfirmationBeforeHook)(nil)
@@ -73,6 +76,12 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
 
+	// effectiveConfirmTimeout resolves the confirmation wait budget (test-overridable).
+	effectiveConfirmTimeout := h.confirmTimeout
+	if effectiveConfirmTimeout <= 0 {
+		effectiveConfirmTimeout = defaultToolConfirmationTimeout
+	}
+
 	if fn := serviceawaitreply.ReplyFuncFromContext(ctx); fn != nil {
 		if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
 			if markErr := trpcagent.MarkAwaitingUserReply(inv); markErr != nil {
@@ -107,7 +116,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			ToolCallID: args.ToolCallID,
 		})
 		// Apply confirmation timeout to prevent indefinite blocking.
-		confirmCtx, confirmCancel := context.WithTimeout(confirmCtx, defaultToolConfirmationTimeout)
+		confirmCtx, confirmCancel := context.WithTimeout(confirmCtx, effectiveConfirmTimeout)
 		defer confirmCancel()
 		reply, err := fn(confirmCtx)
 		// N-21: Update the confirm Activity with the user's response. A deadline
@@ -143,14 +152,14 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 					AgentID:      h.ag.ID,
 					Status:       "blocked",
 					ErrorCode:    event.ErrorCodeConfirmationTimeout,
-					ErrorMessage: fmt.Sprintf("tool confirmation timed out after %s (decision_reason=%s)", defaultToolConfirmationTimeout, decision.reason),
+					ErrorMessage: fmt.Sprintf("tool confirmation timed out after %s (decision_reason=%s)", effectiveConfirmTimeout, decision.reason),
 					InputPreview: previewFromToolArgs(args.Arguments),
 					StartedAt:    time.Now().UTC().Format(time.RFC3339),
 					EndedAt:      time.Now().UTC().Format(time.RFC3339),
 					Source:       biz.ToolInvocationSourceRuntime,
 					ToolCallID:   args.ToolCallID,
 				}, nil, h.ag, h.deps)
-				return nil, fmt.Errorf("%s: tool %s confirmation timed out after %s", errToolConfirmationRequired, toolKey, defaultToolConfirmationTimeout)
+				return nil, fmt.Errorf("%s: 工具 \"%s\" 的确认请求在 %s 内未收到用户响应（超时）。这不代表用户拒绝，只是暂时没有回应。不要立即重试该工具；请先询问用户是否仍要执行该操作。", errToolConfirmationRequired, toolKey, effectiveConfirmTimeout)
 			}
 			return nil, fmt.Errorf("%s: awaiting user confirmation failed: %w", errToolConfirmationRequired, err)
 		}
@@ -183,8 +192,8 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			Source:       biz.ToolInvocationSourceRuntime,
 			ToolCallID:   args.ToolCallID,
 		}, nil, h.ag, h.deps)
-		return nil, fmt.Errorf("%s: tool %s confirmation denied", errToolConfirmationRequired, toolKey)
-	}
+	return nil, fmt.Errorf("%s: 用户拒绝了工具 \"%s\" 的执行。这是用户的明确决定，不是系统故障。禁止重试相同或等价的工具调用；请直接向用户说明该操作已被取消，并询问接下来如何处理。", errToolConfirmationRequired, toolKey)
+}
 
 	recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
 		ToolKey:      toolKey,
@@ -198,7 +207,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		Source:       biz.ToolInvocationSourceRuntime,
 		ToolCallID:   args.ToolCallID,
 	}, nil, h.ag, h.deps)
-	return nil, fmt.Errorf("%s: tool %s requires user confirmation", errToolConfirmationRequired, toolKey)
+	return nil, fmt.Errorf("%s: 工具 \"%s\" 需要用户确认后才能执行，但当前运行环境无法向用户发起确认请求（无回复通道）。该工具本次不可执行，不要重试；请向用户说明情况，并请用户在支持确认的会话中重新发起该操作。", errToolConfirmationRequired, toolKey)
 }
 
 // toolConfirmSessionID extracts the session ID from the invocation context.

@@ -40,6 +40,11 @@ const OrchestrationControlToolName = "orchestration_control"
 // CriticLoopCondFuncRef is kept as an alias for backward compatibility.
 const CriticLoopCondFuncRef = CriticLoopDecisionFunc
 
+// CriticLoopResultApprovedForced 是 critic_loop 条件边在迭代上限兜底收敛时
+// 返回的路由键，与真实批准的 "approved" 区分，便于观测「质量收敛」与
+// 「上限兜底收敛」。编译期 PathMap 必须将其映射到 EndNodeID。
+const CriticLoopResultApprovedForced = "approved_forced"
+
 // Critic loop runtime state keys (stored under trpcgraph.StateKeyMetadata).
 // Agent-node critics do not append to StateKeyMessages (their output lands in
 // StateKeyLastResponse / StateKeyNodeResponses), so the graph/trpc layer's
@@ -189,14 +194,18 @@ func ParseOrchestrationDecision(args []byte, lg loggateway.Logger) (Orchestratio
 	return d, nil
 }
 
+// IsApprovedDecision 判定结构化裁决是否通过。显式 action 优先于 score：
+// action=approve → 通过；action 为其他非空值（retry/reject 等）→ 不通过，
+// score 不得推翻显式拒绝；仅 action 为空时 score 才作兜底。
 func IsApprovedDecision(d OrchestrationDecision, threshold float64) bool {
-	if d.Action == "approve" {
+	switch strings.ToLower(strings.TrimSpace(d.Action)) {
+	case "approve":
 		return true
+	case "":
+		return d.Score > 0 && threshold > 0 && d.Score >= threshold
+	default:
+		return false
 	}
-	if d.Score > 0 && threshold > 0 && d.Score >= threshold {
-		return true
-	}
-	return false
 }
 
 func ExtractScore(content string) float64 {

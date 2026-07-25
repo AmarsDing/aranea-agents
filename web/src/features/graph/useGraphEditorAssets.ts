@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import type { GraphDefinition, GraphVersionInfo } from './types';
 import { useGraphStore } from '../../stores/graph';
 
@@ -8,6 +9,7 @@ export function useGraphEditorAssets(graphDef: GraphDefinition, _isNew: () => bo
   const $q = useQuasar();
   const router = useRouter();
   const graphStore = useGraphStore();
+  const { t } = useI18n();
 
   const versionDialogOpen = ref(false);
   const versions = ref<GraphVersionInfo[]>([]);
@@ -21,7 +23,7 @@ export function useGraphEditorAssets(graphDef: GraphDefinition, _isNew: () => bo
 
   async function openVersionDialog() {
     if (!graphDef.id) {
-      $q.notify({ type: 'warning', message: '请先保存 Graph' });
+      $q.notify({ type: 'warning', message: t('graphs.assetSaveGraphFirst') });
       return;
     }
     versionDialogOpen.value = true;
@@ -29,7 +31,7 @@ export function useGraphEditorAssets(graphDef: GraphDefinition, _isNew: () => bo
     try {
       versions.value = await graphStore.fetchGraphVersions(graphDef.id);
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '加载版本失败' });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('graphs.assetLoadVersionsFailed') });
     } finally {
       versionsLoading.value = false;
     }
@@ -42,10 +44,10 @@ export function useGraphEditorAssets(graphDef: GraphDefinition, _isNew: () => bo
       const restored = await graphStore.rollbackGraph(graphDef.id, version);
       Object.assign(graphDef, restored);
       versionDialogOpen.value = false;
-      $q.notify({ type: 'positive', message: `已回滚到 v${version}` });
+      $q.notify({ type: 'positive', message: t('graphs.assetRolledBack', { version }) });
       await onRestored?.();
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '回滚失败' });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('graphs.assetRollbackFailed') });
     } finally {
       rollingBackVersion.value = null;
     }
@@ -53,7 +55,7 @@ export function useGraphEditorAssets(graphDef: GraphDefinition, _isNew: () => bo
 
   async function exportCurrentGraph() {
     if (!graphDef.id) {
-      $q.notify({ type: 'warning', message: '请先保存 Graph' });
+      $q.notify({ type: 'warning', message: t('graphs.assetSaveGraphFirst') });
       return;
     }
     try {
@@ -65,9 +67,9 @@ export function useGraphEditorAssets(graphDef: GraphDefinition, _isNew: () => bo
       anchor.download = `${graphDef.name || graphDef.id}.graph.json`;
       anchor.click();
       URL.revokeObjectURL(url);
-      $q.notify({ type: 'positive', message: 'Graph 已导出' });
+      $q.notify({ type: 'positive', message: t('graphs.assetExported') });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '导出失败' });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('graphs.assetExportFailed') });
     }
   }
 
@@ -80,27 +82,53 @@ export function useGraphEditorAssets(graphDef: GraphDefinition, _isNew: () => bo
     const file = input.files?.[0];
     input.value = '';
     if (!file) return;
+
     try {
       const json = await file.text();
-      const created = await graphStore.importGraphDefinition(
-        json,
-        graphDef.name || file.name.replace(/\.json$/i, ''),
-        graphDef.description,
-      );
-      Object.assign(graphDef, created);
-      $q.notify({ type: 'positive', message: 'Graph 已导入' });
-      router.replace({ name: 'graph-editor', params: { id: created.id } });
+
+      // Show dialog to choose import destination
+      $q.dialog({
+        title: t('graphs.assetImportTitle'),
+        message: t('graphs.assetImportMessage'),
+        options: {
+          type: 'radio',
+          model: 'current',
+          items: [
+            { value: 'current', label: t('graphs.assetImportToCurrent') },
+            { value: 'new', label: t('graphs.assetImportCreateNew') },
+          ],
+        },
+        cancel: true,
+        persistent: true,
+      }).onOk(async (choice: string) => {
+        const created = await graphStore.importGraphDefinition(
+          json,
+          graphDef.name || file.name.replace(/\.json$/i, ''),
+          graphDef.description,
+        );
+
+        if (choice === 'current') {
+          // Import to current canvas - merge content
+          Object.assign(graphDef, created);
+          $q.notify({ type: 'positive', message: t('graphs.assetImportedToCurrent') });
+        } else {
+          // Create new graph - navigate to it
+          Object.assign(graphDef, created);
+          $q.notify({ type: 'positive', message: t('graphs.assetImportSuccess') });
+          router.replace({ name: 'graph-editor', params: { id: created.id } });
+        }
+      });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '导入失败' });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('graphs.assetImportFailed') });
     }
   }
 
   function openTemplateDialog() {
     if (!graphDef.id) {
-      $q.notify({ type: 'warning', message: '请先保存 Graph' });
+      $q.notify({ type: 'warning', message: t('graphs.assetSaveGraphFirst') });
       return;
     }
-    templateName.value = graphDef.name ? `${graphDef.name} 模板` : '';
+    templateName.value = graphDef.name ? t('graphs.assetTemplateNameSuffix', { name: graphDef.name }) : '';
     templateCategory.value = 'custom';
     templateDialogOpen.value = true;
   }
@@ -116,9 +144,9 @@ export function useGraphEditorAssets(graphDef: GraphDefinition, _isNew: () => bo
         graphDef.description,
       );
       templateDialogOpen.value = false;
-      $q.notify({ type: 'positive', message: '已保存为用户模板' });
+      $q.notify({ type: 'positive', message: t('graphs.assetTemplateSaved') });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存模板失败' });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('graphs.assetTemplateSaveFailed') });
     } finally {
       templateSaving.value = false;
     }

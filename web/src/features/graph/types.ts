@@ -296,6 +296,23 @@ export type ValidationResult = {
   valid: boolean;
 };
 
+/** 统一校验问题（本地 + 服务端合并后），供校验面板与节点错误态消费。 */
+export type ValidationIssue = {
+  nodeId: string;
+  nodeLabel: string;
+  level: 'error' | 'warning';
+  code: string;
+  field: string;
+  message: string;
+};
+
+/** 注入到画布节点 data 的精简校验问题（驱动错误边框/内联条/聚光灯气泡）。 */
+export type NodeIssueInfo = {
+  level: 'error' | 'warning';
+  code: string;
+  message: string;
+};
+
 export type TemplateNodeInfo = {
   nodeId: string;
   type: string;

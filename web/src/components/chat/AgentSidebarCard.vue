@@ -49,10 +49,10 @@
       flat
       size="9px"
       icon="refresh"
-      :title="t('chat.agentSidebar.resume')"
-      :aria-label="t('chat.agentSidebar.resume')"
+      :title="t('chat.agentSidebar.retry')"
+      :aria-label="t('chat.agentSidebar.retry')"
       class="agent-sidebar-card__action-btn"
-      @click.stop="$emit('resume', member.agentKey)"
+      @click.stop="$emit('retry', member.agentKey)"
     />
     <q-btn
       dense
@@ -94,6 +94,8 @@ defineEmits<{
   locate: [payload: { agentKey: string; teamSessionId: string; teamId: string }];
   pause: [agentKey: string];
   resume: [agentKey: string];
+  /** 失败重试：调 RetrySession API 重新入队最后一条用户消息 */
+  retry: [agentKey: string];
   /** 点击设置按钮，由外层根据 agentKey 解析 agentId 后打开设置弹窗 */
   settings: [agentKey: string];
 }>();

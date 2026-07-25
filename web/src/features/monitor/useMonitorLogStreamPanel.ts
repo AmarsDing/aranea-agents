@@ -11,8 +11,8 @@ export function useMonitorLogStreamPanel() {
   provide('monitorLogHub', hub);
   provide('processLogConfigured', processLogConfigured);
 
-  // Req §1.1/§1.6: leave process Tab → pause (discard inbound); return → auto-resume.
-  // No manual pause button on ProcessLogStream.
+  // 进程日志默认关闭（paused=true）：切离 Tab 强制暂停（丢弃入站）；
+  // 切回不自动恢复，由用户在进程日志工具行手动点「恢复」开启。
   watch(
     subTab,
     (tab) => {
@@ -20,7 +20,9 @@ export function useMonitorLogStreamPanel() {
         hub.setProcessPaused(true);
         return;
       }
-      hub.setProcessPaused(tab !== 'process');
+      if (tab !== 'process') {
+        hub.setProcessPaused(true);
+      }
     },
     { immediate: true },
   );
@@ -36,7 +38,7 @@ export function useMonitorLogStreamPanel() {
     } catch {
       processLogConfigured.value = false;
     }
-    hub.setProcessPaused(subTab.value !== 'process' || !processLogConfigured.value);
+    hub.setProcessPaused(true);
     hub.connect();
   });
 

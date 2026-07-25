@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -232,6 +233,7 @@ func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpH
 		ToolHash     string
 		SkillHash    string
 		MCPHash      string
+		CustomTools  []string
 	}
 	fp := fingerprint{
 		AgentID:      ag.ID,
@@ -241,6 +243,7 @@ func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpH
 		ToolHash:     toolHash,
 		SkillHash:    skillHash,
 		MCPHash:      mcpHash,
+		CustomTools:  customToolNames(deps.CustomTools),
 	}
 	if ag.Settings != nil {
 		if b, err := json.Marshal(ag.Settings); err == nil {
@@ -250,6 +253,27 @@ func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpH
 	raw, _ := json.Marshal(fp)
 	sum := sha256.Sum256(raw)
 	return fmt.Sprintf("%s:%x", ag.ID, sum)
+}
+
+// customToolNames returns the sorted declaration names of the given tools.
+// CustomTools must participate in the cache key: an agent built with extra
+// tools (e.g. deliverable tools in EnableStateDeliverable team graphs) must
+// not share a cache entry with the same agent built without them, otherwise
+// the toolset leaks across builds depending on build order. Sorting makes the
+// key order-insensitive.
+func customToolNames(tools []trpctool.Tool) []string {
+	if len(tools) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(tools))
+	for _, t := range tools {
+		if t == nil || t.Declaration() == nil {
+			continue
+		}
+		names = append(names, t.Declaration().Name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // InvalidateAgentCache marks all cached agents for the given agentID as dirty,

@@ -60,18 +60,22 @@ func (g *AdmissionGate) Check(input biz.TurnInput) AdmissionVerdict {
 		return AdmissionVerdict{Action: AdmissionProceed}
 	}
 
+	// 锁内仅做决策读（活跃运行快照），不得持锁调用 Enqueue：生产装配下
+	// gate 的 SessionLocker 与 ChatUsecase.EnqueueUserMessage 内部的 locker
+	// 是同一把非可重入互斥锁，持锁 enqueue 会同 goroutine 重入自死锁
+	// （澄清续跑路径曾复现：resume → Execute → Check → enqueue 永久阻塞）。
+	// 变更路径原子性由 EnqueueUserMessage 内部持锁并复核 HasActive 保证。
 	unlock := g.lockSession(sessionID)
-	defer func() {
-		if unlock != nil {
-			unlock()
-		}
-	}()
+	hasActive := g.runs != nil && g.runs.HasActive(sessionID)
+	hasRunner := hasActive && g.runs.HasActiveRunner(sessionID)
+	if unlock != nil {
+		unlock()
+	}
 
-	if g.runs == nil || !g.runs.HasActive(sessionID) {
+	if !hasActive {
 		return AdmissionVerdict{Action: AdmissionProceed}
 	}
 
-	hasRunner := g.runs.HasActiveRunner(sessionID)
 	switch EvaluateAdmission(true, hasRunner, input.AllowPendingQueue()) {
 	case biz.AdmitEnqueue:
 		return g.tryEnqueue(sessionID, content)

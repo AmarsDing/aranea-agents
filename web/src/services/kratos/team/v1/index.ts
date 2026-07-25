@@ -288,6 +288,11 @@ export type CompileTeamGraphResponse = {
   graphJson: string | undefined;
   issues: CompileTeamGraphValidationIssue[] | undefined;
   valid: boolean | undefined;
+  // Canonical embedded graph spec (version/layout/nodes/edges incl. start/end decor
+  // nodes) generated from mode/members by the backend template registry. Empty when
+  // the definition carries its own embedded graph (custom path). ADR-08 A2: frontend
+  // editors consume this instead of re-implementing mode->graph generation locally.
+  definitionGraphJson: string | undefined;
 };
 
 export type CompiledGraphNodeView = {

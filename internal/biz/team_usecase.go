@@ -217,6 +217,15 @@ func validateTeamDefinition(raw string) error {
 			hasCoordinator = true
 		}
 	}
+	if enabledCount == 0 {
+		return apierror.BadRequest("TEAM", "team must have at least one enabled member")
+	}
+	// ADR-08 A4：definition 携带 embedded graph 时拓扑以 graph 为唯一真相源，
+	// 跳过 role-mode 耦合校验（角色兼容 / parallel 汇总 / coordinator /
+	// critic_loop 角色要求）；结构问题由 CompileTeamGraph 编译期校验报告。
+	if spec.Graph != nil && len(spec.Graph.Nodes) > 0 {
+		return nil
+	}
 	// Validate role compatibility with mode.
 	validRoles := validRolesForMode(mode)
 	for _, member := range spec.Members {
@@ -227,9 +236,6 @@ func validateTeamDefinition(raw string) error {
 		if validRoles != nil && !validRoles[role] {
 			return apierror.BadRequest("TEAM", "role %s is not compatible with mode %s", role, mode)
 		}
-	}
-	if enabledCount == 0 {
-		return apierror.BadRequest("TEAM", "team must have at least one enabled member")
 	}
 	if mode == TeamModeParallel && !hasSynthesizer && strings.TrimSpace(spec.SynthesizerAgentID) == "" && enabledCount > 1 {
 		return apierror.BadRequest("TEAM", "parallel mode requires a synthesizer member or synthesizer_agent_id")

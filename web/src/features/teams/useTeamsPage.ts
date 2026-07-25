@@ -11,14 +11,21 @@ import { useTeamsStore } from '../../stores/teams';
 import { usePlatformStore } from '../../stores/platform';
 import {
   definitionFromTemplate,
+  definitionGraphFromCompileJSON,
   definitionToJSON,
+  definitionTopologyKey,
+  deriveMemberRolesForMode,
   groupTeamsByIndustry,
   industryOptionsFromTree,
   parseDefinition,
+  rebuildDefinitionGraph,
   resetDefinition,
   validateTeamDefinition,
   type TeamTemplateKey,
 } from '../../components/teams/teamUtils';
+// TECH-DEBT(FL5): 同 useTeamCompilePreview —— compile RPC 为编辑器即时操作，
+// 不落地全局状态；如需持久化编译结果应迁入 Store。
+import { compileTeamGraph } from '../orchestration/compileApi';
 import type { PlatformResourceTreeNode } from '../platform/types';
 
 /**
@@ -82,6 +89,70 @@ export function useTeamsPage() {
     members: [],
   });
 
+  // ── ADR-08 A1 派生同步：拓扑字段变更 → 实时重建 embedded graph ──
+  // 打开编辑器/应用模板时经 beginDefinitionSnapshot 建立拓扑基线；此后任何拓扑
+  // 变更（mode / synthesizer / members 增删改启停排序）立即重建 definition.graph，
+  // 使保存的 definition_json 中 graph 永远与 mode/members 一致（修 ADR-08 割裂点 1）。
+  const savedTopologyKey = ref('');
+  let applyingSnapshot = false;
+  const topologyKey = computed(() => definitionTopologyKey(definition));
+  watch(
+    topologyKey,
+    (key) => {
+      if (applyingSnapshot || !editorOpen.value || key === savedTopologyKey.value) return;
+      // A3：角色/synthesizer 由 mode+成员顺序派生（幂等）。派生改动会变更拓扑指纹，
+      // 先把基线推到派生后指纹，抑制紧随的二次触发。
+      const derived = deriveMemberRolesForMode(definition);
+      // A1 不变量：同步本地重建，保证「保存时 graph 必新鲜」。
+      definition.graph = rebuildDefinitionGraph(definition);
+      savedTopologyKey.value = derived ? definitionTopologyKey(definition) : key;
+      // A2：随后异步以后端 compile 的 canonical 图覆盖本地简图。
+      scheduleGraphSyncFromBackend();
+    },
+    { flush: 'sync' },
+  );
+
+  /** 装载 definition（打开/重置/模板应用）期间暂停派生重建，并以装载后拓扑为基线。 */
+  function beginDefinitionSnapshot(update: () => void) {
+    applyingSnapshot = true;
+    try {
+      update();
+    } finally {
+      savedTopologyKey.value = definitionTopologyKey(definition);
+      applyingSnapshot = false;
+    }
+  }
+
+  // ── ADR-08 A2 模板去重：canonical graph 以后端 compile 为准，本地 builder 仅回退 ──
+  // 拓扑变更后先同步本地重建（上方 watch），再 debounce 调 CompileTeamGraph 取
+  // definition_graph_json 覆盖；seq 令牌防竞态（快速连续编辑时丢弃过期响应）；
+  // 失败时本地简图已生效（graphUtils 降级为回退），每次编辑会话仅提示一次。
+  let graphSyncTimer: ReturnType<typeof setTimeout> | null = null;
+  let graphSyncSeq = 0;
+  let graphSyncWarned = false;
+
+  function scheduleGraphSyncFromBackend() {
+    if (graphSyncTimer) clearTimeout(graphSyncTimer);
+    const seq = ++graphSyncSeq;
+    graphSyncTimer = setTimeout(() => void syncGraphFromBackend(seq), 400);
+  }
+
+  async function syncGraphFromBackend(seq: number) {
+    const payload = JSON.parse(definitionToJSON(definition)) as Record<string, unknown>;
+    // 剥离合 graph 强制后端走模板路径；否则 embedded graph 优先，只会回显旧图。
+    delete payload.graph;
+    try {
+      const result = await compileTeamGraph(editingId.value.trim() || 'draft-preview', JSON.stringify(payload));
+      if (seq !== graphSyncSeq || !editorOpen.value) return;
+      const next = definitionGraphFromCompileJSON(result.definition_graph_json, definition.graph);
+      if (next) definition.graph = next;
+    } catch {
+      if (seq !== graphSyncSeq || !editorOpen.value || graphSyncWarned) return;
+      graphSyncWarned = true;
+      $q.notify({ type: 'warning', message: '后端编排编译不可用，已回退为本地简图' });
+    }
+  }
+
   // ── Runs UI state ──
   const runsOpen = ref(false);
   const runEventsConnected = ref(false);
@@ -140,7 +211,11 @@ export function useTeamsPage() {
   });
 
   onMounted(loadRows);
-  onBeforeUnmount(closeRunEvents);
+  onBeforeUnmount(() => {
+    closeRunEvents();
+    if (graphSyncTimer) clearTimeout(graphSyncTimer);
+    graphSyncSeq++; // 使在途的 graph 同步响应失效
+  });
   watch(
     () => route.query.edit,
     () => openRouteEdit(),
@@ -180,6 +255,7 @@ export function useTeamsPage() {
     editingId.value = '';
     editingHasActiveRun.value = false;
     selectedTeamTemplateKey.value = null;
+    graphSyncWarned = false;
     Object.assign(form, {
       team_key: '',
       display_name: '',
@@ -188,7 +264,7 @@ export function useTeamsPage() {
       taxonomy_industry_id: '',
       spirit_session_id: '',
     });
-    resetDefinition(definition);
+    beginDefinitionSnapshot(() => resetDefinition(definition));
     editorOpen.value = true;
   }
 
@@ -204,7 +280,13 @@ export function useTeamsPage() {
       taxonomy_industry_id: team.taxonomy_industry_id || '',
       spirit_session_id: team.spirit_session_id || '',
     });
-    Object.assign(definition, parseDefinition(team));
+    beginDefinitionSnapshot(() => {
+      Object.assign(definition, parseDefinition(team));
+      // ADR-08 A3：编辑器已移除 runtime_engine 选项，保存统一走 Graph 运行时；
+      // 遗留 native 定义在编辑器中打开即归一为 graph（native 仅供编排页 admin 调试）。
+      definition.runtime_engine = 'graph';
+      definition.team_graph_runtime = true;
+    });
     editorOpen.value = true;
   }
 
@@ -228,8 +310,12 @@ export function useTeamsPage() {
       selectedTeamTemplateKey.value = null;
       return;
     }
-    resetDefinition(definition);
-    Object.assign(definition, definitionFromTemplate(template, store.agents));
+    beginDefinitionSnapshot(() => {
+      resetDefinition(definition);
+      Object.assign(definition, definitionFromTemplate(template, store.agents));
+    });
+    // 模板应用不走 topology watch（基线已重置），显式触发后端 canonical 图同步。
+    scheduleGraphSyncFromBackend();
     $q.notify({ type: 'positive', message: 'Team 模板已应用' });
   }
 
@@ -402,7 +488,10 @@ export function useTeamsPage() {
       }
       router.push({ name: 'team-orchestrate', params: { teamId: team.id } });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '打开观测台失败' });
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : i18n.global.t('teamsPage.openObservatoryFailed'),
+      });
     }
   }
 

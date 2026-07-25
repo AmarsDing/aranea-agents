@@ -2,6 +2,7 @@
   GraphStage 流程图可视化（v2 实体，与 PlanBoard 一对一关联）。
   设计：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md §3.7.5
   产品交互：docs/development/1-chat.design.md B.4.4（已对齐 v2：节点=PlanStep，非 team 快照）
+  视觉：横向 DAG（对齐 docs/showcase/index.html mk-gcanvas）— 点阵画布 + 贝塞尔曲线边 + 卡片节点
   - store.getGraphStageNodes：独立 Map，反映最新节点状态
   - 容器 Status：终态优先用 props.graphStage.Status；运行中由子节点聚合
   - 单节点（无 DAG 价值）不展示，直接依赖 TeamStagePanel
@@ -17,44 +18,40 @@
       <span class="header-progress">{{ completedCount }}/{{ nodes.length }}</span>
       <q-badge :color="stageStatusColor">{{ stageStatusLabel }}</q-badge>
     </div>
-    <svg :width="width" :height="height" class="graph-stage-svg">
-      <!-- Dependency edges -->
-      <line
-        v-for="edge in edges"
-        :key="`${edge.from}-${edge.to}`"
-        :x1="edge.x1"
-        :y1="edge.y1"
-        :x2="edge.x2"
-        :y2="edge.y2"
-        :class="[
-          'graph-edge',
-          {
-            'graph-edge--highlighted': highlightedEdgeKeys.has(`${edge.from}-${edge.to}`),
-            'graph-edge--dimmed': hoveredNodeId !== null && !highlightedEdgeKeys.has(`${edge.from}-${edge.to}`),
-          },
-        ]"
-        marker-end="url(#graph-arrowhead)"
-      />
-      <!-- Nodes -->
-      <GraphNode
-        v-for="node in nodes"
-        :key="node.ID"
-        :node="node"
-        :pos="positions.get(node.ID) || { x: 0, y: 0 }"
-        :node-width="nodeWidth"
-        :node-height="nodeHeight"
-        :is-selected="selectedId === node.ID"
-        :is-highlighted="highlightedNodeIds.has(node.ID)"
-        :is-dimmed="hoveredNodeId !== null && !highlightedNodeIds.has(node.ID)"
-        @select="onSelectNode"
-        @hover="onHoverNode"
-      />
-      <defs>
-        <marker id="graph-arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-          <polygon points="0 0, 10 3.5, 0 7" class="graph-arrowhead" />
-        </marker>
-      </defs>
-    </svg>
+    <div class="graph-stage-canvas">
+      <div class="graph-stage-canvas__inner" :style="{ width: `${width}px`, height: `${height}px` }">
+        <!-- Dependency edges (curved bezier, showcase DAG style) -->
+        <svg class="graph-stage-edges" :width="width" :height="height" :viewBox="`0 0 ${width} ${height}`">
+          <path
+            v-for="edge in edges"
+            :key="`${edge.from}-${edge.to}`"
+            :d="edge.d"
+            :class="[
+              'graph-edge',
+              {
+                'graph-edge--flowing': derivedStatus === 'running',
+                'graph-edge--highlighted': highlightedEdgeKeys.has(`${edge.from}-${edge.to}`),
+                'graph-edge--dimmed': hoveredNodeId !== null && !highlightedEdgeKeys.has(`${edge.from}-${edge.to}`),
+              },
+            ]"
+          />
+        </svg>
+        <!-- Nodes -->
+        <GraphNode
+          v-for="node in nodes"
+          :key="node.ID"
+          :node="node"
+          :pos="positions.get(node.ID) || { x: 0, y: 0 }"
+          :node-width="nodeWidth"
+          :node-height="nodeHeight"
+          :is-selected="selectedId === node.ID"
+          :is-highlighted="highlightedNodeIds.has(node.ID)"
+          :is-dimmed="hoveredNodeId !== null && !highlightedNodeIds.has(node.ID)"
+          @select="onSelectNode"
+          @hover="onHoverNode"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -81,11 +78,12 @@ const props = defineProps<{ graphStage: GraphStage }>();
 const { t } = useSafeI18n();
 const store = useActivityQueries();
 
-const nodeWidth = 130;
-const nodeHeight = 60;
-const gapX = 40;
-const gapY = 30;
-const maxWidth = 600;
+const nodeWidth = 156;
+const nodeHeight = 56;
+const gapX = 64;
+const gapY = 16;
+const padX = 20;
+const padY = 12;
 
 // 不再使用 props.graphStage.Nodes 嵌入数组（创建后永不更新）。
 const nodes = computed(() => store.getGraphStageNodes(props.graphStage.ID));
@@ -96,13 +94,12 @@ const shouldShow = computed(() => nodes.value.length > 1);
 const completedCount = computed(() => nodes.value.filter((n) => n.Status === 'completed').length);
 
 const { layoutDAG } = usePlanDAGLayout();
-const layoutResult = computed(() => layoutDAG(nodes.value, { width: maxWidth, nodeWidth, nodeHeight, gapX, gapY }));
+const layoutResult = computed(() =>
+  layoutDAG(nodes.value, { width: 0, nodeWidth, nodeHeight, gapX, gapY, padX, padY, orientation: 'horizontal' }),
+);
 const positions = computed(() => layoutResult.value.positions);
 const width = computed(() => layoutResult.value.computedWidth);
-const height = computed(() => {
-  const max = Math.max(0, ...Array.from(positions.value.values()).map((p) => p.y));
-  return max + nodeHeight + 20;
-});
+const height = computed(() => layoutResult.value.computedHeight);
 
 const selectedId = ref<string | null>(null);
 
@@ -182,11 +179,10 @@ function onSelectNode(nodeId: string) {
 interface Edge {
   from: string;
   to: string;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
+  d: string;
 }
+// 横向 DAG 贝塞尔曲线边（对齐 showcase mk-edge）：
+// 从源节点右缘中点 → 目标节点左缘中点，三次贝塞尔平滑过渡。
 const edges = computed<Edge[]>(() => {
   const out: Edge[] = [];
   for (const node of nodes.value) {
@@ -196,13 +192,15 @@ const edges = computed<Edge[]>(() => {
     for (const depId of node.DependsOn) {
       const fromPos = positions.value.get(depId);
       if (!fromPos) continue;
+      const x1 = fromPos.x + nodeWidth;
+      const y1 = fromPos.y + nodeHeight / 2;
+      const x2 = toPos.x;
+      const y2 = toPos.y + nodeHeight / 2;
+      const cx = Math.max(32, (x2 - x1) / 2);
       out.push({
         from: depId,
         to: node.ID,
-        x1: fromPos.x + nodeWidth / 2,
-        y1: fromPos.y + nodeHeight,
-        x2: toPos.x + nodeWidth / 2,
-        y2: toPos.y,
+        d: `M ${x1} ${y1} C ${x1 + cx} ${y1}, ${x2 - cx} ${y2}, ${x2} ${y2}`,
       });
     }
   }
@@ -277,24 +275,50 @@ const stageStatusLabel = computed(() => {
   font-weight: 500
   color: var(--color-text-secondary)
 
-.graph-stage-svg
-  display: block
+// 横向 DAG 画布：宽图可横向滚动（层数深时宽度是结构性的）
+.graph-stage-canvas
+  overflow-x: auto
   max-width: 100%
+  border: 1px solid var(--glass-border)
+  border-radius: 14px
+  background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
+
+.graph-stage-canvas__inner
+  position: relative
+  // 点阵背景（对齐 showcase mk-gcanvas）
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--color-text-tertiary) 30%, transparent) 1px, transparent 1px)
+  background-size: 22px 22px
+  border-radius: 14px
+
+.graph-stage-edges
+  position: absolute
+  inset: 0
 
 .graph-edge
-  stroke: var(--color-text-secondary, rgba(150, 150, 150, 0.6))
-  stroke-width: 2
-  transition: opacity 0.2s ease, stroke-width 0.2s ease
+  fill: none
+  stroke: var(--color-text-tertiary, rgba(150, 150, 150, 0.6))
+  stroke-width: 1.8
+  transition: opacity 0.2s ease, stroke 0.2s ease, stroke-width 0.2s ease
+
+// 运行中：虚线流动动画，暗示执行方向（对齐 showcase edgeDash）
+.graph-edge--flowing
+  stroke-dasharray: 6 5
+  animation: graph-edge-dash 1.4s linear infinite
+
+@keyframes graph-edge-dash
+  to
+    stroke-dashoffset: -11
 
 /* P1 #6: hover 节点时高亮上下游依赖路径 — 高亮路径上的边 */
 .graph-edge--highlighted
   stroke: var(--q-primary, #00bcd4)
-  stroke-width: 3
+  stroke-width: 2.4
 
 /* P1 #6: 非路径上的边暗化 */
 .graph-edge--dimmed
   opacity: 0.2
 
-.graph-arrowhead
-  fill: var(--color-text-secondary, rgba(150, 150, 150, 0.6))
+@media (prefers-reduced-motion: reduce)
+  .graph-edge--flowing
+    animation: none
 </style>

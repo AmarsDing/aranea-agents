@@ -13,6 +13,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/metrics"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/apierror"
@@ -29,11 +30,13 @@ const (
 // GeneratedAgentDefinition is the LLM-generated agent definition parsed from
 // the model response. Field names match the JSON schema in the prompt.
 type GeneratedAgentDefinition struct {
-	DisplayName  string `json:"display_name"`
-	Description  string `json:"description"`
-	Provider     string `json:"provider"`
-	Model        string `json:"model"`
-	SystemPrompt string `json:"system_prompt"`
+	DisplayName      string `json:"display_name"`
+	Description      string `json:"description"`
+	Provider         string `json:"provider"`
+	Model            string `json:"model"`
+	SystemPrompt     string `json:"system_prompt"`
+	MissionStatement string `json:"mission_statement"`
+	DomainPath       string `json:"domain_path"`
 }
 
 // AgentFactoryImpl implements biz.AgentFactory by dynamically generating
@@ -44,6 +47,7 @@ type AgentFactoryImpl struct {
 	agentReader  biz.AgentReader
 	templateRepo biz.AgentTemplateRepo
 	eventBus     biz.EventBus
+	embedder     knowledge.Embedder // nil → 同域复用检查跳过（仅 key 命中，不变量 3）
 	lg           loggateway.Logger
 }
 
@@ -58,6 +62,7 @@ func NewAgentFactoryImpl(
 	agentReader biz.AgentReader,
 	templateRepo biz.AgentTemplateRepo,
 	eventBus biz.EventBus,
+	embedder knowledge.Embedder,
 	lg loggateway.Logger,
 ) biz.AgentFactory {
 	if lg == nil {
@@ -69,6 +74,7 @@ func NewAgentFactoryImpl(
 		agentReader:  agentReader,
 		templateRepo: templateRepo,
 		eventBus:     eventBus,
+		embedder:     embedder,
 		lg:           lg.With(loggateway.Domain("agent_factory")),
 	}
 }
@@ -98,6 +104,16 @@ func (f *AgentFactoryImpl) EnsureAgent(ctx context.Context, profile biz.TaskProf
 		return existing.AgentKey, nil
 	} else if !stderrors.Is(err, shared.ErrNotFound) {
 		return "", apierror.Internal(apierror.DomainAgent, "check existing agent").WithCause(err)
+	}
+
+	// 同域使命相似复用（key 未命中时的二级检查，需 embedder）。
+	if reused, ok := f.findSameDomainAgent(ctx, profile); ok {
+		f.lg.Info("AgentFactory 同域使命相似，复用已有 Agent",
+			loggateway.StepID("agent_factory.domain_reuse"),
+			loggateway.AgentKey(reused),
+			loggateway.Str("domain_path", profile.DomainPath),
+		)
+		return reused, nil
 	}
 
 	if f.llm == nil {
@@ -134,6 +150,8 @@ func (f *AgentFactoryImpl) EnsureAgent(ctx context.Context, profile biz.TaskProf
 		CreatedBy:        agentFactoryAuthor,
 		Status:           string(biz.AgentStatusActive),
 		Roles:            profile.RequiredCapabilities,
+		MissionStatement: def.MissionStatement,
+		DomainPath:       def.DomainPath,
 	}
 
 	created, err := f.agentWriter.CreateAgent(ctx, agent)
@@ -238,6 +256,14 @@ func (f *AgentFactoryImpl) parseAgentDefinition(text string, profile biz.TaskPro
 	if def.Model == "" {
 		def.Model = template.Model
 	}
+	if def.MissionStatement == "" {
+		def.MissionStatement = def.Description
+	}
+	def.DomainPath = NormalizeDomainPath(def.DomainPath)
+	if def.DomainPath == "" {
+		// LLM 未输出 domain_path 时回退 profile 域的一级域（出生登记兜底）。
+		def.DomainPath = TopLevelDomain(profile.DomainPath)
+	}
 	return def, nil
 }
 
@@ -266,12 +292,17 @@ func (f *AgentFactoryImpl) selectClosestTemplate(ctx context.Context, profile bi
 }
 
 // buildDynamicAgentKey returns a deterministic AgentKey for the profile.
-// Same profile inputs always produce the same key, ensuring idempotency.
+// DomainPath 非空时按 domain+model 派生（同域同模型复用同一 Agent，B.10.21.6）；
+// 为空时保留旧行为（任务文本参与哈希，兼容兜底路径）。
 func (f *AgentFactoryImpl) buildDynamicAgentKey(profile biz.TaskProfile) string {
 	h := sha1.New()
-	fmt.Fprint(h, profile.Domain, "|", profile.TaskDescription, "|")
-	fmt.Fprint(h, strings.Join(profile.RequiredCapabilities, ","), "|")
-	fmt.Fprint(h, strings.Join(profile.PreferredTools, ","), "|", profile.PreferredModel)
+	if dp := NormalizeDomainPath(profile.DomainPath); dp != "" {
+		fmt.Fprint(h, dp, "|", profile.PreferredModel)
+	} else {
+		fmt.Fprint(h, profile.Domain, "|", profile.TaskDescription, "|")
+		fmt.Fprint(h, strings.Join(profile.RequiredCapabilities, ","), "|")
+		fmt.Fprint(h, strings.Join(profile.PreferredTools, ","), "|", profile.PreferredModel)
+	}
 	sum := hex.EncodeToString(h.Sum(nil))[:12]
 	return "factory-" + sum
 }
@@ -305,13 +336,15 @@ func (f *AgentFactoryImpl) confirmAgentCreation(ctx context.Context, profile biz
 	}
 
 	proposal := map[string]any{
-		"display_name": def.DisplayName,
-		"description":  def.Description,
-		"provider":     def.Provider,
-		"model":        def.Model,
-		"capabilities": profile.RequiredCapabilities,
-		"domain":       profile.Domain,
-		"task":         profile.TaskDescription,
+		"display_name":      def.DisplayName,
+		"description":       def.Description,
+		"provider":          def.Provider,
+		"model":             def.Model,
+		"capabilities":      profile.RequiredCapabilities,
+		"domain":            profile.Domain,
+		"task":              profile.TaskDescription,
+		"mission_statement": def.MissionStatement,
+		"domain_path":       def.DomainPath,
 	}
 	proposalJSON, err := json.Marshal(proposal)
 	if err != nil {
@@ -404,7 +437,8 @@ func (f *AgentFactoryImpl) buildAgentFactoryPrompt(profile biz.TaskProfile, temp
 		sb.WriteString("  Provider: " + template.Provider + "\n")
 		sb.WriteString("  Model: " + template.Model + "\n")
 	}
-	sb.WriteString("\nOutput ONLY a JSON object with fields: display_name, description, provider, model, system_prompt\n")
+	sb.WriteString("\nOutput ONLY a JSON object with fields: display_name, description, provider, model, system_prompt, mission_statement, domain_path\n")
+	sb.WriteString("domain_path must classify the agent into this domain lexicon (most specific entry; fallback top-level or \"其他\"): " + DomainLexiconPromptList() + "\n")
 	return sb.String()
 }
 
@@ -438,6 +472,8 @@ Rules:
 - provider: LLM provider (e.g. "openrouter")
 - model: model identifier (e.g. "gpt-4.1-mini")
 - system_prompt: the agent's system prompt (max 500 chars)
+- mission_statement: one-sentence long-term mission of the agent (its enduring identity across tasks, e.g. "擅长中文诗歌与散文创作的文学写手")
+- domain_path: domain classification from the provided lexicon
 
 The agent should be specialized for the given task domain and capabilities.`
 }
@@ -456,6 +492,64 @@ func defaultDescription(profile biz.TaskProfile) string {
 		return "为任务动态创建的 Agent: " + profile.TaskDescription
 	}
 	return "AgentFactory 动态创建的 Agent"
+}
+
+// findSameDomainAgent 在同域 Agent 中查找使命高相似（cosine ≥ 0.85）者复用。
+// DomainPath 为空或 embedder 为 nil 时跳过（仅 key 命中复用，不变量 3）。
+func (f *AgentFactoryImpl) findSameDomainAgent(ctx context.Context, profile biz.TaskProfile) (string, bool) {
+	dp := NormalizeDomainPath(profile.DomainPath)
+	if dp == "" || f.embedder == nil {
+		return "", false
+	}
+	res, err := f.agentReader.SearchAgents(ctx, biz.AgentListQuery{Status: "active", Limit: 200})
+	if err != nil || len(res.Items) == 0 {
+		return "", false
+	}
+	cands := make([]biz.Agent, 0, len(res.Items))
+	for _, ag := range res.Items {
+		if biz.IsSystemAgentKey(ag.AgentKey) {
+			continue
+		}
+		if DomainPathRelated(ag.DomainPath, dp) {
+			cands = append(cands, ag)
+		}
+	}
+	if len(cands) == 0 {
+		return "", false
+	}
+	query := profile.Mission
+	if query == "" {
+		query = profile.TaskDescription
+	}
+	texts := make([]string, 0, len(cands)+1)
+	texts = append(texts, query)
+	for _, ag := range cands {
+		m := ag.MissionStatement
+		if m == "" {
+			m = ag.AgentDescription
+		}
+		texts = append(texts, m)
+	}
+	vectors, err := f.embedder.Embed(ctx, texts)
+	if err != nil || len(vectors) != len(texts) || len(vectors[0]) == 0 {
+		if err != nil {
+			f.lg.Warn("AgentFactory 同域复用 embedding 失败，跳过",
+				loggateway.StepID("agent_factory.domain_reuse"),
+				loggateway.Err(err),
+			)
+		}
+		return "", false
+	}
+	bestIdx, bestSim := -1, 0.0
+	for i := range cands {
+		if sim := cosineSimilarity32(vectors[0], vectors[i+1]); sim > bestSim {
+			bestSim, bestIdx = sim, i
+		}
+	}
+	if bestIdx < 0 || bestSim < 0.85 {
+		return "", false
+	}
+	return cands[bestIdx].AgentKey, true
 }
 
 // keywordOverlapScore computes the fraction of tokens in `a` that also appear in `b`.

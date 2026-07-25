@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizusage "aranea-agents/internal/biz/usage"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 )
 
@@ -222,9 +223,9 @@ func usageWhere(query biz.UsageQuery, billableOnly bool) (string, []any) {
 			args = append(args, query.Status)
 		}
 	}
-	if query.WorkspaceID != "" {
-		parts = append(parts, "workspace_id = ?")
-		args = append(args, query.WorkspaceID)
+	if clause, wsArgs := usageWorkspaceClause(query.WorkspaceID); clause != "" {
+		parts = append(parts, clause)
+		args = append(args, wsArgs...)
 	}
 	if len(parts) == 0 {
 		return "", args
@@ -240,6 +241,22 @@ func usageLimit(limit int) int {
 		return 200
 	}
 	return limit
+}
+
+// usageWorkspaceClause 返回用量事件的 workspace 过滤片段。
+// 与 evaluation.go evalRunsWorkspaceFilter 的 legacy 兼容语义一致：
+//   - 空 WorkspaceID（system caller）→ 无过滤
+//   - default 租户 → workspace_id IN ('default', '')，兼容历史空行
+//     （用量事件写入路径不填 workspace_id，全部 1185 行均为空串）
+//   - 其他租户 → 严格相等，防止跨租户泄漏
+func usageWorkspaceClause(workspaceID string) (string, []any) {
+	if workspaceID == "" {
+		return "", nil
+	}
+	if workspaceID == workspace.DefaultWorkspaceID {
+		return "workspace_id IN (?, ?)", []any{workspaceID, ""}
+	}
+	return "workspace_id = ?", []any{workspaceID}
 }
 
 func usageOffset(offset int) int {

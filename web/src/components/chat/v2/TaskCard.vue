@@ -135,10 +135,10 @@
         @expand="(ids) => emit('expand', ids)"
         @confirm-step="(p) => emit('confirm-step', p)"
       />
-      <!-- B.10.17: orphan notice steps（TurnID 空，附着到 Task）作为任务总结 footer
-           渲染在任务卡末尾 — 执行总结报告（synthesis_completed → ExecutionReportCard）
-           与兜底完成通知（synthesis 硬失败时的"所有团队已完成"）。系统内部通知
-           （context_usage 等）沿用 TurnContainer 同款过滤。 -->
+      <!-- orphan notice steps（TurnID 空，附着到 Task）作为任务 footer 渲染在
+           任务卡末尾 — 兜底完成通知（总结 turn 触发失败时的"所有团队已完成"）。
+           系统内部通知（context_usage 等）沿用 TurnContainer 同款过滤。
+           任务总结报告 = Spirit 总结 turn 的 LLM reply（普通 reply step），无专门 UI。 -->
       <NoticeBlock v-for="s in orphanNoticeSteps" :key="s.ID" :step="s" />
       <button class="task-card__collapse-btn" type="button" @click.stop="emit('toggle-collapse', task)">
         {{ t('chat.v2.collapseExecution') }} ▴
@@ -229,9 +229,8 @@ const orphanMemberSessions = computed(() => store.getTaskOrphanMemberSessions(pr
 const orphanClarifySteps = computed(() =>
   store.getTaskOrphanSteps(props.task.ID).filter((s) => s.Kind === 'clarify'),
 );
-// B.10.17: orphan notice steps（kind=notice；TurnID 空，附着到 Task）— 执行总结
-// 报告（synthesis_completed → ExecutionReportCard）与兜底完成通知。过滤系统内部
-// 通知（context_usage 等），与 TurnContainer 保持一致。
+// orphan notice steps（kind=notice；TurnID 空，附着到 Task）— 兜底完成通知。
+// 过滤系统内部通知（context_usage 等），与 TurnContainer 保持一致。
 const orphanNoticeSteps = computed(() =>
   store.getTaskOrphanSteps(props.task.ID).filter((s) => s.Kind === 'notice' && !isSystemInternalNotice(s.Kind, s.NoticeType)),
 );

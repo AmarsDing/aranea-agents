@@ -70,6 +70,10 @@ var _ biz.LLMCaller = (*OpenAICompatLLMCaller)(nil)
 // LLMCredentialResolver resolves provider credentials for LLM calls.
 type LLMCredentialResolver interface {
 	List(ctx context.Context) ([]biz.ProviderModel, error)
+	// GetByProviderAndModel returns the decrypted runtime config for one
+	// catalog row. Required because List is sanitized for API display
+	// (api_key stripped) and must not be used for outbound credentials.
+	GetByProviderAndModel(ctx context.Context, provider, model string) (biz.ProviderModel, error)
 }
 
 // LLMRefineConfigResolver resolves the default refine LLM config.
@@ -119,17 +123,22 @@ func (c *DynamicLLMCaller) Call(ctx context.Context, req biz.LLMCallRequest) (st
 
 // resolveCredentials returns a ProviderAPIConfig with BaseURL + APIKey for
 // the (provider, model) pair. Lookup order:
-//  1. Exact catalog row matching provider+model → use its ConfigJSON
+//  1. Exact catalog row matching provider+model → its decrypted ConfigJSON
 //  2. SystemSetting.DefaultRefineLLM if its Provider matches → use its BaseURL/APIKey
 //  3. SystemSetting.DefaultRefineLLM regardless (best-effort)
-//  4. First enabled catalog row with the same Provider → its ConfigJSON
+//  4. First enabled catalog row with the same Provider → its decrypted ConfigJSON
 //  5. Error.
+//
+// Note: the catalog List is sanitized for API display (api_key stripped), so
+// matching rows must be re-fetched via GetByProviderAndModel to obtain the
+// decrypted runtime credentials.
 func (c *DynamicLLMCaller) resolveCredentials(ctx context.Context, provider, model string) (ProviderAPIConfig, error) {
 	provider = strings.TrimSpace(provider)
 	model = strings.TrimSpace(model)
 
-	// Strategy 1 + 4: walk the catalog.
+	// Strategy 1 + 4: walk the catalog to locate matching enabled rows.
 	var providerMatch *biz.ProviderModel
+	var exactMatch *biz.ProviderModel
 	if c.catalog != nil {
 		models, err := c.catalog.List(ctx)
 		if err == nil {
@@ -139,17 +148,34 @@ func (c *DynamicLLMCaller) resolveCredentials(ctx context.Context, provider, mod
 					continue
 				}
 				if m.Provider == provider && m.Model == model && model != "" {
-					var cfg ProviderAPIConfig
-					MergeProviderConfigJSON(m.ConfigJSON, &cfg)
-					cfg.ProviderType = m.Provider
-					if strings.TrimSpace(cfg.APIBaseURL) != "" {
-						return cfg, nil
-					}
+					exactMatch = m
 				}
 				if providerMatch == nil && m.Provider == provider {
 					providerMatch = m
 				}
 			}
+		}
+	}
+	// decryptedConfig re-fetches the row to obtain the decrypted runtime
+	// config (List rows carry no api_key — see sanitizeProviderModelForAPI).
+	decryptedConfig := func(m *biz.ProviderModel) (ProviderAPIConfig, bool) {
+		row, err := c.catalog.GetByProviderAndModel(ctx, m.Provider, m.Model)
+		if err != nil {
+			return ProviderAPIConfig{}, false
+		}
+		var cfg ProviderAPIConfig
+		MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+		cfg.ProviderType = row.Provider
+		if strings.TrimSpace(cfg.APIBaseURL) == "" {
+			return ProviderAPIConfig{}, false
+		}
+		return cfg, true
+	}
+
+	// Strategy 1: exact provider+model match.
+	if exactMatch != nil {
+		if cfg, ok := decryptedConfig(exactMatch); ok {
+			return cfg, nil
 		}
 	}
 
@@ -188,10 +214,7 @@ func (c *DynamicLLMCaller) resolveCredentials(ctx context.Context, provider, mod
 
 	// Strategy 4: same-provider catalog fallback.
 	if providerMatch != nil {
-		var cfg ProviderAPIConfig
-		MergeProviderConfigJSON(providerMatch.ConfigJSON, &cfg)
-		cfg.ProviderType = providerMatch.Provider
-		if strings.TrimSpace(cfg.APIBaseURL) != "" {
+		if cfg, ok := decryptedConfig(providerMatch); ok {
 			return cfg, nil
 		}
 	}

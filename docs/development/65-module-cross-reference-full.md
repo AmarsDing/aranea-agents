@@ -692,16 +692,16 @@
 | **核心导出** | `SpiritTeamUsecase`、`SynthesisEngine`（template/prompt/hybrid 三策略）、`TaskDAG`（依赖验证/环检测/拓扑排序） |
 | **实现接口** | `biz.TeamStarterPort`（Wire 绑定到 TeamStarter） |
 | **共享类型** | `SpiritTeamConfig`、`SynthesisResult`、`TaskDAG`、`DAGNode` |
-| **事件生产** | `spirit_team_assembled`、`spirit_team_completed`、`spirit_team_failed`、`spirit_team_progress`、`spirit_teams_all_completed`、`spirit_synthesis_completed` |
+| **事件生产** | `spirit_team_assembled`、`spirit_team_completed`、`spirit_team_failed`、`spirit_team_progress`、`spirit_teams_all_completed` |
 | **事件消费** | 无 |
 | **数据库** | 无直接访问（通过 biz Usecase 间接访问） |
-| **前端对应** | SpiritEntry/TeamAssemblyCard/TeamProgressCard/TaskExecutionPanel 组件；执行总结报告经 `NoticeBlock` 分支渲染 `ExecutionReportCard`（2026-07-22 P-REPORT，取代未接入的 SynthesisResultCard） |
+| **前端对应** | SpiritEntry/TeamAssemblyCard/TeamProgressCard/TaskExecutionPanel 组件；任务执行总结为精灵 LLM 普通 reply（Markdown），无专门 UI 组件（2026-07-24 P-REPORT 重构，取代 ExecutionReportCard 报告卡片） |
 
 **⚠️ 开发注意**：
 - Spirit 模式是 Team 的上层编排，不替代 Team，而是动态创建和调度多个 Team
 - 修改 `TeamStarterPort` 接口时，需同步更新 `service/team.go` 的 `TeamStarter` 实现
 - 6 种 Spirit EnvelopeType 被前端 `useSpiritTeamStore` 和 `useOrchestrationStore` 消费
-- **执行总结报告（B.10.17）**：`synthesisEventPublisher` 将报告以 `StepCreatedEvent`（Kind=notice，`NoticeType=synthesis_completed`，Content=ExecutionReportEnvelope JSON）持久化；存在 cancelled 团队时跳过发布；LLM 结论失败时 `degraded=true` 保留结构化板块；前端 `parseExecutionReport` 解析失败回落默认 notice
+- **任务执行总结（B.10.17，2026-07-24 重构）**：全部团队终态后 `TeamStarter.checkAllTeamsCompleted` 经 `turnGateway.ExecuteTurn` 向精灵会话注入 `synthesisSummaryTrigger`（system-push，四节结构 prompt 契约），精灵以普通 reply step 输出 Markdown 总结（天然持久化，刷新可恢复）；存在 cancelled 团队时跳过；`synthesisTriggered` CAS 防重；注入失败时发布兜底 notice「所有团队已完成」。初版 ExecutionReportCard 报告卡片链路（信封/publisher/组件/i18n）已全量移除
 
 ---
 

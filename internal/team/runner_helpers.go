@@ -68,9 +68,13 @@ func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRunRec
 		msStatus = biz.MemberSessionStatusPending
 	}
 	teamStageID := string(agent.NewTeamStageActivityID(teamID))
+	// 统一使用 v2 确定性 ID（与 spirit_team service 同一公式），
+	// 保证 runner 与 service 写入同一 member_sessions_v2 行（upsert-by-ID）。
+	// run.ID 是 v1 随机 UUID，仅用于 meta，不可写入 v2 实体。
+	teamRunV2ID := agent.NewTeamRunV2ID(teamStageID)
 	ms := biz.MemberSession{
-		ID:              string(agent.NewSessionActivityID(teamID, agentKey)),
-		TeamRunID:       run.ID,
+		ID:              string(agent.NewMemberSessionActivityID(teamRunV2ID, agentKey)),
+		TeamRunID:       teamRunV2ID,
 		TeamStageID:     teamStageID,
 		SessionID:       childSessionID,
 		SpiritSessionID: run.SpiritSessionID,

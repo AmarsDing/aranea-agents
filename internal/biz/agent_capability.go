@@ -9,6 +9,10 @@ type AgentCapability struct {
 	Domains     []string
 	Tools       []string
 	Skills      []string
+	// Mission 是 Agent 使命文本（agents.mission_statement，空时回退 Description）。
+	Mission string
+	// DomainPath 是 Agent 的归一化领域路径（agents.domain_path）。
+	DomainPath string
 	// TODO(debt): DEV-03 — AgentCapability.Capacity field unused. No conflict detection
 	// or load balancing logic implemented yet.
 	// See: https://github.com/aranea-agents/aranea-agents/issues/DEV-03

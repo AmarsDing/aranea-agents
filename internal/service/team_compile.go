@@ -40,6 +40,9 @@ func (s *TeamService) buildCompileTeamGraphResponse(ctx context.Context, def tea
 		TemplateId: team.CompileTemplateID(def.Mode),
 		Mode:       strings.ToLower(strings.TrimSpace(def.Mode)),
 		Valid:      compileErr == nil,
+		// ADR-08 A2: template path emits the canonical embedded graph spec so
+		// frontend editors stop re-implementing mode->graph generation locally.
+		DefinitionGraphJson: team.DefinitionGraphSpecJSON(ctx, def, rawDefinitionJSON, s.lg),
 	}
 	if compileErr != nil {
 		resp.Issues = append(resp.Issues, &v1.CompileTeamGraphValidationIssue{

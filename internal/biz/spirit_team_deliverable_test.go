@@ -193,9 +193,12 @@ func seedCompletedTeamWithSteps(teams *deliverableTeamRepo, sessions *deliverabl
 func TestWriteDeliverablesToSession_PersistsToDeliverablesOutput(t *testing.T) {
 	teams := newDeliverableTeamRepo()
 	sessions := newDeliverableSessionAccessor()
-	u := newDeliverableUsecase(teams, sessions)
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{"summary": "分析完成\n- 发现A"}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
 
-	team := seedCompletedTeam(teams, sessions, "t1", "sp1", "st_1", "分析团队", "分析完成\n- 发现A")
+	team := seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`, "")
 	team.ParallelConfigJSON = `{"max_teams":3}`
 	teams.items["t1"] = team
 
@@ -226,11 +229,13 @@ func TestWriteDeliverablesToSession_WritesDeliverableRefMetadata(t *testing.T) {
 	teams := newDeliverableTeamRepo()
 	sessions := newDeliverableSessionAccessor()
 	steps := newDeliverableStepReader()
-	u := newDeliverableUsecaseWithSteps(teams, sessions, steps)
-
 	// Content longer than MaxSummaryLen (500 runes) so the summary truncates.
 	longContent := strings.Repeat("长", 600) + "\n- 关键发现一\n- 关键发现二"
-	seedCompletedTeamWithSteps(teams, sessions, steps, "t1", "sp1", "st_1", "分析团队", longContent)
+	reader := &graphDeliverableReaderStub{data: map[string]any{"summary": longContent}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`, "")
 
 	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
 		t.Fatalf("WriteDeliverablesToSession: %v", err)
@@ -267,9 +272,11 @@ func TestWriteDeliverablesToSession_ShortContent_NotTruncated(t *testing.T) {
 	teams := newDeliverableTeamRepo()
 	sessions := newDeliverableSessionAccessor()
 	steps := newDeliverableStepReader()
-	u := newDeliverableUsecaseWithSteps(teams, sessions, steps)
+	reader := &graphDeliverableReaderStub{data: map[string]any{"summary": "短成果"}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
 
-	seedCompletedTeamWithSteps(teams, sessions, steps, "t1", "sp1", "st_1", "分析团队", "短成果")
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`, "")
 	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
 		t.Fatalf("WriteDeliverablesToSession: %v", err)
 	}
@@ -287,9 +294,12 @@ func TestWriteDeliverablesToSession_ShortContent_NotTruncated(t *testing.T) {
 func TestWriteDeliverablesToSession_PreservesLegacyEntries(t *testing.T) {
 	teams := newDeliverableTeamRepo()
 	sessions := newDeliverableSessionAccessor()
-	u := newDeliverableUsecase(teams, sessions)
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{"summary": "新成果"}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
 
-	team := seedCompletedTeam(teams, sessions, "t1", "sp1", "st_1", "分析团队", "新成果")
+	team := seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`, "")
 	team.DeliverablesOutput = `{"st_0":"旧节点摘要"}`
 	teams.items["t1"] = team
 
@@ -310,9 +320,12 @@ func TestWriteDeliverablesToSession_PreservesLegacyEntries(t *testing.T) {
 func TestWriteDeliverablesToSession_CorruptCache_Rebuilds(t *testing.T) {
 	teams := newDeliverableTeamRepo()
 	sessions := newDeliverableSessionAccessor()
-	u := newDeliverableUsecase(teams, sessions)
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{"summary": "新成果"}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
 
-	team := seedCompletedTeam(teams, sessions, "t1", "sp1", "st_1", "分析团队", "新成果")
+	team := seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`, "")
 	team.DeliverablesOutput = "{corrupt-json"
 	teams.items["t1"] = team
 
@@ -339,19 +352,6 @@ func TestWriteDeliverablesToSession_NoDagNode_NoOp(t *testing.T) {
 	}
 	if teams.updateCalls != 0 {
 		t.Fatalf("no DagNodeID → no update expected, got %d updates", teams.updateCalls)
-	}
-}
-
-func TestWriteDeliverablesToSession_NoAssistantMessage_NoOp(t *testing.T) {
-	teams := newDeliverableTeamRepo()
-	sessions := newDeliverableSessionAccessor()
-	u := newDeliverableUsecase(teams, sessions)
-	seedCompletedTeam(teams, sessions, "t1", "sp1", "st_1", "团队", "")
-	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
-		t.Fatalf("WriteDeliverablesToSession: %v", err)
-	}
-	if teams.updateCalls != 0 {
-		t.Fatalf("no assistant message → no update expected, got %d updates", teams.updateCalls)
 	}
 }
 
@@ -384,8 +384,11 @@ func TestReadDeliverableRef_DualMode(t *testing.T) {
 func TestRecordTeamCompletion_PersistsDeliverableOutput(t *testing.T) {
 	teams := newDeliverableTeamRepo()
 	sessions := newDeliverableSessionAccessor()
-	u := newDeliverableUsecase(teams, sessions)
-	team := seedCompletedTeam(teams, sessions, "t1", "sp1", "st_1", "分析团队", "分析成果")
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{"summary": "分析成果"}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+	team := seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`, "")
 
 	u.RecordTeamCompletion(context.Background(), team, 100)
 
@@ -420,20 +423,6 @@ func TestInjectUpstreamDeliverables_NoDependsOn_Empty(t *testing.T) {
 	u := newDeliverableUsecase(newDeliverableTeamRepo(), newDeliverableSessionAccessor())
 	if got := u.InjectUpstreamDeliverables(context.Background(), Team{SpiritSessionID: "sp1"}); got != "" {
 		t.Fatalf("no DependsOn → empty prefix, got %q", got)
-	}
-}
-
-func TestInjectUpstreamDeliverables_FallbackExtract(t *testing.T) {
-	teams := newDeliverableTeamRepo()
-	sessions := newDeliverableSessionAccessor()
-	u := newDeliverableUsecase(teams, sessions)
-	// Upstream completed but DeliverablesOutput not yet written → fallback to extraction.
-	seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "上游团队", "即时提取的成果")
-
-	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
-	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
-	if !strings.Contains(prefix, "即时提取的成果") {
-		t.Fatalf("fallback extraction should supply upstream output, got %q", prefix)
 	}
 }
 
@@ -486,38 +475,6 @@ func TestInjectUpstreamDeliverables_UntruncatedOrLegacy_NoGuidance(t *testing.T)
 	}
 	if !strings.Contains(prefix, "完整短摘要") || !strings.Contains(prefix, "旧格式摘要") {
 		t.Fatalf("both summaries should be present, got %q", prefix)
-	}
-}
-
-// Fallback path (cache missing): long extracted content is also truncated, so
-// the guidance must be appended with the upstream team's ID.
-func TestInjectUpstreamDeliverables_FallbackLongContent_AppendsGuidance(t *testing.T) {
-	teams := newDeliverableTeamRepo()
-	sessions := newDeliverableSessionAccessor()
-	steps := newDeliverableStepReader()
-	u := newDeliverableUsecaseWithSteps(teams, sessions, steps)
-
-	longContent := strings.Repeat("详", 800)
-	seedCompletedTeamWithSteps(teams, sessions, steps, "t-up", "sp1", "st_1", "上游团队", longContent)
-
-	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
-	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
-	if !strings.Contains(prefix, `read_upstream_deliverable(team_id="t-up")`) {
-		t.Fatalf("fallback extraction with truncated content should append guidance, got %q", prefix)
-	}
-}
-
-// Fallback path with short content: no guidance (nothing was truncated).
-func TestInjectUpstreamDeliverables_FallbackShortContent_NoGuidance(t *testing.T) {
-	teams := newDeliverableTeamRepo()
-	sessions := newDeliverableSessionAccessor()
-	u := newDeliverableUsecase(teams, sessions)
-	seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "上游团队", "即时提取的成果")
-
-	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
-	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
-	if strings.Contains(prefix, "read_upstream_deliverable") {
-		t.Fatalf("short fallback content must not append guidance, got %q", prefix)
 	}
 }
 
@@ -707,8 +664,10 @@ func TestInjectUpstreamDeliverables_IncludesContractDeclaration(t *testing.T) {
 	sessions := newDeliverableSessionAccessor()
 	u := newDeliverableUsecase(teams, sessions)
 
-	upstream := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "调研团队", "调研摘要")
+	upstream := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "调研团队", "不应使用")
 	upstream.Deliverables = `[{"name":"research_report","type":"document","format":"markdown","description":"调研结论报告"}]`
+	// 2026-07-25 Fix 1：注入源只认持久化 envelope，reply 不再是来源。
+	upstream.DeliverablesOutput = `{"st_1":"调研摘要"}`
 	teams.items["t-up"] = upstream
 
 	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
@@ -726,8 +685,10 @@ func TestInjectUpstreamDeliverables_ContractWithoutDescription(t *testing.T) {
 	sessions := newDeliverableSessionAccessor()
 	u := newDeliverableUsecase(teams, sessions)
 
-	upstream := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "数据团队", "数据摘要")
+	upstream := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "数据团队", "不应使用")
 	upstream.Deliverables = `[{"name":"dataset","type":"data","format":"json"}]`
+	// 2026-07-25 Fix 1：注入源只认持久化 envelope，reply 不再是来源。
+	upstream.DeliverablesOutput = `{"st_1":"数据摘要"}`
 	teams.items["t-up"] = upstream
 
 	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
@@ -745,7 +706,9 @@ func TestInjectUpstreamDeliverables_NoContract_OmitsDeclarationLine(t *testing.T
 	sessions := newDeliverableSessionAccessor()
 	u := newDeliverableUsecase(teams, sessions)
 	// Upstream has no contract declared → keep the legacy prefix shape.
-	seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "上游团队", "成果")
+	up := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "上游团队", "不应使用")
+	up.DeliverablesOutput = `{"st_1":"成果"}`
+	teams.items["t-up"] = up
 
 	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
 	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
@@ -1066,62 +1029,9 @@ func TestWriteDeliverablesToSession_GraphStateBridge_IntentAnchorNotInMembers_Fa
 	}
 }
 
-// State deliverable without a "summary" key: reply-step extraction remains
-// the summary source; the whole state map still lands in StructuredJSON.
-func TestWriteDeliverablesToSession_GraphStateBridge_NoSummaryKey_KeepsReplySummary(t *testing.T) {
-	teams := newDeliverableTeamRepo()
-	sessions := newDeliverableSessionAccessor()
-	steps := newDeliverableStepReader()
-	reader := &graphDeliverableReaderStub{data: map[string]any{"score": 0.8}}
-	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
-
-	seedStateDeliverableTeam(teams, sessions, steps,
-		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`,
-		"reply 摘要")
-
-	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
-		t.Fatalf("WriteDeliverablesToSession: %v", err)
-	}
-	ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]
-	if ref.Summary != "reply 摘要" {
-		t.Fatalf("missing state summary → reply extraction, got %q", ref.Summary)
-	}
-	if ref.SizeChars != len([]rune("reply 摘要")) {
-		t.Fatalf("size should describe the reply content, got %+v", ref)
-	}
-	if !strings.Contains(ref.StructuredJSON, "score") {
-		t.Fatalf("structured_json should carry the state map, got %q", ref.StructuredJSON)
-	}
-}
-
-// State channel enabled but the state is unreadable (session gone / reader
-// error): the write must degrade gracefully to the reply-extraction path.
-func TestWriteDeliverablesToSession_GraphStateBridge_StateUnreadable_FallsBack(t *testing.T) {
-	teams := newDeliverableTeamRepo()
-	sessions := newDeliverableSessionAccessor()
-	steps := newDeliverableStepReader()
-	reader := &graphDeliverableReaderStub{err: fmt.Errorf("session not found")}
-	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
-
-	seedStateDeliverableTeam(teams, sessions, steps,
-		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`,
-		"reply 摘要")
-
-	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
-		t.Fatalf("WriteDeliverablesToSession: %v", err)
-	}
-	ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]
-	if ref.Summary != "reply 摘要" {
-		t.Fatalf("unreadable state → reply fallback, got %q", ref.Summary)
-	}
-	if ref.StructuredJSON != "" {
-		t.Fatalf("unreadable state → no structured_json, got %q", ref.StructuredJSON)
-	}
-}
-
 // enable_state_deliverable absent/false: the state channel is never read and
-// the envelope keeps its P2 reply-extraction shape.
-func TestWriteDeliverablesToSession_GraphStateDisabled_NoStateRead(t *testing.T) {
+// the write fails with ErrNoRealDeliverable — reply text is never a source.
+func TestWriteDeliverablesToSession_GraphStateDisabled_ErrNoRealDeliverable(t *testing.T) {
 	teams := newDeliverableTeamRepo()
 	sessions := newDeliverableSessionAccessor()
 	steps := newDeliverableStepReader()
@@ -1132,15 +1042,223 @@ func TestWriteDeliverablesToSession_GraphStateDisabled_NoStateRead(t *testing.T)
 		`{"version":1,"mode":"sequential","members":[{"agent_id":"agent-m1"}]}`,
 		"reply 摘要")
 
-	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
-		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	err := u.WriteDeliverablesToSession(context.Background(), "t1")
+	if !errors.Is(err, ErrNoRealDeliverable) {
+		t.Fatalf("channel disabled → ErrNoRealDeliverable, got %v", err)
 	}
 	if reader.calls != 0 {
 		t.Fatalf("state channel disabled → reader must not be called, got %d calls", reader.calls)
 	}
+	if teams.updateCalls != 0 {
+		t.Fatalf("channel disabled → no envelope write, got %d updates", teams.updateCalls)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 2026-07-25 Fix 1 真实产出判定：只认 set_deliverable 写入的 graph state
+// deliverable。reply 文本不是交付物 —— 只提问/只说话的团队没有产出，
+// 必须被识别为「无真实交付物」而不是用 reply 编造一个。
+// ---------------------------------------------------------------------------
+
+// HasRealDeliverable: graph state deliverable 非空 → true。
+func TestHasRealDeliverable_StatePresent_True(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{"summary": "真实成果"}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	team := seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`, "")
+
+	has, err := u.HasRealDeliverable(context.Background(), team)
+	if err != nil || !has {
+		t.Fatalf("state present → (true, nil), got (%v, %v)", has, err)
+	}
+	// 坐标必须与 runner 持久化 graph state 的 session key 一致。
+	if reader.gotAppName != "agent-m1" || reader.gotSession != "sess-t1" {
+		t.Fatalf("reader coordinates mismatch: appName=%q session=%q", reader.gotAppName, reader.gotSession)
+	}
+}
+
+// HasRealDeliverable: state channel enabled but the map is absent → (false, nil)。
+// 这是 19:29 场景的核心：团队只提问澄清、从未调用 set_deliverable。
+func TestHasRealDeliverable_StateAbsent_False(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: nil}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	team := seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`,
+		"请问目标金额是多少？（仅澄清提问，无交付物）")
+
+	has, err := u.HasRealDeliverable(context.Background(), team)
+	if err != nil || has {
+		t.Fatalf("state absent → (false, nil), got (%v, %v)", has, err)
+	}
+}
+
+// HasRealDeliverable: enable_state_deliverable 未开启 → false 且根本不读 state
+// （channel 不存在，读了也没有）。
+func TestHasRealDeliverable_ChannelDisabled_False(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{"summary": "x"}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	team := seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","members":[{"agent_id":"agent-m1"}]}`, "reply")
+
+	has, err := u.HasRealDeliverable(context.Background(), team)
+	if err != nil || has {
+		t.Fatalf("channel disabled → (false, nil), got (%v, %v)", has, err)
+	}
+	if reader.calls != 0 {
+		t.Fatalf("channel disabled → reader must not be called, got %d calls", reader.calls)
+	}
+}
+
+// HasRealDeliverable: state 读取 infra 错误 → (false, err)，调用方据此区分
+// 「未产出」与「校验失败」。
+func TestHasRealDeliverable_ReaderError_ReturnsError(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{err: fmt.Errorf("session store down")}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	team := seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`, "")
+
+	has, err := u.HasRealDeliverable(context.Background(), team)
+	if err == nil || has {
+		t.Fatalf("reader error → (false, err), got (%v, %v)", has, err)
+	}
+}
+
+// HasRealDeliverable: 团队连 session 都没有 → (false, nil)，不算 infra 错误。
+func TestHasRealDeliverable_NoTeamSession_False(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{"summary": "x"}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	team := Team{ID: "ghost", SpiritSessionID: "sp1", DagNodeID: "st_1", Status: TeamStatusCompleted,
+		DefinitionJSON: `{"enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`}
+	teams.items["ghost"] = team
+
+	has, err := u.HasRealDeliverable(context.Background(), team)
+	if err != nil || has {
+		t.Fatalf("no session → (false, nil), got (%v, %v)", has, err)
+	}
+}
+
+// WriteDeliverablesToSession: 无 graph state deliverable → ErrNoRealDeliverable，
+// 禁止用 reply 文本编造信封（19:29 谎报链的源头）。
+func TestWriteDeliverablesToSession_NoStateDeliverable_ErrNoRealDeliverable(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: nil}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`,
+		"请问目标金额是多少？（仅澄清提问）")
+
+	err := u.WriteDeliverablesToSession(context.Background(), "t1")
+	if !errors.Is(err, ErrNoRealDeliverable) {
+		t.Fatalf("no state deliverable → ErrNoRealDeliverable, got %v", err)
+	}
+	if teams.updateCalls != 0 {
+		t.Fatalf("no deliverable → DeliverablesOutput must stay untouched, got %d updates", teams.updateCalls)
+	}
+}
+
+// WriteDeliverablesToSession: state 读取失败同样按「无真实交付物」处理（原因进日志），
+// 绝不回退 reply 兜底。
+func TestWriteDeliverablesToSession_StateUnreadable_ErrNoRealDeliverable(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{err: fmt.Errorf("session not found")}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`,
+		"reply 摘要")
+
+	err := u.WriteDeliverablesToSession(context.Background(), "t1")
+	if !errors.Is(err, ErrNoRealDeliverable) {
+		t.Fatalf("unreadable state → ErrNoRealDeliverable, got %v", err)
+	}
+}
+
+// state 无 "summary" key：摘要从业务 key 的 StructuredJSON 派生 —— 仍 100%
+// 源自真实交付物，绝不碰 reply。
+func TestWriteDeliverablesToSession_NoSummaryKey_SummaryFromStructuredKeys(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{"score": 0.8, "verdict": "pass"}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`,
+		"reply 摘要（不应使用）")
+
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
 	ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]
-	if ref.Summary != "reply 摘要" || ref.StructuredJSON != "" {
-		t.Fatalf("disabled channel → legacy envelope, got %+v", ref)
+	if ref.Summary == "" || strings.Contains(ref.Summary, "reply") {
+		t.Fatalf("summary must derive from structured state keys, never reply, got %q", ref.Summary)
+	}
+	if !strings.Contains(ref.Summary, "score") {
+		t.Fatalf("summary should carry the business keys JSON, got %q", ref.Summary)
+	}
+	if ref.StructuredJSON == "" || !strings.Contains(ref.StructuredJSON, "verdict") {
+		t.Fatalf("structured_json should carry the state map, got %q", ref.StructuredJSON)
+	}
+}
+
+// RecordTeamCompletion: 无真实交付物时静默跳过落库（service 侧闸门已把团队
+// 标 failed；此处只是双保险，不产生 Warn 噪音、不写任何信封）。
+func TestRecordTeamCompletion_NoStateDeliverable_SkipsWrite(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: nil}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	team := seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`,
+		"仅提问，无交付物")
+
+	u.RecordTeamCompletion(context.Background(), team, 100)
+
+	if stored := teams.items["t1"]; stored.DeliverablesOutput != "" {
+		t.Fatalf("no real deliverable → no envelope write, got %q", stored.DeliverablesOutput)
+	}
+}
+
+// InjectUpstreamDeliverables: 上游 completed 但无持久化信封 → 跳过该上游，
+// 禁止 reply 兜底编造下游输入（Fix 1 后 completed ⇒ 信封必存在；
+// 无信封 = 落库失败等异常，降级为「无注入」而非编造）。
+func TestInjectUpstreamDeliverables_NoEnvelope_SkipsUpstream(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+	seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "上游团队", "即时提取的成果（不应使用）")
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	if prefix != "" {
+		t.Fatalf("no envelope → no injection (reply fallback removed), got %q", prefix)
 	}
 }
 
@@ -1376,8 +1494,11 @@ func TestWriteDeliverablesToSession_GraphStateBridge_MalformedCognition_Tolerate
 func TestWriteDeliverablesToSession_NoDependsOn_DerivedFromEmpty(t *testing.T) {
 	teams := newDeliverableTeamRepo()
 	sessions := newDeliverableSessionAccessor()
-	u := newDeliverableUsecase(teams, sessions)
-	seedCompletedTeam(teams, sessions, "t1", "sp1", "st_1", "团队", "成果")
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{"summary": "成果"}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`, "")
 	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
 		t.Fatalf("WriteDeliverablesToSession: %v", err)
 	}

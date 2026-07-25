@@ -467,13 +467,27 @@
             :label="t('graphs.fieldExecutionEngine')"
             :options="engineOptions"
             @update:model-value="(v: string) => updateGraphField('executionEngine', v)"
-          />
+          >
+            <template #option="{ itemProps, opt }">
+              <q-item v-bind="itemProps">
+                <q-item-section>
+                  <q-item-label>{{ opt.label }}</q-item-label>
+                  <q-item-label caption>{{ opt.hint }}</q-item-label>
+                </q-item-section>
+              </q-item>
+            </template>
+          </q-select>
           <q-toggle
             :model-value="graphDef.enableCheckpoint"
             dense
+            :disable="graphDef.executionEngine === 'dag'"
             :label="t('graphs.fieldEnableCheckpoint')"
             @update:model-value="(v: boolean) => updateGraphField('enableCheckpoint', v)"
-          />
+          >
+            <q-tooltip v-if="graphDef.executionEngine === 'dag'">
+              {{ t('graphs.engineDAGNoCheckpoint') }}
+            </q-tooltip>
+          </q-toggle>
           <div v-if="graphDef.version > 0" class="text-caption text-grey-7">
             {{ t('graphs.fieldCurrentVersion', { version: graphDef.version }) }}
           </div>
@@ -542,13 +556,6 @@
           />
         </div>
       </q-expansion-item>
-
-      <GraphValidationPanel
-        v-if="validationIssues.length"
-        :issues="validationIssues"
-        :valid="validationValid"
-        @select-node="$emit('selectNode', $event)"
-      />
     </template>
 
     <template v-else>
@@ -563,14 +570,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import GraphValidationPanel from './GraphValidationPanel.vue';
 import type {
   NodeDef,
   GraphDefinition,
   ReducerType,
   NodeType,
-  ValidationError,
-  ValidationWarning,
   StateFieldDef,
 } from '../../features/graph/types';
 import {
@@ -592,9 +596,6 @@ const graphDef = defineModel<GraphDefinition | null>('graphDef', { required: tru
 const props = defineProps<{
   availableTools: string[];
   isDark: boolean;
-  validationErrors?: ValidationError[];
-  validationWarnings?: ValidationWarning[];
-  validationValid?: boolean;
   undoRedo?: ReturnType<typeof useGraphUndoRedo>;
   allNodes?: NodeDef[];
   stateFields?: StateFieldDef[];
@@ -646,13 +647,6 @@ function updateStateField<K extends keyof StateFieldDef>(idx: number, field: K, 
   }
 }
 
-const validationIssues = computed(() => [
-  ...(props.validationErrors ?? []).map((issue) => ({ ...issue, warning: false as const })),
-  ...(props.validationWarnings ?? []).map((issue) => ({ ...issue, warning: true as const })),
-]);
-
-const validationValid = computed(() => props.validationValid ?? true);
-
 const panelAccentStyle = computed(() => {
   if (!selectedNode.value) return {};
   const style = NODE_TYPE_STYLES[selectedNode.value.type as NodeType];
@@ -675,7 +669,13 @@ const fieldTypeOptions = computed(() =>
   STATE_FIELD_TYPE_OPTIONS.map((opt) => ({ label: t(opt.labelKey), value: opt.value })),
 );
 const reducerOptions = computed(() => REDUCER_OPTIONS.map((opt) => ({ label: t(opt.labelKey), value: opt.value })));
-const engineOptions = computed(() => ENGINE_OPTIONS.map((opt) => ({ label: t(opt.labelKey), value: opt.value })));
+const engineOptions = computed(() =>
+  ENGINE_OPTIONS.map((opt) => ({
+    label: t(opt.labelKey),
+    value: opt.value,
+    hint: t(`${opt.labelKey}Hint`),
+  })),
+);
 const failureActionOptions = computed(() =>
   FAILURE_ACTION_OPTIONS.map((opt) => ({ label: t(opt.labelKey), value: opt.value })),
 );

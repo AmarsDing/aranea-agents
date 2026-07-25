@@ -76,7 +76,7 @@
 | Trace backfill 关闭 running 行 | ✅ | 2026-07-16：`UpdateMonitorTraceCompletion` 覆盖 INSERT OR IGNORE 已有行 |
 | Runs 列表 Token/延迟/成本列 | ✅ | 2026-07-16：`ListMonitorTraces` 投影 duration/tokens/cost；FE TraceList 展示（OPT-05 后真相源为 `monitor_traces`） |
 | WS 反压前端 banner | ✅ | 2026-07-16：消费 `monitor.backpressure` 并在 MonitorPage 展示 |
-| 进程日志 Tab 自动暂停 | ✅ | 2026-07-16：切离暂停/切回恢复；移除手动暂停按钮 |
+| 进程日志 Tab 暂停控制 | ✅ | 2026-07-16：切离暂停（丢弃入站）；2026-07-24：应用户要求恢复手动「暂停/恢复」按钮，默认关闭（paused=true），切回不自动恢复 |
 
 ---
 

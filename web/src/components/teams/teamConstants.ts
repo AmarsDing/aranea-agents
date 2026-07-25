@@ -76,11 +76,13 @@ export function teamRunStatusLabel(status?: string): string {
   return teamStatusMap[key]?.label ?? (status || '—');
 }
 
+// ADR-08 A3：mode 下拉即模板选择器——description 展示在选项 caption，
+// 选中后由派生链路（deriveMemberRolesForMode → rebuild/compile）重新生成 graph。
 export const modeOptions = [
-  { label: '顺序', value: 'sequential' },
-  { label: '并行', value: 'parallel' },
-  { label: '主控', value: 'coordinator' },
-  { label: '生成评审', value: 'critic_loop' },
+  { label: '顺序', value: 'sequential', description: '成员按顺序依次执行，上一步输出作为下一步上下文。' },
+  { label: '并行', value: 'parallel', description: '成员并行产出，排序最后的启用成员负责汇总。' },
+  { label: '主控', value: 'coordinator', description: '首位成员作为协调者分派任务，其余成员顺序执行。' },
+  { label: '生成评审', value: 'critic_loop', description: '生成与评审角色交替迭代，直到达标或达迭代上限。' },
   {
     label: '群智',
     value: 'adaptive',

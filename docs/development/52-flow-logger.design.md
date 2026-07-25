@@ -431,6 +431,9 @@ internal/cronrunner/jobs/
 | `team.intent_anchor_fallback` | warn | 团队意图锚点回退 |
 | `team.usage_record_fail` | warn | 团队成员用量记录失败 |
 | `team.turn.usage` | info | 团队轮次用量 |
+| `team.member.<nodeID>` | ok / warn(skip) / error | 团队成员执行 |
+
+> `team.member.<nodeID>`：图节点级成员执行（start/done/skip/error），发射点 `PublishTeamStepStarted` / `PersistGraphRunStep`；nodeID 后缀隔离并行成员计时，title 经 `stepTitle` 前缀回退解析为 `team.member`。
 
 #### Knowledge（`domain=knowledge`）
 

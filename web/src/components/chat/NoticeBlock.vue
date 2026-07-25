@@ -1,7 +1,5 @@
 <template>
-  <!-- B.10.17: synthesis_completed + valid execution_report envelope → report card -->
-  <ExecutionReportCard v-if="executionReport" :report="executionReport" :step-id="step.ID" />
-  <div v-else class="notice-block" :class="`notice-block--${noticeType}`">
+  <div class="notice-block" :class="`notice-block--${noticeType}`">
     <q-icon :name="iconForType" size="14px" class="notice-block__icon" />
     <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
     <div class="notice-block__message chat-message-prose" v-html="renderedContent"></div>
@@ -12,16 +10,8 @@
 import { computed } from 'vue';
 import type { Step } from '../../features/chat/v2Types';
 import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
-import { parseExecutionReport, SYNTHESIS_COMPLETED_NOTICE_TYPE } from '../../features/chat/executionReport';
-import ExecutionReportCard from './ExecutionReportCard.vue';
 
 const props = defineProps<{ step: Step }>();
-
-/** B.10.17: parse Step.Content as execution report envelope; null → default notice. */
-const executionReport = computed(() => {
-  if ((props.step.NoticeType ?? '').trim() !== SYNTHESIS_COMPLETED_NOTICE_TYPE) return null;
-  return parseExecutionReport(props.step.Content);
-});
 
 /** NoticeType 来源：后端 meta.notice_type（"info" / "warning" / "success"）。
  *  v2 Step.NoticeType 字段在 step.created 事件中已映射，优先使用。

@@ -209,8 +209,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
         stage === 'orchestration_checkpoint' ||
         stage === 'orchestration_interrupted' ||
         stage === 'orchestration_completed' ||
-        stage === 'orchestration_failed' ||
-        stage === 'synthesis_completed'
+        stage === 'orchestration_failed'
       );
     }
     return false;

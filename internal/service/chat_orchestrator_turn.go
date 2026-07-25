@@ -236,6 +236,22 @@ func (o *ChatOrchestrator) hydratedAgent(ctx context.Context, agentID string) (b
 	return o.td().ReadDeps.Agents.GetAgentByID(ctx, agentID)
 }
 
+// resolveRootTaskActivityID 决定本 turn 写入 ctx 的根 Task Activity ID。
+//
+// 不变量：RootTaskActivityID = 本 turn 所属根 Task 的 ID。
+//   - 根 turn（ParentTaskID 为空）：预生成新 ID，使 plan_and_execute →
+//     PublishV2Board 能在 task.created 落库前把 plan board 关联到未来 Task。
+//   - 续跑 turn（synthesis/澄清续答/断点恢复，ParentTaskID 非空）：必须继承父
+//     Task ID。否则本 turn 内 plan_and_execute 产出的 plan_board/team_stage/
+//     member_session/turn/step 会挂到 tasks_v2 中不存在的"幽灵任务"ID，前端
+//     按真实 task_id 水合时整棵子树丢失（刷新后成员历史消失）。
+func resolveRootTaskActivityID(input biz.TurnInput) chatagent.RootTaskActivityID {
+	if pt := strings.TrimSpace(input.ParentTaskID); pt != "" {
+		return chatagent.RootTaskActivityID(pt)
+	}
+	return chatagent.RootTaskActivityID(uuid.NewString())
+}
+
 // runSingleAgentViaTRPC runs a single agent turn via the trpc-agent-go framework.
 func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	ctx context.Context,
@@ -403,37 +419,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		loggateway.StepID("chat.build_intent_parallel"),
 		loggateway.Any("elapsed_ms", time.Since(buildIntentStart).Milliseconds()))
 
-	preGeneratedTaskID := chatagent.RootTaskActivityID(uuid.NewString())
+	preGeneratedTaskID := resolveRootTaskActivityID(input)
 	ctx = chatagent.ContextWithRootTaskActivityID(ctx, preGeneratedTaskID)
-
-	// ── CLARIFICATION GATE (2026-07-22) ──
-	// After Intent Pass, check if the LLM detected blocking ambiguities that
-	// require user clarification before proceeding. If triggered, publish a
-	// clarify step and pause the turn until the user responds.
-	clarifyStart := time.Now()
-	clarifyDecision, clarifyErr := o.runClarificationGate(ctx, sessionID, intentArtifact, ag, input)
-	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: runClarificationGate",
-		loggateway.StepID("chat.clarification_gate"),
-		loggateway.Any("elapsed_ms", time.Since(clarifyStart).Milliseconds()),
-		loggateway.Any("triggered", clarifyDecision.Triggered),
-		loggateway.Any("clarify_err", clarifyErr != nil))
-	if clarifyErr != nil {
-		// Clarification gate failure is non-fatal; log and continue with original flow.
-		o.lg().Warn("澄清门执行失败，按原流程继续",
-			loggateway.SessionID(sessionID),
-			loggateway.StepID("chat.clarification_gate"),
-			loggateway.Err(clarifyErr))
-	} else if clarifyDecision.Triggered {
-		// Clarification triggered: publish run status and return empty reply.
-		// The turn will resume when the user submits clarification answers.
-		emitter.LogDone("chat.clarification_gate", "澄清门已触发，等待用户作答",
-			event.P("step_id", clarifyDecision.StepID))
-		// Run 状态用 awaiting_user（Run FSM 合法态：running→awaiting_user→running），
-		// 与工具确认等待同语义；awaiting_confirmation 是 Session 层状态，
-		// Run FSM 无此态，直接使用会被 FSM 拒绝导致前端停在"运行中"。
-		o.setRunStatus(ctx, sessionID, runID, string(biz.RunStateAwaitingUser), "")
-		return biz.ChatMessage{}, biz.ChatMessage{}, nil
-	}
 
 	// ── PRE-PLANNING GATE (P1-2) ──
 	// After intent pass, run a quick complexity assessment. If Moderate/Complex,
@@ -517,6 +504,42 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 				string(chatagent.RootTaskActivityIDFromCtx(ctx)))
 		}
 	}()
+
+	// ── CLARIFICATION GATE (2026-07-22) ──
+	// After Intent Pass, check if the LLM detected blocking ambiguities that
+	// require user clarification before proceeding. If triggered, publish a
+	// clarify step and pause the turn until the user responds.
+	//
+	// 位置约束：必须位于上方 turn 收尾 defer 注册之后。澄清触发即早退，
+	// 早退必须经统一清理路径（runs.Finish + runner.Close + processPendingQueue）
+	// 终结本 run——runner 从未启动 Run()，不存在"同 run 恢复"；续跑
+	// （resumeTurnWithClarification / 自由回复）以 ParentTaskID 非空的全新
+	// turn 通过准入。若 run 注册项残留，续跑会被准入层误判为"运行中"而入队
+	// 到无人消费的 pending 队列（曾致澄清续跑永久挂起）。
+	clarifyStart := time.Now()
+	clarifyDecision, clarifyErr := o.runClarificationGate(ctx, sessionID, intentArtifact, ag, input)
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: runClarificationGate",
+		loggateway.StepID("chat.clarification_gate"),
+		loggateway.Any("elapsed_ms", time.Since(clarifyStart).Milliseconds()),
+		loggateway.Any("triggered", clarifyDecision.Triggered),
+		loggateway.Any("clarify_err", clarifyErr != nil))
+	if clarifyErr != nil {
+		// Clarification gate failure is non-fatal; log and continue with original flow.
+		o.lg().Warn("澄清门执行失败，按原流程继续",
+			loggateway.SessionID(sessionID),
+			loggateway.StepID("chat.clarification_gate"),
+			loggateway.Err(clarifyErr))
+	} else if clarifyDecision.Triggered {
+		// Clarification triggered: publish run status and return empty reply.
+		// The turn will resume when the user submits clarification answers.
+		emitter.LogDone("chat.clarification_gate", "澄清门已触发，等待用户作答",
+			event.P("step_id", clarifyDecision.StepID))
+		// Run 状态用 awaiting_user（Run FSM 合法态：running→awaiting_user→running），
+		// 与工具确认等待同语义；awaiting_confirmation 是 Session 层状态，
+		// Run FSM 无此态，直接使用会被 FSM 拒绝导致前端停在"运行中"。
+		o.setRunStatus(ctx, sessionID, runID, string(biz.RunStateAwaitingUser), "")
+		return biz.ChatMessage{}, biz.ChatMessage{}, nil
+	}
 
 	// ── EXECUTE ──
 	turnPhase.Store("executing")

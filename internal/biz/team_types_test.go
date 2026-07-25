@@ -74,11 +74,19 @@ func TestIsApprovedDecision(t *testing.T) {
 	if IsApprovedDecision(OrchestrationDecision{Action: "retry"}, 0) {
 		t.Fatal("retry action should not be approved with threshold 0")
 	}
-	if !IsApprovedDecision(OrchestrationDecision{Action: "retry", Score: 0.9}, 0.8) {
-		t.Fatal("score above threshold should be approved")
+	// 显式 retry 不得被 score 推翻。
+	if IsApprovedDecision(OrchestrationDecision{Action: "retry", Score: 0.9}, 0.8) {
+		t.Fatal("explicit retry must not be overridden by score")
 	}
-	if IsApprovedDecision(OrchestrationDecision{Action: "retry", Score: 0.5}, 0.8) {
-		t.Fatal("score below threshold should not be approved")
+	// action 为空时 score 才兜底。
+	if !IsApprovedDecision(OrchestrationDecision{Score: 0.9}, 0.8) {
+		t.Fatal("empty action falls back to score >= threshold")
+	}
+	if IsApprovedDecision(OrchestrationDecision{Score: 0.5}, 0.8) {
+		t.Fatal("empty action with score below threshold should not be approved")
+	}
+	if !IsApprovedDecision(OrchestrationDecision{Action: "Approve"}, 0) {
+		t.Fatal("action matching should be case-insensitive")
 	}
 }
 

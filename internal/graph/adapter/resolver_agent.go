@@ -14,6 +14,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 // CatalogAgentResolver builds catalog agents for graph agent nodes.
@@ -26,6 +27,16 @@ var _ graphtrpc.AgentResolver = (*CatalogAgentResolver)(nil)
 
 func NewCatalogAgentResolver(deps chatagent.TRPCBuilderDeps, lg loggateway.Logger) *CatalogAgentResolver {
 	return &CatalogAgentResolver{Deps: deps, lg: lg}
+}
+
+// WithExtraCustomTools returns a clone of the resolver whose builder deps
+// carry the extra CustomTools appended to the existing ones. The original
+// resolver is left unmodified, so tool injection stays scoped to the graph
+// that requested it (e.g. deliverable tools for EnableStateDeliverable teams).
+func (r *CatalogAgentResolver) WithExtraCustomTools(tools ...trpctool.Tool) *CatalogAgentResolver {
+	clone := *r
+	clone.Deps.CustomTools = append(append([]trpctool.Tool{}, r.Deps.CustomTools...), tools...)
+	return &clone
 }
 
 func (r *CatalogAgentResolver) ResolveAgent(ctx context.Context, agentRef string) (trpcagent.Agent, error) {

@@ -15,12 +15,22 @@ import (
 const DefaultCriticLoopThreshold = 0.0
 
 // criticLoopCondFunc builds the critic_loop conditional edge function.
-// maxIterations > 0 时，critic 评估达到上限仍未批准则强制收敛（approved），
-// 避免循环无界；此前 CriticLoop.MaxIterations 配置未接线，是死配置。
+// maxIterations > 0 且达到上限仍未批准时强制收敛，返回
+// biz.CriticLoopResultApprovedForced（与真实批准的 "approved" 区分，便于
+// 观测「上限兜底收敛」）；编译期 PathMap 须将该键映射到 EndNodeID。
 //
 // nodeID 为该条件边 From 的 critic 节点 ID（经 CondFuncRef "%<nodeID>" 段
 // 编码传入），轮次/反馈按节点隔离读取（biz.CriticLoopMetaKeysForNode），
 // 多 critic 图各自独立收敛；空 nodeID（裸 ref，图域 LLM 节点路径）读裸 key。
+//
+// 判定顺序（显式信号优先于启发式）：
+//  1. 结构化裁决（末条消息的 orchestration_control 工具调用）— 最高优先级。
+//     批准 → approved；未批准 → 达上限 approved_forced，否则 retry。
+//     显式 retry 不被 dry 收敛/关键词/打分推翻（F3）。
+//  2. 评审文本中文/英文批准词（last_response 优先于 messages 末条）。
+//  3. 评分 >= threshold（threshold > 0 时）。
+//  4. 达到迭代上限 → approved_forced（上限前一轮的批准仍算真实批准）。
+//  5. loop-until-dry：最近两轮反馈归一化后相同，提前收敛 approved。
 //
 // 轮次与反馈来源（按优先级）：
 //  1. state metadata（节点 scoped 的 critic_loop_rounds/*_response，回落裸 key）—
@@ -36,13 +46,48 @@ func criticLoopCondFunc(threshold float64, maxIterations int, nodeID string, lg 
 		if rounds < len(criticMsgs) {
 			rounds = len(criticMsgs)
 		}
-		if maxIterations > 0 && rounds >= maxIterations {
+		forced := maxIterations > 0 && rounds >= maxIterations
+		// 1. 结构化裁决。
+		if len(msgs) > 0 {
+			lastMsg := msgs[len(msgs)-1]
+			for _, tc := range lastMsg.ToolCalls {
+				if tc.Function.Name != biz.OrchestrationControlToolName {
+					continue
+				}
+				d, err := biz.ParseOrchestrationDecision(tc.Function.Arguments, lg)
+				if err != nil {
+					continue
+				}
+				if biz.IsApprovedDecision(d, threshold) {
+					return "approved", nil
+				}
+				if forced {
+					lg.Info("critic_loop 达到迭代上限，强制收敛",
+						loggateway.Int("rounds", rounds),
+						loggateway.Int("max_iterations", maxIterations))
+					return biz.CriticLoopResultApprovedForced, nil
+				}
+				return "retry", nil
+			}
+		}
+		// 2/3. 评审文本批准词与评分兜底。
+		content := criticReviewContent(state, msgs)
+		if isCriticApprovalContent(content) {
+			return "approved", nil
+		}
+		if threshold > 0 {
+			if score := biz.ExtractScore(strings.ToLower(content)); score > 0 && score >= threshold {
+				return "approved", nil
+			}
+		}
+		// 4. 上限兜底：仍无批准信号才记强制收敛。
+		if forced {
 			lg.Info("critic_loop 达到迭代上限，强制收敛",
 				loggateway.Int("rounds", rounds),
 				loggateway.Int("max_iterations", maxIterations))
-			return "approved", nil
+			return biz.CriticLoopResultApprovedForced, nil
 		}
-		// loop-until-dry：最近两轮 critic 反馈无实质变化，继续迭代无收益，提前收敛。
+		// 5. loop-until-dry：最近两轮 critic 反馈无实质变化，继续迭代无收益，提前收敛。
 		if prevFeedback != "" && normalizeCriticContent(prevFeedback) == normalizeCriticContent(lastFeedback) {
 			lg.Info("critic_loop 反馈无新意见，提前收敛", loggateway.Int("rounds", rounds))
 			return "approved", nil
@@ -50,30 +95,6 @@ func criticLoopCondFunc(threshold float64, maxIterations int, nodeID string, lg 
 		if n := len(criticMsgs); n >= 2 && criticFeedbackDry(criticMsgs[n-2], criticMsgs[n-1]) {
 			lg.Info("critic_loop 反馈无新意见，提前收敛", loggateway.Int("rounds", n))
 			return "approved", nil
-		}
-		if len(msgs) > 0 {
-			lastMsg := msgs[len(msgs)-1]
-			for _, tc := range lastMsg.ToolCalls {
-				if tc.Function.Name == biz.OrchestrationControlToolName {
-					d, err := biz.ParseOrchestrationDecision(tc.Function.Arguments, lg)
-					if err == nil {
-						if biz.IsApprovedDecision(d, threshold) {
-							return "approved", nil
-						}
-						return "retry", nil
-					}
-				}
-			}
-		}
-		content := criticReviewContent(state, msgs)
-		if isCriticApprovalContent(content) {
-			return "approved", nil
-		}
-		if threshold > 0 {
-			score := biz.ExtractScore(strings.ToLower(content))
-			if score > 0 && score >= threshold {
-				return "approved", nil
-			}
 		}
 		return "retry", nil
 	}
@@ -125,9 +146,17 @@ var criticRejectionPhrasesZH = []string{
 	"不批准", "未通过", "不通过", "不予通过", "不同意", "驳回",
 }
 
+// 中文否定标记：紧邻批准词之前出现时构成组合式否定（如「不能予以通过」
+// 「不予评审通过」），拒绝词表无法枚举全部组合。单字标记已覆盖以其结尾
+// 的组合（绝不/暂不→不、并非/绝非→非），组合标记仅列不以单字结尾者。
+var criticNegationMarkersZH = []string{
+	"不", "未", "非", "勿", "莫",
+	"不予", "未予", "不能", "未能", "不可", "不应", "无法", "难以",
+}
+
 // isCriticApprovalContent reports whether the critic review text carries an
 // approval verdict (English "approved" without negation, or a Chinese approval
-// phrase without a rejection phrase).
+// phrase without a rejection phrase or adjacent negation prefix).
 func isCriticApprovalContent(content string) bool {
 	if content == "" {
 		return false
@@ -138,12 +167,42 @@ func isCriticApprovalContent(content string) bool {
 		}
 	}
 	for _, ap := range criticApprovalPhrasesZH {
-		if strings.Contains(content, ap) {
+		if containsNonNegatedPhrase(content, ap) {
 			return true
 		}
 	}
 	lower := strings.ToLower(content)
 	return containsWord(lower, "approved") && !containsNegationBeforeWord(lower, "approved")
+}
+
+// containsNonNegatedPhrase reports whether phrase occurs in content with at
+// least one occurrence NOT directly preceded by a Chinese negation marker.
+// 逐个出现位置判定：「不予评审通过；修改后评审通过」第二次命中无前缀否定，
+// 仍算批准。
+func containsNonNegatedPhrase(content, phrase string) bool {
+	for {
+		idx := strings.Index(content, phrase)
+		if idx < 0 {
+			return false
+		}
+		if !hasCriticNegationPrefix(content[:idx]) {
+			return true
+		}
+		content = content[idx+len(phrase):]
+	}
+}
+
+// hasCriticNegationPrefix reports whether the text immediately preceding an
+// approval-phrase match ends with a Chinese negation marker. 仅看紧邻词尾，
+// 正文别处的「不」（如「问题不复存在，予以通过」）不会造成误判。
+func hasCriticNegationPrefix(prefix string) bool {
+	tail := strings.TrimSpace(prefix)
+	for _, neg := range criticNegationMarkersZH {
+		if strings.HasSuffix(tail, neg) {
+			return true
+		}
+	}
+	return false
 }
 
 // collectCriticMessages returns messages carrying an orchestration_control

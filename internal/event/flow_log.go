@@ -187,11 +187,24 @@ var stepTitleRegistry = map[string]string{
 	"team.intent_anchor_fallback":          "团队意图锚点回退",
 	"team.usage_record_fail":               "团队成员用量记录失败",
 	"team.turn.usage":                      "团队轮次用量",
+	"team.run.start":                       "开始团队协作",
+	"team.run.execute":                     "执行团队任务",
+	"team.run.finish":                      "团队任务结束",
+	"team.run.graph":                       "构建团队 GraphAgent",
+	"team.member":                          "团队成员执行",
+	"chat.team.invoke":                     "委派团队会话",
 }
 
 func stepTitle(stepID string) string {
 	if t, ok := stepTitleRegistry[stepID]; ok {
 		return t
+	}
+	// Dynamic-suffix step IDs (e.g. "team.member.member-1") fall back to
+	// their static prefix ("team.member") for title resolution.
+	if i := strings.LastIndex(stepID, "."); i > 0 {
+		if t, ok := stepTitleRegistry[stepID[:i]]; ok {
+			return t
+		}
 	}
 	return stepID
 }

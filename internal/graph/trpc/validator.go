@@ -28,6 +28,10 @@ const (
 	ValidationErrInvalidRetryPolicy ValidationErrorCode = "invalid_retry_policy"
 	ValidationErrSubgraphCycle      ValidationErrorCode = "subgraph_cycle"
 	ValidationErrSubgraphDepth      ValidationErrorCode = "subgraph_depth_exceeded"
+	// ValidationErrCriticPathMapIncomplete 标记带迭代上限的 critic_loop 条件边
+	// PathMap 缺少 approved_forced 键：达上限时 cond func 返回
+	// biz.CriticLoopResultApprovedForced，缺键会在运行时报目标节点不存在。
+	ValidationErrCriticPathMapIncomplete ValidationErrorCode = "critic_path_map_incomplete"
 )
 
 type ValidationError struct {
@@ -82,8 +86,27 @@ func ValidateGraph(ctx context.Context, def *GraphBuildConfig, agentChecker Agen
 	validateNodePolicies(def, result)
 	validateSubgraphCycles(def, result)
 	validateSubgraphDepth(def, result)
+	validateCriticLoopPathMaps(def, result)
 
 	return result
+}
+
+// validateCriticLoopPathMaps 校验带迭代上限（#<maxIterations>）的 critic_loop
+// 条件边：cond func 达上限兜底收敛时返回 biz.CriticLoopResultApprovedForced，
+// PathMap 必须包含该键（通常与 approved 同目标），否则运行时按「结果即节点 ID」
+// 兜底解析会报目标节点不存在。仅 maxIterations > 0 的 ref 会产生该路由键。
+func validateCriticLoopPathMaps(def *GraphBuildConfig, result *ValidationResult) {
+	for _, ce := range def.ConditionalEdges {
+		_, maxIter, _, ok := biz.ParseCriticLoopCondFuncRef(strings.TrimSpace(ce.CondFuncRef))
+		if !ok || maxIter <= 0 {
+			continue
+		}
+		if _, has := ce.PathMap[biz.CriticLoopResultApprovedForced]; !has {
+			result.AddError(ValidationErrCriticPathMapIncomplete, ce.From, "path_map",
+				fmt.Sprintf("critic_loop 条件边带迭代上限，PathMap 缺少 %q 键（达上限兜底收敛时的路由目标）",
+					biz.CriticLoopResultApprovedForced))
+		}
+	}
 }
 
 func validateSubgraphCycles(def *GraphBuildConfig, result *ValidationResult) {

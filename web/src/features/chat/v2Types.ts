@@ -103,7 +103,8 @@ export interface ClarificationQuestion {
 }
 
 export interface ClarificationAnswer {
-  selected: string[];
+  // Go nil slice serializes to null when the user skips a question.
+  selected: string[] | null;
   other?: string;
 }
 

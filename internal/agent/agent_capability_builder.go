@@ -40,10 +40,16 @@ func (b *AgentCapabilityBuilder) BuildAll(ctx context.Context) ([]biz.AgentCapab
 		if biz.IsSystemAgentKey(ag.AgentKey) {
 			continue
 		}
+		mission := ag.MissionStatement
+		if mission == "" {
+			mission = ag.AgentDescription // 不变量 2：存量 Agent Mission 回退 Description
+		}
 		cap := biz.AgentCapability{
 			AgentKey:    ag.AgentKey,
 			DisplayName: ag.DisplayName,
 			Description: ag.AgentDescription,
+			Mission:     mission,
+			DomainPath:  ag.DomainPath,
 			Roles:       ag.Roles,
 			Domains:     extractDomainsFromConfig(ag.ConfigJSON),
 			Tools:       extractToolNamesFromConfig(ag.ConfigJSON),

@@ -5464,192 +5464,82 @@ type DeliverableRef struct {
 
 ---
 
-### B.10.17 任务执行总结报告（Execution Report）落地设计（2026-07-22）
+### B.10.17 任务执行总结（LLM 总结回复）落地设计（2026-07-22 初版；2026-07-24 重构）
 
-> **需求**：[1-chat.md §子模块：任务执行总结报告](./1-chat.md)
-> **方案选型**：2026-07-22 与用户确认——扩展现有 Synthesis 管线（方案 A），不新建独立模块；结构化报告卡片形态；仅编排类任务触发；失败/部分失败也出报告，用户主动中断不出。
+> **需求**：[1-chat.md §子模块：任务执行总结](./1-chat.md)
+> **演进**：2026-07-22 初版为「执行报告卡片」——`SynthesisOutput` 扩展 Overview/Deliverables/Degraded，报告以 `StepCreatedEvent`（notice/synthesis_completed，Content=ExecutionReportEnvelope JSON）持久化，前端 `ExecutionReportCard` 四板块渲染。2026-07-24 与用户确认重构：**总结不需要专门 UI**，改为系统向精灵会话注入内部总结触发消息，精灵以普通 reply step 输出 Markdown 总结。报告卡片全链路（信封/组件/i18n/专项测试）已移除。
 
-#### B.10.17.1 现状断点（评审结论）
-
-| # | 断点 | 证据 |
-|---|------|------|
-| 1 | `synthesis_completed` 走 `SystemNoticeEvent`，**不落库**（sequencer `shouldPersist` 返回 false），刷新后丢失 | `internal/agent/v2/sequencer.go:163`；`internal/service/spirit_synthesis.go:102-136` |
-| 2 | 前端 `SynthesisResultCard.vue` 是**孤儿组件**（全工程无 import），综合结果存进 `spiritStore.synthesisResult` 但无任何渲染消费者 | `web/src/components/spirit/SynthesisResultCard.vue`；`web/src/stores/spirit/index.ts:916` |
-| 3 | 报告数据只有 `content + team_results`：无执行概况（耗时/token/成功率）、无交付物清单、无 per-unit 耗时与错误原因 | `internal/biz/spirit_synthesis.go:39-44` |
-| 4 | 用户主动中断（team cancelled）当前也会触发综合与总结 turn，与「中断不出报告」语义冲突 | `internal/biz/spirit_team_usecase.go:1442-1462`（cancelled 计入 AllDone） |
-| 5 | v2 `Step` 无 Meta 字段——报告富数据要持久化必须放 `Step.Content`（JSON 信封） | `internal/biz/step.go:10-33` |
-
-#### B.10.17.2 总体架构与数据流
+#### B.10.17.1 总体架构与数据流
 
 ```
 全部团队终态（HandleTeamTurnResult / 后台 poller → checkAllTeamsCompleted）
-        │  ① 取消守卫：存在 cancelled 团队 → 跳过报告与总结 turn
-        │  ② CAS 防重：synthesisTriggered.LoadOrStore(spiritSessionID)（现状保留）
+        │  ① 取消守卫：存在 cancelled 团队 → 跳过总结触发（用户主动中断不出总结）
+        │  ② CAS 防重：synthesisTriggered.LoadOrStore(spiritSessionID)
+        │  ③ ParentTaskID = resolveLatestUserTaskID（最近用户 Task，保证时间线附着）
         ▼
-SynthesisUsecase.SynthesizeResults（biz，扩展）
-        │  ③ 收集执行单元：ListCompletedAndFailedTeams + BuildCascadeBlockedResults
-        │  ④ 组装 Overview：query / finalStatus / 总耗时（team CreatedAt→UpdatedAt 聚合）
-        │     / 单元计数 / token（复用 CheckAllTeamsCompleted 聚合）
-        │  ⑤ 组装 Deliverables：逐团队 ParseDeliverableRefs → DeliverableItem
-        │  ⑥ per-unit 耗时/错误：TeamRunV2Reader（新窄接口 port，未注入时省略字段）
-        │  ⑦ LLM 结论：SynthesisEngine（C-24 语义不变）；失败 → output.Degraded=true
+TeamStarter → turnGateway.ExecuteTurn(TurnInput{
+        SessionID: spiritSessionID, Content: synthesisSummaryTrigger, ParentTaskID })
+        │  ④ system-push：触发消息不渲染为用户气泡（system_push source）
         ▼
-PublishSynthesisCompleted（service 层 publisher 改造）
-        │  ⑧ SystemNoticeEvent（WS-only）→ StepCreatedEvent（Kind=notice，
-        │     NoticeType="synthesis_completed"，Content=报告 JSON 信封）
-        │  ⑨ seq.Publish 优先（persist + WS），eventBus 兜底（v1-only）
-        │  ⑩ TaskID 附着最近用户 Task（resolveLatestUserTaskID 同款逻辑提取复用）
+精灵普通 turn → LLM 读取会话中各团队执行结果（graph state / deliverables 上下文）
+        │  ⑤ 按触发消息中的四节结构输出 Markdown 总结
         ▼
-前端：NoticeBlock 分支 → ExecutionReportCard（解析 Step.Content JSON）
+reply step（普通回复，steps 表持久化 + WS 推送）
+        │  ⑥ 前端零专门组件：ChatMessageBlock 渲染 Markdown
+        ▼
+刷新/重连：v2 REST hydrate 恢复（与其他 reply 无差别）
 ```
+
+**触发失败兜底**：`ExecuteTurn` 返回错误时，`publishAllTeamsCompletedFallbackNotice` 发布直发 notice（Kind=notice，Status=completed，Version=1，StartedAt=now，挂 ParentTaskID），内容「所有团队已完成」——保证用户至少有终态反馈。
 
 **关键设计决策**：
 
 | 决策 | 选择 | 理由 |
 |------|------|------|
-| 触发点 | 保留 `checkAllTeamsCompleted`（不迁移到 plan_executor） | 单团队/多团队均已被覆盖（每个 PlanStep 都会 AssembleTeam）；最小改动；CAS 防重已生产验证 |
-| 持久化载体 | `StepCreatedEvent` + Content=JSON 信封 | SystemNoticeEvent 永不落库（断点 1）；Step 无 Meta，Content 是唯一持久化富文本载体；直发 notice 规范（P1-5 F3：StartedAt/CompletedAt/Version=1/Status=completed） |
+| 总结形态 | 精灵 LLM 普通 reply（Markdown），无专门 UI | 2026-07-24 用户确认：单独卡片 UI 增重会话；LLM 按格式输出即可；reply step 天然持久化/还原，前端零推理 |
+| 触发方式 | `turnGateway.ExecuteTurn` 注入 system-push 触发消息 | 复用成熟 turn 管线（admission/锁/事件流/持久化）；精灵会话内已有全部团队结果上下文，LLM 直接可读 |
+| 触发点 | 保留 `checkAllTeamsCompleted`（不迁移到 plan_executor） | 单团队/多团队均已被覆盖（每个 PlanStep 都会 AssembleTeam）；CAS 防重已生产验证 |
 | 简单问答排除 | 天然满足：无团队 → `CheckAllTeamsCompleted` 返回空 → 不触发 | 零代码 |
-| 中断守卫 | `AllTeamsCompletedResult` 新增 `CancelledTeams`；>0 时跳过 | cancelled 当前计入 AllDone（断点 4） |
-| LLM 失败降级 | `SynthesizeResults` 可同返 `(degradedOutput, err)`：发布端用 output，RPC 端返回 err | C-24 生产约束语义保留（engine 仍报错），但报告不整体丢失（FR-6） |
-| Proto/RPC | 本轮不变更 | 报告走事件通道；`SynthesizeResultsResponse` 契约不动（YAGNI） |
-| 旧前端链路 | 移除 `spiritStore.synthesisResult` 及 `handleSynthesisCompleted`（确认无消费者后），删除孤儿组件 `SynthesisResultCard.vue` | R4 全局清理；卡片改为从 Step.Content 渲染 |
+| 中断守卫 | `AllTeamsCompletedResult.CancelledTeams > 0` 时跳过 | 用户主动中断不出总结（2026-07-22 引入，重构后保留） |
+| 附着点 | `ParentTaskID = resolveLatestUserTaskID` | 总结 reply 归入最近用户任务的时间线，与「continuation turn 继承父 Task ID」不变量一致 |
+| 移除物 | `ExecutionReportCard.vue`、`executionReport.ts`、`chat.executionReport.*` i18n、`SynthesisOutput.Overview/Deliverables/Degraded`、`SynthesisEventPublisher` 端口、`synthesis_completed` NoticeType | R4 全局清理；无消费者即删除 |
 
-#### B.10.17.3 数据模型（biz 扩展）
+#### B.10.17.2 触发消息契约（synthesisSummaryTrigger）
 
-```go
-// SynthesisOutput 扩展（internal/biz/spirit_synthesis.go）
-type SynthesisOutput struct {
-    Content       string                `json:"content"`
-    Strategy      SynthesisStrategy     `json:"strategy"`
-    TeamResults   []TeamSynthesisResult `json:"team_results"`
-    SynthesizedAt string                `json:"synthesized_at"`
-    // 新增：
-    Overview     *ExecutionOverview `json:"overview,omitempty"`
-    Deliverables []DeliverableItem  `json:"deliverables,omitempty"`
-    Degraded     bool               `json:"degraded,omitempty"` // LLM 结论缺失
-}
-
-type ExecutionOverview struct {
-    Query          string `json:"query"`
-    FinalStatus    string `json:"final_status"` // completed | partial_failure | failed
-    DurationMs     int64  `json:"duration_ms"`
-    TotalUnits     int    `json:"total_units"`
-    CompletedUnits int    `json:"completed_units"`
-    FailedUnits    int    `json:"failed_units"`
-    TokenIn        int    `json:"token_in"`
-    TokenOut       int    `json:"token_out"`
-}
-
-type DeliverableItem struct {
-    NodeID    string `json:"node_id"`
-    UnitName  string `json:"unit_name"`  // 产出团队显示名
-    Summary   string `json:"summary"`
-    Type      string `json:"type,omitempty"`
-    Format    string `json:"format,omitempty"`
-    SizeChars int    `json:"size_chars"`
-}
-
-// TeamSynthesisResult 扩展
-type TeamSynthesisResult struct {
-    // ... 现有字段 ...
-    DurationMs   int64  `json:"duration_ms,omitempty"`
-    ErrorMessage string `json:"error_message,omitempty"`
-}
-
-// AllTeamsCompletedResult 扩展
-type AllTeamsCompletedResult struct {
-    // ... 现有字段 ...
-    CancelledTeams int
-}
-```
-
-**数据来源映射**：
-
-| 字段 | 来源 |
-|------|------|
-| Overview.Query | `SpiritTeamUsecase.GetSpiritQuery`（现状） |
-| Overview.FinalStatus | 单元状态推导：全 completed→`completed`；全 failed/blocked→`failed`；混合→`partial_failure` |
-| Overview.DurationMs | `max(team.UpdatedAt) - min(team.CreatedAt)`（team 覆盖编排全程；Team 无 StartedAt 字段） |
-| Overview.TokenIn/Out、单元计数 | `CheckAllTeamsCompleted` 已有聚合逻辑（提取复用） |
-| TeamSynthesisResult.DurationMs / ErrorMessage | `TeamRunV2Reader`（新窄接口 `SpiritTeamRunStatsReader`，按 teamID 取最新 run；经 `SpiritTeamUsecaseOption` 注入，nil 时省略） |
-| Deliverables | 逐团队 `ParseDeliverableRefs(team.DeliverablesOutput)` → 信封字段映射 |
-
-#### B.10.17.4 事件信封（Step.Content JSON）
-
-```json
-{
-  "version": 1,
-  "kind": "execution_report",
-  "content": "<LLM 结论 markdown，降级时为空>",
-  "strategy": "hybrid",
-  "degraded": false,
-  "overview": { "query": "...", "final_status": "completed", "duration_ms": 12345, "total_units": 3, "completed_units": 3, "failed_units": 0, "token_in": 1000, "token_out": 2000 },
-  "team_results": [ { "team_id": "...", "team_name": "...", "task_name": "...", "status": "completed", "summary": "...", "key_findings": "...", "duration_ms": 8000, "error_message": "" } ],
-  "deliverables": [ { "node_id": "st_1", "unit_name": "调研团队", "summary": "...", "type": "document", "format": "markdown", "size_chars": 500 } ],
-  "synthesized_at": "2026-07-22T..."
-}
-```
-
-**发布契约**：
-- `Step{Kind: notice, NoticeType: "synthesis_completed", Content: <上 JSON>, Status: completed, StartedAt/CompletedAt: now, Version: 1, AuthorAgentKey: "spirit-synthesis", SessionID/SpiritSessionID: spiritSessionID, TaskID: 最近用户 Task}`
-- 走 `seq.Publish`（persist + WS）；v1-only 部署 `eventBus.Publish` 兜底
-- `synthesisEventPublisher` 改造：`NewSpiritSynthesisService` 增加 `seq rt.EventPublisher` + `taskV2Reader biz.TaskV2Reader` 参数（Wire 同步）；`resolveLatestUserTaskID` 逻辑从 `TeamStarter` 提取为 service 包级函数复用
-
-#### B.10.17.5 前端设计
-
-**渲染接入**：`NoticeBlock.vue` 分支——`step.NoticeType === 'synthesis_completed'` 且 Content 可解析为 `kind === 'execution_report'` 信封 → 渲染 `ExecutionReportCard`；解析失败回退默认 notice 渲染（容错）。
-
-**组件**：新建 `web/src/components/chat/ExecutionReportCard.vue`；删除孤儿组件 `web/src/components/spirit/SynthesisResultCard.vue`（R4 全局清理）。
-
-**四板块布局**：
+`internal/service/spirit_team.go` 包级常量，注入精灵会话的 system-push 消息全文：
 
 ```
-┌──────────────────────────────────────────────────────┐
-│ ✨ 任务执行总结报告          [已完成] [3/3 · 12.3s]  │
-├──────────────────────────────────────────────────────┤
-│ 概况行：需求摘要(单行截断) · token 1.0k↑/2.0k↓       │
-├──────────────────────────────────────────────────────┤
-│ 智能分析结论（markdown 渲染；degraded 时显示          │
-│ 「结论生成失败」warning 提示条）                       │
-├──────────────────────────────────────────────────────┤
-│ ▾ 分步结果明细（默认折叠，N 项）                       │
-│   ✓ 调研团队 · 任务A · 8.0s · 摘要…                  │
-│   ✗ 分析团队 · 任务B · 失败原因…                      │
-├──────────────────────────────────────────────────────┤
-│ ▾ 产物交付物（默认折叠，N 项；无则整区不显示）          │
-│   📄 st_1 · 调研团队 · markdown · 500 字 · 摘要…      │
-└──────────────────────────────────────────────────────┘
+所有团队已完成。请基于会话中各团队的执行结果，输出最终任务总结报告（Markdown 格式），严格按以下结构：
+## 任务总结
+（一段话概述用户目标与整体完成情况）
+## 各团队结果
+（逐团队列出：团队名称、承担任务、完成状态、核心结论；失败团队需说明失败原因）
+## 综合结论
+（跨团队的核心发现、结论对比与最终答案）
+## 建议与后续行动
+（如无建议可省略本节）
 ```
 
-| 元素 | 规则 |
-|------|------|
-| 状态 chip | completed→positive / partial_failure→warning / failed→negative（i18n 文案） |
-| 耗时格式 | ≥1s 保留 1 位小数 + `s`，否则 `ms`（与执行过程卡片一致） |
-| 明细/产物区 | 默认折叠；单行截断 + hover 全文 |
-| i18n | `chat.executionReport.*`（zh-CN / en-US） |
-| store 清理 | 移除 `spiritStore.synthesisResult`、`handleSynthesisCompleted` 调用与 `spirit_synthesis_completed` 分支（无渲染消费者）；类型 `SynthesisOutput` 同步清理 |
+- 结构约束写在触发消息里（prompt-level contract），LLM 自由填充内容——格式校验交给 prompt，不建结构化信封
+- 精灵上下文来源：团队 reply / deliverables（graph state 共享 + `read_upstream_deliverable` 产物），无需额外数据装配
 
-#### B.10.17.6 错误处理与边界
+#### B.10.17.3 错误处理与边界
 
 | 场景 | 行为 |
 |------|------|
-| 报告生成 panic / DB 错误 | 记 error 日志，主流程（终态事件、总结 turn）不受影响 |
-| LLM 结论失败（含生产环境） | engine 返回 err（C-24 语义不变）；`SynthesizeResults` 同返 degraded output + err；发布端发布 degraded 报告；RPC 端仍返回 err |
-| 无交付物 | `deliverables` 为空数组，前端整区不渲染 |
-| TeamRun reader 未注入 | per-unit `duration_ms/error_message` 省略，前端容错显示 `--` |
-| TaskID 解析失败 | TaskID 留空，step 退化为 session 级 notice（与现有直发 notice 一致） |
-| Content JSON 解析失败（前端） | 回退普通 NoticeBlock 渲染 |
-| 同一 session 并发触发 | `synthesisTriggered` CAS 仅放行一次（现状） |
+| 存在 cancelled 团队 | 跳过总结触发（不发布任何总结/兜底通知） |
+| `ExecuteTurn` 失败（会话锁/admission 拒绝等） | 记 warn 日志 + 发布兜底 notice「所有团队已完成」；主流程终态事件不受影响 |
+| 总结 turn 执行中 LLM 失败 | 走普通 turn 失败路径（failed reply step），用户可见失败态，可手动重试 |
+| TaskID 解析失败 | `resolveLatestUserTaskID` 回退 ctx RootTaskActivityID；仍失败则空，step 退化为 session 级 |
+| 同一 session 并发触发 | `synthesisTriggered` CAS 仅放行一次；session 重建时 `synthesisTriggered.Delete` 复位 |
+| LLM 未按四节结构输出 | 不强制校验——prompt-level 契约，偏差可接受（避免结构化解析失败导致总结整体丢失） |
 
-#### B.10.17.7 测试策略
+#### B.10.17.4 测试策略
 
 | 层 | 用例 |
 |----|------|
-| biz | Overview 组装（状态推导/时长/token）；Deliverables 解析（信封 + legacy 兼容）；degraded 路径（engine 失败 → output.Degraded + err 同返）；C-24 既有测试适配 |
-| service | publisher 改造：StepCreatedEvent 字段契约（NoticeType/Content JSON/Version/TaskID 附着）；seq 优先 / eventBus 兜底；cancelled 守卫（cancelledTeams>0 → 不触发） |
-| 前端 | `ExecutionReportCard` 四板块渲染 + 状态色 + degraded 提示；`NoticeBlock` 分支（合法信封→卡片，非法→回退）；store 清理后无残留引用 |
-| 契约 | `web/scripts/check-envelope-contract.ts` 事件名清单保持通过 |
+| service | `spirit_team_synthesis_turn_test.go`：触发注入（ParentTaskID=最近用户任务、Content=触发常量）；cancelled 守卫；CAS 防重；ExecuteTurn 失败 → 兜底 notice；TaskID 解析回退 |
+| 前端 | 无专项测试——总结即普通 reply，由既有 ChatMessageBlock/Markdown 渲染覆盖 |
 
 ### B.10.18 需求澄清提问（Clarification Gate）
 
@@ -6065,3 +5955,110 @@ runner_team_trpc.go runOpts
 | biz policy | 空 settings 回退 `["agent","team"]`；`L3ScopeTargets` 无 TeamID 时 team scope 跳过 |
 | agent | `memoryRuntimeContext`：session state 优先 / RuntimeState 回退 / 均无则空 |
 | team runner | runOpts 含 team_id RuntimeState（构造验证） |
+
+### B.10.21 使命驱动的任务匹配与团队配方复用（2026-07-25 已实施）
+
+> **需求**：[1-chat.md §子模块：使命驱动的任务匹配与团队配方复用](./1-chat.md)（MM.1-MM.4）
+> **定位**：将编排匹配锚点从"单次任务文本"迁移到"使命（Mission）+ 领域路径（domain_path）+ 履历"，修复 Agent/Team 同类任务重复创建问题。评审修正记录：Factory key 根因、taxonomy 模块不存在（改约束词表）、planner 顺带分类（零额外 LLM 调用）、配方复用替代 Team 实体物理复用、embedding 不作硬依赖、YAGNI 裁剪（standing 转正/dedup 合并/声誉衰减留后续迭代）。
+>
+> **实施落地偏差（2026-07-25）**：① `BestRecipeForDomain` 不带 ctx（纯内存扫描）；② `TaskPlan.DomainPath` 为内存字段不持久化（由 SubTasks 重推导）；③ 新增 `RecordDomainRecipe` 而非改 `RecordCompletionWithAgents` 签名；④ Allocator/Factory profile 的 `Domain` 在 DomainPath 非空时取一级域（替代硬编码 "engineering"）；⑤ biz 层配方查询为纯字符串前缀匹配（归一化在 internal/agent，避免循环依赖）；⑥ DDL 迁移版本 20260726 已被占用，实际注册为 **20261110**（`sql/migrations/20261110_agent_mission_domain.sql`）；⑦ biz 无 `TopologyDAG` 常量，DAG 策略配方拓扑用 `TopologyHybrid`；⑧ `parseAgentDefinition` 增加兜底：LLM 未输出 `domain_path` 时回退 `TopLevelDomain(profile.DomainPath)`。
+
+#### B.10.21.1 现状根因（评审确认）
+
+| # | 根因 | 证据 |
+|---|------|------|
+| R1 | Factory key = 任务文本哈希，措辞差异即新 Agent | `agent_factory.go:270` `buildDynamicAgentKey = sha1(domain\|taskDescription\|caps\|tools\|model)` |
+| R2 | findReusableTeam 是防重试机制，非能力复用 | `spirit_team_usecase.go:573`：同会话 + task_description 精确相等 + 未终态 |
+| R3 | OrchestrationCache 事实上 write-only | `task_orchestrator_impl.go:1070` 写入 key = `ExtractTaskPattern(handle.ID)`（orchestration ID，唯一）；`task_planner_impl.go:463` 查询 key = UserMessage → 永不命中 |
+| R4 | 中文创作类任务无匹配通道 | `agent_allocator_impl.go:1132` `extractCapabilityHints` 仅 12 个英文关键词 → 必滑向 factory |
+
+#### B.10.21.2 数据模型
+
+| 实体 | 变更 | 说明 |
+|------|------|------|
+| `agents` 表 | 新增 `mission_statement` TEXT DEFAULT `''`、`domain_path` VARCHAR(256) DEFAULT `''` | Ent schema + DDL 迁移（幂等）；`biz.Agent` 新增 `MissionStatement`/`DomainPath` 字段；repo 映射读写 |
+| `biz.SubTask` | 新增 `DomainPath string` | planner LLM 输出，advisory（空不阻断） |
+| `biz.AgentCapability` | 新增 `Mission string`、`DomainPath string` | `AgentCapabilityBuilder` 透出；Mission 为空时回退 `Description` |
+| `biz.TaskProfile` | 新增 `DomainPath string`、`Mission string` | factory 输入；DomainPath 空走旧 key 行为（兼容） |
+| `OrchestrationCacheEntry` | 新增 `DomainPath string \`json:"domain_path,omitempty"\`` | 旧 JSON 无此字段加载不报错 |
+| `AgentPerformance.TaskType` | 语义扩展：新记录以 `domain:<domain_path>` 为 TaskType | 旧记录（strategy 值）自然淘汰，无迁移 |
+| MatchLayer | 新增 `"domain_recipe"`、`"mission"` | 可解释性（US-MM-03） |
+
+#### B.10.21.3 领域词表（Domain Lexicon）
+
+- 位置：`internal/agent/domain_lexicon.go`（agent 包常量，planner/allocator/factory 三方共用）
+- 形态：内置两级词表（一级域 ~10 个 + 常见二级），LLM 输出经 `NormalizeDomainPath(raw string) string` 归一校验：命中词表返回规范形；未命中尝试前缀归并（如 `创作/诗歌` → `创作/文学` 不存在时归 `创作`）；完全无法归类返回 `其他`
+- 词表初始值：`软件/后端`、`软件/前端`、`软件/测试`、`软件/运维`、`数据/分析`、`创作/文学`、`创作/文案`、`设计/视觉`、`研究/调研`、`办公/文档`、`其他`
+- 词表是**约束**而非封闭集：允许 LLM 输出词表外路径但归一化会归并到最近一级域，防止路径漂移导致匹配域碎片化
+
+#### B.10.21.4 TaskPlanner 顺带输出 domain_path（零额外 LLM 调用）
+
+- `buildDecompositionPrompt` 新增规则：每个 subtask 输出 `domain_path`（词表内），plan 级输出 `domain_path`（主导域）
+- `parseDecompositionOutput` 解析 + `NormalizeDomainPath` 校验；非法 → 空字符串，不阻断（与契约解析同容错语义）
+- whole-plan 路径（无 subtask）：`matchWholePlan` 使用 plan 级 `DomainPath`
+- `queryMemory`（planner Step 0）**不改动**：recipe 命中点下移到 Allocator L0（拆解后才有 domain_path，时序天然匹配）
+
+#### B.10.21.5 Allocator 匹配管线（重构 matchSubTask / matchWholePlan）
+
+新管线（逐层，命中即返回）：
+
+```
+L0 domain_recipe（新增）：
+   subtask.DomainPath 非空 → orchCache.BestRecipeForDomain(ctx, domainPath)
+   （条目 DomainPath 前缀匹配 + DQScore ≥ 0.7 + AgentKeys 非空 + lead agent 仍存在）
+   → AssignedKey = AgentKeys[0]，MatchLayer="domain_recipe"
+   → DAG 模式：AgentKeys[1:] 直接作为 TeamMemberKeys（配方复用，替代 selectAdditionalMembers 随机补员）
+L1 mission（新增）：
+   同域候选收敛：capability.DomainPath 与 subtask.DomainPath 前缀匹配（任一方向）或双方归并后同一级域
+   → score = similarity(task_text, mission_text) × 0.4 + perfSuccessRate(agentKey, "domain:"+domainPath) × 0.6
+     · similarity：embedder 非 nil → cosine(embedding)；nil → TF-IDF（复用 computeSemanticScore 于 mission 文本）
+     · 无 perf 记录时 successRate 取 0.5（与现有 exactMatch 默认一致）
+   → bestScore > 0.3 命中，MatchLayer="mission"
+L2 performance + exact（现有保留）：
+   GetBestForTaskType（TaskType 传 "domain:"+domainPath 优先，回退 RequiredCapabilities[0]）→ exactMatch 阈值 0.5
+L3 llmColdStart（现有保留）：prompt 中 capabilities 列表附带 mission/domain_path 字段
+兜底：factory（B.10.21.6）→ fallbackAllocation（现有）
+```
+
+- L0/L1 要求 subtask.DomainPath 非空；为空时直接落入 L2（存量行为，兼容）
+- 每条 allocation 的 MatchReason 记录 domain_path 与候选收敛数（US-MM-03 可解释性）
+
+#### B.10.21.6 AgentFactory 出生登记与 key 修正
+
+- `buildDynamicAgentKey`：profile.DomainPath 非空时 key = `"factory-" + sha1(domainPath|preferredModel)[:12]`；为空时保留旧行为（兼容兜底路径）
+- 生成 prompt 新增输出字段 `mission_statement`（一句话使命）+ `domain_path`（词表约束）；`GeneratedAgentDefinition` 解析后经 `NormalizeDomainPath` 校验
+- 落库：`agents.mission_statement` / `agents.domain_path` 写入（出生登记）
+- 创建前复用检查（替代裸 key 幂等）：
+  1. key 命中（同 domain_path 同模型）→ 直接复用（主路径，解决"写诗/写散文"重复创建）
+  2. key 未命中且 embedder 非 nil → 同 domain_path agent 使命 cosine ≥ 0.85 → 复用该 agent
+  3. 均未命中 → LLM 生成 + 确认门禁（现有）→ 落库
+- factory 新增 embedder 依赖（nil 降级为仅 key 命中）
+
+#### B.10.21.7 配方记录（学习闭环修复 R3）
+
+- `learnFromOrchestration`：taskPattern 从 `ExtractTaskPattern(handle.ID)` 改为 `"domain:" + primaryDomainPath`（取 handle 对应 plan 首个非空 subtask.DomainPath；无 → 回退旧 key 行为）；`DomainPath` 字段同步写入 entry
+- `OrchestrationCache` 新增 `BestRecipeForDomain(ctx, domainPath) (*OrchestrationCacheEntry, bool)`：遍历条目，DomainPath 前缀匹配 + DQ ≥ 0.7，取 DQ 最高者（内存 map，N 小，全扫可接受）
+- `AgentPerformance` upsert：TaskType 从 `string(handle.Strategy)` 改为 `"domain:" + primaryDomainPath`（无域回退 strategy）；`GetBestForTaskType` 调用侧同步传 `"domain:"+domainPath` 优先
+- 效果："写诗"完成 → 缓存 `{key:"domain:创作/文学", DQ:0.85, agent_keys:[factory-xxx]}`；下次"写散文"→ planner 输出 `创作/文学` → Allocator L0 命中 → 直接复用该 Agent，零 factory 调用
+
+#### B.10.21.8 不变量
+
+1. domain_path 为空/非法时，全管线行为与现状完全一致（advisory 贯穿，不阻断任何现有流程）
+2. agents 新列默认空；存量 Agent 参与匹配时 Mission 回退 Description，不强制回填、不阻塞
+3. embedder 为 nil 时管线完整可用：L0 前缀匹配 + L1 TF-IDF + L2/L3 不受影响
+4. OrchestrationCache 旧 JSON（无 domain_path 条目）加载与查询不报错；旧 key 条目 30 天 TTL 自然淘汰
+5. factory key 变更仅影响新创建 Agent；存量 `factory-*` Agent 继续可用
+6. 复用仅复用配方（agent_keys），Team/Session 实体仍在当前会话新建，不跨会话物理复用
+7. 所有新日志走 `loggateway.Logger` 结构化字段（StepID/AgentKey/Err），无字符串拼接
+
+#### B.10.21.9 测试策略
+
+| 层 | 用例 |
+|----|------|
+| agent（lexicon） | `NormalizeDomainPath`：词表命中/前缀归并/未知→其他/空输入/大小写与空白归一 |
+| agent（planner） | `parseDecompositionOutput` 解析 domain_path（正常/缺失/非法→空）；prompt 含词表约束 |
+| agent（allocator） | L0：recipe 命中（DQ≥0.7/域前缀/agent 存在）直接返回、DQ 不足跳过、agent 已删除跳过；L1：同域收敛 + 使命×履历排序、embedder nil 走 TF-IDF、无候选落 L2；DomainPath 空走旧管线（回归） |
+| agent（factory） | 新 key 派生（domain 派生命名幂等）；同域相似 ≥0.85 复用；definition 解析 mission/domain_path；空 DomainPath 旧 key 兼容 |
+| biz（cache） | `BestRecipeForDomain`：前缀匹配/DQ 排序/空 AgentKeys 跳过/TTL 过期；旧 JSON（无 domain_path）LoadFromJSON 兼容 |
+| biz（learn） | `learnFromOrchestration`：taskPattern 为 domain 派生、DomainPath 写入 entry、无域回退 |
+| data | agents 新列读写映射（repo round-trip）；DDL 迁移幂等 |

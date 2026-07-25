@@ -2,6 +2,7 @@ package team
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -31,26 +32,48 @@ func compileToGraphBuildConfig(def Definition, rawDefinitionJSON string, agentKe
 }
 
 func compileToGraphBuildConfigWithLoader(ctx context.Context, def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, loader GraphBuildConfigLoader, lg loggateway.Logger) (biz.GraphBuildConfig, map[string]biz.NodeTaskMeta, []string, error) {
-	if spec, ok := parseEmbeddedGraph(rawDefinitionJSON); ok {
-		cfg, taskMeta, branchIDs, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
-		if err != nil {
-			return biz.GraphBuildConfig{}, nil, nil, err
-		}
-		return cfg, taskMeta, branchIDs, nil
-	}
-
-	members := EnabledMembers(def)
-	if len(members) == 0 {
+	spec, _ := resolveDefinitionGraphSpec(ctx, def, rawDefinitionJSON, lg)
+	if spec == nil {
 		return biz.GraphBuildConfig{}, nil, nil, apierror.BadRequest(apierror.DomainTeam, "compile graph: no enabled members")
 	}
-
-	mode := normalizeCompileMode(def.Mode)
-	spec := generateGraphSpecFromMode(ctx, def, mode, lg)
 	cfg, taskMeta, branchIDs, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
 	if err != nil {
 		return biz.GraphBuildConfig{}, nil, nil, err
 	}
 	return cfg, taskMeta, branchIDs, nil
+}
+
+// resolveDefinitionGraphSpec returns the effective embedded graph spec with
+// priority embedded graph (from raw JSON) > mode template generation.
+// generated=true when the template path produced the spec (ADR-08 A2: frontend
+// editors consume the backend-generated spec instead of local re-implementation).
+func resolveDefinitionGraphSpec(ctx context.Context, def Definition, rawDefinitionJSON string, lg loggateway.Logger) (*embeddedGraphSpec, bool) {
+	if spec, ok := parseEmbeddedGraph(rawDefinitionJSON); ok {
+		return spec, false
+	}
+	if len(EnabledMembers(def)) == 0 {
+		return nil, false
+	}
+	spec := generateGraphSpecFromMode(ctx, def, normalizeCompileMode(def.Mode), lg)
+	if spec == nil {
+		return nil, false
+	}
+	return spec, true
+}
+
+// DefinitionGraphSpecJSON marshals the template-generated canonical embedded
+// graph spec (incl. start/end decor nodes). Returns "" when the definition
+// carries its own embedded graph (custom path) or generation is impossible.
+func DefinitionGraphSpecJSON(ctx context.Context, def Definition, rawDefinitionJSON string, lg loggateway.Logger) string {
+	spec, generated := resolveDefinitionGraphSpec(ctx, def, rawDefinitionJSON, lg)
+	if !generated || spec == nil {
+		return ""
+	}
+	b, err := json.Marshal(spec)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 func normalizeCompileMode(mode string) string {

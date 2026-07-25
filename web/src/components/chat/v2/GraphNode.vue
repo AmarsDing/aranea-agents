@@ -1,5 +1,6 @@
 <!-- web/src/components/chat/v2/GraphNode.vue
   GraphStage 中的单个节点，对应一个 PlanStep。
+  视觉：showcase mk-fnode 风格卡片（div 绝对定位）— 状态徽章 + 标题 + 状态色边框。
   节点状态由 PlanStep.Status 通过 MapPlanStepToGraphNodeStatus 映射得到。
   节点状态色严格遵循设计文档 §3.7.5：
     pending → 灰色
@@ -11,35 +12,24 @@
   - 状态文本走 i18n
 -->
 <template>
-  <g
-    :transform="`translate(${pos.x}, ${pos.y})`"
+  <div
     :class="[
       'graph-node',
+      `graph-node--${node.Status}`,
       {
-        'graph-node--failed': node.Status === 'failed',
+        'graph-node--selected': isSelected,
         'graph-node--highlighted': isHighlighted,
         'graph-node--dimmed': isDimmed,
       },
     ]"
+    :style="{ left: `${pos.x}px`, top: `${pos.y}px`, width: `${nodeWidth}px`, height: `${nodeHeight}px` }"
     @click="$emit('select', node.ID)"
     @mouseenter="$emit('hover', node.ID)"
     @mouseleave="$emit('hover', null)"
   >
-    <rect
-      :width="nodeWidth"
-      :height="nodeHeight"
-      rx="8"
-      :class="['graph-node__rect', `graph-node__rect--${node.Status}`]"
-      :stroke="nodeStrokeColor"
-      :stroke-width="isSelected || isHighlighted ? 2.5 : 1.5"
-    />
-    <text :x="nodeWidth / 2" :y="24" text-anchor="middle" class="graph-node__label">
-      {{ node.Label }}
-    </text>
-    <text :x="nodeWidth / 2" :y="44" text-anchor="middle" class="graph-node__status">
-      {{ statusIcon }} {{ statusLabel }}
-    </text>
-  </g>
+    <span class="graph-node__badge">{{ statusIcon }} {{ statusLabel }}</span>
+    <span class="graph-node__label" :title="node.Label">{{ node.Label }}</span>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -95,116 +85,104 @@ const statusLabel = computed(() => {
   };
   return map[props.node.Status] || props.node.Status;
 });
-
-const nodeStrokeColor = computed(
-  () =>
-    ({
-      pending: 'var(--color-text-secondary, #9e9e9e)',
-      running: 'var(--q-primary, #00bcd4)',
-      completed: 'var(--color-success, #4caf50)',
-      failed: 'var(--color-danger, #f44336)',
-      interrupted: 'var(--color-warning, #ffc107)',
-    })[props.node.Status] || 'var(--glass-border)',
-);
 </script>
 
-<style scoped>
-.graph-node {
-  cursor: pointer;
-  transition: opacity 0.2s ease;
-}
+<style lang="sass" scoped>
+.graph-node
+  position: absolute
+  display: flex
+  flex-direction: column
+  justify-content: center
+  gap: 4px
+  padding: 8px 10px
+  border: 1.5px solid var(--node-accent, var(--glass-border))
+  border-radius: 10px
+  background: var(--glass-elevated)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  box-shadow: 0 2px 10px rgb(0 0 0 / 8%)
+  cursor: pointer
+  box-sizing: border-box
+  overflow: hidden
+  transition: opacity 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease
+
+// 状态色（设计文档 §3.7.5）
+.graph-node--pending
+  --node-accent: var(--color-text-tertiary)
+
+.graph-node--running
+  --node-accent: var(--q-primary)
+  animation: graph-node-pulse 2s ease-in-out infinite
+
+.graph-node--completed
+  --node-accent: var(--color-success)
+
+.graph-node--failed
+  --node-accent: var(--color-danger)
+  animation: graph-node-shake 0.4s ease-in-out 2
+
+.graph-node--interrupted
+  --node-accent: var(--color-warning)
+
+// 状态徽章（showcase mk-fn-tag 风格）
+.graph-node__badge
+  align-self: flex-start
+  max-width: 100%
+  padding: 1px 6px
+  border: 1px solid color-mix(in srgb, var(--node-accent) 55%, transparent)
+  border-radius: 5px
+  background: color-mix(in srgb, var(--node-accent) 12%, transparent)
+  color: var(--node-accent)
+  font-size: 9px
+  font-weight: 600
+  line-height: 1.4
+  white-space: nowrap
+  overflow: hidden
+  text-overflow: ellipsis
+
+.graph-node__label
+  color: var(--color-text-primary)
+  font-size: 12px
+  font-weight: 600
+  line-height: 1.3
+  white-space: nowrap
+  overflow: hidden
+  text-overflow: ellipsis
+
+// 选中/hover 路径高亮：状态色光晕（showcase mk-fnode.sel）
+.graph-node--selected,
+.graph-node--highlighted
+  box-shadow: 0 0 14px color-mix(in srgb, var(--node-accent) 40%, transparent)
+
+.graph-node:hover
+  box-shadow: 0 0 16px color-mix(in srgb, var(--node-accent) 45%, transparent)
 
 /* P1 #6: hover 节点时高亮上下游依赖路径 — 暗化非路径节点 */
-.graph-node--dimmed {
-  opacity: 30%;
-}
+.graph-node--dimmed
+  opacity: 30%
 
-/* P1 #6: 路径上的节点保持高亮，无额外样式（stroke-width 在 template 中通过 prop 控制） */
-.graph-node--highlighted {
-  opacity: 100%;
-}
-
-.graph-node__rect {
-  transition:
-    fill 0.2s ease,
-    stroke 0.2s ease;
-}
-
-/* 节点填充用半透明色，让文字在背景上可读。
-   之前用纯色填充，文字和背景对比度不足。现在用 rgba 半透明覆盖，
-   文字用高对比度的 primary 色，确保日间/夜间都可读。 */
-.graph-node__rect--pending {
-  fill: rgb(158 158 158 / 15%);
-}
-
-.graph-node__rect--running {
-  fill: rgb(0 188 212 / 18%);
-  animation: graph-node-pulse 2s ease-in-out infinite;
-}
-
-.graph-node__rect--completed {
-  fill: rgb(76 175 80 / 18%);
-}
-
-.graph-node__rect--failed {
-  fill: rgb(244 67 54 / 18%);
-}
-
-.graph-node__rect--interrupted {
-  fill: rgb(255 193 7 / 18%);
-}
-
-@keyframes graph-node-pulse {
+@keyframes graph-node-pulse
   0%,
-  100% {
-    opacity: 100%;
-  }
+  100%
+    box-shadow: 0 0 6px color-mix(in srgb, var(--node-accent) 25%, transparent)
 
-  50% {
-    opacity: 75%;
-  }
-}
+  50%
+    box-shadow: 0 0 16px color-mix(in srgb, var(--node-accent) 55%, transparent)
 
 /* failed 抖动 */
-.graph-node--failed {
-  animation: graph-node-shake 0.4s ease-in-out 2;
-}
-
-@keyframes graph-node-shake {
+@keyframes graph-node-shake
   0%,
-  100% {
-    transform: translateX(0);
-  }
+  100%
+    transform: translateX(0)
 
-  25% {
-    transform: translateX(-2px);
-  }
+  25%
+    transform: translateX(-2px)
 
-  75% {
-    transform: translateX(2px);
-  }
-}
+  75%
+    transform: translateX(2px)
 
-/* 文字用高对比度颜色，确保在半透明背景上可读 */
-.graph-node__label {
-  fill: var(--color-text-primary);
-  font-size: 12px;
-  font-weight: 600;
-
-  /* 文字描边，在任意背景上都可读 */
-  paint-order: stroke;
-  stroke: rgb(0 0 0 / 40%);
-  stroke-width: 2px;
-  stroke-linejoin: round;
-}
-
-.graph-node__status {
-  fill: var(--color-text-primary);
-  font-size: 11px;
-  font-weight: 500;
-  paint-order: stroke;
-  stroke: rgb(0 0 0 / 40%);
-  stroke-width: 2px;
-  stroke-linejoin: round;
-}
+@media (prefers-reduced-motion: reduce)
+  .graph-node--running,
+  .graph-node--failed
+    animation: none
 </style>

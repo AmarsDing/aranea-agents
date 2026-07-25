@@ -1,6 +1,6 @@
 # M53: Team × Graph 编排融合 — 开发计划
 
-> **版本**：2026-07-24 | **状态**：✅ Phase 0.5–8.9 已落地（含 BL-05/BL-09、Swarm Graph 安全、CB 持久化）+ Phase 9 Graph Engineering 评审增强（critic_loop 收敛 / 运行时契约校验 / 并行文件隔离）+ Phase 9.1 critic_loop 运行时收敛修复
+> **版本**：2026-07-24 | **状态**：✅ Phase 0.5–8.9 已落地（含 BL-05/BL-09、Swarm Graph 安全、CB 持久化）+ Phase 9 Graph Engineering 评审增强（critic_loop 收敛 / 运行时契约校验 / 并行文件隔离）+ Phase 9.1 critic_loop 运行时收敛修复 + Phase 9.2 收敛二次强化（F1–F6）
 > **需求**：[53-team-graph-orchestration.md](./53-team-graph-orchestration.md) · **设计**：[53-team-graph-orchestration.design.md](./53-team-graph-orchestration.design.md)
 
 ---
@@ -567,3 +567,47 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 
 - `go build ./...` exit 0；`go test -count=1`——`internal/graph/adapter` / `internal/graph/trpc` / `internal/team` / `internal/service` / `internal/biz` / `internal/agent` / `internal/data` 全 PASS
 - 运行时：团队 `ge_review_critic_loop_test`（max_iterations=2）run-test HTTP 200 / 23.6s / status=success；pipeline 日志证实 critic（member-2）恰好执行 2 轮后 `critic_loop 达到迭代上限，强制收敛 rounds=2 max_iterations=2`，图经 `approved → __end__` 终止（修复前循环 24+ 次不收敛）
+
+## Phase 9.2 — critic_loop 收敛二次强化（✅ 已完成，2026-07-24）
+
+> 二次评审发现 2 个逻辑错误 + 3 个设计缺陷 + 1 个潜伏契约缺口，逐项修复。
+
+| # | 问题 | 修复 | 影响域 | 状态 |
+|---|------|------|--------|------|
+| F1 | 中文组合式否定误判：「不能予以通过」含批准词「予以通过」误判批准 | 批准词逐出现位置判定紧邻前缀的中文否定标记（`criticNegationMarkersZH`），第二次非否定命中仍算批准 | `graph/adapter/critic_loop_cond.go` | ✅ |
+| F2 | `IsApprovedDecision` 允许 score 推翻显式 `action=retry` | 显式 action 优先：approve 通过 / 其他非空不通过 / 空时 score 兜底 | `biz/team_types.go` | ✅ |
+| F3 | dry 收敛先于结构化裁决生效，显式 retry 被错误收敛 | 结构化裁决提到判定链最高优先级 | `graph/adapter/critic_loop_cond.go` | ✅ |
+| F4 | 上限兜底收敛与真实批准同返回 `approved`，观测不可区分 | 新增路由键 `approved_forced`（`biz.CriticLoopResultApprovedForced`），PathMap 映射 `EndNodeID` | `biz/team_types.go` · `team/embedded_graph.go` · `graph/adapter/critic_loop_cond.go` | ✅ |
+| F5 | 框架 maxSteps 截断与自然完成不可区分 | BSP/DAG 循环返回 truncated，完成事件 `CompletionMetadata.StepsTruncated` 透传 + Warn 日志 | `pkg/trpc-agent-go/graph/executor.go` · `executor_dag.go` · `events.go` | ✅ |
+| F6 | 外部（API/Pack）critic_loop 条件边缺 `approved_forced` 键时运行时错 | validator 新增 `critic_path_map_incomplete` 编译期校验（`validateCriticLoopPathMaps`） | `graph/trpc/validator.go` | ✅ |
+
+**测试覆盖**：`graph/adapter/critic_loop_cond_test.go`（否定窗口/action 优先/approved_forced/节点隔离）；`biz/team_types_test.go`（IsApprovedDecision 优先级）；`team/graph_compile_test.go`（approved_forced PathMap 断言）；`graph/trpc/validator_test.go`（新增，缺键报错/有键通过/纯 threshold ref 豁免）。
+
+**验证证据（2026-07-24）**：`go build ./...` exit 0；`internal/biz` / `internal/graph/...` / `internal/team` / `internal/service` / `internal/agent` 全 PASS；`pkg/trpc-agent-go/graph` 8 个失败经 stash 对照（3/3）确认为 dev 分支既有时序/顺序敏感问题，与改动无关。
+
+---
+
+## Phase 10 — ADR-08 团队编排统一（Phase A ✅ 已完成，2026-07-25）
+
+> 来源：团队「编排模式」与 Graph 编排割裂评审。决策详见 [ADR-08](../reports/2026-07-25-review-adr-team-orchestration-unify.md)；设计详见 [53-team-graph-orchestration.design.md §十二](./53-team-graph-orchestration.design.md#十二adr-08-团队编排统一2026-07-25-phase-a-已落地)。
+> **核心决策**：embedded graph 为拓扑唯一真相源；mode 退化为模板选择器；角色由 mode + 成员顺序派生；runtime_engine 从 Team 编辑器移除（统一 Graph 运行时，native 仅编排页 admin 调试）。
+
+| ID | 任务 | 影响域 | 状态 |
+|----|------|--------|------|
+| A1 | 拓扑字段指纹 `definitionTopologyKey`（mode / synthesizer_agent_id / members 拓扑）+ `rebuildDefinitionGraph` 拓扑→graph 单向派生（layout 未变保留节点 x/y）；编辑器 topology watcher 驱动重建 | `web/.../teams/teamUtils.ts` · `features/teams/useTeamsPage.ts` | ✅ |
+| A2 | 模板去重：后端 `CompileTeamGraph` 返回 `definition_graph_json`（canonical embedded graph spec）；前端 `definitionGraphFromCompileJSON` 同步，本地 `graphUtils` 降级为离线/失败回退 | `api/kratos/team/v1/team.proto` · `team/graph_compile.go`（`resolveDefinitionGraphSpec` / `DefinitionGraphSpecJSON`）· `service/team_compile.go` · `features/orchestration/compileApi.ts` · `useTeamsPage.scheduleGraphSyncFromBackend` | ✅ |
+| A3 | 编辑器联动：mode 选项带模板描述；角色由 `deriveMemberRolesForMode` 派生（sequential 全 worker / parallel 末位 synthesizer 回写 `synthesizer_agent_id` / coordinator 首位 / critic_loop 交替 generator-critic）且派生模式下角色只读展示；parallel 汇总 Agent 派生只读；策略区条件显隐（`parallel_fail` 仅 parallel）；**移除执行引擎选择器**（保存统一 Graph） | `web/.../teams/teamUtils.ts` · `teamConstants.ts` · `TeamEditorDialog.vue` · `TeamsPage.vue` · `useTeamsPage.ts` | ✅ |
+| A4 | 校验改造：definition 携带 embedded graph（`graph.nodes` 非空）时跳过 role-mode 耦合校验（角色兼容 / parallel 汇总 / coordinator / critic_loop 角色要求），结构问题由 CompileTeamGraph 编译期报告；保留 enabled 成员 ≥1 与 agent_id 必填。前后端同 PR 镜像 | `biz/team_usecase.go`（`validateTeamDefinition`）· `web/.../teams/teamUtils.ts`（`validateTeamDefinition`） | ✅ |
+
+**测试覆盖**：
+
+- `web/.../teams/__tests__/teamUtils.spec.ts`：`deriveMemberRolesForMode` 各 mode 派生 / 幂等 / 禁用成员跳过 / synthesizer 回写；`definitionTopologyKey` 指纹稳定性；`rebuildDefinitionGraph` 位置保留
+- `web/.../teams/__tests__/teamValidation.spec.ts`：custom graph 跳过 role-mode 校验 / 保留 enabled+agent_id 校验 / 空 nodes 不跳过
+- `biz/team_usecase_test.go::TestValidateTeamDefinition`：新增 7 例 graph 路径（跳过三类 mode 要求 + 保留 enabled/agent_id + 空 nodes 不跳过）
+
+**验证证据（2026-07-25）**：
+
+- 前端：`pnpm vitest run src/components/teams/__tests__ src/features/teams/__tests__` 71/71 PASS；`pnpm eslint` 改动文件 0 问题
+- 后端：`go build ./internal/biz` exit 0；`internal/agent` 存在并发 WIP 未定义符号（`tryDomainRecipe` / `TopLevelDomain` 等，与本次改动无关）导致 `go test ./internal/biz` 测试二进制（经 `team_graph_linked_test.go` → `internal/team` → `internal/agent` 链）暂不可编译，已用 `-overlay` 隔离该文件运行 `TestValidateTeamDefinition` 验证（见 ADR-08 §验证）
+
+**遗留（Phase B）**：mode 字段只读化（graph 完全接管后 mode 仅存展示）、`definitionToJSON` 中 native 序列化分支清理、`TeamOrchestrateRuntimePanel` native 调试入口随 native 运行时退役移除。

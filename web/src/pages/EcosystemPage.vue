@@ -1,56 +1,100 @@
 <template>
-  <q-page class="app-standard-page">
-    <q-banner rounded class="bg-info text-white q-mb-md">
-      生态商城为<strong>技术预览</strong>：第三方包安装/发布尚未纳入核心
-      SLA，数据可能重置。与系统设置中的「行业预设/附带生态」不同——后者用于一键加载内置行业模板。
+  <q-page class="app-standard-page app-registry-page">
+    <AppPageHero
+      :kicker="t('ecosystemPage.kicker')"
+      :title="t('ecosystemPage.title')"
+      :subtitle="t('ecosystemPage.subtitle')"
+    >
+      <template #actions>
+        <q-btn
+          outline
+          rounded
+          no-caps
+          icon="refresh"
+          :label="t('common.refresh')"
+          :loading="loading"
+          @click="load"
+        />
+        <q-btn
+          color="primary"
+          unelevated
+          rounded
+          no-caps
+          icon="add"
+          :label="t('ecosystemPage.publish')"
+          @click="publishOpen = true"
+        />
+      </template>
+    </AppPageHero>
+
+    <q-banner rounded class="app-info-banner q-mb-md">
+      {{ t('ecosystemPage.previewBanner') }}
     </q-banner>
-    <div class="row items-center q-mb-md">
-      <div class="text-h5 text-weight-bold">生态商城</div>
-      <q-space />
-      <q-btn color="primary" unelevated rounded icon="add" label="发布" @click="publishOpen = true" />
-      <q-btn flat rounded icon="refresh" label="刷新" :loading="loading" class="q-ml-sm" @click="load" />
-    </div>
 
-    <q-input
-      v-model="search"
-      dense
-      outlined
-      clearable
-      label="搜索"
-      class="q-mb-md"
-      @update:model-value="debouncedLoad"
-    />
+    <AppPageToolbar>
+      <q-input
+        v-model="search"
+        class="app-page-toolbar__search"
+        dense
+        outlined
+        clearable
+        debounce="200"
+        :label="t('common.search')"
+        @update:model-value="debouncedLoad"
+      >
+        <template #prepend><q-icon name="search" /></template>
+      </q-input>
+    </AppPageToolbar>
 
-    <div class="row q-col-gutter-md">
+    <q-card v-if="!loading && products.length === 0" flat class="app-registry-empty app-empty-state-center">
+      <q-card-section class="column items-center text-center q-pa-xl">
+        <q-avatar size="72px" color="primary" text-color="white" icon="storefront" />
+        <div class="text-h6 q-mt-md">{{ t('ecosystemPage.emptyTitle') }}</div>
+        <div class="text-body2 text-grey-7 q-mt-sm">{{ t('ecosystemPage.emptyHint') }}</div>
+      </q-card-section>
+    </q-card>
+
+    <div v-else class="row q-col-gutter-md">
       <div v-for="p in products" :key="p.id" class="col-12 col-md-6 col-lg-4">
-        <q-card flat bordered>
-          <q-card-section>
+        <q-card flat class="app-glass-panel full-height column">
+          <q-card-section class="col">
             <div class="text-subtitle1 text-weight-bold">{{ p.display_name || p.name }}</div>
-            <div class="text-caption text-grey-7">{{ p.type }} · v{{ p.version }}</div>
-            <div class="text-body2 q-mt-sm">{{ p.description || '暂无描述' }}</div>
-            <div class="text-caption q-mt-sm">安装 {{ p.install_count }} 次</div>
+            <div class="text-caption text-grey-7">{{ typeLabel(p.type) }} · v{{ p.version }}</div>
+            <div class="text-body2 q-mt-sm">{{ p.description || t('ecosystemPage.noDescription') }}</div>
+            <div class="text-caption q-mt-sm">{{ t('ecosystemPage.installCount', { count: p.install_count }) }}</div>
           </q-card-section>
           <q-card-actions align="right">
             <q-btn
               v-if="!p.installed"
               flat
               color="primary"
-              label="安装"
+              no-caps
+              :label="t('ecosystemPage.install')"
               :loading="installingId === p.id"
               @click="install(p)"
             />
-            <q-chip v-else dense color="positive" text-color="white">已安装</q-chip>
+            <q-chip v-else dense color="positive" text-color="white">{{ t('ecosystemPage.installed') }}</q-chip>
           </q-card-actions>
         </q-card>
       </div>
     </div>
 
     <q-dialog v-model="publishOpen">
-      <q-card class="app-dialog-card app-dialog-card--sm">
-        <q-card-section class="text-h6">发布产品</q-card-section>
-        <q-card-section class="app-dialog-body q-gutter-sm q-pt-none">
-          <q-input v-model="draft.name" class="app-field-md" dense outlined label="标识名" />
-          <q-input v-model="draft.display_name" class="app-field-md" dense outlined label="显示名" />
+      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
+        <q-card-section class="app-glass-dialog__head row items-center justify-between">
+          <div class="app-glass-dialog__title">{{ t('ecosystemPage.publishDialogTitle') }}</div>
+          <q-btn v-close-popup flat round dense icon="close" />
+        </q-card-section>
+        <q-separator />
+        <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-sm">
+          <q-input v-model="draft.name" class="app-field-md" dense outlined :label="t('ecosystemPage.fieldName')" />
+          <q-input
+            v-model="draft.display_name"
+            class="app-field-md"
+            dense
+            outlined
+            :label="t('ecosystemPage.fieldDisplayName')"
+          />
           <q-input
             v-model="draft.description"
             class="app-field-long"
@@ -58,23 +102,26 @@
             outlined
             autogrow
             type="textarea"
-            label="描述"
+            :label="t('ecosystemPage.fieldDescription')"
           />
           <q-select
             v-model="draft.type"
             dense
             outlined
-            label="类型"
-            :options="['skill_pack', 'agent_template', 'tool_bundle']"
+            emit-value
+            map-options
+            :label="t('ecosystemPage.fieldType')"
+            :options="typeOptions"
           />
         </q-card-section>
-        <q-card-actions align="right" class="app-actions-bar">
-          <q-btn v-close-popup flat no-caps label="取消" />
+        <q-separator />
+        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
+          <q-btn v-close-popup flat no-caps :label="t('common.cancel')" />
           <q-btn
             color="primary"
             unelevated
             no-caps
-            label="发布"
+            :label="t('ecosystemPage.publish')"
             :loading="publishing"
             :disable="!draft.name || !draft.display_name || !draft.type"
             @click="publish"
@@ -86,7 +133,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import { useEcosystemPage } from '../features/ecosystem/useEcosystemPage';
+
+const { t } = useI18n();
 
 const {
   products,
@@ -101,4 +154,21 @@ const {
   install,
   publish,
 } = useEcosystemPage();
+
+const typeOptions = computed(() => [
+  { label: t('ecosystemPage.typeSkillPack'), value: 'skill_pack' },
+  { label: t('ecosystemPage.typeAgentTemplate'), value: 'agent_template' },
+  { label: t('ecosystemPage.typeToolBundle'), value: 'tool_bundle' },
+]);
+
+const typeLabelMap: Record<string, string> = {
+  skill_pack: 'typeSkillPack',
+  agent_template: 'typeAgentTemplate',
+  tool_bundle: 'typeToolBundle',
+};
+
+function typeLabel(type: string): string {
+  const key = typeLabelMap[type];
+  return key ? t(`ecosystemPage.${key}`) : type;
+}
 </script>

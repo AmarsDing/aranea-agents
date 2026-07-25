@@ -2069,12 +2069,16 @@ body.body--dark .monitor-trace-dialog
   min-height: 0
   display: flex
   flex-direction: column
+  // Quasar q-tab-panels 默认 #fff 实色底（暗色同样生效），会垫在半透明玻璃卡片下
+  // 导致日志区发白、与奶油/暗色页面底色不一致；统一改为透明
+  background: transparent
 
 .monitor-log-stream-panels .q-tab-panel
   flex: 1
   min-height: 0
   display: flex
   flex-direction: column
+  background: transparent
 
 .app-error-banner,
 .monitor-error-banner
@@ -2281,11 +2285,30 @@ $monitor-log-control-h: 36px
 .monitor-log-toolbar-field--source
   width: 140px
 
+// QSelect 未开 use-input 时 placeholder 只作为属性挂在原生 div 上，Quasar 不会渲染；
+// 用 :has(.ellipsis:empty) 在空值时显示占位文本，与过滤输入框视觉一致
+.monitor-log-toolbar-field--source .q-field__native[placeholder]:has(> .ellipsis:empty)::before
+  content: attr(placeholder)
+  color: var(--color-text-tertiary)
+  pointer-events: none
+
 .monitor-log-toolbar-btn
   height: $monitor-log-control-h !important
   min-height: $monitor-log-control-h !important
   padding: 0 12px !important
   font-size: 13px
+
+// outline 按钮默认 1px currentColor 实色深边框，与系统玻璃边框不一致；
+// 对齐 level toggle 的玻璃质感（浅边框 + 淡玻璃底）
+.monitor-log-toolbar-btn.q-btn--outline
+  background: color-mix(in srgb, var(--canvas-base) 8%, transparent) !important
+  color: var(--color-text-secondary)
+
+.monitor-log-toolbar-btn.q-btn--outline::before
+  border-color: var(--glass-border)
+
+.monitor-log-toolbar-btn.q-btn--outline:hover
+  color: var(--color-text-primary)
 
 .monitor-log-toolbar-btn .q-btn__content
   min-height: $monitor-log-control-h

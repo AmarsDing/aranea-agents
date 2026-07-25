@@ -476,6 +476,11 @@ body:not(.body--dark) .graph-card--add:hover
   border-color: var(--graph-status-interrupted)
   box-shadow: 0 0 8px color-mix(in srgb, var(--graph-status-interrupted) 20%, transparent)
 
+.graph-flow-diamond-wrap
+  position: relative
+  width: 100px
+  height: 100px
+
 .graph-flow-diamond
   width: 100px
   height: 100px
@@ -1820,3 +1825,337 @@ body:not(.body--dark) .graph-card--selected
     border-left: none
     border-top: 1px solid var(--glass-border)
     max-height: 50vh
+
+// ============================================================
+// R2-7 校验错误节点联动：工具栏按钮 / 底部 dock / 节点错误态 / 聚光灯
+// ============================================================
+
+// --- 工具栏校验按钮 ---
+.graph-editor-page__validation-btn
+  border-radius: 8px
+  padding: 2px 10px
+  font-size: 12px
+  font-weight: 700
+  letter-spacing: 0.01em
+
+.graph-editor-page__validation-btn--error
+  color: var(--q-negative)
+  background: color-mix(in srgb, var(--q-negative) 12%, transparent)
+
+  &:hover
+    background: color-mix(in srgb, var(--q-negative) 20%, transparent)
+
+.graph-editor-page__validation-btn--warning
+  color: var(--q-warning)
+  background: color-mix(in srgb, var(--q-warning) 12%, transparent)
+
+  &:hover
+    background: color-mix(in srgb, var(--q-warning) 20%, transparent)
+
+.graph-editor-page__validation-btn--active
+  box-shadow: inset 0 0 0 1px currentColor
+
+.graph-editor-page__validation-pass
+  color: var(--q-positive)
+  background: color-mix(in srgb, var(--q-positive) 10%, transparent)
+  font-size: 12px
+  font-weight: 600
+
+// --- 底部校验 dock（覆盖画布下缘，不挤压布局） ---
+.graph-editor-page
+  position: relative
+
+.graph-validation-dock
+  position: absolute
+  left: 0
+  right: 0
+  bottom: 0
+  z-index: 20
+  display: flex
+  flex-direction: column
+  max-height: 42%
+  border-top: 1px solid var(--glass-border)
+  background: var(--glass-elevated)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.18)
+
+.graph-validation-dock__header
+  display: flex
+  align-items: center
+  gap: 8px
+  padding: 8px 12px
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-border) 70%, transparent)
+  flex-shrink: 0
+
+.graph-validation-dock__header-icon
+  color: var(--color-accent)
+
+.graph-validation-dock__title
+  font-size: 13px
+  font-weight: 800
+  color: var(--color-text-heading)
+
+.graph-validation-dock__filters
+  display: flex
+  gap: 4px
+  margin-left: 8px
+
+.graph-validation-dock__filter
+  border: 1px solid transparent
+  border-radius: 999px
+  padding: 2px 10px
+  font-size: 11px
+  font-weight: 600
+  color: var(--color-text-secondary)
+  background: transparent
+  cursor: pointer
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease
+
+  &:hover
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent)
+
+.graph-validation-dock__filter--active
+  color: var(--color-accent)
+  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent)
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent)
+
+.graph-validation-dock__list
+  overflow-y: auto
+  padding: 6px 8px 10px
+  display: flex
+  flex-direction: column
+  gap: 4px
+
+.graph-validation-dock__row
+  display: flex
+  align-items: flex-start
+  gap: 8px
+  padding: 7px 10px
+  border-radius: 8px
+  border: 1px solid transparent
+  cursor: pointer
+  transition: background 140ms ease, border-color 140ms ease
+
+  &:hover
+    background: color-mix(in srgb, var(--color-accent) 5%, transparent)
+
+.graph-validation-dock__row--error
+  border-left: 3px solid var(--q-negative)
+
+.graph-validation-dock__row--warning
+  border-left: 3px solid var(--q-warning)
+
+.graph-validation-dock__row-icon--error
+  color: var(--q-negative)
+  margin-top: 2px
+
+.graph-validation-dock__row-icon--warning
+  color: var(--q-warning)
+  margin-top: 2px
+
+.graph-validation-dock__row-main
+  flex: 1
+  min-width: 0
+
+.graph-validation-dock__row-head
+  display: flex
+  align-items: center
+  gap: 8px
+  min-width: 0
+
+.graph-validation-dock__node
+  font-size: 12px
+  font-weight: 700
+  color: var(--color-text-primary)
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.graph-validation-dock__code
+  font-size: 10px
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace
+  color: var(--color-text-tertiary)
+  background: color-mix(in srgb, var(--glass-surface) 80%, transparent)
+  border: 1px solid color-mix(in srgb, var(--glass-border) 70%, transparent)
+  border-radius: 4px
+  padding: 0 5px
+  flex-shrink: 0
+
+.graph-validation-dock__message
+  font-size: 12px
+  color: var(--color-text-secondary)
+  line-height: 1.45
+  margin-top: 2px
+
+.graph-validation-dock__suggestion
+  display: flex
+  align-items: center
+  gap: 4px
+  margin-top: 4px
+  font-size: 11px
+  color: var(--color-accent)
+
+.graph-validation-dock__empty
+  padding: 18px
+  text-align: center
+  font-size: 12px
+  color: var(--color-text-tertiary)
+
+// dock 滑入/滑出
+.graph-dock-enter-active,
+.graph-dock-leave-active
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease
+
+.graph-dock-enter-from,
+.graph-dock-leave-to
+  transform: translateY(24px)
+  opacity: 0
+
+// --- 节点错误/警告态（仅问题节点挂脉冲动画，不触发全画布重绘） ---
+.graph-flow-node--issue-error
+  border-color: var(--q-negative)
+  animation: gnode-issue-pulse-error 1.6s ease-in-out infinite
+
+.graph-flow-node--issue-warning
+  border-color: var(--q-warning)
+  animation: gnode-issue-pulse-warning 1.6s ease-in-out infinite
+
+.graph-flow-diamond--issue-error
+  border-color: var(--q-negative)
+  animation: gnode-issue-pulse-error 1.6s ease-in-out infinite
+
+.graph-flow-diamond--issue-warning
+  border-color: var(--q-warning)
+  animation: gnode-issue-pulse-warning 1.6s ease-in-out infinite
+
+@keyframes gnode-issue-pulse-error
+  0%, 100%
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--q-negative) 45%, transparent)
+  50%
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--q-negative) 0%, transparent)
+
+@keyframes gnode-issue-pulse-warning
+  0%, 100%
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--q-warning) 45%, transparent)
+  50%
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--q-warning) 0%, transparent)
+
+// --- 节点内联错误条 ---
+.graph-flow-node__issue-bar
+  display: flex
+  align-items: center
+  gap: 5px
+  padding: 4px 10px
+  font-size: 10px
+  font-weight: 600
+  line-height: 1.3
+
+.graph-flow-node__issue-bar--error
+  color: var(--q-negative)
+  background: color-mix(in srgb, var(--q-negative) 10%, transparent)
+  border-top: 1px solid color-mix(in srgb, var(--q-negative) 25%, transparent)
+
+.graph-flow-node__issue-bar--warning
+  color: var(--q-warning)
+  background: color-mix(in srgb, var(--q-warning) 10%, transparent)
+  border-top: 1px solid color-mix(in srgb, var(--q-warning) 25%, transparent)
+
+.graph-flow-node__issue-text
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+  min-width: 0
+
+// --- 聚光灯气泡（定位后悬浮于节点上方） ---
+// 气泡需溢出节点盒：spotlight 时放开 overflow，同时让 accent / issue-bar 自带圆角避免角落外凸
+.graph-flow-node:has(.graph-flow-node__bubble)
+  overflow: visible
+
+.graph-flow-node__accent
+  border-radius: 14px 14px 0 0
+
+.graph-flow-node__issue-bar:last-child
+  border-radius: 0 0 14px 14px
+
+.graph-flow-node__bubble
+  position: absolute
+  bottom: calc(100% + 10px)
+  left: 50%
+  transform: translateX(-50%)
+  z-index: 30
+  width: max-content
+  max-width: 260px
+  padding: 8px 10px
+  border-radius: 10px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-elevated)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22)
+  animation: gnode-bubble-in 200ms cubic-bezier(0.22, 1, 0.36, 1)
+  pointer-events: none
+
+.graph-flow-diamond__bubble
+  position: absolute
+  bottom: calc(100% + 26px)
+  left: 50%
+  transform: translateX(-50%)
+  z-index: 30
+  width: max-content
+  max-width: 260px
+  padding: 8px 10px
+  border-radius: 10px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-elevated)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22)
+  animation: gnode-bubble-in 200ms cubic-bezier(0.22, 1, 0.36, 1)
+  pointer-events: none
+
+@keyframes gnode-bubble-in
+  from
+    opacity: 0
+    transform: translateX(-50%) translateY(6px)
+  to
+    opacity: 1
+    transform: translateX(-50%) translateY(0)
+
+.graph-flow-node__bubble-code,
+.graph-flow-diamond__bubble-code
+  display: inline-block
+  font-size: 10px
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace
+  font-weight: 700
+  color: var(--q-negative)
+  border: 1px solid color-mix(in srgb, var(--q-negative) 35%, transparent)
+  border-radius: 4px
+  padding: 0 5px
+  margin-bottom: 4px
+
+.graph-flow-node__bubble-message,
+.graph-flow-diamond__bubble-message
+  font-size: 11px
+  line-height: 1.45
+  color: var(--color-text-primary)
+  white-space: normal
+  word-break: break-word
+
+.graph-flow-node__bubble-suggestion,
+.graph-flow-diamond__bubble-suggestion
+  display: flex
+  align-items: center
+  gap: 4px
+  margin-top: 5px
+  font-size: 11px
+  color: var(--color-accent)
+
+// --- 聚光灯下其余节点压暗 ---
+.graph-node--dimmed
+  opacity: 0.32
+  filter: saturate(0.6)
+  transition: opacity 240ms ease, filter 240ms ease
+
+.vue-flow__node
+  transition: opacity 240ms ease, filter 240ms ease

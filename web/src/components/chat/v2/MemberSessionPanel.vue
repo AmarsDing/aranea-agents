@@ -8,7 +8,7 @@
 -->
 <template>
   <div class="member-session-panel" :class="`member-session-panel--${memberSession.Status}`" :data-agent-key="memberSession.AgentKey">
-    <!-- 头部三段式：左（avatar+名称+status）| 中（最新动作）| 右（时间） -->
+    <!-- 头部：左（avatar+名称+status+时间）| 中（最新动作） -->
     <div class="member-header" @click="toggleCollapse">
       <div class="member-header__left">
         <q-icon :name="collapsed ? 'expand_more' : 'expand_less'" size="16px" class="member-header__icon" />
@@ -16,6 +16,7 @@
         <q-icon v-else name="person" size="20px" class="member-header__avatar-fallback" />
         <span class="member-header__name">{{ memberSession.AgentName }}</span>
         <q-badge :color="statusColor" class="member-header__status">{{ statusLabel }}</q-badge>
+        <span class="member-header__time">{{ formattedTime }}</span>
       </div>
       <div v-if="latestAction" class="member-header__center">
         <q-icon
@@ -24,9 +25,6 @@
           :class="{ 'member-header__action-icon--active': latestAction.active }"
         />
         <span class="member-header__action-text ellipsis">{{ latestAction.text }}</span>
-      </div>
-      <div class="member-header__right">
-        <span class="member-header__time">{{ formattedTime }}</span>
       </div>
     </div>
 

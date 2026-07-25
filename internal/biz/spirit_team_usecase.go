@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -89,6 +90,11 @@ type SpiritTeamController interface {
 	// when resolvable, the reader team's InputContract is validated against the
 	// upstream team's declared Deliverables before the read (Phase B).
 	ReadUpstreamDeliverable(ctx context.Context, readerSessionID, teamID string, maxChars int) (UpstreamDeliverableContent, error)
+	// HasRealDeliverable backs the service-layer deliverable gate
+	// (2026-07-25 Fix 1): a completed-callback DAG team without a graph
+	// state deliverable is flipped to failed BEFORE any status transition,
+	// so "no deliverable" can never masquerade as success.
+	HasRealDeliverable(ctx context.Context, team Team) (bool, error)
 }
 
 // TimeoutHandler is called when a team times out. Implemented by the service
@@ -993,12 +999,32 @@ type teamFullOutput struct {
 	SessionID string // team main session the content was read from
 }
 
+// resolveTeamMainSessionID returns the team's main session ID — the session
+// whose ID keys the trpc graph state. Member agent sessions share the same
+// team_id and Search ordering is not guaranteed, so the main session is
+// identified by SessionType; when no typed session exists (legacy rows) the
+// first hit is used. "" (nil error) means the team has no session at all.
+func (u *SpiritTeamUsecase) resolveTeamMainSessionID(ctx context.Context, teamID string) (string, error) {
+	result, err := u.sessionUC.Search(ctx, SessionSearchQuery{TeamID: teamID, Limit: 10})
+	if err != nil {
+		return "", err
+	}
+	if len(result.Items) == 0 {
+		return "", nil
+	}
+	for _, s := range result.Items {
+		if s.SessionType == string(SessionTypeTeam) {
+			return s.ID, nil
+		}
+	}
+	return result.Items[0].ID, nil
+}
+
 // extractTeamFullOutput resolves the team main session and returns its final
 // deliverable content WITHOUT truncation. Shared by ExtractTeamOutput
-// (summary view), WriteDeliverablesToSession (P2 envelope) and
-// ReadUpstreamDeliverable (full-text tool).
+// (summary view) and ReadUpstreamDeliverable (full-text tool).
 func (u *SpiritTeamUsecase) extractTeamFullOutput(ctx context.Context, teamID string) (teamFullOutput, error) {
-	result, searchErr := u.sessionUC.Search(ctx, SessionSearchQuery{TeamID: teamID, Limit: 10})
+	teamSessionID, searchErr := u.resolveTeamMainSessionID(ctx, teamID)
 	if searchErr != nil {
 		u.lg.Warn("搜索团队 session 失败",
 			loggateway.StepID("spirit.extract_output.search_err"),
@@ -1007,24 +1033,15 @@ func (u *SpiritTeamUsecase) extractTeamFullOutput(ctx context.Context, teamID st
 		)
 		return teamFullOutput{}, searchErr
 	}
-	if len(result.Items) == 0 {
+	if teamSessionID == "" {
 		return teamFullOutput{}, nil
-	}
-	// Member agent sessions share the same team_id and Search ordering is not
-	// guaranteed — identify the team main session by SessionType, not position.
-	teamSession := result.Items[0]
-	for _, s := range result.Items {
-		if s.SessionType == string(SessionTypeTeam) {
-			teamSession = s
-			break
-		}
 	}
 
 	// Primary source (production): the team session's final completed reply
 	// step, read with exact session_id semantics. Legacy ChatMessage storage
 	// is only a fallback when no step reader is wired or no reply step exists.
 	if u.stepReader != nil {
-		steps, stepErr := u.stepReader.ListStepsBySessionID(ctx, teamSession.ID)
+		steps, stepErr := u.stepReader.ListStepsBySessionID(ctx, teamSessionID)
 		if stepErr != nil {
 			u.lg.Warn("获取团队步骤失败",
 				loggateway.StepID("spirit.extract_output.step_err"),
@@ -1042,11 +1059,11 @@ func (u *SpiritTeamUsecase) extractTeamFullOutput(ctx context.Context, teamID st
 			if content == "" {
 				continue
 			}
-			return teamFullOutput{Content: content, SessionID: teamSession.ID}, nil
+			return teamFullOutput{Content: content, SessionID: teamSessionID}, nil
 		}
 	}
 
-	messages, msgErr := u.sessionUC.ListMessagesRecent(ctx, teamSession.ID, SpiritRecentMessageCount)
+	messages, msgErr := u.sessionUC.ListMessagesRecent(ctx, teamSessionID, SpiritRecentMessageCount)
 	if msgErr != nil {
 		u.lg.Warn("获取团队消息失败",
 			loggateway.StepID("spirit.extract_output.msg_err"),
@@ -1057,7 +1074,7 @@ func (u *SpiritTeamUsecase) extractTeamFullOutput(ctx context.Context, teamID st
 	}
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role == "assistant" {
-			return teamFullOutput{Content: messages[i].ContentMarkdown, SessionID: teamSession.ID}, nil
+			return teamFullOutput{Content: messages[i].ContentMarkdown, SessionID: teamSessionID}, nil
 		}
 	}
 	return teamFullOutput{}, nil
@@ -1308,11 +1325,20 @@ func (u *SpiritTeamUsecase) RecordTeamCompletion(ctx context.Context, team Team,
 	// ScheduleDependentTeams / PlanExecutor.NotifyTeamCompletion.
 	if team.DagNodeID != "" {
 		if werr := u.WriteDeliverablesToSession(ctx, team.ID); werr != nil {
-			u.lg.Warn("交付物落库失败（下游将回退到即时提取）",
-				loggateway.StepID("spirit.team.completion.deliverables"),
-				loggateway.Str("team_id", team.ID),
-				loggateway.Err(werr),
-			)
+			if errors.Is(werr, ErrNoRealDeliverable) {
+				// 2026-07-25 Fix 1 双保险：service 闸门已把无交付物团队翻转
+				// 为 failed（正常不会走到这里）；静默跳过，不产生 Warn 噪音。
+				u.lg.Info("团队无真实交付物，跳过交付物落库",
+					loggateway.StepID("spirit.team.completion.deliverables"),
+					loggateway.Str("team_id", team.ID),
+				)
+			} else {
+				u.lg.Warn("交付物落库失败（下游团队将无注入输入）",
+					loggateway.StepID("spirit.team.completion.deliverables"),
+					loggateway.Str("team_id", team.ID),
+					loggateway.Err(werr),
+				)
+			}
 		}
 	}
 
@@ -1756,15 +1782,25 @@ func (u *SpiritTeamUsecase) resolveVerificationGates(ctx context.Context, t Team
 // XC-03b: Deliverable Passing Mechanism
 // ---------------------------------------------------------------------------
 
-// WriteDeliverablesToSession persists the team's output as a P2 DeliverableRef
-// envelope in the Team's DeliverablesOutput field (JSON object keyed by
-// dag_node_id) so downstream teams can consume it via InjectUpstreamDeliverables
-// and retrieve the full text on demand via read_upstream_deliverable.
+// ErrNoRealDeliverable marks a DAG team that has no graph-state deliverable —
+// set_deliverable was never called (or the state is unreadable). Reply text
+// must NOT be dressed up as a deliverable: a team that only asked clarifying
+// questions produced nothing, and persisting its reply as a "deliverable" is
+// the root of the 19:29 false-success chain (2026-07-25 Fix 1).
+var ErrNoRealDeliverable = errors.New("no real deliverable: set_deliverable was never called")
+
+// WriteDeliverablesToSession persists the team's REAL deliverable — the graph
+// final-state "deliverable" map written via set_deliverable — as a P2
+// DeliverableRef envelope in the Team's DeliverablesOutput field (JSON object
+// keyed by dag_node_id) so downstream teams can consume it via
+// InjectUpstreamDeliverables and retrieve the full text on demand via
+// read_upstream_deliverable.
 //
-// The output is written for every completed DAG team (DagNodeID != ""),
-// regardless of whether formal DeliverableContracts are declared — contract
-// declarations are a P1 planner feature; the persisted output cache must work
-// without them (P0-② / TECH-DEBT #B-03 fix).
+// 2026-07-25 Fix 1: the ONLY source is the graph state deliverable. Reply
+// text is never consulted — a team that produced no state deliverable gets
+// ErrNoRealDeliverable and no envelope write (the service-layer gate flips
+// such teams to failed before this is normally called; RecordTeamCompletion
+// keeps a quiet second line of defense).
 //
 // Domain: Delivery — write upstream team deliverables to team record for downstream consumption.
 func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, teamID string) error {
@@ -1776,42 +1812,47 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 		return nil // not a DAG node — nothing to key the output by
 	}
 
-	// Extract full (untruncated) team output — the envelope records the full
-	// size while the summary stays within MaxSummaryLen.
-	full, extractErr := u.extractTeamFullOutput(ctx, teamID)
-	if extractErr != nil {
-		u.lg.Warn("提取团队输出失败，跳过交付物写入",
+	anchor, ok := u.stateDeliverableChannel(t)
+	if !ok {
+		return ErrNoRealDeliverable // channel disabled → no real deliverable can exist
+	}
+	teamSessionID, err := u.resolveTeamMainSessionID(ctx, t.ID)
+	if err != nil {
+		return err
+	}
+	if teamSessionID == "" {
+		return ErrNoRealDeliverable
+	}
+	stateDeliv, err := u.graphDelivReader.ReadGraphDeliverable(ctx, anchor, ctxuser.TRPCUserKey(ctx), teamSessionID)
+	if err != nil {
+		u.lg.Warn("graph state deliverable 读取失败，按无真实交付物处理",
 			loggateway.StepID("spirit.write_deliverables"),
 			loggateway.Str("team_id", teamID),
-			loggateway.Err(extractErr),
+			loggateway.Err(err),
 		)
-		return nil
+		return ErrNoRealDeliverable
 	}
-	if full.Content == "" {
-		return nil
+	if len(stateDeliv) == 0 {
+		return ErrNoRealDeliverable
 	}
 
-	// B.10.15.4 Graph StateFields bridge: teams with enable_state_deliverable
-	// prefer the graph final-state deliverable — its "summary" key becomes the
-	// envelope summary source and the remaining keys land in StructuredJSON.
-	// Any failure degrades to the reply-extraction source above.
-	summarySource := full.Content
-	structuredJSON := ""
-	var cognition *DeliverableCognition
-	if stateDeliv := u.readGraphStateDeliverable(ctx, t, full.SessionID); len(stateDeliv) > 0 {
-		if s, ok := stateDeliv[deliverableReservedKeySummary].(string); ok && strings.TrimSpace(s) != "" {
-			summarySource = s
-		}
-		cognition = extractStateCognition(stateDeliv[deliverableReservedKeyCognition])
-		structuredJSON = marshalNonReservedStateKeys(stateDeliv)
+	// The envelope is 100% state-sourced: the reserved "summary" key becomes
+	// the summary; when absent the summary derives from the business keys'
+	// JSON (never from the reply). Non-reserved keys land in StructuredJSON.
+	summarySource, _ := stateDeliv[deliverableReservedKeySummary].(string)
+	summarySource = strings.TrimSpace(summarySource)
+	structuredJSON := marshalNonReservedStateKeys(stateDeliv)
+	if summarySource == "" {
+		summarySource = structuredJSON
 	}
+	cognition := extractStateCognition(stateDeliv[deliverableReservedKeyCognition])
 
 	sizeChars := utf8.RuneCountInString(summarySource)
 	ref := DeliverableRef{
 		Summary:        TruncateRunes(summarySource, MaxSummaryLen),
 		KeyFindings:    extractKeyFindings(summarySource),
 		TeamID:         t.ID,
-		TeamSessionID:  full.SessionID,
+		TeamSessionID:  teamSessionID,
 		SizeChars:      sizeChars,
 		Truncated:      sizeChars > MaxSummaryLen,
 		StructuredJSON: structuredJSON,
@@ -1900,33 +1941,52 @@ func (p stateDeliverableProbe) anchorAgentID() string {
 	return first
 }
 
-// readGraphStateDeliverable loads the graph final-state "deliverable" map for
-// teams that enabled the state channel. Returns nil (→ reply-extraction
-// fallback) when the channel is disabled, the anchor is unresolvable, no
-// reader is wired, or the state is unreadable — the bridge is best-effort and
-// never blocks the deliverable write.
-func (u *SpiritTeamUsecase) readGraphStateDeliverable(ctx context.Context, t Team, teamSessionID string) map[string]any {
-	if u.graphDelivReader == nil || teamSessionID == "" || strings.TrimSpace(t.DefinitionJSON) == "" {
-		return nil
+// HasRealDeliverable reports whether the team produced a REAL deliverable —
+// a non-empty graph-state "deliverable" map written via set_deliverable.
+// Reply text does not count. (false, nil) covers every "no deliverable"
+// shape (non-DAG team, channel disabled, no session, empty state);
+// (false, err) is reserved for infra failures so the caller can distinguish
+// "did not produce" from "could not verify" (2026-07-25 Fix 1 gate).
+func (u *SpiritTeamUsecase) HasRealDeliverable(ctx context.Context, team Team) (bool, error) {
+	if team.DagNodeID == "" {
+		return false, nil // non-DAG teams carry no deliverable obligation
 	}
-	var probe stateDeliverableProbe
-	if err := json.Unmarshal([]byte(t.DefinitionJSON), &probe); err != nil || !probe.EnableStateDeliverable {
-		return nil
+	anchor, ok := u.stateDeliverableChannel(team)
+	if !ok {
+		return false, nil
 	}
-	anchor := probe.anchorAgentID()
-	if anchor == "" {
-		return nil
+	teamSessionID, err := u.resolveTeamMainSessionID(ctx, team.ID)
+	if err != nil {
+		return false, err
+	}
+	if teamSessionID == "" {
+		return false, nil
 	}
 	stateDeliv, err := u.graphDelivReader.ReadGraphDeliverable(ctx, anchor, ctxuser.TRPCUserKey(ctx), teamSessionID)
 	if err != nil {
-		u.lg.Warn("graph state deliverable 读取失败，回退 reply 提取",
-			loggateway.StepID("spirit.write_deliverables"),
-			loggateway.Str("team_id", t.ID),
-			loggateway.Err(err),
-		)
-		return nil
+		return false, err
 	}
-	return stateDeliv
+	return len(stateDeliv) > 0, nil
+}
+
+// stateDeliverableChannel resolves the graph-state deliverable channel
+// coordinates for a team. ok=false means no real deliverable can exist:
+// no reader wired, no/undecodable DefinitionJSON, enable_state_deliverable
+// off, or no anchor agent. The anchor mirrors the runner's AppName decision
+// (stateDeliverableProbe.anchorAgentID) so the state is read under the same
+// session key the run persisted to.
+func (u *SpiritTeamUsecase) stateDeliverableChannel(t Team) (anchor string, ok bool) {
+	if u.graphDelivReader == nil || strings.TrimSpace(t.DefinitionJSON) == "" {
+		return "", false
+	}
+	var probe stateDeliverableProbe
+	if err := json.Unmarshal([]byte(t.DefinitionJSON), &probe); err != nil || !probe.EnableStateDeliverable {
+		return "", false
+	}
+	if anchor = probe.anchorAgentID(); anchor == "" {
+		return "", false
+	}
+	return anchor, true
 }
 
 // Reserved keys of the graph deliverable state map. Both are extracted into
@@ -2012,23 +2072,14 @@ func (u *SpiritTeamUsecase) InjectUpstreamDeliverables(ctx context.Context, down
 			continue
 		}
 
-		// Try to read from persisted deliverable output cache first
+		// Read the persisted deliverable envelope. 2026-07-25 Fix 1: the reply
+		// extraction fallback is REMOVED — after the deliverable gate a
+		// completed team always has an envelope, so a missing/empty one means
+		// the write failed; degrade to "no injection" rather than fabricating
+		// downstream input from reply text.
 		ref, refOK := u.readDeliverableRef(upstream)
 		if !refOK || ref.Summary == "" {
-			// Fallback: extract from team output directly and shape it as a
-			// ref so the truncation guidance below applies uniformly.
-			full, extractErr := u.extractTeamFullOutput(ctx, upstream.ID)
-			if extractErr != nil || full.Content == "" {
-				continue
-			}
-			sizeChars := utf8.RuneCountInString(full.Content)
-			ref = DeliverableRef{
-				Summary:       TruncateRunes(full.Content, MaxSummaryLen),
-				TeamID:        upstream.ID,
-				TeamSessionID: full.SessionID,
-				SizeChars:     sizeChars,
-				Truncated:     sizeChars > MaxSummaryLen,
-			}
+			continue
 		}
 		// Legacy plain-string values carry no team_id; the caller always knows it.
 		if ref.TeamID == "" {

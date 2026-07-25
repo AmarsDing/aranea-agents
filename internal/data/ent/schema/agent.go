@@ -61,5 +61,8 @@ func (Agent) Fields() []ent.Field {
 		// P2-B: tenant isolation. empty = shared/legacy (visible to all workspaces);
 		// non-empty = tenant-private (visible only to owning workspace).
 		field.String("workspace_id").Default("").Comment("owning workspace ID; empty = shared/system builtin"),
+		// B.10.21: mission-driven matching. 出生登记于 AgentFactory；手工 Agent 默认空。
+		field.Text("mission_statement").Default("").Comment("agent 长期使命陈述（使命驱动匹配）"),
+		field.String("domain_path").Default("").MaxLen(256).Comment("归一化领域路径（如 创作/文学）"),
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/graph"
 	graphtrpc "aranea-agents/internal/graph/trpc"
+	deliverabletools "aranea-agents/internal/tools/deliverable"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -365,13 +366,42 @@ func NewGraphBuilderFactory(
 	}
 }
 
+// hasDeliverableStateField reports whether the graph schema carries the
+// deliverable StateField injected by EnableStateDeliverable
+// (team.finalizeRuntimeGraphConfig → ensureDeliverableStateField).
+func hasDeliverableStateField(cfg biz.GraphBuildConfig) bool {
+	for _, sf := range cfg.StateFields {
+		if sf.Name == biz.DeliverableStateKey {
+			return true
+		}
+	}
+	return false
+}
+
+// resolversFor returns the resolver set to use when building the given graph.
+// C1/C3: when the graph carries the deliverable StateField (injected by
+// EnableStateDeliverable), every agent node must be built with the
+// set_deliverable/get_deliverable tools so members can actually read and
+// write that state field. The resolver is cloned, not mutated, so plain
+// graphs keep building tool-free agents.
+func (f *trpcGraphBuilderFactory) resolversFor(cfg biz.GraphBuildConfig) graphtrpc.GraphNodeResolverSet {
+	resolvers := f.resolvers
+	if hasDeliverableStateField(cfg) {
+		if cat, ok := resolvers.Agents.(*CatalogAgentResolver); ok {
+			resolvers.Agents = cat.WithExtraCustomTools(deliverabletools.Tools()...)
+		}
+	}
+	return resolvers
+}
+
 func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, spiritSessionID, graphID, execID, lineageID string) (*trpcGraphRuntime, error) {
+	resolvers := f.resolversFor(cfg)
 	// Use the NodeAgents variant so the GraphAgent can resolve FindSubAgent
 	// calls by node ID (e.g. "member-1") rather than by agent Info().Name
 	// (e.g. "key-a1"). Without this, agent node execution fails with
 	// "parent agent not found in state for agent node X" once the parent
 	// agent is injected, because FindSubAgent(nodeID) returns nil.
-	g, subAgents, nodeAgents, err := graphtrpc.BuildStateGraphWithRegistryAndNodeAgents(ctx, cfg, f.registry, &f.resolvers, f.lg)
+	g, subAgents, nodeAgents, err := graphtrpc.BuildStateGraphWithRegistryAndNodeAgents(ctx, cfg, f.registry, &resolvers, f.lg)
 	if err != nil {
 		return nil, err
 	}

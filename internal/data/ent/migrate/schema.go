@@ -73,6 +73,8 @@ var (
 		{Name: "agent_variant", Type: field.TypeString, Default: "general"},
 		{Name: "variant_description", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "workspace_id", Type: field.TypeString, Default: ""},
+		{Name: "mission_statement", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "domain_path", Type: field.TypeString, Size: 256, Default: ""},
 	}
 	// AgentsTable holds the schema information for the "agents" table.
 	AgentsTable = &schema.Table{

@@ -49,9 +49,9 @@ func main() {
 			default:
 				s = fmt.Sprintf("%v", t)
 			}
-			if len(s) > 80 {
-				s = s[:80] + "..."
-			}
+			if len(s) > 4000 {
+			s = s[:4000] + "..."
+		}
 			fmt.Printf("%s=%q ", cols[i], s)
 		}
 		fmt.Println()

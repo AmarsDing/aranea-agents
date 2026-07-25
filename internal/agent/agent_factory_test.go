@@ -71,7 +71,13 @@ func (s *fakeFactoryAgentStore) GetAgentByAgentKey(_ context.Context, agentKey s
 
 // Unused AgentReader methods
 func (s *fakeFactoryAgentStore) SearchAgents(_ context.Context, _ biz.AgentListQuery) (biz.AgentListResult, error) {
-	return biz.AgentListResult{}, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	items := make([]biz.Agent, 0, len(s.agents))
+	for _, a := range s.agents {
+		items = append(items, a)
+	}
+	return biz.AgentListResult{Items: items, Total: len(items)}, nil
 }
 func (s *fakeFactoryAgentStore) GetAgentByID(_ context.Context, _ string) (biz.Agent, error) {
 	return biz.Agent{}, shared.ErrNotFound
@@ -690,5 +696,146 @@ func TestAgentFactory_EnsureAgent_ConfirmReplyError(t *testing.T) {
 	// No agent may be persisted after reply error.
 	if len(store.agents) != 0 {
 		t.Errorf("agents=%d want 0 (no agent on reply error)", len(store.agents))
+	}
+}
+
+// --- Task 6: key 修正 + 出生登记 + 同域复用 ---
+
+func TestAgentFactory_BuildDynamicAgentKey_DomainDerived(t *testing.T) {
+	factory := &AgentFactoryImpl{lg: loggateway.NewNoop()}
+	// 同域同模型、任务文本不同 → 同一 key（"写诗"/"写散文"复用同一 Agent）
+	p1 := biz.TaskProfile{DomainPath: "创作/文学", TaskDescription: "写一首诗", PreferredModel: "gpt-4.1-mini"}
+	p2 := biz.TaskProfile{DomainPath: "创作/文学", TaskDescription: "写一篇散文", PreferredModel: "gpt-4.1-mini"}
+	if k1, k2 := factory.buildDynamicAgentKey(p1), factory.buildDynamicAgentKey(p2); k1 != k2 {
+		t.Errorf("same domain+model must derive same key: %q vs %q", k1, k2)
+	}
+	// 模型不同 → key 不同
+	p3 := p1
+	p3.PreferredModel = "gpt-4.1"
+	if k1, k3 := factory.buildDynamicAgentKey(p1), factory.buildDynamicAgentKey(p3); k1 == k3 {
+		t.Error("different model must derive different key")
+	}
+	// DomainPath 为空 → 旧行为（任务文本参与哈希）
+	p4 := biz.TaskProfile{Domain: "engineering", TaskDescription: "task A"}
+	p5 := biz.TaskProfile{Domain: "engineering", TaskDescription: "task B"}
+	if k4, k5 := factory.buildDynamicAgentKey(p4), factory.buildDynamicAgentKey(p5); k4 == k5 {
+		t.Error("legacy path: different task text must derive different key")
+	}
+}
+
+func TestAgentFactory_ParseAgentDefinition_MissionDomain(t *testing.T) {
+	factory := &AgentFactoryImpl{lg: loggateway.NewNoop()}
+	text := `{"display_name":"文学写手","description":"擅长诗歌","provider":"openrouter","model":"gpt-4.1-mini","system_prompt":"...","mission_statement":"中文诗歌与散文创作写手","domain_path":"创作/诗歌"}`
+	def, err := factory.parseAgentDefinition(text, biz.TaskProfile{Domain: "创作", TaskDescription: "写诗"}, biz.AgentTemplate{})
+	if err != nil {
+		t.Fatalf("parse err: %v", err)
+	}
+	if def.MissionStatement != "中文诗歌与散文创作写手" {
+		t.Errorf("MissionStatement=%q", def.MissionStatement)
+	}
+	if def.DomainPath != "创作" {
+		t.Errorf("DomainPath=%q want %q（词表外二级域归并一级域）", def.DomainPath, "创作")
+	}
+}
+
+func TestAgentFactory_ParseAgentDefinition_MissionFallback(t *testing.T) {
+	factory := &AgentFactoryImpl{lg: loggateway.NewNoop()}
+	text := `{"display_name":"x","description":"通用描述","provider":"p","model":"m"}`
+	def, err := factory.parseAgentDefinition(text, biz.TaskProfile{TaskDescription: "t"}, biz.AgentTemplate{})
+	if err != nil {
+		t.Fatalf("parse err: %v", err)
+	}
+	if def.MissionStatement != "通用描述" {
+		t.Errorf("mission must fallback to description, got %q", def.MissionStatement)
+	}
+}
+
+// embedFunc 适配器，测试用 fake embedder。
+type embedFunc func(ctx context.Context, texts []string) ([][]float32, error)
+
+func (f embedFunc) Embed(ctx context.Context, texts []string) ([][]float32, error) { return f(ctx, texts) }
+func (f embedFunc) Dim() int                                                       { return 3 }
+
+func TestAgentFactory_EnsureAgent_SameDomainMissionReuse(t *testing.T) {
+	store := newFakeFactoryAgentStore()
+	// 预置同域 Agent（使命与"写诗"高度相似 → embedding 相同向量）
+	store.agents["factory-existing"] = biz.Agent{
+		AgentKey: "factory-existing", DisplayName: "文学写手", Status: "active",
+		DomainPath: "创作/文学", MissionStatement: "中文诗歌散文创作",
+	}
+	bus := &factoryCaptureBus{}
+	model := &fakeFactoryModel{
+		responses: []*trpcmodel.Response{
+			{Choices: []trpcmodel.Choice{{Message: trpcmodel.Message{Content: validFactoryJSONResponse()}}}},
+		},
+	}
+	factory := newTestAgentFactory(model, store, defaultFactoryTemplates(), bus)
+	factory.embedder = embedFunc(func(_ context.Context, texts []string) ([][]float32, error) {
+		out := make([][]float32, len(texts))
+		for i := range out {
+			out[i] = []float32{1, 0, 0} // 全部同向 → cosine = 1.0 ≥ 0.85
+		}
+		return out, nil
+	})
+
+	key, err := factory.EnsureAgent(context.Background(), biz.TaskProfile{
+		DomainPath: "创作/文学", TaskDescription: "写一首春天的诗",
+	})
+	if err != nil {
+		t.Fatalf("EnsureAgent err: %v", err)
+	}
+	if key != "factory-existing" {
+		t.Errorf("key=%q want factory-existing（同域使命相似复用）", key)
+	}
+	if len(store.agents) != 1 {
+		t.Errorf("agents=%d want 1（未创建新 Agent）", len(store.agents))
+	}
+	if len(bus.getPublished()) != 0 {
+		t.Errorf("published=%d want 0（复用不发事件）", len(bus.getPublished()))
+	}
+}
+
+func TestAgentFactory_EnsureAgent_DomainReuseBelowThreshold(t *testing.T) {
+	store := newFakeFactoryAgentStore()
+	store.agents["factory-existing"] = biz.Agent{
+		AgentKey: "factory-existing", DisplayName: "科幻写手", Status: "active",
+		DomainPath: "创作/文学", MissionStatement: "硬科幻小说创作",
+	}
+	model := &fakeFactoryModel{
+		responses: []*trpcmodel.Response{
+			{Choices: []trpcmodel.Choice{{Message: trpcmodel.Message{Content: validFactoryJSONResponse()}}}},
+		},
+	}
+	factory := newTestAgentFactory(model, store, defaultFactoryTemplates(), &factoryCaptureBus{})
+	factory.embedder = embedFunc(func(_ context.Context, texts []string) ([][]float32, error) {
+		out := make([][]float32, len(texts))
+		for i := range out {
+			out[i] = []float32{1, 0, 0}
+		}
+		if len(out) > 1 {
+			out[1] = []float32{0, 1, 0} // 正交 → cosine = 0 < 0.85
+		}
+		return out, nil
+	})
+
+	key, err := factory.EnsureAgent(context.Background(), biz.TaskProfile{
+		DomainPath: "创作/文学", TaskDescription: "写一首春天的诗",
+	})
+	if err != nil {
+		t.Fatalf("EnsureAgent err: %v", err)
+	}
+	if key == "factory-existing" {
+		t.Error("similarity below 0.85 must create new agent")
+	}
+	if len(store.agents) != 2 {
+		t.Errorf("agents=%d want 2（新建落库）", len(store.agents))
+	}
+	// 新 Agent 出生登记 mission/domain
+	created, _ := store.GetAgentByAgentKey(context.Background(), key)
+	if created.DomainPath != "创作" {
+		t.Errorf("created.DomainPath=%q want %q（definition 归一化落库）", created.DomainPath, "创作")
+	}
+	if created.MissionStatement == "" {
+		t.Error("created.MissionStatement must not be empty（出生登记）")
 	}
 }

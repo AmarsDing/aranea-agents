@@ -62,6 +62,10 @@ type TaskPlan struct {
 	StrategyReason string                `json:"strategy_reason"`
 	TopologyHint   TopologyType          `json:"topology_hint"`
 
+	// DomainPath 是 plan 级主导域（PrimaryDomainPath(SubTasks) 推导，内存字段，
+	// 不持久化——重读 plan 时由 SubTasks 重推导）。
+	DomainPath string `json:"domain_path,omitempty"`
+
 	// Memory hit
 	MemoryHit *MemoryHit `json:"memory_hit"`
 
@@ -98,6 +102,9 @@ type SubTask struct {
 	// P1 形式契约（B.10.15.2）：LLM 输出 + 确定性兜底派生；advisory，不阻断。
 	Deliverables  []DeliverableContract `json:"deliverables,omitempty"`
 	InputContract []DeliverableContract `json:"input_contract,omitempty"`
+	// DomainPath 是 planner LLM 顺带输出的归一化领域路径（B.10.21.4）。
+	// advisory：空不阻断，匹配管线落回旧行为。
+	DomainPath string `json:"domain_path,omitempty"`
 }
 
 // PlanTaskDAG represents the dependency graph of subtasks within a TaskPlan.

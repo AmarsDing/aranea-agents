@@ -128,8 +128,6 @@ var ProviderSet = wire.NewSet(
 	NewSpiritTeamAssembler,
 	NewSpiritSynthesisService,
 	NewSynthesisModelAdapter,
-	// TeamStarter 依赖的窄接口（包内未导出），绑定到 SpiritSynthesisService。
-	wire.Bind(new(synthesisResultService), new(*SpiritSynthesisService)),
 	NewTeamStarter,
 	NewSkillEvolutionService,
 	NewSkillIntelligenceService,

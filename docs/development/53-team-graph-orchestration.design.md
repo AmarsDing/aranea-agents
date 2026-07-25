@@ -382,7 +382,7 @@ web/src/features/teams/
 
 `TeamOrchestrateRuntimePanel.vue`（功能等价于原设计 `TeamRuntimeSection.vue`）：
 
-- runtime_engine 切换（graph / native）
+- runtime_engine 切换（graph / native，**仅平台管理员调试入口**；Team 编辑器已移除该选项，见 §十二 ADR-08 A3）
 - failure_policy 配置
 - 编译状态展示
 
@@ -445,18 +445,27 @@ Runner E2E：EP-TEST-TG-01（Team sequential Run + WS status 序列）。
 **设计**：
 
 - **参数化 CondFuncRef**：`biz.CriticLoopCondFuncRefForConfig(threshold, maxIterations)` 生成 `critic_loop[@<threshold>][#<maxIterations>]`，`biz.ParseCriticLoopCondFuncRef` 解析。编译期由 `team/embedded_graph.go` 将 `critic_loop.score_threshold` / `critic_loop.max_iterations`（未配置时默认上限 3）写入 `ConditionalEdgeDef.CondFuncRef`；`graph/adapter.EnsureCriticLoopCondFuncs` 按 ref 注册参数化条件函数实例，`ResolveBuildConfig` 可解析。
-- **迭代上限强制收敛**：critic 轮次 = 携带 `orchestration_control` 工具调用的消息数（`collectCriticMessages`，每轮评估一条）；达到 `maxIterations` 仍未批准 → 返回 `approved` 强制收敛（Info 日志），循环有界。
+- **迭代上限强制收敛**：critic 轮次 = 携带 `orchestration_control` 工具调用的消息数（`collectCriticMessages`，每轮评估一条）；达到 `maxIterations` 仍未批准 → 返回 `approved_forced` 强制收敛（Info 日志），循环有界。`approved_forced` 与真实批准的 `approved` 区分路由键，便于观测「质量收敛」与「上限兜底收敛」；PathMap 须将两键都映射到 `biz.EndNodeID`。
 - **loop-until-dry 提前收敛**：最近两轮 critic 反馈的归一化内容相同且非空（`criticFeedbackDry`：小写化 + 空白折叠）→ 继续迭代无收益，提前返回 `approved`（Info 日志）。
-- 既有判定链不变：`orchestration_control` 结构化决策 → 关键词 `approved`（含否定排除）→ `score_threshold` 分数判定。
+- **判定链（显式信号优先于启发式）**：`orchestration_control` 结构化裁决（`IsApprovedDecision`：显式 action 优先于 score，`action=retry` 等非批准值不被分数推翻）→ 评审文本中/英文批准词（中文批准词带紧邻否定窗口判定，见 Phase 9.2）→ `score_threshold` 分数兜底 → 迭代上限 `approved_forced` → loop-until-dry。
 
 **测试**：`graph/adapter/critic_loop_cond_test.go`（`MaxIterationsForcesApproval` / `MaxIterationsNotReached` / `DryConvergence` / `DryNotTriggeredWhenFeedbackDiffers`）；`biz/node_circuit_breaker_test.go`（ref 格式化/解析）；`team/graph_compile_test.go`（编译期 ref 接线）。
 
 **运行时补全（2026-07-24，Phase 9.1）**：上述设计在 team 图（agent 节点 critic）路径下存在四个断点，修复后收敛语义才真正端到端生效：
 
 - **终止哨兵 `biz.EndNodeID`**（`"__end__"`，镜像 `trpcgraph.End`）：`approved` 必须路由到哨兵终止图；映射到 critic 节点会构成自循环，图永不结束。`graph/trpc/validator` 将哨兵视为合法 PathMap 目标且不参与环检测。
-- **轮次捕获 callback**（`graph/trpc/critic_round_capture.go`）：agent 节点输出只落 `StateKeyLastResponse` / `StateKeyNodeResponses`，不进 `StateKeyMessages`——messages 路径计不到轮次。`criticRoundCaptureCallback` 作为 AfterNodeCallback 接线到 critic_loop finish 的 agent 节点，将轮次计数与最近两轮评审文本写入 `StateKeyMetadata`（`critic_loop_rounds` / `critic_loop_last_response` / `critic_loop_prev_response`，key 定义于 `biz/team_types.go`）。team 图未注册 metadata schema 字段，整体 map 覆写语义，失败静默（fail-open）。
+- **轮次捕获 callback**（`graph/trpc/critic_round_capture.go`）：agent 节点输出只落 `StateKeyLastResponse` / `StateKeyNodeResponses`，不进 `StateKeyMessages`——messages 路径计不到轮次。`criticRoundCaptureCallback` 作为 AfterNodeCallback 接线到 critic_loop finish 的 agent 节点，将轮次计数与最近两轮评审文本写入 `StateKeyMetadata`。键按 critic 节点隔离（`critic_loop_rounds/<nodeID>` 等，`biz.CriticLoopMetaKeysForNode`），多 critic 图各自独立收敛；裸 key（`critic_loop_rounds` 等）仅作旧 checkpoint 回落读取。team 图未注册 metadata schema 字段，整体 map 覆写语义，失败静默（fail-open）。
 - **cond func 双数据源**：轮次取 `max(metadata, messages)`；干涸比较先看 metadata 的 prev/last，再看 messages 路径；评审文本优先 `last_response`（agent 节点路径），回退 messages 末条。
 - **中文批准判定**：批准词表（「批准」「评审通过」「审核通过」「结论：通过」等）与拒绝词表（「不批准」「未通过」「驳回」等），拒绝词先判（防「不批准」含「批准」误判）；裸「通过」不入词表（中文常作介词）。英文 `approved` 词界匹配 + 否定窗口判定不变。
+
+**二次强化（2026-07-24，Phase 9.2）**：评审发现 2 个逻辑错误 + 3 个设计缺陷，逐项修复：
+
+- **F1 中文组合式否定误判**：拒绝词表无法枚举全部组合（「不能予以通过」「不予评审通过」含批准词「予以通过」「评审通过」会误判批准）。修复：批准词逐出现位置检查紧邻前缀是否以中文否定标记结尾（`criticNegationMarkersZH`：单字「不/未/非/勿/莫」+ 组合「不予/未予/不能/未能/不可/不应/无法/难以」），同一文本第二次非否定命中仍算批准（「不予通过；修改后予以通过」）。
+- **F2 分数推翻显式拒绝**：`IsApprovedDecision` 原实现允许 `action=retry` 但 `score>=threshold` 时判批准。修复：显式 action 优先——`approve` 通过、其他非空值不通过、仅 action 为空时 score 兜底。
+- **F3 dry 收敛推翻显式 retry**：原判定链中 loop-until-dry 先于结构化裁决生效，连续两轮相同反馈会把显式 `retry` 裁决错误收敛为 approved。修复：结构化裁决提到最高优先级，显式 retry 不被 dry/关键词/打分推翻。
+- **F4 上限收敛与真实批准不可区分**：两者同返回 `approved`，观测上无法分辨「质量收敛」与「迭代上限兜底」。修复：新增路由键 `biz.CriticLoopResultApprovedForced`（`approved_forced`），上限兜底时返回；PathMap 映射到 `EndNodeID`；上限当轮真实批准仍返回 `approved`。
+- **F5 MaxSteps 截断不可观测**：框架 `maxSteps` 到顶时图静默停止，与自然完成无法区分。修复：BSP/DAG 循环返回 truncated 标记，完成事件 `CompletionMetadata.StepsTruncated` 透传，并在截断时 Warn 日志。
+- **PathMap 契约校验**：外部（API/Pack）定义的 critic_loop 条件边若带 `#<maxIterations>` 但 PathMap 缺 `approved_forced`，达上限时运行时报「target node approved_forced does not exist」。`graph/trpc/validator` 新增 `critic_path_map_incomplete` 编译期错误（`validateCriticLoopPathMaps`），fail-fast 替代运行时失败。
 
 ### 11.2 Phase B — 跨团队交付物契约的运行时校验
 
@@ -479,6 +488,42 @@ Runner E2E：EP-TEST-TG-01（Team sequential Run + WS status 序列）。
 **测试**：`tools/parallel_executor_test.go::TestIsolationStrategyForTool`（canonical/别名/只读/无关工具分类）；`tools/worktree_isolator_test.go::TestBatchExecuteSpiritTools_ParallelWorktreeFileOps`。
 
 执行器与隔离器本体设计见 [70-orchestration-longtask-memory.design.md §八](./70-orchestration-longtask-memory.design.md)。
+
+---
+
+## 十二、ADR-08 团队编排统一（2026-07-25 Phase A ✅ 已落地）
+
+> 来源：团队「编排模式」（mode + members + role 等表单字段）与 Graph 编排（nodes/edges）长期割裂——两套拓扑各自维护、互不同步，编辑器中大量字段本应由 graph 联动却需人工设置。决策详见 [ADR-08](../reports/2026-07-25-review-adr-team-orchestration-unify.md)；实施任务表见 [53-team-graph-orchestration.development.md Phase 10](./53-team-graph-orchestration.development.md#phase-10--adr-08-团队编排统一phase-a-已完成2026-07-25)。
+
+### 12.1 核心决策
+
+1. **embedded graph 为拓扑唯一真相源**：`definition.graph` 存在（`nodes` 非空）时，拓扑结构以 graph 为准；mode/members/role 是生成 graph 的输入，不再是独立拓扑。
+2. **mode 退化为模板选择器**：选择 mode 即按模板语义生成 graph；mode 选项带模板描述（`teamConstants.modeOptions[].description`），编辑器中不再表达「运行时语义」。
+3. **角色派生**：`deriveMemberRolesForMode`（`teamUtils.ts`）按 mode + 成员顺序（sort_order）自动派生启用成员 role 并回写 `synthesizer_agent_id`——sequential 全 worker；parallel 末位启用成员 synthesizer（回写 agent_id）其余 worker；coordinator 首位 coordinator 其余 worker；critic_loop 交替 generator/critic；adaptive/swarm 不派生（角色自由，仅清理残留 synthesizer_agent_id）。幂等，拓扑 watcher 内调用。
+4. **runtime_engine 从 Team 编辑器移除**：统一 Graph 运行时；打开编辑器即归一 `runtime_engine='graph'` + `team_graph_runtime=true`（`useTeamsPage.openEdit`）；native 仅保留在编排页 `TeamOrchestrateRuntimePanel` 供平台管理员调试。
+
+### 12.2 拓扑 → graph 单向派生（A1/A2）
+
+- **拓扑指纹** `definitionTopologyKey`：仅覆盖驱动 graph 结构的字段（mode / synthesizer_agent_id / members 拓扑：agent_id·role·name·enabled·sort_order，按 sort_order 稳定排序），非拓扑字段（description / timeout / failure_policy 等）变化不触发重建。
+- **watcher 链路**：拓扑指纹变化 → `deriveMemberRolesForMode`（角色派生）→ `rebuildDefinitionGraph`（本地重建，layout 未变保留存活节点 x/y 防画布漂移）→ `scheduleGraphSyncFromBackend`（后端 canonical 同步）。
+- **后端 canonical 图（A2 模板去重）**：`CompileTeamGraph` RPC 响应新增 `definition_graph_json`（`team.proto`；`team/graph_compile.go` 的 `resolveDefinitionGraphSpec` / `DefinitionGraphSpecJSON`；`service/team_compile.go` 填充），前端 `definitionGraphFromCompileJSON` 应用为 definition.graph。本地 `graphUtils.buildGraphFromDefinition` 降级为离线/失败回退，前端不再持有独立的模板生成真相。
+
+### 12.3 编辑器联动（A3）
+
+- **派生只读**：派生模式（sequential/parallel/coordinator/critic_loop）下成员「角色」字段只读展示（`roleDerived`）；parallel 模式「汇总 Agent（派生）」只读展示并提示经成员顺序调整。
+- **策略区条件显隐**：`parallel_fail` 仅 parallel 模式显示；其余失败策略字段（default/retry/circuit_breaker/on_error）为 graph 运行时全模式通用，无条件显隐需求。扩展区更名为「失败策略」（执行引擎选择器已移除，`isPlatformAdmin` prop 及 `nativeLocked` 逻辑一并清除；`TeamsPage` 同步移除死 prop 与 `useAuthStore`）。
+
+### 12.4 校验改造（A4）
+
+- **前后端镜像规则**：definition 携带 embedded graph（`graph.nodes.length > 0`）时，`validateTeamDefinition` 跳过 role-mode 耦合校验（角色-模式兼容 / parallel 汇总要求 / coordinator 角色要求 / critic_loop generator+critic 要求）——拓扑结构问题由 `CompileTeamGraph` 编译期校验报告（编辑器右侧编译预览面板实时展示）。
+- **保留校验**（与 graph 无关的基础约束）：至少一名启用成员；启用成员 agent_id 必填。`graph.nodes` 为空数组不视为携带 graph（不跳过）。
+- 后端锚点：`biz/team_usecase.go::validateTeamDefinition`（enabledCount 检查前移至 role-mode 校验之前，错误优先级与前端对齐）；前端锚点：`web/.../teams/teamUtils.ts::validateTeamDefinition`。
+
+### 12.5 Phase B（遗留）
+
+- mode 字段只读化（graph 完全接管后 mode 仅存展示/模板语义）
+- `definitionToJSON` native 序列化分支清理
+- `TeamOrchestrateRuntimePanel` native 调试入口随 native 运行时退役移除
 
 ---
 
@@ -613,7 +658,7 @@ export interface OrchestrationSpec {
 
 | 入口 | 职责 | 锚点 |
 |------|------|------|
-| `/teams/:id/edit` | 成员、模式、`failure_policy`、`runtime_engine` 下拉 | `TeamEditorDialog.vue` + `TeamOrchestrateRuntimePanel.vue` |
+| `/teams/:id/edit` | 成员、模式（模板选择器）、`failure_policy`；角色按 mode 派生只读；无 `runtime_engine`（统一 Graph，ADR-08 A3） | `TeamEditorDialog.vue` |
 | `/teams/:id/orchestrate` | OrchestrationSpec 自由编辑（Vue Flow）；Run 中 readonly | `TeamOrchestratePage.vue`（已存在） |
 | `/graphs/:id/edit` | 独立 Graph 编辑 + Mapper / Destinations / Retry 属性面板 | `GraphPropertyPanel.vue` |
 | `/team-runs/:id/observatory` | Kanban + Graph 双视图（只读） | 已存在；扩展 §2.3 |

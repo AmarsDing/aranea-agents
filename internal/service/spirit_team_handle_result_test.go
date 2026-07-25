@@ -8,8 +8,6 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/google/uuid"
 )
 
 // ── mocks ──────────────────────────────────────────────────────────────────
@@ -96,10 +94,14 @@ func (s *stubTeamStageV2Reader) ListTeamStagesByTask(_ context.Context, _ string
 // Counters track side-effect invocations so tests can assert that stale
 // callbacks do not trigger completion recording or dependent scheduling.
 // completedResult customizes CheckAllTeamsCompleted; zero value = not done.
+// hasRealDeliverable customizes the Fix-1 deliverable gate; zero value (false)
+// means "no real deliverable" — completed callbacks get flipped to failed.
 type stubSpiritTeamController struct {
 	recordCompletionCalls   int
 	scheduleDependentsCalls int
 	completedResult         biz.AllTeamsCompletedResult
+	hasRealDeliverable      bool
+	hasRealDeliverableErr   error
 }
 
 func (s *stubSpiritTeamController) CancelTimeoutTimer(_ string) {}
@@ -110,6 +112,9 @@ func (s *stubSpiritTeamController) RecordTeamCompletion(_ context.Context, _ biz
 func (s *stubSpiritTeamController) ScheduleDependentTeams(_ context.Context, _ string, _ biz.Team) []biz.DependentTeamAction {
 	s.scheduleDependentsCalls++
 	return nil
+}
+func (s *stubSpiritTeamController) HasRealDeliverable(_ context.Context, _ biz.Team) (bool, error) {
+	return s.hasRealDeliverable, s.hasRealDeliverableErr
 }
 func (s *stubSpiritTeamController) CheckAllTeamsCompleted(_ context.Context, _ string) biz.AllTeamsCompletedResult {
 	return s.completedResult
@@ -412,7 +417,7 @@ func TestPublishV2TeamRunCompletion_SkipsWhenCurrentTerminal(t *testing.T) {
 	teamID := "team-x"
 	spiritSessionID := "spirit-1"
 	tsID := string(agent.NewTeamStageActivityID(teamID))
-	trID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.team_run.v2:"+tsID)).String()
+	trID := agent.NewTeamRunV2ID(tsID)
 
 	team := biz.Team{
 		ID: teamID, DisplayName: "团队X", SpiritSessionID: spiritSessionID,
@@ -492,5 +497,98 @@ func TestHandleTeamTurnResult_StaleCallbackAfterTerminalSkipped(t *testing.T) {
 	}
 	if controller.scheduleDependentsCalls != 0 {
 		t.Errorf("ScheduleDependentTeams called %d times, want 0 for stale callback", controller.scheduleDependentsCalls)
+	}
+}
+
+// ── 2026-07-25 Fix 1+2 真实产出闸门 ─────────────────────────────────────────
+// 19:29 场景：DAG 团队只提问澄清、从未调用 set_deliverable，runner 却回调
+// completed。闸门必须在状态转换前把团队翻转为 failed，下游经既有
+// anyDepFailed 级联失败 —— 不允许「无交付物的成功」。
+
+func newDeliverableGateStarter(team biz.Team, controller *stubSpiritTeamController, eventBus *capturingEventBus) *TeamStarter {
+	tsID := "ts-" + team.ID
+	teamUC := biz.NewTeamUsecase(biz.TeamUsecaseOpts{
+		Reader:    &stubTeamReader{teams: map[string]biz.Team{team.ID: team}},
+		Writer:    &stubTeamWriter{},
+		RunReader: &stubTeamRunReader{},
+		Lg:        loggateway.NewNoop(),
+	})
+	return &TeamStarter{
+		team:     TeamOrchestrationDeps{TeamUC: teamUC, SpiritUC: controller},
+		eventBus: eventBus,
+		lg:       loggateway.NewNoop(),
+		teamStageR: &stubTeamStageV2Reader{stages: map[string]biz.TeamStage{
+			tsID: {ID: tsID, TeamID: team.ID, SessionID: team.SpiritSessionID,
+				Status: biz.TeamStageStatusRunning, Stage: biz.TeamStageStageExecuting, Version: 1},
+		}},
+		tsSM: biz.NewTeamStageStateMachine(),
+	}
+}
+
+// completed 回调 + 无真实交付物 → 团队标 failed：不记录完成、级联调度一次
+// （让下游检测依赖失败）、发布 TeamStageFailedEvent。
+func TestHandleTeamTurnResult_CompletedWithoutRealDeliverable_MarkedFailed(t *testing.T) {
+	team := biz.Team{
+		ID: "team-nodeliv", DisplayName: "无产出团队", SpiritSessionID: "spirit-1",
+		AutoCreated: true, Status: biz.TeamStatusRunning, DagNodeID: "st_1",
+	}
+	controller := &stubSpiritTeamController{hasRealDeliverable: false}
+	eventBus := &capturingEventBus{}
+	s := newDeliverableGateStarter(team, controller, eventBus)
+
+	s.HandleTeamTurnResult(context.Background(), team.SpiritSessionID, team.ID, biz.TeamStatusCompleted, "", "")
+
+	if controller.recordCompletionCalls != 0 {
+		t.Errorf("RecordTeamCompletion called %d times, want 0 (no real deliverable)", controller.recordCompletionCalls)
+	}
+	if controller.scheduleDependentsCalls != 1 {
+		t.Errorf("ScheduleDependentTeams called %d times, want 1 (cascade fail downstream)", controller.scheduleDependentsCalls)
+	}
+	var failedFound bool
+	for _, ev := range eventBus.snapshot() {
+		if tsEv, ok := ev.(*biz.TeamStageFailedEvent); ok && tsEv.TeamStage.TeamID == team.ID {
+			failedFound = true
+			if tsEv.TeamStage.Status != biz.TeamStageStatusFailed {
+				t.Errorf("TeamStage event status = %s, want failed", tsEv.TeamStage.Status)
+			}
+		}
+		if _, ok := ev.(*biz.TeamStageCompletedEvent); ok {
+			t.Errorf("TeamStageCompletedEvent must not be published for a deliverable-less team")
+		}
+	}
+	if !failedFound {
+		t.Errorf("no TeamStageFailedEvent published, want exactly one for the flipped team")
+	}
+}
+
+// completed 回调 + 有真实交付物 → 正常 completed 路径（记录完成 + completed 事件）。
+func TestHandleTeamTurnResult_CompletedWithRealDeliverable_StaysCompleted(t *testing.T) {
+	team := biz.Team{
+		ID: "team-deliv", DisplayName: "有产出团队", SpiritSessionID: "spirit-1",
+		AutoCreated: true, Status: biz.TeamStatusRunning, DagNodeID: "st_1",
+	}
+	controller := &stubSpiritTeamController{hasRealDeliverable: true}
+	eventBus := &capturingEventBus{}
+	s := newDeliverableGateStarter(team, controller, eventBus)
+
+	s.HandleTeamTurnResult(context.Background(), team.SpiritSessionID, team.ID, biz.TeamStatusCompleted, "", "")
+
+	if controller.recordCompletionCalls != 1 {
+		t.Errorf("RecordTeamCompletion called %d times, want 1", controller.recordCompletionCalls)
+	}
+	if controller.scheduleDependentsCalls != 1 {
+		t.Errorf("ScheduleDependentTeams called %d times, want 1 (activate downstream)", controller.scheduleDependentsCalls)
+	}
+	var completedFound bool
+	for _, ev := range eventBus.snapshot() {
+		if tsEv, ok := ev.(*biz.TeamStageCompletedEvent); ok && tsEv.TeamStage.TeamID == team.ID {
+			completedFound = true
+		}
+		if _, ok := ev.(*biz.TeamStageFailedEvent); ok {
+			t.Errorf("TeamStageFailedEvent must not be published for a team with a real deliverable")
+		}
+	}
+	if !completedFound {
+		t.Errorf("no TeamStageCompletedEvent published for a team with a real deliverable")
 	}
 }

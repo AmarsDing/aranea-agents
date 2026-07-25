@@ -42,7 +42,6 @@ import GraphRunPage from '../pages/GraphRunPage.vue';
 import GraphExecutionsPage from '../pages/GraphExecutionsPage.vue';
 import TeamRunObservatoryPage from '../pages/TeamRunObservatoryPage.vue';
 import TeamOrchestratePage from '../pages/TeamOrchestratePage.vue';
-import ObservabilityDashboardPage from '../pages/ObservabilityDashboardPage.vue';
 import ThemePreviewPage from '../pages/ThemePreviewPage.vue';
 
 export const routes: RouteRecordRaw[] = [
@@ -202,7 +201,6 @@ export const routes: RouteRecordRaw[] = [
         component: CronTasksPage,
       },
       { path: 'monitor/logs', name: 'monitor-logs', component: MonitorPage },
-      { path: 'observability', name: 'observability', component: ObservabilityDashboardPage },
       { path: 'shop', name: 'shop', component: EcosystemPage },
       { path: 'settings', name: 'settings', component: SystemSettingsPage, meta: { titleKey: 'menu.settings' } },
       ...(import.meta.env.DEV

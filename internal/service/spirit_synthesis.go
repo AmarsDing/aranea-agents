@@ -2,18 +2,14 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
-	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/google/uuid"
 )
 
 var _ tools.SpiritSynthesisPort = (*SpiritSynthesisService)(nil)
@@ -98,98 +94,11 @@ func (a *synthesisModelAdapter) resolveModel(ctx context.Context) (string, strin
 	return "", "", apierror.Unavailable(apierror.DomainSpirit, "no LLM available for synthesis; configure DefaultRefineLLM in system settings")
 }
 
-// synthesisEventPublisher adapts the v2 event pipeline to
-// biz.SynthesisEventPublisher (B.10.17): the execution report is published as
-// a persistent StepCreatedEvent (Kind=notice) whose Content carries the JSON
-// envelope, so the report survives page refresh. seq is preferred
-// (persist + WS); eventBus is the v1-only fallback (WS only).
-type synthesisEventPublisher struct {
-	seq          rt.EventPublisher
-	bus          biz.EventBus
-	taskV2Reader biz.TaskV2Reader
-	lg           loggateway.Logger
-}
-
-// executionReportEnvelope is the Step.Content JSON contract (B.10.17.4).
-// Field set mirrors biz.SynthesisOutput plus version/kind discriminator.
-type executionReportEnvelope struct {
-	Version       int                       `json:"version"`
-	Kind          string                    `json:"kind"`
-	Content       string                    `json:"content"`
-	Strategy      biz.SynthesisStrategy     `json:"strategy"`
-	Degraded      bool                      `json:"degraded,omitempty"`
-	Overview      *biz.ExecutionOverview    `json:"overview,omitempty"`
-	TeamResults   []biz.TeamSynthesisResult `json:"team_results"`
-	Deliverables  []biz.DeliverableItem     `json:"deliverables,omitempty"`
-	SynthesizedAt string                    `json:"synthesized_at"`
-}
-
-// executionReportEnvelopeVersion is the envelope schema version.
-const executionReportEnvelopeVersion = 1
-
-// executionReportEnvelopeKind discriminates the notice payload for the
-// frontend NoticeBlock branch.
-const executionReportEnvelopeKind = "execution_report"
-
-func (p *synthesisEventPublisher) PublishSynthesisCompleted(ctx context.Context, spiritSessionID string, output *biz.SynthesisOutput) {
-	if p.seq == nil && p.bus == nil {
-		return
-	}
-	if output == nil {
-		return
-	}
-	envelope := executionReportEnvelope{
-		Version:       executionReportEnvelopeVersion,
-		Kind:          executionReportEnvelopeKind,
-		Content:       output.Content,
-		Strategy:      output.Strategy,
-		Degraded:      output.Degraded,
-		Overview:      output.Overview,
-		TeamResults:   output.TeamResults,
-		Deliverables:  output.Deliverables,
-		SynthesizedAt: output.SynthesizedAt,
-	}
-	raw, err := json.Marshal(envelope)
-	if err != nil {
-		p.lg.Warn("执行报告信封序列化失败，跳过发布",
-			loggateway.StepID("spirit.synthesis.envelope_marshal_err"),
-			loggateway.Err(err),
-		)
-		return
-	}
-	now := time.Now()
-	step := biz.Step{
-		ID:              uuid.NewString(),
-		SessionID:       spiritSessionID,
-		SpiritSessionID: spiritSessionID,
-		TaskID:          resolveLatestUserTaskID(ctx, p.taskV2Reader, p.lg, spiritSessionID),
-		Kind:            biz.StepKindNotice,
-		NoticeType:      "synthesis_completed",
-		Content:         string(raw),
-		Status:          biz.StepStatusCompleted,
-		StartedAt:       now,
-		CompletedAt:     &now,
-		Version:         1,
-		AuthorAgentKey:  "spirit-synthesis",
-	}
-	ev := biz.NewStepCreatedEvent(step)
-	if p.seq != nil {
-		p.seq.Publish(ctx, ev)
-		return
-	}
-	p.bus.Publish(ctx, ev)
-}
-
-// synthesisResultService is the narrow 1-method port TeamStarter depends on
-// for the system-push synthesis flow. Satisfied by *SpiritSynthesisService;
-// declared at the consumer side so unit tests can stub the degraded and
-// hard-fail paths without constructing the full biz.SynthesisUsecase graph.
-type synthesisResultService interface {
-	SynthesizeResults(ctx context.Context, spiritSessionID string, strategy string) (*biz.SynthesisOutput, error)
-}
-
 // SpiritSynthesisService is a thin transport adapter that delegates all business
 // logic to biz.SynthesisUsecase and translates domain errors to API errors.
+// It backs the SynthesizeResults RPC and the synthesize_results tool; the
+// user-facing summary report in chat is produced by the Spirit summary turn
+// triggered by TeamStarter (no dedicated report step is published).
 type SpiritSynthesisService struct {
 	uc *biz.SynthesisUsecase
 	lg loggateway.Logger
@@ -198,27 +107,15 @@ type SpiritSynthesisService struct {
 func NewSpiritSynthesisService(
 	spiritUC *biz.SpiritTeamUsecase,
 	engine *biz.SynthesisEngine,
-	eventBus biz.EventBus,
-	seq rt.EventPublisher,
-	taskV2Reader biz.TaskV2Reader,
 	lg loggateway.Logger,
 ) *SpiritSynthesisService {
-	pub := &synthesisEventPublisher{seq: seq, bus: eventBus, taskV2Reader: taskV2Reader, lg: lg}
-	uc := biz.NewSynthesisUsecase(spiritUC, engine, pub, lg)
+	uc := biz.NewSynthesisUsecase(spiritUC, engine, lg)
 	return &SpiritSynthesisService{uc: uc, lg: lg}
 }
 
 func (s *SpiritSynthesisService) SynthesizeResults(ctx context.Context, spiritSessionID string, strategy string) (*biz.SynthesisOutput, error) {
 	output, err := s.uc.SynthesizeResults(ctx, spiritSessionID, strategy)
 	if err != nil {
-		// B.10.17 degraded path: the usecase returns a non-nil degraded output
-		// alongside the LLM error (structured report already published). Keep
-		// the output so callers (buildSynthesisMessage) can still trigger the
-		// summary turn — without it the parent Task would stay Running forever
-		// (task.completed is deferred to the synthesis continuation turn).
-		if output != nil {
-			return output, err
-		}
 		return nil, translateSynthesisError(err)
 	}
 	return output, nil

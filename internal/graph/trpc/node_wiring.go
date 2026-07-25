@@ -53,7 +53,7 @@ func nodeOptions(n NodeDef, cfg GraphBuildConfig, resolvedFallback trpcagent.Age
 		}
 		opts = append(opts, trpcgraph.WithNodeCachePolicy(pol))
 	}
-	opts = append(opts, agentMapperOptions(n)...)
+	opts = append(opts, agentMapperOptions(n, cfg)...)
 	// critic_loop finish (critic) agent nodes capture each evaluation round into
 	// node-scoped state metadata so the cond func can enforce max_iterations /
 	// loop-until-dry per critic node (multi-critic graphs stay isolated).
@@ -72,12 +72,12 @@ func nodeOptions(n NodeDef, cfg GraphBuildConfig, resolvedFallback trpcagent.Age
 	return opts
 }
 
-func agentMapperOptions(n NodeDef) []trpcgraph.Option {
+func agentMapperOptions(n NodeDef, cfg GraphBuildConfig) []trpcgraph.Option {
 	opts := []trpcgraph.Option{}
 	if m := parseInputMapper(n.InputMapperJSON); m != nil {
 		opts = append(opts, trpcgraph.WithSubgraphInputMapper(m))
 	}
-	if m := parseOutputMapper(n.OutputMapperJSON); m != nil {
+	if m := agentOutputMapperFor(n, cfg); m != nil {
 		opts = append(opts, trpcgraph.WithSubgraphOutputMapper(m))
 	}
 	if n.IsolatedMessages {

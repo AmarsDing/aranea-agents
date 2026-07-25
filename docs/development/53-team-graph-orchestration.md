@@ -119,14 +119,15 @@
 ### US-08 运行时引擎选择与收敛
 
 **作为** 管理员
-**我希望** 可选择 Team 运行时引擎（Graph / Native），且新建 Team 默认走 Graph
-**以便** 在生产验证后逐步收敛到统一执行路径
+**我希望** Team 统一走 Graph 运行时，引擎选择不再暴露给普通编辑入口
+**以便** 消除双执行路径的认知与维护成本
 
 **验收**：
 
-- 前端编排面板可切换 `runtime_engine`（graph / native），保存不丢字段
-- 新 Team 默认 `runtime_engine=graph`；旧 Team 不受影响
-- `ARANEA_TEAM_GRAPH_RUNTIME` 默认开启；关闭后回退到 Native 路径
+- Team 编辑器无 `runtime_engine` 选项，保存统一 Graph 运行时（ADR-08 A3）
+- 编排页运行时面板保留 graph / native 切换，仅平台管理员调试用
+- 新 Team 默认 `runtime_engine=graph`；旧 Team 打开编辑器即归一为 graph
+- `ARANEA_TEAM_GRAPH_RUNTIME` 默认开启；Native 路径已移除（Phase 8）
 - Native vs Graph parity E2E 对比通过，差异文档化
 
 ### US-09 容错完整化
@@ -145,15 +146,28 @@
 ### US-10 编排规格产品化
 
 **作为** 团队管理员
-**我希望** 前端完整暴露 OrchestrationSpec 的所有字段（runtime_engine / failure_policy / embedded graph / linked_graph_id）
+**我希望** 前端完整暴露 OrchestrationSpec 的业务字段（failure_policy / embedded graph / linked_graph_id）
 **以便** 不需要手动编辑 JSON 即可配置高级选项
 
 **验收**：
 
 - 前端解析 Team 定义时保留未知字段，不丢 `runtime_engine` / `failure_policy`
-- 编排面板可编辑 failure_policy、runtime_engine
+- 编辑器可编辑 failure_policy（runtime_engine 不再暴露，见 US-08）
 - Graph 编辑器属性面板支持 RetryPolicy / Destinations / Mapper 编辑
 - OrchestrationSpec v2 类型前后端对齐
+
+### US-11 编排模式与 Graph 统一（ADR-08）
+
+**作为** 团队管理员
+**我希望** 编排模式只是模板选择器——选模式即生成图谱，角色由模式与成员顺序自动派生，无需人工维护
+**以便** 拓扑只有一份真相（graph），不会出现「表单改了但图没改」的割裂
+
+**验收**：
+
+- 编辑器中修改 mode / 成员 / 顺序后，embedded graph 自动重建（布局不变时保留节点坐标），并以后端编译返回的 canonical 图为准
+- 派生模式（sequential / parallel / coordinator / critic_loop）下成员角色只读展示；parallel 汇总 Agent 为排序最后的启用成员，只读展示
+- 模式选项附模板语义描述；adaptive / swarm 角色仍可自由编辑
+- definition 携带 embedded graph 时，保存校验不再要求角色与模式耦合（拓扑结构问题由编译预览报告）；仍要求至少一名启用成员且 agent_id 必填
 
 ---
 

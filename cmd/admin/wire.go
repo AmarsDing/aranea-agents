@@ -2031,6 +2031,7 @@ func provideAgentAllocator(
 	repo biz.AllocationPlanRepository,
 	agentReader biz.AgentReader,
 	perfRepo biz.AgentPerformanceRepository,
+	orchCache *biz.OrchestrationCache,
 	catalog *biz.LlmProviderModelUsecase,
 	eventBus biz.EventBus,
 	embedder knowledge.Embedder,
@@ -2040,7 +2041,7 @@ func provideAgentAllocator(
 ) biz.AgentAllocatorPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	capBuilder := chatagent.NewAgentCapabilityBuilder(agentReader, lg)
-	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, capBuilder, catalog, httpClient, eventBus, lg, embedder, agentFactory, sysUC)
+	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, orchCache, capBuilder, catalog, httpClient, eventBus, lg, embedder, agentFactory, sysUC)
 }
 
 // provideAgentFactory constructs the AgentFactory (P1-4). The LLM model is
@@ -2056,6 +2057,7 @@ func provideAgentFactory(
 	eventBus biz.EventBus,
 	catalog *biz.LlmProviderModelUsecase,
 	sysUC *biz.SystemSettingUsecase,
+	embedder knowledge.Embedder,
 	lg loggateway.Logger,
 ) biz.AgentFactory {
 	rt := &provider.RoundTrip{HTTP: &http.Client{Timeout: 60 * time.Second}}
@@ -2083,13 +2085,14 @@ func provideAgentFactory(
 				loggateway.Err(err))
 		}
 	}
-	return chatagent.NewAgentFactoryImpl(llm, agentWriter, agentReader, templateRepo, eventBus, lg)
+	return chatagent.NewAgentFactoryImpl(llm, agentWriter, agentReader, templateRepo, eventBus, embedder, lg)
 }
 
 func provideTaskOrchestrator(
 	spiritUC *biz.SpiritTeamUsecase,
 	assembler *service.SpiritTeamAssembler,
 	repo biz.OrchestrationRepository,
+	taskPlanRepo biz.TaskPlanRepository,
 	matcher biz.AgentMatcherPort,
 	catalog *biz.LlmProviderModelUsecase,
 	agentUC *biz.AgentUsecase,
@@ -2121,7 +2124,7 @@ func provideTaskOrchestrator(
 		},
 	}
 	compiler := chatagent.NewDAGToGraphCompiler(lg)
-	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionSugg, eventBus, nl2graph, lg)
+	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, taskPlanRepo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionSugg, eventBus, nl2graph, lg)
 }
 
 func provideDeptLeadManager(
@@ -2287,6 +2290,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(biz.StepV2Reader), new(biz.StepV2Repo)),
 		wire.Bind(new(biz.StepV2Writer), new(biz.StepV2Repo)),
 		wire.Bind(new(biz.TeamStageV2Reader), new(biz.TeamStageV2Repo)),
+		wire.Bind(new(biz.TeamStageV2Writer), new(biz.TeamStageV2Repo)),
 		wire.Bind(new(biz.TeamRunV2Reader), new(biz.TeamRunV2Repo)),
 		wire.Bind(new(biz.MemberSessionV2Reader), new(biz.MemberSessionV2Repo)),
 		wire.Bind(new(biz.PlanBoardV2Reader), new(biz.PlanBoardV2Repo)),

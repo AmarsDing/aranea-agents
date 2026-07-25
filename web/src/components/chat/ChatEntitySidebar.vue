@@ -49,6 +49,7 @@
               @locate="onLocateAgent"
               @pause="$emit('pause-agent', $event)"
               @resume="$emit('resume-agent', $event)"
+              @retry="$emit('retry-agent', $event)"
               @settings="onAgentSettings"
             />
             <div
@@ -96,6 +97,7 @@ const emit = defineEmits<{
   'locate-agent': [payload: { agentKey: string; teamSessionId: string; teamId: string }];
   'pause-agent': [agentKey: string];
   'resume-agent': [agentKey: string];
+  'retry-agent': [agentKey: string];
   'cancel-agent': [agentKey: string];
 }>();
 

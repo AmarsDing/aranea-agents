@@ -4100,8 +4100,13 @@ type CompileTeamGraphResponse struct {
 	GraphJson        string                              `protobuf:"bytes,8,opt,name=graph_json,json=graphJson,proto3" json:"graph_json,omitempty"`
 	Issues           []*CompileTeamGraphValidationIssue  `protobuf:"bytes,9,rep,name=issues,proto3" json:"issues,omitempty"`
 	Valid            bool                                `protobuf:"varint,10,opt,name=valid,proto3" json:"valid,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Canonical embedded graph spec (version/layout/nodes/edges incl. start/end decor
+	// nodes) generated from mode/members by the backend template registry. Empty when
+	// the definition carries its own embedded graph (custom path). ADR-08 A2: frontend
+	// editors consume this instead of re-implementing mode->graph generation locally.
+	DefinitionGraphJson string `protobuf:"bytes,11,opt,name=definition_graph_json,json=definitionGraphJson,proto3" json:"definition_graph_json,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *CompileTeamGraphResponse) Reset() {
@@ -4202,6 +4207,13 @@ func (x *CompileTeamGraphResponse) GetValid() bool {
 		return x.Valid
 	}
 	return false
+}
+
+func (x *CompileTeamGraphResponse) GetDefinitionGraphJson() string {
+	if x != nil {
+		return x.DefinitionGraphJson
+	}
+	return ""
 }
 
 type TaskDeadLetter struct {
@@ -6011,7 +6023,7 @@ const file_kratos_team_v1_team_proto_rawDesc = "" +
 	"\bpath_map\x18\x02 \x03(\v2=.kratos.team.v1.CompiledGraphConditionalEdgeView.PathMapEntryR\apathMap\x1a:\n" +
 	"\fPathMapEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xea\x03\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9e\x04\n" +
 	"\x18CompileTeamGraphResponse\x12\x1f\n" +
 	"\vtemplate_id\x18\x01 \x01(\tR\n" +
 	"templateId\x12\x12\n" +
@@ -6026,7 +6038,8 @@ const file_kratos_team_v1_team_proto_rawDesc = "" +
 	"graph_json\x18\b \x01(\tR\tgraphJson\x12G\n" +
 	"\x06issues\x18\t \x03(\v2/.kratos.team.v1.CompileTeamGraphValidationIssueR\x06issues\x12\x14\n" +
 	"\x05valid\x18\n" +
-	" \x01(\bR\x05valid\"\x84\x03\n" +
+	" \x01(\bR\x05valid\x122\n" +
+	"\x15definition_graph_json\x18\v \x01(\tR\x13definitionGraphJson\"\x84\x03\n" +
 	"\x0eTaskDeadLetter\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vsource_type\x18\x02 \x01(\tR\n" +

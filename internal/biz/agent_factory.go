@@ -34,4 +34,9 @@ type TaskProfile struct {
 	// SpiritSessionID routes orchestration progress events to the owning
 	// Spirit session (P-ORCH). Empty disables progress event publishing.
 	SpiritSessionID string
+	// DomainPath 是任务归一化领域路径。非空时 AgentKey 按 domain 派生
+	// （同域同模型复用同一 Agent）；空走旧 key 行为（兼容兜底）。
+	DomainPath string
+	// Mission 是任务使命提示文本（用于同域使命相似度复用检查）。空回退 TaskDescription。
+	Mission string
 }

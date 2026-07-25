@@ -16,7 +16,28 @@
         <q-tooltip>重做 (Ctrl+Shift+Z)</q-tooltip>
       </q-btn>
       <q-chip v-if="dirty" dense square class="graph-workbench__dirty-chip">未保存</q-chip>
-      <q-chip v-if="!mergedValidationValid" dense square color="negative" text-color="white">校验未通过</q-chip>
+      <q-btn
+        v-if="validationIssues.length > 0"
+        flat
+        dense
+        no-caps
+        :class="[
+          'graph-editor-page__validation-btn',
+          validationErrorCount > 0
+            ? 'graph-editor-page__validation-btn--error'
+            : 'graph-editor-page__validation-btn--warning',
+          { 'graph-editor-page__validation-btn--active': validationPanelOpen },
+        ]"
+        @click="toggleValidationPanel"
+      >
+        <q-icon :name="validationErrorCount > 0 ? 'error' : 'warning'" size="14px" class="q-mr-xs" />
+        <span v-if="validationErrorCount > 0">{{ t('graphs.validationFailedCount', { n: validationErrorCount }) }}</span>
+        <span v-else>{{ t('graphs.validationWarningsCount', { n: validationWarningCount }) }}</span>
+        <q-tooltip>{{ t('graphs.validationPanelTitle') }}</q-tooltip>
+      </q-btn>
+      <q-chip v-else dense square class="graph-editor-page__validation-pass">
+        <q-icon name="check_circle" size="13px" class="q-mr-xs" />{{ t('graphs.validationPassed') }}
+      </q-chip>
       <template v-if="!isNew">
         <q-btn flat dense round icon="download" @click="exportCurrentGraph">
           <q-tooltip>导出 JSON</q-tooltip>
@@ -37,8 +58,17 @@
       <q-btn flat dense round icon="save" color="primary" :loading="saving" :disable="!canSave" @click="save">
         <q-tooltip>保存</q-tooltip>
       </q-btn>
-      <q-btn v-if="!isNew" flat dense round icon="play_arrow" color="positive" @click="openRunDialog">
-        <q-tooltip>执行</q-tooltip>
+      <q-btn
+        v-if="!isNew"
+        flat
+        dense
+        round
+        icon="play_arrow"
+        color="positive"
+        :disable="!mergedValidationValid"
+        @click="openRunDialog"
+      >
+        <q-tooltip>{{ mergedValidationValid ? '执行' : t('graphs.validationRunBlocked') }}</q-tooltip>
       </q-btn>
       <q-btn v-if="!isNew" flat dense round icon="history" @click="goToExecutions">
         <q-tooltip>执行历史</q-tooltip>
@@ -57,10 +87,13 @@
         v-model:graph-def="graphDef"
         :is-dark="isDark"
         :undo-redo="undoRedo"
+        :node-issues="nodeIssueMap"
+        :spotlight-node-id="spotlightNodeId"
         @select-node="onSelectNode"
         @update-graph="markDirty"
         @request-auto-layout="autoLayout"
         @focus-property-panel="handleFocusPropertyPanel"
+        @clear-spotlight="clearSpotlight"
       />
       <GraphPropertyPanel
         ref="propertyPanelRef"
@@ -68,9 +101,6 @@
         v-model:graph-def="graphDef"
         :available-tools="availableTools"
         :is-dark="isDark"
-        :validation-errors="mergedValidationErrors"
-        :validation-warnings="mergedValidationWarnings"
-        :validation-valid="mergedValidationValid"
         :undo-redo="undoRedo"
         :all-nodes="graphDef.nodes"
         :state-fields="graphDef.stateFields"
@@ -79,6 +109,15 @@
         @change="markDirty"
       />
     </div>
+
+    <GraphValidationPanel
+      :open="validationPanelOpen"
+      :issues="validationIssues"
+      :validating="revalidating"
+      @locate="onLocateValidationNode"
+      @close="closeValidationPanel"
+      @revalidate="revalidateGraph"
+    />
 
     <GraphRunDialog
       v-model="runDialogOpen"
@@ -121,12 +160,16 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import GraphNodePalette from '../components/graph/GraphNodePalette.vue';
 import GraphEditorCanvas from '../components/graph/GraphEditorCanvas.vue';
 import GraphPropertyPanel from '../components/graph/GraphPropertyPanel.vue';
+import GraphValidationPanel from '../components/graph/GraphValidationPanel.vue';
 import GraphVersionPanel from '../components/graph/GraphVersionPanel.vue';
 import GraphRunDialog from '../components/graph/GraphRunDialog.vue';
 import { useGraphEditorPage } from '../features/graph/useGraphEditorPage';
+
+const { t } = useI18n();
 
 const propertyPanelRef = ref<InstanceType<typeof GraphPropertyPanel> | null>(null);
 
@@ -140,9 +183,9 @@ const {
   runInitialState,
   runLoading,
   availableTools,
-  mergedValidationErrors,
-  mergedValidationWarnings,
   mergedValidationValid,
+  validationIssues,
+  validationDock,
   versionDialogOpen,
   versions,
   versionsLoading,
@@ -181,6 +224,26 @@ const {
   autoLayout,
   goToExecutions,
 } = useGraphEditorPage();
+
+// R2-7：校验 dock 状态（底部面板 + 节点聚光灯）
+const {
+  panelOpen: validationPanelOpen,
+  spotlightNodeId,
+  validating: revalidating,
+  errorCount: validationErrorCount,
+  warningCount: validationWarningCount,
+  nodeIssueMap,
+  togglePanel: toggleValidationPanel,
+  closePanel: closeValidationPanel,
+  locateNode: locateValidationNode,
+  clearSpotlight,
+  revalidate: revalidateGraph,
+} = validationDock;
+
+function onLocateValidationNode(nodeId: string) {
+  onSelectNode(nodeId);
+  locateValidationNode(nodeId);
+}
 
 function handleFocusPropertyPanel(nodeId: string) {
   onFocusPropertyPanel(nodeId, propertyPanelRef.value?.$el ?? null);

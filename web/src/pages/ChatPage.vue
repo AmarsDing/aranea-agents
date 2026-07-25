@@ -34,6 +34,7 @@
       @locate-agent="onSidebarLocateAgent"
       @pause-agent="onSidebarPauseAgent"
       @resume-agent="onSidebarResumeAgent"
+      @retry-agent="onSidebarRetryAgent"
       @cancel-agent="onSidebarCancelAgent"
     />
 
@@ -417,6 +418,12 @@ function onSidebarPauseAgent(agentKey: string) {
 function onSidebarResumeAgent(agentKey: string) {
   const sessionId = resolveMemberChatSessionId(agentKey);
   if (sessionId) void spiritStore.resumeAgent(sessionId);
+}
+
+/** 失败重试：调 RetrySession API 重新入队最后一条用户消息（B.5.2）。 */
+function onSidebarRetryAgent(agentKey: string) {
+  const sessionId = resolveMemberChatSessionId(agentKey);
+  if (sessionId) void spiritStore.retryAgent(sessionId);
 }
 
 function onSidebarCancelAgent(agentKey: string) {

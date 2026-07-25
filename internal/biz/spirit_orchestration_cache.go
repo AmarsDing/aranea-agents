@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +21,7 @@ type OrchestrationCacheEntry struct {
 	TeamCount     int          `json:"team_count"`
 	AvgDurationMs int64        `json:"avg_duration_ms"`
 	AgentKeys     []string     `json:"agent_keys,omitempty"`
+	DomainPath    string       `json:"domain_path,omitempty"` // 配方所属领域路径（B.10.21）；旧 JSON 无此字段加载不报错
 	UpdatedAt     string       `json:"updated_at"`
 }
 
@@ -239,6 +241,10 @@ const (
 
 	// MaxTaskPatternLen is the maximum rune length for extracted task patterns.
 	MaxTaskPatternLen = 64
+
+	// DomainRecipeMinDQ is the minimum DQ score for a cache entry to be
+	// served as a reusable domain recipe (B.10.21.5 L0).
+	DomainRecipeMinDQ = 0.7
 )
 
 func (b DQScoreBreakdown) Overall() float64 {
@@ -354,6 +360,90 @@ func (c *OrchestrationCache) SuggestTopology(taskDescription string) (TopologyTy
 		return "", false
 	}
 	return entry.Topology, true
+}
+
+// BestRecipeForDomain returns the highest-DQ recipe whose DomainPath
+// prefix-matches the query (either direction, path-boundary aware).
+// Entries must have DomainPath set, DQScore >= DomainRecipeMinDQ, non-empty
+// AgentKeys, and be within TTL. Callers must pass an already-normalized
+// domain path (normalization lives in internal/agent to avoid an import
+// cycle; this function compares strings only).
+func (c *OrchestrationCache) BestRecipeForDomain(domainPath string) (*OrchestrationCacheEntry, bool) {
+	query := strings.TrimSpace(domainPath)
+	if query == "" {
+		return nil, false
+	}
+	c.mu.RLock()
+	var best *OrchestrationCacheEntry
+	for _, e := range c.entries {
+		if e.DomainPath == "" || len(e.AgentKeys) == 0 {
+			continue
+		}
+		if e.DQScore < DomainRecipeMinDQ {
+			continue
+		}
+		if isEntryStale(e) {
+			continue
+		}
+		if !domainPathPrefixMatch(query, e.DomainPath) {
+			continue
+		}
+		if best == nil || e.DQScore > best.DQScore {
+			best = e
+		}
+	}
+	c.mu.RUnlock()
+	if best == nil {
+		c.misses.Add(1)
+		return nil, false
+	}
+	c.hits.Add(1)
+	cp := *best
+	return &cp, true
+}
+
+// domainPathPrefixMatch reports whether two normalized domain paths are equal
+// or one is a path-boundary prefix of the other ("创作" ↔ "创作/文学").
+func domainPathPrefixMatch(a, b string) bool {
+	if a == b {
+		return true
+	}
+	return strings.HasPrefix(b, a+"/") || strings.HasPrefix(a, b+"/")
+}
+
+// RecordDomainRecipe records a successful orchestration as a reusable recipe
+// keyed by "domain:<domainPath>" (B.10.21.7). Only a higher DQ score replaces
+// an existing recipe. Empty domainPath is a no-op.
+func (c *OrchestrationCache) RecordDomainRecipe(ctx context.Context, domainPath string, topology TopologyType, dqScore float64, teamCount int, agentKeys []string) {
+	dp := strings.TrimSpace(domainPath)
+	if dp == "" {
+		return
+	}
+	key := "domain:" + dp
+	c.mu.Lock()
+	if existing, found := c.entries[key]; found && existing.DQScore >= dqScore {
+		c.mu.Unlock()
+		return
+	}
+	c.entries[key] = &OrchestrationCacheEntry{
+		TaskPattern:   key,
+		DomainPath:    dp,
+		Topology:      topology,
+		DQScore:       dqScore,
+		TeamCount:     teamCount,
+		AvgDurationMs: 0,
+		AgentKeys:     agentKeys,
+		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
+	}
+	c.mu.Unlock()
+
+	c.lg.Info("领域配方已记录",
+		loggateway.StepID("spirit.orchestration_cache"),
+		loggateway.Str("domain_path", dp),
+		loggateway.Str("topology", string(topology)),
+		loggateway.Float64("dq_score", dqScore),
+	)
+	c.persistToRepo(ctx)
 }
 
 func (c *OrchestrationCache) SuggestBestAlternativeTopology(taskDescription string, excludeTopology TopologyType) (TopologyType, bool) {

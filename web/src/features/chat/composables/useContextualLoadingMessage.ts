@@ -33,7 +33,6 @@ function activityEventToLoadingType(ev: ActivityEvent): string {
     if (stage === 'plan_created') return 'spirit_plan_created';
     if (stage === 'allocation_created') return 'spirit_allocation_created';
     if (stage === 'orchestration_started') return 'spirit_orchestration_started';
-    if (stage === 'synthesis_completed') return 'spirit_synthesis_completed';
     if (stage === 'orchestration_completed') return 'butler.orchestration.completed';
     if (stage === 'orchestration_failed') return 'butler.orchestration.failed';
   }
@@ -207,8 +206,6 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
         return 'spirit_allocation_created';
       case 'orchestration_started':
         return 'spirit_orchestration_started';
-      case 'synthesis_completed':
-        return 'spirit_synthesis_completed';
       case 'orchestration_completed':
         return 'butler.orchestration.completed';
       case 'orchestration_failed':

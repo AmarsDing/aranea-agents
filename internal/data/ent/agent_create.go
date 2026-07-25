@@ -354,6 +354,34 @@ func (_c *AgentCreate) SetNillableWorkspaceID(v *string) *AgentCreate {
 	return _c
 }
 
+// SetMissionStatement sets the "mission_statement" field.
+func (_c *AgentCreate) SetMissionStatement(v string) *AgentCreate {
+	_c.mutation.SetMissionStatement(v)
+	return _c
+}
+
+// SetNillableMissionStatement sets the "mission_statement" field if the given value is not nil.
+func (_c *AgentCreate) SetNillableMissionStatement(v *string) *AgentCreate {
+	if v != nil {
+		_c.SetMissionStatement(*v)
+	}
+	return _c
+}
+
+// SetDomainPath sets the "domain_path" field.
+func (_c *AgentCreate) SetDomainPath(v string) *AgentCreate {
+	_c.mutation.SetDomainPath(v)
+	return _c
+}
+
+// SetNillableDomainPath sets the "domain_path" field if the given value is not nil.
+func (_c *AgentCreate) SetNillableDomainPath(v *string) *AgentCreate {
+	if v != nil {
+		_c.SetDomainPath(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *AgentCreate) SetID(v string) *AgentCreate {
 	_c.mutation.SetID(v)
@@ -483,6 +511,14 @@ func (_c *AgentCreate) defaults() {
 		v := agent.DefaultWorkspaceID
 		_c.mutation.SetWorkspaceID(v)
 	}
+	if _, ok := _c.mutation.MissionStatement(); !ok {
+		v := agent.DefaultMissionStatement
+		_c.mutation.SetMissionStatement(v)
+	}
+	if _, ok := _c.mutation.DomainPath(); !ok {
+		v := agent.DefaultDomainPath
+		_c.mutation.SetDomainPath(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -584,6 +620,17 @@ func (_c *AgentCreate) check() error {
 	}
 	if _, ok := _c.mutation.WorkspaceID(); !ok {
 		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "Agent.workspace_id"`)}
+	}
+	if _, ok := _c.mutation.MissionStatement(); !ok {
+		return &ValidationError{Name: "mission_statement", err: errors.New(`ent: missing required field "Agent.mission_statement"`)}
+	}
+	if _, ok := _c.mutation.DomainPath(); !ok {
+		return &ValidationError{Name: "domain_path", err: errors.New(`ent: missing required field "Agent.domain_path"`)}
+	}
+	if v, ok := _c.mutation.DomainPath(); ok {
+		if err := agent.DomainPathValidator(v); err != nil {
+			return &ValidationError{Name: "domain_path", err: fmt.Errorf(`ent: validator failed for field "Agent.domain_path": %w`, err)}
+		}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := agent.IDValidator(v); err != nil {
@@ -729,6 +776,14 @@ func (_c *AgentCreate) createSpec() (*Agent, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.WorkspaceID(); ok {
 		_spec.SetField(agent.FieldWorkspaceID, field.TypeString, value)
 		_node.WorkspaceID = value
+	}
+	if value, ok := _c.mutation.MissionStatement(); ok {
+		_spec.SetField(agent.FieldMissionStatement, field.TypeString, value)
+		_node.MissionStatement = value
+	}
+	if value, ok := _c.mutation.DomainPath(); ok {
+		_spec.SetField(agent.FieldDomainPath, field.TypeString, value)
+		_node.DomainPath = value
 	}
 	return _node, _spec
 }
@@ -1103,6 +1158,30 @@ func (u *AgentUpsert) SetWorkspaceID(v string) *AgentUpsert {
 // UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
 func (u *AgentUpsert) UpdateWorkspaceID() *AgentUpsert {
 	u.SetExcluded(agent.FieldWorkspaceID)
+	return u
+}
+
+// SetMissionStatement sets the "mission_statement" field.
+func (u *AgentUpsert) SetMissionStatement(v string) *AgentUpsert {
+	u.Set(agent.FieldMissionStatement, v)
+	return u
+}
+
+// UpdateMissionStatement sets the "mission_statement" field to the value that was provided on create.
+func (u *AgentUpsert) UpdateMissionStatement() *AgentUpsert {
+	u.SetExcluded(agent.FieldMissionStatement)
+	return u
+}
+
+// SetDomainPath sets the "domain_path" field.
+func (u *AgentUpsert) SetDomainPath(v string) *AgentUpsert {
+	u.Set(agent.FieldDomainPath, v)
+	return u
+}
+
+// UpdateDomainPath sets the "domain_path" field to the value that was provided on create.
+func (u *AgentUpsert) UpdateDomainPath() *AgentUpsert {
+	u.SetExcluded(agent.FieldDomainPath)
 	return u
 }
 
@@ -1529,6 +1608,34 @@ func (u *AgentUpsertOne) SetWorkspaceID(v string) *AgentUpsertOne {
 func (u *AgentUpsertOne) UpdateWorkspaceID() *AgentUpsertOne {
 	return u.Update(func(s *AgentUpsert) {
 		s.UpdateWorkspaceID()
+	})
+}
+
+// SetMissionStatement sets the "mission_statement" field.
+func (u *AgentUpsertOne) SetMissionStatement(v string) *AgentUpsertOne {
+	return u.Update(func(s *AgentUpsert) {
+		s.SetMissionStatement(v)
+	})
+}
+
+// UpdateMissionStatement sets the "mission_statement" field to the value that was provided on create.
+func (u *AgentUpsertOne) UpdateMissionStatement() *AgentUpsertOne {
+	return u.Update(func(s *AgentUpsert) {
+		s.UpdateMissionStatement()
+	})
+}
+
+// SetDomainPath sets the "domain_path" field.
+func (u *AgentUpsertOne) SetDomainPath(v string) *AgentUpsertOne {
+	return u.Update(func(s *AgentUpsert) {
+		s.SetDomainPath(v)
+	})
+}
+
+// UpdateDomainPath sets the "domain_path" field to the value that was provided on create.
+func (u *AgentUpsertOne) UpdateDomainPath() *AgentUpsertOne {
+	return u.Update(func(s *AgentUpsert) {
+		s.UpdateDomainPath()
 	})
 }
 
@@ -2122,6 +2229,34 @@ func (u *AgentUpsertBulk) SetWorkspaceID(v string) *AgentUpsertBulk {
 func (u *AgentUpsertBulk) UpdateWorkspaceID() *AgentUpsertBulk {
 	return u.Update(func(s *AgentUpsert) {
 		s.UpdateWorkspaceID()
+	})
+}
+
+// SetMissionStatement sets the "mission_statement" field.
+func (u *AgentUpsertBulk) SetMissionStatement(v string) *AgentUpsertBulk {
+	return u.Update(func(s *AgentUpsert) {
+		s.SetMissionStatement(v)
+	})
+}
+
+// UpdateMissionStatement sets the "mission_statement" field to the value that was provided on create.
+func (u *AgentUpsertBulk) UpdateMissionStatement() *AgentUpsertBulk {
+	return u.Update(func(s *AgentUpsert) {
+		s.UpdateMissionStatement()
+	})
+}
+
+// SetDomainPath sets the "domain_path" field.
+func (u *AgentUpsertBulk) SetDomainPath(v string) *AgentUpsertBulk {
+	return u.Update(func(s *AgentUpsert) {
+		s.SetDomainPath(v)
+	})
+}
+
+// UpdateDomainPath sets the "domain_path" field to the value that was provided on create.
+func (u *AgentUpsertBulk) UpdateDomainPath() *AgentUpsertBulk {
+	return u.Update(func(s *AgentUpsert) {
+		s.UpdateDomainPath()
 	})
 }
 

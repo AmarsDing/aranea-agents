@@ -44,6 +44,7 @@ func (s *stubTaskV2Writer) CompleteTaskTerminal(_ context.Context, t biz.Task) (
 // stubStepV2Writer is a stub implementation of biz.StepV2Writer for testing.
 type stubStepV2Writer struct {
 	created []biz.Step
+	updated []biz.Step
 	err     error
 }
 
@@ -53,6 +54,7 @@ func (s *stubStepV2Writer) CreateStep(_ context.Context, step biz.Step) (biz.Ste
 }
 
 func (s *stubStepV2Writer) UpdateStep(_ context.Context, step biz.Step) (biz.Step, error) {
+	s.updated = append(s.updated, step)
 	return step, s.err
 }
 

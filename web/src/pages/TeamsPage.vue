@@ -132,7 +132,6 @@
       :saving="saving"
       :can-save="canSave"
       :is-dark="isDark"
-      :is-platform-admin="isPlatformAdmin"
       @add-member="addMember"
       @remove-member="removeMember"
       @apply-template="applyTemplate"
@@ -186,12 +185,9 @@ import TeamToolbar from '../components/teams/TeamToolbar.vue';
 import { useTeamsPage } from '../features/teams/useTeamsPage';
 import { useTeamsStore } from '../stores/teams';
 import { storeToRefs } from 'pinia';
-import { useAuthStore } from '../stores/auth';
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
-const authStore = useAuthStore();
-const { isPlatformAdmin } = storeToRefs(authStore);
 const teamsStore = useTeamsStore();
 const { agents: storeAgents } = storeToRefs(teamsStore);
 

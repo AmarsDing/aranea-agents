@@ -9,8 +9,6 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/google/uuid"
 )
 
 // injectTeamRunLookupLimit bounds the look-back window when searching for the
@@ -162,7 +160,7 @@ func (s *TeamService) syncV2TeamRunStatus(
 		return
 	}
 	teamStageID := string(agent.NewTeamStageActivityID(teamID))
-	teamRunID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.team_run.v2:"+teamStageID)).String()
+	teamRunID := agent.NewTeamRunV2ID(teamStageID)
 	tr, err := s.teamRunV2.GetTeamRun(ctx, teamRunID)
 	if err != nil {
 		return

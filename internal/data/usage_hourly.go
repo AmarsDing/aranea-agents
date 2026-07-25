@@ -57,9 +57,9 @@ func usageHourlyWhere(query biz.UsageQuery) (string, []any) {
 		parts = append(parts, "agent_id = ?")
 		args = append(args, query.AgentID)
 	}
-	if query.WorkspaceID != "" {
-		parts = append(parts, "workspace_id = ?")
-		args = append(args, query.WorkspaceID)
+	if clause, wsArgs := usageWorkspaceClause(query.WorkspaceID); clause != "" {
+		parts = append(parts, clause)
+		args = append(args, wsArgs...)
 	}
 	if len(parts) == 0 {
 		return "", args

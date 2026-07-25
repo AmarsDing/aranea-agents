@@ -233,6 +233,16 @@ func init() {
 	agentDescWorkspaceID := agentFields[26].Descriptor()
 	// agent.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
 	agent.DefaultWorkspaceID = agentDescWorkspaceID.Default.(string)
+	// agentDescMissionStatement is the schema descriptor for mission_statement field.
+	agentDescMissionStatement := agentFields[27].Descriptor()
+	// agent.DefaultMissionStatement holds the default value on creation for the mission_statement field.
+	agent.DefaultMissionStatement = agentDescMissionStatement.Default.(string)
+	// agentDescDomainPath is the schema descriptor for domain_path field.
+	agentDescDomainPath := agentFields[28].Descriptor()
+	// agent.DefaultDomainPath holds the default value on creation for the domain_path field.
+	agent.DefaultDomainPath = agentDescDomainPath.Default.(string)
+	// agent.DomainPathValidator is a validator for the "domain_path" field. It is called by the builders before save.
+	agent.DomainPathValidator = agentDescDomainPath.Validators[0].(func(string) error)
 	// agentDescID is the schema descriptor for id field.
 	agentDescID := agentFields[0].Descriptor()
 	// agent.IDValidator is a validator for the "id" field. It is called by the builders before save.

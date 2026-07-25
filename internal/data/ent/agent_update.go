@@ -405,6 +405,34 @@ func (_u *AgentUpdate) SetNillableWorkspaceID(v *string) *AgentUpdate {
 	return _u
 }
 
+// SetMissionStatement sets the "mission_statement" field.
+func (_u *AgentUpdate) SetMissionStatement(v string) *AgentUpdate {
+	_u.mutation.SetMissionStatement(v)
+	return _u
+}
+
+// SetNillableMissionStatement sets the "mission_statement" field if the given value is not nil.
+func (_u *AgentUpdate) SetNillableMissionStatement(v *string) *AgentUpdate {
+	if v != nil {
+		_u.SetMissionStatement(*v)
+	}
+	return _u
+}
+
+// SetDomainPath sets the "domain_path" field.
+func (_u *AgentUpdate) SetDomainPath(v string) *AgentUpdate {
+	_u.mutation.SetDomainPath(v)
+	return _u
+}
+
+// SetNillableDomainPath sets the "domain_path" field if the given value is not nil.
+func (_u *AgentUpdate) SetNillableDomainPath(v *string) *AgentUpdate {
+	if v != nil {
+		_u.SetDomainPath(*v)
+	}
+	return _u
+}
+
 // Mutation returns the AgentMutation object of the builder.
 func (_u *AgentUpdate) Mutation() *AgentMutation {
 	return _u.mutation
@@ -457,6 +485,11 @@ func (_u *AgentUpdate) check() error {
 	if v, ok := _u.mutation.Source(); ok {
 		if err := agent.SourceValidator(v); err != nil {
 			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "Agent.source": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DomainPath(); ok {
+		if err := agent.DomainPathValidator(v); err != nil {
+			return &ValidationError{Name: "domain_path", err: fmt.Errorf(`ent: validator failed for field "Agent.domain_path": %w`, err)}
 		}
 	}
 	return nil
@@ -557,6 +590,12 @@ func (_u *AgentUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.WorkspaceID(); ok {
 		_spec.SetField(agent.FieldWorkspaceID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MissionStatement(); ok {
+		_spec.SetField(agent.FieldMissionStatement, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DomainPath(); ok {
+		_spec.SetField(agent.FieldDomainPath, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -956,6 +995,34 @@ func (_u *AgentUpdateOne) SetNillableWorkspaceID(v *string) *AgentUpdateOne {
 	return _u
 }
 
+// SetMissionStatement sets the "mission_statement" field.
+func (_u *AgentUpdateOne) SetMissionStatement(v string) *AgentUpdateOne {
+	_u.mutation.SetMissionStatement(v)
+	return _u
+}
+
+// SetNillableMissionStatement sets the "mission_statement" field if the given value is not nil.
+func (_u *AgentUpdateOne) SetNillableMissionStatement(v *string) *AgentUpdateOne {
+	if v != nil {
+		_u.SetMissionStatement(*v)
+	}
+	return _u
+}
+
+// SetDomainPath sets the "domain_path" field.
+func (_u *AgentUpdateOne) SetDomainPath(v string) *AgentUpdateOne {
+	_u.mutation.SetDomainPath(v)
+	return _u
+}
+
+// SetNillableDomainPath sets the "domain_path" field if the given value is not nil.
+func (_u *AgentUpdateOne) SetNillableDomainPath(v *string) *AgentUpdateOne {
+	if v != nil {
+		_u.SetDomainPath(*v)
+	}
+	return _u
+}
+
 // Mutation returns the AgentMutation object of the builder.
 func (_u *AgentUpdateOne) Mutation() *AgentMutation {
 	return _u.mutation
@@ -1021,6 +1088,11 @@ func (_u *AgentUpdateOne) check() error {
 	if v, ok := _u.mutation.Source(); ok {
 		if err := agent.SourceValidator(v); err != nil {
 			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "Agent.source": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DomainPath(); ok {
+		if err := agent.DomainPathValidator(v); err != nil {
+			return &ValidationError{Name: "domain_path", err: fmt.Errorf(`ent: validator failed for field "Agent.domain_path": %w`, err)}
 		}
 	}
 	return nil
@@ -1138,6 +1210,12 @@ func (_u *AgentUpdateOne) sqlSave(ctx context.Context) (_node *Agent, err error)
 	}
 	if value, ok := _u.mutation.WorkspaceID(); ok {
 		_spec.SetField(agent.FieldWorkspaceID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MissionStatement(); ok {
+		_spec.SetField(agent.FieldMissionStatement, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DomainPath(); ok {
+		_spec.SetField(agent.FieldDomainPath, field.TypeString, value)
 	}
 	_node = &Agent{config: _u.config}
 	_spec.Assign = _node.assignValues

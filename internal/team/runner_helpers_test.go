@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
@@ -109,4 +110,56 @@ func TestPersistStep_EmitsFinished(t *testing.T) {
 	if !finished {
 		t.Fatal("expected completed event, got none")
 	}
+}
+
+// TestPublishTeamStepActivity_MemberSessionIDMatchesV2Formula guards the
+// duplicate-row fix: the runner's MemberSession must derive its ID and
+// TeamRunID from the SAME v2 deterministic formulas the spirit_team service
+// uses, so both writers converge on one member_sessions_v2 row per member
+// per run (upsert by ID). Previously the runner used
+// NewSessionActivityID(teamID, agentKey) + v1 run.ID while the service used
+// "aranea.member_session.v2:"+teamRunV2ID+":"+agentKey → two rows per member.
+func TestPublishTeamStepActivity_MemberSessionIDMatchesV2Formula(t *testing.T) {
+	v2Bus := event.NewV2Bus()
+	ch, unsub := v2Bus.Subscribe(biz.EventSubscribeOptions{})
+	defer unsub()
+
+	runner := &Runner{
+		td: rt.TurnDeps{
+			Pipeline: rt.EventPipeline{EventBus: v2Bus},
+		},
+	}
+	run := biz.TeamRunRecord{ID: "v1-run-random-uuid", SessionID: "sess-1", SpiritSessionID: "spirit-1"}
+	teamID, agentKey := "team-1", "worker-a"
+
+	runner.publishTeamStepActivity(context.Background(), run, teamID, agentKey, "Worker A",
+		biz.ActivityEventCreated, biz.ActivityStatusRunning, "member_started", nil)
+
+	teamStageID := string(agent.NewTeamStageActivityID(teamID))
+	wantRunID := agent.NewTeamRunV2ID(teamStageID)
+	wantMsID := string(agent.NewMemberSessionActivityID(wantRunID, agentKey))
+
+	deadline := 0
+	for deadline < 2 {
+		select {
+		case e := <-ch:
+			if ev, ok := e.(*biz.MemberSessionCreatedEvent); ok {
+				if ev.MemberSession.ID != wantMsID {
+					t.Fatalf("MemberSession.ID=%q want %q (v2 unified formula)", ev.MemberSession.ID, wantMsID)
+				}
+				if ev.MemberSession.TeamRunID != wantRunID {
+					t.Fatalf("MemberSession.TeamRunID=%q want v2 run %q (must not be v1 run.ID %q)",
+						ev.MemberSession.TeamRunID, wantRunID, run.ID)
+				}
+				if ev.MemberSession.TeamStageID != teamStageID {
+					t.Fatalf("MemberSession.TeamStageID=%q want %q", ev.MemberSession.TeamStageID, teamStageID)
+				}
+				return
+			}
+			deadline++
+		default:
+			t.Fatal("expected MemberSessionCreatedEvent, got none")
+		}
+	}
+	t.Fatal("expected MemberSessionCreatedEvent, got other events only")
 }
