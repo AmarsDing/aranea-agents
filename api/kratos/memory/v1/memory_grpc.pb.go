@@ -51,6 +51,8 @@ const (
 	MemoryService_AbandonMemoryDeadLetter_FullMethodName      = "/kratos.memory.v1.MemoryService/AbandonMemoryDeadLetter"
 	MemoryService_ListPIIFlaggedFacts_FullMethodName          = "/kratos.memory.v1.MemoryService/ListPIIFlaggedFacts"
 	MemoryService_ReviewPIIFact_FullMethodName                = "/kratos.memory.v1.MemoryService/ReviewPIIFact"
+	MemoryService_GetMemoryLayerOverview_FullMethodName       = "/kratos.memory.v1.MemoryService/GetMemoryLayerOverview"
+	MemoryService_GetUnifiedMemoryGraph_FullMethodName        = "/kratos.memory.v1.MemoryService/GetUnifiedMemoryGraph"
 )
 
 // MemoryServiceClient is the client API for MemoryService service.
@@ -89,6 +91,8 @@ type MemoryServiceClient interface {
 	AbandonMemoryDeadLetter(ctx context.Context, in *AbandonMemoryDeadLetterRequest, opts ...grpc.CallOption) (*AbandonMemoryDeadLetterResponse, error)
 	ListPIIFlaggedFacts(ctx context.Context, in *ListPIIFlaggedFactsRequest, opts ...grpc.CallOption) (*ListPIIFlaggedFactsResponse, error)
 	ReviewPIIFact(ctx context.Context, in *ReviewPIIFactRequest, opts ...grpc.CallOption) (*ReviewPIIFactResponse, error)
+	GetMemoryLayerOverview(ctx context.Context, in *GetMemoryLayerOverviewRequest, opts ...grpc.CallOption) (*GetMemoryLayerOverviewResponse, error)
+	GetUnifiedMemoryGraph(ctx context.Context, in *GetUnifiedMemoryGraphRequest, opts ...grpc.CallOption) (*GetUnifiedMemoryGraphResponse, error)
 }
 
 type memoryServiceClient struct {
@@ -419,6 +423,26 @@ func (c *memoryServiceClient) ReviewPIIFact(ctx context.Context, in *ReviewPIIFa
 	return out, nil
 }
 
+func (c *memoryServiceClient) GetMemoryLayerOverview(ctx context.Context, in *GetMemoryLayerOverviewRequest, opts ...grpc.CallOption) (*GetMemoryLayerOverviewResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetMemoryLayerOverviewResponse)
+	err := c.cc.Invoke(ctx, MemoryService_GetMemoryLayerOverview_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *memoryServiceClient) GetUnifiedMemoryGraph(ctx context.Context, in *GetUnifiedMemoryGraphRequest, opts ...grpc.CallOption) (*GetUnifiedMemoryGraphResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetUnifiedMemoryGraphResponse)
+	err := c.cc.Invoke(ctx, MemoryService_GetUnifiedMemoryGraph_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MemoryServiceServer is the server API for MemoryService service.
 // All implementations must embed UnimplementedMemoryServiceServer
 // for forward compatibility.
@@ -455,6 +479,8 @@ type MemoryServiceServer interface {
 	AbandonMemoryDeadLetter(context.Context, *AbandonMemoryDeadLetterRequest) (*AbandonMemoryDeadLetterResponse, error)
 	ListPIIFlaggedFacts(context.Context, *ListPIIFlaggedFactsRequest) (*ListPIIFlaggedFactsResponse, error)
 	ReviewPIIFact(context.Context, *ReviewPIIFactRequest) (*ReviewPIIFactResponse, error)
+	GetMemoryLayerOverview(context.Context, *GetMemoryLayerOverviewRequest) (*GetMemoryLayerOverviewResponse, error)
+	GetUnifiedMemoryGraph(context.Context, *GetUnifiedMemoryGraphRequest) (*GetUnifiedMemoryGraphResponse, error)
 	mustEmbedUnimplementedMemoryServiceServer()
 }
 
@@ -560,6 +586,12 @@ func (UnimplementedMemoryServiceServer) ListPIIFlaggedFacts(context.Context, *Li
 }
 func (UnimplementedMemoryServiceServer) ReviewPIIFact(context.Context, *ReviewPIIFactRequest) (*ReviewPIIFactResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReviewPIIFact not implemented")
+}
+func (UnimplementedMemoryServiceServer) GetMemoryLayerOverview(context.Context, *GetMemoryLayerOverviewRequest) (*GetMemoryLayerOverviewResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetMemoryLayerOverview not implemented")
+}
+func (UnimplementedMemoryServiceServer) GetUnifiedMemoryGraph(context.Context, *GetUnifiedMemoryGraphRequest) (*GetUnifiedMemoryGraphResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetUnifiedMemoryGraph not implemented")
 }
 func (UnimplementedMemoryServiceServer) mustEmbedUnimplementedMemoryServiceServer() {}
 func (UnimplementedMemoryServiceServer) testEmbeddedByValue()                       {}
@@ -1158,6 +1190,42 @@ func _MemoryService_ReviewPIIFact_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MemoryService_GetMemoryLayerOverview_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMemoryLayerOverviewRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MemoryServiceServer).GetMemoryLayerOverview(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MemoryService_GetMemoryLayerOverview_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MemoryServiceServer).GetMemoryLayerOverview(ctx, req.(*GetMemoryLayerOverviewRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MemoryService_GetUnifiedMemoryGraph_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUnifiedMemoryGraphRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MemoryServiceServer).GetUnifiedMemoryGraph(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MemoryService_GetUnifiedMemoryGraph_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MemoryServiceServer).GetUnifiedMemoryGraph(ctx, req.(*GetUnifiedMemoryGraphRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // MemoryService_ServiceDesc is the grpc.ServiceDesc for MemoryService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1292,6 +1360,14 @@ var MemoryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReviewPIIFact",
 			Handler:    _MemoryService_ReviewPIIFact_Handler,
+		},
+		{
+			MethodName: "GetMemoryLayerOverview",
+			Handler:    _MemoryService_GetMemoryLayerOverview_Handler,
+		},
+		{
+			MethodName: "GetUnifiedMemoryGraph",
+			Handler:    _MemoryService_GetUnifiedMemoryGraph_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

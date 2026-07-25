@@ -31,6 +31,12 @@ func NewL4GraphTraverser(data *Data) biz.L4GraphTraverser {
 	return newL4EntityRepo(data)
 }
 
+// NewL4RelationAdminReader creates a biz.L4RelationAdminReader backed by data.
+// Used by the memory-center layer overview and unified graph assembly.
+func NewL4RelationAdminReader(data *Data) biz.L4RelationAdminReader {
+	return newL4EntityRepo(data)
+}
+
 // Compile-time interface checks.
 var (
 	_ biz.L4EntityStore          = (*l4EntityRepo)(nil)
@@ -40,7 +46,75 @@ var (
 	_ biz.L4ReconsolidationStore = (*l4EntityRepo)(nil)
 	_ biz.L4ConflictStore        = (*l4EntityRepo)(nil)
 	_ biz.L4KnowledgeBridgeStore = (*l4EntityRepo)(nil)
+	_ biz.L4RelationAdminReader  = (*l4EntityRepo)(nil)
 )
+
+// --- L4RelationAdminReader ---
+
+func (r *l4EntityRepo) CountActiveRelations(ctx context.Context, scopeType, scopeID string) (int32, error) {
+	if r == nil {
+		return 0, apierror.Internal("MEMORY_L4", "l4 repo not initialized")
+	}
+	var count int32
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
+		r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) FROM memory_relations WHERE status = 'active' AND deleted_at = '' AND scope_type = ? AND scope_id = ?`),
+		[]any{scopeType, scopeID}, &count)
+	if err != nil {
+		return 0, entErrToBizErr(err, "MEMORY_L4")
+	}
+	return count, nil
+}
+
+func (r *l4EntityRepo) ListActiveRelationRows(ctx context.Context, scopeType, scopeID string) ([][]byte, error) {
+	if r == nil {
+		return nil, apierror.Internal("MEMORY_L4", "l4 repo not initialized")
+	}
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`SELECT`+sqlRelationCols+` FROM memory_relations WHERE status = 'active' AND deleted_at = '' AND scope_type = ? AND scope_id = ? ORDER BY weight DESC`),
+		scopeType, scopeID)
+	if err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L4")
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		b, err := scanRelationRowJSON(rows)
+		if err != nil {
+			return nil, entErrToBizErr(err, "MEMORY_L4")
+		}
+		out = append(out, b)
+	}
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L4")
+}
+
+func (r *l4EntityRepo) TopConnectedEntityID(ctx context.Context, scopeType, scopeID string) (string, error) {
+	if r == nil {
+		return "", apierror.Internal("MEMORY_L4", "l4 repo not initialized")
+	}
+	// Endpoint aggregation: count each relation's source and target as one hit,
+	// restricted to endpoints that resolve to active entities.
+	const q = `SELECT t.endpoint_id, COUNT(*) AS c FROM (
+		SELECT source_id AS endpoint_id FROM memory_relations WHERE status = 'active' AND deleted_at = '' AND scope_type = ? AND scope_id = ?
+		UNION ALL
+		SELECT target_id AS endpoint_id FROM memory_relations WHERE status = 'active' AND deleted_at = '' AND scope_type = ? AND scope_id = ?
+	) t
+	JOIN memory_entities e ON e.id = t.endpoint_id AND e.status = 'active' AND e.deleted_at = ''
+	GROUP BY t.endpoint_id
+	ORDER BY c DESC, t.endpoint_id ASC
+	LIMIT 1`
+	var top string
+	var hitCount int
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
+		r.data.Dialect().RenumberPlaceholders(q),
+		[]any{scopeType, scopeID, scopeType, scopeID}, &top, &hitCount)
+	if err != nil {
+		if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
+			return "", nil
+		}
+		return "", entErrToBizErr(err, "MEMORY_L4")
+	}
+	return top, nil
+}
 
 // --- L4EntityStore ---
 

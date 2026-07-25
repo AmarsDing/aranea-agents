@@ -695,6 +695,78 @@ message ReviewPIIFactResponse {
   MemoryFact fact = 1;
 }
 
+// ── 记忆中心重设计：层级全景 + 跨层关联图谱（2026-07-25，设计 memory.design.md §10）──
+
+message GetMemoryLayerOverviewRequest {
+  string agent_id = 1;
+  string session_id = 2;
+}
+
+message MemoryLayerStat {
+  string layer = 1;              // L0..L4
+  int32 item_count = 2;
+  int32 today_added = 3;
+  int32 recall_hits = 4;
+  string health = 5;             // ok | warn
+  string headline_json = 6;      // 各层头部指标（见设计 §10.2）
+}
+
+message MemoryActionItem {
+  string kind = 1;
+  int32 count = 2;
+  string target_tab = 3;
+}
+
+message MemoryActivityItem {
+  string ts = 1;
+  string kind = 2;
+  string layer_from = 3;
+  string layer_to = 4;
+  string summary = 5;
+}
+
+message GetMemoryLayerOverviewResponse {
+  repeated MemoryLayerStat layers = 1;
+  repeated MemoryActionItem action_items = 2;
+  repeated MemoryActivityItem activity_feed = 3;
+}
+
+message GetUnifiedMemoryGraphRequest {
+  string agent_id = 1;
+  string focus = 2;
+  int32 hops = 3;
+  double min_weight = 4;
+  repeated string layers = 5;
+}
+
+message UnifiedGraphNode {
+  string id = 1;
+  string layer = 2;
+  string kind = 3;
+  string label = 4;
+  double weight = 5;
+  string meta_json = 6;
+}
+
+message UnifiedGraphEdge {
+  string source = 1;
+  string target = 2;
+  string type = 3;
+  string label = 4;
+  double weight = 5;
+  string polarity = 6;
+}
+
+message GetUnifiedMemoryGraphResponse {
+  string focus = 1;
+  repeated UnifiedGraphNode nodes = 2;
+  repeated UnifiedGraphEdge edges = 3;
+  int32 node_count = 4;
+  int32 edge_count = 5;
+  int32 filtered_edge_count = 6;
+  string empty_reason = 7;
+}
+
 service MemoryService {
   rpc ListL0Snapshots(ListL0SnapshotsRequest) returns (ListL0SnapshotsResponse) {
     option (google.api.http) = {get: "/v1/sessions/{session_id}/l0/snapshots"};
@@ -848,5 +920,15 @@ service MemoryService {
       post: "/v1/memory/l3/facts/pii/review"
       body: "*"
     };
+  }
+
+  // ── 记忆中心重设计：层级全景 + 跨层关联图谱 ──
+
+  rpc GetMemoryLayerOverview(GetMemoryLayerOverviewRequest) returns (GetMemoryLayerOverviewResponse) {
+    option (google.api.http) = {get: "/v1/memory/layer-overview"};
+  }
+
+  rpc GetUnifiedMemoryGraph(GetUnifiedMemoryGraphRequest) returns (GetUnifiedMemoryGraphResponse) {
+    option (google.api.http) = {get: "/v1/memory/graph/unified"};
   }
 }

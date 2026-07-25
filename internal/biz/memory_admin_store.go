@@ -211,6 +211,31 @@ type L2RecallStore interface {
 	RecallL2Episodes(ctx context.Context, agentID, sessionID, query string, queryEmbedding []float32, limit int32) ([][]byte, error)
 }
 
+// L2EpisodeAdminReader exposes paginated episode browsing for the memory center
+// (layer overview stats + unified graph episode nodes).
+// Stability:evolving
+type L2EpisodeAdminReader interface {
+	// ListEpisodeRowsAdmin returns episodes for an agent (optionally filtered by
+	// session) ordered by created_at DESC, along with the total count and the
+	// count created today (UTC).
+	ListEpisodeRowsAdmin(ctx context.Context, agentID, sessionID string, limit, offset int32) (rows [][]byte, total int32, todayCount int32, err error)
+	// ListEpisodeRowsByIDs batch-fetches episode rows by ID (missing IDs are skipped).
+	ListEpisodeRowsByIDs(ctx context.Context, ids []string) ([][]byte, error)
+}
+
+// L4RelationAdminReader exposes relation stats and full relation rows for
+// unified cross-layer graph assembly.
+// Stability:evolving
+type L4RelationAdminReader interface {
+	// CountActiveRelations counts active, non-deleted relations in a scope.
+	CountActiveRelations(ctx context.Context, scopeType, scopeID string) (int32, error)
+	// ListActiveRelationRows returns all active, non-deleted relation rows in a scope.
+	ListActiveRelationRows(ctx context.Context, scopeType, scopeID string) ([][]byte, error)
+	// TopConnectedEntityID returns the active entity with the most relation
+	// endpoints in the scope (default graph focus). Returns "" when none.
+	TopConnectedEntityID(ctx context.Context, scopeType, scopeID string) (string, error)
+}
+
 // L3FactReader exposes read operations for semantic facts.
 type L3FactReader interface {
 	ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error)

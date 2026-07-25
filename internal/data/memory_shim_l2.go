@@ -10,6 +10,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/vector"
+	"aranea-agents/pkg/apierror"
 )
 
 // l2EpisodeRepo implements biz.L2EpisodeWriter + biz.L2RecallStore using direct Raw SQL.
@@ -31,10 +32,17 @@ func NewL2RecallStore(data *Data, vs vector.VectorStore) biz.L2RecallStore {
 	return newL2EpisodeRepo(data, vs)
 }
 
+// NewL2EpisodeAdminReader creates a biz.L2EpisodeAdminReader backed by data.
+// Used by the memory-center layer overview and unified graph assembly.
+func NewL2EpisodeAdminReader(data *Data, vs vector.VectorStore) biz.L2EpisodeAdminReader {
+	return newL2EpisodeRepo(data, vs)
+}
+
 // Compile-time interface checks.
 var (
-	_ biz.L2EpisodeWriter = (*l2EpisodeRepo)(nil)
-	_ biz.L2RecallStore   = (*l2EpisodeRepo)(nil)
+	_ biz.L2EpisodeWriter      = (*l2EpisodeRepo)(nil)
+	_ biz.L2RecallStore        = (*l2EpisodeRepo)(nil)
+	_ biz.L2EpisodeAdminReader = (*l2EpisodeRepo)(nil)
 )
 
 // --- L2EpisodeWriter ---
@@ -118,8 +126,94 @@ func (r *l2EpisodeRepo) InsertL1ArchiveEpisode(ctx context.Context, in biz.L1Arc
 	return entErrToBizErr(err, "MEMORY_L2")
 }
 
-// --- L2RecallStore ---
+// --- L2EpisodeAdminReader ---
 
+func (r *l2EpisodeRepo) ListEpisodeRowsAdmin(ctx context.Context, agentID, sessionID string, limit, offset int32) ([][]byte, int32, int32, error) {
+	if r == nil {
+		return nil, 0, 0, apierror.Internal("MEMORY_L2", "l2 repo not initialized")
+	}
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return nil, 0, 0, nil
+	}
+	clauses := []string{`agent_id = ?`, `deleted_at = ''`}
+	args := []any{agentID}
+	if sessionID = strings.TrimSpace(sessionID); sessionID != "" {
+		clauses = append(clauses, `session_id = ?`)
+		args = append(args, sessionID)
+	}
+	where := " WHERE " + strings.Join(clauses, " AND ")
+
+	todayStart := time.Now().UTC().Truncate(24 * time.Hour).Format(time.RFC3339Nano)
+	var total, today int32
+	countQ := `SELECT COUNT(*), COALESCE(SUM(CASE WHEN created_at >= '` + todayStart + `' THEN 1 ELSE 0 END), 0) FROM memory_episodes` + where
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(countQ), args, &total, &today); err != nil {
+		return nil, 0, 0, entErrToBizErr(err, "MEMORY_L2")
+	}
+
+	lim := int(limit)
+	if lim <= 0 {
+		lim = 20
+	}
+	off := int(offset)
+	if off < 0 {
+		off = 0
+	}
+	q := sqlEpisodeSelect + where + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	args = append(args, lim, off)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	if err != nil {
+		return nil, 0, 0, entErrToBizErr(err, "MEMORY_L2")
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		b, err := scanEpisodeRowJSON(rows)
+		if err != nil {
+			return nil, 0, 0, entErrToBizErr(err, "MEMORY_L2")
+		}
+		out = append(out, b)
+	}
+	return out, total, today, entErrToBizErr(rows.Err(), "MEMORY_L2")
+}
+
+func (r *l2EpisodeRepo) ListEpisodeRowsByIDs(ctx context.Context, ids []string) ([][]byte, error) {
+	if r == nil {
+		return nil, apierror.Internal("MEMORY_L2", "l2 repo not initialized")
+	}
+	clean := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id = strings.TrimSpace(id); id != "" {
+			clean = append(clean, id)
+		}
+	}
+	if len(clean) == 0 {
+		return nil, nil
+	}
+	ph := make([]string, len(clean))
+	args := make([]any, len(clean))
+	for i, id := range clean {
+		ph[i] = "?"
+		args[i] = id
+	}
+	q := sqlEpisodeSelect + ` WHERE deleted_at = '' AND id IN (` + strings.Join(ph, ",") + `)`
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	if err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L2")
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		b, err := scanEpisodeRowJSON(rows)
+		if err != nil {
+			return nil, entErrToBizErr(err, "MEMORY_L2")
+		}
+		out = append(out, b)
+	}
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L2")
+}
+
+// --- L2RecallStore ---
 func (r *l2EpisodeRepo) ListEpisodeRowsForRecall(ctx context.Context, agentID, sessionID string, limit int32) ([][]byte, error) {
 	lim := int(limit)
 	if lim <= 0 {

@@ -29,9 +29,11 @@ const OperationMemoryServiceGetAgentIdentity = "/kratos.memory.v1.MemoryService/
 const OperationMemoryServiceGetAgentStrategy = "/kratos.memory.v1.MemoryService/GetAgentStrategy"
 const OperationMemoryServiceGetCascadeSagaSteps = "/kratos.memory.v1.MemoryService/GetCascadeSagaSteps"
 const OperationMemoryServiceGetEvolutionMetrics = "/kratos.memory.v1.MemoryService/GetEvolutionMetrics"
+const OperationMemoryServiceGetMemoryLayerOverview = "/kratos.memory.v1.MemoryService/GetMemoryLayerOverview"
 const OperationMemoryServiceGetMemoryNeighborhood = "/kratos.memory.v1.MemoryService/GetMemoryNeighborhood"
 const OperationMemoryServiceGetMemoryPlatformSettings = "/kratos.memory.v1.MemoryService/GetMemoryPlatformSettings"
 const OperationMemoryServiceGetMemoryWorkerStatus = "/kratos.memory.v1.MemoryService/GetMemoryWorkerStatus"
+const OperationMemoryServiceGetUnifiedMemoryGraph = "/kratos.memory.v1.MemoryService/GetUnifiedMemoryGraph"
 const OperationMemoryServiceListCascadeProposals = "/kratos.memory.v1.MemoryService/ListCascadeProposals"
 const OperationMemoryServiceListConflictingFacts = "/kratos.memory.v1.MemoryService/ListConflictingFacts"
 const OperationMemoryServiceListEvolutionEvents = "/kratos.memory.v1.MemoryService/ListEvolutionEvents"
@@ -63,9 +65,11 @@ type MemoryServiceHTTPServer interface {
 	GetAgentStrategy(context.Context, *GetAgentStrategyRequest) (*AgentStrategyProfile, error)
 	GetCascadeSagaSteps(context.Context, *GetCascadeSagaStepsRequest) (*GetCascadeSagaStepsResponse, error)
 	GetEvolutionMetrics(context.Context, *GetEvolutionMetricsRequest) (*EvolutionMetricsReport, error)
+	GetMemoryLayerOverview(context.Context, *GetMemoryLayerOverviewRequest) (*GetMemoryLayerOverviewResponse, error)
 	GetMemoryNeighborhood(context.Context, *GetMemoryNeighborhoodRequest) (*GraphNeighborhood, error)
 	GetMemoryPlatformSettings(context.Context, *GetMemoryPlatformSettingsRequest) (*MemoryPlatformSettings, error)
 	GetMemoryWorkerStatus(context.Context, *GetMemoryWorkerStatusRequest) (*MemoryWorkerStatus, error)
+	GetUnifiedMemoryGraph(context.Context, *GetUnifiedMemoryGraphRequest) (*GetUnifiedMemoryGraphResponse, error)
 	ListCascadeProposals(context.Context, *ListCascadeProposalsRequest) (*ListCascadeProposalsResponse, error)
 	ListConflictingFacts(context.Context, *ListConflictingFactsRequest) (*ListConflictingFactsResponse, error)
 	ListEvolutionEvents(context.Context, *ListEvolutionEventsRequest) (*ListEvolutionEventsResponse, error)
@@ -121,6 +125,8 @@ func RegisterMemoryServiceHTTPServer(s *http.Server, srv MemoryServiceHTTPServer
 	r.POST("/v1/memory/worker/dead-letters/{id}/abandon", _MemoryService_AbandonMemoryDeadLetter0_HTTP_Handler(srv))
 	r.GET("/v1/memory/l3/facts/pii", _MemoryService_ListPIIFlaggedFacts0_HTTP_Handler(srv))
 	r.POST("/v1/memory/l3/facts/pii/review", _MemoryService_ReviewPIIFact0_HTTP_Handler(srv))
+	r.GET("/v1/memory/layer-overview", _MemoryService_GetMemoryLayerOverview0_HTTP_Handler(srv))
+	r.GET("/v1/memory/graph/unified", _MemoryService_GetUnifiedMemoryGraph0_HTTP_Handler(srv))
 }
 
 func _MemoryService_ListL0Snapshots0_HTTP_Handler(srv MemoryServiceHTTPServer) func(ctx http.Context) error {
@@ -821,6 +827,44 @@ func _MemoryService_ReviewPIIFact0_HTTP_Handler(srv MemoryServiceHTTPServer) fun
 	}
 }
 
+func _MemoryService_GetMemoryLayerOverview0_HTTP_Handler(srv MemoryServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetMemoryLayerOverviewRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMemoryServiceGetMemoryLayerOverview)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetMemoryLayerOverview(ctx, req.(*GetMemoryLayerOverviewRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetMemoryLayerOverviewResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _MemoryService_GetUnifiedMemoryGraph0_HTTP_Handler(srv MemoryServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetUnifiedMemoryGraphRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMemoryServiceGetUnifiedMemoryGraph)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetUnifiedMemoryGraph(ctx, req.(*GetUnifiedMemoryGraphRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetUnifiedMemoryGraphResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 type MemoryServiceHTTPClient interface {
 	AbandonMemoryDeadLetter(ctx context.Context, req *AbandonMemoryDeadLetterRequest, opts ...http.CallOption) (rsp *AbandonMemoryDeadLetterResponse, err error)
 	AppendEvolutionEvent(ctx context.Context, req *AppendEvolutionEventRequest, opts ...http.CallOption) (rsp *AppendEvolutionEventResponse, err error)
@@ -832,9 +876,11 @@ type MemoryServiceHTTPClient interface {
 	GetAgentStrategy(ctx context.Context, req *GetAgentStrategyRequest, opts ...http.CallOption) (rsp *AgentStrategyProfile, err error)
 	GetCascadeSagaSteps(ctx context.Context, req *GetCascadeSagaStepsRequest, opts ...http.CallOption) (rsp *GetCascadeSagaStepsResponse, err error)
 	GetEvolutionMetrics(ctx context.Context, req *GetEvolutionMetricsRequest, opts ...http.CallOption) (rsp *EvolutionMetricsReport, err error)
+	GetMemoryLayerOverview(ctx context.Context, req *GetMemoryLayerOverviewRequest, opts ...http.CallOption) (rsp *GetMemoryLayerOverviewResponse, err error)
 	GetMemoryNeighborhood(ctx context.Context, req *GetMemoryNeighborhoodRequest, opts ...http.CallOption) (rsp *GraphNeighborhood, err error)
 	GetMemoryPlatformSettings(ctx context.Context, req *GetMemoryPlatformSettingsRequest, opts ...http.CallOption) (rsp *MemoryPlatformSettings, err error)
 	GetMemoryWorkerStatus(ctx context.Context, req *GetMemoryWorkerStatusRequest, opts ...http.CallOption) (rsp *MemoryWorkerStatus, err error)
+	GetUnifiedMemoryGraph(ctx context.Context, req *GetUnifiedMemoryGraphRequest, opts ...http.CallOption) (rsp *GetUnifiedMemoryGraphResponse, err error)
 	ListCascadeProposals(ctx context.Context, req *ListCascadeProposalsRequest, opts ...http.CallOption) (rsp *ListCascadeProposalsResponse, err error)
 	ListConflictingFacts(ctx context.Context, req *ListConflictingFactsRequest, opts ...http.CallOption) (rsp *ListConflictingFactsResponse, err error)
 	ListEvolutionEvents(ctx context.Context, req *ListEvolutionEventsRequest, opts ...http.CallOption) (rsp *ListEvolutionEventsResponse, err error)
@@ -994,6 +1040,19 @@ func (c *MemoryServiceHTTPClientImpl) GetEvolutionMetrics(ctx context.Context, i
 	return &out, nil
 }
 
+func (c *MemoryServiceHTTPClientImpl) GetMemoryLayerOverview(ctx context.Context, in *GetMemoryLayerOverviewRequest, opts ...http.CallOption) (*GetMemoryLayerOverviewResponse, error) {
+	var out GetMemoryLayerOverviewResponse
+	pattern := "/v1/memory/layer-overview"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMemoryServiceGetMemoryLayerOverview))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *MemoryServiceHTTPClientImpl) GetMemoryNeighborhood(ctx context.Context, in *GetMemoryNeighborhoodRequest, opts ...http.CallOption) (*GraphNeighborhood, error) {
 	var out GraphNeighborhood
 	pattern := "/v1/memory/l4/entities/{center_id}/neighborhood"
@@ -1025,6 +1084,19 @@ func (c *MemoryServiceHTTPClientImpl) GetMemoryWorkerStatus(ctx context.Context,
 	pattern := "/v1/memory/worker/status"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationMemoryServiceGetMemoryWorkerStatus))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *MemoryServiceHTTPClientImpl) GetUnifiedMemoryGraph(ctx context.Context, in *GetUnifiedMemoryGraphRequest, opts ...http.CallOption) (*GetUnifiedMemoryGraphResponse, error) {
+	var out GetUnifiedMemoryGraphResponse
+	pattern := "/v1/memory/graph/unified"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMemoryServiceGetUnifiedMemoryGraph))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

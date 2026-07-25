@@ -740,6 +740,76 @@ export type ReviewPIIFactResponse = {
   fact: MemoryFact | undefined;
 };
 
+export type GetMemoryLayerOverviewRequest = {
+  agentId: string | undefined;
+  sessionId: string | undefined;
+};
+
+export type MemoryLayerStat = {
+  layer: string | undefined;
+  itemCount: number | undefined;
+  todayAdded: number | undefined;
+  recallHits: number | undefined;
+  health: string | undefined;
+  headlineJson: string | undefined;
+};
+
+export type MemoryActionItem = {
+  kind: string | undefined;
+  count: number | undefined;
+  targetTab: string | undefined;
+};
+
+export type MemoryActivityItem = {
+  ts: string | undefined;
+  kind: string | undefined;
+  layerFrom: string | undefined;
+  layerTo: string | undefined;
+  summary: string | undefined;
+};
+
+export type GetMemoryLayerOverviewResponse = {
+  layers: MemoryLayerStat[] | undefined;
+  actionItems: MemoryActionItem[] | undefined;
+  activityFeed: MemoryActivityItem[] | undefined;
+};
+
+export type GetUnifiedMemoryGraphRequest = {
+  agentId: string | undefined;
+  focus: string | undefined;
+  hops: number | undefined;
+  minWeight: number | undefined;
+  layers: string[] | undefined;
+};
+
+export type UnifiedGraphNode = {
+  id: string | undefined;
+  layer: string | undefined;
+  kind: string | undefined;
+  label: string | undefined;
+  weight: number | undefined;
+  metaJson: string | undefined;
+};
+
+export type UnifiedGraphEdge = {
+  source: string | undefined;
+  target: string | undefined;
+  type: string | undefined;
+  label: string | undefined;
+  weight: number | undefined;
+  polarity: string | undefined;
+};
+
+export type GetUnifiedMemoryGraphResponse = {
+  focus: string | undefined;
+  nodes: UnifiedGraphNode[] | undefined;
+  edges: UnifiedGraphEdge[] | undefined;
+  nodeCount: number | undefined;
+  edgeCount: number | undefined;
+  filteredEdgeCount: number | undefined;
+  emptyReason: string | undefined;
+};
+
 export interface MemoryService {
   ListL0Snapshots(request: ListL0SnapshotsRequest): Promise<ListL0SnapshotsResponse>;
   ListL1Tasks(request: ListL1TasksRequest): Promise<ListL1TasksResponse>;
@@ -773,6 +843,8 @@ export interface MemoryService {
   AbandonMemoryDeadLetter(request: AbandonMemoryDeadLetterRequest): Promise<AbandonMemoryDeadLetterResponse>;
   ListPIIFlaggedFacts(request: ListPIIFlaggedFactsRequest): Promise<ListPIIFlaggedFactsResponse>;
   ReviewPIIFact(request: ReviewPIIFactRequest): Promise<ReviewPIIFactResponse>;
+  GetMemoryLayerOverview(request: GetMemoryLayerOverviewRequest): Promise<GetMemoryLayerOverviewResponse>;
+  GetUnifiedMemoryGraph(request: GetUnifiedMemoryGraphRequest): Promise<GetUnifiedMemoryGraphResponse>;
 }
 
 type RequestType = {
@@ -1525,6 +1597,63 @@ export function createMemoryServiceClient(
         service: "MemoryService",
         method: "ReviewPIIFact",
       }) as Promise<ReviewPIIFactResponse>;
+    },
+    GetMemoryLayerOverview(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/memory/layer-overview`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.agentId) {
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
+      }
+      if (request.sessionId) {
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MemoryService",
+        method: "GetMemoryLayerOverview",
+      }) as Promise<GetMemoryLayerOverviewResponse>;
+    },
+    GetUnifiedMemoryGraph(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/memory/graph/unified`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.agentId) {
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
+      }
+      if (request.focus) {
+        queryParams.push(`focus=${encodeURIComponent(request.focus.toString())}`)
+      }
+      if (request.hops) {
+        queryParams.push(`hops=${encodeURIComponent(request.hops.toString())}`)
+      }
+      if (request.minWeight) {
+        queryParams.push(`minWeight=${encodeURIComponent(request.minWeight.toString())}`)
+      }
+      if (request.layers) {
+        request.layers.forEach((x) => {
+          queryParams.push(`layers=${encodeURIComponent(x.toString())}`)
+        })
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MemoryService",
+        method: "GetUnifiedMemoryGraph",
+      }) as Promise<GetUnifiedMemoryGraphResponse>;
     },
   };
 }
