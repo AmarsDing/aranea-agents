@@ -1,9 +1,9 @@
 <template>
   <q-page class="app-standard-page app-registry-page knowledge-page">
     <AppPageHero
-      kicker="RAG / pgvector"
+      kicker="RAG / Vault"
       title="知识库"
-      subtitle="管理向量集合、文档入库与语义检索。需后端配置 Postgres + pgvector。"
+      subtitle="以本地文件夹为真相源的 Vault 知识库：文件夹树导航、摘要卡、双轨关联与语义检索。"
     >
       <template #actions>
         <q-btn color="primary" unelevated rounded no-caps icon="add" label="新建集合" @click="openCreateCollection" />
@@ -32,24 +32,47 @@
 
     <div class="app-tab-shell q-mb-md">
       <q-tabs v-model="pageTab" dense align="left" class="text-primary">
-        <q-tab name="documents" :label="$t('knowledgePage.tabDocuments')" />
+        <q-tab name="explorer" :label="$t('knowledgePage.tabExplorer')" />
         <q-tab name="search" :label="$t('knowledgePage.tabSearch')" />
         <q-tab name="settings" :label="$t('knowledgePage.tabSettings')" />
       </q-tabs>
     </div>
 
     <q-tab-panels v-model="pageTab" animated class="bg-transparent">
-      <q-tab-panel name="documents" class="q-pa-none">
-        <div class="app-split-layout">
-          <knowledge-collection-list
+      <!-- P3 资源管理器：统一搜索框双区 + 三栏（Vault 树 / 文档列表 / 详情） -->
+      <q-tab-panel name="explorer" class="q-pa-none">
+        <knowledge-search-dual
+          v-model:query="explorerQuery"
+          class="q-mb-md"
+          :intent="explorerIntent"
+          :instant-results="explorerInstantResults"
+          :semantic-results="explorerSemanticResults"
+          :semantic-loading="explorerSemanticLoading"
+          :semantic-ran="explorerSemanticRan"
+          :show-instant="explorerShowInstant"
+          :show-semantic="explorerShowSemantic"
+          :doc-source-map="explorerDocSourceMap"
+          @search="runExplorerSemantic"
+          @select-instant="selectExplorerInstant"
+          @select-semantic="selectExplorerSemantic"
+        />
+
+        <div class="knowledge-explorer-grid">
+          <knowledge-vault-tree
             :collections="collections"
-            :selected-id="selectedId"
-            :loading="loading"
-            @select="selectCollection"
+            :selected-vault-id="selectedId"
+            :nodes="explorerRootNodes"
+            :selected-prefix="explorerPrefix"
+            :loading="explorerTreeLoading"
+            :error="explorerTreeError"
+            @select-vault="selectCollection"
+            @select-prefix="selectExplorerPrefix"
+            @lazy-load="onExplorerLazyLoad"
+            @delete-vault="confirmDeleteCollection"
           />
 
-          <div>
-            <!-- US-14 上传免预选：拖拽区常驻右栏顶部，未选中集合时自动落入「默认知识库」 -->
+          <div class="knowledge-explorer-grid__mid">
+            <!-- US-14 上传免预选：拖拽区常驻中栏顶部，未选中集合时自动落入「默认知识库」 -->
             <knowledge-drop-zone @files-selected="enqueueUploadFiles" />
             <knowledge-upload-queue
               v-if="uploadTasks.length"
@@ -57,51 +80,31 @@
               @clear-finished="clearFinishedUploadTasks"
               @remove-task="removeUploadTask"
             />
-            <q-card v-if="selectedCollection" flat class="app-pane-card">
-              <q-card-section>
-                <div class="row items-center justify-between">
-                  <div>
-                    <div class="app-registry-cell-primary text-h6">{{ selectedCollection.name }}</div>
-                    <div class="app-registry-cell-sub">{{ selectedCollection.description || '无描述' }}</div>
-                  </div>
-                  <q-btn
-                    flat
-                    no-caps
-                    color="negative"
-                    icon="delete"
-                    label="删除集合"
-                    @click="confirmDeleteCollection"
-                  />
-                </div>
-                <div class="row q-gutter-md q-mt-sm text-caption text-grey-7">
-                  <span>模型: {{ selectedCollection.embedding_model }}</span>
-                  <span>维度: {{ selectedCollection.dim }}</span>
-                  <span>文档: {{ selectedCollection.document_count }}</span>
-                  <span>分块: {{ selectedCollection.chunk_count }}</span>
-                  <span v-if="selectedCollection.workspace">工作区: {{ selectedCollection.workspace }}</span>
-                  <span v-if="selectedCollection.created_at"
-                    >创建: {{ formatKnowledgeTime(selectedCollection.created_at) }}</span
-                  >
-                </div>
-              </q-card-section>
-              <div class="app-pane-card__body">
-                <knowledge-documents-panel
-                  :documents="documents"
-                  :loading="docsLoading"
-                  @open-ingest="ingestOpen = true"
-                  @refresh="loadDocuments"
-                  @delete-document="confirmDeleteDocument"
-                  @preview-document="openDocPreview"
-                  @move-document="openMoveDialog"
-                />
-              </div>
-            </q-card>
-            <div v-else class="app-registry-empty app-pane-card">
-              <q-icon name="library_books" size="48px" color="grey-6" />
-              <div class="text-h6">{{ $t('knowledgePage.emptyTitle') }}</div>
-              <div class="text-body2">{{ $t('knowledgePage.emptyHint') }}</div>
-            </div>
+            <knowledge-doc-list
+              :prefix="explorerPrefix"
+              :files="explorerFiles"
+              :dir-count="explorerDirCount"
+              :loading="explorerTreeLoading"
+              :selected-doc-id="explorerDocId"
+              @select="onExplorerSelectDoc"
+              @refresh="refreshExplorerTree"
+              @ingest="ingestOpen = true"
+            />
           </div>
+
+          <knowledge-doc-detail
+            :node="explorerSelectedNode"
+            :expanded="explorerExpanded"
+            :preview-content="explorerPreviewContent"
+            :preview-organized="explorerPreviewOrganized"
+            :preview-loading="explorerPreviewLoading"
+            :links="explorerLinks"
+            :links-loading="explorerLinksLoading"
+            @toggle-expand="toggleExplorerDetail"
+            @delete="onExplorerDelete"
+            @move="onExplorerMove"
+            @navigate="onExplorerNavigate"
+          />
         </div>
       </q-tab-panel>
 
@@ -155,13 +158,6 @@
       :loading="ingestLoading"
       @submit="submitIngest"
     />
-    <knowledge-doc-preview-dialog
-      v-model:open="previewOpen"
-      :source="previewDoc?.source ?? ''"
-      :organized="previewOrganized"
-      :content="previewContent"
-      :loading="previewLoading"
-    />
     <knowledge-move-dialog
       v-model:open="moveOpen"
       v-model:target-id="moveTargetId"
@@ -177,26 +173,25 @@
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import { onMounted } from 'vue';
 import KnowledgeEmbedderPanel from '../components/knowledge/KnowledgeEmbedderPanel.vue';
-import KnowledgeCollectionList from '../components/knowledge/KnowledgeCollectionList.vue';
-import KnowledgeDocumentsPanel from '../components/knowledge/KnowledgeDocumentsPanel.vue';
+import KnowledgeVaultTree from '../components/knowledge/KnowledgeVaultTree.vue';
+import KnowledgeDocList from '../components/knowledge/KnowledgeDocList.vue';
+import KnowledgeDocDetail from '../components/knowledge/KnowledgeDocDetail.vue';
+import KnowledgeSearchDual from '../components/knowledge/KnowledgeSearchDual.vue';
 import KnowledgeSearchPanel from '../components/knowledge/KnowledgeSearchPanel.vue';
 import KnowledgeCreateDialog from '../components/knowledge/KnowledgeCreateDialog.vue';
 import KnowledgeIngestDialog from '../components/knowledge/KnowledgeIngestDialog.vue';
 import KnowledgeDropZone from '../components/knowledge/KnowledgeDropZone.vue';
 import KnowledgeUploadQueue from '../components/knowledge/KnowledgeUploadQueue.vue';
-import KnowledgeDocPreviewDialog from '../components/knowledge/KnowledgeDocPreviewDialog.vue';
 import KnowledgeMoveDialog from '../components/knowledge/KnowledgeMoveDialog.vue';
 import { useKnowledgePage } from '../features/knowledge/useKnowledgePage';
-import { formatKnowledgeTime } from '../features/knowledge/knowledgeUi';
+import type { KnowledgeDocument, VaultTreeNode } from '../features/knowledge/types';
 
 const {
   collections,
   selectedId,
-  selectedCollection,
   documents,
   docSourceMap,
   loading,
-  docsLoading,
   error,
   unavailable,
   pageTab,
@@ -219,7 +214,6 @@ const {
   embedderSaving,
   saveEmbedderConfig,
   loadCollections,
-  loadDocuments,
   loadEmbedderConfig,
   selectCollection,
   openCreateCollection,
@@ -227,12 +221,6 @@ const {
   confirmDeleteCollection,
   submitIngest,
   confirmDeleteDocument,
-  previewOpen,
-  previewLoading,
-  previewDoc,
-  previewContent,
-  previewOrganized,
-  openDocPreview,
   uploadTasks,
   enqueueUploadFiles,
   removeUploadTask,
@@ -247,10 +235,100 @@ const {
   moveTargetOptions,
   openMoveDialog,
   submitMove,
+  explorer,
 } = useKnowledgePage();
+
+// P3 资源管理器状态（composable 返回 refs，此处解构供模板自动解包）。
+const {
+  currentPrefix: explorerPrefix,
+  rootNodes: explorerRootNodes,
+  currentFiles: explorerFiles,
+  currentDirCount: explorerDirCount,
+  treeLoading: explorerTreeLoading,
+  treeError: explorerTreeError,
+  onLazyLoad: onExplorerLazyLoad,
+  selectPrefix: selectExplorerPrefix,
+  refreshTree: refreshExplorerTree,
+  selectedDocId: explorerDocId,
+  selectedNode: explorerSelectedNode,
+  detailExpanded: explorerExpanded,
+  previewContent: explorerPreviewContent,
+  previewOrganized: explorerPreviewOrganized,
+  previewLoading: explorerPreviewLoading,
+  links: explorerLinks,
+  linksLoading: explorerLinksLoading,
+  selectDocument,
+  navigateToDocument,
+  toggleDetail: toggleExplorerDetail,
+  searchQuery: explorerQuery,
+  searchIntent: explorerIntent,
+  instantResults: explorerInstantResults,
+  showInstantZone: explorerShowInstant,
+  showSemanticZone: explorerShowSemantic,
+  semanticResults: explorerSemanticResults,
+  semanticLoading: explorerSemanticLoading,
+  semanticRan: explorerSemanticRan,
+  docSourceMap: explorerDocSourceMap,
+  runSemanticSearch: runExplorerSemantic,
+  selectInstant: selectExplorerInstant,
+  selectSemanticChunk: selectExplorerSemantic,
+} = explorer;
+
+function onExplorerSelectDoc(node: VaultTreeNode) {
+  selectDocument(node.doc_id);
+}
+
+/** 详情区操作需要完整 KnowledgeDocument（删除确认/移动对话框复用旧逻辑）；列表未覆盖时按节点合成。 */
+function resolveExplorerDoc(): KnowledgeDocument | null {
+  const node = explorerSelectedNode.value;
+  if (!node) return null;
+  const found = documents.value.find((d) => d.id === node.doc_id);
+  if (found) return found;
+  return { id: node.doc_id, source: node.name, collection_id: selectedId.value } as KnowledgeDocument;
+}
+
+function onExplorerDelete() {
+  const doc = resolveExplorerDoc();
+  if (doc) confirmDeleteDocument(doc);
+}
+
+function onExplorerMove() {
+  const doc = resolveExplorerDoc();
+  if (doc) openMoveDialog(doc);
+}
+
+function onExplorerNavigate(payload: { docId: string; relPath: string }) {
+  void navigateToDocument(payload.docId, payload.relPath);
+}
 
 onMounted(() => {
   void loadCollections();
   void loadEmbedderConfig();
 });
 </script>
+
+<style lang="scss" scoped>
+.knowledge-explorer-grid {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+
+  &__mid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 1200px) {
+  .knowledge-explorer-grid {
+    grid-template-columns: 220px minmax(0, 1fr);
+
+    .knowledge-doc-detail {
+      grid-column: 1 / -1;
+    }
+  }
+}
+</style>

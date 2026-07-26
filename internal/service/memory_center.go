@@ -53,6 +53,40 @@ func (s *MemoryService) GetMemoryLayerOverview(ctx context.Context, req *v1.GetM
 	return out, nil
 }
 
+// ListMemoryEpisodes serves the P3 browse tab: paginated L2 episodes
+// (created_at DESC) for one agent, optionally filtered by session.
+// Design: docs/development/memory/memory.design.md §10.6.
+func (s *MemoryService) ListMemoryEpisodes(ctx context.Context, req *v1.ListMemoryEpisodesRequest) (*v1.ListMemoryEpisodesResponse, error) {
+	if err := s.requireAdmin(); err != nil {
+		return nil, err
+	}
+	agentID := strings.TrimSpace(req.GetAgentId())
+	if agentID == "" {
+		return nil, apierror.BadRequest(apierror.DomainMemory, "agent_id is required")
+	}
+	items, total, err := s.admin.ListEpisodesAdmin(ctx, agentID, strings.TrimSpace(req.GetSessionId()), req.GetLimit(), req.GetOffset())
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.ListMemoryEpisodesResponse{Total: total}
+	for _, it := range items {
+		out.Items = append(out.Items, &v1.MemoryEpisode{
+			Id:                  it.ID,
+			SessionId:           it.SessionID,
+			AgentId:             it.AgentID,
+			EpisodeKind:         it.Kind,
+			Title:               it.Title,
+			OutcomeSummary:      it.OutcomeSummary,
+			Importance:          it.Importance,
+			ConsolidationStatus: it.ConsolidationStatus,
+			ConsolidatedL3Count: it.ConsolidatedL3Count,
+			EndedAt:             it.EndedAt,
+			CreatedAt:           it.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
 func (s *MemoryService) GetUnifiedMemoryGraph(ctx context.Context, req *v1.GetUnifiedMemoryGraphRequest) (*v1.GetUnifiedMemoryGraphResponse, error) {
 	if err := s.requireAdmin(); err != nil {
 		return nil, err

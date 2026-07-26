@@ -27,7 +27,6 @@ import (
 	"aranea-agents/internal/data/ent/evaldataset"
 	"aranea-agents/internal/data/ent/evalrun"
 	"aranea-agents/internal/data/ent/eventdeliveryoutbox"
-	"aranea-agents/internal/data/ent/evolutionsuggestion"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/failurepattern"
 	"aranea-agents/internal/data/ent/flowlogevent"
@@ -74,7 +73,6 @@ import (
 	"aranea-agents/internal/data/ent/sessionruntime"
 	"aranea-agents/internal/data/ent/sessionturn"
 	"aranea-agents/internal/data/ent/sessionv2"
-	"aranea-agents/internal/data/ent/skillevolutionsuggestion"
 	"aranea-agents/internal/data/ent/skillimportjob"
 	"aranea-agents/internal/data/ent/skillinvocation"
 	"aranea-agents/internal/data/ent/skillversion"
@@ -1777,50 +1775,6 @@ func init() {
 	eventdeliveryoutboxDescID := eventdeliveryoutboxFields[0].Descriptor()
 	// eventdeliveryoutbox.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	eventdeliveryoutbox.IDValidator = eventdeliveryoutboxDescID.Validators[0].(func(string) error)
-	evolutionsuggestionFields := schema.EvolutionSuggestion{}.Fields()
-	_ = evolutionsuggestionFields
-	// evolutionsuggestionDescAgentID is the schema descriptor for agent_id field.
-	evolutionsuggestionDescAgentID := evolutionsuggestionFields[1].Descriptor()
-	// evolutionsuggestion.AgentIDValidator is a validator for the "agent_id" field. It is called by the builders before save.
-	evolutionsuggestion.AgentIDValidator = evolutionsuggestionDescAgentID.Validators[0].(func(string) error)
-	// evolutionsuggestionDescType is the schema descriptor for type field.
-	evolutionsuggestionDescType := evolutionsuggestionFields[2].Descriptor()
-	// evolutionsuggestion.TypeValidator is a validator for the "type" field. It is called by the builders before save.
-	evolutionsuggestion.TypeValidator = evolutionsuggestionDescType.Validators[0].(func(string) error)
-	// evolutionsuggestionDescTitle is the schema descriptor for title field.
-	evolutionsuggestionDescTitle := evolutionsuggestionFields[3].Descriptor()
-	// evolutionsuggestion.TitleValidator is a validator for the "title" field. It is called by the builders before save.
-	evolutionsuggestion.TitleValidator = evolutionsuggestionDescTitle.Validators[0].(func(string) error)
-	// evolutionsuggestionDescContent is the schema descriptor for content field.
-	evolutionsuggestionDescContent := evolutionsuggestionFields[4].Descriptor()
-	// evolutionsuggestion.DefaultContent holds the default value on creation for the content field.
-	evolutionsuggestion.DefaultContent = evolutionsuggestionDescContent.Default.(string)
-	// evolutionsuggestionDescStatus is the schema descriptor for status field.
-	evolutionsuggestionDescStatus := evolutionsuggestionFields[5].Descriptor()
-	// evolutionsuggestion.DefaultStatus holds the default value on creation for the status field.
-	evolutionsuggestion.DefaultStatus = evolutionsuggestionDescStatus.Default.(string)
-	// evolutionsuggestion.StatusValidator is a validator for the "status" field. It is called by the builders before save.
-	evolutionsuggestion.StatusValidator = evolutionsuggestionDescStatus.Validators[0].(func(string) error)
-	// evolutionsuggestionDescDiffPreview is the schema descriptor for diff_preview field.
-	evolutionsuggestionDescDiffPreview := evolutionsuggestionFields[6].Descriptor()
-	// evolutionsuggestion.DefaultDiffPreview holds the default value on creation for the diff_preview field.
-	evolutionsuggestion.DefaultDiffPreview = evolutionsuggestionDescDiffPreview.Default.(string)
-	// evolutionsuggestionDescPreApplySnapshot is the schema descriptor for pre_apply_snapshot field.
-	evolutionsuggestionDescPreApplySnapshot := evolutionsuggestionFields[7].Descriptor()
-	// evolutionsuggestion.DefaultPreApplySnapshot holds the default value on creation for the pre_apply_snapshot field.
-	evolutionsuggestion.DefaultPreApplySnapshot = evolutionsuggestionDescPreApplySnapshot.Default.(string)
-	// evolutionsuggestionDescCreatedAt is the schema descriptor for created_at field.
-	evolutionsuggestionDescCreatedAt := evolutionsuggestionFields[8].Descriptor()
-	// evolutionsuggestion.DefaultCreatedAt holds the default value on creation for the created_at field.
-	evolutionsuggestion.DefaultCreatedAt = evolutionsuggestionDescCreatedAt.Default.(string)
-	// evolutionsuggestionDescAppliedAt is the schema descriptor for applied_at field.
-	evolutionsuggestionDescAppliedAt := evolutionsuggestionFields[9].Descriptor()
-	// evolutionsuggestion.DefaultAppliedAt holds the default value on creation for the applied_at field.
-	evolutionsuggestion.DefaultAppliedAt = evolutionsuggestionDescAppliedAt.Default.(string)
-	// evolutionsuggestionDescID is the schema descriptor for id field.
-	evolutionsuggestionDescID := evolutionsuggestionFields[0].Descriptor()
-	// evolutionsuggestion.IDValidator is a validator for the "id" field. It is called by the builders before save.
-	evolutionsuggestion.IDValidator = evolutionsuggestionDescID.Validators[0].(func(string) error)
 	experiencereportFields := schema.ExperienceReport{}.Fields()
 	_ = experiencereportFields
 	// experiencereportDescTenantID is the schema descriptor for tenant_id field.
@@ -4683,88 +4637,6 @@ func init() {
 	sessionv2DescID := sessionv2Fields[0].Descriptor()
 	// sessionv2.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	sessionv2.IDValidator = sessionv2DescID.Validators[0].(func(string) error)
-	skillevolutionsuggestionFields := schema.SkillEvolutionSuggestion{}.Fields()
-	_ = skillevolutionsuggestionFields
-	// skillevolutionsuggestionDescSkillID is the schema descriptor for skill_id field.
-	skillevolutionsuggestionDescSkillID := skillevolutionsuggestionFields[1].Descriptor()
-	// skillevolutionsuggestion.DefaultSkillID holds the default value on creation for the skill_id field.
-	skillevolutionsuggestion.DefaultSkillID = skillevolutionsuggestionDescSkillID.Default.(string)
-	// skillevolutionsuggestion.SkillIDValidator is a validator for the "skill_id" field. It is called by the builders before save.
-	skillevolutionsuggestion.SkillIDValidator = skillevolutionsuggestionDescSkillID.Validators[0].(func(string) error)
-	// skillevolutionsuggestionDescType is the schema descriptor for type field.
-	skillevolutionsuggestionDescType := skillevolutionsuggestionFields[2].Descriptor()
-	// skillevolutionsuggestion.DefaultType holds the default value on creation for the type field.
-	skillevolutionsuggestion.DefaultType = skillevolutionsuggestionDescType.Default.(string)
-	// skillevolutionsuggestion.TypeValidator is a validator for the "type" field. It is called by the builders before save.
-	skillevolutionsuggestion.TypeValidator = skillevolutionsuggestionDescType.Validators[0].(func(string) error)
-	// skillevolutionsuggestionDescStatus is the schema descriptor for status field.
-	skillevolutionsuggestionDescStatus := skillevolutionsuggestionFields[3].Descriptor()
-	// skillevolutionsuggestion.DefaultStatus holds the default value on creation for the status field.
-	skillevolutionsuggestion.DefaultStatus = skillevolutionsuggestionDescStatus.Default.(string)
-	// skillevolutionsuggestion.StatusValidator is a validator for the "status" field. It is called by the builders before save.
-	skillevolutionsuggestion.StatusValidator = skillevolutionsuggestionDescStatus.Validators[0].(func(string) error)
-	// skillevolutionsuggestionDescTriggerReason is the schema descriptor for trigger_reason field.
-	skillevolutionsuggestionDescTriggerReason := skillevolutionsuggestionFields[5].Descriptor()
-	// skillevolutionsuggestion.DefaultTriggerReason holds the default value on creation for the trigger_reason field.
-	skillevolutionsuggestion.DefaultTriggerReason = skillevolutionsuggestionDescTriggerReason.Default.(string)
-	// skillevolutionsuggestionDescDraftSkillBody is the schema descriptor for draft_skill_body field.
-	skillevolutionsuggestionDescDraftSkillBody := skillevolutionsuggestionFields[6].Descriptor()
-	// skillevolutionsuggestion.DefaultDraftSkillBody holds the default value on creation for the draft_skill_body field.
-	skillevolutionsuggestion.DefaultDraftSkillBody = skillevolutionsuggestionDescDraftSkillBody.Default.(string)
-	// skillevolutionsuggestionDescDraftVersionID is the schema descriptor for draft_version_id field.
-	skillevolutionsuggestionDescDraftVersionID := skillevolutionsuggestionFields[7].Descriptor()
-	// skillevolutionsuggestion.DefaultDraftVersionID holds the default value on creation for the draft_version_id field.
-	skillevolutionsuggestion.DefaultDraftVersionID = skillevolutionsuggestionDescDraftVersionID.Default.(string)
-	// skillevolutionsuggestion.DraftVersionIDValidator is a validator for the "draft_version_id" field. It is called by the builders before save.
-	skillevolutionsuggestion.DraftVersionIDValidator = skillevolutionsuggestionDescDraftVersionID.Validators[0].(func(string) error)
-	// skillevolutionsuggestionDescSandboxPassed is the schema descriptor for sandbox_passed field.
-	skillevolutionsuggestionDescSandboxPassed := skillevolutionsuggestionFields[8].Descriptor()
-	// skillevolutionsuggestion.DefaultSandboxPassed holds the default value on creation for the sandbox_passed field.
-	skillevolutionsuggestion.DefaultSandboxPassed = skillevolutionsuggestionDescSandboxPassed.Default.(bool)
-	// skillevolutionsuggestionDescApprovedBy is the schema descriptor for approved_by field.
-	skillevolutionsuggestionDescApprovedBy := skillevolutionsuggestionFields[11].Descriptor()
-	// skillevolutionsuggestion.DefaultApprovedBy holds the default value on creation for the approved_by field.
-	skillevolutionsuggestion.DefaultApprovedBy = skillevolutionsuggestionDescApprovedBy.Default.(string)
-	// skillevolutionsuggestion.ApprovedByValidator is a validator for the "approved_by" field. It is called by the builders before save.
-	skillevolutionsuggestion.ApprovedByValidator = skillevolutionsuggestionDescApprovedBy.Validators[0].(func(string) error)
-	// skillevolutionsuggestionDescRejectedBy is the schema descriptor for rejected_by field.
-	skillevolutionsuggestionDescRejectedBy := skillevolutionsuggestionFields[12].Descriptor()
-	// skillevolutionsuggestion.DefaultRejectedBy holds the default value on creation for the rejected_by field.
-	skillevolutionsuggestion.DefaultRejectedBy = skillevolutionsuggestionDescRejectedBy.Default.(string)
-	// skillevolutionsuggestion.RejectedByValidator is a validator for the "rejected_by" field. It is called by the builders before save.
-	skillevolutionsuggestion.RejectedByValidator = skillevolutionsuggestionDescRejectedBy.Validators[0].(func(string) error)
-	// skillevolutionsuggestionDescRejectionReason is the schema descriptor for rejection_reason field.
-	skillevolutionsuggestionDescRejectionReason := skillevolutionsuggestionFields[13].Descriptor()
-	// skillevolutionsuggestion.DefaultRejectionReason holds the default value on creation for the rejection_reason field.
-	skillevolutionsuggestion.DefaultRejectionReason = skillevolutionsuggestionDescRejectionReason.Default.(string)
-	// skillevolutionsuggestionDescCreatedAt is the schema descriptor for created_at field.
-	skillevolutionsuggestionDescCreatedAt := skillevolutionsuggestionFields[14].Descriptor()
-	// skillevolutionsuggestion.DefaultCreatedAt holds the default value on creation for the created_at field.
-	skillevolutionsuggestion.DefaultCreatedAt = skillevolutionsuggestionDescCreatedAt.Default.(string)
-	// skillevolutionsuggestionDescResolvedAt is the schema descriptor for resolved_at field.
-	skillevolutionsuggestionDescResolvedAt := skillevolutionsuggestionFields[15].Descriptor()
-	// skillevolutionsuggestion.DefaultResolvedAt holds the default value on creation for the resolved_at field.
-	skillevolutionsuggestion.DefaultResolvedAt = skillevolutionsuggestionDescResolvedAt.Default.(string)
-	// skillevolutionsuggestionDescParentVersionID is the schema descriptor for parent_version_id field.
-	skillevolutionsuggestionDescParentVersionID := skillevolutionsuggestionFields[16].Descriptor()
-	// skillevolutionsuggestion.DefaultParentVersionID holds the default value on creation for the parent_version_id field.
-	skillevolutionsuggestion.DefaultParentVersionID = skillevolutionsuggestionDescParentVersionID.Default.(string)
-	// skillevolutionsuggestion.ParentVersionIDValidator is a validator for the "parent_version_id" field. It is called by the builders before save.
-	skillevolutionsuggestion.ParentVersionIDValidator = skillevolutionsuggestionDescParentVersionID.Validators[0].(func(string) error)
-	// skillevolutionsuggestionDescEvolutionReason is the schema descriptor for evolution_reason field.
-	skillevolutionsuggestionDescEvolutionReason := skillevolutionsuggestionFields[17].Descriptor()
-	// skillevolutionsuggestion.DefaultEvolutionReason holds the default value on creation for the evolution_reason field.
-	skillevolutionsuggestion.DefaultEvolutionReason = skillevolutionsuggestionDescEvolutionReason.Default.(string)
-	// skillevolutionsuggestionDescLifecycleStatus is the schema descriptor for lifecycle_status field.
-	skillevolutionsuggestionDescLifecycleStatus := skillevolutionsuggestionFields[18].Descriptor()
-	// skillevolutionsuggestion.DefaultLifecycleStatus holds the default value on creation for the lifecycle_status field.
-	skillevolutionsuggestion.DefaultLifecycleStatus = skillevolutionsuggestionDescLifecycleStatus.Default.(string)
-	// skillevolutionsuggestion.LifecycleStatusValidator is a validator for the "lifecycle_status" field. It is called by the builders before save.
-	skillevolutionsuggestion.LifecycleStatusValidator = skillevolutionsuggestionDescLifecycleStatus.Validators[0].(func(string) error)
-	// skillevolutionsuggestionDescID is the schema descriptor for id field.
-	skillevolutionsuggestionDescID := skillevolutionsuggestionFields[0].Descriptor()
-	// skillevolutionsuggestion.IDValidator is a validator for the "id" field. It is called by the builders before save.
-	skillevolutionsuggestion.IDValidator = skillevolutionsuggestionDescID.Validators[0].(func(string) error)
 	skillimportjobFields := schema.SkillImportJob{}.Fields()
 	_ = skillimportjobFields
 	// skillimportjobDescStatus is the schema descriptor for status field.

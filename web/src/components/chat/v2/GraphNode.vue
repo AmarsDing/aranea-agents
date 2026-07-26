@@ -20,9 +20,11 @@
         'graph-node--selected': isSelected,
         'graph-node--highlighted': isHighlighted,
         'graph-node--dimmed': isDimmed,
+        'graph-node--enter': entranceDelayMs !== undefined,
+        'graph-node--just-completed': justCompleted,
       },
     ]"
-    :style="{ left: `${pos.x}px`, top: `${pos.y}px`, width: `${nodeWidth}px`, height: `${nodeHeight}px` }"
+    :style="nodeStyle"
     @click="$emit('select', node.ID)"
     @mouseenter="$emit('hover', node.ID)"
     @mouseleave="$emit('hover', null)"
@@ -33,7 +35,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { GraphNode } from '../../../features/chat/v2Types';
 import type { NodePosition } from '../../../features/chat/composables/usePlanDAGLayout';
@@ -54,6 +56,8 @@ const props = defineProps<{
   isSelected?: boolean;
   isHighlighted?: boolean;
   isDimmed?: boolean;
+  /** 级联入场动画延迟（ms）。undefined = 不播入场动画（replay / 早已存在）。 */
+  entranceDelayMs?: number;
 }>();
 
 defineEmits<{
@@ -62,6 +66,39 @@ defineEmits<{
 }>();
 
 const { t } = useSafeI18n();
+
+// P0 状态转换动画：仅在组件实例存续期间捕获 running → completed 跃迁
+// （replay 时挂载即为 completed，prevStatus 初值已是终态，不会误触发）。
+const justCompleted = ref(false);
+let prevStatus = props.node.Status;
+let justCompletedTimer: ReturnType<typeof setTimeout> | undefined;
+
+watch(
+  () => props.node.Status,
+  (cur) => {
+    if (prevStatus === 'running' && cur === 'completed') {
+      justCompleted.value = true;
+      clearTimeout(justCompletedTimer);
+      justCompletedTimer = setTimeout(() => {
+        justCompleted.value = false;
+      }, 1000);
+    }
+    prevStatus = cur;
+  },
+);
+
+const nodeStyle = computed(() => {
+  const style: Record<string, string> = {
+    left: `${props.pos.x}px`,
+    top: `${props.pos.y}px`,
+    width: `${props.nodeWidth}px`,
+    height: `${props.nodeHeight}px`,
+  };
+  if (props.entranceDelayMs !== undefined && !justCompleted.value) {
+    style.animationDelay = `${props.entranceDelayMs}ms`;
+  }
+  return style;
+});
 
 // 状态图标
 const statusIcon = computed(
@@ -169,6 +206,50 @@ const statusLabel = computed(() => {
   50%
     box-shadow: 0 0 16px color-mix(in srgb, var(--node-accent) 55%, transparent)
 
+/* P0 级联入场：scale + fade + 轻微上浮，fill-mode both 保证 delay 期间保持隐藏。
+   animation-delay 由父组件按 DAG 层级 stagger 注入（nodeStyle.animationDelay）。 */
+.graph-node--enter
+  animation: graph-node-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both
+
+/* 入场与状态动画共存：enter 受 inline animation-delay 控制先播，
+   pulse/shake 同时启动（节点隐藏期间不可见，显现后自然衔接）。 */
+.graph-node--enter.graph-node--running
+  animation: graph-node-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both, graph-node-pulse 2s ease-in-out infinite
+
+.graph-node--enter.graph-node--failed
+  animation: graph-node-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both, graph-node-shake 0.4s ease-in-out 2
+
+/* P0 状态转换：running → completed 瞬间的绿色呼吸 + 徽章回弹。
+   class 仅存活 1s（组件内 setTimeout 移除），不持续占用 animation 属性。 */
+.graph-node--just-completed
+  animation: graph-node-complete-flash 0.9s ease-out
+
+.graph-node--just-completed .graph-node__badge
+  animation: graph-badge-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)
+
+@keyframes graph-node-complete-flash
+  0%
+    box-shadow: 0 0 24px color-mix(in srgb, var(--color-success) 65%, transparent)
+
+  100%
+    box-shadow: 0 2px 10px rgb(0 0 0 / 8%)
+
+@keyframes graph-badge-pop
+  0%
+    transform: scale(0.3)
+
+  100%
+    transform: scale(1)
+
+@keyframes graph-node-enter
+  from
+    opacity: 0
+    transform: scale(0.6) translateY(8px)
+
+  to
+    opacity: 1
+    transform: scale(1) translateY(0)
+
 /* failed 抖动 */
 @keyframes graph-node-shake
   0%,
@@ -183,6 +264,9 @@ const statusLabel = computed(() => {
 
 @media (prefers-reduced-motion: reduce)
   .graph-node--running,
-  .graph-node--failed
+  .graph-node--failed,
+  .graph-node--enter,
+  .graph-node--just-completed,
+  .graph-node--just-completed .graph-node__badge
     animation: none
 </style>

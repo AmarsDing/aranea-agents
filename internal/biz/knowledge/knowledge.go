@@ -188,6 +188,10 @@ type Usecase struct {
 	// links/entities 为可选关联能力（P2-4），经 SetLinkRepos 接线；nil 时关联方法降级 no-op。
 	links    LinkRepo
 	entities EntityRepo
+	// paths/resolvedLinks 为资源管理器能力（P3），经 SetExplorerRepos 接线；
+	// paths nil 时 ListVaultTree 显式报错，resolvedLinks nil 时关联查询降级为空。
+	paths         DocumentPathReader
+	resolvedLinks ResolvedLinkReader
 }
 
 // NewUsecase constructs a KnowledgeUsecase from individual sub-interfaces.

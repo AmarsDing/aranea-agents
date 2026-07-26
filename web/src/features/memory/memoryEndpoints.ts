@@ -33,4 +33,5 @@ export const memoryEndpoints = {
   updateMemoryPlatformSettings: () => 'v1/memory/platform/settings',
   getMemoryLayerOverview: () => 'v1/memory/layer-overview',
   getUnifiedMemoryGraph: () => 'v1/memory/graph/unified',
+  listMemoryEpisodes: () => 'v1/memory/episodes',
 } as const;

@@ -29,6 +29,8 @@ const (
 	KnowledgeService_GetDocumentContent_FullMethodName   = "/kratos.knowledge.v1.KnowledgeService/GetDocumentContent"
 	KnowledgeService_DeleteDocument_FullMethodName       = "/kratos.knowledge.v1.KnowledgeService/DeleteDocument"
 	KnowledgeService_MoveDocument_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
+	KnowledgeService_ListVaultTree_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
+	KnowledgeService_ListDocumentLinks_FullMethodName    = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
 	KnowledgeService_Search_FullMethodName               = "/kratos.knowledge.v1.KnowledgeService/Search"
 	KnowledgeService_GetEmbedderConfig_FullMethodName    = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
 	KnowledgeService_UpdateEmbedderConfig_FullMethodName = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
@@ -49,6 +51,10 @@ type KnowledgeServiceClient interface {
 	GetDocumentContent(ctx context.Context, in *GetDocumentContentRequest, opts ...grpc.CallOption) (*DocumentContent, error)
 	DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	MoveDocument(ctx context.Context, in *MoveDocumentRequest, opts ...grpc.CallOption) (*KnowledgeDocument, error)
+	// Vault explorer (P3): lazy folder listing derived from document rel_paths.
+	ListVaultTree(ctx context.Context, in *ListVaultTreeRequest, opts ...grpc.CallOption) (*ListVaultTreeResponse, error)
+	// Document relations with source-type annotation (P3 关联区, R-3).
+	ListDocumentLinks(ctx context.Context, in *ListDocumentLinksRequest, opts ...grpc.CallOption) (*ListDocumentLinksResponse, error)
 	// Search
 	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
 	GetEmbedderConfig(ctx context.Context, in *GetEmbedderConfigRequest, opts ...grpc.CallOption) (*EmbedderConfig, error)
@@ -153,6 +159,26 @@ func (c *knowledgeServiceClient) MoveDocument(ctx context.Context, in *MoveDocum
 	return out, nil
 }
 
+func (c *knowledgeServiceClient) ListVaultTree(ctx context.Context, in *ListVaultTreeRequest, opts ...grpc.CallOption) (*ListVaultTreeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListVaultTreeResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_ListVaultTree_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) ListDocumentLinks(ctx context.Context, in *ListDocumentLinksRequest, opts ...grpc.CallOption) (*ListDocumentLinksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListDocumentLinksResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_ListDocumentLinks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *knowledgeServiceClient) Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SearchResponse)
@@ -198,6 +224,10 @@ type KnowledgeServiceServer interface {
 	GetDocumentContent(context.Context, *GetDocumentContentRequest) (*DocumentContent, error)
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error)
 	MoveDocument(context.Context, *MoveDocumentRequest) (*KnowledgeDocument, error)
+	// Vault explorer (P3): lazy folder listing derived from document rel_paths.
+	ListVaultTree(context.Context, *ListVaultTreeRequest) (*ListVaultTreeResponse, error)
+	// Document relations with source-type annotation (P3 关联区, R-3).
+	ListDocumentLinks(context.Context, *ListDocumentLinksRequest) (*ListDocumentLinksResponse, error)
 	// Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	GetEmbedderConfig(context.Context, *GetEmbedderConfigRequest) (*EmbedderConfig, error)
@@ -238,6 +268,12 @@ func (UnimplementedKnowledgeServiceServer) DeleteDocument(context.Context, *Dele
 }
 func (UnimplementedKnowledgeServiceServer) MoveDocument(context.Context, *MoveDocumentRequest) (*KnowledgeDocument, error) {
 	return nil, status.Error(codes.Unimplemented, "method MoveDocument not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) ListVaultTree(context.Context, *ListVaultTreeRequest) (*ListVaultTreeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListVaultTree not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) ListDocumentLinks(context.Context, *ListDocumentLinksRequest) (*ListDocumentLinksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListDocumentLinks not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) Search(context.Context, *SearchRequest) (*SearchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Search not implemented")
@@ -431,6 +467,42 @@ func _KnowledgeService_MoveDocument_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KnowledgeService_ListVaultTree_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListVaultTreeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).ListVaultTree(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_ListVaultTree_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).ListVaultTree(ctx, req.(*ListVaultTreeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_ListDocumentLinks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDocumentLinksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).ListDocumentLinks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_ListDocumentLinks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).ListDocumentLinks(ctx, req.(*ListDocumentLinksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KnowledgeService_Search_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SearchRequest)
 	if err := dec(in); err != nil {
@@ -527,6 +599,14 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MoveDocument",
 			Handler:    _KnowledgeService_MoveDocument_Handler,
+		},
+		{
+			MethodName: "ListVaultTree",
+			Handler:    _KnowledgeService_ListVaultTree_Handler,
+		},
+		{
+			MethodName: "ListDocumentLinks",
+			Handler:    _KnowledgeService_ListDocumentLinks_Handler,
 		},
 		{
 			MethodName: "Search",

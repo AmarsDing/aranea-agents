@@ -100,7 +100,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 5 | SkillBackend 多 kind 差异化 | P4+ | 按 `kind`（prompt_pack / workflow / tool_backed）差异化加载与渲染 |
 | 6 | Context 目录迁移 | P4+ | `internal/skill/**` → `internal/capability/skill/**` |
 | 7 | Feedback 真实接入 | P4+ | `ScoreSkill` Feedback 维度当前为启发式估算（标注 `TEMPORARY`），待接入真实用户反馈 |
-| 8 | EvolutionCoordinator 清理 | P4+ | `evolution_coordinator.go` 已标记 `deprecated`，待完全移除并清理 fallback 逻辑 |
+| 8 | EvolutionCoordinator 清理 | P4+ | ✅ `evolution_coordinator.go` 已随 A6 物理收敛删除（含 `SetCoordinator` 委托与 fallback 逻辑） |
 | 9 | `extends_skill_id` + 环检测 | P4+ | proto/biz 有字段，Ent schema 无列；需迁移后实现 |
 | 10 | SkillProposal 状态机 | ✅ | `Approve/Reject/Register` 已走 `SkillProposalStateMachine`（2026-07-16） |
 | 11 | `skill_catalog` WS + 聊天 Catalog | ⏳ | 69 Phase3；组件已有，事件未接 |
@@ -144,7 +144,6 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 - SkillBackend 多 kind 差异化加载与渲染
 - Skill 市场（Ecosystem 联动）
 - Feedback 真实接入（替换 `TEMPORARY` 启发式估算）
-- EvolutionCoordinator 清理（移除 `deprecated` 代码 + fallback 逻辑）
 - 可选：`internal/skill/**` → `internal/capability/skill/**` 目录迁移
 
 ---
@@ -177,7 +176,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 22 | 自动负熵报告 | P4+ | Phase 3 | ☐ |
 | 23 | SkillBackend 多 kind 差异化 | P4+ | Phase 3 | ☐ |
 | 24 | Feedback 真实接入 | P4+ | Phase 3 | ☐ |
-| 25 | EvolutionCoordinator 清理 | P4+ | Phase 3 | ☐ |
+| 25 | EvolutionCoordinator 清理 | P4+ | Phase 3 | ✅（A6） |
 
 ---
 
@@ -223,7 +222,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 - [ ] 自动负熵报告（聚合指标 + 趋势）
 - [ ] SkillBackend 多 kind 差异化加载与渲染
 - [ ] Feedback 真实接入（替换 `TEMPORARY` 启发式估算）
-- [ ] EvolutionCoordinator 清理（移除 `deprecated` 代码 + fallback 逻辑）
+- [x] EvolutionCoordinator 清理（已随 A6 物理收敛删除 `evolution_coordinator.go` + fallback 逻辑）
 
 ---
 
@@ -241,7 +240,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | Repo 接口膨胀 | ✅ 已拆分为 `SkillReader` + `SkillWriter` 窄接口，`Repo` 组合两者；进化接口拆分为 4 个窄接口 |
 | Wire 绑定 | ✅ `ProvideSkillResolveRootFn` + `storage.NewSkillFilesystem`，动态解析 root_directory |
 | 进化触发器并发 | ✅ `SkillEvolutionOrchestrator` 使用 `sync.RWMutex` 保护 triggers 切片 + 快照读取；DB UNIQUE 约束兜底 |
-| 进化协调器遗留 | ⚠️ `evolution_coordinator.go` 已标记 `deprecated`，`HasPendingEvolution` 委托 orchestrator 失败时 fallback 到 legacy 逻辑；待 Phase 3 清理 |
+| 进化协调器遗留 | ✅ `evolution_coordinator.go` 已随 A6 物理收敛删除（含 fallback 逻辑）；跨流水线去重统一由 `SkillEvolutionOrchestrator` + trigger 内去重 + DB 唯一索引承担 |
 | ScoreSkill Feedback | ⚠️ Feedback 维度当前为 `TEMPORARY` 启发式估算，待接入真实用户反馈 |
 | 去重 O(n²) 扫描 | ✅ 已通过 10min TTL 内存缓存缓解；外部可通过 `InvalidateDedupCache()` 手动失效 |
 
@@ -285,10 +284,9 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | `internal/biz/skill_merge_ai_fuser.go` | 基于规则的内容融合器 | ✅ |
 | `internal/biz/skill_evolution_unified.go` | 统一进化编排器 + UnifiedEvolutionSuggestion + Reader/Writer 接口 | ✅ |
 | `internal/biz/skill_evolution_triggers.go` | EvolutionTrigger 策略（Pattern/Health/AgentConfig）+ SkillScorer 窄接口 | ✅ |
-| `internal/biz/skill_intelligence.go` | ScoreSkill 四维权重（含 Token/Feedback 条件启用）；SetCoordinator sync.Once 保护 | ✅ |
-| `internal/biz/skill_evolution.go` | SkillEvolutionUsecase；SetCoordinator sync.Once 保护 | ✅ |
+| `internal/biz/skill_intelligence.go` | SkillIntelligenceUsecase（ScoreSkill 四维权重，含 Token/Feedback 条件启用；L2 视图重建 `unifiedToLegacySuggestionPtr`，A6） | ✅ |
+| `internal/biz/skill_evolution.go` | SkillEvolutionUsecase + L1 视图重建 `skillProposalFromUnified`（A6） | ✅ |
 | `internal/biz/skill_dedup.go` | SkillDedupUsecase（DetectDuplicateGroups 带 10min TTL 缓存）；MergeSkills Deprecated | ✅ |
-| `internal/biz/evolution_coordinator.go` | [deprecated] 旧进化协调器，委托 orchestrator | ⚠️ |
 | `internal/biz/skill_health.go` | SkillHealthUsecase | ✅ |
 | `internal/biz/skill_scoring.go` | SkillScorer 窄接口 | ✅ |
 | `internal/biz/skill_report.go` | 报告 | ✅ |
@@ -306,10 +304,8 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | `internal/data/skill_health.go` | 健康 Data 层 | ✅ |
 | `internal/data/skill_invocation_stats.go` | 调用统计 Data 层 | ✅ |
 | `internal/data/skill_import_job.go` | 导入任务 Data 层 | ✅ |
-| `internal/data/skill_evolution.go` | 进化 Data 层 | ✅ |
-| `internal/data/skill_evolution_suggestion.go` | 进化建议 Data 层 | ✅ |
-| `internal/data/skill_evolution_schema.go` | 进化 Schema | ✅ |
-| `internal/data/unified_evolution.go` | 统一进化 Data 层（raw SQL + 读写分离） | ✅ |
+| `internal/data/skill_evolution_schema.go` | legacy `skill_proposals` DDL（仅作迁移 20261111 backfill 来源，backfill 后 DROP；A6 起不再承载读写） | ✅ |
+| `internal/data/unified_evolution.go` | 统一进化 Data 层（raw SQL + 读写分离；A6 起承载全部四类建议读写，legacy `skill_evolution.go` / `skill_evolution_suggestion.go` 已删除） | ✅ |
 | `internal/data/unified_evolution_schema.go` | 统一进化 Schema | ✅ |
 
 ### 8.5 Ent Schema（物理表）
@@ -320,7 +316,8 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | `internal/data/ent/schema/skill_version.go` | `skill_version` | ✅ |
 | `internal/data/ent/schema/skill_invocation.go` | `skill_invocation` | ✅ |
 | `internal/data/ent/schema/skill_import_job.go` | `skill_import_jobs` | ✅ |
-| `internal/data/ent/schema/skill_evolution_suggestion.go` | `skill_evolution_suggestions` | ✅ |
+
+> A6：`internal/data/ent/schema/skill_evolution_suggestion.go`（`skill_evolution_suggestions`）与 `evolution_suggestion.go`（`evolution_suggestions`）Ent Schema 已删除，物理表经迁移 20261111 backfill 后 DROP，统一收敛到 `unified_evolution_suggestions`（raw SQL DDL，非 Ent）。
 
 ### 8.6 Skill 领域包（导入/监听/存储/渲染/桥接）
 

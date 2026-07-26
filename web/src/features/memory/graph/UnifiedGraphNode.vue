@@ -1,6 +1,14 @@
-// Presentation: 跨层图谱自定义节点 — 圆形=L4 实体 / 圆角方块=L3 事实 / 三角=L2 情景（设计 §10.4）。
+// Presentation: 跨层图谱自定义节点 — 圆形=L4 实体 / 圆角方块=L3 事实 / 三角=L2 情景（设计 §10.4）。 // P4: activation >
+0 时按归一化强度发光（box-shadow + 微放大）。
 <template>
-  <div class="ug-node" :class="{ 'ug-node--focus': data.isFocus, 'ug-node--selected': selected }">
+  <div
+    class="ug-node"
+    :class="{
+      'ug-node--focus': data.isFocus,
+      'ug-node--selected': selected,
+      'ug-node--activated': data.activation > 0,
+    }"
+  >
     <Handle type="target" :position="Position.Top" class="ug-node__handle" />
     <div class="ug-node__shape" :class="`ug-node__shape--${shapeKind}`" :style="shapeStyle">
       <q-icon :name="icon" size="18px" color="white" />
@@ -22,6 +30,8 @@ export type UnifiedNodeData = {
   kind: string;
   weight: number;
   isFocus: boolean;
+  /** P4 扩散激活强度（0~1 归一化），> 0 时节点发光。 */
+  activation: number;
 };
 
 const props = defineProps<{ data: UnifiedNodeData; selected?: boolean }>();
@@ -40,9 +50,23 @@ const icon = computed(() => {
 
 const shapeStyle = computed(() => {
   const color = memoryLayerColor(props.data.layer);
-  return props.data.layer === 'L2'
-    ? ({ '--ug-color': color, color } as Record<string, string>)
-    : ({ '--ug-color': color, background: color } as Record<string, string>);
+  const base =
+    props.data.layer === 'L2'
+      ? ({ '--ug-color': color, color } as Record<string, string>)
+      : ({ '--ug-color': color, background: color } as Record<string, string>);
+
+  // P4: activation 发光 — 强度归一化到 0~1，映射 box-shadow 扩散半径 + 微放大
+  const act = props.data.activation;
+  if (act > 0) {
+    const intensity = Math.min(act, 1);
+    const glowRadius = Math.round(4 + intensity * 12); // 4~16px
+    const scale = 1 + intensity * 0.15; // 1.0~1.15x
+    base.boxShadow = `0 0 ${glowRadius}px ${Math.round(intensity * 8)}px color-mix(in srgb, ${color} ${Math.round(intensity * 60)}%, transparent)`;
+    base.transform = `scale(${scale.toFixed(3)})`;
+    base.zIndex = '10';
+  }
+
+  return base;
 });
 </script>
 
@@ -62,7 +86,9 @@ const shapeStyle = computed(() => {
   height: 44px;
   justify-content: center;
   position: relative;
-  transition: box-shadow 0.2s ease;
+  transition:
+    box-shadow 0.3s ease,
+    transform 0.3s ease;
   width: 44px;
 }
 
@@ -101,6 +127,10 @@ const shapeStyle = computed(() => {
 
 .ug-node--selected .ug-node__shape {
   box-shadow: 0 0 0 3px var(--q-primary);
+}
+
+.ug-node--activated .ug-node__shape {
+  /* activation 样式由 shapeStyle 内联驱动，此处仅确保 transition 生效 */
 }
 
 .ug-node__label {

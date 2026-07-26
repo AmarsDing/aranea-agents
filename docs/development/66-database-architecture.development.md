@@ -287,7 +287,7 @@
 - [x] plugin_run 相关表（plugin_runs）
 - [x] monitor_alert 相关表（monitor_alert_rules）
 - [x] learning_loop 相关表（learning_observations, learning_patterns, learning_proposals）
-- [x] skill_evolution 相关表（skill_proposals）
+- [x] skill_evolution 相关表（skill_proposals）（⚠️ 已经迁移 20261111 backfill 后 DROP，A6）
 - [x] plan 相关表（plans）
 - [x] hook_delivery 相关表（hook_deliveries）
 - [x] ecosystem_product 相关表（ecosystem_products, ecosystem_installs）
@@ -430,10 +430,10 @@
 - Monitor 域：2 个（FlowLogEvent, SelfCheckReport）
 - Usage 域：4 个（ModelPricingRule, ModelTokenUsageHourly, UsageQuota, BudgetAlert）
 - Plugin 域：2 个（Plugin, Hook）
-- Skill 域：5 个（PlatformSkill, SkillImportJob, SkillInvocation, SkillVersion, SkillEvolutionSuggestion）
+- Skill 域：4 个（PlatformSkill, SkillImportJob, SkillInvocation, SkillVersion）（A6 删除 SkillEvolutionSuggestion）
 - Ecosystem 域：4 个（PlatformTool, PlatformMcpServer, PlatformMcpUserCredential, AvatarAsset）
 - Eval 域：4 个（EvalDataset, EvalCase, EvalCaseResult, EvalRun）
-- System 域：20 个（Admin, SystemSetting, SchemaMigration, BackgroundJob, Orchestration, OrchestrationStep, AllocationPlan, TaskDeadLetter, TaskPlan, GatewayWebhook, HealRecord, EvolutionSuggestion, ExperienceReport, FailurePattern, UserEmbeddingSetting, LlmProviderModel, Organization, BorrowRequest, Activity, CircuitBreakerState）
+- System 域：19 个（Admin, SystemSetting, SchemaMigration, BackgroundJob, Orchestration, OrchestrationStep, AllocationPlan, TaskDeadLetter, TaskPlan, GatewayWebhook, HealRecord, ExperienceReport, FailurePattern, UserEmbeddingSetting, LlmProviderModel, Organization, BorrowRequest, Activity, CircuitBreakerState）（A6 删除 EvolutionSuggestion）
 
 ### 5.5 原生 SQL 文件
 
@@ -446,7 +446,7 @@
 | `internal/data/sql/monitor_alert.sql` | 监控告警 |
 | `internal/data/sql/monitor_alert_firing_state.sql` | 告警触发状态列补丁 |
 | `internal/data/sql/learning_loop.sql` | 学习循环 |
-| `internal/data/sql/skill_evolution.sql` | 技能演化 |
+| `internal/data/sql/skill_evolution.sql` | 技能演化（legacy `skill_proposals` DDL，仅作迁移 20261111 backfill 来源，backfill 后 DROP，A6） |
 | `internal/data/sql/plan.sql` | 计划管理 |
 | `internal/data/sql/hook_delivery.sql` | Hook 投递 |
 | `internal/data/sql/ecosystem_product.sql` | 生态产品 |
@@ -479,7 +479,7 @@
 | `internal/data/session_participant_schema.go` | Session 参与者 Schema |
 | `internal/data/channel_inbound_schema.go` | 渠道入站 Schema |
 | `internal/data/channel_turn_job_schema.go` | 渠道轮次任务 Schema |
-| `internal/data/skill_evolution_schema.go` | 技能演化 Schema |
+| `internal/data/skill_evolution_schema.go` | 技能演化 Schema（legacy `skill_proposals` DDL 入口；A6 起不承载读写） |
 | `internal/data/learning_loop_schema.go` | 学习循环 Schema |
 | `internal/data/plan_schema.go` | 计划 Schema |
 | `internal/data/self_check_report_schema.go` | 自检报告 Schema |

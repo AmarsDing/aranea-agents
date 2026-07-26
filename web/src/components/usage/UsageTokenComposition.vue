@@ -28,11 +28,11 @@ const slices = computed<TokenSlice[]>(() => {
   const outputVal = s.output_tokens ?? 0;
   const otherVal = Math.max(0, s.total_tokens - inputVal - outputVal);
   const result: TokenSlice[] = [
-    { name: '输入 Token', value: inputVal, color: palette.accent },
-    { name: '输出 Token', value: outputVal, color: palette.series[2] ?? 'var(--color-info, #60a5fa)' },
+    { name: '输入 Token', value: inputVal, color: palette.series[0] },
+    { name: '输出 Token', value: outputVal, color: palette.series[1] },
   ];
   if (otherVal > 0) {
-    result.push({ name: '其他', value: otherVal, color: palette.series[3] ?? 'var(--chart-color-skills, #a78bfa)' });
+    result.push({ name: '其他', value: otherVal, color: palette.series[5] });
   }
   return result.filter((sl) => sl.value > 0);
 });
@@ -40,6 +40,11 @@ const slices = computed<TokenSlice[]>(() => {
 function buildOption(): EChartsCoreOption {
   if (!slices.value.length) return {};
   const palette = usageChartPalette();
+  const total = slices.value.reduce((sum, sl) => sum + sl.value, 0);
+  const pctOf = (name: string) => {
+    const sl = slices.value.find((it) => it.name === name);
+    return sl && total > 0 ? ((sl.value / total) * 100).toFixed(1) : '0.0';
+  };
   return baseChartOption({
     tooltip: {
       trigger: 'item',
@@ -49,19 +54,26 @@ function buildOption(): EChartsCoreOption {
       orient: 'vertical',
       right: 0,
       top: 'middle',
+      icon: 'circle',
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 10,
       textStyle: { color: palette.text, fontSize: 11 },
-      itemWidth: 10,
-      itemHeight: 10,
-      itemGap: 8,
+      formatter: (name: string) => `${name}  ${pctOf(name)}%`,
     },
     series: [
       {
         type: 'pie',
-        radius: ['48%', '72%'],
-        center: ['32%', '50%'],
-        avoidLabelOverlap: true,
-        itemStyle: { borderRadius: 3 },
+        radius: ['52%', '74%'],
+        center: ['30%', '50%'],
+        itemStyle: {
+          borderRadius: 4,
+          borderColor: palette.surface,
+          borderWidth: 2,
+        },
         label: { show: false },
+        labelLine: { show: false },
+        emphasis: { scale: true, scaleSize: 4 },
         data: slices.value.map((sl) => ({
           name: sl.name,
           value: sl.value,

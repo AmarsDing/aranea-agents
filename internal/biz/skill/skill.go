@@ -208,9 +208,29 @@ type SkillSyncWriter interface {
 	RollbackSkillVersion(ctx context.Context, skillID string, versionID string) (Skill, error)
 }
 
+// SkillVersionWriter appends a new version to an existing skill (evolution
+// Reload path). Kept as a separate narrow interface because SkillMutationWriter
+// is already at the DB-N3 method-count limit.
+//
+// Stability:evolving
+type SkillVersionWriter interface {
+	// CreateSkillVersion appends a new version row; the latest version by
+	// created_at is the effective current one, so insertion == activation.
+	CreateSkillVersion(ctx context.Context, in CreateVersionInput) (SkillVersionDetail, error)
+}
+
+// CreateVersionInput carries the payload for appending an evolved version.
+type CreateVersionInput struct {
+	SkillID         string
+	Body            string
+	ParentVersionID string // rollback anchor; empty → repo resolves latest
+	EvolutionReason string
+}
+
 type SkillWriter interface {
 	SkillMutationWriter
 	SkillSyncWriter
+	SkillVersionWriter
 }
 
 type Repo interface {

@@ -341,7 +341,10 @@
               </header>
 
               <div v-if="definition.members.length === 0" class="team-member-empty">
-                尚未添加成员，点击「添加成员」或选择模板快速填充。
+                <div>尚未添加成员，点击「添加成员」或选择模板快速填充。</div>
+                <div v-if="agentOptions.length === 0" class="q-mt-xs">
+                  暂无可用 Agent——Team 由 Agent 组成，请先在 Agent 页创建后再组建团队。
+                </div>
               </div>
               <div v-else class="team-member-list">
                 <div v-for="(member, index) in definition.members" :key="index" class="team-member-row">

@@ -13,14 +13,21 @@ import type {
   KnowledgeCollection,
   KnowledgeDocument,
   KnowledgeDocumentContent,
+  KnowledgeLink,
   ListCollectionsResult,
   ListDocumentsResult,
   SearchKnowledgeQuery,
   EmbedderConfig,
   UpdateEmbedderConfigInput,
+  VaultTreeNode,
 } from './types';
 
 const svc = createKnowledgeService();
+
+function pickStrList(r: Record<string, unknown>, snake: string, camel: string): string[] {
+  const raw = r[snake] ?? r[camel];
+  return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string') : [];
+}
 
 function mapCollection(raw: unknown): KnowledgeCollection {
   const r = asRecord(raw);
@@ -36,6 +43,9 @@ function mapCollection(raw: unknown): KnowledgeCollection {
     workspace: pickStr(r, 'workspace', 'workspace'),
     created_at: pickStr(r, 'created_at', 'createdAt'),
     updated_at: pickStr(r, 'updated_at', 'updatedAt'),
+    root_path: pickStr(r, 'root_path', 'rootPath'),
+    sync_state: pickStr(r, 'sync_state', 'syncState'),
+    last_sync_at: pickStr(r, 'last_sync_at', 'lastSyncAt'),
   };
 }
 
@@ -56,6 +66,38 @@ function mapDocument(raw: unknown): KnowledgeDocument {
       r.extract_supported !== undefined || r.extractSupported !== undefined
         ? Boolean(r.extract_supported ?? r.extractSupported)
         : undefined,
+    rel_path: pickStr(r, 'rel_path', 'relPath'),
+    summary: pickStr(r, 'summary', 'summary'),
+    tags: pickStrList(r, 'tags', 'tags'),
+    doc_type: pickStr(r, 'doc_type', 'docType'),
+  };
+}
+
+function mapVaultTreeNode(raw: unknown): VaultTreeNode {
+  const r = asRecord(raw);
+  return {
+    name: pickStr(r, 'name', 'name'),
+    path: pickStr(r, 'path', 'path'),
+    kind: pickStr(r, 'kind', 'kind'),
+    doc_id: pickStr(r, 'doc_id', 'docId'),
+    summary: pickStr(r, 'summary', 'summary'),
+    tags: pickStrList(r, 'tags', 'tags'),
+    doc_type: pickStr(r, 'doc_type', 'docType'),
+    status: pickStr(r, 'status', 'status'),
+    size_bytes: pickI64(r, 'size_bytes', 'sizeBytes'),
+    updated_at: pickStr(r, 'updated_at', 'updatedAt'),
+  };
+}
+
+function mapKnowledgeLink(raw: unknown): KnowledgeLink {
+  const r = asRecord(raw);
+  return {
+    target_doc_id: pickStr(r, 'target_doc_id', 'targetDocId'),
+    target_source: pickStr(r, 'target_source', 'targetSource'),
+    target_rel_path: pickStr(r, 'target_rel_path', 'targetRelPath'),
+    link_type: pickStr(r, 'link_type', 'linkType'),
+    context: pickStr(r, 'context', 'context'),
+    direction: pickStr(r, 'direction', 'direction'),
   };
 }
 
@@ -150,6 +192,22 @@ export async function deleteDocument(id: string): Promise<void> {
 export async function moveDocument(id: string, targetCollectionId: string): Promise<KnowledgeDocument> {
   const raw = await svc.MoveDocument({ id, targetCollectionId });
   return mapDocument(raw);
+}
+
+// ---------- Vault explorer（P3 资源管理器） ----------
+
+/** listVaultTree 懒加载 vault 文件夹直接子节点（prefix 空 = 根层）。 */
+export async function listVaultTree(collectionId: string, prefix = ''): Promise<VaultTreeNode[]> {
+  const res = asRecord(await svc.ListVaultTree({ collectionId, prefix }));
+  const itemsRaw = res.items ?? res.Items;
+  return Array.isArray(itemsRaw) ? itemsRaw.map(mapVaultTreeNode) : [];
+}
+
+/** listDocumentLinks 列出文档已解析关联（双向；linkType 空 = 全部三类，R-3 来源标注）。 */
+export async function listDocumentLinks(docId: string, linkType = ''): Promise<KnowledgeLink[]> {
+  const res = asRecord(await svc.ListDocumentLinks({ id: docId, linkType }));
+  const itemsRaw = res.items ?? res.Items;
+  return Array.isArray(itemsRaw) ? itemsRaw.map(mapKnowledgeLink) : [];
 }
 
 // ---------- Search ----------

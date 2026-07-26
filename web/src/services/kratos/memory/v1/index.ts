@@ -810,6 +810,34 @@ export type GetUnifiedMemoryGraphResponse = {
   emptyReason: string | undefined;
 };
 
+export type ListMemoryEpisodesRequest = {
+  //
+  // Behaviors: REQUIRED
+  agentId: string | undefined;
+  sessionId: string | undefined;
+  limit: number | undefined;
+  offset: number | undefined;
+};
+
+export type MemoryEpisode = {
+  id: string | undefined;
+  sessionId: string | undefined;
+  agentId: string | undefined;
+  episodeKind: string | undefined;
+  title: string | undefined;
+  outcomeSummary: string | undefined;
+  importance: number | undefined;
+  consolidationStatus: string | undefined;
+  consolidatedL3Count: number | undefined;
+  endedAt: string | undefined;
+  createdAt: string | undefined;
+};
+
+export type ListMemoryEpisodesResponse = {
+  items: MemoryEpisode[] | undefined;
+  total: number | undefined;
+};
+
 export interface MemoryService {
   ListL0Snapshots(request: ListL0SnapshotsRequest): Promise<ListL0SnapshotsResponse>;
   ListL1Tasks(request: ListL1TasksRequest): Promise<ListL1TasksResponse>;
@@ -845,6 +873,7 @@ export interface MemoryService {
   ReviewPIIFact(request: ReviewPIIFactRequest): Promise<ReviewPIIFactResponse>;
   GetMemoryLayerOverview(request: GetMemoryLayerOverviewRequest): Promise<GetMemoryLayerOverviewResponse>;
   GetUnifiedMemoryGraph(request: GetUnifiedMemoryGraphRequest): Promise<GetUnifiedMemoryGraphResponse>;
+  ListMemoryEpisodes(request: ListMemoryEpisodesRequest): Promise<ListMemoryEpisodesResponse>;
 }
 
 type RequestType = {
@@ -1654,6 +1683,35 @@ export function createMemoryServiceClient(
         service: "MemoryService",
         method: "GetUnifiedMemoryGraph",
       }) as Promise<GetUnifiedMemoryGraphResponse>;
+    },
+    ListMemoryEpisodes(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/memory/episodes`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.agentId) {
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
+      }
+      if (request.sessionId) {
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      if (request.offset) {
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MemoryService",
+        method: "ListMemoryEpisodes",
+      }) as Promise<ListMemoryEpisodesResponse>;
     },
   };
 }

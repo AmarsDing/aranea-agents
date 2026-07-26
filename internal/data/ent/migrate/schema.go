@@ -938,37 +938,6 @@ var (
 			},
 		},
 	}
-	// EvolutionSuggestionsColumns holds the columns for the "evolution_suggestions" table.
-	EvolutionSuggestionsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
-		{Name: "agent_id", Type: field.TypeString, Size: 256},
-		{Name: "type", Type: field.TypeString, Size: 64},
-		{Name: "title", Type: field.TypeString, Size: 512},
-		{Name: "content", Type: field.TypeString, Size: 2147483647, Default: ""},
-		{Name: "status", Type: field.TypeString, Size: 32, Default: "pending"},
-		{Name: "diff_preview", Type: field.TypeString, Size: 2147483647, Default: ""},
-		{Name: "pre_apply_snapshot", Type: field.TypeString, Size: 2147483647, Default: ""},
-		{Name: "created_at", Type: field.TypeString, Default: ""},
-		{Name: "applied_at", Type: field.TypeString, Default: ""},
-	}
-	// EvolutionSuggestionsTable holds the schema information for the "evolution_suggestions" table.
-	EvolutionSuggestionsTable = &schema.Table{
-		Name:       "evolution_suggestions",
-		Columns:    EvolutionSuggestionsColumns,
-		PrimaryKey: []*schema.Column{EvolutionSuggestionsColumns[0]},
-		Indexes: []*schema.Index{
-			{
-				Name:    "evolutionsuggestion_agent_id_status",
-				Unique:  false,
-				Columns: []*schema.Column{EvolutionSuggestionsColumns[1], EvolutionSuggestionsColumns[5]},
-			},
-			{
-				Name:    "evolutionsuggestion_agent_id_created_at",
-				Unique:  false,
-				Columns: []*schema.Column{EvolutionSuggestionsColumns[1], EvolutionSuggestionsColumns[8]},
-			},
-		},
-	}
 	// ExperienceReportsColumns holds the columns for the "experience_reports" table.
 	ExperienceReportsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -2624,46 +2593,6 @@ var (
 			},
 		},
 	}
-	// SkillEvolutionSuggestionsColumns holds the columns for the "skill_evolution_suggestions" table.
-	SkillEvolutionSuggestionsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
-		{Name: "skill_id", Type: field.TypeString, Size: 256, Default: ""},
-		{Name: "type", Type: field.TypeString, Size: 64, Default: ""},
-		{Name: "status", Type: field.TypeString, Size: 64, Default: "pending"},
-		{Name: "source_report_ids", Type: field.TypeJSON, Nullable: true},
-		{Name: "trigger_reason", Type: field.TypeString, Size: 2147483647, Default: ""},
-		{Name: "draft_skill_body", Type: field.TypeString, Size: 2147483647, Default: ""},
-		{Name: "draft_version_id", Type: field.TypeString, Size: 256, Default: ""},
-		{Name: "sandbox_passed", Type: field.TypeBool, Default: false},
-		{Name: "sandbox_result", Type: field.TypeJSON, Nullable: true},
-		{Name: "pre_verify_result", Type: field.TypeJSON, Nullable: true},
-		{Name: "approved_by", Type: field.TypeString, Size: 256, Default: ""},
-		{Name: "rejected_by", Type: field.TypeString, Size: 256, Default: ""},
-		{Name: "rejection_reason", Type: field.TypeString, Size: 2147483647, Default: ""},
-		{Name: "created_at", Type: field.TypeString, Default: ""},
-		{Name: "resolved_at", Type: field.TypeString, Nullable: true, Default: ""},
-		{Name: "parent_version_id", Type: field.TypeString, Nullable: true, Size: 256, Default: ""},
-		{Name: "evolution_reason", Type: field.TypeString, Nullable: true, Size: 2147483647, Default: ""},
-		{Name: "lifecycle_status", Type: field.TypeString, Nullable: true, Size: 64, Default: "draft"},
-	}
-	// SkillEvolutionSuggestionsTable holds the schema information for the "skill_evolution_suggestions" table.
-	SkillEvolutionSuggestionsTable = &schema.Table{
-		Name:       "skill_evolution_suggestions",
-		Columns:    SkillEvolutionSuggestionsColumns,
-		PrimaryKey: []*schema.Column{SkillEvolutionSuggestionsColumns[0]},
-		Indexes: []*schema.Index{
-			{
-				Name:    "idx_evo_suggestion_skill_status",
-				Unique:  false,
-				Columns: []*schema.Column{SkillEvolutionSuggestionsColumns[1], SkillEvolutionSuggestionsColumns[3]},
-			},
-			{
-				Name:    "idx_evo_suggestion_status_time",
-				Unique:  false,
-				Columns: []*schema.Column{SkillEvolutionSuggestionsColumns[3], SkillEvolutionSuggestionsColumns[14]},
-			},
-		},
-	}
 	// SkillImportJobsColumns holds the columns for the "skill_import_jobs" table.
 	SkillImportJobsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -3527,7 +3456,6 @@ var (
 		EvalDatasetsTable,
 		EvalRunsTable,
 		EventDeliveryOutboxTable,
-		EvolutionSuggestionsTable,
 		ExperienceReportsTable,
 		FailurePatternTable,
 		FlowLogEventsTable,
@@ -3574,7 +3502,6 @@ var (
 		SessionRuntimeTable,
 		SessionTurnsTable,
 		SessionsV2Table,
-		SkillEvolutionSuggestionsTable,
 		SkillImportJobsTable,
 		SkillInvocationTable,
 		SkillVersionTable,
@@ -3674,9 +3601,6 @@ func init() {
 	}
 	EventDeliveryOutboxTable.Annotation = &entsql.Annotation{
 		Table: "event_delivery_outbox",
-	}
-	EvolutionSuggestionsTable.Annotation = &entsql.Annotation{
-		Table: "evolution_suggestions",
 	}
 	ExperienceReportsTable.Annotation = &entsql.Annotation{
 		Table: "experience_reports",
@@ -3815,9 +3739,6 @@ func init() {
 	}
 	SessionsV2Table.Annotation = &entsql.Annotation{
 		Table: "sessions_v2",
-	}
-	SkillEvolutionSuggestionsTable.Annotation = &entsql.Annotation{
-		Table: "skill_evolution_suggestions",
 	}
 	SkillImportJobsTable.Annotation = &entsql.Annotation{
 		Table: "skill_import_jobs",

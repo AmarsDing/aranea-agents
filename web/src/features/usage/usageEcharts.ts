@@ -12,9 +12,14 @@ export function ensureUsageEcharts(): void {
   registered = true;
 }
 
+/**
+ * 读取 CSS 变量。夜间 token 定义在 body.body--dark 上，
+ * 必须从 body 读取才能拿到昼夜覆盖（html 读不到 body 上的变量）。
+ */
 export function readCssVar(name: string, fallback: string): string {
   if (typeof document === 'undefined') return fallback;
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const el = document.body ?? document.documentElement;
+  const v = getComputedStyle(el).getPropertyValue(name).trim();
   return v || fallback;
 }
 
@@ -24,13 +29,17 @@ export function usageChartPalette() {
     positive: readCssVar('--color-success', '#4CAF7C'),
     negative: readCssVar('--color-danger', '#E55C5C'),
     text: readCssVar('--color-text-secondary', '#6b7280'),
-    border: readCssVar('--color-border-subtle', 'rgba(0,0,0,0.08)'),
+    heading: readCssVar('--color-text-heading', '#1a2030'),
+    border: readCssVar('--glass-border', 'rgba(128,128,128,0.18)'),
+    surface: readCssVar('--canvas-base', '#ffffff'),
+    /** 分类色板：复用 --chart-color-* token，昼夜各自协调。 */
     series: [
-      readCssVar('--color-accent', '#e9a23b'),
-      readCssVar('--color-accent-hover', '#d48c1a'),
-      '#60a5fa',
-      '#a78bfa',
-      '#34d399',
+      readCssVar('--chart-color-memory', '#06b6d4'),
+      readCssVar('--chart-color-skills', '#8b5cf6'),
+      readCssVar('--chart-color-system-prompt', '#e9a23b'),
+      readCssVar('--chart-color-session-summary', '#10b981'),
+      readCssVar('--chart-color-user-message', '#ec4899'),
+      readCssVar('--chart-color-history', '#6b7280'),
     ],
   };
 }

@@ -160,8 +160,8 @@ func WithOrchestrationCache(c *OrchestrationCache) SpiritTeamUsecaseOption {
 	return func(u *SpiritTeamUsecase) { u.orchCache = c }
 }
 
-func WithEvolutionSuggestionRepo(r EvolutionSuggestionRepo) SpiritTeamUsecaseOption {
-	return func(u *SpiritTeamUsecase) { u.evolutionSugg = r }
+func WithEvolutionSuggestionCreator(c EvolutionSuggestionCreator) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) { u.evolutionSugg = c }
 }
 
 func WithVerificationGateExecutor(e *VerificationGateExecutor) SpiritTeamUsecaseOption {
@@ -237,7 +237,7 @@ type SpiritTeamUsecase struct {
 	agentUC           SpiritAgentResolver
 	transactor        SpiritTransactor
 	orchCache         *OrchestrationCache
-	evolutionSugg     EvolutionSuggestionRepo
+	evolutionSugg     EvolutionSuggestionCreator
 	timeoutHandler    TimeoutHandler
 	contractValidator *DeliverableContractValidator
 	gateExecutor      *VerificationGateExecutor
@@ -1380,7 +1380,7 @@ func (u *SpiritTeamUsecase) RecordTeamCompletion(ctx context.Context, team Team,
 		} else {
 			content += "暂无历史数据推荐替代拓扑，建议调整任务描述或减少团队数量。"
 		}
-		_, suggErr := u.evolutionSugg.Create(ctx, EvolutionSuggestion{
+		_, suggErr := u.evolutionSugg.CreateSuggestion(ctx, EvolutionSuggestion{
 			AgentID: team.SpiritSessionID,
 			Type:    "orchestration_optimization",
 			Title:   fmt.Sprintf("编排优化建议: %s", TruncateRunes(team.TaskDescription, MaxSuggestionTitleLen)),

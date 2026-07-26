@@ -152,3 +152,30 @@
 .usage-breakdown-chart
   width: 100%
   height: 260px
+
+// 费用占比圆环：中心合计 overlay（与 USAGE_DONUT_CENTER_X 对应）
+.usage-donut
+  position: relative
+
+.usage-donut__center
+  position: absolute
+  left: 25%
+  top: 50%
+  transform: translate(-50%, -50%)
+  text-align: center
+  pointer-events: none
+  max-width: 30%
+
+.usage-donut__center-value
+  color: var(--color-text-heading)
+  font-size: 16px
+  font-weight: 700
+  line-height: 1.2
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.usage-donut__center-label
+  margin-top: 2px
+  color: var(--color-text-secondary)
+  font-size: 11px

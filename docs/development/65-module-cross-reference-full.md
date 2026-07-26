@@ -597,20 +597,20 @@
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `biz`（SkillProposal 类型、SkillProposalReadWriter/SkillAutoCreator/SkillRegistrationPort 端口、AgentRepository、PatternReader） |
+| **上游依赖** | `biz`（SkillProposal 视图类型（A6 起由 unified 行重建）、UnifiedEvolutionStore/UnifiedEvolutionPatternReader/SkillAutoCreator/SkillRegistrationPort 端口、AgentRepository、PatternReader） |
 | **下游影响** | `service/skill_evolution`（SkillEvolutionService 调用 SkillEvolutionUsecase）、`skill`（注册新 Skill） |
 | **核心导出** | `SkillEvolutionUsecase`、`SkillProposal` 领域模型、`DetectAndPropose`/`ApproveProposal`/`RejectProposal`/`RegisterApproved` 方法 |
 | **实现接口** | `SkillAutoCreator`（LLM 生成 SKILL.md）、`SkillRegistrationPort`（注册 Skill 到仓库） |
 | **共享类型** | `SkillProposal`（pending/approved/rejected/registered/expired）、`ToolCallRecord` |
 | **事件生产** | 无直接生产（由 Cron 定时任务或 API 触发） |
 | **事件消费** | 无直接消费 |
-| **数据库** | SQLite（skill_proposals，原生 SQL DDL） |
+| **数据库** | SQLite（unified_evolution_suggestions，A6 物理收敛；legacy skill_proposals 已 DROP，pattern_hash/pattern_desc/approved_at/rejected_by 存 metadata JSON） |
 | **前端对应** | 待集成（后端 API 已就绪，前端 Skill 进化管理界面待开发） |
 
 **⚠️ 开发注意**：
 - `SkillAutoCreator` 接口由 `internal/skill/auto_creator.go` 实现，调用 LLM 生成 SKILL.md
 - `SkillRegistrationPort` 接口由 SkillUsecase 适配，将审批通过的 Proposal 注册为正式 Skill
-- 定时检测通过 `internal/cronrunner/jobs/skill_evolution.go` 触发
+- 定时检测由 `EvolutionOrchestratorWorker` 统一驱动（`PatternTrigger`，A1）；legacy `SkillEvolutionScanner` 已于 A6 清理删除（含 `ScanAndProposeAll` 与 legacy `EvolutionSuggestionStateMachine`）
 - 前端集成时需在 SkillsPage 或 AgentSettingsPage 新增"技能提议"管理界面
 
 ---
@@ -757,19 +757,19 @@
 
 ---
 
-### 1.25 Agent 演化 (`internal/biz/evolution.go` + `internal/biz/evolution_scan.go`)
+### 1.25 Agent 演化 (`internal/biz/evolution.go` + `internal/biz/skill_evolution_triggers.go`)
 
-**职责**：Agent 演化闭环——指标采集、建议生成/应用/拒绝、自动扫描。
+**职责**：Agent 演化闭环——指标采集、建议生成/应用/拒绝、自动扫描（A6：L3 扫描移植到 `AgentConfigTrigger`，由 `EvolutionOrchestratorWorker` 统一驱动）。
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `biz`（EvolutionMetricsRepo/EvolutionSuggestionRepo 端口、AgentRepository） |
-| **下游影响** | `service/chat`（ChatOrchestrator 调用演化指标记录） |
-| **核心导出** | `EvolutionUsecase`、`EvolutionMetrics`、`EvolutionSuggestion` |
-| **共享类型** | `EvolutionMetrics`（工具成功率/检索质量）、`EvolutionSuggestion`（persona/prompt/skill 类型） |
+| **上游依赖** | `biz`（EvolutionMetricsRepo/UnifiedEvolutionStore 端口、AgentRepository；legacy EvolutionSuggestionRepo/EvolutionCoordinator 已于 A6 删除） |
+| **下游影响** | `service/chat`（ChatOrchestrator 调用演化指标记录）、`spirit_team`/`task_orchestrator`（经 `EvolutionSuggestionCreator` 窄端口创建 L3 建议） |
+| **核心导出** | `EvolutionUsecase`、`EvolutionMetrics`、`EvolutionSuggestion`（A6 起为 unified 行重建视图） |
+| **共享类型** | `EvolutionMetrics`（工具成功率/检索质量）、`EvolutionSuggestion`（persona/prompt/skill 类型，legacy 字段存 metadata JSON） |
 | **事件生产** | 无直接生产 |
 | **事件消费** | 无 |
-| **数据库** | SQLite（evolution_metrics/evolution_suggestions，原生 SQL DDL） |
+| **数据库** | SQLite（指标查询 tool_invocations 等；建议存 unified_evolution_suggestions，A6 物理收敛，legacy evolution_suggestions 已 DROP） |
 | **前端对应** | AgentEvolutionPanel（Agent 详情页"演化"Tab） |
 
 ---
@@ -989,7 +989,7 @@
 | graph_* | 原生 SQL | GraphRepo | GraphUsecase | GraphsPage |
 | flow_log_events | 原生 SQL | FlowLogRepo | MonitorUsecase | MonitorPage |
 | learning_observations / learning_patterns / learning_proposals | 原生 SQL | LearningLoopRepo | LearningLoopUsecase | AgentSettingsPage（学习闭环 Tab） |
-| skill_proposals | 原生 SQL | SkillEvolutionRepo | SkillEvolutionUsecase | 待集成 |
+| unified_evolution_suggestions | 原生 SQL | UnifiedEvolutionRepo | SkillEvolutionUsecase / SkillIntelligenceUsecase / EvolutionUsecase / SkillEvolutionOrchestrator | SkillsPage（技能进化）/ AgentEvolutionPanel |
 
 ---
 

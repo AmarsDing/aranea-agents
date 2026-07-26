@@ -712,6 +712,12 @@ func (r *orchStubQueryReader) ListByTarget(_ context.Context, _, _, _ string, _,
 func (r *orchStubQueryReader) CountByTarget(_ context.Context, _, _, _ string) (int, error) {
 	return 0, nil
 }
+func (r *orchStubQueryReader) ListByTargetAndAction(_ context.Context, _, _, _, _ string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
+	return nil, nil
+}
+func (r *orchStubQueryReader) CountByTargetAndAction(_ context.Context, _, _, _, _ string) (int, error) {
+	return 0, nil
+}
 
 type orchStubWriter struct {
 	created      []UnifiedEvolutionSuggestion
@@ -737,6 +743,9 @@ func (w *orchStubWriter) UpdateLifecycleStatus(_ context.Context, _ string, _ st
 	return nil
 }
 func (w *orchStubWriter) UpdateSandboxResult(_ context.Context, _ string, _ bool, _ json.RawMessage) error {
+	return nil
+}
+func (w *orchStubWriter) UpdateMetadataKey(_ context.Context, _ string, _ string, _ string) error {
 	return nil
 }
 func (w *orchStubWriter) ExpireOlderThan(_ context.Context, _ time.Time) (int, error) {

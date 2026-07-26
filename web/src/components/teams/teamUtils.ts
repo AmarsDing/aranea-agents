@@ -467,45 +467,6 @@ export function memberIcon(role: string) {
   );
 }
 
-// ── Topology ──
-
-export function topologyNodesFromDefinition(def: TeamDefinition) {
-  const mode = def.mode || 'sequential';
-  if (mode === 'adaptive')
-    return [
-      { icon: 'auto_awesome', label: '分析任务' },
-      { icon: 'route', label: '选择拓扑' },
-      { icon: 'play_arrow', label: '执行' },
-    ];
-  if (mode === 'parallel')
-    return [
-      { icon: 'call_split', label: '并行分派' },
-      { icon: 'groups', label: '并行执行' },
-      { icon: 'merge_type', label: '汇总' },
-    ];
-  if (mode === 'coordinator')
-    return [
-      { icon: 'route', label: '主控拆分' },
-      { icon: 'smart_toy', label: '成员执行' },
-      { icon: 'summarize', label: '总结' },
-    ];
-  if (mode === 'critic_loop')
-    return [
-      { icon: 'edit_note', label: '生成' },
-      { icon: 'fact_check', label: '评审' },
-      { icon: 'loop', label: '迭代' },
-    ];
-  return [
-    { icon: 'looks_one', label: '顺序 1' },
-    { icon: 'arrow_forward', label: '传递' },
-    { icon: 'flag', label: '最终输出' },
-  ];
-}
-
-export function topologyNodes(team: Team) {
-  return topologyNodesFromDefinition(parseDefinition(team));
-}
-
 // ── Date ──
 
 export function formatDate(value: string) {

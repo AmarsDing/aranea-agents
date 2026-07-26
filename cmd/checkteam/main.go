@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -45,6 +46,62 @@ func main() {
 	}
 	defer db.Close()
 
+	// setws mode: go run ./cmd/checkteam setws <teamID> <workspaceID>
+	// Scratch helper to move a shared (workspace_id="") team into a tenant
+	// workspace so tenant-facing mutate endpoints (run-test) accept it.
+	// setws mode: go run ./cmd/checkteam setws <teamID> <workspaceID|->
+	// Scratch helper to move a shared (workspace_id="") team into a tenant
+	// workspace so tenant-facing mutate endpoints (run-test) accept it.
+	// "-" maps to empty string (shared).
+	if len(os.Args) >= 4 && os.Args[1] == "setws" {
+		ws := os.Args[3]
+		if ws == "-" {
+			ws = ""
+		}
+		res, err := db.Exec(`UPDATE teams SET workspace_id = $2 WHERE id = $1`, os.Args[2], ws)
+		if err != nil {
+			fmt.Println("update err:", err)
+			os.Exit(1)
+		}
+		n, _ := res.RowsAffected()
+		fmt.Printf("updated rows=%d team=%s workspace_id=%q\n", n, os.Args[2], os.Args[3])
+		return
+	}
+
+	// runs mode: go run ./cmd/checkteam runs <teamID>
+	// List team_runs for a team.
+	if len(os.Args) >= 3 && os.Args[1] == "runs" {
+		listRuns(db, os.Args[2])
+		return
+	}
+
+	// closerun mode: go run ./cmd/checkteam closerun <runID> <status>
+	// Scratch helper to close a stale (leaked) run so new tests can start.
+	if len(os.Args) >= 4 && os.Args[1] == "closerun" {
+		res, err := db.Exec(`UPDATE team_runs SET status = $2, finished_at = NOW(), updated_at = NOW() WHERE id = $1`, os.Args[2], os.Args[3])
+		if err != nil {
+			fmt.Println("closerun err:", err)
+			os.Exit(1)
+		}
+		n, _ := res.RowsAffected()
+		fmt.Printf("closerun rows=%d run=%s status=%q\n", n, os.Args[2], os.Args[3])
+		return
+	}
+
+	// delvev mode: go run ./cmd/checkteam delvev <sessionID>
+	// Dump full set_deliverable events (content + args) for one session.
+	if len(os.Args) >= 3 && os.Args[1] == "delvev" {
+		dumpDeliverableEvents(db, os.Args[2])
+		return
+	}
+
+	// sess mode: go run ./cmd/checkteam sess <sessionID>
+	// Dump trpc_session_states + set_deliverable events for one session.
+	if len(os.Args) >= 3 && os.Args[1] == "sess" {
+		probeSession(db, os.Args[2])
+		return
+	}
+
 	teamIDs := []string{"7cb96d6d4c912f6e11eca1b6", "bff43a17f5556a3392b56d55"}
 
 	for _, teamID := range teamIDs {
@@ -60,6 +117,14 @@ func main() {
 			continue
 		}
 		fmt.Printf("status=%s dag_node_id=%s\n", status, dagNodeID)
+		var wsID string
+		if err := db.QueryRow(`SELECT COALESCE(workspace_id,'<null>') FROM teams WHERE id = $1`, teamID).Scan(&wsID); err == nil {
+			fmt.Printf("workspace_id=%s\n", wsID)
+		}
+		var delAt string
+		if err := db.QueryRow(`SELECT COALESCE(deleted_at,'<null>') FROM teams WHERE id = $1`, teamID).Scan(&delAt); err == nil {
+			fmt.Printf("deleted_at=%q\n", delAt)
+		}
 
 		var p probe
 		if err := json.Unmarshal([]byte(defJSON), &p); err != nil {
@@ -233,4 +298,244 @@ func main() {
 			}
 		}
 	}
+}
+
+// probeSession dumps trpc state + set_deliverable events for one session ID.
+func probeSession(db *sql.DB, sessionID string) {
+	fmt.Printf("================ SESSION %s ================\n", sessionID)
+
+	rows, err := db.Query(`
+		SELECT app_name, user_id, COALESCE(state::text,'')
+		FROM trpc_session_states WHERE session_id = $1
+	`, sessionID)
+	if err != nil {
+		fmt.Println("state query err:", err)
+		return
+	}
+	found := false
+	for rows.Next() {
+		found = true
+		var app, user, state string
+		if err := rows.Scan(&app, &user, &state); err != nil {
+			continue
+		}
+		fmt.Printf("app=%q user=%q state_len=%d\n", app, user, len(state))
+		var m map[string]any
+		if err := json.Unmarshal([]byte(state), &m); err != nil {
+			continue
+		}
+		// state payload may nest under "state"
+		inner, _ := m["state"].(map[string]any)
+		if inner == nil {
+			inner = m
+		}
+		keys := make([]string, 0, len(inner))
+		for k := range inner {
+			keys = append(keys, k)
+		}
+		fmt.Printf("state_keys: %v\n", keys)
+		if d, ok := inner["deliverable"]; ok {
+			// values are base64-encoded JSON in trpc session state
+			if s, ok := d.(string); ok {
+				fmt.Printf("deliverable_raw_b64_len=%d\n", len(s))
+				if dec, err := decodeB64(s); err == nil {
+					pv := dec
+					if len(pv) > 600 {
+						pv = pv[:600] + "..."
+					}
+					fmt.Printf("deliverable_decoded: %s\n", pv)
+				}
+			} else {
+				dj, _ := json.Marshal(d)
+				pv := string(dj)
+				if len(pv) > 600 {
+					pv = pv[:600] + "..."
+				}
+				fmt.Printf("deliverable_json: %s\n", pv)
+			}
+		} else {
+			fmt.Println("deliverable: (ABSENT)")
+		}
+	}
+	rows.Close()
+	if !found {
+		fmt.Println("(no state rows)")
+	}
+
+	evRows, err := db.Query(`
+		SELECT event::text FROM trpc_session_events
+		WHERE session_id = $1 AND event::text LIKE '%set_deliverable%'
+		ORDER BY id
+	`, sessionID)
+	if err != nil {
+		fmt.Println("event query err:", err)
+		return
+	}
+	evFound := false
+	toolRespWithDelta := 0
+	toolRespTotal := 0
+	for evRows.Next() {
+		evFound = true
+		var evText string
+		if err := evRows.Scan(&evText); err != nil {
+			continue
+		}
+		var ev map[string]any
+		if err := json.Unmarshal([]byte(evText), &ev); err != nil {
+			continue
+		}
+		isToolResp := false
+		if chs, ok := ev["choices"].([]any); ok {
+			for _, c := range chs {
+				cm, _ := c.(map[string]any)
+				msg, _ := cm["message"].(map[string]any)
+				if msg == nil {
+					continue
+				}
+				if msg["role"] == "tool" && msg["tool_name"] == "set_deliverable" {
+					isToolResp = true
+				}
+			}
+		}
+		if !isToolResp {
+			continue
+		}
+		toolRespTotal++
+		sd, _ := ev["stateDelta"].(map[string]any)
+		if len(sd) == 0 {
+			fmt.Println("tool_response: stateDelta=(NONE)  <-- pre-fix symptom")
+			continue
+		}
+		keys := make([]string, 0, len(sd))
+		for k := range sd {
+			keys = append(keys, k)
+		}
+		fmt.Printf("tool_response: stateDelta_keys=%v\n", keys)
+		if raw, ok := sd["deliverable"]; ok {
+			toolRespWithDelta++
+			if s, ok := raw.(string); ok {
+				if dec, err := decodeB64(s); err == nil {
+					pv := dec
+					if len(pv) > 400 {
+						pv = pv[:400] + "..."
+					}
+					fmt.Printf("  stateDelta.deliverable_decoded: %s\n", pv)
+				}
+			} else {
+				dj, _ := json.Marshal(raw)
+				pv := string(dj)
+				if len(pv) > 400 {
+					pv = pv[:400] + "..."
+				}
+				fmt.Printf("  stateDelta.deliverable: %s\n", pv)
+			}
+		}
+	}
+	evRows.Close()
+	if !evFound {
+		fmt.Println("(no set_deliverable events)")
+	}
+	fmt.Printf("SUMMARY: set_deliverable tool responses with deliverable stateDelta: %d/%d\n",
+		toolRespWithDelta, toolRespTotal)
+}
+
+// listRuns lists team_runs rows for a team.
+func listRuns(db *sql.DB, teamID string) {
+	rows, err := db.Query(`
+		SELECT id, COALESCE(status,''), COALESCE(mode,''),
+			COALESCE(CAST(started_at AS TEXT),''),
+			COALESCE(CAST(finished_at AS TEXT),''),
+			COALESCE(session_id,'')
+		FROM team_runs WHERE team_id = $1 ORDER BY started_at
+	`, teamID)
+	if err != nil {
+		fmt.Println("runs query err:", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, status, mode, started, finished, sess string
+		if err := rows.Scan(&id, &status, &mode, &started, &finished, &sess); err != nil {
+			continue
+		}
+		fmt.Printf("run=%s status=%s mode=%s started=%s finished=%s session=%s\n",
+			id, status, mode, started, finished, sess)
+	}
+}
+
+// dumpDeliverableEvents prints full set_deliverable events (content + args) for one session.
+func dumpDeliverableEvents(db *sql.DB, sessID string) {
+	rows, err := db.Query(`
+		SELECT id, event::text
+		FROM trpc_session_events
+		WHERE session_id = $1 AND event::text LIKE '%set_deliverable%'
+		ORDER BY id
+	`, sessID)
+	if err != nil {
+		fmt.Println("query err:", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var evText string
+		if err := rows.Scan(&id, &evText); err != nil {
+			continue
+		}
+		var ev map[string]any
+		if err := json.Unmarshal([]byte(evText), &ev); err != nil {
+			continue
+		}
+		fmt.Printf("=== event row=%d author=%v done=%v\n", id, ev["author"], ev["done"])
+		if sd, ok := ev["stateDelta"].(map[string]any); ok && len(sd) > 0 {
+			keys := []string{}
+			for k := range sd {
+				keys = append(keys, k)
+			}
+			fmt.Printf("  stateDelta_keys=%v\n", keys)
+		} else {
+			fmt.Println("  stateDelta=(none)")
+		}
+		if chs, ok := ev["choices"].([]any); ok {
+			for _, c := range chs {
+				cm, _ := c.(map[string]any)
+				msg, _ := cm["message"].(map[string]any)
+				if msg == nil {
+					continue
+				}
+				content, _ := msg["content"].(string)
+				fmt.Printf("  role=%v tool_name=%v content_len=%d\n", msg["role"], msg["tool_name"], len(content))
+				if len(content) > 0 {
+					pv := content
+					if len(pv) > 300 {
+						pv = pv[:300] + " ...TAIL... " + content[len(content)-200:]
+					}
+					fmt.Printf("  content: %s\n", pv)
+				}
+				if tcs, ok := msg["tool_calls"].([]any); ok {
+					for _, tc := range tcs {
+						tcm, _ := tc.(map[string]any)
+						fn, _ := tcm["function"].(map[string]any)
+						args, _ := fn["arguments"].(string)
+						fmt.Printf("  tool_call name=%v args_len=%d\n", fn["name"], len(args))
+						if len(args) > 0 {
+							pv := args
+							if len(pv) > 400 {
+								pv = pv[:400] + "..."
+							}
+							fmt.Printf("  args: %s\n", pv)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func decodeB64(s string) (string, error) {
+	b, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }

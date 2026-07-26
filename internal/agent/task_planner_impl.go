@@ -213,11 +213,27 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 	var subTasks []biz.SubTask
 	var dag *biz.PlanTaskDAG
 	var decomposeReason string
+	streamPublished := false
+	planID := "tp_" + uuid.NewString()
 	if effectiveLevel == biz.ComplexityComplex {
 		var err error
 		// P-ORCH: notify the user that decomposition (LLM call, up to 60s) started.
 		impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decomposing", nil)
-		subTasks, dag, err = impl.decomposeTask(ctx, input.UserMessage, input.IntentArtifact, teamCount)
+
+		// 流式分解：当 v2 Sequencer 可用时，边生成边发布 PlanStep/GraphNode，
+		// 前端可看到级联动画效果。否则回退到同步分解。
+		if impl.seq != nil {
+			impl.publishV2BoardShell(ctx, planID, strategy, input)
+			onSubTask := func(st biz.SubTask, index int) {
+				impl.publishV2PlanStep(ctx, st, planID, index, input)
+			}
+			subTasks, dag, err = impl.decomposeTaskStream(ctx, input.UserMessage, input.IntentArtifact, teamCount, onSubTask)
+			if err == nil && len(subTasks) > 0 {
+				streamPublished = true
+			}
+		} else {
+			subTasks, dag, err = impl.decomposeTask(ctx, input.UserMessage, input.IntentArtifact, teamCount)
+		}
 		if err != nil {
 			impl.lg.Warn("任务分解失败，降级为 direct 策略",
 				loggateway.StepID(biz.SpiritStepPlannerDecompose),
@@ -289,7 +305,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 
 	// Step 6: Build and persist TaskPlan
 	plan := &biz.TaskPlan{
-		ID:                 "tp_" + uuid.NewString(),
+		ID:                 planID,
 		SpiritSessionID:    input.SpiritSessionID,
 		TraceID:            traceID,
 		UserMessage:        input.UserMessage,
@@ -306,6 +322,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		DomainPath:         PrimaryDomainPath(subTasks),
 		MemoryHit:          nil, // Memory hit is handled in Step 0; normal path has no cache hit
 		Status:             biz.TaskPlanStatusDraft,
+		StreamPublished:    streamPublished,
 	}
 
 	impl.lg.Info("持久化 TaskPlan",
@@ -852,6 +869,252 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 
 	dag := buildDAGFromSubTasks(subTasks)
 	return subTasks, dag, nil
+}
+
+// decomposeTaskStream 是 decomposeTask 的流式变体。使用 CallOpenAICompatChatStream
+// 接收 LLM 增量输出，通过 streamSubTaskParser 逐个提取完整 subtask JSON 对象，
+// 每解析出一个 subtask 立即调用 onSubTask 回调（用于渐进发布 PlanStep/GraphNode
+// 事件，配合前端级联动画）。
+//
+// ID 重映射在流式解析中即时完成：st_1 → st_<uuid>。depends_on 引用已解析的
+// subtask 时立即重写；前向引用（依赖尚未出现的 subtask）在最终清理中处理。
+func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, onSubTask func(st biz.SubTask, index int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+	if impl.catalog == nil || impl.httpClient == nil {
+		return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM catalog or HTTP client not configured")
+	}
+
+	prompt := buildDecompositionPrompt(userMessage, artifact, teamCount)
+
+	setting := biz.PlannerModelSetting{Mode: biz.PlannerModelModeInherit}
+	if impl.plannerSetting != nil {
+		if s, err := impl.plannerSetting.GetPlannerModel(ctx); err == nil {
+			setting = s
+		}
+	}
+	sessionProvider, sessionModel := biz.PlannerSessionModelFromCtx(ctx)
+	provider, model := ResolvePlannerModel(ctx, setting, sessionProvider, sessionModel, impl.catalog, impl.lg, biz.SpiritStepPlannerAssess, "TaskPlanner")
+	if provider == "" || model == "" {
+		return nil, nil, apierror.Internal(apierror.DomainSpirit, "no provider/model configured for task decomposition")
+	}
+
+	row, err := impl.catalog.GetByProviderAndModel(ctx, provider, model)
+	if err != nil {
+		return nil, nil, apierror.Internal(apierror.DomainSpirit, "get provider config").WithCause(err)
+	}
+
+	var cfg ProviderAPIConfig
+	MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+
+	msgs := []OpenAICompatMessage{
+		{Role: "system", Content: prompt},
+		{Role: "user", Content: "Decompose the following task:\n\n" + userMessage},
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	parser := newStreamSubTaskParser()
+	var subTasks []biz.SubTask
+	idRemap := make(map[string]string)
+
+	onDelta := func(piece string) error {
+		objects := parser.Feed(piece)
+		for _, objJSON := range objects {
+			st, parseErr := parseStreamSubTask(objJSON, idRemap)
+			if parseErr != nil {
+				impl.lg.Warn("流式 subtask 解析失败，跳过",
+					loggateway.StepID(biz.SpiritStepPlannerDecompose),
+					loggateway.Err(parseErr),
+				)
+				continue
+			}
+			subTasks = append(subTasks, st)
+			if onSubTask != nil {
+				onSubTask(st, len(subTasks)-1)
+			}
+		}
+		return nil
+	}
+
+	text, _, _, _, callErr := CallOpenAICompatChatStream(callCtx, impl.httpClient, cfg, model, msgs, onDelta)
+	if callErr != nil {
+		return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM stream call failed").WithCause(callErr)
+	}
+
+	// 流式解析未能提取任何 subtask 时，回退到批量解析（处理边界情况如
+	// LLM 输出的 JSON 格式与解析器预期不完全匹配）。
+	if len(subTasks) == 0 {
+		text = stripDecompositionFences(text)
+		var batchErr error
+		subTasks, batchErr = parseDecompositionOutput(text)
+		if batchErr != nil {
+			return nil, nil, apierror.Internal(apierror.DomainSpirit, "parse decomposition").WithCause(batchErr)
+		}
+	}
+
+	if len(subTasks) == 0 {
+		return nil, nil, nil
+	}
+
+	// 清理前向引用：流式解析时 depends_on 可能引用尚未出现的 subtask，
+	// 此处移除所有无效引用（与 decomposeTask 的 teamCount 截取逻辑一致）。
+	resolveForwardRefs(subTasks)
+
+	if err := validateSubTaskDAG(subTasks); err != nil {
+		return nil, nil, apierror.Internal(apierror.DomainSpirit, "invalid DAG").WithCause(err)
+	}
+
+	dag := buildDAGFromSubTasks(subTasks)
+	return subTasks, dag, nil
+}
+
+// parseStreamSubTask 解析单个 subtask JSON 对象，重映射 ID 并解析 depends_on。
+// idRemap 累积 LLM 原始 ID → 全局唯一 ID 的映射，供后续 subtask 的 depends_on
+// 解析使用。
+func parseStreamSubTask(objJSON string, idRemap map[string]string) (biz.SubTask, error) {
+	var raw struct {
+		ID                   string                    `json:"id"`
+		Name                 string                    `json:"name"`
+		Description          string                    `json:"description"`
+		DependsOn            []string                  `json:"depends_on"`
+		RequiredCapabilities []string                  `json:"required_capabilities"`
+		Priority             int                       `json:"priority"`
+		EstimatedComplexity  float64                   `json:"estimated_complexity"`
+		Deliverables         []biz.DeliverableContract `json:"deliverables"`
+		InputContract        []biz.DeliverableContract `json:"input_contract"`
+		DomainPath           string                    `json:"domain_path"`
+	}
+	if err := json.Unmarshal([]byte(objJSON), &raw); err != nil {
+		return biz.SubTask{}, err
+	}
+	if strings.TrimSpace(raw.ID) == "" || strings.TrimSpace(raw.Name) == "" {
+		return biz.SubTask{}, fmt.Errorf("empty id or name")
+	}
+
+	// 重映射 ID：st_1 → st_<uuid>（与 parseDecompositionOutput 一致）。
+	if _, ok := idRemap[raw.ID]; !ok {
+		idRemap[raw.ID] = "st_" + uuid.NewString()
+	}
+
+	// 解析 depends_on：仅保留已映射的引用（前向引用在 resolveForwardRefs 中清理）。
+	resolvedDeps := make([]string, 0, len(raw.DependsOn))
+	for _, dep := range raw.DependsOn {
+		if mapped, ok := idRemap[dep]; ok {
+			resolvedDeps = append(resolvedDeps, mapped)
+		}
+	}
+
+	if raw.DependsOn == nil {
+		raw.DependsOn = []string{}
+	}
+	if raw.RequiredCapabilities == nil {
+		raw.RequiredCapabilities = []string{}
+	}
+
+	return biz.SubTask{
+		ID:                   idRemap[raw.ID],
+		Name:                 raw.Name,
+		Description:          raw.Description,
+		DependsOn:            resolvedDeps,
+		RequiredCapabilities: raw.RequiredCapabilities,
+		Priority:             raw.Priority,
+		EstimatedComplexity:  raw.EstimatedComplexity,
+		Deliverables:         raw.Deliverables,
+		InputContract:        raw.InputContract,
+		DomainPath:           raw.DomainPath,
+	}, nil
+}
+
+// resolveForwardRefs 清理 subtask 中无效的 depends_on 引用（指向不存在的
+// subtask ID）。用于流式解析后的最终清理。
+func resolveForwardRefs(subTasks []biz.SubTask) {
+	validIDs := make(map[string]bool, len(subTasks))
+	for _, st := range subTasks {
+		validIDs[st.ID] = true
+	}
+	for i := range subTasks {
+		filtered := subTasks[i].DependsOn[:0]
+		for _, depID := range subTasks[i].DependsOn {
+			if validIDs[depID] {
+				filtered = append(filtered, depID)
+			}
+		}
+		subTasks[i].DependsOn = filtered
+	}
+}
+
+// publishV2BoardShell 在流式分解开始前发布空的 PlanBoard + GraphStage 壳，
+// 使前端能立即显示"规划中"面板，后续 PlanStep/GraphNode 事件渐进填充。
+func (impl *taskPlannerImpl) publishV2BoardShell(ctx context.Context, planID string, strategy biz.OrchestrationStrategy, input biz.PlanInput) {
+	if impl.seq == nil {
+		return
+	}
+	rootTaskID := string(RootTaskActivityIDFromCtx(ctx))
+	pbID := "pb_" + planID
+	gsID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.graph_stage.v2:"+pbID)).String()
+	now := time.Now()
+
+	pb := biz.PlanBoard{
+		ID:        pbID,
+		TaskID:    rootTaskID,
+		TurnID:    event.TurnIDFromContext(ctx),
+		SessionID: input.SpiritSessionID,
+		Strategy:  mapV1StrategyToV2(strategy),
+		Status:    biz.PlanStatusPlanning,
+		Steps:     nil,
+		StartedAt: now,
+		Version:   1,
+	}
+	gs := biz.GraphStage{
+		ID:          gsID,
+		TaskID:      rootTaskID,
+		TurnID:      event.TurnIDFromContext(ctx),
+		SessionID:   input.SpiritSessionID,
+		PlanBoardID: pbID,
+		Nodes:       nil,
+		Status:      biz.GraphStageStatusRunning,
+		StartedAt:   now,
+		Version:     1,
+	}
+	impl.seq.Publish(ctx, biz.NewPlanBoardCreatedEvent(pb))
+	impl.seq.Publish(ctx, biz.NewGraphStageCreatedEvent(gs))
+}
+
+// publishV2PlanStep 在流式分解中每解析出一个 subtask 时发布对应的
+// PlanStepStartedEvent + GraphNodeUpdatedEvent，实现前端级联动画效果。
+func (impl *taskPlannerImpl) publishV2PlanStep(ctx context.Context, st biz.SubTask, planID string, index int, input biz.PlanInput) {
+	if impl.seq == nil {
+		return
+	}
+	rootTaskID := string(RootTaskActivityIDFromCtx(ctx))
+	pbID := "pb_" + planID
+	gsID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.graph_stage.v2:"+pbID)).String()
+	now := time.Now()
+
+	ps := biz.PlanStep{
+		ID:            st.ID,
+		PlanID:        pbID,
+		TaskID:        rootTaskID,
+		Label:         st.Name,
+		Description:   st.Description,
+		DependsOn:     append([]string(nil), st.DependsOn...),
+		Status:        biz.PlanStepStatusPending,
+		StartedAt:     now,
+		Seq:           int64(index + 1),
+		Version:       1,
+		Deliverables:  append([]biz.DeliverableContract(nil), st.Deliverables...),
+		InputContract: append([]biz.DeliverableContract(nil), st.InputContract...),
+	}
+	gn := biz.GraphNode{
+		ID:           st.ID,
+		GraphStageID: gsID,
+		Label:        st.Name,
+		DagNodeID:    st.ID,
+		Status:       biz.MapPlanStepToGraphNodeStatus(biz.PlanStepStatusPending),
+		DependsOn:    append([]string(nil), st.DependsOn...),
+	}
+	impl.seq.Publish(ctx, biz.NewPlanStepStartedEvent(ps, input.SpiritSessionID))
+	impl.seq.Publish(ctx, biz.NewGraphNodeUpdatedEvent(gn, rootTaskID, input.SpiritSessionID))
 }
 
 // buildDecompositionPrompt creates the system prompt for task decomposition.
@@ -1436,17 +1699,32 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 		StartedAt:   now,
 		Version:     1,
 	}
-	// 发布 PlanBoardCreatedEvent（先于 PlanStep 事件，保证前端先创建 PlanBoard）。
-	impl.seq.Publish(ctx, biz.NewPlanBoardCreatedEvent(pb))
-	// 发布 GraphStageCreatedEvent（先于 GraphNode 事件，保证前端先创建 GraphStage）。
-	impl.seq.Publish(ctx, biz.NewGraphStageCreatedEvent(gs))
-	// 发布 PlanStepStartedEvent（status=pending，使用 Started 状态表示已创建待执行）。
-	for _, ps := range planSteps {
-		impl.seq.Publish(ctx, biz.NewPlanStepStartedEvent(ps, spiritSessionID))
-	}
-	// 发布 GraphNodeUpdatedEvent（每个节点初始状态=pending）。
-	for _, gn := range graphNodes {
-		impl.seq.Publish(ctx, biz.NewGraphNodeUpdatedEvent(gn, rootTaskID, spiritSessionID))
+
+	if plan.StreamPublished {
+		// 流式路径：PlanBoard/GraphStage 壳 + PlanStep/GraphNode 已在 Plan()
+		// 中渐进发布。此处仅更新 PlanSteps（填充 AgentKeys）并发送
+		// PlanBoardUpdatedEvent（携带完整 Steps）。
+		pb.Version = 2
+		for _, ps := range planSteps {
+			psUp := ps
+			psUp.Version = 2
+			impl.seq.Publish(ctx, biz.NewPlanStepUpdatedEvent(psUp, spiritSessionID))
+		}
+		impl.seq.Publish(ctx, biz.NewPlanBoardUpdatedEvent(pb))
+	} else {
+		// 非流式路径：批量发布 Created 事件。
+		// 发布 PlanBoardCreatedEvent（先于 PlanStep 事件，保证前端先创建 PlanBoard）。
+		impl.seq.Publish(ctx, biz.NewPlanBoardCreatedEvent(pb))
+		// 发布 GraphStageCreatedEvent（先于 GraphNode 事件，保证前端先创建 GraphStage）。
+		impl.seq.Publish(ctx, biz.NewGraphStageCreatedEvent(gs))
+		// 发布 PlanStepStartedEvent（status=pending，使用 Started 状态表示已创建待执行）。
+		for _, ps := range planSteps {
+			impl.seq.Publish(ctx, biz.NewPlanStepStartedEvent(ps, spiritSessionID))
+		}
+		// 发布 GraphNodeUpdatedEvent（每个节点初始状态=pending）。
+		for _, gn := range graphNodes {
+			impl.seq.Publish(ctx, biz.NewGraphNodeUpdatedEvent(gn, rootTaskID, spiritSessionID))
+		}
 	}
 	_ = sessionID // 暂未使用 chatSessionID 派生其他字段；保留供未来扩展
 	return pb, nil

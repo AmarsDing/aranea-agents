@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -15,13 +16,15 @@ type UnifiedEvolutionRepo struct {
 	lg   loggateway.Logger
 }
 
-// NOTE: 本 repo 使用裸 SQL 而非 Ent ORM，与 skill_evolution.go (skillProposalRepo) 保持一致。
-// 原因：unified_evolution_suggestions 表尚无 Ent schema，且部分查询（如动态 WHERE 拼接、
-// RowsAffected 批量更新）用 Ent 表达不便。待 Ent schema 补齐后可迁移。
+// NOTE: 本 repo 使用裸 SQL 而非 Ent ORM。
+// 原因：unified_evolution_suggestions 表无 Ent schema（raw SQL DDL 管理，见迁移
+// 20260706/20261111），且部分查询（如动态 WHERE 拼接、方言感知 JSON 路径表达式、
+// RowsAffected 批量更新）用 Ent 表达不便。
 
 var (
 	_ biz.UnifiedEvolutionCheckReader      = (*UnifiedEvolutionRepo)(nil)
 	_ biz.UnifiedEvolutionQueryReader      = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionPatternReader    = (*UnifiedEvolutionRepo)(nil)
 	_ biz.UnifiedEvolutionMutationWriter   = (*UnifiedEvolutionRepo)(nil)
 	_ biz.UnifiedEvolutionExpirationWriter = (*UnifiedEvolutionRepo)(nil)
 	_ biz.UnifiedEvolutionReader           = (*UnifiedEvolutionRepo)(nil)
@@ -55,6 +58,12 @@ func (r *UnifiedEvolutionRepo) Create(ctx context.Context, suggestion biz.Unifie
 		s := suggestion.AppliedAt.UTC().Format(time.RFC3339)
 		appliedAt = &s
 	}
+	// bool→int：列类型为 INTEGER（与 UpdateSandboxResult/scan 一致），
+	// 直接传 bool 在 Postgres 下报 22P02。
+	var sandboxPassed int
+	if suggestion.SandboxPassed {
+		sandboxPassed = 1
+	}
 
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q,
 		suggestion.ID,
@@ -69,7 +78,7 @@ func (r *UnifiedEvolutionRepo) Create(ctx context.Context, suggestion biz.Unifie
 		suggestion.DraftName,
 		suggestion.MergeTargetID,
 		suggestion.LifecycleStatus,
-		suggestion.SandboxPassed,
+		sandboxPassed,
 		sandboxResultStr,
 		metadataStr,
 		suggestion.CreatedAt.UTC().Format(time.RFC3339),
@@ -124,6 +133,14 @@ func (r *UnifiedEvolutionRepo) GetLatestByTargetAndAction(ctx context.Context, t
 }
 
 func (r *UnifiedEvolutionRepo) ListByTarget(ctx context.Context, targetType string, targetID string, status string, limit, offset int) ([]biz.UnifiedEvolutionSuggestion, error) {
+	return r.listByTarget(ctx, targetType, targetID, "", status, limit, offset)
+}
+
+func (r *UnifiedEvolutionRepo) ListByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, status string, limit, offset int) ([]biz.UnifiedEvolutionSuggestion, error) {
+	return r.listByTarget(ctx, targetType, targetID, actionType, status, limit, offset)
+}
+
+func (r *UnifiedEvolutionRepo) listByTarget(ctx context.Context, targetType string, targetID string, actionType string, status string, limit, offset int) ([]biz.UnifiedEvolutionSuggestion, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -132,8 +149,18 @@ func (r *UnifiedEvolutionRepo) ListByTarget(ctx context.Context, targetType stri
 	             lifecycle_status, sandbox_passed, sandbox_result, metadata,
 	             created_at, approved_by, applied_at
 	      FROM unified_evolution_suggestions
-	      WHERE target_type = ? AND target_id = ?`
-	args := []any{targetType, targetID}
+	      WHERE target_type = ?`
+	args := []any{targetType}
+	// Empty targetID is a wildcard (mirrors the legacy L1 ListByAgent semantics:
+	// the service layer passes req.GetAgentId() straight through).
+	if targetID != "" {
+		q += ` AND target_id = ?`
+		args = append(args, targetID)
+	}
+	if actionType != "" {
+		q += ` AND action_type = ?`
+		args = append(args, actionType)
+	}
 	if status != "" {
 		q += ` AND status = ?`
 		args = append(args, status)
@@ -159,9 +186,26 @@ func (r *UnifiedEvolutionRepo) ListByTarget(ctx context.Context, targetType stri
 }
 
 func (r *UnifiedEvolutionRepo) CountByTarget(ctx context.Context, targetType string, targetID string, status string) (int, error) {
+	return r.countByTarget(ctx, targetType, targetID, "", status)
+}
+
+func (r *UnifiedEvolutionRepo) CountByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, status string) (int, error) {
+	return r.countByTarget(ctx, targetType, targetID, actionType, status)
+}
+
+func (r *UnifiedEvolutionRepo) countByTarget(ctx context.Context, targetType string, targetID string, actionType string, status string) (int, error) {
 	q := `SELECT COUNT(*) FROM unified_evolution_suggestions
-	      WHERE target_type = ? AND target_id = ?`
-	args := []any{targetType, targetID}
+	      WHERE target_type = ?`
+	args := []any{targetType}
+	// Empty targetID is a wildcard (mirrors the legacy L1 CountByAgent semantics).
+	if targetID != "" {
+		q += ` AND target_id = ?`
+		args = append(args, targetID)
+	}
+	if actionType != "" {
+		q += ` AND action_type = ?`
+		args = append(args, actionType)
+	}
 	if status != "" {
 		q += ` AND status = ?`
 		args = append(args, status)
@@ -172,6 +216,29 @@ func (r *UnifiedEvolutionRepo) CountByTarget(ctx context.Context, targetType str
 		return 0, entErrToBizErr(err, "UNIFIED_EVO")
 	}
 	return count, nil
+}
+
+// GetLatestByPatternHash returns the newest L1 skill-creation proposal for the
+// given agent whose metadata.pattern_hash matches. Mirrors the legacy
+// skill_proposals dedup lookup (skillProposalRepo.GetByPatternHash): no status
+// filter — the caller decides how to interpret the latest row's status.
+// Returns (nil, nil) when no row matches.
+func (r *UnifiedEvolutionRepo) GetLatestByPatternHash(ctx context.Context, agentID string, patternHash string) (*biz.UnifiedEvolutionSuggestion, error) {
+	hashExpr := r.data.Dialect().JSONExtractPath("metadata", biz.EvoMetaPatternHash)
+	q := `SELECT id, target_type, target_id, action_type, trigger_source, trigger_reason,
+	             status, priority, draft_body, draft_name, merge_target_id,
+	             lifecycle_status, sandbox_passed, sandbox_result, metadata,
+	             created_at, approved_by, applied_at
+	      FROM unified_evolution_suggestions
+	      WHERE target_type = ? AND target_id = ? AND action_type = ?
+	        AND ` + hashExpr + ` = ?
+	      ORDER BY created_at DESC LIMIT 1`
+	s, err := r.scanOne(ctx, r.data.Dialect().RenumberPlaceholders(q),
+		string(biz.EvolutionTargetAgent), agentID, string(biz.EvolutionActionCreate), patternHash)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 func (r *UnifiedEvolutionRepo) GetByID(ctx context.Context, id string) (*biz.UnifiedEvolutionSuggestion, error) {
@@ -187,25 +254,58 @@ func (r *UnifiedEvolutionRepo) GetByID(ctx context.Context, id string) (*biz.Uni
 	return s, nil
 }
 
+// UpdateStatus transitions the suggestion status and merges the legacy
+// status-related fields into metadata so the service-layer views can
+// reconstruct legacy proto messages (A6):
+//
+//	approved:  approved_by column + metadata.{approved_at, resolved_at}     (L1/L2)
+//	rejected:  approved_by column + metadata.{rejected_by, rejection_reason, resolved_at} (L1/L2)
+//	applied:   applied_at column                                            (L2/L3)
+//
+// Metadata merge uses the dialect-aware JSON helpers (JSONBBase + JSONSetMulti)
+// so it works on both SQLite TEXT and Postgres jsonb columns.
 func (r *UnifiedEvolutionRepo) UpdateStatus(ctx context.Context, id string, status string, actor string, reason string) error {
-	q := `UPDATE unified_evolution_suggestions SET status = ?`
+	d := r.data.Dialect()
+	now := time.Now().UTC().Format(time.RFC3339)
+	setClauses := []string{"status = ?"}
 	args := []any{status}
 	switch status {
-	case "approved":
-		q += `, approved_by = ?`
+	case string(biz.UnifiedEvolutionStateApproved):
+		setClauses = append(setClauses, "approved_by = ?")
 		args = append(args, actor)
-	case "rejected":
-		// reason stored in metadata if needed; actor recorded
-		q += `, approved_by = ?`
+		setClauses = append(setClauses, "metadata = "+d.JSONSetMulti(d.JSONBBase("metadata"),
+			[2]string{biz.EvoMetaApprovedAt, "?"},
+			[2]string{biz.EvoMetaResolvedAt, "?"}))
+		args = append(args, now, now)
+	case string(biz.UnifiedEvolutionStateRejected):
+		setClauses = append(setClauses, "approved_by = ?")
 		args = append(args, actor)
-	case "applied":
-		q += `, applied_at = ?`
-		args = append(args, time.Now().UTC().Format(time.RFC3339))
+		setClauses = append(setClauses, "metadata = "+d.JSONSetMulti(d.JSONBBase("metadata"),
+			[2]string{biz.EvoMetaRejectedBy, "?"},
+			[2]string{biz.EvoMetaRejectionReason, "?"},
+			[2]string{biz.EvoMetaResolvedAt, "?"}))
+		args = append(args, actor, reason, now)
+	case string(biz.UnifiedEvolutionStateApplied):
+		setClauses = append(setClauses, "applied_at = ?")
+		args = append(args, now)
 	}
-	q += ` WHERE id = ?`
+	q := `UPDATE unified_evolution_suggestions SET ` + strings.Join(setClauses, ", ") + ` WHERE id = ?`
 	args = append(args, id)
 
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, d.RenumberPlaceholders(q), args...)
+	if err != nil {
+		return entErrToBizErr(err, "UNIFIED_EVO")
+	}
+	return nil
+}
+
+// UpdateMetadataKey sets a single JSON-string key in the metadata column,
+// preserving all other keys (A6: e.g. EvoMetaPreApplySnapshot).
+func (r *UnifiedEvolutionRepo) UpdateMetadataKey(ctx context.Context, id string, key string, value string) error {
+	d := r.data.Dialect()
+	q := `UPDATE unified_evolution_suggestions SET metadata = ` +
+		d.JSONSetMulti(d.JSONBBase("metadata"), [2]string{key, "?"}) + ` WHERE id = ?`
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, d.RenumberPlaceholders(q), value, id)
 	if err != nil {
 		return entErrToBizErr(err, "UNIFIED_EVO")
 	}

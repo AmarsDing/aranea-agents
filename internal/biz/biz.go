@@ -54,7 +54,8 @@ var ProviderSet = wire.NewSet(
 	// wire.go's provideEvolutionUsecase, so it is excluded from this set.
 	NewTaskUsecase,
 	NewArtifactUsecase,
-	NewKnowledgeUsecaseFromRepo,
+	// P3：自动装配双轨关联 + 资源管理器可选能力（接口断言，未实现则降级）。
+	ProvideKnowledgeUsecase,
 	NewEvalUsecase,
 	NewA2AUsecase,
 	ProvideA2AAgentLookup,
@@ -78,7 +79,6 @@ var ProviderSet = wire.NewSet(
 	NewSkillDedupUsecase,
 	NewSkillSimilarityEngine,
 	NewRuleBasedContentFuser,
-	ProvideSkillMergeGateVerifier,
 	ProvideSkillEmbedder,
 	ProvideDefaultDedupWeights,
 	NewDefaultKnowledgeProvider,
@@ -194,14 +194,6 @@ func ProvideSkillEmbedder() DedupEmbedder { return nil }
 
 // ProvideDefaultDedupWeights returns default dedup similarity weights.
 func ProvideDefaultDedupWeights() SimilarityWeights { return DefaultDedupWeights() }
-
-// ProvideSkillMergeGateVerifier builds the Gate verifier for skill merge /
-// evolution. sandboxRunner is the service-layer sandbox (rule-based + optional
-// code execution); lintChecker is nil so the style dimension falls back to the
-// built-in rule-based checks (length + heading presence).
-func ProvideSkillMergeGateVerifier(sandboxRunner SandboxRunner) SkillGateVerifier {
-	return NewGateVerifier(sandboxRunner, nil)
-}
 
 func requireNonEmpty(val, domain, field string) (string, error) {
 	val = strings.TrimSpace(val)

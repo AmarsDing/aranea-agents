@@ -13,6 +13,7 @@ import type {
 } from './types';
 import { useKnowledgeStore } from '../../stores/knowledge';
 import { useKnowledgeIngestWs } from './useKnowledgeIngestWs';
+import { useVaultExplorer } from './useVaultExplorer';
 
 export function useKnowledgePage() {
   const $q = useQuasar();
@@ -22,8 +23,8 @@ export function useKnowledgePage() {
   const docsLoading = ref(false);
   const error = ref('');
   const unavailable = ref('');
-  // 页面级 Tab：documents（文档管理）| search（全库检索调试）| settings（Embedder 配置）
-  const pageTab = ref('documents');
+  // 页面级 Tab：explorer（资源管理器三栏）| search（全库检索调试）| settings（Embedder 配置）
+  const pageTab = ref('explorer');
   const createOpen = ref(false);
   const createLoading = ref(false);
   const ingestOpen = ref(false);
@@ -108,7 +109,8 @@ export function useKnowledgePage() {
     if (!selectedId.value) return;
     docsLoading.value = true;
     try {
-      await knowledgeStore.loadDocuments(selectedId.value, { limit: 100 });
+      // P3-2 即时区前端索引：上限放宽到 2000（设计上限 10k 内存索引；树导航为主时 2000 足够覆盖常见 vault）。
+      await knowledgeStore.loadDocuments(selectedId.value, { limit: 2000 });
     } catch (e) {
       $q.notify({ type: 'negative', message: friendlyError(e) || '加载文档失败' });
     } finally {
@@ -494,7 +496,7 @@ export function useKnowledgePage() {
 
   function syncDocPoll() {
     stopDocPoll();
-    if (!selectedId.value || pageTab.value !== 'documents' || !hasIndexingDocuments(documents.value)) return;
+    if (!selectedId.value || pageTab.value !== 'explorer' || !hasIndexingDocuments(documents.value)) return;
     docPollTimer = setInterval(() => {
       if (!selectedId.value || !hasIndexingDocuments(documents.value)) {
         stopDocPoll();
@@ -535,6 +537,16 @@ export function useKnowledgePage() {
       $q.notify({ type: 'warning', message: 'Embedder 配置加载失败，检索功能可能不可用' });
     }
   }
+
+  // P3 资源管理器：三栏编排（树/列表/详情/双区搜索），与上方共享 selectedId 与 documents。
+  const explorer = useVaultExplorer({
+    selectedId,
+    documents,
+    friendlyError,
+    notifyError: (message: string) => {
+      if (message) $q.notify({ type: 'negative', message });
+    },
+  });
 
   return {
     collections,
@@ -594,5 +606,6 @@ export function useKnowledgePage() {
     moveTargetOptions,
     openMoveDialog,
     submitMove,
+    explorer,
   };
 }

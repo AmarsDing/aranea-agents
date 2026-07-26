@@ -767,6 +767,34 @@ message GetUnifiedMemoryGraphResponse {
   string empty_reason = 7;
 }
 
+// ── 记忆中心重设计 P3：L2 情景浏览 ──
+
+message ListMemoryEpisodesRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string session_id = 2; // optional: filter by session
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message MemoryEpisode {
+  string id = 1;
+  string session_id = 2;
+  string agent_id = 3;
+  string episode_kind = 4;
+  string title = 5;
+  string outcome_summary = 6;
+  double importance = 7;
+  string consolidation_status = 8; // pending | consolidated
+  int32 consolidated_l3_count = 9;
+  string ended_at = 10;
+  string created_at = 11;
+}
+
+message ListMemoryEpisodesResponse {
+  repeated MemoryEpisode items = 1;
+  int32 total = 2;
+}
+
 service MemoryService {
   rpc ListL0Snapshots(ListL0SnapshotsRequest) returns (ListL0SnapshotsResponse) {
     option (google.api.http) = {get: "/v1/sessions/{session_id}/l0/snapshots"};
@@ -930,5 +958,11 @@ service MemoryService {
 
   rpc GetUnifiedMemoryGraph(GetUnifiedMemoryGraphRequest) returns (GetUnifiedMemoryGraphResponse) {
     option (google.api.http) = {get: "/v1/memory/graph/unified"};
+  }
+
+  // ── 记忆中心重设计 P3：L2 情景浏览 ──
+
+  rpc ListMemoryEpisodes(ListMemoryEpisodesRequest) returns (ListMemoryEpisodesResponse) {
+    option (google.api.http) = {get: "/v1/memory/episodes"};
   }
 }

@@ -78,6 +78,12 @@ type TaskPlan struct {
 	// Timestamps
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// StreamPublished 标记 PlanBoard/PlanStep/GraphStage/GraphNode 事件
+	// 是否已通过流式分解（decomposeTaskStream）渐进发布。为 true 时
+	// PublishV2Board 仅做 AgentKeys 更新（PlanStepUpdatedEvent），不重复
+	// 发布 Created 事件。内存字段，不持久化。
+	StreamPublished bool `json:"-"`
 }
 
 // DimensionScores holds the six-dimension complexity assessment

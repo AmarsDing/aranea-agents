@@ -94,6 +94,7 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		if timeoutHooks := toolExecutionTimeoutHooks(buildToolExecutionTimeout(ag.Settings), lg); len(timeoutHooks) > 0 {
 			entries = append(entries, timeoutHooks...)
 		}
+		entries = append(entries, newToolArgsRepairBeforeHook(lg))
 		entries = append(entries, newTodoArgsGuardBeforeHook(lg))
 		entries = append(entries, newToolArgsGuardBeforeHook(lg))
 		entries = append(entries, newToolResultCacheBeforeHook(deps))

@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { copyToClipboard, useQuasar } from 'quasar';
+import { useQuasar } from 'quasar';
 import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { i18n } from '../../i18n';
@@ -372,11 +372,6 @@ export function useTeamsPage() {
     }
   }
 
-  async function copyKey(value: string) {
-    await copyToClipboard(value);
-    $q.notify({ type: 'positive', message: 'Team Key 已复制' });
-  }
-
   // ── Runs actions ──
 
   async function openRuns(team: Team) {
@@ -584,7 +579,6 @@ export function useTeamsPage() {
     save,
     duplicate,
     confirmRemove,
-    copyKey,
     openRuns,
     openRunTest,
     executeRunTest,

@@ -7,6 +7,7 @@ import (
 
 	chatagent "aranea-agents/internal/agent"
 	localexec "aranea-agents/internal/agent/codeexecutor"
+	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
@@ -205,6 +206,9 @@ type pendingClarification struct {
 	StepID    string
 	TaskID    string
 	CreatedAt time.Time
+	// Artifact 是触发澄清门前的 Intent Pass 产物。续跑（卡片提交/自由回复）
+	// 时经 ctx 复用，避免为重写后的输入重跑 Intent Pass LLM（P0 性能优化）。
+	Artifact *intent.Artifact
 }
 
 // chatTurnLifecycleImpl combines sessionStateTransitor, turnRecorder, and
@@ -576,7 +580,11 @@ var (
 func (o *ChatOrchestrator) Execute(ctx context.Context, input biz.TurnInput) (biz.TurnResult, error) {
 	// 澄清等待态自由回复等价路径：pending 存在时消息视为自由回答，
 	// 完成澄清 step 并重写输入续跑同一 turn；非等待态原样透传。
-	input = o.resolveClarificationFreeText(ctx, input)
+	// 命中时返回澄清前的 Intent 产物并注入 ctx，续跑 turn 复用而不重跑 Intent Pass。
+	input, intentArt := o.resolveClarificationFreeText(ctx, input)
+	if intentArt != nil {
+		ctx = intent.WithArtifact(ctx, intentArt)
+	}
 	return o.RunNativeAgentTurnWithOutcome(ctx, input)
 }
 

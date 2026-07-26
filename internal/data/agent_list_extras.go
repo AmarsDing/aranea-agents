@@ -3,10 +3,10 @@ package data
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/ent/evolutionsuggestion"
 	entsession "aranea-agents/internal/data/ent/session"
 	"aranea-agents/pkg/loggateway"
 
@@ -61,24 +61,39 @@ func (r *agentRepo) ListExtrasForAgents(ctx context.Context, agentIDs []string) 
 		out[id] = ex
 	}
 
-	pending, err := r.data.RW().Read(ctx).EvolutionSuggestion.Query().
-		Where(
-			evolutionsuggestion.AgentIDIn(ids...),
-			evolutionsuggestion.StatusEQ("pending"),
-		).
-		Select(evolutionsuggestion.FieldAgentID).
-		All(ctx)
-	if err != nil {
-		return nil, err
+	// A6: pending evolution count reads the unified store (agent-scoped rows
+	// cover both L1 skill-creation proposals and L3 agent suggestions).
+	// target_type is inlined (internal constant); Placeholders is dialect-aware,
+	// so the query must not go through RenumberPlaceholders.
+	placeholders := r.data.Dialect().Placeholders(len(ids))
+	pendingQ := fmt.Sprintf(`SELECT target_id, COUNT(*) FROM unified_evolution_suggestions
+		WHERE target_type = 'agent' AND status = 'pending' AND target_id IN (%s)
+		GROUP BY target_id`, placeholders)
+	pendingArgs := make([]any, len(ids))
+	for i, id := range ids {
+		pendingArgs[i] = id
 	}
-	for _, row := range pending {
-		id := strings.TrimSpace(row.AgentID)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, pendingQ, pendingArgs...)
+	if err != nil {
+		return nil, entErrToBizErr(err, "AGENT")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var targetID string
+		var count int
+		if err := rows.Scan(&targetID, &count); err != nil {
+			return nil, entErrToBizErr(err, "AGENT")
+		}
+		id := strings.TrimSpace(targetID)
 		if id == "" {
 			continue
 		}
 		ex := out[id]
-		ex.PendingEvolutionCount++
+		ex.PendingEvolutionCount += count
 		out[id] = ex
+	}
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "AGENT")
 	}
 	return out, nil
 }

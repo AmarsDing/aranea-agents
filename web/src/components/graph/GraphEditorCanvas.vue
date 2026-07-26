@@ -123,7 +123,14 @@ import GraphConnectionLine from './GraphConnectionLine.vue';
 import GraphContextMenu from './GraphContextMenu.vue';
 import type { ContextMenuItem } from './GraphContextMenu.vue';
 import GraphNodeSearch from './GraphNodeSearch.vue';
-import type { NodeDef, EdgeDef, ConditionalEdgeDef, NodeType, GraphDefinition, NodeIssueInfo } from '../../features/graph/types';
+import type {
+  NodeDef,
+  EdgeDef,
+  ConditionalEdgeDef,
+  NodeType,
+  GraphDefinition,
+  NodeIssueInfo,
+} from '../../features/graph/types';
 import { NODE_TYPE_STYLES } from '../../features/graph/types';
 import type { useGraphUndoRedo } from '../../features/graph/useGraphUndoRedo';
 import { defaultNodePosition, readGraphLayout, writeGraphNodePosition } from '../../features/graph/editor/graphLayout';
@@ -155,6 +162,8 @@ const props = defineProps<{
   nodeIssues?: Record<string, NodeIssueInfo>;
   /** 聚光灯目标节点；设置时其余节点压暗并 fitView 居中。 */
   spotlightNodeId?: string | null;
+  /** 用户视角场景（如团队编排页）：隐藏 agent 编码等技术标识，仅显示可读名称与中文角色。 */
+  hideTechIds?: boolean;
 }>();
 
 const EMPTY_EXEC_NODE_STATES: Map<
@@ -281,8 +290,8 @@ function buildNodes(): Node[] {
     const spotlightId = props.spotlightNodeId ?? null;
     const dimmed = spotlightId !== null && spotlightId !== n.id;
     const pos = preferSavedLayout
-      ? savedLayout[n.id] ?? existingPositions.get(n.id) ?? defaultNodePosition(index)
-      : existingPositions.get(n.id) ?? savedLayout[n.id] ?? defaultNodePosition(index);
+      ? (savedLayout[n.id] ?? existingPositions.get(n.id) ?? defaultNodePosition(index))
+      : (existingPositions.get(n.id) ?? savedLayout[n.id] ?? defaultNodePosition(index));
     return {
       id: n.id,
       type: n.type,
@@ -293,7 +302,7 @@ function buildNodes(): Node[] {
         nodeId: n.id,
         nodeType: n.type as NodeType,
         label: graphNodeDisplayLabel(n),
-        agentName: n.agentName,
+        agentName: props.hideTechIds ? '' : n.agentName,
         role: n.requiredRole,
         description: n.description,
         instruction: n.instruction || n.description,

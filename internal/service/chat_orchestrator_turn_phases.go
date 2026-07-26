@@ -93,6 +93,9 @@ func (o *ChatOrchestrator) runIntentPass(
 	sessionID, content, prov, mod string,
 	emitter *event.TraceEmitter,
 ) ([]trpcagent.RunOption, *intent.Artifact) {
+	// P0 性能：允许运维通过 ARANEA_INTENT_PASS_MODEL 指定轻量模型加速意图识别；
+	// 覆盖对必须存在于 LLM catalog，否则回退 turn 模型保证 Intent Pass 仍可运行。
+	prov, mod = resolveIntentPassProviderModel(ctx, o.td().ReadDeps.LLM, prov, mod, o.lg())
 	emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
 	intRes := intent.RunForAgent(ctx, ag, o.td().ReadDeps.LLM, o.td().LLMHTTP, prov, mod, content, o.lg())
 	var intentRunOpts []trpcagent.RunOption
@@ -108,6 +111,39 @@ func (o *ChatOrchestrator) runIntentPass(
 		bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "intent_pass", "", intentPayload))
 	}
 	return intentRunOpts, intRes.Artifact
+}
+
+// resolveIntentPassProviderModel applies the optional ARANEA_INTENT_PASS_MODEL /
+// ARANEA_INTENT_PASS_PROVIDER override (see intent.ModelOverrideFromEnv) so
+// operators can point Intent Pass at a lighter model than the turn model.
+// The override pair must exist in the LLM catalog; otherwise (or when no
+// catalog is wired) the turn's provider/model is kept so Intent Pass still
+// runs on a valid model.
+// Stability:internal
+func resolveIntentPassProviderModel(ctx context.Context, catalog biz.TeamModelCatalog, prov, mod string, lg loggateway.Logger) (string, string) {
+	ovProvider, ovModel := intent.ModelOverrideFromEnv()
+	if ovModel == "" {
+		return prov, mod
+	}
+	if ovProvider == "" {
+		ovProvider = prov
+	}
+	if catalog == nil {
+		lg.Warn("intent pass model override ignored: no LLM catalog",
+			loggateway.StepID("chat.intent.model_override"),
+			loggateway.Str("override_provider", ovProvider),
+			loggateway.Str("override_model", ovModel))
+		return prov, mod
+	}
+	if _, err := catalog.GetByProviderAndModel(ctx, ovProvider, ovModel); err != nil {
+		lg.Warn("intent pass model override not in catalog, falling back to turn model",
+			loggateway.StepID("chat.intent.model_override"),
+			loggateway.Str("override_provider", ovProvider),
+			loggateway.Str("override_model", ovModel),
+			loggateway.Err(err))
+		return prov, mod
+	}
+	return ovProvider, ovModel
 }
 
 // persistTurnUserMessage persists the user message and returns it.

@@ -83,64 +83,6 @@ func (m *mockSkillHealthAggregator) GetFailureTagCounts(_ context.Context, _ str
 	return m.tagCounts, nil
 }
 
-type mockSkillEvolutionSuggestionReader struct {
-	suggestions []SkillEvolutionSuggestion
-	latest      *SkillEvolutionSuggestion
-	err         error
-}
-
-func (m *mockSkillEvolutionSuggestionReader) ListBySkill(_ context.Context, _ string, _ EvolutionSuggestionStatus, _, _ int) ([]SkillEvolutionSuggestion, error) {
-	return m.suggestions, m.err
-}
-
-func (m *mockSkillEvolutionSuggestionReader) GetByID(_ context.Context, _ string) (*SkillEvolutionSuggestion, error) {
-	if len(m.suggestions) == 0 {
-		return nil, m.err
-	}
-	return &m.suggestions[0], m.err
-}
-
-func (m *mockSkillEvolutionSuggestionReader) ListPending(_ context.Context, _, _ int) ([]SkillEvolutionSuggestion, error) {
-	return m.suggestions, m.err
-}
-
-func (m *mockSkillEvolutionSuggestionReader) GetLatestBySkill(_ context.Context, _ string) (*SkillEvolutionSuggestion, error) {
-	return m.latest, m.err
-}
-
-func (m *mockSkillEvolutionSuggestionReader) CountBySkill(_ context.Context, _ string, _ EvolutionSuggestionStatus) (int, error) {
-	return len(m.suggestions), m.err
-}
-
-type mockSkillEvolutionSuggestionWriter struct {
-	suggestions []SkillEvolutionSuggestion
-	err         error
-}
-
-func (m *mockSkillEvolutionSuggestionWriter) Create(_ context.Context, s SkillEvolutionSuggestion) error {
-	if m.err != nil {
-		return m.err
-	}
-	m.suggestions = append(m.suggestions, s)
-	return nil
-}
-
-func (m *mockSkillEvolutionSuggestionWriter) UpdateStatus(_ context.Context, _ string, _ EvolutionSuggestionStatus, _, _ string) error {
-	return m.err
-}
-
-func (m *mockSkillEvolutionSuggestionWriter) UpdateDraftBody(_ context.Context, _, _ string) error {
-	return m.err
-}
-
-func (m *mockSkillEvolutionSuggestionWriter) UpdateSandboxResult(_ context.Context, _ string, _ bool, _ json.RawMessage) error {
-	return m.err
-}
-
-func (m *mockSkillEvolutionSuggestionWriter) UpdateLifecycleStatus(_ context.Context, _ string, _ EvolutionLifecycleStatus) error {
-	return m.err
-}
-
 type mockRootCauseAnalyzer struct {
 	result *RootCauseAnalysisResult
 	err    error
@@ -153,106 +95,215 @@ func (m *mockRootCauseAnalyzer) AnalyzeInvocationFailure(_ context.Context, _ Sk
 	return m.result, nil
 }
 
-// mockEvolutionStoreBridge implements biz.EvolutionStoreBridge for testing.
+// mockEvolutionStoreBridge implements biz.UnifiedEvolutionStore for testing (A6).
+// The store is seeded with legacy-view suggestions; unified-side reads derive
+// rows via the same view converters the production code uses, and writes
+// mutate the seed slice.
 type mockEvolutionStoreBridge struct {
 	suggestions []SkillEvolutionSuggestion
 	latest      *SkillEvolutionSuggestion
 	err         error
 }
 
-func (m *mockEvolutionStoreBridge) HasPendingForTarget(_ context.Context, _ string, _ string) (bool, error) {
-	return false, m.err
+// unifiedRow converts a seeded legacy suggestion to its unified row form.
+func (m *mockEvolutionStoreBridge) unifiedRow(s *SkillEvolutionSuggestion) UnifiedEvolutionSuggestion {
+	return unifiedToLegacySuggestion(s)
 }
 
-func (m *mockEvolutionStoreBridge) GetLatestByTarget(_ context.Context, _ string, _ string) (*UnifiedEvolutionSuggestion, error) {
-	return nil, m.err
+func (m *mockEvolutionStoreBridge) HasPendingForTarget(_ context.Context, targetType string, targetID string) (bool, error) {
+	if m.err != nil {
+		return false, m.err
+	}
+	for i := range m.suggestions {
+		row := m.unifiedRow(&m.suggestions[i])
+		if string(row.TargetType) == targetType && row.TargetID == targetID && row.Status == "pending" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
-func (m *mockEvolutionStoreBridge) GetLatestByTargetAndAction(_ context.Context, _ string, _ string, _ string) (*UnifiedEvolutionSuggestion, error) {
-	return nil, m.err
+func (m *mockEvolutionStoreBridge) GetLatestByTarget(_ context.Context, targetType string, targetID string) (*UnifiedEvolutionSuggestion, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	var best *UnifiedEvolutionSuggestion
+	for i := range m.suggestions {
+		row := m.unifiedRow(&m.suggestions[i])
+		if string(row.TargetType) != targetType || row.TargetID != targetID {
+			continue
+		}
+		if best == nil || row.CreatedAt.After(best.CreatedAt) {
+			r := row
+			best = &r
+		}
+	}
+	return best, nil
 }
 
-func (m *mockEvolutionStoreBridge) GetByID(_ context.Context, _ string) (*UnifiedEvolutionSuggestion, error) {
-	return nil, m.err
+func (m *mockEvolutionStoreBridge) GetLatestByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string) (*UnifiedEvolutionSuggestion, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	var best *UnifiedEvolutionSuggestion
+	for i := range m.suggestions {
+		row := m.unifiedRow(&m.suggestions[i])
+		if string(row.TargetType) != targetType || row.TargetID != targetID || string(row.ActionType) != actionType {
+			continue
+		}
+		if best == nil || row.CreatedAt.After(best.CreatedAt) {
+			r := row
+			best = &r
+		}
+	}
+	return best, nil
 }
 
-func (m *mockEvolutionStoreBridge) ListByTarget(_ context.Context, _ string, _ string, _ string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
-	return nil, m.err
+func (m *mockEvolutionStoreBridge) GetByID(_ context.Context, id string) (*UnifiedEvolutionSuggestion, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	for i := range m.suggestions {
+		if m.suggestions[i].ID == id {
+			row := m.unifiedRow(&m.suggestions[i])
+			return &row, nil
+		}
+	}
+	return nil, nil
 }
 
-func (m *mockEvolutionStoreBridge) CountByTarget(_ context.Context, _ string, _ string, _ string) (int, error) {
-	return len(m.suggestions), m.err
+func (m *mockEvolutionStoreBridge) ListByTarget(_ context.Context, targetType string, targetID string, status string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	var out []UnifiedEvolutionSuggestion
+	for i := range m.suggestions {
+		row := m.unifiedRow(&m.suggestions[i])
+		if string(row.TargetType) != targetType {
+			continue
+		}
+		if targetID != "" && row.TargetID != targetID {
+			continue
+		}
+		if status != "" && row.Status != status {
+			continue
+		}
+		out = append(out, row)
+	}
+	return out, nil
 }
 
-func (m *mockEvolutionStoreBridge) Create(_ context.Context, _ UnifiedEvolutionSuggestion) error {
-	return m.err
+func (m *mockEvolutionStoreBridge) CountByTarget(ctx context.Context, targetType string, targetID string, status string) (int, error) {
+	rows, err := m.ListByTarget(ctx, targetType, targetID, status, 0, 0)
+	return len(rows), err
 }
 
-func (m *mockEvolutionStoreBridge) UpdateStatus(_ context.Context, _ string, _ string, _ string, _ string) error {
-	return m.err
+func (m *mockEvolutionStoreBridge) ListByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, status string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	var out []UnifiedEvolutionSuggestion
+	for i := range m.suggestions {
+		row := m.unifiedRow(&m.suggestions[i])
+		if string(row.TargetType) != targetType {
+			continue
+		}
+		if targetID != "" && row.TargetID != targetID {
+			continue
+		}
+		if actionType != "" && string(row.ActionType) != actionType {
+			continue
+		}
+		if status != "" && row.Status != status {
+			continue
+		}
+		out = append(out, row)
+	}
+	return out, nil
 }
 
-func (m *mockEvolutionStoreBridge) UpdateDraftBody(_ context.Context, _, _ string) error {
-	return m.err
+func (m *mockEvolutionStoreBridge) CountByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, status string) (int, error) {
+	rows, err := m.ListByTargetAndAction(ctx, targetType, targetID, actionType, status, 0, 0)
+	return len(rows), err
 }
 
-func (m *mockEvolutionStoreBridge) UpdateLifecycleStatus(_ context.Context, _, _ string) error {
-	return m.err
+func (m *mockEvolutionStoreBridge) Create(_ context.Context, s UnifiedEvolutionSuggestion) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.suggestions = append(m.suggestions, *unifiedToLegacySuggestionPtr(&s))
+	return nil
 }
 
-func (m *mockEvolutionStoreBridge) UpdateSandboxResult(_ context.Context, _ string, _ bool, _ json.RawMessage) error {
+func (m *mockEvolutionStoreBridge) UpdateStatus(_ context.Context, id string, status string, actor string, reason string) error {
+	if m.err != nil {
+		return m.err
+	}
+	for i := range m.suggestions {
+		if m.suggestions[i].ID != id {
+			continue
+		}
+		m.suggestions[i].Status = EvolutionSuggestionStatus(status)
+		now := time.Now().UTC()
+		m.suggestions[i].ResolvedAt = &now
+		switch status {
+		case "approved":
+			m.suggestions[i].ApprovedBy = actor
+		case "rejected":
+			m.suggestions[i].RejectedBy = actor
+			m.suggestions[i].RejectionReason = reason
+		}
+		return nil
+	}
+	return nil
+}
+
+func (m *mockEvolutionStoreBridge) UpdateDraftBody(_ context.Context, id string, draft string) error {
+	if m.err != nil {
+		return m.err
+	}
+	for i := range m.suggestions {
+		if m.suggestions[i].ID == id {
+			m.suggestions[i].DraftSkillBody = draft
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *mockEvolutionStoreBridge) UpdateLifecycleStatus(_ context.Context, id string, status string) error {
+	if m.err != nil {
+		return m.err
+	}
+	for i := range m.suggestions {
+		if m.suggestions[i].ID == id {
+			m.suggestions[i].LifecycleStatus = EvolutionLifecycleStatus(status)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *mockEvolutionStoreBridge) UpdateSandboxResult(_ context.Context, id string, passed bool, result json.RawMessage) error {
+	if m.err != nil {
+		return m.err
+	}
+	for i := range m.suggestions {
+		if m.suggestions[i].ID == id {
+			m.suggestions[i].SandboxPassed = passed
+			m.suggestions[i].SandboxResult = result
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *mockEvolutionStoreBridge) UpdateMetadataKey(_ context.Context, _ string, _ string, _ string) error {
 	return m.err
 }
 
 func (m *mockEvolutionStoreBridge) ExpireOlderThan(_ context.Context, _ time.Time) (int, error) {
 	return 0, m.err
-}
-
-func (m *mockEvolutionStoreBridge) GetEvolutionSuggestion(_ context.Context, _ string) (*SkillEvolutionSuggestion, error) {
-	if len(m.suggestions) == 0 {
-		return nil, m.err
-	}
-	return &m.suggestions[0], m.err
-}
-
-func (m *mockEvolutionStoreBridge) ListEvolutionSuggestions(_ context.Context, _ string, _ EvolutionSuggestionStatus, _, _ int) ([]SkillEvolutionSuggestion, error) {
-	return m.suggestions, m.err
-}
-
-func (m *mockEvolutionStoreBridge) CountEvolutionSuggestions(_ context.Context, _ string, _ EvolutionSuggestionStatus) (int, error) {
-	return len(m.suggestions), m.err
-}
-
-func (m *mockEvolutionStoreBridge) CreateSuggestion(_ context.Context, s SkillEvolutionSuggestion) error {
-	if m.err != nil {
-		return m.err
-	}
-	m.suggestions = append(m.suggestions, s)
-	return nil
-}
-
-func (m *mockEvolutionStoreBridge) UpdateSuggestionStatus(_ context.Context, _ string, _ EvolutionSuggestionStatus, _, _ string) error {
-	return m.err
-}
-
-func (m *mockEvolutionStoreBridge) UpdateSuggestionDraftBody(_ context.Context, _, _ string) error {
-	return m.err
-}
-
-func (m *mockEvolutionStoreBridge) UpdateSuggestionLifecycleStatus(_ context.Context, _ string, _ EvolutionLifecycleStatus) error {
-	return m.err
-}
-
-func (m *mockEvolutionStoreBridge) UpdateSuggestionSandboxResult(_ context.Context, _ string, _ bool, _ json.RawMessage) error {
-	return m.err
-}
-
-func (m *mockEvolutionStoreBridge) ListPendingSuggestions(_ context.Context, _, _ int) ([]SkillEvolutionSuggestion, error) {
-	return m.suggestions, m.err
-}
-
-func (m *mockEvolutionStoreBridge) GetLatestSuggestionBySkill(_ context.Context, _ string) (*SkillEvolutionSuggestion, error) {
-	return m.latest, m.err
 }
 
 // newTestUsecase creates a SkillIntelligenceUsecase with the given mocks.
@@ -270,7 +321,7 @@ func newTestUsecase(
 	scorer := NewSkillScoringUsecase(aggregator, lg)
 	reporter := NewSkillReportUsecase(reader, writer, nil, scorer, a, lg)
 	bridge := &mockEvolutionStoreBridge{}
-	return NewSkillIntelligenceUsecase(scorer, reporter, bridge, bridge, aggregator, lg)
+	return NewSkillIntelligenceUsecase(scorer, reporter, bridge, aggregator, lg)
 }
 
 // ── TestAnalyzeInvocation ─────────────────────────────────────────────────────
@@ -812,12 +863,10 @@ func TestCheckEvolutionTriggers_7dLowSuccessRate(t *testing.T) {
 		},
 		tagCounts: []FailureTagCount{},
 	}
-	_ = &mockSkillEvolutionSuggestionWriter{}
-	_ = &mockSkillEvolutionSuggestionReader{}
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
-	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, &mockEvolutionStoreBridge{}, agg, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, agg, lg)
 
 	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-7d-bad")
 	if err != nil {
@@ -847,12 +896,10 @@ func TestCheckEvolutionTriggers_SameFailureTagThreshold(t *testing.T) {
 			{Tag: FailureTagToolAPIError, Count: 2},
 		},
 	}
-	_ = &mockSkillEvolutionSuggestionWriter{}
-	_ = &mockSkillEvolutionSuggestionReader{}
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
-	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, &mockEvolutionStoreBridge{}, agg, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, agg, lg)
 
 	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-tag-repeat")
 	if err != nil {
@@ -882,12 +929,10 @@ func TestCheckEvolutionTriggers_SameFailureTagBelowThreshold(t *testing.T) {
 			{Tag: FailureTagToolTimeout, Count: 3}, // < 5 threshold
 		},
 	}
-	_ = &mockSkillEvolutionSuggestionWriter{}
-	_ = &mockSkillEvolutionSuggestionReader{}
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
-	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, &mockEvolutionStoreBridge{}, agg, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, agg, lg)
 
 	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-tag-ok")
 	if err != nil {
@@ -903,6 +948,7 @@ func TestCheckEvolutionTriggers_SameFailureTagBelowThreshold(t *testing.T) {
 // recordingUnifiedStore implements UnifiedEvolutionStore with call recording.
 type recordingUnifiedStore struct {
 	pending         []UnifiedEvolutionSuggestion
+	byID            map[string]*UnifiedEvolutionSuggestion // GetByID backing (P0 Reload tests)
 	listErr         error
 	draftBodyErr    error
 	draftBodies     map[string]string
@@ -910,14 +956,18 @@ type recordingUnifiedStore struct {
 	sandboxPassed   map[string]bool
 	sandboxResults  map[string]json.RawMessage
 	sandboxWriteErr error
+	statusSeq       map[string][]string // suggestion ID → ordered status transitions
+	statusErr       error
 }
 
 func newRecordingUnifiedStore() *recordingUnifiedStore {
 	return &recordingUnifiedStore{
+		byID:           make(map[string]*UnifiedEvolutionSuggestion),
 		draftBodies:    make(map[string]string),
 		lifecycleSeq:   make(map[string][]string),
 		sandboxPassed:  make(map[string]bool),
 		sandboxResults: make(map[string]json.RawMessage),
+		statusSeq:      make(map[string][]string),
 	}
 }
 
@@ -930,8 +980,8 @@ func (s *recordingUnifiedStore) GetLatestByTarget(_ context.Context, _, _ string
 func (s *recordingUnifiedStore) GetLatestByTargetAndAction(_ context.Context, _, _, _ string) (*UnifiedEvolutionSuggestion, error) {
 	return nil, nil
 }
-func (s *recordingUnifiedStore) GetByID(_ context.Context, _ string) (*UnifiedEvolutionSuggestion, error) {
-	return nil, nil
+func (s *recordingUnifiedStore) GetByID(_ context.Context, id string) (*UnifiedEvolutionSuggestion, error) {
+	return s.byID[id], nil
 }
 func (s *recordingUnifiedStore) ListByTarget(_ context.Context, targetType, targetID, status string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
 	if s.listErr != nil {
@@ -951,10 +1001,22 @@ func (s *recordingUnifiedStore) ListByTarget(_ context.Context, targetType, targ
 func (s *recordingUnifiedStore) CountByTarget(_ context.Context, _, _, _ string) (int, error) {
 	return len(s.pending), nil
 }
+func (s *recordingUnifiedStore) ListByTargetAndAction(_ context.Context, _, _, _, _ string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
+	return nil, nil
+}
+func (s *recordingUnifiedStore) CountByTargetAndAction(_ context.Context, _, _, _, _ string) (int, error) {
+	return 0, nil
+}
 func (s *recordingUnifiedStore) Create(_ context.Context, _ UnifiedEvolutionSuggestion) error {
 	return nil
 }
-func (s *recordingUnifiedStore) UpdateStatus(_ context.Context, _, _, _, _ string) error { return nil }
+func (s *recordingUnifiedStore) UpdateStatus(_ context.Context, id, status, _, _ string) error {
+	if s.statusErr != nil {
+		return s.statusErr
+	}
+	s.statusSeq[id] = append(s.statusSeq[id], status)
+	return nil
+}
 func (s *recordingUnifiedStore) UpdateDraftBody(_ context.Context, id, draft string) error {
 	if s.draftBodyErr != nil {
 		return s.draftBodyErr
@@ -978,6 +1040,10 @@ func (s *recordingUnifiedStore) ExpireOlderThan(_ context.Context, _ time.Time) 
 	return 0, nil
 }
 
+func (s *recordingUnifiedStore) UpdateMetadataKey(_ context.Context, _, _, _ string) error {
+	return nil
+}
+
 // stubGateVerifier implements SkillGateVerifier.
 type stubGateVerifier struct {
 	passed bool
@@ -996,7 +1062,7 @@ func (g *stubGateVerifier) Verify(_ context.Context, _, _ string, _ *EvolutionOb
 
 func newValidateTestUsecase(store *recordingUnifiedStore, gate SkillGateVerifier) *SkillIntelligenceUsecase {
 	lg := loggateway.NewNoop()
-	uc := NewSkillIntelligenceUsecase(nil, nil, store, nil, nil, lg)
+	uc := NewSkillIntelligenceUsecase(nil, nil, store, nil, lg)
 	if gate != nil {
 		uc.SetGate(gate)
 	}
@@ -1004,7 +1070,7 @@ func newValidateTestUsecase(store *recordingUnifiedStore, gate SkillGateVerifier
 }
 
 func TestValidatePendingSuggestionsForSkill_NilUnifiedStore(t *testing.T) {
-	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, loggateway.NewNoop())
 	if err := uc.ValidatePendingSuggestionsForSkill(context.Background(), "sk-1"); err != nil {
 		t.Errorf("nil unifiedStore should be a no-op, got %v", err)
 	}
@@ -1181,12 +1247,10 @@ func TestRunCuratorFlow_Success(t *testing.T) {
 		},
 		tagCounts: []FailureTagCount{},
 	}
-	_ = &mockSkillEvolutionSuggestionWriter{}
-	_ = &mockSkillEvolutionSuggestionReader{}
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
-	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, &mockEvolutionStoreBridge{}, agg, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, agg, lg)
 
 	suggestion, err := uc.RunCuratorFlow(context.Background(), "skill-curator")
 	if err != nil {
@@ -1217,12 +1281,10 @@ func TestRunCuratorFlow_NoTrigger(t *testing.T) {
 		},
 		tagCounts: []FailureTagCount{},
 	}
-	_ = &mockSkillEvolutionSuggestionWriter{}
-	_ = &mockSkillEvolutionSuggestionReader{}
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
-	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, &mockEvolutionStoreBridge{}, agg, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, agg, lg)
 
 	suggestion, err := uc.RunCuratorFlow(context.Background(), "skill-healthy")
 	if err != nil {

@@ -53,6 +53,7 @@ const (
 	MemoryService_ReviewPIIFact_FullMethodName                = "/kratos.memory.v1.MemoryService/ReviewPIIFact"
 	MemoryService_GetMemoryLayerOverview_FullMethodName       = "/kratos.memory.v1.MemoryService/GetMemoryLayerOverview"
 	MemoryService_GetUnifiedMemoryGraph_FullMethodName        = "/kratos.memory.v1.MemoryService/GetUnifiedMemoryGraph"
+	MemoryService_ListMemoryEpisodes_FullMethodName           = "/kratos.memory.v1.MemoryService/ListMemoryEpisodes"
 )
 
 // MemoryServiceClient is the client API for MemoryService service.
@@ -93,6 +94,7 @@ type MemoryServiceClient interface {
 	ReviewPIIFact(ctx context.Context, in *ReviewPIIFactRequest, opts ...grpc.CallOption) (*ReviewPIIFactResponse, error)
 	GetMemoryLayerOverview(ctx context.Context, in *GetMemoryLayerOverviewRequest, opts ...grpc.CallOption) (*GetMemoryLayerOverviewResponse, error)
 	GetUnifiedMemoryGraph(ctx context.Context, in *GetUnifiedMemoryGraphRequest, opts ...grpc.CallOption) (*GetUnifiedMemoryGraphResponse, error)
+	ListMemoryEpisodes(ctx context.Context, in *ListMemoryEpisodesRequest, opts ...grpc.CallOption) (*ListMemoryEpisodesResponse, error)
 }
 
 type memoryServiceClient struct {
@@ -443,6 +445,16 @@ func (c *memoryServiceClient) GetUnifiedMemoryGraph(ctx context.Context, in *Get
 	return out, nil
 }
 
+func (c *memoryServiceClient) ListMemoryEpisodes(ctx context.Context, in *ListMemoryEpisodesRequest, opts ...grpc.CallOption) (*ListMemoryEpisodesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMemoryEpisodesResponse)
+	err := c.cc.Invoke(ctx, MemoryService_ListMemoryEpisodes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MemoryServiceServer is the server API for MemoryService service.
 // All implementations must embed UnimplementedMemoryServiceServer
 // for forward compatibility.
@@ -481,6 +493,7 @@ type MemoryServiceServer interface {
 	ReviewPIIFact(context.Context, *ReviewPIIFactRequest) (*ReviewPIIFactResponse, error)
 	GetMemoryLayerOverview(context.Context, *GetMemoryLayerOverviewRequest) (*GetMemoryLayerOverviewResponse, error)
 	GetUnifiedMemoryGraph(context.Context, *GetUnifiedMemoryGraphRequest) (*GetUnifiedMemoryGraphResponse, error)
+	ListMemoryEpisodes(context.Context, *ListMemoryEpisodesRequest) (*ListMemoryEpisodesResponse, error)
 	mustEmbedUnimplementedMemoryServiceServer()
 }
 
@@ -592,6 +605,9 @@ func (UnimplementedMemoryServiceServer) GetMemoryLayerOverview(context.Context, 
 }
 func (UnimplementedMemoryServiceServer) GetUnifiedMemoryGraph(context.Context, *GetUnifiedMemoryGraphRequest) (*GetUnifiedMemoryGraphResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetUnifiedMemoryGraph not implemented")
+}
+func (UnimplementedMemoryServiceServer) ListMemoryEpisodes(context.Context, *ListMemoryEpisodesRequest) (*ListMemoryEpisodesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListMemoryEpisodes not implemented")
 }
 func (UnimplementedMemoryServiceServer) mustEmbedUnimplementedMemoryServiceServer() {}
 func (UnimplementedMemoryServiceServer) testEmbeddedByValue()                       {}
@@ -1226,6 +1242,24 @@ func _MemoryService_GetUnifiedMemoryGraph_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MemoryService_ListMemoryEpisodes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListMemoryEpisodesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MemoryServiceServer).ListMemoryEpisodes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MemoryService_ListMemoryEpisodes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MemoryServiceServer).ListMemoryEpisodes(ctx, req.(*ListMemoryEpisodesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // MemoryService_ServiceDesc is the grpc.ServiceDesc for MemoryService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1368,6 +1402,10 @@ var MemoryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetUnifiedMemoryGraph",
 			Handler:    _MemoryService_GetUnifiedMemoryGraph_Handler,
+		},
+		{
+			MethodName: "ListMemoryEpisodes",
+			Handler:    _MemoryService_ListMemoryEpisodes_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

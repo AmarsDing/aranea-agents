@@ -61,14 +61,20 @@ function buildOption(): EChartsCoreOption {
     return baseChartOption({
       tooltip: { trigger: 'axis', valueFormatter: (v: number) => `${v}%` },
       legend: { top: 4, textStyle: { color: palette.text } },
-      yAxis: { type: 'value', max: 100, name: '%', axisLabel: { formatter: '{value}%' } },
+      yAxis: {
+        type: 'value',
+        max: 100,
+        name: '%',
+        axisLabel: { formatter: '{value}%' },
+        splitLine: { lineStyle: { color: palette.border } },
+      },
       xAxis: { type: 'category', data: labels, axisLabel: { color: palette.text } },
       series: [
         {
           name: '成功',
           type: 'bar',
           stack: 'rate',
-          itemStyle: { color: palette.positive },
+          itemStyle: { color: palette.positive, borderRadius: [3, 3, 0, 0] },
           data: stacks.map((s) => s.successPct),
         },
         {
@@ -90,14 +96,21 @@ function buildOption(): EChartsCoreOption {
       trigger: 'axis',
       valueFormatter: (v: number) => (isCost ? `$${Number(v).toFixed(4)}` : String(v)),
     },
-    yAxis: { type: 'value', name: trendMetricYAxisName(metric.value) },
+    yAxis: {
+      type: 'value',
+      name: trendMetricYAxisName(metric.value),
+      splitLine: { lineStyle: { color: palette.border } },
+    },
     xAxis: { type: 'category', data: labels, axisLabel: { color: palette.text } },
     series: [
       {
         name: metricCaption.value,
         type: isCost ? 'line' : 'bar',
         smooth: isCost,
-        itemStyle: { color: palette.accent },
+        itemStyle: {
+          color: palette.accent,
+          borderRadius: isCost ? 0 : [4, 4, 0, 0],
+        },
         areaStyle: isCost ? { opacity: 0.12, color: palette.accent } : undefined,
         data,
       },

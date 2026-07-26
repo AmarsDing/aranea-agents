@@ -149,6 +149,9 @@ func (m *mockUnifiedWriter) UpdateLifecycleStatus(context.Context, string, strin
 func (m *mockUnifiedWriter) UpdateSandboxResult(context.Context, string, bool, json.RawMessage) error {
 	return nil
 }
+func (m *mockUnifiedWriter) UpdateMetadataKey(context.Context, string, string, string) error {
+	return nil
+}
 func (m *mockUnifiedWriter) ExpireOlderThan(context.Context, time.Time) (int, error) {
 	return 0, nil
 }

@@ -65,6 +65,14 @@ func (s *orchStubStore) CountByTarget(_ context.Context, _, _, _ string) (int, e
 	return 0, nil
 }
 
+func (s *orchStubStore) ListByTargetAndAction(_ context.Context, _, _, _, _ string, _, _ int) ([]biz.UnifiedEvolutionSuggestion, error) {
+	return nil, nil
+}
+
+func (s *orchStubStore) CountByTargetAndAction(_ context.Context, _, _, _, _ string) (int, error) {
+	return 0, nil
+}
+
 func (s *orchStubStore) Create(_ context.Context, suggestion biz.UnifiedEvolutionSuggestion) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -84,6 +92,8 @@ func (s *orchStubStore) UpdateLifecycleStatus(_ context.Context, _, _ string) er
 func (s *orchStubStore) UpdateSandboxResult(_ context.Context, _ string, _ bool, _ json.RawMessage) error {
 	return nil
 }
+
+func (s *orchStubStore) UpdateMetadataKey(_ context.Context, _, _, _ string) error { return nil }
 
 func (s *orchStubStore) ExpireOlderThan(_ context.Context, _ time.Time) (int, error) {
 	s.mu.Lock()

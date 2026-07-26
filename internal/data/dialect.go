@@ -79,7 +79,9 @@ func (d Dialect) JSONExtractPath(col string, path ...string) string {
 		return col
 	}
 	if d.IsPostgres() {
-		return fmt.Sprintf("%s #>> '{%s}'", col, strings.Join(path, ","))
+		// 列可能声明为 TEXT（如 unified_evolution_suggestions.metadata），
+		// #>> 要求 jsonb 操作数，复用 JSONBBase 的 TEXT→jsonb 归一化。
+		return fmt.Sprintf("%s #>> '{%s}'", d.JSONBBase(col), strings.Join(path, ","))
 	}
 	return fmt.Sprintf("json_extract(%s, '$.%s')", col, strings.Join(path, "."))
 }

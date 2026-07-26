@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	stderrors "errors"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -14,10 +15,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-const (
-	defaultScanAgentLimit     = 500
-	skillPatternMinConfidence = 0.15
-)
+const skillPatternMinConfidence = 0.15
 
 type SkillAutoCreator interface {
 	GenerateSKILLMD(ctx context.Context, patternDesc string, toolHistory []ToolCallRecord) (name string, content string, err error)
@@ -29,19 +27,25 @@ type SkillRegistrationPort interface {
 }
 
 type SkillEvolutionUsecase struct {
-	repo             SkillProposalReadWriter
-	patterns         PatternReader
-	agents           AgentRepository
-	creator          SkillAutoCreator
-	registrar        SkillRegistrationPort
-	orchestrator     *SkillEvolutionOrchestrator
+	store          UnifiedEvolutionStore
+	patternReader  UnifiedEvolutionPatternReader
+	patterns       PatternReader
+	agents         AgentRepository
+	creator        SkillAutoCreator
+	registrar      SkillRegistrationPort
+	orchestrator   *SkillEvolutionOrchestrator
 	orchestratorOnce sync.Once
-	proposalSM       *SkillProposalStateMachine
-	lg               loggateway.Logger
+	proposalSM     *SkillProposalStateMachine
+	lg             loggateway.Logger
 }
 
+// NewSkillEvolutionUsecase constructs the L1 skill-creation proposal usecase.
+// After the A6 convergence the physical storage is unified_evolution_suggestions
+// (agent + create_skill rows); SkillProposal is a view reconstructed by
+// skillProposalFromUnified, with legacy-only fields in metadata.
 func NewSkillEvolutionUsecase(
-	repo SkillProposalReadWriter,
+	store UnifiedEvolutionStore,
+	patternReader UnifiedEvolutionPatternReader,
 	patterns PatternReader,
 	agents AgentRepository,
 	creator SkillAutoCreator,
@@ -49,14 +53,92 @@ func NewSkillEvolutionUsecase(
 	lg loggateway.Logger,
 ) *SkillEvolutionUsecase {
 	return &SkillEvolutionUsecase{
-		repo:       repo,
-		patterns:   patterns,
-		agents:     agents,
-		creator:    creator,
-		registrar:  registrar,
-		proposalSM: NewSkillProposalStateMachine(),
-		lg:         lg,
+		store:         store,
+		patternReader: patternReader,
+		patterns:      patterns,
+		agents:        agents,
+		creator:       creator,
+		registrar:     registrar,
+		proposalSM:    NewSkillProposalStateMachine(),
+		lg:            lg,
 	}
+}
+
+// ── View conversion: SkillProposal ↔ UnifiedEvolutionSuggestion ──────────────
+//
+// Mirrors the 20261111 backfill mapping: target_type=agent, action_type=
+// create_skill, trigger_source=pattern, pattern_hash/pattern_desc/approved_at/
+// rejected_by in metadata. The legacy status 'registered' is stored verbatim
+// (it is not a unified state machine state).
+
+// skillProposalFromUnified reconstructs the legacy L1 view from a unified row.
+func skillProposalFromUnified(s *UnifiedEvolutionSuggestion) SkillProposal {
+	if s == nil {
+		return SkillProposal{}
+	}
+	var approvedAt *time.Time
+	if raw := s.MetaString(EvoMetaApprovedAt); raw != "" {
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			approvedAt = &t
+		}
+	}
+	return SkillProposal{
+		ID:          s.ID,
+		AgentID:     s.TargetID,
+		PatternHash: s.MetaString(EvoMetaPatternHash),
+		PatternDesc: s.MetaString(EvoMetaPatternDesc),
+		SkillName:   s.DraftName,
+		SkillMD:     s.DraftBody,
+		Status:      SkillProposalStatus(s.Status),
+		ApprovedBy:  s.ApprovedBy,
+		RejectedBy:  s.MetaString(EvoMetaRejectedBy),
+		CreatedAt:   s.CreatedAt,
+		ApprovedAt:  approvedAt,
+	}
+}
+
+// unifiedFromSkillProposal converts a legacy L1 view into a unified row for
+// creation.
+func unifiedFromSkillProposal(p SkillProposal) UnifiedEvolutionSuggestion {
+	approvedAt := ""
+	if p.ApprovedAt != nil {
+		approvedAt = p.ApprovedAt.UTC().Format(time.RFC3339)
+	}
+	metadata, _ := json.Marshal(map[string]string{
+		EvoMetaPatternHash: p.PatternHash,
+		EvoMetaPatternDesc: p.PatternDesc,
+		EvoMetaApprovedAt:  approvedAt,
+		EvoMetaRejectedBy:  p.RejectedBy,
+	})
+	return UnifiedEvolutionSuggestion{
+		ID:              p.ID,
+		TargetType:      EvolutionTargetAgent,
+		TargetID:        p.AgentID,
+		ActionType:      EvolutionActionCreate,
+		TriggerSource:   "pattern",
+		TriggerReason:   p.PatternDesc,
+		Status:          string(p.Status),
+		Priority:        1,
+		DraftBody:       p.SkillMD,
+		DraftName:       p.SkillName,
+		LifecycleStatus: "draft",
+		Metadata:        metadata,
+		CreatedAt:       p.CreatedAt,
+		ApprovedBy:      p.ApprovedBy,
+	}
+}
+
+// getProposalView fetches a unified row by ID and converts it to the L1 view,
+// returning NotFound when absent (mirrors the legacy repo semantics).
+func (uc *SkillEvolutionUsecase) getProposalView(ctx context.Context, id string) (SkillProposal, error) {
+	s, err := uc.store.GetByID(ctx, id)
+	if err != nil {
+		return SkillProposal{}, err
+	}
+	if s == nil {
+		return SkillProposal{}, apierror.NotFound("SKILL_EVO", "proposal not found")
+	}
+	return skillProposalFromUnified(s), nil
 }
 
 // SetOrchestrator sets the unified evolution orchestrator for cross-pipeline dedup.
@@ -117,7 +199,7 @@ func (uc *SkillEvolutionUsecase) DetectAndPropose(ctx context.Context, agentID s
 	var proposals []SkillProposal
 	for _, p := range patterns {
 		hash := patternHash(p.Description)
-		existing, exErr := uc.repo.GetByPatternHash(ctx, agentID, hash)
+		existing, exErr := uc.patternReader.GetLatestByPatternHash(ctx, agentID, hash)
 		if exErr != nil {
 			uc.lg.Warn("check existing proposal", loggateway.StepID("skill_evo.detect"), loggateway.Err(exErr))
 			continue
@@ -156,12 +238,13 @@ func (uc *SkillEvolutionUsecase) DetectAndPropose(ctx context.Context, agentID s
 			Status:      SkillProposalStatusPending,
 			CreatedAt:   time.Now().UTC(),
 		}
-		created, cErr := uc.repo.Create(ctx, proposal)
-		if cErr != nil {
+		// DB unique index on (target, action, pattern_hash) for pending rows
+		// backstops the check-then-create race; duplicates warn and skip.
+		if cErr := uc.store.Create(ctx, unifiedFromSkillProposal(proposal)); cErr != nil {
 			uc.lg.Warn("create skill proposal", loggateway.StepID("skill_evo.detect"), loggateway.Err(cErr))
 			continue
 		}
-		proposals = append(proposals, created)
+		proposals = append(proposals, proposal)
 	}
 	return proposals, nil
 }
@@ -171,7 +254,7 @@ func (uc *SkillEvolutionUsecase) ApproveProposal(ctx context.Context, id string,
 	if err != nil {
 		return SkillProposal{}, err
 	}
-	p, err := uc.repo.GetByID(ctx, id)
+	p, err := uc.getProposalView(ctx, id)
 	if err != nil {
 		return SkillProposal{}, err
 	}
@@ -179,7 +262,11 @@ func (uc *SkillEvolutionUsecase) ApproveProposal(ctx context.Context, id string,
 	if terr != nil {
 		return SkillProposal{}, apierror.BadRequest("SKILL_EVO", "only pending proposals can be approved")
 	}
-	return uc.repo.UpdateStatus(ctx, id, next, approvedBy)
+	// UpdateStatus merges metadata.approved_at for the view layer (A6).
+	if err := uc.store.UpdateStatus(ctx, id, string(next), approvedBy, ""); err != nil {
+		return SkillProposal{}, err
+	}
+	return uc.getProposalView(ctx, id)
 }
 
 func (uc *SkillEvolutionUsecase) RejectProposal(ctx context.Context, id string, rejectedBy string) (SkillProposal, error) {
@@ -187,7 +274,7 @@ func (uc *SkillEvolutionUsecase) RejectProposal(ctx context.Context, id string, 
 	if err != nil {
 		return SkillProposal{}, err
 	}
-	p, err := uc.repo.GetByID(ctx, id)
+	p, err := uc.getProposalView(ctx, id)
 	if err != nil {
 		return SkillProposal{}, err
 	}
@@ -195,7 +282,11 @@ func (uc *SkillEvolutionUsecase) RejectProposal(ctx context.Context, id string, 
 	if terr != nil {
 		return SkillProposal{}, apierror.BadRequest("SKILL_EVO", "only pending proposals can be rejected")
 	}
-	return uc.repo.UpdateStatus(ctx, id, next, rejectedBy)
+	// UpdateStatus merges metadata.rejected_by for the view layer (A6).
+	if err := uc.store.UpdateStatus(ctx, id, string(next), rejectedBy, ""); err != nil {
+		return SkillProposal{}, err
+	}
+	return uc.getProposalView(ctx, id)
 }
 
 func (uc *SkillEvolutionUsecase) RegisterApproved(ctx context.Context, id string) (SkillProposal, error) {
@@ -203,7 +294,7 @@ func (uc *SkillEvolutionUsecase) RegisterApproved(ctx context.Context, id string
 	if err != nil {
 		return SkillProposal{}, err
 	}
-	p, err := uc.repo.GetByID(ctx, id)
+	p, err := uc.getProposalView(ctx, id)
 	if err != nil {
 		return SkillProposal{}, err
 	}
@@ -228,7 +319,12 @@ func (uc *SkillEvolutionUsecase) RegisterApproved(ctx context.Context, id string
 	if regErr := uc.registrar.RegisterSkill(ctx, p.AgentID, p.SkillName, p.SkillMD); regErr != nil {
 		return SkillProposal{}, regErr
 	}
-	return uc.repo.UpdateStatus(ctx, id, next, "")
+	// 'registered' is an L1 view status stored verbatim (not a unified SM state);
+	// the repo performs a plain status update for it.
+	if err := uc.store.UpdateStatus(ctx, id, string(next), "", ""); err != nil {
+		return SkillProposal{}, err
+	}
+	return uc.getProposalView(ctx, id)
 }
 
 func (uc *SkillEvolutionUsecase) transitionProposal(from SkillProposalStatus, event SkillProposalEvent) (SkillProposalStatus, error) {
@@ -244,17 +340,25 @@ func (uc *SkillEvolutionUsecase) GetProposal(ctx context.Context, id string) (Sk
 	if err != nil {
 		return SkillProposal{}, err
 	}
-	return uc.repo.GetByID(ctx, id)
+	return uc.getProposalView(ctx, id)
 }
 
 func (uc *SkillEvolutionUsecase) ListProposals(ctx context.Context, agentID string, status string, limit int, offset int) ([]SkillProposal, error) {
-	return uc.repo.ListByAgent(ctx, agentID, status, limit, offset)
+	rows, err := uc.store.ListByTargetAndAction(ctx, string(EvolutionTargetAgent), agentID, string(EvolutionActionCreate), status, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SkillProposal, 0, len(rows))
+	for i := range rows {
+		out = append(out, skillProposalFromUnified(&rows[i]))
+	}
+	return out, nil
 }
 
 // CountProposals returns the total number of proposals matching the filter,
 // for pagination metadata. Mirrors the ListProposals filter semantics.
 func (uc *SkillEvolutionUsecase) CountProposals(ctx context.Context, agentID string, status string) (int, error) {
-	return uc.repo.CountByAgent(ctx, agentID, status)
+	return uc.store.CountByTargetAndAction(ctx, string(EvolutionTargetAgent), agentID, string(EvolutionActionCreate), status)
 }
 
 func (uc *SkillEvolutionUsecase) CreateProposal(ctx context.Context, proposal SkillProposal) (SkillProposal, error) {
@@ -270,77 +374,13 @@ func (uc *SkillEvolutionUsecase) CreateProposal(ctx context.Context, proposal Sk
 	if proposal.PatternHash == "" {
 		proposal.PatternHash = patternHash(proposal.PatternDesc)
 	}
-	return uc.repo.Create(ctx, proposal)
+	if err := uc.store.Create(ctx, unifiedFromSkillProposal(proposal)); err != nil {
+		return SkillProposal{}, err
+	}
+	return proposal, nil
 }
 
-func (uc *SkillEvolutionUsecase) ScanAndProposeAll(ctx context.Context) error {
-	if uc.agents == nil {
-		return nil
-	}
-	var errs []error
-	offset := 0
-	for {
-		select {
-		case <-ctx.Done():
-			if len(errs) > 0 {
-				return apierror.Internal("SKILL_EVO", "skill evolution: %d agents failed (cancelled)", len(errs))
-			}
-			return ctx.Err()
-		default:
-		}
-		page, err := uc.agents.SearchAgents(ctx, AgentListQuery{Limit: defaultScanAgentLimit, Offset: offset, Status: string(AgentStatusActive)})
-		if err != nil {
-			return err
-		}
-		for _, a := range page.Items {
-			settings, serr := uc.agents.GetAgentRuntimeSettings(ctx, a.ID)
-			if serr != nil {
-				continue
-			}
-			if !settings.EvolutionSkillEvolve {
-				continue
-			}
-			if _, dErr := uc.DetectAndPropose(ctx, a.ID); dErr != nil {
-				uc.lg.Warn("skill evolution detect", loggateway.StepID("skill_evo.scan"), loggateway.Str("agent_id", a.ID), loggateway.Err(dErr))
-				errs = append(errs, dErr)
-			}
-		}
-		if len(page.Items) < defaultScanAgentLimit {
-			break
-		}
-		offset += defaultScanAgentLimit
-	}
-	if len(errs) > 0 {
-		return apierror.Internal("SKILL_EVO", "skill evolution: %d agents failed", len(errs))
-	}
-	return nil
-}
-
-// ── Bridge: SkillProposal → SkillEvolutionSuggestion ─────────────────────────
-//
-// Deprecated: Transitional bridge function. Will be removed once SkillProposal
-// is fully deprecated. Use UnifiedEvolutionSuggestion directly instead.
-
-// SuggestionFromProposal converts a SkillProposal into a
-// SkillEvolutionSuggestion for interoperability with the SkillIntelligenceUsecase pipeline.
-// Fields that have no direct equivalent are left at their zero values.
-//
-// Deprecated: Use UnifiedEvolutionSuggestion directly. Construct with
-// UnifiedEvolutionSuggestion{TargetType: "agent", ActionType: "create_skill", TargetID: p.AgentID, DraftBody: p.SkillMD, DraftName: p.SkillName}.
-func (uc *SkillEvolutionUsecase) SuggestionFromProposal(p SkillProposal) SkillEvolutionSuggestion {
-	return SkillEvolutionSuggestion{
-		ID:             p.ID,
-		SkillID:        "",                       // no equivalent; SkillProposal is agent-scoped
-		Type:           EvoSuggestionCreateSkill, // SkillProposal is agent-scoped skill creation
-		Status:         ProposalStatusToSuggestion(p.Status),
-		TriggerReason:  p.PatternDesc,
-		DraftSkillBody: p.SkillMD,
-		ApprovedBy:     p.ApprovedBy,
-		RejectedBy:     p.RejectedBy,
-		CreatedAt:      p.CreatedAt,
-		ResolvedAt:     p.ApprovedAt,
-	}
-}
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 func (uc *SkillEvolutionUsecase) findSkillPatterns(ctx context.Context, agentID string) ([]Pattern, error) {
 	if uc.patterns == nil {

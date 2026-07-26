@@ -67,6 +67,31 @@ func (a *Artifact) ClarificationQuestions() []ClarificationQuestion {
 	return a.Clarifications
 }
 
+// CloneWithoutClarification returns a copy of the artifact with the
+// clarification residue stripped (questions, ambiguities, and the
+// needs_clarification risk flag). Used by the clarification-resume path:
+// the reused artifact is injected as turn context again, and carrying the
+// already-answered questions could nudge the LLM to re-ask them.
+// The receiver is not mutated.
+func (a *Artifact) CloneWithoutClarification() *Artifact {
+	if a == nil {
+		return nil
+	}
+	cp := *a
+	cp.Clarifications = nil
+	cp.Ambiguities = nil
+	if len(a.RiskFlags) > 0 {
+		flags := make([]string, 0, len(a.RiskFlags))
+		for _, f := range a.RiskFlags {
+			if f != RiskFlagNeedsClarification {
+				flags = append(flags, f)
+			}
+		}
+		cp.RiskFlags = flags
+	}
+	return &cp
+}
+
 const intentSystemCoding = `You classify and restate the user's request for a coding assistant. Reply with ONE JSON object only, no markdown fences, no commentary. Keys:
 - refined_goal (string): one clear sentence of what the user wants.
 - intent_kind (string): one of code_change, explain, debug, doc, research, other.
@@ -103,6 +128,23 @@ func PassEffective(agentIntentPassEnabled bool) bool {
 		return true
 	}
 	return agentIntentPassEnabled
+}
+
+// ModelOverrideFromEnv reads the optional intent-pass model override.
+// ARANEA_INTENT_PASS_MODEL: model name (e.g. "gpt-4.1-mini"). When set, the
+// intent pass uses this model instead of the session model — intent
+// classification is a lightweight task well served by mini models, and the
+// pass sits on the critical path before the main LLM starts streaming.
+// ARANEA_INTENT_PASS_PROVIDER: optional provider override; empty inherits the
+// session provider (model-only is the common case).
+// Returns ("", "") when no override is configured.
+func ModelOverrideFromEnv() (provider, model string) {
+	model = strings.TrimSpace(os.Getenv("ARANEA_INTENT_PASS_MODEL"))
+	if model == "" {
+		return "", ""
+	}
+	provider = strings.TrimSpace(os.Getenv("ARANEA_INTENT_PASS_PROVIDER"))
+	return provider, model
 }
 
 // IntentPassFromAgent returns persisted intent-pass preference; default ON when settings are missing (P1-1).

@@ -10,7 +10,9 @@
 
 Agent 设置页「进化」Tab：进化开关、指标看板、建议列表、适应护栏配置。数据来自 `agent_runtime_settings` 的 `evolution_*` / `evo_*` / `guardrail_*` 字段和运行时指标聚合。
 
-开关字段在 `AgentRuntimeSettings` 中定义并通过 `settingsFromLegacyConfig` 解析存储。运行时指标采集通过查询 `tool_invocations` 表实现，建议生成由 `EvolutionScanner` 定时任务驱动。
+开关字段在 `AgentRuntimeSettings` 中定义并通过 `settingsFromLegacyConfig` 解析存储。运行时指标采集通过查询 `tool_invocations` 表实现，建议生成由 `EvolutionOrchestratorWorker` 定时任务驱动（统一进化编排入口，A1/A6），L3 扫描逻辑由 `AgentConfigTrigger` 执行（移植自 legacy `EvolutionUsecase.ScanAgent`）。
+
+> **A6 物理收敛**：L3 建议的物理存储已从 legacy `evolution_suggestions` 表（Ent Schema，已删除）收敛到统一的 `unified_evolution_suggestions` 表（raw SQL DDL，详见 [20-skill.design.md](./20-skill.design.md) §6.8）。legacy 专有字段（`type`/`title`/`diff_preview`/`pre_apply_snapshot`）保留在 unified 行的 `metadata` JSON 列中，biz 层通过 `evolutionViewFromUnified` 重建 L3 视图，对外 proto 契约不变。迁移 `20261111` 完成逐行 backfill（主键预检幂等）后 DROP 三张 legacy 表。
 
 ---
 
@@ -161,6 +163,8 @@ type EvolutionSuggestion struct {
 }
 ```
 
+> **A6 视图语义**：`EvolutionSuggestion` 不再是物理表实体，而是从 unified 行重建的 L3 视图——`evolutionViewFromUnified`（[evolution.go](../../internal/biz/evolution.go)）从 `UnifiedEvolutionSuggestion` 重建，`Type`/`Title`/`DiffPreview`/`PreApplySnapshot` 读自 `metadata` JSON（`EvoMetaLegacyType`/`EvoMetaTitle`/`EvoMetaDiffPreview`/`EvoMetaPreApplySnapshot`）；`unifiedFromEvolutionView` 为反向转换（创建用：target_type=agent / action_type=evolve_agent / trigger_source=agent_config）。
+
 ### 3.2 Repository 接口
 
 ```go
@@ -174,15 +178,22 @@ type EvolutionMetricsRepo interface {
     GetNegativeFeedbackCount(ctx context.Context, agentID string, since time.Time) (int, error)
 }
 
-// Stability:stable
-type EvolutionSuggestionRepo interface {
-    ListByAgent(ctx context.Context, agentID string, status string) ([]EvolutionSuggestion, error)
-    GetByID(ctx context.Context, id string) (EvolutionSuggestion, error)
-    Create(ctx context.Context, s EvolutionSuggestion) (EvolutionSuggestion, error)
-    UpdateStatus(ctx context.Context, id string, status string) (EvolutionSuggestion, error)
-    UpdateSnapshot(ctx context.Context, id string, snapshot string) error
+// Stability:evolving — 窄端口：L3 建议创建/列表，供非进化消费者
+//（精灵团队完成学习、任务编排 DQ 反馈）使用，由 EvolutionUsecase 实现。
+type EvolutionSuggestionCreator interface {
+    CreateSuggestion(ctx context.Context, s EvolutionSuggestion) (EvolutionSuggestion, error)
+    GetEvolutionSuggestions(ctx context.Context, agentID string, status string) ([]EvolutionSuggestion, error)
+}
+
+// Stability:stable — 事务提供者：ApplySuggestion / RollbackSuggestion 将
+// prompt files 替换 + 建议状态更新包裹在单个事务中（红线 #24），
+// 由 data.Data 实现并经 SetTxProvider / ProvideEvolutionUsecase 注入。
+type EvolutionTxProvider interface {
+    ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 ```
+
+> **A6 变更**：legacy `EvolutionSuggestionRepo` 接口已删除。L3 建议的读写改经 `UnifiedEvolutionStore`（定义于 [skill_evolution_unified.go](../../internal/biz/skill_evolution_unified.go)，含 `UnifiedEvolutionQueryReader.ListByTargetAndAction` / `UnifiedEvolutionWriter.UpdateStatus` / `UnifiedEvolutionMetadataWriter.UpdateMetadataKey` 等窄接口），由 `data.UnifiedEvolutionRepo` 实现。
 
 ### 3.3 Usecase
 
@@ -190,36 +201,47 @@ type EvolutionSuggestionRepo interface {
 // internal/biz/evolution.go
 
 type EvolutionUsecase struct {
-    metricsRepo      EvolutionMetricsRepo
-    suggestionRepo   EvolutionSuggestionRepo
-    agents           AgentRepository
-    coordinator      *EvolutionCoordinator      // 遗留：跨流水线去重
-    orchestrator     *SkillEvolutionOrchestrator // 统一：跨流水线去重
-    orchestratorOnce sync.Once
-    lg               loggateway.Logger
-    evolutionSM      *EvolutionStateMachine
+    metricsRepo EvolutionMetricsRepo
+    store       UnifiedEvolutionStore // A6：统一进化存储
+    agents      AgentRepository
+    lg          loggateway.Logger
+    evolutionSM *EvolutionStateMachine
+    txProvider  EvolutionTxProvider   // 可选；注入后 apply/rollback 事务化
 }
 
+// 测试直接调用（无 txProvider，保持 legacy 非事务行为）
 func NewEvolutionUsecase(
     metricsRepo EvolutionMetricsRepo,
-    suggestionRepo EvolutionSuggestionRepo,
+    store UnifiedEvolutionStore,
     agents AgentRepository,
+    lg loggateway.Logger,
+) *EvolutionUsecase
+
+// Wire provider：注入 txProvider，apply/rollback 包裹单事务（红线 #24）
+func ProvideEvolutionUsecase(
+    metricsRepo EvolutionMetricsRepo,
+    store UnifiedEvolutionStore,
+    agents AgentRepository,
+    tp EvolutionTxProvider,
     lg loggateway.Logger,
 ) *EvolutionUsecase
 ```
 
 核心方法：
 
-- `GetEvolutionMetrics(ctx, agentID, timeRange)` — 聚合四项指标，部分查询失败时标记 `Partial=true` 并记录 `PartialErrors`
-- `GetEvolutionSuggestions(ctx, agentID, status)` — 列表查询
+- `GetEvolutionMetrics(ctx, agentID, timeRange)` — 聚合四项指标，部分查询失败时标记 `Partial=true` 并记录 `PartialErrors`（采集逻辑由 `collectEvolutionMetrics` 实现，与 `AgentConfigTrigger` 共享）
+- `GetEvolutionSuggestions(ctx, agentID, status)` — 列表查询：经 `store.ListByTargetAndAction(agent, action=evolve_agent, status)` 拉取 unified 行后逐行 `evolutionViewFromUnified` 重建 L3 视图
+- `CreateSuggestion(ctx, s)` — 创建 L3 建议（`EvolutionSuggestionCreator` 端口，供精灵团队学习 / DQ 反馈等非进化消费者调用）
 - `ApplySuggestion(ctx, agentID, suggestionID)` — 应用建议：
   - 校验状态机转换 `Pending → Applied`
-  - 保存 `PreApplySnapshot`（应用前的 prompt files 快照）
+  - 保存 `PreApplySnapshot`（应用前的 prompt files 快照，经 `store.UpdateMetadataKey` 写入 metadata）
   - `type=persona`：写入 `IDENTITY.md` 的 `## Persona` 段（PGO V2 后替代 SOUL.md，保留 SOUL.md 作为遗留兜底）
   - `type=prompt`：写入 `AGENTS_CORE.md` 或首匹配 `AGENTS*.md` 文件
+  - 注入 txProvider 时，prompt files 替换 + 状态更新在单事务中执行（红线 #24）
 - `RejectSuggestion(ctx, agentID, suggestionID)` — 拒绝建议，状态机转换 `Pending → Rejected`
-- `RollbackSuggestion(ctx, agentID, suggestionID)` — 回滚建议，状态机转换 `Applied → RolledBack`，从 `PreApplySnapshot` 恢复 prompt files
-- `ScanAll(ctx)` / `ScanAgent(ctx, agentID)` — 扫描指标并生成建议（由 `EvolutionScanner` 定时调用）
+- `RollbackSuggestion(ctx, agentID, suggestionID)` — 回滚建议，状态机转换 `Applied → RolledBack`，从 `PreApplySnapshot` 恢复 prompt files（同样支持事务包裹）
+
+> **A6 变更**：`ScanAll` / `ScanAgent` 已从 `EvolutionUsecase` 移除，L3 自动扫描逻辑移植到 `AgentConfigTrigger`（见 §3.5 与 §7.2）；legacy `EvolutionCoordinator` / orchestrator 委托字段随之删除。
 
 ### 3.4 状态机（AS-FSM-01）
 
@@ -244,55 +266,35 @@ func NewEvolutionUsecase(
 
 终态：`Rejected`、`RolledBack`。所有状态转换经 `EvolutionStateMachine.Transition()` 校验，非法转换返回错误。
 
-### 3.5 跨流水线去重
+### 3.5 跨流水线去重（A6 重构后）
 
-`EvolutionCoordinator`（`internal/biz/evolution_coordinator.go`）与 `SkillEvolutionOrchestrator`（`internal/biz/skill_evolution_unified.go`）提供跨流水线的 pending 建议去重：
+去重分两层：
 
-- `ScanAgent` 优先委托 `orchestrator.HasPendingForTarget(ctx, "agent", agentID)` 检查
-- 回退到 `coordinator.HasPendingEvolution(ctx, EvolutionTarget{Type, ID})`
-- 已有 pending 同 type 建议时跳过扫描
+1. **触发器内去重**：`AgentConfigTrigger.Check`（[skill_evolution_triggers.go](../../internal/biz/skill_evolution_triggers.go)）在生成候选前，通过 `UnifiedEvolutionQueryReader.ListByTargetAndAction(agent, evolve_agent, pending)` 拉取 pending 建议，按 `legacy_type + title`（metadata）建 key 去重（镜像 legacy `ensurePendingSuggestion` 语义）。
+2. **编排层统一去重**：`SkillEvolutionOrchestrator`（[skill_evolution_unified.go](../../internal/biz/skill_evolution_unified.go)）在 worker 层对同 target 的 pending 建议做跨流水线检查（`HasPendingForTarget`），DB 层由 pending 唯一索引兜底（方言感知 JSON 路径，见 [20-skill.design.md](./20-skill.design.md) §6.8）。
+
+> legacy `EvolutionCoordinator`（`internal/biz/evolution_coordinator.go`）及 `EvolutionUsecase` 中的 orchestrator 委托已随 A6 删除。
 
 ---
 
 ## 四、Data 层
 
-### 4.1 Ent Schema — `evolution_suggestions`
+### 4.1 建议存储 — A6 收敛到统一表
 
-```go
-// internal/data/ent/schema/evolution_suggestion.go
+> Ent Schema `internal/data/ent/schema/evolution_suggestion.go` 已删除（A6）。
 
-type EvolutionSuggestion struct {
-    ent.Schema
-}
+L3 建议的物理存储为 `unified_evolution_suggestions` 表（raw SQL DDL，表结构与方言感知索引见 [20-skill.design.md](./20-skill.design.md) §6.8）。L3 行映射约定：
 
-func (EvolutionSuggestion) Annotations() []schema.Annotation {
-    return []schema.Annotation{
-        entsql.Annotation{Table: "evolution_suggestions"},
-    }
-}
+| unified 列 | L3 取值 |
+|-----------|---------|
+| `target_type` / `target_id` | `agent` / agentID |
+| `action_type` | `evolve_agent` |
+| `trigger_source` | `agent_config`（`unifiedFromEvolutionView` 固定；自动扫描与 `CreateSuggestion` 消费者——精灵团队完成学习、任务编排 DQ 反馈——均走此值） |
+| `draft_body` | legacy `content` |
+| `metadata` JSON | `legacy_type`（persona/skill/prompt）、`title`、`diff_preview`、`pre_apply_snapshot` |
+| `status` | `pending` / `applied` / `rejected` / `rolled_back`（原样保留） |
 
-func (EvolutionSuggestion) Fields() []ent.Field {
-    return []ent.Field{
-        field.String("id").Immutable().Unique().MaxLen(256),
-        field.String("agent_id").MaxLen(256),
-        field.String("type").MaxLen(64),   // "persona" | "skill" | "prompt"
-        field.String("title").MaxLen(512),
-        field.Text("content").Default(""),
-        field.String("status").MaxLen(32).Default("pending"), // "pending" | "applied" | "rejected" | "rolled_back"
-        field.Text("diff_preview").Default(""),
-        field.Text("pre_apply_snapshot").Default(""), // JSON map[filename]content，用于 Rollback
-        field.String("created_at").Default(""),
-        field.String("applied_at").Default(""),
-    }
-}
-
-func (EvolutionSuggestion) Indexes() []ent.Index {
-    return []ent.Index{
-        index.Fields("agent_id", "status"),
-        index.Fields("agent_id", "created_at"),
-    }
-}
-```
+迁移 `20261111` 逐行 backfill（主键预检幂等）legacy `evolution_suggestions` 后 DROP 该表。
 
 ### 4.2 指标查询实现
 
@@ -320,34 +322,21 @@ func (r *evolutionMetricsRepo) GetEpisodeCount(ctx, agentID, since) (int, error)
 func (r *evolutionMetricsRepo) GetNegativeFeedbackCount(ctx, agentID, since) (int, error)
 ```
 
-### 4.3 建议存储实现
+### 4.3 建议读写路径（A6 重构后）
 
-```go
-// internal/data/evolution_suggestion_repo.go
+> `internal/data/evolution_suggestion_repo.go` 已删除（A6），不再有独立的 L3 Repo 实现。
 
-type evolutionSuggestionRepo struct {
-    data *Data
-}
+L3 建议读写全部经由 biz 层 `EvolutionUsecase` + `UnifiedEvolutionStore` 端口，data 层由 `UnifiedEvolutionRepo`（raw SQL、方言感知占位符、事务感知 `RWDB()` 访问器）承载：
 
-func NewEvolutionSuggestionRepo(data *Data) biz.EvolutionSuggestionRepo
+| 操作 | 路径 |
+|------|------|
+| 列表 | `store.ListByTargetAndAction(agent, agentID, evolve_agent, status)` → `evolutionViewFromUnified` 逐行重建视图 |
+| 单条 | `store.GetByID(id)` → nil 时返回 `apierror.NotFound` |
+| 创建 | `unifiedFromEvolutionView` 转换 → `store.Create`（pending 唯一索引兜底去重） |
+| 状态更新 | `store.UpdateStatus(id, status, actor, reason)`（`applied` 填充 `applied_at` 列；`approved`/`rejected` 经方言感知 `JSONSetMulti` 合并 metadata 的 `approved_at`/`rejected_by`/`resolved_at` 等视图字段） |
+| 快照写入 | `store.UpdateMetadataKey(id, EvoMetaPreApplySnapshot, json)`（`savePreApplySnapshot`） |
 
-// ListByAgent 按 agent_id 查询，可选 status 过滤，按 created_at 倒序
-func (r *evolutionSuggestionRepo) ListByAgent(ctx, agentID, status) ([]biz.EvolutionSuggestion, error)
-
-// GetByID 单条查询，ent.IsNotFound 时返回 fmt.Errorf("suggestion not found")
-func (r *evolutionSuggestionRepo) GetByID(ctx, id) (biz.EvolutionSuggestion, error)
-
-// Create 创建建议，自动填充 created_at
-func (r *evolutionSuggestionRepo) Create(ctx, s) (biz.EvolutionSuggestion, error)
-
-// UpdateStatus 更新状态，status="applied" 时同步填充 applied_at
-func (r *evolutionSuggestionRepo) UpdateStatus(ctx, id, status) (biz.EvolutionSuggestion, error)
-
-// UpdateSnapshot 更新 pre_apply_snapshot 字段
-func (r *evolutionSuggestionRepo) UpdateSnapshot(ctx, id, snapshot) error
-```
-
-所有读写均通过 `r.data.RW().Read(ctx)` / `r.data.RW().Write(ctx)` 事务感知访问器，遵循 DB-R6 红线。
+指标查询仍由 `internal/data/evolution_metrics_repo.go`（Ent/事务感知读）实现，读写均通过 `r.data.RW().Read(ctx)` / `r.data.RW().Write(ctx)` 事务感知访问器，遵循 DB-R6 红线。
 
 ---
 
@@ -375,25 +364,41 @@ func (s *AgentService) RejectEvolutionSuggestion(ctx, req) (*v1.EvolutionSuggest
 var ProviderSet = wire.NewSet(
     // ... 现有 ...
     NewEvolutionMetricsRepo,
-    NewEvolutionSuggestionRepo,
+    NewUnifiedEvolutionRepo,   // A6：统一进化存储（NewEvolutionSuggestionRepo 已移除）
 )
 
 // internal/biz/biz.go — ProviderSet
-var ProviderSet = wire.NewSet(
-    // ... 现有 ...
-    NewEvolutionUsecase,
-)
+// NOTE(A1)：EvolutionUsecase / LearningLoopUsecase / SkillEvolutionUsecase
+// 需要 SetOrchestrator / SetTxProvider，无法以裸构造函数表达，
+// 已从本集合排除，改由 cmd/admin/wire.go 的 provide* 函数组装。
 
 // internal/service/agent.go — AgentService 构造
 func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, ...) *AgentService
 
-// cmd/admin/wire.go — EvolutionScanner Provider
-func provideEvolutionScanner(evo *biz.EvolutionUsecase, logger log.Logger) *jobs.EvolutionScanner {
-    if strings.TrimSpace(os.Getenv("EVOLUTION_SCANNER_DISABLED")) == "1" {
-        return nil
-    }
-    return jobs.NewEvolutionScanner(0, evo, logger)
-}
+// cmd/admin/wire.go — 进化相关 providers（A1/A6 重构后）
+func provideEvolutionUsecase(
+    metricsRepo biz.EvolutionMetricsRepo,
+    unifiedRepo *data.UnifiedEvolutionRepo,
+    agents biz.AgentRepository,
+    tp biz.EvolutionTxProvider,   // data.Data 实现
+    lg loggateway.Logger,
+) *biz.EvolutionUsecase          // → biz.ProvideEvolutionUsecase（注入事务提供者）
+
+func provideSkillEvolutionOrchestrator(...) *biz.SkillEvolutionOrchestrator
+    // 组装统一编排器并注册三个触发器：
+    //   PatternTrigger（L1，原 SkillEvolutionScanner 职责）
+    //   HealthTrigger（L2，原 CuratorWorker 触发职责）
+    //   AgentConfigTrigger（L3，A6 移植自 EvolutionUsecase.ScanAgent）
+
+func provideEvolutionOrchestratorWorker(
+    orch *biz.SkillEvolutionOrchestrator,
+    agents biz.AgentRepository,
+    skills biz.SkillQueryReader,
+    lg loggateway.Logger,
+) *jobs.EvolutionOrchestratorWorker
+    // EVOLUTION_ORCHESTRATOR_DISABLED=1 时返回 nil
+    // 统一自动进化触发入口（A1），取代 legacy EvolutionScanner /
+    // SkillEvolutionScanner 触发半区 / CuratorWorker 触发半区
 ```
 
 ---
@@ -411,36 +416,34 @@ func provideEvolutionScanner(evo *biz.EvolutionUsecase, logger log.Logger) *jobs
 
 按日聚合返回 `[]MetricDataPoint`，供前端绘制趋势图。
 
-### 7.2 建议生成（定时任务）
+### 7.2 建议生成（定时任务，A6 重构后）
+
+> legacy `internal/cronrunner/jobs/evolution_scanner.go`（`EvolutionScanner`）与 `internal/biz/evolution_scan.go` 已删除（A6）。L3 自动扫描由统一编排 worker 驱动。
 
 ```go
-// internal/cronrunner/jobs/evolution_scanner.go
+// internal/cronrunner/jobs/evolution_orchestrator_worker.go
 
-type EvolutionScanner struct {
-    interval time.Duration
-    evo      *biz.EvolutionUsecase
-    log      *log.Helper
-}
+type EvolutionOrchestratorWorker struct { /* interval 默认 30 分钟 */ }
 
-// NewEvolutionScanner 创建扫描器，interval ≤ 0 时默认 30 分钟
-func NewEvolutionScanner(interval time.Duration, evo *biz.EvolutionUsecase, logger log.Logger) *EvolutionScanner
+// NewEvolutionOrchestratorWorker 创建 worker，interval ≤ 0 时默认 30 分钟
+func NewEvolutionOrchestratorWorker(interval time.Duration, orch *biz.SkillEvolutionOrchestrator, agents biz.AgentRepository, skills biz.SkillQueryReader, logger loggateway.Logger) *EvolutionOrchestratorWorker
 
 // Start 阻塞运行直到 ctx 取消，使用 safego.Go 隔离 panic
-func (w *EvolutionScanner) Start(ctx context.Context)
+func (w *EvolutionOrchestratorWorker) Start(ctx context.Context)
 ```
 
-`EvolutionUsecase.ScanAgent` 扫描逻辑（`internal/biz/evolution_scan.go`）：
+`AgentConfigTrigger.Check`（`internal/biz/skill_evolution_triggers.go`，移植自 legacy `EvolutionUsecase.ScanAgent`）扫描逻辑：
 
-1. 跨流水线去重：检查 orchestrator / coordinator 是否已有 pending 建议
-2. 读取 `AgentRuntimeSettings`，校验 `EvolutionSuggestionsEnabled` 或 `EvoEnabled`
-3. 获取近 30d 指标，校验 `EvoMinEpisodes`（默认 3）/ `EvoMinNegativeFeedback`（默认 2）阈值
-4. 阈值触发：
-   - 工具成功率 < 0.75 → 生成 `type=prompt` 建议
-   - 检索质量 < 0.60 → 生成 `type=skill` 建议
-   - 负反馈累积 → 生成 `type=persona` 建议
-5. `ensurePendingSuggestion` 去重：同 agent + 同 type + 同 title 的 pending 建议已存在则跳过
+1. L3 opt-in 门控：读取 `AgentRuntimeSettings`，`EvolutionSuggestionsEnabled` 或 `EvoEnabled` 均未开启则跳过
+2. 获取近 30d 指标（复用 `collectEvolutionMetrics`），校验 `EvoMinEpisodes`（默认 3）/ `EvoMinNegativeFeedback`（默认 2）阈值
+3. 阈值触发：
+   - 工具成功率 < 0.75 → 生成 `legacy_type=prompt` 建议
+   - 检索质量 < 0.60 → 生成 `legacy_type=skill` 建议
+   - 负反馈累积 → 生成 `legacy_type=persona` 建议
+4. 去重：经 `UnifiedEvolutionQueryReader` 拉取 pending 建议，同 `legacy_type + title`（metadata）已存在则跳过；DB pending 唯一索引兜底 check-then-create 竞态
+5. 建议落库为 unified 行：`target_type=agent` / `action_type=evolve_agent` / `trigger_source=agent_config`
 
-启动注册：`cmd/admin/workers.go` 中 `goAfterReady("evolution", ...)` 在 ReadinessGate 通过后启动。
+启动注册：`cmd/admin/workers.go` 中 `goAfterReady("evolution_orchestrator", ...)` 在 ReadinessGate 通过后启动；`EVOLUTION_ORCHESTRATOR_DISABLED=1` 可禁用。
 
 ### 7.3 SOUL.md / IDENTITY.md 演化
 
@@ -558,9 +561,11 @@ export type EvolutionSuggestion = {
 
 - [ ] Proto 中 `evolution_*` / `evo_*` / `guardrail_*` 字段与 `AgentRuntimeSettings` Go struct 一一对应
 - [ ] `EvolutionStateMachine` 覆盖所有合法状态转换，终态无出边
-- [ ] `ApplySuggestion` 在写入 prompt files 前保存 `PreApplySnapshot`，支持 `RollbackSuggestion` 恢复
-- [ ] `EvolutionScanner` 通过 `safego.Go` 隔离 panic，失败时聚合错误并由 worker 打 Warn 日志
-- [ ] Repo 层所有读写通过 `r.data.RW().Read(ctx)` / `r.data.RW().Write(ctx)` 事务感知访问器
+- [ ] `ApplySuggestion` 在写入 prompt files 前保存 `PreApplySnapshot`（metadata JSON），支持 `RollbackSuggestion` 恢复
+- [ ] 注入 `EvolutionTxProvider` 时，apply/rollback 的 prompt files 替换 + 状态更新在单事务中执行（红线 #24）
+- [ ] `EvolutionOrchestratorWorker` 通过 `safego.Go` 隔离 panic，失败时聚合错误并由 worker 打 Warn 日志
+- [ ] 指标 Repo 读写通过 `r.data.RW().Read(ctx)` / `r.data.RW().Write(ctx)` 事务感知访问器；建议读写经 `UnifiedEvolutionRepo`（raw SQL + `RWDB()` 事务感知 + 方言感知占位符/JSON 路径）
+- [ ] L3 建议视图经 `evolutionViewFromUnified` 从 unified 行重建，proto 契约不变（A6）
 - [ ] `ApplyEvolutionSuggestion` Service 方法在应用后调用 `invalidateAgentBuildCache` 失效缓存
 - [ ] 前端 `AgentEvolutionPanel.vue` 与 `useAgentEvolutionPanel.ts` 数据流单向：composable → store → 组件
-- [ ] 跨流水线去重优先使用 `SkillEvolutionOrchestrator`，回退到 `EvolutionCoordinator`
+- [ ] L3 自动扫描由 `AgentConfigTrigger` 执行（opt-in 门控 + type+title 去重），跨流水线 pending 去重由 `SkillEvolutionOrchestrator` 统一处理

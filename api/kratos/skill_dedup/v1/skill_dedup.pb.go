@@ -366,7 +366,7 @@ type MergeSkillsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SourceSkillId string                 `protobuf:"bytes,1,opt,name=source_skill_id,json=sourceSkillId,proto3" json:"source_skill_id,omitempty"`
 	TargetSkillId string                 `protobuf:"bytes,2,opt,name=target_skill_id,json=targetSkillId,proto3" json:"target_skill_id,omitempty"`
-	Strategy      string                 `protobuf:"bytes,3,opt,name=strategy,proto3" json:"strategy,omitempty"`                       // append (default) | ai_fuse | manual_pick
+	Strategy      string                 `protobuf:"bytes,3,opt,name=strategy,proto3" json:"strategy,omitempty"`                       // append (default) | rule_fuse | manual_pick  (ai_fuse is deprecated and rejected)
 	ManualBody    string                 `protobuf:"bytes,4,opt,name=manual_body,json=manualBody,proto3" json:"manual_body,omitempty"` // required when strategy = manual_pick
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

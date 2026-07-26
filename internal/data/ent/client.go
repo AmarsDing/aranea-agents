@@ -35,7 +35,6 @@ import (
 	"aranea-agents/internal/data/ent/evaldataset"
 	"aranea-agents/internal/data/ent/evalrun"
 	"aranea-agents/internal/data/ent/eventdeliveryoutbox"
-	"aranea-agents/internal/data/ent/evolutionsuggestion"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/failurepattern"
 	"aranea-agents/internal/data/ent/flowlogevent"
@@ -82,7 +81,6 @@ import (
 	"aranea-agents/internal/data/ent/sessionruntime"
 	"aranea-agents/internal/data/ent/sessionturn"
 	"aranea-agents/internal/data/ent/sessionv2"
-	"aranea-agents/internal/data/ent/skillevolutionsuggestion"
 	"aranea-agents/internal/data/ent/skillimportjob"
 	"aranea-agents/internal/data/ent/skillinvocation"
 	"aranea-agents/internal/data/ent/skillversion"
@@ -168,8 +166,6 @@ type Client struct {
 	EvalRun *EvalRunClient
 	// EventDeliveryOutbox is the client for interacting with the EventDeliveryOutbox builders.
 	EventDeliveryOutbox *EventDeliveryOutboxClient
-	// EvolutionSuggestion is the client for interacting with the EvolutionSuggestion builders.
-	EvolutionSuggestion *EvolutionSuggestionClient
 	// ExperienceReport is the client for interacting with the ExperienceReport builders.
 	ExperienceReport *ExperienceReportClient
 	// FailurePattern is the client for interacting with the FailurePattern builders.
@@ -262,8 +258,6 @@ type Client struct {
 	SessionTurn *SessionTurnClient
 	// SessionV2 is the client for interacting with the SessionV2 builders.
 	SessionV2 *SessionV2Client
-	// SkillEvolutionSuggestion is the client for interacting with the SkillEvolutionSuggestion builders.
-	SkillEvolutionSuggestion *SkillEvolutionSuggestionClient
 	// SkillImportJob is the client for interacting with the SkillImportJob builders.
 	SkillImportJob *SkillImportJobClient
 	// SkillInvocation is the client for interacting with the SkillInvocation builders.
@@ -345,7 +339,6 @@ func (c *Client) init() {
 	c.EvalDataset = NewEvalDatasetClient(c.config)
 	c.EvalRun = NewEvalRunClient(c.config)
 	c.EventDeliveryOutbox = NewEventDeliveryOutboxClient(c.config)
-	c.EvolutionSuggestion = NewEvolutionSuggestionClient(c.config)
 	c.ExperienceReport = NewExperienceReportClient(c.config)
 	c.FailurePattern = NewFailurePatternClient(c.config)
 	c.FlowLogEvent = NewFlowLogEventClient(c.config)
@@ -392,7 +385,6 @@ func (c *Client) init() {
 	c.SessionRuntime = NewSessionRuntimeClient(c.config)
 	c.SessionTurn = NewSessionTurnClient(c.config)
 	c.SessionV2 = NewSessionV2Client(c.config)
-	c.SkillEvolutionSuggestion = NewSkillEvolutionSuggestionClient(c.config)
 	c.SkillImportJob = NewSkillImportJobClient(c.config)
 	c.SkillInvocation = NewSkillInvocationClient(c.config)
 	c.SkillVersion = NewSkillVersionClient(c.config)
@@ -532,7 +524,6 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		EvalDataset:                NewEvalDatasetClient(cfg),
 		EvalRun:                    NewEvalRunClient(cfg),
 		EventDeliveryOutbox:        NewEventDeliveryOutboxClient(cfg),
-		EvolutionSuggestion:        NewEvolutionSuggestionClient(cfg),
 		ExperienceReport:           NewExperienceReportClient(cfg),
 		FailurePattern:             NewFailurePatternClient(cfg),
 		FlowLogEvent:               NewFlowLogEventClient(cfg),
@@ -579,7 +570,6 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		SessionRuntime:             NewSessionRuntimeClient(cfg),
 		SessionTurn:                NewSessionTurnClient(cfg),
 		SessionV2:                  NewSessionV2Client(cfg),
-		SkillEvolutionSuggestion:   NewSkillEvolutionSuggestionClient(cfg),
 		SkillImportJob:             NewSkillImportJobClient(cfg),
 		SkillInvocation:            NewSkillInvocationClient(cfg),
 		SkillVersion:               NewSkillVersionClient(cfg),
@@ -646,7 +636,6 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		EvalDataset:                NewEvalDatasetClient(cfg),
 		EvalRun:                    NewEvalRunClient(cfg),
 		EventDeliveryOutbox:        NewEventDeliveryOutboxClient(cfg),
-		EvolutionSuggestion:        NewEvolutionSuggestionClient(cfg),
 		ExperienceReport:           NewExperienceReportClient(cfg),
 		FailurePattern:             NewFailurePatternClient(cfg),
 		FlowLogEvent:               NewFlowLogEventClient(cfg),
@@ -693,7 +682,6 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		SessionRuntime:             NewSessionRuntimeClient(cfg),
 		SessionTurn:                NewSessionTurnClient(cfg),
 		SessionV2:                  NewSessionV2Client(cfg),
-		SkillEvolutionSuggestion:   NewSkillEvolutionSuggestionClient(cfg),
 		SkillImportJob:             NewSkillImportJobClient(cfg),
 		SkillInvocation:            NewSkillInvocationClient(cfg),
 		SkillVersion:               NewSkillVersionClient(cfg),
@@ -751,25 +739,24 @@ func (c *Client) Use(hooks ...Hook) {
 		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
 		c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam, c.CronTask,
 		c.CronTaskRun, c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
-		c.EvalRun, c.EventDeliveryOutbox, c.EvolutionSuggestion, c.ExperienceReport,
-		c.FailurePattern, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
-		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
-		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
-		c.GraphTaskRun, c.HealRecord, c.LlmProviderModel, c.MediaProvider,
-		c.MemberSessionV2, c.ModelPricingRule, c.ModelTokenUsageHourly,
-		c.Orchestration, c.OrchestrationStep, c.Organization, c.PlanBoardV2,
-		c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
-		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
-		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
-		c.SelfCheckReport, c.Session, c.SessionMetrics, c.SessionParticipant,
-		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
-		c.SessionV2, c.SkillEvolutionSuggestion, c.SkillImportJob, c.SkillInvocation,
-		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
-		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
-		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
-		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
-		c.UsageQuota, c.UserEmbeddingSetting,
+		c.EvalRun, c.EventDeliveryOutbox, c.ExperienceReport, c.FailurePattern,
+		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
+		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
+		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
+		c.HealRecord, c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2,
+		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
+		c.OrchestrationStep, c.Organization, c.PlanBoardV2, c.PlanStepV2,
+		c.PlatformChannel, c.PlatformChannelCredential, c.PlatformChannelDelivery,
+		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
+		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
+		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport, c.Session,
+		c.SessionMetrics, c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint,
+		c.SessionRuntime, c.SessionTurn, c.SessionV2, c.SkillImportJob,
+		c.SkillInvocation, c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter,
+		c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2,
+		c.TeamStageV2, c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation,
+		c.ToolInvocationAudit, c.ToolInvocationParam, c.ToolResultBlob,
+		c.ToolResultReplacement, c.TurnV2, c.UsageQuota, c.UserEmbeddingSetting,
 	} {
 		n.Use(hooks...)
 	}
@@ -784,25 +771,24 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
 		c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam, c.CronTask,
 		c.CronTaskRun, c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
-		c.EvalRun, c.EventDeliveryOutbox, c.EvolutionSuggestion, c.ExperienceReport,
-		c.FailurePattern, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
-		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
-		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
-		c.GraphTaskRun, c.HealRecord, c.LlmProviderModel, c.MediaProvider,
-		c.MemberSessionV2, c.ModelPricingRule, c.ModelTokenUsageHourly,
-		c.Orchestration, c.OrchestrationStep, c.Organization, c.PlanBoardV2,
-		c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
-		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
-		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
-		c.SelfCheckReport, c.Session, c.SessionMetrics, c.SessionParticipant,
-		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
-		c.SessionV2, c.SkillEvolutionSuggestion, c.SkillImportJob, c.SkillInvocation,
-		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
-		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
-		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
-		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
-		c.UsageQuota, c.UserEmbeddingSetting,
+		c.EvalRun, c.EventDeliveryOutbox, c.ExperienceReport, c.FailurePattern,
+		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
+		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
+		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
+		c.HealRecord, c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2,
+		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
+		c.OrchestrationStep, c.Organization, c.PlanBoardV2, c.PlanStepV2,
+		c.PlatformChannel, c.PlatformChannelCredential, c.PlatformChannelDelivery,
+		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
+		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
+		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport, c.Session,
+		c.SessionMetrics, c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint,
+		c.SessionRuntime, c.SessionTurn, c.SessionV2, c.SkillImportJob,
+		c.SkillInvocation, c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter,
+		c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2,
+		c.TeamStageV2, c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation,
+		c.ToolInvocationAudit, c.ToolInvocationParam, c.ToolResultBlob,
+		c.ToolResultReplacement, c.TurnV2, c.UsageQuota, c.UserEmbeddingSetting,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -859,8 +845,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.EvalRun.mutate(ctx, m)
 	case *EventDeliveryOutboxMutation:
 		return c.EventDeliveryOutbox.mutate(ctx, m)
-	case *EvolutionSuggestionMutation:
-		return c.EvolutionSuggestion.mutate(ctx, m)
 	case *ExperienceReportMutation:
 		return c.ExperienceReport.mutate(ctx, m)
 	case *FailurePatternMutation:
@@ -953,8 +937,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SessionTurn.mutate(ctx, m)
 	case *SessionV2Mutation:
 		return c.SessionV2.mutate(ctx, m)
-	case *SkillEvolutionSuggestionMutation:
-		return c.SkillEvolutionSuggestion.mutate(ctx, m)
 	case *SkillImportJobMutation:
 		return c.SkillImportJob.mutate(ctx, m)
 	case *SkillInvocationMutation:
@@ -4323,139 +4305,6 @@ func (c *EventDeliveryOutboxClient) mutate(ctx context.Context, m *EventDelivery
 		return (&EventDeliveryOutboxDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown EventDeliveryOutbox mutation op: %q", m.Op())
-	}
-}
-
-// EvolutionSuggestionClient is a client for the EvolutionSuggestion schema.
-type EvolutionSuggestionClient struct {
-	config
-}
-
-// NewEvolutionSuggestionClient returns a client for the EvolutionSuggestion from the given config.
-func NewEvolutionSuggestionClient(c config) *EvolutionSuggestionClient {
-	return &EvolutionSuggestionClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `evolutionsuggestion.Hooks(f(g(h())))`.
-func (c *EvolutionSuggestionClient) Use(hooks ...Hook) {
-	c.hooks.EvolutionSuggestion = append(c.hooks.EvolutionSuggestion, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `evolutionsuggestion.Intercept(f(g(h())))`.
-func (c *EvolutionSuggestionClient) Intercept(interceptors ...Interceptor) {
-	c.inters.EvolutionSuggestion = append(c.inters.EvolutionSuggestion, interceptors...)
-}
-
-// Create returns a builder for creating a EvolutionSuggestion entity.
-func (c *EvolutionSuggestionClient) Create() *EvolutionSuggestionCreate {
-	mutation := newEvolutionSuggestionMutation(c.config, OpCreate)
-	return &EvolutionSuggestionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of EvolutionSuggestion entities.
-func (c *EvolutionSuggestionClient) CreateBulk(builders ...*EvolutionSuggestionCreate) *EvolutionSuggestionCreateBulk {
-	return &EvolutionSuggestionCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *EvolutionSuggestionClient) MapCreateBulk(slice any, setFunc func(*EvolutionSuggestionCreate, int)) *EvolutionSuggestionCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &EvolutionSuggestionCreateBulk{err: fmt.Errorf("calling to EvolutionSuggestionClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*EvolutionSuggestionCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &EvolutionSuggestionCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for EvolutionSuggestion.
-func (c *EvolutionSuggestionClient) Update() *EvolutionSuggestionUpdate {
-	mutation := newEvolutionSuggestionMutation(c.config, OpUpdate)
-	return &EvolutionSuggestionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *EvolutionSuggestionClient) UpdateOne(_m *EvolutionSuggestion) *EvolutionSuggestionUpdateOne {
-	mutation := newEvolutionSuggestionMutation(c.config, OpUpdateOne, withEvolutionSuggestion(_m))
-	return &EvolutionSuggestionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *EvolutionSuggestionClient) UpdateOneID(id string) *EvolutionSuggestionUpdateOne {
-	mutation := newEvolutionSuggestionMutation(c.config, OpUpdateOne, withEvolutionSuggestionID(id))
-	return &EvolutionSuggestionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for EvolutionSuggestion.
-func (c *EvolutionSuggestionClient) Delete() *EvolutionSuggestionDelete {
-	mutation := newEvolutionSuggestionMutation(c.config, OpDelete)
-	return &EvolutionSuggestionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *EvolutionSuggestionClient) DeleteOne(_m *EvolutionSuggestion) *EvolutionSuggestionDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *EvolutionSuggestionClient) DeleteOneID(id string) *EvolutionSuggestionDeleteOne {
-	builder := c.Delete().Where(evolutionsuggestion.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &EvolutionSuggestionDeleteOne{builder}
-}
-
-// Query returns a query builder for EvolutionSuggestion.
-func (c *EvolutionSuggestionClient) Query() *EvolutionSuggestionQuery {
-	return &EvolutionSuggestionQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeEvolutionSuggestion},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a EvolutionSuggestion entity by its id.
-func (c *EvolutionSuggestionClient) Get(ctx context.Context, id string) (*EvolutionSuggestion, error) {
-	return c.Query().Where(evolutionsuggestion.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *EvolutionSuggestionClient) GetX(ctx context.Context, id string) *EvolutionSuggestion {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// Hooks returns the client hooks.
-func (c *EvolutionSuggestionClient) Hooks() []Hook {
-	return c.hooks.EvolutionSuggestion
-}
-
-// Interceptors returns the client interceptors.
-func (c *EvolutionSuggestionClient) Interceptors() []Interceptor {
-	return c.inters.EvolutionSuggestion
-}
-
-func (c *EvolutionSuggestionClient) mutate(ctx context.Context, m *EvolutionSuggestionMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&EvolutionSuggestionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&EvolutionSuggestionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&EvolutionSuggestionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&EvolutionSuggestionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown EvolutionSuggestion mutation op: %q", m.Op())
 	}
 }
 
@@ -10577,139 +10426,6 @@ func (c *SessionV2Client) mutate(ctx context.Context, m *SessionV2Mutation) (Val
 	}
 }
 
-// SkillEvolutionSuggestionClient is a client for the SkillEvolutionSuggestion schema.
-type SkillEvolutionSuggestionClient struct {
-	config
-}
-
-// NewSkillEvolutionSuggestionClient returns a client for the SkillEvolutionSuggestion from the given config.
-func NewSkillEvolutionSuggestionClient(c config) *SkillEvolutionSuggestionClient {
-	return &SkillEvolutionSuggestionClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `skillevolutionsuggestion.Hooks(f(g(h())))`.
-func (c *SkillEvolutionSuggestionClient) Use(hooks ...Hook) {
-	c.hooks.SkillEvolutionSuggestion = append(c.hooks.SkillEvolutionSuggestion, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `skillevolutionsuggestion.Intercept(f(g(h())))`.
-func (c *SkillEvolutionSuggestionClient) Intercept(interceptors ...Interceptor) {
-	c.inters.SkillEvolutionSuggestion = append(c.inters.SkillEvolutionSuggestion, interceptors...)
-}
-
-// Create returns a builder for creating a SkillEvolutionSuggestion entity.
-func (c *SkillEvolutionSuggestionClient) Create() *SkillEvolutionSuggestionCreate {
-	mutation := newSkillEvolutionSuggestionMutation(c.config, OpCreate)
-	return &SkillEvolutionSuggestionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of SkillEvolutionSuggestion entities.
-func (c *SkillEvolutionSuggestionClient) CreateBulk(builders ...*SkillEvolutionSuggestionCreate) *SkillEvolutionSuggestionCreateBulk {
-	return &SkillEvolutionSuggestionCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *SkillEvolutionSuggestionClient) MapCreateBulk(slice any, setFunc func(*SkillEvolutionSuggestionCreate, int)) *SkillEvolutionSuggestionCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &SkillEvolutionSuggestionCreateBulk{err: fmt.Errorf("calling to SkillEvolutionSuggestionClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*SkillEvolutionSuggestionCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &SkillEvolutionSuggestionCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for SkillEvolutionSuggestion.
-func (c *SkillEvolutionSuggestionClient) Update() *SkillEvolutionSuggestionUpdate {
-	mutation := newSkillEvolutionSuggestionMutation(c.config, OpUpdate)
-	return &SkillEvolutionSuggestionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *SkillEvolutionSuggestionClient) UpdateOne(_m *SkillEvolutionSuggestion) *SkillEvolutionSuggestionUpdateOne {
-	mutation := newSkillEvolutionSuggestionMutation(c.config, OpUpdateOne, withSkillEvolutionSuggestion(_m))
-	return &SkillEvolutionSuggestionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *SkillEvolutionSuggestionClient) UpdateOneID(id string) *SkillEvolutionSuggestionUpdateOne {
-	mutation := newSkillEvolutionSuggestionMutation(c.config, OpUpdateOne, withSkillEvolutionSuggestionID(id))
-	return &SkillEvolutionSuggestionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for SkillEvolutionSuggestion.
-func (c *SkillEvolutionSuggestionClient) Delete() *SkillEvolutionSuggestionDelete {
-	mutation := newSkillEvolutionSuggestionMutation(c.config, OpDelete)
-	return &SkillEvolutionSuggestionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *SkillEvolutionSuggestionClient) DeleteOne(_m *SkillEvolutionSuggestion) *SkillEvolutionSuggestionDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *SkillEvolutionSuggestionClient) DeleteOneID(id string) *SkillEvolutionSuggestionDeleteOne {
-	builder := c.Delete().Where(skillevolutionsuggestion.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &SkillEvolutionSuggestionDeleteOne{builder}
-}
-
-// Query returns a query builder for SkillEvolutionSuggestion.
-func (c *SkillEvolutionSuggestionClient) Query() *SkillEvolutionSuggestionQuery {
-	return &SkillEvolutionSuggestionQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeSkillEvolutionSuggestion},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a SkillEvolutionSuggestion entity by its id.
-func (c *SkillEvolutionSuggestionClient) Get(ctx context.Context, id string) (*SkillEvolutionSuggestion, error) {
-	return c.Query().Where(skillevolutionsuggestion.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *SkillEvolutionSuggestionClient) GetX(ctx context.Context, id string) *SkillEvolutionSuggestion {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// Hooks returns the client hooks.
-func (c *SkillEvolutionSuggestionClient) Hooks() []Hook {
-	return c.hooks.SkillEvolutionSuggestion
-}
-
-// Interceptors returns the client interceptors.
-func (c *SkillEvolutionSuggestionClient) Interceptors() []Interceptor {
-	return c.inters.SkillEvolutionSuggestion
-}
-
-func (c *SkillEvolutionSuggestionClient) mutate(ctx context.Context, m *SkillEvolutionSuggestionMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&SkillEvolutionSuggestionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&SkillEvolutionSuggestionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&SkillEvolutionSuggestionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&SkillEvolutionSuggestionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown SkillEvolutionSuggestion mutation op: %q", m.Op())
-	}
-}
-
 // SkillImportJobClient is a client for the SkillImportJob schema.
 type SkillImportJobClient struct {
 	config
@@ -13777,20 +13493,19 @@ type (
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, DeptLeadMessage,
 		EvalCase, EvalCaseResult, EvalDataset, EvalRun, EventDeliveryOutbox,
-		EvolutionSuggestion, ExperienceReport, FailurePattern, FlowLogEvent,
-		GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2,
-		GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog,
-		GraphTaskRun, HealRecord, LlmProviderModel, MediaProvider, MemberSessionV2,
-		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
-		Organization, PlanBoardV2, PlanStepV2, PlatformChannel,
-		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
-		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
-		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
-		SelfCheckReport, Session, SessionMetrics, SessionParticipant, SessionRun,
-		SessionRunCheckpoint, SessionRuntime, SessionTurn, SessionV2,
-		SkillEvolutionSuggestion, SkillImportJob, SkillInvocation, SkillVersion,
-		StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun,
-		TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
+		ExperienceReport, FailurePattern, FlowLogEvent, GatewayWebhook,
+		GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2, GraphTask,
+		GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun,
+		HealRecord, LlmProviderModel, MediaProvider, MemberSessionV2, ModelPricingRule,
+		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
+		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
+		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
+		PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin, PlatformSkill,
+		PlatformTool, ResourceAccessAudit, SchemaMigration, SelfCheckReport, Session,
+		SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
+		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
+		SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team,
+		TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
 		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
 		ToolResultReplacement, TurnV2, UsageQuota, UserEmbeddingSetting []ent.Hook
 	}
@@ -13800,20 +13515,19 @@ type (
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, DeptLeadMessage,
 		EvalCase, EvalCaseResult, EvalDataset, EvalRun, EventDeliveryOutbox,
-		EvolutionSuggestion, ExperienceReport, FailurePattern, FlowLogEvent,
-		GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2,
-		GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog,
-		GraphTaskRun, HealRecord, LlmProviderModel, MediaProvider, MemberSessionV2,
-		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
-		Organization, PlanBoardV2, PlanStepV2, PlatformChannel,
-		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
-		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
-		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
-		SelfCheckReport, Session, SessionMetrics, SessionParticipant, SessionRun,
-		SessionRunCheckpoint, SessionRuntime, SessionTurn, SessionV2,
-		SkillEvolutionSuggestion, SkillImportJob, SkillInvocation, SkillVersion,
-		StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun,
-		TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
+		ExperienceReport, FailurePattern, FlowLogEvent, GatewayWebhook,
+		GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2, GraphTask,
+		GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun,
+		HealRecord, LlmProviderModel, MediaProvider, MemberSessionV2, ModelPricingRule,
+		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
+		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
+		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
+		PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin, PlatformSkill,
+		PlatformTool, ResourceAccessAudit, SchemaMigration, SelfCheckReport, Session,
+		SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
+		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
+		SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team,
+		TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
 		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
 		ToolResultReplacement, TurnV2, UsageQuota,
 		UserEmbeddingSetting []ent.Interceptor

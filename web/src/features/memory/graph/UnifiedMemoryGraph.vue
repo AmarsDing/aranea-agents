@@ -1,5 +1,5 @@
 // Container: approved — 跨层关联图谱 Tab：左过滤栏 + Vue Flow 画布（去 Controls/MiniMap，保留缩放拖拽）+ 右详情抽屉 +
-底部状态栏。
+// 底部状态栏（回放期间切换为 Top-K 激活排行）。
 <template>
   <div class="column q-gutter-md">
     <q-banner v-if="error" rounded class="bg-negative text-white">
@@ -57,7 +57,47 @@
           </div>
         </div>
 
-        <div class="graph-status text-caption row items-center q-gutter-md">
+        <!-- 底部状态栏：回放期间切换为 Top-K 激活排行 -->
+        <div v-if="replayActive" class="graph-replay-status">
+          <div class="row items-center q-gutter-sm q-mb-xs">
+            <q-icon name="play_circle" size="18px" color="secondary" />
+            <span class="text-subtitle2">{{ t('memory.unifiedGraph.replay.title') }}</span>
+            <q-space />
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
+              icon="stop"
+              :title="t('memory.unifiedGraph.replay.stop')"
+              @click="stopReplay"
+            />
+          </div>
+          <q-list dense class="graph-replay-list">
+            <q-item v-for="item in replay.topKRanking.value" :key="item.node_id" dense class="graph-replay-item">
+              <q-item-section side>
+                <q-badge
+                  :style="{ background: memoryLayerColor(nodeLayerOf(item.node_id)) }"
+                  rounded
+                  class="graph-replay__dot"
+                />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label class="ellipsis" :title="nodeLabelOf(item.node_id)">
+                  {{ nodeLabelOf(item.node_id) }}
+                  <q-badge v-if="!nodeInGraph(item.node_id)" outline color="grey-6" class="q-ml-xs">
+                    {{ t('memory.unifiedGraph.replay.outOfGraph') }}
+                  </q-badge>
+                </q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <q-badge outline color="secondary">{{ item.activation.toFixed(2) }}</q-badge>
+                <q-badge color="grey-5" class="q-ml-xs">hop {{ item.hop_count }}</q-badge>
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </div>
+        <div v-else class="graph-status text-caption row items-center q-gutter-md">
           <span>
             {{
               t('memory.unifiedGraph.statusBar', { nodes: nodeCount, edges: edgeCount, filtered: filteredEdgeCount })
@@ -76,12 +116,13 @@
       :edges="selectedEdges"
       :nodes="nodes"
       @open-in-browse="(node) => emit('open-in-browse', node)"
+      @replay-activation="onReplayActivation"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, markRaw, ref, toRef, useTemplateRef, watch } from 'vue';
+import { computed, markRaw, onUnmounted, ref, toRef, useTemplateRef, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import { VueFlow, type Edge, type Node } from '@vue-flow/core';
@@ -96,6 +137,8 @@ import {
   UNIFIED_NODE_HEIGHT,
 } from './memoryGraphLayout';
 import { useUnifiedMemoryGraph } from './composables/useUnifiedMemoryGraph';
+import { useActivationReplay } from './composables/useActivationReplay';
+import { memoryLayerColor } from '../panorama/layerMeta';
 import UnifiedGraphNode from './UnifiedGraphNode.vue';
 import GraphFilterRail from './GraphFilterRail.vue';
 import GraphNodeDetailDrawer from './GraphNodeDetailDrawer.vue';
@@ -129,6 +172,9 @@ const {
   searchNodes,
 } = useUnifiedMemoryGraph(toRef(props, 'agentId'));
 
+const replay = useActivationReplay();
+const replayActive = computed(() => replay.playing.value || replay.activeHops.value.size > 0);
+
 const nodeTypes = { unified: markRaw(UnifiedGraphNode) };
 const vueFlowRef = useTemplateRef('vueFlowRef');
 const drawerOpen = ref(false);
@@ -150,6 +196,7 @@ const flowNodes = computed<Node[]>(() => {
       kind: n.kind,
       weight: n.weight,
       isFocus: n.id === focusId.value,
+      activation: replay.activationOf(n.id),
     },
   }));
 });
@@ -157,21 +204,26 @@ const flowNodes = computed<Node[]>(() => {
 const flowEdges = computed<Edge[]>(() =>
   edges.value.map((e) => {
     const base = unifiedEdgeStyle(e, nodesById.value.get(e.source)?.layer ?? '');
+    const edgeKey = `${e.source}->${e.target}:${e.type}`;
+    const isReplayEdge = replay.highlightEdges.value.has(edgeKey);
     const connected =
       selectedNodeId.value !== null && (e.source === selectedNodeId.value || e.target === selectedNodeId.value);
-    const style = connected
-      ? { ...base, stroke: 'var(--q-primary)', strokeWidth: '2.5', strokeDasharray: undefined }
-      : selectedNodeId.value
-        ? { ...base, opacity: '0.25' }
-        : base;
+    const style = isReplayEdge
+      ? { ...base, stroke: 'var(--q-secondary)', strokeWidth: '3', opacity: '1' }
+      : connected
+        ? { ...base, stroke: 'var(--q-primary)', strokeWidth: '2.5', strokeDasharray: undefined }
+        : selectedNodeId.value
+          ? { ...base, opacity: '0.25' }
+          : base;
     return {
-      id: `${e.source}->${e.target}:${e.type}`,
+      id: edgeKey,
       source: e.source,
       target: e.target,
       style,
       label: e.type === 'entity_relation' ? e.label : undefined,
       labelStyle: { fontSize: '10px', fill: 'var(--color-text-secondary)' },
       labelBgStyle: { fill: 'transparent' },
+      animated: isReplayEdge,
     };
   }),
 );
@@ -205,9 +257,38 @@ function onLocate(nodeId: string) {
   }
 }
 
+/** P4 扩散激活回放：以实体为 center 聚焦图谱 → 调 API → 逐跳点亮。 */
+async function onReplayActivation(node: UnifiedGraphNodeData) {
+  drawerOpen.value = false;
+  // 聚焦该实体节点
+  await load(node.id);
+  // 开始回放动画
+  await replay.replay(node.id);
+}
+
+function stopReplay() {
+  replay.stop();
+}
+
+// 排行列表辅助函数
+function nodeLabelOf(nodeId: string): string {
+  return nodesById.value.get(nodeId)?.label ?? nodeId;
+}
+function nodeLayerOf(nodeId: string): string {
+  return nodesById.value.get(nodeId)?.layer ?? '';
+}
+function nodeInGraph(nodeId: string): boolean {
+  return nodesById.value.has(nodeId);
+}
+
 // 选中节点在刷新后消失时同步关闭抽屉。
 watch(selectedNodeId, (id) => {
   if (!id) drawerOpen.value = false;
+});
+
+// 组件 unmount 时清理定时器
+onUnmounted(() => {
+  replay.dispose();
 });
 </script>
 
@@ -245,5 +326,29 @@ watch(selectedNodeId, (id) => {
 
 .graph-status__focus {
   color: var(--q-primary);
+}
+
+/* P4 回放状态栏 */
+.graph-replay-status {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+}
+
+.graph-replay-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.graph-replay-item {
+  min-height: 28px;
+  padding: 2px 0;
+}
+
+.graph-replay__dot {
+  display: inline-block;
+  height: 8px;
+  width: 8px;
 }
 </style>

@@ -101,6 +101,14 @@ func (s *SkillEvolutionSuggestionService) ApproveSkillEvolutionSuggestion(ctx co
 						loggateway.Err(err))
 				}
 			}
+			// P0 Reload stage: guarded no-op unless the suggestion is
+			// approved + lifecycle=ready + sandbox_passed with a draft.
+			if err := s.uc.ApplyApprovedSuggestion(bgCtx, suggestionID); err != nil {
+				s.lg.Warn("ApproveSkillEvolutionSuggestion: ApplyApprovedSuggestion failed",
+					loggateway.StepID("skill_evo_suggestion.approve"),
+					loggateway.Str("suggestion_id", suggestionID),
+					loggateway.Err(err))
+			}
 		})
 	}
 

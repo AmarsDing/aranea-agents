@@ -49,10 +49,7 @@
       </div>
       <div v-if="ioPreviewLine" class="graph-flow-node__io">{{ truncate(ioPreviewLine, 64) }}</div>
       <div v-if="fineStatusLabel && !showStatusChip" class="graph-flow-node__fine-status">{{ fineStatusLabel }}</div>
-      <div
-        v-if="data.issue"
-        :class="['graph-flow-node__issue-bar', `graph-flow-node__issue-bar--${data.issue.level}`]"
-      >
+      <div v-if="data.issue" :class="['graph-flow-node__issue-bar', `graph-flow-node__issue-bar--${data.issue.level}`]">
         <q-icon :name="data.issue.level === 'error' ? 'error' : 'warning'" size="12px" />
         <span class="graph-flow-node__issue-text">{{ data.issue.message }}</span>
         <q-tooltip>{{ data.issue.message }}</q-tooltip>
@@ -74,12 +71,18 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Handle, Position } from '@vue-flow/core';
-import { NODE_TYPE_STYLES, EXECUTION_STATUS_STYLES, type NodeType, type NodeIssueInfo } from '../../features/graph/types';
+import {
+  NODE_TYPE_STYLES,
+  EXECUTION_STATUS_STYLES,
+  type NodeType,
+  type NodeIssueInfo,
+} from '../../features/graph/types';
 import { validationSuggestionKey } from '../../features/graph/validationIssues';
 import { truncate } from '../../features/graph/utils';
 import { AGENT_NODE_STATUS_STYLES, DISPLAY_STATUS_STYLES } from '../../features/orchestration/agentNodeStatusStyles';
 import type { AgentNodeStatus, DisplayStatus } from '../../features/orchestration/types';
 import OrchestrationStatusChip from '../orchestration/OrchestrationStatusChip.vue';
+import { teamNodeRoleLabel } from '../../features/orchestration/teamNodeDisplay';
 
 const { t } = useI18n();
 
@@ -137,7 +140,7 @@ const primaryLabel = computed(() => props.data.label || props.data.nodeId);
 
 const roleLabel = computed(() => {
   if (props.data.nodeType !== 'agent' || !props.data.role) return '';
-  return props.data.role;
+  return teamNodeRoleLabel(props.data.role);
 });
 
 const agentKeyLine = computed(() => {

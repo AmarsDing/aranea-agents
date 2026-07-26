@@ -42,6 +42,11 @@ function roleLabel(role: string): string {
   return ROLE_LABELS[key] ?? (role || '成员');
 }
 
+/** 节点角色的中文展示标签（画布节点卡片等用户视角场景使用；未知角色原样透传）。 */
+export function teamNodeRoleLabel(role: string): string {
+  return roleLabel(role);
+}
+
 function findMemberForNode(nodeId: string, agentKey: string, definition: TeamDefinition | null) {
   const members = definition?.members ?? [];
   const graphNode = definition?.graph?.nodes?.find((n) => n.id === nodeId);
@@ -116,7 +121,9 @@ function nodeDisplayName(n: CompiledGraphNodeView, definition: TeamDefinition | 
 }
 
 function nodeRole(n: CompiledGraphNodeView): string {
-  return String(n.role ?? '').trim().toLowerCase();
+  return String(n.role ?? '')
+    .trim()
+    .toLowerCase();
 }
 
 function compiledAgentNodes(compiled: CompileTeamGraphResult | null): CompiledGraphNodeView[] {

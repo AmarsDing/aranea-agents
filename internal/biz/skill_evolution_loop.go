@@ -30,6 +30,18 @@ const (
 
 	// GateMaxDraftLength is the maximum allowed draft body length in characters.
 	GateMaxDraftLength = 10000
+
+	// GateHarmfulRuleRejectThreshold 是 effectiveness 维度的拒绝阈值：当前
+	// 正文中 harmful 计数达到该值的规则，若 draft 原样保留其内容则拒绝
+	// （必须重写或移除）。
+	GateHarmfulRuleRejectThreshold = 3
+
+	// ReplayPassThreshold 是数据集回放（Solve 接线）的通过率阈值，低于
+	// 该值 Gate 功能维拒绝。
+	ReplayPassThreshold = 0.6
+
+	// ReplayMaxCases 是单次回放最多执行的评测用例数。
+	ReplayMaxCases = 5
 )
 
 // ── Evolution Loop Types ──────────────────────────────────────────────────────
@@ -125,6 +137,34 @@ type SkillLintChecker interface {
 	LintCheck(ctx context.Context, draftBody string) (bool, string, error)
 }
 
+// ── Solve 接线（P1：数据集回放进 Gate）──────────────────────────────────────
+
+// ErrNoReplayDataset 表示该 skill 没有对应的 evaluation 数据集（按名称
+// 寻址约定未命中）；Gate 功能维视为跳过，不阻断。
+var ErrNoReplayDataset = apierror.NotFound("SKILL_REPLAY", "no evaluation dataset bound to this skill")
+
+// SkillReplayResult 是一次数据集回放的汇总结果。
+type SkillReplayResult struct {
+	DatasetID   string
+	DatasetName string
+	Total       int
+	Passed      int
+	PassRate    float64
+}
+
+// SkillReplayRunner 用 evaluation 数据集对 draft 做真实任务回放（Solve 阶段
+// 的功能验证）。
+//
+// 语义约定（best-effort，与项目降级风格一致）：
+//   - 无绑定数据集 → 返回 ErrNoReplayDataset（Gate 跳过回放检查）
+//   - LLM 未配置等回放不可用 → 返回错误（Gate 跳过回放检查，不阻断）
+//   - 回放成功但通过率 < ReplayPassThreshold → 返回结果，Gate 拒绝
+//
+// Stability:evolving
+type SkillReplayRunner interface {
+	Replay(ctx context.Context, skillID string, draftBody string, maxCases int) (*SkillReplayResult, error)
+}
+
 // ── SkillEvolutionLoop ────────────────────────────────────────────────────────
 
 // EvolutionLoopOptions holds optional parameters for the evolution loop Run method.
@@ -141,10 +181,6 @@ type SkillEvolutionLoop struct {
 	gate     SkillGateVerifier
 	reloader SkillReloader
 	lg       loggateway.Logger
-
-	// Optional: suggestion reader/writer for expiration mechanism.
-	suggestionReader SkillEvolutionSuggestionReader
-	suggestionWriter SkillEvolutionSuggestionWriter
 }
 
 // NewSkillEvolutionLoop constructs a SkillEvolutionLoop.
@@ -164,12 +200,6 @@ func NewSkillEvolutionLoop(
 		reloader: reloader,
 		lg:       lg,
 	}
-}
-
-// SetSuggestionAccess sets the suggestion reader/writer for expiration mechanism.
-func (l *SkillEvolutionLoop) SetSuggestionAccess(reader SkillEvolutionSuggestionReader, writer SkillEvolutionSuggestionWriter) {
-	l.suggestionReader = reader
-	l.suggestionWriter = writer
 }
 
 // Run executes the five-stage evolution loop:
@@ -323,32 +353,59 @@ func (l *SkillEvolutionLoop) reload(ctx context.Context, skillID string, draftBo
 
 // ── GateVerifier ──────────────────────────────────────────────────────────────
 
+// GateOption configures optional GateVerifier dimensions.
+type GateOption func(*GateVerifier)
+
+// WithReplayRunner enables the dataset-replay functional check (P1 Solve
+// 接线): after the sandbox check passes, the draft is replayed against the
+// skill's bound evaluation dataset.
+func WithReplayRunner(r SkillReplayRunner) GateOption {
+	return func(v *GateVerifier) { v.replayRunner = r }
+}
+
+// WithSkillLookup enables the effectiveness dimension (P1 计数归因): rules
+// whose harmful counter reached GateHarmfulRuleRejectThreshold must not be
+// kept unchanged in the draft.
+func WithSkillLookup(r SkillLookupReader) GateOption {
+	return func(v *GateVerifier) { v.skillLookup = r }
+}
+
 // GateVerifier performs multi-dimensional Gate verification for skill evolution.
 // Dimensions:
-//   - Functional correctness (Sandbox Runner or rule-based fallback)
+//   - Functional correctness (Sandbox Runner + optional dataset replay, or
+//     rule-based fallback)
 //   - Security (sensitive info detection: API key, password, token)
 //   - Performance (Token/duration comparison, >20% degradation → reject)
 //   - Style (lint check / length check)
+//   - Effectiveness (harmful-count rules must not be kept unchanged; only
+//     when WithSkillLookup is wired)
 type GateVerifier struct {
 	sandboxRunner SandboxRunner
 	lintChecker   SkillLintChecker
+	replayRunner  SkillReplayRunner
+	skillLookup   SkillLookupReader
 }
 
 // NewGateVerifier constructs a GateVerifier. sandboxRunner and lintChecker are
-// optional; if nil, rule-based fallback checks are used.
-func NewGateVerifier(sandboxRunner SandboxRunner, lintChecker SkillLintChecker) *GateVerifier {
-	return &GateVerifier{
+// optional; if nil, rule-based fallback checks are used. Optional dimensions
+// (replay / effectiveness) are enabled via GateOption.
+func NewGateVerifier(sandboxRunner SandboxRunner, lintChecker SkillLintChecker, opts ...GateOption) *GateVerifier {
+	v := &GateVerifier{
 		sandboxRunner: sandboxRunner,
 		lintChecker:   lintChecker,
 	}
+	for _, opt := range opts {
+		opt(v)
+	}
+	return v
 }
 
-// Verify performs all four Gate verification dimensions. Any failure rejects
+// Verify performs all five Gate verification dimensions. Any failure rejects
 // the evolution.
 func (v *GateVerifier) Verify(ctx context.Context, skillID string, draftBody string, observation *EvolutionObservationReport) (*GateVerificationResult, error) {
 	var checks []GateCheckResult
 
-	// Dimension 1: Functional correctness
+	// Dimension 1: Functional correctness (sandbox + optional dataset replay)
 	checks = append(checks, v.verifyFunctional(ctx, skillID, draftBody))
 
 	// Dimension 2: Security
@@ -359,6 +416,9 @@ func (v *GateVerifier) Verify(ctx context.Context, skillID string, draftBody str
 
 	// Dimension 4: Style
 	checks = append(checks, v.verifyStyle(ctx, draftBody))
+
+	// Dimension 5: Effectiveness (P1 计数归因)
+	checks = append(checks, v.verifyEffectiveness(ctx, skillID, draftBody))
 
 	allPassed := true
 	for _, c := range checks {
@@ -374,8 +434,19 @@ func (v *GateVerifier) Verify(ctx context.Context, skillID string, draftBody str
 	}, nil
 }
 
-// verifyFunctional checks functional correctness via Sandbox Runner or rule-based fallback.
+// verifyFunctional checks functional correctness via Sandbox Runner (plus the
+// optional dataset replay) or rule-based fallback.
 func (v *GateVerifier) verifyFunctional(ctx context.Context, skillID string, draftBody string) GateCheckResult {
+	base := v.verifyFunctionalBase(ctx, skillID, draftBody)
+	if !base.Passed {
+		return base
+	}
+	return v.verifyReplay(ctx, skillID, draftBody)
+}
+
+// verifyFunctionalBase is the pre-P1 functional check: Sandbox Runner when
+// wired, otherwise rule-based structure/content checks.
+func (v *GateVerifier) verifyFunctionalBase(ctx context.Context, skillID string, draftBody string) GateCheckResult {
 	if v.sandboxRunner != nil {
 		passed, _, err := v.sandboxRunner.RunSandbox(ctx, skillID, draftBody)
 		if err != nil {
@@ -435,6 +506,67 @@ func (v *GateVerifier) verifyFunctional(ctx context.Context, skillID string, dra
 		}
 	}
 	return GateCheckResult{Name: "functional", Passed: true}
+}
+
+// verifyReplay runs the dataset-replay functional check (P1 Solve 接线).
+// Skip semantics: no replay runner wired, no bound dataset, or replay
+// infrastructure unavailable all degrade to pass (the functional verdict then
+// rests on the sandbox/base check alone). Only a completed replay below the
+// pass threshold rejects.
+func (v *GateVerifier) verifyReplay(ctx context.Context, skillID string, draftBody string) GateCheckResult {
+	if v.replayRunner == nil {
+		return GateCheckResult{Name: "functional", Passed: true}
+	}
+	result, err := v.replayRunner.Replay(ctx, skillID, draftBody, ReplayMaxCases)
+	if err != nil || result == nil {
+		// ErrNoReplayDataset 与回放不可用（LLM 未配置等）均跳过，不阻断。
+		return GateCheckResult{Name: "functional", Passed: true, Reason: "dataset replay skipped"}
+	}
+	if result.Total > 0 && result.PassRate < ReplayPassThreshold {
+		return GateCheckResult{
+			Name:   "functional",
+			Passed: false,
+			Reason: fmt.Sprintf("dataset replay pass rate %.0f%% < %.0f%% (dataset=%s, %d/%d)",
+				result.PassRate*100, ReplayPassThreshold*100, result.DatasetName, result.Passed, result.Total),
+		}
+	}
+	return GateCheckResult{
+		Name:   "functional",
+		Passed: true,
+		Reason: fmt.Sprintf("dataset replay passed (dataset=%s, %d/%d)", result.DatasetName, result.Passed, result.Total),
+	}
+}
+
+// verifyEffectiveness is the fifth Gate dimension (P1 计数归因): current-body
+// rules whose harmful counter reached GateHarmfulRuleRejectThreshold must not
+// be kept unchanged in the draft — the Curator must rewrite or remove them.
+// Skips (passes) when no skill lookup is wired, the current body has no rule
+// blocks, or the lookup fails (nil-safe degradation).
+func (v *GateVerifier) verifyEffectiveness(ctx context.Context, skillID string, draftBody string) GateCheckResult {
+	if v.skillLookup == nil {
+		return GateCheckResult{Name: "effectiveness", Passed: true}
+	}
+	currentBody, err := v.skillLookup.GetLatestSkillMarkdown(ctx, skillID)
+	if err != nil || !HasRuleBlocks(currentBody) {
+		return GateCheckResult{Name: "effectiveness", Passed: true}
+	}
+	currentDoc := ParseRuleBlocks(currentBody)
+	draftDoc := ParseRuleBlocks(draftBody)
+	for _, r := range currentDoc.Rules() {
+		if r.Harmful < GateHarmfulRuleRejectThreshold {
+			continue
+		}
+		draftRule := draftDoc.RuleByID(r.ID)
+		if draftRule != nil && strings.TrimSpace(draftRule.Content) == strings.TrimSpace(r.Content) {
+			return GateCheckResult{
+				Name:   "effectiveness",
+				Passed: false,
+				Reason: fmt.Sprintf("rule %q kept unchanged despite harmful count %d (>= %d): consecutive ineffective improvements, rewrite or remove it",
+					r.ID, r.Harmful, GateHarmfulRuleRejectThreshold),
+			}
+		}
+	}
+	return GateCheckResult{Name: "effectiveness", Passed: true}
 }
 
 // Sensitive info detection patterns.

@@ -15,6 +15,10 @@ export type KnowledgeCollection = {
   workspace: string | undefined;
   createdAt: string | undefined;
   updatedAt: string | undefined;
+  // Vault fields (V2: local folder as source of truth). Empty = legacy collection.
+  rootPath: string | undefined;
+  syncState: string | undefined;
+  lastSyncAt: string | undefined;
 };
 
 // KnowledgeDocument is one source document ingested into a collection.
@@ -31,6 +35,11 @@ export type KnowledgeDocument = {
   updatedAt: string | undefined;
   extractSupported: boolean | undefined;
   organized: boolean | undefined;
+  // Vault + summary-card fields (P3 explorer list/hover-card first-density).
+  relPath: string | undefined;
+  summary: string | undefined;
+  tags: string[] | undefined;
+  docType: string | undefined;
 };
 
 // DocumentContent is the full extracted/organized text of one document (preview).
@@ -119,6 +128,56 @@ export type ListDocumentsRequest = {
   offset: number | undefined;
 };
 
+// VaultTreeNode is one entry of a vault folder listing (P3 explorer).
+// kind=dir nodes are aggregates derived from document rel_paths;
+// kind=file nodes mirror one indexed document.
+export type VaultTreeNode = {
+  name: string | undefined;
+  path: string | undefined;
+  kind: string | undefined;
+  // file-only fields (empty/zero for dir):
+  docId: string | undefined;
+  summary: string | undefined;
+  tags: string[] | undefined;
+  docType: string | undefined;
+  status: string | undefined;
+  sizeBytes: number | undefined;
+  updatedAt: string | undefined;
+};
+
+export type ListVaultTreeRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+  // prefix selects the folder whose DIRECT children are returned; empty = root.
+  prefix: string | undefined;
+};
+
+export type ListVaultTreeResponse = {
+  items: VaultTreeNode[] | undefined;
+};
+
+// KnowledgeLink is one resolved document relation (P3 关联区, R-3 来源标注).
+export type KnowledgeLink = {
+  targetDocId: string | undefined;
+  targetSource: string | undefined;
+  targetRelPath: string | undefined;
+  linkType: string | undefined;
+  context: string | undefined;
+  direction: string | undefined;
+};
+
+export type ListDocumentLinksRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  linkType: string | undefined;
+};
+
+export type ListDocumentLinksResponse = {
+  items: KnowledgeLink[] | undefined;
+};
+
 export type ListDocumentsResponse = {
   items: KnowledgeDocument[] | undefined;
   total: number | undefined;
@@ -198,6 +257,10 @@ export interface KnowledgeService {
   GetDocumentContent(request: GetDocumentContentRequest): Promise<DocumentContent>;
   DeleteDocument(request: DeleteDocumentRequest): Promise<wellKnownEmpty>;
   MoveDocument(request: MoveDocumentRequest): Promise<KnowledgeDocument>;
+  // Vault explorer (P3): lazy folder listing derived from document rel_paths.
+  ListVaultTree(request: ListVaultTreeRequest): Promise<ListVaultTreeResponse>;
+  // Document relations with source-type annotation (P3 关联区, R-3).
+  ListDocumentLinks(request: ListDocumentLinksRequest): Promise<ListDocumentLinksResponse>;
   // Search
   Search(request: SearchRequest): Promise<SearchResponse>;
   GetEmbedderConfig(request: GetEmbedderConfigRequest): Promise<EmbedderConfig>;
@@ -398,6 +461,52 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "MoveDocument",
       }) as Promise<KnowledgeDocument>;
+    },
+    ListVaultTree(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/vaults/${request.collectionId}/tree`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.prefix) {
+        queryParams.push(`prefix=${encodeURIComponent(request.prefix.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ListVaultTree",
+      }) as Promise<ListVaultTreeResponse>;
+    },
+    ListDocumentLinks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/knowledge/documents/${request.id}/links`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.linkType) {
+        queryParams.push(`linkType=${encodeURIComponent(request.linkType.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ListDocumentLinks",
+      }) as Promise<ListDocumentLinksResponse>;
     },
     Search(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/search`; // eslint-disable-line quotes

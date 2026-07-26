@@ -78,9 +78,6 @@ type EvalRun func(*sql.Selector)
 // EventDeliveryOutbox is the predicate function for eventdeliveryoutbox builders.
 type EventDeliveryOutbox func(*sql.Selector)
 
-// EvolutionSuggestion is the predicate function for evolutionsuggestion builders.
-type EvolutionSuggestion func(*sql.Selector)
-
 // ExperienceReport is the predicate function for experiencereport builders.
 type ExperienceReport func(*sql.Selector)
 
@@ -218,9 +215,6 @@ type SessionTurn func(*sql.Selector)
 
 // SessionV2 is the predicate function for sessionv2 builders.
 type SessionV2 func(*sql.Selector)
-
-// SkillEvolutionSuggestion is the predicate function for skillevolutionsuggestion builders.
-type SkillEvolutionSuggestion func(*sql.Selector)
 
 // SkillImportJob is the predicate function for skillimportjob builders.
 type SkillImportJob func(*sql.Selector)

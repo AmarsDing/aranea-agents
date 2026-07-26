@@ -328,3 +328,80 @@ func TestLayerOverview_RequiresAgentID(t *testing.T) {
 		t.Fatal("expected error for empty agent id")
 	}
 }
+
+// ── P3: ListEpisodesAdmin（L2 情景浏览，design §10.6.1）──
+
+func TestListEpisodesAdmin_MapsRowsAndTotal(t *testing.T) {
+	l2 := &fakeL2AdminReader{
+		rows: [][]byte{
+			centerRowJSON(map[string]any{
+				"id": "ep1", "session_id": "s1", "agent_id": "agent-1",
+				"episode_kind": "task", "title": "季度复盘讨论", "outcome_summary": "完成复盘并产出结论",
+				"importance": 0.8, "consolidation_status": "consolidated", "consolidated_l3_count": 3,
+				"ended_at": "2026-07-20T01:00:00Z", "created_at": "2026-07-20T00:00:00Z",
+			}),
+			centerRowJSON(map[string]any{
+				"id": "ep2", "session_id": "s2", "agent_id": "agent-1",
+				"episode_kind": "task", "title": "待提炼任务", "outcome_summary": "",
+				"importance": 0.5, "consolidation_status": "pending", "consolidated_l3_count": 0,
+				"ended_at": "", "created_at": "2026-07-21T00:00:00Z",
+			}),
+		},
+		total: 21,
+	}
+	uc := NewMemoryAdminUsecase(&fakeCenterAdminDeps{}, nil, nil, nil, loggateway.NewNoop())
+	uc.SetMemoryCenterReaders(l2, &fakeL4RelReader{})
+
+	items, total, err := uc.ListEpisodesAdmin(context.Background(), "agent-1", "", 20, 0)
+	if err != nil {
+		t.Fatalf("ListEpisodesAdmin: %v", err)
+	}
+	if total != 21 {
+		t.Errorf("total: got %d, want 21", total)
+	}
+	if len(items) != 2 {
+		t.Fatalf("items: got %d, want 2", len(items))
+	}
+	ep := items[0]
+	if ep.ID != "ep1" || ep.Title != "季度复盘讨论" || ep.OutcomeSummary != "完成复盘并产出结论" {
+		t.Errorf("item[0] identity: got %+v", ep)
+	}
+	if ep.Kind != "task" || ep.SessionID != "s1" {
+		t.Errorf("item[0] kind/session: got %+v", ep)
+	}
+	if ep.Importance != 0.8 || ep.ConsolidationStatus != "consolidated" || ep.ConsolidatedL3Count != 3 {
+		t.Errorf("item[0] metrics: got %+v", ep)
+	}
+	if ep.CreatedAt != "2026-07-20T00:00:00Z" || ep.EndedAt != "2026-07-20T01:00:00Z" {
+		t.Errorf("item[0] timestamps: got %+v", ep)
+	}
+	if items[1].ConsolidationStatus != "pending" {
+		t.Errorf("item[1] status: got %q, want pending", items[1].ConsolidationStatus)
+	}
+}
+
+func TestListEpisodesAdmin_RequiresAgentID(t *testing.T) {
+	uc := NewMemoryAdminUsecase(&fakeCenterAdminDeps{}, nil, nil, nil, loggateway.NewNoop())
+	uc.SetMemoryCenterReaders(&fakeL2AdminReader{}, &fakeL4RelReader{})
+	if _, _, err := uc.ListEpisodesAdmin(context.Background(), "", "", 20, 0); err == nil {
+		t.Fatal("expected error for empty agent id")
+	}
+}
+
+func TestListEpisodesAdmin_ReaderNotWired(t *testing.T) {
+	uc := NewMemoryAdminUsecase(&fakeCenterAdminDeps{}, nil, nil, nil, loggateway.NewNoop())
+	if _, _, err := uc.ListEpisodesAdmin(context.Background(), "agent-1", "", 20, 0); err == nil {
+		t.Fatal("expected error when l2 reader not wired")
+	}
+}
+
+func TestListEpisodesAdmin_CapsLimit(t *testing.T) {
+	l2 := &fakeL2AdminReader{rows: [][]byte{}, total: 0}
+	uc := NewMemoryAdminUsecase(&fakeCenterAdminDeps{}, nil, nil, nil, loggateway.NewNoop())
+	uc.SetMemoryCenterReaders(l2, &fakeL4RelReader{})
+
+	// 不报错即视为通过：limit 超限被收敛而非拒绝（与 unified graph hops 上限同策略）。
+	if _, _, err := uc.ListEpisodesAdmin(context.Background(), "agent-1", "", 500, -3); err != nil {
+		t.Fatalf("ListEpisodesAdmin with out-of-range limit/offset: %v", err)
+	}
+}

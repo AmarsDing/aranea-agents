@@ -55,6 +55,80 @@ type UnifiedEvolutionSuggestion struct {
 	AppliedAt  *time.Time
 }
 
+// ── Metadata keys (A6 legacy view layer) ─────────────────────────────────────
+//
+// After the four-store convergence, legacy-only fields live in the Metadata
+// JSON column. The constants below are the contract between the backfill
+// migration (20261111), the writers in this package, and the service-layer
+// view conversion that reconstructs legacy proto messages.
+const (
+	// L1 skill_proposals
+	EvoMetaPatternHash = "pattern_hash"
+	EvoMetaPatternDesc = "pattern_desc"
+	EvoMetaApprovedAt  = "approved_at"
+	// L1 + L2 shared
+	EvoMetaRejectedBy      = "rejected_by"
+	EvoMetaRejectionReason = "rejection_reason"
+	// L2 skill_evolution_suggestions
+	EvoMetaResolvedAt      = "resolved_at"
+	EvoMetaSourceReportIDs = "source_report_ids"
+	EvoMetaDraftVersionID  = "draft_version_id"
+	EvoMetaParentVersionID = "parent_version_id"
+	EvoMetaEvolutionReason = "evolution_reason"
+	EvoMetaPreVerifyResult = "pre_verify_result"
+	// L3 evolution_suggestions
+	EvoMetaLegacyType       = "legacy_type"
+	EvoMetaTitle            = "title"
+	EvoMetaDiffPreview      = "diff_preview"
+	EvoMetaPreApplySnapshot = "pre_apply_snapshot"
+	// P1 delta 协议与计数归因（skill 路径）
+	// EvoMetaBaselineSuccessRate 记录触发时的基线成功率（7d 优先，无 7d 数据
+	// 时用 30d 值），JSON number，供下一周期 AttributeLastEvolution 裁决。
+	EvoMetaBaselineSuccessRate = "baseline_success_rate"
+	// EvoMetaDeltaOps 记录本次 draft 实际应用的 delta 操作序列 JSON（仅
+	// delta 模式），供归因提取 AffectedRuleIDs。
+	EvoMetaDeltaOps = "delta_ops"
+	// EvoMetaEffectiveness 记录归因裁决（helpful/harmful/neutral/
+	// insufficient_data），由下一进化周期回写到最近一条 applied 建议。
+	EvoMetaEffectiveness = "effectiveness"
+)
+
+// MetadataMap decodes Metadata into a map. Returns an empty map when Metadata
+// is nil or invalid; callers must not mutate the returned RawMessages.
+func (s *UnifiedEvolutionSuggestion) MetadataMap() map[string]json.RawMessage {
+	if s == nil || len(s.Metadata) == 0 {
+		return map[string]json.RawMessage{}
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(s.Metadata, &m); err != nil {
+		return map[string]json.RawMessage{}
+	}
+	return m
+}
+
+// MetaString returns the JSON-string value at key, or "" when the key is
+// absent, null, or not a JSON string.
+func (s *UnifiedEvolutionSuggestion) MetaString(key string) string {
+	raw, ok := s.MetadataMap()[key]
+	if !ok {
+		return ""
+	}
+	var v string
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return ""
+	}
+	return v
+}
+
+// MetaRaw returns the raw JSON value at key, or nil when absent/null.
+func (s *UnifiedEvolutionSuggestion) MetaRaw(key string) json.RawMessage {
+	raw, ok := s.MetadataMap()[key]
+	if !ok || string(raw) == "null" {
+		return nil
+	}
+	return raw
+}
+
 // UnifiedEvolutionCheckReader provides pending-check and latest-lookup queries.
 // Stability:evolving
 type UnifiedEvolutionCheckReader interface {
@@ -64,11 +138,23 @@ type UnifiedEvolutionCheckReader interface {
 }
 
 // UnifiedEvolutionQueryReader provides by-ID, list, and count queries.
+// The AndAction variants disambiguate views that share a target_type — e.g.
+// L1 proposals (agent + create_skill) vs L3 agent suggestions (agent +
+// evolve_agent) after the A6 physical convergence.
 // Stability:evolving
 type UnifiedEvolutionQueryReader interface {
 	GetByID(ctx context.Context, id string) (*UnifiedEvolutionSuggestion, error)
 	ListByTarget(ctx context.Context, targetType string, targetID string, status string, limit, offset int) ([]UnifiedEvolutionSuggestion, error)
 	CountByTarget(ctx context.Context, targetType string, targetID string, status string) (int, error)
+	ListByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, status string, limit, offset int) ([]UnifiedEvolutionSuggestion, error)
+	CountByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, status string) (int, error)
+}
+
+// UnifiedEvolutionPatternReader provides the L1 pattern-hash dedup lookup
+// (pattern_hash lives in metadata after the A6 convergence).
+// Stability:evolving
+type UnifiedEvolutionPatternReader interface {
+	GetLatestByPatternHash(ctx context.Context, agentID string, patternHash string) (*UnifiedEvolutionSuggestion, error)
 }
 
 // UnifiedEvolutionMutationWriter provides create and status/draft/lifecycle/sandbox mutations.
@@ -79,6 +165,13 @@ type UnifiedEvolutionMutationWriter interface {
 	UpdateDraftBody(ctx context.Context, id string, draftBody string) error
 	UpdateLifecycleStatus(ctx context.Context, id string, lifecycleStatus string) error
 	UpdateSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error
+}
+
+// UnifiedEvolutionMetadataWriter provides single-key JSON metadata updates
+// (e.g. the L3 pre_apply_snapshot saved before applying a suggestion).
+// Stability:evolving
+type UnifiedEvolutionMetadataWriter interface {
+	UpdateMetadataKey(ctx context.Context, id string, key string, value string) error
 }
 
 // UnifiedEvolutionExpirationWriter provides expiration of old pending suggestions.
@@ -96,6 +189,7 @@ type UnifiedEvolutionReader interface {
 // UnifiedEvolutionWriter 统一进化建议的写接口 (composition of sub-interfaces).
 type UnifiedEvolutionWriter interface {
 	UnifiedEvolutionMutationWriter
+	UnifiedEvolutionMetadataWriter
 	UnifiedEvolutionExpirationWriter
 }
 
@@ -104,31 +198,6 @@ type UnifiedEvolutionWriter interface {
 type UnifiedEvolutionStore interface {
 	UnifiedEvolutionReader
 	UnifiedEvolutionWriter
-}
-
-// LegacyEvolutionSuggestionStore provides access to the legacy SkillEvolutionSuggestion
-// storage. This interface will be removed once the unified migration is complete.
-// Stability:evolving
-type LegacyEvolutionSuggestionStore interface {
-	GetEvolutionSuggestion(ctx context.Context, id string) (*SkillEvolutionSuggestion, error)
-	ListEvolutionSuggestions(ctx context.Context, skillID string, status EvolutionSuggestionStatus, limit, offset int) ([]SkillEvolutionSuggestion, error)
-	CountEvolutionSuggestions(ctx context.Context, skillID string, status EvolutionSuggestionStatus) (int, error)
-	CreateSuggestion(ctx context.Context, s SkillEvolutionSuggestion) error
-	UpdateSuggestionStatus(ctx context.Context, id string, status EvolutionSuggestionStatus, resolvedBy string, reason string) error
-	UpdateSuggestionDraftBody(ctx context.Context, id string, draftBody string) error
-	UpdateSuggestionLifecycleStatus(ctx context.Context, id string, lifecycleStatus EvolutionLifecycleStatus) error
-	UpdateSuggestionSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error
-	ListPendingSuggestions(ctx context.Context, limit, offset int) ([]SkillEvolutionSuggestion, error)
-	GetLatestSuggestionBySkill(ctx context.Context, skillID string) (*SkillEvolutionSuggestion, error)
-}
-
-// EvolutionStoreBridge abstracts unified+legacy evolution suggestion storage access.
-// It combines UnifiedEvolutionStore with LegacyEvolutionSuggestionStore into a
-// single dependency to reduce field count on SkillIntelligenceUsecase.
-// Stability:evolving
-type EvolutionStoreBridge interface {
-	UnifiedEvolutionStore
-	LegacyEvolutionSuggestionStore
 }
 
 // EvolutionTrigger 进化触发器接口
@@ -261,6 +330,9 @@ func (o *SkillEvolutionOrchestrator) Approve(ctx context.Context, id string, app
 	if err != nil {
 		return err
 	}
+	if s == nil {
+		return apierror.NotFound("EVO_ORCHESTRATOR", "suggestion not found")
+	}
 	// AS-FSM-01: validate transition via state machine instead of direct string comparison.
 	if _, err := o.unifiedSM.Transition(ParseUnifiedEvolutionState(s.Status), UnifiedEvolutionEventApprove); err != nil {
 		return apierror.BadRequest("EVO_ORCHESTRATOR", "only pending suggestions can be approved, current status: "+s.Status)
@@ -273,6 +345,9 @@ func (o *SkillEvolutionOrchestrator) Reject(ctx context.Context, id string, reje
 	s, err := o.queryReader.GetByID(ctx, id)
 	if err != nil {
 		return err
+	}
+	if s == nil {
+		return apierror.NotFound("EVO_ORCHESTRATOR", "suggestion not found")
 	}
 	// AS-FSM-01: validate transition via state machine instead of direct string comparison.
 	if _, err := o.unifiedSM.Transition(ParseUnifiedEvolutionState(s.Status), UnifiedEvolutionEventReject); err != nil {
@@ -321,10 +396,15 @@ func (o *SkillEvolutionOrchestrator) CreateSuggestion(ctx context.Context, sugge
 	return nil
 }
 
-// isDuplicateKeyError 检查是否为 DB 唯一约束冲突错误
+// isDuplicateKeyError 检查是否为 DB 唯一约束冲突错误。
+// Postgres 路径经 entErrToBizErr 已译为 CodeConflict；SQLite 裸 SQL 路径
+// 落入 CodeInternal，需按驱动错误文案兜底匹配。
 func isDuplicateKeyError(err error) bool {
 	if err == nil {
 		return false
+	}
+	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeConflict {
+		return true
 	}
 	msg := err.Error()
 	lower := strings.ToLower(msg)

@@ -37,7 +37,7 @@ type TaskOrchestratorImpl struct {
 	checkpointSaver graph.CheckpointSaver
 	orchCache       *biz.OrchestrationCache
 	perfRepo        biz.AgentPerformanceRepository
-	evolutionSugg   biz.EvolutionSuggestionRepo
+	evolutionSugg   biz.EvolutionSuggestionCreator
 	eventBus        biz.EventBus
 	nl2graph        araneagraph.NL2GraphConverter
 	lg              loggateway.Logger
@@ -60,7 +60,7 @@ func NewTaskOrchestratorImpl(
 	checkpointSaver graph.CheckpointSaver,
 	orchCache *biz.OrchestrationCache,
 	perfRepo biz.AgentPerformanceRepository,
-	evolutionSugg biz.EvolutionSuggestionRepo,
+	evolutionSugg biz.EvolutionSuggestionCreator,
 	eventBus biz.EventBus,
 	nl2graph araneagraph.NL2GraphConverter,
 	lg loggateway.Logger,
@@ -1185,7 +1185,7 @@ func (o *TaskOrchestratorImpl) maybeCreateEvolutionSuggestion(ctx context.Contex
 	title := fmt.Sprintf("编排优化建议: %s", biz.TruncateRunes(handle.ID, biz.MaxSuggestionTitleLen))
 
 	// Dedup: skip if a pending suggestion with same type+title already exists
-	pending, listErr := o.evolutionSugg.ListByAgent(ctx, targetID, "pending")
+	pending, listErr := o.evolutionSugg.GetEvolutionSuggestions(ctx, targetID, "pending")
 	if listErr != nil {
 		o.lg.Warn("进化建议: 查询已有建议失败，跳过去重检查",
 			loggateway.StepID(biz.SpiritStepOrchestratorLearn),
@@ -1218,7 +1218,7 @@ func (o *TaskOrchestratorImpl) maybeCreateEvolutionSuggestion(ctx context.Contex
 		content += "暂无历史数据推荐替代拓扑，建议调整任务描述或减少团队数量。"
 	}
 
-	sugg, suggErr := o.evolutionSugg.Create(ctx, biz.EvolutionSuggestion{
+	sugg, suggErr := o.evolutionSugg.CreateSuggestion(ctx, biz.EvolutionSuggestion{
 		ID:        fmt.Sprintf("evo-orch-%s", uuid.NewString()[:12]),
 		AgentID:   targetID,
 		Type:      suggType,

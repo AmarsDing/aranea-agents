@@ -31,19 +31,21 @@ type RootCauseAnalyzer interface {
 	AnalyzeInvocationFailure(ctx context.Context, inv SkillInvocationWrite) (*RootCauseAnalysisResult, error)
 }
 
-// TECH-DEBT(COG): biz_deps=9, 上限=8; unified 迁移完成后 legacyStore 可移除降至 7
 // SkillIntelligenceUsecase provides skill intelligence analysis: invocation
 // analysis, scoring, and experience report generation.
 // Scoring and report generation are delegated to SkillScoringUsecase and
 // SkillReportUsecase respectively (AS-COG-01 decomposition).
+// Evolution suggestions are served exclusively by the unified store (A6);
+// legacy-view conversion happens at the method boundary.
 type SkillIntelligenceUsecase struct {
 	scorer       *SkillScoringUsecase
 	reporter     *SkillReportUsecase
 	unifiedStore UnifiedEvolutionStore
-	legacyStore  LegacyEvolutionSuggestionStore
 	aggregator   SkillHealthAggregator
 	orchestrator *SkillEvolutionOrchestrator
 	gate         SkillGateVerifier
+	evolver      SkillDraftEvolver
+	reloader     SkillReloader
 	lg           loggateway.Logger
 
 	unanalyzedReader SkillInvocationUnanalyzedReader
@@ -56,6 +58,13 @@ type SkillIntelligenceConfig struct {
 	Orchestrator     *SkillEvolutionOrchestrator
 	UnanalyzedReader SkillInvocationUnanalyzedReader
 	Gate             SkillGateVerifier
+	// Evolver generates LLM-based skill drafts (Curator role). nil → rule-based
+	// template fallback everywhere (P0: nil-safe degradation).
+	Evolver SkillDraftEvolver
+	// Reloader registers an approved evolved draft as a new skill version
+	// (Reload stage). nil → approval pipeline stops at lifecycle=ready with
+	// no version write (P0: nil-safe degradation).
+	Reloader SkillReloader
 }
 
 // NewSkillIntelligenceUsecase constructs a SkillIntelligenceUsecase.
@@ -63,7 +72,6 @@ func NewSkillIntelligenceUsecase(
 	scorer *SkillScoringUsecase,
 	reporter *SkillReportUsecase,
 	unifiedStore UnifiedEvolutionStore,
-	legacyStore LegacyEvolutionSuggestionStore,
 	aggregator SkillHealthAggregator,
 	lg loggateway.Logger,
 	opts ...SkillIntelligenceConfig,
@@ -72,7 +80,6 @@ func NewSkillIntelligenceUsecase(
 		scorer:       scorer,
 		reporter:     reporter,
 		unifiedStore: unifiedStore,
-		legacyStore:  legacyStore,
 		aggregator:   aggregator,
 		lg:           lg,
 	}
@@ -85,6 +92,12 @@ func NewSkillIntelligenceUsecase(
 		}
 		if opt.Gate != nil {
 			uc.gate = opt.Gate
+		}
+		if opt.Evolver != nil {
+			uc.evolver = opt.Evolver
+		}
+		if opt.Reloader != nil {
+			uc.reloader = opt.Reloader
 		}
 	}
 	return uc
@@ -99,37 +112,6 @@ func (uc *SkillIntelligenceUsecase) SetGate(g SkillGateVerifier) {
 	if g != nil {
 		uc.gate = g
 	}
-}
-
-// bridgeWrite executes the primary write operation and, if successful,
-// attempts the legacy write as a non-fatal side effect.
-// When unifiedStore is available it is treated as the primary; otherwise legacyStore
-// is used as the primary. Returns an error only when the chosen primary write fails.
-func (uc *SkillIntelligenceUsecase) bridgeWrite(
-	ctx context.Context,
-	unifiedFn func() error,
-	legacyFn func() error,
-	opName string,
-	targetID string,
-) error {
-	if uc.unifiedStore != nil && unifiedFn != nil {
-		if err := unifiedFn(); err != nil {
-			return err
-		}
-		if legacyFn != nil && uc.legacyStore != nil {
-			if bridgeErr := legacyFn(); bridgeErr != nil {
-				uc.lg.Warn("bridge write to legacy store failed",
-					loggateway.Str("op", opName),
-					loggateway.Str("id", targetID),
-					loggateway.Err(bridgeErr))
-			}
-		}
-		return nil
-	}
-	if uc.legacyStore != nil && legacyFn != nil {
-		return legacyFn()
-	}
-	return nil
 }
 
 // ExperienceReportListResult holds the result of a filtered experience report query,
@@ -184,12 +166,14 @@ func (uc *SkillIntelligenceUsecase) ScanAndGenerateReports(ctx context.Context) 
 
 // ExpirePendingSuggestions marks pending evolution suggestions as rejected
 // if they have been pending for more than EvoExpirationDays (7 days).
+// Skill-scoped suggestions only (L2 view); reads/writes the unified store (A6).
 func (uc *SkillIntelligenceUsecase) ExpirePendingSuggestions(ctx context.Context) ([]SkillEvolutionSuggestion, error) {
-	if uc.legacyStore == nil {
+	if uc.unifiedStore == nil {
 		return nil, nil
 	}
 
-	pending, err := uc.legacyStore.ListPendingSuggestions(ctx, 1000, 0)
+	// Empty targetID is a wildcard: list pending suggestions across all skills.
+	pending, err := uc.unifiedStore.ListByTarget(ctx, string(EvolutionTargetSkill), "", "pending", 1000, 0)
 	if err != nil {
 		uc.lg.Warn("ExpirePendingSuggestions: ListPending failed",
 			loggateway.StepID("skill_intelligence.expire"),
@@ -206,19 +190,17 @@ func (uc *SkillIntelligenceUsecase) ExpirePendingSuggestions(ctx context.Context
 			return expired, ctx.Err()
 		default:
 		}
-		if sug.Status != EvoSuggestionPending {
-			continue
-		}
 		if sug.CreatedAt.Before(expirationCutoff) {
-			if updateErr := uc.legacyStore.UpdateSuggestionStatus(ctx, sug.ID, EvoSuggestionRejected, "system", "auto-expired: pending for more than 7 days"); updateErr != nil {
+			if updateErr := uc.unifiedStore.UpdateStatus(ctx, sug.ID, "rejected", "system", "auto-expired: pending for more than 7 days"); updateErr != nil {
 				uc.lg.Warn("ExpirePendingSuggestions: UpdateStatus failed",
 					loggateway.StepID("skill_intelligence.expire"),
 					loggateway.Str("suggestion_id", sug.ID),
 					loggateway.Err(updateErr))
 				continue
 			}
-			sug.Status = EvoSuggestionRejected
-			expired = append(expired, sug)
+			view := unifiedToLegacySuggestionPtr(&sug)
+			view.Status = EvoSuggestionRejected
+			expired = append(expired, *view)
 		}
 	}
 
@@ -240,7 +222,7 @@ func (uc *SkillIntelligenceUsecase) ExpirePendingSuggestions(ctx context.Context
 //  3. Same failure tag >= 5 times in 7d (Curator Agent)
 //  4. Skill score < 60 (existing)
 func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, skillID string) (*SkillEvolutionSuggestion, error) {
-	if uc.aggregator == nil || (uc.unifiedStore == nil && uc.legacyStore == nil) {
+	if uc.aggregator == nil || uc.unifiedStore == nil {
 		return nil, nil
 	}
 
@@ -262,7 +244,6 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 	}
 
 	// Check cooldown: if a recent suggestion exists within the cooldown period, skip.
-	// Prefer unified reader over legacy suggestion reader.
 	latestUnified, uErr := uc.unifiedStore.GetLatestByTarget(ctx, "skill", skillID)
 	if uErr == nil && latestUnified != nil {
 		cooldownEnd := latestUnified.CreatedAt.Add(EvoTriggerCooldownHours * time.Hour)
@@ -365,7 +346,17 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 		CreatedAt:       time.Now().UTC(),
 	}
 
-	// Write to unified store first, then bridge to legacy store.
+	// Write to the unified store (single physical storage, A6).
+	// P1: 基线成功率随建议落库（7d 优先，无 7d 数据时用 30d 值），供下一
+	// 周期 AttributeLastEvolution 做有效性裁决。
+	baseline := metrics.SuccessRate
+	if err7d == nil && metrics7d.InvocationCount > 0 {
+		baseline = metrics7d.SuccessRate
+	}
+	metadata, _ := json.Marshal(map[string]any{
+		EvoMetaLegacyType:          string(triggerType),
+		EvoMetaBaselineSuccessRate: baseline,
+	})
 	unified := UnifiedEvolutionSuggestion{
 		ID:              suggestion.ID,
 		TargetType:      EvolutionTargetSkill,
@@ -376,22 +367,15 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 		Status:          "pending",
 		Priority:        1,
 		LifecycleStatus: "draft",
+		Metadata:        metadata,
 		CreatedAt:       suggestion.CreatedAt,
 	}
-	if err := uc.bridgeWrite(ctx,
-		func() error { return uc.unifiedStore.Create(ctx, unified) },
-		func() error { return uc.legacyStore.CreateSuggestion(ctx, *suggestion) },
-		"CheckEvolutionTriggers.Create",
-		skillID,
-	); err != nil {
-		// Primary (unified) failed; try legacy as fallback.
-		if legErr := uc.legacyStore.CreateSuggestion(ctx, *suggestion); legErr != nil {
-			uc.lg.Warn("CheckEvolutionTriggers: legacy Create suggestion failed",
-				loggateway.StepID("skill_intelligence.evo_trigger"),
-				loggateway.Str("skill_id", skillID),
-				loggateway.Err(legErr))
-			return nil, legErr
-		}
+	if err := uc.unifiedStore.Create(ctx, unified); err != nil {
+		uc.lg.Warn("CheckEvolutionTriggers: unified Create suggestion failed",
+			loggateway.StepID("skill_intelligence.evo_trigger"),
+			loggateway.Str("skill_id", skillID),
+			loggateway.Err(err))
+		return nil, err
 	}
 
 	return suggestion, nil
@@ -419,36 +403,20 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 		return nil, nil
 	}
 
-	// Step 2: Generate draft body (rule-based for v1).
-	draft := uc.generateRuleBasedDraft(suggestion)
+	// Step 2: Generate draft body (LLM evolver first, rule-based fallback).
+	draft, llmGenerated := uc.generateDraft(ctx, suggestion)
 
-	// Write draft body: prefer unified writer, fallback to legacy.
-	if uErr := uc.bridgeWrite(ctx,
-		func() error { return uc.unifiedStore.UpdateDraftBody(ctx, suggestion.ID, draft) },
-		func() error { return uc.legacyStore.UpdateSuggestionDraftBody(ctx, suggestion.ID, draft) },
-		"RunCuratorFlow.UpdateDraftBody",
-		suggestion.ID,
-	); uErr != nil {
-		// Primary (unified) failed; try legacy as fallback.
-		if legErr := uc.legacyStore.UpdateSuggestionDraftBody(ctx, suggestion.ID, draft); legErr != nil {
-			uc.lg.Warn("RunCuratorFlow: legacy UpdateDraftBody failed",
-				loggateway.StepID("skill_intelligence.curator_flow"),
-				loggateway.Str("suggestion_id", suggestion.ID),
-				loggateway.Err(legErr))
-			return nil, apierror.Wrap(legErr, apierror.CodeInternal, "SKILL_INTELLIGENCE")
-		}
+	if uErr := uc.unifiedStore.UpdateDraftBody(ctx, suggestion.ID, draft); uErr != nil {
+		uc.lg.Warn("RunCuratorFlow: unified UpdateDraftBody failed",
+			loggateway.StepID("skill_intelligence.curator_flow"),
+			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Err(uErr))
+		return nil, apierror.Wrap(uErr, apierror.CodeInternal, "SKILL_INTELLIGENCE")
 	}
 	suggestion.DraftSkillBody = draft
 
 	// Step 3: Set lifecycle to validating.
-	if lcErr := uc.bridgeWrite(ctx,
-		func() error { return uc.unifiedStore.UpdateLifecycleStatus(ctx, suggestion.ID, "validating") },
-		func() error {
-			return uc.legacyStore.UpdateSuggestionLifecycleStatus(ctx, suggestion.ID, EvoLifecycleValidating)
-		},
-		"RunCuratorFlow.UpdateLifecycleStatus(validating)",
-		suggestion.ID,
-	); lcErr != nil {
+	if lcErr := uc.unifiedStore.UpdateLifecycleStatus(ctx, suggestion.ID, "validating"); lcErr != nil {
 		uc.lg.Warn("RunCuratorFlow: UpdateLifecycleStatus(validating) failed",
 			loggateway.StepID("skill_intelligence.curator_flow"),
 			loggateway.Str("suggestion_id", suggestion.ID),
@@ -458,14 +426,7 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 
 	// Step 4: Sandbox validation — use GateVerifier if available, otherwise rule-based fallback.
 	passed, resultJSON := uc.runSandboxCheck(ctx, suggestion.ID, suggestion.SkillID, suggestion.DraftSkillBody)
-	if sbErr := uc.bridgeWrite(ctx,
-		func() error { return uc.unifiedStore.UpdateSandboxResult(ctx, suggestion.ID, passed, resultJSON) },
-		func() error {
-			return uc.legacyStore.UpdateSuggestionSandboxResult(ctx, suggestion.ID, passed, resultJSON)
-		},
-		"RunCuratorFlow.UpdateSandboxResult",
-		suggestion.ID,
-	); sbErr != nil {
+	if sbErr := uc.unifiedStore.UpdateSandboxResult(ctx, suggestion.ID, passed, resultJSON); sbErr != nil {
 		uc.lg.Warn("RunCuratorFlow: UpdateSandboxResult failed",
 			loggateway.StepID("skill_intelligence.curator_flow"),
 			loggateway.Str("suggestion_id", suggestion.ID),
@@ -478,16 +439,12 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 	// Rule-based template drafts are always marked as "draft" (needs human
 	// editing) rather than "ready", because they contain generic placeholder
 	// suggestions instead of skill-specific analysis. Only LLM-generated
-	// drafts should be promoted to "ready" after passing validation.
+	// drafts that passed validation are promoted to "ready".
 	lifecycleStatus := EvoLifecycleDraft
-	if lcErr := uc.bridgeWrite(ctx,
-		func() error { return uc.unifiedStore.UpdateLifecycleStatus(ctx, suggestion.ID, "draft") },
-		func() error {
-			return uc.legacyStore.UpdateSuggestionLifecycleStatus(ctx, suggestion.ID, lifecycleStatus)
-		},
-		"RunCuratorFlow.UpdateLifecycleStatus(final)",
-		suggestion.ID,
-	); lcErr != nil {
+	if llmGenerated && passed {
+		lifecycleStatus = EvoLifecycleReady
+	}
+	if lcErr := uc.unifiedStore.UpdateLifecycleStatus(ctx, suggestion.ID, string(lifecycleStatus)); lcErr != nil {
 		uc.lg.Warn("RunCuratorFlow: UpdateLifecycleStatus(final) failed",
 			loggateway.StepID("skill_intelligence.curator_flow"),
 			loggateway.Str("suggestion_id", suggestion.ID),
@@ -496,6 +453,91 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 	suggestion.LifecycleStatus = lifecycleStatus
 
 	return suggestion, nil
+}
+
+// generateDraft is the unified draft-generation entry: LLM evolver first
+// (Curator role), falling back to the rule-based template on any failure.
+// Returns (draft, llmGenerated) — llmGenerated gates lifecycle promotion to
+// "ready" (rule-based templates always stay "draft" per curator semantics).
+//
+// P1: draft 生成前组装归因裁决（上一次 applied 的有效性）与近期失败
+// trace，注入 Curator prompt；delta 模式下实际应用的 ops 落 delta_ops
+// metadata 账（供下一周期归因提取 AffectedRuleIDs）。
+func (uc *SkillIntelligenceUsecase) generateDraft(ctx context.Context, suggestion *SkillEvolutionSuggestion) (string, bool) {
+	if uc.evolver != nil {
+		var deltaOps []DeltaOp
+		draft, err := uc.evolver.EvolveDraft(ctx, SkillDraftInput{
+			SkillID:       suggestion.SkillID,
+			SuggestType:   suggestion.Type,
+			TriggerReason: suggestion.TriggerReason,
+			Attribution:   uc.AttributeLastEvolution(ctx, suggestion.SkillID),
+			Traces:        uc.collectFailureTraces(ctx, suggestion.SkillID),
+			DeltaOpsOut:   &deltaOps,
+		})
+		if err == nil {
+			uc.persistDeltaOps(ctx, suggestion.ID, deltaOps)
+			return draft, true
+		}
+		uc.lg.Warn("generateDraft: LLM evolver failed, falling back to rule-based",
+			loggateway.StepID("skill_intelligence.generate_draft"),
+			loggateway.Str("skill_id", suggestion.SkillID),
+			loggateway.Err(err))
+	}
+	return uc.generateRuleBasedDraft(suggestion), false
+}
+
+// collectFailureTraces assembles trace-level observation evidence: the latest
+// 3 failed experience reports for the skill (scanned from the 10 most recent).
+// nil-safe: any read failure yields nil traces (Curator proceeds with
+// aggregate evidence only).
+func (uc *SkillIntelligenceUsecase) collectFailureTraces(ctx context.Context, skillID string) []TraceSnippet {
+	if uc.reporter == nil {
+		return nil
+	}
+	reports, err := uc.reporter.GetExperienceReports(ctx, skillID, 10, 0)
+	if err != nil {
+		uc.lg.Warn("collectFailureTraces: GetExperienceReports failed",
+			loggateway.StepID("skill_intelligence.generate_draft"),
+			loggateway.Str("skill_id", skillID),
+			loggateway.Err(err))
+		return nil
+	}
+	var traces []TraceSnippet
+	for _, r := range reports {
+		if r.IsSuccess {
+			continue
+		}
+		traces = append(traces, TraceSnippet{
+			FailureTags:       r.FailureTags,
+			FlowSummary:       r.FlowSummary,
+			RootCauseAnalysis: r.RootCauseAnalysis,
+			CreatedAt:         r.CreatedAt,
+		})
+		if len(traces) >= 3 {
+			break
+		}
+	}
+	return traces
+}
+
+// persistDeltaOps stores the actually-applied delta op sequence into the
+// suggestion metadata (delta mode only). The value goes through
+// UpdateMetadataKey, which stores it as a JSON string (readers use
+// MetaString + second unmarshal).
+func (uc *SkillIntelligenceUsecase) persistDeltaOps(ctx context.Context, suggestionID string, ops []DeltaOp) {
+	if len(ops) == 0 || uc.unifiedStore == nil {
+		return
+	}
+	raw, err := json.Marshal(ops)
+	if err != nil {
+		return
+	}
+	if err := uc.unifiedStore.UpdateMetadataKey(ctx, suggestionID, EvoMetaDeltaOps, string(raw)); err != nil {
+		uc.lg.Warn("persistDeltaOps: UpdateMetadataKey failed",
+			loggateway.StepID("skill_intelligence.generate_draft"),
+			loggateway.Str("suggestion_id", suggestionID),
+			loggateway.Err(err))
+	}
 }
 
 // generateRuleBasedDraft produces a rule-based draft skill body for the given
@@ -665,9 +707,10 @@ func (uc *SkillIntelligenceUsecase) ValidatePendingSuggestionsForSkill(ctx conte
 // pipeline for an orchestrator-created (unified-only) suggestion:
 // draft generation → validating → sandbox verification → lifecycle update.
 func (uc *SkillIntelligenceUsecase) validateCuratorSuggestionUnified(ctx context.Context, s *UnifiedEvolutionSuggestion) error {
-	// Step 1: Generate draft body (rule-based for v1). improve_skill maps to the
-	// fix_failure template — HealthTrigger conditions all indicate health issues.
-	draft := uc.generateRuleBasedDraft(&SkillEvolutionSuggestion{
+	// Step 1: Generate draft body (LLM evolver first, rule-based fallback).
+	// improve_skill maps to the fix_failure template — HealthTrigger conditions
+	// all indicate health issues.
+	draft, llmGenerated := uc.generateDraft(ctx, &SkillEvolutionSuggestion{
 		ID:            s.ID,
 		SkillID:       s.TargetID,
 		Type:          EvoSuggestionFixFailure,
@@ -695,8 +738,13 @@ func (uc *SkillIntelligenceUsecase) validateCuratorSuggestionUnified(ctx context
 	}
 
 	// Step 4: Rule-based template drafts always return to "draft" (needs human
-	// editing) rather than "ready" — same semantics as RunCuratorFlow.
-	if err := uc.unifiedStore.UpdateLifecycleStatus(ctx, s.ID, "draft"); err != nil {
+	// editing); LLM-generated drafts that passed sandbox are promoted to
+	// "ready" — same semantics as RunCuratorFlow.
+	finalLifecycle := "draft"
+	if llmGenerated && passed {
+		finalLifecycle = "ready"
+	}
+	if err := uc.unifiedStore.UpdateLifecycleStatus(ctx, s.ID, finalLifecycle); err != nil {
 		uc.lg.Warn("validateCuratorSuggestionUnified: UpdateLifecycleStatus(final) failed",
 			loggateway.StepID("skill_intelligence.curator_validate"),
 			loggateway.Str("suggestion_id", s.ID),
@@ -716,7 +764,7 @@ func (uc *SkillIntelligenceUsecase) GenerateDraftForSuggestion(ctx context.Conte
 		return "", apierror.NotFound("SKILL_INTELLIGENCE", "suggestion not found: %s", suggestionID)
 	}
 
-	draft := uc.generateRuleBasedDraft(suggestion)
+	draft, _ := uc.generateDraft(ctx, suggestion)
 
 	if err := uc.UpdateSuggestionDraftBody(ctx, suggestionID, draft); err != nil {
 		uc.lg.Warn("GenerateDraftForSuggestion: UpdateSuggestionDraftBody failed",
@@ -736,140 +784,167 @@ func (uc *SkillIntelligenceUsecase) GenerateDraftForSuggestion(ctx context.Conte
 	return draft, nil
 }
 
-// CreateSuggestion delegates to the suggestion writer.
-// Also bridges to the unified writer if available.
+// CreateSuggestion creates a skill-scoped evolution suggestion (L2 view)
+// in the unified store (A6).
 func (uc *SkillIntelligenceUsecase) CreateSuggestion(ctx context.Context, suggestion SkillEvolutionSuggestion) error {
-	if uc.legacyStore == nil {
+	if uc.unifiedStore == nil {
 		return apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
-	if err := uc.legacyStore.CreateSuggestion(ctx, suggestion); err != nil {
-		return err
-	}
-	// Bridge to unified store.
-	unified := unifiedToLegacySuggestion(&suggestion)
-	if bridgeErr := uc.bridgeWrite(ctx,
-		func() error { return uc.unifiedStore.Create(ctx, unified) },
-		nil,
-		"CreateSuggestion.bridge",
-		suggestion.ID,
-	); bridgeErr != nil {
-		uc.lg.Warn("CreateSuggestion: bridge to unified store failed",
-			loggateway.Str("suggestion_id", suggestion.ID),
-			loggateway.Err(bridgeErr))
-	}
-	return nil
+	return uc.unifiedStore.Create(ctx, unifiedToLegacySuggestion(&suggestion))
 }
 
 // GetEvolutionSuggestion returns a single evolution suggestion by ID.
-// Prefers unified reader; falls back to legacy suggestion reader.
+// Reads the unified store and converts to the legacy L2 view (A6).
+// Returns (nil, nil) when not found.
 func (uc *SkillIntelligenceUsecase) GetEvolutionSuggestion(ctx context.Context, id string) (*SkillEvolutionSuggestion, error) {
-	if uc.unifiedStore != nil {
-		unified, err := uc.unifiedStore.GetByID(ctx, id)
-		if err == nil && unified != nil {
-			return unifiedToLegacySuggestionPtr(unified), nil
-		}
-		// Fall through to legacy on error.
+	if uc.unifiedStore == nil {
+		return nil, apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
 	}
-	return uc.legacyStore.GetEvolutionSuggestion(ctx, id)
+	unified, err := uc.unifiedStore.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if unified == nil {
+		return nil, nil
+	}
+	return unifiedToLegacySuggestionPtr(unified), nil
 }
 
 // UpdateSuggestionDraftBody updates the draft skill body of an evolution suggestion.
 func (uc *SkillIntelligenceUsecase) UpdateSuggestionDraftBody(ctx context.Context, id string, draftBody string) error {
-	if uc.unifiedStore == nil && uc.legacyStore == nil {
+	if uc.unifiedStore == nil {
 		return apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
-	return uc.bridgeWrite(ctx,
-		func() error { return uc.unifiedStore.UpdateDraftBody(ctx, id, draftBody) },
-		func() error { return uc.legacyStore.UpdateSuggestionDraftBody(ctx, id, draftBody) },
-		"UpdateSuggestionDraftBody",
-		id,
-	)
+	return uc.unifiedStore.UpdateDraftBody(ctx, id, draftBody)
 }
 
 // UpdateSuggestionSandboxResult updates the sandbox validation result of an evolution suggestion.
 func (uc *SkillIntelligenceUsecase) UpdateSuggestionSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error {
-	if uc.unifiedStore == nil && uc.legacyStore == nil {
+	if uc.unifiedStore == nil {
 		return apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
-	return uc.bridgeWrite(ctx,
-		func() error { return uc.unifiedStore.UpdateSandboxResult(ctx, id, passed, result) },
-		func() error { return uc.legacyStore.UpdateSuggestionSandboxResult(ctx, id, passed, result) },
-		"UpdateSuggestionSandboxResult",
-		id,
-	)
+	return uc.unifiedStore.UpdateSandboxResult(ctx, id, passed, result)
 }
 
 // UpdateSuggestionLifecycleStatus updates the lifecycle status of an evolution suggestion.
 func (uc *SkillIntelligenceUsecase) UpdateSuggestionLifecycleStatus(ctx context.Context, id string, lifecycleStatus EvolutionLifecycleStatus) error {
-	if uc.unifiedStore == nil && uc.legacyStore == nil {
+	if uc.unifiedStore == nil {
 		return apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
-	return uc.bridgeWrite(ctx,
-		func() error { return uc.unifiedStore.UpdateLifecycleStatus(ctx, id, string(lifecycleStatus)) },
-		func() error { return uc.legacyStore.UpdateSuggestionLifecycleStatus(ctx, id, lifecycleStatus) },
-		"UpdateSuggestionLifecycleStatus",
-		id,
-	)
+	return uc.unifiedStore.UpdateLifecycleStatus(ctx, id, string(lifecycleStatus))
 }
 
 // ListEvolutionSuggestions lists evolution suggestions for a skill, optionally filtered by status.
-// Prefers unified reader; falls back to legacy suggestion reader.
+// Reads the unified store and converts to the legacy L2 view (A6).
 func (uc *SkillIntelligenceUsecase) ListEvolutionSuggestions(ctx context.Context, skillID string, status EvolutionSuggestionStatus, limit, offset int) ([]SkillEvolutionSuggestion, error) {
-	if uc.unifiedStore != nil {
-		unifiedList, err := uc.unifiedStore.ListByTarget(ctx, "skill", skillID, string(status), limit, offset)
-		if err == nil {
-			result := make([]SkillEvolutionSuggestion, len(unifiedList))
-			for i, u := range unifiedList {
-				result[i] = *unifiedToLegacySuggestionPtr(&u)
-			}
-			return result, nil
-		}
-		// Fall through to legacy on error.
+	if uc.unifiedStore == nil {
+		return nil, apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
 	}
-	return uc.legacyStore.ListEvolutionSuggestions(ctx, skillID, status, limit, offset)
+	unifiedList, err := uc.unifiedStore.ListByTarget(ctx, "skill", skillID, string(status), limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]SkillEvolutionSuggestion, len(unifiedList))
+	for i, u := range unifiedList {
+		result[i] = *unifiedToLegacySuggestionPtr(&u)
+	}
+	return result, nil
 }
 
 // CountEvolutionSuggestions returns the total count of evolution suggestions for a skill, optionally filtered by status.
-// Prefers unified reader; falls back to legacy suggestion reader.
 func (uc *SkillIntelligenceUsecase) CountEvolutionSuggestions(ctx context.Context, skillID string, status EvolutionSuggestionStatus) (int, error) {
-	if uc.unifiedStore != nil {
-		count, err := uc.unifiedStore.CountByTarget(ctx, "skill", skillID, string(status))
-		if err == nil {
-			return count, nil
-		}
-		// Fall through to legacy on error.
+	if uc.unifiedStore == nil {
+		return 0, apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
 	}
-	return uc.legacyStore.CountEvolutionSuggestions(ctx, skillID, status)
+	return uc.unifiedStore.CountByTarget(ctx, "skill", skillID, string(status))
 }
 
 // ApproveSuggestion approves a pending evolution suggestion.
 func (uc *SkillIntelligenceUsecase) ApproveSuggestion(ctx context.Context, id, approvedBy string) error {
-	if uc.unifiedStore == nil && uc.legacyStore == nil {
+	if uc.unifiedStore == nil {
 		return apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
-	return uc.bridgeWrite(ctx,
-		func() error { return uc.unifiedStore.UpdateStatus(ctx, id, "approved", approvedBy, "") },
-		func() error {
-			return uc.legacyStore.UpdateSuggestionStatus(ctx, id, EvoSuggestionApproved, approvedBy, "")
-		},
-		"ApproveSuggestion",
-		id,
-	)
+	return uc.unifiedStore.UpdateStatus(ctx, id, "approved", approvedBy, "")
 }
 
 // RejectSuggestion rejects a pending evolution suggestion.
 func (uc *SkillIntelligenceUsecase) RejectSuggestion(ctx context.Context, id, rejectedBy, reason string) error {
-	if uc.unifiedStore == nil && uc.legacyStore == nil {
+	if uc.unifiedStore == nil {
 		return apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
-	return uc.bridgeWrite(ctx,
-		func() error { return uc.unifiedStore.UpdateStatus(ctx, id, "rejected", rejectedBy, reason) },
-		func() error {
-			return uc.legacyStore.UpdateSuggestionStatus(ctx, id, EvoSuggestionRejected, rejectedBy, reason)
-		},
-		"RejectSuggestion",
-		id,
-	)
+	return uc.unifiedStore.UpdateStatus(ctx, id, "rejected", rejectedBy, reason)
+}
+
+// ApplyApprovedSuggestion runs the Reload stage for an approved evolution
+// suggestion: it registers the approved draft as a new skill version and
+// marks the suggestion applied. It is a guarded no-op unless the suggestion
+// is approved + lifecycle=ready + sandbox_passed with a non-empty draft, so
+// callers may invoke it unconditionally after any draft/validation attempt.
+//
+// State transitions are validated through the two explicit state machines
+// (AS-FSM-01): status approved --apply--> applied (UnifiedEvolutionStateMachine)
+// and lifecycle ready --apply--> applied (EvolutionLifecycleStateMachine).
+//
+// On Reload failure the error is returned and the suggestion stays ready —
+// no automatic retry, to avoid duplicate version registration (manual retry
+// is possible by re-approving / re-invoking).
+func (uc *SkillIntelligenceUsecase) ApplyApprovedSuggestion(ctx context.Context, suggestionID string) error {
+	if uc.reloader == nil || uc.unifiedStore == nil {
+		return nil
+	}
+	suggestion, err := uc.GetEvolutionSuggestion(ctx, suggestionID)
+	if err != nil {
+		return err
+	}
+	if suggestion == nil {
+		return apierror.NotFound("SKILL_INTELLIGENCE", "suggestion not found: %s", suggestionID)
+	}
+
+	// Guards: draft presence and sandbox pass are plain field checks; the
+	// status/lifecycle apply-ability is checked via the state machines below.
+	if !suggestion.SandboxPassed || strings.TrimSpace(suggestion.DraftSkillBody) == "" {
+		return nil
+	}
+	nextStatus, err := NewUnifiedEvolutionStateMachine().Transition(UnifiedEvolutionState(suggestion.Status), UnifiedEvolutionEventApply)
+	if err != nil {
+		return nil // not in approved state → nothing to apply
+	}
+	nextLifecycle, err := NewEvolutionLifecycleStateMachine().Transition(suggestion.LifecycleStatus, EvoLifecycleEventApply)
+	if err != nil {
+		return nil // not in ready state → nothing to apply
+	}
+
+	reason := strings.TrimSpace(suggestion.EvolutionReason)
+	if reason == "" {
+		reason = fmt.Sprintf("evolution: %s (%s)", suggestion.Type, suggestion.TriggerReason)
+	}
+	if err := uc.reloader.Reload(ctx, suggestion.SkillID, suggestion.DraftSkillBody, suggestion.ParentVersionID, reason); err != nil {
+		uc.lg.Error("ApplyApprovedSuggestion: Reload failed, suggestion stays ready",
+			loggateway.StepID("skill_intelligence.apply"),
+			loggateway.Str("suggestion_id", suggestionID),
+			loggateway.Str("skill_id", suggestion.SkillID),
+			loggateway.Err(err))
+		return err
+	}
+
+	if err := uc.unifiedStore.UpdateLifecycleStatus(ctx, suggestionID, string(nextLifecycle)); err != nil {
+		uc.lg.Warn("ApplyApprovedSuggestion: UpdateLifecycleStatus(applied) failed",
+			loggateway.StepID("skill_intelligence.apply"),
+			loggateway.Str("suggestion_id", suggestionID),
+			loggateway.Err(err))
+	}
+	if err := uc.unifiedStore.UpdateStatus(ctx, suggestionID, string(nextStatus), "system", ""); err != nil {
+		uc.lg.Warn("ApplyApprovedSuggestion: UpdateStatus(applied) failed",
+			loggateway.StepID("skill_intelligence.apply"),
+			loggateway.Str("suggestion_id", suggestionID),
+			loggateway.Err(err))
+		return err
+	}
+	uc.lg.Info("ApplyApprovedSuggestion: suggestion applied",
+		loggateway.StepID("skill_intelligence.apply"),
+		loggateway.Str("suggestion_id", suggestionID),
+		loggateway.Str("skill_id", suggestion.SkillID))
+	return nil
 }
 
 // ── Bridge: SkillEvolutionSuggestion → SkillProposal ─────────────────────────
@@ -900,8 +975,12 @@ func (uc *SkillIntelligenceUsecase) ProposalFromSuggestion(s SkillEvolutionSugge
 // ── Bridge functions: Unified ↔ Legacy ────────────────────────────────────────
 
 // unifiedToLegacySuggestion converts a SkillEvolutionSuggestion to a UnifiedEvolutionSuggestion
-// for bridging writes to the unified store.
+// for writes to the unified store. The exact legacy type is preserved in
+// metadata (action_type mapping is lossy), matching the backfill mapping (A6).
 func unifiedToLegacySuggestion(s *SkillEvolutionSuggestion) UnifiedEvolutionSuggestion {
+	metadata, _ := json.Marshal(map[string]string{
+		EvoMetaLegacyType: string(s.Type),
+	})
 	return UnifiedEvolutionSuggestion{
 		ID:              s.ID,
 		TargetType:      EvolutionTargetSkill,
@@ -915,6 +994,7 @@ func unifiedToLegacySuggestion(s *SkillEvolutionSuggestion) UnifiedEvolutionSugg
 		LifecycleStatus: string(s.LifecycleStatus),
 		SandboxPassed:   s.SandboxPassed,
 		SandboxResult:   s.SandboxResult,
+		Metadata:        metadata,
 		CreatedAt:       s.CreatedAt,
 		ApprovedBy:      s.ApprovedBy,
 	}
@@ -922,19 +1002,45 @@ func unifiedToLegacySuggestion(s *SkillEvolutionSuggestion) UnifiedEvolutionSugg
 
 // unifiedToLegacySuggestionPtr converts a UnifiedEvolutionSuggestion to a *SkillEvolutionSuggestion
 // for bridging reads from the unified store.
+// Resolved/rejection fields and Curator tracking fields are reconstructed from
+// metadata keys merged by UpdateStatus and the 20261111 backfill (A6),
+// mirroring the legacy L2 columns. The legacy suggestion type prefers the
+// exact legacy_type metadata (action_type mapping is lossy).
 func unifiedToLegacySuggestionPtr(u *UnifiedEvolutionSuggestion) *SkillEvolutionSuggestion {
+	var resolvedAt *time.Time
+	if raw := u.MetaString(EvoMetaResolvedAt); raw != "" {
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			resolvedAt = &t
+		}
+	}
+	suggestionType := actionTypeToLegacyType(u.ActionType)
+	if lt := u.MetaString(EvoMetaLegacyType); lt != "" {
+		suggestionType = EvolutionSuggestionType(lt)
+	}
+	var sourceReportIDs []string
+	if raw := u.MetaRaw(EvoMetaSourceReportIDs); len(raw) > 0 {
+		_ = json.Unmarshal(raw, &sourceReportIDs)
+	}
 	return &SkillEvolutionSuggestion{
 		ID:              u.ID,
 		SkillID:         u.TargetID,
-		Type:            actionTypeToLegacyType(u.ActionType),
+		Type:            suggestionType,
 		Status:          stringToLegacySuggestionStatus(u.Status),
+		SourceReportIDs: sourceReportIDs,
 		TriggerReason:   u.TriggerReason,
 		DraftSkillBody:  u.DraftBody,
+		DraftVersionID:  u.MetaString(EvoMetaDraftVersionID),
 		LifecycleStatus: stringToLegacyLifecycle(u.LifecycleStatus),
 		SandboxPassed:   u.SandboxPassed,
 		SandboxResult:   u.SandboxResult,
+		PreVerifyResult: u.MetaRaw(EvoMetaPreVerifyResult),
 		ApprovedBy:      u.ApprovedBy,
+		RejectedBy:      u.MetaString(EvoMetaRejectedBy),
+		RejectionReason: u.MetaString(EvoMetaRejectionReason),
+		ResolvedAt:      resolvedAt,
 		CreatedAt:       u.CreatedAt,
+		ParentVersionID: u.MetaString(EvoMetaParentVersionID),
+		EvolutionReason: u.MetaString(EvoMetaEvolutionReason),
 	}
 }
 

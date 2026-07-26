@@ -27,7 +27,6 @@ import (
 	"aranea-agents/internal/data/ent/evaldataset"
 	"aranea-agents/internal/data/ent/evalrun"
 	"aranea-agents/internal/data/ent/eventdeliveryoutbox"
-	"aranea-agents/internal/data/ent/evolutionsuggestion"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/failurepattern"
 	"aranea-agents/internal/data/ent/flowlogevent"
@@ -74,7 +73,6 @@ import (
 	"aranea-agents/internal/data/ent/sessionruntime"
 	"aranea-agents/internal/data/ent/sessionturn"
 	"aranea-agents/internal/data/ent/sessionv2"
-	"aranea-agents/internal/data/ent/skillevolutionsuggestion"
 	"aranea-agents/internal/data/ent/skillimportjob"
 	"aranea-agents/internal/data/ent/skillinvocation"
 	"aranea-agents/internal/data/ent/skillversion"
@@ -191,7 +189,6 @@ func checkColumn(t, c string) error {
 			evaldataset.Table:                evaldataset.ValidColumn,
 			evalrun.Table:                    evalrun.ValidColumn,
 			eventdeliveryoutbox.Table:        eventdeliveryoutbox.ValidColumn,
-			evolutionsuggestion.Table:        evolutionsuggestion.ValidColumn,
 			experiencereport.Table:           experiencereport.ValidColumn,
 			failurepattern.Table:             failurepattern.ValidColumn,
 			flowlogevent.Table:               flowlogevent.ValidColumn,
@@ -238,7 +235,6 @@ func checkColumn(t, c string) error {
 			sessionruntime.Table:             sessionruntime.ValidColumn,
 			sessionturn.Table:                sessionturn.ValidColumn,
 			sessionv2.Table:                  sessionv2.ValidColumn,
-			skillevolutionsuggestion.Table:   skillevolutionsuggestion.ValidColumn,
 			skillimportjob.Table:             skillimportjob.ValidColumn,
 			skillinvocation.Table:            skillinvocation.ValidColumn,
 			skillversion.Table:               skillversion.ValidColumn,

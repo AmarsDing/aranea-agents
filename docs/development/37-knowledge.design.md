@@ -1678,6 +1678,35 @@ VaultFiler（KB 侧唯一写文件出口）
 - 关联区展示双链/实体/语义三类关联并**标注来源类型**（R-3）
 - 图谱视图放二期（避免 MVP 膨胀）；搜索意图分流规则与后端路由规则共享定义（两处维护）
 
+### V9.1 P3 实施契约（API + 组件）
+
+**Proto 扩展**（`api/kratos/knowledge/v1/knowledge.proto`）：
+
+| 项 | 变化 |
+|----|------|
+| `KnowledgeCollection` | + `root_path`/`sync_state`/`last_sync_at`（Vault 切换栏展示同步状态） |
+| `KnowledgeDocument` | + `rel_path`/`summary`/`tags`/`doc_type`（列表与 hover 卡一级密度直接可用，无需二次请求） |
+| `rpc ListVaultTree` | `GET /v1/knowledge/vaults/{collection_id}/tree?prefix=`；懒加载：返回 prefix 直接子节点（目录+文件各一条），节点 `{name, path, kind(dir/file), doc_id, summary, tags, doc_type, status, size_bytes, updated_at}`；中栏文档列表复用文件节点（不再给 ListDocuments 加 prefix 过滤，YAGNI） |
+| `rpc ListDocumentLinks` | `GET /v1/knowledge/documents/{id}/links`；返回 `{target_doc_id, target_source, target_rel_path, link_type, context, direction(out/in)}`，data 层 JOIN knowledge_documents 一次取回（禁 N+1） |
+
+**Biz 层**：
+
+- `ListVaultTree(ctx, collectionID, prefix)`：经新增窄接口 `ListDocumentPaths(ctx, collectionID) ([]DocumentPath, error)` 取全量轻量路径行（id/rel_path/source/summary/tags/doc_type/status/size_bytes/updated_at），在内存中聚合 prefix 直接子节点（目录去重排序在前，文件按名称排序在后）；非 vault 文档（rel_path 空）归入虚拟根层
+- `ResolvedLink`（biz 类型）：Link + TargetSource/TargetRelPath/Direction；新增窄接口方法 `ListResolvedLinks(ctx, collectionID, docID, linkType)` 委托 data 层 JOIN 查询；`linkType` 空 = 全部三类
+
+**前端组件**（三栏，遵守数据流铁律：api.ts → store → composable → page → 展示组件）：
+
+| 组件 | 路径 | 职责 |
+|------|------|------|
+| `KnowledgeVaultTree.vue` | `components/knowledge/` | 左栏：Vault 切换头 + q-tree 懒加载文件夹树（emit `select(prefix)`） |
+| `KnowledgeDocList.vue` | `components/knowledge/` | 中栏：选中文件夹下文档列表（名称/标签/状态/时间；props/emits 纯展示） |
+| `KnowledgeDocDetail.vue` | `components/knowledge/` | 右栏：两级密度——一级（摘要卡：summary/tags/type/时间）+ 二级（展开正文预览 + 关联区）；关联区三类来源徽标（explicit=显式双链 / entity=实体共现 / semantic=语义近邻，R-3） |
+| `KnowledgeSearchDual.vue` | `components/knowledge/` | 统一搜索框双区：即时区（fzf 式前端过滤树节点+列表，<10k）+ 语义区（回车走后端 Search，意图分流规则与后端共享定义，见下） |
+
+- 编排：`features/knowledge/useVaultExplorer.ts`（选中 vault/prefix/doc、树节点缓存、links 加载）；Page 只做布局与事件绑定
+- **意图分流共享定义**：`web/src/features/knowledge/searchIntent.ts`（前端）与 `internal/knowledge/search_intent.go`（后端）维护同一规则表——命中路径/扩展名/引号短语 → 即时区；自然语言问句/概念词 → 语义区。两处维护，注释互指
+- 旧三 Tab（documents/search/settings）收敛：documents 由三栏取代；settings（embedder 配置）保留为独立 Tab；旧 `KnowledgeDocumentsPanel/KnowledgeSearchPanel` 保留供迁移期回退
+
 ### V10. 技术升级路径（每层相互独立，接口隔离：Embedder / Retriever / LinkResolver）
 
 ```

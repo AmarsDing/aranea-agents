@@ -649,6 +649,10 @@ func toProtoCollection(c biz.KnowledgeCollection) *v1.KnowledgeCollection {
 		Workspace:      c.Workspace,
 		CreatedAt:      c.CreatedAt,
 		UpdatedAt:      c.UpdatedAt,
+		// Vault 字段（V2；空 = 历史 Collection 未迁移）。
+		RootPath:   c.RootPath,
+		SyncState:  c.SyncState,
+		LastSyncAt: c.LastSyncAt,
 	}
 }
 
@@ -683,6 +687,11 @@ func toProtoDocument(d biz.KnowledgeDocument) *v1.KnowledgeDocument {
 		UpdatedAt:        d.UpdatedAt,
 		ExtractSupported: isExtractSupported(d.MimeType),
 		Organized:        d.Organized,
+		// Vault + 摘要卡字段（P3 列表/hover 卡一级密度）。
+		RelPath: d.RelPath,
+		Summary: d.Summary,
+		Tags:    d.Tags,
+		DocType: d.DocType,
 	}
 }
 

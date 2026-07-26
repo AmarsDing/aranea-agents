@@ -12,28 +12,40 @@ import (
 
 // ── PatternTrigger（原 SkillEvolutionUsecase） ──
 
+// AgentEvolutionSettingsReader is the narrow settings dependency shared by
+// agent-scoped triggers for per-agent opt-in gating (A6: the orchestrator
+// worker scans the union of L1/L3 opted-in agents, so each trigger re-checks
+// its own opt-in flag).
+// Stability:evolving
+type AgentEvolutionSettingsReader interface {
+	GetAgentRuntimeSettings(ctx context.Context, agentID string) (AgentRuntimeSettings, error)
+}
+
 // PatternTrigger 从工具调用 Pattern 中检测新 Skill 需求
 type PatternTrigger struct {
-	patterns     PatternReader
-	creator      SkillAutoCreator
-	registrar    SkillRegistrationPort
-	proposalRepo SkillProposalReadWriter // 用于检查已有 proposal
-	lg           loggateway.Logger
+	settings      AgentEvolutionSettingsReader  // L1 opt-in gate (nil = no gate, tests)
+	patterns      PatternReader
+	creator       SkillAutoCreator
+	registrar     SkillRegistrationPort
+	patternReader UnifiedEvolutionPatternReader // pattern_hash 去重（A6 unified）
+	lg            loggateway.Logger
 }
 
 func NewPatternTrigger(
+	settings AgentEvolutionSettingsReader,
 	patterns PatternReader,
 	creator SkillAutoCreator,
 	registrar SkillRegistrationPort,
-	proposalRepo SkillProposalReadWriter,
+	patternReader UnifiedEvolutionPatternReader,
 	lg loggateway.Logger,
 ) *PatternTrigger {
 	return &PatternTrigger{
-		patterns:     patterns,
-		creator:      creator,
-		registrar:    registrar,
-		proposalRepo: proposalRepo,
-		lg:           lg,
+		settings:      settings,
+		patterns:      patterns,
+		creator:       creator,
+		registrar:     registrar,
+		patternReader: patternReader,
+		lg:            lg,
 	}
 }
 
@@ -44,6 +56,17 @@ func (t *PatternTrigger) TriggerSource() string           { return "pattern" }
 func (t *PatternTrigger) Check(ctx context.Context, agentID string) ([]UnifiedEvolutionSuggestion, error) {
 	if t.creator == nil || t.patterns == nil {
 		return nil, nil
+	}
+	// L1 opt-in gate: mirrors the legacy SkillEvolutionScanner flag check.
+	if t.settings != nil {
+		settings, err := t.settings.GetAgentRuntimeSettings(ctx, agentID)
+		if err != nil {
+			t.lg.Warn("pattern trigger: GetAgentRuntimeSettings failed", loggateway.Err(err))
+			return nil, nil
+		}
+		if !settings.EvolutionSkillEvolve {
+			return nil, nil
+		}
 	}
 
 	patterns, err := t.patterns.ListByAgent(ctx, agentID, string(PatternStatusDetected))
@@ -58,12 +81,14 @@ func (t *PatternTrigger) Check(ctx context.Context, agentID string) ([]UnifiedEv
 		}
 
 		hash := patternHash(p.Description)
-		existing, exErr := t.proposalRepo.GetByPatternHash(ctx, agentID, hash)
-		if exErr != nil {
-			t.lg.Warn("pattern trigger: GetByPatternHash failed", loggateway.Err(exErr))
-		}
-		if existing != nil {
-			continue
+		if t.patternReader != nil {
+			existing, exErr := t.patternReader.GetLatestByPatternHash(ctx, agentID, hash)
+			if exErr != nil {
+				t.lg.Warn("pattern trigger: GetLatestByPatternHash failed", loggateway.Err(exErr))
+			}
+			if existing != nil {
+				continue
+			}
 		}
 
 		suggestedName := inferSkillNameFromDesc(p.Description)
@@ -250,33 +275,164 @@ func (t *HealthTrigger) Check(ctx context.Context, skillID string) ([]UnifiedEvo
 	}, nil
 }
 
-// ── AgentConfigTrigger（原 EvolutionUsecase） ──
+// ── AgentConfigTrigger（原 EvolutionUsecase.ScanAgent） ──
 
-// AgentConfigTrigger 从 Agent 配置中检测进化需求
+const (
+	agentConfigScanToolSuccessThreshold = 0.75
+	agentConfigScanRetrievalThreshold   = 0.60
+	agentConfigScanDefaultTimeRange     = "30d"
+)
+
+// AgentConfigTrigger 从 Agent 运行指标中检测 L3 进化需求（工具成功率 /
+// 检索质量 / 负反馈），移植自 legacy EvolutionUsecase.ScanAgent（A6）。
+// 建议落库为 unified 行：action_type=evolve_agent, trigger_source=agent_config，
+// legacy type/title 存 metadata（EvoMetaLegacyType / EvoMetaTitle）。
 type AgentConfigTrigger struct {
-	metricsRepo EvolutionMetricsRepo
+	settings    AgentEvolutionSettingsReader // L3 opt-in gate (nil = no gate, tests)
+	metricsRepo EvolutionMetricsRepo         // 指标采集
+	queryReader UnifiedEvolutionQueryReader  // pending type+title 去重 (nil = skip dedup)
 	lg          loggateway.Logger
 }
 
 func NewAgentConfigTrigger(
+	settings AgentEvolutionSettingsReader,
 	metricsRepo EvolutionMetricsRepo,
+	queryReader UnifiedEvolutionQueryReader,
 	lg loggateway.Logger,
 ) *AgentConfigTrigger {
-	return &AgentConfigTrigger{metricsRepo: metricsRepo, lg: lg}
+	return &AgentConfigTrigger{settings: settings, metricsRepo: metricsRepo, queryReader: queryReader, lg: lg}
 }
 
 func (t *AgentConfigTrigger) TargetType() EvolutionTargetType { return EvolutionTargetAgent }
 func (t *AgentConfigTrigger) ActionType() EvolutionActionType { return EvolutionActionEvolve }
 func (t *AgentConfigTrigger) TriggerSource() string           { return "agent_config" }
 
-// Check is a reserved entry point for agent-level evolution triggers.
-// Currently returns nil because agent-level evolution requires explicit external
-// invocation (e.g. user manual trigger or admin API call). This placeholder
-// preserves the trigger's registration in the orchestrator without generating
-// suggestions automatically, ensuring the trigger is available for future
-// auto-detection logic without requiring registration changes.
+// Check evaluates the agent's 30d metrics against the legacy scan thresholds
+// and returns deduplicated pending suggestions (tool success / retrieval
+// quality / negative feedback). Returns nil when the agent has not opted into
+// L3 evolution or metrics are below the minimum-signal floor.
 func (t *AgentConfigTrigger) Check(ctx context.Context, agentID string) ([]UnifiedEvolutionSuggestion, error) {
-	return nil, nil
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" || t.metricsRepo == nil {
+		return nil, nil
+	}
+
+	// L3 opt-in gate: mirrors legacy ScanAgent flag check.
+	var settings AgentRuntimeSettings
+	if t.settings != nil {
+		var err error
+		settings, err = t.settings.GetAgentRuntimeSettings(ctx, agentID)
+		if err != nil {
+			return nil, err
+		}
+		if !settings.EvolutionSuggestionsEnabled && !settings.EvoEnabled {
+			return nil, nil
+		}
+	}
+
+	metrics := collectEvolutionMetrics(ctx, t.metricsRepo, t.lg, agentID, agentConfigScanDefaultTimeRange)
+	minEpisodes := settings.EvoMinEpisodes
+	if minEpisodes <= 0 {
+		minEpisodes = 3
+	}
+	minNeg := settings.EvoMinNegativeFeedback
+	if minNeg <= 0 {
+		minNeg = 2
+	}
+	if metrics.TotalEpisodes < minEpisodes && metrics.NegativeFeedback < minNeg {
+		return nil, nil
+	}
+
+	type candidate struct {
+		typ     string
+		title   string
+		content string
+	}
+	var candidates []candidate
+	if metrics.ToolSuccessRate > 0 && metrics.ToolSuccessRate < agentConfigScanToolSuccessThreshold {
+		candidates = append(candidates, candidate{
+			typ:   "prompt",
+			title: "工具成功率偏低",
+			content: fmt.Sprintf(
+				"近%s工具成功率 %.1f%%（阈值 %.0f%%）。建议检查工具 allow/deny 与 Skill 挂载策略。",
+				agentConfigScanDefaultTimeRange,
+				metrics.ToolSuccessRate*100,
+				agentConfigScanToolSuccessThreshold*100,
+			),
+		})
+	}
+	if metrics.RetrievalQuality > 0 && metrics.RetrievalQuality < agentConfigScanRetrievalThreshold {
+		candidates = append(candidates, candidate{
+			typ:   "skill",
+			title: "检索质量偏低",
+			content: fmt.Sprintf(
+				"近%s检索质量 %.1f%%（阈值 %.0f%%）。建议调整记忆 L2/L3 召回参数或知识库覆盖。",
+				agentConfigScanDefaultTimeRange,
+				metrics.RetrievalQuality*100,
+				agentConfigScanRetrievalThreshold*100,
+			),
+		})
+	}
+	if metrics.NegativeFeedback >= minNeg {
+		candidates = append(candidates, candidate{
+			typ:   "persona",
+			title: "负反馈累积",
+			content: fmt.Sprintf(
+				"近%s负反馈 %d 次（阈值 %d）。建议审阅 IDENTITY.md ## Persona 语气与工具策略。",
+				agentConfigScanDefaultTimeRange,
+				metrics.NegativeFeedback,
+				minNeg,
+			),
+		})
+	}
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+
+	// Dedup against pending suggestions with the same legacy type + title
+	// (mirrors legacy ensurePendingSuggestion).
+	pendingKeys := map[string]struct{}{}
+	if t.queryReader != nil {
+		pending, err := t.queryReader.ListByTargetAndAction(ctx,
+			string(EvolutionTargetAgent), agentID, string(EvolutionActionEvolve),
+			string(UnifiedEvolutionStatePending), 100, 0)
+		if err != nil {
+			t.lg.Warn("agent_config trigger: pending list failed, skip dedup", loggateway.Err(err))
+		} else {
+			for i := range pending {
+				key := strings.ToLower(strings.TrimSpace(pending[i].MetaString(EvoMetaLegacyType))) + "|" + strings.TrimSpace(pending[i].MetaString(EvoMetaTitle))
+				pendingKeys[key] = struct{}{}
+			}
+		}
+	}
+
+	now := time.Now().UTC()
+	var suggestions []UnifiedEvolutionSuggestion
+	for _, c := range candidates {
+		key := strings.ToLower(strings.TrimSpace(c.typ)) + "|" + strings.TrimSpace(c.title)
+		if _, dup := pendingKeys[key]; dup {
+			continue
+		}
+		metadata, _ := json.Marshal(map[string]string{
+			EvoMetaLegacyType: c.typ,
+			EvoMetaTitle:      c.title,
+		})
+		suggestions = append(suggestions, UnifiedEvolutionSuggestion{
+			ID:              newAgentCatalogID(),
+			TargetType:      EvolutionTargetAgent,
+			TargetID:        agentID,
+			ActionType:      EvolutionActionEvolve,
+			TriggerSource:   "agent_config",
+			TriggerReason:   c.title,
+			Status:          string(UnifiedEvolutionStatePending),
+			Priority:        1,
+			DraftBody:       c.content,
+			LifecycleStatus: "draft",
+			Metadata:        metadata,
+			CreatedAt:       now,
+		})
+	}
+	return suggestions, nil
 }
 
 // ── Helpers ──

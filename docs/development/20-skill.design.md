@@ -157,7 +157,8 @@ Skill 是可安装、可版本化的能力包，由文件资产（SKILL.md + 附
 | `skill_version` | `internal/data/ent/schema/skill_version.go` | `skill_id`、`version`、`status`、`content_markdown`、`metadata_json`、`manifest_json`、`published_at`、`validation_status`、`file_manifest_json`、`parent_version_id`、`evolution_reason`、`lifecycle_status` |
 | `skill_invocation` | `internal/data/ent/schema/skill_invocation.go` | `skill_id`、`agent_id`、`status`、`skill_version`、`user_id`、`session_id`、`duration_ms`、`started_at`/`ended_at`、`input_preview`/`input_hash`、`output_preview`、`error_code`、`source`、`activation_id`、`message_id`、`selection_reason`(JSON)、`outcome`、`token_usage`(JSON)、`routed_slugs`(JSON)、`loaded_slug` |
 | `skill_import_jobs` | `internal/data/ent/schema/skill_import_job.go` | `id`、`status`、`validation_status`、`storage_root`、`candidates_json`、`conflict_groups_json`、`temp_dir`、`created_at`、`applied_at` |
-| `skill_evolution_suggestions` | `internal/data/ent/schema/skill_evolution_suggestion.go` | `skill_id`、`type`、`status`、`source_report_ids`、`trigger_reason`、`draft_skill_body`、`draft_version_id`、`sandbox_passed`、`sandbox_result`、`pre_verify_result`、`approved_by`、`rejected_by`、`parent_version_id`、`evolution_reason`、`lifecycle_status` |
+
+> **A6 物理收敛**：原 L2 表 `skill_evolution_suggestions`（Ent Schema）已删除。全部四类进化建议（L1 `skill_proposals` / L2 `skill_evolution_suggestions` / L3 `evolution_suggestions` / 统一表）已收敛到唯一的 `unified_evolution_suggestions` 表（raw SQL DDL，见 §6.8），legacy 专有字段保留在 `metadata` JSON 列中。迁移 `20261111` 完成 backfill 后 DROP 三张 legacy 表。
 
 列表查询将 **`published` 与历史值 `active` 等同**（见 `skillListPredicates`），与迁移期数据共存。
 
@@ -653,13 +654,25 @@ type SimilarityMetrics struct {
 **接口拆分**（符合"接口方法 ≤ 5"规范）：
 
 - `UnifiedEvolutionCheckReader`（3 方法）：`HasPendingForTarget` / `GetLatestByTarget` / `GetLatestByTargetAndAction`
-- `UnifiedEvolutionQueryReader`（3 方法）：`GetByID` / `ListByTarget` / `CountByTarget`
+- `UnifiedEvolutionQueryReader`（5 方法）：`GetByID` / `ListByTarget` / `CountByTarget` / `ListByTargetAndAction` / `CountByTargetAndAction`（AndAction 变体区分同 target_type 的 L1 proposal 与 L3 agent 建议）
+- `UnifiedEvolutionPatternReader`（1 方法）：`GetLatestByPatternHash`（L1 pattern_hash 去重，hash 存于 metadata）
 - `UnifiedEvolutionMutationWriter`（5 方法）：`Create` / `UpdateStatus` / `UpdateDraftBody` / `UpdateLifecycleStatus` / `UpdateSandboxResult`
+- `UnifiedEvolutionMetadataWriter`（1 方法）：`UpdateMetadataKey`（单键 JSON 合并，如 L3 `pre_apply_snapshot`）
 - `UnifiedEvolutionExpirationWriter`（1 方法）：`ExpireOlderThan`
 
-**Data 层实现**：`internal/data/unified_evolution.go` — `UnifiedEvolutionRepo` 同时实现 Reader + Writer，使用 raw SQL + 读写分离。
+**Data 层实现**：`internal/data/unified_evolution.go` — `UnifiedEvolutionRepo` 同时实现 Reader + Writer，使用 raw SQL + 读写分离；表结构由 `internal/data/sql/unified_evolution.sql` DDL 建立（非 Ent Schema）。
 
-**EvolutionCoordinator 状态**：已标记 `deprecated`，`HasPendingEvolution` 优先委托 `SkillEvolutionOrchestrator`，失败时 fallback 到 legacy 逻辑。`SetCoordinator` 使用 `sync.Once` 保护，多次调用 panic。
+**A6 物理收敛（迁移 20261111）**：L1 `skill_proposals` / L2 `skill_evolution_suggestions` / L3 `evolution_suggestions` 三张 legacy 表已物理删除——迁移逐行 backfill（主键预检幂等）到 `unified_evolution_suggestions` 后 DROP。legacy 专有字段保留在 `metadata` JSON 列：
+
+- L1：`pattern_hash` / `pattern_desc` / `approved_at` / `rejected_by`（status `registered` 原样保留）
+- L2：`source_report_ids` / `draft_version_id` / `parent_version_id` / `evolution_reason` / `pre_verify_result` / `rejected_by` / `rejection_reason` / `resolved_at`
+- L3：`legacy_type` / `title` / `diff_preview` / `pre_apply_snapshot`
+
+**视图重建层**：biz 层通过转换函数从统一行重建 legacy 视图，对外 proto 契约不变——L1 `skillProposalFromUnified`（[skill_evolution.go](../../internal/biz/skill_evolution.go)）、L2 `unifiedToLegacySuggestionPtr`（[skill_intelligence.go](../../internal/biz/skill_intelligence.go)）、L3 `evolutionViewFromUnified`（[evolution.go](../../internal/biz/evolution.go)）。
+
+**pending 去重索引**：`idx_ues_pending_target` 为 dialect-aware 部分唯一索引——`(target_type, target_id, action_type, COALESCE(json_extract(metadata,'$.pattern_hash'), json_extract(metadata,'$.legacy_type'), '')) WHERE status='pending'`（Postgres 使用 `metadata::jsonb->>` 变体），保留 legacy 去重语义：L1 按 pattern_hash、L3 按 legacy_type、health/curator 按 (target, action)。
+
+**EvolutionCoordinator 状态**：已随 A6 物理收敛删除（`internal/biz/evolution_coordinator.go` 连同 `SetCoordinator` 委托与 fallback 逻辑一并移除）。跨流水线去重统一由 `SkillEvolutionOrchestrator` 统一 pending 检查 + trigger 内去重 + DB 唯一索引（`idx_ues_pending_target`）承担。
 
 **SkillDedupUsecase.MergeSkills**：已标记 `Deprecated`，应使用 `SkillMergeUsecase.Merge`。Service 层不再回退到旧合并。
 
@@ -1093,10 +1106,9 @@ internal/
 │   ├── skill_merge_ai_fuser.go # 基于规则的内容融合器
 │   ├── skill_evolution_unified.go  # 统一进化编排器 + UnifiedEvolutionSuggestion + Reader/Writer 接口
 │   ├── skill_evolution_triggers.go # EvolutionTrigger 策略（Pattern/Health/AgentConfig）+ SkillScorer 窄接口
-│   ├── skill_intelligence.go   # ScoreSkill 四维权重（含 Token/Feedback 条件启用）；SetCoordinator sync.Once 保护
-│   ├── skill_evolution.go      # SkillEvolutionUsecase；SetCoordinator sync.Once 保护
+│   ├── skill_intelligence.go   # SkillIntelligenceUsecase（ScoreSkill 四维权重 + L2 视图重建 unifiedToLegacySuggestionPtr，A6）
+│   ├── skill_evolution.go      # SkillEvolutionUsecase + L1 视图重建 skillProposalFromUnified（A6）
 │   ├── skill_dedup.go          # SkillDedupUsecase（DetectDuplicateGroups 带 10min TTL 缓存）；MergeSkills Deprecated
-│   ├── evolution_coordinator.go # [deprecated] 旧进化协调器，委托 orchestrator
 │   ├── skill_health.go         # SkillHealthUsecase
 │   ├── skill_scoring.go        # SkillScorer 窄接口
 │   ├── skill_report.go         # 报告
@@ -1110,10 +1122,8 @@ internal/
 │   ├── skill_health.go         # 健康 Data 层
 │   ├── skill_invocation_stats.go # 调用统计 Data 层
 │   ├── skill_import_job.go     # 导入任务 Data 层
-│   ├── skill_evolution.go      # 进化 Data 层
-│   ├── skill_evolution_suggestion.go # 进化建议 Data 层
-│   ├── skill_evolution_schema.go # 进化 Schema
-│   ├── unified_evolution.go    # 统一进化 Data 层（raw SQL + 读写分离）
+│   ├── skill_evolution_schema.go # legacy `skill_proposals` DDL（仅作迁移 20261111 backfill 来源，backfill 后 DROP；A6 起不承载读写）
+│   ├── unified_evolution.go    # 统一进化 Data 层（raw SQL + 读写分离；A6 起承载全部四类建议读写，legacy skill_evolution.go / skill_evolution_suggestion.go 已删除）
 │   └── unified_evolution_schema.go # 统一进化 Schema
 ├── skill/
 │   ├── importer/               # ZIP 导入引擎（engine / validate / helpers / chat / errors）
@@ -1161,10 +1171,9 @@ internal/biz/skill_merge.go              → 三阶段合并 Usecase
 internal/biz/skill_merge_ai_fuser.go     → 基于规则的内容融合器
 internal/biz/skill_evolution_unified.go  → 统一进化编排器 + UnifiedEvolutionSuggestion + Reader/Writer 接口
 internal/biz/skill_evolution_triggers.go → EvolutionTrigger 策略（Pattern/Health/AgentConfig）+ SkillScorer 窄接口
-internal/biz/skill_intelligence.go       → ScoreSkill 四维权重（含 Token/Feedback 条件启用）；SetCoordinator sync.Once 保护
-internal/biz/skill_evolution.go          → SkillEvolutionUsecase；SetCoordinator sync.Once 保护
+internal/biz/skill_intelligence.go       → SkillIntelligenceUsecase（ScoreSkill 四维权重 + L2 视图重建，A6）
+internal/biz/skill_evolution.go          → SkillEvolutionUsecase + L1 视图重建（A6）
 internal/biz/skill_dedup.go              → SkillDedupUsecase（DetectDuplicateGroups 带 10min TTL 缓存）；MergeSkills Deprecated
-internal/biz/evolution_coordinator.go    → [deprecated] 旧进化协调器，委托 orchestrator
 internal/data/skill.go                   → Ent 仓储与聚合
 internal/data/skill_merge.go             → 合并 Data 层（事务内 4 步操作）
 internal/data/skill_dedup.go             → 去重 Data 层（含 SkillSimilarityEngine 集成）

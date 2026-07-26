@@ -28,11 +28,8 @@
       >
         <q-tab name="panorama" icon="dashboard" :label="t('memory.tabs.panorama')" />
         <q-tab name="graph" icon="bubble_chart" :label="t('memory.tabs.graph')" />
-        <q-tab name="knowledge" icon="psychology" :label="t('memory.tabs.knowledge')" />
-        <q-tab name="cascade" icon="sync_alt" :label="t('memory.tabs.cascade')" />
-        <q-tab name="sessions" icon="account_tree" :label="t('memory.tabs.sessions')" />
-        <q-tab name="evolution" icon="auto_awesome" :label="t('memory.tabs.evolution')" />
-        <q-tab name="settings" icon="tune" :label="t('memory.tabs.settings')" />
+        <q-tab name="browse" icon="travel_explore" :label="t('memory.tabs.browse')" />
+        <q-tab name="governance" icon="admin_panel_settings" :label="t('memory.tabs.governance')" />
       </q-tabs>
     </q-card>
 
@@ -50,67 +47,64 @@
         <unified-memory-graph :agent-id="selectedAgentId" @open-in-browse="onOpenInBrowse" />
       </q-tab-panel>
 
-      <q-tab-panel name="knowledge">
-        <memory-knowledge-panel
-          v-model:fact-keyword="factKeyword"
-          v-model:fact-scope="factScope"
-          v-model:fact-status="factStatus"
-          :facts-endpoint-ready="factsEndpointReady"
-          :scope-options="scopeOptions"
-          :fact-status-options="factStatusOptions"
-          :fact-rows="factRows"
-          :fact-columns="factColumns"
-          :loading-facts="loadingFacts"
-          @reset="resetFactFilters"
-          @search="loadFacts"
-          @open-fact="openFact"
-        />
+      <q-tab-panel name="browse">
+        <memory-browse-tab v-model:layer="browseLayer">
+          <template #default="{ show }">
+            <memory-sessions-panel
+              v-if="show('L0') || show('L1')"
+              v-model:selected-session-id="selectedSessionId"
+              :session-rows="sessionRows"
+              :loading-sessions="loadingSessions"
+              :snapshot-rows="snapshotRows"
+              :snapshot-columns="snapshotColumns"
+              :loading-snapshots="loadingSnapshots"
+              :task-rows="taskRows"
+              :loading-tasks="loadingTasks"
+              @refresh-sessions="loadSessions"
+              @refresh-memory="loadSessionMemory"
+              @open-snapshot="openSnapshot"
+            />
+            <memory-episode-timeline v-if="show('L2')" :agent-id="selectedAgentId" :session-id="null" />
+            <memory-knowledge-panel
+              v-if="show('L3')"
+              v-model:fact-keyword="factKeyword"
+              v-model:fact-scope="factScope"
+              v-model:fact-status="factStatus"
+              :facts-endpoint-ready="factsEndpointReady"
+              :scope-options="scopeOptions"
+              :fact-status-options="factStatusOptions"
+              :fact-rows="factRows"
+              :fact-columns="factColumns"
+              :loading-facts="loadingFacts"
+              @reset="resetFactFilters"
+              @search="loadFacts"
+              @open-fact="openFact"
+            />
+          </template>
+        </memory-browse-tab>
       </q-tab-panel>
 
-      <q-tab-panel name="cascade">
-        <memory-cascade-panel
-          v-model:preview-open="cascadePreviewOpen"
-          :agent-id="selectedAgentId"
-          :rows="cascadeProposals"
-          :loading="loadingCascade"
-          :acting-id="cascadeActingId"
-          :preview-loading="loadingCascadePreview"
-          :preview="cascadePreviewData"
-          :preview-proposal-id="cascadePreviewProposalId"
-          @refresh="loadCascade"
-          @approve="approveCascade"
-          @reject="rejectCascade"
-          @preview="previewCascade"
-          @confirm-preview="confirmPreviewCascade"
-          @saga="openSagaDrawer"
-          @retry="retryCascade"
-          @compensate="compensateCascade"
-        />
-      </q-tab-panel>
-
-      <q-tab-panel name="sessions">
-        <memory-sessions-panel
-          v-model:selected-session-id="selectedSessionId"
-          :session-rows="sessionRows"
-          :loading-sessions="loadingSessions"
-          :snapshot-rows="snapshotRows"
-          :snapshot-columns="snapshotColumns"
-          :loading-snapshots="loadingSnapshots"
-          :task-rows="taskRows"
-          :loading-tasks="loadingTasks"
-          @refresh-sessions="loadSessions"
-          @refresh-memory="loadSessionMemory"
-          @open-snapshot="openSnapshot"
-        />
-      </q-tab-panel>
-
-      <q-tab-panel name="evolution">
-        <memory-graph-explorer :entities="entities" :loading-entities="loadingEvolution" @refresh="loadEvolution" />
-        <memory-evolution-panel class="q-mt-md" :panels="evolutionPanels" />
-      </q-tab-panel>
-
-      <q-tab-panel name="settings">
+      <q-tab-panel name="governance">
         <div class="column q-gutter-md">
+          <memory-cascade-panel
+            v-model:preview-open="cascadePreviewOpen"
+            :agent-id="selectedAgentId"
+            :rows="cascadeProposals"
+            :loading="loadingCascade"
+            :acting-id="cascadeActingId"
+            :preview-loading="loadingCascadePreview"
+            :preview="cascadePreviewData"
+            :preview-proposal-id="cascadePreviewProposalId"
+            @refresh="loadCascade"
+            @approve="approveCascade"
+            @reject="rejectCascade"
+            @preview="previewCascade"
+            @confirm-preview="confirmPreviewCascade"
+            @saga="openSagaDrawer"
+            @retry="retryCascade"
+            @compensate="compensateCascade"
+          />
+          <memory-evolution-panel :panels="evolutionPanels" />
           <memory-platform-settings-panel />
           <memory-worker-status-panel
             :status="workerStatus"
@@ -139,9 +133,10 @@ import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import MemoryDeadLetterPanel from '../features/memory/MemoryDeadLetterPanel.vue';
 import MemoryPlatformSettingsPanel from '../features/memory/MemoryPlatformSettingsPanel.vue';
-import MemoryGraphExplorer from '../features/memory/MemoryGraphExplorer.vue';
 import MemoryRecallTesterPanel from '../features/memory/MemoryRecallTesterPanel.vue';
 import MemoryWorkerStatusPanel from '../components/memory/MemoryWorkerStatusPanel.vue';
+import MemoryBrowseTab, { type BrowseLayer } from '../features/memory/browse/MemoryBrowseTab.vue';
+import MemoryEpisodeTimeline from '../features/memory/browse/MemoryEpisodeTimeline.vue';
 import MemoryCascadePanel from '../features/memory/MemoryCascadePanel.vue';
 import MemoryEvolutionPanel from '../components/memory/MemoryEvolutionPanel.vue';
 import MemoryFactDrawer from '../features/memory/MemoryFactDrawer.vue';
@@ -159,6 +154,9 @@ import { useMemoryCenterPage } from '../features/memory/useMemoryCenterPage';
 
 const deadLetterPanelRef = ref<InstanceType<typeof MemoryDeadLetterPanel> | null>(null);
 const { t } = useI18n();
+
+/** 浏览 Tab 层级过滤（chips 状态由 MemoryBrowseTab 编辑，钻取跳转由本页写入）。 */
+const browseLayer = ref<BrowseLayer>('all');
 
 const {
   tab,
@@ -184,8 +182,6 @@ const {
   taskRows,
   overviewCards,
   evolutionPanels,
-  entities,
-  loadingEvolution,
   cascadeProposals,
   loadingCascade,
   cascadeActingId,
@@ -217,7 +213,6 @@ const {
   resetFactFilters,
   openSnapshot,
   openFact,
-  loadEvolution,
   handleDeadLetterReplay,
   handleDeadLetterAbandon,
   workerStatus,
@@ -235,37 +230,40 @@ async function onDeadLetterAbandon(id: number) {
   deadLetterPanelRef.value?.load();
 }
 
-// 层级卡钻取：映射到现有最近 Tab（记忆浏览 Tab 属 P3，落地后改为 browse）。
+// 层级卡钻取（终态矩阵 §10.6.2）：L0/L1/L2/L3 → browse + layer；L4 → graph。
 function onDrillLayer(layer: string) {
-  const layerTab: Record<string, string> = {
-    L0: 'sessions',
-    L1: 'sessions',
-    L2: 'sessions',
-    L3: 'knowledge',
-    L4: 'evolution',
-  };
-  tab.value = layerTab[layer] ?? 'panorama';
+  if (layer === 'L4') {
+    tab.value = 'graph';
+    return;
+  }
+  if (layer === 'L0' || layer === 'L1' || layer === 'L2' || layer === 'L3') {
+    browseLayer.value = layer;
+    tab.value = 'browse';
+    return;
+  }
+  tab.value = 'panorama';
 }
 
-// 需要关注跳转：target_tab 为终态命名（browse/governance），映射到现有 Tab。
+// 需要关注跳转：target_tab 已是终态命名（browse/governance/panorama），直达。
 function onNavigateTab(target: string) {
-  const targetTab: Record<string, string> = {
-    browse: 'knowledge',
-    governance: 'evolution',
-    panorama: 'panorama',
-  };
-  tab.value = targetTab[target] ?? 'panorama';
+  tab.value = ['panorama', 'graph', 'browse', 'governance'].includes(target) ? target : 'panorama';
 }
 
-// 图谱节点「在记忆浏览中打开」：事实 → 知识 Tab 按完整 statement 过滤（label 已截断，需从 meta 取全文）；实体 → 进化 Tab；情景 → 会话 Tab（FR-R8）。
+// 图谱节点「在记忆浏览中打开」（FR-R8 终态矩阵）：事实 → browse L3 按完整 statement 过滤（label 已截断，需从 meta 取全文）；情景 → browse L2；实体 → graph 聚焦。
 async function onOpenInBrowse(node: UnifiedGraphNode) {
   if (node.kind === 'fact') {
     factKeyword.value = parseNodeMetaStatement(node) || node.label;
-    tab.value = 'knowledge';
+    browseLayer.value = 'L3';
+    tab.value = 'browse';
     await loadFacts();
     return;
   }
-  tab.value = node.kind === 'entity' ? 'evolution' : 'sessions';
+  if (node.kind === 'episode') {
+    browseLayer.value = 'L2';
+    tab.value = 'browse';
+    return;
+  }
+  tab.value = 'graph';
 }
 
 /** 从节点 meta_json 解析完整事实文本（label 被截断为 40 字符，不能直接用于搜索）。 */

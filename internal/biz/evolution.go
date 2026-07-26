@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
-	"sync"
 	"time"
 
 	"aranea-agents/pkg/apierror"
@@ -39,6 +38,11 @@ type MetricDataPoint struct {
 	Value float64
 }
 
+// EvolutionSuggestion is the L3 (agent persona/prompt/skill) suggestion view
+// exposed to the service layer. After the A6 convergence the physical storage
+// is unified_evolution_suggestions; legacy-only fields (type/title/diff_preview/
+// pre_apply_snapshot) live in the unified row's metadata JSON and are
+// reconstructed by evolutionViewFromUnified.
 type EvolutionSuggestion struct {
 	ID               string
 	AgentID          string
@@ -52,6 +56,59 @@ type EvolutionSuggestion struct {
 	AppliedAt        string
 }
 
+// evolutionViewFromUnified reconstructs the legacy L3 view from a unified row.
+func evolutionViewFromUnified(s *UnifiedEvolutionSuggestion) EvolutionSuggestion {
+	if s == nil {
+		return EvolutionSuggestion{}
+	}
+	appliedAt := ""
+	if s.AppliedAt != nil {
+		appliedAt = s.AppliedAt.UTC().Format(time.RFC3339)
+	}
+	return EvolutionSuggestion{
+		ID:               s.ID,
+		AgentID:          s.TargetID,
+		Type:             s.MetaString(EvoMetaLegacyType),
+		Title:            s.MetaString(EvoMetaTitle),
+		Content:          s.DraftBody,
+		Status:           s.Status,
+		DiffPreview:      s.MetaString(EvoMetaDiffPreview),
+		PreApplySnapshot: s.MetaString(EvoMetaPreApplySnapshot),
+		CreatedAt:        s.CreatedAt.UTC().Format(time.RFC3339),
+		AppliedAt:        appliedAt,
+	}
+}
+
+// unifiedFromEvolutionView converts a legacy L3 view into a unified row for
+// creation. Mirrors the 20261111 backfill mapping: trigger_source=agent_config,
+// trigger_reason=title, action_type=evolve_agent.
+func unifiedFromEvolutionView(s EvolutionSuggestion) UnifiedEvolutionSuggestion {
+	metadata, _ := json.Marshal(map[string]string{
+		EvoMetaLegacyType:       s.Type,
+		EvoMetaTitle:            s.Title,
+		EvoMetaDiffPreview:      s.DiffPreview,
+		EvoMetaPreApplySnapshot: s.PreApplySnapshot,
+	})
+	createdAt, err := time.Parse(time.RFC3339, s.CreatedAt)
+	if err != nil {
+		createdAt = time.Now().UTC()
+	}
+	return UnifiedEvolutionSuggestion{
+		ID:              s.ID,
+		TargetType:      EvolutionTargetAgent,
+		TargetID:        s.AgentID,
+		ActionType:      EvolutionActionEvolve,
+		TriggerSource:   "agent_config",
+		TriggerReason:   s.Title,
+		Status:          s.Status,
+		Priority:        1,
+		DraftBody:       s.Content,
+		LifecycleStatus: "draft",
+		Metadata:        metadata,
+		CreatedAt:       createdAt,
+	}
+}
+
 // Stability:stable
 type EvolutionMetricsRepo interface {
 	GetToolSuccessRate(ctx context.Context, agentID string, since time.Time) (float64, []MetricDataPoint, error)
@@ -60,24 +117,22 @@ type EvolutionMetricsRepo interface {
 	GetNegativeFeedbackCount(ctx context.Context, agentID string, since time.Time) (int, error)
 }
 
-// Stability:stable
-type EvolutionSuggestionRepo interface {
-	ListByAgent(ctx context.Context, agentID string, status string) ([]EvolutionSuggestion, error)
-	GetByID(ctx context.Context, id string) (EvolutionSuggestion, error)
-	Create(ctx context.Context, s EvolutionSuggestion) (EvolutionSuggestion, error)
-	UpdateStatus(ctx context.Context, id string, status string) (EvolutionSuggestion, error)
-	UpdateSnapshot(ctx context.Context, id string, snapshot string) error
+// EvolutionSuggestionCreator is the narrow write/list port for L3 suggestions
+// used by non-evolution consumers (spirit team completion learning, task
+// orchestrator DQ feedback). Implemented by EvolutionUsecase.
+// Stability:evolving
+type EvolutionSuggestionCreator interface {
+	CreateSuggestion(ctx context.Context, s EvolutionSuggestion) (EvolutionSuggestion, error)
+	GetEvolutionSuggestions(ctx context.Context, agentID string, status string) ([]EvolutionSuggestion, error)
 }
 
 type EvolutionUsecase struct {
-	metricsRepo      EvolutionMetricsRepo
-	suggestionRepo   EvolutionSuggestionRepo
-	agents           AgentRepository
-	orchestrator     *SkillEvolutionOrchestrator
-	orchestratorOnce sync.Once
-	lg               loggateway.Logger
-	evolutionSM      *EvolutionStateMachine
-	txProvider       EvolutionTxProvider
+	metricsRepo EvolutionMetricsRepo
+	store       UnifiedEvolutionStore
+	agents      AgentRepository
+	lg          loggateway.Logger
+	evolutionSM *EvolutionStateMachine
+	txProvider  EvolutionTxProvider
 }
 
 // EvolutionTxProvider provides transactional execution for atomic prompt-file
@@ -92,16 +147,16 @@ type EvolutionTxProvider interface {
 
 func NewEvolutionUsecase(
 	metricsRepo EvolutionMetricsRepo,
-	suggestionRepo EvolutionSuggestionRepo,
+	store UnifiedEvolutionStore,
 	agents AgentRepository,
 	lg loggateway.Logger,
 ) *EvolutionUsecase {
 	return &EvolutionUsecase{
-		metricsRepo:    metricsRepo,
-		suggestionRepo: suggestionRepo,
-		agents:         agents,
-		lg:             lg,
-		evolutionSM:    NewEvolutionStateMachine(),
+		metricsRepo: metricsRepo,
+		store:       store,
+		agents:      agents,
+		lg:          lg,
+		evolutionSM: NewEvolutionStateMachine(),
 	}
 }
 
@@ -112,23 +167,14 @@ func NewEvolutionUsecase(
 // (without a txProvider) to preserve legacy non-transactional behavior.
 func ProvideEvolutionUsecase(
 	metricsRepo EvolutionMetricsRepo,
-	suggestionRepo EvolutionSuggestionRepo,
+	store UnifiedEvolutionStore,
 	agents AgentRepository,
 	tp EvolutionTxProvider,
 	lg loggateway.Logger,
 ) *EvolutionUsecase {
-	uc := NewEvolutionUsecase(metricsRepo, suggestionRepo, agents, lg)
+	uc := NewEvolutionUsecase(metricsRepo, store, agents, lg)
 	uc.SetTxProvider(tp)
 	return uc
-}
-
-// SetOrchestrator sets the unified evolution orchestrator for cross-pipeline dedup.
-// When set, ScanAgent delegates to the orchestrator for pending checks.
-// Protected by sync.Once to prevent concurrent initialization races.
-func (uc *EvolutionUsecase) SetOrchestrator(o *SkillEvolutionOrchestrator) {
-	uc.orchestratorOnce.Do(func() {
-		uc.orchestrator = o
-	})
 }
 
 // SetTxProvider sets the transaction provider used to wrap multi-step writes
@@ -144,32 +190,40 @@ func (uc *EvolutionUsecase) GetEvolutionMetrics(ctx context.Context, agentID str
 	if err != nil {
 		return EvolutionMetrics{}, err
 	}
+	return collectEvolutionMetrics(ctx, uc.metricsRepo, uc.lg, agentID, timeRange), nil
+}
+
+// collectEvolutionMetrics gathers the four metric families for an agent over
+// timeRange. Sub-query failures degrade to partial metrics (Partial=true)
+// instead of failing the whole collection. Shared by EvolutionUsecase and
+// AgentConfigTrigger (A6).
+func collectEvolutionMetrics(ctx context.Context, metricsRepo EvolutionMetricsRepo, lg loggateway.Logger, agentID string, timeRange string) EvolutionMetrics {
 	since := timeRangeToSince(timeRange)
 	var partial bool
 	var partialErrors []string
-	toolRate, toolSeries, err := uc.metricsRepo.GetToolSuccessRate(ctx, agentID, since)
+	toolRate, toolSeries, err := metricsRepo.GetToolSuccessRate(ctx, agentID, since)
 	if err != nil {
 		partial = true
 		partialErrors = append(partialErrors, "GetToolSuccessRate: "+err.Error())
-		uc.lg.Warn("GetToolSuccessRate failed", loggateway.StepID("evolution.get_tool_success_rate"), loggateway.Err(err))
+		lg.Warn("GetToolSuccessRate failed", loggateway.StepID("evolution.get_tool_success_rate"), loggateway.Err(err))
 	}
-	retrievalRate, retrievalSeries, err := uc.metricsRepo.GetRetrievalQuality(ctx, agentID, since)
+	retrievalRate, retrievalSeries, err := metricsRepo.GetRetrievalQuality(ctx, agentID, since)
 	if err != nil {
 		partial = true
 		partialErrors = append(partialErrors, "GetRetrievalQuality: "+err.Error())
-		uc.lg.Warn("GetRetrievalQuality failed", loggateway.StepID("evolution.get_retrieval_quality"), loggateway.Err(err))
+		lg.Warn("GetRetrievalQuality failed", loggateway.StepID("evolution.get_retrieval_quality"), loggateway.Err(err))
 	}
-	episodes, err := uc.metricsRepo.GetEpisodeCount(ctx, agentID, since)
+	episodes, err := metricsRepo.GetEpisodeCount(ctx, agentID, since)
 	if err != nil {
 		partial = true
 		partialErrors = append(partialErrors, "GetEpisodeCount: "+err.Error())
-		uc.lg.Warn("GetEpisodeCount failed", loggateway.StepID("evolution.get_episode_count"), loggateway.Err(err))
+		lg.Warn("GetEpisodeCount failed", loggateway.StepID("evolution.get_episode_count"), loggateway.Err(err))
 	}
-	negFeedback, err := uc.metricsRepo.GetNegativeFeedbackCount(ctx, agentID, since)
+	negFeedback, err := metricsRepo.GetNegativeFeedbackCount(ctx, agentID, since)
 	if err != nil {
 		partial = true
 		partialErrors = append(partialErrors, "GetNegativeFeedbackCount: "+err.Error())
-		uc.lg.Warn("GetNegativeFeedbackCount failed", loggateway.StepID("evolution.get_negative_feedback_count"), loggateway.Err(err))
+		lg.Warn("GetNegativeFeedbackCount failed", loggateway.StepID("evolution.get_negative_feedback_count"), loggateway.Err(err))
 	}
 	return EvolutionMetrics{
 		AgentID:                agentID,
@@ -182,7 +236,7 @@ func (uc *EvolutionUsecase) GetEvolutionMetrics(ctx context.Context, agentID str
 		RetrievalQualitySeries: retrievalSeries,
 		Partial:                partial,
 		PartialErrors:          partialErrors,
-	}, nil
+	}
 }
 
 func (uc *EvolutionUsecase) GetEvolutionSuggestions(ctx context.Context, agentID string, status string) ([]EvolutionSuggestion, error) {
@@ -190,7 +244,34 @@ func (uc *EvolutionUsecase) GetEvolutionSuggestions(ctx context.Context, agentID
 	if err != nil {
 		return nil, err
 	}
-	return uc.suggestionRepo.ListByAgent(ctx, agentID, status)
+	rows, err := uc.store.ListByTargetAndAction(ctx, string(EvolutionTargetAgent), agentID, string(EvolutionActionEvolve), status, 1000, 0)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]EvolutionSuggestion, 0, len(rows))
+	for i := range rows {
+		out = append(out, evolutionViewFromUnified(&rows[i]))
+	}
+	return out, nil
+}
+
+// CreateSuggestion persists an L3 suggestion through the unified store (A6).
+// Used by non-evolution consumers (spirit team learning, DQ feedback) via the
+// EvolutionSuggestionCreator port.
+func (uc *EvolutionUsecase) CreateSuggestion(ctx context.Context, s EvolutionSuggestion) (EvolutionSuggestion, error) {
+	if strings.TrimSpace(s.ID) == "" {
+		s.ID = newAgentCatalogID()
+	}
+	if s.Status == "" {
+		s.Status = EvolutionStatusPending
+	}
+	if s.CreatedAt == "" {
+		s.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if err := uc.store.Create(ctx, unifiedFromEvolutionView(s)); err != nil {
+		return EvolutionSuggestion{}, err
+	}
+	return s, nil
 }
 
 func (uc *EvolutionUsecase) GetSuggestionByID(ctx context.Context, id string) (EvolutionSuggestion, error) {
@@ -198,7 +279,14 @@ func (uc *EvolutionUsecase) GetSuggestionByID(ctx context.Context, id string) (E
 	if err != nil {
 		return EvolutionSuggestion{}, err
 	}
-	return uc.suggestionRepo.GetByID(ctx, id)
+	s, err := uc.store.GetByID(ctx, id)
+	if err != nil {
+		return EvolutionSuggestion{}, err
+	}
+	if s == nil {
+		return EvolutionSuggestion{}, apierror.NotFound("EVOLUTION", "suggestion not found")
+	}
+	return evolutionViewFromUnified(s), nil
 }
 
 func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string, suggestionID string) (EvolutionSuggestion, error) {
@@ -207,7 +295,7 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 	if agentID == "" || suggestionID == "" {
 		return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "agent_id and suggestion_id are required")
 	}
-	s, err := uc.suggestionRepo.GetByID(ctx, suggestionID)
+	s, err := uc.GetSuggestionByID(ctx, suggestionID)
 	if err != nil {
 		return EvolutionSuggestion{}, err
 	}
@@ -297,31 +385,24 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 // (legacy behavior for tests and offline tooling).
 func (uc *EvolutionUsecase) applyAndMark(ctx context.Context, agentID, suggestionID string, files []AgentPromptFile) (EvolutionSuggestion, error) {
 	if uc.txProvider != nil {
-		var updated EvolutionSuggestion
 		err := uc.txProvider.ExecInTx(ctx, func(txCtx context.Context) error {
 			if _, err := uc.agents.ReplaceAgentPromptFiles(txCtx, agentID, files); err != nil {
 				return err
 			}
-			u, err := uc.suggestionRepo.UpdateStatus(txCtx, suggestionID, EvolutionStatusApplied)
-			if err != nil {
-				return err
-			}
-			updated = u
-			return nil
+			return uc.store.UpdateStatus(txCtx, suggestionID, EvolutionStatusApplied, "", "")
 		})
 		if err != nil {
 			return EvolutionSuggestion{}, err
 		}
-		return updated, nil
+		return uc.GetSuggestionByID(ctx, suggestionID)
 	}
 	if _, err := uc.agents.ReplaceAgentPromptFiles(ctx, agentID, files); err != nil {
 		return EvolutionSuggestion{}, err
 	}
-	updated, err := uc.suggestionRepo.UpdateStatus(ctx, suggestionID, EvolutionStatusApplied)
-	if err != nil {
+	if err := uc.store.UpdateStatus(ctx, suggestionID, EvolutionStatusApplied, "", ""); err != nil {
 		return EvolutionSuggestion{}, err
 	}
-	return updated, nil
+	return uc.GetSuggestionByID(ctx, suggestionID)
 }
 
 func (uc *EvolutionUsecase) RejectSuggestion(ctx context.Context, agentID string, suggestionID string) (EvolutionSuggestion, error) {
@@ -330,7 +411,7 @@ func (uc *EvolutionUsecase) RejectSuggestion(ctx context.Context, agentID string
 	if agentID == "" || suggestionID == "" {
 		return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "agent_id and suggestion_id are required")
 	}
-	s, err := uc.suggestionRepo.GetByID(ctx, suggestionID)
+	s, err := uc.GetSuggestionByID(ctx, suggestionID)
 	if err != nil {
 		return EvolutionSuggestion{}, err
 	}
@@ -344,7 +425,10 @@ func (uc *EvolutionUsecase) RejectSuggestion(ctx context.Context, agentID string
 	if _, err := uc.evolutionSM.Transition(ParseEvolutionState(s.Status), EvolutionEventReject); err != nil {
 		return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "invalid status transition from "+s.Status+" to rejected")
 	}
-	return uc.suggestionRepo.UpdateStatus(ctx, suggestionID, EvolutionStatusRejected)
+	if err := uc.store.UpdateStatus(ctx, suggestionID, EvolutionStatusRejected, "", ""); err != nil {
+		return EvolutionSuggestion{}, err
+	}
+	return uc.GetSuggestionByID(ctx, suggestionID)
 }
 
 // RollbackSuggestion restores the agent's prompt files to the state captured
@@ -355,7 +439,7 @@ func (uc *EvolutionUsecase) RollbackSuggestion(ctx context.Context, agentID stri
 	if agentID == "" || suggestionID == "" {
 		return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "agent_id and suggestion_id are required")
 	}
-	s, err := uc.suggestionRepo.GetByID(ctx, suggestionID)
+	s, err := uc.GetSuggestionByID(ctx, suggestionID)
 	if err != nil {
 		return EvolutionSuggestion{}, err
 	}
@@ -391,35 +475,29 @@ func (uc *EvolutionUsecase) RollbackSuggestion(ctx context.Context, agentID stri
 	// is configured so a status-update failure rolls back the file restore
 	// (red line #24).
 	if uc.txProvider != nil {
-		var updated EvolutionSuggestion
 		err := uc.txProvider.ExecInTx(ctx, func(txCtx context.Context) error {
 			if _, err := uc.agents.ReplaceAgentPromptFiles(txCtx, agentID, files); err != nil {
 				return err
 			}
-			u, err := uc.suggestionRepo.UpdateStatus(txCtx, suggestionID, EvolutionStatusRolledBack)
-			if err != nil {
-				return err
-			}
-			updated = u
-			return nil
+			return uc.store.UpdateStatus(txCtx, suggestionID, EvolutionStatusRolledBack, "", "")
 		})
 		if err != nil {
 			return EvolutionSuggestion{}, err
 		}
-		return updated, nil
+		return uc.GetSuggestionByID(ctx, suggestionID)
 	}
 	if _, err := uc.agents.ReplaceAgentPromptFiles(ctx, agentID, files); err != nil {
 		return EvolutionSuggestion{}, err
 	}
-	updated, err := uc.suggestionRepo.UpdateStatus(ctx, suggestionID, EvolutionStatusRolledBack)
-	if err != nil {
+	if err := uc.store.UpdateStatus(ctx, suggestionID, EvolutionStatusRolledBack, "", ""); err != nil {
 		return EvolutionSuggestion{}, err
 	}
-	return updated, nil
+	return uc.GetSuggestionByID(ctx, suggestionID)
 }
 
 // savePreApplySnapshot captures the current content of all prompt files as a
-// JSON-encoded map[filename]content and persists it via the suggestion repo.
+// JSON-encoded map[filename]content and persists it into the unified row's
+// metadata (EvoMetaPreApplySnapshot) for later rollback.
 func (uc *EvolutionUsecase) savePreApplySnapshot(ctx context.Context, suggestionID string, files []AgentPromptFile) error {
 	snapshot := make(map[string]string, len(files))
 	for _, f := range files {
@@ -429,7 +507,7 @@ func (uc *EvolutionUsecase) savePreApplySnapshot(ctx context.Context, suggestion
 	if err != nil {
 		return err
 	}
-	return uc.suggestionRepo.UpdateSnapshot(ctx, suggestionID, string(data))
+	return uc.store.UpdateMetadataKey(ctx, suggestionID, EvoMetaPreApplySnapshot, string(data))
 }
 
 // replaceOrAppendPersona writes personaContent into the "## Persona" section

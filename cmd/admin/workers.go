@@ -27,9 +27,7 @@ type backgroundWorkersConfig struct {
 	AutoMemory                  BackgroundStarter
 	MCPHealthProbe              *mcphealth.Runner
 	A2AGatewayHealthProbe       *a2ahealth.Runner
-	EvolutionScanner            BackgroundStarter
 	LearningLoopScanner         BackgroundStarter
-	SkillEvolutionScanner       BackgroundStarter
 	SkillIntelligenceWorker     BackgroundStarter
 	CuratorWorker               BackgroundStarter
 	EvolutionOrchestratorWorker BackgroundStarter
@@ -129,19 +127,9 @@ func startBackgroundWorkers(
 		logger.Log(log.LevelInfo, "msg", "a2a gateway health probe scheduled", "interval", a2aInterval.String())
 	}
 
-	if cfg.EvolutionScanner != nil {
-		goAfterReady("evolution", func() { cfg.EvolutionScanner.Start(ctx) })
-		logger.Log(log.LevelInfo, "msg", "evolution scanner scheduled", "interval", "30m")
-	}
-
 	if cfg.LearningLoopScanner != nil {
 		goAfterReady("learning_loop", func() { cfg.LearningLoopScanner.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "learning loop scanner scheduled", "interval", "30m")
-	}
-
-	if cfg.SkillEvolutionScanner != nil {
-		goAfterReady("skill_evolution", func() { cfg.SkillEvolutionScanner.Start(ctx) })
-		logger.Log(log.LevelInfo, "msg", "skill evolution scanner scheduled", "interval", "60m")
 	}
 
 	if cfg.SkillIntelligenceWorker != nil {

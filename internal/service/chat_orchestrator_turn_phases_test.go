@@ -11,8 +11,77 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
+
+// stubTeamModelCatalog is a map-based biz.TeamModelCatalog for intent-pass
+// model-override resolution tests.
+type stubTeamModelCatalog struct {
+	rows map[string]biz.ProviderModel
+}
+
+func (s stubTeamModelCatalog) GetByProviderAndModel(_ context.Context, provider, model string) (biz.ProviderModel, error) {
+	if r, ok := s.rows[provider+"/"+model]; ok {
+		return r, nil
+	}
+	return biz.ProviderModel{}, apierror.NotFound("TEST", "model not in catalog")
+}
+
+func (s stubTeamModelCatalog) List(context.Context) ([]biz.ProviderModel, error) {
+	return nil, nil
+}
+
+// TestResolveIntentPassProviderModel pins the ARANEA_INTENT_PASS_MODEL override
+// semantics: the override lets operators point Intent Pass at a lighter model,
+// but only when the override pair exists in the LLM catalog; otherwise the
+// turn's provider/model is kept so Intent Pass still runs.
+func TestResolveIntentPassProviderModel(t *testing.T) {
+	catalog := stubTeamModelCatalog{rows: map[string]biz.ProviderModel{
+		"openai/gpt-4.1-mini": {},
+	}}
+	lg := loggateway.NewNoop()
+
+	t.Run("env unset keeps turn model", func(t *testing.T) {
+		p, m := resolveIntentPassProviderModel(context.Background(), catalog, "anthropic", "claude-sonnet", lg)
+		if p != "anthropic" || m != "claude-sonnet" {
+			t.Fatalf("got (%q, %q)", p, m)
+		}
+	})
+
+	t.Run("model-only override inherits turn provider", func(t *testing.T) {
+		t.Setenv("ARANEA_INTENT_PASS_MODEL", "gpt-4.1-mini")
+		p, m := resolveIntentPassProviderModel(context.Background(), catalog, "openai", "gpt-4.1", lg)
+		if p != "openai" || m != "gpt-4.1-mini" {
+			t.Fatalf("got (%q, %q)", p, m)
+		}
+	})
+
+	t.Run("provider and model override", func(t *testing.T) {
+		t.Setenv("ARANEA_INTENT_PASS_PROVIDER", "openai")
+		t.Setenv("ARANEA_INTENT_PASS_MODEL", "gpt-4.1-mini")
+		p, m := resolveIntentPassProviderModel(context.Background(), catalog, "anthropic", "claude-sonnet", lg)
+		if p != "openai" || m != "gpt-4.1-mini" {
+			t.Fatalf("got (%q, %q)", p, m)
+		}
+	})
+
+	t.Run("override not in catalog falls back to turn model", func(t *testing.T) {
+		t.Setenv("ARANEA_INTENT_PASS_MODEL", "nonexistent-model")
+		p, m := resolveIntentPassProviderModel(context.Background(), catalog, "anthropic", "claude-sonnet", lg)
+		if p != "anthropic" || m != "claude-sonnet" {
+			t.Fatalf("got (%q, %q)", p, m)
+		}
+	})
+
+	t.Run("nil catalog falls back to turn model", func(t *testing.T) {
+		t.Setenv("ARANEA_INTENT_PASS_MODEL", "gpt-4.1-mini")
+		p, m := resolveIntentPassProviderModel(context.Background(), nil, "anthropic", "claude-sonnet", lg)
+		if p != "anthropic" || m != "claude-sonnet" {
+			t.Fatalf("got (%q, %q)", p, m)
+		}
+	})
+}
 
 // TestResolveRootTaskActivityID pins the ctx invariant consumed by
 // plan_and_execute → PublishV2Board & team projection: the root Task activity ID

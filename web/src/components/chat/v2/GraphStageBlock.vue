@@ -32,8 +32,14 @@
                 'graph-edge--flowing': derivedStatus === 'running',
                 'graph-edge--highlighted': highlightedEdgeKeys.has(`${edge.from}-${edge.to}`),
                 'graph-edge--dimmed': hoveredNodeId !== null && !highlightedEdgeKeys.has(`${edge.from}-${edge.to}`),
+                'graph-edge--enter': entranceNodeIds.has(edge.to),
               },
             ]"
+            :style="
+              entranceNodeIds.has(edge.to)
+                ? { animationDelay: `${entranceDelayOf(edge.to) + NODE_ENTER_MS}ms` }
+                : undefined
+            "
           />
         </svg>
         <!-- Nodes -->
@@ -47,6 +53,7 @@
           :is-selected="selectedId === node.ID"
           :is-highlighted="highlightedNodeIds.has(node.ID)"
           :is-dimmed="hoveredNodeId !== null && !highlightedNodeIds.has(node.ID)"
+          :entrance-delay-ms="entranceNodeIds.has(node.ID) ? entranceDelayOf(node.ID) : undefined"
           @select="onSelectNode"
           @hover="onHoverNode"
         />
@@ -56,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import type { GraphStage, GraphStageStatus, GraphNode as GraphNodeType } from '../../../features/chat/v2Types';
@@ -100,6 +107,46 @@ const layoutResult = computed(() =>
 const positions = computed(() => layoutResult.value.positions);
 const width = computed(() => layoutResult.value.computedWidth);
 const height = computed(() => layoutResult.value.computedHeight);
+
+// ── P0 级联入场动画 ──
+// live 判定：GraphStage.StartedAt 距今 < LIVE_WINDOW_MS 视为「实时编排刚创建」，
+// 全部节点按 DAG 层级 stagger 入场；否则视为刷新 replay，跳过入场动画直接呈现。
+// 挂载之后新出现的节点（replan 插入等）无论 live/replay 始终播入场动画。
+const LIVE_WINDOW_MS = 60_000;
+const LAYER_STAGGER_MS = 150;
+const NODE_STAGGER_MS = 80;
+// 边淡入相对目标节点入场的衔接延迟（节点先出现、边随后连接）。
+const NODE_ENTER_MS = 250;
+
+const isLiveEntrance = computed(() => {
+  const started = Date.parse(props.graphStage.StartedAt);
+  if (Number.isNaN(started)) return false;
+  return Date.now() - started < LIVE_WINDOW_MS;
+});
+
+const seenNodeIds = new Set<string>();
+const entranceNodeIds = ref<Set<string>>(new Set());
+let firstSnapshot = true;
+
+watch(
+  nodes,
+  (ns) => {
+    const animateNew = !firstSnapshot || isLiveEntrance.value;
+    for (const n of ns) {
+      if (seenNodeIds.has(n.ID)) continue;
+      seenNodeIds.add(n.ID);
+      if (animateNew) entranceNodeIds.value.add(n.ID);
+    }
+    firstSnapshot = false;
+  },
+  { immediate: true },
+);
+
+function entranceDelayOf(nodeId: string): number {
+  const layer = layoutResult.value.layers.get(nodeId) ?? 0;
+  const order = layoutResult.value.orderInLayer.get(nodeId) ?? 0;
+  return layer * LAYER_STAGGER_MS + order * NODE_STAGGER_MS;
+}
 
 const selectedId = ref<string | null>(null);
 
@@ -309,6 +356,21 @@ const stageStatusLabel = computed(() => {
   to
     stroke-dashoffset: -11
 
+/* P0 级联入场：边在目标节点出现后淡入连接（opacity 动画，不与 flowing 的
+   dasharray/dashoffset 冲突）。animation-delay 由模板按目标节点 stagger 注入。 */
+.graph-edge--enter
+  opacity: 0
+  animation: graph-edge-enter 0.5s ease-out both
+
+@keyframes graph-edge-enter
+  from
+    opacity: 0
+    stroke-width: 0.5
+
+  to
+    opacity: 1
+    stroke-width: 1.8
+
 /* P1 #6: hover 节点时高亮上下游依赖路径 — 高亮路径上的边 */
 .graph-edge--highlighted
   stroke: var(--q-primary, #00bcd4)
@@ -321,4 +383,8 @@ const stageStatusLabel = computed(() => {
 @media (prefers-reduced-motion: reduce)
   .graph-edge--flowing
     animation: none
+
+  .graph-edge--enter
+    animation: none
+    opacity: 1
 </style>

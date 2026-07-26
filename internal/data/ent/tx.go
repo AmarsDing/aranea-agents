@@ -62,8 +62,6 @@ type Tx struct {
 	EvalRun *EvalRunClient
 	// EventDeliveryOutbox is the client for interacting with the EventDeliveryOutbox builders.
 	EventDeliveryOutbox *EventDeliveryOutboxClient
-	// EvolutionSuggestion is the client for interacting with the EvolutionSuggestion builders.
-	EvolutionSuggestion *EvolutionSuggestionClient
 	// ExperienceReport is the client for interacting with the ExperienceReport builders.
 	ExperienceReport *ExperienceReportClient
 	// FailurePattern is the client for interacting with the FailurePattern builders.
@@ -156,8 +154,6 @@ type Tx struct {
 	SessionTurn *SessionTurnClient
 	// SessionV2 is the client for interacting with the SessionV2 builders.
 	SessionV2 *SessionV2Client
-	// SkillEvolutionSuggestion is the client for interacting with the SkillEvolutionSuggestion builders.
-	SkillEvolutionSuggestion *SkillEvolutionSuggestionClient
 	// SkillImportJob is the client for interacting with the SkillImportJob builders.
 	SkillImportJob *SkillImportJobClient
 	// SkillInvocation is the client for interacting with the SkillInvocation builders.
@@ -359,7 +355,6 @@ func (tx *Tx) init() {
 	tx.EvalDataset = NewEvalDatasetClient(tx.config)
 	tx.EvalRun = NewEvalRunClient(tx.config)
 	tx.EventDeliveryOutbox = NewEventDeliveryOutboxClient(tx.config)
-	tx.EvolutionSuggestion = NewEvolutionSuggestionClient(tx.config)
 	tx.ExperienceReport = NewExperienceReportClient(tx.config)
 	tx.FailurePattern = NewFailurePatternClient(tx.config)
 	tx.FlowLogEvent = NewFlowLogEventClient(tx.config)
@@ -406,7 +401,6 @@ func (tx *Tx) init() {
 	tx.SessionRuntime = NewSessionRuntimeClient(tx.config)
 	tx.SessionTurn = NewSessionTurnClient(tx.config)
 	tx.SessionV2 = NewSessionV2Client(tx.config)
-	tx.SkillEvolutionSuggestion = NewSkillEvolutionSuggestionClient(tx.config)
 	tx.SkillImportJob = NewSkillImportJobClient(tx.config)
 	tx.SkillInvocation = NewSkillInvocationClient(tx.config)
 	tx.SkillVersion = NewSkillVersionClient(tx.config)

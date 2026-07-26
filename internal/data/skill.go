@@ -1630,6 +1630,64 @@ func (r *skillRepo) RollbackSkillVersion(ctx context.Context, skillID string, ve
 	return r.GetSkillByID(ctx, skillID)
 }
 
+// CreateSkillVersion appends an evolved version to an existing skill.
+// "Current" resolves by created_at DESC (see GetLatestSkillMarkdown), so
+// inserting the row activates it — no platform_skill pointer to switch.
+// Version metadata/manifests are inherited from the latest existing version;
+// the parent anchor is explicit or falls back to that same latest version.
+func (r *skillRepo) CreateSkillVersion(ctx context.Context, in biz.SkillCreateVersionInput) (biz.SkillVersionDetail, error) {
+	in.SkillID = strings.TrimSpace(in.SkillID)
+	in.Body = strings.TrimSpace(in.Body)
+	if in.SkillID == "" || in.Body == "" {
+		return biz.SkillVersionDetail{}, apierror.BadRequest(apierror.DomainSkill, "skill id and body are required")
+	}
+	now := nowRFC3339()
+	tx, err := r.data.RW().Write(ctx).Tx(ctx)
+	if err != nil {
+		return biz.SkillVersionDetail{}, entErrToBizErr(err, apierror.DomainSkill)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	latest, err := tx.SkillVersion.Query().
+		Where(skillversion.SkillIDEQ(in.SkillID)).
+		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+		First(ctx)
+	if err != nil {
+		if dataent.IsNotFound(err) {
+			return biz.SkillVersionDetail{}, apierror.NotFound(apierror.DomainSkill, "no existing version for skill: %s", in.SkillID)
+		}
+		return biz.SkillVersionDetail{}, entErrToBizErr(err, apierror.DomainSkill)
+	}
+	parentID := strings.TrimSpace(in.ParentVersionID)
+	if parentID == "" {
+		parentID = latest.ID
+	}
+	newVerID := fmt.Sprintf("sv_%d", time.Now().UTC().UnixNano())
+	row, err := tx.SkillVersion.Create().
+		SetID(newVerID).
+		SetSkillID(in.SkillID).
+		SetVersion(incrementVersion(latest.Version)).
+		SetStatus("pass").
+		SetContentMarkdown(in.Body).
+		SetMetadataJSON(latest.MetadataJSON).
+		SetManifestJSON(latest.ManifestJSON).
+		SetFileManifestJSON(latest.FileManifestJSON).
+		SetParentVersionID(parentID).
+		SetEvolutionReason(in.EvolutionReason).
+		SetValidationStatus("pass").
+		SetPublishedAt(now).
+		SetCreatedAt(now).
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return biz.SkillVersionDetail{}, entErrToBizErr(err, apierror.DomainSkill)
+	}
+	if err = tx.Commit(); err != nil {
+		return biz.SkillVersionDetail{}, entErrToBizErr(err, apierror.DomainSkill)
+	}
+	return entSkillVersionToBiz(row), nil
+}
+
 func entSkillVersionToBiz(row *dataent.SkillVersion) biz.SkillVersionDetail {
 	return biz.SkillVersionDetail{
 		ID:               row.ID,

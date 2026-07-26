@@ -2,6 +2,8 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
+	"sort"
 	"testing"
 	"time"
 
@@ -14,82 +16,108 @@ func isAPIErrorCode(err error, code apierror.Code) bool {
 	return ok && ae.Code == code
 }
 
-type mockProposalRepo struct {
-	SkillProposalReadWriter
-	proposals map[string]SkillProposal
-	byHash    map[string]*SkillProposal
-	nextID    int
+// mockUnifiedEvolutionStore is an in-memory UnifiedEvolutionStore +
+// UnifiedEvolutionPatternReader for L1 proposal tests (A6). Unexercised
+// interface methods panic via the embedded nil interfaces.
+type mockUnifiedEvolutionStore struct {
+	UnifiedEvolutionStore
+	UnifiedEvolutionPatternReader
+	rows map[string]UnifiedEvolutionSuggestion
 }
 
-func newMockProposalRepo() *mockProposalRepo {
-	return &mockProposalRepo{
-		proposals: make(map[string]SkillProposal),
-		byHash:    make(map[string]*SkillProposal),
-	}
+func newMockUnifiedEvolutionStore() *mockUnifiedEvolutionStore {
+	return &mockUnifiedEvolutionStore{rows: make(map[string]UnifiedEvolutionSuggestion)}
 }
 
-func (m *mockProposalRepo) Create(_ context.Context, p SkillProposal) (SkillProposal, error) {
-	m.nextID++
-	if p.ID == "" {
-		p.ID = "prop-1"
-	}
-	m.proposals[p.ID] = p
-	m.byHash[p.AgentID+":"+p.PatternHash] = &p
-	return p, nil
+// seed inserts an L1 proposal as a unified row (test helper mirroring the
+// 20261111 backfill mapping).
+func (m *mockUnifiedEvolutionStore) seed(p SkillProposal) {
+	row := unifiedFromSkillProposal(p)
+	m.rows[row.ID] = row
 }
 
-func (m *mockProposalRepo) GetByID(_ context.Context, id string) (SkillProposal, error) {
-	p, ok := m.proposals[id]
-	if !ok {
-		return SkillProposal{}, apierror.NotFound("SKILL_EVO", "proposal not found")
-	}
-	return p, nil
+func metaJSONString(s string) json.RawMessage {
+	b, _ := json.Marshal(s)
+	return b
 }
 
-func (m *mockProposalRepo) GetByPatternHash(_ context.Context, agentID string, hash string) (*SkillProposal, error) {
-	p, ok := m.byHash[agentID+":"+hash]
+func (m *mockUnifiedEvolutionStore) GetByID(_ context.Context, id string) (*UnifiedEvolutionSuggestion, error) {
+	row, ok := m.rows[id]
 	if !ok {
 		return nil, nil
 	}
-	return p, nil
+	return &row, nil
 }
 
-func (m *mockProposalRepo) ListByAgent(_ context.Context, agentID string, status string, _ int, _ int) ([]SkillProposal, error) {
-	var result []SkillProposal
-	for _, p := range m.proposals {
-		if (agentID == "" || p.AgentID == agentID) && (status == "" || string(p.Status) == status) {
-			result = append(result, p)
+func (m *mockUnifiedEvolutionStore) ListByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, status string, _ int, _ int) ([]UnifiedEvolutionSuggestion, error) {
+	var out []UnifiedEvolutionSuggestion
+	for _, r := range m.rows {
+		if r.TargetType != EvolutionTargetType(targetType) {
+			continue
+		}
+		if targetID != "" && r.TargetID != targetID {
+			continue
+		}
+		if actionType != "" && r.ActionType != EvolutionActionType(actionType) {
+			continue
+		}
+		if status != "" && r.Status != status {
+			continue
+		}
+		out = append(out, r)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+func (m *mockUnifiedEvolutionStore) CountByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, status string) (int, error) {
+	rows, err := m.ListByTargetAndAction(context.Background(), targetType, targetID, actionType, status, 0, 0)
+	return len(rows), err
+}
+
+func (m *mockUnifiedEvolutionStore) GetLatestByPatternHash(_ context.Context, agentID string, patternHash string) (*UnifiedEvolutionSuggestion, error) {
+	for _, r := range m.rows {
+		if r.TargetType == EvolutionTargetAgent && r.TargetID == agentID &&
+			r.ActionType == EvolutionActionCreate && r.MetaString(EvoMetaPatternHash) == patternHash {
+			row := r
+			return &row, nil
 		}
 	}
-	return result, nil
+	return nil, nil
 }
 
-func (m *mockProposalRepo) CountByAgent(_ context.Context, agentID string, status string) (int, error) {
-	count := 0
-	for _, p := range m.proposals {
-		if (agentID == "" || p.AgentID == agentID) && (status == "" || string(p.Status) == status) {
-			count++
-		}
-	}
-	return count, nil
+func (m *mockUnifiedEvolutionStore) Create(_ context.Context, s UnifiedEvolutionSuggestion) error {
+	m.rows[s.ID] = s
+	return nil
 }
 
-func (m *mockProposalRepo) UpdateStatus(_ context.Context, id string, status SkillProposalStatus, operator string) (SkillProposal, error) {
-	p, ok := m.proposals[id]
+// UpdateStatus mirrors the real repo's metadata merge semantics so the L1
+// view layer can reconstruct approved_by/at and rejected_by (A6).
+func (m *mockUnifiedEvolutionStore) UpdateStatus(_ context.Context, id string, status string, actor string, reason string) error {
+	row, ok := m.rows[id]
 	if !ok {
-		return SkillProposal{}, apierror.NotFound("SKILL_EVO", "proposal not found")
+		return apierror.NotFound("SKILL_EVO", "proposal not found")
 	}
-	p.Status = status
-	if status == SkillProposalStatusApproved {
-		now := time.Now().UTC()
-		p.ApprovedAt = &now
-		p.ApprovedBy = operator
+	row.Status = status
+	meta := row.MetadataMap()
+	now := time.Now().UTC().Format(time.RFC3339)
+	switch status {
+	case string(UnifiedEvolutionStateApproved):
+		row.ApprovedBy = actor
+		meta[EvoMetaApprovedAt] = metaJSONString(now)
+		meta[EvoMetaResolvedAt] = metaJSONString(now)
+	case string(UnifiedEvolutionStateRejected):
+		row.ApprovedBy = actor
+		meta[EvoMetaRejectedBy] = metaJSONString(actor)
+		meta[EvoMetaRejectionReason] = metaJSONString(reason)
+		meta[EvoMetaResolvedAt] = metaJSONString(now)
+	case string(UnifiedEvolutionStateApplied):
+		t := time.Now().UTC()
+		row.AppliedAt = &t
 	}
-	if status == SkillProposalStatusRejected {
-		p.RejectedBy = operator
-	}
-	m.proposals[id] = p
-	return p, nil
+	row.Metadata, _ = json.Marshal(meta)
+	m.rows[id] = row
+	return nil
 }
 
 type mockPatternReader struct {
@@ -146,11 +174,11 @@ func (m *mockSkillRegistrar) SkillExists(_ context.Context, agentID string, name
 }
 
 func TestSkillEvolutionUsecase_RegisterApproved_EmptyMD(t *testing.T) {
-	repo := newMockProposalRepo()
+	repo := newMockUnifiedEvolutionStore()
 	registrar := &mockSkillRegistrar{existing: make(map[string]bool)}
-	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, registrar, loggateway.NewNoop())
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, registrar, loggateway.NewNoop())
 
-	repo.Create(context.Background(), SkillProposal{
+	repo.seed(SkillProposal{
 		ID:        "p1",
 		AgentID:   "a1",
 		SkillName: "empty-skill",
@@ -168,10 +196,10 @@ func TestSkillEvolutionUsecase_RegisterApproved_EmptyMD(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_RegisterApproved_NilRegistrar(t *testing.T) {
-	repo := newMockProposalRepo()
-	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	repo := newMockUnifiedEvolutionStore()
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 
-	repo.Create(context.Background(), SkillProposal{
+	repo.seed(SkillProposal{
 		ID:        "p1",
 		AgentID:   "a1",
 		SkillName: "my-skill",
@@ -190,17 +218,17 @@ func TestSkillEvolutionUsecase_RegisterApproved_NilRegistrar(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_ApproveProposal(t *testing.T) {
-	repo := newMockProposalRepo()
-	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	repo := newMockUnifiedEvolutionStore()
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 
-	created, _ := repo.Create(context.Background(), SkillProposal{
+	repo.seed(SkillProposal{
 		ID:        "p1",
 		AgentID:   "a1",
 		Status:    SkillProposalStatusPending,
 		CreatedAt: time.Now().UTC(),
 	})
 
-	result, err := uc.ApproveProposal(context.Background(), created.ID, "user1")
+	result, err := uc.ApproveProposal(context.Background(), "p1", "user1")
 	if err != nil {
 		t.Fatalf("ApproveProposal: %v", err)
 	}
@@ -213,10 +241,10 @@ func TestSkillEvolutionUsecase_ApproveProposal(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_ApproveProposal_NotPending(t *testing.T) {
-	repo := newMockProposalRepo()
-	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	repo := newMockUnifiedEvolutionStore()
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 
-	repo.Create(context.Background(), SkillProposal{
+	repo.seed(SkillProposal{
 		ID:     "p1",
 		Status: SkillProposalStatusApproved,
 	})
@@ -231,10 +259,10 @@ func TestSkillEvolutionUsecase_ApproveProposal_NotPending(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_RejectProposal(t *testing.T) {
-	repo := newMockProposalRepo()
-	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	repo := newMockUnifiedEvolutionStore()
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 
-	repo.Create(context.Background(), SkillProposal{
+	repo.seed(SkillProposal{
 		ID:     "p1",
 		Status: SkillProposalStatusPending,
 	})
@@ -252,11 +280,11 @@ func TestSkillEvolutionUsecase_RejectProposal(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_RegisterApproved(t *testing.T) {
-	repo := newMockProposalRepo()
+	repo := newMockUnifiedEvolutionStore()
 	registrar := &mockSkillRegistrar{existing: make(map[string]bool)}
-	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, registrar, loggateway.NewNoop())
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, registrar, loggateway.NewNoop())
 
-	repo.Create(context.Background(), SkillProposal{
+	repo.seed(SkillProposal{
 		ID:        "p1",
 		AgentID:   "a1",
 		SkillName: "my-skill",
@@ -277,13 +305,13 @@ func TestSkillEvolutionUsecase_RegisterApproved(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_RegisterApproved_Conflict(t *testing.T) {
-	repo := newMockProposalRepo()
+	repo := newMockUnifiedEvolutionStore()
 	registrar := &mockSkillRegistrar{
 		existing: map[string]bool{"a1:my-skill": true},
 	}
-	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, registrar, loggateway.NewNoop())
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, registrar, loggateway.NewNoop())
 
-	repo.Create(context.Background(), SkillProposal{
+	repo.seed(SkillProposal{
 		ID:        "p1",
 		AgentID:   "a1",
 		SkillName: "my-skill",
@@ -301,10 +329,10 @@ func TestSkillEvolutionUsecase_RegisterApproved_Conflict(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_RegisterApproved_NotApproved(t *testing.T) {
-	repo := newMockProposalRepo()
-	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	repo := newMockUnifiedEvolutionStore()
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 
-	repo.Create(context.Background(), SkillProposal{
+	repo.seed(SkillProposal{
 		ID:     "p1",
 		Status: SkillProposalStatusPending,
 	})
@@ -319,10 +347,10 @@ func TestSkillEvolutionUsecase_RegisterApproved_NotApproved(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_GetProposal(t *testing.T) {
-	repo := newMockProposalRepo()
-	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	repo := newMockUnifiedEvolutionStore()
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 
-	repo.Create(context.Background(), SkillProposal{
+	repo.seed(SkillProposal{
 		ID:        "p1",
 		AgentID:   "a1",
 		SkillName: "test-skill",
@@ -340,7 +368,7 @@ func TestSkillEvolutionUsecase_GetProposal(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_GetProposal_EmptyID(t *testing.T) {
-	uc := NewSkillEvolutionUsecase(newMockProposalRepo(), nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSkillEvolutionUsecase(newMockUnifiedEvolutionStore(), nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	_, err := uc.GetProposal(context.Background(), "")
 	if err == nil {
@@ -349,12 +377,12 @@ func TestSkillEvolutionUsecase_GetProposal_EmptyID(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_ListProposals(t *testing.T) {
-	repo := newMockProposalRepo()
-	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	repo := newMockUnifiedEvolutionStore()
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 
-	repo.Create(context.Background(), SkillProposal{ID: "p1", AgentID: "a1", Status: SkillProposalStatusPending})
-	repo.Create(context.Background(), SkillProposal{ID: "p2", AgentID: "a1", Status: SkillProposalStatusApproved})
-	repo.Create(context.Background(), SkillProposal{ID: "p3", AgentID: "a2", Status: SkillProposalStatusPending})
+	repo.seed(SkillProposal{ID: "p1", AgentID: "a1", Status: SkillProposalStatusPending})
+	repo.seed(SkillProposal{ID: "p2", AgentID: "a1", Status: SkillProposalStatusApproved})
+	repo.seed(SkillProposal{ID: "p3", AgentID: "a2", Status: SkillProposalStatusPending})
 
 	all, err := uc.ListProposals(context.Background(), "a1", "", 0, 0)
 	if err != nil {
@@ -374,12 +402,12 @@ func TestSkillEvolutionUsecase_ListProposals(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_ListProposals_EmptyAgentID(t *testing.T) {
-	repo := newMockProposalRepo()
-	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	repo := newMockUnifiedEvolutionStore()
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 
-	repo.Create(context.Background(), SkillProposal{ID: "p1", AgentID: "a1", Status: SkillProposalStatusPending})
-	repo.Create(context.Background(), SkillProposal{ID: "p2", AgentID: "a1", Status: SkillProposalStatusApproved})
-	repo.Create(context.Background(), SkillProposal{ID: "p3", AgentID: "a2", Status: SkillProposalStatusPending})
+	repo.seed(SkillProposal{ID: "p1", AgentID: "a1", Status: SkillProposalStatusPending})
+	repo.seed(SkillProposal{ID: "p2", AgentID: "a1", Status: SkillProposalStatusApproved})
+	repo.seed(SkillProposal{ID: "p3", AgentID: "a2", Status: SkillProposalStatusPending})
 
 	all, err := uc.ListProposals(context.Background(), "", "", 0, 0)
 	if err != nil {
@@ -391,7 +419,7 @@ func TestSkillEvolutionUsecase_ListProposals_EmptyAgentID(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_DetectAndPropose_NoCreator(t *testing.T) {
-	uc := NewSkillEvolutionUsecase(newMockProposalRepo(), nil, &stubAgentRepo{agent: Agent{ID: "a1"}}, nil, nil, loggateway.NewNoop())
+	uc := NewSkillEvolutionUsecase(newMockUnifiedEvolutionStore(), nil, nil, &stubAgentRepo{agent: Agent{ID: "a1"}}, nil, nil, loggateway.NewNoop())
 
 	proposals, err := uc.DetectAndPropose(context.Background(), "a1")
 	if err != nil {
@@ -403,7 +431,7 @@ func TestSkillEvolutionUsecase_DetectAndPropose_NoCreator(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_DetectAndPropose_WithPatterns(t *testing.T) {
-	repo := newMockProposalRepo()
+	repo := newMockUnifiedEvolutionStore()
 	patterns := &mockPatternReader{
 		patterns: []Pattern{
 			{
@@ -418,7 +446,7 @@ func TestSkillEvolutionUsecase_DetectAndPropose_WithPatterns(t *testing.T) {
 		},
 	}
 	creator := &mockSkillAutoCreator{name: "web-search-skill", content: "---\nname: web-search-skill\n---\nbody"}
-	uc := NewSkillEvolutionUsecase(repo, patterns, &stubAgentRepo{agent: Agent{ID: "a1"}}, creator, nil, loggateway.NewNoop())
+	uc := NewSkillEvolutionUsecase(repo, repo, patterns, &stubAgentRepo{agent: Agent{ID: "a1"}}, creator, nil, loggateway.NewNoop())
 
 	proposals, err := uc.DetectAndPropose(context.Background(), "a1")
 	if err != nil {
@@ -436,7 +464,7 @@ func TestSkillEvolutionUsecase_DetectAndPropose_WithPatterns(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_DetectAndPropose_DedupByHash(t *testing.T) {
-	repo := newMockProposalRepo()
+	repo := newMockUnifiedEvolutionStore()
 	patterns := &mockPatternReader{
 		patterns: []Pattern{
 			{
@@ -451,7 +479,7 @@ func TestSkillEvolutionUsecase_DetectAndPropose_DedupByHash(t *testing.T) {
 		},
 	}
 	creator := &mockSkillAutoCreator{name: "web-search", content: "---\nname: web-search\n---\nbody"}
-	uc := NewSkillEvolutionUsecase(repo, patterns, &stubAgentRepo{agent: Agent{ID: "a1"}}, creator, nil, loggateway.NewNoop())
+	uc := NewSkillEvolutionUsecase(repo, repo, patterns, &stubAgentRepo{agent: Agent{ID: "a1"}}, creator, nil, loggateway.NewNoop())
 
 	proposals1, _ := uc.DetectAndPropose(context.Background(), "a1")
 	if len(proposals1) != 1 {
@@ -465,7 +493,7 @@ func TestSkillEvolutionUsecase_DetectAndPropose_DedupByHash(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_DetectAndPropose_LowConfidence(t *testing.T) {
-	repo := newMockProposalRepo()
+	repo := newMockUnifiedEvolutionStore()
 	patterns := &mockPatternReader{
 		patterns: []Pattern{
 			{
@@ -480,7 +508,7 @@ func TestSkillEvolutionUsecase_DetectAndPropose_LowConfidence(t *testing.T) {
 		},
 	}
 	creator := &mockSkillAutoCreator{name: "web-search", content: "body"}
-	uc := NewSkillEvolutionUsecase(repo, patterns, &stubAgentRepo{agent: Agent{ID: "a1"}}, creator, nil, loggateway.NewNoop())
+	uc := NewSkillEvolutionUsecase(repo, repo, patterns, &stubAgentRepo{agent: Agent{ID: "a1"}}, creator, nil, loggateway.NewNoop())
 
 	proposals, err := uc.DetectAndPropose(context.Background(), "a1")
 	if err != nil {
@@ -492,8 +520,8 @@ func TestSkillEvolutionUsecase_DetectAndPropose_LowConfidence(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_CreateProposal(t *testing.T) {
-	repo := newMockProposalRepo()
-	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	repo := newMockUnifiedEvolutionStore()
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 
 	result, err := uc.CreateProposal(context.Background(), SkillProposal{
 		AgentID:     "a1",
@@ -558,7 +586,7 @@ func TestExtractToolNamesFromDesc(t *testing.T) {
 // DetectAndPropose rejects an agentID that does not correspond to an existing
 // agent. This is the REL-2 fix: previously only requireNonEmpty was called.
 func TestSkillEvolutionUsecase_DetectAndPropose_NonExistentAgent(t *testing.T) {
-	repo := newMockProposalRepo()
+	repo := newMockUnifiedEvolutionStore()
 	patterns := &mockPatternReader{
 		patterns: []Pattern{
 			{
@@ -575,7 +603,7 @@ func TestSkillEvolutionUsecase_DetectAndPropose_NonExistentAgent(t *testing.T) {
 	creator := &mockSkillAutoCreator{name: "web-search", content: "body"}
 	// stubAgentRepo with a different agent ID → GetAgentByID returns ErrNotFound
 	agents := &stubAgentRepo{agent: Agent{ID: "a1"}}
-	uc := NewSkillEvolutionUsecase(repo, patterns, agents, creator, nil, loggateway.NewNoop())
+	uc := NewSkillEvolutionUsecase(repo, repo, patterns, agents, creator, nil, loggateway.NewNoop())
 
 	proposals, err := uc.DetectAndPropose(context.Background(), "ghost")
 	if err == nil {
@@ -593,9 +621,9 @@ func TestSkillEvolutionUsecase_DetectAndPropose_NonExistentAgent(t *testing.T) {
 // when the AgentRepository dependency is nil (misconfiguration), DetectAndPropose
 // fails closed instead of silently proceeding. This is the REL-2 fix.
 func TestSkillEvolutionUsecase_DetectAndPropose_NilAgentsFailClosed(t *testing.T) {
-	repo := newMockProposalRepo()
+	repo := newMockUnifiedEvolutionStore()
 	creator := &mockSkillAutoCreator{name: "web-search", content: "body"}
-	uc := NewSkillEvolutionUsecase(repo, nil, nil, creator, nil, loggateway.NewNoop())
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, creator, nil, loggateway.NewNoop())
 
 	_, err := uc.DetectAndPropose(context.Background(), "a1")
 	if err == nil {

@@ -315,7 +315,7 @@ func (p *ActivityProjector) EmitConfirmRequest(ctx context.Context, params biz.A
 	step, ok := p.activeStep[stepID]
 	if ok {
 		step.ToolName = params.ToolName
-		step.ToolArgs = json.RawMessage(params.ToolArguments)
+		step.ToolArgs = sanitizeRawJSON([]byte(params.ToolArguments))
 		step.Content = params.Content
 		step.Status = biz.StepStatusToolBlocked
 		step.Version++
@@ -684,7 +684,7 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, meta ProjectMeta, to
 	step, ok := p.activeStep[stepID]
 	if ok {
 		step.ToolName = toolName
-		step.ToolArgs = args
+		step.ToolArgs = sanitizeRawJSON(args)
 		step.Status = biz.StepStatusToolRunning
 		step.Version++
 	}
@@ -867,6 +867,28 @@ func (p *ActivityProjector) terminalTask(ctx context.Context, taskID, sessionID 
 	return task
 }
 
+// sanitizeRawJSON guards event payloads against malformed JSON from the LLM
+// or tools: Step.ToolArgs/ToolResult are json.RawMessage, and RawMessage's
+// MarshalJSON validates its content — one malformed tool call would make the
+// whole step.updated/step.completed event fail to marshal and be dropped from
+// BOTH the outbox persist path and the WS subscriber (2026-07-25 22:33
+// incident: "outbox marshal failed" / "ws v2 marshal failed"). Invalid input
+// is demoted to a plain JSON string so the event always stays marshalable
+// and the original text remains inspectable.
+func sanitizeRawJSON(b []byte) json.RawMessage {
+	if len(b) == 0 {
+		return nil
+	}
+	if json.Valid(b) {
+		return json.RawMessage(b)
+	}
+	q, err := json.Marshal(string(b))
+	if err != nil {
+		return nil
+	}
+	return json.RawMessage(q)
+}
+
 // completeStep marks the step completed, removes it from the active map, and
 // emits step.completed. content (if non-empty) overwrites step.Content; result
 // (if non-nil) overwrites step.ToolResult.
@@ -885,7 +907,7 @@ func (p *ActivityProjector) completeStep(ctx context.Context, stepID, content st
 		step.Content = content
 	}
 	if result != nil {
-		step.ToolResult = result
+		step.ToolResult = sanitizeRawJSON(result)
 	}
 	step.Status = biz.StepStatusCompleted
 	step.CompletedAt = &now

@@ -29,7 +29,9 @@ type EvolutionAgentLister interface {
 // Each tick it:
 //  1. Expires stale pending suggestions (orchestrator.ExpirePending)
 //  2. Scans active skills → orchestrator.CheckAndCreate(skill) — HealthTrigger
-//  3. Scans active agents (EvolutionSkillEvolve opt-in) → orchestrator.CheckAndCreate(agent) — PatternTrigger + AgentConfigTrigger
+//  3. Scans active agents (L1 EvolutionSkillEvolve or L3 EvolutionSuggestionsEnabled/
+//     EvoEnabled opt-in) → orchestrator.CheckAndCreate(agent) — PatternTrigger +
+//     AgentConfigTrigger; each trigger re-checks its own opt-in flag.
 //
 // Verification of triggered suggestions remains with CuratorWorker
 // (ValidatePendingSuggestionsForSkill); the learning loop
@@ -143,8 +145,10 @@ func (w *EvolutionOrchestratorWorker) scanSkills(ctx context.Context) error {
 }
 
 // scanAgents iterates active agents in batches and runs orchestrator
-// CheckAndCreate for each agent that has opted into skill evolution
-// (EvolutionSkillEvolve), mirroring the legacy SkillEvolutionScanner gate.
+// CheckAndCreate for each agent that has opted into any evolution pipeline
+// (L1 EvolutionSkillEvolve or L3 EvolutionSuggestionsEnabled/EvoEnabled).
+// Each registered trigger re-checks its own opt-in flag, so the union gate
+// here only limits unnecessary CheckAndCreate calls.
 func (w *EvolutionOrchestratorWorker) scanAgents(ctx context.Context) error {
 	if w.agents == nil {
 		return nil
@@ -170,7 +174,7 @@ func (w *EvolutionOrchestratorWorker) scanAgents(ctx context.Context) error {
 			if serr != nil {
 				continue
 			}
-			if !settings.EvolutionSkillEvolve {
+			if !settings.EvolutionSkillEvolve && !settings.EvolutionSuggestionsEnabled && !settings.EvoEnabled {
 				continue
 			}
 			if _, err := w.orch.CheckAndCreate(ctx, biz.EvolutionTargetAgent, a.ID); err != nil {

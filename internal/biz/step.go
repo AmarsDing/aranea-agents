@@ -89,6 +89,11 @@ type ClarificationEnvelope struct {
 	Answers   []ClarificationAnswer   `json:"answers"`
 	// OriginalInput 是触发澄清的原始用户输入，用于服务重启后惰性重建续跑输入。
 	OriginalInput string `json:"original_input,omitempty"`
+	// IntentArtifactJSON 持久化触发澄清时的意图产物（internal/agent/intent.Artifact
+	// 的 JSON 序列化）。服务重启后 pendingClarifications 内存态丢失，续跑时从
+	// 信封恢复意图产物，避免为重写后的输入重跑 Intent Pass LLM。
+	// biz 层不依赖 agent 层，故以原始 JSON 字符串存储。
+	IntentArtifactJSON string `json:"intent_artifact_json,omitempty"`
 	// FreeText 是用户在澄清等待态直接发消息产生的自由回复内容。
 	FreeText string `json:"free_text,omitempty"`
 }

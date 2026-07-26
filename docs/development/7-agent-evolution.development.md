@@ -14,23 +14,20 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 
 | 层 | 路径 | 职责 |
 |----|------|------|
-| Biz — 领域 | `internal/biz/evolution.go` | `EvolutionUsecase` / `EvolutionMetrics` / `EvolutionSuggestion` / Repo 接口 |
-| Biz — 扫描 | `internal/biz/evolution_scan.go` | `ScanAll` / `ScanAgent` / `ensurePendingSuggestion` |
+| Biz — 领域 | `internal/biz/evolution.go` | `EvolutionUsecase` / `EvolutionMetrics` / `EvolutionSuggestion`（A6 起为 unified 行重建视图）/ 端口接口 |
+| Biz — 扫描 | `internal/biz/skill_evolution_triggers.go` | `AgentConfigTrigger`（A6 移植自 legacy `evolution_scan.go` 的 `ScanAgent`；opt-in 门控 + type+title 去重） |
 | Biz — 状态机 | `internal/biz/evolution_state_machine.go` | `EvolutionStateMachine`（Pending/Applied/Rejected/RolledBack） |
-| Biz — 去重 | `internal/biz/evolution_coordinator.go` | `EvolutionCoordinator`（遗留跨流水线去重） |
-| Biz — 统一去重 | `internal/biz/skill_evolution_unified.go` | `SkillEvolutionOrchestrator`（统一跨流水线去重） |
+| Biz — 统一去重 | `internal/biz/skill_evolution_unified.go` | `SkillEvolutionOrchestrator`（统一跨流水线去重；legacy `evolution_coordinator.go` 已随 A6 删除） |
 | Biz — 设置 | `internal/biz/agent_types.go` | `AgentRuntimeSettings` 定义（含 `Evolution*` / `Evo*` / `Guardrail*` 字段） |
 | Biz — 设置解析 | `internal/biz/agent_settings_helpers.go` | `settingsFromLegacyConfig` 解析存储 |
 | Biz — 设置视图 | `internal/biz/agent_settings.go` | `EvolutionCfg` 定义 + `GetEvolution()` 视图 |
 | Data — 指标 | `internal/data/evolution_metrics_repo.go` | 从 `tool_invocations` 聚合成功率/检索质量 |
-| Data — 建议 | `internal/data/evolution_suggestion_repo.go` | `evolution_suggestions` 表 CRUD |
-| Data — 桥接 | `internal/data/evolution_store_bridge.go` | Evolution store 桥接 |
-| Ent Schema | `internal/data/ent/schema/evolution_suggestion.go` | `evolution_suggestions` 表 Schema |
+| Data — 建议 | `internal/data/unified_evolution.go` | `UnifiedEvolutionRepo`（A6：统一进化存储，raw SQL + 方言感知；legacy `evolution_suggestion_repo.go` / `evolution_store_bridge.go` / Ent Schema `evolution_suggestion.go` 已删除） |
 | Service | `internal/service/agent_evolution.go` | Evolution RPC（挂在 `AgentService`） |
 | Service — 主 | `internal/service/agent.go` | `AgentService` 持有 `evoUC` 字段 + `invalidateAgentBuildCache` |
-| Cron | `internal/cronrunner/jobs/evolution_scanner.go` | `EvolutionScanner` worker（30min 默认） |
-| Wire | `cmd/admin/wire.go` | `provideEvolutionScanner`（`EVOLUTION_SCANNER_DISABLED=1` 可关） |
-| Workers | `cmd/admin/workers.go` | `goAfterReady("evolution", ...)` 启动 |
+| Cron | `internal/cronrunner/jobs/evolution_orchestrator_worker.go` | `EvolutionOrchestratorWorker`（30min 默认，统一进化触发入口；legacy `evolution_scanner.go` 已删除） |
+| Wire | `cmd/admin/wire.go` | `provideEvolutionUsecase` / `provideSkillEvolutionOrchestrator` / `provideEvolutionOrchestratorWorker`（`EVOLUTION_ORCHESTRATOR_DISABLED=1` 可关） |
+| Workers | `cmd/admin/workers.go` | `goAfterReady("evolution_orchestrator", ...)` 启动 |
 | Agent Build | `internal/agent/trpc_build.go` | `BuildTRPCLLMAgent` 读取 `ag.Settings`（含进化开关） |
 | Web — 组件 | `web/src/components/agents/AgentEvolutionPanel.vue` | 进化 Tab 主组件 |
 | Web — composable | `web/src/features/agents/useAgentEvolutionPanel.ts` | 进化面板 composable |
@@ -59,14 +56,14 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 | 应用建议 RPC | ✅ | `ApplyEvolutionSuggestion`（`internal/service/agent_evolution.go:58`） |
 | 拒绝建议 RPC | ✅ | `RejectEvolutionSuggestion`（`internal/service/agent_evolution.go:69`） |
 | 指标真实计算 | ✅ | `evolutionMetricsRepo` 查 `tool_invocations`（非静态零值） |
-| `EvolutionScanner` worker | ✅ | `internal/cronrunner/jobs/evolution_scanner.go`；Wire + `main` 启动；`EVOLUTION_SCANNER_DISABLED=1` 可关 |
-| 自动生成建议 | ✅ | `EvolutionUsecase.ScanAll` / `ScanAgent` 阈值写入 `evolution_suggestions`（去重 pending 同 type） |
+| `EvolutionOrchestratorWorker` worker | ✅ | `internal/cronrunner/jobs/evolution_orchestrator_worker.go`；Wire + `main` 启动；`EVOLUTION_ORCHESTRATOR_DISABLED=1` 可关（A6 起取代 legacy `EvolutionScanner`） |
+| 自动生成建议 | ✅ | `AgentConfigTrigger.Check` 阈值写入 `unified_evolution_suggestions`（pending 同 legacy_type+title 去重，DB 唯一索引兜底） |
 | `ApplySuggestion` type=persona | ✅ | 写入 `IDENTITY.md` ## Persona section（PGO V2 后替代 SOUL.md，保留 SOUL.md 兜底） |
 | `ApplySuggestion` type=prompt | ✅ | 写入 `AGENTS_CORE.md` 或首匹配 `AGENTS*.md` 文件 |
-| `ApplySuggestion` type=skill | ✅ | 写入 `evolution_suggestions` 表（扫描器生成） |
+| `ApplySuggestion` type=skill | ✅ | 写入 `unified_evolution_suggestions` 表（扫描器生成，A6 收敛） |
 | 状态机（AS-FSM-01） | ✅ | `EvolutionStateMachine`（`internal/biz/evolution_state_machine.go`）；4 状态 3 转换 |
-| Rollback 建议 | ✅ | `RollbackSuggestion`（`internal/biz/evolution.go:298`）+ `PreApplySnapshot` 恢复 prompt files |
-| 跨流水线去重 | ✅ | `SkillEvolutionOrchestrator.HasPendingForTarget` 优先，回退 `EvolutionCoordinator.HasPendingEvolution` |
+| Rollback 建议 | ✅ | `RollbackSuggestion`（`internal/biz/evolution.go`）+ `PreApplySnapshot`（metadata JSON）恢复 prompt files |
+| 跨流水线去重 | ✅ | `AgentConfigTrigger` 内 type+title 去重 + `SkillEvolutionOrchestrator` 统一 pending 检查（legacy `EvolutionCoordinator` 已删除） |
 | Apply 后失效缓存 | ✅ | `invalidateAgentBuildCache(req.GetAgentId())`（`internal/service/agent_evolution.go:65`） |
 | Learning Loop API | ✅ | observation/pattern/proposal CRUD + run |
 | `diff_preview` 生成 | ❌ | 多为空（`AIRefineButton` 有 diff，但 evolution suggestion `diff_preview` 仍空） |
@@ -101,7 +98,7 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 | 风格进化 | `EvolutionSelfEvolve` / `SelfEvolve`（deprecated） | ✅ 字段已实现 | 🟡 运行时未自动修改 `IDENTITY.md`，仅手动应用建议触发 |
 | 技能进化 | `EvolutionSkillEvolve` | ✅ 字段已实现 | 🟡 运行时未实现技能自动创建逻辑 |
 | 进化指标 | `EvolutionMetricsEnabled` | ✅ 字段已实现 | ✅ 运行时通过 `tool_invocations` 表查询统计 |
-| 进化建议 | `EvolutionSuggestionsEnabled` | ✅ 字段已实现 | ✅ `EvolutionScanner` 定时任务基于指标生成建议 |
+| 进化建议 | `EvolutionSuggestionsEnabled` | ✅ 字段已实现 | ✅ `EvolutionOrchestratorWorker`（`AgentConfigTrigger`）定时任务基于指标生成建议 |
 | 自动提议流水线 | `EvoEnabled` / `EvoAutoApply` / `EvoMin*` | ✅ 字段已实现 | 🟡 `EvoEnabled` 参与扫描门控；`EvoAutoApply` 未实现自动应用 |
 | 适应护栏 | `GuardrailMaxChangePerPeriod` 等 | ✅ 字段已定义 | ❌ 运行时未使用这些参数控制演化幅度 |
 
@@ -133,14 +130,14 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 
 - [x] 指标 API 可返回基于 `tool_invocations` 的数据
 - [x] 前端可展示指标卡片与建议列表
-- [x] EvolutionScanner 周期性运行（默认 30min）
+- [x] EvolutionOrchestratorWorker 周期性运行（默认 30min；L3 由 AgentConfigTrigger 执行）
 - [x] 建议可由扫描自动生成（非仅手工/种子）
 - [x] Learning Loop panel 可用（Overview/Observation/Pattern/Proposal）
 - [x] `ApplySuggestion` persona type 写入 IDENTITY.md ## Persona 段
 - [x] `ApplySuggestion` prompt type 写入 AGENTS_CORE.md 或首匹配 AGENTS*.md
 - [x] `EvolutionStateMachine` 校验所有状态转换（Pending→Applied/Rejected，Applied→RolledBack）
 - [x] `RollbackSuggestion` 从 `PreApplySnapshot` 恢复 prompt files
-- [x] 跨流水线去重（orchestrator 优先，coordinator 回退）
+- [x] 跨流水线去重（trigger 内 type+title 去重 + orchestrator 统一 pending 检查 + DB 唯一索引兜底）
 - [x] Apply 后 `invalidateAgentBuildCache` 失效缓存
 - [ ] 前端趋势图展示 `tool_success_series` / `retrieval_quality_series`（完整折线图）
 - [ ] Evolution suggestion `diff_preview` 非空
@@ -152,21 +149,21 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 
 ## 5. 架构备注
 
-### 5.1 Scanner
+### 5.1 Scanner（A6 重构后）
 
 | 组件 | 路径 |
 |------|------|
-| 扫描逻辑 | `internal/biz/evolution_scan.go` |
-| Worker | `internal/cronrunner/jobs/evolution_scanner.go` |
-| 注册 | `cmd/admin/wire.go` → `provideEvolutionScanner` |
-| 启动 | `cmd/admin/workers.go` → `goAfterReady("evolution", ...)` |
+| 扫描逻辑 | `internal/biz/skill_evolution_triggers.go` → `AgentConfigTrigger`（移植自 legacy `evolution_scan.go`） |
+| Worker | `internal/cronrunner/jobs/evolution_orchestrator_worker.go` |
+| 注册 | `cmd/admin/wire.go` → `provideSkillEvolutionOrchestrator` + `provideEvolutionOrchestratorWorker` |
+| 启动 | `cmd/admin/workers.go` → `goAfterReady("evolution_orchestrator", ...)` |
 
-`ScanAgent` 读取 `evolution_suggestions_enabled` / `evo_enabled` 与 `evo_min_*`；失败时 `ScanAll` 聚合错误并由 worker 打 Warn 日志。
+`AgentConfigTrigger.Check` 读取 `evolution_suggestions_enabled` / `evo_enabled` 与 `evo_min_*`（L3 opt-in 门控）；worker 失败时聚合错误并打 Warn 日志。
 
-**扫描阈值**（`internal/biz/evolution_scan.go`）：
-- `evolutionScanToolSuccessThreshold = 0.75` — 工具成功率低于此值生成 prompt 建议
-- `evolutionScanRetrievalThreshold = 0.60` — 检索质量低于此值生成 skill 建议
-- `evolutionScanDefaultTimeRange = "30d"` — 扫描默认时间范围
+**扫描阈值**（`internal/biz/skill_evolution_triggers.go`）：
+- `agentConfigScanToolSuccessThreshold = 0.75` — 工具成功率低于此值生成 prompt 建议
+- `agentConfigScanRetrievalThreshold = 0.60` — 检索质量低于此值生成 skill 建议
+- `agentConfigScanDefaultTimeRange = "30d"` — 扫描默认时间范围
 - `EvoMinEpisodes` 默认 3，`EvoMinNegativeFeedback` 默认 2
 
 **未做**：per-agent 节流 TTL（`evo_throttle_hours`）、`evo_auto_apply` 自动应用。
@@ -202,10 +199,9 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 | 组件 | 路径 |
 |------|------|
 | Usecase | `internal/biz/evolution.go` → `RollbackSuggestion` / `savePreApplySnapshot` |
-| Repo | `internal/data/evolution_suggestion_repo.go` → `UpdateSnapshot` |
-| Schema | `internal/data/ent/schema/evolution_suggestion.go` → `pre_apply_snapshot` 字段 |
+| Store | `internal/data/unified_evolution.go` → `UpdateMetadataKey`（快照写入 metadata JSON，A6） |
 
-`ApplySuggestion` 在写入 prompt files 前调用 `savePreApplySnapshot` 保存 `map[filename]content` JSON 快照；`RollbackSuggestion` 解码快照并恢复文件内容。
+`ApplySuggestion` 在写入 prompt files 前调用 `savePreApplySnapshot` 保存 `map[filename]content` JSON 快照（经 `store.UpdateMetadataKey` 写入 unified 行 metadata 的 `pre_apply_snapshot` key）；`RollbackSuggestion` 解码快照并恢复文件内容。注入 `EvolutionTxProvider` 时，文件替换 + 状态更新包裹在单事务中（红线 #24）。
 
 ---
 

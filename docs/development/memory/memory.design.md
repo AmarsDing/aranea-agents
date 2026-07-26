@@ -1951,6 +1951,91 @@ web/src/features/memory/
 |-------|------|---------|
 | P1 | layer-overview API + 层级全景 Tab（FR-R1~R4） | 首页 3 秒看懂各层记忆量与健康；点击层级卡可钻取 |
 | P2 | unified graph API + 关联图谱 Tab（FR-R5~R8） | 跨层三类节点同图；冲突红边可见；默认 2 跳不毛线球 |
-| P3 | 记忆浏览 Tab（含 L2 时间线）+ 治理 Tab 归并（FR-R9~R10） | L2 前端可浏览；旧 Tab 能力不丢失 |
-| P4 | 扩散激活回放动画 + 力导向切换（FR-R11） | 激活路径逐层点亮可演示 |
+| P3 | 记忆浏览 Tab（含 L2 时间线）+ 治理 Tab 归并（FR-R9~R10）✅ 2026-07-26 | L2 前端可浏览；旧 Tab 能力不丢失 |
+| P4 | 扩散激活回放动画（FR-R11；力导向切换经 2026-07-26 评审移出本期，见 §10.6.5）✅ 2026-07-26 | 激活路径逐层点亮可演示 |
+
+### 10.6 P3/P4 细化设计（2026-07-26 三视角评审）
+
+> 评审结论：系统视角（后端增量最小化）、业务视角（五层可见性补齐 + 审批集中化）、用户视角（7 Tab → 4 Tab，跳转矩阵一致）。
+
+#### 10.6.1 P3 后端：新增 1 个 RPC（治理归并零后端变更）
+
+`MemoryService` 追加：
+
+```proto
+rpc ListMemoryEpisodes(ListMemoryEpisodesRequest) returns (ListMemoryEpisodesResponse) {
+  option (google.api.http) = {get: "/v1/memory/episodes"};
+}
+
+message ListMemoryEpisodesRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string session_id = 2;   // 可选：按会话过滤，MVP 前端传空
+  int32 limit = 3;
+  int32 offset = 4;
+}
+message MemoryEpisode {
+  string id = 1; string session_id = 2; string agent_id = 3;
+  string episode_kind = 4; string title = 5; string outcome_summary = 6;
+  double importance = 7; string consolidation_status = 8;  // pending | consolidated
+  int32 consolidated_l3_count = 9;
+  string ended_at = 10; string created_at = 11;
+}
+message ListMemoryEpisodesResponse {
+  repeated MemoryEpisode items = 1; int32 total = 2;
+}
+```
+
+**数据通路**：service handler → `authorizeMemoryScope`（与现有 memory admin 一致）→ biz `L2EpisodeAdminReader.ListEpisodeRowsAdmin`（Task 2 已建，走 `RWDB().ReadDB` 读连接）→ `scanEpisodeRowJSON` 字段直映 proto。**无新表、无 Schema 变更、无新 repo**。
+
+#### 10.6.2 P3 前端：Tab 归并映射（7 → 4）
+
+| 旧 Tab | 去向 | 说明 |
+|--------|------|------|
+| panorama | 保留 | 不动 |
+| graph | 保留 | 不动 |
+| knowledge（MemoryKnowledgePanel） | **browse**（L3 段） | 组件原样迁入 |
+| sessions（MemorySessionsPanel：L0 快照 + L1 任务） | **browse**（L0/L1 段） | 组件原样迁入 |
+| —（新增 MemoryEpisodeTimeline） | **browse**（L2 段） | 新组件，§10.6.3 |
+| cascade（MemoryCascadePanel） | **governance** | 原样迁入 |
+| evolution（MemoryEvolutionPanel） | **governance** | 原样迁入 |
+| evolution（MemoryGraphExplorer） | **退役** | SVG 静态图被 P2 unified graph 取代；其静态激活高亮由 P4 回放取代 |
+| settings（PlatformSettings/WorkerStatus/DeadLetter/RecallTester/SettingsStatus 5 面板） | **governance** | 原样迁入 |
+
+**browse Tab 内部结构**：层级 chips（全部 / L0 / L1 / L2 / L3）控制显示对应分段；`?layer` 状态由 `MemoryBrowseTab` 持有，钻取跳转时由父页写入。
+
+**跳转矩阵（全部更新为终态命名）**：
+
+| 触发 | 旧目标 | 新目标 |
+|------|--------|--------|
+| 层级卡钻取 L0/L1/L2/L3 | sessions / knowledge | `browse` + `layer=Lx` |
+| 层级卡钻取 L4 | evolution | `graph` |
+| 图谱节点「在记忆浏览中打开」fact | knowledge + statement 搜索 | `browse` + `layer=L3` + statement 搜索 |
+| 图谱节点 episode | sessions | `browse` + `layer=L2` |
+| 图谱节点 entity | evolution | `graph`（聚焦该实体） |
+| 需要关注 action_items `target_tab` | browse→knowledge / governance→evolution | `browse` / `governance` 直达 |
+
+**清理项（R4 全局搜索）**：`MemoryGraphExplorer.vue` 删除及其全部引用；`useMemoryCenterPage.loadEvolution` 中仅服务 GraphExplorer 的 `entities` 加载移除；i18n `memory.tabs.*` 旧 key 清理。
+
+#### 10.6.3 P3 新组件：`browse/MemoryEpisodeTimeline.vue`
+
+- 数据源：`api.ts` 新增 `getMemoryEpisodes(agentID, sessionID='', limit=20, offset=0)`
+- 卡片流（按 `created_at` 倒序 + 分页加载更多）：标题 / 相对时间 / `outcome_summary`（2 行截断）/ importance 星阶 / 状态徽标（`consolidated`=已提炼 + l3_count 条事实；`pending`=提炼中，pulse 动画）
+- 空态：引导文案「情景记忆在对话归档后自动生成」
+- 点击卡片：展开完整摘要（不做跨页跳转，MVP）
+
+#### 10.6.4 P4：扩散激活回放（复用现有 RPC，零后端变更）
+
+- **入口**：`GraphNodeDetailDrawer` 实体节点（kind=entity）详情底部加「回放扩散激活」按钮；回放以该实体为 `center_id`
+- **流程**：点击 → `load(centerId)` 将 unified graph 聚焦该实体（ hops 不变）→ 调 `SpreadingActivation(centerId, hops=3, topK=20)` → 按 `hop_count` 分组，每 600ms 点亮一跳 → 节点按 activation 归一化强度发光（box-shadow + 尺寸微放大），`activation_path` 经过的边同步高亮 → 动画结束保留终态高亮，切换 focus / 再点按钮清除
+- **排行列表**：回放期间图谱底部状态栏切换为 Top-K 激活排行（节点名 + activation 值 + hop 数徽标）；不在当前子图内的激活节点列出但标记「图外」
+- **实现**：`graph/composables/useActivationReplay.ts`（service 调用 + 分组 + 定时器驱动 `activeHops`/`playing`/`replay()`/`stop()`）；`UnifiedGraphNode` 增 `activation` data 字段驱动样式；定时器在组件 unmount 时清理
+- **测试**：composable 单测（mock service + vi.useFakeTimers 验证逐跳推进）；节点激活样式映射单测
+
+#### 10.6.5 评审范围收敛说明
+
+| 项 | 结论 | 理由 |
+|----|------|------|
+| 力导向布局（d3-force） | **移出本期**，列后续可选 | `web/package.json` 无 d3 依赖，违反零新依赖原则；dagre 分层已满足层级心智 |
+| Hero 区全记忆搜索框 + 健康总分徽标（§10.1 提及） | 列后续候选 | P1~P4 出口标准均未含；需独立设计搜索口径（跨层复合检索 vs facts 关键词） |
+| L2 时间线 session 过滤 | MVP 不做 | `ListEpisodeRowsAdmin` 已支持 sessionID 参数，前端后续按需开启 |
 

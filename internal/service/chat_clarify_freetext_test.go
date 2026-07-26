@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/loggateway"
@@ -127,9 +128,12 @@ func seedPendingClarifyStep(t *testing.T, sessionID string) (biz.Step, pendingCl
 func TestResolveClarificationFreeText_NoPending_PassThrough(t *testing.T) {
 	orch := newClarifyFreeTextTestOrch(&stubStepV2ReaderByID{}, &recordingStepV2Writer{}, &stubEventPublisher{}, &stubSessionStateTransitor{})
 	input := biz.TurnInput{SessionID: "sess-none", Content: "普通消息"}
-	got := orch.resolveClarificationFreeText(context.Background(), input)
+	got, gotArt := orch.resolveClarificationFreeText(context.Background(), input)
 	if got.Content != "普通消息" {
 		t.Errorf("content rewritten without pending: %q", got.Content)
+	}
+	if gotArt != nil {
+		t.Errorf("expected nil artifact without pending, got %v", gotArt)
 	}
 }
 
@@ -138,7 +142,7 @@ func TestResolveClarificationFreeText_EmptyContent_PassThrough(t *testing.T) {
 	step, pc := seedPendingClarifyStep(t, "sess-1")
 	orch.pendingClarifications.Store("sess-1", pc)
 	_ = step
-	got := orch.resolveClarificationFreeText(context.Background(), biz.TurnInput{SessionID: "sess-1", Content: "  "})
+	got, _ := orch.resolveClarificationFreeText(context.Background(), biz.TurnInput{SessionID: "sess-1", Content: "  "})
 	if got.Content != "  " {
 		t.Errorf("empty content should pass through unchanged, got %q", got.Content)
 	}
@@ -152,10 +156,15 @@ func TestResolveClarificationFreeText_Hit_CompletesStepAndRewritesInput(t *testi
 	orch := newClarifyFreeTextTestOrch(stepReader, stepWriter, seq, stateMgr)
 
 	step, pc := seedPendingClarifyStep(t, "sess-1")
+	art := &intent.Artifact{RefinedGoal: "做一个内部工具", IntentKind: "task"}
+	pc.Artifact = art
 	stepReader.steps[step.ID] = step
 	orch.pendingClarifications.Store("sess-1", pc)
 
-	got := orch.resolveClarificationFreeText(context.Background(), biz.TurnInput{SessionID: "sess-1", Content: "做成内部工具即可"})
+	got, gotArt := orch.resolveClarificationFreeText(context.Background(), biz.TurnInput{SessionID: "sess-1", Content: "做成内部工具即可"})
+	if gotArt != art {
+		t.Errorf("artifact = %p, want pending artifact %p", gotArt, art)
+	}
 
 	// Step 完成并回写 free_text
 	if len(stepWriter.updated) != 1 {
@@ -221,9 +230,12 @@ func TestResolveClarificationFreeText_StepNotAwaiting_ClearsPendingAndPassThroug
 	orch.pendingClarifications.Store("sess-1", pc)
 
 	input := biz.TurnInput{SessionID: "sess-1", Content: "新消息"}
-	got := orch.resolveClarificationFreeText(context.Background(), input)
+	got, gotArt := orch.resolveClarificationFreeText(context.Background(), input)
 	if got.Content != "新消息" {
 		t.Errorf("content should pass through when step not awaiting, got %q", got.Content)
+	}
+	if gotArt != nil {
+		t.Errorf("expected nil artifact on pass-through, got %v", gotArt)
 	}
 	if len(stepWriter.updated) != 0 {
 		t.Errorf("no step update expected, got %d", len(stepWriter.updated))
@@ -238,7 +250,7 @@ func TestResolveResumeInput_PendingHit_ReturnsStoredInput(t *testing.T) {
 	_, pc := seedPendingClarifyStep(t, "sess-1")
 	orch.pendingClarifications.Store("sess-1", pc)
 
-	got, err := orch.resolveResumeInput("sess-1", pc.TaskID, "")
+	got, _, err := orch.resolveResumeInput("sess-1", pc.TaskID, "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -250,12 +262,44 @@ func TestResolveResumeInput_PendingHit_ReturnsStoredInput(t *testing.T) {
 	}
 }
 
+func TestResolveResumeInput_PendingHit_ReturnsStoredArtifact(t *testing.T) {
+	orch := newClarifyFreeTextTestOrch(&stubStepV2ReaderByID{}, &recordingStepV2Writer{}, &stubEventPublisher{}, &stubSessionStateTransitor{})
+	_, pc := seedPendingClarifyStep(t, "sess-1")
+	art := &intent.Artifact{RefinedGoal: "做一个内部工具", IntentKind: "task"}
+	pc.Artifact = art
+	orch.pendingClarifications.Store("sess-1", pc)
+
+	_, gotArt, err := orch.resolveResumeInput("sess-1", pc.TaskID, "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotArt != art {
+		t.Errorf("artifact = %p, want pending artifact %p", gotArt, art)
+	}
+}
+
+func TestResolveResumeInput_PendingMiss_RestartPath_UsesFallbackArtifact(t *testing.T) {
+	orch := newClarifyFreeTextTestOrch(&stubStepV2ReaderByID{}, &recordingStepV2Writer{}, &stubEventPublisher{}, &stubSessionStateTransitor{})
+	// 模拟服务重启：pending 丢失，意图产物从澄清信封恢复（fallback）。
+	fallback := &intent.Artifact{RefinedGoal: "做一个内部工具", IntentKind: "task"}
+	got, gotArt, err := orch.resolveResumeInput("sess-1", "any-task", "帮我做个应用", fallback)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.SessionID != "sess-1" || got.Content != "帮我做个应用" {
+		t.Errorf("rebuilt input = %+v", got)
+	}
+	if gotArt != fallback {
+		t.Errorf("artifact = %p, want fallback artifact %p", gotArt, fallback)
+	}
+}
+
 func TestResolveResumeInput_PendingHitTaskMismatch_Error(t *testing.T) {
 	orch := newClarifyFreeTextTestOrch(&stubStepV2ReaderByID{}, &recordingStepV2Writer{}, &stubEventPublisher{}, &stubSessionStateTransitor{})
 	_, pc := seedPendingClarifyStep(t, "sess-1")
 	orch.pendingClarifications.Store("sess-1", pc)
 
-	if _, err := orch.resolveResumeInput("sess-1", "other-task", ""); err == nil {
+	if _, _, err := orch.resolveResumeInput("sess-1", "other-task", "", nil); err == nil {
 		t.Fatal("expected task mismatch error")
 	}
 }
@@ -263,7 +307,7 @@ func TestResolveResumeInput_PendingHitTaskMismatch_Error(t *testing.T) {
 func TestResolveResumeInput_PendingMiss_LazyRebuildFromOriginalInput(t *testing.T) {
 	orch := newClarifyFreeTextTestOrch(&stubStepV2ReaderByID{}, &recordingStepV2Writer{}, &stubEventPublisher{}, &stubSessionStateTransitor{})
 	// 模拟服务重启：pending 丢失，信封含 original_input
-	got, err := orch.resolveResumeInput("sess-1", "any-task", "帮我做个应用")
+	got, _, err := orch.resolveResumeInput("sess-1", "any-task", "帮我做个应用", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -274,7 +318,7 @@ func TestResolveResumeInput_PendingMiss_LazyRebuildFromOriginalInput(t *testing.
 
 func TestResolveResumeInput_PendingMissNoOriginalInput_NotFound(t *testing.T) {
 	orch := newClarifyFreeTextTestOrch(&stubStepV2ReaderByID{}, &recordingStepV2Writer{}, &stubEventPublisher{}, &stubSessionStateTransitor{})
-	if _, err := orch.resolveResumeInput("sess-1", "any-task", ""); err == nil {
+	if _, _, err := orch.resolveResumeInput("sess-1", "any-task", "", nil); err == nil {
 		t.Fatal("expected NotFound error when no pending and no original input")
 	}
 }

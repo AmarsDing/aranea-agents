@@ -398,8 +398,19 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		return buildErr
 	})
 
-	// Goroutine 2: Intent Pass (only for non-A2A agents with intent enabled)
-	if !biz.IsA2AProxyAgent(ag) && intent.ShouldRun(ag, content) {
+	// Goroutine 2: Intent Pass
+	// 澄清续跑复用：ctx 携带澄清门前的预解析产物时直接复用，跳过重复 LLM 调用
+	// （重写后的输入 = 澄清上下文 + 原始需求，产物语义不变）。复用前剥离
+	// 已作答的澄清残留（问题/歧义/needs_clarification 标记），避免 LLM 重问。
+	// 否则对非 A2A 且启用 intent 的 agent 正常执行 Intent Pass。
+	if reusedArt := intent.ArtifactFromContext(ctx); reusedArt != nil {
+		intentArtifact = reusedArt.CloneWithoutClarification()
+		intentRunOpts = append(intentRunOpts, intent.RunOptionInject(intentArtifact))
+		emitter.LogDone("chat.intent.pass", "意图识别复用澄清前产物",
+			event.P("outcome", "reused"),
+			event.P("intent_kind", intentArtifact.IntentKind),
+			event.P("refined_goal_len", len(intentArtifact.RefinedGoal)))
+	} else if !biz.IsA2AProxyAgent(ag) && intent.ShouldRun(ag, content) {
 		eg.Go(func() error {
 			intentRunOpts, intentArtifact = o.runIntentPass(egCtx, ag, sessionID, content, prov, mod, emitter)
 			return nil // Intent Pass failure is non-fatal; it returns empty opts on error

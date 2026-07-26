@@ -792,9 +792,9 @@ Phase 1.4 质量评估 ──────┘
 
 | Phase | 内容 | 关联契约 | 状态 |
 |-------|------|---------|------|
-| **P1** | Vault 基础 + 单向同步（文件→索引） | S-1 | 📋 |
-| **P2** | 双向同步 + frontmatter 摘要卡 + 双轨关联 | R-1、R-2、R-3 | 📋 |
-| **P3** | 资源管理器 UI（树/列表/详情/双区搜索） | R-3（来源标注） | 📋 |
+| **P1** | Vault 基础 + 单向同步（文件→索引） | S-1 | ✅ |
+| **P2** | 双向同步 + frontmatter 摘要卡 + 双轨关联 | R-1、R-2、R-3 | ✅ |
+| **P3** | 资源管理器 UI（树/列表/详情/双区搜索） | R-3（来源标注） | ✅ |
 | **P4a** | L0 强 BM25 栈（含 R-5 选型 spike） | R-5、S-5 | 📋 |
 | **P4b** | L2 语义层插件化（含 R-4 契约变更） | R-4、S-3 | 📋 |
 | **P5** | Agent 工具族 navigate/grep/write（含 R-6 安全契约） | R-6 | 📋 |
@@ -826,9 +826,9 @@ Phase 1.4 质量评估 ──────┘
 
 | # | 任务 |
 |---|------|
-| P3-1 | KnowledgePage 重构为三栏：Vault 切换 + 文件夹树（懒加载）+ 文档列表 + 详情面板（hover 卡两级密度） |
-| P3-2 | 统一搜索框双区：即时区（纯前端 fzf 式内存索引 <10k 文档）+ 语义区（走后端检索） |
-| P3-3 | 关联区：双链/实体/语义三类关联展示并标注来源类型（R-3）；搜索意图分流规则与后端路由规则共享定义 |
+| P3-1 | KnowledgePage 重构为三栏：Vault 切换 + 文件夹树（懒加载）+ 文档列表 + 详情面板（hover 卡两级密度）— ✅ 已完成（2026-07-26，组件 `web/src/components/knowledge/KnowledgeVaultTree.vue`（Vault 切换头+sync 状态徽标+根目录行+q-tree 懒加载）/`KnowledgeDocList.vue`（面包屑+文件列表+hover 摘要卡）/`KnowledgeDocDetail.vue`（一级摘要卡/二级正文预览+操作）；编排 `web/src/features/knowledge/useVaultExplorer.ts`（选中态/树缓存经 store/平铺降级/文档签名变化自动刷新树）；`KnowledgePage.vue` documents tab 收敛为 explorer 三栏（260px/1fr/360px 响应式网格），旧 `KnowledgeCollectionList/KnowledgeDocumentsPanel/KnowledgeDocPreviewDialog` 保留供回退；`useKnowledgePage.ts` 挂 explorer + 文档索引上限放宽 2000） |
+| P3-2 | 统一搜索框双区：即时区（纯前端 fzf 式内存索引 <10k 文档）+ 语义区（走后端检索）— ✅ 已完成（2026-07-26，`web/src/components/knowledge/KnowledgeSearchDual.vue` 双区面板；`web/src/features/knowledge/instantMatch.ts` fzf 子序列匹配+多词 AND+连续/边界加分（11 单测）；即时区过滤 source/rel_path/summary/tags/doc_type，语义区回车走当前 vault 后端 Search top_k=8，命中跳转定位 prefix+选中文档） |
+| P3-3 | 关联区：双链/实体/语义三类关联展示并标注来源类型（R-3）；搜索意图分流规则与后端路由规则共享定义 — ✅ 已完成（2026-07-26，关联区在 `KnowledgeDocDetail.vue` 二级：explicit=显式双链(primary)/entity=实体共现(deep-purple)/semantic=语义近邻(teal) 三类来源徽标 + out=本文引用/in=被引用于方向标注 + context 展示 + 点击跳转目标文档；意图分流共享定义 `web/src/features/knowledge/searchIntent.ts` ↔ `internal/knowledge/search_intent.go` 同一规则表（注释互指），前端中文疑问词以码点构造正则规避 check-i18n CJK 限制，两侧各 6/单测全绿） |
 
 验收：三栏可用；搜索双区意图分流正确；关联区来源标注完整。
 

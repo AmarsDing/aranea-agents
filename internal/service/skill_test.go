@@ -119,6 +119,10 @@ func (m *memSkillRepo) ListSkillVersions(_ context.Context, _ biz.SkillVersionLi
 	return biz.SkillVersionListResult{}, nil
 }
 
+func (m *memSkillRepo) CreateSkillVersion(_ context.Context, in biz.SkillCreateVersionInput) (biz.SkillVersionDetail, error) {
+	return biz.SkillVersionDetail{ID: "v-new", SkillID: in.SkillID, ContentMarkdown: in.Body}, nil
+}
+
 func (m *memSkillRepo) RollbackSkillVersion(_ context.Context, _ string, _ string) (biz.Skill, error) {
 	return biz.Skill{}, fmt.Errorf("not implemented")
 }

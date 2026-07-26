@@ -407,9 +407,6 @@ func TestGateVerification_StyleCheck_DraftTooLong(t *testing.T) {
 // ── Test: Evolution suggestion expiration ──────────────────────────────────────
 
 func TestEvolutionLoop_ExpirePendingSuggestions(t *testing.T) {
-	sugReader := &mockSkillEvolutionSuggestionReader{}
-	_ = &mockSkillEvolutionSuggestionWriter{} // kept for future write-verification tests
-
 	// Create a suggestion that is 8 days old (past 7-day expiration)
 	oldTime := time.Now().UTC().Add(-8 * 24 * time.Hour)
 	oldSuggestion := SkillEvolutionSuggestion{
@@ -429,9 +426,7 @@ func TestEvolutionLoop_ExpirePendingSuggestions(t *testing.T) {
 		CreatedAt:       time.Now().UTC().Add(-3 * 24 * time.Hour),
 	}
 
-	sugReader.suggestions = []SkillEvolutionSuggestion{oldSuggestion, recentSuggestion}
-
-	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{suggestions: sugReader.suggestions}, &mockEvolutionStoreBridge{suggestions: sugReader.suggestions}, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{suggestions: []SkillEvolutionSuggestion{oldSuggestion, recentSuggestion}}, nil, loggateway.NewNoop())
 
 	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {
@@ -446,11 +441,8 @@ func TestEvolutionLoop_ExpirePendingSuggestions(t *testing.T) {
 }
 
 func TestEvolutionLoop_ExpirePendingSuggestions_NoneExpired(t *testing.T) {
-	sugReader := &mockSkillEvolutionSuggestionReader{}
-	_ = &mockSkillEvolutionSuggestionWriter{} // kept for future write-verification tests
-
 	// All suggestions are recent
-	sugReader.suggestions = []SkillEvolutionSuggestion{
+	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{suggestions: []SkillEvolutionSuggestion{
 		{
 			ID:              "sug-1",
 			SkillID:         "skill-1",
@@ -458,9 +450,7 @@ func TestEvolutionLoop_ExpirePendingSuggestions_NoneExpired(t *testing.T) {
 			LifecycleStatus: EvoLifecycleDraft,
 			CreatedAt:       time.Now().UTC().Add(-2 * 24 * time.Hour),
 		},
-	}
-
-	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{suggestions: sugReader.suggestions}, &mockEvolutionStoreBridge{suggestions: sugReader.suggestions}, nil, loggateway.NewNoop())
+	}}, nil, loggateway.NewNoop())
 
 	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {
@@ -472,13 +462,10 @@ func TestEvolutionLoop_ExpirePendingSuggestions_NoneExpired(t *testing.T) {
 }
 
 func TestEvolutionLoop_ExpirePendingSuggestions_OnlyPendingExpired(t *testing.T) {
-	sugReader := &mockSkillEvolutionSuggestionReader{}
-	_ = &mockSkillEvolutionSuggestionWriter{}
-
 	oldTime := time.Now().UTC().Add(-8 * 24 * time.Hour)
 
 	// Approved suggestion should NOT be expired even if old
-	sugReader.suggestions = []SkillEvolutionSuggestion{
+	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{suggestions: []SkillEvolutionSuggestion{
 		{
 			ID:              "sug-approved-old",
 			SkillID:         "skill-1",
@@ -486,9 +473,7 @@ func TestEvolutionLoop_ExpirePendingSuggestions_OnlyPendingExpired(t *testing.T)
 			LifecycleStatus: EvoLifecycleReady,
 			CreatedAt:       oldTime,
 		},
-	}
-
-	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{suggestions: sugReader.suggestions}, &mockEvolutionStoreBridge{suggestions: sugReader.suggestions}, nil, loggateway.NewNoop())
+	}}, nil, loggateway.NewNoop())
 
 	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {
@@ -1011,7 +996,7 @@ func TestGateVerification_NilObservation_PerformancePasses(t *testing.T) {
 // ── Test: Expiration - ListPending error ────────────────────────────────────────
 
 func TestEvolutionLoop_ExpirePendingSuggestions_ListPendingError(t *testing.T) {
-	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{err: fmt.Errorf("database unavailable")}, &mockEvolutionStoreBridge{err: fmt.Errorf("database unavailable")}, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{err: fmt.Errorf("database unavailable")}, nil, loggateway.NewNoop())
 
 	_, err := uc.ExpirePendingSuggestions(context.Background())
 	if err == nil {
@@ -1022,7 +1007,7 @@ func TestEvolutionLoop_ExpirePendingSuggestions_ListPendingError(t *testing.T) {
 // ── Test: Expiration - Nil reader/writer (no-op) ────────────────────────────────
 
 func TestEvolutionLoop_ExpirePendingSuggestions_NilAccessors(t *testing.T) {
-	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, loggateway.NewNoop())
 
 	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {
@@ -1043,11 +1028,11 @@ func TestEvolutionLoop_ExpirePendingSuggestions_PartialUpdateFailure(t *testing.
 	}
 
 	legacyBridge := &mockEvolutionStoreBridgeWithPartialFailure{
-		suggestions: suggestions,
-		failIDs:     map[string]bool{"sug-old-1": true},
+		mockEvolutionStoreBridge: mockEvolutionStoreBridge{suggestions: suggestions},
+		failIDs:                  map[string]bool{"sug-old-1": true},
 	}
 
-	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{suggestions: suggestions}, legacyBridge, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, legacyBridge, nil, loggateway.NewNoop())
 
 	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {
@@ -1062,62 +1047,20 @@ func TestEvolutionLoop_ExpirePendingSuggestions_PartialUpdateFailure(t *testing.
 	}
 }
 
-// ── Helper mock for partial UpdateSuggestionStatus failure ────────────────────────
+// ── Helper mock for partial UpdateStatus failure ─────────────────────────────
 
-// mockEvolutionStoreBridgeWithPartialFailure implements LegacyEvolutionSuggestionStore
-// with selective UpdateSuggestionStatus failures based on suggestion ID.
+// mockEvolutionStoreBridgeWithPartialFailure wraps mockEvolutionStoreBridge
+// with selective UpdateStatus failures based on suggestion ID (A6).
 type mockEvolutionStoreBridgeWithPartialFailure struct {
-	suggestions []SkillEvolutionSuggestion
-	failIDs     map[string]bool
+	mockEvolutionStoreBridge
+	failIDs map[string]bool
 }
 
-func (m *mockEvolutionStoreBridgeWithPartialFailure) GetEvolutionSuggestion(_ context.Context, _ string) (*SkillEvolutionSuggestion, error) {
-	if len(m.suggestions) == 0 {
-		return nil, nil
-	}
-	return &m.suggestions[0], nil
-}
-
-func (m *mockEvolutionStoreBridgeWithPartialFailure) ListEvolutionSuggestions(_ context.Context, _ string, _ EvolutionSuggestionStatus, _, _ int) ([]SkillEvolutionSuggestion, error) {
-	return m.suggestions, nil
-}
-
-func (m *mockEvolutionStoreBridgeWithPartialFailure) CountEvolutionSuggestions(_ context.Context, _ string, _ EvolutionSuggestionStatus) (int, error) {
-	return len(m.suggestions), nil
-}
-
-func (m *mockEvolutionStoreBridgeWithPartialFailure) CreateSuggestion(_ context.Context, _ SkillEvolutionSuggestion) error {
-	return nil
-}
-
-func (m *mockEvolutionStoreBridgeWithPartialFailure) UpdateSuggestionStatus(_ context.Context, id string, _ EvolutionSuggestionStatus, _ string, _ string) error {
+func (m *mockEvolutionStoreBridgeWithPartialFailure) UpdateStatus(ctx context.Context, id string, status string, actor string, reason string) error {
 	if m.failIDs[id] {
 		return fmt.Errorf("update failed for %s", id)
 	}
-	return nil
-}
-
-func (m *mockEvolutionStoreBridgeWithPartialFailure) UpdateSuggestionDraftBody(_ context.Context, _ string, _ string) error {
-	return nil
-}
-
-func (m *mockEvolutionStoreBridgeWithPartialFailure) UpdateSuggestionLifecycleStatus(_ context.Context, _ string, _ EvolutionLifecycleStatus) error {
-	return nil
-}
-
-func (m *mockEvolutionStoreBridgeWithPartialFailure) UpdateSuggestionSandboxResult(_ context.Context, _ string, _ bool, _ json.RawMessage) error {
-	return nil
-}
-
-func (m *mockEvolutionStoreBridgeWithPartialFailure) ListPendingSuggestions(_ context.Context, _, _ int) ([]SkillEvolutionSuggestion, error) {
-	return m.suggestions, nil
-}
-
-func (m *mockEvolutionStoreBridgeWithPartialFailure) GetLatestSuggestionBySkill(_ context.Context, _ string) (*SkillEvolutionSuggestion, error) {
-	if len(m.suggestions) == 0 {
-		return nil, nil
-	}
-	return &m.suggestions[0], nil
+	return m.mockEvolutionStoreBridge.UpdateStatus(ctx, id, status, actor, reason)
 }
 
 // ── Test: Gate verification - Functional check with empty skillID ───────────────

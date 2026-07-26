@@ -5,7 +5,6 @@ import type {
   L0AssemblySegmentStats,
   L0AssemblySnapshot,
   MemoryFact,
-  MemoryRelation,
 } from './types';
 import { REGISTRY_COL_W, registryCol, registryColActions } from '../ui/registryTableColumns';
 
@@ -174,28 +173,6 @@ export function memoryCascadeStatusColor(status: string) {
     default:
       return 'grey-7';
   }
-}
-
-/** MemoryGraphExplorer — Neighborhood BFS 关系列 */
-export function buildMemoryRelationColumns(t: MemoryTranslator): QTableColumn<MemoryRelation>[] {
-  return [
-    registryCol<MemoryRelation>(
-      'source_id',
-      t('memory.table.columns.source'),
-      'source_id',
-      'left',
-      REGISTRY_COL_W.name,
-    ),
-    registryCol<MemoryRelation>('relation_type', t('memory.table.columns.relation'), 'relation_type', 'left', '11%'),
-    registryCol<MemoryRelation>(
-      'target_id',
-      t('memory.table.columns.target'),
-      'target_id',
-      'left',
-      REGISTRY_COL_W.name,
-    ),
-    registryCol<MemoryRelation>('weight', t('memory.table.columns.weight'), 'weight', 'right', REGISTRY_COL_W.metric),
-  ];
 }
 
 /** MemoryRecallTester — Composite Search 结果列 */

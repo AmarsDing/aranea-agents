@@ -1,24 +1,7 @@
-// Package biz — SkillEvolutionSuggestion State Machine (AS-FSM-01)
+// Package biz — UnifiedEvolutionSuggestion State Machine (AS-FSM-01)
 //
-// This file defines TWO related state machines:
-//  1. EvolutionSuggestionStateMachine — for SkillEvolutionSuggestion.Status
-//     (pending/approved/rejected/applied)
-//  2. UnifiedEvolutionStateMachine — for UnifiedEvolutionSuggestion.Status
-//     (pending/approved/rejected/applied/expired)
-//
-// # EvolutionSuggestion State Diagram
-//
-// ```mermaid
-// stateDiagram-v2
-//
-//	[*] --> Pending
-//	Pending --> Approved : approve
-//	Pending --> Rejected : reject
-//	Approved --> Applied : apply
-//	Rejected --> [*]
-//	Applied --> [*]
-//
-// ```
+// This file defines the state machine for UnifiedEvolutionSuggestion.Status
+// (pending/approved/rejected/applied/rolled_back/expired).
 //
 // # UnifiedEvolution State Diagram
 //
@@ -30,8 +13,9 @@
 //	Pending --> Rejected : reject
 //	Pending --> Expired : expire
 //	Approved --> Applied : apply
+//	Applied --> RolledBack : rollback
 //	Rejected --> [*]
-//	Applied --> [*]
+//	RolledBack --> [*]
 //	Expired --> [*]
 //
 // ```
@@ -41,59 +25,6 @@ import (
 	"aranea-agents/internal/biz/shared"
 )
 
-// ── EvolutionSuggestion Event type ───────────────────────────────────────────
-
-// EvolutionSuggestionEvent enumerates events that trigger an EvolutionSuggestion state transition.
-// Stability:stable
-type EvolutionSuggestionEvent string
-
-const (
-	EvoSuggestionEventApprove EvolutionSuggestionEvent = "approve"
-	EvoSuggestionEventReject  EvolutionSuggestionEvent = "reject"
-	EvoSuggestionEventApply   EvolutionSuggestionEvent = "apply"
-)
-
-// ── EvolutionSuggestion transition rules ─────────────────────────────────────
-
-// evoSuggestionTransitionRules defines legal state transitions for a SkillEvolutionSuggestion.
-// Terminal states (rejected, applied) have no outgoing transitions.
-var evoSuggestionTransitionRules = []shared.TransitionRule[EvolutionSuggestionStatus, EvolutionSuggestionEvent]{
-	{From: EvoSuggestionPending, Event: EvoSuggestionEventApprove, To: EvoSuggestionApproved},
-	{From: EvoSuggestionPending, Event: EvoSuggestionEventReject, To: EvoSuggestionRejected},
-	{From: EvoSuggestionApproved, Event: EvoSuggestionEventApply, To: EvoSuggestionApplied},
-}
-
-// ── EvolutionSuggestionStateMachine ──────────────────────────────────────────
-
-// EvolutionSuggestionStateMachine wraps the generic state machine with
-// SkillEvolutionSuggestion-specific types. Safe for concurrent use after construction.
-// Stability:stable
-type EvolutionSuggestionStateMachine struct {
-	inner *shared.GenericStateMachine[EvolutionSuggestionStatus, EvolutionSuggestionEvent]
-}
-
-// NewEvolutionSuggestionStateMachine creates an EvolutionSuggestionStateMachine with standard rules.
-func NewEvolutionSuggestionStateMachine() *EvolutionSuggestionStateMachine {
-	return &EvolutionSuggestionStateMachine{
-		inner: shared.NewGenericStateMachine[EvolutionSuggestionStatus, EvolutionSuggestionEvent](evoSuggestionTransitionRules),
-	}
-}
-
-// Transition validates and executes a state transition.
-func (sm *EvolutionSuggestionStateMachine) Transition(from EvolutionSuggestionStatus, event EvolutionSuggestionEvent) (EvolutionSuggestionStatus, error) {
-	return sm.inner.Transition(from, event)
-}
-
-// CanTransition reports whether a direct transition from→to is legal.
-func (sm *EvolutionSuggestionStateMachine) CanTransition(from, to EvolutionSuggestionStatus) bool {
-	return sm.inner.CanTransition(from, to)
-}
-
-// ValidTargets returns all states reachable from the given state.
-func (sm *EvolutionSuggestionStateMachine) ValidTargets(from EvolutionSuggestionStatus) []EvolutionSuggestionStatus {
-	return sm.inner.ValidTargets(from)
-}
-
 // ── UnifiedEvolution State & Event types ─────────────────────────────────────
 
 // UnifiedEvolutionState enumerates all legal states of a UnifiedEvolutionSuggestion.
@@ -102,11 +33,12 @@ func (sm *EvolutionSuggestionStateMachine) ValidTargets(from EvolutionSuggestion
 type UnifiedEvolutionState string
 
 const (
-	UnifiedEvolutionStatePending  UnifiedEvolutionState = "pending"
-	UnifiedEvolutionStateApproved UnifiedEvolutionState = "approved"
-	UnifiedEvolutionStateRejected UnifiedEvolutionState = "rejected"
-	UnifiedEvolutionStateApplied  UnifiedEvolutionState = "applied"
-	UnifiedEvolutionStateExpired  UnifiedEvolutionState = "expired"
+	UnifiedEvolutionStatePending    UnifiedEvolutionState = "pending"
+	UnifiedEvolutionStateApproved   UnifiedEvolutionState = "approved"
+	UnifiedEvolutionStateRejected   UnifiedEvolutionState = "rejected"
+	UnifiedEvolutionStateApplied    UnifiedEvolutionState = "applied"
+	UnifiedEvolutionStateExpired    UnifiedEvolutionState = "expired"
+	UnifiedEvolutionStateRolledBack UnifiedEvolutionState = "rolled_back"
 )
 
 // UnifiedEvolutionEvent enumerates events that trigger a UnifiedEvolutionSuggestion state transition.
@@ -114,21 +46,25 @@ const (
 type UnifiedEvolutionEvent string
 
 const (
-	UnifiedEvolutionEventApprove UnifiedEvolutionEvent = "approve"
-	UnifiedEvolutionEventReject  UnifiedEvolutionEvent = "reject"
-	UnifiedEvolutionEventApply   UnifiedEvolutionEvent = "apply"
-	UnifiedEvolutionEventExpire  UnifiedEvolutionEvent = "expire"
+	UnifiedEvolutionEventApprove  UnifiedEvolutionEvent = "approve"
+	UnifiedEvolutionEventReject   UnifiedEvolutionEvent = "reject"
+	UnifiedEvolutionEventApply    UnifiedEvolutionEvent = "apply"
+	UnifiedEvolutionEventExpire   UnifiedEvolutionEvent = "expire"
+	UnifiedEvolutionEventRollback UnifiedEvolutionEvent = "rollback"
 )
 
 // ── UnifiedEvolution transition rules ────────────────────────────────────────
 
 // unifiedEvolutionTransitionRules defines legal state transitions for a UnifiedEvolutionSuggestion.
-// Terminal states (rejected, applied, expired) have no outgoing transitions.
+// Terminal states (rejected, rolled_back, expired) have no outgoing transitions.
+// Note: the L1 skill-proposal legacy status 'registered' is not a unified state;
+// it is stored verbatim and interpreted by the L1 view layer only.
 var unifiedEvolutionTransitionRules = []shared.TransitionRule[UnifiedEvolutionState, UnifiedEvolutionEvent]{
 	{From: UnifiedEvolutionStatePending, Event: UnifiedEvolutionEventApprove, To: UnifiedEvolutionStateApproved},
 	{From: UnifiedEvolutionStatePending, Event: UnifiedEvolutionEventReject, To: UnifiedEvolutionStateRejected},
 	{From: UnifiedEvolutionStatePending, Event: UnifiedEvolutionEventExpire, To: UnifiedEvolutionStateExpired},
 	{From: UnifiedEvolutionStateApproved, Event: UnifiedEvolutionEventApply, To: UnifiedEvolutionStateApplied},
+	{From: UnifiedEvolutionStateApplied, Event: UnifiedEvolutionEventRollback, To: UnifiedEvolutionStateRolledBack},
 }
 
 // ── UnifiedEvolutionStateMachine ─────────────────────────────────────────────
@@ -172,7 +108,7 @@ func ParseUnifiedEvolutionState(s string) UnifiedEvolutionState {
 // IsUnifiedEvolutionTerminal returns true for terminal states with no outgoing transitions.
 func IsUnifiedEvolutionTerminal(state UnifiedEvolutionState) bool {
 	switch state {
-	case UnifiedEvolutionStateRejected, UnifiedEvolutionStateApplied, UnifiedEvolutionStateExpired:
+	case UnifiedEvolutionStateRejected, UnifiedEvolutionStateRolledBack, UnifiedEvolutionStateExpired:
 		return true
 	default:
 		return false

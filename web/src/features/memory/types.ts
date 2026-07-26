@@ -483,3 +483,26 @@ export type UnifiedMemoryGraph = {
   filtered_edge_count: number;
   empty_reason: string;
 };
+
+/** L2 情景记忆条目（浏览 Tab 时间线卡片）。 */
+export type MemoryEpisode = {
+  id: string;
+  session_id: string;
+  agent_id: string;
+  /** 情景类型（如 task / chat）。 */
+  episode_kind: string;
+  title: string;
+  outcome_summary: string;
+  importance: number;
+  /** pending | consolidated */
+  consolidation_status: string;
+  consolidated_l3_count: number;
+  ended_at: string;
+  created_at: string;
+};
+
+/** L2 情景分页结果。 */
+export type MemoryEpisodeListResult = {
+  items: MemoryEpisode[];
+  total: number;
+};

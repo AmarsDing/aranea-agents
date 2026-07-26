@@ -42,6 +42,8 @@ export type {
   UnifiedGraphEdge,
   UnifiedMemoryGraphQuery,
   UnifiedMemoryGraph,
+  MemoryEpisode,
+  MemoryEpisodeListResult,
 } from './types';
 
 export { memoryEndpoints } from './memoryEndpoints';
@@ -86,6 +88,8 @@ import type {
   UnifiedGraphEdge,
   UnifiedMemoryGraphQuery,
   UnifiedMemoryGraph,
+  MemoryEpisode,
+  MemoryEpisodeListResult,
 } from './types';
 import {
   asRecord,
@@ -997,5 +1001,44 @@ export async function getUnifiedMemoryGraph(
     edge_count: pickOptionalI32(res, 'edge_count', 'edgeCount') ?? edges.length,
     filtered_edge_count: pickOptionalI32(res, 'filtered_edge_count', 'filteredEdgeCount') ?? 0,
     empty_reason: pickStr(res, 'empty_reason', 'emptyReason'),
+  };
+}
+
+function mapEpisode(raw: unknown): MemoryEpisode {
+  const e = asRecord(raw);
+  return {
+    id: pickStr(e, 'id', 'id'),
+    session_id: pickStr(e, 'session_id', 'sessionId'),
+    agent_id: pickStr(e, 'agent_id', 'agentId'),
+    episode_kind: pickStr(e, 'episode_kind', 'episodeKind'),
+    title: pickStr(e, 'title', 'title'),
+    outcome_summary: pickStr(e, 'outcome_summary', 'outcomeSummary'),
+    importance: pickNum(e, 'importance', 'importance'),
+    consolidation_status: pickStr(e, 'consolidation_status', 'consolidationStatus'),
+    consolidated_l3_count: pickOptionalI32(e, 'consolidated_l3_count', 'consolidatedL3Count') ?? 0,
+    ended_at: pickStr(e, 'ended_at', 'endedAt'),
+    created_at: pickStr(e, 'created_at', 'createdAt'),
+  };
+}
+
+/** L2 情景浏览：按创建时间倒序分页（浏览 Tab 时间线）。sessionID 为空时不过滤会话。 */
+export async function getMemoryEpisodes(
+  agentID: string,
+  sessionID = '',
+  limit = 20,
+  offset = 0,
+): Promise<MemoryEpisodeListResult> {
+  const res = asRecord(
+    await memory.ListMemoryEpisodes({
+      agentId: agentID,
+      sessionId: sessionID || undefined,
+      limit,
+      offset,
+    }),
+  );
+  const itemsRaw = res.items ?? res.Items;
+  return {
+    items: Array.isArray(itemsRaw) ? itemsRaw.map(mapEpisode) : [],
+    total: pickOptionalI32(res, 'total', 'total') ?? 0,
   };
 }

@@ -62,7 +62,16 @@ describe('usePlanDAGLayout', () => {
   });
 
   describe('horizontal orientation', () => {
-    const H_OPTS = { width: 640, nodeWidth: 156, nodeHeight: 56, gapX: 64, gapY: 16, orientation: 'horizontal' as const, padX: 20, padY: 12 };
+    const H_OPTS = {
+      width: 640,
+      nodeWidth: 156,
+      nodeHeight: 56,
+      gapX: 64,
+      gapY: 16,
+      orientation: 'horizontal' as const,
+      padX: 20,
+      padY: 12,
+    };
 
     it('lays out sequential steps in a single row (same y, increasing x)', () => {
       const { layoutDAG } = usePlanDAGLayout();
@@ -97,6 +106,42 @@ describe('usePlanDAGLayout', () => {
       expect(computedWidth).toBe(636);
       // height = 2*padY + tallest column (2*56+16) = 24 + 128 = 152
       expect(computedHeight).toBe(152);
+    });
+  });
+
+  describe('layer metadata (for staggered entrance animation)', () => {
+    it('returns the layer index of every node (longest-path layering)', () => {
+      const { layoutDAG } = usePlanDAGLayout();
+      const steps = [mkStep('a'), mkStep('b', ['a']), mkStep('c', ['a']), mkStep('d', ['b', 'c'])];
+      const { layers } = layoutDAG(steps, { width: 600, nodeWidth: 120, nodeHeight: 60, gapX: 40, gapY: 30 });
+      expect(layers.get('a')).toBe(0);
+      expect(layers.get('b')).toBe(1);
+      expect(layers.get('c')).toBe(1);
+      expect(layers.get('d')).toBe(2);
+    });
+
+    it('returns the order of every node within its own layer', () => {
+      const { layoutDAG } = usePlanDAGLayout();
+      const steps = [mkStep('a'), mkStep('b', ['a']), mkStep('c', ['a']), mkStep('d', ['b', 'c'])];
+      const { orderInLayer } = layoutDAG(steps, { width: 600, nodeWidth: 120, nodeHeight: 60, gapX: 40, gapY: 30 });
+      expect(orderInLayer.get('a')).toBe(0);
+      // b and c share layer 1: stable indices 0 and 1
+      expect(orderInLayer.get('b')).toBe(0);
+      expect(orderInLayer.get('c')).toBe(1);
+      expect(orderInLayer.get('d')).toBe(0);
+    });
+
+    it('returns empty layer metadata for an empty graph', () => {
+      const { layoutDAG } = usePlanDAGLayout();
+      const { layers, orderInLayer } = layoutDAG([], {
+        width: 600,
+        nodeWidth: 120,
+        nodeHeight: 60,
+        gapX: 40,
+        gapY: 30,
+      });
+      expect(layers.size).toBe(0);
+      expect(orderInLayer.size).toBe(0);
     });
   });
 });

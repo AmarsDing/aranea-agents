@@ -369,6 +369,35 @@ func (d *ToolDecorator) Original() trpctool.Tool {
 	return d.inner
 }
 
+// stateDeltaProvider mirrors the framework's duck-typing convention in
+// flow.processor.attachStateDelta. Tools implementing this exact signature
+// turn their result into session/graph state.
+type stateDeltaProvider interface {
+	StateDelta(toolCallID string, args []byte, result []byte) map[string][]byte
+}
+
+// providesStateDelta reports whether the wrapped tool exposes StateDelta,
+// unwrapping nested decorators via the Original() convention. Truncating
+// such a tool's result corrupts the JSON the framework feeds back into
+// StateDelta, so truncateResult skips the budget for them.
+func (d *ToolDecorator) providesStateDelta() bool {
+	for tl := trpctool.Tool(d.inner); tl != nil; {
+		if _, ok := tl.(stateDeltaProvider); ok {
+			return true
+		}
+		originator, ok := tl.(interface{ Original() trpctool.Tool })
+		if !ok {
+			return false
+		}
+		inner := originator.Original()
+		if inner == nil || inner == tl {
+			return false
+		}
+		tl = inner
+	}
+	return false
+}
+
 // Call invokes the inner tool with timeout, result budget, and caching
 // applied. For ConcurrentSafe tools with caching enabled, repeated calls
 // with identical arguments return the cached result without invoking
@@ -432,7 +461,18 @@ func (d *ToolDecorator) applyTimeout(ctx context.Context) (context.Context, cont
 // so downstream consumers receive a structured object and the framework's
 // own JSON marshaling handles escaping. This avoids double-encoding issues
 // when the result is later embedded in agent messages.
+//
+// StateDelta-providing tools bypass the budget entirely: the framework
+// feeds the decorated result back into StateDelta (flow.processor
+// attachStateDelta), and a truncation envelope fails to parse there —
+// the session-state write is silently dropped (bff43a17 incident:
+// set_deliverable's 28.9KB echo was enveloped, deliverable lost).
+// Truncation also corrupts the JSON the LLM sees for such tools, so
+// skipping it is strictly safer than enveloping.
 func (d *ToolDecorator) truncateResult(result any) any {
+	if d.providesStateDelta() {
+		return result
+	}
 	budget := d.cfg.ResultBudget
 	if override := budgetOverrideForTool(d.toolName()); override != nil {
 		budget = override

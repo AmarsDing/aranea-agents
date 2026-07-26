@@ -300,7 +300,7 @@ ensureSchemaDDL()
   └── 幂等: 已执行则跳过
 ```
 
-**当前迁移清单**（共 54 个，版本号 20260601 ~ 20260724）：
+**当前迁移清单**（共 88 个，版本号 20260601 ~ 20261111）：
 
 | 版本号 | 名称 | 说明 |
 |--------|------|------|
@@ -358,6 +358,40 @@ ensureSchemaDDL()
 | 20260722 | activity_schema | 活动 Schema |
 | 20260723 | activity_token_columns | 活动 Token 列 |
 | 20260724 | invariant_constraints | 不变量约束 |
+| 20260725 | memory_bitemporal | 记忆双时态 |
+| 20260726 | memory_links | 记忆链接 |
+| 20260727 | memory_decay_columns | 记忆衰减列 |
+| 20260728 | memory_job_deadletter_schema | 记忆任务死信 Schema |
+| 20260730 | runtime_profile_schema | 运行时 Profile Schema |
+| 20260731 | heal_record_metadata_column | 自愈记录 metadata 列 |
+| 20260801 | memory_job_deadletter_unique | 记忆死信唯一索引 |
+| 20260802 | memory_episodes_l1_task_unique | 记忆情景 L1 任务唯一索引 |
+| 20260803 | cascade_saga_id_type_fix | 级联 Saga ID 类型修复 |
+| 20260804 | planner_model_columns | Planner 模型列 |
+| 20260825 | activity_session_tree_columns | 活动会话树列 |
+| 20260901 | drop_event_store_subsystem | 删除 EventStore 子系统 |
+| 20260902 | drop_messages_subsystem | 删除 messages 子系统 |
+| 20260903 | intent_pass_default_on | Intent Pass 默认开启 |
+| 20261001 | v2_indexes | V2 索引 |
+| 20261002 | team_stage_team_name | TeamStage 团队名 |
+| 20261003 | plan_step_agent_keys | PlanStep agent keys |
+| 20261004 | memory_context_note | 记忆上下文备注 |
+| 20261005 | memory_neuron_enhancement | 记忆神经元增强 |
+| 20261006 | admin_workspace_id | Admin workspace ID |
+| 20261007 | tenant_owned_workspace_id | 租户持有 workspace ID |
+| 20261008 | session_turn_idempotency_key | 会话轮次幂等键 |
+| 20261009 | platform_workspace_id | 平台 workspace ID |
+| 20261010 | event_delivery_outbox | 事件投递 Outbox |
+| 20261011 | tenant_rls_phase1 | 租户 RLS Phase 1 |
+| 20261012 | drop_activities_table | 删除 activities 表 |
+| 20261013 | plan_step_contracts | PlanStep 契约 |
+| 20261014 | media_providers | 媒体 Provider |
+| 20261106 | learning_loop_schema | 学习循环 Schema |
+| 20261107 | drop_micro_compact | 删除 micro compact |
+| 20261108 | agent_runtime_clarification | Agent 运行时澄清 |
+| 20261109 | steps_v2_session_seq | steps_v2 会话序号 |
+| 20261110 | agent_mission_domain | Agent 使命域 |
+| 20261111 | unified_evolution_convergence | 统一演化建议收敛（A6：backfill + DROP 三张 legacy 表 + 方言感知去重索引） |
 
 ### 4.3 数据迁移设计
 
@@ -378,7 +412,7 @@ ensureSchemaDDL()
 
 ### 5.1 Schema 总表
 
-共 91 个 Ent Schema，位于 `internal/data/ent/schema/`。其中 88 个使用 `entsql.Annotation{Table: ...}` 显式映射表名，3 个使用 Ent 默认复数化规则。
+共 89 个 Ent Schema，位于 `internal/data/ent/schema/`。其中 86 个使用 `entsql.Annotation{Table: ...}` 显式映射表名，3 个使用 Ent 默认复数化规则。（A6 删除 `SkillEvolutionSuggestion` / `EvolutionSuggestion` 两个显式映射 Schema。）
 
 > **已删除（勿再实现）**：`Message`（messages）与 `EventStore`（event_store）已于 2026-09 删除（`20260901_drop_event_store_subsystem.sql`、`20260902_drop_messages_subsystem.sql`）。下表**不**再列出二者。WS replay 已移除；历史事件用 `ListActivities` RPC。V2 Activity 相关 Schema 见下表「Activity V2」行。
 
@@ -446,7 +480,7 @@ ensureSchemaDDL()
 | | SkillImportJob | skill_import_jobs | 技能导入任务 |
 | | SkillInvocation | skill_invocation | 技能调用 |
 | | SkillVersion | skill_version | 技能版本 |
-| | SkillEvolutionSuggestion | skill_evolution_suggestions | 技能演化建议 |
+| | ~~SkillEvolutionSuggestion~~ | ~~skill_evolution_suggestions~~ | ⚠️ 已经迁移 20261111 backfill 后 DROP（A6），收敛到 `unified_evolution_suggestions`（§6.2） |
 | **Ecosystem** | PlatformTool | tools | 平台工具 |
 | | PlatformMcpServer | mcp_server | MCP 服务器 |
 | | PlatformMcpUserCredential | mcp_server_user_credential | MCP 用户凭证 |
@@ -466,7 +500,7 @@ ensureSchemaDDL()
 | | TaskPlan | task_plans | 任务计划 |
 | | GatewayWebhook | gateway_webhooks | Webhook |
 | | HealRecord | heal_records | 自愈记录 |
-| | EvolutionSuggestion | evolution_suggestions | 演化建议 |
+| | ~~EvolutionSuggestion~~ | ~~evolution_suggestions~~ | ⚠️ 已经迁移 20261111 backfill 后 DROP（A6），收敛到 `unified_evolution_suggestions`（§6.2） |
 | | ExperienceReport | experience_reports | 经验报告 |
 | | FailurePattern | failure_pattern | 失败模式 |
 | | UserEmbeddingSetting | user_embedding_settings（默认复数化） | 用户 Embedding 设置 |
@@ -514,7 +548,7 @@ ensureSchemaDDL()
 | `monitor_alert.sql` | `monitor_alert_rules` | 监控告警规则 |
 | `monitor_alert_firing_state.sql` | （列补丁） | 告警触发状态列（ALTER TABLE，非新表） |
 | `learning_loop.sql` | `learning_observations`, `learning_patterns`, `learning_proposals` | 学习循环 |
-| `skill_evolution.sql` | `skill_proposals` | 技能演化提案 |
+| `skill_evolution.sql` | ~~`skill_proposals`~~ | ⚠️ 技能演化提案表已经迁移 20261111 backfill 后 DROP（A6）；DDL 保留仅作 legacy 库 backfill 来源 |
 | `plan.sql` | `plans` | 计划管理 |
 | `hook_delivery.sql` | `hook_deliveries` | Hook 投递 |
 | `ecosystem_product.sql` | `ecosystem_products`, `ecosystem_installs` | 生态产品 |
@@ -877,9 +911,9 @@ message Data {
 | `internal/data/lazy_seeder.go` | 延迟种子数据 |
 | `internal/data/testhelper/pg.go` | 测试基础设施：schema-per-test PG 隔离（SetupTestPG/SetupTestPGRaw） |
 | `internal/data/sqlite_db.go` | 通用查询辅助（entQueryRowScan，历史命名残留） |
-| `internal/data/ent/schema/*.go` | 82 个 Ent Schema 定义 |
+| `internal/data/ent/schema/*.go` | 89 个 Ent Schema 定义 |
 | `internal/data/sql/*.sql` | 原生 DDL SQL 文件（非迁移） |
-| `internal/data/sql/migrations/*.sql` | DDL 迁移 SQL 文件（28 个版本化文件） |
+| `internal/data/sql/migrations/*.sql` | DDL 迁移 SQL 文件（59 个版本化文件） |
 | `internal/data/vector/store.go` | VectorStore 接口 |
 | `internal/data/vector/pgvector.go` | PgVector 向量实现（唯一实现） |
 | `internal/data/pgvector/` | 旧版 pgvector 存储（已废弃，待清理） |

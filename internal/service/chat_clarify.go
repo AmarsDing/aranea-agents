@@ -7,6 +7,7 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/apierror"
@@ -133,9 +134,11 @@ func (s *ChatService) SubmitClarification(ctx context.Context, req *chatv1.Submi
 	// Resume the turn with clarified context.
 	// The clarified context is injected as a user-perspective message.
 	// envelope.OriginalInput 用于服务重启后 pendingClarifications 丢失时惰性重建续跑输入。
+	// envelope.IntentArtifactJSON 用于重启后恢复意图产物，续跑复用而不重跑 Intent Pass。
 	// 异步执行：agent turn 可能持续数分钟，HTTP 必须立即返回；续跑过程通过 WS 事件呈现。
+	fallbackArt := parseIntentArtifactJSON(envelope.IntentArtifactJSON)
 	safego.Go(context.WithoutCancel(ctx), "chat.clarify.resume", func() {
-		if resumeErr := s.orch.resumeTurnWithClarification(context.Background(), sessionID, step.TaskID, clarifiedContext, envelope.OriginalInput); resumeErr != nil {
+		if resumeErr := s.orch.resumeTurnWithClarification(context.Background(), sessionID, step.TaskID, clarifiedContext, envelope.OriginalInput, fallbackArt); resumeErr != nil {
 			s.lg.Warn("failed to resume turn with clarification",
 				loggateway.Str("session_id", sessionID),
 				loggateway.Str("step_id", stepID),
@@ -157,8 +160,10 @@ func (s *ChatService) SubmitClarification(ctx context.Context, req *chatv1.Submi
 // clarification answers. It resolves the original input (in-memory pending
 // state, or lazily rebuilt from envelope.OriginalInput after a restart),
 // injects the clarified context, and executes the turn.
-func (o *ChatOrchestrator) resumeTurnWithClarification(ctx context.Context, sessionID, taskID, clarifiedContext, originalInput string) error {
-	input, err := o.resolveResumeInput(sessionID, taskID, originalInput)
+// fallbackArt 是信封中持久化的意图产物（服务重启 pending 丢失时使用）；
+// 解析出的产物经 ctx 传入续跑 turn，复用而不重跑 Intent Pass。
+func (o *ChatOrchestrator) resumeTurnWithClarification(ctx context.Context, sessionID, taskID, clarifiedContext, originalInput string, fallbackArt *intent.Artifact) error {
+	input, intentArt, err := o.resolveResumeInput(sessionID, taskID, originalInput, fallbackArt)
 	if err != nil {
 		return err
 	}
@@ -175,52 +180,71 @@ func (o *ChatOrchestrator) resumeTurnWithClarification(ctx context.Context, sess
 		loggateway.SessionID(sessionID),
 		loggateway.Str("task_id", taskID),
 		loggateway.Int("clarified_context_len", len(clarifiedContext)),
+		loggateway.Bool("intent_artifact_reused", intentArt != nil),
 	)
 
 	// Execute the turn with the clarified input.
 	// Use a background context to avoid cancellation from the HTTP request.
 	turnCtx := context.Background()
+	if intentArt != nil {
+		turnCtx = intent.WithArtifact(turnCtx, intentArt)
+	}
 	_, err = o.Execute(turnCtx, input)
 	return err
 }
 
-// resolveResumeInput 解析续跑所需的原始输入：优先内存 pendingClarifications，
-// 缺失（服务重启）则从信封 OriginalInput 惰性重建最小 TurnInput。
-func (o *ChatOrchestrator) resolveResumeInput(sessionID, taskID, originalInput string) (biz.TurnInput, error) {
+// resolveResumeInput 解析续跑所需的原始输入与意图产物：优先内存
+// pendingClarifications，缺失（服务重启）则从信封 OriginalInput 惰性重建
+// 最小 TurnInput 并采用调用方提供的 fallback 产物（信封持久化）。
+func (o *ChatOrchestrator) resolveResumeInput(sessionID, taskID, originalInput string, fallbackArt *intent.Artifact) (biz.TurnInput, *intent.Artifact, error) {
 	// 1. 尝试从内存 pendingClarifications 加载
 	if v, ok := o.pendingClarifications.Load(sessionID); ok {
 		pc := v.(pendingClarification)
 		if pc.TaskID != taskID {
-			return biz.TurnInput{}, apierror.BadRequest(apierror.DomainChat, "task ID mismatch: expected %s, got %s", pc.TaskID, taskID)
+			return biz.TurnInput{}, nil, apierror.BadRequest(apierror.DomainChat, "task ID mismatch: expected %s, got %s", pc.TaskID, taskID)
 		}
 		o.pendingClarifications.Delete(sessionID)
-		return pc.Input, nil
+		return pc.Input, pc.Artifact, nil
 	}
 	// 2. 内存态缺失，从信封 OriginalInput 惰性重建
 	if originalInput != "" {
 		return biz.TurnInput{
 			SessionID: sessionID,
 			Content:   originalInput,
-		}, nil
+		}, fallbackArt, nil
 	}
-	return biz.TurnInput{}, apierror.NotFound(apierror.DomainChat, "no pending clarification for session %s", sessionID)
+	return biz.TurnInput{}, nil, apierror.NotFound(apierror.DomainChat, "no pending clarification for session %s", sessionID)
+}
+
+// parseIntentArtifactJSON 反序列化信封中持久化的意图产物；空串或解析失败返回 nil
+// （产物复用是性能优化，缺失时续跑退化为重跑 Intent Pass，不影响正确性）。
+func parseIntentArtifactJSON(raw string) *intent.Artifact {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var art intent.Artifact
+	if err := json.Unmarshal([]byte(raw), &art); err != nil {
+		return nil
+	}
+	return &art
 }
 
 // resolveClarificationFreeText 检查会话是否处于澄清等待态；如是，将消息视为
 // 自由回复：按推荐填充空作答、回写 free_text、完成澄清 step、恢复会话运行，
-// 并返回重写后的输入（澄清上下文 + 原始需求，基于 pending 存储的原输入）。
-// 非澄清等待态或处理失败时原样透传。
-func (o *ChatOrchestrator) resolveClarificationFreeText(ctx context.Context, input biz.TurnInput) biz.TurnInput {
+// 并返回重写后的输入（澄清上下文 + 原始需求，基于 pending 存储的原输入）
+// 与 pending 中存储的意图产物（续跑复用，不重跑 Intent Pass）。
+// 非澄清等待态或处理失败时原样透传，产物为 nil。
+func (o *ChatOrchestrator) resolveClarificationFreeText(ctx context.Context, input biz.TurnInput) (biz.TurnInput, *intent.Artifact) {
 	sessionID := input.SessionID
 	content := strings.TrimSpace(input.Content)
 	if content == "" {
-		return input // 空消息直接透传
+		return input, nil // 空消息直接透传
 	}
 
 	// 内存 pending 是澄清等待态的唯一判据（gate 触发时才写入）
 	v, ok := o.pendingClarifications.Load(sessionID)
 	if !ok {
-		return input
+		return input, nil
 	}
 	pc := v.(pendingClarification)
 
@@ -229,14 +253,14 @@ func (o *ChatOrchestrator) resolveClarificationFreeText(ctx context.Context, inp
 	if err != nil || step.Status != biz.StepStatusAwaitingInput {
 		// 失效 pending（已通过卡片提交 / step 不存在）：清除并透传
 		o.pendingClarifications.Delete(sessionID)
-		return input
+		return input, nil
 	}
 
 	// 解析信封并填充自由回复
 	var envelope biz.ClarificationEnvelope
 	if err := json.Unmarshal([]byte(step.Content), &envelope); err != nil {
 		o.lg().Warn("failed to unmarshal clarification envelope", loggateway.Err(err))
-		return input
+		return input, nil
 	}
 	envelope.FreeText = content
 	// 空作答按推荐处理
@@ -254,12 +278,12 @@ func (o *ChatOrchestrator) resolveClarificationFreeText(ctx context.Context, inp
 	updatedContent, err := json.Marshal(envelope)
 	if err != nil {
 		o.lg().Warn("failed to marshal clarification envelope", loggateway.Err(err))
-		return input
+		return input, nil
 	}
 	step.Content = string(updatedContent)
 	if _, err := o.stepWriter().UpdateStep(ctx, step); err != nil {
 		o.lg().Warn("failed to update clarification step", loggateway.Err(err))
-		return input
+		return input, nil
 	}
 
 	// 发布 StepUpdated 事件
@@ -282,5 +306,5 @@ func (o *ChatOrchestrator) resolveClarificationFreeText(ctx context.Context, inp
 	resolved := pc.Input
 	resolved.Content = envelope.BuildClarifiedContext() + "\n\n原始需求：" + pc.Input.Content
 	resolved.ParentTaskID = pc.TaskID
-	return resolved
+	return resolved, pc.Artifact
 }

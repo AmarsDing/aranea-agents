@@ -305,7 +305,7 @@ detected pattern → pending → approved → registered
 
 **审批流程**：
 1. **自动检测**：`DetectAndPropose` 扫描 Pattern，过滤 `Confidence >= 0.15` 的工具调用模式，生成 pending Proposal
-2. **批量扫描**：`ScanAndProposeAll` 遍历所有 active Agent，对开启了 `EvolutionSkillEvolve` 设置的 Agent 执行检测
+2. **批量扫描**：`EvolutionOrchestratorWorker`（`PatternTrigger`）统一驱动，遍历所有 active Agent，对开启了 `EvolutionSkillEvolve` 设置的 Agent 执行检测
 3. **人工审批**：`ApproveProposal` 只允许 pending 状态被批准
 4. **注册**：`RegisterApproved` 检查 Skill 是否已存在，通过 `FileSystemSkillRegistrar` 将 SKILL.md 写入 Agent 的 Skill 目录
 5. **拒绝**：`RejectProposal` 只允许 pending 状态被拒绝

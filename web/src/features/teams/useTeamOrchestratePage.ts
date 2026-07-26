@@ -6,7 +6,7 @@ import type { CompileTeamGraphResult } from '../orchestration/compileApi';
 import type { GraphDefinition } from '../graph/types';
 import type { Team, TeamDefinition, TeamRun } from './types';
 import { findActiveTeamRun } from './api';
-import { parseDefinition, definitionToJSON, withGraph } from '../../components/teams/teamUtils';
+import { parseDefinition } from '../../components/teams/teamUtils';
 import { useTeamsStore } from '../../stores/teams';
 import { useOrchestrationStore } from '../../stores/orchestration';
 import { useOrchestrationStream } from '../orchestration/useOrchestrationStream';
@@ -24,12 +24,9 @@ export function useTeamOrchestratePage() {
   const teamId = computed(() => String(route.params.teamId ?? ''));
 
   const loading = ref(true);
-  const saving = ref(false);
-  const dirty = ref(false);
   const error = ref('');
   const teamRow = ref<Team | null>(null);
   const compiled = ref<CompileTeamGraphResult | null>(null);
-  const linkedGraphId = ref('');
   const definition = ref<TeamDefinition | null>(null);
   const readOnly = ref(false);
 
@@ -98,23 +95,6 @@ export function useTeamOrchestratePage() {
 
   const issues = computed(() => compiled.value?.issues ?? []);
 
-  function markDirty() {
-    if (readOnly.value) return;
-    dirty.value = true;
-  }
-
-  function patchDefinition(patch: Partial<TeamDefinition>) {
-    if (!definition.value || readOnly.value) return;
-    definition.value = { ...definition.value, ...patch };
-    if (patch.failure_policy) {
-      definition.value.failure_policy = {
-        ...(definition.value.failure_policy ?? {}),
-        ...patch.failure_policy,
-      };
-    }
-    markDirty();
-  }
-
   function applyCompiled(result: CompileTeamGraphResult) {
     compiled.value = result;
     Object.assign(graphDef, compiledGraphToGraphDef(result, teamRow.value?.display_name || 'team-orchestration'));
@@ -156,10 +136,8 @@ export function useTeamOrchestratePage() {
       teamRow.value = team;
       readOnly.value = Boolean(team.has_active_run);
       definition.value = parseDefinition(team);
-      linkedGraphId.value = team.linked_graph_id || readLinkedGraphId(definition.value);
       const result = await orchestrationStore.compileTeam(teamId.value);
       applyCompiled(result);
-      dirty.value = false;
       if (team.has_active_run) {
         await connectLiveRun();
       } else {
@@ -169,61 +147,6 @@ export function useTeamOrchestratePage() {
       error.value = e instanceof Error ? e.message : String(e);
     } finally {
       loading.value = false;
-    }
-  }
-
-  function readLinkedGraphId(def: TeamDefinition & { linked_graph_id?: string }) {
-    return String((def as { linked_graph_id?: string }).linked_graph_id ?? '');
-  }
-
-  function graphToDefinitionGraph() {
-    const def = definition.value;
-    if (!def) return undefined;
-    const priorById = new Map((def.graph?.nodes ?? []).map((node) => [node.id, node]));
-    return {
-      version: 1,
-      layout: def.mode,
-      nodes: graphDef.nodes.map((n) => {
-        const prior = priorById.get(n.id);
-        return {
-          id: n.id,
-          type: n.type,
-          label: n.agentName || n.id,
-          agent_id: prior?.agent_id || n.agentName || '',
-          role: n.requiredRole || prior?.role,
-          x: prior?.x,
-          y: prior?.y,
-        };
-      }),
-      edges: graphDef.edges.map((e, index) => ({
-        id: priorById.has(e.from) ? `e-${e.from}-${e.to}` : `e-${index}`,
-        source: e.from,
-        target: e.to,
-      })),
-    };
-  }
-
-  async function saveGraph() {
-    if (!teamRow.value || !definition.value || readOnly.value) return;
-    saving.value = true;
-    try {
-      const nextDef = withGraph({
-        ...definition.value,
-        graph: graphToDefinitionGraph(),
-        linked_graph_id: linkedGraphId.value.trim() || undefined,
-      } as TeamDefinition & { linked_graph_id?: string });
-      const updated = await teamsStore.editTeam(teamId.value, {
-        definition_json: definitionToJSON(nextDef),
-        linked_graph_id: linkedGraphId.value.trim(),
-      });
-      teamRow.value = updated;
-      definition.value = parseDefinition(updated);
-      dirty.value = false;
-      $q.notify({ type: 'positive', message: '编排 graph 已保存' });
-    } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '保存失败' });
-    } finally {
-      saving.value = false;
     }
   }
 
@@ -251,12 +174,9 @@ export function useTeamOrchestratePage() {
     isDark,
     teamId,
     loading,
-    saving,
-    dirty,
     error,
     teamRow,
     compiled,
-    linkedGraphId,
     definition,
     readOnly,
     selectedNodeId,
@@ -269,10 +189,7 @@ export function useTeamOrchestratePage() {
     execNodeStates,
     graphDef,
     issues,
-    markDirty,
-    patchDefinition,
     reload,
-    saveGraph,
     onSelectNode,
     openObservatory,
     goBack,

@@ -23,6 +23,10 @@ message KnowledgeCollection {
   string workspace = 9;
   string created_at = 10;
   string updated_at = 11;
+  // Vault fields (V2: local folder as source of truth). Empty = legacy collection.
+  string root_path = 12;
+  string sync_state = 13;     // active | paused | error | migrating
+  string last_sync_at = 14;
 }
 
 // KnowledgeDocument is one source document ingested into a collection.
@@ -39,6 +43,11 @@ message KnowledgeDocument {
   string updated_at = 10;
   bool   extract_supported = 11;  // true when backend can extract text from this MIME type (REV-D)
   bool   organized = 12;          // true when content was organized into Markdown by LLM
+  // Vault + summary-card fields (P3 explorer list/hover-card first-density).
+  string rel_path = 13;       // vault-relative path ('/' separator); empty = non-vault doc
+  string summary = 14;        // LLM summary card (may be stale; empty when unavailable)
+  repeated string tags = 15;  // LLM tags from summary card
+  string doc_type = 16;       // report | manual | note | faq | ...
 }
 
 // DocumentContent is the full extracted/organized text of one document (preview).
@@ -113,6 +122,52 @@ message ListDocumentsRequest {
   string collection_id = 1;
   int32 limit = 2;
   int32 offset = 3;
+}
+
+// VaultTreeNode is one entry of a vault folder listing (P3 explorer).
+// kind=dir nodes are aggregates derived from document rel_paths;
+// kind=file nodes mirror one indexed document.
+message VaultTreeNode {
+  string name = 1;            // base name (last path segment)
+  string path = 2;            // vault-relative path ('/' separator); '' = root
+  string kind = 3;            // dir | file
+  // file-only fields (empty/zero for dir):
+  string doc_id = 4;
+  string summary = 5;
+  repeated string tags = 6;
+  string doc_type = 7;
+  string status = 8;
+  int64  size_bytes = 9;
+  string updated_at = 10;
+}
+
+message ListVaultTreeRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // prefix selects the folder whose DIRECT children are returned; empty = root.
+  string prefix = 2;
+}
+
+message ListVaultTreeResponse {
+  repeated VaultTreeNode items = 1;
+}
+
+// KnowledgeLink is one resolved document relation (P3 关联区, R-3 来源标注).
+message KnowledgeLink {
+  string target_doc_id = 1;
+  string target_source = 2;
+  string target_rel_path = 3;
+  string link_type = 4;       // explicit | entity | semantic
+  string context = 5;         // explicit: [[ref]] raw; entity: shared entity names
+  string direction = 6;       // out (this doc references target) | in (target references this doc)
+}
+
+message ListDocumentLinksRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];  // document id
+  string link_type = 2;     // empty = all types
+}
+
+message ListDocumentLinksResponse {
+  repeated KnowledgeLink items = 1;
 }
 
 message ListDocumentsResponse {
@@ -223,6 +278,18 @@ service KnowledgeService {
     option (google.api.http) = {
       post: "/v1/knowledge/documents/{id}/move"
       body: "*"
+    };
+  }
+  // Vault explorer (P3): lazy folder listing derived from document rel_paths.
+  rpc ListVaultTree(ListVaultTreeRequest) returns (ListVaultTreeResponse) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/vaults/{collection_id}/tree"
+    };
+  }
+  // Document relations with source-type annotation (P3 关联区, R-3).
+  rpc ListDocumentLinks(ListDocumentLinksRequest) returns (ListDocumentLinksResponse) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/documents/{id}/links"
     };
   }
 

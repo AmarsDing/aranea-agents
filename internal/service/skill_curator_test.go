@@ -57,45 +57,100 @@ func (s *stubSuggestionWriter) UpdateLifecycleStatus(_ context.Context, _ string
 	return s.err
 }
 
-type stubLegacyEvolutionStore struct {
+// stubUnifiedEvolutionStore implements biz.UnifiedEvolutionStore backed by the
+// legacy-view reader/writer stubs (A6). Only the methods exercised by the
+// SandboxRunner and SkillCuratorService tests (GetByID, UpdateDraftBody,
+// UpdateLifecycleStatus, UpdateSandboxResult) have working implementations.
+type stubUnifiedEvolutionStore struct {
 	*stubSuggestionReader
 	*stubSuggestionWriter
 }
 
-func (s *stubLegacyEvolutionStore) GetEvolutionSuggestion(ctx context.Context, id string) (*biz.SkillEvolutionSuggestion, error) {
-	return s.stubSuggestionReader.GetByID(ctx, id)
+// legacyToUnifiedView mirrors biz.unifiedToLegacySuggestion for seeding.
+func legacyToUnifiedView(s *biz.SkillEvolutionSuggestion) *biz.UnifiedEvolutionSuggestion {
+	if s == nil {
+		return nil
+	}
+	metadata, _ := json.Marshal(map[string]string{
+		biz.EvoMetaLegacyType: string(s.Type),
+	})
+	return &biz.UnifiedEvolutionSuggestion{
+		ID:              s.ID,
+		TargetType:      biz.EvolutionTargetSkill,
+		TargetID:        s.SkillID,
+		ActionType:      biz.EvolutionActionImprove,
+		TriggerSource:   "health",
+		TriggerReason:   s.TriggerReason,
+		Status:          string(s.Status),
+		Priority:        1,
+		DraftBody:       s.DraftSkillBody,
+		LifecycleStatus: string(s.LifecycleStatus),
+		SandboxPassed:   s.SandboxPassed,
+		SandboxResult:   s.SandboxResult,
+		Metadata:        metadata,
+		CreatedAt:       s.CreatedAt,
+		ApprovedBy:      s.ApprovedBy,
+	}
 }
-func (s *stubLegacyEvolutionStore) ListEvolutionSuggestions(ctx context.Context, skillID string, status biz.EvolutionSuggestionStatus, limit, offset int) ([]biz.SkillEvolutionSuggestion, error) {
-	return s.stubSuggestionReader.ListBySkill(ctx, skillID, status, limit, offset)
+
+func (s *stubUnifiedEvolutionStore) GetByID(ctx context.Context, id string) (*biz.UnifiedEvolutionSuggestion, error) {
+	sug, err := s.stubSuggestionReader.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return legacyToUnifiedView(sug), nil
 }
-func (s *stubLegacyEvolutionStore) CountEvolutionSuggestions(ctx context.Context, skillID string, status biz.EvolutionSuggestionStatus) (int, error) {
-	return s.stubSuggestionReader.CountBySkill(ctx, skillID, status)
-}
-func (s *stubLegacyEvolutionStore) CreateSuggestion(ctx context.Context, sug biz.SkillEvolutionSuggestion) error {
-	return s.stubSuggestionWriter.Create(ctx, sug)
-}
-func (s *stubLegacyEvolutionStore) UpdateSuggestionStatus(ctx context.Context, id string, status biz.EvolutionSuggestionStatus, resolvedBy, reason string) error {
-	return s.stubSuggestionWriter.UpdateStatus(ctx, id, status, resolvedBy, reason)
-}
-func (s *stubLegacyEvolutionStore) UpdateSuggestionDraftBody(ctx context.Context, id, draftBody string) error {
+
+func (s *stubUnifiedEvolutionStore) UpdateDraftBody(ctx context.Context, id string, draftBody string) error {
 	return s.stubSuggestionWriter.UpdateDraftBody(ctx, id, draftBody)
 }
-func (s *stubLegacyEvolutionStore) UpdateSuggestionLifecycleStatus(ctx context.Context, id string, lifecycleStatus biz.EvolutionLifecycleStatus) error {
-	return s.stubSuggestionWriter.UpdateLifecycleStatus(ctx, id, lifecycleStatus)
+
+func (s *stubUnifiedEvolutionStore) UpdateLifecycleStatus(ctx context.Context, id string, lifecycleStatus string) error {
+	return s.stubSuggestionWriter.UpdateLifecycleStatus(ctx, id, biz.EvolutionLifecycleStatus(lifecycleStatus))
 }
-func (s *stubLegacyEvolutionStore) UpdateSuggestionSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error {
+
+func (s *stubUnifiedEvolutionStore) UpdateSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error {
 	return s.stubSuggestionWriter.UpdateSandboxResult(ctx, id, passed, result)
 }
-func (s *stubLegacyEvolutionStore) ListPendingSuggestions(ctx context.Context, limit, offset int) ([]biz.SkillEvolutionSuggestion, error) {
-	return s.stubSuggestionReader.ListPending(ctx, limit, offset)
+
+// Remaining interface methods are unused by these tests.
+func (s *stubUnifiedEvolutionStore) HasPendingForTarget(context.Context, string, string) (bool, error) {
+	return false, nil
 }
-func (s *stubLegacyEvolutionStore) GetLatestSuggestionBySkill(ctx context.Context, skillID string) (*biz.SkillEvolutionSuggestion, error) {
-	return s.stubSuggestionReader.GetLatestBySkill(ctx, skillID)
+func (s *stubUnifiedEvolutionStore) GetLatestByTarget(context.Context, string, string) (*biz.UnifiedEvolutionSuggestion, error) {
+	return nil, nil
+}
+func (s *stubUnifiedEvolutionStore) GetLatestByTargetAndAction(context.Context, string, string, string) (*biz.UnifiedEvolutionSuggestion, error) {
+	return nil, nil
+}
+func (s *stubUnifiedEvolutionStore) ListByTarget(context.Context, string, string, string, int, int) ([]biz.UnifiedEvolutionSuggestion, error) {
+	return nil, nil
+}
+func (s *stubUnifiedEvolutionStore) CountByTarget(context.Context, string, string, string) (int, error) {
+	return 0, nil
+}
+func (s *stubUnifiedEvolutionStore) ListByTargetAndAction(context.Context, string, string, string, string, int, int) ([]biz.UnifiedEvolutionSuggestion, error) {
+	return nil, nil
+}
+func (s *stubUnifiedEvolutionStore) CountByTargetAndAction(context.Context, string, string, string, string) (int, error) {
+	return 0, nil
+}
+func (s *stubUnifiedEvolutionStore) Create(context.Context, biz.UnifiedEvolutionSuggestion) error {
+	return s.stubSuggestionWriter.err
+}
+func (s *stubUnifiedEvolutionStore) UpdateStatus(context.Context, string, string, string, string) error {
+	return s.stubSuggestionWriter.err
+}
+func (s *stubUnifiedEvolutionStore) UpdateMetadataKey(context.Context, string, string, string) error {
+	return s.stubSuggestionWriter.err
+}
+func (s *stubUnifiedEvolutionStore) ExpireOlderThan(context.Context, time.Time) (int, error) {
+	return 0, s.stubSuggestionWriter.err
 }
 
 func newTestSandboxRunner(reader *stubSuggestionReader, writer *stubSuggestionWriter) *SandboxRunner {
-	store := &stubLegacyEvolutionStore{stubSuggestionReader: reader, stubSuggestionWriter: writer}
-	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, store, nil, loggateway.NewNoop())
+	store := &stubUnifiedEvolutionStore{stubSuggestionReader: reader, stubSuggestionWriter: writer}
+	uc := biz.NewSkillIntelligenceUsecase(nil, nil, store, nil, loggateway.NewNoop())
 	// Pass nil factory → rule-based only (no CodeExecutor)
 	return NewSandboxRunner(uc, nil, loggateway.NewNoop())
 }
@@ -200,8 +255,8 @@ func TestSandboxRunner_ValidateSuggestion_DraftBodyTooLong(t *testing.T) {
 // ── SkillCuratorService Tests ────────────────────────────────────────────────
 
 func newTestCuratorService(reader *stubSuggestionReader, writer *stubSuggestionWriter) *SkillCuratorService {
-	store := &stubLegacyEvolutionStore{stubSuggestionReader: reader, stubSuggestionWriter: writer}
-	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, store, nil, loggateway.NewNoop())
+	store := &stubUnifiedEvolutionStore{stubSuggestionReader: reader, stubSuggestionWriter: writer}
+	uc := biz.NewSkillIntelligenceUsecase(nil, nil, store, nil, loggateway.NewNoop())
 	return NewSkillCuratorService(uc, loggateway.NewNoop())
 }
 

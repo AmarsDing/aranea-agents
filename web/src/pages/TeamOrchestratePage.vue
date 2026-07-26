@@ -26,23 +26,11 @@
       <q-btn flat dense round icon="refresh" :loading="loading" @click="reload">
         <q-tooltip>重新编译</q-tooltip>
       </q-btn>
-      <q-btn
-        flat
-        dense
-        round
-        icon="save"
-        color="primary"
-        :loading="saving"
-        :disable="readOnly || !dirty"
-        @click="saveGraph"
-      >
-        <q-tooltip>保存 graph 到 definition</q-tooltip>
-      </q-btn>
     </div>
 
     <q-banner v-if="readOnly" dense rounded class="q-ma-md bg-orange-1 text-dark">
       <div class="row items-center wrap q-gutter-sm">
-        <span>团队有进行中的 Run，编排定义只读。画布与看板已切换为实时模式。</span>
+        <span>团队有进行中的 Run，画布与看板已切换为实时模式。编排编辑请在团队编辑对话框中进行。</span>
         <q-btn
           v-if="activeRun"
           flat
@@ -86,9 +74,9 @@
           :exec-node-states="execNodeStates"
           :selected-node-id="selectedNodeId"
           :focus-selected-node="liveMode"
-          :read-only="readOnly"
+          :read-only="true"
+          :hide-tech-ids="true"
           @select-node="onSelectNode"
-          @update-graph="markDirty"
         />
         <TeamOrchestrateNodePanel
           :selected-node-id="selectedNodeId"
@@ -150,8 +138,6 @@ const activeTab = ref('canvas');
 const {
   isDark,
   loading,
-  saving,
-  dirty,
   error,
   teamRow,
   compiled,
@@ -167,8 +153,6 @@ const {
   graphDef,
   issues,
   reload,
-  markDirty,
-  saveGraph,
   onSelectNode,
   openObservatory,
   goBack,

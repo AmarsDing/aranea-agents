@@ -280,7 +280,7 @@ func TestDialect_JSONExtractPath(t *testing.T) {
 		want    string
 	}{
 		{DialectSQLite, "data", []string{"meta", "session_id"}, "json_extract(data, '$.meta.session_id')"},
-		{DialectPostgres, "data", []string{"meta", "session_id"}, "data #>> '{meta,session_id}'"},
+		{DialectPostgres, "data", []string{"meta", "session_id"}, "COALESCE(NULLIF(data::text, '')::jsonb, '{}'::jsonb) #>> '{meta,session_id}'"},
 		{DialectSQLite, "data", []string{}, "data"},
 		{DialectPostgres, "data", []string{}, "data"},
 	}

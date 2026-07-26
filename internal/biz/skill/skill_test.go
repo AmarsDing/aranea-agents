@@ -120,6 +120,10 @@ func (m *mockRepo) ListSkillVersions(ctx context.Context, q VersionListQuery) (V
 	return VersionListResult{Items: m.versions, Total: len(m.versions), Limit: q.Limit, Offset: q.Offset}, nil
 }
 
+func (m *mockRepo) CreateSkillVersion(ctx context.Context, in CreateVersionInput) (SkillVersionDetail, error) {
+	return SkillVersionDetail{ID: "v-new", SkillID: in.SkillID, ContentMarkdown: in.Body}, nil
+}
+
 func (m *mockRepo) CreateSkillWithVersion(ctx context.Context, in CreateInput) (Skill, error) {
 	if m.createErr != nil {
 		return Skill{}, m.createErr

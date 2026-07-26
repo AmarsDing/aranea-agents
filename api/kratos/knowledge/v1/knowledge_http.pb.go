@@ -28,7 +28,9 @@ const OperationKnowledgeServiceGetDocumentContent = "/kratos.knowledge.v1.Knowle
 const OperationKnowledgeServiceGetEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
 const OperationKnowledgeServiceIngestDocument = "/kratos.knowledge.v1.KnowledgeService/IngestDocument"
 const OperationKnowledgeServiceListCollections = "/kratos.knowledge.v1.KnowledgeService/ListCollections"
+const OperationKnowledgeServiceListDocumentLinks = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
 const OperationKnowledgeServiceListDocuments = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
+const OperationKnowledgeServiceListVaultTree = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
 const OperationKnowledgeServiceMoveDocument = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
 const OperationKnowledgeServiceSearch = "/kratos.knowledge.v1.KnowledgeService/Search"
 const OperationKnowledgeServiceUpdateEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
@@ -44,7 +46,11 @@ type KnowledgeServiceHTTPServer interface {
 	// IngestDocument Documents
 	IngestDocument(context.Context, *IngestDocumentRequest) (*KnowledgeDocument, error)
 	ListCollections(context.Context, *ListCollectionsRequest) (*ListCollectionsResponse, error)
+	// ListDocumentLinks Document relations with source-type annotation (P3 关联区, R-3).
+	ListDocumentLinks(context.Context, *ListDocumentLinksRequest) (*ListDocumentLinksResponse, error)
 	ListDocuments(context.Context, *ListDocumentsRequest) (*ListDocumentsResponse, error)
+	// ListVaultTree Vault explorer (P3): lazy folder listing derived from document rel_paths.
+	ListVaultTree(context.Context, *ListVaultTreeRequest) (*ListVaultTreeResponse, error)
 	MoveDocument(context.Context, *MoveDocumentRequest) (*KnowledgeDocument, error)
 	// Search Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
@@ -62,6 +68,8 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.GET("/v1/knowledge/documents/{id}/content", _KnowledgeService_GetDocumentContent0_HTTP_Handler(srv))
 	r.DELETE("/v1/knowledge/documents/{id}", _KnowledgeService_DeleteDocument0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/documents/{id}/move", _KnowledgeService_MoveDocument0_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/vaults/{collection_id}/tree", _KnowledgeService_ListVaultTree0_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/documents/{id}/links", _KnowledgeService_ListDocumentLinks0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/search", _KnowledgeService_Search0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/embedder-config", _KnowledgeService_GetEmbedderConfig0_HTTP_Handler(srv))
 	r.PUT("/v1/knowledge/embedder-config", _KnowledgeService_UpdateEmbedderConfig0_HTTP_Handler(srv))
@@ -262,6 +270,50 @@ func _KnowledgeService_MoveDocument0_HTTP_Handler(srv KnowledgeServiceHTTPServer
 	}
 }
 
+func _KnowledgeService_ListVaultTree0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListVaultTreeRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceListVaultTree)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListVaultTree(ctx, req.(*ListVaultTreeRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListVaultTreeResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_ListDocumentLinks0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListDocumentLinksRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceListDocumentLinks)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListDocumentLinks(ctx, req.(*ListDocumentLinksRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListDocumentLinksResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _KnowledgeService_Search0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in SearchRequest
@@ -336,7 +388,11 @@ type KnowledgeServiceHTTPClient interface {
 	// IngestDocument Documents
 	IngestDocument(ctx context.Context, req *IngestDocumentRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
 	ListCollections(ctx context.Context, req *ListCollectionsRequest, opts ...http.CallOption) (rsp *ListCollectionsResponse, err error)
+	// ListDocumentLinks Document relations with source-type annotation (P3 关联区, R-3).
+	ListDocumentLinks(ctx context.Context, req *ListDocumentLinksRequest, opts ...http.CallOption) (rsp *ListDocumentLinksResponse, err error)
 	ListDocuments(ctx context.Context, req *ListDocumentsRequest, opts ...http.CallOption) (rsp *ListDocumentsResponse, err error)
+	// ListVaultTree Vault explorer (P3): lazy folder listing derived from document rel_paths.
+	ListVaultTree(ctx context.Context, req *ListVaultTreeRequest, opts ...http.CallOption) (rsp *ListVaultTreeResponse, err error)
 	MoveDocument(ctx context.Context, req *MoveDocumentRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
 	// Search Search
 	Search(ctx context.Context, req *SearchRequest, opts ...http.CallOption) (rsp *SearchResponse, err error)
@@ -457,11 +513,39 @@ func (c *KnowledgeServiceHTTPClientImpl) ListCollections(ctx context.Context, in
 	return &out, nil
 }
 
+// ListDocumentLinks Document relations with source-type annotation (P3 关联区, R-3).
+func (c *KnowledgeServiceHTTPClientImpl) ListDocumentLinks(ctx context.Context, in *ListDocumentLinksRequest, opts ...http.CallOption) (*ListDocumentLinksResponse, error) {
+	var out ListDocumentLinksResponse
+	pattern := "/v1/knowledge/documents/{id}/links"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceListDocumentLinks))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *KnowledgeServiceHTTPClientImpl) ListDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...http.CallOption) (*ListDocumentsResponse, error) {
 	var out ListDocumentsResponse
 	pattern := "/v1/knowledge/documents"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceListDocuments))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListVaultTree Vault explorer (P3): lazy folder listing derived from document rel_paths.
+func (c *KnowledgeServiceHTTPClientImpl) ListVaultTree(ctx context.Context, in *ListVaultTreeRequest, opts ...http.CallOption) (*ListVaultTreeResponse, error) {
+	var out ListVaultTreeResponse
+	pattern := "/v1/knowledge/vaults/{collection_id}/tree"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceListVaultTree))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

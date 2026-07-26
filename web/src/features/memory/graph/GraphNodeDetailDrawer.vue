@@ -88,7 +88,18 @@
       </q-scroll-area>
 
       <q-separator />
-      <div class="q-pa-md">
+      <div class="q-pa-md column q-gutter-sm">
+        <q-btn
+          v-if="node.kind === 'entity'"
+          unelevated
+          rounded
+          color="secondary"
+          no-caps
+          icon="play_circle"
+          class="full-width"
+          :label="t('memory.unifiedGraph.detail.replayActivation')"
+          @click="emit('replay-activation', node)"
+        />
         <q-btn
           unelevated
           rounded
@@ -122,6 +133,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void;
   (e: 'open-in-browse', node: UnifiedGraphNode): void;
+  (e: 'replay-activation', node: UnifiedGraphNode): void;
 }>();
 
 const { t } = useI18n();

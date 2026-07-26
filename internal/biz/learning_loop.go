@@ -42,7 +42,6 @@ type LearningLoopUsecase struct {
 	patterns         PatternReadWriter
 	proposals        ProposalReadWriter
 	agents           AgentRepository
-	evolution        *EvolutionUsecase
 	orchestrator     *SkillEvolutionOrchestrator
 	orchestratorOnce sync.Once
 	lg               loggateway.Logger
@@ -53,7 +52,6 @@ func NewLearningLoopUsecase(
 	pat PatternReadWriter,
 	prop ProposalReadWriter,
 	agents AgentRepository,
-	evolution *EvolutionUsecase,
 	lg loggateway.Logger,
 ) *LearningLoopUsecase {
 	return &LearningLoopUsecase{
@@ -61,7 +59,6 @@ func NewLearningLoopUsecase(
 		patterns:  pat,
 		proposals: prop,
 		agents:    agents,
-		evolution: evolution,
 		lg:        lg,
 	}
 }
@@ -278,7 +275,8 @@ func (uc *LearningLoopUsecase) RegisterKnowledge(ctx context.Context, proposalID
 	}
 	if uc.orchestrator != nil && p.Kind == "prompt" {
 		// Use the unified orchestrator to create a UnifiedEvolutionSuggestion
-		// instead of the legacy EvolutionSuggestion.
+		// (single physical storage, A6). Pending-dedup is enforced by the
+		// orchestrator/DB unique constraint.
 		actionType := kindToActionType(p.Kind)
 		suggestion := UnifiedEvolutionSuggestion{
 			ID:              newAgentCatalogID(),
@@ -295,26 +293,6 @@ func (uc *LearningLoopUsecase) RegisterKnowledge(ctx context.Context, proposalID
 		}
 		if err := uc.orchestrator.CreateSuggestion(ctx, suggestion); err != nil {
 			return KnowledgeProposal{}, err
-		}
-	} else if uc.evolution != nil && p.Kind == "prompt" {
-		suggestions, sErr := uc.evolution.GetEvolutionSuggestions(ctx, p.AgentID, EvolutionStatusPending)
-		if sErr != nil {
-			suggestions = nil
-		}
-		dup := false
-		for _, s := range suggestions {
-			if strings.TrimSpace(s.Title) == strings.TrimSpace(p.Title) {
-				dup = true
-				break
-			}
-		}
-		if !dup {
-			if err := uc.evolution.ensurePendingSuggestion(ctx, p.AgentID, p.Kind, p.Title, p.Content); err != nil {
-				uc.lg.Warn("learning_loop: ensure pending suggestion failed",
-					loggateway.StepID("learning_loop.ensure_pending_suggestion"),
-					loggateway.Str("agent_id", p.AgentID),
-					loggateway.Err(err))
-			}
 		}
 	}
 	applied, ok, err := uc.proposals.UpdateStatusCAS(ctx, proposalID, []ProposalStatus{ProposalStatusValidated, ProposalStatusApproved}, ProposalStatusApplied, approvedBy)

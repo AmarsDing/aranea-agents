@@ -22,7 +22,6 @@
           :team="team"
           :agents="agents"
           :is-dark="isDark"
-          @copy-key="$emit('copy-key', $event)"
           @open-runs="$emit('open-runs', $event)"
           @open-observatory="$emit('open-observatory', $event)"
           @run-test="$emit('run-test', $event)"
@@ -51,7 +50,6 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  'copy-key': [value: string];
   'open-runs': [team: Team];
   'open-observatory': [team: Team];
   'run-test': [team: Team];

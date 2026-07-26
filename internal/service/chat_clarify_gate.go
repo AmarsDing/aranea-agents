@@ -100,6 +100,13 @@ func (o *ChatOrchestrator) runClarificationGate(
 		Answers:       nil,           // 发布时无答案
 		OriginalInput: input.Content, // 持久化原始输入，服务重启后可惰性重建续跑
 	}
+	// 持久化意图产物：服务重启后 pendingClarifications 丢失，续跑从信封恢复，
+	// 避免重跑 Intent Pass LLM。序列化失败不阻断澄清（产物复用是优化而非正确性依赖）。
+	if intentArt != nil {
+		if artJSON, err := json.Marshal(intentArt); err == nil {
+			envelope.IntentArtifactJSON = string(artJSON)
+		}
+	}
 	contentJSON, err := json.Marshal(envelope)
 	if err != nil {
 		lg.Warn("澄清信封序列化失败", loggateway.Err(err))
@@ -138,12 +145,13 @@ func (o *ChatOrchestrator) runClarificationGate(
 	// 3. Session → awaiting_confirmation（reason=clarification）
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusAwaitingConfirmation, sessstatus.StatusReasonClarification)
 
-	// 4. 存储 pendingClarification 供后续恢复
+	// 4. 存储 pendingClarification 供后续恢复（含 Intent 产物，续跑复用）
 	o.pendingClarifications.Store(sessionID, pendingClarification{
 		Input:     input,
 		StepID:    stepID,
 		TaskID:    taskID,
 		CreatedAt: now,
+		Artifact:  intentArt,
 	})
 
 	lg.Info("澄清门已触发，turn 挂起等待用户作答",

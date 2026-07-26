@@ -8,6 +8,8 @@ import {
   ingestDocument,
   listCollections,
   listDocuments,
+  listDocumentLinks,
+  listVaultTree,
   moveDocument,
   searchKnowledge,
   getEmbedderConfig,
@@ -19,11 +21,13 @@ import type {
   KnowledgeChunk,
   KnowledgeCollection,
   KnowledgeDocument,
+  KnowledgeLink,
   ListCollectionsResult,
   ListDocumentsResult,
   SearchKnowledgeQuery,
   EmbedderConfig,
   UpdateEmbedderConfigInput,
+  VaultTreeNode,
 } from '../../features/knowledge/types';
 
 export const useKnowledgeStore = defineStore('knowledge', () => {
@@ -35,6 +39,44 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
   const documentsByCollection = ref<Record<string, KnowledgeDocument[]>>({});
   const loading = ref(false);
   const embedderConfig = ref<EmbedderConfig | null>(null);
+  /** P3 资源管理器：文件夹直接子节点缓存，键 `${collectionId}|${prefix}`。 */
+  const treeChildren = ref<Record<string, VaultTreeNode[]>>({});
+  /** P3 关联区：文档已解析关联缓存，键 doc_id。 */
+  const linksByDoc = ref<Record<string, KnowledgeLink[]>>({});
+
+  function treeKey(collectionId: string, prefix: string): string {
+    return `${collectionId}|${prefix}`;
+  }
+
+  /** 文档结构变更后失效该 vault 的树缓存（ingest/delete/move/同步）。 */
+  function invalidateTree(collectionId: string) {
+    for (const key of Object.keys(treeChildren.value)) {
+      if (key.startsWith(`${collectionId}|`)) {
+        delete treeChildren.value[key];
+      }
+    }
+  }
+
+  async function loadVaultTree(collectionId: string, prefix = '', force = false): Promise<VaultTreeNode[]> {
+    const key = treeKey(collectionId, prefix);
+    if (!force && treeChildren.value[key]) {
+      return treeChildren.value[key];
+    }
+    const items = await listVaultTree(collectionId, prefix);
+    treeChildren.value[key] = items;
+    return items;
+  }
+
+  async function loadDocumentLinks(docId: string, linkType = '', force = false): Promise<KnowledgeLink[]> {
+    if (!force && !linkType && linksByDoc.value[docId]) {
+      return linksByDoc.value[docId];
+    }
+    const items = await listDocumentLinks(docId, linkType);
+    if (!linkType) {
+      linksByDoc.value[docId] = items;
+    }
+    return items;
+  }
 
   async function loadCollections(params: { limit?: number; offset?: number } = {}): Promise<ListCollectionsResult> {
     loading.value = true;
@@ -59,6 +101,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     await deleteCollection(id);
     collections.value = collections.value.filter((c) => c.id !== id);
     delete documentsByCollection.value[id];
+    invalidateTree(id);
     collectionsTotal.value = Math.max(0, collectionsTotal.value - 1);
   }
 
@@ -83,6 +126,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     const key = doc.collection_id || input.collection_id;
     const existing = documentsByCollection.value[key] ?? [];
     documentsByCollection.value[key] = [doc, ...existing];
+    invalidateTree(key);
     return doc;
   }
 
@@ -91,6 +135,8 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     if (documentsByCollection.value[collectionId]) {
       documentsByCollection.value[collectionId] = documentsByCollection.value[collectionId].filter((d) => d.id !== id);
     }
+    delete linksByDoc.value[id];
+    invalidateTree(collectionId);
   }
 
   // US-14：跨库移动文档；本地缓存由页面侧 reload 刷新（源/目标库计数均变化）。
@@ -120,6 +166,11 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     documentsByCollection,
     loading,
     embedderConfig,
+    treeChildren,
+    linksByDoc,
+    invalidateTree,
+    loadVaultTree,
+    loadDocumentLinks,
     loadCollections,
     addCollection,
     removeCollection,

@@ -35,6 +35,10 @@ export interface DAGLayoutResult {
   positions: Map<string, NodePosition>;
   computedWidth: number;
   computedHeight: number;
+  /** Node ID → layer index (0 = root layer, longest-path layering). */
+  layers: Map<string, number>;
+  /** Node ID → stable index within its own layer (follows input order). */
+  orderInLayer: Map<string, number>;
 }
 
 /**
@@ -55,7 +59,14 @@ export function usePlanDAGLayout<T extends LayoutableNode>() {
     const padX = opts.padX ?? 20;
     const padY = opts.padY ?? 12;
     const horizontal = opts.orientation === 'horizontal';
-    if (steps.length === 0) return { positions, computedWidth: padX * 2, computedHeight: padY * 2 };
+    if (steps.length === 0)
+      return {
+        positions,
+        computedWidth: padX * 2,
+        computedHeight: padY * 2,
+        layers: new Map(),
+        orderInLayer: new Map(),
+      };
 
     // Build dependency graph
     const stepMap = new Map(steps.map((s) => [s.ID, s]));
@@ -81,6 +92,13 @@ export function usePlanDAGLayout<T extends LayoutableNode>() {
     for (const [id, l] of layer) {
       if (!byLayer.has(l)) byLayer.set(l, []);
       byLayer.get(l)!.push(id);
+    }
+
+    // Stable index within each layer (follows input insertion order) — used
+    // for staggered entrance animations (per-layer + per-node delays).
+    const orderInLayer = new Map<string, number>();
+    for (const ids of byLayer.values()) {
+      ids.forEach((id, i) => orderInLayer.set(id, i));
     }
 
     const maxLayer = Math.max(...layer.values());
@@ -110,7 +128,7 @@ export function usePlanDAGLayout<T extends LayoutableNode>() {
           });
         });
       }
-      return { positions, computedWidth, computedHeight };
+      return { positions, computedWidth, computedHeight, layers: layer, orderInLayer };
     }
 
     // Compute the actual width needed: widest layer + padding.
@@ -137,7 +155,7 @@ export function usePlanDAGLayout<T extends LayoutableNode>() {
     }
 
     const computedHeight = (maxLayer + 1) * opts.nodeHeight + maxLayer * opts.gapY;
-    return { positions, computedWidth, computedHeight };
+    return { positions, computedWidth, computedHeight, layers: layer, orderInLayer };
   }
 
   return { layoutDAG };

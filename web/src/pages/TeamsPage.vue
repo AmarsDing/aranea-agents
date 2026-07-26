@@ -41,7 +41,6 @@
           :team="team"
           :agents="storeAgents"
           :is-dark="isDark"
-          @copy-key="copyKey"
           @open-runs="openRuns"
           @open-observatory="openTeamObservatory"
           @run-test="openRunTest"
@@ -64,6 +63,9 @@
         <div class="text-h6 q-mt-md">暂无 Team</div>
         <div class="text-body2 app-text-secondary q-mt-sm">
           创建一个 Team，把多个 Agent 组织成顺序、并行或评审闭环。
+        </div>
+        <div v-if="storeAgents.length === 0" class="text-body2 app-text-secondary q-mt-sm">
+          你还没有可用 Agent——Team 由 Agent 组成，请先到 Agent 页创建。
         </div>
         <div
           v-if="hiddenOrchestratedCount > 0"
@@ -244,7 +246,6 @@ const {
   save,
   duplicate,
   confirmRemove,
-  copyKey,
   openRuns,
   openRunTest,
   executeRunTest,
