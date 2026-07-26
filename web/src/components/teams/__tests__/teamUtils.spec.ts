@@ -51,6 +51,38 @@ describe('teamUtils.parseDefinition', () => {
     expect(json.team_graph_runtime).toBe(true);
     expect(json.failure_policy).toEqual({ default: 'retry_then_block', parallel_fail: 'continue' });
   });
+
+  it('normalizes legacy native definition to graph on parse and serialize', () => {
+    const team: Team = {
+      id: 't2',
+      team_key: 'legacy',
+      display_name: 'Legacy',
+      status: 'active',
+      is_default: false,
+      taxonomy_industry_id: '',
+      definition_json: JSON.stringify({
+        version: 1,
+        mode: 'sequential',
+        runtime_engine: 'native',
+        team_graph_runtime: false,
+        members: [{ agent_id: 'a1', role: 'worker', name: 'W', enabled: true, sort_order: 10 }],
+      }),
+      app_name: 'legacy',
+      linked_graph_id: '',
+      has_active_run: false,
+      created_at: '',
+      updated_at: '',
+      deleted_at: '',
+    };
+
+    const def = parseDefinition(team);
+    expect(def.runtime_engine).toBe('graph');
+    expect(def.team_graph_runtime).toBe(true);
+
+    const json = JSON.parse(definitionToJSON(def)) as Record<string, unknown>;
+    expect(json.runtime_engine).toBe('graph');
+    expect(json.team_graph_runtime).toBe(true);
+  });
 });
 
 describe('teamUtils.definitionTopologyKey', () => {

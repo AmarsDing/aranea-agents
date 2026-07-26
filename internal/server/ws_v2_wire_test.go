@@ -396,6 +396,61 @@ func TestV2EventPayloadToWire_UnknownEventFailsClosed(t *testing.T) {
 	}
 }
 
+// TestSanitizeRawJSON verifies that invalid JSON in ToolArgs/ToolResult is
+// replaced with nil (serializes as null) instead of causing a marshal error
+// that silently drops the step.updated event.
+func TestSanitizeRawJSON(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		input json.RawMessage
+		want  json.RawMessage
+	}{
+		{"nil", nil, nil},
+		{"empty", json.RawMessage{}, nil},
+		{"valid object", json.RawMessage(`{"a":1}`), json.RawMessage(`{"a":1}`)},
+		{"valid string", json.RawMessage(`"hello"`), json.RawMessage(`"hello"`)},
+		{"valid null", json.RawMessage(`null`), json.RawMessage(`null`)},
+		{"invalid newline", json.RawMessage("line1\nline2"), nil},
+		{"invalid truncated", json.RawMessage(`{"a":`), nil},
+		{"invalid plain text", json.RawMessage(`not json`), nil},
+		{"invalid trailing comma", json.RawMessage(`{"a":1,}`), nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := sanitizeRawJSON(tc.input)
+			if string(got) != string(tc.want) {
+				t.Errorf("sanitizeRawJSON(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestStepToWire_InvalidToolJSON verifies that a step with invalid JSON in
+// ToolArgs/ToolResult can be marshaled to wire without error.
+func TestStepToWire_InvalidToolJSON(t *testing.T) {
+	t.Parallel()
+	step := wireTestStep()
+	step.ToolArgs = json.RawMessage("plain text\nwith newline")
+	step.ToolResult = json.RawMessage(`{"truncated`)
+	wire := stepToWire(step)
+	// Must not panic; the result must be valid JSON when marshaled.
+	data, err := json.Marshal(wire)
+	if err != nil {
+		t.Fatalf("marshal stepWire with invalid tool JSON: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("unmarshal marshaled wire: %v", err)
+	}
+	if m["ToolArgs"] != nil {
+		t.Errorf("ToolArgs should be null, got %v", m["ToolArgs"])
+	}
+	if m["ToolResult"] != nil {
+		t.Errorf("ToolResult should be null, got %v", m["ToolResult"])
+	}
+}
+
 // fakeUnmappedEvent is a biz.Event implementation with no wire mapping.
 type fakeUnmappedEvent struct{}
 

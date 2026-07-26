@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 )
 
 type mockRepo struct {
@@ -13,8 +14,12 @@ type mockRepo struct {
 	collListFn    func(ctx context.Context, workspace string, limit, offset int) ([]Collection, int, error)
 	collDeleteFn  func(ctx context.Context, id string) error
 	collUpdateFn  func(ctx context.Context, id string, docDelta, chunkDelta int) error
+	collSyncFn    func(ctx context.Context, id, state string, lastSyncAt time.Time) error
 	docCreateFn   func(ctx context.Context, d Document) (Document, error)
 	docGetFn      func(ctx context.Context, id string) (Document, error)
+	docGetByRelFn func(ctx context.Context, collectionID, relPath string) (Document, error)
+	docRelPathFn  func(ctx context.Context, id, newRelPath string) error
+	docSyncMetaFn func(ctx context.Context, id string, meta DocumentSyncMeta) error
 	docUpdateFn   func(ctx context.Context, id, status, errMsg string, chunkCount int) error
 	docContentFn  func(ctx context.Context, id, contentText string, organized bool) error
 	docListFn     func(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
@@ -40,11 +45,23 @@ func (m *mockRepo) DeleteCollection(ctx context.Context, id string) error {
 func (m *mockRepo) UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error {
 	return m.collUpdateFn(ctx, id, docDelta, chunkDelta)
 }
+func (m *mockRepo) UpdateCollectionSyncState(ctx context.Context, id, state string, lastSyncAt time.Time) error {
+	return m.collSyncFn(ctx, id, state, lastSyncAt)
+}
 func (m *mockRepo) CreateDocument(ctx context.Context, d Document) (Document, error) {
 	return m.docCreateFn(ctx, d)
 }
 func (m *mockRepo) GetDocument(ctx context.Context, id string) (Document, error) {
 	return m.docGetFn(ctx, id)
+}
+func (m *mockRepo) GetDocumentByRelPath(ctx context.Context, collectionID, relPath string) (Document, error) {
+	return m.docGetByRelFn(ctx, collectionID, relPath)
+}
+func (m *mockRepo) UpdateDocumentRelPath(ctx context.Context, id, newRelPath string) error {
+	return m.docRelPathFn(ctx, id, newRelPath)
+}
+func (m *mockRepo) UpdateDocumentSyncMeta(ctx context.Context, id string, meta DocumentSyncMeta) error {
+	return m.docSyncMetaFn(ctx, id, meta)
 }
 func (m *mockRepo) UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error {
 	return m.docUpdateFn(ctx, id, status, errMsg, chunkCount)
@@ -78,12 +95,18 @@ func noOpMockRepo() *mockRepo {
 		collListFn:   func(_ context.Context, _ string, _, _ int) ([]Collection, int, error) { return nil, 0, nil },
 		collDeleteFn: func(_ context.Context, _ string) error { return nil },
 		collUpdateFn: func(_ context.Context, _ string, _, _ int) error { return nil },
+		collSyncFn:   func(_ context.Context, _, _ string, _ time.Time) error { return nil },
 		docCreateFn:  func(_ context.Context, d Document) (Document, error) { return d, nil },
 		docGetFn:     func(_ context.Context, id string) (Document, error) { return Document{ID: id}, nil },
-		docUpdateFn:  func(_ context.Context, _, _, _ string, _ int) error { return nil },
-		docContentFn: func(_ context.Context, _, _ string, _ bool) error { return nil },
-		docListFn:    func(_ context.Context, _ string, _, _ int) ([]Document, int, error) { return nil, 0, nil },
-		docDeleteFn:  func(_ context.Context, _ string) error { return nil },
+		docGetByRelFn: func(_ context.Context, _, relPath string) (Document, error) {
+			return Document{RelPath: relPath}, nil
+		},
+		docRelPathFn:  func(_ context.Context, _, _ string) error { return nil },
+		docSyncMetaFn: func(_ context.Context, _ string, _ DocumentSyncMeta) error { return nil },
+		docUpdateFn:   func(_ context.Context, _, _, _ string, _ int) error { return nil },
+		docContentFn:  func(_ context.Context, _, _ string, _ bool) error { return nil },
+		docListFn:     func(_ context.Context, _ string, _, _ int) ([]Document, int, error) { return nil, 0, nil },
+		docDeleteFn:   func(_ context.Context, _ string) error { return nil },
 		docMoveFn: func(_ context.Context, id, target string) (Document, error) {
 			return Document{ID: id, CollectionID: target}, nil
 		},

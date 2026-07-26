@@ -1,0 +1,183 @@
+package knowledge
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	bizknowledge "aranea-agents/internal/biz/knowledge"
+	"aranea-agents/pkg/loggateway"
+)
+
+// Watcher 文件系统变更通知通道（P2 接入 fsnotify；P1 仅接口预留）。
+// 事件只作为「提前扫描」的 hint，不作变更真相——Runner 始终以 Scan+Diff 为准。
+// 这样 watcher 失效时退化为纯轮询，fsnotify 接入时无需改 diff/apply 路径。
+type Watcher interface {
+	// Changed 返回 hint 通道；每次 receive 表示「可能变更，请尽快扫描」。
+	// 通道关闭表示 watcher 已停止，Runner 退化为纯轮询。
+	Changed() <-chan struct{}
+	// Close 释放底层资源。幂等。
+	Close() error
+}
+
+const defaultVaultSyncInterval = 30 * time.Second
+
+// VaultSyncRunner 单 vault 轮询同步循环（P1-3）：
+// tick / watcher hint → engine.Scan → DiffSnapshots → applier.ApplyEvents →
+// 回写 sync_state + last_sync_at。
+//
+// prev 快照按 vaultID 内存维护；首次 SyncOnce 前若 prev 为空，会从 DB
+// ListDocuments 重建 prev——否则重启前从磁盘删除的文件永远不会产生
+// deleted 事件（stale mirror 无法清理）。
+type VaultSyncRunner struct {
+	engine  *bizknowledge.SyncEngine
+	applier *VaultSyncApplier
+	uc      *bizknowledge.Usecase
+	lg      loggateway.Logger
+
+	interval time.Duration
+	watcher  Watcher
+
+	mu   sync.Mutex
+	prev map[string][]bizknowledge.FileSnapshot // vaultID → 上一轮快照
+}
+
+// NewVaultSyncRunner 构造。lg 为 nil 时使用 Noop。
+func NewVaultSyncRunner(engine *bizknowledge.SyncEngine, applier *VaultSyncApplier, uc *bizknowledge.Usecase, lg loggateway.Logger) *VaultSyncRunner {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	return &VaultSyncRunner{
+		engine:   engine,
+		applier:  applier,
+		uc:       uc,
+		lg:       lg.With(loggateway.Domain("knowledge")),
+		interval: defaultVaultSyncInterval,
+		prev:     make(map[string][]bizknowledge.FileSnapshot),
+	}
+}
+
+// SetInterval 覆盖默认轮询间隔（测试用）。
+func (r *VaultSyncRunner) SetInterval(d time.Duration) {
+	if d > 0 {
+		r.interval = d
+	}
+}
+
+// SetWatcher 注入 watcher（可选）。Close 由调用方管理。
+func (r *VaultSyncRunner) SetWatcher(w Watcher) { r.watcher = w }
+
+// SyncOnce 对单个 vault 执行一轮同步；返回首个错误（已回写 sync_state）。
+func (r *VaultSyncRunner) SyncOnce(ctx context.Context, vault bizknowledge.Collection) error {
+	prev, err := r.loadPrev(ctx, vault)
+	if err != nil {
+		r.markState(ctx, vault.ID, "error", time.Time{})
+		return err
+	}
+	curr, err := r.engine.Scan(vault.RootPath, prev)
+	if err != nil {
+		r.markState(ctx, vault.ID, "error", time.Time{})
+		return err
+	}
+	events := bizknowledge.DiffSnapshots(prev, curr)
+	if len(events) > 0 {
+		if applyErr := r.applier.ApplyEvents(ctx, vault, events); applyErr != nil {
+			r.markState(ctx, vault.ID, "error", time.Time{})
+			// 失败不保存 prev：下轮 diff 重新生成事件——成功文档走幂等短路
+			// （DB hash 已一致，廉价跳过），失败文档自动重试（可靠性契约自愈）。
+			return applyErr
+		}
+	}
+	r.markState(ctx, vault.ID, "active", time.Now().UTC())
+	r.savePrev(vault.ID, curr)
+	return nil
+}
+
+// RunVault 启动循环：启动即扫一轮，之后按 interval 轮询或 watcher hint 提前扫描。
+// 阻塞直到 ctx 取消（返回 nil）。
+func (r *VaultSyncRunner) RunVault(ctx context.Context, vault bizknowledge.Collection) error {
+	// 启动即扫一轮，不等 interval。
+	if err := r.SyncOnce(ctx, vault); err != nil {
+		r.lg.Warn("vault sync initial scan failed",
+			loggateway.Str("vault_id", vault.ID),
+			loggateway.Err(err),
+		)
+	}
+
+	ticker := time.NewTicker(r.interval)
+	defer ticker.Stop()
+
+	var watcherCh <-chan struct{}
+	if r.watcher != nil {
+		watcherCh = r.watcher.Changed()
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			r.syncOnceLog(ctx, vault, "tick")
+		case _, ok := <-watcherCh:
+			if !ok {
+				// watcher 关闭：退化为纯轮询。
+				watcherCh = nil
+				continue
+			}
+			r.syncOnceLog(ctx, vault, "watcher")
+		}
+	}
+}
+
+func (r *VaultSyncRunner) syncOnceLog(ctx context.Context, vault bizknowledge.Collection, trigger string) {
+	if err := r.SyncOnce(ctx, vault); err != nil {
+		r.lg.Warn("vault sync failed",
+			loggateway.Str("vault_id", vault.ID),
+			loggateway.Str("trigger", trigger),
+			loggateway.Err(err),
+		)
+	}
+}
+
+// loadPrev 取出上一轮 prev；为空时从 DB ListDocuments 重建（重启场景）。
+// 重建的 prev 仅 relPath+hash 有效——mtime/size 不参与 diff 判等（engine.Scan 的
+// mtime 预筛会回退到重算 hash，行为正确）。
+func (r *VaultSyncRunner) loadPrev(ctx context.Context, vault bizknowledge.Collection) ([]bizknowledge.FileSnapshot, error) {
+	r.mu.Lock()
+	cached, ok := r.prev[vault.ID]
+	r.mu.Unlock()
+	if ok {
+		return cached, nil
+	}
+	docs, _, err := r.uc.ListDocuments(ctx, vault.ID, 10000, 0)
+	if err != nil {
+		return nil, err
+	}
+	rebuilt := make([]bizknowledge.FileSnapshot, 0, len(docs))
+	for _, d := range docs {
+		if d.RelPath == "" {
+			continue // 非 vault 镜像（UI 上传等），不参与 diff
+		}
+		rebuilt = append(rebuilt, bizknowledge.FileSnapshot{
+			RelPath: d.RelPath,
+			Hash:    d.ContentHash,
+		})
+	}
+	return rebuilt, nil
+}
+
+func (r *VaultSyncRunner) savePrev(vaultID string, curr []bizknowledge.FileSnapshot) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.prev[vaultID] = curr
+}
+
+func (r *VaultSyncRunner) markState(ctx context.Context, vaultID, state string, lastSyncAt time.Time) {
+	if err := r.uc.UpdateCollectionSyncState(ctx, vaultID, state, lastSyncAt); err != nil {
+		r.lg.Warn("vault sync: mark state failed",
+			loggateway.Str("vault_id", vaultID),
+			loggateway.Str("state", state),
+			loggateway.Err(err),
+		)
+	}
+}

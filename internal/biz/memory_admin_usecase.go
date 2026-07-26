@@ -47,6 +47,8 @@ type MemoryAdminUsecase struct {
 	factWriter     L3FactWriter
 	pathBExtractor *PathBExtractor
 	msgLister      RecentMessageLister
+	l2AdminReader  L2EpisodeAdminReader
+	l4RelReader    L4RelationAdminReader
 	lg             loggateway.Logger
 }
 
@@ -62,6 +64,15 @@ func (uc *MemoryAdminUsecase) SetPathBExtractor(pe *PathBExtractor, msgLister Re
 	if uc != nil {
 		uc.pathBExtractor = pe
 		uc.msgLister = msgLister
+	}
+}
+
+// SetMemoryCenterReaders injects the L2/L4 admin readers used by the memory-center
+// layer overview and unified graph aggregation. Kept out of MemoryAdminDeps (DB-N3).
+func (uc *MemoryAdminUsecase) SetMemoryCenterReaders(l2 L2EpisodeAdminReader, l4 L4RelationAdminReader) {
+	if uc != nil {
+		uc.l2AdminReader = l2
+		uc.l4RelReader = l4
 	}
 }
 

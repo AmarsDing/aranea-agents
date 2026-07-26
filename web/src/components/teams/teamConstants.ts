@@ -142,19 +142,6 @@ export const teamTemplateOptions: Array<{ label: string; value: TeamTemplateKey;
   },
 ];
 
-export const runtimeEngineOptions = [
-  {
-    label: 'Graph（默认）',
-    value: 'graph',
-    description: 'CompileToGraphRuntimeConfig → GraphAgent；生产推荐。',
-  },
-  {
-    label: 'Native',
-    value: 'native',
-    description: '按 mode 分发 Chain/Parallel/Swarm；仅 fallback 或调试。',
-  },
-];
-
 export const failureDefaultOptions = ['retry_then_block', 'skip', 'fail_fast'].map((value) => ({
   label: failurePolicyValueLabel(value),
   value,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/knowledge"
@@ -38,11 +39,23 @@ func (m *mockKnowledgeRepo) DeleteCollection(_ context.Context, _ string) error 
 func (m *mockKnowledgeRepo) UpdateCollectionCounts(_ context.Context, _ string, _, _ int) error {
 	return nil
 }
+func (m *mockKnowledgeRepo) UpdateCollectionSyncState(_ context.Context, _, _ string, _ time.Time) error {
+	return nil
+}
 func (m *mockKnowledgeRepo) CreateDocument(_ context.Context, d biz.KnowledgeDocument) (biz.KnowledgeDocument, error) {
 	return d, nil
 }
 func (m *mockKnowledgeRepo) GetDocument(_ context.Context, _ string) (biz.KnowledgeDocument, error) {
 	return biz.KnowledgeDocument{}, biz.ErrNotFound
+}
+func (m *mockKnowledgeRepo) GetDocumentByRelPath(_ context.Context, _, _ string) (biz.KnowledgeDocument, error) {
+	return biz.KnowledgeDocument{}, biz.ErrNotFound
+}
+func (m *mockKnowledgeRepo) UpdateDocumentRelPath(_ context.Context, _, _ string) error {
+	return nil
+}
+func (m *mockKnowledgeRepo) UpdateDocumentSyncMeta(_ context.Context, _ string, _ biz.KnowledgeDocumentSyncMeta) error {
+	return nil
 }
 func (m *mockKnowledgeRepo) UpdateDocumentStatus(_ context.Context, _, _, _ string, _ int) error {
 	return nil

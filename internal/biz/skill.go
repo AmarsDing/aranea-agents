@@ -45,6 +45,7 @@ type (
 	SkillRuntimeCandidate      = skill.RuntimeCandidate
 	SkillFilesystemHealthStats = skill.FilesystemHealthStats
 	SkillEmbedder              = skill.SkillEmbedder
+	DedupCacheInvalidator      = skill.DedupCacheInvalidator
 	SkillGuidanceEntry         = skill.SkillGuidanceEntry
 	SkillFilesystem            = skill.SkillFilesystem
 	SkillFileEntry             = skill.SkillFileEntry

@@ -296,7 +296,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	biz.DefaultTurnCompletionBridge().RegisterTurnStart(sessionID, runID, turnStart)
 	turnStatus := "ok"
 	var turnErr error
-	var resultPromptTok, resultCompletionTok int
+	var resultPromptTok, resultCompletionTok, resultCachedTok int
 	var turnErrMsg string
 	ctx, traceBridge, _ := startTurnSpan(ctx, "chat.turn", sessionID, ag.AgentKey, runID)
 	emitter := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
@@ -335,7 +335,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.FinishRoot(turnStatus)
 		endTurnSpan(traceBridge, turnErr)
 		o.recordTurnUsage(ctx, emitter, sessionID, runID, ag.AgentKey, ag.ID, prov, mod, turnStatus,
-			resultPromptTok, resultCompletionTok, time.Since(turnStart), turnErrMsg)
+			resultPromptTok, resultCompletionTok, resultCachedTok, time.Since(turnStart), turnErrMsg)
 		if turnStatus != "ok" && resultPromptTok > 0 {
 			o.patchSessionContextUsage(ctx, sessionID, sess, ag, prov, mod, resultPromptTok, resultCompletionTok)
 		}
@@ -567,6 +567,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}
 	resultPromptTok = persistResult.promptTok
 	resultCompletionTok = persistResult.completionTok
+	resultCachedTok = persistResult.cachedTok
 
 	// userMsg status rollback on failure
 	userMsgPersisted := execResult.userMsgPersisted

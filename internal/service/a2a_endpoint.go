@@ -104,6 +104,7 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 			OutboundRouter:   s.orch.outboundRouter(),
 			A2AEnabled:       s.orch.a2aUC() != nil,
 			L0SnapshotForcer: s.orch.td().SessionRT,
+			LearningLoop:     s.orch.td().LearningLoop,
 		},
 	}
 	// Inject CustomTools for built-in agents (Spirit, Skills Butler, Memory Butler, System Admin).

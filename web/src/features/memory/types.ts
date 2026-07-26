@@ -406,3 +406,80 @@ export type MemoryPlatformSettings = {
   env_policy_strict_override: boolean;
   env_episode_backfill_disabled_override: boolean;
 };
+
+// --- 记忆中心重设计：层级全景 + 跨层关联图谱 ---
+
+/** 单层记忆统计卡片（L0~L4）。 */
+export type MemoryLayerStat = {
+  layer: string;
+  item_count: number;
+  today_added: number;
+  recall_hits: number;
+  health: string;
+  /** JSON 字符串：各层头条指标（如 context_usage_pct / compress_status）。 */
+  headline_json: string;
+};
+
+/** 待办行动项（如冲突事实、待审 PII）。 */
+export type MemoryActionItem = {
+  kind: string;
+  count: number;
+  target_tab: string;
+};
+
+/** 最近记忆动态事件（沉淀⬇ / 召回⬆）。 */
+export type MemoryActivityItem = {
+  ts: string;
+  kind: string;
+  layer_from: string;
+  layer_to: string;
+  summary: string;
+};
+
+/** 层级全景响应。 */
+export type MemoryLayerOverview = {
+  layers: MemoryLayerStat[];
+  action_items: MemoryActionItem[];
+  activity_feed: MemoryActivityItem[];
+};
+
+/** 跨层统一图谱节点（L4 实体 / L3 事实 / L2 情景）。 */
+export type UnifiedGraphNode = {
+  id: string;
+  layer: string;
+  kind: string;
+  label: string;
+  weight: number;
+  /** JSON 字符串：节点附加元信息。 */
+  meta_json: string;
+};
+
+/** 跨层统一图谱边。 */
+export type UnifiedGraphEdge = {
+  source: string;
+  target: string;
+  /** entity_relation / entity_fact / fact_link / fact_source / fact_conflict */
+  type: string;
+  label: string;
+  weight: number;
+  polarity: string;
+};
+
+/** 跨层关联图谱查询参数。 */
+export type UnifiedMemoryGraphQuery = {
+  focus?: string;
+  hops?: number;
+  min_weight?: number;
+  layers?: string[];
+};
+
+/** 跨层关联图谱响应。 */
+export type UnifiedMemoryGraph = {
+  focus: string;
+  nodes: UnifiedGraphNode[];
+  edges: UnifiedGraphEdge[];
+  node_count: number;
+  edge_count: number;
+  filtered_edge_count: number;
+  empty_reason: string;
+};

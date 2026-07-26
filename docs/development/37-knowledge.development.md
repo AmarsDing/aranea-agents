@@ -44,6 +44,14 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 - `web/src/stores/knowledge/index.ts` — 前端 Store
 - `web/src/features/knowledge/useKnowledgeIngestWs.ts` — 入库 WS 进度
 
+**Vault 重设计已新增（P1，✅ 已完成）**：
+- `internal/biz/knowledge/vault_filer.go` — Vault 文件写唯一出口（sanitize/原子写/覆盖备份/回收站）
+- `internal/biz/knowledge/vault_usecase.go` — Vault 用例（NormalizeRootPath/CreateVault/同步入口）
+- `internal/biz/knowledge/sync_engine.go` — 单向扫描器（Scan + DiffSnapshots，mtime 预筛）
+- `internal/knowledge/vault_sync.go` — VaultSyncApplier（事件 → chunk → 可选 embed → 派生索引）
+- `internal/knowledge/vault_sync_runner.go` — VaultSyncRunner 轮询循环（prev 自 DB 重建；Watcher 接口预留）
+- `internal/knowledge/vault_reindex.go` — ReindexVault 一键重建派生索引（P1-4）
+
 **Phase 8 已新增（✅ 已完成）**：
 - `internal/knowledge/extractor.go` — Extractor 接口 + ExtractorRegistry 路由 + TextExtractor
 - `internal/knowledge/markdown_organizer.go` — LLM 整理为 Markdown（30s 超时，失败降级原文本）
@@ -784,7 +792,7 @@ Phase 1.4 质量评估 ──────┘
 
 | Phase | 内容 | 关联契约 | 状态 |
 |-------|------|---------|------|
-| **P1** | Vault 基础 + 单向同步（文件→索引） | R-1、S-1 | 📋 |
+| **P1** | Vault 基础 + 单向同步（文件→索引） | S-1 | 📋 |
 | **P2** | 双向同步 + frontmatter 摘要卡 + 双轨关联 | R-1、R-2、R-3 | 📋 |
 | **P3** | 资源管理器 UI（树/列表/详情/双区搜索） | R-3（来源标注） | 📋 |
 | **P4a** | L0 强 BM25 栈（含 R-5 选型 spike） | R-5、S-5 | 📋 |
@@ -796,10 +804,10 @@ Phase 1.4 质量评估 ──────┘
 
 | # | 任务 |
 |---|------|
-| P1-1 | `knowledge_collections` 升级 Vault：`root_path`（唯一约束 + 规范化：resolve symlink/绝对路径/尾部斜杠归一，禁挂系统根目录 S-1）、`sync_state`、`sync_config`；DDL 迁移注册 |
-| P1-2 | VaultFiler：KB 侧唯一写文件出口（路径 sanitize 基础版） |
-| P1-3 | SyncEngine 单向扫描：文件变更 → chunk → （可选 embed）→ 派生索引；轮询实现，fsnotify 留接口 |
-| P1-4 | 派生索引纪律落地：全部索引无状态可重建，reindex 一键化；禁止与业务表触发器耦合 |
+| P1-1 | `knowledge_collections` 升级 Vault：`root_path`（唯一约束 + 规范化：resolve symlink/绝对路径/尾部斜杠归一，禁挂系统根目录 S-1）、`sync_state`、`sync_config`；DDL 迁移注册 — ✅ 已完成（2026-07-25，Schema 列+唯一索引已落；`internal/biz/knowledge/vault_usecase.go`：NormalizeRootPath + CreateVault，9 测试全绿） |
+| P1-2 | VaultFiler：KB 侧唯一写文件出口（路径 sanitize 基础版）— ✅ 已完成（2026-07-25，`internal/biz/knowledge/vault_filer.go`：sanitize/原子写/覆盖备份/回收站，8 测试全绿） |
+| P1-3 | SyncEngine 单向扫描：文件变更 → chunk → （可选 embed）→ 派生索引；轮询实现，fsnotify 留接口 — ✅ 已完成（2026-07-25，`internal/biz/knowledge/sync_engine.go` + `internal/knowledge/vault_sync.go`/`vault_sync_runner.go`：Scan/Diff/Apply/Run 三段解耦；prev 重启自 DB 重建；幂等短路 + 无语义层降级；Watcher 接口预留，P2 接 fsnotify；13 测试全绿） |
+| P1-4 | 派生索引纪律落地：全部索引无状态可重建，reindex 一键化；禁止与业务表触发器耦合 — ✅ 已完成（2026-07-25，links/entities 表按派生纪律落 Schema；`internal/knowledge/vault_reindex.go`：ReindexVault 一键重建，ApplyEventsForced 绕过幂等短路强制重建 chunks，4 测试全绿） |
 
 验收：挂载一个本地文件夹为 Vault，新增/修改 .md 后索引自动更新；删 Vault 只删索引不动文件。
 
@@ -807,10 +815,10 @@ Phase 1.4 质量评估 ──────┘
 
 | # | 任务 |
 |---|------|
-| P2-1 | frontmatter 受管字段分区实现（R-1）：KB 独占 `id/summary/tags/type/summary_hash/source/created`；写入前重读 hash，冲突留双份备份 |
-| P2-2 | 摘要卡生成：LLM 预生成摘要写入 frontmatter；`summary_hash` 比对标记 stale，异步重生成 |
-| P2-3 | KB 自写文件打标 + watcher 回环防护（R-2）；外部删除一律进 `.aranea/trash` |
-| P2-4 | `knowledge_links` 表 + explicit（`[[]]` 双链解析）/ entity（LLM 实体共现，停用词+频次过滤 R-3）双轨；semantic 轨待 P4b |
+| P2-1 | frontmatter 受管字段分区实现（R-1）：KB 独占 `id/summary/tags/type/summary_hash/source/created`；写入前重读 hash，冲突留双份备份 — ✅ 已完成（2026-07-26，`internal/biz/knowledge/vault_filer.go`：`ReadDocWithHash` 返回内容 hash + `WriteDocCAS` 写入前重读比对，三类冲突（hash 不匹配/期望不存在但存在/期望存在但消失）均留双份——磁盘当前版本进 trash + KB 版本写入，12 测试全绿） |
+| P2-2 | 摘要卡生成：LLM 预生成摘要写入 frontmatter；`summary_hash` 比对标记 stale，异步重生成 — ✅ 已完成（2026-07-26，`internal/knowledge/vault_summary.go`：VaultSummaryGenerator——stale 仅基于 Body 判定（防写回自触发循环）、合并写回不回滚并发外部编辑、JSON 容错解析、5min 失败节流、无 LLM/超时/解析失败全降级 nil error；`internal/biz/knowledge/vault_filer.go`：SummaryStale；`internal/knowledge/vault_sync.go`：SetSummaryHook 索引成功后 stale 触发；12 测试全绿） |
+| P2-3 | KB 自写文件打标 + watcher 回环防护（R-2）；外部删除一律进 `.aranea/trash` — ✅ 已完成（2026-07-27，`internal/biz/knowledge/vault_filer.go`：自写标记管理（markSelfWrite/ConsumeSelfWrite 一次性消费）+ WriteTrashFromMirror 镜像抢救；`internal/knowledge/vault_sync.go`：deleteDoc 接线外部删除进 trash；4 新测试全绿） |
+| P2-4 | `knowledge_links` 表 + explicit（`[[]]` 双链解析）/ entity（LLM 实体共现，停用词+频次过滤 R-3）双轨；semantic 轨待 P4b — ✅ 已完成（2026-07-27，explicit：`internal/biz/knowledge/link_parser.go` ParseWikiLinks/ResolveLinkRefs + `vault_sync.go` rebuildExplicitLinks；entity：`internal/knowledge/vault_entity.go` VaultEntityExtractor——LLM 抽取、内置停用词+过短过滤、R-3 频次过滤（先落库再查共现，频次含当前文档）、docID+contentHash 幂等 + 5min 失败节流、无 LLM/超时/解析失败全降级；`vault_sync.go` SetEntityHook 索引成功触发；data 层 `internal/data/knowledge_links.go`：ReplaceLinks/ListLinks/ReplaceDocEntities（含孤儿实体清理）/FindEntityCooccurrences；7+5 测试全绿） |
 
 验收：KB 写入与用户外部编辑双向不丢不乱（回环防护生效）；摘要卡随内容过期自动重生成；关联区数据可按来源类型过滤。
 

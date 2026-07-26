@@ -45,8 +45,10 @@ type TurnUsageParams struct {
 	Status        string
 	PromptTok     int
 	CompletionTok int
-	Latency       time.Duration
-	ErrMsg        string
+	// CachedTok is the cache-hit portion of PromptTok (billed at cache-read price).
+	CachedTok int
+	Latency   time.Duration
+	ErrMsg    string
 }
 
 // RecordTurnUsage records token usage for a turn.
@@ -72,6 +74,7 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 		Status:        p.Status,
 		PromptTok:     p.PromptTok,
 		CompletionTok: p.CompletionTok,
+		CachedTok:     p.CachedTok,
 		Latency:       p.Latency,
 		ErrMsg:        p.ErrMsg,
 		MetadataJSON:  meta,

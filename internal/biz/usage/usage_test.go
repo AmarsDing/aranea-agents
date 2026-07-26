@@ -146,7 +146,9 @@ func TestApplyTokenUsageCosts(t *testing.T) {
 		}
 		ApplyTokenUsageCosts(e)
 
-		wantInput := int64(math.Round(100 * 2.0))
+		// OpenAI/DeepSeek semantics: InputTokens includes the cached portion,
+		// so full-price billable input = 100 - 50 = 50.
+		wantInput := int64(math.Round(50 * 2.0))
 		wantOutput := int64(math.Round(200 * 4.0))
 		wantCached := int64(math.Round(50 * 1.0))
 		wantCacheWrite := int64(math.Round(80 * 5.0))
@@ -175,6 +177,52 @@ func TestApplyTokenUsageCosts(t *testing.T) {
 		wantTotal := wantInput + wantOutput + wantCached + wantCacheWrite + wantReasoning + wantEmbedding
 		if e.TotalCostMicroUSD != wantTotal {
 			t.Errorf("TotalCostMicroUSD = %d, want %d", e.TotalCostMicroUSD, wantTotal)
+		}
+	})
+
+	t.Run("deepseek_realworld_cached_billing", func(t *testing.T) {
+		// Mirrors prod row: in=41783 out=2339, official hit rate ~70%.
+		e := &TokenUsageEvent{
+			InputTokens:            41783,
+			OutputTokens:           2339,
+			CachedInputTokens:      29248,
+			InputPriceUSDPer1M:     0.14,
+			OutputPriceUSDPer1M:    0.28,
+			CacheReadPriceUSDPer1M: 0.014,
+		}
+		ApplyTokenUsageCosts(e)
+		wantInput := int64(math.Round(float64(41783-29248) * 0.14))
+		wantCached := int64(math.Round(float64(29248) * 0.014))
+		wantOutput := int64(math.Round(float64(2339) * 0.28))
+		if e.InputCostMicroUSD != wantInput {
+			t.Errorf("InputCostMicroUSD = %d, want %d", e.InputCostMicroUSD, wantInput)
+		}
+		if e.CachedInputCostMicroUSD != wantCached {
+			t.Errorf("CachedInputCostMicroUSD = %d, want %d", e.CachedInputCostMicroUSD, wantCached)
+		}
+		if e.OutputCostMicroUSD != wantOutput {
+			t.Errorf("OutputCostMicroUSD = %d, want %d", e.OutputCostMicroUSD, wantOutput)
+		}
+		if e.TotalCostMicroUSD != wantInput+wantCached+wantOutput {
+			t.Errorf("TotalCostMicroUSD = %d, want %d", e.TotalCostMicroUSD, wantInput+wantCached+wantOutput)
+		}
+	})
+
+	t.Run("cached_clamped_to_input", func(t *testing.T) {
+		// Corrupt data guard: cached > input must not produce negative billable input.
+		e := &TokenUsageEvent{
+			InputTokens:            100,
+			CachedInputTokens:      150,
+			InputPriceUSDPer1M:     2.0,
+			CacheReadPriceUSDPer1M: 1.0,
+		}
+		ApplyTokenUsageCosts(e)
+		if e.InputCostMicroUSD != 0 {
+			t.Errorf("InputCostMicroUSD = %d, want 0 (cached exceeds input)", e.InputCostMicroUSD)
+		}
+		wantCached := int64(math.Round(100 * 1.0))
+		if e.CachedInputCostMicroUSD != wantCached {
+			t.Errorf("CachedInputCostMicroUSD = %d, want %d (cached clamped to input)", e.CachedInputCostMicroUSD, wantCached)
 		}
 	})
 

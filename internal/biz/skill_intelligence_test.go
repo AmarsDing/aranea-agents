@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -894,6 +895,276 @@ func TestCheckEvolutionTriggers_SameFailureTagBelowThreshold(t *testing.T) {
 	}
 	if suggestion != nil {
 		t.Errorf("expected nil suggestion when same tag below threshold, got type=%q", suggestion.Type)
+	}
+}
+
+// ── ValidatePendingSuggestionsForSkill (A1: 验证半管测试) ────────────────────
+
+// recordingUnifiedStore implements UnifiedEvolutionStore with call recording.
+type recordingUnifiedStore struct {
+	pending         []UnifiedEvolutionSuggestion
+	listErr         error
+	draftBodyErr    error
+	draftBodies     map[string]string
+	lifecycleSeq    map[string][]string // suggestion ID → ordered lifecycle transitions
+	sandboxPassed   map[string]bool
+	sandboxResults  map[string]json.RawMessage
+	sandboxWriteErr error
+}
+
+func newRecordingUnifiedStore() *recordingUnifiedStore {
+	return &recordingUnifiedStore{
+		draftBodies:    make(map[string]string),
+		lifecycleSeq:   make(map[string][]string),
+		sandboxPassed:  make(map[string]bool),
+		sandboxResults: make(map[string]json.RawMessage),
+	}
+}
+
+func (s *recordingUnifiedStore) HasPendingForTarget(_ context.Context, _, _ string) (bool, error) {
+	return false, nil
+}
+func (s *recordingUnifiedStore) GetLatestByTarget(_ context.Context, _, _ string) (*UnifiedEvolutionSuggestion, error) {
+	return nil, nil
+}
+func (s *recordingUnifiedStore) GetLatestByTargetAndAction(_ context.Context, _, _, _ string) (*UnifiedEvolutionSuggestion, error) {
+	return nil, nil
+}
+func (s *recordingUnifiedStore) GetByID(_ context.Context, _ string) (*UnifiedEvolutionSuggestion, error) {
+	return nil, nil
+}
+func (s *recordingUnifiedStore) ListByTarget(_ context.Context, targetType, targetID, status string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
+	if status != "pending" {
+		return nil, nil
+	}
+	var out []UnifiedEvolutionSuggestion
+	for _, p := range s.pending {
+		if string(p.TargetType) == targetType && p.TargetID == targetID {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+func (s *recordingUnifiedStore) CountByTarget(_ context.Context, _, _, _ string) (int, error) {
+	return len(s.pending), nil
+}
+func (s *recordingUnifiedStore) Create(_ context.Context, _ UnifiedEvolutionSuggestion) error {
+	return nil
+}
+func (s *recordingUnifiedStore) UpdateStatus(_ context.Context, _, _, _, _ string) error { return nil }
+func (s *recordingUnifiedStore) UpdateDraftBody(_ context.Context, id, draft string) error {
+	if s.draftBodyErr != nil {
+		return s.draftBodyErr
+	}
+	s.draftBodies[id] = draft
+	return nil
+}
+func (s *recordingUnifiedStore) UpdateLifecycleStatus(_ context.Context, id, status string) error {
+	s.lifecycleSeq[id] = append(s.lifecycleSeq[id], status)
+	return nil
+}
+func (s *recordingUnifiedStore) UpdateSandboxResult(_ context.Context, id string, passed bool, result json.RawMessage) error {
+	if s.sandboxWriteErr != nil {
+		return s.sandboxWriteErr
+	}
+	s.sandboxPassed[id] = passed
+	s.sandboxResults[id] = result
+	return nil
+}
+func (s *recordingUnifiedStore) ExpireOlderThan(_ context.Context, _ time.Time) (int, error) {
+	return 0, nil
+}
+
+// stubGateVerifier implements SkillGateVerifier.
+type stubGateVerifier struct {
+	passed bool
+	checks []GateCheckResult
+	err    error
+	calls  int
+}
+
+func (g *stubGateVerifier) Verify(_ context.Context, _, _ string, _ *EvolutionObservationReport) (*GateVerificationResult, error) {
+	g.calls++
+	if g.err != nil {
+		return nil, g.err
+	}
+	return &GateVerificationResult{Passed: g.passed, Checks: g.checks}, nil
+}
+
+func newValidateTestUsecase(store *recordingUnifiedStore, gate SkillGateVerifier) *SkillIntelligenceUsecase {
+	lg := loggateway.NewNoop()
+	uc := NewSkillIntelligenceUsecase(nil, nil, store, nil, nil, lg)
+	if gate != nil {
+		uc.SetGate(gate)
+	}
+	return uc
+}
+
+func TestValidatePendingSuggestionsForSkill_NilUnifiedStore(t *testing.T) {
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, nil, loggateway.NewNoop())
+	if err := uc.ValidatePendingSuggestionsForSkill(context.Background(), "sk-1"); err != nil {
+		t.Errorf("nil unifiedStore should be a no-op, got %v", err)
+	}
+}
+
+func TestValidatePendingSuggestionsForSkill_EmptySkillID(t *testing.T) {
+	uc := newValidateTestUsecase(newRecordingUnifiedStore(), nil)
+	if err := uc.ValidatePendingSuggestionsForSkill(context.Background(), ""); err == nil {
+		t.Fatal("expected error for empty skill_id")
+	}
+}
+
+func TestValidatePendingSuggestionsForSkill_ListError(t *testing.T) {
+	store := newRecordingUnifiedStore()
+	store.listErr = errors.New("db down")
+	uc := newValidateTestUsecase(store, nil)
+	if err := uc.ValidatePendingSuggestionsForSkill(context.Background(), "sk-1"); err == nil {
+		t.Fatal("expected wrapped list error")
+	}
+}
+
+func TestValidatePendingSuggestionsForSkill_NoPending(t *testing.T) {
+	store := newRecordingUnifiedStore()
+	uc := newValidateTestUsecase(store, nil)
+	if err := uc.ValidatePendingSuggestionsForSkill(context.Background(), "sk-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(store.draftBodies) != 0 {
+		t.Error("no pending suggestions — no drafts should be written")
+	}
+}
+
+func TestValidatePendingSuggestionsForSkill_ValidatesDraftSuggestion(t *testing.T) {
+	store := newRecordingUnifiedStore()
+	store.pending = []UnifiedEvolutionSuggestion{
+		{
+			ID:              "sg-1",
+			TargetType:      EvolutionTargetSkill,
+			TargetID:        "sk-1",
+			Status:          "pending",
+			LifecycleStatus: "draft",
+			DraftBody:       "",
+			TriggerReason:   "success rate low",
+		},
+	}
+	uc := newValidateTestUsecase(store, nil)
+
+	if err := uc.ValidatePendingSuggestionsForSkill(context.Background(), "sk-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	draft, ok := store.draftBodies["sg-1"]
+	if !ok || draft == "" {
+		t.Fatal("expected draft body to be generated and persisted")
+	}
+	seq := store.lifecycleSeq["sg-1"]
+	if len(seq) != 2 || seq[0] != "validating" || seq[1] != "draft" {
+		t.Errorf("expected lifecycle sequence [validating draft], got %v", seq)
+	}
+	if _, ok := store.sandboxPassed["sg-1"]; !ok {
+		t.Error("expected sandbox result to be recorded")
+	}
+}
+
+func TestValidatePendingSuggestionsForSkill_SkipsAlreadyValidated(t *testing.T) {
+	store := newRecordingUnifiedStore()
+	store.pending = []UnifiedEvolutionSuggestion{
+		{
+			ID:              "sg-validating",
+			TargetType:      EvolutionTargetSkill,
+			TargetID:        "sk-1",
+			Status:          "pending",
+			LifecycleStatus: "validating", // mid-validation — skip
+		},
+		{
+			ID:              "sg-has-draft",
+			TargetType:      EvolutionTargetSkill,
+			TargetID:        "sk-1",
+			Status:          "pending",
+			LifecycleStatus: "draft",
+			DraftBody:       "# existing draft", // already has draft — skip (idempotent)
+		},
+	}
+	uc := newValidateTestUsecase(store, nil)
+
+	if err := uc.ValidatePendingSuggestionsForSkill(context.Background(), "sk-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(store.draftBodies) != 0 {
+		t.Errorf("both suggestions should be skipped, got %d draft writes", len(store.draftBodies))
+	}
+	if len(store.lifecycleSeq) != 0 {
+		t.Errorf("no lifecycle transitions expected, got %v", store.lifecycleSeq)
+	}
+}
+
+func TestValidatePendingSuggestionsForSkill_DraftWriteErrorContinues(t *testing.T) {
+	store := newRecordingUnifiedStore()
+	store.pending = []UnifiedEvolutionSuggestion{
+		{ID: "sg-1", TargetType: EvolutionTargetSkill, TargetID: "sk-1", Status: "pending", LifecycleStatus: "draft"},
+	}
+	store.draftBodyErr = errors.New("write failed")
+	uc := newValidateTestUsecase(store, nil)
+
+	// Validation failure for a suggestion is logged but does not fail the call.
+	if err := uc.ValidatePendingSuggestionsForSkill(context.Background(), "sk-1"); err != nil {
+		t.Fatalf("validation errors should not fail the batch, got %v", err)
+	}
+}
+
+func TestValidatePendingSuggestionsForSkill_UsesGateResult(t *testing.T) {
+	store := newRecordingUnifiedStore()
+	store.pending = []UnifiedEvolutionSuggestion{
+		{ID: "sg-1", TargetType: EvolutionTargetSkill, TargetID: "sk-1", Status: "pending", LifecycleStatus: "draft"},
+	}
+	gate := &stubGateVerifier{
+		passed: false,
+		checks: []GateCheckResult{{Name: "functional", Passed: false, Reason: "sandbox failed"}},
+	}
+	uc := newValidateTestUsecase(store, gate)
+
+	if err := uc.ValidatePendingSuggestionsForSkill(context.Background(), "sk-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gate.calls != 1 {
+		t.Errorf("expected gate Verify called once, got %d", gate.calls)
+	}
+	if store.sandboxPassed["sg-1"] {
+		t.Error("sandbox result should reflect gate verdict (passed=false)")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(store.sandboxResults["sg-1"], &payload); err != nil {
+		t.Fatalf("sandbox result should be valid JSON: %v", err)
+	}
+	if passed, _ := payload["passed"].(bool); passed {
+		t.Error("sandbox result payload should record passed=false")
+	}
+}
+
+func TestValidatePendingSuggestionsForSkill_GateErrorDegradesToFail(t *testing.T) {
+	store := newRecordingUnifiedStore()
+	store.pending = []UnifiedEvolutionSuggestion{
+		{ID: "sg-1", TargetType: EvolutionTargetSkill, TargetID: "sk-1", Status: "pending", LifecycleStatus: "draft"},
+	}
+	gate := &stubGateVerifier{err: errors.New("sandbox unavailable")}
+	uc := newValidateTestUsecase(store, gate)
+
+	if err := uc.ValidatePendingSuggestionsForSkill(context.Background(), "sk-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gate.calls != 1 {
+		t.Errorf("expected gate Verify called once, got %d", gate.calls)
+	}
+	if store.sandboxPassed["sg-1"] {
+		t.Error("gate error should degrade to passed=false")
+	}
+	// Lifecycle must still advance deterministically even on gate failure.
+	seq := store.lifecycleSeq["sg-1"]
+	if len(seq) != 2 || seq[0] != "validating" || seq[1] != "draft" {
+		t.Errorf("expected lifecycle sequence [validating draft] despite gate error, got %v", seq)
 	}
 }
 

@@ -66,16 +66,7 @@
           >成员 {{ definition.members.length }} · {{ formatDate(team.updated_at) }}</span
         >
         <div class="team-card__action-group">
-          <q-btn
-            v-if="canRetry"
-            flat
-            dense
-            round
-            size="sm"
-            color="warning"
-            icon="replay"
-            @click="$emit('retry', team)"
-          >
+          <q-btn v-if="canRetry" flat dense round size="sm" color="warning" icon="replay" @click="$emit('retry', team)">
             <q-tooltip>重试（重置为待执行）</q-tooltip>
           </q-btn>
           <q-btn flat dense round size="sm" color="primary" icon="account_tree" :to="`/teams/${team.id}/orchestrate`">

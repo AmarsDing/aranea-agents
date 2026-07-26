@@ -6,11 +6,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"strings"
+	"time"
 
 	"aranea-agents/pkg/apierror"
 )
 
 // Collection is a named vector store.
+// V2：Collection 语义升级为 Vault——root_path 指向本地目录（文件系统即真相源），
+// embedding_model 可选（空 = 无语义层，L0 词法 + L1 导航完整可用）。
 type Collection struct {
 	ID             string
 	Name           string
@@ -21,8 +24,13 @@ type Collection struct {
 	DocumentCount  int
 	ChunkCount     int
 	Workspace      string
-	CreatedAt      string
-	UpdatedAt      string
+	// RootPath 是 vault 根目录（规范化绝对路径，唯一）；空表示历史 Collection（未迁移）。
+	RootPath string
+	// SyncState 同步状态：active / paused / error / migrating。
+	SyncState  string
+	LastSyncAt string
+	CreatedAt  string
+	UpdatedAt  string
 }
 
 // Document is one source document ingested into a collection.
@@ -40,7 +48,19 @@ type Document struct {
 	// Organized 标记内容是否经 LLM 整理为 Markdown。
 	Organized bool
 	// AssetURI 是原始文件留存路径（Phase 9 多模态血缘），文本类文档为空。
-	AssetURI  string
+	AssetURI string
+	// RelPath 是 vault 内相对路径（正斜杠）；空表示非 vault 文档。
+	RelPath string
+	// ContentHash 是正文 sha1（增量同步去重 + 移动识别）。
+	ContentHash string
+	// Summary 是 LLM 生成的摘要卡（US-17）。
+	Summary string
+	// SummaryHash 是被摘要内容的 hash（过期检测）。
+	SummaryHash string
+	// Tags 是 LLM 打标（摘要卡）。
+	Tags []string
+	// DocType 是自动分类（report/manual/note/faq…）。
+	DocType   string
 	CreatedAt string
 	UpdatedAt string
 }
@@ -75,11 +95,28 @@ type CollectionRepo interface {
 	ListCollections(ctx context.Context, workspace string, limit, offset int) ([]Collection, int, error)
 	DeleteCollection(ctx context.Context, id string) error
 	UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error
+	// UpdateCollectionSyncState 回写 vault 同步状态与最近一次同步完成时间（P1-3 轮询）。
+	UpdateCollectionSyncState(ctx context.Context, id, state string, lastSyncAt time.Time) error
+}
+
+// DocumentSyncMeta 同步镜像元数据（Vault 同步 modified 事件回写，P1-3）。
+type DocumentSyncMeta struct {
+	ContentHash string
+	Summary     string
+	SummaryHash string
+	Tags        []string
+	DocType     string
 }
 
 type DocumentRepo interface {
 	CreateDocument(ctx context.Context, d Document) (Document, error)
 	GetDocument(ctx context.Context, id string) (Document, error)
+	// GetDocumentByRelPath 按 vault 相对路径寻址文档（Vault 同步用）。
+	GetDocumentByRelPath(ctx context.Context, collectionID, relPath string) (Document, error)
+	// UpdateDocumentRelPath 文件移动/重命名时更新镜像路径（保留文档身份与索引）。
+	UpdateDocumentRelPath(ctx context.Context, id, newRelPath string) error
+	// UpdateDocumentSyncMeta 文件内容变更时回写同步元数据（hash/摘要卡字段）。
+	UpdateDocumentSyncMeta(ctx context.Context, id string, meta DocumentSyncMeta) error
 	UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error
 	// UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
 	UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error
@@ -148,6 +185,9 @@ type Usecase struct {
 	collections CollectionRepo
 	documents   DocumentRepo
 	chunks      ChunkRepo
+	// links/entities 为可选关联能力（P2-4），经 SetLinkRepos 接线；nil 时关联方法降级 no-op。
+	links    LinkRepo
+	entities EntityRepo
 }
 
 // NewUsecase constructs a KnowledgeUsecase from individual sub-interfaces.

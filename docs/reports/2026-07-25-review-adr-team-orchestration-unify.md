@@ -63,8 +63,15 @@ Phase A 具体改动：
 - 后端：`go build ./internal/biz` exit 0；`biz/team_usecase_test.go::TestValidateTeamDefinition` **31/31 PASS**（新增 7 例：graph 跳过三类 mode 要求 / 保留 enabled+agent_id / 空 nodes 不跳过）。因 `internal/agent` 并发 WIP 未定义符号（`tryDomainRecipe` / `TopLevelDomain` 等，与本决策无关）阻塞测试二进制，验证时将 `team_graph_linked_test.go` 临时移出包隔离运行（该文件仅经 `internal/team` 链拉入 agent 包，隔离不影响被测逻辑），测后已恢复。
 - 文档同步：M53 三件套（需求 US-08/US-10 修订 + US-11 新增；设计 §十二；开发计划 Phase 10）。
 
-## Phase B（遗留）
+## Phase B（已完成 2026-07-25）
 
-- mode 字段只读化（graph 完全接管后 mode 仅存展示/模板语义）
-- `definitionToJSON` native 序列化分支清理
-- `TeamOrchestrateRuntimePanel` native 调试入口随 native 运行时退役移除
+- ✅ `definitionToJSON` native 序列化分支清理：固定写 `runtime_engine='graph'` / `team_graph_runtime=true`；`parseDefinition` 读取遗留 native 数据即归一为 graph（`teamUtils.ts`）。
+- ✅ `runtimeEngineOptions` / `runtimeEngineLabel` / `resolveRuntimeEngine` 全部移除；`TeamOrchestrateRuntimePanel` native 调试入口随执行引擎选择器一并移除，重构为只读中文摘要（失败策略 + 超时）。
+- ✅ 编排页三 Tab 去技术编码：工具栏副标题改为「{中文模式}编排」；编排信息面板改为「执行方式（`teamTopologySummary` 中文流程摘要）+ 成员（中文名 + 中文角色）+ 运行与容错」，移除入口/出口 node id、`linked_graph_id` 输入框、成员节点技术编码列表。
+- ✅ `TeamCompilePreview` 重构：删除边列表（`member-1 → member-2` 技术编码）与「入口 x → y」，改为中文流程摘要 + 成员中文名/角色列表（`teamMemberDisplayRows`）。
+- ✅ `TeamMemberKanban` / `TeamOrchestrateNodePanel` 移除 agent 编码与节点类型 badge 显示（技术编码保留在数据层供调试，不进 UI）。
+- 遗留：mode 字段只读化待 graph 完全接管后评估（当前 mode 仍承担模板选择器语义，见 §决策）。
+
+### Phase B 验证
+
+- 前端：`pnpm lint` 0 errors；`pnpm test` **877/877 PASS**（新增 `teamNodeDisplay.spec.ts` 9 例覆盖六种模式的中文摘要、`teamUtils.spec.ts` 新增 native→graph 归一化用例）；`pnpm build` 成功。

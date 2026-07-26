@@ -67,7 +67,7 @@ func TestPersistStep_EmitsFinished(t *testing.T) {
 	m := MemberDef{Role: "worker"}
 	asst := biz.ChatMessage{Role: "assistant", ContentMarkdown: "done", Status: biz.TeamMemberStepStatusOK, CreatedAt: "2026-01-01T00:00:00Z"}
 
-	runner.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 2)
+	runner.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 2, 0)
 
 	repo := runner.runWriter.(*stepBusRunWriter)
 	if len(repo.steps) != 1 {

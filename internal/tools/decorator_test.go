@@ -41,6 +41,28 @@ func (m *decoratorMockTool) Call(ctx context.Context, jsonArgs []byte) (any, err
 	return m.call(ctx, jsonArgs)
 }
 
+// TestToolDecorator_ExposesOriginal guards the Original() unwrapping
+// convention: framework StateDelta discovery (and toolpipe's framework-tool
+// heuristics) recursively unwrap via Original(). The decorator must expose
+// the real inner tool or StateDelta-providing tools (set_deliverable,
+// todo_write, save_artifact) silently lose their session-state mutations.
+func TestToolDecorator_ExposesOriginal(t *testing.T) {
+	inner := &decoratorMockTool{
+		name: "set_deliverable",
+		call: func(_ context.Context, _ []byte) (any, error) {
+			return map[string]any{"written": true}, nil
+		},
+	}
+	d := NewToolDecorator(inner, ToolDecoratorConfig{Logger: loggateway.NewNoop()})
+	originator, ok := d.(interface{ Original() trpctool.Tool })
+	if !ok {
+		t.Fatal("decorated tool must expose Original() for framework unwrapping")
+	}
+	if originator.Original() != trpctool.Tool(inner) {
+		t.Fatalf("Original() = %T, want inner tool %T", originator.Original(), inner)
+	}
+}
+
 // TestToolDecorator_Timeout verifies that the decorator enforces the
 // configured timeout and returns an error when the inner tool exceeds it.
 func TestToolDecorator_Timeout(t *testing.T) {

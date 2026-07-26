@@ -162,8 +162,15 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 
 	// Group connected pairs using union-find.
 	uf := newUnionFind(len(candidates))
+	for _, p := range pairs {
+		uf.Union(p.i, p.j)
+	}
 
 	// Track overlap info per group root — aggregate all overlap types.
+	// Two-pass aggregation: union-find roots are only stable after ALL unions
+	// complete. Aggregating during the union loop keys metadata by transient
+	// roots; when an equal-rank merge absorbs a root, its accumulated metadata
+	// (best score, overlap types) is silently dropped.
 	type groupMeta struct {
 		overlapTypes map[string]bool
 		bestScore    float64
@@ -174,7 +181,6 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 	groupInfo := make(map[int]*groupMeta)
 
 	for _, p := range pairs {
-		uf.Union(p.i, p.j)
 		root := uf.Find(p.i)
 		meta := groupInfo[root]
 		if meta == nil {

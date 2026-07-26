@@ -423,6 +423,7 @@
             <TeamCompilePreview
               :is-dark="isDark"
               :compiled="compileResult"
+              :definition="definition"
               :loading="compileLoading"
               :error="compileError"
               :issues="compileIssues"

@@ -25,9 +25,10 @@ func curatorDailyMaxFromEnv() int32 {
 	return defaultCuratorDailyMax
 }
 
-// CuratorWorker periodically scans skills and runs the Curator Agent
-// semi-automatic evolution pipeline: trigger detection → draft generation
-// → sandbox verification → lifecycle update.
+// CuratorWorker periodically scans skills and runs the verification half of
+// the Curator pipeline: draft generation → sandbox verification → lifecycle
+// update, for pending suggestions created by EvolutionOrchestratorWorker
+// (the unified trigger entry, A1). It no longer triggers suggestions itself.
 type CuratorWorker struct {
 	interval   time.Duration
 	uc         *biz.SkillIntelligenceUsecase
@@ -78,8 +79,9 @@ func (w *CuratorWorker) runOnce(ctx context.Context) {
 	})
 }
 
-// scanAll iterates over all active skills and runs the Curator flow for each.
-// It enforces a daily maximum of curatorDailyMax (20) flow invocations.
+// scanAll iterates over all active skills and validates their orchestrator-
+// created pending suggestions (draft + sandbox + lifecycle). It enforces a
+// daily maximum of curatorDailyMax (20) flow invocations.
 func (w *CuratorWorker) scanAll(ctx context.Context) error {
 	// Reset daily counter if a new day has started.
 	now := time.Now()
@@ -110,9 +112,9 @@ func (w *CuratorWorker) scanAll(ctx context.Context) error {
 					loggateway.Int("daily_limit", int(w.dailyMax)))
 				return nil
 			}
-			if _, flowErr := w.uc.RunCuratorFlow(ctx, skill.ID); flowErr != nil {
-				w.lg.Warn("curator flow failed for skill",
-					loggateway.StepID("skill.curator.flow"),
+			if flowErr := w.uc.ValidatePendingSuggestionsForSkill(ctx, skill.ID); flowErr != nil {
+				w.lg.Warn("curator validation failed for skill",
+					loggateway.StepID("skill.curator.validate"),
 					loggateway.Str("skill_id", skill.ID),
 					loggateway.Err(flowErr))
 				errs++

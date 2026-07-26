@@ -95,12 +95,13 @@
 |------|------|
 | **上游依赖** | `biz`（Memory 类型 + `MemoryDebugRecaller`/`MemoryFactIndexCounter` 端口）、`pkg/trpc-agent-go/memory`（框架记忆 API）、`data`（`memoryDebugRecallAdapter`/`memoryFactIndexCounterAdapter` + `memory_shim_*` L0–L4 Store 实现） |
 | **下游影响** | `agent`（MemoryService.Tools() 注入记忆工具，统一路径：`Service.Tools()` → 过滤 → `AssemblyConfig.MemoryTools`）、`agent`（working_memory BeforeToolHook 注入 L1TaskWriter/L1FieldWriter/L1AdminReader）、`service/chat`（记忆管理 API）、`service/memory`（L4 级联管理 + Debug Recall + Worker Status） |
-| **核心导出** | `memtrpc.NewMemoryService(...)`（L3FactReader/Writer + settingsLoader）、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()`、`service.NewMemoryService()`（Admin API，含 `debugRecaller`/`factIndexCounter`）、`working_memory.ToolSet`/`Tools()`（5 个 L1 工具） |
-| **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享）、`biz.RecallDebugRow`/`biz.RecallScoreBreakdown`（debug recall DTO）、`biz.L1TaskInsert`/`biz.L1FieldInsert`（L1 写入 DTO） |
+| **核心导出** | `memtrpc.NewMemoryService(...)`（L3FactReader/Writer + settingsLoader）、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()`、`service.NewMemoryService()`（Admin API，含 `debugRecaller`/`factIndexCounter`）、`working_memory.ToolSet`/`Tools()`（5 个 L1 工具）、`service.MemoryService.GetMemoryLayerOverview`/`GetUnifiedMemoryGraph`（记忆中心聚合端点） |
+| **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享）、`biz.RecallDebugRow`/`biz.RecallScoreBreakdown`（debug recall DTO）、`biz.L1TaskInsert`/`biz.L1FieldInsert`（L1 写入 DTO）、`biz.L2EpisodeAdminReader`/`biz.L4RelationAdminReader`（记忆中心窄接口，走 `SetMemoryCenterReaders` 注入） |
 | **事件生产** | 无直接生产（记忆提取通过 EventBus 异步触发） |
 | **事件消费** | 记忆提取 Worker 消费 `runner_completion` 事件 |
 | **数据库** | SQLite（memory_facts/memory_entities/memory_l4_graph/memory_episodes/memory_l1_tasks/memory_l1_fields/memory_l1_field_history）+ PostgreSQL（embedding 向量） |
-| **前端对应** | MemoryCenterPage（5 层记忆浏览）、AgentSettingsPage（记忆策略配置） |
+| **前端对应** | MemoryCenterPage（层级全景 panorama + 关联图谱 graph + 知识库/会话记忆/图谱与进化/设置）、AgentSettingsPage（记忆策略配置） |
+| **API 端点** | `GET /v1/memory/layer-overview`（五层统计+行动项+动态）、`GET /v1/memory/graph/unified`（跨层统一图 BFS） |
 
 **⚠️ 开发注意**：
 - 记忆写入必须经 broker/async 异步写（红线 #3），禁止在 plugin 回调中直接写库

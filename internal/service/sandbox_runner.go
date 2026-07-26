@@ -13,6 +13,10 @@ import (
 	trpcagentcodeexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 )
 
+// Compile-time check: SandboxRunner implements the biz.SandboxRunner port
+// consumed by biz.GateVerifier (skill merge / evolution Gate stage).
+var _ biz.SandboxRunner = (*SandboxRunner)(nil)
+
 // SandboxRunner validates skill evolution suggestions in an isolated environment.
 // It performs rule-based validation by default, and optionally uses CodeExecutor
 // for isolated execution when available.
@@ -33,6 +37,28 @@ func NewSandboxRunner(uc *biz.SkillIntelligenceUsecase, factory *codeexecutor.Fa
 		executor = factory.Resolve(context.Background(), codeexecutor.TypeLocal, "")
 	}
 	return &SandboxRunner{uc: uc, executor: executor, lg: lg}
+}
+
+// RunSandbox implements biz.SandboxRunner for the Gate verification stage.
+// Unlike ValidateSuggestion, it is a pure check: it validates the given draft
+// body (rule-based + optional code execution) without reading or writing any
+// suggestion state in the DB.
+func (s *SandboxRunner) RunSandbox(ctx context.Context, skillID string, draftBody string) (bool, json.RawMessage, error) {
+	suggestion := &biz.SkillEvolutionSuggestion{SkillID: skillID, DraftSkillBody: draftBody}
+	result := s.ruleBasedValidation(suggestion)
+	if result.Passed && s.executor != nil {
+		codeResult := s.codeExecutionValidation(ctx, suggestion)
+		result.Checks = append(result.Checks, codeResult.Checks...)
+		if !codeResult.Passed {
+			result.Passed = false
+			result.Message = "Code execution validation failed"
+		}
+	}
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		return false, nil, apierror.Internal("SANDBOX_RUNNER", "marshal sandbox result: %s", err)
+	}
+	return result.Passed, resultJSON, nil
 }
 
 // ValidateSuggestion runs sandbox validation on an evolution suggestion.

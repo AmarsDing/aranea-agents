@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
@@ -28,11 +29,23 @@ func (s *stubKnowledgeRepo) DeleteCollection(context.Context, string) error { re
 func (s *stubKnowledgeRepo) UpdateCollectionCounts(context.Context, string, int, int) error {
 	return nil
 }
+func (s *stubKnowledgeRepo) UpdateCollectionSyncState(context.Context, string, string, time.Time) error {
+	return nil
+}
 func (s *stubKnowledgeRepo) CreateDocument(context.Context, biz.KnowledgeDocument) (biz.KnowledgeDocument, error) {
 	return biz.KnowledgeDocument{}, nil
 }
 func (s *stubKnowledgeRepo) GetDocument(context.Context, string) (biz.KnowledgeDocument, error) {
 	return biz.KnowledgeDocument{}, nil
+}
+func (s *stubKnowledgeRepo) GetDocumentByRelPath(context.Context, string, string) (biz.KnowledgeDocument, error) {
+	return biz.KnowledgeDocument{}, nil
+}
+func (s *stubKnowledgeRepo) UpdateDocumentRelPath(context.Context, string, string) error {
+	return nil
+}
+func (s *stubKnowledgeRepo) UpdateDocumentSyncMeta(context.Context, string, biz.KnowledgeDocumentSyncMeta) error {
+	return nil
 }
 func (s *stubKnowledgeRepo) UpdateDocumentStatus(context.Context, string, string, string, int) error {
 	return nil

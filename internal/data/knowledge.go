@@ -153,6 +153,8 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
 			mentions      INT NOT NULL DEFAULT 1,
 			PRIMARY KEY (doc_id, entity_id)
 		)`,
+		`CREATE INDEX IF NOT EXISTS knowledge_doc_entities_collection_idx
+			ON knowledge_doc_entities(collection_id, entity_id)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
@@ -167,18 +169,22 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
 func (r *knowledgeRepo) CreateCollection(ctx context.Context, c biz.KnowledgeCollection) (biz.KnowledgeCollection, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	q := `INSERT INTO knowledge_collections
-		(id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,0,0,$7,$8,$8)
+		(id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
+		 root_path, sync_state, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,0,0,$7,$8,$9,$10,$10)
 		RETURNING id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
+		          root_path, sync_state, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		          to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		          to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
-	row := r.data.Postgres().QueryRowContext(ctx, q, c.ID, c.Name, c.Description, c.EmbeddingModel, c.Dim, c.Status, c.Workspace, now)
+	row := r.data.Postgres().QueryRowContext(ctx, q,
+		c.ID, c.Name, c.Description, c.EmbeddingModel, c.Dim, c.Status, c.Workspace, c.RootPath, c.SyncState, now)
 	return scanCollection(row)
 }
 
 func (r *knowledgeRepo) GetCollection(ctx context.Context, id string) (biz.KnowledgeCollection, error) {
 	// C-25: tenant sees own + shared (empty workspace); system sees all.
 	q := `SELECT id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
+		         root_path, sync_state, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_collections WHERE id = $1`
@@ -200,6 +206,7 @@ func (r *knowledgeRepo) ListCollections(ctx context.Context, workspace string, l
 		return nil, 0, err
 	}
 	q := `SELECT id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
+		         root_path, sync_state, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_collections WHERE workspace = $1 OR workspace = '' OR $1 = ''
@@ -239,21 +246,83 @@ func (r *knowledgeRepo) UpdateCollectionCounts(ctx context.Context, id string, d
 
 func (r *knowledgeRepo) CreateDocument(ctx context.Context, d biz.KnowledgeDocument) (biz.KnowledgeDocument, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
+	tagsJSON, err := marshalTags(d.Tags)
+	if err != nil {
+		return biz.KnowledgeDocument{}, err
+	}
 	q := `INSERT INTO knowledge_documents
-		(id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message, content_text, organized, asset_uri, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,0,$6,'',$7,$8,$9,$10,$10)
+		(id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message, content_text, organized, asset_uri,
+		 rel_path, content_hash, summary, summary_hash, tags, doc_type, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,0,$6,'',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16)
 		RETURNING id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
 		          content_text, organized, asset_uri,
+		          rel_path, content_hash, summary, summary_hash, tags, doc_type,
 		          to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		          to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
-	row := r.data.Postgres().QueryRowContext(ctx, q, d.ID, d.CollectionID, d.Source, d.MimeType, d.SizeBytes, d.Status, d.ContentText, d.Organized, d.AssetURI, now)
+	row := r.data.Postgres().QueryRowContext(ctx, q, d.ID, d.CollectionID, d.Source, d.MimeType, d.SizeBytes, d.Status,
+		d.ContentText, d.Organized, d.AssetURI,
+		d.RelPath, d.ContentHash, d.Summary, d.SummaryHash, tagsJSON, d.DocType, now)
 	return scanDocument(row)
+}
+
+// GetDocumentByRelPath 按 vault 相对路径寻址文档（Vault 同步用，rel_path 唯一）。
+func (r *knowledgeRepo) GetDocumentByRelPath(ctx context.Context, collectionID, relPath string) (biz.KnowledgeDocument, error) {
+	q := `SELECT d.id, d.collection_id, d.source, d.mime_type, d.size_bytes, d.chunk_count, d.status, d.error_message,
+		         d.content_text, d.organized, d.asset_uri,
+		         d.rel_path, d.content_hash, d.summary, d.summary_hash, d.tags, d.doc_type,
+		         to_char(d.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		  FROM knowledge_documents d
+		  JOIN knowledge_collections c ON c.id = d.collection_id
+		  WHERE d.collection_id = $1 AND d.rel_path = $2`
+	args := []any{collectionID, relPath}
+	if !workspace.IsSystem(ctx) {
+		ws := workspace.IDFromContext(ctx)
+		q += ` AND (c.workspace = $3 OR c.workspace = '')`
+		args = append(args, ws)
+	}
+	return scanDocument(r.data.Postgres().QueryRowContext(ctx, q, args...))
+}
+
+// UpdateDocumentRelPath 文件移动/重命名时更新镜像路径（保留文档身份与索引）。
+func (r *knowledgeRepo) UpdateDocumentRelPath(ctx context.Context, id, newRelPath string) error {
+	_, err := r.data.Postgres().ExecContext(ctx,
+		`UPDATE knowledge_documents SET rel_path = $2, updated_at = NOW() WHERE id = $1`, id, newRelPath)
+	return err
+}
+
+// UpdateDocumentSyncMeta 文件内容变更时回写同步元数据（Vault 同步 modified 事件，P1-3）。
+func (r *knowledgeRepo) UpdateDocumentSyncMeta(ctx context.Context, id string, meta biz.KnowledgeDocumentSyncMeta) error {
+	tagsJSON, err := marshalTags(meta.Tags)
+	if err != nil {
+		return err
+	}
+	_, err = r.data.Postgres().ExecContext(ctx,
+		`UPDATE knowledge_documents
+		 SET content_hash = $2, summary = $3, summary_hash = $4, tags = $5, doc_type = $6, updated_at = NOW()
+		 WHERE id = $1`, id, meta.ContentHash, meta.Summary, meta.SummaryHash, tagsJSON, meta.DocType)
+	return err
+}
+
+// UpdateCollectionSyncState 回写 vault 同步状态与最近一次同步完成时间（P1-3 轮询）。
+// lastSyncAt 为零值时只更新 state（失败场景不刷新完成时间）。
+func (r *knowledgeRepo) UpdateCollectionSyncState(ctx context.Context, id, state string, lastSyncAt time.Time) error {
+	if lastSyncAt.IsZero() {
+		_, err := r.data.Postgres().ExecContext(ctx,
+			`UPDATE knowledge_collections SET sync_state = $2, updated_at = NOW() WHERE id = $1`, id, state)
+		return err
+	}
+	_, err := r.data.Postgres().ExecContext(ctx,
+		`UPDATE knowledge_collections SET sync_state = $2, last_sync_at = $3, updated_at = NOW() WHERE id = $1`,
+		id, state, lastSyncAt.UTC())
+	return err
 }
 
 func (r *knowledgeRepo) GetDocument(ctx context.Context, id string) (biz.KnowledgeDocument, error) {
 	// C-25: documents inherit collection workspace; filter via JOIN.
 	q := `SELECT d.id, d.collection_id, d.source, d.mime_type, d.size_bytes, d.chunk_count, d.status, d.error_message,
 		         d.content_text, d.organized, d.asset_uri,
+		         d.rel_path, d.content_hash, d.summary, d.summary_hash, d.tags, d.doc_type,
 		         to_char(d.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_documents d
@@ -293,6 +362,7 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 	}
 	q := `SELECT id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
 		         organized, asset_uri,
+		         rel_path, content_hash, summary, summary_hash, tags, doc_type,
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_documents WHERE collection_id = $1 OR $1 = ''
@@ -390,7 +460,11 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 			if meta == "" {
 				meta = "{}"
 			}
-			vec := pgvector.NewVector(ch.Embedding)
+			// 无语义层 vault（R-4）：空 embedding 写 NULL，pgvector.NewVector(nil) 会生成非法 '[]'。
+			var vec any
+			if len(ch.Embedding) > 0 {
+				vec = pgvector.NewVector(ch.Embedding)
+			}
 			if _, err := stmt.ExecContext(ctx, ch.ID, ch.DocID, ch.CollectionID, ch.Content, vec, meta, ch.ChunkIndex); err != nil {
 				r.lg.Warn("chunk insert failed", loggateway.StepID("knowledge.chunk_insert_fail"), loggateway.Err(err))
 				return err
@@ -644,23 +718,59 @@ type scannable interface {
 func scanCollection(row scannable) (biz.KnowledgeCollection, error) {
 	var c biz.KnowledgeCollection
 	err := row.Scan(&c.ID, &c.Name, &c.Description, &c.EmbeddingModel, &c.Dim,
-		&c.Status, &c.DocumentCount, &c.ChunkCount, &c.Workspace, &c.CreatedAt, &c.UpdatedAt)
+		&c.Status, &c.DocumentCount, &c.ChunkCount, &c.Workspace,
+		&c.RootPath, &c.SyncState, &c.LastSyncAt, &c.CreatedAt, &c.UpdatedAt)
 	return c, err
 }
 
 func scanDocument(row scannable) (biz.KnowledgeDocument, error) {
 	var d biz.KnowledgeDocument
+	var tagsRaw []byte
 	err := row.Scan(&d.ID, &d.CollectionID, &d.Source, &d.MimeType, &d.SizeBytes,
 		&d.ChunkCount, &d.Status, &d.ErrorMessage, &d.ContentText, &d.Organized, &d.AssetURI,
+		&d.RelPath, &d.ContentHash, &d.Summary, &d.SummaryHash, &tagsRaw, &d.DocType,
 		&d.CreatedAt, &d.UpdatedAt)
-	return d, err
+	if err != nil {
+		return d, err
+	}
+	d.Tags = unmarshalTags(tagsRaw)
+	return d, nil
 }
 
 // scanDocumentSummary 用于列表查询：不取 content_text 大字段（避免列表带宽放大）。
 func scanDocumentSummary(row scannable) (biz.KnowledgeDocument, error) {
 	var d biz.KnowledgeDocument
+	var tagsRaw []byte
 	err := row.Scan(&d.ID, &d.CollectionID, &d.Source, &d.MimeType, &d.SizeBytes,
 		&d.ChunkCount, &d.Status, &d.ErrorMessage, &d.Organized, &d.AssetURI,
+		&d.RelPath, &d.ContentHash, &d.Summary, &d.SummaryHash, &tagsRaw, &d.DocType,
 		&d.CreatedAt, &d.UpdatedAt)
-	return d, err
+	if err != nil {
+		return d, err
+	}
+	d.Tags = unmarshalTags(tagsRaw)
+	return d, nil
+}
+
+// marshalTags 序列化标签为 JSONB 参数（空为 NULL）。
+func marshalTags(tags []string) (any, error) {
+	if len(tags) == 0 {
+		return nil, nil
+	}
+	b, err := json.Marshal(tags)
+	if err != nil {
+		return nil, apierror.Internal("knowledge", "marshal tags").WithCause(err)
+	}
+	return b, nil
+}
+
+func unmarshalTags(raw []byte) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var tags []string
+	if err := json.Unmarshal(raw, &tags); err != nil {
+		return nil
+	}
+	return tags
 }

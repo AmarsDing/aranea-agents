@@ -847,18 +847,33 @@ func NormalizeStatus(status string) string {
 }
 
 // ApplyTokenUsageCosts fills per-kind costs and total from token counts and USD/1M prices (micro fallback for legacy rows).
+//
+// Cached-input billing semantics (OpenAI/DeepSeek): InputTokens (prompt_tokens)
+// already INCLUDES the cache-hit portion. The hit portion must be billed at the
+// cache-read price only, never at the full input price. Therefore:
+//
+//	billableInput = InputTokens - min(CachedInputTokens, InputTokens)
+//	InputCost     = billableInput × inputPrice
+//	CachedCost    = min(CachedInputTokens, InputTokens) × cacheReadPrice
 func ApplyTokenUsageCosts(e *TokenUsageEvent) {
 	if e == nil {
 		return
 	}
+	cachedBillable := e.CachedInputTokens
+	if cachedBillable > e.InputTokens {
+		cachedBillable = e.InputTokens
+	}
+	if cachedBillable < 0 {
+		cachedBillable = 0
+	}
 	if e.InputCostMicroUSD == 0 && e.InputTokens > 0 {
-		e.InputCostMicroUSD = usageCostMicro(e.InputTokens, e.InputPriceMicroUSDPer1K, e.InputPriceUSDPer1M)
+		e.InputCostMicroUSD = usageCostMicro(e.InputTokens-cachedBillable, e.InputPriceMicroUSDPer1K, e.InputPriceUSDPer1M)
 	}
 	if e.OutputCostMicroUSD == 0 && e.OutputTokens > 0 {
 		e.OutputCostMicroUSD = usageCostMicro(e.OutputTokens, e.OutputPriceMicroUSDPer1K, e.OutputPriceUSDPer1M)
 	}
-	if e.CachedInputCostMicroUSD == 0 && e.CachedInputTokens > 0 {
-		e.CachedInputCostMicroUSD = usageCostMicro(e.CachedInputTokens, e.CachedInputPriceMicroUSDPer1K, e.CacheReadPriceUSDPer1M)
+	if e.CachedInputCostMicroUSD == 0 && cachedBillable > 0 {
+		e.CachedInputCostMicroUSD = usageCostMicro(cachedBillable, e.CachedInputPriceMicroUSDPer1K, e.CacheReadPriceUSDPer1M)
 	}
 	if e.CacheWriteCostMicroUSD == 0 && e.CacheWriteTokens > 0 {
 		e.CacheWriteCostMicroUSD = usageCostMicro(e.CacheWriteTokens, e.CacheWritePriceMicroUSDPer1K, e.CacheWritePriceUSDPer1M)
@@ -1053,10 +1068,12 @@ type TurnUsageInput struct {
 	Status        string
 	PromptTok     int
 	CompletionTok int
-	Latency       time.Duration
-	ErrMsg        string
-	MetadataJSON  string
-	TraceID       string
+	// CachedTok is the cache-hit portion of PromptTok (billed at cache-read price).
+	CachedTok    int
+	Latency      time.Duration
+	ErrMsg       string
+	MetadataJSON string
+	TraceID      string
 }
 
 // RecordTurnUsage records token usage for a completed chat turn.
@@ -1082,6 +1099,7 @@ func (u *Usecase) RecordTurnUsage(ctx context.Context, in TurnUsageInput) error 
 		ProviderCode:     in.Provider,
 		InputTokens:      in.PromptTok,
 		OutputTokens:     in.CompletionTok,
+		CachedInputTokens: in.CachedTok,
 		TotalTokens:      in.PromptTok + in.CompletionTok,
 		LatencyMS:        int(in.Latency.Milliseconds()),
 		Status:           in.Status,

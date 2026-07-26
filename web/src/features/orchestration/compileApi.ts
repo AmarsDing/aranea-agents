@@ -9,6 +9,8 @@ import type {
 import type { GraphDefinition, NodeDef, EdgeDef, ConditionalEdgeDef } from '../graph/types';
 import { applyAutoLayout, hasSavedLayout } from '../graph/editor/graphLayout';
 
+export type { CompiledGraphNodeView } from '../../services/kratos/team/v1/index';
+
 export type CompileTeamGraphResult = {
   template_id: string;
   mode: string;

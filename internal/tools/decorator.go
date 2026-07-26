@@ -355,6 +355,20 @@ func (d *ToolDecorator) Declaration() *trpctool.Declaration {
 	return d.inner.Declaration()
 }
 
+// Original exposes the wrapped tool via the framework's Original()
+// unwrapping convention (NamedTool, toolpipe, and the function-call
+// processor's StateDelta discovery all unwrap through it). Without this,
+// StateDelta-providing tools (set_deliverable, todo_write, save_artifact)
+// decorated by ApplyDecorators silently lose their session-state mutations:
+// the framework type-asserts the unwrapped tool to the state-delta
+// interfaces, and the decorator itself does not forward them.
+func (d *ToolDecorator) Original() trpctool.Tool {
+	if d == nil {
+		return nil
+	}
+	return d.inner
+}
+
 // Call invokes the inner tool with timeout, result budget, and caching
 // applied. For ConcurrentSafe tools with caching enabled, repeated calls
 // with identical arguments return the cached result without invoking

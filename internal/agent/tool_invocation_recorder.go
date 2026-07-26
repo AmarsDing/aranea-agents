@@ -203,7 +203,41 @@ func recordToolInvocationWrite(ctx context.Context, write biz.ToolInvocationWrit
 		if isSkillCall && deps.SkillUC != nil {
 			recordSkillInvocation(bg, ctx, write, ag, deps)
 		}
+		// Feed the learning loop: every completed tool invocation becomes a
+		// tool_call Observation (input to DetectPatterns → PatternTrigger).
+		if deps.LearningLoop != nil {
+			recordToolCallObservation(bg, write, ag, deps.LearningLoop, lg)
+		}
 	})
+}
+
+// recordToolCallObservation converts a completed tool invocation into a
+// tool_call Observation and records it into the learning loop. Both success
+// and failure outcomes are recorded — failure frequency is a learning signal.
+// Metadata carries tool_name/status/duration_ms, which DetectPatterns'
+// describeBucket relies on for pattern descriptions.
+func recordToolCallObservation(bg context.Context, write biz.ToolInvocationWrite, ag biz.Agent, recorder biz.ObservationRecorder, lg loggateway.Logger) {
+	if recorder == nil {
+		return
+	}
+	meta, err := json.Marshal(map[string]any{
+		"tool_name":   write.ToolKey,
+		"status":      write.Status,
+		"duration_ms": write.DurationMS,
+		"source":      write.Source,
+	})
+	if err != nil {
+		return
+	}
+	if _, err := recorder.RecordObservation(bg, biz.Observation{
+		AgentID:   ag.ID,
+		SessionID: write.SessionID,
+		Kind:      biz.ObservationKindToolCall,
+		Content:   write.ToolKey,
+		Metadata:  string(meta),
+	}); err != nil {
+		lg.Warn("learning observation 记录失败", loggateway.StepID("agent.tool.observation_fail"), loggateway.Str("tool", write.ToolKey), loggateway.Err(err))
+	}
 }
 
 // recordSkillInvocation creates a skill_invocation row when a skill-type tool call completes.

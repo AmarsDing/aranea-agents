@@ -582,13 +582,17 @@ CREATE TABLE IF NOT EXISTS budget_alerts (
 
 ### 4.4 费用计算
 
-所有费用以 micro USD 存储：
+所有费用以 micro USD 存储。实现：`internal/biz/usage/usage.go` → `ApplyTokenUsageCosts`（幂等：仅当对应 cost 字段为 0 时计算，不覆盖已写入值）：
 
 ```
-input_cost_micro_usd = input_tokens * input_price_micro_usd_per_1k / 1000
-output_cost_micro_usd = output_tokens * output_price_micro_usd_per_1k / 1000
-total_cost_micro_usd = input_cost + output_cost + cached_input_cost + cache_write_cost + reasoning_cost + embedding_cost
+cached_billable = clamp(cached_input_tokens, 0, input_tokens)   // 防 cached 超过 input
+input_cost         = (input_tokens − cached_billable) × 输入单价   // 缓存命中部分不再按全价输入计费
+cached_input_cost  = cached_billable × 缓存读取单价
+output_cost        = output_tokens × 输出单价
+total_cost         = input_cost + output_cost + cached_input_cost + cache_write_cost + reasoning_cost + embedding_cost
 ```
+
+单价取值优先级：`xxx_price_usd_per_1m`（cost = `round(tokens × usd_per_1m)`）> `xxx_price_micro_usd_per_1k`（cost = `tokens × micro_per_1k / 1000`，整除）。事件表仅持久化 micro 单价快照；USD 单价来自定价快照（`model_pricing_rules` 优先）。
 
 ### 4.5 统计口径矩阵（可计费 vs 对账）
 
@@ -689,6 +693,10 @@ func (s *UsageService) PurgeUsageEvents(ctx, *v1.PurgeUsageEventsRequest) (*v1.P
 落库失败 → `CtxFlowLogWarn`（`team.usage_record_fail`，**禁 slog**）。成员流未带 `Usage` 时仅 anchor 成员（sortIdx=0）继承整轮 tokens。
 
 **定价回退**：`GetActiveModelPricing` → `model_pricing_rules`，否则 `llm_provider_models.config_json`。
+
+**缓存命中捕获**：DeepSeek 系响应的 `prompt_cache_hit_tokens` 不被 OpenAI SDK 解析。`internal/provider/usage_tap_transport.go`（装配点 `trpc_llm.go`）在 HTTP 传输层把响应体改写为标准 `prompt_tokens_details.cached_tokens`（SSE / JSON 均支持），随后经 `turn_helpers.go` 累计进 `CachedInputTokens` 落库，费用按 §4.4 缓存公式计算。
+
+**team_member 事件 provider/model**：`PersistGraphRunStep` 以 anchor Agent 的 `Provider`/`Model` 兜底（`strutil.FirstNonEmpty`），避免空 `model_api_id` 导致定价回退失败、费用为 0。
 
 **告警**：`EvaluateBudgetAlerts` → 监控事件 `usage.budget_alert`（60min 冷却）。
 

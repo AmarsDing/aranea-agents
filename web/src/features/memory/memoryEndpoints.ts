@@ -31,4 +31,6 @@ export const memoryEndpoints = {
   getMemoryWorkerStatus: () => 'v1/memory/worker/status',
   getMemoryPlatformSettings: () => 'v1/memory/platform/settings',
   updateMemoryPlatformSettings: () => 'v1/memory/platform/settings',
+  getMemoryLayerOverview: () => 'v1/memory/layer-overview',
+  getUnifiedMemoryGraph: () => 'v1/memory/graph/unified',
 } as const;

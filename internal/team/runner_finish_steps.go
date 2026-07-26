@@ -30,5 +30,5 @@ func (r *Runner) finalizeGraphRunStepsFallback(ctx context.Context, in TeamRunFi
 	if r == nil || in.GraphExecID == "" {
 		return
 	}
-	r.ensureGraphRunStepsFallback(ctx, in.Run, in.TeamID, in.AnchorMem, in.AnchorAg, in.Content, in.AssistantMsg, in.PromptTok, in.CompletionTok, in.Prov, in.Mod)
+	r.ensureGraphRunStepsFallback(ctx, in.Run, in.TeamID, in.AnchorMem, in.AnchorAg, in.Content, in.AssistantMsg, in.PromptTok, in.CompletionTok, in.Result.CachedTok, in.Prov, in.Mod)
 }

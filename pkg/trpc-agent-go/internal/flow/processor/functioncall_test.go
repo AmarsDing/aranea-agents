@@ -802,6 +802,52 @@ func TestFunctionCallResponseProcessor_AttachStateDelta(t *testing.T) {
 	require.Equal(t, []byte(deltaVal2), ev2.StateDelta[deltaKey2])
 }
 
+// originalWrapperTool simulates governance wrappers (e.g. the decorator
+// applied by the host application) that hide the real tool behind the
+// Original() unwrapping convention used by NamedTool and toolpipe.
+type originalWrapperTool struct {
+	inner tool.Tool
+}
+
+func (w *originalWrapperTool) Declaration() *tool.Declaration {
+	return w.inner.Declaration()
+}
+
+func (w *originalWrapperTool) Original() tool.Tool {
+	return w.inner
+}
+
+// TestFunctionCallResponseProcessor_AttachStateDelta_UnwrapsOriginalRecursively
+// guards StateDelta discovery through arbitrarily nested Original() wrappers:
+// a StateDelta-providing tool wrapped by governance decorators must still
+// surface its state delta on the tool response event.
+func TestFunctionCallResponseProcessor_AttachStateDelta_UnwrapsOriginalRecursively(
+	t *testing.T,
+) {
+	p := &FunctionCallResponseProcessor{}
+	inv := &agent.Invocation{AgentName: "tester"}
+	choice := &model.Choice{
+		Message: model.Message{
+			ToolID:   "call-1",
+			Content:  `{"result":"ok"}`,
+			ToolName: "tool",
+			Role:     model.RoleTool,
+		},
+	}
+
+	inner := &mockStateDeltaTool{
+		declaration: &tool.Declaration{Name: "tool"},
+		delta:       map[string][]byte{"k": []byte("v")},
+	}
+	wrapped := &originalWrapperTool{
+		inner: &originalWrapperTool{inner: inner},
+	}
+
+	ev := &event.Event{}
+	p.attachStateDelta(inv, wrapped, nil, choice, ev)
+	require.Equal(t, []byte("v"), ev.StateDelta["k"])
+}
+
 func TestExecuteSingleToolCallSequential_PreservesCustomInvocationState(
 	t *testing.T,
 ) {

@@ -62,7 +62,7 @@ func (r *Runner) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepC
 		ErrorMessage:    errMsg,
 		CreatedAt:       agent.RFC3339Now(),
 	}
-	r.persistStep(ctx, run, stepCtx.TeamID, stepCtx.SortIndex(nodeID), m, ag, stepCtx.InputPreview, asst, strings.TrimSpace(ag.Provider), strings.TrimSpace(ag.Model), "default", toolCallCount)
+	r.persistStep(ctx, run, stepCtx.TeamID, stepCtx.SortIndex(nodeID), m, ag, stepCtx.InputPreview, asst, strings.TrimSpace(ag.Provider), strings.TrimSpace(ag.Model), "default", toolCallCount, 0)
 	stepCtx.MarkPersisted(nodeID)
 	if em := event.TraceEmitterFromContext(ctx); em != nil {
 		agentName := strutil.FirstNonEmpty(ag.DisplayName, ag.AgentKey)
@@ -315,7 +315,7 @@ func (r *Runner) ensureGraphRunStepsFallback(
 	anchorAg biz.Agent,
 	userContent string,
 	assistantMsg biz.ChatMessage,
-	promptTok, completionTok int,
+	promptTok, completionTok, cachedTok int,
 	prov, mod string,
 ) {
 	if r == nil || r.runReader == nil {
@@ -336,5 +336,5 @@ func (r *Runner) ensureGraphRunStepsFallback(
 	stepMsg.TokenIn, stepMsg.TokenOut = promptTok, completionTok
 	prov = strutil.FirstNonEmpty(strings.TrimSpace(prov), strings.TrimSpace(anchorAg.Provider))
 	mod = strutil.FirstNonEmpty(strings.TrimSpace(mod), strings.TrimSpace(anchorAg.Model))
-	r.persistStep(ctx, run, teamID, 0, anchor, anchorAg, userContent, stepMsg, prov, mod, "default", 0)
+	r.persistStep(ctx, run, teamID, 0, anchor, anchorAg, userContent, stepMsg, prov, mod, "default", 0, cachedTok)
 }

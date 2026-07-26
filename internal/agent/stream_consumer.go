@@ -249,6 +249,9 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 		if ev.Response != nil && ev.Response.Usage != nil {
 			c.result.PromptTok = ev.Response.Usage.PromptTokens
 			c.result.CompletionTok = ev.Response.Usage.CompletionTokens
+			if ct := ev.Response.Usage.PromptTokensDetails.CachedTokens; ct > c.result.CachedTok {
+				c.result.CachedTok = ct
+			}
 			c.result.UsageSource = "runner_completion"
 		}
 		return true
@@ -272,7 +275,7 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 	}
 	if usage := ev.Response.Usage; usage != nil {
 		prevPrompt := c.result.PromptTok
-		accumulateStreamUsage(&c.result, ev, c.projectMeta, usage.PromptTokens, usage.CompletionTokens)
+		accumulateStreamUsage(&c.result, ev, c.projectMeta, usage.PromptTokens, usage.CompletionTokens, usage.PromptTokensDetails.CachedTokens)
 		if c.result.PromptTok > prevPrompt {
 			c.publishContextUsageStep()
 		}

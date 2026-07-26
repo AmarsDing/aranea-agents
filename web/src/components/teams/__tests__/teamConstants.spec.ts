@@ -5,7 +5,6 @@ import {
   statusOptions,
   roleOptions,
   teamTemplateOptions,
-  runtimeEngineOptions,
   failureDefaultOptions,
   parallelFailOptions,
   failureOnErrorOptions,
@@ -57,10 +56,6 @@ describe('teamConstants', () => {
       expect(opt.value).toBeTruthy();
       expect(opt.description).toBeTruthy();
     }
-  });
-
-  it('runtimeEngineOptions has graph and native', () => {
-    expect(runtimeEngineOptions.map((o) => o.value)).toEqual(['graph', 'native']);
   });
 
   it('failureDefaultOptions has 3 strategies', () => {

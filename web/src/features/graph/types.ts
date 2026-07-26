@@ -250,12 +250,28 @@ export const REDUCER_OPTIONS: Array<{ labelKey: string; value: ReducerType }> = 
 
 export const STATE_FIELD_TYPE_OPTIONS: Array<{ labelKey: string; value: string }> = [
   { labelKey: 'graphs.stateTypeString', value: 'string' },
-  { labelKey: 'graphs.stateTypeInteger', value: 'integer' },
-  { labelKey: 'graphs.stateTypeFloat', value: 'float' },
-  { labelKey: 'graphs.stateTypeBoolean', value: 'boolean' },
-  { labelKey: 'graphs.stateTypeArray', value: 'array' },
-  { labelKey: 'graphs.stateTypeObject', value: 'object' },
+  { labelKey: 'graphs.stateTypeInteger', value: 'int' },
+  { labelKey: 'graphs.stateTypeFloat', value: 'float64' },
+  { labelKey: 'graphs.stateTypeBoolean', value: 'bool' },
+  { labelKey: 'graphs.stateTypeArrayString', value: '[]string' },
+  { labelKey: 'graphs.stateTypeArrayInt', value: '[]int' },
+  { labelKey: 'graphs.stateTypeArrayAny', value: '[]any' },
+  { labelKey: 'graphs.stateTypeMap', value: 'map' },
 ];
+
+// 旧数据兼容映射：历史上前端曾使用 integer/float/boolean/array/object 等值，
+// 后端实际类型为 int/float64/bool/[]string/[]any/map。
+const STATE_FIELD_TYPE_LEGACY_ALIASES: Record<string, string> = {
+  integer: 'int',
+  float: 'float64',
+  boolean: 'bool',
+  array: '[]any',
+  object: 'map',
+};
+
+export function normalizeStateFieldType(type: string): string {
+  return STATE_FIELD_TYPE_LEGACY_ALIASES[type] ?? type;
+}
 
 export const ENGINE_OPTIONS: Array<{ labelKey: string; value: string }> = [
   { labelKey: 'graphs.engineBSP', value: 'bsp' },

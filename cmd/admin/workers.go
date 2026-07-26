@@ -32,6 +32,7 @@ type backgroundWorkersConfig struct {
 	SkillEvolutionScanner       BackgroundStarter
 	SkillIntelligenceWorker     BackgroundStarter
 	CuratorWorker               BackgroundStarter
+	EvolutionOrchestratorWorker BackgroundStarter
 	ProviderHealthScanner       BackgroundStarter
 	ChannelHealthScanner        BackgroundStarter
 	ChannelDeliveryScanner      BackgroundStarter
@@ -151,6 +152,11 @@ func startBackgroundWorkers(
 	if cfg.CuratorWorker != nil {
 		goAfterReady("curator_worker", func() { cfg.CuratorWorker.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "curator worker scheduled", "interval", "2h")
+	}
+
+	if cfg.EvolutionOrchestratorWorker != nil {
+		goAfterReady("evolution_orchestrator", func() { cfg.EvolutionOrchestratorWorker.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "evolution orchestrator worker scheduled", "interval", "2h")
 	}
 
 	if cfg.ProviderHealthScanner != nil {

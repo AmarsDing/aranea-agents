@@ -869,6 +869,27 @@ func (p *FunctionCallResponseProcessor) decorateToolCallResponseEvent(
 	return ev
 }
 
+// unwrapToolOriginal recursively unwraps tool wrappers that expose the
+// Original() tool.Tool convention (NamedTool, host-side governance
+// decorators, etc.) to reach the real underlying tool. StateDelta
+// discovery requires the concrete tool: wrappers that delegate Call but
+// do not forward the state-delta interfaces would otherwise silently
+// drop session-state mutations (e.g. set_deliverable, todo_write).
+func unwrapToolOriginal(tl tool.Tool) tool.Tool {
+	type originator interface{ Original() tool.Tool }
+	for {
+		o, ok := tl.(originator)
+		if !ok {
+			return tl
+		}
+		inner := o.Original()
+		if inner == nil || inner == tl {
+			return tl
+		}
+		tl = inner
+	}
+}
+
 // attachStateDelta copies tool-provided state delta to the event.
 func (p *FunctionCallResponseProcessor) attachStateDelta(
 	inv *agent.Invocation,
@@ -880,10 +901,7 @@ func (p *FunctionCallResponseProcessor) attachStateDelta(
 	if tl == nil || choice == nil || ev == nil {
 		return
 	}
-	original := tl
-	if nameTool, ok := tl.(*itool.NamedTool); ok {
-		original = nameTool.Original()
-	}
+	original := unwrapToolOriginal(tl)
 	b := []byte(choice.Message.Content)
 	toolCallID := choice.Message.ToolID
 

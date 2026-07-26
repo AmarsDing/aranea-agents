@@ -3,17 +3,18 @@ package biz
 import "aranea-agents/internal/biz/knowledge"
 
 type (
-	KnowledgeCollection     = knowledge.Collection
-	KnowledgeDocument       = knowledge.Document
-	KnowledgeChunk          = knowledge.Chunk
-	KnowledgeSearchQuery    = knowledge.SearchQuery
-	KnowledgeCollectionRepo = knowledge.CollectionRepo
-	KnowledgeDocumentRepo   = knowledge.DocumentRepo
-	KnowledgeChunkRepo      = knowledge.ChunkRepo
-	KnowledgeRepo           = knowledge.Repo
-	KnowledgeUsecase        = knowledge.Usecase
-	KnowledgeEmbedSetting   = knowledge.EmbedSetting
-	KnowledgeSparseSearcher = knowledge.SparseSearcher
+	KnowledgeCollection       = knowledge.Collection
+	KnowledgeDocument         = knowledge.Document
+	KnowledgeChunk            = knowledge.Chunk
+	KnowledgeSearchQuery      = knowledge.SearchQuery
+	KnowledgeCollectionRepo   = knowledge.CollectionRepo
+	KnowledgeDocumentRepo     = knowledge.DocumentRepo
+	KnowledgeChunkRepo        = knowledge.ChunkRepo
+	KnowledgeRepo             = knowledge.Repo
+	KnowledgeUsecase          = knowledge.Usecase
+	KnowledgeEmbedSetting     = knowledge.EmbedSetting
+	KnowledgeSparseSearcher   = knowledge.SparseSearcher
+	KnowledgeDocumentSyncMeta = knowledge.DocumentSyncMeta
 )
 
 var (

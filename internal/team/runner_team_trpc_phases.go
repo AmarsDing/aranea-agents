@@ -224,6 +224,7 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 			SubAgentService:  r.cfg.SubAgentService,
 			A2AEnabled:       r.cfg.A2AEnabled,
 			L0SnapshotForcer: r.td.SessionRT,
+			LearningLoop:     r.td.LearningLoop,
 			LG:               r.lg,
 		},
 	}

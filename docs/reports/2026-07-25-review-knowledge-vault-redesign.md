@@ -81,9 +81,9 @@
 
 ### D7 model2vec 静态化语义层（「自研 embedding」落点）
 
-- **优点**：把 embedding 变成一次性蒸馏的本地资产（几十 MB 查表模型）；推理=查表+均值池化，纯 Go 可实现（~300 行），比 teacher 快 500 倍；质量保留 ~93%（MTEB 52.13）；无 GPU/ONNX 依赖
+- **优点**：把 embedding 变成一次性蒸馏的本地资产（几十 MB 查表模型）；推理=查表+均值池化，纯 Go 可实现（~300 行），比 teacher 快 500 倍；potion-base-32M 质量达 MiniLM 的 93.2%（调研 §5）；无 GPU/ONNX 依赖
 - **缺点**：丢语序/上下文，难查询与 rerank 场景弱于 transformer；多语版 480MB 不算小；**model2vec-go 是单人社区移植（2026-04），成熟度存疑**
-- **后期维护**：模型文件版本化（teacher 更换→dim 变化→全库 reindex）；向量必须按模型命名空间隔离（`embeddings(model, dim)` 维度已在现有 schema，天然支持）
+- **后期维护**：模型文件版本化（teacher 更换→dim 变化→全库 reindex）；向量必须按模型命名空间隔离（现以 Collection 粒度绑定 `embedding_model+dim`，chunks 无 model 列——跨模型共存按 Collection 隔离，或后续扩展维度列）
 - **升级路径**：model2vec → bge-m3 本地（ONNX/Ollama）→ 远程 API——同一 Embedder 接口，平滑替换
 - **评审意见**：通过。定位为「语义层的零依赖默认实现」而非唯一实现。供应链风险用自实现查表（格式简单：tokenizer + 矩阵）对冲，不依赖社区移植
 
@@ -159,7 +159,7 @@ UI:        树+列表+详情+双区搜索 ──→ 局部图谱(二期) ──�
 
 **③ embedding 可选化破坏现有契约（D5 前置工作）**
 
-[CreateCollection 校验](file:///f:/aranea-agents/internal/biz/knowledge/knowledge_usecase_test.go#L118)：`ErrEmbeddingModelRequired`——当前 **EmbeddingModel 是必填字段**，且 Collection 创建时 `ValidateEmbeddingModelDim`。embedding 可选化需要：
+[CreateCollection 校验](file:///f:/aranea-agents/internal/biz/knowledge/knowledge_usecase_test.go#L118)：`ErrEmbeddingModelRequired`——当前 **EmbeddingModel 是必填字段**；`Dim<=0` 时缺省 1536，无 dim 合法性校验。embedding 可选化需要：
 - CreateVault 时 EmbeddingModel 改可选（空 = 无语义层）
 - 摄取流水线对无 embedding 的 vault 跳过向量写入
 - knowledge_search 对无语义层 vault 自动降级 L0+L1

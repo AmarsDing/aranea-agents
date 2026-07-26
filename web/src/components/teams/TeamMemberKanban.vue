@@ -8,7 +8,7 @@
   >
     <template #header>
       <div class="text-subtitle2 q-mb-md">成员看板</div>
-      <div class="text-caption app-text-secondary q-mb-md">按角色查看 Team 成员与编译节点。</div>
+      <div class="text-caption app-text-secondary q-mb-md">按角色查看团队成员的分工。</div>
     </template>
     <template #card="{ item }">
       <q-card flat bordered class="team-member-kanban-card q-mb-sm">
@@ -16,11 +16,8 @@
           <div class="row items-center justify-between no-wrap q-mb-xs">
             <div class="col min-width-0">
               <div class="text-weight-medium ellipsis">{{ (item as MemberCard).label }}</div>
-              <div class="text-caption text-grey-7">
-                {{ (item as MemberCard).roleLabel }} · {{ (item as MemberCard).agentKey || '—' }}
-              </div>
+              <div class="text-caption text-grey-7">{{ (item as MemberCard).roleLabel }}</div>
             </div>
-            <q-badge dense rounded>{{ (item as MemberCard).nodeType }}</q-badge>
           </div>
           <div class="team-member-kanban-card__section">
             <div class="team-member-kanban-card__label">收到</div>
@@ -54,8 +51,6 @@ type MemberCard = {
   label: string;
   role: string;
   roleLabel: string;
-  agentKey: string;
-  nodeType: string;
   responsibility: string;
   inputHint: string;
   outputHint: string;
@@ -119,8 +114,6 @@ const memberCards = computed<MemberCard[]>(() => {
         label: display.displayName,
         role: display.role,
         roleLabel: display.roleLabel,
-        agentKey: display.agentKey,
-        nodeType: node.type || 'agent',
         responsibility: display.responsibility,
         inputHint: display.inputHint,
         outputHint: display.outputHint,
@@ -129,11 +122,9 @@ const memberCards = computed<MemberCard[]>(() => {
   }
   return (props.definition?.members ?? []).map((member) => ({
     key: `${member.agent_id}-${member.role}`,
-    label: member.name || member.agent_id,
+    label: member.name || '成员',
     role: member.role,
     roleLabel: teamRoleLabel(member.role),
-    agentKey: member.agent_id,
-    nodeType: member.enabled ? 'enabled' : 'disabled',
     responsibility: member.name || '执行分配任务',
     inputHint: '接收上游或协调者输入',
     outputHint: '写入 state 并传递给下游',

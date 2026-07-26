@@ -14,10 +14,18 @@ import (
 func TestAccumulateStreamUsage_multiLLMRounds(t *testing.T) {
 	var result EventStreamResult
 	meta := ProjectMeta{SessionID: "s1"}
-	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 100, 50)
-	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 200, 30)
+	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 100, 50, 40)
+	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 200, 30, 150)
 	if result.PromptTok != 200 || result.CompletionTok != 80 {
 		t.Fatalf("multi-round tokens: prompt=%d completion=%d", result.PromptTok, result.CompletionTok)
+	}
+	if result.CachedTok != 150 {
+		t.Fatalf("CachedTok = %d, want 150 (max across rounds)", result.CachedTok)
+	}
+	// Lower cached in a later chunk must not shrink the accumulated max.
+	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 200, 35, 100)
+	if result.CachedTok != 150 {
+		t.Fatalf("CachedTok = %d, want 150 (monotonic max)", result.CachedTok)
 	}
 }
 
@@ -36,13 +44,16 @@ func TestAccumulateStreamUsage_memberByAgentKey(t *testing.T) {
 			},
 		},
 	}
-	accumulateStreamUsage(&result, ev, meta, 100, 50)
+	accumulateStreamUsage(&result, ev, meta, 100, 50, 30)
 	if result.PromptTok != 100 || result.CompletionTok != 50 {
 		t.Fatalf("aggregate tokens: in=%d out=%d", result.PromptTok, result.CompletionTok)
 	}
 	u, ok := result.MemberUsage["worker-b"]
 	if !ok || u.PromptTokens != 100 || u.CompletionTokens != 50 {
 		t.Fatalf("member usage: %+v ok=%v", result.MemberUsage, ok)
+	}
+	if u.CachedTokens != 30 {
+		t.Fatalf("member CachedTokens = %d, want 30", u.CachedTokens)
 	}
 }
 
@@ -55,7 +66,7 @@ func TestAccumulateStreamUsage_skipsTeamRootAuthor(t *testing.T) {
 			Usage: &trpcmodel.Usage{PromptTokens: 10, CompletionTokens: 5},
 		},
 	}
-	accumulateStreamUsage(&result, ev, meta, 10, 5)
+	accumulateStreamUsage(&result, ev, meta, 10, 5, 0)
 	if len(result.MemberUsage) != 0 {
 		t.Fatalf("expected no member usage for team root author, got %+v", result.MemberUsage)
 	}

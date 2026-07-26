@@ -96,7 +96,11 @@ type TurnDeps struct {
 	Compress  biz.NativeTurnCompressor
 	AfterTurn biz.NativeTurnAfterHook
 	RunnerMgr *RunnerManager
-	Lg        loggateway.Logger
+	// LearningLoop records tool_call observations into the learning loop
+	// (Observation → Pattern → Proposal pipeline). Optional: when nil,
+	// observation recording is skipped.
+	LearningLoop biz.ObservationRecorder
+	Lg           loggateway.Logger
 }
 
 // RoundTrip returns a provider.RoundTrip backed by the LLMHTTP client.

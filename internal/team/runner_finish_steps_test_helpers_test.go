@@ -28,12 +28,13 @@ func (r *Runner) persistGraphMemberStepsFromResultTestOnly(ctx context.Context, 
 			continue
 		}
 		stepMsg := in.AssistantMsg
-		stepMsg.TokenIn, stepMsg.TokenOut = stepTokensForMember(ag.AgentKey, i, in.Result, in.PromptTok, in.CompletionTok)
+		var cachedTok int
+		stepMsg.TokenIn, stepMsg.TokenOut, cachedTok = stepTokensForMember(ag.AgentKey, i, in.Result, in.PromptTok, in.CompletionTok, in.Result.CachedTok)
 		toolCalls := 0
 		if in.Result.MemberToolCalls != nil {
 			toolCalls = in.Result.MemberToolCalls[ag.AgentKey]
 		}
-		r.persistStep(ctx, in.Run, in.TeamID, stepCtx.SortIndex(nodeID), m, ag, in.Content, stepMsg, in.Prov, in.Mod, in.DialogMode, toolCalls)
+		r.persistStep(ctx, in.Run, in.TeamID, stepCtx.SortIndex(nodeID), m, ag, in.Content, stepMsg, in.Prov, in.Mod, in.DialogMode, toolCalls, cachedTok)
 		stepCtx.MarkPersisted(nodeID)
 	}
 }

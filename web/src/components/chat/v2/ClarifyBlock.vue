@@ -8,12 +8,7 @@
   <div v-if="envelope && questions.length > 0">
     <!-- 交互态：等待用户作答（标题栏可点击人工折叠） -->
     <div v-if="step.Status === 'awaiting_input'" class="clarify-block clarify-block--awaiting">
-      <button
-        type="button"
-        class="clarify-block__header"
-        :aria-expanded="!collapsed"
-        @click="collapsed = !collapsed"
-      >
+      <button type="button" class="clarify-block__header" :aria-expanded="!collapsed" @click="collapsed = !collapsed">
         <span class="clarify-block__icon">
           <q-icon name="help_outline" size="13px" />
         </span>
@@ -87,12 +82,7 @@
           >
             {{ t('chat.clarify.next') }}
           </button>
-          <button
-            v-else
-            class="clarify-block__btn clarify-block__btn--finish"
-            :disabled="submitting"
-            @click="onFinish"
-          >
+          <button v-else class="clarify-block__btn clarify-block__btn--finish" :disabled="submitting" @click="onFinish">
             {{ submitting ? t('chat.clarify.submitting') : t('chat.clarify.finish') }}
           </button>
         </div>

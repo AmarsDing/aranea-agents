@@ -34,6 +34,14 @@ export type {
   ActivationPathStep,
   SpreadingActivationResult,
   SpreadingActivationResponse,
+  MemoryLayerStat,
+  MemoryActionItem,
+  MemoryActivityItem,
+  MemoryLayerOverview,
+  UnifiedGraphNode,
+  UnifiedGraphEdge,
+  UnifiedMemoryGraphQuery,
+  UnifiedMemoryGraph,
 } from './types';
 
 export { memoryEndpoints } from './memoryEndpoints';
@@ -70,6 +78,14 @@ import type {
   ActivationPathStep,
   SpreadingActivationResult,
   SpreadingActivationResponse,
+  MemoryLayerStat,
+  MemoryActionItem,
+  MemoryActivityItem,
+  MemoryLayerOverview,
+  UnifiedGraphNode,
+  UnifiedGraphEdge,
+  UnifiedMemoryGraphQuery,
+  UnifiedMemoryGraph,
 } from './types';
 import {
   asRecord,
@@ -877,4 +893,109 @@ export async function reviewPIIFact(factID: string, action: 'approve' | 'reject'
   const raw = await memory.ReviewPIIFact({ factId: factID, action });
   const res = asRecord(raw);
   return mapFact(asRecord(res.fact ?? res.Fact));
+}
+
+// --- 记忆中心重设计：层级全景 + 跨层关联图谱 ---
+
+function mapLayerStat(raw: unknown): MemoryLayerStat {
+  const l = asRecord(raw);
+  return {
+    layer: pickStr(l, 'layer', 'layer'),
+    item_count: pickI32(l, 'item_count', 'itemCount'),
+    today_added: pickI32(l, 'today_added', 'todayAdded'),
+    recall_hits: pickI32(l, 'recall_hits', 'recallHits'),
+    health: pickStr(l, 'health', 'health'),
+    headline_json: pickStr(l, 'headline_json', 'headlineJson'),
+  };
+}
+
+function mapActionItem(raw: unknown): MemoryActionItem {
+  const a = asRecord(raw);
+  return {
+    kind: pickStr(a, 'kind', 'kind'),
+    count: pickI32(a, 'count', 'count'),
+    target_tab: pickStr(a, 'target_tab', 'targetTab'),
+  };
+}
+
+function mapActivityItem(raw: unknown): MemoryActivityItem {
+  const it = asRecord(raw);
+  return {
+    ts: pickStr(it, 'ts', 'ts'),
+    kind: pickStr(it, 'kind', 'kind'),
+    layer_from: pickStr(it, 'layer_from', 'layerFrom'),
+    layer_to: pickStr(it, 'layer_to', 'layerTo'),
+    summary: pickStr(it, 'summary', 'summary'),
+  };
+}
+
+function mapUnifiedNode(raw: unknown): UnifiedGraphNode {
+  const n = asRecord(raw);
+  return {
+    id: pickStr(n, 'id', 'id'),
+    layer: pickStr(n, 'layer', 'layer'),
+    kind: pickStr(n, 'kind', 'kind'),
+    label: pickStr(n, 'label', 'label'),
+    weight: pickNum(n, 'weight', 'weight'),
+    meta_json: pickStr(n, 'meta_json', 'metaJson'),
+  };
+}
+
+function mapUnifiedEdge(raw: unknown): UnifiedGraphEdge {
+  const e = asRecord(raw);
+  return {
+    source: pickStr(e, 'source', 'source'),
+    target: pickStr(e, 'target', 'target'),
+    type: pickStr(e, 'type', 'type'),
+    label: pickStr(e, 'label', 'label'),
+    weight: pickNum(e, 'weight', 'weight'),
+    polarity: pickStr(e, 'polarity', 'polarity'),
+  };
+}
+
+/** 层级全景：五层卡片 + 行动项 + 最近记忆动态。sessionID 为空时跳过会话级层（L0/L1）。 */
+export async function getMemoryLayerOverview(agentID: string, sessionID = ''): Promise<MemoryLayerOverview> {
+  const res = asRecord(
+    await memory.GetMemoryLayerOverview({
+      agentId: agentID,
+      sessionId: sessionID || undefined,
+    }),
+  );
+  const layersRaw = res.layers ?? res.Layers;
+  const actionsRaw = res.action_items ?? res.actionItems;
+  const feedRaw = res.activity_feed ?? res.activityFeed;
+  return {
+    layers: Array.isArray(layersRaw) ? layersRaw.map(mapLayerStat) : [],
+    action_items: Array.isArray(actionsRaw) ? actionsRaw.map(mapActionItem) : [],
+    activity_feed: Array.isArray(feedRaw) ? feedRaw.map(mapActivityItem) : [],
+  };
+}
+
+/** 跨层关联图谱：L4 实体 + L3 事实 + L2 情景同图，BFS 自 focus 节点扩展。 */
+export async function getUnifiedMemoryGraph(
+  agentID: string,
+  query: UnifiedMemoryGraphQuery = {},
+): Promise<UnifiedMemoryGraph> {
+  const res = asRecord(
+    await memory.GetUnifiedMemoryGraph({
+      agentId: agentID,
+      focus: query.focus || undefined,
+      hops: query.hops,
+      minWeight: query.min_weight,
+      layers: query.layers,
+    }),
+  );
+  const nodesRaw = res.nodes ?? res.Nodes;
+  const edgesRaw = res.edges ?? res.Edges;
+  const nodes = Array.isArray(nodesRaw) ? nodesRaw.map(mapUnifiedNode) : [];
+  const edges = Array.isArray(edgesRaw) ? edgesRaw.map(mapUnifiedEdge) : [];
+  return {
+    focus: pickStr(res, 'focus', 'focus'),
+    nodes,
+    edges,
+    node_count: pickOptionalI32(res, 'node_count', 'nodeCount') ?? nodes.length,
+    edge_count: pickOptionalI32(res, 'edge_count', 'edgeCount') ?? edges.length,
+    filtered_edge_count: pickOptionalI32(res, 'filtered_edge_count', 'filteredEdgeCount') ?? 0,
+    empty_reason: pickStr(res, 'empty_reason', 'emptyReason'),
+  };
 }

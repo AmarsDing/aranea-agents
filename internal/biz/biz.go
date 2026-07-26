@@ -34,7 +34,6 @@ var ProviderSet = wire.NewSet(
 	NewCronUsecase,
 	NewPluginUsecase,
 	NewScopeAgentLookup,
-	NewSkillUsecase,
 	NewSessionUsecase,
 	NewSessionActivityLister,
 	NewSessionAgentLookup,
@@ -47,7 +46,12 @@ var ProviderSet = wire.NewSet(
 	NewChannelTurnJobUsecase,
 	NewSessionRunUsecase,
 	NewAgentMCPTooling,
-	ProvideEvolutionUsecase,
+	// NOTE(A1): SkillEvolutionOrchestrator + triggers, and the three evolution
+	// usecases that need SetOrchestrator (EvolutionUsecase / LearningLoopUsecase /
+	// SkillEvolutionUsecase), are assembled in cmd/admin/wire.go — trigger
+	// registration and SetOrchestrator are imperative steps that wire cannot
+	// express via bare constructors here. ProvideEvolutionUsecase is wrapped by
+	// wire.go's provideEvolutionUsecase, so it is excluded from this set.
 	NewTaskUsecase,
 	NewArtifactUsecase,
 	NewKnowledgeUsecaseFromRepo,
@@ -59,13 +63,7 @@ var ProviderSet = wire.NewSet(
 	NewWebhookUsecase,
 	NewWebhookDispatcher,
 	NewAgentTemplateUsecase,
-	NewLearningLoopUsecase,
 	NewRuntimeProfileUsecase,
-	NewSkillEvolutionUsecase,
-	NewSkillEvolutionOrchestrator,
-	NewPatternTrigger,
-	NewHealthTrigger,
-	NewAgentConfigTrigger,
 	NewOrganizationUsecase,
 	NewPositionPromptUsecase,
 	ProvideDeptTeamLister,
@@ -79,7 +77,6 @@ var ProviderSet = wire.NewSet(
 	NewSkillReportUsecase,
 	NewSkillDedupUsecase,
 	NewSkillSimilarityEngine,
-	NewSkillMergeUsecase,
 	NewRuleBasedContentFuser,
 	ProvideSkillMergeGateVerifier,
 	ProvideSkillEmbedder,
@@ -198,10 +195,13 @@ func ProvideSkillEmbedder() DedupEmbedder { return nil }
 // ProvideDefaultDedupWeights returns default dedup similarity weights.
 func ProvideDefaultDedupWeights() SimilarityWeights { return DefaultDedupWeights() }
 
-// ProvideSkillMergeGateVerifier returns nil gate verifier for skill merge.
-// When GateVerifier is wired (with SandboxRunner and SkillLintChecker),
-// replace this provider with NewGateVerifier.
-func ProvideSkillMergeGateVerifier() SkillGateVerifier { return nil }
+// ProvideSkillMergeGateVerifier builds the Gate verifier for skill merge /
+// evolution. sandboxRunner is the service-layer sandbox (rule-based + optional
+// code execution); lintChecker is nil so the style dimension falls back to the
+// built-in rule-based checks (length + heading presence).
+func ProvideSkillMergeGateVerifier(sandboxRunner SandboxRunner) SkillGateVerifier {
+	return NewGateVerifier(sandboxRunner, nil)
+}
 
 func requireNonEmpty(val, domain, field string) (string, error) {
 	val = strings.TrimSpace(val)

@@ -23,7 +23,6 @@
         dense
         expand-separator
         :label="t('graphs.propertyGroupBasic')"
-        default-opened
         class="graph-property-panel__group graph-property-panel__group--basic"
         header-class="graph-property-panel__group-header"
       >
@@ -71,7 +70,6 @@
         dense
         expand-separator
         :label="t('graphs.groupConditionalRoute')"
-        default-opened
         class="graph-property-panel__group graph-property-panel__group--conditional"
         header-class="graph-property-panel__group-header"
       >
@@ -149,7 +147,6 @@
         dense
         expand-separator
         :label="t('graphs.groupModelAgent')"
-        default-opened
         class="graph-property-panel__group graph-property-panel__group--model"
         header-class="graph-property-panel__group-header"
       >
@@ -417,7 +414,6 @@
         dense
         expand-separator
         :label="t('graphs.propertyGroupGraph')"
-        default-opened
         class="graph-property-panel__group"
         header-class="graph-property-panel__group-header"
       >
@@ -513,7 +509,7 @@
                 @update:model-value="(v: string | number | null) => updateStateField(idx, 'name', String(v ?? ''))"
               />
               <q-select
-                :model-value="field.type"
+                :model-value="normalizeStateFieldType(field.type)"
                 class="col-3"
                 dense
                 outlined
@@ -583,6 +579,7 @@ import {
   STATE_FIELD_TYPE_OPTIONS,
   ENGINE_OPTIONS,
   FAILURE_ACTION_OPTIONS,
+  normalizeStateFieldType,
 } from '../../features/graph/types';
 import type { useGraphUndoRedo } from '../../features/graph/useGraphUndoRedo';
 import { useConditionalRoutes } from '../../features/graph/useConditionalRoutes';

@@ -1496,3 +1496,59 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 修改：`internal/biz/task_plan.go`、`internal/biz/agent_capability.go`、`internal/biz/agent_factory.go`、`internal/biz/agent_types.go`、`internal/biz/spirit_orchestration_cache.go`、`internal/data/ent/schema/agent.go`、`internal/data/ddl_migration_registry.go`、`internal/data/agent_repo.go`、`internal/agent/task_planner_impl.go`、`internal/agent/task_planner_impl_test.go`（domain 解析用例）、`internal/agent/agent_allocator_impl.go`、`internal/agent/agent_factory.go`、`internal/agent/agent_factory_test.go`、`internal/agent/task_orchestrator_impl.go`、`internal/agent/agent_capability_builder.go`、`cmd/admin/wire.go`、`cmd/admin/wire_gen.go`
 
 > 注：learn 闭环（T7）由 `spirit_orchestration_cache_test.go`（配方记录/查询语义）+ `agent_domain_match_test.go`（L0 复用链路）覆盖，未单建 `task_orchestrator_learn_test.go`；repo 列映射（`agent_repo.go`）无独立测试文件，由 ent 生成代码 + 全量 data 包测试覆盖。
+
+---
+
+## 子模块：团队交付物可靠性增强（Deliverable Reliability）
+
+> **状态**：✅ 已实施（2026-07-25） | **设计**：[1-chat.design.md §B.10.22](./1-chat.design.md#b1022-团队交付物可靠性增强2026-07-25-已实施) | **背景**：19:29 对话 Agent 间数据共享失败根因链（G1-G7）
+
+### DR-D.1 模块定位
+
+修复团队"完成≠有产出"的根本语义缺陷：真实产出只认 `set_deliverable` 写入的 graph state；无产出团队翻转 failed 并阻断下游调度；交付协议注入 + DAG 团队无条件开启交付通道；合成报告诚实化；planner 需求澄清优先；member_sessions ID 公式统一；`read_upstream_deliverable` 内容源重排为 state→信封→legacy reply。改动集中在 biz/service/agent/data 后端四层 + DECISION.md 提示层，无前端改动。
+
+### DR-D.2 代码锚点
+
+| 文件 | 职责 | 状态 |
+|------|------|------|
+| `internal/biz/spirit_team_usecase.go:2004` | `HasRealDeliverable`：真实产出判定（只认 set_deliverable state） | ✅ |
+| `internal/biz/spirit_team_usecase.go:1844` | 哨兵错误 `ErrNoRealDeliverable` | ✅ |
+| `internal/biz/spirit_team_usecase.go:2188` | `BuildTeamTurnInput`：交付协议注入（Fix 2b） | ✅ |
+| `internal/biz/spirit_team_usecase.go:1279` | `buildSpiritTeamDefinitionJSON`：DAG 团队无条件 `enable_state_deliverable` | ✅ |
+| `internal/biz/spirit_team_usecase.go:2372` | `resolveDeliverableFullContent`：全文内容源 state→信封→legacy reply（Fix 7） | ✅ |
+| `internal/biz/spirit_team_usecase.go:1591` | `ListFailedTeamBriefs`：失败团队简报收集（Fix 3） | ✅ |
+| `internal/biz/spirit_synthesis.go:86` | `BuildSynthesisSummaryTrigger`：诚实合成触发文本（Fix 3） | ✅ |
+| `internal/biz/team_types.go` | `DeliverableRef` 注释同步（全文源变更） | ✅ |
+| `internal/service/spirit_team.go` | `HandleTeamTurnResult` 交付物闸门（无产出→failed）；诚实触发文本/兜底通知接线 | ✅ |
+| `internal/service/spirit_team.go:1006` | `SpiritTeamAssembler.BuildTeamTurnInput` 委托 | ✅ |
+| `internal/scenario/system/prompts/DECISION.md` | mode 选择规则第 1 条：阻塞性歧义→先澄清禁止组队（Fix 4） | ✅ |
+| `internal/scenario/system/embed_test.go` | DECISION.md 澄清优先内容守卫测试 | ✅ |
+| `internal/agent/activity_context.go:110` | `NewMemberSessionActivityID`：ID 公式统一（Fix 5） | ✅ |
+| `internal/data/member_session_v2_repo.go` | 基于 ID 幂等写入（Fix 5） | ✅ |
+
+### DR-D.3 任务清单
+
+| # | 任务 | 依赖 | 状态 |
+|---|------|------|------|
+| T1 | Fix 1+2：`HasRealDeliverable` + service 交付物闸门 + 移除 reply 双兜底 | — | ✅ |
+| T2 | Fix 2b：协议注入（`DeliverableProtocolSuffix`/`BuildTeamTurnInput`）+ 定义层无条件 enable | T1 | ✅ |
+| T3 | Fix 3：`TeamFailureBrief`/`BuildSynthesisSummaryTrigger` + service 接线 + synthesis 诚实约束 | T1 | ✅ |
+| T4 | Fix 4：DECISION.md 澄清优先规则 + 内容守卫测试 | — | ✅ |
+| T5 | Fix 5：member_sessions ID 公式统一 + 幂等写入（只修生成逻辑） | — | ✅ |
+| T6 | Fix 7：`resolveDeliverableFullContent` 三级内容源 + 用例 | T1 | ✅ |
+| T7 | 全量验证 + 设计文档 B.10.22 同步 | T1-T6 | ✅ |
+
+### DR-D.4 验收标准
+
+- [x] DAG 团队 turn 完成但未调 `set_deliverable`：团队状态翻转 failed，下游团队不被调度（`TestHasRealDeliverable_*` 五组用例 + service 闸门测试）
+- [x] DAG 单成员团队定义 JSON 必含 `enable_state_deliverable: true`（`buildSpiritTeamDefinitionJSON` requireDeliverable 分支）
+- [x] DAG 团队首轮输入必含交付协议且声明上游契约（`TestBuildTeamTurnInput_*` 四组用例）
+- [x] 全文读取返回 state 未截断内容（600 字 summary 完整 + 结构化 keys），永不返回 reply 文本；state 不可读时降级信封（`TestReadUpstreamDeliverable_PrefersGraphStateOverReply`/`_GraphStateEmpty_FallsBackToEnvelope`）
+- [x] 存在失败团队时合成触发文本如实列出失败，禁止虚构"全部成功"（`TestListFailedTeamBriefs_*`）
+- [x] DECISION.md 含澄清优先规则（`TestDecisionPrompt_RequiresClarificationBeforeTeaming` 守卫）
+- [x] member session activity ID 与 v2 公式一致（`TestPublishTeamStepActivity_MemberSessionIDMatchesV2Formula`）
+- [x] `go build ./...` 通过；`go test ./internal/biz/... ./internal/service/... ./internal/scenario/...` 全部通过（2026-07-25）
+
+### DR-D.5 改动文件清单（实际）
+
+修改：`internal/biz/spirit_team_usecase.go`、`internal/biz/spirit_synthesis.go`、`internal/biz/team_types.go`、`internal/biz/spirit_team_deliverable_test.go`、`internal/biz/spirit_synthesis_report_test.go`、`internal/biz/spirit_team_usecase_test.go`、`internal/service/spirit_team.go`、`internal/service/spirit_team_handle_result_test.go`、`internal/scenario/system/prompts/DECISION.md`、`internal/scenario/system/embed_test.go`、`internal/agent/activity_context.go`、`internal/agent/task_orchestrator_impl.go`、`internal/data/member_session_v2_repo.go`、`internal/team/runner_helpers_test.go`、`cmd/admin/wire.go`、`cmd/admin/wire_gen.go`

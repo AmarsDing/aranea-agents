@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"aranea-agents/internal/biz"
@@ -57,8 +58,8 @@ func stepToWire(s biz.Step) stepWire {
 		Reasoning:       s.Reasoning,
 		ToolName:        s.ToolName,
 		ToolCallID:      s.ToolCallID,
-		ToolArgs:        s.ToolArgs,
-		ToolResult:      s.ToolResult,
+		ToolArgs:        sanitizeRawJSON(s.ToolArgs),
+		ToolResult:      sanitizeRawJSON(s.ToolResult),
 		ToolDurationMs:  s.ToolDurationMs,
 		ToolErrorCode:   s.ToolErrorCode,
 		NoticeType:      s.NoticeType,
@@ -67,6 +68,18 @@ func stepToWire(s biz.Step) stepWire {
 		StartedAt:       s.StartedAt,
 		CompletedAt:     s.CompletedAt,
 	}
+}
+
+// sanitizeRawJSON returns nil for invalid JSON so json.Marshal emits null
+// instead of failing with "error calling MarshalJSON for type json.RawMessage".
+func sanitizeRawJSON(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return nil
+	}
+	if !json.Valid(raw) {
+		return nil
+	}
+	return raw
 }
 
 func memberInfoToWire(m biz.MemberInfo) memberInfoWire {

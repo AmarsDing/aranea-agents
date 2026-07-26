@@ -10,7 +10,6 @@ import type { PlatformResourceTreeNode } from '../../features/platform/types';
 import type { Team, TeamDefinition } from '../../features/teams/types';
 import { buildGraphFromDefinition } from '../../features/teams/graphUtils';
 import {
-  runtimeEngineOptions,
   BuiltinIndustryId,
   PresetIndustryId,
   teamRoleLabel,
@@ -27,7 +26,6 @@ export {
   statusOptions,
   roleOptions,
   teamTemplateOptions,
-  runtimeEngineOptions,
   failureDefaultOptions,
   parallelFailOptions,
   failureOnErrorOptions,
@@ -181,11 +179,6 @@ export function validateTeamDefinition(definition: TeamDefinition): string | nul
 
 // ── Label helpers ──
 
-export function runtimeEngineLabel(value?: string) {
-  const v = String(value || 'graph').toLowerCase() === 'native' ? 'native' : 'graph';
-  return runtimeEngineOptions.find((o) => o.value === v)?.label ?? v;
-}
-
 export function failurePolicySummary(def: TeamDefinition): string {
   const fp = def.failure_policy;
   if (!fp) return '重试后阻塞（默认）';
@@ -218,15 +211,6 @@ export function resetDefinition(target: TeamDefinition): void {
 
 // ── Definition parse / serialize ──
 
-function resolveRuntimeEngine(parsed: TeamDefinition): TeamDefinition['runtime_engine'] {
-  const raw = String(parsed.runtime_engine || '')
-    .trim()
-    .toLowerCase();
-  if (raw === 'graph' || parsed.team_graph_runtime === true) return 'graph';
-  if (raw === 'native' || raw === '') return 'native';
-  return parsed.runtime_engine;
-}
-
 export function parseDefinition(team: Team): TeamDefinition {
   try {
     const parsed = JSON.parse(team.definition_json || '{}') as TeamDefinition;
@@ -251,8 +235,9 @@ export function parseDefinition(team: Team): TeamDefinition {
       ...parsed,
       version: parsed.version || 1,
       description: parsed.description || '',
-      runtime_engine: resolveRuntimeEngine(parsed),
-      team_graph_runtime: parsed.team_graph_runtime === true,
+      // ADR-08 Phase B：GraphAgent 为唯一执行引擎，旧 native 数据读取即归一。
+      runtime_engine: 'graph',
+      team_graph_runtime: true,
       linked_graph_id: String(parsed.linked_graph_id || linkedFromTeam || '').trim() || undefined,
       failure_policy: parsed.failure_policy,
       mode: parsed.mode || 'sequential',
@@ -271,15 +256,12 @@ export function parseDefinition(team: Team): TeamDefinition {
   }
 }
 
-/** 序列化 definition_json 时同步 runtime_engine / team_graph_runtime 双写，避免旧后端只读其一。 */
+/** 序列化 definition_json：GraphAgent 为唯一执行引擎（ADR-08 Phase B），固定写 graph。 */
 export function definitionToJSON(definition: TeamDefinition): string {
-  const engine = String(definition.runtime_engine || 'graph')
-    .trim()
-    .toLowerCase();
   const payload: TeamDefinition = {
     ...definition,
-    runtime_engine: engine === 'graph' ? 'graph' : 'native',
-    team_graph_runtime: engine === 'graph',
+    runtime_engine: 'graph',
+    team_graph_runtime: true,
     graph: definition.graph?.nodes?.length ? definition.graph : buildGraphFromDefinition(definition),
   };
   return JSON.stringify(payload);

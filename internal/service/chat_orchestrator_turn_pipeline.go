@@ -48,6 +48,7 @@ type turnPersistResult struct {
 	assistantMsg  biz.ChatMessage
 	promptTok     int
 	completionTok int
+	cachedTok     int
 }
 
 // turnPipeline encapsulates the core ADMISSION → EXECUTE → PERSIST turn phases.
@@ -271,5 +272,6 @@ func (p *turnPipeline) persistTurn(
 		assistantMsg:  assistantMsg,
 		promptTok:     promptTok,
 		completionTok: completionTok,
+		cachedTok:     execResult.result.CachedTok,
 	}, nil
 }

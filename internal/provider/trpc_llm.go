@@ -352,6 +352,14 @@ func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.
 		cb := biztool.NewCircuitBreaker(fmt.Sprintf("provider:%s:%s", cfg.ProviderType, cfg.ModelAPI), cbCfg)
 		transport = newCircuitBreakerTransport(transport, cb, lg)
 	}
+	// Usage tap (outermost): normalize DeepSeek-style prompt_cache_hit_tokens
+	// into OpenAI-standard prompt_tokens_details.cached_tokens so the SDK
+	// surfaces it as Usage.PromptTokensDetails.CachedTokens. Without this,
+	// cache-hit tokens are billed at the full input price downstream.
+	if needsUsageTap(cfg) {
+		transport = newUsageTapTransport(transport)
+		hasCustomTransport = true
+	}
 	if hasCustomTransport || cfg.RateLimitRPM > 0 || cfg.Retry.MaxAttempts != 0 || cfg.CB.Enabled {
 		opts = append(opts, trpcprovider.WithHTTPClientTransport(transport))
 	}

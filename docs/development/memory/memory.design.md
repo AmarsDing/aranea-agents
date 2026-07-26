@@ -1785,3 +1785,172 @@ const memoryRoutes = [
 ]
 ```
 
+---
+
+## 十、记忆中心重设计（2026-07-25）：层级全景 + 跨层关联图谱
+
+> 需求见 `memory.md` §21。本节为架构、API 契约与前端组件设计。高保真原型：`.superpowers/brainstorm/vc-20260725051916/content/redesign-overview.html` / `redesign-graph.html`。
+
+### 10.1 信息架构
+
+记忆中心 Tab 从现状（总览 / 知识库 / 会话 / 图谱与进化 / 调试 / Worker）重组为 4 个：
+
+| 新 Tab | 来源 | 说明 |
+|--------|------|------|
+| 层级全景 | 新增（替代总览） | 五层卡片管道 + 需要关注 + 最近记忆动态 |
+| 关联图谱 | 升级 MemoryGraphExplorer | 跨层统一图（实体/事实/情景三类节点） |
+| 记忆浏览 | 整合 MemoryKnowledgePanel + 新增 L2 情景时间线 | facts 表格与 episodes 时间线，支持层级过滤与图谱跳转定位 |
+| 治理 | 归并 cascade / evolution / settings / worker 面板 | 审批、演进、平台设置、Worker 状态集中 |
+
+页面 Hero 区保留 Agent 选择器，新增全记忆搜索框与「记忆健康」总分徽标。
+
+### 10.2 后端 API 契约
+
+仅新增 2 个聚合端点，无新表、无 Schema 变更，数据全部来自现有 repo。
+
+#### ① `GET /v1/memory/layer-overview?agent_id=&session_id=`
+
+单次请求返回五层统计 + 行动项 + 动态事件流（proto：`GetMemoryLayerOverviewResponse`，`headline_json` 为 JSON 字符串，前端解析后展示）：
+
+```json
+{
+  "layers": [
+    {
+      "layer": "L0", "item_count": 12, "today_added": 2, "recall_hits": 0,
+      "health": "ok",
+      "headline_json": "{\"context_usage_pct\":68,\"compress_status\":\"normal\"}"
+    },
+    { "layer": "L1", "item_count": 3, "today_added": 1, "recall_hits": 0,
+      "health": "ok", "headline_json": "{\"active_tasks\":3,\"field_count\":24}" },
+    { "layer": "L2", "item_count": 45, "today_added": 6, "recall_hits": 3,
+      "health": "ok", "headline_json": "{}" },
+    { "layer": "L3", "item_count": 128, "today_added": 2, "recall_hits": 11,
+      "health": "warn", "headline_json": "{\"conflict_open\":2}" },
+    { "layer": "L4", "item_count": 67, "today_added": 3, "recall_hits": 0,
+      "health": "ok", "headline_json": "{\"relation_count\":143,\"strategy_count\":4}" }
+  ],
+  "action_items": [
+    { "kind": "fact_conflict", "count": 2, "target_tab": "browse" },
+    { "kind": "evolution_pending", "count": 1, "target_tab": "governance" },
+    { "kind": "context_risk", "count": 1, "target_tab": "panorama" }
+  ],
+  "activity_feed": [
+    { "ts": "2026-07-25T10:32:00+08:00", "kind": "fact_extracted",
+      "layer_from": "L2", "layer_to": "L3", "summary": "从「季度复盘讨论」提炼出 2 条事实" }
+  ]
+}
+```
+
+**数据来源**（全部现有能力）：
+
+| 字段 | 来源 |
+|------|------|
+| L0 item_count / context_usage | `L0SnapshotRepo.GetLatestSessionSnapshot` / `ListSessionSnapshots` |
+| L1 active_tasks / field_count | 现有 L1 tasks/fields API |
+| L2 item_count / today_added | `episodeRepo.ListLatestByScope` + `created_at` 聚合 |
+| L3 item_count / conflict_open / recall_hits | facts 表 count + `conflict_count>0` + `hit_count` 增量聚合 |
+| L4 item_count / relation_count | `memoryGraphRepo.GraphStats`（已有） |
+| action_items | 上述冲突数 + cascade 待审批 + evolution pending + 上下文阈值 |
+| activity_feed | 归并最近 facts / episodes / entities（按 `created_at` 倒序，limit 20） |
+
+`recall_hits` 口径：近 7 天命中次数。facts 已有 `hit_count` 计数器，MVP 阶段取全量 `hit_count` 排序展示 Top 值即可，不做时间窗增量（避免新增统计表）。
+
+#### ② `GET /v1/memory/graph/unified?agent_id=&focus=&hops=2&min_weight=&layers=L2,L3,L4`
+
+跨层统一图，返回节点与边（proto：`GetUnifiedMemoryGraphResponse`；`meta_json` 为 JSON 字符串；统计字段平铺，无 `stats` 嵌套；空图时 `empty_reason` 给出原因）：
+
+```json
+{
+  "focus": "ent_001",
+  "nodes": [
+    { "id": "ent_001", "layer": "L4", "kind": "entity", "label": "用户画像",
+      "weight": 23, "meta_json": "{\"entity_type\":\"person\",\"confidence\":0.92}" },
+    { "id": "fact_101", "layer": "L3", "kind": "fact", "label": "偏好简洁回复",
+      "weight": 11, "meta_json": "{\"statement\":\"用户偏好简洁回复（完整原文）\",\"confidence\":0.88,\"hit_count\":34}" },
+    { "id": "ep_201", "layer": "L2", "kind": "episode", "label": "季度复盘讨论",
+      "weight": 1, "meta_json": "{\"happened_at\":\"...\",\"summary\":\"...\"}" }
+  ],
+  "edges": [
+    { "source": "ent_001", "target": "ent_002", "type": "entity_relation",
+      "label": "提到 12 次", "weight": 0.8, "polarity": "SUPPORTS" },
+    { "source": "ent_001", "target": "fact_101", "type": "entity_fact", "weight": 1.0 },
+    { "source": "fact_101", "target": "fact_102", "type": "fact_link", "weight": 0.6 },
+    { "source": "fact_101", "target": "ep_201", "type": "fact_source", "weight": 1.0 },
+    { "source": "fact_103", "target": "fact_104", "type": "fact_conflict",
+      "polarity": "INHIBIT", "weight": 0.9 }
+  ],
+  "node_count": 24,
+  "edge_count": 41,
+  "filtered_edge_count": 17,
+  "empty_reason": ""
+}
+```
+
+> **fact 节点 `meta_json.statement`**：节点 `label` 被截断为 40 字符（省略号结尾），前端「在记忆浏览中打开」跳转依赖 `meta_json` 中的完整 `statement` 原文做知识库搜索（2026-07-26 修复，见 `TestUnifiedMemoryGraph_FactMetaCarriesFullStatement`）。
+>
+> **`empty_reason` 取值**：`""`（正常）/ `no_memory_data`（无任何记忆数据）/ `focus_not_found`（指定 focus 不在图内）。
+
+**边的来源映射**（已对照代码核实，2026-07-25）：
+
+| 边类型 | 数据来源 |
+|--------|---------|
+| `entity_relation`（含 INHIBIT 红边） | `memory_relations` 表，两端点均命中 `memory_entities`（`l4GraphRepo` / `NeighborhoodJSON` 同源） |
+| `entity_fact` | `memory_relations` 中一端命中 `memory_entities`、另一端命中 `memory_facts` 的关系（schema 不限制端点类型；无数据时自然不渲染） |
+| `fact_link` | ① `memory_relations` 中两端均为 fact ID 的 `EVOLVED_FROM` 关系（`link_evolution.go` `applyEvolvedFromSideEffects` 写入）；② `memory_facts.links_json`（A-MEM 链接） |
+| `fact_source` | `memory_facts.source_episode_id`（`episode_consolidator` 写入，已核实） |
+| `fact_conflict` | facts `conflict_count>0` 的冲突对（`ListConflictingFacts`）+ INHIBIT 关系 |
+
+> 注：此前草稿提到的 `fact_entities` 关联表**不存在**，实体↔事实关联以 `memory_relations` 端点解析为准。
+
+**默认 focus 策略**：未指定时由 repo 查询关系数最多的活跃实体（`memory_relations` 按端点聚合计数 Top 1）；空图时返回空 nodes 并附 `empty_reason`。
+
+**BFS 扩展**：从 focus 出发按跳数扩展，在组装好的跨层邻接表上做内存 BFS（邻接来源见边来源映射）；`min_weight` 过滤 `memory_relations.weight` 弱边。
+
+### 10.3 前端组件架构
+
+```
+web/src/features/memory/
+├── panorama/                          ← P1 新增
+│   ├── MemoryPanoramaTab.vue          ← 层级全景容器
+│   ├── LayerFlowCards.vue             ← 五层卡 + 层间箭头 + 双向流向条
+│   ├── LayerCard.vue                  ← 单层卡（props：layer/stats/health/headline）
+│   ├── MemoryActionItems.vue          ← 需要关注
+│   ├── MemoryActivityFeed.vue         ← 最近记忆动态
+│   └── composables/useLayerOverview.ts
+├── graph/                             ← P2 升级 MemoryGraphExplorer
+│   ├── UnifiedMemoryGraph.vue         ← 跨层统一图（Vue Flow 渲染）
+│   ├── GraphFilterRail.vue            ← 左侧：层级开关/边图例/权重阈值
+│   ├── GraphNodeDetailDrawer.vue      ← 右侧：选中节点详情 + 连接列表
+│   ├── memoryGraphLayout.ts           ← dagre 分层布局（L4→L3→L2 自上而下）
+│   └── composables/useUnifiedMemoryGraph.ts
+├── browse/                            ← P3 整合
+│   ├── MemoryBrowseTab.vue            ← facts 表格 + episodes 时间线 + 层级过滤
+│   └── MemoryEpisodeTimeline.vue      ← L2 情景时间线（新增）
+└── （现有面板归并到治理 Tab：MemoryCascadePanel / 演进 / MemoryPlatformSettingsPanel / Worker 状态）
+```
+
+**渲染选型**：Vue Flow（已在依赖）+ dagre 分层布局（已在依赖），零新增依赖。层级自上而下排布（L4 → L3 → L2），与五层模型心智一致；缩放/拖拽/选中/连线交互由 Vue Flow 提供。力导向布局（d3-force）列为 P4 可选增强。
+
+**数据流**：遵循项目数据流铁律——composable 调 service（`web/src/services/kratos/memory/v1`），组件不直接调 API；`memoryEndpoints.ts` 增补 `layerOverview` / `unifiedMemoryGraph` 两个端点。
+
+### 10.4 UX 规范
+
+| 项 | 规范 |
+|----|------|
+| 层级色码（全站统一） | L0 `#90a4ae` / L1 `#7986cb` / L2 `#4db6ac` / L3 `#ba68c8` / L4 `#ff8a65` |
+| 图谱节点形状 | 圆形=L4 实体、圆角方块=L3 事实、三角=L2 情景 |
+| 边样式 | 实体关系=实线（颜色随源层级）；事实来源=虚线；冲突/INHIBIT=红色虚线 `#ef5350` |
+| 层级卡内容 | 图标+名称 / 一句话人话说明 / 核心大数字 / 今日新增 / 召回命中 / 健康徽标 |
+| 流向条 | 卡片排上方「沉淀 ⬇（今日新增）」、下方「召回 ⬆（命中次数）」 |
+| 图谱默认视图 | focus + 2 跳 + 权重阈值 ≥0.35；底部状态栏显示节点/边/已过滤数 |
+| i18n | 层级名、健康状态、边类型全部走语言包，枚举映射中文 |
+
+### 10.5 落地 Phase
+
+| Phase | 范围 | 出口标准 |
+|-------|------|---------|
+| P1 | layer-overview API + 层级全景 Tab（FR-R1~R4） | 首页 3 秒看懂各层记忆量与健康；点击层级卡可钻取 |
+| P2 | unified graph API + 关联图谱 Tab（FR-R5~R8） | 跨层三类节点同图；冲突红边可见；默认 2 跳不毛线球 |
+| P3 | 记忆浏览 Tab（含 L2 时间线）+ 治理 Tab 归并（FR-R9~R10） | L2 前端可浏览；旧 Tab 能力不丢失 |
+| P4 | 扩散激活回放动画 + 力导向切换（FR-R11） | 激活路径逐层点亮可演示 |
+

@@ -90,6 +90,17 @@ func NewSkillIntelligenceUsecase(
 	return uc
 }
 
+// SetGate wires the Gate verifier after construction. Needed because the gate
+// implementation chain (GateVerifier → service.SandboxRunner → this usecase)
+// is cyclic at the DI level: the usecase cannot receive the gate as a
+// constructor dependency. Called once from the wire provider that assembles
+// the CuratorWorker, during single-threaded app startup.
+func (uc *SkillIntelligenceUsecase) SetGate(g SkillGateVerifier) {
+	if g != nil {
+		uc.gate = g
+	}
+}
+
 // bridgeWrite executes the primary write operation and, if successful,
 // attempts the legacy write as a non-fatal side effect.
 // When unifiedStore is available it is treated as the primary; otherwise legacyStore
@@ -446,71 +457,7 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 	suggestion.LifecycleStatus = EvoLifecycleValidating
 
 	// Step 4: Sandbox validation — use GateVerifier if available, otherwise rule-based fallback.
-	var passed bool
-	var resultJSON json.RawMessage
-	if uc.gate != nil {
-		gateResult, gateErr := uc.gate.Verify(ctx, suggestion.SkillID, suggestion.DraftSkillBody, nil)
-		if gateErr != nil {
-			uc.lg.Warn("RunCuratorFlow: GateVerifier failed",
-				loggateway.StepID("skill_intelligence.curator_flow"),
-				loggateway.Str("suggestion_id", suggestion.ID),
-				loggateway.Err(gateErr))
-			passed = false
-		} else {
-			passed = gateResult.Passed
-		}
-		// Build sandbox result from actual gate checks.
-		var checkResults []map[string]any
-		if gateResult != nil {
-			for _, c := range gateResult.Checks {
-				checkResults = append(checkResults, map[string]any{
-					"name": c.Name, "passed": c.Passed, "reason": c.Reason,
-				})
-			}
-		}
-		if raw, marshalErr := json.Marshal(map[string]any{
-			"passed": passed,
-			"checks": checkResults,
-			"message": func() string {
-				if passed {
-					return "All validation checks passed"
-				}
-				return "Some validation checks failed"
-			}(),
-		}); marshalErr != nil {
-			uc.lg.Warn("RunCuratorFlow: marshal sandbox result failed, using fallback",
-				loggateway.StepID("skill_intelligence.curator_flow"),
-				loggateway.Str("suggestion_id", suggestion.ID),
-				loggateway.Err(marshalErr))
-			resultJSON = []byte(`{"error":"marshal failed"}`)
-		} else {
-			resultJSON = raw
-		}
-	} else {
-		passed = uc.ruleBasedSandboxValidation(suggestion)
-		if raw, marshalErr := json.Marshal(map[string]any{
-			"passed": passed,
-			"checks": []map[string]any{
-				{"name": "draft_body_not_empty", "passed": suggestion.DraftSkillBody != ""},
-				{"name": "draft_body_length", "passed": len(suggestion.DraftSkillBody) < 10000},
-				{"name": "skill_id_valid", "passed": suggestion.SkillID != ""},
-			},
-			"message": func() string {
-				if passed {
-					return "All validation checks passed"
-				}
-				return "Some validation checks failed"
-			}(),
-		}); marshalErr != nil {
-			uc.lg.Warn("RunCuratorFlow: marshal sandbox result failed, using fallback",
-				loggateway.StepID("skill_intelligence.curator_flow"),
-				loggateway.Str("suggestion_id", suggestion.ID),
-				loggateway.Err(marshalErr))
-			resultJSON = []byte(`{"error":"marshal failed"}`)
-		} else {
-			resultJSON = raw
-		}
-	}
+	passed, resultJSON := uc.runSandboxCheck(ctx, suggestion.ID, suggestion.SkillID, suggestion.DraftSkillBody)
 	if sbErr := uc.bridgeWrite(ctx,
 		func() error { return uc.unifiedStore.UpdateSandboxResult(ctx, suggestion.ID, passed, resultJSON) },
 		func() error {
@@ -617,19 +564,145 @@ func (uc *SkillIntelligenceUsecase) generateRuleBasedDraft(suggestion *SkillEvol
 	}
 }
 
-// ruleBasedSandboxValidation performs basic rule-based validation on the
-// suggestion draft. Returns true if all checks pass.
-func (uc *SkillIntelligenceUsecase) ruleBasedSandboxValidation(suggestion *SkillEvolutionSuggestion) bool {
-	if suggestion.DraftSkillBody == "" {
-		return false
+// runSandboxCheck executes sandbox verification for a suggestion draft:
+// GateVerifier when wired (A7), otherwise the rule-based fallback. It returns
+// the verdict plus a JSON result payload suitable for persistence. Gate errors
+// degrade to passed=false so the lifecycle can still advance deterministically.
+func (uc *SkillIntelligenceUsecase) runSandboxCheck(ctx context.Context, suggestionID, skillID, draftBody string) (bool, json.RawMessage) {
+	if uc.gate != nil {
+		var passed bool
+		gateResult, gateErr := uc.gate.Verify(ctx, skillID, draftBody, nil)
+		if gateErr != nil {
+			uc.lg.Warn("runSandboxCheck: GateVerifier failed",
+				loggateway.StepID("skill_intelligence.curator_flow"),
+				loggateway.Str("suggestion_id", suggestionID),
+				loggateway.Err(gateErr))
+			passed = false
+		} else {
+			passed = gateResult.Passed
+		}
+		// Build sandbox result from actual gate checks.
+		var checkResults []map[string]any
+		if gateResult != nil {
+			for _, c := range gateResult.Checks {
+				checkResults = append(checkResults, map[string]any{
+					"name": c.Name, "passed": c.Passed, "reason": c.Reason,
+				})
+			}
+		}
+		return passed, uc.marshalSandboxResult(suggestionID, passed, checkResults)
 	}
-	if len(suggestion.DraftSkillBody) >= 10000 {
-		return false
+	passed := draftBody != "" && len(draftBody) < 10000 && skillID != ""
+	return passed, uc.marshalSandboxResult(suggestionID, passed, []map[string]any{
+		{"name": "draft_body_not_empty", "passed": draftBody != ""},
+		{"name": "draft_body_length", "passed": len(draftBody) < 10000},
+		{"name": "skill_id_valid", "passed": skillID != ""},
+	})
+}
+
+// marshalSandboxResult builds the JSON sandbox-result payload. Marshal failures
+// degrade to a minimal fallback payload so persistence never fails on encoding.
+func (uc *SkillIntelligenceUsecase) marshalSandboxResult(suggestionID string, passed bool, checks []map[string]any) json.RawMessage {
+	raw, err := json.Marshal(map[string]any{
+		"passed": passed,
+		"checks": checks,
+		"message": func() string {
+			if passed {
+				return "All validation checks passed"
+			}
+			return "Some validation checks failed"
+		}(),
+	})
+	if err != nil {
+		uc.lg.Warn("marshalSandboxResult: marshal failed, using fallback",
+			loggateway.StepID("skill_intelligence.curator_flow"),
+			loggateway.Str("suggestion_id", suggestionID),
+			loggateway.Err(err))
+		return json.RawMessage(`{"error":"marshal failed"}`)
 	}
-	if suggestion.SkillID == "" {
-		return false
+	return raw
+}
+
+// ValidatePendingSuggestionsForSkill verifies orchestrator-created pending
+// suggestions (lifecycle=draft) for a skill: draft generation → validating →
+// sandbox verification → lifecycle update. Triggering is the exclusive
+// responsibility of EvolutionOrchestratorWorker (unified entry); this method
+// only runs the verification half of the curator pipeline.
+//
+// Orchestrator-created suggestions live only in the unified store, so writes
+// here are unified-only (no legacy bridge).
+func (uc *SkillIntelligenceUsecase) ValidatePendingSuggestionsForSkill(ctx context.Context, skillID string) error {
+	if uc.unifiedStore == nil {
+		return nil
 	}
-	return true
+	skillID, err := requireNonEmpty(skillID, "SKILL_INTELLIGENCE", "skill_id")
+	if err != nil {
+		return err
+	}
+	// The orchestrator guarantees at most one pending suggestion per target,
+	// but list a small page defensively.
+	pending, err := uc.unifiedStore.ListByTarget(ctx, string(EvolutionTargetSkill), skillID, "pending", 10, 0)
+	if err != nil {
+		return apierror.Wrap(err, apierror.CodeInternal, "SKILL_INTELLIGENCE")
+	}
+	for i := range pending {
+		s := &pending[i]
+		if s.LifecycleStatus != "draft" || s.DraftBody != "" {
+			// Already validated (or validating) — skip to keep the operation idempotent.
+			continue
+		}
+		if err := uc.validateCuratorSuggestionUnified(ctx, s); err != nil {
+			uc.lg.Warn("ValidatePendingSuggestionsForSkill: validate failed",
+				loggateway.StepID("skill_intelligence.curator_validate"),
+				loggateway.Str("suggestion_id", s.ID),
+				loggateway.Err(err))
+		}
+	}
+	return nil
+}
+
+// validateCuratorSuggestionUnified runs the verification half of the curator
+// pipeline for an orchestrator-created (unified-only) suggestion:
+// draft generation → validating → sandbox verification → lifecycle update.
+func (uc *SkillIntelligenceUsecase) validateCuratorSuggestionUnified(ctx context.Context, s *UnifiedEvolutionSuggestion) error {
+	// Step 1: Generate draft body (rule-based for v1). improve_skill maps to the
+	// fix_failure template — HealthTrigger conditions all indicate health issues.
+	draft := uc.generateRuleBasedDraft(&SkillEvolutionSuggestion{
+		ID:            s.ID,
+		SkillID:       s.TargetID,
+		Type:          EvoSuggestionFixFailure,
+		TriggerReason: s.TriggerReason,
+	})
+	if err := uc.unifiedStore.UpdateDraftBody(ctx, s.ID, draft); err != nil {
+		return apierror.Wrap(err, apierror.CodeInternal, "SKILL_INTELLIGENCE")
+	}
+
+	// Step 2: Set lifecycle to validating.
+	if err := uc.unifiedStore.UpdateLifecycleStatus(ctx, s.ID, "validating"); err != nil {
+		uc.lg.Warn("validateCuratorSuggestionUnified: UpdateLifecycleStatus(validating) failed",
+			loggateway.StepID("skill_intelligence.curator_validate"),
+			loggateway.Str("suggestion_id", s.ID),
+			loggateway.Err(err))
+	}
+
+	// Step 3: Sandbox verification.
+	passed, resultJSON := uc.runSandboxCheck(ctx, s.ID, s.TargetID, draft)
+	if err := uc.unifiedStore.UpdateSandboxResult(ctx, s.ID, passed, resultJSON); err != nil {
+		uc.lg.Warn("validateCuratorSuggestionUnified: UpdateSandboxResult failed",
+			loggateway.StepID("skill_intelligence.curator_validate"),
+			loggateway.Str("suggestion_id", s.ID),
+			loggateway.Err(err))
+	}
+
+	// Step 4: Rule-based template drafts always return to "draft" (needs human
+	// editing) rather than "ready" — same semantics as RunCuratorFlow.
+	if err := uc.unifiedStore.UpdateLifecycleStatus(ctx, s.ID, "draft"); err != nil {
+		uc.lg.Warn("validateCuratorSuggestionUnified: UpdateLifecycleStatus(final) failed",
+			loggateway.StepID("skill_intelligence.curator_validate"),
+			loggateway.Str("suggestion_id", s.ID),
+			loggateway.Err(err))
+	}
+	return nil
 }
 
 // GenerateDraftForSuggestion generates a draft skill body for an existing

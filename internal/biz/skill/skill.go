@@ -341,6 +341,14 @@ type embedEntry struct {
 	cachedAt time.Time
 }
 
+// DedupCacheInvalidator clears cached skill-dedup results after skill
+// mutations. Implemented by biz.SkillDedupUsecase; defined here to avoid a
+// circular import with the parent biz package. Optional: when nil, mutation
+// hooks are skipped.
+type DedupCacheInvalidator interface {
+	InvalidateDedupCache()
+}
+
 // Usecase implements skill CRUD workflows.
 type Usecase struct {
 	repo       Repo
@@ -348,11 +356,28 @@ type Usecase struct {
 	embedMu    sync.RWMutex
 	embedCache map[string]embedEntry
 	embedTTL   time.Duration
+
+	dedupInvalidator DedupCacheInvalidator
 }
 
 // NewUsecase constructs a SkillUsecase.
 func NewUsecase(repo Repo, embedder SkillEmbedder) *Usecase {
 	return &Usecase{repo: repo, embedder: embedder, embedCache: make(map[string]embedEntry), embedTTL: 30 * time.Minute}
+}
+
+// SetDedupCacheInvalidator wires the dedup cache invalidation hook.
+// Called once during DI setup; not safe for concurrent use with mutations.
+func (u *Usecase) SetDedupCacheInvalidator(inv DedupCacheInvalidator) {
+	u.dedupInvalidator = inv
+}
+
+// invalidateDedupCache clears the dedup result cache after a successful
+// mutation (create/update/delete/merge) so the next DetectDuplicateGroups
+// performs a fresh scan. Nil-safe.
+func (u *Usecase) invalidateDedupCache() {
+	if u.dedupInvalidator != nil {
+		u.dedupInvalidator.InvalidateDedupCache()
+	}
 }
 
 func (u *Usecase) List(ctx context.Context, q ListQuery) (ListResult, error) {
@@ -412,6 +437,7 @@ func (u *Usecase) Create(ctx context.Context, in CreateInput) (Skill, error) {
 	if err != nil {
 		return Skill{}, err
 	}
+	u.invalidateDedupCache()
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -437,6 +463,7 @@ func (u *Usecase) ToggleEnabled(ctx context.Context, id string, enabled bool) (S
 		return Skill{}, err
 	}
 	u.InvalidateEmbedCacheForSlug(s.Slug)
+	u.invalidateDedupCache()
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -454,6 +481,7 @@ func (u *Usecase) Duplicate(ctx context.Context, id string) (Skill, error) {
 	}
 	// Duplicate creates a new slug, so invalidate the new entry.
 	u.InvalidateEmbedCacheForSlug(s.Slug)
+	u.invalidateDedupCache()
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -475,6 +503,7 @@ func (u *Usecase) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	u.InvalidateEmbedCacheForSlug(s.Slug)
+	u.invalidateDedupCache()
 	return nil
 }
 
@@ -522,6 +551,7 @@ func (u *Usecase) UpsertSkillFromDisk(ctx context.Context, in DiskSyncInput) (Sk
 	if err != nil {
 		return Skill{}, outcome, err
 	}
+	u.invalidateDedupCache()
 	applySkillPermission(ctx, &s)
 	return s, outcome, nil
 }
@@ -588,6 +618,7 @@ func (u *Usecase) Patch(ctx context.Context, id string, patch UpdateDraft) (Skil
 	if err != nil {
 		return Skill{}, err
 	}
+	u.invalidateDedupCache()
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -619,6 +650,7 @@ func (u *Usecase) Publish(ctx context.Context, id string) (Skill, error) {
 		return Skill{}, err
 	}
 	u.InvalidateEmbedCacheForSlug(s.Slug)
+	u.invalidateDedupCache()
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -668,6 +700,7 @@ func (u *Usecase) RollbackVersion(ctx context.Context, skillID string, versionID
 	if err != nil {
 		return Skill{}, err
 	}
+	u.invalidateDedupCache()
 	applySkillPermission(ctx, &s)
 	return s, nil
 }

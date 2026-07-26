@@ -676,6 +676,7 @@ func provideTeamTurnDeps(
 	eventBus biz.EventBus,
 	monitorEventBus contract.MonitorBus,
 	seq *v2.Sequencer,
+	learningLoop *biz.LearningLoopUsecase,
 	lg loggateway.Logger,
 ) rt.TurnDeps {
 	// LLMHTTP timeout is sourced from TimeoutPolicy.
@@ -683,14 +684,15 @@ func provideTeamTurnDeps(
 	// can be applied in the LLM call path via context (see trpc_llm.go).
 	timeoutPolicy := provider.NewTimeoutPolicy()
 	return rt.TurnDeps{
-		ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys, mediaProviders),
-		Persist:   persist,
-		Pipeline:  rt.EventPipeline{EventBus: eventBus, MonitorEventBus: monitorEventBus, Sequencer: seq},
-		LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
-		Sessions:  sessions,
-		Compress:  compress,
-		RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
-		Lg:        lg,
+		ReadDeps:     provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys, mediaProviders),
+		Persist:      persist,
+		Pipeline:     rt.EventPipeline{EventBus: eventBus, MonitorEventBus: monitorEventBus, Sequencer: seq},
+		LLMHTTP:      &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
+		Sessions:     sessions,
+		Compress:     compress,
+		RunnerMgr:    rt.NewRunnerManagerFromPersist(persist, lg),
+		LearningLoop: learningLoop,
+		Lg:           lg,
 	}
 }
 
@@ -762,6 +764,7 @@ func provideChatServiceDeps(
 	v2ProjectorFactory *v2.ProjectorFactory,
 	memberSessions biz.MemberSessionV2Repo,
 	memoryConsolidationWriter biz.MemoryConsolidationWriter,
+	learningLoop *biz.LearningLoopUsecase,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
@@ -777,16 +780,17 @@ func provideChatServiceDeps(
 	return service.ChatOrchestratorDeps{
 		Turn: service.ChatTurnDeps{
 			TurnDeps: rt.TurnDeps{
-				ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys, mediaProviders),
-				Persist:   persist,
-				Pipeline:  rt.EventPipeline{EventBus: eventBus, MonitorEventBus: monitorEventBus},
-				LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
-				Sessions:  sessions,
-				SessionRT: sessionRT,
-				Compress:  compress,
-				AfterTurn: biz.NoopNativeTurnAfter{},
-				RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
-				Lg:        lg,
+				ReadDeps:     provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys, mediaProviders),
+				Persist:      persist,
+				Pipeline:     rt.EventPipeline{EventBus: eventBus, MonitorEventBus: monitorEventBus},
+				LLMHTTP:      &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
+				Sessions:     sessions,
+				SessionRT:    sessionRT,
+				Compress:     compress,
+				AfterTurn:    biz.NoopNativeTurnAfter{},
+				RunnerMgr:    rt.NewRunnerManagerFromPersist(persist, lg),
+				LearningLoop: learningLoop,
+				Lg:           lg,
 			},
 			Runs:         runs,
 			PendingQueue: pendingQueue,
@@ -862,8 +866,10 @@ func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, fac
 			})
 		})
 	}
+	memoryAdminUC := biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync, data.NewL3FactWriterAdapter(d, d.VectorStore()), lg)
+	memoryAdminUC.SetMemoryCenterReaders(data.NewL2EpisodeAdminReader(d, d.VectorStore()), data.NewL4RelationAdminReader(d))
 	return service.NewMemoryService(service.MemoryServiceConfig{
-		Admin:               biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync, data.NewL3FactWriterAdapter(d, d.VectorStore()), lg),
+		Admin:               memoryAdminUC,
 		Cascade:             cascade,
 		SysUC:               sysUC,
 		DeadLetterRepo:      deadLetterRepo,
@@ -1119,11 +1125,12 @@ func provideSkillAutoCreator(caller biz.LLMCaller, sys *biz.SystemSettingUsecase
 	return skill.NewSkillAutoCreator(adapter, lg)
 }
 
+// provideSkillEvolutionScanner is disabled (A1): its trigger responsibility
+// (pattern → new-skill proposals) is superseded by PatternTrigger running
+// inside EvolutionOrchestratorWorker, the single unified trigger entry.
+// The worker type is kept for reference until the legacy cleanup (A6).
 func provideSkillEvolutionScanner(skillEvo *biz.SkillEvolutionUsecase, lg loggateway.Logger) *jobs.SkillEvolutionScanner {
-	if strings.TrimSpace(os.Getenv("SKILL_EVOLUTION_DISABLED")) == "1" {
-		return nil
-	}
-	return jobs.NewSkillEvolutionScanner(0, skillEvo, lg)
+	return nil
 }
 
 func provideSkillIntelligenceWorker(uc *biz.SkillIntelligenceUsecase, lg loggateway.Logger) *jobs.SkillIntelligenceWorker {
@@ -1133,7 +1140,13 @@ func provideSkillIntelligenceWorker(uc *biz.SkillIntelligenceUsecase, lg loggate
 	return jobs.NewSkillIntelligenceWorker(0, uc, lg)
 }
 
-func provideCuratorWorker(uc *biz.SkillIntelligenceUsecase, skills biz.SkillQueryReader, lg loggateway.Logger) *jobs.CuratorWorker {
+// provideCuratorWorker also wires the Gate verifier into the intelligence
+// usecase via SetGate (A7 follow-up): the gate chain
+// (GateVerifier → service.SandboxRunner → SkillIntelligenceUsecase) is cyclic
+// at the DI level, so the usecase cannot take the gate as a constructor
+// dependency. This provider sits below both in the DAG, keeping wiring acyclic.
+func provideCuratorWorker(uc *biz.SkillIntelligenceUsecase, gate biz.SkillGateVerifier, skills biz.SkillQueryReader, lg loggateway.Logger) *jobs.CuratorWorker {
+	uc.SetGate(gate)
 	if strings.TrimSpace(os.Getenv("CURATOR_WORKER_DISABLED")) == "1" {
 		return nil
 	}
@@ -1142,6 +1155,23 @@ func provideCuratorWorker(uc *biz.SkillIntelligenceUsecase, skills biz.SkillQuer
 
 func provideSkillRegistrationPort(skillUC *biz.SkillUsecase) biz.SkillRegistrationPort {
 	return service.NewSkillsButlerRegistrationAdapter(skillUC)
+}
+
+// provideSkillUsecase wraps biz.NewSkillUsecase to wire the dedup cache
+// invalidation hook (A3 fix: skill mutations must invalidate the 10-min dedup
+// result cache, otherwise merged/deleted skills keep showing in dedup groups).
+func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEmbedder, dedup *biz.SkillDedupUsecase) *biz.SkillUsecase {
+	u := biz.NewSkillUsecase(repo, embedder)
+	u.SetDedupCacheInvalidator(dedup)
+	return u
+}
+
+// provideSkillMergeUsecase wraps biz.NewSkillMergeUsecase to wire the dedup
+// cache invalidation hook after a successful merge.
+func provideSkillMergeUsecase(reader biz.SkillMergeReader, writer biz.SkillMergeWriter, fuser biz.SkillContentFuser, gate biz.SkillGateVerifier, dedup *biz.SkillDedupUsecase, lg loggateway.Logger) *biz.SkillMergeUsecase {
+	u := biz.NewSkillMergeUsecase(reader, writer, fuser, gate, lg)
+	u.SetDedupCacheInvalidator(dedup)
+	return u
 }
 
 func provideLearningLoopScanner(loop *biz.LearningLoopUsecase, lg loggateway.Logger) *jobs.LearningLoopScanner {
@@ -1524,15 +1554,107 @@ func provideSelfHealObserver(runtimeConf *conf.Runtime, repo biz.HealRecordRepo,
 	return monitor.NewSelfHealObserver(runtimeConf, repo, engine, notifier, lg)
 }
 
-func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *biz.SkillReportUsecase, suggestionRepo *data.SkillEvolutionSuggestionRepo, unifiedRepo *data.UnifiedEvolutionRepo, aggregator biz.SkillHealthAggregator, unanalyzedReader biz.SkillInvocationUnanalyzedReader, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
+func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *biz.SkillReportUsecase, suggestionRepo *data.SkillEvolutionSuggestionRepo, unifiedRepo *data.UnifiedEvolutionRepo, aggregator biz.SkillHealthAggregator, unanalyzedReader biz.SkillInvocationUnanalyzedReader, orch *biz.SkillEvolutionOrchestrator, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
 	reporter.SetUnanalyzedReader(unanalyzedReader)
 	bridge := data.NewEvolutionStoreBridge(unifiedRepo, suggestionRepo, lg)
 	uc := biz.NewSkillIntelligenceUsecase(scorer, reporter, bridge, bridge, aggregator, lg,
 		biz.SkillIntelligenceConfig{
 			UnanalyzedReader: unanalyzedReader,
+			Orchestrator:     orch,
 		},
 	)
 	return uc
+}
+
+// provideSkillEvolutionOrchestrator assembles the unified evolution orchestrator
+// (A1): constructs it over the unified store and registers the three triggers.
+// Trigger registration is imperative, so this cannot live in biz.ProviderSet.
+//
+// Dependency notes:
+//   - HealthTrigger scores via *biz.SkillScoringUsecase (not the intelligence
+//     usecase), which keeps the graph acyclic: orchestrator → scorer → repo.
+//   - AgentConfigTrigger is a reserved placeholder (Check returns nil); it stays
+//     registered so future auto-detection needs no wiring change.
+func provideSkillEvolutionOrchestrator(
+	unifiedRepo *data.UnifiedEvolutionRepo,
+	patterns biz.PatternReader,
+	creator biz.SkillAutoCreator,
+	registrar biz.SkillRegistrationPort,
+	proposalRepo biz.SkillProposalReadWriter,
+	aggregator biz.SkillHealthAggregator,
+	scorer *biz.SkillScoringUsecase,
+	metricsRepo biz.EvolutionMetricsRepo,
+	lg loggateway.Logger,
+) *biz.SkillEvolutionOrchestrator {
+	orch := biz.NewSkillEvolutionOrchestrator(unifiedRepo, unifiedRepo, unifiedRepo, lg)
+	orch.RegisterTrigger(biz.NewPatternTrigger(patterns, creator, registrar, proposalRepo, lg))
+	orch.RegisterTrigger(biz.NewHealthTrigger(aggregator, scorer, lg))
+	orch.RegisterTrigger(biz.NewAgentConfigTrigger(metricsRepo, lg))
+	return orch
+}
+
+// provideEvolutionUsecase wraps biz.ProvideEvolutionUsecase to wire the unified
+// orchestrator for cross-pipeline dedup (A1). Replaces the bare constructor in
+// biz.ProviderSet.
+func provideEvolutionUsecase(
+	metricsRepo biz.EvolutionMetricsRepo,
+	suggestionRepo biz.EvolutionSuggestionRepo,
+	agents biz.AgentRepository,
+	tp biz.EvolutionTxProvider,
+	orch *biz.SkillEvolutionOrchestrator,
+	lg loggateway.Logger,
+) *biz.EvolutionUsecase {
+	uc := biz.ProvideEvolutionUsecase(metricsRepo, suggestionRepo, agents, tp, lg)
+	uc.SetOrchestrator(orch)
+	return uc
+}
+
+// provideSkillEvolutionUsecase wraps biz.NewSkillEvolutionUsecase to wire the
+// unified orchestrator for cross-pipeline dedup (A1).
+func provideSkillEvolutionUsecase(
+	repo biz.SkillProposalReadWriter,
+	patterns biz.PatternReader,
+	agents biz.AgentRepository,
+	creator biz.SkillAutoCreator,
+	registrar biz.SkillRegistrationPort,
+	orch *biz.SkillEvolutionOrchestrator,
+	lg loggateway.Logger,
+) *biz.SkillEvolutionUsecase {
+	uc := biz.NewSkillEvolutionUsecase(repo, patterns, agents, creator, registrar, lg)
+	uc.SetOrchestrator(orch)
+	return uc
+}
+
+// provideLearningLoopUsecase wraps biz.NewLearningLoopUsecase to wire the
+// unified orchestrator so RegisterKnowledge creates UnifiedEvolutionSuggestions
+// through the single pipeline (A1).
+func provideLearningLoopUsecase(
+	obs biz.ObservationReadWriter,
+	pat biz.PatternReadWriter,
+	prop biz.ProposalReadWriter,
+	agents biz.AgentRepository,
+	evolution *biz.EvolutionUsecase,
+	orch *biz.SkillEvolutionOrchestrator,
+	lg loggateway.Logger,
+) *biz.LearningLoopUsecase {
+	uc := biz.NewLearningLoopUsecase(obs, pat, prop, agents, evolution, lg)
+	uc.SetOrchestrator(orch)
+	return uc
+}
+
+// provideEvolutionOrchestratorWorker provides the single unified entry point
+// for automatic evolution triggering (A1), superseding the trigger half of
+// SkillEvolutionScanner and CuratorWorker.
+func provideEvolutionOrchestratorWorker(
+	orch *biz.SkillEvolutionOrchestrator,
+	agents biz.AgentRepository,
+	skills biz.SkillQueryReader,
+	lg loggateway.Logger,
+) *jobs.EvolutionOrchestratorWorker {
+	if strings.TrimSpace(os.Getenv("EVOLUTION_ORCHESTRATOR_DISABLED")) == "1" {
+		return nil
+	}
+	return jobs.NewEvolutionOrchestratorWorker(0, orch, agents, skills, lg)
 }
 
 func provideSelfCheckScheduler(
@@ -1718,6 +1840,7 @@ type wireOut struct {
 	SkillEvolutionScanner       *jobs.SkillEvolutionScanner
 	SkillIntelligenceWorker     *jobs.SkillIntelligenceWorker
 	CuratorWorker               *jobs.CuratorWorker
+	EvolutionOrchestratorWorker *jobs.EvolutionOrchestratorWorker
 	ProviderHealthScanner       *jobs.ProviderHealthScanner
 	ChannelHealthScanner        *jobs.ChannelHealthScanner
 	ChannelDeliveryScanner      *jobs.ChannelDeliveryWorker
@@ -1808,6 +1931,7 @@ func provideWireOut(
 	skillEvolutionScanner *jobs.SkillEvolutionScanner,
 	skillIntelligenceWorker *jobs.SkillIntelligenceWorker,
 	curatorWorker *jobs.CuratorWorker,
+	evoOrchWorker *jobs.EvolutionOrchestratorWorker,
 	failurePatternSyncJob *jobs.FailurePatternSyncJob,
 	predictiveHealUsecase *monitor.PredictiveHealUsecase,
 	predictiveHealJob *jobs.PredictiveHealJob,
@@ -1844,6 +1968,7 @@ func provideWireOut(
 		SkillEvolutionScanner:     skillEvolutionScanner,
 		SkillIntelligenceWorker:   skillIntelligenceWorker,
 		CuratorWorker:             curatorWorker,
+		EvolutionOrchestratorWorker: evoOrchWorker,
 		FailurePatternSyncJob:     failurePatternSyncJob,
 		PredictiveHealUsecase:     predictiveHealUsecase,
 		PredictiveHealJob:         predictiveHealJob,
@@ -2344,12 +2469,19 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideAutoMemoryWorker,
 		provideL4GraphWriter,
 		provideEvolutionScanner,
-		provideSkillAutoCreator,
-		provideSkillRegistrationPort,
-		provideSkillEvolutionScanner,
-		provideSkillIntelligenceWorker,
-		provideCuratorWorker,
-		provideLearningLoopScanner,
+	provideSkillAutoCreator,
+	provideSkillRegistrationPort,
+	provideSkillUsecase,
+	provideSkillMergeUsecase,
+	provideSkillEvolutionOrchestrator,
+	provideEvolutionUsecase,
+	provideSkillEvolutionUsecase,
+	provideLearningLoopUsecase,
+	provideEvolutionOrchestratorWorker,
+	provideSkillEvolutionScanner,
+	provideSkillIntelligenceWorker,
+	provideCuratorWorker,
+	provideLearningLoopScanner,
 		provideProviderHealthScanner,
 		provideChannelHealthScanner,
 		provideTeamCompiler,
@@ -2431,6 +2563,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideRefineLLMRoundTrip,
 		chatagent.NewDynamicLLMCaller,
 		wire.Bind(new(biz.LLMCaller), new(*chatagent.DynamicLLMCaller)),
+		wire.Bind(new(biz.SandboxRunner), new(*service.SandboxRunner)),
 		biz.NewPromptRefiner,
 		wire.Bind(new(biz.Refiner), new(*biz.PromptRefiner)),
 		wire.Bind(new(biz.UsageQuotaRepo), new(biz.UsageRepo)),

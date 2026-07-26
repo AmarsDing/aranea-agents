@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"aranea-agents/pkg/apierror"
@@ -83,6 +84,8 @@ type SkillMergeUsecase struct {
 	fuser  SkillContentFuser
 	gate   SkillGateVerifier
 	lg     loggateway.Logger
+
+	dedupInvalidator DedupCacheInvalidator
 }
 
 func NewSkillMergeUsecase(
@@ -99,6 +102,12 @@ func NewSkillMergeUsecase(
 		gate:   gate,
 		lg:     lg,
 	}
+}
+
+// SetDedupCacheInvalidator wires the dedup cache invalidation hook.
+// Called once during DI setup; not safe for concurrent use with Merge.
+func (uc *SkillMergeUsecase) SetDedupCacheInvalidator(inv DedupCacheInvalidator) {
+	uc.dedupInvalidator = inv
 }
 
 // Merge 执行三阶段合并
@@ -179,6 +188,11 @@ func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (
 		return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_MERGE")
 	}
 
+	// Merge changes skill bodies/tags → dedup results are stale.
+	if uc.dedupInvalidator != nil {
+		uc.dedupInvalidator.InvalidateDedupCache()
+	}
+
 	uc.lg.Info("skill merged with content fusion",
 		loggateway.StepID("skill_merge.merge"),
 		loggateway.Str("source_id", req.SourceID),
@@ -235,7 +249,14 @@ func appendWithDedup(targetBody, sourceBody, sourceName string, lg loggateway.Lo
 	b.WriteString("\n")
 
 	skippedCount := 0
-	for heading, content := range sourceSections {
+	// Sort headings for deterministic output (map iteration order is random).
+	headings := make([]string, 0, len(sourceSections))
+	for heading := range sourceSections {
+		headings = append(headings, heading)
+	}
+	sort.Strings(headings)
+	for _, heading := range headings {
+		content := sourceSections[heading]
 		if targetHeadings[heading] {
 			skippedCount++
 			lg.Debug("skill_merge: skipping duplicate section in append",

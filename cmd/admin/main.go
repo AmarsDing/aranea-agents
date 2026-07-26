@@ -144,6 +144,7 @@ func main() {
 		SkillEvolutionScanner:       out.SkillEvolutionScanner,
 		SkillIntelligenceWorker:     out.SkillIntelligenceWorker,
 		CuratorWorker:               out.CuratorWorker,
+		EvolutionOrchestratorWorker: out.EvolutionOrchestratorWorker,
 		ProviderHealthScanner:       out.ProviderHealthScanner,
 		ChannelHealthScanner:        out.ChannelHealthScanner,
 		ChannelDeliveryScanner:      out.ChannelDeliveryScanner,

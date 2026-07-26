@@ -1621,8 +1621,8 @@ VaultFiler（KB 侧唯一写文件出口）
 | frontmatter 受管字段分区（R-1） | KB 独占：`id/summary/tags/type/summary_hash/source/created`；其余归用户自由使用；写入前重读 hash，冲突备份 |
 | `knowledge_links`（新增） | `(vault_id, src_path, dst_path, link_type[explicit/entity/semantic], meta)`；随文档增删级联，可全量重扫重建 |
 | 词法索引 | SQLite FTS5（trigram）或 Bleve（R-5 选型后定），**纯派生索引**：无触发器耦合、无业务表依赖、DROP/REBUILD 无状态（吸取 messages_fts 被连根拔除的教训） |
-| 向量命名空间（S-3） | 按 `(model, dim)` 隔离（现有 schema 已具备维度），为 model2vec→bge 升级预留 reindex 能力 |
-| EmbeddingModel 契约（R-4） | Collection/Vault 的 EmbeddingModel 从必填改**可选**（空 = 无语义层），放开 `ErrEmbeddingModelRequired` 校验与 `ValidateEmbeddingModelDim` |
+| 向量命名空间（S-3） | 按 `(model, dim)` 隔离（现以 Collection 粒度绑定 `embedding_model+dim`，chunks 无 model 列；跨模型共存按 Collection 隔离，或后续扩展维度列），为 model2vec→bge 升级预留 reindex 能力 |
+| EmbeddingModel 契约（R-4） | Collection/Vault 的 EmbeddingModel 从必填改**可选**（空 = 无语义层），放开 `ErrEmbeddingModelRequired` 校验（现状无 dim 合法性校验，`Dim<=0` 时缺省 1536） |
 
 ### V5. 三层检索设计（D5/D6/D7）
 
@@ -1630,7 +1630,7 @@ VaultFiler（KB 侧唯一写文件出口）
 |----|------|---------|------|
 | **L0 精确层**（无向量） | 文件名索引 + 强 BM25（CJK bigram+unigram 分词、字段加权 title×20/tags×5/body×1、RM3/LLM 查询扩展） | 搜文件/路径/精确短语 | 分词学术定论：bigram+unigram 与最优中文词切分效果相当（Nie et al.）；查询扩展是收益最大一步（+10%~30%） |
 | **L1 导航层**（无向量） | knowledge_navigate 树导航 + 摘要卡 + 双链/实体图遍历 + knowledge_grep | 浏览/导航/关联追问 | PageIndex 模式；真实文件夹树零自愈成本 |
-| **L2 语义层**（可选插件） | Embedder 接口三实现：本地开源模型（bge-m3/bge-small-zh，ONNX/Ollama）/ model2vec 静态查表（~50MB，纯 Go 查表+均值池化，比 teacher 快 500 倍，质量保留 ~93%）/ 远程 API | 概念/模糊/跨语言 | model2vec 是「自研 embedding」现实最优解：一次性蒸馏为本地资产，无模型推理依赖；定位为语义层零依赖默认实现而非唯一实现 |
+| **L2 语义层**（可选插件） | Embedder 接口三实现：本地开源模型（bge-m3/bge-small-zh，ONNX/Ollama）/ model2vec 静态查表（~50MB，纯 Go 查表+均值池化，比 teacher 快 500 倍，potion-base-32M 质量达 MiniLM 的 93.2%）/ 远程 API | 概念/模糊/跨语言 | model2vec 是「自研 embedding」现实最优解：一次性蒸馏为本地资产，无模型推理依赖；定位为语义层零依赖默认实现而非唯一实现 |
 
 **降级矩阵**（R-4 四条契约变更，§V6 引用）：
 1. CreateVault 时 EmbeddingModel 改可选（空 = 无语义层）
@@ -1693,4 +1693,4 @@ UI:        树+列表+详情+双区搜索 ──→ 局部图谱(二期) ──�
 
 1. **现有中文全文检索实际已失效**：[knowledge.go:514-517](../../internal/data/knowledge.go#L514-L517) 的 `ts_rank(to_tsvector('simple', ...))` 双重问题——`ts_rank` 无 IDF/无 TF 饱和（弱 BM25）；更严重的是 PG `simple` 分词对 CJK 不切分（需 zhparser/pg_jieba），连续中文归为单一 token，中文查询几乎只能整串精确命中。**强 BM25 自研栈不是「优化」而是「修复」**。
 2. **FTS5 前车之鉴**：项目曾有 `messages_fts`（SQLite FTS5），因虚拟表+触发器与核心业务表耦合，演进时被整体移除（[20260902_drop_messages_subsystem.sql](../../internal/data/sql/migrations/20260902_drop_messages_subsystem.sql)）。知识库词法索引必须设计为完全独立的派生索引。
-3. **embedding 可选化破坏现有契约**：当前 CreateCollection 校验 `ErrEmbeddingModelRequired`（EmbeddingModel 必填）+ `ValidateEmbeddingModelDim`，必须按 §V5 降级矩阵四条变更（R-4）。
+3. **embedding 可选化破坏现有契约**：当前 CreateCollection 校验 `ErrEmbeddingModelRequired`（EmbeddingModel 必填；`Dim<=0` 时缺省 1536，无 dim 合法性校验），必须按 §V5 降级矩阵四条变更（R-4）。

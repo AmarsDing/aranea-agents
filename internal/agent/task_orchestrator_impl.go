@@ -1104,7 +1104,7 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 			taskType = "domain:" + primaryDomainPath // B.10.21.2: TaskType 语义扩展
 		}
 		successCount := 0
-		if dqScore >= 0.5 {
+		if dqScore >= biz.DQSuccessThreshold {
 			successCount = 1
 		}
 		agentKeys := extractAgentKeysFromHandle(handle)

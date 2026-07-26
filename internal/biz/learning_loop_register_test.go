@@ -57,6 +57,11 @@ func (m *mockProposalRW) GetByID(_ context.Context, id string) (KnowledgeProposa
 	return p, nil
 }
 func (m *mockProposalRW) Create(_ context.Context, p KnowledgeProposal) (KnowledgeProposal, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Persist to byID so read-after-write flows (e.g. RunLoop: GenerateProposals
+	// → ValidateProposal via GetByID) behave like the real DB-backed repo.
+	m.byID[p.ID] = p
 	return p, nil
 }
 func (m *mockProposalRW) UpdateStatus(_ context.Context, id string, status ProposalStatus, approvedBy string) (KnowledgeProposal, error) {

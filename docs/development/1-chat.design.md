@@ -5656,14 +5656,16 @@ const StatusReasonClarification = "clarification"
 **组件**：新建 `web/src/components/chat/v2/ClarifyBlock.vue`，在 `TaskCard.vue` orphan step 区注册渲染（`step.Kind === 'clarify'`）。
 
 **交互**：
-- 分页卡片：每页一问，`上一页 / 下一页`，最后一页为 `完成`；无跳过按钮
+- 标题栏：标题「提问」带图标（等待=`help_outline` / 完成=`check`），按状态配色——等待态 accent 淡底 + 呼吸阴影，完成态成功绿淡底；右侧 chevron 指示折叠态
+- 等待态可点击标题栏人工折叠（折叠时显示「待作答」chip）；提交完成后自动折叠为只读摘要，点击标题栏展开核对已记录的作答（已选/其他/按推荐）
+- 分页卡片：每页一问，`上一页 / 下一页`，最后一页为 `完成`；无跳过按钮；完成后按钮区不再渲染
 - 单选用 radio、多选用 checkbox；推荐项高亮（`推荐` chip）
 - 每页附「其他」输入框
 - 任何页可留空；提交后卡片变只读摘要（已答/按推荐标记）
-- awaiting 态卡片呼吸边框；提交事件 `submit-clarification` → 调 POST 端点
+- 提交事件 `submit-clarification` → 调 POST 端点
 - hydration：WS 重连后从 v2 REST steps 恢复卡片与作答态
 
-**i18n**：`chat.clarify.*`（zh-CN / en-US）：标题「需要你的确认」、prev/next/finish/other/recommended/answeredAsRecommended 等。
+**i18n**：`chat.clarify.*`（zh-CN / en-US）：标题「提问 / Question」、pending「待作答」、prev/next/finish/other/recommended/asRecommended/noPreference 等。
 
 #### B.10.18.5 错误处理与边界
 
@@ -6068,3 +6070,88 @@ L3 llmColdStart（现有保留）：prompt 中 capabilities 列表附带 mission
 | biz（cache） | `BestRecipeForDomain`：前缀匹配/DQ 排序/空 AgentKeys 跳过/TTL 过期；旧 JSON（无 domain_path）LoadFromJSON 兼容 |
 | biz（learn） | `learnFromOrchestration`：taskPattern 为 domain 派生、DomainPath 写入 entry、无域回退 |
 | data | agents 新列读写映射（repo round-trip）；DDL 迁移幂等 |
+
+### B.10.22 团队交付物可靠性增强（2026-07-25 已实施）
+
+> **背景**：19:29 对话暴露 Agent 间数据共享失败链——团队成员在信息不足时仅提问澄清却被标记为完成；下游团队在无真实交付物的情况下继续执行并幻觉产出；最终合成报告谎报成功。本节记录根因与根本性修复（Fix 1/2/2b/3/4/5/7）。
+>
+> **决策记录（用户确认）**：① 真实产出判定标准 = **只认 `set_deliverable`**（reply 文本不算产出）；② 上游无真实产出时 = **直接 fail 下游**，不再注入 reply 兜底；③ Fix 2b 交付协议强制化 = **协议注入 + 无条件 enable**（无协议注入则 Fix 2 会误伤正常团队）；④ `read_upstream_deliverable` 全文内容源 = **优先读 graph state（非截断），信封降级，reply 仅 legacy 兜底**；⑤ 历史 member_sessions 重复行 = **只修生成逻辑**，不做数据迁移。
+
+#### B.10.22.1 现状根因（评审确认）
+
+| # | 根因 | 证据 |
+|---|------|------|
+| G1 | 团队"完成"与"有产出"不挂钩：成员提问澄清（无交付物）也被标记 completed | 完成判定只看 turn 终态，不校验 graph state 是否有交付物 |
+| G2 | 下游注入有 reply 兜底：上游无真实交付物时注入 reply 文本，下游拿着提问/客套话继续幻觉执行 | `WriteDeliverablesToSession` / `InjectUpstreamDeliverables` reply fallback |
+| G3 | `set_deliverable` 工具存在但无 prompt 强制；`enable_state_deliverable` 仅多成员团队开启，单成员团队无交付通道 | `buildSpiritTeamDefinitionJSON` 条件开启 |
+| G4 | 合成报告不感知失败：触发文本与兜底通知只报"全部完成"，失败团队状态与未解决疑问被吞掉 | `checkAllTeamsCompleted` 触发文本固定 |
+| G5 | 需求存在阻塞性歧义时精灵直接组队；团队无法向用户提问，只能空转或编造产出 | DECISION.md 缺澄清优先规则（根因链起点） |
+| G6 | member_sessions 重复行：ID 生成公式不统一 | `activity_context.go` ID 派生 |
+| G7 | `read_upstream_deliverable` 读 reply：出现"注入摘要是交付物、全文读取是 reply"的不一致 | `extractTeamFullOutput` 读 steps_v2 |
+
+#### B.10.22.2 Fix 1+2：真实产出闸门（service 层）
+
+- `HasRealDeliverable`：仅认可通过 `set_deliverable` 写入 graph state 的结构化交付物；reply 文本不计入。
+- `HandleTeamTurnResult` 交付物闸门：DAG 团队 turn 完成但无真实产出 → 团队状态翻转 **failed**，阻断 `ScheduleDependentTeams` 下游调度（直接 fail 下游，不做降级注入）。
+- `WriteDeliverablesToSession` 移除 reply 兜底：无真实交付物即无信封（DeliverableRef）落库。
+- `InjectUpstreamDeliverables` 删除 reply fallback：上游无信封 → 注入"上游未产出"的显式说明而非 reply 文本。
+- 新增哨兵错误 `ErrNoRealDeliverable`（`spirit_team_usecase.go`）。
+
+#### B.10.22.3 Fix 2b：交付协议强制化（协议注入 + 无条件 enable）
+
+| 层 | 改动 | 锚点 |
+|----|------|------|
+| 定义层 | DAG 团队**无条件** `enable_state_deliverable: true`（不再限多成员） | `buildSpiritTeamDefinitionJSON` |
+| 协议注入 | 新增 `DeliverableProtocolSuffix`：首轮输入追加交付协议（必须调 `set_deliverable`，声明交付物名称/格式） | `BuildTeamTurnInput`（biz）+ assembler 委托 |
+| 编排链路 | 首轮输入统一走 `BuildTeamTurnInput` 构建 | orchestration 启动路径 |
+
+> 三层缺一不可：只修定义层、工具配置层或工具映射层中的任何一层都无法让交付通道运行时可得（与 C1/C3 教训一致）。
+
+#### B.10.22.4 Fix 3：收尾报告诚实化
+
+- 新增 `TeamFailureBrief` 结构体 + `ListFailedTeamBriefs`（biz）：收集失败团队的状态/错误/未解决疑问。
+- 新增 `BuildSynthesisSummaryTrigger`（biz）：动态生成合成触发文本——存在失败团队时如实列出，禁止"全部成功"的虚构结论。
+- service 层接线：`checkAllTeamsCompleted` 使用动态触发文本；`publishAllTeamsCompletedFallbackNotice` 兜底通知同样诚实化。
+- SynthesisEngine 模板/prompt 增加诚实性约束：必须反映失败团队状态与 open questions。
+
+#### B.10.22.5 Fix 4：Planner 需求澄清优先（DECISION.md）
+
+在 `internal/scenario/system/prompts/DECISION.md` mode 选择规则顶部新增第 1 条：
+
+> **需求存在阻塞性歧义** → `mode=direct`，先向用户提问澄清，**禁止组队**。判定标准：缺少只有用户才能提供的关键信息（目标、范围、约束、验收标准），不澄清就会做错方向或大量返工。团队**无法向用户提问**——信息不足时组队，团队只能空转、互相提问或编造产出。
+
+禁止条款同步新增"需求不明时组队"。该约束是组队决策咽喉点的唯一提示层防线（根因链起点 G5）。
+
+#### B.10.22.6 Fix 5：member_sessions 重复行
+
+- 统一 ID 生成公式（`internal/agent/activity_context.go`）。
+- `member_session_v2_repo.go` 支持基于 ID 的幂等写入。
+- 只修生成逻辑，历史重复行不做数据迁移（用户决策⑤）。
+
+#### B.10.22.7 Fix 7：`read_upstream_deliverable` 内容源重排
+
+内容源优先级（`resolveDeliverableFullContent`，biz）：
+
+1. **graph state 重读**（`readGraphStateFullContent`）：未截断，与信封落库同源——全文承诺只有 state 重读能兑现（信封 Summary 按 MaxSummaryLen 截断）；reserved `summary` key + 非 reserved keys 序列化为 JSON。
+2. **持久化 DeliverableRef 信封**（`readEnvelopeFullContent`）：graph session 不可读时降级；`StructuredJSON` 未截断，`Summary` 可能截断。
+3. **legacy reply 提取**（`extractTeamFullOutput`）：仅用于非 DAG 团队与 Fix 1 闸门前的历史行（无信封可存在）。
+
+`DeliverableRef` 注释同步更新：全文从 graph final state 重读，信封为降级 fallback，不再提及 steps_v2。
+
+#### B.10.22.8 不变量
+
+1. 真实产出的唯一判定源 = `set_deliverable` 写入的 graph state；reply 文本永不作为交付物注入或全文返回
+2. DAG 团队无真实产出 → 状态 failed，下游不被调度（无静默降级）
+3. DAG 团队定义必含 `enable_state_deliverable: true` + 首轮输入必含交付协议
+4. 合成触发文本与兜底通知必须反映失败团队，禁止虚构"全部成功"
+5. 需求存在阻塞性歧义时 mode=direct 先澄清，禁止组队（DECISION.md 内容守卫测试锁定）
+6. 全文读取永不返回 reply 文本冒充交付物
+
+#### B.10.22.9 测试策略
+
+| 层 | 用例 |
+|----|------|
+| biz | `HasRealDeliverable` 判定；`WriteDeliverablesToSession` 无产出无信封；`InjectUpstreamDeliverables` 无信封注入显式说明（契约声明用例经 DeliverablesOutput 模拟信封修复）；`BuildTeamTurnInput` 协议注入 |
+| biz（Fix 7） | `TestReadUpstreamDeliverable_PrefersGraphStateOverReply`：state 全文（600 字未截断 summary + 结构化 keys JSON）优先，reply 文本永不返回；`TestReadUpstreamDeliverable_GraphStateEmpty_FallsBackToEnvelope`：state 空降级信封（Summary + StructuredJSON），SessionID 取信封 |
+| service | `HandleTeamTurnResult` 无真实产出翻转为 failed；诚实触发文本/兜底通知（capturingTurnGateway 补齐 TurnGateway 接口方法） |
+| scenario | `TestDecisionPrompt_RequiresClarificationBeforeTeaming`：DECISION.md 必含「阻塞性歧义/禁止组队/需求不明时组队」 |

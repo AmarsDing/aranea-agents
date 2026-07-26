@@ -63,6 +63,9 @@ func (s *SkillDedupService) MergeSkills(ctx context.Context, req *v1.MergeSkills
 	if s.merge == nil {
 		return nil, apierror.Unavailable("SKILL_DEDUP", "skill merge usecase not available: transactional merge is required")
 	}
+	if req.GetStrategy() == "ai_fuse" {
+		return nil, apierror.BadRequest("SKILL_DEDUP", "ai_fuse strategy is deprecated, use rule_fuse instead")
+	}
 	strategy := mapMergeStrategy(req.GetStrategy())
 	result, err := s.merge.Merge(ctx, biz.SkillMergeRequest{
 		SourceID:   req.GetSourceSkillId(),
@@ -80,10 +83,9 @@ func (s *SkillDedupService) MergeSkills(ctx context.Context, req *v1.MergeSkills
 
 // mapMergeStrategy maps a proto strategy string to a biz MergeStrategy.
 // Empty or "append" defaults to MergeStrategyAppend.
+// Note: "ai_fuse" is rejected earlier in MergeSkills (deprecated).
 func mapMergeStrategy(s string) biz.MergeStrategy {
 	switch s {
-	case "ai_fuse":
-		return biz.MergeStrategyAIFuse
 	case "rule_fuse":
 		return biz.MergeStrategyRuleFuse
 	case "manual_pick":

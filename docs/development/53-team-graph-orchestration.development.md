@@ -587,10 +587,10 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 
 ---
 
-## Phase 10 — ADR-08 团队编排统一（Phase A ✅ 已完成，2026-07-25）
+## Phase 10 — ADR-08 团队编排统一（Phase A + Phase B ✅ 已完成，2026-07-25）
 
 > 来源：团队「编排模式」与 Graph 编排割裂评审。决策详见 [ADR-08](../reports/2026-07-25-review-adr-team-orchestration-unify.md)；设计详见 [53-team-graph-orchestration.design.md §十二](./53-team-graph-orchestration.design.md#十二adr-08-团队编排统一2026-07-25-phase-a-已落地)。
-> **核心决策**：embedded graph 为拓扑唯一真相源；mode 退化为模板选择器；角色由 mode + 成员顺序派生；runtime_engine 从 Team 编辑器移除（统一 Graph 运行时，native 仅编排页 admin 调试）。
+> **核心决策**：embedded graph 为拓扑唯一真相源；mode 退化为模板选择器；角色由 mode + 成员顺序派生；GraphAgent 为唯一执行引擎（native 序列化/调试入口已移除）。
 
 | ID | 任务 | 影响域 | 状态 |
 |----|------|--------|------|
@@ -610,4 +610,15 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 - 前端：`pnpm vitest run src/components/teams/__tests__ src/features/teams/__tests__` 71/71 PASS；`pnpm eslint` 改动文件 0 问题
 - 后端：`go build ./internal/biz` exit 0；`go test ./internal/biz -run TestValidateTeamDefinition` **31/31 PASS**（0.298s，含 7 个新增 graph 用例）。`internal/agent` 存在并发 WIP 未定义符号（`tryDomainRecipe` / `TopLevelDomain` 等，与本次改动无关）阻塞测试二进制编译（经 `team_graph_linked_test.go` → `internal/team` → `internal/agent` 链），验证时临时移出该文件隔离运行，测后已恢复（见 ADR-08 §验证）
 
-**遗留（Phase B）**：mode 字段只读化（graph 完全接管后 mode 仅存展示）、`definitionToJSON` 中 native 序列化分支清理、`TeamOrchestrateRuntimePanel` native 调试入口随 native 运行时退役移除。
+**Phase B（✅ 已完成，2026-07-25）**：
+
+| ID | 任务 | 影响域 | 状态 |
+|----|------|--------|------|
+| B1 | 执行引擎收敛：`definitionToJSON` 固定写 graph；`parseDefinition` 遗留 native 读取即归一；移除 `runtimeEngineOptions`/`runtimeEngineLabel`/`resolveRuntimeEngine` | `web/.../teams/teamUtils.ts` · `teamConstants.ts` | ✅ |
+| B2 | `TeamOrchestrateRuntimePanel` 重构为只读中文摘要（失败策略 + 超时），移除执行引擎选择器与 native admin 入口 | `web/.../teams/TeamOrchestrateRuntimePanel.vue` | ✅ |
+| B3 | 编排页三 Tab 去技术编码：副标题中文化；编排信息面板改为执行方式（`teamTopologySummary` 中文流程摘要）+ 成员（中文名/角色）+ 运行与容错；移除入口/出口 node id、`linked_graph_id` 输入、成员技术编码列表 | `web/src/pages/TeamOrchestratePage.vue` · `features/orchestration/teamNodeDisplay.ts`（新增 `teamTopologySummary`/`teamMemberDisplayRows`） | ✅ |
+| B4 | `TeamCompilePreview` 删边列表改中文流程示意；`TeamMemberKanban`/`TeamOrchestrateNodePanel` 移除 agent 编码与节点类型 badge；清理死 CSS | `web/.../teams/TeamCompilePreview.vue` · `TeamMemberKanban.vue` · `TeamOrchestrateNodePanel.vue` · `css/theme/_team-orchestrate.sass` · `_entity-pages.sass` | ✅ |
+
+**Phase B 验证证据（2026-07-25）**：`pnpm lint` 0 errors；`pnpm test` 877/877 PASS（`teamNodeDisplay.spec.ts` 新增 9 例六种模式中文摘要；`teamUtils.spec.ts` 新增 native→graph 归一化用例）；`pnpm build` 成功。
+
+**遗留**：mode 字段只读化待 graph 完全接管后评估（当前 mode 仍承担模板选择器语义）。

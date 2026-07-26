@@ -229,7 +229,7 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRunRecor
 	}))
 }
 
-func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount int) {
+func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount, cachedTok int) {
 	step := biz.TeamRunStep{
 		ID:            uuid.NewString(),
 		RunID:         run.ID,
@@ -256,7 +256,7 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID 
 	if err != nil {
 		return
 	}
-	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID)
+	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID, cachedTok)
 	if r.hasPublisher() {
 		r.publishTeamStepActivity(ctx, run, teamID, ag.AgentKey, saved.AgentName, biz.ActivityEventCompleted, biz.ActivityStatusCompleted, "completed", saved)
 	}

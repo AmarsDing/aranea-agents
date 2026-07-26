@@ -5,7 +5,7 @@
       <div class="graph-workbench__toolbar-meta">
         <div class="team-orchestrate-page__title">{{ teamRow?.display_name || 'Team 编排' }}</div>
         <div v-if="compiled" class="graph-workbench__subtitle">
-          {{ compiled.mode }} · 模板 {{ compiled.template_id }}
+          {{ teamModeLabel(compiled.mode) }}编排
           <span v-if="liveMode"> · 运行中</span>
         </div>
       </div>
@@ -113,54 +113,37 @@
       </div>
 
       <aside v-show="activeTab === 'info'" class="team-orchestrate-page__sidebar">
-        <TeamOrchestrateRuntimePanel
-          :definition="definition"
-          :read-only="readOnly"
-          :is-platform-admin="isPlatformAdmin"
-          @patch="onRuntimePatch"
-        />
-        <q-separator class="q-my-md" />
-        <div class="text-subtitle2 q-mb-sm">编译拓扑</div>
-        <div class="text-caption text-grey-7">入口</div>
-        <div class="text-body2 q-mb-sm">{{ compiled?.entry_point || '—' }}</div>
-        <div class="text-caption text-grey-7">出口</div>
-        <div class="text-body2 q-mb-md">{{ compiled?.finish_point || '—' }}</div>
-        <q-input
-          v-model="linkedGraphId"
-          dense
-          outlined
-          :readonly="readOnly"
-          label="关联 Graph ID (linked_graph_id)"
-          class="q-mb-md"
-          @update:model-value="markDirty"
-        />
-        <div class="text-caption text-grey-7 q-mb-xs">成员节点</div>
-        <q-list dense bordered separator class="rounded-borders">
-          <q-item v-for="n in compiled?.nodes ?? []" :key="n.id">
+        <div class="text-subtitle2 q-mb-sm">执行方式</div>
+        <div class="text-body2 q-mb-md">{{ topologySummary || '—' }}</div>
+
+        <div class="text-subtitle2 q-mb-sm">成员</div>
+        <q-list v-if="memberRows.length" dense bordered separator class="rounded-borders q-mb-md">
+          <q-item v-for="row in memberRows" :key="row.key">
             <q-item-section>
-              <q-item-label>{{ n.description || n.agentName || n.id }}</q-item-label>
-              <q-item-label caption>{{ n.role || n.type }} · {{ n.agentName || '—' }}</q-item-label>
+              <q-item-label>{{ row.name }}</q-item-label>
+              <q-item-label caption>{{ row.roleLabel }}</q-item-label>
             </q-item-section>
           </q-item>
         </q-list>
+        <div v-else class="text-caption app-text-secondary q-mb-md">暂无成员</div>
+
+        <q-separator class="q-my-md" />
+        <TeamOrchestrateRuntimePanel :definition="definition" />
       </aside>
     </template>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import GraphEditorCanvas from '../components/graph/GraphEditorCanvas.vue';
 import OrchestrationKanban from '../components/orchestration/OrchestrationKanban.vue';
 import TeamMemberKanban from '../components/teams/TeamMemberKanban.vue';
 import TeamOrchestrateRuntimePanel from '../components/teams/TeamOrchestrateRuntimePanel.vue';
 import TeamOrchestrateNodePanel from '../components/teams/TeamOrchestrateNodePanel.vue';
+import { teamModeLabel } from '../components/teams/teamConstants';
+import { teamMemberDisplayRows, teamTopologySummary } from '../features/orchestration/teamNodeDisplay';
 import { useTeamOrchestratePage } from '../features/teams/useTeamOrchestratePage';
-import { storeToRefs } from 'pinia';
-import { useAuthStore } from '../stores/auth';
-
-const authStore = useAuthStore();
-const { isPlatformAdmin } = storeToRefs(authStore);
 
 const activeTab = ref('canvas');
 
@@ -172,7 +155,6 @@ const {
   error,
   teamRow,
   compiled,
-  linkedGraphId,
   definition,
   readOnly,
   selectedNodeId,
@@ -185,7 +167,6 @@ const {
   graphDef,
   issues,
   reload,
-  patchDefinition,
   markDirty,
   saveGraph,
   onSelectNode,
@@ -193,9 +174,8 @@ const {
   goBack,
 } = useTeamOrchestratePage();
 
-function onRuntimePatch(patch: Partial<import('../features/teams/types').TeamDefinition>) {
-  patchDefinition(patch);
-}
+const topologySummary = computed(() => teamTopologySummary(compiled.value, definition.value));
+const memberRows = computed(() => teamMemberDisplayRows(compiled.value, definition.value));
 
 function onKanbanSelectNode(nodeId: string) {
   onSelectNode(nodeId);

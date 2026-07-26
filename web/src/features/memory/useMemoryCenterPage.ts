@@ -39,7 +39,7 @@ export function useMemoryCenterPage() {
     loadingCascadeSaga,
   } = storeToRefs(memoryStore);
 
-  const tab = ref('overview');
+  const tab = ref('panorama');
   const agents = ref<Agent[]>([]);
   const sessions = ref<Session[]>([]);
   const facts = storeFacts;
@@ -69,7 +69,6 @@ export function useMemoryCenterPage() {
   const cascadeActingId = ref<string | null>(null);
   const factsEndpointReady = ref(true);
   const factsTotal = ref(0);
-  const conflictingFactsTotal = ref(0);
   const snapshotDrawer = ref(false);
   const factDrawer = ref(false);
   const cascadePreviewOpen = ref(false);
@@ -141,90 +140,6 @@ export function useMemoryCenterPage() {
       },
     ];
   });
-
-  const actionItems = computed(() => [
-    {
-      title: t('memory.overview.actions.contextNearLimit'),
-      caption: t('memory.overview.actions.contextNearLimitCaption'),
-      count: sessions.value.filter((s) => ['warning', 'critical', 'exceeded'].includes(s.context_status)).length,
-      icon: 'report',
-      color: 'warning',
-    },
-    {
-      title: t('memory.overview.actions.knowledgeConflict'),
-      caption: t('memory.overview.actions.knowledgeConflictCaption'),
-      count: conflictingFactsTotal.value,
-      icon: 'rule',
-      color: 'negative',
-    },
-    {
-      title: t('memory.overview.actions.pendingEvolution'),
-      caption: t('memory.overview.actions.pendingEvolutionCaption'),
-      count: evolutionProposals.value.length,
-      icon: 'auto_awesome',
-      color: 'info',
-    },
-    {
-      title: t('memory.overview.actions.cascadeRename'),
-      caption: t('memory.overview.actions.cascadeRenameCaption'),
-      count: cascadeProposals.value.filter((p) => p.status === 'pending').length,
-      icon: 'sync_alt',
-      color: 'deep-orange',
-    },
-  ]);
-
-  const memoryLayers = computed(() => [
-    {
-      key: 'l0',
-      title: t('memory.overview.layers.l0Title'),
-      caption: t('memory.overview.layers.l0Caption'),
-      icon: 'preview',
-      color: 'primary',
-      status: t('memory.overview.status.connected'),
-      statusColor: 'positive',
-    },
-    {
-      key: 'l1',
-      title: t('memory.overview.layers.l1Title'),
-      caption: t('memory.overview.layers.l1Caption'),
-      icon: 'assignment',
-      color: 'indigo',
-      status: t('memory.overview.status.connected'),
-      statusColor: 'positive',
-    },
-    {
-      key: 'l2',
-      title: t('memory.overview.layers.l2Title'),
-      caption: t('memory.overview.layers.l2Caption'),
-      icon: 'timeline',
-      color: 'teal',
-      status: t('memory.overview.status.connected'),
-      statusColor: 'positive',
-    },
-    {
-      key: 'l3',
-      title: t('memory.overview.layers.l3Title'),
-      caption: t('memory.overview.layers.l3Caption'),
-      icon: 'psychology',
-      color: 'deep-purple',
-      status: factsEndpointReady.value
-        ? t('memory.overview.status.connected')
-        : t('memory.overview.status.unavailable'),
-      statusColor: factsEndpointReady.value ? 'positive' : 'warning',
-    },
-    {
-      key: 'l4',
-      title: t('memory.overview.layers.l4Title'),
-      caption: t('memory.overview.layers.l4Caption'),
-      icon: 'auto_awesome',
-      color: 'orange',
-      status:
-        entities.value.length || agentIdentity.value
-          ? t('memory.overview.status.connected')
-          : t('memory.overview.status.registered'),
-      statusColor: 'positive',
-    },
-  ]);
 
   const evolutionPanels = computed(() => [
     {
@@ -481,14 +396,12 @@ export function useMemoryCenterPage() {
   async function loadConflictingFacts() {
     const agentID = selectedAgentId.value || agents.value[0]?.id || '';
     if (!agentID) {
-      conflictingFactsTotal.value = 0;
       return;
     }
     try {
-      const result = await memoryStore.loadConflictingFacts('agent', agentID, 50, 0);
-      conflictingFactsTotal.value = result.total;
+      await memoryStore.loadConflictingFacts('agent', agentID, 50, 0);
     } catch {
-      conflictingFactsTotal.value = 0;
+      // 冲突总数仅用于全景行动项（后端聚合）；此处预取失败不阻断 facts 列表。
     }
   }
 
@@ -507,7 +420,6 @@ export function useMemoryCenterPage() {
     } catch {
       memoryStore.clearFacts();
       factsTotal.value = 0;
-      conflictingFactsTotal.value = 0;
       factsEndpointReady.value = false;
     } finally {
       loadingFacts.value = false;
@@ -621,8 +533,6 @@ export function useMemoryCenterPage() {
     snapshotRows: snapshots,
     taskRows: tasks,
     overviewCards,
-    actionItems,
-    memoryLayers,
     evolutionPanels,
     entities,
     loadingEvolution,

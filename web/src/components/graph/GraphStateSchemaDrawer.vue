@@ -102,7 +102,7 @@
                   @change="toggleSelect(vr.item.index)"
                 />
                 <span class="state-schema-drawer__field-name" :title="vr.item.field.name">{{ vr.item.field.name }}</span>
-                <span class="state-schema-drawer__field-type">{{ vr.item.field.type }}</span>
+                <span class="state-schema-drawer__field-type">{{ fieldTypeLabel(vr.item.field.type) }}</span>
                 <span class="state-schema-drawer__field-reducer">{{ reducerLabel(vr.item.field.reducer) }}</span>
                 <span class="state-schema-drawer__field-default" :title="formatDefault(vr.item.field.defaultValue)">{{
                   formatDefault(vr.item.field.defaultValue)
@@ -183,7 +183,7 @@ import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { GraphDefinition, ReducerType, StateFieldDef } from '../../features/graph/types';
-import { REDUCER_OPTIONS } from '../../features/graph/types';
+import { REDUCER_OPTIONS, STATE_FIELD_TYPE_OPTIONS, normalizeStateFieldType } from '../../features/graph/types';
 import { buildFieldUsageMap, type FieldUsage } from '../../features/graph/portTypes';
 import { useVirtualRows } from '../../features/graph/useVirtualRows';
 
@@ -230,6 +230,12 @@ const reducerOptions = REDUCER_OPTIONS.map((o) => ({ label: t(o.labelKey), value
 function reducerLabel(reducer: string): string {
   const labelKey = REDUCER_OPTIONS.find((o) => o.value === reducer)?.labelKey;
   return labelKey ? t(labelKey) : reducer;
+}
+
+function fieldTypeLabel(type: string): string {
+  const normalized = normalizeStateFieldType(type);
+  const labelKey = STATE_FIELD_TYPE_OPTIONS.find((o) => o.value === normalized)?.labelKey;
+  return labelKey ? t(labelKey) : type;
 }
 
 // ---- 数据派生 ----

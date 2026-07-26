@@ -23,6 +23,7 @@ func (r *Runner) recordMemberUsage(
 	asst biz.ChatMessage,
 	prov, mod, dialogMode string,
 	stepID string,
+	cachedTok int,
 ) {
 	if r == nil || r.usage == nil {
 		return
@@ -61,6 +62,7 @@ func (r *Runner) recordMemberUsage(
 		ModelDisplayName: mod,
 		InputTokens:      tin,
 		OutputTokens:     tout,
+		CachedInputTokens: cachedTok,
 		TotalTokens:      tin + tout,
 		LatencyMS:        latency,
 		TokensPerSecond:  tps,
@@ -103,7 +105,7 @@ func (r *Runner) recordTeamRunUsage(
 	run biz.TeamRunRecord,
 	teamID string,
 	anchor biz.Agent,
-	promptTok, completionTok int,
+	promptTok, completionTok, cachedTok int,
 	prov, mod, dialogMode string,
 ) {
 	if (r == nil || r.usage == nil) || (promptTok <= 0 && completionTok <= 0) {
@@ -132,6 +134,7 @@ func (r *Runner) recordTeamRunUsage(
 		ModelDisplayName: mod,
 		InputTokens:      promptTok,
 		OutputTokens:     completionTok,
+		CachedInputTokens: cachedTok,
 		TotalTokens:      promptTok + completionTok,
 		UsageKind:        biz.UsageKindTeamTurn,
 		PromptMode:       dialogMode,

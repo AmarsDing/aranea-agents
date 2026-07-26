@@ -70,6 +70,14 @@ type KnowledgeProposal struct {
 	UpdatedAt   time.Time
 }
 
+// ObservationRecorder is the narrow write port for recording learning
+// observations from runtime paths (tool invocation recorder, etc.).
+// *LearningLoopUsecase implements it.
+// Stability:evolving
+type ObservationRecorder interface {
+	RecordObservation(ctx context.Context, obs Observation) (Observation, error)
+}
+
 type ObservationReader interface {
 	ListByAgent(ctx context.Context, agentID string, since time.Time) ([]Observation, error)
 	CountByAgent(ctx context.Context, agentID string, since time.Time) (int64, error)

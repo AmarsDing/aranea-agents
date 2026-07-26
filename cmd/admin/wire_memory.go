@@ -153,7 +153,9 @@ func provideLinkEvolutionService(
 }
 
 func provideMemoryAdminUsecase(admin biz.MemoryAdminDeps, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, d *data.Data, lg loggateway.Logger) *biz.MemoryAdminUsecase {
-	return biz.NewMemoryAdminUsecase(admin, vec, factSync, data.NewL3FactWriterAdapter(d, d.VectorStore()), lg)
+	uc := biz.NewMemoryAdminUsecase(admin, vec, factSync, data.NewL3FactWriterAdapter(d, d.VectorStore()), lg)
+	uc.SetMemoryCenterReaders(data.NewL2EpisodeAdminReader(d, d.VectorStore()), data.NewL4RelationAdminReader(d))
+	return uc
 }
 
 // providePathBExtractor creates a PathBExtractor and injects it into MemoryAdminUsecase.

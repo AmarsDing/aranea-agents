@@ -180,6 +180,7 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 			OutboundRouter:   s.orch.outboundRouter(),
 			A2AEnabled:       s.orch.a2aUC() != nil,
 			L0SnapshotForcer: s.orch.td().SessionRT,
+			LearningLoop:     s.orch.td().LearningLoop,
 		},
 	}
 	// Inject CustomTools for built-in agents (Spirit, Skills Butler, Memory Butler, System Admin).

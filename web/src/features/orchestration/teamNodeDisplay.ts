@@ -1,5 +1,5 @@
 import type { NodeDef } from '../graph/types';
-import type { CompileTeamGraphResult } from './compileApi';
+import type { CompileTeamGraphResult, CompiledGraphNodeView } from './compileApi';
 import type { TeamDefinition } from '../teams/types';
 
 export type TeamNodeDisplay = {
@@ -102,4 +102,91 @@ export function graphNodeDisplayLabel(node: NodeDef): string {
     return node.description?.trim() || node.agentName?.trim() || node.id;
   }
   return node.agentName?.trim() || node.description?.trim() || node.id;
+}
+
+function nodeDisplayName(n: CompiledGraphNodeView, definition: TeamDefinition | null): string {
+  const display = n.agentDisplayName?.trim() || n.description?.trim();
+  if (display) return display;
+  const member = findMemberForNode(n.id ?? '', n.agentName ?? '', definition);
+  if (member?.name?.trim()) return member.name.trim();
+  if (n.agentName?.trim()) return n.agentName.trim();
+  const order = /^member-(\d+)$/.exec(n.id ?? '');
+  if (order) return `成员 ${Number(order[1])}`;
+  return n.id || '成员';
+}
+
+function nodeRole(n: CompiledGraphNodeView): string {
+  return String(n.role ?? '').trim().toLowerCase();
+}
+
+function compiledAgentNodes(compiled: CompileTeamGraphResult | null): CompiledGraphNodeView[] {
+  return (compiled?.nodes ?? []).filter((n) => (n.type ?? 'agent') === 'agent');
+}
+
+/** 成员展示行：只含用户可读的中文名与中文角色（技术编码不进 UI）。 */
+export type TeamMemberDisplayRow = {
+  key: string;
+  name: string;
+  roleLabel: string;
+};
+
+export function teamMemberDisplayRows(
+  compiled: CompileTeamGraphResult | null,
+  definition: TeamDefinition | null,
+): TeamMemberDisplayRow[] {
+  return compiledAgentNodes(compiled).map((n) => ({
+    key: n.id ?? n.agentName ?? '',
+    name: nodeDisplayName(n, definition),
+    roleLabel: roleLabel(nodeRole(n) || 'worker'),
+  }));
+}
+
+/**
+ * 拓扑的用户语言摘要（编排信息面板 / 编辑器编译预览共用）。
+ * 只使用成员显示名与中文角色标签；node_id / agent_key 等技术编码不出现在结果中。
+ */
+export function teamTopologySummary(
+  compiled: CompileTeamGraphResult | null,
+  definition: TeamDefinition | null,
+): string {
+  const agentNodes = compiledAgentNodes(compiled);
+  if (agentNodes.length === 0) return '';
+
+  const nameOf = (n: CompiledGraphNodeView): string => nodeDisplayName(n, definition);
+  const roleOf = nodeRole;
+
+  const mode = String(compiled?.mode || definition?.mode || 'sequential')
+    .trim()
+    .toLowerCase();
+  const names = agentNodes.map(nameOf);
+
+  if (mode === 'parallel') {
+    const workers = agentNodes.filter((n) => roleOf(n) !== 'synthesizer').map(nameOf);
+    const synth = agentNodes.find((n) => roleOf(n) === 'synthesizer');
+    const base = `并行执行：${workers.join('、')}`;
+    return synth ? `${base} → 汇总：${nameOf(synth)}` : base;
+  }
+  if (mode === 'coordinator') {
+    const [first, ...rest] = agentNodes;
+    if (first && roleOf(first) === 'coordinator') {
+      return rest.length
+        ? `协调分派：${nameOf(first)} → 顺序执行：${rest.map(nameOf).join(' → ')}`
+        : `协调分派：${nameOf(first)}`;
+    }
+    return `顺序执行：${names.join(' → ')}`;
+  }
+  if (mode === 'critic_loop') {
+    const generator = agentNodes.find((n) => roleOf(n) === 'generator');
+    const critic = agentNodes.find((n) => roleOf(n) === 'critic');
+    if (generator && critic) {
+      const maxIter = definition?.critic_loop?.max_iterations ?? 0;
+      const suffix = maxIter > 0 ? `（最多 ${maxIter} 轮）` : '';
+      return `生成评审循环：${nameOf(generator)} ⇄ ${nameOf(critic)}${suffix}`;
+    }
+    return `生成评审循环：${names.join(' ⇄ ')}`;
+  }
+  if (mode === 'adaptive' || mode === 'swarm') {
+    return `自由协作：${names.join('、')}（成员间可相互转交任务）`;
+  }
+  return `顺序执行：${names.join(' → ')}`;
 }

@@ -9,7 +9,6 @@
     </div>
     <div class="team-orchestrate-node-panel__meta">
       <div class="team-orchestrate-node-panel__chip">{{ display.roleLabel }}</div>
-      <div v-if="display.agentKey" class="team-orchestrate-node-panel__key">{{ display.agentKey }}</div>
     </div>
 
     <section class="team-orchestrate-node-panel__section">

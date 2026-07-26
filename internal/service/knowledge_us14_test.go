@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
@@ -73,6 +74,16 @@ func (m *us14MemRepo) UpdateCollectionCounts(_ context.Context, id string, docD,
 	return nil
 }
 
+func (m *us14MemRepo) UpdateCollectionSyncState(_ context.Context, id, state string, lastSyncAt time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c := m.collections[id]
+	c.SyncState = state
+	c.LastSyncAt = lastSyncAt.UTC().Format(time.RFC3339)
+	m.collections[id] = c
+	return nil
+}
+
 func (m *us14MemRepo) CreateDocument(_ context.Context, d biz.KnowledgeDocument) (biz.KnowledgeDocument, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -88,6 +99,39 @@ func (m *us14MemRepo) GetDocument(_ context.Context, id string) (biz.KnowledgeDo
 		return biz.KnowledgeDocument{}, biz.ErrNotFound
 	}
 	return d, nil
+}
+
+func (m *us14MemRepo) GetDocumentByRelPath(_ context.Context, collectionID, relPath string) (biz.KnowledgeDocument, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, d := range m.documents {
+		if d.CollectionID == collectionID && d.RelPath == relPath {
+			return d, nil
+		}
+	}
+	return biz.KnowledgeDocument{}, biz.ErrNotFound
+}
+
+func (m *us14MemRepo) UpdateDocumentRelPath(_ context.Context, id, newRelPath string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	d := m.documents[id]
+	d.RelPath = newRelPath
+	m.documents[id] = d
+	return nil
+}
+
+func (m *us14MemRepo) UpdateDocumentSyncMeta(_ context.Context, id string, meta biz.KnowledgeDocumentSyncMeta) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	d := m.documents[id]
+	d.ContentHash = meta.ContentHash
+	d.Summary = meta.Summary
+	d.SummaryHash = meta.SummaryHash
+	d.Tags = meta.Tags
+	d.DocType = meta.DocType
+	m.documents[id] = d
+	return nil
 }
 
 func (m *us14MemRepo) UpdateDocumentStatus(_ context.Context, id, status, errMsg string, cc int) error {

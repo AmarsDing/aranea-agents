@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 )
@@ -52,6 +53,13 @@ func (m *memKnowledgeRepo) UpdateCollectionCounts(_ context.Context, id string, 
 	m.collections[id] = c
 	return nil
 }
+func (m *memKnowledgeRepo) UpdateCollectionSyncState(_ context.Context, id, state string, lastSyncAt time.Time) error {
+	c := m.collections[id]
+	c.SyncState = state
+	c.LastSyncAt = lastSyncAt.UTC().Format(time.RFC3339)
+	m.collections[id] = c
+	return nil
+}
 func (m *memKnowledgeRepo) CreateDocument(_ context.Context, d biz.KnowledgeDocument) (biz.KnowledgeDocument, error) {
 	m.documents[d.ID] = d
 	return d, nil
@@ -62,6 +70,30 @@ func (m *memKnowledgeRepo) GetDocument(_ context.Context, id string) (biz.Knowle
 		return biz.KnowledgeDocument{}, biz.ErrNotFound
 	}
 	return d, nil
+}
+func (m *memKnowledgeRepo) GetDocumentByRelPath(_ context.Context, collectionID, relPath string) (biz.KnowledgeDocument, error) {
+	for _, d := range m.documents {
+		if d.CollectionID == collectionID && d.RelPath == relPath {
+			return d, nil
+		}
+	}
+	return biz.KnowledgeDocument{}, biz.ErrNotFound
+}
+func (m *memKnowledgeRepo) UpdateDocumentRelPath(_ context.Context, id, newRelPath string) error {
+	d := m.documents[id]
+	d.RelPath = newRelPath
+	m.documents[id] = d
+	return nil
+}
+func (m *memKnowledgeRepo) UpdateDocumentSyncMeta(_ context.Context, id string, meta biz.KnowledgeDocumentSyncMeta) error {
+	d := m.documents[id]
+	d.ContentHash = meta.ContentHash
+	d.Summary = meta.Summary
+	d.SummaryHash = meta.SummaryHash
+	d.Tags = meta.Tags
+	d.DocType = meta.DocType
+	m.documents[id] = d
+	return nil
 }
 func (m *memKnowledgeRepo) UpdateDocumentStatus(_ context.Context, id, status, errMsg string, cc int) error {
 	d := m.documents[id]

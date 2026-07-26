@@ -19,6 +19,9 @@ import (
 type MemberTokenUsage struct {
 	PromptTokens     int
 	CompletionTokens int
+	// CachedTokens is the cache-hit portion of PromptTokens (DeepSeek/OpenAI
+	// prompt caching). Billed at the cache-read price downstream.
+	CachedTokens int
 }
 
 type EventStreamResult struct {
@@ -26,6 +29,9 @@ type EventStreamResult struct {
 	Reasoning     strings.Builder
 	PromptTok     int
 	CompletionTok int
+	// CachedTok is the cache-hit portion of PromptTok (max across rounds,
+	// same accumulation semantics as PromptTok).
+	CachedTok int
 	// UsageSource indicates where PromptTok/CompletionTok came from:
 	//   ""                   — no usage data observed (stream errored before usage emission; TECH-DEBT)
 	//   "streaming"          — accumulated from streaming chat.completion events
@@ -107,9 +113,14 @@ func ConsumeEventStreamWithFirstByte(
 	return consumer.consume(events)
 }
 
-func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta ProjectMeta, promptTok, completionTok int) {
+func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta ProjectMeta, promptTok, completionTok, cachedTok int) {
 	if result == nil {
 		return
+	}
+	// Cached tokens share prompt-token semantics: reported cumulatively
+	// within a round, so take the max.
+	if cachedTok > result.CachedTok {
+		result.CachedTok = cachedTok
 	}
 	// Multi-round accumulation strategy:
 	// - Prompt tokens are cumulative across rounds (each round includes prior
@@ -139,15 +150,21 @@ func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta 
 		result.MemberUsage = make(map[string]MemberTokenUsage)
 	}
 	prev := result.MemberUsage[key]
+	if cachedTok > prev.CachedTokens {
+		prev.CachedTokens = cachedTok
+		result.MemberUsage[key] = prev
+	}
 	if promptTok > prev.PromptTokens {
 		result.MemberUsage[key] = MemberTokenUsage{
 			PromptTokens:     promptTok,
 			CompletionTokens: prev.CompletionTokens + completionTok,
+			CachedTokens:     prev.CachedTokens,
 		}
 	} else if promptTok == prev.PromptTokens && completionTok > prev.CompletionTokens {
 		result.MemberUsage[key] = MemberTokenUsage{
 			PromptTokens:     promptTok,
 			CompletionTokens: completionTok,
+			CachedTokens:     prev.CachedTokens,
 		}
 	}
 }

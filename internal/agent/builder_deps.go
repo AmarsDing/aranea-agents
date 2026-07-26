@@ -127,6 +127,9 @@ type TRPCExtensionDeps struct {
 	// L0 snapshot write should bypass throttling. Optional: when nil, force
 	// flags are ignored and normal throttle rules apply.
 	L0SnapshotForcer biz.L0SnapshotForcer
+	// LearningLoop records tool_call observations into the learning loop.
+	// Optional: when nil, observation recording is skipped.
+	LearningLoop biz.ObservationRecorder
 }
 
 // TRPCBuilderDeps is the stable extension DTO for BuildTRPCLLMAgent / BuildTRPCAgent.

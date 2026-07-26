@@ -422,3 +422,35 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 | `internal/data/usage_breakdown_alias_test.go` | 占比别名测试 |
 | `internal/service/usage_mapper_test.go` | 映射测试 |
 | `internal/team/usage_tokens_test.go` | Team Token 测试 |
+
+---
+
+## 11. 费用计算修复与历史回填（2026-07-25）
+
+**背景**：用户反馈 Token 总量与官网一致但费用偏差大。排查发现 4 类根因，全部修复。
+
+### 11.1 根因与修复
+
+| # | 根因 | 修复 | 层 | 状态 |
+|---|------|------|-----|------|
+| 1 | 缓存命中 token 未从输入 token 中扣除，且未按缓存价计费 | `ApplyTokenUsageCosts` 改为 `(input − cached_billable) × 输入价` + `cached_billable × 缓存价`；单价优先 USD/1M | Biz | ✅ |
+| 2 | DeepSeek `prompt_cache_hit_tokens` 不被 OpenAI SDK 解析，cached 恒为 0 | 新增 `internal/provider/usage_tap_transport.go`，传输层改写为标准 `prompt_tokens_details.cached_tokens`（SSE/JSON），装配于 `trpc_llm.go`；`turn_helpers.go` 累计 `CachedTokens` | Provider/Agent | ✅ |
+| 3 | `PersistGraphRunStep` 硬编码空 provider/model → 355 条 `team_member` 事件 `model_api_id` 为空、无法定价 | 以 anchor Agent `Provider`/`Model` 兜底（`FirstNonEmpty`） | Team | ✅ |
+| 4 | 缺 `openrouter/gpt-4.1-mini`、`deepseek/deepseek-chat` 定价规则 → 324 条事件费用为 0；DeepSeek 缓存价误配 0.014（官网 0.0028，2026-04-26 起生效） | 插入 2 条 `model_pricing_rules`（manual）；deepseek 规则与 `llm_provider_models.config_json` 缓存价改回 0.0028（用户确认按官网价） | Data | ✅ |
+
+### 11.2 历史数据回填（一次性，2026-07-25 已执行）
+
+- 324 条 model 非空但 cost=0 事件：按规则重算价格快照与费用（251 openrouter/gpt-4.1-mini + 34 deepseek-chat + 39 deepseek-v4-flash）。
+- 355 条空 model `team_member` 事件：token 与兄弟 `team_turn` 事件全等（355/355 验证），从其复制 provider/model/价格/费用。
+- 受影响日期（06-19 起 27 天）daily/hourly 汇总表删除后由 events 全量重建（daily 192 行 / hourly 563 行）。
+- 验收：cost=0 事件清零；events 费用总和 = daily 汇总总和 = 8,684,060 micro USD。
+
+### 11.3 改动文件（本迭代新增）
+
+| 文件 | 说明 |
+|------|------|
+| `internal/provider/usage_tap_transport.go` | DeepSeek 缓存命中响应改写 RoundTripper |
+| `internal/provider/trpc_llm.go` | 装配 usageTapTransport |
+| `internal/biz/usage/usage.go` | `ApplyTokenUsageCosts` 缓存扣除公式 |
+| `internal/agent/turn_helpers.go` | `CachedTokens` 累计 |
+| `internal/team/team_graph_run_finisher.go` | anchor provider/model 兜底 |

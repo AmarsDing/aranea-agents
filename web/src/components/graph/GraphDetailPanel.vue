@@ -191,7 +191,7 @@
 import { computed, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { GraphDefinition, GraphExecutionSummary, NodeDef, NodeType } from '../../features/graph/types';
-import { EXECUTION_STATUS_STYLES, NODE_TYPE_STYLES, REDUCER_OPTIONS, STATE_FIELD_TYPE_OPTIONS } from '../../features/graph/types';
+import { EXECUTION_STATUS_STYLES, NODE_TYPE_STYLES, REDUCER_OPTIONS, STATE_FIELD_TYPE_OPTIONS, normalizeStateFieldType } from '../../features/graph/types';
 import { deriveGraphStatus, GRAPH_CARD_STATUS_LABEL_KEYS, relativeTime, stepColor, stepIcon } from '../../features/graph/utils';
 import { useVirtualRows } from '../../features/graph/useVirtualRows';
 
@@ -319,7 +319,8 @@ function execStatusLabel(status: string): string {
 }
 
 function fieldTypeLabel(type: string): string {
-  const labelKey = STATE_FIELD_TYPE_OPTIONS.find((o) => o.value === type)?.labelKey;
+  const normalized = normalizeStateFieldType(type);
+  const labelKey = STATE_FIELD_TYPE_OPTIONS.find((o) => o.value === normalized)?.labelKey;
   return labelKey ? t(labelKey) : type;
 }
 

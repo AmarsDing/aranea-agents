@@ -206,7 +206,7 @@ func (r *Runner) finalizeTeamRun(
 	teamRow biz.Team,
 	ar anchorResolution,
 	assistantMsg biz.ChatMessage,
-	promptTok, completionTok int,
+	promptTok, completionTok, cachedTok int,
 	dialogMode string,
 	graphExecID string,
 	t0 time.Time,
@@ -235,7 +235,7 @@ func (r *Runner) finalizeTeamRun(
 		run = updatedRun
 	}
 
-	r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, ar.prov, ar.mod, dialogMode)
+	r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, cachedTok, ar.prov, ar.mod, dialogMode)
 
 	if teamEmitter != nil {
 		teamEmitter.LogDone("team.run.finish", "团队任务结束", event.P("status", run.Status))
