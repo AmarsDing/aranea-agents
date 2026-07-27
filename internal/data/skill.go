@@ -1007,6 +1007,15 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 	if encErr != nil {
 		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, encErr
 	}
+	// P-r4-1：watcher 重建 metadata 时必须保留 merge 血缘（derived_from），
+	// 否则每次 5 分钟扫描都会抹除 merge_group_with_ai 记录的溯源信息。
+	if derived := parseSkillMetadata(r.data.lg, skillRow.MetadataJSON).DerivedFrom; len(derived) > 0 {
+		md := parseSkillMetadata(r.data.lg, metaJSON)
+		md.DerivedFrom = derived
+		if merged, mErr := json.Marshal(md); mErr == nil {
+			metaJSON = string(merged)
+		}
+	}
 	update := tx.PlatformSkill.UpdateOneID(skillRow.ID).
 		SetName(in.Name).
 		SetDescription(in.Description).
@@ -1016,29 +1025,38 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 
 	sv, svErr := tx.SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(skillRow.ID)).
-		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+		// 同 CreateSkillVersion：秒级 created_at 并列时按 ID 递减兜底，确保读到真正最新版本。
+		Order(skillversion.ByCreatedAt(entsql.OrderDesc()), skillversion.ByID(entsql.OrderDesc())).
 		First(ctx)
 	if svErr != nil {
 		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(svErr, apierror.DomainSkill)
 	}
+	// refreshDiskBody 非空表示命中 F3 进化版保护：提交后以 DB 内容刷新磁盘。
+	var refreshDiskBody string
 	if strings.TrimSpace(sv.ContentMarkdown) != in.Body {
-		outcome.ContentChanged = true
-		// Create a new version to preserve immutability of existing versions
-		newVerID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
-		newVerMetaJSON := string(metaJSON)
-		if _, createErr := tx.SkillVersion.Create().
-			SetID(newVerID).
-			SetSkillID(skillRow.ID).
-			SetVersion(incrementVersion(sv.Version)).
-			SetStatus("pass").
-			SetContentMarkdown(in.Body).
-			SetMetadataJSON(newVerMetaJSON).
-			SetManifestJSON(sv.ManifestJSON).
-			SetFileManifestJSON(sv.FileManifestJSON).
-			SetCreatedAt(now).
-			SetUpdatedAt(now).
-			Save(ctx); createErr != nil {
-			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(createErr, apierror.DomainSkill)
+		if strings.TrimSpace(sv.EvolutionReason) != "" {
+			// F3 (P-evo-1)：最新版本是进化成果——磁盘内容陈旧，不得反向覆盖
+			// （不落新版本、不回退 draft），提交后以 DB 为准刷新磁盘。
+			refreshDiskBody = sv.ContentMarkdown
+		} else {
+			outcome.ContentChanged = true
+			// Create a new version to preserve immutability of existing versions
+			newVerID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
+			newVerMetaJSON := string(metaJSON)
+			if _, createErr := tx.SkillVersion.Create().
+				SetID(newVerID).
+				SetSkillID(skillRow.ID).
+				SetVersion(incrementVersion(sv.Version)).
+				SetStatus("pass").
+				SetContentMarkdown(in.Body).
+				SetMetadataJSON(newVerMetaJSON).
+				SetManifestJSON(sv.ManifestJSON).
+				SetFileManifestJSON(sv.FileManifestJSON).
+				SetCreatedAt(now).
+				SetUpdatedAt(now).
+				Save(ctx); createErr != nil {
+				return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(createErr, apierror.DomainSkill)
+			}
 		}
 	}
 	if outcome.ContentChanged && wasPublished {
@@ -1050,6 +1068,14 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 	}
 	if commitErr := tx.Commit(); commitErr != nil {
 		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(commitErr, apierror.DomainSkill)
+	}
+	if refreshDiskBody != "" {
+		r.data.lg.Warn("skill disk sync: stale disk content blocked by evolution version, refreshing disk from DB",
+			loggateway.StepID("data.skill"),
+			loggateway.Str("skill_id", skillRow.ID),
+			loggateway.Str("version_id", sv.ID),
+			loggateway.Str("evolution_reason", sv.EvolutionReason))
+		writeSkillBodyToDisk(r.data.lg, in.StorageDir, refreshDiskBody)
 	}
 	sk, getErr := r.GetSkillByID(ctx, skillRow.ID)
 	return sk, outcome, getErr
@@ -1554,7 +1580,8 @@ func (r *skillRepo) ListSkillVersions(ctx context.Context, q biz.SkillVersionLis
 	}
 	rows, err := c.SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(q.SkillID)).
-		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+		// 秒级 created_at 并列时按 ID 递减兜底，确保 Limit(1) 锚定真正最新版本。
+		Order(skillversion.ByCreatedAt(entsql.OrderDesc()), skillversion.ByID(entsql.OrderDesc())).
 		Offset(q.Offset).
 		Limit(q.Limit).
 		All(ctx)
@@ -1690,7 +1717,34 @@ func (r *skillRepo) CreateSkillVersion(ctx context.Context, in biz.SkillCreateVe
 	if err = tx.Commit(); err != nil {
 		return biz.SkillVersionDetail{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
+	// F3 (P-evo-1)：版本创建成功后同步落盘，保持 DB 与磁盘两个真相源一致，
+	// 防止 filesystem watcher 以陈旧磁盘内容回滚进化成果。
+	r.syncSkillBodyToDisk(ctx, in.SkillID, in.Body)
 	return entSkillVersionToBiz(row), nil
+}
+
+// syncSkillBodyToDisk best-effort 将 body 写入 skill 磁盘目录的 SKILL.md。
+// 失败只记日志不返回错误——UpsertSkillFromDisk 的进化版保护会在下次扫描时
+// 以 DB 为准重新收敛磁盘。无磁盘载体（storage_dir 未配置）的 skill 直接跳过。
+func (r *skillRepo) syncSkillBodyToDisk(ctx context.Context, skillID, body string) {
+	dir, err := r.GetSkillStorageDir(ctx, skillID)
+	if err != nil {
+		return
+	}
+	writeSkillBodyToDisk(r.data.lg, dir, body)
+}
+
+func writeSkillBodyToDisk(lg loggateway.Logger, dir, body string) {
+	if strings.TrimSpace(dir) == "" {
+		return
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		lg.Warn("skill disk sync: mkdir failed", loggateway.StepID("data.skill"), loggateway.Str("dir", dir), loggateway.Err(err))
+		return
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
+		lg.Warn("skill disk sync: write SKILL.md failed", loggateway.StepID("data.skill"), loggateway.Str("dir", dir), loggateway.Err(err))
+	}
 }
 
 func entSkillVersionToBiz(row *dataent.SkillVersion) biz.SkillVersionDetail {

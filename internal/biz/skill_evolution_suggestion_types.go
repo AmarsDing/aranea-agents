@@ -54,7 +54,16 @@ type SkillEvolutionSuggestion struct {
 	ParentVersionID string                   // ID of the parent skill version this evolution is based on
 	EvolutionReason string                   // Detailed reason for the evolution (populated by Curator Agent)
 	LifecycleStatus EvolutionLifecycleStatus // Current lifecycle status: draft, validating, ready, applied
+	// DraftOrigin records how DraftSkillBody was produced: DraftOriginLLM or
+	// DraftOriginRuleTemplate (F8 — template degradation must be observable).
+	DraftOrigin string
 }
+
+// Draft origin values for SkillEvolutionSuggestion.DraftOrigin (F8).
+const (
+	DraftOriginLLM          = "llm"
+	DraftOriginRuleTemplate = "rule_template"
+)
 
 // EvolutionLifecycleStatus defines the lifecycle status of a skill evolution suggestion.
 type EvolutionLifecycleStatus string

@@ -1030,69 +1030,72 @@ $chat-user-max: 46rem
   outline: none
 
 // Markdown 正文区（阅读宽度 ~42rem、段落节奏、表格可扫读）
-.chat-page .chat-message-prose
+// 2026-07-27：解除 .chat-page 前缀 — q-dialog 弹框（MemberSessionDialog/
+// KnowledgeDocPreviewDialog 等）teleport 到 body 后不在 .chat-page 内，
+// 前缀会导致弹框中 markdown 排版样式全部丢失（h2 60px、表格无边框等）。
+.chat-message-prose
   font-size: 15px
   line-height: 1.72
   color: inherit
   max-width: 100%
 
-.chat-page .chat-message-prose :is(h1, h2, h3, h4, h5, h6)
+.chat-message-prose :is(h1, h2, h3, h4, h5, h6)
   margin: 0
   font-weight: 650
   line-height: 1.35
   letter-spacing: -0.01em
   color: var(--color-text-heading)
 
-.chat-page .chat-message-prose :is(h1, h2, h3, h4, h5, h6):not(:first-child)
+.chat-message-prose :is(h1, h2, h3, h4, h5, h6):not(:first-child)
   margin-top: 1.35em
 
-.chat-page .chat-message-prose :is(h1, h2, h3, h4, h5, h6) + :is(p, ul, ol, table, blockquote, pre, .code-block)
+.chat-message-prose :is(h1, h2, h3, h4, h5, h6) + :is(p, ul, ol, table, blockquote, pre, .code-block)
   margin-top: 0.5em
 
-.chat-page .chat-message-prose img
+.chat-message-prose img
   max-width: 100%
   height: auto
   border-radius: 8px
 
-.chat-page .chat-message-prose h1
+.chat-message-prose h1
   font-size: 1.2rem
-.chat-page .chat-message-prose h2
+.chat-message-prose h2
   font-size: 1.1rem
   padding-bottom: 0.35em
   border-bottom: 1px solid var(--glass-border)
-.chat-page .chat-message-prose h3
+.chat-message-prose h3
   font-size: 1.02rem
-.chat-page .chat-message-prose h4,
-.chat-page .chat-message-prose h5,
-.chat-page .chat-message-prose h6
+.chat-message-prose h4,
+.chat-message-prose h5,
+.chat-message-prose h6
   font-size: 0.98rem
 
-.chat-page .chat-message-prose p
+.chat-message-prose p
   margin: 0 0 0.9em
-.chat-page .chat-message-prose p:last-child
+.chat-message-prose p:last-child
   margin-bottom: 0
 
-.chat-page .chat-message-prose :is(ul, ol)
+.chat-message-prose :is(ul, ol)
   margin: 0.35em 0 1em
   padding-left: 1.4em
-.chat-page .chat-message-prose ul
+.chat-message-prose ul
   list-style-type: disc
-.chat-page .chat-message-prose ol
+.chat-message-prose ol
   list-style-type: decimal
-.chat-page .chat-message-prose li
+.chat-message-prose li
   padding-left: 0.15em
-.chat-page .chat-message-prose li + li
+.chat-message-prose li + li
   margin-top: 0.45em
-.chat-page .chat-message-prose li > :is(ul, ol)
+.chat-message-prose li > :is(ul, ol)
   margin-top: 0.35em
   margin-bottom: 0.25em
 
-.chat-page .chat-message-prose hr
+.chat-message-prose hr
   margin: 1.15em 0
   border: 0
   border-top: 1px solid var(--glass-border)
 
-.chat-page .chat-message-prose table
+.chat-message-prose table
   display: block
   width: 100%
   max-width: 100%
@@ -1105,28 +1108,28 @@ $chat-user-max: 46rem
   line-height: 1.55
   -webkit-overflow-scrolling: touch
 
-.chat-page .chat-message-prose thead
+.chat-message-prose thead
   background: color-mix(in srgb, var(--glass-surface) 88%, transparent)
 
-.chat-page .chat-message-prose th,
-.chat-page .chat-message-prose td
+.chat-message-prose th,
+.chat-message-prose td
   padding: 12px 16px
   border: 1px solid var(--glass-border)
   text-align: left
   vertical-align: top
 
-.chat-page .chat-message-prose th
+.chat-message-prose th
   font-weight: 650
   color: var(--color-text-secondary)
   font-size: 12px
   min-width: 7.5rem
   width: 32%
 
-.chat-page .chat-message-prose td
+.chat-message-prose td
   color: var(--color-text-primary)
   word-break: break-word
 
-.chat-page .chat-message-prose blockquote
+.chat-message-prose blockquote
   margin: 0.75em 0
   padding: 0.35em 0.85em
   border-left: 3px solid color-mix(in srgb, var(--color-accent) 55%, transparent)
@@ -1134,11 +1137,107 @@ $chat-user-max: 46rem
   background: color-mix(in srgb, var(--glass-surface) 65%, transparent)
   color: var(--color-text-secondary)
 
-.chat-page .chat-message-prose code
+.chat-message-prose code
   padding: 0.12em 0.4em
   border-radius: 6px
   font-size: 0.9em
   background: color-mix(in srgb, var(--canvas-base) 12%, var(--glass-surface))
+
+// ===== Code block（fence renderer 产出的原始 HTML，全局作用域） =====
+// 2026-07-27：从 _chat-message-panel.sass 的 .chat-message-content 嵌套迁出——
+// q-dialog 弹框（MemberSessionDialog 等）teleport 到 body 后不在聊天容器内，
+// 嵌套作用域会导致弹框中代码块无样式（无头栏/复制按钮/折叠交互样式）。
+.code-block
+  width: 100%
+  max-width: 100%
+  min-width: 0
+  margin: 0.85em 0
+  border-radius: 12px
+  overflow: hidden
+  background: linear-gradient(180deg, var(--color-surface-solid) 0%, var(--canvas-base) 100%)
+  box-shadow: inset 0 0 0 1px var(--chat-border-muted)
+  text-align: left
+
+.code-block__header
+  display: flex
+  align-items: center
+  justify-content: space-between
+  padding: 6px 12px
+  background: var(--chat-surface-dark-78)
+  border-bottom: 1px solid var(--chat-border-muted)
+
+.code-block__lang
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
+  font-size: 11.5px
+  font-weight: 600
+  letter-spacing: 0.06em
+  text-transform: uppercase
+  color: var(--chat-text-muted)
+
+.code-block__copy
+  display: inline-flex
+  align-items: center
+  gap: 5px
+  padding: 4px 9px
+  border: 1px solid var(--chat-scrollbar-thumb-dark)
+  border-radius: 6px
+  background: var(--chat-surface-light-4)
+  color: var(--chat-text-copy-btn)
+  font-size: 11.5px
+  font-weight: 600
+  letter-spacing: 0.02em
+  cursor: pointer
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease
+
+.code-block__copy:hover
+  background: var(--chat-indigo-soft)
+  border-color: var(--chat-indigo-border-strong)
+  color: var(--color-on-accent)
+
+.code-block__copy.is-copied
+  background: var(--color-success-soft)
+  border-color: var(--chat-success-border)
+  color: var(--color-accent-green-bright)
+
+.code-block__copy-icon
+  width: 12px
+  height: 12px
+  border-radius: 2px
+  border: 1.5px solid currentColor
+  box-shadow: 2px -2px 0 0 var(--chat-border-light), -1px 1px 0 0 currentColor
+
+.code-block pre
+  max-width: 100%
+  min-width: 0
+  margin: 0
+  padding: 14px 16px
+  background: transparent
+  box-shadow: none
+  border-radius: 0
+  color: var(--color-text-dark)
+  line-height: 1.6
+  font-size: 13.5px
+  overflow-x: auto
+  white-space: pre
+
+.code-block__collapsed-hint,
+.code-block__collapse-hint
+  padding: 8px 12px
+  cursor: pointer
+  color: var(--color-text-secondary)
+  user-select: none
+  text-align: center
+  font-size: 12px
+  font-weight: 500
+  transition: color 0.15s ease, background 0.15s ease
+
+.code-block__collapsed-hint:hover,
+.code-block__collapse-hint:hover
+  color: var(--color-text-primary)
+  background: var(--glass-surface-hover)
+
+.code-block__collapse-hint
+  border-top: 1px solid var(--chat-border-muted)
 
 body:not(.body--dark) .chat-page
   .chat-message-bubble--received
@@ -1254,12 +1353,13 @@ body.body--dark .chat-page
   .chat-tool-details__summary-text
     color: var(--color-text-primary)
 
-  .chat-message-prose thead
-    background: color-mix(in srgb, var(--glass-surface-hover) 90%, transparent)
+// 弹框（q-dialog teleport 出 .chat-page）中的 prose 暗色适配与页内一致，不限定 .chat-page
+body.body--dark .chat-message-prose thead
+  background: color-mix(in srgb, var(--glass-surface-hover) 90%, transparent)
 
-  .chat-message-prose blockquote
-    border-left-color: color-mix(in srgb, var(--color-accent) 45%, transparent)
-    background: color-mix(in srgb, var(--glass-surface) 80%, transparent)
+body.body--dark .chat-message-prose blockquote
+  border-left-color: color-mix(in srgb, var(--color-accent) 45%, transparent)
+  background: color-mix(in srgb, var(--glass-surface) 80%, transparent)
 
 // 流式生成：左侧细强调条 + 微脉动，禁止整卡绿色外框
 .chat-page .chat-q-message--streaming .chat-message-bubble--received

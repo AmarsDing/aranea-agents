@@ -861,7 +861,7 @@ func TestOrchestrator_CheckAndCreate_TriggerError_ContinuesWithOthers(t *testing
 
 // 冷却期内（同 actionType 168h）不再创建建议。
 func TestOrchestrator_CheckAndCreate_CooldownActive_Skips(t *testing.T) {
-	recent := &UnifiedEvolutionSuggestion{CreatedAt: time.Now().UTC().Add(-1 * time.Hour)}
+	recent := &UnifiedEvolutionSuggestion{Status: "pending", CreatedAt: time.Now().UTC().Add(-1 * time.Hour)}
 	check := &orchStubCheckReader{latestByAction: map[string]*UnifiedEvolutionSuggestion{
 		string(EvolutionActionImprove): recent,
 	}}
@@ -881,7 +881,7 @@ func TestOrchestrator_CheckAndCreate_CooldownActive_Skips(t *testing.T) {
 
 // 冷却期过后（>168h）允许再次创建。
 func TestOrchestrator_CheckAndCreate_CooldownExpired_Creates(t *testing.T) {
-	old := &UnifiedEvolutionSuggestion{CreatedAt: time.Now().UTC().Add(-(EvoTriggerCooldownHours + 1) * time.Hour)}
+	old := &UnifiedEvolutionSuggestion{Status: "pending", CreatedAt: time.Now().UTC().Add(-(EvoTriggerCooldownHours + 1) * time.Hour)}
 	check := &orchStubCheckReader{latestByAction: map[string]*UnifiedEvolutionSuggestion{
 		string(EvolutionActionImprove): old,
 	}}
@@ -901,7 +901,7 @@ func TestOrchestrator_CheckAndCreate_CooldownExpired_Creates(t *testing.T) {
 
 // 不同 actionType 的冷却期相互独立。
 func TestOrchestrator_CheckAndCreate_CooldownPerActionType(t *testing.T) {
-	recent := &UnifiedEvolutionSuggestion{CreatedAt: time.Now().UTC()}
+	recent := &UnifiedEvolutionSuggestion{Status: "pending", CreatedAt: time.Now().UTC()}
 	check := &orchStubCheckReader{latestByAction: map[string]*UnifiedEvolutionSuggestion{
 		string(EvolutionActionImprove): recent, // improve 在冷却期
 	}}

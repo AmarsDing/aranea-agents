@@ -4,6 +4,7 @@
 > 依据：[2026-07-25-review-harness-rsi-gap-analysis.md](../../reports/2026-07-25-review-harness-rsi-gap-analysis.md) §5 P0
 > 关联模块文档：[01-学习闭环.md](./01-学习闭环.md)、[02-技能自创建.md](./02-技能自创建.md)
 > 状态：已实施（2026-07-26，P0 完成：LLM Curator + Reload 接线 + 审批后触发点 + Wire 注入，build/biz/data/service 测试全绿）
+> 修订：2026-07-27 R2 测试修复（F6 审批草稿冻结 / F8 模板降级可观测 / F10 沙盒 validator 标注，见 §9）
 
 ---
 
@@ -31,9 +32,13 @@ CuratorWorker (2h ticker, 日上限20)
 
 审批 API (ApproveSkillEvolutionSuggestion)
   → 状态 → approved
-  → 异步 GenerateDraftForSuggestion           ← 仍走 generateRuleBasedDraft【断点1】
-  → 异步 ValidateSuggestion
-  → 【终止】无注册新版本动作                    ← 【断点2】Reload 未接线
+  → 异步 runPostApproveAsync：
+      1. 草稿生成（F6：仅当建议无草稿时才生成——审批人审阅的草稿必须冻结，
+         禁止二次 LLM 覆盖；见 §9.1）
+      2. ValidateSuggestion 沙盒验证（F10：sandbox_result JSON 携带
+         validator 字段区分验证来源；见 §9.3）
+      3. ApplyApprovedSuggestion（就绪守卫：approved + lifecycle=ready
+         + sandbox_passed 才触发 Reload）
 ```
 
 ## 3. 设计一：LLM Curator（SkillEvolver 生产实现）
@@ -95,6 +100,8 @@ func (uc *SkillIntelligenceUsecase) generateDraft(ctx context.Context, skillID, 
 ```
 
 Usecase 新增依赖字段 `evolver SkillEvolver`（构造注入，nil-safe：nil 时直接走 rule-based）。`RunCuratorFlow` step 2 与 `GenerateDraftForSuggestion` 改为调用 `generateDraft`。
+
+**降级可观测（F8）**：evolver=nil 或 LLM 失败回退 rule-based 时，不再静默——输出 Warn 日志，并通过 `UnifiedEvolutionMetadataWriter.UpdateMetadataKey` 将 `metadata.draft_origin` 落库（`llm` / `rule_template`，常量 `DraftOriginLLM` / `DraftOriginRuleTemplate`）；L2 视图重建（`unifiedToLegacySuggestionPtr`）透传该值，API `SkillEvolutionSuggestionMsg.draft_origin`（field 20）对外暴露。详见 §9.2。
 
 ## 4. 设计二：Reload 接线（SkillReloader 生产实现）
 
@@ -203,3 +210,40 @@ pending → approved → [异步] GenerateDraft(LLM) → validating → Gate →
 | 回归 | 现有 biz 测试 | rule-based fallback 路径全绿 |
 
 验证命令：`go test ./internal/biz/... -count=1` + `go build ./...`（Windows 环境用 go build，不用 make build）。
+
+---
+
+## 9. R2 测试修复（2026-07-27）
+
+依据 `data/skill-test/reports/R2-skill-evolution-test.md`，对进化链路做三处最小修复（TDD：先失败测试后实现）。
+
+### 9.1 F6（P-evo-2）：审批草稿冻结
+
+**问题**：approve 后异步管道无条件调用 `GenerateDraft`，审批人审阅过的草稿被第二次 LLM 生成覆盖。
+
+**修复**：`runPostApproveAsync`（`internal/service/skill_evolution_suggestion.go`）拆出独立方法，草稿生成前置 `suggestionHasDraft` 检查——仅当建议无草稿时才调用 `curator.GenerateDraft`；已有草稿（审批人所见版本）冻结不再重新生成。读取失败降级为 false（保持原生成行为，不阻断管道）。
+
+**不变量**：审批人审阅的草稿 == 进入沙盒验证与 Reload 的草稿。
+
+### 9.2 F8（P-evo-3）：模板降级可观测
+
+**问题**：evolver=nil（未配置 LLM）时 `generateDraft` 静默回退 rule-based 模板，外界无法区分草稿是 LLM 生成还是模板填充。
+
+**修复**：
+- `generateDraft` 回退路径输出 Warn 日志；
+- 草稿来源落库：`metadata.draft_origin` ∈ `llm` / `rule_template`（biz 常量 `DraftOriginLLM` / `DraftOriginRuleTemplate`，元键 `EvoMetaDraftOrigin`），三个生成点（RunCuratorFlow / GenerateDraft / GenerateDraftForSuggestion）统一经 `persistDraftOrigin` 写入；
+- API 暴露：`SkillEvolutionSuggestionMsg.draft_origin`（proto field 20），L2 视图重建 `unifiedToLegacySuggestionPtr` 从 metadata 透传。
+
+### 9.3 F10（P-evo-5）：沙盒结果 validator 标注
+
+**问题**：触发路径（`GateVerifier` 5 维门禁）与审批路径（service 层 `SandboxRunner` 3 规则 + 可选代码执行）运行**不同检查集**，但 `sandbox_result` JSON 无法区分生产者，`"passed": true` 跨路径语义不明。
+
+**修复**：`sandbox_result` JSON 增加 `validator` 字段，三取值（biz 常量）：
+
+| validator | 生产者 | 检查集 |
+|-----------|--------|--------|
+| `gate_verifier` | biz 触发路径 `SkillGateVerifier` | 5 维门禁 |
+| `sandbox_runner` | service 层 `SandboxRunner`（ValidateSuggestion / RunSandbox） | 3 规则 + 可选代码执行 |
+| `rule_based` | biz 规则降级（未接 GateVerifier 时） | 3 规则 |
+
+**测试锚点**：`internal/service/skill_evolution_suggestion_test.go`（F6）、`internal/biz/skill_draft_origin_test.go`（F8）、`internal/biz/skill_sandbox_validator_test.go` + `internal/service/sandbox_runner_test.go`（F10）。

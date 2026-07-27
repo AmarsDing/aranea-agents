@@ -96,4 +96,8 @@ message SkillEvolutionSuggestionMsg {
   string parent_version_id = 17;
   string evolution_reason = 18;
   string lifecycle_status = 19;
+  // draft_origin records how draft_skill_body was produced: "llm" or
+  // "rule_template" (empty when no draft yet). Makes the evolver=nil template
+  // degradation observable in the API instead of silent.
+  string draft_origin = 20;
 }

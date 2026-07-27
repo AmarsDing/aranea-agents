@@ -713,6 +713,20 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	if s.turnGateway == nil {
 		return
 	}
+	// 2026-07-27 总结重复触发修复（会话 d78029b9 总结 ×3 根因）：lazy 建团下
+	// PlanExecutor 按 DAG 依赖逐 step AssembleTeam，首波团队全部终态时后续
+	// step 尚无团队记录，CheckAllTeamsCompleted（只查 teams 表）把「波次中点」
+	// 误判为「编排终点」；且 StartTeamTurn 每次组团都重置 CAS 守卫，导致每个
+	// 波次都触发一次 synthesis。此处门控：本 session 存在活跃 dagRun 即跳过；
+	// 最终总结由 dagRun 终态释放 lease 后经 NotifyAllTeamsCompleted 唯一触发。
+	// 必须在 CAS guard（LoadOrStore）之前 —— 门控路径不得占用守卫名额。
+	if s.planExecutor != nil && s.planExecutor.HasActiveRunForSession(spiritSessionID) {
+		s.lg.Info("dagRun 活跃中（lazy 建团），跳过波次中点的 synthesis 触发",
+			loggateway.StepID("spirit.synthesis_skip_dagrun_active"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+		)
+		return
+	}
 	if _, alreadyTriggered := s.synthesisTriggered.LoadOrStore(spiritSessionID, true); alreadyTriggered {
 		return
 	}
@@ -737,6 +751,22 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 		Content:      trigger,
 		ParentTaskID: parentTaskID,
 	}); err != nil {
+		// 2026-07-27 修复3：ErrTurnMessageQueued = 成功受理，不是失败。
+		// 触发文本已被 steer 注入活跃 turn 或进入排队队列；活跃 turn 结束后
+		// processPendingQueue 保证排空执行（排队消息有保障）。CAS 保持占用 ——
+		// 消息已受理，守卫继续阻止轮询重复注入。不得发兜底通知：总结必将
+		// 产出，通知 = 双重信号。
+		if isTurnMessageQueued(err) {
+			s.lg.Info("all teams completed: synthesis trigger accepted into active run (steer/queue)",
+				loggateway.StepID("spirit.synthesis_turn_queued"),
+				loggateway.Str("spirit_session_id", spiritSessionID),
+				loggateway.Str("parent_task_id", parentTaskID),
+			)
+			return
+		}
+		// 真实失败（消息未受理）：释放 CAS 守卫，让 30s 轮询路径重试总结
+		// turn —— 烧掉守卫 = 本轮总结永久丢失。兜底通知保留本轮 UX 终态信号。
+		s.synthesisTriggered.Delete(spiritSessionID)
 		s.lg.Warn("all teams completed: failed to trigger Spirit synthesis turn",
 			loggateway.StepID("spirit.synthesis_turn_err"),
 			loggateway.Str("spirit_session_id", spiritSessionID),

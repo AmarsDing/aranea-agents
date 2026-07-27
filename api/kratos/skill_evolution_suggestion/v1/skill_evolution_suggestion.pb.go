@@ -542,8 +542,12 @@ type SkillEvolutionSuggestionMsg struct {
 	ParentVersionId string `protobuf:"bytes,17,opt,name=parent_version_id,json=parentVersionId,proto3" json:"parent_version_id,omitempty"`
 	EvolutionReason string `protobuf:"bytes,18,opt,name=evolution_reason,json=evolutionReason,proto3" json:"evolution_reason,omitempty"`
 	LifecycleStatus string `protobuf:"bytes,19,opt,name=lifecycle_status,json=lifecycleStatus,proto3" json:"lifecycle_status,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// draft_origin records how draft_skill_body was produced: "llm" or
+	// "rule_template" (empty when no draft yet). Makes the evolver=nil template
+	// degradation observable in the API instead of silent.
+	DraftOrigin   string `protobuf:"bytes,20,opt,name=draft_origin,json=draftOrigin,proto3" json:"draft_origin,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SkillEvolutionSuggestionMsg) Reset() {
@@ -709,6 +713,13 @@ func (x *SkillEvolutionSuggestionMsg) GetLifecycleStatus() string {
 	return ""
 }
 
+func (x *SkillEvolutionSuggestionMsg) GetDraftOrigin() string {
+	if x != nil {
+		return x.DraftOrigin
+	}
+	return ""
+}
+
 var File_kratos_skill_evolution_suggestion_v1_skill_evolution_suggestion_proto protoreflect.FileDescriptor
 
 const file_kratos_skill_evolution_suggestion_v1_skill_evolution_suggestion_proto_rawDesc = "" +
@@ -746,7 +757,7 @@ const file_kratos_skill_evolution_suggestion_v1_skill_evolution_suggestion_proto
 	"\x1aTriggerCuratorFlowResponse\x12a\n" +
 	"\n" +
 	"suggestion\x18\x01 \x01(\v2A.kratos.skill_evolution_suggestion.v1.SkillEvolutionSuggestionMsgR\n" +
-	"suggestion\"\xae\x06\n" +
+	"suggestion\"\xd1\x06\n" +
 	"\x1bSkillEvolutionSuggestionMsg\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
 	"\bskill_id\x18\x02 \x01(\tR\askillId\x12\x12\n" +
@@ -771,7 +782,8 @@ const file_kratos_skill_evolution_suggestion_v1_skill_evolution_suggestion_proto
 	"resolvedAt\x12*\n" +
 	"\x11parent_version_id\x18\x11 \x01(\tR\x0fparentVersionId\x12)\n" +
 	"\x10evolution_reason\x18\x12 \x01(\tR\x0fevolutionReason\x12)\n" +
-	"\x10lifecycle_status\x18\x13 \x01(\tR\x0flifecycleStatus2\xae\t\n" +
+	"\x10lifecycle_status\x18\x13 \x01(\tR\x0flifecycleStatus\x12!\n" +
+	"\fdraft_origin\x18\x14 \x01(\tR\vdraftOrigin2\xae\t\n" +
 	"\x1fSkillEvolutionSuggestionService\x12\xe1\x01\n" +
 	"\x1dListSkillEvolutionSuggestions\x12J.kratos.skill_evolution_suggestion.v1.ListSkillEvolutionSuggestionsRequest\x1aK.kratos.skill_evolution_suggestion.v1.ListSkillEvolutionSuggestionsResponse\"'\x82\xd3\xe4\x93\x02!\x12\x1f/v1/skill-evolution-suggestions\x12\xe0\x01\n" +
 	"\x1bGetSkillEvolutionSuggestion\x12H.kratos.skill_evolution_suggestion.v1.GetSkillEvolutionSuggestionRequest\x1aI.kratos.skill_evolution_suggestion.v1.GetSkillEvolutionSuggestionResponse\",\x82\xd3\xe4\x93\x02&\x12$/v1/skill-evolution-suggestions/{id}\x12\xf7\x01\n" +

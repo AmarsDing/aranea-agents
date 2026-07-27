@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -66,5 +67,25 @@ func TestSandboxRunner_RunSandbox_NoDBWrites(t *testing.T) {
 	// nil uc: any DB access panics → test fails
 	if _, _, err := s.RunSandbox(context.Background(), "skill-1", "# A\n\n## B\n\ncontent"); err != nil {
 		t.Fatalf("RunSandbox err: %v", err)
+	}
+}
+
+// TestSandboxRunner_RunSandbox_AnnotatesValidator verifies the sandbox result
+// JSON names its producer (F10): the approve-path SandboxRunner runs a
+// different check set than the trigger-path GateVerifier, so "passed" is only
+// meaningful when the payload says which validator ran.
+func TestSandboxRunner_RunSandbox_AnnotatesValidator(t *testing.T) {
+	t.Parallel()
+	s := NewSandboxRunner(nil, nil, loggateway.NewNoop())
+	_, raw, err := s.RunSandbox(context.Background(), "skill-1", "# Guide\n\n## Steps\n\nDo the thing.")
+	if err != nil {
+		t.Fatalf("RunSandbox err: %v", err)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatalf("result not JSON: %v", err)
+	}
+	if got := result["validator"]; got != biz.SandboxValidatorSandboxRunner {
+		t.Fatalf("validator = %v, want %q", got, biz.SandboxValidatorSandboxRunner)
 	}
 }

@@ -958,6 +958,8 @@ type recordingUnifiedStore struct {
 	sandboxWriteErr error
 	statusSeq       map[string][]string // suggestion ID → ordered status transitions
 	statusErr       error
+	metaUpdates     map[string]map[string]string // suggestion ID → metadata key → value
+	latest          *UnifiedEvolutionSuggestion   // GetLatestByTarget backing (F9 cooldown tests)
 }
 
 func newRecordingUnifiedStore() *recordingUnifiedStore {
@@ -975,7 +977,7 @@ func (s *recordingUnifiedStore) HasPendingForTarget(_ context.Context, _, _ stri
 	return false, nil
 }
 func (s *recordingUnifiedStore) GetLatestByTarget(_ context.Context, _, _ string) (*UnifiedEvolutionSuggestion, error) {
-	return nil, nil
+	return s.latest, nil
 }
 func (s *recordingUnifiedStore) GetLatestByTargetAndAction(_ context.Context, _, _, _ string) (*UnifiedEvolutionSuggestion, error) {
 	return nil, nil
@@ -1040,7 +1042,14 @@ func (s *recordingUnifiedStore) ExpireOlderThan(_ context.Context, _ time.Time) 
 	return 0, nil
 }
 
-func (s *recordingUnifiedStore) UpdateMetadataKey(_ context.Context, _, _, _ string) error {
+func (s *recordingUnifiedStore) UpdateMetadataKey(_ context.Context, id, key, value string) error {
+	if s.metaUpdates == nil {
+		s.metaUpdates = map[string]map[string]string{}
+	}
+	if s.metaUpdates[id] == nil {
+		s.metaUpdates[id] = map[string]string{}
+	}
+	s.metaUpdates[id][key] = value
 	return nil
 }
 

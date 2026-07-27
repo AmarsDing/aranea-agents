@@ -706,6 +706,78 @@ func TestCheckAllTeamsCompleted_AllCompleted_InjectsSuccessTrigger(t *testing.T)
 	}
 }
 
+// ── 2026-07-27 修复3：ErrTurnMessageQueued 语义校正 ────────────────────────
+// 总结触发文本被 steer 注入活跃 turn 或进入排队队列 = 成功受理（活跃 turn
+// 结束后 processPendingQueue 保证排空执行），不是失败。旧行为把 queued 当
+// 错误：发兜底通知（总结必将产出 → 双重信号）且 Warn 误报。
+// 真实失败（消息未受理）必须释放 CAS 守卫 —— 烧掉守卫 = 30s 轮询路径永远
+// 无法重试，本轮总结永久丢失。
+
+// queued → 视为成功：不发兜底通知；CAS 保持占用（消息已受理，守卫继续
+// 阻止轮询重复注入），第二次调用不再触发 ExecuteTurn。
+func TestCheckAllTeamsCompleted_Queued_TreatedAsSuccess(t *testing.T) {
+	controller := &stubSpiritTeamController{
+		completedResult: biz.AllTeamsCompletedResult{
+			AllDone: true, TeamIDs: []string{"t1"},
+			TotalTeams: 1, CompletedTeams: 1,
+		},
+	}
+	gw := &capturingTurnGateway{err: ErrTurnMessageQueued}
+	eventBus := &capturingEventBus{}
+	s := newSynthesisStarter(controller, gw, eventBus)
+
+	s.checkAllTeamsCompleted(context.Background(), "sp1")
+
+	if got := len(gw.snapshot()); got != 1 {
+		t.Fatalf("ExecuteTurn called %d times, want 1", got)
+	}
+	for _, ev := range eventBus.snapshot() {
+		if stepEv, ok := ev.(*biz.StepCreatedEvent); ok && stepEv.Step.Kind == biz.StepKindNotice {
+			t.Fatalf("queued outcome must not publish fallback notice (synthesis will be produced by queue drain), got %q", stepEv.Step.Content)
+		}
+	}
+
+	// CAS 保持：消息已受理，轮询/重复回调不得二次注入触发文本。
+	s.checkAllTeamsCompleted(context.Background(), "sp1")
+	if got := len(gw.snapshot()); got != 1 {
+		t.Fatalf("after accepted-queued, CAS guard must stay burned: ExecuteTurn called %d times, want 1", got)
+	}
+}
+
+// 真实失败（消息未受理）→ 释放 CAS：30s 轮询路径可重试总结 turn；
+// 兜底通知仍发布（本轮 UX 终态信号）。
+func TestCheckAllTeamsCompleted_TurnFails_ReleasesCASForRetry(t *testing.T) {
+	controller := &stubSpiritTeamController{
+		completedResult: biz.AllTeamsCompletedResult{
+			AllDone: true, TeamIDs: []string{"t1"},
+			TotalTeams: 1, CompletedTeams: 1,
+		},
+	}
+	gw := &capturingTurnGateway{err: errors.New("turn gateway down")}
+	eventBus := &capturingEventBus{}
+	s := newSynthesisStarter(controller, gw, eventBus)
+
+	s.checkAllTeamsCompleted(context.Background(), "sp1")
+	if got := len(gw.snapshot()); got != 1 {
+		t.Fatalf("ExecuteTurn called %d times, want 1", got)
+	}
+	var notices int
+	for _, ev := range eventBus.snapshot() {
+		if stepEv, ok := ev.(*biz.StepCreatedEvent); ok && stepEv.Step.Kind == biz.StepKindNotice {
+			notices++
+		}
+	}
+	if notices != 1 {
+		t.Fatalf("real failure must publish exactly one fallback notice, got %d", notices)
+	}
+
+	// CAS 已释放 → 轮询重试再次触发 ExecuteTurn。
+	s.checkAllTeamsCompleted(context.Background(), "sp1")
+	if got := len(gw.snapshot()); got != 2 {
+		t.Fatalf("after real failure, CAS guard must be released for poller retry: ExecuteTurn called %d times, want 2", got)
+	}
+}
+
 // 总结 turn 触发失败 → 兜底通知同样诚实：warning 级别 + 真实完成/失败计数，
 // 不得发布「所有团队已完成」成功通知。
 func TestCheckAllTeamsCompleted_TurnFails_PublishesHonestFallbackNotice(t *testing.T) {

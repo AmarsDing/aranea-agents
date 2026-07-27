@@ -119,5 +119,9 @@ export function useActivityQueries() {
     planSteps(): ReadonlyMap<string, PlanStep> {
       return store.planSteps;
     },
+    /** Read-only view of the memberSessions map（弹框等场景按 ID 实时查询，避免快照过期）。 */
+    memberSessions(): ReadonlyMap<string, MemberSession> {
+      return store.memberSessions;
+    },
   };
 }

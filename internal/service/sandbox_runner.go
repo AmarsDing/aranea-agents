@@ -219,8 +219,12 @@ func (s *SandboxRunner) truncateOutput(output string, maxLen int) string {
 
 type sandboxValidationResult struct {
 	Passed  bool    `json:"passed"`
-	Checks  []check `json:"checks"`
-	Message string  `json:"message"`
+	// Validator names the producer of this payload (F10): the SandboxRunner
+	// check set differs from the GateVerifier gate, so consumers can tell what
+	// "passed" actually verified.
+	Validator string  `json:"validator"`
+	Checks    []check `json:"checks"`
+	Message   string  `json:"message"`
 }
 
 type check struct {
@@ -230,7 +234,7 @@ type check struct {
 }
 
 func (s *SandboxRunner) ruleBasedValidation(suggestion *biz.SkillEvolutionSuggestion) *sandboxValidationResult {
-	result := &sandboxValidationResult{}
+	result := &sandboxValidationResult{Validator: biz.SandboxValidatorSandboxRunner}
 
 	// Check 1: Draft body is not empty
 	c1 := check{Name: "draft_body_not_empty", Passed: suggestion.DraftSkillBody != "", Message: "Draft body must not be empty"}

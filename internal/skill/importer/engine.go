@@ -545,15 +545,16 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 			}
 			committed = append(committed, createdSkillRecord{id: created.ID, storageDir: dir})
 		}
-		// merge_group_with_ai post-create hooks: provenance + optional retire.
-		if len(params.derivedFromSkillIDs) > 0 && len(params.retireSkillIDs) > 0 {
+		// merge_group_with_ai post-create hooks: provenance is always recorded
+		// for merges (C4 血缘链); source retirement is optional (retire_sources).
+		if len(params.derivedFromSkillIDs) > 0 {
 			if err := e.repo.SetSkillDerivedFrom(ctx, created.ID, params.derivedFromSkillIDs); err != nil {
 				return partialErr(err)
 			}
-			for _, sourceID := range params.retireSkillIDs {
-				if err := e.repo.ArchiveSkill(ctx, sourceID); err != nil {
-					return partialErr(err)
-				}
+		}
+		for _, sourceID := range params.retireSkillIDs {
+			if err := e.repo.ArchiveSkill(ctx, sourceID); err != nil {
+				return partialErr(err)
 			}
 		}
 		result.CreatedSkillIDs = append(result.CreatedSkillIDs, created.ID)

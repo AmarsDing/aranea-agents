@@ -340,11 +340,18 @@ function onSelectNode(nodeId: string) {
 }
 
 const memberDialogOpen = ref(false);
-const activeMember = ref<MemberSession | null>(null);
+const activeMemberId = ref<string | null>(null);
+
+// 实时查询：store 以新对象替换方式更新 memberSession（activityV2Store upsert），
+// 点击时存快照会导致弹框中 Status/canInject 过期（停止/输入栏显示错误、状态不流转）。
+const activeMember = computed<MemberSession | null>(() => {
+  const id = activeMemberId.value;
+  return id ? (store.memberSessions().get(id) ?? null) : null;
+});
 
 function onSelectMember(ms: MemberSession) {
   if (justPanned.value) return;
-  activeMember.value = ms;
+  activeMemberId.value = ms.ID;
   memberDialogOpen.value = true;
 }
 

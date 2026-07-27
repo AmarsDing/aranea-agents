@@ -91,6 +91,9 @@ const (
 	// EvoMetaEffectiveness 记录归因裁决（helpful/harmful/neutral/
 	// insufficient_data），由下一进化周期回写到最近一条 applied 建议。
 	EvoMetaEffectiveness = "effectiveness"
+	// EvoMetaDraftOrigin 记录草稿来源（llm / rule_template），F8：让
+	// evolver=nil 的模板降级在 API 响应中可观测，不再静默。
+	EvoMetaDraftOrigin = "draft_origin"
 )
 
 // MetadataMap decodes Metadata into a map. Returns an empty map when Metadata
@@ -127,6 +130,19 @@ func (s *UnifiedEvolutionSuggestion) MetaRaw(key string) json.RawMessage {
 		return nil
 	}
 	return raw
+}
+
+// CountsForCooldown reports whether the suggestion's status participates in the
+// trigger cooldown window (F9): only active lifecycle states (pending /
+// approved / applied) suppress re-triggering. A rejected, expired or rolled
+// back suggestion must not waste the skill's evolution opportunity for a week.
+func (s *UnifiedEvolutionSuggestion) CountsForCooldown() bool {
+	switch UnifiedEvolutionState(s.Status) {
+	case UnifiedEvolutionStatePending, UnifiedEvolutionStateApproved, UnifiedEvolutionStateApplied:
+		return true
+	default:
+		return false
+	}
 }
 
 // UnifiedEvolutionCheckReader provides pending-check and latest-lookup queries.
@@ -290,9 +306,10 @@ func (o *SkillEvolutionOrchestrator) CheckAndCreate(ctx context.Context, targetT
 		// 3. 逐个创建（DB UNIQUE 约束兜底）
 		for _, suggestion := range suggestions {
 			// Per-action-type cooldown check: each (targetType, targetID, actionType)
-			// triple has its own independent cooldown period.
+			// triple has its own independent cooldown period. F9: only active
+			// lifecycle states count — a rejected/expired suggestion never blocks.
 			latestByAction, lbErr := o.checkReader.GetLatestByTargetAndAction(ctx, string(suggestion.TargetType), suggestion.TargetID, string(suggestion.ActionType))
-			if lbErr == nil && latestByAction != nil {
+			if lbErr == nil && latestByAction != nil && latestByAction.CountsForCooldown() {
 				cooldownEnd := latestByAction.CreatedAt.Add(EvoTriggerCooldownHours * time.Hour)
 				if time.Now().UTC().Before(cooldownEnd) {
 					o.lg.Debug("orchestrator: cooldown active for action type, skipping",

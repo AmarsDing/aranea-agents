@@ -183,7 +183,15 @@ func (s *stubProposalRepo) GetLatestByTargetAndAction(_ context.Context, targetT
 	return best, nil
 }
 
-func (s *stubProposalRepo) UpdateDraftBody(context.Context, string, string) error { return nil }
+func (s *stubProposalRepo) UpdateDraftBody(_ context.Context, id string, draftBody string) error {
+	p, ok := s.proposals[id]
+	if !ok {
+		return apierror.NotFound("SKILL_EVO", "not found")
+	}
+	p.DraftBody = draftBody
+	s.proposals[id] = p
+	return nil
+}
 func (s *stubProposalRepo) UpdateLifecycleStatus(context.Context, string, string) error {
 	return nil
 }

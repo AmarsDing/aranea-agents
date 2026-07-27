@@ -37,6 +37,10 @@ export type SkillEvolutionSuggestionMsg = {
   parentVersionId: string | undefined;
   evolutionReason: string | undefined;
   lifecycleStatus: string | undefined;
+  // draft_origin records how draft_skill_body was produced: "llm" or
+  // "rule_template" (empty when no draft yet). Makes the evolver=nil template
+  // degradation observable in the API instead of silent.
+  draftOrigin: string | undefined;
 };
 
 // Any JSON value.

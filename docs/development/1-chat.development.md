@@ -1557,7 +1557,7 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 
 ## 子模块：GraphStageBlock 方案A 重写（富卡片 DAG + 视口 + 成员弹框）
 
-> **状态**：✅ 已实施（2026-07-26；2026-07-27 指针捕获修复 + 运行时验证） | **设计**：[1-chat.design.md §B.10.23](./1-chat.design.md#b1023-graphstageblock-方案a-重写2026-07-26-已实施2026-07-27-指针捕获修复)
+> **状态**：✅ 已实施（2026-07-26；2026-07-27 指针捕获修复 + 弹框渲染/实时性修复 + 运行时验证） | **设计**：[1-chat.design.md §B.10.23](./1-chat.design.md#b1023-graphstageblock-方案a-重写2026-07-26-已实施2026-07-27-指针捕获修复)
 
 ### GA-D.1 模块定位
 
@@ -1576,6 +1576,9 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 | `web/src/features/chat/composables/useGraphNodeTeam.ts` | GraphNode → TeamStage → TeamRun → MemberSession 解析（渲染与 heightOf 布局共用） | ✅ |
 | `web/src/features/chat/composables/usePlanDAGLayout.ts` | 横向 DAG 布局支持 per-node `heightOf` 变高节点 | ✅ |
 | `web/src/components/chat/v2/TaskCard.vue` | 移除 TeamStagePanel，仅保留 GraphStageBlock | ✅ |
+| `web/src/css/app-global.sass` | `.chat-message-prose` / `.code-block` 系列样式改全局作用域（去除 `.chat-page` 前缀，弹框 teleport 后可用） | ✅ 2026-07-27 |
+| `web/src/css/theme/_chat-message-panel.sass` | 移除嵌套于 `.chat-message-content` 的 `.code-block` 样式（迁至全局） | ✅ 2026-07-27 |
+| `web/src/features/chat/composables/useActivityQueries.ts` | 新增 `memberSessions()` 只读访问器（弹框按 ID 实时查询） | ✅ 2026-07-27 |
 
 已删除：`GraphNode.vue`（SVG rect 节点）、`TeamStagePanel.vue`、`TeamRunCard.vue`、`useLocateTeamStage.ts`、`TeamComponents.spec.ts`。
 
@@ -1591,6 +1594,9 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 | T6 | 单节点始终渲染，移除 TeamStagePanel/TeamRunCard/GraphNode/useLocateTeamStage | ✅ |
 | T7 | 指针捕获延迟修复（纯点击不 capture，成员弹框真实浏览器可开） | ✅ 2026-07-27 |
 | T8 | 单测全套 + 真实浏览器运行时验证 + 文档同步 | ✅ 2026-07-27 |
+| T9 | 弹框 Markdown 排版修复：`.chat-message-prose`/`.code-block` 样式改全局作用域 | ✅ 2026-07-27 |
+| T10 | 弹框代码块交互修复：body 绑定 `useChatCodeCopy` 事件委托（复制/折叠） | ✅ 2026-07-27 |
+| T11 | 弹框数据实时性修复：`activeMember` 改 store 实时查询（停止/输入栏与状态流转不再过期） | ✅ 2026-07-27 |
 
 ### GA-D.4 验收标准
 
@@ -1601,12 +1607,15 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 - [x] 纯点击（位移 <3px）不调用 setPointerCapture，成员弹框可开；拖拽超阈值才 capture（spec: defers setPointerCapture）
 - [x] 成员行点击开弹框，pause/inject 事件透传（spec: opens MemberSessionDialog）
 - [x] 真实浏览器验证（2026-07-27，session `d78029b9-c305-4bc1-9583-ac9f743cdc60`）：5 节点 10 成员行渲染，合成 click 与真实鼠标 click 均打开弹框（标题「市场趋势研究员」）
+- [x] 弹框内 Markdown 排版正常（h1-h6 字号、表格边框、代码块头栏/复制/折叠），与聊天消息一致（全局作用域样式）
+- [x] 弹框内 running/paused 成员显示底部输入栏：空输入 + running → 停止按钮（pause-agent）；有文字 → 发送按钮（inject-agent），事件链路至 ChatPage → spiritStore.pauseAgent / runtimeStore.enqueue
+- [x] 弹框打开期间成员状态流转实时反映（activeMember 实时查询 store，非点击时快照）
 - [x] `npx vitest run` 相关 6 个 spec 全绿（GraphStageBlock 9 用例 + entrance + GraphTeamNode + MemberSessionDialog + useGraphViewport + usePlanDAGLayout）
 
 ### GA-D.5 改动文件清单（实际）
 
 新建：`web/src/components/chat/v2/GraphTeamNode.vue`、`web/src/components/chat/v2/MemberSessionDialog.vue`、`web/src/components/chat/v2/graphTeamNodeUi.ts`、`web/src/features/chat/composables/useGraphViewport.ts`、`web/src/features/chat/composables/useGraphNodeTeam.ts`、`web/src/components/chat/v2/__tests__/GraphStageBlock.spec.ts`、`web/src/components/chat/v2/__tests__/GraphStageBlock.entrance.spec.ts`、`web/src/components/chat/v2/__tests__/GraphTeamNode.spec.ts`、`web/src/components/chat/v2/__tests__/MemberSessionDialog.spec.ts`、`web/src/features/chat/composables/__tests__/useGraphViewport.spec.ts`
 
-修改：`web/src/components/chat/v2/GraphStageBlock.vue`（重写 + 指针捕获延迟）、`web/src/components/chat/v2/MemberSessionPanel.vue`（embedded 模式）、`web/src/components/chat/v2/TaskCard.vue`（移除 TeamStagePanel）、`web/src/components/chat/v2/TurnContainer.vue`、`web/src/components/chat/v2/TurnList.vue`、`web/src/components/chat/v2/SessionPanel.vue`、`web/src/features/chat/composables/usePlanDAGLayout.ts`（heightOf）、`web/src/features/chat/composables/__tests__/usePlanDAGLayout.spec.ts`、`web/src/i18n/locales/zh-CN.ts` / `en-US.ts`
+修改：`web/src/components/chat/v2/GraphStageBlock.vue`（重写 + 指针捕获延迟 + activeMember 实时查询）、`web/src/components/chat/v2/MemberSessionDialog.vue`（代码块事件委托）、`web/src/components/chat/v2/MemberSessionPanel.vue`（embedded 模式）、`web/src/components/chat/v2/TaskCard.vue`（移除 TeamStagePanel）、`web/src/components/chat/v2/TurnContainer.vue`、`web/src/components/chat/v2/TurnList.vue`、`web/src/components/chat/v2/SessionPanel.vue`、`web/src/features/chat/composables/usePlanDAGLayout.ts`（heightOf）、`web/src/features/chat/composables/useActivityQueries.ts`（memberSessions 访问器）、`web/src/css/app-global.sass`（markdown/代码块样式全局化）、`web/src/css/theme/_chat-message-panel.sass`（移除嵌套代码块样式）、`web/src/features/chat/composables/__tests__/usePlanDAGLayout.spec.ts`、`web/src/i18n/locales/zh-CN.ts` / `en-US.ts`
 
 删除：`web/src/components/chat/v2/GraphNode.vue`、`web/src/components/chat/v2/TeamStagePanel.vue`、`web/src/components/chat/v2/TeamRunCard.vue`、`web/src/features/chat/composables/useLocateTeamStage.ts`、`web/src/components/chat/v2/__tests__/TeamComponents.spec.ts`

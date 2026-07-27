@@ -5480,20 +5480,28 @@ type DeliverableRef struct {
 ```
 全部团队终态（HandleTeamTurnResult / 后台 poller → checkAllTeamsCompleted）
         │  ① 取消守卫：存在 cancelled 团队 → 跳过总结触发（用户主动中断不出总结）
-        │  ② CAS 防重：synthesisTriggered.LoadOrStore(spiritSessionID)
-        │  ③ ParentTaskID = resolveLatestUserTaskID（最近用户 Task，保证时间线附着）
+        │  ② dagRun 门控（2026-07-27）：HasActiveRunForSession → 波次中点跳过
+        │     （lazy 建团下后续 PlanStep 尚无团队记录，「teams 全终态」≠「编排终点」）
+        │  ③ CAS 防重：synthesisTriggered.LoadOrStore(spiritSessionID)
+        │  ④ ParentTaskID = resolveLatestUserTaskID（最近用户 Task，保证时间线附着）
         ▼
 TeamStarter → turnGateway.ExecuteTurn(TurnInput{
         SessionID: spiritSessionID, Content: synthesisSummaryTrigger, ParentTaskID })
-        │  ④ system-push：触发消息不渲染为用户气泡（system_push source）
+        │  ⑤ system-push：触发消息不渲染为用户气泡（system_push source）
         ▼
 精灵普通 turn → LLM 读取会话中各团队执行结果（graph state / deliverables 上下文）
-        │  ⑤ 按触发消息中的四节结构输出 Markdown 总结
+        │  ⑥ 按触发消息中的四节结构输出 Markdown 总结
         ▼
 reply step（普通回复，steps 表持久化 + WS 推送）
-        │  ⑥ 前端零专门组件：ChatMessageBlock 渲染 Markdown
+        │  ⑦ 前端零专门组件：ChatMessageBlock 渲染 Markdown
         ▼
 刷新/重连：v2 REST hydrate 恢复（与其他 reply 无差别）
+
+DAG 编排的唯一触发点（2026-07-27）：
+dagRun 终态（publishPlanBoardTerminal / publishGraphStageTerminal 之后）
+        │  ① 释放 board lease（running.Delete，必须先删再通知，否则门控拦住自己）
+        ▼
+completionNotifier.NotifyAllTeamsCompleted(sessionID) → 汇入上方 checkAllTeamsCompleted
 ```
 
 **触发失败兜底**：`ExecuteTurn` 返回错误时，`publishAllTeamsCompletedFallbackNotice` 发布直发 notice（Kind=notice，Status=completed，Version=1，StartedAt=now，挂 ParentTaskID），内容「所有团队已完成」——保证用户至少有终态反馈。
@@ -5504,7 +5512,7 @@ reply step（普通回复，steps 表持久化 + WS 推送）
 |------|------|------|
 | 总结形态 | 精灵 LLM 普通 reply（Markdown），无专门 UI | 2026-07-24 用户确认：单独卡片 UI 增重会话；LLM 按格式输出即可；reply step 天然持久化/还原，前端零推理 |
 | 触发方式 | `turnGateway.ExecuteTurn` 注入 system-push 触发消息 | 复用成熟 turn 管线（admission/锁/事件流/持久化）；精灵会话内已有全部团队结果上下文，LLM 直接可读 |
-| 触发点 | 保留 `checkAllTeamsCompleted`（不迁移到 plan_executor） | 单团队/多团队均已被覆盖（每个 PlanStep 都会 AssembleTeam）；CAS 防重已生产验证 |
+| 触发点 | ~~保留 `checkAllTeamsCompleted`~~ **2026-07-27 修正：DAG 编排唯一触发点上移到 dagRun 终态**（`releaseLeaseAndNotifyCompletion` → `NotifyAllTeamsCompleted`）；team 回调/poller 路径保留但加 dagRun 门控 | 原假设「每个 PlanStep 都会 AssembleTeam」忽略了 lazy 建团的时序：波次中点后续 step 尚无团队记录，`CheckAllTeamsCompleted` 误判全完成 → 每个波次触发一次总结（生产事故：会话 d78029b9 总结 ×3，total_teams 3→4→5）。门控 + 终态唯一触发后，每轮编排恰好一份总结且覆盖全部团队产出 |
 | 简单问答排除 | 天然满足：无团队 → `CheckAllTeamsCompleted` 返回空 → 不触发 | 零代码 |
 | 中断守卫 | `AllTeamsCompletedResult.CancelledTeams > 0` 时跳过 | 用户主动中断不出总结（2026-07-22 引入，重构后保留） |
 | 附着点 | `ParentTaskID = resolveLatestUserTaskID` | 总结 reply 归入最近用户任务的时间线，与「continuation turn 继承父 Task ID」不变量一致 |
@@ -5534,6 +5542,8 @@ reply step（普通回复，steps 表持久化 + WS 推送）
 | 场景 | 行为 |
 |------|------|
 | 存在 cancelled 团队 | 跳过总结触发（不发布任何总结/兜底通知） |
+| dagRun 活跃中 team 全部终态（波次中点，2026-07-27） | 门控跳过（`spirit.synthesis_skip_dagrun_active` 日志）；不占用 CAS 守卫名额，最终总结由 dagRun 终态唯一触发 |
+| dagRun 终态时 notifier 未注入（v1 部署/completionNotifier=nil） | 跳过通知；v1 路径本就走 team 回调触发（无 dagRun → 门控常开），行为不变 |
 | `ExecuteTurn` 失败（会话锁/admission 拒绝等） | 记 warn 日志 + 发布兜底 notice「所有团队已完成」；主流程终态事件不受影响 |
 | 总结 turn 执行中 LLM 失败 | 走普通 turn 失败路径（failed reply step），用户可见失败态，可手动重试 |
 | TaskID 解析失败 | `resolveLatestUserTaskID` 回退 ctx RootTaskActivityID；仍失败则空，step 退化为 session 级 |
@@ -6201,7 +6211,18 @@ TaskCard
 >
 > **语义**：纯点击（位移 <3px）不捕获指针，click 正常落到成员行；确认拖拽后才捕获，保证拖出视口边界仍能连续平移。
 
-#### B.10.23.3 测试策略
+#### B.10.23.3 弹框内容渲染与实时性（2026-07-27 修复）
+
+| 维度 | 约定 |
+|------|------|
+| Markdown 样式作用域 | `.chat-message-prose` 与 `.code-block` 系列样式为**全局作用域**（`app-global.sass`）。曾限定 `.chat-page` 前缀 / 嵌套于 `.chat-message-content`，q-dialog teleport 到 body 后脱离作用域导致弹框内排版全失（标题无字号、表格无边框、代码块无头栏） |
+| 代码块交互 | 复制/折叠为事件委托（`useChatCodeCopy.handleMessagesClick`，按 `closest('.code-block*')` 匹配）。聊天容器绑定于 `@messages-click`；弹框 body 单独绑定同一处理函数（teleport 后不在聊天容器 DOM 内） |
+| 弹框数据实时性 | `activeMember` 不存点击时快照：`GraphStageBlock` 仅存成员 ID，经 `useActivityQueries.memberSessions()` 实时查询。store 以新对象替换方式 upsert（`{ ...ex, ...ms }`），快照会导致 Status/`canInject` 过期——停止/输入栏显示错误、状态徽标不流转 |
+| 输入栏可见性 | `MemberSessionPanel.canInject`：非系统 agent（`__` 前缀排除）且 Status ∈ {running, paused} 时显示；终态（completed/failed/cancelled/skipped）不显示属正确行为 |
+
+> **运行时验证（2026-07-27，localhost:9001 dev-spa）**：成员行真实鼠标 click 开弹框；回复 markdown 中 h1=19.2px/650、表格 th 1px 边框+12px/16px padding；`.code-block` CSSOM 规则生效（border-radius 12px、copy 按钮 flex/pointer）；completed 成员无输入栏；弹框可关闭；console 0 错误。
+
+#### B.10.23.4 测试策略
 
 | 文件 | 覆盖 |
 |------|------|

@@ -177,6 +177,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 23 | SkillBackend 多 kind 差异化 | P4+ | Phase 3 | ☐ |
 | 24 | Feedback 真实接入 | P4+ | Phase 3 | ☐ |
 | 25 | EvolutionCoordinator 清理 | P4+ | Phase 3 | ✅（A6） |
+| 26 | R2 进化链路修复（F3 磁盘 watcher 回滚进化成果 / F6 审批草稿冻结 / F8 模板降级可观测 / F9 冷却期过滤终态 / F10 沙盒 validator 标注） | P-evo | — | ✅（2026-07-27，见 [phase3-进化能力/06 §9](./phase3-进化能力/06-P0-LLM-Curator与Reload接线.design.md#9-r2-测试修复2026-07-27)） |
 
 ---
 

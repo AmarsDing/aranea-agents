@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	v1 "aranea-agents/api/kratos/skill_evolution_suggestion/v1"
 	"aranea-agents/internal/biz"
@@ -84,35 +85,56 @@ func (s *SkillEvolutionSuggestionService) ApproveSkillEvolutionSuggestion(ctx co
 	suggestionID := req.GetId()
 	if s.curator != nil || s.sandbox != nil {
 		safego.Go(context.WithoutCancel(ctx), "skill_evo_suggestion.approve.async", func() {
-			bgCtx := context.Background()
-			if s.curator != nil {
-				if _, err := s.curator.GenerateDraft(bgCtx, suggestionID); err != nil {
-					s.lg.Warn("ApproveSkillEvolutionSuggestion: GenerateDraft failed",
-						loggateway.StepID("skill_evo_suggestion.approve"),
-						loggateway.Str("suggestion_id", suggestionID),
-						loggateway.Err(err))
-				}
-			}
-			if s.sandbox != nil {
-				if _, _, err := s.sandbox.ValidateSuggestion(bgCtx, suggestionID); err != nil {
-					s.lg.Warn("ApproveSkillEvolutionSuggestion: ValidateSuggestion failed",
-						loggateway.StepID("skill_evo_suggestion.approve"),
-						loggateway.Str("suggestion_id", suggestionID),
-						loggateway.Err(err))
-				}
-			}
-			// P0 Reload stage: guarded no-op unless the suggestion is
-			// approved + lifecycle=ready + sandbox_passed with a draft.
-			if err := s.uc.ApplyApprovedSuggestion(bgCtx, suggestionID); err != nil {
-				s.lg.Warn("ApproveSkillEvolutionSuggestion: ApplyApprovedSuggestion failed",
-					loggateway.StepID("skill_evo_suggestion.approve"),
-					loggateway.Str("suggestion_id", suggestionID),
-					loggateway.Err(err))
-			}
+			s.runPostApproveAsync(context.Background(), suggestionID)
 		})
 	}
 
 	return &v1.ApproveSkillEvolutionSuggestionResponse{}, nil
+}
+
+// runPostApproveAsync runs the post-approval pipeline: draft generation (only
+// when the suggestion has no draft yet) → sandbox validation → apply.
+// F6 (P-evo-2): an existing draft is the one the approver reviewed — it must
+// be frozen, never regenerated and overwritten by a second LLM pass.
+func (s *SkillEvolutionSuggestionService) runPostApproveAsync(ctx context.Context, suggestionID string) {
+	if s.curator != nil && !s.suggestionHasDraft(ctx, suggestionID) {
+		if _, err := s.curator.GenerateDraft(ctx, suggestionID); err != nil {
+			s.lg.Warn("ApproveSkillEvolutionSuggestion: GenerateDraft failed",
+				loggateway.StepID("skill_evo_suggestion.approve"),
+				loggateway.Str("suggestion_id", suggestionID),
+				loggateway.Err(err))
+		}
+	}
+	if s.sandbox != nil {
+		if _, _, err := s.sandbox.ValidateSuggestion(ctx, suggestionID); err != nil {
+			s.lg.Warn("ApproveSkillEvolutionSuggestion: ValidateSuggestion failed",
+				loggateway.StepID("skill_evo_suggestion.approve"),
+				loggateway.Str("suggestion_id", suggestionID),
+				loggateway.Err(err))
+		}
+	}
+	// P0 Reload stage: guarded no-op unless the suggestion is
+	// approved + lifecycle=ready + sandbox_passed with a draft.
+	if err := s.uc.ApplyApprovedSuggestion(ctx, suggestionID); err != nil {
+		s.lg.Warn("ApproveSkillEvolutionSuggestion: ApplyApprovedSuggestion failed",
+			loggateway.StepID("skill_evo_suggestion.approve"),
+			loggateway.Str("suggestion_id", suggestionID),
+			loggateway.Err(err))
+	}
+}
+
+// suggestionHasDraft reports whether the suggestion currently carries a
+// non-empty draft body. Read failures degrade to false (generate as before).
+func (s *SkillEvolutionSuggestionService) suggestionHasDraft(ctx context.Context, suggestionID string) bool {
+	sug, err := s.uc.GetEvolutionSuggestion(ctx, suggestionID)
+	if err != nil {
+		s.lg.Warn("ApproveSkillEvolutionSuggestion: GetEvolutionSuggestion failed",
+			loggateway.StepID("skill_evo_suggestion.approve"),
+			loggateway.Str("suggestion_id", suggestionID),
+			loggateway.Err(err))
+		return false
+	}
+	return sug != nil && strings.TrimSpace(sug.DraftSkillBody) != ""
 }
 
 func (s *SkillEvolutionSuggestionService) RejectSkillEvolutionSuggestion(ctx context.Context, req *v1.RejectSkillEvolutionSuggestionRequest) (*v1.RejectSkillEvolutionSuggestionResponse, error) {
@@ -161,6 +183,7 @@ func toProtoEvolutionSuggestion(s biz.SkillEvolutionSuggestion, lg loggateway.Lo
 		ParentVersionId: s.ParentVersionID,
 		EvolutionReason: s.EvolutionReason,
 		LifecycleStatus: string(s.LifecycleStatus),
+		DraftOrigin:     s.DraftOrigin,
 	}
 	if s.SandboxResult != nil {
 		var m map[string]interface{}

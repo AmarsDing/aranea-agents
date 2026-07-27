@@ -647,7 +647,7 @@ type SimilarityMetrics struct {
   - 每个 trigger 返回 `[]UnifiedEvolutionSuggestion`（支持多 pattern 同时触发）
   - 不存在则创建，DB UNIQUE 约束兜底（多实例并发安全）
   - 重复创建时返回 `nil, nil`（幂等）
-  - 含 per-action-type 冷却期检查
+  - 含 per-action-type 冷却期检查（F9：仅 `pending`/`approved`/`applied` 活跃状态计入冷却窗口——`rejected`/`expired`/`rolled_back` 不阻塞再次触发，见 `UnifiedEvolutionSuggestion.CountsForCooldown`）
 - `Approve` / `Reject`：审批/拒绝进化建议
 - `ExpirePending`：批量过期超过 7 天的 pending 建议
 
@@ -857,6 +857,8 @@ func BuildSkillTools(cfg SkillToolsetConfig) []trpctool.Tool {
 3. 写入 `metadata_json.sync_origin=filesystem`。
 4. 发布 Monitor 事件 `skill.filesystem.imported` / `skill.filesystem.updated`（经 EventBus + `monitor_events`）。
 5. **不**自动 publish / enable。
+
+**进化版本保护（F3 / P-evo-1）**：DB 最新版本为进化成果（`evolution_reason` 非空）且磁盘内容与其不一致时，认定磁盘陈旧——**不**创建新版本、**不**回退 draft，提交后以 DB 为准刷新磁盘 SKILL.md（`UpsertSkillFromDisk` 内 Warn 日志 + 落盘）。对称地，`CreateSkillVersion` 在事务提交后同步落盘（`syncSkillBodyToDisk`），保证进化 pipeline（DB 为真相）与 watcher（磁盘为真相）两个真相源一致，防止 watcher 用陈旧磁盘内容回滚进化成果。
 
 **删除离开（磁盘 → 标记）**
 

@@ -19,7 +19,7 @@
           @click="$emit('update:open', false)"
         />
       </q-card-section>
-      <q-card-section v-if="memberSession" class="member-session-dialog__body">
+      <q-card-section v-if="memberSession" class="member-session-dialog__body" @click="handleCodeBlockClick">
         <MemberSessionPanel
           :member-session="memberSession"
           embedded
@@ -38,6 +38,7 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { MemberSession } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload } from '../../../features/chat/types';
+import { useChatCodeCopy } from '../../../features/chat/composables/useChatMessageScroll';
 import MemberSessionPanel from './MemberSessionPanel.vue';
 
 function useSafeI18n() {
@@ -62,6 +63,10 @@ defineEmits<{
 }>();
 
 const { t } = useSafeI18n();
+
+// 弹框 teleport 到 body，聊天容器的代码块复制/折叠事件委托覆盖不到——
+// 在弹框 body 上复用同一处理逻辑（handleMessagesClick 内部按 closest('.code-block*') 匹配，非代码块点击自然落空）。
+const { handleMessagesClick: handleCodeBlockClick } = useChatCodeCopy();
 
 const title = computed(() => props.memberSession?.AgentName || props.memberSession?.AgentKey || '');
 </script>

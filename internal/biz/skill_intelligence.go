@@ -244,8 +244,10 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 	}
 
 	// Check cooldown: if a recent suggestion exists within the cooldown period, skip.
+	// F9: only active lifecycle states (pending/approved/applied) count — a
+	// rejected or expired suggestion must not suppress re-triggering.
 	latestUnified, uErr := uc.unifiedStore.GetLatestByTarget(ctx, "skill", skillID)
-	if uErr == nil && latestUnified != nil {
+	if uErr == nil && latestUnified != nil && latestUnified.CountsForCooldown() {
 		cooldownEnd := latestUnified.CreatedAt.Add(EvoTriggerCooldownHours * time.Hour)
 		if time.Now().UTC().Before(cooldownEnd) {
 			return nil, nil
@@ -413,7 +415,9 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 			loggateway.Err(uErr))
 		return nil, apierror.Wrap(uErr, apierror.CodeInternal, "SKILL_INTELLIGENCE")
 	}
+	uc.persistDraftOrigin(ctx, suggestion.ID, llmGenerated)
 	suggestion.DraftSkillBody = draft
+	suggestion.DraftOrigin = draftOriginValue(llmGenerated)
 
 	// Step 3: Set lifecycle to validating.
 	if lcErr := uc.unifiedStore.UpdateLifecycleStatus(ctx, suggestion.ID, "validating"); lcErr != nil {
@@ -482,8 +486,33 @@ func (uc *SkillIntelligenceUsecase) generateDraft(ctx context.Context, suggestio
 			loggateway.StepID("skill_intelligence.generate_draft"),
 			loggateway.Str("skill_id", suggestion.SkillID),
 			loggateway.Err(err))
+	} else {
+		// F8 (P-evo-3)：evolver 未配置走模板不再是静默降级——Warn 日志 +
+		// draft_origin=rule_template 落库（见 persistDraftOrigin）。
+		uc.lg.Warn("generateDraft: LLM evolver not configured, using rule-based template",
+			loggateway.StepID("skill_intelligence.generate_draft"),
+			loggateway.Str("skill_id", suggestion.SkillID))
 	}
 	return uc.generateRuleBasedDraft(suggestion), false
+}
+
+// draftOriginValue maps the llmGenerated flag to the persisted origin value.
+func draftOriginValue(llmGenerated bool) string {
+	if llmGenerated {
+		return DraftOriginLLM
+	}
+	return DraftOriginRuleTemplate
+}
+
+// persistDraftOrigin records how the draft was produced (F8) so the API view
+// can expose template degradation instead of hiding it.
+func (uc *SkillIntelligenceUsecase) persistDraftOrigin(ctx context.Context, suggestionID string, llmGenerated bool) {
+	if err := uc.unifiedStore.UpdateMetadataKey(ctx, suggestionID, EvoMetaDraftOrigin, draftOriginValue(llmGenerated)); err != nil {
+		uc.lg.Warn("persistDraftOrigin: UpdateMetadataKey failed",
+			loggateway.StepID("skill_intelligence.generate_draft"),
+			loggateway.Str("suggestion_id", suggestionID),
+			loggateway.Err(err))
+	}
 }
 
 // collectFailureTraces assembles trace-level observation evidence: the latest
@@ -606,6 +635,22 @@ func (uc *SkillIntelligenceUsecase) generateRuleBasedDraft(suggestion *SkillEvol
 	}
 }
 
+// Sandbox validator identifiers recorded in the sandbox_result JSON payload
+// (F10): the trigger path (GateVerifier, 5-dimension gate) and the approve
+// path (SandboxRunner, 3 rule checks + optional code execution) run different
+// check sets, so the payload must name its producer — otherwise "passed" is
+// ambiguous across paths.
+const (
+	// SandboxValidatorGateVerifier marks payloads produced via SkillGateVerifier.
+	SandboxValidatorGateVerifier = "gate_verifier"
+	// SandboxValidatorSandboxRunner marks payloads produced by the service-layer
+	// SandboxRunner (ValidateSuggestion / RunSandbox).
+	SandboxValidatorSandboxRunner = "sandbox_runner"
+	// SandboxValidatorRuleBased marks payloads from the biz rule-based fallback
+	// used when no GateVerifier is wired.
+	SandboxValidatorRuleBased = "rule_based"
+)
+
 // runSandboxCheck executes sandbox verification for a suggestion draft:
 // GateVerifier when wired (A7), otherwise the rule-based fallback. It returns
 // the verdict plus a JSON result payload suitable for persistence. Gate errors
@@ -632,22 +677,23 @@ func (uc *SkillIntelligenceUsecase) runSandboxCheck(ctx context.Context, suggest
 				})
 			}
 		}
-		return passed, uc.marshalSandboxResult(suggestionID, passed, checkResults)
+		return passed, uc.marshalSandboxResult(suggestionID, passed, checkResults, SandboxValidatorGateVerifier)
 	}
 	passed := draftBody != "" && len(draftBody) < 10000 && skillID != ""
 	return passed, uc.marshalSandboxResult(suggestionID, passed, []map[string]any{
 		{"name": "draft_body_not_empty", "passed": draftBody != ""},
 		{"name": "draft_body_length", "passed": len(draftBody) < 10000},
 		{"name": "skill_id_valid", "passed": skillID != ""},
-	})
+	}, SandboxValidatorRuleBased)
 }
 
 // marshalSandboxResult builds the JSON sandbox-result payload. Marshal failures
 // degrade to a minimal fallback payload so persistence never fails on encoding.
-func (uc *SkillIntelligenceUsecase) marshalSandboxResult(suggestionID string, passed bool, checks []map[string]any) json.RawMessage {
+func (uc *SkillIntelligenceUsecase) marshalSandboxResult(suggestionID string, passed bool, checks []map[string]any, validator string) json.RawMessage {
 	raw, err := json.Marshal(map[string]any{
-		"passed": passed,
-		"checks": checks,
+		"passed":    passed,
+		"validator": validator,
+		"checks":    checks,
 		"message": func() string {
 			if passed {
 				return "All validation checks passed"
@@ -719,6 +765,7 @@ func (uc *SkillIntelligenceUsecase) validateCuratorSuggestionUnified(ctx context
 	if err := uc.unifiedStore.UpdateDraftBody(ctx, s.ID, draft); err != nil {
 		return apierror.Wrap(err, apierror.CodeInternal, "SKILL_INTELLIGENCE")
 	}
+	uc.persistDraftOrigin(ctx, s.ID, llmGenerated)
 
 	// Step 2: Set lifecycle to validating.
 	if err := uc.unifiedStore.UpdateLifecycleStatus(ctx, s.ID, "validating"); err != nil {
@@ -764,7 +811,7 @@ func (uc *SkillIntelligenceUsecase) GenerateDraftForSuggestion(ctx context.Conte
 		return "", apierror.NotFound("SKILL_INTELLIGENCE", "suggestion not found: %s", suggestionID)
 	}
 
-	draft, _ := uc.generateDraft(ctx, suggestion)
+	draft, llmGenerated := uc.generateDraft(ctx, suggestion)
 
 	if err := uc.UpdateSuggestionDraftBody(ctx, suggestionID, draft); err != nil {
 		uc.lg.Warn("GenerateDraftForSuggestion: UpdateSuggestionDraftBody failed",
@@ -773,6 +820,7 @@ func (uc *SkillIntelligenceUsecase) GenerateDraftForSuggestion(ctx context.Conte
 			loggateway.Err(err))
 		return "", err
 	}
+	uc.persistDraftOrigin(ctx, suggestionID, llmGenerated)
 
 	if lcErr := uc.UpdateSuggestionLifecycleStatus(ctx, suggestionID, EvoLifecycleDraft); lcErr != nil {
 		uc.lg.Warn("GenerateDraftForSuggestion: UpdateSuggestionLifecycleStatus failed",
@@ -1041,6 +1089,7 @@ func unifiedToLegacySuggestionPtr(u *UnifiedEvolutionSuggestion) *SkillEvolution
 		CreatedAt:       u.CreatedAt,
 		ParentVersionID: u.MetaString(EvoMetaParentVersionID),
 		EvolutionReason: u.MetaString(EvoMetaEvolutionReason),
+		DraftOrigin:     u.MetaString(EvoMetaDraftOrigin),
 	}
 }
 

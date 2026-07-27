@@ -78,11 +78,18 @@ type PlanExecutor struct {
 	// when the same PlanBoardCreatedEvent is delivered multiple times (replay,
 	// multi-instance, or event bus redelivery). Key: board.ID, Value: *boardRunLease.
 	running sync.Map
+	// 2026-07-27 总结重复触发修复：board 终态后的完成通知器（TeamStarter）。
+	// lazy 建团下 checkAllTeamsCompleted 在波次中点会误判全完成（后续 step
+	// 尚无团队记录），改为 dagRun 活跃期间门控拦截 + board 终态唯一触发。
+	// 后注入打破 Wire 循环（PlanExecutor → TeamStarter → PlanExecutor）。
+	completionNotifier biz.AllTeamsCompletedNotifier
 }
 
 // boardRunLease holds the cancel func for an in-flight PlanBoard DAG run (C-18).
+// sessionID 供 HasActiveRunForSession 门控按 spirit session 匹配活跃 dagRun。
 type boardRunLease struct {
-	cancel context.CancelFunc
+	cancel    context.CancelFunc
+	sessionID string
 }
 
 // TeamDispatchMarker 标记一个 task 已派发 team。
@@ -121,6 +128,32 @@ func (e *PlanExecutor) SetEventBus(bus biz.EventBus) {
 // OnTurnEnd 据此延迟 task.completed 直到 synthesis turn 完成。
 func (e *PlanExecutor) SetTeamDispatchMarker(m TeamDispatchMarker) {
 	e.marker = m
+}
+
+// SetCompletionNotifier injects the AllTeamsCompletedNotifier (TeamStarter)
+// after construction. 2026-07-27 总结重复触发修复：synthesis 的唯一触发点
+// 移到 dagRun 终态（releaseLeaseAndNotifyCompletion）。
+func (e *PlanExecutor) SetCompletionNotifier(n biz.AllTeamsCompletedNotifier) {
+	e.completionNotifier = n
+}
+
+// HasActiveRunForSession reports whether any in-flight dagRun belongs to the
+// given spirit session. 2026-07-27 总结重复触发修复：TeamStarter 的门控 —
+// lazy 建团下，活跃 dagRun 意味着后续 PlanStep 还会派发新团队，此刻
+// 「teams 全终态」只是波次中点，不得触发 synthesis。
+func (e *PlanExecutor) HasActiveRunForSession(sessionID string) bool {
+	if e == nil || sessionID == "" {
+		return false
+	}
+	active := false
+	e.running.Range(func(_, v any) bool {
+		if lease, ok := v.(*boardRunLease); ok && lease.sessionID == sessionID {
+			active = true
+			return false
+		}
+		return true
+	})
+	return active
 }
 
 // CheckPlanBoardProgress implements tools.PlanBoardOrchFallback (C-18).
@@ -290,7 +323,7 @@ func (e *PlanExecutor) StartSubscription() {
 			}
 			// C-20 + C-18: execution lease for empty and non-empty boards alike.
 			runCtx, cancel := context.WithCancel(context.Background())
-			lease := &boardRunLease{cancel: cancel}
+			lease := &boardRunLease{cancel: cancel, sessionID: board.SessionID}
 			if _, loaded := e.running.LoadOrStore(board.ID, lease); loaded {
 				cancel() // unused; an existing run owns this board
 				e.lg.Warn("PlanBoard 已在执行中，跳过重复事件",
@@ -620,7 +653,25 @@ func (r *dagRun) run(ctx context.Context) error {
 	//   - Gap B: PlanBoard terminal 状态更新（Completed/Failed/PartialFailure）
 	r.publishPlanBoardTerminal(termCtx)
 	r.publishGraphStageTerminal(termCtx)
+	// 2026-07-27 总结重复触发修复：board 终态是 synthesis 的唯一触发点。
+	// 必须先释放 lease 再通知 —— TeamStarter 门控（HasActiveRunForSession）
+	// 会把 lease 存续期间的触发当作「波次中点」拦掉，包括这一次最终触发。
+	r.releaseLeaseAndNotifyCompletion()
 	return runErr
+}
+
+// releaseLeaseAndNotifyCompletion releases the board execution lease, then
+// fires the AllTeamsCompletedNotifier so TeamStarter triggers the synthesis
+// turn exactly once per orchestration round. 2026-07-27 修复：lazy 建团下
+// 波次中点的 team 回调会被门控拦截（HasActiveRunForSession），最终总结只能
+// 从这里发出。ctx 用 Background：synthesis turn 长达分钟级，不能继承可能
+// 已取消的 run ctx。
+func (r *dagRun) releaseLeaseAndNotifyCompletion() {
+	r.pe.running.Delete(r.board.ID)
+	if r.pe.completionNotifier == nil || r.board.SessionID == "" {
+		return
+	}
+	r.pe.completionNotifier.NotifyAllTeamsCompleted(context.Background(), r.board.SessionID)
 }
 
 // snapshotStepOutcomes returns aggregated PlanStep failure flags under r.mu.

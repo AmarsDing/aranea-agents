@@ -45,6 +45,11 @@ func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus
 		if setter, ok := deps.Team.TeamStarter.(interface{ SetPlanExecutor(*PlanExecutor) }); ok {
 			setter.SetPlanExecutor(planExec)
 		}
+		// 2026-07-27 总结重复触发修复：synthesis 唯一触发点移到 dagRun 终态，
+		// PlanExecutor 经 AllTeamsCompletedNotifier 回调 TeamStarter。
+		if notifier, ok := deps.Team.TeamStarter.(biz.AllTeamsCompletedNotifier); ok {
+			planExec.SetCompletionNotifier(notifier)
+		}
 		// C-18: cancel_orchestration / check_progress fall back to PlanBoard.ID.
 		cs.orch.SetPlanBoardOrch(planExec)
 		// 2026-07-04 问题 4 修复：注入 EventBus 并启动订阅，
