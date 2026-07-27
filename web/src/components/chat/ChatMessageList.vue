@@ -39,7 +39,6 @@
         @resume-task="(t) => $emit('resume-task', t)"
         @pause-agent="(sid) => $emit('pause-agent', sid)"
         @inject-agent="(p) => $emit('inject-agent', p)"
-        @retry-team="(teamId) => $emit('retry-team', teamId)"
         @expand="(ids) => $emit('expand', ids)"
         @confirm-step="(p) => $emit('confirm-step', p)"
         @submit-clarification="(p) => $emit('submit-clarification', p)"
@@ -61,7 +60,6 @@ import { useI18n } from 'vue-i18n';
 import ChatPendingQueue from './ChatPendingQueue.vue';
 import SessionPanelV2 from './v2/SessionPanel.vue';
 import { useScrollToActivity } from '../../features/chat/composables/useScrollToActivity';
-import { useLocateTeamStage } from '../../features/chat/composables/useLocateTeamStage';
 import { useActivityQueries } from '../../features/chat/composables/useActivityQueries';
 import { CHAT_SCROLL_EL_KEY } from '../../features/chat/composables/useLazyTaskHydration';
 import type { Message, PendingMessage, ConfirmStepPayload, SubmitClarificationPayload } from '../../features/chat/types';
@@ -114,7 +112,6 @@ defineEmits<{
   'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
   'enter-session': [sessionId: string];
   'cancel-team': [teamId: string];
-  'retry-team': [teamId: string];
   'pause-team': [teamId: string];
   'unpause-team': [teamId: string];
   'inject-team': [payload: { teamId: string; message: string }];
@@ -180,21 +177,6 @@ watch(locateCommand, async (cmd) => {
   el.classList.add('activity-locate-highlight');
   window.setTimeout(() => el.classList.remove('activity-locate-highlight'), 3000);
 });
-
-// P1 #5: GraphNode 点击 → 滚动并高亮对应 TeamStagePanel。
-const { locateTeamStageCommand } = useLocateTeamStage();
-watch(
-  () => locateTeamStageCommand.value,
-  async (cmd) => {
-    if (!cmd || !scrollViewportEl.value) return;
-    await nextTick();
-    const el = scrollViewportEl.value.querySelector(
-      `[data-team-stage-id="${cssEscape(cmd.teamStageId)}"]`,
-    ) as HTMLElement | null;
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  },
-);
 
 /** 转义 agentKey 中可能的 CSS 选择器特殊字符（如点、冒号），避免 querySelector 解析失败。 */
 function cssEscape(value: string): string {

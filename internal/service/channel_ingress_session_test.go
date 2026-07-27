@@ -316,6 +316,9 @@ func (s ingressAgentRepo) DeleteAgent(context.Context, string) error { return ni
 func (s ingressAgentRepo) GetAgentRuntimeSettings(context.Context, string) (biz.AgentRuntimeSettings, error) {
 	return biz.AgentRuntimeSettings{}, nil
 }
+func (s ingressAgentRepo) ListAgentRuntimeSettings(context.Context) (map[string]biz.AgentRuntimeSettings, error) {
+	return map[string]biz.AgentRuntimeSettings{}, nil
+}
 func (s ingressAgentRepo) UpsertAgentRuntimeSettings(context.Context, biz.AgentRuntimeSettings) (biz.AgentRuntimeSettings, error) {
 	return biz.AgentRuntimeSettings{}, nil
 }

@@ -72,9 +72,19 @@ export function useToolsPage() {
     void loadRows();
   }
 
-  async function openDetail(tool: Tool) {
-    const fetched = await toolsStore.fetchTool(tool.id || tool.key);
-    detailStore.openDetail(fetched);
+  function openDetail(tool: Tool) {
+    // 立即用列表行数据打开抽屉（header/概览所需字段行内已全），
+    // 全量详情后台静默补齐；失败时行数据亦足够展示。
+    detailStore.openDetail(tool);
+    void toolsStore
+      .fetchTool(tool.id || tool.key)
+      .then((fetched) => {
+        const cur = detailStore.tool;
+        if (cur && (cur.id === fetched.id || cur.key === fetched.key)) {
+          detailStore.updateTool(fetched);
+        }
+      })
+      .catch(() => {});
   }
 
   async function updateRisk(tool: Tool, value: string) {

@@ -1343,6 +1343,44 @@ Agent 构建请求
 - ToolSet 管理的工具每次 `Tools(ctx)` 创建新装饰器实例，缓存不生效（超时和预算仍生效）
 - 缓存踩踏：并发首次调用相同参数可能多次执行 inner tool（P2 优先级可接受）
 
+### 7.1.2 工具结果卸载（Result Offloading）
+
+**背景**：P0-D 的不可逆截断会永久丢失超预算结果（bff43a17 事故：28.9KB 交付物被截断信封包装导致 StateDelta 解析失败）。对齐业界 SOTA（Anthropic Context Editing、Manus full/compact 双表示、DeepAgents FilesystemMiddleware eviction），超限时**优先卸载而非截断**——数据永不丢弃，上下文中只留可回读引用。
+
+**决策分流**（`ToolDecorator.truncateResult` 内，超预算后按序判定）：
+
+| 顺序 | 条件 | 行为 |
+|------|------|------|
+| 1 | StateDelta 工具 | 原样放行（既有豁免，不变） |
+| 2 | 卸载排除清单（`read_file`） | 回退截断信封（防"读文件→卸载→需再读文件"递归回归） |
+| 3 | invocation + artifact service + session IDs 完整 | **卸载**：全量 JSON 存 artifact，返回卸载信封 |
+| 4 | 以上均不满足（无 session/服务不可用/保存失败） | 回退现有截断信封，行为与旧版完全一致 |
+
+**卸载信封**（进 LLM 上下文，替代截断信封）：
+
+```json
+{
+  "offloaded": true,
+  "ref": "artifact://tool_results/<tool>/<sha256(args)[:16]>.json@<version>",
+  "tool": "<工具名>",
+  "original_size": 28912,
+  "preview_head": "<前 2KB>",
+  "preview_tail": "<后 512B>",
+  "read_hint": "Result too large for context. Full JSON saved to ref. Use read_file with file_name=ref and start_line/num_lines to page through it."
+}
+```
+
+**关键设计决策**：
+
+- **存储复用**：经 `codeexecutor.SaveArtifactHelper` 写入现有 artifact 服务，session 级隔离（AppName/UserID/SessionID），天然多租户安全；不引入新表、新存储、新配置。
+- **读回复用**：`read_file` 已支持 `artifact://` 引用 + `start_line/num_lines` 分页，LLM 按 `read_hint` 自取回，零新工具。
+- **确定性命名**：`tool_results/<tool>/<sha256(args)[:16]>.json`，同工具同参数幂等复用，防存储膨胀。
+- **双端预览**：head 2KB + tail 512B（尾部常含结论/错误码），多数浅层问题无需读回。
+- **上下文确定性**：同一结果生成同一信封，append-only，不破坏 KV-cache 前缀。
+- **可观测性**：卸载记 Info 日志（tool/original_size/ref）；回退记 Warn 日志。
+
+**后续迭代（P1，未实施）**：Anthropic `clear_tool_uses` 式过期 tool response 清理（oldest-first 占位符化，保留最近 N 个），位于框架 messages 构建层，需评估 KV-cache 失效权衡，独立迭代。
+
 ### 7.2 工具注册表
 
 文件路径：`internal/tools/tool.go`（类型）、`internal/tools/toolset.go`（Registry + Assemble）

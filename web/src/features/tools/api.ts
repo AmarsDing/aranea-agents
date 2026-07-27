@@ -13,6 +13,7 @@ import type {
   AgentEffectiveTools,
   PaginatedResponse,
   Tool,
+  ToolAgentBinding,
   ToolAgentOverride,
   ToolInvocation,
   ToolListQuery,
@@ -307,6 +308,22 @@ function kratosOverrideToLegacy(o: KratosToolAgentOverride): ToolAgentOverride {
 export async function listToolAgentOverrides(toolId: string): Promise<ToolAgentOverride[]> {
   const data = await toolApi.ListToolAgentOverrides({ toolId });
   return (data.items ?? []).map(kratosOverrideToLegacy);
+}
+
+/** 聚合接口：一次请求拿到某工具在所有可见 Agent 上的生效状态（替代逐 Agent N+1 扫描）。 */
+export async function getToolAgentBindings(toolId: string): Promise<ToolAgentBinding[]> {
+  const data = await toolApi.GetToolAgentBindings({ toolId });
+  return (data.items ?? []).map((b) => ({
+    agent_id: b.agentId ?? '',
+    agent_key: b.agentKey ?? '',
+    agent_name: b.agentName ?? '',
+    agent_status: b.agentStatus ?? '',
+    tools_enabled: Boolean(b.toolsEnabled),
+    profile: b.profile ?? '',
+    effective_state: b.effectiveState ?? 'denied',
+    reason: b.reason ?? '',
+    override_mode: b.overrideMode ?? '',
+  }));
 }
 
 export async function listToolAgentOverridesByAgent(agentId: string): Promise<ToolAgentOverride[]> {

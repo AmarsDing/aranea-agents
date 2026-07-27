@@ -152,7 +152,6 @@
         @error-remove-attachment="errorBlock.onErrorRemoveAttachment"
         @error-relogin="onErrorRelogin"
         @cancel-team="spiritStore.cancelTeam"
-        @retry-team="spiritStore.retryTeam"
         @pause-team="spiritStore.pauseTeam"
         @unpause-team="spiritStore.unpauseTeam"
         @inject-team="(p: { teamId: string; message: string }) => spiritStore.injectTeam(p.teamId, p.message)"

@@ -27,6 +27,9 @@ type Deps struct {
 	AgentRepo  AgentRepository
 	APIBaseURL string
 	APIToken   string
+	// AllowedPrivateHosts lists Git hosts exempt from the outboundguard
+	// public-host check (e.g. intranet GitLab). Exact host match only.
+	AllowedPrivateHosts []string
 }
 
 func (d Deps) String() string {

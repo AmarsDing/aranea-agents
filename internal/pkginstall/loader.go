@@ -1,6 +1,7 @@
 package pkginstall
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -50,15 +51,30 @@ func FetchFromURL(repoURL, ref string, quiet bool) (pkgDir string, cleanup func(
 	cmd := exec.Command("git", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	var stderrBuf bytes.Buffer
 	if quiet {
+		// Keep stderr even in quiet mode so clone failures are diagnosable
+		// (otherwise all the caller sees is "exit status 128").
 		cmd.Stdout = nil
-		cmd.Stderr = nil
+		cmd.Stderr = &stderrBuf
 	}
 	if err := cmd.Run(); err != nil {
 		cleanup()
+		if tail := stderrTail(stderrBuf.String(), 200); tail != "" {
+			return "", nil, fmt.Errorf("git clone %s: %s (%v)", repoURL, tail, err)
+		}
 		return "", nil, fmt.Errorf("git clone %s: %w", repoURL, err)
 	}
 	return tmpDir, cleanup, nil
+}
+
+// stderrTail returns the trailing slice of s (at most max chars), trimmed.
+func stderrTail(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if len(s) > max {
+		s = s[len(s)-max:]
+	}
+	return s
 }
 
 func cloneArgs(repoURL, ref string, quiet bool, tmpDir string) []string {

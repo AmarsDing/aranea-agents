@@ -873,6 +873,18 @@ func (r *agentRepo) GetAgentRuntimeSettings(ctx context.Context, agentID string)
 	return entRuntimeToBiz(row), nil
 }
 
+func (r *agentRepo) ListAgentRuntimeSettings(ctx context.Context) (map[string]biz.AgentRuntimeSettings, error) {
+	rows, err := r.data.RW().Read(ctx).AgentRuntimeSetting.Query().All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "AGENT")
+	}
+	out := make(map[string]biz.AgentRuntimeSettings, len(rows))
+	for _, row := range rows {
+		out[row.ID] = entRuntimeToBiz(row)
+	}
+	return out, nil
+}
+
 func (r *agentRepo) UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentRuntimeSettings) (biz.AgentRuntimeSettings, error) {
 	if v.AgentID == "" {
 		return biz.AgentRuntimeSettings{}, apierror.BadRequest("AGENT", "agent id is required")

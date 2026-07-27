@@ -88,13 +88,13 @@ func toolSelectSQL(d Dialect) string {
 			GROUP BY tool_key
 		) overrides ON overrides.tool_key = t.tool_key
 		LEFT JOIN (
-			SELECT ti.tool_key, ti.started_at, ti.status
-			FROM tool_invocations ti
-			INNER JOIN (
-				SELECT tool_key, MAX(started_at) AS max_started_at
-				FROM tool_invocations
-				GROUP BY tool_key
-			) latest ON latest.tool_key = ti.tool_key AND latest.max_started_at = ti.started_at
+			SELECT tool_key, started_at, status
+			FROM (
+				SELECT ti.tool_key, ti.started_at, ti.status,
+				       ROW_NUMBER() OVER (PARTITION BY ti.tool_key ORDER BY ti.started_at DESC, ti.id DESC) AS rn
+				FROM tool_invocations ti
+			)
+			WHERE rn = 1
 		) last ON last.tool_key = t.tool_key`
 }
 

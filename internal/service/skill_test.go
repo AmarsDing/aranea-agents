@@ -157,6 +157,29 @@ func (m *memSkillRepo) FilesystemHealthStats(_ context.Context) (biz.SkillFilesy
 	return biz.SkillFilesystemHealthStats{}, nil
 }
 
+func (m *memSkillRepo) AppendImportedVersion(_ context.Context, in biz.SkillImportVersionInput) (biz.Skill, error) {
+	s, ok := m.items[in.SkillID]
+	if !ok {
+		return biz.Skill{}, fmt.Errorf("skill not found: %s", in.SkillID)
+	}
+	return s, nil
+}
+
+func (m *memSkillRepo) ArchiveSkill(_ context.Context, id string) error {
+	s, ok := m.items[id]
+	if !ok {
+		return fmt.Errorf("skill not found: %s", id)
+	}
+	s.Status = "archived"
+	s.Enabled = false
+	m.items[id] = s
+	return nil
+}
+
+func (m *memSkillRepo) SetSkillDerivedFrom(_ context.Context, _ string, _ []string) error {
+	return nil
+}
+
 func newSkillService() *service.SkillService {
 	repo := newMemSkillRepo()
 	repo.items["sk1"] = biz.Skill{ID: "sk1", Name: "Test Skill", Enabled: true, Status: "active", WorkspaceID: workspace.DefaultWorkspaceID}

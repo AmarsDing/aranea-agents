@@ -25,6 +25,7 @@ const OperationToolServiceDeleteTool = "/kratos.tool.v1.ToolService/DeleteTool"
 const OperationToolServiceDeleteToolAgentOverride = "/kratos.tool.v1.ToolService/DeleteToolAgentOverride"
 const OperationToolServiceDeleteToolGrant = "/kratos.tool.v1.ToolService/DeleteToolGrant"
 const OperationToolServiceGetTool = "/kratos.tool.v1.ToolService/GetTool"
+const OperationToolServiceGetToolAgentBindings = "/kratos.tool.v1.ToolService/GetToolAgentBindings"
 const OperationToolServiceGetToolInvocationParams = "/kratos.tool.v1.ToolService/GetToolInvocationParams"
 const OperationToolServiceListToolAgentOverrides = "/kratos.tool.v1.ToolService/ListToolAgentOverrides"
 const OperationToolServiceListToolAgentOverridesByAgent = "/kratos.tool.v1.ToolService/ListToolAgentOverridesByAgent"
@@ -45,6 +46,7 @@ type ToolServiceHTTPServer interface {
 	DeleteToolAgentOverride(context.Context, *DeleteToolAgentOverrideRequest) (*emptypb.Empty, error)
 	DeleteToolGrant(context.Context, *DeleteToolGrantRequest) (*emptypb.Empty, error)
 	GetTool(context.Context, *GetToolRequest) (*Tool, error)
+	GetToolAgentBindings(context.Context, *GetToolAgentBindingsRequest) (*ToolAgentBindingsView, error)
 	GetToolInvocationParams(context.Context, *GetToolInvocationParamsRequest) (*ToolInvocationParam, error)
 	ListToolAgentOverrides(context.Context, *ListToolAgentOverridesRequest) (*ListToolAgentOverridesResponse, error)
 	ListToolAgentOverridesByAgent(context.Context, *ListToolAgentOverridesByAgentRequest) (*ListToolAgentOverridesByAgentResponse, error)
@@ -75,6 +77,7 @@ func RegisterToolServiceHTTPServer(s *http.Server, srv ToolServiceHTTPServer) {
 	r.PATCH("/v1/tools/{id}/enabled", _ToolService_ToggleToolEnabled0_HTTP_Handler(srv))
 	r.GET("/v1/tools/{tool_id}/runs", _ToolService_ListToolRunsForTool0_HTTP_Handler(srv))
 	r.GET("/v1/tools/{tool_id}/agent-overrides", _ToolService_ListToolAgentOverrides0_HTTP_Handler(srv))
+	r.GET("/v1/tools/{tool_id}/agent-bindings", _ToolService_GetToolAgentBindings0_HTTP_Handler(srv))
 	r.GET("/v1/agents/{agent_id}/tool-overrides", _ToolService_ListToolAgentOverridesByAgent0_HTTP_Handler(srv))
 	r.GET("/v1/agents/{agent_id}/tool-grants", _ToolService_ListToolGrants0_HTTP_Handler(srv))
 	r.DELETE("/v1/agents/{agent_id}/tool-grants/{tool_key}", _ToolService_DeleteToolGrant0_HTTP_Handler(srv))
@@ -323,6 +326,28 @@ func _ToolService_ListToolAgentOverrides0_HTTP_Handler(srv ToolServiceHTTPServer
 	}
 }
 
+func _ToolService_GetToolAgentBindings0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetToolAgentBindingsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationToolServiceGetToolAgentBindings)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetToolAgentBindings(ctx, req.(*GetToolAgentBindingsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ToolAgentBindingsView)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _ToolService_ListToolAgentOverridesByAgent0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListToolAgentOverridesByAgentRequest
@@ -492,6 +517,7 @@ type ToolServiceHTTPClient interface {
 	DeleteToolAgentOverride(ctx context.Context, req *DeleteToolAgentOverrideRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteToolGrant(ctx context.Context, req *DeleteToolGrantRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	GetTool(ctx context.Context, req *GetToolRequest, opts ...http.CallOption) (rsp *Tool, err error)
+	GetToolAgentBindings(ctx context.Context, req *GetToolAgentBindingsRequest, opts ...http.CallOption) (rsp *ToolAgentBindingsView, err error)
 	GetToolInvocationParams(ctx context.Context, req *GetToolInvocationParamsRequest, opts ...http.CallOption) (rsp *ToolInvocationParam, err error)
 	ListToolAgentOverrides(ctx context.Context, req *ListToolAgentOverridesRequest, opts ...http.CallOption) (rsp *ListToolAgentOverridesResponse, err error)
 	ListToolAgentOverridesByAgent(ctx context.Context, req *ListToolAgentOverridesByAgentRequest, opts ...http.CallOption) (rsp *ListToolAgentOverridesByAgentResponse, err error)
@@ -574,6 +600,19 @@ func (c *ToolServiceHTTPClientImpl) GetTool(ctx context.Context, in *GetToolRequ
 	pattern := "/v1/tools/{id}"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationToolServiceGetTool))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *ToolServiceHTTPClientImpl) GetToolAgentBindings(ctx context.Context, in *GetToolAgentBindingsRequest, opts ...http.CallOption) (*ToolAgentBindingsView, error) {
+	var out ToolAgentBindingsView
+	pattern := "/v1/tools/{tool_id}/agent-bindings"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationToolServiceGetToolAgentBindings))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

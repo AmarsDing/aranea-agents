@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,8 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
+	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -417,7 +420,7 @@ func (d *ToolDecorator) Call(ctx context.Context, jsonArgs []byte) (any, error) 
 	if err != nil {
 		return nil, err
 	}
-	result = d.truncateResult(result)
+	result = d.truncateResult(ctx, jsonArgs, result)
 	if d.cache != nil && scoped {
 		d.storeCache(scope, jsonArgs, result)
 	}
@@ -451,11 +454,16 @@ func (d *ToolDecorator) applyTimeout(ctx context.Context) (context.Context, cont
 	return context.WithTimeout(ctx, d.cfg.Timeout)
 }
 
-// truncateResult serializes and truncates the result if it exceeds the
-// configured budget. Results within budget or when no budget is set are
-// returned unchanged. The truncation envelope is a map[string]any with
-// truncated/original_size/mode/content fields, which the framework
-// serializes via its standard JSON path.
+// truncateResult serializes the result and enforces the configured budget.
+// Results within budget or when no budget is set are returned unchanged.
+//
+// Oversized results are OFFLOADED rather than truncated whenever the
+// invocation can persist artifacts (see offloadResult): the full JSON is
+// saved via the artifact service and the LLM receives an offload envelope
+// with a resolvable artifact:// ref plus dual-end previews, so no data is
+// ever lost. When offloading is unavailable (no invocation/session/service,
+// excluded tool, or save failure) the legacy truncation envelope is
+// produced, preserving the original behavior byte-for-byte.
 //
 // The envelope is returned as map[string]any (not a pre-serialized string)
 // so downstream consumers receive a structured object and the framework's
@@ -469,7 +477,7 @@ func (d *ToolDecorator) applyTimeout(ctx context.Context) (context.Context, cont
 // set_deliverable's 28.9KB echo was enveloped, deliverable lost).
 // Truncation also corrupts the JSON the LLM sees for such tools, so
 // skipping it is strictly safer than enveloping.
-func (d *ToolDecorator) truncateResult(result any) any {
+func (d *ToolDecorator) truncateResult(ctx context.Context, jsonArgs []byte, result any) any {
 	if d.providesStateDelta() {
 		return result
 	}
@@ -483,6 +491,9 @@ func (d *ToolDecorator) truncateResult(result any) any {
 	data, err := json.Marshal(result)
 	if err != nil || len(data) <= budget.MaxBytes {
 		return result
+	}
+	if envelope, ok := d.offloadResult(ctx, jsonArgs, data); ok {
+		return envelope
 	}
 	mode := budget.Mode
 	if mode == "" {
@@ -505,6 +516,106 @@ func (d *ToolDecorator) truncateResult(result any) any {
 		"mode":          mode,
 		"content":       string(truncated),
 	}
+}
+
+// offloadPreviewHeadBytes / offloadPreviewTailBytes bound the dual-end
+// preview embedded in an offload envelope. The head carries the beginning
+// of the payload; the tail often carries conclusions / error summaries.
+const (
+	offloadPreviewHeadBytes = 2048
+	offloadPreviewTailBytes = 512
+)
+
+// offloadExcludedTools lists tool names that must never be offloaded.
+// read_file is the read-back path for offloaded refs — offloading its
+// result would force the LLM to call read_file to fetch a read_file
+// result, a circular regress. Suffix matching mirrors
+// budgetOverrideForTool so MCP ToolPrefix prefixes are handled.
+var offloadExcludedTools = []string{"read_file"}
+
+// offloadResult persists the full oversized result JSON via the invocation's
+// artifact service and returns an offload envelope:
+//
+//	{offloaded, ref, tool, original_size, preview_head, preview_tail, read_hint}
+//
+// The artifact filename is deterministic (tool + sha256(args)[:16]) so the
+// same call rewrites the same artifact instead of bloating storage. The
+// second return value is false when offloading is unavailable, in which
+// case the caller falls back to the legacy truncation envelope.
+func (d *ToolDecorator) offloadResult(ctx context.Context, jsonArgs, data []byte) (any, bool) {
+	name := d.toolName()
+	for _, suffix := range offloadExcludedTools {
+		if name == suffix || strings.HasSuffix(name, "_"+suffix) {
+			return nil, false
+		}
+	}
+	inv, ok := trpcagent.InvocationFromContext(ctx)
+	if !ok || inv == nil || inv.ArtifactService == nil || inv.Session == nil ||
+		inv.Session.AppName == "" || inv.Session.UserID == "" || inv.Session.ID == "" {
+		return nil, false
+	}
+	ctxIO := codeexecutor.WithArtifactService(ctx, inv.ArtifactService)
+	ctxIO = codeexecutor.WithArtifactSession(ctxIO, trpcartifact.SessionInfo{
+		AppName:   inv.Session.AppName,
+		UserID:    inv.Session.UserID,
+		SessionID: inv.Session.ID,
+	})
+	sum := sha256.Sum256(jsonArgs)
+	filename := "tool_results/" + sanitizeOffloadName(name) + "/" +
+		hex.EncodeToString(sum[:])[:16] + ".json"
+	ver, err := codeexecutor.SaveArtifactHelper(ctxIO, filename, data, "application/json")
+	if err != nil {
+		d.cfg.Logger.Warn("tool result offload failed, falling back to truncation",
+			loggateway.StepID("tool.decorator.offload"),
+			loggateway.Str("tool", name),
+			loggateway.Int("original_size", len(data)),
+			loggateway.Err(err),
+		)
+		return nil, false
+	}
+	ref := "artifact://" + filename + "@" + strconv.Itoa(ver)
+	head := data
+	if len(head) > offloadPreviewHeadBytes {
+		head = head[:offloadPreviewHeadBytes]
+	}
+	tail := data
+	if len(tail) > offloadPreviewTailBytes {
+		tail = tail[len(tail)-offloadPreviewTailBytes:]
+	}
+	d.cfg.Logger.Info("tool result offloaded",
+		loggateway.StepID("tool.decorator.offload"),
+		loggateway.Str("tool", name),
+		loggateway.Int("original_size", len(data)),
+		loggateway.Str("ref", ref),
+	)
+	return map[string]any{
+		"offloaded":     true,
+		"ref":           ref,
+		"tool":          name,
+		"original_size": len(data),
+		"preview_head":  string(head),
+		"preview_tail":  string(tail),
+		"read_hint": "Result too large for context. Full JSON saved to ref. " +
+			"Use read_file with file_name=ref and start_line/num_lines to page through it.",
+	}, true
+}
+
+// sanitizeOffloadName makes a tool name safe for use as an artifact
+// directory component.
+func sanitizeOffloadName(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+	}
+	if b.Len() == 0 {
+		return "tool"
+	}
+	return b.String()
 }
 
 // sliceForMode returns the truncated byte slice according to the mode:

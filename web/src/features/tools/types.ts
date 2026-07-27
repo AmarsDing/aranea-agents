@@ -201,6 +201,19 @@ export type AgentEffectiveTools = {
   items: AgentEffectiveTool[];
 };
 
+/** GET /v1/tools/{tool_id}/agent-bindings 单行：某工具在一个 Agent 上的生效状态（后端聚合计算）。 */
+export type ToolAgentBinding = {
+  agent_id: string;
+  agent_key: string;
+  agent_name: string;
+  agent_status: string;
+  tools_enabled: boolean;
+  profile: string;
+  effective_state: 'allowed' | 'denied' | string;
+  reason: string;
+  override_mode: string;
+};
+
 export type ToolTestResult = {
   status: string;
   result_preview: string;

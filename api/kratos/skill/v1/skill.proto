@@ -303,6 +303,9 @@ message SkillImportDecision {
   string merged_description = 5;
   string merged_body = 6;
   repeated SkillTag merged_tags = 7;
+  // merge_group_with_ai: archive the conflict group's existing skills after
+  // a successful merge apply (status=archived, enabled=false).
+  bool retire_sources = 8;
 }
 
 message ApplySkillImportRequest {

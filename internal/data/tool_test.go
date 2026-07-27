@@ -97,6 +97,55 @@ func TestToolRepo_SearchTools_P95Regression(t *testing.T) {
 	}
 }
 
+// TestToolRepo_SearchTools_LatestInvocationDedup is a regression test for
+// duplicate tool rows produced by toolSelectSQL's `last` subquery: when a tool
+// has multiple invocations sharing the same MAX(started_at), the inner join
+// yields one row per tied invocation, and the outer LEFT JOIN then duplicates
+// the tool row (observed in Agent settings → 工具覆盖 table: same tool_key
+// listed twice). The `last` subquery must collapse ties to a single row per
+// tool_key.
+func TestToolRepo_SearchTools_LatestInvocationDedup(t *testing.T) {
+	ctx := context.Background()
+	repo, d := newToolTestRepo(t)
+
+	tool, err := repo.CreateTool(ctx, biz.ToolUpsertInput{
+		Key:         "cli_admin_agent_get",
+		DisplayName: "Agent 详情",
+		Category:    "cli_admin",
+		Source:      "builtin",
+		RiskLevel:   "low",
+		Enabled:     true,
+	})
+	if err != nil {
+		t.Fatalf("CreateTool: %v", err)
+	}
+
+	// Three invocations sharing the exact same started_at — all tie for MAX.
+	cutoff := "2026-07-27T00:00:00Z"
+	for i := 0; i < 3; i++ {
+		if _, err := d.rawDB.ExecContext(ctx, `INSERT INTO tool_invocations
+			(id, tool_key, tool_id, status, started_at, duration_ms, source, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, 'adk', $7)`,
+			fmt.Sprintf("%s-inv-%d", tool.ID, i), tool.Key, tool.ID, "success", cutoff, 100+i*10, cutoff); err != nil {
+			t.Fatalf("insert invocation %d: %v", i, err)
+		}
+	}
+
+	result, err := repo.SearchTools(ctx, biz.ToolListQuery{Limit: 100, Offset: 0})
+	if err != nil {
+		t.Fatalf("SearchTools failed: %v", err)
+	}
+	count := 0
+	for i := range result.Items {
+		if result.Items[i].Key == "cli_admin_agent_get" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("tool row count = %d, want 1 (tied latest invocations must not duplicate tool rows)", count)
+	}
+}
+
 // TestToolRepo_SearchTools_EmptyInvocations verifies SearchTools works when
 // tool_invocations is empty (p95 LEFT JOIN yields NULL → COALESCE 0).
 func TestToolRepo_SearchTools_EmptyInvocations(t *testing.T) {

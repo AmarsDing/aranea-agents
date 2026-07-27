@@ -18,11 +18,14 @@ type skillInstallInput struct {
 }
 
 type skillInstallOutput struct {
-	Created int      `json:"created"`
-	Updated int      `json:"updated"`
-	Skipped int      `json:"skipped"`
-	Errors  []string `json:"errors,omitempty"`
-	Steps   []string `json:"steps"`
+	Created   int      `json:"created"`
+	Updated   int      `json:"updated"`
+	Skipped   int      `json:"skipped"`
+	Errors    []string `json:"errors,omitempty"`
+	Steps     []string `json:"steps"`
+	JobID     string   `json:"job_id,omitempty"`
+	Status    string   `json:"status,omitempty"` // installed|pending_conflict|failed
+	Conflicts []pkginstall.ConflictInfo `json:"conflicts,omitempty"`
 }
 
 func newSkillInstallFromURLTool(deps Deps) trpctool.Tool {
@@ -30,7 +33,7 @@ func newSkillInstallFromURLTool(deps Deps) trpctool.Tool {
 		if input.URL == "" {
 			return skillInstallOutput{}, apierror.BadRequest(apierror.DomainTool, "url is required")
 		}
-		if err := validateRepoURL(input.URL); err != nil {
+		if err := validateRepoURL(input.URL, deps.AllowedPrivateHosts); err != nil {
 			return skillInstallOutput{}, err
 		}
 		manifest := &pkginstall.Manifest{
@@ -68,17 +71,21 @@ func newSkillInstallFromURLTool(deps Deps) trpctool.Tool {
 		for _, sr := range result.Steps {
 			stepLog = append(stepLog, fmt.Sprintf("%s %s %s", sr.Resource, sr.Action, sr.Message))
 		}
+		jobID, status, conflicts := summarizeSkillSteps(result.Steps)
 		return skillInstallOutput{
-			Created: result.Created,
-			Updated: result.Updated,
-			Skipped: result.Skipped,
-			Errors:  result.Errors,
-			Steps:   stepLog,
+			Created:   result.Created,
+			Updated:   result.Updated,
+			Skipped:   result.Skipped,
+			Errors:    result.Errors,
+			Steps:     stepLog,
+			JobID:     jobID,
+			Status:    status,
+			Conflicts: conflicts,
 		}, nil
 	}
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("cli_admin_skill_install_from_url"),
-		function.WithDescription("从 Git 仓库 URL 安装 Skill。触发导入流程并返回安装结果（含 created/updated/skipped 计数和步骤日志）。使用 subpath 指定仓库中的 Skill 子目录。"),
+		function.WithDescription("从 Git 仓库 URL 安装 Skill。返回三态结果：installed=已安装；pending_conflict=检测到重复/相似 Skill，需用户决策后用 decision 参数重试（skip=保留现有跳过新包；keep=用新包覆盖现有；refine=AI 融合），此时 conflicts 字段列出冲突组（group_id/相似度/已有 skill slug）；failed=失败。使用 subpath 指定仓库中的 Skill 子目录。"),
 	)
 }

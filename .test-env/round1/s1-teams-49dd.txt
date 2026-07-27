@@ -1,0 +1,5 @@
+name=基于整体策略，产出小红书专项运营方案，包括账号定位与人设、内容方向与选题 | status=completed | members=部门主管-媒体运营部(__dept_lead_media_operations__) , 部门主管-专项服务部(__dept_lead_special_services__)
+---
+name=基于整体策略，产出微博专项运营方案，包括账号定位与人格化设定、内容矩阵、 | status=completed | members=微博运营策略师(weibo_strategist__general) , 部门主管-专项服务部(__dept_lead_special_services__)
+---
+name=负责完成整体社交媒体运营策略，包括品牌定位与目标受众分析、核心内容方向与 | status=completed | members=社交媒体策略师(social_media_strategist__general) , 部门主管-专项服务部(__dept_lead_special_services__)

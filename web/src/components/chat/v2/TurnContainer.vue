@@ -1,6 +1,6 @@
 <!-- web/src/components/chat/v2/TurnContainer.vue
-  设计稿 §3.6.3 组件层级：TurnContainer 内渲染 steps + TeamStagePanel。
-  TeamStagePanel 通过 TeamStage.TurnID 关联到触发它的 turn。
+  设计稿 §3.6.3 组件层级：TurnContainer 内渲染 steps。
+  2026-07-26 方案A：TeamStagePanel 移除 — 团队执行过程由 GraphStageBlock 富节点统一展示。
 -->
 <template>
   <div class="turn-container" :data-turn-id="turn.ID">
@@ -12,16 +12,6 @@
       <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" @confirm="(p) => $emit('confirm-step', p)" />
       <ErrorBlock v-else-if="step.Kind === 'error'" :step="step" />
     </template>
-    <TeamStagePanel
-      v-for="ts in turnTeamStages"
-      :key="ts.ID"
-      :team-stage="ts"
-      @pause-agent="(sid) => $emit('pause-agent', sid)"
-      @inject-agent="(p) => $emit('inject-agent', p)"
-      @retry-team="(teamId) => $emit('retry-team', teamId)"
-      @expand="(ids) => $emit('expand', ids)"
-      @confirm-step="(p) => $emit('confirm-step', p)"
-    />
   </div>
 </template>
 
@@ -37,14 +27,9 @@ import ReplyBlock from '../ReplyBlock.vue';
 import NoticeBlock from '../NoticeBlock.vue';
 import ConfirmBlock from '../ConfirmBlock.vue';
 import ErrorBlock from '../ErrorBlock.vue';
-import TeamStagePanel from './TeamStagePanel.vue';
 
 const props = defineProps<{ turn: Turn }>();
 defineEmits<{
-  'pause-agent': [sessionId: string];
-  'inject-agent': [payload: { sessionId: string; message: string }];
-  'retry-team': [teamId: string];
-  expand: [sessionIds: string[]];
   'confirm-step': [payload: ConfirmStepPayload];
 }>();
 const store = useActivityQueries();
@@ -61,7 +46,4 @@ const visibleSteps = computed(() =>
     return true;
   }),
 );
-
-// 当前 turn 触发的 team stages（设计稿 §3.6.2）
-const turnTeamStages = computed(() => store.getTurnTeamStages(props.turn.ID));
 </script>

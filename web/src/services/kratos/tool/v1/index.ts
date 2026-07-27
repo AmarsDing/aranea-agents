@@ -239,6 +239,34 @@ export type ListToolAgentOverridesByAgentResponse = {
   items: ToolAgentOverride[] | undefined;
 };
 
+// ToolAgentBinding is one agent's effective state for a specific tool,
+// computed server-side in bulk (replaces the N+1 per-agent effective scan).
+export type ToolAgentBinding = {
+  agentId: string | undefined;
+  agentKey: string | undefined;
+  agentName: string | undefined;
+  // agent_status is the agent lifecycle status (enabled / disabled / ...).
+  agentStatus: string | undefined;
+  // tools_enabled is the agent-level master switch for tool calling.
+  toolsEnabled: boolean | undefined;
+  profile: string | undefined;
+  // effective_state: allowed | denied (mirrors EffectiveAgentTool.effective_state).
+  effectiveState: string | undefined;
+  reason: string | undefined;
+  // override_mode: allow | deny | inherit when a per-agent override row exists, "" otherwise.
+  overrideMode: string | undefined;
+};
+
+export type GetToolAgentBindingsRequest = {
+  //
+  // Behaviors: REQUIRED
+  toolId: string | undefined;
+};
+
+export type ToolAgentBindingsView = {
+  items: ToolAgentBinding[] | undefined;
+};
+
 // ToolGrant is a persisted "always allow" grant recorded when a user
 // approves a tool confirmation with the always scope.
 export type ToolGrant = {
@@ -376,6 +404,7 @@ export interface ToolService {
   ToggleToolEnabled(request: ToggleToolEnabledRequest): Promise<Tool>;
   ListToolRunsForTool(request: ListToolRunsForToolRequest): Promise<ListToolRunsResponse>;
   ListToolAgentOverrides(request: ListToolAgentOverridesRequest): Promise<ListToolAgentOverridesResponse>;
+  GetToolAgentBindings(request: GetToolAgentBindingsRequest): Promise<ToolAgentBindingsView>;
   ListToolAgentOverridesByAgent(request: ListToolAgentOverridesByAgentRequest): Promise<ListToolAgentOverridesByAgentResponse>;
   ListToolGrants(request: ListToolGrantsRequest): Promise<ListToolGrantsResponse>;
   DeleteToolGrant(request: DeleteToolGrantRequest): Promise<wellKnownEmpty>;
@@ -703,6 +732,26 @@ export function createToolServiceClient(
         service: "ToolService",
         method: "ListToolAgentOverrides",
       }) as Promise<ListToolAgentOverridesResponse>;
+    },
+    GetToolAgentBindings(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.toolId) {
+        throw new Error("missing required field request.tool_id");
+      }
+      const path = `v1/tools/${request.toolId}/agent-bindings`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "GetToolAgentBindings",
+      }) as Promise<ToolAgentBindingsView>;
     },
     ListToolAgentOverridesByAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {

@@ -1,0 +1,38 @@
+// web/src/features/chat/composables/useGraphNodeTeam.ts
+//
+// GraphNode → TeamStage → TeamRun → MemberSession 解析链路。
+// GraphTeamNode（渲染成员行）与 GraphStageBlock（heightOf 布局 + 成员弹框）共用，
+// 保证卡片内容高度与 DAG 布局高度始终一致。
+import { useActivityQueries } from './useActivityQueries';
+import type { GraphNode, MemberSession, TeamStage } from '../v2Types';
+
+export function useGraphNodeTeam() {
+  const store = useActivityQueries();
+
+  /** GraphNode → TeamStage：TeamStageID 优先，DagNodeID 兜底（后端未回填时）。 */
+  function teamStageOf(node: GraphNode): TeamStage | undefined {
+    if (node.TeamStageID) {
+      const ts = store.teamStages().get(node.TeamStageID);
+      if (ts) return ts;
+    }
+    if (node.DagNodeID) {
+      for (const ts of store.teamStages().values()) {
+        if (ts.DagNodeID === node.DagNodeID) return ts;
+      }
+    }
+    return undefined;
+  }
+
+  /** TeamStage → 全部 TeamRun 的 MemberSession（按时间/Seq 排序）。 */
+  function membersOf(node: GraphNode): MemberSession[] {
+    const ts = teamStageOf(node);
+    if (!ts) return [];
+    const out: MemberSession[] = [];
+    for (const tr of store.getTeamStageTeamRuns(ts.ID)) {
+      out.push(...store.getTeamRunMemberSessions(tr.ID));
+    }
+    return out;
+  }
+
+  return { teamStageOf, membersOf };
+}

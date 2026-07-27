@@ -2,10 +2,11 @@
 // repos + 可编程 fake LLM/Gate/Registrar）。
 //
 // 覆盖四条功能链路：
-//   T1 自我进化：健康度触发 → CuratorFlow → LLM draft → 审批 → Reload 新版本
-//   T2 对话内容创建：observations → patterns → proposal → 注册 SKILL.md
-//   T3 去重：patternHash 去重 / SkillExists 预检 / DetectDuplicateGroups
-//   T4 融合提升：rule_fuse 融合草稿 + 真实 merge 两 skill 合一
+//
+//	T1 自我进化：健康度触发 → CuratorFlow → LLM draft → 审批 → Reload 新版本
+//	T2 对话内容创建：observations → patterns → proposal → 注册 SKILL.md
+//	T3 去重：patternHash 去重 / SkillExists 预检 / DetectDuplicateGroups
+//	T4 融合提升：rule_fuse 融合草稿 + 真实 merge 两 skill 合一
 package biz_test
 
 import (
@@ -92,14 +93,17 @@ func seedSkill(t *testing.T, env *skillFuncEnv, id, key, name, desc, body string
 		t.Fatalf("seed skill %s: %v", id, err)
 	}
 	versionID = fmt.Sprintf("ver_%s", id)
+	// 已发布版本理应早于后续进化/融合产生的新版本；created_at 为秒级 TEXT，
+	// 回拨 2 分钟避免与新版本同秒并列。
+	oldAt := time.Now().UTC().Add(-2 * time.Minute).Format(time.RFC3339)
 	if _, err := env.client.SkillVersion.Create().
 		SetID(versionID).
 		SetSkillID(id).
 		SetVersion("1.0.0").
 		SetContentMarkdown(body).
 		SetStatus("published").
-		SetCreatedAt(nowRFC3339()).
-		SetUpdatedAt(nowRFC3339()).
+		SetCreatedAt(oldAt).
+		SetUpdatedAt(oldAt).
 		Save(context.Background()); err != nil {
 		t.Fatalf("seed skill version %s: %v", id, err)
 	}

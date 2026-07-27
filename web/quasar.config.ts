@@ -21,27 +21,31 @@ export default configure(() => {
     },
     devServer: {
       // 勿与 configs/config.yaml 中 server.grpc.addr (:9000) 共用端口；前端开发固定 9001。
-      port: 9001,
+      // 隔离测试环境可用环境变量覆盖：QUASAR_DEV_PORT / QUASAR_BACKEND_URL。
+      port: Number(process.env.QUASAR_DEV_PORT || 9001),
       open: false,
-      proxy: {
-        "/v1": {
-          target: "http://127.0.0.1:8000",
-          changeOrigin: true,
-          ws: true
-        },
-        "/v2": {
-          target: "http://127.0.0.1:8000",
-          changeOrigin: true
-        },
-        "/api": {
-          target: "http://127.0.0.1:8000",
-          changeOrigin: true
-        },
-        "/healthz": {
-          target: "http://127.0.0.1:8000",
-          changeOrigin: true
-        }
-      }
+      proxy: (() => {
+        const backend = process.env.QUASAR_BACKEND_URL || "http://127.0.0.1:8000";
+        return {
+          "/v1": {
+            target: backend,
+            changeOrigin: true,
+            ws: true
+          },
+          "/v2": {
+            target: backend,
+            changeOrigin: true
+          },
+          "/api": {
+            target: backend,
+            changeOrigin: true
+          },
+          "/healthz": {
+            target: backend,
+            changeOrigin: true
+          }
+        };
+      })()
     },
     framework: {
       config: { dark: false },

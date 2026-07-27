@@ -3,7 +3,6 @@ import { ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { useToolsStore } from './index';
 import {
-  bindingSummaryLine,
   fetchToolAgentBindingSummary,
   type ToolAgentBindingSummary,
 } from '../../features/tools/toolAgentBindingSummary';
@@ -27,7 +26,6 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
   const open = ref(false);
   const tool = ref<Tool | null>(null);
   const activeTab = ref('overview');
-  const loading = ref(false);
 
   const overrides = ref<ToolAgentOverride[]>([]);
   const overridesLoading = ref(false);
@@ -51,8 +49,15 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
   const configSaving = ref(false);
   const agentBindingSummary = ref<ToolAgentBindingSummary | null>(null);
   const agentBindingLoading = ref(false);
+  // 聚合接口失败标记：失败时 Agent Tab 展示错误条 + 重试，避免空白面板。
+  const agentBindingError = ref(false);
   const agentOptions = ref<{ label: string; value: string }[]>([]);
   const agentsLoading = ref(false);
+
+  // Tab 懒加载标记：每个 tab 的远端数据仅在首次进入时请求，
+  // 避免打开抽屉时并发所有接口（曾叠加 N+1 扫描导致长时间白屏）。
+  const runsLoaded = ref(false);
+  const agentsTabLoaded = ref(false);
 
   function toolKey(): string {
     return tool.value?.key?.trim() || tool.value?.id?.trim() || '';
@@ -93,39 +98,72 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
     const key = toolKey();
     if (!key) {
       agentBindingSummary.value = null;
+      agentBindingError.value = false;
       return;
     }
     agentBindingLoading.value = true;
+    agentBindingError.value = false;
     try {
-      agentBindingSummary.value = await fetchToolAgentBindingSummary(key, overrides.value.length);
+      agentBindingSummary.value = await fetchToolAgentBindingSummary(key);
     } catch {
       agentBindingSummary.value = null;
+      agentBindingError.value = true;
     } finally {
       agentBindingLoading.value = false;
     }
   }
 
-  async function refreshDetail() {
-    loading.value = true;
-    testResult.value = null;
-    testArgsJson.value = '{}';
-    syncConfigFromTool();
-    try {
-      await loadOverrides();
-      await Promise.all([loadRecentRuns(), loadAgentBindingSummary()]);
-    } finally {
-      loading.value = false;
+  function ensureTabData(tab: string) {
+    if (tab === 'overview' && !runsLoaded.value) {
+      runsLoaded.value = true;
+      void loadRecentRuns();
+      return;
+    }
+    if (tab === 'agents' && !agentsTabLoaded.value) {
+      agentsTabLoaded.value = true;
+      void Promise.all([loadAgentBindingSummary(), loadOverrides()]);
     }
   }
 
-  async function openDetail(t: Tool) {
+  function resetDetailState() {
+    runsLoaded.value = false;
+    agentsTabLoaded.value = false;
+    overrides.value = [];
+    recentRuns.value = [];
+    agentBindingSummary.value = null;
+    agentBindingError.value = false;
+    testResult.value = null;
+    testArgsJson.value = '{}';
+  }
+
+  function openDetail(t: Tool) {
+    resetDetailState();
     tool.value = t;
-    open.value = true;
     activeTab.value = 'overview';
+    syncConfigFromTool();
+    open.value = true;
+    ensureTabData('overview');
+  }
+
+  /** 后台静默刷新 tool 对象（不重置 tab 与已加载数据）。 */
+  function updateTool(t: Tool) {
+    tool.value = t;
+    syncConfigFromTool();
   }
 
   function closeDetail() {
     open.value = false;
+  }
+
+  /** 强制刷新当前 tab 的远端数据（保存覆盖/配置后调用）。 */
+  async function refreshDetail() {
+    if (activeTab.value === 'overview') {
+      await loadRecentRuns();
+      return;
+    }
+    if (activeTab.value === 'agents') {
+      await Promise.all([loadAgentBindingSummary(), loadOverrides()]);
+    }
   }
 
   async function runToolTest() {
@@ -272,6 +310,11 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
       tool.value = updated;
       configJson.value = updated.config_json || configJson.value;
       $q.notify({ type: 'positive', message: '配置已保存' });
+      // 配置影响生效状态（如 web_research API Key → missing_api_key），
+      // Agent Tab 已加载过则静默刷新，避免展示过期状态。
+      if (agentsTabLoaded.value) {
+        await loadAgentBindingSummary();
+      }
     } catch (err) {
       $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存配置失败' });
     } finally {
@@ -279,16 +322,14 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
     }
   }
 
-  watch(tool, (t) => {
-    if (t) void refreshDetail();
-    else syncConfigFromTool();
+  watch(activeTab, (tab) => {
+    if (open.value) ensureTabData(tab);
   });
 
   return {
     open,
     tool,
     activeTab,
-    loading,
     overrides,
     overridesLoading,
     recentRuns,
@@ -305,17 +346,19 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
     configSaving,
     agentBindingSummary,
     agentBindingLoading,
+    agentBindingError,
     agentOptions,
     agentsLoading,
     openDetail,
+    updateTool,
     closeDetail,
     refreshDetail,
+    loadAgentBindingSummary,
     runToolTest,
     saveConfig,
     saveConfigSchema,
     openOverrideEditor,
     saveOverride,
     confirmRemoveOverride,
-    bindingSummaryLine,
   };
 });

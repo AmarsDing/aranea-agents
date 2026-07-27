@@ -24,6 +24,12 @@ export interface DAGLayoutOptions {
    * wrap the canvas in an overflow-x container.
    */
   orientation?: 'vertical' | 'horizontal';
+  /**
+   * Optional per-node height override (horizontal orientation only). Rich cards
+   * whose height depends on member count use this to keep columns stacked and
+   * centered correctly. Falls back to `nodeHeight` when omitted.
+   */
+  heightOf?: (id: string) => number;
 }
 
 export interface NodePosition {
@@ -107,9 +113,12 @@ export function usePlanDAGLayout<T extends LayoutableNode>() {
       // Horizontal: layer = column (left→right), nodes in a column stack
       // vertically and are centered against the tallest column.
       // Width/height are structural (not capped by opts.width).
+      // Per-node heights（富卡片成员数不同导致高度不同）通过 heightOf 注入。
+      const hOf = (id: string) => opts.heightOf?.(id) ?? opts.nodeHeight;
       const columnHeight = (l: number) => {
-        const count = (byLayer.get(l) || []).length;
-        return count * opts.nodeHeight + Math.max(0, count - 1) * opts.gapY;
+        const ids = byLayer.get(l) || [];
+        const sum = ids.reduce((acc, id) => acc + hOf(id), 0);
+        return sum + Math.max(0, ids.length - 1) * opts.gapY;
       };
       let maxColumnHeight = 0;
       for (let l = 0; l <= maxLayer; l++) {
@@ -121,12 +130,11 @@ export function usePlanDAGLayout<T extends LayoutableNode>() {
       for (let l = 0; l <= maxLayer; l++) {
         const ids = byLayer.get(l) || [];
         const startY = padY + (maxColumnHeight - columnHeight(l)) / 2;
-        ids.forEach((id, i) => {
-          positions.set(id, {
-            x: padX + l * (opts.nodeWidth + opts.gapX),
-            y: startY + i * (opts.nodeHeight + opts.gapY),
-          });
-        });
+        let cursorY = startY;
+        for (const id of ids) {
+          positions.set(id, { x: padX + l * (opts.nodeWidth + opts.gapX), y: cursorY });
+          cursorY += hOf(id) + opts.gapY;
+        }
       }
       return { positions, computedWidth, computedHeight, layers: layer, orderInLayer };
     }

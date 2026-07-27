@@ -1,15 +1,15 @@
 <template>
   <div class="schema-form column q-gutter-sm">
     <template v-for="(def, key) in properties" :key="key">
-      <q-toggle
-        v-if="def.type === 'boolean'"
-        :model-value="getValue(key)"
-        :label="def.title || key"
-        dense
-        @update:model-value="setValue(key, $event)"
-      >
-        <q-tooltip v-if="def.description">{{ def.description }}</q-tooltip>
-      </q-toggle>
+      <div v-if="def.type === 'boolean'" class="schema-form__bool-field">
+        <q-toggle
+          :model-value="getValue(key)"
+          :label="def.title || key"
+          dense
+          @update:model-value="setValue(key, $event)"
+        />
+        <p v-if="def.description" class="schema-form__bool-caption">{{ def.description }}</p>
+      </div>
 
       <q-select
         v-else-if="def.enum"

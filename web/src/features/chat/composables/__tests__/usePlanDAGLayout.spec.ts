@@ -107,6 +107,24 @@ describe('usePlanDAGLayout', () => {
       // height = 2*padY + tallest column (2*56+16) = 24 + 128 = 152
       expect(computedHeight).toBe(152);
     });
+
+    it('supports per-node heights via heightOf (rich member cards)', () => {
+      const { layoutDAG } = usePlanDAGLayout();
+      const steps = [mkStep('a'), mkStep('b', ['a']), mkStep('c', ['a'])];
+      // b 高 120（3 成员），c 高 60（1 成员），a 默认 56
+      const heights: Record<string, number> = { b: 120, c: 60 };
+      const { positions, computedHeight } = layoutDAG(steps, {
+        ...H_OPTS,
+        heightOf: (id) => heights[id] ?? 56,
+      });
+      // 最高列 = b(120) + gap(16) + c(60) = 196 → computedHeight = 24 + 196 = 220
+      expect(computedHeight).toBe(220);
+      // b 从 padY 开始，c 紧跟其后
+      expect(positions.get('b')?.y).toBe(12);
+      expect(positions.get('c')?.y).toBe(12 + 120 + 16);
+      // 单节点列 a 垂直居中：y = 12 + (196-56)/2 = 82
+      expect(positions.get('a')?.y).toBe(82);
+    });
   });
 
   describe('layer metadata (for staggered entrance animation)', () => {

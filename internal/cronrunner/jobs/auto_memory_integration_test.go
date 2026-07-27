@@ -74,6 +74,19 @@ func (r *memoryTestAgentRepo) GetAgentRuntimeSettings(_ context.Context, id stri
 		L2RecallEnabled:  true,
 	}, nil
 }
+func (r *memoryTestAgentRepo) ListAgentRuntimeSettings(context.Context) (map[string]biz.AgentRuntimeSettings, error) {
+	out := make(map[string]biz.AgentRuntimeSettings, len(r.ids))
+	for id := range r.ids {
+		out[id] = biz.AgentRuntimeSettings{
+			AgentID:          id,
+			MemoryEnabled:    true,
+			L3Enabled:        true,
+			L2EpisodeEnabled: true,
+			L2RecallEnabled:  true,
+		}
+	}
+	return out, nil
+}
 func (r *memoryTestAgentRepo) UpsertAgentRuntimeSettings(context.Context, biz.AgentRuntimeSettings) (biz.AgentRuntimeSettings, error) {
 	return biz.AgentRuntimeSettings{}, nil
 }

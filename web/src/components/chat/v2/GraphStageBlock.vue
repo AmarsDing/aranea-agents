@@ -1,15 +1,12 @@
 <!-- web/src/components/chat/v2/GraphStageBlock.vue
-  GraphStage 流程图可视化（v2 实体，与 PlanBoard 一对一关联）。
-  设计：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md §3.7.5
-  产品交互：docs/development/1-chat.design.md B.4.4（已对齐 v2：节点=PlanStep，非 team 快照）
-  视觉：横向 DAG（对齐 docs/showcase/index.html mk-gcanvas）— 点阵画布 + 贝塞尔曲线边 + 卡片节点
-  - store.getGraphStageNodes：独立 Map，反映最新节点状态
-  - 容器 Status：终态优先用 props.graphStage.Status；运行中由子节点聚合
-  - 单节点（无 DAG 价值）不展示，直接依赖 TeamStagePanel
-  - Header 显示 completed/total 进度
+  GraphStage 流程图可视化（方案A 重写 2026-07-26）：
+  - GraphTeamNode 富卡片节点（标题+状态 / 成员行 / 进度条），单节点也始终渲染
+  - 视口缩放/平移（useGraphViewport）：按钮/滚轮缩放、左键拖拽平移、初始自适应
+  - 成员行点击 → MemberSessionDialog 弹框展示对话内容（替代原 TeamStagePanel 折叠展开）
+  - 节点状态由 PlanStep.Status 映射；容器 Status 终态优先后端、运行中由子节点聚合
 -->
 <template>
-  <div v-if="shouldShow" class="graph-stage-block" :data-graph-stage-id="graphStage.ID">
+  <div class="graph-stage-block" :data-graph-stage-id="graphStage.ID">
     <div class="graph-stage-header">
       <span class="header-label">
         <q-icon name="account_tree" size="16px" class="header-icon" />
@@ -17,9 +14,64 @@
       </span>
       <span class="header-progress">{{ completedCount }}/{{ nodes.length }}</span>
       <q-badge :color="stageStatusColor">{{ stageStatusLabel }}</q-badge>
+      <div class="graph-viewport-controls">
+        <q-btn
+          flat
+          dense
+          round
+          size="sm"
+          icon="remove"
+          data-testid="zoom-out"
+          :aria-label="t('chat.v2.zoomOut')"
+          @click="zoomOutCenter"
+        />
+        <span class="graph-viewport-controls__scale">{{ scalePct }}%</span>
+        <q-btn
+          flat
+          dense
+          round
+          size="sm"
+          icon="add"
+          data-testid="zoom-in"
+          :aria-label="t('chat.v2.zoomIn')"
+          @click="zoomInCenter"
+        />
+        <q-btn
+          flat
+          dense
+          round
+          size="sm"
+          icon="fit_screen"
+          data-testid="zoom-fit"
+          :aria-label="t('chat.v2.zoomFit')"
+          @click="fitView"
+        />
+        <q-btn
+          flat
+          dense
+          round
+          size="sm"
+          icon="restart_alt"
+          data-testid="zoom-reset"
+          :aria-label="t('chat.v2.zoomReset')"
+          @click="reset"
+        />
+      </div>
     </div>
-    <div class="graph-stage-canvas">
-      <div class="graph-stage-canvas__inner" :style="{ width: `${width}px`, height: `${height}px` }">
+    <div
+      ref="viewportRef"
+      class="graph-stage-viewport"
+      :class="{ 'graph-stage-viewport--panning': isPanning }"
+      @wheel="onWheel"
+      @pointerdown="onPanStart"
+      @pointermove="handlePanMove"
+      @pointerup="onPanEnd"
+      @pointerleave="onPanEnd"
+    >
+      <div
+        class="graph-stage-canvas__inner"
+        :style="[transformStyle, { width: `${width}px`, height: `${height}px` }]"
+      >
         <!-- Dependency edges (curved bezier, showcase DAG style) -->
         <svg class="graph-stage-edges" :width="width" :height="height" :viewBox="`0 0 ${width} ${height}`">
           <path
@@ -42,37 +94,49 @@
             "
           />
         </svg>
-        <!-- Nodes -->
-        <GraphNode
+        <!-- Rich team nodes -->
+        <GraphTeamNode
           v-for="node in nodes"
           :key="node.ID"
           :node="node"
           :pos="positions.get(node.ID) || { x: 0, y: 0 }"
-          :node-width="nodeWidth"
-          :node-height="nodeHeight"
           :is-selected="selectedId === node.ID"
           :is-highlighted="highlightedNodeIds.has(node.ID)"
           :is-dimmed="hoveredNodeId !== null && !highlightedNodeIds.has(node.ID)"
           :entrance-delay-ms="entranceNodeIds.has(node.ID) ? entranceDelayOf(node.ID) : undefined"
           @select="onSelectNode"
           @hover="onHoverNode"
+          @select-member="onSelectMember"
         />
       </div>
     </div>
+    <MemberSessionDialog
+      v-model:open="memberDialogOpen"
+      :member-session="activeMember"
+      @pause-agent="(sid) => $emit('pause-agent', sid)"
+      @inject-agent="(p) => $emit('inject-agent', p)"
+      @expand="(ids) => $emit('expand', ids)"
+      @confirm-step="(p) => $emit('confirm-step', p)"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
-import type { GraphStage, GraphStageStatus, GraphNode as GraphNodeType } from '../../../features/chat/v2Types';
+import { useGraphNodeTeam } from '../../../features/chat/composables/useGraphNodeTeam';
+import {
+  useGraphViewport,
+  GRAPH_VIEWPORT_ZOOM_STEP,
+} from '../../../features/chat/composables/useGraphViewport';
+import type { GraphStage, GraphStageStatus, MemberSession } from '../../../features/chat/v2Types';
+import type { ConfirmStepPayload } from '../../../features/chat/types';
 import { usePlanDAGLayout } from '../../../features/chat/composables/usePlanDAGLayout';
-import { useLocateTeamStage } from '../../../features/chat/composables/useLocateTeamStage';
-import GraphNode from './GraphNode.vue';
+import GraphTeamNode from './GraphTeamNode.vue';
+import MemberSessionDialog from './MemberSessionDialog.vue';
+import { GTN_WIDTH, graphTeamNodeHeight } from './graphTeamNodeUi';
 
-// Safe i18n wrapper — falls back to the key when the i18n plugin isn't
-// installed (e.g., during unit tests without app.use(i18n)).
 function useSafeI18n() {
   try {
     return useI18n();
@@ -82,11 +146,18 @@ function useSafeI18n() {
 }
 
 const props = defineProps<{ graphStage: GraphStage }>();
+defineEmits<{
+  'pause-agent': [sessionId: string];
+  'inject-agent': [payload: { sessionId: string; message: string }];
+  expand: [sessionIds: string[]];
+  'confirm-step': [payload: ConfirmStepPayload];
+}>();
+
 const { t } = useSafeI18n();
 const store = useActivityQueries();
+const { membersOf } = useGraphNodeTeam();
 
-const nodeWidth = 156;
-const nodeHeight = 56;
+// ── 布局：横向 DAG + 富卡片 per-node 高度（成员数决定卡片高度） ──
 const gapX = 64;
 const gapY = 16;
 const padX = 20;
@@ -95,23 +166,89 @@ const padY = 12;
 // 不再使用 props.graphStage.Nodes 嵌入数组（创建后永不更新）。
 const nodes = computed(() => store.getGraphStageNodes(props.graphStage.ID));
 
-// B.4.4：单节点无 DAG 可视化价值，直接展示 TeamStagePanel 即可。
-const shouldShow = computed(() => nodes.value.length > 1);
-
 const completedCount = computed(() => nodes.value.filter((n) => n.Status === 'completed').length);
+
+function heightOfNode(nodeId: string): number {
+  const n = nodes.value.find((x) => x.ID === nodeId);
+  return n ? graphTeamNodeHeight(membersOf(n).length) : graphTeamNodeHeight(0);
+}
 
 const { layoutDAG } = usePlanDAGLayout();
 const layoutResult = computed(() =>
-  layoutDAG(nodes.value, { width: 0, nodeWidth, nodeHeight, gapX, gapY, padX, padY, orientation: 'horizontal' }),
+  layoutDAG(nodes.value, {
+    width: 0,
+    nodeWidth: GTN_WIDTH,
+    nodeHeight: graphTeamNodeHeight(0),
+    gapX,
+    gapY,
+    padX,
+    padY,
+    orientation: 'horizontal',
+    heightOf: heightOfNode,
+  }),
 );
 const positions = computed(() => layoutResult.value.positions);
 const width = computed(() => layoutResult.value.computedWidth);
 const height = computed(() => layoutResult.value.computedHeight);
 
+// ── 视口：缩放/平移 ──
+const viewport = useGraphViewport();
+const { scale, isPanning, justPanned, transformStyle, onWheel, onPanStart, onPanMove, onPanEnd, reset } = viewport;
+
+const viewportRef = ref<HTMLElement | null>(null);
+
+const scalePct = computed(() => Math.round(scale.value * 100));
+
+function viewportCenter(): { mx: number; my: number } {
+  const el = viewportRef.value;
+  if (!el) return { mx: 0, my: 0 };
+  return { mx: el.clientWidth / 2, my: el.clientHeight / 2 };
+}
+
+function zoomInCenter() {
+  const { mx, my } = viewportCenter();
+  viewport.zoomAt(mx, my, scale.value * GRAPH_VIEWPORT_ZOOM_STEP);
+}
+
+function zoomOutCenter() {
+  const { mx, my } = viewportCenter();
+  viewport.zoomAt(mx, my, scale.value / GRAPH_VIEWPORT_ZOOM_STEP);
+}
+
+function fitView() {
+  const el = viewportRef.value;
+  if (!el) return;
+  viewport.zoomFit(width.value, height.value, el.clientWidth, el.clientHeight);
+}
+
+// 初始自适应一次：挂载时若节点已就绪直接 fit；否则等首批节点到达后 fit。
+let fitted = false;
+function fitOnce() {
+  if (fitted) return;
+  fitted = true;
+  void nextTick(() => fitView());
+}
+onMounted(fitOnce);
+watch(
+  () => nodes.value.length,
+  (len) => {
+    if (len > 0) fitOnce();
+  },
+);
+
+// 指针捕获延迟到确认拖拽（位移超阈值）后才启用：
+// pointerdown 即捕获会把后续 pointerup 重定向到视口，click 落在公共祖先上，
+// 导致成员行/节点头部的 @click 在真实浏览器中永不触发（弹框打不开）。
+function handlePanMove(e: PointerEvent) {
+  const wasPan = justPanned.value;
+  onPanMove(e);
+  if (!wasPan && justPanned.value) {
+    // 捕获后拖出视口边界仍能连续平移
+    (e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
+  }
+}
+
 // ── P0 级联入场动画 ──
-// live 判定：GraphStage.StartedAt 距今 < LIVE_WINDOW_MS 视为「实时编排刚创建」，
-// 全部节点按 DAG 层级 stagger 入场；否则视为刷新 replay，跳过入场动画直接呈现。
-// 挂载之后新出现的节点（replan 插入等）无论 live/replay 始终播入场动画。
 const LIVE_WINDOW_MS = 60_000;
 const LAYER_STAGGER_MS = 150;
 const NODE_STAGGER_MS = 80;
@@ -148,22 +285,20 @@ function entranceDelayOf(nodeId: string): number {
   return layer * LAYER_STAGGER_MS + order * NODE_STAGGER_MS;
 }
 
+// ── 选中 / hover 路径高亮 ──
 const selectedId = ref<string | null>(null);
-
-// P1 #6: hover 节点 → 高亮所有上下游依赖路径
 const hoveredNodeId = ref<string | null>(null);
 
 function onHoverNode(nodeId: string | null) {
   hoveredNodeId.value = nodeId;
 }
 
-// 计算上下游依赖路径节点集合（ hoveredNodeId 的所有上游 + 下游 + 自身）
+// 计算上下游依赖路径节点集合（hoveredNodeId 的所有上游 + 下游 + 自身）
 const highlightedNodeIds = computed<Set<string>>(() => {
   const id = hoveredNodeId.value;
   if (!id) return new Set();
   const result = new Set<string>([id]);
   const nodeMap = new Map(nodes.value.map((n) => [n.ID, n]));
-  // 上游：递归遍历 DependsOn
   function addUpstream(currentId: string) {
     const node = nodeMap.get(currentId);
     if (!node?.DependsOn) return;
@@ -174,7 +309,6 @@ const highlightedNodeIds = computed<Set<string>>(() => {
       }
     }
   }
-  // 下游：找到所有 DependsOn 包含 currentId 的节点
   function addDownstream(currentId: string) {
     for (const n of nodes.value) {
       if (n.DependsOn?.includes(currentId) && !result.has(n.ID)) {
@@ -188,7 +322,6 @@ const highlightedNodeIds = computed<Set<string>>(() => {
   return result;
 });
 
-// 高亮路径上的边（两端节点都在 highlightedNodeIds 中）
 const highlightedEdgeKeys = computed<Set<string>>(() => {
   const nodeSet = highlightedNodeIds.value;
   const keys = new Set<string>();
@@ -200,36 +333,28 @@ const highlightedEdgeKeys = computed<Set<string>>(() => {
   return keys;
 });
 
-// P1 #5: 点击 GraphNode → 选中高亮 + 跳转到对应 TeamStagePanel。
-// 优先使用 node.TeamStageID（后端回填后直接跳转）。
-// Fallback：后端未回填 TeamStageID 时，通过 DagNodeID 匹配 TeamStage
-// （GraphNode.DagNodeID === TeamStage.DagNodeID === PlanStep.ID）。
-const { locate } = useLocateTeamStage();
+// ── 节点选中 / 成员弹框（拖拽 pan 后的一次 click 被抑制，避免误触） ──
 function onSelectNode(nodeId: string) {
+  if (justPanned.value) return;
   selectedId.value = nodeId;
-  const node: GraphNodeType | undefined = nodes.value.find((n) => n.ID === nodeId);
-  if (!node) return;
-  let teamStageId = node.TeamStageID;
-  if (!teamStageId && node.DagNodeID) {
-    for (const ts of store.teamStages().values()) {
-      if (ts.DagNodeID === node.DagNodeID) {
-        teamStageId = ts.ID;
-        break;
-      }
-    }
-  }
-  if (teamStageId) {
-    locate(teamStageId);
-  }
 }
 
+const memberDialogOpen = ref(false);
+const activeMember = ref<MemberSession | null>(null);
+
+function onSelectMember(ms: MemberSession) {
+  if (justPanned.value) return;
+  activeMember.value = ms;
+  memberDialogOpen.value = true;
+}
+
+// ── 依赖边：贝塞尔曲线（源右缘中点 → 目标左缘中点，per-node 高度） ──
 interface Edge {
   from: string;
   to: string;
   d: string;
 }
-// 横向 DAG 贝塞尔曲线边（对齐 showcase mk-edge）：
-// 从源节点右缘中点 → 目标节点左缘中点，三次贝塞尔平滑过渡。
+
 const edges = computed<Edge[]>(() => {
   const out: Edge[] = [];
   for (const node of nodes.value) {
@@ -239,10 +364,10 @@ const edges = computed<Edge[]>(() => {
     for (const depId of node.DependsOn) {
       const fromPos = positions.value.get(depId);
       if (!fromPos) continue;
-      const x1 = fromPos.x + nodeWidth;
-      const y1 = fromPos.y + nodeHeight / 2;
+      const x1 = fromPos.x + GTN_WIDTH;
+      const y1 = fromPos.y + heightOfNode(depId) / 2;
       const x2 = toPos.x;
-      const y2 = toPos.y + nodeHeight / 2;
+      const y2 = toPos.y + heightOfNode(node.ID) / 2;
       const cx = Math.max(32, (x2 - x1) / 2);
       out.push({
         from: depId,
@@ -254,12 +379,11 @@ const edges = computed<Edge[]>(() => {
   return out;
 });
 
+// ── 容器状态：终态优先后端，运行中由子节点聚合 ──
 function isTerminalStatus(s: GraphStageStatus | string | undefined): boolean {
   return s === 'completed' || s === 'failed' || s === 'interrupted';
 }
 
-// 终态优先用后端 GraphStage.Status（terminal 事件已持久化）；
-// 运行中由子节点聚合，避免仅依赖 created 时的过期 Status。
 const derivedStatus = computed<GraphStageStatus>(() => {
   const backend = props.graphStage.Status;
   if (isTerminalStatus(backend)) return backend;
@@ -322,13 +446,39 @@ const stageStatusLabel = computed(() => {
   font-weight: 500
   color: var(--color-text-secondary)
 
-// 横向 DAG 画布：宽图可横向滚动（层数深时宽度是结构性的）
-.graph-stage-canvas
-  overflow-x: auto
+// 视口控制条：缩放按钮 + 当前比例
+.graph-viewport-controls
+  display: flex
+  align-items: center
+  gap: 2px
+  margin-left: 8px
+  padding: 0 4px
+  border: 1px solid var(--glass-border)
+  border-radius: 8px
+  background: var(--glass-surface)
+
+  &__scale
+    min-width: 40px
+    text-align: center
+    font-size: 11px
+    font-weight: 500
+    color: var(--color-text-secondary)
+    font-variant-numeric: tabular-nums
+
+// 视口：内容超出可拖拽平移，滚轮缩放
+.graph-stage-viewport
+  position: relative
+  overflow: hidden
   max-width: 100%
+  min-height: 120px
   border: 1px solid var(--glass-border)
   border-radius: 14px
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
+  cursor: grab
+  touch-action: none
+
+  &--panning
+    cursor: grabbing
 
 .graph-stage-canvas__inner
   position: relative
@@ -356,8 +506,7 @@ const stageStatusLabel = computed(() => {
   to
     stroke-dashoffset: -11
 
-/* P0 级联入场：边在目标节点出现后淡入连接（opacity 动画，不与 flowing 的
-   dasharray/dashoffset 冲突）。animation-delay 由模板按目标节点 stagger 注入。 */
+/* P0 级联入场：边在目标节点出现后淡入连接 */
 .graph-edge--enter
   opacity: 0
   animation: graph-edge-enter 0.5s ease-out both
@@ -371,12 +520,11 @@ const stageStatusLabel = computed(() => {
     opacity: 1
     stroke-width: 1.8
 
-/* P1 #6: hover 节点时高亮上下游依赖路径 — 高亮路径上的边 */
+/* hover 节点时高亮上下游依赖路径 */
 .graph-edge--highlighted
   stroke: var(--q-primary, #00bcd4)
   stroke-width: 2.4
 
-/* P1 #6: 非路径上的边暗化 */
 .graph-edge--dimmed
   opacity: 0.2
 

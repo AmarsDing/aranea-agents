@@ -3669,7 +3669,7 @@ stateDiagram-v2
 
 #### B.4.4 Graph 流程图（GraphStageBlock）
 
-**位置**：在 plan 之后、team-card 之前独立显示（`TaskCard`：`PlanBoardCard → GraphStageBlock → TeamStagePanel`）
+**位置**：在 plan 之后独立显示（`TaskCard`：`PlanBoardCard → GraphStageBlock`；方案A 后 TeamStagePanel 已移除，见 B.10.23）
 
 **时机**：`PublishV2Board` 发布 `graph_stage.created` 时创建 v2 `GraphStage`（与 `PlanBoard` 一对一）；`PlanExecutor` 在 step 调度中同步更新 `GraphNode` 状态并发布 terminal。
 
@@ -3680,8 +3680,8 @@ stateDiagram-v2
 | 数据来源 | `GraphStage` + `GraphNode`（独立表），非 v1 Activity 快照 |
 | 节点含义 | 每个 `GraphNode` 对应一个 `PlanStep`（`GraphNode.ID = PlanStep.ID`） |
 | 节点状态 | 由 `PlanStep.Status` 经 `MapPlanStepToGraphNodeStatus` 映射；**不是**直接复制 team 状态机 |
-| Team 关联 | `GraphNode.TeamStageID` 在 dispatch 时回填；点击节点跳转到对应 `TeamStagePanel` |
-| 单节点 | 节点数 ≤ 1 时前端不展示 Graph（无 DAG 价值），直接显示 team-card |
+| Team 关联 | `GraphNode.TeamStageID` 在 dispatch 时回填；成员经 `useGraphNodeTeam` 解析（TeamStageID 优先、DagNodeID 兜底），点击成员行弹 MemberSessionDialog（B.10.23） |
+| ~~单节点~~ | ~~节点数 ≤ 1 时前端不展示~~ **已废弃（2026-07-26 方案A）**：单节点也始终渲染，替代原 TeamStagePanel（B.10.23） |
 | 始终展开 | GraphStageBlock 不折叠（B.4.5） |
 
 **节点状态视觉**：
@@ -6155,3 +6155,60 @@ L3 llmColdStart（现有保留）：prompt 中 capabilities 列表附带 mission
 | biz（Fix 7） | `TestReadUpstreamDeliverable_PrefersGraphStateOverReply`：state 全文（600 字未截断 summary + 结构化 keys JSON）优先，reply 文本永不返回；`TestReadUpstreamDeliverable_GraphStateEmpty_FallsBackToEnvelope`：state 空降级信封（Summary + StructuredJSON），SessionID 取信封 |
 | service | `HandleTeamTurnResult` 无真实产出翻转为 failed；诚实触发文本/兜底通知（capturingTurnGateway 补齐 TurnGateway 接口方法） |
 | scenario | `TestDecisionPrompt_RequiresClarificationBeforeTeaming`：DECISION.md 必含「阻塞性歧义/禁止组队/需求不明时组队」 |
+
+### B.10.23 GraphStageBlock 方案A 重写（2026-07-26 已实施；2026-07-27 指针捕获修复）
+
+> **背景**：原 Graph 流程图由 `PlanDAG`（SVG rect 节点）+ `TeamStagePanel`（team-card 折叠列表）+ `TeamRunCard`（成员面板）三层组成：SVG 节点信息稀薄（仅标题/状态）、成员执行内容藏在深层折叠卡片里、单节点时 Graph 不渲染导致同一阶段在有/无 DAG 间跳变。方案A 重写为「富卡片 DAG + 视口 + 成员弹框」的单组件方案。
+
+#### B.10.23.1 架构总览
+
+```
+TaskCard
+  └── GraphStageBlock（始终渲染，含单节点；替代原 PlanDAG + TeamStagePanel）
+        ├── 视口（useGraphViewport）：按钮/滚轮缩放（0.4–2.0，步进 1.15）、左键拖拽平移、初始 zoomFit
+        ├── 边层 SVG：cubic bezier（源右缘中点 → 目标左缘中点），running 虚线流动，hover 高亮上下游
+        ├── GraphTeamNode × N（绝对定位卡片）
+        │     ├── 头部：状态点 + 标题 + 状态徽章（点击 → 选中）
+        │     ├── 成员行 × N：状态点 + 名称 + 状态/耗时（点击 → MemberSessionDialog）
+        │     └── 底部进度条（completed/total）
+        └── MemberSessionDialog（成员行点击弹出，复用 MemberSessionPanel embedded 模式）
+```
+
+| 维度 | 约定 |
+|------|------|
+| 节点组件 | `GraphTeamNode.vue`（div 卡片，替代原 SVG rect `GraphNode.vue`，已删除） |
+| 卡片尺寸 | 宽 `GTN_WIDTH=240`；高度由成员数决定 `graphTeamNodeHeight(n)`（`graphTeamNodeUi.ts` 纯函数，与样式同步） |
+| 成员解析 | `useGraphNodeTeam`：GraphNode → TeamStage（TeamStageID 优先、DagNodeID 兜底）→ TeamRun → MemberSession；GraphTeamNode 渲染与 GraphStageBlock `heightOf` 布局共用，保证卡片内容高度 = DAG 布局高度 |
+| 布局 | `usePlanDAGLayout` 横向 DAG（layer 为列、列内垂直居中），支持 per-node `heightOf` 变高节点 |
+| 视口 | `useGraphViewport`：scale ∈ [0.4, 2.0]；`zoomAt` 以光标为锚；`zoomFit` 初始自适应（只缩不放） |
+| 成员弹框 | `MemberSessionDialog.vue`：`v-model:open` 纯展示，内嵌 `MemberSessionPanel embedded`（始终展开、无折叠开关），操作事件（pause/inject/expand/confirm-step）原样透传 |
+| 团队面板 | `TeamStagePanel.vue` / `TeamRunCard.vue` / `useLocateTeamStage.ts` 已删除；成员执行内容唯一入口 = Graph 富卡片成员行弹框 |
+| 单节点 | 始终渲染（废弃 B.4.4「≤1 节点不展示」）；team 信息以富卡片呈现，UI 不再随节点数跳变 |
+
+#### B.10.23.2 视口交互与点击抑制
+
+| 交互 | 行为 |
+|------|------|
+| 滚轮 | 以光标为中心缩放（`onWheel` → `zoomAt`） |
+| 按钮 | ＋/－/fit/reset，以视口中心为锚步进缩放 |
+| 左键拖拽 | 位移超阈值（`GRAPH_VIEWPORT_PAN_THRESHOLD=3px`）判定为 pan，translate 跟随 |
+| 拖拽后 click | `justPanned` 抑制一次（节点选中与成员弹框均不触发），下一轮 pointerdown 复位 |
+| 成员行 click | `@click.stop` → `select-member` → GraphStageBlock 开弹框（`justPanned` 时不响应） |
+
+**指针捕获延迟（2026-07-27 修复）**：`setPointerCapture` 从 `onPanStart` 移至 `handlePanMove` 中 `justPanned` 首次翻转为 true 时才调用。
+
+> **根因**：pointerdown 即捕获会把后续 pointerup/click 重定向到视口元素，click 落在公共祖先上，导致成员行/节点头部的 `@click` 在真实浏览器中永不触发（弹框打不开）。单测环境 jsdom 不实现指针捕获重定向，故该 bug 只能在真实浏览器暴露。
+>
+> **语义**：纯点击（位移 <3px）不捕获指针，click 正常落到成员行；确认拖拽后才捕获，保证拖出视口边界仍能连续平移。
+
+#### B.10.23.3 测试策略
+
+| 文件 | 覆盖 |
+|------|------|
+| `GraphStageBlock.spec.ts` | 始终渲染（单节点）、成员行渲染、per-node 高度布局（heightOf）、缩放按钮/滚轮、拖拽平移 + click 抑制、**指针捕获延迟**（纯点击不 capture + 成员弹框可开；超阈值才 capture）、弹框事件透传 |
+| `GraphStageBlock.entrance.spec.ts` | P0 级联入场动画（layer/order 错峰、live 窗口判定） |
+| `GraphTeamNode.spec.ts` | 富卡片渲染（成员行/dot 色调/耗时格式化）、`select-member` emit |
+| `MemberSessionDialog.spec.ts` | open v-model、embedded panel、事件透传 |
+| `useGraphViewport.spec.ts` | 缩放范围/锚点、zoomFit、pan 阈值、justPanned 复位 |
+| `usePlanDAGLayout.spec.ts` | 横向布局、变高节点 heightOf |
+| 运行时验证 | 2026-07-27 真实浏览器（session `d78029b9…`）：5 节点 10 成员行渲染，JS 合成 click 与 Playwright 真实鼠标 click 均打开弹框（标题=成员名），拖拽平移正常 |

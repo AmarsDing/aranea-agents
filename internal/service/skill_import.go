@@ -153,6 +153,7 @@ func skillImportApplyFromProto(req *v1.ApplySkillImportRequest) biz.SkillImportA
 			MergedName:        d.GetMergedName(),
 			MergedDescription: d.GetMergedDescription(),
 			MergedBody:        d.GetMergedBody(),
+			RetireSources:     d.GetRetireSources(),
 		}
 		for _, t := range d.GetMergedTags() {
 			dec.MergedTags = append(dec.MergedTags, biz.SkillTag{Name: t.GetName(), Source: t.GetSource()})

@@ -38,7 +38,7 @@ func TestValidateRepoURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateRepoURL(tt.url)
+			err := ValidateRepoURL(tt.url, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateRepoURL(%q) error = %v, wantErr %v", tt.url, err, tt.wantErr)
 			}
@@ -47,9 +47,32 @@ func TestValidateRepoURL(t *testing.T) {
 }
 
 func TestValidateRepoURL_DisallowedScheme(t *testing.T) {
-	err := ValidateRepoURL("ftp://example.com/repo")
+	err := ValidateRepoURL("ftp://example.com/repo", nil)
 	if err == nil {
 		t.Fatal("expected error for ftp scheme")
+	}
+}
+
+func TestValidateRepoURLPrivateHostWhitelist(t *testing.T) {
+	// Private IP hosts are rejected by default (SSRF guard).
+	if err := ValidateRepoURL("https://192.168.1.10/org/repo", nil); err == nil {
+		t.Fatal("ValidateRepoURL() error = nil, want private host rejection")
+	}
+	// Exact whitelist match allows the private host.
+	if err := ValidateRepoURL("https://192.168.1.10/org/repo", []string{"192.168.1.10"}); err != nil {
+		t.Fatalf("ValidateRepoURL() error = %v, want whitelisted host allowed", err)
+	}
+	// A different private host is still rejected.
+	if err := ValidateRepoURL("https://10.0.0.9/org/repo", []string{"192.168.1.10"}); err == nil {
+		t.Fatal("ValidateRepoURL() error = nil, want non-whitelisted private host rejected")
+	}
+	// SCP-style URL with whitelisted host.
+	if err := ValidateRepoURL("192.168.1.10/org/repo", []string{"192.168.1.10"}); err != nil {
+		t.Fatalf("ValidateRepoURL() error = %v, want whitelisted SCP-style host allowed", err)
+	}
+	// Hostname match is case-insensitive and trimmed.
+	if err := ValidateRepoURL("https://GitLab.CORP.local/org/repo", []string{" gitlab.corp.local "}); err != nil {
+		t.Fatalf("ValidateRepoURL() error = %v, want case-insensitive whitelist match", err)
 	}
 }
 

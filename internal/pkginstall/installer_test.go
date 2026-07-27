@@ -23,26 +23,35 @@ func TestInstallSkillFromURLSubpathZipsTempPath(t *testing.T) {
 
 	var sawFile bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/skills/import" {
-			http.NotFound(w, r)
-			return
-		}
-		mr, err := r.MultipartReader()
-		if err != nil {
-			t.Errorf("MultipartReader() error = %v", err)
-			http.Error(w, "bad multipart", http.StatusBadRequest)
-			return
-		}
-		for {
-			part, err := mr.NextPart()
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/skills/import":
+			mr, err := r.MultipartReader()
 			if err != nil {
-				break
+				t.Errorf("MultipartReader() error = %v", err)
+				http.Error(w, "bad multipart", http.StatusBadRequest)
+				return
 			}
-			if part.FormName() == "file" && part.FileName() != "" {
-				sawFile = true
+			for {
+				part, err := mr.NextPart()
+				if err != nil {
+					break
+				}
+				if part.FormName() == "file" && part.FileName() != "" {
+					sawFile = true
+				}
 			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"job_id":"j1"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/skills/import/j1":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"jobId":"j1","status":"completed","validationStatus":"pass","candidates":[{"candidateId":"c1","name":"S","slug":"s","validationStatus":"pass"}],"conflictGroups":[]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/skills/import/j1/apply":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"createdSkillIds":["s1"],"skippedCandidateIds":[],"message":"ok"}`))
+		default:
+			http.NotFound(w, r)
 		}
-		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 

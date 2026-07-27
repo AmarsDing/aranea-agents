@@ -35,16 +35,39 @@ describe('firstInvalidToolJsonKey', () => {
 });
 
 describe('bindingSummaryLine', () => {
-  it('formats allowed/denied and overrides', () => {
-    const line = bindingSummaryLine({
-      total_agents: 3,
-      allowed: 2,
-      denied: 1,
-      tools_disabled_agents: 0,
-      override_count: 1,
-      rows: [],
-    });
-    expect(line).toContain('2 个 Agent 可用');
-    expect(line).toContain('1 条显式覆盖');
+  it('formats allowed/denied and overrides via i18n keys', () => {
+    const mockT = (key: string, named?: Record<string, unknown>) => `${key}(${named?.count ?? ''})`;
+    const line = bindingSummaryLine(
+      {
+        total_agents: 3,
+        allowed: 2,
+        denied: 1,
+        tools_disabled_agents: 0,
+        override_count: 1,
+        rows: [],
+      },
+      mockT,
+    );
+    expect(line).toContain('toolsPage.agentBinding.summaryAllowed(2)');
+    expect(line).toContain('toolsPage.agentBinding.summaryDenied(1)');
+    expect(line).toContain('toolsPage.agentBinding.summaryOverrides(1)');
+    expect(line).not.toContain('summaryToolsDisabled');
+  });
+
+  it('includes tools-disabled segment when present', () => {
+    const mockT = (key: string, named?: Record<string, unknown>) => `${key}(${named?.count ?? ''})`;
+    const line = bindingSummaryLine(
+      {
+        total_agents: 5,
+        allowed: 1,
+        denied: 2,
+        tools_disabled_agents: 2,
+        override_count: 0,
+        rows: [],
+      },
+      mockT,
+    );
+    expect(line).toContain('toolsPage.agentBinding.summaryToolsDisabled(2)');
+    expect(line).not.toContain('summaryOverrides');
   });
 });

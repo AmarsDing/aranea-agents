@@ -17,12 +17,13 @@ import (
 type ToolService struct {
 	v1.UnimplementedToolServiceServer
 
-	uc  *biz.ToolUsecase
-	mon *biz.MonitorUsecase
+	uc     *biz.ToolUsecase
+	agents *biz.AgentUsecase
+	mon    *biz.MonitorUsecase
 }
 
-func NewToolService(uc *biz.ToolUsecase, mon *biz.MonitorUsecase) *ToolService {
-	return &ToolService{uc: uc, mon: mon}
+func NewToolService(uc *biz.ToolUsecase, agents *biz.AgentUsecase, mon *biz.MonitorUsecase) *ToolService {
+	return &ToolService{uc: uc, agents: agents, mon: mon}
 }
 
 // assertToolAccess 校验 caller 是否可访问指定 tool（P2-B IDOR 防护）。
@@ -373,6 +374,38 @@ func (s *ToolService) ListToolAgentOverrides(ctx context.Context, req *v1.ListTo
 		items = append(items, bizOverrideToProto(overrides[i]))
 	}
 	return &v1.ListToolAgentOverridesResponse{Items: items}, nil
+}
+
+// GetToolAgentBindings implements GET /v1/tools/{tool_id}/agent-bindings.
+// Bulk-computes the tool's effective state across all visible agents,
+// replacing the frontend N+1 scan of GetAgentEffectiveTools.
+func (s *ToolService) GetToolAgentBindings(ctx context.Context, req *v1.GetToolAgentBindingsRequest) (*v1.ToolAgentBindingsView, error) {
+	if err := s.assertToolAccess(ctx, req.GetToolId()); err != nil {
+		return nil, err
+	}
+	callerWS := workspace.IDFromContext(ctx)
+	if workspace.IsSystem(ctx) {
+		callerWS = ""
+	}
+	bindings, err := s.agents.GetToolAgentBindings(ctx, req.GetToolId(), callerWS)
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.ToolAgentBindingsView{Items: make([]*v1.ToolAgentBinding, 0, len(bindings))}
+	for _, b := range bindings {
+		out.Items = append(out.Items, &v1.ToolAgentBinding{
+			AgentId:        b.AgentID,
+			AgentKey:       b.AgentKey,
+			AgentName:      b.AgentName,
+			AgentStatus:    b.AgentStatus,
+			ToolsEnabled:   b.ToolsEnabled,
+			Profile:        b.Profile,
+			EffectiveState: b.State,
+			Reason:         b.Reason,
+			OverrideMode:   b.OverrideMode,
+		})
+	}
+	return out, nil
 }
 
 func (s *ToolService) ListToolAgentOverridesByAgent(ctx context.Context, req *v1.ListToolAgentOverridesByAgentRequest) (*v1.ListToolAgentOverridesByAgentResponse, error) {

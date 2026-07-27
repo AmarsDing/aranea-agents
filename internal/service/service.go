@@ -49,7 +49,7 @@ var ProviderSet = wire.NewSet(
 	NewCronService,
 	NewPluginServiceWithBootstrap,
 	NewMCPServerService,
-	importer.NewEngine,
+	importer.ProvideEngine,
 	importer.ProvideLLMLister,
 	NewSkillService,
 	ProvideSkillResolveRootFn,

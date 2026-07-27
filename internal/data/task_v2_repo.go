@@ -46,7 +46,13 @@ func (r *taskV2Repo) GetTask(ctx context.Context, id string) (biz.Task, error) {
 	return entTaskV2ToBiz(row), nil
 }
 
-// ListTasksBySession returns all tasks for the given session, ordered by seq asc.
+// ListTasksBySession returns all tasks for the given session, ordered by
+// created_at asc (id asc as tiebreaker for same-second creations).
+// 2026-07-26 修复：排序键从 seq 改为 created_at。seq 赋值源头不可靠（澄清门
+// 硬编码 Seq=1、正常 turn 路径默认 0），多任务会话下按 seq 排序使
+// resolveLatestUserTaskID 取"最后一个"时选错父任务，导致总结 turn 挂到旧
+// 任务上（执行中不显示、刷新后位置不对）。created_at 是"最近用户任务"的
+// 语义真相，前端 compareByTimeThenSeq 也以 CreatedAt 为主排序键。
 func (r *taskV2Repo) ListTasksBySession(ctx context.Context, sessionID string) ([]biz.Task, error) {
 	if r == nil || r.data == nil {
 		return nil, fmt.Errorf("task v2 repo: database not configured")
@@ -57,7 +63,7 @@ func (r *taskV2Repo) ListTasksBySession(ctx context.Context, sessionID string) (
 	}
 	rows, err := r.data.RW().Read(ctx).TaskV2.Query().
 		Where(preds...).
-		Order(ent.Asc(taskv2.FieldSeq)).
+		Order(ent.Asc(taskv2.FieldCreatedAt), ent.Asc(taskv2.FieldID)).
 		All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, "TASK_V2")

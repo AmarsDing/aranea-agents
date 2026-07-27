@@ -27,7 +27,8 @@ function baseMember(overrides: Partial<MemberSession> = {}): MemberSession {
 
 const quasarStubs = {
   'q-btn': {
-    template: '<button type="button" v-bind="$attrs" @click="$attrs.onClick?.($event)"><slot /></button>',
+    // onClick 经 v-bind="$attrs" 自动注册为原生监听；再显式 @click 会触发两次
+    template: '<button type="button" v-bind="$attrs"><slot /></button>',
   },
   'q-input': {
     props: ['modelValue'],

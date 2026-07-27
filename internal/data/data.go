@@ -18,6 +18,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/migrate"
 	"aranea-agents/internal/data/vector"
+	"aranea-agents/internal/skill/importer"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -53,6 +54,8 @@ var ProviderSet = wire.NewSet(
 	NewMCPServerRepo,
 	NewMCPServerUserCredentialRepo,
 	NewSkillRepo,
+	NewSkillImportJobStore,
+	wire.Bind(new(importer.SkillImportJobStore), new(*SkillImportJobStore)),
 	NewSessionRepo,
 	NewToolRepo,
 	NewToolGrantRepo,

@@ -23,6 +23,18 @@ type stubSkillRepo struct {
 
 	// deletedIDs records every DeleteSkill call.
 	deletedIDs []string
+
+	// byKeySkill/byKeyErr back GetSkillBySkillKey (overwrite_duplicate target lookup).
+	byKeySkill skill.Skill
+	byKeyErr   error
+	// storageDirs maps skill ID → on-disk storage dir (GetSkillStorageDir).
+	storageDirs map[string]string
+	// appendedInputs records every AppendImportedVersion call (overwrite path).
+	appendedInputs []skill.ImportVersionInput
+	// archivedIDs records every ArchiveSkill call (merge retire path).
+	archivedIDs []string
+	// derivedFrom records SetSkillDerivedFrom calls: skill ID → source IDs.
+	derivedFrom map[string][]string
 }
 
 func (r *stubSkillRepo) CreateSkillWithVersion(_ context.Context, in skill.CreateInput) (skill.Skill, error) {
@@ -40,6 +52,38 @@ func (r *stubSkillRepo) DeleteSkill(_ context.Context, id string) error {
 
 func (r *stubSkillRepo) ListSkillSimilaritySources(_ context.Context) ([]skill.SimilaritySource, error) {
 	return nil, nil
+}
+
+func (r *stubSkillRepo) GetSkillBySkillKey(_ context.Context, skillKey string) (skill.Skill, error) {
+	if r.byKeyErr != nil {
+		return skill.Skill{}, r.byKeyErr
+	}
+	return r.byKeySkill, nil
+}
+
+func (r *stubSkillRepo) GetSkillStorageDir(_ context.Context, id string) (string, error) {
+	if dir, ok := r.storageDirs[id]; ok {
+		return dir, nil
+	}
+	return "", errors.New("storage dir not configured for " + id)
+}
+
+func (r *stubSkillRepo) AppendImportedVersion(_ context.Context, in skill.ImportVersionInput) (skill.Skill, error) {
+	r.appendedInputs = append(r.appendedInputs, in)
+	return skill.Skill{ID: in.SkillID}, nil
+}
+
+func (r *stubSkillRepo) ArchiveSkill(_ context.Context, id string) error {
+	r.archivedIDs = append(r.archivedIDs, id)
+	return nil
+}
+
+func (r *stubSkillRepo) SetSkillDerivedFrom(_ context.Context, id string, sourceIDs []string) error {
+	if r.derivedFrom == nil {
+		r.derivedFrom = map[string][]string{}
+	}
+	r.derivedFrom[id] = append([]string(nil), sourceIDs...)
+	return nil
 }
 
 // setupEngineWithTempRoot creates an Engine whose file-system root is a temp dir that is

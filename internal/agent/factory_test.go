@@ -48,6 +48,9 @@ func (m *memAgentRepo) DeleteAgent(context.Context, string) error { return nil }
 func (m *memAgentRepo) GetAgentRuntimeSettings(context.Context, string) (biz.AgentRuntimeSettings, error) {
 	return biz.AgentRuntimeSettings{}, nil
 }
+func (m *memAgentRepo) ListAgentRuntimeSettings(context.Context) (map[string]biz.AgentRuntimeSettings, error) {
+	return map[string]biz.AgentRuntimeSettings{}, nil
+}
 func (m *memAgentRepo) UpsertAgentRuntimeSettings(context.Context, biz.AgentRuntimeSettings) (biz.AgentRuntimeSettings, error) {
 	return biz.AgentRuntimeSettings{}, nil
 }

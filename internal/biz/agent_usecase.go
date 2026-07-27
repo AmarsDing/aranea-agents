@@ -54,6 +54,9 @@ type AgentWriter interface {
 // Stability:stable
 type AgentRuntimeSettingsRepo interface {
 	GetAgentRuntimeSettings(ctx context.Context, agentID string) (AgentRuntimeSettings, error)
+	// ListAgentRuntimeSettings returns settings for all agents keyed by agent ID.
+	// Agents without a settings row are absent from the map (callers apply defaults).
+	ListAgentRuntimeSettings(ctx context.Context) (map[string]AgentRuntimeSettings, error)
 	UpsertAgentRuntimeSettings(ctx context.Context, v AgentRuntimeSettings) (AgentRuntimeSettings, error)
 }
 

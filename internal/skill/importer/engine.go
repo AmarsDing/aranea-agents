@@ -10,6 +10,8 @@ import (
 	"mime/multipart"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +31,20 @@ type SkillImportRepo interface {
 	CreateSkillWithVersion(ctx context.Context, in biz.SkillCreateInput) (biz.Skill, error)
 	DeleteSkill(ctx context.Context, id string) error
 	ListSkillSimilaritySources(ctx context.Context) ([]biz.SkillSimilaritySource, error)
+	// GetSkillBySkillKey resolves an existing skill by slug (skill_key) —
+	// used by the overwrite_duplicate decision to find the update target.
+	GetSkillBySkillKey(ctx context.Context, skillKey string) (biz.Skill, error)
+	// GetSkillStorageDir returns the on-disk storage directory of a skill —
+	// used to merge aux files from existing skills and to write overwrite files.
+	GetSkillStorageDir(ctx context.Context, id string) (string, error)
+	// AppendImportedVersion appends a new version to an existing skill and
+	// refreshes name/description/tags (overwrite_duplicate apply path).
+	AppendImportedVersion(ctx context.Context, in biz.SkillImportVersionInput) (biz.Skill, error)
+	// ArchiveSkill retires a skill (status=archived, enabled=false) —
+	// merge_group_with_ai with retire_sources=true.
+	ArchiveSkill(ctx context.Context, id string) error
+	// SetSkillDerivedFrom records merge provenance in the skill metadata.
+	SetSkillDerivedFrom(ctx context.Context, id string, sourceIDs []string) error
 }
 
 type llmLister interface {
@@ -103,6 +119,20 @@ func (e *Engine) SetStore(store SkillImportJobStore) {
 
 func ProvideLLMLister(uc *biz.LlmProviderModelUsecase) llmLister {
 	return uc
+}
+
+// ProvideEngine is the wire provider for the import Engine. When a
+// SkillImportJobStore is available it is attached so import jobs survive
+// restarts; otherwise jobs remain memory-only (warned at startup).
+func ProvideEngine(repo SkillImportRepo, llm llmLister, sys biz.SystemSettingRepo, store SkillImportJobStore, lg loggateway.Logger) *Engine {
+	e := NewEngine(repo, llm, sys, lg)
+	if store == nil {
+		lg.Warn("import jobs are memory-only: no SkillImportJobStore configured",
+			loggateway.StepID("skill.import.store"))
+		return e
+	}
+	e.SetStore(store)
+	return e
 }
 
 func (e *Engine) resolveRoot(ctx context.Context) string {
@@ -290,6 +320,19 @@ type skillCreateParams struct {
 	body        string
 	tags        []biz.SkillTag
 	files       map[string][]byte
+	// updateSkillID is set by the overwrite_duplicate decision: instead of
+	// creating a new skill, ApplyImport appends a new version to this
+	// existing skill and writes files into its storage directory.
+	updateSkillID string
+	// targetDir overrides the default <root>/<slug> write directory
+	// (overwrite writes into the existing skill's storage dir).
+	targetDir string
+	// retireSkillIDs lists existing skills to archive after a successful
+	// merge create (retire_sources=true).
+	retireSkillIDs []string
+	// derivedFromSkillIDs records merge provenance into the new skill's
+	// metadata JSON (derived_from).
+	derivedFromSkillIDs []string
 }
 
 // ApplyImport executes the user-approved import decisions.
@@ -473,7 +516,7 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 	}
 
 	for _, decision := range in.Decisions {
-		params, skipIDs, err := e.resolveDecision(job, decision)
+		params, skipIDs, err := e.resolveDecision(ctx, job, decision)
 		if err != nil {
 			return partialErr(err)
 		}
@@ -484,11 +527,35 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 		if params == nil {
 			return partialErr(detailErr(ErrUnsupportedAction, "unsupported import action: "+decision.Action))
 		}
-		created, dir, err := e.createImportedSkill(ctx, *params)
-		if err != nil {
-			return partialErr(err)
+		var created biz.Skill
+		if params.updateSkillID != "" {
+			// overwrite_duplicate: append a new version to the existing skill.
+			// No compensation record — deleting the skill would destroy the
+			// pre-existing skill, and the appended version is additive
+			// (prior versions remain intact for rollback).
+			created, err = e.applyOverwrite(ctx, *params)
+			if err != nil {
+				return partialErr(err)
+			}
+		} else {
+			var dir string
+			created, dir, err = e.createImportedSkill(ctx, *params)
+			if err != nil {
+				return partialErr(err)
+			}
+			committed = append(committed, createdSkillRecord{id: created.ID, storageDir: dir})
 		}
-		committed = append(committed, createdSkillRecord{id: created.ID, storageDir: dir})
+		// merge_group_with_ai post-create hooks: provenance + optional retire.
+		if len(params.derivedFromSkillIDs) > 0 && len(params.retireSkillIDs) > 0 {
+			if err := e.repo.SetSkillDerivedFrom(ctx, created.ID, params.derivedFromSkillIDs); err != nil {
+				return partialErr(err)
+			}
+			for _, sourceID := range params.retireSkillIDs {
+				if err := e.repo.ArchiveSkill(ctx, sourceID); err != nil {
+					return partialErr(err)
+				}
+			}
+		}
 		result.CreatedSkillIDs = append(result.CreatedSkillIDs, created.ID)
 	}
 	result.Message = "import completed"
@@ -547,10 +614,20 @@ func (e *Engine) conflictGroupContext(jobID string, groupID string) (*jobState, 
 	return nil, biz.SkillConflictGroup{}, nil, ErrConflictGroupNotFound
 }
 
+// candidateHasBlock reports whether the candidate carries a block of the given type.
+func candidateHasBlock(candidate biz.SkillImportCandidate, blockType string) bool {
+	for _, block := range candidate.Blocks {
+		if block.Type == blockType {
+			return true
+		}
+	}
+	return false
+}
+
 // resolveDecision maps an import decision to either a skillCreateParams (to create
 // a skill), a list of skipped candidate IDs, or an error. Returns (nil, nil, nil)
 // for unsupported actions so the caller can report the error.
-func (e *Engine) resolveDecision(job *jobState, decision biz.SkillImportDecision) (*skillCreateParams, []string, error) {
+func (e *Engine) resolveDecision(ctx context.Context, job *jobState, decision biz.SkillImportDecision) (*skillCreateParams, []string, error) {
 	switch decision.Action {
 	case "import_passed":
 		candidate, ok := job.candidates[decision.CandidateID]
@@ -583,19 +660,53 @@ func (e *Engine) resolveDecision(job *jobState, decision biz.SkillImportDecision
 			return nil, nil, validationError("candidate_id is required")
 		}
 		return nil, []string{decision.CandidateID}, nil
+	case "skip_duplicate":
+		// Explicitly drop a duplicate-blocked candidate without installing it.
+		candidate, ok := job.candidates[decision.CandidateID]
+		if !ok {
+			return nil, nil, detailErr(ErrCandidateNotFound, "candidate "+decision.CandidateID+" not found")
+		}
+		if !candidateHasBlock(candidate.public, "duplicate_name") {
+			return nil, nil, detailErr(ErrCandidateNotDuplicate, "candidate "+decision.CandidateID+" is not blocked as duplicate")
+		}
+		return nil, []string{decision.CandidateID}, nil
+	case "overwrite_duplicate":
+		// Append the uploaded package as a new version of the existing
+		// same-slug skill instead of creating a new skill row.
+		candidate, ok := job.candidates[decision.CandidateID]
+		if !ok {
+			return nil, nil, detailErr(ErrCandidateNotFound, "candidate "+decision.CandidateID+" not found")
+		}
+		if !candidateHasBlock(candidate.public, "duplicate_name") {
+			return nil, nil, detailErr(ErrCandidateNotDuplicate, "candidate "+decision.CandidateID+" is not blocked as duplicate")
+		}
+		existing, err := e.repo.GetSkillBySkillKey(ctx, candidate.public.Slug)
+		if err != nil {
+			return nil, nil, detailErr(ErrDuplicateTargetNotFound, "existing skill with slug "+candidate.public.Slug+": "+err.Error())
+		}
+		storageDir, err := e.repo.GetSkillStorageDir(ctx, existing.ID)
+		if err != nil {
+			return nil, nil, detailErr(ErrDuplicateTargetNotFound, "storage dir for skill "+existing.ID+": "+err.Error())
+		}
+		return &skillCreateParams{
+			name: candidate.public.Name, slug: candidate.public.Slug,
+			description: candidate.public.Description, body: candidate.body,
+			tags: candidate.tags, files: candidate.files,
+			updateSkillID: existing.ID, targetDir: storageDir,
+		}, nil, nil
 	case "merge_group_with_ai":
 		if strings.TrimSpace(decision.GroupID) == "" {
 			return nil, nil, validationError("group_id is required for merge_group_with_ai")
 		}
 		// 验证冲突组存在，防止引用不存在的 GroupID 创建任意 skill
-		groupExists := false
-		for _, g := range job.public.ConflictGroups {
-			if g.GroupID == decision.GroupID {
-				groupExists = true
+		var group *biz.SkillConflictGroup
+		for i := range job.public.ConflictGroups {
+			if job.public.ConflictGroups[i].GroupID == decision.GroupID {
+				group = &job.public.ConflictGroups[i]
 				break
 			}
 		}
-		if !groupExists {
+		if group == nil {
 			return nil, nil, detailErr(ErrConflictGroupNotFound, "conflict group "+decision.GroupID+" not found")
 		}
 		if strings.TrimSpace(decision.MergedName) == "" {
@@ -605,17 +716,85 @@ func (e *Engine) resolveDecision(job *jobState, decision biz.SkillImportDecision
 			return nil, nil, validationError("merged_body is required")
 		}
 		slug := slugify(decision.MergedName)
-		files := map[string][]byte{"SKILL.md": []byte(decision.MergedBody)}
-		return &skillCreateParams{
+		// Files are the union of aux files (everything except SKILL.md):
+		// existing skills' on-disk aux files first, then the candidate's aux
+		// files win on path conflicts. The merged body always becomes SKILL.md.
+		files := map[string][]byte{}
+		for _, existing := range group.ExistingSkills {
+			dir, err := e.repo.GetSkillStorageDir(ctx, existing.ID)
+			if err != nil {
+				return nil, nil, detailErr(ErrMergeSourceUnreadable, "storage dir for skill "+existing.ID+": "+err.Error())
+			}
+			existingFiles, err := ReadSkillDirFiles(dir)
+			if err != nil {
+				return nil, nil, detailErr(ErrMergeSourceUnreadable, "read files for skill "+existing.ID+": "+err.Error())
+			}
+			for fname, data := range existingFiles {
+				if strings.EqualFold(fname, "SKILL.md") {
+					continue
+				}
+				if _, taken := files[fname]; !taken {
+					files[fname] = data
+				}
+			}
+		}
+		for _, candidateID := range group.CandidateIDs {
+			candidate, ok := job.candidates[candidateID]
+			if !ok {
+				continue
+			}
+			for fname, data := range candidate.files {
+				if strings.EqualFold(fname, "SKILL.md") {
+					continue
+				}
+				files[fname] = data
+			}
+		}
+		files["SKILL.md"] = []byte(decision.MergedBody)
+		params := &skillCreateParams{
 			name: decision.MergedName, slug: slug,
 			description: decision.MergedDescription, body: decision.MergedBody,
 			tags: decision.MergedTags, files: files,
-		}, nil, nil
+		}
+		for _, existing := range group.ExistingSkills {
+			params.derivedFromSkillIDs = append(params.derivedFromSkillIDs, existing.ID)
+		}
+		if decision.RetireSources {
+			params.retireSkillIDs = append([]string(nil), params.derivedFromSkillIDs...)
+		}
+		return params, nil, nil
 	case "skip_group":
 		return nil, candidateIDsForGroup(job.public.ConflictGroups, decision.GroupID), nil
 	default:
 		return nil, nil, nil
 	}
+}
+
+// writeSkillFiles writes all package files under targetDir with full zipslip
+// protection (TPM-P1-07) and returns the absolute target directory.
+func writeSkillFiles(targetDir string, files map[string][]byte) (string, error) {
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return "", err
+	}
+	// TPM-P1-07: full zipslip protection — verify joined path stays inside targetDir.
+	absTarget, err := filepath.Abs(targetDir)
+	if err != nil {
+		return "", detailErr(ErrResolveTargetDir, err.Error())
+	}
+	for fname, data := range files {
+		if err := ensurePathWithin(absTarget, fname); err != nil {
+			return "", err
+		}
+		clean := filepath.Clean(fname)
+		path := filepath.Join(absTarget, clean)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			return "", err
+		}
+	}
+	return absTarget, nil
 }
 
 // createImportedSkill writes skill files to disk and inserts the DB row.
@@ -627,26 +806,9 @@ func (e *Engine) createImportedSkill(ctx context.Context, p skillCreateParams) (
 		slug = slugify(p.name)
 	}
 	targetDir := filepath.Join(e.resolveRoot(ctx), slug)
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return biz.Skill{}, "", err
-	}
-	// TPM-P1-07: full zipslip protection — verify joined path stays inside targetDir.
-	absTarget, err := filepath.Abs(targetDir)
+	absTarget, err := writeSkillFiles(targetDir, p.files)
 	if err != nil {
-		return biz.Skill{}, "", detailErr(ErrResolveTargetDir, err.Error())
-	}
-	for fname, data := range p.files {
-		if err := ensurePathWithin(absTarget, fname); err != nil {
-			return biz.Skill{}, "", err
-		}
-		clean := filepath.Clean(fname)
-		path := filepath.Join(absTarget, clean)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return biz.Skill{}, "", err
-		}
-		if err := os.WriteFile(path, data, 0o644); err != nil {
-			return biz.Skill{}, "", err
-		}
+		return biz.Skill{}, "", err
 	}
 	skill, err := e.repo.CreateSkillWithVersion(ctx, biz.SkillCreateInput{Name: p.name, Slug: slug, Description: p.description, Body: p.body, Tags: p.tags, StorageDir: targetDir, SyncOrigin: biz.SkillSyncOriginImport})
 	if err != nil {
@@ -662,6 +824,22 @@ func (e *Engine) createImportedSkill(ctx context.Context, p skillCreateParams) (
 		return biz.Skill{}, "", err
 	}
 	return skill, absTarget, nil
+}
+
+// applyOverwrite executes the overwrite_duplicate path: writes the candidate
+// files into the existing skill's storage directory and appends a new version
+// (parent = current latest) while refreshing name/description/tags.
+func (e *Engine) applyOverwrite(ctx context.Context, p skillCreateParams) (biz.Skill, error) {
+	if _, err := writeSkillFiles(p.targetDir, p.files); err != nil {
+		return biz.Skill{}, err
+	}
+	return e.repo.AppendImportedVersion(ctx, biz.SkillImportVersionInput{
+		SkillID:     p.updateSkillID,
+		Name:        p.name,
+		Description: p.description,
+		Body:        p.body,
+		Tags:        p.tags,
+	})
 }
 
 func (e *Engine) updateCandidateWarning(job *jobState, candidateID string, metrics biz.SkillSimilarityMetrics) {
@@ -732,22 +910,85 @@ func (e *Engine) inspectSkillZip(ctx context.Context, data []byte, job *jobState
 	if err != nil {
 		return err
 	}
-	for dir, files := range filesByDir {
+
+	// F2: groups without SKILL.md that live under a SKILL.md group's subtree
+	// are merged into that candidate (e.g. root SKILL.md + core/x.py), instead
+	// of being silently dropped. Merging only happens when exactly one group
+	// contains SKILL.md — multi-skill packages never cross-merge.
+	dirs := make([]string, 0, len(filesByDir))
+	for dir := range filesByDir {
+		dirs = append(dirs, dir)
+	}
+	sort.Strings(dirs)
+	hasSkillMD := func(dir string) bool {
+		files := filesByDir[dir]
+		if _, ok := files["SKILL.md"]; ok {
+			return true
+		}
+		_, ok := files["skill.md"]
+		return ok
+	}
+	skillDirs := []string{}
+	for _, dir := range dirs {
+		if hasSkillMD(dir) {
+			skillDirs = append(skillDirs, dir)
+		}
+	}
+	mergedInto := map[string]bool{} // group dir absorbed into a candidate
+	for _, dir := range skillDirs {
+		files := filesByDir[dir]
 		bodyBytes, ok := files["SKILL.md"]
 		if !ok {
-			bodyBytes, ok = files["skill.md"]
-		}
-		if !ok {
-			continue
+			bodyBytes = files["skill.md"]
 		}
 		body := string(bodyBytes)
-		candidate, tags := ValidateSkillPackage(files, dir, existing, false)
+		merged := make(map[string][]byte, len(files))
+		for fname, data := range files {
+			merged[fname] = data
+		}
+		if len(skillDirs) == 1 {
+			for _, other := range dirs {
+				if other == dir || hasSkillMD(other) {
+					continue
+				}
+				// Only groups inside this group's subtree are merged. Since
+				// groups key on the top-level path component, this can only
+				// ever trigger for the root group (".").
+				if dir != "." && !strings.HasPrefix(other, dir+"/") {
+					continue
+				}
+				for rel, data := range filesByDir[other] {
+					merged[other+"/"+rel] = data
+				}
+				mergedInto[other] = true
+			}
+		}
+		candidate, tags := ValidateSkillPackage(merged, dir, existing, false)
 		candidate.TargetDir = filepath.Join(job.public.StorageRoot, candidate.Slug)
-		job.candidates[candidate.CandidateID] = candidateState{public: candidate, body: body, files: files, tags: tags}
+		job.candidates[candidate.CandidateID] = candidateState{public: candidate, body: body, files: merged, tags: tags}
 		job.public.Candidates = append(job.public.Candidates, candidate)
 	}
 	if len(job.public.Candidates) == 0 {
 		return validationError("zip must contain at least one SKILL.md")
+	}
+	// Groups that were neither imported nor merged must surface a warning —
+	// silently dropping files produced incomplete skills (F2).
+	skipped := []string{}
+	for _, dir := range dirs {
+		if hasSkillMD(dir) || mergedInto[dir] {
+			continue
+		}
+		skipped = append(skipped, dir)
+	}
+	if len(skipped) > 0 {
+		warning := biz.SkillImportIssue{
+			Type:    "files_skipped",
+			Message: "zip entries not imported (no SKILL.md in group): " + strings.Join(skipped, ", "),
+		}
+		job.public.Candidates[0].Warnings = append(job.public.Candidates[0].Warnings, warning)
+		state := job.candidates[job.public.Candidates[0].CandidateID]
+		state.public = job.public.Candidates[0]
+		job.candidates[job.public.Candidates[0].CandidateID] = state
 	}
 	return e.inspectSimilarity(ctx, job, existing)
 }
@@ -826,28 +1067,107 @@ func (e *Engine) modelSimilarity(ctx context.Context, cfg chatModelCfg, candidat
 	if err != nil {
 		return biz.SkillSimilarityMetrics{}, "", nil, err
 	}
-	var out struct {
-		biz.SkillSimilarityMetrics
-		Reason   string   `json:"reason"`
-		Evidence []string `json:"evidence"`
-	}
-	if err = decodeModelJSON(raw, &out); err != nil {
+	return parseSimilarityResult(raw)
+}
+
+// parseSimilarityResult parses the LLM similarity response tolerantly. LLMs
+// routinely violate the declared schema (numeric conflict_risk, evidence as a
+// bare string, quoted numbers); strict typed unmarshal fails the whole pair
+// comparison and silently produces no conflict groups, so every field is
+// coerced from map[string]any instead.
+func parseSimilarityResult(raw string) (biz.SkillSimilarityMetrics, string, []string, error) {
+	var m map[string]any
+	if err := decodeModelJSON(raw, &m); err != nil {
 		return biz.SkillSimilarityMetrics{}, "", nil, err
 	}
-	out.SkillSimilarityMetrics.SimilarityScore = clamp01(out.SkillSimilarityMetrics.SimilarityScore)
-	out.SkillSimilarityMetrics.NameSimilarity = clamp01(out.SkillSimilarityMetrics.NameSimilarity)
-	out.SkillSimilarityMetrics.DescriptionSimilarity = clamp01(out.SkillSimilarityMetrics.DescriptionSimilarity)
-	out.SkillSimilarityMetrics.BodySimilarity = clamp01(out.SkillSimilarityMetrics.BodySimilarity)
-	out.SkillSimilarityMetrics.TriggerSimilarity = clamp01(out.SkillSimilarityMetrics.TriggerSimilarity)
-	out.SkillSimilarityMetrics.ToolSimilarity = clamp01(out.SkillSimilarityMetrics.ToolSimilarity)
-	out.SkillSimilarityMetrics.Confidence = clamp01(out.SkillSimilarityMetrics.Confidence)
-	if out.Recommendation == "" {
-		out.Recommendation = "suggest_refine"
+	metrics := biz.SkillSimilarityMetrics{
+		SimilarityScore:       clamp01(jsonFloat(m["similarity_score"])),
+		NameSimilarity:        clamp01(jsonFloat(m["name_similarity"])),
+		DescriptionSimilarity: clamp01(jsonFloat(m["description_similarity"])),
+		BodySimilarity:        clamp01(jsonFloat(m["body_similarity"])),
+		TriggerSimilarity:     clamp01(jsonFloat(m["trigger_similarity"])),
+		ToolSimilarity:        clamp01(jsonFloat(m["tool_similarity"])),
+		Confidence:            clamp01(jsonFloat(m["confidence"])),
+		Recommendation:        jsonString(m["recommendation"]),
+		ConflictRisk:          normalizeConflictRisk(m["conflict_risk"]),
 	}
-	if out.ConflictRisk == "" {
-		out.ConflictRisk = "medium"
+	if metrics.Recommendation == "" {
+		metrics.Recommendation = "suggest_refine"
 	}
-	return out.SkillSimilarityMetrics, out.Reason, out.Evidence, nil
+	if metrics.ConflictRisk == "" {
+		metrics.ConflictRisk = "medium"
+	}
+	return metrics, jsonString(m["reason"]), jsonStringSlice(m["evidence"]), nil
+}
+
+// jsonFloat coerces a decoded JSON value to float64, accepting both numbers
+// and numeric strings (LLMs occasionally quote them). Returns 0 otherwise.
+func jsonFloat(v any) float64 {
+	switch t := v.(type) {
+	case float64:
+		return t
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(t), 64)
+		if err == nil {
+			return f
+		}
+	}
+	return 0
+}
+
+// jsonString coerces a decoded JSON value to a trimmed string.
+func jsonString(v any) string {
+	if s, ok := v.(string); ok {
+		return strings.TrimSpace(s)
+	}
+	return ""
+}
+
+// jsonStringSlice coerces a decoded JSON value to []string, accepting both a
+// JSON array and a single bare string (LLMs occasionally return one evidence
+// string instead of an array).
+func jsonStringSlice(v any) []string {
+	switch t := v.(type) {
+	case string:
+		if s := strings.TrimSpace(t); s != "" {
+			return []string{s}
+		}
+	case []any:
+		out := make([]string, 0, len(t))
+		for _, item := range t {
+			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// normalizeConflictRisk maps LLM-returned conflict_risk to the canonical
+// "low"/"medium"/"high" strings. Accepts both the documented string form and
+// the commonly-hallucinated 0-1 numeric form (bucketed: >=0.66 high, >=0.33
+// medium, else low). Returns "" for unrecognized values so callers apply their
+// default.
+func normalizeConflictRisk(v any) string {
+	switch t := v.(type) {
+	case string:
+		s := strings.ToLower(strings.TrimSpace(t))
+		switch s {
+		case "low", "medium", "high":
+			return s
+		}
+	case float64:
+		switch {
+		case t >= 0.66:
+			return "high"
+		case t >= 0.33:
+			return "medium"
+		default:
+			return "low"
+		}
+	}
+	return ""
 }
 
 // persistCandidateFiles writes each candidate's body, files, and tags to a temp

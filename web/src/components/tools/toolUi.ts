@@ -1,4 +1,5 @@
 import type { QTableColumn } from 'quasar';
+import { i18n } from '../../i18n';
 import type { Tool, ToolInvocation, ToolInvocationAudit, ToolSummary } from '../../features/tools/types';
 import type { ToolAgentBindingRow } from '../../features/tools/toolAgentBindingSummary';
 import {
@@ -255,9 +256,55 @@ export function invocationAgentLine(row: ToolInvocation): string {
   return row.agent_display_name || row.agent_key || row.agent_id || '—';
 }
 
-/** ToolDetailDrawer — Agent Binding 列定义 */
-export const AGENT_BINDING_COLUMNS: QTableColumn<ToolAgentBindingRow>[] = [
-  registryCol<ToolAgentBindingRow>('agent_name', 'Agent', 'agent_name', 'left', REGISTRY_COL_W.name),
-  registryCol<ToolAgentBindingRow>('state', '生效状态', 'effective_state', 'left', REGISTRY_COL_W.status),
-  registryCol<ToolAgentBindingRow>('reason', '来源 / 原因', 'reason', 'left', REGISTRY_COL_W.desc),
-];
+/** ToolDetailDrawer — Agent Binding 列定义（函数形式，随 locale 取值） */
+export function agentBindingColumns(): QTableColumn<ToolAgentBindingRow>[] {
+  const t = i18n.global.t;
+  return [
+    registryCol<ToolAgentBindingRow>('agent_name', t('toolsPage.agentBinding.colAgent'), 'agent_name', 'left', REGISTRY_COL_W.name),
+    registryCol<ToolAgentBindingRow>('profile', t('toolsPage.agentBinding.colProfile'), 'profile', 'left', REGISTRY_COL_W.status),
+    registryCol<ToolAgentBindingRow>('state', t('toolsPage.agentBinding.colState'), 'effective_state', 'left', REGISTRY_COL_W.status),
+    registryCol<ToolAgentBindingRow>('reason', t('toolsPage.agentBinding.colReason'), 'reason', 'left', REGISTRY_COL_W.desc),
+  ];
+}
+
+const TOOL_PROFILE_KEYS = ['chat_only', 'read_only', 'coding', 'research', 'full'] as const;
+
+export function toolProfileLabel(profile: string): string {
+  const key = (profile || '').trim();
+  if (!key) return '—';
+  if ((TOOL_PROFILE_KEYS as readonly string[]).includes(key)) {
+    return i18n.global.t(`toolsPage.profile.${key}`);
+  }
+  return key;
+}
+
+const BINDING_REASON_KEYS = [
+  'agent_tools_disabled',
+  'agent_deny',
+  'global_disabled',
+  'override_deny',
+  'override_allow',
+  'missing_api_key',
+] as const;
+
+/** 后端 reason → 中文。`profile:<name>` 动态映射为「策略：xx」。 */
+export function bindingReasonLabel(reason: string): string {
+  const r = (reason || '').trim();
+  if (r.startsWith('profile:')) {
+    return `${i18n.global.t('toolsPage.reason.profilePrefix')}${toolProfileLabel(r.slice('profile:'.length))}`;
+  }
+  if ((BINDING_REASON_KEYS as readonly string[]).includes(r)) {
+    return i18n.global.t(`toolsPage.reason.${r}`);
+  }
+  return r || '—';
+}
+
+const OVERRIDE_MODE_KEYS = ['allow', 'deny', 'inherit'] as const;
+
+export function overrideModeLabel(mode: string): string {
+  const m = (mode || '').trim();
+  if ((OVERRIDE_MODE_KEYS as readonly string[]).includes(m)) {
+    return i18n.global.t(`toolsPage.overrideMode.${m}`);
+  }
+  return m;
+}

@@ -108,6 +108,9 @@ func (s channelTestAgentRepo) DeleteAgent(context.Context, string) error { retur
 func (s channelTestAgentRepo) GetAgentRuntimeSettings(context.Context, string) (biz.AgentRuntimeSettings, error) {
 	return biz.AgentRuntimeSettings{}, nil
 }
+func (s channelTestAgentRepo) ListAgentRuntimeSettings(context.Context) (map[string]biz.AgentRuntimeSettings, error) {
+	return map[string]biz.AgentRuntimeSettings{}, nil
+}
 func (s channelTestAgentRepo) UpsertAgentRuntimeSettings(context.Context, biz.AgentRuntimeSettings) (biz.AgentRuntimeSettings, error) {
 	return biz.AgentRuntimeSettings{}, nil
 }

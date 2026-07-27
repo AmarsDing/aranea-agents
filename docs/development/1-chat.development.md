@@ -1552,3 +1552,61 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 ### DR-D.5 改动文件清单（实际）
 
 修改：`internal/biz/spirit_team_usecase.go`、`internal/biz/spirit_synthesis.go`、`internal/biz/team_types.go`、`internal/biz/spirit_team_deliverable_test.go`、`internal/biz/spirit_synthesis_report_test.go`、`internal/biz/spirit_team_usecase_test.go`、`internal/service/spirit_team.go`、`internal/service/spirit_team_handle_result_test.go`、`internal/scenario/system/prompts/DECISION.md`、`internal/scenario/system/embed_test.go`、`internal/agent/activity_context.go`、`internal/agent/task_orchestrator_impl.go`、`internal/data/member_session_v2_repo.go`、`internal/team/runner_helpers_test.go`、`cmd/admin/wire.go`、`cmd/admin/wire_gen.go`
+
+---
+
+## 子模块：GraphStageBlock 方案A 重写（富卡片 DAG + 视口 + 成员弹框）
+
+> **状态**：✅ 已实施（2026-07-26；2026-07-27 指针捕获修复 + 运行时验证） | **设计**：[1-chat.design.md §B.10.23](./1-chat.design.md#b1023-graphstageblock-方案a-重写2026-07-26-已实施2026-07-27-指针捕获修复)
+
+### GA-D.1 模块定位
+
+将 Graph 流程图从「SVG rect 节点 + TeamStagePanel 折叠列表 + TeamRunCard 成员面板」三层方案，重写为单组件「富卡片 DAG + 缩放/平移视口 + 成员行点击弹框」：节点卡片直接渲染成员行（状态点+名称+耗时），点击成员行弹 MemberSessionDialog 查看执行内容；单节点也始终渲染，UI 不再随节点数跳变。纯前端改动，无后端变更。
+
+### GA-D.2 代码锚点
+
+| 文件 | 职责 | 状态 |
+|------|------|------|
+| `web/src/components/chat/v2/GraphStageBlock.vue` | 容器：横向 DAG 布局、视口接线、边层 SVG、成员弹框、选中/hover 高亮、级联入场 | ✅ |
+| `web/src/components/chat/v2/GraphTeamNode.vue` | 富卡片节点：头部（状态点+标题+徽章）、成员行（点击 emit select-member）、进度条 | ✅ |
+| `web/src/components/chat/v2/graphTeamNodeUi.ts` | 尺寸常量（GTN_WIDTH=240 等）+ `graphTeamNodeHeight(n)` + 状态色调/耗时格式化纯函数 | ✅ |
+| `web/src/components/chat/v2/MemberSessionDialog.vue` | 成员执行内容弹框：v-model:open 纯展示，内嵌 MemberSessionPanel embedded，事件透传 | ✅ |
+| `web/src/components/chat/v2/MemberSessionPanel.vue` | 新增 `embedded` 模式（始终展开、无折叠开关）供弹框复用 | ✅ |
+| `web/src/features/chat/composables/useGraphViewport.ts` | 视口状态：scale/tx/ty、zoomAt 锚点缩放、zoomFit、pan 阈值 3px、justPanned 抑制 | ✅ |
+| `web/src/features/chat/composables/useGraphNodeTeam.ts` | GraphNode → TeamStage → TeamRun → MemberSession 解析（渲染与 heightOf 布局共用） | ✅ |
+| `web/src/features/chat/composables/usePlanDAGLayout.ts` | 横向 DAG 布局支持 per-node `heightOf` 变高节点 | ✅ |
+| `web/src/components/chat/v2/TaskCard.vue` | 移除 TeamStagePanel，仅保留 GraphStageBlock | ✅ |
+
+已删除：`GraphNode.vue`（SVG rect 节点）、`TeamStagePanel.vue`、`TeamRunCard.vue`、`useLocateTeamStage.ts`、`TeamComponents.spec.ts`。
+
+### GA-D.3 任务清单
+
+| # | 任务 | 状态 |
+|---|------|------|
+| T1 | GraphTeamNode 富卡片 + graphTeamNodeUi 尺寸纯函数 | ✅ |
+| T2 | useGraphViewport（缩放/平移/fit）+ GraphStageBlock 视口接线 | ✅ |
+| T3 | usePlanDAGLayout per-node heightOf 变高布局 | ✅ |
+| T4 | useGraphNodeTeam 成员解析链路（TeamStageID 优先、DagNodeID 兜底） | ✅ |
+| T5 | MemberSessionDialog + MemberSessionPanel embedded 模式 | ✅ |
+| T6 | 单节点始终渲染，移除 TeamStagePanel/TeamRunCard/GraphNode/useLocateTeamStage | ✅ |
+| T7 | 指针捕获延迟修复（纯点击不 capture，成员弹框真实浏览器可开） | ✅ 2026-07-27 |
+| T8 | 单测全套 + 真实浏览器运行时验证 + 文档同步 | ✅ 2026-07-27 |
+
+### GA-D.4 验收标准
+
+- [x] 单节点 GraphStage 也渲染富卡片（`GraphStageBlock.spec.ts`：always renders）
+- [x] 成员行渲染且高度驱动布局：b/c 同列时 c 的 top = b.top + graphTeamNodeHeight(3) + gap（spec: lays out nodes with per-node heights）
+- [x] 缩放按钮 100%→115%→100%→87%、滚轮缩放 transform 生效（spec: zoom buttons / wheel zooms）
+- [x] 拖拽平移 translate 跟随、拖拽后 click 抑制一次、下一轮干净点击恢复（spec: pointer drag pans）
+- [x] 纯点击（位移 <3px）不调用 setPointerCapture，成员弹框可开；拖拽超阈值才 capture（spec: defers setPointerCapture）
+- [x] 成员行点击开弹框，pause/inject 事件透传（spec: opens MemberSessionDialog）
+- [x] 真实浏览器验证（2026-07-27，session `d78029b9-c305-4bc1-9583-ac9f743cdc60`）：5 节点 10 成员行渲染，合成 click 与真实鼠标 click 均打开弹框（标题「市场趋势研究员」）
+- [x] `npx vitest run` 相关 6 个 spec 全绿（GraphStageBlock 9 用例 + entrance + GraphTeamNode + MemberSessionDialog + useGraphViewport + usePlanDAGLayout）
+
+### GA-D.5 改动文件清单（实际）
+
+新建：`web/src/components/chat/v2/GraphTeamNode.vue`、`web/src/components/chat/v2/MemberSessionDialog.vue`、`web/src/components/chat/v2/graphTeamNodeUi.ts`、`web/src/features/chat/composables/useGraphViewport.ts`、`web/src/features/chat/composables/useGraphNodeTeam.ts`、`web/src/components/chat/v2/__tests__/GraphStageBlock.spec.ts`、`web/src/components/chat/v2/__tests__/GraphStageBlock.entrance.spec.ts`、`web/src/components/chat/v2/__tests__/GraphTeamNode.spec.ts`、`web/src/components/chat/v2/__tests__/MemberSessionDialog.spec.ts`、`web/src/features/chat/composables/__tests__/useGraphViewport.spec.ts`
+
+修改：`web/src/components/chat/v2/GraphStageBlock.vue`（重写 + 指针捕获延迟）、`web/src/components/chat/v2/MemberSessionPanel.vue`（embedded 模式）、`web/src/components/chat/v2/TaskCard.vue`（移除 TeamStagePanel）、`web/src/components/chat/v2/TurnContainer.vue`、`web/src/components/chat/v2/TurnList.vue`、`web/src/components/chat/v2/SessionPanel.vue`、`web/src/features/chat/composables/usePlanDAGLayout.ts`（heightOf）、`web/src/features/chat/composables/__tests__/usePlanDAGLayout.spec.ts`、`web/src/i18n/locales/zh-CN.ts` / `en-US.ts`
+
+删除：`web/src/components/chat/v2/GraphNode.vue`、`web/src/components/chat/v2/TeamStagePanel.vue`、`web/src/components/chat/v2/TeamRunCard.vue`、`web/src/features/chat/composables/useLocateTeamStage.ts`、`web/src/components/chat/v2/__tests__/TeamComponents.spec.ts`

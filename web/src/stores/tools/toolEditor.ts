@@ -10,6 +10,7 @@ import {
 } from '../../components/tools/toolUi';
 import { TOOL_CREATE_TEMPLATES } from '../../features/tools/toolEditorCopy';
 import type { Tool, ToolUpsertInput } from '../../features/tools/types';
+import { i18n } from '../../i18n';
 import { useToolsStore } from './index';
 
 export function blankToolForm(): ToolUpsertInput {
@@ -130,6 +131,18 @@ export const useToolEditorStore = defineStore('toolEditor', () => {
   }
 
   async function save() {
+    // 客户端必填校验：与后端 validateToolUpsert 口径一致，避免整表提交后才收到原始英文错误。
+    const t = i18n.global.t;
+    const missingMsg = !form.key.trim()
+      ? t('toolsPage.editor.requiredKey')
+      : !form.display_name.trim()
+        ? t('toolsPage.editor.requiredName')
+        : '';
+    if (missingMsg) {
+      activeTab.value = 'basic';
+      $q.notify({ type: 'negative', message: missingMsg });
+      return;
+    }
     if (!validateJSONFields()) {
       const badKey = firstInvalidToolJsonKey(jsonErrors);
       if (badKey) {

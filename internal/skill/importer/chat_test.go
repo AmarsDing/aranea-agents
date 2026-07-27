@@ -865,6 +865,107 @@ func TestCompleteAnthropic_EmptyResponse(t *testing.T) {
 	}
 }
 
+func TestNormalizeConflictRisk(t *testing.T) {
+	tests := []struct {
+		name string
+		in   any
+		want string
+	}{
+		{name: "string_low", in: "low", want: "low"},
+		{name: "string_medium", in: "medium", want: "medium"},
+		{name: "string_high", in: "high", want: "high"},
+		{name: "string_case_insensitive", in: "High", want: "high"},
+		{name: "string_padded", in: "  medium  ", want: "medium"},
+		{name: "string_unknown", in: "severe", want: ""},
+		{name: "number_high", in: 0.85, want: "high"},
+		{name: "number_boundary_high", in: 0.66, want: "high"},
+		{name: "number_medium", in: 0.5, want: "medium"},
+		{name: "number_boundary_medium", in: 0.33, want: "medium"},
+		{name: "number_low", in: 0.1, want: "low"},
+		{name: "number_zero", in: 0.0, want: "low"},
+		{name: "nil", in: nil, want: ""},
+		{name: "bool_ignored", in: true, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeConflictRisk(tt.in); got != tt.want {
+				t.Errorf("normalizeConflictRisk(%v) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestParseSimilarityResult guards the regression where LLMs violate the
+// declared response schema (numeric conflict_risk, evidence as a bare string,
+// quoted numbers): strict typed unmarshal used to fail the whole pair
+// comparison, silently producing no conflict groups.
+func TestParseSimilarityResult(t *testing.T) {
+	t.Run("well_formed", func(t *testing.T) {
+		metrics, reason, evidence, err := parseSimilarityResult(`{"similarity_score":0.9,"name_similarity":0.8,"description_similarity":0.9,"body_similarity":0.95,"trigger_similarity":0.7,"tool_similarity":0.6,"conflict_risk":"high","recommendation":"block_duplicate","confidence":0.9,"reason":"near duplicate","evidence":["same purpose","same steps"]}`)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if metrics.SimilarityScore != 0.9 || metrics.ConflictRisk != "high" || metrics.Recommendation != "block_duplicate" {
+			t.Errorf("metrics = %+v", metrics)
+		}
+		if reason != "near duplicate" {
+			t.Errorf("reason = %q", reason)
+		}
+		if len(evidence) != 2 {
+			t.Errorf("evidence = %v", evidence)
+		}
+	})
+
+	t.Run("numeric_conflict_risk", func(t *testing.T) {
+		metrics, _, _, err := parseSimilarityResult(`{"similarity_score":0.9,"conflict_risk":0.85,"recommendation":"block_duplicate"}`)
+		if err != nil {
+			t.Fatalf("should tolerate numeric conflict_risk: %v", err)
+		}
+		if metrics.ConflictRisk != "high" {
+			t.Errorf("ConflictRisk = %q, want high", metrics.ConflictRisk)
+		}
+	})
+
+	t.Run("evidence_as_bare_string", func(t *testing.T) {
+		_, _, evidence, err := parseSimilarityResult(`{"similarity_score":0.9,"conflict_risk":"high","evidence":"both review code changes"}`)
+		if err != nil {
+			t.Fatalf("should tolerate bare-string evidence: %v", err)
+		}
+		if len(evidence) != 1 || evidence[0] != "both review code changes" {
+			t.Errorf("evidence = %v", evidence)
+		}
+	})
+
+	t.Run("quoted_numeric_scores", func(t *testing.T) {
+		metrics, _, _, err := parseSimilarityResult(`{"similarity_score":"0.9","confidence":"0.8","conflict_risk":"low"}`)
+		if err != nil {
+			t.Fatalf("should tolerate quoted numbers: %v", err)
+		}
+		if metrics.SimilarityScore != 0.9 || metrics.Confidence != 0.8 {
+			t.Errorf("metrics = %+v", metrics)
+		}
+	})
+
+	t.Run("defaults_applied", func(t *testing.T) {
+		metrics, _, _, err := parseSimilarityResult(`{"similarity_score":0.5}`)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if metrics.Recommendation != "suggest_refine" {
+			t.Errorf("Recommendation = %q, want suggest_refine", metrics.Recommendation)
+		}
+		if metrics.ConflictRisk != "medium" {
+			t.Errorf("ConflictRisk = %q, want medium", metrics.ConflictRisk)
+		}
+	})
+
+	t.Run("invalid_json", func(t *testing.T) {
+		if _, _, _, err := parseSimilarityResult(`not json`); err == nil {
+			t.Error("expected error for invalid JSON")
+		}
+	})
+}
+
 func TestCompleteChat_RoutesToAnthropic(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := map[string]any{

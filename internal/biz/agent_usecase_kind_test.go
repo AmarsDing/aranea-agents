@@ -47,6 +47,9 @@ func (s *stubAgentRepo) DeleteAgent(context.Context, string) error         { ret
 func (s *stubAgentRepo) GetAgentRuntimeSettings(context.Context, string) (AgentRuntimeSettings, error) {
 	return AgentRuntimeSettings{}, nil
 }
+func (s *stubAgentRepo) ListAgentRuntimeSettings(context.Context) (map[string]AgentRuntimeSettings, error) {
+	return map[string]AgentRuntimeSettings{}, nil
+}
 func (s *stubAgentRepo) UpsertAgentRuntimeSettings(context.Context, AgentRuntimeSettings) (AgentRuntimeSettings, error) {
 	return AgentRuntimeSettings{}, nil
 }

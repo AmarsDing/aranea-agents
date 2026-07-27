@@ -211,7 +211,10 @@ func buildSimilarityPrompt(candidate candidateState, source biz.SkillSimilarityS
 	return fmt.Sprintf(`你是 Skill 管理系统的相似度评估器。请比较候选 Skill 与已有 Skill，并只返回 JSON，不要返回 Markdown。
 JSON 字段必须包含：
 similarity_score,name_similarity,description_similarity,body_similarity,trigger_similarity,tool_similarity,conflict_risk,recommendation,confidence,reason,evidence。
-所有相似度和 confidence 为 0 到 1。recommendation 只能是 keep_separate、suggest_refine、block_duplicate。
+所有相似度和 confidence 为 0 到 1 的数字。
+conflict_risk 必须是字符串，只能是 "low"、"medium"、"high" 之一（禁止使用数字）。
+recommendation 只能是 keep_separate、suggest_refine、block_duplicate。
+evidence 必须是字符串数组（JSON array），即使只有一条证据也要用数组。
 
 候选 Skill:
 名称: %s

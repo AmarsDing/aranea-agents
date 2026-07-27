@@ -213,6 +213,22 @@ func (m *mockRepo) RollbackSkillVersion(ctx context.Context, skillID string, ver
 	return s, nil
 }
 
+func (m *mockRepo) AppendImportedVersion(ctx context.Context, in ImportVersionInput) (Skill, error) {
+	s, ok := m.skills[in.SkillID]
+	if !ok {
+		return Skill{}, errors.New("not found")
+	}
+	return s, nil
+}
+
+func (m *mockRepo) ArchiveSkill(ctx context.Context, id string) error {
+	return nil
+}
+
+func (m *mockRepo) SetSkillDerivedFrom(ctx context.Context, id string, sourceIDs []string) error {
+	return nil
+}
+
 type mockEmbedder struct {
 	embed      func(ctx context.Context, text string) ([]float32, error)
 	embedBatch func(ctx context.Context, texts []string) ([][]float32, error)

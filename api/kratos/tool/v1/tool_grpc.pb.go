@@ -31,6 +31,7 @@ const (
 	ToolService_ToggleToolEnabled_FullMethodName             = "/kratos.tool.v1.ToolService/ToggleToolEnabled"
 	ToolService_ListToolRunsForTool_FullMethodName           = "/kratos.tool.v1.ToolService/ListToolRunsForTool"
 	ToolService_ListToolAgentOverrides_FullMethodName        = "/kratos.tool.v1.ToolService/ListToolAgentOverrides"
+	ToolService_GetToolAgentBindings_FullMethodName          = "/kratos.tool.v1.ToolService/GetToolAgentBindings"
 	ToolService_ListToolAgentOverridesByAgent_FullMethodName = "/kratos.tool.v1.ToolService/ListToolAgentOverridesByAgent"
 	ToolService_ListToolGrants_FullMethodName                = "/kratos.tool.v1.ToolService/ListToolGrants"
 	ToolService_DeleteToolGrant_FullMethodName               = "/kratos.tool.v1.ToolService/DeleteToolGrant"
@@ -57,6 +58,7 @@ type ToolServiceClient interface {
 	ToggleToolEnabled(ctx context.Context, in *ToggleToolEnabledRequest, opts ...grpc.CallOption) (*Tool, error)
 	ListToolRunsForTool(ctx context.Context, in *ListToolRunsForToolRequest, opts ...grpc.CallOption) (*ListToolRunsResponse, error)
 	ListToolAgentOverrides(ctx context.Context, in *ListToolAgentOverridesRequest, opts ...grpc.CallOption) (*ListToolAgentOverridesResponse, error)
+	GetToolAgentBindings(ctx context.Context, in *GetToolAgentBindingsRequest, opts ...grpc.CallOption) (*ToolAgentBindingsView, error)
 	ListToolAgentOverridesByAgent(ctx context.Context, in *ListToolAgentOverridesByAgentRequest, opts ...grpc.CallOption) (*ListToolAgentOverridesByAgentResponse, error)
 	ListToolGrants(ctx context.Context, in *ListToolGrantsRequest, opts ...grpc.CallOption) (*ListToolGrantsResponse, error)
 	DeleteToolGrant(ctx context.Context, in *DeleteToolGrantRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -184,6 +186,16 @@ func (c *toolServiceClient) ListToolAgentOverrides(ctx context.Context, in *List
 	return out, nil
 }
 
+func (c *toolServiceClient) GetToolAgentBindings(ctx context.Context, in *GetToolAgentBindingsRequest, opts ...grpc.CallOption) (*ToolAgentBindingsView, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ToolAgentBindingsView)
+	err := c.cc.Invoke(ctx, ToolService_GetToolAgentBindings_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *toolServiceClient) ListToolAgentOverridesByAgent(ctx context.Context, in *ListToolAgentOverridesByAgentRequest, opts ...grpc.CallOption) (*ListToolAgentOverridesByAgentResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListToolAgentOverridesByAgentResponse)
@@ -271,6 +283,7 @@ type ToolServiceServer interface {
 	ToggleToolEnabled(context.Context, *ToggleToolEnabledRequest) (*Tool, error)
 	ListToolRunsForTool(context.Context, *ListToolRunsForToolRequest) (*ListToolRunsResponse, error)
 	ListToolAgentOverrides(context.Context, *ListToolAgentOverridesRequest) (*ListToolAgentOverridesResponse, error)
+	GetToolAgentBindings(context.Context, *GetToolAgentBindingsRequest) (*ToolAgentBindingsView, error)
 	ListToolAgentOverridesByAgent(context.Context, *ListToolAgentOverridesByAgentRequest) (*ListToolAgentOverridesByAgentResponse, error)
 	ListToolGrants(context.Context, *ListToolGrantsRequest) (*ListToolGrantsResponse, error)
 	DeleteToolGrant(context.Context, *DeleteToolGrantRequest) (*emptypb.Empty, error)
@@ -320,6 +333,9 @@ func (UnimplementedToolServiceServer) ListToolRunsForTool(context.Context, *List
 }
 func (UnimplementedToolServiceServer) ListToolAgentOverrides(context.Context, *ListToolAgentOverridesRequest) (*ListToolAgentOverridesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListToolAgentOverrides not implemented")
+}
+func (UnimplementedToolServiceServer) GetToolAgentBindings(context.Context, *GetToolAgentBindingsRequest) (*ToolAgentBindingsView, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetToolAgentBindings not implemented")
 }
 func (UnimplementedToolServiceServer) ListToolAgentOverridesByAgent(context.Context, *ListToolAgentOverridesByAgentRequest) (*ListToolAgentOverridesByAgentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListToolAgentOverridesByAgent not implemented")
@@ -561,6 +577,24 @@ func _ToolService_ListToolAgentOverrides_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ToolService_GetToolAgentBindings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetToolAgentBindingsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ToolServiceServer).GetToolAgentBindings(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ToolService_GetToolAgentBindings_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ToolServiceServer).GetToolAgentBindings(ctx, req.(*GetToolAgentBindingsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ToolService_ListToolAgentOverridesByAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListToolAgentOverridesByAgentRequest)
 	if err := dec(in); err != nil {
@@ -737,6 +771,10 @@ var ToolService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListToolAgentOverrides",
 			Handler:    _ToolService_ListToolAgentOverrides_Handler,
+		},
+		{
+			MethodName: "GetToolAgentBindings",
+			Handler:    _ToolService_GetToolAgentBindings_Handler,
 		},
 		{
 			MethodName: "ListToolAgentOverridesByAgent",

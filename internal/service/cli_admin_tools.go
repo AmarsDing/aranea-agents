@@ -123,11 +123,28 @@ func (o *ChatOrchestrator) cliAdminTools(ctx context.Context, ag biz.Agent) []tr
 		return nil
 	}
 	return cli_admin.RegisterAll(cli_admin.Deps{
-		SkillRepo:  cliAdminSkillRepo{uc: o.td().ReadDeps.CLIAdminSkillUC},
-		AgentRepo:  cliAdminAgentRepo{uc: o.td().ReadDeps.CLIAdminAgentUC},
-		APIBaseURL: cliAdminAPIBaseURL(ctx, o.td().ReadDeps.Settings),
-		APIToken:   cliAdminAPIToken(),
+		SkillRepo:           cliAdminSkillRepo{uc: o.td().ReadDeps.CLIAdminSkillUC},
+		AgentRepo:           cliAdminAgentRepo{uc: o.td().ReadDeps.CLIAdminAgentUC},
+		APIBaseURL:          cliAdminAPIBaseURL(ctx, o.td().ReadDeps.Settings),
+		APIToken:            cliAdminAPIToken(),
+		AllowedPrivateHosts: cliAdminAllowedPrivateHosts(),
 	})
+}
+
+// cliAdminAllowedPrivateHosts reads ARANEA_ALLOWED_PRIVATE_HOSTS (comma-separated
+// exact host names) exempting intranet Git servers from the SSRF public-host guard.
+func cliAdminAllowedPrivateHosts() []string {
+	v := strings.TrimSpace(os.Getenv("ARANEA_ALLOWED_PRIVATE_HOSTS"))
+	if v == "" {
+		return nil
+	}
+	var out []string
+	for _, h := range strings.Split(v, ",") {
+		if h = strings.TrimSpace(h); h != "" {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {

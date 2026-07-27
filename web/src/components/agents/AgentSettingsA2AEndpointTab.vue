@@ -41,14 +41,14 @@
 
 <script setup lang="ts">
 // Container: approved — A2A endpoint Tab；内部调用 useAgentA2AEndpointTab。
-import { reactive } from 'vue';
 import { useAgentA2AEndpointTab } from '../../features/agents/useAgentA2AEndpointTab';
 
 const props = defineProps<{
   agentId: string;
 }>();
 
-const { loading, saving, card, capabilityLines, setCardEnabled, saveEndpoint } = reactive(
-  useAgentA2AEndpointTab(() => props.agentId),
-);
+// 禁止用 reactive() 包裹 composable 返回值：解构 reactive 对象会当场解包 ref，
+// 丢失响应性（card 永远停留在初始 null，Tab 永久空白）。
+const { loading, saving, card, capabilityLines, setCardEnabled, saveEndpoint } =
+  useAgentA2AEndpointTab(() => props.agentId);
 </script>

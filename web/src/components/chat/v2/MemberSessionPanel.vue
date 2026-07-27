@@ -7,11 +7,15 @@
   - 系统 agent 排除：__spirit__ 及 __ 前缀 agent 不显示输入栏
 -->
 <template>
-  <div class="member-session-panel" :class="`member-session-panel--${memberSession.Status}`" :data-agent-key="memberSession.AgentKey">
+  <div
+    class="member-session-panel"
+    :class="[`member-session-panel--${memberSession.Status}`, { 'member-session-panel--flat': embedded }]"
+    :data-agent-key="memberSession.AgentKey"
+  >
     <!-- 头部：左（avatar+名称+status+时间）| 中（最新动作） -->
-    <div class="member-header" @click="toggleCollapse">
+    <div class="member-header" :class="{ 'member-header--embedded': embedded }" @click="toggleCollapse">
       <div class="member-header__left">
-        <q-icon :name="collapsed ? 'expand_more' : 'expand_less'" size="16px" class="member-header__icon" />
+        <q-icon v-if="!embedded" :name="collapsed ? 'expand_more' : 'expand_less'" size="16px" class="member-header__icon" />
         <q-avatar v-if="memberSession.AvatarURL" :src="memberSession.AvatarURL" size="24px" />
         <q-icon v-else name="person" size="20px" class="member-header__avatar-fallback" />
         <span class="member-header__name">{{ memberSession.AgentName }}</span>
@@ -110,7 +114,7 @@ function useSafeI18n() {
   }
 }
 
-const props = defineProps<{ memberSession: MemberSession }>();
+const props = defineProps<{ memberSession: MemberSession; embedded?: boolean }>();
 const emit = defineEmits<{
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
@@ -164,16 +168,18 @@ const latestAction = computed(() => {
   }
 });
 
-// 折叠状态：running 默认展开，终态默认折叠，用户意图优先
-// 与 TeamRunCard 保持一致的 userToggled 模式
-const collapsed = ref(props.memberSession.Status !== 'running' && props.memberSession.Status !== 'paused');
+// 折叠状态：running 默认展开，终态默认折叠，用户手动切换后不再自动变更（userToggled 优先）
+// embedded（弹框内嵌）：始终展开，折叠交互禁用
+const collapsed = ref(
+  !props.embedded && props.memberSession.Status !== 'running' && props.memberSession.Status !== 'paused',
+);
 const userToggled = ref(false);
 
 // 状态变化时自动展开/折叠（仅在用户未手动操作时生效）
 watch(
   () => props.memberSession.Status,
   (newStatus) => {
-    if (userToggled.value) return;
+    if (props.embedded || userToggled.value) return;
     if (newStatus === 'running' || newStatus === 'paused') {
       collapsed.value = false;
     } else if (newStatus === 'completed' || newStatus === 'failed' || newStatus === 'skipped') {
@@ -187,13 +193,14 @@ const autoExpandFor = inject<Ref<{ agentKey: string; teamId: string } | null>>('
 watch(
   autoExpandFor,
   (cmd) => {
-    if (!cmd || userToggled.value) return;
+    if (!cmd || props.embedded || userToggled.value) return;
     if (props.memberSession.AgentKey === cmd.agentKey) collapsed.value = false;
   },
   { immediate: true },
 );
 
 function toggleCollapse() {
+  if (props.embedded) return;
   userToggled.value = true;
   const next = !collapsed.value;
   collapsed.value = next;
@@ -305,6 +312,13 @@ const formattedTime = computed(() => {
   &--cancelled, &--skipped
     border-left-color: var(--color-text-tertiary)
 
+  // 弹框内嵌：去视觉树缩进与左边线，作为独立面板呈现（置于状态规则之后以覆盖动画与边线）
+  &--flat
+    margin: 0
+    padding-left: 0
+    border-left: none
+    animation: none
+
 @keyframes member-border-pulse
   0%, 100%
     border-left-color: var(--color-accent)
@@ -321,6 +335,12 @@ const formattedTime = computed(() => {
 
   &:hover
     background: var(--glass-surface-hover)
+
+  &--embedded
+    cursor: default
+
+    &:hover
+      background: transparent
 
   // 三段式布局：左（固定）| 中（弹性增长）| 右（固定）
   &__left

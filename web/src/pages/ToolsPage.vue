@@ -104,7 +104,6 @@
       :open="detailStore.open"
       :tool="detailStore.tool"
       :active-tab="detailStore.activeTab"
-      :loading="detailStore.loading"
       :overrides="detailStore.overrides"
       :overrides-loading="detailStore.overridesLoading"
       :recent-runs="detailStore.recentRuns"
@@ -121,6 +120,7 @@
       :override-form="detailStore.overrideForm"
       :agent-binding-summary="detailStore.agentBindingSummary"
       :agent-binding-loading="detailStore.agentBindingLoading"
+      :agent-binding-error="detailStore.agentBindingError"
       :agent-options="detailStore.agentOptions"
       :agents-loading="detailStore.agentsLoading"
       @close="detailStore.closeDetail()"
@@ -136,6 +136,7 @@
       @update:override-editor-open="detailStore.overrideEditorOpen = $event"
       @update:override-form="detailStore.overrideForm = $event"
       @save-override="detailStore.saveOverride()"
+      @retry-agent-bindings="detailStore.loadAgentBindingSummary()"
       @edit-tool="onEditTool"
       @remove-tool="removeTool"
     />

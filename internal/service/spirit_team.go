@@ -836,8 +836,8 @@ func resolveLatestUserTaskID(ctx context.Context, reader biz.TaskV2Reader, lg lo
 			)
 			// fall through to ctx fallback
 		} else if len(tasks) > 0 {
-			// tasks are returned in ascending Seq order; the last one is the most
-			// recent user-input Task.
+			// tasks are returned in chronological (created_at) order; the last
+			// one is the most recent user-input Task.
 			return tasks[len(tasks)-1].ID
 		}
 	}

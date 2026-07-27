@@ -78,7 +78,7 @@
       >
         <q-tab name="overview" label="概览" />
         <q-tab name="config" label="配置" />
-        <q-tab name="agents" :label="'Agent (' + overrides.length + ')'" />
+        <q-tab name="agents" :label="agentTabLabel" />
       </q-tabs>
 
       <div class="tool-detail-drawer__body">
@@ -237,25 +237,52 @@
           <q-tab-panel name="agents" class="q-pa-none">
             <div v-if="agentBindingLoading" class="text-center q-pa-md">
               <q-spinner-dots size="28px" />
-              <div class="text-caption q-mt-sm">正在汇总各 Agent 生效状态…</div>
+              <div class="text-caption q-mt-sm">{{ t('toolsPage.agentBinding.loading') }}</div>
             </div>
+            <q-banner v-else-if="agentBindingError" rounded class="settings-warning-banner q-mb-md">
+              {{ t('toolsPage.agentBinding.loadFailed') }}
+              <template #action>
+                <q-btn
+                  flat
+                  dense
+                  no-caps
+                  color="primary"
+                  :label="t('toolsPage.agentBinding.retry')"
+                  @click="$emit('retry-agent-bindings')"
+                />
+              </template>
+            </q-banner>
             <template v-else>
               <q-banner v-if="agentBindingSummary" rounded dense class="settings-info-banner q-mb-md">
-                <strong>生效摘要：</strong>{{ bindingSummaryLine(agentBindingSummary) }}。 Profile / allow / deny 在
-                <router-link :to="{ name: 'agents' }" class="text-primary">Agent 列表</router-link>
-                → 能力 Tab 配置。
+                <strong>{{ t('toolsPage.agentBinding.summaryTitle') }}</strong
+                >{{ bindingSummaryLine(agentBindingSummary, t) }}{{ t('toolsPage.agentBinding.configHintPre')
+                }}<router-link :to="{ name: 'agents' }" class="text-primary">{{
+                  t('toolsPage.agentBinding.configHintLink')
+                }}</router-link
+                >{{ t('toolsPage.agentBinding.configHintPost') }}
               </q-banner>
 
               <AppRegistryTable
-                v-if="agentBindingSummary?.rows.length"
+                v-if="priorityBindingRows.length"
                 :shell="false"
                 :data-shell="true"
-                :rows="agentBindingSummary.rows"
+                :rows="priorityBindingRows"
                 :columns="agentBindingColumns"
                 row-key="agent_id"
                 hide-pagination
                 :pagination="{ rowsPerPage: 0 }"
               >
+                <template #body-cell-agent_name="slotProps">
+                  <q-td :props="slotProps">
+                    <div>{{ slotProps.row.agent_name }}</div>
+                    <div class="text-caption text-grey-7">{{ slotProps.row.agent_key }}</div>
+                  </q-td>
+                </template>
+                <template #body-cell-profile="slotProps">
+                  <q-td :props="slotProps">
+                    <span class="text-caption">{{ toolProfileLabel(slotProps.row.profile) }}</span>
+                  </q-td>
+                </template>
                 <template #body-cell-state="slotProps">
                   <q-td :props="slotProps">
                     <q-icon
@@ -263,17 +290,130 @@
                       :color="slotProps.row.effective_state === 'allowed' ? 'positive' : 'grey'"
                       size="sm"
                     />
-                    {{ slotProps.row.effective_state }}
+                    {{
+                      slotProps.row.effective_state === 'allowed'
+                        ? t('toolsPage.agentBinding.stateAllowed')
+                        : t('toolsPage.agentBinding.stateDenied')
+                    }}
+                    <q-badge
+                      v-if="slotProps.row.override_mode"
+                      outline
+                      color="primary"
+                      class="q-ml-xs"
+                      :label="overrideModeLabel(slotProps.row.override_mode)"
+                    />
                   </q-td>
                 </template>
                 <template #body-cell-reason="slotProps">
                   <q-td :props="slotProps">
-                    <span class="text-caption">{{ slotProps.row.reason }}</span>
+                    <span class="text-caption">{{ bindingReasonLabel(slotProps.row.reason) }}</span>
                   </q-td>
                 </template>
               </AppRegistryTable>
 
-              <div class="text-subtitle2 q-mb-xs">显式覆盖（tool_agent_overrides）</div>
+              <q-expansion-item
+                v-if="deniedBindingRows.length"
+                dense
+                dense-toggle
+                class="q-mb-md"
+                :label="t('toolsPage.agentBinding.groupDenied', { count: deniedBindingRows.length })"
+                header-class="text-grey-7"
+              >
+                <AppRegistryTable
+                  :shell="false"
+                  :data-shell="true"
+                  :rows="deniedBindingRows"
+                  :columns="agentBindingColumns"
+                  row-key="agent_id"
+                  hide-pagination
+                  :pagination="{ rowsPerPage: 0 }"
+                >
+                  <template #body-cell-agent_name="slotProps">
+                    <q-td :props="slotProps">
+                      <div>{{ slotProps.row.agent_name }}</div>
+                      <div class="text-caption text-grey-7">{{ slotProps.row.agent_key }}</div>
+                    </q-td>
+                  </template>
+                  <template #body-cell-profile="slotProps">
+                    <q-td :props="slotProps">
+                      <span class="text-caption">{{ toolProfileLabel(slotProps.row.profile) }}</span>
+                    </q-td>
+                  </template>
+                  <template #body-cell-state="slotProps">
+                    <q-td :props="slotProps">
+                      <q-icon name="cancel" color="grey" size="sm" />
+                      {{ t('toolsPage.agentBinding.stateDenied') }}
+                      <q-badge
+                        v-if="slotProps.row.override_mode"
+                        outline
+                        color="primary"
+                        class="q-ml-xs"
+                        :label="overrideModeLabel(slotProps.row.override_mode)"
+                      />
+                    </q-td>
+                  </template>
+                  <template #body-cell-reason="slotProps">
+                    <q-td :props="slotProps">
+                      <span class="text-caption">{{ bindingReasonLabel(slotProps.row.reason) }}</span>
+                    </q-td>
+                  </template>
+                </AppRegistryTable>
+              </q-expansion-item>
+
+              <q-expansion-item
+                v-if="toolsDisabledBindingRows.length"
+                dense
+                dense-toggle
+                class="q-mb-md"
+                :label="t('toolsPage.agentBinding.groupToolsDisabled', { count: toolsDisabledBindingRows.length })"
+                header-class="text-grey-7"
+              >
+                <AppRegistryTable
+                  :shell="false"
+                  :data-shell="true"
+                  :rows="toolsDisabledBindingRows"
+                  :columns="agentBindingColumns"
+                  row-key="agent_id"
+                  hide-pagination
+                  :pagination="{ rowsPerPage: 0 }"
+                >
+                  <template #body-cell-agent_name="slotProps">
+                    <q-td :props="slotProps">
+                      <div>{{ slotProps.row.agent_name }}</div>
+                      <div class="text-caption text-grey-7">{{ slotProps.row.agent_key }}</div>
+                    </q-td>
+                  </template>
+                  <template #body-cell-profile="slotProps">
+                    <q-td :props="slotProps">
+                      <span class="text-caption">{{ toolProfileLabel(slotProps.row.profile) }}</span>
+                    </q-td>
+                  </template>
+                  <template #body-cell-state="slotProps">
+                    <q-td :props="slotProps">
+                      <q-icon name="cancel" color="grey" size="sm" />
+                      {{ t('toolsPage.agentBinding.stateDenied') }}
+                      <q-badge
+                        v-if="slotProps.row.override_mode"
+                        outline
+                        color="primary"
+                        class="q-ml-xs"
+                        :label="overrideModeLabel(slotProps.row.override_mode)"
+                      />
+                    </q-td>
+                  </template>
+                  <template #body-cell-reason="slotProps">
+                    <q-td :props="slotProps">
+                      <span class="text-caption">{{ bindingReasonLabel(slotProps.row.reason) }}</span>
+                    </q-td>
+                  </template>
+                </AppRegistryTable>
+              </q-expansion-item>
+
+              <div v-if="agentBindingSummary && !agentBindingSummary.rows.length" class="text-caption q-pa-sm">
+                {{ t('toolsPage.agentBinding.emptyAgents') }}
+              </div>
+
+              <div class="text-subtitle2 q-mb-xs">{{ t('toolsPage.agentBinding.overridesTitle') }}</div>
             </template>
 
             <div v-if="overridesLoading && !agentBindingLoading" class="text-center q-pa-md">
@@ -292,7 +432,10 @@
                   <q-item-section>
                     <q-item-label>{{ agentNameById(o.agent_id) }}</q-item-label>
                     <q-item-label caption>
-                      模式：{{ modeLabel(o.mode) }}<span v-if="o.requires_confirmation"> · 需确认</span>
+                      {{ t('toolsPage.agentBinding.overrideRow', { mode: modeLabel(o.mode) })
+                      }}<span v-if="o.requires_confirmation">
+                        · {{ t('toolsPage.agentBinding.requiresConfirmation') }}</span
+                      >
                     </q-item-label>
                   </q-item-section>
                   <q-item-section side>
@@ -306,7 +449,7 @@
                         class="app-registry-icon-btn"
                         @click="$emit('edit-override', o)"
                       >
-                        <q-tooltip>编辑覆盖</q-tooltip>
+                        <q-tooltip>{{ t('toolsPage.agentBinding.editOverride') }}</q-tooltip>
                       </q-btn>
                       <q-btn
                         flat
@@ -317,18 +460,18 @@
                         class="app-registry-icon-btn"
                         @click="$emit('delete-override', o)"
                       >
-                        <q-tooltip>删除覆盖</q-tooltip>
+                        <q-tooltip>{{ t('toolsPage.agentBinding.deleteOverride') }}</q-tooltip>
                       </q-btn>
                     </div>
                   </q-item-section>
                 </q-item>
               </q-list>
-              <div v-else class="text-caption q-pa-sm">暂无 Agent 覆盖配置</div>
+              <div v-else class="text-caption q-pa-sm">{{ t('toolsPage.agentBinding.noOverrides') }}</div>
               <q-btn
                 flat
                 no-caps
                 icon="add"
-                label="添加覆盖"
+                :label="t('toolsPage.overrideMode.add')"
                 class="app-registry-accent-btn q-mt-sm"
                 @click="$emit('edit-override', null)"
               />
@@ -337,8 +480,6 @@
         </q-tab-panels>
       </div>
     </template>
-
-    <q-inner-loading :showing="loading" />
 
     <tool-override-editor-dialog
       :open="overrideEditorOpen"
@@ -356,18 +497,22 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { TOOL_POLICY_CHIP_COPY } from '../../features/tools/toolEditorCopy';
 import { bindingSummaryLine } from '../../features/tools/toolAgentBindingSummary';
 import type { ToolAgentBindingSummary } from '../../features/tools/toolAgentBindingSummary';
 import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from '../../features/tools/types';
 import type { ToolOverrideForm } from '../../stores/tools/toolDetail';
 import {
-  AGENT_BINDING_COLUMNS,
+  agentBindingColumns as buildAgentBindingColumns,
   riskLabel,
   riskQuasarColor,
   runtimeStatusLabel,
   runtimeStatusColor,
   prettyJSON,
+  toolProfileLabel,
+  bindingReasonLabel,
+  overrideModeLabel,
 } from './toolUi';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import ToolDetailConfigPanel from './ToolDetailConfigPanel.vue';
@@ -378,7 +523,6 @@ const props = defineProps<{
   open: boolean;
   tool: Tool | null;
   activeTab: string;
-  loading: boolean;
   overrides: ToolAgentOverride[];
   overridesLoading: boolean;
   recentRuns: ToolInvocation[];
@@ -395,6 +539,7 @@ const props = defineProps<{
   overrideForm: ToolOverrideForm;
   agentBindingSummary: ToolAgentBindingSummary | null;
   agentBindingLoading: boolean;
+  agentBindingError: boolean;
   agentOptions: { label: string; value: string }[];
   agentsLoading: boolean;
 }>();
@@ -413,6 +558,7 @@ const emit = defineEmits<{
   'update:overrideEditorOpen': [value: boolean];
   'update:overrideForm': [value: ToolOverrideForm];
   'save-override': [];
+  'retry-agent-bindings': [];
   'edit-tool': [tool: Tool];
   'remove-tool': [tool: Tool];
   close: [];
@@ -420,18 +566,24 @@ const emit = defineEmits<{
 
 const policyChip = TOOL_POLICY_CHIP_COPY;
 
-const modeOptions = [
-  { label: '继承 (inherit)', value: 'inherit' },
-  { label: '允许 (allow)', value: 'allow' },
-  { label: '拒绝 (deny)', value: 'deny' },
-];
+const { t } = useI18n();
+
+const modeOptions = computed(() => [
+  { label: t('toolsPage.overrideMode.shortInherit'), value: 'inherit' },
+  { label: t('toolsPage.overrideMode.shortAllow'), value: 'allow' },
+  { label: t('toolsPage.overrideMode.shortDeny'), value: 'deny' },
+]);
 
 function modeLabel(mode: string): string {
-  const m = modeOptions.find((o) => o.value === mode);
+  const m = modeOptions.value.find((o) => o.value === mode);
   return m ? m.label : mode;
 }
 
 function agentNameById(id: string): string {
+  // 覆盖列表先于覆盖编辑器渲染（agentOptions 尚未加载），
+  // 优先用聚合摘要里的 agent 名称，避免直接展示 UUID。
+  const bindingRow = props.agentBindingSummary?.rows.find((r) => r.agent_id === id);
+  if (bindingRow) return bindingRow.agent_name;
   const found = props.agentOptions.find((o) => o.value === id);
   return found ? found.label : id;
 }
@@ -472,7 +624,32 @@ const hasResultSchema = computed(() => {
   return raw && raw.trim() !== '{}';
 });
 
-const agentBindingColumns = AGENT_BINDING_COLUMNS;
+const agentBindingColumns = buildAgentBindingColumns();
+
+/** 高价值行优先：可用或有显式覆盖的 Agent 进主表，其余按口径折叠分组。 */
+const priorityBindingRows = computed(() => {
+  const rows = props.agentBindingSummary?.rows ?? [];
+  return rows.filter((r) => r.effective_state === 'allowed' || Boolean(r.override_mode));
+});
+
+/** 策略拒绝（Agent 已启用工具调用但未生效）。带覆盖的拒绝行在主表展示，故组内数量可能少于摘要计数。 */
+const deniedBindingRows = computed(() => {
+  const rows = props.agentBindingSummary?.rows ?? [];
+  return rows.filter((r) => r.tools_enabled && r.effective_state !== 'allowed' && !r.override_mode);
+});
+
+/** Agent 级关闭工具调用。带覆盖的行在主表展示，故组内数量可能少于摘要计数。 */
+const toolsDisabledBindingRows = computed(() => {
+  const rows = props.agentBindingSummary?.rows ?? [];
+  return rows.filter((r) => !r.tools_enabled && !r.override_mode);
+});
+
+/** Tab 计数展示可用数/总数；数据未加载时只显示 Agent。 */
+const agentTabLabel = computed(() => {
+  const s = props.agentBindingSummary;
+  if (!s || !s.total_agents) return 'Agent';
+  return `Agent (${s.allowed}/${s.total_agents})`;
+});
 
 function onDrawerUpdate(val: boolean) {
   if (!val) emit('close');

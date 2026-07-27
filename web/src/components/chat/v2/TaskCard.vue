@@ -94,31 +94,23 @@
       <TurnList
         v-if="prePlanTurns.length"
         :turns="prePlanTurns"
-        @pause-agent="(sid) => emit('pause-agent', sid)"
-        @inject-agent="(p) => emit('inject-agent', p)"
-        @retry-team="(teamId) => emit('retry-team', teamId)"
-        @expand="(ids) => emit('expand', ids)"
         @confirm-step="(p) => emit('confirm-step', p)"
       />
       <template v-for="pb in planBoards" :key="pb.ID">
         <PlanBoardCard :plan-board="pb" />
-        <GraphStageBlock v-if="graphStageByPlanBoard(pb.ID)" :graph-stage="graphStageByPlanBoard(pb.ID)!" />
+        <GraphStageBlock
+          v-if="graphStageByPlanBoard(pb.ID)"
+          :graph-stage="graphStageByPlanBoard(pb.ID)!"
+          @pause-agent="(sid) => emit('pause-agent', sid)"
+          @inject-agent="(p) => emit('inject-agent', p)"
+          @expand="(ids) => emit('expand', ids)"
+          @confirm-step="(p) => emit('confirm-step', p)"
+        />
       </template>
-      <!-- Fallback: TurnID 为空的 team stages（后端未正确关联 TurnID 时兜底）。
-           后端修复 PlanBoard.TurnID 后这些会自动移入 TurnContainer。 -->
-      <TeamStagePanel
-        v-for="ts in orphanTeamStages"
-        :key="ts.ID"
-        :team-stage="ts"
-        @pause-agent="(sid) => emit('pause-agent', sid)"
-        @inject-agent="(p) => emit('inject-agent', p)"
-        @retry-team="(teamId) => emit('retry-team', teamId)"
-        @expand="(ids) => emit('expand', ids)"
-        @confirm-step="(p) => emit('confirm-step', p)"
-      />
-      <!-- Mode B: orphan member sessions not under any TeamRun (sub-agent without team shell) -->
+      <!-- 图未覆盖的 team stage 成员（GraphStage/GraphNode 缺失兜底，平铺为卡片）
+           + Mode B: orphan member sessions not under any TeamRun (sub-agent without team shell) -->
       <MemberSessionPanel
-        v-for="ms in orphanMemberSessions"
+        v-for="ms in orphanMemberCards"
         :key="ms.ID"
         :member-session="ms"
         @pause-agent="(sid) => emit('pause-agent', sid)"
@@ -129,10 +121,6 @@
       <TurnList
         v-if="postPlanTurns.length"
         :turns="postPlanTurns"
-        @pause-agent="(sid) => emit('pause-agent', sid)"
-        @inject-agent="(p) => emit('inject-agent', p)"
-        @retry-team="(teamId) => emit('retry-team', teamId)"
-        @expand="(ids) => emit('expand', ids)"
         @confirm-step="(p) => emit('confirm-step', p)"
       />
       <!-- orphan notice steps（TurnID 空，附着到 Task）作为任务 footer 渲染在
@@ -153,10 +141,9 @@ import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import { useSafeAuth } from '../../../features/chat/composables/useSafeAuth';
-import type { Task } from '../../../features/chat/v2Types';
+import type { Task, MemberSession } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload, SubmitClarificationPayload } from '../../../features/chat/types';
 import TurnList from './TurnList.vue';
-import TeamStagePanel from './TeamStagePanel.vue';
 import PlanBoardCard from './PlanBoardCard.vue';
 import GraphStageBlock from './GraphStageBlock.vue';
 import MemberSessionPanel from './MemberSessionPanel.vue';
@@ -204,7 +191,6 @@ const emit = defineEmits<{
   'resume-task': [task: Task];
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
-  'retry-team': [teamId: string];
   expand: [sessionIds: string[]];
   'confirm-step': [payload: ConfirmStepPayload];
   'submit-clarification': [payload: SubmitClarificationPayload];
@@ -218,13 +204,34 @@ const auth = useSafeAuth();
 const store = useActivityQueries();
 const turns = computed(() => store.getTaskTurns(props.task.ID));
 const planBoards = computed(() => store.getTaskPlanBoards(props.task.ID));
-// Fallback: TurnID 为空或未匹配到任何 turn 的 team stages（后端 PlanBoard.TurnID 未正确填充时兜底）
-const orphanTeamStages = computed(() => {
-  const all = store.getTaskTeamStages(props.task.ID);
-  const turnIds = new Set(turns.value.map((t) => t.ID));
-  return all.filter((ts) => !ts.TurnID || !turnIds.has(ts.TurnID));
+// 图未覆盖的 team stage 成员兜底：正常路径下所有 TeamStage 经 GraphNode
+// （TeamStageID 或 DagNodeID 匹配）在 GraphStageBlock 中展示；GraphStage/GraphNode
+// 缺失（事件丢失等异常）时将其成员会话平铺为卡片，避免执行过程不可见。
+const uncoveredTeamMemberSessions = computed(() => {
+  const stages = store.getTaskTeamStages(props.task.ID);
+  if (stages.length === 0) return [];
+  const coveredStageIds = new Set<string>();
+  const coveredDagIds = new Set<string>();
+  for (const gs of store.getTaskGraphStages(props.task.ID)) {
+    for (const n of store.getGraphStageNodes(gs.ID)) {
+      if (n.TeamStageID) coveredStageIds.add(n.TeamStageID);
+      if (n.DagNodeID) coveredDagIds.add(n.DagNodeID);
+    }
+  }
+  const out: MemberSession[] = [];
+  for (const ts of stages) {
+    if (coveredStageIds.has(ts.ID)) continue;
+    if (ts.DagNodeID && coveredDagIds.has(ts.DagNodeID)) continue;
+    for (const tr of store.getTeamStageTeamRuns(ts.ID)) {
+      out.push(...store.getTeamRunMemberSessions(tr.ID));
+    }
+  }
+  return out;
 });
 const orphanMemberSessions = computed(() => store.getTaskOrphanMemberSessions(props.task.ID));
+// orphan 成员卡片 = 图未覆盖 team stage 成员 + Mode B orphan member sessions。
+// 两者天然不相交（orphanMemberSessions 排除所有 TeamRun 下的成员）。
+const orphanMemberCards = computed(() => [...uncoveredTeamMemberSessions.value, ...orphanMemberSessions.value]);
 // 澄清门 orphan steps（kind=clarify；TurnID 空，澄清在 Run/Turn 创建前发布）
 const orphanClarifySteps = computed(() => store.getTaskOrphanSteps(props.task.ID).filter((s) => s.Kind === 'clarify'));
 // orphan notice steps（kind=notice；TurnID 空，附着到 Task）— 兜底完成通知。

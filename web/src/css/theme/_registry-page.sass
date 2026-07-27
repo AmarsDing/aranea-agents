@@ -1235,32 +1235,56 @@ body.body--dark .app-registry-hover-tip__popup
 .tool-editor-policy-list
   display: flex
   flex-direction: column
-  gap: var(--space-3)
+  border: 1px solid var(--glass-border)
+  border-radius: 12px
+  overflow: hidden
 
 .tool-policy-card
-  border-radius: 12px
-  border: 1px solid var(--glass-border)
-  background: var(--glass-surface)
+  display: flex
+  align-items: flex-start
+  gap: var(--space-3)
+  padding: var(--space-3) var(--space-4)
+  background: color-mix(in srgb, var(--glass-surface) 92%, transparent)
 
-  .q-card__section
-    padding: var(--space-3) var(--space-4)
+  & + &
+    border-top: 1px solid var(--glass-border)
+
+.tool-policy-card__switch
+  flex-shrink: 0
+  padding-top: 2px
+
+.tool-policy-card__body
+  flex: 1
+  min-width: 0
 
 .tool-policy-card__title
-  font-size: 14px
+  font-size: 13px
   font-weight: 600
-  color: var(--color-text-primary)
+  color: var(--color-text-heading)
+  line-height: 1.35
+
+.tool-policy-card__lock
+  display: inline-block
+  font-size: 10px
+  font-weight: 600
+  color: var(--color-text-secondary)
+  border: 1px solid var(--glass-border)
+  border-radius: 6px
+  padding: 0 6px
+  margin-left: 6px
 
 .tool-policy-card__summary
-  font-size: 14px
-  line-height: 1.55
-  color: var(--color-text-primary)
-  margin: 0 0 var(--space-1)
+  font-size: 12px
+  line-height: 1.5
+  color: var(--color-text-secondary)
+  margin: 2px 0 0
 
 .tool-policy-card__meta
-  font-size: 12px
+  font-size: 11px
   line-height: 1.45
   color: var(--color-text-secondary)
-  margin: 0
+  opacity: 0.85
+  margin: 2px 0 0
 
 .tool-editor-section
   padding: 28px
@@ -1842,6 +1866,33 @@ body.body--dark .tool-help-drawer.q-card
   strong
     color: var(--color-text-primary)
     font-weight: 600
+
+  // 后接 detail 时收起底部间距，让主描述与细节说明视觉成组
+  &:has(+ .tool-editor-section__desc-detail)
+    margin-bottom: var(--space-1)
+
+.tool-editor-section__desc-detail
+  font-size: 12px
+  line-height: 1.55
+  color: var(--color-text-secondary)
+  opacity: 0.9
+  margin: 0 0 var(--space-3)
+  max-width: 680px
+
+  strong
+    color: var(--color-text-primary)
+    font-weight: 600
+
+.schema-form__bool-field
+  display: flex
+  flex-direction: column
+
+.schema-form__bool-caption
+  font-size: 12px
+  line-height: 1.45
+  color: var(--color-text-secondary)
+  margin: 0
+  padding-left: 40px
 
 .tool-editor-section__subtitle
   font-size: 13px

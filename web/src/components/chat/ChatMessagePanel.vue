@@ -173,7 +173,6 @@
             @expand-member="(p) => emit('expand-member', p)"
             @enter-session="(sid) => emit('enter-session', sid)"
             @cancel-team="(teamId) => emit('cancel-team', teamId)"
-            @retry-team="(teamId) => emit('retry-team', teamId)"
             @pause-team="(teamId) => emit('pause-team', teamId)"
             @unpause-team="(teamId) => emit('unpause-team', teamId)"
             @inject-team="(p: { teamId: string; message: string }) => emit('inject-team', p)"
@@ -398,7 +397,6 @@ const emit = defineEmits<{
   'return-to-spirit': [];
   'return-to-team': [];
   'cancel-team': [teamId: string];
-  'retry-team': [teamId: string];
   'toggle-view': [];
   'toggle-composer': [];
   'pause-team': [teamId: string];

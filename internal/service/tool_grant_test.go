@@ -45,7 +45,7 @@ func (f *fakeGrantStore) DeleteToolGrant(_ context.Context, agentID, toolKey str
 
 func newToolGrantTestService(store *fakeGrantStore) *ToolService {
 	uc := biztool.NewToolUsecase(nil, nil, loggateway.NewNoop(), biztool.WithToolGrantStore(store))
-	return NewToolService(uc, nil)
+	return NewToolService(uc, nil, nil)
 }
 
 func TestToolService_ListToolGrants(t *testing.T) {

@@ -45,6 +45,9 @@ func (r *batchAgentRepo) DeleteAgent(_ context.Context, id string) error {
 func (r *batchAgentRepo) GetAgentRuntimeSettings(context.Context, string) (AgentRuntimeSettings, error) {
 	return AgentRuntimeSettings{}, nil
 }
+func (r *batchAgentRepo) ListAgentRuntimeSettings(context.Context) (map[string]AgentRuntimeSettings, error) {
+	return map[string]AgentRuntimeSettings{}, nil
+}
 func (r *batchAgentRepo) UpsertAgentRuntimeSettings(context.Context, AgentRuntimeSettings) (AgentRuntimeSettings, error) {
 	return AgentRuntimeSettings{}, nil
 }

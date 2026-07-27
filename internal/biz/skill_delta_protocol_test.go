@@ -173,10 +173,10 @@ func TestApplyDeltaOps_StrictRejection(t *testing.T) {
 		return ParseRuleBlocks("<!-- aranea:rule id=\"a\" -->\n内容\n<!-- /aranea:rule -->")
 	}
 	cases := map[string]DeltaOp{
-		"add_duplicate":    {Op: DeltaOpAdd, RuleID: "a", Content: "x"},
-		"modify_unknown":   {Op: DeltaOpModify, RuleID: "ghost", Content: "x"},
-		"merge_unknown":    {Op: DeltaOpMerge, RuleID: "ghost", Content: "x"},
-		"remove_unknown":   {Op: DeltaOpRemove, RuleID: "ghost"},
+		"add_duplicate":  {Op: DeltaOpAdd, RuleID: "a", Content: "x"},
+		"modify_unknown": {Op: DeltaOpModify, RuleID: "ghost", Content: "x"},
+		"merge_unknown":  {Op: DeltaOpMerge, RuleID: "ghost", Content: "x"},
+		"remove_unknown": {Op: DeltaOpRemove, RuleID: "ghost"},
 	}
 	for name, op := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -91,14 +91,28 @@ func TestTaskV2Repo_ListBySession(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
-	for i, seq := range []int64{3, 1, 2} {
+	// 2026-07-26 修复：排序键从 seq 改为 created_at（id 兜底并列）。seq 赋值
+	// 源头不可靠（澄清门硬编码 Seq=1、正常 turn 路径默认 0），多任务会话下
+	// resolveLatestUserTaskID 按 seq 取"最后一个"会选错父任务；created_at
+	// 才是"最近用户任务"的语义真相。构造 seq 与 created_at 顺序相反的数据，
+	// 断言按 created_at 升序返回。
+	seed := []struct {
+		id        string
+		seq       int64
+		createdAt time.Time
+	}{
+		{"lt-b", 1, now.Add(2 * time.Minute)}, // seq 并列 1 但创建最晚
+		{"lt-a", 1, now.Add(time.Minute)},     // seq 并列 1 创建居中
+		{"lt-c", 0, now},                      // seq=0（正常路径默认值）创建最早
+	}
+	for _, s := range seed {
 		_, err := repo.CreateTask(ctx, biz.Task{
-			ID: "lt-" + string(rune('a'+i)), SessionID: "ls", UserMessage: "msg",
-			Status: biz.TaskStatusPending, Seq: seq, Version: 1,
-			CreatedAt: now, UpdatedAt: now,
+			ID: s.id, SessionID: "ls", UserMessage: "msg",
+			Status: biz.TaskStatusPending, Seq: s.seq, Version: 1,
+			CreatedAt: s.createdAt, UpdatedAt: s.createdAt,
 		})
 		if err != nil {
-			t.Fatalf("CreateTask[%d]: %v", i, err)
+			t.Fatalf("CreateTask[%s]: %v", s.id, err)
 		}
 	}
 	tasks, err := repo.ListTasksBySession(ctx, "ls")
@@ -108,9 +122,12 @@ func TestTaskV2Repo_ListBySession(t *testing.T) {
 	if len(tasks) != 3 {
 		t.Fatalf("expected 3 tasks, got %d", len(tasks))
 	}
-	if tasks[0].Seq != 1 || tasks[1].Seq != 2 || tasks[2].Seq != 3 {
-		t.Fatalf("order: expected 1,2,3 got %d,%d,%d",
-			tasks[0].Seq, tasks[1].Seq, tasks[2].Seq)
+	want := []string{"lt-c", "lt-a", "lt-b"} // created_at 升序
+	got := []string{tasks[0].ID, tasks[1].ID, tasks[2].ID}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("order: expected %v got %v", want, got)
+		}
 	}
 }
 

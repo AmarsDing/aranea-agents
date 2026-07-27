@@ -101,7 +101,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { configExtraKeys, configDiffSummary } from '../../features/tools/jsonSchemaBuilder';
 import { prettyJSON } from './toolUi';
 import type { Tool } from '../../features/tools/types';
@@ -141,6 +141,17 @@ const diffLines = computed(() => {
 
 const schemaEditJson = ref('');
 const schemaParseError = ref('');
+
+// 预填当前 schema：编辑框若初始为空，用户需手动粘贴整段 JSON 才能改一个字段。
+// 切换工具时重置；应用变更后工具对象更新，文本与新 schema 等价，dirty 自然归零。
+watch(
+  () => props.tool?.id,
+  () => {
+    schemaEditJson.value = prettySchemaJson.value;
+    schemaParseError.value = '';
+  },
+  { immediate: true },
+);
 
 function onSchemaEdit(val: string) {
   schemaEditJson.value = val;

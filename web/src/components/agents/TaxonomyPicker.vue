@@ -5,6 +5,7 @@
       :class="['taxonomy-field', controlClass]"
       dense
       outlined
+      stack-label
       :label="label"
       :disable="disable"
     >

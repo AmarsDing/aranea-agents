@@ -225,6 +225,32 @@ message ListToolAgentOverridesByAgentResponse {
   repeated ToolAgentOverride items = 1;
 }
 
+// ToolAgentBinding is one agent's effective state for a specific tool,
+// computed server-side in bulk (replaces the N+1 per-agent effective scan).
+message ToolAgentBinding {
+  string agent_id = 1;
+  string agent_key = 2;
+  string agent_name = 3;
+  // agent_status is the agent lifecycle status (enabled / disabled / ...).
+  string agent_status = 4;
+  // tools_enabled is the agent-level master switch for tool calling.
+  bool tools_enabled = 5;
+  string profile = 6;
+  // effective_state: allowed | denied (mirrors EffectiveAgentTool.effective_state).
+  string effective_state = 7;
+  string reason = 8;
+  // override_mode: allow | deny | inherit when a per-agent override row exists, "" otherwise.
+  string override_mode = 9;
+}
+
+message GetToolAgentBindingsRequest {
+  string tool_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ToolAgentBindingsView {
+  repeated ToolAgentBinding items = 1;
+}
+
 // ToolGrant is a persisted "always allow" grant recorded when a user
 // approves a tool confirmation with the always scope.
 message ToolGrant {
@@ -370,6 +396,9 @@ service ToolService {
   }
   rpc ListToolAgentOverrides(ListToolAgentOverridesRequest) returns (ListToolAgentOverridesResponse) {
     option (google.api.http) = {get: "/v1/tools/{tool_id}/agent-overrides"};
+  }
+  rpc GetToolAgentBindings(GetToolAgentBindingsRequest) returns (ToolAgentBindingsView) {
+    option (google.api.http) = {get: "/v1/tools/{tool_id}/agent-bindings"};
   }
   rpc ListToolAgentOverridesByAgent(ListToolAgentOverridesByAgentRequest) returns (ListToolAgentOverridesByAgentResponse) {
     option (google.api.http) = {get: "/v1/agents/{agent_id}/tool-overrides"};

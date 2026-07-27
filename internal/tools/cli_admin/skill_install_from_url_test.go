@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"aranea-agents/internal/pkginstall"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -81,6 +82,52 @@ spec:
 	if got.Skipped == 0 || len(got.Errors) > 0 {
 		t.Fatalf("Call() output = %+v, want dry-run skipped without errors", got)
 	}
+}
+
+func TestSummarizeSkillSteps(t *testing.T) {
+	t.Run("pending_conflict wins and aggregates", func(t *testing.T) {
+		steps := []pkginstall.StepResult{
+			{Resource: "mcp_server:m", Action: "created"},
+			{Resource: "skill:a", Action: "created", Status: "installed", JobID: "j1"},
+			{Resource: "skill:b", Action: "pending_conflict", Status: "pending_conflict", JobID: "j2",
+				Conflicts: []pkginstall.ConflictInfo{{GroupID: "g1"}, {GroupID: "g2"}}},
+		}
+		jobID, status, conflicts := summarizeSkillSteps(steps)
+		if status != "pending_conflict" {
+			t.Fatalf("status = %q, want pending_conflict", status)
+		}
+		if jobID != "j2" {
+			t.Fatalf("jobID = %q, want j2 (first pending job)", jobID)
+		}
+		if len(conflicts) != 2 {
+			t.Fatalf("conflicts = %v, want 2 entries", conflicts)
+		}
+	})
+	t.Run("failed beats installed", func(t *testing.T) {
+		steps := []pkginstall.StepResult{
+			{Resource: "skill:a", Action: "created", Status: "installed", JobID: "j1"},
+			{Resource: "skill:b", Action: "error", Status: "failed", JobID: "j2"},
+		}
+		_, status, _ := summarizeSkillSteps(steps)
+		if status != "failed" {
+			t.Fatalf("status = %q, want failed", status)
+		}
+	})
+	t.Run("installed", func(t *testing.T) {
+		steps := []pkginstall.StepResult{
+			{Resource: "skill:a", Action: "created", Status: "installed", JobID: "j1"},
+		}
+		jobID, status, conflicts := summarizeSkillSteps(steps)
+		if status != "installed" || jobID != "j1" || len(conflicts) != 0 {
+			t.Fatalf("got (%q, %q, %v), want (j1, installed, [])", jobID, status, conflicts)
+		}
+	})
+	t.Run("no skill steps", func(t *testing.T) {
+		_, status, _ := summarizeSkillSteps([]pkginstall.StepResult{{Resource: "graph:g", Action: "created"}})
+		if status != "" {
+			t.Fatalf("status = %q, want empty", status)
+		}
+	})
 }
 
 func mustWrite(t *testing.T, path string, data []byte) {

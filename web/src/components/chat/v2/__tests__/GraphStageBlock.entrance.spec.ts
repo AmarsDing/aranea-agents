@@ -16,6 +16,15 @@ const i18n = createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': z
 const quasarStubs = {
   'q-icon': { template: '<i />' },
   'q-badge': { template: '<span class="q-badge-stub"><slot /></span>' },
+  // onClick 经 v-bind="$attrs" 自动注册为原生监听；再显式 @click 会触发两次
+  'q-btn': { template: '<button type="button" v-bind="$attrs"><slot /></button>' },
+  'q-dialog': {
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<div v-if="modelValue" class="q-dialog-stub"><slot /></div>',
+  },
+  'q-card': { template: '<div class="q-card-stub"><slot /></div>' },
+  'q-card-section': { template: '<div class="q-card-section-stub"><slot /></div>' },
 };
 
 function mkNode(id: string, deps: string[] = [], over: Partial<GraphNode> = {}): GraphNode {
@@ -71,7 +80,7 @@ describe('GraphStageBlock staggered entrance animation', () => {
     seedDiamond(store);
     const wrapper = mountBlock(mkStage()); // StartedAt = now → live
 
-    const enterNodes = wrapper.findAll('.graph-node--enter');
+    const enterNodes = wrapper.findAll('.graph-team-node--enter');
     expect(enterNodes).toHaveLength(4);
 
     const delayOf = (label: string) => {
@@ -105,22 +114,22 @@ describe('GraphStageBlock staggered entrance animation', () => {
       mkStage({ StartedAt: new Date(Date.now() - 3600_000).toISOString(), Status: 'completed' }),
     );
 
-    expect(wrapper.findAll('.graph-node--enter')).toHaveLength(0);
+    expect(wrapper.findAll('.graph-team-node--enter')).toHaveLength(0);
     expect(wrapper.findAll('.graph-edge--enter')).toHaveLength(0);
     // 节点仍然正常渲染
-    expect(wrapper.findAll('.graph-node')).toHaveLength(4);
+    expect(wrapper.findAll('.graph-team-node')).toHaveLength(4);
   });
 
   it('animates nodes that appear after mount (e.g. replan inserts), even on replay', async () => {
     const store = useChatActivityStore();
     seedDiamond(store);
     const wrapper = mountBlock(mkStage({ StartedAt: new Date(Date.now() - 3600_000).toISOString() }));
-    expect(wrapper.findAll('.graph-node--enter')).toHaveLength(0);
+    expect(wrapper.findAll('.graph-team-node--enter')).toHaveLength(0);
 
     store.upsertGraphNode(mkNode('e', ['d']));
     await nextTick();
 
-    const enterNodes = wrapper.findAll('.graph-node--enter');
+    const enterNodes = wrapper.findAll('.graph-team-node--enter');
     expect(enterNodes).toHaveLength(1);
     expect(enterNodes[0]!.text()).toContain('e');
     // e 位于 layer 3 → 3*150 = 450ms
@@ -128,10 +137,10 @@ describe('GraphStageBlock staggered entrance animation', () => {
   });
 });
 
-describe('GraphNode status transition animation', () => {
+describe('GraphTeamNode status transition animation', () => {
   beforeEach(() => setActivePinia(createPinia()));
 
-  it('pops the badge when a node transitions running → completed', async () => {
+  it('flashes when a node transitions running → completed', async () => {
     const store = useChatActivityStore();
     store.upsertGraphNode(mkNode('a'));
     store.upsertGraphNode(mkNode('b', ['a'], { Status: 'running' }));
@@ -140,11 +149,11 @@ describe('GraphNode status transition animation', () => {
     store.upsertGraphNode(mkNode('b', ['a'], { Status: 'completed' }));
     await nextTick();
 
-    const nodeB = wrapper.findAll('.graph-node').find((n) => n.text().includes('b'));
-    expect(nodeB?.classes()).toContain('graph-node--just-completed');
+    const nodeB = wrapper.findAll('.graph-team-node').find((n) => n.text().includes('b'));
+    expect(nodeB?.classes()).toContain('graph-team-node--just-completed');
   });
 
-  it('does not pop the badge for nodes already completed at mount (replay)', () => {
+  it('does not flash for nodes already completed at mount (replay)', () => {
     const store = useChatActivityStore();
     store.upsertGraphNode(mkNode('a', [], { Status: 'completed' }));
     store.upsertGraphNode(mkNode('b', ['a'], { Status: 'completed' }));
@@ -152,6 +161,6 @@ describe('GraphNode status transition animation', () => {
       mkStage({ StartedAt: new Date(Date.now() - 3600_000).toISOString(), Status: 'completed' }),
     );
 
-    expect(wrapper.findAll('.graph-node--just-completed')).toHaveLength(0);
+    expect(wrapper.findAll('.graph-team-node--just-completed')).toHaveLength(0);
   });
 });

@@ -936,6 +936,16 @@ func ddlEvolutionSuggestionPreApplySnapshot(ctx context.Context, rawDB *sql.DB, 
 	if rawDB == nil {
 		return nil
 	}
+	// Fresh databases never had the legacy L3 table (its Ent schema was removed
+	// in the A6 unified-store change); only pre-A6 databases carry it, and only
+	// they need the column before convergence (20261111) backfills and drops it.
+	exists, err := d.TableExists(ctx, rawDB, "evolution_suggestions")
+	if err != nil {
+		return fmt.Errorf("check evolution_suggestions: %w", err)
+	}
+	if !exists {
+		return nil
+	}
 	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE evolution_suggestions ADD COLUMN pre_apply_snapshot TEXT NOT NULL DEFAULT ''`); err != nil && !d.AlreadyExistsErr(err) {
 		return fmt.Errorf("add evolution_suggestions.pre_apply_snapshot: %w", err)
 	}

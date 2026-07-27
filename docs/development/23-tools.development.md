@@ -415,6 +415,26 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - [x] `go test ./internal/agent/ -run TestToolReminder -count=1` 通过
 - [x] TDD 流程：失败测试 → 最小实现 → 回归测试
 
+### Phase 10：工具结果卸载（Result Offloading，2026-07-26）✅
+
+**目标**：超预算工具结果从「不可逆截断」升级为「可逆卸载」——全量 JSON 存 artifact 服务，LLM 上下文只留 ref + 双端预览，read_file 分页读回（设计见 [23-tools.design.md §7.1.2](./23-tools.design.md#712-工具结果卸载result-offloading)）。
+
+**任务**：
+
+| ID | 任务 | 涉及文件 | 验收 | 状态 |
+|----|------|----------|------|------|
+| TO-10-01 | 卸载主路径：超限时 SaveArtifact + 卸载信封 | `internal/tools/decorator.go` | `truncateResult(ctx, jsonArgs, result)` 内分流；信封含 offloaded/ref/tool/original_size/preview_head/preview_tail/read_hint | ✅ |
+| TO-10-02 | 确定性命名 + 排除清单 + 降级 | `internal/tools/decorator.go` | 文件名 `tool_results/<tool>/<sha256(args)[:16]>.json`；`read_file` 排除防递归；无 invocation/service/保存失败回退截断信封（行为与旧版一致） | ✅ |
+| TO-10-03 | TDD 测试 | `internal/tools/decorator_offload_test.go` | 卸载信封+全量可回读、ref 确定性去重、read_file 排除、无 service 回退 4 用例 | ✅ |
+
+**Phase 10 验收**：
+
+- [x] `go test ./internal/tools/... -count=1` 全部通过（含 4 个新卸载用例 + 既有截断回归）
+- [x] `go test ./internal/agent/... -count=1` 通过
+- [x] `go build ./...` exit 0
+
+**后续（未实施）**：P1 过期 tool response 清理（Anthropic `clear_tool_uses` 式，框架 messages 构建层），独立迭代。
+
 ---
 
 ## 5. 任务清单

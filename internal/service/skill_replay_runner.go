@@ -20,9 +20,21 @@ type RefineLLMReader interface {
 	GetRefineLLM(ctx context.Context) (biz.RefineLLMSetting, error)
 }
 
+// evalDatasetReader is the narrow evaluation dependency (dataset/case
+// listing only). *evaluation.Usecase satisfies it in production; tests use a
+// fake.
+type evalDatasetReader interface {
+	ListDatasets(ctx context.Context, workspace string, limit, offset int) ([]evaluation.Dataset, int, error)
+	ListCases(ctx context.Context, datasetID string) ([]evaluation.Case, error)
+}
+
 // Compile-time check: SkillReplayRunner implements the biz.SkillReplayRunner
 // port consumed by biz.GateVerifier (P1 Solve 接线：数据集回放进 Gate 功能维).
 var _ biz.SkillReplayRunner = (*SkillReplayRunner)(nil)
+
+// Compile-time check: the production evaluation usecase satisfies the narrow
+// reader port.
+var _ evalDatasetReader = (*evaluation.Usecase)(nil)
 
 // SkillReplayRunner replays a skill's bound evaluation dataset against an
 // evolved draft body: each case is executed with the draft as the system
@@ -34,7 +46,7 @@ var _ biz.SkillReplayRunner = (*SkillReplayRunner)(nil)
 // LLM 未配置返回错误（Gate 同样跳过，不阻断）——与项目 best-effort 降级
 // 风格一致。
 type SkillReplayRunner struct {
-	eval   *evaluation.Usecase
+	eval   evalDatasetReader
 	caller biz.LLMCaller
 	llm    RefineLLMReader
 	skills biz.SkillLookupReader
@@ -42,7 +54,7 @@ type SkillReplayRunner struct {
 }
 
 // NewSkillReplayRunner constructs a SkillReplayRunner.
-func NewSkillReplayRunner(eval *evaluation.Usecase, caller biz.LLMCaller, llm RefineLLMReader, skills biz.SkillLookupReader, lg loggateway.Logger) *SkillReplayRunner {
+func NewSkillReplayRunner(eval evalDatasetReader, caller biz.LLMCaller, llm RefineLLMReader, skills biz.SkillLookupReader, lg loggateway.Logger) *SkillReplayRunner {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}

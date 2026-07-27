@@ -1185,7 +1185,8 @@ func (r *skillRepo) GetLatestSkillMarkdown(ctx context.Context, skillID string) 
 	}
 	sv, err := r.data.RW().Read(ctx).SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(skillID)).
-		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+		// created_at 为秒级 TEXT，同秒并列时用 sv_<unixnano> ID 递减兜底（新生成 ID 更大）。
+		Order(skillversion.ByCreatedAt(entsql.OrderDesc()), skillversion.ByID(entsql.OrderDesc())).
 		First(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {
@@ -1244,6 +1245,9 @@ type skillMetadataEnvelope struct {
 	Tags       []biz.SkillTag `json:"tags"`
 	StorageDir string         `json:"storage_dir"`
 	SyncOrigin string         `json:"sync_origin"`
+	// DerivedFrom records merge provenance (source skill IDs) for skills
+	// created by merge_group_with_ai with retire_sources=true.
+	DerivedFrom []string `json:"derived_from,omitempty"`
 }
 
 func encodeSkillMetadata(tags []biz.SkillTag, storageDir, syncOrigin string) (string, error) {
@@ -1650,7 +1654,8 @@ func (r *skillRepo) CreateSkillVersion(ctx context.Context, in biz.SkillCreateVe
 
 	latest, err := tx.SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(in.SkillID)).
-		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+		// 同 GetLatestSkillMarkdown：秒级 created_at 并列时按 ID 递减兜底。
+		Order(skillversion.ByCreatedAt(entsql.OrderDesc()), skillversion.ByID(entsql.OrderDesc())).
 		First(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {

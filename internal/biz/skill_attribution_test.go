@@ -15,10 +15,10 @@ import (
 // fakeUnifiedStore implements UnifiedEvolutionStore with only the methods the
 // attribution path uses; everything else panics to surface unexpected calls.
 type fakeUnifiedStore struct {
-	applied        []UnifiedEvolutionSuggestion
-	listErr        error
-	metaUpdates    map[string]string // key → last written value
-	metaUpdateErr  error
+	applied       []UnifiedEvolutionSuggestion
+	listErr       error
+	metaUpdates   map[string]string // key → last written value
+	metaUpdateErr error
 }
 
 func (f *fakeUnifiedStore) ListByTarget(_ context.Context, targetType, targetID, status string, limit, offset int) ([]UnifiedEvolutionSuggestion, error) {

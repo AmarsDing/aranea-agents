@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -22,7 +23,7 @@ func TestResolveDecision_mergeGroupWithAI_MissingGroupID(t *testing.T) {
 		candidates: map[string]candidateState{},
 	}
 
-	_, _, err := eng.resolveDecision(job, biz.SkillImportDecision{
+	_, _, err := eng.resolveDecision(context.Background(), job, biz.SkillImportDecision{
 		Action:     "merge_group_with_ai",
 		MergedName: "Merged Skill",
 		MergedBody: "---\nname: Merged Skill\n---\nbody",
@@ -50,7 +51,7 @@ func TestResolveDecision_mergeGroupWithAI_GroupNotFound(t *testing.T) {
 		candidates: map[string]candidateState{},
 	}
 
-	_, _, err := eng.resolveDecision(job, biz.SkillImportDecision{
+	_, _, err := eng.resolveDecision(context.Background(), job, biz.SkillImportDecision{
 		Action:     "merge_group_with_ai",
 		GroupID:    "grp-nonexistent",
 		MergedName: "Merged Skill",
@@ -79,7 +80,7 @@ func TestResolveDecision_mergeGroupWithAI_ValidGroup(t *testing.T) {
 		candidates: map[string]candidateState{},
 	}
 
-	params, _, err := eng.resolveDecision(job, biz.SkillImportDecision{
+	params, _, err := eng.resolveDecision(context.Background(), job, biz.SkillImportDecision{
 		Action:            "merge_group_with_ai",
 		GroupID:           "grp-valid",
 		MergedName:        "Merged Skill",

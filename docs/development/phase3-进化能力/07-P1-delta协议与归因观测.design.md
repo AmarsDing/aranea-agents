@@ -159,6 +159,8 @@ delta 模式下，`ApplyDeltaOps` 前：若 `input.Attribution.Verdict == helpfu
 - draft 重写或移除该规则 → 通过；无有害规则 → 通过
 - 未注入 reader / 正文无规则块 → 跳过（通过），nil-safe
 
+> **语义备注（一周期滞后）**：本维度读取的是**当前已发布版本**的计数，不含本周期 evolver 内刚完成的归账 bump。规则 harmful=2 且本周期再判 harmful（归账后达 3）时，本周期 Gate 不拒绝，下一周期才触发。这是「基于已结算计数裁决」的有意语义，避免对未落账数据做判断。
+
 ## 5. trace 级观测
 
 `SkillDraftInput` 新增：

@@ -233,9 +233,35 @@ type SkillWriter interface {
 	SkillVersionWriter
 }
 
+// SkillImportWriter supports the ZIP-import overwrite (duplicate) and
+// merge-retire paths. Kept as a separate narrow interface per DB-N3.
+//
+// Stability:evolving
+type SkillImportWriter interface {
+	// AppendImportedVersion appends a new version to an existing skill
+	// (parent = current latest, version incremented) and refreshes the
+	// skill row name/description/tags in one transaction.
+	AppendImportedVersion(ctx context.Context, in ImportVersionInput) (Skill, error)
+	// ArchiveSkill retires a skill: status=archived, enabled=false.
+	ArchiveSkill(ctx context.Context, id string) error
+	// SetSkillDerivedFrom records provenance (source skill IDs) in the
+	// skill's metadata JSON under derived_from.
+	SetSkillDerivedFrom(ctx context.Context, id string, sourceIDs []string) error
+}
+
+// ImportVersionInput carries the payload for the import overwrite path.
+type ImportVersionInput struct {
+	SkillID     string
+	Name        string
+	Description string
+	Body        string
+	Tags        []SkillTag
+}
+
 type Repo interface {
 	SkillReader
 	SkillWriter
+	SkillImportWriter
 }
 
 // UpdateDraft is a partial update for admin edits (optional fields via booleans).
@@ -850,6 +876,9 @@ type ImportDecision struct {
 	MergedDescription string     `json:"merged_description,omitempty"`
 	MergedBody        string     `json:"merged_body,omitempty"`
 	MergedTags        []SkillTag `json:"merged_tags,omitempty"`
+	// RetireSources archives the conflict group's existing skills after a
+	// successful merge_group_with_ai apply (status=archived, enabled=false).
+	RetireSources bool `json:"retire_sources,omitempty"`
 }
 
 type ImportApplyRequest struct {

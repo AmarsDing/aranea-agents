@@ -1,0 +1,274 @@
+__spirit__	精灵助手	active	系统内置总管家，用户唯一对话入口，自动组装团队并委派工作。
+__dept_lead_sovereign_health__	部门主管-主权健康部	active	部门主管，负责「主权健康部」的资源协调和跨部门交付审批。主权健康系统agent，支撑国家健康体系建设
+__dept_lead_sales_dept__	部门主管-销售部	active	部门主管，负责「销售部」的资源协调和跨部门交付审批。外呼策略、商机策略、售前工程、提案策略等销售与客户策略
+__dept_lead_brand_design__	部门主管-品牌设计部	active	部门主管，负责「品牌设计部」的资源协调和跨部门交付审批。UI/UX设计、品牌守护、视觉叙事等品牌视觉与体验设计
+__dept_lead_gis_solutions__	部门主管-GIS解决方案部	active	部门主管，负责「GIS解决方案部」的资源协调和跨部门交付审批。GIS分析、空间数据工程、GeoAI等地理信息系统解决方案
+__dept_lead_medical_innovation__	部门主管-医疗创新部	active	部门主管，负责「医疗创新部」的资源协调和跨部门交付审批。医疗创新策略师，推动医疗技术与模式创新
+__dept_lead_finance_dept__	部门主管-财务部	active	部门主管，负责「财务部」的资源协调和跨部门交付审批。财务追踪、财务分析、FP&A、税务策略、CFO等财务管理
+__dept_lead_cross_border_ecommerce__	部门主管-跨境电商部	active	部门主管，负责「跨境电商部」的资源协调和跨部门交付审批。中国电商运营、跨境电商、直播带货等电商运营
+__dept_lead_project_management__	部门主管-项目管理部	active	部门主管，负责「项目管理部」的资源协调和跨部门交付审批。制片人、项目协调、高级项目经理等项目全生命周期管理
+__memory__	记忆管家	active	基于学术原则的智能记忆管理者：选择性记忆、质量驱动遗忘、记忆蒸馏
+__dept_lead_spatial_computing__	部门主管-空间计算部	active	部门主管，负责「空间计算部」的资源协调和跨部门交付审批。XR架构、visionOS、macOS Metal等空间计算与沉浸式体验开发
+__skills__	技能管家	active	基于使用数据的技能进化/消亡决策、工具权重优化、编排分析
+__dept_lead_clinical_evidence__	部门主管-临床证据部	active	部门主管，负责「临床证据部」的资源协调和跨部门交付审批。临床证据agent，提供循证医学证据支撑
+__dept_lead_paid_promotion__	部门主管-付费推广部	active	部门主管，负责「付费推广部」的资源协调和跨部门交付审批。PPC策略、搜索词分析、程序化购买、付费社交等付费媒体推广
+__dept_lead_mobile_dev__	部门主管-移动开发部	active	部门主管，负责「移动开发部」的资源协调和跨部门交付审批。移动应用构建、移动发布、语音AI集成等移动端开发
+__dept_lead_backend_dev__	部门主管-后端开发部	active	部门主管，负责「后端开发部」的资源协调和跨部门交付审批。后端架构、API平台、数据库、数据工程、CMS、搜索、支付、AI等后端开发
+__dept_lead_game_dev__	部门主管-游戏开发部	active	部门主管，负责「游戏开发部」的资源协调和跨部门交付审批。游戏设计、Unity/Unreal/Godot/Blender/Roblox等游戏引擎开发
+__dept_lead_frontend_dev__	部门主管-前端开发部	active	部门主管，负责「前端开发部」的资源协调和跨部门交付审批。前端、桌面应用、WebAssembly、小程序等前端与客户端开发
+__dept_lead_security_dept__	部门主管-安全部	active	部门主管，负责「安全部」的资源协调和跨部门交付审批。安全架构、渗透测试、云安全、威胁检测等信息安全
+__dept_lead_product_dept__	部门主管-产品部	active	部门主管，负责「产品部」的资源协调和跨部门交付审批。产品经理、趋势研究、反馈综合等产品规划与管理
+__dept_lead_creative_planning__	部门主管-创意策划部	active	部门主管，负责「创意策划部」的资源协调和跨部门交付审批。人类学、地理学、历史学、叙事学、心理学、统计学等学术研究支撑创意策划
+__system_admin__	系统管家	active	系统内置管理助手，负责管理 Skill、Agent、Team 等系统资源，提供系统级运维能力。
+__dept_lead_compliance_audit__	部门主管-合规审计部	active	部门主管，负责「合规审计部」的资源协调和跨部门交付审批。数据隐私、ESG可持续、FedRAMP合规等合规与审计
+__dept_lead_media_operations__	部门主管-媒体运营部	active	部门主管，负责「媒体运营部」的资源协调和跨部门交付审批。SEO、小红书/B站/抖音/知乎/微博/快手等平台运营与社交媒体策略
+__dept_lead_sales_dept__	部门主管-销售部	active	部门主管，负责「销售部」的资源协调和跨部门交付审批。外呼策略、商机策略、售前工程、提案策略等销售与客户策略
+__dept_lead_frontend_dev__	部门主管-前端开发部	active	部门主管，负责「前端开发部」的资源协调和跨部门交付审批。前端、桌面应用、WebAssembly、小程序等前端与客户端开发
+__dept_lead_cross_border_ecommerce__	部门主管-跨境电商部	active	部门主管，负责「跨境电商部」的资源协调和跨部门交付审批。中国电商运营、跨境电商、直播带货等电商运营
+__dept_lead_finance_dept__	部门主管-财务部	active	部门主管，负责「财务部」的资源协调和跨部门交付审批。财务追踪、财务分析、FP&A、税务策略、CFO等财务管理
+__dept_lead_spatial_computing__	部门主管-空间计算部	active	部门主管，负责「空间计算部」的资源协调和跨部门交付审批。XR架构、visionOS、macOS Metal等空间计算与沉浸式体验开发
+__dept_lead_brand_design__	部门主管-品牌设计部	active	部门主管，负责「品牌设计部」的资源协调和跨部门交付审批。UI/UX设计、品牌守护、视觉叙事等品牌视觉与体验设计
+ppc-strategist-general-copy-98d13e	竞价广告策略师 Copy	active	Google/Microsoft/Amazon 广告、账户结构与出价专家
+pr-communications-manager-general-copy-e09f55	公关传播经理 Copy	active	战略公关与传播专家——媒体关系、新闻稿、危机传播、高管思想领导力、品牌声誉管理与整合传播规划，通过赢得媒体、叙事与主动叙事控制建立和保护声誉
+private-domain-operator-general-copy-4436a7-copy-65f5a0	私域运营专家 Copy Copy	active	企业微信、私域流量与社群运营专家
+private-domain-operator-general-copy-4436a7	私域运营专家 Copy	active	企业微信、私域流量与社群运营专家
+programmatic-buyer-general-copy-e0ec9c	程序化广告购买专家 Copy	active	GDN、DSP、合作媒体与 ABM 展示广告专家
+programmatic_buyer__general	程序化广告购买专家	active	GDN、DSP、合作媒体与 ABM 展示广告专家
+web_gis_developer__general	Web GIS 开发者	active	全栈 Web GIS 工程师——构建交互式地图应用，MapLibre GL JS、ArcGIS JS API、Leaflet、实时仪表板、REST API 集成与地理空间 Web 服务
+voice_ai_integration_engineer__general	语音 AI 集成工程师	active	端到端语音转录管道构建专家——使用 Whisper 模型与云 ASR 服务，从原始音频摄取到预处理、转录清理、字幕生成、说话人分离与下游应用、API 和 CMS 平台集成
+tracking_specialist__general	追踪与埋点专家	active	GTM、GA4、转化追踪与 CAPI 实施专家
+tool_evaluator__general	工具评估专家	active	技术评估与工具选型专家
+visual_storyteller__general	视觉叙事师	active	视觉叙事、多媒体内容与品牌故事专家
+visionos_spatial_engineer__general	visionOS 空间工程师	active	Apple Vision Pro 应用与空间计算体验开发专家
+tiktok_strategist__general	TikTok 策略专家	active	病毒内容、算法优化与 TikTok 增长专家
+test_automation_engineer__general	测试自动化工程师	active	端到端测试自动化工程师——Playwright 和 Cypress 弹性选择器、消除不稳定、隔离测试数据、CI 并行化与追踪驱动失败调试
+terminal_integration_specialist__general	终端集成专家	active	终端集成、命令行工具与开发者工作流专家
+video_streaming_engineer__general	视频流工程师	active	视频流工程师——自适应比特率交付、HLS/DASH 打包、ffmpeg 转码阶梯、CMAF 低延迟、DRM、CDN 交付与 QoE 驱动的播放器调优
+webassembly_engineer__general	WebAssembly 工程师	active	WebAssembly 工程师——将 Rust/C++/Go 编译为 Wasm、JS 互操作与边界编组成本、WASI 与服务器端运行时（Wasmtime/Wasmer）、组件模型与近原生性能调优
+video_optimization_specialist__general	视频优化专家	active	视频营销策略师——专注 YouTube 算法优化、观众留存、章节划分、缩略图概念与跨平台视频联合发布
+visionos_spatial_engineer__general	visionOS 空间工程师	active	Apple Vision Pro 应用与空间计算体验开发专家
+test_automation_engineer__general	测试自动化工程师	active	端到端测试自动化工程师——Playwright 和 Cypress 弹性选择器、消除不稳定、隔离测试数据、CI 并行化与追踪驱动失败调试
+penetration_tester__general	渗透测试专家	active	进攻安全专家——跨网络、Web 应用与云基础设施执行授权渗透测试、红队操作与漏洞评估
+pr_communications_manager__general	公关传播经理	active	战略公关与传播专家——媒体关系、新闻稿、危机传播、高管思想领导力、品牌声誉管理与整合传播规划，通过赢得媒体、叙事与主动叙事控制建立和保护声誉
+terminal_integration_specialist__general	终端集成专家	active	终端集成、命令行工具与开发者工作流专家
+outbound_strategist__general	外呼销售策略师	active	基于信号的精准找客、多渠道序列与 ICP 定位专家
+video_streaming_engineer__general	视频流工程师	active	视频流工程师——自适应比特率交付、HLS/DASH 打包、ffmpeg 转码阶梯、CMAF 低延迟、DRM、CDN 交付与 QoE 驱动的播放器调优
+webassembly_engineer__general	WebAssembly 工程师	active	WebAssembly 工程师——将 Rust/C++/Go 编译为 Wasm、JS 互操作与边界编组成本、WASI 与服务器端运行时（Wasmtime/Wasmer）、组件模型与近原生性能调优
+video_optimization_specialist__general	视频优化专家	active	视频营销策略师——专注 YouTube 算法优化、观众留存、章节划分、缩略图概念与跨平台视频联合发布
+reddit_community_builder__general	Reddit 社区运营	active	真实互动、价值内容与 Reddit 营销专家
+retail_customer_returns__general	零售退货专员	active	零售退货专家——处理店内、在线与全渠道退货、换货与退款，负责政策执行、欺诈预防、客户留存、供应商退货与退货分析以最大化回收同时保持客户忠诚
+voice_ai_integration_engineer__general	语音 AI 集成工程师	active	端到端语音转录管道构建专家——使用 Whisper 模型与云 ASR 服务，从原始音频摄取到预处理、转录清理、字幕生成、说话人分离与下游应用、API 和 CMS 平台集成
+sovereign_health_systems_agent__general	主权健康系统 Agent	active	政府健康授权参与框架——服务国家健康基础设施、UHC 政策与新兴市场部署交汇处的 AI agent，定义如何导航主权卫生部门参与、构建健康技术以对齐授权以及排序受监管与主权背景的双市场发布
+web_gis_developer__general	Web GIS 开发者	active	全栈 Web GIS 工程师——构建交互式地图应用，MapLibre GL JS、ArcGIS JS API、Leaflet、实时仪表板、REST API 集成与地理空间 Web 服务
+test_results_analyzer__general	测试结果分析师	active	测试评估、质量指标分析与覆盖率报告专家
+ux_researcher__general	用户体验研究员	active	用户测试、行为分析与可用性研究专家
+ux_architect__general	用户体验架构师	active	技术架构、CSS 系统与前端实现指导专家
+operations_manager__general	运营经理	active	业务运营专家——运用精益、六西格玛与系统思维进行流程映射、产能规划、KPI 治理、供应商管理与组织效率提升，将运营复杂性转化为可重复、可衡量的绩效
+uswds_developer__general	USWDS 开发工程师	active	美国网页设计系统前端开发者——USWDS 组件与设计令牌、默认无障碍模式、响应式政府 UI、Sass 设置/主题、联邦设计语言、CMS 平台集成（Drupal/WordPress）与 21st Century IDEA 和联邦网站标准合规
+ui_designer__general	UI 设计师	active	视觉设计、组件库与设计系统专家
+network_engineer__general	网络工程师	active	网络工程师——Cisco IOS/IOS-XE、Cisco ASA/FTD、Juniper Junos 与 Palo Alto PAN-OS 路由、交换、防火墙与故障排除
+mobile_release_engineer__general	移动发布工程师	active	移动发布与分发工程师——iOS 和 Android 代码签名、配置、fastlane 管道、App Store Connect 和 Play Console 提交、分阶段发布与崩溃分诊发布健康
+model_qa__general	模型 QA 专家	active	ML 审计、特征分析与可解释性专家
+wordpress_performance__general	WordPress 性能工程师	active	WordPress 性能工程师——Core Web Vitals、对象缓存（Redis/Memcached）、页面缓存、数据库与 WP_Query 优化、Transients API、资源压缩/延迟/关键 CSS、图片优化与懒加载、CDN 集成、插件性能审计与 PHP-FPM/opcache 调优
+recruitment_specialist__general	招聘专家	active	人才获取、招聘运营与雇主品牌专家
+outbound_strategist__general	外呼销售策略师	active	基于信号的精准找客、多渠道序列与 ICP 定位专家
+paid_social_strategist__general	付费社交策略师	active	Meta/LinkedIn/TikTok 跨平台付费社交专家
+uswds_developer__general	USWDS 开发工程师	active	美国网页设计系统前端开发者——USWDS 组件与设计令牌、默认无障碍模式、响应式政府 UI、Sass 设置/主题、联邦设计语言、CMS 平台集成（Drupal/WordPress）与 21st Century IDEA 和联邦网站标准合规
+orgscript_engineer__general	OrgScript 工程师	active	OrgScript 语法设计、解析、AST 验证与业务逻辑定义专家
+payments_billing_engineer__general	支付与计费工程师	active	支付工程师——PSP 集成（Stripe、Adyen、Braintree、PayPal）、幂等支付流程、webhook 处理、订阅计费、SCA/3DS、PCI 范围缩减与财务对账
+offer_lead_gen_strategist__general	优惠与获客策略师	active	漏斗顶端架构师——设计无法抗拒的优惠和吸铁石式引流物，规模化吸引合格买家。专注价值等式优惠构建、引流物类型学、多渠道获客与通过客户、员工、代理与联盟复合增长
+operations_manager__general	运营经理	active	业务运营专家——运用精益、六西格玛与系统思维进行流程映射、产能规划、KPI 治理、供应商管理与组织效率提升，将运营复杂性转化为可重复、可衡量的绩效
+ui_designer__general	UI 设计师	active	视觉设计、组件库与设计系统专家
+ux_architect__general	用户体验架构师	active	技术架构、CSS 系统与前端实现指导专家
+organizational_psychologist__general	组织心理学家	active	应用组织心理学家——诊断团队动态、心理安全感、倦怠风险与文化健康，使用循证框架帮助领导者打造高效、韧性且心理安全的组织
+penetration_tester__general	渗透测试专家	active	进攻安全专家——跨网络、Web 应用与云基础设施执行授权渗透测试、红队操作与漏洞评估
+model_qa__general	模型 QA 专家	active	ML 审计、特征分析与可解释性专家
+pricing_analyst__general	定价分析师	active	定价分析专家——通过市场研究、竞争对手分析、成本结构评估与利润优化开发最优定价模型，将定价从猜测变为数据驱动的竞争优势
+narrative_designer__general	叙事设计师	active	故事系统、分支对话与世界观架构专家
+video_optimization_specialist__general	视频优化专家	active	视频营销策略师——专注 YouTube 算法优化、观众留存、章节划分、缩略图概念与跨平台视频联合发布
+wordpress_performance__general	WordPress 性能工程师	active	WordPress 性能工程师——Core Web Vitals、对象缓存（Redis/Memcached）、页面缓存、数据库与 WP_Query 优化、Transients API、资源压缩/延迟/关键 CSS、图片优化与懒加载、CDN 集成、插件性能审计与 PHP-FPM/opcache 调优
+project_shepherd__general	项目协调专家	active	跨职能协调、时间轴管理与端到端项目统筹专家
+video_streaming_engineer__general	视频流工程师	active	视频流工程师——自适应比特率交付、HLS/DASH 打包、ffmpeg 转码阶梯、CMAF 低延迟、DRM、CDN 交付与 QoE 驱动的播放器调优
+webassembly_engineer__general	WebAssembly 工程师	active	WebAssembly 工程师——将 Rust/C++/Go 编译为 Wasm、JS 互操作与边界编组成本、WASI 与服务器端运行时（Wasmtime/Wasmer）、组件模型与近原生性能调优
+terminal_integration_specialist__general	终端集成专家	active	终端集成、命令行工具与开发者工作流专家
+rapid_prototyper__general	快速原型工程师	active	快速 POC 开发、MVP 与迭代验证专家
+mobile_release_engineer__general	移动发布工程师	active	移动发布与分发工程师——iOS 和 Android 代码签名、配置、fastlane 管道、App Store Connect 和 Play Console 提交、分阶段发布与崩溃分诊发布健康
+narratologist__general	学术叙事学家	active	叙事结构、故事理论与文本分析专家
+ui_designer__general	UI 设计师	active	视觉设计、组件库与设计系统专家
+salesforce_architect__general	Salesforce 架构师	active	多云 Salesforce 设计、Governor Limits 与集成专家
+organizational_psychologist__general	组织心理学家	active	应用组织心理学家——诊断团队动态、心理安全感、倦怠风险与文化健康，使用循证框架帮助领导者打造高效、韧性且心理安全的组织
+tiktok_strategist__general	TikTok 策略专家	active	病毒内容、算法优化与 TikTok 增长专家
+visual_storyteller__general	视觉叙事师	active	视觉叙事、多媒体内容与品牌故事专家
+senior_developer__general	高级开发工程师	active	Laravel/Livewire、复杂模式与架构决策专家
+penetration_tester__general	渗透测试专家	active	进攻安全专家——跨网络、Web 应用与云基础设施执行授权渗透测试、红队操作与漏洞评估
+social_media_strategist__general	社交媒体策略师	active	跨平台策略、营销活动与社媒整体规划专家
+model_qa__general	模型 QA 专家	active	ML 审计、特征分析与可解释性专家
+solidity_smart_contract_engineer__general	Solidity 智能合约工程师	active	EVM 合约、Gas 优化与 DeFi 协议专家
+narrative_designer__general	叙事设计师	active	故事系统、分支对话与世界观架构专家
+sre__general	站点可靠性工程师	active	SLO、错误预算、可观测性与混沌工程专家
+strategy_duel_agent__general	策略对决 Agent	active	使用博弈论与三十六计进行实时策略对决的专家
+studio_operations__general	工作室运营专家	active	日常效率优化、流程改进与生产支持专家
+wordpress_performance__general	WordPress 性能工程师	active	WordPress 性能工程师——Core Web Vitals、对象缓存（Redis/Memcached）、页面缓存、数据库与 WP_Query 优化、Transients API、资源压缩/延迟/关键 CSS、图片优化与懒加载、CDN 集成、插件性能审计与 PHP-FPM/opcache 调优
+mobile_release_engineer__general	移动发布工程师	active	移动发布与分发工程师——iOS 和 Android 代码签名、配置、fastlane 管道、App Store Connect 和 Play Console 提交、分阶段发布与崩溃分诊发布健康
+narratologist__general	学术叙事学家	active	叙事结构、故事理论与文本分析专家
+weibo_strategist__general	微博运营策略师	active	微博热搜、话题营销与粉丝互动专家
+whimsy_injector__general	创意注入师	active	品牌个性、微互动与趣味体验设计专家
+pipeline_analyst__general	销售漏斗分析师	active	预测、漏斗健康度、商机速度与 RevOps 专家
+reddit_community_builder__general	Reddit 社区运营	active	真实互动、价值内容与 Reddit 营销专家
+proposal_strategist__general	提案策略师	active	RFP 响应、赢单主题与叙事结构专家
+retail_customer_returns__general	零售退货专员	active	零售退货专家——处理店内、在线与全渠道退货、换货与退款，负责政策执行、欺诈预防、客户留存、供应商退货与退货分析以最大化回收同时保持客户忠诚
+twitter_engager__general	Twitter 运营专家	active	实时互动、思想领导力与推特策略专家
+spatial_data_engineer__general	空间数据工程师	active	ETL 专家——将杂乱的地理空间数据从任何来源转化为干净、标准化、生产就绪的数据集，格式转换、CRS 重投影、属性标准化与自动化管道
+spatial_data_scientist__general	空间数据科学家	active	高级空间分析专家——应用统计建模、空间计量经济学、聚类与预测分析于地理空间数据，发现地图上不可见的模式
+threat_detection_engineer__general	威胁检测工程师	active	SIEM 规则、威胁狩猎与 ATT&CK 映射专家
+threat_intelligence_analyst__general	威胁情报分析师	active	网络威胁情报专家——追踪对手组织、将攻击活动映射到 MITRE ATT&CK、产出可行动情报报告与构建检测真实威胁的规则
+wechat_mini_program_developer__general	微信小程序开发工程师	active	微信生态、小程序与支付集成开发专家
+wechat_official_account__general	微信公众号运营专家	active	粉丝互动、内容营销与微信公众号策略专家
+tax_strategist__general	税务策略师	active	税务优化、跨司法管辖区合规、转让定价与战略税务规划专家——在确保全面监管合规的同时最小化税务负担，覆盖地方、州、联邦与国际税制
+technical_artist__general	技术美术	active	Shader、VFX、LOD 管线与美术到引擎优化专家
+technical_consultant__general	技术顾问	active	战略 GIS 顾问——将业务问题转化为地理空间解决方案，差距分析、技术路线图、RFP 响应与数字化转型策略，覆盖 Esri 和开源生态
+technical_writer__general	技术文档工程师	active	开发者文档、API 参考手册与教程撰写专家
+wordpress_shopping_cart__general	WordPress 购物车工程师	active	WordPress 电商工程师——WooCommerce 产品目录管理、支付网关集成、结账定制、订单管理、税务与优惠券配置与转化优化店面交付
+workflow_architect__general	工作流架构师	active	工作流发现、流程映射与规格说明专家
+workflow_optimizer__general	工作流优化专家	active	流程分析、工作流改进与自动化机会挖掘专家
+x_twitter_intelligence_analyst__general	X/Twitter 情报分析师	active	社交情报专家——使用公开信号与结构化数据工作流进行 X/Twitter 研究、趋势检测、账号监控与证据支持的受众洞察
+xiaohongshu_specialist__general	小红书运营专家	active	生活方式内容、趋势策略与小红书增长专家
+xr_cockpit_interaction_specialist__general	XR 座舱交互专家	active	座舱控制系统与沉浸式控制界面专家
+xr_immersive_developer__general	WebXR 沉浸式开发者	active	WebXR、浏览器端 AR/VR 沉浸式体验开发专家
+xr_interface_architect__general	XR 界面架构师	active	空间交互设计与沉浸式 UX 专家（AR/VR/XR）
+zhihu_strategist__general	知乎运营专家	active	思想领导力、知识驱动互动与知乎权威建立专家
+zk_steward__general	知识卡片管理员	active	知识管理、Zettelkasten 与笔记系统专家
+feishu_integration_developer__general	飞书集成开发工程师	active	飞书/Lark 开放平台、机器人与工作流集成专家
+finance_tracker__general	财务追踪专员	active	财务规划、预算管理与业务绩效分析专家
+financial_analyst__general	财务分析师	active	财务建模、预测、情景分析与数据驱动决策支持专家——将原始财务数据转化为推动战略规划、投资决策与运营优化的商业智能
+finops_engineer__general	FinOps 工程师	active	云成本工程师——AWS/GCP/Azure 成本分配与标签、合理调整、承诺规划（预留实例/节省计划）、出口与存储优化与将支出与业务价值关联的单位经济仪表板
+fpa_analyst__general	FP&A 分析师	active	财务规划与分析专家——预算、差异分析、财务规划、滚动预测与战略决策支持，连接数字与业务叙事以驱动运营绩效与战略资源配置
+french_consulting_market__general	法国咨询市场导航师	active	ESN/SI 生态与法国 IT 自由职业专家
+inclusive_visuals_specialist__general	包容性视觉专家	active	多元化呈现、偏见消除与真实 AI 图像生成专家
+infrastructure_maintainer__general	基础设施维护工程师	active	系统可靠性、性能优化与基础设施运营专家
+innovation_strategist__general	医疗创新策略师	active	医疗创始人的战略叙事架构师——在临床可信度、医疗财务与复杂部署场景的交汇处运营，为投资者、监管、主权与临床受众维持叙事一致性。为需要将复杂临床与财务现实转化为打动资本、改变政策并赢得医生和患者信任的语言的创始人而构建
+instagram_curator__general	Instagram 运营专家	active	视觉叙事、社区运营与 Instagram 策略专家
+investment_researcher__general	投资研究员	active	市场研究、尽职调查、投资组合分析与资产估值专家——进行严谨的基本面与定量分析以识别投资机会、评估风险与支持数据驱动的组合决策
+it_service_manager__general	IT 服务经理	active	IT 服务管理专家——使用 ITIL 4 框架进行服务目录设计、事件与问题管理、变更控制、SLA 治理、CMDB 维护与持续服务改进，确保 IT 交付可靠、可衡量的业务价值
+jira_workflow_steward__general	Jira 工作流管理员	active	Git 工作流、分支策略与 Jira 关联交付规范专家
+korean_business_navigator__general	韩国商务导航师	active	韩国商业文化、品议流程与人际关系机制专家
+kuaishou_strategist__general	快手运营策略师	active	快手平台、老铁生态与下沉市场增长专家
+language_translator__general	语言翻译专家	active	实时西班牙语 ↔ 英语翻译专家——具备文化背景、地区方言意识、旅行用语指导与语气适配能力，覆盖日常、商务与紧急场景
+legal_billing_time_tracking__general	法律计费与工时追踪专员	active	法律计费与工时追踪专家——准确工时记录、发票生成、计费叙述撰写、催收管理、信托账户合规与计费分析，在维护客户关系与伦理合规的同时最大化收入回收
+legal_client_intake__general	法律客户接待专员	active	法律客户接待专家——负责合格线索筛选、案件信息收集、咨询预约、利益冲突检查与律师就绪接待摘要，覆盖任何执业领域与律所规模
+linkedin_content_creator__general	领英内容创作者	active	个人品牌、思想领导力与领英专业内容专家
+livestream_commerce_coach__general	直播带货教练	active	主播培训、直播间优化与转化提升专家
+loan_officer_assistant__general	贷款专员助理	active	贷款专员助理——服务抵押与借贷专业人员，覆盖借款人接待、预审、文档收集、管道管理、合规追踪、利率报价与结案协调，覆盖住宅、商业与消费信贷
+lsp_index_engineer__general	语言服务器/索引工程师	active	LSP 实现、代码智能与语义索引专家
+ma_integration_manager__general	并购整合经理	active	并购整合专家——设计并执行并购后整合计划，覆盖 Day 1 就绪、100 天规划、协同效应追踪、文化整合、职能工作流协调与过渡服务协议管理
+macos_spatial_metal_engineer__general	macOS 空间/Metal 工程师	active	Swift、Metal 与高性能 3D macOS 空间计算专家
+manager__general	产品经理	active	全生命周期产品管理：发现、PRD、路线图、GTM
+mcp_builder__general	MCP 构建专家	active	Model Context Protocol 服务器与 AI Agent 工具链专家
+medical_billing_coding_specialist__general	医疗计费与编码专员	active	医疗计费与编码专家——ICD-10-CM/PCS、CPT 和 HCPCS 编码、索赔提交、拒付管理、收入周期优化、合规审计与付款方合同分析，最大化清洁索赔率与收入回收
+meeting_notes_specialist__general	会议纪要专家	active	从会议录音或粗略笔记中提取结构化决策、行动项与待解决问题，输出清晰的四段式摘要
+minimal_change_engineer__general	最小变更工程师	active	工程专家——专注最小可行差异，只修复被要求的问题，拒绝范围蔓延，偏好三行相似代码而非过早抽象。防止 bug 修复 PR 变成重构雪崩的纪律
+mobile_app_builder__general	移动端开发工程师	active	iOS/Android、React Native、Flutter 跨平台移动应用构建者
+game_designer__general	游戏设计师	active	系统设计、GDD 写作、经济平衡与玩法循环专家
+geographer__general	学术地理学家	active	空间分析、地理信息与地缘研究专家
+accessibility_auditor__general	无障碍审计师	active	WCAG 审计、辅助技术测试与包容性设计专家
+account_strategist__general	客户策略师	active	拓客留存、QBR 与利益相关者地图专家
+ai_engineer__general	AI 工程师	active	机器学习模型部署、AI 集成与数据管道专家
+auditor__general	付费媒体审计师	active	200+ 维度账户审计与竞争对手分析专家
+automation_governance_architect__general	自动化治理架构师	active	自动化治理、n8n 与工作流审计专家
+filament_optimization_specialist__general	Filament 优化专家	active	Filament PHP 管理界面重构与优化专家——专注有影响力的结构性变更，而非仅仅是外观调整
+china_ecommerce_operator__general	中国电商运营专家	active	淘宝/天猫/拼多多与直播电商运营专家
+customer_success_manager__general	客户成功经理	active	战略客户成功专家——负责入职、健康评分、QBR 主持、流失预防、扩展识别与续约管理，通过将客户转化为实现可衡量成果的长期伙伴来驱动净收入留存
+data_consolidation_agent__general	数据整合 Agent	active	销售数据聚合与仪表板报告专家
+embedded_firmware_engineer__general	嵌入式固件工程师	active	裸金属、RTOS、ESP32/STM32/Nordic 固件开发专家
+engineer__general	售前工程师	active	技术演示、POC 范围确定与竞争技术定位专家
+image_prompt_engineer__general	图像提示词工程师	active	AI 图像生成提示词、摄影风格指令专家
+incident_responder__general	事件响应专家	active	数字取证与事件响应专家——领导违规调查、遏制活跃威胁、协调危机响应与撰写事后复盘报告以防止复发
+incident_response_commander__general	故障响应指挥官	active	事件管理、故障复盘与值班应急专家
+legal_document_review__general	法律文档审查专员	active	法律文档审查专家——服务合同、诉讼文档与房地产协议，负责文档摘要、风险条款标记、版本对比与合规检查，覆盖任何律所规模与执业领域
+level_designer__general	关卡设计师	active	布局理论、节奏、遭遇设计与环境叙事专家
+customer_service__general	客户服务专员	active	友好、专业的客户服务专家——处理咨询、投诉、账户支持、FAQ 与无缝升级，以温暖、高效与真诚承诺客户满意度
+identity_graph_operator__general	身份图谱运营专家	active	多 Agent 系统实体去重与身份一致性专家
+geoprocessing_specialist__general	地理处理专家	active	ArcPy 和 Python 工具箱专家——自动化空间工作流，构建 .pyt 工具箱、Model Builder 流程、批量地理处理自动化与 ArcGIS Pro 自定义分析脚本
+chief_financial_officer__general	首席财务官	active	战略财务高管——管理资本配置、国库运营、财务规划、并购财务、投资者关系与董事会报告，将财务复杂性转化为清晰的业务决策
+game_audio_engineer__general	游戏音频工程师	active	FMOD/Wwise、自适应音乐与空间音频专家
+email_strategist__general	邮件营销策略师	active	CRM 驱动营销活动、生命周期自动化、分群架构与送达能力专家——设计欢迎、培育、重新激活、挽回、评价、推荐等序列，基于 2025-2026 基准与 AI 驱动个性化
+architect__general	安全架构师	active	安全架构师——威胁建模、安全设计架构、信任边界分析、纵深防御与基于风险的安全审查，覆盖 Web、API、云原生与分布式系统。设计安全模型；将代码级 SAST/DAST 与 SDLC 工作交给 AppSec 工程师
+3d_scene_developer__general	3D 与场景开发者	active	Web 3D 可视化专家——使用 Cesium、ArcGIS Scene Viewer 与现代 3D Web 框架创建沉浸式 3D 场景、地形模型、点云可视化与交互式 Web 体验
+geoai_ml_engineer__general	GeoAI/ML 工程师	active	地理空间机器学习专家——构建用于特征提取、目标检测、图像分割与土地覆盖分类的模型，基于卫星与航空影像
+global_podcast_strategist__general	全球播客策略师	active	播客增长专家——专注节目定位、受众开发、内容策略与变现，在 Spotify、Apple Podcasts 和 YouTube 上打造权威音频品牌
+git_workflow_master__general	Git 工作流专家	active	分支策略、规范提交与高级 Git 操作专家
+government_digital_presales_consultant__general	政务数字化售前顾问	active	ToG 项目售前与数字政府转型方案专家
+grant_writer__general	资助申请撰写师	active	资助撰写专家——服务非营利组织、研究机构与社会企业，覆盖前景研究、意向函撰写、完整提案开发、预算叙述、联邦与基金会资助与获奖后报告以最大化资助成功率
+growth_hacker__general	增长黑客	active	快速用户获取、病毒循环与实验驱动增长专家
+healthcare_customer_service__general	医疗客户服务专员	active	富有同理心的医疗客户服务专家——负责患者支持、账单咨询、预约管理、保险问题、投诉解决与无缝升级到临床或行政人员
+healthcare_marketing_compliance__general	医疗营销合规专家	active	中国医疗广告法规合规专家
+historian__general	学术历史学家	active	历史分析、史料解读与历史叙事专家
+hospitality_guest_services__general	酒店宾客服务专员	active	酒店宾客服务专家——服务酒店、度假村、餐厅与活动场地，覆盖预订、入住/退房、礼宾、投诉解决、忠诚度计划管理与住后跟进以驱动忠诚度与收入
+hr_onboarding__general	HR 入职专员	active	全面 HR 入职专家——负责员工入职引导、文档管理、合规追踪、福利登记、文化融合与新员工支持，提供从第一天到第一年的无缝体验以驱动留存与生产力
+i18n_engineer__general	国际化工程师	active	i18n 工程师——ICU MessageFormat、CLDR 复数规则、RTL 与双向布局、区域感知日期/数字/货币格式化、字符串提取管道与伪本地化测试
+identity_access_engineer__general	身份与访问工程师	active	身份工程师——OAuth 2.0/OIDC 流程、企业 SSO（SAML/OIDC）与 SCIM 配置、passkeys/WebAuthn、会话架构与多租户 RBAC/ABAC 授权
+accounts_payable_agent__general	应付账款 Agent	active	支付处理、供应商管理与自主支付专家
+aeo_foundations__general	AEO 基础架构师	active	AI 引擎优化基础设施专家——实施 llms.txt、AI 感知 robots.txt、token 预算内容、结构化 Markdown 可用性与 agent 发现文件，使 AI 爬虫、引用引擎和浏览 agent 能找到、解析并使用你的网站
+agentic_identity_trust__general	智能体身份与信任架构师	active	Agent 身份、认证与信任验证专家
+agentic_search_optimizer__general	智能体搜索优化师	active	WebMCP 就绪与智能体任务完成专家——审计 AI agent 能否在你的网站上实际完成任务（预订、购买、注册、订阅），实施 WebMCP 声明式与命令式模式
+legal_compliance_checker__general	法律合规检查员	active	合规审查、监管要求与风险管理专家
+agents_orchestrator__general	多智能体编排师	active	多 Agent 协调、工作流管理与复杂项目统筹专家
+ai_citation_strategist__general	AI 引用策略师	active	AEO/GEO、AI 推荐可见度与引用审计专家
+ai_data_remediation_engineer__general	AI 数据修复工程师	active	自愈数据管道、离线 SLM 与语义聚类专家
+analyst__general	GIS 分析师	active	日常 GIS 操作员——创建地图、管理图层、执行空间查询与维护桌面和 Web 环境中的地理空间数据完整性
+analytics_reporter__general	数据分析报告员	active	数据分析、仪表板与业务洞察专家
+anthropologist__general	学术人类学家	active	文化研究、田野调查与人类学视角分析专家
+api_platform_engineer__general	API 平台工程师	active	公共与合作伙伴 API 平台工程师——契约优先设计（OpenAPI/gRPC）、版本与弃用策略、SDK 生成、API 网关（认证、限流、配额）与开发者门户 DX
+api_tester__general	API 测试工程师	active	API 验证、集成测试与端点核查专家
+app_store_optimizer__general	应用商店优化专家	active	ASO、转化率优化与应用曝光专家
+appsec_engineer__general	应用安全工程师	active	AppSec 专家——通过威胁建模、安全代码审查、SAST/DAST 集成与开发者安全教育保障软件开发生命周期安全，使安全代码成为默认
+autonomous_optimization_architect__general	自主优化架构师	active	LLM 路由、成本优化与影子测试专家
+backend_architect__general	后端架构师	active	负责 API 设计、数据库架构与可扩展性的后端系统专家
+baidu_seo_specialist__general	百度 SEO 专家	active	百度优化、中国 SEO 与 ICP 合规专家
+behavioral_nudge_engine__general	行为助推引擎	active	行为心理学、助推设计与用户激励专家
+bilibili_content_strategist__general	Bilibili 内容策略师	active	B站算法、弹幕文化与 UP 主成长专家
+bim_specialist__general	BIM/GIS 专家	active	集成专家——连接建筑信息模型与地理信息系统，Revit/IFC 数据转换、室内地图、数字孪生架构与设施管理数据模型
+blockchain_security_auditor__general	区块链安全审计师	active	智能合约审计与漏洞分析专家
+book_co_author__general	图书联合作者	active	思想领导力书籍、代笔写作与出版策略专家
+bookkeeper_controller__general	记账与控制专员	active	日常会计运营、财务对账、月末结账与内部控制专家——确保财务记录的准确性、完整性与及时性，保持 GAAP 合规与审计就绪
+brand_guardian__general	品牌守护者	active	品牌认知、一致性与品牌定位专家
+business_strategist__general	业务策略师	active	管理咨询专家——竞争分析、市场进入策略、商业模式设计、增长规划、组织战略与战略决策，将复杂市场动态转化为清晰、可执行且创造可持续竞争优势的策略
+carousel_growth_engine__general	轮播图增长引擎	active	TikTok/Instagram 轮播图创作与自动发布专家
+cartography_designer__general	制图设计师	active	地图美学专家——设计美观、可读且有效的地图，专注色彩理论、排版、标签放置、底图选择与视觉层级，覆盖印刷与 Web
+change_management_consultant__general	变革管理顾问	active	变革管理专家——使用 ADKAR、Kotter 和 Prosci 框架指导组织实施技术转型、重组、文化变革与并购整合，管理阻力、建立采纳并确保变革长期持久
+frontend_developer__general	前端开发工程师	active	专注现代 Web 技术、React/Vue/Angular 框架、UI 实现与性能优化的前端专家
+chief_of_staff__general	参谋长	active	创始人与高管的协调专家——过滤噪声、管理流程、执行一致性、路由决策、定位输出以提升影响力，让老板能够清晰思考
+china_market_localization_strategist__general	中国市场本地化策略师	active	全栈中国市场本地化专家——将实时趋势信号转化为抖音、小红书、微信、B站等平台可执行的上市策略
+civil_engineer__general	土木工程师	active	土木与结构工程专家——覆盖全球标准（Eurocode、DIN、ACI、AISC、ASCE、AS/NZS、CSA、GB、IS、AIJ 等），专注结构分析、岩土设计、施工文档、建筑规范合规与多标准国际项目
+clinical_evidence_agent__general	临床证据 Agent	active	医疗场景 AI agent 的证据标准与临床可信度框架——定义如何区分已验证与未验证的临床声明，如何从同一证据基础为同行评审与投资者受众撰写，以及如何构建临床决策支持而不声称诊断权威
+cloud_security_architect__general	云安全架构师	active	云原生安全专家——设计零信任架构，跨 AWS、Azure 和 GCP 实施纵深防御，从第一天起保护基础设施即代码管道
+cms_developer__general	CMS 开发工程师	active	Drupal 和 WordPress 专家——主题开发、自定义插件/模块、内容架构与代码优先 CMS 实现
+coach__general	销售教练	active	销售代表成长、通话辅导与管道审查促进专家
+code_reviewer__general	代码审查工程师	active	建设性代码审查、安全与可维护性评估专家
+codebase_onboarding_engineer__general	代码库入职工程师	active	开发者入职专家——通过阅读源代码、追踪代码路径帮助新工程师快速理解陌生代码库，只陈述基于代码的事实
+compliance_auditor__general	合规审计师	active	SOC2/ISO27001/HIPAA/PCI-DSS 合规认证指导专家
+content_creator__general	内容创作者	active	多平台内容策略、编辑日历与文案专家
+corporate_training_designer__general	企业培训设计师	active	企业培训、课程开发与学习系统设计专家
+creative_strategist__general	广告创意策略师	active	RSA 文案、Meta 创意与 PMax 素材专家
+cultural_intelligence_strategist__general	文化智能策略师	active	全球 UX、多元呈现与文化排斥规避专家
+data_engineer__general	数据工程师	active	数据管道、湖仓架构与 ETL/ELT 专家
+data_privacy_officer__general	数据隐私官	active	企业数据隐私专家与 DPO——构建 GDPR、CCPA 与全球隐私合规计划，覆盖数据映射、隐私影响评估、同意管理、违规响应、供应商尽调与监管对接
+database_optimizer__general	数据库优化工程师	active	Schema 设计、查询优化与索引策略专家（PostgreSQL/MySQL）
+deal_strategist__general	商机策略师	active	MEDDPICC 资格认定、竞争定位与赢单策略专家
+desktop_app_engineer__general	桌面应用工程师	active	桌面应用工程师——Electron 和 Tauri 安全 IPC 与进程隔离、代码签名与公证、自动更新管道、原生 OS 集成与资源占用控制
+developer_advocate__general	开发者布道师	active	社区建设、开发者体验与技术内容创作专家
+devops_automator__general	DevOps 自动化工程师	active	CI/CD、基础设施自动化与云运营专家
+discovery_coach__general	销售发现教练	active	SPIN、Gap Selling 与 Sandler 问题设计专家
+document_generator__general	文档生成专家	active	PDF/PPTX/DOCX/XLSX 代码生成与专业文档创建专家
+douyin_strategist__general	抖音运营策略师	active	抖音平台、短视频营销与算法增长专家
+drone_reality_mapping__general	无人机/实景测绘专家	active	摄影测量与实景捕获专家——将无人机影像处理成正射马赛克、数字地形模型、点云与 3D 网格，连接野外捕获与 GIS 就绪产品
+drupal_performance__general	Drupal 性能工程师	active	Drupal 10/11 性能工程师——Core Web Vitals、渲染与动态页面缓存、BigPipe、缓存标签与上下文、数据库查询与 Views 优化、CSS/JS 聚合、响应式图片与懒加载、CDN 集成与 opcache/PHP-FPM 调优
+drupal_shopping_cart__general	Drupal 购物车工程师	active	Drupal 电商工程师——Drupal Commerce 产品目录管理、支付网关集成、结账工作流设计、订单管理、税务与促销配置与高可靠性店面交付
+email_intelligence_engineer__general	邮件智能工程师	active	从原始邮件线程中提取结构化、可推理数据的专家——服务 AI agent 与自动化系统
+esg_sustainability_officer__general	ESG 与可持续发展官	active	企业可持续发展策略师与 ESG 报告专家——构建环境、社会与治理计划，管理披露，推动脱碳倡议与对齐利益相关者与监管期望
+evidence_collector__general	测试证据采集员	active	截图 QA、视觉验证与 Bug 文档专家
+executive_summary_generator__general	高管摘要生成师	active	C 级沟通、战略摘要与决策支持专家
+experiment_tracker__general	实验追踪专家	active	A/B 测试、假设验证与数据驱动决策专家
+fedramp_rmf_compliance__general	FedRAMP 与 RMF 合规工程师	active	FedRAMP 和 NIST 风险管理框架合规工程师——覆盖传统 Rev5 路径（NIST 800-53 Rev 5 控制实施、SSP、3PAO 评估、机构授权）与现代 FedRAMP 20x 路径（关键安全指标、自动化机器可读验证、合规即代码），以及 ATO 流程、持续监控、POA&M 管理、FIPS 199 分类与 OSCAL 机器可读包
+feedback_synthesizer__general	用户反馈综合分析师	active	用户反馈分析、洞察提取与产品优先级专家
+cross_border_ecommerce__general	跨境电商专家	active	亚马逊/Shopee/Lazada 与跨境履约全链路专家

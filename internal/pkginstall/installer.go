@@ -38,9 +38,15 @@ type Result struct {
 
 // StepResult records the outcome of one resource installation step.
 type StepResult struct {
-	Resource string // e.g. "mcp_server:my-mcp"
-	Action   string // created|updated|skipped|error
-	Message  string
+	Resource string `json:"resource"`          // e.g. "mcp_server:my-mcp"
+	Action   string `json:"action"`            // created|updated|skipped|error|pending_conflict
+	Message  string `json:"message,omitempty"`
+	// Skill import two-phase fields (empty for other resource types).
+	JobID        string         `json:"job_id,omitempty"`   // import job id
+	Status       string         `json:"status,omitempty"`   // installed|pending_conflict|failed
+	CreatedCount int            `json:"created_count,omitempty"` // from apply createdSkillIds
+	SkippedCount int            `json:"skipped_count,omitempty"` // from apply skippedCandidateIds
+	Conflicts    []ConflictInfo `json:"conflicts,omitempty"`     // unresolved conflict groups
 }
 
 const totalSteps = 6
@@ -132,14 +138,26 @@ func (ins *Installer) report(step, total int, name, status string) {
 func (ins *Installer) countStep(r *Result, sr StepResult) {
 	switch sr.Action {
 	case "created":
-		r.Created++
+		r.Created += maxInt(sr.CreatedCount, 1)
+		r.Skipped += sr.SkippedCount
 	case "updated":
 		r.Updated++
 	case "skipped":
-		r.Skipped++
+		r.Skipped += maxInt(sr.SkippedCount, 1)
+	case "pending_conflict":
+		// Partial apply results still count; the conflict itself is not an error.
+		r.Created += sr.CreatedCount
+		r.Skipped += sr.SkippedCount
 	case "error":
 		r.Errors = append(r.Errors, sr.Message)
 	}
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func (ins *Installer) doJSON(client *http.Client, method, path string, body any) ([]byte, int, error) {
@@ -222,7 +240,8 @@ func (ins *Installer) installMCPServer(client *http.Client, spec MCPServerSpec) 
 	return StepResult{Resource: resource, Action: "created"}
 }
 
-// installSkill uploads a skill zip via multipart to POST /v1/skills/import.
+// installSkill uploads a skill zip via multipart to POST /v1/skills/import,
+// then drives the two-phase import (poll job → apply decisions) to completion.
 func (ins *Installer) installSkill(client *http.Client, pkgDir string, spec SkillSpec) StepResult {
 	resource := "skill:" + spec.URL
 	if spec.Path != "" {
@@ -230,6 +249,10 @@ func (ins *Installer) installSkill(client *http.Client, pkgDir string, spec Skil
 	}
 	if ins.DryRun {
 		return StepResult{Resource: resource, Action: "skipped", Message: "dry-run"}
+	}
+	if !validSkillDecision(spec.Decision) {
+		return StepResult{Resource: resource, Action: "error", Status: SkillStatusFailed,
+			Message: fmt.Sprintf("unknown decision: %q (want skip|keep|refine)", spec.Decision)}
 	}
 
 	var zipPath string
@@ -292,9 +315,6 @@ func (ins *Installer) installSkill(client *http.Client, pkgDir string, spec Skil
 	if spec.Subpath != "" {
 		_ = w.WriteField("source_subpath", spec.Subpath)
 	}
-	if spec.Decision != "" {
-		_ = w.WriteField("decision", spec.Decision)
-	}
 	if err := w.Close(); err != nil {
 		return StepResult{Resource: resource, Action: "error", Message: err.Error()}
 	}
@@ -312,10 +332,25 @@ func (ins *Installer) installSkill(client *http.Client, pkgDir string, spec Skil
 		return StepResult{Resource: resource, Action: "error", Message: err.Error()}
 	}
 	defer resp.Body.Close()
+	var respBuf bytes.Buffer
+	_, _ = respBuf.ReadFrom(resp.Body)
 	if resp.StatusCode >= 300 {
-		return StepResult{Resource: resource, Action: "error", Message: fmt.Sprintf("HTTP %d", resp.StatusCode)}
+		return StepResult{Resource: resource, Action: "error", Status: SkillStatusFailed,
+			Message: fmt.Sprintf("upload skill: HTTP %d: %s", resp.StatusCode, errorBodyMessage(respBuf.Bytes()))}
 	}
-	return StepResult{Resource: resource, Action: "created"}
+	// Upload only creates an import job; installation finishes via apply.
+	var upload struct {
+		JobID string `json:"jobId"`
+	}
+	normalized, err := normalizeJSONKeys(respBuf.Bytes())
+	if err == nil {
+		err = json.Unmarshal(normalized, &upload)
+	}
+	if err != nil || upload.JobID == "" {
+		return StepResult{Resource: resource, Action: "error", Status: SkillStatusFailed,
+			Message: fmt.Sprintf("upload skill: cannot parse job_id from response: %s", errorBodyMessage(respBuf.Bytes()))}
+	}
+	return ins.completeSkillImport(client, resource, spec.Decision, upload.JobID)
 }
 
 // installGraph reads a local JSON file and POSTs to /v1/graph/import.

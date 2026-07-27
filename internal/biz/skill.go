@@ -25,6 +25,8 @@ type (
 	SkillMutationWriter        = skill.SkillMutationWriter
 	SkillSyncWriter            = skill.SkillSyncWriter
 	SkillVersionWriter         = skill.SkillVersionWriter
+	SkillImportWriter          = skill.SkillImportWriter
+	SkillImportVersionInput    = skill.ImportVersionInput
 	SkillCreateVersionInput    = skill.CreateVersionInput
 	SkillUpdateDraft           = skill.UpdateDraft
 	SkillInvocationWrite       = skill.InvocationWrite
