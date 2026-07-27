@@ -1,1 +1,0 @@
-﻿{"_id":"45743dfa-6b40-48c4-b274-fca793837df8","_session_id":"","_text":"pool_stats: tick","_ts":"2026-07-22T08:28:39.1666383Z","duration_ms":0,"level":"info","raw_idle":3,"raw_in_use":0,"raw_open":3,"raw_wait_count":0,"read_idle":6,"read_in_use":0,"read_open":

@@ -24,6 +24,7 @@
 | 测试场景与评测报告（TS-1~TS-8，五维自评 88/100） | [06-测试场景与评测报告.md](./06-测试场景与评测报告.md) |
 | Harness 引擎视频整理（外部对标学习） | [07-Harness引擎视频整理.md](./07-Harness引擎视频整理.md) |
 | Harness 借鉴方案：双通道+安全阀 | [08-Harness借鉴方案-双通道与安全阀.md](./08-Harness借鉴方案-双通道与安全阀.md) |
+| 视频音频转录全文（whisper ASR） | [09-视频音频转录全文.md](./09-视频音频转录全文.md) |
 | UI 实跑截图（32 张） | [evidence/](./evidence/) |
 | API 实测记录（15 份 JSON） | [api/](./api/) |
 
@@ -51,6 +52,7 @@ submission/
 ├── 06-测试场景与评测报告.md        # 评测证据汇总
 ├── 07-Harness引擎视频整理.md       # 外部对标：Harness 引擎视频内容整理
 ├── 08-Harness借鉴方案-双通道与安全阀.md  # 借鉴方案：Signals 双通道 + 连跳上限
+├── 09-视频音频转录全文.md          # whisper ASR 完整转录（按章节分段 + 人工修正）
 ├── evidence/                     # 32 张 UI 实跑截图
 ├── api/                          # 15 份 API 实测记录
 └── code/

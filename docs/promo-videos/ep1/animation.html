@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Aranea-Agents EP1 · 精灵编排 动画</title>
+<!--
+  EP1 动画 · 1920x1080 · 时间轴驱动（与 voiceover.mp3 对齐，总时长 117.672s）
+  用法：
+    预览（带音频）: animation.html?audio=1
+    跳转调试:       animation.html?t=40
+    录制模式:       animation.html?record=1 （隐藏光标，结束后 window.__done=true）
+-->
+<style>
+  :root {
+    --bg: #0A1018;
+    --cyan: #4DD8E8;
+    --cyan-hover: #7AE5F0;
+    --violet: #A855F7;
+    --green: #3FE0A0;
+    --gold: #DCA03E;
+    --warning: #FFAF4D;
+    --danger: #FF5E7A;
+    --text: #D0DCE8;
+    --text-dim: #94A5BE;
+    --text-heading: #E0ECFF;
+    --glass: rgba(18, 26, 40, 0.68);
+    --glass-elevated: rgba(22, 28, 40, 0.78);
+    --glass-border: rgba(120, 160, 220, 0.12);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+    color: var(--text);
+  }
+  body.record { cursor: none; }
+
+  /* ============ 全局舞台 ============ */
+  .stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+  .stage::before { /* 细网格底纹 */
+    content: ""; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(77,216,232,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(77,216,232,0.04) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse 90% 80% at 50% 45%, #000 30%, transparent 75%);
+  }
+  .glow { /* 中央氛围光 */
+    position: absolute; border-radius: 50%; filter: blur(120px); pointer-events: none;
+    transition: opacity 1.2s;
+  }
+  .glow-cyan { width: 900px; height: 900px; left: 510px; top: 90px; background: rgba(77,216,232,0.07); }
+  .glow-violet { width: 700px; height: 700px; left: 1100px; top: 300px; background: rgba(168,85,247,0.05); }
+
+  /* ============ 场景切换 ============ */
+  .scene { position: absolute; inset: 0; opacity: 0; transition: opacity 0.7s ease; pointer-events: none; }
+  .scene.on { opacity: 1; }
+
+  /* ============ 字幕条 ============ */
+  .subtitle-bar {
+    position: absolute; left: 50%; bottom: 72px; transform: translateX(-50%);
+    max-width: 1500px; padding: 14px 34px; border-radius: 14px;
+    background: rgba(10, 16, 24, 0.72); backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    font-size: 34px; line-height: 1.45; color: #ECF4FF; text-align: center;
+    letter-spacing: 0.02em; white-space: pre-line;
+    opacity: 0; transition: opacity 0.25s;
+    z-index: 90; text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+  }
+  .subtitle-bar.show { opacity: 1; }
+
+  /* ============ Hook 场景 ============ */
+  #scene-hook .hook-question {
+    position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%);
+    font-size: 56px; font-weight: 600; color: var(--text-heading);
+    letter-spacing: 0.04em; text-align: center;
+    opacity: 0; transition: all 0.9s cubic-bezier(.2,.7,.3,1);
+  }
+  #scene-hook .hook-question.pop { opacity: 1; }
+  #scene-hook .hook-question.aside { top: 12%; font-size: 34px; color: var(--text-dim); }
+
+  /* 聊天气泡 mock */
+  .chat-mock { position: absolute; left: 50%; top: 54%; transform: translate(-50%, -50%); width: 900px; }
+  .bubble {
+    max-width: 720px; padding: 22px 30px; border-radius: 18px;
+    font-size: 28px; line-height: 1.5; margin-bottom: 26px;
+    opacity: 0; transform: translateY(24px); transition: all 0.6s cubic-bezier(.2,.7,.3,1);
+  }
+  .bubble.pop { opacity: 1; transform: translateY(0); }
+  .bubble.user {
+    margin-left: auto; background: linear-gradient(135deg, rgba(77,216,232,0.16), rgba(77,216,232,0.08));
+    border: 1px solid rgba(77,216,232,0.35); color: #D9F6FA;
+  }
+  .bubble.ai {
+    background: var(--glass); border: 1px solid var(--glass-border); color: var(--text-dim);
+    transition: all 0.8s;
+  }
+  .bubble.ai.dim { opacity: 0.38 !important; filter: grayscale(0.6); }
+  .bubble .ai-tag { font-size: 20px; color: var(--text-dim); opacity: 0.7; margin-bottom: 8px; display: block; }
+  .bubble .strike { text-decoration: line-through; text-decoration-color: var(--danger); text-decoration-thickness: 3px; }
+
+  /* 四角色徽章 */
+  .role-row { position: absolute; left: 50%; top: 62%; transform: translateX(-50%); display: flex; gap: 56px; }
+  .role-chip {
+    width: 200px; padding: 28px 0 24px; text-align: center; border-radius: 20px;
+    background: var(--glass); border: 1px solid var(--glass-border);
+    opacity: 0; transform: translateY(40px) scale(0.9); transition: all 0.55s cubic-bezier(.2,.8,.3,1.2);
+  }
+  .role-chip.pop { opacity: 1; transform: translateY(0) scale(1); }
+  .role-chip.lit { border-color: var(--cyan); box-shadow: 0 0 32px rgba(77,216,232,0.25); }
+  .role-chip .ico { font-size: 46px; display: block; margin-bottom: 12px; }
+  .role-chip .name { font-size: 28px; color: var(--text-heading); font-weight: 600; }
+
+  #scene-hook .birth {
+    position: absolute; left: 50%; top: 84%; transform: translateX(-50%);
+    font-size: 38px; color: var(--text-heading); opacity: 0; transition: opacity 0.8s;
+    display: flex; align-items: center; gap: 18px;
+  }
+  #scene-hook .birth.pop { opacity: 1; }
+  #scene-hook .birth img { width: 54px; height: 54px; border-radius: 12px; }
+  #scene-hook .birth b { color: var(--cyan); font-weight: 700; }
+
+  /* ============ Spirit 场景（原理图） ============ */
+  /* 开场：名称 + 定位 */
+  #scene-spirit .brand-open { position: absolute; left: 50%; top: 42%; transform: translate(-50%,-50%); text-align: center; transition: all 0.8s; }
+  #scene-spirit .brand-open .logo-big { width: 150px; height: 150px; border-radius: 32px; box-shadow: 0 0 80px rgba(77,216,232,0.35); }
+  #scene-spirit .brand-open .brand-name { font-size: 76px; font-weight: 700; color: var(--text-heading); margin-top: 30px; letter-spacing: 0.02em; }
+  #scene-spirit .brand-open .brand-name em { font-style: normal; color: var(--cyan); }
+  #scene-spirit .brand-open .brand-sub { font-size: 36px; color: var(--text-dim); margin-top: 22px; opacity: 0; transition: opacity 0.8s; }
+  #scene-spirit .brand-open .brand-sub.pop { opacity: 1; }
+  #scene-spirit .brand-open.away { opacity: 0; transform: translate(-50%,-50%) scale(0.85); }
+
+  /* 编排图主区 */
+  .orch { position: absolute; inset: 0; opacity: 0; transition: opacity 0.7s; }
+  .orch.on { opacity: 1; }
+
+  /* 用户一句话卡片 */
+  .user-say {
+    position: absolute; left: 130px; top: 240px; width: 400px; padding: 26px 30px;
+    border-radius: 20px; background: linear-gradient(135deg, rgba(77,216,232,0.14), rgba(77,216,232,0.06));
+    border: 1px solid rgba(77,216,232,0.4);
+    opacity: 0; transform: translateX(-60px); transition: all 0.7s cubic-bezier(.2,.7,.3,1);
+  }
+  .user-say.pop { opacity: 1; transform: translateX(0); }
+  .user-say .who { font-size: 20px; color: var(--cyan); margin-bottom: 10px; letter-spacing: 0.1em; }
+  .user-say .what { font-size: 30px; color: #D9F6FA; line-height: 1.45; }
+
+  /* Spirit 核心 */
+  .spirit-core { position: absolute; left: 660px; top: 200px; width: 300px; text-align: center; opacity: 0; transform: scale(0.6); transition: all 0.8s cubic-bezier(.2,.8,.3,1.15); }
+  .spirit-core.pop { opacity: 1; transform: scale(1); }
+  .spirit-orb {
+    width: 190px; height: 190px; margin: 0 auto; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, rgba(122,229,240,0.9), rgba(77,216,232,0.35) 45%, rgba(77,216,232,0.08) 75%);
+    box-shadow: 0 0 70px rgba(77,216,232,0.5), inset 0 0 40px rgba(255,255,255,0.15);
+    display: flex; align-items: center; justify-content: center;
+    animation: orbPulse 2.6s ease-in-out infinite;
+  }
+  @keyframes orbPulse { 0%,100% { box-shadow: 0 0 50px rgba(77,216,232,0.4), inset 0 0 40px rgba(255,255,255,0.12);} 50% { box-shadow: 0 0 95px rgba(77,216,232,0.65), inset 0 0 46px rgba(255,255,255,0.2);} }
+  .spirit-orb img { width: 104px; height: 104px; border-radius: 24px; }
+  .spirit-core .spirit-name { font-size: 38px; font-weight: 700; color: var(--text-heading); margin-top: 22px; }
+  .spirit-core .spirit-title { font-size: 24px; color: var(--cyan); margin-top: 8px; letter-spacing: 0.12em; }
+
+  /* 飞入的需求气泡（一句话 → Spirit） */
+  .fly-req {
+    position: absolute; left: 380px; top: 300px; padding: 14px 22px; border-radius: 999px;
+    background: rgba(77,216,232,0.2); border: 1px solid var(--cyan); color: #D9F6FA; font-size: 24px;
+    opacity: 0; transition: all 0.8s cubic-bezier(.4,.1,.3,1); z-index: 5; white-space: nowrap;
+  }
+  .fly-req.go { left: 610px; top: 285px; opacity: 1; }
+  .fly-req.absorb { transform: scale(0.2); opacity: 0; transition: all 0.5s ease-in; }
+
+  /* 计划 DAG */
+  .plan-dag { position: absolute; left: 1080px; top: 150px; width: 700px; height: 400px; }
+  .dag-node {
+    position: absolute; width: 240px; padding: 18px 22px; border-radius: 16px;
+    background: var(--glass-elevated); border: 1px solid var(--glass-border);
+    opacity: 0; transform: translateY(26px) scale(0.92); transition: all 0.55s cubic-bezier(.2,.8,.3,1.15);
+  }
+  .dag-node.pop { opacity: 1; transform: translateY(0) scale(1); }
+  .dag-node .step { font-size: 18px; color: var(--violet); letter-spacing: 0.12em; margin-bottom: 6px; }
+  .dag-node .task { font-size: 27px; color: var(--text-heading); font-weight: 600; }
+  .dag-node.n1 { left: 0; top: 30px; }
+  .dag-node.n2 { left: 380px; top: 0; }
+  .dag-node.n3 { left: 60px; top: 210px; }
+  .dag-node.n4 { left: 420px; top: 240px; }
+  .dag-line { position: absolute; height: 2px; background: linear-gradient(90deg, var(--violet), rgba(168,85,247,0.45)); transform-origin: left center; opacity: 0; transition: opacity 0.5s, width 0.6s ease; width: 0; }
+  .dag-line.draw { opacity: 0.95; }
+  .dag-line::after { content: ""; position: absolute; right: -2px; top: -4px; border-left: 9px solid var(--violet); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+  .plan-tag { position: absolute; left: 1080px; top: 92px; font-size: 22px; color: var(--violet); letter-spacing: 0.15em; opacity: 0; transition: opacity 0.6s; }
+  .plan-tag.pop { opacity: 1; }
+  /* 焦点链：叙事焦点转移时压暗上一幕 */
+  .plan-dag, .plan-tag { transition: opacity 0.9s; }
+  .plan-dag.dim, .plan-tag.dim { opacity: 0.15; }
+  .fallback { transition: opacity 0.9s; }
+  .fallback.dim { opacity: 0.18; }
+  .fb-cap { position: absolute; left: 0; top: -46px; font-size: 22px; color: var(--gold); letter-spacing: 0.15em; opacity: 0; transition: opacity 0.6s; text-shadow: 0 2px 12px rgba(6,10,17,0.95), 0 0 4px rgba(6,10,17,0.9); }
+  .fb-cap.pop { opacity: 1; }
+
+  /* 三层兜底 */
+  .fallback { position: absolute; left: 1080px; top: 470px; width: 700px; }
+  .fb-layer {
+    display: flex; align-items: center; gap: 22px; margin-bottom: 20px;
+    padding: 20px 26px; border-radius: 16px; background: var(--glass);
+    border: 1px solid var(--glass-border);
+    opacity: 0; transform: translateX(70px); transition: all 0.6s cubic-bezier(.2,.8,.3,1);
+  }
+  .fb-layer.pop { opacity: 1; transform: translateX(0); }
+  .fb-layer .fb-no {
+    width: 62px; height: 62px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 30px; font-weight: 700; border: 2px solid var(--glass-border); color: var(--text-dim);
+    transition: all 0.5s;
+  }
+  .fb-layer.active .fb-no { border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 24px rgba(77,216,232,0.35); }
+  .fb-layer .fb-body { flex: 1; }
+  .fb-layer .fb-title { font-size: 27px; color: var(--text-heading); font-weight: 600; }
+  .fb-layer .fb-desc { font-size: 21px; color: var(--text-dim); margin-top: 6px; }
+  .fb-layer .fb-state { font-size: 22px; flex: none; opacity: 0; transition: opacity 0.4s; }
+  .fb-layer .fb-state.show { opacity: 1; }
+  .fb-layer .fb-state.miss { color: var(--warning); }
+  .fb-layer .fb-state.hit { color: var(--green); }
+
+  /* 团队成军 */
+  .team-bar { position: absolute; left: 130px; top: 620px; width: 860px; opacity: 0; transition: opacity 0.7s; }
+  .team-bar.on { opacity: 1; }
+  .team-bar .team-cap { font-size: 24px; color: var(--gold); letter-spacing: 0.15em; margin-bottom: 16px; }
+  .team-members { display: flex; gap: 22px; }
+  .member {
+    width: 196px; padding: 22px 0 20px; text-align: center; border-radius: 18px;
+    background: var(--glass-elevated); border: 1px solid var(--glass-border);
+    opacity: 0; transform: translateY(50px) scale(0.85); transition: all 0.6s cubic-bezier(.2,.8,.3,1.2);
+  }
+  .member.pop { opacity: 1; transform: translateY(0) scale(1); }
+  .member .m-step { font-size: 16px; color: var(--violet); letter-spacing: 0.14em; margin-bottom: 10px; opacity: 0.9; }
+  .member .avatar { width: 76px; height: 76px; margin: 0 auto 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 38px; }
+  .member .m-name { font-size: 26px; color: var(--text-heading); font-weight: 600; }
+  .member .m-role { font-size: 19px; color: var(--text-dim); margin-top: 4px; }
+  .member .m-bar { height: 6px; border-radius: 3px; background: rgba(120,160,220,0.15); margin: 14px 18px 0; overflow: hidden; opacity: 0; transition: opacity 0.4s; }
+  .member.working .m-bar { opacity: 1; }
+  .member .m-bar i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, var(--cyan), var(--green)); transition: width 2.2s linear; }
+  .member.working .m-bar i { width: 100%; }
+  .member .m-state { font-size: 18px; color: var(--green); margin-top: 8px; opacity: 0; transition: opacity 0.5s; }
+  .member.done .m-state { opacity: 1; }
+
+  /* CEO 比喻收尾卡 */
+  .ceo-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%) scale(0.9); text-align: center; opacity: 0; transition: all 0.8s cubic-bezier(.2,.7,.3,1); z-index: 8; }
+  .ceo-card::before { /* 径向遮罩：遮住背后的幽灵元素 */
+    content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    width: 1500px; height: 820px; z-index: -1;
+    background: radial-gradient(ellipse at center, rgba(8,13,21,0.96) 25%, rgba(8,13,21,0.65) 55%, transparent 76%);
+  }
+  .ceo-card.pop { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+  .ceo-card .ceo-line1 { font-size: 40px; color: var(--text-dim); }
+  .ceo-card .ceo-line2 { font-size: 64px; font-weight: 700; color: var(--text-heading); margin-top: 20px; }
+  .ceo-card .ceo-line2 b { color: var(--gold); }
+  .ceo-card .ceo-line2 em { font-style: normal; color: var(--cyan); }
+  /* CEO 登场时压暗编排图 */
+  .orch.dimming > *:not(.ceo-card) { opacity: 0.04 !important; transition: opacity 0.9s; }
+
+  /* ============ Demo 场景 ============ */
+  #scene-demo .demo-frame {
+    position: absolute; left: 50%; top: 47%; transform: translate(-50%,-50%);
+    width: 1560px; height: 878px; border-radius: 22px; overflow: hidden;
+    border: 1px solid rgba(77,216,232,0.3); box-shadow: 0 30px 90px rgba(0,0,0,0.55), 0 0 60px rgba(77,216,232,0.12);
+    background: #06090F;
+    opacity: 0; transition: opacity 0.8s, transform 0.8s;
+  }
+  #scene-demo .demo-frame.pop { opacity: 1; }
+  #scene-demo .demo-frame .frame-bar {
+    height: 46px; background: rgba(18,26,40,0.9); display: flex; align-items: center; gap: 10px; padding: 0 20px;
+    border-bottom: 1px solid var(--glass-border);
+  }
+  #scene-demo .demo-frame .frame-bar i { width: 14px; height: 14px; border-radius: 50%; }
+  #scene-demo .demo-frame .frame-bar .r { background: #FF5F57; } #scene-demo .demo-frame .frame-bar .y { background: #FEBC2E; } #scene-demo .demo-frame .frame-bar .g { background: #28C840; }
+  #scene-demo .demo-frame .frame-bar .frame-title { margin-left: 14px; font-size: 19px; color: var(--text-dim); letter-spacing: 0.06em; }
+  #scene-demo .demo-frame video { width: 1560px; height: 832px; object-fit: cover; display: block; }
+  #scene-demo .demo-cap {
+    position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%);
+    padding: 10px 26px; border-radius: 999px; font-size: 26px;
+    background: rgba(10,16,24,0.8); border: 1px solid rgba(77,216,232,0.35); color: var(--cyan-hover);
+    opacity: 0; transition: opacity 0.4s; z-index: 6;
+  }
+  #scene-demo .demo-cap.pop { opacity: 1; }
+  #scene-demo .demo-title { position: absolute; left: 50%; top: 42px; transform: translateX(-50%); font-size: 30px; color: var(--text-dim); letter-spacing: 0.2em; opacity: 0; transition: opacity 0.7s; }
+  #scene-demo .demo-title.pop { opacity: 1; }
+
+  /* ============ Close 场景 ============ */
+  #scene-close .close-wrap { position: absolute; left: 50%; top: 44%; transform: translate(-50%,-50%); text-align: center; }
+  #scene-close .close-logo { width: 120px; height: 120px; border-radius: 28px; box-shadow: 0 0 60px rgba(77,216,232,0.4); opacity: 0; transform: scale(0.7); transition: all 0.8s cubic-bezier(.2,.8,.3,1.2); }
+  #scene-close .close-logo.pop { opacity: 1; transform: scale(1); }
+  #scene-close .close-line1 { font-size: 50px; font-weight: 700; color: var(--text-heading); margin-top: 34px; opacity: 0; transform: translateY(20px); transition: all 0.7s; }
+  #scene-close .close-line1.pop { opacity: 1; transform: translateY(0); }
+  #scene-close .close-line1 em { font-style: normal; color: var(--cyan); }
+  #scene-close .close-line2 { font-size: 34px; color: var(--text-dim); margin-top: 22px; opacity: 0; transition: opacity 0.8s; }
+  #scene-close .close-line2.pop { opacity: 1; }
+  #scene-close .next-card {
+    margin: 46px auto 0; width: 720px; padding: 28px 36px; border-radius: 20px;
+    background: var(--glass-elevated); border: 1px solid rgba(168,85,247,0.4);
+    display: flex; align-items: center; gap: 24px; text-align: left;
+    opacity: 0; transform: translateY(36px); transition: all 0.8s cubic-bezier(.2,.8,.3,1.1);
+  }
+  #scene-close .next-card.pop { opacity: 1; transform: translateY(0); }
+  #scene-close .next-card .nc-tag { flex: none; font-size: 22px; color: var(--violet); letter-spacing: 0.15em; }
+  #scene-close .next-card .nc-body { flex: 1; }
+  #scene-close .next-card .nc-title { font-size: 32px; color: var(--text-heading); font-weight: 600; }
+  #scene-close .next-card .nc-desc { font-size: 23px; color: var(--text-dim); margin-top: 8px; }
+  #scene-close .next-card .nc-arrow { flex: none; font-size: 40px; color: var(--violet); }
+
+  /* 谢幕遮罩 */
+  .fade-black { position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity 0.5s; z-index: 99; pointer-events: none; }
+  .fade-black.on { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="glow glow-cyan"></div>
+  <div class="glow glow-violet"></div>
+
+  <!-- ===== Scene 1 · Hook ===== -->
+  <section class="scene" id="scene-hook">
+    <div class="hook-question" id="hookQ">在 AI 时代，有一个问题<br>始终困扰着我们</div>
+    <div class="chat-mock">
+      <div class="bubble user" id="hookUser">帮我分析三支股票，并写一份投资建议</div>
+      <div class="bubble ai" id="hookAi">
+        <span class="ai-tag">单个 AI 的回复</span>
+        <span id="hookAiText">好的，以下是一段通用的投资建议：请注意分散风险，关注基本面……（<span class="strike">一段聊天回复</span>）</span>
+      </div>
+    </div>
+    <div class="role-row" id="roleRow">
+      <div class="role-chip" data-r="0"><span class="ico">🔍</span><span class="name">调研</span></div>
+      <div class="role-chip" data-r="1"><span class="ico">📊</span><span class="name">分析</span></div>
+      <div class="role-chip" data-r="2"><span class="ico">✍️</span><span class="name">写作</span></div>
+      <div class="role-chip" data-r="3"><span class="ico">✅</span><span class="name">审核</span></div>
+    </div>
+    <div class="birth" id="hookBirth">
+      <span>这，就是</span><img src="../assets/aranea-512.png" alt="Aranea"><b>Aranea-Agents</b><span>诞生的原因</span>
+    </div>
+  </section>
+
+  <!-- ===== Scene 2 · Spirit 原理图 ===== -->
+  <section class="scene" id="scene-spirit">
+    <div class="brand-open" id="brandOpen">
+      <img class="logo-big" src="../assets/aranea-512.png" alt="Aranea">
+      <div class="brand-name">Aranea<em>-Agents</em></div>
+      <div class="brand-sub" id="brandSub">企业级 · 多智能体编排平台</div>
+    </div>
+
+    <div class="orch" id="orch">
+      <div class="user-say" id="userSay">
+        <div class="who">你，只说一句话</div>
+        <div class="what">「帮我调研新能源行业，并生成一份投资报告」</div>
+      </div>
+
+      <div class="spirit-core" id="spiritCore">
+        <div class="spirit-orb"><img src="../assets/aranea-512.png" alt="Spirit"></div>
+        <div class="spirit-name">Spirit</div>
+        <div class="spirit-title">智能总调度员</div>
+      </div>
+
+      <div class="fly-req" id="flyReq">一句话需求</div>
+
+      <div class="plan-tag" id="planTag">自动拆解 · 执行计划</div>
+      <div class="plan-dag" id="planDag">
+        <div class="dag-line" id="dagL1" style="left:235px; top:118px; transform:rotate(-14deg);"></div>
+        <div class="dag-line" id="dagL2" style="left:240px; top:150px; transform:rotate(18deg);"></div>
+        <div class="dag-line" id="dagL3" style="left:620px; top:120px; transform:rotate(24deg);"></div>
+        <div class="dag-node n1" id="dagN1"><div class="step">STEP 1</div><div class="task">行业调研</div></div>
+        <div class="dag-node n2" id="dagN2"><div class="step">STEP 2</div><div class="task">数据分析</div></div>
+        <div class="dag-node n3" id="dagN3"><div class="step">STEP 3</div><div class="task">报告撰写</div></div>
+        <div class="dag-node n4" id="dagN4"><div class="step">STEP 4</div><div class="task">审核合成</div></div>
+      </div>
+
+      <div class="fallback" id="fallbackWrap">
+        <div class="fb-cap" id="fbCap">组建团队 · 三层兜底</div>
+        <div class="fb-layer" id="fb1">
+          <div class="fb-no">1</div>
+          <div class="fb-body">
+            <div class="fb-title">寻找现成的团队</div>
+            <div class="fb-desc">在团队库中，检索一支匹配的队伍</div>
+          </div>
+          <div class="fb-state miss" id="fb1State">未命中 →</div>
+        </div>
+        <div class="fb-layer" id="fb2">
+          <div class="fb-no">2</div>
+          <div class="fb-body">
+            <div class="fb-title">从角色库现场组建</div>
+            <div class="fb-desc">挑选最合适的 Agent 角色，即刻成军</div>
+          </div>
+          <div class="fb-state hit" id="fb2State">✓ 命中 3 员</div>
+        </div>
+        <div class="fb-layer" id="fb3">
+          <div class="fb-no">3</div>
+          <div class="fb-body">
+            <div class="fb-title">亲手创造新角色</div>
+            <div class="fb-desc">角色库也没有？Spirit 现场造一个</div>
+          </div>
+          <div class="fb-state hit" id="fb3State">✓ 兜底成军</div>
+        </div>
+      </div>
+
+      <div class="team-bar" id="teamBar">
+        <div class="team-cap">AI 团队 · 各司其职 · 并行执行</div>
+        <div class="team-members">
+          <div class="member" id="m1"><div class="m-step">STEP 1</div><div class="avatar" style="background:rgba(92,107,192,0.25);">🔍</div><div class="m-name">研究员</div><div class="m-role">行业调研</div><div class="m-bar"><i></i></div><div class="m-state">✓ 完成</div></div>
+          <div class="member" id="m2"><div class="m-step">STEP 2</div><div class="avatar" style="background:rgba(38,198,218,0.25);">📊</div><div class="m-name">分析师</div><div class="m-role">数据分析</div><div class="m-bar"><i></i></div><div class="m-state">✓ 完成</div></div>
+          <div class="member" id="m3"><div class="m-step">STEP 3</div><div class="avatar" style="background:rgba(171,71,188,0.25);">✍️</div><div class="m-name">撰稿人</div><div class="m-role">报告撰写</div><div class="m-bar"><i></i></div><div class="m-state">✓ 完成</div></div>
+          <div class="member" id="m4"><div class="m-step">STEP 4</div><div class="avatar" style="background:rgba(38,166,154,0.25);">✅</div><div class="m-name">审核员</div><div class="m-role">审核合成</div><div class="m-bar"><i></i></div><div class="m-state">✓ 完成</div></div>
+        </div>
+      </div>
+
+      <div class="ceo-card" id="ceoCard">
+        <div class="ceo-line1">这就像是一位 CEO</div>
+        <div class="ceo-line2"><b>一句话</b>，就拥有了一支<br><em>随叫随到</em>的专业团队</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Scene 3 · Demo 录屏 ===== -->
+  <section class="scene" id="scene-demo">
+    <div class="demo-title" id="demoTitle">产 品 实 录</div>
+    <div class="demo-frame" id="demoFrame">
+      <div class="frame-bar"><i class="r"></i><i class="y"></i><i class="g"></i><span class="frame-title">Aranea-Agents · 精灵编排实录</span></div>
+      <video id="demoVideo" muted playsinline preload="auto" src="recordings/ep1-demo-clip.webm"></video>
+    </div>
+    <div class="demo-cap" id="demoCap"></div>
+  </section>
+
+  <!-- ===== Scene 4 · Close ===== -->
+  <section class="scene" id="scene-close">
+    <div class="close-wrap">
+      <img class="close-logo" id="closeLogo" src="../assets/aranea-512.png" alt="Aranea">
+      <div class="close-line1" id="closeL1">这就是 Aranea-Agents 的<em>精灵编排</em>能力</div>
+      <div class="close-line2" id="closeL2">从一句话，到一支 AI 团队</div>
+      <div class="next-card" id="nextCard">
+        <div class="nc-tag">下一集</div>
+        <div class="nc-body">
+          <div class="nc-title">EP2 · 随时介入，成为真正的指挥官</div>
+          <div class="nc-desc">暂停、追问、注入指令——你在任何时刻接管团队</div>
+        </div>
+        <div class="nc-arrow">→</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="subtitle-bar" id="subtitleBar"></div>
+  <div class="fade-black" id="fadeBlack"></div>
+</div>
+
+<script>
+/* ================= 时间轴数据（与 ep1/timeline.json 对齐） ================= */
+const TOTAL = 117.672;
+const SCENES = [
+  { id: 'scene-hook',   start: 0,      end: 23.952 },
+  { id: 'scene-spirit', start: 24.352, end: 74.320 },
+  { id: 'scene-demo',   start: 74.720, end: 103.664 },
+  { id: 'scene-close',  start: 104.064, end: TOTAL },
+];
+/* 字幕 chunks：[start, end, text]（absolute 秒，来自 timeline.json） */
+const CHUNKS = [
+  [0, 4.224, '在 AI 时代，有一个问题始终困扰着我们。'],
+  [4.224, 13.464, '当你面对一个复杂任务，比如「帮我分析三支股票并写一份投资建议」，一个 AI 只能给你一段聊天回复。'],
+  [13.464, 23.856, '但真正的工作，需要调研、分析、写作、审核，多个角色协同。\n这，就是 Aranea-Agents 诞生的原因。'],
+  [24.352, 26.296, 'Aranea-Agents，'],
+  [26.296, 29.800, '是一个企业级多智能体编排平台。'],
+  [29.800, 37.936, '你只需要对 Spirit——也就是我们的智能总调度员——说一句话。\nSpirit 会自动拆解任务，'],
+  [37.936, 39.952, '构建执行计划。'],
+  [39.952, 45.904, '然后，它开始组建团队：先寻找一支现成的、匹配的团队。'],
+  [45.904, 52.552, '如果没有，就从你的 Agent 角色库中，挑选最合适的人选，现场组建。'],
+  [52.552, 58.216, '如果角色库中也没有，Spirit 会亲手创造一个全新的角色。'],
+  [58.216, 65.224, '三层兜底，直至组建出一支最合适的 AI 团队。\n每个成员各司其职，'],
+  [65.224, 69.328, '并行执行。\n这就像是一位 CEO，'],
+  [69.328, 73.888, '一句话，就拥有了一支随叫随到的专业团队。'],
+  [74.720, 75.776, '看，'],
+  [75.776, 84.656, '我现在在 Aranea-Agents 的界面中。\n输入需求：「帮我调研新能源行业并生成一份投资报告」。'],
+  [84.656, 86.864, 'Spirit 开始思考，'],
+  [86.864, 89.408, '生成了完整的任务计划。'],
+  [89.408, 91.232, '团队面板中，'],
+  [91.232, 95.840, '研究员、分析师、撰稿人同时开始工作。'],
+  [95.840, 98.048, '进度条实时推进，'],
+  [98.048, 103.328, '最终合成一份完整报告。\n全程可视，随时可控。'],
+  [104.064, 107.976, '这就是 Aranea-Agents 的精灵编排能力。'],
+  [107.976, 117.312, '从一句话，到一支 AI 团队。\n下一集，我们将展示如何随时介入这支团队，成为真正的指挥官。'],
+];
+
+/* ================= 节拍（beats）：t → 动作 ================= */
+const $ = (id) => document.getElementById(id);
+const BEATS = [
+  /* ---- Hook ---- */
+  [0.30,  () => $('hookQ').classList.add('pop')],
+  [4.224, () => { $('hookQ').classList.add('aside'); $('hookUser').classList.add('pop'); }],
+  [6.00,  () => $('hookAi').classList.add('pop')],
+  [13.464,() => {
+    $('hookAi').classList.add('dim');
+    document.querySelectorAll('#roleRow .role-chip').forEach((c, i) => {
+      setTimeout(() => { c.classList.add('pop'); setTimeout(() => c.classList.add('lit'), 350); }, i * 520);
+    });
+  }],
+  [21.00, () => $('hookBirth').classList.add('pop')],
+
+  /* ---- Spirit ---- */
+  [24.352,() => $('brandOpen').classList.remove('away')],
+  [26.296,() => $('brandSub').classList.add('pop')],
+  [29.800,() => {
+    $('brandOpen').classList.add('away');
+    $('orch').classList.add('on');
+    $('spiritCore').classList.add('pop');
+    setTimeout(() => $('userSay').classList.add('pop'), 500);
+  }],
+  [33.40, () => { $('flyReq').classList.add('go'); }],
+  [34.30, () => { $('flyReq').classList.add('absorb'); }],
+  [37.770,() => {
+    $('planTag').classList.add('pop');
+    ['dagN1','dagN2','dagN3','dagN4'].forEach((id, i) => setTimeout(() => $(id).classList.add('pop'), i * 380));
+    ['dagL1','dagL2','dagL3'].forEach((id, i) => setTimeout(() => { const l = $(id); l.style.width = '330px'; l.classList.add('draw'); }, 300 + i * 380));
+  }],
+  [39.952,() => {
+    // 焦点转移：计划 DAG 压暗，三层兜底登场
+    $('planDag').classList.add('dim'); $('planTag').classList.add('dim');
+    $('fbCap').classList.add('pop');
+    $('fb1').classList.add('pop'); $('fb1').classList.add('active');
+  }],
+  [43.80, () => $('fb1State').classList.add('show')],
+  [45.904,() => { $('fb2').classList.add('pop'); $('fb2').classList.add('active'); }],
+  [50.50, () => $('fb2State').classList.add('show')],
+  [52.552,() => { $('fb3').classList.add('pop'); $('fb3').classList.add('active'); }],
+  [56.40, () => $('fb3State').classList.add('show')],
+  [58.216,() => {
+    // 焦点转移：兜底压暗，团队成军登场
+    $('fallbackWrap').classList.add('dim');
+    $('teamBar').classList.add('on');
+    ['m1','m2','m3','m4'].forEach((id, i) => setTimeout(() => $(id).classList.add('pop'), i * 350));
+  }],
+  [65.224,() => { ['m1','m2','m3','m4'].forEach((id, i) => setTimeout(() => $(id).classList.add('working'), i * 450)); }],
+  [68.30, () => { ['m1','m2','m3','m4'].forEach((id, i) => setTimeout(() => $(id).classList.add('done'), i * 350)); }],
+  [69.328,() => { $('orch').classList.add('dimming'); $('ceoCard').classList.add('pop'); }],
+
+  /* ---- Demo ---- */
+  [74.720,() => {
+    $('demoTitle').classList.add('pop');
+    $('demoFrame').classList.add('pop');
+    const v = $('demoVideo');
+    v.currentTime = 0;
+    const p = v.play(); if (p) p.catch(() => {});
+  }],
+  [84.656,() => showDemoCap('Spirit 开始思考')],
+  [86.864,() => showDemoCap('生成完整的任务计划')],
+  [89.408,() => showDemoCap('团队面板')],
+  [91.232,() => showDemoCap('成员并行工作')],
+  [95.840,() => showDemoCap('进度实时推进')],
+  [98.048,() => showDemoCap('合成完整报告 · 全程可视可控')],
+  [103.20,() => { const v = $('demoVideo'); v.pause(); }],
+
+  /* ---- Close ---- */
+  [104.064,() => { $('closeLogo').classList.add('pop'); $('closeL1').classList.add('pop'); }],
+  [107.976,() => $('closeL2').classList.add('pop')],
+  [110.50, () => $('nextCard').classList.add('pop')],
+  [117.10, () => $('fadeBlack').classList.add('on')],
+];
+
+let capTimer = null;
+function showDemoCap(text) {
+  const cap = $('demoCap');
+  cap.textContent = text;
+  cap.classList.add('pop');
+  clearTimeout(capTimer);
+  capTimer = setTimeout(() => cap.classList.remove('pop'), 3200);
+}
+
+/* ================= 字幕（与 SRT 同源的分行逻辑，≤16 字/行） ================= */
+function splitText(text, maxChars) {
+  const clean = text.replace(/\s*\n\s*/g, '').trim();
+  if (clean.length <= maxChars) return [clean];
+  const tokens = clean.match(/[A-Za-z0-9._-]+|[\s\S]/g) || [];
+  const isPunct = (t) => /^[，。；、！？：,.!?;:—…「」『』（）()]$/.test(t);
+  const endsWithBreak = (s) => /[，。；、！？：,.!?;:—…」』）)]$/.test(s);
+  const parts = [];
+  let buf = '';
+  const pushBuf = () => { if (buf) { parts.push(buf); buf = ''; } };
+  for (const tok of tokens) {
+    if (!isPunct(tok) && buf && buf.length + tok.length > maxChars && buf.length >= maxChars * 0.5) pushBuf();
+    buf += tok;
+    if (buf.length >= maxChars * 0.6 && endsWithBreak(buf)) pushBuf();
+  }
+  pushBuf();
+  const merged = [];
+  for (const p of parts) {
+    if (merged.length && /^[，。；、！？：,.!?;:—…」』）)]+$/.test(p)) merged[merged.length - 1] += p;
+    else merged.push(p);
+  }
+  return merged;
+}
+
+/* 把 chunk 再按 16 字切成等时小行（与 subtitles.srt 一致） */
+const SUB_LINES = [];
+for (const [s, e, text] of CHUNKS) {
+  const lines = splitText(text, 16);
+  const dur = (e - s) / lines.length;
+  lines.forEach((ln, i) => SUB_LINES.push([s + i * dur, s + (i + 1) * dur, ln]));
+}
+
+function updateSubtitle(t) {
+  const bar = $('subtitleBar');
+  const hit = SUB_LINES.find(([s, e]) => t >= s && t < e);
+  if (hit) {
+    if (bar.textContent !== hit[2]) bar.textContent = hit[2];
+    bar.classList.add('show');
+  } else {
+    bar.classList.remove('show');
+  }
+}
+
+function updateScenes(t) {
+  for (const sc of SCENES) {
+    $(sc.id).classList.toggle('on', t >= sc.start && t < sc.end);
+  }
+}
+
+/* ================= 主循环 ================= */
+const params = new URLSearchParams(location.search);
+const T_OFFSET = parseFloat(params.get('t') || '0');
+const RECORD = params.get('record') === '1';
+const FREEZE = params.get('freeze') === '1';
+const SCALE = parseFloat(params.get('scale') || '1');
+if (RECORD) document.body.classList.add('record');
+if (SCALE !== 1) document.documentElement.style.zoom = SCALE; // 超采样渲染（配合 render-animation.mjs --scale）
+
+let fired = 0;
+let t0 = null;
+
+function frame(now) {
+  if (t0 === null) t0 = now;
+  const t = (now - t0) / 1000 + T_OFFSET;
+  while (fired < BEATS.length && BEATS[fired][0] <= t) {
+    try { BEATS[fired][1](); } catch (e) { console.error(e); }
+    fired++;
+  }
+  updateScenes(t);
+  updateSubtitle(t);
+  if (t < TOTAL + 0.4) {
+    requestAnimationFrame(frame);
+  } else {
+    window.__done = true;
+  }
+}
+
+/* 调试跳转：静默补放已过节拍 */
+if (T_OFFSET > 0) {
+  while (fired < BEATS.length && BEATS[fired][0] <= T_OFFSET) {
+    try { BEATS[fired][1](); } catch (e) {}
+    fired++;
+  }
+}
+
+/* 可选音频预览 */
+if (!FREEZE && params.get('audio') === '1') {
+  const au = new Audio('voiceover.mp3');
+  au.currentTime = T_OFFSET;
+  au.play().catch(() => {});
+}
+
+/* 定格调试：?t=N&freeze=1 渲染 t=N 的稳态画面，不推进 */
+if (FREEZE) {
+  updateScenes(T_OFFSET);
+  updateSubtitle(T_OFFSET);
+  const v = $('demoVideo');
+  if (T_OFFSET >= 74.720 && T_OFFSET < 103.664) {
+    v.addEventListener('loadedmetadata', () => {
+      v.currentTime = Math.min(T_OFFSET - 74.720, (v.duration || 0) - 0.05);
+      v.pause();
+    });
+    if (v.readyState >= 1) {
+      v.currentTime = Math.min(T_OFFSET - 74.720, (v.duration || 0) - 0.05);
+      v.pause();
+    }
+  }
+} else {
+  requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>
