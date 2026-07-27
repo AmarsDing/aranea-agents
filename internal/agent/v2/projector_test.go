@@ -700,3 +700,31 @@ func TestHandleTextDone_NoReplyStep_NoOp(t *testing.T) {
 		t.Errorf("expected replyStepIDs empty, got %q", stepID)
 	}
 }
+
+// -- synthesis turn reply step marker (2026-07-27) --
+
+func TestNewStep_SynthesisTurnReplyAuthorOverridden(t *testing.T) {
+	meta := ProjectMeta{AgentKey: "agent-spirit", Synthesis: true}
+	reply := meta.newStep("st-1", biz.StepKindReply, 1)
+	if reply.AuthorAgentKey != biz.SynthesisAuthorAgentKey {
+		t.Fatalf("synthesis reply AuthorAgentKey = %q, want %q", reply.AuthorAgentKey, biz.SynthesisAuthorAgentKey)
+	}
+}
+
+func TestNewStep_SynthesisTurnNonReplyNotOverridden(t *testing.T) {
+	meta := ProjectMeta{AgentKey: "agent-spirit", Synthesis: true}
+	for _, kind := range []biz.StepKind{biz.StepKindThinking, biz.StepKindAction, biz.StepKindNotice} {
+		step := meta.newStep("st-x", kind, 1)
+		if step.AuthorAgentKey != "agent-spirit" {
+			t.Fatalf("kind=%s AuthorAgentKey = %q, want original agent key", kind, step.AuthorAgentKey)
+		}
+	}
+}
+
+func TestNewStep_NormalTurnReplyNotOverridden(t *testing.T) {
+	meta := ProjectMeta{AgentKey: "agent-spirit"}
+	reply := meta.newStep("st-1", biz.StepKindReply, 1)
+	if reply.AuthorAgentKey != "agent-spirit" {
+		t.Fatalf("normal reply AuthorAgentKey = %q, want agent-spirit", reply.AuthorAgentKey)
+	}
+}

@@ -6,7 +6,7 @@
     完整构建流程：
       1. 编译后端 Go 二进制（admin → aranea-server.exe）
       2. 编译前端 Vue 应用（quasar build）
-      3. 打包 Electron 桌面应用（electron-packager）
+      3. 打包 Tauri 桌面应用（cargo build --release）
       4. 下载/准备依赖（PostgreSQL + Redis）
       5. 组装部署目录（AraneaAgents-deploy 结构）
       6. 调用 NSIS 生成 .exe 安装包
@@ -30,7 +30,7 @@
     跳过后端编译（使用已有的 aranea-server.exe）
 
 .PARAMETER SkipFrontend
-    跳过前端编译和 Electron 打包
+    跳过前端编译和 Tauri 打包
 
 .EXAMPLE
     # 完整构建（自动下载依赖）
@@ -137,22 +137,21 @@ if (-not $SkipFrontend) {
     Write-Host "[2/6] Building frontend (quasar build)..." -ForegroundColor Cyan
 
     Push-Location (Join-Path $RepoRoot "web")
+    # PS 5.1: native cmd stderr + EAP=Stop => terminating NativeCommandError (Vite/Rollup warnings).
+    # Relax EAP during install/build; rely on exit codes for real failures.
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     & pnpm install --frozen-lockfile 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  pnpm install failed, retrying without frozen-lockfile..." -ForegroundColor Yellow
         & pnpm install
     }
     & pnpm build
-    if ($LASTEXITCODE -ne 0) {
+    $frontendExit = $LASTEXITCODE
+    $ErrorActionPreference = $prevEap
+    if ($frontendExit -ne 0) {
         Pop-Location
         Write-Error "前端编译失败"
-    }
-
-    # 确保 esbuild 可用
-    $esbuildPath = Join-Path $RepoRoot "web\node_modules\.bin\esbuild.CMD"
-    if (-not (Test-Path $esbuildPath)) {
-        Write-Host "  安装 esbuild..." -ForegroundColor Yellow
-        & pnpm add -D esbuild
     }
     Pop-Location
     Write-Host "  [OK] frontend built" -ForegroundColor Green
@@ -160,22 +159,24 @@ if (-not $SkipFrontend) {
     Write-Host "[2/6] Skipping frontend build" -ForegroundColor Yellow
 }
 
-# ─── Step 3: 打包 Electron 应用 ────────────────────────────────
+# ─── Step 3: 打包 Tauri 应用 ──────────────────────────────────
 if (-not $SkipFrontend) {
-    Write-Host "[3/6] Packaging Electron app..." -ForegroundColor Cyan
+    Write-Host "[3/6] Packaging Tauri app (cargo build --release)..." -ForegroundColor Cyan
 
     Push-Location (Join-Path $RepoRoot "web")
-    $env:QUASAR_ELECTRON_PRELOAD_FOLDER = "preload"
-    $env:QUASAR_ELECTRON_PRELOAD_EXTENSION = ".cjs"
-    & node (Join-Path $RepoRoot "web\scripts\build-electron.mjs") --platform=win32 --arch=x64
-    if ($LASTEXITCODE -ne 0) {
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & node (Join-Path $RepoRoot "web\scripts\build-tauri.mjs")
+    $tauriExit = $LASTEXITCODE
+    $ErrorActionPreference = $prevEap
+    if ($tauriExit -ne 0) {
         Pop-Location
-        Write-Error "Electron 打包失败"
+        Write-Error "Tauri 打包失败（需要本机已安装 Rust stable 工具链 + MSVC）"
     }
     Pop-Location
-    Write-Host "  [OK] Electron app packaged" -ForegroundColor Green
+    Write-Host "  [OK] Tauri app packaged" -ForegroundColor Green
 } else {
-    Write-Host "[3/6] Skipping Electron packaging" -ForegroundColor Yellow
+    Write-Host "[3/6] Skipping Tauri packaging" -ForegroundColor Yellow
 }
 
 # ─── Step 4: 准备依赖 ──────────────────────────────────────────
@@ -235,22 +236,12 @@ if (-not (Test-Path $launcherSrc)) {
 Copy-Item $launcherSrc (Join-Path $StagingDir "AraneaLauncher.exe") -Force
 Write-Host "  [OK] AraneaLauncher.exe" -ForegroundColor Green
 
-# 复制 Electron 应用
-$electronAppDir = Join-Path $RepoRoot "web\build\electron\AraneaAgents-win32-x64"
-if (-not (Test-Path $electronAppDir)) {
-    # 兼容 fallback 目录（带时间戳，位于 web/build/electron-<ts>/）
-    $fallbackBase = Join-Path $RepoRoot "web\build"
-    if (Test-Path $fallbackBase) {
-        $fallback = Get-ChildItem -Path $fallbackBase -Directory -Filter "electron-*" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        if ($fallback) {
-            $electronAppDir = Join-Path $fallback.FullName "AraneaAgents-win32-x64"
-        }
-    }
+# 复制 Tauri 应用（单 exe：AraneaAgents.exe，内嵌前端静态资源）
+$tauriAppDir = Join-Path $RepoRoot "web\build\tauri\AraneaAgents-win32-x64"
+if (-not (Test-Path (Join-Path $tauriAppDir "AraneaAgents.exe"))) {
+    Write-Error "Tauri 应用目录不存在或缺少 AraneaAgents.exe：$tauriAppDir"
 }
-if (-not (Test-Path $electronAppDir)) {
-    Write-Error "Electron 应用目录不存在：$electronAppDir"
-}
-Copy-Item $electronAppDir (Join-Path $StagingDir "frontend") -Recurse -Force
+Copy-Item $tauriAppDir (Join-Path $StagingDir "frontend") -Recurse -Force
 Write-Host "  [OK] frontend/" -ForegroundColor Green
 
 # 复制配置文件

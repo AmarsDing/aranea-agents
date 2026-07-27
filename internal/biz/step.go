@@ -33,6 +33,12 @@ type Step struct {
 	CompletedAt     *time.Time
 }
 
+// SynthesisAuthorAgentKey 精灵总结 turn 的 reply step 专属 AuthorAgentKey。
+// 所有团队完成后由 TeamStarter 触发 synthesis turn（TurnInput.Synthesis=true），
+// 该 turn 的 reply step（即总结报告）以此标记覆盖原 agent key，
+// 前端据此渲染「任务总结」徽章高亮（2026-07-27）。
+const SynthesisAuthorAgentKey = "spirit-synthesis"
+
 type StepKind string
 
 const (

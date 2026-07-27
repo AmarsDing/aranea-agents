@@ -750,6 +750,7 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 		SessionID:    spiritSessionID,
 		Content:      trigger,
 		ParentTaskID: parentTaskID,
+		Synthesis:    true,
 	}); err != nil {
 		// 2026-07-27 修复3：ErrTurnMessageQueued = 成功受理，不是失败。
 		// 触发文本已被 steer 注入活跃 turn 或进入排队队列；活跃 turn 结束后

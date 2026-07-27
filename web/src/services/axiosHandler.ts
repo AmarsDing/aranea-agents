@@ -56,7 +56,7 @@ kratosApi.interceptors.response.use(
     // 401 → redirect to login
     if (status === 401) {
       // Use Vue Router (not window.location.href) so navigation respects the
-      // current history mode (hash mode for Electron file://, history for web).
+      // current history mode (hash mode for the desktop app, history for web).
       // Dynamic import avoids circular dependency with router → stores → services.
       const { default: router } = await import('../router');
       const current = router.currentRoute.value;

@@ -18,6 +18,10 @@ type Manifest struct {
 
 func Parse(body string) Manifest {
 	m := Manifest{}
+	// P-r4-BOM：剔除 UTF-8 BOM（U+FEFF）。Windows 编辑器/PowerShell 写出的
+	// SKILL.md 常带 BOM，否则首行 "\ufeff---" 无法匹配 frontmatter 起始，
+	// 导致 name/description/tags 全部解析失败（description 退化为 "---"）。
+	body = strings.TrimPrefix(body, "\ufeff")
 	lines := strings.Split(body, "\n")
 	inFrontmatter := false
 	fmEnd := 0

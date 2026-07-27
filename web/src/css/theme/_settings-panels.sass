@@ -481,6 +481,10 @@ body.body--dark
   flex: 1 1 auto
   min-height: calc(100vh - 52px)
   min-height: calc(100dvh - 52px)
+  // 封顶到视口高，壳层由 flex 填满；内部滚动交给 splitter 面板
+  height: calc(100vh - 52px)
+  height: calc(100dvh - 52px)
+  overflow: hidden
 
 .settings-shell
   width: 100%
@@ -499,10 +503,6 @@ body.body--dark
   display: flex
   flex-direction: column
   min-height: 0
-  height: calc(100vh - 192px)
-  height: calc(100dvh - 192px)
-  max-height: calc(100vh - 192px)
-  max-height: calc(100dvh - 192px)
   overflow: hidden
 
 .settings-shell--fill .settings-panels

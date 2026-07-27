@@ -29,6 +29,9 @@ import {
 
 import type { RunStatusValue } from '../types';
 
+// 单条用户纯文本输入硬上限（字符数）——与后端 biz.UserInputHardLimitChars 保持一致。
+export const USER_INPUT_HARD_LIMIT_CHARS = 200000;
+
 type SessionStore = ReturnType<typeof useChatSessionStore>;
 type MessageStore = ReturnType<typeof useChatMessageStore>;
 
@@ -232,6 +235,15 @@ export function useChatSender(deps: SenderDeps) {
   async function onSend() {
     const content = deps.inputText.value.trim();
     if (!content) {
+      return;
+    }
+    // 单条输入硬上限（与后端 biz.UserInputHardLimitChars 对齐，2026-07-27）：
+    // 超上限直接拒绝并提示改走附件通道；后端同样兜底校验。
+    if (content.length > USER_INPUT_HARD_LIMIT_CHARS) {
+      $q.notify({
+        type: 'warning',
+        message: t('chat.inputTooLong', { limit: USER_INPUT_HARD_LIMIT_CHARS }),
+      });
       return;
     }
     if (!isActiveRun() && sending.value) {

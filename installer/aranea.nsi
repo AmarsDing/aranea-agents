@@ -35,8 +35,8 @@ VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
 
 !define MUI_ABORTWARNING
-!define MUI_ICON "${STAGING_DIR}\frontend\resources\app\icons\icon.ico"
-!define MUI_UNICON "${STAGING_DIR}\frontend\resources\app\icons\icon.ico"
+!define MUI_ICON "${STAGING_DIR}\frontend\icon.ico"
+!define MUI_UNICON "${STAGING_DIR}\frontend\icon.ico"
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
@@ -79,10 +79,10 @@ Section "MainSection" SecMain
     MessageBox MB_OK|MB_ICONSTOP "Install failed: aranea-server.exe missing."
     Abort
   server_ok:
-  IfFileExists "$INSTDIR\frontend\AraneaAgents.exe" electron_ok
+  IfFileExists "$INSTDIR\frontend\AraneaAgents.exe" frontend_ok
     MessageBox MB_OK|MB_ICONSTOP "Install failed: frontend\AraneaAgents.exe missing."
     Abort
-  electron_ok:
+  frontend_ok:
   IfFileExists "$INSTDIR\internal\scenario\system\prompts\IDENTITY.md" scenario_ok
     MessageBox MB_OK|MB_ICONSTOP "Install failed: internal\scenario prompts missing. Please re-download the package."
     Abort
@@ -92,19 +92,43 @@ Section "MainSection" SecMain
     Abort
   catalog_ok:
 
+  ; --- WebView2 Runtime check (required by the Tauri desktop app) ---
+  ; Evergreen runtime client GUID; presence of "pv" value means installed.
+  ReadRegStr $0 HKLM "SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
+  ${If} $0 == ""
+    ReadRegStr $0 HKCU "SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
+  ${EndIf}
+  ${If} $0 == ""
+    DetailPrint "WebView2 Runtime not found; downloading bootstrapper..."
+    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile $env:TEMP\MicrosoftEdgeWebview2Setup.exe -UseBasicParsing"'
+    Pop $1
+    ${If} $1 == 0
+      DetailPrint "Installing WebView2 Runtime (silent)..."
+      nsExec::ExecToLog '"$env:TEMP\MicrosoftEdgeWebview2Setup.exe" /silent /install'
+      Pop $1
+      ${If} $1 != 0
+        MessageBox MB_OK|MB_ICONEXCLAMATION "WebView2 Runtime installation failed (exit $1). The desktop app requires WebView2 - please install it manually from https://developer.microsoft.com/microsoft-edge/webview2/"
+      ${EndIf}
+    ${Else}
+      MessageBox MB_OK|MB_ICONEXCLAMATION "WebView2 bootstrapper download failed. The desktop app requires WebView2 - please install it manually from https://developer.microsoft.com/microsoft-edge/webview2/"
+    ${EndIf}
+  ${Else}
+    DetailPrint "WebView2 Runtime found (version $0)."
+  ${EndIf}
+
   CreateDirectory "$SMPROGRAMS\Aranea-Agents"
-  CreateShortcut "$SMPROGRAMS\Aranea-Agents\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
-  CreateShortcut "$SMPROGRAMS\Aranea-Agents\Environment Check.lnk" "$INSTDIR\AraneaLauncher.exe" "-check" "$INSTDIR\frontend\resources\app\icons\icon.ico"
-  CreateShortcut "$SMPROGRAMS\Aranea-Agents\Stop Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "-stop" "$INSTDIR\frontend\resources\app\icons\icon.ico"
-  CreateShortcut "$SMPROGRAMS\Aranea-Agents\Uninstall.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
+  CreateShortcut "$SMPROGRAMS\Aranea-Agents\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\icon.ico"
+  CreateShortcut "$SMPROGRAMS\Aranea-Agents\Environment Check.lnk" "$INSTDIR\AraneaLauncher.exe" "-check" "$INSTDIR\frontend\icon.ico"
+  CreateShortcut "$SMPROGRAMS\Aranea-Agents\Stop Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "-stop" "$INSTDIR\frontend\icon.ico"
+  CreateShortcut "$SMPROGRAMS\Aranea-Agents\Uninstall.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\frontend\icon.ico"
 
   ; Do NOT run AraneaLauncher during install (can hang NSIS).
 
-  CreateShortcut "$DESKTOP\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
+  CreateShortcut "$DESKTOP\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\icon.ico"
 
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AraneaAgents" "DisplayName" "Aranea-Agents"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AraneaAgents" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AraneaAgents" "DisplayIcon" "$INSTDIR\frontend\resources\app\icons\icon.ico"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AraneaAgents" "DisplayIcon" "$INSTDIR\frontend\icon.ico"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AraneaAgents" "Publisher" "AmarsDing"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AraneaAgents" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AraneaAgents" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""

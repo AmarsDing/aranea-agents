@@ -24,6 +24,10 @@ type TurnInput struct {
 	// §3.2.1 — a Task corresponds to one user input; system-push Turns are
 	// continuation Turns on the same Task, not new Tasks.
 	ParentTaskID string
+	// Synthesis 标记本 turn 为精灵总结 turn（所有团队完成后由 TeamStarter
+	// 触发）。沿 TurnIntent→执行链路→v2 ProjectMeta 透传，reply step 的
+	// AuthorAgentKey 覆盖为 SynthesisAuthorAgentKey，供前端总结徽章高亮。
+	Synthesis bool
 }
 
 // TurnOptions carries per-turn overrides (dialog mode, provider, model, attachments).

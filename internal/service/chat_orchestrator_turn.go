@@ -444,7 +444,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// go through planning. The forcedPlanningRunOption is still injected as a
 	// hint to the LLM. If Plan() fails, we fall back to the soft gate.
 	gateStart := time.Now()
-	gateDecision, gateErr := o.runPrePlanningGate(ctx, sessionID, content, intentArtifact)
+	gateDecision, gateErr := o.runPrePlanningGate(ctx, input, intentArtifact)
 	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: runPrePlanningGate",
 		loggateway.StepID("chat.pre_planning_gate"),
 		loggateway.Any("elapsed_ms", time.Since(gateStart).Milliseconds()),

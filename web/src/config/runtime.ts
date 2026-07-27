@@ -9,8 +9,8 @@ type RuntimeConfig = {
 let runtimeConfig: RuntimeConfig = {};
 
 export async function loadRuntimeConfig(): Promise<void> {
-  // Electron production uses file:// protocol — absolute path fetch fails.
-  // Detect and use relative path; fall back to local backend on error.
+  // Standalone/file:// contexts: absolute path fetch fails —
+  // detect and use relative path; fall back to local backend on error.
   const isFileProtocol = typeof window !== 'undefined' && window.location?.protocol === 'file:';
   const configPath = isFileProtocol ? './assets/config/runtime-config.json' : '/assets/config/runtime-config.json';
   try {
@@ -20,9 +20,9 @@ export async function loadRuntimeConfig(): Promise<void> {
       return;
     }
   } catch {
-    // fetch failed (e.g. Electron file:// without relative file access)
+    // fetch failed (e.g. file:// without relative file access)
   }
-  // Fallback for Electron / standalone: point to local backend
+  // Fallback for standalone: point to local backend
   if (isFileProtocol) {
     runtimeConfig = {
       backendUrl: 'http://127.0.0.1:8000',
@@ -84,8 +84,8 @@ export function isWsSameOriginAsPage(): boolean {
 
 /**
  * True when the page is served from a local HTTP origin (127.0.0.1 / localhost / ::1).
- * In Electron production, the main process starts a local static HTTP server so
- * the page origin is `http://127.0.0.1:PORT/` — same-site as the backend at
+ * In the Tauri desktop app, the Rust side starts an embedded loopback HTTP server
+ * so the page origin is `http://127.0.0.1:PORT/` — same-site as the backend at
  * `http://127.0.0.1:8000`. This means SameSite=Lax session cookies are sent
  * with XHR/fetch/WS requests even though JS cannot read the HttpOnly cookie.
  */

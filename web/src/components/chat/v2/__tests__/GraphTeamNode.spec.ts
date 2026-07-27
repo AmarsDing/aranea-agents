@@ -210,4 +210,55 @@ describe('GraphTeamNode', () => {
     const style = wrapper.find('.graph-team-node').attributes('style') ?? '';
     expect(style).toContain(`height: ${graphTeamNodeHeight(3)}px`);
   });
+
+  // ── F 任务：视觉层次 / 动效 / 状态感知增强（2026-07-27） ──
+
+  it('renders running ripple ring on member status dot while running', () => {
+    const store = useChatActivityStore();
+    seedTeam(store, [
+      mkMember('m1', { Status: 'running' }),
+      mkMember('m2', { Status: 'completed' }),
+    ]);
+    const wrapper = mountNode(mkNode());
+    const dots = wrapper.findAll('.gtn-member__dot');
+    expect(dots[0]!.classes()).toContain('gtn-member__dot--ripple');
+    expect(dots[1]!.classes()).not.toContain('gtn-member__dot--ripple');
+  });
+
+  it('shows latest action of the running member', () => {
+    const store = useChatActivityStore();
+    seedTeam(store, [mkMember('m1', { Status: 'running' })]);
+    const wrapper = mountNode(mkNode());
+    const action = wrapper.find('.gtn-action');
+    expect(action.exists()).toBe(true);
+    expect(action.text()).toContain('执行中');
+  });
+
+  it('shows inline error row with full text in title when a member failed', () => {
+    const store = useChatActivityStore();
+    seedTeam(store, [
+      mkMember('m1', { Status: 'failed', Error: 'LLM timeout: context deadline exceeded' }),
+    ]);
+    const wrapper = mountNode(mkNode({ Status: 'failed' }));
+    const err = wrapper.find('.gtn-error');
+    expect(err.exists()).toBe(true);
+    expect(err.attributes('title')).toBe('LLM timeout: context deadline exceeded');
+    expect(err.text()).toContain('LLM timeout');
+    // 有错误时不再渲染动作行
+    expect(wrapper.find('.gtn-action').exists()).toBe(false);
+  });
+
+  it('falls back to generic failed label when failed member has no error text', () => {
+    const store = useChatActivityStore();
+    seedTeam(store, [mkMember('m1', { Status: 'failed', Error: '' })]);
+    const wrapper = mountNode(mkNode({ Status: 'failed' }));
+    const err = wrapper.find('.gtn-error');
+    expect(err.exists()).toBe(true);
+    expect(err.text()).toContain('失败');
+  });
+
+  it('keeps status row height equal to member row height in layout constants', async () => {
+    const { GTN_ROW_H, GTN_STATUS_ROW_H } = await import('../graphTeamNodeUi');
+    expect(GTN_STATUS_ROW_H).toBe(GTN_ROW_H);
+  });
 });

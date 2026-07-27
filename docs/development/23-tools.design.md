@@ -1749,7 +1749,7 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 = workspace_root
 ```
 
-`buildToolsetsForAgent` 在 desktop 联调与将来 Electron 打包下语义相同：均解析为 **本机绝对路径**。
+`buildToolsetsForAgent` 在 desktop 联调与桌面应用（Tauri）打包下语义相同：均解析为 **本机绝对路径**。
 
 `applyToolWorkspaceDirs`：一次解析 `workspace_root` → 同时赋 `FilesystemDir`、`ShellExecDir`；`ClaudeCodeDir` 空则回退。
 
@@ -1832,9 +1832,9 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 | 会话内始终允许 | `__aranea:tool_confirm:approve_session` | 批准 + 会话级授权 |
 | 始终允许 | `__aranea:tool_confirm:approve_always` | 批准 + 持久化授权 |
 
-#### 7.8.6 与 Electron / App 打包
+#### 7.8.6 与桌面 App 打包
 
-App 壳、Electron 打包 **不在本模块范围**（曾起草编号 53 文档，**不实施**）。工作区路径仍通过系统设置 / 环境变量 / Tool 配置注入，与是否 Electron 无关。
+App 壳、桌面应用打包（Tauri）**不在本模块范围**（曾起草编号 53 文档，**不实施**）。工作区路径仍通过系统设置 / 环境变量 / Tool 配置注入，与是否打包为桌面应用无关。
 
 ### 7.9 延迟工具机制（Deferred Tools）
 

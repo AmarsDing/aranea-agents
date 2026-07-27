@@ -661,6 +661,28 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - [x] 同一 spirit session 一次编排只触发一次总结（CAS）
 - [x] 总结触发注入失败时，时间线出现兜底「所有团队已完成」通知
 
+#### 后续修复（2026-07-27，会话 d78029b9 排查）
+
+> 根因链：lazy 建团下 PlanExecutor 按 DAG 逐 step AssembleTeam，首波团队全终态时后续 step 尚无团队记录，`CheckAllTeamsCompleted`（只查 teams 表）把「波次中点」误判为「编排终点」；且 `StartTeamTurn` 每次组团重置 CAS 守卫 → 每个波次触发一次 synthesis（总结 ×3）。同时 `ExecuteTurn` 每个 turn 都跑预规划门控（2 根 turn + 2 澄清续跑 + 3 总结 turn = 7 次），门控 notice 无 TaskID/TurnID 成 session 级孤儿步骤（前端 `getTaskOrphanSteps` 只认 TaskID，孤儿永不渲染但污染数据），共 14 条（7 对重复）。
+
+- [x] 修复 A（门控）：`TeamStarter.checkAllTeamsCompleted` 在 CAS 守卫前新增 `planExecutor.HasActiveRunForSession(spiritSessionID)` 检查——本 session 存在活跃 dagRun（lazy 建团未完）即跳过波次中点的 synthesis；门控路径不占用 CAS 名额
+- [x] 修复 A（终态唯一触发）：synthesis 触发点收口到 dagRun 终态——`PlanExecutor.SetCompletionNotifier` 注入 `AllTeamsCompletedNotifier`，`dagRun.releaseLeaseAndNotifyCompletion()` 释放 lease 后调 `NotifyAllTeamsCompleted`
+- [x] 修复 B（门控跳过续跑）：`runPrePlanningGate` 对 `ParentTaskID` 非空的续跑 turn（synthesis/澄清续答）直接放行，与 `runClarificationGate` 同款防循环；同时避免 forcedPlanning 系统提示注入 synthesis turn 强制其再走规划路径
+- [x] 修复 B（notice 挂接 Task）：`biz.PlanInput` 新增 `TaskID` 字段；`runPrePlanningGate` 从 ctx 取 `RootTaskActivityIDFromCtx`（turn 入口预解析）填入；`PrePlanningGate.publishPlanningPhase` 落 `Step.TaskID`——门控 notice 经 TaskCard orphanNoticeSteps 渲染为任务 footer，不再是孤儿
+- [x] 存量清理：`cmd/cleanup_orphan_notices` 工具删除历史孤儿 notice（`kind='notice' AND turn_id='' AND task_id='' AND author_agent_key='pre-planning-gate'`），318 条清零
+- [x] 测试：`pre_planning_gate_test.go` 新增续跑跳过 + TaskID 挂接用例
+- [x] 验证：`go build ./...` exit 0 + `go test ./internal/service/ -run 'TestRunPrePlanningGate|TestPrePlanningGate|Synthesis'` 全 PASS
+
+| 文件 | 改动 |
+|------|------|
+| `internal/service/spirit_team.go` | `checkAllTeamsCompleted` 新增活跃 dagRun 门控（CAS 守卫之前） |
+| `internal/service/plan_executor.go` | 新增 `SetCompletionNotifier` + `HasActiveRunForSession`；dagRun 终态 `releaseLeaseAndNotifyCompletion` 唯一触发 synthesis |
+| `internal/service/chat_orchestrator_turn_preplanning.go` | 签名改收 `biz.TurnInput`；`ParentTaskID` 非空跳过门控；`PlanInput.TaskID` 取自 ctx RootTaskActivityID |
+| `internal/biz/task_planner.go` | `PlanInput` 新增 `TaskID` 字段 |
+| `internal/service/pre_planning_gate.go` | `publishPlanningPhase` 增加 taskID 参数，落 `Step.TaskID` |
+| `internal/service/pre_planning_gate_test.go` | 新增续跑跳过 + TaskID 挂接用例 |
+| `cmd/cleanup_orphan_notices/main.go` | 新建：存量孤儿 notice 清理工具 |
+
 ---
 
 ### P-LAZYLOAD 长会话历史懒加载（2026-07-23）
@@ -1619,3 +1641,44 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 修改：`web/src/components/chat/v2/GraphStageBlock.vue`（重写 + 指针捕获延迟 + activeMember 实时查询）、`web/src/components/chat/v2/MemberSessionDialog.vue`（代码块事件委托）、`web/src/components/chat/v2/MemberSessionPanel.vue`（embedded 模式）、`web/src/components/chat/v2/TaskCard.vue`（移除 TeamStagePanel）、`web/src/components/chat/v2/TurnContainer.vue`、`web/src/components/chat/v2/TurnList.vue`、`web/src/components/chat/v2/SessionPanel.vue`、`web/src/features/chat/composables/usePlanDAGLayout.ts`（heightOf）、`web/src/features/chat/composables/useActivityQueries.ts`（memberSessions 访问器）、`web/src/css/app-global.sass`（markdown/代码块样式全局化）、`web/src/css/theme/_chat-message-panel.sass`（移除嵌套代码块样式）、`web/src/features/chat/composables/__tests__/usePlanDAGLayout.spec.ts`、`web/src/i18n/locales/zh-CN.ts` / `en-US.ts`
 
 删除：`web/src/components/chat/v2/GraphNode.vue`、`web/src/components/chat/v2/TeamStagePanel.vue`、`web/src/components/chat/v2/TeamRunCard.vue`、`web/src/features/chat/composables/useLocateTeamStage.ts`、`web/src/components/chat/v2/__tests__/TeamComponents.spec.ts`
+
+---
+
+## GA-E Graph/弹框/总结增强迭代（2026-07-27）
+
+> **范围**：承接 GA-D（方案A 重写）后的深化迭代——成员弹框可用性（加大/终态注入/任务指令块）、用户输入超限治理、Graph 富卡片视觉/动效/状态感知三方向增强、精灵总结回复显著化。
+> **需求**：[1-chat.md §A.4.2 / §A.4.4 / §4.4 / §R.3 FR-9](./1-chat.md)；**设计**：[1-chat.design.md §B.10.17.5 / §B.10.23.5 / §B.10.24](./1-chat.design.md)
+
+### GA-E.1 任务清单
+
+| # | 任务 | 状态 |
+|---|------|------|
+| T1 | 成员弹框加大（md→lg）+ 底部输入栏终态扩展（canInject 扩至 completed/failed，终态可补充再执行） | ✅ 2026-07-27 |
+| T2 | 弹框任务指令块：`memberInstruction` 显示成员任务输入（长内容折叠）；`ensureMemberStepsLoaded` 同载 tasks | ✅ 2026-07-27 |
+| T3 | 用户输入超限治理：前端 `USER_INPUT_HARD_LIMIT_CHARS=200000` 双端校验 + 后端 `ToolResultGate.CheckUserInput`（50K blob 转存 / 200K 硬上限拒绝） | ✅ 2026-07-27 |
+| T4 | Graph 富卡片视觉层次：running/completed/failed 状态淡底 / 头部状态胶囊徽章 / 状态点光晕 | ✅ 2026-07-27 |
+| T5 | Graph 富卡片动效：hover 上浮 / running dot 波纹扩散 / 进度条 shimmer / 成员行 hover 位移（prefers-reduced-motion 全降级） | ✅ 2026-07-27 |
+| T6 | Graph 富卡片状态感知：状态行（`graphTeamNodeStatusText` 纯函数——failed Error 优先 / running 成员最新 step）；`GTN_STATUS_ROW_H` 固定一行入布局高度 | ✅ 2026-07-27 |
+| T7 | 精灵总结显著化：`SynthesisAuthorAgentKey` 标记链路（TurnInput.Synthesis → ProjectMeta → stepAuthorAgentKey 仅覆盖 reply step）+ ReplyBlock「任务总结」徽章 | ✅ 2026-07-27 |
+| T8 | Review（aranea-review 全栈清单）+ 文档同步（本章节 + design/需求对应更新） | ✅ 2026-07-27 |
+| T9 | Review 修复①：`graphTeamNodeHeight` 漏算 `.gtn-status-row` margin-bottom 6px（`GTN_ROW_GAP`）——DAG 高度比实际渲染少 6px，`overflow:hidden` 会裁进度条 | ✅ 2026-07-27 |
+| T10 | Review 修复②：chat 主链路 `gateTurnUserInput` 补 200K 硬上限拒绝（原仅 50K 转存，API/WS 绕过前端时 >200K 被静默转存）；改返回 `(string, error)` + `chat_orchestrator_turn_pipeline_test.go` | ✅ 2026-07-27 |
+| T11 | Review 修复③（lint 阻断）：`SkillUploadPlaceholder.vue` keep-separate 按钮新增硬编码中文 → i18n `skillImport.keepSeparate*`（zh/en） | ✅ 2026-07-27 |
+
+### GA-E.2 验收标准
+
+- [x] 弹框 lg 尺寸，活动列表与输入栏同屏可操作；completed/failed 成员显示输入栏可补充再执行
+- [x] 弹框顶部显示成员任务输入（i18n `chat.v2.memberInstruction`），长内容自动折叠
+- [x] 输入超 200,000 字符前后端双端拒绝 + Toast 提示；50K–200K 走 blob 转存 + preview 注入（`tool_result_gate_test.go` 覆盖阈值/幂等/source）
+- [x] 富卡片 running dot 波纹 / 状态行动作与错误摘要（`GraphTeamNode.spec.ts` 14 用例全绿，含 5 个新增：ripple/动作行/错误行 title 全文/兜底文案/布局常量）
+- [x] synthesis turn 的 reply 渲染「任务总结」徽章（`StepBlocks.spec.ts`）；普通 reply 无徽章；synthesis thinking/action step 保持原 agent key（`projector_test.go`）
+- [x] Review 修复回归：DAG 高度函数与 CSS 间距账一致（members→status-row 10px + status-row→progress 6px 均入 `graphTeamNodeHeight`）；`gateTurnUserInput` >200K 返回 `CodeBadRequest`（`chat_orchestrator_turn_pipeline_test.go`）
+- [x] 回归：后端 `go build ./...` + `go vet` + agent/v2、biz、service 三包测试全绿；前端 lint（0 error，i18n 债务较基线 -16，无新增硬编码）+ 978 测试全绿 + build 通过
+
+### GA-E.3 改动文件清单（实际）
+
+后端：`internal/biz/step.go`（SynthesisAuthorAgentKey 常量）、`internal/biz/turn_input.go`（Synthesis 字段）、`internal/agent/v2/project_meta.go`（Synthesis 透传 + stepAuthorAgentKey）、`internal/service/spirit_team.go`（Synthesis: true 触发）、`internal/agent/v2/projector_test.go`（synthesis 分支测试）、`internal/biz/tool_result_gate.go` + `tool_result_gate_test.go`（CheckUserInput 治理，T3）、`internal/service/chat_orchestrator_turn_pipeline.go`（gateTurnUserInput 硬上限拒绝，T10）+ `chat_orchestrator_turn_pipeline_test.go`（新增）
+
+前端：`web/src/components/chat/ReplyBlock.vue`（synthesis 徽章）、`web/src/components/chat/__tests__/StepBlocks.spec.ts`、`web/src/components/chat/v2/GraphTeamNode.vue`（状态行 + 视觉/动效）、`web/src/components/chat/v2/graphTeamNodeUi.ts`（GTN_STATUS_ROW_H + graphTeamNodeStatusText）、`web/src/components/chat/v2/__tests__/GraphTeamNode.spec.ts`（+5 用例）、`web/src/components/chat/v2/MemberSessionDialog.vue`（lg 尺寸）、`web/src/components/chat/v2/MemberSessionPanel.vue`（canInject 终态扩展 + 任务指令块）、`web/src/stores/chat/activityV2Store.ts`（ensureMemberStepsLoaded 同载 tasks）、`web/src/features/chat/composables/useChatSender.ts`（USER_INPUT_HARD_LIMIT_CHARS）、`web/src/pages/ChatPage.vue`（发送前校验）、`web/src/i18n/locales/zh-CN.ts` / `en-US.ts`（synthesisBadge / memberInstruction / inputTooLong / skillImport.keepSeparate*）、`web/src/components/skills/SkillUploadPlaceholder.vue`（keep-separate 按钮 i18n 化，T11）
+
+文档：`docs/development/1-chat.md`（A.4.2 / A.4.4 / §4.4 / R.2 / R.3 FR-9）、`1-chat.design.md`（B.10.17.4-5 / B.10.23.1/3/4/5 / B.10.24）、`1-chat.development.md`（本章节）

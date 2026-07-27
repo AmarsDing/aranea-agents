@@ -1,7 +1,8 @@
-package data
+﻿package data
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"time"
 
@@ -194,12 +195,13 @@ func (r *proposalRepo) ListByAgent(ctx context.Context, agentID string, status s
 	var result []biz.KnowledgeProposal
 	for rows.Next() {
 		var p biz.KnowledgeProposal
-		var validatedAt, createdAt, updatedAt string
+		var validatedAt sql.NullString
+		var createdAt, updatedAt string
 		if err := rows.Scan(&p.ID, &p.AgentID, &p.PatternID, &p.Title, &p.Content, &p.Kind, &p.Status, &validatedAt, &p.ApprovedBy, &createdAt, &updatedAt); err != nil {
 			return nil, entErrToBizErr(err, "LEARNING")
 		}
-		if validatedAt != "" {
-			t, err := time.Parse(time.RFC3339, validatedAt)
+		if validatedAt.Valid {
+			t, err := time.Parse(time.RFC3339, validatedAt.String)
 			if err != nil {
 				return nil, entErrToBizErr(err, "LEARNING")
 			}
@@ -224,15 +226,16 @@ func (r *proposalRepo) GetByID(ctx context.Context, id string) (biz.KnowledgePro
 	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, agent_id, pattern_id, title, content, kind, status, validated_at, approved_by, created_at, updated_at
 	       FROM learning_proposals WHERE id = ?`)
 	var p biz.KnowledgeProposal
-	var validatedAt, createdAt, updatedAt string
+	var validatedAt sql.NullString
+		var createdAt, updatedAt string
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, []any{id},
 		&p.ID, &p.AgentID, &p.PatternID, &p.Title, &p.Content, &p.Kind, &p.Status,
 		&validatedAt, &p.ApprovedBy, &createdAt, &updatedAt)
 	if err != nil {
 		return biz.KnowledgeProposal{}, apierror.NotFound("LEARNING", "proposal not found")
 	}
-	if validatedAt != "" {
-		t, err := time.Parse(time.RFC3339, validatedAt)
+	if validatedAt.Valid {
+		t, err := time.Parse(time.RFC3339, validatedAt.String)
 		if err != nil {
 			return biz.KnowledgeProposal{}, entErrToBizErr(err, "LEARNING")
 		}

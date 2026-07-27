@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { mount } from '@vue/test-utils';
 import MemberSessionPanel from '../MemberSessionPanel.vue';
-import type { MemberSession } from '../../../../features/chat/v2Types';
+import type { MemberSession, Task } from '../../../../features/chat/v2Types';
+import { useChatActivityStore } from '../../../../stores/chat/activityV2Store';
 
 function baseMember(overrides: Partial<MemberSession> = {}): MemberSession {
   return {
@@ -21,6 +22,21 @@ function baseMember(overrides: Partial<MemberSession> = {}): MemberSession {
     StartedAt: new Date().toISOString(),
     FinishedAt: null,
     Error: '',
+    ...overrides,
+  };
+}
+
+function memberTask(overrides: Partial<Task> = {}): Task {
+  return {
+    ID: 'task-ms-1',
+    SessionID: 'ms-sess',
+    UserMessage: '调研医疗云市场趋势并输出简报',
+    Status: 'completed',
+    Seq: 1,
+    Version: 1,
+    CreatedAt: new Date().toISOString(),
+    UpdatedAt: new Date().toISOString(),
+    CompletedAt: null,
     ...overrides,
   };
 }
@@ -85,5 +101,82 @@ describe('MemberSessionPanel', () => {
       global: { stubs: quasarStubs },
     });
     expect(wrapper.find('.member-input-bar').exists()).toBe(false);
+  });
+
+  // ── B（2026-07-27）：终态成员也可「补充内容再执行」──
+  it('shows input bar for completed member (终态补充再执行)', () => {
+    const wrapper = mount(MemberSessionPanel, {
+      props: { memberSession: baseMember({ Status: 'completed' }) },
+      global: { stubs: quasarStubs },
+    });
+    expect(wrapper.find('.member-input-bar').exists()).toBe(true);
+  });
+
+  it('shows input bar for failed member', () => {
+    const wrapper = mount(MemberSessionPanel, {
+      props: { memberSession: baseMember({ Status: 'failed' }) },
+      global: { stubs: quasarStubs },
+    });
+    expect(wrapper.find('.member-input-bar').exists()).toBe(true);
+  });
+
+  it('hides input bar for skipped member', () => {
+    const wrapper = mount(MemberSessionPanel, {
+      props: { memberSession: baseMember({ Status: 'skipped' }) },
+      global: { stubs: quasarStubs },
+    });
+    expect(wrapper.find('.member-input-bar').exists()).toBe(false);
+  });
+
+  it('completed member: inject emits with SessionID', async () => {
+    const wrapper = mount(MemberSessionPanel, {
+      props: { memberSession: baseMember({ Status: 'completed' }) },
+      global: { stubs: quasarStubs },
+    });
+    const input = wrapper.find('.member-input-bar input');
+    await input.setValue('补充一下数据来源');
+    await wrapper.vm.$nextTick();
+    await wrapper.find('.member-input-bar button').trigger('click');
+    expect(wrapper.emitted('inject-agent')?.[0]).toEqual([
+      { sessionId: 'ms-sess', message: '补充一下数据来源' },
+    ]);
+  });
+
+  // ── C（2026-07-27）：弹框显示成员收到的任务指令（输入内容）──
+  it('shows task instruction block with member UserMessage', () => {
+    const store = useChatActivityStore();
+    store.upsertTask(memberTask());
+    const wrapper = mount(MemberSessionPanel, {
+      props: { memberSession: baseMember(), embedded: true },
+      global: { stubs: quasarStubs },
+    });
+    const block = wrapper.find('.member-instruction');
+    expect(block.exists()).toBe(true);
+    expect(block.text()).toContain('调研医疗云市场趋势并输出简报');
+  });
+
+  it('collapses long instruction (>500 chars) by default, expands on click', async () => {
+    const store = useChatActivityStore();
+    store.upsertTask(memberTask({ UserMessage: '长指令'.repeat(300) }));
+    const wrapper = mount(MemberSessionPanel, {
+      props: { memberSession: baseMember(), embedded: true },
+      global: { stubs: quasarStubs },
+    });
+    const text = wrapper.find('.member-instruction__text');
+    expect(text.exists()).toBe(true);
+    // 折叠态：不显示全文
+    expect(text.text().length).toBeLessThan('长指令'.repeat(300).length);
+    const toggle = wrapper.find('.member-instruction__toggle');
+    expect(toggle.exists()).toBe(true);
+    await toggle.trigger('click');
+    expect(wrapper.find('.member-instruction__text').text()).toContain('长指令'.repeat(300));
+  });
+
+  it('hides instruction block when no task found', () => {
+    const wrapper = mount(MemberSessionPanel, {
+      props: { memberSession: baseMember(), embedded: true },
+      global: { stubs: quasarStubs },
+    });
+    expect(wrapper.find('.member-instruction').exists()).toBe(false);
   });
 });

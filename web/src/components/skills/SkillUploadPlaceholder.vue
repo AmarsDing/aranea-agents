@@ -103,17 +103,30 @@
                     </div>
                     <div class="text-body2 text-grey-7">{{ group.reason }}</div>
                   </div>
-                  <q-btn
-                    color="primary"
-                    rounded
-                    unelevated
-                    no-caps
-                    icon="auto_fix_high"
-                    label="炼化"
-                    :loading="refiningGroupId === group.group_id"
-                    :disable="!group.can_refine || busy"
-                    @click="refineGroup(group.group_id)"
-                  />
+                  <div class="column q-gutter-sm items-end">
+                    <q-btn
+                      color="primary"
+                      rounded
+                      unelevated
+                      no-caps
+                      icon="auto_fix_high"
+                      label="炼化"
+                      :loading="refiningGroupId === group.group_id"
+                      :disable="!group.can_refine || busy"
+                      @click="refineGroup(group.group_id)"
+                    />
+                    <q-btn
+                      v-if="isKeepSeparateRecommended(group)"
+                      outline
+                      rounded
+                      no-caps
+                      color="positive"
+                      icon="call_split"
+                      :label="isKeptSeparate(group) ? t('skillImport.keepSeparateSelected') : t('skillImport.keepSeparate')"
+                      :disable="busy || isKeptSeparate(group)"
+                      @click="keepSeparate(group)"
+                    />
+                  </div>
                 </div>
                 <div class="metrics-grid q-mt-md">
                   <div v-for="metric in metricItems(group.metrics)" :key="metric.label" class="metric-pill">
@@ -170,6 +183,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type {
   SkillConflictGroup,
   SkillImportApplyResult,
@@ -183,6 +197,8 @@ import {
   skillCandidateIcon as candidateIcon,
   skillCandidateStatusColor as candidateColor,
 } from './skillTableUi';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   /** `kratosApi` **`/v1/skills/import*`**（**`cmd/admin`**）；由 Page 绑定 `features/skills/api` */
@@ -211,12 +227,17 @@ const refiningGroupId = ref('');
 const refineResult = ref<SkillRefineResult | null>(null);
 const approvedRiskyCandidateIds = ref<string[]>([]);
 const rejectedRiskyCandidateIds = ref<string[]>([]);
+const keptSeparateCandidateIds = ref<string[]>([]);
 
 const busy = computed(() => uploading.value || applying.value || refiningGroupId.value !== '');
 const canApply = computed(() => {
   if (!job.value) return false;
   const hasPass = job.value.candidates.some((candidate) => candidate.validation_status === 'pass');
-  const hasPositiveAction = hasPass || !!refineResult.value || approvedRiskyCandidateIds.value.length > 0;
+  const hasPositiveAction =
+    hasPass ||
+    !!refineResult.value ||
+    approvedRiskyCandidateIds.value.length > 0 ||
+    keptSeparateCandidateIds.value.length > 0;
   // Pure-reject (no actual import) should not enable "apply".
   return hasPositiveAction;
 });
@@ -242,6 +263,7 @@ function resetState() {
   refineResult.value = null;
   approvedRiskyCandidateIds.value = [];
   rejectedRiskyCandidateIds.value = [];
+  keptSeparateCandidateIds.value = [];
 }
 
 watch(dialogOpen, (val) => {
@@ -300,6 +322,12 @@ async function applyImportResult() {
       action: 'reject_risky_upload' as const,
     })),
   );
+  decisions.push(
+    ...keptSeparateCandidateIds.value.map((candidateId) => ({
+      candidate_id: candidateId,
+      action: 'keep_separate' as const,
+    })),
+  );
   if (refineResult.value) {
     decisions.push({
       group_id: firstRefinedGroup(job.value.conflict_groups, refineResult.value.source_candidate_ids),
@@ -340,6 +368,18 @@ function approveRisk(candidateId: string) {
 function rejectRisk(candidateId: string) {
   rejectedRiskyCandidateIds.value = Array.from(new Set([...rejectedRiskyCandidateIds.value, candidateId]));
   approvedRiskyCandidateIds.value = approvedRiskyCandidateIds.value.filter((id) => id !== candidateId);
+}
+
+function isKeepSeparateRecommended(group: SkillConflictGroup) {
+  return group.metrics.recommendation === 'keep_separate';
+}
+
+function isKeptSeparate(group: SkillConflictGroup) {
+  return group.candidate_ids.some((id) => keptSeparateCandidateIds.value.includes(id));
+}
+
+function keepSeparate(group: SkillConflictGroup) {
+  keptSeparateCandidateIds.value = Array.from(new Set([...keptSeparateCandidateIds.value, ...group.candidate_ids]));
 }
 
 function percent(value: number) {

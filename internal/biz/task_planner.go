@@ -44,6 +44,10 @@ type IntentArtifact struct {
 type PlanInput struct {
 	UserMessage     string
 	SpiritSessionID string
+	// TaskID 是本 turn 所属根 Task 的 ID（根 turn 为预生成 ID，续跑 turn 继承
+	// 父 Task），由调用方从 ctx RootTaskActivityID 解析。门控 notice 经此挂接
+	// 到 Task，避免成为永不渲染的 session 级孤儿步骤。
+	TaskID string
 	// ChatSessionID is the chat (parent) session ID used when publishing plan
 	// activities. The plan must appear in the chat session timeline so the
 	// frontend can receive real-time status updates via WebSocket (the WS

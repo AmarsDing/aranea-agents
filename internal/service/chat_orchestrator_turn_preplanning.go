@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
@@ -33,11 +34,20 @@ orchestration layer can persist a plan, allocate agents, and emit planning timel
 //
 // The gate is non-fatal: any error from QuickAssess is logged and propagated,
 // but the caller treats it as "no force planning" (see chat_orchestrator_turn.go).
+//
+// 续跑 turn（synthesis/澄清续答，ParentTaskID 非空）跳过门控，与
+// runClarificationGate 同款防循环：复杂度在根 turn 已评估，重评会重复发布
+// session 级孤儿 notice（2026-07-27 排查：单会话 7 对重复 = 2 根 turn
+// + 2 澄清续跑 + 3 总结 turn），且 forcedPlanning 系统提示注入 synthesis
+// turn 会强制其再走规划路径。
 func (o *ChatOrchestrator) runPrePlanningGate(
 	ctx context.Context,
-	sessionID, content string,
+	input biz.TurnInput,
 	intentArt *intent.Artifact,
 ) (GateDecision, error) {
+	if strings.TrimSpace(input.ParentTaskID) != "" {
+		return GateDecision{}, nil
+	}
 	planner := o.team().TaskPlanner
 	if planner == nil {
 		// No planner wired (e.g., single-agent deployment without Spirit orchestration).
@@ -49,9 +59,13 @@ func (o *ChatOrchestrator) runPrePlanningGate(
 	gate := NewPrePlanningGate(planner, bus, o.v2Seq, o.lg())
 
 	planInput := biz.PlanInput{
-		UserMessage:     content,
-		SpiritSessionID: sessionID,
-		IntentArtifact:  intentArtifactToBiz(intentArt),
+		UserMessage:     input.Content,
+		SpiritSessionID: input.SessionID,
+		// TaskID 复用 turn 入口预解析的 RootTaskActivityID（chat_orchestrator_turn.go
+		// 在 BUILD/IntentPass 并行后注入 ctx），与澄清门同款模式；ctx 缺失时为空，
+		// notice 退化为 session 级（行为同修复前，不阻断）。
+		TaskID:         string(chatagent.RootTaskActivityIDFromCtx(ctx)),
+		IntentArtifact: intentArtifactToBiz(intentArt),
 	}
 	if traceID, ok := biz.SpiritTraceIDFromContext(ctx); ok {
 		planInput.TraceID = traceID
@@ -61,7 +75,7 @@ func (o *ChatOrchestrator) runPrePlanningGate(
 	if err != nil {
 		o.lg().Warn("预规划门控评估失败，回退到直接回答路径",
 			loggateway.StepID(biz.SpiritStepPlannerAssess),
-			loggateway.SessionID(sessionID),
+			loggateway.SessionID(input.SessionID),
 			loggateway.Err(err),
 		)
 		return GateDecision{}, err

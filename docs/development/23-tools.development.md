@@ -157,7 +157,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 57 | **P1** | 工具行为版本化 | ✅ Phase 9：`ToolRegistration.BehaviorVersion` + Registry `(name, version)` 索引（`internal/tools/tool.go`） |
 | 58 | **P1** | Reminder 机制（工具副作用反馈闭环） | ✅ Phase 9：`internal/agent/tool_reminder.go`（文件修改后提醒跑测试） |
 
-> **说明**：曾起草「53 Desktop App」文档，**不实施**；Shell 工作区优化归属本模块 Phase 5，不涉及 Electron/App 打包。
+> **说明**：曾起草「53 Desktop App」文档，**不实施**；Shell 工作区优化归属本模块 Phase 5，不涉及桌面 App 打包（Tauri）。
 
 ---
 

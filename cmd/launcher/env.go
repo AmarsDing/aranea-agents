@@ -242,11 +242,11 @@ func detectRuntime(root string, log func(string, ...any)) *runtimeEnv {
 	} else {
 		env.add("Backend binary", checkOK, serverExe, false)
 	}
-	electronExe := filepath.Join(root, "frontend", "AraneaAgents.exe")
-	if _, err := os.Stat(electronExe); err != nil {
+	desktopExe := filepath.Join(root, "frontend", "AraneaAgents.exe")
+	if _, err := os.Stat(desktopExe); err != nil {
 		env.add("Desktop app", checkFail, "missing frontend\\AraneaAgents.exe", true)
 	} else {
-		env.add("Desktop app", checkOK, electronExe, false)
+		env.add("Desktop app", checkOK, desktopExe, false)
 	}
 
 	bundledPSQL := filepath.Join(root, "postgres", "bin", "psql.exe")

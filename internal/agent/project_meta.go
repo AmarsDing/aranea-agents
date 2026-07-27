@@ -61,6 +61,9 @@ type ProjectMeta struct {
 	// Design: docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md §3.2.1
 	ParentTaskID string
 
+	// Synthesis 标记本 turn 为精灵总结 turn（biz.TurnInput.Synthesis 透传），
+	// 经 V2ProjectMetaFromV1 传至 v2.ProjectMeta。
+	Synthesis bool
 	// NodeIDToAgentKey maps graph node IDs (e.g. "member-1") to member agent
 	// keys (e.g. "spirit-worker-a"). Used by V2Projector.ProcessEvent to
 	// attribute Steps to the correct member agent when GraphAgent executes

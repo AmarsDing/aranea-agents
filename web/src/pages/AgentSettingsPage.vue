@@ -98,7 +98,7 @@
           </q-tab-panel>
 
           <q-tab-panel name="permissions">
-            <div class="settings-grid">
+            <div class="settings-grid settings-grid--wide">
               <agent-usage-quota-panel v-if="form.id" :agent-id="form.id" />
               <q-banner v-else rounded class="settings-placeholder-banner">加载 Agent 后可配置用量配额。</q-banner>
             </div>
@@ -133,7 +133,7 @@
           </q-tab-panel>
 
           <q-tab-panel name="hooks">
-            <div class="settings-grid">
+            <div class="settings-grid settings-grid--wide">
               <section class="settings-section">
                 <agent-hooks-panel :agent-id="agentId" :agent-key="form.agent_key" />
               </section>

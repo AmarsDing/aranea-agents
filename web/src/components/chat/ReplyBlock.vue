@@ -4,6 +4,10 @@
     <div class="reply-block__label">
       <span class="reply-block__icon">💬</span>
       <span class="reply-block__label-text">{{ label }}</span>
+      <!-- 精灵总结徽章（2026-07-27）：synthesis turn 的 reply = 全部任务总结报告 -->
+      <span v-if="isSynthesis" class="reply-block__synthesis-badge">
+        {{ t('chat.v2.synthesisBadge') }}
+      </span>
       <span v-if="streaming" class="pulse-dot"></span>
     </div>
     <div class="reply-block__content">
@@ -40,6 +44,10 @@ const messageId = computed(() => props.step.ID);
 
 const { t } = useSafeI18n();
 
+// 与后端 biz.SynthesisAuthorAgentKey 对齐：synthesis turn 的 reply step 作者标记。
+const SYNTHESIS_AUTHOR_KEY = 'spirit-synthesis';
+const isSynthesis = computed(() => props.step.AuthorAgentKey === SYNTHESIS_AUTHOR_KEY);
+
 const label = computed(() =>
   isFinal.value ? t('chat.agentBlock.finalReply') : t('chat.agentBlock.intermediateReply'),
 );
@@ -71,6 +79,17 @@ const parts = computed(() => renderChatMarkdownParts(messageId.value, content.va
     font-size: 13px
     color: var(--color-text-primary)
     font-weight: 600
+
+  // 精灵总结徽章（2026-07-27）：accent 底色胶囊，与普通回复视觉区分
+  &__synthesis-badge
+    font-size: 11px
+    font-weight: 600
+    line-height: 1
+    padding: 3px 8px
+    border-radius: 999px
+    color: var(--color-accent)
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent)
+    border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)
 
   &__content
     padding: 10px 14px

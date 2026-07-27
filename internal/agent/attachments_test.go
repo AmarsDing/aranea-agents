@@ -220,3 +220,85 @@ func TestBuildUserMessageFromAttachments_ImageNotGated(t *testing.T) {
 		t.Fatalf("part0 type=%v, want Image", msg.ContentParts[0].Type)
 	}
 }
+
+// ── 单轮超限治理 B：纯文本 content 接入闸 + 硬上限 ─────────────
+
+func TestBuildUserMessage_PlainTextAboveThresholdGated(t *testing.T) {
+	repo := &memArtifactRepo{items: map[string]artifactbiz.Artifact{}, data: map[string][]byte{}}
+	uc := artifactbiz.NewUsecase(repo, loggateway.NewNoop())
+	ctx := context.Background()
+	large := strings.Repeat("长", biz.ToolResultSizeThreshold+10)
+	gate := &stubUserInputGate{persist: true, preview: "头部预览... [truncated blob_id=blob-u]"}
+	msg, err := agent.BuildUserMessageFromArtifacts(ctx, uc, gate, "sess-1", large, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gate.calls) != 1 {
+		t.Fatalf("gate calls = %d, want 1", len(gate.calls))
+	}
+	call := gate.calls[0]
+	if call.source != biz.ToolResultSourceUserInput {
+		t.Fatalf("source = %q, want %q", call.source, biz.ToolResultSourceUserInput)
+	}
+	if call.messageID == "" {
+		t.Fatal("messageID should be derived for idempotency")
+	}
+	if msg.Content != "" && len(msg.Content) >= len(large) {
+		t.Fatal("content should be replaced by preview, not full text")
+	}
+	if !strings.Contains(msg.Content, "truncated") {
+		t.Fatalf("content should contain preview truncation marker, got %q", msg.Content)
+	}
+}
+
+func TestBuildUserMessage_PlainTextBelowThresholdNotGated(t *testing.T) {
+	repo := &memArtifactRepo{items: map[string]artifactbiz.Artifact{}, data: map[string][]byte{}}
+	uc := artifactbiz.NewUsecase(repo, loggateway.NewNoop())
+	ctx := context.Background()
+	gate := &stubUserInputGate{persist: true, preview: "should-not-be-used"}
+	msg, err := agent.BuildUserMessageFromArtifacts(ctx, uc, gate, "sess-1", "hello world", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gate.calls) != 0 {
+		t.Fatalf("gate should not be called for small input, calls = %d", len(gate.calls))
+	}
+	if msg.Content != "hello world" {
+		t.Fatalf("content = %q", msg.Content)
+	}
+}
+
+func TestBuildUserMessage_PlainTextHardLimitRejected(t *testing.T) {
+	repo := &memArtifactRepo{items: map[string]artifactbiz.Artifact{}, data: map[string][]byte{}}
+	uc := artifactbiz.NewUsecase(repo, loggateway.NewNoop())
+	ctx := context.Background()
+	huge := strings.Repeat("巨", biz.UserInputHardLimitChars+1)
+	gate := &stubUserInputGate{persist: true, preview: "should-not-be-used"}
+	_, err := agent.BuildUserMessageFromArtifacts(ctx, uc, gate, "sess-1", huge, nil)
+	if err == nil {
+		t.Fatal("expected hard-limit error for input exceeding UserInputHardLimitChars")
+	}
+	if len(gate.calls) != 0 {
+		t.Fatalf("hard-limit rejection must happen before gate, calls = %d", len(gate.calls))
+	}
+}
+
+func TestBuildUserMessage_PlainTextMessageIDDeterministic(t *testing.T) {
+	repo := &memArtifactRepo{items: map[string]artifactbiz.Artifact{}, data: map[string][]byte{}}
+	uc := artifactbiz.NewUsecase(repo, loggateway.NewNoop())
+	ctx := context.Background()
+	large := strings.Repeat("同", biz.ToolResultSizeThreshold+10)
+	gate := &stubUserInputGate{persist: true, preview: "p"}
+	if _, err := agent.BuildUserMessageFromArtifacts(ctx, uc, gate, "sess-1", large, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agent.BuildUserMessageFromArtifacts(ctx, uc, gate, "sess-1", large, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(gate.calls) != 2 {
+		t.Fatalf("calls = %d", len(gate.calls))
+	}
+	if gate.calls[0].messageID != gate.calls[1].messageID {
+		t.Fatalf("same content must derive same messageID: %q vs %q", gate.calls[0].messageID, gate.calls[1].messageID)
+	}
+}

@@ -6,7 +6,8 @@
 -->
 <template>
   <q-dialog :model-value="open" @update:model-value="(v: boolean) => $emit('update:open', v)">
-    <q-card class="app-dialog-card app-dialog-card--md member-session-dialog">
+    <!-- 2026-07-27：md(720px) → lg(880px) + body 60vh→70vh，给活动流/任务指令/输入栏更充裕空间 -->
+    <q-card class="app-dialog-card app-dialog-card--lg member-session-dialog">
       <q-card-section class="member-session-dialog__header">
         <span class="member-session-dialog__title">{{ title }}</span>
         <q-btn
@@ -94,6 +95,6 @@ const title = computed(() => props.memberSession?.AgentName || props.memberSessi
 
   &__body
     padding-top: 4px
-    max-height: 60vh
+    max-height: 70vh
     overflow-y: auto
 </style>

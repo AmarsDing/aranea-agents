@@ -199,6 +199,8 @@ export default {
     llmRetryDetailLimited: 'Attempt {attempt} of {max} · reconnecting in {delay}s',
     llmRetryHint: 'A network glitch interrupted the connection. It will resume automatically — no action needed.',
     sendFailed: 'Send failed',
+    // Single-message input hard limit notice (2026-07-27, aligned with backend biz.UserInputHardLimitChars)
+    inputTooLong: 'A single message cannot exceed {limit} characters. Send it as an attachment instead.',
     sendFailedRetry: 'Send failed, click to retry',
     sendFailedBackend: 'Backend unavailable',
     imageModelUnsupported:
@@ -483,6 +485,10 @@ export default {
       supplementHint: 'Supplement…',
       expand: 'Expand',
       collapse: 'Collapse',
+      // Member task instruction (input received by the member, 2026-07-27)
+      memberInstruction: 'Task instruction',
+      // Spirit synthesis badge (reply step of the synthesis turn, 2026-07-27)
+      synthesisBadge: 'Task summary',
       // Title-bar latest action summary (icon + short text)
       latestThinking: 'Thinking',
       latestReplying: 'Replying',
@@ -2980,6 +2986,10 @@ export default {
       unsupported: 'Online preview is not supported for this type',
       loadFailed: 'Failed to load preview',
     },
+  },
+  skillImport: {
+    keepSeparate: 'Keep as separate skill',
+    keepSeparateSelected: 'Kept separate',
   },
   resourceManager: {
     addProvider: 'Add Provider',

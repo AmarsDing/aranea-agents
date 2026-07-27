@@ -25,6 +25,32 @@ Do something useful.`
 	}
 }
 
+// P-r4-BOM：PowerShell/Windows 编辑器写出的 SKILL.md 常带 UTF-8 BOM（U+FEFF），
+// Parse 必须剔除 BOM 后再识别 frontmatter，否则整个 frontmatter 失效、
+// description 退化为 "---" 字符串，污染相似度判定。
+func TestParse_UTF8BOM(t *testing.T) {
+	input := "\ufeff" + `---
+name: "BOM Skill"
+description: "Has a byte-order mark"
+tags: [productivity, standup]
+---
+# BOM Skill
+Body here.`
+	m := Parse(input)
+	if m.Name != "BOM Skill" {
+		t.Errorf("Name = %q, want %q", m.Name, "BOM Skill")
+	}
+	if m.Description != "Has a byte-order mark" {
+		t.Errorf("Description = %q, want %q", m.Description, "Has a byte-order mark")
+	}
+	if len(m.Tags) != 2 {
+		t.Errorf("Tags len = %d, want 2", len(m.Tags))
+	}
+	if m.Body == "" || m.Body == input {
+		t.Errorf("Body should be frontmatter-stripped content, got %q", m.Body)
+	}
+}
+
 func TestParse_EmptyInput(t *testing.T) {
 	m := Parse("")
 	if m.Name != "" {

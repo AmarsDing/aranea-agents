@@ -12,6 +12,7 @@ import (
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/telemetry/turntrace"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -135,7 +136,11 @@ func (p *turnPipeline) executeTurn(
 	attN := len(attachmentRefs)
 
 	// Step 1.5: 巨型用户输入落地 blob（单轮超限治理）；后续持久化与 LLM 调用均使用 preview。
-	input.Content = p.gateTurnUserInput(ctx, strings.TrimSpace(input.SessionID), input.Content)
+	gatedContent, err := p.gateTurnUserInput(ctx, strings.TrimSpace(input.SessionID), input.Content)
+	if err != nil {
+		return turnExecuteResult{}, err
+	}
+	input.Content = gatedContent
 
 	// Step 2: Persist user message
 	userMsg, userMsgPersisted, err := p.persistTurnUserMessage(ctx, input, ag, admit, emitter, userOpts, attN)
@@ -149,13 +154,19 @@ func (p *turnPipeline) executeTurn(
 }
 
 // gateTurnUserInput 对超阈值的用户输入落地 blob 并返回 preview。
+// 超硬上限（biz.UserInputHardLimitChars）直接拒绝——与 attachments.go 团队路径对齐，
+// 避免 API/WS 绕过前端校验时静默转存（2026-07-27 review 修复）。
 // 未超限 / gate 未配置 / 落地失败时返回原文（不阻断对话）。幂等键：
 // messageID 取 RootTaskActivityID（与持久化的用户消息 ID 一致），重试复用 replacement。
 // Stability:internal
-func (p *turnPipeline) gateTurnUserInput(ctx context.Context, sessionID, content string) string {
+func (p *turnPipeline) gateTurnUserInput(ctx context.Context, sessionID, content string) (string, error) {
+	if n := utf8.RuneCountInString(content); n > biz.UserInputHardLimitChars {
+		return "", apierror.BadRequest("CHAT_INPUT",
+			"user input %d chars exceeds hard limit %d", n, biz.UserInputHardLimitChars)
+	}
 	gate := p.rt().ToolResultGate
 	if gate == nil || utf8.RuneCountInString(content) <= biz.ToolResultSizeThreshold {
-		return content
+		return content, nil
 	}
 	msgID := string(chatagent.RootTaskActivityIDFromCtx(ctx))
 	if msgID == "" {
@@ -166,12 +177,12 @@ func (p *turnPipeline) gateTurnUserInput(ctx context.Context, sessionID, content
 		p.lg().Warn("用户输入落地 blob 失败，使用原文继续",
 			loggateway.StepID("chat.turn.user_input_gate"),
 			loggateway.Err(err))
-		return content
+		return content, nil
 	}
 	if !res.DidPersist {
-		return content
+		return content, nil
 	}
-	return res.PreviewText
+	return res.PreviewText, nil
 }
 
 // ────────────────────────────────────────────────────────────

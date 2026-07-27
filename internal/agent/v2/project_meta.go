@@ -43,6 +43,10 @@ type ProjectMeta struct {
 	// 的 thinking/action/reply 活动。通过在 ProcessEvent 中根据 ev.Author
 	// （graph emitter 设置为 node ID）查表，临时切换 p.meta.AgentKey。
 	NodeIDToAgentKey map[string]string
+	// Synthesis 标记本 turn 为精灵总结 turn（所有团队完成后由 TeamStarter
+	// 触发，TurnInput.Synthesis=true 沿链路透传）。reply step（总结报告）
+	// 的 AuthorAgentKey 覆盖为 biz.SynthesisAuthorAgentKey，供前端徽章高亮。
+	Synthesis bool
 }
 
 // newTask constructs a biz.Task from ProjectMeta. The Task's SessionID is the
@@ -88,9 +92,18 @@ func (m ProjectMeta) newStep(id string, kind biz.StepKind, seq int64) biz.Step {
 		SpiritSessionID: m.SpiritSessionID,
 		Kind:            kind,
 		Seq:             seq,
-		AuthorAgentKey:  m.AgentKey,
+		AuthorAgentKey:  stepAuthorAgentKey(m, kind),
 		Status:          biz.StepStatusPending,
 		StartedAt:       time.Now(),
 		Version:         1,
 	}
+}
+
+// stepAuthorAgentKey 计算 step 归属：synthesis turn 的 reply step（总结报告）
+// 覆盖为 biz.SynthesisAuthorAgentKey，其余 step 保持原 agent key。
+func stepAuthorAgentKey(m ProjectMeta, kind biz.StepKind) string {
+	if m.Synthesis && kind == biz.StepKindReply {
+		return biz.SynthesisAuthorAgentKey
+	}
+	return m.AgentKey
 }

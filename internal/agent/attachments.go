@@ -2,12 +2,15 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	"aranea-agents/pkg/apierror"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -16,6 +19,12 @@ import (
 // *biz.ToolResultGate 天然满足此接口。
 type UserInputGate interface {
 	CheckUserInput(ctx context.Context, sessionID, messageID, source, fullContent string) (biz.ToolResultGateResult, error)
+}
+
+// userInputMessageID 从内容派生确定性 messageID，供闸幂等（同内容重发复用同一 blob）。
+func userInputMessageID(content string) string {
+	sum := sha256.Sum256([]byte(content))
+	return "user_input_" + hex.EncodeToString(sum[:8])
 }
 
 // BuildUserMessageFromArtifacts assembles a multimodal user message from artifact attachment IDs.
@@ -29,6 +38,21 @@ func BuildUserMessageFromArtifacts(
 	attachmentIDs []string,
 ) (trpcmodel.Message, error) {
 	content = strings.TrimSpace(content)
+	// 硬上限：单条纯文本 > 20 万字符直接拒绝（闸前拦截，不产生 blob）。
+	if n := utf8.RuneCountInString(content); n > biz.UserInputHardLimitChars {
+		return trpcmodel.Message{}, apierror.BadRequest("CHAT_INPUT",
+			"user input %d chars exceeds hard limit %d", n, biz.UserInputHardLimitChars)
+	}
+	// 超阈值纯文本落地 blob，prompt 中注入头部预览（LLM 可用 read_tool_result 分段读全文）。
+	if gate != nil && utf8.RuneCountInString(content) > biz.ToolResultSizeThreshold {
+		res, gerr := gate.CheckUserInput(ctx, sessionID, userInputMessageID(content), biz.ToolResultSourceUserInput, content)
+		if gerr != nil {
+			return trpcmodel.Message{}, fmt.Errorf("gate user input: %w", gerr)
+		}
+		if res.DidPersist {
+			content = "[输入内容过大已转存]\n" + res.PreviewText
+		}
+	}
 	refs, err := artifactbiz.ResolveAttachmentRefs(ctx, artifacts, sessionID, attachmentIDs)
 	if err != nil {
 		return trpcmodel.Message{}, err

@@ -196,6 +196,8 @@ export default {
     llmRetryDetailLimited: '第 {attempt}/{max} 次重试 · {delay} 秒后重连',
     llmRetryHint: '网络波动导致连接中断，恢复后将自动继续，无需操作',
     sendFailed: '发送失败',
+    // 单条输入硬上限提示（2026-07-27，与后端 biz.UserInputHardLimitChars 对齐）
+    inputTooLong: '单条输入不能超过 {limit} 字符，请改用附件发送',
     sendFailedRetry: '发送失败，请点击重试',
     sendFailedBackend: '后端不可用',
     imageModelUnsupported: '当前模型不支持图片理解，请移除图片附件或切换到支持视觉的模型',
@@ -499,6 +501,10 @@ export default {
       supplementHint: '补充信息…',
       expand: '展开',
       collapse: '折叠',
+      // 成员任务指令（成员收到的输入内容，2026-07-27）
+      memberInstruction: '任务指令',
+      // 精灵总结徽章（synthesis turn 的 reply step，2026-07-27）
+      synthesisBadge: '任务总结',
       // 标题栏最新动作摘要（图标 + 简短文本）
       latestThinking: '思考中',
       latestReplying: '回复中',
@@ -2973,6 +2979,10 @@ export default {
       unsupported: '此类型暂不支持在线预览',
       loadFailed: '加载预览失败',
     },
+  },
+  skillImport: {
+    keepSeparate: '保留为独立技能',
+    keepSeparateSelected: '已选择保留独立',
   },
   resourceManager: {
     addProvider: '添加 Provider',

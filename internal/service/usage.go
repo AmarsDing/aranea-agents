@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/auth"
 )
 
 // UsageService implements kratos usage.v1.
@@ -30,7 +31,10 @@ func (s *UsageService) assertSystemCaller(ctx context.Context) error {
 	if workspace.IsSystem(ctx) {
 		return nil
 	}
-	return apierror.Forbidden("USAGE", "system privileges required")
+	if a, ok := auth.FromContext(ctx); ok && a.HasAdminAccess() {
+		return nil
+	}
+	return apierror.Forbidden("USAGE", "system or admin privileges required")
 }
 
 // resolveWorkspaceID returns the workspace ID to filter by. System caller

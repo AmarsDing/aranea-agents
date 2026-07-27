@@ -480,6 +480,7 @@ interface Activity {
 - 入队即时反馈：WS ActivityEvent（Kind=notice，Domain=system）触发待发送列表刷新
 - 队列满/运行结束：Toast + 错误码（`CHAT_QUEUE_FULL` / `CHAT_RUN_ENDED`）
 - `awaiting_user` 时展示提交回复横幅
+- 单条输入超限治理（2026-07-27）：≤5 万字符原样发送；5 万–20 万字符自动转存为内存文件（blob）并注入预览，LLM 分段读取全文；超过 20 万字符拒绝发送并 Toast 提示（`chat.inputTooLong`），引导走文件附件通道
 - WS 重连后顶栏显示「正在同步历史 Activity…」，通过 `ListActivities` RPC 拉取增量
 
 ---
@@ -771,6 +772,8 @@ interface Activity {
 - **位置**：在 plan 之后、team 之前独立显示
 - **时机**：Spirit 完成 team 分配后创建
 - **节点状态**：pending（灰色）/ running（蓝色+pulse）/ completed（绿色✓）/ failed（红色✗）/ interrupted（黄色⏸）。状态值与 Plan item 状态值、team 状态值保持一致，详见 [设计 B.4.4](./1-chat.design.md#b44-graph-流程图graphstageblock)
+- **富卡片节点**（方案A，2026-07-26 起）：每个节点为团队任务卡片——头部（状态点+标题+状态胶囊徽章）/ 成员行（状态点+名称+耗时）/ 状态行（failed 显示错误摘要、running 显示当前动作）/ 底部进度条；视口支持滚轮缩放与拖拽平移
+- **成员弹框**：点击成员行弹出执行内容对话框（lg 尺寸）——顶部显示该成员的任务输入（长内容自动折叠），中部为活动列表（thinking/action/reply，Markdown 排版与主聊天一致），底部输入栏支持暂停与补充内容再执行（终态成员同）
 
 #### A.4.3 Team 任务栏（TeamCard）
 - **布局**：长条卡片，头部:中部:尾部 = 2:3:1（即 33%:50%:17%）
@@ -791,14 +794,14 @@ interface Activity {
 - **布局**：简化版，头部 + 展开内容 + 底部输入栏
 - **头部**：avatar + agent 名称 + status badge + 创建时间
 - **展开内容**：活动列表（thinking/action/reply 等 steps），最大高度 300px，超出显示滚动条
-- **底部输入栏**（仅 running 状态显示，系统 agent 排除）：输入框 + 双功能按钮
+- **底部输入栏**（非系统 agent 显示；running/paused/completed/failed 均可——终态成员可补充内容再执行，2026-07-27 与用户确认）：输入框 + 双功能按钮
   - 输入框为空 **且** agent 正在执行时 → 按钮为方框形态（stop 图标），点击暂停 agent（调用 `POST /v1/chat/sessions/{id}/pause`）
   - 输入框内输入文字时 → 按钮变为发送形态（send 图标），点击触发 `POST /v1/chat/enqueue`（参数为 sessionId + content）
 - **状态映射**（B.5.3）：
   - `running` → 蓝色"{name} 执行中"，显示底部输入栏
-  - `paused` → 橙色"{name} 已暂停"，不显示输入栏
-  - `completed` → 绿色"{name} 已完成"，不显示输入栏
-  - `failed` → 红色"{name} 执行失败"，不显示输入栏
+  - `paused` → 橙色"{name} 已暂停"，显示底部输入栏（补充内容后继续）
+  - `completed` → 绿色"{name} 已完成"，显示底部输入栏（可补充内容再执行）
+  - `failed` → 红色"{name} 执行失败"，显示底部输入栏（可补充内容再执行）
   - `cancelled` → 灰色"{name} 已取消"，不显示输入栏
 - **系统 agent 排除**：`__spirit__` 及 `__` 前缀的系统 agent（run-service/session-service 状态通知）不显示输入栏
 - **展开后**：thinking（折叠）/ action（折叠）/ reply（展开）
@@ -849,7 +852,7 @@ interface Activity {
 - [x] team-card 展开：显示成员列表（MemberSessionPanel），成员展开显示 thinking/action/reply
 - [x] agent-card 布局：简化版（头部 + 展开内容 + 底部输入栏）；Mode B orphan member 复用 MemberSessionPanel
 - [x] agent-card 展开内容：最大高度 300px，超出显示滚动条
-- [x] agent-card 底部输入栏：仅 running 显示；空+running→pause（传 SessionID）；有文字→enqueue
+- [x] agent-card 底部输入栏：running/paused/completed/failed 显示（终态可补充再执行）；空+running→pause（传 SessionID）；有文字→enqueue
 - [x] agent-card 系统 agent 排除：`__spirit__` 及 `__` 前缀不显示输入栏
 - [x] agent 暂停 API：`POST /v1/chat/sessions/{id}/pause`（sessionId = MemberSession.SessionID）
 - [x] agent 注入 API：`POST /v1/chat/enqueue`（session_id + content）
@@ -887,6 +890,7 @@ interface Activity {
 - 作为用户，当我主动中断任务时，**不**触发总结（我已经知道任务被我停了）。
 - 作为用户，简单问答（未启动团队编排）不产生总结，避免打扰。
 - 作为用户，若总结触发失败（如精灵会话不可用），我能看到一条「所有团队已完成」系统通知兜底，不会毫无反馈。
+- 作为用户，总结回复在时间线中带「任务总结」徽章高亮（2026-07-27），一眼区别于普通对话回复。
 
 ### R.3 功能需求
 
@@ -900,6 +904,7 @@ interface Activity {
 | FR-6 | 同一 spirit session 的一次编排只触发一次总结（并发触发路径 CAS 去重） | P0 |
 | FR-7 | 总结 turn 附着到最近用户任务（ParentTaskID），时间线位置正确 | P0 |
 | FR-8 | 总结触发注入失败时，发布兜底系统通知「所有团队已完成」（挂同一任务下） | P1 |
+| FR-9 | 总结回复渲染「任务总结」徽章显著化：后端 synthesis turn 的 reply step 以 `SynthesisAuthorAgentKey` 标记，前端凭标记渲染徽章；普通回复不受影响 | P1 |
 
 ### R.4 非功能需求
 

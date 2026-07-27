@@ -643,6 +643,24 @@ func (e *Engine) resolveDecision(ctx context.Context, job *jobState, decision bi
 			description: candidate.public.Description, body: candidate.body,
 			tags: candidate.tags, files: candidate.files,
 		}, nil, nil
+	case "keep_separate":
+		// P-r4-keep-separate: import a warn candidate whose conflict groups were
+		// judged non-conflicting (LLM recommendation=keep_separate, low risk).
+		// Without this action a genuinely different skill landing in any group
+		// can never be installed. Existing skills stay untouched (no update,
+		// no archive, no provenance).
+		candidate, ok := job.candidates[decision.CandidateID]
+		if !ok {
+			return nil, nil, detailErr(ErrCandidateNotFound, "candidate "+decision.CandidateID+" not found")
+		}
+		if candidate.public.ValidationStatus != "warn" {
+			return nil, nil, detailErr(ErrCandidateNotPass, "candidate "+decision.CandidateID+" is not warn (keep_separate requires warn)")
+		}
+		return &skillCreateParams{
+			name: candidate.public.Name, slug: candidate.public.Slug,
+			description: candidate.public.Description, body: candidate.body,
+			tags: candidate.tags, files: candidate.files,
+		}, nil, nil
 	case "approve_risky_import":
 		candidate, ok := job.candidates[decision.CandidateID]
 		if !ok {

@@ -1,5 +1,5 @@
 <template>
-  <div class="settings-grid">
+  <div class="settings-grid settings-grid--wide">
     <section class="settings-section">
       <div class="section-heading">
         <div class="section-heading__main">

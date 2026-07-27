@@ -656,8 +656,11 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     await Promise.all(
       pending.map(async (sid) => {
         try {
-          const list = await listStepsV2(sid);
-          for (const s of list) upsertStep(s);
+          // steps + tasks 并行加载（2026-07-27：tasks 提供成员任务指令 UserMessage，
+          // 供 MemberSessionPanel「任务指令」区块展示成员收到的输入内容）
+          const [stepsList, tasksList] = await Promise.all([listStepsV2(sid), listTasksV2(sid)]);
+          for (const t of tasksList) upsertTask(t);
+          for (const s of stepsList) upsertStep(s);
           loadedMemberStepSessions.value.add(sid);
         } catch (e) {
           hydrationErrors.value.push({

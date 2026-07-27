@@ -36,6 +36,23 @@
       <!-- 错误提示 -->
       <div v-if="memberSession.Error" class="member-error">{{ memberSession.Error }}</div>
 
+      <!-- 任务指令（成员收到的输入内容）：>500 字符默认折叠（2026-07-27） -->
+      <div v-if="instruction" class="member-instruction">
+        <div class="member-instruction__header">
+          <q-icon name="input" size="13px" />
+          <span>{{ t('chat.v2.memberInstruction') }}</span>
+          <button
+            v-if="instructionCollapsible"
+            type="button"
+            class="member-instruction__toggle"
+            @click.stop="instructionExpanded = !instructionExpanded"
+          >
+            {{ instructionExpanded ? t('chat.v2.collapse') : t('chat.v2.expand') }}
+          </button>
+        </div>
+        <div class="member-instruction__text">{{ displayedInstruction }}</div>
+      </div>
+
       <!-- agent 内部活动（thinking/action/reply 等 steps），max-height 300px + 滚动条 -->
       <div v-if="memberSteps.length > 0" ref="activitiesRef" class="member-activities" @scroll.passive="onScroll">
         <template v-for="step in memberSteps" :key="step.ID">
@@ -245,12 +262,31 @@ const isSystemAgent = computed(() => {
   return key === '__spirit__' || key.startsWith('__');
 });
 
-// 输入栏在 running / paused 状态显示（用户 spec：agent 正在执行时显示；
-// paused 时保留输入栏以便注入新指令恢复执行——后端 resume 依赖新消息重触发，
-// 见 internal/service/chat_pause.go）
-const canInject = computed(
-  () => !isSystemAgent.value && (props.memberSession.Status === 'running' || props.memberSession.Status === 'paused'),
-);
+// 输入栏显示状态（2026-07-27 扩展）：
+// - running / paused：临时停止 + 补充内容再执行（原逻辑）
+// - completed / failed：终态也可补充内容，注入后该成员 session 开新 turn 续跑
+//   （后端 pending queue → processPendingQueue 对非活跃 session 会启动新 run）
+// - pending / skipped：session 未真正启动或不存在，注入无意义，不显示
+const INJECTABLE_STATUSES = new Set(['running', 'paused', 'completed', 'failed']);
+const canInject = computed(() => !isSystemAgent.value && INJECTABLE_STATUSES.has(props.memberSession.Status));
+
+// ── 任务指令（成员收到的输入内容，2026-07-27）──
+// 数据源：member session 首个 Task 的 UserMessage（dagRun 派发指令）。
+// tasks 由 ensureMemberStepsLoaded 随 steps 一并懒加载（listTasksV2 + listStepsV2）。
+const INSTRUCTION_COLLAPSE_THRESHOLD = 500;
+const instructionExpanded = ref(false);
+const instruction = computed(() => {
+  const sid = props.memberSession.SessionID?.trim();
+  if (!sid) return '';
+  const first = [...store.getSessionTasks(sid)].sort((a, b) => a.Seq - b.Seq)[0];
+  return first?.UserMessage?.trim() ?? '';
+});
+const instructionCollapsible = computed(() => instruction.value.length > INSTRUCTION_COLLAPSE_THRESHOLD);
+const displayedInstruction = computed(() => {
+  const text = instruction.value;
+  if (!instructionCollapsible.value || instructionExpanded.value) return text;
+  return `${text.slice(0, INSTRUCTION_COLLAPSE_THRESHOLD)}…`;
+});
 
 // 状态映射：running/paused/completed/failed/cancelled
 const statusColor = computed(
@@ -409,6 +445,10 @@ const formattedTime = computed(() => {
   // 2026-07-05: 限制活动列表最大高度 300px，超出显示滚动条
   max-height: 300px
   overflow-y: auto
+
+  // 2026-07-27：弹框内嵌（--flat）放宽到 400px，配合弹框 lg 尺寸
+  .member-session-panel--flat &
+    max-height: 400px
   // 滚动条样式（细条，符合玻璃主题）
   &::-webkit-scrollbar
     width: 6px
@@ -431,6 +471,42 @@ const formattedTime = computed(() => {
   padding: 4px 6px
   background: rgba(229, 92, 92, 0.08)
   border-radius: 3px
+
+// 任务指令区块（成员收到的输入内容，2026-07-27）
+.member-instruction
+  margin-bottom: 8px
+  padding: 6px 8px
+  background: var(--glass-surface-hover)
+  border-radius: 6px
+  border-left: 2px solid var(--color-accent)
+
+  &__header
+    display: flex
+    align-items: center
+    gap: 4px
+    font-size: 11px
+    font-weight: 500
+    color: var(--color-text-tertiary)
+    margin-bottom: 2px
+
+  &__toggle
+    margin-left: auto
+    border: none
+    background: none
+    padding: 0
+    font-size: 11px
+    color: var(--color-accent)
+    cursor: pointer
+
+    &:hover
+      text-decoration: underline
+
+  &__text
+    font-size: 12px
+    line-height: 1.6
+    color: var(--color-text-primary)
+    white-space: pre-wrap
+    word-break: break-word
 
 // 底部输入栏：发送/停止双功能按钮
 .member-input-bar

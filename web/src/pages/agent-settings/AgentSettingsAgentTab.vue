@@ -1,5 +1,5 @@
 <template>
-  <div class="settings-grid">
+  <div class="settings-grid settings-grid--wide">
     <agent-settings-prompt-section
       :system-prompt-mode="form.system_prompt_mode"
       :prompt-modes="promptModes"

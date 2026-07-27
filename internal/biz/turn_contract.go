@@ -78,6 +78,7 @@ type TurnIntent struct {
 	Timeouts        TurnTimeouts
 	EntryConfig     TurnEntryPointConfig
 	ParentTaskID    string
+	Synthesis       bool // 精灵总结 turn 标记（见 TurnInput.Synthesis）
 }
 
 // Canonicalize fills source/target defaults from legacy TurnInput-compatible fields.
@@ -116,6 +117,7 @@ func (i TurnIntent) TurnInput() TurnInput {
 			Platform:    i.EntryConfig.Platform,
 		},
 		ParentTaskID: i.ParentTaskID,
+		Synthesis:    i.Synthesis,
 	}
 }
 

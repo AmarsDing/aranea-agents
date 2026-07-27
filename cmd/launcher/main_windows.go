@@ -11,7 +11,7 @@ import (
 )
 
 // hideConsoleWindow hides console-subsystem tools (psql/pg_ctl/redis/server).
-// Do NOT use this for Electron / GUI apps — HideWindow makes the window invisible.
+// Do NOT use this for GUI apps (Tauri/desktop) — HideWindow makes the window invisible.
 func hideConsoleWindow(cmd *exec.Cmd) {
 	const createNoWindow = 0x08000000
 	cmd.SysProcAttr = &syscall.SysProcAttr{

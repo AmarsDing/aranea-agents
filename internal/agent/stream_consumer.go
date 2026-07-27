@@ -102,6 +102,7 @@ func V2ProjectMetaFromV1(m ProjectMeta) v2.ProjectMeta {
 		MemberAgentKeys:  m.MemberAgentKeys,
 		TaskContent:      m.TaskContent,
 		ParentTaskID:     m.ParentTaskID,
+		Synthesis:        m.Synthesis,
 		NodeIDToAgentKey: m.NodeIDToAgentKey,
 	}
 }

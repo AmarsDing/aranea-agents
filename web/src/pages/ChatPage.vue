@@ -266,6 +266,7 @@ import ChatWorkspaceShell from '../components/chat/ChatWorkspaceShell.vue';
 import LlmRetryBanner from '../components/chat/LlmRetryBanner.vue';
 import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue';
 import SessionTreeSidebar from '../components/chat/SessionTreeSidebar.vue';
+import { USER_INPUT_HARD_LIMIT_CHARS } from '../features/chat/composables/useChatSender';
 import { computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { Notify } from 'quasar';
@@ -532,6 +533,15 @@ async function onResumeAgent(sessionId: string) {
 /** §B.5.3: Inject a user message into the sub-agent session's pending queue. */
 async function onInjectAgent(payload: { sessionId: string; message: string }) {
   if (!payload.sessionId || !payload.message.trim()) return;
+  // 注入内容硬上限（与主输入一致，2026-07-27）：超上限拒绝并提示。
+  if (payload.message.trim().length > USER_INPUT_HARD_LIMIT_CHARS) {
+    Notify.create({
+      type: 'warning',
+      message: layout.t('chat.inputTooLong', { limit: USER_INPUT_HARD_LIMIT_CHARS }),
+      position: 'top',
+    });
+    return;
+  }
   try {
     await runtimeStore.enqueue(payload.sessionId, payload.message);
     Notify.create({ type: 'positive', message: layout.t('chat.sessionStage.injectSent'), position: 'top' });

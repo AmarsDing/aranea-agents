@@ -61,4 +61,30 @@ describe('ReplyBlock v2', () => {
     });
     expect(wrapper.text()).toContain('Hello world');
   });
+
+  // 精灵总结显著化（2026-07-27）：synthesis turn 的 reply step 渲染总结徽章
+  it('shows synthesis badge for spirit-synthesis author', () => {
+    const wrapper = mount(ReplyBlock, {
+      props: {
+        step: mkStep({
+          Kind: 'reply',
+          Content: '总结：全部完成',
+          IsFinal: true,
+          AuthorAgentKey: 'spirit-synthesis',
+        }),
+      },
+      global: { plugins: [i18n] },
+    });
+    const badge = wrapper.find('.reply-block__synthesis-badge');
+    expect(badge.exists()).toBe(true);
+    expect(badge.text()).toContain('任务总结');
+  });
+
+  it('hides synthesis badge for normal reply', () => {
+    const wrapper = mount(ReplyBlock, {
+      props: { step: mkStep({ Kind: 'reply', Content: 'Hello', IsFinal: true }) },
+      global: { plugins: [i18n] },
+    });
+    expect(wrapper.find('.reply-block__synthesis-badge').exists()).toBe(false);
+  });
 });

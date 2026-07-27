@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     将 aranea.png 转换为 256x256 icon.png + 多尺寸 icon.ico。
 
@@ -13,7 +13,7 @@
     源 PNG 文件路径（默认：docs/image/aranea.png）
 
 .PARAMETER OutDir
-    输出目录（默认：web/src-electron/icons）
+    输出目录（默认：web/src-tauri/icons）
 
 .EXAMPLE
     .\scripts\convert-icon.ps1
@@ -25,7 +25,7 @@
 #>
 param(
     [string]$Source = "$PSScriptRoot\..\docs\image\aranea.png",
-    [string]$OutDir = "$PSScriptRoot\..\web\src-electron\icons"
+    [string]$OutDir = "$PSScriptRoot\..\web\src-tauri\icons"
 )
 
 $ErrorActionPreference = "Stop"

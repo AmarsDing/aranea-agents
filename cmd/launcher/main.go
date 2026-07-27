@@ -95,7 +95,7 @@ func main() {
 	if already {
 		logger("another launcher holds mutex; waiting for backend health")
 		if waitHealthy(logger) == nil {
-			_ = launchElectron(root, logger)
+			_ = launchDesktopApp(root, logger)
 			if ui != nil {
 				ui.Println("Desktop already starting — closing console.")
 				time.Sleep(800 * time.Millisecond)
@@ -116,8 +116,8 @@ func main() {
 	// Fast path: stack already healthy → skip PG/Redis/backend bring-up.
 	if healthy() {
 		logger("fast-path: backend already healthy, launching desktop")
-		if err := launchElectron(root, logger); err != nil {
-			logger("electron error: %v", err)
+		if err := launchDesktopApp(root, logger); err != nil {
+			logger("desktop app error: %v", err)
 			showError("桌面应用启动失败", err.Error()+"\n\n详见: "+logPath)
 			os.Exit(1)
 		}
@@ -189,8 +189,8 @@ func main() {
 	env.add("Backend health", checkOK, healthURL, false)
 	_ = writeFileUTF8BOM(filepath.Join(root, "logs", "preflight.txt"), env.reportText())
 
-	if err := launchElectron(root, logger); err != nil {
-		logger("electron error: %v", err)
+	if err := launchDesktopApp(root, logger); err != nil {
+		logger("desktop app error: %v", err)
 		showError("桌面应用启动失败", err.Error()+"\n\n详见: "+logPath)
 		os.Exit(1)
 	}
@@ -328,7 +328,7 @@ func trimHealthBody(s string) string {
 	return s
 }
 
-func launchElectron(root string, log func(string, ...any)) error {
+func launchDesktopApp(root string, log func(string, ...any)) error {
 	if processRunning("AraneaAgents.exe") {
 		log("desktop app already running")
 		return nil
@@ -338,7 +338,7 @@ func launchElectron(root string, log func(string, ...any)) error {
 		return fmt.Errorf("缺少桌面应用: %w", err)
 	}
 	log("launching desktop app (GUI, visible)")
-	// CRITICAL: must NOT use hiddenCmd — HideWindow makes Electron invisible.
+	// CRITICAL: must NOT use hiddenCmd — HideWindow makes the GUI window invisible.
 	cmd := guiCmd(exe)
 	cmd.Dir = filepath.Join(root, "frontend")
 	if err := cmd.Start(); err != nil {

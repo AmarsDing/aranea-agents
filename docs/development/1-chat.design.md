@@ -5555,7 +5555,31 @@ completionNotifier.NotifyAllTeamsCompleted(sessionID) → 汇入上方 checkAllT
 | 层 | 用例 |
 |----|------|
 | service | `spirit_team_synthesis_turn_test.go`：触发注入（ParentTaskID=最近用户任务、Content=触发常量）；cancelled 守卫；CAS 防重；ExecuteTurn 失败 → 兜底 notice；TaskID 解析回退 |
-| 前端 | 无专项测试——总结即普通 reply，由既有 ChatMessageBlock/Markdown 渲染覆盖 |
+| 前端 | `StepBlocks.spec.ts`：synthesis reply（AuthorAgentKey=`spirit-synthesis`）渲染「任务总结」徽章；普通 reply 不渲染（B.10.17.5） |
+
+#### B.10.17.5 总结回复显著化（2026-07-27：synthesis 标记链路 + 前端徽章）
+
+> **需求**：总结回复虽是普通 reply，但视觉上与普通对话回复无区分，用户难以在时间线中识别「全部任务的最终总结」。
+
+**标记链路**（backend → frontend）：
+
+```
+TeamStarter.NotifyAllTeamsCompleted
+  → turnGateway.ExecuteTurn(ctx, TurnInput{ ..., Synthesis: true })   // service/spirit_team.go
+  → TurnIntent → 执行链路 → v2 ProjectMeta.Synthesis                   // agent/v2
+  → newStep(): stepAuthorAgentKey(meta, kind)                          // agent/v2/project_meta.go
+       kind == Reply  → AuthorAgentKey = biz.SynthesisAuthorAgentKey ("spirit-synthesis")
+       其余 kind      → 保持原 meta.AgentKey（thinking/action 归属不变）
+  → ws_v2_wire / session_v2 → 前端 Step.AuthorAgentKey
+  → ReplyBlock: isSynthesis = (AuthorAgentKey === 'spirit-synthesis') → 「任务总结」徽章
+```
+
+| 维度 | 约定 |
+|------|------|
+| 标记常量 | `biz.SynthesisAuthorAgentKey = "spirit-synthesis"`（biz/step.go）；前端 `SYNTHESIS_AUTHOR_KEY` 字面量对齐（ReplyBlock.vue） |
+| 覆盖范围 | 仅 synthesis turn 的 **reply step**（总结报告本体）；thinking/action 等过程 step 保持原 agent key（执行归属、成员匹配、action 去重链路不受影响） |
+| 消费方安全 | AuthorAgentKey 全部既有消费方（member 归属匹配 / mediaOutput sync / observeGraph nodeKey / blockedStatus / projector action 去重）对未知 key 表现为「不匹配」，无错误副作用 |
+| 前端徽章 | `ReplyBlock.vue` `.reply-block__synthesis-badge`：accent 底色胶囊（`chat.v2.synthesisBadge` i18n），普通 reply 不渲染 |
 
 ### B.10.18 需求澄清提问（Clarification Gate）
 
@@ -6178,20 +6202,21 @@ TaskCard
         ├── 视口（useGraphViewport）：按钮/滚轮缩放（0.4–2.0，步进 1.15）、左键拖拽平移、初始 zoomFit
         ├── 边层 SVG：cubic bezier（源右缘中点 → 目标左缘中点），running 虚线流动，hover 高亮上下游
         ├── GraphTeamNode × N（绝对定位卡片）
-        │     ├── 头部：状态点 + 标题 + 状态徽章（点击 → 选中）
-        │     ├── 成员行 × N：状态点 + 名称 + 状态/耗时（点击 → MemberSessionDialog）
-        │     └── 底部进度条（completed/total）
+        │     ├── 头部：状态点（光晕）+ 标题 + 状态胶囊徽章（点击 → 选中）
+        │     ├── 成员行 × N：状态点（running 波纹）+ 名称 + 状态/耗时（点击 → MemberSessionDialog）
+        │     ├── 状态行（2026-07-27，固定一行占位）：错误摘要（failed 优先）/ 当前动作（running）
+        │     └── 底部进度条（completed/total，running 渐变 + shimmer）
         └── MemberSessionDialog（成员行点击弹出，复用 MemberSessionPanel embedded 模式）
 ```
 
 | 维度 | 约定 |
 |------|------|
 | 节点组件 | `GraphTeamNode.vue`（div 卡片，替代原 SVG rect `GraphNode.vue`，已删除） |
-| 卡片尺寸 | 宽 `GTN_WIDTH=240`；高度由成员数决定 `graphTeamNodeHeight(n)`（`graphTeamNodeUi.ts` 纯函数，与样式同步） |
+| 卡片尺寸 | 宽 `GTN_WIDTH=240`；高度 = 头 + 成员行×n + 状态行（`GTN_STATUS_ROW_H` 固定一行）+ 进度条，`graphTeamNodeHeight(n)` 纯函数（`graphTeamNodeUi.ts`，与样式同步） |
 | 成员解析 | `useGraphNodeTeam`：GraphNode → TeamStage（TeamStageID 优先、DagNodeID 兜底）→ TeamRun → MemberSession；GraphTeamNode 渲染与 GraphStageBlock `heightOf` 布局共用，保证卡片内容高度 = DAG 布局高度 |
 | 布局 | `usePlanDAGLayout` 横向 DAG（layer 为列、列内垂直居中），支持 per-node `heightOf` 变高节点 |
 | 视口 | `useGraphViewport`：scale ∈ [0.4, 2.0]；`zoomAt` 以光标为锚；`zoomFit` 初始自适应（只缩不放） |
-| 成员弹框 | `MemberSessionDialog.vue`：`v-model:open` 纯展示，内嵌 `MemberSessionPanel embedded`（始终展开、无折叠开关），操作事件（pause/inject/expand/confirm-step）原样透传 |
+| 成员弹框 | `MemberSessionDialog.vue`（lg 尺寸，2026-07-27 由 md 加大）：`v-model:open` 纯展示，顶部任务指令块（成员任务输入，长内容自动折叠），内嵌 `MemberSessionPanel embedded`（始终展开、无折叠开关），操作事件（pause/inject/expand/confirm-step）原样透传 |
 | 团队面板 | `TeamStagePanel.vue` / `TeamRunCard.vue` / `useLocateTeamStage.ts` 已删除；成员执行内容唯一入口 = Graph 富卡片成员行弹框 |
 | 单节点 | 始终渲染（废弃 B.4.4「≤1 节点不展示」）；team 信息以富卡片呈现，UI 不再随节点数跳变 |
 
@@ -6218,7 +6243,7 @@ TaskCard
 | Markdown 样式作用域 | `.chat-message-prose` 与 `.code-block` 系列样式为**全局作用域**（`app-global.sass`）。曾限定 `.chat-page` 前缀 / 嵌套于 `.chat-message-content`，q-dialog teleport 到 body 后脱离作用域导致弹框内排版全失（标题无字号、表格无边框、代码块无头栏） |
 | 代码块交互 | 复制/折叠为事件委托（`useChatCodeCopy.handleMessagesClick`，按 `closest('.code-block*')` 匹配）。聊天容器绑定于 `@messages-click`；弹框 body 单独绑定同一处理函数（teleport 后不在聊天容器 DOM 内） |
 | 弹框数据实时性 | `activeMember` 不存点击时快照：`GraphStageBlock` 仅存成员 ID，经 `useActivityQueries.memberSessions()` 实时查询。store 以新对象替换方式 upsert（`{ ...ex, ...ms }`），快照会导致 Status/`canInject` 过期——停止/输入栏显示错误、状态徽标不流转 |
-| 输入栏可见性 | `MemberSessionPanel.canInject`：非系统 agent（`__` 前缀排除）且 Status ∈ {running, paused} 时显示；终态（completed/failed/cancelled/skipped）不显示属正确行为 |
+| 输入栏可见性 | `MemberSessionPanel.canInject`：非系统 agent（`__` 前缀排除）且 Status ∈ {running, paused, completed, failed} 时显示——**终态成员也可补充内容再执行**（2026-07-27 与用户确认，取代原「终态不显示」约定）；cancelled/skipped 不显示 |
 
 > **运行时验证（2026-07-27，localhost:9001 dev-spa）**：成员行真实鼠标 click 开弹框；回复 markdown 中 h1=19.2px/650、表格 th 1px 边框+12px/16px padding；`.code-block` CSSOM 规则生效（border-radius 12px、copy 按钮 flex/pointer）；completed 成员无输入栏；弹框可关闭；console 0 错误。
 
@@ -6228,8 +6253,44 @@ TaskCard
 |------|------|
 | `GraphStageBlock.spec.ts` | 始终渲染（单节点）、成员行渲染、per-node 高度布局（heightOf）、缩放按钮/滚轮、拖拽平移 + click 抑制、**指针捕获延迟**（纯点击不 capture + 成员弹框可开；超阈值才 capture）、弹框事件透传 |
 | `GraphStageBlock.entrance.spec.ts` | P0 级联入场动画（layer/order 错峰、live 窗口判定） |
-| `GraphTeamNode.spec.ts` | 富卡片渲染（成员行/dot 色调/耗时格式化）、`select-member` emit |
+| `GraphTeamNode.spec.ts` | 富卡片渲染（成员行/dot 色调/耗时格式化）、`select-member` emit；**2026-07-27 增强**：running dot ripple、状态行（running 动作 / failed 错误摘要 + title 全文 / 无 Error 兜底文案 / 错误时不渲染动作行）、`GTN_STATUS_ROW_H` 布局常量 |
 | `MemberSessionDialog.spec.ts` | open v-model、embedded panel、事件透传 |
 | `useGraphViewport.spec.ts` | 缩放范围/锚点、zoomFit、pan 阈值、justPanned 复位 |
 | `usePlanDAGLayout.spec.ts` | 横向布局、变高节点 heightOf |
 | 运行时验证 | 2026-07-27 真实浏览器（session `d78029b9…`）：5 节点 10 成员行渲染，JS 合成 click 与 Playwright 真实鼠标 click 均打开弹框（标题=成员名），拖拽平移正常 |
+
+#### B.10.23.5 富卡片视觉/动效/状态感知增强（2026-07-27）
+
+> **背景**：方案A 初版卡片信息层级扁平（成员行单调、无当前动作/错误感知、状态仅靠边框色）。按「视觉层次 / 动效 / 状态感知」三方向增强，全部复用 glass 主题变量（`color-mix` 状态色），无硬编码主题色。
+
+| 方向 | 设计 |
+|------|------|
+| 视觉层次 | running/completed/failed 卡片 6–9% 状态色斜向渐变淡底（叠加 `--glass-elevated`）；头部状态文本胶囊化（9px / 圆角 999 / 13% 同色底）；状态点同色 `box-shadow` 光晕 |
+| 动效 | 卡片 hover `translateY(-2px)` + 阴影加深；running 成员 dot 波纹扩散（`gtn-dot-ripple` 1.6s）；进度条 running shimmer 光泽扫过（1.8s）；成员行 hover `translateX(2px)` + running 行 7% accent 淡底；`prefers-reduced-motion` 全部降级（动画/位移关闭） |
+| 状态感知 | `graphTeamNodeStatusText(members, latestStepOf, labels)` 纯函数（graphTeamNodeUi.ts）：failed 成员 `Error` 优先（空 Error 兜底 `statusFailed` 文案，`.gtn-error` 单行截断 + `title` 全文）；running/paused 成员最新 step（action→`build` 图标+工具名 / thinking→`psychology` / reply→`chat`，兜底 `bolt` + 状态文案，`.gtn-action` 图标脉冲）；`latestStepOf` 由组件注入 `useActivityQueries.getMemberSessionSteps` |
+| 布局同步 | `graphTeamNodeHeight(n)` 增加 `GTN_STATUS_ROW_H`（= `GTN_ROW_H` 24px）固定一行：无内容时渲染空白占位，卡片高度不随状态内容抖动；DAG `heightOf` 与边中心点（height/2）自动跟随。间距账（2026-07-27 review 修复）：members→status-row = `.gtn-members` margin-bottom 10px（`GTN_PROGRESS_GAP`），status-row→progress = `.gtn-status-row` margin-bottom 6px（`GTN_ROW_GAP`）——两处间距均算入高度函数，漏算会导致卡片 `overflow:hidden` 裁掉进度条 |
+
+**成员弹框配套（2026-07-27）**：
+
+| 维度 | 约定 |
+|------|------|
+| 弹框尺寸 | `MemberSessionDialog` 由 md 加大为 lg（成员活动列表 + 底部输入栏同屏可操作） |
+| 任务指令块 | 弹框顶部显示成员任务输入（`chat.v2.memberInstruction` i18n），长内容自动折叠；tasks 数据由 `ensureMemberStepsLoaded` 与 steps 一并加载 |
+| 输入栏终态扩展 | `canInject` 由 {running, paused} 扩至 {running, paused, completed, failed}——终态成员可补充内容再执行（见 B.10.23.3）；系统 agent（`__` 前缀）仍排除 |
+
+### B.10.24 用户输入超限治理（2026-07-27 已实施）
+
+> **需求**：用户在输入框粘贴超大文本（整份日志/长文档）时不能无限制进入 LLM 上下文；也不应简单按字符硬切（信息丢失）。分级治理：阈值内原样 → 超阈值 blob 转存 + preview 注入 → 超硬上限拒绝并引导走附件通道。
+
+| 层级 | 阈值 | 行为 |
+|------|------|------|
+| 正常 | ≤ 50,000 字符（`ToolResultSizeThreshold`） | 原样进入消息与上下文 |
+| 超阈值 | 50,000 < n ≤ 200,000 | `ToolResultGate.CheckUserInput` 落地 blob（`ToolName=user_input`/`attachment_text`），消息体替换为 preview（头部 + 截断标记），LLM 经工具按需分段读取全文 |
+| 硬上限 | > 200,000 字符（`UserInputHardLimitChars`） | 拒绝发送：前端 `USER_INPUT_HARD_LIMIT_CHARS`（useChatSender）拦截 + `$q.notify`（`chat.inputTooLong`）；后端两个执行点兜底（见下） |
+
+| 维度 | 约定 |
+|------|------|
+| 前端 | `useChatSender.ts` 导出 `USER_INPUT_HARD_LIMIT_CHARS = 200000`；`ChatPage.vue` 发送前校验；`chat.inputTooLong` i18n（zh/en） |
+| 后端 | `biz/tool_result_gate.go`：`UserInputHardLimitChars` + `CheckUserInput(ctx, sessionID, messageID, source, fullContent)`；source ∈ {`user_input`, `attachment_text`}（写入 blob.ToolName，与工具结果区分）；幂等（同 messageID 重复调用不重复落地） |
+| 硬上限执行点 | ① 团队/附件路径 `agent/attachments.go BuildUserMessageFromArtifacts`（闸前拒绝，`apierror.BadRequest CHAT_INPUT`）；② chat 主链路 `service/chat_orchestrator_turn_pipeline.go gateTurnUserInput`（2026-07-27 review 修复：原仅 50k 转存，API/WS 绕过前端时 >200k 会被静默转存，现已对齐拒绝）；计数口径 `utf8.RuneCountInString`（前端 JS `.length` 对 astral 字符更严格，方向安全） |
+| 测试 | `tool_result_gate_test.go`：阈值下原样 / 超阈值 blob+preview / source 透传 / 幂等；`attachments_test.go`：硬上限拒绝；`chat_orchestrator_turn_pipeline_test.go`：`gateTurnUserInput` 硬上限返回 `CodeBadRequest` |

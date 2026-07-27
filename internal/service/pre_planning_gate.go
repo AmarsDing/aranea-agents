@@ -58,7 +58,7 @@ func NewPrePlanningGate(planner biz.TaskPlannerPort, eventBus biz.EventBus, seq 
 // The intent artifact from the intent pass (if available) is passed through
 // to the planner for a more accurate assessment.
 func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (GateDecision, error) {
-	g.publishPlanningPhase(ctx, biz.ActivityStatusRunning, "开始复杂度评估", input.SpiritSessionID)
+	g.publishPlanningPhase(ctx, biz.ActivityStatusRunning, "开始复杂度评估", input.SpiritSessionID, input.TaskID)
 
 	level, score, err := g.planner.QuickAssess(ctx, input)
 	if err != nil {
@@ -67,7 +67,7 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 			loggateway.Str("spirit_session_id", input.SpiritSessionID),
 			loggateway.Err(err),
 		)
-		g.publishPlanningPhase(ctx, biz.ActivityStatusFailed, "复杂度评估失败", input.SpiritSessionID)
+		g.publishPlanningPhase(ctx, biz.ActivityStatusFailed, "复杂度评估失败", input.SpiritSessionID, input.TaskID)
 		return GateDecision{}, err
 	}
 
@@ -93,7 +93,7 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 		loggateway.Bool("force_planning", forcePlanning),
 	)
 
-	g.publishPlanningPhase(ctx, biz.ActivityStatusCompleted, reason, input.SpiritSessionID)
+	g.publishPlanningPhase(ctx, biz.ActivityStatusCompleted, reason, input.SpiritSessionID, input.TaskID)
 
 	return decision, nil
 }
@@ -114,7 +114,11 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 // because v2 Step has no Meta field. The message is preserved as Step.Content,
 // and the status is mapped to StepStatus. noticeType is preserved as
 // Step.NoticeType for NoticeBlock rendering.
-func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, status biz.ActivityStatus, message, spiritSessionID string) {
+//
+// 2026-07-27: taskID 挂接本 turn 所属根 Task（根 turn 预生成 ID），notice 经
+// TaskCard orphanNoticeSteps 渲染为任务 footer；此前无 TaskID 的 notice 是
+// session 级孤儿步骤，前端永不渲染且污染 DB。
+func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, status biz.ActivityStatus, message, spiritSessionID, taskID string) {
 	if g.seq == nil && g.eventBus == nil {
 		return
 	}
@@ -135,6 +139,7 @@ func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, status biz.A
 		ID:              uuid.NewString(),
 		SessionID:       spiritSessionID,
 		SpiritSessionID: spiritSessionID,
+		TaskID:          taskID,
 		Kind:            biz.StepKindNotice,
 		NoticeType:      noticeType,
 		Content:         message,

@@ -363,7 +363,17 @@ service SkillService {
 
 `GET /v1/skills/import/:job_id` — 轮询导入状态，返回 `SkillImportJob`（含 `candidates`、`conflict_groups`）。
 
-`POST /v1/skills/import/:job_id/apply` — 应用导入结果，请求体含 `decisions[]`（`import_passed` / `skip_group` / `merge_group_with_ai`）。
+`POST /v1/skills/import/:job_id/apply` — 应用导入结果，请求体含 `decisions[]`：
+
+| action | 适用对象 | 语义 |
+|--------|---------|------|
+| `import_passed` | `pass` 候选 | 直接导入为新 Skill |
+| `keep_separate` | `warn` 候选 | LLM 判定低冲突（`recommendation=keep_separate`）时，保留双方、导入候选为新 Skill；不触碰已有 Skill、不记录血缘 |
+| `skip_duplicate` | 重复阻塞候选 | 显式跳过重复项，不安装 |
+| `overwrite_duplicate` | 重复阻塞候选 | 以上传包为既有同 slug Skill 追加新版本（parent 锚定当前最新版） |
+| `approve_risky_import` / `reject_risky_upload` | 高风险文件阻塞候选 | 用户放行 / 拒绝高风险包 |
+| `merge_group_with_ai` | 冲突组 | AI 炼化合并（`retire_sources` 可选归档源 Skill；血缘 `derived_from` 始终记录） |
+| `skip_group` | 冲突组 | 整组跳过 |
 
 `POST /v1/skills/import/:job_id/conflict-groups/:group_id/refine` — AI 炼化冲突组，返回 `SkillRefineResult`。
 

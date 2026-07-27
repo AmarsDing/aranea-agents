@@ -186,7 +186,13 @@ export type SkillRefineResult = {
 export type SkillImportDecision = {
   candidate_id?: string;
   group_id?: string;
-  action: 'import_passed' | 'skip_group' | 'merge_group_with_ai' | 'approve_risky_import' | 'reject_risky_upload';
+  action:
+    | 'import_passed'
+    | 'skip_group'
+    | 'merge_group_with_ai'
+    | 'approve_risky_import'
+    | 'reject_risky_upload'
+    | 'keep_separate';
   merged_name?: string;
   merged_description?: string;
   merged_body?: string;

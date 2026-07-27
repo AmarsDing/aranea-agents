@@ -135,28 +135,10 @@ jobs:
           Write-Host "Verified pgvector assets:"
           Get-Item $dll, $ctl | Format-Table FullName, Length
 
-      - name: Setup Electron template
-        shell: pwsh
-        run: |
-          # build-electron.mjs requires AraneaAgents-deploy/frontend/ as Electron runtime template.
-          # This directory is not in git (large binaries). Download Electron 43.1.0 for win32-x64.
-          $electronVersion = "43.1.0"
-          $templateDir = "AraneaAgents-deploy\frontend"
-          $zipPath = "$env:TEMP\electron-v$electronVersion-win32-x64.zip"
-
-          if (-not (Test-Path $templateDir)) {
-            Write-Host "Downloading Electron v$electronVersion..."
-            $url = "https://github.com/electron/electron/releases/download/v$electronVersion/electron-v$electronVersion-win32-x64.zip"
-            Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
-
-            Write-Host "Extracting to $templateDir..."
-            New-Item -ItemType Directory -Force -Path $templateDir | Out-Null
-            Expand-Archive -Path $zipPath -DestinationPath $templateDir -Force
-            Remove-Item $zipPath -Force
-            Write-Host "Electron template ready at $templateDir"
-          } else {
-            Write-Host "Electron template already exists at $templateDir"
-          }
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
 
       - name: Build backend (go build)
         shell: pwsh
@@ -237,29 +219,23 @@ jobs:
           }
           Write-Host "Frontend built: web/dist/" -ForegroundColor Green
 
-      - name: Package Electron app
+      - name: Package Tauri app
         shell: pwsh
         run: |
           Push-Location web
-          $env:QUASAR_ELECTRON_PRELOAD_FOLDER = "preload"
-          $env:QUASAR_ELECTRON_PRELOAD_EXTENSION = ".cjs"
-          & node scripts/build-electron.mjs --platform=win32 --arch=x64
+          & node scripts/build-tauri.mjs
           if ($LASTEXITCODE -ne 0) {
             Pop-Location
-            Write-Error "Electron packaging failed (exit $LASTEXITCODE)"
+            Write-Error "Tauri packaging failed (exit $LASTEXITCODE)"
             exit 1
           }
           Pop-Location
-          $electronAppDir = "web/build/electron/AraneaAgents-win32-x64"
-          if (-not (Test-Path $electronAppDir)) {
-            $fallback = Get-ChildItem -Path "web/build" -Directory -Filter "electron-*" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($fallback) { $electronAppDir = Join-Path $fallback.FullName "AraneaAgents-win32-x64" }
-          }
-          if (-not (Test-Path $electronAppDir)) {
-            Write-Error "Electron app dir not found: $electronAppDir"
+          $tauriAppDir = "web/build/tauri/AraneaAgents-win32-x64"
+          if (-not (Test-Path (Join-Path $tauriAppDir "AraneaAgents.exe"))) {
+            Write-Error "Tauri app not found: $tauriAppDir"
             exit 1
           }
-          Write-Host "Electron app packaged: $electronAppDir"
+          Write-Host "Tauri app packaged: $tauriAppDir"
 
       - name: Assemble staging & NSIS package
         shell: pwsh
@@ -335,6 +311,6 @@ jobs:
             ### 内置组件
             - 静默启动器（AraneaLauncher，无控制台）
             - 后端服务（Go + Kratos + trpc-agent-go）
-            - 前端桌面应用（Vue 3 + Quasar + Electron，同源反代 API）
+            - 前端桌面应用（Vue 3 + Quasar + Tauri(Rust)，WebView2 渲染，同源反代 API）
             - PostgreSQL 17 + pgvector
             - Redis 5

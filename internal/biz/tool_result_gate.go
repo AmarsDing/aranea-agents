@@ -14,6 +14,10 @@ import (
 const (
 	ToolResultSizeThreshold = 50000
 	ToolResultPreviewSize   = 2000
+	// UserInputHardLimitChars 单条用户纯文本输入的硬上限（字符数）。
+	// 超阈值（ToolResultSizeThreshold）走 blob 转存 + preview 注入；
+	// 超硬上限直接拒绝——再大应走附件通道，而非粘贴进输入框。
+	UserInputHardLimitChars = 200000
 )
 
 // 单轮超限治理：CheckUserInput 的 source 取值（写入 blob.ToolName，与工具结果区分）。

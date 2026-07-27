@@ -1,0 +1,16 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AraneaAgents",
+  "version": "0.1.0",
+  "identifier": "com.aranea.agents",
+  "build": {
+    "frontendDist": "placeholder-dist"
+  },
+  "app": {
+    "windows": []
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["icons/icon.png", "icons/icon.ico"]
+  }
+}
