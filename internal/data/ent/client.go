@@ -83,6 +83,7 @@ import (
 	"aranea-agents/internal/data/ent/sessionv2"
 	"aranea-agents/internal/data/ent/skillimportjob"
 	"aranea-agents/internal/data/ent/skillinvocation"
+	"aranea-agents/internal/data/ent/skilltag"
 	"aranea-agents/internal/data/ent/skillversion"
 	"aranea-agents/internal/data/ent/stepv2"
 	"aranea-agents/internal/data/ent/systemsetting"
@@ -262,6 +263,8 @@ type Client struct {
 	SkillImportJob *SkillImportJobClient
 	// SkillInvocation is the client for interacting with the SkillInvocation builders.
 	SkillInvocation *SkillInvocationClient
+	// SkillTag is the client for interacting with the SkillTag builders.
+	SkillTag *SkillTagClient
 	// SkillVersion is the client for interacting with the SkillVersion builders.
 	SkillVersion *SkillVersionClient
 	// StepV2 is the client for interacting with the StepV2 builders.
@@ -387,6 +390,7 @@ func (c *Client) init() {
 	c.SessionV2 = NewSessionV2Client(c.config)
 	c.SkillImportJob = NewSkillImportJobClient(c.config)
 	c.SkillInvocation = NewSkillInvocationClient(c.config)
+	c.SkillTag = NewSkillTagClient(c.config)
 	c.SkillVersion = NewSkillVersionClient(c.config)
 	c.StepV2 = NewStepV2Client(c.config)
 	c.SystemSetting = NewSystemSettingClient(c.config)
@@ -572,6 +576,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		SessionV2:                  NewSessionV2Client(cfg),
 		SkillImportJob:             NewSkillImportJobClient(cfg),
 		SkillInvocation:            NewSkillInvocationClient(cfg),
+		SkillTag:                   NewSkillTagClient(cfg),
 		SkillVersion:               NewSkillVersionClient(cfg),
 		StepV2:                     NewStepV2Client(cfg),
 		SystemSetting:              NewSystemSettingClient(cfg),
@@ -684,6 +689,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		SessionV2:                  NewSessionV2Client(cfg),
 		SkillImportJob:             NewSkillImportJobClient(cfg),
 		SkillInvocation:            NewSkillInvocationClient(cfg),
+		SkillTag:                   NewSkillTagClient(cfg),
 		SkillVersion:               NewSkillVersionClient(cfg),
 		StepV2:                     NewStepV2Client(cfg),
 		SystemSetting:              NewSystemSettingClient(cfg),
@@ -752,9 +758,9 @@ func (c *Client) Use(hooks ...Hook) {
 		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport, c.Session,
 		c.SessionMetrics, c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint,
 		c.SessionRuntime, c.SessionTurn, c.SessionV2, c.SkillImportJob,
-		c.SkillInvocation, c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter,
-		c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2,
-		c.TeamStageV2, c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation,
+		c.SkillInvocation, c.SkillTag, c.SkillVersion, c.StepV2, c.SystemSetting,
+		c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep,
+		c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation,
 		c.ToolInvocationAudit, c.ToolInvocationParam, c.ToolResultBlob,
 		c.ToolResultReplacement, c.TurnV2, c.UsageQuota, c.UserEmbeddingSetting,
 	} {
@@ -784,9 +790,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport, c.Session,
 		c.SessionMetrics, c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint,
 		c.SessionRuntime, c.SessionTurn, c.SessionV2, c.SkillImportJob,
-		c.SkillInvocation, c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter,
-		c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2,
-		c.TeamStageV2, c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation,
+		c.SkillInvocation, c.SkillTag, c.SkillVersion, c.StepV2, c.SystemSetting,
+		c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep,
+		c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation,
 		c.ToolInvocationAudit, c.ToolInvocationParam, c.ToolResultBlob,
 		c.ToolResultReplacement, c.TurnV2, c.UsageQuota, c.UserEmbeddingSetting,
 	} {
@@ -941,6 +947,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SkillImportJob.mutate(ctx, m)
 	case *SkillInvocationMutation:
 		return c.SkillInvocation.mutate(ctx, m)
+	case *SkillTagMutation:
+		return c.SkillTag.mutate(ctx, m)
 	case *SkillVersionMutation:
 		return c.SkillVersion.mutate(ctx, m)
 	case *StepV2Mutation:
@@ -10692,6 +10700,139 @@ func (c *SkillInvocationClient) mutate(ctx context.Context, m *SkillInvocationMu
 	}
 }
 
+// SkillTagClient is a client for the SkillTag schema.
+type SkillTagClient struct {
+	config
+}
+
+// NewSkillTagClient returns a client for the SkillTag from the given config.
+func NewSkillTagClient(c config) *SkillTagClient {
+	return &SkillTagClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `skilltag.Hooks(f(g(h())))`.
+func (c *SkillTagClient) Use(hooks ...Hook) {
+	c.hooks.SkillTag = append(c.hooks.SkillTag, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `skilltag.Intercept(f(g(h())))`.
+func (c *SkillTagClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SkillTag = append(c.inters.SkillTag, interceptors...)
+}
+
+// Create returns a builder for creating a SkillTag entity.
+func (c *SkillTagClient) Create() *SkillTagCreate {
+	mutation := newSkillTagMutation(c.config, OpCreate)
+	return &SkillTagCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SkillTag entities.
+func (c *SkillTagClient) CreateBulk(builders ...*SkillTagCreate) *SkillTagCreateBulk {
+	return &SkillTagCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SkillTagClient) MapCreateBulk(slice any, setFunc func(*SkillTagCreate, int)) *SkillTagCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SkillTagCreateBulk{err: fmt.Errorf("calling to SkillTagClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SkillTagCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SkillTagCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SkillTag.
+func (c *SkillTagClient) Update() *SkillTagUpdate {
+	mutation := newSkillTagMutation(c.config, OpUpdate)
+	return &SkillTagUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SkillTagClient) UpdateOne(_m *SkillTag) *SkillTagUpdateOne {
+	mutation := newSkillTagMutation(c.config, OpUpdateOne, withSkillTag(_m))
+	return &SkillTagUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SkillTagClient) UpdateOneID(id string) *SkillTagUpdateOne {
+	mutation := newSkillTagMutation(c.config, OpUpdateOne, withSkillTagID(id))
+	return &SkillTagUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SkillTag.
+func (c *SkillTagClient) Delete() *SkillTagDelete {
+	mutation := newSkillTagMutation(c.config, OpDelete)
+	return &SkillTagDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SkillTagClient) DeleteOne(_m *SkillTag) *SkillTagDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SkillTagClient) DeleteOneID(id string) *SkillTagDeleteOne {
+	builder := c.Delete().Where(skilltag.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SkillTagDeleteOne{builder}
+}
+
+// Query returns a query builder for SkillTag.
+func (c *SkillTagClient) Query() *SkillTagQuery {
+	return &SkillTagQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSkillTag},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SkillTag entity by its id.
+func (c *SkillTagClient) Get(ctx context.Context, id string) (*SkillTag, error) {
+	return c.Query().Where(skilltag.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SkillTagClient) GetX(ctx context.Context, id string) *SkillTag {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SkillTagClient) Hooks() []Hook {
+	return c.hooks.SkillTag
+}
+
+// Interceptors returns the client interceptors.
+func (c *SkillTagClient) Interceptors() []Interceptor {
+	return c.inters.SkillTag
+}
+
+func (c *SkillTagClient) mutate(ctx context.Context, m *SkillTagMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SkillTagCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SkillTagUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SkillTagUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SkillTagDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SkillTag mutation op: %q", m.Op())
+	}
+}
+
 // SkillVersionClient is a client for the SkillVersion schema.
 type SkillVersionClient struct {
 	config
@@ -13504,10 +13645,11 @@ type (
 		PlatformTool, ResourceAccessAudit, SchemaMigration, SelfCheckReport, Session,
 		SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
 		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
-		SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team,
-		TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
-		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
-		ToolResultReplacement, TurnV2, UsageQuota, UserEmbeddingSetting []ent.Hook
+		SkillTag, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
+		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
+		ToolGrant, ToolInvocation, ToolInvocationAudit, ToolInvocationParam,
+		ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
+		UserEmbeddingSetting []ent.Hook
 	}
 	inters struct {
 		Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
@@ -13526,10 +13668,10 @@ type (
 		PlatformTool, ResourceAccessAudit, SchemaMigration, SelfCheckReport, Session,
 		SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
 		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
-		SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team,
-		TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
-		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
-		ToolResultReplacement, TurnV2, UsageQuota,
+		SkillTag, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
+		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
+		ToolGrant, ToolInvocation, ToolInvocationAudit, ToolInvocationParam,
+		ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
 		UserEmbeddingSetting []ent.Interceptor
 	}
 )

@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 // WSV2Subscriber listens on a v2 EventBus and forwards events to WS clients
@@ -63,7 +64,8 @@ func NewWSV2Subscriber(bus biz.EventBus, hub WSMessageBroadcaster, lg loggateway
 		cancelSub: cancelSub,
 	}
 	s.wg.Add(1)
-	go s.run(ctx, ch)
+	// 红线 #13：订阅转发 goroutine 走 safego，panic recover + 告警而非静默断流。
+	safego.Go(ctx, "ws-v2-subscriber", func() { s.run(ctx, ch) })
 	return s
 }
 

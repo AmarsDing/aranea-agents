@@ -270,9 +270,16 @@ const emit = defineEmits<{
   reorder: [ids: string[]];
 }>();
 
-const builtinAgents = computed(() => props.agents.filter((a) => a.readonly));
-const presetAgents = computed(() => props.agents.filter((a) => !a.readonly && a.kind === 'ecosystem_preset'));
-const userAgents = computed(() => props.agents.filter((a) => !a.readonly && a.kind !== 'ecosystem_preset'));
+// 内置管家 = system_builtin 且非 dept_lead（与后端 CleanupNonSystemData 的保留规则一致）：
+// 仅精灵助手/系统管家/记忆管家/技能管家 4 个核心管家；26 个部门主管归入预设模板区。
+const isDeptLead = (a: Agent) => a.agent_variant === 'dept_lead';
+const builtinAgents = computed(() => props.agents.filter((a) => a.readonly && a.kind === 'system_builtin' && !isDeptLead(a)));
+const presetAgents = computed(() =>
+  props.agents.filter((a) => isDeptLead(a) || (!a.readonly && a.kind === 'ecosystem_preset')),
+);
+const userAgents = computed(() =>
+  props.agents.filter((a) => !a.readonly && a.kind !== 'ecosystem_preset' && !isDeptLead(a)),
+);
 
 const draggableUserAgents = computed({
   get: () => userAgents.value,

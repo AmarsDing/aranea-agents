@@ -142,9 +142,25 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	similarityWeights := biz.ProvideDefaultDedupWeights()
 	skillSimilarityEngine := biz.NewSkillSimilarityEngine(dedupEmbedder, similarityWeights, loggatewayLogger)
 	skillDedupUsecase := biz.NewSkillDedupUsecase(skillDedupRepo, skillSimilarityEngine, loggatewayLogger)
-	skillUsecase := provideSkillUsecase(skillRepo, multiProviderEmbedder, skillDedupUsecase)
+	tagRepo := data.NewSkillTagRepo(dataData)
+	skillUsecase := provideSkillUsecase(skillRepo, multiProviderEmbedder, skillDedupUsecase, tagRepo)
 	filesystemHealthReader := provideFilesystemHealthReader(skillUsecase)
-	monitorUsecase := provideMonitorUsecase(auditRepo, eventRepo, traceRepo, alertRepo, runnerCompletionRepo, alertNotifier, filesystemHealthReader, loggatewayLogger)
+	taskV2Repo := data.NewTaskV2Repo(dataData, loggatewayLogger)
+	turnV2Repo := data.NewTurnV2Repo(dataData, loggatewayLogger)
+	stepV2Repo := data.NewStepV2Repo(dataData, loggatewayLogger)
+	teamStageV2Repo := data.NewTeamStageV2Repo(dataData, loggatewayLogger)
+	teamRunV2Repo := data.NewTeamRunV2Repo(dataData, loggatewayLogger)
+	memberSessionV2Repo := data.NewMemberSessionV2Repo(dataData, loggatewayLogger)
+	planBoardV2Repo := data.NewPlanBoardV2Repo(dataData, loggatewayLogger)
+	planStepV2Repo := data.NewPlanStepV2Repo(dataData, loggatewayLogger)
+	graphStageV2Repo := data.NewGraphStageV2Repo(dataData, loggatewayLogger)
+	graphNodeV2Repo := data.NewGraphNodeV2Repo(dataData, loggatewayLogger)
+	repoSet := provideV2RepoSet(taskV2Repo, turnV2Repo, stepV2Repo, teamStageV2Repo, teamRunV2Repo, memberSessionV2Repo, planBoardV2Repo, planStepV2Repo, graphStageV2Repo, graphNodeV2Repo)
+	v2Bus := provideV2EventBus()
+	eventDeliveryOutboxRepo := data.NewEventDeliveryOutboxRepoFromData(dataData)
+	eventDeadLetterRepo := data.NewEventDeadLetterRepo(dataData, loggatewayLogger)
+	sequencer := provideV2Sequencer(repoSet, v2Bus, eventDeliveryOutboxRepo, eventDeadLetterRepo, loggatewayLogger)
+	monitorUsecase := provideMonitorUsecase(auditRepo, eventRepo, traceRepo, alertRepo, runnerCompletionRepo, alertNotifier, filesystemHealthReader, sequencer, loggatewayLogger)
 	a2aRepo := data.NewA2ARepoFromData(dataData, loggatewayLogger)
 	agentLookup := biz.ProvideA2AAgentLookup(agentRepository)
 	a2aUsecase := a2a.NewUsecase(a2aRepo, a2aRepo, a2aRepo, a2aRepo, agentLookup)
@@ -205,12 +221,10 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	teamLookup := biz.NewSessionTeamLookup(teamRepo)
 	sessionTitleGenerator := provideSessionTitleGenerator(llmProviderModelUsecase, persistenceSet, loggatewayLogger)
 	sessionParticipantRepository := data.NewSessionParticipantRepo(dataData)
-	v2Bus := provideV2EventBus()
 	sessionStatusPublisher := service.ProvideSessionStatusPublisher(v2Bus)
 	metricsUpdatedPublisher := service.ProvideMetricsUpdatedPublisher(v2Bus)
 	sessionMetricsUsecase := session.NewSessionMetricsUsecase(sessionRepo, loggatewayLogger, metricsUpdatedPublisher)
 	sessionRuntimeWriter := data.NewSessionRuntimeRepo(dataData)
-	stepV2Repo := data.NewStepV2Repo(dataData, loggatewayLogger)
 	activityLister := biz.NewSessionActivityLister(stepV2Repo)
 	sessionUsecase := session.NewSessionUsecase(sessionRepo, sessionAgentLookup, teamLookup, sessionTitleGenerator, sessionParticipantRepository, sessionStatusPublisher, sessionMetricsUsecase, sessionRuntimeWriter, activityLister, loggatewayLogger)
 	runRegistry := provideRunRegistry(loggatewayLogger)
@@ -300,18 +314,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	globalMessageSearcher := data.NewGlobalMessageSearchRepo(dataData)
 	sessionSearchUsecase := provideSessionSearchUsecase(agentRepository, sessionRepo, messageReader, globalMessageSearcher, accessAuditor, loggatewayLogger)
 	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase)
-	taskV2Repo := data.NewTaskV2Repo(dataData, loggatewayLogger)
-	turnV2Repo := data.NewTurnV2Repo(dataData, loggatewayLogger)
-	teamStageV2Repo := data.NewTeamStageV2Repo(dataData, loggatewayLogger)
-	teamRunV2Repo := data.NewTeamRunV2Repo(dataData, loggatewayLogger)
-	memberSessionV2Repo := data.NewMemberSessionV2Repo(dataData, loggatewayLogger)
-	planBoardV2Repo := data.NewPlanBoardV2Repo(dataData, loggatewayLogger)
-	planStepV2Repo := data.NewPlanStepV2Repo(dataData, loggatewayLogger)
-	graphStageV2Repo := data.NewGraphStageV2Repo(dataData, loggatewayLogger)
-	graphNodeV2Repo := data.NewGraphNodeV2Repo(dataData, loggatewayLogger)
-	repoSet := provideV2RepoSet(taskV2Repo, turnV2Repo, stepV2Repo, teamStageV2Repo, teamRunV2Repo, memberSessionV2Repo, planBoardV2Repo, planStepV2Repo, graphStageV2Repo, graphNodeV2Repo)
-	eventDeliveryOutboxRepo := data.NewEventDeliveryOutboxRepoFromData(dataData)
-	sequencer := provideV2Sequencer(repoSet, v2Bus, eventDeliveryOutboxRepo, loggatewayLogger)
 	observationReadWriter := data.NewObservationRepo(dataData)
 	patternReadWriter := data.NewPatternRepo(dataData)
 	proposalReadWriter := data.NewProposalRepo(dataData)
@@ -323,7 +325,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	learningLoopUsecase := provideLearningLoopUsecase(observationReadWriter, patternReadWriter, proposalReadWriter, agentRepository, skillEvolutionOrchestrator, loggatewayLogger)
 	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
-	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, a2aUsecase, sessionUsecase, projectorFactory, loggatewayLogger)
+	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, a2aUsecase, sessionUsecase, skillUsecase, agentUsecase, systemSettingRepo, projectorFactory, loggatewayLogger)
 	runner := team.NewRunner(teamRepo, teamRepo, teamRepo, teamUsecase, teamRepo, teamRepo, usageUsecase, turnDeps, repository, factory, loggatewayLogger, runnerConfig)
 	teamRunnerWirePort := service.ProvideTeamRunnerWirePort(runner)
 	teamGraphSessionRepo := data.NewTeamGraphSessionRepo(dataData)
@@ -866,7 +868,7 @@ func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, monitorBus contra
 	return service.NewMonitorAlertNotifier(channels, monitorBus, lg)
 }
 
-func provideMonitorUsecase(audit biz.MonitorAuditRepo, event2 biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, lg loggateway.Logger) *biz.MonitorUsecase {
+func provideMonitorUsecase(audit biz.MonitorAuditRepo, event2 biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, seq *v2.Sequencer, lg loggateway.Logger) *biz.MonitorUsecase {
 	rb := monitor.NewMetricRingBuffer()
 	uc := biz.NewMonitorUsecase(audit, event2, trace, alert, runner, notifier, biz.WithFilesystemHealthReader(fsHealth), biz.WithRingBuffer(rb), monitor.WithLogger(lg))
 	w := monitor.NewAlertEvalWorker(uc, rb, lg)
@@ -875,6 +877,10 @@ func provideMonitorUsecase(audit biz.MonitorAuditRepo, event2 biz.MonitorEventRe
 	reg.Register(monitor.NewRunnerErrorRateMetric(event2, rb))
 	if fsHealth != nil {
 		reg.Register(monitor.NewSkillFilesystemMissingMetric(fsHealth))
+	}
+	if seq != nil {
+
+		reg.Register(monitor.NewSequencerDeadLetterMetric(seq))
 	}
 	uc.SetRegistry(reg)
 	return uc
@@ -1091,6 +1097,9 @@ func provideRunnerConfig(
 	kanbanBridge kanban.Bridge,
 	a2aUC *biz.A2AUsecase,
 	sessions *biz.SessionUsecase,
+	skillUC *biz.SkillUsecase,
+	agentsUC *biz.AgentUsecase,
+	sys biz.SystemSettingRepo,
 	v2ProjectorFactory *v2.ProjectorFactory,
 	lg loggateway.Logger,
 ) team.RunnerConfig {
@@ -1117,6 +1126,8 @@ func provideRunnerConfig(
 		A2AEnabled:      a2aUC != nil,
 
 		SessionChildLookup: &sessionChildLookupAdapter{sessions: sessions},
+
+		MemberCustomTools: service.NewCLIAdminToolFactory(skillUC, agentsUC, sys),
 	}
 	if graphs != nil {
 		cfg.GraphLoader = adapter.NewLinkedGraphBuildConfigLoader(graphs)
@@ -1535,7 +1546,7 @@ func provideGraphBuildDeps(
 	return graph.GraphNodeResolverSet{
 		Models:       adapter.NewCatalogModelResolver(catalog, rtTrip, lg),
 		Tools:        adapter.NewCatalogToolResolver(toolUC, lg),
-		Agents:       adapter.NewCatalogAgentResolver(builderDeps, lg),
+		Agents:       adapter.NewCatalogAgentResolver(builderDeps, lg, service.NewCLIAdminToolFactory(skillUC, agentUC, sys)),
 		Functions:    adapter.NewCatalogFunctionResolver(toolUC, lg),
 		NodeBreakers: nodeBreakers,
 	}
@@ -1628,9 +1639,11 @@ func provideSkillRegistrationPort(skillUC *biz.SkillUsecase) biz.SkillRegistrati
 // provideSkillUsecase wraps biz.NewSkillUsecase to wire the dedup cache
 // invalidation hook (A3 fix: skill mutations must invalidate the 10-min dedup
 // result cache, otherwise merged/deleted skills keep showing in dedup groups).
-func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEmbedder, dedup *biz.SkillDedupUsecase) *biz.SkillUsecase {
+// tagRepo 装配标签字典端口（治理重写后全量失效路由 embed 缓存）。
+func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEmbedder, dedup *biz.SkillDedupUsecase, tagRepo biz.SkillTagRepo) *biz.SkillUsecase {
 	u := biz.NewSkillUsecase(repo, embedder)
 	u.SetDedupCacheInvalidator(dedup)
+	u.SetTagRepo(tagRepo)
 	return u
 }
 
@@ -2467,8 +2480,10 @@ func provideV2RepoSet(
 
 // provideV2Sequencer constructs the v2 Sequencer.
 // ActivityBridge upsert path removed; typed v2 events persist via RepoSet.
-func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, outbox biz.EventDeliveryOutboxRepo, lg loggateway.Logger) *v2.Sequencer {
-	return v2.NewSequencer(rs, bus, lg, v2.WithEventOutbox(outbox))
+// P1-R2b: durable dead-letter store enables restart-surviving replay of
+// permanently failed entity persists.
+func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, outbox biz.EventDeliveryOutboxRepo, dlStore biz.EventDeadLetterRepo, lg loggateway.Logger) *v2.Sequencer {
+	return v2.NewSequencer(rs, bus, lg, v2.WithEventOutbox(outbox), v2.WithDeadLetterStore(dlStore))
 }
 
 // provideWSServer constructs the WS server and attaches the durable outbox for

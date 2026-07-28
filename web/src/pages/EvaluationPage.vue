@@ -149,11 +149,14 @@
       :page-size="resultsPageSize"
       :loading="resultsLoading"
       :saving-id="savingResultId"
+      :exporting="exportingResults"
       :columns="resultColumns"
       @annotate="saveAnnotation"
       @update-row="updateResultRow"
       @page-change="onResultsPage"
       @page-size-change="onResultsPageSize"
+      @export-csv="exportResults('csv')"
+      @export-json="exportResults('json')"
     />
   </q-page>
 </template>
@@ -211,6 +214,8 @@ const {
   savingResultId,
   updateResultRow,
   saveAnnotation,
+  exportingResults,
+  exportResults,
   trendAgentId,
   trendPoints,
   trendLoading,

@@ -37,7 +37,7 @@ import (
 const llmInvokeSlowLogThreshold = 60 * time.Second
 
 // ────────────────────────────────────────────────────────────
-// EXECUTE phase helpers (called by turnPipeline.executeTurn)
+// EXECUTE phase helpers (called by turnPhases.executeTurn)
 // ────────────────────────────────────────────────────────────
 
 // prepareTurnUserOptions builds user options with attachment merge.
@@ -644,7 +644,7 @@ func (o *ChatOrchestrator) handleStreamError(
 }
 
 // ────────────────────────────────────────────────────────────
-// PERSIST phase helpers (called by turnPipeline.persistTurn)
+// PERSIST phase helpers (called by turnPhases.persistTurn)
 // ────────────────────────────────────────────────────────────
 
 // handleEmptyReply records an empty reply error and returns it.

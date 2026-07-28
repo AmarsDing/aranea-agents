@@ -1577,6 +1577,55 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 
 ---
 
+## 子模块：成员级交付契约（MDC）+ 交付确认（ack）+ MergeReducer
+
+> **状态**：✅ 已实施（2026-07-28，TDD） | **设计**：[1-chat.design.md §B.10.20.9](./1-chat.design.md#b10209-成员级交付契约mdc交付确认ack_deliverablemergereducer2026-07-28-实施-) + [11-multi-agent.design.md §6.5](./11-multi-agent.design.md#65-set_deliverable--get_deliverable--ack_deliverable-工具) | **背景**：团队成员相互交付信息时缺少内容级校验、并行写丢产物、无交付确认语义
+
+### MDC-D.1 模块定位
+
+补全团队内成员间交付的三个缺口：① `deliverable` StateField Reducer Cover→Merge 修复并行 topic 写互相覆盖；② 成员级交付契约（MDC，`deliverable_contract` Definition 字段）对 topic 写做 `required_keys`/`schema_json` 写时强制校验 + `required` 完成时 advisory；③ `ack_deliverable` 工具提供 accepted/rejected 交付确认语义，确认记录经 `ack/<topic>` 顶层键入 state、桥接排除不泄漏进团队间信封。纯后端改动（biz/team/tools），无 DB/proto/前端变更。
+
+### MDC-D.2 代码锚点
+
+| 文件 | 职责 | 状态 |
+|------|------|------|
+| `internal/biz/member_deliverable_contract.go` | MDC 类型 + `ValidateTopicData`（required_keys + C2 schema 复用）+ `RequiredTopicsMissing` + `MemberContractViolationError`（LLM 可纠错） | ✅ |
+| `internal/tools/deliverable/tool.go` | `SetDeliverableTool.contract` + 写时校验点 + `ToolsWithContract` | ✅ |
+| `internal/tools/deliverable/ack.go` | `AckDeliverableTool`：Call 校验 + `ack/<topic>` 顶层键写 + StateDelta 从结果确定性重建 | ✅ |
+| `internal/team/definition.go` | `Definition.DeliverableContract` 字段 + 空 entries 归一化 | ✅ |
+| `internal/team/trpc_build.go` | `deliverableToolsForDef`（契约装配收口）+ `parallelDeliverableAdvisory` | ✅ |
+| `internal/team/graph_compile.go` | `CompileToCompiledTeam` 入口 advisory Warn | ✅ |
+| `internal/team/graph_runtime_config.go` | `ensureDeliverableStateField` Reducer Cover→Merge | ✅ |
+| `internal/biz/spirit_team_usecase.go` | `marshalNonReservedStateKeys` 排除 `ack/` + `requiredTopicsMissingFromState` 完成时 Warn | ✅ |
+| `internal/biz/graph.go` | `DeliverableStateKey` 注释同步 Merge 语义 | ✅ |
+
+### MDC-D.3 任务清单（TDD 五步）
+
+| # | 任务 | 状态 |
+|---|------|------|
+| T1 | biz MDC 类型 + 校验（`member_deliverable_contract_test.go` 9 用例） | ✅ |
+| T2 | set 工具契约校验 + ack 工具（`ack_test.go` 10 用例） | ✅ |
+| T3 | team Definition 解析 + 装配 + parallel Warn（`deliverable_contract_build_test.go` 6 用例） | ✅ |
+| T4 | Reducer Cover→Merge + 并行 union/同 key 覆盖测试（`graph_runtime_options_test.go`） | ✅ |
+| T5 | 桥接 `ack/` 排除 + required topic Warn（`member_contract_bridge_test.go`） | ✅ |
+
+### MDC-D.4 验收标准
+
+- [x] 契约违规 topic 写被拒且错误列出全部违规（`TestSetDeliverableTool_ContractViolation_ReturnsStructuredError`）
+- [x] 无契约/未声明 topic/nil 契约行为不变（`TestSetDeliverableTool_NilContract_BackwardCompatible` 等）
+- [x] 并行成员同 superstep 写不同 topic 均存活（`TestDeliverableMergeReducer_ParallelTopicUnion`）
+- [x] ack 记录写 `ack/<topic>` 且不进团队间信封（`TestMarshalNonReservedStateKeys_ExcludesAckKeys`）
+- [x] required topic 缺失时完成日志 Warn 不阻断（`TestRequiredTopicsMissingFromState`）
+- [x] parallel + deliverable 编译期 advisory（`TestParallelDeliverableAdvisory`）
+- [x] `go build ./...` exit 0；`go test ./internal/tools/deliverable/... ./internal/team/... ./internal/biz/... ./internal/graph/... ./internal/service/...` 全部通过；`go vet` 无告警（2026-07-28）
+
+### MDC-D.5 改动文件清单（实际）
+
+新增：`internal/biz/member_deliverable_contract.go`、`internal/biz/member_deliverable_contract_test.go`、`internal/biz/member_contract_bridge_test.go`、`internal/tools/deliverable/ack.go`、`internal/tools/deliverable/ack_test.go`、`internal/team/deliverable_contract_build_test.go`
+修改：`internal/tools/deliverable/tool.go`、`internal/team/definition.go`、`internal/team/trpc_build.go`、`internal/team/graph_compile.go`、`internal/team/graph_runtime_config.go`、`internal/team/graph_runtime_options_test.go`、`internal/biz/spirit_team_usecase.go`、`internal/biz/graph.go`、`internal/graph/adapter/runtime_adapter.go`（注释同步）
+
+---
+
 ## 子模块：GraphStageBlock 方案A 重写（富卡片 DAG + 视口 + 成员弹框）
 
 > **状态**：✅ 已实施（2026-07-26；2026-07-27 指针捕获修复 + 弹框渲染/实时性修复 + 运行时验证） | **设计**：[1-chat.design.md §B.10.23](./1-chat.design.md#b1023-graphstageblock-方案a-重写2026-07-26-已实施2026-07-27-指针捕获修复)

@@ -128,6 +128,35 @@ func TestAlertMetricRegistry_Register_DuplicateOverwrites(t *testing.T) {
 	}
 }
 
+type stubDeadLetterReader struct{ n int }
+
+func (s stubDeadLetterReader) DeadLetterCount() int { return s.n }
+
+func TestSequencerDeadLetterMetric_Evaluate(t *testing.T) {
+	m := monitor.NewSequencerDeadLetterMetric(stubDeadLetterReader{n: 3})
+	if m.Key() != "sequencer.dead_letter_count" {
+		t.Errorf("Key() = %q, want %q", m.Key(), "sequencer.dead_letter_count")
+	}
+	v, err := m.Evaluate(context.Background(), time.Minute)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if v != 3 {
+		t.Errorf("Evaluate() = %v, want 3", v)
+	}
+}
+
+func TestSequencerDeadLetterMetric_Evaluate_NilReader(t *testing.T) {
+	m := monitor.NewSequencerDeadLetterMetric(nil)
+	v, err := m.Evaluate(context.Background(), time.Minute)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if v != 0 {
+		t.Errorf("Evaluate() with nil reader = %v, want 0", v)
+	}
+}
+
 func TestRunnerErrorRateMetric_Key(t *testing.T) {
 	m := monitor.NewRunnerErrorRateMetric(nil, nil)
 	if m.Key() != "runner.error_rate" {

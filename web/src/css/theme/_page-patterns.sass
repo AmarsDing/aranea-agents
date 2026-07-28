@@ -187,13 +187,12 @@ body.body--dark .app-page-title
   flex: 1 1 auto
   min-width: 0
 
+// 内容为 renderChatMarkdown 输出的 HTML，排版由 .chat-message-prose 控制，
+// 此处只保留布局属性（勿加 white-space: pre-wrap，否则块元素间出现多余空行）
 .session-message-row__content
   margin-top: 6px
-  white-space: pre-wrap
   overflow-wrap: break-word
   color: var(--color-text-primary)
-  font-size: 14px
-  line-height: 1.6
 
 body.body--dark
   .session-message-row

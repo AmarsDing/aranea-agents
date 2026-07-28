@@ -413,10 +413,17 @@ func (u *Usecase) ListAlertRulesWithDefaults(ctx context.Context) ([]AlertRule, 
 
 // DefaultAlertRules returns the built-in default alert rules.
 func DefaultAlertRules() []AlertRule {
-	return []AlertRule{{
-		ID: "default-runner-errors", Name: "Runner error rate",
-		MetricKey: "runner.error_rate", Threshold: 0.25, WindowMinutes: 60, Enabled: true, Severity: "warning",
-	}}
+	return []AlertRule{
+		{
+			ID: "default-runner-errors", Name: "Runner error rate",
+			MetricKey: "runner.error_rate", Threshold: 0.25, WindowMinutes: 60, Enabled: true, Severity: "warning",
+		},
+		{
+			// P0-R2a: any dead-lettered event means durable persist loss.
+			ID: "default-sequencer-dead-letter", Name: "Sequencer dead-letter backlog",
+			MetricKey: "sequencer.dead_letter_count", Threshold: 1, WindowMinutes: 5, Enabled: true, Severity: "critical",
+		},
+	}
 }
 
 // ListAlertRules returns all alert rules.

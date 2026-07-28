@@ -362,7 +362,7 @@ func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, monitorBus contra
 	return service.NewMonitorAlertNotifier(channels, monitorBus, lg)
 }
 
-func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, lg loggateway.Logger) *biz.MonitorUsecase {
+func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, seq *v2.Sequencer, lg loggateway.Logger) *biz.MonitorUsecase {
 	rb := monitor.NewMetricRingBuffer()
 	uc := biz.NewMonitorUsecase(audit, event, trace, alert, runner, notifier,
 		biz.WithFilesystemHealthReader(fsHealth),
@@ -375,6 +375,10 @@ func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRep
 	reg.Register(monitor.NewRunnerErrorRateMetric(event, rb))
 	if fsHealth != nil {
 		reg.Register(monitor.NewSkillFilesystemMissingMetric(fsHealth))
+	}
+	if seq != nil {
+		// P0-R2a: expose sequencer dead-letter backlog to the alert engine.
+		reg.Register(monitor.NewSequencerDeadLetterMetric(seq))
 	}
 	uc.SetRegistry(reg)
 	return uc
@@ -596,6 +600,9 @@ func provideRunnerConfig(
 	kanbanBridge kanbanpkg.Bridge,
 	a2aUC *biz.A2AUsecase,
 	sessions *biz.SessionUsecase,
+	skillUC *biz.SkillUsecase,
+	agentsUC *biz.AgentUsecase,
+	sys biz.SystemSettingRepo,
 	v2ProjectorFactory *v2.ProjectorFactory,
 	lg loggateway.Logger,
 ) team.RunnerConfig {
@@ -624,6 +631,9 @@ func provideRunnerConfig(
 		// in session activities. Uses SessionUsecase.ListChildSessions to look up
 		// child sessions by parent (team) session ID and match by MemberAgentKey.
 		SessionChildLookup: &sessionChildLookupAdapter{sessions: sessions},
+		// MemberCustomTools injects cli_admin_* tools for __system_admin__ members
+		// inside teams — the same tool surface as the direct chat path.
+		MemberCustomTools: service.NewCLIAdminToolFactory(skillUC, agentsUC, sys),
 	}
 	if graphs != nil {
 		cfg.GraphLoader = graphadapter.NewLinkedGraphBuildConfigLoader(graphs)
@@ -1053,7 +1063,7 @@ func provideGraphBuildDeps(
 	return graphtrpc.GraphNodeResolverSet{
 		Models:       graphadapter.NewCatalogModelResolver(catalog, rtTrip, lg),
 		Tools:        graphadapter.NewCatalogToolResolver(toolUC, lg),
-		Agents:       graphadapter.NewCatalogAgentResolver(builderDeps, lg),
+		Agents:       graphadapter.NewCatalogAgentResolver(builderDeps, lg, service.NewCLIAdminToolFactory(skillUC, agentUC, sys)),
 		Functions:    graphadapter.NewCatalogFunctionResolver(toolUC, lg),
 		NodeBreakers: nodeBreakers,
 	}
@@ -1146,9 +1156,11 @@ func provideSkillRegistrationPort(skillUC *biz.SkillUsecase) biz.SkillRegistrati
 // provideSkillUsecase wraps biz.NewSkillUsecase to wire the dedup cache
 // invalidation hook (A3 fix: skill mutations must invalidate the 10-min dedup
 // result cache, otherwise merged/deleted skills keep showing in dedup groups).
-func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEmbedder, dedup *biz.SkillDedupUsecase) *biz.SkillUsecase {
+// tagRepo 装配标签字典端口（治理重写后全量失效路由 embed 缓存）。
+func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEmbedder, dedup *biz.SkillDedupUsecase, tagRepo biz.SkillTagRepo) *biz.SkillUsecase {
 	u := biz.NewSkillUsecase(repo, embedder)
 	u.SetDedupCacheInvalidator(dedup)
+	u.SetTagRepo(tagRepo)
 	return u
 }
 
@@ -2034,8 +2046,10 @@ func provideV2RepoSet(
 
 // provideV2Sequencer constructs the v2 Sequencer.
 // ActivityBridge upsert path removed; typed v2 events persist via RepoSet.
-func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, outbox biz.EventDeliveryOutboxRepo, lg loggateway.Logger) *v2.Sequencer {
-	return v2.NewSequencer(rs, bus, lg, v2.WithEventOutbox(outbox))
+// P1-R2b: durable dead-letter store enables restart-surviving replay of
+// permanently failed entity persists.
+func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, outbox biz.EventDeliveryOutboxRepo, dlStore biz.EventDeadLetterRepo, lg loggateway.Logger) *v2.Sequencer {
+	return v2.NewSequencer(rs, bus, lg, v2.WithEventOutbox(outbox), v2.WithDeadLetterStore(dlStore))
 }
 
 // provideWSServer constructs the WS server and attaches the durable outbox for

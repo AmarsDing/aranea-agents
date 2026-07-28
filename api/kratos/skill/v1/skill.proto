@@ -15,6 +15,44 @@ message SkillTag {
   string source = 2;
 }
 
+// SkillTagInfo 是字典标签 + 实时使用计数。
+message SkillTagInfo {
+  string name = 1;
+  // `:` 前缀维度（file_type/domain），无维度为空串。
+  string dimension = 2;
+  // system | user | orphan（orphan = 使用中但未收录进字典）。
+  string source = 3;
+  int32 used_count = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message ListSkillTagsResponse {
+  repeated SkillTagInfo items = 1;
+}
+
+message CreateSkillTagRequest {
+  string name = 1;
+}
+
+message RenameSkillTagRequest {
+  string old_name = 1;
+  string new_name = 2;
+}
+
+message RenameSkillTagResponse {
+  // 重写引用该标签的 skill 条数。
+  int32 rewritten = 1;
+}
+
+message DeleteSkillTagRequest {
+  string name = 1;
+}
+
+message DeleteSkillTagResponse {
+  int32 rewritten = 1;
+}
+
 message SkillVersionSummary {
   string id = 1;
   string version = 2;
@@ -499,5 +537,25 @@ service SkillService {
   }
   rpc GetSkillHealth(GetSkillHealthRequest) returns (SkillHealthMetric) {
     option (google.api.http) = {get: "/v1/skills/{skill_id}/health"};
+  }
+  // 标签字典：治理 + 预建 + 实时使用计数。
+  // 路由用独立前缀 /v1/skill-tags，避免被 /v1/skills/{id} 吞掉。
+  rpc ListSkillTags(google.protobuf.Empty) returns (ListSkillTagsResponse) {
+    option (google.api.http) = {get: "/v1/skill-tags"};
+  }
+  rpc CreateSkillTag(CreateSkillTagRequest) returns (SkillTagInfo) {
+    option (google.api.http) = {
+      post: "/v1/skill-tags"
+      body: "*"
+    };
+  }
+  rpc RenameSkillTag(RenameSkillTagRequest) returns (RenameSkillTagResponse) {
+    option (google.api.http) = {
+      post: "/v1/skill-tags:rename"
+      body: "*"
+    };
+  }
+  rpc DeleteSkillTag(DeleteSkillTagRequest) returns (DeleteSkillTagResponse) {
+    option (google.api.http) = {delete: "/v1/skill-tags/{name}"};
   }
 }

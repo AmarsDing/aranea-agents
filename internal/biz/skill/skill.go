@@ -404,6 +404,7 @@ type Usecase struct {
 	embedTTL   time.Duration
 
 	dedupInvalidator DedupCacheInvalidator
+	tagRepo          TagRepo
 }
 
 // NewUsecase constructs a SkillUsecase.
@@ -415,6 +416,11 @@ func NewUsecase(repo Repo, embedder SkillEmbedder) *Usecase {
 // Called once during DI setup; not safe for concurrent use with mutations.
 func (u *Usecase) SetDedupCacheInvalidator(inv DedupCacheInvalidator) {
 	u.dedupInvalidator = inv
+}
+
+// SetTagRepo wires the tag-dictionary port. Called once during DI setup.
+func (u *Usecase) SetTagRepo(tr TagRepo) {
+	u.tagRepo = tr
 }
 
 // invalidateDedupCache clears the dedup result cache after a successful
@@ -596,6 +602,10 @@ func (u *Usecase) UpsertSkillFromDisk(ctx context.Context, in DiskSyncInput) (Sk
 	s, outcome, err := u.repo.UpsertSkillFromDisk(ctx, in)
 	if err != nil {
 		return Skill{}, outcome, err
+	}
+	// 内容变化时刷新该 slug 的路由 embedding，避免 Layer B 语义路由使用陈旧向量。
+	if outcome.ContentChanged {
+		u.InvalidateEmbedCacheForSlug(s.Slug)
 	}
 	u.invalidateDedupCache()
 	applySkillPermission(ctx, &s)

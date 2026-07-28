@@ -56,6 +56,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
+	github.com/stretchr/testify v1.11.1
 	github.com/tencent-connect/botgo v0.2.1
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
@@ -72,6 +73,7 @@ require (
 	golang.org/x/image v0.41.0
 	golang.org/x/net v0.55.0
 	golang.org/x/sync v0.20.0
+	golang.org/x/sys v0.45.0
 	golang.org/x/tools v0.45.0
 	google.golang.org/genai v1.40.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9
@@ -103,6 +105,7 @@ require (
 	trpc.group/trpc-go/trpc-agent-go/tool/webfetch/geminifetch v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/tool/webfetch/httpfetch v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/tool/wikipedia v1.9.0
+	trpc.group/trpc-go/trpc-mcp-go v0.0.10
 )
 
 require (
@@ -209,6 +212,7 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.2 // indirect
 	github.com/lestrrat-go/httpcc v1.0.1 // indirect
 	github.com/lestrrat-go/httprc v1.0.6 // indirect
@@ -260,7 +264,6 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.3 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tencentyun/cos-go-sdk-v5 v0.7.69 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
@@ -293,7 +296,6 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/api v0.267.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
@@ -306,5 +308,4 @@ require (
 	mvdan.cc/sh/v3 v3.8.0 // indirect
 	trpc.group/trpc-go/trpc-agent-go/storage/postgres v1.8.0 // indirect
 	trpc.group/trpc-go/trpc-agent-go/storage/s3 v1.8.0 // indirect
-	trpc.group/trpc-go/trpc-mcp-go v0.0.10 // indirect
 )

@@ -107,7 +107,6 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { GraphNode } from '../../../features/chat/v2Types';
 import type { MediaArtifact } from '../../../features/chat/mediaTypes';
-import { useNodeOutputStore } from '../../../stores/chat/nodeOutputStore';
 import { useObserveNodeEnrichment } from '../../../features/chat/composables/useObserveGraph';
 import { formatDuration } from '../../../features/spirit/spiritUi';
 import ObserveStatusBadge from './ObserveStatusBadge.vue';
@@ -120,13 +119,12 @@ defineEmits<{
   preview: [art: MediaArtifact];
 }>();
 
-const nodeOutputStore = useNodeOutputStore();
-const { extractMembers, extractDuration, extractError, extractDescription, extractTextOutput } =
+const { extractMembers, extractDuration, extractError, extractDescription, extractTextOutput, extractMediaOutputs } =
   useObserveNodeEnrichment();
 
 const nodeInitial = computed(() => (props.node.Label || '?').charAt(0).toUpperCase());
 
-const mediaOutputs = computed(() => nodeOutputStore.getNodeOutput(props.node.TeamStageID || props.node.ID));
+const mediaOutputs = computed(() => extractMediaOutputs(props.node));
 
 const members = computed(() => extractMembers(props.node));
 const durationLabel = computed(() => formatDuration(extractDuration(props.node)));

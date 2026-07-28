@@ -1,0 +1,6 @@
+COLS: [id agent_key task_id team_stage_id session_id status]
+ROW 1: [id=38a53dd5-defa-5fc9-b94e-e84549acb2c7] [agent_key=__system_admin__] [task_id=] [team_stage_id=6807dcd1-3396-527c-b568-d814cf0a132e] [session_id=865e3205-bd66-48d8-8f65-bc5c0dbad882] [status=failed] 
+ROW 2: [id=174d2a97-f8f7-5e3d-82e4-0a768833efea] [agent_key=__system_admin__] [task_id=] [team_stage_id=0b13904b-7952-5c5b-ae98-fba74ab905f7] [session_id=6296b2d5-601a-4f2a-b660-e335c78ce26a] [status=failed] 
+ROW 3: [id=91f65605-42c9-5df3-a0c9-1799f09db59a] [agent_key=__system_admin__] [task_id=] [team_stage_id=babdb09e-6a89-5bbc-9626-587b2632d7c5] [session_id=81342496-183e-4fe2-934b-d173c019b375] [status=failed] 
+ROW 4: [id=878c2678-e482-5766-80c0-eb8f754ad623] [agent_key=__system_admin__] [task_id=] [team_stage_id=4980cc46-9454-596b-84b6-619430e5987d] [session_id=27dd4935-503b-4b7d-809b-2fe5ae813567] [status=failed] 
+TOTAL: 4

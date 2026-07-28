@@ -264,7 +264,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	// ── ADMISSION ──
 	admitStart := time.Now()
-	admit, err := o.pipeline().admitTurn(ctx, sess, input, ag, dialogMode, prov, mod)
+	admit, err := o.phases().admitTurn(ctx, sess, input, ag, dialogMode, prov, mod)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
@@ -554,7 +554,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	// ── EXECUTE ──
 	turnPhase.Store("executing")
-	execResult, err := o.pipeline().executeTurn(ctx, sess, input, ag, admit, emitter, traceBridge, deps, runner, attachmentRefs, intentRunOpts, turnStart)
+	execResult, err := o.phases().executeTurn(ctx, sess, input, ag, admit, emitter, traceBridge, deps, runner, attachmentRefs, intentRunOpts, turnStart)
 	if err != nil {
 		// EXECUTE phase error: only markTurnError; the defer block above
 		// (runSingleAgentViaTRPC L477-503) handles publishRunStatus +
@@ -568,7 +568,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	// ── PERSIST ──
 	turnPhase.Store("persisting")
-	persistResult, err := o.pipeline().persistTurn(&ctx, sess, ag, admit, execResult, emitter, turnStart, &turnStatus, &turnErr, &turnErrMsg)
+	persistResult, err := o.phases().persistTurn(&ctx, sess, ag, admit, execResult, emitter, turnStart, &turnStatus, &turnErr, &turnErrMsg)
 	if err != nil {
 		// PERSIST phase error: only markTurnError; the defer block above
 		// (runSingleAgentViaTRPC L477-503) handles publishRunStatus +

@@ -6,6 +6,15 @@ import "context"
 // Single responsibility: match each subtask in a TaskPlan to the best Agent or Team.
 type AgentAllocatorPort interface {
 	Allocate(ctx context.Context, taskPlan *TaskPlan) (*AllocationPlan, error)
+	// AllocateExplicit assigns the caller-specified agent keys directly,
+	// bypassing heuristic matching. Used when the Spirit LLM explicitly routes
+	// a task to designated agents (IDENTITY.md contract: plan_and_execute +
+	// agent_keys=["__system_admin__"] for system-butler tasks). Heuristic
+	// layers can never select system agents (they are filtered at source), so
+	// explicit routing is the only path to them.
+	// agentKeys[0] is the executor (lead); remaining keys join as team members
+	// in dag strategy.
+	AllocateExplicit(ctx context.Context, taskPlan *TaskPlan, agentKeys []string) (*AllocationPlan, error)
 	GetAllocation(ctx context.Context, allocationID string) (*AllocationPlan, error)
 }
 

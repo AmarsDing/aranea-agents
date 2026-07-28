@@ -26,7 +26,7 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
   const selectedCreator = ref<string | null>(null);
   const creatorOptions = ref<AgentCreatorOption[]>([]);
   const page = ref(1);
-  const rowsPerPage = ref(20);
+  const rowsPerPage = ref(21);
   const agents = ref<Agent[]>([]);
   const total = ref(0);
   const listLoading = ref(false);
@@ -37,7 +37,7 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
   const checkingModel = ref(false);
   const modelCheckPassed = ref(false);
 
-  const industryNodes = computed(() => taxonomyTree.value.filter((row) => row.level === 'industry' && row.enabled));
+  const industryNodes = computed(() => taxonomyTree.value.filter((row) => row.level === 'company' && row.enabled));
   const taxonomyPositionOptions = computed(() => flattenTaxonomyPositions(industryNodes.value));
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / rowsPerPage.value)));
 

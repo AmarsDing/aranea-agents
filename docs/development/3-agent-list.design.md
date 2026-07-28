@@ -328,7 +328,16 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
     total, err := c.Agent.Query().Where(where).Count(ctx)
     // ...
     rows, err := c.Agent.Query().Where(where).
-        Order(agent.ByIsDefault(entsql.OrderDesc()), agent.ByUpdatedAt(entsql.OrderDesc())).
+        Order(
+            agent.ByIsDefault(entsql.OrderDesc()),
+            // 内置管家优先：system_builtin 且非 dept_lead（精灵/系统/记忆/技能管家）排最前
+            func(s *entsql.Selector) {
+                s.OrderBy(entsql.Asc("CASE WHEN " + s.C(agent.FieldKind) + " = 'system_builtin' AND " + s.C(agent.FieldAgentVariant) + " <> 'dept_lead' THEN 0 ELSE 1 END"))
+            },
+            agent.ByKind(entsql.OrderDesc()),
+            agent.ByUpdatedAt(entsql.OrderDesc()),
+            agent.ByID(entsql.OrderAsc()), // 唯一决胜键：同 updated_at 组内分页稳定
+        ).
         Limit(q.Limit).Offset(q.Offset).All(ctx)
     // ...
 }
@@ -336,7 +345,7 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 
 要点：
 - 使用 `r.data.RW().Read(ctx)` 走读连接（WAL 并发读），符合 DB 读写分离规范
-- 默认按 `is_default DESC, updated_at DESC` 排序
+- 排序层级：`is_default DESC` → 内置管家 CASE 表达式（4 个核心管家优先）→ `kind DESC`（system_builtin 在 ecosystem_preset 前）→ `updated_at DESC` → `id ASC`（唯一决胜键，保证 LIMIT/OFFSET 分页不跳行/重复）
 - `OrgNodeID` 通过 `categoryPositionIDsForFilter` 解析为职位 id 列表后用 `PositionIDIn` 匹配
 
 ### 4.2 DeleteAgent 实现（软删）
@@ -426,7 +435,7 @@ func (s *AgentService) ListAgentCreators(ctx context.Context, _ *emptypb.Empty) 
 
 - `DeleteAgent`：删除后 `invalidateAgentBuildCache` + 审计
 - `ToggleFavorite`：`NotFound` 错误翻译为 `apierror.NotFound`
-- `DuplicateAgent`：调用 `uc.Duplicate`，深拷贝 files，副本 `created_by` = 当前用户
+- `DuplicateAgent`：调用 `uc.Duplicate`，深拷贝 files，副本 `created_by` = 当前用户；副本继承源 `position_id`/`position_key`（唯一索引 `(position_key, agent_variant)` 由 `agent_variant = 副本 agent_key` 保证不冲突），保留行业/岗位分类
 - `ListAgentCreators`：返回创建者列表（含「仅我的」首项）
 
 ### 5.3 类型转换
@@ -636,10 +645,10 @@ defineEmits<{
 }>();
 ```
 
-三组分组逻辑：
-- `builtinAgents` = `agents.filter(a => a.readonly)`
-- `presetAgents` = `agents.filter(a => !a.readonly && a.kind === 'ecosystem_preset')`
-- `userAgents` = `agents.filter(a => !a.readonly && a.kind !== 'ecosystem_preset')`
+三组分组逻辑（`isDeptLead = a.agent_variant === 'dept_lead'`）：
+- `builtinAgents` = `agents.filter(a => a.readonly && a.kind === 'system_builtin' && !isDeptLead(a))` — 仅 4 个核心管家（精灵助手/系统管家/记忆管家/技能管家），与后端 `CleanupNonSystemData` 保留规则一致
+- `presetAgents` = `agents.filter(a => isDeptLead(a) || (!a.readonly && a.kind === 'ecosystem_preset'))` — 26 个部门主管归入预设模板区
+- `userAgents` = `agents.filter(a => !a.readonly && a.kind !== 'ecosystem_preset' && !isDeptLead(a))`
 
 `userAgents` 通过 `vuedraggable` 支持拖拽排序，拖拽结束触发 `reorder` 事件。
 

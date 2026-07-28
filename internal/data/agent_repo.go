@@ -594,7 +594,20 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 		return biz.AgentListResult{}, entErrToBizErr(err, "AGENT")
 	}
 	rows, err := c.Agent.Query().Where(where).
-		Order(agent.ByIsDefault(entsql.OrderDesc()), agent.ByUpdatedAt(entsql.OrderDesc())).
+		// 内置管家优先：system_builtin 且非 dept_lead（精灵/系统/记忆/技能管家）排在最前。
+		// 30 个 system_builtin 共享同一 updated_at（同一种子时间），仅靠 kind DESC + id ASC
+		// 会把 26 个部门主管挤在 3 个管家前面，管家掉到第 2 页。
+		// kind DESC：system_builtin 排在 ecosystem_preset 之前；
+		// id ASC：唯一决胜键，保证同 updated_at 组内分页顺序稳定（否则 LIMIT/OFFSET 会跳行/重复）。
+		Order(
+			agent.ByIsDefault(entsql.OrderDesc()),
+			func(s *entsql.Selector) {
+				s.OrderBy(entsql.Asc("CASE WHEN " + s.C(agent.FieldKind) + " = 'system_builtin' AND " + s.C(agent.FieldAgentVariant) + " <> 'dept_lead' THEN 0 ELSE 1 END"))
+			},
+			agent.ByKind(entsql.OrderDesc()),
+			agent.ByUpdatedAt(entsql.OrderDesc()),
+			agent.ByID(entsql.OrderAsc()),
+		).
 		Limit(q.Limit).
 		Offset(q.Offset).
 		All(ctx)

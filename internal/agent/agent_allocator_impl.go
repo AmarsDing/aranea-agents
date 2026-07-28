@@ -196,6 +196,99 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 		loggateway.Str("allocation_plan_id", plan.ID),
 	)
 
+	saved, err := impl.persistAllocationPlan(ctx, plan, traceID)
+	if err != nil {
+		return nil, err
+	}
+	return saved, nil
+}
+
+// AllocateExplicit implements biz.AgentAllocatorPort.AllocateExplicit.
+// Explicit routing skips every heuristic layer: agentKeys[0] executes every
+// subtask (lead), remaining keys become team members under dag strategy.
+// Display names resolve best-effort via AgentReader; unknown keys fall back
+// to the key itself so routing never fails on a missing catalog row.
+func (impl *agentAllocatorImpl) AllocateExplicit(ctx context.Context, taskPlan *biz.TaskPlan, agentKeys []string) (*biz.AllocationPlan, error) {
+	if taskPlan == nil {
+		return nil, apierror.BadRequest(apierror.DomainSpirit, "task plan is required")
+	}
+	keys := make([]string, 0, len(agentKeys))
+	seen := make(map[string]bool, len(agentKeys))
+	for _, k := range agentKeys {
+		k = strings.TrimSpace(k)
+		if k == "" || seen[k] {
+			continue
+		}
+		seen[k] = true
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		return nil, apierror.BadRequest(apierror.DomainSpirit, "agent_keys is required for explicit allocation")
+	}
+
+	traceID := taskPlan.TraceID
+	if traceID == "" {
+		traceID, _ = biz.SpiritTraceIDFromContext(ctx)
+	}
+
+	impl.lg.Info("AgentAllocator.AllocateExplicit 显式路由",
+		loggateway.StepID(biz.SpiritStepAllocatorMatch),
+		loggateway.Str("trace_id", traceID),
+		loggateway.Str("task_plan_id", taskPlan.ID),
+		loggateway.Str("agent_keys", strings.Join(keys, ",")),
+	)
+
+	isDAG := taskPlan.Strategy == biz.StrategyDAG
+	displayName := func(agentKey string) string {
+		if impl.agentReader != nil {
+			if ag, err := impl.agentReader.GetAgentByAgentKey(ctx, agentKey); err == nil && ag.DisplayName != "" {
+				return ag.DisplayName
+			}
+		}
+		return agentKey
+	}
+	buildAlloc := func(subTaskID, subTaskName string) biz.TaskAllocation {
+		alloc := biz.TaskAllocation{
+			SubTaskID:    subTaskID,
+			SubTaskName:  subTaskName,
+			AssignedType: "agent",
+			AssignedKey:  keys[0],
+			AssignedName: displayName(keys[0]),
+			MatchScore:   1.0,
+			MatchLayer:   "explicit",
+			MatchReason:  "Spirit 显式指定 Agent（agent_keys）",
+		}
+		if isDAG && len(keys) > 1 {
+			alloc.AssignedType = "team"
+			alloc.TeamMemberKeys = append([]string(nil), keys[1:]...)
+		}
+		return alloc
+	}
+
+	var allocations []biz.TaskAllocation
+	if len(taskPlan.SubTasks) == 0 {
+		allocations = append(allocations, buildAlloc("whole", taskPlan.UserMessage))
+	} else {
+		allocations = make([]biz.TaskAllocation, 0, len(taskPlan.SubTasks))
+		for _, st := range taskPlan.SubTasks {
+			allocations = append(allocations, buildAlloc(st.ID, st.Name))
+		}
+	}
+
+	plan := &biz.AllocationPlan{
+		ID:              "ap_" + uuid.NewString(),
+		TaskPlanID:      taskPlan.ID,
+		SpiritSessionID: taskPlan.SpiritSessionID,
+		TraceID:         traceID,
+		Allocations:     allocations,
+		Status:          biz.AllocationStatusDraft,
+	}
+	return impl.persistAllocationPlan(ctx, plan, traceID)
+}
+
+// persistAllocationPlan persists an AllocationPlan and publishes the
+// spirit_allocation_created event. Shared by Allocate and AllocateExplicit.
+func (impl *agentAllocatorImpl) persistAllocationPlan(ctx context.Context, plan *biz.AllocationPlan, traceID string) (*biz.AllocationPlan, error) {
 	saved, err := impl.repo.Create(ctx, plan)
 	if err != nil {
 		impl.lg.Warn("AllocationPlan 持久化失败",
@@ -205,10 +298,7 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 		)
 		return nil, apierror.Internal(apierror.DomainSpirit, "persist allocation plan").WithCause(err)
 	}
-
-	// Publish spirit_allocation_created event.
 	impl.publishAllocationCreated(ctx, saved)
-
 	return saved, nil
 }
 

@@ -14,6 +14,7 @@ export function useSkillsPage() {
   const enabled = ref<boolean | null>(null);
   const status = ref('');
   const syncOrigin = ref('');
+  const selectedTags = ref<string[]>([]);
   const filesystemMissing = ref<boolean | null>(null);
   const filesystemHealth = ref<SkillFilesystemHealth | null>(null);
   const page = ref(1);
@@ -35,6 +36,12 @@ export function useSkillsPage() {
   const metaSaving = ref(false);
 
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
+
+  /** 标签字典选项源（MetaDialog / FilterBar 共用），首次打开时加载。 */
+  const tagOptions = computed(() => skillsStore.tagNameOptions());
+  function ensureTagOptionsLoaded() {
+    void skillsStore.loadSkillTags().catch(() => {});
+  }
 
   function notify(opts: { type: string; message: string }) {
     $q.notify(opts);
@@ -65,12 +72,14 @@ export function useSkillsPage() {
   }
 
   function openCreate() {
+    ensureTagOptionsLoaded();
     metaTarget.value = null;
     metaBody.value = '';
     metaOpen.value = true;
   }
 
   async function openMetaEditor(skill: Skill) {
+    ensureTagOptionsLoaded();
     metaTarget.value = skill;
     metaBody.value = '';
     metaOpen.value = true;
@@ -114,6 +123,8 @@ export function useSkillsPage() {
         await loadRows();
       }
       metaOpen.value = false;
+      // 标签可能新增/变更，字典选项源缓存失效（下次打开时重新拉取）。
+      skillsStore.invalidateSkillTags();
     } catch (err) {
       $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存失败' });
     } finally {
@@ -138,6 +149,7 @@ export function useSkillsPage() {
         enabled: enabled.value,
         status: status.value,
         sync_origin: syncOrigin.value || undefined,
+        tags: selectedTags.value.length ? [...selectedTags.value] : undefined,
         filesystem_missing: filesystemMissing.value,
         page: page.value,
         page_size: pageSize.value,
@@ -157,6 +169,7 @@ export function useSkillsPage() {
     enabled.value = null;
     status.value = '';
     syncOrigin.value = '';
+    selectedTags.value = [];
     filesystemMissing.value = null;
     page.value = 1;
     void loadRows();
@@ -231,7 +244,7 @@ export function useSkillsPage() {
     }
   }
 
-  watch([search, enabled, status, syncOrigin, filesystemMissing], () => {
+  watch([search, enabled, status, syncOrigin, selectedTags, filesystemMissing], () => {
     if (page.value === 1) {
       void loadRows();
     } else {
@@ -242,7 +255,10 @@ export function useSkillsPage() {
     void loadRows();
   });
 
-  onMounted(loadRows);
+  onMounted(() => {
+    ensureTagOptionsLoaded();
+    void loadRows();
+  });
 
   return {
     uploadRef,
@@ -252,6 +268,8 @@ export function useSkillsPage() {
     enabled,
     status,
     syncOrigin,
+    selectedTags,
+    tagOptions,
     filesystemMissing,
     filesystemHealth,
     page,

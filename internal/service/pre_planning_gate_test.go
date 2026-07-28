@@ -44,6 +44,7 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 		score          float64
 		wantForce      bool
 		wantEventCount int
+		wantReason     string
 	}{
 		{
 			name:           "simple does not force planning",
@@ -51,6 +52,9 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 			score:          0.15,
 			wantForce:      false,
 			wantEventCount: 2, // start + done
+			// 2026-07-28：simple 决策文案改中性表述——门控不承诺"直接回答"
+			// （LLM 仍可能自主走 plan_and_execute），只陈述评估结论。
+			wantReason: "评估完成：简单任务",
 		},
 		{
 			name:           "moderate forces planning",
@@ -58,6 +62,8 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 			score:          0.45,
 			wantForce:      true,
 			wantEventCount: 2,
+			// UI 文案不得泄漏英文枚举值（moderate → 中等）。
+			wantReason: "评估完成：中等任务，强制走规划路径",
 		},
 		{
 			name:           "complex forces planning",
@@ -65,6 +71,7 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 			score:          0.75,
 			wantForce:      true,
 			wantEventCount: 2,
+			wantReason:     "评估完成：复杂任务，强制走规划路径",
 		},
 	}
 
@@ -128,6 +135,11 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 				startEv := published[0].(*biz.StepCreatedEvent)
 				if startEv.Step.Kind != biz.StepKindNotice {
 					t.Errorf("first step kind = %s, want %s", startEv.Step.Kind, biz.StepKindNotice)
+				}
+				// 决策 notice 文案（第二个事件）必须与门控决策一致且为中性中文表述。
+				doneEv := published[1].(*biz.StepCreatedEvent)
+				if doneEv.Step.Content != tt.wantReason {
+					t.Errorf("decision notice content = %q, want %q", doneEv.Step.Content, tt.wantReason)
 				}
 			}
 		})

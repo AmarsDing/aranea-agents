@@ -1,13 +1,16 @@
 import { computed, onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import type { EvalCaseResult, EvalRun, EvalRunComparison, EvalTrendPoint } from './types';
 import { useEvaluationStore } from '../../stores/evaluation';
+import { exportEvalRunCsv, exportEvalRunJson } from './exportRunResults';
 import { EVAL_RESULTS_PAGE_SIZE_DEFAULT, EVAL_RUNS_PAGE_SIZE_DEFAULT } from '../constants/queryLimits';
 import { EVAL_RESULT_TABLE_COLUMNS, EVAL_RUN_TABLE_COLUMNS } from './evaluationTableUi';
 
 export function useEvaluationPage() {
   const $q = useQuasar();
+  const { t } = useI18n();
   const evaluationStore = useEvaluationStore();
   const { datasets, runs, runsTotal, loading, agentOptions } = storeToRefs(evaluationStore);
 
@@ -297,6 +300,28 @@ export function useEvaluationPage() {
     void loadCaseResults();
   }
 
+  // Export is owned here (Store/Composable layer) — the results dialog only
+  // emits export-csv / export-json and never touches the store itself.
+  const exportingResults = ref(false);
+
+  async function exportResults(format: 'csv' | 'json') {
+    const run = resultsRun.value;
+    if (!run) return;
+    exportingResults.value = true;
+    try {
+      const res = await evaluationStore.loadRunResults(run.id, { limit: 5000, offset: 0 });
+      if (format === 'csv') {
+        exportEvalRunCsv(run, res.items);
+      } else {
+        exportEvalRunJson(run, res.items);
+      }
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('evaluationPage.exportFailed') });
+    } finally {
+      exportingResults.value = false;
+    }
+  }
+
   onMounted(() => {
     void loadAgentOptions();
     void loadDatasets();
@@ -345,6 +370,8 @@ export function useEvaluationPage() {
     savingResultId,
     updateResultRow,
     saveAnnotation,
+    exportingResults,
+    exportResults,
     trendAgentId,
     trendPoints,
     trendLoading,

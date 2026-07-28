@@ -8,6 +8,7 @@
       <template #actions>
         <q-btn outline rounded no-caps color="primary" icon="add" label="新建 Skill" @click="openCreate" />
         <q-btn outline rounded no-caps color="primary" icon="upload_file" label="上传 Skill" @click="openUpload" />
+        <q-btn outline rounded no-caps color="primary" icon="sell" :label="$t('menu.skillTags')" to="/skills/tags" />
         <q-btn outline rounded no-caps color="primary" icon="history" label="运行记录" to="/skills/runs" />
         <q-btn
           outline
@@ -51,8 +52,10 @@
       v-model:search="search"
       v-model:enabled="enabled"
       v-model:status="status"
+      v-model:tags="selectedTags"
       v-model:sync-origin="syncOrigin"
       v-model:filesystem-missing="filesystemMissing"
+      :tag-options="tagOptions"
       :loading="loading"
       class="q-mb-md"
       @reset="resetFilters"
@@ -101,6 +104,7 @@
       v-model="metaOpen"
       :skill="metaTarget"
       :initial-body="metaBody"
+      :tag-options="tagOptions"
       :saving="metaSaving"
       :notify="notify"
       :confirm="confirm"
@@ -138,6 +142,8 @@ const {
   enabled,
   status,
   syncOrigin,
+  selectedTags,
+  tagOptions,
   filesystemMissing,
   filesystemHealth,
   page,

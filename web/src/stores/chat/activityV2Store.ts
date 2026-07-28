@@ -27,7 +27,7 @@ import {
   listGraphNodesV2,
 } from '../../features/session/v2Api';
 import { useNodeOutputStore } from './nodeOutputStore';
-import type { MediaArtifact } from '../../features/chat/mediaTypes';
+import { MEDIA_TOOL_NAMES, type MediaArtifact } from '../../features/chat/mediaTypes';
 
 // P2-07: record sub-resource fetch failures during history hydration.
 export interface HydrationError {
@@ -141,8 +141,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     // Sync media outputs to nodeOutputStore for observation canvas.
     // When a media tool completes, extract artifacts from ToolResult and map to the node.
     if (s.Kind === 'action' && s.Status === 'completed' && s.ToolName) {
-      const mediaTools = ['generate_image', 'generate_video', 'image_to_video'];
-      if (mediaTools.includes(s.ToolName)) {
+      if (MEDIA_TOOL_NAMES.includes(s.ToolName)) {
         const result = s.ToolResult as Record<string, unknown> | null;
         const artifacts = result?.artifacts;
         if (Array.isArray(artifacts) && artifacts.length > 0) {

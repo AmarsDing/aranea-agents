@@ -57,6 +57,10 @@ type Definition struct {
 	MemberTool             *MemberToolDef    `json:"member_tool_config,omitempty"`
 	FailurePolicy          *FailurePolicy    `json:"failure_policy,omitempty"`
 	EnableStateDeliverable bool              `json:"enable_state_deliverable,omitempty"`
+	// DeliverableContract is the optional member-level deliverable contract
+	// (MDC) governing topic writes via set_deliverable. Only meaningful with
+	// EnableStateDeliverable=true.
+	DeliverableContract *biz.MemberDeliverableContract `json:"deliverable_contract,omitempty"`
 }
 
 type SwarmConfigDef struct {
@@ -103,6 +107,10 @@ func ParseDefinition(raw string) (Definition, error) {
 	}
 	if strings.TrimSpace(d.Mode) == "" {
 		d.Mode = "sequential"
+	}
+	// Normalize: an empty entries list is equivalent to no contract.
+	if d.DeliverableContract != nil && len(d.DeliverableContract.Entries) == 0 {
+		d.DeliverableContract = nil
 	}
 	return d, nil
 }

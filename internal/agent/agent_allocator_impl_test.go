@@ -533,3 +533,141 @@ func TestAgentAllocator_Allocate_FactorySerial_OnAllFailed(t *testing.T) {
 			saved.Allocations[0].SubTaskID, saved.Allocations[1].SubTaskID)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// AllocateExplicit: Spirit LLM 显式指定 agent_keys（IDENTITY.md 契约：
+// 系统管家/记忆管家/技能管家通过 plan_and_execute + agent_keys=[...] 调用）。
+// 显式路由必须跳过启发式匹配（系统 Agent 本就被 BuildAll 过滤，启发式层
+// 永远选不到 __system_admin__）。
+// ---------------------------------------------------------------------------
+
+func TestAgentAllocator_AllocateExplicit_Subtasks(t *testing.T) {
+	reader := &stubAgentReader{agents: []biz.Agent{
+		{AgentKey: "__system_admin__", DisplayName: "系统管家", Status: "active"},
+	}}
+	repo := &fakeAllocatorRepo{}
+	impl := &agentAllocatorImpl{
+		repo:        repo,
+		agentReader: reader,
+		lg:          loggateway.NewNoop(),
+	}
+
+	plan := &biz.TaskPlan{
+		ID:              "tp_explicit",
+		SpiritSessionID: "sess-explicit",
+		TraceID:         "trace-explicit",
+		SubTasks: []biz.SubTask{
+			{ID: "st_1", Name: "安装 Skill A"},
+			{ID: "st_2", Name: "安装 Skill B"},
+		},
+		Strategy: biz.StrategyParallel,
+	}
+
+	saved, err := impl.AllocateExplicit(context.Background(), plan, []string{"__system_admin__"})
+	if err != nil {
+		t.Fatalf("AllocateExplicit returned error: %v", err)
+	}
+	if len(saved.Allocations) != 2 {
+		t.Fatalf("allocations count=%d want 2", len(saved.Allocations))
+	}
+	for i, alloc := range saved.Allocations {
+		if alloc.AssignedKey != "__system_admin__" {
+			t.Errorf("allocations[%d].AssignedKey=%q want __system_admin__", i, alloc.AssignedKey)
+		}
+		if alloc.AssignedName != "系统管家" {
+			t.Errorf("allocations[%d].AssignedName=%q want 系统管家", i, alloc.AssignedName)
+		}
+		if alloc.MatchLayer != "explicit" {
+			t.Errorf("allocations[%d].MatchLayer=%q want explicit", i, alloc.MatchLayer)
+		}
+		if alloc.AssignedType != "agent" {
+			t.Errorf("allocations[%d].AssignedType=%q want agent", i, alloc.AssignedType)
+		}
+	}
+	if saved.Allocations[0].SubTaskID != "st_1" || saved.Allocations[1].SubTaskID != "st_2" {
+		t.Errorf("order not preserved: %s, %s", saved.Allocations[0].SubTaskID, saved.Allocations[1].SubTaskID)
+	}
+	if repo.saved == nil {
+		t.Fatal("AllocateExplicit did not persist the allocation plan")
+	}
+}
+
+func TestAgentAllocator_AllocateExplicit_DagTeamMembers(t *testing.T) {
+	reader := &stubAgentReader{agents: nil} // names fall back to keys
+	repo := &fakeAllocatorRepo{}
+	impl := &agentAllocatorImpl{
+		repo:        repo,
+		agentReader: reader,
+		lg:          loggateway.NewNoop(),
+	}
+
+	plan := &biz.TaskPlan{
+		ID:              "tp_explicit_dag",
+		SpiritSessionID: "sess-explicit-dag",
+		SubTasks:        []biz.SubTask{{ID: "st_1", Name: "协作任务"}},
+		Strategy:        biz.StrategyDAG,
+	}
+
+	saved, err := impl.AllocateExplicit(context.Background(), plan, []string{"lead-x", "member-y", "member-z"})
+	if err != nil {
+		t.Fatalf("AllocateExplicit returned error: %v", err)
+	}
+	if len(saved.Allocations) != 1 {
+		t.Fatalf("allocations count=%d want 1", len(saved.Allocations))
+	}
+	alloc := saved.Allocations[0]
+	if alloc.AssignedKey != "lead-x" {
+		t.Errorf("AssignedKey=%q want lead-x", alloc.AssignedKey)
+	}
+	if alloc.AssignedType != "team" {
+		t.Errorf("AssignedType=%q want team (dag + multiple keys)", alloc.AssignedType)
+	}
+	if len(alloc.TeamMemberKeys) != 2 || alloc.TeamMemberKeys[0] != "member-y" || alloc.TeamMemberKeys[1] != "member-z" {
+		t.Errorf("TeamMemberKeys=%v want [member-y member-z]", alloc.TeamMemberKeys)
+	}
+}
+
+func TestAgentAllocator_AllocateExplicit_WholePlan(t *testing.T) {
+	reader := &stubAgentReader{agents: nil}
+	repo := &fakeAllocatorRepo{}
+	impl := &agentAllocatorImpl{
+		repo:        repo,
+		agentReader: reader,
+		lg:          loggateway.NewNoop(),
+	}
+
+	plan := &biz.TaskPlan{
+		ID:              "tp_explicit_whole",
+		SpiritSessionID: "sess-explicit-whole",
+		SubTasks:        nil,
+		Strategy:        biz.StrategyParallel,
+	}
+
+	saved, err := impl.AllocateExplicit(context.Background(), plan, []string{"__memory__"})
+	if err != nil {
+		t.Fatalf("AllocateExplicit returned error: %v", err)
+	}
+	if len(saved.Allocations) != 1 {
+		t.Fatalf("allocations count=%d want 1", len(saved.Allocations))
+	}
+	if saved.Allocations[0].SubTaskID != "whole" {
+		t.Errorf("SubTaskID=%q want whole", saved.Allocations[0].SubTaskID)
+	}
+	if saved.Allocations[0].AssignedKey != "__memory__" {
+		t.Errorf("AssignedKey=%q want __memory__", saved.Allocations[0].AssignedKey)
+	}
+}
+
+func TestAgentAllocator_AllocateExplicit_Validation(t *testing.T) {
+	impl := &agentAllocatorImpl{lg: loggateway.NewNoop()}
+	if _, err := impl.AllocateExplicit(context.Background(), nil, []string{"a"}); err == nil {
+		t.Fatal("nil plan: want error")
+	}
+	plan := &biz.TaskPlan{ID: "tp_v", SpiritSessionID: "s"}
+	if _, err := impl.AllocateExplicit(context.Background(), plan, nil); err == nil {
+		t.Fatal("empty agent_keys: want error")
+	}
+	if _, err := impl.AllocateExplicit(context.Background(), plan, []string{"  ", ""}); err == nil {
+		t.Fatal("blank agent_keys: want error")
+	}
+}

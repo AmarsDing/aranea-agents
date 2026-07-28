@@ -72,9 +72,11 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 	}
 
 	forcePlanning := level == biz.ComplexityModerate || level == biz.ComplexityComplex
-	reason := "简单任务，直接回答"
+	// 2026-07-28：simple 决策改中性表述——门控只陈述评估结论，不承诺"直接回答"
+	// （LLM 对 simple 任务仍可能自主调用 plan_and_execute，旧文案与实际行为矛盾）。
+	reason := fmt.Sprintf("评估完成：%s任务", complexityLevelZh(level))
 	if forcePlanning {
-		reason = fmt.Sprintf("%s任务，强制走规划路径", level)
+		reason = fmt.Sprintf("评估完成：%s任务，强制走规划路径", complexityLevelZh(level))
 	}
 
 	decision := GateDecision{
@@ -96,6 +98,19 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 	g.publishPlanningPhase(ctx, biz.ActivityStatusCompleted, reason, input.SpiritSessionID, input.TaskID)
 
 	return decision, nil
+}
+
+// complexityLevelZh returns the Chinese label for a complexity level.
+// UI-facing notice text must not leak English enum values (moderate/complex).
+func complexityLevelZh(level biz.ComplexityLevel) string {
+	switch level {
+	case biz.ComplexityModerate:
+		return "中等"
+	case biz.ComplexityComplex:
+		return "复杂"
+	default:
+		return "简单"
+	}
 }
 
 // publishPlanningPhase publishes a complexity-assessment timeline event as a

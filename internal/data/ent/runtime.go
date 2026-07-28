@@ -75,6 +75,7 @@ import (
 	"aranea-agents/internal/data/ent/sessionv2"
 	"aranea-agents/internal/data/ent/skillimportjob"
 	"aranea-agents/internal/data/ent/skillinvocation"
+	"aranea-agents/internal/data/ent/skilltag"
 	"aranea-agents/internal/data/ent/skillversion"
 	"aranea-agents/internal/data/ent/stepv2"
 	"aranea-agents/internal/data/ent/systemsetting"
@@ -4795,6 +4796,36 @@ func init() {
 	skillinvocationDescID := skillinvocationFields[0].Descriptor()
 	// skillinvocation.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	skillinvocation.IDValidator = skillinvocationDescID.Validators[0].(func(string) error)
+	skilltagFields := schema.SkillTag{}.Fields()
+	_ = skilltagFields
+	// skilltagDescName is the schema descriptor for name field.
+	skilltagDescName := skilltagFields[1].Descriptor()
+	// skilltag.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	skilltag.NameValidator = skilltagDescName.Validators[0].(func(string) error)
+	// skilltagDescDimension is the schema descriptor for dimension field.
+	skilltagDescDimension := skilltagFields[2].Descriptor()
+	// skilltag.DefaultDimension holds the default value on creation for the dimension field.
+	skilltag.DefaultDimension = skilltagDescDimension.Default.(string)
+	// skilltag.DimensionValidator is a validator for the "dimension" field. It is called by the builders before save.
+	skilltag.DimensionValidator = skilltagDescDimension.Validators[0].(func(string) error)
+	// skilltagDescSource is the schema descriptor for source field.
+	skilltagDescSource := skilltagFields[3].Descriptor()
+	// skilltag.DefaultSource holds the default value on creation for the source field.
+	skilltag.DefaultSource = skilltagDescSource.Default.(string)
+	// skilltag.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	skilltag.SourceValidator = skilltagDescSource.Validators[0].(func(string) error)
+	// skilltagDescCreatedAt is the schema descriptor for created_at field.
+	skilltagDescCreatedAt := skilltagFields[4].Descriptor()
+	// skilltag.DefaultCreatedAt holds the default value on creation for the created_at field.
+	skilltag.DefaultCreatedAt = skilltagDescCreatedAt.Default.(string)
+	// skilltagDescUpdatedAt is the schema descriptor for updated_at field.
+	skilltagDescUpdatedAt := skilltagFields[5].Descriptor()
+	// skilltag.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	skilltag.DefaultUpdatedAt = skilltagDescUpdatedAt.Default.(string)
+	// skilltagDescID is the schema descriptor for id field.
+	skilltagDescID := skilltagFields[0].Descriptor()
+	// skilltag.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	skilltag.IDValidator = skilltagDescID.Validators[0].(func(string) error)
 	skillversionFields := schema.SkillVersion{}.Fields()
 	_ = skillversionFields
 	// skillversionDescSkillID is the schema descriptor for skill_id field.

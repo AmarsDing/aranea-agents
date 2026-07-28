@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/metrics"
 )
 
 // V2Bus is an in-process fan-out bus for v2 Events.
@@ -50,6 +51,11 @@ const terminalPublishBlock = 2 * time.Second
 // Subscriber channel snapshot is taken under RLock, then the lock is released
 // before any blocking send. Holding RLock across BlockUpTo would deadlock if a
 // slow subscriber's handler called Subscribe/cancel (needs Lock).
+//
+// Sends to a channel that was detached by a concurrent cancel after the
+// snapshot are safe: subscriber channels are never closed (see Subscribe), so
+// an in-flight send either lands in the detached buffer (GC'd later) or times
+// out per the drop policy.
 func (b *V2Bus) Publish(ctx context.Context, e biz.Event) {
 	if e == nil {
 		return
@@ -72,7 +78,7 @@ func (b *V2Bus) Publish(ctx context.Context, e biz.Event) {
 		select {
 		case ch <- e:
 		default:
-			b.dropped.Add(1)
+			b.recordDrop(e, "nonterminal_buffer_full")
 		}
 	}
 }
@@ -98,14 +104,31 @@ func (b *V2Bus) publishCritical(ctx context.Context, ch chan biz.Event, e biz.Ev
 	select {
 	case ch <- e:
 	case <-timer.C:
-		b.dropped.Add(1)
+		b.recordDrop(e, "terminal_blockup_timeout")
 	case <-ctx.Done():
-		b.dropped.Add(1)
+		b.recordDrop(e, "terminal_ctx_cancelled")
 	}
+}
+
+// recordDrop counts a subscriber-buffer drop both in the in-memory DropCount
+// and the exported Prometheus metric (P1-Y7). The policy label distinguishes
+// the drop path: nonterminal_buffer_full | terminal_blockup_timeout |
+// terminal_ctx_cancelled.
+func (b *V2Bus) recordDrop(e biz.Event, policy string) {
+	b.dropped.Add(1)
+	metrics.EventBusDropped.WithLabelValues(string(e.EventKind()), policy).Inc()
 }
 
 // Subscribe registers a subscriber and returns a channel + cancel function.
 // The subscriber buffer defaults to 256.
+//
+// The bus NEVER closes the returned channel: cancel only detaches the
+// subscriber from the fan-out set. Closing under a concurrent Publish that
+// has already snapshotted the channel panics with "send on closed channel"
+// (R-1 close-race); leaving the channel open lets the in-flight send complete
+// or time out harmlessly, and the detached channel is GC'd once the
+// subscriber's own loop exits. Subscribers must therefore exit their receive
+// loop via their own context (红线 #23), not via channel close.
 func (b *V2Bus) Subscribe(_ biz.EventSubscribeOptions) (<-chan biz.Event, func()) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -116,10 +139,7 @@ func (b *V2Bus) Subscribe(_ biz.EventSubscribeOptions) (<-chan biz.Event, func()
 	cancel := func() {
 		b.mu.Lock()
 		defer b.mu.Unlock()
-		if c, ok := b.subscribers[id]; ok {
-			close(c)
-			delete(b.subscribers, id)
-		}
+		delete(b.subscribers, id)
 	}
 	return ch, cancel
 }

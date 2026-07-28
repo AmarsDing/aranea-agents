@@ -57,7 +57,7 @@ var _ turnEventPublisher = (*chatTurnEventPublisher)(nil)
 // Activity.Meta (error_type/source/error_code/error_message/error_hint/
 // pending_id/run_id). The v2 Task entity has no Meta field, so these details
 // are dropped here. The error message is still available via the caller's
-// logging path (turnPipeline.handleStreamError / publishTurnFailure callers
+// logging path (turnPhases.handleStreamError / publishTurnFailure callers
 // log the error before calling this method).
 func (p *chatTurnEventPublisher) PublishTurnFailure(sessionID, runID, source string, err error, pendingID string) {
 	if p == nil || err == nil {

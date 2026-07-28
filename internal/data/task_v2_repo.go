@@ -221,22 +221,31 @@ func (r *taskV2Repo) UpsertTask(ctx context.Context, t biz.Task) (biz.Task, erro
 // (completed/failed/cancelled) are not overwritten; interrupted is a recovery
 // placeholder and may be terminalized. Unknown IDs fall through to Create so
 // shadow tasks (chatTurnEventPublisher.PublishTurnFailure) keep working.
+//
+// The terminal status set and transition legality come from the v2 task state
+// machine (biz.TerminalTaskV2Statuses / biz.CanTransitionTaskV2Status) — the
+// single source of truth (P2-Y1). The CAS below enforces the machine's
+// {pending, running, interrupted} → terminal edges atomically.
 func (r *taskV2Repo) CompleteTaskTerminal(ctx context.Context, t biz.Task) (biz.Task, error) {
 	if r == nil || r.data == nil {
 		return biz.Task{}, fmt.Errorf("task v2 repo: database not configured")
+	}
+	if !biz.IsTerminalTaskV2Status(t.Status) {
+		return biz.Task{}, fmt.Errorf("task v2 repo: CompleteTaskTerminal requires a terminal status, got %q", t.Status)
 	}
 	now := time.Now().UTC()
 	if !t.UpdatedAt.IsZero() {
 		now = t.UpdatedAt
 	}
+	terminalSet := biz.TerminalTaskV2Statuses()
+	terminalStrs := make([]string, 0, len(terminalSet))
+	for _, s := range terminalSet {
+		terminalStrs = append(terminalStrs, string(s))
+	}
 	b := r.data.RW().Write(ctx).TaskV2.Update().
 		Where(
 			taskv2.ID(t.ID),
-			taskv2.StatusNotIn(
-				string(biz.TaskStatusCompleted),
-				string(biz.TaskStatusFailed),
-				string(biz.TaskStatusCancelled),
-			),
+			taskv2.StatusNotIn(terminalStrs...),
 		).
 		SetStatus(string(t.Status)).
 		SetUpdatedAt(now).

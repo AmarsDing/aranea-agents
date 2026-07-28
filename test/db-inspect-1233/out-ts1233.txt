@@ -1,0 +1,10 @@
+COLS: [id task_id session_id status members]
+ROW 1: [id=e9fd61cc-bfd1-59d0-bdc6-d2894da0ecc2] [task_id=7d91030a-c7f3-4068-87a8-54317b8dbb59] [session_id=5c7b23fe-020f-4925-b964-2e18cc5589a5] [status=completed] [members=null] 
+ROW 2: [id=f7543458-685d-5330-b27c-a5313718287e] [task_id=7d91030a-c7f3-4068-87a8-54317b8dbb59] [session_id=5c7b23fe-020f-4925-b964-2e18cc5589a5] [status=completed] [members=null] 
+ROW 3: [id=2878a5ea-fe9b-55b2-980e-d1a3e7b83b10] [task_id=7d91030a-c7f3-4068-87a8-54317b8dbb59] [session_id=5c7b23fe-020f-4925-b964-2e18cc5589a5] [status=failed] [members=null] 
+ROW 4: [id=4980cc46-9454-596b-84b6-619430e5987d] [task_id=a7b6c7a2-b3ba-4d11-9074-9eccbce77383] [session_id=4b711dbf-e7c4-40d6-b494-b1f00c9ae5af] [status=completed] [members=null] 
+ROW 5: [id=babdb09e-6a89-5bbc-9626-587b2632d7c5] [task_id=a7b6c7a2-b3ba-4d11-9074-9eccbce77383] [session_id=4b711dbf-e7c4-40d6-b494-b1f00c9ae5af] [status=completed] [members=null] 
+ROW 6: [id=6807dcd1-3396-527c-b568-d814cf0a132e] [task_id=a7b6c7a2-b3ba-4d11-9074-9eccbce77383] [session_id=4b711dbf-e7c4-40d6-b494-b1f00c9ae5af] [status=completed] [members=null] 
+ROW 7: [id=0b13904b-7952-5c5b-ae98-fba74ab905f7] [task_id=a7b6c7a2-b3ba-4d11-9074-9eccbce77383] [session_id=4b711dbf-e7c4-40d6-b494-b1f00c9ae5af] [status=completed] [members=null] 
+ROW 8: [id=237f8d34-fa0e-5eb7-8b7d-e40ed2297081] [task_id=da301c92-83cf-4ae0-9659-2c7292187ffc] [session_id=78d1c13e-0e17-489f-8492-cab5aae6f47f] [status=completed] [members=null] 
+TOTAL: 8

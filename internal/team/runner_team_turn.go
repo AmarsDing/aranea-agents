@@ -212,6 +212,26 @@ func (r *Runner) finalizeTeamRun(
 	t0 time.Time,
 	teamEmitter *event.TraceEmitter,
 ) biz.TeamRunRecord {
+	// 2026-07-28 修复3 真实产出闸门（runner 侧）：DAG 团队从未调用
+	// set_deliverable（无 graph state 交付物）时禁止把 run 标为 success。
+	// run 的 FSM 终态不可逆（success→failed 非法），必须在 success 转换前
+	// 拦截；闸门否决走 finishRunErr（running→failed 合法）。与 service 层
+	// HandleTeamTurnResult 闸门互为双保险，语义保持一致：infra 错误按无
+	// 交付物处理。
+	if teamRow.DagNodeID != "" && r.deliverableGate != nil {
+		has, gateErr := r.deliverableGate(ctx, teamRow)
+		if gateErr != nil {
+			r.lg.Warn("真实交付物校验失败（infra），按无交付物处理",
+				loggateway.StepID("team.run.deliverable_gate"),
+				loggateway.Str("team_id", teamRow.ID),
+				loggateway.Str("run_id", run.ID),
+				loggateway.Err(gateErr))
+		}
+		if gateErr != nil || !has {
+			r.finishRunErr(ctx, &run, t0, "团队未通过 set_deliverable 提交真实交付物（无真实产出，运行标记失败）")
+			return run
+		}
+	}
 	// Transition status through the state machine for consistent validation & timestamps.
 	updatedRun, transitionErr := r.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusSuccess)
 	if transitionErr != nil {

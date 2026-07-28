@@ -9,7 +9,10 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/metrics"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 // fakeRepoSet is a minimal repo collection for testing — captures all upserts.
@@ -282,6 +285,50 @@ func (f *failingRepoSet) UpsertTask(ctx context.Context, t biz.Task) (biz.Task, 
 }
 
 var errTestFailure = errors.New("simulated persist failure")
+
+// TestSequencer_DeadLetterMetricsExported verifies P0-R2a: events that land in
+// the dead-letter ring increment the Prometheus counter (by event kind) and
+// raise the occupancy gauge above zero.
+func TestSequencer_DeadLetterMetricsExported(t *testing.T) {
+	t.Parallel()
+	rs := &failingRepoSet{fail: true}
+	bus := &fakeBus{}
+	s := NewSequencer(rs, bus, loggateway.NewNoop(),
+		WithPublishBuffer(16),
+		WithPersistBuffer(16),
+		WithDeltaBatchInterval(time.Millisecond*4),
+		WithPersistMaxRetries(5),
+		WithPersistBackoff(time.Millisecond),
+	)
+	t.Cleanup(func() { _ = s.Close() })
+
+	ctx := context.Background()
+	ev := biz.NewTaskCreatedEvent(biz.Task{ID: "t-metric", SessionID: "s-metric", Version: 1})
+	kind := string(ev.EventKind())
+	before := testutil.ToFloat64(metrics.SequencerDeadLetterTotal.WithLabelValues(kind))
+
+	s.Publish(ctx, ev)
+	if err := s.Flush(ctx); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	deadline := time.After(time.Second)
+	for s.DeadLetterCount() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("dead letter never received")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	// Delta assertion (>= 1) is robust against parallel tests sharing the
+	// global counter with the same event kind.
+	if got := testutil.ToFloat64(metrics.SequencerDeadLetterTotal.WithLabelValues(kind)); got < before+1 {
+		t.Fatalf("SequencerDeadLetterTotal[%s] = %v, want >= %v", kind, got, before+1)
+	}
+	if g := testutil.ToFloat64(metrics.SequencerDeadLetterSize); g <= 0 {
+		t.Fatalf("SequencerDeadLetterSize = %v, want > 0", g)
+	}
+}
 
 // TestSequencer_PublishSystemNotice verifies system.notice events are
 // fan-out published (not entity-persisted) without ActivityBridge.

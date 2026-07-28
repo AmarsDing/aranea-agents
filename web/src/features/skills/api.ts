@@ -21,6 +21,7 @@ import type {
   SkillRefineResult,
   SkillRunQuery,
   SkillTag,
+  SkillTagInfo,
   SkillVersionDetail,
   ExperienceReportView,
   ExperienceReportListResult,
@@ -197,6 +198,41 @@ export async function getSkillFilesystemHealth(): Promise<SkillFilesystemHealth>
     missing_count: Number(d.missing_count ?? d.missingCount ?? 0),
     pending_filesystem_count: Number(d.pending_filesystem_count ?? d.pendingFilesystemCount ?? 0),
   };
+}
+
+function mapSkillTagInfo(raw: unknown): SkillTagInfo {
+  const o = raw as Record<string, unknown>;
+  return {
+    name: String(o.name ?? ''),
+    dimension: String(o.dimension ?? ''),
+    source: String(o.source ?? 'user'),
+    used_count: Number(o.used_count ?? o.usedCount ?? 0),
+    created_at: String(o.created_at ?? o.createdAt ?? ''),
+    updated_at: String(o.updated_at ?? o.updatedAt ?? ''),
+  };
+}
+
+/** 标签字典：全量列表（含 orphan 未收录标签 + 实时使用计数）。 */
+export async function listSkillTags(): Promise<SkillTagInfo[]> {
+  const res = await createSkillService().ListSkillTags({});
+  return (res.items ?? []).map(mapSkillTagInfo);
+}
+
+export async function createSkillTag(name: string): Promise<SkillTagInfo> {
+  const row = await createSkillService().CreateSkillTag({ name });
+  return mapSkillTagInfo(row);
+}
+
+/** 改名并事务重写所有 skill 引用；返回重写条数。 */
+export async function renameSkillTag(oldName: string, newName: string): Promise<number> {
+  const res = await createSkillService().RenameSkillTag({ oldName, newName });
+  return Number(res.rewritten ?? 0);
+}
+
+/** 删除并从事务内所有 skill 引用中移除；返回重写条数。 */
+export async function deleteSkillTag(name: string): Promise<number> {
+  const res = await createSkillService().DeleteSkillTag({ name });
+  return Number(res.rewritten ?? 0);
 }
 
 export async function toggleSkillEnabled(id: string, enabled: boolean): Promise<Skill> {
@@ -686,8 +722,19 @@ export async function registerUnifiedEvolutionSuggestion(id: string): Promise<vo
 
 function mapProtoEvolutionSuggestionToView(item: Record<string, unknown>): SkillEvolutionView {
   const s = (snake: string, camel: string) => String(item[snake] ?? item[camel] ?? '');
+  const lifecycleStatus = (s('lifecycle_status', 'lifecycleStatus') || 'draft') as SkillEvolutionView['lifecycleStatus'];
+  // Proto bool defaults to false; use lifecycleStatus to distinguish
+  // "not yet validated" from "validation failed" (same semantics as mapEvolutionSuggestion).
   const rawSandboxPassed = item['sandbox_passed'] ?? item['sandboxPassed'];
-  const sandboxPassed: boolean = rawSandboxPassed === true;
+  const sandboxPassed: boolean | null = (() => {
+    if (rawSandboxPassed === true) return true;
+    if (
+      rawSandboxPassed === false &&
+      (lifecycleStatus === 'validating' || lifecycleStatus === 'ready')
+    )
+      return false;
+    return null; // not yet validated
+  })();
   const rawSandboxResult = item['sandbox_result'] ?? item['sandboxResult'];
   const sandboxResult: Record<string, unknown> | null =
     rawSandboxResult && typeof rawSandboxResult === 'object' && !Array.isArray(rawSandboxResult)
@@ -711,7 +758,7 @@ function mapProtoEvolutionSuggestionToView(item: Record<string, unknown>): Skill
     draftBody: s('draft_skill_body', 'draftSkillBody'),
     draftName: '',
     mergeTargetId: '',
-    lifecycleStatus: (s('lifecycle_status', 'lifecycleStatus') || 'draft') as SkillEvolutionView['lifecycleStatus'],
+    lifecycleStatus,
     sandboxPassed,
     sandboxResult,
     metadata,
@@ -723,6 +770,14 @@ function mapProtoEvolutionSuggestionToView(item: Record<string, unknown>): Skill
 
 function mapProtoSkillProposalToView(item: Record<string, unknown>): SkillEvolutionView {
   const s = (snake: string, camel: string) => String(item[snake] ?? item[camel] ?? '');
+  const status = (s('status', 'status') || 'pending') as SkillEvolutionView['status'];
+  // 生命周期从提案状态推导：registered→已应用，approved→就绪，其余→草稿
+  const lifecycleStatus: SkillEvolutionView['lifecycleStatus'] =
+    status === ('registered' as SkillEvolutionView['status'])
+      ? 'applied'
+      : status === 'approved'
+        ? 'ready'
+        : 'draft';
   return {
     id: s('id', 'id'),
     targetType: 'agent',
@@ -731,13 +786,14 @@ function mapProtoSkillProposalToView(item: Record<string, unknown>): SkillEvolut
     actionType: 'create_skill',
     triggerSource: 'pattern', // TODO: backend SkillProposal lacks trigger_source; default to 'pattern' until field is added
     triggerReason: s('pattern_desc', 'patternDesc'),
-    status: (s('status', 'status') || 'pending') as SkillEvolutionView['status'],
+    status,
     priority: 1,
     draftBody: s('skill_md', 'skillMd'),
     draftName: s('skill_name', 'skillName'),
     mergeTargetId: '',
-    lifecycleStatus: 'draft',
-    sandboxPassed: false,
+    lifecycleStatus,
+    // agent 级 SkillProposal 无沙箱字段；置 null 让 UI 显示 "—"，避免误报"未通过"
+    sandboxPassed: null,
     sandboxResult: null,
     metadata: null,
     createdAt: s('created_at', 'createdAt'),

@@ -414,6 +414,17 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 		}
 	}
 
+	// 2026-07-28 Fix: a single-member team has nothing to coordinate — normalize
+	// coordinator to sequential so buildSpiritTeamDefinitionJSON builds the only
+	// member as a worker (executes tools) instead of a synthesizer (coordination
+	// role; hallucinated success with zero tool calls on install-style tasks).
+	// Normalized here (not inside the builder) so Team.Topology stays consistent
+	// with DefinitionJSON. Also satisfies validateTeamDefinition, which rejects
+	// coordinator teams without a synthesizer/coordinator member.
+	if mode == TeamModeCoordinator && len(agentIDs) <= 1 {
+		mode = TeamModeSequential
+	}
+
 	defJSON := buildSpiritTeamDefinitionJSON(mode, agentIDs, u.lg, params.DagNodeID != "", params.ParallelConfigJSON)
 
 	// Check session tree depth limit before creating team (P1-4: extracted
@@ -1901,6 +1912,17 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 	}
 	cognition := extractStateCognition(stateDeliv[deliverableReservedKeyCognition])
 
+	// MDC completion-time advisory: required contract topics that were never
+	// written (producer bypassed set_deliverable) surface as a Warn — the run
+	// still completes and the envelope is persisted unchanged.
+	if missing := requiredTopicsMissingFromState(t, stateDeliv); len(missing) > 0 {
+		u.lg.Warn("成员交付物契约 required topic 未产出",
+			loggateway.StepID("spirit.write_deliverables"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Str("missing_topics", strings.Join(missing, ",")),
+		)
+	}
+
 	sizeChars := utf8.RuneCountInString(summarySource)
 	ref := DeliverableRef{
 		Summary:        TruncateRunes(summarySource, MaxSummaryLen),
@@ -2083,6 +2105,12 @@ func marshalNonReservedStateKeys(stateDeliv map[string]any) string {
 		if k == deliverableReservedKeySummary || k == deliverableReservedKeyCognition {
 			continue
 		}
+		// ack/<topic> keys are intra-team delivery acknowledgments (MDC) —
+		// advisory signals for the coordinator, never inter-team content, so
+		// they must not leak into the DeliverableRef envelope.
+		if strings.HasPrefix(k, deliverableAckKeyPrefix) {
+			continue
+		}
 		rest[k] = v
 	}
 	if len(rest) == 0 {
@@ -2093,6 +2121,29 @@ func marshalNonReservedStateKeys(stateDeliv map[string]any) string {
 		return ""
 	}
 	return string(b)
+}
+
+// deliverableAckKeyPrefix mirrors deliverabletools.AckKeyPrefix. biz cannot
+// import internal/tools (dependency direction), so the prefix is duplicated
+// and pinned by TestMarshalNonReservedStateKeys_ExcludesAckKeys.
+const deliverableAckKeyPrefix = "ack/"
+
+// requiredTopicsMissingFromState is the completion-time advisory check for
+// the member-level deliverable contract (MDC): topics declared required in
+// the team's deliverable_contract but absent from the final deliverable map
+// (covers the "producer never called set_deliverable" bypass). Advisory only
+// — the caller logs a Warn and never blocks the run.
+func requiredTopicsMissingFromState(t Team, stateDeliv map[string]any) []string {
+	if strings.TrimSpace(t.DefinitionJSON) == "" {
+		return nil
+	}
+	var probe struct {
+		DeliverableContract *MemberDeliverableContract `json:"deliverable_contract"`
+	}
+	if err := json.Unmarshal([]byte(t.DefinitionJSON), &probe); err != nil {
+		return nil
+	}
+	return probe.DeliverableContract.RequiredTopicsMissing(stateDeliv)
 }
 
 // InjectUpstreamDeliverables collects upstream team deliverables and formats

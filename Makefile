@@ -28,9 +28,9 @@ ifeq ($(SKIP_API_TS),)
 endif
 
 ifeq ($(GOHOSTOS),windows)
-	# Use scripts/list-proto-files.ps1 so Git-Bash/sh does not parse $ $() inside $(shell ...).
-	INTERNAL_PROTO_FILES:=$(shell cd "$(CURDIR)" && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/list-proto-files.ps1 internal)
-	API_PROTO_FILES:=$(shell cd "$(CURDIR)" && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/list-proto-files.ps1 api)
+	# Use build/list-proto-files.ps1 so Git-Bash/sh does not parse $ $() inside $(shell ...).
+	INTERNAL_PROTO_FILES:=$(shell cd "$(CURDIR)" && powershell -NoProfile -ExecutionPolicy Bypass -File build/list-proto-files.ps1 internal)
+	API_PROTO_FILES:=$(shell cd "$(CURDIR)" && powershell -NoProfile -ExecutionPolicy Bypass -File build/list-proto-files.ps1 api)
 else
 	INTERNAL_PROTO_FILES=$(shell find internal -name '*.proto')
 	API_PROTO_FILES=$(shell find api -name '*.proto')
@@ -94,15 +94,6 @@ cli-all: cli
 # build
 build:
 	mkdir -p bin/ && go build -ldflags "$(LDFLAGS)" -o ./bin/ ./...
-
-.PHONY: runtime-boundary
-# check Agent runtime import boundaries (legacy PowerShell; use `make lint` instead)
-runtime-boundary:
-ifeq ($(GOHOSTOS),windows)
-	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-runtime-boundary.ps1
-else
-	pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check-runtime-boundary.ps1
-endif
 
 .PHONY: fieldguide-lint
 # PGO-2-LINT-02: check Go ↔ TypeScript FieldGuide scope registry is in sync

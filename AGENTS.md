@@ -89,6 +89,22 @@
 - 只改与任务直接相关的文件；不顺带 refactor 相邻模块
 - **开发前必读模块交叉参考手册**（`docs/development/65-module-cross-reference-full.md`），确认所有关联影响面
 
+## 根目录规范（红线）
+
+> **禁止随意新建根目录。** 所有产物/中间文件必须归入以下既有目录；新增根目录必须在本文档登记。
+
+| 目录 | 用途 | 规则 |
+|------|------|------|
+| `bin/` | 所有生成的 exe/二进制 | `go build` 等一切编译产物一律输出到此；禁止散落到仓库根或其他目录 |
+| `build/` | 编译目录：编译脚本 + 编译产物 | 打包/发布脚本（`build/*.ps1`）、NSIS 脚本（`build/installer/`）、staging/deps 中间产物、安装包输出（`build/release/`） |
+| `docs/` | 所有文档 | 规范见下文「docs 目录规范」 |
+| `test/` | 测试中间文件 | 按测试名称自建子目录 `test/<test-name>/`；禁止在仓库根或 `_temp/`、`tmp/` 等临时目录堆放排查脚本/中间产物 |
+| `scripts/` | ~~构建脚本~~（已废弃） | 构建/打包脚本已全部迁入 `build/`；禁止新增 |
+
+- 一次性调试/排查脚本、日志、抓包等中间产物：放 `test/<test-name>/`，用完可整目录删除
+- 安装包、zip 等发布产物：放 `build/release/`
+- 历史遗留目录（`_temp/`、`_tmp_dbcheck/`、`tmp/`、`release/`）不再新增内容，逐步归档到 `test/` 或 `build/` 后删除
+
 ## docs 目录规范
 
 > **操作 docs/ 目录下的任何文件前，必须先读 `aranea-docs-guide` SKILL。**

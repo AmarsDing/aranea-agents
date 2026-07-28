@@ -132,6 +132,8 @@
               input-debounce="0"
               label="要求的标签（AND）"
               hint="如 file_type:xlsx；可与用户话术中的 domain:/file_type: 合并"
+              :options="skillTagOptions"
+              :loading="loadingSkillTags"
             />
           </div>
         </div>
@@ -328,6 +330,9 @@ const props = withDefaults(
     agentId?: string;
     skillSlugOptions: { label: string; value: string }[];
     loadingSkillSlugs: boolean;
+    /** 标签字典选项源（规范标签名）。 */
+    skillTagOptions?: string[];
+    loadingSkillTags?: boolean;
     codeExecutorCapabilities?: CodeExecutorCapability[];
     toolProfileOptions?: { label: string; value: string }[];
     toolSelectOptions?: { label: string; value: string }[];
@@ -336,6 +341,8 @@ const props = withDefaults(
   }>(),
   {
     agentId: '',
+    skillTagOptions: () => [],
+    loadingSkillTags: false,
     codeExecutorCapabilities: () => [],
     toolProfileOptions: () => [],
     toolSelectOptions: () => [],

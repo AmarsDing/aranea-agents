@@ -38,6 +38,22 @@
       @update:model-value="emit('update:status', String($event ?? ''))"
     />
     <q-select
+      :model-value="tags"
+      class="app-page-toolbar__field"
+      dense
+      outlined
+      clearable
+      multiple
+      use-chips
+      use-input
+      input-debounce="0"
+      :label="$t('skillTags.fieldLabel')"
+      :options="filteredTagOptions"
+      @filter="onTagFilter"
+      @update:model-value="emit('update:tags', ($event as string[] | null) ?? [])"
+      @add="tagNeedle = ''"
+    />
+    <q-select
       :model-value="syncOrigin"
       class="app-page-toolbar__field"
       dense
@@ -69,12 +85,16 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from 'vue';
 import AppPageToolbar from '../layout/AppPageToolbar.vue';
 
-defineProps<{
+const props = defineProps<{
   search: string;
   enabled: boolean | null;
   status: string;
+  tags: string[];
+  /** 标签字典选项源（规范标签名）。 */
+  tagOptions?: string[];
   syncOrigin: string;
   filesystemMissing: boolean | null;
   loading?: boolean;
@@ -84,11 +104,30 @@ const emit = defineEmits<{
   'update:search': [value: string];
   'update:enabled': [value: boolean | null];
   'update:status': [value: string];
+  'update:tags': [value: string[]];
   'update:syncOrigin': [value: string];
   'update:filesystemMissing': [value: boolean | null];
   reset: [];
   refresh: [];
 }>();
+
+const tagNeedle = ref('');
+
+/** 字典选项按输入关键字过滤；已选中但未收录的标签始终保留在选项中以免回显丢失。 */
+const filteredTagOptions = computed(() => {
+  const all = new Set(props.tagOptions ?? []);
+  for (const t of props.tags) all.add(t);
+  const list = [...all].sort();
+  const kw = tagNeedle.value.trim().toLowerCase();
+  if (!kw) return list;
+  return list.filter((t) => t.toLowerCase().includes(kw));
+});
+
+function onTagFilter(val: string, update: (fn: () => void) => void) {
+  update(() => {
+    tagNeedle.value = val;
+  });
+}
 
 const enabledOptions = [
   { label: '仅启用', value: true },

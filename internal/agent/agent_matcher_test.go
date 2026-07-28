@@ -49,7 +49,12 @@ func (s *stubAgentReader) GetAgentByID(_ context.Context, _ string) (biz.Agent, 
 	return biz.Agent{}, errors.New("not implemented")
 }
 
-func (s *stubAgentReader) GetAgentByAgentKey(_ context.Context, _ string) (biz.Agent, error) {
+func (s *stubAgentReader) GetAgentByAgentKey(_ context.Context, agentKey string) (biz.Agent, error) {
+	for _, ag := range s.agents {
+		if ag.AgentKey == agentKey {
+			return ag, nil
+		}
+	}
 	return biz.Agent{}, errors.New("not implemented")
 }
 

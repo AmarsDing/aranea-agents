@@ -108,12 +108,17 @@ func (e *runtimeEnv) configGuideText() string {
 	b.WriteString(fmt.Sprintf("  addr : %s\n", emptyDefault(e.RedisAddr, "127.0.0.1:6379")))
 	b.WriteString("\nHow to use system PostgreSQL (:5432)\n")
 	b.WriteString("  1) Ensure PostgreSQL is running and listening on 127.0.0.1:5432\n")
-	b.WriteString("  2) Write the password to ONE line in: configs\\pg.password\n")
-	b.WriteString("     or set user env ARANEA_PG_PASSWORD\n")
+	b.WriteString("  2) Run the interactive wizard: AraneaLauncher.exe -setup\n")
+	b.WriteString("     (or write the password to ONE line in: configs\\pg.password,\n")
+	b.WriteString("     or set user env ARANEA_PG_PASSWORD)\n")
 	b.WriteString("  3) Restart AraneaLauncher (Stop first if needed)\n")
 	b.WriteString("  If connect still fails, launcher falls back to bundled :5433.\n")
 	b.WriteString("\nHow to use system Redis (:6379)\n")
 	b.WriteString("  Start Redis on 127.0.0.1:6379 before launching; otherwise bundled Redis starts.\n")
+	b.WriteString("\nAuto-start on boot / 开机自启动\n")
+	b.WriteString("  Register: AraneaLauncher.exe -install-autostart\n")
+	b.WriteString("  Remove  : AraneaLauncher.exe -uninstall-autostart\n")
+	b.WriteString("  (system PG+Redis -> Windows service; bundled -> logon scheduled task)\n")
 	b.WriteString("\nLogs (UTF-8 with BOM — open with Notepad / VS Code)\n")
 	b.WriteString("  logs\\launcher.log   logs\\preflight.txt   logs\\server.log\n")
 	return b.String()
@@ -259,24 +264,48 @@ func detectRuntime(root string, log func(string, ...any)) *runtimeEnv {
 		env.add("PostgreSQL client", checkFail, "psql.exe not found (system or bundled)", true)
 	}
 
-	// --- PostgreSQL: prefer system :5432 if reachable & connectable ---
-	systemPortOpen := tcpOpen("127.0.0.1", "5432", 400*time.Millisecond)
-	if systemPortOpen && sysPSQL != "" {
-		env.PSQL = sysPSQL
-		env.PGBinDir = sysBin
-		env.PGPort = "5432"
+	// --- PostgreSQL: saved setup choice (launcher-setup.json) > auto-detect ---
+	st := loadSetupState(root)
+	pgHost, pgPort := "127.0.0.1", "5432"
+	trySystem := true
+	if st != nil {
+		switch st.PGMode {
+		case "bundled":
+			trySystem = false
+		case "system":
+			pgHost = emptyDefault(st.PGHost, "127.0.0.1")
+			pgPort = emptyDefault(st.PGPort, "5432")
+			env.PGUser = emptyDefault(st.PGUser, "postgres")
+		}
+	}
+	systemPortOpen := trySystem && tcpOpen(pgHost, pgPort, 400*time.Millisecond)
+	if systemPortOpen {
+		// Client binary: prefer system install; bundled psql also works for remote hosts.
+		if sysPSQL != "" {
+			env.PSQL = sysPSQL
+			env.PGBinDir = sysBin
+		} else {
+			env.PSQL = bundledPSQL
+			env.PGBinDir = filepath.Join(root, "postgres", "bin")
+		}
+		env.PGHost = pgHost
+		env.PGPort = pgPort
 		if canConnectPSQL(env, "postgres") {
 			env.PGMode = "system"
-			env.add("PostgreSQL", checkOK, "using system instance 127.0.0.1:5432", false)
+			env.add("PostgreSQL", checkOK, fmt.Sprintf("using system instance %s:%s", pgHost, pgPort), false)
 		} else {
-			env.add("PostgreSQL (system)", checkWarn, "port :5432 is open but non-interactive connect failed (write configs\\pg.password or set ARANEA_PG_PASSWORD). Falling back to bundled :5433.", false)
+			env.add("PostgreSQL (system)", checkWarn, fmt.Sprintf("%s:%s is open but non-interactive connect failed (re-run -setup, or write configs\\pg.password / set ARANEA_PG_PASSWORD). Falling back to bundled :5433.", pgHost, pgPort), false)
 			systemPortOpen = false
 		}
+	} else if st != nil && st.PGMode == "system" {
+		env.add("PostgreSQL (system)", checkWarn, fmt.Sprintf("configured system PostgreSQL %s:%s unreachable; falling back to bundled :5433", pgHost, pgPort), false)
 	}
 
 	if env.PGMode != "system" {
 		env.PGMode = "bundled"
+		env.PGHost = "127.0.0.1"
 		env.PGPort = "5433"
+		env.PGUser = "postgres"
 		env.PGPass = "" // bundled uses trust
 		env.PSQL = bundledPSQL
 		env.PGBinDir = filepath.Join(root, "postgres", "bin")
@@ -291,8 +320,18 @@ func detectRuntime(root string, log func(string, ...any)) *runtimeEnv {
 		}
 	}
 
-	// --- Redis: prefer existing :6379 ---
-	if tcpOpen("127.0.0.1", "6379", 300*time.Millisecond) {
+	// --- Redis: saved setup choice > auto-detect ---
+	if st != nil && st.RedisMode == "system" && st.RedisAddr != "" {
+		env.RedisAddr = st.RedisAddr
+		host, port, err := net.SplitHostPort(st.RedisAddr)
+		if err == nil && tcpOpen(host, port, 500*time.Millisecond) {
+			env.RedisMode = "system"
+			env.add("Redis", checkOK, "using configured instance "+st.RedisAddr, false)
+		} else {
+			env.RedisMode = "system" // never start bundled against a custom addr
+			env.add("Redis", checkFail, "configured Redis "+st.RedisAddr+" unreachable", true)
+		}
+	} else if tcpOpen("127.0.0.1", "6379", 300*time.Millisecond) {
 		env.RedisMode = "system"
 		env.add("Redis", checkOK, "using system/running instance 127.0.0.1:6379", false)
 	} else {

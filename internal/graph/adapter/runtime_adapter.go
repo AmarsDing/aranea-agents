@@ -381,9 +381,11 @@ func hasDeliverableStateField(cfg biz.GraphBuildConfig) bool {
 // resolversFor returns the resolver set to use when building the given graph.
 // C1/C3: when the graph carries the deliverable StateField (injected by
 // EnableStateDeliverable), every agent node must be built with the
-// set_deliverable/get_deliverable tools so members can actually read and
-// write that state field. The resolver is cloned, not mutated, so plain
-// graphs keep building tool-free agents.
+// set/get/ack deliverable tools so members can actually read, write, and
+// acknowledge that state field. The resolver is cloned, not mutated, so
+// plain graphs keep building tool-free agents. This generic graph path is
+// contract-free; the MDC contract is installed only on the team compile
+// path (internal/team BuildTeamMemberAgents).
 func (f *trpcGraphBuilderFactory) resolversFor(cfg biz.GraphBuildConfig) graphtrpc.GraphNodeResolverSet {
 	resolvers := f.resolvers
 	if hasDeliverableStateField(cfg) {

@@ -547,6 +547,13 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		deps.Team.Team.TeamsNative.SetAwaitHookProvider(func(runCtx context.Context, sessionID, runID string) biz.AwaitReplyFunc {
 			return o.awaitCoord().MakeAwaitReplyFunc(runCtx, sessionID, runID)
 		})
+		// 2026-07-28 修复3：装配 runner 侧真实产出闸门——DAG 团队无
+		// set_deliverable 交付物时 veto run success（FSM 终态不可逆，
+		// 必须在 success 转换前拦截）。与 HandleTeamTurnResult 的
+		// service 闸门互为双保险。
+		if deps.Team.Team.SpiritUC != nil {
+			deps.Team.Team.TeamsNative.SetDeliverableGate(deps.Team.Team.SpiritUC.HasRealDeliverable)
+		}
 		if deps.Team.Team.TeamMediator != nil {
 			deps.Team.Team.TeamsNative.SetMediator(deps.Team.Team.TeamMediator)
 			deps.Team.Team.TeamMediator.SetFinisher(deps.Team.Team.TeamsNative)

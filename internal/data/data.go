@@ -54,6 +54,7 @@ var ProviderSet = wire.NewSet(
 	NewMCPServerRepo,
 	NewMCPServerUserCredentialRepo,
 	NewSkillRepo,
+	NewSkillTagRepo,
 	NewSkillImportJobStore,
 	wire.Bind(new(importer.SkillImportJobStore), new(*SkillImportJobStore)),
 	NewSessionRepo,
@@ -163,6 +164,8 @@ var ProviderSet = wire.NewSet(
 	NewV2RecoveryRepo,
 	// B-06: durable critical-event outbox for WS last_event_id replay.
 	NewEventDeliveryOutboxRepoFromData,
+	// P1-R2b: durable dead-letter store for v2 sequencer events.
+	NewEventDeadLetterRepo,
 	// Media generation provider catalog (media_providers) for media tool assembly.
 	NewMediaProviderRepo,
 	// M71: agent resource sharing (dept mailbox / access audit / global message search).

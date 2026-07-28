@@ -1,0 +1,6 @@
+COLS: [id team_id status members version started_at completed_at]
+ROW 1: [id=0b13904b-7952-5c5b-ae98-fba74ab905f7] [team_id=744c27fd08cf655f729bd7a8] [status=completed] [members=null] [version=3] [started_at=2026-07-28 12:27:52.998387 +0800 CST] [completed_at=<nil>] 
+ROW 2: [id=4980cc46-9454-596b-84b6-619430e5987d] [team_id=fbfd3a6ad3d7f07683b66467] [status=completed] [members=null] [version=3] [started_at=2026-07-28 12:31:47.345527 +0800 CST] [completed_at=<nil>] 
+ROW 3: [id=6807dcd1-3396-527c-b568-d814cf0a132e] [team_id=a819f20c3adcdbf2cb2dc92f] [status=completed] [members=null] [version=3] [started_at=2026-07-28 12:27:53.002612 +0800 CST] [completed_at=<nil>] 
+ROW 4: [id=babdb09e-6a89-5bbc-9626-587b2632d7c5] [team_id=7ec916552a662b45f807ba7b] [status=completed] [members=null] [version=3] [started_at=2026-07-28 12:27:53.003121 +0800 CST] [completed_at=<nil>] 
+TOTAL: 4

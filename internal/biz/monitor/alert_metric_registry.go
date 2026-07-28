@@ -118,3 +118,33 @@ func (m *SkillFilesystemMissingMetric) Evaluate(ctx context.Context, _ time.Dura
 	}
 	return float64(missing), nil
 }
+
+// DeadLetterCountReader is a narrow port for reading the v2 sequencer's
+// dead-letter backlog size. Implemented by *v2.Sequencer (agent layer);
+// defined here so biz/monitor does not depend on the agent package
+// (dependency direction: biz is inner).
+type DeadLetterCountReader interface {
+	DeadLetterCount() int
+}
+
+// SequencerDeadLetterMetric exposes the v2 sequencer dead-letter ring
+// occupancy to the alert engine (P0-R2a). A value >= 1 means events were
+// permanently dropped from persistence after retry exhaustion.
+type SequencerDeadLetterMetric struct {
+	reader DeadLetterCountReader
+}
+
+func NewSequencerDeadLetterMetric(r DeadLetterCountReader) *SequencerDeadLetterMetric {
+	return &SequencerDeadLetterMetric{reader: r}
+}
+
+func (m *SequencerDeadLetterMetric) Key() string { return "sequencer.dead_letter_count" }
+func (m *SequencerDeadLetterMetric) Description() string {
+	return "Number of v2 events in the sequencer dead-letter ring (persist failed permanently)"
+}
+func (m *SequencerDeadLetterMetric) Evaluate(_ context.Context, _ time.Duration) (float64, error) {
+	if m == nil || m.reader == nil {
+		return 0, nil
+	}
+	return float64(m.reader.DeadLetterCount()), nil
+}

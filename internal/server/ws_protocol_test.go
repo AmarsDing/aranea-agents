@@ -202,8 +202,8 @@ func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
 		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
 		nil,
-		stubChatSender{sendErr: context.Canceled},
-		nil,
+		stubChatSender{},
+		stubTurnExecutor{err: context.Canceled},
 		nil,
 		loggateway.NewNoop(),
 		v2Bus,
@@ -342,8 +342,8 @@ func TestWSUpstreamErrorPublishesSyntheticV2Failure(t *testing.T) {
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
 		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
 		nil,
-		stubChatSender{sendErr: context.Canceled},
-		nil,
+		stubChatSender{},
+		stubTurnExecutor{err: context.Canceled},
 		nil,
 		loggateway.NewNoop(),
 		v2Bus,
@@ -461,7 +461,7 @@ func TestWSUpstreamErrorPublishesSyntheticV2Failure(t *testing.T) {
 	if synStepCreated.Step.Status != biz.StepStatusCompleted {
 		t.Errorf("synthetic Step.Status = %q, want completed", synStepCreated.Step.Status)
 	}
-	// The Content should carry the error message (from stubChatSender.sendErr
+	// The Content should carry the error message (from stubTurnExecutor.err
 	// = context.Canceled → message "context canceled" comes from send_failed
 	// error type + err.Error()).
 	if synStepCreated.Step.Content == "" {

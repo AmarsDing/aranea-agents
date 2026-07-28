@@ -388,10 +388,21 @@ type Definition struct {
     MemberTool             *MemberToolDef    `json:"member_tool_config,omitempty"`
     FailurePolicy          *FailurePolicy    `json:"failure_policy,omitempty"`
     EnableStateDeliverable bool              `json:"enable_state_deliverable,omitempty"`
+    // DeliverableContract：成员级交付契约（MDC），仅 EnableStateDeliverable=true 时有意义。
+    // 治理成员经 set_deliverable 的 topic 写（required_keys + schema_json 写时校验；
+    // required 完成时 advisory Warn）。空 entries 在 ParseDefinition 时归一化为 nil。
+    DeliverableContract *biz.MemberDeliverableContract `json:"deliverable_contract,omitempty"`
 }
 ```
 
-**EnableStateDeliverable**（默认 `false`）：启用后，`finalizeRuntimeGraphConfig` 会在 graph StateSchema 中注入一个 `deliverable` StateField（类型 `map[string]any`，Reducer `Cover`）。成员 agent 可通过 `set_deliverable`/`get_deliverable` 工具读写该字段，实现结构化交付物在 agent 之间的显式传递。
+**EnableStateDeliverable**（默认 `false`）：启用后，`finalizeRuntimeGraphConfig` 会在 graph StateSchema 中注入一个 `deliverable` StateField（类型 `map[string]any`，Reducer `Merge`——顶层 key 级合并，topic 写互不覆盖）。成员 agent 可通过 `set_deliverable`/`get_deliverable`/`ack_deliverable` 工具读写与确认该字段，实现结构化交付物在 agent 之间的显式传递。
+
+**DeliverableContract**（MDC，可选）：topic 作用域的成员级交付契约，是团队间 `DeliverableContract`（P1）的团队内对应物。
+
+- 写时强制：`set_deliverable` 带 topic 写时，若 topic 命中契约条目则校验 `required_keys` + `schema_json`（复用 C2 `shared.ValidateDocumentAgainstSchema`），违规返回 LLM 可纠错的 `MemberContractViolationError`（中文、列全违规、提示修正重试）
+- 完成时 advisory：`WriteDeliverablesToSession` 检查 `required: true` 的 topic 是否出现在最终 deliverable map，缺失记 Warn（覆盖「生产方从未调用工具」旁路，不阻断运行）
+- 装配路径：仅 team 编译路径（`internal/team/trpc_build.go` → `deliverableToolsForDef` → `deliverabletools.ToolsWithContract`）；graph adapter 通用路径保持无契约
+- 序列化路径：Definition JSON 原生字段；`MergeOrchestrationSpecIntoDefinition` 的 map-merge 保留未知 key，CRUD 往返不丢失；OrchestrationSpec struct 无强类型字段（与 `enable_state_deliverable` 同边界）
 
 ### 3.7 校验规则
 
@@ -540,26 +551,35 @@ Graph 路径要点：
 - 开关：`internal/agent/trpc_build.go` 读取 Agent 有效工具集 `biz.ToolKeyCallAgent`
 - 执行：`internal/service/chat_native.go` 实现 `a2a.AgentTurnRunner`
 
-### 6.5 set_deliverable / get_deliverable 工具
+### 6.5 set_deliverable / get_deliverable / ack_deliverable 工具
 
 用于 Team 成员之间通过 graph state 显式传递结构化交付物。当 Definition `enable_state_deliverable=true` 时启用。
 
-- 定义：`internal/tools/deliverable/tool.go`
+- 定义：`internal/tools/deliverable/tool.go`（set/get）+ `internal/tools/deliverable/ack.go`（ack）
 - 注册：`internal/tools/toolset.go` → `Registry()` 中 `deliverable` ToolSet（`EnabledByDefault=false`）
 - State Key：`biz.DeliverableStateKey = "deliverable"`（定义在 `internal/biz/graph.go`）
-- StateField 注入：`internal/team/graph_runtime_config.go` → `ensureDeliverableStateField()`（Reducer=`Cover`，最近写入者覆盖）
+- StateField 注入：`internal/team/graph_runtime_config.go` → `ensureDeliverableStateField()`（Reducer=`Merge`，顶层 key 级合并：不同 topic 的并行写共存，同 key 后写者覆盖）
+- parallel 约束（2026-07-28 起放宽）：Reducer 由 Cover 切换为 Merge 后，parallel 团队可安全开启 `enable_state_deliverable`，但成员必须经 **distinct topic** 写；无 topic 的整 map 写在同一 superstep 仍是 last-writer-wins。`CompileToCompiledTeam` 对 parallel + deliverable 组合输出 advisory Warn（`parallelDeliverableAdvisory`）
 
 **set_deliverable**：
 - 实现 `tool.CallableTool` + `StateDelta` 方法（duck typing 接口，见 `internal/flow/processor/functioncall.go`）
 - `Call()` 验证输入并返回 output；`StateDelta()` 从 resultJSON 提取 data，返回 `{deliverable: jsonBytes}` 供框架合并到 graph state
-- 输入：`{data: map[string]any, note?: string}`
+- 输入：`{data: map[string]any, note?: string, topic?: string}`
 - 输出：`{written: bool, data: map, keys: int, note?: string}`
+- MDC 写时校验：带 topic 且命中契约条目时，先校验 `required_keys` + `schema_json`，违规返回 `MemberContractViolationError`（LLM 可纠错后重试）
 
 **get_deliverable**：
 - 实现 `tool.CallableTool`（只读，无 StateDelta）
 - 通过 `agent.InvocationFromContext(ctx)` → `inv.Session.GetState(biz.DeliverableStateKey)` 读取
-- 输入：`{key?: string}`（空则返回完整 deliverable 对象）
+- 输入：`{key?: string}`（空则返回完整 deliverable 对象；可传 `ack/<topic>` 读确认记录）
 - 输出：`{data: map, found: bool, key?: string}`
+
+**ack_deliverable**（交付确认）：
+- 实现 `tool.CallableTool` + `StateDelta`（与 set 同模式：Call 写 node-local 视图，StateDelta 从序列化结果确定性重建，无 ctx 依赖）
+- 输入：`{topic: string, status: "accepted"|"rejected", comment?: string}`（rejected 强烈建议带 comment）
+- 写入位置：`deliverable["ack/<topic>"] = {status, by, comment, at}`（顶层 key，并行 ack 不同 topic 在 MergeReducer 下互不覆盖）
+- 语义：advisory 信号，不阻断运行；coordinator/synthesizer 经 `get_deliverable(key="ack/<topic>")` 读取决定是否返工
+- 桥接排除：`WriteDeliverablesToSession` → `marshalNonReservedStateKeys` 排除 `ack/` 前缀 key，确认记录不会泄漏进团队间 `DeliverableRef.StructuredJSON` 信封
 
 ---
 

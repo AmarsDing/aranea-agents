@@ -42,6 +42,7 @@
 - Critic Loop 支持 ScoreThreshold 结构化评分终止
 - FailurePolicy 容错：重试（RetryPolicy）、熔断器（CircuitBreaker）、节点级覆盖
 - Team 成员构建时接入插件与有效工具集（含 `call_agent`，需 Agent 启用 A2A 工具）
+- 成员间结构化交付传递（`enable_state_deliverable`）：成员经 `set_deliverable`/`get_deliverable` 读写 graph state 交付物（topic 命名空间多主题并存，MergeReducer 顶层 key 级合并，parallel 团队经 distinct topic 写安全）；可选成员级交付契约（`deliverable_contract`）对 topic 写做必需键/Schema 校验并提示修正；成员可经 `ack_deliverable` 对交付物正式接受/拒绝（advisory，不阻断运行）
 
 **运行记录与运行管理**
 

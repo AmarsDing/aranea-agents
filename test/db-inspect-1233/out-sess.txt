@@ -1,0 +1,6 @@
+COLS: [id session_type member_agent_key team_id status created_at]
+ROW 1: [id=6296b2d5-601a-4f2a-b660-e335c78ce26a] [session_type=team] [member_agent_key=] [team_id=744c27fd08cf655f729bd7a8] [status=completed] [created_at=2026-07-28T04:27:52Z] 
+ROW 2: [id=81342496-183e-4fe2-934b-d173c019b375] [session_type=team] [member_agent_key=] [team_id=7ec916552a662b45f807ba7b] [status=completed] [created_at=2026-07-28T04:27:53Z] 
+ROW 3: [id=865e3205-bd66-48d8-8f65-bc5c0dbad882] [session_type=team] [member_agent_key=] [team_id=a819f20c3adcdbf2cb2dc92f] [status=completed] [created_at=2026-07-28T04:27:52Z] 
+ROW 4: [id=27dd4935-503b-4b7d-809b-2fe5ae813567] [session_type=team] [member_agent_key=] [team_id=fbfd3a6ad3d7f07683b66467] [status=completed] [created_at=2026-07-28T04:31:47Z] 
+TOTAL: 4

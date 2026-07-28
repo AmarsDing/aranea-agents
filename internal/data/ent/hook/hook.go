@@ -872,6 +872,18 @@ func (f SkillInvocationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Va
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SkillInvocationMutation", m)
 }
 
+// The SkillTagFunc type is an adapter to allow the use of ordinary
+// function as SkillTag mutator.
+type SkillTagFunc func(context.Context, *ent.SkillTagMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SkillTagFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SkillTagMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SkillTagMutation", m)
+}
+
 // The SkillVersionFunc type is an adapter to allow the use of ordinary
 // function as SkillVersion mutator.
 type SkillVersionFunc func(context.Context, *ent.SkillVersionMutation) (ent.Value, error)

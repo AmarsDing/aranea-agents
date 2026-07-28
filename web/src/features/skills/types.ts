@@ -3,6 +3,17 @@ export type SkillTag = {
   source: 'system' | 'user' | string;
 };
 
+/** 字典标签 + 实时使用计数（source=orphan 表示使用中但未收录进字典）。 */
+export type SkillTagInfo = {
+  name: string;
+  /** `:` 前缀维度（file_type/domain），无维度为空串。 */
+  dimension: string;
+  source: 'system' | 'user' | 'orphan' | string;
+  used_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type SkillVersionSummary = {
   id: string;
   version: string;
@@ -344,8 +355,8 @@ export type SkillEvolutionView = {
   draftName: string;
   mergeTargetId: string;
 
-  lifecycleStatus: 'draft' | 'validating' | 'ready';
-  sandboxPassed: boolean;
+  lifecycleStatus: 'draft' | 'validating' | 'ready' | 'applied';
+  sandboxPassed: boolean | null; // null = 无沙箱数据（如 agent 级提案），UI 显示 "—" 而非误报"未通过"
   sandboxResult: Record<string, unknown> | null;
   metadata: Record<string, unknown> | null;
 

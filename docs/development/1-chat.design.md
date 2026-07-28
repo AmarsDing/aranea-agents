@@ -5102,13 +5102,13 @@ plan_and_execute
 |----|------|------|
 | P1 形式契约 | ① `buildDecompositionPrompt` 未要求 LLM 输出 `deliverables`/`input_contract`；② `parseDecompositionOutput` 的 rawTasks 无契约字段；③ `biz.SubTask` 无契约字段；④ `biz.PlanStep` 无契约字段；⑤ `SpiritTeamParams` 无契约字段 → `AssembleTeam` 创建 Team 时 `Deliverables`/`InputContract` 永远为空；⑥ `ValidateDeliverableContracts` 已实现但**全代码库无调用点** | `task_planner_impl.go:861-890`；`task_plan.go:87-95`；`plan_step.go:7-27`；`spirit_team_usecase.go:91-105,363-376`；`spirit_team_usecase.go:1492`（仅定义） |
 | P2 产物引用化 | `ExtractTeamOutput` 读到的 `st.Content` 截断前是**全文**（steps_v2 表 reply step 完整持久化），但 `WriteDeliverablesToSession` 只写 500 字符摘要；`DeliverablesOutput` 值为 `map[dagNodeID]string`，无引用、无尺寸元数据；下游无任何工具可按需取全文 | `spirit_team_usecase.go:946-958,1705` |
-| Graph StateFields | 团队内 state 通道完整但**双开关均未启用**（工具注册 `EnabledByDefault: false` + `Definition.EnableStateDeliverable` 默认 false）；团队完成后 graph final state → `DeliverablesOutput` 的桥接不存在；`ReducerCover` 为 map 级覆盖（latest writer wins，顺序交接语义） | `toolset.go:378-386`；`graph_runtime_config.go:80-105`；`tools/deliverable/tool.go` |
+| Graph StateFields | 团队内 state 通道完整但**双开关均未启用**（工具注册 `EnabledByDefault: false` + `Definition.EnableStateDeliverable` 默认 false）；团队完成后 graph final state → `DeliverablesOutput` 的桥接不存在；`ReducerCover` 为 map 级覆盖（latest writer wins，顺序交接语义）【2026-07-28 更新：Reducer 已切换为 Merge 顶层 key 级合并，桥接已实现（B.10.15.4 ✅）】 | `toolset.go:378-386`；`graph_runtime_config.go:80-105`；`tools/deliverable/tool.go` |
 
 **评审修订要点**（相对原方案）：
 
 1. **P2 不新建 blob 表**。交付物全文已在 `steps_v2` 表的 reply step 中持久化（`ExtractTeamOutput` 主数据源），新建 `deliverable_blobs` 表会引入数据冗余 + 双写一致性 + 生命周期管理三重负担。复用 steps_v2 引用即可实现"信封+引用"模型，零冗余、随 session 树级联清理。原考虑的 `tool_result_blobs` 基建（`ToolResultBlobReader/Writer`）语义专用（ToolName/TurnNumber 字段），不适用于团队交付物，放弃复用。
 2. **P1 契约生成保留 LLM 输出但加确定性兜底**。LLM 自由生成契约名的可靠性风险（上下游 name 匹配依赖 LLM 一致性）通过两点化解：prompt 强约束"下游 input_contract.name 必须引用上游 deliverables.name"；LLM 未输出契约但存在 DAG 依赖时，从 subtask 确定性派生兜底契约（`{step_id}_output`，document/markdown），保证注入提示可引用、验证器有事可验。
-3. **Graph StateFields 与 P1/P2 解耦**。state 通道作用域明确限定为**团队内成员间**交付（Cover reducer = 顺序交接语义），不试图替代团队间通道；团队间桥接（state → DeliverablesOutput）作为独立可选项，且**以"团队完成后 graph final state 可读性"技术验证为前置**，验证不通过则降级为 prompt 引导（最后写入成员将 deliverable 摘要写入 reply）。
+3. **Graph StateFields 与 P1/P2 解耦**。state 通道作用域明确限定为**团队内成员间**交付（Cover reducer = 顺序交接语义【2026-07-28 起为 Merge reducer 顶层 key 级合并】），不试图替代团队间通道；团队间桥接（state → DeliverablesOutput）作为独立可选项，且**以"团队完成后 graph final state 可读性"技术验证为前置**，验证不通过则降级为 prompt 引导（最后写入成员将 deliverable 摘要写入 reply）。
 
 #### B.10.15.2 P1 形式契约由 Planner schema 填充
 
@@ -5205,7 +5205,7 @@ type DeliverableRef struct {
 
 | 通道 | 作用域 | 机制 | 现状 |
 |------|--------|------|------|
-| `deliverable` graph state | **团队内**成员间顺序交接 | `set_deliverable`（StateDelta → CoverReducer，latest writer wins）→ `get_deliverable` | 完整实现，双开关未启用 |
+| `deliverable` graph state | **团队内**成员间交接（顺序 + topic 并行） | `set_deliverable`（StateDelta → MergeReducer，顶层 key 级合并）→ `get_deliverable` → `ack_deliverable`（交付确认） | 完整实现，双开关未启用 |
 | `teams.deliverables_output_json` | **团队间**（DAG 上下游） | `WriteDeliverablesToSession` → `InjectUpstreamDeliverables` | P0 已打通（文本摘要） |
 
 两者**不统一为一个抽象**——团队内交接是"流水线半成品"（覆盖语义），团队间交付是"终态快照"（落库信封），语义不同。桥接只做一件事：**团队完成时，若启用了 state 通道，优先从 graph final state 提取结构化 deliverable 充实落库信封**。
@@ -5214,9 +5214,9 @@ type DeliverableRef struct {
 
 1. **前置技术验证（阻断性）**：确认团队执行完成后 graph final state 的可读位置。候选：TeamRunResult / runner completion 事件携带的 state snapshot / SessionService state 读取。**若验证不通过**，桥接降级为 prompt 引导——团队 definition prompt 中要求"最后一名成员将 deliverable 核心结论写入最终 reply"，落库链路（P0/P2）不变。
 2. **桥接函数**（✅ 已实施，见 B.10.15.10）：`RecordTeamCompletion` → `WriteDeliverablesToSession` 中，若 `Team.DefinitionJSON` 的 `enable_state_deliverable=true` 且 final state 可读 → 读 `state["deliverable"]`（map）→ `summary` 优先取 `deliverable["summary"]`（string），缺失回退 reply step 提取；`deliverable` map 的其余 key 序列化入 `DeliverableRef` 扩展字段（`StructuredJSON string`，信封可选字段）。
-3. **灰度启用**：双开关默认关闭（`toolset.go` deliverable 注册 `EnabledByDefault: false` + `Definition.EnableStateDeliverable` 默认 false）保持不变；P1/P2 落地稳定后，由 Planner 对 DAG 团队的 definition 选择性开启（或管理后台按团队配置），观察 Cover reducer 在多成员并行写场景的实际行为后再评估是否扩大。
+3. **灰度启用**：双开关默认关闭（`toolset.go` deliverable 注册 `EnabledByDefault: false` + `Definition.EnableStateDeliverable` 默认 false）保持不变；P1/P2 落地稳定后，由 Planner 对 DAG 团队的 definition 选择性开启（或管理后台按团队配置）。~~观察 Cover reducer 在多成员并行写场景的实际行为后再评估是否扩大~~（2026-07-28 起 Reducer 已切换为 Merge，parallel 经 distinct topic 写是安全的）。
 
-**多成员写冲突语义**：`ReducerCover` 为 map 级整体覆盖（后者覆盖前者），适合 sequential/coordinator 的**顺序交接**；parallel 模式多成员并发写会相互覆盖（last-writer-wins，丢中间产物）——因此 `EnableStateDeliverable` 仅建议对 sequential/coordinator 团队开启，parallel 团队不开启（definition 层约束 + 文档说明）。
+**多成员写冲突语义**（2026-07-28 更新）：`ReducerMerge` 为**顶层 key 级合并**——不同 topic（含 `ack/<topic>` 确认键）的并行写在同一 superstep 共存，同名 key 仍是后写者覆盖。topic 命名空间（C3）使多主题交付物并存；`ack_deliverable` 确认记录写 `ack/<topic>` 顶层键，桥接（`marshalNonReservedStateKeys`）将其排除在团队间信封之外。顺序交接语义不变（同 key 后写覆盖）。**唯一残留约束**：parallel 模式下成员必须经 distinct topic 写；无 topic 的整 map 写在同一 superstep 仍 last-writer-wins——`CompileToCompiledTeam` 对该组合输出 advisory Warn（`parallelDeliverableAdvisory`）。成员级交付契约（MDC，`deliverable_contract`）治理 topic 写：`required_keys`/`schema_json` 写时强制（LLM 可纠错）、`required` 完成时 advisory Warn。
 
 **前置技术验证结论（2026-07-22 ✅ 通过）**：
 
@@ -5226,7 +5226,7 @@ type DeliverableRef struct {
 
 | 步骤 | 机制 | 关键代码 |
 |------|------|----------|
-| ① state 写入 | `set_deliverable.StateDelta()` 返回 `{deliverable: data}` → flow 层合并到 graph state（CoverReducer） | `internal/tools/deliverable/tool.go:104-123` |
+| ① state 写入 | `set_deliverable.StateDelta()` 返回 `{deliverable: data}` → flow 层合并到 graph state（CoverReducer【2026-07-28 起为 MergeReducer】） | `internal/tools/deliverable/tool.go:104-123` |
 | ② 完成序列化 | graph completion event 通过 `serializeFinalState()` 序列化所有非内部 state key → `"deliverable"` 不在 `isInternalStateKey`/`isUnsafeStateKey` 排除列表 | `pkg/trpc-agent-go/graph/events.go:1652-1682`、`keys.go:87-123` |
 | ③ runner 持久化 | `handleEventPersistence` → `shouldPersistEvent`（StateDelta 非空 → true）→ `graphCompletionSessionStateDelta` 仅过滤 messages/user_input/last_response 等 → `"deliverable"` 保留 | `pkg/trpc-agent-go/runner/runner.go:2024-2061, 2441-2476` |
 | ④ session 合并 | `AppendEvent` → `UpdateUserSession` → `ApplyEventStateDelta` 将 StateDelta 合并到 `sess.State["deliverable"]` 并持久化 | `pkg/trpc-agent-go/session/session.go:530-551` |
@@ -5284,7 +5284,7 @@ type DeliverableRef struct {
 - `DeliverableRef` 读取必须双模兼容（object 优先，legacy string 兜底），旧数据零迁移
 - `read_upstream_deliverable` 必须走 `SpiritStepReader` 精确 session 语义（与 `ExtractTeamOutput` 主数据源一致），禁止读全树
 - `DeliverablesOutput` 中只存信封（摘要+引用），**禁止**存全文（全文唯一真相源 = steps_v2 reply step）
-- `EnableStateDeliverable` 不得对 parallel 模式团队开启（Cover reducer 丢并发写产物）
+- ~~`EnableStateDeliverable` 不得对 parallel 模式团队开启（Cover reducer 丢并发写产物）~~（2026-07-28 起 Reducer 切换为 Merge：parallel 可开启，但成员必须经 distinct topic 写；无 topic 整 map 写仍 last-writer-wins，`parallelDeliverableAdvisory` 输出 Warn）
 - state 桥接必须以前置技术验证通过为前提；未通过时落库链路行为与 P2 完全一致
 - 注入前缀的总长度需有护栏（建议单上游摘要 ≤500 字符 + 契约行 ≤200 字符），防止多上游场景前缀本身撑爆下游首条消息
 
@@ -5826,7 +5826,7 @@ v2Api.ts（limit/beforeSeq 透传）
 
 | 机制 | 现状 | 缺口 |
 |------|------|------|
-| 团队内 Graph State 共享 | `set_deliverable`/`get_deliverable` 单 key（`deliverable`，CoverReducer 整体覆盖），`EnableStateDeliverable` 默认关 | 单 key 顺序交接会互相覆盖，无多主题并存 |
+| 团队内 Graph State 共享 | `set_deliverable`/`get_deliverable`/`ack_deliverable` 单 key（`deliverable`，MergeReducer 顶层 key 级合并，2026-07-28 由 Cover 切换），`EnableStateDeliverable` 默认关 | ~~单 key 顺序交接会互相覆盖，无多主题并存~~（已由 C3 topic 命名空间 + MergeReducer 解决：不同 topic 并行写共存） |
 | 团队间 DAG 交付物 | P2 `DeliverableRef` 信封（summary/key_findings/size/truncated/structured_json）+ `read_upstream_deliverable` 全文按需读取 | 只有结论，没有「为什么是这个结论」的认知过程 |
 | 契约校验 | name/type/format 三元组匹配（`ValidateContractMatchDetailed`）+ 运行时 `ContractMismatchError` | 无内容级结构校验（JSON Schema） |
 | 血缘追踪 | 无 | 下游无法知道交付物由哪些上游派生 |
@@ -5915,15 +5915,17 @@ type DeliverableContract struct {
 
 ```
 set_deliverable(data, note, topic?)
-  topic 为空 → 遗留语义：StateDelta 整体覆盖 deliverable map（向后兼容）
+  topic 为空 → 遗留语义：StateDelta 写回 data 各顶层 key（MergeReducer 下同 key 覆盖、他 key 保留）
   topic 非空 → Call 内经 invocation 读当前 deliverable map → 合并 map[topic]=data
-             → 输出合并后的完整 map → StateDelta 整体 Cover 写回
+             → 输出合并后的完整 map → StateDelta 写回（MergeReducer 顶层 key 合并）
 get_deliverable(key?, topic?)
   topic 非空 → 先取 map[topic] 子对象，再按 key 过滤
 ```
 
+> Reducer 注记（2026-07-28）：`deliverable` StateField 的 Reducer 已由 Cover 切换为 Merge（`internal/team/graph_runtime_config.go` `ensureDeliverableStateField`）。上述「读-改-写后整体写回」的 Call 内合并逻辑保持不变，但框架侧合并粒度从整 map 覆盖变为顶层 key 级合并，并行 topic 写不再互相丢失。
+
 **约束与边界**：
-- 读-改-写合并对 sequential/coordinator 顺序交接安全；parallel 并发写不同 topic 仍有竞态（last-writer-wins）——与既有 `EnableStateDeliverable` 适用约束一致，不改变其「不建议 parallel 开启」的结论。
+- 读-改-写合并对 sequential/coordinator 顺序交接安全；~~parallel 并发写不同 topic 仍有竞态（last-writer-wins）~~（已由 MergeReducer 解决：不同 topic 顶层 key 独立合并，并行安全；`ack/<topic>` 确认键同理）。**残留约束**：parallel 同 superstep 的**无 topic 整 map 写**仍 last-writer-wins——`parallelDeliverableAdvisory` 输出 Warn，成员应一律经 distinct topic 写。
 - topic 子对象作为非 summary 键自然落入 `StructuredJSON` 桥接，下游信封可见。
 - topic 名校验：非空时须匹配 `^[a-z0-9][a-z0-9_-]{0,63}$`，禁止与保留键 `summary`/`cognition` 同名。
 
@@ -5981,13 +5983,47 @@ runner_team_trpc.go runOpts
 #### B.10.20.8 不变量
 
 1. `DeliverableRef` 新字段全部 omitempty —— 遗留 envelope 与 legacy plain-string 解析不变（`ParseDeliverableRefs` 双模式语义保持）。
-2. `set_deliverable` 无 topic 时字节级行为与现状一致（整体覆盖）。
+2. `set_deliverable` 无 topic 时语义保持兼容（StateDelta 写回 data 各顶层 key；2026-07-28 起框架侧为 Merge 顶层 key 级合并——同 key 覆盖、他 key 保留，不再整 map 覆盖）。
 3. 保留键 `summary`/`cognition` 不进入 `StructuredJSON`。
 4. C2 未声明 schema 的契约条目行为与现状完全一致（advisory）。
 5. C5 对无团队上下文（TeamID 为空）的会话零行为变化。
 6. 所有新日志走 `loggateway.Logger` 结构化字段，无字符串拼接。
 
-#### B.10.20.9 测试策略
+#### B.10.20.9 成员级交付契约（MDC）+ 交付确认（ack_deliverable）+ MergeReducer（2026-07-28 实施 ✅）
+
+**定位**：C2（内容级校验）与 C3（topic 命名空间）在**团队内**的落地补全，外加并行写安全性修复。三项互不依赖、同源同测。
+
+**① MergeReducer（并行安全修复）**：`deliverable` StateField Reducer 由 Cover 切换为 Merge（`internal/team/graph_runtime_config.go` `ensureDeliverableStateField`）。不同 topic（含 `ack/<topic>` 键）的并行写在同一 superstep 共存；同 key 仍后写者覆盖（顺序交接语义不变）。parallel + deliverable 组合编译期输出 advisory Warn（`parallelDeliverableAdvisory`），约束：成员必须经 distinct topic 写，无 topic 整 map 写仍 last-writer-wins。
+
+**② 成员级交付契约（MDC，`deliverable_contract`）**：Definition JSON 可选字段，topic 作用域条目 `{topic, description?, required?, required_keys?, schema_json?}`。
+
+- **写时强制**：`set_deliverable` 带 topic 且命中条目 → 校验 `required_keys` + `schema_json`（复用 C2 `shared.ValidateDocumentAgainstSchema`），违规返回 `MemberContractViolationError`（中文、列全违规、LLM 可纠错重试）
+- **完成时 advisory**：`WriteDeliverablesToSession` 检查 `required: true` topic 是否出现在最终 deliverable map，缺失记 Warn（覆盖「生产方从未调用工具」旁路，不阻断）
+- **装配**：仅 team 编译路径（`deliverableToolsForDef` → `ToolsWithContract`）；graph adapter 通用路径无契约。`MergeOrchestrationSpecIntoDefinition` map-merge 保留该未知 key，CRUD 往返不丢失
+- **空 entries 归一化**：`ParseDefinition` 将空契约归一化为 nil（等价无契约）
+
+**③ ack_deliverable（交付确认）**：成员经 `get_deliverable` 审阅后正式接受/拒绝某 topic 交付物。
+
+- 输入 `{topic, status: accepted|rejected, comment?}`；写 `deliverable["ack/<topic>"] = {status, by, comment, at}`（顶层 key，并行 ack 互不覆盖）
+- advisory 信号，不阻断运行；coordinator/synthesizer 经 `get_deliverable(key="ack/<topic>")` 读取决定是否返工
+- 桥接排除：`marshalNonReservedStateKeys` 排除 `ack/` 前缀键，确认记录不泄漏进团队间 `DeliverableRef.StructuredJSON`（biz 侧 `deliverableAckKeyPrefix` 复制常量 + pin 测试，因 biz 不能 import internal/tools）
+- `StateDelta` 从序列化结果确定性重建（无 ctx 依赖、无包级 stash，并发安全）
+
+**改动文件**（本次新增/修改）：
+
+| 文件 | 改动 |
+|------|------|
+| `internal/biz/member_deliverable_contract.go`（新） | MDC 类型 + `ValidateTopicData`/`RequiredTopicsMissing` + `MemberContractViolationError` |
+| `internal/tools/deliverable/tool.go` | `SetDeliverableTool.contract` 字段 + 写时校验 + `ToolsWithContract` |
+| `internal/tools/deliverable/ack.go`（新） | `AckDeliverableTool`（Call + StateDelta） |
+| `internal/team/definition.go` | `Definition.DeliverableContract` 字段 + 空 entries 归一化 |
+| `internal/team/trpc_build.go` | `deliverableToolsForDef`（契约注入）+ `parallelDeliverableAdvisory` |
+| `internal/team/graph_compile.go` | 编译入口 advisory Warn 调用 |
+| `internal/team/graph_runtime_config.go` | Reducer Cover → Merge |
+| `internal/biz/spirit_team_usecase.go` | `marshalNonReservedStateKeys` 排除 `ack/` + 完成时 required topic Warn |
+| 测试 | `member_deliverable_contract_test.go` / `ack_test.go` / `deliverable_contract_build_test.go` / `member_contract_bridge_test.go` / `graph_runtime_options_test.go`（MergeReducer 并行 union + 同 key 覆盖） |
+
+#### B.10.20.10 测试策略
 
 | 层 | 用例 |
 |----|------|

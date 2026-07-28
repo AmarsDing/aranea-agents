@@ -282,6 +282,28 @@ var (
 		Name: "aranea_graph_replan_total",
 		Help: "Total number of runtime graph replans by type.",
 	}, []string{"type"})
+
+	// SequencerDeadLetterTotal counts v2 sequencer events permanently sent to
+	// the dead-letter ring (persist retries exhausted or persist queue full).
+	// Any increment means durable event loss — operators should investigate.
+	SequencerDeadLetterTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_sequencer_dead_letter_total",
+		Help: "Number of v2 events sent to the dead-letter ring after persist failure.",
+	}, []string{"event_kind"})
+
+	// SequencerDeadLetterSize is the current occupancy of the v2 sequencer
+	// dead-letter ring (capacity 512, FIFO evict).
+	SequencerDeadLetterSize = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "aranea_sequencer_dead_letter_size",
+		Help: "Current number of events held in the v2 sequencer dead-letter ring.",
+	})
+
+	// SequencerDeadLetterReplayTotal counts durable dead-letter replay
+	// outcomes (P1-R2b): replayed / failed / abandoned.
+	SequencerDeadLetterReplayTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_sequencer_dead_letter_replay_total",
+		Help: "Dead-letter replay outcomes from the durable event_dead_letter store.",
+	}, []string{"outcome"})
 )
 
 // SafegoPanicHook returns a PanicHook function that increments the

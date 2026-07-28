@@ -30,7 +30,7 @@
           <q-tab name="agent" label="Agent 属性" />
           <q-tab name="memory" label="记忆" />
           <q-tab name="files" label="文件" />
-          <q-tab name="permissions" label="权限" />
+          <q-tab name="permissions" label="token配额" />
           <q-tab name="skills" label="Skill / 工具" />
           <q-tab name="evolution" label="进化" />
           <q-tab name="learning" label="学习闭环" />
@@ -110,6 +110,8 @@
               :agent-id="toValue(agentId)"
               :skill-slug-options="skillSlugOptions"
               :loading-skill-slugs="loadingSkillSlugs"
+              :skill-tag-options="skillTagOptions"
+              :loading-skill-tags="loadingSkillTags"
               :code-executor-capabilities="codeExecutorCapabilities"
               :tool-profile-options="toolProfileOptions"
               :tool-select-options="toolSelectOptions"
@@ -256,6 +258,8 @@ const {
   confirmResetSkillDefaults,
   loadingSkillSlugs,
   skillSlugOptions,
+  loadingSkillTags,
+  skillTagOptions,
   codeExecutorCapabilities,
   showEvolving,
   fileTokenByName,

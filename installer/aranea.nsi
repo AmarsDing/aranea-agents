@@ -100,11 +100,11 @@ Section "MainSection" SecMain
   ${EndIf}
   ${If} $0 == ""
     DetailPrint "WebView2 Runtime not found; downloading bootstrapper..."
-    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile $env:TEMP\MicrosoftEdgeWebview2Setup.exe -UseBasicParsing"'
+    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile $TEMP\MicrosoftEdgeWebview2Setup.exe -UseBasicParsing"'
     Pop $1
     ${If} $1 == 0
       DetailPrint "Installing WebView2 Runtime (silent)..."
-      nsExec::ExecToLog '"$env:TEMP\MicrosoftEdgeWebview2Setup.exe" /silent /install'
+      nsExec::ExecToLog '"$TEMP\MicrosoftEdgeWebview2Setup.exe" /silent /install'
       Pop $1
       ${If} $1 != 0
         MessageBox MB_OK|MB_ICONEXCLAMATION "WebView2 Runtime installation failed (exit $1). The desktop app requires WebView2 - please install it manually from https://developer.microsoft.com/microsoft-edge/webview2/"

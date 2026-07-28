@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { listSkills } from '../skills/api';
+import { listSkills, listSkillTags } from '../skills/api';
 import { getCodeExecutorCapabilities } from '../monitor/api';
 import type { CodeExecutorCapability } from '../monitor/types';
 
@@ -7,6 +7,8 @@ import type { CodeExecutorCapability } from '../monitor/types';
 export function useAgentSkillCatalog() {
   const skillSlugOptions = ref<{ label: string; value: string }[]>([]);
   const loadingSkillSlugs = ref(false);
+  const skillTagOptions = ref<string[]>([]);
+  const loadingSkillTags = ref(false);
   const codeExecutorCapabilities = ref<CodeExecutorCapability[]>([]);
 
   async function loadSkillSlugOptions() {
@@ -40,6 +42,19 @@ export function useAgentSkillCatalog() {
     }
   }
 
+  /** 标签字典选项源：规范标签名（字典 + 使用中），供 allowed_tags 下拉。 */
+  async function loadSkillTagOptions() {
+    loadingSkillTags.value = true;
+    try {
+      const tags = await listSkillTags();
+      skillTagOptions.value = tags.map((t) => t.name).filter(Boolean);
+    } catch {
+      skillTagOptions.value = [];
+    } finally {
+      loadingSkillTags.value = false;
+    }
+  }
+
   async function loadCodeExecutorCapabilities() {
     try {
       codeExecutorCapabilities.value = await getCodeExecutorCapabilities();
@@ -52,6 +67,9 @@ export function useAgentSkillCatalog() {
     skillSlugOptions,
     loadingSkillSlugs,
     loadSkillSlugOptions,
+    skillTagOptions,
+    loadingSkillTags,
+    loadSkillTagOptions,
     codeExecutorCapabilities,
     loadCodeExecutorCapabilities,
   };

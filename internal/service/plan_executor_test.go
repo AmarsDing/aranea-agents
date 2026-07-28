@@ -597,18 +597,27 @@ func TestPlanExecutor_InitGraphStageDoesNotPublishCreated(t *testing.T) {
 
 // collectSystemNotices subscribes to the bus and buffers SystemNoticeEvents
 // until the returned stop func is called.
+//
+// V2Bus 契约（R-1 修复后）：cancel 只摘除订阅者，永不 close channel——
+// 接收循环必须通过自己的 done channel 退出（红线 #23），禁止 range ch。
 func collectSystemNotices(bus biz.EventBus) (notices func() []*biz.SystemNoticeEvent, stop func()) {
 	ch, cancel := bus.Subscribe(biz.EventSubscribeOptions{})
 	var mu sync.Mutex
 	var buf []*biz.SystemNoticeEvent
 	done := make(chan struct{})
+	finished := make(chan struct{})
 	go func() {
-		defer close(done)
-		for ev := range ch {
-			if n, ok := ev.(*biz.SystemNoticeEvent); ok {
-				mu.Lock()
-				buf = append(buf, n)
-				mu.Unlock()
+		defer close(finished)
+		for {
+			select {
+			case <-done:
+				return
+			case ev := <-ch:
+				if n, ok := ev.(*biz.SystemNoticeEvent); ok {
+					mu.Lock()
+					buf = append(buf, n)
+					mu.Unlock()
+				}
 			}
 		}
 	}()
@@ -620,7 +629,8 @@ func collectSystemNotices(bus biz.EventBus) (notices func() []*biz.SystemNoticeE
 			return out
 		}, func() {
 			cancel()
-			<-done
+			close(done)
+			<-finished
 		}
 }
 

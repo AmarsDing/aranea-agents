@@ -22,7 +22,8 @@ const (
 
 // DeliverableStateKey is the graph state field name used by set_deliverable/get_deliverable
 // tools to share structured deliverables between team members (one agent's output → next agent's input).
-// Reducer is Cover so the latest writer wins, enabling sequential handoff semantics.
+// Reducer is Merge (top-level key union): topic-scoped writes from parallel members
+// coexist; a no-topic write overwrites only the keys it carries.
 const DeliverableStateKey = "deliverable"
 
 // ExecutionEngineType selects the graph execution strategy.

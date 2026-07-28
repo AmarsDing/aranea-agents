@@ -75,6 +75,7 @@ import (
 	"aranea-agents/internal/data/ent/sessionv2"
 	"aranea-agents/internal/data/ent/skillimportjob"
 	"aranea-agents/internal/data/ent/skillinvocation"
+	"aranea-agents/internal/data/ent/skilltag"
 	"aranea-agents/internal/data/ent/skillversion"
 	"aranea-agents/internal/data/ent/stepv2"
 	"aranea-agents/internal/data/ent/systemsetting"
@@ -237,6 +238,7 @@ func checkColumn(t, c string) error {
 			sessionv2.Table:                  sessionv2.ValidColumn,
 			skillimportjob.Table:             skillimportjob.ValidColumn,
 			skillinvocation.Table:            skillinvocation.ValidColumn,
+			skilltag.Table:                   skilltag.ValidColumn,
 			skillversion.Table:               skillversion.ValidColumn,
 			stepv2.Table:                     stepv2.ValidColumn,
 			systemsetting.Table:              systemsetting.ValidColumn,

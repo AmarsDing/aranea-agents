@@ -11,11 +11,17 @@ import (
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 type TRPCTeamBuilderDeps struct {
 	BuilderDeps chatagent.TRPCBuilderDeps
 	UseCache    bool
+	// MemberCustomTools injects per-member custom tools (sourced from
+	// RunnerConfig.MemberCustomTools). Called once per member during
+	// BuildTeamMemberAgents; results are appended to memberDeps.CustomTools
+	// before effective-tool hashing so the cache key reflects them.
+	MemberCustomTools func(ctx context.Context, ag biz.Agent) []trpctool.Tool
 }
 
 // BuildTeamMemberAgents builds member trpc agents and a runner lookup map keyed by agent_key.
@@ -39,10 +45,15 @@ func BuildTeamMemberAgents(
 
 		memberDeps := deps.BuilderDeps
 		// C1/C3: when the team definition enables the deliverable state channel,
-		// inject set_deliverable/get_deliverable tools into every member so
-		// they can pass structured output via graph state.
-		if def.EnableStateDeliverable {
-			memberDeps.CustomTools = append(memberDeps.CustomTools, deliverabletools.Tools()...)
+		// inject set/get/ack deliverable tools into every member so they can
+		// pass structured output via graph state. MDC: a declared
+		// deliverable_contract is installed on set_deliverable.
+		memberDeps.CustomTools = append(memberDeps.CustomTools, deliverableToolsForDef(def)...)
+		// Per-member custom tools (cli_admin_* for __system_admin__, etc.) so
+		// agent-specific dep-backed tools are available inside teams just as
+		// they are on the direct chat path.
+		if deps.MemberCustomTools != nil {
+			memberDeps.CustomTools = append(memberDeps.CustomTools, deps.MemberCustomTools(ctx, ag)...)
 		}
 		if eff, err := fetchEffectiveTools(ctx, memberDeps, ag.ID); err == nil {
 			memberDeps.CachedEffectiveTools = eff
@@ -66,6 +77,29 @@ func BuildTeamMemberAgents(
 		}
 	}
 	return memberAgents, lookup, nil
+}
+
+// deliverableToolsForDef resolves the deliverable tool set for member agents:
+// nil when the state channel is disabled; otherwise set/get/ack with the
+// optional member-level deliverable contract installed on set_deliverable.
+func deliverableToolsForDef(def Definition) []trpctool.Tool {
+	if !def.EnableStateDeliverable {
+		return nil
+	}
+	return deliverabletools.ToolsWithContract(def.DeliverableContract)
+}
+
+// parallelDeliverableAdvisory returns the advisory warning for running a
+// deliverable-enabled team in parallel mode ("" = no advisory). Topic-scoped
+// writes are merge-safe under MergeReducer; whole-map (no-topic) writes in
+// the same superstep remain last-writer-wins, so parallel members should
+// always write via distinct topics.
+func parallelDeliverableAdvisory(def Definition) string {
+	if def.EnableStateDeliverable && strings.EqualFold(strings.TrimSpace(def.Mode), "parallel") {
+		return "parallel mode with enable_state_deliverable: members must write via distinct topics " +
+			"(set_deliverable topic); whole-map writes without topic are last-writer-wins in the same superstep"
+	}
+	return ""
 }
 
 func fetchEffectiveTools(ctx context.Context, deps chatagent.TRPCBuilderDeps, agentID string) (*biz.AgentEffectiveTools, error) {

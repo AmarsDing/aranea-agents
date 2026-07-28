@@ -372,6 +372,11 @@ func (impl *taskPlannerImpl) ListPlans(ctx context.Context, spiritSessionID stri
 // called inside Plan(), but Plan() is only invoked when ForcePlanning=true
 // (which QuickAssess controls). Without this override, team-formation requests
 // rated "simple" never trigger planning, and no teams are created.
+//
+// Explicit-tool-request override (2026-07-28): messages naming a concrete
+// snake_case tool identifier (≥2 underscores, e.g. cli_admin_skill_install_from_url)
+// or plan_and_execute are likewise upgraded to at least Moderate, so the gate
+// forces planning deterministically instead of leaving routing to LLM discretion.
 func (impl *taskPlannerImpl) QuickAssess(_ context.Context, input biz.PlanInput) (biz.ComplexityLevel, float64, error) {
 	dimensions := impl.assessComplexity(input)
 	score := dimensions.Semantic*0.25 +
@@ -401,6 +406,26 @@ func (impl *taskPlannerImpl) QuickAssess(_ context.Context, input biz.PlanInput)
 		impl.lg.Info("QuickAssess 检测到团队组建意图，升级复杂度以触发规划",
 			loggateway.StepID(biz.SpiritStepPlannerAssess),
 			loggateway.Str("detected_mode", detected),
+			loggateway.Float64("complexity_score", score),
+		)
+	}
+
+	// Explicit tool/orchestration request override: a message naming a concrete
+	// snake_case tool identifier with ≥2 underscores (e.g.
+	// cli_admin_skill_install_from_url, plan_and_execute) explicitly requests
+	// capabilities beyond a direct answer. Upgrade to at least Moderate so the
+	// gate forces the planning path deterministically, instead of leaving the
+	// routing decision to LLM discretion.
+	// (2026-07-28, session 784a8707: install-skill request scored 0.215 simple;
+	// gate notice claimed "直接回答" while the LLM self-routed to
+	// plan_and_execute and launched two teams — notice contradicted behavior.)
+	if level == biz.ComplexitySimple && explicitToolRequestPattern.MatchString(strings.ToLower(input.UserMessage)) {
+		level = biz.ComplexityModerate
+		if score < 0.3 {
+			score = 0.3
+		}
+		impl.lg.Info("QuickAssess 检测到显式工具/编排调用请求，升级复杂度以触发规划",
+			loggateway.StepID(biz.SpiritStepPlannerAssess),
 			loggateway.Float64("complexity_score", score),
 		)
 	}
@@ -743,6 +768,13 @@ func detectTeamCount(message string) int {
 	}
 	return 0
 }
+
+// explicitToolRequestPattern matches snake_case tool identifiers with at least
+// two underscores (e.g. cli_admin_skill_install_from_url, plan_and_execute).
+// Single-underscore everyday tools (exec_command, web_search) deliberately do
+// not match — mentioning them is a normal direct request, not an orchestration
+// demand.
+var explicitToolRequestPattern = regexp.MustCompile(`[a-z][a-z0-9]*(?:_[a-z0-9]+){2,}`)
 
 // detectTeamIntent scans the user message for explicit team-formation keywords
 // and returns the recommended mode ("parallel" or "dag"). Returns "" if no
@@ -1154,6 +1186,7 @@ Rules:
 - depends_on must only reference IDs of other subtasks in the array
 - No circular dependencies allowed
 - Subtasks should be independently executable where possible
+- CRITICAL: Each subtask "description" must be fully self-contained. The executing team sees ONLY its own description — it cannot see the user message or other subtasks. Every concrete parameter the executor needs (URLs, file paths, branch/tag names, subpaths, skill/agent names, numeric values, flags) MUST be copied verbatim into the description. NEVER use context references such as "the given URL", "the above parameters", "使用给定的/上述的/前文提到的" — always inline the actual values.
 - Each subtask MAY include "deliverables" (output contract array) and "input_contract" (input contract array). Contract element: {"name": string, "type": "document"|"code"|"data", "format": "markdown"|"json"|"zip", "description": string}
 - If subtask B depends_on subtask A, B's input_contract SHOULD declare references to A's deliverables using the SAME "name" values`, countRule, DomainLexiconPromptList()) + intentContext
 }

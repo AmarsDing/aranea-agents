@@ -223,6 +223,9 @@ func CompileToCompiledTeam(
 	lg loggateway.Logger,
 	functionResolver biz.FunctionResolver,
 ) (*biz.CompiledTeam, error) {
+	if msg := parallelDeliverableAdvisory(def); msg != "" && lg != nil {
+		lg.Warn(msg, loggateway.Domain("team"), loggateway.Str("mode", def.Mode))
+	}
 	raw := strings.TrimSpace(rawDefinitionJSON)
 	if raw != "" && linked != nil {
 		if linkedID := LinkedGraphIDFromDefinition(raw); linkedID != "" {

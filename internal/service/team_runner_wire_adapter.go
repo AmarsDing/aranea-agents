@@ -49,6 +49,15 @@ func (a *teamRunnerWireAdapter) SetAwaitHookProvider(fn biz.AwaitHookProvider) {
 	})
 }
 
+func (a *teamRunnerWireAdapter) SetDeliverableGate(fn biz.TeamDeliverableGateFunc) {
+	if a.inner == nil || fn == nil {
+		return
+	}
+	// biz.TeamDeliverableGateFunc and the Runner's gate parameter share the
+	// same underlying signature — direct pass-through.
+	a.inner.SetDeliverableGate(fn)
+}
+
 // teamMediatorAdapter adapts *team.TeamRunMediator to biz.TeamMediatorPort.
 type teamMediatorAdapter struct {
 	inner *team.TeamRunMediator

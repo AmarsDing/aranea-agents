@@ -2,12 +2,63 @@ package event_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/metrics"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
+
+// TestV2Bus_DropCountExportedToPrometheus verifies P1-Y7: subscriber-buffer
+// drops are exported to aranea_event_bus_dropped_total with the drop-policy
+// label, not just counted in the in-memory DropCount.
+// NOTE: not parallel — the Prometheus counter is process-global, so parallel
+// V2Bus tests publishing same-kind terminal events would skew the delta.
+func TestV2Bus_DropCountExportedToPrometheus(t *testing.T) {
+	bus := event.NewV2Bus()
+	_, cancel := bus.Subscribe(biz.EventSubscribeOptions{})
+	defer cancel()
+
+	nonTermCtr := metrics.EventBusDropped.WithLabelValues(string(biz.EventKindTaskCreated), "nonterminal_buffer_full")
+	termCtr := metrics.EventBusDropped.WithLabelValues(string(biz.EventKindTaskCompleted), "terminal_ctx_cancelled")
+	nonTermBefore := testutil.ToFloat64(nonTermCtr)
+	termBefore := testutil.ToFloat64(termCtr)
+
+	// Saturate the 256 buffer → non-terminal drops.
+	created := biz.NewTaskCreatedEvent(biz.Task{
+		ID: "t-metric", SessionID: "sess-metric", Status: biz.TaskStatusPending,
+	})
+	for i := 0; i < 300; i++ {
+		bus.Publish(context.Background(), created)
+	}
+	if got := testutil.ToFloat64(nonTermCtr) - nonTermBefore; got <= 0 {
+		t.Fatalf("nonterminal drop not exported: delta=%v", got)
+	}
+
+	// Critical publish whose ctx is cancelled mid-BlockUpTo →
+	// terminal_ctx_cancelled drop. (WithCancel, not WithTimeout: a timeout
+	// clamp makes the BlockUpTo timer and ctx.Done race for the same instant,
+	// so the drop could land on terminal_blockup_timeout instead.)
+	completed := biz.NewTaskCompletedEvent(biz.Task{
+		ID: "t-metric-done", SessionID: "sess-metric", Status: biz.TaskStatusCompleted,
+	})
+	ctx, cancelPub := context.WithCancel(context.Background())
+	pubDone := make(chan struct{})
+	go func() {
+		defer close(pubDone)
+		bus.Publish(ctx, completed)
+	}()
+	time.Sleep(20 * time.Millisecond) // let Publish enter BlockUpTo
+	cancelPub()
+	<-pubDone
+	if got := testutil.ToFloat64(termCtr) - termBefore; got != 1 {
+		t.Fatalf("terminal drop not exported: delta=%v, want 1", got)
+	}
+}
 
 // TestV2Bus_TerminalEventBlockUpTo verifies B-06: when a subscriber buffer is
 // full, terminal events block briefly instead of being dropped immediately.
@@ -191,4 +242,98 @@ func TestV2Bus_PublishJournalsCritical(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("want 1 journaled critical event, got %d", len(entries))
 	}
+}
+
+// TestV2Bus_CancelDuringBlockedCriticalPublish verifies R-1: cancelling a
+// subscription while a critical Publish is blocked (BlockUpTo) on that
+// subscriber's saturated buffer must NOT panic with "send on closed channel".
+// Pre-fix, cancel() closed the channel while Publish still held it in its
+// snapshot, panicking the caller (in production: the sequencer publishLoop).
+func TestV2Bus_CancelDuringBlockedCriticalPublish(t *testing.T) {
+	t.Parallel()
+	bus := event.NewV2Bus()
+	_, cancel := bus.Subscribe(biz.EventSubscribeOptions{})
+
+	// Saturate the 256 buffer so the critical publish enters BlockUpTo.
+	created := biz.NewTaskCreatedEvent(biz.Task{
+		ID: "t-fill", SessionID: "sess-race", Status: biz.TaskStatusPending,
+	})
+	for i := 0; i < 300; i++ {
+		bus.Publish(context.Background(), created)
+	}
+
+	completed := biz.NewTaskCompletedEvent(biz.Task{
+		ID: "t-done", SessionID: "sess-race", Status: biz.TaskStatusCompleted,
+	})
+	pubDone := make(chan struct{})
+	go func() {
+		defer close(pubDone)
+		ctx, cancelPub := context.WithTimeout(context.Background(), 150*time.Millisecond)
+		defer cancelPub()
+		bus.Publish(ctx, completed) // blocks in BlockUpTo on the full buffer
+	}()
+
+	// Let the publisher enter the BlockUpTo wait, then cancel the subscription.
+	time.Sleep(20 * time.Millisecond)
+	cancel() // must only detach, never close the channel mid-publish
+
+	select {
+	case <-pubDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Publish did not return after cancel")
+	}
+}
+
+// TestV2Bus_ConcurrentSubscribeCancelPublish churns the subscribe/cancel/
+// publish triad to surface close-races and data races; run with -race.
+func TestV2Bus_ConcurrentSubscribeCancelPublish(t *testing.T) {
+	t.Parallel()
+	bus := event.NewV2Bus()
+	created := biz.NewTaskCreatedEvent(biz.Task{
+		ID: "t-chaos", SessionID: "sess-chaos", Status: biz.TaskStatusPending,
+	})
+	completed := biz.NewTaskCompletedEvent(biz.Task{
+		ID: "t-chaos-done", SessionID: "sess-chaos", Status: biz.TaskStatusCompleted,
+	})
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ { // publishers
+		wg.Add(1)
+		go func(critical bool) {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if critical {
+					ctx, cancelPub := context.WithTimeout(context.Background(), 20*time.Millisecond)
+					bus.Publish(ctx, completed)
+					cancelPub()
+				} else {
+					bus.Publish(context.Background(), created)
+				}
+			}
+		}(i%2 == 0)
+	}
+	for i := 0; i < 4; i++ { // subscribe/cancel churn
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				_, cancel := bus.Subscribe(biz.EventSubscribeOptions{})
+				cancel()
+			}
+		}()
+	}
+	time.Sleep(300 * time.Millisecond)
+	close(stop)
+	wg.Wait()
 }

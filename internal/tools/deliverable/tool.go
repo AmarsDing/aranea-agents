@@ -1,10 +1,11 @@
-// Package deliverable provides set_deliverable/get_deliverable tools for
-// structured cross-agent handoff via graph state.
+// Package deliverable provides set_deliverable/get_deliverable/ack_deliverable
+// tools for structured cross-agent handoff via graph state.
 //
 // When a Team Definition has EnableStateDeliverable=true, the graph runtime
-// injects a "deliverable" StateField (CoverReducer) into the graph schema.
+// injects a "deliverable" StateField (MergeReducer) into the graph schema.
 // Agent A calls set_deliverable to store its output; agent B calls
-// get_deliverable to retrieve A's output as structured input.
+// get_deliverable to retrieve A's output as structured input, then
+// ack_deliverable to formally accept/reject it.
 package deliverable
 
 import (
@@ -51,11 +52,24 @@ func validateTopicName(topic string) error {
 // SetDeliverableTool lets an agent publish structured output to the graph
 // state's "deliverable" field. The framework's flow layer detects the
 // StateDelta method and merges the returned bytes into graph state via
-// the CoverReducer (latest writer wins).
-type SetDeliverableTool struct{}
+// the state reducer (MergeReducer: top-level key merge).
+//
+// contract is the optional member-level deliverable contract (MDC); when
+// non-nil, topic writes matching a declared entry are validated
+// (required_keys + schema_json) and violations fail the Call with an
+// LLM-actionable *biz.MemberContractViolationError.
+type SetDeliverableTool struct {
+	contract *biz.MemberDeliverableContract
+}
 
-// NewSetDeliverableTool creates the set_deliverable tool.
+// NewSetDeliverableTool creates the set_deliverable tool without a contract.
 func NewSetDeliverableTool() *SetDeliverableTool { return &SetDeliverableTool{} }
+
+// NewSetDeliverableToolWithContract creates the set_deliverable tool with a
+// member-level deliverable contract governing topic writes.
+func NewSetDeliverableToolWithContract(contract *biz.MemberDeliverableContract) *SetDeliverableTool {
+	return &SetDeliverableTool{contract: contract}
+}
 
 type setDeliverableInput struct {
 	Data map[string]any `json:"data" jsonschema:"description=The deliverable content as a JSON object.,required"`
@@ -85,8 +99,10 @@ func (t *SetDeliverableTool) Declaration() *trpctool.Declaration {
 		Name: "set_deliverable",
 		Description: "Publish structured output to the shared graph state deliverable field. " +
 			"Downstream agents in the same team run can retrieve it via get_deliverable. " +
-			"Without topic, each call overwrites the previous deliverable (CoverReducer semantics). " +
-			"With topic, data is merged under deliverable[topic] so multiple topics coexist. " +
+			"Writes merge at top-level key granularity (MergeReducer): without topic, the keys you " +
+			"write overwrite same-named keys but other members' topics are preserved. " +
+			"With topic, data is stored under deliverable[topic] so multiple topics coexist — " +
+			"always use a distinct topic per member in parallel teams. " +
 			"Keys \"summary\" and \"cognition\" are reserved: business data using them is overwritten.",
 		InputSchema: &trpctool.Schema{
 			Type:     "object",
@@ -187,6 +203,9 @@ func (t *SetDeliverableTool) Call(ctx context.Context, jsonArgs []byte) (any, er
 		if err := validateTopicName(topic); err != nil {
 			return nil, err
 		}
+		if violations := t.contract.ValidateTopicData(topic, in.Data); len(violations) > 0 {
+			return nil, &biz.MemberContractViolationError{Violations: violations}
+		}
 	}
 
 	merged := in.Data
@@ -273,7 +292,7 @@ func toDeliverableMap(v any) (map[string]any, bool) {
 // read-your-writes. The key is replaced (never mutated in place) because the
 // node-start snapshot may share sub-maps with sibling nodes. The
 // authoritative cross-node write still flows via StateDelta → graph channels
-// (CoverReducer); this only affects the node-local view.
+// (MergeReducer); this only affects the node-local view.
 func storeLocalDeliverable(ctx context.Context, merged map[string]any) {
 	inv, ok := agent.InvocationFromContext(ctx)
 	if !ok || inv == nil || inv.RunOptions.RuntimeState == nil {
@@ -439,10 +458,17 @@ func (ToolSet) Name() string { return "deliverable" }
 // Close releases resources held by the toolset (none for deliverable).
 func (ToolSet) Close() error { return nil }
 
-// Tools returns all deliverable tools as a flat slice.
+// Tools returns all deliverable tools as a flat slice (no member contract).
 func Tools() []trpctool.Tool {
+	return ToolsWithContract(nil)
+}
+
+// ToolsWithContract returns the deliverable tools with the member-level
+// deliverable contract installed on set_deliverable (nil = uncontracted).
+func ToolsWithContract(contract *biz.MemberDeliverableContract) []trpctool.Tool {
 	return []trpctool.Tool{
-		NewSetDeliverableTool(),
+		NewSetDeliverableToolWithContract(contract),
 		NewGetDeliverableTool(),
+		NewAckDeliverableTool(),
 	}
 }

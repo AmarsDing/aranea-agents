@@ -158,6 +158,8 @@ type Tx struct {
 	SkillImportJob *SkillImportJobClient
 	// SkillInvocation is the client for interacting with the SkillInvocation builders.
 	SkillInvocation *SkillInvocationClient
+	// SkillTag is the client for interacting with the SkillTag builders.
+	SkillTag *SkillTagClient
 	// SkillVersion is the client for interacting with the SkillVersion builders.
 	SkillVersion *SkillVersionClient
 	// StepV2 is the client for interacting with the StepV2 builders.
@@ -403,6 +405,7 @@ func (tx *Tx) init() {
 	tx.SessionV2 = NewSessionV2Client(tx.config)
 	tx.SkillImportJob = NewSkillImportJobClient(tx.config)
 	tx.SkillInvocation = NewSkillInvocationClient(tx.config)
+	tx.SkillTag = NewSkillTagClient(tx.config)
 	tx.SkillVersion = NewSkillVersionClient(tx.config)
 	tx.StepV2 = NewStepV2Client(tx.config)
 	tx.SystemSetting = NewSystemSettingClient(tx.config)

@@ -222,6 +222,9 @@ type SkillImportJob func(*sql.Selector)
 // SkillInvocation is the predicate function for skillinvocation builders.
 type SkillInvocation func(*sql.Selector)
 
+// SkillTag is the predicate function for skilltag builders.
+type SkillTag func(*sql.Selector)
+
 // SkillVersion is the predicate function for skillversion builders.
 type SkillVersion func(*sql.Selector)
 

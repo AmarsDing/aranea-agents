@@ -1,0 +1,28 @@
+COLS: [seq c]
+ROW 1: [seq=386] [c=## 安装报告：skills/xlsx
+
+### 安装结果：✅ 已安装
+
+| 项目 | 详情 |
+|------|------|
+| **技能名** | `xlsx` |
+| **来源** | `https://github.com/anthropics/skills` |
+| **子路径** | `skills/xlsx` |
+| **所属插件** | `document-skills` |
+| **安装方式** | `cli_admin_skill_install_from_url`（冲突策略：skip） |
+| **许可证** | Proprietary（详见仓库 LICENSE.txt） |
+
+### 技能描述
+适用于电子表格文件（.xlsx, .xlsm, .xltx, .csv, .tsv）的创建、编辑、分析和格式转换。触发条件包括：用户提及电子表格文件、需要清理杂乱表格数据、或要求转换文件格式等场景。
+
+### 依赖项
+- `openpyxl` — Excel 文件读写
+- `pandas` — 数据处理
+- `markitdown` — 格式转换（预装，按需安装）
+- LibreOffice (`soffice`) — 通过 `scripts/office/soffice.py` 自动配置
+
+### 交付物已提交
+- **summary**: 安装摘要
+- **xlsx_install_result**: 完整的 JSON 安装状态与详情（含所有脚本路径、依赖项和仓库链接）] 
+ROW 2: [seq=364] [c=Based on my thorough investigation, let me now submit the installation result deliverable.] 
+TOTAL: 2

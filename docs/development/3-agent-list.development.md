@@ -110,6 +110,9 @@ Agent 管理列表页：展示所有 Agent，支持搜索、筛选、排序、�
 | 10 | 三组布局 + 拖拽排序 | 前端 | P2 | ✅ |
 | 11 | `ReorderAgents` proto RPC + 前端对接 | 全栈 | P3 | ⏳ |
 | 12 | Debug trace 清理 | 后端 | P3 | ⏳ |
+| 13 | 分页缺行修复：排序补 `kind DESC` + `id ASC` 唯一决胜键 | 后端 | P2 | ✅ 2026-07-28 |
+| 14 | 内置管家优先排序 + 分组口径收窄（4 管家 vs 26 dept_lead 归预设） | 全栈 | P2 | ✅ 2026-07-28 |
+| 15 | 行业筛选修复：`industryNodes` level `industry`→`company` + 迁移 20261112 置 `organizations.enabled=true`、回填 copy agent 岗位；`Duplicate` 保留 `position_id/position_key` | 全栈 | P2 | ✅ 2026-07-28 |
 
 ---
 

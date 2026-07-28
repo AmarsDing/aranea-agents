@@ -70,6 +70,50 @@ func TestFetchFromURLReportsStderrTail(t *testing.T) {
 	}
 }
 
+func TestCloneEnvInjectsGitProxy(t *testing.T) {
+	t.Setenv("ARANEA_GIT_PROXY", "socks5://127.0.0.1:1080")
+	// Pre-existing generic proxy must be overridden, not duplicated.
+	t.Setenv("HTTPS_PROXY", "http://stale:1")
+	t.Setenv("HTTP_PROXY", "http://stale:1")
+
+	env := cloneEnv()
+	counts := map[string]int{}
+	vals := map[string]string{}
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		k = strings.ToUpper(k)
+		counts[k]++
+		vals[k] = v
+	}
+	for _, key := range []string{"HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"} {
+		if vals[key] != "socks5://127.0.0.1:1080" {
+			t.Fatalf("cloneEnv() %s = %q, want socks5://127.0.0.1:1080", key, vals[key])
+		}
+		if counts[key] != 1 {
+			t.Fatalf("cloneEnv() %s appears %d times, want exactly 1", key, counts[key])
+		}
+	}
+}
+
+func TestCloneEnvWithoutGitProxyPassthrough(t *testing.T) {
+	t.Setenv("ARANEA_GIT_PROXY", "")
+	t.Setenv("HTTPS_PROXY", "http://keep:2")
+
+	env := cloneEnv()
+	found := false
+	for _, kv := range env {
+		if strings.HasPrefix(strings.ToUpper(kv), "HTTPS_PROXY=") {
+			found = true
+			if !strings.HasSuffix(kv, "=http://keep:2") {
+				t.Fatalf("cloneEnv() HTTPS_PROXY = %q, want passthrough http://keep:2", kv)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("cloneEnv() dropped existing HTTPS_PROXY when ARANEA_GIT_PROXY unset")
+	}
+}
+
 func TestStderrTailTruncates(t *testing.T) {
 	long := strings.Repeat("x", 500)
 	if got := stderrTail(long, 200); len(got) != 200 {

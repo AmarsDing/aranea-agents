@@ -26,6 +26,12 @@ import (
 type PlanAndExecuteInput struct {
 	TaskPrompt string `json:"task_prompt" jsonschema:"description=The task to plan and execute"`
 	Mode       string `json:"mode,omitempty" jsonschema:"description=Execution mode: direct (Spirit answers directly, no delegation), parallel (N independent single-agent subtasks run concurrently, 1 agent per subtask, NO multi-member teams), dag (N teams with dependency graph, each team has >=2 members collaborating). Must be explicitly set; auto/single/coordinator are deprecated. Default: direct"`
+	// AgentKeys explicitly routes the task to designated agents, bypassing
+	// heuristic allocation (IDENTITY.md contract: system-butler tasks use
+	// agent_keys=["__system_admin__"]). Heuristic matching can never select
+	// system agents, so explicit routing is the only path to them.
+	// agent_keys[0] executes; remaining keys join as team members in dag mode.
+	AgentKeys []string `json:"agent_keys,omitempty" jsonschema:"description=Explicit agent routing: agent_keys[0] executes the task (e.g. [\"__system_admin__\"] for Skill/MCP/industry management, [\"__memory__\"] for memory tasks, [\"__skills__\"] for skill-evolution tasks). Bypasses heuristic agent matching. Required when delegating to system butlers."`
 }
 
 // SubTaskSummary is a summary of a subtask in the plan.
@@ -91,6 +97,19 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 				return PlanAndExecuteOutput{}, apierror.BadRequest(apierror.DomainSpirit, "task_prompt is required")
 			}
 
+			mode := input.Mode
+			explicitKeys := normalizeExplicitAgentKeys(input.AgentKeys)
+			// Explicit agent routing implies delegation; direct mode skips the
+			// allocation phase entirely, so the keys would be silently ignored.
+			// Upgrade to the weakest delegating mode (parallel) so the routing
+			// actually takes effect.
+			if len(explicitKeys) > 0 {
+				switch strings.ToLower(strings.TrimSpace(mode)) {
+				case "", "auto", "direct":
+					mode = "parallel"
+				}
+			}
+
 			// Inject the session's effective provider/model into the context so
 			// the planner/allocator can resolve their LLM via "inherit" mode.
 			if deps.sessionModelLookup != nil {
@@ -103,8 +122,11 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			if deps.bus != nil {
 				meta := map[string]any{
 					"task_prompt": taskPrompt,
-					"mode":        input.Mode,
+					"mode":        mode,
 					"agent_key":   "plan_and_execute",
+				}
+				if len(explicitKeys) > 0 {
+					meta["agent_keys"] = explicitKeys
 				}
 				deps.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_started", "", meta))
 			}
@@ -128,7 +150,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			var steps []biztypes.OrchestrationStepRecord
 
 			// Phase 1: Plan
-			taskPlan, planStep, err := executePlanPhase(ctx, taskPrompt, spiritSessionID, input.Mode, deps)
+			taskPlan, planStep, err := executePlanPhase(ctx, taskPrompt, spiritSessionID, mode, deps)
 			steps = append(steps, planStep)
 			if err != nil {
 				publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "plan", err.Error())
@@ -172,7 +194,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			}
 
 			// Phase 2: Allocate
-			allocPlan, allocStep, allocErr := executeAllocatePhase(ctx, taskPlan, deps)
+			allocPlan, allocStep, allocErr := executeAllocatePhase(ctx, taskPlan, explicitKeys, deps)
 			out.Steps = append(out.Steps, allocStep)
 			if allocErr != nil {
 				publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "allocate", allocErr.Error())
@@ -260,7 +282,9 @@ func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID, mode str
 }
 
 // executeAllocatePhase runs Phase 2 of plan_and_execute: agent allocation.
-func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, deps planAndExecuteDeps) (allocPlan *biz.AllocationPlan, step biztypes.OrchestrationStepRecord, err error) {
+// When explicitKeys is non-empty, heuristic matching is bypassed and the
+// specified agents are assigned directly (system-butler routing contract).
+func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, explicitKeys []string, deps planAndExecuteDeps) (allocPlan *biz.AllocationPlan, step biztypes.OrchestrationStepRecord, err error) {
 	// Start allocate phase span (P3-2): Trace propagation across Spirit→Team→Graph.
 	bridge := turntrace.FromContext(ctx)
 	if bridge != nil {
@@ -276,7 +300,11 @@ func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, deps plan
 	defer func() {
 		metrics.SpiritAllocDuration.Observe(time.Since(start).Seconds())
 	}()
-	allocPlan, err = deps.allocator.Allocate(ctx, taskPlan)
+	if len(explicitKeys) > 0 {
+		allocPlan, err = deps.allocator.AllocateExplicit(ctx, taskPlan, explicitKeys)
+	} else {
+		allocPlan, err = deps.allocator.Allocate(ctx, taskPlan)
+	}
 	if err != nil {
 		deps.lg.Warn("plan_and_execute: allocation failed, returning plan only",
 			loggateway.StepID("spirit.plan_and_execute.alloc_fail"),
@@ -345,6 +373,24 @@ func executeOrchestratePhase(ctx context.Context, taskPlan *biz.TaskPlan, allocP
 		Status:    "running",
 		StartedAt: start,
 	}, nil
+}
+
+// normalizeExplicitAgentKeys trims blanks and dedupes agent keys, preserving order.
+func normalizeExplicitAgentKeys(keys []string) []string {
+	if len(keys) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(keys))
+	seen := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		k = strings.TrimSpace(k)
+		if k == "" || seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, k)
+	}
+	return out
 }
 
 // publishOrchestrationFailed emits a ButlerOrchestrationFailed event.

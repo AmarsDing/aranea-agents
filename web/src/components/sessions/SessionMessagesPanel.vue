@@ -24,8 +24,12 @@
               statusLabel(msg.status)
             }}</q-badge>
           </div>
-          <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
-          <div class="session-message-row__content" v-html="renderMarkdown(msg.content_markdown)"></div>
+          <!-- eslint-disable vue/no-v-html -- sanitized markdown HTML -->
+          <div
+            class="session-message-row__content chat-message-prose"
+            v-html="renderMarkdown(msg.content_markdown)"
+          ></div>
+          <!-- eslint-enable vue/no-v-html -->
           <div v-if="msg.token_in || msg.token_out" class="text-caption text-grey-6 q-mt-xs">
             {{ t('sessionDetail.tokenIn') }} {{ msg.token_in }} · {{ t('sessionDetail.tokenOut') }} {{ msg.token_out }}
             <span v-if="msg.latency_ms"> · {{ msg.latency_ms }}ms</span>

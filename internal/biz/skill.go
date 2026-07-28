@@ -57,6 +57,10 @@ type (
 	SkillFilePathResolver      = skill.SkillFilePathResolver
 	SkillFileReader            = skill.SkillFileReader
 	SkillFileWriter            = skill.SkillFileWriter
+	SkillTagInfo               = skill.TagInfo
+	SkillTagRepo               = skill.TagRepo
+	SkillTagReader             = skill.SkillTagReader
+	SkillTagWriter             = skill.SkillTagWriter
 )
 
 const (

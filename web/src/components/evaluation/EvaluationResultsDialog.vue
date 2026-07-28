@@ -99,7 +99,7 @@
           label="导出 CSV"
           :disable="!total"
           :loading="exporting"
-          @click="onExportCsv"
+          @click="$emit('export-csv')"
         />
         <q-btn
           v-if="run"
@@ -109,7 +109,7 @@
           label="导出 JSON"
           :disable="!total"
           :loading="exporting"
-          @click="onExportJson"
+          @click="$emit('export-json')"
         />
         <q-btn flat label="关闭" @click="$emit('update:open', false)" />
       </q-card-actions>
@@ -118,12 +118,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
-import { useEvaluationStore } from '../../stores/evaluation';
-import { exportEvalRunCsv, exportEvalRunJson } from '../../features/evaluation/exportRunResults';
 import type { EvalCaseResult, EvalRun } from '../../features/evaluation/types';
 import type { RegistryTableColumn } from '../../features/ui/registryTableColumns';
 
@@ -135,6 +133,7 @@ const props = defineProps<{
   total: number;
   loading: boolean;
   savingId?: string;
+  exporting?: boolean;
   columns: RegistryTableColumn<EvalCaseResult>[];
   page: number;
   pageSize: number;
@@ -146,39 +145,11 @@ const emit = defineEmits<{
   'update-row': [row: EvalCaseResult];
   'page-change': [page: number];
   'page-size-change': [pageSize: number];
+  'export-csv': [];
+  'export-json': [];
 }>();
 
 const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, props.total) / props.pageSize)));
-const exporting = ref(false);
-const evaluationStore = useEvaluationStore();
-
-async function loadAllForExport(): Promise<EvalCaseResult[]> {
-  if (!props.run) return [];
-  const res = await evaluationStore.loadRunResults(props.run.id, { limit: 5000, offset: 0 });
-  return res.items;
-}
-
-async function onExportCsv(): Promise<void> {
-  if (!props.run) return;
-  exporting.value = true;
-  try {
-    const items = await loadAllForExport();
-    exportEvalRunCsv(props.run, items);
-  } finally {
-    exporting.value = false;
-  }
-}
-
-async function onExportJson(): Promise<void> {
-  if (!props.run) return;
-  exporting.value = true;
-  try {
-    const items = await loadAllForExport();
-    exportEvalRunJson(props.run, items);
-  } finally {
-    exporting.value = false;
-  }
-}
 
 function passValue(row: EvalCaseResult) {
   if (row.human_pass === true) return 'pass';

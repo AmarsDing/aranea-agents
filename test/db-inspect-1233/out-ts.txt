@@ -1,0 +1,6 @@
+COLS: [id team_id task_id team_name status version]
+ROW 1: [id=0b13904b-7952-5c5b-ae98-fba74ab905f7] [team_id=744c27fd08cf655f729bd7a8] [task_id=a7b6c7a2-b3ba-4d11-9074-9eccbce77383] [team_name=Install the skills/xlsx skill from the anthropics GitHub repo...] [status=completed] [version=3] 
+ROW 2: [id=4980cc46-9454-596b-84b6-619430e5987d] [team_id=fbfd3a6ad3d7f07683b66467] [task_id=a7b6c7a2-b3ba-4d11-9074-9eccbce77383] [team_name=Collect results from all three skill installations and produc...] [status=completed] [version=3] 
+ROW 3: [id=6807dcd1-3396-527c-b568-d814cf0a132e] [team_id=a819f20c3adcdbf2cb2dc92f] [task_id=a7b6c7a2-b3ba-4d11-9074-9eccbce77383] [team_name=Install the skills/docx skill from the anthropics GitHub repo...] [status=completed] [version=3] 
+ROW 4: [id=babdb09e-6a89-5bbc-9626-587b2632d7c5] [team_id=7ec916552a662b45f807ba7b] [task_id=a7b6c7a2-b3ba-4d11-9074-9eccbce77383] [team_name=Install the skills/pdf skill from the anthropics GitHub repos...] [status=completed] [version=3] 
+TOTAL: 4

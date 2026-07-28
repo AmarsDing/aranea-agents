@@ -88,7 +88,7 @@ func ensureDeliverableStateField(cfg biz.GraphBuildConfig) biz.GraphBuildConfig 
 	cfg.StateFields = append(cfg.StateFields, biz.StateFieldDef{
 		Name:         biz.DeliverableStateKey,
 		Type:         "map[string]any",
-		Reducer:      biz.ReducerCover,
+		Reducer:      biz.ReducerMerge,
 		DefaultValue: map[string]any{},
 	})
 	return cfg

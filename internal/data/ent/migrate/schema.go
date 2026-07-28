@@ -2679,6 +2679,28 @@ var (
 			},
 		},
 	}
+	// SkillTagsColumns holds the columns for the "skill_tags" table.
+	SkillTagsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
+		{Name: "name", Type: field.TypeString, Unique: true, Size: 256},
+		{Name: "dimension", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "source", Type: field.TypeString, Size: 32, Default: "user"},
+		{Name: "created_at", Type: field.TypeString, Default: ""},
+		{Name: "updated_at", Type: field.TypeString, Default: ""},
+	}
+	// SkillTagsTable holds the schema information for the "skill_tags" table.
+	SkillTagsTable = &schema.Table{
+		Name:       "skill_tags",
+		Columns:    SkillTagsColumns,
+		PrimaryKey: []*schema.Column{SkillTagsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "skilltag_dimension",
+				Unique:  false,
+				Columns: []*schema.Column{SkillTagsColumns[2]},
+			},
+		},
+	}
 	// SkillVersionColumns holds the columns for the "skill_version" table.
 	SkillVersionColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -3504,6 +3526,7 @@ var (
 		SessionsV2Table,
 		SkillImportJobsTable,
 		SkillInvocationTable,
+		SkillTagsTable,
 		SkillVersionTable,
 		StepsV2Table,
 		SystemSettingsTable,
@@ -3745,6 +3768,9 @@ func init() {
 	}
 	SkillInvocationTable.Annotation = &entsql.Annotation{
 		Table: "skill_invocation",
+	}
+	SkillTagsTable.Annotation = &entsql.Annotation{
+		Table: "skill_tags",
 	}
 	SkillVersionTable.Annotation = &entsql.Annotation{
 		Table: "skill_version",

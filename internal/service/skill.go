@@ -265,6 +265,7 @@ func (s *SkillService) UpdateSkillFile(ctx context.Context, req *v1.UpdateSkillF
 	if err := s.fs.WriteFile(dir, req.GetPath(), req.GetContent()); err != nil {
 		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
+	invalidateAllAgentBuildCaches()
 	return s.GetSkillFile(ctx, &v1.GetSkillFileRequest{Id: req.GetId(), Path: req.GetPath()})
 }
 
@@ -396,6 +397,7 @@ func (s *SkillService) DeleteSkillFile(ctx context.Context, req *v1.DeleteSkillF
 	if err := s.fs.DeleteFile(dir, rel); err != nil {
 		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
+	invalidateAllAgentBuildCaches()
 	return &emptypb.Empty{}, nil
 }
 
@@ -544,6 +546,62 @@ func (s *SkillService) GetSkillHealth(ctx context.Context, req *v1.GetSkillHealt
 		RouteHitRate_7D:      detail.RouteHitRate7d,
 		RouteHitRate_30D:     detail.RouteHitRate30d,
 	}, nil
+}
+
+func skillTagInfoToProto(t biz.SkillTagInfo) *v1.SkillTagInfo {
+	return &v1.SkillTagInfo{
+		Name:      t.Name,
+		Dimension: t.Dimension,
+		Source:    t.Source,
+		UsedCount: int32(t.UsedCount),
+		CreatedAt: t.CreatedAt,
+		UpdatedAt: t.UpdatedAt,
+	}
+}
+
+func (s *SkillService) ListSkillTags(ctx context.Context, _ *emptypb.Empty) (*v1.ListSkillTagsResponse, error) {
+	items, err := s.uc.ListTags(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.SkillTagInfo, 0, len(items))
+	for _, t := range items {
+		out = append(out, skillTagInfoToProto(t))
+	}
+	return &v1.ListSkillTagsResponse{Items: out}, nil
+}
+
+func (s *SkillService) CreateSkillTag(ctx context.Context, req *v1.CreateSkillTagRequest) (*v1.SkillTagInfo, error) {
+	t, err := s.uc.CreateTag(ctx, req.GetName())
+	if err != nil {
+		return nil, err
+	}
+	return skillTagInfoToProto(t), nil
+}
+
+func (s *SkillService) RenameSkillTag(ctx context.Context, req *v1.RenameSkillTagRequest) (*v1.RenameSkillTagResponse, error) {
+	rewritten, err := s.uc.RenameTag(ctx, req.GetOldName(), req.GetNewName())
+	if err != nil {
+		return nil, err
+	}
+	s.lg.Info("skill tag renamed",
+		loggateway.StepID("skill.tag"),
+		loggateway.Str("old", req.GetOldName()),
+		loggateway.Str("new", req.GetNewName()),
+		loggateway.Int("rewritten", rewritten))
+	return &v1.RenameSkillTagResponse{Rewritten: int32(rewritten)}, nil
+}
+
+func (s *SkillService) DeleteSkillTag(ctx context.Context, req *v1.DeleteSkillTagRequest) (*v1.DeleteSkillTagResponse, error) {
+	rewritten, err := s.uc.DeleteTag(ctx, req.GetName())
+	if err != nil {
+		return nil, err
+	}
+	s.lg.Info("skill tag deleted",
+		loggateway.StepID("skill.tag"),
+		loggateway.Str("name", req.GetName()),
+		loggateway.Int("rewritten", rewritten))
+	return &v1.DeleteSkillTagResponse{Rewritten: int32(rewritten)}, nil
 }
 
 func (s *SkillService) skillDir(ctx context.Context, id string) (string, error) {

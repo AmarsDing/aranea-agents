@@ -72,7 +72,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 
 	// Phase 5: Build TRPC dependencies and compile team runtime
 	builderDeps := r.buildTeamBuilderDeps(ctx, sess, run, ar, ti.dialogMode)
-	teamDeps := TRPCTeamBuilderDeps{BuilderDeps: builderDeps, UseCache: true}
+	teamDeps := TRPCTeamBuilderDeps{BuilderDeps: builderDeps, UseCache: true, MemberCustomTools: r.cfg.MemberCustomTools}
 
 	root, memberLookup, graphExecID, compiledTeam, err := r.compileTeamRuntime(ctx, sess, teamRow, def, mode, teamDeps, teamEmitter, run.ID)
 	if err != nil {

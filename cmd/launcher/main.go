@@ -6,9 +6,13 @@
 //
 // Flags:
 //
-//	(default)  start stack + desktop app
-//	-stop      stop bundled services (does not stop system PG/Redis)
-//	-check     run environment checks and show report (no start)
+//	(default)            start stack + desktop app (first run: config wizard)
+//	-stop                stop bundled services (does not stop system PG/Redis)
+//	-check               run environment checks and show report (no start)
+//	-setup               interactive configuration wizard (PG/Redis/auto-start), then exit
+//	-headless            start backend stack only — no console, no desktop (auto-start use)
+//	-install-autostart   register boot auto-start (service or logon task), then exit
+//	-uninstall-autostart remove auto-start registration, then exit
 package main
 
 import (
@@ -36,12 +40,22 @@ func main() {
 	checkOnly := flag.Bool("check", false, "run environment checks and exit")
 	quiet := flag.Bool("quiet", false, "with -check: write report to file only, no UI")
 	noConsole := flag.Bool("no-console", false, "do not open the startup status console")
+	setup := flag.Bool("setup", false, "run interactive configuration wizard and exit")
+	headless := flag.Bool("headless", false, "start backend stack only (no console, no desktop app)")
+	installAS := flag.Bool("install-autostart", false, "register boot auto-start and exit")
+	uninstallAS := flag.Bool("uninstall-autostart", false, "remove boot auto-start and exit")
 	flag.Parse()
 
 	root, err := installRoot()
 	if err != nil {
 		showError("无法定位安装目录", err.Error())
 		os.Exit(1)
+	}
+
+	// Windows service context (started by SCM): run the headless dispatcher.
+	if isWindowsService() {
+		runAsService(root)
+		return
 	}
 
 	logPath, logf := openLauncherLog(root)
@@ -58,6 +72,29 @@ func main() {
 	}
 	logger("launcher start: root=%s logPath=%s args=%v", root, logPath, os.Args[1:])
 
+	if *uninstallAS {
+		uninstallAutostart(logger)
+		logger("autostart removed")
+		showInfo("自启动已移除", "已删除 Windows 服务 / 登录计划任务（如存在）。")
+		return
+	}
+	if *installAS {
+		st := loadSetupState(root)
+		kind, err := installAutostart(root, st, logger)
+		if err != nil {
+			showError("自启动注册失败", err.Error()+"\n\n提示：注册 Windows 服务需要管理员权限。\n详见: "+logPath)
+			os.Exit(1)
+		}
+		if st != nil {
+			st.Autostart = kind
+			_ = saveSetupState(root, st)
+		}
+		showInfo("自启动已注册", "方式: "+kind+
+			"\n\nservice = Windows 服务（系统 PG/Redis 模式，开机即启）"+
+			"\ntask    = 登录计划任务（内置组件模式，登录后启动）")
+		return
+	}
+
 	if *stop {
 		logger("stop requested")
 		if err := stopAll(root, logger); err != nil {
@@ -68,7 +105,7 @@ func main() {
 		return
 	}
 
-	wantConsole := !*quiet && !*noConsole
+	wantConsole := !*quiet && !*noConsole && !*headless
 	if wantConsole {
 		ui = openStatusConsole(appTitle + " - Environment")
 		defer ui.Close()
@@ -91,6 +128,38 @@ func main() {
 		return
 	}
 
+	if *setup {
+		// Wizard needs a console even when -no-console/-quiet was passed.
+		if ui == nil {
+			ui = openStatusConsole(appTitle + " - Setup")
+			defer ui.Close()
+		}
+		env := detectRuntime(root, logger)
+		ui.Println(env.reportText())
+		runSetupWizard(root, ui, logger)
+		ui.WaitDismiss("Press Enter to exit setup...")
+		return
+	}
+
+	// Headless start (scheduled task / manual server-only): no console, no
+	// wizard, no desktop app. Errors go to logs only.
+	if *headless {
+		if err := startStack(root, nil, logger, true); err != nil {
+			logger("headless start failed: %v", err)
+			os.Exit(1)
+		}
+		logger("headless start complete")
+		return
+	}
+
+	// First run: interactive configuration wizard before touching services.
+	// Skipped once configs/launcher-setup.json exists.
+	if !setupDone(root) {
+		ui.Println("First run detected - starting configuration wizard.")
+		ui.Println("检测到首次运行 - 进入初始化配置向导。")
+		runSetupWizard(root, ui, logger)
+	}
+
 	releaseMutex, already := acquireSingleInstance()
 	if already {
 		logger("another launcher holds mutex; waiting for backend health")
@@ -109,85 +178,17 @@ func main() {
 	defer releaseMutex()
 
 	logger("start begin root=%s", root)
-	_ = os.Setenv("KRATOS_AUTH_SECRET", "aranea-portable-dev-secret-32chars!!")
-	_ = os.Setenv("DEPLOY_ENV", "dev")
-	_ = os.Setenv("DAO_VECTOR_PGVECTOR", "1")
-
-	// Fast path: stack already healthy → skip PG/Redis/backend bring-up.
-	if healthy() {
-		logger("fast-path: backend already healthy, launching desktop")
-		if err := launchDesktopApp(root, logger); err != nil {
-			logger("desktop app error: %v", err)
-			showError("桌面应用启动失败", err.Error()+"\n\n详见: "+logPath)
-			os.Exit(1)
-		}
-		logger("start complete (fast-path)")
+	if err := startStack(root, ui, logger, false); err != nil {
+		logger("start failed: %v", err)
 		if ui != nil {
-			time.Sleep(600 * time.Millisecond)
+			ui.Println("")
+			ui.Println("START FAILED / 启动失败:")
+			ui.Println(err.Error())
+			ui.WaitDismiss("Press Enter to close...")
 		}
-		return
-	}
-
-	env := detectRuntime(root, logger)
-	if ui != nil {
-		ui.Println(env.reportText())
-	}
-	if env.hasFatal() {
-		logger("preflight fatal\n%s", env.reportText())
-		_ = writeFileUTF8BOM(filepath.Join(root, "logs", "preflight.txt"), env.reportText()+"\nLog: "+logPath)
-		if ui != nil {
-			ui.WaitDismiss("Environment check FAILED. Press Enter to close...")
-		}
-		showError("环境检查未通过", env.reportText()+"\n详见: "+logPath)
+		showError("启动失败", err.Error()+"\n\n详见: "+logPath)
 		os.Exit(1)
 	}
-
-	// Parallel: Redis while Postgres starts/initializes (biggest cold-start win after initdb).
-	logger("ensurePostgres begin mode=%s port=%s", env.PGMode, env.PGPort)
-	logger("ensureRedis begin mode=%s (parallel)", env.RedisMode)
-	redisErrCh := make(chan error, 1)
-	go func() { redisErrCh <- ensureRedis(env, logger) }()
-
-	if err := ensurePostgres(env, logger); err != nil {
-		logger("postgres error: %v\n%s", err, env.reportText())
-		showError("PostgreSQL 未就绪", env.reportText()+"\n\n"+err.Error()+"\n\n详见: "+logPath+"\n与 logs\\postgres.log / initdb.log")
-		os.Exit(1)
-	}
-	logger("ensurePostgres ok")
-	if err := <-redisErrCh; err != nil {
-		logger("redis error: %v", err)
-		showError("Redis 未就绪", env.reportText()+"\n\n"+err.Error()+"\n\n详见: "+logPath)
-		os.Exit(1)
-	}
-	logger("ensureRedis ok")
-	if err := writeRuntimeConfig(env, logger); err != nil {
-		logger("config error: %v", err)
-		showError("写入配置失败", err.Error())
-		os.Exit(1)
-	}
-	_ = writeModeFile(root, env)
-
-	report := env.reportText()
-	_ = writeFileUTF8BOM(filepath.Join(root, "logs", "preflight.txt"), report)
-	logger("preflight saved (UTF-8 BOM)")
-
-	logger("starting backend...")
-	if err := startBackend(root, env, logger); err != nil {
-		logger("backend error: %v", err)
-		showError("后端服务启动失败", env.reportText()+"\n\n"+err.Error()+"\n\n详见: "+logPath+"\n与 logs\\server.log")
-		os.Exit(1)
-	}
-	if err := waitHealthy(logger); err != nil {
-		logger("health error: %v\n%s", err, env.reportText())
-		tail := readLogTail(filepath.Join(root, "logs", "server.log"), 25)
-		showError("后端未就绪", env.reportText()+"\n\n"+err.Error()+
-			"\n\n常见原因：数据库未连接、Redis 未就绪、端口被占用。"+
-			"\n\n--- logs\\server.log (末尾) ---\n"+tail+
-			"\n\n详见: "+logPath)
-		os.Exit(1)
-	}
-	env.add("Backend health", checkOK, healthURL, false)
-	_ = writeFileUTF8BOM(filepath.Join(root, "logs", "preflight.txt"), env.reportText())
 
 	if err := launchDesktopApp(root, logger); err != nil {
 		logger("desktop app error: %v", err)
@@ -201,6 +202,71 @@ func main() {
 		ui.Println("Tip: Start Menu → Environment Check  to re-open guidance anytime.")
 		time.Sleep(1200 * time.Millisecond)
 	}
+}
+
+// startStack brings up PostgreSQL + Redis + backend and waits for health.
+// When headless is true nothing is printed to a console and no MessageBox is
+// shown — the caller decides how to surface the returned error.
+func startStack(root string, ui *statusConsole, log func(string, ...any), headless bool) error {
+	_ = os.Setenv("KRATOS_AUTH_SECRET", "aranea-portable-dev-secret-32chars!!")
+	_ = os.Setenv("DEPLOY_ENV", "dev")
+	_ = os.Setenv("DAO_VECTOR_PGVECTOR", "1")
+
+	// Fast path: stack already healthy → skip PG/Redis/backend bring-up.
+	if healthy() {
+		log("fast-path: backend already healthy")
+		return nil
+	}
+
+	env := detectRuntime(root, log)
+	if ui != nil {
+		ui.Println(env.reportText())
+	}
+	if env.hasFatal() {
+		log("preflight fatal\n%s", env.reportText())
+		_ = writeFileUTF8BOM(filepath.Join(root, "logs", "preflight.txt"), env.reportText()+"\n")
+		return fmt.Errorf("环境检查未通过\n%s", env.reportText())
+	}
+
+	// Parallel: Redis while Postgres starts/initializes (biggest cold-start win after initdb).
+	log("ensurePostgres begin mode=%s port=%s", env.PGMode, env.PGPort)
+	log("ensureRedis begin mode=%s (parallel)", env.RedisMode)
+	redisErrCh := make(chan error, 1)
+	go func() { redisErrCh <- ensureRedis(env, log) }()
+
+	if err := ensurePostgres(env, log); err != nil {
+		log("postgres error: %v\n%s", err, env.reportText())
+		return fmt.Errorf("PostgreSQL 未就绪: %v\n%s\n(详见 logs\\postgres.log / initdb.log)", err, env.reportText())
+	}
+	log("ensurePostgres ok")
+	if err := <-redisErrCh; err != nil {
+		log("redis error: %v", err)
+		return fmt.Errorf("Redis 未就绪: %v\n%s", err, env.reportText())
+	}
+	log("ensureRedis ok")
+	if err := writeRuntimeConfig(env, log); err != nil {
+		log("config error: %v", err)
+		return fmt.Errorf("写入配置失败: %v", err)
+	}
+	_ = writeModeFile(root, env)
+
+	report := env.reportText()
+	_ = writeFileUTF8BOM(filepath.Join(root, "logs", "preflight.txt"), report)
+	log("preflight saved (UTF-8 BOM)")
+
+	log("starting backend...")
+	if err := startBackend(root, env, log); err != nil {
+		log("backend error: %v", err)
+		return fmt.Errorf("后端服务启动失败: %v\n%s", err, env.reportText())
+	}
+	if err := waitHealthy(log); err != nil {
+		log("health error: %v\n%s", err, env.reportText())
+		tail := readLogTail(filepath.Join(root, "logs", "server.log"), 25)
+		return fmt.Errorf("后端未就绪: %v\n常见原因：数据库未连接、Redis 未就绪、端口被占用。\n\n--- logs\\server.log (末尾) ---\n%s", err, tail)
+	}
+	env.add("Backend health", checkOK, healthURL, false)
+	_ = writeFileUTF8BOM(filepath.Join(root, "logs", "preflight.txt"), env.reportText())
+	return nil
 }
 
 func installRoot() (string, error) {

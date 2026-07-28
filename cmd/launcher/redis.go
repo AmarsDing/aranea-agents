@@ -8,7 +8,12 @@ import (
 )
 
 func ensureRedis(env *runtimeEnv, log func(string, ...any)) error {
-	if env.RedisMode == "system" || tcpOpen("127.0.0.1", "6379", 400*time.Millisecond) {
+	if env.RedisMode == "system" {
+		log("redis available at %s (system mode)", env.RedisAddr)
+		env.add("Redis ready", checkOK, env.RedisAddr, false)
+		return nil
+	}
+	if tcpOpen("127.0.0.1", "6379", 400*time.Millisecond) {
 		log("redis available on :6379")
 		env.add("Redis ready", checkOK, "127.0.0.1:6379", false)
 		return nil

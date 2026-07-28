@@ -7,6 +7,44 @@ export type SkillTag = {
   source: string | undefined;
 };
 
+// SkillTagInfo 是字典标签 + 实时使用计数。
+export type SkillTagInfo = {
+  name: string | undefined;
+  // `:` 前缀维度（file_type/domain），无维度为空串。
+  dimension: string | undefined;
+  // system | user | orphan（orphan = 使用中但未收录进字典）。
+  source: string | undefined;
+  usedCount: number | undefined;
+  createdAt: string | undefined;
+  updatedAt: string | undefined;
+};
+
+export type ListSkillTagsResponse = {
+  items: SkillTagInfo[] | undefined;
+};
+
+export type CreateSkillTagRequest = {
+  name: string | undefined;
+};
+
+export type RenameSkillTagRequest = {
+  oldName: string | undefined;
+  newName: string | undefined;
+};
+
+export type RenameSkillTagResponse = {
+  // 重写引用该标签的 skill 条数。
+  rewritten: number | undefined;
+};
+
+export type DeleteSkillTagRequest = {
+  name: string | undefined;
+};
+
+export type DeleteSkillTagResponse = {
+  rewritten: number | undefined;
+};
+
 export type SkillVersionSummary = {
   id: string | undefined;
   version: string | undefined;
@@ -335,6 +373,9 @@ export type SkillImportDecision = {
   mergedDescription: string | undefined;
   mergedBody: string | undefined;
   mergedTags: SkillTag[] | undefined;
+  // merge_group_with_ai: archive the conflict group's existing skills after
+  // a successful merge apply (status=archived, enabled=false).
+  retireSources: boolean | undefined;
 };
 
 export type ApplySkillImportRequest = {
@@ -464,6 +505,12 @@ export interface SkillService {
   GetSkillVersions(request: GetSkillVersionsRequest): Promise<GetSkillVersionsResponse>;
   RollbackSkillVersion(request: RollbackSkillVersionRequest): Promise<Skill>;
   GetSkillHealth(request: GetSkillHealthRequest): Promise<SkillHealthMetric>;
+  // 标签字典：治理 + 预建 + 实时使用计数。
+  // 路由用独立前缀 /v1/skill-tags，避免被 /v1/skills/{id} 吞掉。
+  ListSkillTags(request: wellKnownEmpty): Promise<ListSkillTagsResponse>;
+  CreateSkillTag(request: CreateSkillTagRequest): Promise<SkillTagInfo>;
+  RenameSkillTag(request: RenameSkillTagRequest): Promise<RenameSkillTagResponse>;
+  DeleteSkillTag(request: DeleteSkillTagRequest): Promise<DeleteSkillTagResponse>;
 }
 
 type RequestType = {
@@ -968,6 +1015,77 @@ export function createSkillServiceClient(
         service: "SkillService",
         method: "GetSkillHealth",
       }) as Promise<SkillHealthMetric>;
+    },
+    ListSkillTags(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/skill-tags`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SkillService",
+        method: "ListSkillTags",
+      }) as Promise<ListSkillTagsResponse>;
+    },
+    CreateSkillTag(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/skill-tags`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "SkillService",
+        method: "CreateSkillTag",
+      }) as Promise<SkillTagInfo>;
+    },
+    RenameSkillTag(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/skill-tags:rename`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "SkillService",
+        method: "RenameSkillTag",
+      }) as Promise<RenameSkillTagResponse>;
+    },
+    DeleteSkillTag(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.name) {
+        throw new Error("missing required field request.name");
+      }
+      const path = `v1/skill-tags/${request.name}`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "SkillService",
+        method: "DeleteSkillTag",
+      }) as Promise<DeleteSkillTagResponse>;
     },
   };
 }

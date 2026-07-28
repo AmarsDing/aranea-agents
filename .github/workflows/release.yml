@@ -70,7 +70,7 @@ jobs:
       - name: Download dependencies (PostgreSQL + Redis)
         shell: pwsh
         run: |
-          .\scripts\download-deps.ps1 -OutDir build/deps
+          .\build\download-deps.ps1 -OutDir build/deps
 
       - name: Compile pgvector (non-blocking)
         shell: pwsh
@@ -80,7 +80,7 @@ jobs:
           $bundledPgDir = Resolve-Path "build/deps/postgres"
           $vectorDll = Join-Path $bundledPgDir "lib\vector.dll"
           $vectorControl = Join-Path $bundledPgDir "share\extension\vector.control"
-          $vendored = "installer\bundled\pgvector-pg18"
+          $vendored = "build\installer\bundled\pgvector-pg18"
 
           if (-not (Test-Path $vectorDll) -and (Test-Path "$vendored\lib\vector.dll")) {
             Write-Host "Injecting vendored pgvector from $vendored"
@@ -154,7 +154,8 @@ jobs:
             Write-Host "[WARN] go mod download failed, continuing with cache" -ForegroundColor Yellow
           }
           Write-Host "Building aranea-server.exe..."
-          $buildOutput = & go build -tags pgvector -ldflags $ldflags -o build/aranea-server.exe ./cmd/admin 2>&1
+          New-Item -ItemType Directory -Force -Path bin | Out-Null
+          $buildOutput = & go build -tags pgvector -ldflags $ldflags -o bin/aranea-server.exe ./cmd/admin 2>&1
           $buildExit = $LASTEXITCODE
           Write-Host $buildOutput
           if ($buildExit -ne 0) {
@@ -168,16 +169,16 @@ jobs:
             Select-String -Path go.mod -Pattern "^replace" | ForEach-Object { Write-Host "  $_" }
             exit 1
           }
-          Write-Host "Backend built: build/aranea-server.exe" -ForegroundColor Green
+          Write-Host "Backend built: bin/aranea-server.exe" -ForegroundColor Green
           Write-Host "Building AraneaLauncher.exe (windowsgui, no console)..."
-          $launcherOut = & go build -ldflags "-s -w -H windowsgui" -o build/AraneaLauncher.exe ./cmd/launcher 2>&1
+          $launcherOut = & go build -ldflags "-s -w -H windowsgui" -o bin/AraneaLauncher.exe ./cmd/launcher 2>&1
           $launcherExit = $LASTEXITCODE
           Write-Host $launcherOut
           if ($launcherExit -ne 0) {
             Write-Error "AraneaLauncher build failed (exit $launcherExit)"
             exit 1
           }
-          Write-Host "Launcher built: build/AraneaLauncher.exe" -ForegroundColor Green
+          Write-Host "Launcher built: bin/AraneaLauncher.exe" -ForegroundColor Green
 
       - name: Install frontend deps (pnpm install)
         shell: pwsh
@@ -240,12 +241,12 @@ jobs:
       - name: Assemble staging & NSIS package
         shell: pwsh
         run: |
-          .\scripts\build-package.ps1 `
+          .\build\build-package.ps1 `
             -Version ${{ steps.version.outputs.version }} `
             -SkipDepsDownload `
             -SkipBackend `
             -SkipFrontend `
-            -OutDir release
+            -OutDir build/release
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Staging/NSIS failed (exit $LASTEXITCODE)"
             exit 1
@@ -255,15 +256,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AraneaAgents-${{ steps.version.outputs.version }}-win-x64
-          path: release/AraneaAgents-*.exe
+          path: build/release/AraneaAgents-*.exe
           retention-days: 30
 
       - name: List release directory (debug)
         shell: pwsh
         run: |
-          Write-Host "=== release/ contents ==="
-          if (Test-Path "release") {
-            Get-ChildItem -Path "release" -Recurse | ForEach-Object {
+          Write-Host "=== build/release/ contents ==="
+          if (Test-Path "build/release") {
+            Get-ChildItem -Path "build/release" -Recurse | ForEach-Object {
               $rel = $_.FullName.Replace((Get-Location).Path, "")
               $size = if ($_.PSIsContainer) { "<DIR>" } else { "$([math]::Round($_.Length / 1MB, 1)) MB" }
               Write-Host "  $rel  $size"
@@ -284,7 +285,7 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
-            release/AraneaAgents-*.exe
+            build/release/AraneaAgents-*.exe
           body: |
             ## Aranea-Agents ${{ steps.version.outputs.version }}
 
@@ -295,8 +296,10 @@ jobs:
             4. 默认登录：`admin` / `changeme`
 
             ### 使用说明
-            - **启动**：桌面快捷方式 / `AraneaLauncher.exe`（自动环境检查）
+            - **启动**：桌面快捷方式 / `AraneaLauncher.exe`（自动环境检查；首启进入配置向导）
+            - **配置向导**：开始菜单「Configure (Setup Wizard)」或 `AraneaLauncher.exe -setup`（选择内置/系统 PostgreSQL、Redis，可注册开机自启）
             - **环境检查**：开始菜单「环境检查」或 `AraneaLauncher.exe -check`
+            - **开机自启**：`AraneaLauncher.exe -install-autostart`（系统 PG+Redis → Windows 服务；含内置组件 → 登录计划任务）
             - **停止**：开始菜单「停止 Aranea-Agents」或 `AraneaLauncher.exe -stop`（不关闭系统 PG/Redis）
             - **本机已有 PostgreSQL/Redis**：优先复用（PG 默认 `:5432`）；否则启用内置实例
             - **系统 PG 需要密码**：环境变量 `ARANEA_PG_PASSWORD`，或安装目录 `configs\pg.password`

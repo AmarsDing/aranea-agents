@@ -10,6 +10,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 )
@@ -22,6 +23,9 @@ const (
 	defaultPersistMaxRetries  = 5
 	defaultPersistBackoff     = 100 * time.Millisecond
 	defaultDeadLetterCapacity = 512
+	// persistEnqueueTimeout 是持久化事件入队的保底等待上限：
+	// 脱离 turn ctx 取消后仍等待该时长，队列持续打满才放弃。
+	persistEnqueueTimeout = 5 * time.Second
 )
 
 // EventBus is the publish sink for v2 events (fan-out to WS subscribers).
@@ -50,6 +54,14 @@ type Sequencer struct {
 	publishQueue chan publishTask
 	persistChan  chan persistItem
 	deadLetter   *deadLetterRing
+
+	// P1-R2b: optional durable dead-letter store. When set, dead-lettered
+	// events are also written to the event_dead_letter table and replayed
+	// (startup + periodic) until success or attempt cap.
+	deadLetterStore biz.EventDeadLetterRepo
+	replayDone      chan struct{}
+	replayWG        sync.WaitGroup
+	replayStarted   bool // 仅当后台 replay worker 启动时为 true（Close 据此收尾）
 
 	publishWG sync.WaitGroup
 	persistWG sync.WaitGroup
@@ -82,6 +94,12 @@ type config struct {
 	persistBackoff     time.Duration
 	deadLetterCapacity int
 	outbox             biz.EventDeliveryOutboxRepo
+	deadLetterStore    biz.EventDeadLetterRepo
+	// disableReplayLoop keeps the background dead-letter replay worker from
+	// starting. Test-only: tests that drive replayDeadLettersOnce manually
+	// must set this, otherwise the startup sweep races the manual call and
+	// double-applies records.
+	disableReplayLoop bool
 }
 
 // Option configures a Sequencer.
@@ -126,15 +144,25 @@ func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, opts ...Option
 		publishQueue:       make(chan publishTask, cfg.publishBuffer),
 		persistChan:        make(chan persistItem, cfg.persistBuffer),
 		deadLetter:         newDeadLetterRing(cfg.deadLetterCapacity),
+		deadLetterStore:    cfg.deadLetterStore,
+		replayDone:         make(chan struct{}),
 		deltaBatchInterval: cfg.deltaBatchInterval,
 		persistMaxRetries:  cfg.persistMaxRetries,
 		persistBackoff:     cfg.persistBackoff,
 	}
 
 	s.publishWG.Add(1)
-	go s.publishLoop()
+	// 红线 #13：管道 worker 必须走 safego。裸 goroutine 一旦 panic，事件管道
+	// 会静默死亡（事件堆积至 buffer 满后所有发布者阻塞在 ctx.Done）；
+	// safego 提供 recover + PanicHook 告警。
+	safego.GoBackground("sequencer-v2-publish", s.publishLoop)
 	s.persistWG.Add(1)
-	go s.persistLoop()
+	safego.GoBackground("sequencer-v2-persist", s.persistLoop)
+	if s.deadLetterStore != nil && !cfg.disableReplayLoop {
+		s.replayStarted = true
+		s.replayWG.Add(1)
+		safego.GoBackground("sequencer-v2-dl-replay", s.deadLetterReplayLoop)
+	}
 	return s
 }
 
@@ -144,17 +172,34 @@ func (s *Sequencer) SeqAssigner() SeqAssigner { return s.seqAssigner }
 
 // Publish enqueues an event for FIFO processing.
 // Safe for concurrent use.
+//
+// 可靠性分级（Y2 修复）：
+//   - 临时事件（streaming/notice/heartbeat/run_status，不落库）：turn ctx 取消时
+//     允许丢弃——turn 已结束，残留 delta 无意义。
+//   - 持久化事件（含 task/turn/step 终态）：不受 turn ctx 取消影响，脱离原 ctx
+//     有限等待保底入队；仅当队列持续打满（管道停滞）超过 persistEnqueueTimeout
+//     才放弃并 Error 告警。
 func (s *Sequencer) Publish(ctx context.Context, e biz.Event) {
 	if s.closed.Load() {
 		s.lg.Warn("sequencer closed, event dropped", loggateway.Str("kind", string(e.EventKind())))
 		return
 	}
-	persist := s.shouldPersist(e)
+	if !s.shouldPersist(e) {
+		select {
+		case s.publishQueue <- publishTask{event: e, persist: false, enqueuedAt: time.Now()}:
+		case <-ctx.Done():
+			s.lg.Warn("publish ctx canceled before enqueue",
+				loggateway.Str("kind", string(e.EventKind())), loggateway.Err(ctx.Err()))
+		}
+		return
+	}
+	enqueueCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), persistEnqueueTimeout)
+	defer cancel()
 	select {
-	case s.publishQueue <- publishTask{event: e, persist: persist, enqueuedAt: time.Now()}:
-	case <-ctx.Done():
-		s.lg.Warn("publish ctx canceled before enqueue",
-			loggateway.Str("kind", string(e.EventKind())), loggateway.Err(ctx.Err()))
+	case s.publishQueue <- publishTask{event: e, persist: true, enqueuedAt: time.Now()}:
+	case <-enqueueCtx.Done():
+		s.lg.Error("persist event enqueue timeout, dropped",
+			loggateway.Str("kind", string(e.EventKind())), loggateway.Err(enqueueCtx.Err()))
 	}
 }
 
@@ -371,7 +416,7 @@ func (s *Sequencer) processTask(task publishTask) {
 			// Persist channel full: log + drop to dead-letter.
 			s.lg.Warn("persist channel full, event dropped to dead-letter",
 				loggateway.Str("kind", string(task.event.EventKind())))
-			s.deadLetter.Push(task.event)
+			s.pushDeadLetter(task.event)
 		}
 	}
 	if biz.IsCriticalDeliveryEvent(task.event) {
@@ -481,11 +526,11 @@ func (s *Sequencer) persistWithRetry(e biz.Event) {
 	}
 	s.lg.Error("persist exhausted retries, sending to dead-letter",
 		loggateway.Str("kind", string(e.EventKind())), loggateway.Err(lastErr))
-	s.deadLetter.Push(e)
+	s.pushDeadLetter(e)
 }
 
 // Close performs graceful shutdown: close publishQueue → drain publishLoop →
-// close persistChan → drain persistLoop. Idempotent.
+// close persistChan → drain persistLoop → stop replay worker. Idempotent.
 func (s *Sequencer) Close() error {
 	s.closeMu.Lock()
 	defer s.closeMu.Unlock()
@@ -496,6 +541,10 @@ func (s *Sequencer) Close() error {
 	s.publishWG.Wait()
 	close(s.persistChan)
 	s.persistWG.Wait()
+	if s.replayStarted {
+		close(s.replayDone)
+		s.replayWG.Wait()
+	}
 	return nil
 }
 

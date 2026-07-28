@@ -57,6 +57,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | ScoreSkill 四维权重 | ✅ | SuccessRate 0.4 + Duration 0.25 + Token 0.2 + Feedback 0.15（条件启用） |
 | 健康指标 | ✅ | `GetSkillHealth` RPC + `SkillHealthMetric`（7d/30d 调用统计、成功率、P95 耗时） |
 | 去重缓存 | ✅ | `DetectDuplicateGroups` 10min TTL 内存缓存 + `InvalidateDedupCache()` |
+| 标签字典 | ✅ | `skill_tags` 治理表 + 4 RPC（`/v1/skill-tags`）+ 改名/删除事务重写 + 孤儿标签治理 + 独立管理页 `/skills/tags` |
 
 ---
 
@@ -106,6 +107,12 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 11 | `skill_catalog` WS + 聊天 Catalog | ⏳ | 69 Phase3；组件已有，事件未接 |
 | 12 | Skill 市场 | ☐ | Phase3 生态 |
 
+### 3.5 已完成（P5：标签字典）
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| **P5** | `skill_tags` 治理表 + 实时使用计数聚合 + 改名/删除事务重写所有引用 + 孤儿标签治理 + 独立管理页 `/skills/tags` + 三处标签下拉复用字典选项源（Skill 编辑 / 列表筛选 / Agent 设置）+ 治理后 embed/去重缓存失效 | ✅ |
+
 ---
 
 ## 4. 开发阶段
@@ -135,6 +142,17 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 - ScoreSkill 四维权重修复（SuccessRate/Duration/Token/Feedback 条件启用）
 - 健康指标（`GetSkillHealth` RPC + `SkillHealthMetric`）
 - 去重缓存（`DetectDuplicateGroups` 10min TTL + `InvalidateDedupCache`）
+
+### Phase 2″：标签字典（P5）— ✅ 已完成
+
+- `skill_tags` Ent Schema + `TagRepo` 窄接口（`SkillTagReader`/`SkillTagWriter`）
+- 实时使用计数聚合（`skillTagUsage` 扫描 `metadata_json.tags`，不落库、强一致）
+- 改名/删除事务重写（`Data.ExecInTx` 内先改字典行，再重写所有 Skill 引用，返回重写条数；改名到已存在目标 = 等价合并）
+- 孤儿标签治理（List 合成 `source=orphan`，收录即预建；删除清理引用）
+- 4 RPC + 独立路由前缀 `/v1/skill-tags`（避免被 `/v1/skills/{id}` 吞掉）
+- 独立管理页 `/skills/tags`（按维度分组 + 搜索 + 收录状态筛选 + 新建/改名/删除/收录）
+- 三处标签下拉复用字典选项源（`SkillMetaDialog` / `SkillFilterBar` / `AgentSettingsSkillsTab`），仍允许输入新标签
+- 治理后失效 `InvalidateEmbedCache()` + `invalidateDedupCache()`（`skillCorpusText` 含 tags，向量必须重算）
 
 ### Phase 3：生态扩展（P4+）— 待实现
 
@@ -178,6 +196,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 24 | Feedback 真实接入 | P4+ | Phase 3 | ☐ |
 | 25 | EvolutionCoordinator 清理 | P4+ | Phase 3 | ✅（A6） |
 | 26 | R2 进化链路修复（F3 磁盘 watcher 回滚进化成果 / F6 审批草稿冻结 / F8 模板降级可观测 / F9 冷却期过滤终态 / F10 沙盒 validator 标注） | P-evo | — | ✅（2026-07-27，见 [phase3-进化能力/06 §9](./phase3-进化能力/06-P0-LLM-Curator与Reload接线.design.md#9-r2-测试修复2026-07-27)） |
+| 27 | 标签字典（治理表 + 事务重写 + 孤儿治理 + 管理页 + 选项源复用） | P5 | Phase 2″ | ✅（2026-07-28） |
 
 ---
 
@@ -216,6 +235,18 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 - [x] 健康指标（`GetSkillHealth` RPC + 7d/30d 调用统计 + 成功率 + P95 耗时）
 - [x] 去重缓存（10min TTL + `InvalidateDedupCache()` 手动失效）
 
+### Phase 2″（P5 标签字典）— ✅ 已达成
+
+- [x] 字典 CRUD 4 RPC（`/v1/skill-tags` 独立前缀，未被 `/v1/skills/{id}` 吞掉）
+- [x] List 返回实时使用计数 + 孤儿标签合成（`source=orphan` 不落库），按 dimension + name 排序
+- [x] 改名在同一事务内重写所有 Skill `metadata_json.tags`，目标已存在时删除源行等价合并，返回重写条数
+- [x] 删除从事务内所有 Skill 引用中移除标签，返回重写条数
+- [x] 孤儿标签一键收录（以同名预建）或删除清理
+- [x] 管理页 `/skills/tags`：维度分组 + 搜索 + 收录状态筛选 + 汇总 chip（总数 / 未收录数）
+- [x] Skill 编辑、列表筛选、Agent 设置三处标签下拉复用字典选项源，仍允许输入新标签
+- [x] Rename/Delete 后失效 embed 路由缓存与去重缓存
+- [x] `go test ./internal/data/ -run TestSkillTag` 及 biz/service 相关测试通过
+
 ### Phase 3（P4+）— 待实现
 
 - [ ] Budget 中间件（token 上限裁剪）
@@ -244,6 +275,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 进化协调器遗留 | ✅ `evolution_coordinator.go` 已随 A6 物理收敛删除（含 fallback 逻辑）；跨流水线去重统一由 `SkillEvolutionOrchestrator` + trigger 内去重 + DB 唯一索引承担 |
 | ScoreSkill Feedback | ⚠️ Feedback 维度当前为 `TEMPORARY` 启发式估算，待接入真实用户反馈 |
 | 去重 O(n²) 扫描 | ✅ 已通过 10min TTL 内存缓存缓解；外部可通过 `InvalidateDedupCache()` 手动失效 |
+| 标签字典计数聚合 | ✅ 使用计数实时扫描 `metadata_json.tags` 不落库，强一致；改名/删除走 `ExecInTx` 事务重写，失败整体回滚；治理后 embed/去重缓存同步失效 |
 
 ---
 
@@ -255,14 +287,14 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 
 | 文件 | 说明 | 状态 |
 |------|------|------|
-| `api/kratos/skill/v1/skill.proto` | SkillService 22 RPC + 消息定义 | ✅ |
+| `api/kratos/skill/v1/skill.proto` | SkillService 26 RPC（含标签字典 4 RPC）+ 消息定义 | ✅ |
 | `api/kratos/system_setting/v1/system_setting.proto` | `work_directory` 字段（存储根解析依赖） | ✅ |
 
 ### 8.2 Service 层（薄适配）
 
 | 文件 | 说明 | 状态 |
 |------|------|------|
-| `internal/service/skill.go` | 19 RPC 适配（CRUD/发布/预览/版本/回滚/健康/磁盘健康） | ✅ |
+| `internal/service/skill.go` | 23 RPC 适配（CRUD/发布/预览/版本/回滚/健康/磁盘健康 + 标签字典 4 RPC） | ✅ |
 | `internal/service/skill_import.go` | 导入 biz 桥接（4 RPC） | ✅ |
 | `internal/service/skill_import_http.go` | multipart POST `/v1/skills/import` 挂载 | ✅ |
 | `internal/service/skill_intelligence.go` | 智能分析服务 | ✅ |
@@ -293,6 +325,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | `internal/biz/skill_report.go` | 报告 | ✅ |
 | `internal/biz/skill_load_mode.go` | 加载模式 | ✅ |
 | `internal/biz/skill_invocation_stats.go` | 调用统计 | ✅ |
+| `internal/biz/skill/tag.go` | 标签字典端口（`SkillTagReader`/`SkillTagWriter`/`TagRepo`、`TagInfo`、normalizeTagName、Rename/Delete 后缓存失效） | ✅ |
 
 ### 8.4 Data 层（仓储 + 聚合）
 
@@ -308,6 +341,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | `internal/data/skill_evolution_schema.go` | legacy `skill_proposals` DDL（仅作迁移 20261111 backfill 来源，backfill 后 DROP；A6 起不再承载读写） | ✅ |
 | `internal/data/unified_evolution.go` | 统一进化 Data 层（raw SQL + 读写分离；A6 起承载全部四类建议读写，legacy `skill_evolution.go` / `skill_evolution_suggestion.go` 已删除） | ✅ |
 | `internal/data/unified_evolution_schema.go` | 统一进化 Schema | ✅ |
+| `internal/data/skill_tag_repo.go` | 标签字典 Data 层（`skillTagUsage` 实时聚合 + `rewriteSkillTagReferences` 事务重写 + 孤儿合成） | ✅ |
 
 ### 8.5 Ent Schema（物理表）
 
@@ -317,6 +351,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | `internal/data/ent/schema/skill_version.go` | `skill_version` | ✅ |
 | `internal/data/ent/schema/skill_invocation.go` | `skill_invocation` | ✅ |
 | `internal/data/ent/schema/skill_import_job.go` | `skill_import_jobs` | ✅ |
+| `internal/data/ent/schema/skill_tag.go` | `skill_tags`（标签字典治理表） | ✅ |
 
 > A6：`internal/data/ent/schema/skill_evolution_suggestion.go`（`skill_evolution_suggestions`）与 `evolution_suggestion.go`（`evolution_suggestions`）Ent Schema 已删除，物理表经迁移 20261111 backfill 后 DROP，统一收敛到 `unified_evolution_suggestions`（raw SQL DDL，非 Ent）。
 
@@ -361,6 +396,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | `web/src/pages/SkillsPage.vue` | 列表 + 上传 + 编辑 Dialog | ✅ |
 | `web/src/pages/SkillDetailPage.vue` | Skill 详情页 | ✅ |
 | `web/src/pages/SkillRunsPage.vue` | 运行记录页 | ✅ |
+| `web/src/pages/SkillTagsPage.vue` | 标签字典管理页（维度分组 + 孤儿治理 + 新建/改名/删除/收录） | ✅ |
 | `web/src/pages/agent-settings/AgentSettingsSkillsTab.vue` | `skill_runtime_json` 配置 | ✅ |
 | `web/src/components/skills/SkillTable.vue` 等 | 表格/筛选/统计/编辑/上传/删除/运行记录/告警/健康卡片 | ✅ |
 | `web/src/features/skills/api.ts` | 前端 API 函数清单 | ✅ |
@@ -385,6 +421,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | `internal/agent/skill_guidance_inject_test.go` | Prompt 注入测试 | ✅ |
 | `internal/tools/cli_admin/skill_install_from_url_test.go` | CLI 安装测试 | ✅ |
 | `internal/cli/client/skill_test.go` | CLI 客户端测试 | ✅ |
+| `internal/data/skill_tag_repo_test.go` | 标签字典 Data 层测试（聚合/重写/合并/孤儿/删除语义） | ✅ |
 
 ---
 
@@ -405,6 +442,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | Prompt 注入 | `internal/agent/skill_guidance_inject_test.go` | BeforeModelHook + 截断 + 空 guidance 防护 |
 | CLI 安装 | `internal/tools/cli_admin/skill_install_from_url_test.go` | URL 安装 Skill |
 | CLI 客户端 | `internal/cli/client/skill_test.go` | CLI 客户端调用 |
+| 标签字典 | `internal/data/skill_tag_repo_test.go` | 使用计数聚合、改名合并/重写、删除清理、孤儿合成、其他 metadata 键保留 |
 
 ### 9.2 待补充
 

@@ -35,7 +35,10 @@
             new-value-mode="add-unique"
             input-debounce="0"
             label="标签"
+            :hint="$t('skillTags.selectHint')"
+            :options="filteredTagOptions"
             :disable="saving"
+            @filter="onTagFilter"
           />
           <q-input
             v-model="description"
@@ -87,6 +90,8 @@ const props = defineProps<{
   skill: Skill | null;
   /** 编辑时预填正文（由 Page/composable 拉取） */
   initialBody?: string;
+  /** 标签字典选项源（规范标签名，由 Page/composable 拉取）。 */
+  tagOptions?: string[];
   saving?: boolean;
   notify: (opts: { type: string; message: string }) => void;
   confirm: (opts: {
@@ -118,9 +123,24 @@ const description = ref('');
 const tags = ref<string[]>([]);
 const body = ref('');
 const snapshot = ref('');
+const tagNeedle = ref('');
 
 const isCreate = computed(() => !props.skill?.id);
 const dirty = computed(() => snapshot.value !== serializeForm());
+
+/** 字典选项按输入关键字过滤；new-value-mode 仍允许添加字典外新标签。 */
+const filteredTagOptions = computed(() => {
+  const all = props.tagOptions ?? [];
+  const kw = tagNeedle.value.trim().toLowerCase();
+  if (!kw) return all;
+  return all.filter((t) => t.toLowerCase().includes(kw));
+});
+
+function onTagFilter(val: string, update: (fn: () => void) => void) {
+  update(() => {
+    tagNeedle.value = val;
+  });
+}
 
 function serializeForm() {
   return JSON.stringify({
@@ -155,6 +175,7 @@ function defaultBody(n: string, d: string) {
 }
 
 function hydrate() {
+  tagNeedle.value = '';
   if (props.skill) {
     name.value = props.skill.name || '';
     slug.value = props.skill.slug || '';

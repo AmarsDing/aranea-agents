@@ -52,17 +52,21 @@ type turnPersistResult struct {
 	cachedTok     int
 }
 
-// turnPipeline encapsulates the core ADMISSION → EXECUTE → PERSIST turn phases.
+// turnPhases encapsulates the core ADMISSION → EXECUTE → PERSIST turn phases.
 // It embeds *ChatOrchestrator so that implementation helpers (run status, event
 // publishing, stream consumption, etc.) remain accessible without duplication.
+//
+// 命名说明（Y1 修复）：本类型原名 turnPipeline，与同包 service 级 canonical
+// 管线 TurnPipeline（turn_pipeline.go，Ingress→Service→Executor→Projector）
+// 同名不同义，极易混淆，故改名 turnPhases。
 // Stability:internal
-type turnPipeline struct {
+type turnPhases struct {
 	*ChatOrchestrator
 }
 
-// pipeline returns the turn pipeline for this orchestrator.
-func (o *ChatOrchestrator) pipeline() *turnPipeline {
-	return &turnPipeline{ChatOrchestrator: o}
+// phases returns the turn phase executor for this orchestrator.
+func (o *ChatOrchestrator) phases() *turnPhases {
+	return &turnPhases{ChatOrchestrator: o}
 }
 
 // ────────────────────────────────────────────────────────────
@@ -71,7 +75,7 @@ func (o *ChatOrchestrator) pipeline() *turnPipeline {
 
 // admitTurn validates the turn request and generates run metadata.
 // Stability:internal
-func (p *turnPipeline) admitTurn(
+func (p *turnPhases) admitTurn(
 	ctx context.Context,
 	sess biz.Session,
 	input biz.TurnInput,
@@ -114,7 +118,7 @@ func (p *turnPipeline) admitTurn(
 // executeTurn orchestrates the EXECUTE phase: user options, intent pass,
 // user message persistence, LLM invocation, and stream consumption.
 // Stability:internal
-func (p *turnPipeline) executeTurn(
+func (p *turnPhases) executeTurn(
 	ctx context.Context,
 	sess biz.Session,
 	input biz.TurnInput,
@@ -159,7 +163,7 @@ func (p *turnPipeline) executeTurn(
 // 未超限 / gate 未配置 / 落地失败时返回原文（不阻断对话）。幂等键：
 // messageID 取 RootTaskActivityID（与持久化的用户消息 ID 一致），重试复用 replacement。
 // Stability:internal
-func (p *turnPipeline) gateTurnUserInput(ctx context.Context, sessionID, content string) (string, error) {
+func (p *turnPhases) gateTurnUserInput(ctx context.Context, sessionID, content string) (string, error) {
 	if n := utf8.RuneCountInString(content); n > biz.UserInputHardLimitChars {
 		return "", apierror.BadRequest("CHAT_INPUT",
 			"user input %d chars exceeds hard limit %d", n, biz.UserInputHardLimitChars)
@@ -191,7 +195,7 @@ func (p *turnPipeline) gateTurnUserInput(ctx context.Context, sessionID, content
 
 // persistTurn handles timeout degradation, empty reply detection, and message persistence.
 // Stability:internal
-func (p *turnPipeline) persistTurn(
+func (p *turnPhases) persistTurn(
 	ctx *context.Context,
 	sess biz.Session,
 	ag biz.Agent,

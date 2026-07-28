@@ -67,6 +67,9 @@ export function useAgentSettingsPage() {
     skillSlugOptions,
     loadingSkillSlugs,
     loadSkillSlugOptions,
+    skillTagOptions,
+    loadingSkillTags,
+    loadSkillTagOptions,
     codeExecutorCapabilities,
     loadCodeExecutorCapabilities,
   } = useAgentSkillCatalog();
@@ -189,6 +192,7 @@ export function useAgentSettingsPage() {
     primeThumbnailCache,
     loadCatalogTools,
     loadSkillSlugOptions,
+    loadSkillTagOptions,
     loadCodeExecutorCapabilities,
   });
 
@@ -320,6 +324,8 @@ export function useAgentSettingsPage() {
     },
     loadingSkillSlugs,
     skillSlugOptions,
+    loadingSkillTags,
+    skillTagOptions,
     codeExecutorCapabilities,
     showEvolving,
     fileTokenByName,

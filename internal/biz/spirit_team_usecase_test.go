@@ -938,6 +938,55 @@ func TestBuildSpiritTeamDefinitionJSON_DAGSingleMember_EnableStateDeliverable(t 
 	}
 }
 
+// 2026-07-28 Fix: a single-member "coordinator" team is degenerate — the only
+// member was assigned role=synthesizer (a coordination role that does not
+// execute tools), so the agent hallucinated task completion with zero tool
+// calls and fake set_deliverable output. Single-member teams must normalize
+// to sequential mode so the member is built as a worker.
+func TestAssembleTeam_SingleMemberCoordinator_NormalizesToSequentialWorker(t *testing.T) {
+	teamRepo := newMemSpiritTeamRepo()
+	sessionRepo := newMemSpiritSessionRepo()
+	sessionRepo.seedSpirit("spirit-1")
+	transactor := &memSpiritTransactor{}
+
+	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
+	sessionUC := NewSessionUsecase(sessionRepo, &memSpiritAgentLookup{}, NewSessionTeamLookup(teamRepo), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(transactor))
+
+	result, err := uc.AssembleTeam(context.Background(), SpiritTeamParams{
+		SpiritSessionID: "spirit-1",
+		TaskDescription: "install skill from url",
+		AgentKeys:       []string{"agent-1"},
+		Mode:            "coordinator",
+		AutoStart:       false,
+	})
+	if err != nil {
+		t.Fatalf("AssembleTeam failed: %v", err)
+	}
+
+	var def struct {
+		Mode    string `json:"mode"`
+		Members []struct {
+			Role string `json:"role"`
+		} `json:"members"`
+	}
+	if err := json.Unmarshal([]byte(result.Team.DefinitionJSON), &def); err != nil {
+		t.Fatalf("definition JSON not parseable: %v", err)
+	}
+	if def.Mode != TeamModeSequential {
+		t.Errorf("single-member team mode should normalize to sequential, got %q", def.Mode)
+	}
+	if len(def.Members) != 1 {
+		t.Fatalf("expected 1 member, got %d", len(def.Members))
+	}
+	if def.Members[0].Role != RoleWorker {
+		t.Errorf("single-member team member must be worker, got %q", def.Members[0].Role)
+	}
+	if result.Team.Topology != TeamModeSequential {
+		t.Errorf("team topology should be sequential, got %q", result.Team.Topology)
+	}
+}
+
 func TestAssembleTeam_MultiMember_DefinitionJSON_HasEnableStateDeliverable(t *testing.T) {
 	teamRepo := newMemSpiritTeamRepo()
 	sessionRepo := newMemSpiritSessionRepo()

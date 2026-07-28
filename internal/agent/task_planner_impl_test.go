@@ -157,6 +157,54 @@ func TestTaskPlanner_QuickAssess_TeamIntentForcesPlanning(t *testing.T) {
 	}
 }
 
+// TestTaskPlanner_QuickAssess_ExplicitToolRequestForcesPlanning verifies that a
+// user message naming a concrete tool identifier (snake_case with ≥2
+// underscores, e.g. cli_admin_skill_install_from_url) or plan_and_execute is
+// upgraded to at least Moderate, so the pre-planning gate forces the planning
+// path deterministically instead of leaving the routing to LLM discretion.
+//
+// Root cause (2026-07-28, session 784a8707): an install-skill request naming
+// cli_admin_skill_install_from_url scored 0.215 (simple); the gate notice
+// claimed "直接回答" while the Spirit LLM self-routed to plan_and_execute and
+// launched two teams — notice text contradicted actual behavior.
+func TestTaskPlanner_QuickAssess_ExplicitToolRequestForcesPlanning(t *testing.T) {
+	impl := &taskPlannerImpl{lg: loggateway.NewNoop()}
+	ctx := context.Background()
+
+	tests := []struct {
+		name       string
+		message    string
+		wantForced bool // expect level >= Moderate
+	}{
+		// Real-world prompt from the bug report
+		{"explicit admin tool", "请使用 cli_admin_skill_install_from_url 工具从 GitHub 安装 slack-gif-creator 技能", true},
+		{"explicit plan_and_execute", "调用 plan_and_execute 完成这个任务", true},
+		// Single-underscore everyday tools must NOT trigger the override:
+		// mentioning them is a normal direct request, not an orchestration demand.
+		{"single underscore exec_command", "用 exec_command 看下当前目录有什么文件", false},
+		{"single underscore web_search", "web_search 一下今天的天气", false},
+		// Hyphenated names and plain text must not match.
+		{"hyphenated skill name only", "安装 slack-gif-creator 技能", false},
+		{"simple greeting", "你好", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			level, score, err := impl.QuickAssess(ctx, biz.PlanInput{
+				UserMessage: tt.message,
+			})
+			if err != nil {
+				t.Fatalf("QuickAssess returned error: %v", err)
+			}
+			isForced := level == biz.ComplexityModerate || level == biz.ComplexityComplex
+			if isForced != tt.wantForced {
+				t.Errorf("message=%q: got level=%s score=%.4f (forced=%v), want forced=%v",
+					tt.message, level, score, isForced, tt.wantForced)
+			}
+		})
+	}
+}
+
 // TestDetermineStrategy_ModeOverride verifies that an explicit Mode in PlanInput
 // selects the correct strategy. In the three-mode system (direct/parallel/dag),
 // the LLM is the sole decision authority —complexity no longer drives selection.

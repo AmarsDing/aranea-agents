@@ -13,6 +13,7 @@ import EcosystemPage from '../pages/EcosystemPage.vue';
 import OrganizationPage from '../pages/OrganizationPage.vue';
 import TeamsPage from '../pages/TeamsPage.vue';
 import SkillsPage from '../pages/SkillsPage.vue';
+import SkillTagsPage from '../pages/SkillTagsPage.vue';
 import SkillDetailPage from '../pages/SkillDetailPage.vue';
 import SkillRunsPage from '../pages/SkillRunsPage.vue';
 import EvolutionSuggestionListPage from '../pages/EvolutionSuggestionListPage.vue';
@@ -129,6 +130,11 @@ export const routes: RouteRecordRaw[] = [
         path: 'skills/experience-reports',
         name: 'experience-reports',
         component: ExperienceReportListPage,
+      },
+      {
+        path: 'skills/tags',
+        name: 'skill-tags',
+        component: SkillTagsPage,
       },
       {
         path: 'skills/:skillId',

@@ -6,6 +6,8 @@ package v2
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	"aranea-agents/internal/biz"
 )
@@ -34,123 +36,254 @@ type RepoSet interface {
 	UpsertGraphNode(ctx context.Context, gn biz.GraphNode) (biz.GraphNode, error)
 }
 
-// persistAction routes an Event to the appropriate Repo method.
-// Returns false if the event should NOT be persisted (e.g. step.streaming).
-func persistAction(ctx context.Context, rs RepoSet, e biz.Event) (persisted bool, err error) {
+// Entity kinds handled by the persist router. Stored in the dead-letter
+// table so replay can route without knowing the original event kind.
+const (
+	EntityKindTask          = "task"
+	EntityKindTurn          = "turn"
+	EntityKindStep          = "step"
+	EntityKindTeamStage     = "team_stage"
+	EntityKindTeamRun       = "team_run"
+	EntityKindMemberSession = "member_session"
+	EntityKindPlanBoard     = "plan_board"
+	EntityKindPlanStep      = "plan_step"
+	EntityKindGraphStage    = "graph_stage"
+	EntityKindGraphNode     = "graph_node"
+)
+
+// Persist operations.
+const (
+	PersistOpUpsert               = "upsert"
+	PersistOpCompleteTaskTerminal = "complete_task_terminal"
+)
+
+// persistDescriptor maps an event to its entity-level persist action. It is
+// the single source of truth for event→entity routing: live persist
+// (persistAction), dead-letter save (entity marshal) and dead-letter replay
+// (entity decode) all derive from it.
+type persistDescriptor struct {
+	entityKind string
+	op         string
+	entity     any // entity VALUE (biz.Task, biz.Turn, ...)
+}
+
+// describePersist returns the persist descriptor for an event, or nil when
+// the event must NOT be persisted (streaming chunks, ephemeral system
+// events, unknown types).
+func describePersist(e biz.Event) *persistDescriptor {
 	switch ev := e.(type) {
 	case *biz.TaskCreatedEvent:
-		_, err = rs.UpsertTask(ctx, ev.Task)
-		return true, err
+		return &persistDescriptor{EntityKindTask, PersistOpUpsert, ev.Task}
 	case *biz.TaskUpdatedEvent:
-		_, err = rs.UpsertTask(ctx, ev.Task)
-		return true, err
+		return &persistDescriptor{EntityKindTask, PersistOpUpsert, ev.Task}
 	case *biz.TaskCompletedEvent:
 		// L3: 终态事件走 CompleteTaskTerminal（version 从 DB +1），避免 resume
 		// 后 synthesis OnTurnEnd 硬编码 Version=2 被 VersionLT guard 拒绝导致
 		// task 永远 running。
-		_, err = rs.CompleteTaskTerminal(ctx, ev.Task)
-		return true, err
+		return &persistDescriptor{EntityKindTask, PersistOpCompleteTaskTerminal, ev.Task}
 	case *biz.TaskFailedEvent:
-		_, err = rs.CompleteTaskTerminal(ctx, ev.Task)
-		return true, err
+		return &persistDescriptor{EntityKindTask, PersistOpCompleteTaskTerminal, ev.Task}
 
 	case *biz.TurnStartedEvent:
-		_, err = rs.UpsertTurn(ctx, ev.Turn)
-		return true, err
+		return &persistDescriptor{EntityKindTurn, PersistOpUpsert, ev.Turn}
 	case *biz.TurnCompletedEvent:
-		_, err = rs.UpsertTurn(ctx, ev.Turn)
-		return true, err
+		return &persistDescriptor{EntityKindTurn, PersistOpUpsert, ev.Turn}
 
 	case *biz.StepCreatedEvent:
-		_, err = rs.UpsertStep(ctx, ev.Step)
-		return true, err
+		return &persistDescriptor{EntityKindStep, PersistOpUpsert, ev.Step}
 	case *biz.StepUpdatedEvent:
-		_, err = rs.UpsertStep(ctx, ev.Step)
-		return true, err
+		return &persistDescriptor{EntityKindStep, PersistOpUpsert, ev.Step}
 	case *biz.StepCompletedEvent:
-		_, err = rs.UpsertStep(ctx, ev.Step)
-		return true, err
+		return &persistDescriptor{EntityKindStep, PersistOpUpsert, ev.Step}
 	case *biz.StepFailedEvent:
-		_, err = rs.UpsertStep(ctx, ev.Step)
-		return true, err
-	case *biz.StepStreamingEvent:
-		// streaming chunks are NOT persisted; only pushed to WS
-		return false, nil
+		return &persistDescriptor{EntityKindStep, PersistOpUpsert, ev.Step}
 
 	case *biz.TeamStageCreatedEvent:
-		_, err = rs.UpsertTeamStage(ctx, ev.TeamStage)
-		return true, err
+		return &persistDescriptor{EntityKindTeamStage, PersistOpUpsert, ev.TeamStage}
 	case *biz.TeamStageUpdatedEvent:
-		_, err = rs.UpsertTeamStage(ctx, ev.TeamStage)
-		return true, err
+		return &persistDescriptor{EntityKindTeamStage, PersistOpUpsert, ev.TeamStage}
 	case *biz.TeamStageCompletedEvent:
-		_, err = rs.UpsertTeamStage(ctx, ev.TeamStage)
-		return true, err
+		return &persistDescriptor{EntityKindTeamStage, PersistOpUpsert, ev.TeamStage}
 	case *biz.TeamStageFailedEvent:
-		_, err = rs.UpsertTeamStage(ctx, ev.TeamStage)
-		return true, err
+		return &persistDescriptor{EntityKindTeamStage, PersistOpUpsert, ev.TeamStage}
 
 	case *biz.TeamRunStartedEvent:
-		_, err = rs.UpsertTeamRun(ctx, ev.TeamRun)
-		return true, err
+		return &persistDescriptor{EntityKindTeamRun, PersistOpUpsert, ev.TeamRun}
 	case *biz.TeamRunCompletedEvent:
-		_, err = rs.UpsertTeamRun(ctx, ev.TeamRun)
-		return true, err
+		return &persistDescriptor{EntityKindTeamRun, PersistOpUpsert, ev.TeamRun}
 	case *biz.TeamRunFailedEvent:
-		_, err = rs.UpsertTeamRun(ctx, ev.TeamRun)
-		return true, err
+		return &persistDescriptor{EntityKindTeamRun, PersistOpUpsert, ev.TeamRun}
 
 	case *biz.MemberSessionCreatedEvent:
-		_, err = rs.UpsertMemberSession(ctx, ev.MemberSession)
-		return true, err
+		return &persistDescriptor{EntityKindMemberSession, PersistOpUpsert, ev.MemberSession}
 	case *biz.MemberSessionUpdatedEvent:
-		_, err = rs.UpsertMemberSession(ctx, ev.MemberSession)
-		return true, err
+		return &persistDescriptor{EntityKindMemberSession, PersistOpUpsert, ev.MemberSession}
 
 	case *biz.PlanBoardCreatedEvent:
-		_, err = rs.UpsertPlanBoard(ctx, ev.PlanBoard)
-		return true, err
+		return &persistDescriptor{EntityKindPlanBoard, PersistOpUpsert, ev.PlanBoard}
 	case *biz.PlanBoardUpdatedEvent:
-		_, err = rs.UpsertPlanBoard(ctx, ev.PlanBoard)
-		return true, err
-	case *biz.PlanStepUpdatedEvent:
-		_, err = rs.UpsertPlanStep(ctx, ev.PlanStep)
-		return true, err
+		return &persistDescriptor{EntityKindPlanBoard, PersistOpUpsert, ev.PlanBoard}
 	case *biz.PlanStepStartedEvent:
-		_, err = rs.UpsertPlanStep(ctx, ev.PlanStep)
-		return true, err
+		return &persistDescriptor{EntityKindPlanStep, PersistOpUpsert, ev.PlanStep}
 	case *biz.PlanStepCompletedEvent:
-		_, err = rs.UpsertPlanStep(ctx, ev.PlanStep)
-		return true, err
+		return &persistDescriptor{EntityKindPlanStep, PersistOpUpsert, ev.PlanStep}
 	case *biz.PlanStepFailedEvent:
-		_, err = rs.UpsertPlanStep(ctx, ev.PlanStep)
-		return true, err
+		return &persistDescriptor{EntityKindPlanStep, PersistOpUpsert, ev.PlanStep}
 	case *biz.PlanStepSkippedEvent:
-		_, err = rs.UpsertPlanStep(ctx, ev.PlanStep)
-		return true, err
+		return &persistDescriptor{EntityKindPlanStep, PersistOpUpsert, ev.PlanStep}
+	case *biz.PlanStepUpdatedEvent:
+		return &persistDescriptor{EntityKindPlanStep, PersistOpUpsert, ev.PlanStep}
 
-	// 2026-07-04 问题 2 修复：补齐 GraphStage/GraphNode 持久化 case。
-	// 之前这些事件 fall through 到 default（return false, nil），不持久化，
-	// 导致刷新后 graph_stage/graph_nodes 表为空，前端流程图消失。
 	case *biz.GraphStageCreatedEvent:
-		_, err = rs.UpsertGraphStage(ctx, ev.GraphStage)
-		return true, err
+		return &persistDescriptor{EntityKindGraphStage, PersistOpUpsert, ev.GraphStage}
 	case *biz.GraphStageUpdatedEvent:
-		_, err = rs.UpsertGraphStage(ctx, ev.GraphStage)
-		return true, err
+		return &persistDescriptor{EntityKindGraphStage, PersistOpUpsert, ev.GraphStage}
 	case *biz.GraphStageCompletedEvent:
-		_, err = rs.UpsertGraphStage(ctx, ev.GraphStage)
-		return true, err
+		return &persistDescriptor{EntityKindGraphStage, PersistOpUpsert, ev.GraphStage}
 	case *biz.GraphStageFailedEvent:
-		_, err = rs.UpsertGraphStage(ctx, ev.GraphStage)
-		return true, err
+		return &persistDescriptor{EntityKindGraphStage, PersistOpUpsert, ev.GraphStage}
 	case *biz.GraphStageInterruptedEvent:
-		_, err = rs.UpsertGraphStage(ctx, ev.GraphStage)
-		return true, err
+		return &persistDescriptor{EntityKindGraphStage, PersistOpUpsert, ev.GraphStage}
 	case *biz.GraphNodeUpdatedEvent:
-		_, err = rs.UpsertGraphNode(ctx, ev.GraphNode)
-		return true, err
+		return &persistDescriptor{EntityKindGraphNode, PersistOpUpsert, ev.GraphNode}
 	}
-	// Unknown event type: skip persistence
-	return false, nil
+	// step.streaming / system.* / unknown: not persisted.
+	return nil
+}
+
+// applyPersist executes the entity-level persist for a descriptor/replay
+// record. Routes purely on entityKind + op, so it serves both the live path
+// and dead-letter replay.
+func applyPersist(ctx context.Context, rs RepoSet, entityKind, op string, entity any) error {
+	switch entityKind {
+	case EntityKindTask:
+		t, ok := entity.(biz.Task)
+		if !ok {
+			return fmt.Errorf("applyPersist: entity is %T, want biz.Task", entity)
+		}
+		if op == PersistOpCompleteTaskTerminal {
+			_, err := rs.CompleteTaskTerminal(ctx, t)
+			return err
+		}
+		_, err := rs.UpsertTask(ctx, t)
+		return err
+	case EntityKindTurn:
+		v, ok := entity.(biz.Turn)
+		if !ok {
+			return fmt.Errorf("applyPersist: entity is %T, want biz.Turn", entity)
+		}
+		_, err := rs.UpsertTurn(ctx, v)
+		return err
+	case EntityKindStep:
+		v, ok := entity.(biz.Step)
+		if !ok {
+			return fmt.Errorf("applyPersist: entity is %T, want biz.Step", entity)
+		}
+		_, err := rs.UpsertStep(ctx, v)
+		return err
+	case EntityKindTeamStage:
+		v, ok := entity.(biz.TeamStage)
+		if !ok {
+			return fmt.Errorf("applyPersist: entity is %T, want biz.TeamStage", entity)
+		}
+		_, err := rs.UpsertTeamStage(ctx, v)
+		return err
+	case EntityKindTeamRun:
+		v, ok := entity.(biz.TeamRun)
+		if !ok {
+			return fmt.Errorf("applyPersist: entity is %T, want biz.TeamRun", entity)
+		}
+		_, err := rs.UpsertTeamRun(ctx, v)
+		return err
+	case EntityKindMemberSession:
+		v, ok := entity.(biz.MemberSession)
+		if !ok {
+			return fmt.Errorf("applyPersist: entity is %T, want biz.MemberSession", entity)
+		}
+		_, err := rs.UpsertMemberSession(ctx, v)
+		return err
+	case EntityKindPlanBoard:
+		v, ok := entity.(biz.PlanBoard)
+		if !ok {
+			return fmt.Errorf("applyPersist: entity is %T, want biz.PlanBoard", entity)
+		}
+		_, err := rs.UpsertPlanBoard(ctx, v)
+		return err
+	case EntityKindPlanStep:
+		v, ok := entity.(biz.PlanStep)
+		if !ok {
+			return fmt.Errorf("applyPersist: entity is %T, want biz.PlanStep", entity)
+		}
+		_, err := rs.UpsertPlanStep(ctx, v)
+		return err
+	case EntityKindGraphStage:
+		v, ok := entity.(biz.GraphStage)
+		if !ok {
+			return fmt.Errorf("applyPersist: entity is %T, want biz.GraphStage", entity)
+		}
+		_, err := rs.UpsertGraphStage(ctx, v)
+		return err
+	case EntityKindGraphNode:
+		v, ok := entity.(biz.GraphNode)
+		if !ok {
+			return fmt.Errorf("applyPersist: entity is %T, want biz.GraphNode", entity)
+		}
+		_, err := rs.UpsertGraphNode(ctx, v)
+		return err
+	}
+	return fmt.Errorf("applyPersist: unknown entity kind %q", entityKind)
+}
+
+// decodePersistEntity rehydrates a dead-letter payload back into an entity
+// value routable by applyPersist.
+func decodePersistEntity(entityKind string, payload []byte) (any, error) {
+	unmarshal := func(ptr any) error {
+		if err := json.Unmarshal(payload, ptr); err != nil {
+			return fmt.Errorf("decodePersistEntity(%s): %w", entityKind, err)
+		}
+		return nil
+	}
+	switch entityKind {
+	case EntityKindTask:
+		var v biz.Task
+		return v, unmarshal(&v)
+	case EntityKindTurn:
+		var v biz.Turn
+		return v, unmarshal(&v)
+	case EntityKindStep:
+		var v biz.Step
+		return v, unmarshal(&v)
+	case EntityKindTeamStage:
+		var v biz.TeamStage
+		return v, unmarshal(&v)
+	case EntityKindTeamRun:
+		var v biz.TeamRun
+		return v, unmarshal(&v)
+	case EntityKindMemberSession:
+		var v biz.MemberSession
+		return v, unmarshal(&v)
+	case EntityKindPlanBoard:
+		var v biz.PlanBoard
+		return v, unmarshal(&v)
+	case EntityKindPlanStep:
+		var v biz.PlanStep
+		return v, unmarshal(&v)
+	case EntityKindGraphStage:
+		var v biz.GraphStage
+		return v, unmarshal(&v)
+	case EntityKindGraphNode:
+		var v biz.GraphNode
+		return v, unmarshal(&v)
+	}
+	return nil, fmt.Errorf("decodePersistEntity: unknown entity kind %q", entityKind)
+}
+
+// persistAction routes an Event to the appropriate Repo method.
+// Returns false if the event should NOT be persisted (e.g. step.streaming).
+func persistAction(ctx context.Context, rs RepoSet, e biz.Event) (persisted bool, err error) {
+	d := describePersist(e)
+	if d == nil {
+		return false, nil
+	}
+	return true, applyPersist(ctx, rs, d.entityKind, d.op, d.entity)
 }

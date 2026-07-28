@@ -664,6 +664,10 @@ func (s *UsageService) PurgeUsageEvents(ctx, *v1.PurgeUsageEventsRequest) (*v1.P
 - `internal/service/usage_mapper.go` — Proto ↔ Biz 类型映射
 - `internal/service/usage_alert_notifier.go` — `AlertNotifier` 实现（写入监控事件 `usage.budget_alert`）
 
+**访问控制**：限额 / 告警 / 清理端点（`GetUsageQuota` / `SetUsageQuota` / `CheckUsageQuota` / `ListBudgetAlerts` / `SetBudgetAlert` / `PurgeUsageEvents`）通过 `assertSystemCaller` 校验调用者身份，允许以下两类调用者：
+- **系统工作区**（`workspace.IsSystem`）— 用于 cron / 后台任务
+- **管理员**（`auth.FromContext().HasAdminAccess()`）— 用于前端管理后台
+
 ### 5.2 用量记录入口
 
 **主路径**：`internal/service/turn_usage.go` → `recordTurnUsage`（`trpc_turn` defer）
@@ -791,7 +795,7 @@ web/src/components/usage/
 └── StatusPanelProvider.vue       ← Provider 状态面板
 
 web/src/components/agents/
-└── AgentUsageQuotaPanel.vue      ← Agent 权限 Tab 限额 + 告警配置
+└── AgentUsageQuotaPanel.vue      ← Agent token配额 Tab 限额 + 告警配置
 
 web/src/pages/
 ├── OverviewPage.vue              ← 概览页（useOverviewPage）

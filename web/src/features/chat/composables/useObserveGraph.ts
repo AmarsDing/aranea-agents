@@ -4,6 +4,7 @@ import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import { usePlanDAGLayout } from './usePlanDAGLayout';
 import { useNodeOutputStore } from '../../../stores/chat/nodeOutputStore';
 import type { GraphStage, GraphNode, TeamStage, MemberSession } from '../v2Types';
+import type { MediaArtifact } from '../mediaTypes';
 
 const DAG_OPTS = {
   width: 800,
@@ -38,6 +39,7 @@ export interface NodeMember {
  */
 export function useObserveNodeEnrichment() {
   const activityStore = useChatActivityStore();
+  const nodeOutputStore = useNodeOutputStore();
 
   /**
    * Find the TeamStage associated with a GraphNode.
@@ -179,13 +181,29 @@ export function useObserveNodeEnrichment() {
     return undefined;
   }
 
-  return { findTeamStage, extractMembers, extractDuration, extractError, extractDescription, extractTextOutput };
+  /**
+   * Extract the media outputs (artifacts) produced by a node.
+   * Lookup key follows the canvas convention: TeamStageID, falling back to
+   * the graph node ID.
+   */
+  function extractMediaOutputs(node: GraphNode): MediaArtifact[] {
+    return nodeOutputStore.getNodeOutput(node.TeamStageID || node.ID);
+  }
+
+  return {
+    findTeamStage,
+    extractMembers,
+    extractDuration,
+    extractError,
+    extractDescription,
+    extractTextOutput,
+    extractMediaOutputs,
+  };
 }
 
 export function useObserveGraph(spiritSessionId: Ref<string>) {
   const activityStore = useChatActivityStore();
-  const nodeOutputStore = useNodeOutputStore();
-  const { extractMembers, extractDuration, extractError, extractDescription, extractTextOutput } =
+  const { extractMembers, extractDuration, extractError, extractDescription, extractTextOutput, extractMediaOutputs } =
     useObserveNodeEnrichment();
 
   /**
@@ -271,7 +289,7 @@ export function useObserveGraph(spiritSessionId: Ref<string>) {
           dependsOn: n.DependsOn,
           members,
           activeMemberCount: members.filter((m) => m.status === 'running').length,
-          mediaOutput: nodeOutputStore.getNodeOutput(n.TeamStageID || n.ID),
+          mediaOutput: extractMediaOutputs(n),
           progress: extractProgress(n.TeamStageID || n.ID),
           durationMs,
           error,

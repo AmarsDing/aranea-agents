@@ -91,7 +91,7 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 | TEAM-15 | P4 | TaskDeadLetter 前端 UI 入口（API 已有，组件缺失） |
 | TEAM-16 | P4 | Team struct 拆分（TECH-DEBT(COG): 字段=23, 上限=15） |
 | TEAM-17 | P3 | ListSpiritTeams / SynthesizeResults / ArchiveTeam / RetryTeam 前端 UI 入口（API 已有） |
-| TEAM-18 | P2 | Deliverable State 传递：`enable_state_deliverable` + `set_deliverable`/`get_deliverable` 工具（✅ Phase 1 已完成） |
+| TEAM-18 | P2 | Deliverable State 传递：`enable_state_deliverable` + `set_deliverable`/`get_deliverable` 工具（✅ Phase 1 已完成；✅ Phase 2 MDC+ack+MergeReducer 2026-07-28 完成，剩前端 UI 展示） |
 
 ---
 
@@ -150,7 +150,7 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 - ✅ ListSpiritTeams / SynthesizeResults / ArchiveTeam / RetryTeam 后端 RPC
 - 🔄 前端 UI 入口（TEAM-17）
 
-### Phase 10（✅ Deliverable State 传递）— Phase 1 已完成
+### Phase 10（✅ Deliverable State 传递）— Phase 1+2 已完成
 
 **目标**：为 Team 成员提供结构化交付物的显式传递机制（一个 agent 的输出 → 另一个 agent 的输入）。
 
@@ -161,7 +161,12 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
   - `set_deliverable`：实现 `CallableTool` + `StateDelta`（duck typing），通过框架 flow 层合并到 graph state
   - `get_deliverable`：实现 `CallableTool`，通过 `inv.Session.GetState` 读取
 - ✅ P1-2 Phase 1-d：注册 `deliverable` ToolSet 到 `Registry()`（`EnabledByDefault=false`，`Category=team`）
-- 📋 Phase 2（后续）：DeliverableContract 自动校验集成、前端 UI 展示 deliverable 内容
+- ✅ Phase 2（2026-07-28）：成员级交付契约（MDC）+ 交付确认 + 并行安全
+  - ✅ P2-a：`deliverable` StateField Reducer Cover → Merge（顶层 key 级合并，parallel 经 distinct topic 写安全；`parallelDeliverableAdvisory` 编译期 Warn）
+  - ✅ P2-b：MDC（`biz.MemberDeliverableContract`，`deliverable_contract` Definition 字段）——写时强制（`required_keys`/`schema_json`，LLM 可纠错 `MemberContractViolationError`）+ 完成时 advisory（`requiredTopicsMissingFromState` Warn）
+  - ✅ P2-c：`ack_deliverable` 工具（accepted/rejected 确认，写 `ack/<topic>` 顶层键；桥接 `marshalNonReservedStateKeys` 排除 `ack/` 前缀，不泄漏进团队间信封）
+  - ✅ P2-d：装配收口 `deliverableToolsForDef` → `ToolsWithContract`（仅 team 编译路径注入契约；graph adapter 通用路径无契约）
+  - 📋 后续：前端 UI 展示 deliverable 内容（含 ack 状态）
 
 ---
 

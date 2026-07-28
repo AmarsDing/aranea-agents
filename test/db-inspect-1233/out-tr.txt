@@ -1,0 +1,6 @@
+COLS: [id team_stage_id task_id status version]
+ROW 1: [id=efdb6ace-ab87-5466-aa8d-ac815b8d10e8] [team_stage_id=6807dcd1-3396-527c-b568-d814cf0a132e] [task_id=a7b6c7a2-b3ba-4d11-9074-9eccbce77383] [status=completed] [version=2] 
+ROW 2: [id=3f7b1678-e5e6-5ca4-8e6f-81a207afee2f] [team_stage_id=0b13904b-7952-5c5b-ae98-fba74ab905f7] [task_id=a7b6c7a2-b3ba-4d11-9074-9eccbce77383] [status=completed] [version=2] 
+ROW 3: [id=bf44ad17-d460-55bf-b938-bc2df970fb10] [team_stage_id=babdb09e-6a89-5bbc-9626-587b2632d7c5] [task_id=a7b6c7a2-b3ba-4d11-9074-9eccbce77383] [status=completed] [version=2] 
+ROW 4: [id=b9b9ae17-ca79-5733-a66f-80b0ca933bab] [team_stage_id=4980cc46-9454-596b-84b6-619430e5987d] [task_id=a7b6c7a2-b3ba-4d11-9074-9eccbce77383] [status=completed] [version=2] 
+TOTAL: 4

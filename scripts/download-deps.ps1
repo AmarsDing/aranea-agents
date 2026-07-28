@@ -1,4 +1,4 @@
-﻿﻿﻿﻿<#
+﻿<#
 .SYNOPSIS
     下载 Windows 打包依赖（PostgreSQL 便携版 + Redis + pgvector）。
 

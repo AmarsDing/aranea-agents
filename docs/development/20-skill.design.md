@@ -185,11 +185,32 @@ Skill 是可安装、可版本化的能力包，由文件资产（SKILL.md + 附
 
 **来源优先级**：`skill.json` / `manifest.json` → `SKILL.md` frontmatter → 导入 API 附加 metadata → 目录名推断。
 
+### 4.5 `skill_tags` 标签字典表
+
+标签字典是「治理表」而非「存储表」——标签的真实存储仍在各 Skill 的 `metadata_json.tags` 数组；`skill_tags` 表只承担预建规范名、改名合并与孤儿治理的锚点角色。使用计数不落库，List 时实时聚合 `skill.metadata_json`，保证强一致、避免双写漂移。
+
+| 列 | 类型 | 说明 |
+|----|------|------|
+| `id` | string(256) | `skilltag_<unixnano>`，不可变 |
+| `name` | string(256) | 规范标签 token，全表唯一；小写，匹配 `[a-z0-9][a-z0-9_-]*(:suffix)?` |
+| `dimension` | string(128) | `:` 前缀维度（如 `file_type` / `domain`），无前缀为空串；UI 分组依据，带索引 |
+| `source` | string(32) | `system`（内置种子）\| `user`（管理员预建）；运行时聚合出的未收录标签以 `orphan` 出现在 List 结果中（不落库） |
+| `created_at` / `updated_at` | string | RFC3339 |
+
+设计要点：
+
+- **唯一约束在 `name`**：改名到已存在的目标 = 删除源行（等价合并），不会产生重复行。
+- **孤儿标签不落地**：List 时将「使用中但未收录」的标签以 `source=orphan` 合成进结果集，供 UI 提示治理；收录即以其名预建一行。
+- **重写走事务**：Rename/Delete 在 `Data.ExecInTx` 内先改字典行，再扫描重写所有引用该标签的 Skill `metadata_json`（仅改 `tags` 键，其余键原样保留），返回重写条数。
+- **缓存失效**：biz 层在 Rename/Delete 成功后调用 `InvalidateEmbedCache()` + `invalidateDedupCache()`——`skillCorpusText` 含 tags，向量与去重指纹必须重算。
+
+> **字典模式（通用约定）**：后续开发中，凡「取值集合有限、需跨实体复用、需治理冗余写法」的字段（如标签、分类、维度枚举），优先采用本字典模式：真实数据留在宿主 JSON 列，字典表只存规范值 + 治理元数据，计数实时聚合，改名/删除走事务重写。新增此类字段前应复用或扩展既有字典，避免再建一套。
+
 ---
 
 ## 五、API 契约
 
-### 5.1 Proto 层（22 RPC）
+### 5.1 Proto 层（26 RPC）
 
 文件：`api/kratos/skill/v1/skill.proto`
 
@@ -263,6 +284,19 @@ service SkillService {
   }
   rpc GetSkillHealth(GetSkillHealthRequest) returns (SkillHealthMetric) {
     option (google.api.http) = { get: "/v1/skills/{skill_id}/health" };
+  }
+  // 标签字典：独立前缀 /v1/skill-tags，避免被 /v1/skills/{id} 路由吞掉。
+  rpc ListSkillTags(google.protobuf.Empty) returns (ListSkillTagsResponse) {
+    option (google.api.http) = { get: "/v1/skill-tags" };
+  }
+  rpc CreateSkillTag(CreateSkillTagRequest) returns (SkillTagInfo) {
+    option (google.api.http) = { post: "/v1/skill-tags" body: "*" };
+  }
+  rpc RenameSkillTag(RenameSkillTagRequest) returns (RenameSkillTagResponse) {
+    option (google.api.http) = { post: "/v1/skill-tags:rename" body: "*" };
+  }
+  rpc DeleteSkillTag(DeleteSkillTagRequest) returns (DeleteSkillTagResponse) {
+    option (google.api.http) = { delete: "/v1/skill-tags/{name}" };
   }
 }
 ```
@@ -423,6 +457,27 @@ service SkillService {
 - `message` 可直接展示给用户。
 - `details.field_errors` 若存在，映射到表单字段。
 - 未知错误展示「操作失败，请稍后重试」。
+
+### 5.12 标签字典端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/v1/skill-tags` | 字典全量 + 实时使用计数 + 孤儿标签合成，按 `dimension` + `name` 排序 |
+| `POST` | `/v1/skill-tags` | 预建标签（name 已规范化）；冲突返回 `CodeConflict` |
+| `POST` | `/v1/skill-tags:rename` | 改名 + 事务重写所有 Skill 引用，返回 `rewritten` 条数；目标已存在时等价合并 |
+| `DELETE` | `/v1/skill-tags/{name}` | 删除字典行 + 事务移除所有 Skill 引用，返回 `rewritten` 条数 |
+
+`SkillTagInfo` 消息：
+
+| 字段 | 说明 |
+|------|------|
+| `name` | 规范标签名（小写，可选 `dimension:` 前缀） |
+| `dimension` | `:` 前缀维度，无维度为空串 |
+| `source` | `system` \| `user` \| `orphan`（orphan = 使用中但未收录，运行时合成不落库） |
+| `used_count` | 实时聚合 `skill.metadata_json.tags` 的使用次数 |
+| `created_at` / `updated_at` | RFC3339 |
+
+路由设计注意：标签字典使用独立前缀 `/v1/skill-tags` 而非 `/v1/skills/tags`——后者会被已注册的 `/v1/skills/{id}` GET 路由吞掉（`{id}="tags"` 匹配到 GetSkill）。
 
 ---
 
@@ -720,6 +775,46 @@ Service 层通过 `SkillFilesystem` 端口访问文件系统，不直接操作 `
 - `DirExists(dir)` — 检查目录是否存在
 - `SafeFilePath(dir, relPath)` — 路径安全检查（防目录穿越）
 
+### 6.11 SkillTag 端口（标签字典）
+
+文件：`internal/biz/skill/tag.go`；实现：`internal/data/skill_tag_repo.go`（`NewSkillTagRepo`）。
+
+独立于 Skill Repo 复合接口（DB-N3 窄接口规则），按读写职责拆分：
+
+```go
+// Stability:evolving
+type SkillTagReader interface {
+    // 字典全量 + 实时使用计数 + 孤儿标签合成
+    ListSkillTags(ctx) ([]TagInfo, error)
+    // 轻量选项源：仅规范标签名（筛选器下拉用）
+    ListSkillTagNames(ctx) ([]string, error)
+}
+
+// Stability:evolving
+type SkillTagWriter interface {
+    // 预建标签（name 已规范化）；冲突返回 CodeConflict
+    CreateSkillTag(ctx, name) (TagInfo, error)
+    // 字典改名 + 事务重写所有 skill 引用，返回重写条数
+    RenameSkillTag(ctx, oldName, newName) (int, error)
+    // 字典删除 + 事务移除所有 skill 引用，返回重写条数
+    DeleteSkillTag(ctx, name) (int, error)
+}
+
+type TagRepo interface { SkillTagReader; SkillTagWriter }
+```
+
+Usecase 侧（`internal/biz/skill/tag.go`）职责：
+
+- `normalizeTagName` — trim + 小写 + 格式校验（`^[a-z0-9][a-z0-9_-]*(:[a-z0-9][a-z0-9_-]*)?$`），维度取自 `:` 前缀。
+- `RenameTag` / `DeleteTag` 成功后调用 `InvalidateEmbedCache()` + `invalidateDedupCache()`（§4.5 缓存一致性）。
+- `tagRepoOrErr` — 未注入 repo 时返回 `CodeInternal`（防御性，Wire 正常装配不会触发）。
+
+Data 侧关键实现：
+
+- `skillTagUsage` — 全表扫描 `PlatformSkill`（未软删）的 `metadata_json`，小写名归一聚合计数。
+- `rewriteSkillTagReferences` — 在事务内用 `MetadataJSONContainsFold(target)` 预筛候选行，逐行重写 `tags` 键（`rewriteMetadataTags` 保留其他键），命中才 UPDATE。
+- Rename 合并语义：目标名已收录时删除源字典行；未收录时原地改名。两种情况都继续执行引用重写。
+
 ---
 
 ## 七、运行时层
@@ -937,27 +1032,31 @@ web/src/
 ├── pages/
 │   ├── SkillsPage.vue              # 列表 + SkillUploadPlaceholder + SkillEditorDialog
 │   ├── SkillDetailPage.vue         # Skill 详情页
-│   └── SkillRunsPage.vue           # 运行记录页
+│   ├── SkillRunsPage.vue           # 运行记录页
+│   └── SkillTagsPage.vue           # 标签字典管理页（/skills/tags）
 ├── pages/agent-settings/
-│   └── AgentSettingsSkillsTab.vue  # skill_runtime_json 配置
+│   └── AgentSettingsSkillsTab.vue  # skill_runtime_json 配置（allowed_tags 选项源接字典）
 ├── components/skills/
 │   ├── SkillTable.vue · SkillFilterBar.vue · SkillStatsStrip.vue
 │   ├── SkillEditorDialog.vue · SkillUploadPlaceholder.vue
 │   ├── SkillDeleteDialog.vue · SkillRunsTable.vue · SkillPagination.vue
+│   ├── SkillMetaDialog.vue         # 元数据编辑（标签字段选项源接字典）
 │   ├── SkillFilesystemAlertBanner.vue · SkillHealthCard.vue
 │   └── skillTableUi.ts
 ├── features/skills/
-│   ├── api.ts · types.ts
+│   ├── api.ts · types.ts           # 含 listSkillTagsApi 等 4 个字典端点 + SkillTagInfo 类型
 │   ├── useSkillsPage.ts · useSkillDetailPage.ts · useSkillRunsPage.ts
 │   └── useExperienceReportListPage.ts
-└── stores/skills/index.ts
+└── stores/skills/index.ts          # 含 skillTags 状态 + loadSkillTags/createTag/renameTag/deleteTag
 ```
 
-路由：`/skills` · `/skills/runs`（见 `frontend-pages.md` §4.6）
+路由：`/skills` · `/skills/runs` · `/skills/tags`（见 `frontend-pages.md` §4.6）
 
 **SkillEditorDialog.vue** — 全屏 Dialog，左侧文件树 + 右侧内容编辑（`ListSkillFiles` / `GetSkillFile` / `UpdateSkillFile`）。
 
 **SkillUploadPlaceholder.vue** — 上传 zip、轮询导入任务、冲突组炼化（调用 `features/skills/api` import 端点）。
+
+**SkillTagsPage.vue** — 标签字典独立管理页：按维度分组（`QList` + 组头 chip）、搜索 + 收录状态筛选、新建/改名/删除对话框、孤儿行浅黄底色 + 收录按钮。Store 层 `tagsLoaded` 缓存避免选项源场景重复请求，管理页 `force=true` 强制刷新；改名/删除后自动失效缓存。
 
 ### 10.2 Quasar 组件清单
 
@@ -968,6 +1067,15 @@ web/src/
 | 冲突组炼化 | 冲突组内 `QBtn`、可选 `QSelect`（provider/model）、`QInput type=textarea` 或 Markdown 编辑器 |
 | 编辑页 | `QForm`、`QInput`、`QSelect`、`QExpansionItem`、`QBtn` |
 | 运行记录 | `QTable`、`QBadge`、`QTooltip`、`QDialog`、`QDate` |
+| 标签字典 | `QPage`、`QList`、`QChip`、`QBadge`、`QBtn`、`QDialog`、`QInput`、`QSelect`、`QTooltip`、`AppPageHero`、`AppPageToolbar` |
+
+标签字段三处选项源（统一来自 `stores/skills` 的 `tagNameOptions()`，即字典 + 使用中标签的并集）：
+
+| 位置 | 组件 | 说明 |
+|------|------|------|
+| Skill 元数据编辑 | `SkillMetaDialog.vue` | `QSelect multiple use-chips use-input`，允许输入新标签，带字典 hint |
+| Skill 列表筛选栏 | `SkillFilterBar.vue` | `QSelect multiple use-chips`，筛选不创建新标签 |
+| Agent 设置 | `AgentSettingsSkillsTab.vue` | `allowed_tags`（AND 语义），`QSelect multiple use-chips` |
 
 ### 10.3 API
 
@@ -994,6 +1102,11 @@ export async function uploadSkillZip(file: File): Promise<{ job_id: string }>
 export async function getSkillImportJob(jobId: string): Promise<SkillImportJob>
 export async function applySkillImport(jobId: string, decisions: SkillImportDecision[]): Promise<SkillImportApplyResult>
 export async function refineSkillConflictGroup(jobId: string, groupId: string, payload): Promise<SkillRefineResult>
+// 标签字典
+export async function listSkillTagsApi(): Promise<SkillTagInfo[]>
+export async function createSkillTagApi(name: string): Promise<SkillTagInfo>
+export async function renameSkillTagApi(oldName: string, newName: string): Promise<number>
+export async function deleteSkillTagApi(name: string): Promise<number>
 ```
 
 ---
@@ -1002,7 +1115,7 @@ export async function refineSkillConflictGroup(jobId: string, groupId: string, p
 
 ### 11.1 Service 层
 
-文件：`internal/service/skill.go`（19 方法）+ `internal/service/skill_import.go`（4 方法）+ `internal/service/skill_import_http.go`（multipart 挂载）
+文件：`internal/service/skill.go`（23 方法：19 Skill + 4 标签字典）+ `internal/service/skill_import.go`（4 方法）+ `internal/service/skill_import_http.go`（multipart 挂载）
 
 薄适配层，职责：
 - Proto Request → Biz DTO 转换
@@ -1013,6 +1126,7 @@ export async function refineSkillConflictGroup(jobId: string, groupId: string, p
 
 已有，无需新增。Skill 相关依赖通过 `wire.NewSet` 注入：
 - `SkillRepo` → `SkillUsecase` → `SkillService`
+- `TagRepo`（`NewSkillTagRepo`）→ `SkillUsecase.tagRepo` → 标签字典 4 RPC
 - `SkillUsecase` → `buildSkillDeps`（Agent 构建）
 - `ProvideSkillResolveRootFn` + `storage.NewSkillFilesystem`，动态解析 root_directory
 
@@ -1111,6 +1225,7 @@ internal/
 ├── biz/
 │   ├── skill/                  # 用例子包
 │   │   ├── skill.go            # 用例与端口（SkillReader/SkillWriter/Repo 接口、Usecase、DTO、SkillFilesystem、SkillEmbedder）
+│   │   ├── tag.go              # 标签字典端口（SkillTagReader/SkillTagWriter/TagRepo、TagInfo、normalizeTagName、Rename/Delete 缓存失效）
 │   │   └── skill_test.go       # 单元测试
 │   ├── skill.go                # 类型别名（type alias）+ 常量 + 构造函数
 │   ├── skill_similarity.go     # 统一相似度引擎（4 维 + 可选 Embedding）
@@ -1128,6 +1243,7 @@ internal/
 │   └── skill_invocation_stats.go # 调用统计
 ├── data/
 │   ├── skill.go                # Ent 仓储与聚合
+│   ├── skill_tag_repo.go       # 标签字典 Data 层（Ent + 事务重写引用 + 实时使用聚合）
 │   ├── skill_merge.go          # 合并 Data 层（事务内 4 步操作）
 │   ├── skill_dedup.go          # 去重 Data 层（含 SkillSimilarityEngine 集成）
 │   ├── skill_intelligence.go   # 健康指标聚合（含 AvgTokenUsage/FeedbackScore）
@@ -1152,7 +1268,7 @@ internal/
 │   ├── skills_butler/          # Skill 管家（registry / recommend / analyze / optimize / evolve）
 │   └── skillrecommend/         # Skill 推荐（rank / rank_feedback / health_provider）
 ├── service/
-│   ├── skill.go                # 薄适配（19 RPC）
+│   ├── skill.go                # 薄适配（23 RPC：19 Skill + 4 标签字典）
 │   ├── skill_import.go         # 导入用例桥接（4 RPC）
 │   ├── skill_import_http.go    # multipart POST /v1/skills/import
 │   ├── skill_intelligence.go   # 智能分析服务
@@ -1172,11 +1288,14 @@ internal/
 ## 附录 A · 与代码模块映射
 
 ```text
-api/kratos/skill/v1/skill.proto          → HTTP 契约（22 RPC）
-internal/service/skill.go                → 适配层（19 RPC）
+api/kratos/skill/v1/skill.proto          → HTTP 契约（26 RPC）
+internal/service/skill.go                → 适配层（23 RPC：19 Skill + 4 标签字典）
 internal/service/skill_import.go         → 导入 biz 桥接（4 RPC）
 internal/service/skill_import_http.go    → multipart POST /v1/skills/import
 internal/biz/skill/skill.go              → 用例与 SkillReader/SkillWriter/Repo 端口
+internal/biz/skill/tag.go                → 标签字典端口（SkillTagReader/SkillTagWriter/TagRepo）+ normalizeTagName
+internal/data/skill_tag_repo.go          → 标签字典 Data 层（Ent + 事务重写 + 实时使用聚合）
+internal/data/ent/schema/skill_tag.go    → skill_tags 表 Ent Schema
 internal/biz/skill.go                    → 类型别名 + 常量 + 构造函数
 internal/biz/skill_similarity.go         → 统一相似度引擎（4 维 + 可选 Embedding）
 internal/biz/skill_merge.go              → 三阶段合并 Usecase

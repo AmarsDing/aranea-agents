@@ -96,6 +96,7 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260803, Name: "cascade_saga_id_type_fix", SQL: "sql/migrations/20260803_cascade_saga_id_type_fix.sql"},
 	{Version: 20260804, Name: "planner_model_columns", SQL: "sql/migrations/20260804_planner_model_columns.sql"},
 	{Version: 20260825, Name: "activity_session_tree_columns", SQL: "sql/migrations/20260825_activity_session_tree_columns.sql"},
+	{Version: 20260826, Name: "event_dead_letter_schema", SQL: "sql/migrations/20260826_event_dead_letter_schema.sql"},
 	{Version: 20260901, Name: "drop_event_store_subsystem", SQL: "sql/migrations/20260901_drop_event_store_subsystem.sql"},
 	{Version: 20260902, Name: "drop_messages_subsystem", SQL: "sql/migrations/20260902_drop_messages_subsystem.sql"},
 	// 20260903 intent_pass_default_on: correct historical false default for non-A2A agents (P1-1).
@@ -181,6 +182,11 @@ var ddlMigrations = []ddlMigration{
 	// drops the legacy tables. Pure Func: JSON functions are dialect-specific
 	// and fresh databases never create the legacy tables.
 	{Version: 20261111, Name: "unified_evolution_convergence", Func: ddlUnifiedEvolutionConvergence},
+	// 20261112 organizations_enable_copy_position_backfill: set organizations.enabled=true
+	// for the seeded agency hierarchy (legacy industry_taxonomy seed wrote enabled=false;
+	// frontend taxonomy filter requires enabled=true), and backfill position_id/position_key
+	// for copy agents created before the agent_duplicate.go fix cleared them.
+	{Version: 20261112, Name: "organizations_enable_copy_position_backfill", Func: ddlOrganizationsEnableCopyPositionBackfill},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

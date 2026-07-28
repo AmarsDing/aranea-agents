@@ -72,6 +72,7 @@ export interface UseAgentSettingsPersistenceDeps {
 
   // Skill catalog
   loadSkillSlugOptions: () => Promise<void>;
+  loadSkillTagOptions: () => Promise<void>;
   loadCodeExecutorCapabilities: () => Promise<void>;
 }
 
@@ -213,6 +214,7 @@ export function useAgentSettingsPersistence(deps: UseAgentSettingsPersistenceDep
         deps.loadProviderModels(),
         deps.loadCatalogTools(),
         deps.loadSkillSlugOptions(),
+        deps.loadSkillTagOptions(),
         deps.loadCodeExecutorCapabilities(),
         deps.channelsStore.loadChannels().catch(() => {}),
       ]);

@@ -114,74 +114,50 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 	sessionID := wc.sessionID
 	requestID := strings.TrimSpace(up.RequestID)
 
-	// Prefer biz.TurnExecutorGateway when available (Phase B2: unified turn entry point).
-	if s.turnExecutor != nil {
-		input := WSTurnInput{
-			SessionID:   sessionID,
-			Content:     strings.TrimSpace(content),
-			AllowQueue:  true,
-			AllowStream: true,
-		}
-		if agentKey, _ := payload["agent_key"].(string); agentKey != "" {
-			input.AgentKey = agentKey
-		}
-		if teamID, _ := payload["team_id"].(string); teamID != "" {
-			input.TeamID = teamID
-		}
-		if opts, ok := payload["options"].(map[string]any); ok {
-			input.Options = buildWSTurnOptions(opts)
-		}
-		s.lg.With(loggateway.SessionID(sessionID)).Info("WS handleUserMessage: 开始处理",
-			loggateway.StepID("ws.user_msg_start"),
-			loggateway.Any("agent_key", input.AgentKey),
-			loggateway.Any("team_id", input.TeamID),
-			loggateway.Any("content_len", len(content)))
-		// Derive from appctx.Ctx() so the turn outlives the WebSocket connection.
-		// Disconnecting the WS no longer cancels in-flight turns; users cancel via
-		// StopGeneration (RunRegistry.Cancel) instead. Aligns with HTTP path
-		// (submitChatMessageAsync) and the No-Timeout principle (2026-06-18).
-		//
-		// P0-02 fix: propagate the authenticated userID into the turn context so
-		// the Runner session key, memory tools, and quota checks use the real user
-		// scope instead of default_user.
-		turnCtx := ctxuser.WithUserID(appctx.Ctx(), wc.userID)
-		safego.Go(turnCtx, "ws-user-message", func() {
-			if err := s.turnExecutor.ExecuteTurn(turnCtx, input); err != nil {
-				s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
-				s.publishWSErrorActivity(sessionID, requestID, "send_failed", err.Error(), input.Content)
-				s.lg.With(loggateway.SessionID(sessionID)).Info("WebSocket error ActivityEvent published",
-					loggateway.StepID("ws.error_activity_published"),
-					loggateway.Any("request_id", requestID))
-			}
-		})
+	// 统一入口：biz.TurnExecutorGateway（Phase B2）。Wire 保证生产环境非 nil；
+	// proto-based ChatSender fallback 已删除（Y3 修复：双路径并存且参数不对称，
+	// 生产从未命中）。
+	if s.turnExecutor == nil {
+		s.lg.Warn("WebSocket user_message dropped: turn executor not available",
+			loggateway.StepID("ws.user_msg_drop"), loggateway.SessionID(sessionID))
 		return
 	}
-
-	// Fallback: proto-based ChatSender (legacy path).
-	req := &chatv1.SendChatMessageRequest{
-		SessionId: sessionID,
-		Content:   strings.TrimSpace(content),
+	input := WSTurnInput{
+		SessionID:   sessionID,
+		Content:     strings.TrimSpace(content),
+		AllowQueue:  true,
+		AllowStream: true,
 	}
 	if agentKey, _ := payload["agent_key"].(string); agentKey != "" {
-		req.AgentKey = &agentKey
+		input.AgentKey = agentKey
 	}
 	if teamID, _ := payload["team_id"].(string); teamID != "" {
-		req.TeamId = &teamID
+		input.TeamID = teamID
 	}
 	if opts, ok := payload["options"].(map[string]any); ok {
-		req.Options = buildChatOptions(opts)
+		input.Options = buildWSTurnOptions(opts)
 	}
-
-	// Derive from appctx.Ctx() so the turn outlives the WebSocket connection
-	// (aligns with HTTP path and No-Timeout principle). Cancellation is handled
-	// via StopGeneration (RunRegistry.Cancel), not via the connection context.
-	// P0-02 fix: propagate authenticated userID into the turn context.
-	legacyCtx := ctxuser.WithUserID(appctx.Ctx(), wc.userID)
-	safego.Go(legacyCtx, "ws-user-message", func() {
-		_, err := s.sender.SendChatMessage(legacyCtx, req)
-		if err != nil {
+	s.lg.With(loggateway.SessionID(sessionID)).Info("WS handleUserMessage: 开始处理",
+		loggateway.StepID("ws.user_msg_start"),
+		loggateway.Any("agent_key", input.AgentKey),
+		loggateway.Any("team_id", input.TeamID),
+		loggateway.Any("content_len", len(content)))
+	// Derive from appctx.Ctx() so the turn outlives the WebSocket connection.
+	// Disconnecting the WS no longer cancels in-flight turns; users cancel via
+	// StopGeneration (RunRegistry.Cancel) instead. Aligns with HTTP path
+	// (submitChatMessageAsync) and the No-Timeout principle (2026-06-18).
+	//
+	// P0-02 fix: propagate the authenticated userID into the turn context so
+	// the Runner session key, memory tools, and quota checks use the real user
+	// scope instead of default_user.
+	turnCtx := ctxuser.WithUserID(appctx.Ctx(), wc.userID)
+	safego.Go(turnCtx, "ws-user-message", func() {
+		if err := s.turnExecutor.ExecuteTurn(turnCtx, input); err != nil {
 			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
-			s.publishWSErrorActivity(sessionID, requestID, "send_failed", err.Error(), req.Content)
+			s.publishWSErrorActivity(sessionID, requestID, "send_failed", err.Error(), input.Content)
+			s.lg.With(loggateway.SessionID(sessionID)).Info("WebSocket error ActivityEvent published",
+				loggateway.StepID("ws.error_activity_published"),
+				loggateway.Any("request_id", requestID))
 		}
 	})
 }
@@ -260,37 +236,6 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 			s.publishWSErrorActivity(sessionID, requestID, "enqueue_rejected", "no active run for session", req.Content)
 		}
 	})
-}
-
-// buildChatOptions builds proto SendMessageOptions from WS payload options.
-func buildChatOptions(opts map[string]any) *chatv1.SendMessageOptions {
-	result := &chatv1.SendMessageOptions{}
-	if dm, _ := opts["dialog_mode"].(string); dm != "" {
-		result.DialogMode = &dm
-	}
-	if p, _ := opts["provider"].(string); p != "" {
-		result.Provider = &p
-	}
-	if m, _ := opts["model"].(string); m != "" {
-		result.Model = &m
-	}
-	if atts, ok := opts["attachments"].([]any); ok {
-		for _, att := range atts {
-			if m, ok := att.(map[string]any); ok {
-				if id, _ := m["id"].(string); id != "" {
-					result.Attachments = append(result.Attachments, &chatv1.AttachmentRef{Id: id})
-				}
-			}
-		}
-	}
-	if kbs, ok := opts["knowledge_bases"].([]any); ok {
-		for _, kb := range kbs {
-			if s, ok := kb.(string); s != "" && ok {
-				result.KnowledgeBases = append(result.KnowledgeBases, s)
-			}
-		}
-	}
-	return result
 }
 
 // publishWSErrorActivity publishes a system.notice (ws_error) plus synthetic

@@ -194,7 +194,8 @@ func (m *mockRepo) PublishSkill(ctx context.Context, id string, validationStatus
 }
 
 func (m *mockRepo) UpsertSkillFromDisk(ctx context.Context, in DiskSyncInput) (Skill, DiskSyncOutcome, error) {
-	return Skill{}, DiskSyncOutcome{}, nil
+	sk := Skill{ID: "disk-" + in.Slug, Name: in.Name, Slug: in.Slug, Status: "published"}
+	return sk, DiskSyncOutcome{ContentChanged: true}, nil
 }
 
 func (m *mockRepo) MarkSkillFilesystemMissing(ctx context.Context, slug string, missing bool) error {
@@ -610,6 +611,19 @@ func TestPublish_EmbedCacheInvalidation(t *testing.T) {
 	}
 	if len(u.embedCache) != 0 {
 		t.Error("expected embed cache to be invalidated")
+	}
+}
+
+func TestUpsertSkillFromDisk_EmbedCacheInvalidation(t *testing.T) {
+	r := newMockRepo()
+	u := NewUsecase(r, &mockEmbedder{})
+	u.embedCache = map[string]embedEntry{"test": {vector: []float32{0.1, 0.2}, cachedAt: time.Now()}}
+	_, _, err := u.UpsertSkillFromDisk(adminCtx(), DiskSyncInput{Name: "Test", Slug: "test", Body: "# Test"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(u.embedCache) != 0 {
+		t.Error("expected embed cache to be invalidated after disk sync content change")
 	}
 }
 

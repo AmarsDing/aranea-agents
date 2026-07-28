@@ -190,6 +190,19 @@ var registryOptInOnlyKeys = map[string]bool{
 	"model_registry_sync": true,
 	"mcp_tool_set":        true,
 	"mcp_broker":          true,
+	// cli_admin_* are seeded with enabled=false (seed_system_admin.go) as
+	// opt-in-only admin tools. Without these entries, applyRegistryAdminDenials
+	// hard-denied them for every agent — including __system_admin__ whose
+	// system_admin profile explicitly names group:cli_admin — so the tools
+	// could never be assembled (member agents hallucinated installs instead).
+	"cli_admin_skill_list":             true,
+	"cli_admin_skill_get":              true,
+	"cli_admin_skill_install_from_url": true,
+	"cli_admin_skill_import_status":    true,
+	"cli_admin_skill_import_apply":     true,
+	"cli_admin_agent_list":             true,
+	"cli_admin_agent_get":              true,
+	"cli_admin_pkg_install_from_url":   true,
 }
 
 func applyRegistryAdminDenials(catalog []Tool, deny map[string]bool) {

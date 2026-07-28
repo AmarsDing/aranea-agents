@@ -4,7 +4,7 @@
 *.exe~
 *.dll
 # Allow vendored Windows pgvector for portable installer (must match bundled PG major).
-!installer/bundled/**/vector.dll
+!build/installer/bundled/**/vector.dll
 *.dylib
 
 # Test binary, built with `go test -c`
@@ -112,7 +112,11 @@ profile.cov
 
 
 # 安装包构建产物（release.yml 运行时生成，勿提交）
-/build/
+# build/ 目录同时存放需要入库的构建脚本（*.ps1）与 NSIS 脚本（installer/），
+# 仅忽略运行时产物：deps（下载的 PG/Redis）、staging*（组装中间态）、release（安装包输出）
+/build/deps/
+/build/staging*/
+/build/release/
 /seed_*.txt
 
 # trpc-agent-go 非核心目录（框架自带示例/文档/测试，项目不 import，且含超长路径文件导致 Windows checkout 失败）

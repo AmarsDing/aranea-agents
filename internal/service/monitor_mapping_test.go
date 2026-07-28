@@ -513,8 +513,8 @@ func TestNotFoundMonitor(t *testing.T) {
 
 func TestDefaultAlertRules(t *testing.T) {
 	rules := monitor.DefaultAlertRules()
-	if len(rules) != 1 {
-		t.Fatalf("len = %d, want 1", len(rules))
+	if len(rules) != 2 {
+		t.Fatalf("len = %d, want 2", len(rules))
 	}
 	r := rules[0]
 	if r.ID != "default-runner-errors" {
@@ -537,5 +537,29 @@ func TestDefaultAlertRules(t *testing.T) {
 	}
 	if r.Severity != "warning" {
 		t.Errorf("Severity = %q, want %q", r.Severity, "warning")
+	}
+
+	// P0-R2a: sequencer dead-letter backlog 告警（任何 dead-letter 即持久化丢失）。
+	dl := rules[1]
+	if dl.ID != "default-sequencer-dead-letter" {
+		t.Errorf("ID = %q, want %q", dl.ID, "default-sequencer-dead-letter")
+	}
+	if dl.Name != "Sequencer dead-letter backlog" {
+		t.Errorf("Name = %q, want %q", dl.Name, "Sequencer dead-letter backlog")
+	}
+	if dl.MetricKey != "sequencer.dead_letter_count" {
+		t.Errorf("MetricKey = %q, want %q", dl.MetricKey, "sequencer.dead_letter_count")
+	}
+	if dl.Threshold != 1 {
+		t.Errorf("Threshold = %v, want 1", dl.Threshold)
+	}
+	if dl.WindowMinutes != 5 {
+		t.Errorf("WindowMinutes = %d, want 5", dl.WindowMinutes)
+	}
+	if !dl.Enabled {
+		t.Error("Enabled = false, want true")
+	}
+	if dl.Severity != "critical" {
+		t.Errorf("Severity = %q, want %q", dl.Severity, "critical")
 	}
 }

@@ -140,7 +140,7 @@
       </q-banner>
       <q-banner rounded class="q-mt-md settings-info-banner">
         月度费用上限请在
-        <q-btn flat dense color="primary" label="「权限」" @click="$emit('open-permissions-tab')" />
+        <q-btn flat dense color="primary" label="「token配额」" @click="$emit('open-permissions-tab')" />
         Tab 配置用量配额（Chat Turn 前生效）。
       </q-banner>
     </section>

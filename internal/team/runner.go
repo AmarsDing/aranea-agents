@@ -37,6 +37,11 @@ type Runner struct {
 	codeExecFactory *localexec.Factory
 	cfg             RunnerConfig
 	mediator        *TeamRunMediator
+	// deliverableGate vetoes run-success finalization for DAG teams that
+	// produced no real deliverable (set_deliverable never called). Optional:
+	// nil keeps legacy behavior (always success). Wired in production to
+	// biz.SpiritTeamController.HasRealDeliverable.
+	deliverableGate func(ctx context.Context, team biz.Team) (bool, error)
 	lg              loggateway.Logger
 }
 
@@ -57,6 +62,18 @@ func (r *Runner) SetAwaitHookProvider(fn func(runCtx context.Context, sessionID,
 		return
 	}
 	r.cfg.AwaitHookProvider = fn
+}
+
+// SetDeliverableGate wires the real-deliverable gate consulted by
+// finalizeTeamRun before marking a DAG team run success. The run FSM treats
+// success as terminal, so the veto must happen BEFORE the success transition
+// — a post-hoc service-layer flip cannot repair the run record. Mirrors the
+// service gate in HandleTeamTurnResult as a second line of defense.
+func (r *Runner) SetDeliverableGate(fn func(ctx context.Context, team biz.Team) (bool, error)) {
+	if r == nil {
+		return
+	}
+	r.deliverableGate = fn
 }
 
 func NewRunner(

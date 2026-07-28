@@ -1,10 +1,14 @@
 package archlint
 
 import (
+	"bufio"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -100,6 +104,150 @@ func TestBizPortInterfaceMethodCount(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestFileLineCount enforces the AS-COG-01 invariant "file lines ≤ 500" as a
+// ratchet gate (P2-Y2):
+//
+//   - A .go file NOT in file_line_baseline.txt exceeding 500 lines → FAIL
+//     (new debt is rejected).
+//   - A baseline-listed file that grew beyond its recorded count → FAIL
+//     (existing debt may only shrink).
+//   - A baseline-listed file now ≤500 lines → logged, entry should be removed.
+//   - A baseline entry whose file no longer exists → logged, entry should be
+//     removed.
+//
+// Scope: internal/ and cmd/, excluding generated code (internal/data/ent/,
+// *.pb.go, wire_gen.go) and the vendored pkg/trpc-agent-go tree.
+//
+// Regenerate the baseline after a sanctioned split/refactor (count EVERY line
+// including blanks — do NOT use `Measure-Object -Line`, which skips blanks):
+//
+//	$files = Get-ChildItem -Path internal,cmd -Recurse -Filter *.go | ? {
+//	  $_.FullName -notmatch '\\ent\\' -and $_.Name -notmatch '\.pb\.go$' -and
+//	  $_.Name -ne 'wire_gen.go' -and $_.FullName -notmatch 'pkg\\trpc-agent-go' }
+//	foreach ($f in $files) { $n = [System.IO.File]::ReadAllLines($f.FullName).Count
+//	  if ($n -gt 500) { "$($f.FullName -replace [regex]::Escape((Get-Location).Path+'\'),'' -replace '\\','/') $n" } }
+func TestFileLineCount(t *testing.T) {
+	const maxLines = 500
+	repoRoot := filepath.Join("..", "..")
+
+	baseline, err := loadLineCountBaseline(filepath.Join(repoRoot, "internal", "archlint", "file_line_baseline.txt"))
+	if err != nil {
+		t.Fatalf("failed to load file-line baseline: %v", err)
+	}
+
+	seen := make(map[string]bool, len(baseline))
+	for _, root := range []string{"internal", "cmd"} {
+		walkRoot := filepath.Join(repoRoot, root)
+		err := filepath.WalkDir(walkRoot, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				// Skip generated ent tree and vendored trpc-agent-go.
+				rel := filepath.ToSlash(mustRel(t, repoRoot, path))
+				if rel == "internal/data/ent" || strings.HasPrefix(rel, "pkg/trpc-agent-go") {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			name := d.Name()
+			if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, ".pb.go") || name == "wire_gen.go" {
+				return nil
+			}
+			rel := filepath.ToSlash(mustRel(t, repoRoot, path))
+			lines, lerr := countFileLines(path)
+			if lerr != nil {
+				t.Errorf("count lines %s: %v", rel, lerr)
+				return nil
+			}
+			base, listed := baseline[rel]
+			if listed {
+				seen[rel] = true
+				switch {
+				case lines <= maxLines:
+					t.Logf("AS-COG-01: %s is now %d lines (<= %d) — remove it from file_line_baseline.txt", rel, lines, maxLines)
+				case lines > base:
+					t.Errorf("AS-COG-01: %s grew to %d lines (baseline %d) — file debt may only shrink; split the file or lower the baseline entry after a sanctioned refactor", rel, lines, base)
+				}
+				return nil
+			}
+			if lines > maxLines {
+				t.Errorf("AS-COG-01: %s has %d lines (max %d) and is not in file_line_baseline.txt — split the file before adding new code to it", rel, lines, maxLines)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", root, err)
+		}
+	}
+
+	for rel := range baseline {
+		if !seen[rel] {
+			if _, statErr := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(rel))); os.IsNotExist(statErr) {
+				t.Logf("AS-COG-01: baseline entry %s no longer exists — remove it from file_line_baseline.txt", rel)
+			}
+		}
+	}
+}
+
+// loadLineCountBaseline parses file_line_baseline.txt into path → line count.
+// Lines starting with '#' and blank lines are ignored.
+func loadLineCountBaseline(path string) (map[string]int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	out := make(map[string]int)
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			return nil, fmt.Errorf("invalid baseline line in %s: %q", path, line)
+		}
+		n, cerr := strconv.Atoi(fields[1])
+		if cerr != nil {
+			return nil, fmt.Errorf("invalid baseline line in %s: %q", path, line)
+		}
+		out[fields[0]] = n
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// countFileLines returns the number of lines in the file (matching
+// (Get-Content | Measure-Object -Line) semantics: newline-terminated records).
+func countFileLines(path string) (int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	n := 0
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
+	for sc.Scan() {
+		n++
+	}
+	return n, sc.Err()
+}
+
+func mustRel(t *testing.T, base, target string) string {
+	t.Helper()
+	rel, err := filepath.Rel(base, target)
+	if err != nil {
+		t.Fatalf("rel %s → %s: %v", base, target, err)
+	}
+	return rel
 }
 
 // TestStateMachineCoverage verifies AS-FIT-01 / AS-FSM-01 invariant:

@@ -21,12 +21,23 @@ import (
 type CatalogAgentResolver struct {
 	Deps chatagent.TRPCBuilderDeps
 	lg   loggateway.Logger
+	// MemberCustomTools injects per-member custom tools (e.g. cli_admin_* for
+	// __system_admin__) into graph agent node builds — the same hook as
+	// team.RunnerConfig.MemberCustomTools on the non-graph path. Without it,
+	// agent-specific dep-backed tools are only assembled on the direct chat
+	// path and a system_admin graph node would not see cli_admin_* in its LLM
+	// tool list. Optional; when nil, nodes get only registry + static custom tools.
+	MemberCustomTools func(ctx context.Context, ag biz.Agent) []trpctool.Tool
 }
 
 var _ graphtrpc.AgentResolver = (*CatalogAgentResolver)(nil)
 
-func NewCatalogAgentResolver(deps chatagent.TRPCBuilderDeps, lg loggateway.Logger) *CatalogAgentResolver {
-	return &CatalogAgentResolver{Deps: deps, lg: lg}
+func NewCatalogAgentResolver(deps chatagent.TRPCBuilderDeps, lg loggateway.Logger, memberCustomTools ...func(ctx context.Context, ag biz.Agent) []trpctool.Tool) *CatalogAgentResolver {
+	r := &CatalogAgentResolver{Deps: deps, lg: lg}
+	if len(memberCustomTools) > 0 {
+		r.MemberCustomTools = memberCustomTools[0]
+	}
+	return r
 }
 
 // WithExtraCustomTools returns a clone of the resolver whose builder deps
@@ -49,6 +60,13 @@ func (r *CatalogAgentResolver) ResolveAgent(ctx context.Context, agentRef string
 	}
 
 	deps := r.Deps
+	// Per-member custom tools (cli_admin_* for __system_admin__, etc.) so
+	// agent-specific dep-backed tools are available inside graph agent nodes
+	// just as they are on the direct chat path. Appended before the build so
+	// the cache key (customToolNames) reflects them.
+	if r.MemberCustomTools != nil {
+		deps.CustomTools = append(append([]trpctool.Tool{}, deps.CustomTools...), r.MemberCustomTools(ctx, ag)...)
+	}
 	if eff, err := r.fetchEffectiveTools(ctx, ag.ID); err == nil {
 		deps.CachedEffectiveTools = eff
 		deps.ToolVersionHash = chatagent.ComputeToolVersionHash(eff)

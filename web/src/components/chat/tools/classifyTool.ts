@@ -12,6 +12,8 @@
  * mcp / code / todo / other.
  */
 
+import { MEDIA_TOOL_NAMES } from '../../../features/chat/mediaTypes';
+
 export type ToolCategory =
   | 'shell'
   | 'browser'
@@ -105,8 +107,8 @@ const CODE_TOOLS = new Set([
 /** Todo management tools. */
 const TODO_TOOLS = new Set(['todo_write', 'todo_read', 'todo_update', 'task_create', 'task_update', 'task_complete']);
 
-/** Media generation tools. */
-const MEDIA_TOOLS = new Set(['generate_image', 'generate_video', 'image_to_video']);
+/** Media generation tools. 名称单一来源见 features/chat/mediaTypes.ts。 */
+const MEDIA_TOOLS = new Set<string>(MEDIA_TOOL_NAMES);
 
 /** MCP tool name prefix (case-insensitive). */
 const MCP_PREFIXES = ['mcp_', 'mcp.', 'mcp/'];

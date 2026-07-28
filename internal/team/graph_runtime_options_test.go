@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+
+	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 )
 
 func TestApplyTeamRuntimeExecutionOptions_checkpointDefault(t *testing.T) {
@@ -99,8 +101,10 @@ func TestFinalizeRuntimeGraphConfig_deliverableStateField(t *testing.T) {
 	for _, sf := range out.StateFields {
 		if sf.Name == biz.DeliverableStateKey {
 			found = true
-			if sf.Reducer != biz.ReducerCover {
-				t.Fatalf("deliverable reducer=%q want %q", sf.Reducer, biz.ReducerCover)
+			// P2 并行安全：deliverable 使用 MergeReducer（顶层 key 级合并），
+			// 并行成员写不同 topic 不再互相覆盖丢失。
+			if sf.Reducer != biz.ReducerMerge {
+				t.Fatalf("deliverable reducer=%q want %q", sf.Reducer, biz.ReducerMerge)
 			}
 			if sf.Type != "map[string]any" {
 				t.Fatalf("deliverable type=%q want map[string]any", sf.Type)
@@ -130,5 +134,40 @@ func TestFinalizeRuntimeGraphConfig_deliverableStateField(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected exactly 1 deliverable StateField after double finalize, got %d", count)
+	}
+}
+
+// TestDeliverableMergeReducer_ParallelTopicUnion 模拟并行成员在同一 superstep
+// 写不同 topic：两次 StateDelta 顺序经 MergeReducer 合并后两个 topic 都必须存活
+//（CoverReducer 语义下后写者会整 map 覆盖、丢先写者的 topic）。
+func TestDeliverableMergeReducer_ParallelTopicUnion(t *testing.T) {
+	base := map[string]any{"summary": "base"}
+	// 成员 A 写 topic=research（其 Call 输出 = base 快照 + 自身 topic）
+	deltaA := map[string]any{"summary": "base", "research": map[string]any{"findings": "A"}}
+	// 成员 B 基于同一 base 快照写 topic=draft
+	deltaB := map[string]any{"summary": "base", "draft": map[string]any{"v": 1}}
+
+	merged := trpcgraph.MergeReducer(base, deltaA)
+	merged = trpcgraph.MergeReducer(merged, deltaB)
+	final, ok := merged.(map[string]any)
+	if !ok {
+		t.Fatalf("merged state is %T, want map[string]any", merged)
+	}
+	if _, ok := final["research"]; !ok {
+		t.Fatalf("parallel topic research lost: %v", final)
+	}
+	if _, ok := final["draft"]; !ok {
+		t.Fatalf("parallel topic draft lost: %v", final)
+	}
+}
+
+// TestDeliverableMergeReducer_SameKeyLatestWins 确认主导顺序场景不变：
+// 同一 key（如 summary）仍是后写者覆盖。
+func TestDeliverableMergeReducer_SameKeyLatestWins(t *testing.T) {
+	base := map[string]any{"summary": "A"}
+	merged := trpcgraph.MergeReducer(base, map[string]any{"summary": "B", "extra": 1})
+	final := merged.(map[string]any)
+	if final["summary"] != "B" || final["extra"] != 1 {
+		t.Fatalf("same-key overwrite broken: %v", final)
 	}
 }

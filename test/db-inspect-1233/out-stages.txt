@@ -1,0 +1,12 @@
+COLS: [id team_id session_id status display_name]
+ROW 1: [id=edf2fc96-90c8-5755-8dcf-7c2aeb7fb436] [team_id=32a264364a7a2b71503ce0ce] [session_id=730886c8-8d35-4d07-8420-1ee1ef7ccf7c] [status=failed] [display_name=创作一首关于月亮的诗并撰写点评（分析意境、修辞手法和艺术特色）] 
+ROW 2: [id=2878a5ea-fe9b-55b2-980e-d1a3e7b83b10] [team_id=43169da6c8ffa1acc261a84e] [session_id=5c7b23fe-020f-4925-b964-2e18cc5589a5] [status=failed] [display_name=Install the skills/docx Skill from the GitHub repository by c...] 
+ROW 3: [id=4980cc46-9454-596b-84b6-619430e5987d] [team_id=fbfd3a6ad3d7f07683b66467] [session_id=4b711dbf-e7c4-40d6-b494-b1f00c9ae5af] [status=completed] [display_name=Collect results from all three skill installations and produc...] 
+ROW 4: [id=33ff5545-5af5-5766-bf59-531a1137d1cd] [team_id=587fe8c112a4385ba9623882] [session_id=8a901825-55c5-439b-ae65-0b6e34cffd04] [status=failed] [display_name=将所有分析内容和结论整合成结构清晰的投资报告，包括引言、各章节、结论和附录，并排版校对。] 
+ROW 5: [id=783b5a93-df6a-532c-a13f-3e0e78622458] [team_id=b816ceaf769e6d054b982f16] [session_id=8a901825-55c5-439b-ae65-0b6e34cffd04] [status=failed] [display_name=收集新能源行业最新数据、报告、新闻、政策文件等，整理成结构化资料库，供后续分析使用。] 
+ROW 6: [id=ae9b5704-9982-5af7-8584-ce60739de073] [team_id=cc919f62dfe5e81b4a28d240] [session_id=8a901825-55c5-439b-ae65-0b6e34cffd04] [status=failed] [display_name=综合行业概况、细分领域、政策、竞争和技术分析，评估投资风险并提出建议。] 
+ROW 7: [id=6071e80d-8913-5dfb-9fe2-e6c70e38dda8] [team_id=42c1d21d949a148e27d3fd63] [session_id=8a901825-55c5-439b-ae65-0b6e34cffd04] [status=failed] [display_name=基于收集的数据，分析新能源行业整体市场规模、增长率、发展阶段等，形成行业概况部分。] 
+ROW 8: [id=d31d80c7-339e-53b0-ab77-0a922e06452b] [team_id=0e2f498e15f3acb02645c18b] [session_id=8a901825-55c5-439b-ae65-0b6e34cffd04] [status=failed] [display_name=分析市场竞争格局、主要企业市占率及战略，以及技术发展趋势（如钙钛矿、固态电池等）。] 
+ROW 9: [id=257b9d80-bd60-5529-bbf4-af8794d3c21b] [team_id=5c1c1eefbde52070e58f72d1] [session_id=8a901825-55c5-439b-ae65-0b6e34cffd04] [status=failed] [display_name=深入分析光伏、风电、储能、新能源汽车等细分领域，并梳理国内外相关政策环境。] 
+ROW 10: [id=0eb49363-cc22-5c71-9e13-2f5c60d2aaec] [team_id=d234d6e0989f8973c58e319e] [session_id=70583205-0859-4d7e-a041-62715aca2c5e] [status=failed] [display_name=Gather updated market data (2024-2025) for photovoltaic, wind...] 
+TOTAL: 10

@@ -1,0 +1,10 @@
+COLS: [tool_name count]
+ROW 1: [tool_name=read_session_history] [count=6] 
+ROW 2: [tool_name=list_agent_sessions] [count=3] 
+ROW 3: [tool_name=file_read_file] [count=2] 
+ROW 4: [tool_name=synthesize_results] [count=1] 
+ROW 5: [tool_name=file_list_file] [count=1] 
+ROW 6: [tool_name=working_memory_list] [count=1] 
+ROW 7: [tool_name=plan_and_execute] [count=1] 
+ROW 8: [tool_name=search_messages] [count=1] 
+TOTAL: 8

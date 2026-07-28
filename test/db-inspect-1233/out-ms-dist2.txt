@@ -1,0 +1,6 @@
+COLS: [tr tid status count]
+ROW 1: [tr=has_run] [tid=empty] [status=failed] [count=61] 
+ROW 2: [tr=has_run] [tid=empty] [status=running] [count=2] 
+ROW 3: [tr=has_run] [tid=set] [status=completed] [count=142] 
+ROW 4: [tr=has_run] [tid=set] [status=failed] [count=26] 
+TOTAL: 4

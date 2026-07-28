@@ -12,6 +12,7 @@ import (
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	tooltrpc "aranea-agents/internal/tools/trpc"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 // KnowledgeFacade groups knowledge subsystem pointers used by the team Runner.
@@ -58,4 +59,11 @@ type RunnerConfig struct {
 	// SessionChildLookup resolves member agent session IDs for child_session_id
 	// in session activities. Optional; when nil, falls back to team session ID.
 	SessionChildLookup SessionChildLookup
+	// MemberCustomTools injects per-member custom tools (e.g. cli_admin_* for
+	// __system_admin__) into team member builds. Without this hook, agent-specific
+	// tools that require live deps are only assembled on the direct chat path —
+	// a system_admin member inside a team would not see cli_admin_* in its LLM
+	// tool list and would hallucinate substitute tools.
+	// Optional; when nil, members get only registry tools + deliverable tools.
+	MemberCustomTools func(ctx context.Context, ag biz.Agent) []trpctool.Tool
 }

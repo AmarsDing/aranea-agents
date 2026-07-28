@@ -49,6 +49,7 @@ func FetchFromURL(repoURL, ref string, quiet bool) (pkgDir string, cleanup func(
 	args := cloneArgs(repoURL, ref, quiet, tmpDir)
 
 	cmd := exec.Command("git", args...)
+	cmd.Env = cloneEnv()
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	var stderrBuf bytes.Buffer
@@ -66,6 +67,27 @@ func FetchFromURL(repoURL, ref string, quiet bool) (pkgDir string, cleanup func(
 		return "", nil, fmt.Errorf("git clone %s: %w", repoURL, err)
 	}
 	return tmpDir, cleanup, nil
+}
+
+// cloneEnv builds the environment for the git subprocess. When
+// ARANEA_GIT_PROXY is set (e.g. socks5://127.0.0.1:1080), it overrides any
+// pre-existing HTTP(S)_PROXY/ALL_PROXY so git clones route through the
+// configured proxy; otherwise the process environment passes through as-is.
+func cloneEnv() []string {
+	env := os.Environ()
+	proxy := strings.TrimSpace(os.Getenv("ARANEA_GIT_PROXY"))
+	if proxy == "" {
+		return env
+	}
+	out := make([]string, 0, len(env)+3)
+	for _, kv := range env {
+		k, _, _ := strings.Cut(kv, "=")
+		if strings.EqualFold(k, "HTTP_PROXY") || strings.EqualFold(k, "HTTPS_PROXY") || strings.EqualFold(k, "ALL_PROXY") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return append(out, "HTTP_PROXY="+proxy, "HTTPS_PROXY="+proxy, "ALL_PROXY="+proxy)
 }
 
 // stderrTail returns the trailing slice of s (at most max chars), trimmed.

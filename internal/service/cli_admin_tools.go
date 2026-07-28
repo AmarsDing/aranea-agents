@@ -119,16 +119,30 @@ func (r cliAdminAgentRepo) GetAgentByAgentKey(ctx context.Context, agentKey stri
 }
 
 func (o *ChatOrchestrator) cliAdminTools(ctx context.Context, ag biz.Agent) []trpctool.Tool {
-	if o == nil || !cli_admin.IsCLIAdminAllowed(strings.TrimSpace(ag.AgentKey)) {
+	if o == nil {
 		return nil
 	}
-	return cli_admin.RegisterAll(cli_admin.Deps{
-		SkillRepo:           cliAdminSkillRepo{uc: o.td().ReadDeps.CLIAdminSkillUC},
-		AgentRepo:           cliAdminAgentRepo{uc: o.td().ReadDeps.CLIAdminAgentUC},
-		APIBaseURL:          cliAdminAPIBaseURL(ctx, o.td().ReadDeps.Settings),
-		APIToken:            cliAdminAPIToken(),
-		AllowedPrivateHosts: cliAdminAllowedPrivateHosts(),
-	})
+	return NewCLIAdminToolFactory(o.td().ReadDeps.CLIAdminSkillUC, o.td().ReadDeps.CLIAdminAgentUC, o.td().ReadDeps.Settings)(ctx, ag)
+}
+
+// NewCLIAdminToolFactory returns a per-agent custom-tool injector attaching the
+// cli_admin_* tool set for the __system_admin__ agent (nil for any other agent).
+// Shared by the direct chat path (ChatOrchestrator), the A2A / OpenAI-compat
+// endpoints, and team member builds (team.RunnerConfig.MemberCustomTools) so
+// system_admin has an identical tool surface no matter how it is invoked.
+func NewCLIAdminToolFactory(skillUC biz.CLIAdminSkillLister, agentUC biz.CLIAdminAgentLister, settings biz.SystemSettingRepo) func(ctx context.Context, ag biz.Agent) []trpctool.Tool {
+	return func(ctx context.Context, ag biz.Agent) []trpctool.Tool {
+		if !cli_admin.IsCLIAdminAllowed(strings.TrimSpace(ag.AgentKey)) {
+			return nil
+		}
+		return cli_admin.RegisterAll(cli_admin.Deps{
+			SkillRepo:           cliAdminSkillRepo{uc: skillUC},
+			AgentRepo:           cliAdminAgentRepo{uc: agentUC},
+			APIBaseURL:          cliAdminAPIBaseURL(ctx, settings),
+			APIToken:            cliAdminAPIToken(),
+			AllowedPrivateHosts: cliAdminAllowedPrivateHosts(),
+		})
+	}
 }
 
 // cliAdminAllowedPrivateHosts reads ARANEA_ALLOWED_PRIVATE_HOSTS (comma-separated

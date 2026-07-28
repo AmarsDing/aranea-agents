@@ -71,7 +71,16 @@ type TeamGraphRunFinisherPort interface {
 
 	// SetAwaitHookProvider wires the await-hook callback factory.
 	SetAwaitHookProvider(fn AwaitHookProvider)
+
+	// SetDeliverableGate wires the real-deliverable gate that vetoes
+	// run-success finalization for DAG teams with no real deliverable
+	// (2026-07-28 修复3). Backed by SpiritTeamController.HasRealDeliverable.
+	SetDeliverableGate(fn TeamDeliverableGateFunc)
 }
+
+// TeamDeliverableGateFunc reports whether the team produced a real
+// deliverable via set_deliverable. Mirrors SpiritTeamController.HasRealDeliverable.
+type TeamDeliverableGateFunc func(ctx context.Context, team Team) (bool, error)
 
 // TeamGraphCoordPort is the biz-level port for the team graph run coordinator.
 // It abstracts the coordinator that manages graph execution steps.
