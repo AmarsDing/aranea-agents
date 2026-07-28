@@ -82,6 +82,10 @@ export type SkillListQuery = {
   status?: string;
   filesystem_missing?: boolean | null;
   sync_origin?: string;
+  /** 排序字段：tag（按首个标签名）| name（按名称）；空 = 默认按更新时间倒序。 */
+  sort_by?: 'tag' | 'name' | '';
+  /** 排序方向：asc | desc；空 = asc。 */
+  sort_order?: 'asc' | 'desc' | '';
   page?: number;
   page_size?: number;
 };

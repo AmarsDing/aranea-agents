@@ -84,6 +84,15 @@ type ExperienceReport func(*sql.Selector)
 // FailurePattern is the predicate function for failurepattern builders.
 type FailurePattern func(*sql.Selector)
 
+// FederationAuditLog is the predicate function for federationauditlog builders.
+type FederationAuditLog func(*sql.Selector)
+
+// FederationOrg is the predicate function for federationorg builders.
+type FederationOrg func(*sql.Selector)
+
+// FederationPolicy is the predicate function for federationpolicy builders.
+type FederationPolicy func(*sql.Selector)
+
 // FlowLogEvent is the predicate function for flowlogevent builders.
 type FlowLogEvent func(*sql.Selector)
 

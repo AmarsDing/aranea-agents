@@ -92,8 +92,15 @@ func (r *eventDeliveryOutboxRepo) MarkPublished(ctx context.Context, id string, 
 	if publishedAt.IsZero() {
 		publishedAt = time.Now().UTC()
 	}
+	// published_at is timestamptz on Postgres (raw-DDL column) — comparing it
+	// to '' raises 22007 (invalid input syntax). SQLite stores TEXT where
+	// legacy rows may hold '', so keep the '' guard only for SQLite.
+	unpublishedCond := "published_at IS NULL"
+	if r.data.Dialect().IsSQLite() {
+		unpublishedCond = "(published_at IS NULL OR published_at='')"
+	}
 	q := r.data.Dialect().RenumberPlaceholders(
-		`UPDATE event_delivery_outbox SET published_at=? WHERE id=? AND (published_at IS NULL OR published_at='')`,
+		`UPDATE event_delivery_outbox SET published_at=? WHERE id=? AND ` + unpublishedCond,
 	)
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, publishedAt.UTC().Format(time.RFC3339Nano), id)
 	if err != nil {

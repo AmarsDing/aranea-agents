@@ -188,3 +188,102 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 - **限流后端选择**：多 Pod 部署必须配置 Redis（`data.redis`），否则内存限流器跨 Pod 不一致；工厂会 Warn 提示。
 - **A2A 表非 Ent Schema**：`EnsureA2ASchema` raw SQL + `ALTER TABLE` 补丁属 TECH-DEBT DEV-10，迁移至 DDL Migration Registry 时需版本化。
 - **auth 校验偏差**：biz `ValidateAuthConfig` 与 `remote_client.go` 支持集合不一致，使用 `mtls` 鉴权时需注意 biz 校验层。
+
+---
+
+## 子模块：联邦 A2A 网络
+
+> 2026-07-28 启动。原 `phase5-差异化创新/04-联邦A2A网络.md` 任务清单（T1-T17）评审修订后并入本节。
+> 需求见 [需求文档 §子模块](./26-a2a-protocol.md#子模块联邦-a2a-网络)；设计见 [设计文档 §子模块](./26-a2a-protocol.design.md#子模块联邦-a2a-网络)（含 F.1 评审修订记录）。
+
+### 1. 模块定位
+
+跨组织 A2A 联邦治理层：组织注册 / 信任等级 / 调用策略 / 配额 / 审计 / 联邦目录 / 卡片同步。**复用**既有 A2A 远程调用基座（`a2a_remote_agents` + `InvokeRemoteRegistry` + `Limiter` + `ClientAuthOptions`），新增治理链；不改 `call_agent` / Admin Invoke 主路径。
+
+### 2. 现状评估（复用基座）
+
+| 项 | 状态 | 联邦复用方式 |
+|----|------|-------------|
+| 远程 Agent 注册/认证/健康/重试 | ✅ | 联邦 Agent = `a2a_remote_agents` + `org_id` |
+| `Limiter`（Redis/内存 QPS） | ✅ | 配额执行器（key 前缀 `fed:`） |
+| `ClientAuthOptions`（4 种认证） | ✅ | 组织级认证透传 |
+| `GatewayDiscover` 聚合模式 | ✅ | 联邦目录参考（读缓存，非实时） |
+| health cron + Prometheus | ✅ | 联邦健康监控复用 |
+
+### 3. 任务清单
+
+> 编号沿用原规划 T1-T17（含修订标注）。状态：📋 未开始 / 🟡 进行中 / ✅ 完成
+
+#### Phase 1 — 核心模型 + 持久化（TDD）
+
+| 任务ID | 描述 | 状态 |
+|--------|------|------|
+| T1 | 领域模型 + 窄接口：`internal/biz/a2a/federation.go`（FederationOrg/FederationPolicy/FederationAuditLog + 常量 + Org/Policy/Audit 三个 Repo 接口）；`RemoteAgent` + `RegisterRemoteAgentInput` 加 `OrgID` | ✅ |
+| T2 | 联邦 Proto：`api/kratos/a2a/v1/federation.proto`（8 RPC，修订自原 6 RPC，见设计 F.7） | ✅ |
+| T3 | Ent Schema + Repo：`federation_orgs` / `federation_policies` / `federation_audit_logs` 三表 Schema + `go generate` + `internal/data/a2a_federation_repo.go`；`a2a_remote_agents` 加 `org_id` 列（DDL Migration Registry 版本化） | ✅ |
+| T4 | 仓储集成测试（修订：PG 模式 `testhelper.SetupTestPG` schema-per-test 隔离，SQLite helper 已移除）：Org upsert/信任更新/Policy upsert/Audit 创建+结果更新+日计数 | ✅ |
+
+#### Phase 2 — 治理组件（TDD，可并行）
+
+| 任务ID | 描述 | 状态 |
+|--------|------|------|
+| T5 | `TrustManager`（`federation_trust.go`）：trusted/neutral 允许、untrusted 拒绝 | 📋 |
+| T6 | `PolicyEngine`（`federation_policy.go`）：内存缓存 + 显式策略优先 + approval 按 deny 处理 | 📋 |
+| T7 | `AuditLogger`（`federation_audit.go`）：RecordDecision fail-closed / RecordResult 失败仅 Warn | 📋 |
+| T8 | `QuotaChecker`（`federation_quota.go`）：复用 `Limiter`（MaxPerMin 每分钟滑动窗口）+ `CountCallsSince`（日配额） | 📋 |
+
+#### Phase 3 — 目录与同步
+
+| 任务ID | 描述 | 状态 |
+|--------|------|------|
+| T9 | `Directory`（`federation_directory.go`）：org 过滤 + remote agents 分组 + capability 过滤，读缓存目录 | 📋 |
+| T10 | `AgentCardSync.SyncOrgCards`：手动触发，逐个拉取失败跳过，返回成功数 | 📋 |
+
+#### Phase 4 — 用例与调用链
+
+| 任务ID | 描述 | 状态 |
+|--------|------|------|
+| T11 | `FederationUsecase`（`federation_usecase.go`）：注册/列表/删除/信任/策略/目录/审计查询 + `InvokeFederated` 治理链编排 | 📋 |
+| T12 | 联邦目标解析：InvokeFederated 内 `ListRemoteAgents(workspace)` 内存过滤 `OrgID+agentID`（修订：不改 `callee_resolve.go` 主路径） | 📋 |
+| T13 | `internal/a2a/federation_invoke.go`：复用 `InvokeRemoteRegistry` 执行远程调用（修订：不改 `remote_invoke.go`） | 📋 |
+
+#### Phase 5 — 服务层
+
+| 任务ID | 描述 | 状态 |
+|--------|------|------|
+| T14 | `internal/service/a2a_federation.go`：FederationService 8 RPC 适配（proto ↔ biz，auth_config 响应 masked） | 📋 |
+| T15 | Wire 注入 + 服务层集成测试（mock biz） | 📋 |
+
+#### Phase 6 — 前端与端到端
+
+| 任务ID | 描述 | 状态 |
+|--------|------|------|
+| T16 | 前端 A2APage「联邦」Tab：`features/a2a/federation*` + `components/a2a/federation/*` 四面板 + 多语言映射 | 📋 |
+| T17 | 端到端验证：httptest mock 远程组织 A2A 端点，覆盖验收标准 1-7 | 📋 |
+
+### 4. 改动文件清单（预估）
+
+| 操作 | 文件 |
+|------|------|
+| 新增 | `api/kratos/a2a/v1/federation.proto` |
+| 新增 | `internal/biz/a2a/federation.go` / `federation_trust.go` / `federation_policy.go` / `federation_quota.go` / `federation_audit.go` / `federation_directory.go` / `federation_usecase.go`（+ 各 `_test.go`） |
+| 新增 | `internal/data/ent/schema/federation_org.go` / `federation_policy.go` / `federation_audit_log.go`（+ 生成物） |
+| 新增 | `internal/data/a2a_federation_repo.go`（+ `_test.go`） |
+| 新增 | `internal/a2a/federation_invoke.go`（+ `_test.go`） |
+| 新增 | `internal/service/a2a_federation.go`（+ `_test.go`） |
+| 修改 | `internal/biz/a2a/a2a.go`（RemoteAgent/RegisterRemoteAgentInput + OrgID） |
+| 修改 | `internal/data/a2a.go`（scan/insert + org_id） |
+| 新增 | `internal/data/sql/migrations/YYYYMMDD_a2a_remote_agents_org_id.sql` + registry 注册 |
+| 修改 | `cmd/admin/wire.go`（FederationUsecase/FederationService 注入） |
+| 修改 | `internal/server/http.go`（FederationService 注册） |
+| 新增 | `web/src/features/a2a/federationApi.ts` / `federationTypes.ts`、`web/src/components/a2a/federation/*.vue` |
+| 修改 | `web/src/pages/A2APage.vue`（联邦 Tab）、`web/src/stores/a2a/index.ts`、i18n 语言包 |
+
+### 5. 验收标准
+
+- [ ] `go test ./internal/biz/a2a/... ./internal/data/... ./internal/service/... ./internal/a2a/...` 全绿
+- [ ] `go build ./...` 编译通过
+- [ ] 端到端：注册组织 → 发现 Agent → 调用成功（审计 allowed+success）
+- [ ] 端到端：untrusted 拒绝 403（审计 denied_trust）；deny 策略拒绝 403（denied_policy）；超日配额 429（denied_quota）
+- [ ] 端到端：决策审计创建失败时调用被拒绝（fail-closed）
+- [ ] 文档同步：本任务清单状态 + 需求/设计章节与实际实现一致

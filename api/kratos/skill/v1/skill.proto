@@ -113,6 +113,10 @@ message ListSkillsRequest {
   int32 page_size = 6;
   string filesystem_missing = 7;
   string sync_origin = 8;
+  // 排序字段：tag（按首个标签名）| name（按名称）；空 = 默认按更新时间倒序。
+  string sort_by = 9;
+  // 排序方向：asc | desc；空 = asc。
+  string sort_order = 10;
 }
 
 message ListSkillsResponse {

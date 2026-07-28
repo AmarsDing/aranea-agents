@@ -830,6 +830,9 @@ type SearchSessionsRequest struct {
 	UserId        string                 `protobuf:"bytes,11,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	SortBy        string                 `protobuf:"bytes,12,opt,name=sort_by,json=sortBy,proto3" json:"sort_by,omitempty"`
 	SortOrder     string                 `protobuf:"bytes,13,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
+	// root_only=true 时只返回 parent_session_id 为空的根会话（侧边栏/管理列表），
+	// 排除团队成员会话等子会话；默认 false 保持兼容。
+	RootOnly      bool `protobuf:"varint,14,opt,name=root_only,json=rootOnly,proto3" json:"root_only,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -953,6 +956,13 @@ func (x *SearchSessionsRequest) GetSortOrder() string {
 		return x.SortOrder
 	}
 	return ""
+}
+
+func (x *SearchSessionsRequest) GetRootOnly() bool {
+	if x != nil {
+		return x.RootOnly
+	}
+	return false
 }
 
 type SearchSessionsResponse struct {
@@ -7411,7 +7421,7 @@ const file_kratos_session_v1_session_proto_rawDesc = "" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12<\n" +
 	"\x05items\x18\x02 \x03(\v2&.kratos.session.v1.SessionTimelineItemR\x05items\x12C\n" +
-	"\asummary\x18\x03 \x01(\v2).kratos.session.v1.SessionTimelineSummaryR\asummary\"\xf3\x02\n" +
+	"\asummary\x18\x03 \x01(\v2).kratos.session.v1.SessionTimelineSummaryR\asummary\"\x90\x03\n" +
 	"\x15SearchSessionsRequest\x12\x1d\n" +
 	"\n" +
 	"owner_type\x18\x01 \x01(\tR\townerType\x12\x19\n" +
@@ -7428,7 +7438,8 @@ const file_kratos_session_v1_session_proto_rawDesc = "" +
 	"\auser_id\x18\v \x01(\tR\x06userId\x12\x17\n" +
 	"\asort_by\x18\f \x01(\tR\x06sortBy\x12\x1d\n" +
 	"\n" +
-	"sort_order\x18\r \x01(\tR\tsortOrder\"\x8e\x01\n" +
+	"sort_order\x18\r \x01(\tR\tsortOrder\x12\x1b\n" +
+	"\troot_only\x18\x0e \x01(\bR\brootOnly\"\x8e\x01\n" +
 	"\x16SearchSessionsResponse\x120\n" +
 	"\x05items\x18\x01 \x03(\v2\x1a.kratos.session.v1.SessionR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x14\n" +

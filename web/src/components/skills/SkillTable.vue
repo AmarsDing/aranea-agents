@@ -21,17 +21,21 @@
 
     <template #body-cell-tags="props">
       <q-td :props="props">
-        <div class="app-registry-chip-wrap">
-          <q-chip
-            v-for="tag in props.row.tags"
-            :key="tag.name"
-            dense
-            :outline="tag.source === 'system'"
-            color="primary"
-            text-color="white"
-          >
-            {{ tag.name }}
-          </q-chip>
+        <div class="app-registry-chip-wrap skill-tags-cell">
+          <span v-for="group in groupSkillTags(props.row.tags)" :key="group.dimension || '__plain'" class="skill-tag-group">
+            <span v-if="group.dimension" class="skill-tag-group__dim">{{ group.dimension }}</span>
+            <q-chip
+              v-for="tag in group.tags"
+              :key="tag.name"
+              dense
+              :outline="tag.source === 'system'"
+              color="primary"
+              text-color="white"
+            >
+              {{ tag.label }}
+              <q-tooltip v-if="group.dimension">{{ tag.name }}</q-tooltip>
+            </q-chip>
+          </span>
           <span v-if="!props.row.tags?.length" class="text-caption text-grey-6">无标签</span>
         </div>
       </q-td>
@@ -93,8 +97,14 @@
 
     <template #body-cell-last="props">
       <q-td :props="props">
-        <div>{{ props.row.last_agent_display_name || '未调用' }}</div>
-        <div class="text-caption text-grey-7">{{ formatDate(props.row.last_invoked_at) }}</div>
+        <template v-if="props.row.last_invoked_at">
+          <div class="app-registry-cell-primary">{{ props.row.last_agent_display_name || '未知 Agent' }}</div>
+          <div class="text-caption text-grey-7">
+            {{ formatRelativeTime(props.row.last_invoked_at) }}
+            <q-tooltip>{{ formatDate(props.row.last_invoked_at) }}</q-tooltip>
+          </div>
+        </template>
+        <span v-else class="text-caption text-grey-6">未调用</span>
       </q-td>
     </template>
 
@@ -157,7 +167,7 @@
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import SkillStatsStrip from './SkillStatsStrip.vue';
-import type { Skill } from '../../features/skills/types';
+import type { Skill, SkillTag } from '../../features/skills/types';
 import {
   SKILL_TABLE_COLUMNS,
   skillStatusLabel as statusLabel,
@@ -182,6 +192,41 @@ const emit = defineEmits<{
 }>();
 
 const tablePagination = { rowsPerPage: 0 };
+
+type SkillTagView = { name: string; label: string; source: string };
+type SkillTagGroup = { dimension: string; tags: SkillTagView[] };
+
+/** 按 `维度:值` 前缀分组标签；无维度的标签归入 dimension='' 组（显示全名）。 */
+function groupSkillTags(tags: SkillTag[]): SkillTagGroup[] {
+  const grouped = new Map<string, SkillTagView[]>();
+  const plain: SkillTagView[] = [];
+  for (const t of tags ?? []) {
+    const idx = t.name.indexOf(':');
+    if (idx > 0) {
+      const dim = t.name.slice(0, idx);
+      const label = t.name.slice(idx + 1) || t.name;
+      if (!grouped.has(dim)) grouped.set(dim, []);
+      grouped.get(dim)!.push({ name: t.name, label, source: t.source });
+    } else {
+      plain.push({ name: t.name, label: t.name, source: t.source });
+    }
+  }
+  const out: SkillTagGroup[] = [...grouped.entries()].map(([dimension, list]) => ({ dimension, tags: list }));
+  if (plain.length) out.push({ dimension: '', tags: plain });
+  return out;
+}
+
+/** 相对时间：<1min 刚刚，<60min N 分钟前，<24h N 小时前，<7d N 天前，否则本地化日期。 */
+function formatRelativeTime(value: string) {
+  const t = new Date(value).getTime();
+  if (Number.isNaN(t)) return '-';
+  const diff = Date.now() - t;
+  if (diff < 60_000) return '刚刚';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
+  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`;
+  return new Date(t).toLocaleDateString();
+}
 
 function formatDate(value?: string) {
   if (!value) return '-';

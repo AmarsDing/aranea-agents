@@ -468,6 +468,51 @@ WS 客户端已实现，但 `tool.error` envelope 类型未定义（使用通用
 | CLI-45 | `aranea init` 引导 | CLI | 0.5 | 首启检测后端 + 写默认 config（不偷偷拉远端） |
 | CLI-46 | E2E smoke 纳入 `make ci` | CLI + ops | 1 | `make smoke-cli`：启 admin → login → ls → 关 admin |
 
+### 3.5 Phase P3（API 覆盖补全，2026-07-28）✅ 已完成
+
+> 背景：服务端 proto 增至 37 个服务后，CLI 覆盖度审查发现 orgimport 断路 bug 与大量未覆盖域。本轮全部落地。
+
+#### CLI-50 orgimport applier 断路修复 ✅
+
+| 问题 | 修复 | 代码锚点 |
+|------|------|----------|
+| `/v1/agent-categories*` 路由不存在 | 类别 upsert 改走 OrganizationService（`POST /v1/organization`、`PATCH /v1/organization/{id}`），字段 `key`→`org_key`，level `industry`→`company` 映射 | `internal/orgimport/applier.go::upsertCategory/orgLevel` |
+| `PUT /v1/agents/{id}`、`PUT /v1/teams/{id}` 405 | 改 PATCH（body 即 Agent/Team 消息本身） | `applier.go::upsertAgent/upsertTeam` |
+| `?agent_key=`/`?key=` 过滤被静默忽略，items[0] 误配任意记录 | Agent 分页全量 + 客户端精确匹配 `agentKey`；Team/Organization 全量拉取精确匹配 `teamKey`/`orgKey` | `applier.go::lookupAgentByKey/lookupTeamByKey/lookupCategoryByKey` |
+| Team payload `key/name/members` 与 proto 不符 | 改 `team_key`/`display_name`/`definition_json`（OrchestrationSpec `{version:2,mode:sequential,members[]}`） | `applier.go::upsertTeam` |
+| Team 成员引用本次导入范围外的既有 agent 时 `agent_id` 静默为空 | 兜底 `lookupAgentByKey` 精确查询；解析失败则整队放弃并由 Apply 聚合错误继续下一队 | `applier.go::upsertTeam`（成员 fallback，2026-07-28 评审修复） |
+
+回归测试：`internal/orgimport/applier_test.go`（10 用例，含"列表首项为无关记录时不得误更新"与"成员解析失败不得写团队"回归）。
+
+#### CLI-51 已有域子命令补全 ✅
+
+| 域 | 新增子命令 | 代码锚点 |
+|----|-----------|----------|
+| session | `archive` `restore` `pin` `unpin` `compact` `export` | `internal/cli/cmd/session.go`、`client/session.go` |
+| skill | `files` `file-get` `file-put` `file-delete` `import`（两阶段：multipart 上传 → 轮询 → `--apply`） | `cmd/skill.go`、`client/skill.go` |
+| cron | `reset-failures` | `cmd/cron.go`、`client/cron.go` |
+| mcp | `validate`（校验未保存配置负载，POST /v1/mcp-servers/validate；校验失败返回 `VALIDATION_FAILED` 非零退出，符合 US-08 CI 契约） | `cmd/mcp.go`、`client/mcp.go` |
+| tool | `test` | `cmd/tool.go`、`client/tool.go` |
+
+#### CLI-52 新域命令（7 个）✅
+
+| 命令 | 子命令 | 代码锚点 |
+|------|--------|----------|
+| `memory` | `facts ls`、`proposals ls/approve/reject`、`search`、`recall-debug` | `cmd/memory.go`、`client/memory.go` |
+| `knowledge` | `collections ls/get/create/delete`、`documents ls/get/delete`、`search` | `cmd/knowledge.go`、`client/knowledge.go` |
+| `eval` | `datasets ls/get/create`、`runs ls/get/create`、`results` | `cmd/evaluation.go`、`client/evaluation.go` |
+| `org` | `ls` `tree` `get` `create` `update` `delete` `reorder` | `cmd/organization.go`、`client/organization.go` |
+| `taxonomy` | `ls` `tree` `get` `create` `update` `delete` `reorder` | `cmd/taxonomy.go`、`client/taxonomy.go` |
+| `model-catalog` | `ls` `get` `policy` `policy-set` `sync` | `cmd/model_catalog.go`、`client/model_catalog.go` |
+| `a2a` | `discover`（POST /v1/a2a/remote-discover）、`remote-agents ls/get/add/delete`、`audit ls`、`config get` | `cmd/a2a.go`、`client/a2a.go` |
+
+偏差说明：`a2a remote-agents get` 由 ls 客户端过滤实现（proto 无单 get 端点）；`a2a config` 只读（proto 无 PUT）；`memory recall-debug` 为 POST。全部已在 `cmd/aranea/main.go` 注册。
+
+#### P3 退出条件
+
+- [x] `go build ./internal/cli/... ./cmd/aranea/...` 通过
+- [x] `go test ./internal/cli/... ./internal/orgimport/...` 全绿（client/cmd/orgimport 全部 ok）
+
 ---
 
 ## 4. 依赖关系图

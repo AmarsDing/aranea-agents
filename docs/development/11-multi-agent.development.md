@@ -168,6 +168,72 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
   - ✅ P2-d：装配收口 `deliverableToolsForDef` → `ToolsWithContract`（仅 team 编译路径注入契约；graph adapter 通用路径无契约）
   - 📋 后续：前端 UI 展示 deliverable 内容（含 ack 状态）
 
+### Phase 11（🔄 12:33 会话修复包）— 成员状态管线 / 结果检索结构化 / 结果导向状态
+
+**背景**：12:33 skill 安装会话暴露四问题——① Graph 成员全部「执行中」与汇报不符；② 精灵检索团队结果困难（read_session_history 考古 + get_deliverable 猜错 topic）；③ 成员执行活动面板无内容；④ 安装指令以 shell 命令下达（成员幻觉调用不存在的 exec_command）、状态按消息生命周期而非执行结果显示。评审报告与决策见 `docs/reports/2026-07-28-review-adr-system-agent-team-membership.md`（ADR-06）。
+
+**深入评审结论（2026-07-28）**：
+
+- P2 原案 F9「复用 VerificationGateExecutor 挂 cli_admin_skill_get 验证门」**不可行**：现有三种门（dept_lead_approval/cross_dept_delivery/borrow_approval）全是 LLM 质量评判门，无法表达「调用工具并断言返回」的确定性事实检查；安装验证是事实断言而非质量评判，LLM 门既不匹配也可被交付物文本欺骗。修正为新增确定性门类型 `tool_assertion`。
+- F8 必须三层合力（任一层单修无效）：①精灵 IDENTITY.md 补子任务意图化规则；②分解 prompt 加 system-admin capability 与意图式 description 规则；③system_admin agent **无 prompt 文件**（seed_system_admin.go 仅 seed agent 行），是成员幻觉 exec_command 的直接根因，必须 seed prompt 声明确切工具名。
+- F10 归因边界：MDC topic 是团队共享黑板无法按成员归因，第一版交付物证据仅用于单成员团队（12:33 即此场景）；多成员团队用 session 状态 + steps 错误证据。
+- 根本解闭环：指令可路由（F8）→ 执行有工具（registryOptInOnlyKeys 已修）→ 结果有机器校验（F9 + 既有 Fix 1 真实交付物闸门）→ 状态以结果为据（F10）→ 汇报基于结构化产出（F7）。
+
+**P0 — 成员状态管线修复（✅ 已完成）**
+
+- ✅ F1：`team/runner_helpers.go` publishTeamStepActivity 补 `TaskID=RootTaskActivityIDFromCtx(ctx)`；Version 按事件类型定值（created=1 / updated=2），消除 `VersionLT` 守卫静默拒绝导致的状态卡死
+- ✅ F2：系统 Agent 成员生命周期完整化（ADR-06）——删除 `biz/spirit_team_usecase.go` AssembleTeam 系统 Agent 跳过逻辑 + `service/spirit_team.go` publishSpiritTeamAssembled filteredKeys 过滤；过滤点上移到分配层
+- ✅ F3：`web/src/stores/chat/activityV2Store.ts` getMemberSessionSteps guard 去除 taskId 条件（路径 1 SessionID 精确匹配不需要 taskId）
+- ✅ F4：`service/spirit_team.go` publishV2TeamRunCompletion 兜底——定义成员搜索不到 agent session 时以 team session 发 updated 事件（防御性，防回归）
+
+**P1 — 结果检索结构化（细化）**
+
+- ⏳ F5：MDC 自动生成 + topic 直映射
+  - `buildSpiritTeamDefinitionJSON`（biz/spirit_team_usecase.go:1246）增加 `deliverables []DeliverableContract` 参数；非空时写入 definition `"deliverable_contract": {"entries":[...]}`：`topic=contract.Name`（契约名即 topic，杜绝二次映射导致的猜名）、`required=true`、`description=contract.Description`、`schema_json=contract.SchemaJSON` 透传、`required_keys` 从 SchemaJSON 的 `required` 数组推导（非法/空 Schema 则留空，仅靠完成时 advisory）
+  - AssembleTeam 调用点透传 `params.Deliverables`；DAG 编译路径（TaskOrchestrator.UpdateTeamDefinitionJSON）若重生成 definition 须保留 deliverable_contract（实施时验证路径）
+  - `DeliverableProtocolSuffix`（:2215）契约声明段每项追加显式提交指令 `set_deliverable(topic="<name>", data={...})`，消除成员自由命名 topic 的空间（12:33 精灵猜错 topic 根因）
+- ⏳ F6：新增 `get_team_deliverable` 工具挂 spirit profile
+  - 新文件 `internal/tools/spirit_deliverable_tool.go`（trpcfunction 模式，仿 spirit_tools.go）。输入 `{team_id?, max_chars?}`；team_id 空 → 返回本 spirit session 团队清单（team_id/名称/状态/任务）引导选择；非空 → `SpiritTeamController.ReadUpstreamDeliverable(ctx, "", teamID, maxChars)`（空 readerSessionID 经 resolveReaderContracts 天然豁免契约校验）；团队非 completed 或读取失败时把 error 作为结构化字段返回（`{team_id, team_name, status, content?, error?}`），不抛 tool error
+  - `agent_effective_tools.go` toolProfiles["spirit"] 追加 `"get_team_deliverable"`；工具注册点与 plan_and_execute 相同（Wire 装配）
+- ⏳ F7：合成 trigger 结构化注入
+  - biz/spirit_synthesis.go 新类型 `TeamDeliverableDigest{TeamName, TaskName, Status, DeliverableSummary}`；`BuildSynthesisSummaryTrigger` 签名扩展 `digests []TeamDeliverableDigest`，trigger 文本在失败事实段前插入「各团队交付物摘要」（含成功团队，LLM 不再考古）
+  - biz 新方法 `ListTeamDeliverableDigests(ctx, spiritSessionID)`：ListBySpiritSessionID → 逐团队解析 DeliverablesOutputJSON（DeliverableRef 信封 Summary）拼装
+  - service/spirit_team.go checkAllTeamsCompleted（:749 前）收集 digests 传入；更新 spirit_synthesis_report_test.go 两例签名
+
+**P2 — 指令方式 + 结果导向状态（修正后）**
+
+- ⏳ F8：三层指令意图化
+  - 层 1 精灵 IDENTITY.md：系统管家任务的子任务描述必须声明意图（做什么+来源 URL+指定 `cli_admin_*` 工具名），禁止 shell 命令文本
+  - 层 2 buildDecompositionPrompt（task_planner_impl.go:1159）：required_capabilities 预定义 tag 加 `system-admin`；规则——系统管理类子任务标 `system-admin` 且 description 意图式（禁 shell）
+  - 层 3 system_admin prompt seed：为 `__system_admin__` seed prompt 文件（声明 `cli_admin_skill_install_from_url(url)` 等工具清单与用途、完成必须 `set_deliverable` 汇报 status、禁止幻觉 exec_command 等不存在工具）
+- ⏳ F9：确定性 tool_assertion 验证门（修正原案）
+  - `verification_gate.go` 新增 `GateTypeToolAssertion VerificationGateType = "tool_assertion"`；VerificationGate 扩展字段 `Tool/ArgumentsJSON/AssertPath/AssertEquals`
+  - VerificationGateExecutor 新增 `executeToolAssertion`：经工具注册表调用指定工具（第一版白名单仅 `cli_admin_skill_get`），对 JSON 结果按 AssertPath 断言等于 AssertEquals；调用失败/断言不等 → approved=false
+  - 门来源：team definition `verification_gates` 字段（resolveVerificationGates 已支持解析）；安装类任务的团队定义生成路径自动挂 `{tool:"cli_admin_skill_get", assert_path:"enabled", assert_equals:"true"}`（key 从任务意图提取）
+- ⏳ F10：结果导向成员状态
+  - biz 新方法 `MemberExecutionEvidence(ctx, sessionID) (failed bool, reason string)`：session status=interrupted/failed → failed；steps 含 failed/cancelled → failed（附首个失败 step 摘要）
+  - service publishV2TeamRunCompletion 成员循环内：团队 completed 时 per-member 调 MemberExecutionEvidence 覆盖 memberStatus；单成员团队追加交付物证据（HasRealDeliverable=false → failed）；cancelled 保持 skipped
+  - 「部分完成 = 失败 + 完成情况说明」由 F7 digest 文案承载；状态只有 等待/执行中/成功/失败，无第三态
+
+**改动文件清单**：
+
+- `internal/team/runner_helpers.go`（F1 ✅）
+- `internal/biz/spirit_team_usecase.go`（F2 ✅ / F5 / F10 biz 方法）
+- `internal/service/spirit_team.go`（F2 ✅ / F4 ✅ / F7 接线 / F10 判定）
+- `web/src/stores/chat/activityV2Store.ts`（F3 ✅）
+- `internal/biz/member_deliverable_contract.go`（F5 schema required 推导辅助）
+- `internal/tools/spirit_deliverable_tool.go`（F6 新工具）+ 工具 Wire 装配点 + `internal/biz/agent_effective_tools.go` spirit profile（F6）
+- `internal/biz/spirit_synthesis.go`（F7）+ `spirit_synthesis_report_test.go`
+- `internal/scenario/system/prompts/IDENTITY.md`（F8 层 1）+ `internal/agent/task_planner_impl.go`（F8 层 2）+ `internal/data/seed_system_admin.go`（F8 层 3 prompt seed）
+- `internal/biz/verification_gate.go`（F9 新门类型）+ 门定义生成路径（F9 接线）
+
+**验收标准**：
+
+- [ ] DAG 团队（含系统 Agent 成员）完成后，member_sessions_v2 全部终态且 TaskID 非空；Graph 成员状态与汇报一致
+- [ ] 成员执行活动面板（MemberSessionPanel）展示步骤流
+- [ ] 团队 definition 含 deliverable_contract（topic=契约名）；成员按显式 topic 提交 set_deliverable；精灵 `get_team_deliverable` 一次调用取得结构化结果；合成 trigger 内嵌各团队交付物摘要
+- [ ] 「安装 skill X」指令意图式下达、经 `cli_admin_skill_install_from_url` 执行 + tool_assertion 门校验；成员状态以执行结果为准（失败即 failed，无第三种状态）
+
 ---
 
 ## 5. 验收标准

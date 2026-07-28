@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	stderrors "errors"
 	"fmt"
 	"strings"
@@ -745,7 +746,10 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	if result.FailedTeams > 0 {
 		failures = s.team.SpiritUC.ListFailedTeamBriefs(ctx, spiritSessionID)
 	}
-	trigger := biz.BuildSynthesisSummaryTrigger(result.TotalTeams, result.CompletedTeams, result.FailedTeams, failures)
+	// F7 (Phase 11)：内嵌各终态团队的交付物摘要，LLM 基于真实产出写报告，
+	// 无需 read_session_history 考古。
+	digests := s.team.SpiritUC.ListTeamDeliverableDigests(ctx, spiritSessionID)
+	trigger := biz.BuildSynthesisSummaryTrigger(result.TotalTeams, result.CompletedTeams, result.FailedTeams, failures, digests)
 	if _, err := s.turnGateway.ExecuteTurn(ctx, biz.TurnInput{
 		SessionID:    spiritSessionID,
 		Content:      trigger,
@@ -1045,6 +1049,13 @@ func (a *SpiritTeamAssembler) ListAllTeams(ctx context.Context, spiritSessionID 
 	return a.spiritUC.ListAllTeams(ctx, spiritSessionID)
 }
 
+// ReadUpstreamDeliverable delegates to the biz usecase, backing the spirit's
+// get_team_deliverable tool (F6, Phase 11). Together with ListAllTeams it
+// makes SpiritTeamAssembler satisfy tools.SpiritTeamDeliverablePort.
+func (a *SpiritTeamAssembler) ReadUpstreamDeliverable(ctx context.Context, readerSessionID, teamID string, maxChars int) (biz.UpstreamDeliverableContent, error) {
+	return a.spiritUC.ReadUpstreamDeliverable(ctx, readerSessionID, teamID, maxChars)
+}
+
 func (a *SpiritTeamAssembler) GetMaxParallelTeams(ctx context.Context, spiritSessionID string) int {
 	return a.spiritUC.GetMaxParallelTeams(ctx, spiritSessionID)
 }
@@ -1141,20 +1152,11 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	// GraphStage created 由 PublishV2Board 负责；节点状态由 PlanExecutor 更新。
 	// 不再在此发布 v1 team-based graph_stage 快照（与 v2 GraphStage 双真相源冲突）。
 
-	// 2026-07-04 问题 5 修复：在构建 members 数组和发布 v2 MemberSession
-	// created 事件之前过滤系统 Agent。之前仅 AssembleTeam 过滤了系统 Agent
-	// （不创建 DB session），但 publishSpiritTeamAssembled 仍用原始 agentKeys
-	// 发布 MemberSession created 事件，导致系统 Agent 的 MemberSession 记录
-	// 永远停在 running 状态（无 DB session → publishV2TeamRunCompletion 搜不到
-	// → 不发布 updated 事件）。
-	filteredKeys := make([]string, 0, len(agentKeys))
-	for _, k := range agentKeys {
-		if biz.IsSystemAgentKey(k) {
-			continue
-		}
-		filteredKeys = append(filteredKeys, k)
-	}
-	agentKeys = filteredKeys
+	// ADR-06 (12:33 修复)：不再过滤系统 Agent。此前 filteredKeys 把系统 Agent
+	// 排除在 MemberSession created 事件与 TeamStage.Members 之外，导致 Planner
+	// 显式编入团队的 __system_admin__（安装 skill 等合法任务）无状态实体：
+	// Graph 成员卡缺失或卡死 running、完成事件无法触达。系统 Agent 的分配约束
+	// 上移到 Allocator/Planner 层；进入定义的成员一律拥有完整 MemberSession 生命周期。
 
 	// Build members array so the frontend TeamCard can render the member list.
 	// Problem 2 fix: previously agent_name was set to agent_key (showing raw
@@ -1374,6 +1376,51 @@ func (a *SpiritTeamAssembler) publishV2TeamRunAndMemberSessions(
 	}
 }
 
+// resolveMemberOutcomeStatus implements F10 (Phase 11) outcome-oriented member
+// status: when the team reports completed, the member's final status is decided
+// by execution EVIDENCE, not the message lifecycle (12:33: members returning
+// text were shown successful even when the underlying work failed).
+//
+// Evidence chain (evaluated only when base=Completed):
+//  1. MemberExecutionEvidence (interrupted session / failed|cancelled step)
+//     → failed with the evidence reason.
+//  2. Single-member DAG team: HasRealDeliverable=false/err → failed
+//     ("completed must be proven" — same posture as the Fix-1 deliverable
+//     gate, which treats gateErr as no-deliverable). Restricted to DAG teams
+//     because non-DAG teams carry no deliverable obligation
+//     (HasRealDeliverable=false by definition); restricted to single-member
+//     teams because the MDC deliverable state is a shared blackboard that
+//     cannot be attributed to one member.
+//
+// skipped (team cancelled) and failed (team failed) pass through unchanged:
+// evidence never overrides a terminal member status derived from the team.
+// A nil controller is tolerated (evidence unavailable → keep base status).
+func resolveMemberOutcomeStatus(
+	ctx context.Context,
+	ctrl biz.SpiritTeamController,
+	team biz.Team,
+	base biz.MemberSessionStatus,
+	memberSessionID string,
+	singleMember bool,
+) (biz.MemberSessionStatus, string) {
+	if base != biz.MemberSessionStatusCompleted || ctrl == nil {
+		return base, ""
+	}
+	if failed, reason := ctrl.MemberExecutionEvidence(ctx, memberSessionID); failed {
+		return biz.MemberSessionStatusFailed, reason
+	}
+	if singleMember && team.DagNodeID != "" {
+		has, err := ctrl.HasRealDeliverable(ctx, team)
+		if err != nil {
+			return biz.MemberSessionStatusFailed, "交付物校验失败（infra），无法证明成员产出: " + err.Error()
+		}
+		if !has {
+			return biz.MemberSessionStatusFailed, "成员未通过 set_deliverable 提交真实交付物（团队 completed 回调无产出）"
+		}
+	}
+	return base, ""
+}
+
 // publishV2TeamRunCompletion 发布 v2 TeamRun 完成事件 + MemberSession 更新事件。
 // 由 HandleTeamTurnResult 在团队状态变为 completed/failed/cancelled 时调用。
 //
@@ -1532,6 +1579,16 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 		)
 	}
 	memberCount := 0
+	publishedKeys := make(map[string]bool, len(result.Items))
+	// F10 (Phase 11) 结果导向成员状态：预统计可归属成员数——交付物证据仅
+	// 用于单成员团队（MDC state 是团队共享黑板，多成员无法按成员归因）。
+	eligibleMembers := 0
+	for _, sess := range result.Items {
+		if sess.SessionType == "agent" && sess.MemberAgentKey != "" {
+			eligibleMembers++
+		}
+	}
+	singleMember := eligibleMembers == 1
 	for _, sess := range result.Items {
 		if sess.SessionType != "agent" {
 			continue
@@ -1541,6 +1598,7 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 			continue
 		}
 		memberCount++
+		publishedKeys[agentKey] = true
 		msID := string(agent.NewMemberSessionActivityID(teamRunID, agentKey))
 		s.lg.Info("publishV2TeamRunCompletion: 派生 MemberSession ID",
 			loggateway.StepID("spirit.v2.team_run_completion.msid"),
@@ -1550,6 +1608,20 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 			loggateway.Str("agent_key", agentKey),
 			loggateway.Str("member_session_db_id", sess.ID),
 		)
+		// F10：团队 completed 时以执行结果证据覆盖成员状态（详见
+		// resolveMemberOutcomeStatus 文档注释）。
+		msStatus, outcomeReason := resolveMemberOutcomeStatus(ctx, s.team.SpiritUC, team, memberStatus, sess.ID, singleMember)
+		if outcomeReason != "" {
+			s.lg.Warn("publishV2TeamRunCompletion: F10 结果证据覆盖成员状态",
+				loggateway.StepID("spirit.v2.team_run_completion.member_outcome"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Str("agent_key", agentKey),
+				loggateway.Str("member_session_db_id", sess.ID),
+				loggateway.Str("base_status", string(memberStatus)),
+				loggateway.Str("outcome_status", string(msStatus)),
+				loggateway.Str("reason", outcomeReason),
+			)
+		}
 		ms := biz.MemberSession{
 			ID:              msID,
 			TeamRunID:       teamRunID,
@@ -1558,12 +1630,76 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 			SessionID:       sess.ID,
 			SpiritSessionID: spiritSessionID,
 			AgentKey:        agentKey,
-			Status:          memberStatus,
+			Status:          msStatus,
 			StartedAt:       now,
 			FinishedAt:      &now,
 			Version:         2,
+			Error:           outcomeReason,
 		}
 		s.seq.Publish(ctx, biz.NewMemberSessionUpdatedEvent(ms))
+	}
+	// F4 (12:33 修复) 兜底：团队定义中的成员若无 agent session（创建失败、深度
+	// 超限等），session 搜索覆盖不到 → 永远收不到 updated 事件 → MemberSession
+	// 卡 running。以团队主 session 补发终态事件，保证定义成员状态必达终态。
+	if team.ID != "" && strings.TrimSpace(team.DefinitionJSON) != "" {
+		var defProbe struct {
+			Members []struct {
+				AgentKey string `json:"agent_key"`
+				AgentID  string `json:"agent_id"`
+				Name     string `json:"name"`
+			} `json:"members"`
+		}
+		if uerr := json.Unmarshal([]byte(team.DefinitionJSON), &defProbe); uerr == nil {
+			fallbackSessionID := ""
+			for _, sess := range result.Items {
+				if sess.SessionType == "team" {
+					fallbackSessionID = sess.ID
+					break
+				}
+			}
+			// 团队主 session 未检索到时放弃兜底：空 SessionID 会覆盖 created
+			// 事件已写入的 session_id（updated 走全字段 update）。
+			if fallbackSessionID == "" {
+				defProbe.Members = nil
+			}
+			for _, m := range defProbe.Members {
+				key := strings.TrimSpace(m.AgentKey)
+				if key == "" {
+					key = strings.TrimSpace(m.AgentID)
+				}
+				if key == "" || publishedKeys[key] {
+					continue
+				}
+				publishedKeys[key] = true
+				memberCount++
+				name := strings.TrimSpace(m.Name)
+				if name == "" {
+					name = key
+				}
+				msID := string(agent.NewMemberSessionActivityID(teamRunID, key))
+				ms := biz.MemberSession{
+					ID:              msID,
+					TeamRunID:       teamRunID,
+					TeamStageID:     teamStageID,
+					TaskID:          rootTaskID,
+					SessionID:       fallbackSessionID,
+					SpiritSessionID: spiritSessionID,
+					AgentKey:        key,
+					AgentName:       name,
+					Status:          memberStatus,
+					StartedAt:       now,
+					FinishedAt:      &now,
+					Version:         2,
+				}
+				s.lg.Warn("publishV2TeamRunCompletion: 定义成员无 agent session，兜底补发终态事件",
+					loggateway.StepID("spirit.v2.team_run_completion.fallback"),
+					loggateway.Str("team_id", teamID),
+					loggateway.Str("agent_key", key),
+					loggateway.Str("fallback_session_id", fallbackSessionID),
+				)
+				s.seq.Publish(ctx, biz.NewMemberSessionUpdatedEvent(ms))
+			}
+		}
 	}
 	// 2026-07-04 问题 C1 修复：记录发布的 MemberSession 完成事件数量。
 	s.lg.Info("publishV2TeamRunCompletion: 已发布 MemberSession 完成事件",

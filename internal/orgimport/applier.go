@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -159,17 +158,19 @@ func (a *Applier) Apply(spec *Spec) (*ApplyResult, error) {
 
 // upsertCategory creates the category if absent, otherwise updates it.
 // B-3 fix: previously this was POST-only, breaking idempotency.
+// API note: categories are organization nodes (OrganizationService); spec level
+// "industry" maps to organization level "company" (company/department/position).
 func (a *Applier) upsertCategory(key, name, description, parentID, level string, result *ApplyResult) (string, error) {
 	if a.opts.DryRun {
 		result.Skipped++
 		return "dry-run-" + key, nil
 	}
 	payload := map[string]any{
-		"key":         key,
+		"org_key":     key,
 		"name":        name,
 		"description": description,
 		"parent_id":   parentID,
-		"level":       level,
+		"level":       orgLevel(level),
 		"status":      "active",
 		"enabled":     true,
 	}
@@ -178,19 +179,20 @@ func (a *Applier) upsertCategory(key, name, description, parentID, level string,
 		return "", err
 	}
 	if existingID != "" {
-		if _, err := a.put(fmt.Sprintf("/v1/agent-categories/%s", existingID), payload); err != nil {
+		// UpdateOrganization: PATCH /v1/organization/{id}, body is the node itself.
+		if _, err := a.patch(fmt.Sprintf("/v1/organization/%s", existingID), payload); err != nil {
 			return "", err
 		}
 		result.Updated++
 		return existingID, nil
 	}
-	resp, err := a.post("/v1/agent-categories", payload)
+	resp, err := a.post("/v1/organization", payload)
 	if err != nil {
 		// Race: another import created it between lookup and post → fall through to update.
 		var httpErr *HTTPError
 		if errors.As(err, &httpErr) && httpErr.IsConflict() {
 			if existingID, lookupErr := a.lookupCategoryByKey(key); lookupErr == nil && existingID != "" {
-				if _, putErr := a.put(fmt.Sprintf("/v1/agent-categories/%s", existingID), payload); putErr == nil {
+				if _, patchErr := a.patch(fmt.Sprintf("/v1/organization/%s", existingID), payload); patchErr == nil {
 					result.Updated++
 					return existingID, nil
 				}
@@ -203,9 +205,19 @@ func (a *Applier) upsertCategory(key, name, description, parentID, level string,
 	return id, nil
 }
 
-// lookupCategoryByKey returns the category ID for the given key, or "" if absent.
+// orgLevel maps spec category levels to OrganizationNode levels.
+// Spec uses "industry"; the organization API uses "company".
+func orgLevel(level string) string {
+	if level == "industry" {
+		return "company"
+	}
+	return level
+}
+
+// lookupCategoryByKey returns the organization node ID for the given key, or "" if absent.
+// ListOrganization has no filter params, so we fetch all nodes and exact-match orgKey client-side.
 func (a *Applier) lookupCategoryByKey(key string) (string, error) {
-	resp, err := a.get("/v1/agent-categories?key=" + url.QueryEscape(key))
+	resp, err := a.get("/v1/organization")
 	if err != nil {
 		var httpErr *HTTPError
 		if errors.As(err, &httpErr) && httpErr.IsNotFound() {
@@ -213,17 +225,31 @@ func (a *Applier) lookupCategoryByKey(key string) (string, error) {
 		}
 		return "", err
 	}
-	if items, ok := resp["items"].([]any); ok && len(items) > 0 {
-		if first, ok := items[0].(map[string]any); ok {
-			if id, ok := first["id"].(string); ok {
-				return id, nil
+	if items, ok := resp["items"].([]any); ok {
+		for _, it := range items {
+			node, ok := it.(map[string]any)
+			if !ok {
+				continue
+			}
+			if mapString(node, "orgKey", "org_key") == key {
+				if id, ok := node["id"].(string); ok {
+					return id, nil
+				}
 			}
 		}
 	}
-	if id, ok := resp["id"].(string); ok {
-		return id, nil
-	}
 	return "", nil
+}
+
+// mapString reads a string field from a protojson-decoded map, accepting both
+// camelCase (server default) and snake_case keys.
+func mapString(m map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := m[k].(string); ok && v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // ─── Agent ────────────────────────────────────────────────────────────────────
@@ -259,7 +285,8 @@ func (a *Applier) upsertAgent(ag AgentSpec, spec *Spec, result *ApplyResult) err
 	}
 	var agentID string
 	if existingID != "" {
-		if _, err := a.put(fmt.Sprintf("/v1/agents/%s", existingID), payload); err != nil {
+		// UpdateAgent: PATCH /v1/agents/{id}, body is the Agent message itself.
+		if _, err := a.patch(fmt.Sprintf("/v1/agents/%s", existingID), payload); err != nil {
 			return err
 		}
 		agentID = existingID
@@ -290,26 +317,36 @@ func (a *Applier) upsertAgent(ag AgentSpec, spec *Spec, result *ApplyResult) err
 }
 
 // lookupAgentByKey returns the agent ID for the given key, or "" if absent.
+// ListAgents has no agent_key filter (keyword is fuzzy), so we paginate and
+// exact-match agentKey client-side — picking items[0] from an unfiltered list
+// would silently return an arbitrary agent.
 func (a *Applier) lookupAgentByKey(key string) (string, error) {
-	resp, err := a.get("/v1/agents?agent_key=" + url.QueryEscape(key))
-	if err != nil {
-		var httpErr *HTTPError
-		if errors.As(err, &httpErr) && httpErr.IsNotFound() {
-			return "", nil
+	const pageSize = 200
+	for offset := 0; ; offset += pageSize {
+		resp, err := a.get(fmt.Sprintf("/v1/agents?limit=%d&offset=%d", pageSize, offset))
+		if err != nil {
+			var httpErr *HTTPError
+			if errors.As(err, &httpErr) && httpErr.IsNotFound() {
+				return "", nil
+			}
+			return "", err
 		}
-		return "", err
-	}
-	if items, ok := resp["items"].([]any); ok && len(items) > 0 {
-		if first, ok := items[0].(map[string]any); ok {
-			if id, ok := first["id"].(string); ok {
-				return id, nil
+		items, _ := resp["items"].([]any)
+		for _, it := range items {
+			ag, ok := it.(map[string]any)
+			if !ok {
+				continue
+			}
+			if mapString(ag, "agentKey", "agent_key") == key {
+				if id, ok := ag["id"].(string); ok {
+					return id, nil
+				}
 			}
 		}
+		if len(items) < pageSize {
+			return "", nil
+		}
 	}
-	if id, ok := resp["id"].(string); ok {
-		return id, nil
-	}
-	return "", nil
 }
 
 // resolvePositionID looks up the position's backend ID given a "ind/dept/pos" path.
@@ -327,29 +364,55 @@ func (a *Applier) resolvePositionID(path string, _ *Spec) string {
 // ─── Team ─────────────────────────────────────────────────────────────────────
 
 // upsertTeam creates the team if absent, otherwise updates it. B-3 fix.
+// API note: CreateTeamRequest/Team use team_key + display_name; members live in
+// definition_json as an OrchestrationSpec ({version,mode,members[]}), not a
+// top-level "members" field.
 func (a *Applier) upsertTeam(team TeamSpec, result *ApplyResult) error {
 	if a.opts.DryRun {
 		result.Skipped++
 		return nil
 	}
-	memberIDs := make([]map[string]string, 0, len(team.Members))
-	for _, m := range team.Members {
-		memberIDs = append(memberIDs, map[string]string{
-			"agent_id": a.keyToID["agent:"+m.AgentKey],
-			"role":     m.Role,
+	members := make([]map[string]any, 0, len(team.Members))
+	for i, m := range team.Members {
+		agentID := a.keyToID["agent:"+m.AgentKey]
+		if agentID == "" {
+			// 成员可能引用本次导入范围之外的既有 agent，按键精确查询兜底；
+			// 解析失败则整队放弃（避免产出残缺团队定义），由 Apply 聚合错误后继续下一队。
+			id, err := a.lookupAgentByKey(m.AgentKey)
+			if err != nil {
+				return fmt.Errorf("member %s: lookup agent: %w", m.AgentKey, err)
+			}
+			if id == "" {
+				return fmt.Errorf("member %s: agent not found", m.AgentKey)
+			}
+			agentID = id
+		}
+		members = append(members, map[string]any{
+			"agent_id":   agentID,
+			"role":       m.Role,
+			"sort_order": i,
 		})
 	}
+	definition, err := json.Marshal(map[string]any{
+		"version": 2,
+		"mode":    "sequential",
+		"members": members,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal team definition: %w", err)
+	}
 	payload := map[string]any{
-		"key":     team.Key,
-		"name":    team.Name,
-		"members": memberIDs,
+		"team_key":        team.Key,
+		"display_name":    team.Name,
+		"definition_json": string(definition),
 	}
 	existingID, err := a.lookupTeamByKey(team.Key)
 	if err != nil {
 		return err
 	}
 	if existingID != "" {
-		if _, err := a.put(fmt.Sprintf("/v1/teams/%s", existingID), payload); err != nil {
+		// UpdateTeam: PATCH /v1/teams/{id}, body is the Team message itself.
+		if _, err := a.patch(fmt.Sprintf("/v1/teams/%s", existingID), payload); err != nil {
 			return err
 		}
 		result.Updated++
@@ -363,8 +426,9 @@ func (a *Applier) upsertTeam(team TeamSpec, result *ApplyResult) error {
 }
 
 // lookupTeamByKey returns the team ID for the given key, or "" if absent.
+// ListTeams has no key filter, so we fetch all and exact-match teamKey client-side.
 func (a *Applier) lookupTeamByKey(key string) (string, error) {
-	resp, err := a.get("/v1/teams?key=" + url.QueryEscape(key))
+	resp, err := a.get("/v1/teams")
 	if err != nil {
 		var httpErr *HTTPError
 		if errors.As(err, &httpErr) && httpErr.IsNotFound() {
@@ -372,15 +436,18 @@ func (a *Applier) lookupTeamByKey(key string) (string, error) {
 		}
 		return "", err
 	}
-	if items, ok := resp["items"].([]any); ok && len(items) > 0 {
-		if first, ok := items[0].(map[string]any); ok {
-			if id, ok := first["id"].(string); ok {
-				return id, nil
+	if items, ok := resp["items"].([]any); ok {
+		for _, it := range items {
+			t, ok := it.(map[string]any)
+			if !ok {
+				continue
+			}
+			if mapString(t, "teamKey", "team_key", "key") == key {
+				if id, ok := t["id"].(string); ok {
+					return id, nil
+				}
 			}
 		}
-	}
-	if id, ok := resp["id"].(string); ok {
-		return id, nil
 	}
 	return "", nil
 }
@@ -411,8 +478,8 @@ func (a *Applier) post(path string, payload any) (map[string]any, error) {
 	return a.do("POST", path, payload)
 }
 
-func (a *Applier) put(path string, payload any) (map[string]any, error) {
-	return a.do("PUT", path, payload)
+func (a *Applier) patch(path string, payload any) (map[string]any, error) {
+	return a.do("PATCH", path, payload)
 }
 
 func (a *Applier) get(path string) (map[string]any, error) {

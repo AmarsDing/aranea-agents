@@ -178,6 +178,8 @@ export async function listSkills(query: SkillListQuery = {}): Promise<PaginatedR
     status: query.status?.trim() || undefined,
     filesystemMissing,
     syncOrigin: query.sync_origin?.trim() || undefined,
+    sortBy: query.sort_by?.trim() || undefined,
+    sortOrder: query.sort_order?.trim() || undefined,
     page,
     pageSize,
   });

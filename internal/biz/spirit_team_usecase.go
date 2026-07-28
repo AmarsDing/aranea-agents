@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -100,6 +101,16 @@ type SpiritTeamController interface {
 	// feeding the summary report with failure reasons and the teams'
 	// unresolved questions (their last replies).
 	ListFailedTeamBriefs(ctx context.Context, spiritSessionID string) []TeamFailureBrief
+	// ListTeamDeliverableDigests backs the F7 (Phase 11) structured
+	// synthesis trigger: per-terminal-team deliverable summaries inlined
+	// into the system-push message.
+	ListTeamDeliverableDigests(ctx context.Context, spiritSessionID string) []TeamDeliverableDigest
+	// MemberExecutionEvidence backs F10 (Phase 11) outcome-oriented member
+	// status: per-member failure evidence (interrupted session / failed or
+	// cancelled step) overrides the team-level completed status in the
+	// member projection — status follows the execution RESULT, not the
+	// message lifecycle.
+	MemberExecutionEvidence(ctx context.Context, sessionID string) (failed bool, reason string)
 }
 
 // TimeoutHandler is called when a team times out. Implemented by the service
@@ -425,7 +436,14 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 		mode = TeamModeSequential
 	}
 
-	defJSON := buildSpiritTeamDefinitionJSON(mode, agentIDs, u.lg, params.DagNodeID != "", params.ParallelConfigJSON)
+	// F9 (Phase 11): a solo system-admin team with a skill-install intent gets
+	// a deterministic tool_assertion gate so "installed" can never be
+	// hallucinated — the gate checks the skill is actually enabled.
+	var gates []VerificationGate
+	if g := skillInstallAssertionGate(params.AgentKeys, params.TaskDescription); g != nil {
+		gates = append(gates, *g)
+	}
+	defJSON := buildSpiritTeamDefinitionJSON(mode, agentIDs, u.lg, params.DagNodeID != "", params.Deliverables, gates, params.ParallelConfigJSON)
 
 	// Check session tree depth limit before creating team (P1-4: extracted
 	// to session.ValidateDepth for reuse across all child-session creators).
@@ -506,13 +524,10 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 				if agentKey == "" {
 					continue
 				}
-				if IsSystemAgentKey(agentKey) {
-					u.lg.Warn("AssembleTeam 跳过系统 Agent",
-						loggateway.StepID("spirit.assemble.system_agent_skip"),
-						loggateway.Str("team_id", team.ID),
-						loggateway.Str("agent_key", agentKey))
-					continue
-				}
+				// ADR-06 (12:33 修复)：不再跳过系统 Agent。凡进入团队定义的成员
+				// （含 Planner 显式指定的 __system_admin__ 等系统 Agent）均创建
+				// agent session，保证 MemberSession 生命周期完整（created→updated）。
+				// 系统 Agent 的分配约束上移到 Allocator/Planner 层。
 				agentID, ok := keyToID[agentKey]
 				if !ok {
 					u.lg.Warn("AssembleTeam 跳过成员：未解析到 agentID",
@@ -1246,7 +1261,7 @@ func (u *SpiritTeamUsecase) resolveAgentKeyToIDMap(ctx context.Context, agentKey
 	return out, nil
 }
 
-func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggateway.Logger, requireDeliverable bool, parallelCfgJSON ...string) string {
+func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggateway.Logger, requireDeliverable bool, deliverables []DeliverableContract, gates []VerificationGate, parallelCfgJSON ...string) string {
 	type member struct {
 		AgentKey string `json:"agent_id"`
 		Role     string `json:"role"`
@@ -1289,6 +1304,20 @@ func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggatewa
 	// DAG team without the channel could never pass.
 	if len(agentKeys) > 1 || requireDeliverable {
 		def["enable_state_deliverable"] = true
+	}
+	// F5 (Phase 11): auto-generate the member-level deliverable contract (MDC)
+	// from the team's inter-team deliverable contracts. topic == contract name
+	// (1:1), so the member prompt instruction and the spirit's retrieval always
+	// agree on the topic. Members write via set_deliverable; the MDC is
+	// enforced write-time (schema/required_keys) and advisory at completion.
+	if entries := MemberEntriesFromDeliverableContracts(deliverables); len(entries) > 0 {
+		def["deliverable_contract"] = MemberDeliverableContract{Entries: entries}
+	}
+	// F9 (Phase 11): verification gates (e.g. the deterministic tool_assertion
+	// gate for skill-install teams) ride the definition JSON;
+	// resolveVerificationGates parses them back at completion time.
+	if len(gates) > 0 {
+		def["verification_gates"] = gates
 	}
 	out, err := json.Marshal(def)
 	if err != nil {
@@ -1638,6 +1667,53 @@ func (u *SpiritTeamUsecase) ListFailedTeamBriefs(ctx context.Context, spiritSess
 		briefs = append(briefs, brief)
 	}
 	return briefs
+}
+
+// ListTeamDeliverableDigests collects per-terminal-team deliverable summaries
+// for the synthesis trigger (F7, Phase 11). Completed AND failed teams are
+// included (failed teams render with an empty summary → 「无交付物」), so the
+// Spirit LLM composes the final report from real structured outputs instead
+// of excavating session history. Non-terminal teams and read failures are
+// skipped (best effort — the trigger must never fail on digest collection).
+// Domain: Delivery — per-team deliverable digest assembly.
+func (u *SpiritTeamUsecase) ListTeamDeliverableDigests(ctx context.Context, spiritSessionID string) []TeamDeliverableDigest {
+	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
+	if err != nil {
+		u.lg.Warn("查询精灵会话团队列表失败，跳过交付物摘要收集",
+			loggateway.StepID("spirit.teams.deliverable_digests_err"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Err(err),
+		)
+		return nil
+	}
+	digests := make([]TeamDeliverableDigest, 0, len(teams))
+	for _, t := range teams {
+		if t.Status != TeamStatusCompleted && t.Status != TeamStatusFailed {
+			continue
+		}
+		d := TeamDeliverableDigest{
+			TeamName: t.DisplayName,
+			TaskName: t.TaskDescription,
+			Status:   t.Status,
+		}
+		refs := ParseDeliverableRefs(t.DeliverablesOutput)
+		if len(refs) > 0 {
+			keys := make([]string, 0, len(refs))
+			for k := range refs {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			summaries := make([]string, 0, len(keys))
+			for _, k := range keys {
+				if s := strings.TrimSpace(refs[k].Summary); s != "" {
+					summaries = append(summaries, s)
+				}
+			}
+			d.DeliverableSummary = strings.Join(summaries, "\n")
+		}
+		digests = append(digests, d)
+	}
+	return digests
 }
 
 // parseTimeFlexible tries multiple time formats to parse a timestamp string.
@@ -2045,6 +2121,73 @@ func (u *SpiritTeamUsecase) HasRealDeliverable(ctx context.Context, team Team) (
 	return len(stateDeliv) > 0, nil
 }
 
+// memberEvidenceSummaryMaxRunes caps the failed-step summary carried in a
+// MemberExecutionEvidence reason (log + projection diagnostics only).
+const memberEvidenceSummaryMaxRunes = 120
+
+// MemberExecutionEvidence implements F10 (Phase 11) outcome-oriented member
+// status: inspects a member session's execution evidence and reports whether
+// the member FAILED — regardless of what the team-level callback claims.
+// Member status must follow the execution RESULT, not the message lifecycle
+// (12:33: members returning text were shown as successful even when the
+// underlying work failed).
+//
+// Evidence sources (first hit wins):
+//  1. Session interrupted → failed (StatusReason explains why)
+//  2. Any failed/cancelled step → failed (first such step summarized)
+//
+// Read failures count as "no evidence" (conservative): an infra read error
+// must never flip a member to failed — systemic failures are already carried
+// by the team-level status. Returns (false, "") when no failure evidence.
+func (u *SpiritTeamUsecase) MemberExecutionEvidence(ctx context.Context, sessionID string) (bool, string) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return false, ""
+	}
+	sess, err := u.sessionUC.Get(ctx, sessionID)
+	if err != nil {
+		u.lg.Warn("成员执行证据：读取成员 session 失败，按无证据处理",
+			loggateway.StepID("spirit.member_evidence.session_err"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Err(err),
+		)
+		return false, ""
+	}
+	if sess.Status == string(session.SessionStatusInterrupted) {
+		reason := strings.TrimSpace(sess.StatusReason)
+		if reason == "" {
+			reason = string(session.SessionStatusInterrupted)
+		}
+		return true, "session interrupted: " + reason
+	}
+	if u.stepReader == nil {
+		return false, ""
+	}
+	steps, err := u.stepReader.ListStepsBySessionID(ctx, sessionID)
+	if err != nil {
+		u.lg.Warn("成员执行证据：读取成员 steps 失败，按无证据处理",
+			loggateway.StepID("spirit.member_evidence.steps_err"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Err(err),
+		)
+		return false, ""
+	}
+	for _, st := range steps {
+		if st.Status != StepStatusFailed && st.Status != StepStatusCancelled {
+			continue
+		}
+		summary := strings.TrimSpace(st.Content)
+		if summary == "" {
+			summary = strings.TrimSpace(st.ToolErrorCode)
+		}
+		if summary == "" {
+			summary = string(st.Kind)
+		}
+		return true, fmt.Sprintf("step %s: %s", st.Status, truncateRunes(summary, memberEvidenceSummaryMaxRunes))
+	}
+	return false, ""
+}
+
 // stateDeliverableChannel resolves the graph-state deliverable channel
 // coordinates for a team. ok=false means no real deliverable can exist:
 // no reader wired, no/undecodable DefinitionJSON, enable_state_deliverable
@@ -2223,8 +2366,8 @@ func (u *SpiritTeamUsecase) DeliverableProtocolSuffix(t Team) string {
 	sb.WriteString("\n--- 交付协议（强制） ---\n")
 	sb.WriteString("本团队是 DAG 编排节点。任务完成前必须调用 set_deliverable 提交结构化交付物（只在回复文本中给出内容不算产出）：\n")
 	sb.WriteString("- \"summary\"（保留 key，必填）：交付物摘要，供下游团队消费\n")
-	if contracts := contractDeclarationLines(t.Deliverables); contracts != "" {
-		sb.WriteString("- 交付契约（按 name 逐项提交）：\n")
+	if contracts := contractSubmissionLines(t.Deliverables); contracts != "" {
+		sb.WriteString("- 交付契约（逐项按指定 topic 提交，禁止自创 topic 名）：\n")
 		sb.WriteString(contracts)
 	}
 	sb.WriteString("未调用 set_deliverable 的 completed 将被判定为 failed，下游团队不会收到输入；信息不足时在 summary 中如实写明阻塞或待澄清事项，禁止虚构交付物。\n")
@@ -2243,6 +2386,39 @@ func (u *SpiritTeamUsecase) BuildTeamTurnInput(ctx context.Context, t Team) stri
 	}
 	taskDesc += u.DeliverableProtocolSuffix(t)
 	return taskDesc
+}
+
+// contractSubmissionLines renders the F5 per-contract submission instruction
+// for the delivery-protocol suffix, one entry per contract:
+//
+//	契约: xlsx_install_result (data/json) — 安装结果
+//	  提交方式：set_deliverable(topic="xlsx_install_result", data={...})
+//
+// The explicit topic removes the member's freedom to invent topic names —
+// the 12:33 root cause where the spirit guessed pdf_install_result while the
+// member wrote xlsx_install_result. Returns "" when no parseable contract.
+func contractSubmissionLines(deliverablesJSON string) string {
+	contracts, err := ParseDeliverableContracts(deliverablesJSON)
+	if err != nil || len(contracts) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(contracts)*2)
+	for _, c := range contracts {
+		name := strings.TrimSpace(c.Name)
+		if name == "" {
+			continue
+		}
+		line := fmt.Sprintf("契约: %s (%s/%s)", name, c.Type, c.Format)
+		if c.Description != "" {
+			line += " — " + c.Description
+		}
+		lines = append(lines, line)
+		lines = append(lines, fmt.Sprintf("  提交方式：set_deliverable(topic=%q, data={...})", name))
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 // contractDeclarationLines renders the P1 contract declaration for the

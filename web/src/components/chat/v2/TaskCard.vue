@@ -91,15 +91,20 @@
           @click.stop="emit('resume-task', task)"
         />
       </div>
-      <TurnList
-        v-if="prePlanTurns.length"
-        :turns="prePlanTurns"
-        @confirm-step="(p) => emit('confirm-step', p)"
-      />
+      <TurnList v-if="prePlanTurns.length" :turns="prePlanTurns" @confirm-step="(p) => emit('confirm-step', p)" />
       <template v-for="pb in planBoards" :key="pb.ID">
         <PlanBoardCard :plan-board="pb" />
+        <!-- 窄屏（<600px）降级为分阶段折叠列表；桌面保持 DAG 画布（设计 72 §3.2） -->
+        <GraphStageList
+          v-if="isMobileGraphView && graphStageByPlanBoard(pb.ID)"
+          :graph-stage="graphStageByPlanBoard(pb.ID)!"
+          @pause-agent="(sid) => emit('pause-agent', sid)"
+          @inject-agent="(p) => emit('inject-agent', p)"
+          @expand="(ids) => emit('expand', ids)"
+          @confirm-step="(p) => emit('confirm-step', p)"
+        />
         <GraphStageBlock
-          v-if="graphStageByPlanBoard(pb.ID)"
+          v-else-if="graphStageByPlanBoard(pb.ID)"
           :graph-stage="graphStageByPlanBoard(pb.ID)!"
           @pause-agent="(sid) => emit('pause-agent', sid)"
           @inject-agent="(p) => emit('inject-agent', p)"
@@ -118,11 +123,7 @@
         @expand="(ids) => emit('expand', ids)"
         @confirm-step="(p) => emit('confirm-step', p)"
       />
-      <TurnList
-        v-if="postPlanTurns.length"
-        :turns="postPlanTurns"
-        @confirm-step="(p) => emit('confirm-step', p)"
-      />
+      <TurnList v-if="postPlanTurns.length" :turns="postPlanTurns" @confirm-step="(p) => emit('confirm-step', p)" />
       <!-- orphan notice steps（TurnID 空，附着到 Task）作为任务 footer 渲染在
            任务卡末尾 — 兜底完成通知（总结 turn 触发失败时的"所有团队已完成"）。
            系统内部通知（context_usage 等）沿用 TurnContainer 同款过滤。
@@ -146,6 +147,7 @@ import type { ConfirmStepPayload, SubmitClarificationPayload } from '../../../fe
 import TurnList from './TurnList.vue';
 import PlanBoardCard from './PlanBoardCard.vue';
 import GraphStageBlock from './GraphStageBlock.vue';
+import GraphStageList from './GraphStageList.vue';
 import MemberSessionPanel from './MemberSessionPanel.vue';
 import ClarifyBlock from './ClarifyBlock.vue';
 import NoticeBlock from '../NoticeBlock.vue';
@@ -163,7 +165,8 @@ function useSafeI18n() {
 
 // Safe Quasar wrapper — returns a no-op notify when Quasar isn't installed.
 // NOTE: useQuasar() is a bare inject() — returns undefined (no throw) without
-// the plugin, so an explicit null check is required.
+// the plugin, so an explicit null check is required. screen falls back to
+// desktop (lt.sm = false) so the DAG canvas renders in unit tests.
 function useSafeQuasar() {
   try {
     const $q = useQuasar();
@@ -171,7 +174,10 @@ function useSafeQuasar() {
   } catch {
     // fall through to no-op
   }
-  return { notify: (_: unknown) => {} } as unknown as ReturnType<typeof useQuasar>;
+  return {
+    notify: (_: unknown) => {},
+    screen: { lt: { sm: false } },
+  } as unknown as ReturnType<typeof useQuasar>;
 }
 
 const props = withDefaults(
@@ -202,6 +208,8 @@ const { t } = useSafeI18n();
 const $q = useSafeQuasar();
 const auth = useSafeAuth();
 const store = useActivityQueries();
+// 窄屏断点（<600px，对齐设计 72 §3.1）：GraphStageBlock DAG 画布降级为折叠列表。
+const isMobileGraphView = computed(() => $q.screen.lt.sm);
 const turns = computed(() => store.getTaskTurns(props.task.ID));
 const planBoards = computed(() => store.getTaskPlanBoards(props.task.ID));
 // 图未覆盖的 team stage 成员兜底：正常路径下所有 TeamStage 经 GraphNode

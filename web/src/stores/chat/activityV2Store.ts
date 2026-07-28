@@ -389,7 +389,10 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     const agentKey = memberSession.AgentKey;
     const taskId = memberSession.TaskID;
     const sessionId = memberSession.SessionID;
-    if (!agentKey || !taskId) return [];
+    // F3 (12:33 修复): guard 仅要求 agentKey。路径 1 按 SessionID 精确匹配，不需要
+    // taskId；系统 Agent 成员的 MemberSession 可能无 TaskID，旧 guard 直接返回空
+    // 导致成员执行活动面板无内容。
+    if (!agentKey) return [];
 
     const out: Step[] = [];
     if (sessionId) {

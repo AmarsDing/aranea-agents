@@ -1,4 +1,6 @@
-// 查询成员会话的消息内容（先探查表名）
+﻿// 查询成员会话的消息内容（先探查表名）
+//go:build ignore
+
 package main
 
 import (

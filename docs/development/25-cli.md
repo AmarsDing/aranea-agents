@@ -244,6 +244,18 @@ Aranea CLI 是与后端 `cmd/admin` **完全异构**的终端控制台：
 | `channel` | `ls / get / add / update / delete / test / send` | P1 | `/v1/channels*` | `send` 强制 `--yes` |
 | `session` | `ls / get / send` | P1 | `/v1/sessions*` + `/v1/chat/messages` | |
 | `monitor` | `audit-logs / events / traces` | P1 | `/v1/monitor/*` | |
+| `session` | `archive / restore / pin / unpin / compact / export` | P3 | `/v1/sessions/{id}/archive` 等、`/v1/sessions/{id}/export` | 2026-07-28 补全 |
+| `skill` | `files / file-get / file-put / file-delete` | P3 | `/v1/skills/{id}/files*`、`/v1/skills/{id}/file` | 2026-07-28 补全 |
+| `cron` | `reset-failures` | P3 | `POST /v1/cron-tasks/{id}/reset-failures` | 2026-07-28 补全 |
+| `mcp` | `validate` | P3 | `POST /v1/mcp-servers/validate`（校验未保存配置负载） | 2026-07-28 补全 |
+| `tool` | `test` | P3 | `POST /v1/tools/{id}/test` | 2026-07-28 补全 |
+| `memory` | `facts ls`、`proposals ls/approve/reject`、`search`、`recall-debug` | P3 | `/v1/memory/*` | 2026-07-28 新增域 |
+| `knowledge` | `collections ls/get/create/delete`、`documents ls/get/delete`、`search` | P3 | `/v1/knowledge/*` | 2026-07-28 新增域 |
+| `eval` | `datasets ls/get/create`、`runs ls/get/create`、`results` | P3 | `/v1/evaluation/*` | 2026-07-28 新增域 |
+| `org` | `ls / tree / get / create / update / delete / reorder` | P3 | `/v1/organization*` | 2026-07-28 新增域 |
+| `taxonomy` | `ls / tree / get / create / update / delete / reorder` | P3 | `/v1/taxonomy*` | 2026-07-28 新增域 |
+| `model-catalog` | `ls / get / policy / policy-set / sync` | P3 | `/v1/model-catalog*` | 2026-07-28 新增域 |
+| `a2a` | `discover`、`remote-agents ls/get/add/delete`、`audit ls`、`config get` | P3 | `/v1/a2a/*` | 2026-07-28 新增域 |
 
 > **proto 路径校验**：列表中"对应后端路径"以实施时 `api/kratos/*/v1/*.proto` 的 `google.api.http` 注解为唯一真相源。若某动作 proto 无对应 RPC，**CLI 不私自构造**，开 issue 由后端补。
 

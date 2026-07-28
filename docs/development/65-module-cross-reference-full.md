@@ -99,7 +99,7 @@
 | **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享）、`biz.RecallDebugRow`/`biz.RecallScoreBreakdown`（debug recall DTO）、`biz.L1TaskInsert`/`biz.L1FieldInsert`（L1 写入 DTO）、`biz.L2EpisodeAdminReader`/`biz.L4RelationAdminReader`（记忆中心窄接口，走 `SetMemoryCenterReaders` 注入） |
 | **事件生产** | 无直接生产（记忆提取通过 EventBus 异步触发） |
 | **事件消费** | 记忆提取 Worker 消费 `runner_completion` 事件 |
-| **数据库** | SQLite（memory_facts/memory_entities/memory_l4_graph/memory_episodes/memory_l1_tasks/memory_l1_fields/memory_l1_field_history）+ PostgreSQL（embedding 向量） |
+| **数据库** | Postgres（memory_facts/memory_entities/memory_l4_graph/memory_episodes/memory_l1_tasks/memory_l1_fields/memory_l1_field_history，embedding 向量走 pgvector 同库） |
 | **前端对应** | MemoryCenterPage（层级全景 panorama + 关联图谱 graph + 知识库/会话记忆/图谱与进化/设置）、AgentSettingsPage（记忆策略配置） |
 | **API 端点** | `GET /v1/memory/layer-overview`（五层统计+行动项+动态）、`GET /v1/memory/graph/unified`（跨层统一图 BFS） |
 
@@ -128,11 +128,11 @@
 |------|------|
 | **上游依赖** | `biz`（Session 类型）、`pkg/trpc-agent-go/session`（框架会话 API） |
 | **下游影响** | `agent`（NewTRPCRunner 注入 SessionService）、`service/chat`（会话持久化） |
-| **核心导出** | `SQLiteSessionService`、`Service` 接口实现 |
+| **核心导出** | `NewTRPCSessionService` / `NewPostgresSessionService`、`Service` 接口实现 |
 | **共享类型** | `trpcsession.Service` 接口 |
 | **事件生产** | 无 |
 | **事件消费** | 无 |
-| **数据库** | SQLite（sessions/messages/session_turns/session_runs） |
+| **数据库** | Postgres（sessions/messages/session_turns/session_runs） |
 | **前端对应** | SessionsPage、ChatPage（会话列表 + 消息展示） |
 
 ---
@@ -149,7 +149,7 @@
 | **共享类型** | `SessionStatus`（5 枚举值）、`SessionStatusReason`（11 枚举值） |
 | **事件生产** | `session.status_changed`（通过 `SessionStatusPublisher` → ActivityEvent / WS） |
 | **事件消费** | 无 |
-| **数据库** | SQLite sessions 表（status/status_reason/status_changed_at 三列）；**生命周期由 `archived_at`/`deleted_at` 时间戳判断，status 列仅存执行状态** |
+| **数据库** | Postgres sessions 表（status/status_reason/status_changed_at 三列）；**生命周期由 `archived_at`/`deleted_at` 时间戳判断，status 列仅存执行状态** |
 | **前端对应** | `SessionStatusBadge.vue`（5 种状态徽章）、`sessionSync.ts`（status_changed 变体，WS → emitSessionMutation → sessionSync 总线）、`useChatInboundSync.ts`（session.status_changed → emitSessionMutation） |
 
 ---
@@ -581,7 +581,7 @@
 | **共享类型** | `Observation`（tool_call/feedback/memory_hit/memory_miss）、`Pattern`（detected/confirmed/dismissed）、`KnowledgeProposal`（draft/pending/approved/rejected/applied） |
 | **事件生产** | 无直接生产（闭环由 API 触发或手动 RunLoop） |
 | **事件消费** | 无直接消费（未来可消费 `runner_completion` 事件自动触发闭环） |
-| **数据库** | SQLite（learning_observations/learning_patterns/learning_proposals，原生 SQL DDL） |
+| **数据库** | Postgres（learning_observations/learning_patterns/learning_proposals，原生 SQL DDL） |
 | **前端对应** | AgentLearningLoopPanel（Agent 详情页"学习闭环"Tab）、LearningLoopOverview/LearningPatternList/LearningProposalList 组件 |
 
 **⚠️ 开发注意**：
@@ -604,7 +604,7 @@
 | **共享类型** | `SkillProposal`（pending/approved/rejected/registered/expired）、`ToolCallRecord` |
 | **事件生产** | 无直接生产（由 Cron 定时任务或 API 触发） |
 | **事件消费** | 无直接消费 |
-| **数据库** | SQLite（unified_evolution_suggestions，A6 物理收敛；legacy skill_proposals 已 DROP，pattern_hash/pattern_desc/approved_at/rejected_by 存 metadata JSON） |
+| **数据库** | Postgres（unified_evolution_suggestions，A6 物理收敛；legacy skill_proposals 已 DROP，pattern_hash/pattern_desc/approved_at/rejected_by 存 metadata JSON） |
 | **前端对应** | 待集成（后端 API 已就绪，前端 Skill 进化管理界面待开发） |
 
 **⚠️ 开发注意**：
@@ -769,7 +769,7 @@
 | **共享类型** | `EvolutionMetrics`（工具成功率/检索质量）、`EvolutionSuggestion`（persona/prompt/skill 类型，legacy 字段存 metadata JSON） |
 | **事件生产** | 无直接生产 |
 | **事件消费** | 无 |
-| **数据库** | SQLite（指标查询 tool_invocations 等；建议存 unified_evolution_suggestions，A6 物理收敛，legacy evolution_suggestions 已 DROP） |
+| **数据库** | Postgres（指标查询 tool_invocations 等；建议存 unified_evolution_suggestions，A6 物理收敛，legacy evolution_suggestions 已 DROP） |
 | **前端对应** | AgentEvolutionPanel（Agent 详情页"演化"Tab） |
 
 ---
@@ -805,7 +805,7 @@
 | **共享类型** | `DeptLeadMessage`、`AuditEntry`（Result: allowed/denied；Relation: org_home/team_owner；ActorRole: dept_lead/spirit）、`GlobalMessageHit`、`FileEntry`、`SessionMeta`/`SessionMessageView` |
 | **事件生产** | 唤醒经 `TurnExecutorGateway.ExecuteTurn` → 复用 Turn 事件流 |
 | **事件消费** | 无 |
-| **数据库** | SQLite（dept_lead_messages / resource_access_audits，Ent Schema + Indexes()）；全局检索走 steps_v2 `content LIKE`（messages_fts 已于 20260902 移除） |
+| **数据库** | Postgres（dept_lead_messages / resource_access_audits，Ent Schema + Indexes()）；全局检索走 steps_v2 `content LIKE`（messages_fts 已于 20260902 移除） |
 | **前端对应** | 无独立 UI；唤醒 Turn 与工具调用以常规 chat activity 呈现在主管/精灵会话时间线 |
 
 **⚠️ 开发注意（M71）**：

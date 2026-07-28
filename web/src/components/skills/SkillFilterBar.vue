@@ -77,6 +77,26 @@
       :options="filesystemOptions"
       @update:model-value="emit('update:filesystemMissing', $event as boolean | null)"
     />
+    <q-select
+      :model-value="sortBy"
+      class="app-page-toolbar__field app-page-toolbar__field--sort"
+      dense
+      outlined
+      emit-value
+      map-options
+      label="排序"
+      :options="sortByOptions"
+      @update:model-value="emit('update:sortBy', $event as 'tag' | 'name')"
+    />
+    <q-btn
+      flat
+      round
+      dense
+      class="app-page-toolbar__sort-dir"
+      :icon="sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward'"
+      :title="sortOrder === 'asc' ? '升序（点击切换降序）' : '降序（点击切换升序）'"
+      @click="emit('update:sortOrder', sortOrder === 'asc' ? 'desc' : 'asc')"
+    />
     <template #actions>
       <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="emit('reset')" />
       <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="emit('refresh')" />
@@ -97,6 +117,9 @@ const props = defineProps<{
   tagOptions?: string[];
   syncOrigin: string;
   filesystemMissing: boolean | null;
+  /** 排序字段：tag=按首个标签名，name=按名称。 */
+  sortBy: 'tag' | 'name';
+  sortOrder: 'asc' | 'desc';
   loading?: boolean;
 }>();
 
@@ -107,6 +130,8 @@ const emit = defineEmits<{
   'update:tags': [value: string[]];
   'update:syncOrigin': [value: string];
   'update:filesystemMissing': [value: boolean | null];
+  'update:sortBy': [value: 'tag' | 'name'];
+  'update:sortOrder': [value: 'asc' | 'desc'];
   reset: [];
   refresh: [];
 }>();
@@ -149,5 +174,10 @@ const originOptions = [
 const filesystemOptions = [
   { label: '磁盘缺失', value: true },
   { label: '磁盘正常', value: false },
+];
+
+const sortByOptions = [
+  { label: '按标签', value: 'tag' },
+  { label: '按名称', value: 'name' },
 ];
 </script>

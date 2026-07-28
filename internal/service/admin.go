@@ -102,12 +102,25 @@ func (s *AdminService) Login(ctx context.Context, req *v1.LoginRequest) (*v1.Adm
 			loggateway.StepID("admin.login_failed"))
 		return nil, apierror.BadRequest("AUTH", "unsupported identity type")
 	}
-	if err := auth.SetCookieForWorkspace(ctx, admin.ID, admin.Access, admin.WorkspaceID, time.Now().Add(7*24*time.Hour)); err != nil {
+	// P2 (mobile): issue the JWT once — set it as the session cookie AND
+	// return it in the response body. Cross-origin clients (WebView / frp)
+	// cannot rely on the HttpOnly cookie, so they authenticate subsequent
+	// requests via `Authorization: Bearer` and WS `?token=` using this value.
+	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+	token, err := auth.IssueTokenForWorkspace(admin.ID, admin.Access, admin.WorkspaceID, expiresAt)
+	if err != nil {
+		s.lg.Warn("admin login: issue token failed",
+			loggateway.StepID("admin.login"), loggateway.Str("method", method), loggateway.Str("admin_name", admin.Name), loggateway.Err(err))
+		return nil, err
+	}
+	if err := auth.SetCookieWithToken(ctx, token, expiresAt); err != nil {
 		s.lg.Warn("admin login: set cookie failed",
 			loggateway.StepID("admin.login"), loggateway.Str("method", method), loggateway.Str("admin_name", admin.Name), loggateway.Err(err))
 		return nil, err
 	}
-	return convertAdmin(admin), nil
+	resp := convertAdmin(admin)
+	resp.Token = token
+	return resp, nil
 }
 
 // Logout implements auth logout.

@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -63,10 +64,46 @@ type TeamFailureBrief struct {
 	LastReply string
 }
 
+// TeamDeliverableDigest is one terminal team's deliverable summary inlined
+// into the synthesis trigger (F7, Phase 11): the Spirit LLM composes the
+// final report from real structured outputs instead of excavating session
+// history with read_session_history. DeliverableSummary is empty when the
+// team left no deliverable (failed teams) — rendered as「无交付物」.
+type TeamDeliverableDigest struct {
+	TeamName          string
+	TaskName          string
+	Status            string
+	DeliverableSummary string
+}
+
+// synthesisDigestMaxRunes caps each team's digest in the trigger so a
+// pathological summary cannot blow up the system-push message budget.
+const synthesisDigestMaxRunes = 500
+
+// renderSynthesisDigests renders the「各团队交付物摘要」trigger section.
+// Returns "" when no digests exist (legacy behavior preserved).
+func renderSynthesisDigests(digests []TeamDeliverableDigest) string {
+	if len(digests) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n各团队交付物摘要（真实执行产出，无需翻查历史消息）：\n")
+	for _, d := range digests {
+		summary := strings.TrimSpace(d.DeliverableSummary)
+		if summary == "" {
+			summary = "（无交付物）"
+		} else if utf8.RuneCountInString(summary) > synthesisDigestMaxRunes {
+			summary = TruncateRunes(summary, synthesisDigestMaxRunes) + "…"
+		}
+		sb.WriteString(fmt.Sprintf("- 团队「%s」（任务：%s，状态：%s）：%s\n", d.TeamName, d.TaskName, d.Status, summary))
+	}
+	return sb.String()
+}
+
 // synthesisSummarySuccessTrigger is the summary-report structure used when
 // every team completed. The LLM reply (a normal reply step, persisted and
 // refresh-safe) IS the summary report — there is no dedicated report UI.
-const synthesisSummarySuccessTrigger = "所有团队已完成。请基于会话中各团队的执行结果，输出最终任务总结报告（Markdown 格式），严格按以下结构：\n" +
+const synthesisSummarySuccessTrigger = "所有团队已完成。请基于%s会话中各团队的执行结果，输出最终任务总结报告（Markdown 格式），严格按以下结构：\n" +
 	"## 任务总结\n" +
 	"（一段话概述用户目标与整体完成情况）\n" +
 	"## 各团队结果\n" +
@@ -83,13 +120,28 @@ const synthesisSummarySuccessTrigger = "所有团队已完成。请基于会话�
 // questions), demand an「未解决问题」section, and forbid fabricating
 // conclusions for failed teams. Claiming "所有团队已完成" while teams failed
 // is what made the 19:29 final report a lie (2026-07-25 Fix 3).
-func BuildSynthesisSummaryTrigger(total, completed, failed int, failures []TeamFailureBrief) string {
+//
+// F7 (Phase 11): digests inline each terminal team's deliverable summary so
+// the LLM builds the report from real outputs — no history archaeology.
+func BuildSynthesisSummaryTrigger(total, completed, failed int, failures []TeamFailureBrief, digests []TeamDeliverableDigest) string {
+	digestSection := renderSynthesisDigests(digests)
 	if failed <= 0 {
-		return synthesisSummarySuccessTrigger
+		basis := ""
+		if digestSection != "" {
+			basis = "下列各团队交付物摘要与"
+		}
+		head := fmt.Sprintf(synthesisSummarySuccessTrigger, basis)
+		if digestSection == "" {
+			return head
+		}
+		return head + "\n" + digestSection
 	}
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("所有团队已结束：共 %d 个团队，%d 个完成，%d 个失败。请基于会话中各团队的执行结果与下列失败事实，输出最终任务总结报告（Markdown 格式）。\n",
 		total, completed, failed))
+	if digestSection != "" {
+		sb.WriteString(digestSection)
+	}
 	sb.WriteString("\n失败事实（必须如实呈现，禁止隐瞒）：\n")
 	for _, f := range failures {
 		sb.WriteString(fmt.Sprintf("- 团队「%s」（任务：%s）失败，原因：%s\n", f.TeamName, f.TaskName, f.Reason))

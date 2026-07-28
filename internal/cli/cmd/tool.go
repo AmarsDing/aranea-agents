@@ -19,6 +19,7 @@ func NewToolCmd() *cobra.Command {
 		toolGetCmd(),
 		toolEnableCmd(),
 		toolDisableCmd(),
+		toolTestCmd(),
 	)
 	return c
 }
@@ -105,6 +106,40 @@ func toolDisableCmd() *cobra.Command {
 			return cc.Printer.PrintSuccess("Tool 已停用", "id", tool.Id, "key", tool.Key)
 		},
 	}
+}
+
+func toolTestCmd() *cobra.Command {
+	var argsJSON, argsFile string
+	var timeout int32
+	cmd := &cobra.Command{
+		Use:   "test <id>",
+		Short: "试运行 Tool（沙箱执行，不影响生产数据）",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cc := cli.CLIFrom(cmd.Context())
+			if argsFile != "" {
+				data, err := readFile(argsFile)
+				if err != nil {
+					return &cli.CLIError{Code: "FILE_READ_ERROR", Message: err.Error()}
+				}
+				argsJSON = string(data)
+			}
+			result, err := cc.Client.TestTool(cmd.Context(), args[0], argsJSON, timeout)
+			if err != nil {
+				return err
+			}
+			return cc.Printer.PrintDetail(map[string]string{
+				"status":         result.Status,
+				"duration_ms":    fmt.Sprintf("%d", result.DurationMs),
+				"result_preview": result.ResultPreview,
+				"error_message":  result.ErrorMessage,
+			})
+		},
+	}
+	cmd.Flags().StringVar(&argsJSON, "args", "{}", "调用参数（JSON 字符串）")
+	cmd.Flags().StringVar(&argsFile, "args-file", "", "调用参数 JSON 文件路径（- 表示 stdin，优先级高于 --args）")
+	cmd.Flags().Int32Var(&timeout, "timeout", 0, "超时时间（秒，0 表示使用服务端默认）")
+	return cmd
 }
 
 // toolToRow converts a Tool to a display row.

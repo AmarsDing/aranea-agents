@@ -116,6 +116,9 @@ export type SearchSessionsRequest = {
   userId: string | undefined;
   sortBy: string | undefined;
   sortOrder: string | undefined;
+  // root_only=true 时只返回 parent_session_id 为空的根会话（侧边栏/管理列表），
+  // 排除团队成员会话等子会话；默认 false 保持兼容。
+  rootOnly: boolean | undefined;
 };
 
 export type SearchSessionsResponse = {
@@ -958,6 +961,9 @@ export function createSessionServiceClient(
       }
       if (request.sortOrder) {
         queryParams.push(`sortOrder=${encodeURIComponent(request.sortOrder.toString())}`)
+      }
+      if (request.rootOnly) {
+        queryParams.push(`rootOnly=${encodeURIComponent(request.rootOnly.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

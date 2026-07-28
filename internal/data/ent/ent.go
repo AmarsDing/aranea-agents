@@ -29,6 +29,9 @@ import (
 	"aranea-agents/internal/data/ent/eventdeliveryoutbox"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/failurepattern"
+	"aranea-agents/internal/data/ent/federationauditlog"
+	"aranea-agents/internal/data/ent/federationorg"
+	"aranea-agents/internal/data/ent/federationpolicy"
 	"aranea-agents/internal/data/ent/flowlogevent"
 	"aranea-agents/internal/data/ent/gatewaywebhook"
 	"aranea-agents/internal/data/ent/graphdefinition"
@@ -192,6 +195,9 @@ func checkColumn(t, c string) error {
 			eventdeliveryoutbox.Table:        eventdeliveryoutbox.ValidColumn,
 			experiencereport.Table:           experiencereport.ValidColumn,
 			failurepattern.Table:             failurepattern.ValidColumn,
+			federationauditlog.Table:         federationauditlog.ValidColumn,
+			federationorg.Table:              federationorg.ValidColumn,
+			federationpolicy.Table:           federationpolicy.ValidColumn,
 			flowlogevent.Table:               flowlogevent.ValidColumn,
 			gatewaywebhook.Table:             gatewaywebhook.ValidColumn,
 			graphdefinition.Table:            graphdefinition.ValidColumn,

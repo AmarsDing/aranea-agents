@@ -68,6 +68,16 @@ type importConflictGroup struct {
 	CandidateIDs           []string              `json:"candidateIds"`
 	ExistingSkills         []importExistingSkill `json:"existingSkills"`
 	CanRefine              bool                  `json:"canRefine"`
+	Metrics                importGroupMetrics    `json:"metrics"`
+}
+
+type importGroupMetrics struct {
+	// Recommendation is the LLM engine verdict: keep_separate | suggest_refine |
+	// block_duplicate. keep_separate means the grouped candidates are genuinely
+	// different skills (low conflict risk) and must not be dropped by a coarse
+	// skip/keep decision.
+	Recommendation string `json:"recommendation"`
+	ConflictRisk   string `json:"conflictRisk"`
 }
 
 type importExistingSkill struct {
@@ -275,18 +285,14 @@ func (ins *Installer) buildImportDecisions(client *http.Client, jobID, decision 
 		for _, c := range duplicates {
 			decisions = append(decisions, applyDecision{CandidateID: c.CandidateID, Action: "skip_duplicate"})
 		}
-		for _, g := range job.ConflictGroups {
-			decisions = append(decisions, applyDecision{GroupID: g.GroupID, Action: "skip_group"})
-		}
+		decisions = append(decisions, groupDecisionsForSkipKeep(job)...)
 		pendBlocked()
 	case "keep":
 		importPassed()
 		for _, c := range duplicates {
 			decisions = append(decisions, applyDecision{CandidateID: c.CandidateID, Action: "overwrite_duplicate"})
 		}
-		for _, g := range job.ConflictGroups {
-			decisions = append(decisions, applyDecision{GroupID: g.GroupID, Action: "skip_group"})
-		}
+		decisions = append(decisions, groupDecisionsForSkipKeep(job)...)
 		pendBlocked()
 	case "refine":
 		importPassed()
@@ -318,6 +324,35 @@ func (ins *Installer) buildImportDecisions(client *http.Client, jobID, decision 
 		return nil, pendingImport{}, fmt.Errorf("unknown decision: %q (want skip|keep|refine)", decision)
 	}
 	return decisions, pending, nil
+}
+
+// groupDecisionsForSkipKeep maps conflict groups to engine actions for the
+// coarse skip/keep decisions. Groups the LLM engine judged keep_separate (low
+// conflict risk, genuinely different skills) are imported via the fine-grained
+// keep_separate action instead of being dropped by skip_group; every other
+// group keeps the conservative skip_group behavior.
+func groupDecisionsForSkipKeep(job *importJob) []applyDecision {
+	warnByID := make(map[string]bool, len(job.Candidates))
+	for _, c := range job.Candidates {
+		warnByID[c.CandidateID] = c.ValidationStatus == "warn"
+	}
+	var out []applyDecision
+	for _, g := range job.ConflictGroups {
+		if g.Metrics.Recommendation == "keep_separate" {
+			var kept bool
+			for _, id := range g.CandidateIDs {
+				if warnByID[id] {
+					out = append(out, applyDecision{CandidateID: id, Action: "keep_separate"})
+					kept = true
+				}
+			}
+			if kept {
+				continue
+			}
+		}
+		out = append(out, applyDecision{GroupID: g.GroupID, Action: "skip_group"})
+	}
+	return out
 }
 
 func (ins *Installer) refineConflictGroup(client *http.Client, jobID, groupID string) (*refineResult, error) {

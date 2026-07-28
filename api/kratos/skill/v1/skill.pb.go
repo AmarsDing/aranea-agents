@@ -887,8 +887,12 @@ type ListSkillsRequest struct {
 	PageSize          int32                  `protobuf:"varint,6,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	FilesystemMissing string                 `protobuf:"bytes,7,opt,name=filesystem_missing,json=filesystemMissing,proto3" json:"filesystem_missing,omitempty"`
 	SyncOrigin        string                 `protobuf:"bytes,8,opt,name=sync_origin,json=syncOrigin,proto3" json:"sync_origin,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// 排序字段：tag（按首个标签名）| name（按名称）；空 = 默认按更新时间倒序。
+	SortBy string `protobuf:"bytes,9,opt,name=sort_by,json=sortBy,proto3" json:"sort_by,omitempty"`
+	// 排序方向：asc | desc；空 = asc。
+	SortOrder     string `protobuf:"bytes,10,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListSkillsRequest) Reset() {
@@ -973,6 +977,20 @@ func (x *ListSkillsRequest) GetFilesystemMissing() string {
 func (x *ListSkillsRequest) GetSyncOrigin() string {
 	if x != nil {
 		return x.SyncOrigin
+	}
+	return ""
+}
+
+func (x *ListSkillsRequest) GetSortBy() string {
+	if x != nil {
+		return x.SortBy
+	}
+	return ""
+}
+
+func (x *ListSkillsRequest) GetSortOrder() string {
+	if x != nil {
+		return x.SortOrder
 	}
 	return ""
 }
@@ -4053,7 +4071,7 @@ const file_kratos_skill_v1_skill_proto_rawDesc = "" +
 	"\x0froot_accessible\x18\x01 \x01(\bR\x0erootAccessible\x12#\n" +
 	"\rresolved_root\x18\x02 \x01(\tR\fresolvedRoot\x12#\n" +
 	"\rmissing_count\x18\x03 \x01(\x05R\fmissingCount\x128\n" +
-	"\x18pending_filesystem_count\x18\x04 \x01(\x05R\x16pendingFilesystemCount\"\xf2\x01\n" +
+	"\x18pending_filesystem_count\x18\x04 \x01(\x05R\x16pendingFilesystemCount\"\xaa\x02\n" +
 	"\x11ListSkillsRequest\x12\x16\n" +
 	"\x06search\x18\x01 \x01(\tR\x06search\x12\x12\n" +
 	"\x04tags\x18\x02 \x01(\tR\x04tags\x12\x18\n" +
@@ -4063,7 +4081,11 @@ const file_kratos_skill_v1_skill_proto_rawDesc = "" +
 	"\tpage_size\x18\x06 \x01(\x05R\bpageSize\x12-\n" +
 	"\x12filesystem_missing\x18\a \x01(\tR\x11filesystemMissing\x12\x1f\n" +
 	"\vsync_origin\x18\b \x01(\tR\n" +
-	"syncOrigin\"\x89\x01\n" +
+	"syncOrigin\x12\x17\n" +
+	"\asort_by\x18\t \x01(\tR\x06sortBy\x12\x1d\n" +
+	"\n" +
+	"sort_order\x18\n" +
+	" \x01(\tR\tsortOrder\"\x89\x01\n" +
 	"\x12ListSkillsResponse\x12,\n" +
 	"\x05items\x18\x01 \x03(\v2\x16.kratos.skill.v1.SkillR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x12\n" +

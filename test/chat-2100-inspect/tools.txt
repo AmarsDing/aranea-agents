@@ -1,0 +1,6 @@
+COLS: [tool_name count min max]
+ROW 1: [tool_name=get_team_deliverable] [count=78] [min=2026-07-28 20:58:02.11821+08] [max=2026-07-28 21:00:35.876412+08] 
+ROW 2: [tool_name=todo_write] [count=3] [min=2026-07-28 20:57:11.424532+08] [max=2026-07-28 21:00:41.17842+08] 
+ROW 3: [tool_name=plan_and_execute] [count=2] [min=2026-07-28 20:57:18.023041+08] [max=2026-07-28 20:58:20.38461+08] 
+ROW 4: [tool_name=synthesize_results] [count=1] [min=2026-07-28 21:00:33.679215+08] [max=2026-07-28 21:00:33.679215+08] 
+TOTAL: 4

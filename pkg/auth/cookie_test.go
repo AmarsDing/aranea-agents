@@ -62,6 +62,64 @@ func (s *stubTransporter) Operation() string               { return "/test op" }
 func (s *stubTransporter) RequestHeader() transport.Header { return s.reply }
 func (s *stubTransporter) ReplyHeader() transport.Header   { return s.reply }
 
+// TestIssueTokenForWorkspace_RoundTrip verifies the P2 mobile token path:
+// the login response token is issued once, set into the cookie verbatim, and
+// carries the same workspace-bound claims as the cookie-based login flow.
+func TestIssueTokenForWorkspace_RoundTrip(t *testing.T) {
+	const testSecret = "test-secret-key-32bytes-minimum!!"
+	prev := SetSecretForTesting(testSecret)
+	defer SetSecretForTesting(prev)
+
+	expiresAt := time.Now().Add(time.Hour)
+	tokenStr, err := IssueTokenForWorkspace(42, "admin", "ws-tenant-a", expiresAt)
+	if err != nil {
+		t.Fatalf("IssueTokenForWorkspace: %v", err)
+	}
+	if tokenStr == "" {
+		t.Fatal("expected non-empty token")
+	}
+
+	tr := newStubTransporter()
+	ctx := transport.NewServerContext(context.Background(), tr)
+	if err := SetCookieWithToken(ctx, tokenStr, expiresAt); err != nil {
+		t.Fatalf("SetCookieWithToken: %v", err)
+	}
+
+	cookies := tr.reply.Values("Set-Cookie")
+	if len(cookies) == 0 {
+		t.Fatal("expected Set-Cookie header, got none")
+	}
+	raw := cookies[0]
+	idx := strings.Index(raw, ";")
+	if idx < 0 {
+		t.Fatalf("malformed cookie: %q", raw)
+	}
+	prefix := cookieNameFromEnv("KRATOS_AUTH_COOKIE") + "="
+	if !strings.HasPrefix(raw, prefix) {
+		t.Fatalf("cookie should start with %q, got %q", prefix, raw)
+	}
+	if got := raw[len(prefix):idx]; got != tokenStr {
+		t.Fatalf("cookie should carry the issued token verbatim; got %q want %q", got, tokenStr)
+	}
+
+	claims, err := ParseToken(tokenStr, testSecret)
+	if err != nil {
+		t.Fatalf("ParseToken: %v", err)
+	}
+	if claims.UserID != 42 || claims.Access != "admin" || claims.WorkspaceID != "ws-tenant-a" {
+		t.Fatalf("unexpected claims: %+v", claims)
+	}
+}
+
+// TestSetCookieWithToken_NoTransport verifies the function errors when the
+// context carries no kratos server transport (mirrors SetCookie behavior).
+func TestSetCookieWithToken_NoTransport(t *testing.T) {
+	err := SetCookieWithToken(context.Background(), "jwt-value", time.Now().Add(time.Hour))
+	if err == nil {
+		t.Fatal("expected error when no transport in context, got nil")
+	}
+}
+
 // TestSetCookieForWorkspace_NoTransport verifies the function errors when
 // the context carries no kratos server transport (mirrors SetCookie behavior).
 func TestSetCookieForWorkspace_NoTransport(t *testing.T) {

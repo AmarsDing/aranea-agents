@@ -43,6 +43,58 @@ func TestParseMemberDeliverableContract_InvalidJSON(t *testing.T) {
 	}
 }
 
+// F5 (Phase 11): inter-team deliverable contracts auto-derive MDC entries.
+// topic maps 1:1 to the contract name (no re-mapping, so members and the
+// spirit can never disagree on the topic name).
+func TestMemberEntriesFromDeliverableContracts(t *testing.T) {
+	contracts := []DeliverableContract{
+		{
+			Name:        "xlsx_install_result",
+			Type:        "data",
+			Format:      "json",
+			Description: "xlsx skill 安装结果",
+			SchemaJSON:  `{"type":"object","properties":{"status":{"type":"string"},"detail":{"type":"string"}},"required":["status","detail"]}`,
+		},
+		{
+			Name:        "report",
+			Type:        "document",
+			Format:      "markdown",
+			Description: "报告",
+			// no schema → advisory only, no required keys
+		},
+		{
+			Name:       "bad_schema",
+			Type:       "data",
+			Format:     "json",
+			SchemaJSON: `{not json`,
+		},
+		{
+			Name: "", // empty name skipped
+			Type: "data",
+		},
+	}
+	entries := MemberEntriesFromDeliverableContracts(contracts)
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries (empty name skipped), got %d: %+v", len(entries), entries)
+	}
+	e0 := entries[0]
+	if e0.Topic != "xlsx_install_result" || !e0.Required || e0.Description != "xlsx skill 安装结果" {
+		t.Fatalf("unexpected entry[0]: %+v", e0)
+	}
+	if e0.SchemaJSON == "" {
+		t.Fatal("entry[0] schema_json should pass through")
+	}
+	if len(e0.RequiredKeys) != 2 || e0.RequiredKeys[0] != "status" || e0.RequiredKeys[1] != "detail" {
+		t.Fatalf("entry[0] required_keys should derive from schema required, got %v", e0.RequiredKeys)
+	}
+	if entries[1].Topic != "report" || len(entries[1].RequiredKeys) != 0 || entries[1].SchemaJSON != "" {
+		t.Fatalf("unexpected entry[1]: %+v", entries[1])
+	}
+	if entries[2].Topic != "bad_schema" || len(entries[2].RequiredKeys) != 0 {
+		t.Fatalf("invalid schema must yield no required keys (advisory), got %+v", entries[2])
+	}
+}
+
 func TestValidateMemberDeliverableEntry_NoEntry(t *testing.T) {
 	c := &MemberDeliverableContract{}
 	if got := c.ValidateTopicData("anything", map[string]any{"a": 1}); got != nil {

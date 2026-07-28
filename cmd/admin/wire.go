@@ -1746,6 +1746,10 @@ func provideFailurePatternSyncJob(engine *monitor.RootCauseEngine, writer monito
 	return jobs.NewFailurePatternSyncJob(0, engine, writer, reader, lg)
 }
 
+// providePredictiveHealUsecase wires the predictive-heal usecase with a
+// NoopHealActionHandler: no real action catalog exists yet, so executions are
+// observe-only. The job is therefore disabled by default — see
+// providePredictiveHealJob / jobs.PredictiveHealJobEnabled (S1).
 func providePredictiveHealUsecase(uc *biz.MonitorUsecase, patternReader monitor.FailurePatternReader, healRepo monitor.HealRecordRepo, lg loggateway.Logger) *monitor.PredictiveHealUsecase {
 	metricsReader := monitor.NewMonitorSystemMetricsReader(uc)
 	handler := &monitor.NoopHealActionHandler{}
@@ -1753,6 +1757,9 @@ func providePredictiveHealUsecase(uc *biz.MonitorUsecase, patternReader monitor.
 }
 
 func providePredictiveHealJob(uc *monitor.PredictiveHealUsecase, lg loggateway.Logger) *jobs.PredictiveHealJob {
+	if !jobs.PredictiveHealJobEnabled() {
+		return nil
+	}
 	return jobs.NewPredictiveHealJob(0, uc, lg)
 }
 

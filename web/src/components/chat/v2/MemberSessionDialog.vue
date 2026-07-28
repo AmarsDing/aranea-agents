@@ -5,7 +5,12 @@
   - 纯展示组件：open 由父组件 v-model 控制，操作事件原样透传
 -->
 <template>
-  <q-dialog :model-value="open" @update:model-value="(v: boolean) => $emit('update:open', v)">
+  <!-- 移动端（<600px）最大化弹框：注入输入栏成为底部操作区（72 §3.2 触控化） -->
+  <q-dialog
+    :model-value="open"
+    :maximized="isMobileScreen"
+    @update:model-value="(v: boolean) => $emit('update:open', v)"
+  >
     <!-- 2026-07-27：md(720px) → lg(880px) + body 60vh→70vh，给活动流/任务指令/输入栏更充裕空间 -->
     <q-card class="app-dialog-card app-dialog-card--lg member-session-dialog">
       <q-card-section class="member-session-dialog__header">
@@ -37,6 +42,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
 import type { MemberSession } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload } from '../../../features/chat/types';
 import { useChatCodeCopy } from '../../../features/chat/composables/useChatMessageScroll';
@@ -48,6 +54,21 @@ function useSafeI18n() {
   } catch {
     return { t: (key: string) => key };
   }
+}
+
+// Safe Quasar wrapper（同 TaskCard）：useQuasar() 是裸 inject()，无插件时返回 undefined，
+// screen 回退桌面（lt.sm = false），单测中保持桌面行为。
+function useSafeQuasar() {
+  try {
+    const $q = useQuasar();
+    if ($q) return $q;
+  } catch {
+    // fall through to no-op
+  }
+  return {
+    notify: (_: unknown) => {},
+    screen: { lt: { sm: false } },
+  } as unknown as ReturnType<typeof useQuasar>;
 }
 
 const props = defineProps<{
@@ -64,6 +85,10 @@ defineEmits<{
 }>();
 
 const { t } = useSafeI18n();
+const $q = useSafeQuasar();
+
+// 移动端断点：<600px 弹框最大化（与路由断点 $q.screen.lt.sm 一致）
+const isMobileScreen = computed(() => $q.screen.lt.sm);
 
 // 弹框 teleport 到 body，聊天容器的代码块复制/折叠事件委托覆盖不到——
 // 在弹框 body 上复用同一处理逻辑（handleMessagesClick 内部按 closest('.code-block*') 匹配，非代码块点击自然落空）。
@@ -97,4 +122,23 @@ const title = computed(() => props.memberSession?.AgentName || props.memberSessi
     padding-top: 4px
     max-height: 70vh
     overflow-y: auto
+
+// 移动端（<600px，与 $q.screen.lt.sm 一致）：最大化弹框 → 卡片 flex 列，
+// body 撑满剩余高度且不整体滚动（活动流在 MemberSessionPanel 内部滚动，输入栏固定底部）。
+@media (max-width: 599px)
+  .member-session-dialog
+    display: flex
+    flex-direction: column
+    height: 100%
+
+    &__header
+      flex: 0 0 auto
+
+    &__body
+      flex: 1 1 auto
+      min-height: 0
+      max-height: none
+      overflow: hidden
+      display: flex
+      flex-direction: column
 </style>

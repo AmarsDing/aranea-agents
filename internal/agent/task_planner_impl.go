@@ -1181,7 +1181,8 @@ Rules:
 - Each subtask must have: id (st_1, st_2, etc.), name, description, depends_on (array of other subtask IDs), required_capabilities (from the predefined list), priority (1-5, 1=highest), estimated_complexity (0.0-1.0), domain_path (domain classification from the lexicon below)
 - The "name" field MUST be a short noun-phrase suitable for displaying as a team name (e.g. "Code Analysis Team", "Data Pipeline Builder"), NOT a sentence-length task description. The "name" will be shown to the user as the team's display name; "id" is internal-only and never shown.
 - Output ONLY a JSON array, no markdown fences, no commentary
-- required_capabilities must use these predefined tags: go-backend, go-kratos, vue3-frontend, quasar-ui, devops, database, architecture, testing, security, research, documentation, api-design
+- required_capabilities must use these predefined tags: go-backend, go-kratos, vue3-frontend, quasar-ui, devops, database, architecture, testing, security, research, documentation, api-design, system-admin
+- System administration subtasks (Skill/MCP/package installation, system resource management) MUST be tagged "system-admin", and their "description" MUST be intent-based: state the outcome to achieve (what), the source URL, and the exact cli_admin_* tool name to use (e.g. "使用 cli_admin_skill_install_from_url 从 https://github.com/example/xlsx-skill 安装 xlsx skill，完成后用 cli_admin_skill_get 确认 enabled=true"). NEVER put shell command text (pip install, git clone, etc.) into the description — the system butler has no shell/exec tools and shell text induces hallucinated calls to non-existent tools.
 - domain_path must classify the subtask into this domain lexicon (use the most specific entry that fits; if none fits, use a top-level domain or "其他"): %s
 - depends_on must only reference IDs of other subtasks in the array
 - No circular dependencies allowed

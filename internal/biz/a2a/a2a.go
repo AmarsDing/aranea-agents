@@ -71,6 +71,7 @@ type RemoteAgent struct {
 	AuthConfigJSON  string
 	Enabled         bool
 	DiscoveredCard  AgentCard
+	OrgID           string // federation org association; "" = workspace-level remote agent (non-federated)
 	LastHealthAt    string
 	LastHealthOK    bool
 	LastHealthError string
@@ -87,6 +88,7 @@ type RegisterRemoteAgentInput struct {
 	AuthType       string
 	AuthConfigJSON string
 	Enabled        bool
+	OrgID          string // optional: associate with a federation org
 }
 
 // RemoteCardDiscoverInput fetches a remote AgentCard without persisting.
@@ -491,6 +493,7 @@ func (u *Usecase) RegisterRemoteAgent(ctx context.Context, in RegisterRemoteAgen
 		AuthConfigJSON: strings.TrimSpace(in.AuthConfigJSON),
 		Enabled:        in.Enabled,
 		DiscoveredCard: card,
+		OrgID:          strings.TrimSpace(in.OrgID),
 	})
 }
 

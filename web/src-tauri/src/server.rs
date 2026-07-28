@@ -14,25 +14,75 @@ use axum::{
     body::Body,
     extract::{
         ws::{Message as AxumWs, WebSocket, WebSocketUpgrade},
-        FromRequestParts, Request,
+        FromRequestParts, Request, State,
     },
     http::{header, HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::any,
-    Router,
+    Json, Router,
 };
 use futures_util::{SinkExt, StreamExt};
 use rust_embed::RustEmbed;
-use std::sync::LazyLock;
+use std::path::PathBuf;
+use std::sync::{Arc, LazyLock, RwLock};
 use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message as WsMsg};
 
-const BACKEND_HTTP: &str = "http://127.0.0.1:8000";
-const BACKEND_WS: &str = "ws://127.0.0.1:8000";
+use crate::config::{self, BackendConfig};
+
+const DEFAULT_DESKTOP_HTTP: &str = "http://127.0.0.1:8000";
+const DEFAULT_DESKTOP_WS: &str = "ws://127.0.0.1:8000";
+
+/// True when compiled for Android (mobile entry point).
+const IS_ANDROID: bool = cfg!(target_os = "android");
 
 /// Same content the Electron packaging wrote to
-/// `assets/config/runtime-config.json`.
-const RUNTIME_CONFIG: &str =
+/// `assets/config/runtime-config.json`. Desktop only — Android serves `{}`
+/// so the SPA talks to the embedded proxy same-origin (see runtime.ts).
+const DESKTOP_RUNTIME_CONFIG: &str =
     r#"{"backendUrl":"http://127.0.0.1:8000","wsOrigin":"http://127.0.0.1:8000"}"#;
+
+/// Shared runtime state: the upstream backend can be (re)configured at
+/// runtime via the loopback-only `/__local/backend-config` endpoints.
+pub struct AppState {
+    config_dir: PathBuf,
+    upstream: RwLock<Option<BackendConfig>>,
+}
+
+impl AppState {
+    fn new(config_dir: PathBuf) -> Self {
+        let upstream = config::load(&config_dir);
+        Self {
+            config_dir,
+            upstream: RwLock::new(upstream),
+        }
+    }
+
+    fn current_upstream(&self) -> Option<(String, String)> {
+        resolve_upstream(self.upstream.read().unwrap().as_ref(), IS_ANDROID)
+    }
+}
+
+/// Pick the effective (http, ws) upstream. A configured URL always wins;
+/// desktop falls back to the co-located backend; Android without a config
+/// is unavailable (the SPA setup page collects the URL first).
+fn resolve_upstream(config: Option<&BackendConfig>, is_android: bool) -> Option<(String, String)> {
+    if let Some(cfg) = config {
+        return Some((cfg.http_base().to_string(), cfg.ws_base()));
+    }
+    if is_android {
+        None
+    } else {
+        Some((DEFAULT_DESKTOP_HTTP.to_string(), DEFAULT_DESKTOP_WS.to_string()))
+    }
+}
+
+fn runtime_config_json(is_android: bool) -> &'static str {
+    if is_android {
+        "{}"
+    } else {
+        DESKTOP_RUNTIME_CONFIG
+    }
+}
 
 #[derive(RustEmbed)]
 #[folder = "../dist/spa"]
@@ -47,20 +97,76 @@ static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 
 /// Serves the embedded SPA + backend proxy on the given (already bound)
 /// listener. Runs inside the Tauri async runtime.
-pub async fn serve(listener: std::net::TcpListener) -> std::io::Result<()> {
+pub async fn serve(listener: std::net::TcpListener, config_dir: PathBuf) -> std::io::Result<()> {
+    let state = Arc::new(AppState::new(config_dir));
     let app = Router::new()
         .route("/healthz", any(proxy_handler))
         .route("/v1/{*path}", any(proxy_handler))
         .route("/api/{*path}", any(proxy_handler))
         .route("/openapi/{*path}", any(proxy_handler))
-        .fallback(any(spa_handler));
+        .route(
+            "/__local/backend-config",
+            axum::routing::get(get_backend_config).put(put_backend_config),
+        )
+        .fallback(any(spa_handler))
+        .with_state(state);
     let listener = tokio::net::TcpListener::from_std(listener)?;
     axum::serve(listener, app).await
 }
 
+// ─── Loopback-only backend config ───────────────────────────────────────────
+
+async fn get_backend_config(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let url = state
+        .upstream
+        .read()
+        .unwrap()
+        .as_ref()
+        .map(|c| c.http_base().to_string());
+    Json(serde_json::json!({
+        "url": url,
+        "platform": if IS_ANDROID { "android" } else { "desktop" },
+        "requiresSetup": IS_ANDROID && url.is_none(),
+    }))
+}
+
+async fn put_backend_config(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let raw = body.get("url").and_then(|v| v.as_str()).unwrap_or("");
+    let cfg = match BackendConfig::new(raw) {
+        Ok(c) => c,
+        Err(msg) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": msg })),
+            )
+                .into_response();
+        }
+    };
+    if let Err(err) = config::save(&state.config_dir, &cfg) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("persist failed: {err}") })),
+        )
+            .into_response();
+    }
+    *state.upstream.write().unwrap() = Some(cfg);
+    StatusCode::OK.into_response()
+}
+
 // ─── Reverse proxy ──────────────────────────────────────────────────────────
 
-async fn proxy_handler(req: Request) -> Response {
+async fn proxy_handler(State(state): State<Arc<AppState>>, req: Request) -> Response {
+    let Some((http_base, ws_base)) = state.current_upstream() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Backend not configured. Open the app setup page to enter the server address.",
+        )
+            .into_response();
+    };
+
     let path_q = req
         .uri()
         .path_and_query()
@@ -69,14 +175,14 @@ async fn proxy_handler(req: Request) -> Response {
         .to_string();
 
     if !is_websocket_upgrade(req.headers()) {
-        return http_proxy(req, &path_q).await;
+        return http_proxy(req, &path_q, &http_base).await;
     }
 
     let (mut parts, _body) = req.into_parts();
     match WebSocketUpgrade::from_request_parts(&mut parts, &()).await {
         Ok(ws) => {
             let headers = std::mem::take(&mut parts.headers);
-            ws.on_upgrade(move |socket| ws_tunnel(socket, path_q, headers))
+            ws.on_upgrade(move |socket| ws_tunnel(socket, path_q, headers, ws_base))
         }
         Err(rejection) => rejection.into_response(),
     }
@@ -89,9 +195,9 @@ fn is_websocket_upgrade(headers: &HeaderMap) -> bool {
         .is_some_and(|v| v.eq_ignore_ascii_case("websocket"))
 }
 
-async fn http_proxy(req: Request, path_q: &str) -> Response {
+async fn http_proxy(req: Request, path_q: &str, http_base: &str) -> Response {
     let (parts, body) = req.into_parts();
-    let url = format!("{BACKEND_HTTP}{path_q}");
+    let url = format!("{http_base}{path_q}");
 
     let mut headers = parts.headers;
     headers.remove(header::HOST);
@@ -125,11 +231,11 @@ async fn http_proxy(req: Request, path_q: &str) -> Response {
     }
 }
 
-/// Bidirectional WebSocket tunnel: browser <-> backend :8000.
+/// Bidirectional WebSocket tunnel: browser <-> upstream backend.
 /// Auth headers (Cookie / Authorization) are forwarded so the backend session
 /// check keeps working; handshake headers are owned by tungstenite.
-async fn ws_tunnel(client: WebSocket, path_q: String, headers: HeaderMap) {
-    let url = format!("{BACKEND_WS}{path_q}");
+async fn ws_tunnel(client: WebSocket, path_q: String, headers: HeaderMap, ws_base: String) {
+    let url = format!("{ws_base}{path_q}");
     let mut request = match url.into_client_request() {
         Ok(r) => r,
         Err(_) => return,
@@ -217,10 +323,12 @@ async fn spa_handler(uri: Uri) -> Response {
     let path = if raw.is_empty() { "index.html" } else { raw };
 
     // Runtime config is baked in (was a build-time generated file in Electron).
+    // Desktop points the SPA at the co-located backend; Android returns `{}`
+    // so the SPA uses the embedded proxy same-origin.
     if path == "assets/config/runtime-config.json" {
         return (
             [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
-            RUNTIME_CONFIG,
+            runtime_config_json(IS_ANDROID),
         )
             .into_response();
     }
@@ -246,4 +354,41 @@ fn asset_response(path: &str, data: &[u8]) -> Response {
         mime.push_str("; charset=utf-8");
     }
     ([(header::CONTENT_TYPE, mime)], data.to_vec()).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::BackendConfig;
+
+    #[test]
+    fn resolve_upstream_prefers_configured_url() {
+        let cfg = BackendConfig::new("https://aranea.example.com").unwrap();
+        let (http, ws) = resolve_upstream(Some(&cfg), false).expect("resolved");
+        assert_eq!(http, "https://aranea.example.com");
+        assert_eq!(ws, "wss://aranea.example.com");
+    }
+
+    #[test]
+    fn resolve_upstream_desktop_falls_back_to_local_backend() {
+        let (http, ws) = resolve_upstream(None, false).expect("desktop fallback");
+        assert_eq!(http, "http://127.0.0.1:8000");
+        assert_eq!(ws, "ws://127.0.0.1:8000");
+    }
+
+    #[test]
+    fn resolve_upstream_android_without_config_is_unavailable() {
+        assert!(resolve_upstream(None, true).is_none());
+    }
+
+    #[test]
+    fn runtime_config_json_desktop_points_to_local_backend() {
+        let json = runtime_config_json(false);
+        assert!(json.contains("127.0.0.1:8000"));
+    }
+
+    #[test]
+    fn runtime_config_json_android_uses_same_origin() {
+        assert_eq!(runtime_config_json(true), "{}");
+    }
 }

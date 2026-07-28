@@ -207,6 +207,7 @@ func searchQueryFromProto(req *v1.SearchSessionsRequest) biz.SessionSearchQuery 
 		ContextStatus: req.GetContextStatus(),
 		Keyword:       req.GetKeyword(),
 		UserID:        req.GetUserId(),
+		RootOnly:      req.GetRootOnly(),
 		Limit:         int(req.GetLimit()),
 		Offset:        int(req.GetOffset()),
 		Page:          int(req.GetPage()),

@@ -37,6 +37,10 @@ func TestEmbeddedSpiritPrompts(t *testing.T) {
 	if err != nil || len(skills) == 0 {
 		t.Fatalf("skills prompts: %v %v", skills, err)
 	}
+	admin, err := systemprompts.ListSubdirMarkdown("system_admin")
+	if err != nil || len(admin) == 0 {
+		t.Fatalf("system_admin prompts: %v %v", admin, err)
+	}
 }
 
 // 2026-07-25 Fix 4：DECISION.md 必须保留「需求不明先澄清、禁止组队」约束。

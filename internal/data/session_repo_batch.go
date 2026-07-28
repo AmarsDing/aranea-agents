@@ -175,6 +175,10 @@ func sessionSearchWheres(q biz.SessionSearchQuery) []predicate.Session {
 	if q.OwnerType != "" {
 		wheres = append(wheres, entsession.OwnerTypeEQ(q.OwnerType))
 	}
+	// root_only：只列根会话（侧边栏/管理列表），排除团队成员等子会话。
+	if q.RootOnly {
+		wheres = append(wheres, entsession.ParentSessionIDEQ(""))
+	}
 	if q.AgentID != "" {
 		wheres = append(wheres, entsession.AgentIDEQ(q.AgentID))
 	}

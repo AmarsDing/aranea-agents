@@ -22,6 +22,7 @@ func NewMCPCmd() *cobra.Command {
 		mcpUpdateCmd(),
 		mcpDeleteCmd(),
 		mcpTestCmd(),
+		mcpValidateCmd(),
 	)
 	return c
 }
@@ -154,6 +155,42 @@ func mcpTestCmd() *cobra.Command {
 			return cc.Printer.PrintSuccess("MCP 服务器测试失败", "status", result.Status, "message", result.Message)
 		},
 	}
+}
+
+func mcpValidateCmd() *cobra.Command {
+	var filePath string
+	var enabled bool
+	cmd := &cobra.Command{
+		Use:   "validate --file <file>",
+		Short: "校验 MCP 服务器配置（不保存）",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cc := cli.CLIFrom(cmd.Context())
+			data, err := readFile(filePath)
+			if err != nil {
+				return &cli.CLIError{Code: "FILE_READ_ERROR", Message: err.Error()}
+			}
+			req := &mcpv1.ValidateMCPServerRequest{
+				Enabled:    enabled,
+				ConfigJson: string(data),
+			}
+			result, err := cc.Client.ValidateMCPServer(cmd.Context(), req)
+			if err != nil {
+				return err
+			}
+			if result.Ok {
+				return cc.Printer.PrintSuccess("MCP 配置校验通过", "status", result.Status)
+			}
+			// 校验失败必须非零退出（CI 契约，US-08）。
+			return &cli.CLIError{
+				Code:    "VALIDATION_FAILED",
+				Message: fmt.Sprintf("MCP 配置校验失败（%s）: %s", result.Status, result.Message),
+			}
+		},
+	}
+	cmd.Flags().StringVarP(&filePath, "file", "f", "", "MCP 配置 JSON 文件路径（- 表示 stdin）")
+	cmd.Flags().BoolVar(&enabled, "enabled", true, "按启用状态校验（false 时按停用状态校验）")
+	_ = cmd.MarkFlagRequired("file")
+	return cmd
 }
 
 // Row helpers convert proto items to display rows.

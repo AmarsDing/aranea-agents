@@ -17,6 +17,9 @@ export function useSkillsPage() {
   const selectedTags = ref<string[]>([]);
   const filesystemMissing = ref<boolean | null>(null);
   const filesystemHealth = ref<SkillFilesystemHealth | null>(null);
+  /** 排序：默认按标签升序（用户需求：默认标签排序）。 */
+  const sortBy = ref<'tag' | 'name' | ''>('tag');
+  const sortOrder = ref<'asc' | 'desc'>('asc');
   const page = ref(1);
   const pageSize = ref(20);
   const rows = ref<Skill[]>([]);
@@ -151,6 +154,8 @@ export function useSkillsPage() {
         sync_origin: syncOrigin.value || undefined,
         tags: selectedTags.value.length ? [...selectedTags.value] : undefined,
         filesystem_missing: filesystemMissing.value,
+        sort_by: sortBy.value || undefined,
+        sort_order: sortBy.value ? sortOrder.value : undefined,
         page: page.value,
         page_size: pageSize.value,
       });
@@ -171,6 +176,8 @@ export function useSkillsPage() {
     syncOrigin.value = '';
     selectedTags.value = [];
     filesystemMissing.value = null;
+    sortBy.value = 'tag';
+    sortOrder.value = 'asc';
     page.value = 1;
     void loadRows();
   }
@@ -244,7 +251,7 @@ export function useSkillsPage() {
     }
   }
 
-  watch([search, enabled, status, syncOrigin, selectedTags, filesystemMissing], () => {
+  watch([search, enabled, status, syncOrigin, selectedTags, filesystemMissing, sortBy, sortOrder], () => {
     if (page.value === 1) {
       void loadRows();
     } else {
@@ -272,6 +279,8 @@ export function useSkillsPage() {
     tagOptions,
     filesystemMissing,
     filesystemHealth,
+    sortBy,
+    sortOrder,
     page,
     pageSize,
     rows,

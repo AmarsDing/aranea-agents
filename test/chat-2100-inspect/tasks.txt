@@ -1,0 +1,5 @@
+COLS: [id status seq left created_at completed_at]
+ROW 1: [id=b9e390a0-19f9-46ae-ad99-8cb86a04a158] [status=interrupted] [seq=0] [left=任务：批量安装 4 个 Skill（批次 anthropics-missing4）。所需信息已完整提供，不要触发澄清门，直接执行。
+
+执行方式：调用 plan_and_execute 工具，agent] [created_at=2026-07-28 20:57:07.056057+08] [completed_at=2026-07-28 21:30:32.605756+08] 
+TOTAL: 1

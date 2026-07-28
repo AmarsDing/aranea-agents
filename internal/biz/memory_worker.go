@@ -94,17 +94,11 @@ func NewTurnMemoryWorker(feedback FeedbackMemoryEnqueuer, logger SessionLogWrite
 	return &TurnMemoryWorker{feedbackEnqueuer: feedback, logger: logger}
 }
 
-// OnRunnerCompletion logs runner completion for observability.
-// Auto-memory enqueue is handled by the framework layer; this method no longer
-// duplicates the enqueue to prevent double-processing of the same session.
+// OnRunnerCompletion is a deliberate no-op: auto-memory enqueue is handled by
+// the framework layer (runner.enqueueAutoMemoryJob). Logging a Warn per runner
+// completion produced one noisy session-log entry per turn (M3), so the
+// observability hook stays but emits nothing.
 func (w *TurnMemoryWorker) OnRunnerCompletion(ctx context.Context, de DomainEvent) {
-	sid := strings.TrimSpace(de.SessionID)
-	if sid == "" {
-		return
-	}
-	if w.logger != nil {
-		w.logger.LogSessionWarn(ctx, sid, "system.memory_worker.runner_complete", "Runner 完成，自动记忆由框架层入队")
-	}
 }
 
 // OnUserFeedback enqueues preference memory extraction from thumbs up/down events.

@@ -1,10 +1,13 @@
 package pkginstall
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidateManifestRejectsTraversalPaths(t *testing.T) {
@@ -111,6 +114,109 @@ func TestCloneEnvWithoutGitProxyPassthrough(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("cloneEnv() dropped existing HTTPS_PROXY when ARANEA_GIT_PROXY unset")
+	}
+}
+
+// installFakeGit writes a fake `git` executable onto PATH that fails the first
+// failCount invocations and succeeds afterwards. It returns the path of the
+// counter file recording how many times the fake git was invoked.
+func installFakeGit(t *testing.T, failCount int) string {
+	t.Helper()
+	dir := t.TempDir()
+	counter := filepath.Join(dir, "count.txt")
+	t.Setenv("FAKE_GIT_COUNTER", counter)
+
+	var name, script string
+	if runtime.GOOS == "windows" {
+		name = "git.bat"
+		script = "@echo off\r\n" +
+			"set /a COUNT=0\r\n" +
+			"if exist \"%FAKE_GIT_COUNTER%\" set /p COUNT=<\"%FAKE_GIT_COUNTER%\"\r\n" +
+			"set /a COUNT+=1\r\n" +
+			">\"%FAKE_GIT_COUNTER%\" echo %COUNT%\r\n" +
+			"if %COUNT% GTR " + itoa(failCount) + " goto ok\r\n" +
+			"echo fatal: unable to access: simulated transient reset 1>&2\r\n" +
+			"exit /b 128\r\n" +
+			":ok\r\n" +
+			"for %%I in (%*) do set \"TARGET=%%~I\"\r\n" +
+			"mkdir \"%TARGET%\" 2>nul\r\n" +
+			"exit /b 0\r\n"
+	} else {
+		name = "git"
+		script = "#!/bin/sh\n" +
+			"COUNT=0\n" +
+			"[ -f \"$FAKE_GIT_COUNTER\" ] && COUNT=$(cat \"$FAKE_GIT_COUNTER\")\n" +
+			"COUNT=$((COUNT+1))\n" +
+			"echo $COUNT > \"$FAKE_GIT_COUNTER\"\n" +
+			"if [ \"$COUNT\" -le " + itoa(failCount) + " ]; then\n" +
+			"  echo \"fatal: unable to access: simulated transient reset\" >&2\n" +
+			"  exit 128\n" +
+			"fi\n" +
+			"for last; do :; done\n" +
+			"mkdir -p \"$last\"\n" +
+			"exit 0\n"
+	}
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake git: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	// Zero the retry backoff so tests stay fast.
+	oldBackoff := cloneBackoff
+	cloneBackoff = func(int) time.Duration { return 0 }
+	t.Cleanup(func() { cloneBackoff = oldBackoff })
+	return counter
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b [8]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(b[i:])
+}
+
+func readAttemptCount(t *testing.T, counter string) string {
+	t.Helper()
+	data, err := os.ReadFile(counter)
+	if err != nil {
+		t.Fatalf("read counter: %v", err)
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func TestFetchFromURLRetriesTransientCloneFailure(t *testing.T) {
+	counter := installFakeGit(t, 1) // fail once, succeed on 2nd attempt
+	dir, cleanup, err := FetchFromURL("https://example.invalid/repo.git", "", true)
+	if err != nil {
+		t.Fatalf("FetchFromURL() error = %v, want success after retry", err)
+	}
+	if cleanup == nil || dir == "" {
+		t.Fatal("FetchFromURL() returned empty dir/cleanup on success")
+	}
+	cleanup()
+	if got := readAttemptCount(t, counter); got != "2" {
+		t.Fatalf("attempt count = %s, want 2 (1 failure + 1 retry)", got)
+	}
+}
+
+func TestFetchFromURLGivesUpAfterMaxAttempts(t *testing.T) {
+	counter := installFakeGit(t, 99) // always fail
+	_, _, err := FetchFromURL("https://example.invalid/repo.git", "", true)
+	if err == nil {
+		t.Fatal("FetchFromURL() error = nil, want persistent failure")
+	}
+	if !strings.Contains(err.Error(), "simulated transient reset") {
+		t.Fatalf("FetchFromURL() error = %q, want git stderr tail", err)
+	}
+	if got := readAttemptCount(t, counter); got != "3" {
+		t.Fatalf("attempt count = %s, want 3 (max attempts)", got)
 	}
 }
 

@@ -62,6 +62,57 @@ func (e *MemberContractViolationError) Error() string {
 	return sb.String()
 }
 
+// MemberEntriesFromDeliverableContracts derives MDC entries from a team's
+// inter-team deliverable contracts (F5, Phase 11). The topic maps 1:1 to the
+// contract name — no slugging or re-mapping — so members (set_deliverable)
+// and the spirit (get_deliverable / get_team_deliverable) can never disagree
+// on topic names (12:33 root cause: spirit guessed the wrong topic).
+//
+// Entries are Required (completion-time advisory) and inherit the contract's
+// SchemaJSON for write-time content validation; required_keys derive from the
+// schema's top-level "required" array. Empty-name or schema-less contracts
+// still produce entries (advisory-only when no schema).
+func MemberEntriesFromDeliverableContracts(contracts []DeliverableContract) []MemberDeliverableEntry {
+	entries := make([]MemberDeliverableEntry, 0, len(contracts))
+	for _, c := range contracts {
+		name := strings.TrimSpace(c.Name)
+		if name == "" {
+			continue
+		}
+		entries = append(entries, MemberDeliverableEntry{
+			Topic:        name,
+			Description:  strings.TrimSpace(c.Description),
+			Required:     true,
+			RequiredKeys: RequiredKeysFromSchema(c.SchemaJSON),
+			SchemaJSON:   strings.TrimSpace(c.SchemaJSON),
+		})
+	}
+	return entries
+}
+
+// RequiredKeysFromSchema extracts the top-level "required" array from a JSON
+// Schema document. Returns nil for empty or invalid schemas (advisory-only
+// path — never fail definition generation on a bad schema).
+func RequiredKeysFromSchema(schemaJSON string) []string {
+	schemaJSON = strings.TrimSpace(schemaJSON)
+	if schemaJSON == "" {
+		return nil
+	}
+	var schema struct {
+		Required []string `json:"required"`
+	}
+	if err := json.Unmarshal([]byte(schemaJSON), &schema); err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(schema.Required))
+	for _, key := range schema.Required {
+		if key = strings.TrimSpace(key); key != "" {
+			out = append(out, key)
+		}
+	}
+	return out
+}
+
 // ParseMemberDeliverableContract parses the Definition JSON fragment; empty
 // input yields nil (no contract). Invalid JSON is a hard error (fail-fast at
 // team load, consistent with ParseDeliverableContracts).

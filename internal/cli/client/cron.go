@@ -80,6 +80,16 @@ func (c *Client) TriggerCronTask(ctx context.Context, id string) (*cronv1.CronTa
 	return resp, nil
 }
 
+// ResetCronTaskFailures calls POST /v1/cron-tasks/{id}/reset-failures.
+func (c *Client) ResetCronTaskFailures(ctx context.Context, id string) (*cronv1.CronTask, error) {
+	resp := &cronv1.CronTask{}
+	req := &cronv1.ResetCronTaskFailuresRequest{Id: id}
+	if err := c.Do(ctx, http.MethodPost, "/v1/cron-tasks/"+id+"/reset-failures", req, resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // ListCronTaskRuns calls GET /v1/cron-task-runs.
 func (c *Client) ListCronTaskRuns(ctx context.Context, taskID string, limit int32) (*cronv1.ListCronTaskRunsResponse, error) {
 	path := "/v1/cron-task-runs"

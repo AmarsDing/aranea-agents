@@ -136,6 +136,26 @@ func SetCookie(ctx context.Context, userID int64, access string, expiresAt time.
 	return nil
 }
 
+// IssueTokenForWorkspace generates a JWT bound to the given workspaceID using
+// the server secret. P2 (mobile): the login handler issues the token once,
+// sets it as the session cookie AND returns it in the response body so
+// cross-origin clients (WebView / frp) can authenticate via Bearer header or
+// WS `?token=` query when the HttpOnly cookie is unavailable.
+func IssueTokenForWorkspace(userID int64, access, workspaceID string, expiresAt time.Time) (string, error) {
+	return GenerateTokenForWorkspace(userID, access, workspaceID, authSecretKey, expiresAt)
+}
+
+// SetCookieWithToken sets the login cookie from an already-issued token so
+// the cookie and the response-body token stay identical (same jti/expiry).
+func SetCookieWithToken(ctx context.Context, token string, expiresAt time.Time) error {
+	tr, ok := transport.FromServerContext(ctx)
+	if !ok {
+		return fmt.Errorf("failed to get transport from context")
+	}
+	tr.ReplyHeader().Add("Set-Cookie", newSessionCookie(token, expiresAt).String())
+	return nil
+}
+
 // SetCookieForWorkspace sets the login cookie with a JWT bound to the given
 // workspaceID. This is the B-01 P2-A entry point: workspace membership is
 // stamped into the JWT claim at login so subsequent requests carry it via
@@ -145,16 +165,11 @@ func SetCookie(ctx context.Context, userID int64, access string, expiresAt time.
 // (e.g. admin login flows admin.WorkspaceID into the JWT). An empty
 // workspaceID is normalized to DefaultWorkspaceID by GenerateTokenForWorkspace.
 func SetCookieForWorkspace(ctx context.Context, userID int64, access, workspaceID string, expiresAt time.Time) error {
-	tr, ok := transport.FromServerContext(ctx)
-	if !ok {
-		return fmt.Errorf("failed to get transport from context")
-	}
-	token, err := GenerateTokenForWorkspace(userID, access, workspaceID, authSecretKey, expiresAt)
+	token, err := IssueTokenForWorkspace(userID, access, workspaceID, expiresAt)
 	if err != nil {
 		return err
 	}
-	tr.ReplyHeader().Add("Set-Cookie", newSessionCookie(token, expiresAt).String())
-	return nil
+	return SetCookieWithToken(ctx, token, expiresAt)
 }
 
 // DeleteCookie clears the login cookie in the HTTP response.

@@ -1,0 +1,25 @@
+# frps — runs on your VPS (public IP). frp >= 0.52 (TOML config).
+#
+# Pair with the Caddyfile in this directory: Caddy terminates TLS on 443 and
+# reverse-proxies to vhostHTTPPort below, so frps itself only speaks plain
+# HTTP on loopback.
+
+bindPort = 7000
+
+# Token auth is MANDATORY. Generate a long random value and use the same
+# value in frpc.toml on your PC.
+auth.method = "token"
+auth.token = "CHANGE_ME_LONG_RANDOM_TOKEN"
+
+# Caddy reverse-proxies aranea.example.com -> 127.0.0.1:8080. frp routes by
+# the Host header (customDomains in frpc.toml).
+vhostHTTPPort = 8080
+
+# Only allow the ports/domains this deployment needs.
+allowPorts = []
+
+# Optional dashboard (keep it loopback-only; check via SSH port-forward):
+# webServer.addr = "127.0.0.1"
+# webServer.port = 7500
+# webServer.user = "admin"
+# webServer.password = "CHANGE_ME"

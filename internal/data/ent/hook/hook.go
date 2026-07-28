@@ -320,6 +320,42 @@ func (f FailurePatternFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Val
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.FailurePatternMutation", m)
 }
 
+// The FederationAuditLogFunc type is an adapter to allow the use of ordinary
+// function as FederationAuditLog mutator.
+type FederationAuditLogFunc func(context.Context, *ent.FederationAuditLogMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f FederationAuditLogFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.FederationAuditLogMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.FederationAuditLogMutation", m)
+}
+
+// The FederationOrgFunc type is an adapter to allow the use of ordinary
+// function as FederationOrg mutator.
+type FederationOrgFunc func(context.Context, *ent.FederationOrgMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f FederationOrgFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.FederationOrgMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.FederationOrgMutation", m)
+}
+
+// The FederationPolicyFunc type is an adapter to allow the use of ordinary
+// function as FederationPolicy mutator.
+type FederationPolicyFunc func(context.Context, *ent.FederationPolicyMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f FederationPolicyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.FederationPolicyMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.FederationPolicyMutation", m)
+}
+
 // The FlowLogEventFunc type is an adapter to allow the use of ordinary
 // function as FlowLogEvent mutator.
 type FlowLogEventFunc func(context.Context, *ent.FlowLogEventMutation) (ent.Value, error)

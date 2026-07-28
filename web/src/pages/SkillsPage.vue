@@ -55,6 +55,8 @@
       v-model:tags="selectedTags"
       v-model:sync-origin="syncOrigin"
       v-model:filesystem-missing="filesystemMissing"
+      v-model:sort-by="sortBy"
+      v-model:sort-order="sortOrder"
       :tag-options="tagOptions"
       :loading="loading"
       class="q-mb-md"
@@ -146,6 +148,8 @@ const {
   tagOptions,
   filesystemMissing,
   filesystemHealth,
+  sortBy,
+  sortOrder,
   page,
   pageSize,
   rows,

@@ -405,3 +405,94 @@ func TestDecodeImportJobAcceptsSnakeCase(t *testing.T) {
 		t.Fatalf("similarity = %v", job.ConflictGroups[0].HighestSimilarityScore)
 	}
 }
+
+// A warn candidate inside a conflict group the LLM engine judged keep_separate
+// must be imported (not dropped) for coarse skip/keep decisions.
+const jobCompletedKeepSeparateGroup = `{
+  "jobId":"j1","status":"completed","validationStatus":"warn",
+  "candidates":[
+    {"candidateId":"c1","name":"Skill One","slug":"skill-one","validationStatus":"pass"},
+    {"candidateId":"c2","name":"Frontend Design","slug":"frontend-design","validationStatus":"warn"}
+  ],
+  "conflictGroups":[{
+    "groupId":"g1","highestSimilarityScore":0.35,
+    "candidateIds":["c2"],
+    "existingSkills":[{"id":"e1","name":"Theme Factory","slug":"theme-factory"}],
+    "canRefine":true,
+    "metrics":{"recommendation":"keep_separate","conflictRisk":"low"}
+  }]
+}`
+
+func TestInstallSkillSkipImportsKeepSeparateGroup(t *testing.T) {
+	backend := newImportBackend()
+	backend.jobBodies = []string{jobCompletedKeepSeparateGroup}
+
+	result := installSkillAgainst(t, backend, "skip")
+
+	actions := backend.decisionActions()
+	if len(actions) != 2 || actions[0] != "import_passed" || actions[1] != "keep_separate" {
+		t.Fatalf("apply decision actions = %v, want [import_passed keep_separate]", actions)
+	}
+	if got := backend.applyDecisions[1]["candidateId"]; got != "c2" {
+		t.Fatalf("keep_separate candidateId = %v, want c2", got)
+	}
+	step := skillStep(t, result)
+	if step.Status != "installed" {
+		t.Fatalf("step.Status = %q, want installed", step.Status)
+	}
+}
+
+func TestInstallSkillKeepImportsKeepSeparateGroup(t *testing.T) {
+	backend := newImportBackend()
+	backend.jobBodies = []string{jobCompletedKeepSeparateGroup}
+
+	result := installSkillAgainst(t, backend, "keep")
+
+	actions := backend.decisionActions()
+	if len(actions) != 2 || actions[0] != "import_passed" || actions[1] != "keep_separate" {
+		t.Fatalf("apply decision actions = %v, want [import_passed keep_separate]", actions)
+	}
+	_ = result
+}
+
+// Groups without a keep_separate recommendation keep the conservative
+// skip_group behavior even when the candidate is warn.
+func TestInstallSkillSkipSkipsGroupWithoutKeepSeparate(t *testing.T) {
+	backend := newImportBackend()
+	backend.jobBodies = []string{`{
+	  "jobId":"j1","status":"completed","validationStatus":"warn",
+	  "candidates":[{"candidateId":"c2","name":"Doc Co","slug":"doc-coauthoring","validationStatus":"warn"}],
+	  "conflictGroups":[{
+	    "groupId":"g1","highestSimilarityScore":0.55,
+	    "candidateIds":["c2"],
+	    "existingSkills":[{"id":"e1","name":"Docx","slug":"docx"}],
+	    "canRefine":true,
+	    "metrics":{"recommendation":"suggest_refine","conflictRisk":"medium"}
+	  }]
+	}`}
+
+	result := installSkillAgainst(t, backend, "skip")
+
+	actions := backend.decisionActions()
+	if len(actions) != 1 || actions[0] != "skip_group" {
+		t.Fatalf("apply decision actions = %v, want [skip_group]", actions)
+	}
+	_ = result
+}
+
+// keep_separate requires a warn candidate; a pass candidate in a
+// keep_separate-recommended group still falls back to skip_group (pass
+// candidates outside groups are imported via import_passed, and the engine
+// rejects keep_separate for non-warn candidates).
+func TestInstallSkillSkipKeepSeparateFallsBackForPassCandidate(t *testing.T) {
+	backend := newImportBackend()
+	backend.jobBodies = []string{jobCompletedWithConflictGroup} // c2 is "pass", no metrics
+
+	result := installSkillAgainst(t, backend, "skip")
+
+	actions := backend.decisionActions()
+	if len(actions) != 2 || actions[0] != "import_passed" || actions[1] != "skip_group" {
+		t.Fatalf("apply decision actions = %v, want [import_passed skip_group]", actions)
+	}
+	_ = result
+}

@@ -65,9 +65,9 @@ flowchart TB
   end
 
   subgraph Data["数据层"]
-    Ent["SQLite + Ent"]
-    Raw["Shared raw sql.DB"]
-    PG["Postgres / pgvector"]
+    Ent["Postgres + Ent（生产唯一主库）"]
+    Raw["Shared raw sql.DB（写16/读32 双池）"]
+    PG["pgvector / tsvector（同库同池）"]
     FS["Artifact / Skill 文件存储"]
   end
 
@@ -253,7 +253,7 @@ flowchart TB
   Turn["Agent Turn"] --> Session["trpc session.Service"]
   Turn --> MemorySvc["trpc memory.Service"]
   Turn --> L0["L0 Context Compression"]
-  MemorySvc --> Adapter["internal/memory/trpc/sqlite_adapter.go"]
+  MemorySvc --> Adapter["internal/memory/trpc/sqlite_adapter.go（Postgres 适配，历史命名）"]
   Adapter --> Store["internal/data/memory_admin_adapter.go (SessionAdminStoreAdapter)"]
   Store --> L1["L1 Working"]
   Store --> L2["L2 Episodic"]

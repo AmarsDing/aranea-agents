@@ -11,12 +11,14 @@ const adminSvc = createAdminService();
 function mapAdmin(raw: unknown): AdminSession {
   const r = raw as Record<string, unknown>;
   const id = Number(r.id ?? 0);
+  const token = typeof r.token === 'string' && r.token ? r.token : undefined;
   return {
     id,
     name: String(r.name ?? ''),
     email: String(r.email ?? ''),
     access: String(r.access ?? ''),
     avatar: String(r.avatar ?? ''),
+    ...(token ? { token } : {}),
   };
 }
 

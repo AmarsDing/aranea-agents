@@ -88,6 +88,7 @@ func EnsureA2ASchema(ctx context.Context, db *sql.DB, d Dialect) error {
 			last_health_at   TEXT NOT NULL DEFAULT '',
 			last_health_ok   INTEGER NOT NULL DEFAULT 0,
 			last_health_error TEXT NOT NULL DEFAULT '',
+			org_id           TEXT NOT NULL DEFAULT '',
 			created_at       TEXT NOT NULL,
 			updated_at       TEXT NOT NULL
 		)`,
@@ -103,6 +104,7 @@ func EnsureA2ASchema(ctx context.Context, db *sql.DB, d Dialect) error {
 		`ALTER TABLE a2a_remote_agents ADD COLUMN last_health_at TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE a2a_remote_agents ADD COLUMN last_health_ok INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE a2a_remote_agents ADD COLUMN last_health_error TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE a2a_remote_agents ADD COLUMN org_id TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, m := range migrations {
 		// ALTER TABLE ADD COLUMN fails if the column already exists.
@@ -355,10 +357,10 @@ func (r *a2aRepo) CreateRemoteAgent(ctx context.Context, agent biz.A2ARemoteAgen
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`INSERT INTO a2a_remote_agents
-		 (id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,created_at,updated_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?)`),
+		 (id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,org_id,created_at,updated_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
 		agent.ID, agent.Workspace, agent.DisplayName, agent.RemoteURL, agent.AgentCardURL,
-		agent.AuthType, agent.AuthConfigJSON, enabled, string(cardJSON), now, now)
+		agent.AuthType, agent.AuthConfigJSON, enabled, string(cardJSON), agent.OrgID, now, now)
 	if err != nil {
 		return biz.A2ARemoteAgent{}, entErrToBizErr(err, "A2A")
 	}
@@ -372,8 +374,8 @@ func (r *a2aRepo) ListRemoteAgents(ctx context.Context, workspace string) ([]biz
 		return nil, nil
 	}
 	q := `SELECT id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,
-	      COALESCE(last_health_at,''),COALESCE(last_health_ok,0),COALESCE(last_health_error,''),created_at,updated_at
-	      FROM a2a_remote_agents WHERE 1=1`
+      COALESCE(org_id,''),COALESCE(last_health_at,''),COALESCE(last_health_ok,0),COALESCE(last_health_error,''),created_at,updated_at
+      FROM a2a_remote_agents WHERE 1=1`
 	args := []any{}
 	if strings.TrimSpace(workspace) != "" {
 		q += ` AND workspace=?`
@@ -415,7 +417,7 @@ func (r *a2aRepo) GetRemoteAgent(ctx context.Context, id string) (biz.A2ARemoteA
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`SELECT id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,
-		 COALESCE(last_health_at,''),COALESCE(last_health_ok,0),COALESCE(last_health_error,''),created_at,updated_at
+		 COALESCE(org_id,''),COALESCE(last_health_at,''),COALESCE(last_health_ok,0),COALESCE(last_health_error,''),created_at,updated_at
 		 FROM a2a_remote_agents WHERE id=?`), id)
 	if err != nil {
 		return biz.A2ARemoteAgent{}, entErrToBizErr(err, "A2A")
@@ -457,7 +459,7 @@ func scanRemoteAgent(row scannable) (biz.A2ARemoteAgent, error) {
 	var cardJSON string
 	if err := row.Scan(&agent.ID, &agent.Workspace, &agent.DisplayName, &agent.RemoteURL, &agent.AgentCardURL,
 		&agent.AuthType, &agent.AuthConfigJSON, &enabled, &cardJSON,
-		&agent.LastHealthAt, &healthOK, &agent.LastHealthError, &agent.CreatedAt, &agent.UpdatedAt); err != nil {
+		&agent.OrgID, &agent.LastHealthAt, &healthOK, &agent.LastHealthError, &agent.CreatedAt, &agent.UpdatedAt); err != nil {
 		return biz.A2ARemoteAgent{}, err
 	}
 	agent.Enabled = enabled == 1

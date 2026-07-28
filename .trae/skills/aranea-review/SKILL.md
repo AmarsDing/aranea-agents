@@ -88,7 +88,7 @@ grep -rn "fmt.Errorf" internal/service/
 | BL2 | Service 层错误映射是否用 `apierror` | 🔴 阻断 | 禁止 `fmt.Errorf` 返回业务错误 |
 | BL3 | Biz 层模型是否用纯 Go struct | 🟡 建议 | 字段用基本类型，不用 proto 类型 |
 | BL4 | Biz 层 Repo 接口是否定义在 biz | 🟡 建议 | 实现在 data，接口在 biz |
-| BL5 | Data 层是否仅通过 `d.RW()`/`d.RWDB()`/`d.Postgres()` 访问 | 🔴 阻断 | 禁止另开 SQLite 连接，禁止使用已废弃的 `d.Ent()`/`d.RawDB()`/`d.ReadDB()` |
+| BL5 | Data 层是否仅通过 `d.RW()`/`d.RWDB()`/`d.Postgres()`/`d.PostgresRead()` 访问 | 🔴 阻断 | 禁止另开数据库连接（生产唯一驱动 Postgres），禁止使用已废弃的 `d.Ent()`/`d.RawDB()`/`d.ReadDB()` |
 | BL6 | Data 层转换函数是否 `entXxxToBiz`/`bizXxxToEnt` | 🟡 建议 | 放在对应 Repo 文件中 |
 | BL7 | Data 层是否有编译期接口检查 `var _ biz.XxxRepo = (*xxxRepo)(nil)` | 🟢 提示 | 确保接口实现完整 |
 | BL8 | Service 层构造函数是否只接收接口或具体依赖 | 🔴 阻断 | 不接收"上帝对象" |
@@ -411,7 +411,7 @@ grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep 
 |---|--------|----------|----------|
 | TS1 | Service 层是否有集成测试 | 🟡 建议 | mock Runner，验证 proto↔biz 映射+事件投影 |
 | TS2 | Biz 层是否有单元测试 | 🔴 阻断 | mock Repo，验证业务逻辑+状态转换 |
-| TS3 | Data 层是否有仓储测试 | 🟡 建议 | 真实 SQLite 内存模式，验证 Ent 查询+错误翻译 |
+| TS3 | Data 层是否有仓储测试 | 🟡 建议 | 真实 Postgres（`testhelper.SetupTestPG` 独立 schema），验证 Ent 查询+错误翻译 |
 | TS4 | Agent 桥接是否有测试 | 🟡 建议 | mock 框架 Agent，验证 biz→trpc 转换 |
 
 ### 15.2 Mock 策略审查

@@ -1,0 +1,22 @@
+# frpc — runs on your PC next to the Aranea Go backend (127.0.0.1:8000).
+# frp >= 0.52 (TOML config).
+#
+# frpc only makes OUTBOUND connections, so no firewall/NAT changes are
+# needed on the PC side.
+
+serverAddr = "YOUR_VPS_PUBLIC_IP"
+serverPort = 7000
+auth.method = "token"
+auth.token = "CHANGE_ME_LONG_RANDOM_TOKEN"
+
+[[proxies]]
+name = "aranea-backend"
+type = "http"
+localIP = "127.0.0.1"
+localPort = 8000
+# Must match the public domain that Caddy serves. frp (vhostHTTPPort)
+# routes by this Host header.
+customDomains = ["aranea.example.com"]
+
+# WebSocket (/v1/ws) is carried over the same HTTP proxy — frp and Caddy
+# both pass Upgrade headers transparently, no extra config needed.

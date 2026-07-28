@@ -1014,6 +1014,110 @@ var (
 			},
 		},
 	}
+	// FederationAuditLogsColumns holds the columns for the "federation_audit_logs" table.
+	FederationAuditLogsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "direction", Type: field.TypeEnum, Enums: []string{"outbound", "inbound"}, Default: "outbound"},
+		{Name: "caller_org_id", Type: field.TypeString, Size: 64},
+		{Name: "callee_org_id", Type: field.TypeString, Size: 64},
+		{Name: "caller_agent_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "callee_agent_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "capability", Type: field.TypeString, Size: 256},
+		{Name: "decision", Type: field.TypeEnum, Enums: []string{"allowed", "denied_trust", "denied_policy", "denied_quota"}},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "success", "error", "timeout"}, Default: "pending"},
+		{Name: "latency_ms", Type: field.TypeInt64, Default: 0},
+		{Name: "error_message", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// FederationAuditLogsTable holds the schema information for the "federation_audit_logs" table.
+	FederationAuditLogsTable = &schema.Table{
+		Name:       "federation_audit_logs",
+		Columns:    FederationAuditLogsColumns,
+		PrimaryKey: []*schema.Column{FederationAuditLogsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idx_federation_audit_logs_caller_created",
+				Unique:  false,
+				Columns: []*schema.Column{FederationAuditLogsColumns[2], FederationAuditLogsColumns[11]},
+			},
+			{
+				Name:    "idx_federation_audit_logs_callee_created",
+				Unique:  false,
+				Columns: []*schema.Column{FederationAuditLogsColumns[3], FederationAuditLogsColumns[11]},
+			},
+		},
+	}
+	// FederationOrgsColumns holds the columns for the "federation_orgs" table.
+	FederationOrgsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "name", Type: field.TypeString, Size: 256},
+		{Name: "domain", Type: field.TypeString, Size: 512},
+		{Name: "public_base_url", Type: field.TypeString, Size: 1024, Default: ""},
+		{Name: "trust_level", Type: field.TypeEnum, Enums: []string{"untrusted", "neutral", "trusted"}, Default: "neutral"},
+		{Name: "auth_type", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "auth_config_json", Type: field.TypeString, Size: 2147483647, Default: "{}"},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "suspended"}, Default: "active"},
+		{Name: "joined_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// FederationOrgsTable holds the schema information for the "federation_orgs" table.
+	FederationOrgsTable = &schema.Table{
+		Name:       "federation_orgs",
+		Columns:    FederationOrgsColumns,
+		PrimaryKey: []*schema.Column{FederationOrgsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idx_federation_orgs_domain",
+				Unique:  true,
+				Columns: []*schema.Column{FederationOrgsColumns[2]},
+			},
+			{
+				Name:    "idx_federation_orgs_status",
+				Unique:  false,
+				Columns: []*schema.Column{FederationOrgsColumns[7]},
+			},
+			{
+				Name:    "idx_federation_orgs_trust_level",
+				Unique:  false,
+				Columns: []*schema.Column{FederationOrgsColumns[4]},
+			},
+		},
+	}
+	// FederationPoliciesColumns holds the columns for the "federation_policies" table.
+	FederationPoliciesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "caller_org_id", Type: field.TypeString, Size: 64},
+		{Name: "callee_org_id", Type: field.TypeString, Size: 64},
+		{Name: "action", Type: field.TypeEnum, Enums: []string{"allow", "deny", "approval"}, Default: "allow"},
+		{Name: "max_per_min", Type: field.TypeInt, Default: 0},
+		{Name: "daily_quota", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// FederationPoliciesTable holds the schema information for the "federation_policies" table.
+	FederationPoliciesTable = &schema.Table{
+		Name:       "federation_policies",
+		Columns:    FederationPoliciesColumns,
+		PrimaryKey: []*schema.Column{FederationPoliciesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idx_federation_policies_pair",
+				Unique:  true,
+				Columns: []*schema.Column{FederationPoliciesColumns[1], FederationPoliciesColumns[2]},
+			},
+			{
+				Name:    "idx_federation_policies_caller",
+				Unique:  false,
+				Columns: []*schema.Column{FederationPoliciesColumns[1]},
+			},
+			{
+				Name:    "idx_federation_policies_callee",
+				Unique:  false,
+				Columns: []*schema.Column{FederationPoliciesColumns[2]},
+			},
+		},
+	}
 	// FlowLogEventsColumns holds the columns for the "flow_log_events" table.
 	FlowLogEventsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
@@ -3480,6 +3584,9 @@ var (
 		EventDeliveryOutboxTable,
 		ExperienceReportsTable,
 		FailurePatternTable,
+		FederationAuditLogsTable,
+		FederationOrgsTable,
+		FederationPoliciesTable,
 		FlowLogEventsTable,
 		GatewayWebhooksTable,
 		GraphDefinitionsTable,
@@ -3630,6 +3737,15 @@ func init() {
 	}
 	FailurePatternTable.Annotation = &entsql.Annotation{
 		Table: "failure_pattern",
+	}
+	FederationAuditLogsTable.Annotation = &entsql.Annotation{
+		Table: "federation_audit_logs",
+	}
+	FederationOrgsTable.Annotation = &entsql.Annotation{
+		Table: "federation_orgs",
+	}
+	FederationPoliciesTable.Annotation = &entsql.Annotation{
+		Table: "federation_policies",
 	}
 	FlowLogEventsTable.Annotation = &entsql.Annotation{
 		Table: "flow_log_events",

@@ -60,6 +60,9 @@ type SkillItem struct {
 	DisplayName string `json:"display_name"`
 	Status      string `json:"status"`
 	Version     string `json:"version"`
+	// Enabled is exposed so install verification (system-admin prompt: confirm
+	// enabled=true) checks the same fact the tool_assertion gate asserts.
+	Enabled bool `json:"enabled"`
 }
 
 // AgentItem is a lightweight agent representation returned by tools.

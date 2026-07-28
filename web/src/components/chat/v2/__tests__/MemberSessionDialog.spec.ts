@@ -1,7 +1,7 @@
 // web/src/components/chat/v2/__tests__/MemberSessionDialog.spec.ts
 // MemberSessionDialog：Graph 节点成员行点击后弹出的对话内容弹框。
 // MemberSessionPanel embedded 模式：弹框内始终展开、无折叠开关。
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { mount } from '@vue/test-utils';
 import { createI18n } from 'vue-i18n';
@@ -10,11 +10,18 @@ import MemberSessionPanel from '../MemberSessionPanel.vue';
 import zhCN from '../../../../i18n/locales/zh-CN';
 import type { MemberSession } from '../../../../features/chat/v2Types';
 
+// 移动端断点开关（$q.screen.lt.sm）：默认桌面，测试可切换。
+const mobileFlag = vi.hoisted(() => ({ ltSm: false }));
+vi.mock('quasar', () => ({
+  useQuasar: () => ({ screen: { lt: { sm: mobileFlag.ltSm } } }),
+}));
+
 const i18n = createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': zhCN } });
 
 const quasarStubs = {
   'q-dialog': {
-    props: ['modelValue'],
+    name: 'QDialog',
+    props: ['modelValue', 'maximized'],
     emits: ['update:modelValue'],
     template: '<div v-if="modelValue" class="q-dialog-stub"><slot /></div>',
   },
@@ -57,7 +64,10 @@ function baseMember(overrides: Partial<MemberSession> = {}): MemberSession {
 }
 
 describe('MemberSessionDialog', () => {
-  beforeEach(() => setActivePinia(createPinia()));
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    mobileFlag.ltSm = false;
+  });
 
   it('renders nothing when closed', () => {
     const wrapper = mount(MemberSessionDialog, {
@@ -100,6 +110,24 @@ describe('MemberSessionDialog', () => {
     expect(wrapper.emitted('inject-agent')?.[0]).toEqual([{ sessionId: 'ms-sess', message: 'hi' }]);
     expect(wrapper.emitted('expand')?.[0]).toEqual([['ms-sess']]);
     expect(wrapper.emitted('confirm-step')?.[0]).toEqual([{ stepId: 'st1', approved: true }]);
+  });
+
+  // 移动端触控化（72 §3.2）：窄屏弹框最大化，注入输入栏成为底部操作区。
+  it('is not maximized on desktop (screen.lt.sm = false)', () => {
+    const wrapper = mount(MemberSessionDialog, {
+      props: { open: true, memberSession: baseMember() },
+      global: { plugins: [i18n], stubs: quasarStubs },
+    });
+    expect(wrapper.findComponent({ name: 'QDialog' }).props('maximized')).toBeFalsy();
+  });
+
+  it('is maximized on mobile (screen.lt.sm = true)', () => {
+    mobileFlag.ltSm = true;
+    const wrapper = mount(MemberSessionDialog, {
+      props: { open: true, memberSession: baseMember() },
+      global: { plugins: [i18n], stubs: quasarStubs },
+    });
+    expect(wrapper.findComponent({ name: 'QDialog' }).props('maximized')).toBe(true);
   });
 });
 

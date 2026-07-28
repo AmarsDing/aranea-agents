@@ -50,7 +50,12 @@ type Admin struct {
 	UpdateTime *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
 	// B-01 / P2-A: 1:1 admin → workspace binding stamped into JWT at login.
 	// Clients cannot switch workspace via Header/Query; membership is JWT-bound.
-	WorkspaceId   string `protobuf:"bytes,10,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	WorkspaceId string `protobuf:"bytes,10,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	// P2 (mobile): JWT session token, populated ONLY on the Login response.
+	// Cross-origin clients (WebView / frp) use it as `Authorization: Bearer`
+	// or WS `?token=` when the HttpOnly cookie is unavailable. Identical to
+	// the cookie value issued in the same login call; empty on all other RPCs.
+	Token         string `protobuf:"bytes,11,opt,name=token,proto3" json:"token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -151,6 +156,13 @@ func (x *Admin) GetUpdateTime() *timestamppb.Timestamp {
 func (x *Admin) GetWorkspaceId() string {
 	if x != nil {
 		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *Admin) GetToken() string {
+	if x != nil {
+		return x.Token
 	}
 	return ""
 }
@@ -586,7 +598,7 @@ var File_kratos_admin_v1_admin_proto protoreflect.FileDescriptor
 
 const file_kratos_admin_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x1bkratos/admin/v1/admin.proto\x12\x0fkratos.admin.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a google/protobuf/field_mask.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\"\xc0\x02\n" +
+	"\x1bkratos/admin/v1/admin.proto\x12\x0fkratos.admin.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a google/protobuf/field_mask.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\"\xd6\x02\n" +
 	"\x05Admin\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -600,7 +612,8 @@ const file_kratos_admin_v1_admin_proto_rawDesc = "" +
 	"\vupdate_time\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"updateTime\x12!\n" +
 	"\fworkspace_id\x18\n" +
-	" \x01(\tR\vworkspaceId\"b\n" +
+	" \x01(\tR\vworkspaceId\x12\x14\n" +
+	"\x05token\x18\v \x01(\tR\x05token\"b\n" +
 	"\bAdminSet\x12.\n" +
 	"\x06admins\x18\x01 \x03(\v2\x16.kratos.admin.v1.AdminR\x06admins\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"r\n" +

@@ -1,6 +1,7 @@
 import axios, { type AxiosError } from 'axios';
 import { Notify } from 'quasar';
 import { getBackendOrigin } from '../config/runtime';
+import { bearerAuthHeader } from './authToken';
 
 /** Default HTTP timeout for admin CRUD APIs (ms). */
 export const KRATOS_API_DEFAULT_TIMEOUT_MS = 30_000;
@@ -17,6 +18,18 @@ export const kratosApi = axios.create({
   timeout: KRATOS_API_DEFAULT_TIMEOUT_MS,
   // Session cookie is host-scoped; call API with credentials so login works when CORS allows Origin (see CorsDevFilter).
   withCredentials: true,
+});
+
+// --- Request interceptor: attach Bearer token for cross-origin (mobile/frp) ---
+// Same-origin deployments authenticate via the HttpOnly cookie (checked first
+// by the server); the stored login token is only present after a login that
+// returned one, so this is a no-op for plain cookie sessions.
+kratosApi.interceptors.request.use((config) => {
+  const auth = bearerAuthHeader();
+  if (auth.Authorization && !config.headers.Authorization) {
+    config.headers.Authorization = auth.Authorization;
+  }
+  return config;
 });
 
 function resolveRequestTimeoutMs(path: string, override?: number): number {

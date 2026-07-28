@@ -1,0 +1,223 @@
+syntax = "proto3";
+
+package kratos.a2a.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "kratos/a2a/v1/a2a.proto";
+
+option go_package = "aranea-agents/api/kratos/a2a/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.a2a.v1";
+
+// FederationOrg is a registered organization in the A2A federation network.
+// auth_config_json is write-only: reads never return the plaintext config
+// (design F.8); auth_config_set reports whether one is stored.
+message FederationOrg {
+  string id = 1;
+  string name = 2;
+  string domain = 3;
+  string public_base_url = 4;
+  // trust_level: untrusted | neutral | trusted
+  string trust_level = 5;
+  // auth_type: none | api_key | bearer | mtls
+  string auth_type = 6;
+  bool   auth_config_set = 7;
+  // status: active | suspended
+  string status = 8;
+  string joined_at = 9;
+  string updated_at = 10;
+}
+
+// FederationPolicy controls outbound calls for one org pair.
+message FederationPolicy {
+  string id = 1;
+  // caller_org_id = "local" means this organization (outbound policy).
+  string caller_org_id = 2;
+  string callee_org_id = 3;
+  // action: allow | deny (approval reserved, treated as deny this iteration)
+  string action = 4;
+  // max_per_min: per-minute invocation cap; 0 = unlimited
+  int32 max_per_min = 5;
+  // daily_quota: daily cap on decision=allowed calls; 0 = unlimited
+  int32 daily_quota = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+// FederationAgentEntry is one directory row: the org plus its registered
+// remote agent and cached agent card.
+message FederationAgentEntry {
+  FederationOrg  org = 1;
+  A2ARemoteAgent remote_agent = 2;
+  A2AAgentCard   card = 3;
+}
+
+// FederationAuditEntry is one cross-organization invocation decision + result.
+message FederationAuditEntry {
+  string id = 1;
+  // direction: outbound (inbound reserved for future iteration)
+  string direction = 2;
+  string caller_org_id = 3;
+  string callee_org_id = 4;
+  string caller_agent_id = 5;
+  string callee_agent_id = 6;
+  string capability = 7;
+  // decision: allowed | denied_trust | denied_policy | denied_quota
+  string decision = 8;
+  // status: pending | success | error | timeout
+  string status = 9;
+  int64  latency_ms = 10;
+  string error_message = 11;
+  string created_at = 12;
+}
+
+// --- Requests / Responses ---
+
+message RegisterFederationOrgRequest {
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  // domain is the unique upsert key: re-registering the same domain updates
+  // the existing org in place (identity + joined_at preserved).
+  string domain = 2 [(google.api.field_behavior) = REQUIRED];
+  string public_base_url = 3;
+  string trust_level = 4;
+  string auth_type = 5;
+  string auth_config_json = 6;
+}
+
+message ListFederationOrgsRequest {
+}
+
+message ListFederationOrgsResponse {
+  repeated FederationOrg items = 1;
+}
+
+message DeleteFederationOrgRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message SetFederationTrustLevelRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string trust_level = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpsertFederationPolicyRequest {
+  string caller_org_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string callee_org_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string action = 3;
+  int32  max_per_min = 4;
+  int32  daily_quota = 5;
+}
+
+message DiscoverFederationAgentsRequest {
+  string capability = 1;
+  string org_id = 2;
+}
+
+message DiscoverFederationAgentsResponse {
+  repeated FederationAgentEntry items = 1;
+}
+
+message InvokeFederatedAgentRequest {
+  string org_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string capability = 3 [(google.api.field_behavior) = REQUIRED];
+  string payload_json = 4 [(google.api.field_behavior) = REQUIRED];
+  // timeout_seconds overrides the default invocation timeout.
+  int32  timeout_seconds = 5;
+  // workspace scopes remote-agent resolution to the caller's workspace.
+  string workspace = 6;
+  // caller_agent_id is recorded on the audit entry (optional).
+  string caller_agent_id = 7;
+}
+
+message InvokeFederatedAgentResponse {
+  // audit_id correlates the response with the federation audit entry.
+  string audit_id = 1;
+  string status = 2; // success | error | timeout
+  string result_json = 3;
+  string error_message = 4;
+  int64  latency_ms = 5;
+}
+
+message QueryFederationAuditLogsRequest {
+  string caller_org_id = 1;
+  string callee_org_id = 2;
+  string decision = 3;
+  string status = 4;
+  int32  limit = 5;
+  int32  offset = 6;
+}
+
+message QueryFederationAuditLogsResponse {
+  repeated FederationAuditEntry items = 1;
+  int32 total = 2;
+}
+
+// FederationService governs the cross-organization A2A federation network:
+// org registry, trust levels, call policies, directory, invocation and audit.
+service FederationService {
+  // RegisterFederationOrg creates or updates an org (upsert by domain).
+  rpc RegisterFederationOrg(RegisterFederationOrgRequest) returns (FederationOrg) {
+    option (google.api.http) = {
+      post: "/v1/a2a/federation/orgs"
+      body: "*"
+    };
+  }
+
+  // ListFederationOrgs lists all registered orgs.
+  rpc ListFederationOrgs(ListFederationOrgsRequest) returns (ListFederationOrgsResponse) {
+    option (google.api.http) = {
+      get: "/v1/a2a/federation/orgs"
+    };
+  }
+
+  // DeleteFederationOrg removes an org; remote agents are only disassociated
+  // (org_id cleared), not cascade-deleted.
+  rpc DeleteFederationOrg(DeleteFederationOrgRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/a2a/federation/orgs/{id}"
+    };
+  }
+
+  // SetFederationTrustLevel sets the trust level of an org.
+  rpc SetFederationTrustLevel(SetFederationTrustLevelRequest) returns (FederationOrg) {
+    option (google.api.http) = {
+      put: "/v1/a2a/federation/orgs/{id}/trust"
+      body: "*"
+    };
+  }
+
+  // UpsertFederationPolicy configures the call policy for one org pair.
+  rpc UpsertFederationPolicy(UpsertFederationPolicyRequest) returns (FederationPolicy) {
+    option (google.api.http) = {
+      post: "/v1/a2a/federation/policies"
+      body: "*"
+    };
+  }
+
+  // DiscoverFederationAgents searches the federation directory (cached cards,
+  // no live pull); filters by capability and/or org_id.
+  rpc DiscoverFederationAgents(DiscoverFederationAgentsRequest) returns (DiscoverFederationAgentsResponse) {
+    option (google.api.http) = {
+      get: "/v1/a2a/federation/agents"
+    };
+  }
+
+  // InvokeFederatedAgent invokes a remote agent of a federated org through
+  // the governance chain (trust -> policy -> quota -> audit -> invoke).
+  rpc InvokeFederatedAgent(InvokeFederatedAgentRequest) returns (InvokeFederatedAgentResponse) {
+    option (google.api.http) = {
+      post: "/v1/a2a/federation/invoke"
+      body: "*"
+    };
+  }
+
+  // QueryFederationAuditLogs queries audit entries with filters + pagination.
+  rpc QueryFederationAuditLogs(QueryFederationAuditLogsRequest) returns (QueryFederationAuditLogsResponse) {
+    option (google.api.http) = {
+      get: "/v1/a2a/federation/audits"
+    };
+  }
+}

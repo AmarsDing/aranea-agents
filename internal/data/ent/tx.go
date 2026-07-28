@@ -66,6 +66,12 @@ type Tx struct {
 	ExperienceReport *ExperienceReportClient
 	// FailurePattern is the client for interacting with the FailurePattern builders.
 	FailurePattern *FailurePatternClient
+	// FederationAuditLog is the client for interacting with the FederationAuditLog builders.
+	FederationAuditLog *FederationAuditLogClient
+	// FederationOrg is the client for interacting with the FederationOrg builders.
+	FederationOrg *FederationOrgClient
+	// FederationPolicy is the client for interacting with the FederationPolicy builders.
+	FederationPolicy *FederationPolicyClient
 	// FlowLogEvent is the client for interacting with the FlowLogEvent builders.
 	FlowLogEvent *FlowLogEventClient
 	// GatewayWebhook is the client for interacting with the GatewayWebhook builders.
@@ -359,6 +365,9 @@ func (tx *Tx) init() {
 	tx.EventDeliveryOutbox = NewEventDeliveryOutboxClient(tx.config)
 	tx.ExperienceReport = NewExperienceReportClient(tx.config)
 	tx.FailurePattern = NewFailurePatternClient(tx.config)
+	tx.FederationAuditLog = NewFederationAuditLogClient(tx.config)
+	tx.FederationOrg = NewFederationOrgClient(tx.config)
+	tx.FederationPolicy = NewFederationPolicyClient(tx.config)
 	tx.FlowLogEvent = NewFlowLogEventClient(tx.config)
 	tx.GatewayWebhook = NewGatewayWebhookClient(tx.config)
 	tx.GraphDefinition = NewGraphDefinitionClient(tx.config)

@@ -273,9 +273,9 @@ func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatM
 2. **Ent 转换函数**：`entXxxToBiz` / `bizXxxToEnt`，放在对应 Repo 文件中
 3. **编译期检查**：`var _ biz.XxxRepo = (*xxxRepo)(nil)`
 
-### 5.4 数据库编码规范（SQLite + Ent ORM）
+### 5.4 数据库编码规范（PostgreSQL + Ent ORM）
 
-> 源自 `docs/sqlite问题和解决方案.md` 的核心设计原则，所有 data 层开发必须遵守。
+> 生产唯一主库为 Postgres（`NewData` 硬编码，Ent CRUD + pgvector 共享同一实例双池）；SQLite 仅保留在遗留离线迁移工具 `cmd/migrate-sqlite-to-postgres` 与 CLI 维护工具中。所有 data 层开发必须遵守。
 
 #### 5.4.1 Schema 管理
 
@@ -321,11 +321,11 @@ func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatM
 
 #### 5.4.5 读写分离
 
-- **SQLite 双连接**：写连接 `entClient`（`MaxOpenConns=1`），读连接 `readClient`（`MaxOpenConns=2`）
+- **Postgres 双池**：写池 `entClient`/`rawDB`（`MaxOpenConns=16`），读池 `readClient`/`readDB`（`MaxOpenConns=32`）；pgvector/Checkpoint 共享同一实例（`d.Postgres()`=写池、`d.PostgresRead()`=读池）
 - **Ent Repo**：读用 `d.RW().Read(ctx)`，写用 `d.RW().Write(ctx)`
 - **Raw SQL Repo**：读用 `d.RWDB().ReadDB(ctx)`，写用 `d.RWDB().WriteDB(ctx)`
 - **事务内访问**：使用 `EntClientFromCtx(ctx)` / `TxExecerFromCtx(ctx)` 从 context 获取事务连接
-- **连接收口**：不得在 `NewData` 外另开 SQLite 连接（红线 #10、DB-R1）
+- **连接收口**：不得在 `NewData` 外另开数据库连接（红线 #10、DB-R1）
 - **禁止使用已废弃访问器**：`d.Ent()`/`d.RawDB()`/`d.ReadDB()`/`d.ReadEnt()`/`d.ReadClient()` 已废弃（DB-R6）
 
 #### 5.4.6 Schema 迁移
@@ -379,7 +379,7 @@ internal/tools/custom         ← 自定义工具实现
 internal/provider       ← LLM 模型驱动（ModelForProviderModel）
 internal/runtimedeps    ← 运行时依赖注入（TurnDeps、Runtime 聚合）
 internal/compress       ← L0 上下文压缩（长对话摘要）
-internal/memory         ← 会话记忆（SQLite 适配器 → trpcmemory.Service）
+internal/memory         ← 会话记忆（Postgres 适配器 → trpcmemory.Service）
 internal/session        ← 会话存储（TRPC SessionService 适配）
 internal/skill          ← 技能系统（导入、执行、Watch 热重载）
 internal/graph          ← 图编排（TRPC Graph Builder）
@@ -471,7 +471,7 @@ eventCh, err := runner.Run(ctx, userID, sessionID, userMessage)
 
 | # | 规则 | ✅ 正确 | ❌ 错误 |
 |---|------|---------|---------|
-| 1 | MemoryService 由 Wire 注入 | 有 Store → `NewSQLiteMemoryService`；无 → in-memory | Service 手动选择后端 |
+| 1 | MemoryService 由 Wire 注入 | 有 Store → `NewMemoryService`；无 → in-memory | Service 手动选择后端 |
 | 2 | 记忆工具注入 | `service.Tools()` 返回 6 个 `tool.Tool`，追加到 Agent 工具列表 | 手动构造记忆工具实例 |
 | 3 | 用户隔离 | `GetAppAndUserFromContext(ctx)` 获取 app+user 维度隔离 | 不做用户隔离 |
 | 4 | 记忆写入 | 经 broker/async 异步写 | 在 plugin 回调中直接写库（红线 3） |
@@ -885,7 +885,7 @@ make config  # 仅改 conf.proto 时
 
 1. 对外能力必须在 Proto 中印全，禁止「一半在 proto，一半用手写 srv.Route / HandleFunc」
 2. 修改 `.proto` 必须跑生成，提交全部生成物
-3. SQLite 侧以 `*ent.Client` 为主入口，禁止在 `NewData` 里再 `sql.Open` 同一 DSN
+3. Postgres 侧以 `*ent.Client` 为主入口，禁止在 `NewData` 里再 `sql.Open` 同一 DSN
 4. 表结构进 Ent，禁止长期平行维护「仅存 SQL、不进 Ent」
 5. 业务模块 HTTP 只做 `Register<Module>HTTPServer`，gRPC 只做 `Register<Module>ServiceServer`
 
@@ -1015,7 +1015,7 @@ cmd/admin/wire.go                         ← Wire 注入
 
 - [ ] **Service 层**：只做映射和编排，无业务逻辑
 - [ ] **Biz 层**：无 `pkg/trpc-agent-go` import，无 proto import
-- [ ] **Data 层**：仅 `d.RW()`/`d.RWDB()`/`d.Postgres()` 访问，无并联 SQLite 连接，无已废弃的 `d.Ent()`/`d.RawDB()`/`d.ReadDB()`
+- [ ] **Data 层**：仅 `d.RW()`/`d.RWDB()`/`d.Postgres()`/`d.PostgresRead()` 访问，无并联数据库连接，无已废弃的 `d.Ent()`/`d.RawDB()`/`d.ReadDB()`
 - [ ] **Agent/Tools/Team 层**：框架 API 调用合规，不复制框架内部逻辑
 - [ ] **框架源码只读**：未修改 `pkg/trpc-agent-go` 任何文件，能力扩展走适配层（红线 #27）
 - [ ] **模块解耦**：跨模块调用走 biz 级窄接口，不持有对方 Service 具体类型
@@ -1129,7 +1129,7 @@ cmd/admin/wire.go                         ← Wire 注入
 | `internal/tools/toolset.go` | 工具注册中心（Registry + AssemblyConfig + Assemble） |
 | `internal/tools/tool.go` | 项目级工具类型别名 |
 | `internal/tools/trpc/toolsets.go` | 向后兼容适配层 |
-| `internal/memory/trpc/sqlite_adapter.go` | Memory Service SQLite 适配器 |
+| `internal/memory/trpc/sqlite_adapter.go` | Memory Service Postgres 适配器（文件名为历史遗留，构造函数为 `NewMemoryService`） |
 | `internal/agent/trpc_build.go` | Agent 构建 + 工具集装配入口 |
 | `internal/agent/trpc_runtime.go` | Runner 创建 + 用户 Turn 执行 |
 | `internal/provider/trpc_llm.go` | LLM 模型驱动 |
@@ -1315,8 +1315,8 @@ func TestRunStateMachine(t *testing.T) {
 
 | 级别 | 持久化 | 发送方式 | 重试 | 编码要求 |
 |------|--------|---------|------|---------|
-| Critical | SQLite WAL（先写） | WBPF（Write-Before-Publish-Forward） | 是 | 必须先写 EventStore 再发 EventBus |
-| Important | SQLite EventStore（异步） | BlockUpTo（阻塞发送至超时） | 否 | 允许异步持久化，但发送时阻塞 |
+| Critical | Postgres EventStore（先写） | WBPF（Write-Before-Publish-Forward） | 是 | 必须先写 EventStore 再发 EventBus |
+| Important | Postgres EventStore（异步） | BlockUpTo（阻塞发送至超时） | 否 | 允许异步持久化，但发送时阻塞 |
 | Informational | 不持久化 | 尽力而为 | 否 | 直接发 EventBus，丢弃不报错 |
 
 #### 15.2.3 事件投影编码规范
@@ -1421,7 +1421,7 @@ var runGuards = map[RunState]map[string]RunGuard{
 |------|---------|----------|---------|
 | Service | 集成测试 | mock Runner/Agent/Repo | proto↔biz 映射、事件投影、Wire 装配 |
 | Biz | 单元测试 | mock Repo（接口） | 业务逻辑、状态转换、不变量 |
-| Data | 仓储测试 | 真实 SQLite（内存模式） | Ent 查询、错误翻译、事务 |
+| Data | 仓储测试 | 真实 Postgres（`testhelper.SetupTestPG` 独立 schema） | Ent 查询、错误翻译、事务 |
 | Agent | 桥接测试 | mock 框架 Agent/Runner | biz→trpc 转换、BuilderDeps 装配 |
 | Tools | 工具测试 | mock 框架 Tool 接口 | 工具注册、AssemblyConfig 覆盖 |
 

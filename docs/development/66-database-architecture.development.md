@@ -22,18 +22,19 @@
 | 读写分离（SQL） | `internal/data/readwrite_db.go` | ReadWriteDB |
 | 错误转换 | `internal/data/errors.go` | entErrToBizErr |
 | 就绪门控 | `internal/data/readiness.go` | ReadinessGate |
-| DDL 迁移注册表 | `internal/data/ddl_migration_registry.go` | 54 个 DDL 迁移 |
+| DDL 迁移注册表 | `internal/data/ddl_migration_registry.go` | 61 个版本化迁移 |
 | 数据迁移 | `internal/data/schema_migrations.go` | 4 个数据迁移 |
 | 级联删除 | `internal/data/cascade_delete.go` | Agent/Session/Team/Channel |
 | 延迟种子 | `internal/data/lazy_seeder.go` | P1 种子数据 |
-| SQLite 连接 | `internal/data/sqlite_db.go`, `internal/data/sqlite_path.go` | 连接辅助 |
-| Ent Schema | `internal/data/ent/schema/*.go` | 82 个 Schema |
+| 方言抽象 | `internal/data/dialect.go` | JSON 提取等跨方言 SQL（生产恒为 Postgres） |
+| 查询辅助 | `internal/data/sqlite_db.go` | 通用查询辅助（历史命名残留，非 SQLite 专用） |
+| Ent Schema | `internal/data/ent/schema/*.go` | 97 个 Schema |
 | 原生 SQL | `internal/data/sql/*.sql` | 13 个非迁移 SQL |
-| 迁移 SQL | `internal/data/sql/migrations/*.sql` | 28 个版本化迁移 SQL |
-| 向量存储 | `internal/data/vector/store.go`, `sqlite.go`, `pgvector.go` | VectorStore 双实现 |
+| 迁移 SQL | `internal/data/sql/migrations/*.sql` | 61 个版本化迁移 SQL |
+| 向量存储 | `internal/data/vector/store.go`, `pgvector.go` | PgVectorStore 唯一实现（sqlite.go 已删除） |
 | 旧版 pgvector | `internal/data/pgvector/` | 已废弃，待清理 |
 | 记忆 Schema | `internal/data/memory_chain_schema.go` | L0-L4 表初始化 |
-| FTS5 Schema | `internal/data/message_fts_schema.go` | 全文搜索初始化 |
+| 全文搜索 | `internal/data/knowledge.go` | Postgres `to_tsvector` + GIN + `pg_trgm`（FTS5 `message_fts_schema.go` 已随 messages 子系统删除） |
 | 分页/过滤 | `internal/biz/shared/shared.go` | PageToLimitOffset、ListOptions |
 | 事务接口 | `internal/biz/spirit_team_usecase.go` | SpiritTransactor 接口 |
 | 配置 Proto | `internal/conf/conf.proto` | Data 配置定义 |
@@ -46,8 +47,7 @@
 
 | 能力 | 状态 | 说明 |
 |------|------|------|
-| SQLite 双连接池 | ✅ | 写=1, 读=2, WAL 模式, 5 个 PRAGMA |
-| PostgreSQL 双连接池 | ✅ | 写=16, 读=32, 降级策略 |
+| PostgreSQL 双连接池（生产唯一主库） | ✅ | 写=16, 读=32；`NewData` 硬编码 Postgres，SQLite 仅存于离线迁移工具 |
 | 事务管理（ExecInTx） | ✅ | 嵌套检测 + 分离上下文 + 30s 超时 + 调用者取消检测 + 双 key 注入 |
 | 事务重试（ExecInTxWithRetry） | ✅ | 3 次重试 + 指数退避（1s/2s/4s）+ 仅对 CodeInternal/deadlock/serialization_failure 重试（T2.1） |
 | PostgreSQL 事务 | ✅ | PostgresExecInTx 独立方法 |
@@ -56,12 +56,12 @@
 | 读写分离（SQL） | ✅ | ReadWriteDB |
 | 错误转换 | ✅ | entErrToBizErr（含 Postgres 错误） |
 | 就绪门控 | ✅ | ReadinessGate 三态 |
-| Ent 自动迁移 | ✅ | 82 个 Schema |
-| DDL 迁移注册表 | ✅ | 54 个迁移，版本化 + 幂等 |
+| Ent 自动迁移 | ✅ | 97 个 Schema |
+| DDL 迁移注册表 | ✅ | 61 个迁移，版本化 + 幂等 |
 | 数据迁移 | ✅ | 4 个数据迁移 |
 | 级联删除 | ✅ | Agent/Session/Team/Channel |
-| FTS5 全文搜索 | ✅ | 虚拟表 + 3 触发器 + LIKE 回退 |
-| 向量存储双实现 | ✅ | SQLiteVectorStore + PgVectorStore |
+| Postgres 全文搜索 | ✅ | `to_tsvector`/`plainto_tsquery` + GIN + `ts_rank`（FTS5 已随 SQLite 移除） |
+| 向量存储 | ✅ | PgVectorStore（pgvector 余弦距离，SQLiteVectorStore 已删除） |
 | 记忆系统 L0-L4 | ✅ | 25 个原生 SQL 表 |
 | 种子数据 | ✅ | lazySeeder + P1 种子 |
 | Wire DI | ✅ | 80+ Provider |
@@ -80,6 +80,8 @@
 ---
 
 ## 3. Phase 划分与任务清单
+
+> **历史说明**：以下 Phase 任务条目为实施过程的历史记录，其中 Phase 1–5 的部分内容（SQLite 双连接池、PRAGMA、SQLiteVectorStore 等）反映的是 SQLite 时代的实现。当前架构以 §1 代码锚点、§2 现状评估及 [66-database-architecture.design.md](./66-database-architecture.design.md) 为准：Postgres 为生产唯一主库，SQLite 仅存于离线迁移工具。
 
 ### Phase 1: 基础设施搭建 ✅
 

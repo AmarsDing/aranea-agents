@@ -24,6 +24,53 @@ func NewMemoryConsolidationWriterAdapter(data *Data, lg loggateway.Logger) biz.M
 	return &memoryConsolidationWriterAdapter{data: data, lg: lg}
 }
 
+// factPIIRedaction is the outcome of scanning one fact write for PII.
+type factPIIRedaction struct {
+	statement    string // redacted statement (safe for storage / prompt recall)
+	details      string // redacted details markdown
+	piiFlag      int    // 1 when statement or details matched any PII detector
+	original     string // original statement, stored in redacted_statement for ApprovePIIFact recovery
+	piiTypesJSON string // JSON array of matched PII type tags
+}
+
+// redactFactWritePII is the single PII gate for every fact persisted through
+// UpsertFactsAndEpisodeBatch (auto_memory consolidation / batch and
+// immediate_fact_writer). The trpc tool path scans earlier via FactUpsert;
+// scanning here keeps the same invariant for the remaining producers:
+// plaintext PII never reaches memory_facts.statement / details_markdown.
+// piiFlag also covers details-only hits so governance UIs can surface the row.
+func redactFactWritePII(statement, details string) factPIIRedaction {
+	out := factPIIRedaction{statement: statement, details: details, piiTypesJSON: "[]"}
+	stmtScan := biz.ScanPII(statement)
+	detScan := biz.ScanPII(details)
+	if !stmtScan.PIIFlag && !detScan.PIIFlag {
+		return out
+	}
+	out.piiFlag = 1
+	out.original = statement
+	types := map[string]struct{}{}
+	if stmtScan.PIIFlag {
+		out.statement = stmtScan.RedactedStatement
+		for _, tp := range stmtScan.PIITypes {
+			types[tp] = struct{}{}
+		}
+	}
+	if detScan.PIIFlag {
+		out.details = detScan.RedactedStatement
+		for _, tp := range detScan.PIITypes {
+			types[tp] = struct{}{}
+		}
+	}
+	typeList := make([]string, 0, len(types))
+	for tp := range types {
+		typeList = append(typeList, tp)
+	}
+	if b, err := json.Marshal(typeList); err == nil {
+		out.piiTypesJSON = string(b)
+	}
+	return out
+}
+
 func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx context.Context, facts []biz.MemoryFactWrite, ep *biz.EpisodeWrite) (*biz.ConsolidationResult, error) {
 	var factRows [][]byte
 	var episodeRow []byte
@@ -40,7 +87,11 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 
 		for _, f := range facts {
 			id := newUUIDString()
-			fp := biz.FactFingerprint(f.Statement, f.ScopeType, f.ScopeID)
+			// M1: unified PII gate — scan BEFORE fingerprinting so the dedup
+			// key derives from the redacted text, consistent with the FactUpsert
+			// path (memory_shim_l3.go) which fingerprints post-redaction text.
+			red := redactFactWritePII(strings.TrimSpace(f.Statement), strings.TrimSpace(f.DetailsMarkdown))
+			fp := biz.FactFingerprint(red.statement, f.ScopeType, f.ScopeID)
 			status := strings.TrimSpace(f.Status)
 			if status == "" {
 				status = "active"
@@ -53,7 +104,6 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 			if meta == "" {
 				meta = "{}"
 			}
-			details := strings.TrimSpace(f.DetailsMarkdown)
 			_, err := e.ExecContext(txCtx, a.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_facts (
 			id, scope_type, scope_id, workspace_id, user_id, team_id, agent_id,
 			statement, statement_normalized, fingerprint, details_markdown,
@@ -62,9 +112,9 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 			positive_feedback_count, negative_feedback_count, conflict_count,
 			source_kind, source_episode_id, source_session_id, source_message_id, source_external,
 			version, status, superseded_by,
-			pii_flag, redacted_statement,
+			pii_flag, redacted_statement, pii_types,
 			quality_score, metadata_json, created_at, updated_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 			statement = excluded.statement, details_markdown = excluded.details_markdown,
 			confidence = excluded.confidence, importance = excluded.importance,
@@ -72,6 +122,8 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 			source_kind = excluded.source_kind, source_session_id = excluded.source_session_id,
 			source_message_id = excluded.source_message_id,
 			version = version + 1, status = excluded.status,
+			pii_flag = excluded.pii_flag, redacted_statement = excluded.redacted_statement,
+			pii_types = excluded.pii_types,
 			metadata_json = excluded.metadata_json, updated_at = excluded.updated_at`),
 				id,
 				strings.TrimSpace(f.ScopeType),
@@ -80,9 +132,9 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 				strings.TrimSpace(f.UserID),
 				"", // team_id
 				strings.TrimSpace(f.AgentID),
-				strings.TrimSpace(f.Statement),
-				strings.ToLower(strings.TrimSpace(f.Statement)),
-				fp, details,
+				red.statement,
+				strings.ToLower(red.statement),
+				fp, red.details,
 				strings.TrimSpace(f.FactKind), tags,
 				f.Confidence, f.Importance, 0, 0,
 				0, 0, 0,
@@ -91,7 +143,7 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 				strings.TrimSpace(f.SourceMessageID),
 				"",
 				1, status, "",
-				0, "",
+				red.piiFlag, red.original, red.piiTypesJSON,
 				0, meta, now, now,
 			)
 			if err != nil {

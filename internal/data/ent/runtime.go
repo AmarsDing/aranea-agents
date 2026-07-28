@@ -29,6 +29,9 @@ import (
 	"aranea-agents/internal/data/ent/eventdeliveryoutbox"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/failurepattern"
+	"aranea-agents/internal/data/ent/federationauditlog"
+	"aranea-agents/internal/data/ent/federationorg"
+	"aranea-agents/internal/data/ent/federationpolicy"
 	"aranea-agents/internal/data/ent/flowlogevent"
 	"aranea-agents/internal/data/ent/gatewaywebhook"
 	"aranea-agents/internal/data/ent/graphdefinition"
@@ -1936,6 +1939,230 @@ func init() {
 	failurepattern.DefaultID = failurepatternDescID.Default.(func() string)
 	// failurepattern.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	failurepattern.IDValidator = failurepatternDescID.Validators[0].(func(string) error)
+	federationauditlogFields := schema.FederationAuditLog{}.Fields()
+	_ = federationauditlogFields
+	// federationauditlogDescCallerOrgID is the schema descriptor for caller_org_id field.
+	federationauditlogDescCallerOrgID := federationauditlogFields[2].Descriptor()
+	// federationauditlog.CallerOrgIDValidator is a validator for the "caller_org_id" field. It is called by the builders before save.
+	federationauditlog.CallerOrgIDValidator = func() func(string) error {
+		validators := federationauditlogDescCallerOrgID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(caller_org_id string) error {
+			for _, fn := range fns {
+				if err := fn(caller_org_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// federationauditlogDescCalleeOrgID is the schema descriptor for callee_org_id field.
+	federationauditlogDescCalleeOrgID := federationauditlogFields[3].Descriptor()
+	// federationauditlog.CalleeOrgIDValidator is a validator for the "callee_org_id" field. It is called by the builders before save.
+	federationauditlog.CalleeOrgIDValidator = func() func(string) error {
+		validators := federationauditlogDescCalleeOrgID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(callee_org_id string) error {
+			for _, fn := range fns {
+				if err := fn(callee_org_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// federationauditlogDescCallerAgentID is the schema descriptor for caller_agent_id field.
+	federationauditlogDescCallerAgentID := federationauditlogFields[4].Descriptor()
+	// federationauditlog.DefaultCallerAgentID holds the default value on creation for the caller_agent_id field.
+	federationauditlog.DefaultCallerAgentID = federationauditlogDescCallerAgentID.Default.(string)
+	// federationauditlog.CallerAgentIDValidator is a validator for the "caller_agent_id" field. It is called by the builders before save.
+	federationauditlog.CallerAgentIDValidator = federationauditlogDescCallerAgentID.Validators[0].(func(string) error)
+	// federationauditlogDescCalleeAgentID is the schema descriptor for callee_agent_id field.
+	federationauditlogDescCalleeAgentID := federationauditlogFields[5].Descriptor()
+	// federationauditlog.DefaultCalleeAgentID holds the default value on creation for the callee_agent_id field.
+	federationauditlog.DefaultCalleeAgentID = federationauditlogDescCalleeAgentID.Default.(string)
+	// federationauditlog.CalleeAgentIDValidator is a validator for the "callee_agent_id" field. It is called by the builders before save.
+	federationauditlog.CalleeAgentIDValidator = federationauditlogDescCalleeAgentID.Validators[0].(func(string) error)
+	// federationauditlogDescCapability is the schema descriptor for capability field.
+	federationauditlogDescCapability := federationauditlogFields[6].Descriptor()
+	// federationauditlog.CapabilityValidator is a validator for the "capability" field. It is called by the builders before save.
+	federationauditlog.CapabilityValidator = func() func(string) error {
+		validators := federationauditlogDescCapability.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(capability string) error {
+			for _, fn := range fns {
+				if err := fn(capability); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// federationauditlogDescLatencyMs is the schema descriptor for latency_ms field.
+	federationauditlogDescLatencyMs := federationauditlogFields[9].Descriptor()
+	// federationauditlog.DefaultLatencyMs holds the default value on creation for the latency_ms field.
+	federationauditlog.DefaultLatencyMs = federationauditlogDescLatencyMs.Default.(int64)
+	// federationauditlogDescErrorMessage is the schema descriptor for error_message field.
+	federationauditlogDescErrorMessage := federationauditlogFields[10].Descriptor()
+	// federationauditlog.DefaultErrorMessage holds the default value on creation for the error_message field.
+	federationauditlog.DefaultErrorMessage = federationauditlogDescErrorMessage.Default.(string)
+	// federationauditlogDescCreatedAt is the schema descriptor for created_at field.
+	federationauditlogDescCreatedAt := federationauditlogFields[11].Descriptor()
+	// federationauditlog.DefaultCreatedAt holds the default value on creation for the created_at field.
+	federationauditlog.DefaultCreatedAt = federationauditlogDescCreatedAt.Default.(func() time.Time)
+	// federationauditlogDescUpdatedAt is the schema descriptor for updated_at field.
+	federationauditlogDescUpdatedAt := federationauditlogFields[12].Descriptor()
+	// federationauditlog.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	federationauditlog.DefaultUpdatedAt = federationauditlogDescUpdatedAt.Default.(func() time.Time)
+	// federationauditlog.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	federationauditlog.UpdateDefaultUpdatedAt = federationauditlogDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// federationauditlogDescID is the schema descriptor for id field.
+	federationauditlogDescID := federationauditlogFields[0].Descriptor()
+	// federationauditlog.DefaultID holds the default value on creation for the id field.
+	federationauditlog.DefaultID = federationauditlogDescID.Default.(func() string)
+	// federationauditlog.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	federationauditlog.IDValidator = federationauditlogDescID.Validators[0].(func(string) error)
+	federationorgFields := schema.FederationOrg{}.Fields()
+	_ = federationorgFields
+	// federationorgDescName is the schema descriptor for name field.
+	federationorgDescName := federationorgFields[1].Descriptor()
+	// federationorg.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	federationorg.NameValidator = func() func(string) error {
+		validators := federationorgDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// federationorgDescDomain is the schema descriptor for domain field.
+	federationorgDescDomain := federationorgFields[2].Descriptor()
+	// federationorg.DomainValidator is a validator for the "domain" field. It is called by the builders before save.
+	federationorg.DomainValidator = func() func(string) error {
+		validators := federationorgDescDomain.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(domain string) error {
+			for _, fn := range fns {
+				if err := fn(domain); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// federationorgDescPublicBaseURL is the schema descriptor for public_base_url field.
+	federationorgDescPublicBaseURL := federationorgFields[3].Descriptor()
+	// federationorg.DefaultPublicBaseURL holds the default value on creation for the public_base_url field.
+	federationorg.DefaultPublicBaseURL = federationorgDescPublicBaseURL.Default.(string)
+	// federationorg.PublicBaseURLValidator is a validator for the "public_base_url" field. It is called by the builders before save.
+	federationorg.PublicBaseURLValidator = federationorgDescPublicBaseURL.Validators[0].(func(string) error)
+	// federationorgDescAuthType is the schema descriptor for auth_type field.
+	federationorgDescAuthType := federationorgFields[5].Descriptor()
+	// federationorg.DefaultAuthType holds the default value on creation for the auth_type field.
+	federationorg.DefaultAuthType = federationorgDescAuthType.Default.(string)
+	// federationorg.AuthTypeValidator is a validator for the "auth_type" field. It is called by the builders before save.
+	federationorg.AuthTypeValidator = federationorgDescAuthType.Validators[0].(func(string) error)
+	// federationorgDescAuthConfigJSON is the schema descriptor for auth_config_json field.
+	federationorgDescAuthConfigJSON := federationorgFields[6].Descriptor()
+	// federationorg.DefaultAuthConfigJSON holds the default value on creation for the auth_config_json field.
+	federationorg.DefaultAuthConfigJSON = federationorgDescAuthConfigJSON.Default.(string)
+	// federationorgDescJoinedAt is the schema descriptor for joined_at field.
+	federationorgDescJoinedAt := federationorgFields[8].Descriptor()
+	// federationorg.DefaultJoinedAt holds the default value on creation for the joined_at field.
+	federationorg.DefaultJoinedAt = federationorgDescJoinedAt.Default.(func() time.Time)
+	// federationorgDescUpdatedAt is the schema descriptor for updated_at field.
+	federationorgDescUpdatedAt := federationorgFields[9].Descriptor()
+	// federationorg.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	federationorg.DefaultUpdatedAt = federationorgDescUpdatedAt.Default.(func() time.Time)
+	// federationorg.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	federationorg.UpdateDefaultUpdatedAt = federationorgDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// federationorgDescID is the schema descriptor for id field.
+	federationorgDescID := federationorgFields[0].Descriptor()
+	// federationorg.DefaultID holds the default value on creation for the id field.
+	federationorg.DefaultID = federationorgDescID.Default.(func() string)
+	// federationorg.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	federationorg.IDValidator = federationorgDescID.Validators[0].(func(string) error)
+	federationpolicyFields := schema.FederationPolicy{}.Fields()
+	_ = federationpolicyFields
+	// federationpolicyDescCallerOrgID is the schema descriptor for caller_org_id field.
+	federationpolicyDescCallerOrgID := federationpolicyFields[1].Descriptor()
+	// federationpolicy.CallerOrgIDValidator is a validator for the "caller_org_id" field. It is called by the builders before save.
+	federationpolicy.CallerOrgIDValidator = func() func(string) error {
+		validators := federationpolicyDescCallerOrgID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(caller_org_id string) error {
+			for _, fn := range fns {
+				if err := fn(caller_org_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// federationpolicyDescCalleeOrgID is the schema descriptor for callee_org_id field.
+	federationpolicyDescCalleeOrgID := federationpolicyFields[2].Descriptor()
+	// federationpolicy.CalleeOrgIDValidator is a validator for the "callee_org_id" field. It is called by the builders before save.
+	federationpolicy.CalleeOrgIDValidator = func() func(string) error {
+		validators := federationpolicyDescCalleeOrgID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(callee_org_id string) error {
+			for _, fn := range fns {
+				if err := fn(callee_org_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// federationpolicyDescMaxPerMin is the schema descriptor for max_per_min field.
+	federationpolicyDescMaxPerMin := federationpolicyFields[4].Descriptor()
+	// federationpolicy.DefaultMaxPerMin holds the default value on creation for the max_per_min field.
+	federationpolicy.DefaultMaxPerMin = federationpolicyDescMaxPerMin.Default.(int)
+	// federationpolicyDescDailyQuota is the schema descriptor for daily_quota field.
+	federationpolicyDescDailyQuota := federationpolicyFields[5].Descriptor()
+	// federationpolicy.DefaultDailyQuota holds the default value on creation for the daily_quota field.
+	federationpolicy.DefaultDailyQuota = federationpolicyDescDailyQuota.Default.(int)
+	// federationpolicyDescCreatedAt is the schema descriptor for created_at field.
+	federationpolicyDescCreatedAt := federationpolicyFields[6].Descriptor()
+	// federationpolicy.DefaultCreatedAt holds the default value on creation for the created_at field.
+	federationpolicy.DefaultCreatedAt = federationpolicyDescCreatedAt.Default.(func() time.Time)
+	// federationpolicyDescUpdatedAt is the schema descriptor for updated_at field.
+	federationpolicyDescUpdatedAt := federationpolicyFields[7].Descriptor()
+	// federationpolicy.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	federationpolicy.DefaultUpdatedAt = federationpolicyDescUpdatedAt.Default.(func() time.Time)
+	// federationpolicy.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	federationpolicy.UpdateDefaultUpdatedAt = federationpolicyDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// federationpolicyDescID is the schema descriptor for id field.
+	federationpolicyDescID := federationpolicyFields[0].Descriptor()
+	// federationpolicy.DefaultID holds the default value on creation for the id field.
+	federationpolicy.DefaultID = federationpolicyDescID.Default.(func() string)
+	// federationpolicy.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	federationpolicy.IDValidator = federationpolicyDescID.Validators[0].(func(string) error)
 	flowlogeventFields := schema.FlowLogEvent{}.Fields()
 	_ = flowlogeventFields
 	// flowlogeventDescTraceID is the schema descriptor for trace_id field.

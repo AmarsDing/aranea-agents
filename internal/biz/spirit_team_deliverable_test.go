@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -1853,5 +1854,130 @@ func TestBuildTeamTurnInput_NonDAGTeam_NoProtocol(t *testing.T) {
 
 	if out != "临时任务" {
 		t.Fatalf("non-DAG team input must stay untouched, got %q", out)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Phase 11 F10（12:33 修复）：MemberExecutionEvidence —— 结果导向成员状态的
+// biz 证据判定。团队回调 completed 不代表成员成功：session 中断 / 失败步骤
+// 均为失败证据；读取失败保守按「无证据」处理（基础架构错误不得翻转成员状态）。
+// ---------------------------------------------------------------------------
+
+// 成员 session 中断（error）→ failed，reason 携带中断原因。
+func TestMemberExecutionEvidence_SessionInterrupted(t *testing.T) {
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(newDeliverableTeamRepo(), sessions)
+	sessions.sessionsByTeam["t1"] = Session{
+		ID: "ms-1", Status: string(session.SessionStatusInterrupted),
+		StatusReason: string(session.StatusReasonError),
+	}
+
+	failed, reason := u.MemberExecutionEvidence(context.Background(), "ms-1")
+	if !failed {
+		t.Fatal("interrupted session must be failure evidence")
+	}
+	if !strings.Contains(reason, "error") {
+		t.Fatalf("reason should carry the status reason, got %q", reason)
+	}
+}
+
+// 成员 session 中断但无 StatusReason → failed，reason 非空（兜底文案）。
+func TestMemberExecutionEvidence_SessionInterruptedNoReason(t *testing.T) {
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(newDeliverableTeamRepo(), sessions)
+	sessions.sessionsByTeam["t1"] = Session{
+		ID: "ms-1", Status: string(session.SessionStatusInterrupted),
+	}
+
+	failed, reason := u.MemberExecutionEvidence(context.Background(), "ms-1")
+	if !failed {
+		t.Fatal("interrupted session must be failure evidence even without StatusReason")
+	}
+	if strings.TrimSpace(reason) == "" {
+		t.Fatal("reason must not be empty (fallback text required)")
+	}
+}
+
+// session completed 但存在 failed step → failed，reason 携带首个失败 step 摘要。
+func TestMemberExecutionEvidence_FailedStep(t *testing.T) {
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(newDeliverableTeamRepo(), sessions, steps)
+	sessions.sessionsByTeam["t1"] = Session{ID: "ms-1", Status: string(session.SessionStatusCompleted)}
+	steps.stepsBySession["ms-1"] = []Step{
+		{ID: "s1", Kind: StepKindAction, Status: StepStatusCompleted},
+		{ID: "s2", Kind: StepKindAction, Status: StepStatusFailed, ToolName: "cli_admin_skill_install_from_url", Content: "安装失败: skill 已存在"},
+	}
+
+	failed, reason := u.MemberExecutionEvidence(context.Background(), "ms-1")
+	if !failed {
+		t.Fatal("failed step must be failure evidence")
+	}
+	if !strings.Contains(reason, "skill 已存在") {
+		t.Fatalf("reason should carry the first failed step summary, got %q", reason)
+	}
+}
+
+// session completed 但存在 cancelled step → failed。
+func TestMemberExecutionEvidence_CancelledStep(t *testing.T) {
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(newDeliverableTeamRepo(), sessions, steps)
+	sessions.sessionsByTeam["t1"] = Session{ID: "ms-1", Status: string(session.SessionStatusCompleted)}
+	steps.stepsBySession["ms-1"] = []Step{
+		{ID: "s1", Kind: StepKindAction, Status: StepStatusCancelled, Content: "工具调用被取消"},
+	}
+
+	failed, _ := u.MemberExecutionEvidence(context.Background(), "ms-1")
+	if !failed {
+		t.Fatal("cancelled step must be failure evidence")
+	}
+}
+
+// session completed + 全部步骤 completed → 无失败证据。
+func TestMemberExecutionEvidence_NoEvidence(t *testing.T) {
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(newDeliverableTeamRepo(), sessions, steps)
+	sessions.sessionsByTeam["t1"] = Session{ID: "ms-1", Status: string(session.SessionStatusCompleted)}
+	steps.stepsBySession["ms-1"] = []Step{
+		{ID: "s1", Kind: StepKindReply, Status: StepStatusCompleted, Content: "已完成"},
+	}
+
+	failed, reason := u.MemberExecutionEvidence(context.Background(), "ms-1")
+	if failed || reason != "" {
+		t.Fatalf("no failure evidence expected, got failed=%v reason=%q", failed, reason)
+	}
+}
+
+// 空 sessionID → 无证据（防御）。
+func TestMemberExecutionEvidence_EmptySessionID(t *testing.T) {
+	u := newDeliverableUsecase(newDeliverableTeamRepo(), newDeliverableSessionAccessor())
+
+	failed, reason := u.MemberExecutionEvidence(context.Background(), "  ")
+	if failed || reason != "" {
+		t.Fatalf("empty sessionID must yield no evidence, got failed=%v reason=%q", failed, reason)
+	}
+}
+
+// session 读取失败（不存在）→ 保守按无证据处理，不得翻转成员状态。
+func TestMemberExecutionEvidence_SessionReadError(t *testing.T) {
+	u := newDeliverableUsecase(newDeliverableTeamRepo(), newDeliverableSessionAccessor())
+
+	failed, reason := u.MemberExecutionEvidence(context.Background(), "ms-missing")
+	if failed || reason != "" {
+		t.Fatalf("session read error must yield no evidence, got failed=%v reason=%q", failed, reason)
+	}
+}
+
+// 未装配 stepReader + session completed → 无证据（步骤证据不可用时不臆测）。
+func TestMemberExecutionEvidence_NilStepReader(t *testing.T) {
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(newDeliverableTeamRepo(), sessions) // no WithSpiritStepReader
+	sessions.sessionsByTeam["t1"] = Session{ID: "ms-1", Status: string(session.SessionStatusCompleted)}
+
+	failed, reason := u.MemberExecutionEvidence(context.Background(), "ms-1")
+	if failed || reason != "" {
+		t.Fatalf("nil stepReader with completed session must yield no evidence, got failed=%v reason=%q", failed, reason)
 	}
 }

@@ -42,6 +42,16 @@ func (c *Client) GetTool(ctx context.Context, id string) (*toolv1.Tool, error) {
 	return resp, nil
 }
 
+// TestTool calls POST /v1/tools/{id}/test.
+func (c *Client) TestTool(ctx context.Context, id, argumentsJSON string, timeoutSec int32) (*toolv1.TestToolResponse, error) {
+	req := &toolv1.TestToolRequest{Id: id, ArgumentsJson: argumentsJSON, TimeoutSec: timeoutSec}
+	resp := &toolv1.TestToolResponse{}
+	if err := c.Do(ctx, http.MethodPost, "/v1/tools/"+id+"/test", req, resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // ToggleToolEnabled calls PATCH /v1/tools/{id}/enabled.
 func (c *Client) ToggleToolEnabled(ctx context.Context, id string, enabled bool, confirmIntent string) (*toolv1.Tool, error) {
 	req := &toolv1.ToggleToolEnabledRequest{Id: id, Enabled: enabled, ConfirmIntent: confirmIntent}

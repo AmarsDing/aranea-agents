@@ -44,6 +44,12 @@ import GraphExecutionsPage from '../pages/GraphExecutionsPage.vue';
 import TeamRunObservatoryPage from '../pages/TeamRunObservatoryPage.vue';
 import TeamOrchestratePage from '../pages/TeamOrchestratePage.vue';
 import ThemePreviewPage from '../pages/ThemePreviewPage.vue';
+import ServerSetupPage from '../pages/mobile/ServerSetupPage.vue';
+import MobilePlaceholderPage from '../pages/mobile/MobilePlaceholderPage.vue';
+import MobileSessionsPage from '../pages/mobile/MobileSessionsPage.vue';
+import MobileChatPage from '../pages/mobile/MobileChatPage.vue';
+import MobileTasksPage from '../pages/mobile/MobileTasksPage.vue';
+import MobileLayout from '../layouts/MobileLayout.vue';
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -51,6 +57,30 @@ export const routes: RouteRecordRaw[] = [
     component: BlankLayout,
     meta: { public: true },
     children: [{ path: '', name: 'login', component: LoginPage }],
+  },
+  {
+    // Mobile (Android shell) first-run backend address setup. Public: the
+    // session cookie lives on the upstream that is not configured yet.
+    path: '/mobile/server-setup',
+    component: BlankLayout,
+    meta: { public: true },
+    children: [{ path: '', name: 'mobile-server-setup', component: ServerSetupPage }],
+  },
+  {
+    // Mobile layout. Sessions/chat/tasks are real views (P1); me remains a
+    // placeholder until its P1 tasks land. The breakpoint guard in
+    // router/index.ts redirects narrow screens here and wide screens back
+    // to the desktop routes.
+    path: '/mobile',
+    component: MobileLayout,
+    meta: { requiresAuth: true },
+    children: [
+      { path: '', redirect: '/mobile/sessions' },
+      { path: 'sessions', name: 'mobile-sessions', component: MobileSessionsPage },
+      { path: 'chat', name: 'mobile-chat', component: MobileChatPage },
+      { path: 'tasks', name: 'mobile-tasks', component: MobileTasksPage },
+      { path: 'me', name: 'mobile-me', component: MobilePlaceholderPage },
+    ],
   },
   {
     path: '/',

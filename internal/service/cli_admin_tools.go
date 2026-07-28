@@ -198,6 +198,10 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 		if o.spiritSynthesis() != nil {
 			out = append(out, tools.NewSynthesizeResultsTool(o.spiritSynthesis()))
 		}
+
+		// F6 (Phase 11): get_team_deliverable — one-call structured result
+		// retrieval (replaces read_session_history archaeology).
+		out = append(out, tools.NewGetTeamDeliverableTool(o.spiritAssembler()))
 	}
 
 	// Graph orchestration tool for complex multi-agent DAG execution.
@@ -264,6 +268,7 @@ func skillItemFromBiz(s biz.Skill) cli_admin.SkillItem {
 		DisplayName: s.Name,
 		Status:      s.Status,
 		Version:     version,
+		Enabled:     s.Enabled,
 	}
 }
 

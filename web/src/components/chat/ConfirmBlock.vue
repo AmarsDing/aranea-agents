@@ -326,4 +326,17 @@ function onConfirm(reply: ToolConfirmReply) {
   &__tool-inline
     font-size: 12px
     color: var(--color-text-tertiary)
+
+// 移动端（<600px，72 §3.2 触控化）：确认按钮纵向堆叠、全宽、触控目标 ≥44px
+@media (max-width: 599px)
+  .confirm-block
+    &__actions
+      flex-direction: column
+      flex-wrap: nowrap
+      gap: 8px
+
+    &__btn
+      width: 100%
+      min-height: 44px
+      font-size: 14px
 </style>

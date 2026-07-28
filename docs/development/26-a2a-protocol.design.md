@@ -471,3 +471,281 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 ```
 
 **不变量**：biz 不 import `pkg/trpc-agent-go`；框架包装隔离在 `internal/a2a/trpc`。
+
+---
+
+## 子模块：联邦 A2A 网络
+
+> 2026-07-28 立项评审。原 `phase5-差异化创新/04-联邦A2A网络.md` 的设计按代码现状修订后并入本节。
+
+### F.1 评审修订记录（原规划 → 落地设计）
+
+| # | 原规划 | 修订 | 理由 |
+|---|--------|------|------|
+| 1 | 新建 `internal/federation/` 顶级包（registry/trust/audit/quota/security 5 子包） | 联邦领域逻辑全部放 `internal/biz/a2a/federation_*.go` | TrustManager/PolicyEngine/AuditLogger/QuotaChecker 为纯领域逻辑，按分层规范属 biz 层，与 `limiter*.go` 同模式；5 子包属过度拆分（CS-B18） |
+| 2 | 新增 `FederationAgent` 表 | 复用 `a2a_remote_agents` + 新增 `org_id` 列关联组织 | 远程 Agent 的认证/健康/重试/Card 缓存链路已存在，重复建表浪费 |
+| 3 | `internal/federation/quota/rate_limiter.go` | 复用 `a2a.Limiter`（QPS）+ 审计表当日计数（日配额） | 零新存储；Limiter 已支持 Redis/内存双实现 |
+| 4 | `internal/federation/security/`（mTLS + OAuth2） | 复用 `ClientAuthOptions`（none/api_key/bearer/mtls）；OAuth2 移出本期 | 现有 4 种认证已覆盖需求 FED-F8 |
+| 5 | 扩展 `ResolveInvokeTarget` / `InvokeRemoteRegistry` 支持联邦目标 | 不改主路径；联邦调用走 `FederationService.InvokeFederatedAgent` 专用入口，内部新增 `internal/a2a/federation_invoke.go` 编排并复用 `InvokeRemoteRegistry` | `call_agent`/Admin Invoke 语义保持不变（本地 + 工作区远程注册表）；YAGNI |
+| 6 | 前端新建联邦管理页面 | A2APage 新增「联邦」Tab | 子模块定位，避免页面膨胀 |
+| 7 | 审批流（PolicyAction=approval） | 保留枚举，不实现审批链路 | 审批需要人机交互回路，复杂度超出本期 |
+
+### F.2 分层架构
+
+```
+api/kratos/a2a/v1/federation.proto           ← 新增：FederationService（8 RPC）
+        ↓
+internal/service/a2a_federation.go           ← 新增：RPC 适配（proto ↔ biz，无业务逻辑）
+        ↓
+internal/biz/a2a/federation.go               ← 领域模型 + 窄接口
+internal/biz/a2a/federation_trust.go         ← TrustManager
+internal/biz/a2a/federation_policy.go        ← PolicyEngine（内存缓存 + 失效）
+internal/biz/a2a/federation_quota.go         ← QuotaChecker（Limiter + 日计数）
+internal/biz/a2a/federation_audit.go         ← AuditLogger（决策/结果语义）
+internal/biz/a2a/federation_directory.go     ← Directory + AgentCardSync
+internal/biz/a2a/federation_usecase.go       ← FederationUsecase（治理链编排）
+        ↓
+internal/data/ent/schema/federation_org.go        ← Ent Schema（3 张新表）
+internal/data/ent/schema/federation_policy.go
+internal/data/ent/schema/federation_audit_log.go
+internal/data/a2a_federation_repo.go              ← Ent Repo 实现
+        ↓
+internal/a2a/federation_invoke.go            ← 联邦调用编排（复用 InvokeRemoteRegistry）
+```
+
+依赖方向不变量：biz 不 import `pkg/trpc-agent-go`；`internal/a2a` 为协议桥接层；Wire 绑定在 service 层。
+
+### F.3 领域模型（`internal/biz/a2a/federation.go`）
+
+```go
+// 信任等级
+const (
+    TrustLevelTrusted   = "trusted"
+    TrustLevelNeutral   = "neutral"
+    TrustLevelUntrusted = "untrusted"
+)
+
+// 策略动作（approval 保留枚举，本期不实现审批链路）
+const (
+    PolicyActionAllow    = "allow"
+    PolicyActionDeny     = "deny"
+    PolicyActionApproval = "approval"
+)
+
+// 审计决策
+const (
+    DecisionAllowed      = "allowed"
+    DecisionDeniedTrust  = "denied_trust"
+    DecisionDeniedPolicy = "denied_policy"
+    DecisionDeniedQuota  = "denied_quota"
+)
+
+// 审计方向（本期仅 outbound 落地）
+const (
+    AuditDirectionOutbound = "outbound"
+    AuditDirectionInbound  = "inbound"
+)
+
+// 组织状态
+const (
+    OrgStatusActive    = "active"
+    OrgStatusSuspended = "suspended"
+)
+
+// FederationLocalOrgID 表示本组织（出站方向的 caller）。
+// 策略与审计中 caller_org_id = "local" 即本组织；前端映射为「本组织」。
+const FederationLocalOrgID = "local"
+
+type FederationOrg struct {
+    ID             string
+    Name           string
+    Domain         string // 唯一约束
+    PublicBaseURL  string
+    TrustLevel     string
+    AuthType       string // 复用 AuthType* 常量
+    AuthConfigJSON string
+    Status         string
+    JoinedAt       time.Time
+    UpdatedAt      time.Time
+}
+
+type FederationPolicy struct {
+    ID          string
+    CallerOrgID string // FederationLocalOrgID = 本组织（出站策略）
+    CalleeOrgID string
+    Action      string
+    MaxPerMin   int // 每分钟调用上限（与 Limiter 滑动窗口语义对齐）；0 = 不限
+    DailyQuota  int // 每日调用上限（按 decision=allowed 计数）；0 = 不限
+    CreatedAt   time.Time
+    UpdatedAt   time.Time
+}
+
+type FederationAuditLog struct {
+    ID            string
+    Direction     string
+    CallerOrgID   string
+    CalleeOrgID   string
+    CallerAgentID string
+    CalleeAgentID string
+    Capability    string
+    Decision      string
+    Status        string // pending | success | error | timeout
+    LatencyMs     int64
+    ErrorMessage  string
+    CreatedAt     time.Time
+    UpdatedAt     time.Time
+}
+```
+
+窄接口（≤5 方法，CS-B4）：
+
+```go
+// FederationOrgRepo 组织持久化。
+// Stability:evolving
+type FederationOrgRepo interface {
+    UpsertOrg(ctx context.Context, org FederationOrg) (FederationOrg, error) // 按 domain upsert
+    GetOrg(ctx context.Context, id string) (FederationOrg, error)
+    ListOrgs(ctx context.Context) ([]FederationOrg, error)
+    UpdateOrgTrust(ctx context.Context, id, trustLevel string) error
+    DeleteOrg(ctx context.Context, id string) error
+}
+
+// FederationPolicyRepo 策略持久化。
+// Stability:evolving
+type FederationPolicyRepo interface {
+    UpsertPolicy(ctx context.Context, p FederationPolicy) (FederationPolicy, error)
+    GetPolicy(ctx context.Context, callerOrgID, calleeOrgID string) (FederationPolicy, error)
+    ListPolicies(ctx context.Context) ([]FederationPolicy, error)
+    DeletePolicy(ctx context.Context, id string) error
+}
+
+// FederationAuditRepo 审计持久化。
+// Stability:evolving
+type FederationAuditRepo interface {
+    CreateAudit(ctx context.Context, log FederationAuditLog) (FederationAuditLog, error)
+    UpdateAuditResult(ctx context.Context, id, status string, latencyMs int64, errMsg string) error
+    ListAudits(ctx context.Context, filter FederationAuditFilter) ([]FederationAuditLog, int, error)
+    CountCallsSince(ctx context.Context, callerOrgID, calleeOrgID string, since time.Time) (int, error)
+}
+```
+
+### F.4 数据模型（Ent Schema + DDL 迁移）
+
+**新表（Ent Schema，遵守 DB-R3）**：
+
+| 表 | 关键列 | 约束/索引 |
+|----|--------|-----------|
+| `federation_orgs` | id / name / domain / public_base_url / trust_level / auth_type / auth_config_json / status / joined_at / updated_at | `domain` 唯一索引；`auth_config_json` 标 `.Sensitive()`（DB-N8） |
+| `federation_policies` | id / caller_org_id / callee_org_id / action / max_per_min / daily_quota / created_at / updated_at | `(caller_org_id, callee_org_id)` 唯一索引 |
+| `federation_audit_logs` | id / direction / caller_org_id / callee_org_id / caller_agent_id / callee_agent_id / capability / decision / status / latency_ms / error_message / created_at / updated_at | 索引 `(callee_org_id, created_at)`、`(caller_org_id, created_at)`（审计查询 + 日配额计数） |
+
+**既有表迁移（DDL Migration Registry 版本化）**：
+
+| 表 | 变更 | 说明 |
+|----|------|------|
+| `a2a_remote_agents` | `ADD COLUMN org_id TEXT NOT NULL DEFAULT ''` | 关联联邦组织；空 = 工作区级远程 Agent（非联邦） |
+
+**既有模型扩展**：`a2a.RemoteAgent` + `RegisterRemoteAgentInput` 增加 `OrgID` 字段（可选）；scan/insert 同步。**不新增** `RemoteAgentRepo` 接口方法——联邦目录用 `ListRemoteAgents(workspace)` 内存过滤 `OrgID`（远程注册表规模 <<1000，YAGNI）。
+
+### F.5 治理组件语义
+
+**TrustManager**（`federation_trust.go`）：
+
+| 信任等级 | 调用判定 |
+|----------|----------|
+| trusted | 允许（仍受策略/配额约束） |
+| neutral | 允许（仍受策略/配额约束） |
+| untrusted | 拒绝（403，`denied_trust`） |
+
+**PolicyEngine**（`federation_policy.go`）：内存缓存 `map[caller→callee]Policy`（`sync.RWMutex`），启动时 `ListPolicies` 全量加载；`UpsertPolicy`/`DeletePolicy` 写库后同步刷新缓存。Evaluate 顺序：显式策略（精确匹配 caller+callee）> 信任等级默认。`approval` 按 `deny` 处理并 Warn（本期无审批链路）。
+
+**QuotaChecker**（`federation_quota.go`）：
+- `MaxPerMin > 0`：复用 `Limiter.Allow(ctx, "fed:"+callerOrgID, calleeOrgID)`（滑动窗口每分钟语义）
+- `DailyQuota > 0`：`AuditRepo.CountCallsSince(caller, callee, 当日 0 点 UTC)`（仅计 `decision=allowed`）≥ DailyQuota 则拒绝（429，`denied_quota`）
+- 均为 0 直接放行
+
+**AuditLogger**（`federation_audit.go`）：
+- `RecordDecision`：同步创建审计（decision + status=pending）；**创建失败 fail-closed**（FED-NFR1 审计完整性），返回 500 并拒绝调用
+- `RecordResult`：调用结束后更新 status/latency/error；**失败仅 Warn 不阻断**（结果已产生，不因审计更新失败改写调用结果）
+- 被拒绝的调用（trust/policy/quota）同样写决策审计；此处创建失败不 fail-closed（调用本已被拒），仅 Error 日志
+
+**Directory**（`federation_directory.go`）：
+- `ListFederationAgents(ctx, capability, orgID)`：`ListOrgs` 过滤 `trust != untrusted && status == active`（可选按 orgID 精确）→ `ListRemoteAgents` 按 `OrgID` 分组 → capability 过滤 → 返回 `{Org, RemoteAgent, Card}` 聚合
+- **读缓存目录**，不实时拉取（FED-NFR4 < 500ms）
+
+**AgentCardSync**（`federation_directory.go`）：
+- `SyncOrgCards(ctx, orgID)`：遍历组织下 enabled remote agents → `DiscoverRemoteCard` 逐个拉取 → 更新 `card_json`；单个失败 Warn 跳过，不中断整体；返回成功数
+- 触发方式：手动 RPC（本期）；定期 Cron 后续迭代（可复用 health runner 模式）
+
+### F.6 联邦调用链（`FederationUsecase.InvokeFederated`）
+
+```
+入参：orgID, agentID, capability, payloadJSON, timeoutSec, workspace, callerAgentID(可选)
+ 1. 参数校验（orgID/agentID/capability 非空）→ 400
+ 2. OrgRepo.GetOrg(orgID)                      → 404 组织未注册
+ 3. org.Status != active                       → 403 组织已暂停
+ 4. TrustManager.CheckTrust                    → untrusted：AuditLogger.RecordDecision(denied_trust) + 403
+ 5. PolicyEngine.Evaluate                      → deny：RecordDecision(denied_policy) + 403
+ 6. QuotaChecker.Check                         → 超限：RecordDecision(denied_quota) + 429
+ 7. AuditLogger.RecordDecision(allowed)        → 创建失败 fail-closed 500
+ 8. 解析目标：ListRemoteAgents(workspace) 内存过滤 OrgID==orgID 且 ID==agentID → 404 Agent 未注册
+ 9. internal/a2a/federation_invoke.go：
+      复用 InvokeRemoteRegistry（重试/SSRF 校验/ClientAuthOptions）
+10. AuditLogger.RecordResult(status/latency/err) → 失败仅 Warn
+11. 返回远程结果 JSON
+```
+
+错误映射：
+
+| 场景 | apierror | HTTP |
+|------|----------|------|
+| 组织未注册 / Agent 未注册 | `NotFound` | 404 |
+| untrusted / 组织暂停 / 策略拒绝 | `Forbidden` | 403 |
+| 配额超限 | `TooManyRequests` | 429 |
+| 决策审计创建失败 | `Internal` | 500 |
+| 远程不可达/调用失败 | `Internal`（含 cause） | 500 |
+| 参数缺失 | `BadRequest` | 400 |
+
+### F.7 Proto 契约（`api/kratos/a2a/v1/federation.proto`）
+
+与 `a2a.proto` 同 package `kratos.a2a.v1`，独立 service：
+
+| RPC | HTTP | 说明 |
+|-----|------|------|
+| `RegisterFederationOrg` | POST `/v1/a2a/federation/orgs` | 注册/更新组织（按 domain upsert） |
+| `ListFederationOrgs` | GET `/v1/a2a/federation/orgs` | 组织列表 |
+| `DeleteFederationOrg` | DELETE `/v1/a2a/federation/orgs/{id}` | 删除组织（不级联删 remote agents，仅解关联） |
+| `SetFederationTrustLevel` | PUT `/v1/a2a/federation/orgs/{id}/trust` | 设置信任等级 |
+| `UpsertFederationPolicy` | POST `/v1/a2a/federation/policies` | 配置调用策略 |
+| `DiscoverFederationAgents` | GET `/v1/a2a/federation/agents` | 联邦目录（capability/org_id 过滤） |
+| `InvokeFederatedAgent` | POST `/v1/a2a/federation/invoke` | 跨组织调用 |
+| `QueryFederationAuditLogs` | GET `/v1/a2a/federation/audits` | 审计查询（分页 + 过滤） |
+
+> 原规划 6 RPC 修订为 8 RPC：补 `DeleteFederationOrg`、`UpsertFederationPolicy`（策略管理无独立入口则 FED-F6 不可用）。
+
+### F.8 安全与多租户
+
+| 控制 | 落地 |
+|------|------|
+| 联邦 RPC 鉴权 | 与 A2AService 一致：Kratos admin JWT 中间件（不新增免鉴权路径） |
+| 认证配置保密 | `auth_config_json` Ent `.Sensitive()`；日志用 `loggateway.Redacted()`；RPC 响应不回传明文（返 masked） |
+| SSRF | 复用 `InvokeRemoteRegistry` 内置 `validateRemoteURL` + SSRF-safe HTTP client |
+| 工作区 | 联邦目标解析限定 caller 所在 workspace 的 remote agents |
+| 敏感字段 | 审计不记录 payload 明文，仅 capability/status/latency |
+
+### F.9 前端设计
+
+- `web/src/features/a2a/` 扩展：`federationApi.ts`、`federationTypes.ts`、mappers（多语言枚举映射）
+- `web/src/components/a2a/federation/`：`FederationOrgPanel.vue`（组织列表 + 注册 Dialog + 信任等级编辑 + 同步按钮）、`FederationDirectoryPanel.vue`（目录搜索）、`FederationInvokePanel.vue`（调用）、`FederationAuditPanel.vue`（审计查询）
+- `A2APage.vue` 新增「联邦」Tab；`stores/a2a` 扩展 federation state
+- 多语言键：`a2a.federation.*`（zh-CN/en-US）；信任/状态/决策枚举映射中文（见需求 §子模块.5）
+
+### F.10 与既有模块的关系
+
+| 既有能力 | 联邦复用方式 |
+|----------|-------------|
+| `a2a_remote_agents` + `RemoteAgentRepo` | 联邦 Agent 载体（+`org_id`）；认证/健康/Card 缓存不变 |
+| `InvokeRemoteRegistry` | 联邦调用的执行器（重试/SSRF/认证原样继承） |
+| `Limiter` | QPS 配额执行器（key 前缀 `fed:`） |
+| `ClientAuthOptions` | 组织级认证配置直接透传 |
+| health cron / Prometheus | 联邦组织健康监控复用既有指标（不新建监控） |

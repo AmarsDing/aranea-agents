@@ -27,6 +27,11 @@ export type Admin = {
   // B-01 / P2-A: 1:1 admin → workspace binding stamped into JWT at login.
   // Clients cannot switch workspace via Header/Query; membership is JWT-bound.
   workspaceId: string | undefined;
+  // P2 (mobile): JWT session token, populated ONLY on the Login response.
+  // Cross-origin clients (WebView / frp) use it as `Authorization: Bearer`
+  // or WS `?token=` when the HttpOnly cookie is unavailable. Identical to
+  // the cookie value issued in the same login call; empty on all other RPCs.
+  token: string | undefined;
 };
 
 // Encoded using RFC 3339, where generated output will always be Z-normalized

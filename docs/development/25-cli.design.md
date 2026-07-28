@@ -402,7 +402,7 @@ const (
 
 type Printer interface {
     PrintList(items any, total int) error    // any = []proto.Message；reflection 提取字段
-    PrintDetail(item proto.Message) error
+    PrintDetail(item any) error
     PrintError(e *cli.CLIError) error
     PrintSuccess(message string, kv ...string) error
     PrintKeyValue(pairs ...string) error
@@ -463,6 +463,10 @@ func (u UI) Color(name string) ColorFn                     // red/yellow/green/d
 | Tool | `/v1/tools*` | `api/kratos/tool/v1/tool.proto` |
 | Team / Plugin / MCP / Cron / Channel / Session / Monitor / LLM provider | `/v1/teams*` / `/v1/plugins*` / `/v1/mcp-servers*` / `/v1/cron-tasks*` / `/v1/channels*` / `/v1/sessions*` / `/v1/monitor/*` / `/v1/llm-provider-models*` | 对应 proto |
 | Chat 上下行 | `/v1/chat/messages` / `/v1/chat/await-reply` / `/v1/chat/messages/enqueue` / WS `/v1/ws` | `api/kratos/chat/v1/chat.proto`（含 `AwaitUserReply`, `EnqueueUserMessage`） |
+| Memory / Knowledge / Evaluation | `/v1/memory/*` / `/v1/knowledge/*` / `/v1/evaluation/*` | 对应 proto（2026-07-28 P3 新增 CLI 域） |
+| Organization / Taxonomy | `/v1/organization*` / `/v1/taxonomy*`（组织节点 level：company/department/position） | 对应 proto（2026-07-28 P3 新增 CLI 域） |
+| Model Catalog / A2A | `/v1/model-catalog*` / `/v1/a2a/*`（远程发现为 `POST /v1/a2a/remote-discover`；config 只读） | 对应 proto（2026-07-28 P3 新增 CLI 域） |
+| Session 管理 / Skill 文件 / Cron / MCP / Tool 补充 | `/v1/sessions/{id}/{archive,restore,pin,unpin,export}`、`POST /v1/sessions:compact`、`/v1/skills/{id}/file*`、`POST /v1/cron-tasks/{id}/reset-failures`、`POST /v1/mcp-servers/validate`、`POST /v1/tools/{id}/test` | 对应 proto（2026-07-28 P3 补全） |
 
 > 路径以 proto 注解为唯一真相源；实施前对 `api/kratos/<svc>/v1/*.proto` 的 `google.api.http` 做精确比对（许多资源有别于 `RESTful` 命名）。
 

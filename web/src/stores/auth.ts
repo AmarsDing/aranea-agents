@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { getCurrentAdmin, loginAdminByEmail, loginAdminByUsername, logoutAdmin } from '../features/admin/api';
 import type { AdminSession } from '../features/admin/types';
 import { clearServerDownNotify } from '../features/heartbeat/useServerHeartbeat';
+import { clearAuthToken, setAuthToken } from '../services/authToken';
 
 export type AuthIdentityMode = 'username' | 'email';
 
@@ -57,6 +58,9 @@ export const useAuthStore = defineStore('auth', {
       this.loginLoading = true;
       try {
         this.user = mode === 'email' ? await loginAdminByEmail(id, pw) : await loginAdminByUsername(id, pw);
+        // P2 (mobile): persist the login JWT for Bearer/WS auth on
+        // cross-origin deployments; no-op when the server returns no token.
+        if (this.user?.token) setAuthToken(this.user.token);
         this.sessionChecked = true;
         clearServerDownNotify();
       } finally {
@@ -70,6 +74,7 @@ export const useAuthStore = defineStore('auth', {
       } catch {
         // still clear client state even if revoke fails (e.g. expired cookie)
       }
+      clearAuthToken();
       this.user = null;
       this.sessionChecked = true;
     },

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 // ImmediateFactWriter persists parsed facts to memory_fact immediately.
@@ -33,10 +34,11 @@ func (w *ImmediateFactWriter) WriteFacts(ctx context.Context, sessionID, agentID
 		return
 	}
 
-	// Fire-and-forget goroutine
-	go func() {
-		bgCtx := context.WithoutCancel(ctx)
-		bgCtx, cancel := context.WithTimeout(bgCtx, 10*time.Second)
+	// Fire-and-forget write so the runner turn is not blocked.
+	// 红线 #13：必须走 safego，writeFactsSync 内 panic 不得导致进程崩溃。
+	bgCtx := context.WithoutCancel(ctx)
+	bgCtx, cancel := context.WithTimeout(bgCtx, 10*time.Second)
+	safego.Go(bgCtx, "memory.immediate_fact", func() {
 		defer cancel()
 
 		if err := w.writeFactsSync(bgCtx, sessionID, agentID, userID, sourceMessageID, facts); err != nil {
@@ -52,7 +54,7 @@ func (w *ImmediateFactWriter) WriteFacts(ctx context.Context, sessionID, agentID
 			loggateway.StepID("memory.immediate_fact"),
 			loggateway.SessionID(sessionID),
 			loggateway.Int("fact_count", len(facts)))
-	}()
+	})
 }
 
 // writeFactsSync performs the actual fact persistence.

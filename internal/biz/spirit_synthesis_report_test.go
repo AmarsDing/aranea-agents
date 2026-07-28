@@ -132,7 +132,7 @@ func TestCheckAllTeamsCompleted_CountsCancelled(t *testing.T) {
 
 // 全部完成 → 保留既有成功结构（不出现「未解决问题」要求）。
 func TestBuildSynthesisSummaryTrigger_AllCompleted_KeepsSuccessStructure(t *testing.T) {
-	out := BuildSynthesisSummaryTrigger(2, 2, 0, nil)
+	out := BuildSynthesisSummaryTrigger(2, 2, 0, nil, nil)
 
 	if !strings.Contains(out, "所有团队已完成") {
 		t.Fatalf("all-completed trigger should keep the success opening, got:\n%s", out)
@@ -147,6 +147,27 @@ func TestBuildSynthesisSummaryTrigger_AllCompleted_KeepsSuccessStructure(t *test
 	}
 }
 
+// F7 (Phase 11)：交付物摘要内嵌 trigger —— 成功路径也必须带摘要段，
+// LLM 无需 read_session_history 考古。
+func TestBuildSynthesisSummaryTrigger_AllCompleted_WithDigests(t *testing.T) {
+	digests := []TeamDeliverableDigest{{
+		TeamName:          "安装 xlsx 团队",
+		TaskName:          "安装 xlsx skill",
+		Status:            "completed",
+		DeliverableSummary: `{"status":"success","detail":"xlsx 1.2.3 installed"}`,
+	}}
+	out := BuildSynthesisSummaryTrigger(1, 1, 0, nil, digests)
+
+	if !strings.Contains(out, "所有团队已完成") {
+		t.Fatalf("success opening must remain, got:\n%s", out)
+	}
+	for _, want := range []string{"交付物摘要", "安装 xlsx 团队", `"status":"success"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("success trigger missing digest content %q, got:\n%s", want, out)
+		}
+	}
+}
+
 // 存在失败团队 → 触发文本必须诚实：不得出现「所有团队已完成」，必须给出
 // 真实完成/失败数量、失败团队名称/原因/遗留疑问，并要求「未解决问题」小节
 // 与反虚构约束。
@@ -157,7 +178,7 @@ func TestBuildSynthesisSummaryTrigger_WithFailures_Honest(t *testing.T) {
 		Reason:    "团队未通过 set_deliverable 提交真实交付物",
 		LastReply: "需要您澄清：目标竞品名单与时间范围？",
 	}}
-	out := BuildSynthesisSummaryTrigger(2, 1, 1, failures)
+	out := BuildSynthesisSummaryTrigger(2, 1, 1, failures, nil)
 
 	if strings.Contains(out, "所有团队已完成") {
 		t.Fatalf("trigger must not claim all teams completed when failures exist, got:\n%s", out)
@@ -177,6 +198,28 @@ func TestBuildSynthesisSummaryTrigger_WithFailures_Honest(t *testing.T) {
 	}
 	if !strings.Contains(out, "虚构") {
 		t.Fatalf("trigger must forbid fabricating conclusions for failed teams, got:\n%s", out)
+	}
+}
+
+// F7：失败路径摘要段位于失败事实段之前（含成功团队摘要 + 失败团队「无交付物」）。
+func TestBuildSynthesisSummaryTrigger_WithFailures_DigestsBeforeFailureFacts(t *testing.T) {
+	failures := []TeamFailureBrief{{TeamName: "数据采集团队", TaskName: "采集", Reason: "无交付物"}}
+	digests := []TeamDeliverableDigest{
+		{TeamName: "成功团队", TaskName: "调研", Status: "completed", DeliverableSummary: "报告已完成"},
+		{TeamName: "数据采集团队", TaskName: "采集", Status: "failed"},
+	}
+	out := BuildSynthesisSummaryTrigger(2, 1, 1, failures, digests)
+
+	digestIdx := strings.Index(out, "交付物摘要")
+	failureIdx := strings.Index(out, "失败事实（必须如实呈现")
+	if digestIdx < 0 || failureIdx < 0 || digestIdx > failureIdx {
+		t.Fatalf("digest section must precede failure facts (digest=%d failure=%d), got:\n%s", digestIdx, failureIdx, out)
+	}
+	if !strings.Contains(out, "成功团队") || !strings.Contains(out, "报告已完成") {
+		t.Fatalf("completed team digest missing, got:\n%s", out)
+	}
+	if !strings.Contains(out, "无交付物") {
+		t.Fatalf("failed team without deliverable should render 无交付物, got:\n%s", out)
 	}
 }
 

@@ -105,6 +105,10 @@ export type ListSkillsRequest = {
   pageSize: number | undefined;
   filesystemMissing: string | undefined;
   syncOrigin: string | undefined;
+  // 排序字段：tag（按首个标签名）| name（按名称）；空 = 默认按更新时间倒序。
+  sortBy: string | undefined;
+  // 排序方向：asc | desc；空 = asc。
+  sortOrder: string | undefined;
 };
 
 export type ListSkillsResponse = {
@@ -552,6 +556,12 @@ export function createSkillServiceClient(
       }
       if (request.syncOrigin) {
         queryParams.push(`syncOrigin=${encodeURIComponent(request.syncOrigin.toString())}`)
+      }
+      if (request.sortBy) {
+        queryParams.push(`sortBy=${encodeURIComponent(request.sortBy.toString())}`)
+      }
+      if (request.sortOrder) {
+        queryParams.push(`sortOrder=${encodeURIComponent(request.sortOrder.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

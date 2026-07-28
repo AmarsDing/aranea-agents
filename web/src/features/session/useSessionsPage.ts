@@ -127,6 +127,9 @@ export function useSessionsPage() {
         owner_type: ownerType.value || undefined,
         status: status.value || undefined,
         context_status: contextStatus.value || undefined,
+        // 管理列表默认只列根会话，团队成员会话等子会话不混入；
+        // 显式筛选 owner_type=team 时除外（团队会话均有 parent）。
+        root_only: ownerType.value !== 'team',
         limit: pageSize.value,
         offset: (page.value - 1) * pageSize.value,
       });

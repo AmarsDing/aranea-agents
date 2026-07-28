@@ -447,5 +447,365 @@ export function createA2AServiceClient(
 // An empty JSON object
 type wellKnownEmpty = Record<never, never>;
 
+// FederationOrg is a registered organization in the A2A federation network.
+// auth_config_json is write-only: reads never return the plaintext config
+// (design F.8); auth_config_set reports whether one is stored.
+export type FederationOrg = {
+  id: string | undefined;
+  name: string | undefined;
+  domain: string | undefined;
+  publicBaseUrl: string | undefined;
+  // trust_level: untrusted | neutral | trusted
+  trustLevel: string | undefined;
+  // auth_type: none | api_key | bearer | mtls
+  authType: string | undefined;
+  authConfigSet: boolean | undefined;
+  // status: active | suspended
+  status: string | undefined;
+  joinedAt: string | undefined;
+  updatedAt: string | undefined;
+};
+
+// FederationPolicy controls outbound calls for one org pair.
+export type FederationPolicy = {
+  id: string | undefined;
+  // caller_org_id = "local" means this organization (outbound policy).
+  callerOrgId: string | undefined;
+  calleeOrgId: string | undefined;
+  // action: allow | deny (approval reserved, treated as deny this iteration)
+  action: string | undefined;
+  // max_per_min: per-minute invocation cap; 0 = unlimited
+  maxPerMin: number | undefined;
+  // daily_quota: daily cap on decision=allowed calls; 0 = unlimited
+  dailyQuota: number | undefined;
+  createdAt: string | undefined;
+  updatedAt: string | undefined;
+};
+
+// FederationAgentEntry is one directory row: the org plus its registered
+// remote agent and cached agent card.
+export type FederationAgentEntry = {
+  org: FederationOrg | undefined;
+  remoteAgent: A2ARemoteAgent | undefined;
+  card: A2AAgentCard | undefined;
+};
+
+// FederationAuditEntry is one cross-organization invocation decision + result.
+export type FederationAuditEntry = {
+  id: string | undefined;
+  // direction: outbound (inbound reserved for future iteration)
+  direction: string | undefined;
+  callerOrgId: string | undefined;
+  calleeOrgId: string | undefined;
+  callerAgentId: string | undefined;
+  calleeAgentId: string | undefined;
+  capability: string | undefined;
+  // decision: allowed | denied_trust | denied_policy | denied_quota
+  decision: string | undefined;
+  // status: pending | success | error | timeout
+  status: string | undefined;
+  latencyMs: number | undefined;
+  errorMessage: string | undefined;
+  createdAt: string | undefined;
+};
+
+export type RegisterFederationOrgRequest = {
+  //
+  // Behaviors: REQUIRED
+  name: string | undefined;
+  // domain is the unique upsert key: re-registering the same domain updates
+  // the existing org in place (identity + joined_at preserved).
+  //
+  // Behaviors: REQUIRED
+  domain: string | undefined;
+  publicBaseUrl: string | undefined;
+  trustLevel: string | undefined;
+  authType: string | undefined;
+  authConfigJson: string | undefined;
+};
+
+export type ListFederationOrgsRequest = {
+};
+
+export type ListFederationOrgsResponse = {
+  items: FederationOrg[] | undefined;
+};
+
+export type DeleteFederationOrgRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+export type SetFederationTrustLevelRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  trustLevel: string | undefined;
+};
+
+export type UpsertFederationPolicyRequest = {
+  //
+  // Behaviors: REQUIRED
+  callerOrgId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  calleeOrgId: string | undefined;
+  action: string | undefined;
+  maxPerMin: number | undefined;
+  dailyQuota: number | undefined;
+};
+
+export type DiscoverFederationAgentsRequest = {
+  capability: string | undefined;
+  orgId: string | undefined;
+};
+
+export type DiscoverFederationAgentsResponse = {
+  items: FederationAgentEntry[] | undefined;
+};
+
+export type InvokeFederatedAgentRequest = {
+  //
+  // Behaviors: REQUIRED
+  orgId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  agentId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  capability: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  payloadJson: string | undefined;
+  // timeout_seconds overrides the default invocation timeout.
+  timeoutSeconds: number | undefined;
+  // workspace scopes remote-agent resolution to the caller's workspace.
+  workspace: string | undefined;
+  // caller_agent_id is recorded on the audit entry (optional).
+  callerAgentId: string | undefined;
+};
+
+export type InvokeFederatedAgentResponse = {
+  // audit_id correlates the response with the federation audit entry.
+  auditId: string | undefined;
+  status: string | undefined;
+  resultJson: string | undefined;
+  errorMessage: string | undefined;
+  latencyMs: number | undefined;
+};
+
+export type QueryFederationAuditLogsRequest = {
+  callerOrgId: string | undefined;
+  calleeOrgId: string | undefined;
+  decision: string | undefined;
+  status: string | undefined;
+  limit: number | undefined;
+  offset: number | undefined;
+};
+
+export type QueryFederationAuditLogsResponse = {
+  items: FederationAuditEntry[] | undefined;
+  total: number | undefined;
+};
+
+// FederationService governs the cross-organization A2A federation network:
+// org registry, trust levels, call policies, directory, invocation and audit.
+export interface FederationService {
+  // RegisterFederationOrg creates or updates an org (upsert by domain).
+  RegisterFederationOrg(request: RegisterFederationOrgRequest): Promise<FederationOrg>;
+  // ListFederationOrgs lists all registered orgs.
+  ListFederationOrgs(request: ListFederationOrgsRequest): Promise<ListFederationOrgsResponse>;
+  // DeleteFederationOrg removes an org; remote agents are only disassociated
+  // (org_id cleared), not cascade-deleted.
+  DeleteFederationOrg(request: DeleteFederationOrgRequest): Promise<wellKnownEmpty>;
+  // SetFederationTrustLevel sets the trust level of an org.
+  SetFederationTrustLevel(request: SetFederationTrustLevelRequest): Promise<FederationOrg>;
+  // UpsertFederationPolicy configures the call policy for one org pair.
+  UpsertFederationPolicy(request: UpsertFederationPolicyRequest): Promise<FederationPolicy>;
+  // DiscoverFederationAgents searches the federation directory (cached cards,
+  // no live pull); filters by capability and/or org_id.
+  DiscoverFederationAgents(request: DiscoverFederationAgentsRequest): Promise<DiscoverFederationAgentsResponse>;
+  // InvokeFederatedAgent invokes a remote agent of a federated org through
+  // the governance chain (trust -> policy -> quota -> audit -> invoke).
+  InvokeFederatedAgent(request: InvokeFederatedAgentRequest): Promise<InvokeFederatedAgentResponse>;
+  // QueryFederationAuditLogs queries audit entries with filters + pagination.
+  QueryFederationAuditLogs(request: QueryFederationAuditLogsRequest): Promise<QueryFederationAuditLogsResponse>;
+}
+
+export function createFederationServiceClient(
+  handler: RequestHandler
+): FederationService {
+  return {
+    RegisterFederationOrg(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/a2a/federation/orgs`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "FederationService",
+        method: "RegisterFederationOrg",
+      }) as Promise<FederationOrg>;
+    },
+    ListFederationOrgs(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/a2a/federation/orgs`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "FederationService",
+        method: "ListFederationOrgs",
+      }) as Promise<ListFederationOrgsResponse>;
+    },
+    DeleteFederationOrg(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/a2a/federation/orgs/${request.id}`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "FederationService",
+        method: "DeleteFederationOrg",
+      }) as Promise<wellKnownEmpty>;
+    },
+    SetFederationTrustLevel(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/a2a/federation/orgs/${request.id}/trust`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "FederationService",
+        method: "SetFederationTrustLevel",
+      }) as Promise<FederationOrg>;
+    },
+    UpsertFederationPolicy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/a2a/federation/policies`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "FederationService",
+        method: "UpsertFederationPolicy",
+      }) as Promise<FederationPolicy>;
+    },
+    DiscoverFederationAgents(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/a2a/federation/agents`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.capability) {
+        queryParams.push(`capability=${encodeURIComponent(request.capability.toString())}`)
+      }
+      if (request.orgId) {
+        queryParams.push(`orgId=${encodeURIComponent(request.orgId.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "FederationService",
+        method: "DiscoverFederationAgents",
+      }) as Promise<DiscoverFederationAgentsResponse>;
+    },
+    InvokeFederatedAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/a2a/federation/invoke`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "FederationService",
+        method: "InvokeFederatedAgent",
+      }) as Promise<InvokeFederatedAgentResponse>;
+    },
+    QueryFederationAuditLogs(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/a2a/federation/audits`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.callerOrgId) {
+        queryParams.push(`callerOrgId=${encodeURIComponent(request.callerOrgId.toString())}`)
+      }
+      if (request.calleeOrgId) {
+        queryParams.push(`calleeOrgId=${encodeURIComponent(request.calleeOrgId.toString())}`)
+      }
+      if (request.decision) {
+        queryParams.push(`decision=${encodeURIComponent(request.decision.toString())}`)
+      }
+      if (request.status) {
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      if (request.offset) {
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "FederationService",
+        method: "QueryFederationAuditLogs",
+      }) as Promise<QueryFederationAuditLogsResponse>;
+    },
+  };
+}
 
 // @@protoc_insertion_point(typescript-http-eof)

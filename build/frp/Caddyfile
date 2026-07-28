@@ -1,0 +1,7 @@
+# Caddy on the VPS: automatic HTTPS (Let's Encrypt) in front of frps.
+# Replace aranea.example.com with your domain and point its A record at the
+# VPS. Caddy needs only 80/443 open on the VPS firewall.
+
+aranea.example.com {
+	reverse_proxy 127.0.0.1:8080
+}

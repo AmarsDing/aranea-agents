@@ -1,9 +1,12 @@
-// 查询成员会话的 LLM 响应事件，诊断是否产生 tool_call
+﻿// 查询成员会话的 LLM 响应事件，诊断是否产生 tool_call
+//go:build ignore
+
 package main
 
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "github.com/lib/pq"
 )
@@ -30,8 +33,8 @@ func main() {
 	cols.Close()
 
 	sessions := []string{
-		"3c730e21-c061-44d6-a56f-99fc8c48f8c9",
-		"bdeda93d-f5e4-441c-8dd1-c747cd702cca",
+		"21a5b8a4-58a5-4701-b6fb-8baaef43fb55",
+		"c9a1baaf-8dcc-4bec-9e25-8bcf8fba6774",
 	}
 	for _, sid := range sessions {
 		fmt.Printf("\n===== session %s =====\n", sid)
@@ -44,13 +47,16 @@ func main() {
 		for rows.Next() {
 			var ev string
 			rows.Scan(&ev)
-			// 只打印含 tool_call / response 完成事件的关键片段
-			if len(ev) > 1500 {
-				ev = ev[:1500]
+			// 只打印含 tool_call / tool response / error 的事件
+			if !strings.Contains(ev, "tool_call") && !strings.Contains(ev, "cli_admin") && !strings.Contains(ev, "tool_response") && !strings.Contains(ev, "error") && !strings.Contains(ev, "set_deliverable") {
+				continue
+			}
+			if len(ev) > 2500 {
+				ev = ev[:2500]
 			}
 			fmt.Printf("--- event %d ---\n%s\n", i, ev)
 			i++
-			if i > 30 {
+			if i > 20 {
 				fmt.Println("...(truncated)")
 				break
 			}

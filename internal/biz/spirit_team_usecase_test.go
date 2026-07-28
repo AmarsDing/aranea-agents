@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz/session"
@@ -892,7 +893,7 @@ func TestAssembleTeam_TransactionSuccess(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestBuildSpiritTeamDefinitionJSON_MultiMember_EnableStateDeliverable(t *testing.T) {
-	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a", "agent-b"}, loggateway.NewNoop(), false)
+	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a", "agent-b"}, loggateway.NewNoop(), false, nil, nil)
 
 	var def map[string]any
 	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
@@ -908,7 +909,7 @@ func TestBuildSpiritTeamDefinitionJSON_MultiMember_EnableStateDeliverable(t *tes
 }
 
 func TestBuildSpiritTeamDefinitionJSON_SingleMember_NoEnableStateDeliverable(t *testing.T) {
-	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a"}, loggateway.NewNoop(), false)
+	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a"}, loggateway.NewNoop(), false, nil, nil)
 
 	var def map[string]any
 	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
@@ -923,7 +924,7 @@ func TestBuildSpiritTeamDefinitionJSON_SingleMember_NoEnableStateDeliverable(t *
 // enable_state_deliverable —— 没有交付通道，Fix 1 的真实产出闸门会把所有
 // 单成员 DAG 团队误判为 failed。
 func TestBuildSpiritTeamDefinitionJSON_DAGSingleMember_EnableStateDeliverable(t *testing.T) {
-	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a"}, loggateway.NewNoop(), true)
+	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a"}, loggateway.NewNoop(), true, nil, nil)
 
 	var def map[string]any
 	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
@@ -935,6 +936,162 @@ func TestBuildSpiritTeamDefinitionJSON_DAGSingleMember_EnableStateDeliverable(t 
 	}
 	if v != true {
 		t.Fatalf("enable_state_deliverable should be true, got %v", v)
+	}
+}
+
+// F5 (Phase 11): team deliverable contracts auto-generate the member-level
+// deliverable contract (MDC) in the definition JSON, with topic == contract
+// name so members and the spirit can never disagree on topic names.
+func TestBuildSpiritTeamDefinitionJSON_Deliverables_GenerateMemberContract(t *testing.T) {
+	deliverables := []DeliverableContract{
+		{Name: "xlsx_install_result", Type: "data", Format: "json", Description: "安装结果",
+			SchemaJSON: `{"type":"object","required":["status"]}`},
+	}
+	defJSON := buildSpiritTeamDefinitionJSON("sequential", []string{"agent-a"}, loggateway.NewNoop(), true, deliverables, nil)
+
+	var def map[string]any
+	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
+		t.Fatalf("definition JSON not parseable: %v", err)
+	}
+	raw, ok := def["deliverable_contract"]
+	if !ok {
+		t.Fatal("definition should carry deliverable_contract when deliverables are declared")
+	}
+	rawJSON, _ := json.Marshal(raw)
+	mdc, err := ParseMemberDeliverableContract(string(rawJSON))
+	if err != nil || mdc == nil || len(mdc.Entries) != 1 {
+		t.Fatalf("deliverable_contract not parseable: %v %+v", err, mdc)
+	}
+	e := mdc.Entries[0]
+	if e.Topic != "xlsx_install_result" || !e.Required || e.Description != "安装结果" {
+		t.Fatalf("unexpected entry: %+v", e)
+	}
+	if len(e.RequiredKeys) != 1 || e.RequiredKeys[0] != "status" {
+		t.Fatalf("required_keys should derive from schema, got %v", e.RequiredKeys)
+	}
+}
+
+func TestBuildSpiritTeamDefinitionJSON_NoDeliverables_NoMemberContract(t *testing.T) {
+	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a", "agent-b"}, loggateway.NewNoop(), false, nil, nil)
+
+	var def map[string]any
+	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
+		t.Fatalf("definition JSON not parseable: %v", err)
+	}
+	if _, ok := def["deliverable_contract"]; ok {
+		t.Fatal("no deliverables → no deliverable_contract key")
+	}
+}
+
+// F9 (Phase 11): verification gates passed to the builder land in the
+// definition JSON's verification_gates field (resolveVerificationGates
+// parses them back at completion time).
+func TestBuildSpiritTeamDefinitionJSON_VerificationGates_WhenProvided(t *testing.T) {
+	gate := VerificationGate{
+		GateType:      GateTypeToolAssertion,
+		Description:   "验证 skill \"xlsx\" 已安装且启用",
+		Tool:          "cli_admin_skill_get",
+		ArgumentsJSON: `{"skill_key":"xlsx"}`,
+		AssertPath:    "enabled",
+		AssertEquals:  "true",
+	}
+	defJSON := buildSpiritTeamDefinitionJSON("sequential", []string{"agent___system_admin__"}, loggateway.NewNoop(), false, nil, []VerificationGate{gate})
+
+	var def map[string]any
+	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
+		t.Fatalf("definition JSON not parseable: %v", err)
+	}
+	raw, ok := def["verification_gates"]
+	if !ok {
+		t.Fatal("definition should carry verification_gates when gates are provided")
+	}
+	rawJSON, _ := json.Marshal(raw)
+	var gates []VerificationGate
+	if err := json.Unmarshal(rawJSON, &gates); err != nil || len(gates) != 1 {
+		t.Fatalf("verification_gates not parseable: %v %+v", err, gates)
+	}
+	g := gates[0]
+	if g.GateType != GateTypeToolAssertion || g.Tool != "cli_admin_skill_get" || g.AssertPath != "enabled" || g.AssertEquals != "true" {
+		t.Fatalf("unexpected gate round-trip: %+v", g)
+	}
+}
+
+func TestBuildSpiritTeamDefinitionJSON_NoGates_NoVerificationGatesKey(t *testing.T) {
+	defJSON := buildSpiritTeamDefinitionJSON("sequential", []string{"agent-a"}, loggateway.NewNoop(), false, nil, nil)
+
+	var def map[string]any
+	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
+		t.Fatalf("definition JSON not parseable: %v", err)
+	}
+	if _, ok := def["verification_gates"]; ok {
+		t.Fatal("no gates → no verification_gates key")
+	}
+}
+
+// F5 (Phase 11): the delivery-protocol suffix must name the exact
+// set_deliverable topic per contract entry, so members never invent topic
+// names (12:33: spirit guessed pdf_install_result vs xlsx_install_result).
+func TestDeliverableProtocolSuffix_ExplicitTopicInstruction(t *testing.T) {
+	u := &SpiritTeamUsecase{}
+	team := Team{
+		DagNodeID: "node-1",
+		Deliverables: DeliverableContractsToJSON([]DeliverableContract{
+			{Name: "xlsx_install_result", Type: "data", Format: "json", Description: "安装结果"},
+		}),
+	}
+	suffix := u.DeliverableProtocolSuffix(team)
+	if !strings.Contains(suffix, `set_deliverable(topic="xlsx_install_result"`) {
+		t.Fatalf("suffix must instruct the exact topic, got:\n%s", suffix)
+	}
+}
+
+// F7 (Phase 11): ListTeamDeliverableDigests collects per-terminal-team
+// deliverable summaries from DeliverableRefs envelopes (dual-mode tolerant
+// of legacy plain strings) so the synthesis trigger carries real outputs.
+func TestListTeamDeliverableDigests(t *testing.T) {
+	repo := newMemSpiritTeamRepo()
+	repo.items["t-done"] = Team{
+		ID: "t-done", DisplayName: "安装团队", TaskDescription: "安装 xlsx",
+		Status: TeamStatusCompleted, SpiritSessionID: "spirit-1", DagNodeID: "n1",
+		DeliverablesOutput: `{"n1":{"summary":"xlsx installed ok","team_id":"t-done"}}`,
+	}
+	repo.items["t-legacy"] = Team{
+		ID: "t-legacy", DisplayName: "旧格式团队", TaskDescription: "旧任务",
+		Status: TeamStatusCompleted, SpiritSessionID: "spirit-1",
+		DeliverablesOutput: `{"n0":"legacy plain summary"}`,
+	}
+	repo.items["t-failed"] = Team{
+		ID: "t-failed", DisplayName: "失败团队", TaskDescription: "采集",
+		Status: TeamStatusFailed, SpiritSessionID: "spirit-1",
+	}
+	repo.items["t-running"] = Team{
+		ID: "t-running", DisplayName: "运行中团队", TaskDescription: "不应出现",
+		Status: TeamStatusRunning, SpiritSessionID: "spirit-1",
+	}
+	repo.items["t-other"] = Team{
+		ID: "t-other", DisplayName: "别的会话", Status: TeamStatusCompleted,
+		SpiritSessionID: "spirit-2",
+	}
+
+	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()})
+	uc := &SpiritTeamUsecase{teamUC: teamUC, lg: loggateway.NewNoop()}
+
+	digests := uc.ListTeamDeliverableDigests(context.Background(), "spirit-1")
+	if len(digests) != 3 {
+		t.Fatalf("expected 3 terminal teams (running/other-session excluded), got %d: %+v", len(digests), digests)
+	}
+	byName := make(map[string]TeamDeliverableDigest, len(digests))
+	for _, d := range digests {
+		byName[d.TeamName] = d
+	}
+	if d := byName["安装团队"]; d.Status != "completed" || d.DeliverableSummary != "xlsx installed ok" {
+		t.Fatalf("envelope summary mismatch: %+v", d)
+	}
+	if d := byName["旧格式团队"]; d.DeliverableSummary != "legacy plain summary" {
+		t.Fatalf("legacy plain-string summary must be tolerated, got %+v", d)
+	}
+	if d := byName["失败团队"]; d.Status != "failed" || d.DeliverableSummary != "" {
+		t.Fatalf("failed team should have empty summary, got %+v", d)
 	}
 }
 

@@ -37,6 +37,9 @@ import (
 	"aranea-agents/internal/data/ent/eventdeliveryoutbox"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/failurepattern"
+	"aranea-agents/internal/data/ent/federationauditlog"
+	"aranea-agents/internal/data/ent/federationorg"
+	"aranea-agents/internal/data/ent/federationpolicy"
 	"aranea-agents/internal/data/ent/flowlogevent"
 	"aranea-agents/internal/data/ent/gatewaywebhook"
 	"aranea-agents/internal/data/ent/graphdefinition"
@@ -171,6 +174,12 @@ type Client struct {
 	ExperienceReport *ExperienceReportClient
 	// FailurePattern is the client for interacting with the FailurePattern builders.
 	FailurePattern *FailurePatternClient
+	// FederationAuditLog is the client for interacting with the FederationAuditLog builders.
+	FederationAuditLog *FederationAuditLogClient
+	// FederationOrg is the client for interacting with the FederationOrg builders.
+	FederationOrg *FederationOrgClient
+	// FederationPolicy is the client for interacting with the FederationPolicy builders.
+	FederationPolicy *FederationPolicyClient
 	// FlowLogEvent is the client for interacting with the FlowLogEvent builders.
 	FlowLogEvent *FlowLogEventClient
 	// GatewayWebhook is the client for interacting with the GatewayWebhook builders.
@@ -344,6 +353,9 @@ func (c *Client) init() {
 	c.EventDeliveryOutbox = NewEventDeliveryOutboxClient(c.config)
 	c.ExperienceReport = NewExperienceReportClient(c.config)
 	c.FailurePattern = NewFailurePatternClient(c.config)
+	c.FederationAuditLog = NewFederationAuditLogClient(c.config)
+	c.FederationOrg = NewFederationOrgClient(c.config)
+	c.FederationPolicy = NewFederationPolicyClient(c.config)
 	c.FlowLogEvent = NewFlowLogEventClient(c.config)
 	c.GatewayWebhook = NewGatewayWebhookClient(c.config)
 	c.GraphDefinition = NewGraphDefinitionClient(c.config)
@@ -530,6 +542,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		EventDeliveryOutbox:        NewEventDeliveryOutboxClient(cfg),
 		ExperienceReport:           NewExperienceReportClient(cfg),
 		FailurePattern:             NewFailurePatternClient(cfg),
+		FederationAuditLog:         NewFederationAuditLogClient(cfg),
+		FederationOrg:              NewFederationOrgClient(cfg),
+		FederationPolicy:           NewFederationPolicyClient(cfg),
 		FlowLogEvent:               NewFlowLogEventClient(cfg),
 		GatewayWebhook:             NewGatewayWebhookClient(cfg),
 		GraphDefinition:            NewGraphDefinitionClient(cfg),
@@ -643,6 +658,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		EventDeliveryOutbox:        NewEventDeliveryOutboxClient(cfg),
 		ExperienceReport:           NewExperienceReportClient(cfg),
 		FailurePattern:             NewFailurePatternClient(cfg),
+		FederationAuditLog:         NewFederationAuditLogClient(cfg),
+		FederationOrg:              NewFederationOrgClient(cfg),
+		FederationPolicy:           NewFederationPolicyClient(cfg),
 		FlowLogEvent:               NewFlowLogEventClient(cfg),
 		GatewayWebhook:             NewGatewayWebhookClient(cfg),
 		GraphDefinition:            NewGraphDefinitionClient(cfg),
@@ -746,23 +764,24 @@ func (c *Client) Use(hooks ...Hook) {
 		c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam, c.CronTask,
 		c.CronTaskRun, c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
 		c.EvalRun, c.EventDeliveryOutbox, c.ExperienceReport, c.FailurePattern,
-		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
-		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
-		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
-		c.HealRecord, c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2,
-		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
-		c.OrchestrationStep, c.Organization, c.PlanBoardV2, c.PlanStepV2,
-		c.PlatformChannel, c.PlatformChannelCredential, c.PlatformChannelDelivery,
-		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
-		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
-		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport, c.Session,
-		c.SessionMetrics, c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint,
-		c.SessionRuntime, c.SessionTurn, c.SessionV2, c.SkillImportJob,
-		c.SkillInvocation, c.SkillTag, c.SkillVersion, c.StepV2, c.SystemSetting,
-		c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep,
-		c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation,
-		c.ToolInvocationAudit, c.ToolInvocationParam, c.ToolResultBlob,
-		c.ToolResultReplacement, c.TurnV2, c.UsageQuota, c.UserEmbeddingSetting,
+		c.FederationAuditLog, c.FederationOrg, c.FederationPolicy, c.FlowLogEvent,
+		c.GatewayWebhook, c.GraphDefinition, c.GraphExecution, c.GraphNodeV2,
+		c.GraphStageV2, c.GraphTask, c.GraphTaskComment, c.GraphTaskEvent,
+		c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun, c.HealRecord,
+		c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2, c.ModelPricingRule,
+		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
+		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
+		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
+		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
+		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
+		c.SelfCheckReport, c.Session, c.SessionMetrics, c.SessionParticipant,
+		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
+		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
+		c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team,
+		c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride,
+		c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit, c.ToolInvocationParam,
+		c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2, c.UsageQuota,
+		c.UserEmbeddingSetting,
 	} {
 		n.Use(hooks...)
 	}
@@ -778,23 +797,24 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam, c.CronTask,
 		c.CronTaskRun, c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
 		c.EvalRun, c.EventDeliveryOutbox, c.ExperienceReport, c.FailurePattern,
-		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
-		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
-		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
-		c.HealRecord, c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2,
-		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
-		c.OrchestrationStep, c.Organization, c.PlanBoardV2, c.PlanStepV2,
-		c.PlatformChannel, c.PlatformChannelCredential, c.PlatformChannelDelivery,
-		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
-		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
-		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport, c.Session,
-		c.SessionMetrics, c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint,
-		c.SessionRuntime, c.SessionTurn, c.SessionV2, c.SkillImportJob,
-		c.SkillInvocation, c.SkillTag, c.SkillVersion, c.StepV2, c.SystemSetting,
-		c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep,
-		c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation,
-		c.ToolInvocationAudit, c.ToolInvocationParam, c.ToolResultBlob,
-		c.ToolResultReplacement, c.TurnV2, c.UsageQuota, c.UserEmbeddingSetting,
+		c.FederationAuditLog, c.FederationOrg, c.FederationPolicy, c.FlowLogEvent,
+		c.GatewayWebhook, c.GraphDefinition, c.GraphExecution, c.GraphNodeV2,
+		c.GraphStageV2, c.GraphTask, c.GraphTaskComment, c.GraphTaskEvent,
+		c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun, c.HealRecord,
+		c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2, c.ModelPricingRule,
+		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
+		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
+		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
+		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
+		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
+		c.SelfCheckReport, c.Session, c.SessionMetrics, c.SessionParticipant,
+		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
+		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
+		c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team,
+		c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride,
+		c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit, c.ToolInvocationParam,
+		c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2, c.UsageQuota,
+		c.UserEmbeddingSetting,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -855,6 +875,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ExperienceReport.mutate(ctx, m)
 	case *FailurePatternMutation:
 		return c.FailurePattern.mutate(ctx, m)
+	case *FederationAuditLogMutation:
+		return c.FederationAuditLog.mutate(ctx, m)
+	case *FederationOrgMutation:
+		return c.FederationOrg.mutate(ctx, m)
+	case *FederationPolicyMutation:
+		return c.FederationPolicy.mutate(ctx, m)
 	case *FlowLogEventMutation:
 		return c.FlowLogEvent.mutate(ctx, m)
 	case *GatewayWebhookMutation:
@@ -4579,6 +4605,405 @@ func (c *FailurePatternClient) mutate(ctx context.Context, m *FailurePatternMuta
 		return (&FailurePatternDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown FailurePattern mutation op: %q", m.Op())
+	}
+}
+
+// FederationAuditLogClient is a client for the FederationAuditLog schema.
+type FederationAuditLogClient struct {
+	config
+}
+
+// NewFederationAuditLogClient returns a client for the FederationAuditLog from the given config.
+func NewFederationAuditLogClient(c config) *FederationAuditLogClient {
+	return &FederationAuditLogClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `federationauditlog.Hooks(f(g(h())))`.
+func (c *FederationAuditLogClient) Use(hooks ...Hook) {
+	c.hooks.FederationAuditLog = append(c.hooks.FederationAuditLog, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `federationauditlog.Intercept(f(g(h())))`.
+func (c *FederationAuditLogClient) Intercept(interceptors ...Interceptor) {
+	c.inters.FederationAuditLog = append(c.inters.FederationAuditLog, interceptors...)
+}
+
+// Create returns a builder for creating a FederationAuditLog entity.
+func (c *FederationAuditLogClient) Create() *FederationAuditLogCreate {
+	mutation := newFederationAuditLogMutation(c.config, OpCreate)
+	return &FederationAuditLogCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of FederationAuditLog entities.
+func (c *FederationAuditLogClient) CreateBulk(builders ...*FederationAuditLogCreate) *FederationAuditLogCreateBulk {
+	return &FederationAuditLogCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *FederationAuditLogClient) MapCreateBulk(slice any, setFunc func(*FederationAuditLogCreate, int)) *FederationAuditLogCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &FederationAuditLogCreateBulk{err: fmt.Errorf("calling to FederationAuditLogClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*FederationAuditLogCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &FederationAuditLogCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for FederationAuditLog.
+func (c *FederationAuditLogClient) Update() *FederationAuditLogUpdate {
+	mutation := newFederationAuditLogMutation(c.config, OpUpdate)
+	return &FederationAuditLogUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *FederationAuditLogClient) UpdateOne(_m *FederationAuditLog) *FederationAuditLogUpdateOne {
+	mutation := newFederationAuditLogMutation(c.config, OpUpdateOne, withFederationAuditLog(_m))
+	return &FederationAuditLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *FederationAuditLogClient) UpdateOneID(id string) *FederationAuditLogUpdateOne {
+	mutation := newFederationAuditLogMutation(c.config, OpUpdateOne, withFederationAuditLogID(id))
+	return &FederationAuditLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for FederationAuditLog.
+func (c *FederationAuditLogClient) Delete() *FederationAuditLogDelete {
+	mutation := newFederationAuditLogMutation(c.config, OpDelete)
+	return &FederationAuditLogDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *FederationAuditLogClient) DeleteOne(_m *FederationAuditLog) *FederationAuditLogDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *FederationAuditLogClient) DeleteOneID(id string) *FederationAuditLogDeleteOne {
+	builder := c.Delete().Where(federationauditlog.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &FederationAuditLogDeleteOne{builder}
+}
+
+// Query returns a query builder for FederationAuditLog.
+func (c *FederationAuditLogClient) Query() *FederationAuditLogQuery {
+	return &FederationAuditLogQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeFederationAuditLog},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a FederationAuditLog entity by its id.
+func (c *FederationAuditLogClient) Get(ctx context.Context, id string) (*FederationAuditLog, error) {
+	return c.Query().Where(federationauditlog.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *FederationAuditLogClient) GetX(ctx context.Context, id string) *FederationAuditLog {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *FederationAuditLogClient) Hooks() []Hook {
+	return c.hooks.FederationAuditLog
+}
+
+// Interceptors returns the client interceptors.
+func (c *FederationAuditLogClient) Interceptors() []Interceptor {
+	return c.inters.FederationAuditLog
+}
+
+func (c *FederationAuditLogClient) mutate(ctx context.Context, m *FederationAuditLogMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&FederationAuditLogCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&FederationAuditLogUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&FederationAuditLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&FederationAuditLogDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown FederationAuditLog mutation op: %q", m.Op())
+	}
+}
+
+// FederationOrgClient is a client for the FederationOrg schema.
+type FederationOrgClient struct {
+	config
+}
+
+// NewFederationOrgClient returns a client for the FederationOrg from the given config.
+func NewFederationOrgClient(c config) *FederationOrgClient {
+	return &FederationOrgClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `federationorg.Hooks(f(g(h())))`.
+func (c *FederationOrgClient) Use(hooks ...Hook) {
+	c.hooks.FederationOrg = append(c.hooks.FederationOrg, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `federationorg.Intercept(f(g(h())))`.
+func (c *FederationOrgClient) Intercept(interceptors ...Interceptor) {
+	c.inters.FederationOrg = append(c.inters.FederationOrg, interceptors...)
+}
+
+// Create returns a builder for creating a FederationOrg entity.
+func (c *FederationOrgClient) Create() *FederationOrgCreate {
+	mutation := newFederationOrgMutation(c.config, OpCreate)
+	return &FederationOrgCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of FederationOrg entities.
+func (c *FederationOrgClient) CreateBulk(builders ...*FederationOrgCreate) *FederationOrgCreateBulk {
+	return &FederationOrgCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *FederationOrgClient) MapCreateBulk(slice any, setFunc func(*FederationOrgCreate, int)) *FederationOrgCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &FederationOrgCreateBulk{err: fmt.Errorf("calling to FederationOrgClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*FederationOrgCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &FederationOrgCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for FederationOrg.
+func (c *FederationOrgClient) Update() *FederationOrgUpdate {
+	mutation := newFederationOrgMutation(c.config, OpUpdate)
+	return &FederationOrgUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *FederationOrgClient) UpdateOne(_m *FederationOrg) *FederationOrgUpdateOne {
+	mutation := newFederationOrgMutation(c.config, OpUpdateOne, withFederationOrg(_m))
+	return &FederationOrgUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *FederationOrgClient) UpdateOneID(id string) *FederationOrgUpdateOne {
+	mutation := newFederationOrgMutation(c.config, OpUpdateOne, withFederationOrgID(id))
+	return &FederationOrgUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for FederationOrg.
+func (c *FederationOrgClient) Delete() *FederationOrgDelete {
+	mutation := newFederationOrgMutation(c.config, OpDelete)
+	return &FederationOrgDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *FederationOrgClient) DeleteOne(_m *FederationOrg) *FederationOrgDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *FederationOrgClient) DeleteOneID(id string) *FederationOrgDeleteOne {
+	builder := c.Delete().Where(federationorg.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &FederationOrgDeleteOne{builder}
+}
+
+// Query returns a query builder for FederationOrg.
+func (c *FederationOrgClient) Query() *FederationOrgQuery {
+	return &FederationOrgQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeFederationOrg},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a FederationOrg entity by its id.
+func (c *FederationOrgClient) Get(ctx context.Context, id string) (*FederationOrg, error) {
+	return c.Query().Where(federationorg.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *FederationOrgClient) GetX(ctx context.Context, id string) *FederationOrg {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *FederationOrgClient) Hooks() []Hook {
+	return c.hooks.FederationOrg
+}
+
+// Interceptors returns the client interceptors.
+func (c *FederationOrgClient) Interceptors() []Interceptor {
+	return c.inters.FederationOrg
+}
+
+func (c *FederationOrgClient) mutate(ctx context.Context, m *FederationOrgMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&FederationOrgCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&FederationOrgUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&FederationOrgUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&FederationOrgDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown FederationOrg mutation op: %q", m.Op())
+	}
+}
+
+// FederationPolicyClient is a client for the FederationPolicy schema.
+type FederationPolicyClient struct {
+	config
+}
+
+// NewFederationPolicyClient returns a client for the FederationPolicy from the given config.
+func NewFederationPolicyClient(c config) *FederationPolicyClient {
+	return &FederationPolicyClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `federationpolicy.Hooks(f(g(h())))`.
+func (c *FederationPolicyClient) Use(hooks ...Hook) {
+	c.hooks.FederationPolicy = append(c.hooks.FederationPolicy, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `federationpolicy.Intercept(f(g(h())))`.
+func (c *FederationPolicyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.FederationPolicy = append(c.inters.FederationPolicy, interceptors...)
+}
+
+// Create returns a builder for creating a FederationPolicy entity.
+func (c *FederationPolicyClient) Create() *FederationPolicyCreate {
+	mutation := newFederationPolicyMutation(c.config, OpCreate)
+	return &FederationPolicyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of FederationPolicy entities.
+func (c *FederationPolicyClient) CreateBulk(builders ...*FederationPolicyCreate) *FederationPolicyCreateBulk {
+	return &FederationPolicyCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *FederationPolicyClient) MapCreateBulk(slice any, setFunc func(*FederationPolicyCreate, int)) *FederationPolicyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &FederationPolicyCreateBulk{err: fmt.Errorf("calling to FederationPolicyClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*FederationPolicyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &FederationPolicyCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for FederationPolicy.
+func (c *FederationPolicyClient) Update() *FederationPolicyUpdate {
+	mutation := newFederationPolicyMutation(c.config, OpUpdate)
+	return &FederationPolicyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *FederationPolicyClient) UpdateOne(_m *FederationPolicy) *FederationPolicyUpdateOne {
+	mutation := newFederationPolicyMutation(c.config, OpUpdateOne, withFederationPolicy(_m))
+	return &FederationPolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *FederationPolicyClient) UpdateOneID(id string) *FederationPolicyUpdateOne {
+	mutation := newFederationPolicyMutation(c.config, OpUpdateOne, withFederationPolicyID(id))
+	return &FederationPolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for FederationPolicy.
+func (c *FederationPolicyClient) Delete() *FederationPolicyDelete {
+	mutation := newFederationPolicyMutation(c.config, OpDelete)
+	return &FederationPolicyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *FederationPolicyClient) DeleteOne(_m *FederationPolicy) *FederationPolicyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *FederationPolicyClient) DeleteOneID(id string) *FederationPolicyDeleteOne {
+	builder := c.Delete().Where(federationpolicy.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &FederationPolicyDeleteOne{builder}
+}
+
+// Query returns a query builder for FederationPolicy.
+func (c *FederationPolicyClient) Query() *FederationPolicyQuery {
+	return &FederationPolicyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeFederationPolicy},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a FederationPolicy entity by its id.
+func (c *FederationPolicyClient) Get(ctx context.Context, id string) (*FederationPolicy, error) {
+	return c.Query().Where(federationpolicy.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *FederationPolicyClient) GetX(ctx context.Context, id string) *FederationPolicy {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *FederationPolicyClient) Hooks() []Hook {
+	return c.hooks.FederationPolicy
+}
+
+// Interceptors returns the client interceptors.
+func (c *FederationPolicyClient) Interceptors() []Interceptor {
+	return c.inters.FederationPolicy
+}
+
+func (c *FederationPolicyClient) mutate(ctx context.Context, m *FederationPolicyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&FederationPolicyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&FederationPolicyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&FederationPolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&FederationPolicyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown FederationPolicy mutation op: %q", m.Op())
 	}
 }
 
@@ -13634,10 +14059,11 @@ type (
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, DeptLeadMessage,
 		EvalCase, EvalCaseResult, EvalDataset, EvalRun, EventDeliveryOutbox,
-		ExperienceReport, FailurePattern, FlowLogEvent, GatewayWebhook,
-		GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2, GraphTask,
-		GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun,
-		HealRecord, LlmProviderModel, MediaProvider, MemberSessionV2, ModelPricingRule,
+		ExperienceReport, FailurePattern, FederationAuditLog, FederationOrg,
+		FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
+		GraphExecution, GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment,
+		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
+		LlmProviderModel, MediaProvider, MemberSessionV2, ModelPricingRule,
 		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
 		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
 		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
@@ -13657,10 +14083,11 @@ type (
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, DeptLeadMessage,
 		EvalCase, EvalCaseResult, EvalDataset, EvalRun, EventDeliveryOutbox,
-		ExperienceReport, FailurePattern, FlowLogEvent, GatewayWebhook,
-		GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2, GraphTask,
-		GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun,
-		HealRecord, LlmProviderModel, MediaProvider, MemberSessionV2, ModelPricingRule,
+		ExperienceReport, FailurePattern, FederationAuditLog, FederationOrg,
+		FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
+		GraphExecution, GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment,
+		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
+		LlmProviderModel, MediaProvider, MemberSessionV2, ModelPricingRule,
 		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
 		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
 		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,

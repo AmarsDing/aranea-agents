@@ -31,8 +31,8 @@ func (nilExecer) QueryContext(_ context.Context, _ string, _ ...any) (*sql.Rows,
 // transaction's Ent client when a transaction is active in the context,
 // ensuring raw SQL queries participate in the same Ent-managed transaction.
 type ReadWriteDB struct {
-	write *sql.DB // rawDB (MaxOpenConns=1, SQLite single-writer)
-	read  *sql.DB // readDB (MaxOpenConns=2, WAL concurrent reads)
+	write *sql.DB // rawDB (MaxOpenConns=16, Postgres write pool)
+	read  *sql.DB // readDB (MaxOpenConns=32, Postgres read pool)
 }
 
 // NewReadWriteDB creates a ReadWriteDB with the given write and read *sql.DB handles.

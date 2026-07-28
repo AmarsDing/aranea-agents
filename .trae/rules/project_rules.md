@@ -9,7 +9,7 @@
 
 Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v2 为传输壳层、trpc-agent-go 为运行时内核。
 
-**技术栈**：Go + Kratos v2（HTTP/gRPC/WebSocket）| trpc-agent-go（Agent 运行时）| Vue 3 + Quasar + Pinia + TypeScript | SQLite（Ent ORM）| Wire（编译期 DI）
+**技术栈**：Go + Kratos v2（HTTP/gRPC/WebSocket）| trpc-agent-go（Agent 运行时）| Vue 3 + Quasar + Pinia + TypeScript | PostgreSQL（Ent ORM + pgvector）| Wire（编译期 DI）
 
 **双框架分工**：
 - Kratos v2：传输层（HTTP/gRPC/WebSocket）、配置、鉴权、中间件、Wire DI
@@ -169,7 +169,7 @@ Pipeline 支持基于 stepID 前缀匹配的令牌桶限流（`ThrottleRule{Pref
 
 ---
 
-## 数据库框架约束（SQLite + Ent ORM）
+## 数据库框架约束（PostgreSQL + Ent ORM）
 
 > 详细规范见 `aranea-coding-guide` §5.4。本节为**架构分析 + 审查验证后的实战规则**，补充 SKILL 中未覆盖的注意事项。
 
@@ -179,12 +179,13 @@ Pipeline 支持基于 stepID 前缀匹配的令牌桶限流（`ThrottleRule{Pref
 internal/biz           ← Repo 接口定义（窄接口：Reader/Writer/Mutator）
         ↓
 internal/data          ← Repo 实现
-    ├── Data struct     ← 连接管理（双连接读写分离 + 可选 Postgres）
+    ├── Data struct     ← 连接管理（Postgres 双池读写分离，pgvector 共享同一实例）
     ├── ReadWriteClient ← 事务感知的 Ent 读写选择器
     ├── ReadWriteDB     ← 事务感知的 Raw SQL 读写选择器
-    ├── ent/schema/     ← 76 个 Ent Schema（唯一真相源）
+    ├── dialect.go      ← 方言抽象（JSON 提取等跨方言 SQL，生产恒为 Postgres）
+    ├── ent/schema/     ← 97 个 Ent Schema（唯一真相源）
     ├── ent/            ← go generate 生成物（禁止手动修改）
-    ├── sql/migrations/ ← DDL 迁移 SQL 文件（28 个版本化迁移）
+    ├── sql/migrations/ ← DDL 迁移 SQL 文件（61 个版本化迁移）
     └── *_repo.go       ← Repo 实现（Ent / Raw SQL / 混合）
 ```
 
@@ -192,15 +193,14 @@ internal/data          ← Repo 实现
 
 | 连接 | 用途 | MaxOpenConns | 访问方式 |
 |------|------|-------------|---------|
-| `entClient` | Ent 写 | 1（SQLite 单写） | `d.RW().Write(ctx)` |
-| `readClient` | Ent 读 | 2（WAL 并发读） | `d.RW().Read(ctx)` |
-| `rawDB` | Raw SQL 写 | 1 | `d.RWDB().WriteDB(ctx)` |
-| `readDB` | Raw SQL 读 | 2 | `d.RWDB().ReadDB(ctx)` |
-| `pg` | Postgres（pgvector） | 8 | `d.Postgres()` |
+| `entClient` | Ent 写 | 16 | `d.RW().Write(ctx)` |
+| `readClient` | Ent 读 | 32 | `d.RW().Read(ctx)` |
+| `rawDB` | Raw SQL 写（与 entClient 同池） | 16 | `d.RWDB().WriteDB(ctx)` |
+| `readDB` | Raw SQL 读（与 readClient 同池） | 32 | `d.RWDB().ReadDB(ctx)` |
+| `pg` / `pgRead` | pgvector / Checkpoint（= rawDB/readDB，共享池） | 16/32 | `d.Postgres()` / `d.PostgresRead()` |
 
-**SQLite PRAGMAs**（写连接 + 读连接均设置）：
-- `foreign_keys=ON`、`journal_mode=WAL`、`busy_timeout=30000`
-- `synchronous=NORMAL`、`wal_autocheckpoint=500`
+**生产唯一驱动**：`NewData` 硬编码 Postgres（`initPostgresEnt`），pgvector 与业务表同库同池。
+**SQLite 仅保留在**：遗留离线迁移工具 `cmd/migrate-sqlite-to-postgres`、CLI 维护工具（`OpenSQLiteEntClient`/`NewCLIData`）；测试使用独立 Postgres schema（`testhelper.SetupTestPG`）。
 
 ### 读写分离规则
 
@@ -218,7 +218,7 @@ internal/data          ← Repo 实现
 
 关键行为：
 1. **嵌套事务检测**：context 中已有事务时复用，不创建 savepoint
-2. **分离 context**：事务在 `context.Background()` + 30s 硬超时上执行，防止 HTTP 取消中断 SQLite 操作
+2. **分离 context**：事务在 `context.Background()` + 30s 硬超时上执行，防止 HTTP 取消中断数据库操作
 3. **提交前检查**：`fn()` 成功后检查原始调用方 context 是否已取消，已取消则回滚
 4. **双 key 注入**：`txClientKey{}`（Ent 客户端）+ `rawTxKey{}`（Raw SQL execer），确保 Ent 和 Raw SQL 在同一事务中
 
@@ -229,9 +229,9 @@ internal/data          ← Repo 实现
 
 ### Schema 管理
 
-- **76 个 Ent Schema**，73 个使用 `entsql.Annotation{Table: ...}` 显式映射表名
+- **97 个 Ent Schema**，绝大多数使用 `entsql.Annotation{Table: ...}` 显式映射表名
 - **仅 Eval 域使用 Ent Edge**（4 个 Schema 有 8 条边），其余全部使用手动 FK 字段
-- **FTS5 全文搜索**（`messages_fts`）和 **pgvector 向量搜索**（`vector_embeddings`）不在 Ent Schema 中，通过 DDL 迁移管理
+- **pgvector 向量搜索**（`vector_embeddings`）与 **Postgres 全文搜索**（`to_tsvector` + GIN + `pg_trgm`，见 `knowledge.go`）不在 Ent Schema 中，通过 DDL 迁移管理；FTS5 `messages_fts` 已随 messages 子系统删除（迁移 20260902）
 - **Ent 生成命令**：`go generate ./internal/data/ent`（启用 `sql/execquery` + `sql/upsert` 特性）
 
 ### 三层迁移体系
@@ -239,7 +239,7 @@ internal/data          ← Repo 实现
 | 层级 | 机制 | 范围 |
 |------|------|------|
 | L1: Ent Auto-Migration | `Schema.Create()` | 核心表结构（Ent Schema 定义的所有表） |
-| L2: DDL Migration Registry | `ddl_migration_registry.go` + `sql/migrations/*.sql` | FTS5、索引、列补丁等 Ent 不支持的特性（28 个版本化迁移） |
+| L2: DDL Migration Registry | `ddl_migration_registry.go` + `sql/migrations/*.sql` | 全文搜索索引、RLS、列补丁等 Ent 不支持的特性（61 个版本化迁移） |
 | L3: Data Migration | `runPendingDataMigrations` | 一次性数据转换（TRPC 记忆回填、turn_index 迁移等） |
 
 **迁移门控**：所有迁移通过 `schema_migrations` 表去重，已应用的跳过。
@@ -281,9 +281,9 @@ internal/data          ← Repo 实现
 
 | # | 规则 | 说明 |
 |---|------|------|
-| DB-R1 | **禁止在 `NewData` 外另开 SQLite 连接** | 仅通过 `d.RW()`/`d.RWDB()` 访问，对应红线 #10 |
+| DB-R1 | **禁止在 `NewData` 外另开数据库连接** | 仅通过 `d.RW()`/`d.RWDB()`/`d.Postgres()`/`d.PostgresRead()` 访问，对应红线 #10 |
 | DB-R2 | **禁止修改 Ent 生成代码** | 改 Schema → `go generate` → 提交生成物，对应红线 #11 |
-| DB-R3 | **禁止野生表** | 所有表必须进 Ent Schema，FTS5/pgvector 等通过 DDL 迁移补充但不另建表 |
+| DB-R3 | **禁止野生表** | 所有表必须进 Ent Schema，pgvector/全文搜索索引等通过 DDL 迁移补充但不另建表 |
 | DB-R4 | **禁止散落 `*_patch.go` 迁移** | 所有 Schema 变更纳入 DDL Migration Registry，有版本号、有依赖顺序 |
 | DB-R5 | **禁止 Repo 方法直接返回 Ent 错误** | 所有错误必须经 `entErrToBizErr(err, domain)` 翻译 |
 | DB-R6 | **禁止使用已废弃的连接访问器** | `RawDB()`/`ReadDB()`/`ReadEnt()`/`ReadClient()` 已废弃，使用 `RW()`/`RWDB()` |
@@ -520,7 +520,7 @@ internal/data          ← Repo 实现
 
 | 级别 | 事件类型 | 可靠性保证 | 持久化 |
 |------|---------|-----------|--------|
-| Important | `created` / `completed` / `failed` / `cancelled`（含原 Critical：ToolResult / Error / RunnerCompletion） | async persist + 重试（5 次指数退避）+ dead-letter 缓冲 + sync publish | activities 表（SQLite WAL） |
+| Important | `created` / `completed` / `failed` / `cancelled`（含原 Critical：ToolResult / Error / RunnerCompletion） | async persist + 重试（5 次指数退避）+ dead-letter 缓冲 + sync publish | activities 表（Postgres） |
 | Informational | `streaming` / `updated`（含原 TextDelta / FlowLog 等） | async persist（失败丢弃）+ sync publish（streaming 16ms 批合并） | activities 表（尽力而为） |
 
 **检测方式**：代码审查时校验新增事件类型的分级是否正确。

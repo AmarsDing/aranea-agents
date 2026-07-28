@@ -1,6 +1,8 @@
 /** Global monitor WS session: receives all sessions' monitor/team/graph events (server limit: 3 conns). */
 export const GLOBAL_WS_SESSION_ID = '*';
 
+import { getAuthToken } from '../services/authToken';
+
 type RuntimeConfig = {
   backendUrl?: string;
   wsOrigin?: string;
@@ -111,7 +113,10 @@ export function buildWsUrl(params: {
   if (params.lastEventId) {
     q.set('last_event_id', params.lastEventId);
   }
-  const token = params.token?.trim();
+  // P2 (mobile): explicit token wins; otherwise fall back to the persisted
+  // login token. Only emitted cross-origin — same-origin uses the HttpOnly
+  // cookie and must not leak the token into URLs.
+  const token = params.token?.trim() || getAuthToken();
   if (token && !isWsSameOriginAsPage()) {
     q.set('token', token);
   }

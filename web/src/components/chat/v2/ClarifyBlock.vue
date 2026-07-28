@@ -554,4 +554,27 @@ function answerDisplay(i: number): string {
 
   &__summary
     color: var(--color-text-secondary)
+
+// 移动端（<600px，72 §3.2 触控化）：标题栏/选项/输入/导航按钮触控目标 ≥44px
+@media (max-width: 599px)
+  .clarify-block
+    &__header
+      min-height: 44px
+
+    &__option
+      min-height: 44px
+      padding: 10px 12px
+
+    &__other
+      min-height: 44px
+      padding: 10px 12px
+      font-size: 14px
+
+    &__nav
+      gap: 10px
+
+    &__btn
+      flex: 1 1 0
+      min-height: 44px
+      font-size: 13px
 </style>

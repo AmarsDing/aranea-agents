@@ -72,17 +72,28 @@ func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRunRec
 	// 保证 runner 与 service 写入同一 member_sessions_v2 行（upsert-by-ID）。
 	// run.ID 是 v1 随机 UUID，仅用于 meta，不可写入 v2 实体。
 	teamRunV2ID := agent.NewTeamRunV2ID(teamStageID)
+	// F1 (12:33 修复)：补 TaskID（与 service 路径同公式），并去除 Version 硬编码 1。
+	// 旧实现所有事件均 Version=1：created(V=1) 落库后，后续 updated(V=1) 被
+	// UpsertMemberSession 的 VersionLT 守卫静默拒绝 → 成员状态永久卡 running，
+	// 重启后被 v2 recovery 批量标 failed。现按事件类型定版本（created=1 /
+	// updated=2），与 service 侧 publishV2TeamRunCompletion 的 V=2 约定一致；
+	// 两条路径同版本冲突时由版本守卫幂等拒绝（先到先写，状态语义等价）。
+	msVersion := int64(2)
+	if eventType == biz.ActivityEventCreated {
+		msVersion = 1
+	}
 	ms := biz.MemberSession{
 		ID:              string(agent.NewMemberSessionActivityID(teamRunV2ID, agentKey)),
 		TeamRunID:       teamRunV2ID,
 		TeamStageID:     teamStageID,
+		TaskID:          string(agent.RootTaskActivityIDFromCtx(ctx)),
 		SessionID:       childSessionID,
 		SpiritSessionID: run.SpiritSessionID,
 		AgentKey:        agentKey,
 		AgentName:       agentName,
 		Status:          msStatus,
 		StartedAt:       time.Now().UTC(),
-		Version:         1,
+		Version:         msVersion,
 	}
 	if eventType == biz.ActivityEventCreated {
 		r.publishEvent(ctx, biz.NewMemberSessionCreatedEvent(ms))

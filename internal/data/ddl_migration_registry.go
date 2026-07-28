@@ -187,6 +187,9 @@ var ddlMigrations = []ddlMigration{
 	// frontend taxonomy filter requires enabled=true), and backfill position_id/position_key
 	// for copy agents created before the agent_duplicate.go fix cleared them.
 	{Version: 20261112, Name: "organizations_enable_copy_position_backfill", Func: ddlOrganizationsEnableCopyPositionBackfill},
+	// 20261113 a2a_remote_agents_org_id: add org_id column to a2a_remote_agents for
+	// federation support. Links remote agents to federated organizations.
+	{Version: 20261113, Name: "a2a_remote_agents_org_id", SQL: "sql/migrations/20261113_a2a_remote_agents_org_id.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

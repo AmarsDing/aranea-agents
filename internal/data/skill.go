@@ -484,6 +484,40 @@ func coalesceTime(startedAt, createdAt string) string {
 	return createdAt
 }
 
+// skillListOrder 构造列表排序。生产唯一驱动为 Postgres（NewData 硬编码），
+// tag 排序依赖 jsonb 提取 metadata_json 中首个标签名（envelope 与裸数组两种历史格式）。
+func skillListOrder(q biz.SkillListQuery) []platformskill.OrderOption {
+	dir := "ASC"
+	if strings.EqualFold(strings.TrimSpace(q.SortOrder), "desc") {
+		dir = "DESC"
+	}
+	switch strings.TrimSpace(q.SortBy) {
+	case "name":
+		return []platformskill.OrderOption{
+			func(s *entsql.Selector) {
+				s.OrderBy("LOWER(" + s.C(platformskill.FieldName) + ") " + dir)
+				s.OrderBy(entsql.Asc(s.C(platformskill.FieldID)))
+			},
+		}
+	case "tag":
+		return []platformskill.OrderOption{
+			func(s *entsql.Selector) {
+				firstTag := "COALESCE(" +
+					s.C(platformskill.FieldMetadataJSON) + "::jsonb -> 'tags' -> 0 ->> 'name', " +
+					s.C(platformskill.FieldMetadataJSON) + "::jsonb -> 0 ->> 'name')"
+				s.OrderBy("LOWER(" + firstTag + ") " + dir + " NULLS LAST")
+				s.OrderBy("LOWER(" + s.C(platformskill.FieldName) + ") " + dir)
+				s.OrderBy(entsql.Asc(s.C(platformskill.FieldID)))
+			},
+		}
+	default:
+		return []platformskill.OrderOption{
+			platformskill.ByUpdatedAt(entsql.OrderDesc()),
+			platformskill.ByCreatedAt(entsql.OrderDesc()),
+		}
+	}
+}
+
 func (r *skillRepo) SearchSkills(ctx context.Context, q biz.SkillListQuery) (biz.SkillListResult, error) {
 	c := r.data.RW().Read(ctx)
 	preds := skillListPredicates(q)
@@ -493,7 +527,7 @@ func (r *skillRepo) SearchSkills(ctx context.Context, q biz.SkillListQuery) (biz
 	}
 	rows, err := c.PlatformSkill.Query().
 		Where(preds...).
-		Order(platformskill.ByUpdatedAt(entsql.OrderDesc()), platformskill.ByCreatedAt(entsql.OrderDesc())).
+		Order(skillListOrder(q)...).
 		Limit(q.Limit).
 		Offset(q.Offset).
 		All(ctx)

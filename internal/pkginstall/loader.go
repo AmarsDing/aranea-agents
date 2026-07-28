@@ -8,6 +8,7 @@ import (
 	pathpkg "path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -34,12 +35,39 @@ func LoadManifestFromDir(dir string) (*Manifest, error) {
 	return &m, nil
 }
 
+// cloneMaxAttempts bounds how many times a failed git clone is retried.
+// GitHub connectivity from CN networks flaps frequently (TLS resets /
+// connect timeouts), so a single attempt is not reliable in practice.
+const cloneMaxAttempts = 3
+
+// cloneBackoff returns the wait before the next clone attempt (attempt is
+// 1-based: backoff(1) is the wait after the first failure). Swappable in tests.
+var cloneBackoff = func(attempt int) time.Duration {
+	return time.Duration(attempt) * 2 * time.Second
+}
+
 // FetchFromURL clones a git repository (shallow) into a temporary directory.
 // Returns the directory path and a cleanup function.
 //
 // Implementation note: uses os/exec("git clone --depth 1") instead of go-git
 // to avoid a large transitive dependency. Requires git in PATH.
 func FetchFromURL(repoURL, ref string, quiet bool) (pkgDir string, cleanup func(), err error) {
+	var lastErr error
+	for attempt := 1; attempt <= cloneMaxAttempts; attempt++ {
+		pkgDir, cleanup, err = fetchFromURLOnce(repoURL, ref, quiet)
+		if err == nil {
+			return pkgDir, cleanup, nil
+		}
+		lastErr = err
+		if attempt < cloneMaxAttempts {
+			time.Sleep(cloneBackoff(attempt))
+		}
+	}
+	return "", nil, lastErr
+}
+
+// fetchFromURLOnce performs a single clone attempt.
+func fetchFromURLOnce(repoURL, ref string, quiet bool) (pkgDir string, cleanup func(), err error) {
 	tmpDir, err := os.MkdirTemp("", "aranea-pkg-*")
 	if err != nil {
 		return "", nil, fmt.Errorf("create temp dir: %w", err)

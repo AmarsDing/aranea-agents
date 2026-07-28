@@ -151,6 +151,26 @@ func toProtoInvocation(x biz.SkillInvocation) *v1.SkillInvocation {
 	}
 }
 
+// normalizeSkillSortBy 白名单化排序字段；非法值回落为空（默认排序）。
+func normalizeSkillSortBy(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "tag":
+		return "tag"
+	case "name":
+		return "name"
+	default:
+		return ""
+	}
+}
+
+// normalizeSkillSortOrder 白名单化排序方向；非法值回落为 asc。
+func normalizeSkillSortOrder(v string) string {
+	if strings.EqualFold(strings.TrimSpace(v), "desc") {
+		return "desc"
+	}
+	return "asc"
+}
+
 func (s *SkillService) ListSkills(ctx context.Context, req *v1.ListSkillsRequest) (*v1.ListSkillsResponse, error) {
 	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
 	q := biz.SkillListQuery{
@@ -160,6 +180,8 @@ func (s *SkillService) ListSkills(ctx context.Context, req *v1.ListSkillsRequest
 		Status:            req.GetStatus(),
 		FilesystemMissing: req.GetFilesystemMissing(),
 		SyncOrigin:        req.GetSyncOrigin(),
+		SortBy:            normalizeSkillSortBy(req.GetSortBy()),
+		SortOrder:         normalizeSkillSortOrder(req.GetSortOrder()),
 		Limit:             limit,
 		Offset:            offset,
 	}

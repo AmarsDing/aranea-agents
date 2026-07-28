@@ -146,7 +146,9 @@ function kratosSessionTimelineToLegacy(data: KratosSessionTimeline): SessionTime
 }
 
 export async function listSessions(agentID: string, limit = 200, offset?: number): Promise<Session[]> {
-  const data = await searchSessions({ agent_id: agentID, limit, offset });
+  // root_only：聊天侧边栏只列根会话；团队成员会话通过团队/编排面板查看，
+  // 不以独立条目混入侧边栏。
+  const data = await searchSessions({ agent_id: agentID, root_only: true, limit, offset });
   return data.items;
 }
 
@@ -170,6 +172,7 @@ export async function searchSessions(query: SessionSearchQuery = {}): Promise<Se
     userId: undefined,
     sortBy: undefined,
     sortOrder: undefined,
+    rootOnly: query.root_only,
   });
   const items = (data.items ?? []).map(kratosSessionToLegacy);
   return {

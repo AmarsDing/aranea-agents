@@ -9,7 +9,7 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
-//go:embed prompts/*.md prompts/memory/*.md prompts/skills/*.md
+//go:embed prompts/*.md prompts/memory/*.md prompts/skills/*.md prompts/system_admin/*.md
 var embedded embed.FS
 
 // ReadMarkdown returns the body of an embedded prompt file.

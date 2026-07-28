@@ -59,6 +59,7 @@ export const useSessionStore = defineStore('session', () => {
     owner_type?: string;
     status?: string;
     context_status?: string;
+    root_only?: boolean;
     limit?: number;
     offset?: number;
   }): Promise<SessionListResult> {

@@ -1,4 +1,6 @@
-// 查询 skills 表当前状态
+﻿// 查询 skills 表当前状态
+//go:build ignore
+
 package main
 
 import (

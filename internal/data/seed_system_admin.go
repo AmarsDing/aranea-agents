@@ -30,7 +30,7 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, d Dialect, lg
 	) VALUES (
 		'agent___system_admin__', ?, '系统管家', 'openrouter', 'gpt-4.1-mini',
 		'active', FALSE, FALSE, '', '系统内置管理助手，负责管理 Skill、Agent、Team 等系统资源，提供系统级运维能力。',
-		'', 'complete', 0, 0, '{"tools_profile":"system_admin"}', '[]', 'system',
+		'', 'complete', 0, 0, '{"tools":{"profile":"system_admin"}}', '[]', 'system',
 		?, ?, '', TRUE, 'system_builtin', 'system',
 		'system_admin', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
@@ -189,7 +189,7 @@ func SeedMemoryAgent(ctx context.Context, client *ent.Client, d Dialect, lg logg
 	) VALUES (
 		'agent___memory__', ?, '记忆管家', 'openrouter', 'gpt-4.1',
 		'active', FALSE, FALSE, '', '基于学术原则的智能记忆管理者：选择性记忆、质量驱动遗忘、记忆蒸馏',
-		'', 'complete', 0, 0, '{"tools_profile":"system_memory"}', '[]', 'system',
+		'', 'complete', 0, 0, '{"tools":{"profile":"system_memory"}}', '[]', 'system',
 		?, ?, '', TRUE, 'system_builtin', 'system',
 		'memory', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
@@ -226,7 +226,7 @@ func SeedSkillsAgent(ctx context.Context, client *ent.Client, d Dialect, lg logg
 	) VALUES (
 		'agent___skills__', ?, '技能管家', 'openrouter', 'gpt-4.1',
 		'active', FALSE, FALSE, '', '基于使用数据的技能进化/消亡决策、工具权重优化、编排分析',
-		'', 'complete', 0, 0, '{"tools_profile":"system_skills"}', '[]', 'system',
+		'', 'complete', 0, 0, '{"tools":{"profile":"system_skills"}}', '[]', 'system',
 		?, ?, '', TRUE, 'system_builtin', 'system',
 		'skills', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
@@ -291,6 +291,7 @@ func SeedButlerPromptFiles(ctx context.Context, client *ent.Client, d Dialect, s
 	butlers := []butlerPrompt{
 		{agentID: "agent___memory__", prefix: "apf_memory_", dirName: "memory"},
 		{agentID: "agent___skills__", prefix: "apf_skills_", dirName: "skills"},
+		{agentID: "agent___system_admin__", prefix: "apf_system_admin_", dirName: "system_admin"},
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	const q = `INSERT INTO agent_prompt_files (
@@ -495,7 +496,7 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, d Dialect, lg l
 		) VALUES (
 			?, ?, ?, 'openrouter', 'gpt-4.1-mini',
 			'active', FALSE, FALSE, '', ?,
-			'', 'complete', 0, 0, '{"tools_profile":"dept_lead","memory_enabled":true}', '[]', 'system',
+			'', 'complete', 0, 0, '{"tools":{"profile":"dept_lead"},"memory_enabled":true}', '[]', 'system',
 			?, ?, '', TRUE, 'system_builtin', 'system',
 			?, 'dept_lead'
 		) ON CONFLICT(agent_key) DO UPDATE SET

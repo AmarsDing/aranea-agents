@@ -98,6 +98,8 @@ func (s *stubTeamStageV2Reader) ListTeamStagesByTask(_ context.Context, _ string
 // completedResult customizes CheckAllTeamsCompleted; zero value = not done.
 // hasRealDeliverable customizes the Fix-1 deliverable gate; zero value (false)
 // means "no real deliverable" — completed callbacks get flipped to failed.
+// memberEvidence customizes the F10 outcome evidence per member session ID;
+// missing entry = no failure evidence.
 type stubSpiritTeamController struct {
 	recordCompletionCalls   int
 	scheduleDependentsCalls int
@@ -105,6 +107,15 @@ type stubSpiritTeamController struct {
 	hasRealDeliverable      bool
 	hasRealDeliverableErr   error
 	failureBriefs           []biz.TeamFailureBrief
+	memberEvidence          map[string]stubMemberEvidence
+	memberEvidenceCalls     int
+	deliverableGateCalls    int
+}
+
+// stubMemberEvidence is the per-session canned result for MemberExecutionEvidence.
+type stubMemberEvidence struct {
+	failed bool
+	reason string
 }
 
 func (s *stubSpiritTeamController) CancelTimeoutTimer(_ string) {}
@@ -117,10 +128,14 @@ func (s *stubSpiritTeamController) ScheduleDependentTeams(_ context.Context, _ s
 	return nil
 }
 func (s *stubSpiritTeamController) HasRealDeliverable(_ context.Context, _ biz.Team) (bool, error) {
+	s.deliverableGateCalls++
 	return s.hasRealDeliverable, s.hasRealDeliverableErr
 }
 func (s *stubSpiritTeamController) ListFailedTeamBriefs(_ context.Context, _ string) []biz.TeamFailureBrief {
 	return s.failureBriefs
+}
+func (s *stubSpiritTeamController) ListTeamDeliverableDigests(_ context.Context, _ string) []biz.TeamDeliverableDigest {
+	return nil
 }
 func (s *stubSpiritTeamController) CheckAllTeamsCompleted(_ context.Context, _ string) biz.AllTeamsCompletedResult {
 	return s.completedResult
@@ -131,6 +146,17 @@ func (s *stubSpiritTeamController) GetParallelConfig(_ context.Context, _ string
 func (s *stubSpiritTeamController) AutoArchiveCompletedTeams(_ context.Context, _ string) {}
 func (s *stubSpiritTeamController) ReadUpstreamDeliverable(_ context.Context, _, _ string, _ int) (biz.UpstreamDeliverableContent, error) {
 	return biz.UpstreamDeliverableContent{}, nil
+}
+func (s *stubSpiritTeamController) MemberExecutionEvidence(_ context.Context, sessionID string) (bool, string) {
+	s.memberEvidenceCalls++
+	if s.memberEvidence == nil {
+		return false, ""
+	}
+	ev, ok := s.memberEvidence[sessionID]
+	if !ok {
+		return false, ""
+	}
+	return ev.failed, ev.reason
 }
 
 // capturingEventBus captures published v2 events for assertion.
@@ -349,6 +375,13 @@ func (c *capturingSeq) count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.events)
+}
+func (c *capturingSeq) snapshot() []biz.Event {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]biz.Event, len(c.events))
+	copy(out, c.events)
+	return out
 }
 
 // TestResolveTeamStageUpdate_RejectsTerminalOverwrite verifies that when the
@@ -775,6 +808,283 @@ func TestCheckAllTeamsCompleted_TurnFails_ReleasesCASForRetry(t *testing.T) {
 	s.checkAllTeamsCompleted(context.Background(), "sp1")
 	if got := len(gw.snapshot()); got != 2 {
 		t.Fatalf("after real failure, CAS guard must be released for poller retry: ExecuteTurn called %d times, want 2", got)
+	}
+}
+
+// ── F10（Phase 11）结果导向成员状态 ────────────────────────────────────────
+// 12:33 根因链末环：成员状态按消息生命周期（团队回调 completed → 全员
+// completed）而非执行结果显示。修复后成员状态必须以执行结果为据：
+//  1) per-member MemberExecutionEvidence（session interrupted / step
+//     failed|cancelled → failed，附原因）；
+//  2) 单成员团队追加交付物证据（HasRealDeliverable=false → failed）；
+//     交付物证据限定 DAG 团队（HasRealDeliverable 对非 DAG 团队恒 false —
+//     无交付物义务），且多成员团队不用（MDC 共享黑板无法按成员归因）；
+//  3) cancelled → skipped 不被证据覆盖；team failed → failed 无需证据。
+// 详见 docs/development/11-multi-agent.development.md Phase 11 F10。
+
+// resolveMemberOutcomeStatus 单元测试：基础状态非 completed 时证据不介入。
+
+func TestResolveMemberOutcomeStatus_TeamFailed_StaysFailed(t *testing.T) {
+	status, reason := resolveMemberOutcomeStatus(context.Background(), nil, biz.Team{},
+		biz.MemberSessionStatusFailed, "sess-x", true)
+	if status != biz.MemberSessionStatusFailed || reason != "" {
+		t.Fatalf("team failed → member failed without evidence, got (%s, %q)", status, reason)
+	}
+}
+
+// cancelled → skipped 保持：证据（即使存在失败证据）不得覆盖。
+func TestResolveMemberOutcomeStatus_Cancelled_StaysSkipped(t *testing.T) {
+	ctrl := &stubSpiritTeamController{memberEvidence: map[string]stubMemberEvidence{
+		"sess-x": {failed: true, reason: "step failed: boom"},
+	}}
+	status, reason := resolveMemberOutcomeStatus(context.Background(), ctrl, biz.Team{},
+		biz.MemberSessionStatusSkipped, "sess-x", true)
+	if status != biz.MemberSessionStatusSkipped || reason != "" {
+		t.Fatalf("cancelled must stay skipped, got (%s, %q)", status, reason)
+	}
+	if ctrl.memberEvidenceCalls != 0 {
+		t.Fatalf("evidence must not be consulted for skipped members, called %d times", ctrl.memberEvidenceCalls)
+	}
+}
+
+// 团队 completed + 成员有失败证据 → failed 且携带原因。
+func TestResolveMemberOutcomeStatus_EvidenceFailed_OverridesCompleted(t *testing.T) {
+	ctrl := &stubSpiritTeamController{memberEvidence: map[string]stubMemberEvidence{
+		"sess-a": {failed: true, reason: "step failed: 安装失败: skill 已存在"},
+	}}
+	status, reason := resolveMemberOutcomeStatus(context.Background(), ctrl,
+		biz.Team{ID: "t1", DagNodeID: "st_1"},
+		biz.MemberSessionStatusCompleted, "sess-a", true)
+	if status != biz.MemberSessionStatusFailed {
+		t.Fatalf("failure evidence must flip completed member to failed, got %s", status)
+	}
+	if !strings.Contains(reason, "安装失败") {
+		t.Fatalf("reason must carry the evidence summary, got %q", reason)
+	}
+}
+
+// 多成员团队：无失败证据时不用交付物证据（归因边界），成员保持 completed。
+func TestResolveMemberOutcomeStatus_MultiMember_NoDeliverableCheck(t *testing.T) {
+	ctrl := &stubSpiritTeamController{hasRealDeliverable: false}
+	status, reason := resolveMemberOutcomeStatus(context.Background(), ctrl,
+		biz.Team{ID: "t1", DagNodeID: "st_1"},
+		biz.MemberSessionStatusCompleted, "sess-a", false)
+	if status != biz.MemberSessionStatusCompleted || reason != "" {
+		t.Fatalf("multi-member team must not use deliverable evidence, got (%s, %q)", status, reason)
+	}
+	if ctrl.deliverableGateCalls != 0 {
+		t.Fatalf("HasRealDeliverable must not be consulted for multi-member teams, called %d times", ctrl.deliverableGateCalls)
+	}
+}
+
+// 单成员 DAG 团队：无失败证据 + 无真实交付物 → failed（completed 必须被证明）。
+func TestResolveMemberOutcomeStatus_SingleMemberDAG_NoDeliverable_Failed(t *testing.T) {
+	ctrl := &stubSpiritTeamController{hasRealDeliverable: false}
+	status, reason := resolveMemberOutcomeStatus(context.Background(), ctrl,
+		biz.Team{ID: "t1", DagNodeID: "st_1"},
+		biz.MemberSessionStatusCompleted, "sess-a", true)
+	if status != biz.MemberSessionStatusFailed {
+		t.Fatalf("single-member DAG team without real deliverable must be failed, got %s", status)
+	}
+	if !strings.Contains(reason, "set_deliverable") {
+		t.Fatalf("reason must explain the missing deliverable, got %q", reason)
+	}
+}
+
+// 单成员 DAG 团队：有真实交付物 → completed。
+func TestResolveMemberOutcomeStatus_SingleMemberDAG_HasDeliverable_Completed(t *testing.T) {
+	ctrl := &stubSpiritTeamController{hasRealDeliverable: true}
+	status, reason := resolveMemberOutcomeStatus(context.Background(), ctrl,
+		biz.Team{ID: "t1", DagNodeID: "st_1"},
+		biz.MemberSessionStatusCompleted, "sess-a", true)
+	if status != biz.MemberSessionStatusCompleted || reason != "" {
+		t.Fatalf("real deliverable must keep member completed, got (%s, %q)", status, reason)
+	}
+}
+
+// 单成员非 DAG 团队：无交付物义务（HasRealDeliverable 恒 false），不得误翻。
+func TestResolveMemberOutcomeStatus_SingleMemberNonDAG_NoObligation(t *testing.T) {
+	ctrl := &stubSpiritTeamController{hasRealDeliverable: false}
+	status, reason := resolveMemberOutcomeStatus(context.Background(), ctrl,
+		biz.Team{ID: "t1"}, // DagNodeID 为空 = 非 DAG 团队
+		biz.MemberSessionStatusCompleted, "sess-a", true)
+	if status != biz.MemberSessionStatusCompleted || reason != "" {
+		t.Fatalf("non-DAG team carries no deliverable obligation, got (%s, %q)", status, reason)
+	}
+	if ctrl.deliverableGateCalls != 0 {
+		t.Fatalf("HasRealDeliverable must not be consulted for non-DAG teams, called %d times", ctrl.deliverableGateCalls)
+	}
+}
+
+// 交付物校验 infra 错误：无法证明成功 → failed（与 Fix 1 闸门同姿态：
+// gateErr 按无交付物处理）。
+func TestResolveMemberOutcomeStatus_DeliverableCheckError_Failed(t *testing.T) {
+	ctrl := &stubSpiritTeamController{hasRealDeliverableErr: errors.New("graph state store down")}
+	status, reason := resolveMemberOutcomeStatus(context.Background(), ctrl,
+		biz.Team{ID: "t1", DagNodeID: "st_1"},
+		biz.MemberSessionStatusCompleted, "sess-a", true)
+	if status != biz.MemberSessionStatusFailed || reason == "" {
+		t.Fatalf("deliverable check infra error must flip to failed with reason, got (%s, %q)", status, reason)
+	}
+}
+
+// controller 未接线（nil）：保守不翻转，保持 completed（防御 nil 解引用）。
+func TestResolveMemberOutcomeStatus_NilController_Completed(t *testing.T) {
+	status, reason := resolveMemberOutcomeStatus(context.Background(), nil,
+		biz.Team{ID: "t1", DagNodeID: "st_1"},
+		biz.MemberSessionStatusCompleted, "sess-a", true)
+	if status != biz.MemberSessionStatusCompleted || reason != "" {
+		t.Fatalf("nil controller must not flip status, got (%s, %q)", status, reason)
+	}
+}
+
+// ── F10 接线集成测试（publishV2TeamRunCompletion 成员循环）────────────────
+
+// f10SessionRepo 按 TeamID 返回成员会话（publishV2TeamRunCompletion 的
+// sessions.Search 数据源）。
+type f10SessionRepo struct {
+	biz.SessionRepo
+	sessions []biz.Session
+}
+
+func (r *f10SessionRepo) SearchSessions(_ context.Context, q biz.SessionSearchQuery) (biz.SessionListResult, error) {
+	var items []biz.Session
+	for _, s := range r.sessions {
+		if s.TeamID == q.TeamID {
+			items = append(items, s)
+		}
+	}
+	return biz.SessionListResult{Items: items, Total: len(items)}, nil
+}
+
+func newF10Starter(team biz.Team, controller *stubSpiritTeamController, sessions []biz.Session, seq *capturingSeq) *TeamStarter {
+	teamUC := biz.NewTeamUsecase(biz.TeamUsecaseOpts{
+		Reader:    &stubTeamReader{teams: map[string]biz.Team{team.ID: team}},
+		Writer:    &stubTeamWriter{},
+		RunReader: &stubTeamRunReader{},
+		Lg:        loggateway.NewNoop(),
+	})
+	return &TeamStarter{
+		sessions: biz.NewSessionUsecase(&f10SessionRepo{sessions: sessions}, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop()),
+		team:     TeamOrchestrationDeps{TeamUC: teamUC, SpiritUC: controller},
+		seq:      seq,
+		lg:       loggateway.NewNoop(),
+		teamRunR: &stubTeamRunV2Reader{runs: map[string]biz.TeamRun{}},
+		trSM:     biz.NewTeamRunV2StateMachine(),
+	}
+}
+
+func memberSessionsByAgentKey(seq *capturingSeq) map[string]biz.MemberSession {
+	out := make(map[string]biz.MemberSession)
+	for _, ev := range seq.snapshot() {
+		if msEv, ok := ev.(*biz.MemberSessionUpdatedEvent); ok {
+			out[msEv.MemberSession.AgentKey] = msEv.MemberSession
+		}
+	}
+	return out
+}
+
+// 多成员团队：仅失败证据命中的成员翻 failed（携带原因），其余保持 completed。
+func TestPublishV2TeamRunCompletion_F10_PerMemberEvidenceOverride(t *testing.T) {
+	team := biz.Team{
+		ID: "team-f10", DisplayName: "安装团队", SpiritSessionID: "spirit-1",
+		AutoCreated: true, Status: biz.TeamStatusCompleted, DagNodeID: "st_1",
+	}
+	sessions := []biz.Session{
+		{ID: "sess-team", TeamID: team.ID, SessionType: "team"},
+		{ID: "sess-a", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-a"},
+		{ID: "sess-b", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-b"},
+	}
+	ctrl := &stubSpiritTeamController{
+		hasRealDeliverable: true,
+		memberEvidence: map[string]stubMemberEvidence{
+			"sess-a": {failed: true, reason: "step failed: 安装失败: skill 已存在"},
+		},
+	}
+	seq := &capturingSeq{}
+	s := newF10Starter(team, ctrl, sessions, seq)
+
+	s.publishV2TeamRunCompletion(context.Background(), team.SpiritSessionID, team.ID,
+		biz.TeamStageStatusCompleted, biz.TeamStatusCompleted)
+
+	got := memberSessionsByAgentKey(seq)
+	msA, ok := got["agent-a"]
+	if !ok {
+		t.Fatalf("no MemberSession event for agent-a, got keys %v", got)
+	}
+	if msA.Status != biz.MemberSessionStatusFailed {
+		t.Errorf("agent-a status = %s, want failed (failure evidence)", msA.Status)
+	}
+	if !strings.Contains(msA.Error, "安装失败") {
+		t.Errorf("agent-a Error should carry the evidence reason, got %q", msA.Error)
+	}
+	msB, ok := got["agent-b"]
+	if !ok {
+		t.Fatalf("no MemberSession event for agent-b")
+	}
+	if msB.Status != biz.MemberSessionStatusCompleted {
+		t.Errorf("agent-b status = %s, want completed (no evidence)", msB.Status)
+	}
+	if msB.Error != "" {
+		t.Errorf("agent-b Error should be empty, got %q", msB.Error)
+	}
+}
+
+// 单成员 DAG 团队：无失败证据但无真实交付物 → 成员 failed。
+func TestPublishV2TeamRunCompletion_F10_SingleMemberNoDeliverable_Failed(t *testing.T) {
+	team := biz.Team{
+		ID: "team-f10-single", DisplayName: "单成员团队", SpiritSessionID: "spirit-1",
+		AutoCreated: true, Status: biz.TeamStatusCompleted, DagNodeID: "st_1",
+	}
+	sessions := []biz.Session{
+		{ID: "sess-team", TeamID: team.ID, SessionType: "team"},
+		{ID: "sess-a", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-a"},
+	}
+	ctrl := &stubSpiritTeamController{hasRealDeliverable: false}
+	seq := &capturingSeq{}
+	s := newF10Starter(team, ctrl, sessions, seq)
+
+	s.publishV2TeamRunCompletion(context.Background(), team.SpiritSessionID, team.ID,
+		biz.TeamStageStatusCompleted, biz.TeamStatusCompleted)
+
+	got := memberSessionsByAgentKey(seq)
+	msA, ok := got["agent-a"]
+	if !ok {
+		t.Fatalf("no MemberSession event for agent-a")
+	}
+	if msA.Status != biz.MemberSessionStatusFailed {
+		t.Errorf("agent-a status = %s, want failed (no real deliverable)", msA.Status)
+	}
+	if msA.Error == "" {
+		t.Errorf("agent-a Error should explain the missing deliverable")
+	}
+}
+
+// 团队 cancelled：成员保持 skipped，证据不得覆盖。
+func TestPublishV2TeamRunCompletion_F10_Cancelled_StaysSkipped(t *testing.T) {
+	team := biz.Team{
+		ID: "team-f10-cancel", DisplayName: "取消团队", SpiritSessionID: "spirit-1",
+		AutoCreated: true, Status: biz.TeamStatusCancelled, DagNodeID: "st_1",
+	}
+	sessions := []biz.Session{
+		{ID: "sess-a", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-a"},
+	}
+	ctrl := &stubSpiritTeamController{memberEvidence: map[string]stubMemberEvidence{
+		"sess-a": {failed: true, reason: "session interrupted: cancelled"},
+	}}
+	seq := &capturingSeq{}
+	s := newF10Starter(team, ctrl, sessions, seq)
+
+	s.publishV2TeamRunCompletion(context.Background(), team.SpiritSessionID, team.ID,
+		biz.TeamStageStatusCancelled, biz.TeamStatusCancelled)
+
+	got := memberSessionsByAgentKey(seq)
+	msA, ok := got["agent-a"]
+	if !ok {
+		t.Fatalf("no MemberSession event for agent-a")
+	}
+	if msA.Status != biz.MemberSessionStatusSkipped {
+		t.Errorf("agent-a status = %s, want skipped (cancelled not overridable)", msA.Status)
 	}
 }
 

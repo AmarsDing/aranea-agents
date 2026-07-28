@@ -75,6 +75,9 @@ type TeamSkillLookup interface {
 type CLIAdminSkillLister interface {
 	List(ctx context.Context, q SkillListQuery) (SkillListResult, error)
 	Get(ctx context.Context, id string) (Skill, error)
+	// GetBySlug resolves a skill by its slug (skill_key). Used by the
+	// tool_assertion gate (F9, Phase 11) to verify install outcomes by key.
+	GetBySlug(ctx context.Context, slug string) (Skill, error)
 }
 
 // CLIAdminAgentLister captures the subset of AgentUsecase needed by the

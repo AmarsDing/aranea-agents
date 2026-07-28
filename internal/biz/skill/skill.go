@@ -102,8 +102,12 @@ type ListQuery struct {
 	Status            string
 	FilesystemMissing string
 	SyncOrigin        string
-	Limit             int
-	Offset            int
+	// SortBy 排序字段："tag"（按首个标签名）| "name"（按名称）；空 = 默认按更新时间倒序。
+	SortBy string
+	// SortOrder 排序方向："asc" | "desc"；空 = asc。
+	SortOrder string
+	Limit     int
+	Offset    int
 	// WorkspaceID filters by tenant visibility (P2-B).
 	// empty = system caller (see all); non-empty = tenant caller
 	// (see shared with workspace_id="" + own with workspace_id==WorkspaceID).

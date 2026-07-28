@@ -81,6 +81,8 @@ export type SessionSearchQuery = {
   status?: string;
   context_status?: string;
   keyword?: string;
+  /** true 时只返回根会话（parent_session_id 为空），排除团队成员等子会话 */
+  root_only?: boolean;
   limit?: number;
   offset?: number;
   page?: number;

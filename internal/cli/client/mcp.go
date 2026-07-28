@@ -79,3 +79,12 @@ func (c *Client) TestMCPServer(ctx context.Context, id string) (*mcpv1.MCPServer
 	}
 	return resp, nil
 }
+
+// ValidateMCPServer calls POST /v1/mcp-servers/validate.
+func (c *Client) ValidateMCPServer(ctx context.Context, req *mcpv1.ValidateMCPServerRequest) (*mcpv1.ValidateMCPServerResponse, error) {
+	resp := &mcpv1.ValidateMCPServerResponse{}
+	if err := c.Do(ctx, http.MethodPost, "/v1/mcp-servers/validate", req, resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}

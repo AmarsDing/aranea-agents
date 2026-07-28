@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -18,6 +20,10 @@ const (
 	GateTypeDeptLeadApproval  VerificationGateType = "dept_lead_approval"
 	GateTypeCrossDeptDelivery VerificationGateType = "cross_dept_delivery"
 	GateTypeBorrowApproval    VerificationGateType = "borrow_approval"
+	// GateTypeToolAssertion is a deterministic fact-check gate (F9, Phase 11):
+	// invoke a whitelisted tool and assert a JSON path equals an expected value.
+	// Unlike the LLM quality gates above, this cannot be deceived by prose.
+	GateTypeToolAssertion VerificationGateType = "tool_assertion"
 )
 
 // VerificationGate defines a verification checkpoint in a graph.
@@ -26,6 +32,28 @@ type VerificationGate struct {
 	AgentID     string               `json:"agent_id,omitempty"` // for dept_lead_approval
 	Description string               `json:"description"`
 	MaxRetries  int                  `json:"max_retries"` // default 3
+	// tool_assertion fields (F9, Phase 11).
+	Tool          string `json:"tool,omitempty"`           // whitelisted tool name
+	ArgumentsJSON string `json:"arguments_json,omitempty"` // tool arguments as JSON object
+	AssertPath    string `json:"assert_path,omitempty"`    // dot-separated JSON path, e.g. "skill_key"
+	AssertEquals  string `json:"assert_equals,omitempty"`  // expected scalar value (canonical string)
+}
+
+// ToolAssertionInvoker invokes a whitelisted tool for deterministic
+// verification gates and returns the raw JSON result. Implementations live in
+// the same package (skillAssertionInvoker) — tools are NOT executed through
+// the LLM tool loop, so the assertion is fully deterministic.
+type ToolAssertionInvoker interface {
+	InvokeForAssertion(ctx context.Context, toolName string, argumentsJSON string) (json.RawMessage, error)
+}
+
+// VerificationGateExecutorOption configures optional executor dependencies.
+type VerificationGateExecutorOption func(*VerificationGateExecutor)
+
+// WithToolAssertionInvoker wires the deterministic tool invoker used by
+// tool_assertion gates. Nil invoker = tool_assertion gates fail closed.
+func WithToolAssertionInvoker(inv ToolAssertionInvoker) VerificationGateExecutorOption {
+	return func(e *VerificationGateExecutor) { e.toolInvoker = inv }
 }
 
 // CrossDeptDeliveryGate defines a two-party approval gate for cross-department deliverables.
@@ -52,10 +80,15 @@ type VerificationGateExecutor struct {
 	deptLeadMgr *DeptLeadManager
 	llmCaller   LLMCaller
 	lg          loggateway.Logger
+	toolInvoker ToolAssertionInvoker
 }
 
-func NewVerificationGateExecutor(deptLeadMgr *DeptLeadManager, llmCaller LLMCaller, lg loggateway.Logger) *VerificationGateExecutor {
-	return &VerificationGateExecutor{deptLeadMgr: deptLeadMgr, llmCaller: llmCaller, lg: lg}
+func NewVerificationGateExecutor(deptLeadMgr *DeptLeadManager, llmCaller LLMCaller, lg loggateway.Logger, opts ...VerificationGateExecutorOption) *VerificationGateExecutor {
+	e := &VerificationGateExecutor{deptLeadMgr: deptLeadMgr, llmCaller: llmCaller, lg: lg}
+	for _, opt := range opts {
+		opt(e)
+	}
+	return e
 }
 
 // ExecuteGate executes a single verification gate.
@@ -73,9 +106,236 @@ func (e *VerificationGateExecutor) ExecuteGate(ctx context.Context, gate Verific
 		return e.executeCrossDeptDelivery(ctx, gate, teamOutput, truncateChars)
 	case GateTypeBorrowApproval:
 		return e.executeBorrowApproval(ctx, gate, teamOutput, truncateChars)
+	case GateTypeToolAssertion:
+		return e.executeToolAssertion(ctx, gate)
 	default:
 		return false, "", apierror.BadRequest("GATE", "unknown gate type: %s", gate.GateType)
 	}
+}
+
+// toolAssertionWhitelist lists the tools a tool_assertion gate may invoke
+// (F9, Phase 11). First version: cli_admin_skill_get only — install
+// verification is the only deterministic fact-check use case so far.
+var toolAssertionWhitelist = map[string]bool{
+	"cli_admin_skill_get": true,
+}
+
+// executeToolAssertion invokes a whitelisted tool and asserts a JSON path in
+// its result equals the expected value. Deterministic: no LLM involved.
+// Invocation failure or assertion mismatch → approved=false (not an error);
+// misconfiguration (unknown tool / nil invoker) → error.
+func (e *VerificationGateExecutor) executeToolAssertion(ctx context.Context, gate VerificationGate) (bool, string, error) {
+	tool := strings.TrimSpace(gate.Tool)
+	if !toolAssertionWhitelist[tool] {
+		return false, "", apierror.BadRequest("GATE", "tool_assertion gate: tool %q is not whitelisted", tool)
+	}
+	if e.toolInvoker == nil {
+		return false, "", apierror.Internal("GATE", "tool_assertion gate: no tool invoker configured")
+	}
+	raw, err := e.toolInvoker.InvokeForAssertion(ctx, tool, gate.ArgumentsJSON)
+	if err != nil {
+		return false, fmt.Sprintf("工具 %s 调用失败: %v", tool, err), nil
+	}
+	var doc any
+	if uerr := json.Unmarshal(raw, &doc); uerr != nil {
+		return false, fmt.Sprintf("工具 %s 返回非 JSON 结果: %v", tool, uerr), nil
+	}
+	val, ok := jsonPathLookup(doc, gate.AssertPath)
+	if !ok {
+		return false, fmt.Sprintf("断言路径 %q 在工具返回中不存在", gate.AssertPath), nil
+	}
+	got := canonicalJSONScalar(val)
+	if got != strings.TrimSpace(gate.AssertEquals) {
+		return false, fmt.Sprintf("断言失败: %s = %q，期望 %q", gate.AssertPath, got, gate.AssertEquals), nil
+	}
+	return true, fmt.Sprintf("断言通过: %s = %q", gate.AssertPath, got), nil
+}
+
+// jsonPathLookup walks a decoded JSON document by a dot-separated path of
+// object keys (e.g. "skill_key" or "data.skill.enabled"). Returns false when
+// any segment is missing or a non-object is encountered mid-path.
+func jsonPathLookup(doc any, path string) (any, bool) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, false
+	}
+	cur := doc
+	for _, seg := range strings.Split(path, ".") {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		cur, ok = m[seg]
+		if !ok {
+			return nil, false
+		}
+	}
+	return cur, true
+}
+
+// canonicalJSONScalar renders a decoded JSON scalar as its canonical string
+// for equality comparison: strings as-is, bools as true/false, numbers in
+// shortest form, nil as "null".
+func canonicalJSONScalar(v any) string {
+	switch t := v.(type) {
+	case nil:
+		return "null"
+	case string:
+		return t
+	case bool:
+		if t {
+			return "true"
+		}
+		return "false"
+	case float64:
+		return strconv.FormatFloat(t, 'f', -1, 64)
+	default:
+		return fmt.Sprintf("%v", t)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// F9 (Phase 11): skill assertion invoker — deterministic cli_admin_skill_get
+// ---------------------------------------------------------------------------
+
+// skillAssertionView is the JSON shape returned by the skill assertion
+// invoker. Mirrors cli_admin.SkillItem (biz cannot import internal/tools),
+// plus the enabled flag the gate asserts on.
+type skillAssertionView struct {
+	ID          string `json:"id"`
+	SkillKey    string `json:"skill_key"`
+	DisplayName string `json:"display_name"`
+	Status      string `json:"status"`
+	Version     string `json:"version"`
+	Enabled     bool   `json:"enabled"`
+}
+
+// skillAssertionInvoker implements ToolAssertionInvoker for the whitelisted
+// cli_admin_skill_get tool, backed directly by CLIAdminSkillLister.
+type skillAssertionInvoker struct {
+	skills CLIAdminSkillLister
+}
+
+// NewSkillAssertionInvoker creates the invoker wired to the skill usecase.
+func NewSkillAssertionInvoker(skills CLIAdminSkillLister) ToolAssertionInvoker {
+	return &skillAssertionInvoker{skills: skills}
+}
+
+// InvokeForAssertion resolves cli_admin_skill_get arguments and returns the
+// skill as JSON. Arguments: {"id": "<skill id>"} or {"skill_key": "<slug>"}
+// (id takes precedence). Unknown tools are rejected — the whitelist is
+// enforced again here so the invoker stays safe when reused elsewhere.
+func (i *skillAssertionInvoker) InvokeForAssertion(ctx context.Context, toolName string, argumentsJSON string) (json.RawMessage, error) {
+	if i == nil || i.skills == nil {
+		return nil, apierror.Internal("GATE", "skill assertion invoker: no skill lister configured")
+	}
+	if strings.TrimSpace(toolName) != "cli_admin_skill_get" {
+		return nil, apierror.BadRequest("GATE", "skill assertion invoker: tool %q is not supported", toolName)
+	}
+	var args struct {
+		ID       string `json:"id"`
+		SkillKey string `json:"skill_key"`
+	}
+	if err := json.Unmarshal([]byte(argumentsJSON), &args); err != nil {
+		return nil, apierror.BadRequest("GATE", "skill assertion invoker: invalid arguments_json").WithCause(err)
+	}
+	var (
+		s   Skill
+		err error
+	)
+	switch {
+	case strings.TrimSpace(args.ID) != "":
+		s, err = i.skills.Get(ctx, strings.TrimSpace(args.ID))
+	case strings.TrimSpace(args.SkillKey) != "":
+		s, err = i.skills.GetBySlug(ctx, strings.TrimSpace(args.SkillKey))
+	default:
+		return nil, apierror.BadRequest("GATE", "skill assertion invoker: id or skill_key is required")
+	}
+	if err != nil {
+		return nil, err
+	}
+	version := ""
+	if s.CurrentVersion != nil {
+		version = s.CurrentVersion.Version
+	}
+	return json.Marshal(skillAssertionView{
+		ID:          s.ID,
+		SkillKey:    s.Slug,
+		DisplayName: s.Name,
+		Status:      s.Status,
+		Version:     version,
+		Enabled:     s.Enabled,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// F9 (Phase 11): gate auto-generation for skill-install teams
+// ---------------------------------------------------------------------------
+
+// installSkillPhraseRe captures the skill name from the intent phrase the
+// decomposition prompt prescribes (F8 layer 2): "安装 xlsx skill" /
+// "install the xlsx skill" / "安装 xlsx 技能".
+var installSkillPhraseRe = regexp.MustCompile(`(?i)(?:安装|install)\s+(?:the\s+)?([a-z0-9][a-z0-9._-]*)\s*(?:skill|技能)`)
+
+// installURLRe finds the source URL in the task description for the fallback
+// key extraction (last path segment).
+var installURLRe = regexp.MustCompile(`https?://[^\s，。、）)"']+`)
+
+// skillInstallAssertionGate builds the deterministic tool_assertion gate for a
+// single-member system-admin team whose task is a skill install (F9, Phase
+// 11). The gate asserts the installed skill is enabled — runtime visibility
+// requires enabled && published, and fresh installs default enabled=true, so
+// enabled=false or a missing skill both mean the install did not complete.
+//
+// Returns nil when the team is not a solo system-admin team, the task is not
+// a skill-install intent, or no skill key can be extracted from the intent
+// (fail-open at generation time; a wrong key fails closed at gate time with a
+// clear reason, which is the honest outcome for an unverifiable claim).
+func skillInstallAssertionGate(agentKeys []string, taskDescription string) *VerificationGate {
+	if len(agentKeys) != 1 || strings.TrimSpace(agentKeys[0]) != SystemAdminAgentKey {
+		return nil
+	}
+	if !strings.Contains(taskDescription, "cli_admin_skill_install_from_url") {
+		return nil
+	}
+	key := extractSkillKeyFromIntent(taskDescription)
+	if key == "" {
+		return nil
+	}
+	args, err := json.Marshal(map[string]string{"skill_key": key})
+	if err != nil {
+		return nil
+	}
+	return &VerificationGate{
+		GateType:      GateTypeToolAssertion,
+		Description:   fmt.Sprintf("验证 skill %q 已安装且启用", key),
+		Tool:          "cli_admin_skill_get",
+		ArgumentsJSON: string(args),
+		AssertPath:    "enabled",
+		AssertEquals:  "true",
+	}
+}
+
+// extractSkillKeyFromIntent derives the expected skill slug from the task
+// intent text. Preference order: the explicit name in the 安装/install phrase
+// (matches the SKILL.md frontmatter name for well-named skills), then the
+// source URL's last path segment. The result is normalized with the same
+// slug rules the importer uses (NormalizeSkillSlug).
+func extractSkillKeyFromIntent(taskDescription string) string {
+	if m := installSkillPhraseRe.FindStringSubmatch(taskDescription); m != nil {
+		if key := NormalizeSkillSlug(m[1]); key != "" {
+			return key
+		}
+	}
+	if u := installURLRe.FindString(taskDescription); u != "" {
+		seg := strings.TrimRight(u, "/")
+		if idx := strings.LastIndex(seg, "/"); idx >= 0 {
+			seg = seg[idx+1:]
+		}
+		seg = strings.TrimSuffix(seg, ".git")
+		return NormalizeSkillSlug(seg)
+	}
+	return ""
 }
 
 // gateApprovalSuffix is appended to the dept lead's system prompt for LLM gate calls.

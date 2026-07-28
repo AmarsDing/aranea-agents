@@ -25,6 +25,7 @@ func NewCronCmd() *cobra.Command {
 		cronRunsCmd(),
 		cronPauseCmd(),
 		cronResumeCmd(),
+		cronResetFailuresCmd(),
 	)
 	return c
 }
@@ -224,6 +225,22 @@ func cronResumeCmd() *cobra.Command {
 				return err
 			}
 			return cc.Printer.PrintSuccess("定时任务已恢复", "id", updated.Id, "enabled", "true")
+		},
+	}
+}
+
+func cronResetFailuresCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "reset-failures <id>",
+		Short: "重置定时任务失败计数",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cc := cli.CLIFrom(cmd.Context())
+			task, err := cc.Client.ResetCronTaskFailures(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return cc.Printer.PrintSuccess("失败计数已重置", "id", task.Id, "status", task.Status)
 		},
 	}
 }

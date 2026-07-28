@@ -181,6 +181,14 @@ func newRoot(ctx context.Context, bi cli.BuildInfo) *cobra.Command {
 		cmdpkg.NewPkgCmd(),
 		// Phase D: chat / REPL.
 		cmdpkg.NewChatCmd(),
+		// Admin resource domains.
+		cmdpkg.NewOrganizationCmd(),
+		cmdpkg.NewTaxonomyCmd(),
+		cmdpkg.NewModelCatalogCmd(),
+		cmdpkg.NewA2ACmd(),
+		cmdpkg.NewMemoryCmd(),
+		cmdpkg.NewKnowledgeCmd(),
+		cmdpkg.NewEvaluationCmd(),
 	)
 	// PGO_CLI_IMPORT_ENABLED defaults to on; set to 0/false/no to disable.
 	if pgoImportEnabled() {

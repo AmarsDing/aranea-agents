@@ -1,19 +1,19 @@
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="onDialogUpdate">
-    <q-card class="app-dialog-card app-glass-dialog" style="min-width: min(640px, 96vw); max-width: 720px">
-      <q-card-section class="row items-center justify-between q-pb-none">
-        <div class="text-h6">{{ isCreate ? '新建 Skill' : '编辑 Skill' }}</div>
+    <q-card class="app-dialog-card app-glass-dialog app-dialog-card--xl">
+      <q-card-section class="app-glass-dialog__head row items-center justify-between">
+        <div class="app-glass-dialog__title">{{ isCreate ? '新建 Skill' : '编辑 Skill' }}</div>
         <q-btn flat round dense icon="close" :disable="saving" @click="tryClose" />
       </q-card-section>
-      <q-card-section>
-        <div class="app-form-field-grid app-form-field-grid--2col">
+      <!-- 吸顶元数据行：名称 / Slug / 标签 一行；滚动描述/正文时始终可见 -->
+      <q-card-section class="skill-meta-dialog__meta">
+        <div class="skill-meta-dialog__meta-grid">
           <q-input
             v-model="name"
             dense
             outlined
             label="名称"
             :rules="[(v) => (!!String(v || '').trim() && String(v).trim().length <= 80) || '必填，1–80 字符']"
-            class="app-grid-span-full"
             :disable="saving"
           />
           <q-input
@@ -40,6 +40,10 @@
             :disable="saving"
             @filter="onTagFilter"
           />
+        </div>
+      </q-card-section>
+      <q-card-section class="app-glass-dialog__scroll">
+        <div class="app-form-field-grid">
           <q-input
             v-model="description"
             dense
@@ -59,7 +63,7 @@
             autogrow
             label="正文（SKILL.md）"
             class="app-grid-span-full"
-            input-style="min-height: 180px; font-family: var(--font-mono, ui-monospace, monospace)"
+            input-style="min-height: 220px; font-family: var(--font-mono, ui-monospace, monospace)"
             :disable="saving"
             :rules="[(v) => !!String(v || '').trim() || '发布前正文必填；草稿也建议填写']"
           />

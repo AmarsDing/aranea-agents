@@ -517,4 +517,45 @@ const formattedTime = computed(() => {
   &__input
     :deep(.q-field__append)
       padding: 0 4px
+
+// 移动端（<600px，与 $q.screen.lt.sm 一致，72 §3.2 触控化）
+@media (max-width: 599px)
+  // 触控目标 ≥44px：输入框与暂停/注入按钮
+  .member-input-bar__input
+    :deep(.q-field__control)
+      min-height: 44px
+
+    :deep(.q-field__append .q-btn)
+      min-width: 44px
+      min-height: 44px
+
+  // 弹框内嵌（flat）：面板撑满最大化弹框，活动流内部滚动，输入栏固定底部操作区
+  .member-session-panel--flat
+    display: flex
+    flex-direction: column
+    flex: 1 1 auto
+    min-height: 0
+
+    .member-header
+      flex: 0 0 auto
+
+    .member-body
+      flex: 1 1 auto
+      min-height: 0
+      display: flex
+      flex-direction: column
+
+    .member-error,
+    .member-instruction
+      flex: 0 0 auto
+
+    .member-activities
+      flex: 1 1 auto
+      min-height: 0
+      max-height: none
+
+    .member-input-bar
+      flex: 0 0 auto
+      // Android 手势导航条安全区
+      padding-bottom: env(safe-area-inset-bottom, 0)
 </style>

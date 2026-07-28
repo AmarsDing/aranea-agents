@@ -30,6 +30,9 @@ import (
 	"aranea-agents/internal/data/ent/eventdeliveryoutbox"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/failurepattern"
+	"aranea-agents/internal/data/ent/federationauditlog"
+	"aranea-agents/internal/data/ent/federationorg"
+	"aranea-agents/internal/data/ent/federationpolicy"
 	"aranea-agents/internal/data/ent/flowlogevent"
 	"aranea-agents/internal/data/ent/gatewaywebhook"
 	"aranea-agents/internal/data/ent/graphdefinition"
@@ -144,6 +147,9 @@ const (
 	TypeEventDeliveryOutbox        = "EventDeliveryOutbox"
 	TypeExperienceReport           = "ExperienceReport"
 	TypeFailurePattern             = "FailurePattern"
+	TypeFederationAuditLog         = "FederationAuditLog"
+	TypeFederationOrg              = "FederationOrg"
+	TypeFederationPolicy           = "FederationPolicy"
 	TypeFlowLogEvent               = "FlowLogEvent"
 	TypeGatewayWebhook             = "GatewayWebhook"
 	TypeGraphDefinition            = "GraphDefinition"
@@ -34207,6 +34213,2457 @@ func (m *FailurePatternMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *FailurePatternMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown FailurePattern edge %s", name)
+}
+
+// FederationAuditLogMutation represents an operation that mutates the FederationAuditLog nodes in the graph.
+type FederationAuditLogMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *string
+	direction       *federationauditlog.Direction
+	caller_org_id   *string
+	callee_org_id   *string
+	caller_agent_id *string
+	callee_agent_id *string
+	capability      *string
+	decision        *federationauditlog.Decision
+	status          *federationauditlog.Status
+	latency_ms      *int64
+	addlatency_ms   *int64
+	error_message   *string
+	created_at      *time.Time
+	updated_at      *time.Time
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*FederationAuditLog, error)
+	predicates      []predicate.FederationAuditLog
+}
+
+var _ ent.Mutation = (*FederationAuditLogMutation)(nil)
+
+// federationauditlogOption allows management of the mutation configuration using functional options.
+type federationauditlogOption func(*FederationAuditLogMutation)
+
+// newFederationAuditLogMutation creates new mutation for the FederationAuditLog entity.
+func newFederationAuditLogMutation(c config, op Op, opts ...federationauditlogOption) *FederationAuditLogMutation {
+	m := &FederationAuditLogMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeFederationAuditLog,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withFederationAuditLogID sets the ID field of the mutation.
+func withFederationAuditLogID(id string) federationauditlogOption {
+	return func(m *FederationAuditLogMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *FederationAuditLog
+		)
+		m.oldValue = func(ctx context.Context) (*FederationAuditLog, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().FederationAuditLog.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withFederationAuditLog sets the old FederationAuditLog of the mutation.
+func withFederationAuditLog(node *FederationAuditLog) federationauditlogOption {
+	return func(m *FederationAuditLogMutation) {
+		m.oldValue = func(context.Context) (*FederationAuditLog, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m FederationAuditLogMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m FederationAuditLogMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of FederationAuditLog entities.
+func (m *FederationAuditLogMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *FederationAuditLogMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *FederationAuditLogMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().FederationAuditLog.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetDirection sets the "direction" field.
+func (m *FederationAuditLogMutation) SetDirection(f federationauditlog.Direction) {
+	m.direction = &f
+}
+
+// Direction returns the value of the "direction" field in the mutation.
+func (m *FederationAuditLogMutation) Direction() (r federationauditlog.Direction, exists bool) {
+	v := m.direction
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDirection returns the old "direction" field's value of the FederationAuditLog entity.
+// If the FederationAuditLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationAuditLogMutation) OldDirection(ctx context.Context) (v federationauditlog.Direction, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDirection is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDirection requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDirection: %w", err)
+	}
+	return oldValue.Direction, nil
+}
+
+// ResetDirection resets all changes to the "direction" field.
+func (m *FederationAuditLogMutation) ResetDirection() {
+	m.direction = nil
+}
+
+// SetCallerOrgID sets the "caller_org_id" field.
+func (m *FederationAuditLogMutation) SetCallerOrgID(s string) {
+	m.caller_org_id = &s
+}
+
+// CallerOrgID returns the value of the "caller_org_id" field in the mutation.
+func (m *FederationAuditLogMutation) CallerOrgID() (r string, exists bool) {
+	v := m.caller_org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCallerOrgID returns the old "caller_org_id" field's value of the FederationAuditLog entity.
+// If the FederationAuditLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationAuditLogMutation) OldCallerOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCallerOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCallerOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCallerOrgID: %w", err)
+	}
+	return oldValue.CallerOrgID, nil
+}
+
+// ResetCallerOrgID resets all changes to the "caller_org_id" field.
+func (m *FederationAuditLogMutation) ResetCallerOrgID() {
+	m.caller_org_id = nil
+}
+
+// SetCalleeOrgID sets the "callee_org_id" field.
+func (m *FederationAuditLogMutation) SetCalleeOrgID(s string) {
+	m.callee_org_id = &s
+}
+
+// CalleeOrgID returns the value of the "callee_org_id" field in the mutation.
+func (m *FederationAuditLogMutation) CalleeOrgID() (r string, exists bool) {
+	v := m.callee_org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCalleeOrgID returns the old "callee_org_id" field's value of the FederationAuditLog entity.
+// If the FederationAuditLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationAuditLogMutation) OldCalleeOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCalleeOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCalleeOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCalleeOrgID: %w", err)
+	}
+	return oldValue.CalleeOrgID, nil
+}
+
+// ResetCalleeOrgID resets all changes to the "callee_org_id" field.
+func (m *FederationAuditLogMutation) ResetCalleeOrgID() {
+	m.callee_org_id = nil
+}
+
+// SetCallerAgentID sets the "caller_agent_id" field.
+func (m *FederationAuditLogMutation) SetCallerAgentID(s string) {
+	m.caller_agent_id = &s
+}
+
+// CallerAgentID returns the value of the "caller_agent_id" field in the mutation.
+func (m *FederationAuditLogMutation) CallerAgentID() (r string, exists bool) {
+	v := m.caller_agent_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCallerAgentID returns the old "caller_agent_id" field's value of the FederationAuditLog entity.
+// If the FederationAuditLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationAuditLogMutation) OldCallerAgentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCallerAgentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCallerAgentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCallerAgentID: %w", err)
+	}
+	return oldValue.CallerAgentID, nil
+}
+
+// ResetCallerAgentID resets all changes to the "caller_agent_id" field.
+func (m *FederationAuditLogMutation) ResetCallerAgentID() {
+	m.caller_agent_id = nil
+}
+
+// SetCalleeAgentID sets the "callee_agent_id" field.
+func (m *FederationAuditLogMutation) SetCalleeAgentID(s string) {
+	m.callee_agent_id = &s
+}
+
+// CalleeAgentID returns the value of the "callee_agent_id" field in the mutation.
+func (m *FederationAuditLogMutation) CalleeAgentID() (r string, exists bool) {
+	v := m.callee_agent_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCalleeAgentID returns the old "callee_agent_id" field's value of the FederationAuditLog entity.
+// If the FederationAuditLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationAuditLogMutation) OldCalleeAgentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCalleeAgentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCalleeAgentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCalleeAgentID: %w", err)
+	}
+	return oldValue.CalleeAgentID, nil
+}
+
+// ResetCalleeAgentID resets all changes to the "callee_agent_id" field.
+func (m *FederationAuditLogMutation) ResetCalleeAgentID() {
+	m.callee_agent_id = nil
+}
+
+// SetCapability sets the "capability" field.
+func (m *FederationAuditLogMutation) SetCapability(s string) {
+	m.capability = &s
+}
+
+// Capability returns the value of the "capability" field in the mutation.
+func (m *FederationAuditLogMutation) Capability() (r string, exists bool) {
+	v := m.capability
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCapability returns the old "capability" field's value of the FederationAuditLog entity.
+// If the FederationAuditLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationAuditLogMutation) OldCapability(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCapability is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCapability requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCapability: %w", err)
+	}
+	return oldValue.Capability, nil
+}
+
+// ResetCapability resets all changes to the "capability" field.
+func (m *FederationAuditLogMutation) ResetCapability() {
+	m.capability = nil
+}
+
+// SetDecision sets the "decision" field.
+func (m *FederationAuditLogMutation) SetDecision(f federationauditlog.Decision) {
+	m.decision = &f
+}
+
+// Decision returns the value of the "decision" field in the mutation.
+func (m *FederationAuditLogMutation) Decision() (r federationauditlog.Decision, exists bool) {
+	v := m.decision
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDecision returns the old "decision" field's value of the FederationAuditLog entity.
+// If the FederationAuditLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationAuditLogMutation) OldDecision(ctx context.Context) (v federationauditlog.Decision, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDecision is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDecision requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDecision: %w", err)
+	}
+	return oldValue.Decision, nil
+}
+
+// ResetDecision resets all changes to the "decision" field.
+func (m *FederationAuditLogMutation) ResetDecision() {
+	m.decision = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *FederationAuditLogMutation) SetStatus(f federationauditlog.Status) {
+	m.status = &f
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *FederationAuditLogMutation) Status() (r federationauditlog.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the FederationAuditLog entity.
+// If the FederationAuditLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationAuditLogMutation) OldStatus(ctx context.Context) (v federationauditlog.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *FederationAuditLogMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetLatencyMs sets the "latency_ms" field.
+func (m *FederationAuditLogMutation) SetLatencyMs(i int64) {
+	m.latency_ms = &i
+	m.addlatency_ms = nil
+}
+
+// LatencyMs returns the value of the "latency_ms" field in the mutation.
+func (m *FederationAuditLogMutation) LatencyMs() (r int64, exists bool) {
+	v := m.latency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLatencyMs returns the old "latency_ms" field's value of the FederationAuditLog entity.
+// If the FederationAuditLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationAuditLogMutation) OldLatencyMs(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLatencyMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLatencyMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLatencyMs: %w", err)
+	}
+	return oldValue.LatencyMs, nil
+}
+
+// AddLatencyMs adds i to the "latency_ms" field.
+func (m *FederationAuditLogMutation) AddLatencyMs(i int64) {
+	if m.addlatency_ms != nil {
+		*m.addlatency_ms += i
+	} else {
+		m.addlatency_ms = &i
+	}
+}
+
+// AddedLatencyMs returns the value that was added to the "latency_ms" field in this mutation.
+func (m *FederationAuditLogMutation) AddedLatencyMs() (r int64, exists bool) {
+	v := m.addlatency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLatencyMs resets all changes to the "latency_ms" field.
+func (m *FederationAuditLogMutation) ResetLatencyMs() {
+	m.latency_ms = nil
+	m.addlatency_ms = nil
+}
+
+// SetErrorMessage sets the "error_message" field.
+func (m *FederationAuditLogMutation) SetErrorMessage(s string) {
+	m.error_message = &s
+}
+
+// ErrorMessage returns the value of the "error_message" field in the mutation.
+func (m *FederationAuditLogMutation) ErrorMessage() (r string, exists bool) {
+	v := m.error_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorMessage returns the old "error_message" field's value of the FederationAuditLog entity.
+// If the FederationAuditLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationAuditLogMutation) OldErrorMessage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorMessage: %w", err)
+	}
+	return oldValue.ErrorMessage, nil
+}
+
+// ResetErrorMessage resets all changes to the "error_message" field.
+func (m *FederationAuditLogMutation) ResetErrorMessage() {
+	m.error_message = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *FederationAuditLogMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *FederationAuditLogMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the FederationAuditLog entity.
+// If the FederationAuditLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationAuditLogMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *FederationAuditLogMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *FederationAuditLogMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *FederationAuditLogMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the FederationAuditLog entity.
+// If the FederationAuditLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationAuditLogMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *FederationAuditLogMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the FederationAuditLogMutation builder.
+func (m *FederationAuditLogMutation) Where(ps ...predicate.FederationAuditLog) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the FederationAuditLogMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *FederationAuditLogMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.FederationAuditLog, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *FederationAuditLogMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *FederationAuditLogMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (FederationAuditLog).
+func (m *FederationAuditLogMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *FederationAuditLogMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.direction != nil {
+		fields = append(fields, federationauditlog.FieldDirection)
+	}
+	if m.caller_org_id != nil {
+		fields = append(fields, federationauditlog.FieldCallerOrgID)
+	}
+	if m.callee_org_id != nil {
+		fields = append(fields, federationauditlog.FieldCalleeOrgID)
+	}
+	if m.caller_agent_id != nil {
+		fields = append(fields, federationauditlog.FieldCallerAgentID)
+	}
+	if m.callee_agent_id != nil {
+		fields = append(fields, federationauditlog.FieldCalleeAgentID)
+	}
+	if m.capability != nil {
+		fields = append(fields, federationauditlog.FieldCapability)
+	}
+	if m.decision != nil {
+		fields = append(fields, federationauditlog.FieldDecision)
+	}
+	if m.status != nil {
+		fields = append(fields, federationauditlog.FieldStatus)
+	}
+	if m.latency_ms != nil {
+		fields = append(fields, federationauditlog.FieldLatencyMs)
+	}
+	if m.error_message != nil {
+		fields = append(fields, federationauditlog.FieldErrorMessage)
+	}
+	if m.created_at != nil {
+		fields = append(fields, federationauditlog.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, federationauditlog.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *FederationAuditLogMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case federationauditlog.FieldDirection:
+		return m.Direction()
+	case federationauditlog.FieldCallerOrgID:
+		return m.CallerOrgID()
+	case federationauditlog.FieldCalleeOrgID:
+		return m.CalleeOrgID()
+	case federationauditlog.FieldCallerAgentID:
+		return m.CallerAgentID()
+	case federationauditlog.FieldCalleeAgentID:
+		return m.CalleeAgentID()
+	case federationauditlog.FieldCapability:
+		return m.Capability()
+	case federationauditlog.FieldDecision:
+		return m.Decision()
+	case federationauditlog.FieldStatus:
+		return m.Status()
+	case federationauditlog.FieldLatencyMs:
+		return m.LatencyMs()
+	case federationauditlog.FieldErrorMessage:
+		return m.ErrorMessage()
+	case federationauditlog.FieldCreatedAt:
+		return m.CreatedAt()
+	case federationauditlog.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *FederationAuditLogMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case federationauditlog.FieldDirection:
+		return m.OldDirection(ctx)
+	case federationauditlog.FieldCallerOrgID:
+		return m.OldCallerOrgID(ctx)
+	case federationauditlog.FieldCalleeOrgID:
+		return m.OldCalleeOrgID(ctx)
+	case federationauditlog.FieldCallerAgentID:
+		return m.OldCallerAgentID(ctx)
+	case federationauditlog.FieldCalleeAgentID:
+		return m.OldCalleeAgentID(ctx)
+	case federationauditlog.FieldCapability:
+		return m.OldCapability(ctx)
+	case federationauditlog.FieldDecision:
+		return m.OldDecision(ctx)
+	case federationauditlog.FieldStatus:
+		return m.OldStatus(ctx)
+	case federationauditlog.FieldLatencyMs:
+		return m.OldLatencyMs(ctx)
+	case federationauditlog.FieldErrorMessage:
+		return m.OldErrorMessage(ctx)
+	case federationauditlog.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case federationauditlog.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown FederationAuditLog field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *FederationAuditLogMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case federationauditlog.FieldDirection:
+		v, ok := value.(federationauditlog.Direction)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDirection(v)
+		return nil
+	case federationauditlog.FieldCallerOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCallerOrgID(v)
+		return nil
+	case federationauditlog.FieldCalleeOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCalleeOrgID(v)
+		return nil
+	case federationauditlog.FieldCallerAgentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCallerAgentID(v)
+		return nil
+	case federationauditlog.FieldCalleeAgentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCalleeAgentID(v)
+		return nil
+	case federationauditlog.FieldCapability:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCapability(v)
+		return nil
+	case federationauditlog.FieldDecision:
+		v, ok := value.(federationauditlog.Decision)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDecision(v)
+		return nil
+	case federationauditlog.FieldStatus:
+		v, ok := value.(federationauditlog.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case federationauditlog.FieldLatencyMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLatencyMs(v)
+		return nil
+	case federationauditlog.FieldErrorMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorMessage(v)
+		return nil
+	case federationauditlog.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case federationauditlog.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown FederationAuditLog field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *FederationAuditLogMutation) AddedFields() []string {
+	var fields []string
+	if m.addlatency_ms != nil {
+		fields = append(fields, federationauditlog.FieldLatencyMs)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *FederationAuditLogMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case federationauditlog.FieldLatencyMs:
+		return m.AddedLatencyMs()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *FederationAuditLogMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case federationauditlog.FieldLatencyMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLatencyMs(v)
+		return nil
+	}
+	return fmt.Errorf("unknown FederationAuditLog numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *FederationAuditLogMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *FederationAuditLogMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *FederationAuditLogMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown FederationAuditLog nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *FederationAuditLogMutation) ResetField(name string) error {
+	switch name {
+	case federationauditlog.FieldDirection:
+		m.ResetDirection()
+		return nil
+	case federationauditlog.FieldCallerOrgID:
+		m.ResetCallerOrgID()
+		return nil
+	case federationauditlog.FieldCalleeOrgID:
+		m.ResetCalleeOrgID()
+		return nil
+	case federationauditlog.FieldCallerAgentID:
+		m.ResetCallerAgentID()
+		return nil
+	case federationauditlog.FieldCalleeAgentID:
+		m.ResetCalleeAgentID()
+		return nil
+	case federationauditlog.FieldCapability:
+		m.ResetCapability()
+		return nil
+	case federationauditlog.FieldDecision:
+		m.ResetDecision()
+		return nil
+	case federationauditlog.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case federationauditlog.FieldLatencyMs:
+		m.ResetLatencyMs()
+		return nil
+	case federationauditlog.FieldErrorMessage:
+		m.ResetErrorMessage()
+		return nil
+	case federationauditlog.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case federationauditlog.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown FederationAuditLog field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *FederationAuditLogMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *FederationAuditLogMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *FederationAuditLogMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *FederationAuditLogMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *FederationAuditLogMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *FederationAuditLogMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *FederationAuditLogMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown FederationAuditLog unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *FederationAuditLogMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown FederationAuditLog edge %s", name)
+}
+
+// FederationOrgMutation represents an operation that mutates the FederationOrg nodes in the graph.
+type FederationOrgMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *string
+	name             *string
+	domain           *string
+	public_base_url  *string
+	trust_level      *federationorg.TrustLevel
+	auth_type        *string
+	auth_config_json *string
+	status           *federationorg.Status
+	joined_at        *time.Time
+	updated_at       *time.Time
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*FederationOrg, error)
+	predicates       []predicate.FederationOrg
+}
+
+var _ ent.Mutation = (*FederationOrgMutation)(nil)
+
+// federationorgOption allows management of the mutation configuration using functional options.
+type federationorgOption func(*FederationOrgMutation)
+
+// newFederationOrgMutation creates new mutation for the FederationOrg entity.
+func newFederationOrgMutation(c config, op Op, opts ...federationorgOption) *FederationOrgMutation {
+	m := &FederationOrgMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeFederationOrg,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withFederationOrgID sets the ID field of the mutation.
+func withFederationOrgID(id string) federationorgOption {
+	return func(m *FederationOrgMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *FederationOrg
+		)
+		m.oldValue = func(ctx context.Context) (*FederationOrg, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().FederationOrg.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withFederationOrg sets the old FederationOrg of the mutation.
+func withFederationOrg(node *FederationOrg) federationorgOption {
+	return func(m *FederationOrgMutation) {
+		m.oldValue = func(context.Context) (*FederationOrg, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m FederationOrgMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m FederationOrgMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of FederationOrg entities.
+func (m *FederationOrgMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *FederationOrgMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *FederationOrgMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().FederationOrg.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetName sets the "name" field.
+func (m *FederationOrgMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *FederationOrgMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the FederationOrg entity.
+// If the FederationOrg object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationOrgMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *FederationOrgMutation) ResetName() {
+	m.name = nil
+}
+
+// SetDomain sets the "domain" field.
+func (m *FederationOrgMutation) SetDomain(s string) {
+	m.domain = &s
+}
+
+// Domain returns the value of the "domain" field in the mutation.
+func (m *FederationOrgMutation) Domain() (r string, exists bool) {
+	v := m.domain
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDomain returns the old "domain" field's value of the FederationOrg entity.
+// If the FederationOrg object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationOrgMutation) OldDomain(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDomain is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDomain requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDomain: %w", err)
+	}
+	return oldValue.Domain, nil
+}
+
+// ResetDomain resets all changes to the "domain" field.
+func (m *FederationOrgMutation) ResetDomain() {
+	m.domain = nil
+}
+
+// SetPublicBaseURL sets the "public_base_url" field.
+func (m *FederationOrgMutation) SetPublicBaseURL(s string) {
+	m.public_base_url = &s
+}
+
+// PublicBaseURL returns the value of the "public_base_url" field in the mutation.
+func (m *FederationOrgMutation) PublicBaseURL() (r string, exists bool) {
+	v := m.public_base_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPublicBaseURL returns the old "public_base_url" field's value of the FederationOrg entity.
+// If the FederationOrg object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationOrgMutation) OldPublicBaseURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPublicBaseURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPublicBaseURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPublicBaseURL: %w", err)
+	}
+	return oldValue.PublicBaseURL, nil
+}
+
+// ResetPublicBaseURL resets all changes to the "public_base_url" field.
+func (m *FederationOrgMutation) ResetPublicBaseURL() {
+	m.public_base_url = nil
+}
+
+// SetTrustLevel sets the "trust_level" field.
+func (m *FederationOrgMutation) SetTrustLevel(fl federationorg.TrustLevel) {
+	m.trust_level = &fl
+}
+
+// TrustLevel returns the value of the "trust_level" field in the mutation.
+func (m *FederationOrgMutation) TrustLevel() (r federationorg.TrustLevel, exists bool) {
+	v := m.trust_level
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTrustLevel returns the old "trust_level" field's value of the FederationOrg entity.
+// If the FederationOrg object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationOrgMutation) OldTrustLevel(ctx context.Context) (v federationorg.TrustLevel, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTrustLevel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTrustLevel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTrustLevel: %w", err)
+	}
+	return oldValue.TrustLevel, nil
+}
+
+// ResetTrustLevel resets all changes to the "trust_level" field.
+func (m *FederationOrgMutation) ResetTrustLevel() {
+	m.trust_level = nil
+}
+
+// SetAuthType sets the "auth_type" field.
+func (m *FederationOrgMutation) SetAuthType(s string) {
+	m.auth_type = &s
+}
+
+// AuthType returns the value of the "auth_type" field in the mutation.
+func (m *FederationOrgMutation) AuthType() (r string, exists bool) {
+	v := m.auth_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAuthType returns the old "auth_type" field's value of the FederationOrg entity.
+// If the FederationOrg object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationOrgMutation) OldAuthType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAuthType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAuthType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAuthType: %w", err)
+	}
+	return oldValue.AuthType, nil
+}
+
+// ResetAuthType resets all changes to the "auth_type" field.
+func (m *FederationOrgMutation) ResetAuthType() {
+	m.auth_type = nil
+}
+
+// SetAuthConfigJSON sets the "auth_config_json" field.
+func (m *FederationOrgMutation) SetAuthConfigJSON(s string) {
+	m.auth_config_json = &s
+}
+
+// AuthConfigJSON returns the value of the "auth_config_json" field in the mutation.
+func (m *FederationOrgMutation) AuthConfigJSON() (r string, exists bool) {
+	v := m.auth_config_json
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAuthConfigJSON returns the old "auth_config_json" field's value of the FederationOrg entity.
+// If the FederationOrg object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationOrgMutation) OldAuthConfigJSON(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAuthConfigJSON is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAuthConfigJSON requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAuthConfigJSON: %w", err)
+	}
+	return oldValue.AuthConfigJSON, nil
+}
+
+// ResetAuthConfigJSON resets all changes to the "auth_config_json" field.
+func (m *FederationOrgMutation) ResetAuthConfigJSON() {
+	m.auth_config_json = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *FederationOrgMutation) SetStatus(f federationorg.Status) {
+	m.status = &f
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *FederationOrgMutation) Status() (r federationorg.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the FederationOrg entity.
+// If the FederationOrg object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationOrgMutation) OldStatus(ctx context.Context) (v federationorg.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *FederationOrgMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetJoinedAt sets the "joined_at" field.
+func (m *FederationOrgMutation) SetJoinedAt(t time.Time) {
+	m.joined_at = &t
+}
+
+// JoinedAt returns the value of the "joined_at" field in the mutation.
+func (m *FederationOrgMutation) JoinedAt() (r time.Time, exists bool) {
+	v := m.joined_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldJoinedAt returns the old "joined_at" field's value of the FederationOrg entity.
+// If the FederationOrg object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationOrgMutation) OldJoinedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldJoinedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldJoinedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldJoinedAt: %w", err)
+	}
+	return oldValue.JoinedAt, nil
+}
+
+// ResetJoinedAt resets all changes to the "joined_at" field.
+func (m *FederationOrgMutation) ResetJoinedAt() {
+	m.joined_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *FederationOrgMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *FederationOrgMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the FederationOrg entity.
+// If the FederationOrg object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationOrgMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *FederationOrgMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the FederationOrgMutation builder.
+func (m *FederationOrgMutation) Where(ps ...predicate.FederationOrg) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the FederationOrgMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *FederationOrgMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.FederationOrg, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *FederationOrgMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *FederationOrgMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (FederationOrg).
+func (m *FederationOrgMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *FederationOrgMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.name != nil {
+		fields = append(fields, federationorg.FieldName)
+	}
+	if m.domain != nil {
+		fields = append(fields, federationorg.FieldDomain)
+	}
+	if m.public_base_url != nil {
+		fields = append(fields, federationorg.FieldPublicBaseURL)
+	}
+	if m.trust_level != nil {
+		fields = append(fields, federationorg.FieldTrustLevel)
+	}
+	if m.auth_type != nil {
+		fields = append(fields, federationorg.FieldAuthType)
+	}
+	if m.auth_config_json != nil {
+		fields = append(fields, federationorg.FieldAuthConfigJSON)
+	}
+	if m.status != nil {
+		fields = append(fields, federationorg.FieldStatus)
+	}
+	if m.joined_at != nil {
+		fields = append(fields, federationorg.FieldJoinedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, federationorg.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *FederationOrgMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case federationorg.FieldName:
+		return m.Name()
+	case federationorg.FieldDomain:
+		return m.Domain()
+	case federationorg.FieldPublicBaseURL:
+		return m.PublicBaseURL()
+	case federationorg.FieldTrustLevel:
+		return m.TrustLevel()
+	case federationorg.FieldAuthType:
+		return m.AuthType()
+	case federationorg.FieldAuthConfigJSON:
+		return m.AuthConfigJSON()
+	case federationorg.FieldStatus:
+		return m.Status()
+	case federationorg.FieldJoinedAt:
+		return m.JoinedAt()
+	case federationorg.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *FederationOrgMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case federationorg.FieldName:
+		return m.OldName(ctx)
+	case federationorg.FieldDomain:
+		return m.OldDomain(ctx)
+	case federationorg.FieldPublicBaseURL:
+		return m.OldPublicBaseURL(ctx)
+	case federationorg.FieldTrustLevel:
+		return m.OldTrustLevel(ctx)
+	case federationorg.FieldAuthType:
+		return m.OldAuthType(ctx)
+	case federationorg.FieldAuthConfigJSON:
+		return m.OldAuthConfigJSON(ctx)
+	case federationorg.FieldStatus:
+		return m.OldStatus(ctx)
+	case federationorg.FieldJoinedAt:
+		return m.OldJoinedAt(ctx)
+	case federationorg.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown FederationOrg field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *FederationOrgMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case federationorg.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case federationorg.FieldDomain:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDomain(v)
+		return nil
+	case federationorg.FieldPublicBaseURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPublicBaseURL(v)
+		return nil
+	case federationorg.FieldTrustLevel:
+		v, ok := value.(federationorg.TrustLevel)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTrustLevel(v)
+		return nil
+	case federationorg.FieldAuthType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAuthType(v)
+		return nil
+	case federationorg.FieldAuthConfigJSON:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAuthConfigJSON(v)
+		return nil
+	case federationorg.FieldStatus:
+		v, ok := value.(federationorg.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case federationorg.FieldJoinedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetJoinedAt(v)
+		return nil
+	case federationorg.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown FederationOrg field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *FederationOrgMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *FederationOrgMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *FederationOrgMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown FederationOrg numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *FederationOrgMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *FederationOrgMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *FederationOrgMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown FederationOrg nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *FederationOrgMutation) ResetField(name string) error {
+	switch name {
+	case federationorg.FieldName:
+		m.ResetName()
+		return nil
+	case federationorg.FieldDomain:
+		m.ResetDomain()
+		return nil
+	case federationorg.FieldPublicBaseURL:
+		m.ResetPublicBaseURL()
+		return nil
+	case federationorg.FieldTrustLevel:
+		m.ResetTrustLevel()
+		return nil
+	case federationorg.FieldAuthType:
+		m.ResetAuthType()
+		return nil
+	case federationorg.FieldAuthConfigJSON:
+		m.ResetAuthConfigJSON()
+		return nil
+	case federationorg.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case federationorg.FieldJoinedAt:
+		m.ResetJoinedAt()
+		return nil
+	case federationorg.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown FederationOrg field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *FederationOrgMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *FederationOrgMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *FederationOrgMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *FederationOrgMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *FederationOrgMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *FederationOrgMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *FederationOrgMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown FederationOrg unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *FederationOrgMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown FederationOrg edge %s", name)
+}
+
+// FederationPolicyMutation represents an operation that mutates the FederationPolicy nodes in the graph.
+type FederationPolicyMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *string
+	caller_org_id  *string
+	callee_org_id  *string
+	action         *federationpolicy.Action
+	max_per_min    *int
+	addmax_per_min *int
+	daily_quota    *int
+	adddaily_quota *int
+	created_at     *time.Time
+	updated_at     *time.Time
+	clearedFields  map[string]struct{}
+	done           bool
+	oldValue       func(context.Context) (*FederationPolicy, error)
+	predicates     []predicate.FederationPolicy
+}
+
+var _ ent.Mutation = (*FederationPolicyMutation)(nil)
+
+// federationpolicyOption allows management of the mutation configuration using functional options.
+type federationpolicyOption func(*FederationPolicyMutation)
+
+// newFederationPolicyMutation creates new mutation for the FederationPolicy entity.
+func newFederationPolicyMutation(c config, op Op, opts ...federationpolicyOption) *FederationPolicyMutation {
+	m := &FederationPolicyMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeFederationPolicy,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withFederationPolicyID sets the ID field of the mutation.
+func withFederationPolicyID(id string) federationpolicyOption {
+	return func(m *FederationPolicyMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *FederationPolicy
+		)
+		m.oldValue = func(ctx context.Context) (*FederationPolicy, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().FederationPolicy.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withFederationPolicy sets the old FederationPolicy of the mutation.
+func withFederationPolicy(node *FederationPolicy) federationpolicyOption {
+	return func(m *FederationPolicyMutation) {
+		m.oldValue = func(context.Context) (*FederationPolicy, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m FederationPolicyMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m FederationPolicyMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of FederationPolicy entities.
+func (m *FederationPolicyMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *FederationPolicyMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *FederationPolicyMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().FederationPolicy.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCallerOrgID sets the "caller_org_id" field.
+func (m *FederationPolicyMutation) SetCallerOrgID(s string) {
+	m.caller_org_id = &s
+}
+
+// CallerOrgID returns the value of the "caller_org_id" field in the mutation.
+func (m *FederationPolicyMutation) CallerOrgID() (r string, exists bool) {
+	v := m.caller_org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCallerOrgID returns the old "caller_org_id" field's value of the FederationPolicy entity.
+// If the FederationPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationPolicyMutation) OldCallerOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCallerOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCallerOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCallerOrgID: %w", err)
+	}
+	return oldValue.CallerOrgID, nil
+}
+
+// ResetCallerOrgID resets all changes to the "caller_org_id" field.
+func (m *FederationPolicyMutation) ResetCallerOrgID() {
+	m.caller_org_id = nil
+}
+
+// SetCalleeOrgID sets the "callee_org_id" field.
+func (m *FederationPolicyMutation) SetCalleeOrgID(s string) {
+	m.callee_org_id = &s
+}
+
+// CalleeOrgID returns the value of the "callee_org_id" field in the mutation.
+func (m *FederationPolicyMutation) CalleeOrgID() (r string, exists bool) {
+	v := m.callee_org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCalleeOrgID returns the old "callee_org_id" field's value of the FederationPolicy entity.
+// If the FederationPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationPolicyMutation) OldCalleeOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCalleeOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCalleeOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCalleeOrgID: %w", err)
+	}
+	return oldValue.CalleeOrgID, nil
+}
+
+// ResetCalleeOrgID resets all changes to the "callee_org_id" field.
+func (m *FederationPolicyMutation) ResetCalleeOrgID() {
+	m.callee_org_id = nil
+}
+
+// SetAction sets the "action" field.
+func (m *FederationPolicyMutation) SetAction(f federationpolicy.Action) {
+	m.action = &f
+}
+
+// Action returns the value of the "action" field in the mutation.
+func (m *FederationPolicyMutation) Action() (r federationpolicy.Action, exists bool) {
+	v := m.action
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAction returns the old "action" field's value of the FederationPolicy entity.
+// If the FederationPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationPolicyMutation) OldAction(ctx context.Context) (v federationpolicy.Action, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAction is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAction requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAction: %w", err)
+	}
+	return oldValue.Action, nil
+}
+
+// ResetAction resets all changes to the "action" field.
+func (m *FederationPolicyMutation) ResetAction() {
+	m.action = nil
+}
+
+// SetMaxPerMin sets the "max_per_min" field.
+func (m *FederationPolicyMutation) SetMaxPerMin(i int) {
+	m.max_per_min = &i
+	m.addmax_per_min = nil
+}
+
+// MaxPerMin returns the value of the "max_per_min" field in the mutation.
+func (m *FederationPolicyMutation) MaxPerMin() (r int, exists bool) {
+	v := m.max_per_min
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxPerMin returns the old "max_per_min" field's value of the FederationPolicy entity.
+// If the FederationPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationPolicyMutation) OldMaxPerMin(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxPerMin is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxPerMin requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxPerMin: %w", err)
+	}
+	return oldValue.MaxPerMin, nil
+}
+
+// AddMaxPerMin adds i to the "max_per_min" field.
+func (m *FederationPolicyMutation) AddMaxPerMin(i int) {
+	if m.addmax_per_min != nil {
+		*m.addmax_per_min += i
+	} else {
+		m.addmax_per_min = &i
+	}
+}
+
+// AddedMaxPerMin returns the value that was added to the "max_per_min" field in this mutation.
+func (m *FederationPolicyMutation) AddedMaxPerMin() (r int, exists bool) {
+	v := m.addmax_per_min
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMaxPerMin resets all changes to the "max_per_min" field.
+func (m *FederationPolicyMutation) ResetMaxPerMin() {
+	m.max_per_min = nil
+	m.addmax_per_min = nil
+}
+
+// SetDailyQuota sets the "daily_quota" field.
+func (m *FederationPolicyMutation) SetDailyQuota(i int) {
+	m.daily_quota = &i
+	m.adddaily_quota = nil
+}
+
+// DailyQuota returns the value of the "daily_quota" field in the mutation.
+func (m *FederationPolicyMutation) DailyQuota() (r int, exists bool) {
+	v := m.daily_quota
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDailyQuota returns the old "daily_quota" field's value of the FederationPolicy entity.
+// If the FederationPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationPolicyMutation) OldDailyQuota(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDailyQuota is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDailyQuota requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDailyQuota: %w", err)
+	}
+	return oldValue.DailyQuota, nil
+}
+
+// AddDailyQuota adds i to the "daily_quota" field.
+func (m *FederationPolicyMutation) AddDailyQuota(i int) {
+	if m.adddaily_quota != nil {
+		*m.adddaily_quota += i
+	} else {
+		m.adddaily_quota = &i
+	}
+}
+
+// AddedDailyQuota returns the value that was added to the "daily_quota" field in this mutation.
+func (m *FederationPolicyMutation) AddedDailyQuota() (r int, exists bool) {
+	v := m.adddaily_quota
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDailyQuota resets all changes to the "daily_quota" field.
+func (m *FederationPolicyMutation) ResetDailyQuota() {
+	m.daily_quota = nil
+	m.adddaily_quota = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *FederationPolicyMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *FederationPolicyMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the FederationPolicy entity.
+// If the FederationPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationPolicyMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *FederationPolicyMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *FederationPolicyMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *FederationPolicyMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the FederationPolicy entity.
+// If the FederationPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FederationPolicyMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *FederationPolicyMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the FederationPolicyMutation builder.
+func (m *FederationPolicyMutation) Where(ps ...predicate.FederationPolicy) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the FederationPolicyMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *FederationPolicyMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.FederationPolicy, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *FederationPolicyMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *FederationPolicyMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (FederationPolicy).
+func (m *FederationPolicyMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *FederationPolicyMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.caller_org_id != nil {
+		fields = append(fields, federationpolicy.FieldCallerOrgID)
+	}
+	if m.callee_org_id != nil {
+		fields = append(fields, federationpolicy.FieldCalleeOrgID)
+	}
+	if m.action != nil {
+		fields = append(fields, federationpolicy.FieldAction)
+	}
+	if m.max_per_min != nil {
+		fields = append(fields, federationpolicy.FieldMaxPerMin)
+	}
+	if m.daily_quota != nil {
+		fields = append(fields, federationpolicy.FieldDailyQuota)
+	}
+	if m.created_at != nil {
+		fields = append(fields, federationpolicy.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, federationpolicy.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *FederationPolicyMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case federationpolicy.FieldCallerOrgID:
+		return m.CallerOrgID()
+	case federationpolicy.FieldCalleeOrgID:
+		return m.CalleeOrgID()
+	case federationpolicy.FieldAction:
+		return m.Action()
+	case federationpolicy.FieldMaxPerMin:
+		return m.MaxPerMin()
+	case federationpolicy.FieldDailyQuota:
+		return m.DailyQuota()
+	case federationpolicy.FieldCreatedAt:
+		return m.CreatedAt()
+	case federationpolicy.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *FederationPolicyMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case federationpolicy.FieldCallerOrgID:
+		return m.OldCallerOrgID(ctx)
+	case federationpolicy.FieldCalleeOrgID:
+		return m.OldCalleeOrgID(ctx)
+	case federationpolicy.FieldAction:
+		return m.OldAction(ctx)
+	case federationpolicy.FieldMaxPerMin:
+		return m.OldMaxPerMin(ctx)
+	case federationpolicy.FieldDailyQuota:
+		return m.OldDailyQuota(ctx)
+	case federationpolicy.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case federationpolicy.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown FederationPolicy field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *FederationPolicyMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case federationpolicy.FieldCallerOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCallerOrgID(v)
+		return nil
+	case federationpolicy.FieldCalleeOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCalleeOrgID(v)
+		return nil
+	case federationpolicy.FieldAction:
+		v, ok := value.(federationpolicy.Action)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAction(v)
+		return nil
+	case federationpolicy.FieldMaxPerMin:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxPerMin(v)
+		return nil
+	case federationpolicy.FieldDailyQuota:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDailyQuota(v)
+		return nil
+	case federationpolicy.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case federationpolicy.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown FederationPolicy field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *FederationPolicyMutation) AddedFields() []string {
+	var fields []string
+	if m.addmax_per_min != nil {
+		fields = append(fields, federationpolicy.FieldMaxPerMin)
+	}
+	if m.adddaily_quota != nil {
+		fields = append(fields, federationpolicy.FieldDailyQuota)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *FederationPolicyMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case federationpolicy.FieldMaxPerMin:
+		return m.AddedMaxPerMin()
+	case federationpolicy.FieldDailyQuota:
+		return m.AddedDailyQuota()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *FederationPolicyMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case federationpolicy.FieldMaxPerMin:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMaxPerMin(v)
+		return nil
+	case federationpolicy.FieldDailyQuota:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDailyQuota(v)
+		return nil
+	}
+	return fmt.Errorf("unknown FederationPolicy numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *FederationPolicyMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *FederationPolicyMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *FederationPolicyMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown FederationPolicy nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *FederationPolicyMutation) ResetField(name string) error {
+	switch name {
+	case federationpolicy.FieldCallerOrgID:
+		m.ResetCallerOrgID()
+		return nil
+	case federationpolicy.FieldCalleeOrgID:
+		m.ResetCalleeOrgID()
+		return nil
+	case federationpolicy.FieldAction:
+		m.ResetAction()
+		return nil
+	case federationpolicy.FieldMaxPerMin:
+		m.ResetMaxPerMin()
+		return nil
+	case federationpolicy.FieldDailyQuota:
+		m.ResetDailyQuota()
+		return nil
+	case federationpolicy.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case federationpolicy.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown FederationPolicy field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *FederationPolicyMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *FederationPolicyMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *FederationPolicyMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *FederationPolicyMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *FederationPolicyMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *FederationPolicyMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *FederationPolicyMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown FederationPolicy unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *FederationPolicyMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown FederationPolicy edge %s", name)
 }
 
 // FlowLogEventMutation represents an operation that mutates the FlowLogEvent nodes in the graph.

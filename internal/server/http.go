@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	nethttp "net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -68,6 +69,7 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, readines
 		kratoshttp.Filter(
 			CorsDevFilter(),
 			readinessFilter(readiness),
+			loginRateLimitFilter(newLoginLimiter(time.Now), lg),
 			auth.Middleware(lg),
 			servermw.WorkspaceFilter(),
 		),
