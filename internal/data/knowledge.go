@@ -281,7 +281,13 @@ func (r *knowledgeRepo) GetDocumentByRelPath(ctx context.Context, collectionID, 
 		q += ` AND (c.workspace = $3 OR c.workspace = '')`
 		args = append(args, ws)
 	}
-	return scanDocument(r.data.Postgres().QueryRowContext(ctx, q, args...))
+	doc, err := scanDocument(r.data.Postgres().QueryRowContext(ctx, q, args...))
+	if err != nil {
+		// DB-R5：翻译 sql.ErrNoRows → CodeNotFound；vault sync applier 依赖
+		// NotFound 判定走「创建新文档」路径，裸 ErrNoRows 会导致同步失败。
+		return doc, entErrToBizErr(err, "KNOWLEDGE")
+	}
+	return doc, nil
 }
 
 // UpdateDocumentRelPath 文件移动/重命名时更新镜像路径（保留文档身份与索引）。
@@ -334,7 +340,11 @@ func (r *knowledgeRepo) GetDocument(ctx context.Context, id string) (biz.Knowled
 		q += ` AND (c.workspace = $2 OR c.workspace = '')`
 		args = append(args, ws)
 	}
-	return scanDocument(r.data.Postgres().QueryRowContext(ctx, q, args...))
+	doc, err := scanDocument(r.data.Postgres().QueryRowContext(ctx, q, args...))
+	if err != nil {
+		return doc, entErrToBizErr(err, "KNOWLEDGE")
+	}
+	return doc, nil
 }
 
 func (r *knowledgeRepo) UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error {

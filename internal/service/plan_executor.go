@@ -83,6 +83,10 @@ type PlanExecutor struct {
 	// 尚无团队记录），改为 dagRun 活跃期间门控拦截 + board 终态唯一触发。
 	// 后注入打破 Wire 循环（PlanExecutor → TeamStarter → PlanExecutor）。
 	completionNotifier biz.AllTeamsCompletedNotifier
+	// taskPlans 把 PlanBoard 生命周期转换传播到 TaskPlan（task_plans 表），
+	// 修复 TS9-BUG-1：用户可见的 plan 状态此前永远滞留 confirmed。
+	// 可选依赖：nil 时跳过传播（测试 / v1-only 部署）。
+	taskPlans taskPlanStatusUpdater
 }
 
 // boardRunLease holds the cancel func for an in-flight PlanBoard DAG run (C-18).
@@ -135,6 +139,98 @@ func (e *PlanExecutor) SetTeamDispatchMarker(m TeamDispatchMarker) {
 // 移到 dagRun 终态（releaseLeaseAndNotifyCompletion）。
 func (e *PlanExecutor) SetCompletionNotifier(n biz.AllTeamsCompletedNotifier) {
 	e.completionNotifier = n
+}
+
+// taskPlanStatusUpdater 是 TaskPlan 状态传播所需的窄持久化端口
+// （TS9-BUG-1）。由 biz.TaskPlanRepository 满足。
+type taskPlanStatusUpdater interface {
+	GetByID(ctx context.Context, id string) (*biz.TaskPlan, error)
+	Update(ctx context.Context, plan *biz.TaskPlan) (*biz.TaskPlan, error)
+}
+
+// SetTaskPlanUpdater 注入 TaskPlan 状态传播端口（TS9-BUG-1）。
+// 后注入风格与 SetCompletionNotifier 一致。
+func (e *PlanExecutor) SetTaskPlanUpdater(u taskPlanStatusUpdater) {
+	e.taskPlans = u
+}
+
+// taskPlanIDFromBoard 从 PlanBoard ID 还原 TaskPlan ID。PublishV2Board 以
+// "pb_"+plan.ID 派生 board ID；以 rootTaskID/uuid 为 seed 的 board 还原出的
+// ID 不是 plan 主键，GetByID 会 NotFound，传播安全跳过。
+func taskPlanIDFromBoard(planBoardID string) string {
+	return strings.TrimPrefix(planBoardID, "pb_")
+}
+
+// propagateTaskPlanExecuting 在 PlanBoard 进入 executing 时把 TaskPlan 推进到
+// executing（TS9-BUG-1：此前 plan 永远滞留 confirmed）。幂等：仅
+// draft/confirmed 可转换；executing/终态 plan 不动。非阻断：失败仅记日志。
+func (e *PlanExecutor) propagateTaskPlanExecuting(ctx context.Context, planBoardID string) {
+	if e.taskPlans == nil {
+		return
+	}
+	planID := taskPlanIDFromBoard(planBoardID)
+	plan, err := e.taskPlans.GetByID(ctx, planID)
+	if err != nil || plan == nil {
+		e.lg.Debug("propagateTaskPlanExecuting: TaskPlan 不可达，跳过",
+			loggateway.Str("plan_board_id", planBoardID),
+			loggateway.Str("plan_id", planID),
+			loggateway.Err(err))
+		return
+	}
+	if plan.Status != biz.TaskPlanStatusDraft && plan.Status != biz.TaskPlanStatusConfirmed {
+		return
+	}
+	plan.Status = biz.TaskPlanStatusExecuting
+	if _, err := e.taskPlans.Update(ctx, plan); err != nil {
+		e.lg.Warn("propagateTaskPlanExecuting: 更新 TaskPlan 失败（不阻断）",
+			loggateway.Str("plan_id", planID),
+			loggateway.Err(err))
+		return
+	}
+	e.lg.Info("TaskPlan 状态转换: → executing",
+		loggateway.Str("plan_id", planID),
+		loggateway.Str("plan_board_id", planBoardID))
+}
+
+// propagateTaskPlanTerminal 把 PlanBoard 终态映射到 TaskPlan 生命周期
+// （TS9-BUG-1）。映射：Completed/PartialFailure → completed（与
+// publishOrchestrationTerminal 的 orchestration_completed 语义一致）；
+// Failed → failed。已是终态的 plan 不覆盖。非阻断：失败仅记日志。
+func (e *PlanExecutor) propagateTaskPlanTerminal(ctx context.Context, planBoardID string, boardStatus biz.PlanStatus) {
+	if e.taskPlans == nil {
+		return
+	}
+	var next biz.TaskPlanStatus
+	switch boardStatus {
+	case biz.PlanStatusCompleted, biz.PlanStatusPartialFailure:
+		next = biz.TaskPlanStatusCompleted
+	case biz.PlanStatusFailed:
+		next = biz.TaskPlanStatusFailed
+	default:
+		return
+	}
+	planID := taskPlanIDFromBoard(planBoardID)
+	plan, err := e.taskPlans.GetByID(ctx, planID)
+	if err != nil || plan == nil {
+		e.lg.Debug("propagateTaskPlanTerminal: TaskPlan 不可达，跳过",
+			loggateway.Str("plan_board_id", planBoardID),
+			loggateway.Str("plan_id", planID),
+			loggateway.Err(err))
+		return
+	}
+	if plan.Status == biz.TaskPlanStatusCompleted || plan.Status == biz.TaskPlanStatusFailed {
+		return // 已终态，不覆盖
+	}
+	plan.Status = next
+	if _, err := e.taskPlans.Update(ctx, plan); err != nil {
+		e.lg.Warn("propagateTaskPlanTerminal: 更新 TaskPlan 失败（不阻断）",
+			loggateway.Str("plan_id", planID),
+			loggateway.Err(err))
+		return
+	}
+	e.lg.Info("TaskPlan 状态转换: → "+string(next),
+		loggateway.Str("plan_id", planID),
+		loggateway.Str("plan_board_id", planBoardID))
 }
 
 // HasActiveRunForSession reports whether any in-flight dagRun belongs to the
@@ -435,6 +531,8 @@ func (e *PlanExecutor) markPlanBoardExecuting(ctx context.Context, board biz.Pla
 	e.lg.Info("PlanBoard 状态转换: planning → executing",
 		loggateway.Str("plan_board_id", board.ID),
 		loggateway.Str("task_id", board.TaskID))
+	// TS9-BUG-1: 同步推进 TaskPlan confirmed/draft → executing。
+	e.propagateTaskPlanExecuting(ctx, board.ID)
 	return board
 }
 
@@ -750,6 +848,8 @@ func (r *dagRun) publishPlanBoardTerminal(ctx context.Context) {
 	// right after PublishV2Board, before the DAG had executed — a false success.
 	// Now the event fires only when the DAG reaches a terminal state.
 	r.publishOrchestrationTerminal(ctx, newStatus)
+	// TS9-BUG-1: 同步推进 TaskPlan executing → completed/failed。
+	r.pe.propagateTaskPlanTerminal(ctx, r.board.ID, newStatus)
 }
 
 // publishOrchestrationTerminal emits orchestration_completed or
@@ -983,6 +1083,8 @@ func (r *dagRun) publishPlanBoardFailed(ctx context.Context, reason string) {
 		loggateway.Str("plan_board_id", r.board.ID),
 		loggateway.Str("status", string(newStatus)),
 		loggateway.Str("reason", reason))
+	// TS9-BUG-1: 同步推进 TaskPlan → failed。
+	r.pe.propagateTaskPlanTerminal(ctx, r.board.ID, newStatus)
 }
 
 // publishGraphStageFailed 强制将 GraphStage 标记为 Failed 并发布事件。

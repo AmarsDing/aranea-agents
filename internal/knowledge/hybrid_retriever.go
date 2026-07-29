@@ -68,9 +68,6 @@ func NewHybridRetriever(retriever *Retriever, sparse SparseSearcher, lg loggatew
 }
 
 func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery, mode HybridSearchMode) ([]biz.KnowledgeChunk, error) {
-	if h.embedder == nil {
-		return nil, apierror.Unavailable(apierror.DomainKnowledge, "hybrid_retriever: embedder is nil")
-	}
 	if h.dense == nil {
 		return nil, apierror.Unavailable(apierror.DomainKnowledge, "hybrid_retriever: dense repo is nil")
 	}
@@ -78,6 +75,13 @@ func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery
 	topK := q.TopK
 	if topK <= 0 {
 		topK = 5
+	}
+
+	// F5：无语义层（embedder 未配置）时降级 BM25 词法检索——V2 设计 embedding 为
+	// 可选增强，词法检索必须可用。
+	if h.embedder == nil {
+		h.logSparseFallback(q, "embedder is nil", nil)
+		return h.searchSparse(ctx, q, topK)
 	}
 
 	effectiveMode := mode
@@ -95,6 +99,11 @@ func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery
 	default:
 		vec, err := h.embedder.EmbedSingle(ctx, q.Query)
 		if err != nil {
+			// F5：embedder 不可用（未配置/服务不可达）时降级 BM25 词法检索。
+			if apierror.IsCode(err, apierror.CodeUnavailable) {
+				h.logSparseFallback(q, "embed failed", err)
+				return h.searchSparse(ctx, q, topK)
+			}
 			return nil, apierror.Internal(apierror.DomainKnowledge, "hybrid_retriever embed failed").WithCause(err)
 		}
 		searchQ := q
@@ -120,6 +129,19 @@ func (h *HybridRetriever) selectMode(q biz.KnowledgeSearchQuery) HybridSearchMod
 	return HybridRRF
 }
 
+// logSparseFallback 记录语义层 → BM25 词法检索降级（F5）。
+func (h *HybridRetriever) logSparseFallback(q biz.KnowledgeSearchQuery, reason string, cause error) {
+	fields := []loggateway.Field{
+		loggateway.StepID("knowledge.hybrid.sparse_fallback"),
+		loggateway.Str("collection_id", q.CollectionID),
+		loggateway.Str("reason", reason),
+	}
+	if cause != nil {
+		fields = append(fields, loggateway.Err(cause))
+	}
+	h.lg.Warn("语义层不可用，降级 BM25 词法检索", fields...)
+}
+
 func (h *HybridRetriever) searchSparse(ctx context.Context, q biz.KnowledgeSearchQuery, topK int) ([]biz.KnowledgeChunk, error) {
 	if h.sparse == nil {
 		return nil, apierror.Unavailable(apierror.DomainKnowledge, "hybrid_retriever: sparse searcher not configured")
@@ -135,6 +157,11 @@ func (h *HybridRetriever) searchSparse(ctx context.Context, q biz.KnowledgeSearc
 func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQuery, topK int) ([]biz.KnowledgeChunk, error) {
 	vec, err := h.embedder.EmbedSingle(ctx, q.Query)
 	if err != nil {
+		// F5：embedder 不可用时 RRF 降级为纯 BM25 词法检索。
+		if apierror.IsCode(err, apierror.CodeUnavailable) {
+			h.logSparseFallback(q, "rrf embed failed", err)
+			return h.searchSparse(ctx, q, topK)
+		}
 		return nil, apierror.Internal(apierror.DomainKnowledge, "hybrid_retriever embed failed").WithCause(err)
 	}
 

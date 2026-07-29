@@ -46,9 +46,6 @@ func (r *Retriever) HasReranker() bool {
 
 // Search embeds the query, retrieves candidates, optionally reranks, and returns top-k chunks.
 func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
-	if r.embedder == nil {
-		return nil, apierror.Unavailable(apierror.DomainKnowledge, "retriever: embedder is nil")
-	}
 	if r.repo == nil {
 		return nil, apierror.Unavailable(apierror.DomainKnowledge, "retriever: repo is nil")
 	}
@@ -57,8 +54,16 @@ func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 		topK = 5
 	}
 
+	// F5：embedder 缺失或不可用（未配置）时降级 BM25 词法检索——V2 设计 embedding
+	// 为可选增强，无语义层时词法检索必须可用。
+	if r.embedder == nil {
+		return r.searchSparseFallback(ctx, q, topK, "embedder is nil", nil)
+	}
 	vec, err := r.embedQuery(ctx, q.Query)
 	if err != nil {
+		if apierror.IsCode(err, apierror.CodeUnavailable) {
+			return r.searchSparseFallback(ctx, q, topK, "embed failed", err)
+		}
 		return nil, apierror.Internal(apierror.DomainKnowledge, "retriever embed failed").WithCause(err)
 	}
 
@@ -73,6 +78,35 @@ func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 		return nil, err
 	}
 	return r.RerankChunks(ctx, q, chunks, topK)
+}
+
+// searchSparseFallback 经 repo 的 BM25 能力降级检索。biz.Repo 接口刻意不含 BM25
+// （SparseSearcher 独立），此处对 data 层具体实现做类型断言探测；repo 不支持 BM25
+// 时保留原错误语义。
+func (r *Retriever) searchSparseFallback(ctx context.Context, q biz.KnowledgeSearchQuery, topK int, reason string, cause error) ([]biz.KnowledgeChunk, error) {
+	ss, ok := r.repo.(SparseSearcher)
+	if !ok {
+		if cause != nil {
+			return nil, apierror.Internal(apierror.DomainKnowledge, "retriever embed failed").WithCause(cause)
+		}
+		return nil, apierror.Unavailable(apierror.DomainKnowledge, "retriever: embedder is nil and repo has no BM25 fallback")
+	}
+	fields := []loggateway.Field{
+		loggateway.StepID("knowledge.retriever.sparse_fallback"),
+		loggateway.Str("collection_id", q.CollectionID),
+		loggateway.Str("reason", reason),
+	}
+	if cause != nil {
+		fields = append(fields, loggateway.Err(cause))
+	}
+	r.lg.Warn("语义层不可用，降级 BM25 词法检索", fields...)
+
+	q.TopK = topK
+	chunks, err := ss.SearchChunksBM25(ctx, q)
+	if err != nil {
+		return nil, apierror.Internal(apierror.DomainKnowledge, "retriever sparse fallback failed").WithCause(err)
+	}
+	return trimChunks(chunks, topK), nil
 }
 
 // RerankChunks applies the reranker to pre-retrieved chunks and returns top-k results.

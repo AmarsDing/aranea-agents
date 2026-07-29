@@ -2416,6 +2416,7 @@ export default {
   knowledgePage: {
     dropzoneAria: 'Drag or click to upload documents',
     dropzoneTitle: 'Drop files here, or click to select (multiple allowed)',
+    dropzoneCompactTitle: 'Upload files (multiple allowed, organized into Markdown)',
     dropzoneHint:
       'Supports txt / md / json / csv / html / xml / yaml / pdf / doc / docx / xlsx / pptx / png / jpg / webp; content is organized into Markdown on ingest',
     queueTitle: 'Upload queue',
@@ -2514,6 +2515,7 @@ export default {
     searchSemanticHint: 'Press Enter for semantic search',
     searchInstantEmpty: 'No matching files',
     searchSemanticEmpty: 'No semantic results',
+    searchSemanticError: 'Semantic search failed. Check the Embedding configuration (Settings tab) or retry later.',
   },
   hooksPage: {
     callbackPoints: {

@@ -551,6 +551,7 @@ export function useKnowledgePage() {
     notifyError: (message: string) => {
       if (message) $q.notify({ type: 'negative', message });
     },
+    semanticErrorFallback: () => t('knowledgePage.searchSemanticError'),
   });
 
   return {

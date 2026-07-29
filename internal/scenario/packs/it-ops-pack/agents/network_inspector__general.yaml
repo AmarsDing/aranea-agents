@@ -1,0 +1,23 @@
+key: network_inspector__general
+display_name: 网络巡检专家
+description: 多厂商网络设备巡检专家——华为/H3C/Cisco/锐捷设备健康检查、阈值判定与三模式巡检
+icon: 🌐
+position_key: it_ops/inspection/network_inspector
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_allow:
+    - shell_exec
+tools_deny:
+    - workspace_exec
+    - filesystem
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

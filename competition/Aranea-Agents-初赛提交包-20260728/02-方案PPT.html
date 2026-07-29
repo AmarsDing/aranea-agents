@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -128,12 +128,12 @@
 
 <!-- S1 封面 -->
 <section class="slide cover">
-  <div class="badge">GOAI · 赛道一：新智基座丨Agent Infra</div>
+  <div class="badge">GOAI · 赛道一：新智基座丨Agent Infra · 方向一：零人工运维</div>
   <h1>Aranea-Agents</h1>
-  <div class="slogan">一人统领 N 家虚拟公司的多 Agent 编排平台<br>复杂任务多 Agent 自主协同 · 从 Demo 走向 Production</div>
+  <div class="slogan">以社会分工规则组织 AI、以历史活动驱动自我进化的<br>岗位化多 Agent 编排平台</div>
   <div class="meta">
-    赛题：复杂任务多 Agent 自主协同 &nbsp;|&nbsp; 阶段：初赛<br>
-    基于 trpc-agent-go 运行时内核 · Go + Kratos v2 · Vue 3 · 2026-07
+    赛题：零人工运维 —— 告警聚合 · 根因定位 · 修复执行 · 恢复验证 · 事故复盘 全链路自主闭环 &nbsp;|&nbsp; 阶段：初赛<br>
+    基于 trpc-agent-go 运行时内核 · Go + Kratos v2 · PostgreSQL + pgvector · Vue 3 · 2026-07
   </div>
 </section>
 
@@ -145,10 +145,10 @@
   <div class="body"><div class="col">
     <table>
       <tr><th style="width:44%">评审维度</th><th style="width:10%">权重</th><th>本方案对应章节</th></tr>
-      <tr><td>D1 场景价值与行业可复制性</td><td>25%</td><td>§1 场景与价值（行业/部门/岗位模板，274 个职能 Agent）</td></tr>
-      <tr><td>D2 多 Agent 协同与自主闭环能力</td><td>25%</td><td>§2 方案设计（三层编排 + AgentTeams 映射 + 医疗云实跑）</td></tr>
+      <tr><td>D1 场景价值与行业可复制性</td><td>25%</td><td>§1 零人工运维场景（IT 运维行业岗位包：1 公司 / 5 部门 / 12 岗位）</td></tr>
+      <tr><td>D2 多 Agent 协同与自主闭环能力</td><td>25%</td><td>§2 方案设计（三层编排 + AgentTeams 映射 + P2 生产事故实跑闭环）</td></tr>
       <tr><td>D3 Skill 工程体系与生态复用</td><td>25%</td><td>§3 Skill 全生命周期 + 自动进化闭环（核心创新）</td></tr>
-      <tr><td>D4 工程落地、运行验证与安全可审计</td><td>20%</td><td>§4 工具/MCP/RAG/可观测 + 审批回滚审计 + 评测报告</td></tr>
+      <tr><td>D4 工程落地、运行验证与安全可审计</td><td>20%</td><td>§4 工具/MCP/RAG/可观测 + 审批回滚审计 + 9 大场景评测</td></tr>
       <tr><td>D5 开放/开源贡献</td><td>5%</td><td>§5 开源计划、合规披露与落地路线</td></tr>
     </table>
     <div class="quote">硬性要求自查：≥3 个不同职能 Agent ✔ · AgentTeams 为协同设计基点 ✔ · Skill 必选 ✔ · 高风险动作审批/回滚/审计 ✔ · 开源合规披露 ✔</div>
@@ -159,26 +159,26 @@
 <!-- S3 场景与问题 -->
 <section class="slide">
   <div class="kicker">01 · 场景与价值</div>
-  <h2>真实问题：复杂任务需要一支队伍，而不是一个对话框</h2>
-  <div class="sub">个人与中小团队的专业工作本质是「跨职能复杂任务」——市调、投研、研发、运营</div>
+  <h2>真实问题：凌晨三点的告警电话，不该再由人来接</h2>
+  <div class="sub">方向一：零人工运维 —— 「告警聚合 → 根因定位 → 修复执行 → 恢复验证 → 事故复盘」全链路自主闭环</div>
   <div class="body">
     <div class="col">
-      <div class="card"><h3>目标用户</h3><p>独立开发者、咨询/投研从业者、中小企业主、内容创作者——没有预算雇佣完整团队，但任务需要多种专业能力协同。</p></div>
+      <div class="card"><h3>目标用户</h3><p>互联网企业 SRE / 运维团队、中小企业 IT 部门——系统 7×24 在线，但值班专家不可能 7×24 在线；大促、夜间、节假日是事故高发期，也是人力最薄弱期。</p></div>
       <div class="card"><h3>核心痛点</h3><ul>
-        <li><b>单 Agent 天花板</b>：一个对话窗口无法同时扮演研究员、分析师、财务、写手</li>
-        <li><b>编排黑盒</b>：多 Agent 过程不可观测、不可调试、不可回溯</li>
-        <li><b>经验流失</b>：每次任务从零开始，方法论无法沉淀复用</li>
-        <li><b>成本与安全失控</b>：Token 账单不透明，高风险动作无审批无审计</li>
+        <li><b>告警风暴</b>：监控系统各自为政，一次故障触发上百条告警，真实根因被噪音淹没</li>
+        <li><b>MTTR 居高不下</b>：定位靠专家经验逐层排查，小时级响应成为常态</li>
+        <li><b>经验在人脑里</b>：资深工程师离职，排障方法论随之流失，复盘报告写完即归档</li>
+        <li><b>自动化不敢放权</b>：脚本化运维无法应对未知场景，AI 直接操作生产环境又无人敢批</li>
       </ul></div>
     </div>
     <div class="col">
       <div class="card"><h3>业务价值（可感知收益）</h3><ul>
-        <li><b>效率</b>：一份带竞品分析与成本估算的策略简报，从「数天人工」到「一次指令、分钟级闭环」</li>
-        <li><b>质量</b>：专人专事 + 生成-评审循环，产出经多角色交叉验证</li>
-        <li><b>知识沉淀</b>：方法论固化为 Skill，越用越强</li>
-        <li><b>风险控制</b>：高风险动作人工确认，全程留痕可审计</li>
+        <li><b>效率</b>：P2 事故从告警到恢复验证，由「小时级人工排查」到「分钟级自主闭环」（实跑：502 错误率 23%→0.03%）</li>
+        <li><b>质量</b>：岗位专家交叉验证，根因定位给出直接/间接/系统三层结论与置信度</li>
+        <li><b>知识沉淀</b>：处置经验固化为 Skill 与复盘知识库，平台随事故处置持续进化</li>
+        <li><b>风险控制</b>：高危动作强制人工审批 + 全程审计 + 可回滚，AI 不越权</li>
       </ul></div>
-      <div class="card"><h3>行业可复制性</h3><p>「行业 → 部门 → 岗位」三级组织模板：内置金融（6 部门 / 30+ 岗位 / 8 团队）、自媒体、软件开发三大行业；同一套编排引擎 + Skill 体系可复制到医疗、电商、政务等任何知识密集型行业。</p></div>
+      <div class="card"><h3>行业可复制性</h3><p>「行业 → 部门 → 岗位」三级组织模板：IT 运维行业包内置 5 部门 / 12 岗位（告警处理、故障诊断、变更执行、DBA、复盘…）；同一套编排引擎 + Skill 体系可复制到金融、政务、能源等任何有运维闭环诉求的行业。</p></div>
     </div>
   </div>
   <div class="footer"><span>D1 场景价值与行业可复制性 · 25%</span><span class="pgnum"></span></div>
@@ -187,27 +187,47 @@
 <!-- S4 平台全貌 -->
 <section class="slide">
   <div class="kicker">01 · 场景与价值</div>
-  <h2>平台全貌：274 个职能 Agent 的「虚拟公司」</h2>
-  <div class="sub">模拟现实公司组织架构——分行业、分部门、分岗位，专人专事</div>
+  <h2>平台全貌：304 个职能 Agent 的「岗位化数字组织」</h2>
+  <div class="sub">以现实社会分工规则静态定义岗位职责、能力边界与工具白名单——不是 AI 即兴生成的临时工</div>
   <div class="body">
     <div class="col" style="flex:1.25">
-      <div><img class="shot" src="evidence/ts1-01-agents-list.png" alt="Agent 列表"><div class="shot-cap">图：Agent 资产列表（实测 274 个 Agent，API 证据 api/ts1-agents-count.json）</div></div>
+      <div><img class="shot" src="evidence/ts1-01-agents-list.png" alt="Agent 列表"><div class="shot-cap">图：Agent 资产列表（实测 304 个 Agent，含 IT 运维行业 12 岗位；API 证据 api/ts1-agents-count.json、api/ts9-itops-agents.json）</div></div>
     </div>
     <div class="col">
       <div class="grid2">
-        <div class="card"><div class="num">274<small>职能 Agent（实测）</small></div></div>
-        <div class="card"><div class="num">3<small>内置行业 · 16+ 部门</small></div></div>
+        <div class="card"><div class="num">304<small>职能 Agent（实测）</small></div></div>
+        <div class="card"><div class="num">4<small>内置行业 · 21+ 部门</small></div></div>
         <div class="card"><div class="num">65<small>内置工具</small></div></div>
-        <div class="card"><div class="num">13<small>IM 通道接入</small></div></div>
+        <div class="card"><div class="num">12<small>IT 运维岗位</small></div></div>
       </div>
-      <div class="card"><h3>系统内置职能角色</h3><ul>
-        <li><b>精灵助手（Spirit）</b>：用户唯一入口，动态编排引擎</li>
-        <li><b>部门主管 Agent</b>：资源协调与跨部门交付审批</li>
-        <li><b>岗位专家 Agent</b>：量化研究、合规、市场研究、成本估算…</li>
-        <li><b>系统管家</b>：记忆管家 / 技能管家 / 系统管理</li>
+      <div class="card"><h3>岗位化静态编组 vs 即兴生成子 Agent</h3><ul>
+        <li><b>职责先验定义</b>：岗位说明书（MISSION/RULE/IDENTITY）落库，不随上下文稀释</li>
+        <li><b>权限最小化</b>：每岗位 tools_allow/deny 白名单，越权调用在引擎层拒绝</li>
+        <li><b>可审计可复制</b>：岗位包声明式 YAML，一键导入导出、跨行业分发</li>
       </ul></div>
     </div>
   </div>
+  <div class="footer"><span>D1 场景价值与行业可复制性 · 25%</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S4b 核心技术矩阵 -->
+<section class="slide">
+  <div class="kicker">01 · 场景与价值 · 核心技术矩阵</div>
+  <h2>六大业务模块，六项核心技术</h2>
+  <div class="sub">每项技术直击多 Agent 系统走向 Production 的一个关键失效点</div>
+  <div class="body"><div class="col">
+    <div class="grid3">
+      <div class="card"><h3>① 岗位化静态编组</h3><p>行业→部门→岗位三级科层模型；岗位说明书（Mission/Rule/Identity）+ 工具白名单先验落库。相比 LLM 即兴生成子 Agent，<b>方向约束不漂移、权限边界可审计</b>。</p></div>
+      <div class="card"><h3>② 确定性编排引擎</h3><p>三层引擎：Team 六模式 / Graph 状态机图 / Spirit 动态规划。任务编译为 <b>DAG 拓扑序</b>，由引擎状态机硬驱动推进；连跳上限安全阀防全自动空转。</p></div>
+      <div class="card"><h3>③ 预规划硬门控</h3><p>复杂度评估 + plan draft 人工 confirm 后方可执行；Gate 支持 auto / user / conditional 三模式。<b>流程控制权归引擎，AI 无权跳关</b>。</p></div>
+    </div>
+    <div class="grid3">
+      <div class="card"><h3>④ Skill 自动进化</h3><p>从历史活动观测挖掘高频工具调用模式（Pattern Hash 幂等去重），LLM 合成新 Skill 经<b>审批状态机</b>注册发布——平台依据运行经验自我生长。</p></div>
+      <div class="card"><h3>⑤ 五层记忆 + 共享黑板</h3><p>L0-L4 记忆谱系（上下文/工作/情景/语义/图谱）+ Graph StateFields 黑板与 deliverable 产物引用；<b>认知信封</b>（decisions/assumptions/confidence）随上下文跨团队传递，决策不稀释。</p></div>
+      <div class="card"><h3>⑥ 全链路可观测与治理</h3><p>Trace / Flow Log / Metrics 三类数据贯穿 LLM·Skill·工具调用；高危动作 confirmation_guard 审批、版本回滚、审计留痕、Token 六维成本计量。</p></div>
+    </div>
+    <div class="quote">设计哲学：让引擎管流程，让模型管执行——流程是制度不是建议，制度不会偷懒，AI 会。</div>
+  </div></div>
   <div class="footer"><span>D1 场景价值与行业可复制性 · 25%</span><span class="pgnum"></span></div>
 </section>
 
@@ -224,7 +244,7 @@
 │   Team 六模式：sequential / parallel / coordinator / critic_loop / swarm / adaptive
 │   Graph 图编排：节点+条件边+Checkpoint+TimeTravel
 │
-├ <b>多 Agent 协同层</b> ─── 274 个职能 Agent（行业/部门/岗位）
+├ <b>多 Agent 协同层</b> ─── 304 个职能 Agent（行业/部门/岗位，含 IT 运维 12 岗位）
 │
 ├ <b>Skill 能力层</b> ─── 全生命周期：注册/版本/渐进加载/进化/审批/消亡
 │
@@ -236,7 +256,7 @@
     <div class="grid3">
       <div class="card"><h3>传输</h3><p>Kratos v2：HTTP / gRPC / WebSocket</p></div>
       <div class="card"><h3>运行时内核</h3><p>trpc-agent-go：Runner / Agent / Session / Skill / Graph / Team</p></div>
-      <div class="card"><h3>存储</h3><p>SQLite（Ent ORM，WAL 读写分离）+ PostgreSQL/pgvector（可选向量）</p></div>
+      <div class="card"><h3>存储</h3><p>PostgreSQL（Ent ORM，双池读写分离）+ pgvector 向量检索</p></div>
     </div>
   </div></div>
   <div class="footer"><span>D2 多 Agent 协同 · 25%</span><span class="pgnum"></span></div>
@@ -279,37 +299,42 @@
   <div class="sub">角色编排、任务拆解、上下文传递、协同执行、状态追踪——逐条映射并有实证</div>
   <div class="body"><div class="col">
     <table>
-      <tr><th style="width:18%">AgentTeams 要素</th><th style="width:42%">本平台实现</th><th>实证证据</th></tr>
-      <tr><td><b>角色编排</b></td><td>Orchestrator / Worker / Synthesizer 角色 + coordinator 协调模式，团队成员按职能分工</td><td>ts2-03 团队组建截图；team-run definitionSnapshot 拓扑</td></tr>
-      <tr><td><b>任务拆解</b></td><td>plan_and_execute：任务规划 → todo 计划 → DAG 步骤（环检测 + 拓扑排序）</td><td>ts2-02/03；DAG 约 5 步</td></tr>
-      <tr><td><b>上下文传递</b></td><td>Graph StateFields 团队共享黑板 + set/get_deliverable 产物引用 + 五层记忆</td><td>ts2-04；历史 run inputPreview 含「上游交付物」</td></tr>
-      <tr><td><b>协同执行</b></td><td>成员并行执行 + 流式活动树（thinking / action / reply）+ 失败自动降级回退</td><td>ts2-04 并行执行截图</td></tr>
-      <tr><td><b>状态追踪</b></td><td>会话参与者 / 运行记录 / TeamRun 状态机 / 活动树实时状态</td><td>ts2-05；participants / runs JSON</td></tr>
+      <tr><th style="width:18%">AgentTeams 要素</th><th style="width:42%">本平台实现</th><th>实证证据（P2 事故实跑）</th></tr>
+      <tr><td><b>角色编排</b></td><td>Orchestrator / Worker / Synthesizer 角色 + coordinator 协调模式，团队成员按岗位职能分工</td><td>Spirit 组建 4 团队：告警分诊 / 根因定位 / 修复方案 / 恢复执行</td></tr>
+      <tr><td><b>任务拆解</b></td><td>plan_and_execute：复杂度评估 → 意图澄清 → todo 计划 → DAG 步骤（环检测 + 拓扑排序）</td><td>complexity=moderate(0.365)，DAG 4 团队串行依赖，plan confirm 硬门控</td></tr>
+      <tr><td><b>上下文传递</b></td><td>Graph StateFields 团队共享黑板 + set/get_deliverable 产物引用 + 认知信封 + 五层记忆</td><td>12 份交付物全链：alert-triage-report → rca-report → recovery-plan → execution-report</td></tr>
+      <tr><td><b>协同执行</b></td><td>成员并行执行 + 流式活动树（thinking / action / reply）+ 失败自动降级回退 + 重试反思</td><td>39/55/39/91 个活动；工具失败带 reflection_hint 重试自纠正</td></tr>
+      <tr><td><b>状态追踪</b></td><td>会话参与者 / 运行记录 / TeamRun 状态机 / PlanBoard-TaskPlan 状态传播 / 活动树实时状态</td><td>plan confirmed→executing→completed 全状态流转落库可查</td></tr>
     </table>
-    <div class="card"><h3>异常与冲突处理</h3><p>失败策略 Skip / RetryThenBlock / FailFast + 熔断器；人工确认介入点（审批守卫）插入编排流程；Web 搜索不可达时自动降级内部知识路径（实跑验证）。</p></div>
+    <div class="card"><h3>异常与冲突处理</h3><p>失败策略 Skip / RetryThenBlock / FailFast + 熔断器；高危操作（加索引）执行前强制输出审批请求；实跑中 exec_command 未注册时 Agent 自适应降级为落盘执行产物（file_save_file）闭环不中断——赛后已修复为受控命令执行（8 个实操岗位 tools_allow=shell_exec + deny 收敛）。</p></div>
   </div></div>
   <div class="footer"><span>D2 多 Agent 协同 · 25%</span><span class="pgnum"></span></div>
 </section>
 
 <!-- S7 实跑闭环 -->
 <section class="slide">
-  <div class="kicker">02 · 方案设计 · 端到端实跑证据</div>
-  <h2>实跑闭环：医疗云市场调研，一次指令 → 策略简报</h2>
-  <div class="sub">2026-07-25 实跑 · 会话 64a83c58 · 精灵动态组建「医疗云市场研究小组」（4 个不同职能成员）</div>
+  <div class="kicker">02 · 方案设计 · 端到端实跑证据（TS-9）</div>
+  <h2>实跑闭环：电商 P2 生产事故，从告警到复盘零人工处置</h2>
+  <div class="sub">2026-07-29 实跑 · 订单服务 502 错误率 23% + 慢查询 47s + IO 98% + 连接池耗尽，大促 19:00 峰值前必须恢复</div>
   <div class="body"><div class="col">
     <div class="flow">
-      <div class="fstep"><b>① 任务接收</b>识别为多步骤调研任务</div><div class="farrow">→</div>
-      <div class="fstep"><b>② 编排+人工确认</b>主动就成本维度发起审批</div><div class="farrow">→</div>
-      <div class="fstep"><b>③ 拆解+组队</b>DAG 5 步 · 4 职能成员</div><div class="farrow">→</div>
-      <div class="fstep"><b>④ 并行执行</b>流式活动 · 断网自动降级</div><div class="farrow">→</div>
-      <div class="fstep"><b>⑤ 结果合成</b>合规评分 + 成本估算简报</div>
+      <div class="fstep"><b>① 事故输入+澄清</b>Spirit 产出 3 个澄清问题（SQL/连接池/优先级）</div><div class="farrow">→</div>
+      <div class="fstep"><b>② DAG 规划+硬门控</b>4 团队 plan draft，人工 confirm 后执行</div><div class="farrow">→</div>
+      <div class="fstep"><b>③ 分诊+定位</b>P2 定级 → 根因链：未评审变更→缺索引→全表扫描→池耗尽→502</div><div class="farrow">→</div>
+      <div class="fstep"><b>④ 方案+恢复执行</b>回滚变更 + pt-osc 加索引，高危操作先审批</div><div class="farrow">→</div>
+      <div class="fstep"><b>⑤ 验证+复盘</b>指标全部达标，12K 字复盘报告</div>
     </div>
-    <div class="grid2">
-      <div><img class="shot" src="evidence/ts2-02-orchestration-plan.png" alt="人工确认"><div class="shot-cap">② 审批守卫：成本估算维度人工确认</div></div>
-      <div><img class="shot" src="evidence/ts2-03-team-formed.png" alt="团队组建"><div class="shot-cap">③ 团队组建：Orchestrator / WebSearch / MarketResearch / CostEstimation</div></div>
-      <div><img class="shot" src="evidence/ts2-04-execution-progress.png" alt="并行执行"><div class="shot-cap">④ 并行执行：Web 搜索不可达自动降级（容错证据）</div></div>
-      <div><img class="shot" src="evidence/ts2-05-final-result.png" alt="结果合成"><div class="shot-cap">⑤ 策略简报：三甲医院上云 60-90 万/年 vs 传统机房 300-500 万 CAPEX</div></div>
+    <div class="grid4">
+      <div class="card"><div class="num">0.03%<small>502 错误率（23% → 0.03%）</small></div></div>
+      <div class="card"><div class="num">2/min<small>慢查询（187 → 2）</small></div></div>
+      <div class="card"><div class="num">128s<small>pt-osc 加索引（874 万行无锁表）</small></div></div>
+      <div class="card"><div class="num">0<small>人工介入（除 plan confirm 与高危审批）</small></div></div>
     </div>
+    <div class="arch"><b>交付物证据链（12 份 set_deliverable，含认知信封 decisions/assumptions/confidence）</b>
+alert-triage-report（P2 定级，confidence=0.95）
+  → root-cause-analysis-report（直接/间接/系统三层根因，置信度 95/90/85% + 放大因素）
+    → recovery-plan-doc（首要方案=回滚 17:55 变更；后备=pt-osc 在线加索引，含风险评估）
+      → recovery-execution-report（回滚 v1.2.9→v1.2.8；HikariCP 198→85；QPS 45→320）</div>
   </div></div>
   <div class="footer"><span>D2 多 Agent 协同与自主闭环 · 25%</span><span class="pgnum"></span></div>
 </section>
@@ -317,17 +342,18 @@
 <!-- S8 Agent Identity -->
 <section class="slide">
   <div class="kicker">02 · 方案设计 · 附录A</div>
-  <h2>Agent Identity：≥3 个不同职能 Agent，决策边界清晰</h2>
-  <div class="sub">实跑团队核心成员（完整清单见提交包 03-Agent-Identity清单.md）</div>
+  <h2>Agent Identity：IT 运维岗位包 12 岗位，决策边界清晰</h2>
+  <div class="sub">实跑核心成员（完整清单见提交包 03-Agent-Identity清单.md；岗位包：1 公司 / 5 部门 / 12 岗位）</div>
   <div class="body"><div class="col">
     <table>
       <tr><th style="width:16%">Name</th><th style="width:14%">Role</th><th style="width:26%">Capabilities</th><th style="width:24%">Decision Boundary</th><th>Trace</th></tr>
-      <tr><td>精灵助手 Spirit</td><td>Orchestrator</td><td>任务理解/拆解/组队/合成；不做专业执行</td><td>自主拆解与分派；成本/合规等关键维度须人工确认</td><td>编排事件 + 检查点全程落库</td></tr>
-      <tr><td>claudecode</td><td>WebSearch Worker</td><td>Web 检索/页面抓取/证据收集；不可写外部系统</td><td>只读操作全自动；失败自动降级内部知识</td><td>工具调用审计 + runs 记录</td></tr>
-      <tr><td>deepresearch</td><td>MarketResearch Worker</td><td>竞品调研/行业分析/结构化报告；不做财务承诺</td><td>分析自主；结论需附证据等级</td><td>活动树 thinking/action/reply</td></tr>
-      <tr><td>finance</td><td>CostEstimation Worker</td><td>成本建模/估算/敏感性分析；不执行真实采购</td><td>估算自主；对外报价类输出须人工审批</td><td>Token 用量 + 成本事件</td></tr>
+      <tr><td>精灵助手 Spirit</td><td>Orchestrator</td><td>事故理解/澄清/拆解/组队/合成；不做专业执行</td><td>自主拆解与分派；plan draft 须人工 confirm</td><td>编排事件 + 检查点全程落库</td></tr>
+      <tr><td>告警处理专家</td><td>Triage Worker</td><td>告警聚合降噪/定级/处置建议；不操作生产系统</td><td>定级自主；P1 升级须通知指挥官</td><td>39 活动 + alert-triage-report</td></tr>
+      <tr><td>故障诊断专家</td><td>RCA Worker</td><td>根因链分析/日志与指标关联；输出三层根因与置信度</td><td>分析自主；结论须附置信度与放大因素</td><td>55 活动 + rca-report</td></tr>
+      <tr><td>变更执行专家</td><td>Executor Worker</td><td>回滚/在线变更/受控命令执行（tools_allow=shell_exec）</td><td>高危操作执行前强制人工审批；可回滚优先</td><td>91 活动 + execution-report</td></tr>
+      <tr><td>复盘文档专家</td><td>Postmortem</td><td>时间线还原/处置评估/改进项沉淀；12K 字标准报告</td><td>只读访问证据；不评判个人责任</td><td>复盘报告入知识库</td></tr>
     </table>
-    <div class="card"><h3>高风险动作治理（H4）</h3><p><span class="tag t-orange">审批</span>编排关键维度人工确认（图 ts2-02）；Skill 进化 pending→approved 人工审批状态机 <span class="tag t-blue">回滚</span>Skill 版本回滚 + 文件系统恢复；记忆 Saga 级联更新失败自动补偿 <span class="tag t-green">审计</span>工具审计（ts6-03）+ 管理操作审计日志 + 全链路 Trace</p></div>
+    <div class="card"><h3>高风险动作治理（H4）</h3><p><span class="tag t-orange">审批</span>plan confirm 硬门控 + 加索引等高危操作执行前审批 + Skill 进化审批状态机 <span class="tag t-blue">回滚</span>应用版本回滚（v1.2.9→v1.2.8）+ Skill 版本回滚 + Graph Checkpoint/TimeTravel <span class="tag t-green">审计</span>工具调用审计（ts6-03）+ 管理操作审计 + 全链路 Trace</p></div>
   </div></div>
   <div class="footer"><span>D2 多 Agent 协同 · 25%</span><span class="pgnum"></span></div>
 </section>
@@ -385,6 +411,7 @@
   <div class="body"><div class="col">
     <table>
       <tr><th style="width:20%">Skill 名称</th><th style="width:12%">类型</th><th style="width:26%">用途与调用条件</th><th style="width:22%">依赖工具</th><th>失败处理 / 安全边界</th></tr>
+      <tr><td>alert-diagnosis</td><td><span class="tag t-orange">运维岗位</span></td><td>告警分诊：聚合降噪、定级、根因方向初判；告警类输入触发（TS-9 团队1 实跑调用）</td><td>knowledge_search / datetime / set_deliverable</td><td>知识库缺失时降级规则模板；只读无副作用</td></tr>
       <tr><td>InformationResearch</td><td><span class="tag t-green">自动进化生成</span></td><td>内外信息交叉调研；研究类请求或交替调用模式触发</td><td>memory_search / web_fetch / working_memory_list</td><td>单源失败降级其余源；只读无副作用</td></tr>
       <tr><td>planning-and-task-breakdown</td><td><span class="tag t-blue">自定义</span></td><td>规格拆解为可实现任务；任务过大或需估算时触发（5113 次调用，成功率 100%）</td><td>任务 DAG 持久化</td><td>拆解失败回退单步执行；不写外部系统</td></tr>
       <tr><td>idea-refine</td><td><span class="tag t-blue">自定义</span></td><td>想法结构化打磨（发散-收敛）；“ideate”触发（5116 次调用，成功率 100%）</td><td>LLM 推理</td><td>LLM 不可用回退启发式模板</td></tr>
@@ -411,6 +438,7 @@
         <li><b>健康治理</b>：连通性探测 + 自动重连 + 告警去抖</li>
       </ul></div>
       <div class="card"><h3>等价工具契约（非 MCP 工具同样满足）</h3><p>统一工具注册表：名称 / 参数 Schema / 返回结构 / 权限范围（permission_guard deny_list）/ 失败重试 / 幂等 / 审计日志 / 降级策略——迁移到 MCP 仅需协议适配，无需重设计调用链。</p></div>
+      <div class="card"><h3>受控命令执行（运维场景关键能力）</h3><p>shell_exec 纳入岗位工具白名单（8 个实操岗位 tools_allow 显式授权 + deny 收敛）；高危命令经 confirmation_guard 人工确认；调用全量入审计——AI 能动手，但只在授权围栏内动手。</p></div>
     </div>
   </div>
   <div class="footer"><span>D4 工程落地 · 20%</span><span class="pgnum"></span></div>
@@ -472,24 +500,25 @@
 <!-- S15 评测与证据 -->
 <section class="slide">
   <div class="kicker">04 · 运行验证</div>
-  <h2>运行验证：8 大测试场景全通过，证据链完整</h2>
-  <div class="sub">完整报告见提交包 06-测试场景与评测报告.md（含 32 张 UI 截图 + 15 份 API 记录索引）</div>
+  <h2>运行验证：9 大测试场景全通过，证据链完整</h2>
+  <div class="sub">完整报告见提交包 06-测试场景与评测报告.md（含 UI 截图 + API 实测记录索引）</div>
   <div class="body"><div class="col">
     <table>
       <tr><th style="width:26%">测试场景</th><th style="width:40%">验证内容</th><th style="width:14%">对应要求</th><th>状态</th></tr>
-      <tr><td>TS-1 Agent 资产</td><td>274 Agent 清单 / 详情 / 工具授权</td><td>H1 · D2</td><td class="ok">✔ 通过</td></tr>
-      <tr><td>TS-2 协同闭环（核心）</td><td>医疗云调研：拆解→组队→审批→并行→降级→合成</td><td>H1+H2 · D2</td><td class="ok">✔ 通过</td></tr>
+      <tr><td><b>TS-9 零人工运维闭环（方向一·核心）</b></td><td>电商 P2 事故：告警分诊→根因定位→修复方案→恢复执行→复盘，硬门控 + 高危审批 + 降级容错</td><td>H1+H2+H4 · D1/D2/D4</td><td class="ok">✔ 通过</td></tr>
+      <tr><td>TS-1 Agent 资产</td><td>304 Agent 清单 / 详情 / 工具授权（含 IT 运维 12 岗位）</td><td>H1 · D2</td><td class="ok">✔ 通过</td></tr>
+      <tr><td>TS-2 协同闭环</td><td>复杂任务：拆解→组队→审批→并行→降级→合成</td><td>H1+H2 · D2</td><td class="ok">✔ 通过</td></tr>
       <tr><td>TS-3 Skill 系统</td><td>列表 / 详情 / 版本 / 渐进加载</td><td>H3 · D3</td><td class="ok">✔ 通过</td></tr>
       <tr><td>TS-4 Skill 自动进化（核心）</td><td>检测→去重→LLM 生成→审批→注册全链路</td><td>H3 · D3</td><td class="ok">✔ 通过</td></tr>
       <tr><td>TS-5 MCP 集成</td><td>Server CRUD / 连通性 / 健康 / 工具发现</td><td>R1 · D4</td><td class="ok">✔ 通过</td></tr>
-      <tr><td>TS-6 工具系统</td><td>65 内置工具 / runs / audits</td><td>R1 · D4</td><td class="ok">✔ 通过</td></tr>
+      <tr><td>TS-6 工具系统</td><td>65 内置工具 / runs / audits / 受控命令执行</td><td>R1 · D4</td><td class="ok">✔ 通过</td></tr>
       <tr><td>TS-7 上下文与 RAG</td><td>五层记忆 / 知识库 / 共享黑板</td><td>R3 · D2</td><td class="ok">✔ 通过</td></tr>
       <tr><td>TS-8 可观测与审计</td><td>Trace / 日志 / Metrics / 审批 / 审计</td><td>H4+R2 · D4</td><td class="ok">✔ 通过</td></tr>
     </table>
     <div class="grid4">
-      <div class="card"><div class="num">88<small>五维自评（/100）</small></div></div>
-      <div class="card"><div class="num">32<small>UI 截图证据</small></div></div>
-      <div class="card"><div class="num">15<small>API 实测记录</small></div></div>
+      <div class="card"><div class="num">9<small>测试场景全通过</small></div></div>
+      <div class="card"><div class="num">224<small>TS-9 运维活动（4 团队）</small></div></div>
+      <div class="card"><div class="num">12<small>交付物证据链（份）</small></div></div>
       <div class="card"><div class="num">100%<small>Skill 调用成功率（1 万+次）</small></div></div>
     </div>
   </div></div>
@@ -530,13 +559,13 @@
   <div class="sub">评估指标：端到端闭环成功率 / Skill 复用率 / 工具成功率 / Token 成本 / 审批覆盖率</div>
   <div class="body"><div class="col">
     <div class="flow">
-      <div class="fstep"><b>初赛 V0.3（当前）</b>可运行平台 · 8 场景实证 · Skill 进化全链路 · 评测 88/100</div><div class="farrow">→</div>
-      <div class="fstep"><b>复赛 V0.6</b>远程 MCP（HTTP/SSE）· 事故回放评估集 · Golden/Badcase 数据集 · 失败重试策略优化</div><div class="farrow">→</div>
-      <div class="fstep"><b>决赛 V1.0</b>核心模块 Apache-2.0 开源 · Skill 市场 · 行业模板包 · 部署与演示脚本</div>
+      <div class="fstep"><b>初赛 V0.4（当前）</b>可运行平台 · 9 场景实证 · P2 事故运维闭环 · Skill 进化全链路</div><div class="farrow">→</div>
+      <div class="fstep"><b>复赛 V0.6</b>真实监控接入（Prometheus / Zabbix webhook）· 远程 MCP（HTTP/SSE）· 事故回放评估集 · 复盘节点自动编排</div><div class="farrow">→</div>
+      <div class="fstep"><b>决赛 V1.0</b>核心模块 Apache-2.0 开源 · Skill 市场 · 行业岗位模板包 · 部署与演示脚本</div>
     </div>
     <div class="grid2">
-      <div class="card"><h3>风险控制</h3><ul><li>高风险动作保留 L0 只读诊断 / L1 低风险自动 / L2 灰度+审批 / L3 仅方案 四级边界</li><li>成本守卫 + 三级配额 + 预算告警，防止 Token 失控</li></ul></div>
-      <div class="card"><h3>已知限制（诚实披露）</h3><ul><li>实跑环境 Web 搜索不可达时降级内部知识（降级路径已验证，实时性受限）</li><li>远程 MCP 尚未实测；历史团队运行存在 failed/cancelled 记录，恢复策略持续优化中</li></ul></div>
+      <div class="card"><h3>风险控制</h3><ul><li>高风险动作保留 L0 只读诊断 / L1 低风险自动 / L2 灰度+审批 / L3 仅方案 四级边界</li><li>岗位工具白名单 + 成本守卫 + 三级配额 + 预算告警，防止越权与 Token 失控</li></ul></div>
+      <div class="card"><h3>已知限制（诚实披露）</h3><ul><li>实跑为模拟事故环境，未对接真实监控系统（复赛接入）</li><li>复盘环节当前由复盘专家补位执行，DAG 自动追加复盘节点已列入复赛计划</li></ul></div>
     </div>
     <div class="quote">安全边界承诺：不执行真实资金/生产变更动作；所有高风险操作仅生成方案并进入人工审批——零人工运维的关键不是无限自动化，而是可验证、可审计、可回滚。</div>
   </div></div>
@@ -545,11 +574,11 @@
 
 <!-- S18 结尾 -->
 <section class="slide cover">
-  <div class="badge">ARANEA-AGENTS</div>
-  <h1 style="font-size:44px">让每个人都拥有一支<br>可协作、可治理、可进化的 Agent 团队</h1>
+  <div class="badge">ARANEA-AGENTS · 方向一：零人工运维</div>
+  <h1 style="font-size:44px">让 AI 团队按社会规则分工协作<br>让每一次事故处置都沉淀为平台能力</h1>
   <div class="meta">
-    证据索引：evidence/（32 张 UI 截图）· api/（15 份 API 实测记录）· 06-测试场景与评测报告.md<br>
-    代码包：code/（源码快照 + 运行说明）· 提交日期 2026-07-27
+    证据索引：evidence/（UI 截图）· api/（API 实测记录）· test/it-ops-closed-loop/（TS-9 运维闭环原始证据）· 06-测试场景与评测报告.md<br>
+    代码包：code/（源码快照 + 运行说明）· 更新日期 2026-07-29
   </div>
 </section>
 

@@ -219,6 +219,7 @@ Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同�
 | RUN-04 | 作为运维，告警与 Runner 指标仍准确 | 告警规则（错误率）与 Runner 指标面板仍基于事件计数，不受方案 C 影响 |
 | RUN-05 | 作为运维，无 Usage 时仍有信号 | 无 Runs 行时 Events 显示降级 completion + 会话链接 |
 | RUN-06 | 数据质量 | 同一 `session_id`+`invocation_id` 不重复插入 completion；metadata 含 `trace_id` / `usage_event_id` |
+| RUN-07 | 作为运维，历史 Runs 状态可信 | 历史因 completion 断链被误标 `interrupted` 的行经一次性迁移按 span/usage/turn 证据重建为真实终态（ok/error）；无佐证行保持 interrupted |
 
 ### 3.6 实时连接状态
 

@@ -302,10 +302,12 @@ func TestSetDeliverableTool_Call_Topic_OverwriteSameTopic(t *testing.T) {
 func TestSetDeliverableTool_Call_TopicValidation(t *testing.T) {
 	tl := NewSetDeliverableTool()
 	cases := map[string]string{
-		"uppercase":     `{"data":{},"topic":"Research"}`,
 		"leading_dash":  `{"data":{},"topic":"-bad"}`,
 		"space":         `{"data":{},"topic":"has space"}`,
-		"too_long":      `{"data":{},"topic":"` + strings.Repeat("a", 65) + `"}`,
+		"cjk_space":     `{"data":{},"topic":"根因 报告"}`,
+		"punctuation":   `{"data":{},"topic":"rca.report"}`,
+		"slash":         `{"data":{},"topic":"a/b"}`,
+		"too_long":      `{"data":{},"topic":"` + strings.Repeat("报告", 33) + `"}`,
 		"reserved_sum":  `{"data":{},"topic":"summary"}`,
 		"reserved_cogn": `{"data":{},"topic":"cognition"}`,
 	}
@@ -314,8 +316,10 @@ func TestSetDeliverableTool_Call_TopicValidation(t *testing.T) {
 			t.Fatalf("%s: expected topic validation error", name)
 		}
 	}
-	// Valid slugs pass.
-	for _, topic := range []string{"research", "draft_v1", "a-1", "x"} {
+	// Valid topics pass: ASCII slugs, mixed case, and Unicode contract names
+	// (TS9-BUG-4: the planner authored the Chinese contract name "恢复执行报告",
+	// which must round-trip through the MDC 1:1 topic mapping).
+	for _, topic := range []string{"research", "draft_v1", "a-1", "x", "Research", "root-cause-report", "恢复执行报告", "根因报告v2"} {
 		args := []byte(`{"data":{"k":1},"topic":"` + topic + `"}`)
 		if _, err := tl.Call(context.Background(), args); err != nil {
 			t.Fatalf("topic %q should be valid: %v", topic, err)

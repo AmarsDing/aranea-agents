@@ -26,6 +26,7 @@ import (
 	"aranea-agents/internal/biz/evaluation"
 	"aranea-agents/internal/biz/flowlog"
 	"aranea-agents/internal/biz/hook"
+	knowledge2 "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/biz/media"
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/biz/plugin"
@@ -384,7 +385,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryConsolidationWriter := data.NewMemoryConsolidationWriterAdapter(dataData, loggatewayLogger)
 	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillEvolutionUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, learningLoopUsecase, loggatewayLogger)
 	realTeamOrchestrator := provideTeamOrchestrator(loggatewayLogger)
-	planExecutor := providePlanExecutor(planStepV2Repo, teamStageV2Repo, planBoardV2Repo, graphStageV2Repo, graphNodeV2Repo, realTeamOrchestrator, sequencer, loggatewayLogger)
+	planExecutor := providePlanExecutor(planStepV2Repo, teamStageV2Repo, planBoardV2Repo, graphStageV2Repo, graphNodeV2Repo, realTeamOrchestrator, sequencer, taskPlanRepository, loggatewayLogger)
 	chatService := service.ProvideChatService(chatOrchestratorDeps, planExecutor, v2Bus, realTeamOrchestrator, agentRepository, graphOrchestrationProjector, mailboxWaker)
 	applyBackend := provideModelRegistryApplyBackend(llmProviderModelRepo, dataData)
 	modelRegistrySyncAgent, err := provideModelRegistrySyncAgent(systemSettingRepo, applyBackend, loggatewayLogger)
@@ -546,7 +547,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	lifecycleManager := provideLifecycleManager(buildCache, loggatewayLogger)
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
 	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, loggatewayLogger)
-	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps)
+	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, multiProviderEmbedder, loggatewayLogger)
+	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
 	episodeIndexSyncer := provideEpisodeIndexSync(memoryUsecase, dataData)
@@ -1733,6 +1735,17 @@ func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEm
 	return u
 }
 
+// provideVaultSyncSupervisor 装配 vault 同步链（P1-3 生产装配，原遗漏导致新建
+// vault 永不同步）：SyncEngine → VaultSyncApplier（filer + 可选 embedder）→
+// VaultSyncRunner → Supervisor。embedder 未配置时 buildChunks 按无语义层降级。
+func provideVaultSyncSupervisor(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, lg loggateway.Logger) *knowledge.VaultSyncSupervisor {
+	engine := knowledge2.NewSyncEngine(lg)
+	filer := knowledge2.NewVaultFiler(lg)
+	applier := knowledge.NewVaultSyncApplier(uc, filer, embedder, lg)
+	runner := knowledge.NewVaultSyncRunner(engine, applier, uc, lg)
+	return knowledge.NewVaultSyncSupervisor(runner, uc, lg)
+}
+
 // provideSkillMergeUsecase wraps biz.NewSkillMergeUsecase to wire the dedup
 // cache invalidation hook after a successful merge.
 func provideSkillMergeUsecase(reader biz.SkillMergeReader, writer biz.SkillMergeWriter, fuser biz.SkillContentFuser, gate biz.SkillGateVerifier, dedup *biz.SkillDedupUsecase, lg loggateway.Logger) *biz.SkillMergeUsecase {
@@ -2663,6 +2676,7 @@ func provideWSV2Subscriber(bus *event.V2Bus, wsSrv *server.WSServer, lg loggatew
 // providePlanExecutor constructs the v2 forward DAG scheduler.
 // The PlanExecutor is injected into TeamStarter via SetPlanExecutor
 // (called in ProvideChatService).
+// taskPlanRepo 用于 TS9-BUG-1：PlanBoard 生命周期传播到 TaskPlan 状态。
 func providePlanExecutor(
 	planStep biz.PlanStepV2Repo,
 	teamStage biz.TeamStageV2Repo,
@@ -2671,9 +2685,12 @@ func providePlanExecutor(
 	graphNode biz.GraphNodeV2Repo,
 	orch service.TeamOrchestrator,
 	seq *v2.Sequencer,
+	taskPlanRepo biz.TaskPlanRepository,
 	lg loggateway.Logger,
 ) *service.PlanExecutor {
-	return service.NewPlanExecutorFromV2Repos(planStep, teamStage, planBoard, graphStage, graphNode, orch, seq, lg)
+	pe := service.NewPlanExecutorFromV2Repos(planStep, teamStage, planBoard, graphStage, graphNode, orch, seq, lg)
+	pe.SetTaskPlanUpdater(taskPlanRepo)
+	return pe
 }
 
 // provideTeamOrchestrator returns the real TeamOrchestrator (Phase 2).

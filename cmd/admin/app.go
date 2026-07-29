@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/runtime/lifecycle"
 	"aranea-agents/internal/server"
@@ -50,6 +51,8 @@ func newApp(
 	lifecycleMgr *lifecycle.LifecycleManager,
 	wsV2Sub *server.WSV2Subscriber,
 	graphBuildDeps *chatagent.TRPCBuilderDeps,
+	knowledgeSvc *service.KnowledgeService,
+	vaultSyncSup *knowledge.VaultSyncSupervisor,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
 	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
@@ -90,6 +93,11 @@ func newApp(
 				graphBuildDeps.SetTeamCompletionChecker(biz.NewTeamCompletionCheckerAdapter(spiritUC))
 			}
 
+			// Inject vault sync controller into knowledge service (P1-3 production wiring).
+			if knowledgeSvc != nil && vaultSyncSup != nil {
+				knowledgeSvc.SetVaultSyncController(vaultSyncSup)
+			}
+
 			// Start readiness-dependent initialization in background.
 			// The HTTP server now starts immediately so /healthz can report
 			// "starting" (503) while P1 migrations run. A readiness middleware
@@ -102,15 +110,15 @@ func newApp(
 							return
 						}
 						lg.Info("post-readiness: data ready, starting dependent services", loggateway.StepID("startup.gate"))
-						startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, lg)
+						startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, lg)
 					})
 				} else {
 					// No readiness gate (unlikely), start immediately.
-					startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, lg)
+					startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, lg)
 				}
 			} else {
 				// No data layer (unlikely), start immediately.
-				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, lg)
+				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, lg)
 			}
 			return nil
 		}),
@@ -140,6 +148,10 @@ func newApp(
 			// Stop the background team completion poller and cancel all timeout timers.
 			if spiritUC != nil {
 				spiritUC.Stop()
+			}
+			// P1-3：停止全部 vault 同步循环。
+			if vaultSyncSup != nil {
+				vaultSyncSup.Stop()
 			}
 			// Close process-level resources (build cache, etc.) in LIFO order
 			// after the chat service has stopped accepting requests (A3).
@@ -173,8 +185,13 @@ func startReadinessDependentServices(
 	pipeline logpipeline.Pipeline,
 	loggingSinks []*conf.LoggingSink,
 	spiritUC *biz.SpiritTeamUsecase,
+	vaultSyncSup *knowledge.VaultSyncSupervisor,
 	lg loggateway.Logger,
 ) {
+	// P1-3：DB ready 后拉起全部存量 vault 的同步循环（root_path 非空）。
+	if vaultSyncSup != nil {
+		vaultSyncSup.StartAll(ctx)
+	}
 	if err := guard.OnStartup(ctx); err != nil {
 		lg.Warn("session status guard startup failed", loggateway.StepID("startup.guard"), loggateway.Err(err))
 	}

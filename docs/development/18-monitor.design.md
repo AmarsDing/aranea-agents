@@ -1689,6 +1689,22 @@ UI：Traces 详情可点 parent → 跳转上一段 trace；Waterfall 跨 trace 
 - **span 活跃守卫**：仅当 `NOT EXISTS` TTL 窗口内 span 活动（`monitor_trace_spans.started_at`/`ended_at` 毫秒时间戳 ≥ cutoffMs）才置 `interrupted`——长运行 team run 持续产 span，不会被误杀
 - **已知边界**：HITL 人工等待超 TTL 且无 span 产出的 run 会被标记 `interrupted`；仅影响监控展示，不影响运行时恢复（运行真相源在 session_runs/checkpoint）
 
+#### 5.2.7 假 interrupted 修复迁移（20261115，2026-07-29）
+
+**背景**：`RecordRunnerCompletion` 曾长期无生产调用方（`event_bus_runner_handler` 删除后断链），`runner.completion` 事件缺失导致 §5.2.6 清扫器把超时 running 的 trace 一律标记 `interrupted`（生产库 599 条）。修复断链后新增一次性数据迁移 `RunMonitorTraceInterruptedBackfillMigration`（`internal/data/monitor_trace_backfill_migrate.go`），用既有 span/usage/turn 数据重建真实终态：
+
+| 步骤 | 逻辑 | 目标行 |
+|------|------|--------|
+| 1. span 指标聚合 | `duration_ms = MAX(ended_at)-MIN(started_at)`、`span_count`、`error_count` | 全部 interrupted 行 |
+| 2. span 证据重分类 | 有 error span → `error`；末 span 为完成标志（`chat.turn.execute`/`chat.assistant_msg_persist`/`team.run.finish`）→ `ok` | interrupted 行 |
+| 3. usage 回填 | `model_token_usage_events` 按 `metadata_json->>'trace_id'` 直配，回填 tokens/cost，provider/model 仅空值回填 | 已归 ok/error 且 `total_tokens=0` |
+| 4. turn 佐证确认 | `session_turns` 按 `session_id` + 时间窗（trace.created_at −1m ~ +2m，最早一条 completed/failed turn）→ ok/error，并回填 turn 级 tokens/provider/model | 剩余 interrupted 行 |
+
+- **窗口依据**：生产实测真实匹配 turn 与 trace 创建时间差 <5s 占 74%；+2m 收紧窗口避免把「崩溃后用户快速重发」的下一条 turn 误判为本 trace 终态
+- **保守原则**：无任何佐证的行保持 `interrupted`（真实中断，不粉饰）
+- **幂等门控**：版本 20261115 入 `schema_migrations`；仅 Postgres 执行，SQLite 直接记录跳过；表不存在时直接记录跳过
+- **验证**：`TestRunMonitorTraceInterruptedBackfillMigration`（terminal-span→ok / error-span→error / usage 回填 / turn 佐证 / 无佐证保持 interrupted / 幂等重跑）；干跑脚本 `test/trace-check/backfill-dryrun`（事务内执行后回滚）
+
 ### 5.3 验收标准
 
 | 指标 | 目标 |

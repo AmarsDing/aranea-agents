@@ -49,6 +49,7 @@
           :semantic-results="explorerSemanticResults"
           :semantic-loading="explorerSemanticLoading"
           :semantic-ran="explorerSemanticRan"
+          :semantic-error="explorerSemanticError"
           :show-instant="explorerShowInstant"
           :show-semantic="explorerShowSemantic"
           :doc-source-map="explorerDocSourceMap"
@@ -72,8 +73,8 @@
           />
 
           <div class="knowledge-explorer-grid__mid">
-            <!-- US-14 上传免预选：拖拽区常驻中栏顶部，未选中集合时自动落入「默认知识库」 -->
-            <knowledge-drop-zone @files-selected="enqueueUploadFiles" />
+            <!-- US-14 上传免预选：compact 单行按钮（Vault 模式文件系统为真相源，上传为补充入口），未选中集合时自动落入「默认知识库」 -->
+            <knowledge-drop-zone compact @files-selected="enqueueUploadFiles" />
             <knowledge-upload-queue
               v-if="uploadTasks.length"
               :tasks="uploadTasks"
@@ -268,6 +269,7 @@ const {
   semanticResults: explorerSemanticResults,
   semanticLoading: explorerSemanticLoading,
   semanticRan: explorerSemanticRan,
+  semanticError: explorerSemanticError,
   docSourceMap: explorerDocSourceMap,
   runSemanticSearch: runExplorerSemantic,
   selectInstant: selectExplorerInstant,

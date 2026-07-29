@@ -1021,6 +1021,10 @@ func (r *agentRepo) UpdateAgentAtomic(ctx context.Context, a biz.Agent, files []
 			return entErrToBizErr(err, "AGENT")
 		}
 		if settings != nil {
+			// 与 CreateAgentAtomic 对齐：pack 导入器按约定以空 AgentID 构建
+			// settings，由 atomic 回填；缺了这行会让 ConflictOverwrite 重导全部
+			// 失败于 "agent id is required"（TS9-BUG-3 生产事故）。
+			settings.AgentID = updated.ID
 			if _, err = r.UpsertAgentRuntimeSettings(txCtx, *settings); err != nil {
 				return entErrToBizErr(err, "AGENT")
 			}

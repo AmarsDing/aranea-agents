@@ -126,7 +126,8 @@ message KnowledgeChunk {
 message CreateCollectionRequest {
   string name = 1 [(google.api.field_behavior) = REQUIRED];
   string description = 2;
-  string embedding_model = 3 [(google.api.field_behavior) = REQUIRED];
+  string embedding_model = 3;   // V2 可选：留空 = 仅词法检索，不建语义层
+  string root_path = 4 [(google.api.field_behavior) = REQUIRED]; // V2 必填：本地文件夹绝对路径
 }
 
 message GetCollectionRequest {
@@ -1699,7 +1700,7 @@ VaultFiler（KB 侧唯一写文件出口）
 | 组件 | 路径 | 职责 |
 |------|------|------|
 | `KnowledgeVaultTree.vue` | `components/knowledge/` | 左栏：Vault 切换头 + q-tree 懒加载文件夹树（emit `select(prefix)`） |
-| `KnowledgeDocList.vue` | `components/knowledge/` | 中栏：选中文件夹下文档列表（名称/标签/状态/时间；props/emits 纯展示） |
+| `KnowledgeDocList.vue` | `components/knowledge/` | 中栏：资源管理器式表格——名称/修改日期/类型/大小/状态五列，列头点击升降序排序（目录优先），目录行点击下钻 + 面包屑返回；props/emits 纯展示 |
 | `KnowledgeDocDetail.vue` | `components/knowledge/` | 右栏：两级密度——一级（摘要卡：summary/tags/type/时间）+ 二级（展开正文预览 + 关联区）；关联区三类来源徽标（explicit=显式双链 / entity=实体共现 / semantic=语义近邻，R-3） |
 | `KnowledgeSearchDual.vue` | `components/knowledge/` | 统一搜索框双区：即时区（fzf 式前端过滤树节点+列表，<10k）+ 语义区（回车走后端 Search，意图分流规则与后端共享定义，见下） |
 

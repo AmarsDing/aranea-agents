@@ -2,7 +2,7 @@
 <template>
   <div class="row q-col-gutter-md">
     <div v-for="panel in panels" :key="panel.title" class="col-12 col-md-6">
-      <q-card flat bordered class="memory-card">
+      <q-card flat bordered class="memory-card full-height">
         <q-card-section>
           <q-avatar :color="panel.color" text-color="white" :icon="panel.icon" class="q-mb-sm" />
           <div class="text-h6">{{ panel.title }}</div>

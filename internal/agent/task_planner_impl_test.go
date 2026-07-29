@@ -582,6 +582,28 @@ func TestParseDecompositionOutput_ContractToleratesInvalid(t *testing.T) {
 	}
 }
 
+// TS9-BUG-4: contract entries named after the reserved deliverable state keys
+// ("summary"/"cognition") are dropped at parse time — they would become
+// unsatisfiable MDC topics because set_deliverable rejects reserved-key writes.
+func TestParseDecompositionOutput_ContractReservedNamesDropped(t *testing.T) {
+	text := `[
+	  {"id":"st_1","name":"A","depends_on":[],
+	   "deliverables":[{"name":"summary","type":"document","format":"markdown"},
+	                   {"name":"cognition","type":"data","format":"json"},
+	                   {"name":"恢复执行报告","type":"document","format":"markdown"}]}
+	]`
+	subTasks, err := parseDecompositionOutput(text)
+	if err != nil {
+		t.Fatalf("parseDecompositionOutput: %v", err)
+	}
+	if len(subTasks) != 1 {
+		t.Fatalf("subTasks = %d, want 1", len(subTasks))
+	}
+	if len(subTasks[0].Deliverables) != 1 || subTasks[0].Deliverables[0].Name != "恢复执行报告" {
+		t.Fatalf("Deliverables = %+v, want single entry '恢复执行报告' (reserved names dropped)", subTasks[0].Deliverables)
+	}
+}
+
 // TestPublishV2Board_ContractPassthrough verifies SubTask contracts are
 // carried onto the corresponding PlanStep so crash-recovery and dagRun
 // validation can read them from plan_steps_v2.

@@ -1,7 +1,7 @@
 package a2a
 
 // Test doubles and httptest fixtures for the federation end-to-end tests
-// (T17, design F.13). Repos are in-memory fakes — the PG-backed repo contract
+// (T17). Repos are in-memory fakes — the PG-backed repo contract
 // is covered by internal/data integration tests (T4); these E2E tests focus on
 // the cross-layer flow: FederationUsecase governance chain + real
 // FederationRemoteInvoker + real HTTP against a mock remote A2A endpoint.
@@ -53,6 +53,7 @@ type fakeFedOrgRepo struct {
 	mu       sync.Mutex
 	byID     map[string]a2abiz.FederationOrg
 	byDomain map[string]string
+	order    []string // insertion order of org IDs (survives caller-supplied IDs)
 	seq      int
 }
 
@@ -98,6 +99,7 @@ func (r *fakeFedOrgRepo) UpsertOrg(_ context.Context, org a2abiz.FederationOrg) 
 	}
 	r.byID[org.ID] = org
 	r.byDomain[org.Domain] = org.ID
+	r.order = append(r.order, org.ID)
 	return org, nil
 }
 
@@ -115,8 +117,8 @@ func (r *fakeFedOrgRepo) ListOrgs(_ context.Context) ([]a2abiz.FederationOrg, er
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	out := make([]a2abiz.FederationOrg, 0, len(r.byID))
-	for i := 1; i <= r.seq; i++ {
-		if org, ok := r.byID[fmt.Sprintf("org-%d", i)]; ok {
+	for _, id := range r.order {
+		if org, ok := r.byID[id]; ok {
 			out = append(out, org)
 		}
 	}
@@ -145,6 +147,12 @@ func (r *fakeFedOrgRepo) DeleteOrg(_ context.Context, id string) error {
 	}
 	delete(r.byID, id)
 	delete(r.byDomain, org.Domain)
+	for i, oid := range r.order {
+		if oid == id {
+			r.order = append(r.order[:i], r.order[i+1:]...)
+			break
+		}
+	}
 	return nil
 }
 

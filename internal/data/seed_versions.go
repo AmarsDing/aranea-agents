@@ -17,4 +17,11 @@ const (
 	// 3 公司 / 26 部门 / 239 岗位 agent，位于 CleanupNonSystemV1 之后执行。
 	// 版本从 20261104 bump 到 20261105：taxonomy.yaml 和 prompt 文件已翻译为中文，需重新导入。
 	SeedPackAgencyV1 = 20261105
+
+	// SeedPackItOpsV1: 导入 it-ops-pack（IT 运维行业岗位包）。
+	// 1 公司 / 5 部门 / 12 岗位 agent，覆盖「告警→诊断→修复→验证→复盘」零人工运维闭环。
+	// 版本从 20261116 bump 到 20261117：TS9-BUG-3 修复——pack 导入器零值 settings 根因修复 +
+	// 8 个实操岗位 tools_allow=[shell_exec]（受控命令执行），需重新导入以重写既有零值行。
+	// schema_migrations 表由 DDL（≤20261115）/数据/种子迁移共享，必须全局唯一。
+	SeedPackItOpsV1 = 20261117
 )

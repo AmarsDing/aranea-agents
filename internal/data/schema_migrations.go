@@ -25,6 +25,10 @@ const (
 	migrationNameTeamCopyOwnership           = "team_copy_ownership_to_user"
 	MigrationAuditActionNormalize            = 20260729
 	migrationNameAuditActionNormalize        = "audit_action_verb_first_normalize"
+	// 版本取 20261115：schema_migrations 表由 DDL（≤20261114）/数据/种子（20261101~05）
+	// 迁移共享，必须全局唯一。
+	MigrationMonitorTraceInterruptedBackfill     = 20261115
+	migrationNameMonitorTraceInterruptedBackfill = "monitor_trace_interrupted_backfill"
 )
 
 func isMigrationApplied(ctx context.Context, client *ent.Client, version int, lg loggateway.Logger) (bool, error) {

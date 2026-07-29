@@ -428,8 +428,18 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 			})
 		}
 	}
-	var settings biz.AgentRuntimeSettings
-	hasSettings := spec.Runtime != nil
+	// hasSettings 判定覆盖 buildRuntimeSettings 消费的全部 spec 字段：
+	// 只看 spec.Runtime 会让「只声明 tools_allow/tools_deny 的 pack」在 overwrite
+	// 路径传入 nil settings，旧（可能是零值）行被保留，工具策略永远不生效（TS9-BUG-3）。
+	hasSettings := spec.Runtime != nil ||
+		spec.ToolsProfile != "" || spec.ToolsAllow != nil || spec.ToolsDeny != nil || spec.ToolsParallel != nil ||
+		spec.Skills != nil || spec.SubagentsEnabled != nil ||
+		spec.SubagentsMaxConcurrency != 0 || spec.SubagentsMaxGenerationDepth != 0 ||
+		spec.CodeExecutor != ""
+	// 创建路径没有旧行可保留：未声明运行时字段时必须落平台默认值，
+	// 否则零值 struct 会把 ToolsEnabled/MemoryEnabled 写成 false（TS9-BUG-3 根因，
+	// 生产库 256 个 pack 导入 agent 因此全部工具禁用）。
+	settings := biz.DefaultAgentRuntimeSettings()
 	if hasSettings {
 		settings = im.buildRuntimeSettings("", spec) // AgentID 由 atomic 填入
 	}
@@ -895,53 +905,88 @@ func (im *Importer) buildEmbeddedGraph(spec *TeamGraphPackSpec, mapper *KeyMappe
 }
 
 // buildRuntimeSettings 从 AgentPackSpec 构建 AgentRuntimeSettings。
+// 以平台默认值为底，spec 只覆盖显式声明的字段——未声明的字段保持默认，
+// 避免零值 struct 把 ToolsEnabled/MemoryEnabled 等开关写成 false（TS9-BUG-3）。
 func (im *Importer) buildRuntimeSettings(agentID string, spec AgentPackSpec) biz.AgentRuntimeSettings {
-	s := biz.AgentRuntimeSettings{AgentID: agentID}
+	s := biz.DefaultAgentRuntimeSettings()
+	s.AgentID = agentID
 
-	if spec.Runtime == nil {
-		return s
+	if spec.Runtime != nil {
+		// Memory
+		if spec.Runtime.Memory != nil {
+			m := spec.Runtime.Memory
+			s.MemoryEnabled = m.Enabled
+			s.L0RecentWindowTurns = m.L0RecentWindowTurns
+			s.L0RecentWindowTokens = m.L0RecentWindowTokens
+			s.L0SummaryThreshold = m.L0SummaryThreshold
+			s.L0SummaryKeepTurns = m.L0SummaryKeepTurns
+			s.L0InjectL1 = m.L0InjectL1
+			s.L0InjectL3 = m.L0InjectL3
+			s.L0InjectL4 = m.L0InjectL4
+			s.L0SnapshotMode = m.L0SnapshotMode
+			s.L0SnapshotEnabled = m.L0SnapshotEnabled
+			s.L1Enabled = m.L1Enabled
+			s.L1BudgetTokens = m.L1BudgetTokens
+			s.L2EpisodeEnabled = m.L2EpisodeEnabled
+			s.L2EpisodeMinImportance = m.L2EpisodeMinImportance
+			s.L2RecallEnabled = m.L2RecallEnabled
+			s.L2RecallMax = m.L2RecallMax
+			s.L2RetentionDays = m.L2RetentionDays
+			s.L3Enabled = m.L3Enabled
+			s.L3RecallTopK = m.L3RecallTopK
+			s.L3RecallMinScore = m.L3RecallMinScore
+			s.L4Enabled = m.L4Enabled
+			s.L4GraphInjectNeighbors = m.L4GraphInjectNeighbors
+			s.L4GraphMaxNeighbors = m.L4GraphMaxNeighbors
+			s.L4IdentityInject = m.L4IdentityInject
+		}
+
+		// Tools
+		if spec.Runtime.Tools != nil {
+			s.ToolsRetryEnabled = spec.Runtime.Tools.RetryEnabled
+			s.ToolsRetryMaxAttempts = spec.Runtime.Tools.RetryMaxAttempts
+			s.ToolsRetryInitialIntervalMs = spec.Runtime.Tools.RetryInitialIntervalMs
+			s.ToolsStreamingEnabled = spec.Runtime.Tools.StreamingEnabled
+			s.ToolsCircuitBreakerEnabled = spec.Runtime.Tools.CircuitBreakerEnabled
+			s.ToolsCommandSafetyEnabled = spec.Runtime.Tools.CommandSafetyEnabled
+			s.ToolsExecutionTimeoutSec = spec.Runtime.Tools.ExecutionTimeoutSec
+		}
+
+		// Evolution
+		if spec.Runtime.Evolution != nil {
+			s.EvolutionSelfEvolve = spec.Runtime.Evolution.SelfEvolve
+			s.EvolutionSkillEvolve = spec.Runtime.Evolution.SkillEvolve
+			s.EvolutionMetricsEnabled = spec.Runtime.Evolution.MetricsEnabled
+			s.EvolutionSuggestionsEnabled = spec.Runtime.Evolution.SuggestionsEnabled
+		}
+
+		// Reasoning
+		if spec.Runtime.Reasoning != nil {
+			s.ReasoningMode = spec.Runtime.Reasoning.Mode
+			s.ReasoningLevel = spec.Runtime.Reasoning.Level
+		}
+
+		// RalphLoop
+		if spec.Runtime.RalphLoop != nil {
+			s.RalphLoopMaxIterations = spec.Runtime.RalphLoop.MaxIterations
+			s.RalphLoopCompletionPromise = spec.Runtime.RalphLoop.CompletionPromise
+			s.RalphLoopVerifyCommand = spec.Runtime.RalphLoop.VerifyCommand
+			s.RalphLoopVerifyTimeoutSeconds = spec.Runtime.RalphLoop.VerifyTimeoutSeconds
+		}
+
+		// Context
+		if spec.Runtime.Context != nil {
+			s.ContextCompactionEnabled = spec.Runtime.Context.CompactionEnabled
+			s.SessionSummaryEnabled = spec.Runtime.Context.SessionSummaryEnabled
+			s.IntentPassEnabled = spec.Runtime.Context.IntentPassEnabled
+		}
 	}
 
-	// Memory
-	if spec.Runtime.Memory != nil {
-		m := spec.Runtime.Memory
-		s.MemoryEnabled = m.Enabled
-		s.L0RecentWindowTurns = m.L0RecentWindowTurns
-		s.L0RecentWindowTokens = m.L0RecentWindowTokens
-		s.L0SummaryThreshold = m.L0SummaryThreshold
-		s.L0SummaryKeepTurns = m.L0SummaryKeepTurns
-		s.L0InjectL1 = m.L0InjectL1
-		s.L0InjectL3 = m.L0InjectL3
-		s.L0InjectL4 = m.L0InjectL4
-		s.L0SnapshotMode = m.L0SnapshotMode
-		s.L0SnapshotEnabled = m.L0SnapshotEnabled
-		s.L1Enabled = m.L1Enabled
-		s.L1BudgetTokens = m.L1BudgetTokens
-		s.L2EpisodeEnabled = m.L2EpisodeEnabled
-		s.L2EpisodeMinImportance = m.L2EpisodeMinImportance
-		s.L2RecallEnabled = m.L2RecallEnabled
-		s.L2RecallMax = m.L2RecallMax
-		s.L2RetentionDays = m.L2RetentionDays
-		s.L3Enabled = m.L3Enabled
-		s.L3RecallTopK = m.L3RecallTopK
-		s.L3RecallMinScore = m.L3RecallMinScore
-		s.L4Enabled = m.L4Enabled
-		s.L4GraphInjectNeighbors = m.L4GraphInjectNeighbors
-		s.L4GraphMaxNeighbors = m.L4GraphMaxNeighbors
-		s.L4IdentityInject = m.L4IdentityInject
+	// 顶层工具策略独立于 runtime 块生效（此前在 runtime==nil 早退中丢失，
+	// 导致 pack YAML 声明的 tools_deny 从未落库）。
+	if spec.ToolsProfile != "" {
+		s.ToolsProfile = spec.ToolsProfile
 	}
-
-	// Tools
-	if spec.Runtime.Tools != nil {
-		s.ToolsRetryEnabled = spec.Runtime.Tools.RetryEnabled
-		s.ToolsRetryMaxAttempts = spec.Runtime.Tools.RetryMaxAttempts
-		s.ToolsRetryInitialIntervalMs = spec.Runtime.Tools.RetryInitialIntervalMs
-		s.ToolsStreamingEnabled = spec.Runtime.Tools.StreamingEnabled
-		s.ToolsCircuitBreakerEnabled = spec.Runtime.Tools.CircuitBreakerEnabled
-		s.ToolsCommandSafetyEnabled = spec.Runtime.Tools.CommandSafetyEnabled
-		s.ToolsExecutionTimeoutSec = spec.Runtime.Tools.ExecutionTimeoutSec
-	}
-	s.ToolsProfile = spec.ToolsProfile
 	if spec.ToolsAllow != nil {
 		s.ToolsAllowJSON = sliceToJSONList(spec.ToolsAllow)
 	}
@@ -952,41 +997,16 @@ func (im *Importer) buildRuntimeSettings(agentID string, spec AgentPackSpec) biz
 		s.ToolsParallelEnabled = true
 	}
 
-	// Evolution
-	if spec.Runtime.Evolution != nil {
-		s.EvolutionSelfEvolve = spec.Runtime.Evolution.SelfEvolve
-		s.EvolutionSkillEvolve = spec.Runtime.Evolution.SkillEvolve
-		s.EvolutionMetricsEnabled = spec.Runtime.Evolution.MetricsEnabled
-		s.EvolutionSuggestionsEnabled = spec.Runtime.Evolution.SuggestionsEnabled
-	}
-
-	// Reasoning
-	if spec.Runtime.Reasoning != nil {
-		s.ReasoningMode = spec.Runtime.Reasoning.Mode
-		s.ReasoningLevel = spec.Runtime.Reasoning.Level
-	}
-
-	// RalphLoop
-	if spec.Runtime.RalphLoop != nil {
-		s.RalphLoopMaxIterations = spec.Runtime.RalphLoop.MaxIterations
-		s.RalphLoopCompletionPromise = spec.Runtime.RalphLoop.CompletionPromise
-		s.RalphLoopVerifyCommand = spec.Runtime.RalphLoop.VerifyCommand
-		s.RalphLoopVerifyTimeoutSeconds = spec.Runtime.RalphLoop.VerifyTimeoutSeconds
-	}
-
-	// Context
-	if spec.Runtime.Context != nil {
-		s.ContextCompactionEnabled = spec.Runtime.Context.CompactionEnabled
-		s.SessionSummaryEnabled = spec.Runtime.Context.SessionSummaryEnabled
-		s.IntentPassEnabled = spec.Runtime.Context.IntentPassEnabled
-	}
-
 	// Subagents
 	if spec.SubagentsEnabled != nil {
 		s.SubagentsEnabled = *spec.SubagentsEnabled
 	}
-	s.SubagentsMaxConcurrency = spec.SubagentsMaxConcurrency
-	s.SubagentsMaxGenerationDepth = spec.SubagentsMaxGenerationDepth
+	if spec.SubagentsMaxConcurrency != 0 {
+		s.SubagentsMaxConcurrency = spec.SubagentsMaxConcurrency
+	}
+	if spec.SubagentsMaxGenerationDepth != 0 {
+		s.SubagentsMaxGenerationDepth = spec.SubagentsMaxGenerationDepth
+	}
 
 	// Skills
 	if spec.Skills != nil {

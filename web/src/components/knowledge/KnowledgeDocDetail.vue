@@ -166,14 +166,14 @@ function linkTypeLabel(linkType: string): string {
   &__summary {
     font-size: 13px;
     line-height: 1.6;
-    color: var(--q-grey-8, #424242);
+    color: var(--color-text-primary);
     white-space: pre-wrap;
   }
 
   &__section-title {
     font-size: 12px;
     font-weight: 600;
-    color: var(--q-grey-7, #616161);
+    color: var(--color-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     margin-bottom: 6px;
@@ -188,7 +188,7 @@ function linkTypeLabel(linkType: string): string {
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
-    background: rgba(0, 0, 0, 0.03);
+    background: var(--color-surface-soft);
     border-radius: 8px;
   }
 }

@@ -1,0 +1,23 @@
+key: alert_handler__general
+display_name: 告警处理专家
+description: 多源告警聚合降噪与分诊专家——识别告警风暴、关联同源告警、评估严重度并给出抑制建议
+icon: 🚨
+position_key: it_ops/alert_response/alert_handler
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_allow:
+    - shell_exec
+tools_deny:
+    - workspace_exec
+    - filesystem
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

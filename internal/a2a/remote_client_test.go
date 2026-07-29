@@ -2,6 +2,7 @@ package a2a
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -9,6 +10,26 @@ import (
 	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/pkg/loggateway"
 )
+
+// TestIsRetryableError_PlatformMessages asserts connection-refused is
+// classified retryable across OS-specific dial error wordings.
+func TestIsRetryableError_PlatformMessages(t *testing.T) {
+	t.Parallel()
+	retryable := []string{
+		"dial tcp 10.0.0.1:443: connect: connection refused",                                                           // linux
+		"dial tcp 127.0.0.1:1: connectex: No connection could be made because the target machine actively refused it.", // windows
+		"dial tcp: lookup a2a.example.com: no such host",
+		"context deadline exceeded",
+	}
+	for _, msg := range retryable {
+		if !isRetryableError(errors.New(msg)) {
+			t.Errorf("expected retryable: %s", msg)
+		}
+	}
+	if isRetryableError(errors.New("remote returned 403 forbidden")) {
+		t.Error("403 must not be retryable")
+	}
+}
 
 func TestClientAuthOptionsMTLSRequiresFiles(t *testing.T) {
 	t.Parallel()

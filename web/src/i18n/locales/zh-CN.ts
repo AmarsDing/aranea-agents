@@ -2462,6 +2462,7 @@ export default {
   knowledgePage: {
     dropzoneAria: '拖拽或点击上传文档',
     dropzoneTitle: '拖拽文件到此处，或点击选择（可多选）',
+    dropzoneCompactTitle: '上传文件（可多选，自动整理为 Markdown）',
     dropzoneHint:
       '支持 txt / md / json / csv / html / xml / yaml / pdf / doc / docx / xlsx / pptx / png / jpg / webp，自动整理为 Markdown 入库',
     queueTitle: '上传队列',
@@ -2559,6 +2560,7 @@ export default {
     searchSemanticHint: '回车进行语义检索',
     searchInstantEmpty: '无匹配文件',
     searchSemanticEmpty: '无语义结果',
+    searchSemanticError: '语义检索失败，请检查 Embedding 配置（设置 tab）或稍后重试。',
   },
   hooksPage: {
     callbackPoints: {

@@ -75,7 +75,9 @@ func (s *ChatService) ConfirmPlan(ctx context.Context, req *chatv1.ConfirmPlanRe
 		if err != nil {
 			return nil, apierror.NotFound(apierror.DomainChat, "session not found")
 		}
-		if session.UserID != userID {
+		// 与 chat_clarify.go 同语义：空 UserID 的会话（dev bypass/渠道入口
+		// 创建）放行，仅拒绝跨用户访问。严格相等会让 API 创建会话确认 plan 被 403。
+		if session.UserID != "" && session.UserID != userID {
 			s.lg.Warn("confirm plan ownership denied",
 				loggateway.Str("session_id", sessionID),
 				loggateway.Str("plan_id", planID),

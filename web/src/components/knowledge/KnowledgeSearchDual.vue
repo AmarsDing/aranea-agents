@@ -45,6 +45,10 @@
           {{ t('knowledgePage.searchZoneSemantic') }}
         </div>
         <q-linear-progress v-if="semanticLoading" indeterminate color="primary" />
+        <!-- F4：错误内联展示（如 embedder 未配置），不弹红 toast -->
+        <div v-else-if="semanticError" class="knowledge-search-dual__empty knowledge-search-dual__empty--error">
+          <q-icon name="cloud_off" size="14px" class="q-mr-xs" />{{ semanticError }}
+        </div>
         <template v-else-if="semanticRan">
           <q-list v-if="semanticResults.length" dense>
             <q-item v-for="c in semanticResults" :key="c.id" clickable @click="$emit('select-semantic', c)">
@@ -78,6 +82,8 @@ const props = defineProps<{
   semanticResults: KnowledgeChunk[];
   semanticLoading: boolean;
   semanticRan: boolean;
+  /** F4：语义区错误文案（空 = 无错误），内联展示。 */
+  semanticError: string;
   showInstant: boolean;
   showSemantic: boolean;
   docSourceMap: Record<string, string>;
@@ -133,7 +139,7 @@ function onQueryInput(value: string | number | null) {
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.04em;
-    color: var(--q-grey-7, #616161);
+    color: var(--color-text-secondary);
     text-transform: uppercase;
   }
 
@@ -141,7 +147,13 @@ function onQueryInput(value: string | number | null) {
   &__hint {
     padding: 8px 12px 12px;
     font-size: 12px;
-    color: var(--q-grey-6, #757575);
+    color: var(--color-text-secondary);
+  }
+
+  &__empty--error {
+    display: flex;
+    align-items: center;
+    color: var(--q-negative);
   }
 }
 </style>

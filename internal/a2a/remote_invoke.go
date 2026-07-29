@@ -49,10 +49,12 @@ func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capabi
 		return "", err
 	}
 	timeout := time.Duration(timeoutSec) * time.Second
-	opts = append(opts,
-		a2aclient.WithTimeout(timeout),
-		a2aclient.WithHTTPClient(newSSRFSafeHTTPClient(timeout)),
-	)
+	// Option order matters (WithHTTPClient replaces c.httpClient): the SSRF
+	// client goes first so api_key/bearer auth wraps its transport; mtls
+	// replaces it with a client that embeds the same SSRF dialer
+	// (MTLSHTTPClient). WithTimeout runs last so it lands on the final client.
+	opts = append([]a2aclient.Option{a2aclient.WithHTTPClient(newSSRFSafeHTTPClient(timeout))}, opts...)
+	opts = append(opts, a2aclient.WithTimeout(timeout))
 	client, err := a2aclient.NewA2AClient(targetURL, opts...)
 	if err != nil {
 		lg.Warn("A2A remote client creation failed", loggateway.StepID("a2a.invoke.remote_connect_fail"), loggateway.Str("remote_url", targetURL), loggateway.Err(err))

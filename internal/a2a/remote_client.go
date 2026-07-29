@@ -100,10 +100,14 @@ func MTLSHTTPClient(raw string) (*http.Client, error) {
 		}
 		tlsCfg.RootCAs = pool
 	}
+	timeout := time.Duration(a2abiz.DefaultRemoteInvokeTimeoutSec) * time.Second
 	return &http.Client{
-		Timeout: time.Duration(a2abiz.DefaultRemoteInvokeTimeoutSec) * time.Second,
+		Timeout: timeout,
 		Transport: &http.Transport{
 			TLSClientConfig: tlsCfg,
+			// C-07: mtls clients keep the SSRF dial filter — their
+			// WithHTTPClient option replaces the default SSRF client.
+			DialContext: ssrfSafeDialer(timeout).DialContext,
 		},
 	}, nil
 }
@@ -125,10 +129,10 @@ func FetchRemoteAgentCard(ctx context.Context, remoteURL, authType, authConfigJS
 		return biz.A2AAgentCard{}, err
 	}
 	timeout := time.Duration(a2abiz.DefaultRemoteInvokeTimeoutSec) * time.Second
-	opts = append(opts,
-		a2aclient.WithTimeout(timeout),
-		a2aclient.WithHTTPClient(newSSRFSafeHTTPClient(timeout)),
-	)
+	// Option order matters — see InvokeRemoteRegistry: SSRF client first so
+	// auth options wrap/replace it, timeout last.
+	opts = append([]a2aclient.Option{a2aclient.WithHTTPClient(newSSRFSafeHTTPClient(timeout))}, opts...)
+	opts = append(opts, a2aclient.WithTimeout(timeout))
 	client, err := a2aclient.NewA2AClient(remoteURL, opts...)
 	if err != nil {
 		lg.Warn("A2A fetch remote card connect failed", loggateway.StepID("a2a.remote_card.connect_fail"), loggateway.Str("remote_url", remoteURL), loggateway.Err(err))
@@ -189,8 +193,11 @@ func isRetryableError(err error) bool {
 	}
 	errMsg := err.Error()
 	// Connection refused / network timeout / DNS failure are retryable.
+	// "actively refused" covers the Windows connectex message ("No connection
+	// could be made because the target machine actively refused it").
 	for _, pattern := range []string{
 		"connection refused",
+		"actively refused",
 		"timeout",
 		"deadline exceeded",
 		"TLS handshake",

@@ -168,7 +168,7 @@ function syncLabel(state: string): string {
   &__root-path {
     padding: 0 12px 6px;
     font-size: 11px;
-    color: var(--q-grey-6, #757575);
+    color: var(--color-text-secondary);
   }
 
   &__body {

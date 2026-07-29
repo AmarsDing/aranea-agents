@@ -839,6 +839,10 @@ func runPendingDataMigrations(d *Data) error {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.audit_action_normalize"), loggateway.Err(err))
 		return fmt.Errorf("audit action normalize migration: %w", err)
 	}
+	if err := RunMonitorTraceInterruptedBackfillMigration(ctx, entClient, d.Dialect(), d.lg); err != nil {
+		d.lg.Error("migration step failed", loggateway.StepID("data.migration.monitor_trace_interrupted_backfill"), loggateway.Err(err))
+		return fmt.Errorf("monitor trace interrupted backfill migration: %w", err)
+	}
 	return nil
 }
 
@@ -1010,6 +1014,9 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	seedStep("data.seed.pack_agency", func(ctx context.Context) error {
 		return SeedPackAgency(ctx, entClient, d.Dialect(), scenarioDir, lg)
 	}, 5*time.Minute)
+	seedStep("data.seed.pack_it_ops", func(ctx context.Context) error {
+		return SeedPackItOps(ctx, entClient, d.Dialect(), scenarioDir, lg)
+	}, 2*time.Minute)
 	seedStep("data.seed.spirit_prompt_files", func(ctx context.Context) error {
 		return SeedSpiritPromptFiles(ctx, entClient, d.Dialect(), scenarioDir, lg)
 	})

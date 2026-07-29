@@ -71,12 +71,15 @@ func (e *MemberContractViolationError) Error() string {
 // Entries are Required (completion-time advisory) and inherit the contract's
 // SchemaJSON for write-time content validation; required_keys derive from the
 // schema's top-level "required" array. Empty-name or schema-less contracts
-// still produce entries (advisory-only when no schema).
+// still produce entries (advisory-only when no schema). Contracts named after
+// the reserved state keys ("summary"/"cognition") are skipped: set_deliverable
+// rejects writes under reserved keys, so such entries would be unsatisfiable
+// and only generate perpetual false warnings (TS9-BUG-4).
 func MemberEntriesFromDeliverableContracts(contracts []DeliverableContract) []MemberDeliverableEntry {
 	entries := make([]MemberDeliverableEntry, 0, len(contracts))
 	for _, c := range contracts {
 		name := strings.TrimSpace(c.Name)
-		if name == "" {
+		if name == "" || name == deliverableReservedKeySummary || name == deliverableReservedKeyCognition {
 			continue
 		}
 		entries = append(entries, MemberDeliverableEntry{

@@ -41,6 +41,7 @@
               :key="col.key"
               class="knowledge-doc-list__th"
               :class="`knowledge-doc-list__th--${col.align}`"
+              :style="{ width: col.width }"
               @click="toggleSort(col.key)"
             >
               <span class="row items-center no-wrap" :class="col.align === 'right' ? 'justify-end' : ''">
@@ -67,13 +68,15 @@
             @click="onRowClick(e)"
           >
             <td class="knowledge-doc-list__cell knowledge-doc-list__cell--name">
-              <q-icon
-                :name="e.kind === 'dir' ? 'folder' : 'insert_drive_file'"
-                size="16px"
-                :color="e.kind === 'dir' ? 'amber-8' : undefined"
-                class="q-mr-xs knowledge-doc-list__icon"
-              />
-              <span class="ellipsis" :title="e.name">{{ e.name }}</span>
+              <div class="knowledge-doc-list__name-wrap">
+                <q-icon
+                  :name="e.kind === 'dir' ? 'folder' : 'insert_drive_file'"
+                  size="16px"
+                  :color="e.kind === 'dir' ? 'amber-8' : undefined"
+                  class="q-mr-xs knowledge-doc-list__icon"
+                />
+                <span class="knowledge-doc-list__name-text" :title="e.name">{{ e.name }}</span>
+              </div>
               <q-tooltip v-if="e.summary" max-width="320px" anchor="center left" self="center right">
                 {{ e.summary }}
               </q-tooltip>
@@ -140,12 +143,12 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const statusColor = knowledgeStatusColor;
 
-const columns = computed<{ key: SortKey; label: string; align: 'left' | 'right' }[]>(() => [
-  { key: 'name', label: t('knowledgePage.colName'), align: 'left' },
-  { key: 'updated_at', label: t('knowledgePage.colModified'), align: 'left' },
-  { key: 'type', label: t('knowledgePage.colType'), align: 'left' },
-  { key: 'size', label: t('knowledgePage.colSize'), align: 'right' },
-  { key: 'status', label: t('knowledgePage.colStatus'), align: 'left' },
+const columns = computed<{ key: SortKey; label: string; align: 'left' | 'right'; width: string }[]>(() => [
+  { key: 'name', label: t('knowledgePage.colName'), align: 'left', width: '40%' },
+  { key: 'updated_at', label: t('knowledgePage.colModified'), align: 'left', width: '20%' },
+  { key: 'type', label: t('knowledgePage.colType'), align: 'left', width: '14%' },
+  { key: 'size', label: t('knowledgePage.colSize'), align: 'right', width: '10%' },
+  { key: 'status', label: t('knowledgePage.colStatus'), align: 'left', width: '16%' },
 ]);
 
 // ---------- 面包屑 ----------
@@ -268,15 +271,15 @@ function onRowClick(e: VaultTreeNode) {
     cursor: pointer;
     border-radius: 4px;
     padding: 1px 4px;
-    color: var(--q-grey-7, #616161);
+    color: var(--color-text-secondary);
 
     &:hover {
-      background: rgba(0, 0, 0, 0.06);
-      color: var(--q-primary);
+      background: var(--color-warm-muted-surface);
+      color: var(--color-text-primary);
     }
 
     &--current {
-      color: var(--q-grey-9, #212121);
+      color: var(--color-text-primary);
       font-weight: 600;
       cursor: default;
 
@@ -288,7 +291,7 @@ function onRowClick(e: VaultTreeNode) {
   }
 
   &__crumb-sep {
-    color: var(--q-grey-5, #9e9e9e);
+    color: var(--color-text-tertiary);
     margin: 0 1px;
   }
 
@@ -300,27 +303,29 @@ function onRowClick(e: VaultTreeNode) {
 
   &__table {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: 13px;
+    color: var(--color-text-primary);
   }
 
   &__th {
     position: sticky;
     top: 0;
     z-index: 1;
-    background: var(--q-card, #fff);
+    background: var(--color-surface-soft);
     text-align: left;
     font-size: 12px;
     font-weight: 600;
-    color: var(--q-grey-7, #616161);
+    color: var(--color-text-secondary);
     padding: 6px 8px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    border-bottom: 1px solid var(--color-border-soft);
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
 
     &:hover {
-      color: var(--q-primary);
+      color: var(--color-text-primary);
     }
 
     &--right {
@@ -330,14 +335,14 @@ function onRowClick(e: VaultTreeNode) {
 
   &__row {
     cursor: pointer;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    border-bottom: 1px solid var(--color-border-soft);
 
     &:hover {
-      background: rgba(0, 0, 0, 0.03);
+      background: var(--color-warm-muted-surface);
     }
 
     &--selected {
-      background: rgba(var(--q-primary-rgb, 25, 118, 210), 0.1);
+      background: color-mix(in srgb, var(--q-primary) 12%, transparent);
     }
   }
 
@@ -345,31 +350,37 @@ function onRowClick(e: VaultTreeNode) {
     padding: 6px 8px;
     vertical-align: middle;
     white-space: nowrap;
-
-    &--name {
-      max-width: 0;
-      width: 40%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      display: flex;
-      align-items: center;
-    }
+    overflow: hidden;
+    text-overflow: ellipsis;
 
     &--time {
-      color: var(--q-grey-7, #616161);
+      color: var(--color-text-secondary);
       font-size: 12px;
     }
 
     &--size {
       text-align: right;
       font-variant-numeric: tabular-nums;
-      color: var(--q-grey-7, #616161);
+      color: var(--color-text-secondary);
     }
+  }
+
+  &__name-wrap {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  &__name-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   &__icon {
     flex: none;
-    color: var(--q-grey-6, #757575);
+    color: var(--color-text-secondary);
   }
 }
 </style>

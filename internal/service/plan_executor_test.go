@@ -707,6 +707,155 @@ func TestDagRun_ContractMismatch_PublishesSystemNotice(t *testing.T) {
 	}
 }
 
+// stubTaskPlanUpdater implements taskPlanStatusUpdater in memory (TS9-BUG-1).
+type stubTaskPlanUpdater struct {
+	mu   sync.Mutex
+	plan *biz.TaskPlan
+}
+
+func (s *stubTaskPlanUpdater) GetByID(_ context.Context, id string) (*biz.TaskPlan, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.plan != nil && s.plan.ID == id {
+		cp := *s.plan
+		return &cp, nil
+	}
+	return nil, errors.New("not found")
+}
+
+func (s *stubTaskPlanUpdater) Update(_ context.Context, plan *biz.TaskPlan) (*biz.TaskPlan, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := *plan
+	s.plan = &cp
+	return plan, nil
+}
+
+func (s *stubTaskPlanUpdater) status() biz.TaskPlanStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.plan.Status
+}
+
+func waitPlanStatus(t *testing.T, s *stubTaskPlanUpdater, want biz.TaskPlanStatus) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if s.status() == want {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("plan status = %s, want %s (timed out waiting)", s.status(), want)
+}
+
+// TestPlanExecutor_TaskPlanStatusPropagation (TS9-BUG-1) verifies the TaskPlan
+// lifecycle follows the PlanBoard: confirmed → executing → completed. Before
+// the fix, plans stayed "confirmed" forever.
+func TestPlanExecutor_TaskPlanStatusPropagation(t *testing.T) {
+	t.Parallel()
+	board := biz.PlanBoard{
+		ID:        "pb_plan-1", // PublishV2Board 派生规则："pb_"+plan.ID
+		TaskID:    "task-1",
+		SessionID: "sess-1",
+		Status:    biz.PlanStatusPlanning,
+		Steps: []biz.PlanStep{
+			{ID: "s1", PlanID: "pb_plan-1", TaskID: "task-1", Label: "step1", Status: biz.PlanStepStatusPending, Version: 1},
+		},
+	}
+	seq := &fakeSeq{}
+	orch := newFakeOrchestrator().withSeq(seq)
+	repos := newFakeReposForExecutor()
+	seq.repos = repos
+	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+	updater := &stubTaskPlanUpdater{plan: &biz.TaskPlan{ID: "plan-1", Status: biz.TaskPlanStatusConfirmed}}
+	pe.SetTaskPlanUpdater(updater)
+
+	done := make(chan error, 1)
+	go func() { done <- pe.Subscribe(context.Background(), board) }()
+
+	if !orch.waitForCall("s1", 2*time.Second) {
+		t.Fatal("s1 was not dispatched in time")
+	}
+	// Board planning→executing 后 plan 必须进入 executing。
+	waitPlanStatus(t, updater, biz.TaskPlanStatusExecuting)
+
+	orch.completeStep("s1", true, "")
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Subscribe returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Subscribe timed out")
+	}
+	if got := updater.status(); got != biz.TaskPlanStatusCompleted {
+		t.Fatalf("plan status after DAG completed = %s, want completed", got)
+	}
+}
+
+// TestPlanExecutor_TaskPlanStatusPropagation_Failed (TS9-BUG-1) verifies a
+// failed DAG run propagates failed to the TaskPlan.
+func TestPlanExecutor_TaskPlanStatusPropagation_Failed(t *testing.T) {
+	t.Parallel()
+	board := biz.PlanBoard{
+		ID:        "pb_plan-2",
+		TaskID:    "task-2",
+		SessionID: "sess-2",
+		Status:    biz.PlanStatusPlanning,
+		Steps: []biz.PlanStep{
+			{ID: "s1", PlanID: "pb_plan-2", TaskID: "task-2", Label: "step1", Status: biz.PlanStepStatusPending, Version: 1},
+		},
+	}
+	seq := &fakeSeq{}
+	orch := newFakeOrchestrator().withSeq(seq)
+	repos := newFakeReposForExecutor()
+	seq.repos = repos
+	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+	updater := &stubTaskPlanUpdater{plan: &biz.TaskPlan{ID: "plan-2", Status: biz.TaskPlanStatusConfirmed}}
+	pe.SetTaskPlanUpdater(updater)
+
+	done := make(chan error, 1)
+	go func() { done <- pe.Subscribe(context.Background(), board) }()
+
+	if !orch.waitForCall("s1", 2*time.Second) {
+		t.Fatal("s1 was not dispatched in time")
+	}
+	waitPlanStatus(t, updater, biz.TaskPlanStatusExecuting)
+
+	orch.completeStep("s1", false, "boom")
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Subscribe returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Subscribe timed out")
+	}
+	if got := updater.status(); got != biz.TaskPlanStatusFailed {
+		t.Fatalf("plan status after DAG failed = %s, want failed", got)
+	}
+}
+
+// TestPlanExecutor_TaskPlanStatusPropagation_TerminalNotOverwritten
+// (TS9-BUG-1) verifies an already-terminal TaskPlan is not overwritten by a
+// late board terminal event (e.g. replay).
+func TestPlanExecutor_TaskPlanStatusPropagation_TerminalNotOverwritten(t *testing.T) {
+	t.Parallel()
+	pe := NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())
+	updater := &stubTaskPlanUpdater{plan: &biz.TaskPlan{ID: "plan-3", Status: biz.TaskPlanStatusCompleted}}
+	pe.SetTaskPlanUpdater(updater)
+
+	pe.propagateTaskPlanExecuting(context.Background(), "pb_plan-3")
+	if got := updater.status(); got != biz.TaskPlanStatusCompleted {
+		t.Fatalf("executing propagation overwrote terminal plan: %s", got)
+	}
+	pe.propagateTaskPlanTerminal(context.Background(), "pb_plan-3", biz.PlanStatusFailed)
+	if got := updater.status(); got != biz.TaskPlanStatusCompleted {
+		t.Fatalf("terminal propagation overwrote terminal plan: %s", got)
+	}
+}
+
 func TestDagRun_ContractMatch_NoMismatchNotice(t *testing.T) {
 	t.Parallel()
 	board := biz.PlanBoard{

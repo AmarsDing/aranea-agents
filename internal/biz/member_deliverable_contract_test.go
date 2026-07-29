@@ -95,6 +95,24 @@ func TestMemberEntriesFromDeliverableContracts(t *testing.T) {
 	}
 }
 
+// Contracts named after the reserved deliverable state keys ("summary"/
+// "cognition") must not produce MDC entries: set_deliverable rejects writes
+// under reserved keys, so such entries would be unsatisfiable (TS9-BUG-4).
+func TestMemberEntriesFromDeliverableContracts_ReservedNamesSkipped(t *testing.T) {
+	contracts := []DeliverableContract{
+		{Name: "summary", Type: "document", Format: "markdown"},
+		{Name: "cognition", Type: "data", Format: "json"},
+		{Name: "恢复执行报告", Type: "document", Format: "markdown"},
+	}
+	entries := MemberEntriesFromDeliverableContracts(contracts)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry (reserved names skipped), got %d: %+v", len(entries), entries)
+	}
+	if entries[0].Topic != "恢复执行报告" {
+		t.Fatalf("Chinese contract name must survive 1:1 topic mapping, got %+v", entries[0])
+	}
+}
+
 func TestValidateMemberDeliverableEntry_NoEntry(t *testing.T) {
 	c := &MemberDeliverableContract{}
 	if got := c.ValidateTopicData("anything", map[string]any{"a": 1}); got != nil {

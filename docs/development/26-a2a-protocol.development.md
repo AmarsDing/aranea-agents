@@ -195,7 +195,7 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 
 > 2026-07-28 启动。原 `phase5-差异化创新/04-联邦A2A网络.md` 任务清单（T1-T17）评审修订后并入本节。
 > 需求见 [需求文档 §子模块](./26-a2a-protocol.md#子模块联邦-a2a-网络)；设计见 [设计文档 §子模块](./26-a2a-protocol.design.md#子模块联邦-a2a-网络)（含 F.1 评审修订记录）。
-> **进度（2026-07-29）**：T1–T15 ✅（领域模型/Proto/Repo/治理组件/目录同步/用例编排/服务层+DI 全部落地）；剩余 T16 前端联邦 Tab、T17 端到端验证。
+> **进度（2026-07-29）**：T1–T17 ✅ 全部完成（领域模型/Proto/Repo/治理组件/目录同步/用例编排/服务层+DI/前端联邦 Tab/端到端验证）。
 
 ### 1. 模块定位
 
@@ -260,7 +260,7 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 | 任务ID | 描述 | 状态 |
 |--------|------|------|
 | T16 | 前端 A2APage「联邦」Tab：`features/a2a/federation*` + `components/a2a/federation/*` 四面板 + 多语言映射 | ✅（二级 Tab：组织/目录/调用/审计；组织面板含注册 Dialog、信任等级编辑、同步卡片、删除；`federationUi.ts` 枚举映射 + 列工厂；`useFederationPage.ts` 编排；i18n `a2a.federation.*` 双语） |
-| T17 | 端到端验证：httptest mock 远程组织 A2A 端点，覆盖验收标准 1-7 | 📋 |
+| T17 | 端到端验证：httptest mock 远程组织 A2A 端点，覆盖验收标准 1-7 | ✅（`internal/a2a/federation_e2e_test.go` 10 子测试：验收 1-7 + FED-F8 api_key + FED-F3 不可达 + FED-NFR1 审计 fail-closed；`federation_e2e_helpers_test.go` 提供 fake repo/mock A2A 端点/mTLS CA 工具；测试暴露并修复 3 个生产 bug：①api_key/bearer 认证被 SSRF client 覆盖丢失——调整 option 顺序 SSRF→auth→timeout；②mTLS client 缺 SSRF dialer——`MTLSHTTPClient` 补 `ssrfSafeDialer`；③Windows 连接拒绝消息（"actively refused"）不匹配重试模式——`isRetryableError` 补模式，跨平台重试分类一致） |
 
 ### 4. 改动文件清单（预估）
 
@@ -271,6 +271,8 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 | 新增 | `internal/data/ent/schema/federation_org.go` / `federation_policy.go` / `federation_audit_log.go`（+ 生成物） |
 | 新增 | `internal/data/a2a_federation_repo.go`（+ `_test.go`） |
 | 新增 | `internal/a2a/federation_invoke.go`（+ `_test.go`） |
+| 新增 | `internal/a2a/federation_e2e_test.go` / `federation_e2e_helpers_test.go`（T17 端到端） |
+| 修改 | `internal/a2a/remote_invoke.go` / `remote_client.go` / `ssrf.go`（T17 修复：认证 option 顺序、mTLS SSRF dialer、测试用 `isBlockedIPFn` 间接层） |
 | 新增 | `internal/service/a2a_federation.go`（+ `_test.go`） |
 | 修改 | `internal/biz/a2a/a2a.go`（RemoteAgent/RegisterRemoteAgentInput + OrgID） |
 | 修改 | `internal/data/a2a.go`（scan/insert + org_id；+ `UpdateRemoteAgentCard`） |
@@ -285,7 +287,7 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 
 - [x] `go test ./internal/biz/a2a/... ./internal/data/... ./internal/service/... ./internal/a2a/...` 全绿（data 联邦 PG 集成测试于 T4 经 `testhelper.SetupTestPG` 验证；biz/service/a2a 单测随 T5-T15 持续通过）
 - [x] `go build ./...` 编译通过
-- [ ] 端到端：注册组织 → 发现 Agent → 调用成功（审计 allowed+success）
-- [ ] 端到端：untrusted 拒绝 403（审计 denied_trust）；deny 策略拒绝 403（denied_policy）；超日配额 429（denied_quota）
-- [ ] 端到端：决策审计创建失败时调用被拒绝（fail-closed）
+- [x] 端到端：注册组织 → 发现 Agent → 调用成功（审计 allowed+success）
+- [x] 端到端：untrusted 拒绝 403（审计 denied_trust）；deny 策略拒绝 403（denied_policy）；超日配额 429（denied_quota）
+- [x] 端到端：决策审计创建失败时调用被拒绝（fail-closed）
 - [x] 文档同步：本任务清单状态 + 需求/设计章节与实际实现一致

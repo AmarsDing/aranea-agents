@@ -31,15 +31,20 @@ const (
 	reservedKeyCognition = "cognition"
 )
 
-// topicNamePattern constrains the C3 topic namespace: lowercase slug so the
-// deliverable map stays greppable and collision-free with reserved keys.
-var topicNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+// topicNamePattern constrains the C3 topic namespace: Unicode letters and
+// digits plus '_'/'-', so LLM-authored contract names (e.g. Chinese
+// "恢复执行报告") round-trip through the MDC 1:1 topic mapping. Spaces and
+// punctuation stay excluded so the deliverable map keys remain greppable and
+// collision-free with the reserved keys ("summary"/"cognition" are ASCII and
+// can only collide via exact byte equality).
+var topicNamePattern = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N}_-]{0,63}$`)
 
-// validateTopicName rejects empty-checked topic names that are not slugs or
-// collide with reserved keys. Caller guarantees topic is trimmed non-empty.
+// validateTopicName rejects empty-checked topic names that contain characters
+// outside the allowed set or collide with reserved keys. Caller guarantees
+// topic is trimmed non-empty.
 func validateTopicName(topic string) error {
 	if !topicNamePattern.MatchString(topic) {
-		return fmt.Errorf("invalid topic %q: must match ^[a-z0-9][a-z0-9_-]{0,63}$", topic)
+		return fmt.Errorf("invalid topic %q: must match ^[\\p{L}\\p{N}][\\p{L}\\p{N}_-]{0,63}$ (letters/digits in any language, '_' and '-'; no spaces or punctuation)", topic)
 	}
 	if topic == reservedKeySummary || topic == reservedKeyCognition {
 		return fmt.Errorf("invalid topic %q: reserved key", topic)
@@ -76,9 +81,9 @@ type setDeliverableInput struct {
 	Note string         `json:"note" jsonschema:"description=Optional note describing this deliverable for downstream agents"`
 	// Topic enables the C3 shared blackboard: non-empty stores data under
 	// deliverable[topic] (merged with the current map) instead of overwriting
-	// the whole map. Must match ^[a-z0-9][a-z0-9_-]{0,63}$ and not collide
-	// with the reserved keys "summary"/"cognition".
-	Topic string `json:"topic" jsonschema:"description=Optional namespace for this deliverable. When set, data is stored under deliverable[topic] and other topics are preserved. Lowercase slug, e.g. research or draft_v1."`
+	// the whole map. Letters/digits in any language plus '_'/'-', and must
+	// not collide with the reserved keys "summary"/"cognition".
+	Topic string `json:"topic" jsonschema:"description=Optional namespace for this deliverable. When set, data is stored under deliverable[topic] and other topics are preserved. Use the exact contract name declared for your team (Chinese names are supported), e.g. research or 恢复执行报告."`
 	// Cognition is the optional C1 cognitive-process record, stored under the
 	// reserved "cognition" key of the deliverable map and bridged into the
 	// DeliverableRef envelope for downstream teams.
@@ -118,7 +123,7 @@ func (t *SetDeliverableTool) Declaration() *trpctool.Declaration {
 				},
 				"topic": {
 					Type:        "string",
-					Description: "Optional namespace. When set, data is stored under deliverable[topic] and other topics are preserved. Lowercase slug ^[a-z0-9][a-z0-9_-]{0,63}$, not \"summary\"/\"cognition\".",
+					Description: "Optional namespace. When set, data is stored under deliverable[topic] and other topics are preserved. Letters/digits in any language plus '_'/'-' (Chinese supported, e.g. 恢复执行报告); NOT \"summary\"/\"cognition\" (reserved). Use the exact contract name declared for your team.",
 				},
 				"cognition": {
 					Type:        "object",

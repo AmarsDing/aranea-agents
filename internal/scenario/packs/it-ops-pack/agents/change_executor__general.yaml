@@ -1,0 +1,23 @@
+key: change_executor__general
+display_name: 变更执行专家
+description: 修复执行编排专家——变更窗口与灰度策略规划、执行后验证与回滚预案设计
+icon: ⚙️
+position_key: it_ops/execution/change_executor
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_allow:
+    - shell_exec
+tools_deny:
+    - workspace_exec
+    - filesystem
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

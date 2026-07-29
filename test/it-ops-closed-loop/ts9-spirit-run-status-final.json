@@ -1,0 +1,14 @@
+﻿{
+    "runId":  "",
+    "status":  "completed",
+    "errorMessage":  "",
+    "updatedAt":  "2026-07-29T10:13:11Z",
+    "invocationId":  "",
+    "agentName":  "",
+    "startedAt":  "",
+    "lastEventAt":  "",
+    "eventCount":  0,
+    "awaitKind":  "",
+    "awaitToolKey":  "",
+    "awaitToolCallId":  ""
+}

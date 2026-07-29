@@ -804,9 +804,9 @@ Phase 1.4 质量评估 ──────┘
 
 | # | 任务 |
 |---|------|
-| P1-1 | `knowledge_collections` 升级 Vault：`root_path`（唯一约束 + 规范化：resolve symlink/绝对路径/尾部斜杠归一，禁挂系统根目录 S-1）、`sync_state`、`sync_config`；DDL 迁移注册 — ✅ 已完成（2026-07-25，Schema 列+唯一索引已落；`internal/biz/knowledge/vault_usecase.go`：NormalizeRootPath + CreateVault，9 测试全绿） |
+| P1-1 | `knowledge_collections` 升级 Vault：`root_path`（唯一约束 + 规范化：resolve symlink/绝对路径/尾部斜杠归一，禁挂系统根目录 S-1）、`sync_state`、`sync_config`；DDL 迁移注册 — ✅ 已完成（2026-07-25，Schema 列+唯一索引已落；`internal/biz/knowledge/vault_usecase.go`：NormalizeRootPath + CreateVault，9 测试全绿；2026-07-29：Proto/CLI `root_path` 改必填（V2 不兼容旧模式）、`embedding_model` 改可选留空=无语义层词法库，service 层 CreateCollection 改走 CreateVault） |
 | P1-2 | VaultFiler：KB 侧唯一写文件出口（路径 sanitize 基础版）— ✅ 已完成（2026-07-25，`internal/biz/knowledge/vault_filer.go`：sanitize/原子写/覆盖备份/回收站，8 测试全绿） |
-| P1-3 | SyncEngine 单向扫描：文件变更 → chunk → （可选 embed）→ 派生索引；轮询实现，fsnotify 留接口 — ✅ 已完成（2026-07-25，`internal/biz/knowledge/sync_engine.go` + `internal/knowledge/vault_sync.go`/`vault_sync_runner.go`：Scan/Diff/Apply/Run 三段解耦；prev 重启自 DB 重建；幂等短路 + 无语义层降级；Watcher 接口预留，P2 接 fsnotify；13 测试全绿） |
+| P1-3 | SyncEngine 单向扫描：文件变更 → chunk → （可选 embed）→ 派生索引；轮询实现，fsnotify 留接口 — ✅ 已完成（2026-07-25，`internal/biz/knowledge/sync_engine.go` + `internal/knowledge/vault_sync.go`/`vault_sync_runner.go`：Scan/Diff/Apply/Run 三段解耦；prev 重启自 DB 重建；幂等短路 + 无语义层降级；Watcher 接口预留，P2 接 fsnotify；13 测试全绿；2026-07-29 生产装配补齐：`internal/knowledge/vault_sync_supervisor.go` 每 vault 一 RunVault 生命周期管理（StartAll/StartVault/StopVault/Stop，幂等），wire `provideVaultSyncSupervisor` 装配 + app.go BeforeStart 注入 service / readiness 后 StartAll / AfterStop Stop，service CreateCollection/DeleteCollection 钩子；修复 data 层 `GetDocumentByRelPath`/`GetDocument` 裸 `sql.ErrNoRows` 未翻译（DB-R5）导致 applier 无法走创建路径；5 测试全绿） |
 | P1-4 | 派生索引纪律落地：全部索引无状态可重建，reindex 一键化；禁止与业务表触发器耦合 — ✅ 已完成（2026-07-25，links/entities 表按派生纪律落 Schema；`internal/knowledge/vault_reindex.go`：ReindexVault 一键重建，ApplyEventsForced 绕过幂等短路强制重建 chunks，4 测试全绿） |
 
 验收：挂载一个本地文件夹为 Vault，新增/修改 .md 后索引自动更新；删 Vault 只删索引不动文件。
@@ -832,6 +832,10 @@ Phase 1.4 质量评估 ──────┘
 
 验收：三栏可用；搜索双区意图分流正确；关联区来源标注完整。
 
+> **运行时验证记录（2026-07-29）**：① 中栏重设计为资源管理器式表格（`KnowledgeDocList.vue`：名称/修改日期/类型/大小/状态五列，列头点击升降序排序，目录行下钻 + 面包屑返回，目录优先排序）浏览器实测通过；② 新建对话框（`KnowledgeCreateDialog.vue`：名称/根目录必填 + 描述/Embedding 模型可选）实测：不存在路径返回 warning 通知 `root_path not found: ...`，合法路径创建成功并自动同步入库；③ Vault 切换器名称无重复、显示文档/分块计数与同步状态；④ 详情面板选中文件显示摘要卡 + 展开正文预览（已整理 MD 徽标）+ 关联区；⑤ 双区搜索即时区命中文件名、语义区回车提示；⑥ P1-3 生产装配运行时验证：存量 vault 启动即扫入库、UI 新建 vault 立即同步 2 文档、45s 轮询捕获新增文件（documentCount/syncState/lastSyncAt 正确）。已知小项：无 root_path 的历史 collection 在切换器中显示「同步正常」（语义不准，低优）；目录行修改日期列为空（tree API 目录无 updatedAt，装饰性）；`KnowledgeEmbedderFields` defineModel('form') 触发 dev 编译器 const 警告（既有模式，行为正确）。
+
+> **UI 修复 + 语义降级验证记录（2026-07-29 晚）**：全面 UI 测试发现配色与功能问题后按 F1~F5 修复——F1 中栏表格重写（`KnowledgeDocList.vue`：`table-layout: fixed` + `name-wrap/name-text` ellipsis 修复名称列文字不可见；列宽 40%/20%/14%/10%/16%）；F2 四处组件 19 处 `--q-grey-*` 颜色变量替换为主题 token（`--color-text-primary/secondary`、`--color-surface-soft`、`--color-border-soft`）；F3 DropZone 浏览态折叠为紧凑单行按钮（`compact` prop + `dropzoneCompactTitle` i18n）；F4 语义检索错误内联展示（`useVaultExplorer.semanticError` + `KnowledgeSearchDual` error 区，兜底文案 i18n 化 `knowledgePage.searchSemanticError`，不弹红 toast）；F5 后端 embedder 未配置/不可用时 BM25 降级（`retriever.go`/`hybrid_retriever.go`：`embedder==nil` 或 `CodeUnavailable` 时走 `searchSparseFallback`/`searchSparse`，`retriever_sparse_fallback_test.go` 覆盖 nil embedder/UNAVAILABLE/无 BM25 能力三场景）。验证：`pnpm lint` 0 errors（修复 1 处新硬编码中文入 i18n）、`pnpm test` 147 文件 1059 测试全绿、`pnpm build` 成功、`go build ./...` + `go test ./internal/knowledge/... ./internal/service -run Knowledge` 全绿；浏览器双主题复验：亮色/暗色下表头、面包屑、名称列、选中态、详情面板配色均正常，guides 下钻 + setup.md 详情 + 即时搜索命中正常；语义检索实测 embedder 未配置场景：后端日志确认 `knowledge.hybrid.sparse_fallback`（reason=embed failed, UNAVAILABLE），前端不再 500 红错，语义区显示「无语义结果」（该 vault 文档无 chunks 故 BM25 空结果，数据层面预期）。已知非阻塞项：WS 重连 429 限流（admin 重启瞬态，自行恢复）；`internal/service` 全量测试中 chat 域 ModelCatalog panic 为既有无关问题。
+
 ### P4a：L0 强 BM25 栈（含 R-5 选型 spike）
 
 | # | 任务 |
@@ -848,7 +852,7 @@ Phase 1.4 质量评估 ──────┘
 
 | # | 任务 |
 |---|------|
-| P4b-1 | **R-4 契约变更四条**：CreateVault EmbeddingModel 改可选（空=无语义层）；摄取流水线对无 embedding Vault 跳过向量写入；knowledge_search 无语义层自动降级 L0+L1；前端 embedding 配置改「可选增强」 |
+| P4b-1 | **R-4 契约变更四条**：CreateVault EmbeddingModel 改可选（空=无语义层）— ✅ 已落地（2026-07-29，Proto/CLI/CreateVault 全链路）；knowledge_search 无语义层自动降级 L0 — ✅ 已落地（2026-07-29 晚 F5，`retriever.go`/`hybrid_retriever.go` BM25 降级，见上方验证记录）；摄取流水线对无 embedding Vault 跳过向量写入 — ⏳；前端 embedding 配置改「可选增强」— ⏳ |
 | P4b-2 | Embedder 接口抽象整理：本地模型（ONNX/Ollama）/ model2vec 静态查表 / 远程 API 三实现可插拔 |
 | P4b-3 | model2vec 静态查表后端（自实现查表，不依赖社区移植；向量按 `(model,dim)` 命名空间隔离 S-3） |
 | P4b-4 | semantic 关联轨落地；无语义层时「相关推荐」降级为同文件夹+共享标签+双链共现 |

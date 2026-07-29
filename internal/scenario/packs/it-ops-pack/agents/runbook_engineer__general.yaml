@@ -1,0 +1,23 @@
+key: runbook_engineer__general
+display_name: 修复方案工程师
+description: Runbook 编写工程师——按目标 OS 生成修复命令与脚本，命令风险分级并附解释与预期输出
+icon: ⚡
+position_key: it_ops/execution/runbook_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

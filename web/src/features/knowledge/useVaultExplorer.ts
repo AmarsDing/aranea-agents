@@ -64,9 +64,11 @@ export function useVaultExplorer(input: {
   documents: Ref<KnowledgeDocument[]>;
   friendlyError: (err: unknown) => string;
   notifyError: (message: string) => void;
+  /** F4：语义区错误兜底文案（friendlyError 返回空串时使用），由调用方经 i18n 提供。 */
+  semanticErrorFallback: () => string;
 }) {
   const knowledgeStore = useKnowledgeStore();
-  const { selectedId, documents, friendlyError, notifyError } = input;
+  const { selectedId, documents, friendlyError, notifyError, semanticErrorFallback } = input;
 
   // ---------- 树与中栏列表 ----------
 
@@ -201,6 +203,8 @@ export function useVaultExplorer(input: {
   const semanticResults = ref<KnowledgeChunk[]>([]);
   const semanticLoading = ref(false);
   const semanticRan = ref(false);
+  // F4：语义区错误内联展示（不弹红 toast），文案经 friendlyError 映射。
+  const semanticError = ref('');
 
   const searchIntent = computed<SearchIntent>(() => classifySearchIntent(searchQuery.value));
 
@@ -231,11 +235,13 @@ export function useVaultExplorer(input: {
     if (!q || !selectedId.value) return;
     semanticLoading.value = true;
     semanticRan.value = true;
+    semanticError.value = '';
     try {
       semanticResults.value = await knowledgeStore.search({ collection_id: selectedId.value, query: q, top_k: 8 });
     } catch (e) {
       semanticResults.value = [];
-      notifyError(friendlyError(e) || 'search failed');
+      // F4：错误内联展示在语义区（不弹红 toast）；friendlyError 返回空串时用通用引导文案。
+      semanticError.value = friendlyError(e) || semanticErrorFallback();
     } finally {
       semanticLoading.value = false;
     }
@@ -245,6 +251,7 @@ export function useVaultExplorer(input: {
     searchQuery.value = '';
     semanticResults.value = [];
     semanticRan.value = false;
+    semanticError.value = '';
   }
 
   function selectInstant(doc: KnowledgeDocument) {
@@ -312,6 +319,7 @@ export function useVaultExplorer(input: {
     semanticResults,
     semanticLoading,
     semanticRan,
+    semanticError,
     docSourceMap,
     runSemanticSearch,
     clearSearch,

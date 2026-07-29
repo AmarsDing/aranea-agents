@@ -2230,6 +2230,7 @@ func provideWSV2Subscriber(bus *event.V2Bus, wsSrv *server.WSServer, lg loggatew
 // providePlanExecutor constructs the v2 forward DAG scheduler.
 // The PlanExecutor is injected into TeamStarter via SetPlanExecutor
 // (called in ProvideChatService).
+// taskPlanRepo 用于 TS9-BUG-1：PlanBoard 生命周期传播到 TaskPlan 状态。
 func providePlanExecutor(
 	planStep biz.PlanStepV2Repo,
 	teamStage biz.TeamStageV2Repo,
@@ -2238,9 +2239,12 @@ func providePlanExecutor(
 	graphNode biz.GraphNodeV2Repo,
 	orch service.TeamOrchestrator,
 	seq *v2.Sequencer,
+	taskPlanRepo biz.TaskPlanRepository,
 	lg loggateway.Logger,
 ) *service.PlanExecutor {
-	return service.NewPlanExecutorFromV2Repos(planStep, teamStage, planBoard, graphStage, graphNode, orch, seq, lg)
+	pe := service.NewPlanExecutorFromV2Repos(planStep, teamStage, planBoard, graphStage, graphNode, orch, seq, lg)
+	pe.SetTaskPlanUpdater(taskPlanRepo)
+	return pe
 }
 
 // provideTeamOrchestrator returns the real TeamOrchestrator (Phase 2).

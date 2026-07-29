@@ -1,13 +1,14 @@
 package a2a
 
-// Federation end-to-end tests (T17, design F.13): httptest mocks the remote
+// Federation end-to-end tests (T17): httptest mocks the remote
 // organization's A2A endpoint; the full governance chain (org → trust → policy
 // → quota → audit fail-closed → target resolve → real remote HTTP invoke →
-// result audit) runs through FederationUsecase with in-memory repos.
+// result audit) runs through FederationUsecase with in-memory repos
+// (design F.6 联邦调用链).
 //
 // Covers requirement acceptance criteria 1-7 (26-a2a-protocol.md §子模块.4)
 // plus FED-F8 api_key auth, FED-F3 unreachable-remote error path, and the
-// audit fail-closed acceptance item (development §子模块.5).
+// FED-NFR1 audit fail-closed requirement.
 //
 // All tests in this file are sequential (no t.Parallel): allowAllRemoteIPs
 // swaps a package-level SSRF predicate.

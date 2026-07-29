@@ -1,0 +1,176 @@
+companies:
+- key: it_ops
+  name: IT 运维公司
+  icon: server
+  description: 覆盖「告警→诊断→修复→验证→复盘」全链路的零人工运维组织
+  sort_order: 10
+  departments:
+  - key: alert_response
+    name: 告警响应部
+    description: 告警分诊、事件定级与响应协同
+    sort_order: 1
+    positions:
+    - key: alert_handler
+      name: 告警处理专家
+      description: 多源告警聚合降噪、严重度评估与告警分诊专家
+      sort_order: 1
+      seniority_level: senior
+      responsibilities:
+      - 聚合多源告警并降噪去重，识别告警风暴与同源告警
+      - 评估告警严重度与影响范围，输出分诊结论与处置建议
+      - 提出告警抑制与规则优化建议，持续压缩无效告警比例
+      variants:
+      - key: general
+        name: 通用
+    - key: incident_commander
+      name: 事件响应指挥官
+      description: 事件定级、跨职能协同调度与升级决策指挥官
+      sort_order: 2
+      seniority_level: expert
+      responsibilities:
+      - 按 P1-P4 框架对事件定级，确定响应范围与资源投入
+      - 统筹跨职能团队协同响应，把控事件时间线与处置节奏
+      - 决策升级路径与对外通报节奏，向利益相关方同步状态
+      variants:
+      - key: general
+        name: 通用
+  - key: diagnostics
+    name: 故障诊断部
+    description: 根因定位、日志与指标分析
+    sort_order: 2
+    positions:
+    - key: fault_diagnostician
+      name: 故障诊断专家
+      description: RCA 根因定位、假设树取证与根因链分析专家
+      sort_order: 1
+      seniority_level: expert
+      responsibilities:
+      - 建立症状模型与假设树，逐条取证定位根因链
+      - 运用 5-Why、变更关联与拓扑上卷分析故障传播路径
+      - 输出带置信度评估的根因结论与修复建议
+      variants:
+      - key: general
+        name: 通用
+    - key: log_analyst
+      name: 日志分析专家
+      description: 错误模式识别、异常聚类与跨源日志时序关联专家
+      sort_order: 2
+      seniority_level: senior
+      responsibilities:
+      - 识别错误模式并对异常事件聚类，提取关键证据行
+      - 跨源关联日志时序，还原故障发生前后的事件链条
+      - 区分信号与噪声，输出结构化日志分析结论
+      variants:
+      - key: general
+        name: 通用
+    - key: metric_analyst
+      name: 指标分析专家
+      description: 时序指标异常检测、容量趋势预测与基线偏离判定专家
+      sort_order: 3
+      seniority_level: senior
+      responsibilities:
+      - 检测时序指标异常，判定与基线的偏离程度
+      - 预测容量趋势，提前识别资源瓶颈与扩容窗口
+      - 分析告警与指标的相关性，为诊断提供量化证据
+      variants:
+      - key: general
+        name: 通用
+  - key: execution
+    name: 操作执行部
+    description: 修复执行、变更验证与回滚
+    sort_order: 3
+    positions:
+    - key: change_executor
+      name: 变更执行专家
+      description: 修复方案执行编排、变更窗口规划与回滚预案专家
+      sort_order: 1
+      seniority_level: senior
+      responsibilities:
+      - 编排修复方案执行步骤，规划变更窗口与灰度策略
+      - 执行后验证服务状态与业务指标，确认修复生效
+      - 设计回滚预案，确保变更失败时可快速恢复
+      variants:
+      - key: general
+        name: 通用
+    - key: runbook_engineer
+      name: 修复方案工程师
+      description: 修复命令与脚本生成、Runbook 编写与命令风险分级工程师
+      sort_order: 2
+      seniority_level: senior
+      responsibilities:
+      - 按目标 OS 环境生成修复命令与脚本，编写标准 Runbook
+      - 对命令做风险分级（只读/低风险/高危），附解释与预期输出
+      - 校验命令幂等性与适用边界，标注前置条件与回退方法
+      variants:
+      - key: general
+        name: 通用
+  - key: inspection
+    name: 巡检治理部
+    description: 系统/网络/数据库巡检与合规审计
+    sort_order: 4
+    positions:
+    - key: system_inspector
+      name: 系统巡检专家
+      description: 主机资源与服务状态巡检、隐患识别与优化建议专家
+      sort_order: 1
+      seniority_level: senior
+      responsibilities:
+      - 巡检主机 CPU/内存/磁盘/IO 与服务运行状态
+      - 识别容量、性能与配置隐患，按风险等级排序输出
+      - 给出可落地的优化建议与处置优先级
+      variants:
+      - key: general
+        name: 通用
+    - key: network_inspector
+      name: 网络巡检专家
+      description: 多厂商网络设备巡检、阈值判定与健康度评估专家
+      sort_order: 2
+      seniority_level: senior
+      responsibilities:
+      - 巡检华为/H3C/Cisco/锐捷等多厂商设备运行状态
+      - 按阈值规范判定 CPU 与内存健康度，支持标准/自定义/全面三模式
+      - 输出设备健康报告与风险项整改建议
+      variants:
+      - key: general
+        name: 通用
+    - key: db_operator
+      name: 数据库运维专家
+      description: 数据库健康检查、慢查询诊断、死锁分析与安全审计专家
+      sort_order: 3
+      seniority_level: expert
+      responsibilities:
+      - 执行数据库健康检查，评估实例、复制与存储状态
+      - 诊断慢查询与死锁，定位根因并给出优化方案
+      - 开展安全审计与 SQL 审核，拦截高危语句与越权访问
+      variants:
+      - key: general
+        name: 通用
+    - key: compliance_checker
+      name: 合规检查专家
+      description: 安全基线核查、运维操作合规审计与高危动作复核专家
+      sort_order: 4
+      seniority_level: senior
+      responsibilities:
+      - 核查系统与中间件安全基线，输出不符合项清单
+      - 审计运维操作合规性，复核高危动作并给出拦截建议
+      - 为不符合项提供整改建议与合规依据
+      variants:
+      - key: general
+        name: 通用
+  - key: docs
+    name: 文档报告部
+    description: 复盘报告与知识沉淀
+    sort_order: 5
+    positions:
+    - key: postmortem_writer
+      name: 复盘文档专家
+      description: 事故复盘报告撰写、知识沉淀与改进项跟踪专家
+      sort_order: 1
+      seniority_level: senior
+      responsibilities:
+      - 撰写事故复盘报告：时间线、根因、直接诱因与促成因素
+      - 沉淀运维知识，将故障案例转化为可复用的 Runbook 素材
+      - 跟踪改进项的负责人与完成期限，闭环验证改进效果
+      variants:
+      - key: general
+        name: 通用

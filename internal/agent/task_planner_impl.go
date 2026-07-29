@@ -1188,7 +1188,7 @@ Rules:
 - No circular dependencies allowed
 - Subtasks should be independently executable where possible
 - CRITICAL: Each subtask "description" must be fully self-contained. The executing team sees ONLY its own description — it cannot see the user message or other subtasks. Every concrete parameter the executor needs (URLs, file paths, branch/tag names, subpaths, skill/agent names, numeric values, flags) MUST be copied verbatim into the description. NEVER use context references such as "the given URL", "the above parameters", "使用给定的/上述的/前文提到的" — always inline the actual values.
-- Each subtask MAY include "deliverables" (output contract array) and "input_contract" (input contract array). Contract element: {"name": string, "type": "document"|"code"|"data", "format": "markdown"|"json"|"zip", "description": string}
+- Each subtask MAY include "deliverables" (output contract array) and "input_contract" (input contract array). Contract element: {"name": string, "type": "document"|"code"|"data", "format": "markdown"|"json"|"zip", "description": string}. The contract "name" becomes the deliverable topic namespace that team members write via set_deliverable — keep it short (letters/digits in any language plus '_'/'-', no spaces or punctuation; a concise slug like "root-cause-report" or "根因报告" works) and NEVER use the reserved names "summary" or "cognition" (writes under them are rejected/overwritten).
 - If subtask B depends_on subtask A, B's input_contract SHOULD declare references to A's deliverables using the SAME "name" values`, countRule, DomainLexiconPromptList()) + intentContext
 }
 
@@ -1293,14 +1293,19 @@ func parseDecompositionOutput(text string) ([]biz.SubTask, error) {
 }
 
 // sanitizeContracts drops contract entries with a blank name (advisory
-// contract — malformed entries must not break planning).
+// contract — malformed entries must not break planning) and entries named
+// after the reserved deliverable state keys ("summary"/"cognition"): those
+// names become MDC topics 1:1, but set_deliverable rejects writes under
+// reserved keys, so keeping them would create unsatisfiable member contracts
+// (TS9-BUG-4: planner authored a contract literally named "summary").
 func sanitizeContracts(in []biz.DeliverableContract) []biz.DeliverableContract {
 	if len(in) == 0 {
 		return nil
 	}
 	out := make([]biz.DeliverableContract, 0, len(in))
 	for _, c := range in {
-		if strings.TrimSpace(c.Name) == "" {
+		name := strings.TrimSpace(c.Name)
+		if name == "" || name == "summary" || name == "cognition" {
 			continue
 		}
 		out = append(out, c)

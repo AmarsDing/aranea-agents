@@ -1,0 +1,23 @@
+key: incident_commander__general
+display_name: 事件响应指挥官
+description: 事件定级与协同调度指挥官——P1-P4 定级、跨职能调度、升级决策与利益相关方通报
+icon: 📟
+position_key: it_ops/alert_response/incident_commander
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

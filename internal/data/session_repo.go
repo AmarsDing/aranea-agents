@@ -918,8 +918,17 @@ func (r *sessionRepo) GetSessionTree(ctx context.Context, spiritSessionID string
 	}
 	c := r.data.RW().Read(ctx)
 	// One query for all sessions in the tree (root + descendants).
+	// The root itself must be included explicitly: production spirit roots
+	// carry root_session_id='' (no creation path assigns it), so filtering
+	// on RootSessionIDEQ alone would exclude the root row.
 	rows, err := c.Session.Query().
-		Where(entsession.RootSessionIDEQ(spiritSessionID), entsession.DeletedAtEQ("")).
+		Where(
+			entsession.Or(
+				entsession.RootSessionIDEQ(spiritSessionID),
+				entsession.IDEQ(spiritSessionID),
+			),
+			entsession.DeletedAtEQ(""),
+		).
 		Order(entsession.ByAgentDepth(entsql.OrderAsc()), entsession.ByCreatedAt(entsql.OrderAsc())).
 		All(ctx)
 	if err != nil {
@@ -930,20 +939,23 @@ func (r *sessionRepo) GetSessionTree(ctx context.Context, spiritSessionID string
 	nodeMap := make(map[string]*biz.SessionTreeNode, len(rows))
 
 	for _, s := range rows {
+		// Root identification by ID match — authoritative. Production roots
+		// have session_type='' (only team/agent types are assigned at
+		// creation), so type-switching alone leaves Root empty (TS9-BUG-5).
+		if s.ID == spiritSessionID {
+			tree.Root = entSessionToBiz(s)
+			continue
+		}
 		node := &biz.SessionTreeNode{Session: entSessionToBiz(s)}
 		nodeMap[s.ID] = node
 
-		switch biz.SessionType(s.SessionType) {
-		case biz.SessionTypeSpirit:
-			tree.Root = node.Session
-		default:
-			// Attach to parent node (supports arbitrary depth).
-			if parent, ok := nodeMap[s.ParentSessionID]; ok {
-				parent.Children = append(parent.Children, node)
-			} else {
-				// Parent not found (may be filtered out); attach to root.
-				tree.Children = append(tree.Children, node)
-			}
+		// Attach to parent node (supports arbitrary depth). Rows are ordered
+		// by agent_depth ASC, so parents are always processed before children.
+		if parent, ok := nodeMap[s.ParentSessionID]; ok {
+			parent.Children = append(parent.Children, node)
+		} else {
+			// Parent is the root itself or was filtered out; attach to root.
+			tree.Children = append(tree.Children, node)
 		}
 	}
 	return tree, nil
