@@ -26,7 +26,7 @@
 |----------|---------|-------------|
 | 作品简介（500 字以内） | **必交** | [01-作品简介.md](./01-作品简介.md) |
 | 方案 PPT | **必交** | [02-方案PPT.html](./02-方案PPT.html)（浏览器打开演示，Ctrl+P 导出 PDF；截图引用 evidence/ 相对路径，请勿单独移动该文件） |
-| 可执行 AgentTeams 代码包 | 可选 | [code/aranea-agents-src-20260727.zip](./code/) + [code/代码包说明.md](./code/代码包说明.md)（运行入口/依赖/配置/样例输入输出/运行证据） |
+| 可执行 AgentTeams 代码包 | 可选 | [code/aranea-agents-src-20260729.zip](./code/) + [code/代码包说明.md](./code/代码包说明.md)（运行入口/依赖/配置/样例输入输出/运行证据） |
 
 ## 附录与证据（评审补充材料）
 
@@ -81,7 +81,7 @@ submission/
 ├── evidence/                     # 25 张 UI 实跑截图
 ├── api/                          # 16 份 API 实测记录
 └── code/
-    ├── aranea-agents-src-20260727.zip   # 源码快照（Git HEAD 2273741c）
+    ├── aranea-agents-src-20260729.zip   # 源码快照（Git HEAD 28c3e388，含 TS-9 修复 + IT 运维岗位包）
     └── 代码包说明.md                     # 运行/依赖/配置/样例/证据
 
 仓库内补充证据（不在本包）：test/it-ops-closed-loop/  # TS-9 运维闭环原始证据 + 采集脚本
