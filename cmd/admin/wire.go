@@ -1238,12 +1238,18 @@ func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEm
 	return u
 }
 
+// provideKnowledgeVaultFiler 提供共享 VaultFiler 实例（G1-B1/B2）：KnowledgeUsecase
+// 树目录扫描/树内写文件与 vault 同步链（applier）必须同一实例——自写标记统一登记，
+// watcher 才能过滤 KB 自身写事件（回环防护）。
+func provideKnowledgeVaultFiler(lg loggateway.Logger) *bizknowledge.VaultFiler {
+	return bizknowledge.NewVaultFiler(lg)
+}
+
 // provideVaultSyncSupervisor 装配 vault 同步链（P1-3 生产装配，原遗漏导致新建
-// vault 永不同步）：SyncEngine → VaultSyncApplier（filer + 可选 embedder）→
+// vault 永不同步）：SyncEngine → VaultSyncApplier（共享 filer + 可选 embedder）→
 // VaultSyncRunner → Supervisor。embedder 未配置时 buildChunks 按无语义层降级。
-func provideVaultSyncSupervisor(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, lg loggateway.Logger) *knowledge.VaultSyncSupervisor {
+func provideVaultSyncSupervisor(uc *biz.KnowledgeUsecase, filer *bizknowledge.VaultFiler, embedder knowledge.Embedder, lg loggateway.Logger) *knowledge.VaultSyncSupervisor {
 	engine := bizknowledge.NewSyncEngine(lg)
-	filer := bizknowledge.NewVaultFiler(lg)
 	applier := knowledge.NewVaultSyncApplier(uc, filer, embedder, lg)
 	runner := knowledge.NewVaultSyncRunner(engine, applier, uc, lg)
 	return knowledge.NewVaultSyncSupervisor(runner, uc, lg)
@@ -2898,6 +2904,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(knowledge.Embedder), new(*knowledge.MultiProviderEmbedder)),
 		// Knowledge vault sync（P1-3 生产装配）
 		provideVaultSyncSupervisor,
+		provideKnowledgeVaultFiler,
 		// DynamicLLMCaller dependency bindings
 		wire.Bind(new(chatagent.LLMCredentialResolver), new(*biz.LlmProviderModelUsecase)),
 		wire.Bind(new(chatagent.LLMRefineConfigResolver), new(*biz.SystemSettingUsecase)),

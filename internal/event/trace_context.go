@@ -19,6 +19,8 @@ const (
 	TraceDomainKnowledge TraceDomain = "knowledge"
 	TraceDomainPlugin    TraceDomain = "plugin"
 	TraceDomainSystem    TraceDomain = "system"
+	TraceDomainSkill     TraceDomain = "skill"
+	TraceDomainA2A       TraceDomain = "a2a"
 )
 
 // TraceContext correlates flow logs and spans for one request/run.

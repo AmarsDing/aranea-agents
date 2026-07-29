@@ -192,6 +192,9 @@ type Usecase struct {
 	// paths nil 时 ListVaultTree 显式报错，resolvedLinks nil 时关联查询降级为空。
 	paths         DocumentPathReader
 	resolvedLinks ResolvedLinkReader
+	// filer 为 vault 文件系统边界（G1-B1），经 SetVaultFiler 接线；
+	// nil 时 ListVaultTree 目录退化为纯索引聚合。
+	filer *VaultFiler
 }
 
 // NewUsecase constructs a KnowledgeUsecase from individual sub-interfaces.

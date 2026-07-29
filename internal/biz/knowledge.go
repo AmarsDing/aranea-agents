@@ -43,8 +43,11 @@ var (
 // 按接口断言自动装配可选能力——P2-4 双轨关联（LinkRepo/EntityRepo）与
 // P3 资源管理器（DocumentPathReader/ResolvedLinkReader）。repo 未实现对应
 // 接口时保持未接线降级语义（关联 no-op / 关联查询为空 / 树查询显式报错）。
-func ProvideKnowledgeUsecase(repo KnowledgeRepo) *KnowledgeUsecase {
+// filer 为共享 VaultFiler 实例（G1-B1 树目录 FS 扫描 + G1-B2 树内写文件）：
+// 与 vault 同步链同一实例，自写标记统一登记防 watcher 回环。
+func ProvideKnowledgeUsecase(repo KnowledgeRepo, filer *knowledge.VaultFiler) *KnowledgeUsecase {
 	uc := knowledge.NewUsecaseFromRepo(repo)
+	uc.SetVaultFiler(filer)
 	if repo == nil {
 		return uc
 	}

@@ -128,7 +128,9 @@ message ListDocumentsRequest {
 }
 
 // VaultTreeNode is one entry of a vault folder listing (P3 explorer).
-// kind=dir nodes are aggregates derived from document rel_paths;
+// kind=dir nodes come from filesystem scan ∪ document rel_path aggregation
+// (G1-B1: empty dirs visible, dir mtime in updated_at; legacy collections
+// without root_path fall back to pure index aggregation);
 // kind=file nodes mirror one indexed document.
 message VaultTreeNode {
   string name = 1;            // base name (last path segment)
@@ -141,7 +143,7 @@ message VaultTreeNode {
   string doc_type = 7;
   string status = 8;
   int64  size_bytes = 9;
-  string updated_at = 10;
+  string updated_at = 10;     // file: doc updated_at; dir: filesystem mtime (RFC3339, vault mode only)
   string error_message = 11;  // populated when status=error (parse failure reason)
 }
 
@@ -149,6 +151,20 @@ message ListVaultTreeRequest {
   string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
   // prefix selects the folder whose DIRECT children are returned; empty = root.
   string prefix = 2;
+}
+
+// CreateVaultDirRequest creates a (nested) directory inside the vault (G1-B2).
+message CreateVaultDirRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // dir_path is the vault-relative directory path ('/' separator), e.g. "guides/setup".
+  string dir_path = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+// CreateVaultDocumentRequest creates a template .md document inside the vault (G1-B2).
+message CreateVaultDocumentRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // rel_path is the vault-relative .md path ('/' separator), e.g. "notes/new-doc.md".
+  string rel_path = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 message ListVaultTreeResponse {
@@ -288,6 +304,21 @@ service KnowledgeService {
   rpc ListVaultTree(ListVaultTreeRequest) returns (ListVaultTreeResponse) {
     option (google.api.http) = {
       get: "/v1/knowledge/vaults/{collection_id}/tree"
+    };
+  }
+  // CreateVaultDir creates a directory inside the vault (G1-B2; idempotent).
+  rpc CreateVaultDir(CreateVaultDirRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/vaults/{collection_id}/dirs"
+      body: "*"
+    };
+  }
+  // CreateVaultDocument writes a template .md (frontmatter + empty heading) and
+  // indexes it immediately (G1-B2; no 45s poll wait). Existing path = conflict.
+  rpc CreateVaultDocument(CreateVaultDocumentRequest) returns (KnowledgeDocument) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/vaults/{collection_id}/docs"
+      body: "*"
     };
   }
   // Document relations with source-type annotation (P3 关联区, R-3).

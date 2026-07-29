@@ -188,16 +188,39 @@ const sqlMonitorTracesCount = `SELECT COUNT(*) FROM monitor_traces WHERE deleted
 // used instead of JOINs so the WHERE clause columns stay unambiguous and the
 // COUNT query never inflates. agent_id/team_id may carry either the row id or
 // the *_key, so both are matched.
+//
+// agent_name has a two-level fallback:
+//  1. Direct: monitor_traces.agent_id → agents.display_name
+//  2. Via session: monitor_traces.session_id → sessions.agent_id → agents.display_name
+//     (chat traces often have empty agent_id because the runner.completion
+//     backfill path does not populate it; the session always knows its agent)
+//
+// session_title resolves the human-readable name for chat traces whose stored
+// name column is just the domain ("chat").
 const sqlMonitorTracesNames = `,
-	 COALESCE((SELECT a.display_name FROM agents a WHERE (a.id = monitor_traces.agent_id OR a.agent_key = monitor_traces.agent_id) AND a.deleted_at = '' LIMIT 1), '') AS agent_name,
-	 COALESCE((SELECT tm.display_name FROM teams tm WHERE (tm.id = monitor_traces.team_id OR tm.team_key = monitor_traces.team_id) AND tm.deleted_at = '' LIMIT 1), '') AS team_name`
+	 COALESCE(
+	   (SELECT a.display_name FROM agents a WHERE (a.id = monitor_traces.agent_id OR a.agent_key = monitor_traces.agent_id) AND a.deleted_at = '' LIMIT 1),
+	   (SELECT a2.display_name FROM sessions s2 JOIN agents a2 ON (a2.id = s2.agent_id OR a2.agent_key = s2.agent_id)
+	     WHERE s2.id = monitor_traces.session_id AND s2.deleted_at = '' AND a2.deleted_at = '' LIMIT 1),
+	   ''
+	 ) AS agent_name,
+	 COALESCE((SELECT tm.display_name FROM teams tm WHERE (tm.id = monitor_traces.team_id OR tm.team_key = monitor_traces.team_id) AND tm.deleted_at = '' LIMIT 1), '') AS team_name,
+	 COALESCE((SELECT s3.title FROM sessions s3 WHERE s3.id = monitor_traces.session_id AND s3.deleted_at = '' LIMIT 1), '') AS session_title`
 
-const sqlMonitorTracesList = `SELECT id, trace_key, name, description, status, agent_id, provider, model, metadata_json, created_at, updated_at, deleted_at,
+const sqlMonitorTracesList = `SELECT id, trace_key, name, description, status,
+	 COALESCE(NULLIF(monitor_traces.agent_id, ''),
+	   (SELECT s0.agent_id FROM sessions s0 WHERE s0.id = monitor_traces.session_id AND s0.deleted_at = '' LIMIT 1),
+	   '') AS agent_id,
+	 provider, model, metadata_json, created_at, updated_at, deleted_at,
 	 COALESCE(duration_ms, 0), COALESCE(span_count, 0), COALESCE(error_count, 0), COALESCE(total_tokens, 0), COALESCE(total_cost_usd, 0),
 	 COALESCE(session_id, ''), COALESCE(run_id, '')` +
 	sqlMonitorTracesNames + `
 	 FROM monitor_traces WHERE deleted_at = ''`
-const sqlMonitorTracesGet = `SELECT id, trace_key, name, description, status, agent_id, provider, model, metadata_json, created_at, updated_at, deleted_at,
+const sqlMonitorTracesGet = `SELECT id, trace_key, name, description, status,
+	 COALESCE(NULLIF(monitor_traces.agent_id, ''),
+	   (SELECT s0.agent_id FROM sessions s0 WHERE s0.id = monitor_traces.session_id AND s0.deleted_at = '' LIMIT 1),
+	   '') AS agent_id,
+	 provider, model, metadata_json, created_at, updated_at, deleted_at,
 	 COALESCE(duration_ms, 0), COALESCE(span_count, 0), COALESCE(error_count, 0), COALESCE(total_tokens, 0), COALESCE(total_cost_usd, 0),
 	 COALESCE(session_id, ''), COALESCE(run_id, '')` +
 	sqlMonitorTracesNames + `
@@ -592,9 +615,10 @@ func scanTracePlatformRow(row scanner) (biz.MonitorPlatformRow, error) {
 		totalCostUsd                    float64
 		agentName, teamName             string
 		sessionID, runID                string
+		sessionTitle                    string
 	)
 	err := row.Scan(&id, &key, &name, &description, &status, &agentID, &provider, &model, &metaJSON, &createdAt, &updatedAt, &deletedAt,
-		&durationMs, &spanCount, &errorCount, &totalTokens, &totalCostUsd, &sessionID, &runID, &agentName, &teamName)
+		&durationMs, &spanCount, &errorCount, &totalTokens, &totalCostUsd, &sessionID, &runID, &agentName, &teamName, &sessionTitle)
 	if err != nil {
 		return biz.MonitorPlatformRow{}, entErrToBizErr(err, "MONITOR")
 	}
@@ -608,11 +632,14 @@ func scanTracePlatformRow(row scanner) (biz.MonitorPlatformRow, error) {
 		// keep it for the type badge while Name below carries the display name.
 		"domain": name,
 	})
-	// Display name: team run → team display name; plain run → agent display
-	// name; dangling refs → stored domain so the row stays identifiable.
+	// Display name: team run → team display name; chat run → session title
+	// (the user's first message); agent run → agent display name; dangling
+	// refs → stored domain so the row stays identifiable.
 	displayName := name
 	if teamName != "" {
 		displayName = teamName
+	} else if sessionTitle != "" {
+		displayName = sessionTitle
 	} else if agentName != "" {
 		displayName = agentName
 	}

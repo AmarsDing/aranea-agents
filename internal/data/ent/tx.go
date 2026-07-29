@@ -114,6 +114,8 @@ type Tx struct {
 	OrchestrationStep *OrchestrationStepClient
 	// Organization is the client for interacting with the Organization builders.
 	Organization *OrganizationClient
+	// PatchOutcome is the client for interacting with the PatchOutcome builders.
+	PatchOutcome *PatchOutcomeClient
 	// PlanBoardV2 is the client for interacting with the PlanBoardV2 builders.
 	PlanBoardV2 *PlanBoardV2Client
 	// PlanStepV2 is the client for interacting with the PlanStepV2 builders.
@@ -144,6 +146,8 @@ type Tx struct {
 	SchemaMigration *SchemaMigrationClient
 	// SelfCheckReport is the client for interacting with the SelfCheckReport builders.
 	SelfCheckReport *SelfCheckReportClient
+	// SelfImprovementRun is the client for interacting with the SelfImprovementRun builders.
+	SelfImprovementRun *SelfImprovementRunClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
 	// SessionMetrics is the client for interacting with the SessionMetrics builders.
@@ -389,6 +393,7 @@ func (tx *Tx) init() {
 	tx.Orchestration = NewOrchestrationClient(tx.config)
 	tx.OrchestrationStep = NewOrchestrationStepClient(tx.config)
 	tx.Organization = NewOrganizationClient(tx.config)
+	tx.PatchOutcome = NewPatchOutcomeClient(tx.config)
 	tx.PlanBoardV2 = NewPlanBoardV2Client(tx.config)
 	tx.PlanStepV2 = NewPlanStepV2Client(tx.config)
 	tx.PlatformChannel = NewPlatformChannelClient(tx.config)
@@ -404,6 +409,7 @@ func (tx *Tx) init() {
 	tx.ResourceAccessAudit = NewResourceAccessAuditClient(tx.config)
 	tx.SchemaMigration = NewSchemaMigrationClient(tx.config)
 	tx.SelfCheckReport = NewSelfCheckReportClient(tx.config)
+	tx.SelfImprovementRun = NewSelfImprovementRunClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
 	tx.SessionMetrics = NewSessionMetricsClient(tx.config)
 	tx.SessionParticipant = NewSessionParticipantClient(tx.config)

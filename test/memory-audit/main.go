@@ -23,7 +23,7 @@ func main() {
 	}
 
 	queries := []struct{ title, q string }{
-		{"== agent_runtime_settings 精灵助手记忆开关 ==", `SELECT agent_id, memory_enabled, l1_enabled, l2_recall_enabled, l2_episode_enabled, l3_enabled, l4_enabled, l0_snapshot_enabled, l0_snapshot_mode, l0_inject_l1, l0_inject_l3, l0_inject_l4 FROM agent_runtime_settings WHERE agent_id IN ('agent___spirit__','agent___system_admin__','agent___memory__')`},
+		{"== agent_runtime_settings 精灵助手记忆开关 ==", `SELECT agent_id, memory_enabled, l1_enabled, l2_recall_enabled, l2_episode_enabled, l3_enabled, l4_enabled, l0_snapshot_enabled, l0_snapshot_mode, l0_inject_l1, l0_inject_l3, l0_inject_l4, l3_recall_min_score, l3_recall_top_k, l2_recall_max FROM agent_runtime_settings WHERE agent_id IN ('agent___spirit__','agent___system_admin__','agent___memory__')`},
 		{"== agent_runtime_settings 全表统计 ==", `SELECT count(*) total, count(*) FILTER (WHERE memory_enabled) mem_on, count(*) FILTER (WHERE l2_episode_enabled) l2ep_on, count(*) FILTER (WHERE l4_enabled) l4_on, count(*) FILTER (WHERE l0_snapshot_enabled) l0snap_on FROM agent_runtime_settings`},
 		{"== 精灵助手 4 条 facts 明细 ==", `SELECT id, left(statement,80) stmt, use_count, hit_count, source_kind, status, created_at, updated_at FROM memory_facts WHERE scope_id='agent___spirit__' ORDER BY use_count DESC`},
 		{"== memory_facts 按 scope 分布 ==", `SELECT scope_type, scope_id, count(*) n, sum(hit_count) hits, sum(use_count) uses, count(*) FILTER (WHERE status='active') active FROM memory_facts GROUP BY 1,2 ORDER BY n DESC LIMIT 20`},

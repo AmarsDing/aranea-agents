@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"aranea-agents/pkg/apierror"
 	loggateway "aranea-agents/pkg/loggateway"
 )
 
@@ -388,4 +389,86 @@ func TestVaultFilerWriteDocCASDisappearedFile(t *testing.T) {
 	cur, err := os.ReadFile(filepath.Join(root, "gone.md"))
 	require.NoError(t, err)
 	assert.Contains(t, string(cur), "v2")
+}
+
+// ── G1-B1：ListSubdirs 目录扫描（树节点目录来源）──────────────────────────────
+
+func TestVaultFilerListSubdirs(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "beta", "gamma"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "alpha"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".hidden"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "top.md"), []byte("x"), 0o644))
+
+	got, err := f.ListSubdirs(root, "")
+	require.NoError(t, err)
+	require.Len(t, got, 2, "只含目录：文件与点开头目录被排除")
+	assert.Equal(t, "alpha", got[0].Name, "按名称排序")
+	assert.Equal(t, "beta", got[1].Name)
+	assert.False(t, got[0].ModTime.IsZero(), "目录必须带 mtime")
+
+	// 嵌套前缀
+	got, err = f.ListSubdirs(root, "beta")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "gamma", got[0].Name)
+}
+
+func TestVaultFilerListSubdirsMissingPrefixReturnsEmpty(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+
+	got, err := f.ListSubdirs(root, "ghost")
+	require.NoError(t, err, "前缀目录不存在不报错（外部删除竞态）")
+	assert.Empty(t, got)
+}
+
+func TestVaultFilerListSubdirsRejectsTraversal(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+
+	_, err := f.ListSubdirs(root, "../escape")
+	require.Error(t, err)
+	_, err = f.ListSubdirs(root, ".aranea")
+	require.Error(t, err, ".aranea 为保留目录")
+}
+
+// ── G1-B2：Mkdir / SnapshotDoc ────────────────────────────────────────────────
+
+func TestVaultFilerMkdir(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+
+	require.NoError(t, f.Mkdir(root, "a/b/c"))
+	info, err := os.Stat(filepath.Join(root, "a", "b", "c"))
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+
+	require.NoError(t, f.Mkdir(root, "a/b/c"), "幂等")
+	require.Error(t, f.Mkdir(root, "../escape"))
+	require.Error(t, f.Mkdir(root, ".aranea/meta"))
+}
+
+func TestVaultFilerSnapshotDoc(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+
+	content := "# 标题\n\n正文\n"
+	require.NoError(t, os.WriteFile(filepath.Join(root, "a.md"), []byte(content), 0o644))
+
+	snap, err := f.SnapshotDoc(root, "a.md")
+	require.NoError(t, err)
+	assert.Equal(t, "a.md", snap.RelPath)
+	assert.Equal(t, int64(len(content)), snap.Size)
+	assert.Equal(t, HashContent(content), snap.Hash)
+	assert.False(t, snap.ModTime.IsZero())
+
+	_, err = f.SnapshotDoc(root, "ghost.md")
+	require.Error(t, err)
+	assert.True(t, apierror.IsCode(err, apierror.CodeNotFound), "不存在必须 CodeNotFound（create 冲突判定依赖）")
+
+	_, err = f.SnapshotDoc(root, "../escape.md")
+	require.Error(t, err)
 }

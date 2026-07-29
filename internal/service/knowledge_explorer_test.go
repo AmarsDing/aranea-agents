@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -108,6 +110,81 @@ func TestKnowledgeService_ListVaultTree_CrossTenantDenied(t *testing.T) {
 	_, err := svc.ListVaultTree(ctx, &v1.ListVaultTreeRequest{CollectionId: "c1"})
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("cross-tenant tree must be NotFound, got %v", err)
+	}
+}
+
+// ── G1-B2：CreateVaultDir / CreateVaultDocument ───────────────────────────────
+
+// stubVaultDocApplier 模拟立即索引：直接写文档镜像进 mem repo。
+type stubVaultDocApplier struct{ repo *us14MemRepo }
+
+func (s *stubVaultDocApplier) ApplyOne(ctx context.Context, vault biz.KnowledgeCollection, relPath string) error {
+	_, err := s.repo.CreateDocument(ctx, biz.KnowledgeDocument{
+		ID: "doc-" + relPath, CollectionID: vault.ID, RelPath: relPath, Source: relPath, Status: "indexed",
+	})
+	return err
+}
+
+func newVaultWriteService(t *testing.T) (*KnowledgeService, *us14MemRepo) {
+	t.Helper()
+	repo := newUS14MemRepo()
+	uc := biz.NewKnowledgeUsecaseFromRepo(repo)
+	uc.SetVaultFiler(biz.NewKnowledgeVaultFiler(nil))
+	uc.SetVaultApplier(&stubVaultDocApplier{repo: repo})
+	return NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop()), repo
+}
+
+func TestKnowledgeService_CreateVaultDir(t *testing.T) {
+	root := t.TempDir()
+	svc, repo := newVaultWriteService(t)
+	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault", RootPath: root}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateVaultDir(context.Background(), &v1.CreateVaultDirRequest{CollectionId: "c1", DirPath: "guides/setup"}); err != nil {
+		t.Fatalf("CreateVaultDir: %v", err)
+	}
+	info, err := os.Stat(filepath.Join(root, "guides", "setup"))
+	if err != nil || !info.IsDir() {
+		t.Errorf("dir must exist on FS: %v", err)
+	}
+}
+
+func TestKnowledgeService_CreateVaultDir_CrossTenantDenied(t *testing.T) {
+	root := t.TempDir()
+	svc, repo := newVaultWriteService(t)
+	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault", RootPath: root, Workspace: "ws-other"}); err != nil {
+		t.Fatal(err)
+	}
+	ctx := workspace.WithContext(context.Background(), "ws-mine")
+	_, err := svc.CreateVaultDir(ctx, &v1.CreateVaultDirRequest{CollectionId: "c1", DirPath: "x"})
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("cross-tenant must be NotFound, got %v", err)
+	}
+}
+
+func TestKnowledgeService_CreateVaultDocument(t *testing.T) {
+	root := t.TempDir()
+	svc, repo := newVaultWriteService(t)
+	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault", RootPath: root}); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := svc.CreateVaultDocument(context.Background(), &v1.CreateVaultDocumentRequest{CollectionId: "c1", RelPath: "notes/new.md"})
+	if err != nil {
+		t.Fatalf("CreateVaultDocument: %v", err)
+	}
+	if resp.GetId() == "" || resp.GetRelPath() != "notes/new.md" {
+		t.Errorf("unexpected doc: %+v", resp)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "notes", "new.md"))
+	if err != nil {
+		t.Fatalf("doc file must exist on FS: %v", err)
+	}
+	if !strings.Contains(string(data), "created:") || !strings.Contains(string(data), "# ") {
+		t.Errorf("template must be frontmatter + empty heading, got:\n%s", string(data))
+	}
+	// 重复创建 → Conflict
+	if _, err := svc.CreateVaultDocument(context.Background(), &v1.CreateVaultDocumentRequest{CollectionId: "c1", RelPath: "notes/new.md"}); err == nil {
+		t.Error("duplicate create must conflict")
 	}
 }
 

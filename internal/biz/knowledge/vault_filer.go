@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -270,6 +271,56 @@ func (f *VaultFiler) WriteTrashFromMirror(root, relPath string, doc *VaultDoc) (
 	}
 	f.lg.Debug("vault mirror rescued to trash", loggateway.Str("rel_path", rel))
 	return trashPath, nil
+}
+
+// DirInfo 一个子目录条目（G1-B1 树节点目录来源）。
+type DirInfo struct {
+	Name    string
+	ModTime time.Time
+}
+
+// ListSubdirs 返回 root 下 relPrefix 目录的直接子目录（名称 + mtime，按名称排序）。
+// 只含目录：文件与点开头目录（.aranea/.git 等）被排除。
+// relPrefix 为空 = root 本身；前缀目录不存在返回空（外部删除竞态，非错误）。
+func (f *VaultFiler) ListSubdirs(root, relPrefix string) ([]DirInfo, error) {
+	var target string
+	if strings.TrimSpace(relPrefix) == "" {
+		abs, err := filepath.Abs(root)
+		if err != nil {
+			return nil, apierror.Internal("knowledge", "vault: resolve root").WithCause(err)
+		}
+		target = abs
+	} else {
+		rel, err := SanitizeRelPath(relPrefix)
+		if err != nil {
+			return nil, err
+		}
+		resolved, err := resolve(root, rel)
+		if err != nil {
+			return nil, err
+		}
+		target = resolved
+	}
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, apierror.Internal("knowledge", "vault: read dir %s", relPrefix).WithCause(err)
+	}
+	out := make([]DirInfo, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		out = append(out, DirInfo{Name: e.Name(), ModTime: info.ModTime()})
+	}
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
+	return out, nil
 }
 
 // markSelfWrite 记录 KB 自写标记（内部调用，rel 必须已 sanitize）。

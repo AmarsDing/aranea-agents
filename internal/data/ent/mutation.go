@@ -54,6 +54,7 @@ import (
 	"aranea-agents/internal/data/ent/orchestration"
 	"aranea-agents/internal/data/ent/orchestrationstep"
 	"aranea-agents/internal/data/ent/organization"
+	"aranea-agents/internal/data/ent/patchoutcome"
 	"aranea-agents/internal/data/ent/planboardv2"
 	"aranea-agents/internal/data/ent/planstepv2"
 	"aranea-agents/internal/data/ent/platformchannel"
@@ -70,6 +71,7 @@ import (
 	"aranea-agents/internal/data/ent/resourceaccessaudit"
 	"aranea-agents/internal/data/ent/schemamigration"
 	"aranea-agents/internal/data/ent/selfcheckreport"
+	"aranea-agents/internal/data/ent/selfimprovementrun"
 	"aranea-agents/internal/data/ent/session"
 	"aranea-agents/internal/data/ent/sessionmetrics"
 	"aranea-agents/internal/data/ent/sessionparticipant"
@@ -171,6 +173,7 @@ const (
 	TypeOrchestration              = "Orchestration"
 	TypeOrchestrationStep          = "OrchestrationStep"
 	TypeOrganization               = "Organization"
+	TypePatchOutcome               = "PatchOutcome"
 	TypePlanBoardV2                = "PlanBoardV2"
 	TypePlanStepV2                 = "PlanStepV2"
 	TypePlatformChannel            = "PlatformChannel"
@@ -186,6 +189,7 @@ const (
 	TypeResourceAccessAudit        = "ResourceAccessAudit"
 	TypeSchemaMigration            = "SchemaMigration"
 	TypeSelfCheckReport            = "SelfCheckReport"
+	TypeSelfImprovementRun         = "SelfImprovementRun"
 	TypeSession                    = "Session"
 	TypeSessionMetrics             = "SessionMetrics"
 	TypeSessionParticipant         = "SessionParticipant"
@@ -57230,6 +57234,795 @@ func (m *OrganizationMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Organization edge %s", name)
 }
 
+// PatchOutcomeMutation represents an operation that mutates the PatchOutcome nodes in the graph.
+type PatchOutcomeMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *string
+	run_id          *string
+	suggestion_id   *string
+	verdict         *string
+	metrics_before  *map[string]interface{}
+	metrics_after   *map[string]interface{}
+	rollback_reason *string
+	pattern_hash    *string
+	created_at      *time.Time
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*PatchOutcome, error)
+	predicates      []predicate.PatchOutcome
+}
+
+var _ ent.Mutation = (*PatchOutcomeMutation)(nil)
+
+// patchoutcomeOption allows management of the mutation configuration using functional options.
+type patchoutcomeOption func(*PatchOutcomeMutation)
+
+// newPatchOutcomeMutation creates new mutation for the PatchOutcome entity.
+func newPatchOutcomeMutation(c config, op Op, opts ...patchoutcomeOption) *PatchOutcomeMutation {
+	m := &PatchOutcomeMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePatchOutcome,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withPatchOutcomeID sets the ID field of the mutation.
+func withPatchOutcomeID(id string) patchoutcomeOption {
+	return func(m *PatchOutcomeMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PatchOutcome
+		)
+		m.oldValue = func(ctx context.Context) (*PatchOutcome, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().PatchOutcome.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withPatchOutcome sets the old PatchOutcome of the mutation.
+func withPatchOutcome(node *PatchOutcome) patchoutcomeOption {
+	return func(m *PatchOutcomeMutation) {
+		m.oldValue = func(context.Context) (*PatchOutcome, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PatchOutcomeMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PatchOutcomeMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of PatchOutcome entities.
+func (m *PatchOutcomeMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PatchOutcomeMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PatchOutcomeMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PatchOutcome.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetRunID sets the "run_id" field.
+func (m *PatchOutcomeMutation) SetRunID(s string) {
+	m.run_id = &s
+}
+
+// RunID returns the value of the "run_id" field in the mutation.
+func (m *PatchOutcomeMutation) RunID() (r string, exists bool) {
+	v := m.run_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRunID returns the old "run_id" field's value of the PatchOutcome entity.
+// If the PatchOutcome object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PatchOutcomeMutation) OldRunID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRunID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRunID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRunID: %w", err)
+	}
+	return oldValue.RunID, nil
+}
+
+// ResetRunID resets all changes to the "run_id" field.
+func (m *PatchOutcomeMutation) ResetRunID() {
+	m.run_id = nil
+}
+
+// SetSuggestionID sets the "suggestion_id" field.
+func (m *PatchOutcomeMutation) SetSuggestionID(s string) {
+	m.suggestion_id = &s
+}
+
+// SuggestionID returns the value of the "suggestion_id" field in the mutation.
+func (m *PatchOutcomeMutation) SuggestionID() (r string, exists bool) {
+	v := m.suggestion_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSuggestionID returns the old "suggestion_id" field's value of the PatchOutcome entity.
+// If the PatchOutcome object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PatchOutcomeMutation) OldSuggestionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSuggestionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSuggestionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSuggestionID: %w", err)
+	}
+	return oldValue.SuggestionID, nil
+}
+
+// ResetSuggestionID resets all changes to the "suggestion_id" field.
+func (m *PatchOutcomeMutation) ResetSuggestionID() {
+	m.suggestion_id = nil
+}
+
+// SetVerdict sets the "verdict" field.
+func (m *PatchOutcomeMutation) SetVerdict(s string) {
+	m.verdict = &s
+}
+
+// Verdict returns the value of the "verdict" field in the mutation.
+func (m *PatchOutcomeMutation) Verdict() (r string, exists bool) {
+	v := m.verdict
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVerdict returns the old "verdict" field's value of the PatchOutcome entity.
+// If the PatchOutcome object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PatchOutcomeMutation) OldVerdict(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVerdict is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVerdict requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVerdict: %w", err)
+	}
+	return oldValue.Verdict, nil
+}
+
+// ResetVerdict resets all changes to the "verdict" field.
+func (m *PatchOutcomeMutation) ResetVerdict() {
+	m.verdict = nil
+}
+
+// SetMetricsBefore sets the "metrics_before" field.
+func (m *PatchOutcomeMutation) SetMetricsBefore(value map[string]interface{}) {
+	m.metrics_before = &value
+}
+
+// MetricsBefore returns the value of the "metrics_before" field in the mutation.
+func (m *PatchOutcomeMutation) MetricsBefore() (r map[string]interface{}, exists bool) {
+	v := m.metrics_before
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMetricsBefore returns the old "metrics_before" field's value of the PatchOutcome entity.
+// If the PatchOutcome object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PatchOutcomeMutation) OldMetricsBefore(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMetricsBefore is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMetricsBefore requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMetricsBefore: %w", err)
+	}
+	return oldValue.MetricsBefore, nil
+}
+
+// ClearMetricsBefore clears the value of the "metrics_before" field.
+func (m *PatchOutcomeMutation) ClearMetricsBefore() {
+	m.metrics_before = nil
+	m.clearedFields[patchoutcome.FieldMetricsBefore] = struct{}{}
+}
+
+// MetricsBeforeCleared returns if the "metrics_before" field was cleared in this mutation.
+func (m *PatchOutcomeMutation) MetricsBeforeCleared() bool {
+	_, ok := m.clearedFields[patchoutcome.FieldMetricsBefore]
+	return ok
+}
+
+// ResetMetricsBefore resets all changes to the "metrics_before" field.
+func (m *PatchOutcomeMutation) ResetMetricsBefore() {
+	m.metrics_before = nil
+	delete(m.clearedFields, patchoutcome.FieldMetricsBefore)
+}
+
+// SetMetricsAfter sets the "metrics_after" field.
+func (m *PatchOutcomeMutation) SetMetricsAfter(value map[string]interface{}) {
+	m.metrics_after = &value
+}
+
+// MetricsAfter returns the value of the "metrics_after" field in the mutation.
+func (m *PatchOutcomeMutation) MetricsAfter() (r map[string]interface{}, exists bool) {
+	v := m.metrics_after
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMetricsAfter returns the old "metrics_after" field's value of the PatchOutcome entity.
+// If the PatchOutcome object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PatchOutcomeMutation) OldMetricsAfter(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMetricsAfter is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMetricsAfter requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMetricsAfter: %w", err)
+	}
+	return oldValue.MetricsAfter, nil
+}
+
+// ClearMetricsAfter clears the value of the "metrics_after" field.
+func (m *PatchOutcomeMutation) ClearMetricsAfter() {
+	m.metrics_after = nil
+	m.clearedFields[patchoutcome.FieldMetricsAfter] = struct{}{}
+}
+
+// MetricsAfterCleared returns if the "metrics_after" field was cleared in this mutation.
+func (m *PatchOutcomeMutation) MetricsAfterCleared() bool {
+	_, ok := m.clearedFields[patchoutcome.FieldMetricsAfter]
+	return ok
+}
+
+// ResetMetricsAfter resets all changes to the "metrics_after" field.
+func (m *PatchOutcomeMutation) ResetMetricsAfter() {
+	m.metrics_after = nil
+	delete(m.clearedFields, patchoutcome.FieldMetricsAfter)
+}
+
+// SetRollbackReason sets the "rollback_reason" field.
+func (m *PatchOutcomeMutation) SetRollbackReason(s string) {
+	m.rollback_reason = &s
+}
+
+// RollbackReason returns the value of the "rollback_reason" field in the mutation.
+func (m *PatchOutcomeMutation) RollbackReason() (r string, exists bool) {
+	v := m.rollback_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRollbackReason returns the old "rollback_reason" field's value of the PatchOutcome entity.
+// If the PatchOutcome object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PatchOutcomeMutation) OldRollbackReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRollbackReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRollbackReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRollbackReason: %w", err)
+	}
+	return oldValue.RollbackReason, nil
+}
+
+// ClearRollbackReason clears the value of the "rollback_reason" field.
+func (m *PatchOutcomeMutation) ClearRollbackReason() {
+	m.rollback_reason = nil
+	m.clearedFields[patchoutcome.FieldRollbackReason] = struct{}{}
+}
+
+// RollbackReasonCleared returns if the "rollback_reason" field was cleared in this mutation.
+func (m *PatchOutcomeMutation) RollbackReasonCleared() bool {
+	_, ok := m.clearedFields[patchoutcome.FieldRollbackReason]
+	return ok
+}
+
+// ResetRollbackReason resets all changes to the "rollback_reason" field.
+func (m *PatchOutcomeMutation) ResetRollbackReason() {
+	m.rollback_reason = nil
+	delete(m.clearedFields, patchoutcome.FieldRollbackReason)
+}
+
+// SetPatternHash sets the "pattern_hash" field.
+func (m *PatchOutcomeMutation) SetPatternHash(s string) {
+	m.pattern_hash = &s
+}
+
+// PatternHash returns the value of the "pattern_hash" field in the mutation.
+func (m *PatchOutcomeMutation) PatternHash() (r string, exists bool) {
+	v := m.pattern_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPatternHash returns the old "pattern_hash" field's value of the PatchOutcome entity.
+// If the PatchOutcome object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PatchOutcomeMutation) OldPatternHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPatternHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPatternHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPatternHash: %w", err)
+	}
+	return oldValue.PatternHash, nil
+}
+
+// ClearPatternHash clears the value of the "pattern_hash" field.
+func (m *PatchOutcomeMutation) ClearPatternHash() {
+	m.pattern_hash = nil
+	m.clearedFields[patchoutcome.FieldPatternHash] = struct{}{}
+}
+
+// PatternHashCleared returns if the "pattern_hash" field was cleared in this mutation.
+func (m *PatchOutcomeMutation) PatternHashCleared() bool {
+	_, ok := m.clearedFields[patchoutcome.FieldPatternHash]
+	return ok
+}
+
+// ResetPatternHash resets all changes to the "pattern_hash" field.
+func (m *PatchOutcomeMutation) ResetPatternHash() {
+	m.pattern_hash = nil
+	delete(m.clearedFields, patchoutcome.FieldPatternHash)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *PatchOutcomeMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *PatchOutcomeMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the PatchOutcome entity.
+// If the PatchOutcome object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PatchOutcomeMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *PatchOutcomeMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the PatchOutcomeMutation builder.
+func (m *PatchOutcomeMutation) Where(ps ...predicate.PatchOutcome) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the PatchOutcomeMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PatchOutcomeMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PatchOutcome, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *PatchOutcomeMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *PatchOutcomeMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (PatchOutcome).
+func (m *PatchOutcomeMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PatchOutcomeMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.run_id != nil {
+		fields = append(fields, patchoutcome.FieldRunID)
+	}
+	if m.suggestion_id != nil {
+		fields = append(fields, patchoutcome.FieldSuggestionID)
+	}
+	if m.verdict != nil {
+		fields = append(fields, patchoutcome.FieldVerdict)
+	}
+	if m.metrics_before != nil {
+		fields = append(fields, patchoutcome.FieldMetricsBefore)
+	}
+	if m.metrics_after != nil {
+		fields = append(fields, patchoutcome.FieldMetricsAfter)
+	}
+	if m.rollback_reason != nil {
+		fields = append(fields, patchoutcome.FieldRollbackReason)
+	}
+	if m.pattern_hash != nil {
+		fields = append(fields, patchoutcome.FieldPatternHash)
+	}
+	if m.created_at != nil {
+		fields = append(fields, patchoutcome.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PatchOutcomeMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case patchoutcome.FieldRunID:
+		return m.RunID()
+	case patchoutcome.FieldSuggestionID:
+		return m.SuggestionID()
+	case patchoutcome.FieldVerdict:
+		return m.Verdict()
+	case patchoutcome.FieldMetricsBefore:
+		return m.MetricsBefore()
+	case patchoutcome.FieldMetricsAfter:
+		return m.MetricsAfter()
+	case patchoutcome.FieldRollbackReason:
+		return m.RollbackReason()
+	case patchoutcome.FieldPatternHash:
+		return m.PatternHash()
+	case patchoutcome.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PatchOutcomeMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case patchoutcome.FieldRunID:
+		return m.OldRunID(ctx)
+	case patchoutcome.FieldSuggestionID:
+		return m.OldSuggestionID(ctx)
+	case patchoutcome.FieldVerdict:
+		return m.OldVerdict(ctx)
+	case patchoutcome.FieldMetricsBefore:
+		return m.OldMetricsBefore(ctx)
+	case patchoutcome.FieldMetricsAfter:
+		return m.OldMetricsAfter(ctx)
+	case patchoutcome.FieldRollbackReason:
+		return m.OldRollbackReason(ctx)
+	case patchoutcome.FieldPatternHash:
+		return m.OldPatternHash(ctx)
+	case patchoutcome.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown PatchOutcome field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PatchOutcomeMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case patchoutcome.FieldRunID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRunID(v)
+		return nil
+	case patchoutcome.FieldSuggestionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSuggestionID(v)
+		return nil
+	case patchoutcome.FieldVerdict:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVerdict(v)
+		return nil
+	case patchoutcome.FieldMetricsBefore:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMetricsBefore(v)
+		return nil
+	case patchoutcome.FieldMetricsAfter:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMetricsAfter(v)
+		return nil
+	case patchoutcome.FieldRollbackReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRollbackReason(v)
+		return nil
+	case patchoutcome.FieldPatternHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPatternHash(v)
+		return nil
+	case patchoutcome.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PatchOutcome field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PatchOutcomeMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PatchOutcomeMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PatchOutcomeMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown PatchOutcome numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PatchOutcomeMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(patchoutcome.FieldMetricsBefore) {
+		fields = append(fields, patchoutcome.FieldMetricsBefore)
+	}
+	if m.FieldCleared(patchoutcome.FieldMetricsAfter) {
+		fields = append(fields, patchoutcome.FieldMetricsAfter)
+	}
+	if m.FieldCleared(patchoutcome.FieldRollbackReason) {
+		fields = append(fields, patchoutcome.FieldRollbackReason)
+	}
+	if m.FieldCleared(patchoutcome.FieldPatternHash) {
+		fields = append(fields, patchoutcome.FieldPatternHash)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PatchOutcomeMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PatchOutcomeMutation) ClearField(name string) error {
+	switch name {
+	case patchoutcome.FieldMetricsBefore:
+		m.ClearMetricsBefore()
+		return nil
+	case patchoutcome.FieldMetricsAfter:
+		m.ClearMetricsAfter()
+		return nil
+	case patchoutcome.FieldRollbackReason:
+		m.ClearRollbackReason()
+		return nil
+	case patchoutcome.FieldPatternHash:
+		m.ClearPatternHash()
+		return nil
+	}
+	return fmt.Errorf("unknown PatchOutcome nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PatchOutcomeMutation) ResetField(name string) error {
+	switch name {
+	case patchoutcome.FieldRunID:
+		m.ResetRunID()
+		return nil
+	case patchoutcome.FieldSuggestionID:
+		m.ResetSuggestionID()
+		return nil
+	case patchoutcome.FieldVerdict:
+		m.ResetVerdict()
+		return nil
+	case patchoutcome.FieldMetricsBefore:
+		m.ResetMetricsBefore()
+		return nil
+	case patchoutcome.FieldMetricsAfter:
+		m.ResetMetricsAfter()
+		return nil
+	case patchoutcome.FieldRollbackReason:
+		m.ResetRollbackReason()
+		return nil
+	case patchoutcome.FieldPatternHash:
+		m.ResetPatternHash()
+		return nil
+	case patchoutcome.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown PatchOutcome field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PatchOutcomeMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PatchOutcomeMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PatchOutcomeMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PatchOutcomeMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PatchOutcomeMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PatchOutcomeMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PatchOutcomeMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown PatchOutcome unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PatchOutcomeMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown PatchOutcome edge %s", name)
+}
+
 // PlanBoardV2Mutation represents an operation that mutates the PlanBoardV2 nodes in the graph.
 type PlanBoardV2Mutation struct {
 	config
@@ -71743,6 +72536,1905 @@ func (m *SelfCheckReportMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *SelfCheckReportMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown SelfCheckReport edge %s", name)
+}
+
+// SelfImprovementRunMutation represents an operation that mutates the SelfImprovementRun nodes in the graph.
+type SelfImprovementRunMutation struct {
+	config
+	op                        Op
+	typ                       string
+	id                        *string
+	suggestion_id             *string
+	status                    *string
+	trigger_source            *string
+	patch_kind                *string
+	risk_level                *string
+	base_ref                  *string
+	branch                    *string
+	worktree_path             *string
+	diff                      *string
+	diff_stats                *map[string]int
+	diagnosis                 *map[string]interface{}
+	verification_report       *[]map[string]interface{}
+	appendverification_report []map[string]interface{}
+	critic_report             *map[string]interface{}
+	governance                *map[string]interface{}
+	attempts                  *int
+	addattempts               *int
+	approved_by               *string
+	applied_commit            *string
+	rollback_pointer          *string
+	observe_until             *time.Time
+	closed_reason             *string
+	metadata                  *map[string]interface{}
+	created_at                *time.Time
+	updated_at                *time.Time
+	clearedFields             map[string]struct{}
+	done                      bool
+	oldValue                  func(context.Context) (*SelfImprovementRun, error)
+	predicates                []predicate.SelfImprovementRun
+}
+
+var _ ent.Mutation = (*SelfImprovementRunMutation)(nil)
+
+// selfimprovementrunOption allows management of the mutation configuration using functional options.
+type selfimprovementrunOption func(*SelfImprovementRunMutation)
+
+// newSelfImprovementRunMutation creates new mutation for the SelfImprovementRun entity.
+func newSelfImprovementRunMutation(c config, op Op, opts ...selfimprovementrunOption) *SelfImprovementRunMutation {
+	m := &SelfImprovementRunMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSelfImprovementRun,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSelfImprovementRunID sets the ID field of the mutation.
+func withSelfImprovementRunID(id string) selfimprovementrunOption {
+	return func(m *SelfImprovementRunMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SelfImprovementRun
+		)
+		m.oldValue = func(ctx context.Context) (*SelfImprovementRun, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SelfImprovementRun.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSelfImprovementRun sets the old SelfImprovementRun of the mutation.
+func withSelfImprovementRun(node *SelfImprovementRun) selfimprovementrunOption {
+	return func(m *SelfImprovementRunMutation) {
+		m.oldValue = func(context.Context) (*SelfImprovementRun, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SelfImprovementRunMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SelfImprovementRunMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of SelfImprovementRun entities.
+func (m *SelfImprovementRunMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SelfImprovementRunMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SelfImprovementRunMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SelfImprovementRun.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSuggestionID sets the "suggestion_id" field.
+func (m *SelfImprovementRunMutation) SetSuggestionID(s string) {
+	m.suggestion_id = &s
+}
+
+// SuggestionID returns the value of the "suggestion_id" field in the mutation.
+func (m *SelfImprovementRunMutation) SuggestionID() (r string, exists bool) {
+	v := m.suggestion_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSuggestionID returns the old "suggestion_id" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldSuggestionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSuggestionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSuggestionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSuggestionID: %w", err)
+	}
+	return oldValue.SuggestionID, nil
+}
+
+// ResetSuggestionID resets all changes to the "suggestion_id" field.
+func (m *SelfImprovementRunMutation) ResetSuggestionID() {
+	m.suggestion_id = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *SelfImprovementRunMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *SelfImprovementRunMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *SelfImprovementRunMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetTriggerSource sets the "trigger_source" field.
+func (m *SelfImprovementRunMutation) SetTriggerSource(s string) {
+	m.trigger_source = &s
+}
+
+// TriggerSource returns the value of the "trigger_source" field in the mutation.
+func (m *SelfImprovementRunMutation) TriggerSource() (r string, exists bool) {
+	v := m.trigger_source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTriggerSource returns the old "trigger_source" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldTriggerSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTriggerSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTriggerSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTriggerSource: %w", err)
+	}
+	return oldValue.TriggerSource, nil
+}
+
+// ResetTriggerSource resets all changes to the "trigger_source" field.
+func (m *SelfImprovementRunMutation) ResetTriggerSource() {
+	m.trigger_source = nil
+}
+
+// SetPatchKind sets the "patch_kind" field.
+func (m *SelfImprovementRunMutation) SetPatchKind(s string) {
+	m.patch_kind = &s
+}
+
+// PatchKind returns the value of the "patch_kind" field in the mutation.
+func (m *SelfImprovementRunMutation) PatchKind() (r string, exists bool) {
+	v := m.patch_kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPatchKind returns the old "patch_kind" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldPatchKind(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPatchKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPatchKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPatchKind: %w", err)
+	}
+	return oldValue.PatchKind, nil
+}
+
+// ClearPatchKind clears the value of the "patch_kind" field.
+func (m *SelfImprovementRunMutation) ClearPatchKind() {
+	m.patch_kind = nil
+	m.clearedFields[selfimprovementrun.FieldPatchKind] = struct{}{}
+}
+
+// PatchKindCleared returns if the "patch_kind" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) PatchKindCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldPatchKind]
+	return ok
+}
+
+// ResetPatchKind resets all changes to the "patch_kind" field.
+func (m *SelfImprovementRunMutation) ResetPatchKind() {
+	m.patch_kind = nil
+	delete(m.clearedFields, selfimprovementrun.FieldPatchKind)
+}
+
+// SetRiskLevel sets the "risk_level" field.
+func (m *SelfImprovementRunMutation) SetRiskLevel(s string) {
+	m.risk_level = &s
+}
+
+// RiskLevel returns the value of the "risk_level" field in the mutation.
+func (m *SelfImprovementRunMutation) RiskLevel() (r string, exists bool) {
+	v := m.risk_level
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRiskLevel returns the old "risk_level" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldRiskLevel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRiskLevel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRiskLevel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRiskLevel: %w", err)
+	}
+	return oldValue.RiskLevel, nil
+}
+
+// ClearRiskLevel clears the value of the "risk_level" field.
+func (m *SelfImprovementRunMutation) ClearRiskLevel() {
+	m.risk_level = nil
+	m.clearedFields[selfimprovementrun.FieldRiskLevel] = struct{}{}
+}
+
+// RiskLevelCleared returns if the "risk_level" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) RiskLevelCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldRiskLevel]
+	return ok
+}
+
+// ResetRiskLevel resets all changes to the "risk_level" field.
+func (m *SelfImprovementRunMutation) ResetRiskLevel() {
+	m.risk_level = nil
+	delete(m.clearedFields, selfimprovementrun.FieldRiskLevel)
+}
+
+// SetBaseRef sets the "base_ref" field.
+func (m *SelfImprovementRunMutation) SetBaseRef(s string) {
+	m.base_ref = &s
+}
+
+// BaseRef returns the value of the "base_ref" field in the mutation.
+func (m *SelfImprovementRunMutation) BaseRef() (r string, exists bool) {
+	v := m.base_ref
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBaseRef returns the old "base_ref" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldBaseRef(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBaseRef is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBaseRef requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBaseRef: %w", err)
+	}
+	return oldValue.BaseRef, nil
+}
+
+// ClearBaseRef clears the value of the "base_ref" field.
+func (m *SelfImprovementRunMutation) ClearBaseRef() {
+	m.base_ref = nil
+	m.clearedFields[selfimprovementrun.FieldBaseRef] = struct{}{}
+}
+
+// BaseRefCleared returns if the "base_ref" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) BaseRefCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldBaseRef]
+	return ok
+}
+
+// ResetBaseRef resets all changes to the "base_ref" field.
+func (m *SelfImprovementRunMutation) ResetBaseRef() {
+	m.base_ref = nil
+	delete(m.clearedFields, selfimprovementrun.FieldBaseRef)
+}
+
+// SetBranch sets the "branch" field.
+func (m *SelfImprovementRunMutation) SetBranch(s string) {
+	m.branch = &s
+}
+
+// Branch returns the value of the "branch" field in the mutation.
+func (m *SelfImprovementRunMutation) Branch() (r string, exists bool) {
+	v := m.branch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBranch returns the old "branch" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldBranch(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBranch is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBranch requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBranch: %w", err)
+	}
+	return oldValue.Branch, nil
+}
+
+// ClearBranch clears the value of the "branch" field.
+func (m *SelfImprovementRunMutation) ClearBranch() {
+	m.branch = nil
+	m.clearedFields[selfimprovementrun.FieldBranch] = struct{}{}
+}
+
+// BranchCleared returns if the "branch" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) BranchCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldBranch]
+	return ok
+}
+
+// ResetBranch resets all changes to the "branch" field.
+func (m *SelfImprovementRunMutation) ResetBranch() {
+	m.branch = nil
+	delete(m.clearedFields, selfimprovementrun.FieldBranch)
+}
+
+// SetWorktreePath sets the "worktree_path" field.
+func (m *SelfImprovementRunMutation) SetWorktreePath(s string) {
+	m.worktree_path = &s
+}
+
+// WorktreePath returns the value of the "worktree_path" field in the mutation.
+func (m *SelfImprovementRunMutation) WorktreePath() (r string, exists bool) {
+	v := m.worktree_path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorktreePath returns the old "worktree_path" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldWorktreePath(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorktreePath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorktreePath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorktreePath: %w", err)
+	}
+	return oldValue.WorktreePath, nil
+}
+
+// ClearWorktreePath clears the value of the "worktree_path" field.
+func (m *SelfImprovementRunMutation) ClearWorktreePath() {
+	m.worktree_path = nil
+	m.clearedFields[selfimprovementrun.FieldWorktreePath] = struct{}{}
+}
+
+// WorktreePathCleared returns if the "worktree_path" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) WorktreePathCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldWorktreePath]
+	return ok
+}
+
+// ResetWorktreePath resets all changes to the "worktree_path" field.
+func (m *SelfImprovementRunMutation) ResetWorktreePath() {
+	m.worktree_path = nil
+	delete(m.clearedFields, selfimprovementrun.FieldWorktreePath)
+}
+
+// SetDiff sets the "diff" field.
+func (m *SelfImprovementRunMutation) SetDiff(s string) {
+	m.diff = &s
+}
+
+// Diff returns the value of the "diff" field in the mutation.
+func (m *SelfImprovementRunMutation) Diff() (r string, exists bool) {
+	v := m.diff
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDiff returns the old "diff" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldDiff(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDiff is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDiff requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDiff: %w", err)
+	}
+	return oldValue.Diff, nil
+}
+
+// ClearDiff clears the value of the "diff" field.
+func (m *SelfImprovementRunMutation) ClearDiff() {
+	m.diff = nil
+	m.clearedFields[selfimprovementrun.FieldDiff] = struct{}{}
+}
+
+// DiffCleared returns if the "diff" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) DiffCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldDiff]
+	return ok
+}
+
+// ResetDiff resets all changes to the "diff" field.
+func (m *SelfImprovementRunMutation) ResetDiff() {
+	m.diff = nil
+	delete(m.clearedFields, selfimprovementrun.FieldDiff)
+}
+
+// SetDiffStats sets the "diff_stats" field.
+func (m *SelfImprovementRunMutation) SetDiffStats(value map[string]int) {
+	m.diff_stats = &value
+}
+
+// DiffStats returns the value of the "diff_stats" field in the mutation.
+func (m *SelfImprovementRunMutation) DiffStats() (r map[string]int, exists bool) {
+	v := m.diff_stats
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDiffStats returns the old "diff_stats" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldDiffStats(ctx context.Context) (v map[string]int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDiffStats is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDiffStats requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDiffStats: %w", err)
+	}
+	return oldValue.DiffStats, nil
+}
+
+// ClearDiffStats clears the value of the "diff_stats" field.
+func (m *SelfImprovementRunMutation) ClearDiffStats() {
+	m.diff_stats = nil
+	m.clearedFields[selfimprovementrun.FieldDiffStats] = struct{}{}
+}
+
+// DiffStatsCleared returns if the "diff_stats" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) DiffStatsCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldDiffStats]
+	return ok
+}
+
+// ResetDiffStats resets all changes to the "diff_stats" field.
+func (m *SelfImprovementRunMutation) ResetDiffStats() {
+	m.diff_stats = nil
+	delete(m.clearedFields, selfimprovementrun.FieldDiffStats)
+}
+
+// SetDiagnosis sets the "diagnosis" field.
+func (m *SelfImprovementRunMutation) SetDiagnosis(value map[string]interface{}) {
+	m.diagnosis = &value
+}
+
+// Diagnosis returns the value of the "diagnosis" field in the mutation.
+func (m *SelfImprovementRunMutation) Diagnosis() (r map[string]interface{}, exists bool) {
+	v := m.diagnosis
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDiagnosis returns the old "diagnosis" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldDiagnosis(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDiagnosis is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDiagnosis requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDiagnosis: %w", err)
+	}
+	return oldValue.Diagnosis, nil
+}
+
+// ClearDiagnosis clears the value of the "diagnosis" field.
+func (m *SelfImprovementRunMutation) ClearDiagnosis() {
+	m.diagnosis = nil
+	m.clearedFields[selfimprovementrun.FieldDiagnosis] = struct{}{}
+}
+
+// DiagnosisCleared returns if the "diagnosis" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) DiagnosisCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldDiagnosis]
+	return ok
+}
+
+// ResetDiagnosis resets all changes to the "diagnosis" field.
+func (m *SelfImprovementRunMutation) ResetDiagnosis() {
+	m.diagnosis = nil
+	delete(m.clearedFields, selfimprovementrun.FieldDiagnosis)
+}
+
+// SetVerificationReport sets the "verification_report" field.
+func (m *SelfImprovementRunMutation) SetVerificationReport(value []map[string]interface{}) {
+	m.verification_report = &value
+	m.appendverification_report = nil
+}
+
+// VerificationReport returns the value of the "verification_report" field in the mutation.
+func (m *SelfImprovementRunMutation) VerificationReport() (r []map[string]interface{}, exists bool) {
+	v := m.verification_report
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVerificationReport returns the old "verification_report" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldVerificationReport(ctx context.Context) (v []map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVerificationReport is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVerificationReport requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVerificationReport: %w", err)
+	}
+	return oldValue.VerificationReport, nil
+}
+
+// AppendVerificationReport adds value to the "verification_report" field.
+func (m *SelfImprovementRunMutation) AppendVerificationReport(value []map[string]interface{}) {
+	m.appendverification_report = append(m.appendverification_report, value...)
+}
+
+// AppendedVerificationReport returns the list of values that were appended to the "verification_report" field in this mutation.
+func (m *SelfImprovementRunMutation) AppendedVerificationReport() ([]map[string]interface{}, bool) {
+	if len(m.appendverification_report) == 0 {
+		return nil, false
+	}
+	return m.appendverification_report, true
+}
+
+// ClearVerificationReport clears the value of the "verification_report" field.
+func (m *SelfImprovementRunMutation) ClearVerificationReport() {
+	m.verification_report = nil
+	m.appendverification_report = nil
+	m.clearedFields[selfimprovementrun.FieldVerificationReport] = struct{}{}
+}
+
+// VerificationReportCleared returns if the "verification_report" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) VerificationReportCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldVerificationReport]
+	return ok
+}
+
+// ResetVerificationReport resets all changes to the "verification_report" field.
+func (m *SelfImprovementRunMutation) ResetVerificationReport() {
+	m.verification_report = nil
+	m.appendverification_report = nil
+	delete(m.clearedFields, selfimprovementrun.FieldVerificationReport)
+}
+
+// SetCriticReport sets the "critic_report" field.
+func (m *SelfImprovementRunMutation) SetCriticReport(value map[string]interface{}) {
+	m.critic_report = &value
+}
+
+// CriticReport returns the value of the "critic_report" field in the mutation.
+func (m *SelfImprovementRunMutation) CriticReport() (r map[string]interface{}, exists bool) {
+	v := m.critic_report
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCriticReport returns the old "critic_report" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldCriticReport(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCriticReport is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCriticReport requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCriticReport: %w", err)
+	}
+	return oldValue.CriticReport, nil
+}
+
+// ClearCriticReport clears the value of the "critic_report" field.
+func (m *SelfImprovementRunMutation) ClearCriticReport() {
+	m.critic_report = nil
+	m.clearedFields[selfimprovementrun.FieldCriticReport] = struct{}{}
+}
+
+// CriticReportCleared returns if the "critic_report" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) CriticReportCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldCriticReport]
+	return ok
+}
+
+// ResetCriticReport resets all changes to the "critic_report" field.
+func (m *SelfImprovementRunMutation) ResetCriticReport() {
+	m.critic_report = nil
+	delete(m.clearedFields, selfimprovementrun.FieldCriticReport)
+}
+
+// SetGovernance sets the "governance" field.
+func (m *SelfImprovementRunMutation) SetGovernance(value map[string]interface{}) {
+	m.governance = &value
+}
+
+// Governance returns the value of the "governance" field in the mutation.
+func (m *SelfImprovementRunMutation) Governance() (r map[string]interface{}, exists bool) {
+	v := m.governance
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGovernance returns the old "governance" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldGovernance(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGovernance is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGovernance requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGovernance: %w", err)
+	}
+	return oldValue.Governance, nil
+}
+
+// ClearGovernance clears the value of the "governance" field.
+func (m *SelfImprovementRunMutation) ClearGovernance() {
+	m.governance = nil
+	m.clearedFields[selfimprovementrun.FieldGovernance] = struct{}{}
+}
+
+// GovernanceCleared returns if the "governance" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) GovernanceCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldGovernance]
+	return ok
+}
+
+// ResetGovernance resets all changes to the "governance" field.
+func (m *SelfImprovementRunMutation) ResetGovernance() {
+	m.governance = nil
+	delete(m.clearedFields, selfimprovementrun.FieldGovernance)
+}
+
+// SetAttempts sets the "attempts" field.
+func (m *SelfImprovementRunMutation) SetAttempts(i int) {
+	m.attempts = &i
+	m.addattempts = nil
+}
+
+// Attempts returns the value of the "attempts" field in the mutation.
+func (m *SelfImprovementRunMutation) Attempts() (r int, exists bool) {
+	v := m.attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAttempts returns the old "attempts" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldAttempts(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAttempts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAttempts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAttempts: %w", err)
+	}
+	return oldValue.Attempts, nil
+}
+
+// AddAttempts adds i to the "attempts" field.
+func (m *SelfImprovementRunMutation) AddAttempts(i int) {
+	if m.addattempts != nil {
+		*m.addattempts += i
+	} else {
+		m.addattempts = &i
+	}
+}
+
+// AddedAttempts returns the value that was added to the "attempts" field in this mutation.
+func (m *SelfImprovementRunMutation) AddedAttempts() (r int, exists bool) {
+	v := m.addattempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAttempts resets all changes to the "attempts" field.
+func (m *SelfImprovementRunMutation) ResetAttempts() {
+	m.attempts = nil
+	m.addattempts = nil
+}
+
+// SetApprovedBy sets the "approved_by" field.
+func (m *SelfImprovementRunMutation) SetApprovedBy(s string) {
+	m.approved_by = &s
+}
+
+// ApprovedBy returns the value of the "approved_by" field in the mutation.
+func (m *SelfImprovementRunMutation) ApprovedBy() (r string, exists bool) {
+	v := m.approved_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldApprovedBy returns the old "approved_by" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldApprovedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldApprovedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldApprovedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldApprovedBy: %w", err)
+	}
+	return oldValue.ApprovedBy, nil
+}
+
+// ClearApprovedBy clears the value of the "approved_by" field.
+func (m *SelfImprovementRunMutation) ClearApprovedBy() {
+	m.approved_by = nil
+	m.clearedFields[selfimprovementrun.FieldApprovedBy] = struct{}{}
+}
+
+// ApprovedByCleared returns if the "approved_by" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) ApprovedByCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldApprovedBy]
+	return ok
+}
+
+// ResetApprovedBy resets all changes to the "approved_by" field.
+func (m *SelfImprovementRunMutation) ResetApprovedBy() {
+	m.approved_by = nil
+	delete(m.clearedFields, selfimprovementrun.FieldApprovedBy)
+}
+
+// SetAppliedCommit sets the "applied_commit" field.
+func (m *SelfImprovementRunMutation) SetAppliedCommit(s string) {
+	m.applied_commit = &s
+}
+
+// AppliedCommit returns the value of the "applied_commit" field in the mutation.
+func (m *SelfImprovementRunMutation) AppliedCommit() (r string, exists bool) {
+	v := m.applied_commit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAppliedCommit returns the old "applied_commit" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldAppliedCommit(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAppliedCommit is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAppliedCommit requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAppliedCommit: %w", err)
+	}
+	return oldValue.AppliedCommit, nil
+}
+
+// ClearAppliedCommit clears the value of the "applied_commit" field.
+func (m *SelfImprovementRunMutation) ClearAppliedCommit() {
+	m.applied_commit = nil
+	m.clearedFields[selfimprovementrun.FieldAppliedCommit] = struct{}{}
+}
+
+// AppliedCommitCleared returns if the "applied_commit" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) AppliedCommitCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldAppliedCommit]
+	return ok
+}
+
+// ResetAppliedCommit resets all changes to the "applied_commit" field.
+func (m *SelfImprovementRunMutation) ResetAppliedCommit() {
+	m.applied_commit = nil
+	delete(m.clearedFields, selfimprovementrun.FieldAppliedCommit)
+}
+
+// SetRollbackPointer sets the "rollback_pointer" field.
+func (m *SelfImprovementRunMutation) SetRollbackPointer(s string) {
+	m.rollback_pointer = &s
+}
+
+// RollbackPointer returns the value of the "rollback_pointer" field in the mutation.
+func (m *SelfImprovementRunMutation) RollbackPointer() (r string, exists bool) {
+	v := m.rollback_pointer
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRollbackPointer returns the old "rollback_pointer" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldRollbackPointer(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRollbackPointer is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRollbackPointer requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRollbackPointer: %w", err)
+	}
+	return oldValue.RollbackPointer, nil
+}
+
+// ClearRollbackPointer clears the value of the "rollback_pointer" field.
+func (m *SelfImprovementRunMutation) ClearRollbackPointer() {
+	m.rollback_pointer = nil
+	m.clearedFields[selfimprovementrun.FieldRollbackPointer] = struct{}{}
+}
+
+// RollbackPointerCleared returns if the "rollback_pointer" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) RollbackPointerCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldRollbackPointer]
+	return ok
+}
+
+// ResetRollbackPointer resets all changes to the "rollback_pointer" field.
+func (m *SelfImprovementRunMutation) ResetRollbackPointer() {
+	m.rollback_pointer = nil
+	delete(m.clearedFields, selfimprovementrun.FieldRollbackPointer)
+}
+
+// SetObserveUntil sets the "observe_until" field.
+func (m *SelfImprovementRunMutation) SetObserveUntil(t time.Time) {
+	m.observe_until = &t
+}
+
+// ObserveUntil returns the value of the "observe_until" field in the mutation.
+func (m *SelfImprovementRunMutation) ObserveUntil() (r time.Time, exists bool) {
+	v := m.observe_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldObserveUntil returns the old "observe_until" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldObserveUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldObserveUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldObserveUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldObserveUntil: %w", err)
+	}
+	return oldValue.ObserveUntil, nil
+}
+
+// ClearObserveUntil clears the value of the "observe_until" field.
+func (m *SelfImprovementRunMutation) ClearObserveUntil() {
+	m.observe_until = nil
+	m.clearedFields[selfimprovementrun.FieldObserveUntil] = struct{}{}
+}
+
+// ObserveUntilCleared returns if the "observe_until" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) ObserveUntilCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldObserveUntil]
+	return ok
+}
+
+// ResetObserveUntil resets all changes to the "observe_until" field.
+func (m *SelfImprovementRunMutation) ResetObserveUntil() {
+	m.observe_until = nil
+	delete(m.clearedFields, selfimprovementrun.FieldObserveUntil)
+}
+
+// SetClosedReason sets the "closed_reason" field.
+func (m *SelfImprovementRunMutation) SetClosedReason(s string) {
+	m.closed_reason = &s
+}
+
+// ClosedReason returns the value of the "closed_reason" field in the mutation.
+func (m *SelfImprovementRunMutation) ClosedReason() (r string, exists bool) {
+	v := m.closed_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClosedReason returns the old "closed_reason" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldClosedReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClosedReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClosedReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClosedReason: %w", err)
+	}
+	return oldValue.ClosedReason, nil
+}
+
+// ClearClosedReason clears the value of the "closed_reason" field.
+func (m *SelfImprovementRunMutation) ClearClosedReason() {
+	m.closed_reason = nil
+	m.clearedFields[selfimprovementrun.FieldClosedReason] = struct{}{}
+}
+
+// ClosedReasonCleared returns if the "closed_reason" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) ClosedReasonCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldClosedReason]
+	return ok
+}
+
+// ResetClosedReason resets all changes to the "closed_reason" field.
+func (m *SelfImprovementRunMutation) ResetClosedReason() {
+	m.closed_reason = nil
+	delete(m.clearedFields, selfimprovementrun.FieldClosedReason)
+}
+
+// SetMetadata sets the "metadata" field.
+func (m *SelfImprovementRunMutation) SetMetadata(value map[string]interface{}) {
+	m.metadata = &value
+}
+
+// Metadata returns the value of the "metadata" field in the mutation.
+func (m *SelfImprovementRunMutation) Metadata() (r map[string]interface{}, exists bool) {
+	v := m.metadata
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMetadata returns the old "metadata" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldMetadata(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMetadata is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMetadata requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMetadata: %w", err)
+	}
+	return oldValue.Metadata, nil
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (m *SelfImprovementRunMutation) ClearMetadata() {
+	m.metadata = nil
+	m.clearedFields[selfimprovementrun.FieldMetadata] = struct{}{}
+}
+
+// MetadataCleared returns if the "metadata" field was cleared in this mutation.
+func (m *SelfImprovementRunMutation) MetadataCleared() bool {
+	_, ok := m.clearedFields[selfimprovementrun.FieldMetadata]
+	return ok
+}
+
+// ResetMetadata resets all changes to the "metadata" field.
+func (m *SelfImprovementRunMutation) ResetMetadata() {
+	m.metadata = nil
+	delete(m.clearedFields, selfimprovementrun.FieldMetadata)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SelfImprovementRunMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SelfImprovementRunMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SelfImprovementRunMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SelfImprovementRunMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SelfImprovementRunMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the SelfImprovementRun entity.
+// If the SelfImprovementRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SelfImprovementRunMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SelfImprovementRunMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the SelfImprovementRunMutation builder.
+func (m *SelfImprovementRunMutation) Where(ps ...predicate.SelfImprovementRun) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SelfImprovementRunMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SelfImprovementRunMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SelfImprovementRun, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SelfImprovementRunMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SelfImprovementRunMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SelfImprovementRun).
+func (m *SelfImprovementRunMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SelfImprovementRunMutation) Fields() []string {
+	fields := make([]string, 0, 23)
+	if m.suggestion_id != nil {
+		fields = append(fields, selfimprovementrun.FieldSuggestionID)
+	}
+	if m.status != nil {
+		fields = append(fields, selfimprovementrun.FieldStatus)
+	}
+	if m.trigger_source != nil {
+		fields = append(fields, selfimprovementrun.FieldTriggerSource)
+	}
+	if m.patch_kind != nil {
+		fields = append(fields, selfimprovementrun.FieldPatchKind)
+	}
+	if m.risk_level != nil {
+		fields = append(fields, selfimprovementrun.FieldRiskLevel)
+	}
+	if m.base_ref != nil {
+		fields = append(fields, selfimprovementrun.FieldBaseRef)
+	}
+	if m.branch != nil {
+		fields = append(fields, selfimprovementrun.FieldBranch)
+	}
+	if m.worktree_path != nil {
+		fields = append(fields, selfimprovementrun.FieldWorktreePath)
+	}
+	if m.diff != nil {
+		fields = append(fields, selfimprovementrun.FieldDiff)
+	}
+	if m.diff_stats != nil {
+		fields = append(fields, selfimprovementrun.FieldDiffStats)
+	}
+	if m.diagnosis != nil {
+		fields = append(fields, selfimprovementrun.FieldDiagnosis)
+	}
+	if m.verification_report != nil {
+		fields = append(fields, selfimprovementrun.FieldVerificationReport)
+	}
+	if m.critic_report != nil {
+		fields = append(fields, selfimprovementrun.FieldCriticReport)
+	}
+	if m.governance != nil {
+		fields = append(fields, selfimprovementrun.FieldGovernance)
+	}
+	if m.attempts != nil {
+		fields = append(fields, selfimprovementrun.FieldAttempts)
+	}
+	if m.approved_by != nil {
+		fields = append(fields, selfimprovementrun.FieldApprovedBy)
+	}
+	if m.applied_commit != nil {
+		fields = append(fields, selfimprovementrun.FieldAppliedCommit)
+	}
+	if m.rollback_pointer != nil {
+		fields = append(fields, selfimprovementrun.FieldRollbackPointer)
+	}
+	if m.observe_until != nil {
+		fields = append(fields, selfimprovementrun.FieldObserveUntil)
+	}
+	if m.closed_reason != nil {
+		fields = append(fields, selfimprovementrun.FieldClosedReason)
+	}
+	if m.metadata != nil {
+		fields = append(fields, selfimprovementrun.FieldMetadata)
+	}
+	if m.created_at != nil {
+		fields = append(fields, selfimprovementrun.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, selfimprovementrun.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SelfImprovementRunMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case selfimprovementrun.FieldSuggestionID:
+		return m.SuggestionID()
+	case selfimprovementrun.FieldStatus:
+		return m.Status()
+	case selfimprovementrun.FieldTriggerSource:
+		return m.TriggerSource()
+	case selfimprovementrun.FieldPatchKind:
+		return m.PatchKind()
+	case selfimprovementrun.FieldRiskLevel:
+		return m.RiskLevel()
+	case selfimprovementrun.FieldBaseRef:
+		return m.BaseRef()
+	case selfimprovementrun.FieldBranch:
+		return m.Branch()
+	case selfimprovementrun.FieldWorktreePath:
+		return m.WorktreePath()
+	case selfimprovementrun.FieldDiff:
+		return m.Diff()
+	case selfimprovementrun.FieldDiffStats:
+		return m.DiffStats()
+	case selfimprovementrun.FieldDiagnosis:
+		return m.Diagnosis()
+	case selfimprovementrun.FieldVerificationReport:
+		return m.VerificationReport()
+	case selfimprovementrun.FieldCriticReport:
+		return m.CriticReport()
+	case selfimprovementrun.FieldGovernance:
+		return m.Governance()
+	case selfimprovementrun.FieldAttempts:
+		return m.Attempts()
+	case selfimprovementrun.FieldApprovedBy:
+		return m.ApprovedBy()
+	case selfimprovementrun.FieldAppliedCommit:
+		return m.AppliedCommit()
+	case selfimprovementrun.FieldRollbackPointer:
+		return m.RollbackPointer()
+	case selfimprovementrun.FieldObserveUntil:
+		return m.ObserveUntil()
+	case selfimprovementrun.FieldClosedReason:
+		return m.ClosedReason()
+	case selfimprovementrun.FieldMetadata:
+		return m.Metadata()
+	case selfimprovementrun.FieldCreatedAt:
+		return m.CreatedAt()
+	case selfimprovementrun.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SelfImprovementRunMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case selfimprovementrun.FieldSuggestionID:
+		return m.OldSuggestionID(ctx)
+	case selfimprovementrun.FieldStatus:
+		return m.OldStatus(ctx)
+	case selfimprovementrun.FieldTriggerSource:
+		return m.OldTriggerSource(ctx)
+	case selfimprovementrun.FieldPatchKind:
+		return m.OldPatchKind(ctx)
+	case selfimprovementrun.FieldRiskLevel:
+		return m.OldRiskLevel(ctx)
+	case selfimprovementrun.FieldBaseRef:
+		return m.OldBaseRef(ctx)
+	case selfimprovementrun.FieldBranch:
+		return m.OldBranch(ctx)
+	case selfimprovementrun.FieldWorktreePath:
+		return m.OldWorktreePath(ctx)
+	case selfimprovementrun.FieldDiff:
+		return m.OldDiff(ctx)
+	case selfimprovementrun.FieldDiffStats:
+		return m.OldDiffStats(ctx)
+	case selfimprovementrun.FieldDiagnosis:
+		return m.OldDiagnosis(ctx)
+	case selfimprovementrun.FieldVerificationReport:
+		return m.OldVerificationReport(ctx)
+	case selfimprovementrun.FieldCriticReport:
+		return m.OldCriticReport(ctx)
+	case selfimprovementrun.FieldGovernance:
+		return m.OldGovernance(ctx)
+	case selfimprovementrun.FieldAttempts:
+		return m.OldAttempts(ctx)
+	case selfimprovementrun.FieldApprovedBy:
+		return m.OldApprovedBy(ctx)
+	case selfimprovementrun.FieldAppliedCommit:
+		return m.OldAppliedCommit(ctx)
+	case selfimprovementrun.FieldRollbackPointer:
+		return m.OldRollbackPointer(ctx)
+	case selfimprovementrun.FieldObserveUntil:
+		return m.OldObserveUntil(ctx)
+	case selfimprovementrun.FieldClosedReason:
+		return m.OldClosedReason(ctx)
+	case selfimprovementrun.FieldMetadata:
+		return m.OldMetadata(ctx)
+	case selfimprovementrun.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case selfimprovementrun.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SelfImprovementRun field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SelfImprovementRunMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case selfimprovementrun.FieldSuggestionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSuggestionID(v)
+		return nil
+	case selfimprovementrun.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case selfimprovementrun.FieldTriggerSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTriggerSource(v)
+		return nil
+	case selfimprovementrun.FieldPatchKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPatchKind(v)
+		return nil
+	case selfimprovementrun.FieldRiskLevel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRiskLevel(v)
+		return nil
+	case selfimprovementrun.FieldBaseRef:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBaseRef(v)
+		return nil
+	case selfimprovementrun.FieldBranch:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBranch(v)
+		return nil
+	case selfimprovementrun.FieldWorktreePath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorktreePath(v)
+		return nil
+	case selfimprovementrun.FieldDiff:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDiff(v)
+		return nil
+	case selfimprovementrun.FieldDiffStats:
+		v, ok := value.(map[string]int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDiffStats(v)
+		return nil
+	case selfimprovementrun.FieldDiagnosis:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDiagnosis(v)
+		return nil
+	case selfimprovementrun.FieldVerificationReport:
+		v, ok := value.([]map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVerificationReport(v)
+		return nil
+	case selfimprovementrun.FieldCriticReport:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCriticReport(v)
+		return nil
+	case selfimprovementrun.FieldGovernance:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGovernance(v)
+		return nil
+	case selfimprovementrun.FieldAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAttempts(v)
+		return nil
+	case selfimprovementrun.FieldApprovedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetApprovedBy(v)
+		return nil
+	case selfimprovementrun.FieldAppliedCommit:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAppliedCommit(v)
+		return nil
+	case selfimprovementrun.FieldRollbackPointer:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRollbackPointer(v)
+		return nil
+	case selfimprovementrun.FieldObserveUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetObserveUntil(v)
+		return nil
+	case selfimprovementrun.FieldClosedReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClosedReason(v)
+		return nil
+	case selfimprovementrun.FieldMetadata:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMetadata(v)
+		return nil
+	case selfimprovementrun.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case selfimprovementrun.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SelfImprovementRun field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SelfImprovementRunMutation) AddedFields() []string {
+	var fields []string
+	if m.addattempts != nil {
+		fields = append(fields, selfimprovementrun.FieldAttempts)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SelfImprovementRunMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case selfimprovementrun.FieldAttempts:
+		return m.AddedAttempts()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SelfImprovementRunMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case selfimprovementrun.FieldAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAttempts(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SelfImprovementRun numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SelfImprovementRunMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(selfimprovementrun.FieldPatchKind) {
+		fields = append(fields, selfimprovementrun.FieldPatchKind)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldRiskLevel) {
+		fields = append(fields, selfimprovementrun.FieldRiskLevel)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldBaseRef) {
+		fields = append(fields, selfimprovementrun.FieldBaseRef)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldBranch) {
+		fields = append(fields, selfimprovementrun.FieldBranch)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldWorktreePath) {
+		fields = append(fields, selfimprovementrun.FieldWorktreePath)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldDiff) {
+		fields = append(fields, selfimprovementrun.FieldDiff)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldDiffStats) {
+		fields = append(fields, selfimprovementrun.FieldDiffStats)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldDiagnosis) {
+		fields = append(fields, selfimprovementrun.FieldDiagnosis)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldVerificationReport) {
+		fields = append(fields, selfimprovementrun.FieldVerificationReport)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldCriticReport) {
+		fields = append(fields, selfimprovementrun.FieldCriticReport)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldGovernance) {
+		fields = append(fields, selfimprovementrun.FieldGovernance)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldApprovedBy) {
+		fields = append(fields, selfimprovementrun.FieldApprovedBy)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldAppliedCommit) {
+		fields = append(fields, selfimprovementrun.FieldAppliedCommit)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldRollbackPointer) {
+		fields = append(fields, selfimprovementrun.FieldRollbackPointer)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldObserveUntil) {
+		fields = append(fields, selfimprovementrun.FieldObserveUntil)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldClosedReason) {
+		fields = append(fields, selfimprovementrun.FieldClosedReason)
+	}
+	if m.FieldCleared(selfimprovementrun.FieldMetadata) {
+		fields = append(fields, selfimprovementrun.FieldMetadata)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SelfImprovementRunMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SelfImprovementRunMutation) ClearField(name string) error {
+	switch name {
+	case selfimprovementrun.FieldPatchKind:
+		m.ClearPatchKind()
+		return nil
+	case selfimprovementrun.FieldRiskLevel:
+		m.ClearRiskLevel()
+		return nil
+	case selfimprovementrun.FieldBaseRef:
+		m.ClearBaseRef()
+		return nil
+	case selfimprovementrun.FieldBranch:
+		m.ClearBranch()
+		return nil
+	case selfimprovementrun.FieldWorktreePath:
+		m.ClearWorktreePath()
+		return nil
+	case selfimprovementrun.FieldDiff:
+		m.ClearDiff()
+		return nil
+	case selfimprovementrun.FieldDiffStats:
+		m.ClearDiffStats()
+		return nil
+	case selfimprovementrun.FieldDiagnosis:
+		m.ClearDiagnosis()
+		return nil
+	case selfimprovementrun.FieldVerificationReport:
+		m.ClearVerificationReport()
+		return nil
+	case selfimprovementrun.FieldCriticReport:
+		m.ClearCriticReport()
+		return nil
+	case selfimprovementrun.FieldGovernance:
+		m.ClearGovernance()
+		return nil
+	case selfimprovementrun.FieldApprovedBy:
+		m.ClearApprovedBy()
+		return nil
+	case selfimprovementrun.FieldAppliedCommit:
+		m.ClearAppliedCommit()
+		return nil
+	case selfimprovementrun.FieldRollbackPointer:
+		m.ClearRollbackPointer()
+		return nil
+	case selfimprovementrun.FieldObserveUntil:
+		m.ClearObserveUntil()
+		return nil
+	case selfimprovementrun.FieldClosedReason:
+		m.ClearClosedReason()
+		return nil
+	case selfimprovementrun.FieldMetadata:
+		m.ClearMetadata()
+		return nil
+	}
+	return fmt.Errorf("unknown SelfImprovementRun nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SelfImprovementRunMutation) ResetField(name string) error {
+	switch name {
+	case selfimprovementrun.FieldSuggestionID:
+		m.ResetSuggestionID()
+		return nil
+	case selfimprovementrun.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case selfimprovementrun.FieldTriggerSource:
+		m.ResetTriggerSource()
+		return nil
+	case selfimprovementrun.FieldPatchKind:
+		m.ResetPatchKind()
+		return nil
+	case selfimprovementrun.FieldRiskLevel:
+		m.ResetRiskLevel()
+		return nil
+	case selfimprovementrun.FieldBaseRef:
+		m.ResetBaseRef()
+		return nil
+	case selfimprovementrun.FieldBranch:
+		m.ResetBranch()
+		return nil
+	case selfimprovementrun.FieldWorktreePath:
+		m.ResetWorktreePath()
+		return nil
+	case selfimprovementrun.FieldDiff:
+		m.ResetDiff()
+		return nil
+	case selfimprovementrun.FieldDiffStats:
+		m.ResetDiffStats()
+		return nil
+	case selfimprovementrun.FieldDiagnosis:
+		m.ResetDiagnosis()
+		return nil
+	case selfimprovementrun.FieldVerificationReport:
+		m.ResetVerificationReport()
+		return nil
+	case selfimprovementrun.FieldCriticReport:
+		m.ResetCriticReport()
+		return nil
+	case selfimprovementrun.FieldGovernance:
+		m.ResetGovernance()
+		return nil
+	case selfimprovementrun.FieldAttempts:
+		m.ResetAttempts()
+		return nil
+	case selfimprovementrun.FieldApprovedBy:
+		m.ResetApprovedBy()
+		return nil
+	case selfimprovementrun.FieldAppliedCommit:
+		m.ResetAppliedCommit()
+		return nil
+	case selfimprovementrun.FieldRollbackPointer:
+		m.ResetRollbackPointer()
+		return nil
+	case selfimprovementrun.FieldObserveUntil:
+		m.ResetObserveUntil()
+		return nil
+	case selfimprovementrun.FieldClosedReason:
+		m.ResetClosedReason()
+		return nil
+	case selfimprovementrun.FieldMetadata:
+		m.ResetMetadata()
+		return nil
+	case selfimprovementrun.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case selfimprovementrun.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SelfImprovementRun field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SelfImprovementRunMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SelfImprovementRunMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SelfImprovementRunMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SelfImprovementRunMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SelfImprovementRunMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SelfImprovementRunMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SelfImprovementRunMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SelfImprovementRun unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SelfImprovementRunMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SelfImprovementRun edge %s", name)
 }
 
 // SessionMutation represents an operation that mutates the Session nodes in the graph.

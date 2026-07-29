@@ -132,7 +132,9 @@ export type ListDocumentsRequest = {
 };
 
 // VaultTreeNode is one entry of a vault folder listing (P3 explorer).
-// kind=dir nodes are aggregates derived from document rel_paths;
+// kind=dir nodes come from filesystem scan ∪ document rel_path aggregation
+// (G1-B1: empty dirs visible, dir mtime in updated_at; legacy collections
+// without root_path fall back to pure index aggregation);
 // kind=file nodes mirror one indexed document.
 export type VaultTreeNode = {
   name: string | undefined;

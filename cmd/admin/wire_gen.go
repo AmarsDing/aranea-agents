@@ -250,7 +250,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	factory := provideCodeExecutorFactory(loggatewayLogger)
 	knowledgeRepo := data.NewKnowledgeRepoFromData(dataData)
 	retriever := service.NewKnowledgeRetriever(multiProviderEmbedder, knowledgeRepo, loggatewayLogger)
-	knowledgeUsecase := biz.ProvideKnowledgeUsecase(knowledgeRepo)
+	vaultFiler := provideKnowledgeVaultFiler(loggatewayLogger)
+	knowledgeUsecase := biz.ProvideKnowledgeUsecase(knowledgeRepo, vaultFiler)
 	deptTeamLister := biz.ProvideDeptTeamLister(teamRepo)
 	deptAgentPositionClearer := biz.ProvideDeptAgentPositionClearer(agentRepository)
 	positionPromptUsecase := biz.NewPositionPromptUsecase(organizationRepo, loggatewayLogger)
@@ -547,7 +548,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	lifecycleManager := provideLifecycleManager(buildCache, loggatewayLogger)
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
 	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, loggatewayLogger)
-	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, multiProviderEmbedder, loggatewayLogger)
+	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, loggatewayLogger)
 	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
@@ -1735,12 +1736,18 @@ func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEm
 	return u
 }
 
+// provideKnowledgeVaultFiler 提供共享 VaultFiler 实例（G1-B1/B2）：KnowledgeUsecase
+// 树目录扫描/树内写文件与 vault 同步链（applier）必须同一实例——自写标记统一登记，
+// watcher 才能过滤 KB 自身写事件（回环防护）。
+func provideKnowledgeVaultFiler(lg loggateway.Logger) *knowledge2.VaultFiler {
+	return knowledge2.NewVaultFiler(lg)
+}
+
 // provideVaultSyncSupervisor 装配 vault 同步链（P1-3 生产装配，原遗漏导致新建
-// vault 永不同步）：SyncEngine → VaultSyncApplier（filer + 可选 embedder）→
+// vault 永不同步）：SyncEngine → VaultSyncApplier（共享 filer + 可选 embedder）→
 // VaultSyncRunner → Supervisor。embedder 未配置时 buildChunks 按无语义层降级。
-func provideVaultSyncSupervisor(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, lg loggateway.Logger) *knowledge.VaultSyncSupervisor {
+func provideVaultSyncSupervisor(uc *biz.KnowledgeUsecase, filer *knowledge2.VaultFiler, embedder knowledge.Embedder, lg loggateway.Logger) *knowledge.VaultSyncSupervisor {
 	engine := knowledge2.NewSyncEngine(lg)
-	filer := knowledge2.NewVaultFiler(lg)
 	applier := knowledge.NewVaultSyncApplier(uc, filer, embedder, lg)
 	runner := knowledge.NewVaultSyncRunner(engine, applier, uc, lg)
 	return knowledge.NewVaultSyncSupervisor(runner, uc, lg)

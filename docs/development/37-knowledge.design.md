@@ -1724,3 +1724,60 @@ UI:        树+列表+详情+双区搜索 ──→ 局部图谱(二期) ──�
 1. **现有中文全文检索实际已失效**：[knowledge.go:514-517](../../internal/data/knowledge.go#L514-L517) 的 `ts_rank(to_tsvector('simple', ...))` 双重问题——`ts_rank` 无 IDF/无 TF 饱和（弱 BM25）；更严重的是 PG `simple` 分词对 CJK 不切分（需 zhparser/pg_jieba），连续中文归为单一 token，中文查询几乎只能整串精确命中。**强 BM25 自研栈不是「优化」而是「修复」**。
 2. **FTS5 前车之鉴**：项目曾有 `messages_fts`（SQLite FTS5），因虚拟表+触发器与核心业务表耦合，演进时被整体移除（[20260902_drop_messages_subsystem.sql](../../internal/data/sql/migrations/20260902_drop_messages_subsystem.sql)）。知识库词法索引必须设计为完全独立的派生索引。
 3. **embedding 可选化破坏现有契约**：当前 CreateCollection 校验 `ErrEmbeddingModelRequired`（EmbeddingModel 必填；`Dim<=0` 时缺省 1536，无 dim 合法性校验），必须按 §V5 降级矩阵四条变更（R-4）。
+
+### V12. 资源管理器 V2 改版（G1~G4，2026-07-29 评审通过）
+
+> 用户需求 8 条（树内新建/库融树/拖拽移动/详情面板改版/删 DropZone/搜索范围/删新建合集按钮/3D 图谱），评审后落此设计。分期：G1 树骨架 → G2 详情面板 → G3 拖拽+搜索范围 → G4 3D 图谱。
+
+#### V12.1 页面结构（改版后）
+
+- **浏览 tab**：左栏树（**一级节点=库**，懒加载目录；树底部 `[+ 新建库]` 融入原页头按钮）+ 中栏文件列表 + 右栏详情；页头删除「新建集合」；中栏顶部 DropZone 删除（上传入口移入树节点 hover 菜单）。
+- **检索 tab**：改为 3D 知识图谱（左：3D 力导向图；右：操作台）。
+- **选中态单一事实源**：`{collectionId, prefix}` 取代独立 vault 切换器状态；选中库节点=浏览根目录。
+
+#### V12.2 树节点 hover 操作与科幻图标
+
+| 节点类型 | hover 操作 |
+|---|---|
+| 库节点 | 新建目录、新建文档、上传文件、刷新、删除库；右侧保留同步状态徽标 |
+| 目录节点 | 新建子目录、新建文档、上传文件（落此目录）、删除空目录 |
+| 根级底部 | `[+ 新建库]`（复用 KnowledgeCreateDialog） |
+
+图标配色：库=cyan、目录=violet、md=teal、图片=magenta、音视频=orange、error=red 脉冲；选中态 `drop-shadow` 光晕；全部走 CSS 变量双主题适配。
+
+#### V12.3 后端契约变更（B1~B8）
+
+| # | 契约 | 说明 |
+|---|---|---|
+| B1 | `ListVaultTree` 改实现 | **扫文件系统目录** + 联文档索引（替代纯 rel_path 聚合）：空目录可见、目录节点带 mtime；文件节点仍来自索引（summary/tags/status 等不变） |
+| B2 | `rpc CreateVaultDir(collection_id, dir_path)` / `rpc CreateVaultDocument(collection_id, rel_path)` | 经 VaultFiler 建目录/写模板 md（frontmatter+空标题）；写后立即触发单文档 apply（不等 45s 轮询） |
+| B3 | `IngestDocumentRequest` + `target_dir`（可选） | 上传到指定子目录：VaultFiler 落盘 → 同步入库（Vault 模式文件系统为真相源）；空 = 现有行为 |
+| B4 | `rpc MoveDocumentToDir(id, target_dir)` | 库内跨目录移动：VaultFiler 原子 move + `UpdateDocumentRelPath` + rebuildExplicitLinks；同名冲突 → CodeConflict（前端弹 覆盖/自动改名/取消） |
+| B5 | `rpc UpdateDocumentContent(id, content, base_hash)` | 编辑保存：VaultFiler.WriteDocCAS（冲突留双份返 CodeConflict）→ 触发重索引 |
+| B6 | `GET /v1/knowledge/documents/{id}/asset` | asset_uri 原始文件流式输出（图片/音频/视频内联渲染，word 下载） |
+| B7 | `SearchRequest` + `path_prefix`（可选） | BM25/向量 SQL 增加 `rel_path LIKE prefix%` 过滤 |
+| B8 | `rpc ListCollectionGraph(collection_id, link_types[], path_prefix)` | 返回 `{nodes:[{doc_id,name,rel_path,doc_type,degree}], edges:[{source,target,type}]}`，一次性全量（<2k 节点） |
+
+#### V12.4 详情面板改版（G2）
+
+- 第一行：**摘要**（一行省略，名称/路径缩小为副标题）；hover 显示 360px 大号浮层卡（完整摘要+元信息）。
+- 第二行：关联计数 chips（显式/实体/语义），点击锚滚关联区。
+- 正文/媒体区：固定高 420px，主题化滚动条（`::-webkit-scrollbar` 用 `--color-border`/`--color-primary`）；md/txt 可编辑（编辑态等宽 textarea → B5 保存，CAS 冲突提示重载）；图片 `<img>`、音频/视频原生播放器（B6 流）、word 显示解析后 md + 原文下载。
+
+#### V12.5 拖拽移动（G3）
+
+- HTML5 DnD（不引库）：中栏文件行 `draggable`，合法目标=树目录节点/库节点（=根）/面包屑段；拖动幽灵卡+目标发光高亮+非法禁用；面包屑 hover 500ms 展开。
+- 同名冲突弹确认：覆盖 / 保留两份（`name (2).md`）/ 取消；失败回滚提示。
+- 跨库拖拽本期禁止（维度冲突风险，保留按钮式跨库 MoveDocument）。
+
+#### V12.6 搜索范围选择器（G3）
+
+- 搜索框左侧「范围」按钮：弹出迷你目录树（仅目录单选），选中后即时区前端 prefix 过滤 + 语义区走 B7；再选「全库」或 × 清除。
+
+#### V12.7 3D 知识图谱（G4）
+
+- **选型**：`3d-force-graph`（three.js 封装，力导向+交互开箱，~60KB gzip）；不手写 three.js。
+- **节点**：doc_type 着色、大小=连接度；**边**：explicit=primary / entity=紫 / semantic=青（预留，P4b 前两类先行），带方向箭头。
+- **交互**：左键旋转/右键平移/滚轮缩放；hover 高亮一跳邻居淡化其余；点击选中联动操作台。
+- **操作台**：库 select、边类型过滤 chips、目录前缀过滤（复用 V12.6 组件）、节点搜索定位、节点列表（连接度排序，点击聚焦）、选中节点卡（「在浏览中打开」→ 切浏览 tab 定位选中）。
+- **规模**：>2k 节点默认只渲染有连接节点 + 「显示孤立节点」开关。

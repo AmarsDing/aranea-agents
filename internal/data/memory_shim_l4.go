@@ -130,7 +130,12 @@ func (r *l4EntityRepo) ListEntityRows(ctx context.Context, scopeType, scopeID, w
 		args = append(args, scopeID)
 	}
 	if workspaceID != "" {
-		clauses = append(clauses, "workspace_id = ?")
+		// Shared-or-own visibility, aligned with data.workspaceSharedOrOwnIDs:
+		// rows with workspace_id = '' are shared/legacy (system writers such as
+		// AutoMemory worker and L4 extraction store ''), caller-owned rows carry
+		// the caller workspace. An equality filter here would hide all shared
+		// rows from every tenant, including default.
+		clauses = append(clauses, "workspace_id IN ('', ?)")
 		args = append(args, workspaceID)
 	}
 	if userID != "" {

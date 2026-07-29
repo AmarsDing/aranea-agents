@@ -983,7 +983,9 @@ func (x *ListDocumentsRequest) GetOffset() int32 {
 }
 
 // VaultTreeNode is one entry of a vault folder listing (P3 explorer).
-// kind=dir nodes are aggregates derived from document rel_paths;
+// kind=dir nodes come from filesystem scan ∪ document rel_path aggregation
+// (G1-B1: empty dirs visible, dir mtime in updated_at; legacy collections
+// without root_path fall back to pure index aggregation);
 // kind=file nodes mirror one indexed document.
 type VaultTreeNode struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -997,7 +999,7 @@ type VaultTreeNode struct {
 	DocType       string   `protobuf:"bytes,7,opt,name=doc_type,json=docType,proto3" json:"doc_type,omitempty"`
 	Status        string   `protobuf:"bytes,8,opt,name=status,proto3" json:"status,omitempty"`
 	SizeBytes     int64    `protobuf:"varint,9,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
-	UpdatedAt     string   `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	UpdatedAt     string   `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`          // file: doc updated_at; dir: filesystem mtime (RFC3339, vault mode only)
 	ErrorMessage  string   `protobuf:"bytes,11,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"` // populated when status=error (parse failure reason)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

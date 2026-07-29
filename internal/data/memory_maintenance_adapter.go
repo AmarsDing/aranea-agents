@@ -121,7 +121,7 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 			fact_kind = excluded.fact_kind, tags_json = excluded.tags_json,
 			source_kind = excluded.source_kind, source_session_id = excluded.source_session_id,
 			source_message_id = excluded.source_message_id,
-			version = version + 1, status = excluded.status,
+			version = memory_facts.version + 1, status = excluded.status,
 			pii_flag = excluded.pii_flag, redacted_statement = excluded.redacted_statement,
 			pii_types = excluded.pii_types,
 			metadata_json = excluded.metadata_json, updated_at = excluded.updated_at`),

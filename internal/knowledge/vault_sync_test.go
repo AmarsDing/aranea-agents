@@ -794,7 +794,7 @@ func TestVaultSyncApplier_ExplicitLinkBuilt(t *testing.T) {
 		}
 	}
 	if l.TargetDocID != targetID {
-		t.Errorf("TargetDocID = %q, want %q", l.TargetDocID, targetID)
+		t.Errorf("TargetDocID = %q, want target.md id %q", l.TargetDocID, targetID)
 	}
 	// 双向可见：从 target 侧也能查到
 	backlinks, err := repo.ListLinks(context.Background(), vault.ID, targetID, "")
@@ -803,6 +803,46 @@ func TestVaultSyncApplier_ExplicitLinkBuilt(t *testing.T) {
 	}
 	if len(backlinks) != 1 {
 		t.Errorf("target must see 1 backlink, got %d", len(backlinks))
+	}
+}
+
+// ── G1-B2：ApplyOne 单文档立即应用（树内新建不等轮询）─────────────────────────
+
+func TestVaultSyncApplier_ApplyOne(t *testing.T) {
+	root := t.TempDir()
+	writeVaultFile(t, root, "notes/new.md", testVaultMD)
+
+	repo := newVaultSyncMemRepo()
+	vault := bizknowledge.Collection{ID: "col1", RootPath: root, SyncState: "active"}
+	repo.collections[vault.ID] = vault
+
+	applier := newTestApplier(repo, nil)
+	if err := applier.ApplyOne(context.Background(), vault, "notes/new.md"); err != nil {
+		t.Fatalf("ApplyOne: %v", err)
+	}
+	if len(repo.documents) != 1 {
+		t.Fatalf("expected 1 document after ApplyOne, got %d", len(repo.documents))
+	}
+	var doc bizknowledge.Document
+	for _, d := range repo.documents {
+		doc = d
+	}
+	if doc.Status != "indexed" || doc.ContentHash == "" {
+		t.Errorf("doc must be indexed with content hash, got status=%q hash=%q", doc.Status, doc.ContentHash)
+	}
+
+	// 幂等：hash 一致二次调用短路（不重建 chunks）
+	before := repo.deleteChunksCalls
+	if err := applier.ApplyOne(context.Background(), vault, "notes/new.md"); err != nil {
+		t.Fatalf("ApplyOne idempotent: %v", err)
+	}
+	if repo.deleteChunksCalls != before {
+		t.Error("hash 一致时必须幂等短路（不重建 chunks）")
+	}
+
+	// 文件不存在 → 显式错误
+	if err := applier.ApplyOne(context.Background(), vault, "ghost.md"); err == nil {
+		t.Error("missing file must return error")
 	}
 }
 

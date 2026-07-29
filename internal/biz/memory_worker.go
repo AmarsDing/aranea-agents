@@ -59,6 +59,17 @@ type LogPair struct {
 	Value any
 }
 
+// FlowLogWriter abstracts user-visible flow log (流程日志) emission so biz
+// does not depend on internal/event directly. Each call creates a fresh
+// emitter, so start/done duration pairing is not available at this layer.
+// Implemented in internal/service via event.TraceEmitter. Nil-safe: callers
+// must nil-check before use (tests may pass nil).
+type FlowLogWriter interface {
+	LogFlowStart(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
+	LogFlowDone(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
+	LogFlowError(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
+}
+
 // SystemLogWriter abstracts system-domain (non-session-scoped) log writing
 // so biz does not depend on internal/event.SysLogWarn/Error directly.
 type SystemLogWriter interface {

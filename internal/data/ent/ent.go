@@ -53,6 +53,7 @@ import (
 	"aranea-agents/internal/data/ent/orchestration"
 	"aranea-agents/internal/data/ent/orchestrationstep"
 	"aranea-agents/internal/data/ent/organization"
+	"aranea-agents/internal/data/ent/patchoutcome"
 	"aranea-agents/internal/data/ent/planboardv2"
 	"aranea-agents/internal/data/ent/planstepv2"
 	"aranea-agents/internal/data/ent/platformchannel"
@@ -68,6 +69,7 @@ import (
 	"aranea-agents/internal/data/ent/resourceaccessaudit"
 	"aranea-agents/internal/data/ent/schemamigration"
 	"aranea-agents/internal/data/ent/selfcheckreport"
+	"aranea-agents/internal/data/ent/selfimprovementrun"
 	"aranea-agents/internal/data/ent/session"
 	"aranea-agents/internal/data/ent/sessionmetrics"
 	"aranea-agents/internal/data/ent/sessionparticipant"
@@ -219,6 +221,7 @@ func checkColumn(t, c string) error {
 			orchestration.Table:              orchestration.ValidColumn,
 			orchestrationstep.Table:          orchestrationstep.ValidColumn,
 			organization.Table:               organization.ValidColumn,
+			patchoutcome.Table:               patchoutcome.ValidColumn,
 			planboardv2.Table:                planboardv2.ValidColumn,
 			planstepv2.Table:                 planstepv2.ValidColumn,
 			platformchannel.Table:            platformchannel.ValidColumn,
@@ -234,6 +237,7 @@ func checkColumn(t, c string) error {
 			resourceaccessaudit.Table:        resourceaccessaudit.ValidColumn,
 			schemamigration.Table:            schemamigration.ValidColumn,
 			selfcheckreport.Table:            selfcheckreport.ValidColumn,
+			selfimprovementrun.Table:         selfimprovementrun.ValidColumn,
 			session.Table:                    session.ValidColumn,
 			sessionmetrics.Table:             sessionmetrics.ValidColumn,
 			sessionparticipant.Table:         sessionparticipant.ValidColumn,

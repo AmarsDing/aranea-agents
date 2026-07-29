@@ -1828,6 +1828,36 @@ var (
 			},
 		},
 	}
+	// PatchOutcomesColumns holds the columns for the "patch_outcomes" table.
+	PatchOutcomesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "run_id", Type: field.TypeString, Size: 64},
+		{Name: "suggestion_id", Type: field.TypeString, Size: 64},
+		{Name: "verdict", Type: field.TypeString, Size: 16},
+		{Name: "metrics_before", Type: field.TypeJSON, Nullable: true},
+		{Name: "metrics_after", Type: field.TypeJSON, Nullable: true},
+		{Name: "rollback_reason", Type: field.TypeString, Nullable: true, Size: 256, Default: ""},
+		{Name: "pattern_hash", Type: field.TypeString, Nullable: true, Size: 32, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// PatchOutcomesTable holds the schema information for the "patch_outcomes" table.
+	PatchOutcomesTable = &schema.Table{
+		Name:       "patch_outcomes",
+		Columns:    PatchOutcomesColumns,
+		PrimaryKey: []*schema.Column{PatchOutcomesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "patchoutcome_run_id",
+				Unique:  false,
+				Columns: []*schema.Column{PatchOutcomesColumns[1]},
+			},
+			{
+				Name:    "patchoutcome_verdict_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{PatchOutcomesColumns[3], PatchOutcomesColumns[8]},
+			},
+		},
+	}
 	// PlanBoardsV2Columns holds the columns for the "plan_boards_v2" table.
 	PlanBoardsV2Columns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
@@ -2332,6 +2362,56 @@ var (
 				Name:    "selfcheckreport_created_at",
 				Unique:  false,
 				Columns: []*schema.Column{SelfCheckReportsColumns[7]},
+			},
+		},
+	}
+	// SelfImprovementRunsColumns holds the columns for the "self_improvement_runs" table.
+	SelfImprovementRunsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "suggestion_id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "status", Type: field.TypeString, Size: 24, Default: "detected"},
+		{Name: "trigger_source", Type: field.TypeString, Size: 32},
+		{Name: "patch_kind", Type: field.TypeString, Nullable: true, Size: 16, Default: ""},
+		{Name: "risk_level", Type: field.TypeString, Nullable: true, Size: 8, Default: ""},
+		{Name: "base_ref", Type: field.TypeString, Nullable: true, Size: 64, Default: ""},
+		{Name: "branch", Type: field.TypeString, Nullable: true, Size: 128, Default: ""},
+		{Name: "worktree_path", Type: field.TypeString, Nullable: true, Size: 256, Default: ""},
+		{Name: "diff", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "diff_stats", Type: field.TypeJSON, Nullable: true},
+		{Name: "diagnosis", Type: field.TypeJSON, Nullable: true},
+		{Name: "verification_report", Type: field.TypeJSON, Nullable: true},
+		{Name: "critic_report", Type: field.TypeJSON, Nullable: true},
+		{Name: "governance", Type: field.TypeJSON, Nullable: true},
+		{Name: "attempts", Type: field.TypeInt, Default: 0},
+		{Name: "approved_by", Type: field.TypeString, Nullable: true, Size: 64, Default: ""},
+		{Name: "applied_commit", Type: field.TypeString, Nullable: true, Size: 64, Default: ""},
+		{Name: "rollback_pointer", Type: field.TypeString, Nullable: true, Size: 64, Default: ""},
+		{Name: "observe_until", Type: field.TypeTime, Nullable: true},
+		{Name: "closed_reason", Type: field.TypeString, Nullable: true, Size: 64, Default: ""},
+		{Name: "metadata", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SelfImprovementRunsTable holds the schema information for the "self_improvement_runs" table.
+	SelfImprovementRunsTable = &schema.Table{
+		Name:       "self_improvement_runs",
+		Columns:    SelfImprovementRunsColumns,
+		PrimaryKey: []*schema.Column{SelfImprovementRunsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "selfimprovementrun_status",
+				Unique:  false,
+				Columns: []*schema.Column{SelfImprovementRunsColumns[2]},
+			},
+			{
+				Name:    "selfimprovementrun_trigger_source_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{SelfImprovementRunsColumns[3], SelfImprovementRunsColumns[22]},
+			},
+			{
+				Name:    "selfimprovementrun_observe_until",
+				Unique:  false,
+				Columns: []*schema.Column{SelfImprovementRunsColumns[19]},
 			},
 		},
 	}
@@ -3608,6 +3688,7 @@ var (
 		OrchestrationsTable,
 		OrchestrationStepsTable,
 		OrganizationsTable,
+		PatchOutcomesTable,
 		PlanBoardsV2Table,
 		PlanStepsV2Table,
 		ChannelTable,
@@ -3623,6 +3704,7 @@ var (
 		ResourceAccessAuditsTable,
 		SchemaMigrationsTable,
 		SelfCheckReportsTable,
+		SelfImprovementRunsTable,
 		SessionsTable,
 		SessionMetricsTable,
 		SessionParticipantsTable,
@@ -3810,6 +3892,9 @@ func init() {
 	OrganizationsTable.Annotation = &entsql.Annotation{
 		Table: "organizations",
 	}
+	PatchOutcomesTable.Annotation = &entsql.Annotation{
+		Table: "patch_outcomes",
+	}
 	PlanBoardsV2Table.Annotation = &entsql.Annotation{
 		Table: "plan_boards_v2",
 	}
@@ -3854,6 +3939,9 @@ func init() {
 	}
 	SelfCheckReportsTable.Annotation = &entsql.Annotation{
 		Table: "self_check_reports",
+	}
+	SelfImprovementRunsTable.Annotation = &entsql.Annotation{
+		Table: "self_improvement_runs",
 	}
 	SessionsTable.Annotation = &entsql.Annotation{
 		Table: "sessions",

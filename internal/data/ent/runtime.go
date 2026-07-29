@@ -53,6 +53,7 @@ import (
 	"aranea-agents/internal/data/ent/orchestration"
 	"aranea-agents/internal/data/ent/orchestrationstep"
 	"aranea-agents/internal/data/ent/organization"
+	"aranea-agents/internal/data/ent/patchoutcome"
 	"aranea-agents/internal/data/ent/planboardv2"
 	"aranea-agents/internal/data/ent/planstepv2"
 	"aranea-agents/internal/data/ent/platformchannel"
@@ -68,6 +69,7 @@ import (
 	"aranea-agents/internal/data/ent/resourceaccessaudit"
 	"aranea-agents/internal/data/ent/schema"
 	"aranea-agents/internal/data/ent/selfcheckreport"
+	"aranea-agents/internal/data/ent/selfimprovementrun"
 	"aranea-agents/internal/data/ent/session"
 	"aranea-agents/internal/data/ent/sessionmetrics"
 	"aranea-agents/internal/data/ent/sessionparticipant"
@@ -3313,6 +3315,84 @@ func init() {
 	organizationDescID := organizationFields[0].Descriptor()
 	// organization.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	organization.IDValidator = organizationDescID.Validators[0].(func(string) error)
+	patchoutcomeFields := schema.PatchOutcome{}.Fields()
+	_ = patchoutcomeFields
+	// patchoutcomeDescRunID is the schema descriptor for run_id field.
+	patchoutcomeDescRunID := patchoutcomeFields[1].Descriptor()
+	// patchoutcome.RunIDValidator is a validator for the "run_id" field. It is called by the builders before save.
+	patchoutcome.RunIDValidator = func() func(string) error {
+		validators := patchoutcomeDescRunID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(run_id string) error {
+			for _, fn := range fns {
+				if err := fn(run_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// patchoutcomeDescSuggestionID is the schema descriptor for suggestion_id field.
+	patchoutcomeDescSuggestionID := patchoutcomeFields[2].Descriptor()
+	// patchoutcome.SuggestionIDValidator is a validator for the "suggestion_id" field. It is called by the builders before save.
+	patchoutcome.SuggestionIDValidator = func() func(string) error {
+		validators := patchoutcomeDescSuggestionID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(suggestion_id string) error {
+			for _, fn := range fns {
+				if err := fn(suggestion_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// patchoutcomeDescVerdict is the schema descriptor for verdict field.
+	patchoutcomeDescVerdict := patchoutcomeFields[3].Descriptor()
+	// patchoutcome.VerdictValidator is a validator for the "verdict" field. It is called by the builders before save.
+	patchoutcome.VerdictValidator = func() func(string) error {
+		validators := patchoutcomeDescVerdict.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(verdict string) error {
+			for _, fn := range fns {
+				if err := fn(verdict); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// patchoutcomeDescRollbackReason is the schema descriptor for rollback_reason field.
+	patchoutcomeDescRollbackReason := patchoutcomeFields[6].Descriptor()
+	// patchoutcome.DefaultRollbackReason holds the default value on creation for the rollback_reason field.
+	patchoutcome.DefaultRollbackReason = patchoutcomeDescRollbackReason.Default.(string)
+	// patchoutcome.RollbackReasonValidator is a validator for the "rollback_reason" field. It is called by the builders before save.
+	patchoutcome.RollbackReasonValidator = patchoutcomeDescRollbackReason.Validators[0].(func(string) error)
+	// patchoutcomeDescPatternHash is the schema descriptor for pattern_hash field.
+	patchoutcomeDescPatternHash := patchoutcomeFields[7].Descriptor()
+	// patchoutcome.DefaultPatternHash holds the default value on creation for the pattern_hash field.
+	patchoutcome.DefaultPatternHash = patchoutcomeDescPatternHash.Default.(string)
+	// patchoutcome.PatternHashValidator is a validator for the "pattern_hash" field. It is called by the builders before save.
+	patchoutcome.PatternHashValidator = patchoutcomeDescPatternHash.Validators[0].(func(string) error)
+	// patchoutcomeDescCreatedAt is the schema descriptor for created_at field.
+	patchoutcomeDescCreatedAt := patchoutcomeFields[8].Descriptor()
+	// patchoutcome.DefaultCreatedAt holds the default value on creation for the created_at field.
+	patchoutcome.DefaultCreatedAt = patchoutcomeDescCreatedAt.Default.(func() time.Time)
+	// patchoutcomeDescID is the schema descriptor for id field.
+	patchoutcomeDescID := patchoutcomeFields[0].Descriptor()
+	// patchoutcome.DefaultID holds the default value on creation for the id field.
+	patchoutcome.DefaultID = patchoutcomeDescID.Default.(func() string)
+	// patchoutcome.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	patchoutcome.IDValidator = patchoutcomeDescID.Validators[0].(func(string) error)
 	planboardv2Fields := schema.PlanBoardV2{}.Fields()
 	_ = planboardv2Fields
 	// planboardv2DescTaskID is the schema descriptor for task_id field.
@@ -4183,6 +4263,138 @@ func init() {
 	selfcheckreportDescID := selfcheckreportFields[0].Descriptor()
 	// selfcheckreport.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	selfcheckreport.IDValidator = selfcheckreportDescID.Validators[0].(func(string) error)
+	selfimprovementrunFields := schema.SelfImprovementRun{}.Fields()
+	_ = selfimprovementrunFields
+	// selfimprovementrunDescSuggestionID is the schema descriptor for suggestion_id field.
+	selfimprovementrunDescSuggestionID := selfimprovementrunFields[1].Descriptor()
+	// selfimprovementrun.SuggestionIDValidator is a validator for the "suggestion_id" field. It is called by the builders before save.
+	selfimprovementrun.SuggestionIDValidator = func() func(string) error {
+		validators := selfimprovementrunDescSuggestionID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(suggestion_id string) error {
+			for _, fn := range fns {
+				if err := fn(suggestion_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// selfimprovementrunDescStatus is the schema descriptor for status field.
+	selfimprovementrunDescStatus := selfimprovementrunFields[2].Descriptor()
+	// selfimprovementrun.DefaultStatus holds the default value on creation for the status field.
+	selfimprovementrun.DefaultStatus = selfimprovementrunDescStatus.Default.(string)
+	// selfimprovementrun.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	selfimprovementrun.StatusValidator = func() func(string) error {
+		validators := selfimprovementrunDescStatus.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(status string) error {
+			for _, fn := range fns {
+				if err := fn(status); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// selfimprovementrunDescTriggerSource is the schema descriptor for trigger_source field.
+	selfimprovementrunDescTriggerSource := selfimprovementrunFields[3].Descriptor()
+	// selfimprovementrun.TriggerSourceValidator is a validator for the "trigger_source" field. It is called by the builders before save.
+	selfimprovementrun.TriggerSourceValidator = func() func(string) error {
+		validators := selfimprovementrunDescTriggerSource.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(trigger_source string) error {
+			for _, fn := range fns {
+				if err := fn(trigger_source); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// selfimprovementrunDescPatchKind is the schema descriptor for patch_kind field.
+	selfimprovementrunDescPatchKind := selfimprovementrunFields[4].Descriptor()
+	// selfimprovementrun.DefaultPatchKind holds the default value on creation for the patch_kind field.
+	selfimprovementrun.DefaultPatchKind = selfimprovementrunDescPatchKind.Default.(string)
+	// selfimprovementrun.PatchKindValidator is a validator for the "patch_kind" field. It is called by the builders before save.
+	selfimprovementrun.PatchKindValidator = selfimprovementrunDescPatchKind.Validators[0].(func(string) error)
+	// selfimprovementrunDescRiskLevel is the schema descriptor for risk_level field.
+	selfimprovementrunDescRiskLevel := selfimprovementrunFields[5].Descriptor()
+	// selfimprovementrun.DefaultRiskLevel holds the default value on creation for the risk_level field.
+	selfimprovementrun.DefaultRiskLevel = selfimprovementrunDescRiskLevel.Default.(string)
+	// selfimprovementrun.RiskLevelValidator is a validator for the "risk_level" field. It is called by the builders before save.
+	selfimprovementrun.RiskLevelValidator = selfimprovementrunDescRiskLevel.Validators[0].(func(string) error)
+	// selfimprovementrunDescBaseRef is the schema descriptor for base_ref field.
+	selfimprovementrunDescBaseRef := selfimprovementrunFields[6].Descriptor()
+	// selfimprovementrun.DefaultBaseRef holds the default value on creation for the base_ref field.
+	selfimprovementrun.DefaultBaseRef = selfimprovementrunDescBaseRef.Default.(string)
+	// selfimprovementrun.BaseRefValidator is a validator for the "base_ref" field. It is called by the builders before save.
+	selfimprovementrun.BaseRefValidator = selfimprovementrunDescBaseRef.Validators[0].(func(string) error)
+	// selfimprovementrunDescBranch is the schema descriptor for branch field.
+	selfimprovementrunDescBranch := selfimprovementrunFields[7].Descriptor()
+	// selfimprovementrun.DefaultBranch holds the default value on creation for the branch field.
+	selfimprovementrun.DefaultBranch = selfimprovementrunDescBranch.Default.(string)
+	// selfimprovementrun.BranchValidator is a validator for the "branch" field. It is called by the builders before save.
+	selfimprovementrun.BranchValidator = selfimprovementrunDescBranch.Validators[0].(func(string) error)
+	// selfimprovementrunDescWorktreePath is the schema descriptor for worktree_path field.
+	selfimprovementrunDescWorktreePath := selfimprovementrunFields[8].Descriptor()
+	// selfimprovementrun.DefaultWorktreePath holds the default value on creation for the worktree_path field.
+	selfimprovementrun.DefaultWorktreePath = selfimprovementrunDescWorktreePath.Default.(string)
+	// selfimprovementrun.WorktreePathValidator is a validator for the "worktree_path" field. It is called by the builders before save.
+	selfimprovementrun.WorktreePathValidator = selfimprovementrunDescWorktreePath.Validators[0].(func(string) error)
+	// selfimprovementrunDescAttempts is the schema descriptor for attempts field.
+	selfimprovementrunDescAttempts := selfimprovementrunFields[15].Descriptor()
+	// selfimprovementrun.DefaultAttempts holds the default value on creation for the attempts field.
+	selfimprovementrun.DefaultAttempts = selfimprovementrunDescAttempts.Default.(int)
+	// selfimprovementrunDescApprovedBy is the schema descriptor for approved_by field.
+	selfimprovementrunDescApprovedBy := selfimprovementrunFields[16].Descriptor()
+	// selfimprovementrun.DefaultApprovedBy holds the default value on creation for the approved_by field.
+	selfimprovementrun.DefaultApprovedBy = selfimprovementrunDescApprovedBy.Default.(string)
+	// selfimprovementrun.ApprovedByValidator is a validator for the "approved_by" field. It is called by the builders before save.
+	selfimprovementrun.ApprovedByValidator = selfimprovementrunDescApprovedBy.Validators[0].(func(string) error)
+	// selfimprovementrunDescAppliedCommit is the schema descriptor for applied_commit field.
+	selfimprovementrunDescAppliedCommit := selfimprovementrunFields[17].Descriptor()
+	// selfimprovementrun.DefaultAppliedCommit holds the default value on creation for the applied_commit field.
+	selfimprovementrun.DefaultAppliedCommit = selfimprovementrunDescAppliedCommit.Default.(string)
+	// selfimprovementrun.AppliedCommitValidator is a validator for the "applied_commit" field. It is called by the builders before save.
+	selfimprovementrun.AppliedCommitValidator = selfimprovementrunDescAppliedCommit.Validators[0].(func(string) error)
+	// selfimprovementrunDescRollbackPointer is the schema descriptor for rollback_pointer field.
+	selfimprovementrunDescRollbackPointer := selfimprovementrunFields[18].Descriptor()
+	// selfimprovementrun.DefaultRollbackPointer holds the default value on creation for the rollback_pointer field.
+	selfimprovementrun.DefaultRollbackPointer = selfimprovementrunDescRollbackPointer.Default.(string)
+	// selfimprovementrun.RollbackPointerValidator is a validator for the "rollback_pointer" field. It is called by the builders before save.
+	selfimprovementrun.RollbackPointerValidator = selfimprovementrunDescRollbackPointer.Validators[0].(func(string) error)
+	// selfimprovementrunDescClosedReason is the schema descriptor for closed_reason field.
+	selfimprovementrunDescClosedReason := selfimprovementrunFields[20].Descriptor()
+	// selfimprovementrun.DefaultClosedReason holds the default value on creation for the closed_reason field.
+	selfimprovementrun.DefaultClosedReason = selfimprovementrunDescClosedReason.Default.(string)
+	// selfimprovementrun.ClosedReasonValidator is a validator for the "closed_reason" field. It is called by the builders before save.
+	selfimprovementrun.ClosedReasonValidator = selfimprovementrunDescClosedReason.Validators[0].(func(string) error)
+	// selfimprovementrunDescCreatedAt is the schema descriptor for created_at field.
+	selfimprovementrunDescCreatedAt := selfimprovementrunFields[22].Descriptor()
+	// selfimprovementrun.DefaultCreatedAt holds the default value on creation for the created_at field.
+	selfimprovementrun.DefaultCreatedAt = selfimprovementrunDescCreatedAt.Default.(func() time.Time)
+	// selfimprovementrunDescUpdatedAt is the schema descriptor for updated_at field.
+	selfimprovementrunDescUpdatedAt := selfimprovementrunFields[23].Descriptor()
+	// selfimprovementrun.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	selfimprovementrun.DefaultUpdatedAt = selfimprovementrunDescUpdatedAt.Default.(func() time.Time)
+	// selfimprovementrun.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	selfimprovementrun.UpdateDefaultUpdatedAt = selfimprovementrunDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// selfimprovementrunDescID is the schema descriptor for id field.
+	selfimprovementrunDescID := selfimprovementrunFields[0].Descriptor()
+	// selfimprovementrun.DefaultID holds the default value on creation for the id field.
+	selfimprovementrun.DefaultID = selfimprovementrunDescID.Default.(func() string)
+	// selfimprovementrun.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	selfimprovementrun.IDValidator = selfimprovementrunDescID.Validators[0].(func(string) error)
 	sessionFields := schema.Session{}.Fields()
 	_ = sessionFields
 	// sessionDescWorkspaceID is the schema descriptor for workspace_id field.

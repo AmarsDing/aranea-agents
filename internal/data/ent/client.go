@@ -61,6 +61,7 @@ import (
 	"aranea-agents/internal/data/ent/orchestration"
 	"aranea-agents/internal/data/ent/orchestrationstep"
 	"aranea-agents/internal/data/ent/organization"
+	"aranea-agents/internal/data/ent/patchoutcome"
 	"aranea-agents/internal/data/ent/planboardv2"
 	"aranea-agents/internal/data/ent/planstepv2"
 	"aranea-agents/internal/data/ent/platformchannel"
@@ -76,6 +77,7 @@ import (
 	"aranea-agents/internal/data/ent/resourceaccessaudit"
 	"aranea-agents/internal/data/ent/schemamigration"
 	"aranea-agents/internal/data/ent/selfcheckreport"
+	"aranea-agents/internal/data/ent/selfimprovementrun"
 	"aranea-agents/internal/data/ent/session"
 	"aranea-agents/internal/data/ent/sessionmetrics"
 	"aranea-agents/internal/data/ent/sessionparticipant"
@@ -222,6 +224,8 @@ type Client struct {
 	OrchestrationStep *OrchestrationStepClient
 	// Organization is the client for interacting with the Organization builders.
 	Organization *OrganizationClient
+	// PatchOutcome is the client for interacting with the PatchOutcome builders.
+	PatchOutcome *PatchOutcomeClient
 	// PlanBoardV2 is the client for interacting with the PlanBoardV2 builders.
 	PlanBoardV2 *PlanBoardV2Client
 	// PlanStepV2 is the client for interacting with the PlanStepV2 builders.
@@ -252,6 +256,8 @@ type Client struct {
 	SchemaMigration *SchemaMigrationClient
 	// SelfCheckReport is the client for interacting with the SelfCheckReport builders.
 	SelfCheckReport *SelfCheckReportClient
+	// SelfImprovementRun is the client for interacting with the SelfImprovementRun builders.
+	SelfImprovementRun *SelfImprovementRunClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
 	// SessionMetrics is the client for interacting with the SessionMetrics builders.
@@ -377,6 +383,7 @@ func (c *Client) init() {
 	c.Orchestration = NewOrchestrationClient(c.config)
 	c.OrchestrationStep = NewOrchestrationStepClient(c.config)
 	c.Organization = NewOrganizationClient(c.config)
+	c.PatchOutcome = NewPatchOutcomeClient(c.config)
 	c.PlanBoardV2 = NewPlanBoardV2Client(c.config)
 	c.PlanStepV2 = NewPlanStepV2Client(c.config)
 	c.PlatformChannel = NewPlatformChannelClient(c.config)
@@ -392,6 +399,7 @@ func (c *Client) init() {
 	c.ResourceAccessAudit = NewResourceAccessAuditClient(c.config)
 	c.SchemaMigration = NewSchemaMigrationClient(c.config)
 	c.SelfCheckReport = NewSelfCheckReportClient(c.config)
+	c.SelfImprovementRun = NewSelfImprovementRunClient(c.config)
 	c.Session = NewSessionClient(c.config)
 	c.SessionMetrics = NewSessionMetricsClient(c.config)
 	c.SessionParticipant = NewSessionParticipantClient(c.config)
@@ -566,6 +574,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Orchestration:              NewOrchestrationClient(cfg),
 		OrchestrationStep:          NewOrchestrationStepClient(cfg),
 		Organization:               NewOrganizationClient(cfg),
+		PatchOutcome:               NewPatchOutcomeClient(cfg),
 		PlanBoardV2:                NewPlanBoardV2Client(cfg),
 		PlanStepV2:                 NewPlanStepV2Client(cfg),
 		PlatformChannel:            NewPlatformChannelClient(cfg),
@@ -581,6 +590,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ResourceAccessAudit:        NewResourceAccessAuditClient(cfg),
 		SchemaMigration:            NewSchemaMigrationClient(cfg),
 		SelfCheckReport:            NewSelfCheckReportClient(cfg),
+		SelfImprovementRun:         NewSelfImprovementRunClient(cfg),
 		Session:                    NewSessionClient(cfg),
 		SessionMetrics:             NewSessionMetricsClient(cfg),
 		SessionParticipant:         NewSessionParticipantClient(cfg),
@@ -682,6 +692,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Orchestration:              NewOrchestrationClient(cfg),
 		OrchestrationStep:          NewOrchestrationStepClient(cfg),
 		Organization:               NewOrganizationClient(cfg),
+		PatchOutcome:               NewPatchOutcomeClient(cfg),
 		PlanBoardV2:                NewPlanBoardV2Client(cfg),
 		PlanStepV2:                 NewPlanStepV2Client(cfg),
 		PlatformChannel:            NewPlatformChannelClient(cfg),
@@ -697,6 +708,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ResourceAccessAudit:        NewResourceAccessAuditClient(cfg),
 		SchemaMigration:            NewSchemaMigrationClient(cfg),
 		SelfCheckReport:            NewSelfCheckReportClient(cfg),
+		SelfImprovementRun:         NewSelfImprovementRunClient(cfg),
 		Session:                    NewSessionClient(cfg),
 		SessionMetrics:             NewSessionMetricsClient(cfg),
 		SessionParticipant:         NewSessionParticipantClient(cfg),
@@ -770,11 +782,12 @@ func (c *Client) Use(hooks ...Hook) {
 		c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun, c.HealRecord,
 		c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2, c.ModelPricingRule,
 		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
-		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
-		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
-		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
-		c.SelfCheckReport, c.Session, c.SessionMetrics, c.SessionParticipant,
+		c.PatchOutcome, c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel,
+		c.PlatformChannelCredential, c.PlatformChannelDelivery,
+		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
+		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
+		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport,
+		c.SelfImprovementRun, c.Session, c.SessionMetrics, c.SessionParticipant,
 		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
 		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
 		c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team,
@@ -803,11 +816,12 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun, c.HealRecord,
 		c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2, c.ModelPricingRule,
 		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
-		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
-		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
-		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
-		c.SelfCheckReport, c.Session, c.SessionMetrics, c.SessionParticipant,
+		c.PatchOutcome, c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel,
+		c.PlatformChannelCredential, c.PlatformChannelDelivery,
+		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
+		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
+		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport,
+		c.SelfImprovementRun, c.Session, c.SessionMetrics, c.SessionParticipant,
 		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
 		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
 		c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team,
@@ -923,6 +937,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.OrchestrationStep.mutate(ctx, m)
 	case *OrganizationMutation:
 		return c.Organization.mutate(ctx, m)
+	case *PatchOutcomeMutation:
+		return c.PatchOutcome.mutate(ctx, m)
 	case *PlanBoardV2Mutation:
 		return c.PlanBoardV2.mutate(ctx, m)
 	case *PlanStepV2Mutation:
@@ -953,6 +969,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SchemaMigration.mutate(ctx, m)
 	case *SelfCheckReportMutation:
 		return c.SelfCheckReport.mutate(ctx, m)
+	case *SelfImprovementRunMutation:
+		return c.SelfImprovementRun.mutate(ctx, m)
 	case *SessionMutation:
 		return c.Session.mutate(ctx, m)
 	case *SessionMetricsMutation:
@@ -7800,6 +7818,139 @@ func (c *OrganizationClient) mutate(ctx context.Context, m *OrganizationMutation
 	}
 }
 
+// PatchOutcomeClient is a client for the PatchOutcome schema.
+type PatchOutcomeClient struct {
+	config
+}
+
+// NewPatchOutcomeClient returns a client for the PatchOutcome from the given config.
+func NewPatchOutcomeClient(c config) *PatchOutcomeClient {
+	return &PatchOutcomeClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `patchoutcome.Hooks(f(g(h())))`.
+func (c *PatchOutcomeClient) Use(hooks ...Hook) {
+	c.hooks.PatchOutcome = append(c.hooks.PatchOutcome, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `patchoutcome.Intercept(f(g(h())))`.
+func (c *PatchOutcomeClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PatchOutcome = append(c.inters.PatchOutcome, interceptors...)
+}
+
+// Create returns a builder for creating a PatchOutcome entity.
+func (c *PatchOutcomeClient) Create() *PatchOutcomeCreate {
+	mutation := newPatchOutcomeMutation(c.config, OpCreate)
+	return &PatchOutcomeCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PatchOutcome entities.
+func (c *PatchOutcomeClient) CreateBulk(builders ...*PatchOutcomeCreate) *PatchOutcomeCreateBulk {
+	return &PatchOutcomeCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PatchOutcomeClient) MapCreateBulk(slice any, setFunc func(*PatchOutcomeCreate, int)) *PatchOutcomeCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PatchOutcomeCreateBulk{err: fmt.Errorf("calling to PatchOutcomeClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PatchOutcomeCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PatchOutcomeCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PatchOutcome.
+func (c *PatchOutcomeClient) Update() *PatchOutcomeUpdate {
+	mutation := newPatchOutcomeMutation(c.config, OpUpdate)
+	return &PatchOutcomeUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PatchOutcomeClient) UpdateOne(_m *PatchOutcome) *PatchOutcomeUpdateOne {
+	mutation := newPatchOutcomeMutation(c.config, OpUpdateOne, withPatchOutcome(_m))
+	return &PatchOutcomeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PatchOutcomeClient) UpdateOneID(id string) *PatchOutcomeUpdateOne {
+	mutation := newPatchOutcomeMutation(c.config, OpUpdateOne, withPatchOutcomeID(id))
+	return &PatchOutcomeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PatchOutcome.
+func (c *PatchOutcomeClient) Delete() *PatchOutcomeDelete {
+	mutation := newPatchOutcomeMutation(c.config, OpDelete)
+	return &PatchOutcomeDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PatchOutcomeClient) DeleteOne(_m *PatchOutcome) *PatchOutcomeDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PatchOutcomeClient) DeleteOneID(id string) *PatchOutcomeDeleteOne {
+	builder := c.Delete().Where(patchoutcome.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PatchOutcomeDeleteOne{builder}
+}
+
+// Query returns a query builder for PatchOutcome.
+func (c *PatchOutcomeClient) Query() *PatchOutcomeQuery {
+	return &PatchOutcomeQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePatchOutcome},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PatchOutcome entity by its id.
+func (c *PatchOutcomeClient) Get(ctx context.Context, id string) (*PatchOutcome, error) {
+	return c.Query().Where(patchoutcome.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PatchOutcomeClient) GetX(ctx context.Context, id string) *PatchOutcome {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *PatchOutcomeClient) Hooks() []Hook {
+	return c.hooks.PatchOutcome
+}
+
+// Interceptors returns the client interceptors.
+func (c *PatchOutcomeClient) Interceptors() []Interceptor {
+	return c.inters.PatchOutcome
+}
+
+func (c *PatchOutcomeClient) mutate(ctx context.Context, m *PatchOutcomeMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PatchOutcomeCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PatchOutcomeUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PatchOutcomeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PatchOutcomeDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PatchOutcome mutation op: %q", m.Op())
+	}
+}
+
 // PlanBoardV2Client is a client for the PlanBoardV2 schema.
 type PlanBoardV2Client struct {
 	config
@@ -9792,6 +9943,139 @@ func (c *SelfCheckReportClient) mutate(ctx context.Context, m *SelfCheckReportMu
 		return (&SelfCheckReportDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown SelfCheckReport mutation op: %q", m.Op())
+	}
+}
+
+// SelfImprovementRunClient is a client for the SelfImprovementRun schema.
+type SelfImprovementRunClient struct {
+	config
+}
+
+// NewSelfImprovementRunClient returns a client for the SelfImprovementRun from the given config.
+func NewSelfImprovementRunClient(c config) *SelfImprovementRunClient {
+	return &SelfImprovementRunClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `selfimprovementrun.Hooks(f(g(h())))`.
+func (c *SelfImprovementRunClient) Use(hooks ...Hook) {
+	c.hooks.SelfImprovementRun = append(c.hooks.SelfImprovementRun, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `selfimprovementrun.Intercept(f(g(h())))`.
+func (c *SelfImprovementRunClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SelfImprovementRun = append(c.inters.SelfImprovementRun, interceptors...)
+}
+
+// Create returns a builder for creating a SelfImprovementRun entity.
+func (c *SelfImprovementRunClient) Create() *SelfImprovementRunCreate {
+	mutation := newSelfImprovementRunMutation(c.config, OpCreate)
+	return &SelfImprovementRunCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SelfImprovementRun entities.
+func (c *SelfImprovementRunClient) CreateBulk(builders ...*SelfImprovementRunCreate) *SelfImprovementRunCreateBulk {
+	return &SelfImprovementRunCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SelfImprovementRunClient) MapCreateBulk(slice any, setFunc func(*SelfImprovementRunCreate, int)) *SelfImprovementRunCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SelfImprovementRunCreateBulk{err: fmt.Errorf("calling to SelfImprovementRunClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SelfImprovementRunCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SelfImprovementRunCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SelfImprovementRun.
+func (c *SelfImprovementRunClient) Update() *SelfImprovementRunUpdate {
+	mutation := newSelfImprovementRunMutation(c.config, OpUpdate)
+	return &SelfImprovementRunUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SelfImprovementRunClient) UpdateOne(_m *SelfImprovementRun) *SelfImprovementRunUpdateOne {
+	mutation := newSelfImprovementRunMutation(c.config, OpUpdateOne, withSelfImprovementRun(_m))
+	return &SelfImprovementRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SelfImprovementRunClient) UpdateOneID(id string) *SelfImprovementRunUpdateOne {
+	mutation := newSelfImprovementRunMutation(c.config, OpUpdateOne, withSelfImprovementRunID(id))
+	return &SelfImprovementRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SelfImprovementRun.
+func (c *SelfImprovementRunClient) Delete() *SelfImprovementRunDelete {
+	mutation := newSelfImprovementRunMutation(c.config, OpDelete)
+	return &SelfImprovementRunDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SelfImprovementRunClient) DeleteOne(_m *SelfImprovementRun) *SelfImprovementRunDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SelfImprovementRunClient) DeleteOneID(id string) *SelfImprovementRunDeleteOne {
+	builder := c.Delete().Where(selfimprovementrun.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SelfImprovementRunDeleteOne{builder}
+}
+
+// Query returns a query builder for SelfImprovementRun.
+func (c *SelfImprovementRunClient) Query() *SelfImprovementRunQuery {
+	return &SelfImprovementRunQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSelfImprovementRun},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SelfImprovementRun entity by its id.
+func (c *SelfImprovementRunClient) Get(ctx context.Context, id string) (*SelfImprovementRun, error) {
+	return c.Query().Where(selfimprovementrun.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SelfImprovementRunClient) GetX(ctx context.Context, id string) *SelfImprovementRun {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SelfImprovementRunClient) Hooks() []Hook {
+	return c.hooks.SelfImprovementRun
+}
+
+// Interceptors returns the client interceptors.
+func (c *SelfImprovementRunClient) Interceptors() []Interceptor {
+	return c.inters.SelfImprovementRun
+}
+
+func (c *SelfImprovementRunClient) mutate(ctx context.Context, m *SelfImprovementRunMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SelfImprovementRunCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SelfImprovementRunUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SelfImprovementRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SelfImprovementRunDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SelfImprovementRun mutation op: %q", m.Op())
 	}
 }
 
@@ -14065,17 +14349,17 @@ type (
 		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
 		LlmProviderModel, MediaProvider, MemberSessionV2, ModelPricingRule,
 		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
-		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
-		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
-		PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin, PlatformSkill,
-		PlatformTool, ResourceAccessAudit, SchemaMigration, SelfCheckReport, Session,
-		SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
-		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
-		SkillTag, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
-		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
-		ToolGrant, ToolInvocation, ToolInvocationAudit, ToolInvocationParam,
-		ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
-		UserEmbeddingSetting []ent.Hook
+		PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
+		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
+		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
+		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
+		SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
+		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
+		SessionTurn, SessionV2, SkillImportJob, SkillInvocation, SkillTag,
+		SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team,
+		TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
+		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
+		ToolResultReplacement, TurnV2, UsageQuota, UserEmbeddingSetting []ent.Hook
 	}
 	inters struct {
 		Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
@@ -14089,16 +14373,17 @@ type (
 		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
 		LlmProviderModel, MediaProvider, MemberSessionV2, ModelPricingRule,
 		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
-		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
-		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
-		PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin, PlatformSkill,
-		PlatformTool, ResourceAccessAudit, SchemaMigration, SelfCheckReport, Session,
-		SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
-		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
-		SkillTag, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
-		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
-		ToolGrant, ToolInvocation, ToolInvocationAudit, ToolInvocationParam,
-		ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
+		PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
+		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
+		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
+		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
+		SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
+		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
+		SessionTurn, SessionV2, SkillImportJob, SkillInvocation, SkillTag,
+		SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team,
+		TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
+		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
+		ToolResultReplacement, TurnV2, UsageQuota,
 		UserEmbeddingSetting []ent.Interceptor
 	}
 )

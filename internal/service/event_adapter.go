@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -47,6 +50,76 @@ func (a systemLogWriterAdapter) LogWarn(stepID, message string, pairs ...biz.Log
 
 func (a systemLogWriterAdapter) LogError(stepID, message string, pairs ...biz.LogPair) {
 	a.lg.Error(message, appendSystemFields(stepID, pairs)...)
+}
+
+// ProvideFlowLogWriter adapts a loggateway.Logger + MonitorBus to
+// biz.FlowLogWriter so biz-layer processes (event bus consumers, monitor,
+// webhook dispatcher, session usecase) can emit user-visible flow logs
+// (流程日志) without importing internal/event. Returns nil when either
+// dependency is missing (tests), callers must nil-check.
+func ProvideFlowLogWriter(lg loggateway.Logger, bus contract.MonitorBus) biz.FlowLogWriter {
+	if lg == nil || bus == nil {
+		return nil
+	}
+	return flowLogWriterAdapter{lg: lg, infra: event.NewInfraFromBus(bus)}
+}
+
+type flowLogWriterAdapter struct {
+	lg    loggateway.Logger
+	infra *event.Infra
+}
+
+func (a flowLogWriterAdapter) LogFlowStart(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
+	a.emitter(ctx, sessionID, stepID).LogStart(stepID, message, flowPairs(pairs)...)
+}
+
+func (a flowLogWriterAdapter) LogFlowDone(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
+	a.emitter(ctx, sessionID, stepID).LogDone(stepID, message, flowPairs(pairs)...)
+}
+
+func (a flowLogWriterAdapter) LogFlowError(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
+	a.emitter(ctx, sessionID, stepID).LogError(stepID, message, flowPairs(pairs)...)
+}
+
+func (a flowLogWriterAdapter) emitter(ctx context.Context, sessionID, stepID string) *event.TraceEmitter {
+	return event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:       ctx,
+		SessionID: sessionID,
+		Domain:    domainForStepID(stepID),
+		LG:        a.lg,
+		Infra:     a.infra,
+	})
+}
+
+func flowPairs(pairs []biz.LogPair) []event.Pair {
+	out := make([]event.Pair, 0, len(pairs))
+	for _, p := range pairs {
+		out = append(out, event.P(p.Key, p.Value))
+	}
+	return out
+}
+
+// domainForStepID derives the trace domain from the stepID prefix so biz
+// callers don't handle event.TraceDomain directly.
+func domainForStepID(stepID string) event.TraceDomain {
+	switch {
+	case strings.HasPrefix(stepID, "chat."):
+		return event.TraceDomainChat
+	case strings.HasPrefix(stepID, "team."):
+		return event.TraceDomainTeam
+	case strings.HasPrefix(stepID, "graph."):
+		return event.TraceDomainGraph
+	case strings.HasPrefix(stepID, "channel."):
+		return event.TraceDomainChannel
+	case strings.HasPrefix(stepID, "knowledge."):
+		return event.TraceDomainKnowledge
+	case strings.HasPrefix(stepID, "skill."):
+		return event.TraceDomainSkill
+	case strings.HasPrefix(stepID, "a2a."):
+		return event.TraceDomainA2A
+	default:
+		return event.TraceDomainSystem
+	}
 }
 
 // appendSessionFields converts biz.LogPair slices to loggateway field options,

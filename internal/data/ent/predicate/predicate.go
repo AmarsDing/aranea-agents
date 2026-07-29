@@ -156,6 +156,9 @@ type OrchestrationStep func(*sql.Selector)
 // Organization is the predicate function for organization builders.
 type Organization func(*sql.Selector)
 
+// PatchOutcome is the predicate function for patchoutcome builders.
+type PatchOutcome func(*sql.Selector)
+
 // PlanBoardV2 is the predicate function for planboardv2 builders.
 type PlanBoardV2 func(*sql.Selector)
 
@@ -200,6 +203,9 @@ type SchemaMigration func(*sql.Selector)
 
 // SelfCheckReport is the predicate function for selfcheckreport builders.
 type SelfCheckReport func(*sql.Selector)
+
+// SelfImprovementRun is the predicate function for selfimprovementrun builders.
+type SelfImprovementRun func(*sql.Selector)
 
 // Session is the predicate function for session builders.
 type Session func(*sql.Selector)

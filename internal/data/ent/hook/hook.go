@@ -608,6 +608,18 @@ func (f OrganizationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrganizationMutation", m)
 }
 
+// The PatchOutcomeFunc type is an adapter to allow the use of ordinary
+// function as PatchOutcome mutator.
+type PatchOutcomeFunc func(context.Context, *ent.PatchOutcomeMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PatchOutcomeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PatchOutcomeMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PatchOutcomeMutation", m)
+}
+
 // The PlanBoardV2Func type is an adapter to allow the use of ordinary
 // function as PlanBoardV2 mutator.
 type PlanBoardV2Func func(context.Context, *ent.PlanBoardV2Mutation) (ent.Value, error)
@@ -786,6 +798,18 @@ func (f SelfCheckReportFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Va
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SelfCheckReportMutation", m)
+}
+
+// The SelfImprovementRunFunc type is an adapter to allow the use of ordinary
+// function as SelfImprovementRun mutator.
+type SelfImprovementRunFunc func(context.Context, *ent.SelfImprovementRunMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SelfImprovementRunFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SelfImprovementRunMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SelfImprovementRunMutation", m)
 }
 
 // The SessionFunc type is an adapter to allow the use of ordinary

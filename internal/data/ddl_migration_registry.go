@@ -194,6 +194,11 @@ var ddlMigrations = []ddlMigration{
 	// model_token_usage_events metadata.trace_id so AggregateUsageByTrace
 	// (trace completion + 6h backfill) does not seq-scan the events table.
 	{Version: 20261114, Name: "usage_events_trace_id_index", Func: ddlUsageEventsTraceIDIndex},
+	// 20261115 self_improvement_observing_index: partial index on
+	// self_improvement_runs(observe_until) WHERE status='observing' for the V3
+	// Watchdog scan. Tables are Ent-managed (Schema.Create); only the partial
+	// index needs DDL.
+	{Version: 20261115, Name: "self_improvement_observing_index", SQL: "sql/migrations/20261115_self_improvement_observing_index.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
