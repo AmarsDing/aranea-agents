@@ -1,13 +1,17 @@
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { Skill, SkillFilesystemHealth } from './types';
 import { useSkillsStore } from '../../stores/skills';
+import { useEcosystemStore } from '../../stores/ecosystem';
 // TECH-DEBT(FD5): file ops bypass store, acceptable for single-use file operations
 import { listSkillFiles, readSkillFile, getSkill } from './api';
 
 export function useSkillsPage() {
   const $q = useQuasar();
+  const { t } = useI18n();
   const skillsStore = useSkillsStore();
+  const ecosystemStore = useEcosystemStore();
 
   const uploadRef = ref<{ openDialog: () => void } | null>(null);
   const search = ref('');
@@ -28,6 +32,7 @@ export function useSkillsPage() {
   const error = ref('');
   const togglingId = ref('');
   const publishingId = ref('');
+  const publishingEcosystemId = ref('');
   const deleteOpen = ref(false);
   const deleteTarget = ref<Skill | null>(null);
   const deleting = ref(false);
@@ -201,11 +206,39 @@ export function useSkillsPage() {
     try {
       const updated = await skillsStore.publish(skill.id);
       rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
-      $q.notify({ type: 'positive', message: 'Skill 已发布；请在列表中打开「启用」以便 Agent 运行时挂载' });
+      $q.notify({ type: 'positive', message: 'Skill 已启用；如需运行时挂载请再打开「启用」开关' });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '发布失败' });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '启用失败' });
     } finally {
       publishingId.value = '';
+    }
+  }
+
+  /** 发布到生态市场（区别于生命周期启用：上架为 ecosystem product）。 */
+  async function onPublishToEcosystem(skill: Skill) {
+    const ok = await confirm({
+      title: t('skillsPage.ecosystemPublishTitle'),
+      message: t('skillsPage.ecosystemPublishMessage', { name: skill.name }),
+      okLabel: t('skillsPage.ecosystemPublishTitle'),
+      cancelLabel: t('common.cancel'),
+    });
+    if (!ok) return;
+    publishingEcosystemId.value = skill.id;
+    try {
+      await ecosystemStore.publish({
+        name: skill.slug || skill.name,
+        display_name: skill.name,
+        description: skill.description,
+        type: 'skill',
+      });
+      $q.notify({ type: 'positive', message: t('skillsPage.ecosystemPublishOk') });
+    } catch (err) {
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : t('skillsPage.ecosystemPublishFailed'),
+      });
+    } finally {
+      publishingEcosystemId.value = '';
     }
   }
 
@@ -214,9 +247,12 @@ export function useSkillsPage() {
     try {
       const updated = await skillsStore.toggle(skill.id, next);
       rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
-      $q.notify({ type: 'positive', message: next ? 'Skill 已启用' : 'Skill 已停用' });
+      $q.notify({
+        type: 'positive',
+        message: next ? t('skillsPage.toggleEnabledOk') : t('skillsPage.toggleDisabledOk'),
+      });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '更新启用状态失败' });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('skillsPage.toggleFailed') });
     } finally {
       togglingId.value = '';
     }
@@ -238,7 +274,7 @@ export function useSkillsPage() {
     try {
       await skillsStore.remove(deleteTarget.value.id);
       deleteOpen.value = false;
-      $q.notify({ type: 'positive', message: 'Skill 已删除' });
+      $q.notify({ type: 'positive', message: t('skillsPage.deletedOk') });
       await loadRows();
       if (rows.value.length === 0 && page.value > 1) {
         page.value = Math.max(1, page.value - 1);
@@ -289,6 +325,7 @@ export function useSkillsPage() {
     error,
     togglingId,
     publishingId,
+    publishingEcosystemId,
     deleteOpen,
     deleteTarget,
     deleting,
@@ -304,6 +341,7 @@ export function useSkillsPage() {
     filterPendingFilesystem,
     filterMissingFilesystem,
     onPublishSkill,
+    onPublishToEcosystem,
     onToggleEnabled,
     openEditor,
     openMetaEditor,
@@ -317,6 +355,7 @@ export function useSkillsPage() {
     listSkillFiles,
     readSkillFile,
     updateSkillFile: skillsStore.updateSkillFile,
+    loadSkillHealth: skillsStore.loadSkillHealth,
     notify,
     confirm,
   };

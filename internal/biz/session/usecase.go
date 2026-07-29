@@ -102,13 +102,13 @@ type SessionSearchQuery struct {
 	WorkspaceID string
 	// RootOnly=true 时只返回 parent_session_id 为空的根会话（侧边栏/管理列表），
 	// 排除团队成员会话等子会话；默认 false 保持兼容（内部调用方按需查询子会话）。
-	RootOnly    bool
-	Limit       int
-	Offset      int
-	Page        int
-	PageSize    int
-	SortBy      string
-	SortOrder   string
+	RootOnly  bool
+	Limit     int
+	Offset    int
+	Page      int
+	PageSize  int
+	SortBy    string
+	SortOrder string
 }
 
 // SessionListResult is paged session search output.

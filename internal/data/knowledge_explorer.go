@@ -11,15 +11,15 @@ import (
 )
 
 var (
-	_ bizknowledge.DocumentPathReader  = (*knowledgeRepo)(nil)
-	_ bizknowledge.ResolvedLinkReader  = (*knowledgeRepo)(nil)
+	_ bizknowledge.DocumentPathReader = (*knowledgeRepo)(nil)
+	_ bizknowledge.ResolvedLinkReader = (*knowledgeRepo)(nil)
 )
 
 // ListDocumentPaths 返回 vault 全部文档的轻量路径行（不含正文/向量，树聚合在 biz 内存完成）。
 func (r *knowledgeRepo) ListDocumentPaths(ctx context.Context, collectionID string) ([]bizknowledge.DocumentPath, error) {
 	rows, err := r.data.Postgres().QueryContext(ctx,
 		`SELECT id, rel_path, source, summary, tags, doc_type, status, size_bytes,
-		        to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		        to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'), error_message
 		 FROM knowledge_documents WHERE collection_id = $1`, collectionID)
 	if err != nil {
 		return nil, err
@@ -30,7 +30,7 @@ func (r *knowledgeRepo) ListDocumentPaths(ctx context.Context, collectionID stri
 		var p bizknowledge.DocumentPath
 		var tagsRaw []byte
 		if err := rows.Scan(&p.ID, &p.RelPath, &p.Source, &p.Summary, &tagsRaw, &p.DocType,
-			&p.Status, &p.SizeBytes, &p.UpdatedAt); err != nil {
+			&p.Status, &p.SizeBytes, &p.UpdatedAt, &p.ErrorMessage); err != nil {
 			return nil, err
 		}
 		p.Tags = unmarshalTags(tagsRaw)

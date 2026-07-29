@@ -190,6 +190,13 @@ func (r *DBRepositoryAdapter) Invalidate() {
 	r.mu.Unlock()
 }
 
+// InvalidateSkillRuntimeCache implements biz skill.RuntimeCacheInvalidator（P0）。
+// Skill 启用状态/可见性/正文变更后由 Usecase 主动调用，使变更立即生效，
+// 而非等待 TTL（2min）兜底。
+func (r *DBRepositoryAdapter) InvalidateSkillRuntimeCache() {
+	r.Invalidate()
+}
+
 func (r *DBRepositoryAdapter) refreshIfStale(ctx context.Context) {
 	r.mu.RLock()
 	stale := time.Since(r.loaded) > r.ttl

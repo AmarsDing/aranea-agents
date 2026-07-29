@@ -316,7 +316,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		)
 	}
 	team, err := s.team.TeamUC.Get(ctx, teamID)
-	if err != nil || !team.AutoCreated {
+	if err != nil {
 		return
 	}
 
@@ -342,6 +342,23 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		}
 	}
 
+	// 2026-07-29 F-1：standalone（Mode A，非 AutoCreated）团队走精简终态
+	// pass——此前此处直接 return，standalone 团队的 teams 状态、TeamStage、
+	// TeamRun、MemberSession 全部永不达终态（成员永 running）。
+	if !team.AutoCreated {
+		// 2026-07-29 S-1：聚合根 service 内兜底回退。standalone 团队
+		// team.SpiritSessionID==""（CreateTeam 不落该字段），CancelTeam 等无
+		// session 上下文的入口只能传空 spiritSessionID；此处回退查 team
+		// session 作聚合根（F-3 语义：与 runner deriveSpiritSessionID 回退
+		// sess.ID 一致）。团队从未运行（无 team session）时保持空——
+		// publishV2TeamRunCompletion 守卫安全跳过（无成员需终态）。
+		if spiritSessionID == "" {
+			spiritSessionID = s.resolveStandaloneSpiritSessionID(ctx, team.ID)
+		}
+		s.handleStandaloneTeamTurnResult(ctx, spiritSessionID, team, status)
+		return
+	}
+
 	// 2026-07-25 Fix 1+2 真实产出闸门：DAG 团队回调 completed 但从未调用
 	// set_deliverable（无 graph state 交付物）时，在状态转换前把 status 翻转
 	// 为 failed —— 「只提问/只说话」不是产出，不允许无交付物的成功。翻转后
@@ -364,6 +381,31 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 				loggateway.Str("team_id", teamID),
 				loggateway.Str("dag_node_id", team.DagNodeID),
 			)
+		} else {
+			// F9 验证门（2026-07-28 outcome pass 步骤②）：交付物门通过后执行
+			// definition verification_gates（当前唯一自动来源：skill 安装
+			// tool_assertion 门）。拒绝或 infra 错误均 fail-closed 翻转 failed——
+			// 「装了但不可用」不得报成功。teamOutput 传空：tool_assertion 门
+			// 不读团队产出文本（事实断言而非质量评判）。
+			approved, reasons, vErr := s.team.SpiritUC.ExecuteVerificationGates(ctx, teamID, "")
+			switch {
+			case vErr != nil:
+				status = biz.TeamStatusFailed
+				errMsg = fmt.Sprintf("验证门执行失败（fail-closed）：%v", vErr)
+				s.lg.Warn("F9 验证门执行错误，翻转为 failed",
+					loggateway.StepID("spirit.team.verification_gate"),
+					loggateway.Str("team_id", teamID),
+					loggateway.Err(vErr),
+				)
+			case !approved:
+				status = biz.TeamStatusFailed
+				errMsg = fmt.Sprintf("验证门拒绝：%s", strings.Join(reasons, "；"))
+				s.lg.Info("F9 验证门拒绝，翻转为 failed",
+					loggateway.StepID("spirit.team.verification_gate"),
+					loggateway.Str("team_id", teamID),
+					loggateway.Str("reasons", strings.Join(reasons, "；")),
+				)
+			}
 		}
 	}
 
@@ -439,68 +481,15 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 
 	if s.v2EventReady() {
 		// Phase 3b-D Task 10: migrated to v2 TeamStage events.
-		// Map v1 status → v2 TeamStageStatus + factory function.
 		// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
-		primaryStage := "failed"
-		switch status {
-		case biz.TeamStatusCompleted:
-			primaryStage = "completed"
-		case biz.TeamStatusCancelled:
-			primaryStage = "cancelled"
-		default:
-			primaryStage = "failed"
-		}
+		// 2026-07-29 F-1：终态 TeamStage 发布提取为 publishTerminalTeamStage，
+		// 与 standalone 终态 pass 共用（状态机校验 + 版本解析，含 P0-3/P0-4
+		// Version=0 修复与 P0-2 终态守卫）。
+		s.publishTerminalTeamStage(ctx, team, spiritSessionID, primaryStatus)
 		// Carry DependsOn from the team so the frontend can render DAG
 		// edges and the database preserves the dependency graph across
 		// status updates (assembled → progress → completed/failed/cancelled).
-		// 2026-07-04 问题 3 修复：携带 TeamName 让前端展示团队名称而非 ID。
 		dependsOn := team.DependsOn
-		// 2026-07-21 P0-3/P0-4 修复：终态 TeamStage 事件缺少 Version（Go 零值=0），
-		// 被 UpsertTeamStage 的 VersionLT(0) 守卫拒绝，终态永不落库。
-		// 使用 resolveTeamStageUpdate 计算正确的 Version 和状态机校验后的 Status。
-		terminalTsID := string(agent.NewTeamStageActivityID(teamID))
-		var tsEvent biz.TeamStageEvent
-		switch primaryStatus {
-		case biz.TeamStageStatusCompleted:
-			tsEvent = biz.TeamStageEventComplete
-		case biz.TeamStageStatusFailed:
-			tsEvent = biz.TeamStageEventFail
-		case biz.TeamStageStatusCancelled:
-			tsEvent = biz.TeamStageEventCancel
-		default:
-			tsEvent = biz.TeamStageEventFail
-		}
-		newStatus, newVersion, tsOK := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
-			terminalTsID, tsEvent, primaryStatus, s.lg)
-		if tsOK {
-			ts := biz.TeamStage{
-				ID:        terminalTsID,
-				TeamID:    teamID,
-				TeamName:  team.DisplayName,
-				SessionID: spiritSessionID,
-				Status:    newStatus,
-				Stage:     biz.TeamStageStage(primaryStage),
-				DependsOn: dependsOn,
-				StartedAt: time.Now().UTC(),
-				Version:   newVersion,
-			}
-			// DATA LOSS: v2 TeamStage has no Meta field, so team_name/duration_ms/
-			// total_token_in/total_token_out/progress_pct/error from v1 Meta are
-			// dropped. The duration/token metrics are still recorded via
-			// recordTeamCompletion above and are available in the TeamRun DB record.
-			switch primaryStatus {
-			case biz.TeamStageStatusCompleted:
-				s.publishV2Event(ctx, biz.NewTeamStageCompletedEvent(ts))
-			case biz.TeamStageStatusFailed:
-				s.publishV2Event(ctx, biz.NewTeamStageFailedEvent(ts))
-			default:
-				// cancelled: no NewTeamStageCancelledEvent factory exists; use
-				// NewTeamStageUpdatedEvent as the closest semantic match.
-				s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
-			}
-		}
-		// P0-2：tsOK=false（状态机拒绝，当前 TeamStage 已终态，如重复取消回调）
-		// 时跳过发布，不覆盖终态。
 
 		// BUGFIX: the progress event (Status=Running) was published AFTER the
 		// primary terminal event, causing the version-guarded UpsertActivity to
@@ -556,6 +545,174 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	// AutoArchiveCompletedTeams — it runs on every team lifecycle event so
 	// no separate worker/cron is needed.
 	s.team.SpiritUC.AutoArchiveCompletedTeams(ctx, spiritSessionID)
+}
+
+// publishTerminalTeamStage 发布 TeamStage 终态事件（completed/failed/cancelled）。
+// 状态机校验 + 版本解析（resolveTeamStageUpdate，含 2026-07-21 P0-3/P0-4
+// Version=0 修复）；tsOK=false（当前 TeamStage 已终态，过期回调）时跳过发布，
+// 不覆盖终态。AutoCreated 与 standalone（F-1）终态 pass 共用。
+func (s *TeamStarter) publishTerminalTeamStage(
+	ctx context.Context,
+	team biz.Team,
+	spiritSessionID string,
+	primaryStatus biz.TeamStageStatus,
+) {
+	terminalTsID := string(agent.NewTeamStageActivityID(team.ID))
+	var tsEvent biz.TeamStageEvent
+	switch primaryStatus {
+	case biz.TeamStageStatusCompleted:
+		tsEvent = biz.TeamStageEventComplete
+	case biz.TeamStageStatusFailed:
+		tsEvent = biz.TeamStageEventFail
+	case biz.TeamStageStatusCancelled:
+		tsEvent = biz.TeamStageEventCancel
+	default:
+		tsEvent = biz.TeamStageEventFail
+	}
+	newStatus, newVersion, tsOK := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
+		terminalTsID, tsEvent, primaryStatus, s.lg)
+	if !tsOK {
+		return
+	}
+	ts := biz.TeamStage{
+		ID:        terminalTsID,
+		TeamID:    team.ID,
+		TeamName:  team.DisplayName,
+		SessionID: spiritSessionID,
+		Status:    newStatus,
+		Stage:     biz.TeamStageStage(primaryStatus),
+		DependsOn: team.DependsOn,
+		StartedAt: time.Now().UTC(),
+		Version:   newVersion,
+	}
+	// DATA LOSS: v2 TeamStage has no Meta field, so team_name/duration_ms/
+	// total_token_in/total_token_out/progress_pct/error from v1 Meta are
+	// dropped. The duration/token metrics are still recorded via
+	// recordTeamCompletion and are available in the TeamRun DB record.
+	switch primaryStatus {
+	case biz.TeamStageStatusCompleted:
+		s.publishV2Event(ctx, biz.NewTeamStageCompletedEvent(ts))
+	case biz.TeamStageStatusFailed:
+		s.publishV2Event(ctx, biz.NewTeamStageFailedEvent(ts))
+	default:
+		// cancelled: no NewTeamStageCancelledEvent factory exists; use
+		// NewTeamStageUpdatedEvent as the closest semantic match.
+		s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
+	}
+}
+
+// resolveStandaloneSpiritSessionID 回退解析 standalone（Mode A）团队的聚合
+// 根：team session ID（SessionType="team" 的第一条会话）。standalone 团队
+// 无 ParentSessionID/team.SpiritSessionID，聚合根即自己的 team session
+// （F-3 语义，与 runner deriveSpiritSessionID 回退 sess.ID 一致）。
+// 无 team session（团队从未运行）或查询失败时返回空——调用方守卫安全跳过。
+func (s *TeamStarter) resolveStandaloneSpiritSessionID(ctx context.Context, teamID string) string {
+	if s.sessions == nil {
+		return ""
+	}
+	result, err := s.sessions.Search(ctx, biz.SessionSearchQuery{TeamID: teamID, Limit: 100})
+	if err != nil {
+		s.lg.Warn("resolveStandaloneSpiritSessionID: 查询团队会话失败，保持空聚合根",
+			loggateway.StepID("spirit.standalone.resolve_spirit_err"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Err(err),
+		)
+		return ""
+	}
+	for _, sess := range result.Items {
+		if sess.SessionType == "team" {
+			return sess.ID
+		}
+	}
+	return ""
+}
+
+// handleStandaloneTeamTurnResult 是 standalone（Mode A，非 AutoCreated）团队的
+// 终态 outcome pass（2026-07-29 F-1）。此前 HandleTeamTurnResult 对非
+// AutoCreated 团队直接早退，且调用点以 ParentSessionID 为空守卫——standalone
+// 团队的 teams 状态、TeamStage、TeamRun、MemberSession 全部永不达终态
+// （成员永 running）。
+//
+// 与 AutoCreated 路径的差异（spirit 编排专属职责不适用）：
+//   - 无 deliverable 门 / F9 验证门：standalone 团队 DagNodeID==""，非 DAG
+//     团队无交付物义务（与 resolveMemberOutcomeStatus 的单成员交付物检查
+//     同一姿态）；
+//   - 无 recordTeamCompletion：DQ 分/拓扑推断/进化建议是编排域职责；
+//   - 无 scheduleDependentTeams / checkAllTeamsCompleted / synthesis 注入：
+//     standalone 无 DAG 依赖与编排上下文；
+//   - 无 PlanExecutor.NotifyTeamCompletion：standalone 团队不由 PlanExecutor
+//     派发，无等待者；
+//   - 无 AutoArchiveCompletedTeams：standalone 团队是用户创建的持久实体，
+//     不归 spirit 编排生命周期归档。
+//
+// 成员终态裁决（F10 证据链 + F4 兜底）由 publishV2TeamRunCompletion 复用，
+// 与 AutoCreated 路径完全一致——成员终态单写者原则对两种模式同构。
+func (s *TeamStarter) handleStandaloneTeamTurnResult(
+	ctx context.Context,
+	spiritSessionID string,
+	team biz.Team,
+	status string,
+) {
+	teamID := team.ID
+	s.team.SpiritUC.CancelTimeoutTimer(teamID)
+
+	// teams 表状态转换（cancelled 由调用方已转换，与 AutoCreated 路径同一姿态）。
+	switch status {
+	case biz.TeamStatusCompleted:
+		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusCompleted); updateErr != nil {
+			s.lg.Warn("standalone 团队状态转换到 completed 失败",
+				loggateway.StepID("spirit.standalone.completed_err"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Err(updateErr),
+			)
+		}
+	case biz.TeamStatusFailed:
+		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusFailed); updateErr != nil {
+			s.lg.Warn("standalone 团队状态转换到 failed 失败",
+				loggateway.StepID("spirit.standalone.failed_err"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Err(updateErr),
+			)
+		}
+	}
+
+	primaryStatus := biz.TeamStageStatusFailed
+	switch status {
+	case biz.TeamStatusCompleted:
+		primaryStatus = biz.TeamStageStatusCompleted
+	case biz.TeamStatusCancelled:
+		primaryStatus = biz.TeamStageStatusCancelled
+	}
+
+	// 2026-07-29 S-2：cancelled 时把仍在 running 的成员 session 转换为
+	// interrupted（DB session 层面），与 MemberSession v2 skipped 对齐——
+	// 与 AutoCreated 路径（HandleTeamTurnResult cancelled 分支）同一姿态。
+	if status == biz.TeamStatusCancelled && s.sessions != nil {
+		result, searchErr := s.sessions.Search(ctx, biz.SessionSearchQuery{TeamID: teamID, Limit: biz.SpiritCancelSessionLimit})
+		if searchErr == nil {
+			for _, sess := range result.Items {
+				if sess.Status == string(sessstatus.SessionStatusRunning) {
+					if transErr := s.sessions.TransitionStatus(ctx, sess.ID, sessstatus.SessionStatusInterrupted, "user_cancelled"); transErr != nil {
+						s.lg.Warn("standalone 取消团队 Session 状态转换失败",
+							loggateway.StepID("spirit.standalone.cancel_session_transition_err"),
+							loggateway.Str("session_id", sess.ID),
+							loggateway.Err(transErr),
+						)
+					}
+				}
+			}
+		}
+	}
+
+	// TeamStage 终态事件（与 AutoCreated 路径同一机制）。空聚合根守卫与
+	// publishV2TeamRunCompletion 对齐：standalone 团队从未运行（无 team
+	// session，回退为空）时不创建 SessionID="" 的孤立 TeamStage 记录。
+	if s.v2EventReady() && spiritSessionID != "" {
+		s.publishTerminalTeamStage(ctx, team, spiritSessionID, primaryStatus)
+	}
+
+	// TeamRun + MemberSession 终态 outcome pass（F10 证据 + F4 兜底）。
+	s.publishV2TeamRunCompletion(ctx, spiritSessionID, teamID, primaryStatus, status)
 }
 
 func (s *TeamStarter) recordTeamCompletion(ctx context.Context, team biz.Team, durationMs int64) {
@@ -1096,7 +1253,12 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 		// P0-2：tsOK=false（状态机拒绝，当前 TeamStage 已终态，如重复取消）时
 		// 跳过发布，不覆盖终态。
 	}
-	if a.teamStarter != nil && spiritSessionID != "" {
+	// 2026-07-29 S-1：standalone 团队 team.SpiritSessionID=="" 也必须进
+	// HandleTeamTurnResult——其 standalone 分支内部回退解析聚合根（查 team
+	// session），否则 teams 已 cancelled 而 TeamRun/MemberSession 永不达
+	// 终态（成员永 running）。AutoCreated 团队 spiritSessionID 恒非空，
+	// 行为不变。
+	if a.teamStarter != nil {
 		a.teamStarter.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusCancelled, "", "")
 	}
 	return nil
@@ -1370,7 +1532,7 @@ func (a *SpiritTeamAssembler) publishV2TeamRunAndMemberSessions(
 			AvatarURL:       avatarURL,
 			Status:          biz.MemberSessionStatusRunning,
 			StartedAt:       now,
-			Version:         1,
+			Version:         biz.MemberSessionVersionCreated,
 		}
 		a.seq.Publish(ctx, biz.NewMemberSessionCreatedEvent(ms))
 	}
@@ -1633,8 +1795,10 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 			Status:          msStatus,
 			StartedAt:       now,
 			FinishedAt:      &now,
-			Version:         2,
-			Error:           outcomeReason,
+			// 2026-07-28 单写者重设计：终态事件携带 outcome 权威版本带
+			// （biz.MemberSessionVersion*），service 是成员终态唯一写者。
+			Version: biz.MemberSessionVersionOutcome,
+			Error:   outcomeReason,
 		}
 		s.seq.Publish(ctx, biz.NewMemberSessionUpdatedEvent(ms))
 	}
@@ -1689,7 +1853,9 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 					Status:          memberStatus,
 					StartedAt:       now,
 					FinishedAt:      &now,
-					Version:         2,
+					// 2026-07-28 单写者重设计：兜底终态同样携带 outcome 权威
+					// 版本带（biz.MemberSessionVersion*）。
+					Version: biz.MemberSessionVersionOutcome,
 				}
 				s.lg.Warn("publishV2TeamRunCompletion: 定义成员无 agent session，兜底补发终态事件",
 					loggateway.StepID("spirit.v2.team_run_completion.fallback"),

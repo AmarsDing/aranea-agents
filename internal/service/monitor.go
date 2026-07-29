@@ -75,6 +75,10 @@ func bizMonitorRowToProto(row biz.MonitorPlatformRow, lg loggateway.Logger) *v1.
 		CreatedAt:    row.CreatedAt,
 		UpdatedAt:    row.UpdatedAt,
 		DeletedAt:    row.DeletedAt,
+		AgentName:    row.AgentName,
+		TeamName:     row.TeamName,
+		SessionId:    row.SessionID,
+		RunId:        row.RunID,
 	}
 }
 
@@ -115,11 +119,13 @@ func (s *MonitorService) ListAuditLogs(ctx context.Context, in *v1.ListAuditLogs
 
 func (s *MonitorService) ListMonitorEvents(ctx context.Context, in *v1.ListMonitorEventsRequest) (*v1.ListMonitorEventsResponse, error) {
 	result, err := s.uc.ListMonitorEvents(ctx, biz.MonitorEventsQuery{
-		Limit:     in.GetLimit(),
-		Offset:    in.GetOffset(),
-		EventType: in.GetEventType(),
-		AgentID:   in.GetAgentId(),
-		Status:    in.GetStatus(),
+		Limit:             in.GetLimit(),
+		Offset:            in.GetOffset(),
+		EventType:         in.GetEventType(),
+		AgentID:           in.GetAgentId(),
+		Status:            in.GetStatus(),
+		EventTypes:        in.GetEventTypes(),
+		ExcludeEventTypes: in.GetExcludeEventTypes(),
 	})
 	if err != nil {
 		return nil, err
@@ -165,6 +171,13 @@ func (s *MonitorService) GetMonitorTrace(ctx context.Context, in *v1.GetMonitorT
 	}
 	cfg := monitor.ParseJSONMap(row.ConfigJSON, s.lg)
 	spans := monitor.TraceSpansRaw(cfg)
+	// Prefer persisted spans (monitor_trace_spans) over legacy config_json spans.
+	if dbSpans, sErr := s.uc.ListTraceSpans(ctx, row.ID); sErr != nil {
+		s.lg.Warn("查询 trace spans 失败，回退 config_json",
+			loggateway.StepID("monitor.trace.spans_query_fail"), loggateway.Str("trace_id", row.ID), loggateway.Err(sErr))
+	} else if len(dbSpans) > 0 {
+		spans = traceSpansForWire(dbSpans, s.lg)
+	}
 	spansJSON, mErr := json.Marshal(spans)
 	if mErr != nil {
 		s.lg.Warn("spans 序列化失败", loggateway.StepID("monitor.trace.spans_marshal"), loggateway.Err(mErr))
@@ -179,6 +192,43 @@ func (s *MonitorService) GetMonitorTrace(ctx context.Context, in *v1.GetMonitorT
 		MetadataJson: metaSanitized,
 		SpansJson:    string(spansJSON),
 	}, nil
+}
+
+// traceSpansForWire flattens persisted spans into the wire shape consumed by
+// the waterfall/tree tabs. start_ms is normalized relative to the earliest
+// span so offset percentages render meaningfully; duration_ms falls back to
+// "still open" (0) when the span never closed.
+func traceSpansForWire(spans []biz.MonitorTraceSpan, lg loggateway.Logger) []any {
+	var minStart int64
+	for _, sp := range spans {
+		if sp.StartedAt > 0 && (minStart == 0 || sp.StartedAt < minStart) {
+			minStart = sp.StartedAt
+		}
+	}
+	out := make([]any, 0, len(spans))
+	for _, sp := range spans {
+		var durationMs int64
+		if sp.EndedAt > sp.StartedAt {
+			durationMs = sp.EndedAt - sp.StartedAt
+		}
+		entry := map[string]any{
+			"id":          sp.SpanID,
+			"parent_id":   sp.ParentSpanID,
+			"kind":        sp.Kind,
+			"name":        sp.Name,
+			"status":      sp.Status,
+			"start_ms":    sp.StartedAt - minStart,
+			"duration_ms": durationMs,
+		}
+		if attrs := monitor.ParseJSONMap(sp.AttributesJSON, lg); len(attrs) > 0 {
+			entry["attributes"] = attrs
+		}
+		if errObj := monitor.ParseJSONMap(sp.ErrorJSON, lg); len(errObj) > 0 {
+			entry["error"] = errObj["message"]
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 func toProtoAlertRule(r biz.MonitorAlertRule) *v1.MonitorAlertRule {
@@ -222,6 +272,27 @@ func (s *MonitorService) ListMonitorAlertRules(ctx context.Context, _ *v1.GetMon
 	resp := &v1.ListMonitorAlertRulesResponse{Items: make([]*v1.MonitorAlertRule, 0, len(rules))}
 	for i := range rules {
 		resp.Items = append(resp.Items, toProtoAlertRule(rules[i]))
+	}
+	return resp, nil
+}
+
+// ListAlertMetrics returns the alert metric directory: every registered
+// metric with human-readable metadata and its current value, so the Alerts
+// page can explain what each metric means instead of showing raw keys.
+func (s *MonitorService) ListAlertMetrics(ctx context.Context, _ *v1.GetMonitorLogsRequest) (*v1.ListAlertMetricsResponse, error) {
+	entries := s.uc.ListAlertMetricCatalog(ctx)
+	resp := &v1.ListAlertMetricsResponse{Items: make([]*v1.AlertMetricInfo, 0, len(entries))}
+	for _, e := range entries {
+		resp.Items = append(resp.Items, &v1.AlertMetricInfo{
+			Key:                  e.Key,
+			Name:                 e.Name,
+			Description:          e.Description,
+			Unit:                 e.Unit,
+			DefaultWindowMinutes: e.DefaultWindowMinutes,
+			SuggestedThreshold:   e.SuggestedThreshold,
+			CurrentValue:         e.CurrentValue,
+			EvaluatedAt:          e.EvaluatedAt.UTC().Format(time.RFC3339),
+		})
 	}
 	return resp, nil
 }

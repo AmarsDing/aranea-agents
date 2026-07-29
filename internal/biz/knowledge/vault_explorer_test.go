@@ -10,8 +10,8 @@ import (
 )
 
 type stubPathReader struct {
-	paths []DocumentPath
-	err   error
+	paths           []DocumentPath
+	err             error
 	gotCollectionID string
 }
 
@@ -21,8 +21,8 @@ func (s *stubPathReader) ListDocumentPaths(_ context.Context, collectionID strin
 }
 
 type stubResolvedLinkReader struct {
-	links []ResolvedLink
-	err   error
+	links       []ResolvedLink
+	err         error
 	gotLinkType string
 }
 

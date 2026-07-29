@@ -218,7 +218,7 @@ func (s *SandboxRunner) truncateOutput(output string, maxLen int) string {
 }
 
 type sandboxValidationResult struct {
-	Passed  bool    `json:"passed"`
+	Passed bool `json:"passed"`
 	// Validator names the producer of this payload (F10): the SandboxRunner
 	// check set differs from the GateVerifier gate, so consumers can tell what
 	// "passed" actually verified.

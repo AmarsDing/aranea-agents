@@ -291,7 +291,13 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 				loopCtx, chatagent.RootTaskActivityID(rootTaskID))
 		}
 		isTeam := strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team")
+		// 2026-07-29 F-1/F-3：standalone（Mode A）团队 ParentSessionID 为空，
+		// 回退 team session ID 作为聚合根（与 runner deriveSpiritSessionID
+		// 回退 sess.ID 一致）；不再以 ParentSessionID 为空跳过终态 pass。
 		spiritSessionID := strings.TrimSpace(sess.ParentSessionID)
+		if spiritSessionID == "" {
+			spiritSessionID = sessionID
+		}
 		teamID := strings.TrimSpace(sess.TeamID)
 
 		for depth := 0; depth < maxPendingQueueDepth; depth++ {

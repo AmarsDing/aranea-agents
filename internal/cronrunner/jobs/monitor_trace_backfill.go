@@ -15,6 +15,7 @@ import (
 type MonitorTraceBackfillWorker struct {
 	traceRepo        biz.MonitorTraceRepo
 	runnerCompletion biz.MonitorRunnerCompletionRepo
+	usageRepo        biz.MonitorTraceUsageRepo
 	interval         time.Duration
 	watermark        string
 	lg               loggateway.Logger
@@ -29,10 +30,15 @@ func defaultBackfillInterval() time.Duration {
 	return 6 * time.Hour
 }
 
-func NewMonitorTraceBackfillWorker(traceRepo biz.MonitorTraceRepo, runnerCompletion biz.MonitorRunnerCompletionRepo, lg loggateway.Logger) *MonitorTraceBackfillWorker {
+// staleRunningTraceTTL bounds how long a trace may stay in "running" before
+// the sweeper marks it "interrupted" (process crashed before completion).
+const staleRunningTraceTTL = 30 * time.Minute
+
+func NewMonitorTraceBackfillWorker(traceRepo biz.MonitorTraceRepo, runnerCompletion biz.MonitorRunnerCompletionRepo, usageRepo biz.MonitorTraceUsageRepo, lg loggateway.Logger) *MonitorTraceBackfillWorker {
 	return &MonitorTraceBackfillWorker{
 		traceRepo:        traceRepo,
 		runnerCompletion: runnerCompletion,
+		usageRepo:        usageRepo,
 		interval:         defaultBackfillInterval(),
 		lg:               lg,
 	}
@@ -62,6 +68,7 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 		w.lg.Warn("backfill: EnsureTraceSchema failed", loggateway.Err(err))
 		return
 	}
+	w.sweepStaleRunning(ctx)
 	since := 30 * 24 * time.Hour
 	if w.watermark != "" {
 		if wm, err := time.Parse(time.RFC3339, w.watermark); err == nil {
@@ -80,17 +87,20 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 	updated := 0
 	var latestCreatedAt string
 	for _, row := range rows {
+		if row.TraceID == "" {
+			continue
+		}
+		agg := w.aggregateUsage(ctx, row.TraceID)
 		tw := monitor.TraceWrite{
 			TraceID:    row.TraceID,
 			SessionID:  row.SessionID,
 			RunID:      row.RunID,
 			AgentID:    row.AgentID,
+			Provider:   agg.Provider,
+			Model:      agg.Model,
 			Name:       "runner.completion",
 			Status:     row.Status,
 			DurationMs: row.DurationMs,
-		}
-		if tw.TraceID == "" {
-			continue
 		}
 		if err := w.traceRepo.InsertMonitorTrace(ctx, tw); err != nil {
 			w.lg.Warn("backfill: InsertMonitorTrace failed",
@@ -105,7 +115,16 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 		if tw.Status == "error" {
 			errCount = 1
 		}
-		if err := w.traceRepo.UpdateMonitorTraceCompletion(ctx, tw.TraceID, tw.Status, tw.DurationMs, 0, errCount, 0, 0); err != nil {
+		if err := w.traceRepo.UpdateMonitorTraceCompletion(ctx, tw.TraceID, monitor.TraceCompletion{
+			Status:       tw.Status,
+			DurationMs:   tw.DurationMs,
+			SpanCount:    0,
+			ErrorCount:   errCount,
+			TotalTokens:  agg.TotalTokens,
+			TotalCostUsd: agg.TotalCostUsd,
+			Provider:     agg.Provider,
+			Model:        agg.Model,
+		}); err != nil {
 			w.lg.Warn("backfill: UpdateMonitorTraceCompletion failed",
 				loggateway.Str("trace_id", tw.TraceID),
 				loggateway.Err(err))
@@ -130,5 +149,35 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 			loggateway.Int("inserted", inserted),
 			loggateway.Int("updated", updated),
 			loggateway.Str("since", since.String()))
+	}
+}
+
+// aggregateUsage sums tokens/cost and resolves provider/model from usage
+// events for the trace. Failures degrade to zero values (best-effort backfill).
+func (w *MonitorTraceBackfillWorker) aggregateUsage(ctx context.Context, traceID string) monitor.UsageAggregate {
+	if w.usageRepo == nil {
+		return monitor.UsageAggregate{}
+	}
+	agg, err := w.usageRepo.AggregateUsageByTrace(ctx, traceID)
+	if err != nil {
+		w.lg.Warn("backfill: AggregateUsageByTrace failed",
+			loggateway.Str("trace_id", traceID),
+			loggateway.Err(err))
+		return monitor.UsageAggregate{}
+	}
+	return agg
+}
+
+// sweepStaleRunning marks traces stuck in "running" beyond the TTL as
+// "interrupted" so the UI does not show phantom in-flight runs.
+func (w *MonitorTraceBackfillWorker) sweepStaleRunning(ctx context.Context) {
+	cutoff := time.Now().Add(-staleRunningTraceTTL)
+	n, err := w.traceRepo.InterruptStaleTraces(ctx, cutoff)
+	if err != nil {
+		w.lg.Warn("backfill: InterruptStaleTraces failed", loggateway.Err(err))
+		return
+	}
+	if n > 0 {
+		w.lg.Info("swept stale running traces", loggateway.Int("interrupted", int(n)))
 	}
 }

@@ -13,6 +13,28 @@ import {
   registerRemoteAgent,
   updateAgentCard,
 } from '../../features/a2a/api';
+import {
+  deleteFederationOrg,
+  discoverFederationAgents,
+  invokeFederatedAgent,
+  listFederationOrgs,
+  queryFederationAuditLogs,
+  registerFederationOrg,
+  setFederationTrustLevel,
+  syncFederationOrgCards,
+  upsertFederationPolicy,
+} from '../../features/a2a/federationApi';
+import type {
+  FederatedInvokeInput,
+  FederatedInvokeResult,
+  FederationAgentEntry,
+  FederationAuditFilter,
+  FederationAuditResult,
+  FederationOrg,
+  FederationPolicy,
+  RegisterFederationOrgInput,
+  UpsertFederationPolicyInput,
+} from '../../features/a2a/federationTypes';
 import type {
   A2AAgentCard,
   A2AAuditEntry,
@@ -108,6 +130,59 @@ export const useA2AStore = defineStore('a2a', () => {
     return gatewayEntries.value;
   }
 
+  // ---------- 联邦 A2A 网络 ----------
+
+  const federationOrgs = ref<FederationOrg[]>([]);
+  const federationAgents = ref<FederationAgentEntry[]>([]);
+  const federationAuditLog = ref<FederationAuditResult>({ items: [], total: 0 });
+
+  async function loadFederationOrgs(): Promise<FederationOrg[]> {
+    federationOrgs.value = await listFederationOrgs();
+    return federationOrgs.value;
+  }
+
+  async function registerFederation(input: RegisterFederationOrgInput): Promise<FederationOrg> {
+    const org = await registerFederationOrg(input);
+    federationOrgs.value = [org, ...federationOrgs.value.filter((o) => o.id !== org.id)];
+    return org;
+  }
+
+  async function removeFederationOrg(id: string): Promise<void> {
+    await deleteFederationOrg(id);
+    federationOrgs.value = federationOrgs.value.filter((o) => o.id !== id);
+  }
+
+  async function updateFederationTrust(id: string, trustLevel: string): Promise<FederationOrg> {
+    const org = await setFederationTrustLevel(id, trustLevel);
+    federationOrgs.value = federationOrgs.value.map((o) => (o.id === org.id ? org : o));
+    return org;
+  }
+
+  async function saveFederationPolicy(input: UpsertFederationPolicyInput): Promise<FederationPolicy> {
+    return upsertFederationPolicy(input);
+  }
+
+  /** 手动同步某组织的远程 Agent Card（FED-F7），返回成功同步数量。 */
+  async function syncFederationCards(orgId: string): Promise<number> {
+    return syncFederationOrgCards(orgId);
+  }
+
+  async function loadFederationDirectory(
+    params: { capability?: string; org_id?: string } = {},
+  ): Promise<FederationAgentEntry[]> {
+    federationAgents.value = await discoverFederationAgents(params);
+    return federationAgents.value;
+  }
+
+  async function invokeFederated(input: FederatedInvokeInput): Promise<FederatedInvokeResult> {
+    return invokeFederatedAgent(input);
+  }
+
+  async function loadFederationAudit(params: FederationAuditFilter = {}): Promise<FederationAuditResult> {
+    federationAuditLog.value = await queryFederationAuditLogs(params);
+    return federationAuditLog.value;
+  }
+
   return {
     agentCards,
     auditLog,
@@ -127,5 +202,18 @@ export const useA2AStore = defineStore('a2a', () => {
     removeRemote,
     previewRemote,
     loadGateway,
+    // 联邦
+    federationOrgs,
+    federationAgents,
+    federationAuditLog,
+    loadFederationOrgs,
+    registerFederation,
+    removeFederationOrg,
+    updateFederationTrust,
+    saveFederationPolicy,
+    syncFederationCards,
+    loadFederationDirectory,
+    invokeFederated,
+    loadFederationAudit,
   };
 });

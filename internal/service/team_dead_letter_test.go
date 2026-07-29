@@ -117,7 +117,7 @@ func (r *deadLetterTeamRepo) ResolveTaskDeadLetter(_ context.Context, id string)
 }
 
 func TestTeamService_ListTaskDeadLetters_requiresScope(t *testing.T) {
-	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: &deadLetterTeamRepo{}, Writer: &deadLetterTeamRepo{}, RunReader: &deadLetterTeamRepo{}, RunWriter: &deadLetterTeamRepo{}, StepRepo: &deadLetterTeamRepo{}, DeadLetter: &deadLetterTeamRepo{}, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil)
+	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: &deadLetterTeamRepo{}, Writer: &deadLetterTeamRepo{}, RunReader: &deadLetterTeamRepo{}, RunWriter: &deadLetterTeamRepo{}, StepRepo: &deadLetterTeamRepo{}, DeadLetter: &deadLetterTeamRepo{}, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil)
 	_, err := svc.ListTaskDeadLetters(context.Background(), &v1.ListTaskDeadLettersRequest{})
 	if err == nil {
 		t.Fatal("expected validation error")
@@ -128,7 +128,7 @@ func TestTeamService_ListAndResolveTaskDeadLetters(t *testing.T) {
 	repo := &deadLetterTeamRepo{items: []biz.TaskDeadLetter{{
 		ID: "dl-1", SessionID: "sess-1", Status: biz.TaskDeadLetterStatusPending, SourceType: "team_run",
 	}}}
-	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil)
+	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil)
 	resp, err := svc.ListTaskDeadLetters(context.Background(), &v1.ListTaskDeadLettersRequest{
 		SessionId: "sess-1",
 		Status:    biz.TaskDeadLetterStatusPending,

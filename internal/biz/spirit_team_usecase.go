@@ -111,6 +111,13 @@ type SpiritTeamController interface {
 	// member projection — status follows the execution RESULT, not the
 	// message lifecycle.
 	MemberExecutionEvidence(ctx context.Context, sessionID string) (failed bool, reason string)
+	// ExecuteVerificationGates backs the F9 (Phase 11) verification gate in
+	// the service-layer outcome pass (2026-07-28): runs the team's definition
+	// verification_gates (current automatic source: skill-install
+	// tool_assertion gate) after the deliverable gate passes. Rejection or
+	// infra error is fail-closed → the team is flipped to failed, because
+	// "installed but not usable" must never masquerade as success.
+	ExecuteVerificationGates(ctx context.Context, teamID string, teamOutput string) (bool, []string, error)
 }
 
 // TimeoutHandler is called when a team times out. Implemented by the service

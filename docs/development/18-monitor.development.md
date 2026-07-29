@@ -15,9 +15,9 @@
 | 层 | 路径 |
 |----|------|
 | Proto | `api/kratos/monitor/v1/monitor.proto` |
-| Biz | `internal/biz/monitor.go`、`internal/biz/monitor/`（alert_eval_worker、metric_ring_buffer、trace_projector、flow_file_appender、alert_metric_registry、root_cause_engine、diag_bundle、self_check、self_heal、self_check_repair、self_check_scheduler、predictive_heal、pattern_mining、failure_pattern_repo、failure_report）、`runner_completion.go` |
-| Data | `internal/data/monitor.go`、`internal/data/monitor_alert.go`、`internal/data/monitor_trace.go` |
-| Service | `internal/service/monitor.go`、`monitor_notify.go`、`monitor_flow_log.go` |
+| Biz | `internal/biz/monitor.go`、`internal/biz/monitor/`（alert_eval_worker、metric_ring_buffer、trace_projector、flow_file_appender、alert_metric_registry、root_cause_engine、diag_bundle、self_check、self_heal、self_check_repair、self_check_scheduler、predictive_heal、pattern_mining、failure_pattern_repo、failure_report、audit_record）、`runner_completion.go` |
+| Data | `internal/data/monitor.go`、`internal/data/monitor_alert.go`、`internal/data/monitor_trace.go`、`internal/data/audit_action_migrate.go`（审计 action 规范化迁移 20260729） |
+| Service | `internal/service/monitor.go`、`monitor_notify.go`、`monitor_flow_log.go`、`audit_meta.go`（审计 IP/UA 元数据提取） |
 | Cron | `internal/cronrunner/jobs/monitor_trace_backfill.go` |
 | 用量 | `internal/biz/usage.go`、`internal/service/turn_usage.go`、`chat_usage_ingress.go` |
 | FlowLog | `internal/biz/flowlog/`、`internal/data/flow_log_repo.go` |
@@ -77,6 +77,14 @@
 | Runs 列表 Token/延迟/成本列 | ✅ | 2026-07-16：`ListMonitorTraces` 投影 duration/tokens/cost；FE TraceList 展示（OPT-05 后真相源为 `monitor_traces`） |
 | WS 反压前端 banner | ✅ | 2026-07-16：消费 `monitor.backpressure` 并在 MonitorPage 展示 |
 | 进程日志 Tab 暂停控制 | ✅ | 2026-07-16：切离暂停（丢弃入站）；2026-07-24：应用户要求恢复手动「暂停/恢复」按钮，默认关闭（paused=true），切回不自动恢复 |
+| Trace 完成时 Usage 聚合回填 | ✅ | 2026-07-29：`TraceCompletion` + `TraceUsageRepo.AggregateUsageByTrace`（tokens/cost 求和、provider/model 取最新）；`UpdateMonitorTraceCompletion` provider/model 仅空值回填 |
+| 僵尸 running Trace 清扫 | ✅ | 2026-07-29：`InterruptStaleTraces`（TTL 30min + span 活跃守卫，长运行 team run 不误杀）；backfill worker 每轮先 sweep |
+| Runs 显示名解析 | ✅ | 2026-07-29：`ListMonitorTraces`/`GetMonitorTrace` 标量子查询解析 agent/team `display_name`（`config_json.domain` 保留原域） |
+| usage events trace_id 表达式索引 | ✅ | 2026-07-29：迁移 20261114 `idx_model_token_usage_events_trace_id`；顺带修复 `IndexExistsQuery` pg_indexes 列名 bug（`index_name`→`indexname`，原查询无生产调用者未爆雷） |
+| Runs 列表/详情重设计 + i18n | ✅ | 2026-07-29：6 态状态模型（running/ok/error/cancelled/timeout/interrupted）语义色；Tokens/延迟/成本列；指标条 + 错误面板；traces/audit/events 全量 i18n（zh-CN/en-US） |
+| 审计 action 规范化 + 历史迁移 | ✅ | 2026-07-29：`biz.AuditAction(verb, resource)` 统一 `verb.resource` 契约；迁移 20260729 幂等规范化存量 action；`auditWhere` 支持动词级前缀过滤（`action LIKE 'verb.%'`） |
+| 审计埋点补齐（team/channel/provider/config） | ✅ | 2026-07-29：TeamService CRUD、ChannelService CRUD + Toggle + Credentials、LlmProviderModelService CRUD + Reveal、SystemSettingService Update 均落 `AdminAuditEntry`；detail 统一 JSON 契约 `{"summary","before","after"}`；`audit_meta.go` 从 Kratos transport 提取 IP/UserAgent |
+| Audit 页重设计（服务端分页/筛选 + i18n） | ✅ | 2026-07-29：`AuditTable.vue` 重构——action/resource 筛选 + 关键词搜索全部走服务端（limit/offset/action/resource/keyword），详情列显示 summary 摘要（hover 完整 JSON），行点击弹格式化 JSON 详情框；monitorPage.audit.* 全量 i18n |
 
 ---
 

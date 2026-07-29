@@ -36,6 +36,7 @@ type ServiceRegistry struct {
 	Eval               *service.EvaluationService
 	A2A                *service.A2AService
 	A2APublic          *a2atrpc.EndpointRegistry
+	Federation         *service.FederationService
 	Ecosystem          *service.EcosystemService
 	Gateway            *service.GatewayService
 	ChannelIngress     *service.ChannelIngress
@@ -86,6 +87,7 @@ func NewServiceRegistry(
 	evalSvc *service.EvaluationService,
 	a2aSvc *service.A2AService,
 	a2aPublic *a2atrpc.EndpointRegistry,
+	federationSvc *service.FederationService,
 	ecosystemSvc *service.EcosystemService,
 	gatewaySvc *service.GatewayService,
 	channelIngress *service.ChannelIngress,
@@ -131,6 +133,7 @@ func NewServiceRegistry(
 		Eval:               evalSvc,
 		A2A:                a2aSvc,
 		A2APublic:          a2aPublic,
+		Federation:         federationSvc,
 		Ecosystem:          ecosystemSvc,
 		Gateway:            gatewaySvc,
 		ChannelIngress:     channelIngress,

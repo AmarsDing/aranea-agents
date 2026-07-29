@@ -39,39 +39,35 @@ func (f *fakePlanner) PublishV2Board(_ context.Context, _ *biz.TaskPlan, _ *biz.
 
 func TestPrePlanningGate_Evaluate(t *testing.T) {
 	tests := []struct {
-		name           string
-		level          biz.ComplexityLevel
-		score          float64
-		wantForce      bool
-		wantEventCount int
-		wantReason     string
+		name       string
+		level      biz.ComplexityLevel
+		score      float64
+		wantForce  bool
+		wantReason string
 	}{
 		{
-			name:           "simple does not force planning",
-			level:          biz.ComplexitySimple,
-			score:          0.15,
-			wantForce:      false,
-			wantEventCount: 2, // start + done
+			name:      "simple does not force planning",
+			level:     biz.ComplexitySimple,
+			score:     0.15,
+			wantForce: false,
 			// 2026-07-28：simple 决策文案改中性表述——门控不承诺"直接回答"
 			// （LLM 仍可能自主走 plan_and_execute），只陈述评估结论。
 			wantReason: "评估完成：简单任务",
 		},
 		{
-			name:           "moderate forces planning",
-			level:          biz.ComplexityModerate,
-			score:          0.45,
-			wantForce:      true,
-			wantEventCount: 2,
+			name:      "moderate forces planning",
+			level:     biz.ComplexityModerate,
+			score:     0.45,
+			wantForce: true,
 			// UI 文案不得泄漏英文枚举值（moderate → 中等）。
 			wantReason: "评估完成：中等任务，强制走规划路径",
 		},
 		{
-			name:           "complex forces planning",
-			level:          biz.ComplexityComplex,
-			score:          0.75,
-			wantForce:      true,
-			wantEventCount: 2,
-			wantReason:     "评估完成：复杂任务，强制走规划路径",
+			name:       "complex forces planning",
+			level:      biz.ComplexityComplex,
+			score:      0.75,
+			wantForce:  true,
+			wantReason: "评估完成：复杂任务，强制走规划路径",
 		},
 	}
 
@@ -101,46 +97,14 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 			if decision.Score != tt.score {
 				t.Errorf("Score = %.4f, want %.4f", decision.Score, tt.score)
 			}
-			published := bus.snapshot()
-			if len(published) != tt.wantEventCount {
-				t.Errorf("published events = %d, want %d", len(published), tt.wantEventCount)
+			if decision.Reason != tt.wantReason {
+				t.Errorf("Reason = %q, want %q", decision.Reason, tt.wantReason)
 			}
-			// 2026-07-21 P1-5 F3：直发 notice step 必须自终态（Completed）且
-			// 携带 StartedAt/CompletedAt/Version，否则 DB 中留下永久 running 的
-			// 僵尸步骤（无后续事件会再更新它）。
-			if len(published) >= 2 {
-				for i, ev := range published {
-					stepEv, ok := ev.(*biz.StepCreatedEvent)
-					if !ok {
-						t.Fatalf("event[%d] type = %T, want *biz.StepCreatedEvent", i, ev)
-					}
-					if stepEv.EventKind() != biz.EventKindStepCreated {
-						t.Errorf("event[%d] kind = %s, want %s", i, stepEv.EventKind(), biz.EventKindStepCreated)
-					}
-					if stepEv.Step.Status != biz.StepStatusCompleted {
-						t.Errorf("event[%d] step status = %s, want %s", i, stepEv.Step.Status, biz.StepStatusCompleted)
-					}
-					if stepEv.Step.StartedAt.IsZero() {
-						t.Errorf("event[%d] step StartedAt is zero", i)
-					}
-					if stepEv.Step.CompletedAt == nil || stepEv.Step.CompletedAt.IsZero() {
-						t.Errorf("event[%d] step CompletedAt is nil/zero", i)
-					}
-					if stepEv.Step.Version != 1 {
-						t.Errorf("event[%d] step version = %d, want 1", i, stepEv.Step.Version)
-					}
-				}
-				// B.4.3: pre-planning assess phase renders as NoticeBlock (Kind=notice),
-				// not PlanBlock (Kind=plan), to avoid "UI 提前占位" before real plan arrives.
-				startEv := published[0].(*biz.StepCreatedEvent)
-				if startEv.Step.Kind != biz.StepKindNotice {
-					t.Errorf("first step kind = %s, want %s", startEv.Step.Kind, biz.StepKindNotice)
-				}
-				// 决策 notice 文案（第二个事件）必须与门控决策一致且为中性中文表述。
-				doneEv := published[1].(*biz.StepCreatedEvent)
-				if doneEv.Step.Content != tt.wantReason {
-					t.Errorf("decision notice content = %q, want %q", doneEv.Step.Content, tt.wantReason)
-				}
+			// 2026-07-28：不再发布评估阶段通知到前端，这些是内部状态变化，
+			// 对用户无意义，且会污染会话时间线。
+			published := bus.snapshot()
+			if len(published) != 0 {
+				t.Errorf("published events = %d, want 0 (no events should be published)", len(published))
 			}
 		})
 	}
@@ -183,10 +147,8 @@ func TestRunPrePlanningGate_SkipsContinuationTurn(t *testing.T) {
 }
 
 func TestPrePlanningGate_Evaluate_AttachesTaskID(t *testing.T) {
-	// 门控 notice 必须挂接到本 turn 所属根 Task（PlanInput.TaskID，由调用方从
-	// ctx RootTaskActivityID 解析，与澄清门同款模式），否则成为 session 级孤儿
-	// 步骤：前端 getTaskOrphanSteps 按 TaskID 匹配，无 TaskID 的 notice 永不
-	// 渲染且污染 DB。
+	// 2026-07-28：不再发布评估阶段通知到前端，因此不再检查 TaskID 挂接。
+	// 门控决策完全通过返回值传递，不依赖事件发布。
 	bus := &captureEventBus{}
 	gate := NewPrePlanningGate(
 		&fakePlanner{quickLevel: biz.ComplexitySimple, quickScore: 0.1},
@@ -194,7 +156,7 @@ func TestPrePlanningGate_Evaluate_AttachesTaskID(t *testing.T) {
 		nil,
 		loggateway.NewNoop(),
 	)
-	_, err := gate.Evaluate(context.Background(), biz.PlanInput{
+	decision, err := gate.Evaluate(context.Background(), biz.PlanInput{
 		UserMessage:     "test",
 		SpiritSessionID: "sess-1",
 		TaskID:          "task-1",
@@ -202,17 +164,12 @@ func TestPrePlanningGate_Evaluate_AttachesTaskID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate error: %v", err)
 	}
-	published := bus.snapshot()
-	if len(published) == 0 {
-		t.Fatal("expected notice events to be published")
+	if decision.Level != biz.ComplexitySimple {
+		t.Errorf("level = %s, want %s", decision.Level, biz.ComplexitySimple)
 	}
-	for i, ev := range published {
-		stepEv, ok := ev.(*biz.StepCreatedEvent)
-		if !ok {
-			t.Fatalf("event[%d] type = %T, want *biz.StepCreatedEvent", i, ev)
-		}
-		if stepEv.Step.TaskID != "task-1" {
-			t.Errorf("event[%d] step TaskID = %q, want %q", i, stepEv.Step.TaskID, "task-1")
-		}
+	// 验证不再发布事件
+	published := bus.snapshot()
+	if len(published) != 0 {
+		t.Errorf("published events = %d, want 0 (no events should be published)", len(published))
 	}
 }

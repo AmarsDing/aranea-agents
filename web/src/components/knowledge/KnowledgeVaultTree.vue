@@ -1,13 +1,7 @@
 <template>
   <q-card flat class="app-pane-card knowledge-vault-tree">
     <div class="app-pane-card__header knowledge-vault-tree__header">
-      <q-btn-dropdown
-        flat
-        no-caps
-        dense
-        class="knowledge-vault-tree__switcher"
-        :label="currentVault?.name || t('knowledgePage.vaultSwitcherEmpty')"
-      >
+      <q-btn-dropdown flat no-caps dense class="knowledge-vault-tree__switcher">
         <template #label>
           <div class="row items-center no-wrap">
             <q-icon name="inventory_2" size="18px" class="q-mr-xs" />

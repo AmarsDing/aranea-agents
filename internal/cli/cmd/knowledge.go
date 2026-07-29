@@ -72,29 +72,31 @@ func knowledgeCollectionsGetCmd() *cobra.Command {
 }
 
 func knowledgeCollectionsCreateCmd() *cobra.Command {
-	var name, description, embeddingModel string
+	var name, description, embeddingModel, rootPath string
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "创建知识库集合",
+		Short: "创建知识库（Vault，挂载本地文件夹）",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			req := &knowledgev1.CreateCollectionRequest{
 				Name:           name,
 				Description:    description,
 				EmbeddingModel: embeddingModel,
+				RootPath:       rootPath,
 			}
 			col, err := cc.Client.CreateCollection(cmd.Context(), req)
 			if err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("知识库集合创建成功", "id", col.Id, "name", col.Name)
+			return cc.Printer.PrintSuccess("知识库创建成功", "id", col.Id, "name", col.Name, "root_path", col.RootPath)
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "集合名称")
-	cmd.Flags().StringVar(&description, "description", "", "集合描述")
-	cmd.Flags().StringVar(&embeddingModel, "embedding-model", "", "Embedding 模型")
+	cmd.Flags().StringVar(&name, "name", "", "知识库名称")
+	cmd.Flags().StringVar(&description, "description", "", "知识库描述")
+	cmd.Flags().StringVar(&embeddingModel, "embedding-model", "", "Embedding 模型（可选，留空 = 无语义层词法库）")
+	cmd.Flags().StringVar(&rootPath, "root-path", "", "Vault 根目录（本地文件夹路径）")
 	_ = cmd.MarkFlagRequired("name")
-	_ = cmd.MarkFlagRequired("embedding-model")
+	_ = cmd.MarkFlagRequired("root-path")
 	return cmd
 }
 

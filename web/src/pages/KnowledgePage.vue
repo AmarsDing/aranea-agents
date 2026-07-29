@@ -82,11 +82,11 @@
             />
             <knowledge-doc-list
               :prefix="explorerPrefix"
-              :files="explorerFiles"
-              :dir-count="explorerDirCount"
+              :entries="explorerEntries"
               :loading="explorerTreeLoading"
               :selected-doc-id="explorerDocId"
               @select="onExplorerSelectDoc"
+              @navigate="selectExplorerPrefix"
               @refresh="refreshExplorerTree"
               @ingest="ingestOpen = true"
             />
@@ -142,6 +142,7 @@
     <knowledge-create-dialog
       v-model:open="createOpen"
       v-model:name="createForm.name"
+      v-model:root-path="createForm.root_path"
       v-model:description="createForm.description"
       v-model:embedding-model="createForm.embedding_model"
       :loading="createLoading"
@@ -242,8 +243,7 @@ const {
 const {
   currentPrefix: explorerPrefix,
   rootNodes: explorerRootNodes,
-  currentFiles: explorerFiles,
-  currentDirCount: explorerDirCount,
+  currentChildren: explorerEntries,
   treeLoading: explorerTreeLoading,
   treeError: explorerTreeError,
   onLazyLoad: onExplorerLazyLoad,

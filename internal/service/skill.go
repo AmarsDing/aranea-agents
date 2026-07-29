@@ -9,6 +9,7 @@ import (
 	v1 "aranea-agents/api/kratos/skill/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/skill/importer"
+	"aranea-agents/internal/skill/manifest"
 	"aranea-agents/internal/tools/skillruntime"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
@@ -332,6 +333,7 @@ func (s *SkillService) CreateSkill(ctx context.Context, req *v1.CreateSkillReque
 		Description: strings.TrimSpace(req.GetDescription()),
 		Body:        body,
 		Tags:        tags,
+		Triggers:    manifest.Parse(body).Triggers,
 		StorageDir:  dir,
 		WorkspaceID: wsID,
 	})
@@ -371,6 +373,9 @@ func (s *SkillService) UpdateSkill(ctx context.Context, req *v1.UpdateSkillReque
 	if req.BodyMarkdown != nil {
 		patch.HasBody = true
 		patch.Body = req.GetBodyMarkdown()
+		// P1-3：正文变更时从新 frontmatter 同步刷新确定性触发词。
+		patch.HasTriggers = true
+		patch.Triggers = manifest.Parse(patch.Body).Triggers
 	}
 	out, err := s.uc.Patch(ctx, req.GetId(), patch)
 	if err != nil {

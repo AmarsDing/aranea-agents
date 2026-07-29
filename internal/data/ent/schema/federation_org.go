@@ -28,7 +28,7 @@ func (FederationOrg) Fields() []ent.Field {
 		field.String("domain").NotEmpty().MaxLen(512), // Unique domain identifier
 		field.String("public_base_url").Default("").MaxLen(1024),
 		field.Enum("trust_level").Values("untrusted", "neutral", "trusted").Default("neutral"),
-		field.String("auth_type").Default("").MaxLen(32), // none | api_key | bearer | mtls
+		field.String("auth_type").Default("").MaxLen(32),         // none | api_key | bearer | mtls
 		field.Text("auth_config_json").Default("{}").Sensitive(), // DB-N8: sensitive field
 		field.Enum("status").Values("active", "suspended").Default("active"),
 		field.Time("joined_at").Default(timeNow),

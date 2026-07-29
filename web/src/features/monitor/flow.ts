@@ -58,9 +58,9 @@ export function traceCorrelationFromTraceRow(row: MonitorTrace): {
 } {
   const meta = parseJSON(row.metadata_json || '');
   return {
-    traceId: str(meta.trace_id),
-    runId: str(meta.run_id),
-    sessionId: str(meta.session_id),
+    traceId: str(meta.trace_id) || row.key,
+    runId: row.run_id || str(meta.run_id),
+    sessionId: row.session_id || str(meta.session_id),
   };
 }
 

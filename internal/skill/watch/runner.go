@@ -292,7 +292,7 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 		r.lg.Warn("skill read dir failed", loggateway.StepID("skill.fs.error"), loggateway.Str("slug", slug), loggateway.Err(err))
 		return
 	}
-	candidate, tags := importer.ValidateSkillPackage(files, slug, nil, true)
+	candidate, tags, triggers := importer.ValidateSkillPackage(files, slug, nil, true)
 	if mismatch := importer.DirectorySlugMismatch(slug, candidate.Slug); mismatch != nil {
 		r.recordFailure(ctx, slug, source, t0, mismatch.Type, errors.New(mismatch.Message))
 		r.lg.Warn("skill slug mismatch", loggateway.StepID("skill.fs.error"), loggateway.Str("slug", slug), loggateway.Str("msg", mismatch.Message))
@@ -336,6 +336,7 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 		Description: candidate.Description,
 		Body:        body,
 		Tags:        tags,
+		Triggers:    triggers,
 		StorageDir:  dir,
 	})
 	dur := int(time.Since(t0).Milliseconds())
@@ -450,5 +451,8 @@ func (r *Runner) reportSync(ctx context.Context, eventKey, slug, message, severi
 		Slug:     slug,
 		Message:  message,
 		Severity: severity,
+		// 常规磁盘同步成功（updated/info）高频低价值：只发 Bus 不落库，
+		// 避免淹没 monitor_events（治理向事件仍落库：imported/recovered/rejected/missing）。
+		SkipPersist: eventKey == "skill.filesystem.updated" && severity == "info",
 	})
 }

@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/cronrunner"
+	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/event/contract"
 	mcphealth "aranea-agents/internal/mcp/health"
 	loggateway "aranea-agents/pkg/loggateway"
@@ -41,6 +42,7 @@ type backgroundWorkersConfig struct {
 	ChannelRuntime              ChannelRuntimeStarter
 	ToolAuditCleanup            BackgroundStarter
 	FlowLogCleanup              BackgroundStarter
+	MonitorEventsCleanup        BackgroundStarter
 	MonitorAlertCooldownCleanup BackgroundStarter
 	AutoHealTTLCleanup          BackgroundStarter
 	MonitorAlertEvalWorker      BackgroundStarter
@@ -195,6 +197,11 @@ func startBackgroundWorkers(
 	if cfg.FlowLogCleanup != nil {
 		goAfterReady("flow_log_cleanup", func() { cfg.FlowLogCleanup.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "flow log cleanup scheduled", "interval", "1h")
+	}
+
+	if cfg.MonitorEventsCleanup != nil {
+		goAfterReady("monitor_events_cleanup", func() { cfg.MonitorEventsCleanup.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "monitor events cleanup scheduled", "interval", "24h", "retention", jobs.MonitorEventsRetention.String())
 	}
 
 	if cfg.MonitorAlertCooldownCleanup != nil {

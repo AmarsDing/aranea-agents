@@ -336,19 +336,41 @@ func groupDecisionsForSkipKeep(job *importJob) []applyDecision {
 	for _, c := range job.Candidates {
 		warnByID[c.CandidateID] = c.ValidationStatus == "warn"
 	}
-	var out []applyDecision
+	// A candidate may appear in multiple conflict groups (one per similar
+	// existing skill). Collect kept candidates across ALL groups first:
+	// emitting keep_separate per group duplicates the insert and violates the
+	// skill_key unique constraint, and a later skip_group on a group whose
+	// candidate was already kept would undo the import (observed as
+	// create-then-deleted tombstones in production).
+	kept := map[string]bool{}
 	for _, g := range job.ConflictGroups {
+		if g.Metrics.Recommendation != "keep_separate" {
+			continue
+		}
+		for _, id := range g.CandidateIDs {
+			if warnByID[id] {
+				kept[id] = true
+			}
+		}
+	}
+	var out []applyDecision
+	emitted := map[string]bool{}
+	for _, g := range job.ConflictGroups {
+		groupHasKept := false
 		if g.Metrics.Recommendation == "keep_separate" {
-			var kept bool
 			for _, id := range g.CandidateIDs {
-				if warnByID[id] {
+				if !kept[id] {
+					continue
+				}
+				groupHasKept = true
+				if !emitted[id] {
 					out = append(out, applyDecision{CandidateID: id, Action: "keep_separate"})
-					kept = true
+					emitted[id] = true
 				}
 			}
-			if kept {
-				continue
-			}
+		}
+		if groupHasKept {
+			continue
 		}
 		out = append(out, applyDecision{GroupID: g.GroupID, Action: "skip_group"})
 	}

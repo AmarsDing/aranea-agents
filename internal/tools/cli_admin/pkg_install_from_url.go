@@ -22,13 +22,13 @@ type pkgInstallInput struct {
 }
 
 type pkgInstallOutput struct {
-	Created   int      `json:"created"`
-	Updated   int      `json:"updated"`
-	Skipped   int      `json:"skipped"`
-	Errors    []string `json:"errors,omitempty"`
-	Steps     []string `json:"steps"`
-	JobID     string   `json:"job_id,omitempty"`
-	Status    string   `json:"status,omitempty"` // installed|pending_conflict|failed
+	Created   int                       `json:"created"`
+	Updated   int                       `json:"updated"`
+	Skipped   int                       `json:"skipped"`
+	Errors    []string                  `json:"errors,omitempty"`
+	Steps     []string                  `json:"steps"`
+	JobID     string                    `json:"job_id,omitempty"`
+	Status    string                    `json:"status,omitempty"` // installed|pending_conflict|failed
 	Conflicts []pkginstall.ConflictInfo `json:"conflicts,omitempty"`
 }
 

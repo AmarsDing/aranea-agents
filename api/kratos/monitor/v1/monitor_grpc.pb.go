@@ -27,6 +27,7 @@ const (
 	MonitorService_GetMonitorLogs_FullMethodName              = "/kratos.monitor.v1.MonitorService/GetMonitorLogs"
 	MonitorService_ListFlowLogs_FullMethodName                = "/kratos.monitor.v1.MonitorService/ListFlowLogs"
 	MonitorService_ListMonitorAlertRules_FullMethodName       = "/kratos.monitor.v1.MonitorService/ListMonitorAlertRules"
+	MonitorService_ListAlertMetrics_FullMethodName            = "/kratos.monitor.v1.MonitorService/ListAlertMetrics"
 	MonitorService_PutMonitorAlertRules_FullMethodName        = "/kratos.monitor.v1.MonitorService/PutMonitorAlertRules"
 	MonitorService_GetRunnerMetrics_FullMethodName            = "/kratos.monitor.v1.MonitorService/GetRunnerMetrics"
 	MonitorService_GetCodeExecutorCapabilities_FullMethodName = "/kratos.monitor.v1.MonitorService/GetCodeExecutorCapabilities"
@@ -51,6 +52,9 @@ type MonitorServiceClient interface {
 	GetMonitorLogs(ctx context.Context, in *GetMonitorLogsRequest, opts ...grpc.CallOption) (*GetMonitorLogsResponse, error)
 	ListFlowLogs(ctx context.Context, in *ListFlowLogsRequest, opts ...grpc.CallOption) (*ListFlowLogsResponse, error)
 	ListMonitorAlertRules(ctx context.Context, in *GetMonitorLogsRequest, opts ...grpc.CallOption) (*ListMonitorAlertRulesResponse, error)
+	// Alert metric directory: which metrics rules can target, what they mean,
+	// and their current values.
+	ListAlertMetrics(ctx context.Context, in *GetMonitorLogsRequest, opts ...grpc.CallOption) (*ListAlertMetricsResponse, error)
 	PutMonitorAlertRules(ctx context.Context, in *PutMonitorAlertRulesRequest, opts ...grpc.CallOption) (*PutMonitorAlertRulesResponse, error)
 	GetRunnerMetrics(ctx context.Context, in *GetRunnerMetricsRequest, opts ...grpc.CallOption) (*RunnerMetricsSummary, error)
 	GetCodeExecutorCapabilities(ctx context.Context, in *GetMonitorLogsRequest, opts ...grpc.CallOption) (*GetCodeExecutorCapabilitiesResponse, error)
@@ -144,6 +148,16 @@ func (c *monitorServiceClient) ListMonitorAlertRules(ctx context.Context, in *Ge
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListMonitorAlertRulesResponse)
 	err := c.cc.Invoke(ctx, MonitorService_ListMonitorAlertRules_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *monitorServiceClient) ListAlertMetrics(ctx context.Context, in *GetMonitorLogsRequest, opts ...grpc.CallOption) (*ListAlertMetricsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAlertMetricsResponse)
+	err := c.cc.Invoke(ctx, MonitorService_ListAlertMetrics_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -253,6 +267,9 @@ type MonitorServiceServer interface {
 	GetMonitorLogs(context.Context, *GetMonitorLogsRequest) (*GetMonitorLogsResponse, error)
 	ListFlowLogs(context.Context, *ListFlowLogsRequest) (*ListFlowLogsResponse, error)
 	ListMonitorAlertRules(context.Context, *GetMonitorLogsRequest) (*ListMonitorAlertRulesResponse, error)
+	// Alert metric directory: which metrics rules can target, what they mean,
+	// and their current values.
+	ListAlertMetrics(context.Context, *GetMonitorLogsRequest) (*ListAlertMetricsResponse, error)
 	PutMonitorAlertRules(context.Context, *PutMonitorAlertRulesRequest) (*PutMonitorAlertRulesResponse, error)
 	GetRunnerMetrics(context.Context, *GetRunnerMetricsRequest) (*RunnerMetricsSummary, error)
 	GetCodeExecutorCapabilities(context.Context, *GetMonitorLogsRequest) (*GetCodeExecutorCapabilitiesResponse, error)
@@ -295,6 +312,9 @@ func (UnimplementedMonitorServiceServer) ListFlowLogs(context.Context, *ListFlow
 }
 func (UnimplementedMonitorServiceServer) ListMonitorAlertRules(context.Context, *GetMonitorLogsRequest) (*ListMonitorAlertRulesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListMonitorAlertRules not implemented")
+}
+func (UnimplementedMonitorServiceServer) ListAlertMetrics(context.Context, *GetMonitorLogsRequest) (*ListAlertMetricsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListAlertMetrics not implemented")
 }
 func (UnimplementedMonitorServiceServer) PutMonitorAlertRules(context.Context, *PutMonitorAlertRulesRequest) (*PutMonitorAlertRulesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PutMonitorAlertRules not implemented")
@@ -484,6 +504,24 @@ func _MonitorService_ListMonitorAlertRules_Handler(srv interface{}, ctx context.
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(MonitorServiceServer).ListMonitorAlertRules(ctx, req.(*GetMonitorLogsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MonitorService_ListAlertMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMonitorLogsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MonitorServiceServer).ListAlertMetrics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MonitorService_ListAlertMetrics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MonitorServiceServer).ListAlertMetrics(ctx, req.(*GetMonitorLogsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -688,6 +726,10 @@ var MonitorService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListMonitorAlertRules",
 			Handler:    _MonitorService_ListMonitorAlertRules_Handler,
+		},
+		{
+			MethodName: "ListAlertMetrics",
+			Handler:    _MonitorService_ListAlertMetrics_Handler,
 		},
 		{
 			MethodName: "PutMonitorAlertRules",

@@ -130,6 +130,9 @@ type TRPCExtensionDeps struct {
 	// LearningLoop records tool_call observations into the learning loop.
 	// Optional: when nil, observation recording is skipped.
 	LearningLoop biz.ObservationRecorder
+	// TeamCompletionChecker provides team completion status checking for the team completion guard.
+	// Optional: when nil, the team completion guard is disabled.
+	TeamCompletionChecker TeamCompletionChecker
 }
 
 // TRPCBuilderDeps is the stable extension DTO for BuildTRPCLLMAgent / BuildTRPCAgent.
@@ -143,6 +146,12 @@ type TRPCBuilderDeps struct {
 	TRPCPluginDeps
 	TRPCSkillDeps
 	TRPCExtensionDeps
+}
+
+// SetTeamCompletionChecker injects the TeamCompletionChecker at runtime to break circular dependencies.
+// This method should be called after TRPCBuilderDeps is created but before it's used to build agents.
+func (d *TRPCBuilderDeps) SetTeamCompletionChecker(checker TeamCompletionChecker) {
+	d.TeamCompletionChecker = checker
 }
 
 // ModelCatalogGroup returns the model-catalog subset (for tests and future refactors).

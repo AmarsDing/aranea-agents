@@ -25,7 +25,7 @@ import (
 //     segments to find the source agent and inherit its position.
 //
 // Idempotent: the enabled update only touches enabled=FALSE rows; the copy
-// backfill only touches rows with position_key='' whose source has a
+// backfill only touches rows with position_key=” whose source has a
 // non-empty position_key. Re-running is a no-op.
 //
 // The unique index on (position_key, agent_variant) is safe because copy

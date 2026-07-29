@@ -139,7 +139,7 @@ func TestFinalizeRuntimeGraphConfig_deliverableStateField(t *testing.T) {
 
 // TestDeliverableMergeReducer_ParallelTopicUnion 模拟并行成员在同一 superstep
 // 写不同 topic：两次 StateDelta 顺序经 MergeReducer 合并后两个 topic 都必须存活
-//（CoverReducer 语义下后写者会整 map 覆盖、丢先写者的 topic）。
+// （CoverReducer 语义下后写者会整 map 覆盖、丢先写者的 topic）。
 func TestDeliverableMergeReducer_ParallelTopicUnion(t *testing.T) {
 	base := map[string]any{"summary": "base"}
 	// 成员 A 写 topic=research（其 Call 输出 = base 快照 + 自身 topic）

@@ -99,6 +99,7 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	knowledgev1.RegisterKnowledgeServiceServer(srv, s.Knowledge)
 	evaluationv1.RegisterEvaluationServiceServer(srv, s.Eval)
 	a2av1.RegisterA2AServiceServer(srv, s.A2A)
+	a2av1.RegisterFederationServiceServer(srv, s.Federation)
 	ecosystemv1.RegisterEcosystemServiceServer(srv, s.Ecosystem)
 	gatewayv1.RegisterGatewayServiceServer(srv, s.Gateway)
 	taxonomyv1.RegisterTaxonomyServiceServer(srv, s.Taxonomy)

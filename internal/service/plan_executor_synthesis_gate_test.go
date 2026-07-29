@@ -77,10 +77,10 @@ func TestCheckAllTeamsCompleted_FiresWhenLeaseBelongsToOtherSession(t *testing.T
 // recordingCompletionNotifier 记录 NotifyAllTeamsCompleted 调用，并在调用时刻
 // 检查 board lease 是否已释放（门控自身触发不得被门拦住）。
 type recordingCompletionNotifier struct {
-	mu              sync.Mutex
-	pe              *PlanExecutor
-	boardID         string
-	calls           []string
+	mu               sync.Mutex
+	pe               *PlanExecutor
+	boardID          string
+	calls            []string
 	leaseAliveAtCall map[string]bool
 }
 

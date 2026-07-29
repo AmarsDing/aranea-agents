@@ -86,6 +86,7 @@ function mapVaultTreeNode(raw: unknown): VaultTreeNode {
     status: pickStr(r, 'status', 'status'),
     size_bytes: pickI64(r, 'size_bytes', 'sizeBytes'),
     updated_at: pickStr(r, 'updated_at', 'updatedAt'),
+    error_message: pickStr(r, 'error_message', 'errorMessage'),
   };
 }
 
@@ -139,7 +140,8 @@ export async function createCollection(input: CreateCollectionInput): Promise<Kn
   const raw = await svc.CreateCollection({
     name: input.name,
     description: input.description ?? '',
-    embeddingModel: input.embedding_model,
+    embeddingModel: input.embedding_model ?? '',
+    rootPath: input.root_path,
   });
   return mapCollection(raw);
 }

@@ -190,6 +190,10 @@ var ddlMigrations = []ddlMigration{
 	// 20261113 a2a_remote_agents_org_id: add org_id column to a2a_remote_agents for
 	// federation support. Links remote agents to federated organizations.
 	{Version: 20261113, Name: "a2a_remote_agents_org_id", SQL: "sql/migrations/20261113_a2a_remote_agents_org_id.sql"},
+	// 20261114 usage_events_trace_id_index: expression index on
+	// model_token_usage_events metadata.trace_id so AggregateUsageByTrace
+	// (trace completion + 6h backfill) does not seq-scan the events table.
+	{Version: 20261114, Name: "usage_events_trace_id_index", Func: ddlUsageEventsTraceIDIndex},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -1028,4 +1032,24 @@ func ddlTenantRLSPhase1(ctx context.Context, rawDB *sql.DB, entClient *ent.Clien
 		return nil
 	}
 	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261011_tenant_rls_phase1.sql", d, lg)
+}
+
+// ddlUsageEventsTraceIDIndex adds an expression index on
+// model_token_usage_events(metadata.trace_id). AggregateUsageByTrace filters
+// by this expression once per trace completion and per backfill row; without
+// an index every lookup seq-scans the growing events table. The index uses
+// the same Dialect.JSONExtract expression as the query so the planner can
+// always match it. Idempotent: CREATE INDEX IF NOT EXISTS.
+func ddlUsageEventsTraceIDIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, _ loggateway.Logger) error {
+	if rawDB == nil {
+		return nil
+	}
+	traceExpr := d.JSONExtract("metadata_json", "trace_id")
+	// Double parens: Postgres requires index expressions that are not a plain
+	// function call (here: COALESCE(...) ->> 'trace_id') to be parenthesized.
+	stmt := `CREATE INDEX IF NOT EXISTS idx_model_token_usage_events_trace_id ON model_token_usage_events ((` + traceExpr + `))`
+	if _, err := rawDB.ExecContext(ctx, stmt); err != nil {
+		return fmt.Errorf("usage events trace_id index: %w", err)
+	}
+	return nil
 }

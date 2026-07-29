@@ -402,6 +402,7 @@ func (r *skillRepo) assembleSkills(
 ) []biz.Skill {
 	items := make([]biz.Skill, 0, len(rows))
 	for _, e := range rows {
+		md := parseSkillMetadata(r.data.lg, e.MetadataJSON)
 		item := biz.Skill{
 			ID:                e.ID,
 			Slug:              e.SkillKey,
@@ -410,7 +411,8 @@ func (r *skillRepo) assembleSkills(
 			Status:            normalizeSkillStatus(e.Status),
 			Enabled:           e.Enabled,
 			FilesystemMissing: e.FilesystemMissing,
-			SyncOrigin:        parseSkillMetadata(r.data.lg, e.MetadataJSON).SyncOrigin,
+			SyncOrigin:        md.SyncOrigin,
+			StorageDir:        md.StorageDir,
 			Visibility:        e.Visibility,
 			DefaultConfigJSON: e.FallbackConfigJSON,
 			ParentVersionID:   e.ParentVersionID,
@@ -425,6 +427,7 @@ func (r *skillRepo) assembleSkills(
 		if len(item.Tags) == 0 {
 			item.Tags = parseSkillTags(e.ConfigJSON)
 		}
+		item.Triggers = parseSkillTriggers(e.MetadataJSON)
 
 		if st, ok := statsMap[e.ID]; ok {
 			item.InvokeCount = st.Total
@@ -897,7 +900,7 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 	}
 	skillID := fmt.Sprintf("skill_%d", time.Now().UTC().UnixNano())
 	versionID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
-	metaJSON, err := encodeSkillMetadata(in.Tags, in.StorageDir, in.SyncOrigin)
+	metaJSON, err := encodeSkillMetadata(in.Tags, in.StorageDir, in.SyncOrigin, in.Triggers)
 	if err != nil {
 		return biz.Skill{}, err
 	}
@@ -990,7 +993,7 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 	if dataent.IsNotFound(err) {
 		skillID := fmt.Sprintf("skill_%d", time.Now().UTC().UnixNano())
 		versionID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
-		metaJSON, encErr := encodeSkillMetadata(in.Tags, in.StorageDir, biz.SkillSyncOriginFilesystem)
+		metaJSON, encErr := encodeSkillMetadata(in.Tags, in.StorageDir, biz.SkillSyncOriginFilesystem, in.Triggers)
 		if encErr != nil {
 			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, encErr
 		}
@@ -1037,7 +1040,7 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 	outcome := biz.SkillDiskSyncOutcome{}
 	wasPublished := skillRow.Status == "published" || skillRow.Status == "active"
 	now := nowRFC3339()
-	metaJSON, encErr := encodeSkillMetadata(in.Tags, in.StorageDir, biz.SkillSyncOriginFilesystem)
+	metaJSON, encErr := encodeSkillMetadata(in.Tags, in.StorageDir, biz.SkillSyncOriginFilesystem, in.Triggers)
 	if encErr != nil {
 		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, encErr
 	}
@@ -1172,6 +1175,7 @@ func (r *skillRepo) ListEnabledPublishedSkillCandidates(ctx context.Context) ([]
 			Description:   row.Description,
 			Tags:          tags,
 			TaxonomyPaths: mergeTaxonomyPaths(r.data.lg, row.MetadataJSON, row.ConfigJSON),
+			Triggers:      parseSkillTriggers(row.MetadataJSON),
 		})
 	}
 	return out, nil
@@ -1305,22 +1309,59 @@ type skillMetadataEnvelope struct {
 	Tags       []biz.SkillTag `json:"tags"`
 	StorageDir string         `json:"storage_dir"`
 	SyncOrigin string         `json:"sync_origin"`
+	// Triggers 确定性触发词（P1-3），来自 SKILL.md frontmatter。
+	Triggers []string `json:"triggers,omitempty"`
 	// DerivedFrom records merge provenance (source skill IDs) for skills
 	// created by merge_group_with_ai with retire_sources=true.
 	DerivedFrom []string `json:"derived_from,omitempty"`
 }
 
-func encodeSkillMetadata(tags []biz.SkillTag, storageDir, syncOrigin string) (string, error) {
+func encodeSkillMetadata(tags []biz.SkillTag, storageDir, syncOrigin string, triggers []string) (string, error) {
 	md := skillMetadataEnvelope{
 		Tags:       tags,
 		StorageDir: strings.TrimSpace(storageDir),
 		SyncOrigin: strings.TrimSpace(syncOrigin),
+		Triggers:   normalizeSkillTriggers(triggers),
 	}
 	b, err := json.Marshal(md)
 	if err != nil {
 		return "", err
 	}
 	return string(b), nil
+}
+
+// parseSkillTriggers 从 metadata envelope 提取确定性触发词（P1-3）。
+// 旧格式（无 triggers 字段）返回空切片。
+func parseSkillTriggers(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var envelope struct {
+		Triggers []string `json:"triggers"`
+	}
+	if err := json.Unmarshal([]byte(raw), &envelope); err != nil {
+		return nil
+	}
+	return normalizeSkillTriggers(envelope.Triggers)
+}
+
+// normalizeSkillTriggers 去空白、去空串、大小写不敏感去重。
+func normalizeSkillTriggers(triggers []string) []string {
+	if len(triggers) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(triggers))
+	seen := map[string]bool{}
+	for _, t := range triggers {
+		t = strings.TrimSpace(t)
+		if t == "" || seen[strings.ToLower(t)] {
+			continue
+		}
+		seen[strings.ToLower(t)] = true
+		out = append(out, t)
+	}
+	return out
 }
 
 func parseSkillMetadata(lg loggateway.Logger, raw string) skillMetadataEnvelope {
@@ -1381,9 +1422,14 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 		if patch.HasDescription {
 			upd.SetDescription(strings.TrimSpace(patch.Description))
 		}
-		if patch.HasTags {
+		if patch.HasTags || patch.HasTriggers {
 			md := parseSkillMetadata(r.data.lg, e.MetadataJSON)
-			md.Tags = normalizeSkillTags(patch.Tags)
+			if patch.HasTags {
+				md.Tags = normalizeSkillTags(patch.Tags)
+			}
+			if patch.HasTriggers {
+				md.Triggers = normalizeSkillTriggers(patch.Triggers)
+			}
 			metaJSON, jerr := json.Marshal(md)
 			if jerr != nil {
 				return biz.Skill{}, jerr
@@ -1435,9 +1481,14 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 			if patch.HasDescription {
 				upd.SetDescription(strings.TrimSpace(patch.Description))
 			}
-			if patch.HasTags {
+			if patch.HasTags || patch.HasTriggers {
 				md := parseSkillMetadata(r.data.lg, e.MetadataJSON)
-				md.Tags = normalizeSkillTags(patch.Tags)
+				if patch.HasTags {
+					md.Tags = normalizeSkillTags(patch.Tags)
+				}
+				if patch.HasTriggers {
+					md.Triggers = normalizeSkillTriggers(patch.Triggers)
+				}
 				metaJSON, jerr := json.Marshal(md)
 				if jerr != nil {
 					return jerr

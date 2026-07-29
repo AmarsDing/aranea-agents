@@ -55,6 +55,7 @@ export function docToTreeNode(d: KnowledgeDocument): VaultTreeNode {
     status: d.status,
     size_bytes: d.size_bytes,
     updated_at: d.updated_at,
+    error_message: d.error_message,
   };
 }
 
@@ -282,6 +283,7 @@ export function useVaultExplorer(input: {
     // 树/列表
     currentPrefix,
     rootNodes,
+    currentChildren,
     currentFiles,
     currentDirCount,
     treeLoading,

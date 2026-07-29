@@ -248,10 +248,10 @@ func (d Dialect) ColumnExistsQuery(table, column string) (string, []any) {
 
 // IndexExistsQuery returns the SQL query and args to check if an index exists.
 // SQLite: SELECT 1 FROM pragma_index_list(table) WHERE name = ? LIMIT 1
-// Postgres: SELECT index_name FROM pg_indexes WHERE schemaname = current_schema() AND tablename = $1 AND indexname = $2 LIMIT 1
+// Postgres: SELECT indexname FROM pg_indexes WHERE schemaname = current_schema() AND tablename = $1 AND indexname = $2 LIMIT 1
 func (d Dialect) IndexExistsQuery(table, indexName string) (string, []any) {
 	if d.IsPostgres() {
-		return "SELECT index_name FROM pg_indexes WHERE schemaname = current_schema() AND tablename = $1 AND indexname = $2 LIMIT 1", []any{table, indexName}
+		return "SELECT indexname FROM pg_indexes WHERE schemaname = current_schema() AND tablename = $1 AND indexname = $2 LIMIT 1", []any{table, indexName}
 	}
 	return fmt.Sprintf("SELECT 1 FROM pragma_index_list('%s') WHERE name = ? LIMIT 1", table), []any{indexName}
 }

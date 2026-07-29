@@ -4,7 +4,7 @@ import { createTaxonomyServiceClient } from './kratos/taxonomy/v1/index';
 import { createOrganizationServiceClient } from './kratos/organization/v1/index';
 import { createAgentServiceClient } from './kratos/agent/v1/index';
 import { createArtifactServiceClient } from './kratos/artifact/v1/index';
-import { createA2AServiceClient } from './kratos/a2a/v1/index';
+import { createA2AServiceClient, createFederationServiceClient } from './kratos/a2a/v1/index';
 import { createAIRefineServiceClient } from './kratos/ai_refine/v1/index';
 import { createEcosystemServiceClient } from './kratos/ecosystem/v1/index';
 import { createGatewayServiceClient } from './kratos/gateway/v1/index';
@@ -147,6 +147,10 @@ export function createEvaluationService() {
 
 export function createA2AService() {
   return createA2AServiceClient(requestHandler);
+}
+
+export function createFederationService() {
+  return createFederationServiceClient(requestHandler);
 }
 
 export function createAIRefineService() {

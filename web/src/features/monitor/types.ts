@@ -23,10 +23,18 @@ export type MonitorTrace = {
   created_at: string;
   updated_at: string;
   deleted_at: string;
+  /** Resolved display names joined from agents/teams (traces only); '' when dangling. */
+  agent_name: string;
+  team_name: string;
+  /** Correlation keys (traces only); '' for event rows. Used by detail dialog flow-log queries. */
+  session_id: string;
+  run_id: string;
   /** Denormalized from config_json for table columns (OPT-05 Runs metrics). */
   duration_ms?: number;
   total_tokens?: number;
   total_cost_usd?: number;
+  /** Original stored domain (chat/team/graph/...) from config_json; shown as type badge. */
+  domain?: string;
 };
 
 /** Monitor trace detail — mirrors backend GetMonitorTrace response. */
@@ -76,6 +84,10 @@ export type MonitorEventsQuery = {
   event_type?: string;
   agent_id?: string;
   status?: string;
+  /** 前缀匹配任一（与 event_type 并集） */
+  event_types?: string[];
+  /** 前缀排除（如 ['skill.filesystem.'] 隐藏治理噪音） */
+  exclude_event_types?: string[];
 };
 
 export type MonitorTracesQuery = {
@@ -148,6 +160,23 @@ export type MonitorAlertRule = {
   notify_webhook_url?: string;
   notify_channel_id?: string;
   cooldown_minutes?: number;
+};
+
+/** Alert metric directory entry — mirrors backend AlertMetricInfo from ListAlertMetrics. */
+export type AlertMetricInfo = {
+  /** Technical key, e.g. "runner.error_rate". */
+  key: string;
+  /** Short English display name; UI localizes known keys and falls back to this. */
+  name: string;
+  /** What the metric measures and when it fires. */
+  description: string;
+  /** "ratio" (0..1) or "count". */
+  unit: string;
+  default_window_minutes: number;
+  suggested_threshold: number;
+  /** Value evaluated at request time over the default window. */
+  current_value: number;
+  evaluated_at: string;
 };
 
 // Self-check types

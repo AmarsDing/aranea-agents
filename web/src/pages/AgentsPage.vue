@@ -5,7 +5,7 @@
     <agents-filters-card
       v-model:keyword="keyword"
       v-model:selected-status="selectedStatus"
-      v-model:selected-category="selectedTaxonomy"
+      v-model:selected-taxonomy="selectedTaxonomy"
       v-model:selected-creator="selectedCreator"
       v-model:selected-provider="selectedProvider"
       v-model:view-mode="viewMode"

@@ -64,13 +64,16 @@ func (r *completionMonitorRepo) PatchRunnerCompletionMetadata(ctx context.Contex
 }
 
 func (r *completionMonitorRepo) EnsureTraceSchema(context.Context) error { return nil }
+func (r *completionMonitorRepo) InterruptStaleTraces(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
 func (r *completionMonitorRepo) InsertMonitorTrace(context.Context, MonitorTraceWrite) error {
 	return nil
 }
 func (r *completionMonitorRepo) UpsertMonitorTraceSpan(context.Context, MonitorTraceSpanWrite) error {
 	return nil
 }
-func (r *completionMonitorRepo) UpdateMonitorTraceCompletion(_ context.Context, _ string, _ string, _ int64, _, _ int, _ int64, _ float64) error {
+func (r *completionMonitorRepo) UpdateMonitorTraceCompletion(_ context.Context, _ string, _ MonitorTraceCompletion) error {
 	return nil
 }
 func (r *completionMonitorRepo) ListRecentRunnerCompletions(_ context.Context, _ time.Duration, _ int) ([]RunnerCompletionRow, error) {

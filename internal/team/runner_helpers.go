@@ -39,6 +39,13 @@ func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamR
 }
 
 // publishTeamStepActivity publishes a MemberSession lifecycle event for a team member.
+//
+// 2026-07-28 成员终态单写者重设计：runner 只允许发布 created（V=1 生命周期
+// 事实）。成员 completed 投影已删除——「成员产出最终文本」是消息生命周期
+// 而非工作结果（12:33：成员返回文本即显示成功，实际安装失败）。成员终态
+// （completed/failed/skipped）由 service 终态 outcome pass 唯一裁决发布
+// （outcome 哨兵权威带，见 biz.MemberSessionVersion*）；完整证据（中断
+// session / 失败 step / 交付物门 / 验证门）只在团队终态时刻齐备。
 func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRunRecord, teamID, agentKey, agentName string, eventType biz.ActivityEventType, status biz.ActivityStatus, stage string, step any) {
 	if !r.hasPublisher() {
 		return
@@ -56,32 +63,19 @@ func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRunRec
 			)
 		}
 	}
+	// 2026-07-29 F-2 钳制：runner 只发布 created（running）生命周期事实，
+	// 终态映射（completed/failed/skipped）与 updated 事件分支已按单写者
+	// 重设计删除——终态落入 evidence 带会被 outcome 哨兵守卫静默拒绝，
+	// 且消息生命周期不得冒充工作结果。status/eventType 参数仅用于下方
+	// notice meta 透传，不再映射为 MemberSession 状态。
 	msStatus := biz.MemberSessionStatusRunning
-	switch status {
-	case biz.ActivityStatusCompleted:
-		msStatus = biz.MemberSessionStatusCompleted
-	case biz.ActivityStatusFailed:
-		msStatus = biz.MemberSessionStatusFailed
-	case biz.ActivityStatusCancelled:
-		msStatus = biz.MemberSessionStatusSkipped
-	case biz.ActivityStatusPending:
-		msStatus = biz.MemberSessionStatusPending
-	}
 	teamStageID := string(agent.NewTeamStageActivityID(teamID))
 	// 统一使用 v2 确定性 ID（与 spirit_team service 同一公式），
 	// 保证 runner 与 service 写入同一 member_sessions_v2 行（upsert-by-ID）。
 	// run.ID 是 v1 随机 UUID，仅用于 meta，不可写入 v2 实体。
 	teamRunV2ID := agent.NewTeamRunV2ID(teamStageID)
-	// F1 (12:33 修复)：补 TaskID（与 service 路径同公式），并去除 Version 硬编码 1。
-	// 旧实现所有事件均 Version=1：created(V=1) 落库后，后续 updated(V=1) 被
-	// UpsertMemberSession 的 VersionLT 守卫静默拒绝 → 成员状态永久卡 running，
-	// 重启后被 v2 recovery 批量标 failed。现按事件类型定版本（created=1 /
-	// updated=2），与 service 侧 publishV2TeamRunCompletion 的 V=2 约定一致；
-	// 两条路径同版本冲突时由版本守卫幂等拒绝（先到先写，状态语义等价）。
-	msVersion := int64(2)
-	if eventType == biz.ActivityEventCreated {
-		msVersion = 1
-	}
+	// 版本带模型（biz.MemberSessionVersion*）：Version 是写者权威层级而非
+	// 任意编号。runner 只写 created 带（V=1）；终态 outcome 哨兵带专属 service。
 	ms := biz.MemberSession{
 		ID:              string(agent.NewMemberSessionActivityID(teamRunV2ID, agentKey)),
 		TeamRunID:       teamRunV2ID,
@@ -93,14 +87,12 @@ func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRunRec
 		AgentName:       agentName,
 		Status:          msStatus,
 		StartedAt:       time.Now().UTC(),
-		Version:         msVersion,
+		Version:         biz.MemberSessionVersionCreated,
 	}
-	if eventType == biz.ActivityEventCreated {
-		r.publishEvent(ctx, biz.NewMemberSessionCreatedEvent(ms))
-	} else {
-		r.publishEvent(ctx, biz.NewMemberSessionUpdatedEvent(ms))
-	}
-	// Also emit a notice so OrchestrationStatusStore can project member card status.
+	r.publishEvent(ctx, biz.NewMemberSessionCreatedEvent(ms))
+	// Emit a notice carrying the member's live progress for notice consumers;
+	// member terminal status arrives only with the service outcome pass
+	// (outcome 哨兵权威带，见 biz.MemberSessionVersion*).
 	meta := map[string]any{
 		"run_id":           run.ID,
 		"step":             step,
@@ -214,7 +206,40 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRunRecord, t0 ti
 		r.publishTeamRunFailedActivity(ctx, *run, msg)
 	}
 	r.publishTeamRunSummary(ctx, *run)
+	r.recordRunCompletion(ctx, *run, msg, t0)
 	r.lg.With(loggateway.SessionID(strings.TrimSpace(run.SessionID))).Warn(msg, loggateway.StepID("team.run.finish"), loggateway.Str("team_id", run.TeamID), loggateway.Str("run_id", run.ID))
+}
+
+// recordRunCompletion writes the runner.completion monitor event for a
+// terminal team run (success or error). Classic teams and spirit-orchestrated
+// teams both execute through this Runner, making it the single funnel that
+// feeds the Runner metrics panel and the runner.error_rate alert rule
+// (restored after the Activity-First migration dropped the legacy writer).
+func (r *Runner) recordRunCompletion(ctx context.Context, run biz.TeamRunRecord, errMsg string, t0 time.Time) {
+	if r == nil || r.monitor == nil {
+		return
+	}
+	de := biz.DomainEvent{
+		Type:       biz.DomainEventRunnerCompletion,
+		SessionID:  strings.TrimSpace(run.SessionID),
+		RunID:      strings.TrimSpace(run.ID),
+		TeamID:     strings.TrimSpace(run.TeamID),
+		DurationMS: time.Since(t0).Milliseconds(),
+		Timestamp:  time.Now().UTC(),
+		RunKind:    "team",
+	}
+	if msg := strings.TrimSpace(errMsg); msg != "" {
+		de.Error = &biz.DomainError{Message: msg}
+	}
+	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	if err := biz.RecordRunnerCompletion(recCtx, r.monitor, de); err != nil {
+		r.lg.Warn("runner.completion 监控事件落库失败",
+			loggateway.StepID("team.runner_completion_fail"),
+			loggateway.Str("team_id", run.TeamID),
+			loggateway.Str("run_id", run.ID),
+			loggateway.Err(err))
+	}
 }
 
 func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRunRecord) {
@@ -268,7 +293,7 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID 
 		return
 	}
 	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID, cachedTok)
-	if r.hasPublisher() {
-		r.publishTeamStepActivity(ctx, run, teamID, ag.AgentKey, saved.AgentName, biz.ActivityEventCompleted, biz.ActivityStatusCompleted, "completed", saved)
-	}
+	// 2026-07-28 单写者重设计：此处不再发布成员 completed 事件。step 落库
+	// 即消息生命周期的事实记录；成员终态由 service 终态 outcome pass（哨兵
+	// 权威带）依据完整证据链唯一裁决——成员产出最终文本不代表工作成功（12:33）。
 }

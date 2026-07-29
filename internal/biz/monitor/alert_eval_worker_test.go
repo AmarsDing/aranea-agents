@@ -65,6 +65,10 @@ func (r *workerTestRepo) CountMonitorEventsSince(ctx context.Context, eventKey, 
 	return 5, nil
 }
 
+func (r *workerTestRepo) DeleteMonitorEventsOlderThan(ctx context.Context, olderThan time.Time) (int, error) {
+	return 0, nil
+}
+
 func (r *workerTestRepo) AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error) {
 	return 0, nil
 }
@@ -89,8 +93,12 @@ func (r *workerTestRepo) UpsertMonitorTraceSpan(ctx context.Context, sw TraceSpa
 	return nil
 }
 
-func (r *workerTestRepo) UpdateMonitorTraceCompletion(ctx context.Context, traceID string, status string, durationMs int64, spanCount, errorCount int, totalTokens int64, totalCostUsd float64) error {
+func (r *workerTestRepo) UpdateMonitorTraceCompletion(ctx context.Context, traceID string, c TraceCompletion) error {
 	return nil
+}
+
+func (r *workerTestRepo) InterruptStaleTraces(ctx context.Context, olderThan time.Time) (int64, error) {
+	return 0, nil
 }
 
 func (r *workerTestRepo) EnsureTraceSchema(ctx context.Context) error {

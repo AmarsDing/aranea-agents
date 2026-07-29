@@ -61,14 +61,17 @@ export type KnowledgeChunk = {
   score: number | undefined;
 };
 
+// CreateCollectionRequest creates a Vault (V2: local folder as source of truth).
+// root_path is required; embedding_model is optional (empty = lexical-only vault, no semantic layer).
 export type CreateCollectionRequest = {
   //
   // Behaviors: REQUIRED
   name: string | undefined;
   description: string | undefined;
+  embeddingModel: string | undefined;
   //
   // Behaviors: REQUIRED
-  embeddingModel: string | undefined;
+  rootPath: string | undefined;
 };
 
 export type GetCollectionRequest = {
@@ -143,6 +146,7 @@ export type VaultTreeNode = {
   status: string | undefined;
   sizeBytes: number | undefined;
   updatedAt: string | undefined;
+  errorMessage: string | undefined;
 };
 
 export type ListVaultTreeRequest = {

@@ -158,6 +158,14 @@ func TestIsSensitiveKey(t *testing.T) {
 		{"normal_with_spaces", "  api_key  ", true},
 		{"non_sensitive", "display_name", false},
 		{"non_sensitive_model", "model", false},
+		// Token *usage metric* keys are counters, not credentials — redacting
+		// them breaks the Runs Tokens column ("******" instead of the count).
+		{"metric_total_tokens", "total_tokens", false},
+		{"metric_prompt_tokens", "prompt_tokens", false},
+		{"metric_completion_tokens", "completion_tokens", false},
+		{"metric_input_tokens", "input_tokens", false},
+		{"metric_output_tokens", "output_tokens", false},
+		{"metric_usage_total_tokens", "usage_total_tokens", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -183,6 +191,11 @@ func TestSanitizeJSONValue(t *testing.T) {
 		{"nested_map", map[string]any{"config": map[string]any{"token": "abc", "port": float64(8080)}}, map[string]any{"config": map[string]any{"token": "******", "port": float64(8080)}}},
 		{"array_value", []any{"a", float64(1)}, []any{"a", float64(1)}},
 		{"array_with_map", []any{map[string]any{"password": "pw"}}, []any{map[string]any{"password": "******"}}},
+		{"trace_config_metrics_kept", map[string]any{
+			"domain": "chat", "duration_ms": float64(1200), "total_tokens": float64(345), "total_cost_usd": float64(0.002),
+		}, map[string]any{
+			"domain": "chat", "duration_ms": float64(1200), "total_tokens": float64(345), "total_cost_usd": float64(0.002),
+		}},
 		{"empty_map", map[string]any{}, map[string]any{}},
 		{"empty_array", []any{}, []any{}},
 		{"deeply_nested", map[string]any{

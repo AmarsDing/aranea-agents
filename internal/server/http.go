@@ -136,6 +136,7 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	knowledgev1.RegisterKnowledgeServiceHTTPServer(srv, s.Knowledge)
 	evaluationv1.RegisterEvaluationServiceHTTPServer(srv, s.Eval)
 	a2av1.RegisterA2AServiceHTTPServer(srv, s.A2A)
+	a2av1.RegisterFederationServiceHTTPServer(srv, s.Federation)
 	ecosystemv1.RegisterEcosystemServiceHTTPServer(srv, s.Ecosystem)
 	gatewayv1.RegisterGatewayServiceHTTPServer(srv, s.Gateway)
 	taxonomyv1.RegisterTaxonomyServiceHTTPServer(srv, s.Taxonomy)

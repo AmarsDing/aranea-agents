@@ -1,4 +1,4 @@
-﻿package data
+package data
 
 import (
 	"context"
@@ -227,7 +227,7 @@ func (r *proposalRepo) GetByID(ctx context.Context, id string) (biz.KnowledgePro
 	       FROM learning_proposals WHERE id = ?`)
 	var p biz.KnowledgeProposal
 	var validatedAt sql.NullString
-		var createdAt, updatedAt string
+	var createdAt, updatedAt string
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, []any{id},
 		&p.ID, &p.AgentID, &p.PatternID, &p.Title, &p.Content, &p.Kind, &p.Status,
 		&validatedAt, &p.ApprovedBy, &createdAt, &updatedAt)

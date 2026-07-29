@@ -51,7 +51,11 @@ func TestTeamTurnBaseRunOptions_InjectsTeamIDRuntimeState(t *testing.T) {
 	}
 }
 
-func TestPersistStep_EmitsFinished(t *testing.T) {
+// TestPersistStep_NoMemberCompletedProjection 锚定 2026-07-28 成员终态单写者
+// 重设计：persistStep 只落库成员 step，不得发布 member-session completed 事件。
+// 「成员产出最终文本」是消息生命周期而非工作结果——成员终态由 service 终态
+// outcome pass（outcome 哨兵权威带）唯一裁决，runner 不再投影成功。
+func TestPersistStep_NoMemberCompletedProjection(t *testing.T) {
 	v2Bus := event.NewV2Bus()
 	ch, unsub := v2Bus.Subscribe(biz.EventSubscribeOptions{})
 	defer unsub()
@@ -76,39 +80,18 @@ func TestPersistStep_EmitsFinished(t *testing.T) {
 	if repo.steps[0].ToolCallCount != 2 {
 		t.Fatalf("tool_call_count=%d", repo.steps[0].ToolCallCount)
 	}
-	// persistStep now only emits "completed" (finished) event.
-	// The "created" (started) event is emitted by PublishTeamStepStarted
-	// at node_start time, or by ensureGraphRunStepsFallback for the
-	// fallback path.
-	var finished bool
-	select {
-	case e := <-ch:
-		// May receive MemberSessionUpdatedEvent and/or system.notice; accept either.
-		switch ev := e.(type) {
-		case *biz.MemberSessionUpdatedEvent:
-			if ev.MemberSession.AgentName != "Worker A" {
-				t.Fatalf("agent_name=%q want %q", ev.MemberSession.AgentName, "Worker A")
+	// 成员终态事件只能来自 service outcome pass：runner 侧任何
+	// MemberSessionUpdatedEvent（completed）都是消息生命周期的越权投影。
+	for {
+		select {
+		case e := <-ch:
+			if ev, ok := e.(*biz.MemberSessionUpdatedEvent); ok {
+				t.Fatalf("persistStep must not publish member-session completed, got status=%s agent=%s",
+					ev.MemberSession.Status, ev.MemberSession.AgentKey)
 			}
-			if ev.MemberSession.Status != biz.MemberSessionStatusCompleted {
-				t.Fatalf("status=%q want completed", ev.MemberSession.Status)
-			}
-			finished = true
-		case *biz.SystemNoticeEvent:
-			if ev.NoticeType != "completed" {
-				t.Fatalf("notice=%q want completed", ev.NoticeType)
-			}
-			csid, _ := ev.Meta["child_session_id"].(string)
-			if csid != "sess-1" {
-				t.Fatalf("child_session_id=%q want %q", csid, "sess-1")
-			}
-			finished = true
 		default:
-			t.Fatalf("expected MemberSessionUpdatedEvent or SystemNoticeEvent, got %T", e)
+			return
 		}
-	default:
-	}
-	if !finished {
-		t.Fatal("expected completed event, got none")
 	}
 }
 

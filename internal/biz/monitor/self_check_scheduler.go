@@ -282,6 +282,16 @@ func (m *SelfCheckUnhealthyCountMetric) Key() string { return "monitor.selfcheck
 func (m *SelfCheckUnhealthyCountMetric) Description() string {
 	return "Number of unhealthy self-check results"
 }
+func (m *SelfCheckUnhealthyCountMetric) Catalog() AlertMetricInfo {
+	return AlertMetricInfo{
+		Key:                  m.Key(),
+		Name:                 "Unhealthy self-checks",
+		Description:          "Number of subsystem self-checks (DB, event bus, WebSocket, trace projector, etc.) currently failing or degraded.",
+		Unit:                 "count",
+		DefaultWindowMinutes: 5,
+		SuggestedThreshold:   1,
+	}
+}
 func (m *SelfCheckUnhealthyCountMetric) Evaluate(ctx context.Context, _ time.Duration) (float64, error) {
 	if m.scheduler == nil {
 		return 0, nil

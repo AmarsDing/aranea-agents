@@ -91,20 +91,20 @@
 
     <template #body-cell-stats="props">
       <q-td :props="props">
-        <skill-stats-strip :skill="props.row" />
+        <skill-stats-hover-chart :skill="props.row" :load-health="loadHealth" />
       </q-td>
     </template>
 
     <template #body-cell-last="props">
       <q-td :props="props">
         <template v-if="props.row.last_invoked_at">
-          <div class="app-registry-cell-primary">{{ props.row.last_agent_display_name || '未知 Agent' }}</div>
+          <div class="app-registry-cell-primary">{{ props.row.last_agent_display_name || t('skillsPage.unknownAgent') }}</div>
           <div class="text-caption text-grey-7">
             {{ formatRelativeTime(props.row.last_invoked_at) }}
             <q-tooltip>{{ formatDate(props.row.last_invoked_at) }}</q-tooltip>
           </div>
         </template>
-        <span v-else class="text-caption text-grey-6">未调用</span>
+        <span v-else class="text-caption text-grey-6">{{ t('skillsPage.neverInvoked') }}</span>
       </q-td>
     </template>
 
@@ -117,12 +117,25 @@
             dense
             round
             color="positive"
-            icon="publish"
+            icon="play_circle"
             :disable="!props.row.permissions.can_edit || publishingId === props.row.id"
             :loading="publishingId === props.row.id"
             @click="emit('publish', props.row)"
           >
-            <q-tooltip>发布（发布后才能在运行时挂载并启用）</q-tooltip>
+            <q-tooltip>{{ t('skillsPage.enableTooltip') }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            v-else
+            flat
+            dense
+            round
+            color="secondary"
+            icon="storefront"
+            :disable="!props.row.permissions.can_edit || publishingEcosystemId === props.row.id"
+            :loading="publishingEcosystemId === props.row.id"
+            @click="emit('publish-ecosystem', props.row)"
+          >
+            <q-tooltip>{{ t('skillsPage.publishEcosystemTooltip') }}</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -133,7 +146,7 @@
             :disable="!props.row.permissions.can_edit"
             @click="emit('edit-meta', props.row)"
           >
-            <q-tooltip>编辑元数据</q-tooltip>
+            <q-tooltip>{{ t('skillsPage.editMetaTooltip') }}</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -144,7 +157,7 @@
             :disable="!props.row.permissions.can_edit"
             @click="emit('edit-files', props.row)"
           >
-            <q-tooltip>编辑文件</q-tooltip>
+            <q-tooltip>{{ t('skillsPage.editFilesTooltip') }}</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -155,7 +168,7 @@
             :disable="!props.row.permissions.can_delete"
             @click="emit('delete', props.row)"
           >
-            <q-tooltip>删除</q-tooltip>
+            <q-tooltip>{{ t('common.delete') }}</q-tooltip>
           </q-btn>
         </div>
       </q-td>
@@ -164,10 +177,11 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
-import SkillStatsStrip from './SkillStatsStrip.vue';
-import type { Skill, SkillTag } from '../../features/skills/types';
+import SkillStatsHoverChart from './SkillStatsHoverChart.vue';
+import type { Skill, SkillHealthMetric, SkillTag } from '../../features/skills/types';
 import {
   SKILL_TABLE_COLUMNS,
   skillStatusLabel as statusLabel,
@@ -179,17 +193,24 @@ defineProps<{
   rows: Skill[];
   loading: boolean;
   togglingId?: string;
-  /** 正在调用发布的 skill id，用于按钮 loading */
+  /** 正在调用启用（生命周期发布）的 skill id，用于按钮 loading */
   publishingId?: string;
+  /** 正在发布到生态市场的 skill id，用于按钮 loading */
+  publishingEcosystemId?: string;
+  /** 懒加载单行健康数据（统计悬浮图形面板用，store 方法经 Page 注入） */
+  loadHealth: (skillId: string) => Promise<SkillHealthMetric>;
 }>();
 
 const emit = defineEmits<{
   'toggle-enabled': [skill: Skill, enabled: boolean];
   publish: [skill: Skill];
+  'publish-ecosystem': [skill: Skill];
   'edit-meta': [skill: Skill];
   'edit-files': [skill: Skill];
   delete: [skill: Skill];
 }>();
+
+const { t } = useI18n();
 
 const tablePagination = { rowsPerPage: 0 };
 
@@ -218,14 +239,14 @@ function groupSkillTags(tags: SkillTag[]): SkillTagGroup[] {
 
 /** 相对时间：<1min 刚刚，<60min N 分钟前，<24h N 小时前，<7d N 天前，否则本地化日期。 */
 function formatRelativeTime(value: string) {
-  const t = new Date(value).getTime();
-  if (Number.isNaN(t)) return '-';
-  const diff = Date.now() - t;
-  if (diff < 60_000) return '刚刚';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`;
-  return new Date(t).toLocaleDateString();
+  const ts = new Date(value).getTime();
+  if (Number.isNaN(ts)) return '-';
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return t('skillsPage.timeJustNow');
+  if (diff < 3_600_000) return t('skillsPage.timeMinutesAgo', { n: Math.floor(diff / 60_000) });
+  if (diff < 86_400_000) return t('skillsPage.timeHoursAgo', { n: Math.floor(diff / 3_600_000) });
+  if (diff < 7 * 86_400_000) return t('skillsPage.timeDaysAgo', { n: Math.floor(diff / 86_400_000) });
+  return new Date(ts).toLocaleDateString();
 }
 
 function formatDate(value?: string) {

@@ -59,16 +59,17 @@ func (s *KnowledgeService) ListDocumentLinks(ctx context.Context, req *v1.ListDo
 
 func toProtoVaultTreeNode(n biz.KnowledgeVaultTreeNode) *v1.VaultTreeNode {
 	return &v1.VaultTreeNode{
-		Name:      n.Name,
-		Path:      n.Path,
-		Kind:      n.Kind,
-		DocId:     n.DocID,
-		Summary:   n.Summary,
-		Tags:      n.Tags,
-		DocType:   n.DocType,
-		Status:    n.Status,
-		SizeBytes: n.SizeBytes,
-		UpdatedAt: n.UpdatedAt,
+		Name:         n.Name,
+		Path:         n.Path,
+		Kind:         n.Kind,
+		DocId:        n.DocID,
+		Summary:      n.Summary,
+		Tags:         n.Tags,
+		DocType:      n.DocType,
+		Status:       n.Status,
+		SizeBytes:    n.SizeBytes,
+		UpdatedAt:    n.UpdatedAt,
+		ErrorMessage: n.ErrorMessage,
 	}
 }
 

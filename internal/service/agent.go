@@ -669,7 +669,12 @@ func (s *AgentService) CreateAgent(ctx context.Context, req *v1.CreateAgentReque
 	if err != nil {
 		return nil, err
 	}
-	s.mon.RecordAdminAudit(ctx, "agent.create", "agent", created.ID, fmt.Sprintf("key=%s", created.AgentKey))
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbCreate, "agent"),
+		Resource:   "agent",
+		ResourceID: created.ID,
+		Summary:    fmt.Sprintf("key=%s", created.AgentKey),
+	})
 	return s.toProtoAgentEnriched(ctx, created), nil
 }
 
@@ -705,7 +710,12 @@ func (s *AgentService) UpdateAgent(ctx context.Context, req *v1.UpdateAgentReque
 		}
 		return nil, err
 	}
-	s.mon.RecordAdminAudit(ctx, "agent.update", "agent", a.ID, fmt.Sprintf("key=%s", a.AgentKey))
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbUpdate, "agent"),
+		Resource:   "agent",
+		ResourceID: a.ID,
+		Summary:    fmt.Sprintf("key=%s", a.AgentKey),
+	})
 	invalidateAgentBuildCache(a.ID)
 	return s.toProtoAgentEnriched(ctx, a), nil
 }
@@ -715,11 +725,21 @@ func (s *AgentService) DeleteAgent(ctx context.Context, req *v1.DeleteAgentReque
 	if err := s.assertAgentMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	// 先取 key 供审计 detail 使用（best-effort，取不到不阻断删除）。
+	summary := ""
+	if a, err := s.uc.Get(ctx, req.GetId()); err == nil {
+		summary = fmt.Sprintf("key=%s", a.AgentKey)
+	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	invalidateAgentBuildCache(req.GetId())
-	s.mon.RecordAdminAudit(ctx, "agent.delete", "agent", req.GetId(), "")
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbDelete, "agent"),
+		Resource:   "agent",
+		ResourceID: req.GetId(),
+		Summary:    summary,
+	})
 	return &emptypb.Empty{}, nil
 }
 

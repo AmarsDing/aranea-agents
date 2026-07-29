@@ -23,7 +23,7 @@ func DirectorySlugMismatch(dirSlug, candidateSlug string) *biz.SkillImportIssue 
 	return nil
 }
 
-func ValidateSkillPackage(files map[string][]byte, dirSlugHint string, existing []biz.SkillSimilaritySource, skipDuplicateCheck bool) (biz.SkillImportCandidate, []biz.SkillTag) {
+func ValidateSkillPackage(files map[string][]byte, dirSlugHint string, existing []biz.SkillSimilaritySource, skipDuplicateCheck bool) (biz.SkillImportCandidate, []biz.SkillTag, []string) {
 	bodyBytes, ok := files["SKILL.md"]
 	if !ok {
 		bodyBytes, ok = files["skill.md"]
@@ -34,13 +34,14 @@ func ValidateSkillPackage(files map[string][]byte, dirSlugHint string, existing 
 			ValidationStatus: "block",
 			StatusIcon:       "block",
 			Blocks:           []biz.SkillImportIssue{{Type: "missing_skill_md", Message: "SKILL.md is required"}},
-		}, nil
+		}, nil, nil
 	}
 	body := string(bodyBytes)
 	parsed := manifest.Parse(body)
 	name := parsed.Name
 	desc := parsed.Description
 	tags := parsed.Tags
+	triggers := parsed.Triggers
 	slug := slugify(strutil.FirstNonEmpty(name, pathBaseSkill(dirSlugHint)))
 	if slug == "" {
 		slug = slugify(pathBaseSkill(dirSlugHint))
@@ -82,7 +83,7 @@ func ValidateSkillPackage(files map[string][]byte, dirSlugHint string, existing 
 			}
 		}
 	}
-	return candidate, tags
+	return candidate, tags, triggers
 }
 
 // ReadSkillDirFiles reads regular files under dir into a slash-separated relative map.

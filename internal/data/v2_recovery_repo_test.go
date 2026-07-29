@@ -151,8 +151,8 @@ func TestV2RecoveryRepo_FailOrphanedInFlight(t *testing.T) {
 	if ms.Status != biz.MemberSessionStatusFailed {
 		t.Errorf("member session status = %s, want failed", ms.Status)
 	}
-	if ms.Version != 9 {
-		t.Errorf("member session version = %d, want 9 (8+1)", ms.Version)
+	if ms.Version != biz.MemberSessionVersionOutcome {
+		t.Errorf("member session version = %d, want outcome authority band (%d)", ms.Version, biz.MemberSessionVersionOutcome)
 	}
 	if ms.FinishedAt == nil || !ms.FinishedAt.Equal(recoverAt) {
 		t.Errorf("member session finished_at = %v, want %v", ms.FinishedAt, recoverAt)

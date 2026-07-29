@@ -23,11 +23,12 @@ type turnRecorder interface {
 type chatTurnMetrics struct {
 	sessions biz.SessionTurnManager
 	usage    *biz.UsageUsecase
+	monitor  *biz.MonitorUsecase
 	lg       loggateway.Logger
 }
 
-func newChatTurnMetrics(sessions biz.SessionTurnManager, usage *biz.UsageUsecase, lg loggateway.Logger) *chatTurnMetrics {
-	return &chatTurnMetrics{sessions: sessions, usage: usage, lg: lg}
+func newChatTurnMetrics(sessions biz.SessionTurnManager, usage *biz.UsageUsecase, monitor *biz.MonitorUsecase, lg loggateway.Logger) *chatTurnMetrics {
+	return &chatTurnMetrics{sessions: sessions, usage: usage, monitor: monitor, lg: lg}
 }
 
 // Compile-time interface check.
@@ -86,6 +87,42 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 			event.P("usage_kind", biz.UsageKindChatTurn),
 			event.P("status", p.Status),
 		)
+	}
+	m.recordRunnerCompletion(ctx, p, traceID)
+}
+
+// recordRunnerCompletion writes the runner.completion monitor event for a
+// terminal chat turn. This restores the data stream behind the Runner
+// metrics panel and the runner.error_rate alert rule — the legacy writer
+// (EventBus runner-completion handler) was removed in the Activity-First
+// migration (ab9ee9e07) without a replacement, leaving the stream dark
+// since 2026-06-13.
+func (m *chatTurnMetrics) recordRunnerCompletion(ctx context.Context, p TurnUsageParams, traceID string) {
+	if m == nil || m.monitor == nil {
+		return
+	}
+	de := biz.DomainEvent{
+		Type:       biz.DomainEventRunnerCompletion,
+		SessionID:  p.SessionID,
+		RunID:      p.RunID,
+		Author:     p.AgentKey,
+		AgentID:    p.AgentID,
+		TraceID:    traceID,
+		DurationMS: p.Latency.Milliseconds(),
+		Timestamp:  time.Now().UTC(),
+		RunKind:    "chat",
+	}
+	if p.Status == "error" {
+		de.Error = &biz.DomainError{Message: p.ErrMsg}
+	}
+	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	if err := biz.RecordRunnerCompletion(recCtx, m.monitor, de); err != nil {
+		m.lg.Warn("runner.completion 监控事件落库失败",
+			loggateway.StepID("chat.runner_completion_fail"),
+			loggateway.Str("session_id", p.SessionID),
+			loggateway.Str("run_id", p.RunID),
+			loggateway.Err(err))
 	}
 }
 

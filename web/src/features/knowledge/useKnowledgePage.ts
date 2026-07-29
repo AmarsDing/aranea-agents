@@ -39,7 +39,7 @@ export function useKnowledgePage() {
   const searchLoading = ref(false);
   const searchRan = ref(false);
   const embedderSaving = ref(false);
-  const createForm = ref({ name: '', description: '', embedding_model: 'text-embedding-3-small' });
+  const createForm = ref({ name: '', description: '', embedding_model: '', root_path: '' });
   const ingestForm = ref({
     source: '',
     mime_type: 'text/plain',
@@ -123,13 +123,17 @@ export function useKnowledgePage() {
   }
 
   function openCreateCollection() {
-    createForm.value = { name: '', description: '', embedding_model: 'text-embedding-3-small' };
+    createForm.value = { name: '', description: '', embedding_model: '', root_path: '' };
     createOpen.value = true;
   }
 
   async function submitCreateCollection() {
     if (!createForm.value.name.trim()) {
-      $q.notify({ type: 'warning', message: '请填写名称' });
+      $q.notify({ type: 'warning', message: t('knowledgePage.createNameRequired') });
+      return;
+    }
+    if (!createForm.value.root_path.trim()) {
+      $q.notify({ type: 'warning', message: t('knowledgePage.createRootPathRequired') });
       return;
     }
     createLoading.value = true;
@@ -138,13 +142,14 @@ export function useKnowledgePage() {
         name: createForm.value.name.trim(),
         description: createForm.value.description.trim(),
         embedding_model: createForm.value.embedding_model.trim(),
+        root_path: createForm.value.root_path.trim(),
       });
       createOpen.value = false;
       await loadCollections();
       selectedId.value = col.id;
-      $q.notify({ type: 'positive', message: '集合已创建' });
+      $q.notify({ type: 'positive', message: t('knowledgePage.createSuccess') });
     } catch (e) {
-      $q.notify({ type: 'negative', message: friendlyError(e) || '创建失败' });
+      $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.createFailed') });
     } finally {
       createLoading.value = false;
     }

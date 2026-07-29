@@ -15,5 +15,8 @@ import (
 // NewEvaluationRunner is defined in evaluation_runner.go (EP-RT-08).
 
 func NewSkillDBRepository(uc *biz.SkillUsecase, lg loggateway.Logger) trpcskill.Repository {
-	return skilltrpc.NewDBRepositoryAdapter(uc, 2*time.Minute, lg)
+	adapter := skilltrpc.NewDBRepositoryAdapter(uc, 2*time.Minute, lg)
+	// P0：Skill 变更（启用/删除/回滚/正文）主动失效运行时快照，替代纯 TTL 兜底。
+	uc.SetRuntimeCacheInvalidator(adapter)
+	return adapter
 }

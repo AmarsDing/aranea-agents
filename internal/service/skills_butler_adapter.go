@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/skill/manifest"
 	"aranea-agents/internal/tools/skills_butler"
 	"aranea-agents/pkg/apierror"
 )
@@ -192,9 +193,10 @@ func (a skillsButlerRegistrationAdapter) RegisterSkill(ctx context.Context, agen
 		return nil
 	}
 	_, err := a.uc.Create(ctx, biz.SkillCreateInput{
-		Name: name,
-		Slug: name,
-		Body: skillMD,
+		Name:     name,
+		Slug:     name,
+		Body:     skillMD,
+		Triggers: manifest.Parse(skillMD).Triggers,
 	})
 	return err
 }

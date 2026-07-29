@@ -213,7 +213,12 @@ func (s *ToolService) CreateTool(ctx context.Context, req *v1.CreateToolRequest)
 		return nil, err
 	}
 	invalidateAllAgentBuildCaches()
-	s.mon.RecordAdminAudit(ctx, "tool.create", "tool", t.ID, fmt.Sprintf("key=%s", t.Key))
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbCreate, "tool"),
+		Resource:   "tool",
+		ResourceID: t.ID,
+		Summary:    fmt.Sprintf("key=%s", t.Key),
+	})
 	return bizToolToProto(t), nil
 }
 
@@ -248,13 +253,23 @@ func (s *ToolService) UpdateTool(ctx context.Context, req *v1.UpdateToolRequest)
 		return nil, err
 	}
 	invalidateAllAgentBuildCaches()
-	s.mon.RecordAdminAudit(ctx, "tool.update", "tool", t.ID, fmt.Sprintf("key=%s", t.Key))
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbUpdate, "tool"),
+		Resource:   "tool",
+		ResourceID: t.ID,
+		Summary:    fmt.Sprintf("key=%s", t.Key),
+	})
 	return bizToolToProto(t), nil
 }
 
 func (s *ToolService) DeleteTool(ctx context.Context, req *v1.DeleteToolRequest) (*emptypb.Empty, error) {
 	if err := s.assertToolAccess(ctx, req.GetId()); err != nil {
 		return nil, err
+	}
+	// 先取 key 供审计 detail 使用（best-effort，取不到不阻断删除）。
+	summary := ""
+	if t, err := s.uc.GetTool(ctx, req.GetId()); err == nil {
+		summary = fmt.Sprintf("key=%s", t.Key)
 	}
 	err := s.uc.Delete(ctx, req.GetId())
 	if err != nil {
@@ -264,7 +279,12 @@ func (s *ToolService) DeleteTool(ctx context.Context, req *v1.DeleteToolRequest)
 		return nil, err
 	}
 	invalidateAllAgentBuildCaches()
-	s.mon.RecordAdminAudit(ctx, "tool.delete", "tool", req.GetId(), "")
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbDelete, "tool"),
+		Resource:   "tool",
+		ResourceID: req.GetId(),
+		Summary:    summary,
+	})
 	return &emptypb.Empty{}, nil
 }
 

@@ -546,6 +546,18 @@ export type SetFederationTrustLevelRequest = {
   trustLevel: string | undefined;
 };
 
+export type SyncFederationOrgCardsRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+export type SyncFederationOrgCardsResponse = {
+  // synced is the number of remote agents whose cards were refreshed; agents
+  // that fail to pull are skipped (single failure does not abort the sync).
+  synced: number | undefined;
+};
+
 export type UpsertFederationPolicyRequest = {
   //
   // Behaviors: REQUIRED
@@ -623,6 +635,9 @@ export interface FederationService {
   DeleteFederationOrg(request: DeleteFederationOrgRequest): Promise<wellKnownEmpty>;
   // SetFederationTrustLevel sets the trust level of an org.
   SetFederationTrustLevel(request: SetFederationTrustLevelRequest): Promise<FederationOrg>;
+  // SyncFederationOrgCards manually pulls the org's remote agent cards into
+  // the directory cache (FED-F7).
+  SyncFederationOrgCards(request: SyncFederationOrgCardsRequest): Promise<SyncFederationOrgCardsResponse>;
   // UpsertFederationPolicy configures the call policy for one org pair.
   UpsertFederationPolicy(request: UpsertFederationPolicyRequest): Promise<FederationPolicy>;
   // DiscoverFederationAgents searches the federation directory (cached cards,
@@ -712,6 +727,26 @@ export function createFederationServiceClient(
         service: "FederationService",
         method: "SetFederationTrustLevel",
       }) as Promise<FederationOrg>;
+    },
+    SyncFederationOrgCards(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/a2a/federation/orgs/${request.id}/sync`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "FederationService",
+        method: "SyncFederationOrgCards",
+      }) as Promise<SyncFederationOrgCardsResponse>;
     },
     UpsertFederationPolicy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/a2a/federation/policies`; // eslint-disable-line quotes

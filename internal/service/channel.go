@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -28,14 +29,15 @@ type ChannelService struct {
 	turnJobs *biz.ChannelTurnJobUsecase
 	runtime  *ChannelRuntime
 	testers  map[string]biz.ChannelLiveTester
+	mon      *biz.MonitorUsecase
 	lg       loggateway.Logger
 }
 
-func NewChannelService(uc *biz.ChannelUsecase, turnJobs *biz.ChannelTurnJobUsecase, runtime *ChannelRuntime, lg loggateway.Logger) *ChannelService {
+func NewChannelService(uc *biz.ChannelUsecase, turnJobs *biz.ChannelTurnJobUsecase, runtime *ChannelRuntime, mon *biz.MonitorUsecase, lg loggateway.Logger) *ChannelService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	s := &ChannelService{uc: uc, turnJobs: turnJobs, runtime: runtime, lg: lg}
+	s := &ChannelService{uc: uc, turnJobs: turnJobs, runtime: runtime, mon: mon, lg: lg}
 	s.testers = s.buildLiveTesters()
 	return s
 }
@@ -380,6 +382,12 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *v1.CreateChanne
 	if err != nil {
 		return nil, err
 	}
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbCreate, "channel"),
+		Resource:   "channel",
+		ResourceID: c.ID,
+		Summary:    fmt.Sprintf("key=%s", c.Key),
+	})
 	s.reloadRuntime(ctx)
 	return bizChannelToProto(c), nil
 }
@@ -422,6 +430,12 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *v1.UpdateChanne
 		}
 	}
 	s.reloadRuntime(ctx)
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbUpdate, "channel"),
+		Resource:   "channel",
+		ResourceID: c.ID,
+		Summary:    fmt.Sprintf("key=%s", c.Key),
+	})
 	return bizChannelToProto(c), nil
 }
 
@@ -429,10 +443,21 @@ func (s *ChannelService) DeleteChannel(ctx context.Context, req *v1.DeleteChanne
 	if err := s.assertChannelMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	// 先取 key 供审计 summary 使用（best-effort，取不到不阻断删除）。
+	summary := ""
+	if c, err := s.uc.Get(ctx, req.GetId()); err == nil {
+		summary = fmt.Sprintf("key=%s", c.Key)
+	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	s.reloadRuntime(ctx)
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbDelete, "channel"),
+		Resource:   "channel",
+		ResourceID: req.GetId(),
+		Summary:    summary,
+	})
 	return &emptypb.Empty{}, nil
 }
 
@@ -445,6 +470,12 @@ func (s *ChannelService) ToggleChannel(ctx context.Context, req *v1.ToggleChanne
 		return nil, err
 	}
 	s.reloadRuntime(ctx)
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbToggle, "channel"),
+		Resource:   "channel",
+		ResourceID: c.ID,
+		Summary:    fmt.Sprintf("key=%s enabled=%t", c.Key, c.Enabled),
+	})
 	return bizChannelToProto(c), nil
 }
 
@@ -511,6 +542,13 @@ func (s *ChannelService) UpsertChannelCredentials(ctx context.Context, req *v1.U
 		out = append(out, bizCredToProto(c))
 	}
 	s.reloadRuntime(ctx)
+	// 凭据变更属高危操作：仅记录数量，严禁记录 secret 内容。
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbCredentials, "channel"),
+		Resource:   "channel",
+		ResourceID: req.GetChannelId(),
+		Summary:    fmt.Sprintf("upsert count=%d", len(req.GetCredentials())),
+	})
 	return &v1.ListChannelCredentialsResponse{Items: out}, nil
 }
 
@@ -522,6 +560,12 @@ func (s *ChannelService) DeleteChannelCredential(ctx context.Context, req *v1.De
 		return nil, err
 	}
 	s.reloadRuntime(ctx)
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbCredentials, "channel"),
+		Resource:   "channel",
+		ResourceID: req.GetChannelId(),
+		Summary:    fmt.Sprintf("delete key=%s", req.GetCredentialKey()),
+	})
 	return &emptypb.Empty{}, nil
 }
 

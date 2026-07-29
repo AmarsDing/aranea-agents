@@ -959,7 +959,7 @@ type recordingUnifiedStore struct {
 	statusSeq       map[string][]string // suggestion ID → ordered status transitions
 	statusErr       error
 	metaUpdates     map[string]map[string]string // suggestion ID → metadata key → value
-	latest          *UnifiedEvolutionSuggestion   // GetLatestByTarget backing (F9 cooldown tests)
+	latest          *UnifiedEvolutionSuggestion  // GetLatestByTarget backing (F9 cooldown tests)
 }
 
 func newRecordingUnifiedStore() *recordingUnifiedStore {

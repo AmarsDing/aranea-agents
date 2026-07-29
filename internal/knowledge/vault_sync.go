@@ -20,7 +20,7 @@ type VaultSyncApplier struct {
 	filer       *bizknowledge.VaultFiler
 	embedder    Embedder // nil = 无语义层（R-4）
 	lg          loggateway.Logger
-	summaryHook func(root, relPath string)    // nil = 不触发摘要生成
+	summaryHook func(root, relPath string)       // nil = 不触发摘要生成
 	entityHook  func(collectionID, docID string) // nil = 不触发实体抽取
 }
 

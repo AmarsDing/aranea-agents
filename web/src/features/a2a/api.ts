@@ -50,6 +50,9 @@ function mapAgentCard(raw: unknown): A2AAgentCard {
   };
 }
 
+/** 供 federationApi 复用（同域 mapper，避免重复实现）。 */
+export { mapAgentCard };
+
 function mapAuditEntry(raw: unknown): A2AAuditEntry {
   const r = asRecord(raw);
   return {
@@ -148,6 +151,9 @@ function mapRemoteAgent(raw: unknown): A2ARemoteAgent {
     last_health_at: pickStr(r, 'last_health_at', 'lastHealthAt'),
   };
 }
+
+/** 供 federationApi 复用（同域 mapper，避免重复实现）。 */
+export { mapRemoteAgent };
 
 export async function listRemoteAgents(workspace = ''): Promise<A2ARemoteAgent[]> {
   const res = asRecord(await svc.ListRemoteAgents({ workspace }));

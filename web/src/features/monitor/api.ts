@@ -1,9 +1,11 @@
 import { createMonitorService } from '../../services/index';
 import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
 import type {
+  AlertMetricInfo,
   AuditLog,
   AuditQuery,
   CodeExecutorCapability,
+  MonitorEventsQuery,
   MonitorTraceDetail,
   MonitorTracesQuery,
   MonitorTraceRow,
@@ -146,16 +148,20 @@ export async function listMonitorAudit(query: AuditQuery = {}): Promise<Paginate
   return { items, total: Number(res.total ?? items.length) };
 }
 
-export async function listMonitorEvents(): Promise<PlatformResource[]> {
+export async function listMonitorEvents(
+  query: MonitorEventsQuery = {},
+): Promise<PaginatedResult<PlatformResource>> {
   const res = await monitor.ListMonitorEvents({
-    limit: undefined,
-    offset: undefined,
-    eventType: undefined,
-    agentId: undefined,
-    status: undefined,
+    limit: query.limit,
+    offset: query.offset,
+    eventType: query.event_type,
+    agentId: query.agent_id,
+    status: query.status,
+    eventTypes: query.event_types,
+    excludeEventTypes: query.exclude_event_types,
   });
-  const items = res.items ?? [];
-  return items.map((item: unknown) => platformResourceFromWire(item));
+  const items = (res.items ?? []).map((item: unknown) => platformResourceFromWire(item));
+  return { items, total: Number(res.total ?? items.length) };
 }
 
 export async function getMonitorEvent(id: string): Promise<PlatformResource> {
@@ -277,11 +283,13 @@ function traceRowFromWire(raw: unknown): MonitorTraceRow {
   let durationMs = 0;
   let totalTokens = 0;
   let totalCostUsd = 0;
+  let domain = '';
   try {
     const cfg = JSON.parse(configJson || '{}') as Record<string, unknown>;
     durationMs = Number(cfg.duration_ms ?? 0);
     totalTokens = Number(cfg.total_tokens ?? 0);
     totalCostUsd = Number(cfg.total_cost_usd ?? 0);
+    domain = String(cfg.domain ?? '');
   } catch {
     /* ignore */
   }
@@ -304,9 +312,14 @@ function traceRowFromWire(raw: unknown): MonitorTraceRow {
     created_at: String(r.created_at ?? r.createdAt ?? ''),
     updated_at: String(r.updated_at ?? r.updatedAt ?? ''),
     deleted_at: String(r.deleted_at ?? r.deletedAt ?? ''),
+    agent_name: String(r.agent_name ?? r.agentName ?? ''),
+    team_name: String(r.team_name ?? r.teamName ?? ''),
+    session_id: String(r.session_id ?? r.sessionId ?? ''),
+    run_id: String(r.run_id ?? r.runId ?? ''),
     duration_ms: durationMs,
     total_tokens: totalTokens,
     total_cost_usd: totalCostUsd,
+    domain,
   };
 }
 
@@ -365,6 +378,26 @@ export async function listMonitorAlertRules(): Promise<MonitorAlertRule[]> {
   const res = await monitor.ListMonitorAlertRules({});
   const items = (res as { items?: unknown[] }).items ?? [];
   return items.map(alertRuleFromWire);
+}
+
+function alertMetricFromWire(raw: unknown): AlertMetricInfo {
+  const r = obj(raw);
+  return {
+    key: String(r.key ?? ''),
+    name: String(r.name ?? ''),
+    description: String(r.description ?? ''),
+    unit: String(r.unit ?? 'count'),
+    default_window_minutes: Number(r.default_window_minutes ?? r.defaultWindowMinutes ?? 60),
+    suggested_threshold: Number(r.suggested_threshold ?? r.suggestedThreshold ?? 0),
+    current_value: Number(r.current_value ?? r.currentValue ?? 0),
+    evaluated_at: String(r.evaluated_at ?? r.evaluatedAt ?? ''),
+  };
+}
+
+export async function listAlertMetrics(): Promise<AlertMetricInfo[]> {
+  const res = await monitor.ListAlertMetrics({});
+  const items = (res as { items?: unknown[] }).items ?? [];
+  return items.map(alertMetricFromWire);
 }
 
 export async function putMonitorAlertRules(rules: MonitorAlertRule[]): Promise<MonitorAlertRule[]> {

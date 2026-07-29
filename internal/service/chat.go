@@ -122,7 +122,7 @@ func (s *ChatService) publishModeBMemberSession(ctx context.Context, info subage
 		AgentName:       name,
 		Status:          biz.MemberSessionStatusRunning,
 		StartedAt:       now,
-		Version:         1,
+		Version:         biz.MemberSessionVersionCreated,
 	}
 	s.orch.v2Seq.Publish(ctx, biz.NewMemberSessionCreatedEvent(ms))
 }

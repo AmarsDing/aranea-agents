@@ -71,10 +71,13 @@ message KnowledgeChunk {
 
 // --- Requests / Responses ---
 
+// CreateCollectionRequest creates a Vault (V2: local folder as source of truth).
+// root_path is required; embedding_model is optional (empty = lexical-only vault, no semantic layer).
 message CreateCollectionRequest {
   string name = 1 [(google.api.field_behavior) = REQUIRED];
   string description = 2;
-  string embedding_model = 3 [(google.api.field_behavior) = REQUIRED];
+  string embedding_model = 3;
+  string root_path = 4 [(google.api.field_behavior) = REQUIRED];
 }
 
 message GetCollectionRequest {
@@ -139,6 +142,7 @@ message VaultTreeNode {
   string status = 8;
   int64  size_bytes = 9;
   string updated_at = 10;
+  string error_message = 11;  // populated when status=error (parse failure reason)
 }
 
 message ListVaultTreeRequest {

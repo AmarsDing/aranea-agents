@@ -22,7 +22,7 @@ func TestValidateSkillPackage_ValidWithSKILLMD(t *testing.T) {
 	files := map[string][]byte{
 		"SKILL.md": []byte(makeSkillMD("My Skill", "A great skill")),
 	}
-	candidate, tags := ValidateSkillPackage(files, "my-skill", nil, false)
+	candidate, tags, _ := ValidateSkillPackage(files, "my-skill", nil, false)
 	if candidate.ValidationStatus != "pass" {
 		t.Errorf("expected pass, got %q", candidate.ValidationStatus)
 	}
@@ -53,7 +53,7 @@ func TestValidateSkillPackage_LowercaseSkillMD(t *testing.T) {
 	files := map[string][]byte{
 		"skill.md": []byte(makeSkillMD("Lower", "Lowercase filename")),
 	}
-	candidate, _ := ValidateSkillPackage(files, "lower", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "lower", nil, false)
 	if candidate.ValidationStatus != "pass" {
 		t.Errorf("expected pass for lowercase skill.md, got %q", candidate.ValidationStatus)
 	}
@@ -63,7 +63,7 @@ func TestValidateSkillPackage_MissingSKILLMD(t *testing.T) {
 	files := map[string][]byte{
 		"README.md": []byte("no skill here"),
 	}
-	candidate, _ := ValidateSkillPackage(files, "some-dir", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "some-dir", nil, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block, got %q", candidate.ValidationStatus)
 	}
@@ -82,7 +82,7 @@ func TestValidateSkillPackage_MissingName(t *testing.T) {
 	files := map[string][]byte{
 		"SKILL.md": []byte("---\ndescription: has desc but no name\n---\n\nBody."),
 	}
-	candidate, _ := ValidateSkillPackage(files, "dir-hint", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "dir-hint", nil, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block, got %q", candidate.ValidationStatus)
 	}
@@ -101,7 +101,7 @@ func TestValidateSkillPackage_MissingDescription(t *testing.T) {
 	files := map[string][]byte{
 		"SKILL.md": []byte("---\nname: HasName\n---\n\nBody."),
 	}
-	candidate, _ := ValidateSkillPackage(files, "dir-hint", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "dir-hint", nil, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block, got %q", candidate.ValidationStatus)
 	}
@@ -120,7 +120,7 @@ func TestValidateSkillPackage_EmptyNameAndDesc(t *testing.T) {
 	files := map[string][]byte{
 		"SKILL.md": []byte("---\nname: \ndescription: \n---\n\nBody."),
 	}
-	candidate, _ := ValidateSkillPackage(files, "fallback-dir", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "fallback-dir", nil, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block, got %q", candidate.ValidationStatus)
 	}
@@ -134,7 +134,7 @@ func TestValidateSkillPackage_ShellScriptWarning(t *testing.T) {
 		"SKILL.md": []byte(makeSkillMD("Shell Skill", "Has shell script")),
 		"setup.sh": []byte("#!/bin/bash\necho hi"),
 	}
-	candidate, _ := ValidateSkillPackage(files, "shell-skill", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "shell-skill", nil, false)
 	if candidate.ValidationStatus != "pass" {
 		t.Errorf("expected pass (warning only), got %q", candidate.ValidationStatus)
 	}
@@ -154,7 +154,7 @@ func TestValidateSkillPackage_HighRiskFile(t *testing.T) {
 		"SKILL.md":    []byte(makeSkillMD("Risky", "Has exe")),
 		"payload.exe": []byte("binary"),
 	}
-	candidate, _ := ValidateSkillPackage(files, "risky", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "risky", nil, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block, got %q", candidate.ValidationStatus)
 	}
@@ -174,7 +174,7 @@ func TestValidateSkillPackage_HighRiskFileBat(t *testing.T) {
 		"SKILL.md": []byte(makeSkillMD("Bat Skill", "Has bat file")),
 		"run.bat":  []byte("@echo off"),
 	}
-	candidate, _ := ValidateSkillPackage(files, "bat-skill", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "bat-skill", nil, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block, got %q", candidate.ValidationStatus)
 	}
@@ -194,7 +194,7 @@ func TestValidateSkillPackage_HighRiskFileCmd(t *testing.T) {
 		"SKILL.md":   []byte(makeSkillMD("Cmd Skill", "Has cmd file")),
 		"script.cmd": []byte("echo bad"),
 	}
-	candidate, _ := ValidateSkillPackage(files, "cmd-skill", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "cmd-skill", nil, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block, got %q", candidate.ValidationStatus)
 	}
@@ -205,7 +205,7 @@ func TestValidateSkillPackage_HighRiskFileDll(t *testing.T) {
 		"SKILL.md": []byte(makeSkillMD("Dll Skill", "Has dll")),
 		"lib.dll":  []byte("binary"),
 	}
-	candidate, _ := ValidateSkillPackage(files, "dll-skill", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "dll-skill", nil, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block, got %q", candidate.ValidationStatus)
 	}
@@ -216,7 +216,7 @@ func TestValidateSkillPackage_HighRiskFilePs1(t *testing.T) {
 		"SKILL.md":   []byte(makeSkillMD("Ps1 Skill", "Has ps1")),
 		"script.ps1": []byte("Write-Host hi"),
 	}
-	candidate, _ := ValidateSkillPackage(files, "ps1-skill", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "ps1-skill", nil, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block, got %q", candidate.ValidationStatus)
 	}
@@ -227,7 +227,7 @@ func TestValidateSkillPackage_HighRiskFileSo(t *testing.T) {
 		"SKILL.md": []byte(makeSkillMD("So Skill", "Has so")),
 		"lib.so":   []byte("binary"),
 	}
-	candidate, _ := ValidateSkillPackage(files, "so-skill", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "so-skill", nil, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block, got %q", candidate.ValidationStatus)
 	}
@@ -238,7 +238,7 @@ func TestValidateSkillPackage_HighRiskFileDylib(t *testing.T) {
 		"SKILL.md":  []byte(makeSkillMD("Dylib Skill", "Has dylib")),
 		"lib.dylib": []byte("binary"),
 	}
-	candidate, _ := ValidateSkillPackage(files, "dylib-skill", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "dylib-skill", nil, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block, got %q", candidate.ValidationStatus)
 	}
@@ -251,7 +251,7 @@ func TestValidateSkillPackage_DuplicateName(t *testing.T) {
 	existing := []biz.SkillSimilaritySource{
 		{Name: "Existing Skill", Slug: "existing-skill"},
 	}
-	candidate, _ := ValidateSkillPackage(files, "new-dir", existing, false)
+	candidate, _, _ := ValidateSkillPackage(files, "new-dir", existing, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block for duplicate name, got %q", candidate.ValidationStatus)
 	}
@@ -273,7 +273,7 @@ func TestValidateSkillPackage_DuplicateSlug(t *testing.T) {
 	existing := []biz.SkillSimilaritySource{
 		{Name: "Other Name", Slug: "different-name"},
 	}
-	candidate, _ := ValidateSkillPackage(files, "new-dir", existing, false)
+	candidate, _, _ := ValidateSkillPackage(files, "new-dir", existing, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block for duplicate slug, got %q", candidate.ValidationStatus)
 	}
@@ -295,7 +295,7 @@ func TestValidateSkillPackage_SkipDuplicateCheck(t *testing.T) {
 	existing := []biz.SkillSimilaritySource{
 		{Name: "Existing Skill", Slug: "existing-skill"},
 	}
-	candidate, _ := ValidateSkillPackage(files, "new-dir", existing, true)
+	candidate, _, _ := ValidateSkillPackage(files, "new-dir", existing, true)
 	if candidate.ValidationStatus != "pass" {
 		t.Errorf("expected pass with skipDuplicateCheck=true, got %q", candidate.ValidationStatus)
 	}
@@ -312,7 +312,7 @@ func TestValidateSkillPackage_MultipleWarnings(t *testing.T) {
 		"deploy.sh": []byte("#!/bin/bash\necho deploy"),
 		"setup.sh":  []byte("#!/bin/bash\necho setup"),
 	}
-	candidate, _ := ValidateSkillPackage(files, "multi-warn", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "multi-warn", nil, false)
 	if candidate.ValidationStatus != "pass" {
 		t.Errorf("expected pass (warnings only), got %q", candidate.ValidationStatus)
 	}
@@ -333,7 +333,7 @@ func TestValidateSkillPackage_ValidWithExtraFiles(t *testing.T) {
 		"examples.txt": []byte("example content"),
 		"data.json":    []byte(`{"key": "value"}`),
 	}
-	candidate, _ := ValidateSkillPackage(files, "extra-files", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "extra-files", nil, false)
 	if candidate.ValidationStatus != "pass" {
 		t.Errorf("expected pass, got %q", candidate.ValidationStatus)
 	}
@@ -350,7 +350,7 @@ func TestValidateSkillPackage_BodyPreviewTruncated(t *testing.T) {
 	files := map[string][]byte{
 		"SKILL.md": []byte(makeSkillMD("Long Skill", "Long desc") + longBody),
 	}
-	candidate, _ := ValidateSkillPackage(files, "long-skill", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "long-skill", nil, false)
 	if len(candidate.BodyPreview) > 243 {
 		t.Errorf("expected body preview <= 243 chars (240 + '...'), got %d", len(candidate.BodyPreview))
 	}
@@ -363,7 +363,7 @@ func TestValidateSkillPackage_SlugFromDirHint(t *testing.T) {
 	files := map[string][]byte{
 		"SKILL.md": []byte("---\n---\n\n# Implicit Name\nSome desc here."),
 	}
-	candidate, _ := ValidateSkillPackage(files, "my-dir-hint", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "my-dir-hint", nil, false)
 	if candidate.Slug == "" {
 		t.Error("expected non-empty slug derived from dir hint or heading")
 	}
@@ -373,7 +373,7 @@ func TestValidateSkillPackage_CandidateIDGenerated(t *testing.T) {
 	files := map[string][]byte{
 		"SKILL.md": []byte(makeSkillMD("ID Test", "Test")),
 	}
-	candidate, _ := ValidateSkillPackage(files, "id-test", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "id-test", nil, false)
 	if candidate.CandidateID == "" {
 		t.Error("expected non-empty CandidateID")
 	}
@@ -383,7 +383,7 @@ func TestValidateSkillPackage_TagsParsed(t *testing.T) {
 	files := map[string][]byte{
 		"SKILL.md": []byte("---\nname: Tagged\ndescription: Tagged skill\ntags: [coding, review]\n---\n\nBody."),
 	}
-	candidate, tags := ValidateSkillPackage(files, "tagged", nil, false)
+	candidate, tags, _ := ValidateSkillPackage(files, "tagged", nil, false)
 	if candidate.ValidationStatus != "pass" {
 		t.Errorf("expected pass, got %q", candidate.ValidationStatus)
 	}
@@ -403,7 +403,7 @@ func TestValidateSkillPackage_BlockAndWarningTogether(t *testing.T) {
 		"SKILL.md":  []byte("---\nname: \ndescription: has desc\n---\n\nBody."),
 		"deploy.sh": []byte("#!/bin/bash"),
 	}
-	candidate, _ := ValidateSkillPackage(files, "mixed", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "mixed", nil, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block, got %q", candidate.ValidationStatus)
 	}
@@ -433,7 +433,7 @@ func TestValidateSkillPackage_HighRiskAndShellScript(t *testing.T) {
 		"malware.exe": []byte("binary"),
 		"deploy.sh":   []byte("#!/bin/bash"),
 	}
-	candidate, _ := ValidateSkillPackage(files, "risky-shell", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "risky-shell", nil, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block, got %q", candidate.ValidationStatus)
 	}
@@ -464,7 +464,7 @@ func TestValidateSkillPackage_DuplicateNameCaseInsensitive(t *testing.T) {
 	existing := []biz.SkillSimilaritySource{
 		{Name: "Existing Skill", Slug: "other-slug"},
 	}
-	candidate, _ := ValidateSkillPackage(files, "new-dir", existing, false)
+	candidate, _, _ := ValidateSkillPackage(files, "new-dir", existing, false)
 	if candidate.ValidationStatus != "block" {
 		t.Errorf("expected block for case-insensitive duplicate name, got %q", candidate.ValidationStatus)
 	}
@@ -474,7 +474,7 @@ func TestValidateSkillPackage_NoExistingSkills(t *testing.T) {
 	files := map[string][]byte{
 		"SKILL.md": []byte(makeSkillMD("Fresh Skill", "Brand new")),
 	}
-	candidate, _ := ValidateSkillPackage(files, "fresh", nil, false)
+	candidate, _, _ := ValidateSkillPackage(files, "fresh", nil, false)
 	if candidate.ValidationStatus != "pass" {
 		t.Errorf("expected pass with no existing skills, got %q", candidate.ValidationStatus)
 	}

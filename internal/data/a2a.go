@@ -22,11 +22,12 @@ type a2aRepo struct {
 }
 
 var (
-	_ biza2a.Repo            = (*a2aRepo)(nil)
-	_ biza2a.CardRepo        = (*a2aRepo)(nil)
-	_ biza2a.InvocationRepo  = (*a2aRepo)(nil)
-	_ biza2a.AuditRepo       = (*a2aRepo)(nil)
-	_ biza2a.RemoteAgentRepo = (*a2aRepo)(nil)
+	_ biza2a.Repo                  = (*a2aRepo)(nil)
+	_ biza2a.CardRepo              = (*a2aRepo)(nil)
+	_ biza2a.InvocationRepo        = (*a2aRepo)(nil)
+	_ biza2a.AuditRepo             = (*a2aRepo)(nil)
+	_ biza2a.RemoteAgentRepo       = (*a2aRepo)(nil)
+	_ biza2a.RemoteAgentCardWriter = (*a2aRepo)(nil)
 )
 
 func NewA2ARepo(data *Data, lg loggateway.Logger) biz.A2ARepo {
@@ -449,6 +450,28 @@ func (r *a2aRepo) UpdateRemoteAgentHealth(ctx context.Context, id string, ok boo
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`UPDATE a2a_remote_agents SET last_health_at=?, last_health_ok=?, last_health_error=?, updated_at=? WHERE id=?`),
 		now, okInt, strings.TrimSpace(errMsg), now, id)
+	return entErrToBizErr(err, "A2A")
+}
+
+// UpdateRemoteAgentCard persists a re-discovered agent card (federation card
+// sync, design F.5 AgentCardSync). Only card_json + updated_at are touched;
+// registry fields (auth/enabled/org) are preserved.
+func (r *a2aRepo) UpdateRemoteAgentCard(ctx context.Context, id string, card biz.A2AAgentCard) error {
+	if r == nil || r.data == nil {
+		return apierror.Internal("A2A", "a2a db nil")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return apierror.BadRequest("A2A", "id is required")
+	}
+	cardJSON, err := json.Marshal(card)
+	if err != nil {
+		return fmt.Errorf("marshal card: %w", err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE a2a_remote_agents SET card_json=?, updated_at=? WHERE id=?`),
+		string(cardJSON), now, id)
 	return entErrToBizErr(err, "A2A")
 }
 

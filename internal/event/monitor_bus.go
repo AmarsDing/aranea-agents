@@ -69,5 +69,12 @@ func (b *monitorBus) DropCount() uint64 {
 	return b.inner.DropCount()
 }
 
+// SubscriberCount returns the number of active subscribers. Exposed for the
+// monitor self-check (EventBusChecker) via structural interface assertion;
+// not part of contract.MonitorBus.
+func (b *monitorBus) SubscriberCount() int {
+	return b.inner.SubscriberCount()
+}
+
 // Compile-time interface check.
 var _ contract.MonitorBus = (*monitorBus)(nil)

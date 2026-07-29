@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/skill/manifest"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/pkg/loggateway"
 )
@@ -829,7 +830,7 @@ func (e *Engine) createImportedSkill(ctx context.Context, p skillCreateParams) (
 	if err != nil {
 		return biz.Skill{}, "", err
 	}
-	skill, err := e.repo.CreateSkillWithVersion(ctx, biz.SkillCreateInput{Name: p.name, Slug: slug, Description: p.description, Body: p.body, Tags: p.tags, StorageDir: targetDir, SyncOrigin: biz.SkillSyncOriginImport})
+	skill, err := e.repo.CreateSkillWithVersion(ctx, biz.SkillCreateInput{Name: p.name, Slug: slug, Description: p.description, Body: p.body, Tags: p.tags, Triggers: manifest.Parse(p.body).Triggers, StorageDir: targetDir, SyncOrigin: biz.SkillSyncOriginImport})
 	if err != nil {
 		// DB 创建失败时清理已写入的磁盘文件，防止孤儿资源残留。
 		// 调用方 ApplyImport 的 compensate() 只清理已提交到 committed 列表的 skill，
@@ -858,6 +859,7 @@ func (e *Engine) applyOverwrite(ctx context.Context, p skillCreateParams) (biz.S
 		Description: p.description,
 		Body:        p.body,
 		Tags:        p.tags,
+		Triggers:    manifest.Parse(p.body).Triggers,
 	})
 }
 
@@ -982,7 +984,7 @@ func (e *Engine) inspectSkillZip(ctx context.Context, data []byte, job *jobState
 				mergedInto[other] = true
 			}
 		}
-		candidate, tags := ValidateSkillPackage(merged, dir, existing, false)
+		candidate, tags, _ := ValidateSkillPackage(merged, dir, existing, false)
 		candidate.TargetDir = filepath.Join(job.public.StorageRoot, candidate.Slug)
 		job.candidates[candidate.CandidateID] = candidateState{public: candidate, body: body, files: merged, tags: tags}
 		job.public.Candidates = append(job.public.Candidates, candidate)

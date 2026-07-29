@@ -23,7 +23,7 @@ type AgentEvolutionSettingsReader interface {
 
 // PatternTrigger 从工具调用 Pattern 中检测新 Skill 需求
 type PatternTrigger struct {
-	settings      AgentEvolutionSettingsReader  // L1 opt-in gate (nil = no gate, tests)
+	settings      AgentEvolutionSettingsReader // L1 opt-in gate (nil = no gate, tests)
 	patterns      PatternReader
 	creator       SkillAutoCreator
 	registrar     SkillRegistrationPort

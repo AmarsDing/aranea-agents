@@ -58,6 +58,8 @@ export type VaultTreeNode = {
   status: string;
   size_bytes: number;
   updated_at: string;
+  /** 解析失败原因（status=error 时非空） */
+  error_message: string;
 };
 
 /** KnowledgeLink 是一条已解析文档关联（P3 关联区，R-3 来源标注）。 */
@@ -88,7 +90,10 @@ export type KnowledgeChunk = {
 export type CreateCollectionInput = {
   name: string;
   description?: string;
-  embedding_model: string;
+  /** V2：可选；留空 = 仅词法检索库（无语义层）。 */
+  embedding_model?: string;
+  /** V2：Vault 根目录（本地文件夹绝对路径），必填。 */
+  root_path: string;
 };
 
 export type IngestDocumentInput = {

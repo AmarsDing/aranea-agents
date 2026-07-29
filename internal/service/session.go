@@ -317,7 +317,12 @@ func (s *SessionService) CreateSession(ctx context.Context, req *v1.CreateSessio
 	if err != nil {
 		return nil, err
 	}
-	s.mon.RecordAdminAudit(ctx, "create.session", "session", created.ID, "title="+created.Title)
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbCreate, "session"),
+		Resource:   "session",
+		ResourceID: created.ID,
+		Summary:    "title=" + created.Title,
+	})
 	return toProtoSession(created, s.getSessionMetrics(ctx, created.ID)), nil
 }
 
@@ -347,33 +352,46 @@ func (s *SessionService) UpdateSession(ctx context.Context, req *v1.UpdateSessio
 		return nil, err
 	}
 	var fields biz.SessionUpdateFields
+	var names []string
 	if v := req.GetTitle(); v != "" {
 		fields.Title = &v
+		names = append(names, "title")
 	}
 	if v := req.GetTagsJson(); v != "" {
 		fields.TagsJSON = &v
+		names = append(names, "tags")
 	}
 	if v := req.GetVisibility(); v != "" {
 		fields.Visibility = &v
+		names = append(names, "visibility")
 	}
 	if v := req.GetMetadataJson(); v != "" {
 		fields.MetadataJSON = &v
+		names = append(names, "metadata")
 	}
 	if v := req.GetDialogMode(); v != "" {
 		fields.DialogMode = &v
+		names = append(names, "dialog_mode")
 	}
 	if v := req.GetDefaultProvider(); v != "" {
 		fields.DefaultProvider = &v
+		names = append(names, "default_provider")
 	}
 	if v := req.GetDefaultModel(); v != "" {
 		fields.DefaultModel = &v
+		names = append(names, "default_model")
 	}
 	// P2-C: workspace_id immutable — Update 不修改 WorkspaceID（不在 fields 中设置）。
 	out, err := s.uc.Update(ctx, req.GetId(), fields)
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
-	s.mon.RecordAdminAudit(ctx, "update.session", "session", req.GetId(), "fields updated")
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbUpdate, "session"),
+		Resource:   "session",
+		ResourceID: req.GetId(),
+		Summary:    "fields=" + strings.Join(names, ","),
+	})
 	return toProtoSession(out, s.getSessionMetrics(ctx, out.ID)), nil
 }
 
@@ -382,10 +400,20 @@ func (s *SessionService) DeleteSession(ctx context.Context, req *v1.DeleteSessio
 	if err := s.assertSessionAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	// 先取 title 供审计 detail 使用（best-effort，取不到不阻断删除）。
+	summary := ""
+	if out, err := s.uc.Get(ctx, req.GetId()); err == nil {
+		summary = "title=" + out.Title
+	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, mapSessionErr(err)
 	}
-	s.mon.RecordAdminAudit(ctx, "delete.session", "session", req.GetId(), "single delete")
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbDelete, "session"),
+		Resource:   "session",
+		ResourceID: req.GetId(),
+		Summary:    summary,
+	})
 	return &emptypb.Empty{}, nil
 }
 
@@ -397,7 +425,11 @@ func (s *SessionService) ArchiveSession(ctx context.Context, req *v1.ArchiveSess
 	if err := s.uc.Archive(ctx, req.GetId()); err != nil {
 		return nil, mapSessionErr(err)
 	}
-	s.mon.RecordAdminAudit(ctx, "archive.session", "session", req.GetId(), "single archive")
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbArchive, "session"),
+		Resource:   "session",
+		ResourceID: req.GetId(),
+	})
 	return &emptypb.Empty{}, nil
 }
 
@@ -422,7 +454,12 @@ func (s *SessionService) PinSession(ctx context.Context, req *v1.PinSessionReque
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
-	s.mon.RecordAdminAudit(ctx, "pin.session", "session", req.GetId(), "pin")
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbPin, "session"),
+		Resource:   "session",
+		ResourceID: req.GetId(),
+		Summary:    "title=" + out.Title,
+	})
 	return toProtoSession(out, s.getSessionMetrics(ctx, out.ID)), nil
 }
 
@@ -435,7 +472,12 @@ func (s *SessionService) UnpinSession(ctx context.Context, req *v1.UnpinSessionR
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
-	s.mon.RecordAdminAudit(ctx, "unpin.session", "session", req.GetId(), "unpin")
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbUnpin, "session"),
+		Resource:   "session",
+		ResourceID: req.GetId(),
+		Summary:    "title=" + out.Title,
+	})
 	return toProtoSession(out, s.getSessionMetrics(ctx, out.ID)), nil
 }
 

@@ -1,12 +1,18 @@
 <template>
   <q-card flat class="app-pane-card knowledge-doc-list">
     <div class="app-pane-card__header knowledge-doc-list__header">
-      <div class="row items-center no-wrap ellipsis">
-        <q-icon name="folder_open" size="18px" class="q-mr-xs" />
-        <span class="ellipsis">{{ prefix || t('knowledgePage.vaultRoot') }}</span>
-        <span v-if="dirCount" class="text-caption text-grey-6 q-ml-xs">
-          {{ t('knowledgePage.docListSubdirs', { count: dirCount }) }}
-        </span>
+      <!-- 面包屑：根目录 / 子目录…，点击任意段回跳 -->
+      <div class="row items-center no-wrap ellipsis knowledge-doc-list__crumbs">
+        <template v-for="(c, i) in crumbs" :key="c.prefix">
+          <q-icon v-if="i > 0" name="chevron_right" size="14px" class="knowledge-doc-list__crumb-sep" />
+          <span
+            class="knowledge-doc-list__crumb ellipsis"
+            :class="{ 'knowledge-doc-list__crumb--current': i === crumbs.length - 1 }"
+            @click="$emit('navigate', c.prefix)"
+          >
+            <q-icon v-if="i === 0" name="home" size="14px" class="q-mr-xs" />{{ c.label }}
+          </span>
+        </template>
       </div>
       <div class="row items-center no-wrap">
         <q-btn
@@ -27,38 +33,75 @@
     </div>
 
     <div class="app-pane-card__body knowledge-doc-list__body">
-      <q-list v-if="files.length" separator dense>
-        <q-item
-          v-for="f in files"
-          :key="f.doc_id || f.path"
-          clickable
-          :active="selectedDocId === f.doc_id"
-          active-class="bg-primary text-white"
-          class="knowledge-doc-list__item"
-          @click="$emit('select', f)"
-        >
-          <q-item-section avatar>
-            <q-icon name="insert_drive_file" />
-          </q-item-section>
-          <q-item-section>
-            <q-item-label lines="1">{{ f.name }}</q-item-label>
-            <q-item-label caption :class="selectedDocId === f.doc_id ? 'text-white' : ''">
-              <q-chip v-if="f.doc_type" dense size="sm" class="q-mr-xs">{{ f.doc_type }}</q-chip>
-              {{ formatKnowledgeDocSize(f.size_bytes) }} · {{ formatKnowledgeTime(f.updated_at) }}
-            </q-item-label>
-            <q-item-label v-if="f.tags?.length" caption lines="1" :class="selectedDocId === f.doc_id ? 'text-white' : ''">
-              <q-chip v-for="tag in f.tags.slice(0, 3)" :key="tag" dense size="sm" outline class="q-mr-xs">{{ tag }}</q-chip>
-              <span v-if="f.tags.length > 3">+{{ f.tags.length - 3 }}</span>
-            </q-item-label>
-          </q-item-section>
-          <q-item-section side>
-            <q-chip dense size="sm" :color="statusColor(f.status)" text-color="white">{{ f.status }}</q-chip>
-          </q-item-section>
-          <q-tooltip v-if="f.summary" max-width="320px" anchor="center left" self="center right">
-            {{ f.summary }}
-          </q-tooltip>
-        </q-item>
-      </q-list>
+      <table v-if="sortedEntries.length" class="knowledge-doc-list__table">
+        <thead>
+          <tr>
+            <th
+              v-for="col in columns"
+              :key="col.key"
+              class="knowledge-doc-list__th"
+              :class="`knowledge-doc-list__th--${col.align}`"
+              @click="toggleSort(col.key)"
+            >
+              <span class="row items-center no-wrap" :class="col.align === 'right' ? 'justify-end' : ''">
+                {{ col.label }}
+                <q-icon
+                  v-if="sortBy === col.key"
+                  :name="sortDesc ? 'arrow_downward' : 'arrow_upward'"
+                  size="12px"
+                  class="q-ml-xs"
+                />
+              </span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="e in sortedEntries"
+            :key="e.path || e.name"
+            class="knowledge-doc-list__row"
+            :class="{
+              'knowledge-doc-list__row--selected': e.kind === 'file' && selectedDocId === e.doc_id,
+              'knowledge-doc-list__row--dir': e.kind === 'dir',
+            }"
+            @click="onRowClick(e)"
+          >
+            <td class="knowledge-doc-list__cell knowledge-doc-list__cell--name">
+              <q-icon
+                :name="e.kind === 'dir' ? 'folder' : 'insert_drive_file'"
+                size="16px"
+                :color="e.kind === 'dir' ? 'amber-8' : undefined"
+                class="q-mr-xs knowledge-doc-list__icon"
+              />
+              <span class="ellipsis" :title="e.name">{{ e.name }}</span>
+              <q-tooltip v-if="e.summary" max-width="320px" anchor="center left" self="center right">
+                {{ e.summary }}
+              </q-tooltip>
+            </td>
+            <td class="knowledge-doc-list__cell knowledge-doc-list__cell--time">
+              {{ e.kind === 'file' ? formatKnowledgeTime(e.updated_at) : '' }}
+            </td>
+            <td class="knowledge-doc-list__cell">{{ typeLabel(e) }}</td>
+            <td class="knowledge-doc-list__cell knowledge-doc-list__cell--size">
+              {{ e.kind === 'file' ? formatKnowledgeDocSize(e.size_bytes) : '' }}
+            </td>
+            <td class="knowledge-doc-list__cell">
+              <q-chip
+                v-if="e.kind === 'file' && e.status"
+                dense
+                size="sm"
+                :color="statusColor(e.status)"
+                text-color="white"
+              >
+                {{ e.status }}
+              </q-chip>
+              <q-tooltip v-if="e.status === 'error' && e.error_message" max-width="320px">
+                {{ e.error_message }}
+              </q-tooltip>
+            </td>
+          </tr>
+        </tbody>
+      </table>
       <div v-else-if="!loading" class="app-registry-empty app-registry-empty--compact">
         <q-icon name="drafts" size="40px" color="grey-6" />
         <div class="text-body2">{{ t('knowledgePage.docListEmpty') }}</div>
@@ -71,26 +114,136 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { VaultTreeNode } from '../../features/knowledge/types';
 import { formatKnowledgeDocSize, formatKnowledgeTime, knowledgeStatusColor } from '../../features/knowledge/knowledgeUi';
 
-defineProps<{
+type SortKey = 'name' | 'updated_at' | 'type' | 'size' | 'status';
+
+const props = defineProps<{
   prefix: string;
-  files: VaultTreeNode[];
-  dirCount: number;
+  /** 当前目录直接子节点（dir + file 混合，dir 可点击下钻）。 */
+  entries: VaultTreeNode[];
   loading: boolean;
   selectedDocId: string;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   select: [node: VaultTreeNode];
+  /** 面包屑回跳 / 目录下钻：目标 prefix（'' = 根）。 */
+  navigate: [prefix: string];
   refresh: [];
   ingest: [];
 }>();
 
 const { t } = useI18n();
 const statusColor = knowledgeStatusColor;
+
+const columns = computed<{ key: SortKey; label: string; align: 'left' | 'right' }[]>(() => [
+  { key: 'name', label: t('knowledgePage.colName'), align: 'left' },
+  { key: 'updated_at', label: t('knowledgePage.colModified'), align: 'left' },
+  { key: 'type', label: t('knowledgePage.colType'), align: 'left' },
+  { key: 'size', label: t('knowledgePage.colSize'), align: 'right' },
+  { key: 'status', label: t('knowledgePage.colStatus'), align: 'left' },
+]);
+
+// ---------- 面包屑 ----------
+
+const crumbs = computed(() => {
+  const parts = props.prefix.split('/').filter(Boolean);
+  const out: { label: string; prefix: string }[] = [{ label: t('knowledgePage.vaultRoot'), prefix: '' }];
+  let acc = '';
+  for (const p of parts) {
+    acc += `${p}/`;
+    out.push({ label: p, prefix: acc });
+  }
+  return out;
+});
+
+// ---------- 类型列（资源管理器风格：扩展名映射） ----------
+
+const EXT_TYPE_LABELS: Record<string, string> = {
+  md: 'Markdown',
+  markdown: 'Markdown',
+  txt: 'Text',
+  log: 'Text',
+  pdf: 'PDF',
+  json: 'JSON',
+  csv: 'CSV',
+  html: 'HTML',
+  htm: 'HTML',
+  xml: 'XML',
+  yaml: 'YAML',
+  yml: 'YAML',
+  toml: 'TOML',
+  doc: 'Word',
+  docx: 'Word',
+  xls: 'Excel',
+  xlsx: 'Excel',
+  ppt: 'PowerPoint',
+  pptx: 'PowerPoint',
+  png: 'Image',
+  jpg: 'Image',
+  jpeg: 'Image',
+  webp: 'Image',
+  gif: 'Image',
+};
+
+function typeLabel(e: VaultTreeNode): string {
+  if (e.kind === 'dir') return t('knowledgePage.typeFolder');
+  const i = e.name.lastIndexOf('.');
+  if (i <= 0 || i === e.name.length - 1) return t('knowledgePage.typeFile');
+  const ext = e.name.slice(i + 1).toLowerCase();
+  return EXT_TYPE_LABELS[ext] ?? ext.toUpperCase();
+}
+
+// ---------- 排序（目录恒在前，组内按列排序） ----------
+
+const sortBy = ref<SortKey>('name');
+const sortDesc = ref(false);
+
+function toggleSort(col: SortKey) {
+  if (sortBy.value === col) {
+    sortDesc.value = !sortDesc.value;
+  } else {
+    sortBy.value = col;
+    sortDesc.value = false;
+  }
+}
+
+function compareBy(a: VaultTreeNode, b: VaultTreeNode, key: SortKey): number {
+  switch (key) {
+    case 'name':
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    case 'updated_at':
+      return a.updated_at.localeCompare(b.updated_at);
+    case 'type':
+      return typeLabel(a).localeCompare(typeLabel(b));
+    case 'size':
+      return a.size_bytes - b.size_bytes;
+    case 'status':
+      return a.status.localeCompare(b.status);
+  }
+}
+
+const sortedEntries = computed(() => {
+  const mul = sortDesc.value ? -1 : 1;
+  const cmp = (a: VaultTreeNode, b: VaultTreeNode) => mul * compareBy(a, b, sortBy.value);
+  const dirs = props.entries.filter((e) => e.kind === 'dir').sort(cmp);
+  const files = props.entries.filter((e) => e.kind === 'file').sort(cmp);
+  return [...dirs, ...files];
+});
+
+// ---------- 行点击：目录下钻 / 文件选中 ----------
+
+function onRowClick(e: VaultTreeNode) {
+  if (e.kind === 'dir') {
+    emit('navigate', e.path);
+    return;
+  }
+  emit('select', e);
+}
 </script>
 
 <style lang="scss" scoped>
@@ -106,14 +259,117 @@ const statusColor = knowledgeStatusColor;
     gap: 8px;
   }
 
+  &__crumbs {
+    min-width: 0;
+    font-size: 13px;
+  }
+
+  &__crumb {
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 1px 4px;
+    color: var(--q-grey-7, #616161);
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.06);
+      color: var(--q-primary);
+    }
+
+    &--current {
+      color: var(--q-grey-9, #212121);
+      font-weight: 600;
+      cursor: default;
+
+      &:hover {
+        background: transparent;
+        color: inherit;
+      }
+    }
+  }
+
+  &__crumb-sep {
+    color: var(--q-grey-5, #9e9e9e);
+    margin: 0 1px;
+  }
+
   &__body {
     overflow-y: auto;
     min-height: 200px;
     max-height: 520px;
   }
 
-  &__item {
-    position: relative;
+  &__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  &__th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--q-card, #fff);
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--q-grey-7, #616161);
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+
+    &:hover {
+      color: var(--q-primary);
+    }
+
+    &--right {
+      text-align: right;
+    }
+  }
+
+  &__row {
+    cursor: pointer;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.03);
+    }
+
+    &--selected {
+      background: rgba(var(--q-primary-rgb, 25, 118, 210), 0.1);
+    }
+  }
+
+  &__cell {
+    padding: 6px 8px;
+    vertical-align: middle;
+    white-space: nowrap;
+
+    &--name {
+      max-width: 0;
+      width: 40%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+    }
+
+    &--time {
+      color: var(--q-grey-7, #616161);
+      font-size: 12px;
+    }
+
+    &--size {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: var(--q-grey-7, #616161);
+    }
+  }
+
+  &__icon {
+    flex: none;
+    color: var(--q-grey-6, #757575);
   }
 }
 </style>

@@ -181,7 +181,12 @@ func (s *MCPServerService) CreateMCPServer(ctx context.Context, req *v1.CreateMC
 		return nil, err
 	}
 	invalidateAllAgentBuildCaches()
-	s.mon.RecordAdminAudit(ctx, "mcp_server.create", "mcp_server", out.ID, fmt.Sprintf("key=%s", out.Key))
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbCreate, "mcp_server"),
+		Resource:   "mcp_server",
+		ResourceID: out.ID,
+		Summary:    fmt.Sprintf("key=%s", out.Key),
+	})
 	return toProtoMCP(out), nil
 }
 
@@ -228,7 +233,12 @@ func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMC
 		return nil, err
 	}
 	invalidateAllAgentBuildCaches()
-	s.mon.RecordAdminAudit(ctx, "mcp_server.update", "mcp_server", out.ID, fmt.Sprintf("key=%s", out.Key))
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbUpdate, "mcp_server"),
+		Resource:   "mcp_server",
+		ResourceID: out.ID,
+		Summary:    fmt.Sprintf("key=%s", out.Key),
+	})
 	return toProtoMCP(out), nil
 }
 
@@ -237,11 +247,21 @@ func (s *MCPServerService) DeleteMCPServer(ctx context.Context, req *v1.DeleteMC
 	if err := s.assertMCPServerMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	// 先取 key 供审计 detail 使用（best-effort，取不到不阻断删除）。
+	summary := ""
+	if m, err := s.uc.Get(ctx, req.GetId()); err == nil {
+		summary = fmt.Sprintf("key=%s", m.Key)
+	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	invalidateAllAgentBuildCaches()
-	s.mon.RecordAdminAudit(ctx, "mcp_server.delete", "mcp_server", req.GetId(), "")
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbDelete, "mcp_server"),
+		Resource:   "mcp_server",
+		ResourceID: req.GetId(),
+		Summary:    summary,
+	})
 	return &emptypb.Empty{}, nil
 }
 

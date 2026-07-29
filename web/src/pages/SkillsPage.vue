@@ -85,8 +85,11 @@
         :loading="loading"
         :toggling-id="togglingId"
         :publishing-id="publishingId"
+        :publishing-ecosystem-id="publishingEcosystemId"
+        :load-health="loadSkillHealth"
         @toggle-enabled="onToggleEnabled"
         @publish="onPublishSkill"
+        @publish-ecosystem="onPublishToEcosystem"
         @edit-meta="openMetaEditor"
         @edit-files="openEditor"
         @delete="confirmDelete"
@@ -158,6 +161,7 @@ const {
   error,
   togglingId,
   publishingId,
+  publishingEcosystemId,
   deleteOpen,
   deleteTarget,
   deleting,
@@ -173,6 +177,7 @@ const {
   filterPendingFilesystem,
   filterMissingFilesystem,
   onPublishSkill,
+  onPublishToEcosystem,
   onToggleEnabled,
   openEditor,
   openMetaEditor,
@@ -186,6 +191,7 @@ const {
   listSkillFiles,
   readSkillFile,
   updateSkillFile,
+  loadSkillHealth,
   notify,
   confirm,
 } = useSkillsPage();

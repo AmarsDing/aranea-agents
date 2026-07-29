@@ -27,6 +27,7 @@ const OperationFederationServiceListFederationOrgs = "/kratos.a2a.v1.FederationS
 const OperationFederationServiceQueryFederationAuditLogs = "/kratos.a2a.v1.FederationService/QueryFederationAuditLogs"
 const OperationFederationServiceRegisterFederationOrg = "/kratos.a2a.v1.FederationService/RegisterFederationOrg"
 const OperationFederationServiceSetFederationTrustLevel = "/kratos.a2a.v1.FederationService/SetFederationTrustLevel"
+const OperationFederationServiceSyncFederationOrgCards = "/kratos.a2a.v1.FederationService/SyncFederationOrgCards"
 const OperationFederationServiceUpsertFederationPolicy = "/kratos.a2a.v1.FederationService/UpsertFederationPolicy"
 
 type FederationServiceHTTPServer interface {
@@ -47,6 +48,9 @@ type FederationServiceHTTPServer interface {
 	RegisterFederationOrg(context.Context, *RegisterFederationOrgRequest) (*FederationOrg, error)
 	// SetFederationTrustLevel SetFederationTrustLevel sets the trust level of an org.
 	SetFederationTrustLevel(context.Context, *SetFederationTrustLevelRequest) (*FederationOrg, error)
+	// SyncFederationOrgCards SyncFederationOrgCards manually pulls the org's remote agent cards into
+	// the directory cache (FED-F7).
+	SyncFederationOrgCards(context.Context, *SyncFederationOrgCardsRequest) (*SyncFederationOrgCardsResponse, error)
 	// UpsertFederationPolicy UpsertFederationPolicy configures the call policy for one org pair.
 	UpsertFederationPolicy(context.Context, *UpsertFederationPolicyRequest) (*FederationPolicy, error)
 }
@@ -57,6 +61,7 @@ func RegisterFederationServiceHTTPServer(s *http.Server, srv FederationServiceHT
 	r.GET("/v1/a2a/federation/orgs", _FederationService_ListFederationOrgs0_HTTP_Handler(srv))
 	r.DELETE("/v1/a2a/federation/orgs/{id}", _FederationService_DeleteFederationOrg0_HTTP_Handler(srv))
 	r.PUT("/v1/a2a/federation/orgs/{id}/trust", _FederationService_SetFederationTrustLevel0_HTTP_Handler(srv))
+	r.POST("/v1/a2a/federation/orgs/{id}/sync", _FederationService_SyncFederationOrgCards0_HTTP_Handler(srv))
 	r.POST("/v1/a2a/federation/policies", _FederationService_UpsertFederationPolicy0_HTTP_Handler(srv))
 	r.GET("/v1/a2a/federation/agents", _FederationService_DiscoverFederationAgents0_HTTP_Handler(srv))
 	r.POST("/v1/a2a/federation/invoke", _FederationService_InvokeFederatedAgent0_HTTP_Handler(srv))
@@ -147,6 +152,28 @@ func _FederationService_SetFederationTrustLevel0_HTTP_Handler(srv FederationServ
 			return err
 		}
 		reply := out.(*FederationOrg)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _FederationService_SyncFederationOrgCards0_HTTP_Handler(srv FederationServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in SyncFederationOrgCardsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationFederationServiceSyncFederationOrgCards)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.SyncFederationOrgCards(ctx, req.(*SyncFederationOrgCardsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*SyncFederationOrgCardsResponse)
 		return ctx.Result(200, reply)
 	}
 }
@@ -251,6 +278,9 @@ type FederationServiceHTTPClient interface {
 	RegisterFederationOrg(ctx context.Context, req *RegisterFederationOrgRequest, opts ...http.CallOption) (rsp *FederationOrg, err error)
 	// SetFederationTrustLevel SetFederationTrustLevel sets the trust level of an org.
 	SetFederationTrustLevel(ctx context.Context, req *SetFederationTrustLevelRequest, opts ...http.CallOption) (rsp *FederationOrg, err error)
+	// SyncFederationOrgCards SyncFederationOrgCards manually pulls the org's remote agent cards into
+	// the directory cache (FED-F7).
+	SyncFederationOrgCards(ctx context.Context, req *SyncFederationOrgCardsRequest, opts ...http.CallOption) (rsp *SyncFederationOrgCardsResponse, err error)
 	// UpsertFederationPolicy UpsertFederationPolicy configures the call policy for one org pair.
 	UpsertFederationPolicy(ctx context.Context, req *UpsertFederationPolicyRequest, opts ...http.CallOption) (rsp *FederationPolicy, err error)
 }
@@ -358,6 +388,21 @@ func (c *FederationServiceHTTPClientImpl) SetFederationTrustLevel(ctx context.Co
 	opts = append(opts, http.Operation(OperationFederationServiceSetFederationTrustLevel))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "PUT", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SyncFederationOrgCards SyncFederationOrgCards manually pulls the org's remote agent cards into
+// the directory cache (FED-F7).
+func (c *FederationServiceHTTPClientImpl) SyncFederationOrgCards(ctx context.Context, in *SyncFederationOrgCardsRequest, opts ...http.CallOption) (*SyncFederationOrgCardsResponse, error) {
+	var out SyncFederationOrgCardsResponse
+	pattern := "/v1/a2a/federation/orgs/{id}/sync"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationFederationServiceSyncFederationOrgCards))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, nil, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

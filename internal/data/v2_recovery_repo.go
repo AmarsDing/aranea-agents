@@ -133,6 +133,10 @@ func (r *v2RecoveryRepo) FailOrphanedInFlight(ctx context.Context, recoverAt tim
 		}
 		stats.TeamRuns = n
 
+		// member_sessions_v2：终态 failed 携带 outcome 权威带（哨兵，
+		// biz.MemberSessionVersion*）——recovery 是崩溃孤儿的终态裁决写者，
+		// 与 service outcome pass / Mode B finish 同属终态写者族；哨兵保证
+		// 任何迟到的生命周期事件（V≤2 重放）都无法覆盖 recovery 裁决。
 		n, err = w.MemberSessionV2.Update().
 			Where(membersessionv2.StatusIn(
 				string(biz.MemberSessionStatusPending),
@@ -142,7 +146,7 @@ func (r *v2RecoveryRepo) FailOrphanedInFlight(ctx context.Context, recoverAt tim
 			SetStatus(string(biz.MemberSessionStatusFailed)).
 			SetFinishedAt(recoverAt).
 			SetError(recoveryError).
-			AddVersion(1).
+			SetVersion(biz.MemberSessionVersionOutcome).
 			Save(txCtx)
 		if err != nil {
 			return fmt.Errorf("member_sessions_v2: %w", err)

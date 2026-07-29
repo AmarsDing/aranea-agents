@@ -61,11 +61,15 @@ type SkillPermissions struct {
 
 // Skill is one skill row + aggregates for list/detail.
 type Skill struct {
-	ID                   string
-	Name                 string
-	Slug                 string
-	Description          string
-	Tags                 []SkillTag
+	ID          string
+	Name        string
+	Slug        string
+	Description string
+	Tags        []SkillTag
+	// Triggers 来自 SKILL.md frontmatter 的确定性触发词（P1-3），随 metadata 落库。
+	Triggers []string
+	// StorageDir 磁盘同步目录（P1-3），存于 metadata envelope；无磁盘载体为空。
+	StorageDir           string
 	ExtendsSkillID       string
 	Status               string
 	Enabled              bool
@@ -260,6 +264,9 @@ type ImportVersionInput struct {
 	Description string
 	Body        string
 	Tags        []SkillTag
+	// Triggers 确定性触发词（P1-3），由 import engine 从新正文 frontmatter 解析；
+	// overwrite 替换正文时必须同步刷新，否则残留旧触发词。
+	Triggers []string
 }
 
 type Repo interface {
@@ -278,6 +285,10 @@ type UpdateDraft struct {
 	Tags           []SkillTag
 	HasBody        bool
 	Body           string
+	// HasTriggers/Triggers 随 Body 变更刷新确定性触发词（P1-3）。
+	// 由调用方从新正文的 frontmatter 解析（biz 不依赖 manifest 包，避免循环依赖）。
+	HasTriggers bool
+	Triggers    []string
 }
 
 // InvocationWrite inserts a skill_invocation row (filesystem sync, runtime, etc.).
@@ -315,11 +326,13 @@ type DiskSyncOutcome struct {
 
 // CreateInput creates platform skill + initial skill_version (import / directory sync).
 type CreateInput struct {
-	Name              string
-	Slug              string
-	Description       string
-	Body              string
-	Tags              []SkillTag
+	Name        string
+	Slug        string
+	Description string
+	Body        string
+	Tags        []SkillTag
+	// Triggers 确定性触发词（P1-3），由调用方从 SKILL.md frontmatter 解析。
+	Triggers          []string
 	StorageDir        string
 	SyncOrigin        string
 	Visibility        string
@@ -336,7 +349,9 @@ type DiskSyncInput struct {
 	Description string
 	Body        string
 	Tags        []SkillTag
-	StorageDir  string
+	// Triggers 确定性触发词（P1-3），由 watcher 从 SKILL.md frontmatter 解析。
+	Triggers   []string
+	StorageDir string
 }
 
 type SkillFileEntry struct {
@@ -409,6 +424,29 @@ type Usecase struct {
 
 	dedupInvalidator DedupCacheInvalidator
 	tagRepo          TagRepo
+
+	runtimeInvalidator RuntimeCacheInvalidator
+}
+
+// RuntimeCacheInvalidator 主动失效面向运行时的 Skill 缓存（trpc Repository
+// 快照 + 已加载正文）。实现方为 internal/skill/trpc.DBRepositoryAdapter。
+// 未注入时所有变更仍依赖快照 TTL（2min）兜底，行为与注入前一致。
+type RuntimeCacheInvalidator interface {
+	InvalidateSkillRuntimeCache()
+}
+
+// SetRuntimeCacheInvalidator wires the runtime cache invalidation hook.
+// Called once during DI setup; not safe for concurrent use with mutations.
+func (u *Usecase) SetRuntimeCacheInvalidator(inv RuntimeCacheInvalidator) {
+	u.runtimeInvalidator = inv
+}
+
+// invalidateRuntimeCache 在启用状态/可见性/正文发生变更后主动失效运行时缓存，
+// 使禁用/删除/回滚立即生效而非等待快照 TTL。Nil-safe。
+func (u *Usecase) invalidateRuntimeCache() {
+	if u.runtimeInvalidator != nil {
+		u.runtimeInvalidator.InvalidateSkillRuntimeCache()
+	}
 }
 
 // NewUsecase constructs a SkillUsecase.
@@ -520,6 +558,7 @@ func (u *Usecase) ToggleEnabled(ctx context.Context, id string, enabled bool) (S
 	}
 	u.InvalidateEmbedCacheForSlug(s.Slug)
 	u.invalidateDedupCache()
+	u.invalidateRuntimeCache()
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -554,12 +593,12 @@ func (u *Usecase) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	err = u.repo.DeleteSkill(ctx, id)
-	if err != nil {
+	if err := u.repo.DeleteSkill(ctx, id); err != nil {
 		return err
 	}
 	u.InvalidateEmbedCacheForSlug(s.Slug)
 	u.invalidateDedupCache()
+	u.invalidateRuntimeCache()
 	return nil
 }
 
@@ -610,6 +649,7 @@ func (u *Usecase) UpsertSkillFromDisk(ctx context.Context, in DiskSyncInput) (Sk
 	// 内容变化时刷新该 slug 的路由 embedding，避免 Layer B 语义路由使用陈旧向量。
 	if outcome.ContentChanged {
 		u.InvalidateEmbedCacheForSlug(s.Slug)
+		u.invalidateRuntimeCache()
 	}
 	u.invalidateDedupCache()
 	applySkillPermission(ctx, &s)
@@ -678,7 +718,11 @@ func (u *Usecase) Patch(ctx context.Context, id string, patch UpdateDraft) (Skil
 	if err != nil {
 		return Skill{}, err
 	}
+	u.InvalidateEmbedCacheForSlug(s.Slug)
 	u.invalidateDedupCache()
+	// Patch 可改变 name/description/tags/body/triggers（均为路由信号），
+	// 已发布且启用的 Skill 必须立即失效运行时缓存。
+	u.invalidateRuntimeCache()
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -709,8 +753,18 @@ func (u *Usecase) Publish(ctx context.Context, id string) (Skill, error) {
 	if err != nil {
 		return Skill{}, err
 	}
+	// P2-7a：发布即启用。消除「发布→再点启用」的两步反直觉操作；
+	// 用户仍可通过开关随时停用。启用失败不阻断发布（Skill 已处于 published），
+	// 返回真实（未启用）状态由前端开关呈现。
+	if !s.Enabled {
+		enabledSkill, enableErr := u.repo.UpdateSkillEnabled(ctx, id, true)
+		if enableErr == nil {
+			s = enabledSkill
+		}
+	}
 	u.InvalidateEmbedCacheForSlug(s.Slug)
 	u.invalidateDedupCache()
+	u.invalidateRuntimeCache()
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -761,6 +815,7 @@ func (u *Usecase) RollbackVersion(ctx context.Context, skillID string, versionID
 		return Skill{}, err
 	}
 	u.invalidateDedupCache()
+	u.invalidateRuntimeCache()
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -927,6 +982,9 @@ type RuntimeCandidate struct {
 	Description   string
 	Tags          []SkillTag
 	TaxonomyPaths []string
+	// Triggers 来自 SKILL.md frontmatter 的确定性触发词（P1-3）。
+	// 命中用户输入时在路由层强制纳入并置顶，不依赖模型自觉加载。
+	Triggers []string
 }
 
 // ParseRuntimePolicy unmarshals skill_runtime_json with safe defaults.
@@ -1103,10 +1161,27 @@ func evaluatePublishValidation(s Skill, body string) (status string, blockMsg st
 	if len([]rune(body)) < 40 {
 		warnings++
 	}
+	// P1-4：description 是运行时路由的核心信号之一。无触发条件且 frontmatter
+	// 未声明 triggers 时给出 warn（不 block），引导补全确定性触发信号。
+	if len(s.Triggers) == 0 && !descriptionHasTriggerCue(desc) {
+		warnings++
+	}
 	if warnings > 0 {
 		return "warn", ""
 	}
 	return "pass", ""
+}
+
+// descriptionHasTriggerCue 检测 description 是否包含「何时使用」的触发条件提示。
+// 仅用于发布校验的 warn 级启发式判断（宁漏不误报：命中即视为已声明）。
+func descriptionHasTriggerCue(desc string) bool {
+	lower := strings.ToLower(desc)
+	for _, cue := range []string{"当", "用于", "适用", "何时", "触发", "use when", "when to", "whenever"} {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	return false
 }
 
 func requireAdminAccess(ctx context.Context) error {

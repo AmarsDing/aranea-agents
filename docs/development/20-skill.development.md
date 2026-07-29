@@ -113,6 +113,37 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 |------|------|------|
 | **P5** | `skill_tags` 治理表 + 实时使用计数聚合 + 改名/删除事务重写所有引用 + 孤儿标签治理 + 独立管理页 `/skills/tags` + 三处标签下拉复用字典选项源（Skill 编辑 / 列表筛选 / Agent 设置）+ 治理后 embed/去重缓存失效 | ✅ |
 
+### 3.6 已完成（P6：管理页交互优化，2026-07-29）
+
+| 项 | 内容 | 状态 |
+|----|------|------|
+| 标签分组 | 表格标签列按 `维度:值` 前缀分组显示 | ✅ |
+| 列表排序 | `ListSkillsRequest.sort_by/sort_order`（proto → biz → service → data，Postgres JSONB 首个标签排序），筛选栏排序控件，默认标签升序 | ✅ |
+| 操作列拆分 | `启用`（生命周期 publish）与 `发布到生态市场`（ecosystem product）双按钮分离 | ✅ |
+| 统计悬浮面板 | `SkillStatsHoverChart.vue`：ECharts 趋势堆叠柱 + 成功率环形图 + 关键指标，健康数据按行懒加载 | ✅ |
+| 最近调用列 | 相对时间 + 完整时间 tooltip；修复有时间却显示「未调用」的错位 | ✅ |
+| MetaDialog | 加宽 + 名称/Slug/标签同行吸顶 | ✅ |
+| EditorDialog | 双栏独立滚动（压过 `.app-glass-panel` overflow）+ 细滚动条 | ✅ |
+| i18n | 新增 `skillsPage.*` 语言包（zh-CN / en-US），管理页新增文案全量迁移 | ✅ |
+
+### 3.7 已完成（P7：运行时加载链路优化，2026-07-29）
+
+| 项 | 内容 | 状态 |
+|----|------|------|
+| P0 运行时缓存主动失效 | `RuntimeCacheInvalidator` 端口 + `DBRepositoryAdapter.InvalidateSkillRuntimeCache`；`ToggleEnabled`/`Delete`/`RollbackVersion`/`Publish`/`UpsertSkillFromDisk`/`Patch` 成功后主动失效快照，启用/正文变更从 TTL 2min 降至秒级 | ✅ |
+| P1-3 frontmatter triggers 确定性触发 | `manifest.Parse` 提取 `triggers[]` → metadata envelope 落库（`parseSkillTriggers`/`normalizeSkillTriggers`）→ `RuntimeCandidate.Triggers` → `matchTrigger`（CJK 子串 / ASCII 词边界）命中后绕过 intent 收窄与 tag 过滤、`triggerScore=2000` 置顶、占配额、Layer A deny 优先、历史排名融合保护；创建/导入/overwrite/watcher/butler/Patch 全链路刷新 triggers | ✅ |
+| P1-4 发布校验触发信号 warn | `evaluatePublishValidation`：description 无触发条件 cue 且无 triggers → warn（不 block） | ✅ |
+| P2-7a 发布即启用 | `Publish` 成功后自动 `enabled=true`（失败不阻断发布，返回真实状态由前端开关呈现） | ✅ |
+| 验证 | `biz/skill`、`data`（PG 集成）、`skill/...`、`skillruntime`、`service(skill)` 测试全过；`go build ./cmd/... ./internal/... ./pkg/...` 干净；review 无阻断项 | ✅ |
+
+### 3.8 已完成（P8：导入决策跨组去重修复，2026-07-29）
+
+| 项 | 内容 | 状态 |
+|----|------|------|
+| bug 修复 | `groupDecisionsForSkipKeep`（`internal/pkginstall/skill_import.go`）：同一 warn candidate 出现在多个 `keep_separate` conflict group 时，原逻辑每组各发一条 `keep_separate` decision → 服务端重复插入同一 slug 违反 `skill_skill_key_key` 唯一约束（HTTP 400）；且后续 `skip_group` 会把已创建记录善后为 `deleted` 墓碑，墓碑又阻塞重装（全表唯一索引不含状态过滤）。修复：跨组先收集 kept candidate 去重，含 kept candidate 的 group 不再发 `skip_group` | ✅ |
+| 测试 | 新增 `TestInstallSkillSkipKeepSeparateDeduplicatesCandidateAcrossGroups`（一 candidate 跨 3 组只发 1 条 decision）；`internal/pkginstall` 全量测试通过 | ✅ |
+| 生产验证 | 阿里云运维技能批量安装（11 个 alibabacloud-*）：修复前 3 个因该 bug 反复失败并留墓碑，修复后全部 published+enabled | ✅ |
+
 ---
 
 ## 4. 开发阶段

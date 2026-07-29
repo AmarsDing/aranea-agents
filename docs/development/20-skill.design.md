@@ -178,6 +178,7 @@ Skill 是可安装、可版本化的能力包，由文件资产（SKILL.md + 附
 |------|------|
 | `name` / `slug` / `description` / `version` | 展示与版本 |
 | `tags[]` | 检索与 Agent 策略 |
+| `triggers[]` | 确定性触发词（P1-3）：命中用户输入时路由层强制 preload，不依赖模型自觉加载；CJK 子串匹配、ASCII 词边界匹配 |
 | `kind` | `markdown` \| `prompt_pack` \| `workflow` \| `tool_backed` |
 | `entry` | 默认 `SKILL.md` |
 | `requires[]` / `conflicts[]` | 依赖与冲突 |
@@ -382,10 +383,12 @@ service SkillService {
 |------|------|--------|------|
 | `POST` | `/v1/skills` | `CreateSkillRequest` | 创建草稿 |
 | `PATCH` | `/v1/skills/:id` | `UpdateSkillRequest` | 更新草稿或元数据 |
-| `POST` | `/v1/skills/:id/publish` | `PublishSkillRequest` | 发布并触发校验 |
+| `POST` | `/v1/skills/:id/publish` | `PublishSkillRequest` | 发布并触发校验；**发布即启用**（P2-7a，自动 `enabled=true`，消除「发布→再点启用」两步操作） |
 | `PATCH` | `/v1/skills/:id/enabled` | `ToggleSkillEnabledRequest` | 启用 / 停用 |
 | `DELETE` | `/v1/skills/:id` | 无 | 软删 |
 | `POST` | `/v1/skills/:id/duplicate` | 无 | 复制为新草稿 |
+
+> 发布校验（`evaluatePublishValidation`）：结构缺失（name/description/body 为空）→ `block`；description 无触发条件且 frontmatter 未声明 `triggers` → `warn`（P1-4，不阻断，引导补全确定性路由信号）；其余软问题（描述/正文过短）→ `warn`。
 
 ### 5.6 上传导入
 
@@ -436,6 +439,8 @@ service SkillService {
 | `Skill.sync_origin` | `filesystem` \| `import` \| `manual` \| 空 |
 | `ListSkillsRequest.filesystem_missing` | 筛选：`true` / `false` / 空 |
 | `ListSkillsRequest.sync_origin` | 按来源筛选 |
+| `ListSkillsRequest.sort_by` | 排序字段：`tag`（按首个标签名，tags JSONB 数组首个元素）\| `name`（按名称）；空 = 默认按更新时间倒序 |
+| `ListSkillsRequest.sort_order` | 排序方向：`asc` \| `desc`；空 = asc（仅 sort_by 非空时生效） |
 | `SkillFilesystemHealth` | 汇总：根目录可达、缺失数、待审核磁盘 Skill 数 |
 
 ### 5.11 错误格式
@@ -517,6 +522,9 @@ type Skill struct {
     ParentVersionID      string
     EvolutionReason      string
     LifecycleStatus      string
+    // Triggers 确定性触发词（P1-3），来自 SKILL.md frontmatter，
+    // 随 metadata envelope 落库；路由层命中用户输入时强制 preload。
+    Triggers             []string
 }
 
 type SkillTag struct {
@@ -614,6 +622,8 @@ type RuntimeCandidate struct {
     Description   string
     Tags          []SkillTag
     TaxonomyPaths []string
+    // Triggers 确定性触发词（P1-3）；命中时绕过 intent/tag 过滤并置顶。
+    Triggers      []string
 }
 
 func ParseRuntimePolicy(jsonStr string) (RuntimePolicy, error)
@@ -840,6 +850,13 @@ Turn query 注入：`internal/service/trpc_turn.go` · `internal/team/runner_tea
 
 **Layer A**（`applyLayerA`）：
 - 按 `RuntimePolicy.AllowedSlugs` / `DeniedSlugs` 过滤
+- **策略红线**：deny 优先于一切后续阶段（含 trigger 命中），被拒候选不参与触发词匹配
+
+**确定性触发**（P1-3，`computeTriggerHits` + `matchTrigger`）：
+- 候选 Skill 在 SKILL.md frontmatter 声明 `triggers: [报销, pdf]`，随 metadata 落库并进入 `RuntimeCandidate.Triggers`
+- 匹配语义：CJK trigger 用子串匹配（中文无词边界）；ASCII trigger 用词边界匹配（`pdf` 不误中 `pdftk`），大小写不敏感
+- 命中后：绕过 Layer B 的 intent 收窄与 tag 过滤（`reincludeTriggered` 重新并入），排序分 `triggerScore=2000` 高于 taxonomy 精确匹配（1000）强制置顶；占用 `MaxSkillsInToolset` 配额；历史表现融合（`applyRankResults`）跳过命中候选，确定性 preload 不被稀释
+- reason 记录为 `trigger match: <词>`，可在路由诊断中观测
 
 **Layer B**（`ResolveSkillSlugsDetailed`）：
 - `skillrouter.DetectIntentPaths(query, maxPaths)` → 分类路径关键词匹配
@@ -848,6 +865,8 @@ Turn query 注入：`internal/service/trpc_turn.go` · `internal/team/runner_tea
 - `scoreCandidatesWithReasons()` → 按分类路径匹配度评分
 - **Embedding 语义精排**（可选）：`SkillUsecase.ScoreByEmbedding(query, candidates)` → 余弦相似度融合评分
 - 排序后取 `MaxSkillsInToolset`，返回 `ResolveResult{Slugs, Reasons}`
+
+**运行时缓存主动失效**（P0）：`DBRepositoryAdapter` 快照（摘要 + 已加载正文）默认 TTL 2min。`SkillUsecase` 持有 `RuntimeCacheInvalidator` 端口（DI 时由 `NewSkillDBRepository` 注入 adapter 自身），在 `ToggleEnabled` / `Delete` / `RollbackVersion` / `Publish` / `UpsertSkillFromDisk(ContentChanged)` / `Patch` 成功后调用 `InvalidateSkillRuntimeCache()`，使启用状态与正文变更秒级生效；未注入时退化为纯 TTL 兜底。
 
 ### 7.3 意图路由与分类
 
@@ -1038,6 +1057,7 @@ web/src/
 │   └── AgentSettingsSkillsTab.vue  # skill_runtime_json 配置（allowed_tags 选项源接字典）
 ├── components/skills/
 │   ├── SkillTable.vue · SkillFilterBar.vue · SkillStatsStrip.vue
+│   ├── SkillStatsHoverChart.vue    # 统计列悬浮图形面板（ECharts 趋势 + 占比，懒加载健康数据）
 │   ├── SkillEditorDialog.vue · SkillUploadPlaceholder.vue
 │   ├── SkillDeleteDialog.vue · SkillRunsTable.vue · SkillPagination.vue
 │   ├── SkillMetaDialog.vue         # 元数据编辑（标签字段选项源接字典）
@@ -1057,6 +1077,17 @@ web/src/
 **SkillUploadPlaceholder.vue** — 上传 zip、轮询导入任务、冲突组炼化（调用 `features/skills/api` import 端点）。
 
 **SkillTagsPage.vue** — 标签字典独立管理页：按维度分组（`QList` + 组头 chip）、搜索 + 收录状态筛选、新建/改名/删除对话框、孤儿行浅黄底色 + 收录按钮。Store 层 `tagsLoaded` 缓存避免选项源场景重复请求，管理页 `force=true` 强制刷新；改名/删除后自动失效缓存。
+
+**Skill 管理页（SkillsPage）交互要点**：
+
+- **标签分组显示**：表格标签列按 `维度:值` 前缀分组（维度 chip + 值 chip），无维度标签归入通用组。
+- **排序**：筛选栏排序控件支持 `tag`（按首个标签名）/ `name`（按名称）+ 升降序切换，默认标签升序；参数经 `ListSkillsRequest.sort_by/sort_order` 下推 Postgres JSONB 排序。
+- **操作列双按钮**：`启用`（草稿 → 已发布，生命周期 publish，Agent 运行时可挂载）与 `发布到生态市场`（上架为 ecosystem product，`stores/ecosystem.publish`）分离；启用/停用由 `PATCH /v1/skills/:id/enabled` 开关控制。
+- **统计列悬浮图形面板**：`SkillStatsHoverChart.vue` 包裹 `SkillStatsStrip`，悬停 150ms 后展示 `QTooltip` 面板——近 7 天调用趋势堆叠柱状图（成功/失败）+ 成功率环形图 + 7d/30d 调用、p95 耗时、路由命中率；健康数据按行懒加载（`loadSkillHealth` 经 Page → Table props 注入，展示层不直连 store）。
+- **最近调用列**：相对时间显示（刚刚 / N 分钟前 / N 小时前 / N 天前 / 本地化日期），tooltip 展示完整时间；`last_invoked_at` 为空才显示「未调用」。
+- **SkillMetaDialog**：加宽（`app-dialog-card--xl`），名称 / Slug / 标签同行 grid 布局且吸顶（滚动描述/正文时始终可见）。
+- **SkillEditorDialog**：双栏编辑器左右面板独立滚动（高特异性选择器压过 `.app-glass-panel` 的 `overflow: hidden`），细滚动条样式。
+- **i18n**：管理页文案集中于 `skillsPage.*` 语言包（zh-CN / en-US）。
 
 ### 10.2 Quasar 组件清单
 

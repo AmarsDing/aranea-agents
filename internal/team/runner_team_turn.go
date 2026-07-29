@@ -253,6 +253,7 @@ func (r *Runner) finalizeTeamRun(
 				loggateway.Str("team_run_id", updatedRun.ID), loggateway.Str("update_error", err.Error()))
 		}
 		run = updatedRun
+		r.recordRunCompletion(ctx, run, "", t0)
 	}
 
 	r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, cachedTok, ar.prov, ar.mod, dialogMode)

@@ -57,6 +57,14 @@ message MonitorPlatformRow {
   string created_at = 16;
   string updated_at = 17;
   string deleted_at = 18;
+  // Resolved display names joined from agents/teams (traces only); empty when
+  // the reference is dangling or the row is an event row.
+  string agent_name = 19;
+  string team_name = 20;
+  // Correlation keys for trace rows (traces only); empty for event rows.
+  // Exposed so the detail dialog can query flow-log history by session/run.
+  string session_id = 21;
+  string run_id = 22;
 }
 
 message ListMonitorEventsRequest {
@@ -65,6 +73,10 @@ message ListMonitorEventsRequest {
   string event_type = 3;
   string agent_id = 4;
   string status = 5;
+  // Prefix match ANY (union with event_type); e.g. ["alert.","runner.completion"].
+  repeated string event_types = 6;
+  // Prefix exclusion applied after the include set; e.g. ["skill.filesystem."].
+  repeated string exclude_event_types = 7;
 }
 
 message ListMonitorEventsResponse {
@@ -169,6 +181,23 @@ message MonitorAlertRule {
 
 message ListMonitorAlertRulesResponse {
   repeated MonitorAlertRule items = 1;
+}
+
+// AlertMetricInfo is one entry of the alert metric directory: human-readable
+// metadata for a metric that alert rules can target, plus its current value.
+message AlertMetricInfo {
+  string key = 1;                    // technical key, e.g. "runner.error_rate"
+  string name = 2;                   // short English display name (frontend localizes known keys)
+  string description = 3;            // what the metric measures and when it fires
+  string unit = 4;                   // "ratio" (0..1) or "count"
+  int32 default_window_minutes = 5;  // recommended evaluation window
+  double suggested_threshold = 6;    // recommended threshold; rule fires when value >= threshold
+  double current_value = 7;          // value evaluated at request time over the default window
+  string evaluated_at = 8;           // RFC3339 timestamp of the evaluation
+}
+
+message ListAlertMetricsResponse {
+  repeated AlertMetricInfo items = 1;
 }
 
 message PutMonitorAlertRulesRequest {
@@ -385,6 +414,11 @@ service MonitorService {
   }
   rpc ListMonitorAlertRules(GetMonitorLogsRequest) returns (ListMonitorAlertRulesResponse) {
     option (google.api.http) = {get: "/v1/monitor/alert-rules"};
+  }
+  // Alert metric directory: which metrics rules can target, what they mean,
+  // and their current values.
+  rpc ListAlertMetrics(GetMonitorLogsRequest) returns (ListAlertMetricsResponse) {
+    option (google.api.http) = {get: "/v1/monitor/alert-metrics"};
   }
   rpc PutMonitorAlertRules(PutMonitorAlertRulesRequest) returns (PutMonitorAlertRulesResponse) {
     option (google.api.http) = {

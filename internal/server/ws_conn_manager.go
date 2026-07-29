@@ -24,6 +24,12 @@ func (s *WSServer) countGlobalMonitorConns() int {
 	return s.store.countGlobalMonitorConns()
 }
 
+// CountGlobalMonitorConns exports the global monitor connection count for the
+// monitor self-check (WebSocketChecker via monitor.WSConnectionCounter).
+func (s *WSServer) CountGlobalMonitorConns() int {
+	return s.countGlobalMonitorConns()
+}
+
 // removeConn removes a connection from the store.
 func (s *WSServer) removeConn(wc *wsConn) {
 	s.store.remove(wc)

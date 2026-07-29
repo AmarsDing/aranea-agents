@@ -501,11 +501,14 @@ func (x *KnowledgeChunk) GetScore() float32 {
 	return 0
 }
 
+// CreateCollectionRequest creates a Vault (V2: local folder as source of truth).
+// root_path is required; embedding_model is optional (empty = lexical-only vault, no semantic layer).
 type CreateCollectionRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Name           string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Description    string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
 	EmbeddingModel string                 `protobuf:"bytes,3,opt,name=embedding_model,json=embeddingModel,proto3" json:"embedding_model,omitempty"`
+	RootPath       string                 `protobuf:"bytes,4,opt,name=root_path,json=rootPath,proto3" json:"root_path,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -557,6 +560,13 @@ func (x *CreateCollectionRequest) GetDescription() string {
 func (x *CreateCollectionRequest) GetEmbeddingModel() string {
 	if x != nil {
 		return x.EmbeddingModel
+	}
+	return ""
+}
+
+func (x *CreateCollectionRequest) GetRootPath() string {
+	if x != nil {
+		return x.RootPath
 	}
 	return ""
 }
@@ -988,6 +998,7 @@ type VaultTreeNode struct {
 	Status        string   `protobuf:"bytes,8,opt,name=status,proto3" json:"status,omitempty"`
 	SizeBytes     int64    `protobuf:"varint,9,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
 	UpdatedAt     string   `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	ErrorMessage  string   `protobuf:"bytes,11,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"` // populated when status=error (parse failure reason)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1088,6 +1099,13 @@ func (x *VaultTreeNode) GetSizeBytes() int64 {
 func (x *VaultTreeNode) GetUpdatedAt() string {
 	if x != nil {
 		return x.UpdatedAt
+	}
+	return ""
+}
+
+func (x *VaultTreeNode) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
 	}
 	return ""
 }
@@ -1976,11 +1994,12 @@ const file_kratos_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"\rmetadata_json\x18\x06 \x01(\tR\fmetadataJson\x12\x1f\n" +
 	"\vchunk_index\x18\a \x01(\x05R\n" +
 	"chunkIndex\x12\x14\n" +
-	"\x05score\x18\b \x01(\x02R\x05score\"\x84\x01\n" +
+	"\x05score\x18\b \x01(\x02R\x05score\"\xa1\x01\n" +
 	"\x17CreateCollectionRequest\x12\x18\n" +
 	"\x04name\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x04name\x12 \n" +
-	"\vdescription\x18\x02 \x01(\tR\vdescription\x12-\n" +
-	"\x0fembedding_model\x18\x03 \x01(\tB\x04\xe2A\x01\x02R\x0eembeddingModel\",\n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12'\n" +
+	"\x0fembedding_model\x18\x03 \x01(\tR\x0eembeddingModel\x12!\n" +
+	"\troot_path\x18\x04 \x01(\tB\x04\xe2A\x01\x02R\brootPath\",\n" +
 	"\x14GetCollectionRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"F\n" +
 	"\x16ListCollectionsRequest\x12\x14\n" +
@@ -2008,7 +2027,7 @@ const file_kratos_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"\x14ListDocumentsRequest\x12#\n" +
 	"\rcollection_id\x18\x01 \x01(\tR\fcollectionId\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x03 \x01(\x05R\x06offset\"\x81\x02\n" +
+	"\x06offset\x18\x03 \x01(\x05R\x06offset\"\xa6\x02\n" +
 	"\rVaultTreeNode\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x12\n" +
@@ -2022,7 +2041,8 @@ const file_kratos_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"size_bytes\x18\t \x01(\x03R\tsizeBytes\x12\x1d\n" +
 	"\n" +
 	"updated_at\x18\n" +
-	" \x01(\tR\tupdatedAt\"Y\n" +
+	" \x01(\tR\tupdatedAt\x12#\n" +
+	"\rerror_message\x18\v \x01(\tR\ferrorMessage\"Y\n" +
 	"\x14ListVaultTreeRequest\x12)\n" +
 	"\rcollection_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\fcollectionId\x12\x16\n" +
 	"\x06prefix\x18\x02 \x01(\tR\x06prefix\"Q\n" +

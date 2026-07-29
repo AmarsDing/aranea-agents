@@ -7,6 +7,8 @@ import { flowLogMatchesTrace, sortFlowLogLines, traceCorrelationFromTraceRow } f
 export function useMonitorTraceFlow(detail: Ref<MonitorTrace | null>, detailOpen: Ref<boolean>) {
   const monitorStore = useMonitorStore();
   const flowLines = ref<MonitorLogLine[]>([]);
+  /** Spans fetched via GetMonitorTrace detail API (monitor_trace_spans); drives waterfall/tree tabs. */
+  const detailSpans = ref<unknown[]>([]);
   let flowWsSub: ReturnType<typeof monitorStore.startLogsStream> | null = null;
 
   const activeCorrelation = computed(() => {
@@ -56,9 +58,22 @@ export function useMonitorTraceFlow(detail: Ref<MonitorTrace | null>, detailOpen
   async function openTraceDetail(row: MonitorTrace) {
     detail.value = row;
     flowLines.value = [];
+    detailSpans.value = [];
     detailOpen.value = true;
-    await loadFlowHistory();
+    await Promise.all([loadFlowHistory(), loadSpanDetail(row.id)]);
     startFlowStream();
+  }
+
+  /** Fetch persisted spans for the waterfall/tree tabs (best-effort). */
+  async function loadSpanDetail(traceId: string) {
+    if (!traceId) return;
+    try {
+      const detailRes = await monitorStore.fetchTraceDetail(traceId);
+      const spans: unknown = detailRes.spans_json ? JSON.parse(detailRes.spans_json) : [];
+      detailSpans.value = Array.isArray(spans) ? spans : [];
+    } catch {
+      // span detail is best-effort; flow log tab still works
+    }
   }
 
   watch(detailOpen, (open) => {
@@ -69,6 +84,7 @@ export function useMonitorTraceFlow(detail: Ref<MonitorTrace | null>, detailOpen
 
   return {
     flowLines,
+    detailSpans,
     activeCorrelation,
     loadFlowHistory,
     startFlowStream,

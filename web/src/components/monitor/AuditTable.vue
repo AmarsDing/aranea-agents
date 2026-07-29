@@ -1,9 +1,13 @@
+<!--
+  Pure presentation: all data via props, all actions via emits.
+  No composable / Store access. 服务端分页/筛选：查询变更通过 load 事件上抛。
+-->
 <template>
   <div>
     <q-card flat bordered class="monitor-card">
       <q-card-section class="q-pb-none">
-        <div class="text-h6 text-weight-bold">活动日志</div>
-        <div class="text-caption text-grey-7">管理与配置变更审计记录</div>
+        <div class="text-h6 text-weight-bold">{{ t('monitorPage.audit.title') }}</div>
+        <div class="text-caption text-grey-7">{{ t('monitorPage.audit.subtitle') }}</div>
       </q-card-section>
 
       <AppPageToolbar class="monitor-audit-toolbar">
@@ -15,7 +19,7 @@
           emit-value
           map-options
           clearable
-          label="事件类型"
+          :label="t('monitorPage.audit.filterAction')"
           :options="actionOptions"
         />
         <q-select
@@ -26,7 +30,7 @@
           emit-value
           map-options
           clearable
-          label="实体类型"
+          :label="t('monitorPage.audit.filterResource')"
           :options="resourceOptions"
         />
         <q-input
@@ -35,24 +39,32 @@
           dense
           outlined
           clearable
-          debounce="200"
-          label="搜索事件 / 资源 / 详情"
+          debounce="300"
+          :label="t('monitorPage.audit.searchPlaceholder')"
         >
           <template #prepend>
             <q-icon name="search" />
           </template>
         </q-input>
         <template #actions>
-          <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
-          <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="$emit('reload')" />
+          <q-btn flat rounded no-caps icon="restart_alt" :label="t('monitorPage.audit.reset')" @click="resetFilters" />
+          <q-btn
+            flat
+            rounded
+            no-caps
+            icon="refresh"
+            :label="t('monitorPage.audit.refresh')"
+            :loading="loading"
+            @click="emitLoad"
+          />
         </template>
       </AppPageToolbar>
 
       <div class="app-registry-table-shell">
         <AppRegistryTable
           :shell="false"
-          :rows="pagedRows"
-          :columns="AUDIT_TABLE_COLUMNS"
+          :rows="rows"
+          :columns="columns"
           row-key="id"
           :loading="loading"
           hide-pagination
@@ -61,18 +73,16 @@
           <template #body-cell-event="slotProps">
             <q-td :props="slotProps" class="cursor-pointer" @click="openDetail(slotProps.row)">
               <q-chip dense square :color="eventColor(slotProps.row.action)" text-color="white">
-                {{ slotProps.row.action }}.{{ slotProps.row.resource }}
+                {{ slotProps.row.action }}
               </q-chip>
             </q-td>
           </template>
           <template #body-cell-resource="slotProps">
             <q-td :props="slotProps">
-              <AppRegistryHoverTip :text="slotProps.row.detail">
-                <div class="min-width-0">
-                  <div class="app-registry-cell-primary ellipsis">{{ slotProps.row.resource }}</div>
-                  <div class="app-registry-cell-sub ellipsis">{{ slotProps.row.resource_id || '—' }}</div>
-                </div>
-              </AppRegistryHoverTip>
+              <div class="min-width-0">
+                <div class="app-registry-cell-primary ellipsis">{{ slotProps.row.resource }}</div>
+                <div class="app-registry-cell-sub ellipsis">{{ slotProps.row.resource_id || '—' }}</div>
+              </div>
             </q-td>
           </template>
           <template #body-cell-actor="slotProps">
@@ -86,6 +96,14 @@
               <code class="monitor-code ellipsis">{{ slotProps.row.request_id || '—' }}</code>
             </q-td>
           </template>
+          <template #body-cell-detail="slotProps">
+            <q-td :props="slotProps">
+              <AppRegistryHoverTip v-if="slotProps.row.detail" :text="prettyDetail(slotProps.row.detail)">
+                <div class="app-registry-cell-sub ellipsis">{{ auditDetailSummary(slotProps.row.detail) || '—' }}</div>
+              </AppRegistryHoverTip>
+              <span v-else class="app-registry-cell-sub">—</span>
+            </q-td>
+          </template>
           <template #body-cell-created="slotProps">
             <q-td :props="slotProps">
               <span class="app-registry-cell-sub">{{ formatDate(slotProps.row.created_at) }}</span>
@@ -97,9 +115,9 @@
           v-model:page="page"
           v-model:page-size="pageSize"
           :page-max="pageMax"
-          :total="filteredRows.length"
+          :total="total"
           :loading="loading"
-          label="条审计"
+          :label="t('monitorPage.audit.paginationLabel')"
           :page-size-options="[12, 25, 50]"
         />
       </div>
@@ -109,8 +127,8 @@
       <q-card class="app-dialog-card app-dialog-card--lg app-glass-dialog">
         <q-card-section class="app-glass-dialog__head row items-start justify-between">
           <div>
-            <div class="app-glass-dialog__title">Audit 详情</div>
-            <div class="app-glass-dialog__subtitle">{{ selected?.action }}.{{ selected?.resource }}</div>
+            <div class="app-glass-dialog__title">{{ t('monitorPage.audit.dialogTitle') }}</div>
+            <div class="app-glass-dialog__subtitle">{{ selected?.action }}</div>
           </div>
           <q-btn v-close-popup flat round dense icon="close" />
         </q-card-section>
@@ -118,16 +136,30 @@
         <div class="app-glass-dialog__scroll">
           <q-card-section class="app-glass-dialog__body">
             <q-list dense>
+              <q-item>
+                <q-item-section>{{ t('monitorPage.audit.labelResource') }}</q-item-section>
+                <q-item-section side>
+                  {{ selected?.resource }}<span v-if="selected?.resource_id"> / {{ selected?.resource_id }}</span>
+                </q-item-section>
+              </q-item>
+              <q-item>
+                <q-item-section>{{ t('monitorPage.audit.labelTime') }}</q-item-section>
+                <q-item-section side>{{ formatDate(selected?.created_at) }}</q-item-section>
+              </q-item>
               <q-item v-if="selected?.actor">
-                <q-item-section>操作者</q-item-section>
+                <q-item-section>{{ t('monitorPage.audit.labelActor') }}</q-item-section>
                 <q-item-section side>{{ selected?.actor }}</q-item-section>
               </q-item>
               <q-item v-if="selected?.ip">
                 <q-item-section>IP</q-item-section>
                 <q-item-section side>{{ selected?.ip }}</q-item-section>
               </q-item>
+              <q-item v-if="selected?.user_agent">
+                <q-item-section>User Agent</q-item-section>
+                <q-item-section side class="ellipsis">{{ selected?.user_agent }}</q-item-section>
+              </q-item>
               <q-item v-if="selected?.severity">
-                <q-item-section>严重级别</q-item-section>
+                <q-item-section>{{ t('monitorPage.audit.labelSeverity') }}</q-item-section>
                 <q-item-section side>
                   <q-badge :color="severityColor(selected!.severity)">{{ selected?.severity }}</q-badge>
                 </q-item-section>
@@ -138,7 +170,7 @@
         </div>
         <q-separator />
         <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn flat no-caps label="复制 JSON" icon="content_copy" @click="copyJSON" />
+          <q-btn flat no-caps :label="t('monitorPage.audit.copyJson')" icon="content_copy" @click="copyJSON" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -148,24 +180,38 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { copyToClipboard } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import AppPageToolbar from '../layout/AppPageToolbar.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 
-import type { AuditLog } from '../../features/monitor/types';
-import { compactJSON, formatDate } from '../../features/monitor/utils';
-import { AUDIT_TABLE_COLUMNS } from './monitorTableUi';
+import type { AuditLog, AuditQuery } from '../../features/monitor/types';
+import { auditDetailSummary, compactJSON, formatDate, parseJSON } from '../../features/monitor/utils';
+import { AUDIT_DEFAULT_PAGE_SIZE } from '../../features/constants/queryLimits';
+import { createAuditColumns } from './monitorTableUi';
+
+const { t } = useI18n();
+const columns = computed(() => createAuditColumns(t));
 
 const props = defineProps<{
   rows: AuditLog[];
+  total: number;
   loading: boolean;
 }>();
 
 const emit = defineEmits<{
-  reload: [];
+  load: [query: AuditQuery];
   notify: [payload: { message: string; type: 'positive' | 'negative' | 'warning' }];
 }>();
+
+// 事件类型（动词级，后端按 "<verb>.%" 前缀匹配）与实体类型为固定枚举，
+// 与 18-monitor.md §2.1 及后端审计点覆盖范围对齐。
+const ACTION_VERBS = ['create', 'update', 'delete', 'toggle', 'credentials', 'archive', 'sync'] as const;
+const RESOURCE_TYPES = ['agent', 'team', 'channel', 'provider', 'config', 'session', 'tool', 'mcp_server', 'skill'] as const;
+
+const actionOptions = ACTION_VERBS.map((v) => ({ label: v, value: v }));
+const resourceOptions = RESOURCE_TYPES.map((r) => ({ label: r, value: r }));
 
 const keyword = ref('');
 const actionFilter = ref<string | null>(null);
@@ -173,50 +219,33 @@ const resourceFilter = ref<string | null>(null);
 const selected = ref<AuditLog | null>(null);
 const detailOpen = ref(false);
 const page = ref(1);
-const pageSize = ref(12);
+const pageSize = ref(AUDIT_DEFAULT_PAGE_SIZE);
 
-const actionOptions = computed(() => {
-  const actions = new Set(props.rows.map((r) => r.action).filter(Boolean));
-  return [...actions].map((a) => ({ label: a, value: a }));
-});
+const pageMax = computed(() => Math.max(1, Math.ceil(props.total / pageSize.value)));
 
-const resourceOptions = computed(() => {
-  const resources = new Set(props.rows.map((r) => r.resource).filter(Boolean));
-  return [...resources].map((r) => ({ label: r, value: r }));
-});
+const query = computed<AuditQuery>(() => ({
+  limit: pageSize.value,
+  offset: (page.value - 1) * pageSize.value,
+  action: actionFilter.value ?? '',
+  resource: resourceFilter.value ?? '',
+  keyword: keyword.value.trim(),
+}));
 
-const filteredRows = computed(() => {
-  let result = props.rows;
-  if (actionFilter.value) {
-    result = result.filter((row) => row.action === actionFilter.value);
-  }
-  if (resourceFilter.value) {
-    result = result.filter((row) => row.resource === resourceFilter.value);
-  }
-  const q = keyword.value.trim().toLowerCase();
-  if (q) {
-    result = result.filter((row) =>
-      [row.action, row.resource, row.resource_id, row.request_id, row.detail, row.actor].some((value) =>
-        String(value || '')
-          .toLowerCase()
-          .includes(q),
-      ),
-    );
-  }
-  return result;
-});
-
-const pageMax = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)));
-const pagedRows = computed(() => {
-  const start = (page.value - 1) * pageSize.value;
-  return filteredRows.value.slice(start, start + pageSize.value);
-});
-
+// 筛选变化回到第一页；query 变化统一触发服务端加载（初始加载由父级负责，与默认值一致）。
 watch([keyword, actionFilter, resourceFilter], () => {
   page.value = 1;
 });
+watch(query, (q) => emit('load', q));
+// 外部数据收缩（如删除）导致页码越界时收敛到末页。
+watch(pageMax, (max) => {
+  if (page.value > max) page.value = max;
+});
 
-const selectedJSON = computed(() => compactJSON(selected.value ?? {}));
+const selectedJSON = computed(() => compactJSON(parseJSON(selected.value?.detail ?? '')));
+
+function emitLoad() {
+  emit('load', query.value);
+}
 
 function resetFilters() {
   keyword.value = '';
@@ -228,6 +257,10 @@ function resetFilters() {
 function openDetail(row: AuditLog) {
   selected.value = row;
   detailOpen.value = true;
+}
+
+function prettyDetail(detail: string): string {
+  return compactJSON(parseJSON(detail));
 }
 
 function eventColor(action: string) {
@@ -247,7 +280,7 @@ function severityColor(severity: string) {
 
 async function copyJSON() {
   await copyToClipboard(selectedJSON.value);
-  emit('notify', { message: '已复制', type: 'positive' });
+  emit('notify', { message: t('monitorPage.audit.copied'), type: 'positive' });
 }
 </script>
 

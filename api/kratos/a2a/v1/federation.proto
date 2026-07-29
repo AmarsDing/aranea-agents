@@ -102,6 +102,16 @@ message SetFederationTrustLevelRequest {
   string trust_level = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
+message SyncFederationOrgCardsRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message SyncFederationOrgCardsResponse {
+  // synced is the number of remote agents whose cards were refreshed; agents
+  // that fail to pull are skipped (single failure does not abort the sync).
+  int32 synced = 1;
+}
+
 message UpsertFederationPolicyRequest {
   string caller_org_id = 1 [(google.api.field_behavior) = REQUIRED];
   string callee_org_id = 2 [(google.api.field_behavior) = REQUIRED];
@@ -186,6 +196,14 @@ service FederationService {
     option (google.api.http) = {
       put: "/v1/a2a/federation/orgs/{id}/trust"
       body: "*"
+    };
+  }
+
+  // SyncFederationOrgCards manually pulls the org's remote agent cards into
+  // the directory cache (FED-F7).
+  rpc SyncFederationOrgCards(SyncFederationOrgCardsRequest) returns (SyncFederationOrgCardsResponse) {
+    option (google.api.http) = {
+      post: "/v1/a2a/federation/orgs/{id}/sync"
     };
   }
 

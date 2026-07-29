@@ -132,6 +132,12 @@ func (s *ChatService) publishPauseResumeStatus(ctx context.Context, chatSessionI
 
 // syncMemberSessionStatus publishes member_session.updated via Sequencer
 // (persist + WS) when the paused/resumed session belongs to a team member.
+//
+// 版本带纪律（2026-07-29 哨兵化，见 biz.MemberSessionVersion*）：
+//   - 目标为终态（Mode B finish：completed/failed/skipped）→ 携带 outcome
+//     权威带（哨兵），保证终态恒赢、终态之后无写者；
+//   - 生命周期（paused/running）→ Version++ 单调递增（永远低于哨兵带）；
+//   - 已终态记录 → 直接跳过，生命周期事件不得覆盖终态裁决。
 func (s *ChatService) syncMemberSessionStatus(ctx context.Context, chatSessionID string, status biz.MemberSessionStatus) {
 	repo := s.memberSessions
 	if repo == nil && s.orch != nil {
@@ -148,7 +154,14 @@ func (s *ChatService) syncMemberSessionStatus(ctx context.Context, chatSessionID
 	if err != nil {
 		return
 	}
+	if biz.IsMemberSessionTerminal(ms.Status) {
+		return
+	}
 	ms.Status = status
-	ms.Version++
+	if biz.IsMemberSessionTerminal(status) {
+		ms.Version = biz.MemberSessionVersionOutcome
+	} else {
+		ms.Version++
+	}
 	seq.Publish(ctx, biz.NewMemberSessionUpdatedEvent(ms))
 }

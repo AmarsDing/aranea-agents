@@ -23,7 +23,8 @@ func TestNewKnowledgeCmd_Structure(t *testing.T) {
 	requireExactArgs(t, docGet)
 	requireExactArgs(t, docDel)
 	requireFlag(t, create, "name", true)
-	requireFlag(t, create, "embedding-model", true)
+	requireFlag(t, create, "root-path", true)
+	requireFlag(t, create, "embedding-model", false)
 	requireFlag(t, search, "query", true)
 }
 

@@ -1,224 +1,367 @@
 <template>
-  <q-card flat bordered class="monitor-card">
-    <q-card-section class="q-pb-sm">
-      <div class="row items-center q-gutter-sm">
-        <div class="text-h6 text-weight-bold">实时事件</div>
-        <q-badge :color="streamColor">{{ streamText }}</q-badge>
-        <q-badge outline color="accent">{{ visibleEvents.length }} 个事件</q-badge>
+  <div class="registry-table-card">
+    <!-- ── Pulse：实时事件条（WS，不落库）── -->
+    <div class="registry-table-card__header">
+      <div>
+        <div class="registry-table-card__title row items-center q-gutter-sm">
+          <span>{{ t('monitorPage.events.panelTitle') }}</span>
+          <q-badge outline color="primary">{{ t('monitorPage.events.count', { n: pulseEvents.length }) }}</q-badge>
+          <q-badge :color="streamBadge.color" :label="streamBadge.label" outline />
+        </div>
       </div>
-      <div class="text-caption text-grey-7">Team / Agent 运行时事件与持久化监控事件</div>
-    </q-card-section>
-
-    <AppPageToolbar class="monitor-events-toolbar">
-      <q-select
-        :model-value="category"
-        class="app-page-toolbar__field"
-        dense
-        outlined
-        emit-value
-        map-options
-        label="分类"
-        :options="categoryOptions"
-        @update:model-value="$emit('update:category', $event)"
-      />
-      <template #actions>
+      <div class="row items-center q-gutter-sm">
         <q-btn
           flat
-          rounded
-          no-caps
+          dense
           :icon="paused ? 'play_arrow' : 'pause'"
-          :label="paused ? '恢复' : '暂停'"
-          @click="$emit('toggleStream')"
+          :label="paused ? t('monitorPage.resume') : t('monitorPage.pause')"
+          @click="emit('toggle-stream')"
         />
-        <q-btn flat rounded no-caps icon="delete_sweep" label="清除" @click="$emit('clear')" />
-      </template>
-    </AppPageToolbar>
+        <q-btn flat dense icon="delete_sweep" :label="t('monitorPage.events.clearPulse')" @click="emit('clear-pulse')" />
+      </div>
+    </div>
 
-    <template v-if="visibleEvents.length">
-      <div class="app-registry-table-shell">
-        <AppRegistryTable
-          :shell="false"
-          table-class="monitor-events-table"
-          :rows="pagedEvents"
-          :columns="MONITOR_EVENTS_TABLE_COLUMNS"
-          row-key="id"
-          hide-pagination
-          :pagination="{ rowsPerPage: 0 }"
+    <div class="pulse-strip q-px-md q-pb-md">
+      <div v-if="pulseEvents.length === 0" class="text-caption text-grey pulse-strip__empty">
+        {{ pulseEmptyHint }}
+      </div>
+      <div v-else class="pulse-strip__scroll row no-wrap items-center q-gutter-xs">
+        <q-chip
+          v-for="evt in pulseEvents"
+          :key="evt.id"
+          dense
+          square
+          clickable
+          class="pulse-chip"
+          @click="openDetail(evt)"
         >
-          <template #body-cell-title="slotProps">
-            <q-td :props="slotProps" class="cursor-pointer" @click="$emit('openDetail', slotProps.row)">
-              <AppRegistryHoverTip :text="slotProps.row.subtitle">
-                <div class="app-registry-cell-primary ellipsis">{{ slotProps.row.title }}</div>
-              </AppRegistryHoverTip>
-            </q-td>
-          </template>
-          <template #body-cell-tags="slotProps">
-            <q-td :props="slotProps">
-              <div class="app-registry-chip-wrap">
-                <q-chip dense outline>{{ slotProps.row.source }}</q-chip>
-                <q-chip dense :color="eventColor(slotProps.row.type)" text-color="white">{{
-                  slotProps.row.type
-                }}</q-chip>
-              </div>
-            </q-td>
-          </template>
-          <template #body-cell-time="slotProps">
-            <q-td :props="slotProps">
-              <span class="app-registry-cell-sub">{{ slotProps.row.time }}</span>
-            </q-td>
-          </template>
-          <template #body-cell-actions="slotProps">
-            <q-td :props="slotProps">
-              <div class="app-registry-cell-actions">
-                <q-btn
-                  v-if="slotProps.row.canOpenInRuns && slotProps.row.completionMeta"
-                  flat
-                  dense
-                  round
-                  icon="timeline"
-                  color="accent"
-                  aria-label="在 Runs 中查看"
-                  @click="$emit('openLinkedRun', slotProps.row)"
-                >
-                  <q-tooltip>在 Runs 中查看</q-tooltip>
-                </q-btn>
-                <q-btn
-                  v-else-if="slotProps.row.completionSessionId"
-                  flat
-                  dense
-                  round
-                  icon="chat"
-                  color="accent"
-                  aria-label="打开会话"
-                  @click="$emit('openChatSession', slotProps.row.completionSessionId!)"
-                >
-                  <q-tooltip>打开会话</q-tooltip>
-                </q-btn>
-                <q-btn
-                  flat
-                  dense
-                  round
-                  icon="visibility"
-                  color="accent"
-                  aria-label="查看详情"
-                  @click="$emit('openDetail', slotProps.row)"
-                />
-              </div>
-            </q-td>
-          </template>
-        </AppRegistryTable>
-
-        <AppRegistryPagination
-          v-model:page="page"
-          v-model:page-size="pageSize"
-          :page-max="pageMax"
-          :total="visibleEvents.length"
-          label="条事件"
-          :page-size-options="[12, 24, 48]"
-        />
+          <q-icon name="circle" :color="severityColor(evt.severity)" size="8px" class="q-mr-xs" />
+          <span class="pulse-chip__title">{{ evt.title }}</span>
+          <q-tooltip max-width="420px">
+            <div>{{ evt.time }}</div>
+            <div v-if="evt.subtitle">{{ evt.subtitle }}</div>
+          </q-tooltip>
+        </q-chip>
       </div>
-    </template>
+    </div>
 
-    <q-card-section v-else class="monitor-empty">
-      <q-icon name="sensors" size="36px" color="grey-5" />
-      <div>{{ emptyHint }}</div>
-    </q-card-section>
-  </q-card>
+    <q-separator />
 
-  <q-dialog :model-value="detailOpen" @update:model-value="$emit('update:detailOpen', $event)">
-    <q-card class="app-dialog-card app-dialog-card--lg app-glass-dialog">
-      <q-card-section class="app-glass-dialog__head row items-start justify-between">
-        <div>
-          <div class="app-glass-dialog__title">事件详情</div>
-          <div class="app-glass-dialog__subtitle">{{ selected?.type }}</div>
+    <!-- ── 历史：持久化事件（服务端分页 + 过滤）── -->
+    <div class="registry-table-card__header">
+      <div>
+        <div class="registry-table-card__title row items-center q-gutter-sm">
+          <span>{{ t('monitorPage.events.historyTitle') }}</span>
+          <q-badge outline color="primary">{{ t('monitorPage.events.count', { n: historyTotal }) }}</q-badge>
         </div>
-        <q-btn v-close-popup flat round dense icon="close" />
-      </q-card-section>
-      <q-separator />
-      <div class="app-glass-dialog__scroll">
-        <q-card-section class="app-glass-dialog__body">
-          <pre class="monitor-json app-code-block">{{ selectedJSON }}</pre>
-        </q-card-section>
       </div>
-      <q-separator />
-      <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn flat no-caps label="复制 JSON" icon="content_copy" @click="$emit('copyJSON')" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+      <div class="row items-center q-gutter-sm">
+        <q-select
+          :model-value="typeFilter"
+          dense
+          outlined
+          emit-value
+          map-options
+          :options="typeOptions"
+          :label="t('monitorPage.events.typeLabel')"
+          style="min-width: 160px"
+          @update:model-value="(v: string) => emit('update:typeFilter', v)"
+        />
+        <q-select
+          :model-value="severityFilter"
+          dense
+          outlined
+          emit-value
+          map-options
+          :options="severityOptions"
+          :label="t('monitorPage.events.severityLabel')"
+          style="min-width: 120px"
+          @update:model-value="(v: string) => emit('update:severityFilter', v)"
+        />
+        <q-btn flat dense icon="refresh" :label="t('monitorPage.events.refresh')" @click="emit('refresh-history')" />
+      </div>
+    </div>
+
+    <q-table
+      :rows="historyEvents"
+      :columns="columns"
+      row-key="id"
+      flat
+      dense
+      :loading="historyLoading"
+      :pagination="{ rowsPerPage: 0 }"
+      hide-pagination
+    >
+      <template #body-cell-title="props">
+        <q-td :props="props">
+          <div class="row items-center no-wrap q-gutter-xs">
+            <q-icon name="circle" :color="severityColor(props.row.severity)" size="8px">
+              <q-tooltip>{{ t(`monitorPage.events.severity.${props.row.severity}`) }}</q-tooltip>
+            </q-icon>
+            <span>{{ props.row.title }}</span>
+            <q-tooltip v-if="props.row.subtitle" max-width="420px">{{ props.row.subtitle }}</q-tooltip>
+          </div>
+        </q-td>
+      </template>
+      <template #body-cell-tags="props">
+        <q-td :props="props">
+          <q-chip dense square size="sm" :color="categoryChipColor(props.row.category)" text-color="white">
+            {{ t(`monitorPage.events.category.${props.row.category}`) }}
+            <q-tooltip>{{ props.row.type }}</q-tooltip>
+          </q-chip>
+        </q-td>
+      </template>
+      <template #body-cell-actions="props">
+        <q-td :props="props">
+          <div class="row no-wrap q-gutter-xs">
+            <q-btn
+              v-if="props.row.canOpenInRuns"
+              flat
+              dense
+              size="sm"
+              icon="monitor_heart"
+              :label="t('monitorPage.events.openInRuns')"
+              @click="emit('open-in-runs', props.row)"
+            />
+            <q-btn
+              v-if="props.row.completionSessionId || props.row.sessionId"
+              flat
+              dense
+              size="sm"
+              icon="chat"
+              :label="t('monitorPage.events.openSession')"
+              @click="emit('open-session', props.row)"
+            />
+            <q-btn
+              flat
+              dense
+              size="sm"
+              icon="visibility"
+              :label="t('monitorPage.detail')"
+              @click="openDetail(props.row)"
+            />
+          </div>
+        </q-td>
+      </template>
+    </q-table>
+
+    <AppRegistryPagination
+      :page="page"
+      :page-size="pageSize"
+      :page-max="pageMax"
+      :total="historyTotal"
+      :loading="historyLoading"
+      :label="t('monitorPage.events.paginationLabel')"
+      @update:page="(v: number) => emit('update:page', v)"
+      @update:page-size="(v: number) => emit('update:pageSize', v)"
+    />
+
+    <!-- ── 结构化详情 ── -->
+    <q-dialog v-model="detailOpen">
+      <q-card style="min-width: 480px; max-width: 720px">
+        <q-card-section class="row items-center">
+          <div class="text-h6">{{ t('monitorPage.events.dialogTitle') }}</div>
+          <q-space />
+          <q-btn v-close-popup flat round dense icon="close" />
+        </q-card-section>
+        <q-separator />
+        <q-card-section v-if="detailEvent" class="q-gutter-sm">
+          <div class="row items-center q-gutter-sm">
+            <q-chip dense square :color="severityColor(detailEvent.severity)" text-color="white">
+              {{ t(`monitorPage.events.severity.${detailEvent.severity}`) }}
+            </q-chip>
+            <q-chip dense square :color="categoryChipColor(detailEvent.category)" text-color="white">
+              {{ t(`monitorPage.events.category.${detailEvent.category}`) }}
+            </q-chip>
+            <span class="text-caption text-grey">{{ detailEvent.type }}</span>
+          </div>
+          <div class="text-subtitle2">{{ detailEvent.title }}</div>
+          <div v-if="detailEvent.subtitle" class="text-body2">{{ detailEvent.subtitle }}</div>
+          <q-list dense class="event-detail-list">
+            <q-item v-if="detailEvent.actor">
+              <q-item-section side class="event-detail-list__label">{{ t('monitorPage.events.detail.actor') }}</q-item-section>
+              <q-item-section>{{ detailEvent.actor }}</q-item-section>
+            </q-item>
+            <q-item>
+              <q-item-section side class="event-detail-list__label">{{ t('monitorPage.events.detail.time') }}</q-item-section>
+              <q-item-section>{{ detailEvent.time }}</q-item-section>
+            </q-item>
+            <q-item v-if="detailEvent.completionSessionId || detailEvent.sessionId">
+              <q-item-section side class="event-detail-list__label">{{ t('monitorPage.events.detail.session') }}</q-item-section>
+              <q-item-section class="row items-center no-wrap q-gutter-xs">
+                <span class="ellipsis">{{ detailEvent.completionSessionId || detailEvent.sessionId }}</span>
+                <q-btn
+                  flat
+                  dense
+                  size="sm"
+                  icon="chat"
+                  :label="t('monitorPage.events.openSession')"
+                  @click="emit('open-session', detailEvent)"
+                />
+              </q-item-section>
+            </q-item>
+          </q-list>
+          <q-expansion-item dense :label="t('monitorPage.events.detail.rawJson')" class="event-detail-raw">
+            <pre class="event-json">{{ detailJson }}</pre>
+          </q-expansion-item>
+        </q-card-section>
+        <q-separator />
+        <q-card-actions align="right">
+          <q-btn flat dense icon="content_copy" :label="t('monitorPage.events.detail.copyJson')" @click="copyDetailJson" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-import AppPageToolbar from '../layout/AppPageToolbar.vue';
-import AppRegistryTable from '../layout/AppRegistryTable.vue';
-import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { copyToClipboard, Notify } from 'quasar';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
-
-import type { MonitorTrace } from '../../features/monitor/types';
-import type { MonitorViewEvent } from '../../features/monitor/useMonitorRealtimeEvents';
-import { MONITOR_EVENTS_TABLE_COLUMNS } from './monitorTableUi';
+import { createMonitorEventColumns } from './monitorTableUi';
+import { severityColor, type MonitorViewEvent } from '../../features/monitor/eventView';
+import { EVENT_TYPE_FILTERS } from '../../features/monitor/useMonitorRealtimeEvents';
+import type { StreamState } from '../../features/monitor/types';
 
 const props = defineProps<{
-  visibleEvents: MonitorViewEvent[];
-  streamText: string;
-  streamColor: string;
+  pulseEvents: MonitorViewEvent[];
+  streamState: StreamState;
   paused: boolean;
-  category: string;
-  categoryOptions: { label: string; value: string }[];
-  emptyHint: string;
-  selected: MonitorViewEvent | null;
-  detailOpen: boolean;
-  selectedJSON: string;
-  traces?: MonitorTrace[];
+  historyEvents: MonitorViewEvent[];
+  historyTotal: number;
+  historyLoading: boolean;
+  page: number;
+  pageSize: number;
+  typeFilter: string;
+  severityFilter: string;
 }>();
 
-defineEmits<{
-  clear: [];
-  toggleStream: [];
-  openDetail: [event: MonitorViewEvent];
-  openLinkedRun: [event: MonitorViewEvent];
-  openChatSession: [sessionId: string];
-  copyJSON: [];
-  'update:category': [value: string];
-  'update:detailOpen': [value: boolean];
+const emit = defineEmits<{
+  'toggle-stream': [];
+  'clear-pulse': [];
+  'update:page': [value: number];
+  'update:pageSize': [value: number];
+  'update:typeFilter': [value: string];
+  'update:severityFilter': [value: string];
+  'refresh-history': [];
+  'open-session': [event: MonitorViewEvent];
+  'open-in-runs': [event: MonitorViewEvent];
 }>();
 
-function eventColor(type: string) {
-  if (type.includes('failed') || type.includes('error')) return 'negative';
-  if (type.includes('finished') || type.includes('completed')) return 'positive';
-  if (type === 'intent_pass') return 'cyan';
-  if (type.includes('tool') || type.includes('step')) return 'orange';
-  if (type.includes('agent')) return 'cyan';
-  return 'primary';
-}
+const { t } = useI18n();
+const columns = createMonitorEventColumns(t);
 
-const page = ref(1);
-const pageSize = ref(12);
-const pageMax = computed(() => Math.max(1, Math.ceil(props.visibleEvents.length / pageSize.value)));
-const pagedEvents = computed(() => {
-  const start = (page.value - 1) * pageSize.value;
-  return props.visibleEvents.slice(start, start + pageSize.value);
+const pageMax = computed(() => Math.max(1, Math.ceil(props.historyTotal / props.pageSize)));
+
+/** 类型筛选：选项值即 event_type 前缀（与落库 keyspace 对齐） */
+const TYPE_OPTION_I18N: Record<string, string> = {
+  all: 'monitorPage.events.typeOption.all',
+  'runner.completion': 'monitorPage.events.typeOption.runnerCompletion',
+  'alert.': 'monitorPage.events.typeOption.alert',
+  'skill.filesystem.': 'monitorPage.events.typeOption.skillFilesystem',
+  'usage.budget_alert': 'monitorPage.events.typeOption.usageBudget',
+  'chat.user_feedback': 'monitorPage.events.typeOption.userFeedback',
+};
+const typeOptions = computed(() =>
+  EVENT_TYPE_FILTERS.map((value) => ({ value, label: t(TYPE_OPTION_I18N[value] ?? value) })),
+);
+
+const severityOptions = computed(() =>
+  ['all', 'critical', 'warn', 'success', 'info'].map((value) => ({
+    value,
+    label: t(`monitorPage.events.severity.${value}`),
+  })),
+);
+
+const streamBadge = computed(() => {
+  switch (props.streamState) {
+    case 'live':
+      return { color: 'positive', label: t('monitorPage.events.stream.live') };
+    case 'connected':
+      return { color: 'positive', label: t('monitorPage.events.stream.connected') };
+    case 'connecting':
+      return { color: 'info', label: t('monitorPage.events.stream.connecting') };
+    case 'paused':
+      return { color: 'grey', label: t('monitorPage.events.stream.paused') };
+    default:
+      return { color: 'negative', label: t('monitorPage.events.stream.error') };
+  }
 });
 
-watch(
-  () => props.category,
-  () => {
-    page.value = 1;
-  },
-);
+const pulseEmptyHint = computed(() => {
+  if (props.streamState === 'paused') return t('monitorPage.events.stream.paused');
+  if (props.streamState === 'connected' || props.streamState === 'live') {
+    return t('monitorPage.events.pulseEmpty');
+  }
+  return t('monitorPage.events.stream.connecting');
+});
 
-watch(
-  () => props.visibleEvents.length,
-  () => {
-    page.value = 1;
-  },
-);
+// ── 详情弹窗 ──
+const detailOpen = ref(false);
+const detailEvent = ref<MonitorViewEvent | null>(null);
+const detailJson = computed(() => (detailEvent.value ? JSON.stringify(detailEvent.value.raw, null, 2) : ''));
+
+function openDetail(evt: MonitorViewEvent) {
+  detailEvent.value = evt;
+  detailOpen.value = true;
+}
+
+async function copyDetailJson() {
+  await copyToClipboard(detailJson.value);
+  Notify.create({ message: t('monitorPage.events.detail.copied'), color: 'positive', position: 'top' });
+}
+
+function categoryChipColor(category: string): string {
+  switch (category) {
+    case 'task':
+      return 'primary';
+    case 'message':
+      return 'secondary';
+    case 'agent':
+      return 'accent';
+    case 'tool':
+      return 'teal';
+    case 'system':
+      return 'grey-7';
+    default:
+      return 'grey';
+  }
+}
 </script>
 
 <style scoped>
-.monitor-events-toolbar {
-  padding: 0 16px 8px;
-  border-bottom: none;
+.pulse-strip__scroll {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.pulse-strip__empty {
+  padding: 8px 0;
+}
+
+.pulse-chip {
+  cursor: pointer;
+}
+
+.pulse-chip__title {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-json {
+  max-height: 320px;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.event-detail-list__label {
+  min-width: 64px;
+  color: var(--q-grey-7);
+  font-size: 12px;
 }
 </style>

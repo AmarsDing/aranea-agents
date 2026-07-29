@@ -14,6 +14,10 @@
       </div>
 
       <div class="app-pane-card__body knowledge-doc-detail__body">
+        <q-banner v-if="node.status === 'error' && node.error_message" dense rounded class="app-banner-warning q-mb-sm">
+          <div class="text-caption text-weight-medium">{{ t('knowledgePage.detailError') }}</div>
+          <div class="text-caption">{{ node.error_message }}</div>
+        </q-banner>
         <div v-if="node.tags?.length" class="q-mb-sm">
           <q-chip v-for="tag in node.tags" :key="tag" dense size="sm" outline class="q-mr-xs">{{ tag }}</q-chip>
         </div>

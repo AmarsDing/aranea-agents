@@ -23,6 +23,8 @@ type DocumentPath struct {
 	Status    string
 	SizeBytes int64
 	UpdatedAt string
+	// ErrorMessage 解析失败原因（status=error 时非空）。
+	ErrorMessage string
 }
 
 // VaultTreeNode 一层目录列表节点：dir 为聚合节点，file 镜像一篇已索引文档。
@@ -37,6 +39,8 @@ type VaultTreeNode struct {
 	Status    string   // file 专属
 	SizeBytes int64    // file 专属
 	UpdatedAt string   // file 专属
+	// ErrorMessage 解析失败原因（status=error 时非空；dir 恒空）。
+	ErrorMessage string
 }
 
 // ResolvedLink 关联区展示用已解析关联（R-3：UI 必须标注来源类型）。
@@ -126,7 +130,7 @@ func (u *Usecase) ListDocumentResolvedLinks(ctx context.Context, collectionID, d
 }
 
 // normalizeTreePrefix 归一树前缀：去首尾空白与首斜杠；非空时保证尾斜杠
-//（"notes" → "notes/"，防止误配 "notes2/"）。
+// （"notes" → "notes/"，防止误配 "notes2/"）。
 func normalizeTreePrefix(prefix string) string {
 	p := strings.Trim(strings.TrimSpace(prefix), "/")
 	if p == "" {
@@ -137,15 +141,16 @@ func normalizeTreePrefix(prefix string) string {
 
 func fileTreeNode(p DocumentPath, name, prefix string) VaultTreeNode {
 	return VaultTreeNode{
-		Name:      name,
-		Path:      prefix + name,
-		Kind:      "file",
-		DocID:     p.ID,
-		Summary:   p.Summary,
-		Tags:      p.Tags,
-		DocType:   p.DocType,
-		Status:    p.Status,
-		SizeBytes: p.SizeBytes,
-		UpdatedAt: p.UpdatedAt,
+		Name:         name,
+		Path:         prefix + name,
+		Kind:         "file",
+		DocID:        p.ID,
+		Summary:      p.Summary,
+		Tags:         p.Tags,
+		DocType:      p.DocType,
+		Status:       p.Status,
+		SizeBytes:    p.SizeBytes,
+		UpdatedAt:    p.UpdatedAt,
+		ErrorMessage: p.ErrorMessage,
 	}
 }

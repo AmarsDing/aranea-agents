@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import {
   listFlowLogs,
+  listAlertMetrics,
   listMonitorAlertRules,
   listMonitorAudit,
   listMonitorEvents,
@@ -15,7 +16,13 @@ import {
   triggerSelfCheck,
   listSelfCheckReports,
 } from '../../features/monitor/api';
-import type { MonitorAlertRule, MonitorTrace, MonitorTraceDetail, SelfCheckReport } from '../../features/monitor/types';
+import type {
+  AlertMetricInfo,
+  MonitorAlertRule,
+  MonitorTrace,
+  MonitorTraceDetail,
+  SelfCheckReport,
+} from '../../features/monitor/types';
 import { listChannels } from '../../features/channels/api';
 import {
   MONITOR_TRACES_LIMIT,
@@ -29,6 +36,7 @@ import type {
   MonitorLogLine,
   TeamRunEvent,
   AuditQuery,
+  MonitorEventsQuery,
   MonitorTracesQuery,
   PaginatedResult,
   RunnerMetricsSummary,
@@ -38,6 +46,7 @@ export const useMonitorStore = defineStore('monitor', () => {
   const auditLogs = ref<AuditLog[]>([]);
   const auditTotal = ref(0);
   const events = ref<PlatformResource[]>([]);
+  const eventsTotal = ref(0);
   const logSnapshot = ref<MonitorLogSnapshot | null>(null);
   const loading = ref(false);
   const runnerMetrics = ref<RunnerMetricsSummary | null>(null);
@@ -46,6 +55,8 @@ export const useMonitorStore = defineStore('monitor', () => {
   const alertRulesLoading = ref(false);
   const alertRulesSaving = ref(false);
   const alertChannelOptions = ref<{ label: string; value: string }[]>([]);
+  const alertMetrics = ref<AlertMetricInfo[]>([]);
+  const alertMetricsLoading = ref(false);
   const flowPaused = ref(false);
   const processPaused = ref(true);
   const eventsPaused = ref(false);
@@ -65,16 +76,18 @@ export const useMonitorStore = defineStore('monitor', () => {
     }
   }
 
-  async function loadEvents() {
-    events.value = await listMonitorEvents();
+  async function loadEvents(query: MonitorEventsQuery = {}) {
+    const result = await listMonitorEvents(query);
+    events.value = result.items;
+    eventsTotal.value = result.total;
   }
 
   async function fetchAuditPage(query: AuditQuery = {}) {
     return listMonitorAudit(query);
   }
 
-  async function fetchMonitorEvents() {
-    return listMonitorEvents();
+  async function fetchMonitorEvents(query: MonitorEventsQuery = {}) {
+    return listMonitorEvents(query);
   }
 
   async function fetchTraceEvents(query: MonitorTracesQuery = {}): Promise<PaginatedResult<MonitorTrace>> {
@@ -152,6 +165,15 @@ export const useMonitorStore = defineStore('monitor', () => {
     }
   }
 
+  async function loadAlertMetrics() {
+    alertMetricsLoading.value = true;
+    try {
+      alertMetrics.value = await listAlertMetrics();
+    } finally {
+      alertMetricsLoading.value = false;
+    }
+  }
+
   async function saveAlertRules(rules: MonitorAlertRule[]) {
     alertRulesSaving.value = true;
     try {
@@ -209,6 +231,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     auditLogs,
     auditTotal,
     events,
+    eventsTotal,
     logSnapshot,
     loading,
     runnerMetrics,
@@ -228,7 +251,10 @@ export const useMonitorStore = defineStore('monitor', () => {
     alertRulesLoading,
     alertRulesSaving,
     alertChannelOptions,
+    alertMetrics,
+    alertMetricsLoading,
     loadAlertChannelOptions,
+    loadAlertMetrics,
     loadAlertRules,
     saveAlertRules,
     clearRuntimeEvents,

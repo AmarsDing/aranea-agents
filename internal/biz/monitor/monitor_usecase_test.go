@@ -28,7 +28,8 @@ type mockRepo struct {
 	patchRunnerCompletionMetadataFn      func(ctx context.Context, sessionID, runID, invocationID, patchJSON string) (bool, error)
 	insertMonitorTraceFn                 func(ctx context.Context, tw monitor.TraceWrite) error
 	upsertMonitorTraceSpanFn             func(ctx context.Context, sw monitor.TraceSpanWrite) error
-	updateMonitorTraceCompletionFn       func(ctx context.Context, traceID string, status string, durationMs int64, spanCount, errorCount int, totalTokens int64, totalCostUsd float64) error
+	updateMonitorTraceCompletionFn       func(ctx context.Context, traceID string, c monitor.TraceCompletion) error
+	interruptStaleTracesFn               func(ctx context.Context, olderThan time.Time) (int64, error)
 	ensureTraceSchemaFn                  func(ctx context.Context) error
 	listRecentRunnerCompletionsFn        func(ctx context.Context, since time.Duration, limit int) ([]monitor.RunnerCompletionRow, error)
 }
@@ -152,11 +153,22 @@ func (m *mockRepo) UpsertMonitorTraceSpan(ctx context.Context, sw monitor.TraceS
 	return nil
 }
 
-func (m *mockRepo) UpdateMonitorTraceCompletion(ctx context.Context, traceID string, status string, durationMs int64, spanCount, errorCount int, totalTokens int64, totalCostUsd float64) error {
+func (m *mockRepo) UpdateMonitorTraceCompletion(ctx context.Context, traceID string, c monitor.TraceCompletion) error {
 	if m.updateMonitorTraceCompletionFn != nil {
-		return m.updateMonitorTraceCompletionFn(ctx, traceID, status, durationMs, spanCount, errorCount, totalTokens, totalCostUsd)
+		return m.updateMonitorTraceCompletionFn(ctx, traceID, c)
 	}
 	return nil
+}
+
+func (m *mockRepo) InterruptStaleTraces(ctx context.Context, olderThan time.Time) (int64, error) {
+	if m.interruptStaleTracesFn != nil {
+		return m.interruptStaleTracesFn(ctx, olderThan)
+	}
+	return 0, nil
+}
+
+func (m *mockRepo) DeleteMonitorEventsOlderThan(ctx context.Context, olderThan time.Time) (int, error) {
+	return 0, nil
 }
 
 func (m *mockRepo) EnsureTraceSchema(ctx context.Context) error {

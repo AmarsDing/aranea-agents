@@ -153,6 +153,7 @@ func main() {
 		ChannelRuntime:              out.ChannelRuntime,
 		ToolAuditCleanup:            out.ToolAuditCleanup,
 		FlowLogCleanup:              out.FlowLogCleanup,
+		MonitorEventsCleanup:        out.MonitorEventsCleanup,
 		MonitorAlertCooldownCleanup: out.MonitorAlertCooldownCleanup,
 		AutoHealTTLCleanup:          out.AutoHealTTLCleanup,
 		MonitorAlertEvalWorker:      out.MonitorAlertEvalWorker,

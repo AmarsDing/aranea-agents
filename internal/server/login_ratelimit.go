@@ -72,7 +72,7 @@ func (l *loginLimiter) check(ip string) (time.Duration, bool) {
 		b.tokens--
 		return 0, false
 	}
-	return time.Duration((1-b.tokens)*float64(l.interval)), false
+	return time.Duration((1 - b.tokens) * float64(l.interval)), false
 }
 
 // record notes the outcome of a login attempt. Only auth failures (401/403)

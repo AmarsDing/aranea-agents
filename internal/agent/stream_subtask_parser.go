@@ -7,12 +7,12 @@ package agent
 // As text arrives via Feed(), the parser tracks brace depth (string-aware) and
 // returns each complete {...} object as a raw JSON string.
 type streamSubTaskParser struct {
-	depth   int  // brace depth inside the array (0 = not inside an object)
-	inArr   bool // seen the opening '['
-	inStr   bool // inside a JSON string
-	escape  bool // previous byte was '\' inside a string
-	start   int  // byte offset in buf where current object started
-	buf     []byte
+	depth  int  // brace depth inside the array (0 = not inside an object)
+	inArr  bool // seen the opening '['
+	inStr  bool // inside a JSON string
+	escape bool // previous byte was '\' inside a string
+	start  int  // byte offset in buf where current object started
+	buf    []byte
 }
 
 func newStreamSubTaskParser() *streamSubTaskParser {

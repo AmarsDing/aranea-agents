@@ -24,6 +24,7 @@ const (
 	FederationService_ListFederationOrgs_FullMethodName       = "/kratos.a2a.v1.FederationService/ListFederationOrgs"
 	FederationService_DeleteFederationOrg_FullMethodName      = "/kratos.a2a.v1.FederationService/DeleteFederationOrg"
 	FederationService_SetFederationTrustLevel_FullMethodName  = "/kratos.a2a.v1.FederationService/SetFederationTrustLevel"
+	FederationService_SyncFederationOrgCards_FullMethodName   = "/kratos.a2a.v1.FederationService/SyncFederationOrgCards"
 	FederationService_UpsertFederationPolicy_FullMethodName   = "/kratos.a2a.v1.FederationService/UpsertFederationPolicy"
 	FederationService_DiscoverFederationAgents_FullMethodName = "/kratos.a2a.v1.FederationService/DiscoverFederationAgents"
 	FederationService_InvokeFederatedAgent_FullMethodName     = "/kratos.a2a.v1.FederationService/InvokeFederatedAgent"
@@ -46,6 +47,9 @@ type FederationServiceClient interface {
 	DeleteFederationOrg(ctx context.Context, in *DeleteFederationOrgRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// SetFederationTrustLevel sets the trust level of an org.
 	SetFederationTrustLevel(ctx context.Context, in *SetFederationTrustLevelRequest, opts ...grpc.CallOption) (*FederationOrg, error)
+	// SyncFederationOrgCards manually pulls the org's remote agent cards into
+	// the directory cache (FED-F7).
+	SyncFederationOrgCards(ctx context.Context, in *SyncFederationOrgCardsRequest, opts ...grpc.CallOption) (*SyncFederationOrgCardsResponse, error)
 	// UpsertFederationPolicy configures the call policy for one org pair.
 	UpsertFederationPolicy(ctx context.Context, in *UpsertFederationPolicyRequest, opts ...grpc.CallOption) (*FederationPolicy, error)
 	// DiscoverFederationAgents searches the federation directory (cached cards,
@@ -100,6 +104,16 @@ func (c *federationServiceClient) SetFederationTrustLevel(ctx context.Context, i
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(FederationOrg)
 	err := c.cc.Invoke(ctx, FederationService_SetFederationTrustLevel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *federationServiceClient) SyncFederationOrgCards(ctx context.Context, in *SyncFederationOrgCardsRequest, opts ...grpc.CallOption) (*SyncFederationOrgCardsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SyncFederationOrgCardsResponse)
+	err := c.cc.Invoke(ctx, FederationService_SyncFederationOrgCards_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -162,6 +176,9 @@ type FederationServiceServer interface {
 	DeleteFederationOrg(context.Context, *DeleteFederationOrgRequest) (*emptypb.Empty, error)
 	// SetFederationTrustLevel sets the trust level of an org.
 	SetFederationTrustLevel(context.Context, *SetFederationTrustLevelRequest) (*FederationOrg, error)
+	// SyncFederationOrgCards manually pulls the org's remote agent cards into
+	// the directory cache (FED-F7).
+	SyncFederationOrgCards(context.Context, *SyncFederationOrgCardsRequest) (*SyncFederationOrgCardsResponse, error)
 	// UpsertFederationPolicy configures the call policy for one org pair.
 	UpsertFederationPolicy(context.Context, *UpsertFederationPolicyRequest) (*FederationPolicy, error)
 	// DiscoverFederationAgents searches the federation directory (cached cards,
@@ -193,6 +210,9 @@ func (UnimplementedFederationServiceServer) DeleteFederationOrg(context.Context,
 }
 func (UnimplementedFederationServiceServer) SetFederationTrustLevel(context.Context, *SetFederationTrustLevelRequest) (*FederationOrg, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetFederationTrustLevel not implemented")
+}
+func (UnimplementedFederationServiceServer) SyncFederationOrgCards(context.Context, *SyncFederationOrgCardsRequest) (*SyncFederationOrgCardsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SyncFederationOrgCards not implemented")
 }
 func (UnimplementedFederationServiceServer) UpsertFederationPolicy(context.Context, *UpsertFederationPolicyRequest) (*FederationPolicy, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpsertFederationPolicy not implemented")
@@ -299,6 +319,24 @@ func _FederationService_SetFederationTrustLevel_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _FederationService_SyncFederationOrgCards_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SyncFederationOrgCardsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FederationServiceServer).SyncFederationOrgCards(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FederationService_SyncFederationOrgCards_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FederationServiceServer).SyncFederationOrgCards(ctx, req.(*SyncFederationOrgCardsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _FederationService_UpsertFederationPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpsertFederationPolicyRequest)
 	if err := dec(in); err != nil {
@@ -393,6 +431,10 @@ var FederationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetFederationTrustLevel",
 			Handler:    _FederationService_SetFederationTrustLevel_Handler,
+		},
+		{
+			MethodName: "SyncFederationOrgCards",
+			Handler:    _FederationService_SyncFederationOrgCards_Handler,
 		},
 		{
 			MethodName: "UpsertFederationPolicy",

@@ -106,7 +106,10 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppPageToolbar from '../layout/AppPageToolbar.vue';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   search: string;
@@ -171,13 +174,13 @@ const originOptions = [
   { label: '手动创建', value: 'manual' },
 ];
 
-const filesystemOptions = [
-  { label: '磁盘缺失', value: true },
-  { label: '磁盘正常', value: false },
-];
+const filesystemOptions = computed(() => [
+  { label: t('skillsPage.filterFsMissing'), value: true },
+  { label: t('skillsPage.filterFsOk'), value: false },
+]);
 
-const sortByOptions = [
-  { label: '按标签', value: 'tag' },
-  { label: '按名称', value: 'name' },
-];
+const sortByOptions = computed(() => [
+  { label: t('skillsPage.sortByTag'), value: 'tag' },
+  { label: t('skillsPage.sortByName'), value: 'name' },
+]);
 </script>

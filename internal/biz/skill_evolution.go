@@ -3,8 +3,8 @@ package biz
 import (
 	"context"
 	"crypto/sha256"
-	stderrors "errors"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -27,16 +27,16 @@ type SkillRegistrationPort interface {
 }
 
 type SkillEvolutionUsecase struct {
-	store          UnifiedEvolutionStore
-	patternReader  UnifiedEvolutionPatternReader
-	patterns       PatternReader
-	agents         AgentRepository
-	creator        SkillAutoCreator
-	registrar      SkillRegistrationPort
-	orchestrator   *SkillEvolutionOrchestrator
+	store            UnifiedEvolutionStore
+	patternReader    UnifiedEvolutionPatternReader
+	patterns         PatternReader
+	agents           AgentRepository
+	creator          SkillAutoCreator
+	registrar        SkillRegistrationPort
+	orchestrator     *SkillEvolutionOrchestrator
 	orchestratorOnce sync.Once
-	proposalSM     *SkillProposalStateMachine
-	lg             loggateway.Logger
+	proposalSM       *SkillProposalStateMachine
+	lg               loggateway.Logger
 }
 
 // NewSkillEvolutionUsecase constructs the L1 skill-creation proposal usecase.

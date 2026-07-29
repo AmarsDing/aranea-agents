@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/data"
@@ -48,6 +49,7 @@ func newApp(
 	teamStarter *service.TeamStarter,
 	lifecycleMgr *lifecycle.LifecycleManager,
 	wsV2Sub *server.WSV2Subscriber,
+	graphBuildDeps *chatagent.TRPCBuilderDeps,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
 	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
@@ -80,6 +82,12 @@ func newApp(
 				// When the poller detects all teams done, it notifies the service
 				// layer to publish the spirit_teams_all_completed event.
 				spiritUC.SetAllTeamsCompletedNotifier(teamStarter)
+			}
+
+			// Inject TeamCompletionChecker into graph builder deps to prevent LLM polling.
+			// This breaks the circular dependency: SpiritTeamUsecase → GraphBuildDeps → SpiritTeamUsecase
+			if spiritUC != nil && graphBuildDeps != nil {
+				graphBuildDeps.SetTeamCompletionChecker(biz.NewTeamCompletionCheckerAdapter(spiritUC))
 			}
 
 			// Start readiness-dependent initialization in background.

@@ -480,6 +480,37 @@ func TestInstallSkillSkipSkipsGroupWithoutKeepSeparate(t *testing.T) {
 	_ = result
 }
 
+// A warn candidate appearing in MULTIPLE keep_separate groups must produce
+// exactly ONE keep_separate decision — otherwise the engine applies the same
+// candidate twice and the second insert violates the skill_key unique
+// constraint (observed in production with alibabacloud-sls-query in 3 groups).
+func TestInstallSkillSkipKeepSeparateDeduplicatesCandidateAcrossGroups(t *testing.T) {
+	backend := newImportBackend()
+	backend.jobBodies = []string{`{
+	  "jobId":"j1","status":"completed","validationStatus":"warn",
+	  "candidates":[{"candidateId":"c2","name":"SLS Query","slug":"sls-query","validationStatus":"warn"}],
+	  "conflictGroups":[
+	    {"groupId":"g1","highestSimilarityScore":0.3,"candidateIds":["c2"],
+	     "existingSkills":[{"id":"e1","name":"RDS Copilot","slug":"rds-copilot"}],
+	     "canRefine":true,"metrics":{"recommendation":"keep_separate","conflictRisk":"low"}},
+	    {"groupId":"g2","highestSimilarityScore":0.35,"candidateIds":["c2"],
+	     "existingSkills":[{"id":"e2","name":"Resource Search","slug":"resourcecenter-search"}],
+	     "canRefine":true,"metrics":{"recommendation":"keep_separate","conflictRisk":"low"}},
+	    {"groupId":"g3","highestSimilarityScore":0.2,"candidateIds":["c2"],
+	     "existingSkills":[{"id":"e3","name":"Workbench","slug":"workbench-cli"}],
+	     "canRefine":true,"metrics":{"recommendation":"keep_separate","conflictRisk":"low"}}
+	  ]
+	}`}
+
+	result := installSkillAgainst(t, backend, "skip")
+
+	actions := backend.decisionActions()
+	if len(actions) != 1 || actions[0] != "keep_separate" {
+		t.Fatalf("apply decision actions = %v, want exactly [keep_separate]", actions)
+	}
+	_ = result
+}
+
 // keep_separate requires a warn candidate; a pass candidate in a
 // keep_separate-recommended group still falls back to skip_group (pass
 // candidates outside groups are imported via import_passed, and the engine

@@ -12,6 +12,7 @@ func ProvideSelfCheckers(
 	bus EventBusHealthChecker,
 	counter WSConnectionCounter,
 	appender *FlowFileAppender,
+	runnerRepo RunnerCompletionRepo,
 ) []SelfChecker {
 	var checkers []SelfChecker
 	if db != nil {
@@ -31,6 +32,9 @@ func ProvideSelfCheckers(
 	}
 	if appender != nil {
 		checkers = append(checkers, NewFlowFileChecker(appender, ""))
+	}
+	if runnerRepo != nil {
+		checkers = append(checkers, NewRunnerCompletionFlowChecker(runnerRepo, projector))
 	}
 	return checkers
 }

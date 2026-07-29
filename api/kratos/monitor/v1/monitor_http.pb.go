@@ -27,6 +27,7 @@ const OperationMonitorServiceGetMonitorEvent = "/kratos.monitor.v1.MonitorServic
 const OperationMonitorServiceGetMonitorLogs = "/kratos.monitor.v1.MonitorService/GetMonitorLogs"
 const OperationMonitorServiceGetMonitorTrace = "/kratos.monitor.v1.MonitorService/GetMonitorTrace"
 const OperationMonitorServiceGetRunnerMetrics = "/kratos.monitor.v1.MonitorService/GetRunnerMetrics"
+const OperationMonitorServiceListAlertMetrics = "/kratos.monitor.v1.MonitorService/ListAlertMetrics"
 const OperationMonitorServiceListAuditLogs = "/kratos.monitor.v1.MonitorService/ListAuditLogs"
 const OperationMonitorServiceListFlowLogs = "/kratos.monitor.v1.MonitorService/ListFlowLogs"
 const OperationMonitorServiceListHealRecords = "/kratos.monitor.v1.MonitorService/ListHealRecords"
@@ -47,6 +48,9 @@ type MonitorServiceHTTPServer interface {
 	GetMonitorLogs(context.Context, *GetMonitorLogsRequest) (*GetMonitorLogsResponse, error)
 	GetMonitorTrace(context.Context, *GetMonitorTraceRequest) (*MonitorTraceDetail, error)
 	GetRunnerMetrics(context.Context, *GetRunnerMetricsRequest) (*RunnerMetricsSummary, error)
+	// ListAlertMetrics Alert metric directory: which metrics rules can target, what they mean,
+	// and their current values.
+	ListAlertMetrics(context.Context, *GetMonitorLogsRequest) (*ListAlertMetricsResponse, error)
 	ListAuditLogs(context.Context, *ListAuditLogsRequest) (*ListAuditLogsResponse, error)
 	ListFlowLogs(context.Context, *ListFlowLogsRequest) (*ListFlowLogsResponse, error)
 	ListHealRecords(context.Context, *ListHealRecordsRequest) (*ListHealRecordsResponse, error)
@@ -68,6 +72,7 @@ func RegisterMonitorServiceHTTPServer(s *http.Server, srv MonitorServiceHTTPServ
 	r.GET("/v1/monitor/logs", _MonitorService_GetMonitorLogs0_HTTP_Handler(srv))
 	r.GET("/v1/monitor/flow-logs", _MonitorService_ListFlowLogs0_HTTP_Handler(srv))
 	r.GET("/v1/monitor/alert-rules", _MonitorService_ListMonitorAlertRules0_HTTP_Handler(srv))
+	r.GET("/v1/monitor/alert-metrics", _MonitorService_ListAlertMetrics0_HTTP_Handler(srv))
 	r.PUT("/v1/monitor/alert-rules", _MonitorService_PutMonitorAlertRules0_HTTP_Handler(srv))
 	r.GET("/v1/monitor/runner-metrics", _MonitorService_GetRunnerMetrics0_HTTP_Handler(srv))
 	r.GET("/v1/monitor/code-executor-capabilities", _MonitorService_GetCodeExecutorCapabilities0_HTTP_Handler(srv))
@@ -233,6 +238,25 @@ func _MonitorService_ListMonitorAlertRules0_HTTP_Handler(srv MonitorServiceHTTPS
 			return err
 		}
 		reply := out.(*ListMonitorAlertRulesResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _MonitorService_ListAlertMetrics0_HTTP_Handler(srv MonitorServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetMonitorLogsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMonitorServiceListAlertMetrics)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListAlertMetrics(ctx, req.(*GetMonitorLogsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListAlertMetricsResponse)
 		return ctx.Result(200, reply)
 	}
 }
@@ -430,6 +454,9 @@ type MonitorServiceHTTPClient interface {
 	GetMonitorLogs(ctx context.Context, req *GetMonitorLogsRequest, opts ...http.CallOption) (rsp *GetMonitorLogsResponse, err error)
 	GetMonitorTrace(ctx context.Context, req *GetMonitorTraceRequest, opts ...http.CallOption) (rsp *MonitorTraceDetail, err error)
 	GetRunnerMetrics(ctx context.Context, req *GetRunnerMetricsRequest, opts ...http.CallOption) (rsp *RunnerMetricsSummary, err error)
+	// ListAlertMetrics Alert metric directory: which metrics rules can target, what they mean,
+	// and their current values.
+	ListAlertMetrics(ctx context.Context, req *GetMonitorLogsRequest, opts ...http.CallOption) (rsp *ListAlertMetricsResponse, err error)
 	ListAuditLogs(ctx context.Context, req *ListAuditLogsRequest, opts ...http.CallOption) (rsp *ListAuditLogsResponse, err error)
 	ListFlowLogs(ctx context.Context, req *ListFlowLogsRequest, opts ...http.CallOption) (rsp *ListFlowLogsResponse, err error)
 	ListHealRecords(ctx context.Context, req *ListHealRecordsRequest, opts ...http.CallOption) (rsp *ListHealRecordsResponse, err error)
@@ -546,6 +573,21 @@ func (c *MonitorServiceHTTPClientImpl) GetRunnerMetrics(ctx context.Context, in 
 	pattern := "/v1/monitor/runner-metrics"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationMonitorServiceGetRunnerMetrics))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListAlertMetrics Alert metric directory: which metrics rules can target, what they mean,
+// and their current values.
+func (c *MonitorServiceHTTPClientImpl) ListAlertMetrics(ctx context.Context, in *GetMonitorLogsRequest, opts ...http.CallOption) (*ListAlertMetricsResponse, error) {
+	var out ListAlertMetricsResponse
+	pattern := "/v1/monitor/alert-metrics"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMonitorServiceListAlertMetrics))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools/skillrecommend"
@@ -57,6 +58,7 @@ func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts 
 	reasons := make(map[string]string, len(candidates))
 
 	afterA := applyLayerAWithReasons(candidates, policy, reasons)
+	triggerHits := computeTriggerHits(afterA, query)
 
 	paths := []string(nil)
 	if policy.IntentRoutingEnabled && strings.TrimSpace(query) != "" {
@@ -66,6 +68,7 @@ func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts 
 	afterB := afterA
 	if len(paths) > 0 {
 		narrowed := filterByIntentPathsWithReasons(afterA, paths, reasons)
+		narrowed = reincludeTriggered(narrowed, afterA, triggerHits)
 		if len(narrowed) > 0 {
 			afterB = narrowed
 		}
@@ -75,34 +78,15 @@ func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts 
 	final := afterB
 	if len(requiredTags) > 0 {
 		tagged := filterByAllTagsWithReasons(afterB, requiredTags, reasons)
+		tagged = reincludeTriggered(tagged, afterB, triggerHits)
 		if len(tagged) > 0 {
 			final = tagged
 		}
 	}
 
 	scored := scoreCandidatesWithReasons(final, paths, reasons)
-
-	if policy.EmbeddingScoringEnabled && strings.TrimSpace(query) != "" {
-		embScores, embErr := skillUC.ScoreByEmbedding(ctx, query, final)
-		if embErr != nil {
-			lg.Warn("embedding scoring failed; falling back to keyword scores",
-				loggateway.StepID("tool.skillruntime.embedding_score_fail"),
-				loggateway.Err(embErr))
-		} else if len(embScores) > 0 {
-			weight := policy.EmbeddingScoreWeight
-			for i := range scored {
-				if sim, ok := embScores[scored[i].slug]; ok {
-					scored[i].score += int(sim * 1000 * weight)
-					if scored[i].reason == "enabled and published" || scored[i].reason == "no intent match; included by default" {
-						scored[i].reason = "embedding similarity: " + formatSimilarity(sim)
-					} else {
-						scored[i].reason += " + embedding: " + formatSimilarity(sim)
-					}
-					reasons[scored[i].slug] = scored[i].reason
-				}
-			}
-		}
-	}
+	applyEmbeddingScores(ctx, skillUC, policy, query, final, scored, reasons, lg)
+	applyTriggerHits(scored, triggerHits, reasons)
 
 	sort.SliceStable(scored, func(i, j int) bool {
 		if scored[i].score != scored[j].score {
@@ -117,21 +101,84 @@ func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts 
 		if len(candidates) > 0 {
 			factors := skillrecommend.DynamicRankFactors(ctx, opts.HealthProvider, candidates)
 			ranked := skillrecommend.Rank(candidates, factors)
-			applyRankResults(scored, ranked, reasons)
+			applyRankResults(scored, ranked, reasons, triggerHits)
 		}
 	}
 
+	out := capScoredSlugs(scored, policy.MaxSkillsInToolset, reasons)
+	return &ResolveResult{Slugs: out, Reasons: reasons}, nil
+}
+
+// computeTriggerHits 返回 trigger 命中的 slug → 命中词映射（P1-3）。
+// 在 Layer A 之后计算：deny 优先于 trigger，被拒候选不参与命中。
+func computeTriggerHits(afterA []biz.SkillRuntimeCandidate, query string) map[string]string {
+	hits := map[string]string{}
+	if strings.TrimSpace(query) == "" {
+		return hits
+	}
+	for _, c := range afterA {
+		if hit := matchTrigger(query, c.Triggers); hit != "" {
+			hits[c.Slug] = hit
+		}
+	}
+	return hits
+}
+
+// applyEmbeddingScores 叠加 embedding 语义相似分（启用且非空 query 时）。
+// 失败降级为 keyword 分，不阻断解析。
+func applyEmbeddingScores(ctx context.Context, skillUC SkillResolver, policy biz.SkillRuntimePolicy, query string, final []biz.SkillRuntimeCandidate, scored []slugScore, reasons map[string]string, lg loggateway.Logger) {
+	if !policy.EmbeddingScoringEnabled || strings.TrimSpace(query) == "" {
+		return
+	}
+	embScores, embErr := skillUC.ScoreByEmbedding(ctx, query, final)
+	if embErr != nil {
+		lg.Warn("embedding scoring failed; falling back to keyword scores",
+			loggateway.StepID("tool.skillruntime.embedding_score_fail"),
+			loggateway.Err(embErr))
+		return
+	}
+	if len(embScores) == 0 {
+		return
+	}
+	weight := policy.EmbeddingScoreWeight
+	for i := range scored {
+		if sim, ok := embScores[scored[i].slug]; ok {
+			scored[i].score += int(sim * 1000 * weight)
+			if scored[i].reason == "enabled and published" || scored[i].reason == "no intent match; included by default" {
+				scored[i].reason = "embedding similarity: " + formatSimilarity(sim)
+			} else {
+				scored[i].reason += " + embedding: " + formatSimilarity(sim)
+			}
+			reasons[scored[i].slug] = scored[i].reason
+		}
+	}
+}
+
+// applyTriggerHits 强制 trigger 命中候选置顶（P1-3）：排序分高于 taxonomy
+// 精确匹配（1000），覆盖 intent/tag 过滤阶段写入的 reason，保证确定性 preload。
+func applyTriggerHits(scored []slugScore, triggerHits map[string]string, reasons map[string]string) {
+	for i := range scored {
+		if hit, ok := triggerHits[scored[i].slug]; ok {
+			scored[i].score = triggerScore
+			scored[i].reason = "trigger match: " + hit
+			reasons[scored[i].slug] = scored[i].reason
+		}
+	}
+}
+
+// capScoredSlugs 按 maxSkillsInToolset 截断并记录被截候选的 reason。
+func capScoredSlugs(scored []slugScore, max int, reasons map[string]string) []string {
 	out := make([]string, 0, len(scored))
 	for _, s := range scored {
 		out = append(out, s.slug)
-		if len(out) >= policy.MaxSkillsInToolset {
+		if len(out) >= max {
 			for _, remaining := range scored[len(out):] {
 				reasons[remaining.slug] = "exceeded max_skills_in_toolset cap"
 			}
 			break
 		}
 	}
-	return &ResolveResult{Slugs: out, Reasons: reasons}, nil
+	return out
 }
 
 type slugScore struct {
@@ -421,12 +468,16 @@ func buildRankCandidates(ctx context.Context, scored []slugScore, healthProvider
 // using a weighted fusion rather than replacing them entirely.
 // The rank score contributes 60% and the pre-existing score 40%, preserving
 // semantic and intent signals while still respecting historical performance.
-func applyRankResults(scored []slugScore, ranked []skillrecommend.RankResult, reasons map[string]string) {
+// protected（trigger 命中的 slug）跳过融合——确定性 preload 不被历史表现稀释。
+func applyRankResults(scored []slugScore, ranked []skillrecommend.RankResult, reasons map[string]string, protected map[string]string) {
 	rankMap := make(map[string]skillrecommend.RankResult, len(ranked))
 	for _, r := range ranked {
 		rankMap[r.Slug] = r
 	}
 	for i := range scored {
+		if _, ok := protected[scored[i].slug]; ok {
+			continue
+		}
 		if r, ok := rankMap[scored[i].slug]; ok {
 			// Both scores are normalised to 0–1000 before fusion so that the
 			// 60/40 weighting is dimensionally consistent. Previously rank
@@ -449,4 +500,91 @@ func applyRankResults(scored []slugScore, ranked []skillrecommend.RankResult, re
 		}
 		return scored[i].slug < scored[j].slug
 	})
+}
+
+// triggerScore 是 trigger 命中候选的排序分。必须高于 taxonomy 精确匹配
+// （1000），保证确定性 preload 置顶；同时占用 max_skills_in_toolset 配额。
+const triggerScore = 2000
+
+// reincludeTriggered 把被过滤阶段（intent 收窄 / tag 过滤）剔除、但 trigger
+// 命中的候选重新并入结果集。确定性触发优先于启发式过滤。
+func reincludeTriggered(filtered, all []biz.SkillRuntimeCandidate, triggerHits map[string]string) []biz.SkillRuntimeCandidate {
+	if len(triggerHits) == 0 {
+		return filtered
+	}
+	present := make(map[string]bool, len(filtered))
+	for _, c := range filtered {
+		present[c.Slug] = true
+	}
+	out := filtered
+	for _, c := range all {
+		if _, ok := triggerHits[c.Slug]; !ok || present[c.Slug] {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// matchTrigger 返回第一个命中用户输入的 trigger；未命中返回空串。
+// CJK trigger 使用子串语义（中文无词边界）；ASCII trigger 要求词边界匹配，
+// 避免 "pdf" 误中 "pdftk"。大小写不敏感。
+func matchTrigger(query string, triggers []string) string {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return ""
+	}
+	for _, t := range triggers {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		tl := strings.ToLower(t)
+		if containsCJK(t) {
+			if strings.Contains(q, tl) {
+				return t
+			}
+			continue
+		}
+		if asciiWordContains(q, tl) {
+			return t
+		}
+	}
+	return ""
+}
+
+// containsCJK 判断字符串是否包含 CJK 表意文字（中/日/韩）。
+func containsCJK(s string) bool {
+	for _, r := range s {
+		if unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) ||
+			unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r) {
+			return true
+		}
+	}
+	return false
+}
+
+// asciiWordContains 在已小写的 query 中查找已小写的 ASCII trigger，
+// 要求命中位置前后不是 ASCII 词字符（字母/数字/下划线）。
+func asciiWordContains(queryLower, triggerLower string) bool {
+	idx := 0
+	for idx <= len(queryLower) {
+		i := strings.Index(queryLower[idx:], triggerLower)
+		if i < 0 {
+			return false
+		}
+		start := idx + i
+		end := start + len(triggerLower)
+		beforeOK := start == 0 || !isASCIIWordChar(queryLower[start-1])
+		afterOK := end == len(queryLower) || !isASCIIWordChar(queryLower[end])
+		if beforeOK && afterOK {
+			return true
+		}
+		idx = start + 1
+	}
+	return false
+}
+
+func isASCIIWordChar(b byte) bool {
+	return b == '_' || (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z')
 }

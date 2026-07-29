@@ -51,7 +51,7 @@ func ResolveLinkRefs(refs []string, candidates []Document) map[string]string {
 	if len(refs) == 0 || len(candidates) == 0 {
 		return nil
 	}
-	byPath := make(map[string]string, len(candidates))     // 归一化 rel_path → docID
+	byPath := make(map[string]string, len(candidates))          // 归一化 rel_path → docID
 	byBase := make(map[string][]baseCandidate, len(candidates)) // basename → 候选
 	for _, d := range candidates {
 		if d.RelPath == "" {

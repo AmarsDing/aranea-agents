@@ -43,6 +43,9 @@ func (r *feedbackMonitorRepo) UpdateAlertFiringState(context.Context, string, Mo
 func (r *feedbackMonitorRepo) CountMonitorEventsSince(context.Context, string, string, string, string) (int32, error) {
 	return 0, nil
 }
+func (r *feedbackMonitorRepo) DeleteMonitorEventsOlderThan(context.Context, time.Time) (int, error) {
+	return 0, nil
+}
 func (r *feedbackMonitorRepo) AvgRunnerCompletionDurationMsSince(context.Context, string) (float64, error) {
 	return 0, nil
 }
@@ -53,13 +56,16 @@ func (r *feedbackMonitorRepo) PatchRunnerCompletionMetadata(context.Context, str
 	return false, nil
 }
 func (r *feedbackMonitorRepo) EnsureTraceSchema(context.Context) error { return nil }
+func (r *feedbackMonitorRepo) InterruptStaleTraces(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
 func (r *feedbackMonitorRepo) InsertMonitorTrace(context.Context, MonitorTraceWrite) error {
 	return nil
 }
 func (r *feedbackMonitorRepo) UpsertMonitorTraceSpan(context.Context, MonitorTraceSpanWrite) error {
 	return nil
 }
-func (r *feedbackMonitorRepo) UpdateMonitorTraceCompletion(_ context.Context, _ string, _ string, _ int64, _, _ int, _ int64, _ float64) error {
+func (r *feedbackMonitorRepo) UpdateMonitorTraceCompletion(_ context.Context, _ string, _ MonitorTraceCompletion) error {
 	return nil
 }
 func (r *feedbackMonitorRepo) ListRecentRunnerCompletions(_ context.Context, _ time.Duration, _ int) ([]RunnerCompletionRow, error) {

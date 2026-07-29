@@ -38,12 +38,12 @@ type Result struct {
 
 // StepResult records the outcome of one resource installation step.
 type StepResult struct {
-	Resource string `json:"resource"`          // e.g. "mcp_server:my-mcp"
-	Action   string `json:"action"`            // created|updated|skipped|error|pending_conflict
+	Resource string `json:"resource"` // e.g. "mcp_server:my-mcp"
+	Action   string `json:"action"`   // created|updated|skipped|error|pending_conflict
 	Message  string `json:"message,omitempty"`
 	// Skill import two-phase fields (empty for other resource types).
-	JobID        string         `json:"job_id,omitempty"`   // import job id
-	Status       string         `json:"status,omitempty"`   // installed|pending_conflict|failed
+	JobID        string         `json:"job_id,omitempty"`        // import job id
+	Status       string         `json:"status,omitempty"`        // installed|pending_conflict|failed
 	CreatedCount int            `json:"created_count,omitempty"` // from apply createdSkillIds
 	SkippedCount int            `json:"skipped_count,omitempty"` // from apply skippedCandidateIds
 	Conflicts    []ConflictInfo `json:"conflicts,omitempty"`     // unresolved conflict groups

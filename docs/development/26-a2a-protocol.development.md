@@ -195,6 +195,7 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 
 > 2026-07-28 启动。原 `phase5-差异化创新/04-联邦A2A网络.md` 任务清单（T1-T17）评审修订后并入本节。
 > 需求见 [需求文档 §子模块](./26-a2a-protocol.md#子模块联邦-a2a-网络)；设计见 [设计文档 §子模块](./26-a2a-protocol.design.md#子模块联邦-a2a-网络)（含 F.1 评审修订记录）。
+> **进度（2026-07-29）**：T1–T15 ✅（领域模型/Proto/Repo/治理组件/目录同步/用例编排/服务层+DI 全部落地）；剩余 T16 前端联邦 Tab、T17 端到端验证。
 
 ### 1. 模块定位
 
@@ -219,7 +220,7 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 | 任务ID | 描述 | 状态 |
 |--------|------|------|
 | T1 | 领域模型 + 窄接口：`internal/biz/a2a/federation.go`（FederationOrg/FederationPolicy/FederationAuditLog + 常量 + Org/Policy/Audit 三个 Repo 接口）；`RemoteAgent` + `RegisterRemoteAgentInput` 加 `OrgID` | ✅ |
-| T2 | 联邦 Proto：`api/kratos/a2a/v1/federation.proto`（8 RPC，修订自原 6 RPC，见设计 F.7） | ✅ |
+| T2 | 联邦 Proto：`api/kratos/a2a/v1/federation.proto`（9 RPC，修订自原 6 RPC，见设计 F.7） | ✅ |
 | T3 | Ent Schema + Repo：`federation_orgs` / `federation_policies` / `federation_audit_logs` 三表 Schema + `go generate` + `internal/data/a2a_federation_repo.go`；`a2a_remote_agents` 加 `org_id` 列（DDL Migration Registry 版本化） | ✅ |
 | T4 | 仓储集成测试（修订：PG 模式 `testhelper.SetupTestPG` schema-per-test 隔离，SQLite helper 已移除）：Org upsert/信任更新/Policy upsert/Audit 创建+结果更新+日计数 | ✅ |
 
@@ -227,38 +228,38 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 
 | 任务ID | 描述 | 状态 |
 |--------|------|------|
-| T5 | `TrustManager`（`federation_trust.go`）：trusted/neutral 允许、untrusted 拒绝 | 📋 |
-| T6 | `PolicyEngine`（`federation_policy.go`）：内存缓存 + 显式策略优先 + approval 按 deny 处理 | 📋 |
-| T7 | `AuditLogger`（`federation_audit.go`）：RecordDecision fail-closed / RecordResult 失败仅 Warn | 📋 |
-| T8 | `QuotaChecker`（`federation_quota.go`）：复用 `Limiter`（MaxPerMin 每分钟滑动窗口）+ `CountCallsSince`（日配额） | 📋 |
+| T5 | `TrustManager`（`federation_trust.go`）：trusted/neutral 允许、untrusted 拒绝 | ✅ |
+| T6 | `PolicyEngine`（`federation_policy.go`）：内存缓存 + 显式策略优先 + approval 按 deny 处理 | ✅ |
+| T7 | `AuditLogger`（`federation_audit.go`）：RecordDecision fail-closed / RecordResult 失败仅 Warn | ✅ |
+| T8 | `QuotaChecker`（`federation_quota.go`）：复用 `Limiter`（MaxPerMin 每分钟滑动窗口）+ `CountCallsSince`（日配额）；nil factory fail-closed 返回 500（审查修复 R1） | ✅ |
 
 #### Phase 3 — 目录与同步
 
 | 任务ID | 描述 | 状态 |
 |--------|------|------|
-| T9 | `Directory`（`federation_directory.go`）：org 过滤 + remote agents 分组 + capability 过滤，读缓存目录 | 📋 |
-| T10 | `AgentCardSync.SyncOrgCards`：手动触发，逐个拉取失败跳过，返回成功数 | 📋 |
+| T9 | `Directory`（`federation_directory.go`）：org 过滤 + remote agents 分组 + capability 过滤，读缓存目录 | ✅ |
+| T10 | `AgentCardSync.SyncOrgCards`：手动触发，逐个拉取失败跳过，返回成功数；新增窄接口 `RemoteAgentCardWriter` + `a2aRepo.UpdateRemoteAgentCard`（PG 集成测试覆盖） | ✅ |
 
 #### Phase 4 — 用例与调用链
 
 | 任务ID | 描述 | 状态 |
 |--------|------|------|
-| T11 | `FederationUsecase`（`federation_usecase.go`）：注册/列表/删除/信任/策略/目录/审计查询 + `InvokeFederated` 治理链编排 | 📋 |
-| T12 | 联邦目标解析：InvokeFederated 内 `ListRemoteAgents(workspace)` 内存过滤 `OrgID+agentID`（修订：不改 `callee_resolve.go` 主路径） | 📋 |
-| T13 | `internal/a2a/federation_invoke.go`：复用 `InvokeRemoteRegistry` 执行远程调用（修订：不改 `remote_invoke.go`） | 📋 |
+| T11 | `FederationUsecase`（`federation_usecase.go`）：注册/列表/删除/信任/策略/目录/审计查询 + `InvokeFederated` 治理链编排；治理链四组件打包 `FederationGovernance`（依赖数 ≤8）；`DeleteOrg` 事务内解关联 remote agents（设计缺口修复） | ✅ |
+| T12 | 联邦目标解析：InvokeFederated 内 `ListRemoteAgents(workspace)` 内存过滤 `OrgID+agentID`（修订：不改 `callee_resolve.go` 主路径） | ✅ |
+| T13 | `internal/a2a/federation_invoke.go`：`FederationRemoteInvoker` 适配 `RemoteInvokeExecutor` 端口，复用 `InvokeRemoteRegistry`（重试/SSRF/认证不变，修订：不改 `remote_invoke.go`） | ✅ |
 
 #### Phase 5 — 服务层
 
 | 任务ID | 描述 | 状态 |
 |--------|------|------|
-| T14 | `internal/service/a2a_federation.go`：FederationService 8 RPC 适配（proto ↔ biz，auth_config 响应 masked） | 📋 |
-| T15 | Wire 注入 + 服务层集成测试（mock biz） | 📋 |
+| T14 | `internal/service/a2a_federation.go`：FederationService 9 RPC 适配（proto ↔ biz，auth_config 响应 masked） | ✅ |
+| T15 | Wire 注入 + 服务层集成测试（mock biz） | ✅ |
 
 #### Phase 6 — 前端与端到端
 
 | 任务ID | 描述 | 状态 |
 |--------|------|------|
-| T16 | 前端 A2APage「联邦」Tab：`features/a2a/federation*` + `components/a2a/federation/*` 四面板 + 多语言映射 | 📋 |
+| T16 | 前端 A2APage「联邦」Tab：`features/a2a/federation*` + `components/a2a/federation/*` 四面板 + 多语言映射 | ✅（二级 Tab：组织/目录/调用/审计；组织面板含注册 Dialog、信任等级编辑、同步卡片、删除；`federationUi.ts` 枚举映射 + 列工厂；`useFederationPage.ts` 编排；i18n `a2a.federation.*` 双语） |
 | T17 | 端到端验证：httptest mock 远程组织 A2A 端点，覆盖验收标准 1-7 | 📋 |
 
 ### 4. 改动文件清单（预估）
@@ -272,18 +273,19 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 | 新增 | `internal/a2a/federation_invoke.go`（+ `_test.go`） |
 | 新增 | `internal/service/a2a_federation.go`（+ `_test.go`） |
 | 修改 | `internal/biz/a2a/a2a.go`（RemoteAgent/RegisterRemoteAgentInput + OrgID） |
-| 修改 | `internal/data/a2a.go`（scan/insert + org_id） |
+| 修改 | `internal/data/a2a.go`（scan/insert + org_id；+ `UpdateRemoteAgentCard`） |
+| 修改 | `pkg/apierror/domains.go`（+ `DomainA2AFed`） |
 | 新增 | `internal/data/sql/migrations/YYYYMMDD_a2a_remote_agents_org_id.sql` + registry 注册 |
 | 修改 | `cmd/admin/wire.go`（FederationUsecase/FederationService 注入） |
 | 修改 | `internal/server/http.go`（FederationService 注册） |
-| 新增 | `web/src/features/a2a/federationApi.ts` / `federationTypes.ts`、`web/src/components/a2a/federation/*.vue` |
+| 新增 | `web/src/features/a2a/federationApi.ts` / `federationTypes.ts` / `federationUi.ts` / `useFederationPage.ts`、`web/src/components/a2a/federation/*.vue`（四面板） |
 | 修改 | `web/src/pages/A2APage.vue`（联邦 Tab）、`web/src/stores/a2a/index.ts`、i18n 语言包 |
 
 ### 5. 验收标准
 
-- [ ] `go test ./internal/biz/a2a/... ./internal/data/... ./internal/service/... ./internal/a2a/...` 全绿
-- [ ] `go build ./...` 编译通过
+- [x] `go test ./internal/biz/a2a/... ./internal/data/... ./internal/service/... ./internal/a2a/...` 全绿（data 联邦 PG 集成测试于 T4 经 `testhelper.SetupTestPG` 验证；biz/service/a2a 单测随 T5-T15 持续通过）
+- [x] `go build ./...` 编译通过
 - [ ] 端到端：注册组织 → 发现 Agent → 调用成功（审计 allowed+success）
 - [ ] 端到端：untrusted 拒绝 403（审计 denied_trust）；deny 策略拒绝 403（denied_policy）；超日配额 429（denied_quota）
 - [ ] 端到端：决策审计创建失败时调用被拒绝（fail-closed）
-- [ ] 文档同步：本任务清单状态 + 需求/设计章节与实际实现一致
+- [x] 文档同步：本任务清单状态 + 需求/设计章节与实际实现一致

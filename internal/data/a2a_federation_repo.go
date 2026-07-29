@@ -141,12 +141,23 @@ func (r *A2AFederationRepo) UpdateOrgTrust(ctx context.Context, id, trustLevel s
 	return entErrToBizErr(err, "A2A_FED")
 }
 
+// DeleteOrg removes the org and disassociates its remote agents
+// (a2a_remote_agents.org_id cleared, rows kept) atomically (design F.7).
 func (r *A2AFederationRepo) DeleteOrg(ctx context.Context, id string) error {
 	if err := r.ensureDB(); err != nil {
 		return err
 	}
-	err := r.data.RW().Write(ctx).FederationOrg.DeleteOneID(id).Exec(ctx)
-	return entErrToBizErr(err, "A2A_FED")
+	return r.data.ExecInTx(ctx, func(ctx context.Context) error {
+		client := EntClientFromCtx(ctx, r.data.entClient)
+		if err := client.FederationOrg.DeleteOneID(id).Exec(ctx); err != nil {
+			return entErrToBizErr(err, "A2A_FED")
+		}
+		execer := TxExecerFromCtx(ctx, r.data.rawDB)
+		_, err := execer.ExecContext(ctx,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE a2a_remote_agents SET org_id='' WHERE org_id=?`),
+			id)
+		return entErrToBizErr(err, "A2A_FED")
+	})
 }
 
 // --- Policy ---

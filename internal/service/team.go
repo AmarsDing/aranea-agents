@@ -35,6 +35,7 @@ type TeamService struct {
 	teamRunV2       biz.TeamRunV2Repo
 	memberSessionV2 biz.MemberSessionV2Repo
 	v2Seq           rt.EventPublisher
+	mon             *biz.MonitorUsecase
 }
 
 func NewTeamService(
@@ -53,6 +54,7 @@ func NewTeamService(
 	teamRunV2 biz.TeamRunV2Repo,
 	memberSessionV2 biz.MemberSessionV2Repo,
 	v2Seq rt.EventPublisher,
+	mon *biz.MonitorUsecase,
 ) *TeamService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
@@ -67,6 +69,7 @@ func NewTeamService(
 		teamRunV2:       teamRunV2,
 		memberSessionV2: memberSessionV2,
 		v2Seq:           v2Seq,
+		mon:             mon,
 	}
 }
 
@@ -353,6 +356,12 @@ func (s *TeamService) CreateTeam(ctx context.Context, req *v1.CreateTeamRequest)
 	if err != nil {
 		return nil, err
 	}
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbCreate, "team"),
+		Resource:   "team",
+		ResourceID: created.ID,
+		Summary:    fmt.Sprintf("key=%s", created.TeamKey),
+	})
 	return toProtoTeam(created), nil
 }
 
@@ -399,6 +408,12 @@ func (s *TeamService) UpdateTeam(ctx context.Context, req *v1.UpdateTeamRequest)
 	if err != nil {
 		return nil, mapTeamErr(err)
 	}
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbUpdate, "team"),
+		Resource:   "team",
+		ResourceID: t.ID,
+		Summary:    fmt.Sprintf("key=%s", t.TeamKey),
+	})
 	return toProtoTeam(t), nil
 }
 
@@ -406,9 +421,20 @@ func (s *TeamService) DeleteTeam(ctx context.Context, req *v1.DeleteTeamRequest)
 	if err := s.assertTeamMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	// 先取 key 供审计 summary 使用（best-effort，取不到不阻断删除）。
+	summary := ""
+	if t, err := s.uc.Get(ctx, req.GetId()); err == nil {
+		summary = fmt.Sprintf("key=%s", t.TeamKey)
+	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, mapTeamErr(err)
 	}
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbDelete, "team"),
+		Resource:   "team",
+		ResourceID: req.GetId(),
+		Summary:    summary,
+	})
 	return &emptypb.Empty{}, nil
 }
 
@@ -420,6 +446,12 @@ func (s *TeamService) DuplicateTeam(ctx context.Context, req *v1.DuplicateTeamRe
 	if err != nil {
 		return nil, mapTeamErr(err)
 	}
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbCreate, "team"),
+		Resource:   "team",
+		ResourceID: t.ID,
+		Summary:    fmt.Sprintf("key=%s src=%s", t.TeamKey, req.GetId()),
+	})
 	return toProtoTeam(t), nil
 }
 

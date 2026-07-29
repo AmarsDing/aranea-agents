@@ -71,6 +71,11 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newToolResultGateBeforeHook(deps.ToolResultGate, ag, lg); hook != nil {
 		entries = append(entries, hook)
 	}
+	// Team completion guard: prevent Spirit LLM from polling get_team_deliverable
+	// when teams are still running. Enforces system-push pattern over LLM-polling.
+	if hook := newTeamCompletionGuardBeforeHook(deps.TeamCompletionChecker, lg); hook != nil {
+		entries = append(entries, hook)
+	}
 	if hook := newKnowledgeCueBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}

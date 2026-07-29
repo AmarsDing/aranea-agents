@@ -38,6 +38,7 @@ const (
 	DomainModelSync           = "MODEL_SYNC"
 	DomainPlugin              = "PLUGIN"
 	DomainA2A                 = "A2A"
+	DomainA2AFed              = "A2A_FED"
 	DomainOutbound            = "OUTBOUND"
 	DomainPack                = "PACK"
 	DomainAvatar              = "AVATAR"

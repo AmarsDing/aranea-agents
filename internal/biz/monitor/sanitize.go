@@ -59,9 +59,25 @@ func SanitizeJSONValue(value any) any {
 	}
 }
 
+// tokenUsageMetricKeys are token *usage counters* (never credentials). The
+// substring matcher below would redact them for containing "token", breaking
+// the Runs Tokens column ("******" instead of the count) — monitor_traces
+// config_json is server-built from numeric DB columns and carries no secrets.
+var tokenUsageMetricKeys = map[string]bool{
+	"total_tokens":       true,
+	"prompt_tokens":      true,
+	"completion_tokens":  true,
+	"input_tokens":       true,
+	"output_tokens":      true,
+	"usage_total_tokens": true,
+}
+
 // IsSensitiveKey reports whether the key matches a known sensitive field pattern.
 func IsSensitiveKey(key string) bool {
 	key = strings.ToLower(strings.TrimSpace(key))
+	if tokenUsageMetricKeys[key] {
+		return false
+	}
 	for _, token := range []string{"api_key", "apikey", "token", "secret", "password", "authorization", "cookie"} {
 		if strings.Contains(key, token) {
 			return true

@@ -70,9 +70,9 @@ type TeamFailureBrief struct {
 // history with read_session_history. DeliverableSummary is empty when the
 // team left no deliverable (failed teams) — rendered as「无交付物」.
 type TeamDeliverableDigest struct {
-	TeamName          string
-	TaskName          string
-	Status            string
+	TeamName           string
+	TaskName           string
+	Status             string
 	DeliverableSummary string
 }
 

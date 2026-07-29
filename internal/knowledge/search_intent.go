@@ -28,13 +28,13 @@ const (
 )
 
 var (
-	pathSeparatRe   = regexp.MustCompile(`[/\\]`)
-	fileExtRe       = regexp.MustCompile(`(?i)\.(md|markdown|txt|log|pdf|docx?|xlsx?|pptx?|csv|json|ya?ml|toml|xml|html?|png|jpe?g|webp)\b`)
-	quotedPhraseRe  = regexp.MustCompile(`"[^"]+"|"[^"]+"`)
-	zhQuestionHead  = regexp.MustCompile(`^(什么|如何|怎么|为什么|为何|哪些|哪个|哪|是否|能不能|可以不可以)`)
-	zhQuestionTail  = regexp.MustCompile(`[吗呢吧？]\s*$`)
-	enQuestionHead  = regexp.MustCompile(`(?i)^(what|how|why|which|when|where|who|whom|whose|is|are|can|could|does|do)\b`)
-	enQuestionTail  = regexp.MustCompile(`\?\s*$`)
+	pathSeparatRe  = regexp.MustCompile(`[/\\]`)
+	fileExtRe      = regexp.MustCompile(`(?i)\.(md|markdown|txt|log|pdf|docx?|xlsx?|pptx?|csv|json|ya?ml|toml|xml|html?|png|jpe?g|webp)\b`)
+	quotedPhraseRe = regexp.MustCompile(`"[^"]+"|"[^"]+"`)
+	zhQuestionHead = regexp.MustCompile(`^(什么|如何|怎么|为什么|为何|哪些|哪个|哪|是否|能不能|可以不可以)`)
+	zhQuestionTail = regexp.MustCompile(`[吗呢吧？]\s*$`)
+	enQuestionHead = regexp.MustCompile(`(?i)^(what|how|why|which|when|where|who|whom|whose|is|are|can|could|does|do)\b`)
+	enQuestionTail = regexp.MustCompile(`\?\s*$`)
 )
 
 // ClassifySearchIntent 判定查询意图（规则表与前端 searchIntent.ts 一致）。

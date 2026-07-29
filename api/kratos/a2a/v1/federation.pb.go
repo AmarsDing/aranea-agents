@@ -710,6 +710,96 @@ func (x *SetFederationTrustLevelRequest) GetTrustLevel() string {
 	return ""
 }
 
+type SyncFederationOrgCardsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncFederationOrgCardsRequest) Reset() {
+	*x = SyncFederationOrgCardsRequest{}
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncFederationOrgCardsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncFederationOrgCardsRequest) ProtoMessage() {}
+
+func (x *SyncFederationOrgCardsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncFederationOrgCardsRequest.ProtoReflect.Descriptor instead.
+func (*SyncFederationOrgCardsRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *SyncFederationOrgCardsRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type SyncFederationOrgCardsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// synced is the number of remote agents whose cards were refreshed; agents
+	// that fail to pull are skipped (single failure does not abort the sync).
+	Synced        int32 `protobuf:"varint,1,opt,name=synced,proto3" json:"synced,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncFederationOrgCardsResponse) Reset() {
+	*x = SyncFederationOrgCardsResponse{}
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncFederationOrgCardsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncFederationOrgCardsResponse) ProtoMessage() {}
+
+func (x *SyncFederationOrgCardsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncFederationOrgCardsResponse.ProtoReflect.Descriptor instead.
+func (*SyncFederationOrgCardsResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *SyncFederationOrgCardsResponse) GetSynced() int32 {
+	if x != nil {
+		return x.Synced
+	}
+	return 0
+}
+
 type UpsertFederationPolicyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CallerOrgId   string                 `protobuf:"bytes,1,opt,name=caller_org_id,json=callerOrgId,proto3" json:"caller_org_id,omitempty"`
@@ -723,7 +813,7 @@ type UpsertFederationPolicyRequest struct {
 
 func (x *UpsertFederationPolicyRequest) Reset() {
 	*x = UpsertFederationPolicyRequest{}
-	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[9]
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -735,7 +825,7 @@ func (x *UpsertFederationPolicyRequest) String() string {
 func (*UpsertFederationPolicyRequest) ProtoMessage() {}
 
 func (x *UpsertFederationPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[9]
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -748,7 +838,7 @@ func (x *UpsertFederationPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertFederationPolicyRequest.ProtoReflect.Descriptor instead.
 func (*UpsertFederationPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{9}
+	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *UpsertFederationPolicyRequest) GetCallerOrgId() string {
@@ -796,7 +886,7 @@ type DiscoverFederationAgentsRequest struct {
 
 func (x *DiscoverFederationAgentsRequest) Reset() {
 	*x = DiscoverFederationAgentsRequest{}
-	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[10]
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -808,7 +898,7 @@ func (x *DiscoverFederationAgentsRequest) String() string {
 func (*DiscoverFederationAgentsRequest) ProtoMessage() {}
 
 func (x *DiscoverFederationAgentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[10]
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -821,7 +911,7 @@ func (x *DiscoverFederationAgentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscoverFederationAgentsRequest.ProtoReflect.Descriptor instead.
 func (*DiscoverFederationAgentsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{10}
+	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *DiscoverFederationAgentsRequest) GetCapability() string {
@@ -847,7 +937,7 @@ type DiscoverFederationAgentsResponse struct {
 
 func (x *DiscoverFederationAgentsResponse) Reset() {
 	*x = DiscoverFederationAgentsResponse{}
-	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[11]
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -859,7 +949,7 @@ func (x *DiscoverFederationAgentsResponse) String() string {
 func (*DiscoverFederationAgentsResponse) ProtoMessage() {}
 
 func (x *DiscoverFederationAgentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[11]
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -872,7 +962,7 @@ func (x *DiscoverFederationAgentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscoverFederationAgentsResponse.ProtoReflect.Descriptor instead.
 func (*DiscoverFederationAgentsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{11}
+	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DiscoverFederationAgentsResponse) GetItems() []*FederationAgentEntry {
@@ -900,7 +990,7 @@ type InvokeFederatedAgentRequest struct {
 
 func (x *InvokeFederatedAgentRequest) Reset() {
 	*x = InvokeFederatedAgentRequest{}
-	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[12]
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -912,7 +1002,7 @@ func (x *InvokeFederatedAgentRequest) String() string {
 func (*InvokeFederatedAgentRequest) ProtoMessage() {}
 
 func (x *InvokeFederatedAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[12]
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -925,7 +1015,7 @@ func (x *InvokeFederatedAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InvokeFederatedAgentRequest.ProtoReflect.Descriptor instead.
 func (*InvokeFederatedAgentRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{12}
+	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *InvokeFederatedAgentRequest) GetOrgId() string {
@@ -991,7 +1081,7 @@ type InvokeFederatedAgentResponse struct {
 
 func (x *InvokeFederatedAgentResponse) Reset() {
 	*x = InvokeFederatedAgentResponse{}
-	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[13]
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1003,7 +1093,7 @@ func (x *InvokeFederatedAgentResponse) String() string {
 func (*InvokeFederatedAgentResponse) ProtoMessage() {}
 
 func (x *InvokeFederatedAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[13]
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1016,7 +1106,7 @@ func (x *InvokeFederatedAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InvokeFederatedAgentResponse.ProtoReflect.Descriptor instead.
 func (*InvokeFederatedAgentResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{13}
+	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *InvokeFederatedAgentResponse) GetAuditId() string {
@@ -1068,7 +1158,7 @@ type QueryFederationAuditLogsRequest struct {
 
 func (x *QueryFederationAuditLogsRequest) Reset() {
 	*x = QueryFederationAuditLogsRequest{}
-	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[14]
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1080,7 +1170,7 @@ func (x *QueryFederationAuditLogsRequest) String() string {
 func (*QueryFederationAuditLogsRequest) ProtoMessage() {}
 
 func (x *QueryFederationAuditLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[14]
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1093,7 +1183,7 @@ func (x *QueryFederationAuditLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryFederationAuditLogsRequest.ProtoReflect.Descriptor instead.
 func (*QueryFederationAuditLogsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{14}
+	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *QueryFederationAuditLogsRequest) GetCallerOrgId() string {
@@ -1148,7 +1238,7 @@ type QueryFederationAuditLogsResponse struct {
 
 func (x *QueryFederationAuditLogsResponse) Reset() {
 	*x = QueryFederationAuditLogsResponse{}
-	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[15]
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1160,7 +1250,7 @@ func (x *QueryFederationAuditLogsResponse) String() string {
 func (*QueryFederationAuditLogsResponse) ProtoMessage() {}
 
 func (x *QueryFederationAuditLogsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[15]
+	mi := &file_kratos_a2a_v1_federation_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1173,7 +1263,7 @@ func (x *QueryFederationAuditLogsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryFederationAuditLogsResponse.ProtoReflect.Descriptor instead.
 func (*QueryFederationAuditLogsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{15}
+	return file_kratos_a2a_v1_federation_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *QueryFederationAuditLogsResponse) GetItems() []*FederationAuditEntry {
@@ -1259,7 +1349,11 @@ const file_kratos_a2a_v1_federation_proto_rawDesc = "" +
 	"\x1eSetFederationTrustLevelRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12%\n" +
 	"\vtrust_level\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\n" +
-	"trustLevel\"\xcc\x01\n" +
+	"trustLevel\"5\n" +
+	"\x1dSyncFederationOrgCardsRequest\x12\x14\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"8\n" +
+	"\x1eSyncFederationOrgCardsResponse\x12\x16\n" +
+	"\x06synced\x18\x01 \x01(\x05R\x06synced\"\xcc\x01\n" +
 	"\x1dUpsertFederationPolicyRequest\x12(\n" +
 	"\rcaller_org_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\vcallerOrgId\x12(\n" +
 	"\rcallee_org_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\vcalleeOrgId\x12\x16\n" +
@@ -1301,12 +1395,14 @@ const file_kratos_a2a_v1_federation_proto_rawDesc = "" +
 	"\x06offset\x18\x06 \x01(\x05R\x06offset\"s\n" +
 	" QueryFederationAuditLogsResponse\x129\n" +
 	"\x05items\x18\x01 \x03(\v2#.kratos.a2a.v1.FederationAuditEntryR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total2\xad\t\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total2\xd0\n" +
+	"\n" +
 	"\x11FederationService\x12\x86\x01\n" +
 	"\x15RegisterFederationOrg\x12+.kratos.a2a.v1.RegisterFederationOrgRequest\x1a\x1c.kratos.a2a.v1.FederationOrg\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/a2a/federation/orgs\x12\x8a\x01\n" +
 	"\x12ListFederationOrgs\x12(.kratos.a2a.v1.ListFederationOrgsRequest\x1a).kratos.a2a.v1.ListFederationOrgsResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/a2a/federation/orgs\x12~\n" +
 	"\x13DeleteFederationOrg\x12).kratos.a2a.v1.DeleteFederationOrgRequest\x1a\x16.google.protobuf.Empty\"$\x82\xd3\xe4\x93\x02\x1e*\x1c/v1/a2a/federation/orgs/{id}\x12\x95\x01\n" +
-	"\x17SetFederationTrustLevel\x12-.kratos.a2a.v1.SetFederationTrustLevelRequest\x1a\x1c.kratos.a2a.v1.FederationOrg\"-\x82\xd3\xe4\x93\x02':\x01*\x1a\"/v1/a2a/federation/orgs/{id}/trust\x12\x8f\x01\n" +
+	"\x17SetFederationTrustLevel\x12-.kratos.a2a.v1.SetFederationTrustLevelRequest\x1a\x1c.kratos.a2a.v1.FederationOrg\"-\x82\xd3\xe4\x93\x02':\x01*\x1a\"/v1/a2a/federation/orgs/{id}/trust\x12\xa0\x01\n" +
+	"\x16SyncFederationOrgCards\x12,.kratos.a2a.v1.SyncFederationOrgCardsRequest\x1a-.kratos.a2a.v1.SyncFederationOrgCardsResponse\")\x82\xd3\xe4\x93\x02#\"!/v1/a2a/federation/orgs/{id}/sync\x12\x8f\x01\n" +
 	"\x16UpsertFederationPolicy\x12,.kratos.a2a.v1.UpsertFederationPolicyRequest\x1a\x1f.kratos.a2a.v1.FederationPolicy\"&\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/a2a/federation/policies\x12\x9e\x01\n" +
 	"\x18DiscoverFederationAgents\x12..kratos.a2a.v1.DiscoverFederationAgentsRequest\x1a/.kratos.a2a.v1.DiscoverFederationAgentsResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/a2a/federation/agents\x12\x95\x01\n" +
 	"\x14InvokeFederatedAgent\x12*.kratos.a2a.v1.InvokeFederatedAgentRequest\x1a+.kratos.a2a.v1.InvokeFederatedAgentResponse\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/a2a/federation/invoke\x12\x9e\x01\n" +
@@ -1325,7 +1421,7 @@ func file_kratos_a2a_v1_federation_proto_rawDescGZIP() []byte {
 	return file_kratos_a2a_v1_federation_proto_rawDescData
 }
 
-var file_kratos_a2a_v1_federation_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_kratos_a2a_v1_federation_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_kratos_a2a_v1_federation_proto_goTypes = []any{
 	(*FederationOrg)(nil),                    // 0: kratos.a2a.v1.FederationOrg
 	(*FederationPolicy)(nil),                 // 1: kratos.a2a.v1.FederationPolicy
@@ -1336,21 +1432,23 @@ var file_kratos_a2a_v1_federation_proto_goTypes = []any{
 	(*ListFederationOrgsResponse)(nil),       // 6: kratos.a2a.v1.ListFederationOrgsResponse
 	(*DeleteFederationOrgRequest)(nil),       // 7: kratos.a2a.v1.DeleteFederationOrgRequest
 	(*SetFederationTrustLevelRequest)(nil),   // 8: kratos.a2a.v1.SetFederationTrustLevelRequest
-	(*UpsertFederationPolicyRequest)(nil),    // 9: kratos.a2a.v1.UpsertFederationPolicyRequest
-	(*DiscoverFederationAgentsRequest)(nil),  // 10: kratos.a2a.v1.DiscoverFederationAgentsRequest
-	(*DiscoverFederationAgentsResponse)(nil), // 11: kratos.a2a.v1.DiscoverFederationAgentsResponse
-	(*InvokeFederatedAgentRequest)(nil),      // 12: kratos.a2a.v1.InvokeFederatedAgentRequest
-	(*InvokeFederatedAgentResponse)(nil),     // 13: kratos.a2a.v1.InvokeFederatedAgentResponse
-	(*QueryFederationAuditLogsRequest)(nil),  // 14: kratos.a2a.v1.QueryFederationAuditLogsRequest
-	(*QueryFederationAuditLogsResponse)(nil), // 15: kratos.a2a.v1.QueryFederationAuditLogsResponse
-	(*A2ARemoteAgent)(nil),                   // 16: kratos.a2a.v1.A2ARemoteAgent
-	(*A2AAgentCard)(nil),                     // 17: kratos.a2a.v1.A2AAgentCard
-	(*emptypb.Empty)(nil),                    // 18: google.protobuf.Empty
+	(*SyncFederationOrgCardsRequest)(nil),    // 9: kratos.a2a.v1.SyncFederationOrgCardsRequest
+	(*SyncFederationOrgCardsResponse)(nil),   // 10: kratos.a2a.v1.SyncFederationOrgCardsResponse
+	(*UpsertFederationPolicyRequest)(nil),    // 11: kratos.a2a.v1.UpsertFederationPolicyRequest
+	(*DiscoverFederationAgentsRequest)(nil),  // 12: kratos.a2a.v1.DiscoverFederationAgentsRequest
+	(*DiscoverFederationAgentsResponse)(nil), // 13: kratos.a2a.v1.DiscoverFederationAgentsResponse
+	(*InvokeFederatedAgentRequest)(nil),      // 14: kratos.a2a.v1.InvokeFederatedAgentRequest
+	(*InvokeFederatedAgentResponse)(nil),     // 15: kratos.a2a.v1.InvokeFederatedAgentResponse
+	(*QueryFederationAuditLogsRequest)(nil),  // 16: kratos.a2a.v1.QueryFederationAuditLogsRequest
+	(*QueryFederationAuditLogsResponse)(nil), // 17: kratos.a2a.v1.QueryFederationAuditLogsResponse
+	(*A2ARemoteAgent)(nil),                   // 18: kratos.a2a.v1.A2ARemoteAgent
+	(*A2AAgentCard)(nil),                     // 19: kratos.a2a.v1.A2AAgentCard
+	(*emptypb.Empty)(nil),                    // 20: google.protobuf.Empty
 }
 var file_kratos_a2a_v1_federation_proto_depIdxs = []int32{
 	0,  // 0: kratos.a2a.v1.FederationAgentEntry.org:type_name -> kratos.a2a.v1.FederationOrg
-	16, // 1: kratos.a2a.v1.FederationAgentEntry.remote_agent:type_name -> kratos.a2a.v1.A2ARemoteAgent
-	17, // 2: kratos.a2a.v1.FederationAgentEntry.card:type_name -> kratos.a2a.v1.A2AAgentCard
+	18, // 1: kratos.a2a.v1.FederationAgentEntry.remote_agent:type_name -> kratos.a2a.v1.A2ARemoteAgent
+	19, // 2: kratos.a2a.v1.FederationAgentEntry.card:type_name -> kratos.a2a.v1.A2AAgentCard
 	0,  // 3: kratos.a2a.v1.ListFederationOrgsResponse.items:type_name -> kratos.a2a.v1.FederationOrg
 	2,  // 4: kratos.a2a.v1.DiscoverFederationAgentsResponse.items:type_name -> kratos.a2a.v1.FederationAgentEntry
 	3,  // 5: kratos.a2a.v1.QueryFederationAuditLogsResponse.items:type_name -> kratos.a2a.v1.FederationAuditEntry
@@ -1358,20 +1456,22 @@ var file_kratos_a2a_v1_federation_proto_depIdxs = []int32{
 	5,  // 7: kratos.a2a.v1.FederationService.ListFederationOrgs:input_type -> kratos.a2a.v1.ListFederationOrgsRequest
 	7,  // 8: kratos.a2a.v1.FederationService.DeleteFederationOrg:input_type -> kratos.a2a.v1.DeleteFederationOrgRequest
 	8,  // 9: kratos.a2a.v1.FederationService.SetFederationTrustLevel:input_type -> kratos.a2a.v1.SetFederationTrustLevelRequest
-	9,  // 10: kratos.a2a.v1.FederationService.UpsertFederationPolicy:input_type -> kratos.a2a.v1.UpsertFederationPolicyRequest
-	10, // 11: kratos.a2a.v1.FederationService.DiscoverFederationAgents:input_type -> kratos.a2a.v1.DiscoverFederationAgentsRequest
-	12, // 12: kratos.a2a.v1.FederationService.InvokeFederatedAgent:input_type -> kratos.a2a.v1.InvokeFederatedAgentRequest
-	14, // 13: kratos.a2a.v1.FederationService.QueryFederationAuditLogs:input_type -> kratos.a2a.v1.QueryFederationAuditLogsRequest
-	0,  // 14: kratos.a2a.v1.FederationService.RegisterFederationOrg:output_type -> kratos.a2a.v1.FederationOrg
-	6,  // 15: kratos.a2a.v1.FederationService.ListFederationOrgs:output_type -> kratos.a2a.v1.ListFederationOrgsResponse
-	18, // 16: kratos.a2a.v1.FederationService.DeleteFederationOrg:output_type -> google.protobuf.Empty
-	0,  // 17: kratos.a2a.v1.FederationService.SetFederationTrustLevel:output_type -> kratos.a2a.v1.FederationOrg
-	1,  // 18: kratos.a2a.v1.FederationService.UpsertFederationPolicy:output_type -> kratos.a2a.v1.FederationPolicy
-	11, // 19: kratos.a2a.v1.FederationService.DiscoverFederationAgents:output_type -> kratos.a2a.v1.DiscoverFederationAgentsResponse
-	13, // 20: kratos.a2a.v1.FederationService.InvokeFederatedAgent:output_type -> kratos.a2a.v1.InvokeFederatedAgentResponse
-	15, // 21: kratos.a2a.v1.FederationService.QueryFederationAuditLogs:output_type -> kratos.a2a.v1.QueryFederationAuditLogsResponse
-	14, // [14:22] is the sub-list for method output_type
-	6,  // [6:14] is the sub-list for method input_type
+	9,  // 10: kratos.a2a.v1.FederationService.SyncFederationOrgCards:input_type -> kratos.a2a.v1.SyncFederationOrgCardsRequest
+	11, // 11: kratos.a2a.v1.FederationService.UpsertFederationPolicy:input_type -> kratos.a2a.v1.UpsertFederationPolicyRequest
+	12, // 12: kratos.a2a.v1.FederationService.DiscoverFederationAgents:input_type -> kratos.a2a.v1.DiscoverFederationAgentsRequest
+	14, // 13: kratos.a2a.v1.FederationService.InvokeFederatedAgent:input_type -> kratos.a2a.v1.InvokeFederatedAgentRequest
+	16, // 14: kratos.a2a.v1.FederationService.QueryFederationAuditLogs:input_type -> kratos.a2a.v1.QueryFederationAuditLogsRequest
+	0,  // 15: kratos.a2a.v1.FederationService.RegisterFederationOrg:output_type -> kratos.a2a.v1.FederationOrg
+	6,  // 16: kratos.a2a.v1.FederationService.ListFederationOrgs:output_type -> kratos.a2a.v1.ListFederationOrgsResponse
+	20, // 17: kratos.a2a.v1.FederationService.DeleteFederationOrg:output_type -> google.protobuf.Empty
+	0,  // 18: kratos.a2a.v1.FederationService.SetFederationTrustLevel:output_type -> kratos.a2a.v1.FederationOrg
+	10, // 19: kratos.a2a.v1.FederationService.SyncFederationOrgCards:output_type -> kratos.a2a.v1.SyncFederationOrgCardsResponse
+	1,  // 20: kratos.a2a.v1.FederationService.UpsertFederationPolicy:output_type -> kratos.a2a.v1.FederationPolicy
+	13, // 21: kratos.a2a.v1.FederationService.DiscoverFederationAgents:output_type -> kratos.a2a.v1.DiscoverFederationAgentsResponse
+	15, // 22: kratos.a2a.v1.FederationService.InvokeFederatedAgent:output_type -> kratos.a2a.v1.InvokeFederatedAgentResponse
+	17, // 23: kratos.a2a.v1.FederationService.QueryFederationAuditLogs:output_type -> kratos.a2a.v1.QueryFederationAuditLogsResponse
+	15, // [15:24] is the sub-list for method output_type
+	6,  // [6:15] is the sub-list for method input_type
 	6,  // [6:6] is the sub-list for extension type_name
 	6,  // [6:6] is the sub-list for extension extendee
 	0,  // [0:6] is the sub-list for field type_name
@@ -1389,7 +1489,7 @@ func file_kratos_a2a_v1_federation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_a2a_v1_federation_proto_rawDesc), len(file_kratos_a2a_v1_federation_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

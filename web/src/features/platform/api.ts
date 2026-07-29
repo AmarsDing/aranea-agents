@@ -604,6 +604,8 @@ export async function listPlatformResources(resource: PlatformResourceName): Pro
         eventType: undefined,
         agentId: undefined,
         status: undefined,
+        eventTypes: undefined,
+        excludeEventTypes: undefined,
       });
       return (res.items ?? []).map((row: unknown) => monitorEventWireToPlatform(row));
     }

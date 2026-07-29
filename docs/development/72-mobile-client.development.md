@@ -15,12 +15,19 @@
 | Rust 壳 | `web/src-tauri/src/server.rs` | axum 代理；上游地址可配置改造 |
 | Rust 壳 | `web/src-tauri/src/config.rs`（新增） | BackendConfig 读写与校验 |
 | Rust 壳 | `web/src-tauri/Cargo.toml` | 新增 platform 依赖（P2: 通知插件） |
-| 前端 | `web/src/layouts/MobileLayout.vue`（新增） | 移动底部 Tab 布局 |
+| 前端 | `web/src/layouts/MobileLayout.vue`（新增） | 移动底部 Tab 布局；P2 挂载通知 watcher + onAction 深链 |
 | 前端 | `web/src/pages/mobile/`（新增） | ServerSetup 等移动页面 |
 | 前端 | `web/src/router/routes.ts` | 移动路由表 + 断点守卫 |
-| 前端 | `web/src/config/runtime.ts` | 同源模式已支持，无需改动 |
+| 前端 | `web/src/config/runtime.ts` | P2：`buildWsUrl` 跨源默认携带存储 token（显式参数优先） |
+| 前端 | `web/src/services/authToken.ts`（新增，P2） | localStorage 登录 JWT 存取 + Bearer 头构造 |
+| 前端 | `web/src/services/localNotification.ts`（新增，P2） | tauri-plugin-notification 封装（懒加载、非 Tauri no-op、深链 onAction） |
+| 前端 | `web/src/features/chat/blockingStepNotification.ts`（新增，P2） | 阻塞步骤→通知描述纯函数（confirm/clarify 过滤、去重、截断、深链路由） |
+| 前端 | `web/src/features/chat/composables/useBlockingStepNotifications.ts`（新增，P2） | activity store 阻塞步骤 watcher（仅 document.hidden 通知） |
 | 后端 | `internal/server/http.go` | 登录限流中间件挂载 |
 | 后端 | `internal/server/login_ratelimit.go`（新增） | IP 限流 + 失败锁定 |
+| 后端 | `api/kratos/admin/v1/admin.proto`（P2） | `Admin.token=11`（仅 Login 响应填充） |
+| 后端 | `pkg/auth/middleware.go`（P2） | 新增 `IssueTokenForWorkspace`/`SetCookieWithToken`；中间件 cookie→Bearer→query 原有支持 |
+| 后端 | `internal/service/admin.go`（P2） | Login 签一次 JWT 同写 cookie 与响应体 |
 | 部署 | `build/frp/`（新增） | frps/frpc/Caddyfile 模板 + README |
 | 打包 | `web/scripts/build-tauri.mjs` | 桌面流程不变；Android 走 tauri CLI |
 
@@ -61,10 +68,12 @@
 
 | # | 任务 | 状态 |
 |---|------|------|
-| 2.1 | Android ForegroundService 保活 WS（Kotlin 侧） | 📋 |
-| 2.2 | tauri-plugin-notification 本地通知 + 点击深链跳转 | 📋 |
-| 2.3 | 后端 Token 认证（login 响应 token + Bearer + WS token query） | 📋 |
-| 2.4 | 手工验收 AC-4/5 | 📋 |
+| 2.1 | Android ForegroundService 保活 WS（Kotlin 侧） | ⏸ 环境阻塞：同 0.8（无 JDK） |
+| 2.2 | tauri-plugin-notification 本地通知 + 点击深链跳转 | ✅ 代码集成完成（运行验证依赖 Android 环境）：Rust 注册插件 + capabilities `notification:default`；`services/localNotification.ts` Tauri 门控封装（懒加载、非 Tauri no-op、onAction 深链路由）；纯函数 `features/chat/blockingStepNotification.ts`（6 单测：confirm/clarify 过滤、去重、截断、深链路由）；`useBlockingStepNotifications` watcher 挂 MobileLayout（仅 document.hidden 时通知）；cargo check 通过；vitest 1040/1040；lint 仅剩 skill 模块历史新增违规（见下） |
+| 2.3 | 后端 Token 认证（login 响应 token + Bearer + WS token query） | ✅（TDD）：proto `Admin.token=11` + make api 重生成；`pkg/auth` 新增 `IssueTokenForWorkspace`/`SetCookieWithToken`（round-trip 单测）；Login 签一次 JWT 同写 cookie 与响应体；前端 `services/authToken.ts`（localStorage，4 单测）+ axios 请求拦截器附 Bearer + `buildWsUrl` 跨源默认带存储 token（显式参数优先，4 单测）+ login 存储/logout 清除；中间件 cookie→Bearer→query 优先级原本已支持零改动；go build 绿；vitest 1040/1040 |
+| 2.4 | 手工验收 AC-4/5 | 📋（依赖真机 + frp 公网环境） |
+
+> lint 备注：`components/skills/SkillFilterBar.vue`（+4）与 `SkillTable.vue`（+5）存在新增硬编码中文，源自 skill 管理标签/排序改动（另一任务线），未随本任务修复。
 
 ### P3：体验优化
 
@@ -89,3 +98,9 @@
 - 新增：`web/src-tauri/src/config.rs`、`internal/server/login_ratelimit.go`、`internal/server/login_ratelimit_test.go`、`build/frp/*`、`web/src/pages/mobile/ServerSetupPage.vue`、`web/src/layouts/MobileLayout.vue`
 - 修改：`web/src-tauri/src/main.rs`、`web/src-tauri/src/server.rs`、`web/src-tauri/Cargo.toml`、`internal/server/http.go`、`web/src/router/routes.ts`、i18n 语言包
 - 文档：`docs/development/72-mobile-client.*`（本三件套）
+
+## 改动文件清单（P2）
+
+- 新增：`web/src/services/authToken.ts`（+spec）、`web/src/services/localNotification.ts`、`web/src/features/chat/blockingStepNotification.ts`、`web/src/features/chat/composables/useBlockingStepNotifications.ts`（+spec）、`web/src-tauri/capabilities/default.json`
+- 修改：`api/kratos/admin/v1/admin.proto`（`Admin.token=11`）+ 生成物、`pkg/auth/middleware.go`（Issue/SetCookieWithToken）、`internal/service/admin.go`（Login 返回 token）、`web/src/config/runtime.ts`（buildWsUrl token fallback）、`web/src/services/axiosHandler.ts`（Bearer 拦截器）、`web/src/features/admin/types.ts`/`api.ts`（AdminSession.token）、`web/src/stores/auth.ts`（login 存储/logout 清除）、`web/src/layouts/MobileLayout.vue`（通知挂载）、`web/src-tauri/Cargo.toml`+`lib.rs`（通知插件）、i18n 语言包（mobile.notify\*）
+- 测试：`pkg/auth/cookie_test.go`（+2）、`web/src/config/__tests__/runtime.spec.ts`（新增 4）

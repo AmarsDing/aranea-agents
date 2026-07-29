@@ -66,6 +66,9 @@ service MonitorService {
   rpc ListMonitorAlertRules(GetMonitorLogsRequest) returns (ListMonitorAlertRulesResponse) {
     option (google.api.http) = {get: "/v1/monitor/alert-rules"};
   }
+  rpc ListAlertMetrics(GetMonitorLogsRequest) returns (ListAlertMetricsResponse) {
+    option (google.api.http) = {get: "/v1/monitor/alert-metrics"};
+  }
   rpc PutMonitorAlertRules(PutMonitorAlertRulesRequest) returns (PutMonitorAlertRulesResponse) {
     option (google.api.http) = { put: "/v1/monitor/alert-rules"; body: "*" };
   }
@@ -119,6 +122,13 @@ service MonitorService {
 | `severity` | 11 | 严重级别（info/warning/critical） |
 | `metadata_json` | 12 | 扩展元数据 JSON |
 
+**Audit 数据契约（2026-07-29 规范化）**：
+
+- **action 契约**：统一 `verb.resource` 格式，由 `biz.AuditAction(verb, resource)` 生成；动词枚举 `AuditVerbCreate/Update/Delete/Toggle/Credentials/Archive/Sync`。历史遗留 `resource.verb` / 散装写法由迁移 **20260729**（`audit_action_migrate.go`，幂等）批量规范化
+- **detail 契约**：统一 JSON `{"summary": "人类可读摘要", "before": {...}, "after": {...}}`；前端列表只渲染 `summary`，完整 JSON 走详情弹窗。历史纯文本 detail 原样展示（兼容）
+- **元数据**：`ip` / `user_agent` 由 `internal/service/audit_meta.go` 从 Kratos transport HTTP Header 提取（`X-Forwarded-For` / `User-Agent`）
+- **埋点覆盖**：agent、team（CRUD + Duplicate）、channel（CRUD + Toggle + Credentials upsert/delete）、provider（CRUD + Reveal 凭据）、config（系统设置更新，summary 记录变更 section）、session、tool、mcp_server、skill 的管理操作均落 `AdminAuditEntry`；service 层通过 `recordAudit(ctx, mon, entry)` 统一入口，失败仅记日志不阻断主流程
+
 ### 2.4 分页与过滤
 
 **ListAuditLogsRequest**：
@@ -127,7 +137,7 @@ service MonitorService {
 |------|------|------|
 | `limit` | int32 | 每页条数，默认 200 |
 | `offset` | int32 | 偏移量 |
-| `action` | string | 按事件类型过滤（如 create/delete/update） |
+| `action` | string | 按事件类型过滤（如 create/delete/update）。**动词级过滤**：不含 `.` 时按 `<verb>.%` 前缀匹配规范化 action；含 `.` 视为完整 action 精确匹配（见 §2.3 数据契约） |
 | `resource` | string | 按实体类型过滤（如 agent/team/channel） |
 | `actor` | string | 按操作者过滤 |
 | `keyword` | string | 全文模糊搜索（action/resource/resource_id/detail） |
@@ -348,7 +358,8 @@ func (u *UsageUsecase) RecordTokenUsageEvent(ctx, e TokenUsageEvent) (TokenUsage
 
 - **Audit**：`WHERE` 动态拼接（action/resource/actor/keyword），`COUNT(*)` 获取总数，`LIMIT/OFFSET` 分页
 - **Events/Traces**：基础 `WHERE deleted_at = ''` + 动态条件追加，`COUNT(*)` 获取总数
-- **Usage**：独立 `UsageRepo`，查询 `model_token_usage_events` 聚合
+- **Traces 显示名解析**：`ListMonitorTraces`/`GetMonitorTrace` 以标量子查询解析 `agents.display_name`/`teams.display_name`（id 或 key 匹配，dangling 回退空串）；行 `Name` 输出解析后显示名，原存储域保留在 `config_json.domain` 供前端类型标签使用
+- **Usage**：独立 `UsageRepo`，查询 `model_token_usage_events` 聚合；trace 维度聚合（`AggregateUsageByTrace`）走表达式索引 `idx_model_token_usage_events_trace_id`（迁移 20261114，与查询同一 `Dialect.JSONExtract` 表达式保证规划器匹配）
 - **Latency 聚合**：`LatencyPercentilesSince` + `meta_duration_ms` generated column + `LIMIT 10000`
 
 ---
@@ -397,7 +408,7 @@ web/src/
 │   ├── RunnerMetricsPanel.vue         ← Runner 指标纯展示（props/emits）
 │   ├── MonitorUsageDashboardLink.vue  ← 跳转 /overview、/usage/events
 │   ├── MonitorAlertRules.vue          ← 告警规则 CRUD
-│   ├── AuditTable.vue                 ← 活动日志（筛选 + 分页）
+│   ├── AuditTable.vue                 ← 活动日志（服务端筛选 + 分页 + 详情弹窗）
 │   ├── RealtimeEvents.vue             ← WS 事件流（方案 C completion 过滤）
 │   ├── TraceList.vue                  ← Runs 列表与详情
 │   ├── TraceWaterfall.vue             ← 详情瀑布图
@@ -433,9 +444,9 @@ web/src/
 |-----|------|----------|
 | **Usage** | `MonitorRunnerMetrics` + `MonitorUsageDashboardLink` | `GetRunnerMetrics`；用量大盘见 `/overview` |
 | **Alerts** | `MonitorAlertRules` | `ListMonitorAlertRules` / `PutMonitorAlertRules` |
-| **Audit** | `AuditTable` | `MonitorService.ListAuditLogs` |
+| **Audit** | `AuditTable` | `MonitorService.ListAuditLogs`（2026-07-29 重设计：服务端分页/筛选、summary 摘要列、详情弹窗、全量 i18n） |
 | **Events** | `RealtimeEvents` | WS + `ListMonitorEvents`（告警；completion 降级） |
-| **Runs（Traces）** | `TraceList` | `MonitorService.ListMonitorTraces`（OPT-05；含 duration/tokens/cost） |
+| **Runs（Traces）** | `TraceList` | `MonitorService.ListMonitorTraces`（OPT-05；含 duration/tokens/cost；2026-07-29 重设计：6 态状态模型 + 语义色、显示名解析、指标条 + 错误面板、全量 i18n） |
 | **Logs** | `LogStreamPanel` → `FlowLogStream` / `ProcessLogStream` | 共享 WS Hub + `flow_log` / `log` 分流 |
 
 ### 7.3 Quasar 组件映射
@@ -510,10 +521,10 @@ getRunnerMetrics(windowMinutes?: number): Promise<RunnerMetricsSummary>
 
 | 页面 | 组件 | 数据 |
 |------|------|------|
-| Monitor **Usage** | `MonitorRunnerMetrics`、`MonitorUsageDashboardLink` | `GET /v1/monitor/runner-metrics`；跳转携带 `filters.range` |
+| Monitor **Usage** | `SelfCheckStatusPanel`、`MonitorRunnerMetrics` | `GET /v1/monitor/self-check-reports`、`GET /v1/monitor/runner-metrics` |
 | **概览** `/overview` | `UsageMetricCards`、`UsageTrendChart`、`UsageBreakdownCharts` 等 | `GET /v1/usage/overview` 等 — 见 [18 monitor-dashboard.design.md](./18%20monitor-dashboard.design.md) |
 
-已删除 `UsageOverview.vue`（避免与概览重复维护）。
+已删除 `UsageOverview.vue`（避免与概览重复维护）。`MonitorUsageDashboardLink`（「打开概览 / 查看明细」跳转面板）已于 2026-07-29 移除，Usage Tab 只保留自检状态与 Runner 指标。
 
 ---
 
@@ -1580,12 +1591,26 @@ UI：Traces 详情可点 parent → 跳转上一段 trace；Waterfall 跨 trace 
 
 `monitor_traces.total_tokens` / `total_cost_usd` 在 trace 关闭时计算（sum spans）。Usage 大盘可直接按 trace 聚合，不再需要 `model_token_usage_events` 单独 query（性能优化）。
 
+**实现（2026-07-29）**：关闭时以 `model_token_usage_events` 为权威成本源聚合——`TraceProjector.OnRunnerCompletion` 与 `MonitorTraceBackfillWorker` 均调 `TraceUsageRepo.AggregateUsageByTrace(traceID)`，结果经 `TraceCompletion` 结构写入：
+
+- **聚合**：`SUM(total_tokens)`、`SUM(total_cost_micro_usd)/1e6`、`COUNT(*)`；provider/model 取 `occurred_at DESC` 最新一条非空值（标量子查询，非 `MAX()`）
+- **tokens 取大**：usage 聚合 tokens 与 flow_log 累计 tokens 取较大者（两者口径不同，flow_log 可能缺 turn）
+- **provider/model 空值回填**：`UpdateMonitorTraceCompletion` 用 `CASE WHEN provider = '' AND $x != ''` 仅在存储列为空时回填（flow_log 元数据常缺，usage 事件权威）
+
 #### 5.2.5 历史数据回填
 
 新增 cron `MonitorTraceBackfillWorker`：
 - 从 `model_token_usage_events` 倒序扫最近 30 天
 - 按 `session_id` + `invocation_id` 分组生成 trace 行
 - 完成后置 `backfill_done=true`
+
+#### 5.2.6 僵尸 running 清扫（InterruptStaleTraces，2026-07-29）
+
+进程崩溃 / runner 未完成的 trace 会永久停在 `running`。`MonitorTraceBackfillWorker` 每轮先 `sweepStaleRunning`：
+
+- **TTL**：`staleRunningTraceTTL = 30min`（`created_at` 早于 cutoff 才候选）
+- **span 活跃守卫**：仅当 `NOT EXISTS` TTL 窗口内 span 活动（`monitor_trace_spans.started_at`/`ended_at` 毫秒时间戳 ≥ cutoffMs）才置 `interrupted`——长运行 team run 持续产 span，不会被误杀
+- **已知边界**：HITL 人工等待超 TTL 且无 span 产出的 run 会被标记 `interrupted`；仅影响监控展示，不影响运行时恢复（运行真相源在 session_runs/checkpoint）
 
 ### 5.3 验收标准
 

@@ -279,6 +279,23 @@ WaitingHuman → Cancelled (cancel)
 
 6 种状态，6 种事件。终端状态：`success` / `failed` / `cancelled`。
 
+**MemberSession 版本权威带（ADR-09，2026-07-28 决策 / 2026-07-29 哨兵化）**
+
+成员终态（completed/failed/skipped）是**单写者族**裁决：`member_sessions_v2.Version` 是写者权威层级而非任意编号，DB `VersionLT` 守卫与前端 `activityV2Store` 守卫依赖层级单调递增做幂等去重，不承担跨写者仲裁。
+
+| 版本带 | 值 | 写者 | 语义 |
+|--------|----|------|------|
+| created | 1 | runner（`publishTeamStepActivity`）/ assembler / Mode B | 生命周期事实（running），执行期可达 |
+| evidence | 2 | 预留（runner 事实性失败/取消） | 当前无生产写者；消息生命周期禁止落入本带 |
+| outcome | `1 << 40` | service 终态 outcome pass / Mode B finish / 崩溃 recovery | 终态裁决（completed/failed/skipped），权威最高、恒赢 |
+
+纪律：
+
+- **runner 不投影成员 completed**——「成员产出最终文本」是消息生命周期而非工作结果；完整证据链（Fix-1 交付物门 → F9 `tool_assertion` 验证门 → F10 `MemberExecutionEvidence` 成员级覆盖 → F4 缺口兜底）只在团队终态时刻齐备，由 `publishV2TeamRunCompletion` 唯一裁决发布。
+- **outcome 取哨兵大值**：pause/resume 生命周期写者用 `Version++` 单调递增，固定小值会被追平导致终态被守卫静默拒绝；哨兵保证终态恒赢、终态之后无写者。
+- **生命周期写者纪律**（`syncMemberSessionStatus` / `syncV2TeamRunStatus`）：已终态记录跳过；目标为终态携带 outcome 带；running↔paused 走 `Version++`。
+- **崩溃 recovery**：对非终态孤儿成员 `SetVersion(outcome)` 标 failed，迟到的 V≤2 重放无法覆盖。
+
 ### 3.3 窄接口
 
 文件：`internal/biz/team_usecase.go`

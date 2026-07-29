@@ -51,6 +51,14 @@ export type MonitorPlatformRow = {
   createdAt: string | undefined;
   updatedAt: string | undefined;
   deletedAt: string | undefined;
+  // Resolved display names joined from agents/teams (traces only); empty when
+  // the reference is dangling or the row is an event row.
+  agentName: string | undefined;
+  teamName: string | undefined;
+  // Correlation keys for trace rows (traces only); empty for event rows.
+  // Exposed so the detail dialog can query flow-log history by session/run.
+  sessionId: string | undefined;
+  runId: string | undefined;
 };
 
 export type ListMonitorEventsRequest = {
@@ -59,6 +67,10 @@ export type ListMonitorEventsRequest = {
   eventType: string | undefined;
   agentId: string | undefined;
   status: string | undefined;
+  // Prefix match ANY (union with event_type); e.g. ["alert.","runner.completion"].
+  eventTypes: string[] | undefined;
+  // Prefix exclusion applied after the include set; e.g. ["skill.filesystem."].
+  excludeEventTypes: string[] | undefined;
 };
 
 export type ListMonitorEventsResponse = {
@@ -164,6 +176,23 @@ export type MonitorAlertRule = {
 
 export type ListMonitorAlertRulesResponse = {
   items: MonitorAlertRule[] | undefined;
+};
+
+// AlertMetricInfo is one entry of the alert metric directory: human-readable
+// metadata for a metric that alert rules can target, plus its current value.
+export type AlertMetricInfo = {
+  key: string | undefined;
+  name: string | undefined;
+  description: string | undefined;
+  unit: string | undefined;
+  defaultWindowMinutes: number | undefined;
+  suggestedThreshold: number | undefined;
+  currentValue: number | undefined;
+  evaluatedAt: string | undefined;
+};
+
+export type ListAlertMetricsResponse = {
+  items: AlertMetricInfo[] | undefined;
 };
 
 export type PutMonitorAlertRulesRequest = {
@@ -361,6 +390,9 @@ export interface MonitorService {
   GetMonitorLogs(request: GetMonitorLogsRequest): Promise<GetMonitorLogsResponse>;
   ListFlowLogs(request: ListFlowLogsRequest): Promise<ListFlowLogsResponse>;
   ListMonitorAlertRules(request: GetMonitorLogsRequest): Promise<ListMonitorAlertRulesResponse>;
+  // Alert metric directory: which metrics rules can target, what they mean,
+  // and their current values.
+  ListAlertMetrics(request: GetMonitorLogsRequest): Promise<ListAlertMetricsResponse>;
   PutMonitorAlertRules(request: PutMonitorAlertRulesRequest): Promise<PutMonitorAlertRulesResponse>;
   GetRunnerMetrics(request: GetRunnerMetricsRequest): Promise<RunnerMetricsSummary>;
   GetCodeExecutorCapabilities(request: GetMonitorLogsRequest): Promise<GetCodeExecutorCapabilitiesResponse>;
@@ -437,6 +469,16 @@ export function createMonitorServiceClient(
       }
       if (request.status) {
         queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
+      }
+      if (request.eventTypes) {
+        request.eventTypes.forEach((x) => {
+          queryParams.push(`eventTypes=${encodeURIComponent(x.toString())}`)
+        })
+      }
+      if (request.excludeEventTypes) {
+        request.excludeEventTypes.forEach((x) => {
+          queryParams.push(`excludeEventTypes=${encodeURIComponent(x.toString())}`)
+        })
       }
       let uri = path;
       if (queryParams.length > 0) {
@@ -603,6 +645,23 @@ export function createMonitorServiceClient(
         service: "MonitorService",
         method: "ListMonitorAlertRules",
       }) as Promise<ListMonitorAlertRulesResponse>;
+    },
+    ListAlertMetrics(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/monitor/alert-metrics`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "ListAlertMetrics",
+      }) as Promise<ListAlertMetricsResponse>;
     },
     PutMonitorAlertRules(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/alert-rules`; // eslint-disable-line quotes

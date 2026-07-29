@@ -20,6 +20,7 @@ type SystemSettingService struct {
 	uc            *biz.SystemSettingUsecase
 	a2aPublicBase *A2APublicBaseReloader
 	crypto        *biz.CredentialCrypto
+	mon           *biz.MonitorUsecase
 	// embedderAdmin hot-reloads in-memory knowledge embedder after DB persist (same path as KnowledgeService).
 	embedderAdmin knowledge.EmbedderAdmin
 	lg            loggateway.Logger
@@ -30,6 +31,7 @@ func NewSystemSettingService(
 	a2aPublicBase *A2APublicBaseReloader,
 	crypto *biz.CredentialCrypto,
 	embedder knowledge.Embedder,
+	mon *biz.MonitorUsecase,
 	lg loggateway.Logger,
 ) *SystemSettingService {
 	if lg == nil {
@@ -43,6 +45,7 @@ func NewSystemSettingService(
 		uc:            uc,
 		a2aPublicBase: a2aPublicBase,
 		crypto:        crypto,
+		mon:           mon,
 		embedderAdmin: admin,
 		lg:            lg,
 	}
@@ -98,6 +101,12 @@ func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1
 	if err != nil {
 		return nil, err
 	}
+	// 配置变更为单例实体：resource=config 无 resource_id，summary 仅列变更的分区名（严禁记录密钥值）。
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:   biz.AuditAction(biz.AuditVerbUpdate, "config"),
+		Resource: "config",
+		Summary:  "sections=" + strings.Join(updatedSettingSections(req, patch), ","),
+	})
 	if s.a2aPublicBase != nil {
 		s.a2aPublicBase.Reload(row.A2APublicBaseURL)
 	}
@@ -114,6 +123,21 @@ func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1
 		)
 	}
 	return toProtoSystemSettings(row), nil
+}
+
+// updatedSettingSections 列出本次更新涉及的配置分区名（用于审计 summary，不含任何密钥值）。
+func updatedSettingSections(req *v1.UpdateSystemSettingsRequest, patch biz.SystemSettingAllPatch) []string {
+	sections := []string{"general"} // root/work dir、月度配额、A2A base URL、MCP 开关始终随表单提交
+	if patch.KnowledgeEmbed != nil || hasKnowledgeEmbedUpdate(req) {
+		sections = append(sections, "knowledge_embed")
+	}
+	if patch.EvalLLM != nil || hasEvalLLMUpdate(req) {
+		sections = append(sections, "eval_llm")
+	}
+	if patch.WebResearch != nil || hasWebResearchUpdate(req) {
+		sections = append(sections, "web_research")
+	}
+	return sections
 }
 
 func hasWebResearchUpdate(req *v1.UpdateSystemSettingsRequest) bool {

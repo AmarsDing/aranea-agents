@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	v1 "aranea-agents/api/kratos/llm_provider_model/v1"
 	"aranea-agents/internal/biz"
@@ -16,12 +17,13 @@ import (
 type LlmProviderModelService struct {
 	v1.UnimplementedLlmProviderModelServiceServer
 
-	uc *biz.LlmProviderModelUsecase
-	lg loggateway.Logger
+	uc  *biz.LlmProviderModelUsecase
+	mon *biz.MonitorUsecase
+	lg  loggateway.Logger
 }
 
-func NewLlmProviderModelService(uc *biz.LlmProviderModelUsecase, lg loggateway.Logger) *LlmProviderModelService {
-	return &LlmProviderModelService{uc: uc, lg: lg}
+func NewLlmProviderModelService(uc *biz.LlmProviderModelUsecase, mon *biz.MonitorUsecase, lg loggateway.Logger) *LlmProviderModelService {
+	return &LlmProviderModelService{uc: uc, mon: mon, lg: lg}
 }
 
 func toProtoPM(m biz.ProviderModel) *v1.ProviderModel {
@@ -162,6 +164,12 @@ func (s *LlmProviderModelService) CreateProviderModel(ctx context.Context, req *
 	if err != nil {
 		return nil, err
 	}
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbCreate, "provider"),
+		Resource:   "provider",
+		ResourceID: out.ID,
+		Summary:    fmt.Sprintf("key=%s model=%s/%s", out.Key, out.Provider, out.Model),
+	})
 	return toProtoPM(out), nil
 }
 
@@ -195,6 +203,12 @@ func (s *LlmProviderModelService) RevealProviderModelCredentials(ctx context.Con
 		loggateway.Any("has_secret_key", out.HasSecretKey),
 		loggateway.Int("ha_candidate_count", len(out.HACandidates)),
 	)
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbCredentials, "provider"),
+		Resource:   "provider",
+		ResourceID: resourceID,
+		Summary:    fmt.Sprintf("reveal has_api_key=%t has_secret_key=%t", out.HasAPIKey, out.HasSecretKey),
+	})
 	resp := &v1.RevealProviderModelCredentialsResponse{
 		ApiKey:       out.APIKey,
 		SecretKey:    out.SecretKey,
@@ -222,14 +236,31 @@ func (s *LlmProviderModelService) UpdateProviderModel(ctx context.Context, req *
 		}
 		return nil, err
 	}
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbUpdate, "provider"),
+		Resource:   "provider",
+		ResourceID: out.ID,
+		Summary:    fmt.Sprintf("key=%s model=%s/%s", out.Key, out.Provider, out.Model),
+	})
 	return toProtoPM(out), nil
 }
 
 // DeleteProviderModel DELETE /v1/llm-provider-models/{id}.
 func (s *LlmProviderModelService) DeleteProviderModel(ctx context.Context, req *v1.DeleteProviderModelRequest) (*emptypb.Empty, error) {
+	// 先取 key 供审计 summary 使用（best-effort，取不到不阻断删除）。
+	summary := ""
+	if m, err := s.uc.Get(ctx, req.GetId()); err == nil {
+		summary = fmt.Sprintf("key=%s model=%s/%s", m.Key, m.Provider, m.Model)
+	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbDelete, "provider"),
+		Resource:   "provider",
+		ResourceID: req.GetId(),
+		Summary:    summary,
+	})
 	return &emptypb.Empty{}, nil
 }
 

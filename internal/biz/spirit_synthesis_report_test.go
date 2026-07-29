@@ -151,9 +151,9 @@ func TestBuildSynthesisSummaryTrigger_AllCompleted_KeepsSuccessStructure(t *test
 // LLM 无需 read_session_history 考古。
 func TestBuildSynthesisSummaryTrigger_AllCompleted_WithDigests(t *testing.T) {
 	digests := []TeamDeliverableDigest{{
-		TeamName:          "安装 xlsx 团队",
-		TaskName:          "安装 xlsx skill",
-		Status:            "completed",
+		TeamName:           "安装 xlsx 团队",
+		TaskName:           "安装 xlsx skill",
+		Status:             "completed",
 		DeliverableSummary: `{"status":"success","detail":"xlsx 1.2.3 installed"}`,
 	}}
 	out := BuildSynthesisSummaryTrigger(1, 1, 0, nil, digests)

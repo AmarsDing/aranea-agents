@@ -102,17 +102,18 @@ func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, 
 	}
 }
 
-// CreateCollection creates a new vector collection.
+// CreateCollection creates a Vault (V2: root_path required; embedding_model optional = lexical-only vault).
 func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateCollectionRequest) (*v1.KnowledgeCollection, error) {
 	name := strings.TrimSpace(req.GetName())
 	model := strings.TrimSpace(req.GetEmbeddingModel())
 	if name == "" {
 		return nil, apierror.BadRequest("KNOWLEDGE", "name is required")
 	}
-	if model == "" {
-		return nil, apierror.BadRequest("KNOWLEDGE", "embedding_model is required")
+	if strings.TrimSpace(req.GetRootPath()) == "" {
+		return nil, apierror.BadRequest("KNOWLEDGE", "root_path is required")
 	}
-	if s.embedderAdmin != nil {
+	// embedding 模型校验仅在显式指定时进行（留空 = 无语义层词法库）。
+	if model != "" && s.embedderAdmin != nil {
 		_, _, embedderModel, _, configured, _ := s.embedderAdmin.Config()
 		if configured && embedderModel != "" && embedderModel != model {
 			return nil, apierror.BadRequest("KNOWLEDGE", "embedding_model does not match current embedder model "+embedderModel)
@@ -122,13 +123,14 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 		Name:           name,
 		Description:    req.GetDescription(),
 		EmbeddingModel: model,
+		RootPath:       req.GetRootPath(),
 	}
 	// C-01: stamp caller workspace so collections are tenant-scoped.
 	// System callers create shared collections (empty workspace).
 	if !workspace.IsSystem(ctx) {
 		in.Workspace = workspace.IDFromContext(ctx)
 	}
-	c, err := s.uc.CreateCollection(ctx, in)
+	c, err := s.uc.CreateVault(ctx, in)
 	if err != nil {
 		return nil, err
 	}

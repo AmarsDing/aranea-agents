@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -362,16 +363,19 @@ func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, monitorBus contra
 	return service.NewMonitorAlertNotifier(channels, monitorBus, lg)
 }
 
-func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, seq *v2.Sequencer, lg loggateway.Logger) *biz.MonitorUsecase {
+func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, spanReader biz.MonitorTraceSpanReader, seq *v2.Sequencer, reg *monitor.AlertMetricRegistry, lg loggateway.Logger) *biz.MonitorUsecase {
 	rb := monitor.NewMetricRingBuffer()
 	uc := biz.NewMonitorUsecase(audit, event, trace, alert, runner, notifier,
 		biz.WithFilesystemHealthReader(fsHealth),
+		biz.WithTraceSpanReader(spanReader),
 		biz.WithRingBuffer(rb),
 		monitor.WithLogger(lg),
 	)
 	w := monitor.NewAlertEvalWorker(uc, rb, lg)
 	uc.SetEvalWorker(w)
-	reg := monitor.NewAlertMetricRegistry()
+	// reg is the wire-shared singleton (monitor.WireProviderSet): the
+	// SelfCheckScheduler registers self_check.unhealthy_count on the same
+	// instance, so all alert metrics live in one registry.
 	reg.Register(monitor.NewRunnerErrorRateMetric(event, rb))
 	if fsHealth != nil {
 		reg.Register(monitor.NewSkillFilesystemMissingMetric(fsHealth))
@@ -1057,7 +1061,8 @@ func provideGraphBuildDeps(
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
-			LG:              lg,
+			// TeamCompletionChecker 将在运行时通过 SetTeamCompletionChecker 注入，避免循环依赖
+			LG: lg,
 		},
 	}
 	return graphtrpc.GraphNodeResolverSet{
@@ -1066,6 +1071,74 @@ func provideGraphBuildDeps(
 		Agents:       graphadapter.NewCatalogAgentResolver(builderDeps, lg, service.NewCLIAdminToolFactory(skillUC, agentUC, sys)),
 		Functions:    graphadapter.NewCatalogFunctionResolver(toolUC, lg),
 		NodeBreakers: nodeBreakers,
+	}
+}
+
+// provideTRPCBuilderDeps provides the TRPCBuilderDeps for dependency injection.
+// This is a separate provider to allow runtime injection of TeamCompletionChecker.
+func provideTRPCBuilderDeps(
+	catalog *biz.LlmProviderModelUsecase,
+	toolUC *biz.ToolUsecase,
+	agentUC *biz.AgentUsecase,
+	agents biz.AgentRepository,
+	sys biz.SystemSettingRepo,
+	skillUC *biz.SkillUsecase,
+	persist rt.PersistenceSet,
+	skillDBRepo trpcskill.Repository,
+	codeExecFactory *localexec.Factory,
+	knowledgeRetriever *knowledge.Retriever,
+	knowledgeUC *biz.KnowledgeUsecase,
+	pluginMgr *plugintrpc.Manager,
+	orgUC *biz.OrganizationUsecase,
+	toolResultGate *biz.ToolResultGate,
+	outboundRouter *outbound.Router,
+	subAgentSvc *subagenttool.Service,
+	a2aUC *biz.A2AUsecase,
+	lg loggateway.Logger,
+) *chatagent.TRPCBuilderDeps {
+	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
+	return &chatagent.TRPCBuilderDeps{
+		TRPCModelCatalogDeps: chatagent.TRPCModelCatalogDeps{
+			ModelCatalog: catalog,
+			AgentUC:      agentUC,
+			Agents:       agents,
+			Sys:          sys,
+		},
+		TRPCModelRouteDeps: chatagent.TRPCModelRouteDeps{
+			RT: rtTrip,
+		},
+		TRPCToolAssemblyDeps: chatagent.TRPCToolAssemblyDeps{
+			ToolUC:     toolUC,
+			MCPTooling: persist.AgentMCP,
+		},
+		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
+			HasMemory:             persist.Memory.Available(),
+			MemoryService:         persist.Memory.TRPC,
+			MemoryAdmin:           persist.Memory.Admin,
+			MemoryActionLogWriter: persist.Memory.ActionLogWriter,
+			MemoryL2Recall:        persist.Memory.L2Recall,
+			MemoryL3Recall:        persist.Memory.L3Recall,
+			MemoryCompositeRecall: persist.Memory.CompositeRecall,
+			KnowledgeRetriever:    knowledgeRetriever,
+			KnowledgeUsecase:      knowledgeUC,
+		},
+		TRPCPluginDeps: chatagent.TRPCPluginDeps{
+			PluginManager: pluginMgr,
+		},
+		TRPCSkillDeps: chatagent.TRPCSkillDeps{
+			SkillUC:         skillUC,
+			SkillDBRepo:     skillDBRepo,
+			CodeExecFactory: codeExecFactory,
+		},
+		TRPCExtensionDeps: chatagent.TRPCExtensionDeps{
+			Organization:    orgUC,
+			ToolResultGate:  toolResultGate,
+			OutboundRouter:  outboundRouter,
+			SubAgentService: subAgentSvc,
+			A2AEnabled:      a2aUC != nil,
+			// TeamCompletionChecker 将在运行时通过 SetTeamCompletionChecker 注入，避免循环依赖
+			LG: lg,
+		},
 	}
 }
 
@@ -1494,6 +1567,13 @@ func provideFlowLogCleanup(flowLogs *biz.FlowLogUsecase, lg loggateway.Logger) *
 	return jobs.NewFlowLogCleanup(0, flowLogs, lg)
 }
 
+func provideMonitorEventsCleanup(repo biz.MonitorEventRepo, lg loggateway.Logger) *jobs.MonitorEventsCleanup {
+	if jobs.MonitorEventsCleanupDisabled() {
+		return nil
+	}
+	return jobs.NewMonitorEventsCleanup(0, repo, lg)
+}
+
 func provideMonitorAlertCooldownCleanup(uc *biz.MonitorUsecase, logger log.Logger) *jobs.MonitorAlertCooldownCleanup {
 	return jobs.NewMonitorAlertCooldownCleanup(0, 0, uc, logger)
 }
@@ -1512,12 +1592,12 @@ func provideMonitorAlertEvalWorker(uc *biz.MonitorUsecase) *monitor.AlertEvalWor
 // contract.MonitorBus. TraceProjector now subscribes to MonitorEventTypeFlowLog
 // via a bus-level Filter, matching the FlowFileAppender / SelfHealObserver
 // migration pattern.
-func provideTraceProjector(traceRepo biz.MonitorTraceRepo, infra *event.Infra, lg loggateway.Logger) *monitor.TraceProjector {
+func provideTraceProjector(traceRepo biz.MonitorTraceRepo, usageRepo biz.MonitorTraceUsageRepo, infra *event.Infra, lg loggateway.Logger) *monitor.TraceProjector {
 	var monitorBus contract.MonitorBus
 	if infra != nil {
 		monitorBus = infra.MonitorEventBus
 	}
-	return monitor.NewTraceProjector(traceRepo, lg, monitorBus)
+	return monitor.NewTraceProjector(traceRepo, lg, usageRepo, monitorBus)
 }
 
 // provideMonitorBus / ProvideSessionBus removed (ADR-03 Phase 5 Blocker F):
@@ -1534,8 +1614,8 @@ func provideFlowFileAppender(lg loggateway.Logger) *monitor.FlowFileAppender {
 	return monitor.NewFlowFileAppender(dir, lg)
 }
 
-func provideMonitorTraceBackfillWorker(traceRepo biz.MonitorTraceRepo, runnerCompletion biz.MonitorRunnerCompletionRepo, lg loggateway.Logger) *jobs.MonitorTraceBackfillWorker {
-	return jobs.NewMonitorTraceBackfillWorker(traceRepo, runnerCompletion, lg)
+func provideMonitorTraceBackfillWorker(traceRepo biz.MonitorTraceRepo, runnerCompletion biz.MonitorRunnerCompletionRepo, usageRepo biz.MonitorTraceUsageRepo, lg loggateway.Logger) *jobs.MonitorTraceBackfillWorker {
+	return jobs.NewMonitorTraceBackfillWorker(traceRepo, runnerCompletion, usageRepo, lg)
 }
 
 func provideDiagBundleGenerator(eventRepo biz.MonitorEventRepo, traceRepo biz.MonitorTraceRepo, engine *monitor.RootCauseEngine) *biz.DiagBundleGenerator {
@@ -1715,9 +1795,37 @@ func provideSelfCheckScheduler(
 	return scheduler
 }
 
-func provideEventBusHealthChecker() monitor.EventBusHealthChecker { return nil }
+// monitorBusHealthAdapter adapts the typed MonitorBus to the self-check
+// EventBusHealthChecker port. SubscriberCount is exposed structurally by the
+// concrete monitorBus (internal/event/monitor_bus.go); IsHealthy is always
+// true because the in-process bus is healthy by construction — the real
+// health signal is the subscriber count.
+type monitorBusHealthAdapter struct {
+	counter interface{ SubscriberCount() int }
+}
 
-func provideWSConnectionCounter() monitor.WSConnectionCounter { return nil }
+func (a monitorBusHealthAdapter) SubscriberCount(topic string) int {
+	return a.counter.SubscriberCount()
+}
+func (a monitorBusHealthAdapter) IsHealthy(topic string) bool { return true }
+
+func provideEventBusHealthChecker(infra *event.Infra) monitor.EventBusHealthChecker {
+	if infra == nil || infra.MonitorEventBus == nil {
+		return nil
+	}
+	counter, ok := infra.MonitorEventBus.(interface{ SubscriberCount() int })
+	if !ok {
+		return nil
+	}
+	return monitorBusHealthAdapter{counter: counter}
+}
+
+func provideWSConnectionCounter(wsSrv *server.WSServer) monitor.WSConnectionCounter {
+	if wsSrv == nil {
+		return nil
+	}
+	return wsSrv
+}
 
 func provideEventBusResubscriber() monitor.EventBusResubscriber { return nil }
 
@@ -1771,8 +1879,12 @@ func providePatternMiningJob(uc *monitor.PatternMiningUsecase, lg loggateway.Log
 	return jobs.NewPatternMiningJob(0, uc, lg)
 }
 
-func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller biz.LLMCaller, lg loggateway.Logger) *biz.VerificationGateExecutor {
-	return biz.NewVerificationGateExecutor(deptLeadMgr, caller, lg)
+func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller biz.LLMCaller, skillUC *biz.SkillUsecase, lg loggateway.Logger) *biz.VerificationGateExecutor {
+	// 2026-07-28 F9 修复：注入 tool_assertion 门的确定性 invoker（白名单
+	// cli_admin_skill_get，由 SkillUsecase 直供）。此前生产缺该注入，
+	// tool_assertion 门恒 fail-closed 报 "no tool invoker configured"。
+	return biz.NewVerificationGateExecutor(deptLeadMgr, caller, lg,
+		biz.WithToolAssertionInvoker(biz.NewSkillAssertionInvoker(skillUC)))
 }
 
 func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionUC *biz.EvolutionUsecase, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, stepReader biz.StepV2Reader, runStatsReader biz.SpiritTeamRunStatsReader, sessionRT *araneasession.Runtime, lg loggateway.Logger) *biz.SpiritTeamUsecase {
@@ -1892,6 +2004,7 @@ type wireOut struct {
 	PluginRuntime               *plugintrpc.Runtime
 	ToolAuditCleanup            *jobs.ToolAuditCleanup
 	FlowLogCleanup              *jobs.FlowLogCleanup
+	MonitorEventsCleanup        *jobs.MonitorEventsCleanup
 	MonitorAlertCooldownCleanup *jobs.MonitorAlertCooldownCleanup
 	AutoHealTTLCleanup          *jobs.AutoHealTTLCleanup
 	MonitorAlertEvalWorker      *monitor.AlertEvalWorker
@@ -1945,6 +2058,7 @@ func provideWireOut(
 	pluginRuntime *plugintrpc.Runtime,
 	toolAuditCleanup *jobs.ToolAuditCleanup,
 	flowLogCleanup *jobs.FlowLogCleanup,
+	monitorEventsCleanup *jobs.MonitorEventsCleanup,
 	monitorAlertCooldown *jobs.MonitorAlertCooldownCleanup,
 	autoHealTTLCleanup *jobs.AutoHealTTLCleanup,
 	monitorAlertEvalWorker *monitor.AlertEvalWorker,
@@ -1989,7 +2103,7 @@ func provideWireOut(
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
 		ToolAuditCleanup:        toolAuditCleanup,
-		FlowLogCleanup:          flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, ChannelTurnJobSweeper: channelTurnJobSweeper, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
+		FlowLogCleanup:          flowLogCleanup, MonitorEventsCleanup: monitorEventsCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, ChannelTurnJobSweeper: channelTurnJobSweeper, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEbbinghausDecay:       memoryEbbinghausDecay,
 		MemorySleepTime:             memorySleepTime,
 		MemoryEpisodeBackfill:       memoryEpisodeBackfill,
@@ -2189,6 +2303,71 @@ func provideA2AService(
 	return service.NewA2AService(uc, chat, agents, reg, store, limiter, lg)
 }
 
+// --- Federation (design F.5/F.6) ---
+
+// provideFederationLimiterFactory builds per-policy per-minute limiters with
+// the same Redis-vs-memory backend decision as provideA2ALimiter.
+func provideFederationLimiterFactory(rdb *data.RedisClient, lg loggateway.Logger) a2abiz.FederationLimiterFactory {
+	var client *redis.Client
+	if rdb != nil && rdb.IsEnabled() {
+		client = rdb.Client
+	}
+	return func(maxPerMin int) a2abiz.Limiter {
+		return a2abiz.NewLimiter(a2abiz.LimiterConfig{
+			WindowSize: time.Minute,
+			MaxInvokes: maxPerMin,
+			KeyPrefix:  "aranea:a2a:fed:",
+		}, client, lg)
+	}
+}
+
+// provideFederationPolicyEngine loads the full policy table at startup; a
+// load failure aborts init rather than serving with an empty cache.
+func provideFederationPolicyEngine(repo a2abiz.FederationPolicyRepo, lg loggateway.Logger) (*a2abiz.PolicyEngine, error) {
+	e := a2abiz.NewPolicyEngine(repo, lg)
+	if err := e.Load(context.Background()); err != nil {
+		return nil, fmt.Errorf("load federation policies: %w", err)
+	}
+	return e, nil
+}
+
+func provideFederationGovernance(
+	policy *a2abiz.PolicyEngine,
+	audits a2abiz.FederationAuditRepo,
+	factory a2abiz.FederationLimiterFactory,
+	lg loggateway.Logger,
+) *a2abiz.FederationGovernance {
+	return &a2abiz.FederationGovernance{
+		Trust:  a2abiz.NewTrustManager(lg),
+		Policy: policy,
+		Quota:  a2abiz.NewQuotaChecker(policy, audits, factory, lg),
+		Audit:  a2abiz.NewAuditLogger(audits, lg),
+	}
+}
+
+func provideFederationRemoteInvoker(lg loggateway.Logger) a2abiz.RemoteInvokeExecutor {
+	return a2apkg.NewFederationRemoteInvoker(lg)
+}
+
+func provideFederationUsecase(
+	orgs a2abiz.FederationOrgRepo,
+	gov *a2abiz.FederationGovernance,
+	remotes a2abiz.RemoteAgentLister,
+	discoverer a2abiz.RemoteCardDiscoverer,
+	cardWriter a2abiz.RemoteAgentCardWriter,
+	executor a2abiz.RemoteInvokeExecutor,
+	lg loggateway.Logger,
+) *a2abiz.FederationUsecase {
+	return a2abiz.NewFederationUsecase(orgs, gov,
+		a2abiz.NewDirectory(orgs, remotes),
+		a2abiz.NewAgentCardSync(remotes, discoverer, cardWriter, lg),
+		remotes, executor)
+}
+
+func provideFederationService(uc *a2abiz.FederationUsecase) *service.FederationService {
+	return service.NewFederationService(uc)
+}
+
 func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	return chatagent.NewTaskPlanner(repo, catalog, httpClient, eventBus, orchCache, lg, sysUC, seq)
@@ -2288,6 +2467,9 @@ func provideTaskOrchestrator(
 		},
 		TRPCToolAssemblyDeps: chatagent.TRPCToolAssemblyDeps{
 			ToolUC: toolUC,
+		},
+		TRPCExtensionDeps: chatagent.TRPCExtensionDeps{
+			LG: lg,
 		},
 	}
 	compiler := chatagent.NewDAGToGraphCompiler(lg)
@@ -2503,6 +2685,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		providePluginRuntime,
 		graphtrpc.NewRegistry,
 		provideGraphBuildDeps,
+		provideTRPCBuilderDeps,
 		biz.ProvideNodeCircuitBreakerRegistry,
 		graphadapter.NewGraphBuilderFactory,
 		provideL4CascadeUsecase,
@@ -2548,6 +2731,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideMemoryDeadLetterReplayer,
 		provideToolAuditCleanup,
 		provideFlowLogCleanup,
+		provideMonitorEventsCleanup,
 		provideMonitorAlertCooldownCleanup,
 		provideAutoHealTTLCleanup,
 		provideMonitorAlertEvalWorker,
@@ -2594,6 +2778,18 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideA2APublicBaseReloader,
 		provideA2ALimiter,
 		provideA2AService,
+		// Federation (design F.5/F.6)
+		provideFederationLimiterFactory,
+		provideFederationPolicyEngine,
+		provideFederationGovernance,
+		provideFederationRemoteInvoker,
+		provideFederationUsecase,
+		provideFederationService,
+		wire.Bind(new(a2abiz.FederationOrgRepo), new(*data.A2AFederationRepo)),
+		wire.Bind(new(a2abiz.FederationPolicyRepo), new(*data.A2AFederationRepo)),
+		wire.Bind(new(a2abiz.FederationAuditRepo), new(*data.A2AFederationRepo)),
+		wire.Bind(new(a2abiz.RemoteAgentLister), new(biz.A2ARepo)),
+		wire.Bind(new(a2abiz.RemoteCardDiscoverer), new(biz.A2ARepo)),
 		provideTaskPlanner,
 		provideAgentAllocator,
 		provideAgentFactory,

@@ -21,6 +21,10 @@ type SyncReport struct {
 	Slug     string
 	Message  string
 	Severity string
+	// SkipPersist=true 时仅发布 MonitorBus 事件，不落 monitor_events / admin_audit。
+	// 用于高频低价值的常规同步（skill.filesystem.updated/info）——
+	// 完整审计已由 skill_invocations 承担，落库只会淹没 Events 页。
+	SkipPersist bool
 }
 
 type monitorSyncReporter struct {
@@ -54,7 +58,7 @@ func (r *monitorSyncReporter) ReportFilesystemSync(ctx context.Context, report S
 		severity = "info"
 	}
 	message := strings.TrimSpace(report.Message)
-	if r.mon != nil {
+	if r.mon != nil && !report.SkipPersist {
 		meta, _ := json.Marshal(map[string]any{
 			"slug":    slug,
 			"message": message,
@@ -70,7 +74,12 @@ func (r *monitorSyncReporter) ReportFilesystemSync(ctx context.Context, report S
 				loggateway.StepID("skill.watch"),
 				loggateway.Err(err))
 		}
-		r.mon.RecordAdminAudit(ctx, "skill.filesystem.sync", "skill", slug, message)
+		r.mon.RecordAdminAudit(ctx, biz.AdminAuditEntry{
+			Action:     biz.AuditAction(biz.AuditVerbSync, "skill"),
+			Resource:   "skill",
+			ResourceID: slug,
+			Summary:    message,
+		})
 	}
 	if r.monitorBus != nil {
 		ev := contract.NewMonitorEvent(mapEventKeyToMonitorType(eventKey), "skill.watch")

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	biza2a "aranea-agents/internal/biz/a2a"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/data/artifactfs"
 	"aranea-agents/internal/data/ent"
@@ -83,6 +84,8 @@ var ProviderSet = wire.NewSet(
 	NewMonitorAuditRepo,
 	NewMonitorEventRepo,
 	NewMonitorTraceRepo,
+	NewMonitorTraceUsageRepo,
+	NewMonitorTraceSpanReader,
 	NewMonitorAlertRepo,
 	NewMonitorRunnerCompletionRepo,
 	NewSystemSettingRepo,
@@ -97,6 +100,8 @@ var ProviderSet = wire.NewSet(
 	NewEvalRepoFromData,
 	NewBackgroundJobRepo,
 	NewA2ARepoFromData,
+	NewA2AFederationRepo,
+	NewA2ARemoteAgentCardWriterFromData,
 	NewEcosystemRepo,
 	NewEcosystemPresetRepo,
 	NewFlowLogRepo,
@@ -830,6 +835,10 @@ func runPendingDataMigrations(d *Data) error {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.team_copy_ownership"), loggateway.Err(err))
 		return fmt.Errorf("team copy ownership migration: %w", err)
 	}
+	if err := RunAuditActionNormalizeMigration(ctx, entClient, d.Dialect(), d.lg); err != nil {
+		d.lg.Error("migration step failed", loggateway.StepID("data.migration.audit_action_normalize"), loggateway.Err(err))
+		return fmt.Errorf("audit action normalize migration: %w", err)
+	}
 	return nil
 }
 
@@ -1054,6 +1063,16 @@ func NewEvalRepoFromData(d *Data) biz.EvalRepo {
 
 func NewA2ARepoFromData(d *Data, lg loggateway.Logger) biz.A2ARepo {
 	return NewA2ARepo(d, lg)
+}
+
+// NewA2ARemoteAgentCardWriterFromData binds the federation narrow card-writer
+// port (biza2a.RemoteAgentCardWriter) to the a2a repo, without widening the
+// biz.A2ARepo aggregate interface (T10 design: kept out of RemoteAgentRepo).
+func NewA2ARemoteAgentCardWriterFromData(d *Data, lg loggateway.Logger) biza2a.RemoteAgentCardWriter {
+	if d == nil || d.RWDB() == nil {
+		return nil
+	}
+	return &a2aRepo{data: d, lg: lg}
 }
 
 // generateCatalogID generates a random 24-hex-char ID for agent/team catalog entries.

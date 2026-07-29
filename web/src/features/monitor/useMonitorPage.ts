@@ -1,9 +1,11 @@
-import { computed, onMounted, onUnmounted, reactive, ref, toRef, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { Notify } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import { useMonitorStore } from '../../stores/monitor';
-import type { MonitorTrace, MonitorTracesQuery } from './types';
+import type { AuditQuery, MonitorTrace, MonitorTracesQuery } from './types';
+import { AUDIT_DEFAULT_PAGE_SIZE } from '../constants/queryLimits';
 import { useRunnerMetrics } from './useRunnerMetrics';
 import { useMonitorRunNavigation } from './useMonitorRunNavigation';
 import { useMonitorRealtimeEvents } from './useMonitorRealtimeEvents';
@@ -15,14 +17,15 @@ const VALID_TABS = ['usage', 'alerts', 'audit', 'events', 'traces', 'logs'] as c
 export function useMonitorPage() {
   const route = useRoute();
   const router = useRouter();
+  const { t } = useI18n();
   const monitorStore = useMonitorStore();
-  const { auditLogs, events, selfCheckReports, selfCheckLoading, selfCheckTriggering } = storeToRefs(monitorStore);
+  const { auditLogs, auditTotal, selfCheckReports, selfCheckLoading, selfCheckTriggering } =
+    storeToRefs(monitorStore);
   const initialTab = String(route.query.tab || 'usage');
   const tab = ref(VALID_TABS.includes(initialTab as (typeof VALID_TABS)[number]) ? initialTab : 'usage');
   const highlightUsageEventId = ref(String(route.query.usage_event_id || '').trim());
   const traces = ref<MonitorTrace[]>([]);
   const loadingAudit = ref(false);
-  const loadingEvents = ref(false);
   const loadingTraces = ref(false);
   const error = ref('');
 
@@ -37,7 +40,7 @@ export function useMonitorPage() {
     { label: '本月', value: 'month' },
   ];
 
-  const loading = computed(() => loadingAudit.value || loadingEvents.value || loadingTraces.value);
+  const loading = computed(() => loadingAudit.value || realtimeEvents.historyLoading.value || loadingTraces.value);
 
   // ── Runner Metrics (was in MonitorRunnerMetrics.vue) ──
   const {
@@ -48,11 +51,8 @@ export function useMonitorPage() {
   } = useRunnerMetrics(60);
   const { openRunsTab } = useMonitorRunNavigation();
 
-  // ── Realtime Events (was in RealtimeEvents.vue) ──
-  const realtimeEvents = useMonitorRealtimeEvents(
-    toRef(() => events.value),
-    toRef(() => traces.value),
-  );
+  // ── Realtime Events (pulse 条 + 历史表，见 useMonitorRealtimeEvents) ──
+  const realtimeEvents = useMonitorRealtimeEvents();
 
   // ── Trace Flow (was in TraceList.vue) ──
   const traceDetail = ref<MonitorTrace | null>(null);
@@ -126,22 +126,21 @@ export function useMonitorPage() {
     }
   }
 
-  async function loadAudit() {
+  // AuditTable 服务端分页/筛选：记住最近一次查询，tab 切换/定时刷新时沿用。
+  let lastAuditQuery: AuditQuery = { limit: AUDIT_DEFAULT_PAGE_SIZE, offset: 0 };
+
+  async function loadAudit(query?: AuditQuery) {
+    if (query) lastAuditQuery = query;
     loadingAudit.value = true;
     try {
-      await monitorStore.loadAuditLogs({ limit: 200 });
+      await monitorStore.loadAuditLogs(lastAuditQuery);
     } finally {
       loadingAudit.value = false;
     }
   }
 
   async function loadEvents() {
-    loadingEvents.value = true;
-    try {
-      await monitorStore.loadEvents();
-    } finally {
-      loadingEvents.value = false;
-    }
+    await realtimeEvents.refreshHistory();
   }
 
   async function loadTraces() {
@@ -156,12 +155,13 @@ export function useMonitorPage() {
 
   function confirmClearEvents() {
     Notify.create({
-      message: '确定清除所有实时事件？此操作不可撤销。',
-      type: 'warning',
+      // 仅清空 pulse 实时条（页面刷新后也会重建），持久化事件记录不受影响
+      message: t('monitorPage.events.clearPulseConfirm'),
+      type: 'info',
       position: 'top',
       actions: [
-        { label: '取消', color: 'white', handler: () => {} },
-        { label: '确定', color: 'red', handler: () => monitorStore.clearRuntimeEvents() },
+        { label: t('common.cancel'), color: 'white', handler: () => {} },
+        { label: t('common.confirm'), color: 'primary', handler: () => realtimeEvents.clearPulse() },
       ],
     });
   }
@@ -182,10 +182,9 @@ export function useMonitorPage() {
     tab,
     highlightUsageEventId,
     auditRows: auditLogs,
-    events,
+    auditTotal,
     traces,
     loadingAudit,
-    loadingEvents,
     loadingTraces,
     error,
     filters,
@@ -201,7 +200,7 @@ export function useMonitorPage() {
     runnerWindowMinutes,
     reloadRunnerMetrics,
     openRunsTab,
-    // Realtime events
+    // Realtime events (pulse + history + actions，含 openChatSession/openLinkedRun)
     ...realtimeEvents,
     // Trace flow
     ...traceFlow,

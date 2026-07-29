@@ -42,7 +42,11 @@ type Runner struct {
 	// nil keeps legacy behavior (always success). Wired in production to
 	// biz.SpiritTeamController.HasRealDeliverable.
 	deliverableGate func(ctx context.Context, team biz.Team) (bool, error)
-	lg              loggateway.Logger
+	// monitor receives runner.completion events on run terminal states
+	// (Runner metrics + runner.error_rate alert data source). Optional:
+	// nil skips monitor recording (tests).
+	monitor *biz.MonitorUsecase
+	lg      loggateway.Logger
 }
 
 // SetMediator wires the TeamRunMediator that breaks the circular dependency
@@ -84,6 +88,7 @@ func NewRunner(
 	stepRepo biz.OrchestrationStepRepo,
 	deadLetter biz.TaskDeadLetterRepo,
 	usage biz.TeamUsageQuerier,
+	monitor *biz.MonitorUsecase,
 	td rt.TurnDeps,
 	skillDBRepo trpcskill.Repository,
 	codeExecFactory *localexec.Factory,
@@ -98,6 +103,7 @@ func NewRunner(
 		stepRepo:        stepRepo,
 		deadLetter:      deadLetter,
 		usage:           usage,
+		monitor:         monitor,
 		skillDBRepo:     skillDBRepo,
 		codeExecFactory: codeExecFactory,
 		cfg:             cfg,

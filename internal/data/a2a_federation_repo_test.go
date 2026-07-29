@@ -12,7 +12,15 @@ import (
 
 func setupFederationTestRepo(t *testing.T) *A2AFederationRepo {
 	t.Helper()
-	client, _ := testhelper.SetupTestPG(t)
+	client, rawDB := testhelper.SetupTestPG(t)
+	// a2a_remote_agents is raw-DDL (not in Ent auto-migration); create a
+	// minimal mirror because DeleteOrg disassociates org_id in one tx.
+	if _, err := rawDB.ExecContext(context.Background(), `CREATE TABLE a2a_remote_agents (
+		id TEXT PRIMARY KEY,
+		org_id TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		t.Fatal(err)
+	}
 	d := newDataFromClient(client, loggateway.NewNoop())
 	return NewA2AFederationRepo(d, loggateway.NewNoop())
 }
@@ -244,5 +252,63 @@ func TestA2AFederationRepo_AuditLifecycle(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("allowed count = %d, want 1 (denied must not consume quota)", n)
+	}
+}
+
+// TestA2AFederationRepo_DeleteOrgDisassociatesRemoteAgents covers design F.7:
+// deleting an org must clear a2a_remote_agents.org_id (disassociate), not
+// delete the remote agents, atomically with the org delete.
+func TestA2AFederationRepo_DeleteOrgDisassociatesRemoteAgents(t *testing.T) {
+	client, rawDB := testhelper.SetupTestPG(t)
+	repo := NewA2AFederationRepo(newDataFromClient(client, loggateway.NewNoop()), loggateway.NewNoop())
+	ctx := context.Background()
+
+	// a2a_remote_agents is raw-DDL (not in Ent auto-migration); create a
+	// minimal mirror for the disassociation assertion.
+	if _, err := rawDB.ExecContext(ctx, `CREATE TABLE a2a_remote_agents (
+		id TEXT PRIMARY KEY,
+		org_id TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		t.Fatal(err)
+	}
+
+	org, err := repo.UpsertOrg(ctx, biza2a.FederationOrg{Name: "A", Domain: "a.example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rawDB.ExecContext(ctx,
+		`INSERT INTO a2a_remote_agents(id, org_id) VALUES ($1, $2), ($3, $2), ($4, $5)`,
+		"ra-1", org.ID, "ra-2", "ra-3", "other-org"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.DeleteOrg(ctx, org.ID); err != nil {
+		t.Fatalf("delete org: %v", err)
+	}
+	if _, err := repo.GetOrg(ctx, org.ID); err == nil {
+		t.Fatal("expected not-found after delete")
+	}
+
+	rows, err := rawDB.QueryContext(ctx, `SELECT id, org_id FROM a2a_remote_agents ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	got := map[string]string{}
+	for rows.Next() {
+		var id, orgID string
+		if err := rows.Scan(&id, &orgID); err != nil {
+			t.Fatal(err)
+		}
+		got[id] = orgID
+	}
+	if len(got) != 3 {
+		t.Fatalf("remote agents deleted (len=%d), want disassociated not deleted", len(got))
+	}
+	if got["ra-1"] != "" || got["ra-2"] != "" {
+		t.Fatalf("org_id not cleared: %v", got)
+	}
+	if got["ra-3"] != "other-org" {
+		t.Fatalf("unrelated agent org_id changed: %v", got)
 	}
 }

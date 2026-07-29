@@ -14,8 +14,8 @@ import (
 type fakeCenterAdminDeps struct {
 	MemoryAdminDeps // nil-embedded; only overridden methods are callable
 
-	l0Rows  [][]byte
-	l1Tasks [][]byte
+	l0Rows   [][]byte
+	l1Tasks  [][]byte
 	l1Fields map[string][][]byte
 
 	factRows   [][]byte

@@ -493,7 +493,7 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 ### F.2 分层架构
 
 ```
-api/kratos/a2a/v1/federation.proto           ← 新增：FederationService（8 RPC）
+api/kratos/a2a/v1/federation.proto           ← 新增：FederationService（9 RPC）
         ↓
 internal/service/a2a_federation.go           ← 新增：RPC 适配（proto ↔ biz，无业务逻辑）
         ↓
@@ -665,29 +665,31 @@ type FederationAuditRepo interface {
 - 均为 0 直接放行
 
 **AuditLogger**（`federation_audit.go`）：
-- `RecordDecision`：同步创建审计（decision + status=pending）；**创建失败 fail-closed**（FED-NFR1 审计完整性），返回 500 并拒绝调用
+- `RecordAllowed`：同步创建决策审计（decision=allowed + status=pending）；**创建失败 fail-closed**（FED-NFR1 审计完整性），返回 500 并拒绝调用
 - `RecordResult`：调用结束后更新 status/latency/error；**失败仅 Warn 不阻断**（结果已产生，不因审计更新失败改写调用结果）
-- 被拒绝的调用（trust/policy/quota）同样写决策审计；此处创建失败不 fail-closed（调用本已被拒），仅 Error 日志
+- `RecordDenied`：被拒绝的调用（trust/policy/quota）写决策审计（denied_trust/denied_policy/denied_quota）；此处创建失败不 fail-closed（调用本已被拒），仅 Error 日志
 
 **Directory**（`federation_directory.go`）：
 - `ListFederationAgents(ctx, capability, orgID)`：`ListOrgs` 过滤 `trust != untrusted && status == active`（可选按 orgID 精确）→ `ListRemoteAgents` 按 `OrgID` 分组 → capability 过滤 → 返回 `{Org, RemoteAgent, Card}` 聚合
 - **读缓存目录**，不实时拉取（FED-NFR4 < 500ms）
 
 **AgentCardSync**（`federation_directory.go`）：
-- `SyncOrgCards(ctx, orgID)`：遍历组织下 enabled remote agents → `DiscoverRemoteCard` 逐个拉取 → 更新 `card_json`；单个失败 Warn 跳过，不中断整体；返回成功数
+- `SyncOrgCards(ctx, orgID)`：遍历组织下 enabled remote agents → `DiscoverRemoteCard` 逐个拉取 → 经窄端口 `RemoteAgentCardWriter.UpdateRemoteAgentCard` 更新 `card_json`（data 层 `a2aRepo` 实现）；单个失败 Warn 跳过，不中断整体；返回成功数
 - 触发方式：手动 RPC（本期）；定期 Cron 后续迭代（可复用 health runner 模式）
 
 ### F.6 联邦调用链（`FederationUsecase.InvokeFederated`）
+
+> 实现要点（T11-T13）：治理链四组件（Trust/Policy/Quota/Audit）打包为 `FederationGovernance` struct 注入，`FederationUsecase` 依赖数 6（≤ AS-COG-01 上限 8）；远程执行经窄端口 `RemoteInvokeExecutor`（1 方法），由 `internal/a2a.FederationRemoteInvoker` 适配 `InvokeRemoteRegistry`；审计查询经 `AuditLogger.ListAudits` 委托；`DeleteOrg` 在 `Data.ExecInTx` 内原子删 org + 清 `a2a_remote_agents.org_id`。
 
 ```
 入参：orgID, agentID, capability, payloadJSON, timeoutSec, workspace, callerAgentID(可选)
  1. 参数校验（orgID/agentID/capability 非空）→ 400
  2. OrgRepo.GetOrg(orgID)                      → 404 组织未注册
  3. org.Status != active                       → 403 组织已暂停
- 4. TrustManager.CheckTrust                    → untrusted：AuditLogger.RecordDecision(denied_trust) + 403
- 5. PolicyEngine.Evaluate                      → deny：RecordDecision(denied_policy) + 403
- 6. QuotaChecker.Check                         → 超限：RecordDecision(denied_quota) + 429
- 7. AuditLogger.RecordDecision(allowed)        → 创建失败 fail-closed 500
+ 4. TrustManager.Check                         → untrusted：AuditLogger.RecordDenied(denied_trust) + 403
+ 5. PolicyEngine.Evaluate                      → deny：RecordDenied(denied_policy) + 403
+ 6. QuotaChecker.Check                         → 超限：RecordDenied(denied_quota) + 429
+ 7. AuditLogger.RecordAllowed                  → 创建失败 fail-closed 500
  8. 解析目标：ListRemoteAgents(workspace) 内存过滤 OrgID==orgID 且 ID==agentID → 404 Agent 未注册
  9. internal/a2a/federation_invoke.go：
       复用 InvokeRemoteRegistry（重试/SSRF 校验/ClientAuthOptions）
@@ -716,12 +718,13 @@ type FederationAuditRepo interface {
 | `ListFederationOrgs` | GET `/v1/a2a/federation/orgs` | 组织列表 |
 | `DeleteFederationOrg` | DELETE `/v1/a2a/federation/orgs/{id}` | 删除组织（不级联删 remote agents，仅解关联） |
 | `SetFederationTrustLevel` | PUT `/v1/a2a/federation/orgs/{id}/trust` | 设置信任等级 |
+| `SyncFederationOrgCards` | POST `/v1/a2a/federation/orgs/{id}/sync` | 手动同步组织 Agent Card 到目录缓存（FED-F7，单 Agent 失败跳过，返回成功数） |
 | `UpsertFederationPolicy` | POST `/v1/a2a/federation/policies` | 配置调用策略 |
 | `DiscoverFederationAgents` | GET `/v1/a2a/federation/agents` | 联邦目录（capability/org_id 过滤） |
 | `InvokeFederatedAgent` | POST `/v1/a2a/federation/invoke` | 跨组织调用 |
 | `QueryFederationAuditLogs` | GET `/v1/a2a/federation/audits` | 审计查询（分页 + 过滤） |
 
-> 原规划 6 RPC 修订为 8 RPC：补 `DeleteFederationOrg`、`UpsertFederationPolicy`（策略管理无独立入口则 FED-F6 不可用）。
+> 原规划 6 RPC 修订为 9 RPC：补 `DeleteFederationOrg`、`UpsertFederationPolicy`（策略管理无独立入口则 FED-F6 不可用）、`SyncFederationOrgCards`（biz 已实现 SyncOrgCards，无 RPC 入口则 FED-F7 前端不可触发）。
 
 ### F.8 安全与多租户
 

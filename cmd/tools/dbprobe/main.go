@@ -46,7 +46,7 @@ func main() {
 	fetched, dups := 0, 0
 	for offset := 0; ; offset += pageSize {
 		rows, err := db.Query(`SELECT id FROM agents WHERE deleted_at = ''
-			ORDER BY ` + orderBy + ` LIMIT $1 OFFSET $2`, pageSize, offset)
+			ORDER BY `+orderBy+` LIMIT $1 OFFSET $2`, pageSize, offset)
 		if err != nil {
 			fmt.Println("page query:", err)
 			return

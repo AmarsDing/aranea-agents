@@ -3,13 +3,10 @@ package service
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/google/uuid"
 )
 
 // NOTE(Phase3b-D Task 10): PrePlanningGate migrated from v1 ActivityEventBus
@@ -57,8 +54,15 @@ func NewPrePlanningGate(planner biz.TaskPlannerPort, eventBus biz.EventBus, seq 
 // Evaluate runs the quick complexity assessment and returns a gate decision.
 // The intent artifact from the intent pass (if available) is passed through
 // to the planner for a more accurate assessment.
+//
+// 2026-07-28: 不再发布评估阶段通知到前端。这些是内部状态变化，对用户无意义，
+// 且会污染会话时间线。保留日志记录以便调试。
 func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (GateDecision, error) {
-	g.publishPlanningPhase(ctx, biz.ActivityStatusRunning, "开始复杂度评估", input.SpiritSessionID, input.TaskID)
+	// 内部日志记录，不发布到前端
+	g.lg.Debug("开始复杂度评估",
+		loggateway.StepID(biz.SpiritStepPlannerAssess),
+		loggateway.Str("spirit_session_id", input.SpiritSessionID),
+	)
 
 	level, score, err := g.planner.QuickAssess(ctx, input)
 	if err != nil {
@@ -67,7 +71,6 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 			loggateway.Str("spirit_session_id", input.SpiritSessionID),
 			loggateway.Err(err),
 		)
-		g.publishPlanningPhase(ctx, biz.ActivityStatusFailed, "复杂度评估失败", input.SpiritSessionID, input.TaskID)
 		return GateDecision{}, err
 	}
 
@@ -87,15 +90,15 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 		IntentArtifact: input.IntentArtifact,
 	}
 
+	// 内部日志记录，不发布到前端
 	g.lg.Info("预规划门控决策",
 		loggateway.StepID(biz.SpiritStepPlannerAssess),
 		loggateway.Str("spirit_session_id", input.SpiritSessionID),
 		loggateway.Str("complexity_level", string(level)),
 		loggateway.Float64("complexity_score", score),
 		loggateway.Bool("force_planning", forcePlanning),
+		loggateway.Str("reason", reason),
 	)
-
-	g.publishPlanningPhase(ctx, biz.ActivityStatusCompleted, reason, input.SpiritSessionID, input.TaskID)
 
 	return decision, nil
 }
@@ -113,10 +116,11 @@ func complexityLevelZh(level biz.ComplexityLevel) string {
 	}
 }
 
-// publishPlanningPhase publishes a complexity-assessment timeline event as a
-// v2 StepCreatedEvent (Kind=StepKindNotice).
+// publishPlanningPhase 已不再使用。2026-07-28 起，预规划门控不再发布评估阶段通知到前端，
+// 这些是内部状态变化，对用户无意义，且会污染会话时间线。保留此方法仅为兼容性考虑，
+// 实际已不再调用。
 //
-// Design rationale (B.4.3): the pre-planning gate's "assess" phase is a
+// 原设计 rationale (B.4.3): the pre-planning gate's "assess" phase is a
 // complexity assessment, NOT task decomposition. The PlanBlock component
 // is reserved for actual task plans (Kind=plan with steps). Emitting an
 // assess event as Kind=plan created a spurious PlanBlock that appeared
@@ -134,40 +138,5 @@ func complexityLevelZh(level biz.ComplexityLevel) string {
 // TaskCard orphanNoticeSteps 渲染为任务 footer；此前无 TaskID 的 notice 是
 // session 级孤儿步骤，前端永不渲染且污染 DB。
 func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, status biz.ActivityStatus, message, spiritSessionID, taskID string) {
-	if g.seq == nil && g.eventBus == nil {
-		return
-	}
-	// Map assess status → notice type for NoticeBlock rendering.
-	// 2026-07-21 P1-5 F3：直发 notice 无后续更新事件，必须自终态；
-	// 此前 running 的起始事件在 DB 中永久残留为僵尸步骤。
-	noticeType := "info"
-	stepStatus := biz.StepStatusCompleted
-	switch status {
-	case biz.ActivityStatusFailed:
-		noticeType = "warning"
-		stepStatus = biz.StepStatusFailed
-	case biz.ActivityStatusCompleted:
-		noticeType = "success"
-	}
-	now := time.Now()
-	step := biz.Step{
-		ID:              uuid.NewString(),
-		SessionID:       spiritSessionID,
-		SpiritSessionID: spiritSessionID,
-		TaskID:          taskID,
-		Kind:            biz.StepKindNotice,
-		NoticeType:      noticeType,
-		Content:         message,
-		Status:          stepStatus,
-		StartedAt:       now,
-		CompletedAt:     &now,
-		Version:         1,
-		AuthorAgentKey:  "pre-planning-gate",
-	}
-	ev := biz.NewStepCreatedEvent(step)
-	if g.seq != nil {
-		g.seq.Publish(ctx, ev)
-		return
-	}
-	g.eventBus.Publish(ctx, ev)
+	// 方法保留但不再使用
 }

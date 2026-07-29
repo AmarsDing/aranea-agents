@@ -89,11 +89,11 @@ func TestInspectSkillZip_MergesSubdirFilesIntoRootSkill(t *testing.T) {
 func TestInspectSkillZip_MultiSkillLayoutNoCrossMerge(t *testing.T) {
 	eng := &Engine{repo: &stubSkillRepo{}}
 	zipBytes := buildZipBytes(t, map[string]string{
-		"alpha/SKILL.md":    makeSkillMD("Alpha", "skill alpha"),
-		"alpha/alpha.py":    "print('alpha')",
-		"beta/SKILL.md":     makeSkillMD("Beta", "skill beta"),
-		"beta/beta.py":      "print('beta')",
-		"shared/util.py":    "print('shared')",
+		"alpha/SKILL.md": makeSkillMD("Alpha", "skill alpha"),
+		"alpha/alpha.py": "print('alpha')",
+		"beta/SKILL.md":  makeSkillMD("Beta", "skill beta"),
+		"beta/beta.py":   "print('beta')",
+		"shared/util.py": "print('shared')",
 	})
 	job := newInspectJob()
 	if err := eng.inspectSkillZip(context.Background(), zipBytes, job); err != nil {
@@ -138,8 +138,8 @@ func TestInspectSkillZip_MultiSkillLayoutNoCrossMerge(t *testing.T) {
 func TestInspectSkillZip_SubdirSkillKeepsOwnFiles(t *testing.T) {
 	eng := &Engine{repo: &stubSkillRepo{}}
 	zipBytes := buildZipBytes(t, map[string]string{
-		"myskill/SKILL.md":         makeSkillMD("My Skill", "subdir layout"),
-		"myskill/scripts/run.py":   "print('run')",
+		"myskill/SKILL.md":       makeSkillMD("My Skill", "subdir layout"),
+		"myskill/scripts/run.py": "print('run')",
 	})
 	job := newInspectJob()
 	if err := eng.inspectSkillZip(context.Background(), zipBytes, job); err != nil {

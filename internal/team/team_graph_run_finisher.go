@@ -201,57 +201,11 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 			"run":     cp,
 			"team_id": stepCtx.TeamID,
 		}))
-		// Finalize session activities for members that were started but never
-		// executed in the graph.
-		r.finalizePendingSessionActivities(ctx, run, stepCtx.TeamID, steps)
+		// 2026-07-28 单写者重设计：原 finalizePendingSessionActivities（为无
+		// step 的缺口成员补发 completed）已删除——消息生命周期不得升格为成员
+		// 终态。缺口成员（无 step / 无 agent session）统一由 service 终态
+		// outcome pass（哨兵权威带，含 F4 兜底）裁决发布终态事件。
 		r.publishTeamRunSummary(ctx, run)
-	}
-}
-
-// finalizePendingSessionActivities publishes "completed" session events for
-// team members that were started but never had their step persisted.
-//
-// At team start (runner_team_trpc.go), session "created" events are published
-// for ALL enabled members, putting their AgentCards in "running" status. During
-// graph execution, only members whose graph node reaches a terminal state get
-// a "completed" event (via persistStep → publishTeamStepActivity). Members
-// whose nodes are never reached (e.g., synthesizer finished early, or member
-// has no graph node) stay "running" indefinitely.
-//
-// This function enumerates all enabled members from the team definition
-// snapshot, compares against persisted steps, and publishes a "completed"
-// event for the gap. Uses AgentKey for dedup since multiple member entries
-// can share the same agent (e.g., programmer as both synthesizer and worker).
-func (r *Runner) finalizePendingSessionActivities(ctx context.Context, run biz.TeamRunRecord, teamID string, persistedSteps []biz.TeamRunStep) {
-	if r == nil || !r.hasPublisher() {
-		return
-	}
-	persistedAgentKeys := make(map[string]struct{}, len(persistedSteps))
-	for _, s := range persistedSteps {
-		if s.AgentKey == "" {
-			continue
-		}
-		persistedAgentKeys[s.AgentKey] = struct{}{}
-	}
-	def, derr := ParseDefinition(run.DefinitionSnapshotJSON)
-	if derr != nil {
-		r.lg.Warn("finalizePendingSessionActivities: parse definition failed",
-			loggateway.StepID("team.graph.finalize_sessions"),
-			loggateway.Str("team_run_id", run.ID),
-			loggateway.Err(derr))
-		return
-	}
-	for _, m := range EnabledMembers(def) {
-		ag, lookupErr := r.lookupAgent(ctx, m.AgentID)
-		if lookupErr != nil {
-			continue
-		}
-		if _, ok := persistedAgentKeys[ag.AgentKey]; ok {
-			continue
-		}
-		agentName := strutil.FirstNonEmpty(ag.DisplayName, ag.AgentKey, m.Name)
-		r.publishTeamStepActivity(ctx, run, teamID, ag.AgentKey, agentName,
-			biz.ActivityEventCompleted, biz.ActivityStatusCompleted, "completed", nil)
 	}
 }
 

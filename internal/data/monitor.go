@@ -24,6 +24,8 @@ type monitorRepo struct {
 var _ bizmonitor.AuditRepo = (*monitorRepo)(nil)
 var _ bizmonitor.EventRepo = (*monitorRepo)(nil)
 var _ bizmonitor.TraceRepo = (*monitorRepo)(nil)
+var _ bizmonitor.TraceUsageRepo = (*monitorRepo)(nil)
+var _ bizmonitor.TraceSpanReader = (*monitorRepo)(nil)
 var _ bizmonitor.AlertRepo = (*monitorRepo)(nil)
 var _ bizmonitor.RunnerCompletionRepo = (*monitorRepo)(nil)
 
@@ -36,6 +38,14 @@ func NewMonitorEventRepo(d *Data) biz.MonitorEventRepo {
 }
 
 func NewMonitorTraceRepo(d *Data) biz.MonitorTraceRepo {
+	return &monitorRepo{data: d}
+}
+
+func NewMonitorTraceUsageRepo(d *Data) biz.MonitorTraceUsageRepo {
+	return &monitorRepo{data: d}
+}
+
+func NewMonitorTraceSpanReader(d *Data) biz.MonitorTraceSpanReader {
 	return &monitorRepo{data: d}
 }
 
@@ -136,8 +146,15 @@ func auditWhere(q biz.AuditQuery) (string, []any) {
 	parts := []string{}
 	args := []any{}
 	if q.Action != "" {
-		parts = append(parts, "action = ?")
-		args = append(args, q.Action)
+		// 动词级过滤（如 create/delete，见 18-monitor.design.md §2.4）：
+		// action 不含 "." 时按 "<verb>.%" 前缀匹配规范 action；含 "." 视为完整 action 精确匹配。
+		if strings.Contains(q.Action, ".") {
+			parts = append(parts, "action = ?")
+			args = append(args, q.Action)
+		} else {
+			parts = append(parts, "action LIKE ?")
+			args = append(args, q.Action+".%")
+		}
 	}
 	if q.Resource != "" {
 		parts = append(parts, "resource = ?")
@@ -165,12 +182,26 @@ const sqlMonitorEventsGet = `SELECT id, event_key, name, description, status, me
 	FROM monitor_events WHERE id = ? AND deleted_at = ''`
 
 const sqlMonitorTracesCount = `SELECT COUNT(*) FROM monitor_traces WHERE deleted_at = ''`
+
+// Trace list/get resolve agent/team display names via scalar subqueries
+// (agents/teams are Ent-managed tables in the same database). Subqueries are
+// used instead of JOINs so the WHERE clause columns stay unambiguous and the
+// COUNT query never inflates. agent_id/team_id may carry either the row id or
+// the *_key, so both are matched.
+const sqlMonitorTracesNames = `,
+	 COALESCE((SELECT a.display_name FROM agents a WHERE (a.id = monitor_traces.agent_id OR a.agent_key = monitor_traces.agent_id) AND a.deleted_at = '' LIMIT 1), '') AS agent_name,
+	 COALESCE((SELECT tm.display_name FROM teams tm WHERE (tm.id = monitor_traces.team_id OR tm.team_key = monitor_traces.team_id) AND tm.deleted_at = '' LIMIT 1), '') AS team_name`
+
 const sqlMonitorTracesList = `SELECT id, trace_key, name, description, status, agent_id, provider, model, metadata_json, created_at, updated_at, deleted_at,
-		 COALESCE(duration_ms, 0), COALESCE(span_count, 0), COALESCE(error_count, 0), COALESCE(total_tokens, 0), COALESCE(total_cost_usd, 0)
-		 FROM monitor_traces WHERE deleted_at = ''`
+	 COALESCE(duration_ms, 0), COALESCE(span_count, 0), COALESCE(error_count, 0), COALESCE(total_tokens, 0), COALESCE(total_cost_usd, 0),
+	 COALESCE(session_id, ''), COALESCE(run_id, '')` +
+	sqlMonitorTracesNames + `
+	 FROM monitor_traces WHERE deleted_at = ''`
 const sqlMonitorTracesGet = `SELECT id, trace_key, name, description, status, agent_id, provider, model, metadata_json, created_at, updated_at, deleted_at,
-		 COALESCE(duration_ms, 0), COALESCE(span_count, 0), COALESCE(error_count, 0), COALESCE(total_tokens, 0), COALESCE(total_cost_usd, 0)
-	FROM monitor_traces WHERE id = ? AND deleted_at = ''`
+	 COALESCE(duration_ms, 0), COALESCE(span_count, 0), COALESCE(error_count, 0), COALESCE(total_tokens, 0), COALESCE(total_cost_usd, 0),
+	 COALESCE(session_id, ''), COALESCE(run_id, '')` +
+	sqlMonitorTracesNames + `
+FROM monitor_traces WHERE id = ? AND deleted_at = ''`
 
 func (r *monitorRepo) ListMonitorEvents(ctx context.Context, query biz.MonitorEventsQuery) (biz.MonitorListResult, error) {
 	limit := int(query.Limit)
@@ -209,9 +240,29 @@ func (r *monitorRepo) ListMonitorEvents(ctx context.Context, query biz.MonitorEv
 func monitorEventsWhere(q biz.MonitorEventsQuery, d Dialect) (string, []any) {
 	parts := []string{}
 	args := []any{}
-	if q.EventType != "" {
-		parts = append(parts, "event_key LIKE ?")
-		args = append(args, q.EventType+"%")
+	// 前缀包含集：event_type 与 event_types 取并集（任一匹配）
+	includePrefixes := make([]string, 0, 1+len(q.EventTypes))
+	if strings.TrimSpace(q.EventType) != "" {
+		includePrefixes = append(includePrefixes, strings.TrimSpace(q.EventType))
+	}
+	for _, p := range q.EventTypes {
+		if s := strings.TrimSpace(p); s != "" {
+			includePrefixes = append(includePrefixes, s)
+		}
+	}
+	if len(includePrefixes) > 0 {
+		ors := make([]string, 0, len(includePrefixes))
+		for _, p := range includePrefixes {
+			ors = append(ors, "event_key LIKE ?")
+			args = append(args, p+"%")
+		}
+		parts = append(parts, "("+strings.Join(ors, " OR ")+")")
+	}
+	for _, p := range q.ExcludeEventTypes {
+		if s := strings.TrimSpace(p); s != "" {
+			parts = append(parts, "event_key NOT LIKE ?")
+			args = append(args, s+"%")
+		}
 	}
 	if q.AgentID != "" {
 		parts = append(parts, d.JSONExtract("metadata_json", "agent_id")+" = ?")
@@ -245,6 +296,20 @@ func (r *monitorRepo) GetMonitorEvent(ctx context.Context, id string) (biz.Monit
 		return biz.MonitorPlatformRow{}, apierror.NotFound(apierror.DomainData, "not found")
 	}
 	return scanMonitorPlatformRow("monitor-events", rows)
+}
+
+// DeleteMonitorEventsOlderThan hard-deletes monitor_events rows older than the
+// retention cutoff ( Events 页历史表只保留近期记录；审计由 audit_logs /
+// skill_invocations 承担，长期聚合由 monitor_traces / usage_events 承担 )。
+func (r *monitorRepo) DeleteMonitorEventsOlderThan(ctx context.Context, olderThan time.Time) (int, error) {
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`DELETE FROM monitor_events WHERE created_at < ?`),
+		olderThan.UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return 0, entErrToBizErr(err, "MONITOR")
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 func (r *monitorRepo) ListMonitorTraces(ctx context.Context, query biz.MonitorTracesQuery) (biz.MonitorListResult, error) {
@@ -511,7 +576,8 @@ func scanTraceRows(rows *sql.Rows) ([]biz.MonitorPlatformRow, error) {
 }
 
 // scanTracePlatformRow scans a single monitor_traces row with extended columns
-// (agent_id, provider, model, duration/token aggregates) that are not present in the events table.
+// (agent_id, provider, model, duration/token aggregates) that are not present in the events table,
+// plus the agent_name/team_name display names resolved by sqlMonitorTracesNames.
 func scanTracePlatformRow(row scanner) (biz.MonitorPlatformRow, error) {
 	var (
 		v                               biz.MonitorPlatformRow
@@ -524,9 +590,11 @@ func scanTracePlatformRow(row scanner) (biz.MonitorPlatformRow, error) {
 		spanCount, errorCount           int
 		totalTokens                     int64
 		totalCostUsd                    float64
+		agentName, teamName             string
+		sessionID, runID                string
 	)
 	err := row.Scan(&id, &key, &name, &description, &status, &agentID, &provider, &model, &metaJSON, &createdAt, &updatedAt, &deletedAt,
-		&durationMs, &spanCount, &errorCount, &totalTokens, &totalCostUsd)
+		&durationMs, &spanCount, &errorCount, &totalTokens, &totalCostUsd, &sessionID, &runID, &agentName, &teamName)
 	if err != nil {
 		return biz.MonitorPlatformRow{}, entErrToBizErr(err, "MONITOR")
 	}
@@ -536,11 +604,22 @@ func scanTracePlatformRow(row scanner) (biz.MonitorPlatformRow, error) {
 		"error_count":    errorCount,
 		"total_tokens":   totalTokens,
 		"total_cost_usd": totalCostUsd,
+		// The stored name column carries the run domain (chat/team/graph/...);
+		// keep it for the type badge while Name below carries the display name.
+		"domain": name,
 	})
+	// Display name: team run → team display name; plain run → agent display
+	// name; dangling refs → stored domain so the row stays identifiable.
+	displayName := name
+	if teamName != "" {
+		displayName = teamName
+	} else if agentName != "" {
+		displayName = agentName
+	}
 	v.Resource = "monitor-traces"
 	v.ID = id
 	v.Key = key
-	v.Name = name
+	v.Name = displayName
 	v.Description = description
 	v.Status = status
 	v.Enabled = true
@@ -553,6 +632,10 @@ func scanTracePlatformRow(row scanner) (biz.MonitorPlatformRow, error) {
 	v.CreatedAt = createdAt
 	v.UpdatedAt = updatedAt
 	v.DeletedAt = deletedAt
+	v.AgentName = agentName
+	v.TeamName = teamName
+	v.SessionID = sessionID
+	v.RunID = runID
 	return v, nil
 }
 

@@ -50,10 +50,12 @@ func (r *skillRepo) AppendImportedVersion(ctx context.Context, in biz.SkillImpor
 		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 
-	// Refresh the skill row: name/description + tags in the metadata envelope
-	// (storage_dir / sync_origin / derived_from preserved).
+	// Refresh the skill row: name/description + tags/triggers in the metadata
+	// envelope (storage_dir / sync_origin / derived_from preserved).
+	// overwrite 替换了正文，triggers 必须随新 frontmatter 同步刷新。
 	md := parseSkillMetadata(r.data.lg, skillRow.MetadataJSON)
 	md.Tags = in.Tags
+	md.Triggers = normalizeSkillTriggers(in.Triggers)
 	metaJSON, err := json.Marshal(md)
 	if err != nil {
 		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)

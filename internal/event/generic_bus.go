@@ -2,6 +2,8 @@ package event
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 
 	"aranea-agents/pkg/loggateway"
 	frameworkbus "trpc.group/trpc-go/trpc-agent-go/event/bus"
@@ -14,6 +16,7 @@ import (
 type GenericBus[T any] struct {
 	inner frameworkbus.Bus[T]
 	lg    loggateway.Logger
+	subs  atomic.Int64
 }
 
 // GenericSubscribeOptions configures a GenericBus subscription.
@@ -56,10 +59,23 @@ func (b *GenericBus[T]) Subscribe(opts GenericSubscribeOptions[T]) (<-chan T, fu
 	if opts.Filter != nil {
 		fwOpts.Filter = opts.Filter
 	}
-	return b.inner.Subscribe(fwOpts)
+	ch, unsubscribe := b.inner.Subscribe(fwOpts)
+	b.subs.Add(1)
+	var once sync.Once
+	return ch, func() {
+		once.Do(func() {
+			unsubscribe()
+			b.subs.Add(-1)
+		})
+	}
 }
 
 // DropCount returns the total number of dropped events.
 func (b *GenericBus[T]) DropCount() uint64 {
 	return b.inner.DropCount()
+}
+
+// SubscriberCount returns the number of active subscribers.
+func (b *GenericBus[T]) SubscriberCount() int {
+	return int(b.subs.Load())
 }

@@ -15,9 +15,10 @@ import (
 )
 
 type TraceProjector struct {
-	repo  TraceRepo
-	buses []contract.MonitorBus
-	lg    loggateway.Logger
+	repo      TraceRepo
+	usageRepo TraceUsageRepo
+	buses     []contract.MonitorBus
+	lg        loggateway.Logger
 
 	mu     sync.Mutex
 	traces map[string]*activeTrace
@@ -44,7 +45,7 @@ type activeTrace struct {
 	costUsd   float64
 }
 
-func NewTraceProjector(repo TraceRepo, lg loggateway.Logger, buses ...contract.MonitorBus) *TraceProjector {
+func NewTraceProjector(repo TraceRepo, lg loggateway.Logger, usageRepo TraceUsageRepo, buses ...contract.MonitorBus) *TraceProjector {
 	if repo == nil {
 		return nil
 	}
@@ -68,10 +69,11 @@ func NewTraceProjector(repo TraceRepo, lg loggateway.Logger, buses ...contract.M
 		return nil
 	}
 	return &TraceProjector{
-		repo:   repo,
-		buses:  seen,
-		lg:     lg,
-		traces: make(map[string]*activeTrace),
+		repo:      repo,
+		usageRepo: usageRepo,
+		buses:     seen,
+		lg:        lg,
+		traces:    make(map[string]*activeTrace),
 	}
 }
 
@@ -351,7 +353,32 @@ func (p *TraceProjector) OnRunnerCompletion(ctx context.Context, traceID, status
 		errCount = 1
 	}
 
-	if err := p.repo.UpdateMonitorTraceCompletion(ctx, traceID, status, durationMs, spanCount, errCount, tokens, costUsd); err != nil {
+	c := TraceCompletion{
+		Status:       status,
+		DurationMs:   durationMs,
+		SpanCount:    spanCount,
+		ErrorCount:   errCount,
+		TotalTokens:  tokens,
+		TotalCostUsd: costUsd,
+	}
+	// Usage events are the authoritative source for cost; aggregate them at
+	// completion so traces written before flow-log token capture still get
+	// accurate tokens/cost/provider/model.
+	if p.usageRepo != nil {
+		if agg, err := p.usageRepo.AggregateUsageByTrace(ctx, traceID); err != nil {
+			p.lg.Warn("AggregateUsageByTrace failed",
+				loggateway.StepID("monitor.trace_usage_agg_fail"), loggateway.Str("trace_id", traceID), loggateway.Err(err))
+		} else if agg.CallCount > 0 {
+			if agg.TotalTokens > c.TotalTokens {
+				c.TotalTokens = agg.TotalTokens
+			}
+			c.TotalCostUsd = agg.TotalCostUsd
+			c.Provider = agg.Provider
+			c.Model = agg.Model
+		}
+	}
+
+	if err := p.repo.UpdateMonitorTraceCompletion(ctx, traceID, c); err != nil {
 		p.lg.Warn("UpdateMonitorTraceCompletion failed",
 			loggateway.StepID("monitor.trace_completion_fail"), loggateway.Str("trace_id", traceID), loggateway.Err(err))
 	}

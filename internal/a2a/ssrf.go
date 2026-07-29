@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+// isBlockedIPFn is the IP block predicate consulted by the SSRF-safe dialer,
+// redirect checker and validateRemoteURL. It is a package-level indirection so
+// in-package tests can allow loopback for httptest servers; production code
+// must never reassign it.
+var isBlockedIPFn = isBlockedIP
+
 // ssrfSafeDialer returns a net.Dialer that rejects connections to private,
 // loopback, link-local, or metadata IP addresses. This prevents SSRF attacks
 // where a remote URL resolves to an internal network address.
@@ -26,7 +32,7 @@ func ssrfSafeDialer(timeout time.Duration) *net.Dialer {
 			if ip == nil {
 				return fmt.Errorf("ssrf: invalid IP %q", host)
 			}
-			if isBlockedIP(ip) {
+			if isBlockedIPFn(ip) {
 				return fmt.Errorf("ssrf: blocked IP %s (private/loopback/link-local/metadata)", ip)
 			}
 			return nil
@@ -71,7 +77,7 @@ func ssrfCheckRedirect(req *http.Request, via []*http.Request) error {
 		return fmt.Errorf("ssrf: redirect host %q DNS lookup failed: %w", host, err)
 	}
 	for _, ip := range ips {
-		if isBlockedIP(ip) {
+		if isBlockedIPFn(ip) {
 			return fmt.Errorf("ssrf: redirect to blocked IP %s", ip)
 		}
 	}
@@ -110,7 +116,7 @@ func validateRemoteURL(remoteURL string) error {
 	}
 	// If host is already an IP, check it directly
 	if ip := net.ParseIP(host); ip != nil {
-		if isBlockedIP(ip) {
+		if isBlockedIPFn(ip) {
 			return fmt.Errorf("ssrf: URL points to blocked IP %s", ip)
 		}
 		return nil
@@ -121,7 +127,7 @@ func validateRemoteURL(remoteURL string) error {
 		return fmt.Errorf("ssrf: DNS lookup for %q failed: %w", host, err)
 	}
 	for _, ip := range ips {
-		if isBlockedIP(ip) {
+		if isBlockedIPFn(ip) {
 			return fmt.Errorf("ssrf: %q resolves to blocked IP %s", host, ip)
 		}
 	}

@@ -14,6 +14,57 @@ type AlertMetric interface {
 	Evaluate(ctx context.Context, window time.Duration) (value float64, err error)
 }
 
+// AlertMetricInfo is the human-readable catalog metadata for an alert
+// metric, exposed via the ListAlertMetrics API so the Alerts page can render
+// a metric directory instead of raw technical keys.
+type AlertMetricInfo struct {
+	// Key is the technical metric key (e.g. "runner.error_rate").
+	Key string
+	// Name is a short English display name; the frontend maps known keys to
+	// localized names and falls back to this value.
+	Name string
+	// Description explains what the metric measures and when it fires.
+	Description string
+	// Unit is "ratio" (0..1) or "count".
+	Unit string
+	// DefaultWindowMinutes is the recommended evaluation window.
+	DefaultWindowMinutes int32
+	// SuggestedThreshold is the recommended alert threshold; the rule fires
+	// when the metric value is >= threshold.
+	SuggestedThreshold float64
+}
+
+// AlertMetricCatalogProvider is an optional interface an AlertMetric can
+// implement to expose rich catalog metadata. Metrics without it fall back
+// to Key()/Description() in ListCatalog.
+type AlertMetricCatalogProvider interface {
+	Catalog() AlertMetricInfo
+}
+
+// ListCatalog returns catalog metadata for all registered metrics, sorted
+// by key. Metrics implementing AlertMetricCatalogProvider contribute rich
+// metadata; others fall back to Key/Description with Unit "count".
+func (r *AlertMetricRegistry) ListCatalog() []AlertMetricInfo {
+	if r == nil {
+		return nil
+	}
+	metrics := r.List()
+	out := make([]AlertMetricInfo, 0, len(metrics))
+	for _, m := range metrics {
+		info := AlertMetricInfo{Key: m.Key(), Description: m.Description(), Unit: "count"}
+		if cp, ok := m.(AlertMetricCatalogProvider); ok {
+			if ci := cp.Catalog(); ci.Key != "" {
+				info = ci
+			}
+		}
+		if info.Description == "" {
+			info.Description = m.Description()
+		}
+		out = append(out, info)
+	}
+	return out
+}
+
 type AlertMetricRegistry struct {
 	mu sync.RWMutex
 	m  map[string]AlertMetric
@@ -69,6 +120,16 @@ func NewRunnerErrorRateMetric(repo EventRepo, rb *MetricRingBuffer) *RunnerError
 
 func (m *RunnerErrorRateMetric) Key() string         { return "runner.error_rate" }
 func (m *RunnerErrorRateMetric) Description() string { return "Runner error rate within time window" }
+func (m *RunnerErrorRateMetric) Catalog() AlertMetricInfo {
+	return AlertMetricInfo{
+		Key:                  m.Key(),
+		Name:                 "Runner error rate",
+		Description:          "Share of failed chat/team runs within the time window (0..1). Fires when too many runs end with an error.",
+		Unit:                 "ratio",
+		DefaultWindowMinutes: 60,
+		SuggestedThreshold:   0.25,
+	}
+}
 func (m *RunnerErrorRateMetric) Evaluate(ctx context.Context, window time.Duration) (float64, error) {
 	windowMin := int(math.Ceil(window.Minutes()))
 	if windowMin <= 0 {
@@ -108,6 +169,16 @@ func (m *SkillFilesystemMissingMetric) Key() string { return "skill.filesystem_m
 func (m *SkillFilesystemMissingMetric) Description() string {
 	return "Number of skills with missing filesystem"
 }
+func (m *SkillFilesystemMissingMetric) Catalog() AlertMetricInfo {
+	return AlertMetricInfo{
+		Key:                  m.Key(),
+		Name:                 "Skill files missing",
+		Description:          "Number of installed skills whose files are missing on disk. Fires when at least one skill is broken.",
+		Unit:                 "count",
+		DefaultWindowMinutes: 5,
+		SuggestedThreshold:   1,
+	}
+}
 func (m *SkillFilesystemMissingMetric) Evaluate(ctx context.Context, _ time.Duration) (float64, error) {
 	if m.fsHealth == nil {
 		return 0, nil
@@ -141,6 +212,16 @@ func NewSequencerDeadLetterMetric(r DeadLetterCountReader) *SequencerDeadLetterM
 func (m *SequencerDeadLetterMetric) Key() string { return "sequencer.dead_letter_count" }
 func (m *SequencerDeadLetterMetric) Description() string {
 	return "Number of v2 events in the sequencer dead-letter ring (persist failed permanently)"
+}
+func (m *SequencerDeadLetterMetric) Catalog() AlertMetricInfo {
+	return AlertMetricInfo{
+		Key:                  m.Key(),
+		Name:                 "Event persist dead-letter backlog",
+		Description:          "Number of activity events that failed permanent storage after retries. Any value >= 1 means durable event loss.",
+		Unit:                 "count",
+		DefaultWindowMinutes: 5,
+		SuggestedThreshold:   1,
+	}
 }
 func (m *SequencerDeadLetterMetric) Evaluate(_ context.Context, _ time.Duration) (float64, error) {
 	if m == nil || m.reader == nil {

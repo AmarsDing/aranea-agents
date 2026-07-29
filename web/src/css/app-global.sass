@@ -2280,12 +2280,21 @@ body:not(.body--dark) .monitor-alert-rule-row
   border: 1px solid var(--glass-border)
   box-shadow: var(--glass-inner-highlight)
 
+body:not(.body--dark) .monitor-alert-metric-card
+  background: var(--glass-elevated)
+  border: 1px solid var(--glass-border)
+  box-shadow: var(--glass-inner-highlight)
+
 body.body--dark .monitor-info-banner
   background: color-mix(in srgb, var(--color-accent-blue) 35%, transparent)
   color: var(--color-status-info-text-light)
   border-color: var(--glass-border)
 
 body.body--dark .monitor-alert-rule-row
+  background: color-mix(in srgb, var(--color-surface-solid) 55%, transparent)
+  border: 1px solid var(--glass-border)
+
+body.body--dark .monitor-alert-metric-card
   background: color-mix(in srgb, var(--color-surface-solid) 55%, transparent)
   border: 1px solid var(--glass-border)
 

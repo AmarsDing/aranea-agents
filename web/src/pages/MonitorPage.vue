@@ -63,42 +63,49 @@
             @refresh="reloadRunnerMetrics"
             @drill="openRunsTab({ tab: 'traces' })"
           />
-          <MonitorUsageDashboardLink :range="''" />
         </q-tab-panel>
         <q-tab-panel name="alerts">
           <MonitorAlertRules
             :rules="alertRules"
+            :metrics="alertMetrics"
             :channel-options="alertChannelOptions"
             :loading="alertRulesLoading"
             :saving="alertRulesSaving"
+            :metrics-loading="alertMetricsLoading"
             @reload="loadAlertRules"
             @save="saveAlertRules"
           />
         </q-tab-panel>
         <q-tab-panel name="audit">
-          <AuditTable :rows="auditRows" :loading="loadingAudit" @reload="loadAudit" @notify="notify" />
+          <AuditTable
+            :rows="auditRows"
+            :total="auditTotal"
+            :loading="loadingAudit"
+            @load="loadAudit"
+            @notify="notify"
+          />
         </q-tab-panel>
         <q-tab-panel name="events">
           <RealtimeEvents
-            :visible-events="visibleEvents"
-            :stream-text="streamText"
-            :stream-color="streamColor"
+            :pulse-events="pulseEvents"
+            :stream-state="eventsStreamState"
             :paused="paused"
-            :category="category"
-            :category-options="categoryOptions"
-            :empty-hint="emptyHint"
-            :selected="selected"
-            :detail-open="detailOpen"
-            :selected-j-s-o-n="selectedJSON"
-            :traces="traces"
-            @clear="confirmClearEvents"
+            :history-events="historyEvents"
+            :history-total="historyTotal"
+            :history-loading="historyLoading"
+            :page="eventsPage"
+            :page-size="eventsPageSize"
+            :type-filter="typeFilter"
+            :severity-filter="severityFilter"
             @toggle-stream="toggleStream"
-            @open-detail="openDetail"
-            @open-linked-run="openLinkedRun"
-            @open-chat-session="openChatSession"
-            @copy-j-s-o-n="copyJSON"
-            @update:category="category = $event"
-            @update:detail-open="detailOpen = $event"
+            @clear-pulse="confirmClearEvents"
+            @update:page="eventsPage = $event"
+            @update:page-size="eventsPageSize = $event"
+            @update:type-filter="typeFilter = $event"
+            @update:severity-filter="severityFilter = $event"
+            @refresh-history="refreshHistory"
+            @open-session="(evt) => openChatSession(evt.completionSessionId || evt.sessionId || '')"
+            @open-in-runs="openLinkedRun"
           />
         </q-tab-panel>
         <q-tab-panel name="traces">
@@ -110,6 +117,7 @@
             :flow-lines="flowLines"
             :active-correlation="activeCorrelation"
             :detail="traceDetail"
+            :detail-spans="detailSpans"
             @reload="loadTraces"
             @notify="notify"
             @open-trace="openTraceDetail"
@@ -132,7 +140,6 @@ import AuditTable from '../components/monitor/AuditTable.vue';
 import LogStreamPanel from '../components/monitor/LogStreamPanel.vue';
 import RealtimeEvents from '../components/monitor/RealtimeEvents.vue';
 import TraceList from '../components/monitor/TraceList.vue';
-import MonitorUsageDashboardLink from '../components/monitor/MonitorUsageDashboardLink.vue';
 import MonitorRunnerMetrics from '../components/monitor/MonitorRunnerMetrics.vue';
 import MonitorAlertRules from '../components/monitor/MonitorAlertRules.vue';
 import SelfCheckStatusPanel from '../components/monitor/SelfCheckStatusPanel.vue';
@@ -143,6 +150,7 @@ const {
   tab,
   highlightUsageEventId,
   auditRows,
+  auditTotal,
   traces,
   loadingAudit,
   loadingTraces,
@@ -158,23 +166,23 @@ const {
   reloadRunnerMetrics,
   openRunsTab,
   openChatSession,
-  // Realtime events
-  visibleEvents,
-  streamText,
-  streamColor,
+  // Realtime events (pulse 条 + 历史表)
+  pulseEvents,
+  state: eventsStreamState,
   paused,
-  category,
-  categoryOptions,
-  emptyHint,
-  selected,
-  detailOpen,
-  selectedJSON,
   toggleStream,
-  openDetail,
+  historyEvents,
+  historyTotal,
+  historyLoading,
+  page: eventsPage,
+  pageSize: eventsPageSize,
+  typeFilter,
+  severityFilter,
+  refreshHistory,
   openLinkedRun,
-  copyJSON,
   // Trace flow
   flowLines,
+  detailSpans,
   activeCorrelation,
   openTraceDetail,
   traceDetail,
@@ -200,6 +208,8 @@ const {
   channelOptions: alertChannelOptions,
   loading: alertRulesLoading,
   saving: alertRulesSaving,
+  metrics: alertMetrics,
+  metricsLoading: alertMetricsLoading,
   load: loadAlertRules,
   save: saveAlertRules,
 } = useMonitorAlertRules();

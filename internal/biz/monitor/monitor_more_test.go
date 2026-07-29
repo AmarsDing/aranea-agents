@@ -86,22 +86,22 @@ func TestAlertEvalWorker_NilUsecase(t *testing.T) {
 }
 
 func newTestTraceProjector(repo monitor.TraceRepo) *monitor.TraceProjector {
-	return monitor.NewTraceProjector(repo, loggateway.NewNoop(), newMockBus())
+	return monitor.NewTraceProjector(repo, loggateway.NewNoop(), nil, newMockBus())
 }
 
 func TestTraceProjector_OnRunnerCompletion_Success(t *testing.T) {
 	called := false
 	repo := &mockRepo{
-		updateMonitorTraceCompletionFn: func(_ context.Context, traceID, status string, durationMs int64, spanCount, errorCount int, totalTokens int64, totalCostUsd float64) error {
+		updateMonitorTraceCompletionFn: func(_ context.Context, traceID string, c monitor.TraceCompletion) error {
 			called = true
 			if traceID != "trace-1" {
 				t.Errorf("traceID = %q, want %q", traceID, "trace-1")
 			}
-			if status != "success" {
-				t.Errorf("status = %q, want %q", status, "success")
+			if c.Status != "success" {
+				t.Errorf("status = %q, want %q", c.Status, "success")
 			}
-			if durationMs != 500 {
-				t.Errorf("durationMs = %d, want 500", durationMs)
+			if c.DurationMs != 500 {
+				t.Errorf("durationMs = %d, want 500", c.DurationMs)
 			}
 			return nil
 		},
@@ -116,7 +116,7 @@ func TestTraceProjector_OnRunnerCompletion_Success(t *testing.T) {
 
 func TestTraceProjector_OnRunnerCompletion_RepoError(t *testing.T) {
 	repo := &mockRepo{
-		updateMonitorTraceCompletionFn: func(context.Context, string, string, int64, int, int, int64, float64) error {
+		updateMonitorTraceCompletionFn: func(context.Context, string, monitor.TraceCompletion) error {
 			return fmt.Errorf("db error")
 		},
 	}
@@ -128,7 +128,7 @@ func TestTraceProjector_OnRunnerCompletion_RepoError(t *testing.T) {
 func TestTraceProjector_OnRunnerCompletion_EmptyTraceID(t *testing.T) {
 	called := false
 	repo := &mockRepo{
-		updateMonitorTraceCompletionFn: func(context.Context, string, string, int64, int, int, int64, float64) error {
+		updateMonitorTraceCompletionFn: func(context.Context, string, monitor.TraceCompletion) error {
 			called = true
 			return nil
 		},
@@ -148,8 +148,8 @@ func TestTraceProjector_OnRunnerCompletion_NilProjector(t *testing.T) {
 func TestTraceProjector_OnRunnerCompletion_ErrorStatusSetsErrCount(t *testing.T) {
 	var gotErrCount int
 	repo := &mockRepo{
-		updateMonitorTraceCompletionFn: func(_ context.Context, _ string, _ string, _ int64, _ int, errorCount int, _ int64, _ float64) error {
-			gotErrCount = errorCount
+		updateMonitorTraceCompletionFn: func(_ context.Context, _ string, c monitor.TraceCompletion) error {
+			gotErrCount = c.ErrorCount
 			return nil
 		},
 	}
@@ -276,7 +276,7 @@ func TestTraceProjector_EvictStaleTraces_EmptyMap(t *testing.T) {
 }
 
 func TestTraceProjector_NewTraceProjector_NilRepo(t *testing.T) {
-	p := monitor.NewTraceProjector(nil, loggateway.NewNoop(), newMockBus())
+	p := monitor.NewTraceProjector(nil, loggateway.NewNoop(), nil, newMockBus())
 	if p != nil {
 		t.Error("NewTraceProjector(nil, bus) should return nil")
 	}
@@ -284,7 +284,7 @@ func TestTraceProjector_NewTraceProjector_NilRepo(t *testing.T) {
 
 func TestTraceProjector_NewTraceProjector_NilBus(t *testing.T) {
 	repo := &mockRepo{}
-	p := monitor.NewTraceProjector(repo, loggateway.NewNoop())
+	p := monitor.NewTraceProjector(repo, loggateway.NewNoop(), nil)
 	if p != nil {
 		t.Error("NewTraceProjector(repo) with no buses should return nil")
 	}
@@ -293,7 +293,7 @@ func TestTraceProjector_NewTraceProjector_NilBus(t *testing.T) {
 func TestTraceProjector_NewTraceProjector_DuplicateBus(t *testing.T) {
 	repo := &mockRepo{}
 	bus := newMockBus()
-	p := monitor.NewTraceProjector(repo, loggateway.NewNoop(), bus, bus)
+	p := monitor.NewTraceProjector(repo, loggateway.NewNoop(), nil, bus, bus)
 	if p == nil {
 		t.Fatal("NewTraceProjector with duplicate bus should still return non-nil")
 	}

@@ -66,6 +66,14 @@ type PlatformRow struct {
 	CreatedAt    string
 	UpdatedAt    string
 	DeletedAt    string
+	// AgentName / TeamName are resolved display names joined from agents/teams
+	// at the query layer (traces only); empty when the reference is dangling.
+	AgentName string
+	TeamName  string
+	// SessionID / RunID are correlation keys for trace rows (traces only);
+	// empty for event rows. Used by the detail dialog to query flow history.
+	SessionID string
+	RunID     string
 }
 
 // EventsQuery filters monitor events list.
@@ -77,6 +85,11 @@ type EventsQuery struct {
 	Status    string
 	SessionID string // filter by session_id in metadata
 	TraceID   string // filter by trace_id in metadata
+	// EventTypes: prefix match ANY (union with EventType).
+	EventTypes []string
+	// ExcludeEventTypes: prefix exclusion applied after the include set
+	// (e.g. ["skill.filesystem."] to hide governance noise from the Events tab).
+	ExcludeEventTypes []string
 }
 
 // TracesQuery filters monitor traces list.
@@ -111,6 +124,20 @@ type TraceWrite struct {
 
 type TraceSpanWrite struct {
 	TraceID        string
+	SpanID         string
+	ParentSpanID   string
+	Kind           string
+	Name           string
+	StartedAt      int64
+	EndedAt        int64
+	Status         string
+	AttributesJSON string
+	ErrorJSON      string
+}
+
+// TraceSpan is the read model for one persisted span row (monitor_trace_spans).
+// Timestamps are Unix milliseconds; EndedAt may be 0 for a still-open span.
+type TraceSpan struct {
 	SpanID         string
 	ParentSpanID   string
 	Kind           string
@@ -202,6 +229,46 @@ type EventRepo interface {
 	ListMonitorEvents(ctx context.Context, query EventsQuery) (ListResult, error)
 	GetMonitorEvent(ctx context.Context, id string) (PlatformRow, error)
 	CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339, untilRFC3339 string) (int32, error)
+	// DeleteMonitorEventsOlderThan hard-deletes rows created before olderThan.
+	// Safe for retention: alert windows / runner metrics aggregate over
+	// minutes-hours, and Runs use monitor_traces as truth source (OPT-05).
+	DeleteMonitorEventsOlderThan(ctx context.Context, olderThan time.Time) (int, error)
+}
+
+// UsageAggregate holds token/cost aggregates for one trace, computed from
+// model_token_usage_events (the authoritative cost source).
+type UsageAggregate struct {
+	TotalTokens  int64
+	TotalCostUsd float64
+	Provider     string
+	Model        string
+	CallCount    int
+}
+
+// TraceCompletion carries the terminal-state fields written when a run
+// completes (or is backfilled). Provider/Model are backfilled only when the
+// stored column is still empty.
+type TraceCompletion struct {
+	Status       string
+	DurationMs   int64
+	SpanCount    int
+	ErrorCount   int
+	TotalTokens  int64
+	TotalCostUsd float64
+	Provider     string
+	Model        string
+}
+
+// TraceUsageRepo aggregates token usage events for a single trace.
+// Stability:evolving
+type TraceUsageRepo interface {
+	AggregateUsageByTrace(ctx context.Context, traceID string) (UsageAggregate, error)
+}
+
+// TraceSpanReader reads persisted spans for a single trace, ordered by start time.
+// Stability:evolving
+type TraceSpanReader interface {
+	ListMonitorTraceSpans(ctx context.Context, traceID string) ([]TraceSpan, error)
 }
 
 // TraceRepo handles monitor trace persistence and queries.
@@ -210,7 +277,11 @@ type TraceRepo interface {
 	GetMonitorTrace(ctx context.Context, id string) (PlatformRow, error)
 	InsertMonitorTrace(ctx context.Context, tw TraceWrite) error
 	UpsertMonitorTraceSpan(ctx context.Context, sw TraceSpanWrite) error
-	UpdateMonitorTraceCompletion(ctx context.Context, traceID string, status string, durationMs int64, spanCount, errorCount int, totalTokens int64, totalCostUsd float64) error
+	UpdateMonitorTraceCompletion(ctx context.Context, traceID string, c TraceCompletion) error
+	// InterruptStaleTraces sweeps traces stuck in "running" (process crashed
+	// before completion) to "interrupted". Traces with span activity inside
+	// the TTL window are kept (still alive). Returns affected row count.
+	InterruptStaleTraces(ctx context.Context, olderThan time.Time) (int64, error)
 	EnsureTraceSchema(ctx context.Context) error
 }
 
@@ -264,6 +335,7 @@ type Usecase struct {
 	runnerCompletion RunnerCompletionRepo
 	notifier         AlertNotifier
 	fsHealth         FilesystemHealthReader
+	traceSpanReader  TraceSpanReader
 	lg               loggateway.Logger
 	lastFired        sync.Map // TECH-DEBT(COG): legacy in-memory fallback after MON-OPT-02 DB migration; remove after confirming all rules have LastFiredAt persisted
 	rulesCache       []AlertRule
@@ -282,6 +354,11 @@ type UsecaseOption func(*Usecase)
 
 func WithFilesystemHealthReader(r FilesystemHealthReader) UsecaseOption {
 	return func(u *Usecase) { u.fsHealth = r }
+}
+
+// WithTraceSpanReader wires the span read path used by GetMonitorTrace details.
+func WithTraceSpanReader(r TraceSpanReader) UsecaseOption {
+	return func(u *Usecase) { u.traceSpanReader = r }
 }
 
 func WithRingBuffer(rb *MetricRingBuffer) UsecaseOption {
@@ -859,6 +936,16 @@ func (u *Usecase) ListMonitorTraces(ctx context.Context, query TracesQuery) (Lis
 // GetMonitorTrace returns one monitor trace by ID.
 func (u *Usecase) GetMonitorTrace(ctx context.Context, id string) (PlatformRow, error) {
 	return u.traceRepo.GetMonitorTrace(ctx, id)
+}
+
+// ListTraceSpans returns persisted spans for a trace, ordered by start time.
+// Nil-safe: an unwired reader yields an empty slice so callers can fall back
+// to legacy config_json spans.
+func (u *Usecase) ListTraceSpans(ctx context.Context, traceID string) ([]TraceSpan, error) {
+	if u == nil || u.traceSpanReader == nil || strings.TrimSpace(traceID) == "" {
+		return nil, nil
+	}
+	return u.traceSpanReader.ListMonitorTraceSpans(ctx, traceID)
 }
 
 // GetRunnerMetrics aggregates runner.completion monitor events.

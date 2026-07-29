@@ -88,8 +88,15 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 		}
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
-		if sess.ParentSessionID != "" && strings.TrimSpace(sess.TeamID) != "" {
-			o.teamStarter().HandleTeamTurnResult(ctx, sess.ParentSessionID, strings.TrimSpace(sess.TeamID), "failed", err.Error(), "")
+		// 2026-07-29 F-1/F-3：standalone（Mode A）团队 ParentSessionID 为空，
+		// 回退 team session ID 作为聚合根（与 runner deriveSpiritSessionID
+		// 回退 sess.ID 一致）；不再以 ParentSessionID 为空跳过终态 pass。
+		if teamID := strings.TrimSpace(sess.TeamID); teamID != "" {
+			spiritID := strings.TrimSpace(sess.ParentSessionID)
+			if spiritID == "" {
+				spiritID = sessionID
+			}
+			o.teamStarter().HandleTeamTurnResult(ctx, spiritID, teamID, "failed", err.Error(), "")
 		}
 		return userMsg, assistantMsg, err
 	}
@@ -102,8 +109,12 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 			loggateway.Err(err))
 	}
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
-	if sess.ParentSessionID != "" && strings.TrimSpace(sess.TeamID) != "" {
-		o.teamStarter().HandleTeamTurnResult(ctx, sess.ParentSessionID, strings.TrimSpace(sess.TeamID), "completed", "", "")
+	if teamID := strings.TrimSpace(sess.TeamID); teamID != "" {
+		spiritID := strings.TrimSpace(sess.ParentSessionID)
+		if spiritID == "" {
+			spiritID = sessionID
+		}
+		o.teamStarter().HandleTeamTurnResult(ctx, spiritID, teamID, "completed", "", "")
 	}
 	o.recordTeamSessionTurn(ctx, sessionID, strings.TrimSpace(sess.TeamID),
 		userMsg.ID, assistantMsg.ID, "", "",

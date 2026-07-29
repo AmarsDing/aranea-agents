@@ -181,7 +181,7 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 
 **P0 — 成员状态管线修复（✅ 已完成）**
 
-- ✅ F1：`team/runner_helpers.go` publishTeamStepActivity 补 `TaskID=RootTaskActivityIDFromCtx(ctx)`；Version 按事件类型定值（created=1 / updated=2），消除 `VersionLT` 守卫静默拒绝导致的状态卡死
+- ✅ F1：`team/runner_helpers.go` publishTeamStepActivity 补 `TaskID=RootTaskActivityIDFromCtx(ctx)`；Version 按写者权威带定值（created=1 / evidence=2 预留 / outcome=哨兵，见 ADR-09），消除 `VersionLT` 守卫静默拒绝导致的状态卡死
 - ✅ F2：系统 Agent 成员生命周期完整化（ADR-06）——删除 `biz/spirit_team_usecase.go` AssembleTeam 系统 Agent 跳过逻辑 + `service/spirit_team.go` publishSpiritTeamAssembled filteredKeys 过滤；过滤点上移到分配层
 - ✅ F3：`web/src/stores/chat/activityV2Store.ts` getMemberSessionSteps guard 去除 taskId 条件（路径 1 SessionID 精确匹配不需要 taskId）
 - ✅ F4：`service/spirit_team.go` publishV2TeamRunCompletion 兜底——定义成员搜索不到 agent session 时以 team session 发 updated 事件（防御性，防回归）
@@ -206,26 +206,45 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
   - 层 1 精灵 IDENTITY.md：系统管家任务的子任务描述必须声明意图（做什么+来源 URL+指定 `cli_admin_*` 工具名），禁止 shell 命令文本
   - 层 2 buildDecompositionPrompt（task_planner_impl.go:1159）：required_capabilities 预定义 tag 加 `system-admin`；规则——系统管理类子任务标 `system-admin` 且 description 意图式（禁 shell）
   - 层 3 system_admin prompt seed：为 `__system_admin__` seed prompt 文件（声明 `cli_admin_skill_install_from_url(url)` 等工具清单与用途、完成必须 `set_deliverable` 汇报 status、禁止幻觉 exec_command 等不存在工具）
-- ⏳ F9：确定性 tool_assertion 验证门（修正原案）
+- ✅ F9：确定性 tool_assertion 验证门（修正原案，2026-07-28 落地）
   - `verification_gate.go` 新增 `GateTypeToolAssertion VerificationGateType = "tool_assertion"`；VerificationGate 扩展字段 `Tool/ArgumentsJSON/AssertPath/AssertEquals`
   - VerificationGateExecutor 新增 `executeToolAssertion`：经工具注册表调用指定工具（第一版白名单仅 `cli_admin_skill_get`），对 JSON 结果按 AssertPath 断言等于 AssertEquals；调用失败/断言不等 → approved=false
   - 门来源：team definition `verification_gates` 字段（resolveVerificationGates 已支持解析）；安装类任务的团队定义生成路径自动挂 `{tool:"cli_admin_skill_get", assert_path:"enabled", assert_equals:"true"}`（key 从任务意图提取）
-- ⏳ F10：结果导向成员状态
+  - 生产接线（2026-07-28 评审 R-2 修复）：`cmd/admin/wire.go` provideVerificationGateExecutor 注入 `WithToolAssertionInvoker(NewSkillAssertionInvoker(skillUC))`；outcome pass 挂接（R-3 修复）：`HandleTeamTurnResult` 在交付物门后调 `ExecuteVerificationGates`，拒绝/infra 错误 fail-closed 翻转 failed
+- ✅ F10：结果导向成员状态（2026-07-28 落地）
   - biz 新方法 `MemberExecutionEvidence(ctx, sessionID) (failed bool, reason string)`：session status=interrupted/failed → failed；steps 含 failed/cancelled → failed（附首个失败 step 摘要）
-  - service publishV2TeamRunCompletion 成员循环内：团队 completed 时 per-member 调 MemberExecutionEvidence 覆盖 memberStatus；单成员团队追加交付物证据（HasRealDeliverable=false → failed）；cancelled 保持 skipped
+  - service publishV2TeamRunCompletion 成员循环内：团队 completed 时 per-member 调 MemberExecutionEvidence 覆盖 memberStatus（`resolveMemberOutcomeStatus`）；单成员团队追加交付物证据（HasRealDeliverable=false → failed）；cancelled 保持 skipped
   - 「部分完成 = 失败 + 完成情况说明」由 F7 digest 文案承载；状态只有 等待/执行中/成功/失败，无第三态
+
+**P0+ — 成员终态单写者重设计（✅ 2026-07-28 决策 / 2026-07-29 哨兵化修正，ADR-09）**
+
+- ✅ runner 成员 completed 投影删除（含 finisher `finalizePendingSessionActivities`）：消息生命周期 ≠ 工作结果；runner 只写 created（V=1）
+- ✅ 版本权威带（`biz/member_session.go` `MemberSessionVersion*`）：created=1 / evidence=2（预留）/ outcome=终态写者族（service outcome pass / Mode B finish / recovery）
+- ✅ 2026-07-29 outcome 哨兵化（1<<40）：修复 pause/resume `Version++` 与固定带 V=3 碰撞导致终态被守卫静默拒绝的 P0 回归；`syncMemberSessionStatus` 终态分支携带哨兵带 + 已终态跳过守卫；recovery `SetVersion(outcome)`；回归测试 `TestMemberSessionV2Repo_Upsert_OutcomeSentinelAlwaysWins`
+- ✅ 2026-07-29 standalone（Mode A）终态可达性（F-1/S-1/S-2，ADR-09 §4）：
+  - F-1：`HandleTeamTurnResult` 对非 AutoCreated 团队不再早退，拆出 `handleStandaloneTeamTurnResult` 精简终态 pass（复用同一 outcome pass 证据链与哨兵带；剔除编排专属职责）
+  - F-3/S-1 聚合根回退：standalone 无 `ParentSessionID`/`team.SpiritSessionID`，统一回退 team session ID 作聚合根（runner `deriveSpiritSessionID` + hooks/dispatch 调用点 + `resolveStandaloneSpiritSessionID` service 内兜底——CancelTeam 唯一可达路径）；`CancelTeam` 守卫放宽
+  - S-2：standalone cancelled 时 running 成员 session 一并转 interrupted（与 AutoCreated 同姿态）；`publishTerminalTeamStage` 空聚合根守卫防孤立记录
+  - 测试：`TestHandleTeamTurnResult_Standalone_Completed/Failed/Cancelled_TerminalPass` + `_EmptySpiritID_FallbackToTeamSession`
 
 **改动文件清单**：
 
-- `internal/team/runner_helpers.go`（F1 ✅）
-- `internal/biz/spirit_team_usecase.go`（F2 ✅ / F5 / F10 biz 方法）
-- `internal/service/spirit_team.go`（F2 ✅ / F4 ✅ / F7 接线 / F10 判定）
+- `internal/team/runner_helpers.go`（F1 ✅ / 单写者 ✅：completed 投影删除）
+- `internal/team/team_graph_run_finisher.go`（单写者 ✅：finalizePendingSessionActivities 删除）
+- `internal/biz/spirit_team_usecase.go`（F2 ✅ / F5 / F10 ✅ biz 方法 / F9 ✅ ExecuteVerificationGates 接口）
+- `internal/service/spirit_team.go`（F2 ✅ / F4 ✅ / F7 接线 / F9 ✅ 挂接 / F10 ✅ 判定 / outcome 版本带 ✅ / F-1 standalone 终态 pass ✅ / S-1 聚合根兜底+CancelTeam 守卫 ✅ / S-2 cancelled interrupted 对齐 ✅）
+- `internal/service/team_turn_hooks.go` / `internal/service/chat_orchestrator_turn_dispatch.go`（F-3 ✅ 聚合根回退）+ `internal/team/runner_team_trpc_phases.go`（F-3 ✅ deriveSpiritSessionID 回退 sess.ID）
 - `web/src/stores/chat/activityV2Store.ts`（F3 ✅）
 - `internal/biz/member_deliverable_contract.go`（F5 schema required 推导辅助）
 - `internal/tools/spirit_deliverable_tool.go`（F6 新工具）+ 工具 Wire 装配点 + `internal/biz/agent_effective_tools.go` spirit profile（F6）
 - `internal/biz/spirit_synthesis.go`（F7）+ `spirit_synthesis_report_test.go`
 - `internal/scenario/system/prompts/IDENTITY.md`（F8 层 1）+ `internal/agent/task_planner_impl.go`（F8 层 2）+ `internal/data/seed_system_admin.go`（F8 层 3 prompt seed）
-- `internal/biz/verification_gate.go`（F9 新门类型）+ 门定义生成路径（F9 接线）
+- `internal/biz/verification_gate.go`（F9 ✅ 新门类型）+ `cmd/admin/wire.go`（F9 ✅ invoker 注入）
+- `internal/biz/member_session.go`（单写者 ✅：版本带常量 + IsMemberSessionTerminal + outcome 哨兵化）
+- `internal/service/chat_pause.go` / `internal/service/team_pause.go`（单写者 ✅：生命周期写者版本纪律）
+- `internal/data/v2_recovery_repo.go`（单写者 ✅：recovery 终态携带 outcome 带）
+- `internal/data/member_session_v2_repo_test.go`（回归测试 ✅）+ `internal/service/spirit_team_handle_result_test.go`（F9/F10/版本带断言 ✅）
+- `docs/reports/2026-07-29-review-adr-member-outcome-single-writer.md`（ADR-09）
 
 **验收标准**：
 

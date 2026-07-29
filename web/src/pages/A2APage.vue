@@ -6,7 +6,16 @@
       subtitle="发现 AgentCard、注册远程 Agent、查看调用审计、测试 Invoke（Admin 鉴权 + 工作区策略）。"
     >
       <template #actions>
-        <q-btn outline rounded no-caps color="primary" icon="refresh" label="刷新" :loading="loading" @click="reload" />
+        <q-btn
+          outline
+          rounded
+          no-caps
+          color="primary"
+          icon="refresh"
+          label="刷新"
+          :loading="loading"
+          @click="onReload"
+        />
       </template>
     </AppPageHero>
 
@@ -17,6 +26,7 @@
         <q-tab name="discover" label="发现" />
         <q-tab name="gateway" label="Gateway" />
         <q-tab name="remote" label="远程注册" />
+        <q-tab name="federation" :label="t('a2a.federation.tab')" />
         <q-tab name="audit" label="审计" />
         <q-tab name="invoke" label="Invoke" />
       </q-tabs>
@@ -140,6 +150,73 @@
           </AppRegistryTable>
         </div>
       </q-tab-panel>
+      <q-tab-panel name="federation" class="q-pa-none">
+        <div class="app-tab-shell">
+          <q-tabs v-model="fedTab" dense align="left" class="text-primary">
+            <q-tab name="orgs" :label="t('a2a.federation.subOrgs')" />
+            <q-tab name="directory" :label="t('a2a.federation.subDirectory')" />
+            <q-tab name="invoke" :label="t('a2a.federation.subInvoke')" />
+            <q-tab name="audit" :label="t('a2a.federation.subAudit')" />
+          </q-tabs>
+        </div>
+        <q-tab-panels v-model="fedTab" animated>
+          <q-tab-panel name="orgs" class="q-pa-none">
+            <FederationOrgPanel
+              ref="federationOrgPanelRef"
+              :orgs="fedOrgs.list"
+              :loading="fedOrgs.orgsLoading"
+              :register-loading="fedOrgs.registerLoading"
+              :syncing-org-id="fedOrgs.syncingOrgId"
+              :columns="fedOrgs.orgColumns"
+              @register="onFedRegister"
+              @set-trust="fedOrgs.submitSetTrust"
+              @sync="fedOrgs.syncOrg"
+              @remove="fedOrgs.confirmRemoveOrg"
+            />
+          </q-tab-panel>
+          <q-tab-panel name="directory" class="q-pa-none">
+            <FederationDirectoryPanel
+              v-model:capability="fedDirectory.dirCapability"
+              v-model:org-id="fedDirectory.dirOrgId"
+              :entries="fedDirectory.entries"
+              :orgs="fedOrgs.list"
+              :loading="fedDirectory.dirLoading"
+              :columns="fedDirectory.dirColumns"
+              @search="fedDirectory.loadDirectory"
+            />
+          </q-tab-panel>
+          <q-tab-panel name="invoke" class="q-pa-none">
+            <FederationInvokePanel
+              v-model:org-id="fedInvoke.invokeForm.org_id"
+              v-model:agent-id="fedInvoke.invokeForm.agent_id"
+              v-model:capability="fedInvoke.invokeForm.capability"
+              v-model:payload-json="fedInvoke.invokeForm.payload_json"
+              v-model:timeout-seconds="fedInvoke.invokeForm.timeout_seconds"
+              :entries="fedDirectory.entries"
+              :loading="fedInvoke.invokeLoading"
+              :result="fedInvoke.invokeResult"
+              @invoke="fedInvoke.submitInvoke"
+            />
+          </q-tab-panel>
+          <q-tab-panel name="audit" class="q-pa-none">
+            <FederationAuditPanel
+              v-model:callee-org-id="fedAudit.auditFilters.callee_org_id"
+              v-model:decision="fedAudit.auditFilters.decision"
+              v-model:status="fedAudit.auditFilters.status"
+              :rows="fedAudit.log.items"
+              :orgs="fedOrgs.list"
+              :total="fedAudit.log.total"
+              :loading="fedAudit.auditLoading"
+              :columns="fedAudit.auditColumns"
+              :page="fedAudit.auditPage"
+              :page-size="fedAudit.auditPageSize"
+              @search="fedAudit.onAuditSearch"
+              @page-change="fedAudit.onAuditPage"
+              @page-size-change="fedAudit.onAuditPageSize"
+            />
+          </q-tab-panel>
+        </q-tab-panels>
+      </q-tab-panel>
       <q-tab-panel name="audit" class="q-pa-none">
         <A2AAuditPanel
           :page="audit.auditPage"
@@ -172,6 +249,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
@@ -182,16 +260,42 @@ import A2AInvokePanel from '../components/a2a/A2AInvokePanel.vue';
 import A2ARemoteAgentPanel from '../components/a2a/A2ARemoteAgentPanel.vue';
 import A2ARuntimeConfigBanner from '../components/a2a/A2ARuntimeConfigBanner.vue';
 import A2AGatewayPanel from '../components/a2a/A2AGatewayPanel.vue';
+import FederationOrgPanel from '../components/a2a/federation/FederationOrgPanel.vue';
+import FederationDirectoryPanel from '../components/a2a/federation/FederationDirectoryPanel.vue';
+import FederationInvokePanel from '../components/a2a/federation/FederationInvokePanel.vue';
+import FederationAuditPanel from '../components/a2a/federation/FederationAuditPanel.vue';
 import { useA2APage } from '../features/a2a/useA2APage';
+import { useFederationPage } from '../features/a2a/useFederationPage';
 import { a2aAuthTypeLabel } from '../features/a2a/a2aTableUi';
 import type { RegisterRemoteAgentInput } from '../features/a2a/types';
+import type { RegisterFederationOrgInput } from '../features/a2a/federationTypes';
 
+const { t } = useI18n();
 const { tab, error, loading, reload, runtimeConfig, discover, invoke, audit, remote, gateway } = useA2APage();
+const {
+  fedTab,
+  reload: reloadFederation,
+  orgs: fedOrgs,
+  directory: fedDirectory,
+  invoke: fedInvoke,
+  audit: fedAudit,
+} = useFederationPage();
 
 const remoteAgentPanelRef = ref<InstanceType<typeof A2ARemoteAgentPanel> | null>(null);
+const federationOrgPanelRef = ref<InstanceType<typeof FederationOrgPanel> | null>(null);
 
 async function onRemoteRegister(input: RegisterRemoteAgentInput) {
   await remote.submitRemoteRegister(input);
   remoteAgentPanelRef.value?.resetForm();
+}
+
+async function onFedRegister(input: RegisterFederationOrgInput) {
+  const ok = await fedOrgs.submitRegister(input);
+  if (ok) federationOrgPanelRef.value?.closeRegisterDialog();
+}
+
+function onReload() {
+  if (tab.value === 'federation') reloadFederation();
+  else reload();
 }
 </script>

@@ -130,12 +130,19 @@ func (r *Runner) setupTeamTracing(ctx context.Context, sess biz.Session, teamRow
 // deriveSpiritSessionID returns the spirit session ID for cross-session aggregation.
 // For a team session created by SpiritTeamAssembler, RootSessionID points to the
 // spirit session that initiated the tree. Fallback to ParentSessionID for legacy
-// data without RootSessionID set. Returns empty string when neither is set.
+// data without RootSessionID set. 2026-07-29 F-3：standalone（Mode A）团队
+// session 无 Root/Parent，回退 sess.ID——团队 session 即自己的聚合根，与
+// service/team_pause.go resolveSpiritSessionIDForTeam 的回退语义一致；
+// 否则 runner 侧所有 v2 事件（TeamStage/MemberSession/notice）的
+// SpiritSessionID 为空，WS 路由丢失且 DB 落空值。
 func deriveSpiritSessionID(sess biz.Session) string {
 	if sess.RootSessionID != "" {
 		return sess.RootSessionID
 	}
-	return sess.ParentSessionID
+	if sess.ParentSessionID != "" {
+		return sess.ParentSessionID
+	}
+	return sess.ID
 }
 
 // publishTeamRunStartedEvent publishes the TeamRunStarted ActivityEvent if a bus is configured.

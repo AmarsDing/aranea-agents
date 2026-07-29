@@ -90,6 +90,61 @@ func TestMemberSessionV2Repo_Upsert_VersionGuard_WithFinishedAt(t *testing.T) {
 	}
 }
 
+// 回归（2026-07-29 outcome 哨兵化）：pause/resume 的 Version++ 可使 running
+// 成员版本递增到原固定终态带（V=3），导致 outcome 终态事件被 VersionLT 守卫
+// 静默拒绝（成员永久 running）。哨兵带（1<<40）必须恒赢任意递增版本，且
+// 终态之后的迟到生命周期事件必须被拒绝。
+func TestMemberSessionV2Repo_Upsert_OutcomeSentinelAlwaysWins(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	repo := NewMemberSessionV2Repo(d, loggateway.NewNoop())
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// created V=1 → pause V=2 → resume V=3（递增写者可越过原固定带 V=3）。
+	for _, v := range []int64{1, 2, 3} {
+		status := biz.MemberSessionStatusRunning
+		if v == 2 {
+			status = biz.MemberSessionStatusPaused
+		}
+		if _, err := repo.UpsertMemberSession(ctx, biz.MemberSession{
+			ID: "ms-sentinel", TeamRunID: "tr-1", TeamStageID: "ts-1", TaskID: "t-1",
+			SessionID: "s-member-s", SpiritSessionID: "s-1",
+			AgentKey: "agent-s", Status: status,
+			StartedAt: now, Seq: 1, Version: v,
+		}); err != nil {
+			t.Fatalf("UpsertMemberSession v%d: %v", v, err)
+		}
+	}
+	// outcome 终态（哨兵带）必须覆盖 running V=3。
+	finishedAt := now.Add(30 * time.Second)
+	if _, err := repo.UpsertMemberSession(ctx, biz.MemberSession{
+		ID: "ms-sentinel", TeamRunID: "tr-1", TeamStageID: "ts-1", TaskID: "t-1",
+		SessionID: "s-member-s", SpiritSessionID: "s-1",
+		AgentKey: "agent-s", Status: biz.MemberSessionStatusCompleted,
+		StartedAt: now, FinishedAt: &finishedAt,
+		Seq: 1, Version: biz.MemberSessionVersionOutcome,
+	}); err != nil {
+		t.Fatalf("UpsertMemberSession outcome: %v", err)
+	}
+	got, _ := repo.GetMemberSession(ctx, "ms-sentinel")
+	if got.Status != biz.MemberSessionStatusCompleted || got.Version != biz.MemberSessionVersionOutcome {
+		t.Fatalf("outcome sentinel did not win: %+v", got)
+	}
+	// 终态之后的迟到生命周期事件（V=4，高于原固定带）必须被拒绝。
+	late, err := repo.UpsertMemberSession(ctx, biz.MemberSession{
+		ID: "ms-sentinel", TeamRunID: "tr-1", TeamStageID: "ts-1", TaskID: "t-1",
+		SessionID: "s-member-s", SpiritSessionID: "s-1",
+		AgentKey: "agent-s", Status: biz.MemberSessionStatusPaused,
+		StartedAt: now, Seq: 1, Version: 4,
+	})
+	if err != nil {
+		t.Fatalf("UpsertMemberSession late: %v", err)
+	}
+	if late.Status != biz.MemberSessionStatusCompleted || late.Version != biz.MemberSessionVersionOutcome {
+		t.Fatalf("late lifecycle event overwrote terminal: %+v", late)
+	}
+}
+
 func TestMemberSessionV2Repo_ListByRun_SeqOrder(t *testing.T) {
 	d := openTestDataWithRWDB(t)
 	repo := NewMemberSessionV2Repo(d, loggateway.NewNoop())

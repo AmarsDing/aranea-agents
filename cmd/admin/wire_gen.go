@@ -71,6 +71,7 @@ import (
 	"aranea-agents/pkg/logpipeline"
 	"context"
 	"database/sql"
+	"fmt"
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/redis/go-redis/v9"
@@ -145,6 +146,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	tagRepo := data.NewSkillTagRepo(dataData)
 	skillUsecase := provideSkillUsecase(skillRepo, multiProviderEmbedder, skillDedupUsecase, tagRepo)
 	filesystemHealthReader := provideFilesystemHealthReader(skillUsecase)
+	traceSpanReader := data.NewMonitorTraceSpanReader(dataData)
 	taskV2Repo := data.NewTaskV2Repo(dataData, loggatewayLogger)
 	turnV2Repo := data.NewTurnV2Repo(dataData, loggatewayLogger)
 	stepV2Repo := data.NewStepV2Repo(dataData, loggatewayLogger)
@@ -160,7 +162,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	eventDeliveryOutboxRepo := data.NewEventDeliveryOutboxRepoFromData(dataData)
 	eventDeadLetterRepo := data.NewEventDeadLetterRepo(dataData, loggatewayLogger)
 	sequencer := provideV2Sequencer(repoSet, v2Bus, eventDeliveryOutboxRepo, eventDeadLetterRepo, loggatewayLogger)
-	monitorUsecase := provideMonitorUsecase(auditRepo, eventRepo, traceRepo, alertRepo, runnerCompletionRepo, alertNotifier, filesystemHealthReader, sequencer, loggatewayLogger)
+	alertMetricRegistry := monitor.NewAlertMetricRegistry()
+	monitorUsecase := provideMonitorUsecase(auditRepo, eventRepo, traceRepo, alertRepo, runnerCompletionRepo, alertNotifier, filesystemHealthReader, traceSpanReader, sequencer, alertMetricRegistry, loggatewayLogger)
 	a2aRepo := data.NewA2ARepoFromData(dataData, loggatewayLogger)
 	agentLookup := biz.ProvideA2AAgentLookup(agentRepository)
 	a2aUsecase := a2a.NewUsecase(a2aRepo, a2aRepo, a2aRepo, a2aRepo, agentLookup)
@@ -194,7 +197,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	agentTemplateRepo := data.NewAgentTemplateRepo(dataData)
 	agentTemplateUsecase := biz.NewAgentTemplateUsecase(agentTemplateRepo)
 	agentService := service.NewAgentService(agentUsecase, evolutionUsecase, monitorUsecase, a2aUsecase, promptFileAIEditor, agentTemplateUsecase, loggatewayLogger)
-	llmProviderModelService := service.NewLlmProviderModelService(llmProviderModelUsecase, loggatewayLogger)
+	llmProviderModelService := service.NewLlmProviderModelService(llmProviderModelUsecase, monitorUsecase, loggatewayLogger)
 	hookRepo := data.NewHookRepo(dataData)
 	hookUsecase := hook.NewUsecase(hookRepo, loggatewayLogger)
 	deliveryRepo := data.NewHookDeliveryRepo(dataData)
@@ -326,7 +329,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
 	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, a2aUsecase, sessionUsecase, skillUsecase, agentUsecase, systemSettingRepo, projectorFactory, loggatewayLogger)
-	runner := team.NewRunner(teamRepo, teamRepo, teamRepo, teamUsecase, teamRepo, teamRepo, usageUsecase, turnDeps, repository, factory, loggatewayLogger, runnerConfig)
+	runner := team.NewRunner(teamRepo, teamRepo, teamRepo, teamUsecase, teamRepo, teamRepo, usageUsecase, monitorUsecase, turnDeps, repository, factory, loggatewayLogger, runnerConfig)
 	teamRunnerWirePort := service.ProvideTeamRunnerWirePort(runner)
 	teamGraphSessionRepo := data.NewTeamGraphSessionRepo(dataData)
 	teamGraphRunCoordinator := team.ProvideTeamGraphRunCoordinator(graphUsecase, teamRepo, teamRepo, teamUsecase, v2Bus, sequencer, teamGraphSessionRepo, loggatewayLogger)
@@ -336,7 +339,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	spiritTransactor := data.NewSpiritTransactor(dataData)
 	orchestrationCacheRepo := data.NewOrchestrationCacheRepo(dataData)
 	orchestrationCache := biz.NewOrchestrationCache(loggatewayLogger, orchestrationCacheRepo)
-	verificationGateExecutor := provideVerificationGateExecutor(deptLeadManager, dynamicLLMCaller, loggatewayLogger)
+	verificationGateExecutor := provideVerificationGateExecutor(deptLeadManager, dynamicLLMCaller, skillUsecase, loggatewayLogger)
 	spiritTeamRunStatsReader := data.NewSpiritTeamRunStatsReader(dataData, loggatewayLogger)
 	spiritTeamUsecase := provideSpiritTeamUsecase(teamUsecase, sessionUsecase, agentUsecase, spiritTransactor, orchestrationCache, evolutionUsecase, verificationGateExecutor, deptLeadManager, stepV2Repo, spiritTeamRunStatsReader, sessionRuntime, loggatewayLogger)
 	taskPlanRepository := data.NewTaskPlanRepo(dataData, loggatewayLogger)
@@ -414,7 +417,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	channelIngress := provideChannelIngress(channelUsecase, channelTurnJobUsecase, sessionUsecase, chatService, graphService, cronTriggerGateway, v2Bus, monitorBus, turnAdmissionUsecase, teamCompiler, loggatewayLogger)
 	channelRuntimeLeaseRepo := data.NewChannelRuntimeLeaseRepo(dataData)
 	channelRuntime := provideChannelRuntime(channelUsecase, channelIngress, channelRuntimeLeaseRepo, router, loggatewayLogger)
-	channelService := service.NewChannelService(channelUsecase, channelTurnJobUsecase, channelRuntime, loggatewayLogger)
+	channelService := service.NewChannelService(channelUsecase, channelTurnJobUsecase, channelRuntime, monitorUsecase, loggatewayLogger)
 	usageService := service.NewUsageService(usageUsecase)
 	processLogEnabledProvider := provideProcessLogEnabled(confServer)
 	flowlogRepo := data.NewFlowLogRepo(dataData)
@@ -431,16 +434,22 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 		return wireOut{}, nil, err
 	}
 	dbPinger := provideDBPinger(dataData)
-	traceProjector := provideTraceProjector(traceRepo, infra, loggatewayLogger)
+	traceUsageRepo := data.NewMonitorTraceUsageRepo(dataData)
+	traceProjector := provideTraceProjector(traceRepo, traceUsageRepo, infra, loggatewayLogger)
 	alertEvalWorker := provideMonitorAlertEvalWorker(monitorUsecase)
-	eventBusHealthChecker := provideEventBusHealthChecker()
-	wsConnectionCounter := provideWSConnectionCounter()
+	eventBusHealthChecker := provideEventBusHealthChecker(infra)
+	runCanceller := provideRunCanceller(chatService)
+	chatSender := provideChatSender(chatService)
+	wsTurnExecutor := provideWSTurnExecutor(chatService, loggatewayLogger)
+	sessionAuthorizer := server.NewSessionAuthorizer(sessionRepo, loggatewayLogger)
+	taskResumer := provideTaskResumer(chatService)
+	wsServer := provideWSServer(confServer, infra, runCanceller, chatSender, wsTurnExecutor, runtime, loggatewayLogger, v2Bus, sessionAuthorizer, eventDeliveryOutboxRepo, taskResumer)
+	wsConnectionCounter := provideWSConnectionCounter(wsServer)
 	flowFileAppender := provideFlowFileAppender(loggatewayLogger)
-	v2 := monitor.ProvideSelfCheckers(dbPinger, traceProjector, alertEvalWorker, eventBusHealthChecker, wsConnectionCounter, flowFileAppender)
+	v2 := monitor.ProvideSelfCheckers(dbPinger, traceProjector, alertEvalWorker, eventBusHealthChecker, wsConnectionCounter, flowFileAppender, runnerCompletionRepo)
 	eventBusResubscriber := provideEventBusResubscriber()
 	v3 := monitor.ProvideSelfCheckRepairers(flowFileAppender, traceProjector, alertEvalWorker, eventBusResubscriber)
 	selfCheckReportRepo := data.NewSelfCheckReportRepo(dataData)
-	alertMetricRegistry := monitor.NewAlertMetricRegistry()
 	selfCheckScheduler := provideSelfCheckScheduler(v2, v3, selfCheckReportRepo, alertMetricRegistry, loggatewayLogger)
 	monitorService := service.NewMonitorService(monitorUsecase, processLogEnabledProvider, flowLogService, codeExecutorService, diagBundleGenerator, selfHealUsecase, selfHealObserver, selfCheckScheduler, selfCheckReportRepo, loggatewayLogger)
 	l4CascadeUsecase := provideL4CascadeUsecase(dataData, memoryFactIndexSyncer, loggatewayLogger)
@@ -451,11 +460,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	a2AEndpointBuilder := service.NewA2AEndpointBuilder(chatService)
 	endpointRegistry := provideA2AEndpointRegistry(a2AEndpointBuilder, a2aUsecase, publicBaseURLStore, loggatewayLogger)
 	a2APublicBaseReloader := provideA2APublicBaseReloader(publicBaseURLStore, endpointRegistry, publicBaseURLInput)
-	systemSettingService := service.NewSystemSettingService(systemSettingUsecase, a2APublicBaseReloader, credentialCrypto, multiProviderEmbedder, loggatewayLogger)
+	systemSettingService := service.NewSystemSettingService(systemSettingUsecase, a2APublicBaseReloader, credentialCrypto, multiProviderEmbedder, monitorUsecase, loggatewayLogger)
 	modelRegistryUsecase := provideModelRegistryUsecase(systemSettingRepo, applyBackend, loggatewayLogger)
 	modelCatalogService := service.NewModelCatalogService(modelRegistryUsecase)
 	runRegistryPort := service.ProvideRunRegistryPort(runRegistry)
-	teamService := service.NewTeamService(teamUsecase, graphUsecase, agentUsecase, sessionUsecase, runner, runRegistryPort, v2Bus, loggatewayLogger, spiritSynthesisService, teamStageV2Repo, stepV2Repo, stepV2Repo, teamRunV2Repo, memberSessionV2Repo, sequencer)
+	teamService := service.NewTeamService(teamUsecase, graphUsecase, agentUsecase, sessionUsecase, runner, runRegistryPort, v2Bus, loggatewayLogger, spiritSynthesisService, teamStageV2Repo, stepV2Repo, stepV2Repo, teamRunV2Repo, memberSessionV2Repo, sequencer, monitorUsecase)
 	signer := provideArtifactSigner(loggatewayLogger)
 	sessionWorkspaceLookup := service.ProvideSessionWorkspaceLookup(sessionUsecase)
 	sessionWorkspaceSearcher := service.ProvideSessionWorkspaceSearcher(sessionUsecase)
@@ -472,6 +481,18 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	redisClient := provideRedisClient(confData, loggatewayLogger)
 	limiter := provideA2ALimiter(redisClient, loggatewayLogger)
 	a2AService := provideA2AService(a2aUsecase, chatService, agentRepository, endpointRegistry, publicBaseURLStore, limiter, loggatewayLogger)
+	a2AFederationRepo := data.NewA2AFederationRepo(dataData, loggatewayLogger)
+	policyEngine, err := provideFederationPolicyEngine(a2AFederationRepo, loggatewayLogger)
+	if err != nil {
+		cleanup()
+		return wireOut{}, nil, err
+	}
+	federationLimiterFactory := provideFederationLimiterFactory(redisClient, loggatewayLogger)
+	federationGovernance := provideFederationGovernance(policyEngine, a2AFederationRepo, federationLimiterFactory, loggatewayLogger)
+	remoteAgentCardWriter := data.NewA2ARemoteAgentCardWriterFromData(dataData, loggatewayLogger)
+	remoteInvokeExecutor := provideFederationRemoteInvoker(loggatewayLogger)
+	federationUsecase := provideFederationUsecase(a2AFederationRepo, federationGovernance, a2aRepo, a2aRepo, remoteAgentCardWriter, remoteInvokeExecutor, loggatewayLogger)
+	federationService := provideFederationService(federationUsecase)
 	ecosystemRepo := data.NewEcosystemRepo(dataData)
 	ecosystemUsecase := ecosystem.NewUsecase(ecosystemRepo, loggatewayLogger)
 	ecosystemService := service.NewEcosystemService(ecosystemUsecase)
@@ -511,14 +532,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	a2AExtensionCompatService := service.NewA2AExtensionCompatService(chatService, sessionService, confServer, loggatewayLogger)
 	runtimeProfileService := service.NewRuntimeProfileService(runtimeProfileUsecase)
 	learningLoopService := service.NewLearningLoopService(learningLoopUsecase)
-	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillEvolutionService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, runtimeProfileService, learningLoopService)
+	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillEvolutionService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, runtimeProfileService, learningLoopService)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
-	runCanceller := provideRunCanceller(chatService)
-	chatSender := provideChatSender(chatService)
-	wsTurnExecutor := provideWSTurnExecutor(chatService, loggatewayLogger)
-	sessionAuthorizer := server.NewSessionAuthorizer(sessionRepo, loggatewayLogger)
-	taskResumer := provideTaskResumer(chatService)
-	wsServer := provideWSServer(confServer, infra, runCanceller, chatSender, wsTurnExecutor, runtime, loggatewayLogger, v2Bus, sessionAuthorizer, eventDeliveryOutboxRepo, taskResumer)
 	httpServer := server.NewHTTPServer(confServer, serviceRegistry, wsServer, dataData, loggatewayLogger)
 	feedbackMemoryEnqueuer := provideFeedbackMemoryEnqueuer(memoryJobQueue)
 	turnMemoryWorker := biz.NewTurnMemoryWorker(feedbackMemoryEnqueuer, sessionLogWriter)
@@ -530,7 +545,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	buildCache := provideGlobalBuildCache()
 	lifecycleManager := provideLifecycleManager(buildCache, loggatewayLogger)
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
-	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber)
+	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, loggatewayLogger)
+	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
 	episodeIndexSyncer := provideEpisodeIndexSync(memoryUsecase, dataData)
@@ -557,9 +573,10 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	backgroundJobWorker := provideBackgroundJobWorker(backgroundjobRepo, backgroundjobRegistry, loggatewayLogger)
 	toolAuditCleanup := provideToolAuditCleanup(toolUsecase, loggatewayLogger)
 	flowLogCleanup := provideFlowLogCleanup(flowlogUsecase, loggatewayLogger)
+	monitorEventsCleanup := provideMonitorEventsCleanup(eventRepo, loggatewayLogger)
 	monitorAlertCooldownCleanup := provideMonitorAlertCooldownCleanup(monitorUsecase, logger)
 	autoHealTTLCleanup := provideAutoHealTTLCleanup(healRecordRepo, loggatewayLogger, logger)
-	monitorTraceBackfillWorker := provideMonitorTraceBackfillWorker(traceRepo, runnerCompletionRepo, loggatewayLogger)
+	monitorTraceBackfillWorker := provideMonitorTraceBackfillWorker(traceRepo, runnerCompletionRepo, traceUsageRepo, loggatewayLogger)
 	memoryEpisodeDecayer := data.NewMemoryEpisodeDecayerAdapter(dataData)
 	memoryL2DecayWorker := provideMemoryL2DecayWorker(memoryEpisodeDecayer, agentUsecase, loggatewayLogger)
 	memoryL1ArchiveWorker := provideMemoryL1ArchiveWorker(sessionAdminStore, agentUsecase, loggatewayLogger)
@@ -589,7 +606,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryEnhancedExtractor := service.NewMemoryEnhancedExtractor(memoryEnhancedExtractorConfig)
 	pathBL4Writer := providePathBL4Writer(dataData)
 	pathBExtractor := providePathBExtractor(memoryEnhancedExtractor, pathBL4Writer, memoryAdminUsecase, dataData, loggatewayLogger)
-	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorAlertCooldownCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber)
+	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, monitorAlertCooldownCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber)
 	return mainWireOut, func() {
 		cleanup()
 	}, nil
@@ -868,12 +885,12 @@ func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, monitorBus contra
 	return service.NewMonitorAlertNotifier(channels, monitorBus, lg)
 }
 
-func provideMonitorUsecase(audit biz.MonitorAuditRepo, event2 biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, seq *v2.Sequencer, lg loggateway.Logger) *biz.MonitorUsecase {
+func provideMonitorUsecase(audit biz.MonitorAuditRepo, event2 biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, spanReader biz.MonitorTraceSpanReader, seq *v2.Sequencer, reg *monitor.AlertMetricRegistry, lg loggateway.Logger) *biz.MonitorUsecase {
 	rb := monitor.NewMetricRingBuffer()
-	uc := biz.NewMonitorUsecase(audit, event2, trace, alert, runner, notifier, biz.WithFilesystemHealthReader(fsHealth), biz.WithRingBuffer(rb), monitor.WithLogger(lg))
+	uc := biz.NewMonitorUsecase(audit, event2, trace, alert, runner, notifier, biz.WithFilesystemHealthReader(fsHealth), biz.WithTraceSpanReader(spanReader), biz.WithRingBuffer(rb), monitor.WithLogger(lg))
 	w := monitor.NewAlertEvalWorker(uc, rb, lg)
 	uc.SetEvalWorker(w)
-	reg := monitor.NewAlertMetricRegistry()
+
 	reg.Register(monitor.NewRunnerErrorRateMetric(event2, rb))
 	if fsHealth != nil {
 		reg.Register(monitor.NewSkillFilesystemMissingMetric(fsHealth))
@@ -1540,7 +1557,8 @@ func provideGraphBuildDeps(
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
-			LG:              lg,
+
+			LG: lg,
 		},
 	}
 	return graph.GraphNodeResolverSet{
@@ -1549,6 +1567,74 @@ func provideGraphBuildDeps(
 		Agents:       adapter.NewCatalogAgentResolver(builderDeps, lg, service.NewCLIAdminToolFactory(skillUC, agentUC, sys)),
 		Functions:    adapter.NewCatalogFunctionResolver(toolUC, lg),
 		NodeBreakers: nodeBreakers,
+	}
+}
+
+// provideTRPCBuilderDeps provides the TRPCBuilderDeps for dependency injection.
+// This is a separate provider to allow runtime injection of TeamCompletionChecker.
+func provideTRPCBuilderDeps(
+	catalog *biz.LlmProviderModelUsecase,
+	toolUC *biz.ToolUsecase,
+	agentUC *biz.AgentUsecase,
+	agents biz.AgentRepository,
+	sys biz.SystemSettingRepo,
+	skillUC *biz.SkillUsecase,
+	persist runtime.PersistenceSet,
+	skillDBRepo skill.Repository,
+	codeExecFactory *codeexecutor.Factory,
+	knowledgeRetriever *knowledge.Retriever,
+	knowledgeUC *biz.KnowledgeUsecase,
+	pluginMgr *plugintrpc.Manager,
+	orgUC *biz.OrganizationUsecase,
+	toolResultGate *biz.ToolResultGate,
+	outboundRouter *outbound.Router,
+	subAgentSvc *subagent.Service,
+	a2aUC *biz.A2AUsecase,
+	lg loggateway.Logger,
+) *agent.TRPCBuilderDeps {
+	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
+	return &agent.TRPCBuilderDeps{
+		TRPCModelCatalogDeps: agent.TRPCModelCatalogDeps{
+			ModelCatalog: catalog,
+			AgentUC:      agentUC,
+			Agents:       agents,
+			Sys:          sys,
+		},
+		TRPCModelRouteDeps: agent.TRPCModelRouteDeps{
+			RT: rtTrip,
+		},
+		TRPCToolAssemblyDeps: agent.TRPCToolAssemblyDeps{
+			ToolUC:     toolUC,
+			MCPTooling: persist.AgentMCP,
+		},
+		TRPCMemoryKnowledgeDeps: agent.TRPCMemoryKnowledgeDeps{
+			HasMemory:             persist.Memory.Available(),
+			MemoryService:         persist.Memory.TRPC,
+			MemoryAdmin:           persist.Memory.Admin,
+			MemoryActionLogWriter: persist.Memory.ActionLogWriter,
+			MemoryL2Recall:        persist.Memory.L2Recall,
+			MemoryL3Recall:        persist.Memory.L3Recall,
+			MemoryCompositeRecall: persist.Memory.CompositeRecall,
+			KnowledgeRetriever:    knowledgeRetriever,
+			KnowledgeUsecase:      knowledgeUC,
+		},
+		TRPCPluginDeps: agent.TRPCPluginDeps{
+			PluginManager: pluginMgr,
+		},
+		TRPCSkillDeps: agent.TRPCSkillDeps{
+			SkillUC:         skillUC,
+			SkillDBRepo:     skillDBRepo,
+			CodeExecFactory: codeExecFactory,
+		},
+		TRPCExtensionDeps: agent.TRPCExtensionDeps{
+			Organization:    orgUC,
+			ToolResultGate:  toolResultGate,
+			OutboundRouter:  outboundRouter,
+			SubAgentService: subAgentSvc,
+			A2AEnabled:      a2aUC != nil,
+
+			LG: lg,
+		},
 	}
 }
 
@@ -1963,6 +2049,13 @@ func provideFlowLogCleanup(flowLogs *biz.FlowLogUsecase, lg loggateway.Logger) *
 	return jobs.NewFlowLogCleanup(0, flowLogs, lg)
 }
 
+func provideMonitorEventsCleanup(repo biz.MonitorEventRepo, lg loggateway.Logger) *jobs.MonitorEventsCleanup {
+	if jobs.MonitorEventsCleanupDisabled() {
+		return nil
+	}
+	return jobs.NewMonitorEventsCleanup(0, repo, lg)
+}
+
 func provideMonitorAlertCooldownCleanup(uc *biz.MonitorUsecase, logger log.Logger) *jobs.MonitorAlertCooldownCleanup {
 	return jobs.NewMonitorAlertCooldownCleanup(0, 0, uc, logger)
 }
@@ -1981,12 +2074,12 @@ func provideMonitorAlertEvalWorker(uc *biz.MonitorUsecase) *monitor.AlertEvalWor
 // contract.MonitorBus. TraceProjector now subscribes to MonitorEventTypeFlowLog
 // via a bus-level Filter, matching the FlowFileAppender / SelfHealObserver
 // migration pattern.
-func provideTraceProjector(traceRepo biz.MonitorTraceRepo, infra *event.Infra, lg loggateway.Logger) *monitor.TraceProjector {
+func provideTraceProjector(traceRepo biz.MonitorTraceRepo, usageRepo biz.MonitorTraceUsageRepo, infra *event.Infra, lg loggateway.Logger) *monitor.TraceProjector {
 	var monitorBus contract.MonitorBus
 	if infra != nil {
 		monitorBus = infra.MonitorEventBus
 	}
-	return monitor.NewTraceProjector(traceRepo, lg, monitorBus)
+	return monitor.NewTraceProjector(traceRepo, lg, usageRepo, monitorBus)
 }
 
 func provideFlowFileAppender(lg loggateway.Logger) *monitor.FlowFileAppender {
@@ -1999,8 +2092,8 @@ func provideFlowFileAppender(lg loggateway.Logger) *monitor.FlowFileAppender {
 	return monitor.NewFlowFileAppender(dir, lg)
 }
 
-func provideMonitorTraceBackfillWorker(traceRepo biz.MonitorTraceRepo, runnerCompletion biz.MonitorRunnerCompletionRepo, lg loggateway.Logger) *jobs.MonitorTraceBackfillWorker {
-	return jobs.NewMonitorTraceBackfillWorker(traceRepo, runnerCompletion, lg)
+func provideMonitorTraceBackfillWorker(traceRepo biz.MonitorTraceRepo, runnerCompletion biz.MonitorRunnerCompletionRepo, usageRepo biz.MonitorTraceUsageRepo, lg loggateway.Logger) *jobs.MonitorTraceBackfillWorker {
+	return jobs.NewMonitorTraceBackfillWorker(traceRepo, runnerCompletion, usageRepo, lg)
 }
 
 func provideDiagBundleGenerator(eventRepo biz.MonitorEventRepo, traceRepo biz.MonitorTraceRepo, engine *monitor.RootCauseEngine) *biz.DiagBundleGenerator {
@@ -2170,9 +2263,38 @@ func provideSelfCheckScheduler(
 	return scheduler
 }
 
-func provideEventBusHealthChecker() monitor.EventBusHealthChecker { return nil }
+// monitorBusHealthAdapter adapts the typed MonitorBus to the self-check
+// EventBusHealthChecker port. SubscriberCount is exposed structurally by the
+// concrete monitorBus (internal/event/monitor_bus.go); IsHealthy is always
+// true because the in-process bus is healthy by construction — the real
+// health signal is the subscriber count.
+type monitorBusHealthAdapter struct {
+	counter interface{ SubscriberCount() int }
+}
 
-func provideWSConnectionCounter() monitor.WSConnectionCounter { return nil }
+func (a monitorBusHealthAdapter) SubscriberCount(topic string) int {
+	return a.counter.SubscriberCount()
+}
+
+func (a monitorBusHealthAdapter) IsHealthy(topic string) bool { return true }
+
+func provideEventBusHealthChecker(infra *event.Infra) monitor.EventBusHealthChecker {
+	if infra == nil || infra.MonitorEventBus == nil {
+		return nil
+	}
+	counter, ok := infra.MonitorEventBus.(interface{ SubscriberCount() int })
+	if !ok {
+		return nil
+	}
+	return monitorBusHealthAdapter{counter: counter}
+}
+
+func provideWSConnectionCounter(wsSrv *server.WSServer) monitor.WSConnectionCounter {
+	if wsSrv == nil {
+		return nil
+	}
+	return wsSrv
+}
 
 func provideEventBusResubscriber() monitor.EventBusResubscriber { return nil }
 
@@ -2201,6 +2323,10 @@ func provideFailurePatternSyncJob(engine *monitor.RootCauseEngine, writer monito
 	return jobs.NewFailurePatternSyncJob(0, engine, writer, reader, lg)
 }
 
+// providePredictiveHealUsecase wires the predictive-heal usecase with a
+// NoopHealActionHandler: no real action catalog exists yet, so executions are
+// observe-only. The job is therefore disabled by default — see
+// providePredictiveHealJob / jobs.PredictiveHealJobEnabled (S1).
 func providePredictiveHealUsecase(uc *biz.MonitorUsecase, patternReader monitor.FailurePatternReader, healRepo monitor.HealRecordRepo, lg loggateway.Logger) *monitor.PredictiveHealUsecase {
 	metricsReader := monitor.NewMonitorSystemMetricsReader(uc)
 	handler := &monitor.NoopHealActionHandler{}
@@ -2208,6 +2334,9 @@ func providePredictiveHealUsecase(uc *biz.MonitorUsecase, patternReader monitor.
 }
 
 func providePredictiveHealJob(uc *monitor.PredictiveHealUsecase, lg loggateway.Logger) *jobs.PredictiveHealJob {
+	if !jobs.PredictiveHealJobEnabled() {
+		return nil
+	}
 	return jobs.NewPredictiveHealJob(0, uc, lg)
 }
 
@@ -2219,8 +2348,9 @@ func providePatternMiningJob(uc *monitor.PatternMiningUsecase, lg loggateway.Log
 	return jobs.NewPatternMiningJob(0, uc, lg)
 }
 
-func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller biz.LLMCaller, lg loggateway.Logger) *biz.VerificationGateExecutor {
-	return biz.NewVerificationGateExecutor(deptLeadMgr, caller, lg)
+func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller biz.LLMCaller, skillUC *biz.SkillUsecase, lg loggateway.Logger) *biz.VerificationGateExecutor {
+
+	return biz.NewVerificationGateExecutor(deptLeadMgr, caller, lg, biz.WithToolAssertionInvoker(biz.NewSkillAssertionInvoker(skillUC)))
 }
 
 func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionUC *biz.EvolutionUsecase, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, stepReader biz.StepV2Reader, runStatsReader biz.SpiritTeamRunStatsReader, sessionRT *session2.Runtime, lg loggateway.Logger) *biz.SpiritTeamUsecase {
@@ -2328,6 +2458,7 @@ type wireOut struct {
 	PluginRuntime               *plugintrpc.Runtime
 	ToolAuditCleanup            *jobs.ToolAuditCleanup
 	FlowLogCleanup              *jobs.FlowLogCleanup
+	MonitorEventsCleanup        *jobs.MonitorEventsCleanup
 	MonitorAlertCooldownCleanup *jobs.MonitorAlertCooldownCleanup
 	AutoHealTTLCleanup          *jobs.AutoHealTTLCleanup
 	MonitorAlertEvalWorker      *monitor.AlertEvalWorker
@@ -2381,6 +2512,7 @@ func provideWireOut(
 	pluginRuntime *plugintrpc.Runtime,
 	toolAuditCleanup *jobs.ToolAuditCleanup,
 	flowLogCleanup *jobs.FlowLogCleanup,
+	monitorEventsCleanup *jobs.MonitorEventsCleanup,
 	monitorAlertCooldown *jobs.MonitorAlertCooldownCleanup,
 	autoHealTTLCleanup *jobs.AutoHealTTLCleanup,
 	monitorAlertEvalWorker *monitor.AlertEvalWorker,
@@ -2425,7 +2557,7 @@ func provideWireOut(
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
 		ToolAuditCleanup:        toolAuditCleanup,
-		FlowLogCleanup:          flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, ChannelTurnJobSweeper: channelTurnJobSweeper, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
+		FlowLogCleanup:          flowLogCleanup, MonitorEventsCleanup: monitorEventsCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, ChannelTurnJobSweeper: channelTurnJobSweeper, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEbbinghausDecay:       memoryEbbinghausDecay,
 		MemorySleepTime:             memorySleepTime,
 		MemoryEpisodeBackfill:       memoryEpisodeBackfill,
@@ -2616,6 +2748,66 @@ func provideA2AService(
 	return service.NewA2AService(uc, chat, agents, reg, store, limiter, lg)
 }
 
+// provideFederationLimiterFactory builds per-policy per-minute limiters with
+// the same Redis-vs-memory backend decision as provideA2ALimiter.
+func provideFederationLimiterFactory(rdb *data.RedisClient, lg loggateway.Logger) a2a.FederationLimiterFactory {
+	var client *redis.Client
+	if rdb != nil && rdb.IsEnabled() {
+		client = rdb.Client
+	}
+	return func(maxPerMin int) a2a.Limiter {
+		return a2a.NewLimiter(a2a.LimiterConfig{
+			WindowSize: time.Minute,
+			MaxInvokes: maxPerMin,
+			KeyPrefix:  "aranea:a2a:fed:",
+		}, client, lg)
+	}
+}
+
+// provideFederationPolicyEngine loads the full policy table at startup; a
+// load failure aborts init rather than serving with an empty cache.
+func provideFederationPolicyEngine(repo a2a.FederationPolicyRepo, lg loggateway.Logger) (*a2a.PolicyEngine, error) {
+	e := a2a.NewPolicyEngine(repo, lg)
+	if err := e.Load(context.Background()); err != nil {
+		return nil, fmt.Errorf("load federation policies: %w", err)
+	}
+	return e, nil
+}
+
+func provideFederationGovernance(
+	policy *a2a.PolicyEngine,
+	audits a2a.FederationAuditRepo,
+	factory a2a.FederationLimiterFactory,
+	lg loggateway.Logger,
+) *a2a.FederationGovernance {
+	return &a2a.FederationGovernance{
+		Trust:  a2a.NewTrustManager(lg),
+		Policy: policy,
+		Quota:  a2a.NewQuotaChecker(policy, audits, factory, lg),
+		Audit:  a2a.NewAuditLogger(audits, lg),
+	}
+}
+
+func provideFederationRemoteInvoker(lg loggateway.Logger) a2a.RemoteInvokeExecutor {
+	return a2a2.NewFederationRemoteInvoker(lg)
+}
+
+func provideFederationUsecase(
+	orgs a2a.FederationOrgRepo,
+	gov *a2a.FederationGovernance,
+	remotes a2a.RemoteAgentLister,
+	discoverer a2a.RemoteCardDiscoverer,
+	cardWriter a2a.RemoteAgentCardWriter,
+	executor a2a.RemoteInvokeExecutor,
+	lg loggateway.Logger,
+) *a2a.FederationUsecase {
+	return a2a.NewFederationUsecase(orgs, gov, a2a.NewDirectory(orgs, remotes), a2a.NewAgentCardSync(remotes, discoverer, cardWriter, lg), remotes, executor)
+}
+
+func provideFederationService(uc *a2a.FederationUsecase) *service.FederationService {
+	return service.NewFederationService(uc)
+}
+
 func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	return agent.NewTaskPlanner(repo, catalog, httpClient, eventBus, orchCache, lg, sysUC, seq)
@@ -2708,6 +2900,9 @@ func provideTaskOrchestrator(
 		},
 		TRPCToolAssemblyDeps: agent.TRPCToolAssemblyDeps{
 			ToolUC: toolUC,
+		},
+		TRPCExtensionDeps: agent.TRPCExtensionDeps{
+			LG: lg,
 		},
 	}
 	compiler := agent.NewDAGToGraphCompiler(lg)
