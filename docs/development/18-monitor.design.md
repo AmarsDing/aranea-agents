@@ -106,9 +106,19 @@ service MonitorService {
 | 消息 | 说明 |
 |------|------|
 | `MonitorAlertRule` | `id`、`name`、`metric_key`、`threshold`、`window_minutes`、`enabled`、`severity`、`notify_webhook_url`、`notify_channel_id`、`cooldown_minutes` |
+| `AlertMetricInfo` | 指标目录条目：`key`、`name`、`description`、`unit`（`ratio`/`count`）、`default_window_minutes`、`suggested_threshold`、`current_value`、`evaluated_at` |
 | `RunnerMetricsSummary` | `window_minutes`、`total_runs`、`error_runs`、`error_rate`、`success_rate`、`avg_duration_ms`、`p50_duration_ms`、`p95_duration_ms`、`p99_duration_ms` |
 
-**评估**：`MonitorUsecase.EvaluateAlerts` 在 `runner.completion` 落库后由 EventBus Handler 触发；当前内置指标键 **`runner.error_rate`**。出站：`internal/service/monitor_notify.go`（Webhook POST + Channel `webhook_url`，尊重 `cooldown_minutes`）。
+**评估**：`AlertEvalWorker` 在 `runner.completion` 落库后由 EventBus Handler 触发，并周期评估全部已注册指标；出站：`internal/service/monitor_notify.go`（Webhook POST + Channel `webhook_url`，尊重 `cooldown_minutes`）。
+
+**指标注册表（AlertMetricRegistry，2026-07-29 合并为 Wire 单例）**：所有指标经 `Catalog()` 暴露目录元数据，`ListAlertMetrics` API 聚合成含当前值的目录供 Alerts 页渲染。内置 4 个指标：
+
+| 指标键 | 单位 | 含义 | 建议阈值 / 默认窗口 |
+|--------|------|------|--------------------|
+| `runner.error_rate` | ratio | 窗口内对话与团队运行失败比例 | 0.25 / 60 min |
+| `skill.filesystem_missing_count` | count | 已安装但磁盘文件缺失的 Skill 数 | 1 / 5 min |
+| `sequencer.dead_letter_count` | count | 重试后仍无法持久化的活动事件数 | 1 / 5 min |
+| `monitor.selfcheck_unhealthy_count` | count | 当前未通过的子系统自检项数 | 1 / 5 min |
 
 ### 2.3 Audit 扩展字段
 
@@ -153,6 +163,8 @@ service MonitorService {
 | `event_type` | string | 按 event_key 前缀匹配 |
 | `agent_id` | string | 按 metadata_json 中 agent_id 模糊匹配 |
 | `status` | string | 按状态精确匹配 |
+| `event_types` | repeated string | 前缀匹配集合（OR，与 `event_type` 取并集），如 `["alert.","runner.completion"]`（2026-07-29 EVT-R） |
+| `exclude_event_types` | repeated string | 前缀排除集合，在 include 结果上应用，如 `["skill.filesystem."]`（2026-07-29 EVT-R） |
 
 **ListMonitorTracesRequest**：
 
@@ -406,10 +418,9 @@ web/src/
 ├── components/monitor/
 │   ├── MonitorRunnerMetrics.vue       ← Usage Tab 容器：useRunnerMetrics + RunnerMetricsPanel
 │   ├── RunnerMetricsPanel.vue         ← Runner 指标纯展示（props/emits）
-│   ├── MonitorUsageDashboardLink.vue  ← 跳转 /overview、/usage/events
 │   ├── MonitorAlertRules.vue          ← 告警规则 CRUD
 │   ├── AuditTable.vue                 ← 活动日志（服务端筛选 + 分页 + 详情弹窗）
-│   ├── RealtimeEvents.vue             ← WS 事件流（方案 C completion 过滤）
+│   ├── RealtimeEvents.vue             ← Events 页：脉搏（WS chip 流）+ 历史（服务端分页表）+ 详情弹窗
 │   ├── TraceList.vue                  ← Runs 列表与详情
 │   ├── TraceWaterfall.vue             ← 详情瀑布图
 │   ├── FlowTracePanel.vue             ← 详情 Flow Tab
@@ -423,6 +434,7 @@ web/src/
 │   └── MonitorErrorBanner.vue         ← 错误提示
 ├── features/monitor/
 │   ├── api.ts                         ← Monitor + alert + runner-metrics API
+│   ├── eventView.ts                   ← 事件归一化视图模型（纯函数：人话标题/severity/分类/筛选查询组装；EVT-R）
 │   ├── useRunnerMetrics.ts            ← Runner 指标 composable → Store
 │   ├── runCorrelation.ts              ← 方案 C 关联与过滤
 │   ├── useMonitorRunNavigation.ts     ← Chat / Runs / Monitor Tab 深链
@@ -442,10 +454,10 @@ web/src/
 
 | Tab | 组件 | 数据来源 |
 |-----|------|----------|
-| **Usage** | `MonitorRunnerMetrics` + `MonitorUsageDashboardLink` | `GetRunnerMetrics`；用量大盘见 `/overview` |
-| **Alerts** | `MonitorAlertRules` | `ListMonitorAlertRules` / `PutMonitorAlertRules` |
+| **Usage** | `SelfCheckStatusPanel` + `MonitorRunnerMetrics` | `ListSelfCheckReports` / `TriggerSelfCheck` / `GetRunnerMetrics`；用量大盘见 `/overview` |
+| **Alerts** | `MonitorAlertRules` → `MonitorAlertMetricCatalog` + `MonitorAlertRuleCard` | `ListAlertMetrics`（指标目录 + 当前值）/ `ListMonitorAlertRules` / `PutMonitorAlertRules` |
 | **Audit** | `AuditTable` | `MonitorService.ListAuditLogs`（2026-07-29 重设计：服务端分页/筛选、summary 摘要列、详情弹窗、全量 i18n） |
-| **Events** | `RealtimeEvents` | WS + `ListMonitorEvents`（告警；completion 降级） |
+| **Events** | `RealtimeEvents` | 脉搏：WS 运行时事件；历史：`ListMonitorEvents`（服务端分页 + `event_types`/`status` 过滤；2026-07-29 EVT-R 重设计） |
 | **Runs（Traces）** | `TraceList` | `MonitorService.ListMonitorTraces`（OPT-05；含 duration/tokens/cost；2026-07-29 重设计：6 态状态模型 + 语义色、显示名解析、指标条 + 错误面板、全量 i18n） |
 | **Logs** | `LogStreamPanel` → `FlowLogStream` / `ProcessLogStream` | 共享 WS Hub + `flow_log` / `log` 分流 |
 
@@ -533,6 +545,7 @@ getRunnerMetrics(windowMinutes?: number): Promise<RunnerMetricsSummary>
 - JSON 详情默认折叠大字段，单字段超过 2,000 字符时显示「展开」
 - 密钥、Token、Authorization、Cookie、API Key 等字段统一用 `******` 脱敏
 - WS 前端缓冲默认最多 1,000 条事件；Logs 默认最多 5,000 行
+- **`monitor_events` 保留 30 天**（2026-07-29 EVT-R P3）：`MonitorEventsCleanup` 后台任务（默认 24h 周期，`MONITOR_EVENTS_CLEANUP_DISABLED=1` 可关）硬删除 `created_at` 早于 cutoff 的行。安全性依据：告警窗口/Runner 指标按分钟-小时聚合（`CountMonitorEventsSince`），Runs 真相源为 `monitor_traces`/usage 行（OPT-05），长期审计由 `audit_logs` 承担——30 天外无业务消费方
 
 ---
 
@@ -620,6 +633,68 @@ Chat Turn 结束
 
 ---
 
+## 十、Events 页重设计（2026-07-29 · EVT-R）
+
+> 对应需求：[18 monitor.md §3.7](./18%20monitor.md) · 开发计划：[18-monitor.development.md](./18-monitor.development.md) EVT-R 任务表
+
+**设计决策**：Events = 「值得注意的事」。原实现把 WS 实时流与 `monitor_events` 落库行混在一个卡片流里——实时洪峰冲掉历史、原始 event_type 直出、无级别语义、skill 磁盘高频事件刷屏、历史无服务端过滤。重设计拆为 **脉搏（Pulse）+ 历史（History）** 双区，统一经 **归一化视图模型** 渲染。
+
+### 10.1 目标架构
+
+```text
+WS 运行时事件（team_run_*/intent_pass/...）
+  └─ wsEventToView() ──► Pulse 区（chip 流，容量上限 FIFO，不落库）
+
+monitor_events 落库行（runner.completion/alert.*/skill.filesystem.*/usage.budget_alert/chat.user_feedback）
+  └─ ListMonitorEvents（服务端分页 + event_types/status 过滤）
+       └─ persistedEventToView() ──► History 区（表格 + 翻页保持）
+
+skill.filesystem.updated（info 级高频）
+  └─ watch.Reporter: SkipPersist=true ──► 仅 MonitorBus 实时事件（不进 monitor_events）
+```
+
+两类数据源共用 `MonitorViewEvent` 视图模型（`features/monitor/eventView.ts`，纯函数模块，i18n 通过注入 `t()` 完成）：
+
+| 字段 | 来源 | 业务意义 |
+|------|------|---------|
+| `title` | 按 event_type 映射 i18n 人话标题（如 `team_run_failed`→「团队运行失败」）；未知类型回退原始 type | 一眼识别发生了什么 |
+| `subtitle` | 错误信息 / 耗时 / Token / 会话短号（取首个可用，无占位废文案） | 一行判断影响面 |
+| `severity` | 持久化：`status`→critical/warn/success/info；WS：failed→warn、finished→success、其余 info | 色点分级，异常优先 |
+| `category` | event_type 前缀 → task/message/agent/tool/system（§3.2 映射） | 分类筛选 |
+| `actor` | Agent/规则/Skill 名（`step.agent_name` 或行 `name`） | 定位责任主体 |
+| `completionMeta`/`canOpenInRuns` | 方案 C `runCorrelation` | 降级卡片跳 Runs |
+
+### 10.2 服务端过滤（Proto/Data）
+
+- `ListMonitorEventsRequest` 新增 `event_types`（前缀 OR，与 `event_type` 并集）与 `exclude_event_types`（前缀排除）——见 §2.4。
+- 前端筛选组装 `buildMonitorEventsQuery()`：类型筛选直接传前缀；**级别筛选映射 `severity→status`**（critical→error / warn→warn / success→ok / info→info，对齐写库方取值）。
+- 类型筛选选项 `EVENT_TYPE_FILTERS` 对齐真实落库 keyspace（`RecordMonitorEvent` 调用点），杜绝永远无结果的选项。
+
+### 10.3 翻页保持
+
+新 WS 事件到达只刷新 Pulse 区，不重置 History 分页；仅当用户修改类型/级别筛选条件时重置到第 1 页（`useMonitorRealtimeEvents`）。
+
+### 10.4 Skill 事件洪泛控制（SkipPersist）
+
+`internal/skill/watch/reporter.go`：`Report.SkipPersist=true` 时仅发布 MonitorBus 实时事件，不写 `monitor_events`/`admin_audit`。当前应用于 `skill.filesystem.updated` 且 severity=info（编辑器/外部工具高频改动场景）；`imported`/`missing`/`recovered`/`rejected` 仍正常落库（见 [20-skill.design.md §监控事件](./20-skill.design.md)）。
+
+### 10.5 详情弹窗
+
+结构化元数据表（类型/级别/分类/主体/时间/会话）+ 原始 JSON（`raw` 含解析后的 config/metadata，可复制）。不在 Events 为 Chat 建平行排障详情（§9.7 非目标不变）。
+
+### 10.6 保留策略
+
+见 §八：`MonitorEventsCleanup`（`internal/cronrunner/jobs/monitor_events_cleanup.go`）每日硬删 30 天前 `monitor_events` 行；`EventRepo.DeleteMonitorEventsOlderThan` 经 `RWDB().WriteDB` 事务感知写路径 + `entErrToBizErr` 翻译。
+
+### 10.7 非目标
+
+- 不引入新的落库事件类型；不改变现有 `monitor_events` 表结构。
+- 不做历史区实时追加（历史定位是「查」，实时定位是「看」）。
+- Pulse 区不做持久化/回放（刷新即清空，查历史走 History 区）。
+
+
+---
+
 ## 子模块：Monitor Dashboard 设计
 
 > 对应需求：[18 monitor-dashboard.md](./18%20monitor-dashboard.md)  
@@ -635,8 +710,8 @@ OverviewPage (/overview)
   └─ OverviewRunnerMetrics → useRunnerMetrics → useMonitorStore → GetRunnerMetrics
 
 MonitorPage Usage Tab
-  ├─ MonitorRunnerMetrics → useRunnerMetrics（同上 Store）
-  └─ MonitorUsageDashboardLink → /overview?range=（顶栏 filters.range）
+  ├─ SelfCheckStatusPanel → useMonitorStore（self-check-reports + 手动触发）
+  └─ MonitorRunnerMetrics → useRunnerMetrics（同上 Store）
 ```
 
 ```
@@ -733,10 +808,10 @@ web/src/
     └── monitor/
         ├── RunnerMetricsPanel.vue    ← 纯展示
         ├── MonitorRunnerMetrics.vue  ← 容器
-        └── MonitorUsageDashboardLink.vue
+        └── SelfCheckStatusPanel.vue  ← 自检状态 + 手动触发
 ```
 
-已删除：`UsageTrendPanel.vue`、`UsageOverview.vue`。
+已删除：`UsageTrendPanel.vue`、`UsageOverview.vue`、`MonitorUsageDashboardLink.vue`（2026-07-29）。
 
 ### 3.3 用量数据流
 
@@ -753,7 +828,6 @@ web/src/
 | Query | 行为 |
 |-------|------|
 | `range` | `useOverviewPage` 初始化筛选（`?range=30d` 等） |
-| — | 「打开概览」从 Monitor 携带 `range`，与顶栏 `filters.range` 一致 |
 
 ### 3.5 图表实现
 
@@ -771,8 +845,8 @@ web/src/
 
 ```text
 Monitor → Usage Tab
-  ├── MonitorRunnerMetrics（Store + RunnerMetricsPanel）
-  └── MonitorUsageDashboardLink（打开概览 / 查看明细；range 用页面顶栏，无重复下拉）
+  ├── SelfCheckStatusPanel（自检报告 + 手动触发）
+  └── MonitorRunnerMetrics（Store + RunnerMetricsPanel）
 ```
 
 不再维护 `UsageOverview.vue`。
@@ -998,17 +1072,20 @@ event.SysLogInfo("memory.l4_decay", "decay completed",
 
 ```text
 SelfCheckScheduler（5 min ticker）
-    ├── SelfChecker 插件（每个子系统一个）
-    │   ├── TraceProjectorChecker
-    │   ├── FlowFileChecker
-    │   ├── AlertEvalChecker
-    │   └── EventBusChecker
+    ├── SelfChecker 插件（每个子系统一个，ProvideSelfCheckers 装配，nil 依赖自动跳过）
+    │   ├── DBHealthChecker（db_health：Postgres 读写池 ping）
+    │   ├── TraceProjectorChecker（trace_projector：投影滞后/积压）
+    │   ├── AlertEvalChecker（alert_eval：告警评估 worker 存活）
+    │   ├── EventBusChecker（eventbus：MonitorBus 订阅者数，GenericBus.SubscriberCount）
+    │   ├── WebSocketChecker（websocket：WS 连接计数）
+    │   ├── FlowFileChecker（flow_file：流文件磁盘占用）
+    │   └── RunnerCompletionFlowChecker（runner_completion_flow：flow 活跃但无 completion 记录 → 指标静默故障）
     ├── SelfCheckRepairDispatcher
     │   ├── FlowFileRepairer（清理过期流文件）
     │   ├── TraceProjectorRepairer（触发 trace 回填）
     │   ├── AlertEvalRepairer（重启告警评估 worker）
     │   └── EventBusRepairer（重新订阅事件总线）
-    └── SelfCheckReport（聚合报告）
+    └── SelfCheckReport（聚合报告；unhealthy 计数缓存供 monitor.selfcheck_unhealthy_count 指标）
 
 SelfHealObserver（事件驱动）
     ├── 订阅 FlowLog severity=error/critical

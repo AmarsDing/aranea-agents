@@ -82,16 +82,18 @@
       </div>
     </div>
 
-    <q-table
-      :rows="historyEvents"
-      :columns="columns"
-      row-key="id"
-      flat
-      dense
-      :loading="historyLoading"
-      :pagination="{ rowsPerPage: 0 }"
-      hide-pagination
-    >
+    <div class="app-registry-table-shell">
+      <AppRegistryTable
+        :shell="false"
+        :rows="historyEvents"
+        :columns="columns"
+        row-key="id"
+        flat
+        dense
+        :loading="historyLoading"
+        :pagination="{ rowsPerPage: 0 }"
+        hide-pagination
+      >
       <template #body-cell-title="props">
         <q-td :props="props">
           <div class="row items-center no-wrap q-gutter-xs">
@@ -143,18 +145,19 @@
           </div>
         </q-td>
       </template>
-    </q-table>
+      </AppRegistryTable>
 
-    <AppRegistryPagination
-      :page="page"
-      :page-size="pageSize"
-      :page-max="pageMax"
-      :total="historyTotal"
-      :loading="historyLoading"
-      :label="t('monitorPage.events.paginationLabel')"
-      @update:page="(v: number) => emit('update:page', v)"
-      @update:page-size="(v: number) => emit('update:pageSize', v)"
-    />
+      <AppRegistryPagination
+        :page="page"
+        :page-size="pageSize"
+        :page-max="pageMax"
+        :total="historyTotal"
+        :loading="historyLoading"
+        :label="t('monitorPage.events.paginationLabel')"
+        @update:page="(v: number) => emit('update:page', v)"
+        @update:page-size="(v: number) => emit('update:pageSize', v)"
+      />
+    </div>
 
     <!-- ── 结构化详情 ── -->
     <q-dialog v-model="detailOpen">
@@ -219,6 +222,7 @@ import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { copyToClipboard, Notify } from 'quasar';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import { createMonitorEventColumns } from './monitorTableUi';
 import { severityColor, type MonitorViewEvent } from '../../features/monitor/eventView';
 import { EVENT_TYPE_FILTERS } from '../../features/monitor/useMonitorRealtimeEvents';

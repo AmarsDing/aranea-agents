@@ -77,7 +77,23 @@ type KnowledgeService struct {
 	assets        *knowledge.AssetStore        // 原图留存（nil 时跳过血缘）
 	eventBus      biz.EventBus
 	systemSetting biz.SystemSettingRepo
+	vaultSync     VaultSyncController // P1-3：vault 同步生命周期（nil = 未装配，同步不可用）
 	lg            loggateway.Logger
+}
+
+// VaultSyncController vault 同步循环生命周期窄接口（P1-3 生产装配）。
+// 实现：*knowledge.VaultSyncSupervisor。
+type VaultSyncController interface {
+	// StartVault 启动单 vault 同步循环（幂等；RunVault 启动即扫一轮）。
+	StartVault(vault biz.KnowledgeCollection)
+	// StopVault 停止单 vault 同步循环（幂等）。
+	StopVault(vaultID string)
+}
+
+// SetVaultSyncController 注入 vault 同步控制器（装配在 wire/app 层，打破
+// KnowledgeService → Supervisor → Usecase 构造顺序约束，同 SetTimeoutHandler 模式）。
+func (s *KnowledgeService) SetVaultSyncController(c VaultSyncController) {
+	s.vaultSync = c
 }
 
 func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, searchDeps KnowledgeSearchDeps, organizer *knowledge.MarkdownOrganizer, extractors *knowledge.ExtractorRegistry, assets *knowledge.AssetStore, eventBus biz.EventBus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
@@ -134,6 +150,10 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 	if err != nil {
 		return nil, err
 	}
+	// P1-3：拉起同步循环（启动即扫一轮，新 vault 立即入库）。
+	if s.vaultSync != nil {
+		s.vaultSync.StartVault(c)
+	}
 	return toProtoCollection(c), nil
 }
 
@@ -175,6 +195,10 @@ func (s *KnowledgeService) DeleteCollection(ctx context.Context, req *v1.DeleteC
 	}
 	if err := s.assertCollectionMutateAccess(ctx, c); err != nil {
 		return nil, err
+	}
+	// P1-3：先停同步循环再删记录，避免 goroutine 对已删 vault 继续回写状态。
+	if s.vaultSync != nil {
+		s.vaultSync.StopVault(req.GetId())
 	}
 	return &emptypb.Empty{}, s.uc.DeleteCollection(ctx, req.GetId())
 }

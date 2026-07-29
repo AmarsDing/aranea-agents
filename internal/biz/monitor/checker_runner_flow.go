@@ -70,8 +70,8 @@ func (c *RunnerCompletionFlowChecker) Check(ctx context.Context) types.SelfCheck
 		now.Sub(c.projector.LastEventAt()) <= window
 
 	result.Details = map[string]any{
-		"window_sec":        int(window.Seconds()),
-		"recent_flow":       recentFlow,
+		"window_sec":         int(window.Seconds()),
+		"recent_flow":        recentFlow,
 		"last_flow_event_at": c.projector.LastEventAt(),
 	}
 

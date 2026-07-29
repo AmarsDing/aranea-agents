@@ -14,6 +14,7 @@ import (
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/runtime/lifecycle"
+	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
@@ -333,12 +334,23 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 				return
 			}
 			bgCtx, cancel := context.WithCancel(loopCtx)
+			// Unify trace id for the dequeued turn: the dequeue event and the
+			// subsequent team/agent run share one trace id (bgCtx flows into
+			// RunTurnFromInput / the single-agent path).
+			bgCtx, _ = turntrace.EnsureTraceID(bgCtx)
 			o.runs.SetPendingCancel(sessionID, cancel)
 			unlock()
 
 			pendingContent := entry.Content
 			pendingEntryID := entry.ID
-			pendingEmitter := event.NewFlowLogger(sessionID, ag.AgentKey, o.lg(), event.NewInfraFromBus(o.core.TD.Pipeline.MonitorEventBus))
+			pendingEmitter := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+				Ctx:       bgCtx,
+				SessionID: sessionID,
+				AgentKey:  ag.AgentKey,
+				Domain:    event.TraceDomainChat,
+				LG:        o.lg(),
+				Infra:     event.NewInfraFromBus(o.core.TD.Pipeline.MonitorEventBus),
+			})
 			pendingEmitter.LogStart("chat.pending_dequeue", "排队消息开始处理",
 				event.P("entry_id", pendingEntryID),
 				event.P("content_len", len(pendingContent)),

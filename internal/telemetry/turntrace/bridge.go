@@ -50,6 +50,10 @@ type Bridge struct {
 	root   trace.Span
 	llm    trace.Span
 	tool   map[string]trace.Span
+	// traceID is the unified trace id resolved at Start (explicit ctx id or
+	// generated hex). It is the fallback for TraceID when the root span has
+	// no valid span context (noop provider, the production default).
+	traceID string
 	// Orchestration phase spans (P3-2): plan/alloc/orch are children of root.
 	plan     trace.Span
 	alloc    trace.Span
@@ -76,12 +80,66 @@ func FromContext(ctx context.Context) *Bridge {
 	return b
 }
 
+// EnsureTraceID returns a ctx carrying a unified trace id, resolving in
+// precedence order: explicit ctx id (noop-proof carrier) → valid OTel span
+// context (real provider) → freshly generated hex id. The id is stored via
+// event.ContextWithTraceID so every downstream emitter and turntrace.Start
+// observes ONE trace id per conversation turn, even when the global OTel
+// provider is noop (production default).
+func EnsureTraceID(ctx context.Context) (context.Context, string) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if id, ok := event.TraceIDFromContext(ctx); ok {
+		return ctx, id
+	}
+	if sc := trace.SpanFromContext(ctx); sc != nil {
+		if scCtx := sc.SpanContext(); scCtx.IsValid() {
+			id := scCtx.TraceID().String()
+			return event.ContextWithTraceID(ctx, id), id
+		}
+	}
+	id := event.GenerateTraceID()
+	return event.ContextWithTraceID(ctx, id), id
+}
+
+// withRemoteTraceParent injects a non-recording remote parent span context
+// carrying traceID, so that when a real OTel provider IS configured the
+// spans started here inherit the unified trace id (Jaeger correlation).
+// No-op when the id is not OTel hex or a valid span already exists.
+func withRemoteTraceParent(ctx context.Context, traceID string) context.Context {
+	if sc := trace.SpanFromContext(ctx); sc != nil && sc.SpanContext().IsValid() {
+		return ctx
+	}
+	tid, err := trace.TraceIDFromHex(traceID)
+	if err != nil {
+		return ctx
+	}
+	sid, err := trace.SpanIDFromHex(traceID[:16])
+	if err != nil {
+		return ctx
+	}
+	remote := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    tid,
+		SpanID:     sid,
+		TraceFlags: trace.FlagsSampled,
+		Remote:     true,
+	})
+	return trace.ContextWithRemoteSpanContext(ctx, remote)
+}
+
 // Start opens the turn root span and returns an updated ctx.
 func Start(ctx context.Context, cfg Config) (context.Context, *Bridge, trace.Span) {
 	name := cfg.SpanName
 	if name == "" {
 		name = string(cfg.Domain) + ".turn"
 	}
+	// Unify trace id across the turn: explicit ctx carrier first, then make
+	// real providers inherit it via a remote parent. Under the noop provider
+	// tracer.Start leaves ctx untouched, so the explicit carrier remains the
+	// single source of truth for downstream emitters.
+	ctx, traceID := EnsureTraceID(ctx)
+	ctx = withRemoteTraceParent(ctx, traceID)
 	tracer := otel.Tracer(tracerPrefix + string(cfg.Domain))
 	attrs := []attribute.KeyValue{
 		attribute.String("session_id", cfg.SessionID),
@@ -96,7 +154,7 @@ func Start(ctx context.Context, cfg Config) (context.Context, *Bridge, trace.Spa
 	if domain == "" {
 		domain = DomainChat
 	}
-	return ctx, &Bridge{domain: domain, root: span, tool: make(map[string]trace.Span)}, span
+	return ctx, &Bridge{domain: domain, root: span, tool: make(map[string]trace.Span), traceID: traceID}, span
 }
 
 // Finish ends the root span and any still-open child spans.
@@ -280,16 +338,19 @@ func (b *Bridge) RootSpanID() string {
 	return b.root.SpanContext().SpanID().String()
 }
 
-// TraceID returns the OTel trace id when valid.
+// TraceID returns the unified trace id: the OTel trace id when the root span
+// context is valid (real provider), otherwise the id resolved at Start
+// (explicit ctx carrier or generated hex — the noop-provider path).
 func (b *Bridge) TraceID() string {
-	if b == nil || b.root == nil {
+	if b == nil {
 		return ""
 	}
-	sc := b.root.SpanContext()
-	if !sc.IsValid() {
-		return ""
+	if b.root != nil {
+		if sc := b.root.SpanContext(); sc.IsValid() {
+			return sc.TraceID().String()
+		}
 	}
-	return sc.TraceID().String()
+	return b.traceID
 }
 
 // LLMSpanOtelID returns the OTel span id for the active llm.call child span.

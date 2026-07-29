@@ -29,6 +29,7 @@ import (
 	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/internal/biz/backgroundjob"
 	"aranea-agents/internal/biz/evaluation"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 	bizmedia "aranea-agents/internal/biz/media"
 	"aranea-agents/internal/biz/monitor"
 	bizsession "aranea-agents/internal/biz/session"
@@ -1235,6 +1236,17 @@ func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEm
 	u.SetDedupCacheInvalidator(dedup)
 	u.SetTagRepo(tagRepo)
 	return u
+}
+
+// provideVaultSyncSupervisor 装配 vault 同步链（P1-3 生产装配，原遗漏导致新建
+// vault 永不同步）：SyncEngine → VaultSyncApplier（filer + 可选 embedder）→
+// VaultSyncRunner → Supervisor。embedder 未配置时 buildChunks 按无语义层降级。
+func provideVaultSyncSupervisor(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, lg loggateway.Logger) *knowledge.VaultSyncSupervisor {
+	engine := bizknowledge.NewSyncEngine(lg)
+	filer := bizknowledge.NewVaultFiler(lg)
+	applier := knowledge.NewVaultSyncApplier(uc, filer, embedder, lg)
+	runner := knowledge.NewVaultSyncRunner(engine, applier, uc, lg)
+	return knowledge.NewVaultSyncSupervisor(runner, uc, lg)
 }
 
 // provideSkillMergeUsecase wraps biz.NewSkillMergeUsecase to wire the dedup
@@ -2880,6 +2892,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		// Knowledge embedder bindings
 		wire.Bind(new(knowledge.QueryEmbedder), new(*knowledge.MultiProviderEmbedder)),
 		wire.Bind(new(knowledge.Embedder), new(*knowledge.MultiProviderEmbedder)),
+		// Knowledge vault sync（P1-3 生产装配）
+		provideVaultSyncSupervisor,
 		// DynamicLLMCaller dependency bindings
 		wire.Bind(new(chatagent.LLMCredentialResolver), new(*biz.LlmProviderModelUsecase)),
 		wire.Bind(new(chatagent.LLMRefineConfigResolver), new(*biz.SystemSettingUsecase)),

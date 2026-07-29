@@ -995,10 +995,12 @@ func BuildSkillTools(cfg SkillToolsetConfig) []trpctool.Tool {
 | 事件 | 触发 | 落点 |
 |------|------|------|
 | `skill.filesystem.imported` | 磁盘新建登记 | Monitor Events + EventBus |
-| `skill.filesystem.updated` | 磁盘正文/metadata 变更 | 同上 |
-| `skill.filesystem.missing` | 目录删除 | 同上 + Skill 页 Banner |
-| `skill.filesystem.recovered` | 目录恢复 | 同上 |
+| `skill.filesystem.updated` | 磁盘正文/metadata 变更 | **info 级仅 MonitorBus 实时事件（SkipPersist，不落 `monitor_events`/`admin_audit`，防高频刷屏；2026-07-29 EVT-R）**；warn/error 级仍落库 |
+| `skill.filesystem.missing` | 目录删除 | Monitor Events + EventBus + Skill 页 Banner |
+| `skill.filesystem.recovered` | 目录恢复 | Monitor Events + EventBus |
 | `skill.filesystem.rejected` | 校验失败（含 slug 目录名不一致） | 运行记录 + Monitor |
+
+> **SkipPersist 实现**：`watch.Reporter.Report.SkipPersist=true` 时仅发布 MonitorBus 实时事件（Events 页脉搏区可见），跳过 `monitor_events` 与 `admin_audit` 落库；见 [18-monitor.design.md §10.4](./18-monitor.design.md)。
 
 **D5 行为**
 

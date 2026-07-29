@@ -67,6 +67,9 @@ func (r *completionMonitorRepo) EnsureTraceSchema(context.Context) error { retur
 func (r *completionMonitorRepo) InterruptStaleTraces(context.Context, time.Time) (int64, error) {
 	return 0, nil
 }
+func (r *completionMonitorRepo) DeleteMonitorEventsOlderThan(context.Context, time.Time) (int, error) {
+	return 0, nil
+}
 func (r *completionMonitorRepo) InsertMonitorTrace(context.Context, MonitorTraceWrite) error {
 	return nil
 }

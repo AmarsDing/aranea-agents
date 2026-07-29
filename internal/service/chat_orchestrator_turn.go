@@ -18,6 +18,7 @@ import (
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/runtime/turn"
+	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
@@ -56,7 +57,16 @@ func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, in
 		ctx = event.WithEnvelopeSource(ctx, ep)
 	}
 
-	flow := event.NewFlowLogger(sessionID, "", o.lg(), event.NewInfraFromBus(o.core.TD.Pipeline.MonitorEventBus))
+	// Unify trace id for the whole turn: everything downstream (entry flow
+	// events, turn span emitter, team/graph runs) shares one trace id.
+	ctx, _ = turntrace.EnsureTraceID(ctx)
+	flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:       ctx,
+		SessionID: sessionID,
+		Domain:    event.TraceDomainChat,
+		LG:        o.lg(),
+		Infra:     event.NewInfraFromBus(o.core.TD.Pipeline.MonitorEventBus),
+	})
 	flow.LogStart("chat.receive", "收到用户消息", event.P("content_len", len(content)))
 
 	hasActive := o.runs.HasActive(sessionID)

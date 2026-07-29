@@ -24,7 +24,13 @@ func (h *ChannelIngress) logTurnFlow(ctx context.Context, sessionID, step, messa
 		}
 		return
 	}
-	flow := event.NewFlowLogger(sessionID, "", h.lg, event.NewInfraFromBus(h.monitorBus))
+	flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:       ctx,
+		SessionID: sessionID,
+		Domain:    event.TraceDomainChannel,
+		LG:        h.lg,
+		Infra:     event.NewInfraFromBus(h.monitorBus),
+	})
 	if err != nil {
 		flow.LogError(step, message, append(pairs, event.P("error", err.Error()))...)
 		return

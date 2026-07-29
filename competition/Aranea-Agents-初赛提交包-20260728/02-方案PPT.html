@@ -1,0 +1,574 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aranea-Agents · 初赛方案 | 新智基座丨Agent Infra</title>
+<style>
+  /* Tech Night theme - aligned with Aranea-Agents product UI glass morphism */
+  :root{
+    --canvas:#0A1018;
+    --glass:rgba(18,26,40,.68);
+    --glass-hi:rgba(22,32,48,.78);
+    --line:rgba(120,160,220,.12);
+    --line-hi:rgba(77,216,232,.28);
+    --inner:inset 0 1px 0 rgba(255,255,255,.06);
+    --txt-h:#E0ECFF; --txt:#D0DCE8; --txt2:#94A5BE; --txt3:#6A7D9A;
+    --cyan:#4DD8E8; --cyan-hi:#7AE5F0; --violet:#A855F7;
+    --green:#3FE0A0; --amber:#FFAF4D; --red:#FF5E7A; --blue:#60A5FA;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:var(--canvas);color:var(--txt);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;overflow:hidden}
+  .deck{width:100vw;height:100vh;position:relative}
+  .slide{position:absolute;inset:0;display:none;padding:56px 72px 64px;
+    background:
+      radial-gradient(900px 520px at 88% -8%,rgba(77,216,232,.08) 0%,transparent 55%),
+      radial-gradient(760px 560px at -6% 108%,rgba(168,85,247,.07) 0%,transparent 55%),
+      var(--canvas)}
+  .slide::before{content:"";position:absolute;inset:0;pointer-events:none;
+    background-image:radial-gradient(rgba(120,160,220,.07) 1px,transparent 1px);
+    background-size:22px 22px}
+  .slide.active{display:flex;flex-direction:column}
+  .kicker{color:var(--cyan);font-size:15px;letter-spacing:.22em;font-weight:600;margin-bottom:10px}
+  h1{font-size:52px;line-height:1.15;font-weight:800;color:var(--txt-h)}
+  h2{font-size:34px;font-weight:800;margin-bottom:6px;color:var(--txt-h)}
+  .sub{color:var(--txt2);font-size:17px;margin-bottom:22px}
+  .body{flex:1;display:flex;gap:28px;min-height:0;position:relative;z-index:1}
+  .col{flex:1;display:flex;flex-direction:column;gap:14px;min-width:0}
+  .card{background:var(--glass);border:1px solid var(--line);border-radius:14px;padding:18px 20px;
+    box-shadow:var(--inner);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  .card h3{font-size:17px;margin-bottom:8px;color:var(--cyan-hi)}
+  .card p,.card li{font-size:14.5px;color:var(--txt2);line-height:1.65}
+  .card b{color:var(--txt)}
+  .card ul{padding-left:18px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;
+    background:var(--glass);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    box-shadow:var(--inner);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  th{color:var(--cyan);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line-hi);
+    font-weight:600;white-space:nowrap;background:rgba(77,216,232,.05)}
+  td{color:var(--txt2);padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.5}
+  td b{color:var(--txt)}
+  tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;margin-right:6px;border:1px solid transparent}
+  .t-blue{background:rgba(77,216,232,.12);color:var(--cyan-hi);border-color:rgba(77,216,232,.3)}
+  .t-green{background:rgba(63,224,160,.12);color:#6FECBC;border-color:rgba(63,224,160,.3)}
+  .t-orange{background:rgba(255,175,77,.12);color:#FFC987;border-color:rgba(255,175,77,.3)}
+  .t-red{background:rgba(255,94,122,.12);color:#FF8CA0;border-color:rgba(255,94,122,.3)}
+  .num{font-size:40px;font-weight:800;color:var(--cyan);line-height:1;text-shadow:0 0 24px rgba(77,216,232,.35)}
+  .num small{font-size:14px;color:var(--txt3);font-weight:500;display:block;margin-top:6px;text-shadow:none}
+  img.shot{width:100%;border-radius:10px;border:1px solid var(--line);display:block;background:#0A0F18;
+    box-shadow:0 8px 24px rgba(0,0,0,.35)}
+  .shot-cap{font-size:12px;color:var(--txt3);margin-top:6px;text-align:center}
+  .flow{display:flex;align-items:stretch;gap:0;margin:6px 0}
+  .fstep{flex:1;background:var(--glass);border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+    font-size:13px;color:var(--txt2);text-align:center;box-shadow:var(--inner);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  .fstep b{display:block;color:var(--txt-h);font-size:13.5px;margin-bottom:3px}
+  .farrow{align-self:center;color:var(--cyan);font-size:18px;padding:0 7px}
+  .footer{position:absolute;left:72px;right:72px;bottom:22px;display:flex;justify-content:space-between;
+    color:var(--txt3);font-size:12px;letter-spacing:.05em;z-index:1}
+  .progress{position:fixed;top:0;left:0;height:3px;z-index:50;transition:width .25s;
+    background:linear-gradient(90deg,var(--cyan),var(--violet));box-shadow:0 0 12px rgba(77,216,232,.5)}
+  .hint{position:fixed;bottom:14px;right:20px;color:var(--txt3);font-size:11px;z-index:50}
+  .arch{font-family:"Cascadia Code",Consolas,monospace;font-size:12.5px;line-height:1.5;color:var(--txt2);
+    background:rgba(10,16,24,.72);border:1px solid var(--line);border-radius:12px;padding:16px 18px;white-space:pre;
+    box-shadow:var(--inner);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  .arch b{color:var(--cyan-hi);font-weight:600}
+  .ok{color:var(--green);font-weight:700}
+  .cover{align-items:center;justify-content:center;text-align:center}
+  .cover .badge{border:1px solid var(--line-hi);color:var(--cyan);border-radius:999px;
+    padding:6px 20px;font-size:14px;letter-spacing:.25em;margin-bottom:28px;
+    background:rgba(77,216,232,.06);box-shadow:0 0 24px rgba(77,216,232,.12)}
+  .cover h1{font-size:64px;background:linear-gradient(92deg,var(--cyan-hi) 0%,var(--cyan) 45%,var(--violet) 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 0 28px rgba(77,216,232,.22))}
+  .cover .slogan{font-size:22px;color:var(--txt2);margin-top:18px}
+  .cover .meta{margin-top:44px;color:var(--txt3);font-size:14px;line-height:2}
+  .quote{border-left:3px solid var(--cyan);padding:12px 16px;color:var(--txt2);font-size:14px;line-height:1.7;
+    background:rgba(77,216,232,.05);border-radius:0 10px 10px 0}
+  code{color:var(--cyan-hi);background:rgba(77,216,232,.08);padding:1px 6px;border-radius:6px;font-size:.92em}  @media print{
+    html,body{overflow:visible;background:#fff}
+    .slide{position:relative;display:flex !important;page-break-after:always;width:1280px;height:720px;
+      background:#fff;color:#1a2433;padding:40px 48px 52px}
+    .slide::before{display:none}
+    .card,table{background:#f5f8fc;border-color:#d8e1ee;box-shadow:none;backdrop-filter:none}
+    th{background:#eaf3f6;color:#0E7490;border-bottom-color:#cfdde8}
+    .card p,.card li,td,.fstep,.arch,.card b,td b{color:#33415a}
+    .card h3{color:#0E7490}
+    h1,h2{color:#0A1018}.sub{color:#5a6b85}
+    .arch{background:#f5f8fc;border-color:#d8e1ee;box-shadow:none}
+    .arch b{color:#0E7490}
+    .footer{position:absolute;left:48px;right:48px;bottom:16px;color:#8a97ab}
+    .progress,.hint{display:none}
+    img.shot{border-color:#d8e1ee;box-shadow:none}
+    .cover h1{-webkit-text-fill-color:#0E7490;color:#0E7490;background:none;filter:none}
+    .cover .badge{color:#0E7490;border-color:#0E7490;background:#fff;box-shadow:none}
+    .cover .slogan{color:#33415a}.cover .meta{color:#5a6b85}
+    .quote{background:#eaf3f6;color:#33415a;border-left-color:#0E7490}
+    .kicker{color:#0E7490}
+    .t-blue{background:#e0f5f8;color:#0E7490;border-color:#b6e3ea}
+    .t-green{background:#dcf5ee;color:#0b6e5a;border-color:#c2e8dc}
+    .t-orange{background:#fdeedd;color:#8a5a12;border-color:#f0ddba}
+    .t-red{background:#fde3e3;color:#a32727;border-color:#f0c8c8}
+    .num{color:#0E7490;text-shadow:none}.num small{color:#5a6b85}
+    .fstep{background:#f5f8fc;border-color:#d8e1ee;box-shadow:none}
+    .fstep b{color:#1a2433}
+    .farrow{color:#0E7490}
+    code{color:#0E7490;background:#eaf3f6}
+    .ok{color:#0b6e5a}
+  }</style>
+</head>
+<body>
+<div class="progress" id="prog"></div>
+<div class="deck" id="deck">
+
+<!-- S1 封面 -->
+<section class="slide cover">
+  <div class="badge">GOAI · 赛道一：新智基座丨Agent Infra</div>
+  <h1>Aranea-Agents</h1>
+  <div class="slogan">一人统领 N 家虚拟公司的多 Agent 编排平台<br>复杂任务多 Agent 自主协同 · 从 Demo 走向 Production</div>
+  <div class="meta">
+    赛题：复杂任务多 Agent 自主协同 &nbsp;|&nbsp; 阶段：初赛<br>
+    基于 trpc-agent-go 运行时内核 · Go + Kratos v2 · Vue 3 · 2026-07
+  </div>
+</section>
+
+<!-- S2 汇报框架 -->
+<section class="slide">
+  <div class="kicker">FRAMEWORK</div>
+  <h2>汇报框架：对齐评审五维度</h2>
+  <div class="sub">方案内容按赛道评审标准组织，逐项给出可验证证据</div>
+  <div class="body"><div class="col">
+    <table>
+      <tr><th style="width:44%">评审维度</th><th style="width:10%">权重</th><th>本方案对应章节</th></tr>
+      <tr><td>D1 场景价值与行业可复制性</td><td>25%</td><td>§1 场景与价值（行业/部门/岗位模板，274 个职能 Agent）</td></tr>
+      <tr><td>D2 多 Agent 协同与自主闭环能力</td><td>25%</td><td>§2 方案设计（三层编排 + AgentTeams 映射 + 医疗云实跑）</td></tr>
+      <tr><td>D3 Skill 工程体系与生态复用</td><td>25%</td><td>§3 Skill 全生命周期 + 自动进化闭环（核心创新）</td></tr>
+      <tr><td>D4 工程落地、运行验证与安全可审计</td><td>20%</td><td>§4 工具/MCP/RAG/可观测 + 审批回滚审计 + 评测报告</td></tr>
+      <tr><td>D5 开放/开源贡献</td><td>5%</td><td>§5 开源计划、合规披露与落地路线</td></tr>
+    </table>
+    <div class="quote">硬性要求自查：≥3 个不同职能 Agent ✔ · AgentTeams 为协同设计基点 ✔ · Skill 必选 ✔ · 高风险动作审批/回滚/审计 ✔ · 开源合规披露 ✔</div>
+  </div></div>
+  <div class="footer"><span>Aranea-Agents · 初赛方案</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S3 场景与问题 -->
+<section class="slide">
+  <div class="kicker">01 · 场景与价值</div>
+  <h2>真实问题：复杂任务需要一支队伍，而不是一个对话框</h2>
+  <div class="sub">个人与中小团队的专业工作本质是「跨职能复杂任务」——市调、投研、研发、运营</div>
+  <div class="body">
+    <div class="col">
+      <div class="card"><h3>目标用户</h3><p>独立开发者、咨询/投研从业者、中小企业主、内容创作者——没有预算雇佣完整团队，但任务需要多种专业能力协同。</p></div>
+      <div class="card"><h3>核心痛点</h3><ul>
+        <li><b>单 Agent 天花板</b>：一个对话窗口无法同时扮演研究员、分析师、财务、写手</li>
+        <li><b>编排黑盒</b>：多 Agent 过程不可观测、不可调试、不可回溯</li>
+        <li><b>经验流失</b>：每次任务从零开始，方法论无法沉淀复用</li>
+        <li><b>成本与安全失控</b>：Token 账单不透明，高风险动作无审批无审计</li>
+      </ul></div>
+    </div>
+    <div class="col">
+      <div class="card"><h3>业务价值（可感知收益）</h3><ul>
+        <li><b>效率</b>：一份带竞品分析与成本估算的策略简报，从「数天人工」到「一次指令、分钟级闭环」</li>
+        <li><b>质量</b>：专人专事 + 生成-评审循环，产出经多角色交叉验证</li>
+        <li><b>知识沉淀</b>：方法论固化为 Skill，越用越强</li>
+        <li><b>风险控制</b>：高风险动作人工确认，全程留痕可审计</li>
+      </ul></div>
+      <div class="card"><h3>行业可复制性</h3><p>「行业 → 部门 → 岗位」三级组织模板：内置金融（6 部门 / 30+ 岗位 / 8 团队）、自媒体、软件开发三大行业；同一套编排引擎 + Skill 体系可复制到医疗、电商、政务等任何知识密集型行业。</p></div>
+    </div>
+  </div>
+  <div class="footer"><span>D1 场景价值与行业可复制性 · 25%</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S4 平台全貌 -->
+<section class="slide">
+  <div class="kicker">01 · 场景与价值</div>
+  <h2>平台全貌：274 个职能 Agent 的「虚拟公司」</h2>
+  <div class="sub">模拟现实公司组织架构——分行业、分部门、分岗位，专人专事</div>
+  <div class="body">
+    <div class="col" style="flex:1.25">
+      <div><img class="shot" src="evidence/ts1-01-agents-list.png" alt="Agent 列表"><div class="shot-cap">图：Agent 资产列表（实测 274 个 Agent，API 证据 api/ts1-agents-count.json）</div></div>
+    </div>
+    <div class="col">
+      <div class="grid2">
+        <div class="card"><div class="num">274<small>职能 Agent（实测）</small></div></div>
+        <div class="card"><div class="num">3<small>内置行业 · 16+ 部门</small></div></div>
+        <div class="card"><div class="num">65<small>内置工具</small></div></div>
+        <div class="card"><div class="num">13<small>IM 通道接入</small></div></div>
+      </div>
+      <div class="card"><h3>系统内置职能角色</h3><ul>
+        <li><b>精灵助手（Spirit）</b>：用户唯一入口，动态编排引擎</li>
+        <li><b>部门主管 Agent</b>：资源协调与跨部门交付审批</li>
+        <li><b>岗位专家 Agent</b>：量化研究、合规、市场研究、成本估算…</li>
+        <li><b>系统管家</b>：记忆管家 / 技能管家 / 系统管理</li>
+      </ul></div>
+    </div>
+  </div>
+  <div class="footer"><span>D1 场景价值与行业可复制性 · 25%</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S5 总体架构 -->
+<section class="slide">
+  <div class="kicker">02 · 方案设计</div>
+  <h2>总体架构：Skill 抽象能力，MCP 连接工具，证据贯穿全链路</h2>
+  <div class="sub">判断协作、稳定能力、外部工具、证据治理分层解耦</div>
+  <div class="body"><div class="col">
+    <div class="arch">┌ 用户入口 ─── Web 控制台 / 13 路 IM 通道 / CLI（aranea）
+│
+├ <b>编排层（AgentTeams 协同基点）</b>
+│   Spirit 动态编排：任务规划 → DAG 拆解 → 团队组建 → 执行合成
+│   Team 六模式：sequential / parallel / coordinator / critic_loop / swarm / adaptive
+│   Graph 图编排：节点+条件边+Checkpoint+TimeTravel
+│
+├ <b>多 Agent 协同层</b> ─── 274 个职能 Agent（行业/部门/岗位）
+│
+├ <b>Skill 能力层</b> ─── 全生命周期：注册/版本/渐进加载/进化/审批/消亡
+│
+├ <b>工具连接层</b> ─── 65 内置工具 + MCP Server（Playwright stdio，health=ok）
+│
+├ <b>上下文层</b> ─── 五层记忆 L0-L4 + 团队共享黑板 + 产物引用 deliverable
+│
+└ <b>证据与治理层</b> ─── Trace/Flow Log/Metrics · 审批守卫 · 审计 · 配额成本</div>
+    <div class="grid3">
+      <div class="card"><h3>传输</h3><p>Kratos v2：HTTP / gRPC / WebSocket</p></div>
+      <div class="card"><h3>运行时内核</h3><p>trpc-agent-go：Runner / Agent / Session / Skill / Graph / Team</p></div>
+      <div class="card"><h3>存储</h3><p>SQLite（Ent ORM，WAL 读写分离）+ PostgreSQL/pgvector（可选向量）</p></div>
+    </div>
+  </div></div>
+  <div class="footer"><span>D2 多 Agent 协同 · 25%</span><span class="pgnum"></span></div>
+</section>
+<!-- S5b 设计哲学 -->
+<section class="slide">
+  <div class="kicker">02 · 方案设计 · 设计哲学</div>
+  <h2>设计哲学：让引擎管流程，让模型管执行</h2>
+  <div class="sub">流程是制度，不是建议——制度不会偷懒，AI 会</div>
+  <div class="body">
+    <div class="col">
+      <div class="card"><h3>裸循环的三个致命缺口</h3><ul>
+        <li><b>无质量门控</b>：AI 想跳过审查就能跳过，没人拦得住——如同工厂没有质检关卡</li>
+        <li><b>无流程一致性</b>：同样的任务，今天走五步明天走三步，全看 AI 心情</li>
+        <li><b>无复用性</b>：好的工作流无法沉淀、无法分享、无法替换</li>
+      </ul></div>
+      <div class="card"><h3>主流方案为什么不够</h3><p>把"请先规划再动手"写进系统提示词 = 把交通规则写在纸条上递给司机。<b>建议 ≠ 约束</b>。AI 觉得任务简单就跳过规划，写完就说"完成了"没跑测试。我们在路上装红绿灯——<b>把流程写在引擎的确定性逻辑里，而不是提示词里</b>。</p></div>
+    </div>
+    <div class="col">
+      <div class="card"><h3>四大设计原则</h3>
+        <table>
+          <tr><th style="width:30%">原则</th><th>实践</th></tr>
+          <tr><td><b>硬驱动</b></td><td>流程推进由代码逻辑做出，不由 AI 决定。AI 输出的"完成了"只是屏幕上的一行字，不参与推进判定——<b>AI 没有能力跳过任何一个阶段</b></td></tr>
+          <tr><td><b>声明式可插拔</b></td><td>工作流即配置包。Team 六模式 / Graph 图编排 / Spirit 动态编排——换一套流程就是换一套配置，引擎不变</td></tr>
+          <tr><td><b>正交矩阵</b></td><td>「执行者 × 门控」两个维度组合出全部工作流场景：self/delegate × auto/user/conditional</td></tr>
+          <tr><td><b>零侵入</b></td><td>流程引擎挂载在执行内核之上，随时可拆退回裸循环；引擎 bug 不污染核心循环</td></tr>
+        </table>
+      </div>
+      <div class="quote">与提示词驱动的根本差异：提示词是"建议"，引擎是"约束"。我们把流程交给制度保障，而不是交给 AI 的自觉。</div>
+    </div>
+  </div>
+  <div class="footer"><span>D2 多 Agent 协同 · 25%</span><span class="pgnum"></span></div>
+</section>
+
+
+<!-- S6 AgentTeams 映射 -->
+<section class="slide">
+  <div class="kicker">02 · 方案设计 · 硬性要求 H2</div>
+  <h2>以 AgentTeams 为协同设计基点：五要素全部落地</h2>
+  <div class="sub">角色编排、任务拆解、上下文传递、协同执行、状态追踪——逐条映射并有实证</div>
+  <div class="body"><div class="col">
+    <table>
+      <tr><th style="width:18%">AgentTeams 要素</th><th style="width:42%">本平台实现</th><th>实证证据</th></tr>
+      <tr><td><b>角色编排</b></td><td>Orchestrator / Worker / Synthesizer 角色 + coordinator 协调模式，团队成员按职能分工</td><td>ts2-03 团队组建截图；team-run definitionSnapshot 拓扑</td></tr>
+      <tr><td><b>任务拆解</b></td><td>plan_and_execute：任务规划 → todo 计划 → DAG 步骤（环检测 + 拓扑排序）</td><td>ts2-02/03；DAG 约 5 步</td></tr>
+      <tr><td><b>上下文传递</b></td><td>Graph StateFields 团队共享黑板 + set/get_deliverable 产物引用 + 五层记忆</td><td>ts2-04；历史 run inputPreview 含「上游交付物」</td></tr>
+      <tr><td><b>协同执行</b></td><td>成员并行执行 + 流式活动树（thinking / action / reply）+ 失败自动降级回退</td><td>ts2-04 并行执行截图</td></tr>
+      <tr><td><b>状态追踪</b></td><td>会话参与者 / 运行记录 / TeamRun 状态机 / 活动树实时状态</td><td>ts2-05；participants / runs JSON</td></tr>
+    </table>
+    <div class="card"><h3>异常与冲突处理</h3><p>失败策略 Skip / RetryThenBlock / FailFast + 熔断器；人工确认介入点（审批守卫）插入编排流程；Web 搜索不可达时自动降级内部知识路径（实跑验证）。</p></div>
+  </div></div>
+  <div class="footer"><span>D2 多 Agent 协同 · 25%</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S7 实跑闭环 -->
+<section class="slide">
+  <div class="kicker">02 · 方案设计 · 端到端实跑证据</div>
+  <h2>实跑闭环：医疗云市场调研，一次指令 → 策略简报</h2>
+  <div class="sub">2026-07-25 实跑 · 会话 64a83c58 · 精灵动态组建「医疗云市场研究小组」（4 个不同职能成员）</div>
+  <div class="body"><div class="col">
+    <div class="flow">
+      <div class="fstep"><b>① 任务接收</b>识别为多步骤调研任务</div><div class="farrow">→</div>
+      <div class="fstep"><b>② 编排+人工确认</b>主动就成本维度发起审批</div><div class="farrow">→</div>
+      <div class="fstep"><b>③ 拆解+组队</b>DAG 5 步 · 4 职能成员</div><div class="farrow">→</div>
+      <div class="fstep"><b>④ 并行执行</b>流式活动 · 断网自动降级</div><div class="farrow">→</div>
+      <div class="fstep"><b>⑤ 结果合成</b>合规评分 + 成本估算简报</div>
+    </div>
+    <div class="grid2">
+      <div><img class="shot" src="evidence/ts2-02-orchestration-plan.png" alt="人工确认"><div class="shot-cap">② 审批守卫：成本估算维度人工确认</div></div>
+      <div><img class="shot" src="evidence/ts2-03-team-formed.png" alt="团队组建"><div class="shot-cap">③ 团队组建：Orchestrator / WebSearch / MarketResearch / CostEstimation</div></div>
+      <div><img class="shot" src="evidence/ts2-04-execution-progress.png" alt="并行执行"><div class="shot-cap">④ 并行执行：Web 搜索不可达自动降级（容错证据）</div></div>
+      <div><img class="shot" src="evidence/ts2-05-final-result.png" alt="结果合成"><div class="shot-cap">⑤ 策略简报：三甲医院上云 60-90 万/年 vs 传统机房 300-500 万 CAPEX</div></div>
+    </div>
+  </div></div>
+  <div class="footer"><span>D2 多 Agent 协同与自主闭环 · 25%</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S8 Agent Identity -->
+<section class="slide">
+  <div class="kicker">02 · 方案设计 · 附录A</div>
+  <h2>Agent Identity：≥3 个不同职能 Agent，决策边界清晰</h2>
+  <div class="sub">实跑团队核心成员（完整清单见提交包 03-Agent-Identity清单.md）</div>
+  <div class="body"><div class="col">
+    <table>
+      <tr><th style="width:16%">Name</th><th style="width:14%">Role</th><th style="width:26%">Capabilities</th><th style="width:24%">Decision Boundary</th><th>Trace</th></tr>
+      <tr><td>精灵助手 Spirit</td><td>Orchestrator</td><td>任务理解/拆解/组队/合成；不做专业执行</td><td>自主拆解与分派；成本/合规等关键维度须人工确认</td><td>编排事件 + 检查点全程落库</td></tr>
+      <tr><td>claudecode</td><td>WebSearch Worker</td><td>Web 检索/页面抓取/证据收集；不可写外部系统</td><td>只读操作全自动；失败自动降级内部知识</td><td>工具调用审计 + runs 记录</td></tr>
+      <tr><td>deepresearch</td><td>MarketResearch Worker</td><td>竞品调研/行业分析/结构化报告；不做财务承诺</td><td>分析自主；结论需附证据等级</td><td>活动树 thinking/action/reply</td></tr>
+      <tr><td>finance</td><td>CostEstimation Worker</td><td>成本建模/估算/敏感性分析；不执行真实采购</td><td>估算自主；对外报价类输出须人工审批</td><td>Token 用量 + 成本事件</td></tr>
+    </table>
+    <div class="card"><h3>高风险动作治理（H4）</h3><p><span class="tag t-orange">审批</span>编排关键维度人工确认（图 ts2-02）；Skill 进化 pending→approved 人工审批状态机 <span class="tag t-blue">回滚</span>Skill 版本回滚 + 文件系统恢复；记忆 Saga 级联更新失败自动补偿 <span class="tag t-green">审计</span>工具审计（ts6-03）+ 管理操作审计日志 + 全链路 Trace</p></div>
+  </div></div>
+  <div class="footer"><span>D2 多 Agent 协同 · 25%</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S9 Skill 工程体系 -->
+<section class="slide">
+  <div class="kicker">03 · Skill 工程体系 · 必选项 H3</div>
+  <h2>Skill 全生命周期：新生 → 成长 → 消亡 → 重生</h2>
+  <div class="sub">Skill 是工程化沉淀单元，不是一次性提示词</div>
+  <div class="body">
+    <div class="col">
+      <div class="card"><h3>新生</h3><ul><li>自动检测：工具调用 Pattern → Proposal → 审批 → 注册</li><li>手动创建：CRUD → Publish（major.minor.patch 版本）</li><li>导入融合：六维相似度检测 → LLM 炼化合并</li></ul></div>
+      <div class="card"><h3>成长</h3><ul><li>渐进加载：L0 清单 → L1 Body → L2 Refs，省 Token</li><li>意图路由：嵌入向量评分自动匹配最相关 Skill</li><li>Skills Butler：健康度分析 + 优化建议</li></ul></div>
+    </div>
+    <div class="col">
+      <div class="card"><h3>消亡</h3><ul><li>30 天无调用 / 成功率 &lt;60% → 消亡建议</li><li>人工停用 ToggleEnabled；软删除 deleted_at</li><li>磁盘缺失标记 filesystem_missing</li></ul></div>
+      <div class="card"><h3>重生</h3><ul><li>版本回滚：历史版本恢复为 published</li><li>文件恢复自动清除 missing 标记</li><li>自动进化：运行数据中再次发现新模式</li></ul></div>
+      <div class="card"><h3>安全机制</h3><p>注册拒绝路径穿越（<code>..</code>/<code>/\</code>）；合并失败自动回滚 DB + 磁盘；所有进化必须人工审批。</p></div>
+    </div>
+  </div>
+  <div class="footer"><span>D3 Skill 工程体系与生态复用 · 25%</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S10 核心创新：Skill 自动进化 -->
+<section class="slide">
+  <div class="kicker">03 · 核心创新 · 全链路实证</div>
+  <h2>Skill 自动进化闭环：让 Skill 生态自我生长</h2>
+  <div class="sub">观测 → 模式检测 → Pattern Hash 去重 → LLM 融合生成 → 人工审批 → 注册发布（2026-07-24 API 全链路实测）</div>
+  <div class="body">
+    <div class="col" style="flex:1.15">
+      <div class="flow">
+        <div class="fstep"><b>观测采集</b>12 条 tool_call 观测落库</div><div class="farrow">→</div>
+        <div class="fstep"><b>模式检测</b>confidence=1.0</div><div class="farrow">→</div>
+        <div class="fstep"><b>去重</b>Pattern Hash 幂等</div><div class="farrow">→</div>
+        <div class="fstep"><b>LLM 生成</b>融合为 SKILL.md</div><div class="farrow">→</div>
+        <div class="fstep"><b>审批</b>pending→approved</div><div class="farrow">→</div>
+        <div class="fstep"><b>注册</b>registered 发布</div>
+      </div>
+      <div><img class="shot" src="evidence/ts4-03-evolution-registered.png" alt="注册完成"><div class="shot-cap">自动生成的 InformationResearch Skill 完成注册发布</div></div>
+      <div><img class="shot" src="evidence/ts4-01-evolution-suggestions.png" alt="进化提案"><div class="shot-cap">进化提案列表（审批状态机可视化）</div></div>
+    </div>
+    <div class="col">
+      <div class="card"><h3>LLM 自主生成的 Skill 内容</h3><p><b>InformationResearch</b>：交替检索长期记忆（memory_search ×4）、抓取 Web 内容（web_fetch ×6）、盘点工作记忆（working_memory_list ×2），交叉综合产出研究结果。3 条触发条件 + 4 步执行步骤，全部由 LLM 从真实调用模式中归纳。</p></div>
+      <div class="card"><h3>工程可信度</h3><ul><li>测试中发现并修复 LLM 凭证脱敏 401 缺陷（附回归测试）</li><li>审批人 approved_by=dev，时间戳 2026-07-24T22:57:36Z</li><li>API 证据：detect-dedup / proposal-detail / approve / register / skills-list 共 6 份</li></ul></div>
+    </div>
+  </div>
+  <div class="footer"><span>D3 Skill 工程体系与生态复用 · 25%</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S11 Skill 清单 -->
+<section class="slide">
+  <div class="kicker">03 · Skill 清单 · 附录B</div>
+  <h2>核心 Skill 清单：输入输出、调用条件、失败处理全定义</h2>
+  <div class="sub">完整清单见提交包 04-Skill清单.md</div>
+  <div class="body"><div class="col">
+    <table>
+      <tr><th style="width:20%">Skill 名称</th><th style="width:12%">类型</th><th style="width:26%">用途与调用条件</th><th style="width:22%">依赖工具</th><th>失败处理 / 安全边界</th></tr>
+      <tr><td>InformationResearch</td><td><span class="tag t-green">自动进化生成</span></td><td>内外信息交叉调研；研究类请求或交替调用模式触发</td><td>memory_search / web_fetch / working_memory_list</td><td>单源失败降级其余源；只读无副作用</td></tr>
+      <tr><td>planning-and-task-breakdown</td><td><span class="tag t-blue">自定义</span></td><td>规格拆解为可实现任务；任务过大或需估算时触发（5113 次调用，成功率 100%）</td><td>任务 DAG 持久化</td><td>拆解失败回退单步执行；不写外部系统</td></tr>
+      <tr><td>idea-refine</td><td><span class="tag t-blue">自定义</span></td><td>想法结构化打磨（发散-收敛）；“ideate”触发（5116 次调用，成功率 100%）</td><td>LLM 推理</td><td>LLM 不可用回退启发式模板</td></tr>
+    </table>
+    <div class="card"><h3>复用价值</h3><p>Skill 与 Agent 解耦：同一 Skill 可被多个 Agent / 多个行业场景复用；版本管理 + 审批发布 + 渐进加载，具备开源分发条件；自动进化机制让 Skill 清单随使用持续增长。</p></div>
+  </div></div>
+  <div class="footer"><span>D3 Skill 工程体系与生态复用 · 25%</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S12 工具与 MCP -->
+<section class="slide">
+  <div class="kicker">04 · 工程落地 · 推荐项 R1</div>
+  <h2>工具集成：65 个内置工具 + MCP 标准接入</h2>
+  <div class="sub">Skill 承担能力抽象层，MCP 承担工具连接层</div>
+  <div class="body">
+    <div class="col" style="flex:1.15">
+      <div><img class="shot" src="evidence/ts5-01-mcp-servers.png" alt="MCP Servers"><div class="shot-cap">MCP Server 管理：Playwright Browser（stdio，health=ok）</div></div>
+      <div><img class="shot" src="evidence/ts6-01-tools-list.png" alt="工具列表"><div class="shot-cap">65 个内置工具（证据 api/ts6-tools.json），含 runs / audits 记录</div></div>
+    </div>
+    <div class="col">
+      <div class="card"><h3>MCP 集成契约</h3><ul>
+        <li><b>协议</b>：Model Context Protocol，stdio 传输（HTTP/SSE 远程接入在路线图中）</li>
+        <li><b>鉴权</b>：CredentialCrypto 加密存储 + 用户级独立凭证 + masked preview</li>
+        <li><b>健康治理</b>：连通性探测 + 自动重连 + 告警去抖</li>
+      </ul></div>
+      <div class="card"><h3>等价工具契约（非 MCP 工具同样满足）</h3><p>统一工具注册表：名称 / 参数 Schema / 返回结构 / 权限范围（permission_guard deny_list）/ 失败重试 / 幂等 / 审计日志 / 降级策略——迁移到 MCP 仅需协议适配，无需重设计调用链。</p></div>
+    </div>
+  </div>
+  <div class="footer"><span>D4 工程落地 · 20%</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S13 RAG 与上下文 -->
+<section class="slide">
+  <div class="kicker">04 · 工程落地 · 推荐项 R3（4 项能力实现 3 项+）</div>
+  <h2>RAG 与上下文：业界最完整的五层记忆 + 团队共享黑板</h2>
+  <div class="sub">Agent 记忆存储 ✔ · 知识库 RAG ✔ · 共享状态管理 ✔ · 轨迹可观测 ✔（见下页）</div>
+  <div class="body">
+    <div class="col">
+      <table>
+        <tr><th style="width:12%">层级</th><th style="width:30%">名称</th><th>功能</th></tr>
+        <tr><td>L0</td><td>会话上下文窗口</td><td>最近 N 轮对话 + 摘要压缩注入</td></tr>
+        <tr><td>L1</td><td>工作记忆</td><td>结构化字段（角色/偏好/约束），Token 预算控制</td></tr>
+        <tr><td>L2</td><td>情景记忆</td><td>对话片段向量索引 + 时间衰减召回</td></tr>
+        <tr><td>L3</td><td>语义事实</td><td>五维评分召回，跨 agent/user/team/workspace/global 五 scope 融合</td></tr>
+        <tr><td>L4</td><td>知识图谱</td><td>实体-关系图谱，Saga 级联更新（失败自动补偿回滚）</td></tr>
+      </table>
+      <div class="card"><h3>团队共享状态（多 Agent 上下文传递）</h3><p>Graph StateFields 共享黑板（blackboard/&lt;topic&gt; 命名空间）+ set/get_deliverable 产物引用 + 认知信封（decisions/assumptions/open_questions），并发下一致性由状态 Reducer（append/cover/merge）保证。</p></div>
+    </div>
+    <div class="col">
+      <div><img class="shot" src="evidence/ts7-01-memory-center.png" alt="记忆中心"><div class="shot-cap">Memory Center：五层记忆统一可视化</div></div>
+      <div><img class="shot" src="evidence/ts7-02-knowledge.png" alt="知识库"><div class="shot-cap">知识库 RAG：文档摄入 → Markdown 规整 → 分块 → 向量检索（pgvector）</div></div>
+    </div>
+  </div>
+  <div class="footer"><span>D4 工程落地 · 20%</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S14 可观测与安全审计 -->
+<section class="slide">
+  <div class="kicker">04 · 工程落地 · 硬性要求 H4 + 推荐项 R2</div>
+  <h2>可观测与安全审计：每一步都可回放、可审计、可回滚</h2>
+  <div class="sub">Trace + Log + Metrics 三类数据全覆盖</div>
+  <div class="body">
+    <div class="col">
+      <div class="card"><h3>可观测（R2）</h3><ul>
+        <li><b>Trace</b>：每次 LLM/Skill/工具调用完整 Span 瀑布图，trace_id 贯穿</li>
+        <li><b>Log</b>：结构化 Flow Log，按 trace/session/run/domain/severity 多维检索</li>
+        <li><b>Metrics</b>：Token 用量六维定价 × 微美元精度；error_rate / P50/P95/P99 延迟；告警评估</li>
+        <li><b>自愈</b>：根因分析引擎 + DiagnoseAndHeal（置信度≥0.7 自动修复，5 分钟冷却防抖）</li>
+      </ul></div>
+      <div class="card"><h3>审批 / 回滚 / 审计（H4）</h3><ul>
+        <li><b>审批</b>：编排人工确认守卫 + confirmation_guard 高危工具确认 + Skill 进化审批状态机</li>
+        <li><b>回滚</b>：Skill 版本回滚、Graph Checkpoint + TimeTravel、记忆 Saga 补偿</li>
+        <li><b>审计</b>：管理操作审计（actor/IP/severity）、工具调用审计、跨 Agent A2A 调用审计</li>
+        <li><b>降级</b>：Web 搜索不可达自动回退内部知识（实跑验证）；LLM 不可用回退启发式记忆提取</li>
+      </ul></div>
+    </div>
+    <div class="col">
+      <div><img class="shot" src="evidence/ts8-02-monitor-logs.png" alt="监控日志"><div class="shot-cap">Flow Log 多维检索</div></div>
+      <div><img class="shot" src="evidence/ts6-03-tool-audits.png" alt="工具审计"><div class="shot-cap">工具调用审计记录</div></div>
+    </div>
+  </div>
+  <div class="footer"><span>D4 工程落地、运行验证与安全可审计 · 20%</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S15 评测与证据 -->
+<section class="slide">
+  <div class="kicker">04 · 运行验证</div>
+  <h2>运行验证：8 大测试场景全通过，证据链完整</h2>
+  <div class="sub">完整报告见提交包 06-测试场景与评测报告.md（含 32 张 UI 截图 + 15 份 API 记录索引）</div>
+  <div class="body"><div class="col">
+    <table>
+      <tr><th style="width:26%">测试场景</th><th style="width:40%">验证内容</th><th style="width:14%">对应要求</th><th>状态</th></tr>
+      <tr><td>TS-1 Agent 资产</td><td>274 Agent 清单 / 详情 / 工具授权</td><td>H1 · D2</td><td class="ok">✔ 通过</td></tr>
+      <tr><td>TS-2 协同闭环（核心）</td><td>医疗云调研：拆解→组队→审批→并行→降级→合成</td><td>H1+H2 · D2</td><td class="ok">✔ 通过</td></tr>
+      <tr><td>TS-3 Skill 系统</td><td>列表 / 详情 / 版本 / 渐进加载</td><td>H3 · D3</td><td class="ok">✔ 通过</td></tr>
+      <tr><td>TS-4 Skill 自动进化（核心）</td><td>检测→去重→LLM 生成→审批→注册全链路</td><td>H3 · D3</td><td class="ok">✔ 通过</td></tr>
+      <tr><td>TS-5 MCP 集成</td><td>Server CRUD / 连通性 / 健康 / 工具发现</td><td>R1 · D4</td><td class="ok">✔ 通过</td></tr>
+      <tr><td>TS-6 工具系统</td><td>65 内置工具 / runs / audits</td><td>R1 · D4</td><td class="ok">✔ 通过</td></tr>
+      <tr><td>TS-7 上下文与 RAG</td><td>五层记忆 / 知识库 / 共享黑板</td><td>R3 · D2</td><td class="ok">✔ 通过</td></tr>
+      <tr><td>TS-8 可观测与审计</td><td>Trace / 日志 / Metrics / 审批 / 审计</td><td>H4+R2 · D4</td><td class="ok">✔ 通过</td></tr>
+    </table>
+    <div class="grid4">
+      <div class="card"><div class="num">88<small>五维自评（/100）</small></div></div>
+      <div class="card"><div class="num">32<small>UI 截图证据</small></div></div>
+      <div class="card"><div class="num">15<small>API 实测记录</small></div></div>
+      <div class="card"><div class="num">100%<small>Skill 调用成功率（1 万+次）</small></div></div>
+    </div>
+  </div></div>
+  <div class="footer"><span>D4 工程落地、运行验证与安全可审计 · 20%</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S16 开源与合规 -->
+<section class="slide">
+  <div class="kicker">05 · 开放/开源与合规 · 硬性要求 H5</div>
+  <h2>开放/开源计划与合规披露</h2>
+  <div class="sub">清晰披露协议、依赖、商业 API、闭源模型与数据边界</div>
+  <div class="body">
+    <div class="col">
+      <div class="card"><h3>开源范围与协议</h3><ul>
+        <li>运行时内核 trpc-agent-go 已开放（本方案以其为协同执行引擎）</li>
+        <li>计划开源（Apache-2.0）：三层编排引擎、Skill 工程体系（含自动进化）、五层记忆、工具注册表契约</li>
+        <li>可复用成果：Skill 包、Agent/团队/行业模板、评测报告与事故回放数据集</li>
+      </ul></div>
+      <div class="card"><h3>第三方依赖</h3><p>Kratos v2（Apache-2.0）、Ent ORM（Apache-2.0）、Vue 3/Quasar（MIT）、SQLite、models.dev（模型目录数据源）、Playwright MCP——关键版本锁定于 go.mod / package.json，随代码包披露。</p></div>
+    </div>
+    <div class="col">
+      <div class="card"><h3>商业 API 与闭源模型</h3><ul>
+        <li>LLM 为可插拔 Provider（12+：DeepSeek / Qwen / OpenAI / OpenRouter…），按六维定价计量</li>
+        <li>实跑使用 deepseek-v4-flash / gpt-4.1-mini（商业 API，按量付费，可替换为 Qwen 等开源模型，迁移成本=更换 Provider 配置）</li>
+        <li>闭源模型仅用于推理，不沉淀私有数据；凭证加密存储</li>
+      </ul></div>
+      <div class="card"><h3>数据来源与授权</h3><p>演示任务为公开行业信息调研与模拟数据，无企业私有数据；知识库文档由用户自主上传并隔离于自有实例；PII 审查面板支持人工标记审核。</p></div>
+      <div class="card"><h3>可复现方式</h3><p>代码包含运行入口 / 依赖说明 / 配置文件 / 样例输入输出；本地一键初始化（make all）+ 免登录开发模式；证据包含实跑会话 ID 与 API 记录可复核。</p></div>
+    </div>
+  </div>
+  <div class="footer"><span>D5 开放/开源贡献 · 5%</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S17 落地计划 -->
+<section class="slide">
+  <div class="kicker">05 · 可行性与落地计划</div>
+  <h2>落地路线：初赛实证 → 复赛真实接入 → 决赛开源工程化</h2>
+  <div class="sub">评估指标：端到端闭环成功率 / Skill 复用率 / 工具成功率 / Token 成本 / 审批覆盖率</div>
+  <div class="body"><div class="col">
+    <div class="flow">
+      <div class="fstep"><b>初赛 V0.3（当前）</b>可运行平台 · 8 场景实证 · Skill 进化全链路 · 评测 88/100</div><div class="farrow">→</div>
+      <div class="fstep"><b>复赛 V0.6</b>远程 MCP（HTTP/SSE）· 事故回放评估集 · Golden/Badcase 数据集 · 失败重试策略优化</div><div class="farrow">→</div>
+      <div class="fstep"><b>决赛 V1.0</b>核心模块 Apache-2.0 开源 · Skill 市场 · 行业模板包 · 部署与演示脚本</div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>风险控制</h3><ul><li>高风险动作保留 L0 只读诊断 / L1 低风险自动 / L2 灰度+审批 / L3 仅方案 四级边界</li><li>成本守卫 + 三级配额 + 预算告警，防止 Token 失控</li></ul></div>
+      <div class="card"><h3>已知限制（诚实披露）</h3><ul><li>实跑环境 Web 搜索不可达时降级内部知识（降级路径已验证，实时性受限）</li><li>远程 MCP 尚未实测；历史团队运行存在 failed/cancelled 记录，恢复策略持续优化中</li></ul></div>
+    </div>
+    <div class="quote">安全边界承诺：不执行真实资金/生产变更动作；所有高风险操作仅生成方案并进入人工审批——零人工运维的关键不是无限自动化，而是可验证、可审计、可回滚。</div>
+  </div></div>
+  <div class="footer"><span>可行性与落地计划</span><span class="pgnum"></span></div>
+</section>
+
+<!-- S18 结尾 -->
+<section class="slide cover">
+  <div class="badge">ARANEA-AGENTS</div>
+  <h1 style="font-size:44px">让每个人都拥有一支<br>可协作、可治理、可进化的 Agent 团队</h1>
+  <div class="meta">
+    证据索引：evidence/（32 张 UI 截图）· api/（15 份 API 实测记录）· 06-测试场景与评测报告.md<br>
+    代码包：code/（源码快照 + 运行说明）· 提交日期 2026-07-27
+  </div>
+</section>
+
+</div>
+<div class="hint">← → 翻页 · Home/End 首尾 · 打印(Ctrl+P)可导出 PDF</div>
+<script>
+(function(){
+  var slides=document.querySelectorAll('.slide'),i=0,prog=document.getElementById('prog');
+  function show(n){i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach(function(s,k){s.classList.toggle('active',k===i)});
+    var p=slides[i].querySelector('.pgnum');if(p)p.textContent=(i+1)+' / '+slides.length;
+    prog.style.width=((i+1)/slides.length*100)+'%';}
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' ')show(i+1);
+    else if(e.key==='ArrowLeft'||e.key==='PageUp')show(i-1);
+    else if(e.key==='Home')show(0);else if(e.key==='End')show(slides.length-1);});
+  document.addEventListener('click',function(e){if(e.target.closest('a'))return;show(i+1)});
+  show(0);
+})();
+</script>
+</body>
+</html>

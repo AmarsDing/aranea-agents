@@ -175,14 +175,15 @@ Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同�
 
 **`runner.completion`（后端仍落库）**：用于 `runner.error_rate` 告警、`RunnerMetricsPanel` 计数、Memory Worker；Chat 主路径已有 `recordTurnUsage` → Runs 行，**Events 主列表默认隐藏** persisted `runner.completion`（有 `usage_event_id` / `trace_id` 关联时提示「在 Runs 中查看」）。
 
-### 3.1 页面结构
+### 3.1 页面结构（2026-07-29 重设计：脉搏 + 历史双区）
 
 | 区域 | 内容 |
 |------|------|
-| **标题** | 「实时事件」 |
-| **右上** | **实时** 指示；**事件计数**；**暂停**；**清除** |
-| **分类 Tab** | **全部** \| **任务** \| **消息** \| **Agent** \| **工具** \| **系统** |
-| **列表** | 卡片流，每条含：时间、事件类型标签、摘要正文、元数据 |
+| **脉搏区（Pulse）** | 标题「实时事件脉搏」+ 实时指示 + 事件计数 + 暂停 + 清除；WS 运行时事件以 chip 流横向滚动展示（severity 色点 + 人话标题），点击打开详情 |
+| **历史区（History）** | 标题「历史事件」+ 总条数；类型筛选 + 级别筛选 + 刷新；服务端分页表格（时间 / 级别 / 分类 / 标题 / 摘要 / 主体 / 操作） |
+| **详情弹窗** | 结构化元数据（类型 / 级别 / 分类 / 主体 / 时间 / 会话）+ 原始 JSON（可复制）；completion 降级卡片带「在 Runs 中查看」 |
+
+**展示字段与业务意义**：每条事件展示 **severity 色点**（critical/warn/success/info，一眼定位异常）、**人话标题**（如「团队运行失败」而非 `team_run_failed`）、**一行摘要**（错误信息 / 耗时 / Token / 会话短号）、**分类标签**（任务/消息/Agent/工具/系统）、**主体**（Agent/规则/Skill 名）、**相对时间**。原始 event_type 与 JSON 仅进详情弹窗，不占列表空间。
 
 ### 3.2 事件分类映射
 
@@ -229,6 +230,22 @@ Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同�
 | paused | 灰色「已暂停」 | 用户暂停 |
 | error | 红色「连接异常」 | WS 失败或全局连接满（3） |
 
+### 3.7 用户故事与验收（2026-07-29 Events 重设计 · EVT-R）
+
+**定位**：Events = 「值得注意的事」。实时脉搏回答「此刻正在发生什么」，历史表回答「最近发生了哪些需要关注的事」；两者数据源分离（WS 运行时事件 vs `monitor_events` 落库行），互不挤占。
+
+| ID | 用户故事 | 验收标准 |
+|----|----------|----------|
+| EVT-01 | 作为运维，扫一眼就知道有没有异常 | 列表每条带 severity 色点（critical=红/warn=黄/success=绿/info=蓝）；标题为人话（不出现 `team_run_failed` 这类原始 type） |
+| EVT-02 | 作为运维，实时动态不冲掉我要查的历史 | WS 实时事件只进脉搏区（有容量上限，先进先出）；历史区分页/筛选不受新事件影响（翻页保持当前页） |
+| EVT-03 | 作为运维，按类型/级别过滤历史 | 类型筛选（全部 / runner.completion / alert.* / skill.filesystem.* / usage.budget_alert / chat.user_feedback）与级别筛选（critical/warn/success/info）由服务端过滤，翻页不丢条件 |
+| EVT-04 | 作为运维，Skill 磁盘高频变更不刷屏 | `skill.filesystem.updated`（info 级）不进历史表，仅实时脉搏可见；missing/recovered/rejected 仍落库 |
+| EVT-05 | 作为运维，事件详情能定位到会话与原文 | 详情弹窗含类型/级别/分类/主体/时间/会话号 + 原始 JSON 复制；completion 降级卡片可跳 Runs |
+| EVT-06 | 作为运维，历史表不会无限膨胀 | `monitor_events` 仅保留 30 天（每日清理任务）；告警窗口/Runner 指标按分钟-小时聚合不受影响，长期审计由 `audit_logs` 承担 |
+| EVT-07 | 作为运维，中英双语切换无硬编码 | Events 页所有文案（标题/摘要/筛选/详情/空态）走 i18n 语言包 |
+
+**非功能需求**：历史查询必须服务端分页（默认每页 20），禁止全量拉取前端过滤；类型过滤取值必须对齐真实落库 keyspace，不出现永远无结果的选项。
+
 ---
 
 ## 4. Runs（单次运行 · UI 标签 Traces）与 Usage 总览
@@ -248,14 +265,14 @@ Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同�
 
 **默认用户路径**：发起对话 → Monitor → **Traces（Runs）** → 打开行详情 → Flow / Waterfall。
 
-### 4.1 Usage Tab（Runner + 跳转概览）
+### 4.1 Usage Tab（自检 + Runner 指标）
 
-**Usage Tab** 自上而下：`MonitorRunnerMetrics` → `MonitorUsageDashboardLink`。
+**Usage Tab** 自上而下：`SelfCheckStatusPanel` → `MonitorRunnerMetrics`。
 
 | 区域 | 内容 |
 |------|------|
+| **自检状态** | 最近一次自检报告：各子系统（数据库、事件总线、WebSocket、Trace 投影、告警评估、流程文件、Runner 指标流）健康/异常一览；支持手动「立即自检」 |
 | **Runner 指标** | 滑动窗口（15 分～24 小时）；点击下钻 `?tab=traces` |
-| **跳转** | 「打开概览」→ `/overview?range=`（与页面顶栏 `filters.range` 一致）；「查看明细」→ `/usage/events` |
 
 完整用量/趋势/Top/占比见 [18 monitor-dashboard.md](./18%20monitor-dashboard.md)（`/overview`）。
 
@@ -283,16 +300,17 @@ Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同�
 
 ### 4.4 告警规则（Alerts Tab）
 
-面向运维：配置 `runner.error_rate` 等规则，超阈后写入 `alert.fired` 事件并可选出站通知。
+面向运维：从**可监控指标目录**选择指标配置规则，指标在统计窗口内达到阈值后写入 `alert.fired` 事件并可选出站通知。
 
 | 区域 | 内容 |
 |------|------|
-| **规则行** | 名称、指标键（如 `runner.error_rate`）、阈值、窗口（分钟）、启用、严重级别 |
-| **通知** | Webhook URL；通知 Channel（下拉，来自 Channel 列表） |
+| **可监控指标目录** | 系统当前支持的全部指标卡片：本地化名称、含义说明、**当前值**、建议阈值与默认窗口；规则从这里选指标，无需手填指标键 |
+| **规则卡片** | 名称、监控指标（下拉，选中后显示指标说明/当前值并预填建议阈值与窗口）、触发阈值、统计窗口（分钟）、启用、严重级别；实时状态徽章（正常 / 触发中 / 已停用 / 未知指标） |
+| **通知** | Webhook URL 与通知 Channel（下拉，来自 Channel 列表）至少填一个才向外通知；都留空仅记录事件 |
 | **冷却** | `cooldown_minutes`（默认 60）；同规则冷却期内不重复出站 |
-| **操作** | 刷新、保存 |
+| **操作** | 新增、刷新、保存、删除 |
 
-> API 端点见 [18-monitor.design.md §二](./18-monitor.design.md)；评估与出站逻辑见设计文档 §五。
+> API 端点见 [18-monitor.design.md §二](./18-monitor.design.md)；指标目录与注册表见设计文档 §2.2，评估与出站逻辑见设计文档 MON-OPT-02/03。
 
 ---
 
@@ -339,8 +357,8 @@ Tab 与深链 query（刷新可保留）：
 - [ ] 页面进入 `/monitor/logs` 后能正常加载 Audit / Events / Traces / Usage 数据，失败时显示可读错误。
 - [ ] 活动日志：表格列与 API 字段一致；支持刷新、分页、事件类型/实体类型/操作者/关键字筛选、详情查看。
 - [ ] 实时事件：WS 连接状态清晰；支持暂停、恢复、清除、JSON 详情；分类 Tab。
-- [ ] Usage：Runner 指标 + 总览卡、Top 模型、Top Agent、最近异常能从 `/api/v1/usage/*` 与 `/api/v1/monitor/runner-metrics` 加载。
-- [ ] Alerts：规则可加载/保存；超阈产生 `alert.fired`；Webhook/Channel 出站（冷却生效）。
+- [ ] Usage：自检状态报告可加载、可手动触发；Runner 指标能从 `/api/v1/monitor/runner-metrics` 加载。
+- [ ] Alerts：指标目录展示全部可监控指标（名称/含义/当前值）；规则可加载/保存；超阈产生 `alert.fired`；Webhook/Channel 出站（冷却生效）。
 - [ ] 方案 C（Phase 1d）：Runs 主排障；Events 不重复已关联 Chat `runner.completion`；Runs 详情可打开会话。
 - [ ] 追踪：列表与详情能展示 Token、耗时、状态、错误信息；存在 spans 时展示 Span 树。
 - [ ] 日志流：流程/进程二级 Tab 独立缓冲；流程默认连接；进程 `enable_log` 开关；级别/关键字过滤；连接状态含 `connected`。

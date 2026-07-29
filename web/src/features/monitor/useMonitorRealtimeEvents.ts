@@ -81,12 +81,14 @@ export function useMonitorRealtimeEvents() {
     }
   }
 
-  // 过滤条件变化回到第 1 页；翻页/页大小变化仅重新查询
-  watch([typeFilter, severityFilter], () => {
-    page.value = 1;
-    void refreshHistory();
-  });
-  watch([page, pageSize], () => {
+  // 单一 watcher：过滤条件变化先归第 1 页（链式触发本轮），翻页/页大小变化仅重新查询——
+  // 避免「过滤 + 非第 1 页」时双 watcher 各发一次相同请求
+  watch([typeFilter, severityFilter, page, pageSize], ([type, severity], [oldType, oldSeverity]) => {
+    const filterChanged = type !== oldType || severity !== oldSeverity;
+    if (filterChanged && page.value !== 1) {
+      page.value = 1;
+      return;
+    }
     void refreshHistory();
   });
 

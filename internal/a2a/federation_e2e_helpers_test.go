@@ -394,11 +394,11 @@ func newFederationE2EFixture(t *testing.T) *federationE2EFixture {
 func (f *federationE2EFixture) registerOrg(t *testing.T, name, domain, trustLevel string) a2abiz.FederationOrg {
 	t.Helper()
 	org, err := f.uc.RegisterOrg(context.Background(), a2abiz.FederationOrg{
-		Name:         name,
-		Domain:       domain,
+		Name:          name,
+		Domain:        domain,
 		PublicBaseURL: "https://a2a." + domain,
-		TrustLevel:   trustLevel,
-		Status:       a2abiz.OrgStatusActive,
+		TrustLevel:    trustLevel,
+		Status:        a2abiz.OrgStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("register org %s: %v", domain, err)
@@ -436,9 +436,9 @@ type mockA2ARequest struct {
 // mockA2AEndpoint is an httptest server speaking the A2A JSON-RPC message/send
 // method. It replies with a message whose text is "pong: <incoming text>".
 type mockA2AEndpoint struct {
-	srv       *httptest.Server
-	mu        sync.Mutex
-	requests  []mockA2ARequest
+	srv        *httptest.Server
+	mu         sync.Mutex
+	requests   []mockA2ARequest
 	requireKey string // when non-empty, X-Api-Key must match or 401 is returned
 }
 

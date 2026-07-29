@@ -100,6 +100,9 @@ func (r *alertMonitorRepo) EnsureTraceSchema(context.Context) error { return nil
 func (r *alertMonitorRepo) InterruptStaleTraces(context.Context, time.Time) (int64, error) {
 	return 0, nil
 }
+func (r *alertMonitorRepo) DeleteMonitorEventsOlderThan(context.Context, time.Time) (int, error) {
+	return 0, nil
+}
 func (r *alertMonitorRepo) InsertMonitorTrace(context.Context, MonitorTraceWrite) error {
 	return nil
 }

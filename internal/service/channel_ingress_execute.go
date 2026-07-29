@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -25,6 +26,9 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 	if cancel != nil {
 		defer cancel()
 	}
+	// Unify trace id for the channel-originated turn: ingress flow events and
+	// the downstream chat turn (runChatTurnWithInput) share one trace id.
+	ctx, _ = turntrace.EnsureTraceID(ctx)
 
 	jobID, ctx, err := h.createTurnJob(ctx, chRow, ev, platform)
 	if err != nil {

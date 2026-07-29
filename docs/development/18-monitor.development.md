@@ -1,7 +1,7 @@
 # Monitor 监控 — 开发计划
 
-> **版本**：2026-06-06-v4 | **状态**：🟢 核心已通 + **MON-OPT-01~05 ✅ OPT-06 🟡（Registry 有 / DSL 未做）LOG-01/TRACE-01 ✅ DIAG-01/02 ✅ Latency P50/P95/P99 ✅ LOG-03 P0/P1/P2 ✅ REDLINE ✅ QUALITY ✅ 自检/自愈 ✅**；2026-07-16 修复 completion 副作用接线、firing reminder、Runs 列、反压 banner、进程 Tab；待办为 LOG-02（跨 pkg）、LOOP-01 FR-02/FR-03（P3）、Heal/Diagnose UI
-> **需求**：[18 monitor.md](./18%20monitor.md) · **设计**：[18 monitor.design.md](./18%20monitor.design.md)（§九 方案 C / 子模块 自检与自愈设计 / 子模块 Monitor 优化设计 / 子模块 Monitor AI 闭环设计）
+> **版本**：2026-07-29-v5 | **状态**：🟢 核心已通 + **MON-OPT-01~05 ✅ OPT-06 🟡（Registry 有 / DSL 未做）LOG-01/TRACE-01 ✅ DIAG-01/02 ✅ Latency P50/P95/P99 ✅ LOG-03 P0/P1/P2 ✅ REDLINE ✅ QUALITY ✅ 自检/自愈 ✅ EVT-R（Events 重设计 P0-P3）✅**；2026-07-16 修复 completion 副作用接线、firing reminder、Runs 列、反压 banner、进程 Tab；2026-07-29 Events 页重设计 + **监控整改**（runner.completion 记录恢复、AlertMetricRegistry 单例合并、自检补齐 7 Checker、Usage 移除跳转面板、ListAlertMetrics 指标目录 API、Alerts 页指标目录 + 规则卡片重设计）；待办为 LOG-02（跨 pkg）、LOOP-01 FR-02/FR-03（P3）、Heal/Diagnose UI
+> **需求**：[18 monitor.md](./18%20monitor.md) · **设计**：[18 monitor.design.md](./18%20monitor.design.md)（§九 方案 C / §十 Events 重设计 / 子模块 自检与自愈设计 / 子模块 Monitor 优化设计 / 子模块 Monitor AI 闭环设计）
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md)（I8-MON-01/02、MON-01、I5-MON-01/02）· **页面索引**：[frontend-pages.md](./frontend-pages.md) §监控
 
 ---
@@ -18,7 +18,7 @@
 | Biz | `internal/biz/monitor.go`、`internal/biz/monitor/`（alert_eval_worker、metric_ring_buffer、trace_projector、flow_file_appender、alert_metric_registry、root_cause_engine、diag_bundle、self_check、self_heal、self_check_repair、self_check_scheduler、predictive_heal、pattern_mining、failure_pattern_repo、failure_report、audit_record）、`runner_completion.go` |
 | Data | `internal/data/monitor.go`、`internal/data/monitor_alert.go`、`internal/data/monitor_trace.go`、`internal/data/audit_action_migrate.go`（审计 action 规范化迁移 20260729） |
 | Service | `internal/service/monitor.go`、`monitor_notify.go`、`monitor_flow_log.go`、`audit_meta.go`（审计 IP/UA 元数据提取） |
-| Cron | `internal/cronrunner/jobs/monitor_trace_backfill.go` |
+| Cron | `internal/cronrunner/jobs/monitor_trace_backfill.go`、`internal/cronrunner/jobs/monitor_events_cleanup.go`（EVT-R P3：monitor_events 30 天保留） |
 | 用量 | `internal/biz/usage.go`、`internal/service/turn_usage.go`、`chat_usage_ingress.go` |
 | FlowLog | `internal/biz/flowlog/`、`internal/data/flow_log_repo.go` |
 | 前端 | `web/src/pages/MonitorPage.vue`、`web/src/features/monitor/*`、`web/src/components/monitor/*` |
@@ -85,6 +85,13 @@
 | 审计 action 规范化 + 历史迁移 | ✅ | 2026-07-29：`biz.AuditAction(verb, resource)` 统一 `verb.resource` 契约；迁移 20260729 幂等规范化存量 action；`auditWhere` 支持动词级前缀过滤（`action LIKE 'verb.%'`） |
 | 审计埋点补齐（team/channel/provider/config） | ✅ | 2026-07-29：TeamService CRUD、ChannelService CRUD + Toggle + Credentials、LlmProviderModelService CRUD + Reveal、SystemSettingService Update 均落 `AdminAuditEntry`；detail 统一 JSON 契约 `{"summary","before","after"}`；`audit_meta.go` 从 Kratos transport 提取 IP/UserAgent |
 | Audit 页重设计（服务端分页/筛选 + i18n） | ✅ | 2026-07-29：`AuditTable.vue` 重构——action/resource 筛选 + 关键词搜索全部走服务端（limit/offset/action/resource/keyword），详情列显示 summary 摘要（hover 完整 JSON），行点击弹格式化 JSON 详情框；monitorPage.audit.* 全量 i18n |
+| runner.completion 记录恢复（Runner 指标修复） | ✅ | 2026-07-29：chat turn 与 team run 完成时恢复 `RecordRunnerCompletion`（2026-06-13 起缺失致 Runner 指标 45 天无新数据）；`MonitorUsecase` 接线 `evalWorker.OnCompletion` + `traceProjector.OnRunnerCompletion` |
+| AlertMetricRegistry 单例合并 | ✅ | 2026-07-29：Wire 共享单例（`monitor.WireProviderSet` 导出），`SelfCheckScheduler` 与 Usecase 注册到同一实例，杜绝孤儿注册表导致指标不评估 |
+| 自检 Checker 补齐 + Runner 指标流静默故障检测 | ✅ | 2026-07-29：`ProvideSelfCheckers` 装配 7 个 Checker（db_health/trace_projector/alert_eval/eventbus/websocket/flow_file/runner_completion_flow）；`GenericBus.SubscriberCount`（atomic）支撑 EventBusChecker；`RunnerCompletionFlowChecker` 检测 flow 活跃但无 completion 记录 |
+| Usage Tab 移除跳转面板 | ✅ | 2026-07-29：删除 `MonitorUsageDashboardLink.vue`（「打开概览/查看明细」），Usage Tab 只保留 `SelfCheckStatusPanel` + `MonitorRunnerMetrics` |
+| ListAlertMetrics 指标目录 API | ✅ | 2026-07-29：proto `AlertMetricInfo` + `GET /v1/monitor/alert-metrics`；`AlertMetricCatalogProvider.Catalog()` 暴露元数据，`Usecase.ListAlertMetricCatalog` 聚合当前值；内置 4 指标（runner.error_rate / skill.filesystem_missing_count / sequencer.dead_letter_count / monitor.selfcheck_unhealthy_count） |
+| Alerts 页重设计（指标目录 + 规则卡片 + i18n） | ✅ | 2026-07-29：`MonitorAlertMetricCatalog.vue`（指标卡片：本地化名称/含义/当前值/建议阈值）+ `MonitorAlertRuleCard.vue`（指标下拉预填建议值、监控/通知分区表单、实时状态徽章）；`metricI18nKey`/`formatMetricValue`/`alertRuleStateOf` 工具；monitorPage.alerts.* 全量 i18n（zh-CN/en-US） |
+| Events 页重设计（EVT-R P0-P3） | ✅ | 2026-07-29：归一化视图模型 `eventView.ts`（人话标题/severity/分类）；脉搏+历史双区；`ListMonitorEvents` 服务端 `event_types`/`exclude_event_types` 过滤；`skill.filesystem.updated`(info) SkipPersist 洪泛控制；`monitor_events` 30 天保留 job；详见下方 Phase EVT-R 任务表 |
 
 ---
 
@@ -139,6 +146,20 @@
 | MON-1d-10 | changelog + 文档同步 | docs | P1 | ✅ |
 
 > **方案 C 详细设计**：见 [18 monitor.design.md](./18%20monitor.design.md) §九。
+
+### Phase EVT-R — Events 页重设计（2026-07-29 · P0-P3）
+
+| ID | 任务 | 层 | 优先级 | 状态 | 关键实现 |
+|----|------|-----|--------|------|----------|
+| EVT-R-01 | 事件归一化视图模型 + 单测 | web | P0 | ✅ | `features/monitor/eventView.ts`（`MonitorViewEvent`：人话标题/摘要/severity/分类/actor；`wsEventToView`/`persistedEventToView` 纯函数）+ `__tests__/eventView.spec.ts` |
+| EVT-R-02 | 脉搏 + 历史双区分离 | web | P0 | ✅ | `RealtimeEvents.vue`：Pulse chip 流（WS，容量上限 FIFO）+ History 表格；新 WS 事件不重置历史分页 |
+| EVT-R-03 | 历史服务端分页 + 过滤 | proto/service/data | P0 | ✅ | `ListMonitorEventsRequest` 新增 `event_types`/`exclude_event_types`（前缀集合）；`buildMonitorEventsQuery` 级别→status 映射；`EVENT_TYPE_FILTERS` 对齐真实 keyspace |
+| EVT-R-04 | Skill 事件洪泛控制 | biz/skill | P1 | ✅ | `watch.Reporter.Report.SkipPersist`：`skill.filesystem.updated`（info 级）仅发 MonitorBus 实时事件，不落 `monitor_events`/`admin_audit` |
+| EVT-R-05 | 结构化详情弹窗 + 全量 i18n | web | P1 | ✅ | 元数据表（类型/级别/分类/主体/时间/会话）+ 原始 JSON 复制；`monitorPage.events.*` zh-CN/en-US |
+| EVT-R-06 | monitor_events 30 天保留 job | biz/data/cron | P2 | ✅ | `EventRepo.DeleteMonitorEventsOlderThan`（`RWDB().WriteDB` + `entErrToBizErr`）+ `jobs.MonitorEventsCleanup`（24h 周期，`MONITOR_EVENTS_CLEANUP_DISABLED` 可关）+ data 层集成测试 |
+| EVT-R-07 | 文档同步 | docs | P2 | ✅ | 18-monitor 三件套（§3.7 需求 / §十 设计 / 本表）+ 20-skill SkipPersist |
+
+> **EVT-R 详细设计**：见 [18 monitor.design.md](./18%20monitor.design.md) §十。
 
 ### MON-OPT — 业务逻辑优化（2026-05-26 方案落地）
 
