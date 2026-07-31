@@ -121,7 +121,7 @@ body.body--dark .market-filter-bar__chip:hover {
 .market-filter-bar__chip--active,
 .market-filter-bar__chip--active:hover {
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
   border-color: var(--color-accent);
 }
 .market-filter-bar__select {

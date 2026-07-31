@@ -134,7 +134,7 @@ body.body--dark .asset-card:hover {
   flex: none;
 }
 .asset-card__creator-initial {
-  color: #fff;
+  color: var(--color-on-accent);
   font-size: 10px;
   font-weight: 700;
 }

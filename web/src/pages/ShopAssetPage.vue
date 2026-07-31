@@ -243,7 +243,7 @@ function goCreator() {
   color: var(--color-accent);
 }
 .shop-asset-page__creator-initial {
-  color: #fff;
+  color: var(--color-on-accent);
   font-size: 11px;
   font-weight: 700;
 }

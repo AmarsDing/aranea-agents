@@ -141,7 +141,7 @@ export interface CategoryNode {
 
 export type InstallHealth = 'healthy' | 'degraded' | 'failed';
 
-export interface MyInstall {
+export type MyInstall = {
   assetId: string;
   name: string;
   type: MarketAssetType;
@@ -151,11 +151,11 @@ export interface MyInstall {
   /** 有可用更新时为最新版本号 */
   updateAvailable?: string;
   status: InstallHealth;
-}
+};
 
 export type OrderStatus = 'paid' | 'refunding' | 'refunded';
 
-export interface MyOrder {
+export type MyOrder = {
   id: string;
   assetId: string;
   name: string;
@@ -164,7 +164,7 @@ export interface MyOrder {
   amountCents: number;
   status: OrderStatus;
   createdAt: string;
-}
+};
 
 export interface StudioStats {
   totalInstalls: number;
@@ -175,7 +175,7 @@ export interface StudioStats {
   revenueTrend: number[];
 }
 
-export interface StudioAsset {
+export type StudioAsset = {
   id: string;
   name: string;
   type: MarketAssetType;
@@ -185,7 +185,7 @@ export interface StudioAsset {
   rating: number;
   revenueCents: number;
   updatedAt: string;
-}
+};
 
 export interface StudioInboxItem {
   id: string;

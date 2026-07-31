@@ -105,6 +105,8 @@ async function install(asset: MarketAsset) {
   try {
     await store.installAssetById(asset.id);
     $q.notify({ type: 'positive', message: t('shopPage.notifyInstallSuccess', { name: asset.name }) });
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('shopPage.notifyInstallFailed') });
   } finally {
     installingId.value = '';
   }
@@ -124,7 +126,7 @@ onMounted(async () => {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 .shop-creator-page__initial {
-  color: #fff;
+  color: var(--color-on-accent);
   font-size: 30px;
   font-weight: 800;
 }

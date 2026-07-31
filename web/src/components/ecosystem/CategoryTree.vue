@@ -159,7 +159,7 @@ body.body--dark .category-tree button:hover {
 .category-tree__item--active,
 .category-tree__item--active:hover {
   background: var(--color-accent);
-  color: #fff !important;
+  color: var(--color-on-accent) !important;
   font-weight: 600;
 }
 </style>

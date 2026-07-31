@@ -3727,6 +3727,7 @@ export default {
     notifyUninstallFailed: '卸载失败',
     notifyReviewSubmitted: '评价已提交',
     notifyReviewFailed: '提交失败',
+    notifyReplyFailed: '回复发送失败',
     reviewAuthorMe: '我',
     ratingCount: '{count} 条评价',
     writeReview: '写下你的评价',

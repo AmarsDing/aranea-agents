@@ -3745,6 +3745,7 @@ export default {
     notifyUninstallFailed: 'Uninstall failed',
     notifyReviewSubmitted: 'Review submitted',
     notifyReviewFailed: 'Submit failed',
+    notifyReplyFailed: 'Failed to send reply',
     reviewAuthorMe: 'Me',
     ratingCount: '{count} reviews',
     writeReview: 'Write a review',

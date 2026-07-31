@@ -207,6 +207,7 @@ Ecosystem 生态：Agent/Skill/Team 的市场与分享平台，支持发布、�
 - `web/src/features/ecosystem/mock.ts` — 新增：11 类资产 mock 数据（含 2 个 org_bundle 样例、分类树、订单、工作室数据）
 - `web/src/features/ecosystem/api.ts` — 扩展：M57 商城 mock API（searchAssets/getAsset/listCategories/install/listMyInstalls/getStudioStats/getOrgPickTree/submitReview 等），与 M30 RPC 双轨并存
 - `web/src/features/ecosystem/marketUi.ts` — 新增：资产类型元数据（图标/颜色）+ 价格/安装量格式化
+- `web/src/features/ecosystem/marketTableUi.ts` — 新增（2026-07-31 review 修复）：买家工作台/创作者中心 3 组 Registry 表格列定义（registryCol + REGISTRY_COL_W 规范宽度，i18n label 工厂函数）
 - `web/src/features/ecosystem/useMarketBrowsePage.ts` — 新增：浏览首页 composable（注意：reactive filter 经 store.filter 直接引用）
 - `web/src/features/ecosystem/useMarketAssetDetail.ts` — 新增：详情页 composable（安装确认/卸载/评分提交）
 - `web/src/stores/ecosystem/index.ts` — 扩展：M57 商城状态（categories/filter/assets/assetDetail/creatorDetail/myInstalls/myOrders/studio*/orgPickTree）与 actions
@@ -248,3 +249,4 @@ Ecosystem 生态：Agent/Skill/Team 的市场与分享平台，支持发布、�
 |------|------|------|
 | 2026-06-17 | 0.1 | Phase 1 MVP + Preset 架构改造落地记录 |
 | 2026-07-30 | 0.2 | Phase 1.5 商城 UI 骨架（六页 + 16 组件 + org_bundle）落地；修复文件损坏编码；任务清单新增 A10；验收标准同步浏览器复验结论 |
+| 2026-07-31 | 0.3 | aranea-frontend-review 审查修复：3 处裸 q-table 换 AppRegistryTable（U9）、列定义迁出至 marketTableUi.ts（B7/U10）、5 处 #fff → var(--color-on-accent)（U1）、ShopCreatorPage/ShopStudioPage 补 catch（B3）、新增 i18n key notifyReplyFailed；lint/test/build 全绿 + 浏览器复验 3 表格通过 |

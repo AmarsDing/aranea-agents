@@ -52,15 +52,15 @@
       <q-tab-panels v-model="tab" animated class="shop-studio-page__panels">
         <!-- 我的资产 -->
         <q-tab-panel name="assets" class="q-pa-none">
-          <q-table
-            flat
+          <AppRegistryTable
+            :shell="false"
             :rows="studioAssets"
             :columns="assetColumns"
             :loading="studioLoading"
             row-key="id"
             hide-pagination
             :pagination="{ rowsPerPage: 0 }"
-            class="app-registry-table"
+            column-persist-key="shop-studio-assets"
           >
             <template #body-cell-name="props">
               <q-td :props="props">
@@ -113,7 +113,7 @@
                 />
               </q-td>
             </template>
-          </q-table>
+          </AppRegistryTable>
         </q-tab-panel>
 
         <!-- 评论收件箱 -->
@@ -162,13 +162,14 @@ import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
-import type { QTableColumn } from 'quasar';
 import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AssetTypeIcon from '../components/ecosystem/AssetTypeIcon.vue';
 import RatingStars from '../components/ecosystem/RatingStars.vue';
 import ReplyReviewDialog from '../components/ecosystem/ReplyReviewDialog.vue';
 import TrendSparkline from '../components/ecosystem/TrendSparkline.vue';
 import { formatCents, formatInstalls } from '../features/ecosystem/marketUi';
+import { buildStudioAssetColumns } from '../features/ecosystem/marketTableUi';
 import type { StudioInboxItem } from '../features/ecosystem/types';
 import { useEcosystemStore } from '../stores/ecosystem';
 
@@ -201,15 +202,7 @@ const statCards = computed(() => {
 
 const unrepliedCount = computed(() => studioInbox.value.filter((i) => !i.replied).length);
 
-const assetColumns = computed<QTableColumn[]>(() => [
-  { name: 'name', label: t('shopPage.colAsset'), field: 'name', align: 'left' },
-  { name: 'reviewStatus', label: t('shopPage.colReviewStatus'), field: 'reviewStatus', align: 'left' },
-  { name: 'installs', label: t('shopPage.colInstalls'), field: 'installs', align: 'right' },
-  { name: 'rating', label: t('shopPage.colRating'), field: 'rating', align: 'left' },
-  { name: 'revenueCents', label: t('shopPage.colRevenue'), field: 'revenueCents', align: 'right' },
-  { name: 'updatedAt', label: t('shopPage.colUpdatedAt'), field: 'updatedAt', align: 'left' },
-  { name: 'actions', label: '', field: 'id', align: 'right' },
-]);
+const assetColumns = computed(() => buildStudioAssetColumns(t));
 
 const REVIEW_STATUS_COLORS: Record<string, string> = {
   published: 'positive',
@@ -239,6 +232,8 @@ async function sendReply(content: string) {
     await store.sendReply(replyTarget.value.id, content);
     replyOpen.value = false;
     $q.notify({ type: 'positive', message: t('shopPage.replySent') });
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('shopPage.notifyReplyFailed') });
   } finally {
     replySending.value = false;
   }

@@ -24,15 +24,15 @@
       <q-tab-panels v-model="tab" animated class="shop-me-page__panels">
         <!-- 已安装 -->
         <q-tab-panel name="installs" class="q-pa-none">
-          <q-table
-            flat
+          <AppRegistryTable
+            :shell="false"
             :rows="myInstalls"
             :columns="installColumns"
             :loading="meLoading"
             row-key="assetId"
             hide-pagination
             :pagination="{ rowsPerPage: 0 }"
-            class="app-registry-table"
+            column-persist-key="shop-me-installs"
           >
             <template #body-cell-name="props">
               <q-td :props="props">
@@ -102,20 +102,20 @@
                 />
               </q-td>
             </template>
-          </q-table>
+          </AppRegistryTable>
         </q-tab-panel>
 
         <!-- 订单 -->
         <q-tab-panel name="orders" class="q-pa-none">
-          <q-table
-            flat
+          <AppRegistryTable
+            :shell="false"
             :rows="myOrders"
             :columns="orderColumns"
             :loading="meLoading"
             row-key="id"
             hide-pagination
             :pagination="{ rowsPerPage: 0 }"
-            class="app-registry-table"
+            column-persist-key="shop-me-orders"
           >
             <template #body-cell-name="props">
               <q-td :props="props">
@@ -151,7 +151,7 @@
                 />
               </q-td>
             </template>
-          </q-table>
+          </AppRegistryTable>
         </q-tab-panel>
       </q-tab-panels>
     </q-card>
@@ -163,10 +163,11 @@ import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
-import type { QTableColumn } from 'quasar';
 import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AssetTypeIcon from '../components/ecosystem/AssetTypeIcon.vue';
 import PriceTag from '../components/ecosystem/PriceTag.vue';
+import { buildInstallColumns, buildOrderColumns } from '../features/ecosystem/marketTableUi';
 import { useEcosystemStore } from '../stores/ecosystem';
 
 const { t } = useI18n();
@@ -175,23 +176,8 @@ const store = useEcosystemStore();
 const { myInstalls, myOrders, meLoading } = storeToRefs(store);
 const tab = ref('installs');
 
-const installColumns = computed<QTableColumn[]>(() => [
-  { name: 'name', label: t('shopPage.colAsset'), field: 'name', align: 'left' },
-  { name: 'version', label: t('shopPage.colVersion'), field: 'version', align: 'left' },
-  { name: 'installedAt', label: t('shopPage.colInstalledAt'), field: 'installedAt', align: 'left' },
-  { name: 'health7d', label: t('shopPage.colHealth'), field: 'health7d', align: 'left' },
-  { name: 'status', label: t('shopPage.colStatus'), field: 'status', align: 'left' },
-  { name: 'actions', label: '', field: 'assetId', align: 'right' },
-]);
-
-const orderColumns = computed<QTableColumn[]>(() => [
-  { name: 'id', label: t('shopPage.colOrderId'), field: 'id', align: 'left' },
-  { name: 'name', label: t('shopPage.colAsset'), field: 'name', align: 'left' },
-  { name: 'amountCents', label: t('shopPage.colAmount'), field: 'amountCents', align: 'left' },
-  { name: 'status', label: t('shopPage.colStatus'), field: 'status', align: 'left' },
-  { name: 'createdAt', label: t('shopPage.colOrderDate'), field: 'createdAt', align: 'left' },
-  { name: 'actions', label: '', field: 'id', align: 'right' },
-]);
+const installColumns = computed(() => buildInstallColumns(t));
+const orderColumns = computed(() => buildOrderColumns(t));
 
 function healthColor(v: number): string {
   if (v >= 95) return 'positive';
