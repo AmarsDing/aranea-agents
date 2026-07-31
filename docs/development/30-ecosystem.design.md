@@ -316,12 +316,39 @@ provideEcosystemPresetScenarioDir  // 返回 biz.ScenarioDir()
 
 ```
 web/src/
-├── pages/EcosystemPage.vue              # 商城页面（路由 /shop，技术预览状态）
+├── pages/
+│   ├── EcosystemPage.vue                # 商城浏览首页（路由 /shop）
+│   ├── ShopAssetPage.vue                # 商品详情页（/shop/a/:slug）
+│   ├── ShopCreatorPage.vue              # 创作者主页（/shop/u/:handle）
+│   ├── ShopMePage.vue                   # 买家工作台（/shop/me）
+│   ├── ShopStudioPage.vue               # 创作者中心（/shop/studio）
+│   └── ShopPublishPage.vue              # 发布向导（/shop/publish）
 ├── features/ecosystem/
-│   ├── api.ts                           # gRPC-Web 客户端
-│   ├── types.ts                         # EcosystemProduct 类型
-│   └── useEcosystemPage.ts              # 页面 composable
-├── stores/ecosystem/index.ts            # useEcosystemStore
+│   ├── api.ts                           # API 入口：M30 gRPC-Web（既有）+ M57 商城 mock 实现
+│   ├── types.ts                         # 商城领域类型（MarketAsset/OrgBundlePreview/...）
+│   ├── mock.ts                          # M57 商城 mock 数据（11 类资产、分类树、订单、工作室）
+│   ├── marketUi.ts                      # UI 常量与格式化（资产类型图标/颜色、价格、安装量）
+│   ├── useMarketBrowsePage.ts           # 浏览首页 composable
+│   ├── useMarketAssetDetail.ts          # 详情页 composable（安装确认/评分提交）
+│   └── useEcosystemPage.ts              # M30 既有页面 composable（保留兼容）
+├── stores/ecosystem/index.ts            # useEcosystemStore（M30 + M57 商城状态）
+├── components/ecosystem/                # 16 个商城专用组件
+│   ├── AssetCard.vue                    # 资产卡片（网格单元）
+│   ├── AssetTypeIcon.vue                # 资产类型图标（11 类，含 org_bundle）
+│   ├── PriceTag.vue                     # 价格标签（免费/买断/订阅/企业）
+│   ├── RatingStars.vue                  # 星级评分
+│   ├── CategoryTree.vue                 # 分类树（域 → 多级分类，图标来自数据）
+│   ├── MarketFilterBar.vue              # 过滤栏（类型 Chip 组 + 价格 + 排序 + 重置）
+│   ├── MarketLeaderboard.vue            # 榜单卡片（热门/最新/高分）
+│   ├── InstallConfirmDialog.vue         # 安装确认弹窗（权限 + 高风险警示）
+│   ├── PermissionList.vue               # 权限清单（按风险分级着色）
+│   ├── AssetScreenshots.vue             # 截图横向滚动区
+│   ├── ReviewSection.vue                # 评价列表 + 写评价
+│   ├── ReplyReviewDialog.vue            # 创作者回复评价弹窗
+│   ├── TrendSparkline.vue               # 趋势迷你图（统计卡片用）
+│   ├── PublishTypeSelect.vue            # 发布向导第一步：资产类型选择卡片组
+│   ├── OrgBundleTree.vue                # 详情页：组织整包预览树（只读）
+│   └── OrgBundlePicker.vue              # 发布向导：组织节点树勾选器（可交互）
 ├── features/system-settings/
 │   ├── api.ts                           # 含 preset load/unload/status
 │   ├── types.ts                         # 含 EcosystemLoadedStatus 等类型
@@ -332,73 +359,98 @@ web/src/
 
 ### 7.2 商城前端类型与 API 契约
 
-```typescript
-// features/ecosystem/types.ts
-export type EcosystemProduct = {
-  id: string;
-  name: string;
-  display_name: string;
-  description: string;
-  type: string;
-  version: string;
-  install_count: number;
-  installed: boolean;
-};
+M57 商城领域类型（`features/ecosystem/types.ts`）：
 
-// features/ecosystem/api.ts
-export async function listEcosystemProducts(search?: string): Promise<EcosystemProduct[]>
-export async function installEcosystemProduct(id: string): Promise<void>
-export async function publishEcosystemProduct(input: {
-  name: string;
-  display_name: string;
-  description: string;
-  type: string;
-}): Promise<EcosystemProduct>
+```typescript
+export type MarketAssetType =
+  | 'skill' | 'mcp_server' | 'tool' | 'plugin' | 'agent' | 'team'
+  | 'channel_template' | 'knowledge_pack' | 'workflow' | 'company_bundle'
+  | 'org_bundle'; // 组织架构整包：部门 + 岗位 + Agent 整体打包
+
+export type PriceModel = 'free' | 'one_time' | 'subscription' | 'enterprise';
+
+export interface MarketAsset {
+  id: string; slug: string; name: string; type: MarketAssetType;
+  version: string; summary: string; readme: string; category: string;
+  tags: string[]; priceModel: PriceModel; priceCents: number;
+  rating: number; ratingCount: number; installCount: number;
+  creator: MarketCreator; permissions: AssetPermission[];
+  dependencies: AssetDependency[]; screenshots: string[];
+  publishedAt: string; installed: boolean;
+  orgBundle?: OrgBundlePreview; // 仅 org_bundle：部门/岗位/Agent 预览树
+  reviews: AssetReview[]; versions: AssetVersion[];
+}
+
+export interface OrgBundleNode {
+  id: string; kind: 'department' | 'position' | 'agent';
+  name: string; children?: OrgBundleNode[];
+}
 ```
 
-> 当前前端类型为简化子集，未包含 Proto 中全部字段（如 rating/price_cents/config_json 等）。
+浏览过滤与买家/创作者侧类型：
+
+```typescript
+export interface BrowseFilter {
+  search: string; type: MarketAssetType | ''; category: string;
+  priceModel: PriceModel | ''; sort: 'hot' | 'new' | 'rating';
+}
+export interface MyInstall { /* 资产 + 版本 + 安装时间 + 7 日健康度 + 状态 */ }
+export interface MyOrder { /* 订单号 + 金额 + 状态(paid/refunding/refunded) */ }
+export interface StudioStats { /* 总安装/总收益/均分/在售数 + 趋势序列 */ }
+export interface OrgPickNode { /* 发布向导可勾选组织树节点（含勾选态） */ }
+```
+
+API 层（`features/ecosystem/api.ts`）双轨：M30 既有 gRPC-Web（`listEcosystemProducts` 等）保留；M57 商城接口当前为 mock 实现（`searchAssets` / `getAsset` / `listCategories` / `installAsset` / `uninstallAsset` / `listMyInstalls` / `listMyOrders` / `getStudioStats` / `listStudioAssets` / `listStudioInbox` / `getOrgPickTree` / `submitReview`），后端 Proto 就绪后按同签名替换为真实 RPC。
 
 ### 7.3 商城页面组件设计
 
-**EcosystemPage.vue**：商城首页，技术预览状态（页面顶部展示 `q-banner` 提示）
+**EcosystemPage.vue（/shop）**：`AppPageHero`（kicker/标题/副标题 + 三入口按钮 + Hero 内嵌搜索框）→ 左侧 `CategoryTree`（col-md-3/lg-2）→ 右侧 `MarketFilterBar` + 默认视图三榜单（`MarketLeaderboard` × hot/new/top）或过滤后 `AssetCard` 网格；骨架屏 + 空态；composable `useMarketBrowsePage`。
 
-| 区域 | 组件 | 说明 |
-|------|------|------|
-| 顶部提示 | `QBanner` | "生态市场为技术预览" |
-| 搜索 | `QInput` | 关键词搜索 |
-| 发布按钮 | `QBtn` | 打开发布弹窗 |
-| 列表 | `QCard` | 商品卡片网格 |
-| 安装 | API 调用 | 安装/已安装状态切换 |
-| 发布弹窗 | `QDialog` + `QInput` + `QSelect` | 名称/显示名/描述/类型 |
+**ShopAssetPage.vue（/shop/a/:slug）**：面包屑 + 资产头部卡（`AssetTypeIcon` 56px + 名称/类型 Chip/版本/创作者/评分安装量 + `PriceTag` + 安装/卸载 CTA）→ 左 Tab（README `v-html` 渲染 / `OrgBundleTree`（仅 org_bundle）/ 版本 / `ReviewSection`）→ 右侧栏（`PermissionList`、`AssetScreenshots`、依赖、元信息）；有权限时先弹 `InstallConfirmDialog`（含高风险警示）；composable `useMarketAssetDetail`。
 
-Quasar 组件映射（需求规划，部分已实现）：
+**ShopCreatorPage.vue（/shop/u/:handle）**：创作者资料卡（统计四项 + 关注按钮）+ 作品 `AssetCard` 网格。
 
-| 功能 | 组件 |
-|------|------|
-| 页面 | `QPage` + `QCard` |
-| 搜索 | `QInput` |
-| 类型筛选 | `QBtnToggle` |
-| 价格 / 排序 | `QSelect` |
-| 商品展示 | `QCard` + `QChip` + `QAvatar` |
-| 详情 | `QDialog` + `QExpansionItem` |
-| 发布流程 | `QTimeline` |
-| 状态 / 认证 | `QBadge` + `QIcon` |
+**ShopMePage.vue（/shop/me）**：已安装 Tab（`AppRegistryTable`：资产/版本/安装时间/7 日健康度/状态 + 更新/卸载）+ 订单 Tab（订单号/金额/时间/状态 Chip）。
+
+**ShopStudioPage.vue（/shop/studio）**：统计卡片 × 4（含 `TrendSparkline`）+ 我的资产表格（`ReplyReviewDialog` 处理评价回复）+ 评价收件箱 Tab。
+
+**ShopPublishPage.vue（/shop/publish）**：`QStepper` 四步——① `PublishTypeSelect`（11 类含 org_bundle）→ ② 基本信息（名称/slug 自动推导（支持中文 slug）/分类/定价/README 编辑预览/版本/兼容性/标签）→ ③ org_bundle 专属 `OrgBundlePicker`（组织树勾选 + 实时统计）→ ④ 确认发布（摘要表 + 勾选汇总）。
 
 ### 7.4 Pinia Store 设计
 
 ```typescript
-// stores/ecosystem/index.ts
+// stores/ecosystem/index.ts（setup store；M30 状态保留兼容，M57 商城状态新增）
 export const useEcosystemStore = defineStore('ecosystem', () => {
-  const products = ref<EcosystemProduct[]>([]);
-  const loading = ref(false);
+  // M30 既有：products / loading / load / install / publish
 
-  async function load(search?: string): Promise<EcosystemProduct[]>
-  async function install(productId: string): Promise<void>
-  async function publish(input: { name; display_name; description; type }): Promise<void>
+  // M57 浏览页
+  const categories = ref<CategoryNode[]>([]);
+  const filter = reactive<BrowseFilter>({ search: '', type: '', category: '', priceModel: '', sort: 'hot' });
+  const assets = ref<MarketAsset[]>([]);
+  const browseLoading = ref(false);
+  async function browse()            // searchAssets({ ...filter })
+  function resetFilter()             // 重置 filter 并重新 browse
 
-  return { products, loading, load, install, publish };
+  // M57 详情 / 创作者
+  const assetDetail = ref<MarketAsset | null>(null);
+  const creatorDetail = ref<{ creator: MarketCreator | null; assets: MarketAsset[] }>(...);
+  async function loadAsset(slug: string)
+  async function loadCreator(handle: string)
+
+  // M57 买家 / 创作者中心 / 发布向导
+  const myInstalls = ref<MyInstall[]>([]);
+  const myOrders = ref<MyOrder[]>([]);
+  const studioStats = ref<StudioStats | null>(null);
+  const studioAssets = ref<StudioAsset[]>([]);
+  const studioInbox = ref<StudioInboxItem[]>([]);
+  const orgPickTree = ref<OrgPickNode[]>([]);
+  async function installAssetById(id: string)   // 安装后同步 assets/assetDetail/myInstalls 状态
+  async function uninstallAssetById(id: string)
+  async function submitReview(assetId: string, rating: number, content: string)
 });
 ```
+
+> 注意：`filter` 为 `reactive` 对象。composable 中通过 `storeToRefs` 解构会被包成 `Ref`，脚本内访问需用 `store.filter` 直接引用以保持响应性（`useMarketBrowsePage` 即此模式）；模板中 v-model 绑定不受影响。
 
 ### 7.5 附带生态前端类型与 API
 

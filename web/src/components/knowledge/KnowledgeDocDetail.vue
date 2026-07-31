@@ -1,10 +1,9 @@
 <template>
   <q-card flat class="app-pane-card knowledge-doc-detail">
     <template v-if="node">
-      <!-- 一级密度：摘要卡（无需二次请求，列表数据直接渲染） -->
       <div class="app-pane-card__header knowledge-doc-detail__header">
         <div class="row items-center no-wrap ellipsis">
-          <q-icon name="description" size="18px" class="q-mr-xs" />
+          <q-icon :name="headerIcon" size="18px" class="q-mr-xs" />
           <span class="ellipsis" :title="node.name">{{ node.name }}</span>
         </div>
         <div class="row items-center no-wrap q-gutter-xs">
@@ -18,30 +17,73 @@
           <div class="text-caption text-weight-medium">{{ t('knowledgePage.detailError') }}</div>
           <div class="text-caption">{{ node.error_message }}</div>
         </q-banner>
-        <div v-if="node.tags?.length" class="q-mb-sm">
-          <q-chip v-for="tag in node.tags" :key="tag" dense size="sm" outline class="q-mr-xs">{{ tag }}</q-chip>
-        </div>
-        <div class="knowledge-doc-detail__summary">
-          {{ node.summary || t('knowledgePage.detailSummaryEmpty') }}
-        </div>
-        <div class="row q-gutter-md q-mt-sm text-caption text-grey-7">
-          <span>{{ formatKnowledgeDocSize(node.size_bytes) }}</span>
-          <span>{{ formatKnowledgeTime(node.updated_at) }}</span>
-          <span v-if="node.path" class="ellipsis" :title="node.path">{{ node.path }}</span>
+
+        <!-- 副标题：路径（V12.4：名称上移标题，路径缩小为副标题） -->
+        <div v-if="node.path" class="knowledge-doc-detail__path ellipsis" :title="node.path">{{ node.path }}</div>
+
+        <!-- 第一行：摘要（一行省略）+ hover 360px 大号浮层卡（完整摘要 + 元信息） -->
+        <div class="knowledge-doc-detail__summary-hover">
+          <div class="knowledge-doc-detail__summary ellipsis">
+            {{ node.summary || t('knowledgePage.detailSummaryEmpty') }}
+          </div>
+          <div class="knowledge-doc-detail__hover-card">
+            <div class="knowledge-doc-detail__hover-summary">
+              {{ node.summary || t('knowledgePage.detailSummaryEmpty') }}
+            </div>
+            <div v-if="node.tags?.length" class="q-mt-xs">
+              <q-chip v-for="tag in node.tags" :key="tag" dense size="sm" outline class="q-mr-xs">{{ tag }}</q-chip>
+            </div>
+            <div class="knowledge-doc-detail__hover-meta">
+              <div>
+                <span>{{ t('knowledgePage.hoverMetaSize') }}</span
+                >{{ formatKnowledgeDocSize(node.size_bytes) }}
+              </div>
+              <div>
+                <span>{{ t('knowledgePage.hoverMetaUpdated') }}</span
+                >{{ formatKnowledgeTime(node.updated_at) }}
+              </div>
+              <div v-if="node.path">
+                <span>{{ t('knowledgePage.hoverMetaPath') }}</span
+                >{{ node.path }}
+              </div>
+              <div v-if="node.doc_type">
+                <span>{{ t('knowledgePage.hoverMetaType') }}</span
+                >{{ node.doc_type }}
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div class="row q-gutter-xs q-mt-md">
+        <!-- 第二行：关联计数 chips（显式/实体/语义），点击锚滚关联区 -->
+        <div class="row items-center q-gutter-xs q-mt-sm">
+          <q-chip
+            v-for="c in linkChips"
+            :key="c.type"
+            dense
+            size="sm"
+            :color="c.count ? c.color : 'grey-4'"
+            :text-color="c.count ? 'white' : 'grey-7'"
+            clickable
+            @click="scrollToLinks"
+          >
+            {{ c.label }} {{ c.count }}
+          </q-chip>
+          <q-space />
+          <!-- 操作：编辑（md/txt vault）/ 下载原文（word 等）/ 移动 / 删除 -->
           <q-btn
+            v-if="editable && !editing"
             flat
             dense
-            no-caps
+            round
             size="sm"
-            color="primary"
-            :icon="expanded ? 'expand_less' : 'expand_more'"
-            :label="expanded ? t('knowledgePage.detailCollapse') : t('knowledgePage.detailExpand')"
-            @click="$emit('toggle-expand')"
-          />
-          <q-space />
+            icon="edit_outlined"
+            @click="$emit('start-edit')"
+          >
+            <q-tooltip>{{ t('knowledgePage.detailEdit') }}</q-tooltip>
+          </q-btn>
+          <q-btn v-if="showDownload" flat dense round size="sm" icon="download" @click="$emit('download-asset')">
+            <q-tooltip>{{ t('knowledgePage.detailDownloadOriginal') }}</q-tooltip>
+          </q-btn>
           <q-btn flat dense round size="sm" icon="drive_file_move_outline" @click="$emit('move')">
             <q-tooltip>{{ t('knowledgePage.moveTo') }}</q-tooltip>
           </q-btn>
@@ -50,51 +92,108 @@
           </q-btn>
         </div>
 
-        <!-- 二级密度：正文预览 + 关联区 -->
-        <q-slide-transition>
-          <div v-if="expanded" class="q-mt-md">
-            <div class="knowledge-doc-detail__section-title">
-              {{ t('knowledgePage.detailPreview') }}
-              <q-chip v-if="previewOrganized" dense size="sm" color="positive" text-color="white" class="q-ml-xs">
-                {{ t('knowledgePage.previewOrganizedBadge') }}
-              </q-chip>
-            </div>
-            <q-linear-progress v-if="previewLoading" indeterminate color="primary" />
+        <!-- 正文/媒体区：固定高 420px，主题化滚动条 -->
+        <div class="knowledge-doc-detail__section-title q-mt-md">
+          {{ mediaSectionTitle }}
+          <q-chip
+            v-if="previewOrganized && showTextPreview"
+            dense
+            size="sm"
+            color="positive"
+            text-color="white"
+            class="q-ml-xs"
+          >
+            {{ t('knowledgePage.previewOrganizedBadge') }}
+          </q-chip>
+          <q-space />
+          <template v-if="editing">
+            <q-btn
+              flat
+              dense
+              no-caps
+              size="sm"
+              color="primary"
+              :label="t('knowledgePage.detailCancel')"
+              @click="$emit('cancel-edit')"
+            />
+            <q-btn
+              unelevated
+              dense
+              no-caps
+              size="sm"
+              color="primary"
+              :label="editSaving ? t('knowledgePage.detailSaving') : t('knowledgePage.detailSave')"
+              :loading="editSaving"
+              @click="$emit('save-edit')"
+            />
+          </template>
+        </div>
+        <div class="knowledge-doc-detail__media">
+          <q-linear-progress v-if="previewLoading || assetLoading" indeterminate color="primary" />
+          <template v-else>
+            <!-- 编辑态：等宽 textarea（G2-B5） -->
+            <textarea
+              v-if="editing"
+              class="knowledge-doc-detail__editor"
+              :value="editDraft"
+              spellcheck="false"
+              @input="$emit('update:edit-draft', ($event.target as HTMLTextAreaElement).value)"
+            />
+            <!-- 图片/音频/视频：B6 原始流内联渲染 -->
+            <img
+              v-else-if="mediaKind === 'image' && assetUrl"
+              :src="assetUrl"
+              :alt="node.name"
+              class="knowledge-doc-detail__img"
+            />
+            <audio
+              v-else-if="mediaKind === 'audio' && assetUrl"
+              :src="assetUrl"
+              controls
+              class="knowledge-doc-detail__audio"
+            />
+            <video
+              v-else-if="mediaKind === 'video' && assetUrl"
+              :src="assetUrl"
+              controls
+              class="knowledge-doc-detail__video"
+            />
+            <!-- md/txt/word/其他：解析后文本预览 -->
             <pre v-else-if="previewContent" class="knowledge-doc-detail__preview">{{ previewContent }}</pre>
-            <div v-else class="text-caption text-grey-6">{{ t('knowledgePage.previewEmpty') }}</div>
+            <div v-else class="text-caption text-grey-6 q-pa-sm">{{ t('knowledgePage.previewEmpty') }}</div>
+          </template>
+        </div>
 
-            <div class="knowledge-doc-detail__section-title q-mt-md">
-              {{ t('knowledgePage.detailLinks') }}
-            </div>
-            <q-linear-progress v-if="linksLoading" indeterminate color="primary" />
-            <q-list v-else-if="links.length" dense separator>
-              <q-item
-                v-for="(l, i) in links"
-                :key="`${l.target_doc_id}-${l.direction}-${i}`"
-                clickable
-                @click="$emit('navigate', { docId: l.target_doc_id, relPath: l.target_rel_path })"
-              >
-                <q-item-section avatar>
-                  <q-icon :name="l.direction === 'out' ? 'north_east' : 'south_west'" size="16px" />
-                </q-item-section>
-                <q-item-section>
-                  <q-item-label lines="1">{{ l.target_source }}</q-item-label>
-                  <q-item-label v-if="l.context" caption lines="1">{{ l.context }}</q-item-label>
-                </q-item-section>
-                <q-item-section side class="row items-center q-gutter-xs">
-                  <span class="text-caption text-grey-6">
-                    {{ l.direction === 'out' ? t('knowledgePage.linkDirOut') : t('knowledgePage.linkDirIn') }}
-                  </span>
-                  <!-- R-3：关联来源类型徽标（显式/实体/语义），避免用户误以为全是可靠关联 -->
-                  <q-chip dense size="sm" :color="linkTypeColor(l.link_type)" text-color="white">
-                    {{ linkTypeLabel(l.link_type) }}
-                  </q-chip>
-                </q-item-section>
-              </q-item>
-            </q-list>
-            <div v-else class="text-caption text-grey-6">{{ t('knowledgePage.detailLinksEmpty') }}</div>
-          </div>
-        </q-slide-transition>
+        <!-- 关联区（chips 锚滚目标） -->
+        <div ref="linksSection" class="knowledge-doc-detail__section-title q-mt-md">
+          {{ t('knowledgePage.detailLinks') }}
+        </div>
+        <q-linear-progress v-if="linksLoading" indeterminate color="primary" />
+        <q-list v-else-if="links.length" dense separator>
+          <q-item
+            v-for="(l, i) in links"
+            :key="`${l.target_doc_id}-${l.direction}-${i}`"
+            clickable
+            @click="$emit('navigate', { docId: l.target_doc_id, relPath: l.target_rel_path })"
+          >
+            <q-item-section avatar>
+              <q-icon :name="l.direction === 'out' ? 'north_east' : 'south_west'" size="16px" />
+            </q-item-section>
+            <q-item-section>
+              <q-item-label lines="1">{{ l.target_source }}</q-item-label>
+              <q-item-label v-if="l.context" caption lines="1">{{ l.context }}</q-item-label>
+            </q-item-section>
+            <q-item-section side class="row items-center q-gutter-xs">
+              <span class="text-caption text-grey-6">
+                {{ l.direction === 'out' ? t('knowledgePage.linkDirOut') : t('knowledgePage.linkDirIn') }}
+              </span>
+              <q-chip dense size="sm" :color="linkTypeColor(l.link_type)" text-color="white">
+                {{ linkTypeLabel(l.link_type) }}
+              </q-chip>
+            </q-item-section>
+          </q-item>
+        </q-list>
+        <div v-else class="text-caption text-grey-6">{{ t('knowledgePage.detailLinksEmpty') }}</div>
       </div>
     </template>
 
@@ -107,29 +206,95 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { KnowledgeLink, VaultTreeNode } from '../../features/knowledge/types';
-import { formatKnowledgeDocSize, formatKnowledgeTime, knowledgeStatusColor } from '../../features/knowledge/knowledgeUi';
+import type { KnowledgeMediaKind } from '../../features/knowledge/knowledgeUi';
+import {
+  formatKnowledgeDocSize,
+  formatKnowledgeTime,
+  knowledgeStatusColor,
+} from '../../features/knowledge/knowledgeUi';
 
-defineProps<{
+const props = defineProps<{
   node: VaultTreeNode | null;
-  expanded: boolean;
   previewContent: string;
   previewOrganized: boolean;
   previewLoading: boolean;
   links: KnowledgeLink[];
   linksLoading: boolean;
+  linkCounts: { explicit: number; entity: number; semantic: number };
+  mediaKind: KnowledgeMediaKind;
+  editable: boolean;
+  editing: boolean;
+  editDraft: string;
+  editSaving: boolean;
+  assetUrl: string;
+  assetLoading: boolean;
 }>();
 
 defineEmits<{
-  'toggle-expand': [];
   delete: [];
   move: [];
   navigate: [payload: { docId: string; relPath: string }];
+  'start-edit': [];
+  'cancel-edit': [];
+  'save-edit': [];
+  'update:edit-draft': [value: string];
+  'download-asset': [];
 }>();
 
 const { t } = useI18n();
 const statusColor = knowledgeStatusColor;
+
+const linksSection = ref<HTMLElement | null>(null);
+
+const headerIcon = computed(() => {
+  switch (props.mediaKind) {
+    case 'image':
+      return 'image';
+    case 'audio':
+      return 'audiotrack';
+    case 'video':
+      return 'movie';
+    case 'word':
+      return 'article';
+    default:
+      return 'description';
+  }
+});
+
+const mediaSectionTitle = computed(() => {
+  if (props.editing) return t('knowledgePage.detailEditing');
+  switch (props.mediaKind) {
+    case 'image':
+      return t('knowledgePage.detailMediaImage');
+    case 'audio':
+      return t('knowledgePage.detailMediaAudio');
+    case 'video':
+      return t('knowledgePage.detailMediaVideo');
+    default:
+      return t('knowledgePage.detailPreview');
+  }
+});
+
+/** 文本预览徽标（已整理）仅在非编辑、非纯媒体渲染时展示。 */
+const showTextPreview = computed(
+  () => !props.editing && !(props.assetUrl && ['image', 'audio', 'video'].includes(props.mediaKind)),
+);
+
+/** 下载原文按钮：word/其他二进制（md/txt 就地编辑，媒体区已是原件）。 */
+const showDownload = computed(() => props.mediaKind === 'word' || props.mediaKind === 'other');
+
+const linkChips = computed(() => [
+  { type: 'explicit', label: t('knowledgePage.linkTypeExplicit'), count: props.linkCounts.explicit, color: 'primary' },
+  { type: 'entity', label: t('knowledgePage.linkTypeEntity'), count: props.linkCounts.entity, color: 'deep-purple' },
+  { type: 'semantic', label: t('knowledgePage.linkTypeSemantic'), count: props.linkCounts.semantic, color: 'teal' },
+]);
+
+function scrollToLinks() {
+  linksSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 function linkTypeColor(linkType: string): string {
   if (linkType === 'explicit') return 'primary';
@@ -163,11 +328,72 @@ function linkTypeLabel(linkType: string): string {
     overflow-y: auto;
   }
 
+  &__path {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    margin-bottom: 6px;
+  }
+
+  // 第一行：摘要一行省略 + hover 360px 浮层卡（V12.4）
+  &__summary-hover {
+    position: relative;
+  }
+
   &__summary {
     font-size: 13px;
     line-height: 1.6;
     color: var(--color-text-primary);
+    cursor: default;
+  }
+
+  &__hover-card {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 360px;
+    max-width: 90vw;
+    padding: 12px 14px;
+    background: var(--color-surface-solid);
+    border: 1px solid var(--color-border-soft);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    z-index: 20;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-4px);
+    transition:
+      opacity 0.15s ease,
+      transform 0.15s ease,
+      visibility 0.15s;
+  }
+
+  &__summary-hover:hover &__hover-card {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+
+  &__hover-summary {
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--color-text-primary);
     white-space: pre-wrap;
+  }
+
+  &__hover-meta {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    span {
+      display: inline-block;
+      min-width: 56px;
+      color: var(--color-text-primary);
+      font-weight: 600;
+    }
   }
 
   &__section-title {
@@ -177,19 +403,77 @@ function linkTypeLabel(linkType: string): string {
     text-transform: uppercase;
     letter-spacing: 0.04em;
     margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  // 正文/媒体区：固定高 420px + 主题化滚动条（V12.4）
+  &__media {
+    height: 420px;
+    overflow: auto;
+    background: var(--color-surface-soft);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+
+    &::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: var(--color-border-soft);
+      border-radius: 4px;
+    }
+    &::-webkit-scrollbar-thumb:hover {
+      background: var(--color-primary, var(--q-primary));
+    }
+  }
+
+  &__editor {
+    flex: 1;
+    min-height: 0;
+    resize: none;
+    border: none;
+    outline: none;
+    padding: 10px 12px;
+    background: transparent;
+    color: var(--color-text-primary);
+    font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  &__img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    margin: auto;
+  }
+
+  &__audio {
+    width: 100%;
+    margin: auto 0;
+  }
+
+  &__video {
+    max-width: 100%;
+    max-height: 100%;
+    margin: auto;
+    background: #000;
   }
 
   &__preview {
     margin: 0;
     padding: 10px 12px;
-    max-height: 300px;
-    overflow: auto;
     font-size: 12px;
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
-    background: var(--color-surface-soft);
-    border-radius: 8px;
+    color: var(--color-text-primary);
   }
 }
 </style>

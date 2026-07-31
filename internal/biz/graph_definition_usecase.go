@@ -22,13 +22,14 @@ type GraphDefinitionProvider interface {
 // GraphDefinitionUsecase handles graph definition CRUD, templates, and versioning.
 // Separated from execution lifecycle to isolate concerns and enable independent testing.
 type GraphDefinitionUsecase struct {
-	reader   GraphReader
-	writer   GraphWriter
-	factory  GraphDefinitionFactory
-	nodeInfo GraphNodeInfoProvider
-	mu       sync.RWMutex
-	defs     map[string]*GraphDefinition
-	lg       loggateway.Logger
+	reader    GraphReader
+	writer    GraphWriter
+	factory   GraphDefinitionFactory
+	nodeInfo  GraphNodeInfoProvider
+	teamGuard TeamGraphGuard // B6/B7：Team 侧守卫（可选，装配期注入）
+	mu        sync.RWMutex
+	defs      map[string]*GraphDefinition
+	lg        loggateway.Logger
 }
 
 // NewGraphDefinitionUsecase creates a definition usecase with in-memory definition cache.
@@ -95,6 +96,26 @@ func (uc *GraphDefinitionUsecase) UpdateGraph(ctx context.Context, def *GraphDef
 	if err != nil {
 		return nil, err
 	}
+	// B6：team-owned 图的保存经 Team guard（活跃 Run 锁定 + 反向同步
+	// source/members）；guard 在事务内执行实际写库。owned 关系以 DB 现状
+	//（previous）为准——编辑器不感知服务端 team 标记。
+	if uc.guard() != nil && isTeamOwnedGraph(previous) && previous.TeamID != "" {
+		preserveTeamGraphMarkers(def, previous)
+		var saved *GraphDefinition
+		err := uc.guard().OnTeamOwnedGraphSaved(ctx, def, func(txCtx context.Context) error {
+			var uerr error
+			saved, uerr = uc.updateGraph(txCtx, def, previous)
+			return uerr
+		})
+		if err != nil {
+			return nil, err
+		}
+		return saved, nil
+	}
+	return uc.updateGraph(ctx, def, previous)
+}
+
+func (uc *GraphDefinitionUsecase) updateGraph(ctx context.Context, def *GraphDefinition, previous *GraphDefinition) (*GraphDefinition, error) {
 	appendVersionHistory(def, previous, uc.lg)
 	now := time.Now()
 	def.UpdatedAt = now
@@ -110,7 +131,46 @@ func (uc *GraphDefinitionUsecase) UpdateGraph(ctx context.Context, def *GraphDef
 	return saved, nil
 }
 
+// preserveTeamGraphMarkers keeps server-side team markers authoritative across
+// Graph editor saves：编辑器不感知 team_owned/team_source/team_id，owned 关系
+// 只能经 Team 保存钩子改变，保存时从 DB 现状强制恢复。
+func preserveTeamGraphMarkers(def, previous *GraphDefinition) {
+	if def.Metadata == nil {
+		def.Metadata = map[string]any{}
+	}
+	def.Metadata[GraphMetadataTeamOwnedKey] = true
+	if _, ok := def.Metadata[GraphMetadataTeamSourceKey]; !ok {
+		if previous.Metadata != nil {
+			if src, ok := previous.Metadata[GraphMetadataTeamSourceKey]; ok {
+				def.Metadata[GraphMetadataTeamSourceKey] = src
+			}
+		}
+	}
+	if strings.TrimSpace(def.TeamID) == "" {
+		def.TeamID = previous.TeamID
+	}
+}
+
 func (uc *GraphDefinitionUsecase) DeleteGraph(ctx context.Context, id string) error {
+	// B7 删除保护：team-owned 图（属主存在）/被 external 引用的独立图拒绝删除。
+	if uc.guard() != nil {
+		if def, err := uc.reader.GetDefinition(ctx, id); err == nil && def != nil {
+			if err := uc.guard().CheckGraphDeletable(ctx, def); err != nil {
+				return err
+			}
+		}
+	}
+	return uc.deleteGraph(ctx, id)
+}
+
+// DeleteOwnedGraph deletes a team-owned asset as part of the owner team's
+// lifecycle（B5 级联删 / D2 换绑），跳过 B7 用户态删除保护——调用方已完成
+// owned 归属校验（deleteOwnedGraphAsset / TeamUsecase.Delete）。
+func (uc *GraphDefinitionUsecase) DeleteOwnedGraph(ctx context.Context, id string) error {
+	return uc.deleteGraph(ctx, id)
+}
+
+func (uc *GraphDefinitionUsecase) deleteGraph(ctx context.Context, id string) error {
 	err := uc.writer.DeleteDefinition(ctx, id)
 	if err != nil {
 		return err
@@ -119,6 +179,20 @@ func (uc *GraphDefinitionUsecase) DeleteGraph(ctx context.Context, id string) er
 	delete(uc.defs, id)
 	uc.mu.Unlock()
 	return nil
+}
+
+// SetTeamGraphGuard wires the Team-side guard（B6/B7）after construction
+// （wire 装配期调用，打破 TeamUsecase ↔ GraphDefinitionUsecase 构造环）.
+func (uc *GraphDefinitionUsecase) SetTeamGraphGuard(g TeamGraphGuard) {
+	uc.mu.Lock()
+	uc.teamGuard = g
+	uc.mu.Unlock()
+}
+
+func (uc *GraphDefinitionUsecase) guard() TeamGraphGuard {
+	uc.mu.RLock()
+	defer uc.mu.RUnlock()
+	return uc.teamGuard
 }
 
 func (uc *GraphDefinitionUsecase) ReorderGraphs(ctx context.Context, ids []string) error {

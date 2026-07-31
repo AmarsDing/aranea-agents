@@ -179,7 +179,7 @@ func newTestFederationService(t *testing.T, orgs []a2abiz.FederationOrg, remotes
 	uc := a2abiz.NewFederationUsecase(orgRepo, gov,
 		a2abiz.NewDirectory(orgRepo, remoteLister),
 		a2abiz.NewAgentCardSync(remoteLister, fedCardDiscovererMock{}, &fedCardWriterMock{}, loggateway.NewNoop()),
-		remoteLister, executor)
+		remoteLister, executor, nil)
 	return NewFederationService(uc), orgRepo, auditRepo
 }
 

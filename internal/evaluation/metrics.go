@@ -109,6 +109,22 @@ func (a *legacyAgg) finalize(run *biz.EvalRun) {
 	}
 }
 
+// avg returns the mean of the per-metric means (metrics with no scored cases
+// are excluded). Returns 0 when nothing was scored.
+func (a *legacyAgg) avg() float32 {
+	var sum, n float32
+	for _, b := range []aggBucket{a.exact, a.contains, a.tool} {
+		if b.count > 0 {
+			sum += b.sum / b.count
+			n++
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return sum / n
+}
+
 // scoreToolCallAccuracy checks if expected tools (metadata_json.expected_tools) appear in output.
 func scoreToolCallAccuracy(metadataJSON, actual string) float32 {
 	if metadataJSON == "" {

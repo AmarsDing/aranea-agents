@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/team"
 	"aranea-agents/pkg/loggateway"
 
@@ -20,6 +22,7 @@ type GraphTaskRuntime struct {
 	webhooks        *biz.WebhookDispatcher
 	dispatch        *biz.TaskDispatcher
 	teamGraphResume team.TeamGraphTaskResumeHandler
+	monitorBus      contract.MonitorBus
 	lg              loggateway.Logger
 }
 
@@ -36,14 +39,16 @@ func NewGraphTaskRuntime(
 	taskUC *biz.TaskUsecase,
 	orch *GraphOrchestrationProjector,
 	webhooks *biz.WebhookDispatcher,
+	monitorBus contract.MonitorBus,
 	lg loggateway.Logger,
 ) *GraphTaskRuntime {
 	rt := &GraphTaskRuntime{
-		graphUC:  graphUC,
-		taskUC:   taskUC,
-		orch:     orch,
-		webhooks: webhooks,
-		lg:       lg,
+		graphUC:    graphUC,
+		taskUC:     taskUC,
+		orch:       orch,
+		webhooks:   webhooks,
+		monitorBus: monitorBus,
+		lg:         lg,
 	}
 	if taskUC != nil {
 		taskUC.SetStatusPublisher(rt)
@@ -52,7 +57,7 @@ func NewGraphTaskRuntime(
 	if graphUC != nil {
 		graphUC.SetTaskCoordinator(rt)
 	}
-	rt.dispatch = biz.NewTaskDispatcher(taskUC, rt, lg)
+	rt.dispatch = biz.NewTaskDispatcher(taskUC, rt, lg, ProvideFlowLogWriter(lg, monitorBus))
 	return rt
 }
 
@@ -79,6 +84,22 @@ func (r *GraphTaskRuntime) PublishGraphTaskStatus(ctx context.Context, task *biz
 	exec, err := r.graphUC.GetExecution(ctx, task.ExecutionID)
 	if err != nil {
 		r.lg.Warn("graph task status publish failed", loggateway.StepID("graph.task_status_fail"), loggateway.Str("execution_id", task.ExecutionID), loggateway.Err(err))
+		if r.monitorBus != nil {
+			// The execution lookup failed, so no session correlation is
+			// available; run id carries the execution id.
+			flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+				Ctx:    ctx,
+				RunID:  task.ExecutionID,
+				Domain: event.TraceDomainGraph,
+				LG:     r.lg,
+				Infra:  event.NewInfraFromBus(r.monitorBus),
+			})
+			flow.LogError("system.graph.task_status_fail", "图任务状态发布失败",
+				event.P("execution_id", task.ExecutionID),
+				event.P("task_id", task.TaskID),
+				event.P("error", err.Error()),
+			)
+		}
 		return
 	}
 	if r.orch != nil {
@@ -191,12 +212,13 @@ func WireGraphTaskRuntime(
 	linkRepo biz.TaskLinkRepo,
 	webhooks *biz.WebhookDispatcher,
 	teamGraphCoord *team.TeamGraphRunCoordinator,
+	monitorBus contract.MonitorBus,
 	lg loggateway.Logger,
 ) *GraphTaskRuntime {
 	if taskUC != nil && linkRepo != nil {
 		taskUC.SetLinkRepo(linkRepo)
 	}
-	rt := NewGraphTaskRuntime(graphUC, taskUC, orch, webhooks, lg)
+	rt := NewGraphTaskRuntime(graphUC, taskUC, orch, webhooks, monitorBus, lg)
 	if teamGraphCoord != nil {
 		rt.SetTeamGraphTaskResumeHandler(teamGraphCoord)
 	}

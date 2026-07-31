@@ -41,6 +41,7 @@ type SessionMessageUsecase struct {
 	stateUsecase        *SessionStateUsecase
 	turnUsecase         *SessionTurnUsecase
 	participantUsecase  *SessionParticipantUsecase
+	flowLog             FlowLogWriter
 }
 
 // NewSessionMessageUsecase creates a new SessionMessageUsecase.
@@ -57,6 +58,7 @@ func NewSessionMessageUsecase(
 	stateRepo StateRepo,
 	turnRepo TurnRepo,
 	participants SessionParticipantRepository,
+	flowLog FlowLogWriter,
 ) *SessionMessageUsecase {
 	if titleGenerator == nil {
 		titleGenerator = NewNoopSessionTitleGenerator()
@@ -74,6 +76,7 @@ func NewSessionMessageUsecase(
 		stateUsecase:        NewSessionStateUsecase(stateRepo),
 		turnUsecase:         NewSessionTurnUsecase(turnRepo, metricsUsecase),
 		participantUsecase:  NewSessionParticipantUsecase(participants, sessionReader, messageReader),
+		flowLog:             flowLog,
 	}
 }
 
@@ -314,6 +317,10 @@ func (uc *SessionMessageUsecase) generateTitleAsync(parentCtx context.Context, s
 
 	title, err := uc.titleGenerator.Generate(bgCtx, content)
 	if err != nil {
+		if uc.flowLog != nil {
+			uc.flowLog.LogFlowError(bgCtx, sessionID, "system.session.title_fail", "会话标题生成失败",
+				LogPair{Key: "session_id", Value: sessionID}, LogPair{Key: "error", Value: err.Error()})
+		}
 		uc.lg.Debug("title generation skipped", loggateway.StepID("session.title"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		return
 	}

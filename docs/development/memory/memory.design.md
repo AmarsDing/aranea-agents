@@ -1848,12 +1848,12 @@ const memoryRoutes = [
 | L0 item_count / context_usage | `L0SnapshotRepo.GetLatestSessionSnapshot` / `ListSessionSnapshots` |
 | L1 active_tasks / field_count | 现有 L1 tasks/fields API |
 | L2 item_count / today_added | `episodeRepo.ListLatestByScope` + `created_at` 聚合 |
-| L3 item_count / conflict_open / recall_hits | facts 表 count + `conflict_count>0` + `hit_count` 增量聚合 |
+| L3 item_count / conflict_open / recall_hits | facts 表 count + `conflict_count>0` + `use_count` 聚合 |
 | L4 item_count / relation_count | `memoryGraphRepo.GraphStats`（已有） |
 | action_items | 上述冲突数 + cascade 待审批 + evolution pending + 上下文阈值 |
 | activity_feed | 归并最近 facts / episodes / entities（按 `created_at` 倒序，limit 20） |
 
-`recall_hits` 口径：近 7 天命中次数。facts 已有 `hit_count` 计数器，MVP 阶段取全量 `hit_count` 排序展示 Top 值即可，不做时间窗增量（避免新增统计表）。
+`recall_hits` 口径：召回次数（全量 `use_count` 求和）。`hit_count` 全库无递增代码（死计数器，恒 0），2026-07-30 起改为聚合 `use_count`（召回链路真实递增），前端标签同步改为「召回次数」；仅 L3 有召回追踪，其他层不展示该指标。三段计数（recalled/injected/cited）见 P1 规划。
 
 #### ② `GET /v1/memory/graph/unified?agent_id=&focus=&hops=2&min_weight=&layers=L2,L3,L4`
 
@@ -1940,8 +1940,8 @@ web/src/features/memory/
 | 层级色码（全站统一） | L0 `#90a4ae` / L1 `#7986cb` / L2 `#4db6ac` / L3 `#ba68c8` / L4 `#ff8a65` |
 | 图谱节点形状 | 圆形=L4 实体、圆角方块=L3 事实、三角=L2 情景 |
 | 边样式 | 实体关系=实线（颜色随源层级）；事实来源=虚线；冲突/INHIBIT=红色虚线 `#ef5350` |
-| 层级卡内容 | 图标+名称 / 一句话人话说明 / 核心大数字 / 今日新增 / 召回命中 / 健康徽标 |
-| 流向条 | 卡片排上方「沉淀 ⬇（今日新增）」、下方「召回 ⬆（命中次数）」 |
+| 层级卡内容 | 图标+名称 / 一句话人话说明 / 核心大数字 / 今日新增 / 召回次数（仅 L3） / 健康徽标 |
+| 流向条 | 卡片排上方「沉淀 ⬇（今日新增）」、下方「召回 ⬆（召回次数）」 |
 | 图谱默认视图 | focus + 2 跳 + 权重阈值 ≥0.35；底部状态栏显示节点/边/已过滤数 |
 | i18n | 层级名、健康状态、边类型全部走语言包，枚举映射中文 |
 
@@ -2038,4 +2038,75 @@ message ListMemoryEpisodesResponse {
 | 力导向布局（d3-force） | **移出本期**，列后续可选 | `web/package.json` 无 d3 依赖，违反零新依赖原则；dagre 分层已满足层级心智 |
 | Hero 区全记忆搜索框 + 健康总分徽标（§10.1 提及） | 列后续候选 | P1~P4 出口标准均未含；需独立设计搜索口径（跨层复合检索 vs facts 关键词） |
 | L2 时间线 session 过滤 | MVP 不做 | `ListEpisodeRowsAdmin` 已支持 sessionID 参数，前端后续按需开启 |
+
+---
+
+## 子模块：会话记忆分类治理与复用增强设计（2026-07-29）
+
+> 需求见 [`memory.md`](./memory.md) §22；任务进度见 [`memory-development.md`](./memory-development.md) Phase 6。
+
+### A. 提取分类透传（FR-M1）
+
+**现状链路**：`compress.MemoryExtractSystemPromptV2` + function schema 已让 LLM 输出 `subject_type / scope / confidence`（`internal/compress/memory_extract.go`），但 `convertFactsToProposals`（`internal/service/memory_llm_extractor.go`）丢弃这三字段，`auto_memory.go` 落库写死 `FactKind="fact" / ScopeType="agent" / Confidence=0.85`。
+
+**改动点**：
+
+1. `internal/compress/memory_extract.go`：`subject_type` 枚举追加 `constraint`（负向约束/工作要求，如"别用某工具""排查要从全局出发"），prompt 规则补充 constraint 语义说明。
+2. `biz.MemoryProposal` 增加 `SubjectType / Scope / Confidence` 三字段；`HeuristicConsolidator` 默认 `preference/user`；`FeedbackConsolidator` 默认 `preference/user`。
+3. `convertFactsToProposals` 透传三字段。
+4. `auto_memory.go` 落库映射：
+
+| subject_type | fact_kind |
+|--------------|-----------|
+| person | profile |
+| preference | preference |
+| constraint | constraint |
+| event | event |
+| concept | knowledge |
+| other / 空 | fact |
+
+`scope=user → ScopeType="user", ScopeID=userID`；`scope=agent → ScopeType="agent", ScopeID=appName`；`confidence` 直接透传（默认 0.7 由解析层兜底）。
+
+### B. 冲突判决与自动 supersede（FR-M2）
+
+**判决器**：biz 新增纯函数 `DecideMemoryConflict(kind, neighbors) → MemoryConflictDecision`（可单测，无 IO，`memory_conflict.go`）。
+
+- **近邻来源**：新增 `MemoryConflictNeighborSearcher`（data 层 pgvector `SearchByAgent`，agent+user 分区，score 钳制 [0,1]）；`MemoryConflictDetector` 包装 embed → 近邻搜索 → `GetFactRowsByIDs` 活性校验与 kind 富化（剔除 superseded/deleted 行）→ 纯函数判决。全链路基础设施失败降级为无动作，绝不阻塞写入。AutoMemoryWorker / memory_remember 均注入 detector。
+- **阈值与动作**（仅对 `preference / constraint / profile` 类 proposal 执行；knowledge/event/fact 类可叠加不判决）：
+
+| 近邻最高分 | 动作 |
+|-----------|------|
+| ≥ 0.92 且同 kind | **supersede**：新值正常写入，旧值 `status='superseded', superseded_by=新id, updated_at=now` |
+| 0.80 – 0.92 | 旧值 `conflict_count+1`，候选记入新值 `metadata_json.conflict_candidates`，留待记忆管家 dream_cycle 治理 |
+| < 0.80 | 无动作 |
+
+- **supersede 语义**：标记不删除，可回滚；召回查询与常驻注入均过滤 `status='active'`（既有召回已过滤 active，无需改动）。
+- **Data 层**：`memory_shim_l3.go` 新增 `SupersedeFact(ctx, oldID, newID)`，冲突标记复用既有 `BatchIncrementConflictCounts(ctx, ids)`，均走 `RWDB().WriteDB(ctx)` 事务感知路径。supersede 在写后应用（需新事实 ID），标记批量执行。
+
+### C. 常驻偏好/约束注入（FR-M3）
+
+- **Data 层**：`memory_shim_l3.go` 新增 `ListActivePreferenceFacts(ctx, agentID, userID, kinds, limit)`，查询 `scope∈{(user,userID),(agent,agentID)} + fact_kind∈kinds + status='active'`，按 `importance DESC, updated_at DESC` 排序。
+- **Biz 层**：窄接口 `MemoryPreferenceLister`（≤2 方法，Stability:evolving）。
+- **Agent 层**：`internal/agent/composite_prompt.go` 新增 `PinnedPreferenceCue(...)`，输出块：
+
+```
+## 用户偏好与工作要求（始终生效）
+- [PREFERENCE] ...
+- [CONSTRAINT] ...
+```
+
+- **装配**：与 `CompositeMemoryCue` 同处拼接，置于召回块之前；常量 `pinnedMax=10`、单条 ≤200 字符（rune 截断）。
+- **兼容**：存量 `fact_kind='fact'` 不进常驻块，渐进生效。
+
+### D. memory_remember 显式记忆工具（FR-M4）
+
+- **位置**：`internal/tools/memoryremember/remember.go`（function tool，对齐 skills_butler 工具模式）。
+- **输入**：`statement`（必填）、`kind`（preference|constraint，默认 preference）。`agentID / userID` 由装配闭包注入，**禁止 LLM 填写**（防越权写他人记忆）。
+- **写入**：复用 FR-M2 判决器做冲突治理 → `MemoryConsolidationWriter.UpsertFactsAndEpisodeBatch`；字段 `fact_kind=kind, scope_type=user, source_kind='explicit', importance=0.8, confidence=0.95, status='active'`。
+- **装配**：`ChatOrchestrator` custom tools 追加（全部 chat agent 可用）；`prompts/IDENTITY.md` 增加使用指导（用户明确说"记住/以后都……/不要再……"时调用）。
+
+### E. 技能管家对齐（联动 20-skill）
+
+- `prompts/skills/skills.md`：移除未实现的 `retire_skill`；工作流对齐实际 8 工具（analyze_skill_usage / recommend_skills / evolve_skill / optimize_skill / analyze_skill_health / analyze_tool_weights / analyze_orchestration / optimize_orchestration，装配于 `cli_admin_tools.go:225`）。
+- `recommend_skills` 已实现（pending proposals + 调用统计健康度），本期补单测。
 

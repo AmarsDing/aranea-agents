@@ -146,6 +146,17 @@ func (r *Runner) lookupAgent(ctx context.Context, id string) (biz.Agent, error) 
 	return r.td.ReadDeps.Agents.GetAgentByID(ctx, id)
 }
 
+// loadTeamForRun loads the team for a run, routing through the lazy graph
+// materialization ensurer（B10）when configured so legacy teams whose
+// linked_graph_id is still empty get materialized on first run. Falls back
+// to the plain reader when the port is not wired (tests/offline tools).
+func (r *Runner) loadTeamForRun(ctx context.Context, tid string) (biz.Team, error) {
+	if r.cfg.GraphEnsurer != nil {
+		return r.cfg.GraphEnsurer.EnsureTeamGraphAsset(ctx, tid)
+	}
+	return r.teamReader.GetTeamByID(ctx, tid)
+}
+
 // RunTurnFromInput executes one user turn for a team session using biz-level TurnInput.
 func (r *Runner) RunTurnFromInput(ctx context.Context, sess biz.Session, input biz.TurnInput) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
 	if r == nil || r.td.Sessions == nil || r.teamReader == nil || r.runWriter == nil || r.td.ReadDeps.Agents == nil || r.td.ReadDeps.LLM == nil {
@@ -162,7 +173,7 @@ func (r *Runner) RunTurnFromInput(ctx context.Context, sess biz.Session, input b
 		return biz.ChatMessage{}, biz.ChatMessage{}, apierror.Forbidden("CHAT_TEAM_NATIVE", "team_id does not match session")
 	}
 
-	teamRow, err := r.teamReader.GetTeamByID(ctx, tid)
+	teamRow, err := r.loadTeamForRun(ctx, tid)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return biz.ChatMessage{}, biz.ChatMessage{}, apierror.NotFound(apierror.DomainTeam, "team not found")

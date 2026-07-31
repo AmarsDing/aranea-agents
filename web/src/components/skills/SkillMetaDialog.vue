@@ -42,8 +42,8 @@
           />
         </div>
       </q-card-section>
-      <q-card-section class="app-glass-dialog__scroll">
-        <div class="app-form-field-grid">
+      <q-card-section class="app-glass-dialog__scroll skill-meta-dialog__scroll">
+        <div class="skill-meta-dialog__fields">
           <q-input
             v-model="description"
             dense
@@ -51,7 +51,6 @@
             type="textarea"
             autogrow
             label="描述"
-            class="app-grid-span-full"
             :disable="saving"
             :rules="[(v) => (!!String(v || '').trim() && String(v).trim().length <= 500) || '必填，1–500 字符']"
           />
@@ -62,7 +61,6 @@
             type="textarea"
             autogrow
             label="正文（SKILL.md）"
-            class="app-grid-span-full"
             input-style="min-height: 220px; font-family: var(--font-mono, ui-monospace, monospace)"
             :disable="saving"
             :rules="[(v) => !!String(v || '').trim() || '发布前正文必填；草稿也建议填写']"

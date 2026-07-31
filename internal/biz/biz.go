@@ -27,7 +27,10 @@ var ProviderSet = wire.NewSet(
 	NewAvatarUsecase,
 	NewChannelIconRefresher,
 	NewMemoryUsecase,
-	NewTeamUsecase,
+	// NOTE(B6/B7): NewTeamUsecase is wrapped by cmd/admin/wire.go's
+	// provideTeamUsecase, which also injects the TeamGraphGuard into
+	// GraphDefinitionUsecase — an imperative cross-usecase step wire cannot
+	// express via the bare constructor here, so it is excluded from this set.
 	NewHookUsecase,
 	NewHookDeliveryUsecase,
 	NewHookResolver,
@@ -71,6 +74,8 @@ var ProviderSet = wire.NewSet(
 	ProvideDeptAgentPositionClearer,
 	ProvideGraphReaderForTeam,
 	ProvideGraphWriterForTeam,
+	ProvideTeamGraphAssetStore,
+	ProvideTeamLinkedGraphReader,
 	NewToolResultGate,
 	NewExperienceAnalyticsUsecase,
 	NewSkillHealthUsecase,
@@ -89,6 +94,7 @@ var ProviderSet = wire.NewSet(
 	ProvideAgentExistenceChecker,
 	ProvideAgentIDExistenceChecker,
 	NewMemoryWorkerStats,
+	NewMemoryCanaryStatus,
 )
 
 func ProvideAgentRoleChecker(repo AgentRepository) AgentRoleChecker {
@@ -138,6 +144,14 @@ func ProvideGraphReaderForTeam(uc *GraphUsecase) GraphReader {
 // ProvideGraphWriterForTeam provides a GraphWriter from GraphUsecase for TeamUsecase.
 func ProvideGraphWriterForTeam(uc *GraphUsecase) GraphWriter {
 	return uc.DefUC().Writer()
+}
+
+// ProvideTeamLinkedGraphReader exposes the team repo's linked-graph query as
+// the narrow TeamLinkedGraphReader port（B7 删除保护）。绑定的 TeamReader 未
+// 实现时返回 nil（单测/离线工具降级：跳过 external 引用检查）。
+func ProvideTeamLinkedGraphReader(repo TeamReader) TeamLinkedGraphReader {
+	r, _ := repo.(TeamLinkedGraphReader)
+	return r
 }
 
 func ProvideAgentExistenceChecker(repo AgentRepository) AgentExistenceCheckerFunc {

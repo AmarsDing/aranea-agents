@@ -1,0 +1,187 @@
+/**
+ * useKnowledgeGraph：G4 3D 知识图谱编排 composable（数据流铁律：组件不直接调 api/store）。
+ *
+ * 职责：
+ * - 图谱数据：库/边类型/目录前缀三维过滤 → ListCollectionGraph（G4-B8）一次性全量
+ * - 渲染裁剪：>2k 节点默认仅渲染有连接节点（「显示孤立节点」开关放开，V12.7 规模条款）
+ * - 操作台状态：节点搜索定位、节点列表（连接度排序）、选中节点、画布聚焦信号
+ * - 范围选择器：迷你目录树（仅目录懒加载，复用 V12.6 语义；切换库自动重置范围）
+ */
+import { computed, ref, watch, type Ref } from 'vue';
+import { useKnowledgeStore } from '../../stores/knowledge';
+import { listCollectionGraph } from './api';
+import { buildRenderGraph, filterGraphNodes, sortedGraphNodes, GRAPH_LINK_TYPES, type RenderGraph } from './graphUi';
+import { parseVaultTreeKey } from './vaultTreeUi';
+import { dirToQNode, vaultToQNode, type VaultLazyLoadPayload, type VaultQTreeNode } from './useVaultExplorer';
+import type { CollectionGraphEdge, CollectionGraphNode, KnowledgeCollection } from './types';
+
+export function useKnowledgeGraph(input: {
+  collections: Ref<KnowledgeCollection[]>;
+  friendlyError: (err: unknown) => string;
+}) {
+  const knowledgeStore = useKnowledgeStore();
+  const { collections, friendlyError } = input;
+
+  // ---------- 过滤维度 ----------
+
+  /** 当前库（操作台库 select；空 = 未选择）。 */
+  const collectionId = ref('');
+  /** 边类型过滤 chips（默认全选；全选/全不选语义 = 全部，传空给后端）。 */
+  const linkTypes = ref<string[]>([...GRAPH_LINK_TYPES]);
+  /** 目录前缀过滤（范围选择器；'' = 全库）。 */
+  const pathPrefix = ref('');
+
+  // ---------- 图谱数据 ----------
+
+  const nodes = ref<CollectionGraphNode[]>([]);
+  const edges = ref<CollectionGraphEdge[]>([]);
+  const loading = ref(false);
+  const error = ref('');
+  /** 数据代际：每次成功加载 +1（画布据此重置相机）。 */
+  const generation = ref(0);
+
+  /** 传给后端的有效类型集：全选/全不选 = 全部（空数组）。 */
+  function effectiveLinkTypes(): string[] {
+    const sel = linkTypes.value.filter((t) => (GRAPH_LINK_TYPES as readonly string[]).includes(t));
+    return sel.length === 0 || sel.length === GRAPH_LINK_TYPES.length ? [] : sel;
+  }
+
+  async function loadGraph() {
+    if (!collectionId.value) {
+      nodes.value = [];
+      edges.value = [];
+      return;
+    }
+    loading.value = true;
+    try {
+      const g = await listCollectionGraph(collectionId.value, effectiveLinkTypes(), pathPrefix.value);
+      nodes.value = g.nodes;
+      edges.value = g.edges;
+      error.value = '';
+      generation.value++;
+    } catch (e) {
+      nodes.value = [];
+      edges.value = [];
+      error.value = friendlyError(e) || 'graph load failed';
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  function selectCollection(id: string) {
+    if (collectionId.value === id) return;
+    collectionId.value = id;
+    // 切库重置范围与选中（范围语义绑定具体 vault 目录）。
+    pathPrefix.value = '';
+    selectedNodeId.value = '';
+  }
+
+  function toggleLinkType(type: string) {
+    const i = linkTypes.value.indexOf(type);
+    linkTypes.value = i >= 0 ? linkTypes.value.filter((t) => t !== type) : [...linkTypes.value, type];
+  }
+
+  function setPathPrefix(prefix: string) {
+    pathPrefix.value = prefix;
+    selectedNodeId.value = '';
+  }
+
+  // 三维过滤任一变化 → 重新拉取（后端一次性全量，前端不做二次裁剪）。
+  watch([collectionId, linkTypes, pathPrefix], () => void loadGraph());
+
+  // 集合列表就绪后默认选中首库（当前库为空时）。
+  watch(
+    collections,
+    (cols) => {
+      if (!collectionId.value && cols.length) collectionId.value = cols[0].id;
+    },
+    { immediate: true },
+  );
+
+  // ---------- 渲染裁剪与操作台派生 ----------
+
+  /** 显示孤立节点开关（节点数 ≤2k 时无实际效果——全量渲染）。 */
+  const showIsolated = ref(false);
+  const renderGraph = computed<RenderGraph>(() => buildRenderGraph(nodes.value, edges.value, showIsolated.value));
+
+  /** 节点搜索定位关键字。 */
+  const nodeQuery = ref('');
+  /** 节点列表：连接度降序 + 搜索过滤（基于全量节点，不受孤立裁剪影响）。 */
+  const nodeList = computed(() => filterGraphNodes(sortedGraphNodes(nodes.value), nodeQuery.value));
+
+  // ---------- 选中与聚焦 ----------
+
+  const selectedNodeId = ref('');
+  /** 聚焦信号：+1 触发画布相机飞往选中节点。 */
+  const focusSignal = ref(0);
+
+  const selectedNode = computed<CollectionGraphNode | null>(
+    () => nodes.value.find((n) => n.doc_id === selectedNodeId.value) ?? null,
+  );
+
+  function selectNode(id: string) {
+    selectedNodeId.value = id;
+  }
+
+  /** 节点列表/搜索点击：选中 + 画布聚焦。 */
+  function focusNode(id: string) {
+    selectedNodeId.value = id;
+    focusSignal.value++;
+  }
+
+  // ---------- 范围选择器迷你树（仅目录懒加载） ----------
+
+  /** 迷你树根节点：当前库（选中即全库）。 */
+  const scopeNodes = computed<VaultQTreeNode[]>(() => {
+    const col = collections.value.find((c) => c.id === collectionId.value);
+    return col ? [vaultToQNode(col)] : [];
+  });
+
+  /** 迷你树懒加载：库节点 → 根目录；目录节点 → 子目录（文件不进树）。 */
+  async function onScopeLazyLoad({ key, done, fail }: VaultLazyLoadPayload) {
+    const ref0 = parseVaultTreeKey(key);
+    if (!ref0) {
+      fail(new Error('unknown tree key'));
+      return;
+    }
+    try {
+      const items = await knowledgeStore.loadVaultTree(ref0.collectionId, ref0.prefix);
+      done(items.filter((n) => n.kind === 'dir').map((n) => dirToQNode(n, ref0.collectionId)));
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  return {
+    // 过滤维度
+    collectionId,
+    linkTypes,
+    pathPrefix,
+    selectCollection,
+    toggleLinkType,
+    setPathPrefix,
+    // 数据
+    nodes,
+    edges,
+    loading,
+    error,
+    generation,
+    loadGraph,
+    // 渲染与列表
+    showIsolated,
+    renderGraph,
+    nodeQuery,
+    nodeList,
+    // 选中与聚焦
+    selectedNodeId,
+    selectedNode,
+    focusSignal,
+    selectNode,
+    focusNode,
+    // 范围选择器
+    scopeNodes,
+    onScopeLazyLoad,
+  };
+}
+
+export type KnowledgeGraphContext = ReturnType<typeof useKnowledgeGraph>;

@@ -47,6 +47,11 @@ export type DocumentContent = {
   id: string | undefined;
   contentText: string | undefined;
   organized: boolean | undefined;
+  // raw_content (G2-B5): vault 文件 body 原文（编辑器数据源；frontmatter 不含，
+  // 保存时后端自动保留合并）。非 vault 文档为空。
+  rawContent: string | undefined;
+  // base_hash (G2-B5): vault 文件 sha1，UpdateDocumentContent 的 CAS expectedHash。
+  baseHash: string | undefined;
 };
 
 // KnowledgeChunk is one indexed text chunk with its embedding vector.
@@ -117,6 +122,13 @@ export type IngestDocumentRequest = {
   // organize_to_markdown: unset/true = organize extracted text into Markdown via LLM
   // (falls back to raw text when LLM unavailable); false = ingest raw text as-is.
   organizeToMarkdown?: boolean;
+  // target_dir (G1-B3): optional vault-relative directory to upload into.
+  // Non-empty requires a vault collection (root_path set): the raw file is
+  // written to <root>/<target_dir>/<filename> (create semantics; same-name
+  // conflict = CodeConflict) and the document gets rel_path + content_hash so
+  // the vault sync chain treats it as already-applied. Empty = legacy behavior
+  // (no filesystem write).
+  targetDir: string | undefined;
 };
 
 export type GetDocumentContentRequest = {
@@ -159,6 +171,28 @@ export type ListVaultTreeRequest = {
   prefix: string | undefined;
 };
 
+// CreateVaultDirRequest creates a (nested) directory inside the vault (G1-B2).
+export type CreateVaultDirRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+  // dir_path is the vault-relative directory path ('/' separator), e.g. "guides/setup".
+  //
+  // Behaviors: REQUIRED
+  dirPath: string | undefined;
+};
+
+// CreateVaultDocumentRequest creates a template .md document inside the vault (G1-B2).
+export type CreateVaultDocumentRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+  // rel_path is the vault-relative .md path ('/' separator), e.g. "notes/new-doc.md".
+  //
+  // Behaviors: REQUIRED
+  relPath: string | undefined;
+};
+
 export type ListVaultTreeResponse = {
   items: VaultTreeNode[] | undefined;
 };
@@ -184,6 +218,35 @@ export type ListDocumentLinksResponse = {
   items: KnowledgeLink[] | undefined;
 };
 
+// CollectionGraphNode is one document node in the collection link graph (G4-B8).
+export type CollectionGraphNode = {
+  docId: string | undefined;
+  name: string | undefined;
+  relPath: string | undefined;
+  docType: string | undefined;
+  degree: number | undefined;
+};
+
+// CollectionGraphEdge is one directed link between two in-scope documents.
+export type CollectionGraphEdge = {
+  source: string | undefined;
+  target: string | undefined;
+  type: string | undefined;
+};
+
+export type ListCollectionGraphRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+  linkTypes: string[] | undefined;
+  pathPrefix: string | undefined;
+};
+
+export type ListCollectionGraphResponse = {
+  nodes: CollectionGraphNode[] | undefined;
+  edges: CollectionGraphEdge[] | undefined;
+};
+
 export type ListDocumentsResponse = {
   items: KnowledgeDocument[] | undefined;
   total: number | undefined;
@@ -206,6 +269,43 @@ export type MoveDocumentRequest = {
   targetCollectionId: string | undefined;
 };
 
+// MoveDocumentToDirRequest moves a vault document to another directory within the
+// same collection (G3-B4). Document identity, chunks and content hash are kept
+// (content unchanged, no reindex); inbound explicit links are rebuilt.
+export type MoveDocumentToDirRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  // target_dir: vault-relative target directory ("" or "/" = vault root).
+  targetDir: string | undefined;
+  // conflict_policy on name clash at target:
+  // "" (default) = reject with CodeConflict (frontend prompts overwrite/rename/cancel);
+  // "overwrite"  = back up the existing target to .aranea/trash, then overwrite;
+  // "rename"     = keep both, auto-rename the moved file to "name (2).ext".
+  conflictPolicy: string | undefined;
+};
+
+// UpdateDocumentContentRequest saves the edited body back to the vault file (G2-B5).
+export type UpdateDocumentContentRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  // content is the new Markdown body (frontmatter is preserved server-side).
+  //
+  // Behaviors: REQUIRED
+  content: string | undefined;
+  // base_hash is the file hash the editor started from (DocumentContent.base_hash);
+  // empty = expect file to not exist.
+  baseHash: string | undefined;
+};
+
+export type UpdateDocumentContentResponse = {
+  document: KnowledgeDocument | undefined;
+  // conflict=true: the file changed on disk since base_hash; the edit was still
+  // written and the disk version backed up to .aranea/trash (both copies kept).
+  conflict: boolean | undefined;
+};
+
 export type SearchRequest = {
   // US-14: optional. Empty = federated smart-routing across all collections.
   collectionId: string | undefined;
@@ -221,6 +321,10 @@ export type SearchRequest = {
   rewriteStrategy: string | undefined;
   // hybrid_search: auto | dense | sparse | rrf (empty = auto).
   hybridSearch: string | undefined;
+  // path_prefix: optional vault-relative directory scope (G3-B7 search scope
+  // selector). Empty = whole collection. Only chunks whose document rel_path
+  // sits under "<prefix>/" match; leading/trailing slashes are tolerated.
+  pathPrefix: string | undefined;
 };
 
 export type SearchResponse = {
@@ -263,10 +367,28 @@ export interface KnowledgeService {
   GetDocumentContent(request: GetDocumentContentRequest): Promise<DocumentContent>;
   DeleteDocument(request: DeleteDocumentRequest): Promise<wellKnownEmpty>;
   MoveDocument(request: MoveDocumentRequest): Promise<KnowledgeDocument>;
+  // MoveDocumentToDir moves a vault document to another directory within the same
+  // collection (G3-B4): atomic fs move + rel_path update (identity/chunks kept) +
+  // inbound explicit links rebuild. Name clash -> CodeConflict unless
+  // conflict_policy=overwrite|rename. Vault documents only (rel_path required).
+  MoveDocumentToDir(request: MoveDocumentToDirRequest): Promise<KnowledgeDocument>;
+  // UpdateDocumentContent saves editor body back to the vault file (G2-B5):
+  // frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
+  // backed up to trash) and returns conflict=true. Triggers immediate reindex.
+  UpdateDocumentContent(request: UpdateDocumentContentRequest): Promise<UpdateDocumentContentResponse>;
   // Vault explorer (P3): lazy folder listing derived from document rel_paths.
   ListVaultTree(request: ListVaultTreeRequest): Promise<ListVaultTreeResponse>;
+  // CreateVaultDir creates a directory inside the vault (G1-B2; idempotent).
+  CreateVaultDir(request: CreateVaultDirRequest): Promise<wellKnownEmpty>;
+  // CreateVaultDocument writes a template .md (frontmatter + empty heading) and
+  // indexes it immediately (G1-B2; no 45s poll wait). Existing path = conflict.
+  CreateVaultDocument(request: CreateVaultDocumentRequest): Promise<KnowledgeDocument>;
   // Document relations with source-type annotation (P3 关联区, R-3).
   ListDocumentLinks(request: ListDocumentLinksRequest): Promise<ListDocumentLinksResponse>;
+  // ListCollectionGraph returns the full link graph of one collection (G4-B8):
+  // nodes = documents (after path_prefix filter), edges = links (link_types filter;
+  // endpoints outside scope/dangling dropped), degree = in-edge count per node.
+  ListCollectionGraph(request: ListCollectionGraphRequest): Promise<ListCollectionGraphResponse>;
   // Search
   Search(request: SearchRequest): Promise<SearchResponse>;
   GetEmbedderConfig(request: GetEmbedderConfigRequest): Promise<EmbedderConfig>;
@@ -468,6 +590,46 @@ export function createKnowledgeServiceClient(
         method: "MoveDocument",
       }) as Promise<KnowledgeDocument>;
     },
+    MoveDocumentToDir(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/knowledge/documents/${request.id}/move_to_dir`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "MoveDocumentToDir",
+      }) as Promise<KnowledgeDocument>;
+    },
+    UpdateDocumentContent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/knowledge/documents/${request.id}/content`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "UpdateDocumentContent",
+      }) as Promise<UpdateDocumentContentResponse>;
+    },
     ListVaultTree(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.collectionId) {
         throw new Error("missing required field request.collection_id");
@@ -491,6 +653,46 @@ export function createKnowledgeServiceClient(
         method: "ListVaultTree",
       }) as Promise<ListVaultTreeResponse>;
     },
+    CreateVaultDir(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/vaults/${request.collectionId}/dirs`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "CreateVaultDir",
+      }) as Promise<wellKnownEmpty>;
+    },
+    CreateVaultDocument(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/vaults/${request.collectionId}/docs`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "CreateVaultDocument",
+      }) as Promise<KnowledgeDocument>;
+    },
     ListDocumentLinks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {
         throw new Error("missing required field request.id");
@@ -513,6 +715,34 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "ListDocumentLinks",
       }) as Promise<ListDocumentLinksResponse>;
+    },
+    ListCollectionGraph(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/vaults/${request.collectionId}/graph`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.linkTypes) {
+        request.linkTypes.forEach((x) => {
+          queryParams.push(`linkTypes=${encodeURIComponent(x.toString())}`)
+        })
+      }
+      if (request.pathPrefix) {
+        queryParams.push(`pathPrefix=${encodeURIComponent(request.pathPrefix.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ListCollectionGraph",
+      }) as Promise<ListCollectionGraphResponse>;
     },
     Search(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/search`; // eslint-disable-line quotes

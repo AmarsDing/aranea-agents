@@ -31,7 +31,7 @@ func TestSessionService_GetSessionTree(t *testing.T) {
 		sessions: map[string]biz.Session{"spirit-1": tree.Root},
 		tree:     tree,
 	}
-	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
 	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	resp, err := svc.GetSessionTree(context.Background(), &v1.GetSessionTreeRequest{SpiritSessionId: "spirit-1"})
@@ -60,7 +60,7 @@ func TestSessionService_GetSessionTree(t *testing.T) {
 // is rejected with a bad request error (Phase B-1).
 func TestSessionService_GetSessionTree_validation(t *testing.T) {
 	repo := &batchSessionRepo{sessions: map[string]biz.Session{}}
-	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
 	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	_, err := svc.GetSessionTree(context.Background(), &v1.GetSessionTreeRequest{SpiritSessionId: ""})

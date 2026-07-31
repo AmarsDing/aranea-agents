@@ -4,6 +4,7 @@ import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useGraphStore } from '../../stores/graph';
+import { useTeamsStore } from '../../stores/teams';
 import type { GraphDefinition, GraphExecutionSummary, GraphTemplateInfo } from './types';
 import { NODE_TYPE_STYLES } from './types';
 import { buildCompositionChips, deriveGraphStatus, relativeTime } from './utils';
@@ -16,6 +17,7 @@ export function useGraphsPage() {
   const $q = useQuasar();
   const router = useRouter();
   const graphStore = useGraphStore();
+  const teamsStore = useTeamsStore();
   const graphExecute = useGraphExecute(router);
   const { graphs: rows, loading, graphsNextPageToken } = storeToRefs(graphStore);
 
@@ -43,20 +45,50 @@ export function useGraphsPage() {
     { label: t('graphs.engineDAG'), value: 'dag' },
   ]);
 
+  // ── M53 Phase 11 F5：Team 关联过滤（''=全部 / independent=独立 / team=Team 关联） ──
+  const TEAM_FILTER_OPTIONS = computed(() => [
+    { label: t('graphs.teamFilterAll'), value: '' },
+    { label: t('graphs.teamFilterIndependent'), value: 'independent' },
+    { label: t('graphs.teamFilterLinked'), value: 'team' },
+  ]);
+
   const selectedGraph = computed(() => {
     if (!selectedGraphId.value) return null;
     return rows.value.find((g) => g.id === selectedGraphId.value) ?? null;
   });
 
-  const ctxMenuItems = computed<ContextMenuItem[]>(() => [
-    { icon: '✏️', label: t('graphs.ctxEdit'), shortcut: 'Enter', action: 'edit' },
-    { icon: '▶️', label: t('graphs.ctxRun'), action: 'run', success: true },
-    { icon: '📋', label: t('graphs.ctxDuplicate'), shortcut: 'Ctrl+D', action: 'duplicate' },
-    { icon: '🗑️', label: t('graphs.ctxDelete'), shortcut: 'Del', action: 'delete', danger: true },
-  ]);
+  /**
+   * team-owned 判定镜像后端 metadata.team_owned（team_id 对 linked_external 也会
+   * 回填，不能作为 owned 判定，见后端 isTeamOwnedGraph 注释）。
+   */
+  function isTeamOwned(graph: GraphDefinition): boolean {
+    return graph.metadata?.team_owned === true;
+  }
+
+  /** 属主/关联 Team 展示名：teams 列表映射，未加载或找不到时回退 teamId。 */
+  function teamDisplayName(teamId: string): string {
+    const id = String(teamId || '').trim();
+    if (!id) return '';
+    return teamsStore.teams.find((tm) => tm.id === id)?.display_name || id;
+  }
+
+  const ctxMenuItems = computed<ContextMenuItem[]>(() => {
+    const items: ContextMenuItem[] = [
+      { icon: '✏️', label: t('graphs.ctxEdit'), shortcut: 'Enter', action: 'edit' },
+      { icon: '▶️', label: t('graphs.ctxRun'), action: 'run', success: true },
+      { icon: '📋', label: t('graphs.ctxDuplicate'), shortcut: 'Ctrl+D', action: 'duplicate' },
+    ];
+    // F5：Team 关联图（owned 或 linked_external）提供编排页跳转
+    if (ctxMenuGraph.value?.teamId) {
+      items.push({ icon: '🧭', label: t('graphs.ctxOpenTeam'), action: 'open-team' });
+    }
+    items.push({ icon: '🗑️', label: t('graphs.ctxDelete'), shortcut: 'Del', action: 'delete', danger: true });
+    return items;
+  });
 
   const searchQuery = ref('');
   const engineFilter = ref('');
+  const teamFilter = ref('');
   const sortKey = ref('updatedAt');
   const sortOrder = ref('desc');
 
@@ -68,6 +100,11 @@ export function useGraphsPage() {
     }
     if (engineFilter.value) {
       list = list.filter((g) => g.executionEngine === engineFilter.value);
+    }
+    if (teamFilter.value === 'team') {
+      list = list.filter((g) => Boolean(g.teamId));
+    } else if (teamFilter.value === 'independent') {
+      list = list.filter((g) => !g.teamId);
     }
     if (sortKey.value === 'updatedAt' && sortOrder.value === 'desc') {
       list.sort(
@@ -111,7 +148,11 @@ export function useGraphsPage() {
     return buildCompositionChips(countNodesByType(graph));
   }
 
-  onMounted(() => void loadRows());
+  onMounted(() => {
+    void loadRows();
+    // F5：属主 Team 名映射（best-effort，失败回退 teamId 不阻断列表）
+    void teamsStore.loadTeams().catch(() => {});
+  });
 
   async function loadRows() {
     error.value = '';
@@ -284,6 +325,12 @@ export function useGraphsPage() {
       case 'duplicate':
         duplicateGraph(graph);
         break;
+      case 'open-team':
+        // F5：跳转 Team 编排页（teamId 非空才出现该菜单项）
+        if (graph.teamId) {
+          router.push({ name: 'team-orchestrate', params: { teamId: graph.teamId } });
+        }
+        break;
       case 'delete':
         confirmRemoveGraph(graph);
         break;
@@ -362,10 +409,14 @@ export function useGraphsPage() {
     error,
     searchQuery,
     engineFilter,
+    teamFilter,
     sortKey,
     sortOrder,
     SORT_OPTIONS,
     ENGINE_FILTER_OPTIONS,
+    TEAM_FILTER_OPTIONS,
+    isTeamOwned,
+    teamDisplayName,
     nodeTypeBorderColor,
     countNodesByType,
     cardStatus,

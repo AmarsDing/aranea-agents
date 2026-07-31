@@ -83,6 +83,46 @@ func TestHeuristicConsolidator_Extract(t *testing.T) {
 	}
 }
 
+func TestHeuristicConsolidator_DefaultClassification(t *testing.T) {
+	c := NewHeuristicConsolidator()
+	props, err := c.Extract(context.Background(), ConsolidateInput{
+		Messages: []ConsolidateMessage{{Role: "user", Content: "I prefer dark mode", MessageID: "msg-1"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(props) == 0 {
+		t.Fatal("expected proposals")
+	}
+	for i, p := range props {
+		if p.SubjectType != "preference" {
+			t.Fatalf("proposal[%d].SubjectType=%q want preference", i, p.SubjectType)
+		}
+		if p.Scope != "user" {
+			t.Fatalf("proposal[%d].Scope=%q want user", i, p.Scope)
+		}
+	}
+}
+
+func TestFeedbackConsolidator_DefaultClassification(t *testing.T) {
+	c := NewFeedbackConsolidator()
+	props, err := c.Extract(context.Background(), ConsolidateInput{
+		Messages: []ConsolidateMessage{{Role: "feedback", Content: "User disliked an assistant response about: x", MessageID: "msg-9"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(props) != 1 {
+		t.Fatalf("expected 1 proposal, got %d", len(props))
+	}
+	if props[0].SubjectType != "preference" {
+		t.Fatalf("SubjectType=%q want preference", props[0].SubjectType)
+	}
+	if props[0].Scope != "user" {
+		t.Fatalf("Scope=%q want user", props[0].Scope)
+	}
+}
+
 func TestResolveProposalMessageID(t *testing.T) {
 	msgs := []ConsolidateMessage{
 		{Role: "user", Content: "hello", MessageID: "m1"},

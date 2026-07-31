@@ -12,6 +12,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/llmcontext"
 	"aranea-agents/pkg/apierror"
@@ -502,11 +503,27 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		return err
 	}
 
+	// 流程日志：仅在实际执行压缩时发射（软触发以下/防抖/抑制等早退路径不打）。
+	flow := c.newFlowEmitter(ctx, sessionID)
+	tokensBefore := usedTokens
+	messagesBefore := len(body) + len(tail)
+	if flow != nil {
+		flow.LogStart("system.session.compress", "开始压缩会话上下文",
+			event.P("tokens_before", tokensBefore),
+			event.P("messages_before", messagesBefore))
+	}
+
 	// Two-level compression cascade: MemoryCompact → LLM.
 	outcome := c.compressCascade(ctx, sess, ag, body, sessionID, cutoffTurn, usedTokens, hardTok)
 	if outcome.level == compressLevelNone || outcome.markdown == "" {
 		if outcome.fail != compressFailureNone {
 			c.suppress.record(sessionID, outcome.fail, compressProviderModelKey(sess, ag), time.Now())
+			if flow != nil {
+				flow.LogError("system.session.compress", "会话上下文压缩失败",
+					event.P("error", "compression cascade failed"),
+					event.P("tokens_before", tokensBefore),
+					event.P("messages_before", messagesBefore))
+			}
 			return apierror.Internal(apierror.DomainSession, "compression cascade failed")
 		}
 		return nil
@@ -514,10 +531,46 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 
 	if err := c.executeCompression(ctx, sess, ag, body, tail, outcome, sessionID, trpcUserID); err != nil {
 		c.suppress.record(sessionID, compressFailureTransient, compressProviderModelKey(sess, ag), time.Now())
+		if flow != nil {
+			flow.LogError("system.session.compress", "会话上下文压缩失败",
+				event.P("error", err.Error()),
+				event.P("tokens_before", tokensBefore),
+				event.P("messages_before", messagesBefore))
+		}
 		return err
 	}
 	c.suppress.clear(sessionID)
+	if flow != nil {
+		pairs := []event.Pair{
+			event.P("tokens_before", tokensBefore),
+			event.P("messages_before", messagesBefore),
+			event.P("messages_after", len(tail)),
+			event.P("compress_level", string(outcome.level)),
+			event.P("cache_hit", outcome.cacheHit),
+		}
+		// 压缩后的 context_used_tokens 已在事务内更新，尽力而为重读一次供对比展示。
+		if sessAfter, e := c.deps.sessionReader.GetSessionByID(ctx, sessionID); e == nil {
+			pairs = append(pairs, event.P("tokens_after", sessAfter.ContextUsedTokens))
+		}
+		flow.LogDone("system.session.compress", "会话上下文压缩完成", pairs...)
+	}
 	return nil
+}
+
+// newFlowEmitter builds a system-domain flow emitter for compression events.
+// Returns nil when the monitor bus is not wired (tests), so callers must
+// nil-check before emitting.
+func (c *Compressor) newFlowEmitter(ctx context.Context, sessionID string) *event.TraceEmitter {
+	if c == nil || c.monitorBus == nil {
+		return nil
+	}
+	return event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:       ctx,
+		SessionID: sessionID,
+		Domain:    event.TraceDomainSystem,
+		LG:        c.lg,
+		Infra:     event.NewInfraFromBus(c.monitorBus),
+	})
 }
 
 // compressTriggerThresholds computes soft/hard trigger tokens (adaptive or static buffer).
@@ -598,6 +651,12 @@ func (c *Compressor) executeCompression(ctx context.Context, sess biz.Session, a
 		return casErr
 	}
 	if oldVersion != versionBeforeCAS {
+		// K5: 压缩版本 CAS 冲突——并发压缩已抢先写入，本次放弃。
+		c.lg.Warn("压缩版本 CAS 冲突，跳过本次压缩",
+			loggateway.StepID("session.compress"),
+			loggateway.SessionID(sessionID),
+			loggateway.Int64("version_expected", versionBeforeCAS),
+			loggateway.Int64("version_actual", oldVersion))
 		return nil
 	}
 

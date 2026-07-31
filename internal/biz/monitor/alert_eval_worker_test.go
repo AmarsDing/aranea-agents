@@ -23,6 +23,10 @@ func (r *workerTestRepo) InsertAuditLog(ctx context.Context, entry AuditLog) err
 	return nil
 }
 
+func (r *workerTestRepo) DeleteAuditLogs(ctx context.Context) (int, error) {
+	return 0, nil
+}
+
 func (r *workerTestRepo) InsertMonitorEvent(ctx context.Context, ev EventWrite) error {
 	return nil
 }

@@ -365,8 +365,8 @@ ensureSchemaDDL()
 | 20260730 | runtime_profile_schema | 运行时 Profile Schema |
 | 20260731 | heal_record_metadata_column | 自愈记录 metadata 列 |
 | 20260801 | memory_job_deadletter_unique | 记忆死信唯一索引 |
-| 20260802 | memory_episodes_l1_task_unique | 记忆情景 L1 任务唯一索引 |
-| 20260803 | cascade_saga_id_type_fix | 级联 Saga ID 类型修复 |
+| ~~20260802~~ | ~~memory_episodes_l1_task_unique~~ | 版本被数据迁移 session_turn_number_backfill 抢占，已重编号 20261118 |
+| ~~20260803~~ | ~~cascade_saga_id_type_fix~~ | 版本被数据迁移 session_turn_number_rebackfill 抢占，已重编号 20261119 |
 | 20260804 | planner_model_columns | Planner 模型列 |
 | 20260825 | activity_session_tree_columns | 活动会话树列 |
 | 20260901 | drop_event_store_subsystem | 删除 EventStore 子系统 |
@@ -392,17 +392,28 @@ ensureSchemaDDL()
 | 20261109 | steps_v2_session_seq | steps_v2 会话序号 |
 | 20261110 | agent_mission_domain | Agent 使命域 |
 | 20261111 | unified_evolution_convergence | 统一演化建议收敛（A6：backfill + DROP 三张 legacy 表 + 方言感知去重索引） |
+| 20261118 | memory_episodes_l1_task_unique | 记忆情景 L1 任务唯一索引（原 20260802，版本碰撞重编号；20261116/17 已被生产种子记录占用） |
+| 20261119 | cascade_saga_id_type_fix | 级联 Saga ID 类型修复（原 20260803，版本碰撞重编号） |
+| 20261120 | self_improvement_observing_index | 自我改进 observing 部分索引（原 20261115，与数据迁移碰撞重编号） |
+
+> **版本全局唯一**：schema_migrations 表由 DDL/数据/种子迁移共享，版本为 PRIMARY KEY，碰撞会导致后到的迁移被静默跳过。唯一性由 `internal/data/migration_version_guard_test.go`（`TestMigrationVersionsGloballyUnique`）守卫，新增迁移必须跑该测试。
 
 ### 4.3 数据迁移设计
 
-独立于 DDL 迁移，处理数据回填场景。当前共 4 个数据迁移：
+独立于 DDL 迁移，处理数据回填场景。当前数据迁移常量（版本全局唯一，受 `TestMigrationVersionsGloballyUnique` 守卫）：
 
 | 迁移 | 版本号 | 说明 |
 |------|--------|------|
 | LegacyTRPCMemoryFacts | 20260524 | 从旧 trpc-agent-go 框架迁移 memory facts |
 | TurnIndexToTurnID | 20260528 | turn_index 迁移到 turn_id |
 | SessionStatusIdle | 20260531 | session status 从 active 改为 idle |
-| OrganizationRedesign | （内联） | 组织架构重设计数据迁移 |
+| SessionTurnNumberBackfill | 20260802 | session turn_number 回填 |
+| SessionTurnNumberRebackfill | 20260803 | session turn_number 重回填 |
+| AvatarImageRepair | 20260729 | avatar 图片修复 |
+| MonitorTraceInterruptedBackfill | 20261115 | monitor trace interrupted 状态回填 |
+| TeamCopyOwnership | 20261121 | team 副本归属转 user（原 20260624，被 DDL message_fts_schema 抢占重编号） |
+| AuditActionNormalize | 20261122 | 审计 action 动词前置规范化（原 20260729，被 AvatarImageRepair 抢占重编号） |
+| OrganizationRedesign | 20261123 | 组织架构重设计数据迁移（原 20260720，被 DDL unified_evolution_schema 抢占重编号） |
 
 **执行时序**：DDL 迁移 → Postgres Schema → 数据迁移 → 种子数据
 

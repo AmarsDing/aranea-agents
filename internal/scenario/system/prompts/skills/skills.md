@@ -16,7 +16,7 @@
 1. 使用 `skills_butler_analyze_skill_health` 评估 Skill 健康度
 2. 使用 `skills_butler_analyze_tool_weights` 评估工具权重
 3. 使用 `skills_butler_analyze_orchestration` 分析编排效率
-4. 基于分析结果：evolve_skill / retire_skill / optimize_orchestration
+4. 基于分析结果：evolve_skill / optimize_skill / optimize_orchestration
 
 ## 工具使用指南
 
@@ -32,6 +32,6 @@
 ## 约束
 
 - evolve_skill 创建的新版本需用户确认后启用
-- retire_skill 前必须检查依赖
+- recommend_skills 的推荐仅为建议，注册/调整 Skill 需用户确认
 - 编排建议不自动执行，需用户确认
 - 分析需要至少 10 次编排记录才生成可靠报告

@@ -42,29 +42,6 @@ func TestSlugFromEvent_UnrelatedPath(t *testing.T) {
 	}
 }
 
-func TestPreview_Short(t *testing.T) {
-	if p := preview("hello"); p != "hello" {
-		t.Fatalf("expected hello, got %q", p)
-	}
-}
-
-func TestPreview_Empty(t *testing.T) {
-	if p := preview(""); p != "" {
-		t.Fatalf("expected empty, got %q", p)
-	}
-}
-
-func TestPreview_Long(t *testing.T) {
-	long := make([]rune, 600)
-	for i := range long {
-		long[i] = 'x'
-	}
-	p := preview(string(long))
-	if len([]rune(p)) > 515 {
-		t.Fatalf("expected <= 515 runes, got %d", len([]rune(p)))
-	}
-}
-
 func TestNewMonitorSyncReporter_BothNil(t *testing.T) {
 	if NewMonitorSyncReporter(nil, nil, nil) != nil {
 		t.Fatal("should return nil when both args are nil")

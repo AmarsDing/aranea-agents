@@ -21,11 +21,17 @@ type (
 	KnowledgeResolvedLink       = knowledge.ResolvedLink
 	KnowledgeDocumentPathReader = knowledge.DocumentPathReader
 	KnowledgeResolvedLinkReader = knowledge.ResolvedLinkReader
+	// G4-B8 库级图谱：节点/边/图谱与关联读取端口。
+	KnowledgeCollectionGraphNode  = knowledge.CollectionGraphNode
+	KnowledgeCollectionGraphEdge  = knowledge.CollectionGraphEdge
+	KnowledgeCollectionGraph      = knowledge.CollectionGraph
+	KnowledgeCollectionLinkReader = knowledge.CollectionLinkReader
 )
 
 var (
 	NewKnowledgeUsecase                = knowledge.NewUsecase
 	NewKnowledgeUsecaseFromRepo        = knowledge.NewUsecaseFromRepo
+	NewKnowledgeVaultFiler             = knowledge.NewVaultFiler
 	ErrKnowledgeUnavailable            = knowledge.ErrUnavailable
 	ErrKnowledgeNameRequired           = knowledge.ErrNameRequired
 	ErrKnowledgeEmbeddingModelRequired = knowledge.ErrEmbeddingModelRequired
@@ -37,6 +43,7 @@ var (
 	ErrKnowledgeEmbeddingEmpty         = knowledge.ErrEmbeddingEmpty
 	KnowledgeEmbedConfigured           = knowledge.EmbedConfigured
 	ApplyKnowledgeEmbedPatch           = knowledge.ApplyEmbedPatch
+	KnowledgeHashContent               = knowledge.HashContent
 )
 
 // ProvideKnowledgeUsecase 是生产 Wire provider：在 NewUsecaseFromRepo 之上
@@ -60,6 +67,11 @@ func ProvideKnowledgeUsecase(repo KnowledgeRepo, filer *knowledge.VaultFiler) *K
 	resolved, rok := repo.(knowledge.ResolvedLinkReader)
 	if pok || rok {
 		uc.SetExplorerRepos(paths, resolved)
+	}
+	// G4-B8：库级图谱关联读取（repo 已实现 CollectionLinkReader 时接线；
+	// 未接线时 ListCollectionGraph 降级为仅节点无边）。
+	if graphLinks, gok := repo.(knowledge.CollectionLinkReader); gok {
+		uc.SetGraphRepo(graphLinks)
 	}
 	return uc
 }

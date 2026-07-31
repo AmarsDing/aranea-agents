@@ -114,7 +114,7 @@ func (m *memPluginRepo) IncrementStats(_ context.Context, pluginKey string, delt
 func newPluginService() *service.PluginService {
 	repo := newMemPluginRepo()
 	repo.items["p1"] = biz.Plugin{ID: "p1", Key: "test-plugin", Name: "Test Plugin", Enabled: false, WorkspaceID: workspace.DefaultWorkspaceID}
-	return service.NewPluginService(biz.NewPluginUsecase(repo, nil, nil), nil, loggateway.NewNoop())
+	return service.NewPluginService(biz.NewPluginUsecase(repo, nil, nil), nil, loggateway.NewNoop(), nil)
 }
 
 func TestPluginService_List(t *testing.T) {

@@ -1,10 +1,6 @@
 // web/src/features/graph/__tests__/validationIssues.spec.ts
 import { describe, it, expect } from 'vitest';
-import {
-  buildValidationIssues,
-  pickNodeIssueMap,
-  validationSuggestionKey,
-} from '../validationIssues';
+import { buildValidationIssues, pickNodeIssueMap, validationSuggestionKey } from '../validationIssues';
 import type { NodeDef, ValidationError, ValidationWarning } from '../types';
 
 function makeNode(id: string, agentName?: string): NodeDef {
@@ -13,7 +9,9 @@ function makeNode(id: string, agentName?: string): NodeDef {
 
 describe('buildValidationIssues', () => {
   it('merges errors and warnings with level flags', () => {
-    const errors: ValidationError[] = [{ code: 'unreachable_node', nodeId: 'n1', field: '', message: '节点不可达: n1' }];
+    const errors: ValidationError[] = [
+      { code: 'unreachable_node', nodeId: 'n1', field: '', message: '节点不可达: n1' },
+    ];
     const warnings: ValidationWarning[] = [{ code: 'orphan_node', nodeId: 'n2', field: '', message: '孤立节点: n2' }];
     const issues = buildValidationIssues(errors, warnings, []);
     expect(issues).toHaveLength(2);
@@ -66,11 +64,7 @@ describe('pickNodeIssueMap', () => {
   });
 
   it('keeps warning when node has no error', () => {
-    const issues = buildValidationIssues(
-      [],
-      [{ code: 'orphan_node', nodeId: 'n1', field: '', message: 'w' }],
-      [],
-    );
+    const issues = buildValidationIssues([], [{ code: 'orphan_node', nodeId: 'n1', field: '', message: 'w' }], []);
     const map = pickNodeIssueMap(issues);
     expect(map.n1.level).toBe('warning');
   });

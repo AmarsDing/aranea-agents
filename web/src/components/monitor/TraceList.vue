@@ -49,8 +49,11 @@
         <template #body-cell-name="slotProps">
           <q-td :props="slotProps">
             <div class="min-width-0">
-              <div class="app-registry-cell-primary ellipsis">
+              <div class="app-registry-cell-primary ellipsis trace-name-cell">
                 {{ slotProps.row.name || slotProps.row.key || 'unknown' }}
+                <q-tooltip max-width="400px" class="text-body2">{{
+                  slotProps.row.name || slotProps.row.key || 'unknown'
+                }}</q-tooltip>
               </div>
               <div class="app-registry-cell-sub ellipsis row items-center q-gutter-xs">
                 <q-badge v-if="domainLabel(slotProps.row)" dense outline :color="domainColor(slotProps.row)">
@@ -64,7 +67,12 @@
         <template #body-cell-agent="slotProps">
           <q-td :props="slotProps">
             <div class="min-width-0">
-              <div class="app-registry-cell-primary ellipsis">{{ slotProps.row.agent_name || '-' }}</div>
+              <div class="app-registry-cell-primary ellipsis">
+                {{ slotProps.row.agent_name || '-' }}
+                <q-tooltip v-if="slotProps.row.agent_name" max-width="300px" class="text-body2">{{
+                  slotProps.row.agent_name
+                }}</q-tooltip>
+              </div>
               <div
                 v-if="slotProps.row.agent_name && slotProps.row.agent_id"
                 class="app-registry-cell-sub ellipsis text-mono"
@@ -537,6 +545,9 @@ function onExportFlow() {
 .monitor-traces-toolbar {
   padding: 0 16px 8px;
   border-bottom: none;
+}
+.trace-name-cell {
+  max-width: 20ch;
 }
 .text-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

@@ -49,6 +49,42 @@ export const KNOWLEDGE_HYBRID_MODE_OPTIONS = [
   { label: '混合 (RRF)', value: 'rrf' },
 ];
 
+// ── G2-F：详情面板媒体分类（V12.4） ──────────────────────────────────────────
+
+/** 详情面板媒体区类别：image/audio/video 走 B6 原始流内联渲染；word 显示解析后
+ *  md + 原文下载；markdown/text 可编辑（B5）；other 只读预览。 */
+export type KnowledgeMediaKind = 'image' | 'audio' | 'video' | 'word' | 'markdown' | 'text' | 'other';
+
+const KNOWLEDGE_MEDIA_EXTS: Record<string, readonly string[]> = {
+  image: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.avif'],
+  audio: ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.opus'],
+  video: ['.mp4', '.webm', '.mov', '.mkv', '.avi', '.m4v'],
+  word: ['.doc', '.docx'],
+  markdown: ['.md', '.markdown'],
+  text: ['.txt'],
+};
+
+/** 按文件名扩展名分类（VaultTreeNode 不带 mime_type，扩展名对媒体渲染判定足够可靠）。 */
+export function knowledgeMediaKind(name: string): KnowledgeMediaKind {
+  const i = name.lastIndexOf('.');
+  if (i < 0) return 'other';
+  const ext = name.slice(i).toLowerCase();
+  for (const [kind, exts] of Object.entries(KNOWLEDGE_MEDIA_EXTS)) {
+    if (exts.includes(ext)) return kind as KnowledgeMediaKind;
+  }
+  return 'other';
+}
+
+/** 媒体区是否需要 B6 原始流（内联播放器/图片）。 */
+export function knowledgeMediaNeedsAsset(kind: KnowledgeMediaKind): boolean {
+  return kind === 'image' || kind === 'audio' || kind === 'video';
+}
+
+/** md/txt 可编辑（V12.4）；vault 文档还需 base_hash 非空（由调用方组合判定）。 */
+export function knowledgeMediaEditable(kind: KnowledgeMediaKind): boolean {
+  return kind === 'markdown' || kind === 'text';
+}
+
 export const KNOWLEDGE_REWRITE_STRATEGY_OPTIONS = [
   { label: '无', value: '' },
   { label: 'HyDE', value: 'hyde' },

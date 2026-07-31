@@ -217,6 +217,11 @@ type TokenUsageEvent struct {
 	StreamEnabled                 bool
 	MetadataJSON                  string
 	CreatedAt                     string
+	// Resolved display names (list queries only; empty when the referenced
+	// entity was deleted). AgentName falls back to the session's agent.
+	AgentName    string
+	SessionTitle string
+	TeamName     string
 }
 
 // Overview aggregates all usage dashboard data.

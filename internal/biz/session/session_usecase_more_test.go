@@ -187,7 +187,7 @@ func (r *testRepo) ListBySessionTurn(ctx context.Context, sessionID, _ string) (
 }
 
 func newTestUc(repo *testRepo) *SessionUsecase {
-	return NewSessionUsecase(repo, &mockAgentLookup{}, &mockTeamLookup{}, nil, &mockParticipantRepo{}, nil, NewSessionMetricsUsecase(repo, nil, nil), nil, repo, loggateway.NewNoop())
+	return NewSessionUsecase(repo, &mockAgentLookup{}, &mockTeamLookup{}, nil, &mockParticipantRepo{}, nil, NewSessionMetricsUsecase(repo, nil, nil), nil, repo, loggateway.NewNoop(), nil)
 }
 
 func strPtr(s string) *string {

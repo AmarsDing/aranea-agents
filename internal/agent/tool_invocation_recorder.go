@@ -172,9 +172,17 @@ func recordToolInvocationWrite(ctx context.Context, write biz.ToolInvocationWrit
 	safego.Go(ctx, "recordToolInvocation", func() {
 		bg := context.Background()
 		lg := deps.Logger()
+		// 流程日志发射器复用运行上下文中的 TraceEmitter（生产 Turn 必然携带，
+		// 见上方 CompleteToolCall 用法）；测试/非 Turn 场景为 nil 时仅保留进程 Warn。
+		flowEm := event.TraceEmitterFromContext(ctx)
 		if deps.ToolUC != nil {
 			if err := deps.ToolUC.RecordToolInvocation(bg, write); err != nil {
 				lg.Warn("工具调用记录失败", loggateway.StepID("agent.tool.record_fail"), loggateway.Str("tool", write.ToolKey), loggateway.Err(err))
+				if flowEm != nil {
+					flowEm.LogError("system.tool.record_fail", "工具调用记录失败",
+						event.P("tool", write.ToolKey),
+						event.P("error", err.Error()))
+				}
 			}
 			auditWrite := biz.ToolInvocationAuditWrite{
 				InvocationID:  write.ToolCallID,
@@ -307,9 +315,14 @@ func recordSkillInvocation(bg context.Context, origCtx context.Context, write bi
 		}
 	}
 
-	// Resolve skill_id from tool_key (slug).
+	// Resolve skill_id from the loaded slug captured by newSkillLoadCaptureAfterHook
+	// (skill_load/skill_run 的 slug 在参数 {"skill": "<name>"} 中，已由 capture hook
+	// 提取进 invocation state）；旧式 use_skill_<slug> 工具名作为兜底。
 	skillID := ""
-	slug := strings.TrimPrefix(write.ToolKey, "use_skill_")
+	slug := loadedSlug
+	if slug == "" {
+		slug = strings.TrimPrefix(write.ToolKey, "use_skill_")
+	}
 	if sk, err := deps.SkillUC.GetBySlug(bg, slug); err == nil {
 		skillID = sk.ID
 	} else {

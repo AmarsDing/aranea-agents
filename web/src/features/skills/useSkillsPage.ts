@@ -33,6 +33,11 @@ export function useSkillsPage() {
   const togglingId = ref('');
   const publishingId = ref('');
   const publishingEcosystemId = ref('');
+  /** 生态市场发布确认对话框 */
+  const ecosystemPublishOpen = ref(false);
+  const ecosystemPublishTarget = ref<Skill | null>(null);
+  /** 本次会话内发布失败的 skill id（内存态，刷新即失效；已发布状态以市场 products 为准） */
+  const ecosystemFailedIds = ref<Set<string>>(new Set());
   const deleteOpen = ref(false);
   const deleteTarget = ref<Skill | null>(null);
   const deleting = ref(false);
@@ -215,14 +220,24 @@ export function useSkillsPage() {
   }
 
   /** 发布到生态市场（区别于生命周期启用：上架为 ecosystem product）。 */
-  async function onPublishToEcosystem(skill: Skill) {
-    const ok = await confirm({
-      title: t('skillsPage.ecosystemPublishTitle'),
-      message: t('skillsPage.ecosystemPublishMessage', { name: skill.name }),
-      okLabel: t('skillsPage.ecosystemPublishTitle'),
-      cancelLabel: t('common.cancel'),
-    });
-    if (!ok) return;
+  type EcosystemPublishState = 'published' | 'failed' | 'unpublished';
+
+  /** 市场上已上架的 product 名集合（product.name = skill.slug 兜底 skill.name）。 */
+  const ecosystemPublishedNames = computed(() => new Set(ecosystemStore.products.map((p) => p.name)));
+
+  function ecosystemPublishState(skill: Skill): EcosystemPublishState {
+    if (ecosystemFailedIds.value.has(skill.id)) return 'failed';
+    return ecosystemPublishedNames.value.has(skill.slug || skill.name) ? 'published' : 'unpublished';
+  }
+
+  function onPublishToEcosystem(skill: Skill) {
+    ecosystemPublishTarget.value = skill;
+    ecosystemPublishOpen.value = true;
+  }
+
+  async function confirmPublishToEcosystem() {
+    const skill = ecosystemPublishTarget.value;
+    if (!skill) return;
     publishingEcosystemId.value = skill.id;
     try {
       await ecosystemStore.publish({
@@ -231,8 +246,13 @@ export function useSkillsPage() {
         description: skill.description,
         type: 'skill',
       });
+      ecosystemFailedIds.value.delete(skill.id);
+      ecosystemFailedIds.value = new Set(ecosystemFailedIds.value);
+      ecosystemPublishOpen.value = false;
       $q.notify({ type: 'positive', message: t('skillsPage.ecosystemPublishOk') });
     } catch (err) {
+      ecosystemFailedIds.value = new Set(ecosystemFailedIds.value).add(skill.id);
+      ecosystemPublishOpen.value = false;
       $q.notify({
         type: 'negative',
         message: err instanceof Error ? err.message : t('skillsPage.ecosystemPublishFailed'),
@@ -301,6 +321,8 @@ export function useSkillsPage() {
   onMounted(() => {
     ensureTagOptionsLoaded();
     void loadRows();
+    // 拉取市场 products 以判定「已发布」状态；失败静默（按钮按未发布展示）。
+    void ecosystemStore.load().catch(() => {});
   });
 
   return {
@@ -326,6 +348,10 @@ export function useSkillsPage() {
     togglingId,
     publishingId,
     publishingEcosystemId,
+    ecosystemPublishOpen,
+    ecosystemPublishTarget,
+    ecosystemPublishState,
+    confirmPublishToEcosystem,
     deleteOpen,
     deleteTarget,
     deleting,

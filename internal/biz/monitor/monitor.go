@@ -221,6 +221,8 @@ type RunnerCompletionRow struct {
 type AuditRepo interface {
 	ListAuditLogs(ctx context.Context, query AuditQuery) (AuditListResult, error)
 	InsertAuditLog(ctx context.Context, entry AuditLog) error
+	// DeleteAuditLogs hard-deletes all audit log rows and returns the deleted count.
+	DeleteAuditLogs(ctx context.Context) (int, error)
 }
 
 // EventRepo handles monitor event persistence and queries.
@@ -346,6 +348,7 @@ type Usecase struct {
 	registry         *AlertMetricRegistry
 	traceProjector   *TraceProjector
 	flowFileAppender *FlowFileAppender
+	flowLog          FlowLogWriter
 }
 
 const rulesCacheTTL = 5 * time.Minute
@@ -375,6 +378,12 @@ func WithRegistry(r *AlertMetricRegistry) UsecaseOption {
 
 func WithLogger(lg loggateway.Logger) UsecaseOption {
 	return func(u *Usecase) { u.lg = lg }
+}
+
+// WithFlowLogWriter wires the user-visible flow log (流程日志) port. Nil-safe:
+// when unset, flow log emission is skipped.
+func WithFlowLogWriter(fl FlowLogWriter) UsecaseOption {
+	return func(u *Usecase) { u.flowLog = fl }
 }
 
 func NewUsecase(audit AuditRepo, event EventRepo, trace TraceRepo, alert AlertRepo, runner RunnerCompletionRepo, notifier AlertNotifier, opts ...UsecaseOption) *Usecase {
@@ -459,6 +468,24 @@ func (u *Usecase) ListAuditLogs(ctx context.Context, query AuditQuery) (AuditLis
 		query.Limit = 200
 	}
 	return u.auditRepo.ListAuditLogs(ctx, query)
+}
+
+// DeleteAuditLogs hard-deletes all audit logs and returns the deleted count.
+// DeleteAuditLogs clears all audit logs, then writes a self-audit entry so
+// the destructive operation itself is traceable (who/when/how many).
+func (u *Usecase) DeleteAuditLogs(ctx context.Context) (int, error) {
+	deleted, err := u.auditRepo.DeleteAuditLogs(ctx)
+	if err != nil {
+		return deleted, err
+	}
+	// Self-audit: record the clear operation itself as a fresh audit entry.
+	u.RecordAuditLog(ctx, AuditLog{
+		Action:   "delete.audit_logs",
+		Resource: "audit",
+		Detail:   fmt.Sprintf(`{"deleted":%d}`, deleted),
+		Severity: "warning",
+	})
+	return deleted, nil
 }
 
 // ListMonitorEvents returns paginated monitor events.
@@ -554,10 +581,13 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 		return
 	}
 	rules := u.cachedAlertRules(ctx)
+	ruleCount := 0
+	triggeredCount := 0
 	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
 		}
+		ruleCount++
 		metricKey := strings.TrimSpace(rule.MetricKey)
 		if u.registry != nil {
 			if m, ok := u.registry.Get(metricKey); ok {
@@ -571,20 +601,33 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 						loggateway.StepID("monitor.alert_eval_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Str("metric_key", metricKey), loggateway.Err(err))
 					continue
 				}
-				u.evaluateMetricValue(ctx, rule, value)
+				if u.evaluateMetricValue(ctx, rule, value) {
+					triggeredCount++
+				}
 				continue
 			}
 		}
 		switch metricKey {
 		case "runner.error_rate":
-			u.evaluateRunnerErrorRate(ctx, rule)
+			if u.evaluateRunnerErrorRate(ctx, rule) {
+				triggeredCount++
+			}
 		case "skill.filesystem_missing_count":
-			u.evaluateSkillFilesystemMissingCount(ctx, rule)
+			if u.evaluateSkillFilesystemMissingCount(ctx, rule) {
+				triggeredCount++
+			}
 		}
+	}
+	if u.flowLog != nil {
+		u.flowLog.LogFlowDone(ctx, "", "monitor.alert.evaluate", "告警评估完成",
+			LogPair{Key: "rule_count", Value: ruleCount},
+			LogPair{Key: "triggered_count", Value: triggeredCount})
 	}
 }
 
-func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value float64) {
+// evaluateMetricValue applies the alert state machine to one metric sample.
+// Returns true when the rule newly fired (idle/recovered → firing) this call.
+func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value float64) bool {
 	now := time.Now().UTC()
 
 	// Auto-transition recovered → idle after cooldown expires and metric stays below threshold
@@ -621,15 +664,15 @@ func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value
 				"value": value, "recovered_at": now.Format(time.RFC3339),
 			})
 		}
-		return
+		return false
 	}
 	if value < rule.Threshold {
-		return
+		return false
 	}
 	// Already firing: only send periodic reminders; never re-enter threshold_exceeded transition.
 	if rule.FiringState == AlertFiringStateFiring {
 		if !u.shouldRemindAlert(rule, now) {
-			return
+			return false
 		}
 		u.touchAlertReminder(ctx, rule, now, value)
 		meta, _ := json.Marshal(map[string]any{
@@ -650,10 +693,10 @@ func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value
 				"severity": strings.TrimSpace(rule.Severity), "fired_at": now.Format(time.RFC3339),
 			})
 		}
-		return
+		return false
 	}
 	if !u.ShouldFireAlert(rule, now) {
-		return
+		return false
 	}
 	u.MarkAlertFiredPersistent(ctx, rule, now, value)
 	meta, _ := json.Marshal(map[string]any{
@@ -675,6 +718,7 @@ func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value
 	if u.notifier != nil {
 		u.notifier.Notify(ctx, rule, payload)
 	}
+	return true
 }
 
 func (u *Usecase) cachedAlertRules(ctx context.Context) []AlertRule {
@@ -700,9 +744,9 @@ func (u *Usecase) cachedAlertRules(ctx context.Context) []AlertRule {
 	return rules
 }
 
-func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
+func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) bool {
 	if u == nil || u.eventRepo == nil {
-		return
+		return false
 	}
 	window := rule.WindowMinutes
 	if window <= 0 {
@@ -722,13 +766,13 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 		total, errTotal = u.eventRepo.CountMonitorEventsSince(ctx, "runner.completion", "", since, "")
 		if errTotal != nil {
 			u.lg.Warn("EvaluateAlerts: CountMonitorEventsSince(total) failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(errTotal))
-			return
+			return false
 		}
 		var errErrors error
 		errors, errErrors = u.eventRepo.CountMonitorEventsSince(ctx, "runner.completion", "error", since, "")
 		if errErrors != nil {
 			u.lg.Warn("EvaluateAlerts: CountMonitorEventsSince(errors) failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(errErrors))
-			return
+			return false
 		}
 	}
 
@@ -736,22 +780,22 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 		// No data in window — cannot determine error rate.
 		// Do NOT auto-recover; let the state machine persist until
 		// actual metric evaluation provides evidence for transition.
-		return
+		return false
 	}
 	rate := float64(errors) / float64(total)
-	u.evaluateMetricValue(ctx, rule, rate)
+	return u.evaluateMetricValue(ctx, rule, rate)
 }
 
-func (u *Usecase) evaluateSkillFilesystemMissingCount(ctx context.Context, rule AlertRule) {
+func (u *Usecase) evaluateSkillFilesystemMissingCount(ctx context.Context, rule AlertRule) bool {
 	if u == nil || u.fsHealth == nil {
-		return
+		return false
 	}
 	missing, _, err := u.fsHealth.FilesystemHealthStats(ctx)
 	if err != nil {
 		u.lg.Warn("EvaluateAlerts: FilesystemHealthStats failed", loggateway.StepID("monitor.fs_health_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
-		return
+		return false
 	}
-	u.evaluateMetricValue(ctx, rule, float64(missing))
+	return u.evaluateMetricValue(ctx, rule, float64(missing))
 }
 
 // ShouldFireAlert checks whether an alert rule should fire now.
@@ -844,6 +888,12 @@ func (u *Usecase) MarkAlertFiredPersistent(ctx context.Context, rule AlertRule, 
 			loggateway.Err(err))
 		return
 	}
+	u.lg.Info("alert state transition",
+		loggateway.StepID("monitor.alert_state"),
+		loggateway.Str("rule_id", rule.ID),
+		loggateway.Str("severity", strings.TrimSpace(rule.Severity)),
+		loggateway.Str("from", string(rule.FiringState)),
+		loggateway.Str("to", string(next)))
 	u.lastFired.Store(rule.ID, now)
 	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, next, &now, metricValue, nil); err != nil {
 		u.lg.Warn("MarkAlertFiredPersistent: DB update failed", loggateway.StepID("monitor.mark_fired_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
@@ -869,6 +919,12 @@ func (u *Usecase) MarkAlertRecovered(ctx context.Context, rule AlertRule, now ti
 			loggateway.Err(err))
 		return
 	}
+	u.lg.Info("alert state transition",
+		loggateway.StepID("monitor.alert_state"),
+		loggateway.Str("rule_id", rule.ID),
+		loggateway.Str("severity", strings.TrimSpace(rule.Severity)),
+		loggateway.Str("from", string(rule.FiringState)),
+		loggateway.Str("to", string(next)))
 	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, next, rule.LastFiredAt, rule.LastFiredValue, &now); err != nil {
 		u.lg.Warn("MarkAlertRecovered: DB update failed", loggateway.StepID("monitor.mark_recovered_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
 	}
@@ -891,6 +947,12 @@ func (u *Usecase) MarkAlertReset(ctx context.Context, rule AlertRule) {
 			loggateway.Err(err))
 		return
 	}
+	u.lg.Info("alert state transition",
+		loggateway.StepID("monitor.alert_state"),
+		loggateway.Str("rule_id", rule.ID),
+		loggateway.Str("severity", strings.TrimSpace(rule.Severity)),
+		loggateway.Str("from", string(rule.FiringState)),
+		loggateway.Str("to", string(next)))
 	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, next, nil, 0, nil); err != nil {
 		u.lg.Warn("MarkAlertReset: DB update failed", loggateway.StepID("monitor.mark_reset_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
 	}

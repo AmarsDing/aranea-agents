@@ -38,6 +38,7 @@ type SelfCheckScheduler struct {
 	repo      SelfCheckReportRepo
 	registry  *AlertMetricRegistry
 	lg        loggateway.Logger
+	flowLog   FlowLogWriter
 
 	mu                 sync.Mutex
 	running            bool
@@ -47,12 +48,14 @@ type SelfCheckScheduler struct {
 }
 
 // NewSelfCheckScheduler creates a new scheduler with the given checkers, repairers, and report repo.
+// flowLog is the user-visible flow log (流程日志) port; nil-safe (tests may pass nil).
 func NewSelfCheckScheduler(
 	checkers []SelfChecker,
 	repairers []SelfCheckRepairer,
 	repo SelfCheckReportRepo,
 	registry *AlertMetricRegistry,
 	lg loggateway.Logger,
+	flowLog FlowLogWriter,
 ) *SelfCheckScheduler {
 	interval := selfCheckIntervalFromEnv()
 	return &SelfCheckScheduler{
@@ -61,6 +64,7 @@ func NewSelfCheckScheduler(
 		repo:      repo,
 		registry:  registry,
 		lg:        lg,
+		flowLog:   flowLog,
 		interval:  interval,
 	}
 }
@@ -152,6 +156,10 @@ func (s *SelfCheckScheduler) RunOnce(ctx context.Context) *SelfCheckReport {
 	checkersCopy := make([]SelfChecker, len(s.checkers))
 	copy(checkersCopy, s.checkers)
 	s.checkersMu.RUnlock()
+	if s.flowLog != nil {
+		s.flowLog.LogFlowStart(ctx, "", "monitor.selfcheck.run", "系统自检开始",
+			LogPair{Key: "checkers", Value: len(checkersCopy)})
+	}
 	for _, checker := range checkersCopy {
 		checkCtx, checkCancel := context.WithTimeout(overallCtx, SelfCheckTimeout)
 		result := s.runChecker(checkCtx, checker)
@@ -228,6 +236,21 @@ func (s *SelfCheckScheduler) RunOnce(ctx context.Context) *SelfCheckReport {
 		loggateway.Int64("duration_ms", durationMs),
 		loggateway.Int("checkers", len(results)),
 		loggateway.Int("repairs", len(repairActions)))
+
+	if s.flowLog != nil {
+		pairs := []LogPair{
+			{Key: "overall_status", Value: string(overallStatus)},
+			{Key: "duration_ms", Value: durationMs},
+			{Key: "checkers", Value: len(results)},
+			{Key: "failed", Value: unhealthyCount},
+			{Key: "repairs", Value: len(repairActions)},
+		}
+		if unhealthyCount > 0 {
+			s.flowLog.LogFlowError(ctx, "", "monitor.selfcheck.run", "系统自检完成（存在异常项）", pairs...)
+		} else {
+			s.flowLog.LogFlowDone(ctx, "", "monitor.selfcheck.run", "系统自检完成", pairs...)
+		}
+	}
 
 	return &report
 }

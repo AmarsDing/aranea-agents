@@ -12,6 +12,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/hook"
 	"aranea-agents/internal/conf"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	arametrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -32,11 +34,21 @@ type HookNotifier struct {
 	repo     biz.HookDeliveryRepo
 	lg       loggateway.Logger
 	hookConf conf.RuntimeHookConfig
+	// monitorBus 流程日志总线；nil 时终态失败仅经发射器写进程日志，不发布事件。
+	monitorBus contract.MonitorBus
 }
 
 // NewHookNotifier creates a HookNotifier. // WIRE: needs *conf.Runtime
-func NewHookNotifier(runtimeConf *conf.Runtime, repo biz.HookDeliveryRepo, lg loggateway.Logger) *HookNotifier {
-	return &HookNotifier{repo: repo, lg: lg, hookConf: runtimeConf.HookConfig()}
+func NewHookNotifier(runtimeConf *conf.Runtime, repo biz.HookDeliveryRepo, lg loggateway.Logger, bus contract.MonitorBus) *HookNotifier {
+	return &HookNotifier{repo: repo, lg: lg, hookConf: runtimeConf.HookConfig(), monitorBus: bus}
+}
+
+// SetMonitorBus 注入/更新流程日志总线（装配层顺序无关性保障；nil = 仅进程日志）。
+func (n *HookNotifier) SetMonitorBus(bus contract.MonitorBus) {
+	if n == nil {
+		return
+	}
+	n.monitorBus = bus
 }
 
 // EnqueueNotify schedules a webhook delivery. Synchronous validation/marshal errors are returned;
@@ -126,6 +138,7 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 				loggateway.Str("id", d.ID),
 				loggateway.Err(err))
 		}
+		n.emitDeliveryFailedFlow(ctx, d, max, "max attempts reached")
 		return
 	}
 
@@ -164,6 +177,28 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 			loggateway.Err(uerr))
 	}
 	arametrics.PluginInvokeTotal.WithLabelValues("hook:"+d.HookKey, "notify", "delivery_failed").Inc()
+	n.emitDeliveryFailedFlow(ctx, d, max, lastErr)
+}
+
+// emitDeliveryFailedFlow 在 Hook 投递重试耗尽（终态失败）时发射系统域流程日志。
+// monitorBus 为 nil 时发射器仅写进程日志，不发布总线事件（nil-safe）。
+// extra 不含 webhook URL / secret / payload，避免泄露凭据。
+func (n *HookNotifier) emitDeliveryFailedFlow(ctx context.Context, d biz.HookDelivery, attempts int, lastErr string) {
+	if n == nil {
+		return
+	}
+	flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:    ctx,
+		Domain: event.TraceDomainSystem,
+		LG:     n.lg,
+		Infra:  event.NewInfraFromBus(n.monitorBus),
+	})
+	flow.LogError("system.hook.reload_fail", "Hook 重载失败",
+		event.P("delivery_id", d.ID),
+		event.P("hook_key", d.HookKey),
+		event.P("attempts", attempts),
+		event.P("error", lastErr),
+	)
 }
 
 func deliverHookWebhook(url string, body []byte, secret string, timeoutSec int) error {

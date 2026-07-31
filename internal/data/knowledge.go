@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -548,28 +549,46 @@ func (r *knowledgeRepo) MoveDocument(ctx context.Context, id, targetCollectionID
 	return r.GetDocument(ctx, id)
 }
 
+// pathPrefixClause 生成 G3-B7 搜索范围过滤子查询：仅命中文档 rel_path 位于
+// "<prefix>/" 下的 chunks（目录边界语义，防 "note" 误中 "notes/"）。首尾斜杠
+// 归一；LIKE 通配符（% _ \）按字面值转义。返回空串 = 不过滤。
+// collectionPH 是外层查询中 collection_id 的占位符（如 "$2"），argIdx 是本
+// 子查询 LIKE 参数的占位序号。
+func pathPrefixClause(prefix, collectionPH string, argIdx int) (clause string, arg any) {
+	p := strings.Trim(strings.TrimSpace(prefix), "/")
+	if p == "" {
+		return "", nil
+	}
+	var b strings.Builder
+	b.Grow(len(p) + 2)
+	for _, r := range p {
+		if r == '%' || r == '_' || r == '\\' {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	b.WriteString("/%")
+	return fmt.Sprintf(`AND doc_id IN (SELECT id FROM knowledge_documents WHERE collection_id = %s AND rel_path LIKE $%d ESCAPE '\')`, collectionPH, argIdx), b.String()
+}
+
 func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQuery, queryEmbedding []float32) ([]biz.KnowledgeChunk, error) {
 	if len(queryEmbedding) == 0 {
 		return nil, fmt.Errorf("embedding is empty")
 	}
 	vec := pgvector.NewVector(queryEmbedding)
-	scoreFilter := ""
-	hasMinScore := q.MinScore > 0
-	if hasMinScore {
-		scoreFilter = "AND (1 - (embedding <=> $1::vector)) >= "
+	args := []any{vec, q.CollectionID, q.TopK}
+	clauses := ""
+	if c, a := pathPrefixClause(q.PathPrefix, "$2", len(args)+1); c != "" {
+		clauses += "\n  " + c
+		args = append(args, a)
 	}
-	filterClause := ""
-	filterArg := json.RawMessage("{}")
 	if q.FilterJSON != "" {
-		filterClause = "AND metadata @> $4::jsonb"
-		filterArg = json.RawMessage(q.FilterJSON)
+		clauses += fmt.Sprintf("\n  AND metadata @> $%d::jsonb", len(args)+1)
+		args = append(args, json.RawMessage(q.FilterJSON))
 	}
-	if hasMinScore {
-		if filterClause != "" {
-			scoreFilter += "$5"
-		} else {
-			scoreFilter += "$4"
-		}
+	if q.MinScore > 0 {
+		clauses += fmt.Sprintf("\n  AND (1 - (embedding <=> $1::vector)) >= $%d", len(args)+1)
+		args = append(args, q.MinScore)
 	}
 	raw := fmt.Sprintf(`
 SELECT id, doc_id, collection_id, content, metadata::text, chunk_index,
@@ -577,22 +596,10 @@ SELECT id, doc_id, collection_id, content, metadata::text, chunk_index,
 FROM knowledge_chunks
 WHERE collection_id = $2
   %s
-  %s
 ORDER BY embedding <=> $1::vector
-LIMIT $3`, scoreFilter, filterClause)
+LIMIT $3`, clauses)
 
-	var rows *sql.Rows
-	var err error
-	switch {
-	case filterClause != "" && q.MinScore > 0:
-		rows, err = r.data.Postgres().QueryContext(ctx, raw, vec, q.CollectionID, q.TopK, filterArg, q.MinScore)
-	case filterClause != "":
-		rows, err = r.data.Postgres().QueryContext(ctx, raw, vec, q.CollectionID, q.TopK, filterArg)
-	case q.MinScore > 0:
-		rows, err = r.data.Postgres().QueryContext(ctx, raw, vec, q.CollectionID, q.TopK, q.MinScore)
-	default:
-		rows, err = r.data.Postgres().QueryContext(ctx, raw, vec, q.CollectionID, q.TopK)
-	}
+	rows, err := r.data.Postgres().QueryContext(ctx, raw, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -610,17 +617,19 @@ LIMIT $3`, scoreFilter, filterClause)
 }
 
 func (r *knowledgeRepo) SearchChunksBM25(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
-	filterClause := ""
-	filterArgIdx := 3
-	filterArg := json.RawMessage("{}")
+	extraClauses := ""
+	var extraArgs []any
+	if c, a := pathPrefixClause(q.PathPrefix, "$2", 3+len(extraArgs)); c != "" {
+		extraClauses += "\n  " + c
+		extraArgs = append(extraArgs, a)
+	}
 	if q.FilterJSON != "" {
-		filterClause = fmt.Sprintf("AND metadata @> $%d::jsonb", filterArgIdx)
-		filterArg = json.RawMessage(q.FilterJSON)
-		filterArgIdx++
+		extraClauses += fmt.Sprintf("\n  AND metadata @> $%d::jsonb", 3+len(extraArgs))
+		extraArgs = append(extraArgs, json.RawMessage(q.FilterJSON))
 	}
 
-	trgmResults, trgmErr := r.searchChunksTrigram(ctx, q, filterClause, filterArg, filterArgIdx)
-	tsResults, tsErr := r.searchChunksTsvector(ctx, q, filterClause, filterArg, filterArgIdx)
+	trgmResults, trgmErr := r.searchChunksTrigram(ctx, q, extraClauses, extraArgs)
+	tsResults, tsErr := r.searchChunksTsvector(ctx, q, extraClauses, extraArgs)
 
 	if trgmErr != nil && tsErr != nil {
 		return nil, trgmErr
@@ -635,7 +644,7 @@ func (r *knowledgeRepo) SearchChunksBM25(ctx context.Context, q biz.KnowledgeSea
 	return mergeBM25Results(tsResults, trgmResults, q.TopK), nil
 }
 
-func (r *knowledgeRepo) searchChunksTsvector(ctx context.Context, q biz.KnowledgeSearchQuery, filterClause string, filterArg json.RawMessage, nextArgIdx int) ([]biz.KnowledgeChunk, error) {
+func (r *knowledgeRepo) searchChunksTsvector(ctx context.Context, q biz.KnowledgeSearchQuery, extraClauses string, extraArgs []any) ([]biz.KnowledgeChunk, error) {
 	raw := fmt.Sprintf(`
 SELECT id, doc_id, collection_id, content, metadata::text, chunk_index,
        ts_rank(to_tsvector('simple', content), plainto_tsquery('simple', $1)) AS score
@@ -644,15 +653,12 @@ WHERE collection_id = $2
   AND to_tsvector('simple', content) @@ plainto_tsquery('simple', $1)
   %s
 ORDER BY score DESC
-LIMIT $%d`, filterClause, nextArgIdx)
+LIMIT $%d`, extraClauses, 3+len(extraArgs))
 
-	var rows *sql.Rows
-	var err error
-	if filterClause != "" {
-		rows, err = r.data.Postgres().QueryContext(ctx, raw, q.Query, q.CollectionID, filterArg, q.TopK)
-	} else {
-		rows, err = r.data.Postgres().QueryContext(ctx, raw, q.Query, q.CollectionID, q.TopK)
-	}
+	args := []any{q.Query, q.CollectionID}
+	args = append(args, extraArgs...)
+	args = append(args, q.TopK)
+	rows, err := r.data.Postgres().QueryContext(ctx, raw, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -660,7 +666,7 @@ LIMIT $%d`, filterClause, nextArgIdx)
 	return scanChunks(rows)
 }
 
-func (r *knowledgeRepo) searchChunksTrigram(ctx context.Context, q biz.KnowledgeSearchQuery, filterClause string, filterArg json.RawMessage, nextArgIdx int) ([]biz.KnowledgeChunk, error) {
+func (r *knowledgeRepo) searchChunksTrigram(ctx context.Context, q biz.KnowledgeSearchQuery, extraClauses string, extraArgs []any) ([]biz.KnowledgeChunk, error) {
 	raw := fmt.Sprintf(`
 SELECT id, doc_id, collection_id, content, metadata::text, chunk_index,
        similarity(content, $1) AS score
@@ -669,15 +675,12 @@ WHERE collection_id = $2
   AND content %% $1
   %s
 ORDER BY score DESC
-LIMIT $%d`, filterClause, nextArgIdx)
+LIMIT $%d`, extraClauses, 3+len(extraArgs))
 
-	var rows *sql.Rows
-	var err error
-	if filterClause != "" {
-		rows, err = r.data.Postgres().QueryContext(ctx, raw, q.Query, q.CollectionID, filterArg, q.TopK)
-	} else {
-		rows, err = r.data.Postgres().QueryContext(ctx, raw, q.Query, q.CollectionID, q.TopK)
-	}
+	args := []any{q.Query, q.CollectionID}
+	args = append(args, extraArgs...)
+	args = append(args, q.TopK)
+	rows, err := r.data.Postgres().QueryContext(ctx, raw, args...)
 	if err != nil {
 		return nil, err
 	}

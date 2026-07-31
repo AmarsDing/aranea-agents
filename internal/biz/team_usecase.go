@@ -127,7 +127,14 @@ type TeamUsecase struct {
 	deptLeadMgr  *DeptLeadManager
 	graphReader  GraphReader
 	graphWriter  GraphWriter
-	lg           loggateway.Logger
+	// Team × Graph 一体化（Phase 11）保存钩子依赖：
+	compiler         TeamCompiler          // 表单定义 → GraphBuildConfig
+	graphAssets      TeamGraphAssetStore   // 物化资产持久化（版本历史 + 缓存一致）
+	txProvider       TeamTxProvider        // D1：物化与 team 保存同一事务
+	agentKeyResolver TeamAgentKeyResolver  // agent_id → agent_key
+	agentIDResolver  TeamAgentIDResolver   // agent_key → agent_id（B6 members 反查）
+	linkedReader     TeamLinkedGraphReader // B7 external 引用删除保护
+	lg               loggateway.Logger
 }
 
 // TeamUsecaseOpts groups all dependencies for NewTeamUsecase.
@@ -145,6 +152,16 @@ type TeamUsecaseOpts struct {
 	DeptLeadMgr  *DeptLeadManager
 	GraphReader  GraphReader
 	GraphWriter  GraphWriter
+	// Team × Graph 一体化（Phase 11）；全部可选，缺省时保存钩子跳过物化、
+	// 保持既有 linked graph 行为（单测/离线工具）。
+	Compiler         TeamCompiler
+	GraphAssets      TeamGraphAssetStore
+	TxProvider       TeamTxProvider
+	AgentKeyResolver TeamAgentKeyResolver
+	// AgentIDResolver：B6 反向同步 agent key → agent_id 反查；nil = key 原样保留。
+	AgentIDResolver TeamAgentIDResolver
+	// LinkedReader：B7 external 引用删除保护；nil = 跳过引用检查。
+	LinkedReader TeamLinkedGraphReader
 	Lg           loggateway.Logger
 }
 
@@ -154,18 +171,24 @@ func NewTeamUsecase(opts TeamUsecaseOpts) *TeamUsecase {
 		activeLister = fallbackActiveRunLister{runReader: opts.RunReader}
 	}
 	return &TeamUsecase{
-		reader:       opts.Reader,
-		writer:       opts.Writer,
-		runReader:    opts.RunReader,
-		runWriter:    opts.RunWriter,
-		activeLister: activeLister,
-		stepRepo:     opts.StepRepo,
-		deadLetter:   opts.DeadLetter,
-		agentChecker: opts.AgentChecker,
-		deptLeadMgr:  opts.DeptLeadMgr,
-		graphReader:  opts.GraphReader,
-		graphWriter:  opts.GraphWriter,
-		lg:           opts.Lg,
+		reader:           opts.Reader,
+		writer:           opts.Writer,
+		runReader:        opts.RunReader,
+		runWriter:        opts.RunWriter,
+		activeLister:     activeLister,
+		stepRepo:         opts.StepRepo,
+		deadLetter:       opts.DeadLetter,
+		agentChecker:     opts.AgentChecker,
+		deptLeadMgr:      opts.DeptLeadMgr,
+		graphReader:      opts.GraphReader,
+		graphWriter:      opts.GraphWriter,
+		compiler:         opts.Compiler,
+		graphAssets:      opts.GraphAssets,
+		txProvider:       opts.TxProvider,
+		agentKeyResolver: opts.AgentKeyResolver,
+		agentIDResolver:  opts.AgentIDResolver,
+		linkedReader:     opts.LinkedReader,
+		lg:               opts.Lg,
 	}
 }
 
@@ -429,7 +452,19 @@ func (u *TeamUsecase) Create(ctx context.Context, in Team) (Team, error) {
 			}
 		}
 	}
-	return u.writer.CreateTeam(ctx, in)
+	// B3/D1：物化 + team 写入同一事务；物化失败 = 保存失败。
+	var created Team
+	if err := u.execTeamGraphTx(ctx, func(txCtx context.Context) error {
+		if rerr := u.reconcileTeamGraphForSave(txCtx, &in, nil); rerr != nil {
+			return rerr
+		}
+		var cerr error
+		created, cerr = u.writer.CreateTeam(txCtx, in)
+		return cerr
+	}); err != nil {
+		return Team{}, err
+	}
+	return created, nil
 }
 
 func (u *TeamUsecase) GetRunObservatory(ctx context.Context, runID string) (TeamRunObservatory, error) {
@@ -485,6 +520,7 @@ func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, 
 	if err != nil {
 		return Team{}, err
 	}
+	prev := current // 打补丁前快照：source/拓扑 diff + D2 换绑删除 + syncGraphTeamID 旧值
 	current.TeamKey = strings.TrimSpace(firstNonEmpty(patch.TeamKey, current.TeamKey))
 	current.DisplayName = strings.TrimSpace(firstNonEmpty(patch.DisplayName, current.DisplayName))
 	// Status changes must go through TransitionStatus/TransitionStatusWithReason
@@ -512,11 +548,21 @@ func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, 
 	}
 
 	// ORG-11b: Sync Graph.team_id when Team.linked_graph_id changes
-	updated, updateErr := u.writer.UpdateTeam(ctx, current)
+	// B3/D1：物化/换绑 + team 写入同一事务；物化失败 = 保存失败。
+	var updated Team
+	updateErr := u.execTeamGraphTx(ctx, func(txCtx context.Context) error {
+		if rerr := u.reconcileTeamGraphForSave(txCtx, &current, &prev); rerr != nil {
+			return rerr
+		}
+		var werr error
+		updated, werr = u.writer.UpdateTeam(txCtx, current)
+		return werr
+	})
 	if updateErr != nil {
 		return Team{}, updateErr
 	}
-	u.syncGraphTeamID(ctx, current.LinkedGraphID, updated.LinkedGraphID, updated.ID)
+	_, prevLinked := prevOrchestration(&prev)
+	u.syncGraphTeamID(ctx, prevLinked, updated.LinkedGraphID, updated.ID)
 	return updated, nil
 }
 
@@ -661,20 +707,31 @@ func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
 		return apierror.Conflict("TEAM", "team has an active run; delete is not allowed until the run finishes")
 	}
 
-	// ORG-11c: Clean up Graph association on team deletion
-	if team.LinkedGraphID != "" && u.graphReader != nil && u.graphWriter != nil {
+	// B5（行为变更）：owned 图（team_owned metadata + team_id=本 team）级联删；
+	// external/template 图只解绑不删。owned 判定用 metadata 而非 team_id——
+	// ORG-11b 会对所有 linked 图回填 team_id，无法区分。
+	if team.LinkedGraphID != "" && u.graphReader != nil {
 		graphDef, graphErr := u.graphReader.GetDefinition(ctx, team.LinkedGraphID)
 		if graphErr == nil && graphDef != nil {
-			if graphDef.IsTemplate {
-				// Template Graph: only clear team_id reference
-				graphDef.TeamID = ""
-				if _, updateErr := u.graphWriter.UpdateDefinition(ctx, graphDef); updateErr != nil {
-					u.lg.Warn("best-effort update failed", loggateway.Err(updateErr))
+			switch {
+			case isTeamOwnedGraph(graphDef) && graphDef.TeamID == team.ID:
+				// Owned Graph: cascade delete along with the team.
+				if u.graphAssets != nil {
+					if deleteErr := u.graphAssets.DeleteOwnedGraph(ctx, team.LinkedGraphID); deleteErr != nil {
+						u.lg.Warn("best-effort delete failed", loggateway.Err(deleteErr))
+					}
+				} else if u.graphWriter != nil {
+					if deleteErr := u.graphWriter.DeleteDefinition(ctx, team.LinkedGraphID); deleteErr != nil {
+						u.lg.Warn("best-effort delete failed", loggateway.Err(deleteErr))
+					}
 				}
-			} else {
-				// Exclusive Graph: delete along with the team
-				if deleteErr := u.graphWriter.DeleteDefinition(ctx, team.LinkedGraphID); deleteErr != nil {
-					u.lg.Warn("best-effort delete failed", loggateway.Err(deleteErr))
+			default:
+				// External/Template Graph: only clear team_id reference (unbind).
+				if graphDef.TeamID == team.ID && u.graphWriter != nil {
+					graphDef.TeamID = ""
+					if _, updateErr := u.graphWriter.UpdateDefinition(ctx, graphDef); updateErr != nil {
+						u.lg.Warn("best-effort update failed", loggateway.Err(updateErr))
+					}
 				}
 			}
 		}
@@ -1114,7 +1171,7 @@ func (u *TeamUsecase) syncGraphTeamID(ctx context.Context, oldGraphID, newGraphI
 	// Set team_id on the new graph
 	if newGraphID != "" {
 		newGraph, err := u.graphReader.GetDefinition(ctx, newGraphID)
-		if err == nil && newGraph != nil {
+		if err == nil && newGraph != nil && newGraph.TeamID != teamID {
 			newGraph.TeamID = teamID
 			if _, updateErr := u.graphWriter.UpdateDefinition(ctx, newGraph); updateErr != nil {
 				u.lg.Warn("best-effort update failed", loggateway.Err(updateErr))

@@ -54,6 +54,19 @@ func (a *L3ScoredRecallAdapter) RecallL3Hits(ctx context.Context, scopeType, sco
 			if stmt, ok := m["statement"].(string); ok {
 				hit.Statement = stmt
 			}
+			// Scores computed by the recall path are annotated into the raw
+			// JSON under "scores" (see annotateFactScores). Propagate them so
+			// fused recall can rank and apply the minScore filter — without
+			// this, Total stays 0 and every hit is filtered out (Bug A).
+			if sc, ok := m["scores"].(map[string]any); ok {
+				hit.Scores.Keyword = anyFloat(sc, "keyword")
+				hit.Scores.Vector = anyFloat(sc, "vector")
+				hit.Scores.Importance = anyFloat(sc, "importance")
+				hit.Scores.Recency = anyFloat(sc, "recency")
+				hit.Scores.QualityScore = anyFloat(sc, "quality_score")
+				hit.Scores.CrossEncoder = anyFloat(sc, "cross_encoder")
+				hit.Scores.Total = anyFloat(sc, "total")
+			}
 			// decay_score defaults to 1.0 in the DB schema (no forgetting).
 			// Only set Scores.Decay when the persisted value is in (0, 1].
 			// A value of 0 means "not yet computed by the cron job" — leave

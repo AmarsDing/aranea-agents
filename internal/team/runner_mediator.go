@@ -19,7 +19,7 @@ var (
 // breaking the direct dependency on *TeamGraphRunCoordinator.
 // Stability:evolving
 type TeamGraphCoordAccess interface {
-	RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID string, ct *biz.CompiledTeam) error
+	RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID string, ct *biz.CompiledTeam) error
 	MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error
 	DeferTeamRunSuccessIfHITL(ctx context.Context, graphExecID string, run *biz.TeamRunRecord) (bool, error)
 	StartGraphStepWatch(ctx context.Context, execID string) context.CancelFunc
@@ -63,14 +63,14 @@ func (m *TeamRunMediator) SetFinisherFunctions(
 
 // --- TeamGraphCoordAccess delegation ---
 
-func (m *TeamRunMediator) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID string, ct *biz.CompiledTeam) error {
+func (m *TeamRunMediator) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID string, ct *biz.CompiledTeam) error {
 	if m.coord == nil {
 		m.lg.Warn("mediator coordinator not set, skipping RegisterTeamGraphExecution",
 			loggateway.Str("exec_id", execID),
 			loggateway.Str("team_id", teamID))
 		return errMediatorCoordNotSet
 	}
-	return m.coord.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, ct)
+	return m.coord.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID, ct)
 }
 
 func (m *TeamRunMediator) MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error {

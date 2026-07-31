@@ -10,8 +10,7 @@ import {
 } from '../eventView';
 
 /** 测试用 t()：回显 key 与插值参数，断言与语言解耦。 */
-const t = (key: string, ...args: unknown[]) =>
-  args.length ? `${key}${JSON.stringify(args)}` : key;
+const t = (key: string, ...args: unknown[]) => (args.length ? `${key}${JSON.stringify(args)}` : key);
 
 function makeWsEvent(partial: Partial<TeamRunEvent>): TeamRunEvent {
   return { type: 'runtime.event', team_id: '', run_id: '', ...partial };
@@ -172,7 +171,7 @@ describe('wsEventToView', () => {
 describe('persistedEventToView', () => {
   const traces: MonitorTrace[] = [];
 
-  it('skill.filesystem.rejected：severity 来自 status，副标题用 description 而非 JSON', () => {
+  it('skill.filesystem.rejected：人话标题 + actor 承载 Skill 名 + 摘要用 description', () => {
     const view = persistedEventToView(
       t,
       makeRow({
@@ -185,19 +184,53 @@ describe('persistedEventToView', () => {
       traces,
     );
     expect(view.severity).toBe('warn');
-    expect(view.title).toBe('e2e-tag-test');
+    expect(view.title).toBe('monitorPage.events.title.skillRejected');
+    expect(view.title).not.toContain('skill.filesystem');
+    expect(view.actor).toBe('e2e-tag-test');
     expect(view.subtitle).toBe('directory name mismatch');
     expect(view.category).toBe('system');
   });
 
-  it('alert.fired：规则名为标题', () => {
+  it('alert.fired：人话标题，规则名进 actor', () => {
     const view = persistedEventToView(
       t,
       makeRow({ key: 'alert.fired', name: '错误率超阈', status: 'warn', description: 'error_rate 0.12 > 0.1' }),
       traces,
     );
-    expect(view.title).toBe('错误率超阈');
+    expect(view.title).toBe('monitorPage.events.title.alertFired');
+    expect(view.actor).toBe('错误率超阈');
+    expect(view.subtitle).toBe('error_rate 0.12 > 0.1');
     expect(view.severity).toBe('warn');
+  });
+
+  it('alert.recovered：status=recovered 归 success', () => {
+    const view = persistedEventToView(t, makeRow({ key: 'alert.recovered', name: 'r', status: 'recovered' }), traces);
+    expect(view.title).toBe('monitorPage.events.title.alertRecovered');
+    expect(view.severity).toBe('success');
+  });
+
+  it('usage.budget_alert / chat.user_feedback 人话标题', () => {
+    const budget = persistedEventToView(t, makeRow({ key: 'usage.budget_alert', status: 'warn' }), traces);
+    expect(budget.title).toBe('monitorPage.events.title.budgetAlert');
+    const feedback = persistedEventToView(t, makeRow({ key: 'chat.user_feedback', status: 'info' }), traces);
+    expect(feedback.title).toBe('monitorPage.events.title.userFeedback');
+    expect(feedback.category).toBe('message');
+  });
+
+  it('未知类型回退行 name，无 name 兜底原始 type', () => {
+    const named = persistedEventToView(t, makeRow({ key: 'custom.type', name: '人工命名' }), traces);
+    expect(named.title).toBe('人工命名');
+    const anon = persistedEventToView(t, makeRow({ key: 'custom.type', name: '' }), traces);
+    expect(anon.title).toBe('custom.type');
+  });
+
+  it('timeAgo 相对时间已填充（i18n key 回显）', () => {
+    const view = persistedEventToView(
+      t,
+      makeRow({ key: 'alert.fired', name: 'r', created_at: new Date(Date.now() - 5 * 60000).toISOString() }),
+      traces,
+    );
+    expect(view.timeAgo).toContain('monitorPage.events.relTime.minutes');
   });
 
   it('runner.completion error：人话标题 + warn', () => {

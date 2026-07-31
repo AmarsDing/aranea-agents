@@ -23,11 +23,12 @@ type l3FactRepo struct {
 
 // Compile-time interface checks.
 var (
-	_ biz.L3FactReader     = (*l3FactRepo)(nil)
-	_ biz.L3FactWriter     = (*l3FactRepo)(nil)
-	_ biz.L3ConflictStore  = (*l3FactRepo)(nil)
-	_ biz.PIIReviewStore   = (*l3FactRepo)(nil)
-	_ biz.DecayScoreWriter = (*l3FactRepo)(nil)
+	_ biz.L3FactReader           = (*l3FactRepo)(nil)
+	_ biz.L3FactWriter           = (*l3FactRepo)(nil)
+	_ biz.L3ConflictStore        = (*l3FactRepo)(nil)
+	_ biz.PIIReviewStore         = (*l3FactRepo)(nil)
+	_ biz.DecayScoreWriter       = (*l3FactRepo)(nil)
+	_ biz.MemoryPreferenceLister = (*l3FactRepo)(nil)
 )
 
 func newL3FactRepo(data *Data, vs vector.VectorStore) *l3FactRepo {
@@ -47,6 +48,24 @@ func NewL3FactWriterAdapter(data *Data, vs vector.VectorStore) biz.L3FactWriter 
 
 // NewL3FactReaderForUser creates a biz.L3FactReader backed by data.
 func NewL3FactReaderForUser(data *Data) biz.L3FactReader {
+	if data == nil {
+		return nil
+	}
+	return newL3FactRepo(data, nil)
+}
+
+// NewL3ConflictStore creates a biz.L3ConflictStore backed by data.
+// Used by the auto-memory worker for conflict governance (supersede/mark).
+func NewL3ConflictStore(data *Data) biz.L3ConflictStore {
+	if data == nil {
+		return nil
+	}
+	return newL3FactRepo(data, nil)
+}
+
+// NewMemoryPreferenceLister creates a biz.MemoryPreferenceLister backed by
+// data. Used by the agent layer for pinned preference injection (FR-M3).
+func NewMemoryPreferenceLister(data *Data) biz.MemoryPreferenceLister {
 	if data == nil {
 		return nil
 	}
@@ -331,7 +350,7 @@ func (r *l3FactRepo) RecallL3Facts(ctx context.Context, scopeType, scopeID, user
 	// When the number of active facts for the agent is below the threshold,
 	// use linear scan by importance instead of vector similarity search.
 	if r.shouldUseBruteForce(ctx, scopeType, scopeID, userID, queryEmbedding) {
-		return r.recallL3FactsBruteForce(ctx, scopeType, scopeID, userID, limit)
+		return r.recallL3FactsBruteForce(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
 	}
 	if r.vectorStore != nil && len(queryEmbedding) > 0 {
 		return r.recallL3WithVectorStore(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
@@ -363,11 +382,18 @@ func (r *l3FactRepo) shouldUseBruteForce(ctx context.Context, scopeType, scopeID
 	return count <= biz.DefaultFactBruteForceThreshold || len(queryEmbedding) == 0
 }
 
-// recallL3FactsBruteForce returns facts ordered by importance DESC without vector scoring.
-func (r *l3FactRepo) recallL3FactsBruteForce(ctx context.Context, scopeType, scopeID, userID string, limit int32) ([][]byte, error) {
+// recallL3FactsBruteForce scans the (bounded) active fact set without a
+// vector store and applies the same hybrid scoring as the other recall paths.
+// Candidates are pre-limited in SQL by importance to keep the scan bounded;
+// scoring, minScore filtering, and ranking happen in Go.
+func (r *l3FactRepo) recallL3FactsBruteForce(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error) {
 	lim := int(limit)
 	if lim <= 0 {
 		lim = 10
+	}
+	pool := l3RecallCandidatePool
+	if pool < lim {
+		pool = lim
 	}
 	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''"}
 	args := []any{}
@@ -385,21 +411,39 @@ func (r *l3FactRepo) recallL3FactsBruteForce(ctx context.Context, scopeType, sco
 	}
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	q := sqlFactSelect + where + ` ORDER BY importance DESC, updated_at DESC LIMIT ?`
-	args = append(args, lim)
+	args = append(args, pool)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
-	var out [][]byte
-	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
-		if err != nil {
-			continue
-		}
-		out = append(out, b)
+	scored := scoreFactRows(rows, tokenizeQuery(query), queryEmbedding, nil, minScore, time.Now().UTC())
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-	return out, entErrToBizErr(rows.Err(), "MEMORY_L3")
+	return r.finalizeScoredFacts(query, scored, lim), nil
+}
+
+// finalizeScoredFacts sorts, truncates, reranks, and annotates scored facts
+// into the output JSON rows. Score annotation happens after rerank so the
+// persisted breakdown reflects the final (possibly cross-encoder-adjusted)
+// total.
+func (r *l3FactRepo) finalizeScoredFacts(query string, scored []scoredFact, lim int) [][]byte {
+	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
+	if len(scored) > lim {
+		scored = scored[:lim]
+	}
+	passages := make([]string, len(scored))
+	for i, s := range scored {
+		passages[i] = factPassage(s.stmt, s.details)
+	}
+	applyCrossEncoderRerankToFactScored(r.data.Reranker(), query, scored, passages)
+	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
+	out := make([][]byte, 0, len(scored))
+	for _, s := range scored {
+		out = append(out, annotateFactScores(s.raw, s.breakdown))
+	}
+	return out
 }
 
 func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error) {
@@ -433,88 +477,11 @@ func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, user
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
-	tokens := tokenizeQuery(query)
-	now := time.Now().UTC()
-	var scored []scoredFact
-	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
-		if err != nil {
-			continue
-		}
-		var row map[string]any
-		if json.Unmarshal(b, &row) != nil {
-			continue
-		}
-		id, _ := row["id"].(string)
-		stmt, _ := row["statement"].(string)
-		details, _ := row["details_markdown"].(string)
-		imp := anyFloat(row, "importance")
-		_ = anyFloat(row, "confidence") // confidence not used in L3 hybrid scoring
-		qScore := anyFloat(row, "quality_score")
-		updatedAt, _ := row["updated_at"].(string)
-		factKind, _ := row["fact_kind"].(string)
-
-		kwScore := keywordOverlapScore(tokens, stmt+" "+details)
-		var vecScore float64
-		if len(queryEmbedding) > 0 {
-			// JSON unmarshal produces string (not []byte) for binary columns,
-			// so we must handle both types.
-			var embBlob []byte
-			switch v := row["embedding_blob"].(type) {
-			case []byte:
-				embBlob = v
-			case string:
-				embBlob = []byte(v)
-			}
-			if embNorm, ok := row["embedding_norm"].(float64); ok && embNorm > 0 && len(embBlob) > 0 {
-				emb := decodeFloat32Blob(embBlob)
-				if len(emb) == len(queryEmbedding) {
-					vecScore = cosineSimilarity(queryEmbedding, emb)
-				}
-			}
-		}
-		recency := recencyBoost(updatedAt, now)
-		decay := factDecayWithKind(factKind, updatedAt, now)
-		total := l3ScoreWeightKeyword*kwScore +
-			l3ScoreWeightVector*vecScore +
-			l3ScoreWeightImport*imp*decay +
-			l3ScoreWeightRecency*recency +
-			l3ScoreWeightQuality*qScore
-
-		if total < minScore {
-			continue
-		}
-		scored = append(scored, scoredFact{
-			raw:     b,
-			id:      id,
-			stmt:    stmt,
-			details: details,
-			score:   total,
-			breakdown: recallScoreBreakdown{
-				Keyword:      kwScore,
-				Vector:       vecScore,
-				Importance:   imp * decay,
-				Recency:      recency,
-				QualityScore: qScore,
-				Total:        total,
-			},
-		})
+	scored := scoreFactRows(rows, tokenizeQuery(query), queryEmbedding, nil, minScore, time.Now().UTC())
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
-	if len(scored) > lim {
-		scored = scored[:lim]
-	}
-	passages := make([]string, len(scored))
-	for i, s := range scored {
-		passages[i] = factPassage(s.stmt, s.details)
-	}
-	applyCrossEncoderRerankToFactScored(r.data.Reranker(), query, scored, passages)
-	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
-	var out [][]byte
-	for _, s := range scored {
-		out = append(out, s.raw)
-	}
-	return out, nil
+	return r.finalizeScoredFacts(query, scored, lim), nil
 }
 
 func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error) {
@@ -566,82 +533,81 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
-	tokens := tokenizeQuery(query)
-	now := time.Now().UTC()
-	var scored []scoredFact
-	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
-		if err != nil {
-			continue
-		}
-		var row map[string]any
-		if json.Unmarshal(b, &row) != nil {
-			continue
-		}
-		id, _ := row["id"].(string)
-		stmt, _ := row["statement"].(string)
-		details, _ := row["details_markdown"].(string)
-		imp := anyFloat(row, "importance")
-		qScore := anyFloat(row, "quality_score")
-		updatedAt, _ := row["updated_at"].(string)
-		factKind, _ := row["fact_kind"].(string)
-
-		vecScore := hitMap[id]
-		kwScore := keywordOverlapScore(tokens, stmt+" "+details)
-		recency := recencyBoost(updatedAt, now)
-		decay := factDecayWithKind(factKind, updatedAt, now)
-		total := l3ScoreWeightKeyword*kwScore +
-			l3ScoreWeightVector*vecScore +
-			l3ScoreWeightImport*imp*decay +
-			l3ScoreWeightRecency*recency +
-			l3ScoreWeightQuality*qScore
-
-		if total < minScore {
-			continue
-		}
-		scored = append(scored, scoredFact{
-			raw:     b,
-			id:      id,
-			stmt:    stmt,
-			details: details,
-			score:   total,
-			breakdown: recallScoreBreakdown{
-				Keyword:      kwScore,
-				Vector:       vecScore,
-				Importance:   imp * decay,
-				Recency:      recency,
-				QualityScore: qScore,
-				Total:        total,
-			},
-		})
+	scored := scoreFactRows(rows, tokenizeQuery(query), nil, hitMap, minScore, time.Now().UTC())
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
-	if len(scored) > lim {
-		scored = scored[:lim]
-	}
-	passages := make([]string, len(scored))
-	for i, s := range scored {
-		passages[i] = factPassage(s.stmt, s.details)
-	}
-	applyCrossEncoderRerankToFactScored(r.data.Reranker(), query, scored, passages)
-	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
-	var out [][]byte
-	for _, s := range scored {
-		out = append(out, s.raw)
-	}
-	return out, nil
+	return r.finalizeScoredFacts(query, scored, lim), nil
 }
 
 // --- L3FactWriter ---
+
+// applyFactPIIGate enforces the M1 PII invariant at the L3 persistence
+// boundary: memory_facts.statement / details_markdown never store plaintext
+// PII. Every write is scanned here, so producers that did not pre-scan
+// (Admin API path) cannot persist plaintext PII; inputs already redacted by
+// upstream producers (trpc tool path) scan clean and pass through unchanged.
+// redacted_statement keeps the ORIGINAL text so ApprovePIIFact can restore it.
+// Must run before fingerprinting so the dedup key derives from redacted text,
+// consistent with the consolidation path (memory_maintenance_adapter.go).
+func applyFactPIIGate(in biz.FactUpsert) (statement, details string, pii int, redacted, piiTypesJSON string) {
+	statement = strings.TrimSpace(in.Statement)
+	details = strings.TrimSpace(in.DetailsMarkdown)
+	pii = memBoolToInt(in.PIIFlag)
+	if pii != 0 {
+		if in.OriginalStatement != "" {
+			redacted = in.OriginalStatement
+		} else if details != "" {
+			redacted = details
+		}
+	}
+	piiTypesJSON = "[]"
+	if len(in.PIITypes) > 0 {
+		if b, err := json.Marshal(in.PIITypes); err == nil {
+			piiTypesJSON = string(b)
+		}
+	}
+	red := redactFactWritePII(statement, details)
+	if red.piiFlag == 0 {
+		return statement, details, pii, redacted, piiTypesJSON
+	}
+	statement, details, pii = red.statement, red.details, 1
+	if redacted == "" {
+		redacted = red.original
+	}
+	// Union caller-declared types with detector-matched types.
+	typeSet := map[string]struct{}{}
+	for _, t := range in.PIITypes {
+		if t = strings.TrimSpace(t); t != "" {
+			typeSet[t] = struct{}{}
+		}
+	}
+	var detected []string
+	if json.Unmarshal([]byte(red.piiTypesJSON), &detected) == nil {
+		for _, t := range detected {
+			typeSet[t] = struct{}{}
+		}
+	}
+	types := make([]string, 0, len(typeSet))
+	for t := range typeSet {
+		types = append(types, t)
+	}
+	sort.Strings(types)
+	if b, err := json.Marshal(types); err == nil {
+		piiTypesJSON = string(b)
+	}
+	return statement, details, pii, redacted, piiTypesJSON
+}
 
 func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]byte, error) {
 	id := strings.TrimSpace(in.ID)
 	if id == "" {
 		id = newUUIDString()
 	}
+	statement, details, pii, redacted, piiTypesJSON := applyFactPIIGate(in)
 	fp := strings.TrimSpace(in.Fingerprint)
 	if fp == "" {
-		fp = biz.FactFingerprint(in.Statement, in.ScopeType, in.ScopeID)
+		fp = biz.FactFingerprint(statement, in.ScopeType, in.ScopeID)
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	createdAt := strings.TrimSpace(in.CreatedAt)
@@ -671,24 +637,6 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 	meta := strings.TrimSpace(in.MetadataJSON)
 	if meta == "" {
 		meta = "{}"
-	}
-	details := strings.TrimSpace(in.DetailsMarkdown)
-	pii := memBoolToInt(in.PIIFlag)
-	// redacted_statement stores the ORIGINAL text when PII is flagged,
-	// so that ApprovePIIFact can restore it. It is NOT the redacted version.
-	redacted := ""
-	if pii != 0 {
-		if in.OriginalStatement != "" {
-			redacted = in.OriginalStatement
-		} else if details != "" {
-			redacted = details
-		}
-	}
-	piiTypesJSON := "[]"
-	if len(in.PIITypes) > 0 {
-		if b, err := json.Marshal(in.PIITypes); err == nil {
-			piiTypesJSON = string(b)
-		}
 	}
 
 	// INSERT + read-back in a single transaction to ensure read-your-writes
@@ -746,8 +694,8 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 			strings.TrimSpace(in.UserID),
 			strings.TrimSpace(in.TeamID),
 			strings.TrimSpace(in.AgentID),
-			strings.TrimSpace(in.Statement),
-			strings.ToLower(strings.TrimSpace(in.Statement)),
+			statement,
+			strings.ToLower(statement),
 			fp, details,
 			strings.TrimSpace(in.FactKind), tags,
 			in.Confidence, in.Importance, in.UseCount, in.HitCount,
@@ -757,7 +705,11 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 			strings.TrimSpace(in.SourceSessionID),
 			strings.TrimSpace(in.SourceMessageID),
 			strings.TrimSpace(in.SourceExternal),
-			in.Version, status, "",
+			// version is a system-managed revision counter: new rows always
+			// start at 1, the ON CONFLICT branch bumps memory_facts.version + 1.
+			// in.Version is intentionally ignored so callers cannot reset the
+			// counter (import/restore paths use memory_migrate.go instead).
+			1, status, "",
 			"pending", "", 0, nil, 0.0, // embedding_status, embedding_model, embedding_dim, embedding_blob, embedding_norm
 			pii, redacted,
 			0, 0.98, "", "", "", // ttl_days, decay_factor, next_decay_at, last_used_at, expires_at
@@ -957,9 +909,10 @@ func (r *l3FactRepo) InvalidateAndUpsertFactTx(ctx context.Context, oldFactID st
 	if id == "" {
 		id = newUUIDString()
 	}
+	statement, details, pii, redacted, piiTypesJSON := applyFactPIIGate(in)
 	fp := strings.TrimSpace(in.Fingerprint)
 	if fp == "" {
-		fp = biz.FactFingerprint(in.Statement, in.ScopeType, in.ScopeID)
+		fp = biz.FactFingerprint(statement, in.ScopeType, in.ScopeID)
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	createdAt := strings.TrimSpace(in.CreatedAt)
@@ -989,22 +942,6 @@ func (r *l3FactRepo) InvalidateAndUpsertFactTx(ctx context.Context, oldFactID st
 	meta := strings.TrimSpace(in.MetadataJSON)
 	if meta == "" {
 		meta = "{}"
-	}
-	details := strings.TrimSpace(in.DetailsMarkdown)
-	pii := memBoolToInt(in.PIIFlag)
-	redacted := ""
-	if pii != 0 {
-		if in.OriginalStatement != "" {
-			redacted = in.OriginalStatement
-		} else if details != "" {
-			redacted = details
-		}
-	}
-	piiTypesJSON := "[]"
-	if len(in.PIITypes) > 0 {
-		if b, err := json.Marshal(in.PIITypes); err == nil {
-			piiTypesJSON = string(b)
-		}
 	}
 	validFrom := strings.TrimSpace(in.ValidFrom)
 	if validFrom == "" {
@@ -1071,8 +1008,8 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 			strings.TrimSpace(in.UserID),
 			strings.TrimSpace(in.TeamID),
 			strings.TrimSpace(in.AgentID),
-			strings.TrimSpace(in.Statement),
-			strings.ToLower(strings.TrimSpace(in.Statement)),
+			statement,
+			strings.ToLower(statement),
 			fp, details,
 			strings.TrimSpace(in.FactKind), tags,
 			in.Confidence, in.Importance, in.UseCount, in.HitCount,
@@ -1082,7 +1019,8 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 			strings.TrimSpace(in.SourceSessionID),
 			strings.TrimSpace(in.SourceMessageID),
 			strings.TrimSpace(in.SourceExternal),
-			in.Version, status, "",
+			// version: system-managed counter, see UpsertFactRow.
+			1, status, "",
 			"pending", "", 0, nil, 0.0,
 			pii, redacted,
 			0, 0.98, "", "", "",
@@ -1192,6 +1130,60 @@ func (r *l3FactRepo) ListConflictingFacts(ctx context.Context, scopeType, scopeI
 		out = append(out, b)
 	}
 	return out, total, entErrToBizErr(rows.Err(), "MEMORY_L3")
+}
+
+// SupersedeFact marks oldID as superseded by newID so the old statement no
+// longer participates in recall or conflict arbitration.
+func (r *l3FactRepo) SupersedeFact(ctx context.Context, oldID, newID string) error {
+	if oldID == "" || newID == "" || oldID == newID {
+		return nil
+	}
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET status = 'superseded', superseded_by = ?, updated_at = ? WHERE id = ? AND status = 'active'`),
+		newID, time.Now().UTC().Format(time.RFC3339Nano), oldID)
+	return entErrToBizErr(err, "MEMORY_L3")
+}
+
+// ListActivePreferenceFacts returns active facts of the given kinds within the
+// user+agent scopes, ordered by importance DESC, updated_at DESC (FR-M3 pinned
+// preference injection).
+func (r *l3FactRepo) ListActivePreferenceFacts(ctx context.Context, agentID, userID string, kinds []string, limit int32) ([][]byte, error) {
+	if len(kinds) == 0 {
+		return nil, nil
+	}
+	kindPH := make([]string, len(kinds))
+	args := make([]any, 0, len(kinds)+4)
+	for i, k := range kinds {
+		kindPH[i] = "?"
+		args = append(args, k)
+	}
+	where := " WHERE status = 'active' AND deleted_at = '' AND valid_until = ''" +
+		" AND fact_kind IN (" + strings.Join(kindPH, ",") + ")" +
+		" AND ((scope_type = 'user' AND scope_id = ?) OR (scope_type = 'agent' AND scope_id = ?))"
+	args = append(args, userID, agentID)
+	lim := int(limit)
+	if lim <= 0 {
+		lim = 10
+	}
+	if lim > 50 {
+		lim = 50
+	}
+	q := sqlFactSelect + where + ` ORDER BY importance DESC, updated_at DESC LIMIT ?`
+	args = append(args, lim)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	if err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L3")
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		b, err := scanFactRowJSON(rows)
+		if err != nil {
+			return nil, entErrToBizErr(err, "MEMORY_L3")
+		}
+		out = append(out, b)
+	}
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L3")
 }
 
 // --- PIIReviewStore ---

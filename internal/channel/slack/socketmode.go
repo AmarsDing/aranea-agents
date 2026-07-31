@@ -61,6 +61,9 @@ func RunSocketMode(
 	)
 	socketClient := socketmode.New(client)
 	chRow := ch
+	// socketmode SDK 内部管理 WS 重连，通过 Events 派发连接生命周期事件；
+	// guard 保证每次（重新）建立一条 open、每个故障期一条 error。
+	flowGuard := &runtime.ConnectFlowGuard{}
 
 	safego.Go(ctx, "channel.slack.socketmode", func() {
 		for {
@@ -72,6 +75,32 @@ func RunSocketMode(
 					return
 				}
 				switch evt.Type {
+				case socketmode.EventTypeConnected:
+					flowGuard.EmitOpen(func() {
+						lg.Info("Slack Socket Mode 已连接",
+							loggateway.StepID("channel.slack.socketmode.connected"),
+							loggateway.Str("channel_id", ch.ID),
+						)
+						runtime.EmitConnectOpen(ctx, "slack", ch.ID, "", "Slack Socket Mode 已连接")
+					})
+				case socketmode.EventTypeConnectionError:
+					var connErr error
+					if e, ok := evt.Data.(*slack.ConnectionErrorEvent); ok {
+						connErr = e.ErrorObj
+					}
+					flowGuard.EmitError(func() {
+						runtime.EmitConnectError(ctx, "slack", ch.ID, "Slack Socket Mode 连接异常", connErr)
+					})
+				case socketmode.EventTypeIncomingError:
+					var incErr error
+					if e, ok := evt.Data.(*slack.IncomingEventError); ok {
+						incErr = e.ErrorObj
+					}
+					lg.Warn("Slack Socket Mode 入站消息解析失败",
+						loggateway.StepID("channel.slack.socketmode.incoming_error"),
+						loggateway.Str("channel_id", ch.ID),
+						loggateway.Err(incErr),
+					)
 				case socketmode.EventTypeEventsAPI:
 					socketClient.Ack(*evt.Request)
 					inner, ok := evt.Data.(slackevents.EventsAPIEvent)

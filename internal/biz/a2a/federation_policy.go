@@ -67,6 +67,17 @@ func (e *PolicyEngine) Evaluate(callerOrgID, calleeOrgID string) (FederationPoli
 	e.mu.RLock()
 	p, found := e.cache[policyCacheKey(callerOrgID, calleeOrgID)]
 	e.mu.RUnlock()
+	// K5: explicit deny policies always block the call (approval normalizes to
+	// deny and is Warned in IsDenyAction); log the denial rule hit once here.
+	if found && p.Action == PolicyActionDeny && e != nil && e.lg != nil {
+		e.lg.Warn("federation call denied by policy rule",
+			loggateway.StepID("a2a.fed.policy.denied"),
+			loggateway.Str("policy_id", p.ID),
+			loggateway.Str("caller_org_id", callerOrgID),
+			loggateway.Str("callee_org_id", calleeOrgID),
+			loggateway.Str("action", p.Action),
+		)
+	}
 	return p, found
 }
 

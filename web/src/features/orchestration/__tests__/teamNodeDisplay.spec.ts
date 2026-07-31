@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { teamTopologySummary } from '../teamNodeDisplay';
+import { teamTopologySummary, compileIssuesToNodeIssues } from '../teamNodeDisplay';
 import type { CompileTeamGraphResult } from '../compileApi';
 import type { TeamDefinition } from '../../teams/types';
-import type { CompiledGraphNodeView } from '../../../services/kratos/team/v1/index';
+import type { CompiledGraphNodeView, CompileTeamGraphValidationIssue } from '../../../services/kratos/team/v1/index';
 
 const node = (id: string, role: string, agentDisplayName: string, agentName = ''): CompiledGraphNodeView =>
   ({
@@ -109,5 +109,51 @@ describe('teamNodeDisplay.teamTopologySummary', () => {
     expect(teamTopologySummary(compiled, mkDef())).toBe('顺序执行：quant-agent');
     const bare = mkCompiled('sequential', [node('member-1', 'worker', '')]);
     expect(teamTopologySummary(bare, mkDef())).toBe('顺序执行：成员 1');
+  });
+});
+
+describe('teamNodeDisplay.compileIssuesToNodeIssues (M53 Phase 11 F3)', () => {
+  const issue = (over: Partial<CompileTeamGraphValidationIssue>): CompileTeamGraphValidationIssue => ({
+    code: 'X',
+    nodeId: undefined,
+    field: undefined,
+    message: 'm',
+    warning: false,
+    ...over,
+  });
+
+  it('maps issues with nodeId to error/warning levels', () => {
+    const map = compileIssuesToNodeIssues([
+      issue({ nodeId: 'n1', code: 'E1', message: 'broken' }),
+      issue({ nodeId: 'n2', code: 'W1', message: 'careful', warning: true }),
+      issue({ code: 'GLOBAL', message: 'no node' }),
+      issue({ nodeId: '  ', code: 'BLANK', message: 'blank node' }),
+    ]);
+    expect(Object.keys(map).sort()).toEqual(['n1', 'n2']);
+    expect(map.n1).toEqual({ level: 'error', code: 'E1', message: 'broken' });
+    expect(map.n2).toEqual({ level: 'warning', code: 'W1', message: 'careful' });
+  });
+
+  it('prefers error over warning for the same node', () => {
+    const map = compileIssuesToNodeIssues([
+      issue({ nodeId: 'n1', code: 'W1', warning: true }),
+      issue({ nodeId: 'n1', code: 'E1', warning: false }),
+      issue({ nodeId: 'n1', code: 'W2', warning: true }),
+    ]);
+    expect(map.n1?.level).toBe('error');
+    expect(map.n1?.code).toBe('E1');
+  });
+
+  it('keeps the first warning when no error exists for the node', () => {
+    const map = compileIssuesToNodeIssues([
+      issue({ nodeId: 'n1', code: 'W1', warning: true }),
+      issue({ nodeId: 'n1', code: 'W2', warning: true }),
+    ]);
+    expect(map.n1?.code).toBe('W1');
+  });
+
+  it('falls back to code as message when message is empty', () => {
+    const map = compileIssuesToNodeIssues([issue({ nodeId: 'n1', code: 'E9', message: '' })]);
+    expect(map.n1?.message).toBe('E9');
   });
 });

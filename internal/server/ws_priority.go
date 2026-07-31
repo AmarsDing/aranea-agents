@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/conf"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 )
 
@@ -57,6 +58,14 @@ type connQueues struct {
 	dropNormal atomic.Uint64
 	dropLow    atomic.Uint64
 	dropHigh   atomic.Uint64 // connection-close events; usually 0
+
+	// flow is the per-connection flow-log emitter (system domain), created
+	// once in newWSConn and reused for ws read/parse/send flow logs. Nil in
+	// tests that hand-build wsConn.
+	flow *event.TraceEmitter
+	// onLaneDrop fires when a normal/low lane drops a message (buffer full).
+	// Wired in newWSConn; emits the throttled system.ws.send_drop flow log.
+	onLaneDrop func(prio wsPriority)
 }
 
 func newConnQueues(cfg conf.RuntimeWSConfig) *connQueues {
@@ -76,6 +85,23 @@ func newConnQueues(cfg conf.RuntimeWSConfig) *connQueues {
 		high:   make(chan []byte, highCap),
 		normal: make(chan []byte, normalCap),
 		low:    make(chan []byte, lowCap),
+	}
+}
+
+// flowEmitter returns the per-connection flow emitter, or nil when the
+// connection was built without one (tests).
+func (q *connQueues) flowEmitter() *event.TraceEmitter {
+	if q == nil {
+		return nil
+	}
+	return q.flow
+}
+
+// reportLaneDrop notifies the onLaneDrop hook (if wired) about a dropped
+// message in the given lane. Called with no locks held; the hook throttles.
+func (q *connQueues) reportLaneDrop(prio wsPriority) {
+	if q.onLaneDrop != nil {
+		q.onLaneDrop(prio)
 	}
 }
 
@@ -105,6 +131,7 @@ func (q *connQueues) enqueue(cfg conf.RuntimeWSConfig, priority wsPriority, data
 		case q.normal <- data:
 		default:
 			q.dropNormal.Add(1)
+			q.reportLaneDrop(wsPriorityNormal)
 		}
 		return true
 	default: // wsPriorityLow
@@ -112,6 +139,7 @@ func (q *connQueues) enqueue(cfg conf.RuntimeWSConfig, priority wsPriority, data
 		case q.low <- data:
 		default:
 			q.dropLow.Add(1)
+			q.reportLaneDrop(wsPriorityLow)
 		}
 		return true
 	}
@@ -123,6 +151,7 @@ func (q *connQueues) enqueueSystem(data []byte) {
 	case q.normal <- data:
 	default:
 		q.dropNormal.Add(1)
+		q.reportLaneDrop(wsPriorityNormal)
 	}
 }
 

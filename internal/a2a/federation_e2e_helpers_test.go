@@ -394,7 +394,7 @@ func newFederationE2EFixture(t *testing.T) *federationE2EFixture {
 	uc := a2abiz.NewFederationUsecase(orgs, gov,
 		a2abiz.NewDirectory(orgs, remotes),
 		a2abiz.NewAgentCardSync(remotes, noopCardDiscoverer{}, noopCardWriter{}, lg),
-		remotes, executor)
+		remotes, executor, nil)
 	return &federationE2EFixture{uc: uc, orgs: orgs, policies: policies, audits: audits, remotes: remotes}
 }
 

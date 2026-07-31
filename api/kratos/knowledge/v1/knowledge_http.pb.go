@@ -21,23 +21,33 @@ var _ = binding.EncodeURL
 const _ = http.SupportPackageIsVersion1
 
 const OperationKnowledgeServiceCreateCollection = "/kratos.knowledge.v1.KnowledgeService/CreateCollection"
+const OperationKnowledgeServiceCreateVaultDir = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDir"
+const OperationKnowledgeServiceCreateVaultDocument = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDocument"
 const OperationKnowledgeServiceDeleteCollection = "/kratos.knowledge.v1.KnowledgeService/DeleteCollection"
 const OperationKnowledgeServiceDeleteDocument = "/kratos.knowledge.v1.KnowledgeService/DeleteDocument"
 const OperationKnowledgeServiceGetCollection = "/kratos.knowledge.v1.KnowledgeService/GetCollection"
 const OperationKnowledgeServiceGetDocumentContent = "/kratos.knowledge.v1.KnowledgeService/GetDocumentContent"
 const OperationKnowledgeServiceGetEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
 const OperationKnowledgeServiceIngestDocument = "/kratos.knowledge.v1.KnowledgeService/IngestDocument"
+const OperationKnowledgeServiceListCollectionGraph = "/kratos.knowledge.v1.KnowledgeService/ListCollectionGraph"
 const OperationKnowledgeServiceListCollections = "/kratos.knowledge.v1.KnowledgeService/ListCollections"
 const OperationKnowledgeServiceListDocumentLinks = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
 const OperationKnowledgeServiceListDocuments = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
 const OperationKnowledgeServiceListVaultTree = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
 const OperationKnowledgeServiceMoveDocument = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
+const OperationKnowledgeServiceMoveDocumentToDir = "/kratos.knowledge.v1.KnowledgeService/MoveDocumentToDir"
 const OperationKnowledgeServiceSearch = "/kratos.knowledge.v1.KnowledgeService/Search"
+const OperationKnowledgeServiceUpdateDocumentContent = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
 const OperationKnowledgeServiceUpdateEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
 
 type KnowledgeServiceHTTPServer interface {
 	// CreateCollection Collections
 	CreateCollection(context.Context, *CreateCollectionRequest) (*KnowledgeCollection, error)
+	// CreateVaultDir CreateVaultDir creates a directory inside the vault (G1-B2; idempotent).
+	CreateVaultDir(context.Context, *CreateVaultDirRequest) (*emptypb.Empty, error)
+	// CreateVaultDocument CreateVaultDocument writes a template .md (frontmatter + empty heading) and
+	// indexes it immediately (G1-B2; no 45s poll wait). Existing path = conflict.
+	CreateVaultDocument(context.Context, *CreateVaultDocumentRequest) (*KnowledgeDocument, error)
 	DeleteCollection(context.Context, *DeleteCollectionRequest) (*emptypb.Empty, error)
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error)
 	GetCollection(context.Context, *GetCollectionRequest) (*KnowledgeCollection, error)
@@ -45,6 +55,10 @@ type KnowledgeServiceHTTPServer interface {
 	GetEmbedderConfig(context.Context, *GetEmbedderConfigRequest) (*EmbedderConfig, error)
 	// IngestDocument Documents
 	IngestDocument(context.Context, *IngestDocumentRequest) (*KnowledgeDocument, error)
+	// ListCollectionGraph ListCollectionGraph returns the full link graph of one collection (G4-B8):
+	// nodes = documents (after path_prefix filter), edges = links (link_types filter;
+	// endpoints outside scope/dangling dropped), degree = in-edge count per node.
+	ListCollectionGraph(context.Context, *ListCollectionGraphRequest) (*ListCollectionGraphResponse, error)
 	ListCollections(context.Context, *ListCollectionsRequest) (*ListCollectionsResponse, error)
 	// ListDocumentLinks Document relations with source-type annotation (P3 关联区, R-3).
 	ListDocumentLinks(context.Context, *ListDocumentLinksRequest) (*ListDocumentLinksResponse, error)
@@ -52,8 +66,17 @@ type KnowledgeServiceHTTPServer interface {
 	// ListVaultTree Vault explorer (P3): lazy folder listing derived from document rel_paths.
 	ListVaultTree(context.Context, *ListVaultTreeRequest) (*ListVaultTreeResponse, error)
 	MoveDocument(context.Context, *MoveDocumentRequest) (*KnowledgeDocument, error)
+	// MoveDocumentToDir MoveDocumentToDir moves a vault document to another directory within the same
+	// collection (G3-B4): atomic fs move + rel_path update (identity/chunks kept) +
+	// inbound explicit links rebuild. Name clash -> CodeConflict unless
+	// conflict_policy=overwrite|rename. Vault documents only (rel_path required).
+	MoveDocumentToDir(context.Context, *MoveDocumentToDirRequest) (*KnowledgeDocument, error)
 	// Search Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
+	// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
+	// frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
+	// backed up to trash) and returns conflict=true. Triggers immediate reindex.
+	UpdateDocumentContent(context.Context, *UpdateDocumentContentRequest) (*UpdateDocumentContentResponse, error)
 	UpdateEmbedderConfig(context.Context, *UpdateEmbedderConfigRequest) (*UpdateEmbedderConfigResponse, error)
 }
 
@@ -68,8 +91,13 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.GET("/v1/knowledge/documents/{id}/content", _KnowledgeService_GetDocumentContent0_HTTP_Handler(srv))
 	r.DELETE("/v1/knowledge/documents/{id}", _KnowledgeService_DeleteDocument0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/documents/{id}/move", _KnowledgeService_MoveDocument0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/documents/{id}/move_to_dir", _KnowledgeService_MoveDocumentToDir0_HTTP_Handler(srv))
+	r.PUT("/v1/knowledge/documents/{id}/content", _KnowledgeService_UpdateDocumentContent0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/vaults/{collection_id}/tree", _KnowledgeService_ListVaultTree0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/vaults/{collection_id}/dirs", _KnowledgeService_CreateVaultDir0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/vaults/{collection_id}/docs", _KnowledgeService_CreateVaultDocument0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/documents/{id}/links", _KnowledgeService_ListDocumentLinks0_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/vaults/{collection_id}/graph", _KnowledgeService_ListCollectionGraph0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/search", _KnowledgeService_Search0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/embedder-config", _KnowledgeService_GetEmbedderConfig0_HTTP_Handler(srv))
 	r.PUT("/v1/knowledge/embedder-config", _KnowledgeService_UpdateEmbedderConfig0_HTTP_Handler(srv))
@@ -270,6 +298,56 @@ func _KnowledgeService_MoveDocument0_HTTP_Handler(srv KnowledgeServiceHTTPServer
 	}
 }
 
+func _KnowledgeService_MoveDocumentToDir0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in MoveDocumentToDirRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceMoveDocumentToDir)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.MoveDocumentToDir(ctx, req.(*MoveDocumentToDirRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*KnowledgeDocument)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_UpdateDocumentContent0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in UpdateDocumentContentRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceUpdateDocumentContent)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.UpdateDocumentContent(ctx, req.(*UpdateDocumentContentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*UpdateDocumentContentResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _KnowledgeService_ListVaultTree0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListVaultTreeRequest
@@ -292,6 +370,56 @@ func _KnowledgeService_ListVaultTree0_HTTP_Handler(srv KnowledgeServiceHTTPServe
 	}
 }
 
+func _KnowledgeService_CreateVaultDir0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in CreateVaultDirRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceCreateVaultDir)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.CreateVaultDir(ctx, req.(*CreateVaultDirRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*emptypb.Empty)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_CreateVaultDocument0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in CreateVaultDocumentRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceCreateVaultDocument)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.CreateVaultDocument(ctx, req.(*CreateVaultDocumentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*KnowledgeDocument)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _KnowledgeService_ListDocumentLinks0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListDocumentLinksRequest
@@ -310,6 +438,28 @@ func _KnowledgeService_ListDocumentLinks0_HTTP_Handler(srv KnowledgeServiceHTTPS
 			return err
 		}
 		reply := out.(*ListDocumentLinksResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_ListCollectionGraph0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListCollectionGraphRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceListCollectionGraph)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListCollectionGraph(ctx, req.(*ListCollectionGraphRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListCollectionGraphResponse)
 		return ctx.Result(200, reply)
 	}
 }
@@ -380,6 +530,11 @@ func _KnowledgeService_UpdateEmbedderConfig0_HTTP_Handler(srv KnowledgeServiceHT
 type KnowledgeServiceHTTPClient interface {
 	// CreateCollection Collections
 	CreateCollection(ctx context.Context, req *CreateCollectionRequest, opts ...http.CallOption) (rsp *KnowledgeCollection, err error)
+	// CreateVaultDir CreateVaultDir creates a directory inside the vault (G1-B2; idempotent).
+	CreateVaultDir(ctx context.Context, req *CreateVaultDirRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
+	// CreateVaultDocument CreateVaultDocument writes a template .md (frontmatter + empty heading) and
+	// indexes it immediately (G1-B2; no 45s poll wait). Existing path = conflict.
+	CreateVaultDocument(ctx context.Context, req *CreateVaultDocumentRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
 	DeleteCollection(ctx context.Context, req *DeleteCollectionRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteDocument(ctx context.Context, req *DeleteDocumentRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	GetCollection(ctx context.Context, req *GetCollectionRequest, opts ...http.CallOption) (rsp *KnowledgeCollection, err error)
@@ -387,6 +542,10 @@ type KnowledgeServiceHTTPClient interface {
 	GetEmbedderConfig(ctx context.Context, req *GetEmbedderConfigRequest, opts ...http.CallOption) (rsp *EmbedderConfig, err error)
 	// IngestDocument Documents
 	IngestDocument(ctx context.Context, req *IngestDocumentRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
+	// ListCollectionGraph ListCollectionGraph returns the full link graph of one collection (G4-B8):
+	// nodes = documents (after path_prefix filter), edges = links (link_types filter;
+	// endpoints outside scope/dangling dropped), degree = in-edge count per node.
+	ListCollectionGraph(ctx context.Context, req *ListCollectionGraphRequest, opts ...http.CallOption) (rsp *ListCollectionGraphResponse, err error)
 	ListCollections(ctx context.Context, req *ListCollectionsRequest, opts ...http.CallOption) (rsp *ListCollectionsResponse, err error)
 	// ListDocumentLinks Document relations with source-type annotation (P3 关联区, R-3).
 	ListDocumentLinks(ctx context.Context, req *ListDocumentLinksRequest, opts ...http.CallOption) (rsp *ListDocumentLinksResponse, err error)
@@ -394,8 +553,17 @@ type KnowledgeServiceHTTPClient interface {
 	// ListVaultTree Vault explorer (P3): lazy folder listing derived from document rel_paths.
 	ListVaultTree(ctx context.Context, req *ListVaultTreeRequest, opts ...http.CallOption) (rsp *ListVaultTreeResponse, err error)
 	MoveDocument(ctx context.Context, req *MoveDocumentRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
+	// MoveDocumentToDir MoveDocumentToDir moves a vault document to another directory within the same
+	// collection (G3-B4): atomic fs move + rel_path update (identity/chunks kept) +
+	// inbound explicit links rebuild. Name clash -> CodeConflict unless
+	// conflict_policy=overwrite|rename. Vault documents only (rel_path required).
+	MoveDocumentToDir(ctx context.Context, req *MoveDocumentToDirRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
 	// Search Search
 	Search(ctx context.Context, req *SearchRequest, opts ...http.CallOption) (rsp *SearchResponse, err error)
+	// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
+	// frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
+	// backed up to trash) and returns conflict=true. Triggers immediate reindex.
+	UpdateDocumentContent(ctx context.Context, req *UpdateDocumentContentRequest, opts ...http.CallOption) (rsp *UpdateDocumentContentResponse, err error)
 	UpdateEmbedderConfig(ctx context.Context, req *UpdateEmbedderConfigRequest, opts ...http.CallOption) (rsp *UpdateEmbedderConfigResponse, err error)
 }
 
@@ -413,6 +581,35 @@ func (c *KnowledgeServiceHTTPClientImpl) CreateCollection(ctx context.Context, i
 	pattern := "/v1/knowledge/collections"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceCreateCollection))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// CreateVaultDir CreateVaultDir creates a directory inside the vault (G1-B2; idempotent).
+func (c *KnowledgeServiceHTTPClientImpl) CreateVaultDir(ctx context.Context, in *CreateVaultDirRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
+	var out emptypb.Empty
+	pattern := "/v1/knowledge/vaults/{collection_id}/dirs"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceCreateVaultDir))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// CreateVaultDocument CreateVaultDocument writes a template .md (frontmatter + empty heading) and
+// indexes it immediately (G1-B2; no 45s poll wait). Existing path = conflict.
+func (c *KnowledgeServiceHTTPClientImpl) CreateVaultDocument(ctx context.Context, in *CreateVaultDocumentRequest, opts ...http.CallOption) (*KnowledgeDocument, error) {
+	var out KnowledgeDocument
+	pattern := "/v1/knowledge/vaults/{collection_id}/docs"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceCreateVaultDocument))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
@@ -500,6 +697,22 @@ func (c *KnowledgeServiceHTTPClientImpl) IngestDocument(ctx context.Context, in 
 	return &out, nil
 }
 
+// ListCollectionGraph ListCollectionGraph returns the full link graph of one collection (G4-B8):
+// nodes = documents (after path_prefix filter), edges = links (link_types filter;
+// endpoints outside scope/dangling dropped), degree = in-edge count per node.
+func (c *KnowledgeServiceHTTPClientImpl) ListCollectionGraph(ctx context.Context, in *ListCollectionGraphRequest, opts ...http.CallOption) (*ListCollectionGraphResponse, error) {
+	var out ListCollectionGraphResponse
+	pattern := "/v1/knowledge/vaults/{collection_id}/graph"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceListCollectionGraph))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *KnowledgeServiceHTTPClientImpl) ListCollections(ctx context.Context, in *ListCollectionsRequest, opts ...http.CallOption) (*ListCollectionsResponse, error) {
 	var out ListCollectionsResponse
 	pattern := "/v1/knowledge/collections"
@@ -567,6 +780,23 @@ func (c *KnowledgeServiceHTTPClientImpl) MoveDocument(ctx context.Context, in *M
 	return &out, nil
 }
 
+// MoveDocumentToDir MoveDocumentToDir moves a vault document to another directory within the same
+// collection (G3-B4): atomic fs move + rel_path update (identity/chunks kept) +
+// inbound explicit links rebuild. Name clash -> CodeConflict unless
+// conflict_policy=overwrite|rename. Vault documents only (rel_path required).
+func (c *KnowledgeServiceHTTPClientImpl) MoveDocumentToDir(ctx context.Context, in *MoveDocumentToDirRequest, opts ...http.CallOption) (*KnowledgeDocument, error) {
+	var out KnowledgeDocument
+	pattern := "/v1/knowledge/documents/{id}/move_to_dir"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceMoveDocumentToDir))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // Search Search
 func (c *KnowledgeServiceHTTPClientImpl) Search(ctx context.Context, in *SearchRequest, opts ...http.CallOption) (*SearchResponse, error) {
 	var out SearchResponse
@@ -575,6 +805,22 @@ func (c *KnowledgeServiceHTTPClientImpl) Search(ctx context.Context, in *SearchR
 	opts = append(opts, http.Operation(OperationKnowledgeServiceSearch))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
+// frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
+// backed up to trash) and returns conflict=true. Triggers immediate reindex.
+func (c *KnowledgeServiceHTTPClientImpl) UpdateDocumentContent(ctx context.Context, in *UpdateDocumentContentRequest, opts ...http.CallOption) (*UpdateDocumentContentResponse, error) {
+	var out UpdateDocumentContentResponse
+	pattern := "/v1/knowledge/documents/{id}/content"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceUpdateDocumentContent))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "PUT", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

@@ -9,16 +9,17 @@ import (
 // usageRollupConsumer rolls up token usage statistics from system.notice
 // events with NoticeType=token_usage.
 type usageRollupConsumer struct {
-	bus    EventBus
-	usage  *UsageUsecase
-	logger SessionLogWriter
+	bus     EventBus
+	usage   *UsageUsecase
+	logger  SessionLogWriter
+	flowLog FlowLogWriter
 }
 
-func newUsageRollupConsumer(bus EventBus, usage *UsageUsecase, logger SessionLogWriter) *usageRollupConsumer {
+func newUsageRollupConsumer(bus EventBus, usage *UsageUsecase, logger SessionLogWriter, flowLog FlowLogWriter) *usageRollupConsumer {
 	if usage == nil || bus == nil {
 		return nil
 	}
-	return &usageRollupConsumer{bus: bus, usage: usage, logger: logger}
+	return &usageRollupConsumer{bus: bus, usage: usage, logger: logger, flowLog: flowLog}
 }
 
 func (c *usageRollupConsumer) Start(ctx context.Context) {
@@ -48,9 +49,15 @@ func (c *usageRollupConsumer) handle(ctx context.Context, n *SystemNoticeEvent) 
 		return
 	}
 	e := tokenUsageFromEnvelope(&envTU)
-	if err := c.usage.RollupDailyHourly(ctx, e); err != nil && c.logger != nil {
-		c.logger.LogSessionWarn(ctx, n.SpiritSessionID(), "usage.rollup_failed", "用量汇总写入失败",
-			LogPair{Key: "error", Value: err})
+	if err := c.usage.RollupDailyHourly(ctx, e); err != nil {
+		if c.logger != nil {
+			c.logger.LogSessionWarn(ctx, n.SpiritSessionID(), "usage.rollup_failed", "用量汇总写入失败",
+				LogPair{Key: "error", Value: err})
+		}
+		if c.flowLog != nil {
+			c.flowLog.LogFlowError(ctx, n.SpiritSessionID(), "event_bus.usage.record", "用量事件写入失败",
+				LogPair{Key: "error", Value: err.Error()})
+		}
 	}
 }
 

@@ -21,6 +21,8 @@ type us14MemRepo struct {
 	mu          sync.Mutex
 	collections map[string]biz.KnowledgeCollection
 	documents   map[string]biz.KnowledgeDocument
+	// lastSearchQ 捕获最近一次 SearchChunks 收到的查询（G3-B7 映射验证用）。
+	lastSearchQ biz.KnowledgeSearchQuery
 }
 
 func newUS14MemRepo() *us14MemRepo {
@@ -188,7 +190,10 @@ func (m *us14MemRepo) MoveDocument(_ context.Context, id, targetCollectionID str
 
 func (m *us14MemRepo) InsertChunks(context.Context, []biz.KnowledgeChunk) error { return nil }
 func (m *us14MemRepo) DeleteChunksByDocument(context.Context, string) error     { return nil }
-func (m *us14MemRepo) SearchChunks(context.Context, biz.KnowledgeSearchQuery, []float32) ([]biz.KnowledgeChunk, error) {
+func (m *us14MemRepo) SearchChunks(_ context.Context, q biz.KnowledgeSearchQuery, _ []float32) ([]biz.KnowledgeChunk, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.lastSearchQ = q
 	return nil, nil
 }
 
@@ -400,6 +405,36 @@ func TestSearch_ExplicitCollection_Unchanged(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("explicit collection search must not error, got %v", err)
+	}
+}
+
+// ── G3-B7：SearchRequest.path_prefix → SearchQuery.PathPrefix 映射 ───────────
+
+func TestSearch_PathPrefixPlumbed(t *testing.T) {
+	repo := newUS14MemRepo()
+	uc := biz.NewKnowledgeUsecase(repo, repo, repo)
+	if _, err := uc.CreateCollection(context.Background(), biz.KnowledgeCollection{
+		ID: "col-x", Name: "x", EmbeddingModel: "m", Dim: 3,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	retriever := knowledge.NewRetriever(us14QueryEmbedder{}, repo, nil, loggateway.NewNoop())
+	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{
+		Retriever: retriever,
+	}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+
+	if _, err := svc.Search(context.Background(), &v1.SearchRequest{
+		CollectionId: "col-x",
+		Query:        "test",
+		PathPrefix:   "notes/guides",
+	}); err != nil {
+		t.Fatalf("search with path_prefix must not error, got %v", err)
+	}
+	repo.mu.Lock()
+	got := repo.lastSearchQ.PathPrefix
+	repo.mu.Unlock()
+	if got != "notes/guides" {
+		t.Errorf("PathPrefix = %q, want %q（proto → biz 映射丢失）", got, "notes/guides")
 	}
 }
 

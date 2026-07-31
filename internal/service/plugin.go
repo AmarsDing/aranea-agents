@@ -6,6 +6,8 @@ import (
 
 	v1 "aranea-agents/api/kratos/plugin/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
@@ -20,13 +22,15 @@ type PluginService struct {
 	uc      *biz.PluginUsecase
 	runtime *plugintrpc.Runtime
 	lg      loggateway.Logger
+	// monitorBus 流程日志总线；nil 时跳过流程日志发射（测试），进程日志不受影响。
+	monitorBus contract.MonitorBus
 }
 
-func NewPluginService(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime, lg loggateway.Logger) *PluginService {
+func NewPluginService(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime, lg loggateway.Logger, bus contract.MonitorBus) *PluginService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &PluginService{uc: uc, runtime: runtime, lg: lg}
+	return &PluginService{uc: uc, runtime: runtime, lg: lg, monitorBus: bus}
 }
 
 // Bootstrap seeds built-in plugins and hot-reloads runtime (call once at process start).
@@ -41,8 +45,8 @@ func (s *PluginService) Bootstrap(ctx context.Context) {
 // NewPluginServiceWithBootstrap constructs PluginService and runs one-time bootstrap.
 // TECH-DEBT(#plugin-bootstrap): constructor side-effect — should be called explicitly
 // after Wire graph construction instead of inside a provider.
-func NewPluginServiceWithBootstrap(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime, lg loggateway.Logger) *PluginService {
-	s := NewPluginService(uc, runtime, lg)
+func NewPluginServiceWithBootstrap(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime, lg loggateway.Logger, bus contract.MonitorBus) *PluginService {
+	s := NewPluginService(uc, runtime, lg, bus)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	s.Bootstrap(ctx)
@@ -64,6 +68,8 @@ func (s *PluginService) seedBuiltinPlugins(ctx context.Context) {
 				loggateway.Str("key", def.Key),
 				loggateway.Err(err),
 			)
+			s.emitPluginFlowError(ctx, "system.plugin.seed_fail", "插件种子同步失败",
+				event.P("key", def.Key), event.P("error", err.Error()))
 			continue
 		}
 		if _, err := s.uc.Create(ctx, def.ToBizPlugin()); err != nil {
@@ -72,9 +78,26 @@ func (s *PluginService) seedBuiltinPlugins(ctx context.Context) {
 				loggateway.Str("key", def.Key),
 				loggateway.Err(err),
 			)
+			s.emitPluginFlowError(ctx, "system.plugin.seed_fail", "插件种子同步失败",
+				event.P("key", def.Key), event.P("error", err.Error()))
 		}
 	}
 	s.reloadRuntime(ctx)
+}
+
+// emitPluginFlowError 发射系统域流程日志错误事件；monitorBus 未注入时跳过
+// （对应进程 Warn 已单独记录，避免重复进程日志）。
+func (s *PluginService) emitPluginFlowError(ctx context.Context, stepID, message string, pairs ...event.Pair) {
+	if s == nil || s.monitorBus == nil {
+		return
+	}
+	flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:    ctx,
+		Domain: event.TraceDomainSystem,
+		LG:     s.lg,
+		Infra:  event.NewInfraFromBus(s.monitorBus),
+	})
+	flow.LogError(stepID, message, pairs...)
 }
 
 // reloadRuntime fetches enabled plugins and hot-reloads the plugin Runtime (C-06).
@@ -99,6 +122,8 @@ func (s *PluginService) reloadRuntime(ctx context.Context) {
 				loggateway.StepID("plugin.reload_fail"),
 				loggateway.Err(err),
 			)
+			s.emitPluginFlowError(reloadCtx, "system.plugin.reload_fail", "插件运行时重载失败",
+				event.P("error", err.Error()))
 			return
 		}
 		s.runtime.Apply(reloadCtx, result.Items)

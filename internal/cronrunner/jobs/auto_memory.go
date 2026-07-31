@@ -13,6 +13,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	servmetrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/loggateway"
@@ -26,20 +28,23 @@ import (
 // Retry schedule: 30 s / 2 m / 10 m exponential back-off.
 // Jobs that exceed maxRetries are marked dead and discarded.
 type AutoMemoryWorker struct {
-	interval     time.Duration
-	sessions     *biz.SessionUsecase
-	agents       *biz.AgentUsecase
-	writer       biz.MemoryConsolidationWriter
-	indexSync    biz.MemoryFactIndexSyncer
-	episodeSync  biz.EpisodeIndexSyncer
-	l4           biz.L4GraphWriter
-	consolidator biz.MemoryConsolidator
-	feedback     biz.MemoryConsolidator
-	queue        memtrpc.AutoMemoryQueue
-	deadLetter   biz.MemoryDeadLetterSink
-	memConf      conf.RuntimeAutoMemoryConfig
-	stats        *biz.MemoryWorkerStats
-	lg           loggateway.Logger
+	interval         time.Duration
+	sessions         *biz.SessionUsecase
+	agents           *biz.AgentUsecase
+	writer           biz.MemoryConsolidationWriter
+	indexSync        biz.MemoryFactIndexSyncer
+	episodeSync      biz.EpisodeIndexSyncer
+	l4               biz.L4GraphWriter
+	consolidator     biz.MemoryConsolidator
+	feedback         biz.MemoryConsolidator
+	queue            memtrpc.AutoMemoryQueue
+	deadLetter       biz.MemoryDeadLetterSink
+	conflictDetector biz.MemoryConflictDetector
+	conflictStore    biz.L3ConflictStore
+	memConf          conf.RuntimeAutoMemoryConfig
+	stats            *biz.MemoryWorkerStats
+	monitorBus       contract.MonitorBus
+	lg               loggateway.Logger
 }
 
 // AutoMemoryWorkerConfig holds all dependencies for AutoMemoryWorker.
@@ -59,8 +64,18 @@ type AutoMemoryWorkerConfig struct {
 	// DeadLetterSink receives jobs that exhausted all retries (P2-03).
 	// When nil, retry-exhausted jobs are only logged/metered (legacy behavior).
 	DeadLetterSink biz.MemoryDeadLetterSink
-	Stats          *biz.MemoryWorkerStats
-	Logger         loggateway.Logger
+	// ConflictDetector arbitrates governable fact kinds (preference/constraint/
+	// profile) against existing memory before write. When nil, conflict
+	// governance is skipped and facts are written as-is.
+	ConflictDetector biz.MemoryConflictDetector
+	// ConflictStore applies conflict decisions (supersede old fact / increment
+	// conflict_count). When nil, decisions are not persisted.
+	ConflictStore biz.L3ConflictStore
+	Stats         *biz.MemoryWorkerStats
+	// MonitorBus enables flow-log emission (memory.auto.extract / system.auto_memory.*).
+	// When nil, flow-log emission is skipped.
+	MonitorBus contract.MonitorBus
+	Logger     loggateway.Logger
 }
 
 // NewAutoMemoryWorker creates an AutoMemoryWorker. // WIRE: needs *conf.Runtime
@@ -77,21 +92,39 @@ func NewAutoMemoryWorker(cfg AutoMemoryWorkerConfig) (*AutoMemoryWorker, error) 
 		consolidator = biz.DefaultMemoryConsolidator(nil)
 	}
 	return &AutoMemoryWorker{
-		interval:     interval,
-		sessions:     cfg.Sessions,
-		agents:       cfg.Agents,
-		writer:       cfg.Writer,
-		indexSync:    cfg.IndexSync,
-		episodeSync:  cfg.EpisodeSync,
-		l4:           cfg.L4,
-		consolidator: consolidator,
-		feedback:     biz.NewFeedbackConsolidator(),
-		queue:        cfg.Queue,
-		deadLetter:   cfg.DeadLetterSink,
-		memConf:      cfg.RuntimeConf.AutoMemoryConfig(),
-		stats:        cfg.Stats,
-		lg:           cfg.Logger,
+		interval:         interval,
+		sessions:         cfg.Sessions,
+		agents:           cfg.Agents,
+		writer:           cfg.Writer,
+		indexSync:        cfg.IndexSync,
+		episodeSync:      cfg.EpisodeSync,
+		l4:               cfg.L4,
+		consolidator:     consolidator,
+		feedback:         biz.NewFeedbackConsolidator(),
+		queue:            cfg.Queue,
+		deadLetter:       cfg.DeadLetterSink,
+		conflictDetector: cfg.ConflictDetector,
+		conflictStore:    cfg.ConflictStore,
+		memConf:          cfg.RuntimeConf.AutoMemoryConfig(),
+		stats:            cfg.Stats,
+		monitorBus:       cfg.MonitorBus,
+		lg:               cfg.Logger,
 	}, nil
+}
+
+// flowEmitter builds a session-scoped flow-log emitter for auto-memory events.
+// Returns nil when the monitor bus is not wired (emission skipped).
+func (w *AutoMemoryWorker) flowEmitter(ctx context.Context, sessionID string) *event.TraceEmitter {
+	if w == nil || w.monitorBus == nil {
+		return nil
+	}
+	return event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:       ctx,
+		SessionID: sessionID,
+		Domain:    event.TraceDomainSystem,
+		LG:        w.lg,
+		Infra:     event.NewInfraFromBus(w.monitorBus),
+	})
 }
 
 func (w *AutoMemoryWorker) Start(ctx context.Context) {
@@ -138,6 +171,11 @@ func (w *AutoMemoryWorker) drain(ctx context.Context) {
 func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.AutoMemoryJobRequest) {
 	defer w.queue.AckDone(req)
 
+	flow := w.flowEmitter(ctx, req.SessionID)
+	if flow != nil {
+		flow.LogStart("memory.auto.extract", "自动记忆提取",
+			event.P("session_id", req.SessionID))
+	}
 	backoffSchedule := []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
 	var lastErr error
 	for attempt := 0; attempt < int(w.memConf.MaxRetries); attempt++ {
@@ -159,11 +197,23 @@ func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.Aut
 			servmetrics.AutoMemoryJobTotal.WithLabelValues("done").Inc()
 			servmetrics.AutoMemoryExtractionDuration.Observe(duration)
 			w.stats.RecordJobDone(int64(duration * 1000))
+			if flow != nil {
+				flow.LogDone("memory.auto.extract", "自动记忆提取完成",
+					event.P("session_id", req.SessionID),
+					event.P("duration_ms", int64(duration*1000)),
+					event.P("attempt", attempt+1))
+			}
 			return
 		}
 		lastErr = err
 		w.lg.With(loggateway.SessionID(req.SessionID)).Warn("自动记忆提取失败",
 			loggateway.Int("attempt", attempt+1), loggateway.Err(err))
+		if flow != nil {
+			flow.LogWarn("system.auto_memory.extract_fail", "自动记忆提取失败", "",
+				event.P("session_id", req.SessionID),
+				event.P("attempt", attempt+1),
+				event.P("error", err.Error()))
+		}
 	}
 	servmetrics.AutoMemoryJobTotal.WithLabelValues("dead").Inc()
 	w.stats.RecordJobDead()
@@ -183,6 +233,12 @@ func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.Aut
 		}, biz.MemoryDeadLetterReasonRetryExhausted, errString(lastErr))
 	}
 	w.lg.With(loggateway.SessionID(req.SessionID)).Warn("自动记忆提取重试耗尽", loggateway.Err(lastErr))
+	if flow != nil {
+		flow.LogError("system.auto_memory.extract_max_retry", "自动记忆提取重试耗尽",
+			event.P("session_id", req.SessionID),
+			event.P("max_retries", int(w.memConf.MaxRetries)),
+			event.P("error", errString(lastErr)))
+	}
 }
 
 func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJobRequest) error {
@@ -256,6 +312,13 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	// Pre-generate episode ID so facts can reference it as source_episode_id.
 	episodeID := uuid.NewString()
 	var factInputs []biz.MemoryFactWrite
+	// pendingConflicts tracks conflict decisions per fact index; supersede is
+	// applied post-write (needs the new fact ID), marks are batched post-write.
+	type pendingConflict struct {
+		factIndex int
+		decision  biz.MemoryConflictDecision
+	}
+	var pendingConflicts []pendingConflict
 	if memoryPolicy.WriteL3Facts {
 		for _, p := range proposals {
 			stmt := strings.TrimSpace(p.Statement)
@@ -266,16 +329,22 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			if msgID == "" {
 				msgID = lastUserMsgID
 			}
+			scopeType, scopeID := resolveFactScope(p.Scope, userID, appName)
+			confidence := p.Confidence
+			if confidence <= 0 {
+				confidence = 0.85
+			}
+			factKind := memoryFactKindForSubjectType(p.SubjectType)
 			factInputs = append(factInputs, biz.MemoryFactWrite{
-				ScopeType:       "agent",
-				ScopeID:         appName,
+				ScopeType:       scopeType,
+				ScopeID:         scopeID,
 				UserID:          userID,
 				AgentID:         appName,
 				Statement:       stmt,
 				DetailsMarkdown: stmt,
-				FactKind:        "fact",
+				FactKind:        factKind,
 				TagsJSON:        topicsJSON(p.Topics),
-				Confidence:      0.85,
+				Confidence:      confidence,
 				Importance:      0.6,
 				SourceKind:      "auto_memory",
 				SourceEpisodeID: episodeID,
@@ -284,6 +353,21 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 				Status:          "active",
 				MetadataJSON:    `{"source":"auto_memory"}`,
 			})
+			// Conflict governance (A2): arbitrate governable kinds against
+			// existing memory. Detection failures degrade to no-action and
+			// never block the write path.
+			if w.conflictDetector != nil && biz.IsConflictGovernableFactKind(factKind) {
+				dec, derr := w.conflictDetector.DetectConflict(ctx, appName, userID, factKind, stmt)
+				if derr != nil {
+					w.lg.With(loggateway.SessionID(sid)).Warn("记忆冲突检测失败（已跳过）", loggateway.Err(derr))
+				} else if dec.Action != biz.ConflictActionNone {
+					idx := len(factInputs) - 1
+					if dec.Action == biz.ConflictActionMarkConflict {
+						factInputs[idx].MetadataJSON = mergeConflictCandidateMetadata(factInputs[idx].MetadataJSON, dec)
+					}
+					pendingConflicts = append(pendingConflicts, pendingConflict{factIndex: idx, decision: dec})
+				}
+			}
 		}
 	}
 
@@ -339,6 +423,29 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			}
 		}
 	}
+	// Apply conflict decisions post-write. Supersede needs the persisted new
+	// fact ID; conflict marks are batched. All failures are best-effort.
+	if w.conflictStore != nil && len(pendingConflicts) > 0 {
+		var markIDs []string
+		for _, pc := range pendingConflicts {
+			switch pc.decision.Action {
+			case biz.ConflictActionSupersede:
+				newID := factIDFromFactRow(writeResult.FactRows, pc.factIndex)
+				if newID != "" && newID != pc.decision.TargetFactID {
+					if serr := w.conflictStore.SupersedeFact(ctx, pc.decision.TargetFactID, newID); serr != nil {
+						w.lg.With(loggateway.SessionID(sid)).Warn("记忆冲突 supersede 失败", loggateway.Err(serr))
+					}
+				}
+			case biz.ConflictActionMarkConflict:
+				markIDs = append(markIDs, pc.decision.TargetFactID)
+			}
+		}
+		if len(markIDs) > 0 {
+			if merr := w.conflictStore.BatchIncrementConflictCounts(ctx, markIDs); merr != nil {
+				w.lg.With(loggateway.SessionID(sid)).Warn("记忆冲突标记失败", loggateway.Err(merr))
+			}
+		}
+	}
 	if w.episodeSync != nil && len(writeResult.EpisodeRow) > 0 {
 		var epRow map[string]any
 		if json.Unmarshal(writeResult.EpisodeRow, &epRow) == nil {
@@ -355,6 +462,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 
 	var l4Written int
 	if memoryPolicy.WriteL4Graph && w.l4 != nil && agentID != "" {
+		l4Flow := w.flowEmitter(ctx, sid)
 		for _, msg := range msgs {
 			if msg.Role != "user" {
 				continue
@@ -366,6 +474,12 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			n, err := w.l4.WriteFromUserText(ctx, agentID, userID, text)
 			if err != nil {
 				w.lg.With(loggateway.SessionID(sid)).Warn("L4 图谱写入失败", loggateway.Err(err))
+				if l4Flow != nil {
+					l4Flow.LogWarn("system.auto_memory.l4_fail", "L4 图谱写入失败", "",
+						event.P("session_id", sid),
+						event.P("agent_id", agentID),
+						event.P("error", err.Error()))
+				}
 			} else {
 				l4Written += n
 			}
@@ -450,16 +564,21 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 		if stmt == "" {
 			continue
 		}
+		scopeType, scopeID := resolveFactScope(p.Scope, userID, appName)
+		confidence := p.Confidence
+		if confidence <= 0 {
+			confidence = 0.85
+		}
 		facts = append(facts, biz.MemoryFactWrite{
-			ScopeType:       "agent",
-			ScopeID:         appName,
+			ScopeType:       scopeType,
+			ScopeID:         scopeID,
 			UserID:          userID,
 			AgentID:         appName,
 			Statement:       stmt,
 			DetailsMarkdown: stmt,
-			FactKind:        "fact",
+			FactKind:        memoryFactKindForSubjectType(p.SubjectType),
 			TagsJSON:        topicsJSON(p.Topics),
-			Confidence:      0.85,
+			Confidence:      confidence,
 			Importance:      0.6,
 			SourceKind:      "auto_memory",
 			SourceSessionID: sid,
@@ -485,6 +604,66 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	w.lg.With(loggateway.SessionID(sid)).Info("反馈偏好记忆已写入",
 		loggateway.Str("message_id", msgID), loggateway.Str("rating", rating))
 	return nil
+}
+
+// factIDFromFactRow extracts the persisted fact ID from the i-th raw fact row.
+// Returns "" when the row is missing or malformed.
+func factIDFromFactRow(rows [][]byte, idx int) string {
+	if idx < 0 || idx >= len(rows) {
+		return ""
+	}
+	var m map[string]any
+	if json.Unmarshal(rows[idx], &m) != nil {
+		return ""
+	}
+	id, _ := m["id"].(string)
+	return id
+}
+
+// mergeConflictCandidateMetadata records a conflict candidate into the fact
+// metadata JSON so reviewers can trace why conflict_count was incremented.
+func mergeConflictCandidateMetadata(raw string, dec biz.MemoryConflictDecision) string {
+	m := map[string]any{}
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		m = map[string]any{}
+	}
+	m["conflict_candidates"] = []map[string]any{
+		{"fact_id": dec.TargetFactID, "score": dec.Score},
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return string(b)
+}
+
+// memoryFactKindForSubjectType maps the extractor subject_type vocabulary to the
+// storage fact_kind column. Unknown/empty values fall back to "fact".
+func memoryFactKindForSubjectType(subjectType string) string {
+	switch strings.TrimSpace(subjectType) {
+	case "person":
+		return "profile"
+	case "preference":
+		return "preference"
+	case "constraint":
+		return "constraint"
+	case "event":
+		return "event"
+	case "concept":
+		return "knowledge"
+	default:
+		return "fact"
+	}
+}
+
+// resolveFactScope maps the proposal scope vocabulary to the storage
+// scope_type/scope_id pair. "user" scope requires a non-empty userID;
+// otherwise it falls back to the agent scope to avoid writing orphan rows.
+func resolveFactScope(scope, userID, appName string) (scopeType, scopeID string) {
+	if strings.TrimSpace(scope) == "user" && strings.TrimSpace(userID) != "" {
+		return "user", strings.TrimSpace(userID)
+	}
+	return "agent", appName
 }
 
 func lastUserMessageID(msgs []biz.ChatMessage) string {

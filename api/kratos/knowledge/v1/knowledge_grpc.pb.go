@@ -20,20 +20,25 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	KnowledgeService_CreateCollection_FullMethodName     = "/kratos.knowledge.v1.KnowledgeService/CreateCollection"
-	KnowledgeService_GetCollection_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/GetCollection"
-	KnowledgeService_ListCollections_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/ListCollections"
-	KnowledgeService_DeleteCollection_FullMethodName     = "/kratos.knowledge.v1.KnowledgeService/DeleteCollection"
-	KnowledgeService_IngestDocument_FullMethodName       = "/kratos.knowledge.v1.KnowledgeService/IngestDocument"
-	KnowledgeService_ListDocuments_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
-	KnowledgeService_GetDocumentContent_FullMethodName   = "/kratos.knowledge.v1.KnowledgeService/GetDocumentContent"
-	KnowledgeService_DeleteDocument_FullMethodName       = "/kratos.knowledge.v1.KnowledgeService/DeleteDocument"
-	KnowledgeService_MoveDocument_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
-	KnowledgeService_ListVaultTree_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
-	KnowledgeService_ListDocumentLinks_FullMethodName    = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
-	KnowledgeService_Search_FullMethodName               = "/kratos.knowledge.v1.KnowledgeService/Search"
-	KnowledgeService_GetEmbedderConfig_FullMethodName    = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
-	KnowledgeService_UpdateEmbedderConfig_FullMethodName = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
+	KnowledgeService_CreateCollection_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/CreateCollection"
+	KnowledgeService_GetCollection_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/GetCollection"
+	KnowledgeService_ListCollections_FullMethodName       = "/kratos.knowledge.v1.KnowledgeService/ListCollections"
+	KnowledgeService_DeleteCollection_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/DeleteCollection"
+	KnowledgeService_IngestDocument_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/IngestDocument"
+	KnowledgeService_ListDocuments_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
+	KnowledgeService_GetDocumentContent_FullMethodName    = "/kratos.knowledge.v1.KnowledgeService/GetDocumentContent"
+	KnowledgeService_DeleteDocument_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/DeleteDocument"
+	KnowledgeService_MoveDocument_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
+	KnowledgeService_MoveDocumentToDir_FullMethodName     = "/kratos.knowledge.v1.KnowledgeService/MoveDocumentToDir"
+	KnowledgeService_UpdateDocumentContent_FullMethodName = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
+	KnowledgeService_ListVaultTree_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
+	KnowledgeService_CreateVaultDir_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDir"
+	KnowledgeService_CreateVaultDocument_FullMethodName   = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDocument"
+	KnowledgeService_ListDocumentLinks_FullMethodName     = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
+	KnowledgeService_ListCollectionGraph_FullMethodName   = "/kratos.knowledge.v1.KnowledgeService/ListCollectionGraph"
+	KnowledgeService_Search_FullMethodName                = "/kratos.knowledge.v1.KnowledgeService/Search"
+	KnowledgeService_GetEmbedderConfig_FullMethodName     = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
+	KnowledgeService_UpdateEmbedderConfig_FullMethodName  = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
 )
 
 // KnowledgeServiceClient is the client API for KnowledgeService service.
@@ -51,10 +56,28 @@ type KnowledgeServiceClient interface {
 	GetDocumentContent(ctx context.Context, in *GetDocumentContentRequest, opts ...grpc.CallOption) (*DocumentContent, error)
 	DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	MoveDocument(ctx context.Context, in *MoveDocumentRequest, opts ...grpc.CallOption) (*KnowledgeDocument, error)
+	// MoveDocumentToDir moves a vault document to another directory within the same
+	// collection (G3-B4): atomic fs move + rel_path update (identity/chunks kept) +
+	// inbound explicit links rebuild. Name clash -> CodeConflict unless
+	// conflict_policy=overwrite|rename. Vault documents only (rel_path required).
+	MoveDocumentToDir(ctx context.Context, in *MoveDocumentToDirRequest, opts ...grpc.CallOption) (*KnowledgeDocument, error)
+	// UpdateDocumentContent saves editor body back to the vault file (G2-B5):
+	// frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
+	// backed up to trash) and returns conflict=true. Triggers immediate reindex.
+	UpdateDocumentContent(ctx context.Context, in *UpdateDocumentContentRequest, opts ...grpc.CallOption) (*UpdateDocumentContentResponse, error)
 	// Vault explorer (P3): lazy folder listing derived from document rel_paths.
 	ListVaultTree(ctx context.Context, in *ListVaultTreeRequest, opts ...grpc.CallOption) (*ListVaultTreeResponse, error)
+	// CreateVaultDir creates a directory inside the vault (G1-B2; idempotent).
+	CreateVaultDir(ctx context.Context, in *CreateVaultDirRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// CreateVaultDocument writes a template .md (frontmatter + empty heading) and
+	// indexes it immediately (G1-B2; no 45s poll wait). Existing path = conflict.
+	CreateVaultDocument(ctx context.Context, in *CreateVaultDocumentRequest, opts ...grpc.CallOption) (*KnowledgeDocument, error)
 	// Document relations with source-type annotation (P3 关联区, R-3).
 	ListDocumentLinks(ctx context.Context, in *ListDocumentLinksRequest, opts ...grpc.CallOption) (*ListDocumentLinksResponse, error)
+	// ListCollectionGraph returns the full link graph of one collection (G4-B8):
+	// nodes = documents (after path_prefix filter), edges = links (link_types filter;
+	// endpoints outside scope/dangling dropped), degree = in-edge count per node.
+	ListCollectionGraph(ctx context.Context, in *ListCollectionGraphRequest, opts ...grpc.CallOption) (*ListCollectionGraphResponse, error)
 	// Search
 	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
 	GetEmbedderConfig(ctx context.Context, in *GetEmbedderConfigRequest, opts ...grpc.CallOption) (*EmbedderConfig, error)
@@ -159,6 +182,26 @@ func (c *knowledgeServiceClient) MoveDocument(ctx context.Context, in *MoveDocum
 	return out, nil
 }
 
+func (c *knowledgeServiceClient) MoveDocumentToDir(ctx context.Context, in *MoveDocumentToDirRequest, opts ...grpc.CallOption) (*KnowledgeDocument, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(KnowledgeDocument)
+	err := c.cc.Invoke(ctx, KnowledgeService_MoveDocumentToDir_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) UpdateDocumentContent(ctx context.Context, in *UpdateDocumentContentRequest, opts ...grpc.CallOption) (*UpdateDocumentContentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateDocumentContentResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_UpdateDocumentContent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *knowledgeServiceClient) ListVaultTree(ctx context.Context, in *ListVaultTreeRequest, opts ...grpc.CallOption) (*ListVaultTreeResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListVaultTreeResponse)
@@ -169,10 +212,40 @@ func (c *knowledgeServiceClient) ListVaultTree(ctx context.Context, in *ListVaul
 	return out, nil
 }
 
+func (c *knowledgeServiceClient) CreateVaultDir(ctx context.Context, in *CreateVaultDirRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, KnowledgeService_CreateVaultDir_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) CreateVaultDocument(ctx context.Context, in *CreateVaultDocumentRequest, opts ...grpc.CallOption) (*KnowledgeDocument, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(KnowledgeDocument)
+	err := c.cc.Invoke(ctx, KnowledgeService_CreateVaultDocument_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *knowledgeServiceClient) ListDocumentLinks(ctx context.Context, in *ListDocumentLinksRequest, opts ...grpc.CallOption) (*ListDocumentLinksResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListDocumentLinksResponse)
 	err := c.cc.Invoke(ctx, KnowledgeService_ListDocumentLinks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) ListCollectionGraph(ctx context.Context, in *ListCollectionGraphRequest, opts ...grpc.CallOption) (*ListCollectionGraphResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListCollectionGraphResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_ListCollectionGraph_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -224,10 +297,28 @@ type KnowledgeServiceServer interface {
 	GetDocumentContent(context.Context, *GetDocumentContentRequest) (*DocumentContent, error)
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error)
 	MoveDocument(context.Context, *MoveDocumentRequest) (*KnowledgeDocument, error)
+	// MoveDocumentToDir moves a vault document to another directory within the same
+	// collection (G3-B4): atomic fs move + rel_path update (identity/chunks kept) +
+	// inbound explicit links rebuild. Name clash -> CodeConflict unless
+	// conflict_policy=overwrite|rename. Vault documents only (rel_path required).
+	MoveDocumentToDir(context.Context, *MoveDocumentToDirRequest) (*KnowledgeDocument, error)
+	// UpdateDocumentContent saves editor body back to the vault file (G2-B5):
+	// frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
+	// backed up to trash) and returns conflict=true. Triggers immediate reindex.
+	UpdateDocumentContent(context.Context, *UpdateDocumentContentRequest) (*UpdateDocumentContentResponse, error)
 	// Vault explorer (P3): lazy folder listing derived from document rel_paths.
 	ListVaultTree(context.Context, *ListVaultTreeRequest) (*ListVaultTreeResponse, error)
+	// CreateVaultDir creates a directory inside the vault (G1-B2; idempotent).
+	CreateVaultDir(context.Context, *CreateVaultDirRequest) (*emptypb.Empty, error)
+	// CreateVaultDocument writes a template .md (frontmatter + empty heading) and
+	// indexes it immediately (G1-B2; no 45s poll wait). Existing path = conflict.
+	CreateVaultDocument(context.Context, *CreateVaultDocumentRequest) (*KnowledgeDocument, error)
 	// Document relations with source-type annotation (P3 关联区, R-3).
 	ListDocumentLinks(context.Context, *ListDocumentLinksRequest) (*ListDocumentLinksResponse, error)
+	// ListCollectionGraph returns the full link graph of one collection (G4-B8):
+	// nodes = documents (after path_prefix filter), edges = links (link_types filter;
+	// endpoints outside scope/dangling dropped), degree = in-edge count per node.
+	ListCollectionGraph(context.Context, *ListCollectionGraphRequest) (*ListCollectionGraphResponse, error)
 	// Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	GetEmbedderConfig(context.Context, *GetEmbedderConfigRequest) (*EmbedderConfig, error)
@@ -269,11 +360,26 @@ func (UnimplementedKnowledgeServiceServer) DeleteDocument(context.Context, *Dele
 func (UnimplementedKnowledgeServiceServer) MoveDocument(context.Context, *MoveDocumentRequest) (*KnowledgeDocument, error) {
 	return nil, status.Error(codes.Unimplemented, "method MoveDocument not implemented")
 }
+func (UnimplementedKnowledgeServiceServer) MoveDocumentToDir(context.Context, *MoveDocumentToDirRequest) (*KnowledgeDocument, error) {
+	return nil, status.Error(codes.Unimplemented, "method MoveDocumentToDir not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) UpdateDocumentContent(context.Context, *UpdateDocumentContentRequest) (*UpdateDocumentContentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateDocumentContent not implemented")
+}
 func (UnimplementedKnowledgeServiceServer) ListVaultTree(context.Context, *ListVaultTreeRequest) (*ListVaultTreeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListVaultTree not implemented")
 }
+func (UnimplementedKnowledgeServiceServer) CreateVaultDir(context.Context, *CreateVaultDirRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateVaultDir not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) CreateVaultDocument(context.Context, *CreateVaultDocumentRequest) (*KnowledgeDocument, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateVaultDocument not implemented")
+}
 func (UnimplementedKnowledgeServiceServer) ListDocumentLinks(context.Context, *ListDocumentLinksRequest) (*ListDocumentLinksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListDocumentLinks not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) ListCollectionGraph(context.Context, *ListCollectionGraphRequest) (*ListCollectionGraphResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCollectionGraph not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) Search(context.Context, *SearchRequest) (*SearchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Search not implemented")
@@ -467,6 +573,42 @@ func _KnowledgeService_MoveDocument_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KnowledgeService_MoveDocumentToDir_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MoveDocumentToDirRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).MoveDocumentToDir(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_MoveDocumentToDir_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).MoveDocumentToDir(ctx, req.(*MoveDocumentToDirRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_UpdateDocumentContent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateDocumentContentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).UpdateDocumentContent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_UpdateDocumentContent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).UpdateDocumentContent(ctx, req.(*UpdateDocumentContentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KnowledgeService_ListVaultTree_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListVaultTreeRequest)
 	if err := dec(in); err != nil {
@@ -485,6 +627,42 @@ func _KnowledgeService_ListVaultTree_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KnowledgeService_CreateVaultDir_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateVaultDirRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).CreateVaultDir(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_CreateVaultDir_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).CreateVaultDir(ctx, req.(*CreateVaultDirRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_CreateVaultDocument_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateVaultDocumentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).CreateVaultDocument(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_CreateVaultDocument_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).CreateVaultDocument(ctx, req.(*CreateVaultDocumentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KnowledgeService_ListDocumentLinks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListDocumentLinksRequest)
 	if err := dec(in); err != nil {
@@ -499,6 +677,24 @@ func _KnowledgeService_ListDocumentLinks_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(KnowledgeServiceServer).ListDocumentLinks(ctx, req.(*ListDocumentLinksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_ListCollectionGraph_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListCollectionGraphRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).ListCollectionGraph(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_ListCollectionGraph_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).ListCollectionGraph(ctx, req.(*ListCollectionGraphRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -601,12 +797,32 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _KnowledgeService_MoveDocument_Handler,
 		},
 		{
+			MethodName: "MoveDocumentToDir",
+			Handler:    _KnowledgeService_MoveDocumentToDir_Handler,
+		},
+		{
+			MethodName: "UpdateDocumentContent",
+			Handler:    _KnowledgeService_UpdateDocumentContent_Handler,
+		},
+		{
 			MethodName: "ListVaultTree",
 			Handler:    _KnowledgeService_ListVaultTree_Handler,
 		},
 		{
+			MethodName: "CreateVaultDir",
+			Handler:    _KnowledgeService_CreateVaultDir_Handler,
+		},
+		{
+			MethodName: "CreateVaultDocument",
+			Handler:    _KnowledgeService_CreateVaultDocument_Handler,
+		},
+		{
 			MethodName: "ListDocumentLinks",
 			Handler:    _KnowledgeService_ListDocumentLinks_Handler,
+		},
+		{
+			MethodName: "ListCollectionGraph",
+			Handler:    _KnowledgeService_ListCollectionGraph_Handler,
 		},
 		{
 			MethodName: "Search",

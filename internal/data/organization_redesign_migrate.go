@@ -10,7 +10,9 @@ import (
 )
 
 const (
-	MigrationOrganizationRedesign     = 20260720
+	// 版本取 20261123：原 20260720 被 DDL 迁移 unified_evolution_schema 抢先占用，
+	// 导致本迁移从未执行（幂等设计，重跑安全；新部署由 Ent 建表后基本 no-op）。
+	MigrationOrganizationRedesign     = 20261123
 	migrationNameOrganizationRedesign = "organization_redesign"
 )
 

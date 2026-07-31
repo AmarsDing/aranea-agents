@@ -6,8 +6,11 @@ import (
 
 	packv1 "aranea-agents/api/kratos/pack/v1"
 	"aranea-agents/internal/biz/pack"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 )
 
 // PackService implements packv1.PackServiceServer.
@@ -17,16 +20,40 @@ type PackService struct {
 	exporter      *pack.Exporter
 	importer      *pack.Importer
 	validatorRepo pack.ValidatorRepo
+	lg            loggateway.Logger
+	monitorBus    contract.MonitorBus
 }
 
 // NewPackService creates a new PackService.
 // adapter must satisfy pack.ExporterRepo, pack.ImporterRepo, and pack.ValidatorRepo.
-func NewPackService(adapter PackExporterImporterValidator) *PackService {
+// lg / monitorBus feed the ecosystem.pack.install flow log; both are nil-safe
+// (nil disables the process-log line / bus publication respectively).
+func NewPackService(adapter PackExporterImporterValidator, lg loggateway.Logger, monitorBus contract.MonitorBus) *PackService {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return &PackService{
 		exporter:      pack.NewExporter(adapter),
 		importer:      pack.NewImporter(adapter),
 		validatorRepo: adapter,
+		lg:            lg,
+		monitorBus:    monitorBus,
 	}
+}
+
+// packInstallFlow returns a system-domain flow emitter for pack install
+// events. Returns nil only when s is nil; a nil monitorBus still yields a
+// valid emitter (bus publication is skipped downstream).
+func (s *PackService) packInstallFlow(ctx context.Context) *event.TraceEmitter {
+	if s == nil {
+		return nil
+	}
+	return event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:    ctx,
+		Domain: event.TraceDomainSystem,
+		LG:     s.lg,
+		Infra:  event.NewInfraFromBus(s.monitorBus),
+	})
 }
 
 // PackExporterImporterValidator is the composite interface required by PackService.
@@ -85,10 +112,24 @@ func (s *PackService) ImportPack(ctx context.Context, req *packv1.ImportPackRequ
 		return nil, apierror.BadRequest("PACK", "pack file exceeds size limit")
 	}
 
+	flow := s.packInstallFlow(ctx)
+
 	// Parse pack
 	p, err := pack.ReadPack(bytes.NewReader(data))
 	if err != nil {
+		if flow != nil {
+			flow.LogError("ecosystem.pack.install", "生态包安装失败：pack 解析错误",
+				event.P("error", err.Error()),
+			)
+		}
 		return nil, apierror.BadRequest("PACK", "invalid pack file: "+err.Error())
+	}
+
+	if flow != nil {
+		flow.LogStart("ecosystem.pack.install", "开始安装生态包",
+			event.P("pack", p.Manifest.Name),
+			event.P("version", p.Manifest.Version),
+		)
 	}
 
 	// Determine conflict strategy
@@ -103,7 +144,21 @@ func (s *PackService) ImportPack(ctx context.Context, req *packv1.ImportPackRequ
 	// Import
 	result, err := s.importer.Import(ctx, p, strategy)
 	if err != nil {
+		if flow != nil {
+			flow.LogError("ecosystem.pack.install", "生态包安装失败",
+				event.P("pack", p.Manifest.Name),
+				event.P("version", p.Manifest.Version),
+				event.P("error", err.Error()),
+			)
+		}
 		return nil, apierror.Internal("PACK", "import failed: "+err.Error())
+	}
+	if flow != nil {
+		flow.LogDone("ecosystem.pack.install", "生态包安装完成",
+			event.P("pack", p.Manifest.Name),
+			event.P("version", p.Manifest.Version),
+			event.P("failures", len(result.Failures)),
+		)
 	}
 
 	resp := &packv1.ImportPackResponse{

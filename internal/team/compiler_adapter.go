@@ -66,6 +66,7 @@ func bizToTeamDefinition(def biz.TeamDefinition) Definition {
 			Role:       m.Role,
 			Enabled:    &enabled,
 			TaskPrompt: m.TaskPrompt,
+			Name:       m.Name,
 		})
 	}
 	if def.FailurePolicy.Default != "" || def.FailurePolicy.Retry.MaxAttempts > 0 {

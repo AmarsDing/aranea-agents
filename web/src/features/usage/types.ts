@@ -80,6 +80,10 @@ export type ModelTokenUsageEvent = {
   team_id?: string;
   agent_id: string;
   agent_key: string;
+  /** 名称解析（列表查询填充；实体已删除时为空，前端回退显示 ID/key） */
+  agent_name?: string;
+  session_title?: string;
+  team_name?: string;
   session_id: string;
   message_id: string;
   request_id?: string;

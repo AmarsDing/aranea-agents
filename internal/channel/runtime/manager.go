@@ -12,6 +12,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/outbound"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -89,6 +90,10 @@ type Manager struct {
 	leaseRepo biz.ChannelRuntimeLeaseRepo
 	ownerID   string
 	leaseTTL  time.Duration
+
+	// bus 为可选的监控事件总线，注入后启用连接生命周期流程日志
+	// （channel.connect.open/close/error）；nil 时所有 EmitConnect* 帮助函数为 no-op。
+	bus contract.MonitorBus
 }
 
 func NewManager(channels *biz.ChannelUsecase, handler port.InboundHandler, credLookup CredentialLookup, lg loggateway.Logger, router *outbound.Router) *Manager {
@@ -123,6 +128,16 @@ func (m *Manager) Router() *outbound.Router {
 	return m.router
 }
 
+// WithMonitorBus wires the monitor bus for connection-lifecycle flow logs.
+// Nil bus keeps flow emission disabled (EmitConnect* helpers stay no-ops).
+func (m *Manager) WithMonitorBus(bus contract.MonitorBus) *Manager {
+	if m == nil {
+		return nil
+	}
+	m.bus = bus
+	return m
+}
+
 // Reload stops stale connectors and starts enabled runtime instances.
 func (m *Manager) Reload(ctx context.Context) error {
 	if m == nil || m.channels == nil || m.handler == nil {
@@ -130,6 +145,9 @@ func (m *Manager) Reload(ctx context.Context) error {
 	}
 	m.reloadMu.Lock()
 	defer m.reloadMu.Unlock()
+	m.lg.Info("Channel Runtime Reload 开始",
+		loggateway.StepID("channel.runtime.reload_start"),
+	)
 	items, err := m.channels.List(ctx)
 	if err != nil {
 		return err
@@ -193,6 +211,7 @@ func (m *Manager) Reload(ctx context.Context) error {
 		waitRuntimeInstanceDone(inst.done, runtimeReplaceShutdownWait, m.lg)
 	}
 
+	started := 0
 	for _, ch := range items {
 		fp, ok := want[ch.ID]
 		if !ok {
@@ -225,6 +244,7 @@ func (m *Manager) Reload(ctx context.Context) error {
 			defer close(done)
 			m.runSupervised(runCtx, chCopy, fp, st, platform, mode)
 		})
+		started++
 		m.lg.Info("Channel Runtime 启动连接器",
 			loggateway.StepID("channel.runtime.connector_start"),
 			loggateway.Str("channel_id", chCopy.ID),
@@ -233,6 +253,12 @@ func (m *Manager) Reload(ctx context.Context) error {
 			loggateway.Str("fingerprint", fp),
 		)
 	}
+	m.lg.Info("Channel Runtime Reload 完成",
+		loggateway.StepID("channel.runtime.reload_done"),
+		loggateway.Int("want", len(want)),
+		loggateway.Int("stopped", len(stopping)),
+		loggateway.Int("started", started),
+	)
 	return nil
 }
 

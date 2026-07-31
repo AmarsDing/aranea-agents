@@ -8,6 +8,8 @@ import (
 	v1 "aranea-agents/api/kratos/agent/v1"
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -27,13 +29,34 @@ type AgentService struct {
 	promptAI        *PromptFileAIEditor
 	agentTemplateUC *biz.AgentTemplateUsecase
 	lg              loggateway.Logger
+	monitorBus      contract.MonitorBus
 }
 
-func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase, a2aUC *biz.A2AUsecase, promptAI *PromptFileAIEditor, agentTemplateUC *biz.AgentTemplateUsecase, lg loggateway.Logger) *AgentService {
+func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase, a2aUC *biz.A2AUsecase, promptAI *PromptFileAIEditor, agentTemplateUC *biz.AgentTemplateUsecase, lg loggateway.Logger, monitorBus contract.MonitorBus) *AgentService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &AgentService{uc: uc, evoUC: evoUC, mon: mon, a2aUC: a2aUC, promptAI: promptAI, agentTemplateUC: agentTemplateUC, lg: lg}
+	return &AgentService{uc: uc, evoUC: evoUC, mon: mon, a2aUC: a2aUC, promptAI: promptAI, agentTemplateUC: agentTemplateUC, lg: lg, monitorBus: monitorBus}
+}
+
+// logAgentFlow emits a user-visible flow log (流程日志) for agent CRUD steps.
+// err != nil → error phase; otherwise done phase. Nil-safe: skipped when the
+// monitor bus is not wired (tests).
+func (s *AgentService) logAgentFlow(ctx context.Context, step, message string, err error, pairs ...event.Pair) {
+	if s == nil || s.monitorBus == nil {
+		return
+	}
+	flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:    ctx,
+		Domain: event.TraceDomainSystem,
+		LG:     s.lg,
+		Infra:  event.NewInfraFromBus(s.monitorBus),
+	})
+	if err != nil {
+		flow.LogError(step, message, append(pairs, event.P("error", err.Error()))...)
+		return
+	}
+	flow.LogDone(step, message, pairs...)
 }
 
 // assertAgentAccess 验证 caller 是否可读取目标 agent（P2-B IDOR 防护）。
@@ -665,10 +688,15 @@ func (s *AgentService) CreateAgent(ctx context.Context, req *v1.CreateAgentReque
 	if !workspace.IsSystem(ctx) {
 		a.WorkspaceID = workspace.IDFromContext(ctx)
 	}
+	s.lg.Info("创建 Agent", loggateway.StepID("agent.crud.create"), loggateway.Str("agent_key", a.AgentKey))
 	created, err := s.uc.Create(ctx, a)
 	if err != nil {
+		s.lg.Error("创建 Agent 失败", loggateway.StepID("agent.crud.create"), loggateway.Str("agent_key", a.AgentKey), loggateway.Err(err))
+		s.logAgentFlow(ctx, "agent.crud.create", "Agent 创建失败", err, event.P("agent_key", a.AgentKey))
 		return nil, err
 	}
+	s.logAgentFlow(ctx, "agent.crud.create", "Agent 已创建", nil,
+		event.P("agent_id", created.ID), event.P("agent_key", created.AgentKey))
 	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
 		Action:     biz.AuditAction(biz.AuditVerbCreate, "agent"),
 		Resource:   "agent",
@@ -703,13 +731,19 @@ func (s *AgentService) UpdateAgent(ctx context.Context, req *v1.UpdateAgentReque
 	}
 	patch := fromProtoAgent(req.GetAgent())
 	patch.WorkspaceID = "" // P2-B: workspace_id immutable on update
+	s.lg.Info("更新 Agent", loggateway.StepID("agent.crud.update"), loggateway.Str("agent_id", req.GetId()), loggateway.Str("agent_key", patch.AgentKey))
 	a, err := s.uc.Update(ctx, req.GetId(), patch)
 	if err != nil {
+		s.lg.Error("更新 Agent 失败", loggateway.StepID("agent.crud.update"), loggateway.Str("agent_id", req.GetId()), loggateway.Str("agent_key", patch.AgentKey), loggateway.Err(err))
+		s.logAgentFlow(ctx, "agent.crud.update", "Agent 更新失败", err,
+			event.P("agent_id", req.GetId()), event.P("agent_key", patch.AgentKey))
 		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound(apierror.DomainAgent, "agent not found")
 		}
 		return nil, err
 	}
+	s.logAgentFlow(ctx, "agent.crud.update", "Agent 已更新", nil,
+		event.P("agent_id", a.ID), event.P("agent_key", a.AgentKey))
 	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
 		Action:     biz.AuditAction(biz.AuditVerbUpdate, "agent"),
 		Resource:   "agent",
@@ -726,19 +760,25 @@ func (s *AgentService) DeleteAgent(ctx context.Context, req *v1.DeleteAgentReque
 		return nil, err
 	}
 	// 先取 key 供审计 detail 使用（best-effort，取不到不阻断删除）。
-	summary := ""
+	agentKey := ""
 	if a, err := s.uc.Get(ctx, req.GetId()); err == nil {
-		summary = fmt.Sprintf("key=%s", a.AgentKey)
+		agentKey = a.AgentKey
 	}
+	s.lg.Info("删除 Agent", loggateway.StepID("agent.crud.delete"), loggateway.Str("agent_id", req.GetId()), loggateway.Str("agent_key", agentKey))
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
+		s.lg.Error("删除 Agent 失败", loggateway.StepID("agent.crud.delete"), loggateway.Str("agent_id", req.GetId()), loggateway.Str("agent_key", agentKey), loggateway.Err(err))
+		s.logAgentFlow(ctx, "agent.crud.delete", "Agent 删除失败", err,
+			event.P("agent_id", req.GetId()), event.P("agent_key", agentKey))
 		return nil, err
 	}
+	s.logAgentFlow(ctx, "agent.crud.delete", "Agent 已删除", nil,
+		event.P("agent_id", req.GetId()), event.P("agent_key", agentKey))
 	invalidateAgentBuildCache(req.GetId())
 	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
 		Action:     biz.AuditAction(biz.AuditVerbDelete, "agent"),
 		Resource:   "agent",
 		ResourceID: req.GetId(),
-		Summary:    summary,
+		Summary:    fmt.Sprintf("key=%s", agentKey),
 	})
 	return &emptypb.Empty{}, nil
 }

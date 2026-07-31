@@ -5,8 +5,12 @@
  * 在未配置 Postgres 的环境下，接口会返回明确错误，前端应做 "服务不可用" 降级提示。
  */
 import { createKnowledgeService } from '../../services';
+import { kratosApi } from '../../services/axiosHandler';
 import { asRecord, pickBool, pickI32, pickI64, pickNum, pickStr } from '../../shared/wireJson';
 import type {
+  CollectionGraph,
+  CollectionGraphEdge,
+  CollectionGraphNode,
   CreateCollectionInput,
   IngestDocumentInput,
   KnowledgeChunk,
@@ -173,6 +177,7 @@ export async function ingestDocument(input: IngestDocumentInput): Promise<Knowle
     chunkOverlap: input.chunk_overlap ?? 0,
     chunkStrategy: input.chunk_strategy ?? '',
     organizeToMarkdown: input.organize_to_markdown,
+    targetDir: input.target_dir ?? '',
   });
   return mapDocument(raw);
 }
@@ -183,7 +188,35 @@ export async function getDocumentContent(id: string): Promise<KnowledgeDocumentC
     id: pickStr(r, 'id', 'id'),
     content_text: pickStr(r, 'content_text', 'contentText'),
     organized: pickBool(r, 'organized', 'organized'),
+    raw_content: pickStr(r, 'raw_content', 'rawContent'),
+    base_hash: pickStr(r, 'base_hash', 'baseHash'),
   };
+}
+
+/** updateDocumentContent 编辑保存（G2-B5）：body 写回 vault 文件（frontmatter 保留），
+ *  CAS 冲突仍写入并留双份（返回 conflict=true，前端提示重载）。 */
+export async function updateDocumentContent(
+  id: string,
+  content: string,
+  baseHash: string,
+): Promise<{ document: KnowledgeDocument; conflict: boolean }> {
+  const r = asRecord(await svc.UpdateDocumentContent({ id, content, baseHash }));
+  return {
+    document: mapDocument(r.document ?? r.Document),
+    conflict: pickBool(r, 'conflict', 'conflict'),
+  };
+}
+
+/** fetchDocumentAsset 原始文件流（G2-B6）：带 JWT 拉取 blob，供 <img>/<audio>/<video>
+ *  object URL 渲染或 word 等原文下载。skipErrorNotify——失败由调用方降级处理。 */
+export async function fetchDocumentAsset(id: string): Promise<{ blob: Blob; filename: string }> {
+  const res = await kratosApi.get(`/v1/knowledge/documents/${encodeURIComponent(id)}/asset`, {
+    responseType: 'blob',
+    skipErrorNotify: true,
+  });
+  const cd = String(res.headers?.['content-disposition'] ?? '');
+  const m = /filename="([^"]*)"/.exec(cd);
+  return { blob: res.data as Blob, filename: m?.[1] ?? '' };
 }
 
 export async function deleteDocument(id: string): Promise<void> {
@@ -196,6 +229,13 @@ export async function moveDocument(id: string, targetCollectionId: string): Prom
   return mapDocument(raw);
 }
 
+// G3-B4：库内跨目录移动（拖拽移动）；同名冲突 CodeConflict → 前端弹 覆盖(overwrite)/
+// 保留两份(rename)/取消；文档身份/chunks/hash 保留，入链服务端重建。
+export async function moveDocumentToDir(id: string, targetDir: string, conflictPolicy = ''): Promise<KnowledgeDocument> {
+  const raw = await svc.MoveDocumentToDir({ id, targetDir, conflictPolicy });
+  return mapDocument(raw);
+}
+
 // ---------- Vault explorer（P3 资源管理器） ----------
 
 /** listVaultTree 懒加载 vault 文件夹直接子节点（prefix 空 = 根层）。 */
@@ -205,11 +245,60 @@ export async function listVaultTree(collectionId: string, prefix = ''): Promise<
   return Array.isArray(itemsRaw) ? itemsRaw.map(mapVaultTreeNode) : [];
 }
 
+/** createVaultDir 树内新建目录（G1-B2；幂等，嵌套父级一并创建）。 */
+export async function createVaultDir(collectionId: string, dirPath: string): Promise<void> {
+  await svc.CreateVaultDir({ collectionId, dirPath });
+}
+
+/** createVaultDocument 树内新建模板 .md 并立即索引（G1-B2；同名 CodeConflict）。 */
+export async function createVaultDocument(collectionId: string, relPath: string): Promise<KnowledgeDocument> {
+  const raw = await svc.CreateVaultDocument({ collectionId, relPath });
+  return mapDocument(raw);
+}
+
 /** listDocumentLinks 列出文档已解析关联（双向；linkType 空 = 全部三类，R-3 来源标注）。 */
 export async function listDocumentLinks(docId: string, linkType = ''): Promise<KnowledgeLink[]> {
   const res = asRecord(await svc.ListDocumentLinks({ id: docId, linkType }));
   const itemsRaw = res.items ?? res.Items;
   return Array.isArray(itemsRaw) ? itemsRaw.map(mapKnowledgeLink) : [];
+}
+
+// ---------- Collection graph（G4-B8 3D 知识图谱） ----------
+
+function mapGraphNode(raw: unknown): CollectionGraphNode {
+  const r = asRecord(raw);
+  return {
+    doc_id: pickStr(r, 'doc_id', 'docId'),
+    name: pickStr(r, 'name', 'name'),
+    rel_path: pickStr(r, 'rel_path', 'relPath'),
+    doc_type: pickStr(r, 'doc_type', 'docType'),
+    degree: pickI32(r, 'degree', 'degree'),
+  };
+}
+
+function mapGraphEdge(raw: unknown): CollectionGraphEdge {
+  const r = asRecord(raw);
+  return {
+    source: pickStr(r, 'source', 'source'),
+    target: pickStr(r, 'target', 'target'),
+    type: pickStr(r, 'type', 'type'),
+  };
+}
+
+/** listCollectionGraph 单库全量图谱（G4-B8）：linkTypes 空 = 全部类型；
+ *  pathPrefix 目录前缀过滤（空 = 全库）；一次性返回，无分页。 */
+export async function listCollectionGraph(
+  collectionId: string,
+  linkTypes: string[] = [],
+  pathPrefix = '',
+): Promise<CollectionGraph> {
+  const res = asRecord(await svc.ListCollectionGraph({ collectionId, linkTypes, pathPrefix }));
+  const nodesRaw = res.nodes ?? res.Nodes;
+  const edgesRaw = res.edges ?? res.Edges;
+  return {
+    nodes: Array.isArray(nodesRaw) ? nodesRaw.map(mapGraphNode) : [],
+    edges: Array.isArray(edgesRaw) ? edgesRaw.map(mapGraphEdge) : [],
+  };
 }
 
 // ---------- Search ----------
@@ -226,6 +315,8 @@ export async function searchKnowledge(query: SearchKnowledgeQuery): Promise<Know
       rerankCandidates: query.rerank_candidates,
       rewriteStrategy: query.rewrite_strategy ?? '',
       hybridSearch: query.hybrid_search ?? '',
+      // G3-B7：搜索范围选择器（vault 相对目录前缀；空 = 全库）。
+      pathPrefix: query.path_prefix ?? '',
     }),
   );
   const chunksRaw = res.chunks ?? res.Chunks;

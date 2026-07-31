@@ -2,6 +2,12 @@
   <div :class="['graph-run-inspector', { 'is-dark': isDark }]">
     <q-tabs v-model="tab" dense align="left" class="graph-run-inspector__tabs" active-color="primary">
       <q-tab name="overview" :label="t('graphs.runInspectorTabOverview')" />
+      <q-tab
+        v-if="showKanbanTab"
+        name="kanban"
+        :label="t('graphs.runInspectorTabKanban')"
+        data-test="run-inspector-tab-kanban"
+      />
       <q-tab name="checkpoints" :label="t('graphs.runInspectorTabCheckpoints')" />
       <q-tab name="tasks" :label="t('graphs.runInspectorTabTasks')" />
     </q-tabs>
@@ -16,6 +22,16 @@
           :stream-connected="streamConnected"
           :is-dark="isDark"
           embedded
+        />
+      </q-tab-panel>
+      <q-tab-panel v-if="showKanbanTab" name="kanban" class="q-pa-md">
+        <OrchestrationKanban
+          :nodes="kanbanNodes"
+          :is-dark="isDark"
+          :live-connected="streamConnected"
+          :selected-node-id="selectedKanbanNodeId"
+          :empty-label="t('graphs.runKanbanEmpty')"
+          @select-node="$emit('selectNode', $event)"
         />
       </q-tab-panel>
       <q-tab-panel name="checkpoints" class="q-pa-md">
@@ -67,32 +83,47 @@ import GraphRunSidebar from './GraphRunSidebar.vue';
 import GraphCheckpointPanel from './GraphCheckpointPanel.vue';
 import GraphTimeTravelPanel from './GraphTimeTravelPanel.vue';
 import GraphTaskKanban from './GraphTaskKanban.vue';
+import OrchestrationKanban from '../orchestration/OrchestrationKanban.vue';
 import type { CheckpointInfo, GraphExecution, GraphRunExecutionSummary, Task } from '../../features/graph/types';
+import type { AgentNodeState } from '../../features/orchestration/types';
 
 const { t } = useI18n();
 
-const props = defineProps<{
-  execution: GraphExecution | null;
-  executionSummary: GraphRunExecutionSummary | null;
-  displayStatus: string;
-  statusColor: string;
-  streamConnected: boolean;
-  isDark: boolean;
-  checkpoints: CheckpointInfo[];
-  checkpointsLoading: boolean;
-  selectedCheckpoint: CheckpointInfo | null;
-  stateSnapshot: Record<string, unknown> | null;
-  statePatchJson: string;
-  snapshotLoading: boolean;
-  editLoading: boolean;
-  timeTravelLoading: boolean;
-  stepIndex: number;
-  tasks: Task[];
-  tasksLoading: boolean;
-  selectedTaskId?: string | null;
-  tab: string;
-  restoringCheckpoint?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    execution: GraphExecution | null;
+    executionSummary: GraphRunExecutionSummary | null;
+    displayStatus: string;
+    statusColor: string;
+    streamConnected: boolean;
+    isDark: boolean;
+    checkpoints: CheckpointInfo[];
+    checkpointsLoading: boolean;
+    selectedCheckpoint: CheckpointInfo | null;
+    stateSnapshot: Record<string, unknown> | null;
+    statePatchJson: string;
+    snapshotLoading: boolean;
+    editLoading: boolean;
+    timeTravelLoading: boolean;
+    stepIndex: number;
+    tasks: Task[];
+    tasksLoading: boolean;
+    selectedTaskId?: string | null;
+    tab: string;
+    restoringCheckpoint?: boolean;
+    /** M53 Phase 11 F7：team 执行 Kanban 视角 */
+    kanbanNodes?: AgentNodeState[];
+    showKanbanTab?: boolean;
+    selectedKanbanNodeId?: string | null;
+  }>(),
+  {
+    kanbanNodes: () => [],
+    showKanbanTab: false,
+    selectedKanbanNodeId: null,
+    selectedTaskId: null,
+    restoringCheckpoint: false,
+  },
+);
 
 const emit = defineEmits<{
   'update:tab': [value: string];
@@ -106,6 +137,7 @@ const emit = defineEmits<{
   refreshTasks: [];
   selectTask: [taskId: string];
   kanbanAdminAction: [payload: { taskId: string; action: 'unblock' | 'approve' }];
+  selectNode: [nodeId: string];
 }>();
 
 const tab = computed({

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/compress"
 )
 
 func TestMemoryWorkerProviderModel_PrefersMemoryWorker(t *testing.T) {
@@ -44,5 +45,28 @@ func TestMemoryWorkerProviderModel_FallsBackToSessionAgent(t *testing.T) {
 	p, m := memoryWorkerProviderModel(sess, ag)
 	if p != "deepseek" || m != "deepseek-chat" {
 		t.Fatalf("got %s/%s", p, m)
+	}
+}
+
+func TestConvertFactsToProposals_PassesThroughClassification(t *testing.T) {
+	facts := []compress.MemoryExtractFact{{
+		Statement:   "User asked to never use the shell tool",
+		SubjectType: "constraint",
+		Scope:       "user",
+		Confidence:  0.9,
+	}}
+	props := convertFactsToProposals(facts, nil, biz.ExtractionQualityFunctionCall)
+	if len(props) != 1 {
+		t.Fatalf("expected 1 proposal, got %d", len(props))
+	}
+	p := props[0]
+	if p.SubjectType != "constraint" {
+		t.Fatalf("SubjectType=%q want constraint", p.SubjectType)
+	}
+	if p.Scope != "user" {
+		t.Fatalf("Scope=%q want user", p.Scope)
+	}
+	if p.Confidence != 0.9 {
+		t.Fatalf("Confidence=%v want 0.9", p.Confidence)
 	}
 }

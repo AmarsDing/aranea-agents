@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	MonitorService_ListAuditLogs_FullMethodName               = "/kratos.monitor.v1.MonitorService/ListAuditLogs"
+	MonitorService_DeleteAuditLogs_FullMethodName             = "/kratos.monitor.v1.MonitorService/DeleteAuditLogs"
 	MonitorService_ListMonitorEvents_FullMethodName           = "/kratos.monitor.v1.MonitorService/ListMonitorEvents"
 	MonitorService_GetMonitorEvent_FullMethodName             = "/kratos.monitor.v1.MonitorService/GetMonitorEvent"
 	MonitorService_ListMonitorTraces_FullMethodName           = "/kratos.monitor.v1.MonitorService/ListMonitorTraces"
@@ -44,6 +45,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type MonitorServiceClient interface {
 	ListAuditLogs(ctx context.Context, in *ListAuditLogsRequest, opts ...grpc.CallOption) (*ListAuditLogsResponse, error)
+	DeleteAuditLogs(ctx context.Context, in *DeleteAuditLogsRequest, opts ...grpc.CallOption) (*DeleteAuditLogsResponse, error)
 	ListMonitorEvents(ctx context.Context, in *ListMonitorEventsRequest, opts ...grpc.CallOption) (*ListMonitorEventsResponse, error)
 	GetMonitorEvent(ctx context.Context, in *GetMonitorEventRequest, opts ...grpc.CallOption) (*MonitorPlatformRow, error)
 	ListMonitorTraces(ctx context.Context, in *ListMonitorTracesRequest, opts ...grpc.CallOption) (*ListMonitorTracesResponse, error)
@@ -78,6 +80,16 @@ func (c *monitorServiceClient) ListAuditLogs(ctx context.Context, in *ListAuditL
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListAuditLogsResponse)
 	err := c.cc.Invoke(ctx, MonitorService_ListAuditLogs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *monitorServiceClient) DeleteAuditLogs(ctx context.Context, in *DeleteAuditLogsRequest, opts ...grpc.CallOption) (*DeleteAuditLogsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteAuditLogsResponse)
+	err := c.cc.Invoke(ctx, MonitorService_DeleteAuditLogs_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -259,6 +271,7 @@ func (c *monitorServiceClient) ListHealRecords(ctx context.Context, in *ListHeal
 // for forward compatibility.
 type MonitorServiceServer interface {
 	ListAuditLogs(context.Context, *ListAuditLogsRequest) (*ListAuditLogsResponse, error)
+	DeleteAuditLogs(context.Context, *DeleteAuditLogsRequest) (*DeleteAuditLogsResponse, error)
 	ListMonitorEvents(context.Context, *ListMonitorEventsRequest) (*ListMonitorEventsResponse, error)
 	GetMonitorEvent(context.Context, *GetMonitorEventRequest) (*MonitorPlatformRow, error)
 	ListMonitorTraces(context.Context, *ListMonitorTracesRequest) (*ListMonitorTracesResponse, error)
@@ -291,6 +304,9 @@ type UnimplementedMonitorServiceServer struct{}
 
 func (UnimplementedMonitorServiceServer) ListAuditLogs(context.Context, *ListAuditLogsRequest) (*ListAuditLogsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListAuditLogs not implemented")
+}
+func (UnimplementedMonitorServiceServer) DeleteAuditLogs(context.Context, *DeleteAuditLogsRequest) (*DeleteAuditLogsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteAuditLogs not implemented")
 }
 func (UnimplementedMonitorServiceServer) ListMonitorEvents(context.Context, *ListMonitorEventsRequest) (*ListMonitorEventsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListMonitorEvents not implemented")
@@ -378,6 +394,24 @@ func _MonitorService_ListAuditLogs_Handler(srv interface{}, ctx context.Context,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(MonitorServiceServer).ListAuditLogs(ctx, req.(*ListAuditLogsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MonitorService_DeleteAuditLogs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteAuditLogsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MonitorServiceServer).DeleteAuditLogs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MonitorService_DeleteAuditLogs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MonitorServiceServer).DeleteAuditLogs(ctx, req.(*DeleteAuditLogsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -698,6 +732,10 @@ var MonitorService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListAuditLogs",
 			Handler:    _MonitorService_ListAuditLogs_Handler,
+		},
+		{
+			MethodName: "DeleteAuditLogs",
+			Handler:    _MonitorService_DeleteAuditLogs_Handler,
 		},
 		{
 			MethodName: "ListMonitorEvents",

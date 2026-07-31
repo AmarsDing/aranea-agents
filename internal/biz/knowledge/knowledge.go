@@ -86,6 +86,9 @@ type SearchQuery struct {
 	FilterJSON       string
 	UseRerank        *bool
 	RerankCandidates int
+	// PathPrefix 搜索范围过滤（G3-B7）：vault 相对目录前缀，仅命中文档
+	// rel_path 位于 "<prefix>/" 下的 chunks；空 = 全库。首尾斜杠容忍。
+	PathPrefix string
 }
 
 // Repo is the persistence interface for knowledge base operations.
@@ -192,9 +195,15 @@ type Usecase struct {
 	// paths nil 时 ListVaultTree 显式报错，resolvedLinks nil 时关联查询降级为空。
 	paths         DocumentPathReader
 	resolvedLinks ResolvedLinkReader
+	// graphLinks 为库级关联读取（G4-B8），经 SetGraphRepo 接线；
+	// nil 时 ListCollectionGraph 降级为仅节点无边。
+	graphLinks CollectionLinkReader
 	// filer 为 vault 文件系统边界（G1-B1），经 SetVaultFiler 接线；
 	// nil 时 ListVaultTree 目录退化为纯索引聚合。
 	filer *VaultFiler
+	// applier 为单文档立即应用端口（G1-B2），经 SetVaultApplier 接线；
+	// nil 时 CreateVaultDocument 跳过立即索引（同步轮询兜底）。
+	applier VaultDocApplier
 }
 
 // NewUsecase constructs a KnowledgeUsecase from individual sub-interfaces.

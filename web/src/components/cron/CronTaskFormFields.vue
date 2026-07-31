@@ -15,7 +15,8 @@
       outlined
       label="标识 *"
       placeholder="my-daily-task"
-      :rules="[cronSlugRule]"
+      :readonly="editing"
+      :rules="editing ? [] : [cronSlugRule]"
     />
     <q-input v-model="form.display_name" class="cron-field" dense outlined label="展示名称" />
     <q-input
@@ -73,6 +74,7 @@ import { cronMessageRule, cronSlugRule } from './cronTaskUtils';
 defineProps<{
   agents: Agent[];
   teams: Team[];
+  editing?: boolean;
   serverError?: string;
 }>();
 

@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/skill/manifest"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/pkg/loggateway"
@@ -69,6 +71,7 @@ type Engine struct {
 	llm   llmLister
 	sys   biz.SystemSettingRepo
 	lg    loggateway.Logger
+	bus   contract.MonitorBus // monitor event bus for flow-log emission (nil = skip)
 	store SkillImportJobStore // DB persistence layer (nil = memory-only fallback)
 
 	jobsMu    sync.RWMutex
@@ -97,13 +100,24 @@ type candidateState struct {
 	tags   []biz.SkillTag
 }
 
+// countCandidateFiles 统计所有候选的附属文件总数（流程日志字段）。
+func countCandidateFiles(job *jobState) int {
+	total := 0
+	for _, c := range job.candidates {
+		total += len(c.files)
+	}
+	return total
+}
+
 // NewEngine constructs the skill ZIP importer. Skill storage root resolves via skillstorage + system settings.
-func NewEngine(repo SkillImportRepo, llm llmLister, sys biz.SystemSettingRepo, lg loggateway.Logger) *Engine {
+// bus may be nil; flow-log events are only emitted when a monitor bus is present.
+func NewEngine(repo SkillImportRepo, llm llmLister, sys biz.SystemSettingRepo, bus contract.MonitorBus, lg loggateway.Logger) *Engine {
 	return &Engine{
 		repo:   repo,
 		llm:    llm,
 		sys:    sys,
 		lg:     lg,
+		bus:    bus,
 		jobs:   make(map[string]*jobState),
 		jobTTL: defaultJobTTL,
 	}
@@ -125,8 +139,8 @@ func ProvideLLMLister(uc *biz.LlmProviderModelUsecase) llmLister {
 // ProvideEngine is the wire provider for the import Engine. When a
 // SkillImportJobStore is available it is attached so import jobs survive
 // restarts; otherwise jobs remain memory-only (warned at startup).
-func ProvideEngine(repo SkillImportRepo, llm llmLister, sys biz.SystemSettingRepo, store SkillImportJobStore, lg loggateway.Logger) *Engine {
-	e := NewEngine(repo, llm, sys, lg)
+func ProvideEngine(repo SkillImportRepo, llm llmLister, sys biz.SystemSettingRepo, store SkillImportJobStore, bus contract.MonitorBus, lg loggateway.Logger) *Engine {
+	e := NewEngine(repo, llm, sys, bus, lg)
 	if store == nil {
 		lg.Warn("import jobs are memory-only: no SkillImportJobStore configured",
 			loggateway.StepID("skill.import.store"))
@@ -145,6 +159,20 @@ func (e *Engine) resolveRoot(ctx context.Context) string {
 		return storage.ResolveRootFromEnv()
 	}
 	return storage.ResolveRootWithPlatform(st.RootDirectory)
+}
+
+// flowLog returns a run-scoped trace emitter for the skill domain, or nil
+// when no monitor bus is configured (flow-log emission disabled).
+func (e *Engine) flowLog(ctx context.Context) *event.TraceEmitter {
+	if e == nil || e.bus == nil {
+		return nil
+	}
+	return event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:    ctx,
+		Domain: event.TraceDomainSkill,
+		LG:     e.lg,
+		Infra:  event.NewInfraFromBus(e.bus),
+	})
 }
 
 func candidateRequiresRiskApproval(candidate biz.SkillImportCandidate) bool {
@@ -173,6 +201,15 @@ func (e *Engine) Import(ctx context.Context, file multipart.File, header *multip
 	if len(data) > MaxZipBytes {
 		return biz.SkillImportJob{}, validationError("skill zip must be <= 20MB")
 	}
+	flow := e.flowLog(ctx)
+	if flow != nil {
+		// File count is only known after the zip is inspected; it is reported
+		// with the skill.import.validate done event instead.
+		flow.LogStart("skill.import.start", "Skill 包导入开始",
+			event.P("package", header.Filename),
+			event.P("source", "multipart_upload"),
+			event.P("size_bytes", len(data)))
+	}
 	job := &jobState{
 		public: biz.SkillImportJob{
 			JobID:            newID(),
@@ -189,11 +226,22 @@ func (e *Engine) Import(ctx context.Context, file multipart.File, header *multip
 		job.public.Status = "failed"
 		job.public.ValidationStatus = "block"
 		job.public.Message = err.Error()
+		if flow != nil {
+			flow.LogError("skill.import.validate", "Skill 包校验失败",
+				event.P("error", err.Error()))
+		}
 	} else {
 		job.public.Status = "completed"
 		job.public.ValidationStatus = summarizeImportStatus(job.public.Candidates, job.public.ConflictGroups)
 		if job.public.ValidationStatus == "block" {
 			job.public.Message = strings.Join(importBlockMessages(job.public.Candidates), "?")
+		}
+		if flow != nil {
+			flow.LogDone("skill.import.validate", "Skill 包校验完成",
+				event.P("candidates", len(job.public.Candidates)),
+				event.P("files", countCandidateFiles(job)),
+				event.P("conflict_groups", len(job.public.ConflictGroups)),
+				event.P("validation_status", job.public.ValidationStatus))
 		}
 	}
 	e.jobsMu.Lock()
@@ -344,6 +392,7 @@ type skillCreateParams struct {
 // either all succeed or all are cleaned up. (Full two-phase Saga is deferred to Wave 2 / TPM-D-S1.)
 func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImportApplyRequest) (biz.SkillImportApplyResult, error) {
 	trimmed := strings.TrimSpace(jobID)
+	flow := e.flowLog(ctx)
 
 	// CAS-style status transition: atomically check "completed" and set "applying"
 	// under a write lock to prevent concurrent ApplyImport calls from both proceeding.
@@ -491,6 +540,11 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 	// can be retried.
 	result := biz.SkillImportApplyResult{CreatedSkillIDs: []string{}, SkippedCandidateIDs: []string{}}
 	partialErr := func(err error) (biz.SkillImportApplyResult, error) {
+		if flow != nil {
+			flow.LogError("skill.import.done", "Skill 导入落库失败",
+				event.P("job_id", trimmed),
+				event.P("error", err.Error()))
+		}
 		compensate()
 		// Roll back status to "completed" so the job can be retried.
 		e.jobsMu.Lock()
@@ -516,6 +570,7 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 		}, err
 	}
 
+	var newSkills, appendedVersions int
 	for _, decision := range in.Decisions {
 		params, skipIDs, err := e.resolveDecision(ctx, job, decision)
 		if err != nil {
@@ -538,6 +593,7 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 			if err != nil {
 				return partialErr(err)
 			}
+			appendedVersions++
 		} else {
 			var dir string
 			created, dir, err = e.createImportedSkill(ctx, *params)
@@ -545,6 +601,7 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 				return partialErr(err)
 			}
 			committed = append(committed, createdSkillRecord{id: created.ID, storageDir: dir})
+			newSkills++
 		}
 		// merge_group_with_ai post-create hooks: provenance is always recorded
 		// for merges (C4 血缘链); source retirement is optional (retire_sources).
@@ -561,6 +618,21 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 		result.CreatedSkillIDs = append(result.CreatedSkillIDs, created.ID)
 	}
 	result.Message = "import completed"
+
+	if flow != nil {
+		if len(job.public.ConflictGroups) > 0 {
+			flow.LogDone("skill.import.conflict", "Skill 冲突决策完成",
+				event.P("groups", len(job.public.ConflictGroups)),
+				event.P("keep", len(result.CreatedSkillIDs)),
+				event.P("skip", len(result.SkippedCandidateIDs)),
+				event.P("decisions", len(in.Decisions)))
+		}
+		flow.LogDone("skill.import.done", "Skill 导入落库完成",
+			event.P("job_id", trimmed),
+			event.P("skills", newSkills),
+			event.P("versions", newSkills+appendedVersions),
+			event.P("skipped", len(result.SkippedCandidateIDs)))
+	}
 
 	// Transition in-memory job status from "applying" to "applied".
 	e.jobsMu.Lock()

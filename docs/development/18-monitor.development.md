@@ -162,6 +162,17 @@
 
 > **EVT-R 详细设计**：见 [18 monitor.design.md](./18%20monitor.design.md) §十。
 
+### Phase MON-UX — Alerts/Audit/Traces 体验整改（2026-07-30）
+
+| ID | 任务 | 层 | 状态 | 关键实现 |
+|----|------|-----|------|----------|
+| MON-UX-01 | Alerts 页重排版 | web | ✅ | `MonitorAlertRules.vue`：页头外置、指标目录默认折叠（`q-slide-transition`）；`MonitorAlertRuleCard.vue`：严重度色条（`--q-info`/`--q-warning`/`--q-negative`，无 hex 硬编码） |
+| MON-UX-02 | Traces agent 列空值修复 | data | ✅ | `sqlMonitorTracesNames`：`agent_id`/`agent_name` 增加 sessions 回退（chat 域 runner.completion 回溯未填 agent_id 的历史行）；`monitorTracesWhere` agent_id 过滤同步三级回退，与 SELECT 列一致 |
+| MON-UX-03 | Traces 名称列显示会话标题 | data | ✅ | 新增 `session_title` 标量子查询；显示名优先级：team 显示名 → 会话标题 → agent 显示名 → 存储域；存储域保留在 `config_json.domain` |
+| MON-UX-04 | Traces 表格布局 | web | ✅ | 名称列 20ch 截断 + `max-width:400px` 大 tooltip；列宽百分比化（总和 100%）消除横向滚动条 |
+| MON-UX-05 | Audit 清空功能 | proto/service/biz/data/web | ✅ | `DeleteAuditLogs` RPC（`DELETE /v1/monitor/audit-logs`，`confirm="CONFIRM"` 校验）；Repo 全表硬删除；Usecase 删除后写自审计条目（`delete.audit_logs`/warning）；前端 `AuditTable` 清空按钮 + 确认对话框，`useMonitorPage.handleClearAudit` notify |
+| MON-UX-06 | 文档同步 | docs | ✅ | 18-monitor.design.md（Proto/请求契约/查询模式/Service/前端映射/API）+ 本表 |
+
 ### MON-OPT — 业务逻辑优化（2026-05-26 方案落地）
 
 | ID | 任务 | 优先级 | 状态 | 关键实现 |

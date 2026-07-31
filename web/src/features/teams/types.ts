@@ -87,6 +87,8 @@ export type TeamFailurePolicy = {
 export type TeamDefinition = {
   version: number;
   description?: string;
+  /** 拓扑来源（M53 Phase 11）：preset=表单派生 / custom=Graph 编辑器手改 / linked_external=关联独立图；缺省按 preset */
+  source?: 'preset' | 'custom' | 'linked_external' | string;
   /** Graph 执行引擎（默认 graph）；Native 仅在后端 ARANEA_TEAM_NATIVE=1 应急时可用 */
   runtime_engine?: 'native' | 'graph' | string;
   /** 兼容旧字段，等效 runtime_engine=graph */

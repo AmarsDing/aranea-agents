@@ -253,7 +253,7 @@ func (r *SkillIntelligenceRepo) GetHealthMetrics(ctx context.Context, skillID st
   AVG(CASE WHEN duration_ms > 0 THEN duration_ms END) as avg_duration_ms,
   COALESCE(AVG(CASE WHEN token_usage IS NOT NULL THEN ` + tokenUsageTotal + ` END), 0) as avg_token_usage
 FROM skill_invocation
-WHERE skill_id = ? AND created_at >= ?`)
+WHERE skill_id = ? AND created_at >= ? AND source = 'runtime'`)
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, aggQuery, skillID, sinceStr)
 	if err != nil {
@@ -285,7 +285,7 @@ WHERE skill_id = ? AND created_at >= ?`)
 
 	// P95: for small row counts (<20), load durations and compute in Go;
 	// for larger sets, use SQL ORDER BY + OFFSET approach.
-	countQuery := d.RenumberPlaceholders(`SELECT COUNT(*) FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0`)
+	countQuery := d.RenumberPlaceholders(`SELECT COUNT(*) FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0 AND source = 'runtime'`)
 	var durCount int
 	cRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, countQuery, skillID, sinceStr)
 	if err != nil {
@@ -305,7 +305,7 @@ WHERE skill_id = ? AND created_at >= ?`)
 		metrics.P95DurationMS = 0
 	} else if durCount < 20 {
 		// Small set: load all durations and compute P95 in Go.
-		durQuery := d.RenumberPlaceholders(`SELECT duration_ms FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0 ORDER BY duration_ms ASC`)
+		durQuery := d.RenumberPlaceholders(`SELECT duration_ms FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0 AND source = 'runtime' ORDER BY duration_ms ASC`)
 		dRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, durQuery, skillID, sinceStr)
 		if err != nil {
 			return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
@@ -329,7 +329,7 @@ WHERE skill_id = ? AND created_at >= ?`)
 		if offset >= durCount {
 			offset = durCount - 1
 		}
-		p95Query := d.RenumberPlaceholders(`SELECT duration_ms FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0 ORDER BY duration_ms ASC LIMIT 1 OFFSET ?`)
+		p95Query := d.RenumberPlaceholders(`SELECT duration_ms FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0 AND source = 'runtime' ORDER BY duration_ms ASC LIMIT 1 OFFSET ?`)
 		var p95 int
 		pRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, p95Query, skillID, sinceStr, offset)
 		if err != nil {
@@ -399,7 +399,7 @@ func (r *SkillIntelligenceRepo) GetFailureStats(ctx context.Context, skillID str
   COALESCE(error_code, 'unknown') as error_code,
   COUNT(*) as count
 FROM skill_invocation
-WHERE skill_id = ? AND created_at >= ? AND outcome != 'success' AND NOT (outcome = '' AND (status = 'completed' OR status = 'success'))
+WHERE skill_id = ? AND created_at >= ? AND source = 'runtime' AND outcome != 'success' AND NOT (outcome = '' AND (status = 'completed' OR status = 'success'))
 GROUP BY error_code
 ORDER BY count DESC
 LIMIT 5`)

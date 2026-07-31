@@ -56,6 +56,22 @@ export async function compileTeamGraph(teamId: string, definitionJson?: string):
   return wireCompile(res);
 }
 
+/**
+ * M53 Phase 11：checkpoint 以编译产物为准——后端 CompileTeamGraph 的 graph_json
+ * 是 GraphBuildConfig 的 JSON 序列化（biz.GraphBuildConfig.enable_checkpoint），
+ * 已应用 definition 的 enable_checkpoint 语义（缺省 true）。解析失败回退 false。
+ */
+function enableCheckpointFromGraphJson(graphJson: string): boolean {
+  const raw = graphJson.trim();
+  if (!raw) return false;
+  try {
+    const parsed = JSON.parse(raw) as { enable_checkpoint?: boolean };
+    return parsed.enable_checkpoint === true;
+  } catch {
+    return false;
+  }
+}
+
 export function compiledGraphToGraphDef(
   compiled: CompileTeamGraphResult,
   name = 'team-orchestration',
@@ -113,7 +129,7 @@ export function compiledGraphToGraphDef(
     subgraphs: [],
     entryPoint: compiled.entry_point,
     finishPoint: compiled.finish_point,
-    enableCheckpoint: false,
+    enableCheckpoint: enableCheckpointFromGraphJson(compiled.graph_json),
     executionEngine: 'bsp',
     interruptBefore: [],
     interruptAfter: [],

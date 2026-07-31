@@ -24,11 +24,16 @@ func TestSelfImprovementRunSM_Transitions(t *testing.T) {
 		{"apply→done", RunStatusApplying, RunEventApplyDone, RunStatusApplied, false},
 		{"applied→observe", RunStatusApplied, RunEventObserve, RunStatusObserving, false},
 		{"observe→close", RunStatusObserving, RunEventClose, RunStatusClosed, false},
+		// 合并冲突转人工（design D7：冲突则转人工）
+		{"apply→escalate→govern", RunStatusApplying, RunEventApplyEscalate, RunStatusAwaitingGovernance, false},
 		// 验证失败重试回路
 		{"verify→retry→patch", RunStatusVerifying, RunEventVerifyFail, RunStatusPatching, false},
 		{"verify→fail_final", RunStatusVerifying, RunEventVerifyFailFinal, RunStatusVerifyFailed, false},
 		// 审批拒绝
 		{"govern→reject", RunStatusAwaitingGovernance, RunEventReject, RunStatusRejected, false},
+		// 策略拒绝（保护文件/敏感内容/超规模 diff 的 fail-fast，design D9/D10）
+		{"patching→reject", RunStatusPatching, RunEventReject, RunStatusRejected, false},
+		{"verifying→reject", RunStatusVerifying, RunEventReject, RunStatusRejected, false},
 		// 回滚
 		{"observing→rollback", RunStatusObserving, RunEventRollback, RunStatusRolledBack, false},
 		{"applied→rollback", RunStatusApplied, RunEventRollback, RunStatusRolledBack, false},

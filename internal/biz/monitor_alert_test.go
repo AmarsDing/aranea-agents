@@ -38,6 +38,10 @@ func (r *alertMonitorRepo) InsertAuditLog(ctx context.Context, entry AuditLog) e
 	return nil
 }
 
+func (r *alertMonitorRepo) DeleteAuditLogs(ctx context.Context) (int, error) {
+	return 0, nil
+}
+
 func (r *alertMonitorRepo) InsertMonitorEvent(ctx context.Context, ev MonitorEventWrite) error {
 	return nil
 }

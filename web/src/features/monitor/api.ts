@@ -148,6 +148,11 @@ export async function listMonitorAudit(query: AuditQuery = {}): Promise<Paginate
   return { items, total: Number(res.total ?? items.length) };
 }
 
+export async function deleteAuditLogs(): Promise<number> {
+  const res = await monitor.DeleteAuditLogs({ confirm: 'CONFIRM' });
+  return Number(res.deleted ?? 0);
+}
+
 export async function listMonitorEvents(
   query: MonitorEventsQuery = {},
 ): Promise<PaginatedResult<PlatformResource>> {

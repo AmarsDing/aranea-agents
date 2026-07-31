@@ -82,6 +82,7 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 | **业务逻辑正确性（状态机/事件可靠性/不变量/边界条件）** | `aranea-coding-guide` §15 |
 | **测试约定（分层测试/mock 策略/事件流/并发测试）** | `aranea-coding-guide` §16 |
 | 数据库编码规范 | `aranea-coding-guide` §5.4（Schema/访问模式/Repo/事务/读写分离/迁移）+ `project_rules.md` 数据库框架约束（连接管理/迁移体系/错误翻译/技术债务/开发红线） |
+| **关键节点日志规范（双轨制/K1-K7/step 登记）** | `aranea-coding-guide` §7.4 + `project_rules.md` §日志架构约束 |
 | Go OOP 设计模式 | `go-oop-guide` |
 | Vue 3 组件/Composable 模式 | `vue-frontend-guide` |
 | 代码审查清单 | `aranea-review`（全栈）、`go-oop-review`（Go OOP） |
@@ -150,6 +151,37 @@ trpc-agent-go 运行时 → RuntimeLogAdapter → loggateway.Logger → 同上
 6. **测试中使用 Noop**：测试代码中优先使用 `loggateway.NewNoop()` 创建静默 Logger，避免 `loggateway.Global()`（Global 是 deprecated API）
 7. **data 层日志访问**：data 层存在两种模式——独立 Repo 持有 `lg loggateway.Logger`（推荐）或通过 `r.data.lg` 访问共享 Logger。新增 Repo 优先使用独立持有模式
 8. **禁止 fmt.Fprintf(os.Stderr, ...)**：除 `RuntimeLogAdapter.Fatal` 和 Pipeline 内部 panic 恢复外，业务代码禁止直接写 stderr
+
+### 关键节点日志规范（强制，2026-07-29 起）
+
+> 详细规范见 `aranea-coding-guide` §7.2。本节为强制摘要。
+
+**双轨制**：系统有两类日志，新增/修改核心功能时必须同时评估两者——
+
+| 类型 | 面向 | 实现 | 展示 |
+|------|------|------|------|
+| **流程日志**（Flow Log） | 业务用户/AI 排障 | `event.TraceEmitter`/`FlowTracker`（biz 层经 `biz.FlowLogWriter` 端口） | Monitor Logs「流程日志」Tab |
+| **进程日志**（Process Log） | 开发者调试 | `loggateway.Logger` 结构化字段 | Monitor Logs「进程日志」Tab + `logs/aranea-pipeline.log` |
+
+**K1-K7 关键节点**（新业务流程必须覆盖，缺一需在 PR 中说明理由）：
+
+| # | 节点 | 流程日志 | 进程日志 |
+|---|------|---------|---------|
+| K1 | 流程入口/出口（start/done） | 必须 | Info |
+| K2 | 错误路径（含原始 error） | 必须（LogError） | Error + `loggateway.Err` |
+| K3 | 降级/回退 | 必须（warn） | Warn |
+| K4 | 重试（首次重试即可，非每次） | 可选 | Warn |
+| K5 | 状态机转换/实体状态变更 | 域内重要时 | Info |
+| K6 | 外部调用（LLM/HTTP/DB 长查询） | 域内重要时 | Debug/Info + 耗时 |
+| K7 | 后台任务生命周期（启动/停止/panic/死信） | 必须 | Info/Error |
+
+**新增步骤红线**：
+
+1. 新增流程日志 step_id 必须登记 `internal/event/flow_log.go` `stepTitleRegistry`（中文标题），并同步 `docs/development/52-flow-logger.design.md` §5.1 步骤注册表——禁止无标题发射
+2. step_id 命名 `{domain}.{subsystem}.{action}` 全小写点分；domain 须为已注册的 `TraceDomain`
+3. biz 层禁止直接 import `internal/event` 发流程日志——使用 `biz.FlowLogWriter`/`SessionLogWriter`/`SystemLogWriter` 端口（Wire 在 service 层装配）
+4. 高频路径（WS 消息、事件分发、流式 delta）必须用计数器/时间窗限流，禁止每事件一条日志
+5. 后台 goroutine/worker 启动、退出、panic 恢复必须各有一条进程日志
 
 ### 初始化流程（cmd/admin/logging.go）
 

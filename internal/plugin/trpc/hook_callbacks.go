@@ -179,7 +179,7 @@ func executeHookAction(ctx context.Context, stats StatsRecorder, notifier *HookN
 		}
 		n := notifier
 		if n == nil {
-			n = NewHookNotifier(nil, nil, lg)
+			n = NewHookNotifier(nil, nil, lg, nil)
 		}
 		if enqueueErr := n.EnqueueNotify(ctx, rh, payload); enqueueErr != nil {
 			err = enqueueErr

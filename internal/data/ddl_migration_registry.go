@@ -92,8 +92,10 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260730, Name: "runtime_profile_schema", SQL: "sql/migrations/20260730_runtime_profile_schema.sql"},
 	{Version: 20260731, Name: "heal_record_metadata_column", Func: ddlHealRecordMetadataColumn},
 	{Version: 20260801, Name: "memory_job_deadletter_unique", SQL: "sql/migrations/20260801_memory_job_deadletter_unique.sql"},
-	{Version: 20260802, Name: "memory_episodes_l1_task_unique", SQL: "sql/migrations/20260802_memory_episodes_l1_task_unique.sql"},
-	{Version: 20260803, Name: "cascade_saga_id_type_fix", SQL: "sql/migrations/20260803_cascade_saga_id_type_fix.sql"},
+	// 20260802 memory_episodes_l1_task_unique 与 20260803 cascade_saga_id_type_fix
+	// 原版本号被同名数据迁移（session_turn_number_backfill/rebackfill）抢先占用，
+	// 导致 DDL 被静默跳过（生产 memory_episodes 缺部分唯一索引、cascade_saga_steps.id
+	// 仍为 integer）。已重编号为 20261118/20261119，见本文件末尾。
 	{Version: 20260804, Name: "planner_model_columns", SQL: "sql/migrations/20260804_planner_model_columns.sql"},
 	{Version: 20260825, Name: "activity_session_tree_columns", SQL: "sql/migrations/20260825_activity_session_tree_columns.sql"},
 	{Version: 20260826, Name: "event_dead_letter_schema", SQL: "sql/migrations/20260826_event_dead_letter_schema.sql"},
@@ -194,11 +196,21 @@ var ddlMigrations = []ddlMigration{
 	// model_token_usage_events metadata.trace_id so AggregateUsageByTrace
 	// (trace completion + 6h backfill) does not seq-scan the events table.
 	{Version: 20261114, Name: "usage_events_trace_id_index", Func: ddlUsageEventsTraceIDIndex},
-	// 20261115 self_improvement_observing_index: partial index on
+	// 20261118 memory_episodes_l1_task_unique（原 20260802，版本碰撞重编号；
+	// 20261116/20261117 已被生产 pack_it_ops_v1 种子记录占用，故取 20261118）：
+	// memory_episodes 两个部分唯一索引——L1 归档 episode 按 (session_id,l1_task_id)
+	// 去重，consolidation episode 按 (session_id,title,agent_id) WHERE l1_task_id=''
+	// 去重。缺索引时 ON CONFLICT ... WHERE 报 42P10，episode 写入全部失败。
+	{Version: 20261118, Name: "memory_episodes_l1_task_unique", SQL: "sql/migrations/20261118_memory_episodes_l1_task_unique.sql"},
+	// 20261119 cascade_saga_id_type_fix（原 20260803，版本碰撞重编号）：
+	// cascade_saga_steps 重建为 TEXT 主键（旧 INTEGER 无法存 UUID）。
+	{Version: 20261119, Name: "cascade_saga_id_type_fix", SQL: "sql/migrations/20261119_cascade_saga_id_type_fix.sql"},
+	// 20261120 self_improvement_observing_index（原 20261115，与数据迁移
+	// monitor_trace_interrupted_backfill 碰撞重编号）：partial index on
 	// self_improvement_runs(observe_until) WHERE status='observing' for the V3
 	// Watchdog scan. Tables are Ent-managed (Schema.Create); only the partial
 	// index needs DDL.
-	{Version: 20261115, Name: "self_improvement_observing_index", SQL: "sql/migrations/20261115_self_improvement_observing_index.sql"},
+	{Version: 20261120, Name: "self_improvement_observing_index", SQL: "sql/migrations/20261120_self_improvement_observing_index.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

@@ -22,11 +22,14 @@ type monitorBus struct {
 }
 
 // newMonitorBus creates a contract.MonitorBus backed by a GenericBus.
-// Drop events are logged via loggateway when lg is non-nil.
+// Drop events are logged via loggateway when lg is non-nil, and emitted as
+// throttled system.bus.drop flow logs back onto the bus itself. Two-phase
+// construction: the GenericBus receives the wrapping monitorBus as its flow
+// target; it is only dereferenced at Publish time, after inner is assigned.
 func newMonitorBus(lg loggateway.Logger) contract.MonitorBus {
-	return &monitorBus{
-		inner: NewGenericBus[contract.MonitorEvent](lg),
-	}
+	b := &monitorBus{}
+	b.inner = NewGenericBus[contract.MonitorEvent](lg, b)
+	return b
 }
 
 // NewMonitorBus is the exported constructor for contract.MonitorBus.

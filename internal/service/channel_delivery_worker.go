@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/preview"
+	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -218,6 +219,26 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 				loggateway.Str("attempts", fmt.Sprint(payload.Attempts+1)),
 				loggateway.Err(sendErr),
 			)
+			// 流程日志：system.channel.dead_letter。进程日志沿用上方
+			// channel.dead_letter Warn，故 emitter 不再携带 LG，避免重复。
+			if w.ingress != nil && w.ingress.monitorBus != nil {
+				kind := payload.Kind
+				if kind == "" {
+					kind = biz.ChannelOutboundTextKind
+				}
+				flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+					Ctx:    ctx,
+					Domain: event.TraceDomainSystem,
+					Infra:  event.NewInfraFromBus(w.ingress.monitorBus),
+				})
+				flow.LogError("system.channel.dead_letter", "渠道投递失败进入死信",
+					event.P("platform", platform),
+					event.P("kind", kind),
+					event.P("channel_id", row.ChannelID),
+					event.P("delivery_id", row.ID),
+					event.P("error", sendErr.Error()),
+				)
+			}
 		default:
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "retry").Inc()
 		}

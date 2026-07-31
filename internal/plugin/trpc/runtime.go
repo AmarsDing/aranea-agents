@@ -58,7 +58,7 @@ func (rt *Runtime) SetHookDeliveryRepo(repo biz.HookDeliveryRepo) {
 	}
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	rt.notifier = NewHookNotifier(nil, repo, rt.lg)
+	rt.notifier = NewHookNotifier(nil, repo, rt.lg, rt.monitorBus)
 	if repo != nil {
 		rt.retryWorker = NewHookDeliveryRetryWorker(nil, repo, rt.notifier, rt.lg)
 	}
@@ -141,6 +141,9 @@ func (rt *Runtime) CostGuardBudgetTracker() *CostGuardBudgetTracker {
 func (rt *Runtime) SetMonitorBus(monitorBus contract.MonitorBus) {
 	rt.mu.Lock()
 	rt.monitorBus = monitorBus
+	if rt.notifier != nil {
+		rt.notifier.SetMonitorBus(monitorBus)
+	}
 	rt.mu.Unlock()
 	InitHookLogger(monitorBus, rt.lg)
 }

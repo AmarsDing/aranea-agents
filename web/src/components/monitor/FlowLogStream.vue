@@ -5,6 +5,9 @@
         <div class="row items-center q-gutter-sm">
           <div class="text-h6 text-weight-bold">流程日志</div>
           <q-badge :color="stateColor">{{ stateText }}</q-badge>
+          <span v-if="hub.flowState.value === 'error' && hub.errorHint.value" class="text-caption text-negative">
+            {{ hub.errorHint.value }}
+          </span>
           <q-badge outline color="accent">{{ filteredLines.length }}/{{ hub.flowLines.value.length }}</q-badge>
         </div>
         <div class="text-caption text-grey-7">业务编排时间线（中文步骤，带 trace 关联）</div>
@@ -68,6 +71,7 @@
 
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { MonitorLogHub } from '../../features/monitor/useLogStreamHub';
 import type { MonitorLogLine, StreamState } from '../../features/monitor/types';
 import LogLevelToggle, { type LogLevel } from './LogLevelToggle.vue';
@@ -77,6 +81,8 @@ defineProps<{}>();
 defineEmits<{
   clear: [];
 }>();
+
+const { t } = useI18n();
 
 const _hub = inject<MonitorLogHub>('monitorLogHub');
 if (!_hub) {
@@ -121,6 +127,9 @@ const stateColor = computed(() => {
 });
 
 const emptyText = computed(() => {
+  if (hub.flowState.value === 'error') {
+    return hub.errorHint.value || t('monitorPage.logs.reconnecting');
+  }
   if (hub.flowState.value === 'connected') {
     return '已连接，等待业务事件（发起一次对话后可看到流程日志）';
   }

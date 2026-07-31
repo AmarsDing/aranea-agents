@@ -86,6 +86,7 @@
         :toggling-id="togglingId"
         :publishing-id="publishingId"
         :publishing-ecosystem-id="publishingEcosystemId"
+        :ecosystem-publish-state="ecosystemPublishState"
         :load-health="loadSkillHealth"
         @toggle-enabled="onToggleEnabled"
         @publish="onPublishSkill"
@@ -105,6 +106,12 @@
       />
     </template>
     <skill-delete-dialog v-model="deleteOpen" :skill="deleteTarget" :loading="deleting" @confirm="deleteTargetSkill" />
+    <skill-ecosystem-publish-dialog
+      v-model="ecosystemPublishOpen"
+      :skill="ecosystemPublishTarget"
+      :loading="!!publishingEcosystemId"
+      @confirm="confirmPublishToEcosystem"
+    />
     <skill-meta-dialog
       v-model="metaOpen"
       :skill="metaTarget"
@@ -130,6 +137,7 @@
 <script setup lang="ts">
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import SkillDeleteDialog from '../components/skills/SkillDeleteDialog.vue';
+import SkillEcosystemPublishDialog from '../components/skills/SkillEcosystemPublishDialog.vue';
 import SkillEditorDialog from '../components/skills/SkillEditorDialog.vue';
 import SkillMetaDialog from '../components/skills/SkillMetaDialog.vue';
 import SkillFilesystemAlertBanner from '../components/skills/SkillFilesystemAlertBanner.vue';
@@ -162,6 +170,10 @@ const {
   togglingId,
   publishingId,
   publishingEcosystemId,
+  ecosystemPublishOpen,
+  ecosystemPublishTarget,
+  ecosystemPublishState,
+  confirmPublishToEcosystem,
   deleteOpen,
   deleteTarget,
   deleting,

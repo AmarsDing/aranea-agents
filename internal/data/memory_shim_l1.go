@@ -311,21 +311,22 @@ func (r *l1WorkingMemoryRepo) ArchiveAndCreateEpisodeTx(ctx context.Context, ses
 		}
 		consolidationStatus := "consolidated"
 		if _, err := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_episodes (
-			id, session_id, agent_id, l1_task_id, episode_kind, title, goal,
-			outcome, outcome_summary, importance, confidence,
-			key_decisions_json, key_artifacts_json, l1_snapshot_json,
-			consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(session_id, l1_task_id) WHERE l1_task_id != '' DO UPDATE SET
-			goal = excluded.goal, outcome = excluded.outcome,
-			outcome_summary = excluded.outcome_summary, importance = excluded.importance,
-			confidence = excluded.confidence,
-			key_decisions_json = excluded.key_decisions_json,
-			key_artifacts_json = excluded.key_artifacts_json,
-			l1_snapshot_json = excluded.l1_snapshot_json,
-			title = excluded.title,
-			episode_kind = excluded.episode_kind,
-			ended_at = excluded.ended_at`),
+		id, session_id, agent_id, l1_task_id, episode_kind, title, goal,
+		outcome, outcome_summary, importance, confidence,
+		key_decisions_json, key_artifacts_json, l1_snapshot_json,
+		consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at, updated_at
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	ON CONFLICT(session_id, l1_task_id) WHERE l1_task_id != '' DO UPDATE SET
+		goal = excluded.goal, outcome = excluded.outcome,
+		outcome_summary = excluded.outcome_summary, importance = excluded.importance,
+		confidence = excluded.confidence,
+		key_decisions_json = excluded.key_decisions_json,
+		key_artifacts_json = excluded.key_artifacts_json,
+		l1_snapshot_json = excluded.l1_snapshot_json,
+		title = excluded.title,
+		episode_kind = excluded.episode_kind,
+		ended_at = excluded.ended_at,
+		updated_at = excluded.updated_at`),
 			epID,
 			strings.TrimSpace(episode.SessionID),
 			strings.TrimSpace(episode.AgentID),
@@ -340,7 +341,7 @@ func (r *l1WorkingMemoryRepo) ArchiveAndCreateEpisodeTx(ctx context.Context, ses
 			keyDecisionsJSON,
 			keyArtifactsJSON,
 			l1SnapshotJSON,
-			consolidationStatus, 0, "{}", now, now,
+			consolidationStatus, 0, "{}", now, now, now,
 		); err != nil {
 			return entErrToBizErr(err, "MEMORY_L1")
 		}

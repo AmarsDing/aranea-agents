@@ -191,6 +191,16 @@ body.body--dark .q-dialog .q-card.app-dialog-card:not(.app-maximized-dialog) .ap
   .skill-meta-dialog__meta-grid
     grid-template-columns: 1fr
 
+// 滚动区与吸顶元数据行同 18px 水平内边距，描述/正文右缘与上面对齐；
+// 单列通栏网格取代 app-form-field-grid（其 minmax(200px,280px) 列上限导致右缘不对齐）
+.skill-meta-dialog__scroll
+  padding: 16px 18px
+
+.skill-meta-dialog__fields
+  display: grid
+  grid-template-columns: minmax(0, 1fr)
+  gap: var(--space-4)
+
 // ── 全屏双栏编辑器（SkillEditorDialog 等）──
 .q-dialog .q-card.app-maximized-dialog
   min-height: 100vh

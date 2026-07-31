@@ -97,7 +97,7 @@ func TestSelfCheckScheduler_RunOnce(t *testing.T) {
 		&mockChecker{name: "test_b", result: types.SelfCheckResult{Checker: "test_b", Status: types.SelfCheckStatusWarning, CheckedAt: time.Now().UTC()}},
 	}
 	repo := &mockSelfCheckRepo{}
-	scheduler := monitor.NewSelfCheckScheduler(checkers, nil, repo, nil, loggateway.NewNoop())
+	scheduler := monitor.NewSelfCheckScheduler(checkers, nil, repo, nil, loggateway.NewNoop(), nil)
 
 	report := scheduler.RunOnce(context.Background())
 	if report == nil {
@@ -118,7 +118,7 @@ func TestSelfCheckScheduler_RunOnce_ConcurrencyLock(t *testing.T) {
 	checkers := []monitor.SelfChecker{
 		&mockChecker{name: "slow", result: types.SelfCheckResult{Checker: "slow", Status: types.SelfCheckStatusPassed, CheckedAt: time.Now().UTC()}},
 	}
-	scheduler := monitor.NewSelfCheckScheduler(checkers, nil, &mockSelfCheckRepo{}, nil, loggateway.NewNoop())
+	scheduler := monitor.NewSelfCheckScheduler(checkers, nil, &mockSelfCheckRepo{}, nil, loggateway.NewNoop(), nil)
 
 	// First call should succeed
 	report := scheduler.RunOnce(context.Background())
@@ -407,7 +407,7 @@ func TestSelfCheckUnhealthyCountMetric(t *testing.T) {
 		&mockChecker{name: "b", result: types.SelfCheckResult{Checker: "b", Status: types.SelfCheckStatusWarning, CheckedAt: time.Now().UTC()}},
 		&mockChecker{name: "c", result: types.SelfCheckResult{Checker: "c", Status: types.SelfCheckStatusFailed, CheckedAt: time.Now().UTC()}},
 	}
-	scheduler := monitor.NewSelfCheckScheduler(checkers, nil, &mockSelfCheckRepo{}, nil, loggateway.NewNoop())
+	scheduler := monitor.NewSelfCheckScheduler(checkers, nil, &mockSelfCheckRepo{}, nil, loggateway.NewNoop(), nil)
 	metric := monitor.NewSelfCheckUnhealthyCountMetric(scheduler)
 
 	// RunOnce populates the cached unhealthy count

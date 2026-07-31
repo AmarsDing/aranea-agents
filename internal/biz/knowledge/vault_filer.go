@@ -154,6 +154,63 @@ func (f *VaultFiler) WriteDoc(root, relPath string, doc *VaultDoc) error {
 	return nil
 }
 
+// WriteRaw 以 create 语义写入任意字节（G1-B3 上传落盘）：O_EXCL 防覆盖，
+// 父目录自动创建，已存在返回 CodeConflict 且原文件保持原样。
+// 与 WriteDoc 不同：不经过 frontmatter 编组、不备份（文件本不应存在）。
+func (f *VaultFiler) WriteRaw(root, relPath string, data []byte) error {
+	if trimmed := strings.TrimSpace(relPath); strings.HasSuffix(trimmed, "/") || strings.HasSuffix(trimmed, `\`) {
+		return apierror.BadRequest("knowledge", "vault: path is a directory: %q", relPath)
+	}
+	rel, err := SanitizeRelPath(relPath)
+	if err != nil {
+		return err
+	}
+	target, err := resolve(root, rel)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return apierror.Internal("knowledge", "vault: mkdir").WithCause(err)
+	}
+	// O_EXCL 原子 create：已存在即失败，无 TOCTOU 窗口。
+	fh, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if os.IsExist(err) {
+			return apierror.Conflict("knowledge", "file already exists: %s", rel)
+		}
+		return apierror.Internal("knowledge", "vault: create %s", rel).WithCause(err)
+	}
+	if _, err := fh.Write(data); err != nil {
+		_ = fh.Close()
+		_ = os.Remove(target)
+		return apierror.Internal("knowledge", "vault: write %s", rel).WithCause(err)
+	}
+	if err := fh.Close(); err != nil {
+		_ = os.Remove(target)
+		return apierror.Internal("knowledge", "vault: close %s", rel).WithCause(err)
+	}
+	f.markSelfWrite(rel, HashContent(string(data)), false)
+	f.lg.Debug("vault raw file written", loggateway.Str("rel_path", rel))
+	return nil
+}
+
+// RemoveDoc 删除文件（G1-B3 上传补偿：落盘成功但入库失败时回滚 FS）。
+// 幂等：文件不存在不报错（补偿路径允许重入）。
+func (f *VaultFiler) RemoveDoc(root, relPath string) error {
+	rel, err := SanitizeRelPath(relPath)
+	if err != nil {
+		return err
+	}
+	target, err := resolve(root, rel)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+		return apierror.Internal("knowledge", "vault: remove %s", rel).WithCause(err)
+	}
+	return nil
+}
+
 // ReadDoc 读取并解析 .md：frontmatter（受管字段 + 用户 Extra）+ 正文。
 // 无 frontmatter 的纯 Markdown 整篇作为 Body。
 func (f *VaultFiler) ReadDoc(root, relPath string) (*VaultDoc, error) {
@@ -223,6 +280,103 @@ func (f *VaultFiler) WriteDocCAS(root, relPath string, doc *VaultDoc, expectedHa
 		)
 	}
 	return conflict, nil
+}
+
+// Move 原子移动 vault 内文件（G3-B4 库内跨目录移动）。
+// dstRel 为完整目标相对路径（含文件名）；父目录自动创建。
+// conflictPolicy："" = 目标已存在返回 CodeConflict（默认，前端弹 覆盖/改名/取消）；
+// "overwrite" = 目标旧版本移入 .aranea/trash 后覆盖（R-6 不丢数据）；
+// "rename" = 保留两份，自动生成 "name (2).ext" 唯一名。
+// 自写标记：源路径打删除标记、最终目标路径打写入标记（watcher 回环防护——
+// 单个 os.Rename 在文件系统层面产生 DELETE+CREATE 两个事件，均需过滤）。
+// 返回实际落盘的 sanitized 目标相对路径（rename 策略下与 dstRel 不同）。
+func (f *VaultFiler) Move(root, srcRel, dstRel, conflictPolicy string) (string, error) {
+	src, err := SanitizeRelPath(srcRel)
+	if err != nil {
+		return "", err
+	}
+	dst, err := SanitizeRelPath(dstRel)
+	if err != nil {
+		return "", err
+	}
+	srcAbs, err := resolve(root, src)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(srcAbs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", apierror.NotFound("knowledge", "vault: move source not found: %s", src)
+		}
+		return "", apierror.Internal("knowledge", "vault: stat move source %s", src).WithCause(err)
+	}
+	if info.IsDir() {
+		return "", apierror.BadRequest("knowledge", "vault: move source is a directory: %s", src)
+	}
+	// 读出内容算 hash（自写标记用；vault 文档为文本/小二进制，一次性读入可接受）。
+	data, err := os.ReadFile(srcAbs)
+	if err != nil {
+		return "", apierror.Internal("knowledge", "vault: read move source %s", src).WithCause(err)
+	}
+	dstAbs, err := resolve(root, dst)
+	if err != nil {
+		return "", err
+	}
+	if _, statErr := os.Stat(dstAbs); statErr == nil {
+		switch conflictPolicy {
+		case "":
+			return "", apierror.Conflict("knowledge", "file already exists: %s", dst)
+		case "overwrite":
+			if _, err := f.MoveToTrash(root, dst); err != nil {
+				return "", err
+			}
+		case "rename":
+			dst, err = uniqueSiblingRel(root, dst)
+			if err != nil {
+				return "", err
+			}
+			dstAbs, err = resolve(root, dst)
+			if err != nil {
+				return "", err
+			}
+		default:
+			return "", apierror.BadRequest("knowledge", "vault: unknown move conflict policy: %q", conflictPolicy)
+		}
+	} else if !os.IsNotExist(statErr) {
+		return "", apierror.Internal("knowledge", "vault: stat move target %s", dst).WithCause(statErr)
+	}
+	if err := os.MkdirAll(filepath.Dir(dstAbs), 0o755); err != nil {
+		return "", apierror.Internal("knowledge", "vault: mkdir move target").WithCause(err)
+	}
+	if err := os.Rename(srcAbs, dstAbs); err != nil {
+		return "", apierror.Internal("knowledge", "vault: move %s -> %s", src, dst).WithCause(err)
+	}
+	f.markSelfWrite(src, "", true)
+	f.markSelfWrite(dst, HashContent(string(data)), false)
+	f.lg.Debug("vault file moved",
+		loggateway.Str("src_rel_path", src),
+		loggateway.Str("dst_rel_path", dst),
+	)
+	return dst, nil
+}
+
+// uniqueSiblingRel 生成同目录唯一相对路径："name (2).ext"、"name (3).ext"……
+// （G3-B4 rename 冲突策略：保留两份）。rel 必须已 sanitize。
+func uniqueSiblingRel(root, rel string) (string, error) {
+	ext := filepath.Ext(rel)
+	stem := strings.TrimSuffix(rel, ext)
+	for i := 2; ; i++ {
+		candidate := fmt.Sprintf("%s (%d)%s", stem, i, ext)
+		abs, err := resolve(root, candidate)
+		if err != nil {
+			return "", err
+		}
+		if _, err := os.Stat(abs); os.IsNotExist(err) {
+			return candidate, nil
+		} else if err != nil {
+			return "", apierror.Internal("knowledge", "vault: stat sibling %s", candidate).WithCause(err)
+		}
+	}
 }
 
 // MoveToTrash 将文件移入 .aranea/trash/（R-2：不物理删除），同名冲突加时间戳去重。
@@ -321,6 +475,55 @@ func (f *VaultFiler) ListSubdirs(root, relPrefix string) ([]DirInfo, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
 	return out, nil
+}
+
+// Mkdir 创建嵌套目录（G1-B2 树内新建目录；幂等）。
+func (f *VaultFiler) Mkdir(root, dirPath string) error {
+	rel, err := SanitizeRelPath(dirPath)
+	if err != nil {
+		return err
+	}
+	target, err := resolve(root, rel)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		return apierror.Internal("knowledge", "vault: mkdir %s", dirPath).WithCause(err)
+	}
+	return nil
+}
+
+// SnapshotDoc 获取文件快照（G1-B2 create 冲突判定：存在性 + hash）。
+// 文件不存在返回 CodeNotFound；路径为目录返回 CodeBadRequest。
+func (f *VaultFiler) SnapshotDoc(root, relPath string) (FileSnapshot, error) {
+	rel, err := SanitizeRelPath(relPath)
+	if err != nil {
+		return FileSnapshot{}, err
+	}
+	target, err := resolve(root, rel)
+	if err != nil {
+		return FileSnapshot{}, err
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return FileSnapshot{}, apierror.NotFound("knowledge", "file not found: %s", relPath)
+		}
+		return FileSnapshot{}, apierror.Internal("knowledge", "vault: stat %s", relPath).WithCause(err)
+	}
+	if info.IsDir() {
+		return FileSnapshot{}, apierror.BadRequest("knowledge", "path is a directory: %s", relPath)
+	}
+	data, err := os.ReadFile(target)
+	if err != nil {
+		return FileSnapshot{}, apierror.Internal("knowledge", "vault: read %s", relPath).WithCause(err)
+	}
+	return FileSnapshot{
+		RelPath: rel,
+		ModTime: info.ModTime(),
+		Size:    info.Size(),
+		Hash:    HashContent(string(data)),
+	}, nil
 }
 
 // markSelfWrite 记录 KB 自写标记（内部调用，rel 必须已 sanitize）。
@@ -506,6 +709,11 @@ func parseVaultDoc(content string) *VaultDoc {
 func strVal(v any) string {
 	if s, ok := v.(string); ok {
 		return s
+	}
+	// yaml.v3 会把 RFC3339 时间戳直接解为 time.Time；不经特判 fmt.Sprint 会输出
+	// "2026-07-30 00:00:00 +0000 UTC"，导致 created 回解析失败被静默丢弃。
+	if t, ok := v.(time.Time); ok {
+		return t.UTC().Format(time.RFC3339)
 	}
 	return fmt.Sprint(v)
 }

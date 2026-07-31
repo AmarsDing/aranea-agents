@@ -45,6 +45,9 @@ service MonitorService {
   rpc ListAuditLogs(ListAuditLogsRequest) returns (ListAuditLogsResponse) {
     option (google.api.http) = {get: "/v1/monitor/audit"};
   }
+  rpc DeleteAuditLogs(DeleteAuditLogsRequest) returns (DeleteAuditLogsResponse) {
+    option (google.api.http) = {delete: "/v1/monitor/audit-logs"};
+  }
   rpc ListMonitorEvents(ListMonitorEventsRequest) returns (ListMonitorEventsResponse) {
     option (google.api.http) = {get: "/v1/monitor/events"};
   }
@@ -153,6 +156,15 @@ service MonitorService {
 | `keyword` | string | 全文模糊搜索（action/resource/resource_id/detail） |
 
 **ListAuditLogsResponse**：新增 `total` 字段（int32），表示符合条件的总记录数。
+
+**DeleteAuditLogsRequest / DeleteAuditLogsResponse**（2026-07-30 新增）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `confirm` | string | 必须为 `"CONFIRM"`，否则返回 BadRequest（防误触） |
+| `deleted` | int32 | 实际删除的行数（响应） |
+
+**语义**：硬删除清空 `audit_logs` 全表（无软删除），随后写入一条自审计条目（`action=delete.audit_logs`，`severity=warning`，detail 记录删除条数），保证该破坏性操作本身可追溯。前端通过确认对话框（显示当前总条数）触发，见 §六 Audit Tab。
 
 **ListMonitorEventsRequest**：
 
@@ -368,9 +380,9 @@ func (u *UsageUsecase) RecordTokenUsageEvent(ctx, e TokenUsageEvent) (TokenUsage
 
 ### 4.2 查询模式
 
-- **Audit**：`WHERE` 动态拼接（action/resource/actor/keyword），`COUNT(*)` 获取总数，`LIMIT/OFFSET` 分页
+- **Audit**：`WHERE` 动态拼接（action/resource/actor/keyword），`COUNT(*)` 获取总数，`LIMIT/OFFSET` 分页；`DeleteAuditLogs` 为全表硬删除（`DELETE FROM audit_logs`），返回受影响行数
 - **Events/Traces**：基础 `WHERE deleted_at = ''` + 动态条件追加，`COUNT(*)` 获取总数
-- **Traces 显示名解析**：`ListMonitorTraces`/`GetMonitorTrace` 以标量子查询解析 `agents.display_name`/`teams.display_name`（id 或 key 匹配，dangling 回退空串）；行 `Name` 输出解析后显示名，原存储域保留在 `config_json.domain` 供前端类型标签使用
+- **Traces 显示名解析**（2026-07-30 增强）：`ListMonitorTraces`/`GetMonitorTrace` 以标量子查询解析 `agents.display_name`/`teams.display_name`（id 或 key 匹配，dangling 回退空串）；`agent_id`/`agent_name` 额外经 `sessions` 回退（chat 域 runner.completion 回溯未填 agent_id 的历史行）；行 `Name` 按优先级输出显示名——team 运行 → 团队显示名，chat 运行 → 会话标题（`sessions.title`，即用户首条消息），agent 运行 → agent 显示名，全空回退存储域；原存储域保留在 `config_json.domain` 供前端类型标签使用。`agent_id` 过滤条件与 SELECT 列保持同一三级回退（列值 → metadata_json → sessions.agent_id），避免"列显示有值但过滤不到"的不一致
 - **Usage**：独立 `UsageRepo`，查询 `model_token_usage_events` 聚合；trace 维度聚合（`AggregateUsageByTrace`）走表达式索引 `idx_model_token_usage_events_trace_id`（迁移 20261114，与查询同一 `Dialect.JSONExtract` 表达式保证规划器匹配）
 - **Latency 聚合**：`LatencyPercentilesSince` + `meta_duration_ms` generated column + `LIMIT 10000`
 
@@ -381,6 +393,7 @@ func (u *UsageUsecase) RecordTokenUsageEvent(ctx, e TokenUsageEvent) (TokenUsage
 ### 5.1 MonitorService
 
 - `ListAuditLogs`：接收 `ListAuditLogsRequest`，构造 `AuditQuery`，调用 Usecase，返回分页结果
+- `DeleteAuditLogs`：校验 `confirm == "CONFIRM"`（否则 BadRequest），调用 Usecase 清空审计表并返回删除条数；Usecase 在删除后写一条自审计条目（`delete.audit_logs` / warning）
 - `ListMonitorEvents` / `ListMonitorTraces`：同上模式
 - `GetMonitorTrace`：额外提取 `config_json` 中的 `spans`，组装 `MonitorTraceDetail`
 - `GetMonitorLogs`：返回 `enabled`（镜像 `server.monitor.process_log_enabled`）+ hint；实时行走 WS
@@ -455,10 +468,10 @@ web/src/
 | Tab | 组件 | 数据来源 |
 |-----|------|----------|
 | **Usage** | `SelfCheckStatusPanel` + `MonitorRunnerMetrics` | `ListSelfCheckReports` / `TriggerSelfCheck` / `GetRunnerMetrics`；用量大盘见 `/overview` |
-| **Alerts** | `MonitorAlertRules` → `MonitorAlertMetricCatalog` + `MonitorAlertRuleCard` | `ListAlertMetrics`（指标目录 + 当前值）/ `ListMonitorAlertRules` / `PutMonitorAlertRules` |
-| **Audit** | `AuditTable` | `MonitorService.ListAuditLogs`（2026-07-29 重设计：服务端分页/筛选、summary 摘要列、详情弹窗、全量 i18n） |
+| **Alerts** | `MonitorAlertRules` → `MonitorAlertMetricCatalog` + `MonitorAlertRuleCard` | `ListAlertMetrics`（指标目录 + 当前值）/ `ListMonitorAlertRules` / `PutMonitorAlertRules`（2026-07-30 重排：页头外置、指标目录默认折叠、规则卡严重度色条） |
+| **Audit** | `AuditTable` | `MonitorService.ListAuditLogs`（2026-07-29 重设计：服务端分页/筛选、summary 摘要列、详情弹窗、全量 i18n；2026-07-30 新增清空按钮 + 确认对话框 → `DeleteAuditLogs`） |
 | **Events** | `RealtimeEvents` | 脉搏：WS 运行时事件；历史：`ListMonitorEvents`（服务端分页 + `event_types`/`status` 过滤；2026-07-29 EVT-R 重设计） |
-| **Runs（Traces）** | `TraceList` | `MonitorService.ListMonitorTraces`（OPT-05；含 duration/tokens/cost；2026-07-29 重设计：6 态状态模型 + 语义色、显示名解析、指标条 + 错误面板、全量 i18n） |
+| **Runs（Traces）** | `TraceList` | `MonitorService.ListMonitorTraces`（OPT-05；含 duration/tokens/cost；2026-07-29 重设计：6 态状态模型 + 语义色、显示名解析、指标条 + 错误面板、全量 i18n；2026-07-30：chat 行显示会话标题、agent 列经 sessions 回退补全、列宽百分比化消除横向滚动条、名称列 20ch 截断 + 大 tooltip） |
 | **Logs** | `LogStreamPanel` → `FlowLogStream` / `ProcessLogStream` | 共享 WS Hub + `flow_log` / `log` 分流 |
 
 ### 7.3 Quasar 组件映射
@@ -507,6 +520,7 @@ server:
 
 ```typescript
 listMonitorAudit(query: AuditQuery): Promise<PaginatedResult<AuditLog>>
+deleteAuditLogs(): Promise<number>  // DELETE /v1/monitor/audit-logs，body {confirm:"CONFIRM"}，返回删除条数
 listMonitorEvents(): Promise<PlatformResource[]>
 getMonitorEvent(id: string): Promise<PlatformResource>
 getMonitorLogs(): Promise<MonitorLogSnapshot>
@@ -662,6 +676,7 @@ skill.filesystem.updated（info 级高频）
 | `severity` | 持久化：`status`→critical/warn/success/info；WS：failed→warn、finished→success、其余 info | 色点分级，异常优先 |
 | `category` | event_type 前缀 → task/message/agent/tool/system（§3.2 映射） | 分类筛选 |
 | `actor` | Agent/规则/Skill 名（`step.agent_name` 或行 `name`） | 定位责任主体 |
+| `time`/`timeAgo` | `time`=绝对时间（tooltip/详情）；`timeAgo`=相对时间（列表时间列，i18n `relTime.*`，<1min 刚刚/<60min N 分钟/<24h N 小时/<30d N 天/否则日期） | 时间感知不抢焦点 |
 | `completionMeta`/`canOpenInRuns` | 方案 C `runCorrelation` | 降级卡片跳 Runs |
 
 ### 10.2 服务端过滤（Proto/Data）

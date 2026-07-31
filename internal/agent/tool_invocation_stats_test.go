@@ -22,6 +22,15 @@ func TestClassifyToolInvocation(t *testing.T) {
 		t.Fatalf("use_skill: got mcp=%v skill=%v", mcp, skill)
 	}
 
+	// trpc-agent-go skill 包内建工具是 skill 运行时调用的真实入口
+	// （不在 tools 表注册），必须归类为 skill 才会写入 skill_invocation。
+	for _, key := range []string{"skill_load", "skill_run", "skill_list_docs", "skill_search"} {
+		mcp, skill = classifyToolInvocation(ctx, key, nil, deps)
+		if mcp || !skill {
+			t.Fatalf("%s: got mcp=%v skill=%v, want skill=true", key, mcp, skill)
+		}
+	}
+
 	mcp, skill = classifyToolInvocation(ctx, "mcp_demo__fetch", nil, deps)
 	if !mcp || skill {
 		t.Fatalf("prefixed: got mcp=%v skill=%v", mcp, skill)

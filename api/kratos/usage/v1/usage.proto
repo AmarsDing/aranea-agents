@@ -135,6 +135,11 @@ message TokenUsageEvent {
   bool stream_enabled = 48;
   string metadata_json = 49;
   string created_at = 50;
+  // Resolved display names (list queries only; empty when the referenced
+  // entity was deleted). agent_name falls back to the session's agent.
+  string agent_name = 51;
+  string session_title = 52;
+  string team_name = 53;
 }
 
 message UsageQuotaDashboard {

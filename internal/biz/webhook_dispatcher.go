@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -28,17 +29,31 @@ type WebhookPayload struct {
 
 // WebhookDispatcher delivers run lifecycle callbacks asynchronously.
 type WebhookDispatcher struct {
-	repo   WebhookRepository
-	client *http.Client
-	logger SessionLogWriter
+	repo    WebhookRepository
+	client  *http.Client
+	logger  SessionLogWriter
+	flowLog FlowLogWriter
 }
 
-func NewWebhookDispatcher(repo WebhookRepository, logger SessionLogWriter) *WebhookDispatcher {
+// NewWebhookDispatcher creates the dispatcher. flowLog is the user-visible
+// flow log (流程日志) port for delivery outcomes; nil-safe (tests may pass nil).
+func NewWebhookDispatcher(repo WebhookRepository, logger SessionLogWriter, flowLog FlowLogWriter) *WebhookDispatcher {
 	return &WebhookDispatcher{
-		repo:   repo,
-		client: webhookurl.NewOutboundHTTPClient(webhookHTTPTimeout),
-		logger: logger,
+		repo:    repo,
+		client:  webhookurl.NewOutboundHTTPClient(webhookHTTPTimeout),
+		logger:  logger,
+		flowLog: flowLog,
 	}
+}
+
+// webhookURLHost extracts the bare host from a webhook URL for log extras,
+// stripping path/query/credentials (脱敏).
+func webhookURLHost(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Host == "" {
+		return "(invalid)"
+	}
+	return u.Host
 }
 
 // Dispatch fans out one event to enabled webhooks that subscribe to eventType.
@@ -83,12 +98,12 @@ func (d *WebhookDispatcher) Dispatch(ctx context.Context, eventType, runID, sess
 			if !WebhookSubscribes(cfg.EventTypesJSON, eventType) {
 				continue
 			}
-			d.postOne(bg, sessionID, cfg, body)
+			d.postOne(bg, sessionID, eventType, cfg, body)
 		}
 	})
 }
 
-func (d *WebhookDispatcher) postOne(ctx context.Context, sessionID string, cfg WebhookConfig, body []byte) {
+func (d *WebhookDispatcher) postOne(ctx context.Context, sessionID, eventType string, cfg WebhookConfig, body []byte) {
 	target := strings.TrimSpace(cfg.URL)
 	if err := webhookurl.ValidateNotifyURL(target); err != nil {
 		if d.logger != nil {
@@ -161,5 +176,12 @@ func (d *WebhookDispatcher) postOne(ctx context.Context, sessionID string, cfg W
 			LogPair{Key: "attempts", Value: maxAttempts},
 			LogPair{Key: "error", Value: lastErr},
 		)
+	}
+	if d.flowLog != nil {
+		d.flowLog.LogFlowError(ctx, sessionID, "gateway.webhook.delivery", "出站 Webhook 投递失败（已重试）",
+			LogPair{Key: "event_type", Value: eventType},
+			LogPair{Key: "url_host", Value: webhookURLHost(cfg.URL)},
+			LogPair{Key: "attempts", Value: maxAttempts},
+			LogPair{Key: "error", Value: lastErr})
 	}
 }

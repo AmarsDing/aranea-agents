@@ -595,8 +595,17 @@ func (s *TeamService) UpdateSwarmMembers(ctx context.Context, req *v1.UpdateSwar
 	if err := s.assertTeamMutateAccess(ctx, req.GetTeamId()); err != nil {
 		return nil, err
 	}
+	s.lg.Info("update swarm members",
+		loggateway.StepID("service.team"),
+		loggateway.Str("team_id", req.GetTeamId()),
+		loggateway.Int("add_count", len(req.GetAddAgentIds())),
+		loggateway.Int("remove_count", len(req.GetRemoveAgentIds())))
 	updated, err := s.uc.UpdateSwarmMembers(ctx, req.GetTeamId(), req.GetAddAgentIds(), req.GetRemoveAgentIds())
 	if err != nil {
+		s.lg.Error("update swarm members failed",
+			loggateway.StepID("service.team"),
+			loggateway.Str("team_id", req.GetTeamId()),
+			loggateway.Err(err))
 		return nil, mapTeamErr(err)
 	}
 	return &v1.UpdateSwarmMembersResponse{Updated: updated}, nil

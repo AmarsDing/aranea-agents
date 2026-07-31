@@ -249,3 +249,65 @@
 
 > 验收标准索引（含 Phase 阶段与实施状态）已迁移至开发计划文档。
 > 详见 [53-team-graph-orchestration.development.md §4 任务板](./53-team-graph-orchestration.development.md#4-任务板当前冲刺)
+
+---
+
+## 子模块：Team × Graph 一体化（C1 全量物化，2026-07-30）
+
+> 来源：2026-07-30「Team 中的 Graph 与 Graph 工作流结合度」评审。设计详见 [53-team-graph-orchestration.design.md 子模块](./53-team-graph-orchestration.design.md#子模块team--graph-一体化c1-全量物化2026-07-30)。
+
+### US-12：Team 编排物化为 Graph 一等资产
+
+**作为** 平台用户
+**我希望** 每个 Team 的编排拓扑自动成为 Graph 工作流模块中的一个图资产
+**从而** Team 编排可以获得版本管理、执行历史、Checkpoint 等 Graph 模块的全部能力
+
+**验收标准**
+
+- ✅ 创建/保存 Team 后，Graph 列表可见该 Team 的图资产（带「Team 编排」badge 与属主名）
+- ✅ Team 运行产生的执行记录挂在真实图资产下（`graph_id` 非 `team:` 合成 ID），在 `/graphs/:id/executions` 可见
+- ✅ 物化失败时 Team 保存整体失败并返回校验明细（不静默降级）
+- ✅ 存量 Team 经 L3 迁移自动物化；迁移幂等，单队失败不阻塞启动
+
+### US-13：双路径编辑 + 覆盖警告
+
+**作为** 团队编排者
+**我希望** 既能在 Team 表单中按模式派生拓扑，也能在 Graph 编辑器中自由修改同一拓扑
+**从而** 简单场景用表单，复杂场景就地升级为自由编排，无需重画
+
+**验收标准**
+
+- ✅ Team 编排页有「在 Graph 编辑器中打开」入口；Graph 编辑器保存 team 图后 Team 标记为自定义编排（source=custom），成员从图节点同步
+- ✅ source=custom 的 Team 在表单改 mode/members 保存时弹覆盖确认；「重置为派生」一键回归 preset（保留节点坐标）
+- ✅ 表单可「关联 Graph」选择独立图资产（linked_external），拓扑只读；换绑校验目标不得为其他 team 的 owned 图
+
+### US-14：能力对齐——Team 观测台接入 Checkpoint
+
+**作为** 团队运行观测者
+**我希望** 在 Team 观测台直接使用 Checkpoint 列表、状态快照、编辑状态与恢复
+**从而** Team 运行享有与 Graph 运行同等的引擎能力
+
+**验收标准**
+
+- ✅ Team 表单可开启 `enable_checkpoint`；观测台新增 Checkpoint tab（ListCheckpoints/GetStateSnapshot/EditState/ResumeGraph）
+- ✅ 前端不再硬编码 `enableCheckpoint: false`（以编译响应/图资产为准）
+- ✅ Team 观测台可跳转「Graph 执行视角」；Graph 运行页对 team 执行显示 Kanban 视角 tab
+
+### US-15：Graph 列表感知 Team 归属
+
+**作为** 平台用户
+**我希望** 在 Graph 列表中区分独立图与 Team 拥有的图，并能互跳
+**从而** 不会误删被 Team 引用的图，且能快速定位 Team 编排
+
+**验收标准**
+
+- ✅ GraphsPage 显示 Team badge + 属主名；支持 全部/独立/Team 关联 过滤；行内可跳 Team 编排页
+- ✅ 删除 team-owned 图（属主存在）被拒绝并提示；删除被 external 引用的独立图被拒绝并列出引用者
+
+### 非功能补充
+
+| 项 | 要求 |
+|----|------|
+| 兼容 | embedded graph 字段只退役写入不物理删除；`team:` 历史执行记录不迁移（快照可回放） |
+| 事务 | 物化与 Team 保存同一事务（D1）；换绑时旧 owned 图删除（D2，历史靠快照回放） |
+| 编辑入口 | Team 编排页画布保持只读（D3），编辑只走表单与 Graph 编辑器两个入口 |

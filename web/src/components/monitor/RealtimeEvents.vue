@@ -17,7 +17,13 @@
           :label="paused ? t('monitorPage.resume') : t('monitorPage.pause')"
           @click="emit('toggle-stream')"
         />
-        <q-btn flat dense icon="delete_sweep" :label="t('monitorPage.events.clearPulse')" @click="emit('clear-pulse')" />
+        <q-btn
+          flat
+          dense
+          icon="delete_sweep"
+          :label="t('monitorPage.events.clearPulse')"
+          @click="emit('clear-pulse')"
+        />
       </div>
     </div>
 
@@ -94,57 +100,76 @@
         :pagination="{ rowsPerPage: 0 }"
         hide-pagination
       >
-      <template #body-cell-title="props">
-        <q-td :props="props">
-          <div class="row items-center no-wrap q-gutter-xs">
-            <q-icon name="circle" :color="severityColor(props.row.severity)" size="8px">
-              <q-tooltip>{{ t(`monitorPage.events.severity.${props.row.severity}`) }}</q-tooltip>
-            </q-icon>
-            <span>{{ props.row.title }}</span>
+        <template #body-cell-time="props">
+          <q-td :props="props">
+            <span class="text-caption">{{ props.row.timeAgo || props.row.time }}</span>
+            <q-tooltip>{{ props.row.time }}</q-tooltip>
+          </q-td>
+        </template>
+        <template #body-cell-severity="props">
+          <q-td :props="props">
+            <div class="row items-center justify-center no-wrap q-gutter-xs">
+              <q-icon name="circle" :color="severityColor(props.row.severity)" size="8px" />
+              <span>{{ t(`monitorPage.events.severity.${props.row.severity}`) }}</span>
+            </div>
+          </q-td>
+        </template>
+        <template #body-cell-category="props">
+          <q-td :props="props">
+            <q-chip dense square size="sm" :color="categoryChipColor(props.row.category)" text-color="white">
+              {{ t(`monitorPage.events.category.${props.row.category}`) }}
+              <q-tooltip>{{ props.row.type }}</q-tooltip>
+            </q-chip>
+          </q-td>
+        </template>
+        <template #body-cell-title="props">
+          <q-td :props="props">
+            <div class="app-registry-cell-primary ellipsis">{{ props.row.title }}</div>
+          </q-td>
+        </template>
+        <template #body-cell-subtitle="props">
+          <q-td :props="props">
+            <div class="app-registry-cell-sub ellipsis">{{ props.row.subtitle || '—' }}</div>
             <q-tooltip v-if="props.row.subtitle" max-width="420px">{{ props.row.subtitle }}</q-tooltip>
-          </div>
-        </q-td>
-      </template>
-      <template #body-cell-tags="props">
-        <q-td :props="props">
-          <q-chip dense square size="sm" :color="categoryChipColor(props.row.category)" text-color="white">
-            {{ t(`monitorPage.events.category.${props.row.category}`) }}
-            <q-tooltip>{{ props.row.type }}</q-tooltip>
-          </q-chip>
-        </q-td>
-      </template>
-      <template #body-cell-actions="props">
-        <q-td :props="props">
-          <div class="row no-wrap q-gutter-xs">
-            <q-btn
-              v-if="props.row.canOpenInRuns"
-              flat
-              dense
-              size="sm"
-              icon="monitor_heart"
-              :label="t('monitorPage.events.openInRuns')"
-              @click="emit('open-in-runs', props.row)"
-            />
-            <q-btn
-              v-if="props.row.completionSessionId || props.row.sessionId"
-              flat
-              dense
-              size="sm"
-              icon="chat"
-              :label="t('monitorPage.events.openSession')"
-              @click="emit('open-session', props.row)"
-            />
-            <q-btn
-              flat
-              dense
-              size="sm"
-              icon="visibility"
-              :label="t('monitorPage.detail')"
-              @click="openDetail(props.row)"
-            />
-          </div>
-        </q-td>
-      </template>
+          </q-td>
+        </template>
+        <template #body-cell-actor="props">
+          <q-td :props="props">
+            <div class="ellipsis">{{ props.row.actor || '—' }}</div>
+          </q-td>
+        </template>
+        <template #body-cell-actions="props">
+          <q-td :props="props">
+            <div class="row no-wrap q-gutter-xs">
+              <q-btn
+                v-if="props.row.canOpenInRuns"
+                flat
+                dense
+                size="sm"
+                icon="monitor_heart"
+                :label="t('monitorPage.events.openInRuns')"
+                @click="emit('open-in-runs', props.row)"
+              />
+              <q-btn
+                v-if="props.row.completionSessionId || props.row.sessionId"
+                flat
+                dense
+                size="sm"
+                icon="chat"
+                :label="t('monitorPage.events.openSession')"
+                @click="emit('open-session', props.row)"
+              />
+              <q-btn
+                flat
+                dense
+                size="sm"
+                icon="visibility"
+                :label="t('monitorPage.detail')"
+                @click="openDetail(props.row)"
+              />
+            </div>
+          </q-td>
+        </template>
       </AppRegistryTable>
 
       <AppRegistryPagination
@@ -182,15 +207,21 @@
           <div v-if="detailEvent.subtitle" class="text-body2">{{ detailEvent.subtitle }}</div>
           <q-list dense class="event-detail-list">
             <q-item v-if="detailEvent.actor">
-              <q-item-section side class="event-detail-list__label">{{ t('monitorPage.events.detail.actor') }}</q-item-section>
+              <q-item-section side class="event-detail-list__label">{{
+                t('monitorPage.events.detail.actor')
+              }}</q-item-section>
               <q-item-section>{{ detailEvent.actor }}</q-item-section>
             </q-item>
             <q-item>
-              <q-item-section side class="event-detail-list__label">{{ t('monitorPage.events.detail.time') }}</q-item-section>
+              <q-item-section side class="event-detail-list__label">{{
+                t('monitorPage.events.detail.time')
+              }}</q-item-section>
               <q-item-section>{{ detailEvent.time }}</q-item-section>
             </q-item>
             <q-item v-if="detailEvent.completionSessionId || detailEvent.sessionId">
-              <q-item-section side class="event-detail-list__label">{{ t('monitorPage.events.detail.session') }}</q-item-section>
+              <q-item-section side class="event-detail-list__label">{{
+                t('monitorPage.events.detail.session')
+              }}</q-item-section>
               <q-item-section class="row items-center no-wrap q-gutter-xs">
                 <span class="ellipsis">{{ detailEvent.completionSessionId || detailEvent.sessionId }}</span>
                 <q-btn
@@ -210,7 +241,13 @@
         </q-card-section>
         <q-separator />
         <q-card-actions align="right">
-          <q-btn flat dense icon="content_copy" :label="t('monitorPage.events.detail.copyJson')" @click="copyDetailJson" />
+          <q-btn
+            flat
+            dense
+            icon="content_copy"
+            :label="t('monitorPage.events.detail.copyJson')"
+            @click="copyDetailJson"
+          />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -254,7 +291,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const columns = createMonitorEventColumns(t);
+const columns = computed(() => createMonitorEventColumns(t));
 
 const pageMax = computed(() => Math.max(1, Math.ceil(props.historyTotal / props.pageSize)));
 
@@ -295,6 +332,7 @@ const streamBadge = computed(() => {
 
 const pulseEmptyHint = computed(() => {
   if (props.streamState === 'paused') return t('monitorPage.events.stream.paused');
+  if (props.streamState === 'error') return t('monitorPage.events.stream.error');
   if (props.streamState === 'connected' || props.streamState === 'live') {
     return t('monitorPage.events.pulseEmpty');
   }

@@ -131,6 +131,8 @@
       :definition-json="definitionJSON"
       :agent-options="agentOptions"
       :industry-options="industryOptions"
+      :graph-options="graphOptions"
+      :overwrite-baseline-key="editorOverwriteBaselineKey"
       :saving="saving"
       :can-save="canSave"
       :is-dark="isDark"
@@ -139,6 +141,7 @@
       @apply-template="applyTemplate"
       @save="save"
       @retry="retryEditingTeam"
+      @reset-to-derived="resetToDerived"
     />
 
     <TeamRunsDialog
@@ -235,11 +238,14 @@ const {
   form,
   definition,
   agentOptions,
+  graphOptions,
+  editorOverwriteBaselineKey,
   definitionJSON,
   canSave,
   loadRows,
   openCreate,
   openEdit,
+  resetToDerived,
   addMember,
   removeMember,
   applyTemplate,

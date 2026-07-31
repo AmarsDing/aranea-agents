@@ -137,6 +137,7 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 	hasDep = hasDep || (policy.RecallL2 && deps.MemoryL2Recall != nil)
 	hasDep = hasDep || (policy.InjectL3 && deps.MemoryL3Recall != nil)
 	hasDep = hasDep || (policy.RecallL2 && policy.InjectL3 && deps.MemoryCompositeRecall != nil)
+	hasDep = hasDep || (policy.InjectL3 && deps.MemoryPreferenceLister != nil)
 	if !hasDep {
 		return nil
 	}
@@ -182,6 +183,13 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 
 	// L2/L3/L4: recall-based cues (keyword-driven, changes every turn)
 	var recallParts []string
+	// FR-M3: pinned preference/constraint block precedes recall blocks — no
+	// vector scoring, always injected when L3 injection is enabled.
+	if policy.InjectL3 && deps.MemoryPreferenceLister != nil {
+		if pinned := PinnedPreferenceCue(ctx, deps.MemoryPreferenceLister, rt.AgentID, rt.UserID); pinned != "" {
+			recallParts = append(recallParts, pinned)
+		}
+	}
 	if policy.RecallL2 && policy.InjectL3 && deps.MemoryCompositeRecall != nil {
 		proactiveHits := ProactiveHitsFromContext(ctx)
 		if composite := CompositeMemoryCue(ctx, deps.MemoryCompositeRecall, ag, policy, rt, sessionID, keyword, 0, proactiveHits); composite != "" {

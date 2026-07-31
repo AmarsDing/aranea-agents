@@ -28,6 +28,14 @@ func bigramJaccard(a, b string) float64 {
 	if a == "" || b == "" {
 		return 0
 	}
+	ta := strings.Fields(a)
+	tb := strings.Fields(b)
+	// A single-token side can never intersect word-pair bigrams; fall back to
+	// unigram-set Jaccard so the reranker yields signal instead of a
+	// systematic false 0 (which scales recall Total by 0.85 for no reason).
+	if len(ta) < 2 || len(tb) < 2 {
+		return unigramJaccard(ta, tb)
+	}
 	ga := wordBigrams(a)
 	gb := wordBigrams(b)
 	if len(ga) == 0 || len(gb) == 0 {
@@ -40,6 +48,33 @@ func bigramJaccard(a, b string) float64 {
 		}
 	}
 	union := len(ga) + len(gb) - inter
+	if union == 0 {
+		return 0
+	}
+	return float64(inter) / float64(union)
+}
+
+// unigramJaccard computes Jaccard similarity over token sets.
+func unigramJaccard(ta, tb []string) float64 {
+	if len(ta) == 0 || len(tb) == 0 {
+		return 0
+	}
+	setB := make(map[string]struct{}, len(tb))
+	for _, t := range tb {
+		setB[t] = struct{}{}
+	}
+	setA := make(map[string]struct{}, len(ta))
+	inter := 0
+	for _, t := range ta {
+		if _, dup := setA[t]; dup {
+			continue
+		}
+		setA[t] = struct{}{}
+		if _, ok := setB[t]; ok {
+			inter++
+		}
+	}
+	union := len(setA) + len(setB) - inter
 	if union == 0 {
 		return 0
 	}

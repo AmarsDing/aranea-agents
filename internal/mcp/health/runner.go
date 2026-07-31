@@ -8,7 +8,11 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/mcp"
+	"aranea-agents/internal/mcp/lifecycle"
+	mcpmetadata "aranea-agents/internal/mcp/metadata"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -35,6 +39,9 @@ type Deps struct {
 	MCP    biz.MCPServerReader
 	UC     *biz.MCPServerUsecase
 	Alerts AlertEmitter
+	// FlowBus emits user-visible flow logs (流程日志) for system.mcp.* health
+	// events; nil disables emission (tests / minimal setups).
+	FlowBus contract.MonitorBus
 }
 
 // AlertEmitter is the contract used by the health runner to emit alerts after
@@ -52,6 +59,38 @@ type Runner struct {
 
 func NewRunner(deps Deps, lg loggateway.Logger) *Runner {
 	return &Runner{deps: deps, lg: lg}
+}
+
+// logFlowError emits a user-visible flow log (流程日志) for MCP health
+// failures. Nil-safe: skipped when the monitor bus is not wired.
+func (r *Runner) logFlowError(ctx context.Context, step, message string, err error, pairs ...event.Pair) {
+	if r == nil || r.deps.FlowBus == nil {
+		return
+	}
+	lg := r.lg
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:    ctx,
+		Domain: event.TraceDomainSystem,
+		LG:     lg,
+		Infra:  event.NewInfraFromBus(r.deps.FlowBus),
+	})
+	flow.LogError(step, message, append(pairs, event.P("error", err.Error()))...)
+}
+
+// healthStatusOf extracts the normalized lifecycle health status from
+// mcp_server.metadata_json ("" / unknown when absent).
+func healthStatusOf(metadataJSON string) lifecycle.State {
+	raw, _ := mcpmetadata.Parse(metadataJSON)[mcpmetadata.KeyHealthStatus].(string)
+	return lifecycle.Normalize(raw)
+}
+
+// isProbeTimeout reports whether a probe failure message indicates a timeout.
+func isProbeTimeout(msg string) bool {
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "timeout") || strings.Contains(m, "deadline exceeded")
 }
 
 func DefaultInterval() time.Duration {
@@ -92,6 +131,7 @@ func (r *Runner) probeAll(ctx context.Context) {
 	servers, err := r.deps.MCP.ListMCPServers(ctx, biz.MCPListQuery{})
 	if err != nil {
 		r.lg.Error("MCP 健康检查列表失败", loggateway.StepID("mcp.health_list_fail"), loggateway.Err(err))
+		r.logFlowError(ctx, "system.mcp.health_list_fail", "MCP 健康检查列表失败", err)
 		return
 	}
 	sem := make(chan struct{}, maxConcurrentProbes)
@@ -124,14 +164,45 @@ loop:
 }
 
 func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
+	prevState := healthStatusOf(srv.MetadataJSON)
 	start := time.Now()
 	res, err := r.deps.UC.TestMCPServer(ctx, srv.ID)
 	if err != nil {
 		r.lg.Error("MCP 健康探测失败", loggateway.StepID("mcp.health_probe_fail"), loggateway.Str("server_key", srv.Key), loggateway.Err(err))
+		// 探测失败本身不产生 err（体现在 result 中）；TestMCPServer 的
+		// error 返回主要来自 persistHealth 持久化失败（其次为 Get/解密失败）。
+		r.logFlowError(ctx, "system.mcp.health_persist_fail", "MCP 健康状态保存失败", err,
+			event.P("server_id", srv.ID),
+			event.P("server_key", srv.Key))
 		return
 	}
 	result := res.Result
 	elapsed := time.Since(start)
+
+	// K5：检查结果状态翻转 Info；K2：连续失败 Warn；probe 超时 Warn。
+	newState := healthStatusOf(res.Server.MetadataJSON)
+	if prevState != newState {
+		r.lg.Info("MCP 健康状态翻转",
+			loggateway.StepID("mcp.health_status_flip"),
+			loggateway.Str("server_id", srv.ID),
+			loggateway.Str("server_key", srv.Key),
+			loggateway.Str("old_status", string(prevState)),
+			loggateway.Str("new_status", string(newState)))
+	} else if !result.OK && prevState == lifecycle.StateError {
+		r.lg.Warn("MCP 健康检查连续失败",
+			loggateway.StepID("mcp.health_consecutive_fail"),
+			loggateway.Str("server_id", srv.ID),
+			loggateway.Str("server_key", srv.Key),
+			loggateway.Str("error_since", mcpmetadata.ErrorSince(mcpmetadata.Parse(res.Server.MetadataJSON))),
+			loggateway.Str("probe_message", result.Message))
+	}
+	if !result.OK && isProbeTimeout(result.Message) {
+		r.lg.Warn("MCP 健康探测超时",
+			loggateway.StepID("mcp.health_probe_timeout"),
+			loggateway.Str("server_id", srv.ID),
+			loggateway.Str("server_key", srv.Key),
+			loggateway.Int64("elapsed_ms", elapsed.Milliseconds()))
+	}
 
 	metricStatus := result.Status
 	if metricStatus == "" {

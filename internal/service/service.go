@@ -119,6 +119,9 @@ var ProviderSet = wire.NewSet(
 	// Phase 3 decoupling adapters: biz interfaces → event/webresearch implementations
 	ProvideSessionLogWriter,
 	ProvideSystemLogWriter,
+	ProvideFlowLogWriter,
+	ProvideSessionFlowLogWriter,
+	ProvideMonitorFlowLogWriter,
 	ProvideWebResearchTester,
 	// PGO-3: AI prompt refinement service.
 	NewAIRefineService,

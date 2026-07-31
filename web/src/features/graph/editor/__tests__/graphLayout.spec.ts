@@ -63,8 +63,8 @@ describe('graphLayout - R2-2 Position Rendering Priority', () => {
     // When preferSavedLayout is false, existing positions should take priority
     const preferSavedLayout = false;
     const finalPos1 = preferSavedLayout
-      ? savedLayout['node1'] ?? existingPositions.get('node1')
-      : existingPositions.get('node1') ?? savedLayout['node1'];
+      ? (savedLayout['node1'] ?? existingPositions.get('node1'))
+      : (existingPositions.get('node1') ?? savedLayout['node1']);
 
     expect(finalPos1).toEqual({ x: 150, y: 150 });
   });
@@ -86,8 +86,8 @@ describe('graphLayout - R2-2 Position Rendering Priority', () => {
     // When preferSavedLayout is true, saved layout should take priority
     const preferSavedLayout = true;
     const finalPos1 = preferSavedLayout
-      ? savedLayout['node1'] ?? existingPositions.get('node1')
-      : existingPositions.get('node1') ?? savedLayout['node1'];
+      ? (savedLayout['node1'] ?? existingPositions.get('node1'))
+      : (existingPositions.get('node1') ?? savedLayout['node1']);
 
     expect(finalPos1).toEqual({ x: 100, y: 100 });
   });

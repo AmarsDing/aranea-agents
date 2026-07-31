@@ -66,4 +66,8 @@ type RunnerConfig struct {
 	// tool list and would hallucinate substitute tools.
 	// Optional; when nil, members get only registry tools + deliverable tools.
 	MemberCustomTools func(ctx context.Context, ag biz.Agent) []trpctool.Tool
+	// GraphEnsurer 运行时惰性物化端口（B10）：加载 team 时确保图资产存在
+	// （linked_graph_id 为空 → 先物化）。生产装配 *biz.TeamUsecase；
+	// nil 时回退直接读 TeamReader（单测/离线工具）。
+	GraphEnsurer biz.TeamGraphAssetEnsurer
 }

@@ -37,6 +37,15 @@ message ListAuditLogsResponse {
   int32 total = 2;
 }
 
+message DeleteAuditLogsRequest {
+  // Safety gate: must be "CONFIRM" to proceed with the clear-all delete.
+  string confirm = 1;
+}
+
+message DeleteAuditLogsResponse {
+  int32 deleted = 1;
+}
+
 // Mirrors legacy domain.PlatformResource JSON for monitor-events / monitor-traces rows.
 message MonitorPlatformRow {
   string id = 1;
@@ -392,6 +401,9 @@ message ListHealRecordsResponse {
 service MonitorService {
   rpc ListAuditLogs(ListAuditLogsRequest) returns (ListAuditLogsResponse) {
     option (google.api.http) = {get: "/v1/monitor/audit"};
+  }
+  rpc DeleteAuditLogs(DeleteAuditLogsRequest) returns (DeleteAuditLogsResponse) {
+    option (google.api.http) = {delete: "/v1/monitor/audit-logs"};
   }
   rpc ListMonitorEvents(ListMonitorEventsRequest) returns (ListMonitorEventsResponse) {
     option (google.api.http) = {get: "/v1/monitor/events"};

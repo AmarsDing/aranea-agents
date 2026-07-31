@@ -10,6 +10,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	biztool "aranea-agents/internal/biz/tool"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/outboundguard"
 
@@ -57,7 +59,7 @@ func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog
 		return nil, err
 	}
 	lg.Info("模型配置已解析", loggateway.StepID("provider.config_resolved"), loggateway.Phase("done"),
-		loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Str("provider_type", cfg.ProviderType), loggateway.Str("ha_mode", cfg.HA.Mode))
+		loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Str("provider_type", cfg.ProviderType), loggateway.Str("ha_mode", cfg.HA.Mode), loggateway.Int("ha_candidates", len(cfg.HA.Candidates)))
 	return trpcModelFromProviderModelConfig(ctx, cfg, rt, lg)
 }
 
@@ -540,7 +542,7 @@ func wrapFailover(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Mode
 	}
 	fo, err := trpcfailover.New(
 		trpcfailover.WithCandidates(candidates...),
-		trpcfailover.WithSwitchCallback(haSwitchCallback(lg, "failover", "system.provider.ha_failover")),
+		trpcfailover.WithSwitchCallback(haSwitchCallback(lg, flowBusFromRT(rt), "failover", "system.provider.ha_failover")),
 	)
 	if err != nil {
 		lg.Warn("HA failover 构建失败，回退到主模型", loggateway.StepID("provider.ha_failover_build_fail"), loggateway.Err(err))
@@ -570,7 +572,7 @@ func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, 
 	}
 	hedgeOpts := []trpchedge.Option{
 		trpchedge.WithCandidates(candidates...),
-		trpchedge.WithSwitchCallback(haSwitchCallback(lg, "hedge", "system.provider.ha_hedge")),
+		trpchedge.WithSwitchCallback(haSwitchCallback(lg, flowBusFromRT(rt), "hedge", "system.provider.ha_hedge")),
 	}
 	if cfg.HA.HedgeDelayMs > 0 {
 		hedgeOpts = append(hedgeOpts, trpchedge.WithDelay(time.Duration(cfg.HA.HedgeDelayMs)*time.Millisecond))
@@ -583,7 +585,19 @@ func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, 
 	return h, nil
 }
 
-func haSwitchCallback(lg loggateway.Logger, mode, stepID string) func(fromIndex, toIndex int, fromName, toName, reason string) {
+// flowBusFromRT extracts the optional monitor event bus carrying flow logs
+// (流程日志) from the RoundTrip; nil-safe.
+func flowBusFromRT(rt *RoundTrip) contract.MonitorBus {
+	if rt == nil {
+		return nil
+	}
+	return rt.FlowBus
+}
+
+// haSwitchCallback logs HA 候选模型切换 as a process Warn, and additionally
+// emits a user-visible flow log (stepID system.provider.ha_failover /
+// system.provider.ha_hedge) when a monitor bus is injected via RoundTrip.
+func haSwitchCallback(lg loggateway.Logger, bus contract.MonitorBus, mode, stepID string) func(fromIndex, toIndex int, fromName, toName, reason string) {
 	return func(fromIndex, toIndex int, fromName, toName, reason string) {
 		if lg == nil {
 			return
@@ -596,6 +610,23 @@ func haSwitchCallback(lg loggateway.Logger, mode, stepID string) func(fromIndex,
 			loggateway.Str("from_model", fromName),
 			loggateway.Str("to_model", toName),
 			loggateway.Str("reason", reason),
+		)
+		if bus == nil {
+			return
+		}
+		flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+			Ctx:    context.Background(),
+			Domain: event.TraceDomainSystem,
+			LG:     lg,
+			Infra:  event.NewInfraFromBus(bus),
+		})
+		flow.LogWarn(stepID, "", fmt.Sprintf("HA %s 切换：%s → %s", mode, fromName, toName),
+			event.P("ha_mode", mode),
+			event.P("from_index", fromIndex),
+			event.P("to_index", toIndex),
+			event.P("from_model", fromName),
+			event.P("to_model", toName),
+			event.P("reason", reason),
 		)
 	}
 }

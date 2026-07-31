@@ -40,6 +40,7 @@ func RunStream(
 			loggateway.Str("channel_id", ch.ID),
 			loggateway.Err(err),
 		)
+		runtime.EmitConnectError(ctx, "dingtalk", ch.ID, "钉钉 Stream 凭据获取失败", err)
 		return err
 	}
 	chRow := ch
@@ -63,10 +64,33 @@ func RunStream(
 	streamClient := client.NewStreamClient(
 		client.WithAppCredential(client.NewAppCredentialConfig(clientID, clientSecret)),
 		client.WithUserAgent(client.NewDingtalkGoSDKUserAgent()),
+		// SDK 内部重连使用 context.Background() 无法取消，会与 supervisor 的
+		// 统一重连（backoff/lease/fingerprint）冲突并泄漏旧连接；禁用后由
+		// supervisor 负责重连，与其他平台连接器语义一致。
+		client.WithAutoReconnect(false),
 		client.WithSubscription(dingUtils.SubscriptionTypeKCallback, "/v1.0/im/bot/messages/get",
 			chatbot.NewDefaultChatBotFrameHandler(onChat).OnEventReceived),
 	)
-	return streamClient.Start(ctx)
+	// Start 拨号成功即返回（读循环在 SDK goroutine 内），因此这里阻塞到
+	// ctx 取消，保证连接生命周期与 supervisor 托管一致。
+	if err := streamClient.Start(ctx); err != nil {
+		lg.Error("钉钉 Stream 连接失败",
+			loggateway.StepID("channel.dingtalk.stream.connect_fail"),
+			loggateway.Str("channel_id", ch.ID),
+			loggateway.Err(err),
+		)
+		runtime.EmitConnectError(ctx, "dingtalk", ch.ID, "钉钉 Stream 连接失败", err)
+		return err
+	}
+	lg.Info("钉钉 Stream 已连接",
+		loggateway.StepID("channel.dingtalk.stream.connected"),
+		loggateway.Str("channel_id", ch.ID),
+		loggateway.Str("client_id", clientID),
+	)
+	runtime.EmitConnectOpen(ctx, "dingtalk", ch.ID, clientID, "钉钉 Stream 已连接")
+	<-ctx.Done()
+	streamClient.Close()
+	return ctx.Err()
 }
 
 func dingStreamCreds(ctx context.Context, ch biz.Channel, creds []biz.ChannelCredential, lookup runtime.CredentialLookup, lg loggateway.Logger) (string, string, error) {

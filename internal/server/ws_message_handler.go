@@ -8,6 +8,7 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
@@ -21,6 +22,10 @@ func (s *WSServer) handleUpstream(wc *wsConn, raw []byte) {
 	var up wsUpstream
 	if err := json.Unmarshal(raw, &up); err != nil {
 		s.lg.Warn("WebSocket 上行消息解析失败", loggateway.StepID("ws.parse_error"), loggateway.Err(err))
+		if flow := wc.queues.flowEmitter(); flow != nil {
+			flow.LogWarn("system.ws.parse_error", "", "上行消息 JSON 解析失败",
+				event.P("error", err.Error()))
+		}
 		return
 	}
 	if up.Direction != "client_to_server" {

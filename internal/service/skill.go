@@ -210,8 +210,16 @@ func (s *SkillService) ToggleSkillEnabled(ctx context.Context, req *v1.ToggleSki
 	if err := s.assertSkillAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	s.lg.Info("toggle skill enabled",
+		loggateway.StepID("service.skill"),
+		loggateway.Str("skill_id", req.GetId()),
+		loggateway.Bool("enabled", req.GetEnabled()))
 	out, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled())
 	if err != nil {
+		s.lg.Error("toggle skill enabled failed",
+			loggateway.StepID("service.skill"),
+			loggateway.Str("skill_id", req.GetId()),
+			loggateway.Err(err))
 		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("SKILL", "skill not found")
 		}
@@ -240,7 +248,14 @@ func (s *SkillService) DeleteSkill(ctx context.Context, req *v1.DeleteSkillReque
 	if err := s.assertSkillAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	s.lg.Info("delete skill",
+		loggateway.StepID("service.skill"),
+		loggateway.Str("skill_id", req.GetId()))
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
+		s.lg.Error("delete skill failed",
+			loggateway.StepID("service.skill"),
+			loggateway.Str("skill_id", req.GetId()),
+			loggateway.Err(err))
 		return nil, err
 	}
 	invalidateAllAgentBuildCaches()
@@ -281,11 +296,20 @@ func (s *SkillService) UpdateSkillFile(ctx context.Context, req *v1.UpdateSkillF
 	if err := s.assertSkillAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	s.lg.Info("update skill file",
+		loggateway.StepID("service.skill"),
+		loggateway.Str("skill_id", req.GetId()),
+		loggateway.Str("path", req.GetPath()))
 	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
 		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	if err := s.fs.WriteFile(dir, req.GetPath(), req.GetContent()); err != nil {
+		s.lg.Error("update skill file failed",
+			loggateway.StepID("service.skill"),
+			loggateway.Str("skill_id", req.GetId()),
+			loggateway.Str("path", req.GetPath()),
+			loggateway.Err(err))
 		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	invalidateAllAgentBuildCaches()
@@ -395,8 +419,15 @@ func (s *SkillService) PublishSkill(ctx context.Context, req *v1.PublishSkillReq
 	if err := s.assertSkillAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	s.lg.Info("publish skill",
+		loggateway.StepID("service.skill"),
+		loggateway.Str("skill_id", req.GetId()))
 	out, err := s.uc.Publish(ctx, req.GetId())
 	if err != nil {
+		s.lg.Error("publish skill failed",
+			loggateway.StepID("service.skill"),
+			loggateway.Str("skill_id", req.GetId()),
+			loggateway.Err(err))
 		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("SKILL", "skill not found")
 		}
@@ -622,6 +653,10 @@ func (s *SkillService) RenameSkillTag(ctx context.Context, req *v1.RenameSkillTa
 func (s *SkillService) DeleteSkillTag(ctx context.Context, req *v1.DeleteSkillTagRequest) (*v1.DeleteSkillTagResponse, error) {
 	rewritten, err := s.uc.DeleteTag(ctx, req.GetName())
 	if err != nil {
+		s.lg.Error("delete skill tag failed",
+			loggateway.StepID("skill.tag"),
+			loggateway.Str("name", req.GetName()),
+			loggateway.Err(err))
 		return nil, err
 	}
 	s.lg.Info("skill tag deleted",

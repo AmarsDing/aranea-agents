@@ -35,7 +35,8 @@ If the model does not support function calling, output JSON with this schema:
 - Return at most 8 facts.
 - Set "is_pii_sensitive" to true if the statement contains or implies personal identifiable information.
 - Set "no_facts_reason" when returning zero facts to explain why (e.g. "only_greetings", "only_task_context", "already_known").
-- "subject_type" categorizes the fact: person, preference, event, concept, or other.
+- "subject_type" categorizes the fact: person, preference, constraint, event, concept, or other.
+  Use "constraint" for negative constraints or standing work requirements (e.g. "never use tool X", "always investigate from the global view first").
 - "scope" is "user" for cross-session facts, "agent" for agent-specific behavior.
 - "confidence" ranges 0.0–1.0 reflecting how certain the fact is.
 `
@@ -54,7 +55,7 @@ var ExtractMemoryFactsFunctionSchema = map[string]any{
 					"type": "object",
 					"properties": map[string]any{
 						"statement":        map[string]any{"type": "string", "description": "The fact statement, self-contained, third person about the user"},
-						"subject_type":     map[string]any{"type": "string", "enum": []string{"person", "preference", "event", "concept", "other"}, "description": "Category of the fact"},
+						"subject_type":     map[string]any{"type": "string", "enum": []string{"person", "preference", "constraint", "event", "concept", "other"}, "description": "Category of the fact"},
 						"scope":            map[string]any{"type": "string", "enum": []string{"user", "agent"}, "description": "Whether this fact applies to the user globally or only within this agent"},
 						"confidence":       map[string]any{"type": "number", "description": "0.0-1.0 confidence in this fact"},
 						"topics":           map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional tags"},

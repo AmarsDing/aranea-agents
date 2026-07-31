@@ -36,4 +36,7 @@ type TeamMember struct {
 	Role       string
 	TaskPrompt string
 	Enabled    bool
+	// Name 成员显示名：物化图节点 description 的来源（缺省时回退 role）。
+	// 缺失会导致反向同步（DeriveMembersFromGraphNodes）成员名退化为 role。
+	Name string
 }

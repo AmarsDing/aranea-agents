@@ -20,6 +20,9 @@ func (r *completionMonitorRepo) ListAuditLogs(ctx context.Context, query AuditQu
 func (r *completionMonitorRepo) InsertAuditLog(ctx context.Context, entry AuditLog) error {
 	return nil
 }
+func (r *completionMonitorRepo) DeleteAuditLogs(ctx context.Context) (int, error) {
+	return 0, nil
+}
 func (r *completionMonitorRepo) InsertMonitorEvent(ctx context.Context, ev MonitorEventWrite) error {
 	r.inserted++
 	return nil

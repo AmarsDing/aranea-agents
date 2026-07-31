@@ -22,41 +22,53 @@
         :options="rangeOptions"
         @update:model-value="onFilterChange"
       />
-      <q-input
+      <q-select
         v-model="filters.provider_code"
         class="app-page-toolbar__field"
         dense
         outlined
         clearable
+        emit-value
+        map-options
         label="Provider"
-        @clear="onFilterChange"
+        :options="providerOptions"
+        @update:model-value="onProviderChange"
       />
-      <q-input
+      <q-select
         v-model="filters.model_api_id"
         class="app-page-toolbar__field"
         dense
         outlined
         clearable
+        emit-value
+        map-options
         label="模型"
-        @clear="onFilterChange"
+        :options="modelOptions"
+        @update:model-value="onFilterChange"
       />
-      <q-input
+      <q-select
         v-model="filters.agent_id"
         class="app-page-toolbar__field"
         dense
         outlined
         clearable
-        label="Agent ID"
-        @clear="onFilterChange"
+        emit-value
+        map-options
+        label="Agent"
+        :options="agentOptions"
+        @update:model-value="onFilterChange"
       />
-      <q-input
+      <q-select
         v-model="filters.team_id"
         class="app-page-toolbar__field"
         dense
         outlined
         clearable
-        label="Team ID"
-        @clear="onFilterChange"
+        emit-value
+        map-options
+        label="Team"
+        :options="teamOptions"
+        @update:model-value="onFilterChange"
       />
       <q-select
         v-model="filters.usage_kind"
@@ -82,20 +94,19 @@
         :options="statusOptions"
         @update:model-value="onFilterChange"
       />
-      <q-select
-        v-model="retainDays"
-        class="app-page-toolbar__field"
-        dense
-        outlined
-        emit-value
-        map-options
-        label="清理保留天数"
-        :options="retainDayOptions"
-      />
       <template #actions>
-        <q-btn flat rounded no-caps label="重置" icon="restart_alt" @click="onResetFilters" />
-        <q-btn flat rounded no-caps label="查询" icon="manage_search" :loading="loading" @click="onSearch" />
-        <q-btn flat rounded no-caps label="删除记录" icon="delete_outline" :loading="purging" @click="onPurgeConfirm" />
+        <q-btn flat dense rounded no-caps label="重置" icon="restart_alt" @click="onResetFilters" />
+        <q-btn flat dense rounded no-caps label="查询" icon="manage_search" :loading="loading" @click="onSearch" />
+        <q-btn
+          flat
+          dense
+          rounded
+          no-caps
+          label="清理"
+          icon="delete_outline"
+          :loading="purging"
+          @click="onPurgeConfirm"
+        />
       </template>
     </AppPageToolbar>
 
@@ -123,18 +134,28 @@
             <span class="app-registry-cell-primary ellipsis">{{ props.row.model_api_id }}</span>
           </q-td>
         </template>
+        <template #body-cell-agent_id="props">
+          <q-td :props="props">
+            <div class="app-registry-cell-primary ellipsis">
+              {{ props.row.agent_name || props.row.agent_key || props.row.agent_id || '—' }}
+            </div>
+            <div v-if="props.row.agent_name" class="app-registry-cell-sub ellipsis text-mono">
+              {{ props.row.agent_id }}
+            </div>
+          </q-td>
+        </template>
+        <template #body-cell-session_id="props">
+          <q-td :props="props">
+            <AppRegistryHoverTip :text="props.row.session_id" :indicator="false">
+              <span class="app-registry-cell-primary ellipsis">
+                {{ props.row.session_title || shortenId(props.row.session_id) }}
+              </span>
+            </AppRegistryHoverTip>
+          </q-td>
+        </template>
         <template #body-cell-status="props">
           <q-td :props="props">
-            <AppRegistryHoverTip :text="props.row.error_message">
-              <q-chip
-                dense
-                :color="props.row.status === 'success' ? 'positive' : 'negative'"
-                text-color="white"
-                size="sm"
-              >
-                {{ props.row.status }}
-              </q-chip>
-            </AppRegistryHoverTip>
+            <AppStatusChip :status="props.row.status" :tooltip="props.row.error_message" />
           </q-td>
         </template>
         <template #body-cell-total_cost_micro_usd="props">
@@ -169,6 +190,7 @@ import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../components/layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import AppStatusChip from '../components/common/AppStatusChip.vue';
 import { useUsageEventsPage } from '../features/usage/useUsageEventsPage';
 import type { ModelTokenUsageEvent } from '../features/usage/types';
 import { type RegistryTableColumn } from '../features/ui/registryTableColumns';
@@ -191,8 +213,12 @@ const {
   rangeOptions,
   statusOptions,
   usageKindOptions,
-  retainDays,
-  retainDayOptions,
+  providerOptions,
+  modelOptions,
+  agentOptions,
+  teamOptions,
+  loadFilterOptions,
+  onProviderFilterChange,
   purging,
   load,
   exportCsv,
@@ -226,5 +252,31 @@ function onFilterChange() {
   void load();
 }
 
-onMounted(() => void load());
+/** Provider 变化：级联清理失效的模型筛选后再查询 */
+function onProviderChange() {
+  onProviderFilterChange();
+  onFilterChange();
+}
+
+/** Session 无标题时截断显示 ID（完整 ID 见悬停 tooltip） */
+function shortenId(id?: string) {
+  const s = (id ?? '').trim();
+  if (!s) return '—';
+  return s.length <= 12 ? s : `${s.slice(0, 8)}…`;
+}
+
+onMounted(() => {
+  void loadFilterOptions();
+  void load();
+});
 </script>
+
+<style scoped lang="sass">
+// 7 个筛选字段 + 操作按钮：收窄字段宽度，空间不足时换行而非横向滚动
+:deep(.app-page-toolbar__body)
+  flex-wrap: wrap
+
+:deep(.app-page-toolbar__field)
+  min-width: 108px
+  max-width: 160px
+</style>

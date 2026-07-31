@@ -237,6 +237,128 @@ func TestVaultFilerMoveToTrashMarksDeleted(t *testing.T) {
 	assert.True(t, deleted, "MoveToTrash 标记必须为 deleted=true（与写入区分）")
 }
 
+// ── G3-B4：Move（库内跨目录移动） ───────────────────────────────────────────
+
+func TestVaultFilerMove_Basic(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "notes"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "notes", "a.md"), []byte("# A\n"), 0o644))
+
+	finalRel, err := f.Move(root, "notes/a.md", "archive/a.md", "")
+	require.NoError(t, err)
+	assert.Equal(t, "archive/a.md", finalRel)
+
+	// 源消失、目标存在且内容一致；目标父目录自动创建
+	_, err = os.Stat(filepath.Join(root, "notes", "a.md"))
+	assert.True(t, os.IsNotExist(err), "源文件必须消失")
+	data, err := os.ReadFile(filepath.Join(root, "archive", "a.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "# A\n", string(data))
+
+	// 自写标记：源 deleted=true，目标写入标记（hash 为内容 hash）
+	_, srcDeleted, ok := f.ConsumeSelfWrite("notes/a.md")
+	assert.True(t, ok, "源路径必须有自写标记")
+	assert.True(t, srcDeleted, "源路径标记必须为 deleted")
+	dstHash, dstDeleted, ok := f.ConsumeSelfWrite("archive/a.md")
+	assert.True(t, ok, "目标路径必须有自写标记")
+	assert.False(t, dstDeleted, "目标路径标记必须为写入")
+	assert.Equal(t, HashContent("# A\n"), dstHash)
+}
+
+func TestVaultFilerMove_ConflictDefault(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "notes"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "archive"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "notes", "a.md"), []byte("mine"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "archive", "a.md"), []byte("existing"), 0o644))
+
+	_, err := f.Move(root, "notes/a.md", "archive/a.md", "")
+	require.Error(t, err)
+	assert.True(t, apierror.IsCode(err, apierror.CodeConflict), "默认策略同名必须 CodeConflict")
+
+	// 双份均保持原样（前端弹 覆盖/改名/取消 再决策）
+	data, _ := os.ReadFile(filepath.Join(root, "notes", "a.md"))
+	assert.Equal(t, "mine", string(data))
+	data, _ = os.ReadFile(filepath.Join(root, "archive", "a.md"))
+	assert.Equal(t, "existing", string(data))
+}
+
+func TestVaultFilerMove_ConflictOverwrite(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "notes"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "archive"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "notes", "a.md"), []byte("mine"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "archive", "a.md"), []byte("existing"), 0o644))
+
+	finalRel, err := f.Move(root, "notes/a.md", "archive/a.md", "overwrite")
+	require.NoError(t, err)
+	assert.Equal(t, "archive/a.md", finalRel)
+
+	// 目标被覆盖为源内容；目标旧版本抢救进 trash（R-6 不丢数据）
+	data, _ := os.ReadFile(filepath.Join(root, "archive", "a.md"))
+	assert.Equal(t, "mine", string(data))
+	trashEntries, err := os.ReadDir(filepath.Join(root, ".aranea", "trash", "archive"))
+	require.NoError(t, err, "目标旧版本必须进 trash")
+	assert.NotEmpty(t, trashEntries)
+}
+
+func TestVaultFilerMove_ConflictRename(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "notes"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "archive"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "notes", "a.md"), []byte("mine"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "archive", "a.md"), []byte("existing"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "archive", "a (2).md"), []byte("taken"), 0o644))
+
+	finalRel, err := f.Move(root, "notes/a.md", "archive/a.md", "rename")
+	require.NoError(t, err)
+	assert.Equal(t, "archive/a (3).md", finalRel, "a.md 与 a (2).md 均被占时必须递增到 a (3).md")
+
+	// 三份都在（保留两份语义）
+	data, _ := os.ReadFile(filepath.Join(root, "archive", "a.md"))
+	assert.Equal(t, "existing", string(data))
+	data, _ = os.ReadFile(filepath.Join(root, "archive", "a (3).md"))
+	assert.Equal(t, "mine", string(data))
+	_, err = os.Stat(filepath.Join(root, "notes", "a.md"))
+	assert.True(t, os.IsNotExist(err))
+}
+
+func TestVaultFilerMove_Rejects(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "notes"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "notes", "a.md"), []byte("x"), 0o644))
+
+	// 源/目标路径校验
+	_, err := f.Move(root, "../escape.md", "b.md", "")
+	require.Error(t, err)
+	_, err = f.Move(root, "notes/a.md", ".aranea/b.md", "")
+	require.Error(t, err)
+	_, err = f.Move(root, "notes/a.md", "/abs/b.md", "")
+	require.Error(t, err)
+	// 源不存在 → NotFound
+	_, err = f.Move(root, "notes/ghost.md", "b.md", "")
+	require.Error(t, err)
+	assert.True(t, apierror.IsCode(err, apierror.CodeNotFound))
+	// 源是目录 → BadRequest
+	_, err = f.Move(root, "notes", "archive", "")
+	require.Error(t, err)
+	assert.True(t, apierror.IsCode(err, apierror.CodeBadRequest))
+	// 未知策略 → BadRequest（目标存在时才校验策略）
+	require.NoError(t, os.WriteFile(filepath.Join(root, "b.md"), []byte("y"), 0o644))
+	_, err = f.Move(root, "notes/a.md", "b.md", "bogus")
+	require.Error(t, err)
+	assert.True(t, apierror.IsCode(err, apierror.CodeBadRequest))
+}
+
 func TestVaultFilerWriteTrashFromMirror(t *testing.T) {
 	root := t.TempDir()
 	f := newTestFiler()
@@ -471,4 +593,63 @@ func TestVaultFilerSnapshotDoc(t *testing.T) {
 
 	_, err = f.SnapshotDoc(root, "../escape.md")
 	require.Error(t, err)
+}
+
+// ── G1-B3：WriteRaw（上传落盘，任意字节） ─────────────────────────────────────
+
+func TestVaultFilerWriteRaw(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+
+	raw := []byte{0x25, 0x50, 0x44, 0x46, 0x00, 0x01} // %PDF 二进制
+	require.NoError(t, f.WriteRaw(root, "reports/q1/result.pdf", raw))
+
+	got, err := os.ReadFile(filepath.Join(root, "reports", "q1", "result.pdf"))
+	require.NoError(t, err, "嵌套父目录必须自动创建")
+	assert.Equal(t, raw, got, "字节必须原样落盘（不经过 frontmatter 编组）")
+
+	// 自写标记：watcher 必须能过滤（防回环）
+	hash, deleted, ok := f.ConsumeSelfWrite("reports/q1/result.pdf")
+	assert.True(t, ok, "写入必须登记自写标记")
+	assert.False(t, deleted)
+	assert.Equal(t, HashContent(string(raw)), hash)
+}
+
+func TestVaultFilerWriteRaw_ConflictKeepsOriginal(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+
+	original := []byte("original")
+	require.NoError(t, os.WriteFile(filepath.Join(root, "a.md"), original, 0o644))
+
+	err := f.WriteRaw(root, "a.md", []byte("overwrite"))
+	require.Error(t, err, "已存在必须报错（create 语义）")
+	assert.True(t, apierror.IsCode(err, apierror.CodeConflict))
+
+	got, _ := os.ReadFile(filepath.Join(root, "a.md"))
+	assert.Equal(t, original, got, "原文件必须保持原样")
+}
+
+func TestVaultFilerWriteRaw_Rejects(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+
+	require.Error(t, f.WriteRaw(root, "../escape.bin", []byte("x")), "穿越拒绝")
+	require.Error(t, f.WriteRaw(root, ".aranea/meta.bin", []byte("x")), "点目录拒绝")
+	require.Error(t, f.WriteRaw(root, "dir/", []byte("x")), "目录路径拒绝")
+}
+
+func TestVaultFilerRemoveDoc(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+
+	require.NoError(t, f.WriteRaw(root, "up/a.bin", []byte("x")))
+	require.NoError(t, f.RemoveDoc(root, "up/a.bin"))
+
+	_, err := os.Stat(filepath.Join(root, "up", "a.bin"))
+	assert.True(t, os.IsNotExist(err), "文件必须被移除")
+
+	// 幂等：不存在不报错（补偿路径允许重入）
+	require.NoError(t, f.RemoveDoc(root, "up/a.bin"))
+	require.Error(t, f.RemoveDoc(root, "../escape"))
 }

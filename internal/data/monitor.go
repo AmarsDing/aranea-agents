@@ -175,6 +175,18 @@ func auditWhere(q biz.AuditQuery) (string, []any) {
 	return " WHERE " + strings.Join(parts, " AND "), args
 }
 
+// DeleteAuditLogs hard-deletes all audit_logs rows (clear-all, no soft-delete)
+// and returns the deleted count.
+func (r *monitorRepo) DeleteAuditLogs(ctx context.Context) (int, error) {
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`DELETE FROM audit_logs`))
+	if err != nil {
+		return 0, entErrToBizErr(err, "MONITOR")
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 const sqlMonitorEventsCount = `SELECT COUNT(*) FROM monitor_events WHERE deleted_at = ''`
 const sqlMonitorEventsList = `SELECT id, event_key, name, description, status, metadata_json, created_at, updated_at, deleted_at
 	FROM monitor_events WHERE deleted_at = ''`
@@ -376,7 +388,11 @@ func monitorTracesWhere(q biz.MonitorTracesQuery, d Dialect) (string, []any) {
 	// comparison (e.g. "agent_id = ?") for index utilization. The COALESCE fallback
 	// to json_extract is a transition pattern for rows created before the column existed.
 	if q.AgentID != "" {
-		parts = append(parts, "COALESCE(NULLIF(agent_id, ''), "+d.JSONExtract("metadata_json", "agent_id")+") = ?")
+		// Three-level fallback matching the SELECT column: stored column →
+		// metadata_json (backfill) → session.agent_id (chat traces where the
+		// runner.completion backfill never populated agent_id).
+		parts = append(parts, `COALESCE(NULLIF(agent_id, ''), `+d.JSONExtract("metadata_json", "agent_id")+`,
+  (SELECT s.agent_id FROM sessions s WHERE s.id = monitor_traces.session_id AND s.deleted_at = '' LIMIT 1), '') = ?`)
 		args = append(args, q.AgentID)
 	}
 	if q.Provider != "" {

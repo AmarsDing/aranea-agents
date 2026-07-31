@@ -77,7 +77,7 @@ func (s *stubSessionRepo) SearchSessions(_ context.Context, _ biz.SessionSearchQ
 }
 
 func newTestGuardUC(repo biz.SessionRepo) *biz.SessionUsecase {
-	return biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	return biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
 }
 
 // ctxAwareSessionRepo wraps stubSessionRepo and fails calls when ctx is done,

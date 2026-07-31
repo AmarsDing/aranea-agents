@@ -165,8 +165,8 @@ func (m *memGraphRunRepoCoord) UpdateRun(_ context.Context, exec *biz.GraphExecu
 	return nil
 }
 
-func (b *coordGraphBackend) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID string, ct *biz.CompiledTeam) error {
-	return b.uc.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, ct)
+func (b *coordGraphBackend) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID string, ct *biz.CompiledTeam) error {
+	return b.uc.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID, ct)
 }
 
 func (b *coordGraphBackend) MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error {
@@ -191,7 +191,7 @@ func TestTeamGraphRunCoordinator_DeferTeamRunSuccessIfHITL(t *testing.T) {
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{"run-1": {ID: "run-1", Status: biz.TeamRunStatusRunning}}}
 	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
-	if err := coord.RegisterTeamGraphExecution(context.Background(), "exec-1", "sess-1", "sess-1", "team-1", "run-1", ct); err != nil {
+	if err := coord.RegisterTeamGraphExecution(context.Background(), "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
 		t.Fatal(err)
 	}
 	if err := coord.MarkTeamGraphInterrupt(context.Background(), "exec-1", "review-1", "lineage-1"); err != nil {
@@ -215,7 +215,7 @@ func TestTeamGraphRunCoordinator_finalizeTeamRun(t *testing.T) {
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
-	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", ct); err != nil {
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
 		t.Fatal(err)
 	}
 
@@ -256,7 +256,7 @@ func TestTeamGraphRunCoordinator_persistSession(t *testing.T) {
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
-	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", ct); err != nil {
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
 		t.Fatal(err)
 	}
 	dbSess, err := sessRepo.GetSession(ctx, "exec-1")
@@ -279,7 +279,7 @@ func TestTeamGraphRunCoordinator_evictDeletesFromDB(t *testing.T) {
 	ctx := context.Background()
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 
-	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", ct); err != nil {
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := sessRepo.GetSession(ctx, "exec-1"); err != nil {
@@ -337,7 +337,7 @@ func TestTeamGraphRunCoordinator_MarkInterruptUpdatesDB(t *testing.T) {
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
-	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", ct); err != nil {
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
 		t.Fatal(err)
 	}
 	if err := coord.MarkTeamGraphInterrupt(ctx, "exec-1", "review-1", "lineage-1"); err != nil {
@@ -360,7 +360,7 @@ func TestTeamGraphRunCoordinator_CleanupStaleDeletesFromDB(t *testing.T) {
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
-	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", ct); err != nil {
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
 		t.Fatal(err)
 	}
 	sess := coord.session("exec-1")
@@ -377,8 +377,8 @@ type failingResumeBackend struct {
 	inner TeamGraphExecutionBackend
 }
 
-func (b *failingResumeBackend) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID string, ct *biz.CompiledTeam) error {
-	return b.inner.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, ct)
+func (b *failingResumeBackend) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID string, ct *biz.CompiledTeam) error {
+	return b.inner.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID, ct)
 }
 func (b *failingResumeBackend) MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error {
 	return b.inner.MarkTeamGraphInterrupt(ctx, execID, nodeID, lineageID)
@@ -394,8 +394,8 @@ type succeedingResumeBackend struct {
 	inner TeamGraphExecutionBackend
 }
 
-func (b *succeedingResumeBackend) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID string, ct *biz.CompiledTeam) error {
-	return b.inner.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, ct)
+func (b *succeedingResumeBackend) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID string, ct *biz.CompiledTeam) error {
+	return b.inner.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID, ct)
 }
 func (b *succeedingResumeBackend) MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error {
 	return b.inner.MarkTeamGraphInterrupt(ctx, execID, nodeID, lineageID)
@@ -431,6 +431,10 @@ func TestShouldResumeTeamGraph(t *testing.T) {
 	if !shouldResumeTeamGraph(&biz.GraphExecution{GraphID: "team:abc", InterruptNode: "node-1"}, "node-1") {
 		t.Fatal("team: prefixed GraphID + matching InterruptNode should resume")
 	}
+	// B9：真实资产 ID（无 team: 前缀）的 team 执行同样可 resume。
+	if !shouldResumeTeamGraph(&biz.GraphExecution{GraphID: "g-asset-1", InterruptNode: "node-1"}, "node-1") {
+		t.Fatal("real asset GraphID + matching InterruptNode should resume")
+	}
 }
 
 func TestTeamGraphRunCoordinator_HandleTaskCompleted_ResumeFail(t *testing.T) {
@@ -441,7 +445,7 @@ func TestTeamGraphRunCoordinator_HandleTaskCompleted_ResumeFail(t *testing.T) {
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
-	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", ct); err != nil {
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
 		t.Fatal(err)
 	}
 	if err := coord.MarkTeamGraphInterrupt(ctx, "exec-1", "review-1", "lineage-1"); err != nil {
@@ -472,7 +476,7 @@ func TestTeamGraphRunCoordinator_HandleTaskCompleted_ResumeSuccess(t *testing.T)
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
-	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", ct); err != nil {
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
 		t.Fatal(err)
 	}
 	if err := coord.MarkTeamGraphInterrupt(ctx, "exec-1", "review-1", "lineage-1"); err != nil {
@@ -500,10 +504,10 @@ func TestTeamGraphRunCoordinator_RegisterExecutionIdempotent(t *testing.T) {
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
-	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", ct); err != nil {
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
 		t.Fatal(err)
 	}
-	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", ct); err != nil {
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
 		t.Fatal(err)
 	}
 	sess := coord.session("exec-1")
@@ -529,7 +533,7 @@ func TestTeamGraphRunCoordinator_DeferTeamRunSuccessIfHITL_NoInterrupt(t *testin
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
-	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", ct); err != nil {
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
 		t.Fatal(err)
 	}
 	run := biz.TeamRunRecord{ID: "run-1", Status: biz.TeamRunStatusRunning}
@@ -550,7 +554,7 @@ func TestTeamGraphRunCoordinator_CleanupStale_LeavesActiveSessions(t *testing.T)
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
-	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", ct); err != nil {
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
 		t.Fatal(err)
 	}
 	coord.CleanupStaleSessions()

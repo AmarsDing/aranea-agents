@@ -61,7 +61,7 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 | Top Agent 排行 | ✅ | `web/src/components/usage/UsageTopAgents.vue` |
 | 异常请求列表 | ✅ | `web/src/components/usage/UsageAnomalyList.vue` |
 | 低性价比模型 | ✅ | `web/src/components/usage/UsageInefficientModels.vue` |
-| 明细列表页 | ✅ | `UsageEventsPage.vue`（费用/来源/错误列） |
+| 明细列表页 | ✅ | `UsageEventsPage.vue`（费用/来源/错误列；名称列 + 状态标签本地化见 §12） |
 | 限额配置 UI | ✅ | `AgentUsageQuotaPanel`（权限 Tab）；Agent Tab 预算字段已弃用展示 |
 | 告警配置 UI | ✅ | `AgentUsageQuotaPanel` 预算告警阈值 |
 | CSV 导出 | ✅ | `UsageEventsPage` 导出按钮 |
@@ -313,13 +313,13 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 
 ## 9. Team 统计整合（2026-05-20）
 
-**目标**：平台可计费口径 = `chat_turn` + `team_member`，`team_turn` 仅对账；Team 整体 = 同 `team_id` 的 `team_member` 之和。需求 §3.6 · 设计 §4.5。
+**目标**：平台可计费口径 = `chat_turn` + `team_member`，`team_turn` 仅对账；Team 整体 = 同 `team_id` 的 `team_member` 之和。需求 §3.6 · 设计 §4.6。
 
 ### 9.1 任务与状态
 
 | 优先级 | 任务 | 层 | 状态 | 证据 |
 |--------|------|-----|------|------|
-| P0 | 文档：需求 §3.6、设计 §4.5、本 §9 | Docs | ✅ | 三文档边界已拆分 |
+| P0 | 文档：需求 §3.6、设计 §4.6、本 §9 | Docs | ✅ | 三文档边界已拆分 |
 | P1 | 读层 `sqlUsageBillableKind` + `usageWhere(billableOnly)` | Data | ✅ | `usage.go`、`usage_quota.go`、`usage_hourly.go` |
 | P1 | `UsageQuery.team_id` / `usage_kind`；Proto 字段 | API/Biz | ✅ | `usage.proto`、`usage_mapper.go`、`biz/usage/usage.go` 常量 |
 | P1 | 单元测试 billable WHERE | Test | ✅ | `usage_where_test.go` |
@@ -454,3 +454,44 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 | `internal/biz/usage/usage.go` | `ApplyTokenUsageCosts` 缓存扣除公式 |
 | `internal/agent/turn_helpers.go` | `CachedTokens` 累计 |
 | `internal/team/team_graph_run_finisher.go` | anchor provider/model 兜底 |
+
+---
+
+## 12. 明细页可读性改造（2026-07-30）
+
+**背景**：用户反馈用量事件页可用性差——Provider/模型/Agent/Team 需手输 ID、表格 Agent/Session 列显示裸 ID 看不懂、操作按钮溢出横向滚动条、状态标签为英文硬编码。
+
+### 12.1 任务与状态
+
+| # | 任务 | 层 | 状态 | 证据 |
+|---|------|-----|------|------|
+| 1 | `TokenUsageEvent` 增加 `agent_name` / `session_title` / `team_name`（proto 51–53 + biz + mapper） | API/Biz/Service | ✅ | `usage.proto`、`internal/biz/usage/usage.go`、`internal/service/usage_mapper.go` |
+| 2 | `ListModelUsageEvents` 标量子查询解析显示名（`sqlUsageEventNames`） | Data | ✅ | `internal/data/usage.go`；设计 §4.4 |
+| 3 | 筛选项改下拉：Provider/模型（platformStore 派生 + 联动）、Agent/Team（目录 Store，显示名称提交 ID） | Web | ✅ | `useUsageEventsPage.ts` |
+| 4 | 表格名称列：Agent 主行名称 + 次要行 ID；Session 标题 + 悬停完整 ID | Web | ✅ | `UsageEventsPage.vue` |
+| 5 | 状态标签公共组件 + i18n（zh-CN / en-US） | Web | ✅ | `components/common/AppStatusChip.vue`、`features/ui/appStatusMeta.ts`、`locales/*` `common.status.*` |
+| 6 | 工具栏紧凑化：字段收窄 + `flex-wrap` 换行，消除横向滚动条 | Web | ✅ | `UsageEventsPage.vue` scoped 样式 |
+
+### 12.2 验收
+
+1. 明细页 Provider / 模型 / Agent / Team 均为下拉选择，显示名称、提交 code/ID；模型选项随 Provider 联动。
+2. 表格 Agent / Session / Team 列显示名称；ID 经次要行或悬停查看；已删除实体回退显示 ID。
+3. 状态列标签随界面语言切换中/英文；`AppStatusChip` 可供其他页面复用。
+4. 工具栏在常规宽度下无横向滚动条，空间不足时换行。
+5. `make api` + `go build ./...` + data/biz/service usage 测试通过；前端 eslint（任务文件）/ `check:layer` / vitest / `pnpm build` 通过。
+
+### 12.3 改动文件（本迭代新增）
+
+| 文件 | 说明 |
+|------|------|
+| `api/kratos/usage/v1/usage.proto` | `TokenUsageEvent` 增加字段 51–53 |
+| `internal/biz/usage/usage.go` | `TokenUsageEvent` 增加 `AgentName` / `SessionTitle` / `TeamName` |
+| `internal/data/usage.go` | `sqlUsageEventNames` 标量子查询 + scan 追加 3 列 |
+| `internal/service/usage_mapper.go` | proto 映射追加 3 字段 |
+| `web/src/features/usage/types.ts` | `ModelTokenUsageEvent` 增加 3 字段 |
+| `web/src/features/usage/api.ts` | 响应映射（snake/camel 双兼容） |
+| `web/src/features/usage/useUsageEventsPage.ts` | 下拉选项（provider/model/agent/team）+ Provider↔模型联动 + statusOptions 复用 appStatusMeta |
+| `web/src/pages/UsageEventsPage.vue` | 筛选改 `q-select`、名称列模板、`AppStatusChip`、紧凑工具栏样式 |
+| `web/src/components/common/AppStatusChip.vue` | **新增** 公共状态标签组件 |
+| `web/src/features/ui/appStatusMeta.ts` | **新增** 状态枚举 → tone/图标/i18n key 元数据 |
+| `web/src/i18n/locales/zh-CN.ts` / `en-US.ts` | `common.status.*` 双语词条 |

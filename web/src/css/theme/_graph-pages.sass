@@ -264,6 +264,26 @@ body:not(.body--dark) .graph-card__chip
 body:not(.body--dark) .graph-card__meta
   border-top-color: rgba(200, 178, 148, 0.35)
 
+// M53 Phase 11 F5：team-owned 徽章（属主 Team 名）
+.graph-card__team-badge
+  display: inline-flex
+  align-items: center
+  gap: 3px
+  padding: 1px 7px
+  border-radius: 999px
+  font-weight: 700
+  color: var(--color-accent)
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--glass-elevated))
+  border: 1px solid color-mix(in srgb, var(--color-accent) 26%, transparent)
+  max-width: 100%
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+body:not(.body--dark) .graph-card__team-badge
+  background: rgba(220, 160, 62, 0.1)
+  border-color: rgba(220, 160, 62, 0.3)
+
 .graph-card__meta-total
   margin-left: auto
   font-weight: 700

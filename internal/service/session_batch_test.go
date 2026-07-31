@@ -297,7 +297,7 @@ func (m *batchSessionRepo) ListTeamAgentSessions(_ context.Context, _ string) ([
 }
 
 func TestSessionService_BatchPreviewSessions_validation(t *testing.T) {
-	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
 	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	_, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{})
@@ -318,7 +318,7 @@ func TestSessionService_BatchPreviewSessions_skippedNotFound(t *testing.T) {
 	repo := &batchSessionRepo{sessions: map[string]biz.Session{
 		"s1": {ID: "s1", Status: "completed", CreatedAt: "2020-01-01T00:00:00Z"},
 	}}
-	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
 	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	resp, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{

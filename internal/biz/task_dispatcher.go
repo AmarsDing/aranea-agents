@@ -30,15 +30,26 @@ type TaskDispatcher struct {
 	interval time.Duration
 	cancel   context.CancelFunc
 	lg       loggateway.Logger
+	// flowLog 流程日志端口（biz 不依赖 internal/event）；nil 时跳过流程日志（测试）。
+	flowLog FlowLogWriter
 }
 
-func NewTaskDispatcher(tasks TaskDispatchReader, runner TaskDispatchAgentRunner, lg loggateway.Logger) *TaskDispatcher {
+func NewTaskDispatcher(tasks TaskDispatchReader, runner TaskDispatchAgentRunner, lg loggateway.Logger, flowLog FlowLogWriter) *TaskDispatcher {
 	return &TaskDispatcher{
 		tasks:    tasks,
 		runner:   runner,
 		interval: defaultDispatchInterval,
 		lg:       lg,
+		flowLog:  flowLog,
 	}
+}
+
+// logFlowError 发射系统域流程日志错误（无会话上下文，sessionID 为空）；nil-safe。
+func (d *TaskDispatcher) logFlowError(ctx context.Context, stepID, message string, pairs ...LogPair) {
+	if d == nil || d.flowLog == nil {
+		return
+	}
+	d.flowLog.LogFlowError(ctx, "", stepID, message, pairs...)
 }
 
 func (d *TaskDispatcher) Start() {
@@ -74,6 +85,8 @@ func (d *TaskDispatcher) loop(ctx context.Context) {
 			if err := d.tick(tickCtx); err != nil {
 				d.lg.Warn("task dispatcher tick failed",
 					loggateway.StepID("task.dispatcher_tick_fail"), loggateway.Err(err))
+				d.logFlowError(tickCtx, "system.task.dispatcher_tick_fail", "任务调度器 tick 失败",
+					LogPair{Key: "error", Value: err.Error()})
 			}
 			tickCancel()
 		}
@@ -87,6 +100,8 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 	if err := d.tasks.CheckTimeouts(ctx); err != nil {
 		d.lg.Warn("task check timeouts failed",
 			loggateway.StepID("task.check_timeout_fail"), loggateway.Err(err))
+		d.logFlowError(ctx, "system.task.check_timeout_fail", "任务超时检查失败",
+			LogPair{Key: "error", Value: err.Error()})
 	}
 	items, err := d.tasks.ListPendingTasks(ctx, 50)
 	if err != nil {
@@ -112,6 +127,10 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 		if err != nil {
 			d.lg.Warn("task dispatch claim failed",
 				loggateway.StepID("task.claim_fail"), loggateway.Str("task_id", task.TaskID), loggateway.Str("agent", agentKey), loggateway.Err(err))
+			d.logFlowError(ctx, "system.task.claim_fail", "任务声明失败",
+				LogPair{Key: "task_id", Value: task.TaskID},
+				LogPair{Key: "agent", Value: agentKey},
+				LogPair{Key: "error", Value: err.Error()})
 			continue
 		}
 		if claimed == nil {
@@ -121,6 +140,10 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 			if err := d.runner.DispatchTask(ctx, claimed, agentKey); err != nil {
 				d.lg.Warn("task dispatch run failed",
 					loggateway.StepID("task.dispatch_run_fail"), loggateway.Str("task_id", claimed.TaskID), loggateway.Str("agent", agentKey), loggateway.Err(err))
+				d.logFlowError(ctx, "system.task.dispatch_run_fail", "任务分发运行失败",
+					LogPair{Key: "task_id", Value: claimed.TaskID},
+					LogPair{Key: "agent", Value: agentKey},
+					LogPair{Key: "error", Value: err.Error()})
 				d.tasks.ReleaseClaim(ctx, claimed.TaskID)
 				continue
 			}

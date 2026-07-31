@@ -6,6 +6,7 @@ import (
 
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -24,6 +25,12 @@ func (s *GraphService) ExecuteGraph(ctx context.Context, req *graphv1.ExecuteGra
 		initialState = req.InitialState.AsMap()
 	}
 	execID := uuid.NewString()
+	s.lg.Info("graph run start requested",
+		loggateway.StepID("graph.execute"),
+		loggateway.Str("graph_id", req.GetGraphId()),
+		loggateway.Str("execution_id", execID),
+		loggateway.Str("session_id", req.GetSessionId()),
+	)
 	ctx, traceBridge, _ := turntrace.Start(ctx, turntrace.Config{
 		Domain:    turntrace.DomainGraph,
 		SpanName:  "graph.execute",
@@ -37,11 +44,32 @@ func (s *GraphService) ExecuteGraph(ctx context.Context, req *graphv1.ExecuteGra
 	def, defErr := s.uc.GetGraph(ctx, req.GraphId)
 	exec, err := s.uc.ExecuteGraph(ctx, req.GraphId, req.SessionId, execID, initialState)
 	if err != nil {
+		s.lg.Error("graph run start failed",
+			loggateway.StepID("graph.execute"),
+			loggateway.Str("graph_id", req.GetGraphId()),
+			loggateway.Str("execution_id", execID),
+			loggateway.Str("session_id", req.GetSessionId()),
+			loggateway.Err(err),
+		)
+		if flow := s.graphFlow(ctx, req.GetSessionId(), execID); flow != nil {
+			flow.LogError("system.graph.task_start_fail", "图任务启动失败",
+				event.P("graph_id", req.GetGraphId()),
+				event.P("execution_id", execID),
+				event.P("error", err.Error()),
+			)
+		}
 		if s.graphTel != nil {
 			s.graphTel.EnsureFinished(execID, err)
 		}
 		return nil, err
 	}
+	s.lg.Info("graph run started",
+		loggateway.StepID("graph.execute"),
+		loggateway.Str("graph_id", req.GetGraphId()),
+		loggateway.Str("execution_id", execID),
+		loggateway.Str("session_id", req.GetSessionId()),
+		loggateway.Str("status", exec.Status),
+	)
 	if defErr == nil && def != nil && s.orchProjector != nil {
 		s.orchProjector.Start(context.Background(), req.GetSessionId(), execID, req.GetGraphId(), def)
 	}
@@ -123,8 +151,17 @@ func (s *GraphService) ListGraphExecutions(ctx context.Context, req *graphv1.Lis
 }
 
 func (s *GraphService) CancelGraphExecution(ctx context.Context, req *graphv1.CancelGraphExecutionRequest) (*graphv1.CancelGraphExecutionResponse, error) {
+	s.lg.Info("graph run cancel requested",
+		loggateway.StepID("graph.cancel"),
+		loggateway.Str("execution_id", req.GetExecutionId()),
+	)
 	err := s.uc.CancelExecution(ctx, req.ExecutionId)
 	if err != nil {
+		s.lg.Error("graph run cancel failed",
+			loggateway.StepID("graph.cancel"),
+			loggateway.Str("execution_id", req.GetExecutionId()),
+			loggateway.Err(err),
+		)
 		return nil, err
 	}
 	exec, execErr := s.uc.GetExecution(ctx, req.ExecutionId)
@@ -135,6 +172,11 @@ func (s *GraphService) CancelGraphExecution(ctx context.Context, req *graphv1.Ca
 	if exec != nil {
 		status = exec.Status
 	}
+	s.lg.Info("graph run cancelled",
+		loggateway.StepID("graph.cancel"),
+		loggateway.Str("execution_id", req.GetExecutionId()),
+		loggateway.Str("status", status),
+	)
 	return &graphv1.CancelGraphExecutionResponse{
 		ExecutionId: req.ExecutionId,
 		Status:      status,
@@ -146,10 +188,38 @@ func (s *GraphService) ResumeGraph(ctx context.Context, req *graphv1.ResumeGraph
 	if req.ResumeValue != nil {
 		resumeValue = req.ResumeValue.AsMap()
 	}
+	s.lg.Info("graph run resume requested",
+		loggateway.StepID("graph.resume"),
+		loggateway.Str("execution_id", req.GetExecutionId()),
+	)
 	exec, err := s.uc.ResumeExecution(ctx, req.ExecutionId, resumeValue)
 	if err != nil {
+		s.lg.Error("graph run resume failed",
+			loggateway.StepID("graph.resume"),
+			loggateway.Str("execution_id", req.GetExecutionId()),
+			loggateway.Err(err),
+		)
+		// Best-effort session correlation for the flow log; the execution is
+		// usually still cached in memory so this is cheap.
+		var sessionID, graphID string
+		if prev, prevErr := s.uc.GetExecution(ctx, req.ExecutionId); prevErr == nil && prev != nil {
+			sessionID = prev.SessionID
+			graphID = prev.GraphID
+		}
+		if flow := s.graphFlow(ctx, sessionID, req.GetExecutionId()); flow != nil {
+			flow.LogError("system.graph.task_resume_fail", "图任务恢复失败",
+				event.P("graph_id", graphID),
+				event.P("execution_id", req.GetExecutionId()),
+				event.P("error", err.Error()),
+			)
+		}
 		return nil, err
 	}
+	s.lg.Info("graph run resumed",
+		loggateway.StepID("graph.resume"),
+		loggateway.Str("execution_id", req.GetExecutionId()),
+		loggateway.Str("status", exec.Status),
+	)
 	resp := &graphv1.ResumeGraphResponse{
 		ExecutionId: exec.ID,
 		Status:      exec.Status,

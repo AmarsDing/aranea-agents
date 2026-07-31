@@ -83,6 +83,7 @@
             :loading="loadingAudit"
             @load="loadAudit"
             @notify="notify"
+            @clear="handleClearAudit"
           />
         </q-tab-panel>
         <q-tab-panel name="events">
@@ -158,6 +159,7 @@ const {
   loading,
   loadAll,
   loadAudit,
+  handleClearAudit,
   loadTraces,
   // Runner metrics
   runnerMetrics,

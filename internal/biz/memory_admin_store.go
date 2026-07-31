@@ -323,6 +323,21 @@ type L3ConflictStore interface {
 	ListConflictingFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error)
 	// BatchIncrementConflictCounts increments conflict_count for multiple facts in a single query.
 	BatchIncrementConflictCounts(ctx context.Context, factIDs []string) error
+	// SupersedeFact marks oldID as superseded by newID (status='superseded',
+	// superseded_by=newID). Used by auto conflict governance when a new fact
+	// replaces an older statement of the same preference/constraint/profile.
+	SupersedeFact(ctx context.Context, oldID, newID string) error
+}
+
+// MemoryPreferenceLister lists active preference/constraint facts for pinned
+// prompt injection (FR-M3). Pinned facts bypass vector scoring: every active
+// preference/constraint in the agent+user scope is injected each turn.
+// Stability:evolving
+type MemoryPreferenceLister interface {
+	// ListActivePreferenceFacts returns raw fact rows filtered by kinds and
+	// scoped to (user,userID) ∪ (agent,agentID), ordered by
+	// importance DESC, updated_at DESC, capped at limit.
+	ListActivePreferenceFacts(ctx context.Context, agentID, userID string, kinds []string, limit int32) ([][]byte, error)
 }
 
 // MemoryAdminDeps composes the fine-grained admin store interfaces required by MemoryAdminUsecase.

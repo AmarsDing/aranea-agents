@@ -25,6 +25,7 @@
     "tauri:build": "node scripts/build-tauri.mjs"
   },
   "dependencies": {
+    "3d-force-graph": "^1.80.0",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@types/dagre": "^0.7.54",
     "@types/markdown-it": "^14.1.2",
@@ -40,6 +41,7 @@
     "markdown-it": "^14.1.1",
     "pinia": "^3.0.2",
     "quasar": "^2.19.3",
+    "three": "^0.185.1",
     "vue": "^3.5.17",
     "vue-i18n": "^9.14.5",
     "vue-router": "^4.5.1",

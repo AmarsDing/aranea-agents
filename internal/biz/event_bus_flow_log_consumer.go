@@ -22,13 +22,14 @@ type flowLogPersistConsumer struct {
 	bus      contract.MonitorBus
 	flowLogs *FlowLogUsecase
 	logger   SessionLogWriter
+	flowLog  FlowLogWriter
 }
 
-func newFlowLogPersistConsumer(flowLogs *FlowLogUsecase, logger SessionLogWriter, bus contract.MonitorBus) *flowLogPersistConsumer {
+func newFlowLogPersistConsumer(flowLogs *FlowLogUsecase, logger SessionLogWriter, bus contract.MonitorBus, flowLog FlowLogWriter) *flowLogPersistConsumer {
 	if flowLogs == nil || bus == nil {
 		return nil
 	}
-	return &flowLogPersistConsumer{bus: bus, flowLogs: flowLogs, logger: logger}
+	return &flowLogPersistConsumer{bus: bus, flowLogs: flowLogs, logger: logger, flowLog: flowLog}
 }
 
 func (c *flowLogPersistConsumer) Start(ctx context.Context) {
@@ -83,6 +84,14 @@ func (c *flowLogPersistConsumer) handle(ctx context.Context, ev contract.Monitor
 		if c.logger != nil {
 			c.logger.LogSessionWarn(ctx, rec.SessionID, "flow_log.persist", "流程日志落库失败",
 				LogPair{Key: "step_id", Value: rec.StepID}, LogPair{Key: "error", Value: err})
+		}
+		// Recursion guard: the emitted flow log re-enters this consumer via the
+		// bus; if it is itself an event_bus.flow_log.persist record, persisting
+		// it would fail again and loop forever. Each failed record may emit at
+		// most one self-referential flow log, which then stops here.
+		if c.flowLog != nil && rec.StepID != "event_bus.flow_log.persist" {
+			c.flowLog.LogFlowError(ctx, rec.SessionID, "event_bus.flow_log.persist", "流程日志落库失败",
+				LogPair{Key: "step_id", Value: rec.StepID}, LogPair{Key: "error", Value: err.Error()})
 		}
 	}
 }

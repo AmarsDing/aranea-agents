@@ -20,6 +20,19 @@
         <q-icon name="auto_awesome" size="16px" class="q-mr-xs" />
         此团队由任务编排自动生成；App Name 与 Team Key 已锁定，成员与参数调整将影响后续编排运行。
       </q-banner>
+      <q-banner
+        v-else-if="isCustomSource"
+        dense
+        rounded
+        class="team-editor-custom-banner q-mx-md q-mt-sm"
+        data-test="custom-source-banner"
+      >
+        <q-icon name="account_tree" size="16px" class="q-mr-xs" />
+        拓扑已在 Graph 编辑器中自定义，可能与表单字段不一致；修改编排模式/成员后保存将按表单重建并覆盖自定义拓扑。
+        <template #action>
+          <q-btn flat no-caps dense label="重置为派生" data-test="reset-to-derived" @click="onResetToDerived" />
+        </template>
+      </q-banner>
 
       <div class="app-glass-dialog__scroll" :class="{ 'team-editor--readonly': hasActiveRun }">
         <div class="team-editor-workspace">
@@ -188,6 +201,24 @@
                   label="评审迭代次数"
                   hint="对应 critic_loop.max_iterations"
                 />
+                <q-select
+                  class="team-control app-grid-span-full"
+                  dense
+                  outlined
+                  clearable
+                  emit-value
+                  map-options
+                  label="关联 Graph（可选）"
+                  :hint="
+                    isLinkedExternal
+                      ? '拓扑来自关联的独立图资产，表单中的模式/成员不再驱动执行拓扑'
+                      : '选择独立图资产作为拓扑来源；清空则恢复表单派生'
+                  "
+                  :options="graphOptions"
+                  :model-value="linkedGraphSelection"
+                  data-test="linked-graph-select"
+                  @update:model-value="onLinkedGraphPick"
+                />
               </div>
             </section>
 
@@ -283,6 +314,12 @@
                   hint="留空则用排序后首位启用成员"
                   :options="intentAnchorOptions"
                 />
+                <q-toggle
+                  v-model="checkpointEnabled"
+                  class="team-control"
+                  label="启用 Checkpoint"
+                  data-test="checkpoint-toggle"
+                />
               </div>
             </section>
 
@@ -349,9 +386,9 @@
               <div v-else class="team-member-list">
                 <div v-for="(member, index) in definition.members" :key="index" class="team-member-row">
                   <div class="team-member-row__toolbar">
-                    <span class="team-member-row__index">成员 {{ index + 1 }}</span>
+                    <span class="team-member-row__index">{{ t('teamsPage.memberIndex', { n: index + 1 }) }}</span>
                     <q-space />
-                    <q-toggle v-model="member.enabled" dense label="启用" />
+                    <q-toggle v-model="member.enabled" dense :label="t('teamsPage.memberEnabled')" />
                     <q-btn flat dense round color="negative" icon="delete" @click="$emit('removeMember', index)" />
                   </div>
                   <div class="team-member-row__grid">
@@ -372,8 +409,8 @@
                       outlined
                       readonly
                       stack-label
-                      label="角色（派生）"
-                      hint="由编排模式与成员顺序自动派生"
+                      :label="t('teamsPage.memberRoleDerived')"
+                      :hint="t('teamsPage.memberRoleDerivedHint')"
                     >
                       <template #control>
                         <span class="team-derived-value">{{ teamRoleLabel(member.role) }}</span>
@@ -387,10 +424,16 @@
                       outlined
                       emit-value
                       map-options
-                      label="角色"
+                      :label="t('teamsPage.memberRole')"
                       :options="roleOptionsForMode(definition.mode || 'sequential')"
                     />
-                    <q-input v-model="member.name" class="team-control" dense outlined label="成员名称" />
+                    <q-input
+                      v-model="member.name"
+                      class="team-control"
+                      dense
+                      outlined
+                      :label="t('teamsPage.memberName')"
+                    />
                     <q-input
                       v-model.number="member.sort_order"
                       class="team-control"
@@ -445,7 +488,8 @@
           :label="editingId ? t('teamsPage.save') : t('teamsPage.createTeam')"
           :loading="saving"
           :disable="!canSave || hasActiveRun"
-          @click="$emit('save')"
+          data-test="team-save"
+          @click="onSaveClick"
         />
       </q-card-actions>
     </q-card>
@@ -462,6 +506,8 @@ import { useTeamCompilePreview } from '../../features/teams/useTeamCompilePrevie
 import TeamCompilePreview from './TeamCompilePreview.vue';
 import {
   derivedRoleModes,
+  definitionGraphSource,
+  definitionTopologyOverwriteKey,
   failureDefaultOptions,
   failureOnErrorOptions,
   modeOptions,
@@ -492,12 +538,22 @@ const props = withDefaults(
     definitionJson?: string;
     agentOptions: Array<{ label: string; value: string }>;
     industryOptions: Array<{ label: string; value: string }>;
+    /** 「关联 Graph」选择器选项（仅独立图资产，父级已排除 team-owned） */
+    graphOptions?: Array<{ label: string; value: string }>;
+    /** 打开编辑器时的覆盖确认基线（definitionTopologyOverwriteKey）；custom 团队指纹漂移即触发覆盖确认 */
+    overwriteBaselineKey?: string;
     saving: boolean;
     canSave: boolean;
     isDark: boolean;
     hasActiveRun?: boolean;
   }>(),
-  { definitionJson: '{}', selectedTemplateKey: null, hasActiveRun: false },
+  {
+    definitionJson: '{}',
+    selectedTemplateKey: null,
+    hasActiveRun: false,
+    graphOptions: () => [],
+    overwriteBaselineKey: '',
+  },
 );
 
 const emit = defineEmits<{
@@ -508,7 +564,62 @@ const emit = defineEmits<{
   applyTemplate: [template: TeamTemplateKey];
   save: [];
   retry: [];
+  resetToDerived: [];
 }>();
+
+// ── M53 Phase 11 F2：拓扑来源（preset/custom/linked_external）──
+const graphSource = computed(() => definitionGraphSource(definition.value));
+const isCustomSource = computed(() => graphSource.value === 'custom');
+const isLinkedExternal = computed(() => graphSource.value === 'linked_external');
+/** custom 团队拓扑/checkpoint 指纹相对打开时漂移 → 保存将按表单重建，需覆盖确认（D.4）。 */
+const overwriteDirty = computed(() => definitionTopologyOverwriteKey(definition.value) !== props.overwriteBaselineKey);
+
+/** 关联 Graph 选择器仅管理 external 关联；preset/custom 的 owned 资产 id 不在此展示。 */
+const linkedGraphSelection = computed(() =>
+  isLinkedExternal.value ? String(definition.value.linked_graph_id ?? '') : '',
+);
+function onLinkedGraphPick(value: string | null) {
+  const id = String(value ?? '').trim();
+  if (id) {
+    definition.value.linked_graph_id = id;
+    definition.value.source = 'linked_external';
+    return;
+  }
+  delete definition.value.linked_graph_id;
+  if (isLinkedExternal.value) {
+    definition.value.source = 'preset';
+  }
+}
+
+/** checkpoint 缺省镜像后端 parseRuntimeOptions 默认 true；开关显式写布尔。 */
+const checkpointEnabled = computed({
+  get: () => definition.value.enable_checkpoint ?? true,
+  set: (value: boolean) => {
+    definition.value.enable_checkpoint = value;
+  },
+});
+
+function onResetToDerived() {
+  $q.dialog({
+    title: t('teamsPage.resetToDerivedTitle'),
+    message: t('teamsPage.resetToDerivedMessage'),
+    cancel: true,
+    persistent: true,
+  }).onOk(() => emit('resetToDerived'));
+}
+
+function onSaveClick() {
+  if (isCustomSource.value && overwriteDirty.value) {
+    $q.dialog({
+      title: t('teamsPage.overwriteCustomTitle'),
+      message: t('teamsPage.overwriteCustomMessage'),
+      cancel: true,
+      persistent: true,
+    }).onOk(() => emit('save'));
+    return;
+  }
+  emit('save');
+}
 
 // ── Spirit (orchestration-generated) team guards ──
 const isSpiritTeam = computed(() => String(form.value.spirit_session_id || '').trim() !== '');
@@ -674,6 +785,12 @@ const failureOnError = computed({
   background: color-mix(in srgb, var(--color-accent) 14%, transparent);
   color: var(--color-text-primary);
   border: 1px solid color-mix(in srgb, var(--color-accent) 32%, transparent);
+}
+
+.team-editor-custom-banner {
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  color: var(--color-text-primary);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 32%, transparent);
 }
 
 .team-status-field__body {

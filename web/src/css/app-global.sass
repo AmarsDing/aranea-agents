@@ -3288,3 +3288,39 @@ body.body--dark .overview-trend-bar__fill
 .overview-trend-bar__label
   color: var(--color-text-secondary)
   font-size: 0.7rem
+
+// ═══════════════════════════════════════════════════════════════
+//  Knowledge Vault 科幻图标色板（库/目录/文件类型着色 + error 脉冲）
+//  token 见 theme/_css-vars-{light,dark}.sass；使用方：vaultTreeUi.ts
+// ═══════════════════════════════════════════════════════════════
+
+.kv-icon--cyan
+  color: var(--kv-cyan)
+
+.kv-icon--violet
+  color: var(--kv-violet)
+
+.kv-icon--teal
+  color: var(--kv-teal)
+
+.kv-icon--magenta
+  color: var(--kv-magenta)
+
+.kv-icon--orange
+  color: var(--kv-orange)
+
+.kv-icon--red
+  color: var(--kv-red)
+
+.kv-icon--muted
+  color: var(--color-icon-muted)
+
+// error 状态红色脉冲（vault 同步异常 / 文档索引失败）
+.kv-icon--pulse
+  animation: kv-icon-pulse 1.2s ease-in-out infinite
+
+@keyframes kv-icon-pulse
+  0%, 100%
+    opacity: 1
+  50%
+    opacity: 0.35

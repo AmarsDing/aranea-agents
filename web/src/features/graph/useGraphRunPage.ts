@@ -5,8 +5,14 @@ import type { CheckpointInfo, GraphDefinition, GraphExecution } from './types';
 import { useGraphStore } from '../../stores/graph';
 import { useGraphTimeTravel } from './runtime/useGraphTimeTravel';
 import { useGraphRunStream } from './runtime/useGraphRunStream';
+import { buildGraphRunKanbanNodes, synthesizeGraphNodesFromSteps } from './runtime/graphExecutionProjection';
 import { useGraphRunTasks } from './useGraphRunTasks';
 import { useGraphRunHitl } from './useGraphRunHitl';
+
+/** Kratos NotFound 经 axios 暴露为 HTTP 404（拦截器对 404 不弹全局 toast）。 */
+function isNotFoundError(err: unknown): boolean {
+  return (err as { response?: { status?: number } } | null)?.response?.status === 404;
+}
 
 export function useGraphRunPage() {
   const $q = useQuasar();
@@ -43,6 +49,8 @@ export function useGraphRunPage() {
 
   const execution = ref<GraphExecution | null>(null);
   const selectedNodeId = ref<string | null>(null);
+  // ── M53 Phase 11 F7：悬空 graph_id（资产已删除）降级标记 ──
+  const graphAssetMissing = ref(false);
 
   const stream = useGraphRunStream(graphId, execId, execution);
   const timeTravel = useGraphTimeTravel(execId);
@@ -74,14 +82,20 @@ export function useGraphRunPage() {
 
   async function loadPageData() {
     const seq = ++loadSeq;
+    graphAssetMissing.value = false;
     if (graphId.value) {
       try {
         const graph = await graphStore.fetchGraph(graphId.value);
         if (seq !== loadSeq) return;
         Object.assign(graphDef, graph);
-      } catch {
+      } catch (err) {
         if (seq !== loadSeq) return;
-        $q.notify({ type: 'negative', message: '加载 Graph 失败' });
+        // F7：资产已删除（换绑 external 级联删除）→ 友好降级，不弹错误
+        if (isNotFoundError(err)) {
+          graphAssetMissing.value = true;
+        } else {
+          $q.notify({ type: 'negative', message: '加载 Graph 失败' });
+        }
       }
     }
     if (execId.value) {
@@ -95,6 +109,14 @@ export function useGraphRunPage() {
         if (seq !== loadSeq) return;
         $q.notify({ type: 'negative', message: '加载执行记录失败' });
       }
+    }
+    // F7：降级渲染——从执行 steps 合成只读拓扑
+    if (graphAssetMissing.value) {
+      graphDef.id = graphId.value;
+      graphDef.name = '';
+      graphDef.nodes = synthesizeGraphNodesFromSteps(execution.value?.steps ?? []);
+      graphDef.edges = [];
+      graphDef.conditionalEdges = [];
     }
   }
 
@@ -249,6 +271,13 @@ export function useGraphRunPage() {
 
   const showProgressBar = computed(() => stream.execNodeStates.value.size > 0);
 
+  // ── M53 Phase 11 F7：team 执行 Kanban 视角 ──
+  const kanbanNodes = computed(() =>
+    buildGraphRunKanbanNodes(execution.value?.steps ?? [], stream.execNodeStates.value, graphDef.nodes),
+  );
+  /** team 执行（图 team_id 非空）或资产删除降级时显示 Kanban tab。 */
+  const showKanbanTab = computed(() => Boolean(graphDef.teamId) || graphAssetMissing.value);
+
   return {
     isDark,
     graphDef,
@@ -312,5 +341,8 @@ export function useGraphRunPage() {
     progressStepLabel,
     progressDurationSec,
     showProgressBar,
+    kanbanNodes,
+    showKanbanTab,
+    graphAssetMissing,
   };
 }

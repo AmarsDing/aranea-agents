@@ -30,7 +30,7 @@ func newTestUsecaseWithMock() (*SessionUsecase, *mockMetricsRepo) {
 		metricsUsecase:     mu,
 		compressionUsecase: NewSessionCompressionUsecase(repo, repo, repo, repo),
 		timelineUsecase:    NewSessionTimelineUsecase(repo, repo, repo, repo),
-		messageUsecase:     NewSessionMessageUsecase(repo, repo, repo, repo, nil, repo, repo, nil, mu, repo, repo, nil),
+		messageUsecase:     NewSessionMessageUsecase(repo, repo, repo, repo, nil, repo, repo, nil, mu, repo, repo, nil, nil),
 	}
 	return uc, repo
 }

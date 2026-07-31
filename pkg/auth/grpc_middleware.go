@@ -37,13 +37,23 @@ func GRPCMiddleware(lg loggateway.Logger) middleware.Middleware {
 			if token == "" {
 				lg.Info("gRPC request without credentials (internal-only)",
 					loggateway.StepID("grpc.unauthenticated"))
+				emitGRPCUnauthenticated(ctx)
 				return handler(ctx, req)
 			}
 
 			auth, err := ParseToken(token, authSecretKey)
 			if err != nil {
-				lg.Warn("gRPC auth rejected: token parse failed",
-					loggateway.StepID("grpc.token_invalid"), loggateway.Err(err))
+				// K2: 登录失败 Warn 需节流防爆破刷屏（与 HTTP 共享 10s 窗口）。
+				if ok, suppressed := tokenInvalidThrottle.allow(); ok {
+					fields := []loggateway.Field{
+						loggateway.StepID("grpc.token_invalid"),
+						loggateway.Err(err),
+					}
+					if suppressed > 0 {
+						fields = append(fields, loggateway.Int("suppressed", suppressed))
+					}
+					lg.Warn("gRPC auth rejected: token parse failed", fields...)
+				}
 				return nil, ErrUnauthorized
 			}
 			return handler(NewContext(ctx, auth), req)

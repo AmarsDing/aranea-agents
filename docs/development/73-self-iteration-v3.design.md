@@ -128,6 +128,8 @@ RunGate(ctx, workspaceDir, gate, scope) → GateResult{gate, passed, output, dur
 - **超时与资源**：每 Gate 独立超时（G1 5min / G2 10min / G3 5min），子进程组杀绝，输出截断 64KB 入报告
 - **生产隔离**：沙盒只读配置副本，测试走独立 PG schema（testhelper 模式）；禁止访问生产外部服务（环境变量白名单注入）
 
+> P2 落地注记（2026-07-30）：G3 以 `go vet <pkgs>` 为确定性下限（golangci-lint 包级接线推迟 Phase 3）；web 侧 gate（pnpm）未进 Runner，`DeriveAffectedScopes` 已输出 web 范围标志，Phase 3 随 Meta Team 集成接入；进程组杀绝沿用项目惯例 `exec.CommandContext`（Windows 无进程组语义）。diff 解析/受影响包推导/保护清单（doublestar glob）/500 行规模上限/SEL-08 敏感信息检测实现于 `internal/biz/self_improvement_patch.go`；Patcher 工具集（patcher_fs_read/patcher_fs_write/patcher_git_diff，worktree 作用域限定）实现于 `internal/tools/patcherfs/`。
+
 ### D5：Meta Team 编排映射（竞赛 AgentTeams 基点）
 
 Meta Team 定义为平台内置 SpiritTeam（复用 53-team-graph-orchestration），图编排：
@@ -164,6 +166,8 @@ Observer(代码节点,非LLM) → Analyst(LLM) → Patcher(LLM) → Verifier(代
 | R5 | 触发保护文件清单 | reject（不进入分级，直接拒绝） |
 
 通道映射：low→auto、medium→auto+notify、high→approval。每日 auto 配额 5 次，超限一律转 approval（复用 V2 日配额计数模式）。
+
+> P3 落地注记（2026-07-30）：Meta Team 编排实现于 `internal/biz/self_improvement_pipeline.go`（D5：Diagnose→Patch→Verify 重试回路→Govern，fail-fast 策略门禁在 Verify 前不消耗沙盒 Gate）；Agent 标识/提示词/结构化输出解析于 `self_improvement_agents.go`；RiskClassifier（R1-R5）于 `self_improvement_risk.go`；Critic G4 + 日配额 10 于 `internal/service/self_improvement_critic.go`；治理路由 `SIGovernanceRouter`（auto/notify 配额 5 超限转 approval、SINotifier/SIApprovalSink 端口）于 `self_improvement_router.go`；过程活动挂载（确定性 ID 两级树 `si-run:<id>` → 阶段子节点，patching/verifying 按 attempt 分叉）与用户介入控制面（pause→ErrSIRunPaused 非终态驻留、skip_retry、rollback=pre-apply 中止→rejected）于 `self_improvement_activity.go`/`self_improvement_control.go`。审批/通知/活动的 service 层适配器与 pause 恢复入口属 wire 级接线，推迟 Phase 4（见 development.md P3 落地偏差）。
 
 ### D7：应用与观察窗（Applier + Watchdog）
 
@@ -290,11 +294,13 @@ type PatchOutcomeWriter interface {
 ```go
 // Stability:evolving
 type RepoSandbox interface {
-    PrepareWorktree(ctx context.Context, runID string, baseRef string) (path string, cleanup func(), err error)
-    ApplyDiff(ctx context.Context, path string, diff string) error
-    RunGate(ctx context.Context, path string, gate GateKind, pkgs []string) (GateResult, error) // G1/G2/G3
+    PrepareWorktree(ctx context.Context, runID, baseRef string) (path string, cleanup func(), err error)
+    ApplyDiff(ctx context.Context, path, diff string) error
+    RunGate(ctx context.Context, path string, gate SandboxGateKind, pkgs []string) (SandboxGateResult, error) // G1/G2/G3
 }
 ```
+
+> 落地注记（2026-07-30，Phase 2）：类型名为 `SandboxGateKind`/`SandboxGateResult`（加前缀避免与 `verification_gate.go` 的 `GateResult` 冲突）。G4（Critic Agent）与 G5（Eval 基线）不经 `RepoSandboxRunner` 执行，由 Meta Team 相应阶段处理。
 
 ### 4.3 信号源端口（触发器依赖，面向既有子系统的窄读接口）
 

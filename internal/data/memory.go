@@ -156,6 +156,50 @@ func (r *memoryRepo) UpsertFactVector(ctx context.Context, agentID, userID, fact
 	return st.UpsertFact(ctx, factID, agentID, userID, statement, float32To64(embedding))
 }
 
+// SearchFactNeighbors implements biz.MemoryConflictNeighborSearcher: scored
+// neighbor recall within the agent+user partition for conflict arbitration.
+func (r *memoryRepo) SearchFactNeighbors(ctx context.Context, agentID, userID string, embedding []float32, limit int, minScore float64) ([]biz.MemoryConflictNeighbor, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+	dim, err := r.dimForEmbedding(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	st, err := r.storeFor(ctx, dim)
+	if err != nil {
+		return nil, err
+	}
+	hits, err := st.SearchByAgent(ctx, agentID, userID, float32To64(embedding), limit, minScore)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.MemoryConflictNeighbor, 0, len(hits))
+	for _, h := range hits {
+		score := h.Score
+		if score < 0 {
+			score = 0
+		}
+		if score > 1.0 {
+			score = 1.0
+		}
+		out = append(out, biz.MemoryConflictNeighbor{FactID: h.ID, Score: score})
+	}
+	return out, nil
+}
+
+// NewMemoryConflictNeighborSearcher creates a biz.MemoryConflictNeighborSearcher
+// backed by the pgvector fact store. Returns nil when Postgres is unavailable.
+func NewMemoryConflictNeighborSearcher(d *Data) biz.MemoryConflictNeighborSearcher {
+	if d == nil || d.Postgres() == nil {
+		return nil
+	}
+	return &memoryRepo{
+		data:  d,
+		store: make(map[int]vector.FactVectorStore),
+	}
+}
+
 // float32To64 converts a []float32 slice to []float64.
 func float32To64(v []float32) []float64 {
 	out := make([]float64, len(v))

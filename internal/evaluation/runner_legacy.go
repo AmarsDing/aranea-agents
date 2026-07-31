@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -52,5 +53,13 @@ func (r *Runner) executeLegacy(ctx context.Context, run biz.EvalRun, cases []biz
 	agg.finalize(&run)
 	run.Status = "completed"
 	run.FinishedAt = time.Now().UTC().Format(time.RFC3339)
+	if flow := r.flowEmitter(ctx, run.ID); flow != nil {
+		flow.LogDone("evaluation.run", "评测集运行完成",
+			event.P("run_id", run.ID),
+			event.P("dataset_id", run.DatasetID),
+			event.P("total_cases", run.TotalCases),
+			event.P("completed_cases", run.CompletedCases),
+			event.P("avg_score", agg.avg()))
+	}
 	return r.uc.UpdateRun(ctx, run)
 }

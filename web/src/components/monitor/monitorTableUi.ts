@@ -18,28 +18,32 @@ export function createAuditColumns(t: Translate): QTableColumn<AuditLog>[] {
   ];
 }
 
-/** RealtimeEvents 列定义 */
+/** RealtimeEvents 历史表列定义（设计：18-monitor.md §3.1 —— 时间/级别/分类/标题/摘要/主体/操作） */
 export function createMonitorEventColumns(t: Translate): QTableColumn<MonitorViewEvent>[] {
   return [
-    registryCol<MonitorViewEvent>('title', t('monitorPage.events.colTitle'), 'title', 'left', REGISTRY_COL_W.contentWide),
-    registryCol<MonitorViewEvent>('tags', t('monitorPage.events.colType'), 'type', 'left', REGISTRY_COL_W.content),
-    registryCol<MonitorViewEvent>('time', t('monitorPage.events.colTime'), 'time', 'left', REGISTRY_COL_W.agent),
-    registryColActions<MonitorViewEvent>(REGISTRY_COL_W.actionsWide, ''),
+    registryCol<MonitorViewEvent>('time', t('monitorPage.events.colTime'), 'timeAgo', 'left', '12%'),
+    registryCol<MonitorViewEvent>('severity', t('monitorPage.events.colSeverity'), 'severity', 'center', '8%'),
+    registryCol<MonitorViewEvent>('category', t('monitorPage.events.colCategory'), 'category', 'center', '9%'),
+    registryCol<MonitorViewEvent>('title', t('monitorPage.events.colTitle'), 'title', 'left', '20%'),
+    registryCol<MonitorViewEvent>('subtitle', t('monitorPage.events.colSubtitle'), 'subtitle', 'left', '30%'),
+    registryCol<MonitorViewEvent>('actor', t('monitorPage.events.colActor'), 'actor', 'left', '12%'),
+    registryColActions<MonitorViewEvent>('9%', ''),
   ];
 }
 
-/** TraceList 列定义 — Runs 列表（OPT-05 monitor_traces 真相源，含 Token/延迟/成本） */
+/** TraceList 列定义 — Runs 列表（OPT-05 monitor_traces 真相源，含 Token/延迟/成本）。
+ *  列宽总和 = 100%，避免横向滚动条。 */
 export function createMonitorTraceColumns(t: Translate): QTableColumn<MonitorTrace>[] {
   return [
-    registryCol<MonitorTrace>('name', t('monitorPage.traces.colName'), 'name', 'left', REGISTRY_COL_W.content),
-    registryCol<MonitorTrace>('agent', t('monitorPage.traces.colAgent'), 'agent_id', 'left', REGISTRY_COL_W.name),
-    registryCol<MonitorTrace>('model', t('monitorPage.traces.colModel'), 'model', 'left', REGISTRY_COL_W.name),
-    registryCol<MonitorTrace>('tokens', t('monitorPage.traces.colTokens'), 'total_tokens', 'right', REGISTRY_COL_W.agent),
-    registryCol<MonitorTrace>('latency', t('monitorPage.traces.colLatency'), 'duration_ms', 'right', REGISTRY_COL_W.agent),
-    registryCol<MonitorTrace>('cost', t('monitorPage.traces.colCost'), 'total_cost_usd', 'right', REGISTRY_COL_W.agent),
-    registryCol<MonitorTrace>('status', t('monitorPage.traces.colStatus'), 'status', 'center', REGISTRY_COL_W.status),
-    registryCol<MonitorTrace>('time', t('monitorPage.traces.colTime'), 'created_at', 'left', REGISTRY_COL_W.nameWide),
-    registryColActions<MonitorTrace>(REGISTRY_COL_W.traceAction, ''),
+    registryCol<MonitorTrace>('name', t('monitorPage.traces.colName'), 'name', 'left', '22%'),
+    registryCol<MonitorTrace>('agent', t('monitorPage.traces.colAgent'), 'agent_id', 'left', '14%'),
+    registryCol<MonitorTrace>('model', t('monitorPage.traces.colModel'), 'model', 'left', '12%'),
+    registryCol<MonitorTrace>('tokens', t('monitorPage.traces.colTokens'), 'total_tokens', 'right', '8%'),
+    registryCol<MonitorTrace>('latency', t('monitorPage.traces.colLatency'), 'duration_ms', 'right', '8%'),
+    registryCol<MonitorTrace>('cost', t('monitorPage.traces.colCost'), 'total_cost_usd', 'right', '8%'),
+    registryCol<MonitorTrace>('status', t('monitorPage.traces.colStatus'), 'status', 'center', '7%'),
+    registryCol<MonitorTrace>('time', t('monitorPage.traces.colTime'), 'created_at', 'left', '15%'),
+    registryColActions<MonitorTrace>('6%', ''),
   ];
 }
 

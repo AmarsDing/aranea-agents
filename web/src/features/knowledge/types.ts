@@ -109,12 +109,18 @@ export type IngestDocumentInput = {
   chunk_strategy?: string;
   /** unset/true = LLM 整理为 Markdown（失败降级原文本）；false = 原文本入库 */
   organize_to_markdown?: boolean;
+  /** G1-B3：vault 内目标目录（'/' = 库根）；空 = 历史行为（不落盘，仅 vault 集合有效） */
+  target_dir?: string;
 };
 
 export type KnowledgeDocumentContent = {
   id: string;
   content_text: string;
   organized: boolean;
+  /** G2-B5：vault 文件 body 原文（编辑器数据源；frontmatter 不含），非 vault 为空。 */
+  raw_content: string;
+  /** G2-B5：vault 文件 sha1，编辑保存（UpdateDocumentContent）的 CAS expectedHash。 */
+  base_hash: string;
 };
 
 export type KnowledgeUploadTask = {
@@ -139,6 +145,8 @@ export type SearchKnowledgeQuery = {
   rerank_candidates?: number;
   rewrite_strategy?: string;
   hybrid_search?: string;
+  /** G3-B7：搜索范围（vault 相对目录前缀，带尾斜杠）；空 = 全库。 */
+  path_prefix?: string;
 };
 
 export type EmbedderConfig = {
@@ -166,4 +174,30 @@ export type ListCollectionsResult = {
 export type ListDocumentsResult = {
   items: KnowledgeDocument[];
   total: number;
+};
+
+/** CollectionGraphNode 是单库图谱的一个文档节点（G4-B8 3D 知识图谱）。 */
+export type CollectionGraphNode = {
+  doc_id: string;
+  name: string;
+  rel_path: string;
+  doc_type: string;
+  /** 入边连接度（大小映射；孤立节点 = 0）。 */
+  degree: number;
+};
+
+/** CollectionGraphEdge 是一条文档间有向关联（端点均在范围内）。 */
+export type CollectionGraphEdge = {
+  /** 出向文档 doc_id。 */
+  source: string;
+  /** 入向文档 doc_id。 */
+  target: string;
+  /** explicit | entity | semantic */
+  type: string;
+};
+
+/** CollectionGraph 单库全量图谱（一次性返回，无分页）。 */
+export type CollectionGraph = {
+  nodes: CollectionGraphNode[];
+  edges: CollectionGraphEdge[];
 };

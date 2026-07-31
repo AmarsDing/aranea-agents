@@ -340,10 +340,11 @@ func (r *skillRepo) batchLastInvocations(ctx context.Context, c *dataent.Client,
 		 INNER JOIN (
 			SELECT skill_id, MAX(COALESCE(NULLIF(started_at, ''), created_at)) as max_time
 			FROM skill_invocation
-			WHERE skill_id IN (%s)
+			WHERE skill_id IN (%s) AND source = '`+biz.SkillInvocationSourceRuntime+`'
 			GROUP BY skill_id
 		 ) latest ON si.skill_id = latest.skill_id
-			AND COALESCE(NULLIF(si.started_at, ''), si.created_at) = latest.max_time`,
+			AND COALESCE(NULLIF(si.started_at, ''), si.created_at) = latest.max_time
+		 WHERE si.source = '`+biz.SkillInvocationSourceRuntime+`'`,
 		strings.Join(placeholders, ","),
 	))
 	lastRows, lErr := c.QueryContext(ctx, lastSQL, args...)

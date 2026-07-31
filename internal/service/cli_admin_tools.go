@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/tools/cli_admin"
 	deliverabletools "aranea-agents/internal/tools/deliverable"
 	"aranea-agents/internal/tools/memory_butler"
+	"aranea-agents/internal/tools/memoryremember"
 	orchtools "aranea-agents/internal/tools/orchestrator"
 	"aranea-agents/internal/tools/skills_butler"
 
@@ -244,6 +245,28 @@ func (o *ChatOrchestrator) memoryButlerTools(_ context.Context, ag biz.Agent) []
 		Agents:      o.td().ReadDeps.Agents,
 		LG:          o.lg(),
 	})
+}
+
+// memoryRememberTools assembles the memory_remember explicit-memory tool
+// (FR-M4) for every chat agent. agentID is closure-injected; userID is
+// resolved from the invocation session at call time — the LLM can never
+// specify whose memory to write. Returns nil when the memory write path is
+// unavailable (tool skipped).
+func (o *ChatOrchestrator) memoryRememberTools(ag biz.Agent) []trpctool.Tool {
+	if o == nil {
+		return nil
+	}
+	tl := memoryremember.NewRememberTool(memoryremember.Deps{
+		Writer:        o.infraDeps.MemoryConsolidationWriter,
+		Detector:      o.infraDeps.MemoryConflictDetector,
+		ConflictStore: o.infraDeps.MemoryConflictStore,
+		AgentID:       strings.TrimSpace(ag.ID),
+		LG:            o.lg(),
+	})
+	if tl == nil {
+		return nil
+	}
+	return []trpctool.Tool{tl}
 }
 
 // deliverableReaderTools assembles the P2 read_upstream_deliverable tool for

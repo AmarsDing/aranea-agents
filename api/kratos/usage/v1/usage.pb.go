@@ -721,8 +721,13 @@ type TokenUsageEvent struct {
 	StreamEnabled                  bool                   `protobuf:"varint,48,opt,name=stream_enabled,json=streamEnabled,proto3" json:"stream_enabled,omitempty"`
 	MetadataJson                   string                 `protobuf:"bytes,49,opt,name=metadata_json,json=metadataJson,proto3" json:"metadata_json,omitempty"`
 	CreatedAt                      string                 `protobuf:"bytes,50,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	unknownFields                  protoimpl.UnknownFields
-	sizeCache                      protoimpl.SizeCache
+	// Resolved display names (list queries only; empty when the referenced
+	// entity was deleted). agent_name falls back to the session's agent.
+	AgentName     string `protobuf:"bytes,51,opt,name=agent_name,json=agentName,proto3" json:"agent_name,omitempty"`
+	SessionTitle  string `protobuf:"bytes,52,opt,name=session_title,json=sessionTitle,proto3" json:"session_title,omitempty"`
+	TeamName      string `protobuf:"bytes,53,opt,name=team_name,json=teamName,proto3" json:"team_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TokenUsageEvent) Reset() {
@@ -1101,6 +1106,27 @@ func (x *TokenUsageEvent) GetMetadataJson() string {
 func (x *TokenUsageEvent) GetCreatedAt() string {
 	if x != nil {
 		return x.CreatedAt
+	}
+	return ""
+}
+
+func (x *TokenUsageEvent) GetAgentName() string {
+	if x != nil {
+		return x.AgentName
+	}
+	return ""
+}
+
+func (x *TokenUsageEvent) GetSessionTitle() string {
+	if x != nil {
+		return x.SessionTitle
+	}
+	return ""
+}
+
+func (x *TokenUsageEvent) GetTeamName() string {
+	if x != nil {
+		return x.TeamName
 	}
 	return ""
 }
@@ -2443,7 +2469,7 @@ const file_kratos_usage_v1_usage_proto_rawDesc = "" +
 	"\x15avg_tokens_per_second\x18\b \x01(\x01R\x12avgTokensPerSecond\x12!\n" +
 	"\fsuccess_rate\x18\t \x01(\x01R\vsuccessRate\x12\x14\n" +
 	"\x05flags\x18\n" +
-	" \x03(\tR\x05flags\"\x8c\x10\n" +
+	" \x03(\tR\x05flags\"\xed\x10\n" +
 	"\x0fTokenUsageEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\voccurred_at\x18\x02 \x01(\tR\n" +
@@ -2507,7 +2533,11 @@ const file_kratos_usage_v1_usage_proto_rawDesc = "" +
 	"\x0estream_enabled\x180 \x01(\bR\rstreamEnabled\x12#\n" +
 	"\rmetadata_json\x181 \x01(\tR\fmetadataJson\x12\x1d\n" +
 	"\n" +
-	"created_at\x182 \x01(\tR\tcreatedAt\"\xd6\x01\n" +
+	"created_at\x182 \x01(\tR\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"agent_name\x183 \x01(\tR\tagentName\x12#\n" +
+	"\rsession_title\x184 \x01(\tR\fsessionTitle\x12\x1b\n" +
+	"\tteam_name\x185 \x01(\tR\bteamName\"\xd6\x01\n" +
 	"\x13UsageQuotaDashboard\x12)\n" +
 	"\x10configured_count\x18\x01 \x01(\x05R\x0fconfiguredCount\x12-\n" +
 	"\x13total_cap_micro_usd\x18\x02 \x01(\x03R\x10totalCapMicroUsd\x121\n" +

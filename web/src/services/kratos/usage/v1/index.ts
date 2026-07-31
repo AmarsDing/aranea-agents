@@ -129,6 +129,11 @@ export type TokenUsageEvent = {
   streamEnabled: boolean | undefined;
   metadataJson: string | undefined;
   createdAt: string | undefined;
+  // Resolved display names (list queries only; empty when the referenced
+  // entity was deleted). agent_name falls back to the session's agent.
+  agentName: string | undefined;
+  sessionTitle: string | undefined;
+  teamName: string | undefined;
 };
 
 export type UsageQuotaDashboard = {

@@ -117,9 +117,11 @@ export function isCronScheduleValid(form: CronTaskFormValue): boolean {
   return Boolean(form.run_at_date && form.run_at_time);
 }
 
-export function canSaveCronForm(form: CronTaskFormValue): boolean {
+export function canSaveCronForm(form: CronTaskFormValue, isEdit = false): boolean {
   return (
-    cronSlugPattern.test(form.name) &&
+    // 编辑时标识只读不参与 slug 校验：内置系统任务（如 dream_cycle）key 含下划线，
+    // 创建期 slug 规则不应回填拦截已有任务的保存。
+    (isEdit || cronSlugPattern.test(form.name)) &&
     Boolean(form.message.trim()) &&
     isCronTargetValid(form) &&
     isCronScheduleValid(form)

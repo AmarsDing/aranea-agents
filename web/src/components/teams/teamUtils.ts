@@ -202,6 +202,7 @@ export function resetDefinition(target: TeamDefinition): void {
     'enable_checkpoint',
     'team_graph_runtime',
     'graph',
+    'source',
   ];
   for (const key of optionalKeys) {
     delete (target as Record<string, unknown>)[key];
@@ -265,6 +266,43 @@ export function definitionToJSON(definition: TeamDefinition): string {
     graph: definition.graph?.nodes?.length ? definition.graph : buildGraphFromDefinition(definition),
   };
   return JSON.stringify(payload);
+}
+
+// ── M53 Phase 11：拓扑来源（source）──
+
+export type DefinitionGraphSource = 'preset' | 'custom' | 'linked_external';
+
+/**
+ * 后端 biz.OrchestrationSpec.GraphSource 的前端镜像：source 缺省/未知值按 preset 处理。
+ * preset=表单（mode/members）派生；custom=Graph 编辑器手改过；linked_external=关联独立图资产。
+ */
+export function definitionGraphSource(definition: TeamDefinition): DefinitionGraphSource {
+  const s = String(definition.source || '')
+    .trim()
+    .toLowerCase();
+  if (s === 'custom' || s === 'linked_external') return s;
+  return 'preset';
+}
+
+/**
+ * 覆盖确认指纹（M53 Phase 11 F2）：拓扑字段 + enable_checkpoint。
+ * 镜像后端 teamTopologyFingerprint 中「会触发按表单重建」的字段子集——custom 团队
+ * 打开编辑器后该指纹变化即意味着保存会覆盖 Graph 编辑器中的自定义拓扑。
+ */
+export function definitionTopologyOverwriteKey(definition: TeamDefinition): string {
+  return `${definitionTopologyKey(definition)}|cp=${String(definition.enable_checkpoint ?? true)}`;
+}
+
+/**
+ * 「关联 Graph」选择器选项：仅独立图资产——排除 team-owned（镜像后端
+ * isTeamOwnedGraph 的 metadata 判定，team_id 回填不能作为 owned 依据）。
+ */
+export function linkableGraphOptions(
+  graphs: Array<{ id: string; name: string; metadata?: Record<string, unknown> }>,
+): Array<{ label: string; value: string }> {
+  return graphs
+    .filter((g) => String(g.id || '').trim() !== '' && g.metadata?.team_owned !== true)
+    .map((g) => ({ label: g.name || g.id, value: g.id }));
 }
 
 // ── ADR-08 A1 派生同步：拓扑字段 → graph 单向派生 ──

@@ -16,6 +16,9 @@ type MemorySet struct {
 	L2Recall        biz.MemoryL2Recaller
 	L3Recall        biz.MemoryL3Recaller
 	CompositeRecall biz.MemoryCompositeRecaller
+	// PreferenceLister feeds the pinned preference/constraint prompt block
+	// (FR-M3). Optional: nil disables pinned injection.
+	PreferenceLister biz.MemoryPreferenceLister
 }
 
 func (s MemorySet) Available() bool {

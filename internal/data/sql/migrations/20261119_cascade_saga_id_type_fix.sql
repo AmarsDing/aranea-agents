@@ -1,4 +1,7 @@
--- Version 20260803: Fix cascade_saga_steps id type
+-- Version 20261119 (renumbered from 20260803: version collision with the
+-- session_turn_number_rebackfill data migration, which claimed 20260803 first
+-- and caused this DDL to be silently skipped).
+-- Fix cascade_saga_steps id type
 -- The original 20260609 migration created id as INTEGER PRIMARY KEY AUTOINCREMENT,
 -- but the data layer inserts UUID strings. Since the table was never successfully
 -- used (due to a table-name prefix bug fixed in the same patch), it is safe to

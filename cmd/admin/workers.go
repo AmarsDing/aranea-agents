@@ -32,6 +32,7 @@ type backgroundWorkersConfig struct {
 	SkillIntelligenceWorker     BackgroundStarter
 	CuratorWorker               BackgroundStarter
 	EvolutionOrchestratorWorker BackgroundStarter
+	SelfImproveObserveWorker    BackgroundStarter
 	ProviderHealthScanner       BackgroundStarter
 	ChannelHealthScanner        BackgroundStarter
 	ChannelDeliveryScanner      BackgroundStarter
@@ -59,6 +60,7 @@ type backgroundWorkersConfig struct {
 	MemoryL3Decay               BackgroundStarter
 	MemoryL4Decay               BackgroundStarter
 	MemoryEbbinghausDecay       BackgroundStarter
+	MemoryCanary                BackgroundStarter
 	MemorySleepTime             BackgroundStarter
 	MemoryEpisodeBackfill       BackgroundStarter
 	MemoryFactIndexReconciler   BackgroundStarter
@@ -147,6 +149,11 @@ func startBackgroundWorkers(
 	if cfg.EvolutionOrchestratorWorker != nil {
 		goAfterReady("evolution_orchestrator", func() { cfg.EvolutionOrchestratorWorker.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "evolution orchestrator worker scheduled", "interval", "2h")
+	}
+
+	if cfg.SelfImproveObserveWorker != nil {
+		goAfterReady("self_improve_observe", func() { cfg.SelfImproveObserveWorker.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "self-improve observe worker scheduled", "interval", "15m")
 	}
 
 	if cfg.ProviderHealthScanner != nil {
@@ -279,6 +286,11 @@ func startBackgroundWorkers(
 	if cfg.MemoryEbbinghausDecay != nil {
 		goAfterReady("memory_ebbinghaus_decay", func() { cfg.MemoryEbbinghausDecay.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "memory ebbinghaus decay worker scheduled", "interval", "24h")
+	}
+
+	if cfg.MemoryCanary != nil {
+		goAfterReady("memory_canary", func() { cfg.MemoryCanary.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "memory canary worker scheduled", "interval", "30m")
 	}
 
 	if cfg.MemorySleepTime != nil {

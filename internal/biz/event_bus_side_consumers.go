@@ -40,15 +40,16 @@ func NewEventBusSideConsumers(
 	fileAppender *monitor.FlowFileAppender,
 	usage *UsageUsecase,
 	logger SessionLogWriter,
+	flowLogWriter FlowLogWriter,
 ) *EventBusSideConsumers {
 	if eventBus == nil && monitorEventBus == nil {
 		return nil
 	}
 	return &EventBusSideConsumers{
 		callback:        newCallbackConsumer(eventBus, webhooks, logger),
-		flowLog:         newFlowLogPersistConsumer(flowLogs, logger, monitorEventBus),
-		userFeedback:    newUserFeedbackConsumer(eventBus, monitorUC, memWorker, logger),
-		usageRollup:     newUsageRollupConsumer(eventBus, usage, logger),
+		flowLog:         newFlowLogPersistConsumer(flowLogs, logger, monitorEventBus, flowLogWriter),
+		userFeedback:    newUserFeedbackConsumer(eventBus, monitorUC, memWorker, logger, flowLogWriter),
+		usageRollup:     newUsageRollupConsumer(eventBus, usage, logger, flowLogWriter),
 		webhooks:        webhooks,
 		traceProj:       traceProj,
 		fileAppender:    fileAppender,

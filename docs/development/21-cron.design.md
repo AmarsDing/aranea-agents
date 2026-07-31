@@ -247,7 +247,24 @@ Ent Schema：`internal/data/ent/schema/cron_task_run.go`
 }
 ```
 
-### 4.5 UI 字段与物理字段映射
+### 4.5 内置系统任务种子（SeedCronTasks）
+
+文件：`internal/data/seed_system_admin.go`（`Data` 初始化时执行），注入两个系统任务：
+
+| task_key | 名称 | 执行者 | 计划 | message 要点 |
+|----------|------|--------|------|--------------|
+| `dream_cycle` | 记忆整理周期 | `agent___memory__` | cron `0 3 * * *`（Asia/Shanghai） | 执行 `memory_butler_dream_cycle`，`dry_run=true` 仅模拟 |
+| `skill_health_scan` | 技能健康扫描 | `agent___skills__` | cron `0 4 * * 1`（Asia/Shanghai） | 执行 `skills_butler_analyze_skill_health` 输出报告 |
+
+**upsert 语义**（`ON CONFLICT(task_key)`，2026-07-30 修复 schema 漂移后引入条件覆盖）：
+
+- 新行：插入完整配置（§4.3 新 schema）。
+- 已存在且 `config_json` 为旧 schema（不含 `schedule_type`，runner/前端均无法解析，会每分钟记 `cron message is required` 失败并进死信）：修复 config 并复活（`status=active`、`enabled=true`、`metadata_json='{}'`）。
+- 已存在且为新 schema：视为用户已在管理面板编辑过，**不做任何覆盖**，保留用户修改。
+
+> 历史教训：旧版 seed 写入 `{"schedule":"0 3 * * *"}` 旧 schema 且每次启动无条件覆盖 config_json，导致两个任务必然进死信且用户无法通过 UI 修复（前端列表/编辑兜底不一致显示「每 1 分钟 / 15 分钟」，含下划线的 task_key 被创建期 slug 校验拦截）。
+
+### 4.6 UI 字段与物理字段映射
 
 | UI / 逻辑字段 | 保存位置 |
 |---------------|----------|
@@ -813,7 +830,7 @@ web/src/
 
 | 控件 | 绑定 | 说明 |
 |------|------|------|
-| `QInput` 名称 | `name` | 必填，hint="仅小写字母、数字和连字符" |
+| `QInput` 名称 | `name` | 必填，hint="仅小写字母、数字和连字符"；**编辑态只读且不参与 slug 校验**（内置系统任务 key 含下划线，如 `dream_cycle`，创建期 slug 规则不回填拦截已有任务保存） |
 | `QBtnToggle` 目标类型 | `config.targetType` | agent / team |
 | `QSelect` Agent | `agentId` | target_type=agent 时显示，选项含「默认」+ Agent 列表 |
 | `QSelect` Team | `config.teamId` | target_type=team 时显示，Team 列表 |

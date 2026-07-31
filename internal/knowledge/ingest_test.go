@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"aranea-agents/pkg/apierror"
 )
 
 func TestNormalizeMetadataJSON(t *testing.T) {
@@ -32,7 +34,7 @@ func TestBuildIndexedChunks_appliesMetadata(t *testing.T) {
 		MetadataJSON: `{"source":"test"}`,
 		Strategy:     ChunkByChar,
 		ChunkSize:    512,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,6 +80,67 @@ func TestSplitWithStrategy_recursive(t *testing.T) {
 	}
 }
 
+// 词法库（embedder nil）：仅分块不嵌入，Embedding 留空，与 vault buildChunks 的 R-4 降级一致。
+func TestBuildIndexedChunks_lexicalWhenEmbedderNil(t *testing.T) {
+	t.Parallel()
+	chunks, err := BuildIndexedChunks(t.Context(), nil, IngestParams{
+		DocID:        "doc1",
+		CollectionID: "col1",
+		Text:         "hello world",
+		Strategy:     ChunkByChar,
+		ChunkSize:    512,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) == 0 {
+		t.Fatal("expected chunks")
+	}
+	for _, ch := range chunks {
+		if len(ch.Embedding) != 0 {
+			t.Fatalf("lexical chunk must have empty embedding, got %d dims", len(ch.Embedding))
+		}
+	}
+}
+
+// embedder 未配置（ErrEmbedderNotConfigured）：降级词法索引而非整篇 error（F5 同哲学）。
+func TestBuildIndexedChunks_degradeWhenEmbedderNotConfigured(t *testing.T) {
+	t.Parallel()
+	chunks, err := BuildIndexedChunks(t.Context(), failIngestEmbedder{err: ErrEmbedderNotConfigured}, IngestParams{
+		DocID:        "doc1",
+		CollectionID: "col1",
+		Text:         "hello world",
+		Strategy:     ChunkByChar,
+		ChunkSize:    512,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) == 0 {
+		t.Fatal("expected chunks")
+	}
+	for _, ch := range chunks {
+		if len(ch.Embedding) != 0 {
+			t.Fatalf("degraded chunk must have empty embedding, got %d dims", len(ch.Embedding))
+		}
+	}
+}
+
+// embedder 其他错误（网络/服务异常）仍整篇 error——不掩盖真实故障。
+func TestBuildIndexedChunks_errorWhenEmbedderFails(t *testing.T) {
+	t.Parallel()
+	_, err := BuildIndexedChunks(t.Context(), failIngestEmbedder{err: apierror.Internal(apierror.DomainKnowledge, "boom")}, IngestParams{
+		DocID:        "doc1",
+		CollectionID: "col1",
+		Text:         "hello world",
+		Strategy:     ChunkByChar,
+		ChunkSize:    512,
+	}, nil)
+	if err == nil {
+		t.Fatal("expected embed failure to propagate")
+	}
+}
+
 type stubIngestEmbedder struct {
 	dim int
 }
@@ -92,4 +155,17 @@ func (s stubIngestEmbedder) Embed(_ context.Context, texts []string) ([][]float3
 
 func (s stubIngestEmbedder) Dim() int {
 	return s.dim
+}
+
+// failIngestEmbedder 恒返回指定错误（模拟 embedder 未配置/故障）。
+type failIngestEmbedder struct {
+	err error
+}
+
+func (s failIngestEmbedder) Embed(_ context.Context, _ []string) ([][]float32, error) {
+	return nil, s.err
+}
+
+func (s failIngestEmbedder) Dim() int {
+	return 0
 }

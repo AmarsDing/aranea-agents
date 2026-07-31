@@ -31,7 +31,10 @@ export function useGraphEditorAssets(graphDef: GraphDefinition, _isNew: () => bo
     try {
       versions.value = await graphStore.fetchGraphVersions(graphDef.id);
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('graphs.assetLoadVersionsFailed') });
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : t('graphs.assetLoadVersionsFailed'),
+      });
     } finally {
       versionsLoading.value = false;
     }
@@ -146,7 +149,10 @@ export function useGraphEditorAssets(graphDef: GraphDefinition, _isNew: () => bo
       templateDialogOpen.value = false;
       $q.notify({ type: 'positive', message: t('graphs.assetTemplateSaved') });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('graphs.assetTemplateSaveFailed') });
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : t('graphs.assetTemplateSaveFailed'),
+      });
     } finally {
       templateSaving.value = false;
     }

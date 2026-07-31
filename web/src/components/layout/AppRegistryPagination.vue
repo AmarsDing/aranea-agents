@@ -1,6 +1,6 @@
 <template>
   <footer class="app-registry-pagination app-registry-pagination--card q-mt-md">
-    <div class="app-registry-pagination__summary">{{ total }} {{ label }}</div>
+    <div class="app-registry-pagination__summary">{{ total }} {{ label ?? t('common.pagination.unit') }}</div>
     <div class="app-registry-pagination__controls row items-center no-wrap">
       <q-select
         :model-value="pageSize"
@@ -8,12 +8,12 @@
         outlined
         emit-value
         map-options
-        label="每页"
+        :label="t('common.pagination.perPage')"
         :options="pageSizeOptionsResolved"
         class="app-registry-pagination__page-size app-glass-control"
         @update:model-value="emit('update:pageSize', Number($event))"
       />
-      <span class="app-registry-pagination__page-label">第 {{ page }} / {{ pageMax }} 页</span>
+      <span class="app-registry-pagination__page-label">{{ t('common.pagination.pageOf', { page, max: pageMax }) }}</span>
       <q-btn
         round
         dense
@@ -36,6 +36,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 const props = withDefaults(
   defineProps<{
@@ -44,13 +45,14 @@ const props = withDefaults(
     pageMax: number;
     total: number;
     loading?: boolean;
+    /** 汇总单位文案（如「条事件」）；缺省用 common.pagination.unit */
     label?: string;
     /** 默认 10 / 20 / 50，与 Skill 管理页一致 */
     pageSizeOptions?: number[];
   }>(),
   {
     loading: false,
-    label: '条',
+    label: undefined,
     pageSizeOptions: () => [10, 20, 50],
   },
 );
@@ -59,6 +61,8 @@ const emit = defineEmits<{
   'update:page': [value: number];
   'update:pageSize': [value: number];
 }>();
+
+const { t } = useI18n();
 
 const pageSizeOptionsResolved = computed(() => props.pageSizeOptions.map((value) => ({ label: String(value), value })));
 </script>

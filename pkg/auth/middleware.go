@@ -110,8 +110,18 @@ func Middleware(lg loggateway.Logger) httpm.FilterFunc {
 			}
 			auth, err := ParseToken(tokenStr, authSecretKey)
 			if err != nil {
-				lg.Warn("auth rejected: token parse failed",
-					loggateway.StepID("auth.token_invalid"), loggateway.Str("path", r.URL.Path), loggateway.Err(err))
+				// K2: 登录失败 Warn 需节流防爆破刷屏（10s 窗口，简单计数）。
+				if ok, suppressed := tokenInvalidThrottle.allow(); ok {
+					fields := []loggateway.Field{
+						loggateway.StepID("auth.token_invalid"),
+						loggateway.Str("path", r.URL.Path),
+						loggateway.Err(err),
+					}
+					if suppressed > 0 {
+						fields = append(fields, loggateway.Int("suppressed", suppressed))
+					}
+					lg.Warn("auth rejected: token parse failed", fields...)
+				}
 				ec := errors.FromError(err)
 				http.Error(w, ec.Message, int(ec.Code))
 				return

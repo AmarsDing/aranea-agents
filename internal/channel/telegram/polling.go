@@ -45,12 +45,20 @@ func RunPolling(
 	}
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
-		return telegramAPIError("telegram polling: new bot", err.Error())
+		apiErr := telegramAPIError("telegram polling: new bot", err.Error())
+		runtime.EmitConnectError(ctx, "telegram", ch.ID, "Telegram Bot API 连接失败", apiErr)
+		return apiErr
 	}
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 	updates := bot.GetUpdatesChan(u)
+	lg.Info("Telegram Polling 已连接",
+		loggateway.StepID("channel.telegram.polling.connected"),
+		loggateway.Str("channel_id", ch.ID),
+		loggateway.Str("bot_username", bot.Self.UserName),
+	)
+	runtime.EmitConnectOpen(ctx, "telegram", ch.ID, bot.Self.UserName, "Telegram Polling 已连接")
 	for {
 		select {
 		case <-ctx.Done():

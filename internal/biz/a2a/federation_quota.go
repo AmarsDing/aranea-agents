@@ -99,6 +99,15 @@ func (q *QuotaChecker) Check(ctx context.Context, callerOrgID, calleeOrgID strin
 			return apierror.Internal(apierror.DomainA2AFed, "federation per-minute limiter unavailable: %v", err).WithCause(err)
 		}
 		if !ok {
+			if q.lg != nil {
+				q.lg.Warn("federation call denied by per-minute quota",
+					loggateway.StepID("a2a.fed.quota.denied"),
+					loggateway.Str("policy_id", p.ID),
+					loggateway.Str("caller_org_id", callerOrgID),
+					loggateway.Str("callee_org_id", calleeOrgID),
+					loggateway.Int("max_per_min", p.MaxPerMin),
+				)
+			}
 			return apierror.RateLimit(apierror.DomainA2AFed, "federation per-minute quota exceeded for %s -> %s (max %d/min)", callerOrgID, calleeOrgID, p.MaxPerMin)
 		}
 	}
@@ -108,6 +117,15 @@ func (q *QuotaChecker) Check(ctx context.Context, callerOrgID, calleeOrgID strin
 			return apierror.Internal(apierror.DomainA2AFed, "federation daily quota count unavailable: %v", err).WithCause(err)
 		}
 		if n >= p.DailyQuota {
+			if q.lg != nil {
+				q.lg.Warn("federation call denied by daily quota",
+					loggateway.StepID("a2a.fed.quota.denied"),
+					loggateway.Str("policy_id", p.ID),
+					loggateway.Str("caller_org_id", callerOrgID),
+					loggateway.Str("callee_org_id", calleeOrgID),
+					loggateway.Int("daily_quota", p.DailyQuota),
+				)
+			}
 			return apierror.RateLimit(apierror.DomainA2AFed, "federation daily quota exceeded for %s -> %s (max %d/day)", callerOrgID, calleeOrgID, p.DailyQuota)
 		}
 	}

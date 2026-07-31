@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"google.golang.org/genai"
@@ -65,6 +67,8 @@ type MultiProviderEmbedder struct {
 	Model    string
 	dim      int
 	lg       loggateway.Logger
+	// monitorBus 流程日志总线（装配层经 SetMonitorBus 注入；nil 时跳过流程日志）。
+	monitorBus contract.MonitorBus
 }
 
 var _ Embedder = (*MultiProviderEmbedder)(nil)
@@ -200,9 +204,38 @@ func (e *MultiProviderEmbedder) Embed(ctx context.Context, texts []string) ([][]
 	return e.EmbedBatchWithTaskType(ctx, texts, "")
 }
 
+// SetMonitorBus 注入流程日志总线（装配层调用；nil = 不发射流程日志）。
+func (e *MultiProviderEmbedder) SetMonitorBus(bus contract.MonitorBus) {
+	if e == nil {
+		return
+	}
+	e.monitorBus = bus
+}
+
 // EmbedBatchWithTaskType returns embeddings with an optional task type hint (e.g. "RETRIEVAL_QUERY").
 // Currently only Gemini uses task type; other providers ignore it.
 func (e *MultiProviderEmbedder) EmbedBatchWithTaskType(ctx context.Context, texts []string, taskType string) ([][]float32, error) {
+	start := time.Now()
+	vecs, err := e.embedBatchWithTaskType(ctx, texts, taskType)
+	// 查询嵌入（RETRIEVAL_QUERY）属检索热路径，已由 knowledge.search 覆盖；
+	// 这里只记录文档批嵌入（摄取路径 taskType 为空 / RETRIEVAL_DOCUMENT）。
+	if e.monitorBus != nil && len(texts) > 0 && taskType != "RETRIEVAL_QUERY" {
+		flow := newKnowledgeFlow(ctx, e.monitorBus, nil)
+		if err != nil {
+			flow.LogError("system.knowledge.embed_fail", "知识嵌入失败，降级处理",
+				event.P("batch_size", len(texts)),
+				event.P("duration_ms", time.Since(start).Milliseconds()),
+				event.P("error", err.Error()))
+		} else {
+			flow.LogDone("knowledge.ingest.embed", "文档向量嵌入完成",
+				event.P("batch_size", len(texts)),
+				event.P("duration_ms", time.Since(start).Milliseconds()))
+		}
+	}
+	return vecs, err
+}
+
+func (e *MultiProviderEmbedder) embedBatchWithTaskType(ctx context.Context, texts []string, taskType string) ([][]float32, error) {
 	if len(texts) == 0 {
 		return nil, nil
 	}

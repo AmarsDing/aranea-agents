@@ -92,21 +92,22 @@ func (r *l2EpisodeRepo) InsertL1ArchiveEpisode(ctx context.Context, in biz.L1Arc
 	}
 	consolidationStatus := "consolidated"
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_episodes (
-		id, session_id, agent_id, l1_task_id, episode_kind, title, goal,
-		outcome, outcome_summary, importance, confidence,
-		key_decisions_json, key_artifacts_json, l1_snapshot_json,
-		consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-	ON CONFLICT(session_id, l1_task_id) WHERE l1_task_id != '' DO UPDATE SET
-		goal = excluded.goal, outcome = excluded.outcome,
-		outcome_summary = excluded.outcome_summary, importance = excluded.importance,
-		confidence = excluded.confidence,
-		key_decisions_json = excluded.key_decisions_json,
-		key_artifacts_json = excluded.key_artifacts_json,
-		l1_snapshot_json = excluded.l1_snapshot_json,
-		title = excluded.title,
-		episode_kind = excluded.episode_kind,
-		ended_at = excluded.ended_at`),
+	id, session_id, agent_id, l1_task_id, episode_kind, title, goal,
+	outcome, outcome_summary, importance, confidence,
+	key_decisions_json, key_artifacts_json, l1_snapshot_json,
+	consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at, updated_at
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(session_id, l1_task_id) WHERE l1_task_id != '' DO UPDATE SET
+	goal = excluded.goal, outcome = excluded.outcome,
+	outcome_summary = excluded.outcome_summary, importance = excluded.importance,
+	confidence = excluded.confidence,
+	key_decisions_json = excluded.key_decisions_json,
+	key_artifacts_json = excluded.key_artifacts_json,
+	l1_snapshot_json = excluded.l1_snapshot_json,
+	title = excluded.title,
+	episode_kind = excluded.episode_kind,
+	ended_at = excluded.ended_at,
+	updated_at = excluded.updated_at`),
 		id,
 		strings.TrimSpace(in.SessionID),
 		strings.TrimSpace(in.AgentID),
@@ -121,7 +122,7 @@ func (r *l2EpisodeRepo) InsertL1ArchiveEpisode(ctx context.Context, in biz.L1Arc
 		keyDecisionsJSON,
 		keyArtifactsJSON,
 		l1SnapshotJSON,
-		consolidationStatus, 0, "{}", now, now,
+		consolidationStatus, 0, "{}", now, now, now,
 	)
 	return entErrToBizErr(err, "MEMORY_L2")
 }

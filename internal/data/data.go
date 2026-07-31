@@ -73,6 +73,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(biz.ChannelTxProvider), new(*Data)),
 	wire.Bind(new(biz.EvolutionTxProvider), new(*Data)),
 	wire.Bind(new(biz.SystemSettingTxProvider), new(*Data)),
+	wire.Bind(new(biz.TeamTxProvider), new(*Data)),
 	NewChannelPeerSessionRepo,
 	NewChannelInboundReceiptRepo,
 	NewChannelTurnJobRepo,
@@ -146,6 +147,10 @@ var ProviderSet = wire.NewSet(
 	NewSkillMergeRepo,
 	NewFailurePatternRepo,
 	NewUnifiedEvolutionRepo,
+	NewSelfImprovementRunRepo,
+	wire.Bind(new(biz.SelfImprovementRunReader), new(*SelfImprovementRunRepo)),
+	wire.Bind(new(biz.SelfImprovementRunWriter), new(*SelfImprovementRunRepo)),
+	NewSelfImprovementSignalRepo,
 	NewPackSeeder,
 	NewCircuitBreakerStateRepo,
 	// V2 repos for LLM Activity Ordering redesign (Phase 1).

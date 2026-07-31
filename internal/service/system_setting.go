@@ -6,6 +6,8 @@ import (
 
 	v1 "aranea-agents/api/kratos/system_setting/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/loggateway"
 
@@ -24,6 +26,7 @@ type SystemSettingService struct {
 	// embedderAdmin hot-reloads in-memory knowledge embedder after DB persist (same path as KnowledgeService).
 	embedderAdmin knowledge.EmbedderAdmin
 	lg            loggateway.Logger
+	monitorBus    contract.MonitorBus
 }
 
 func NewSystemSettingService(
@@ -33,6 +36,7 @@ func NewSystemSettingService(
 	embedder knowledge.Embedder,
 	mon *biz.MonitorUsecase,
 	lg loggateway.Logger,
+	monitorBus contract.MonitorBus,
 ) *SystemSettingService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
@@ -48,7 +52,27 @@ func NewSystemSettingService(
 		mon:           mon,
 		embedderAdmin: admin,
 		lg:            lg,
+		monitorBus:    monitorBus,
 	}
+}
+
+// emitFlow emits a system-domain flow log for settings changes; nil-safe when
+// the monitor bus is unavailable (tests).
+func (s *SystemSettingService) emitFlow(ctx context.Context, stepID, message string, flowErr error, pairs ...event.Pair) {
+	if s == nil || s.monitorBus == nil {
+		return
+	}
+	em := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:    ctx,
+		Domain: event.TraceDomainSystem,
+		LG:     s.lg,
+		Infra:  event.NewInfraFromBus(s.monitorBus),
+	})
+	if flowErr != nil {
+		em.LogError(stepID, message, append(pairs, event.P("error", flowErr.Error()))...)
+		return
+	}
+	em.LogDone(stepID, message, pairs...)
 }
 
 func (s *SystemSettingService) GetSystemSettings(ctx context.Context, _ *emptypb.Empty) (*v1.SystemSettings, error) {
@@ -97,18 +121,26 @@ func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1
 		}
 		patch.WebResearchUpdateKey = strings.TrimSpace(req.GetWebResearchApiKey()) != ""
 	}
+	// 流程日志 extra 仅含更新的 key 列表（分区名），严禁记录任何配置值（可能敏感）。
+	updateKeys := updatedSettingSections(req, patch)
 	row, err := s.uc.UpdateAll(ctx, patch)
 	if err != nil {
+		s.emitFlow(ctx, "settings.update", "系统设置更新失败", err,
+			event.P("keys", strings.Join(updateKeys, ",")))
 		return nil, err
 	}
+	s.emitFlow(ctx, "settings.update", "系统设置更新完成", nil,
+		event.P("keys", strings.Join(updateKeys, ",")))
 	// 配置变更为单例实体：resource=config 无 resource_id，summary 仅列变更的分区名（严禁记录密钥值）。
 	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
 		Action:   biz.AuditAction(biz.AuditVerbUpdate, "config"),
 		Resource: "config",
 		Summary:  "sections=" + strings.Join(updatedSettingSections(req, patch), ","),
 	})
+	var hotReloaded []string
 	if s.a2aPublicBase != nil {
 		s.a2aPublicBase.Reload(row.A2APublicBaseURL)
+		hotReloaded = append(hotReloaded, "a2a_public_base_url")
 	}
 	// Keep in-memory knowledge embedder aligned with DB (authoritative for live RAG).
 	if patch.KnowledgeEmbed != nil && s.embedderAdmin != nil {
@@ -121,6 +153,11 @@ func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1
 		s.lg.Info("system settings: knowledge embedder hot-reloaded after persist",
 			loggateway.StepID("system_setting.embedder.reload"),
 		)
+		hotReloaded = append(hotReloaded, "knowledge_embedder")
+	}
+	if len(hotReloaded) > 0 {
+		s.emitFlow(ctx, "settings.hot_reload", "配置热更新完成", nil,
+			event.P("items", strings.Join(hotReloaded, ",")))
 	}
 	return toProtoSystemSettings(row), nil
 }

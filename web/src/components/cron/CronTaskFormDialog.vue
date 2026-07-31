@@ -30,6 +30,7 @@
             v-model:form="form"
             :agents="agents"
             :teams="teams"
+            :editing="!!row"
             :server-error="serverError"
             @submit="onFormSubmit"
           />
@@ -87,7 +88,7 @@ const emit = defineEmits<{
 const fieldsRef = ref<InstanceType<typeof CronTaskFormFields> | null>(null);
 const form = reactive<CronTaskFormValue>(emptyCronTaskForm());
 
-const canSave = computed(() => canSaveCronForm(form));
+const canSave = computed(() => canSaveCronForm(form, !!props.row));
 
 watch(
   () => props.modelValue,

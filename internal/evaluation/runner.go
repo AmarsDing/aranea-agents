@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -33,14 +35,39 @@ type AgentRunner func(ctx context.Context, agentID, input string) (string, error
 
 // Runner executes an evaluation run asynchronously.
 type Runner struct {
-	uc        *biz.EvalUsecase
-	agent     AgentRunner
-	framework *FrameworkBridge
-	lg        loggateway.Logger
+	uc         *biz.EvalUsecase
+	agent      AgentRunner
+	framework  *FrameworkBridge
+	monitorBus contract.MonitorBus
+	lg         loggateway.Logger
 }
 
 func NewRunner(uc *biz.EvalUsecase, agent AgentRunner, framework *FrameworkBridge, lg loggateway.Logger) *Runner {
 	return &Runner{uc: uc, agent: agent, framework: framework, lg: lg}
+}
+
+// WithMonitorBus wires the typed monitor bus for flow-log emission (chainable).
+// When nil, flow-log emission is skipped.
+func (r *Runner) WithMonitorBus(bus contract.MonitorBus) *Runner {
+	if r != nil && bus != nil {
+		r.monitorBus = bus
+	}
+	return r
+}
+
+// flowEmitter builds a run-scoped flow-log emitter for evaluation lifecycle events.
+// Returns nil when the monitor bus is not wired (emission skipped).
+func (r *Runner) flowEmitter(ctx context.Context, runID string) *event.TraceEmitter {
+	if r == nil || r.monitorBus == nil {
+		return nil
+	}
+	return event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:    ctx,
+		RunID:  runID,
+		Domain: event.TraceDomainSystem,
+		LG:     r.lg,
+		Infra:  event.NewInfraFromBus(r.monitorBus),
+	})
 }
 
 func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string, numRuns int, useUserSimulation bool) {
@@ -49,6 +76,13 @@ func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string, num
 		loggateway.Str("run_id", run.ID),
 		loggateway.Str("dataset_id", run.DatasetID),
 	)
+	if flow := r.flowEmitter(ctx, run.ID); flow != nil {
+		flow.LogStart("evaluation.run", "评测集运行",
+			event.P("run_id", run.ID),
+			event.P("dataset_id", run.DatasetID),
+			event.P("agent_id", run.AgentID),
+			event.P("num_runs", numRuns))
+	}
 	evalRunsTotal.WithLabelValues("started").Inc()
 	safego.Go(appctx.Ctx(), "eval-runner", func() {
 		if err := r.execute(ctx, run, metrics, numRuns, useUserSimulation); err != nil {
@@ -136,6 +170,16 @@ func (r *Runner) executeFramework(
 	run.PassHatK = passHatK
 	run.Status = "completed"
 	run.FinishedAt = time.Now().UTC().Format(time.RFC3339)
+	if flow := r.flowEmitter(ctx, run.ID); flow != nil {
+		flow.LogDone("evaluation.run", "评测集运行完成",
+			event.P("run_id", run.ID),
+			event.P("dataset_id", run.DatasetID),
+			event.P("total_cases", run.TotalCases),
+			event.P("completed_cases", run.CompletedCases),
+			event.P("avg_score", meanScore(scores)),
+			event.P("pass_at_k", passAtK),
+			event.P("pass_hat_k", passHatK))
+	}
 	return r.uc.UpdateRun(ctx, run)
 }
 
@@ -145,10 +189,28 @@ func (r *Runner) failRun(ctx context.Context, run biz.EvalRun, msg string) error
 		loggateway.Str("run_id", run.ID),
 		loggateway.Str("error", msg),
 	)
+	if flow := r.flowEmitter(ctx, run.ID); flow != nil {
+		flow.LogError("evaluation.run", "评测集运行失败",
+			event.P("run_id", run.ID),
+			event.P("dataset_id", run.DatasetID),
+			event.P("error", msg))
+	}
 	run.Status = "failed"
 	run.ErrorMessage = msg
 	run.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 	return r.uc.UpdateRun(ctx, run)
+}
+
+// meanScore averages per-metric mean scores into a single run-level mean.
+func meanScore(scores map[string]float32) float32 {
+	if len(scores) == 0 {
+		return 0
+	}
+	var sum float32
+	for _, v := range scores {
+		sum += v
+	}
+	return sum / float32(len(scores))
 }
 
 func newEvalResultID() string {

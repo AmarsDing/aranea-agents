@@ -135,7 +135,7 @@ func makeAdapter(t *testing.T) *artifacttrpc.ServiceAdapter {
 	t.Helper()
 	repo := newMemArtifactRepo()
 	uc := biz.NewArtifactUsecase(repo, loggateway.NewNoop())
-	return artifacttrpc.NewServiceAdapter(uc)
+	return artifacttrpc.NewServiceAdapter(uc, nil)
 }
 
 func TestServiceAdapter_SaveAndLoad(t *testing.T) {

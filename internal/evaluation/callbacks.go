@@ -24,12 +24,22 @@ func NewEvalCallbacks(lg loggateway.Logger) *service.Callbacks {
 			if args.Result != nil {
 				caseID = args.Result.EvalCaseID
 			}
-			lg.Info("eval.inference.case_done",
-				loggateway.StepID("evaluation.inference.case_done"),
-				loggateway.Str("eval_case_id", caseID),
-				loggateway.Err(args.Error),
-				loggateway.Str("duration", time.Since(args.StartTime).Round(time.Millisecond).String()),
-			)
+			if args.Error != nil {
+				// K6 外部调用：被评 Agent 推理失败
+				lg.Warn("eval.inference.call_failed",
+					loggateway.StepID("evaluation.inference.call_fail"),
+					loggateway.Str("eval_case_id", caseID),
+					loggateway.Err(args.Error),
+					loggateway.Str("duration", time.Since(args.StartTime).Round(time.Millisecond).String()),
+				)
+			} else {
+				// 高频路径：单 case 完成不打 Info，仅 Debug；汇总见 evaluation.run 流程日志
+				lg.Debug("eval.inference.case_done",
+					loggateway.StepID("evaluation.inference.case_done"),
+					loggateway.Str("eval_case_id", caseID),
+					loggateway.Str("duration", time.Since(args.StartTime).Round(time.Millisecond).String()),
+				)
+			}
 			return &service.AfterInferenceCaseResult{Context: ctx}, nil
 		},
 		AfterEvaluateCase: func(ctx context.Context, args *service.AfterEvaluateCaseArgs) (*service.AfterEvaluateCaseResult, error) {
@@ -46,14 +56,25 @@ func NewEvalCallbacks(lg loggateway.Logger) *service.Callbacks {
 				caseID = args.Result.EvalID
 				passed = args.Result.FinalEvalStatus == status.EvalStatusPassed
 			}
-			lg.Info("eval.evaluate.case_done",
-				loggateway.StepID("evaluation.evaluate.case_done"),
-				loggateway.Str("eval_set_id", evalSetID),
-				loggateway.Str("eval_case_id", caseID),
-				loggateway.Bool("passed", passed),
-				loggateway.Err(args.Error),
-				loggateway.Str("duration", time.Since(args.StartTime).Round(time.Millisecond).String()),
-			)
+			if args.Error != nil {
+				// K6 外部调用：LLM Judge 评分失败
+				lg.Warn("eval.judge.call_failed",
+					loggateway.StepID("evaluation.judge.call_fail"),
+					loggateway.Str("eval_set_id", evalSetID),
+					loggateway.Str("eval_case_id", caseID),
+					loggateway.Err(args.Error),
+					loggateway.Str("duration", time.Since(args.StartTime).Round(time.Millisecond).String()),
+				)
+			} else {
+				// 高频路径：单 case 完成不打 Info，仅 Debug；汇总见 evaluation.run 流程日志
+				lg.Debug("eval.evaluate.case_done",
+					loggateway.StepID("evaluation.evaluate.case_done"),
+					loggateway.Str("eval_set_id", evalSetID),
+					loggateway.Str("eval_case_id", caseID),
+					loggateway.Bool("passed", passed),
+					loggateway.Str("duration", time.Since(args.StartTime).Round(time.Millisecond).String()),
+				)
+			}
 			return &service.AfterEvaluateCaseResult{Context: ctx}, nil
 		},
 	})

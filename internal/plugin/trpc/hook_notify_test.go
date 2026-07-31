@@ -10,7 +10,7 @@ import (
 )
 
 func TestEnqueueNotify_rejectsPrivateURL(t *testing.T) {
-	n := NewHookNotifier((*conf.Runtime)(nil), nil, loggateway.NewNoop())
+	n := NewHookNotifier((*conf.Runtime)(nil), nil, loggateway.NewNoop(), nil)
 	rh := biz.ResolvedHook{
 		Hook: biz.Hook{Key: "t"},
 		Rule: biz.HookConfig{
@@ -23,7 +23,7 @@ func TestEnqueueNotify_rejectsPrivateURL(t *testing.T) {
 }
 
 func TestEnqueueNotify_acceptsValidURL(t *testing.T) {
-	n := NewHookNotifier((*conf.Runtime)(nil), nil, loggateway.NewNoop())
+	n := NewHookNotifier((*conf.Runtime)(nil), nil, loggateway.NewNoop(), nil)
 	rh := biz.ResolvedHook{
 		Hook: biz.Hook{Key: "t"},
 		Rule: biz.HookConfig{

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	bizknowledge "aranea-agents/internal/biz/knowledge"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -34,6 +36,8 @@ type VaultSyncRunner struct {
 	applier *VaultSyncApplier
 	uc      *bizknowledge.Usecase
 	lg      loggateway.Logger
+	// monitorBus 流程日志总线（装配层经 SetMonitorBus 注入；nil 时跳过流程日志）。
+	monitorBus contract.MonitorBus
 
 	interval time.Duration
 	watcher  Watcher
@@ -67,25 +71,42 @@ func (r *VaultSyncRunner) SetInterval(d time.Duration) {
 // SetWatcher 注入 watcher（可选）。Close 由调用方管理。
 func (r *VaultSyncRunner) SetWatcher(w Watcher) { r.watcher = w }
 
+// SetMonitorBus 注入流程日志总线（装配层调用；nil = 不发射流程日志）。
+func (r *VaultSyncRunner) SetMonitorBus(bus contract.MonitorBus) {
+	if r == nil {
+		return
+	}
+	r.monitorBus = bus
+}
+
 // SyncOnce 对单个 vault 执行一轮同步；返回首个错误（已回写 sync_state）。
 func (r *VaultSyncRunner) SyncOnce(ctx context.Context, vault bizknowledge.Collection) error {
 	prev, err := r.loadPrev(ctx, vault)
 	if err != nil {
 		r.markState(ctx, vault.ID, "error", time.Time{})
+		r.logVaultSyncError(ctx, vault.ID, err)
 		return err
 	}
 	curr, err := r.engine.Scan(vault.RootPath, prev)
 	if err != nil {
 		r.markState(ctx, vault.ID, "error", time.Time{})
+		r.logVaultSyncError(ctx, vault.ID, err)
 		return err
 	}
 	events := bizknowledge.DiffSnapshots(prev, curr)
 	if len(events) > 0 {
 		if applyErr := r.applier.ApplyEvents(ctx, vault, events); applyErr != nil {
 			r.markState(ctx, vault.ID, "error", time.Time{})
+			r.logVaultSyncError(ctx, vault.ID, applyErr)
 			// 失败不保存 prev：下轮 diff 重新生成事件——成功文档走幂等短路
 			// （DB hash 已一致，廉价跳过），失败文档自动重试（可靠性契约自愈）。
 			return applyErr
+		}
+		// 仅在确有变更时打 done——30s 轮询的空转轮次不产生流程日志噪声。
+		if r.monitorBus != nil {
+			newKnowledgeFlow(ctx, r.monitorBus, nil).LogDone("knowledge.vault.sync", "Vault 同步完成",
+				event.P("vault_id", vault.ID),
+				event.P("changed_files", len(events)))
 		}
 	}
 	r.markState(ctx, vault.ID, "active", time.Now().UTC())
@@ -93,9 +114,22 @@ func (r *VaultSyncRunner) SyncOnce(ctx context.Context, vault bizknowledge.Colle
 	return nil
 }
 
+func (r *VaultSyncRunner) logVaultSyncError(ctx context.Context, vaultID string, err error) {
+	if r.monitorBus == nil {
+		return
+	}
+	newKnowledgeFlow(ctx, r.monitorBus, nil).LogError("knowledge.vault.sync", "Vault 同步失败",
+		event.P("vault_id", vaultID),
+		event.P("error", err.Error()))
+}
+
 // RunVault 启动循环：启动即扫一轮，之后按 interval 轮询或 watcher hint 提前扫描。
 // 阻塞直到 ctx 取消（返回 nil）。
 func (r *VaultSyncRunner) RunVault(ctx context.Context, vault bizknowledge.Collection) error {
+	if r.monitorBus != nil {
+		newKnowledgeFlow(ctx, r.monitorBus, nil).LogStart("knowledge.vault.sync", "Vault 同步启动",
+			event.P("vault_id", vault.ID))
+	}
 	// 启动即扫一轮，不等 interval。
 	if err := r.SyncOnce(ctx, vault); err != nil {
 		r.lg.Warn("vault sync initial scan failed",

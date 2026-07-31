@@ -9,6 +9,8 @@ import (
 	"aranea-agents/pkg/apierror"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/graph"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	deliverabletools "aranea-agents/internal/tools/deliverable"
@@ -27,6 +29,7 @@ type trpcGraphRuntime struct {
 	graph           *trpcgraph.Graph
 	lineageID       string
 	eventBus        biz.EventBus
+	monitorBus      contract.MonitorBus
 	sessionID       string
 	spiritSessionID string
 	graphID         string
@@ -61,11 +64,35 @@ func (r *trpcGraphRuntime) clearRunCancel() {
 	r.cancelMu.Unlock()
 }
 
+// flowEmitter builds a run-scoped flow-log emitter for the graph domain.
+// Returns nil when no monitor bus is configured (nil-safe: emission skipped).
+func (r *trpcGraphRuntime) flowEmitter(ctx context.Context) *event.TraceEmitter {
+	if r == nil || r.monitorBus == nil {
+		return nil
+	}
+	return event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:       ctx,
+		SessionID: r.sessionID,
+		RunID:     r.execID,
+		Domain:    event.TraceDomainGraph,
+		LG:        r.lg,
+		Infra:     event.NewInfraFromBus(r.monitorBus),
+	})
+}
+
 func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any) (<-chan biz.GraphRuntimeEvent, error) {
 	lineageID := r.lineageID
 	if lineageID == "" {
 		lineageID = uuid.New().String()
 		r.lineageID = lineageID
+	}
+
+	flow := r.flowEmitter(ctx)
+	if flow != nil {
+		flow.LogStart("graph.run.start", "图运行开始",
+			event.P("graph_id", r.graphID),
+			event.P("execution_id", r.execID),
+		)
 	}
 
 	runtimeState := trpcgraph.CheckpointRef{
@@ -103,26 +130,87 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 			loggateway.Str("execution_id", r.execID),
 			loggateway.Err(err),
 		)
+		if flow != nil {
+			flow.LogError("system.graph.runtime_run_fail", "图运行时启动失败",
+				event.P("graph_id", r.graphID),
+				event.P("execution_id", r.execID),
+				event.P("error", err.Error()),
+			)
+		}
 		return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph runtime run: %v", err))
 	}
 
 	out := make(chan biz.GraphRuntimeEvent, 64)
 	safego.Go(ctx, "graph-event-bridge", func() {
-		defer func() {
-			r.clearRunCancel()
-			close(out)
-		}()
-		for e := range eventCh {
-			runtimeEvt := convertTrpcEvent(e, r.bridge, r.lg)
-			out <- runtimeEvt
-		}
+		r.forwardEvents(eventCh, out, flow)
 	})
 
 	return out, nil
 }
 
+// forwardEvents pumps framework events into the biz runtime-event channel and
+// emits the terminal flow log (graph.run.finish) when the stream ends:
+// done on the GraphExecution completion event, error when a non-retrying node
+// error was observed without a completion (cancel/interrupt are not terminal).
+func (r *trpcGraphRuntime) forwardEvents(eventCh <-chan *trpcevent.Event, out chan<- biz.GraphRuntimeEvent, flow *event.TraceEmitter) {
+	defer func() {
+		r.clearRunCancel()
+		close(out)
+	}()
+	var (
+		sawDone      bool
+		sawInterrupt bool
+		lastNodeErr  string
+	)
+	for e := range eventCh {
+		if e != nil {
+			switch e.Object {
+			case trpcgraph.ObjectTypeGraphExecution:
+				if e.Done {
+					sawDone = true
+				}
+			case trpcgraph.ObjectTypeGraphCheckpointInterrupt:
+				sawInterrupt = true
+			case trpcgraph.ObjectTypeGraphNodeError:
+				if meta := graphtrpc.ExtractNodeMeta(e, r.lg); !meta.Retrying && meta.Error != "" {
+					lastNodeErr = meta.Error
+				}
+			}
+		}
+		out <- convertTrpcEvent(e, r.bridge, r.lg)
+	}
+	if flow == nil {
+		return
+	}
+	switch {
+	case sawDone:
+		flow.LogDone("graph.run.finish", "图运行结束",
+			event.P("graph_id", r.graphID),
+			event.P("execution_id", r.execID),
+			event.P("status", "completed"),
+		)
+	case sawInterrupt:
+		// HITL pause is not terminal; graph.hitl.wait is emitted by the event bridge.
+	case lastNodeErr != "":
+		flow.LogError("graph.run.finish", "图运行失败",
+			event.P("graph_id", r.graphID),
+			event.P("execution_id", r.execID),
+			event.P("status", "failed"),
+			event.P("error", lastNodeErr),
+		)
+	}
+}
+
 func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeValue map[string]any) (<-chan biz.GraphRuntimeEvent, error) {
 	r.lineageID = lineageID
+	flow := r.flowEmitter(ctx)
+	if flow != nil {
+		flow.LogStart("graph.run.resume", "图运行恢复",
+			event.P("graph_id", r.graphID),
+			event.P("execution_id", r.execID),
+			event.P("lineage_id", lineageID),
+		)
+	}
 	runtimeState := trpcgraph.CheckpointRef{
 		LineageID:    lineageID,
 		Namespace:    "",
@@ -158,19 +246,31 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 			loggateway.Str("execution_id", r.execID),
 			loggateway.Err(err),
 		)
+		if flow != nil {
+			flow.LogError("graph.run.resume", "图运行恢复失败",
+				event.P("graph_id", r.graphID),
+				event.P("execution_id", r.execID),
+				event.P("error", err.Error()),
+			)
+			flow.LogError("system.graph.runtime_resume_fail", "图运行时恢复失败",
+				event.P("graph_id", r.graphID),
+				event.P("execution_id", r.execID),
+				event.P("error", err.Error()),
+			)
+		}
 		return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph runtime resume: %v", err))
+	}
+
+	if flow != nil {
+		flow.LogDone("graph.run.resume", "图运行已恢复",
+			event.P("graph_id", r.graphID),
+			event.P("execution_id", r.execID),
+		)
 	}
 
 	out := make(chan biz.GraphRuntimeEvent, 64)
 	safego.Go(ctx, "graph-resume-bridge", func() {
-		defer func() {
-			r.clearRunCancel()
-			close(out)
-		}()
-		for e := range eventCh {
-			runtimeEvt := convertTrpcEvent(e, r.bridge, r.lg)
-			out <- runtimeEvt
-		}
+		r.forwardEvents(eventCh, out, flow)
 	})
 
 	return out, nil
@@ -329,6 +429,7 @@ type trpcGraphBuilderFactory struct {
 	registry     *graphtrpc.Registry
 	saver        trpcgraph.CheckpointSaver
 	eventBus     biz.EventBus
+	monitorBus   contract.MonitorBus
 	agentChecker biz.AgentExistenceCheckerFunc
 	resolvers    graphtrpc.GraphNodeResolverSet
 	lg           loggateway.Logger
@@ -347,6 +448,7 @@ func NewGraphBuilderFactory(
 	registry *graphtrpc.Registry,
 	saver trpcgraph.CheckpointSaver,
 	eventBus biz.EventBus,
+	monitorBus contract.MonitorBus,
 	agentChecker biz.AgentExistenceCheckerFunc,
 	resolvers graphtrpc.GraphNodeResolverSet,
 	replanner graph.RuntimeReplanner,
@@ -358,6 +460,7 @@ func NewGraphBuilderFactory(
 		registry:     registry,
 		saver:        saver,
 		eventBus:     eventBus,
+		monitorBus:   monitorBus,
 		agentChecker: agentChecker,
 		resolvers:    resolvers,
 		lg:           lg,
@@ -414,8 +517,9 @@ func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.Grap
 	}
 	return &trpcGraphRuntime{
 		agent: graphAgent, graph: g, lineageID: lineageID, eventBus: f.eventBus,
-		sessionID: sessionID, spiritSessionID: spiritSessionID, graphID: graphID, execID: execID, lg: f.lg,
-		bridge:    graphtrpc.NewEventBridge(f.eventBus, sessionID, spiritSessionID, graphID, execID, f.lg),
+		monitorBus: f.monitorBus,
+		sessionID:  sessionID, spiritSessionID: spiritSessionID, graphID: graphID, execID: execID, lg: f.lg,
+		bridge:    graphtrpc.NewEventBridge(f.eventBus, f.monitorBus, sessionID, spiritSessionID, graphID, execID, f.lg),
 		callbacks: f.buildNodeCallbacks(sessionID, spiritSessionID, graphID, execID),
 	}, nil
 }

@@ -155,8 +155,8 @@ func TestLayerOverview_FiveLayerAssembly(t *testing.T) {
 			"t2": {centerRowJSON(map[string]any{"id": "f4"})},
 		},
 		factRows: [][]byte{
-			centerRowJSON(map[string]any{"id": "fact1", "statement": "偏好简洁回复", "hit_count": 5, "created_at": today}),
-			centerRowJSON(map[string]any{"id": "fact2", "statement": "住在杭州", "hit_count": 6, "created_at": old}),
+			centerRowJSON(map[string]any{"id": "fact1", "statement": "偏好简洁回复", "use_count": 5, "created_at": today}),
+			centerRowJSON(map[string]any{"id": "fact2", "statement": "住在杭州", "use_count": 6, "created_at": old}),
 		},
 		factTotal:     2,
 		factActive:    2,
@@ -234,7 +234,7 @@ func TestLayerOverview_FiveLayerAssembly(t *testing.T) {
 		t.Errorf("L3 counts: got item=%d today=%d, want 2/1", l3.ItemCount, l3.TodayAdded)
 	}
 	if l3.RecallHits != 11 {
-		t.Errorf("L3 recall_hits: got %d, want 11 (sum of hit_count 5+6)", l3.RecallHits)
+		t.Errorf("L3 recall_hits: got %d, want 11 (sum of use_count 5+6)", l3.RecallHits)
 	}
 	if l3.Health != "warn" {
 		t.Errorf("L3 health: got %q, want warn (2 open conflicts)", l3.Health)

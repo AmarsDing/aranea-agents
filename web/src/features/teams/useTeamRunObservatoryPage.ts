@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import type { TeamRunObservatory, ActivityTimelineRow } from '../orchestration/types';
 import { useOrchestrationStream } from '../orchestration/useOrchestrationStream';
 import { getTeamRunObservatoryTimeline } from '../orchestration/api';
@@ -9,15 +10,20 @@ import { buildExecNodeStates } from '../orchestration/teamGraphAdapter';
 import type { GraphDefinition, Task } from '../graph/types';
 import type { TeamRunSummary } from './types';
 import { useOrchestrationStore } from '../../stores/orchestration';
+import { useGraphStore } from '../../stores/graph';
 import { useGraphRunTasks } from '../graph/useGraphRunTasks';
 import { useGraphExecutionStream } from '../graph/runtime/useGraphExecutionStream';
+import { useGraphTimeTravel } from '../graph/runtime/useGraphTimeTravel';
+import type { CheckpointInfo } from '../graph/types';
 import { getTeamRunSummary, resumeTeamRunExecution } from './api';
 
 export function useTeamRunObservatoryPage() {
   const $q = useQuasar();
+  const { t } = useI18n();
   const route = useRoute();
   const router = useRouter();
   const orchestrationStore = useOrchestrationStore();
+  const graphStore = useGraphStore();
 
   const isDark = computed(() => $q.dark.isActive);
   const teamId = computed(() => String(route.params.teamId ?? ''));
@@ -77,6 +83,13 @@ export function useTeamRunObservatoryPage() {
 
   const tasks = useGraphRunTasks(() => graphExecutionId.value, taskItemsSeed, taskUpsert);
 
+  // ── M53 Phase 11 F6：Checkpoint tab（复用 graph 时间旅行/检查点能力） ──
+  const timeTravel = useGraphTimeTravel(graphExecutionId);
+  const checkpointTabEnabled = computed(() => graphDef.enableCheckpoint && Boolean(graphExecutionId.value));
+  const checkpointMaxStep = computed(() => Math.max(0, timeTravel.checkpoints.value.length - 1));
+  const graphResumeLoading = ref(false);
+  const graphRunViewLoading = ref(false);
+
   const nodeList = computed(() => {
     const map = stream.value?.nodes ?? new Map();
     return [...map.values()];
@@ -119,11 +132,25 @@ export function useTeamRunObservatoryPage() {
 
   function applyCompiledTopology(obs: TeamRunObservatory) {
     if (obs.compiled_topology) {
+      // compiledGraphToGraphDef 从编译产物 graph_json 读取 enable_checkpoint（M53 Phase 11）
       Object.assign(graphDef, compiledGraphToGraphDef(obs.compiled_topology, 'team-run-orchestration'));
       return;
     }
     graphDef.nodes = [];
     graphDef.edges = [];
+    // 无编译拓扑时回退到运行快照 spec：enable_checkpoint 缺省镜像后端默认 true
+    graphDef.enableCheckpoint = snapshotEnableCheckpoint(obs.definition_snapshot_json);
+  }
+
+  function snapshotEnableCheckpoint(snapshotJson?: string): boolean {
+    const raw = snapshotJson?.trim();
+    if (!raw) return false;
+    try {
+      const parsed = JSON.parse(raw) as { enable_checkpoint?: boolean };
+      return parsed.enable_checkpoint !== false;
+    } catch {
+      return false;
+    }
   }
 
   function connectTaskStream(obs: TeamRunObservatory) {
@@ -182,6 +209,10 @@ export function useTeamRunObservatoryPage() {
 
       if (obs.graph_execution_id) {
         await loadObservatoryTasks();
+      }
+      // F6：checkpoint 开启时预取检查点列表（enableCheckpoint 由 applyCompiledTopology 写入）
+      if (obs.graph_execution_id && graphDef.enableCheckpoint) {
+        await timeTravel.loadCheckpoints();
       }
       await Promise.all([loadTimeline(), loadSummary()]);
     } catch (e) {
@@ -263,6 +294,110 @@ export function useTeamRunObservatoryPage() {
     void resumeRun({ action: 'halt' });
   }
 
+  // ── F6：Checkpoint tab 处理器（语义镜像 useGraphRunPage） ──
+  async function onSelectCheckpoint(checkpoint: CheckpointInfo) {
+    await timeTravel.selectCheckpoint(checkpoint);
+  }
+
+  async function onCheckpointTimeTravel() {
+    try {
+      await timeTravel.travelToStep(timeTravel.stepIndexInput.value);
+      $q.notify({ type: 'positive', message: t('teamsPage.observatorySnapshotLoaded') });
+    } catch (err) {
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : t('teamsPage.observatoryTimeTravelFailed'),
+      });
+    }
+  }
+
+  async function onApplyEditState() {
+    try {
+      const result = await timeTravel.applyEditState();
+      if (result) {
+        $q.notify({
+          type: 'positive',
+          message: t('teamsPage.observatoryCheckpointCreated', { id: result.newCheckpointId }),
+        });
+        await timeTravel.loadCheckpoints();
+      }
+    } catch (err) {
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : t('teamsPage.observatoryEditStateFailed'),
+      });
+    }
+  }
+
+  async function onRestoreCheckpoint(_checkpoint: CheckpointInfo) {
+    try {
+      const result = await timeTravel.applyEditState();
+      if (result) {
+        $q.notify({
+          type: 'positive',
+          message: t('teamsPage.observatoryCheckpointRestored', { id: result.newCheckpointId }),
+        });
+        await timeTravel.loadCheckpoints();
+        await load();
+      }
+    } catch (err) {
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : t('teamsPage.observatoryRestoreFailed'),
+      });
+    }
+  }
+
+  function updateStatePatchJson(value: string) {
+    timeTravel.statePatchJson.value = value;
+  }
+
+  function updateStepIndex(value: number) {
+    timeTravel.stepIndexInput.value = value;
+  }
+
+  /** ResumeGraph：从当前检查点状态恢复 Graph 执行。 */
+  async function onGraphResumeExecution() {
+    const execId = graphExecutionId.value;
+    if (!execId) return;
+    graphResumeLoading.value = true;
+    try {
+      await graphStore.resumeExecution(execId);
+      $q.notify({ type: 'positive', message: t('teamsPage.observatoryResumeRequested') });
+      await load();
+    } catch (err) {
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : t('teamsPage.observatoryResumeFailed'),
+      });
+    } finally {
+      graphResumeLoading.value = false;
+    }
+  }
+
+  /** 「Graph 执行视角」跳转：经执行记录反查 graph 资产 ID 后跳 /graphs/:id/run/:execId。 */
+  async function openGraphRunView() {
+    const execId = graphExecutionId.value;
+    if (!execId) return;
+    graphRunViewLoading.value = true;
+    try {
+      const exec = await graphStore.fetchExecution(execId);
+      const gid = String(exec?.graphId ?? '').trim();
+      if (!gid) {
+        $q.notify({ type: 'warning', message: t('teamsPage.observatoryGraphAssetNotFound') });
+        return;
+      }
+      router.push({ name: 'graph-run', params: { id: gid, execId } });
+    } catch (err) {
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : t('teamsPage.observatoryLoadExecutionFailed'),
+      });
+    } finally {
+      graphRunViewLoading.value = false;
+    }
+  }
+
   onMounted(load);
   watch([teamId, runId], load);
   watch(
@@ -310,6 +445,29 @@ export function useTeamRunObservatoryPage() {
     hitlReviewNodeId,
     hitlAdvancedJson,
     resumeLoading,
+    // F6 Checkpoint tab
+    checkpointTabEnabled,
+    checkpoints: timeTravel.checkpoints,
+    checkpointsLoading: timeTravel.checkpointsLoading,
+    selectedCheckpoint: timeTravel.selectedCheckpoint,
+    stateSnapshot: timeTravel.stateSnapshot,
+    statePatchJson: timeTravel.statePatchJson,
+    snapshotLoading: timeTravel.snapshotLoading,
+    editLoading: timeTravel.editLoading,
+    timeTravelLoading: timeTravel.timeTravelLoading,
+    checkpointStepIndex: timeTravel.stepIndexInput,
+    checkpointMaxStep,
+    graphResumeLoading,
+    graphRunViewLoading,
+    onSelectCheckpoint,
+    onCheckpointTimeTravel,
+    onApplyEditState,
+    onRestoreCheckpoint,
+    updateStatePatchJson,
+    updateStepIndex,
+    onGraphResumeExecution,
+    openGraphRunView,
+    refreshCheckpoints: timeTravel.loadCheckpoints,
     loadTimeline,
     onSelectNode,
     onSelectTask,

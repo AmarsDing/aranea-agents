@@ -5,6 +5,8 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/document"
@@ -32,11 +34,21 @@ type Retriever struct {
 	repo     biz.KnowledgeRepo
 	reranker reranker.Reranker
 	lg       loggateway.Logger
+	// monitorBus 流程日志总线（装配层经 SetMonitorBus 注入；nil 时跳过流程日志）。
+	monitorBus contract.MonitorBus
 }
 
 // NewRetriever creates a Retriever bound to the given embedder, repo, and optional reranker.
 func NewRetriever(embedder QueryEmbedder, repo biz.KnowledgeRepo, rr reranker.Reranker, lg loggateway.Logger) *Retriever {
 	return &Retriever{embedder: embedder, repo: repo, reranker: rr, lg: lg}
+}
+
+// SetMonitorBus 注入流程日志总线（装配层调用；nil = 不发射流程日志）。
+func (r *Retriever) SetMonitorBus(bus contract.MonitorBus) {
+	if r == nil {
+		return
+	}
+	r.monitorBus = bus
 }
 
 // HasReranker reports whether a reranker is configured globally.
@@ -45,7 +57,31 @@ func (r *Retriever) HasReranker() bool {
 }
 
 // Search embeds the query, retrieves candidates, optionally reranks, and returns top-k chunks.
+// 检索为热路径：流程日志只打 done/error 且 message 精简（不打 start、不写进程日志）。
 func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
+	chunks, err := r.search(ctx, q)
+	if r != nil && r.monitorBus != nil {
+		topK := q.TopK
+		if topK <= 0 {
+			topK = 5
+		}
+		flow := newKnowledgeFlow(ctx, r.monitorBus, nil)
+		if err != nil {
+			flow.LogError("knowledge.search", "知识库检索失败",
+				event.P("collection_id", q.CollectionID),
+				event.P("top_k", topK),
+				event.P("error", err.Error()))
+		} else {
+			flow.LogDone("knowledge.search", "知识库检索完成",
+				event.P("collection_id", q.CollectionID),
+				event.P("top_k", topK),
+				event.P("hits", len(chunks)))
+		}
+	}
+	return chunks, err
+}
+
+func (r *Retriever) search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
 	if r.repo == nil {
 		return nil, apierror.Unavailable(apierror.DomainKnowledge, "retriever: repo is nil")
 	}

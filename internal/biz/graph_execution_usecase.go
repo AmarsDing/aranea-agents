@@ -412,8 +412,10 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 // ---------------------------------------------------------------------------
 
 // RegisterTeamGraphExecution indexes a team GraphAgent run for task/resume coordination (M53 Phase 7).
-// Build config is kept in-memory; graph_id uses the team: prefix (not a persisted graph asset).
-func (uc *GraphExecutionUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID string, ct *CompiledTeam) error {
+// Build config is kept in-memory. graph_id 优先使用 team 的 linked_graph_id
+// （C1 全量物化：真实图资产，team 多次 Run 共享同一资产 ID → /graphs/:id/executions
+// 自然聚合执行历史）；linked 为空（存量未迁移）时保留 team: 合成 ID 兜底。
+func (uc *GraphExecutionUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID string, ct *CompiledTeam) error {
 	if uc == nil {
 		return nil
 	}
@@ -425,9 +427,12 @@ func (uc *GraphExecutionUsecase) RegisterTeamGraphExecution(ctx context.Context,
 	if teamID == "" {
 		return apierror.BadRequest("GRAPH", "team id required")
 	}
-	graphID := GraphIDTeamPrefix + teamID
-	if teamRunID != "" {
-		graphID = graphID + ":" + strings.TrimSpace(teamRunID)
+	graphID := strings.TrimSpace(linkedGraphID)
+	if graphID == "" {
+		graphID = GraphIDTeamPrefix + teamID
+		if teamRunID != "" {
+			graphID = graphID + ":" + strings.TrimSpace(teamRunID)
+		}
 	}
 	exec := NewGraphExecution(context.Background(), execID, graphID, strings.TrimSpace(sessionID), string(GraphExecRunning))
 	exec.SpiritSessionID = strings.TrimSpace(spiritSessionID)

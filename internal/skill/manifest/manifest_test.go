@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -135,4 +136,58 @@ Body content.`
 		t.Error("Body should not be empty")
 	}
 	_ = biz.SkillTag{}
+}
+
+// YAML block scalar：alibabacloud 系列 SKILL.md 用 `description: |` / `>` 书写
+// 多行描述，Parse 必须消费后续缩进行，否则 description 退化为字面量 "|"/">"。
+func TestParse_DescriptionBlockScalarLiteral(t *testing.T) {
+	input := `---
+name: alibabacloud-rds-copilot
+description: |
+  RDS Copilot helps diagnose databases.
+  It covers SQL optimization and troubleshooting.
+tags: [ops, cloud]
+---
+# Body
+Content.`
+	m := Parse(input)
+	want := "RDS Copilot helps diagnose databases.\nIt covers SQL optimization and troubleshooting."
+	if m.Description != want {
+		t.Errorf("Description = %q, want %q", m.Description, want)
+	}
+	// block scalar 后的键仍须解析
+	if len(m.Tags) != 2 {
+		t.Errorf("Tags len = %d, want 2 (keys after block scalar must still parse)", len(m.Tags))
+	}
+	if !strings.Contains(m.Body, "# Body") {
+		t.Errorf("Body = %q, want frontmatter-stripped body", m.Body)
+	}
+}
+
+func TestParse_DescriptionBlockScalarFolded(t *testing.T) {
+	input := `---
+name: alibabacloud-find-skills
+description: >
+  Find skills across catalogs.
+  Folds lines into one paragraph.
+---
+Body.`
+	m := Parse(input)
+	want := "Find skills across catalogs. Folds lines into one paragraph."
+	if m.Description != want {
+		t.Errorf("Description = %q, want %q", m.Description, want)
+	}
+}
+
+func TestParse_DescriptionBlockScalarChomping(t *testing.T) {
+	input := `---
+name: claude-api
+description: |-
+  Build with the Claude API.
+---
+Body.`
+	m := Parse(input)
+	if m.Description != "Build with the Claude API." {
+		t.Errorf("Description = %q, want %q", m.Description, "Build with the Claude API.")
+	}
 }

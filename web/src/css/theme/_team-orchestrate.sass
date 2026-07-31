@@ -107,6 +107,32 @@
   border-bottom: 1px solid var(--glass-border)
   background: var(--glass-surface)
 
+// M53 Phase 11 F3：校验问题行（带 nodeId 可点击定位画布节点）
+.team-orchestrate-page__issue
+  display: block
+  width: 100%
+  padding: 0
+  border: none
+  background: transparent
+  color: inherit
+  text-align: left
+  font: inherit
+
+.team-orchestrate-page__issue--link
+  cursor: pointer
+  border-radius: 6px
+
+  &:hover
+    text-decoration: underline
+
+  &:focus-visible
+    outline: 2px solid var(--color-accent)
+    outline-offset: 1px
+
+  &:disabled
+    cursor: default
+    opacity: 0.85
+
 .team-orchestrate-page__kanban-pane
   padding: 16px
   overflow: auto

@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -125,5 +127,100 @@ func TestMergeCompositeHits_Limit(t *testing.T) {
 	// Top 2 by score: C (0.9) and D (0.7)
 	if merged[0].Line != "C" || merged[1].Line != "D" {
 		t.Fatalf("expected [C, D], got [%s, %s]", merged[0].Line, merged[1].Line)
+	}
+}
+
+// ── PinnedPreferenceCue (FR-M3) ─────────────────────────────────────────
+
+type preferenceListerStub struct {
+	rows  [][]byte
+	err   error
+	kinds []string
+	limit int32
+}
+
+func (s *preferenceListerStub) ListActivePreferenceFacts(_ context.Context, _, _ string, kinds []string, limit int32) ([][]byte, error) {
+	s.kinds = kinds
+	s.limit = limit
+	return s.rows, s.err
+}
+
+func pinnedRow(id, kind, statement string) []byte {
+	b, _ := json.Marshal(map[string]any{"id": id, "fact_kind": kind, "statement": statement})
+	return b
+}
+
+func TestPinnedPreferenceCue_FormatsBlock(t *testing.T) {
+	stub := &preferenceListerStub{rows: [][]byte{
+		pinnedRow("f1", "preference", "User prefers dark mode"),
+		pinnedRow("f2", "constraint", "Never use tool X"),
+	}}
+	cue := PinnedPreferenceCue(context.Background(), stub, "agent-1", "user-1")
+	if !strings.Contains(cue, "用户偏好与工作要求") {
+		t.Fatalf("missing header: %s", cue)
+	}
+	if !strings.Contains(cue, "- [PREFERENCE] User prefers dark mode") {
+		t.Fatalf("missing preference line: %s", cue)
+	}
+	if !strings.Contains(cue, "- [CONSTRAINT] Never use tool X") {
+		t.Fatalf("missing constraint line: %s", cue)
+	}
+}
+
+func TestPinnedPreferenceCue_QueriesGovernedKindsWithCap(t *testing.T) {
+	stub := &preferenceListerStub{}
+	_ = PinnedPreferenceCue(context.Background(), stub, "agent-1", "user-1")
+	if len(stub.kinds) != 2 || stub.kinds[0] != "preference" || stub.kinds[1] != "constraint" {
+		t.Fatalf("kinds = %v, want [preference constraint]", stub.kinds)
+	}
+	if stub.limit != pinnedPreferenceMax {
+		t.Fatalf("limit = %d, want %d", stub.limit, pinnedPreferenceMax)
+	}
+}
+
+func TestPinnedPreferenceCue_NilLister(t *testing.T) {
+	if cue := PinnedPreferenceCue(context.Background(), nil, "a", "u"); cue != "" {
+		t.Fatalf("nil lister must yield empty cue, got %q", cue)
+	}
+}
+
+func TestPinnedPreferenceCue_ErrorDegrades(t *testing.T) {
+	stub := &preferenceListerStub{err: errors.New("db down")}
+	if cue := PinnedPreferenceCue(context.Background(), stub, "a", "u"); cue != "" {
+		t.Fatalf("lister error must degrade to empty cue, got %q", cue)
+	}
+}
+
+func TestPinnedPreferenceCue_TruncatesLongStatement(t *testing.T) {
+	long := strings.Repeat("偏", 300)
+	stub := &preferenceListerStub{rows: [][]byte{pinnedRow("f1", "preference", long)}}
+	cue := PinnedPreferenceCue(context.Background(), stub, "a", "u")
+	if !strings.Contains(cue, "…") {
+		t.Fatalf("long statement must be truncated with ellipsis: %s", cue)
+	}
+	if strings.Contains(cue, long) {
+		t.Fatal("full 300-rune statement must not appear verbatim")
+	}
+}
+
+func TestPinnedPreferenceCue_SkipsMalformedAndEmpty(t *testing.T) {
+	stub := &preferenceListerStub{rows: [][]byte{
+		[]byte("{not json"),
+		pinnedRow("f1", "preference", "   "),
+		pinnedRow("f2", "preference", "Valid statement"),
+	}}
+	cue := PinnedPreferenceCue(context.Background(), stub, "a", "u")
+	if !strings.Contains(cue, "Valid statement") {
+		t.Fatalf("valid row must survive: %s", cue)
+	}
+	if strings.Count(cue, "- [") != 1 {
+		t.Fatalf("malformed/empty rows must be skipped: %s", cue)
+	}
+}
+
+func TestPinnedPreferenceCue_NoRows(t *testing.T) {
+	stub := &preferenceListerStub{}
+	if cue := PinnedPreferenceCue(context.Background(), stub, "a", "u"); cue != "" {
+		t.Fatalf("no rows must yield empty cue, got %q", cue)
 	}
 }

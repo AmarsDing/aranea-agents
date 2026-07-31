@@ -199,6 +199,9 @@ func convertFactsToProposals(facts []compress.MemoryExtractFact, messages []biz.
 			SourceMessageID:   biz.ResolveProposalMessageID(f.Statement, messages),
 			ExtractionQuality: quality,
 			IsPIISensitive:    f.IsPIISensitive,
+			SubjectType:       f.SubjectType,
+			Scope:             f.Scope,
+			Confidence:        f.Confidence,
 		}
 		out = append(out, p)
 	}

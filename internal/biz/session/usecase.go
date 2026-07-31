@@ -530,6 +530,27 @@ type SessionStatusPublisher interface {
 	PublishSessionStatusChanged(sessionID string, status string, statusReason string, statusChangedAt string)
 }
 
+// LogPair is a key-value pair for flow log extra metadata. It mirrors
+// biz.LogPair but is declared locally because internal/biz re-exports this
+// package (session_reexport.go), so importing internal/biz here would create
+// an import cycle.
+type LogPair struct {
+	Key   string
+	Value any
+}
+
+// FlowLogWriter abstracts user-visible flow log (流程日志) emission so this
+// package does not depend on internal/event (and cannot depend on
+// internal/biz's FlowLogWriter due to the re-export import cycle). It mirrors
+// biz.FlowLogWriter; the service layer adapts its ProvideFlowLogWriter output
+// to this interface. Nil-safe: callers must nil-check before use (tests may
+// pass nil).
+type FlowLogWriter interface {
+	LogFlowStart(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
+	LogFlowDone(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
+	LogFlowError(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
+}
+
 // MetricsUpdatedPublisher emits metrics_updated events to realtime observers (WS).
 // Implemented in service layer; injected via constructor.
 // Stability:evolving
@@ -538,7 +559,7 @@ type MetricsUpdatedPublisher interface {
 }
 
 // SessionUsecase handles session CRUD + timeline. Chat 写消息经 AppendChat* 等仓储方法，不经 SessionService RPC.
-// TECH-DEBT(COG): struct_fields=14, limit=15 (AS-COG-01 biz layer); resolved via sub-usecase decomposition
+// TECH-DEBT(COG): struct_fields=15, limit=15 (AS-COG-01 biz layer); resolved via sub-usecase decomposition
 type SessionUsecase struct {
 	sessionReader       SessionReader
 	sessionTreeReader   SessionTreeReader
@@ -550,6 +571,7 @@ type SessionUsecase struct {
 	teams               TeamLookup
 	lg                  loggateway.Logger
 	statusPublisher     SessionStatusPublisher
+	flowLog             FlowLogWriter
 
 	// Sub-usecases (Facade pattern — old callers delegate through these).
 	metricsUsecase     *SessionMetricsUsecase
@@ -583,7 +605,7 @@ type ActivityEntry struct {
 	AgentKey   string
 }
 
-func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository, statusPublisher SessionStatusPublisher, metricsUsecase *SessionMetricsUsecase, runtimeWriter SessionRuntimeWriter, activityReader ActivityLister, lg loggateway.Logger) *SessionUsecase {
+func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository, statusPublisher SessionStatusPublisher, metricsUsecase *SessionMetricsUsecase, runtimeWriter SessionRuntimeWriter, activityReader ActivityLister, lg loggateway.Logger, flowLog FlowLogWriter) *SessionUsecase {
 	if titleGenerator == nil {
 		titleGenerator = NewNoopSessionTitleGenerator()
 	}
@@ -598,6 +620,7 @@ func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLooku
 		teams:               teams,
 		lg:                  lg,
 		statusPublisher:     statusPublisher,
+		flowLog:             flowLog,
 		metricsUsecase:      metricsUsecase,
 	}
 	// Create sub-usecases with shared repo references.
@@ -618,8 +641,29 @@ func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLooku
 		activityMsgReader, // MessageSearchReader
 		noopWriter,        // MessageWriter
 		noopStatusWriter,  // MessageStatusWriter
-		titleGenerator, sessions, sessions, lg, metricsUsecase, sessions, sessions, participants)
+		titleGenerator, sessions, sessions, lg, metricsUsecase, sessions, sessions, participants, flowLog)
 	return uc
+}
+
+// flowDone emits a user-visible flow log done phase (nil-safe).
+func (uc *SessionUsecase) flowDone(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair) {
+	if uc == nil || uc.flowLog == nil {
+		return
+	}
+	uc.flowLog.LogFlowDone(ctx, sessionID, stepID, message, pairs...)
+}
+
+// flowError emits a user-visible flow log error phase (nil-safe). The error
+// message is appended as an "error" extra pair so FlowError.Message is
+// populated by the emitter.
+func (uc *SessionUsecase) flowError(ctx context.Context, sessionID, stepID, message string, err error, pairs ...LogPair) {
+	if uc == nil || uc.flowLog == nil {
+		return
+	}
+	if err != nil {
+		pairs = append(pairs, LogPair{Key: "error", Value: err.Error()})
+	}
+	uc.flowLog.LogFlowError(ctx, sessionID, stepID, message, pairs...)
 }
 
 func (uc *SessionUsecase) TransitionStatus(ctx context.Context, sessionID string, target SessionStatus, reason SessionStatusReason) error {
@@ -695,7 +739,20 @@ func (uc *SessionUsecase) Create(ctx context.Context, in Session) (Session, erro
 		return Session{}, validationErr("owner_type must be agent or team")
 	}
 	in.ID = uuid.NewString()
-	return uc.sessionWriter.CreateSession(ctx, in)
+	created, err := uc.sessionWriter.CreateSession(ctx, in)
+	createPairs := []LogPair{
+		{Key: "session_id", Value: in.ID},
+		{Key: "agent_id", Value: in.AgentID},
+	}
+	if in.TeamID != "" {
+		createPairs = append(createPairs, LogPair{Key: "team_id", Value: in.TeamID})
+	}
+	if err != nil {
+		uc.flowError(ctx, in.ID, "session.create", "会话创建失败", err, createPairs...)
+		return Session{}, err
+	}
+	uc.flowDone(ctx, created.ID, "session.create", "会话已创建", createPairs...)
+	return created, nil
 }
 
 func (uc *SessionUsecase) Rename(ctx context.Context, id, title string) (Session, error) {
@@ -703,7 +760,14 @@ func (uc *SessionUsecase) Rename(ctx context.Context, id, title string) (Session
 	if title == "" {
 		return Session{}, validationErr("title is required")
 	}
-	return uc.sessionWriter.UpdateSessionTitle(ctx, id, title)
+	updated, err := uc.sessionWriter.UpdateSessionTitle(ctx, id, title)
+	if err != nil {
+		uc.flowError(ctx, id, "session.rename", "会话重命名失败", err, LogPair{Key: "session_id", Value: id})
+		return Session{}, err
+	}
+	uc.flowDone(ctx, id, "session.rename", "会话已重命名",
+		LogPair{Key: "session_id", Value: id}, LogPair{Key: "title", Value: title})
+	return updated, nil
 }
 
 func (uc *SessionUsecase) Update(ctx context.Context, id string, fields SessionUpdateFields) (Session, error) {
@@ -755,18 +819,29 @@ func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
 	}
 	sess, err := uc.sessionReader.GetSessionByID(ctx, id)
 	if err != nil {
+		uc.flowError(ctx, id, "session.delete", "会话删除失败", err, LogPair{Key: "session_id", Value: id})
 		return err
 	}
 	if IsProtectedStatus(SessionStatus(sess.Status)) {
-		return apierror.Conflict("SESSION", fmt.Sprintf("session is %s, cannot delete", sess.Status))
+		err := apierror.Conflict("SESSION", fmt.Sprintf("session is %s, cannot delete", sess.Status))
+		uc.flowError(ctx, id, "session.delete", "会话删除失败", err,
+			LogPair{Key: "session_id", Value: id}, LogPair{Key: "agent_id", Value: sess.AgentID})
+		return err
 	}
 	n, err := uc.sessionMutator.DeleteSession(ctx, id)
 	if err != nil {
+		uc.flowError(ctx, id, "session.delete", "会话删除失败", err,
+			LogPair{Key: "session_id", Value: id}, LogPair{Key: "agent_id", Value: sess.AgentID})
 		return err
 	}
 	if n == 0 {
-		return apierror.NotFound("SESSION", id)
+		err := apierror.NotFound("SESSION", id)
+		uc.flowError(ctx, id, "session.delete", "会话删除失败", err,
+			LogPair{Key: "session_id", Value: id}, LogPair{Key: "agent_id", Value: sess.AgentID})
+		return err
 	}
+	uc.flowDone(ctx, id, "session.delete", "会话已删除",
+		LogPair{Key: "session_id", Value: id}, LogPair{Key: "agent_id", Value: sess.AgentID})
 	return nil
 }
 

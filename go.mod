@@ -28,6 +28,7 @@ replace trpc.group/trpc-go/trpc-agent-go/openclaw => ./pkg/trpc-agent-go/opencla
 require (
 	entgo.io/ent v0.14.6
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
+	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/fatih/color v1.19.0
 	github.com/fsnotify/fsnotify v1.7.0
@@ -157,7 +158,6 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
-	github.com/bmatcuk/doublestar/v4 v4.9.1 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect

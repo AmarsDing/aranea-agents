@@ -159,6 +159,7 @@ var stepTitleRegistry = map[string]string{
 	"system.auto_memory.extract_max_retry": "自动记忆提取重试耗尽",
 	"system.auto_memory.l4_fail":           "L4 图谱写入失败",
 	"system.auto_memory.done":              "自动记忆提取完成",
+	"system.memory_canary.failed":          "记忆闭环金丝雀告警",
 	"system.monitor.alert_webhook_fail":    "告警 Webhook 失败",
 	"system.monitor.alert_channel_fail":    "告警通道发送失败",
 	"system.builtin_tools_sync_fail":       "内置工具同步失败",

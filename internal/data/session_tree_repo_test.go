@@ -9,8 +9,8 @@ import (
 )
 
 // TS9-BUG-5: GetSessionTree must return a populated root even when the root
-// session row carries the production-real values session_type='' and
-// root_session_id='' (sessions created via API / channel ingress never get
+// session row carries the production-real values session_type=” and
+// root_session_id=” (sessions created via API / channel ingress never get
 // session_type='spirit' assigned — no creation path sets it).
 //
 // Tree shape under test (mirrors the TS9 it-ops closed-loop run):

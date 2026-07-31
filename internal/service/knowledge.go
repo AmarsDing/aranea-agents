@@ -5,12 +5,16 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
@@ -79,6 +83,8 @@ type KnowledgeService struct {
 	systemSetting biz.SystemSettingRepo
 	vaultSync     VaultSyncController // P1-3：vault 同步生命周期（nil = 未装配，同步不可用）
 	lg            loggateway.Logger
+	// monitorBus 流程日志总线（装配层经 SetMonitorBus 注入；nil 时仅进程日志，不发流程日志事件）。
+	monitorBus contract.MonitorBus
 }
 
 // VaultSyncController vault 同步循环生命周期窄接口（P1-3 生产装配）。
@@ -94,6 +100,21 @@ type VaultSyncController interface {
 // KnowledgeService → Supervisor → Usecase 构造顺序约束，同 SetTimeoutHandler 模式）。
 func (s *KnowledgeService) SetVaultSyncController(c VaultSyncController) {
 	s.vaultSync = c
+}
+
+// SetMonitorBus 注入流程日志总线（装配在 wire/app 层，同 SetVaultSyncController 模式）。
+func (s *KnowledgeService) SetMonitorBus(bus contract.MonitorBus) {
+	s.monitorBus = bus
+}
+
+// knowledgeFlow 创建知识域流程日志发射器（无会话上下文；bus 为 nil 时仅进程日志）。
+func (s *KnowledgeService) knowledgeFlow(ctx context.Context) *event.TraceEmitter {
+	return event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:    ctx,
+		Domain: event.TraceDomainKnowledge,
+		LG:     s.lg,
+		Infra:  event.NewInfraFromBus(s.monitorBus),
+	})
 }
 
 func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, searchDeps KnowledgeSearchDeps, organizer *knowledge.MarkdownOrganizer, extractors *knowledge.ExtractorRegistry, assets *knowledge.AssetStore, eventBus biz.EventBus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
@@ -148,6 +169,11 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 	}
 	c, err := s.uc.CreateVault(ctx, in)
 	if err != nil {
+		s.lg.Error("创建知识库失败",
+			loggateway.StepID("knowledge.collection.create_fail"),
+			loggateway.Str("name", name),
+			loggateway.Err(err),
+		)
 		return nil, err
 	}
 	// P1-3：拉起同步循环（启动即扫一轮，新 vault 立即入库）。
@@ -200,7 +226,104 @@ func (s *KnowledgeService) DeleteCollection(ctx context.Context, req *v1.DeleteC
 	if s.vaultSync != nil {
 		s.vaultSync.StopVault(req.GetId())
 	}
-	return &emptypb.Empty{}, s.uc.DeleteCollection(ctx, req.GetId())
+	if err := s.uc.DeleteCollection(ctx, req.GetId()); err != nil {
+		s.lg.Error("删除知识库失败",
+			loggateway.StepID("knowledge.collection.delete_fail"),
+			loggateway.Str("collection_id", req.GetId()),
+			loggateway.Err(err),
+		)
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// ServeDocumentAsset 原始文件流式输出（G2-B6）：vault 文档读 collection root +
+// rel_path；历史非 vault 文档经 AssetStore 解析 asset_uri。图片/音频/视频/pdf
+// inline 渲染，其余（word 等）attachment 下载。ServeContent 支持 Range（媒体拖动）。
+// 路由经 custom route 注册（同 artifact 下载模式），鉴权走标准 auth 过滤器。
+func (s *KnowledgeService) ServeDocumentAsset(w http.ResponseWriter, r *http.Request, id string) {
+	ref, err := s.uc.ResolveDocumentAsset(r.Context(), id)
+	if err != nil {
+		writeAssetError(w, err)
+		return
+	}
+	// C-01：租户门禁（NotFound 防泄漏）。doc → collection 已在 biz 内取过，
+	// 此处为访问校验再取一次（廉价，与 GetCollection 其他调用点一致）。
+	doc, err := s.uc.GetDocument(r.Context(), id)
+	if err != nil {
+		writeAssetError(w, err)
+		return
+	}
+	col, err := s.uc.GetCollection(r.Context(), doc.CollectionID)
+	if err != nil {
+		writeAssetError(w, err)
+		return
+	}
+	if err := s.assertCollectionAccess(r.Context(), col); err != nil {
+		writeAssetError(w, err)
+		return
+	}
+
+	abs := ref.AbsPath
+	if abs == "" {
+		if s.assets == nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		abs = s.assets.Resolve(ref.AssetURI)
+		if abs == "" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+	}
+	f, err := os.Open(abs)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	modTime := ref.ModTime
+	if modTime.IsZero() {
+		if info, statErr := f.Stat(); statErr == nil {
+			modTime = info.ModTime()
+		}
+	}
+
+	mimeType := strings.TrimSpace(ref.MimeType)
+	if mimeType == "" {
+		mimeType = mime.TypeByExtension(filepath.Ext(ref.Name))
+	}
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+	disposition := "attachment"
+	if assetInlineAllowed(mimeType) {
+		disposition = "inline"
+	}
+	w.Header().Set("Content-Type", mimeType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`%s; filename="%s"`, disposition, ref.Name))
+	http.ServeContent(w, r, ref.Name, modTime, f)
+}
+
+// assetInlineAllowed 仅非可执行媒体允许 inline（HTML/JS 内联渲染有 XSS 风险，
+// 与 artifact 下载 §13.7 同约束）。
+func assetInlineAllowed(mime string) bool {
+	return strings.HasPrefix(mime, "image/") ||
+		strings.HasPrefix(mime, "audio/") ||
+		strings.HasPrefix(mime, "video/") ||
+		mime == "application/pdf"
+}
+
+// writeAssetError 映射 biz 错误到 HTTP 状态码（原始流不走 kratos JSON 错误编码）。
+func writeAssetError(w http.ResponseWriter, err error) {
+	switch {
+	case apierror.IsCode(err, apierror.CodeNotFound):
+		http.Error(w, "not found", http.StatusNotFound)
+	case apierror.IsCode(err, apierror.CodeBadRequest):
+		http.Error(w, "bad request", http.StatusBadRequest)
+	default:
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
 }
 
 // assertCollectionAccess rejects cross-tenant collection read access (C-01).
@@ -302,6 +425,18 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		}
 	}
 
+	// G1-B3：上传到 vault 子目录——原始文件先落盘（文件系统为真相源），文档镜像
+	// 带 rel_path + content_hash（同步链视为已应用，不重复处理）。同名冲突
+	// CodeConflict；CreateDocument 失败补偿删除已落盘文件（防孤儿）。
+	vaultRel := ""
+	if dir := strings.TrimSpace(req.GetTargetDir()); dir != "" {
+		rel, uploadErr := s.uc.WriteVaultUpload(ctx, col.ID, dir, req.GetSource(), raw)
+		if uploadErr != nil {
+			return nil, uploadErr
+		}
+		vaultRel = rel
+	}
+
 	doc := biz.KnowledgeDocument{
 		CollectionID: col.ID,
 		Source:       req.GetSource(),
@@ -309,6 +444,10 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		SizeBytes:    int64(len(raw)),
 		ContentText:  text,
 		Organized:    organized,
+		RelPath:      vaultRel,
+	}
+	if vaultRel != "" {
+		doc.ContentHash = biz.KnowledgeHashContent(string(raw))
 	}
 	// Phase 9：原图留存血缘（asset_uri）；asset 文件名依赖 doc ID，故提前生成。
 	if isImage && s.assets != nil {
@@ -325,12 +464,31 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 	}
 	created, err := s.uc.CreateDocument(ctx, doc)
 	if err != nil {
+		s.lg.Error("创建知识文档失败",
+			loggateway.StepID("knowledge.document.create_fail"),
+			loggateway.Str("collection_id", col.ID),
+			loggateway.Str("source", doc.Source),
+			loggateway.Err(err),
+		)
+		if vaultRel != "" {
+			if rbErr := s.uc.RemoveVaultFile(ctx, col.ID, vaultRel); rbErr != nil {
+				s.lg.Warn("vault 上传补偿删除失败（文件已落盘但入库失败）",
+					loggateway.StepID("knowledge.ingest.compensate_fail"),
+					loggateway.Str("rel_path", vaultRel),
+					loggateway.Err(rbErr),
+				)
+			}
+		}
 		return nil, err
 	}
 	doc = created
 
 	strategy := knowledge.ParseChunkStrategy(req.GetChunkStrategy())
+	// 词法库（无 embedding_model）：跳过 embedding，与 vault 同步链 buildChunks 一致。
 	embedder := s.embedder
+	if strings.TrimSpace(col.EmbeddingModel) == "" {
+		embedder = nil
+	}
 	uc := s.uc
 
 	params := knowledge.IngestParams{
@@ -343,6 +501,13 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		ChunkOverlap: int(req.GetChunkOverlap()),
 	}
 	params.ApplyDefaults()
+
+	// 流程日志：摄取开始（后续 parse/embed/done 在异步管线中发射，共用同一 emitter）。
+	flow := s.knowledgeFlow(ctx)
+	flow.LogStart("knowledge.ingest.start", "知识文档摄取开始",
+		event.P("collection_id", col.ID),
+		event.P("source", req.GetSource()),
+		event.P("size_bytes", len(raw)))
 
 	ingestCtx := appctx.Ctx()
 	safego.Go(ingestCtx, "knowledge-ingest", func() {
@@ -373,6 +538,9 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 					)
 				}
 				s.publishKnowledgeIngest(col.ID, doc.ID, "error", extractErr.Error(), 0)
+				flow.LogError("knowledge.ingest.done", "知识摄取失败",
+					event.P("doc_id", doc.ID),
+					event.P("error", extractErr.Error()))
 				return
 			}
 			if contentErr := uc.UpdateDocumentContent(ingestCtx, doc.ID, md, true); contentErr != nil {
@@ -385,7 +553,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 			params.Text = md
 		}
 
-		bizChunks, err := knowledge.BuildIndexedChunks(ingestCtx, embedder, params)
+		bizChunks, err := knowledge.BuildIndexedChunks(ingestCtx, embedder, params, flow)
 		if err != nil {
 			if statusErr := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "error", err.Error(), 0); statusErr != nil {
 				s.lg.Error("failed to update document status to error",
@@ -396,6 +564,9 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 				)
 			}
 			s.publishKnowledgeIngest(col.ID, doc.ID, "error", err.Error(), 0)
+			flow.LogError("knowledge.ingest.done", "知识摄取失败",
+				event.P("doc_id", doc.ID),
+				event.P("error", err.Error()))
 			return
 		}
 
@@ -409,6 +580,9 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 				)
 			}
 			s.publishKnowledgeIngest(col.ID, doc.ID, "error", err.Error(), 0)
+			flow.LogError("knowledge.ingest.done", "知识摄取失败",
+				event.P("doc_id", doc.ID),
+				event.P("error", err.Error()))
 			return
 		}
 		if err := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "indexed", "", len(bizChunks)); err != nil {
@@ -419,6 +593,9 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 			)
 			// Document was likely deleted mid-ingest; skip counter update to avoid drift.
 			s.publishKnowledgeIngest(col.ID, doc.ID, "error", "document deleted during ingest", 0)
+			flow.LogError("knowledge.ingest.done", "知识摄取失败",
+				event.P("doc_id", doc.ID),
+				event.P("error", "document deleted during ingest"))
 			return
 		}
 		if err := uc.UpdateCollectionCounts(ingestCtx, col.ID, 1, len(bizChunks)); err != nil {
@@ -429,6 +606,9 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 			)
 		}
 		s.publishKnowledgeIngest(col.ID, doc.ID, "indexed", "", len(bizChunks))
+		flow.LogDone("knowledge.ingest.done", "知识摄取完成",
+			event.P("doc_id", doc.ID),
+			event.P("chunk_count", len(bizChunks)))
 		knowledgeIngestTotal.Inc()
 	})
 
@@ -468,7 +648,15 @@ func (s *KnowledgeService) DeleteDocument(ctx context.Context, req *v1.DeleteDoc
 	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
 		return nil, err
 	}
-	return &emptypb.Empty{}, s.uc.DeleteDocument(ctx, req.GetId())
+	if err := s.uc.DeleteDocument(ctx, req.GetId()); err != nil {
+		s.lg.Error("删除知识文档失败",
+			loggateway.StepID("knowledge.document.delete_fail"),
+			loggateway.Str("doc_id", req.GetId()),
+			loggateway.Err(err),
+		)
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // GetDocumentContent returns the full extracted/organized text of one document (preview).
@@ -477,20 +665,85 @@ func (s *KnowledgeService) GetDocumentContent(ctx context.Context, req *v1.GetDo
 	if err != nil {
 		return nil, err
 	}
-	return &v1.DocumentContent{
+	resp := &v1.DocumentContent{
 		Id:          doc.ID,
 		ContentText: doc.ContentText,
 		Organized:   doc.Organized,
-	}, nil
+	}
+	// G2-B5：vault 文档附带编辑器数据源（body 原文 + 文件 hash）。文件刚被外部
+	// 删除等读失败场景降级为空（预览仍可用），编辑保存时 CAS 会判冲突。
+	if doc.RelPath != "" {
+		if raw, hash, rawErr := s.uc.GetVaultDocumentRaw(ctx, doc.ID); rawErr == nil {
+			resp.RawContent = raw
+			resp.BaseHash = hash
+		}
+	}
+	return resp, nil
+}
+
+// UpdateDocumentContent 编辑保存（G2-B5）：body 写回 vault 文件（frontmatter 保留），
+// CAS 冲突留双份并置 conflict=true，写后立即重索引。
+func (s *KnowledgeService) UpdateDocumentContent(ctx context.Context, req *v1.UpdateDocumentContentRequest) (*v1.UpdateDocumentContentResponse, error) {
+	doc, conflict, err := s.uc.UpdateVaultDocumentContent(ctx, req.GetId(), req.GetContent(), req.GetBaseHash())
+	if err != nil {
+		s.lg.Warn("保存知识文档失败",
+			loggateway.StepID("knowledge.document.save_fail"),
+			loggateway.Str("doc_id", req.GetId()),
+			loggateway.Err(err),
+		)
+		return nil, err
+	}
+	if conflict {
+		s.lg.Warn("保存知识文档检测到并发修改（留双份）",
+			loggateway.StepID("knowledge.document.save_conflict"),
+			loggateway.Str("doc_id", req.GetId()),
+		)
+	}
+	return &v1.UpdateDocumentContentResponse{Document: toProtoDocument(doc), Conflict: conflict}, nil
 }
 
 // MoveDocument moves a document (with its chunks) to another collection (US-14 整理归档).
 func (s *KnowledgeService) MoveDocument(ctx context.Context, req *v1.MoveDocumentRequest) (*v1.KnowledgeDocument, error) {
 	doc, err := s.uc.MoveDocument(ctx, req.GetId(), req.GetTargetCollectionId())
 	if err != nil {
+		s.lg.Error("移动知识文档失败",
+			loggateway.StepID("knowledge.document.move_fail"),
+			loggateway.Str("doc_id", req.GetId()),
+			loggateway.Str("target_collection_id", req.GetTargetCollectionId()),
+			loggateway.Err(err),
+		)
 		return nil, err
 	}
 	return toProtoDocument(doc), nil
+}
+
+// MoveDocumentToDir 库内跨目录移动（G3-B4）：原子 fs move + rel_path 更新
+// （身份/chunks 保留，内容未变不重索引）+ 入链重建。同名冲突默认 CodeConflict
+// （前端弹 覆盖/改名/取消），conflict_policy=overwrite|rename 时按策略执行。
+func (s *KnowledgeService) MoveDocumentToDir(ctx context.Context, req *v1.MoveDocumentToDirRequest) (*v1.KnowledgeDocument, error) {
+	// C-01：租户门禁（NotFound 防泄漏）——先取 doc → collection 校验再移动。
+	doc, err := s.uc.GetDocument(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	col, err := s.uc.GetCollection(ctx, doc.CollectionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCollectionAccess(ctx, col); err != nil {
+		return nil, err
+	}
+	moved, err := s.uc.MoveVaultDocumentToDir(ctx, req.GetId(), req.GetTargetDir(), req.GetConflictPolicy())
+	if err != nil {
+		s.lg.Warn("库内移动知识文档失败",
+			loggateway.StepID("knowledge.document.move_to_dir_fail"),
+			loggateway.Str("doc_id", req.GetId()),
+			loggateway.Str("target_dir", req.GetTargetDir()),
+			loggateway.Err(err),
+		)
+		return nil, err
+	}
+	return toProtoDocument(moved), nil
 }
 
 // Search performs a semantic search over a collection.
@@ -526,6 +779,9 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 		MinScore:         req.GetMinScore(),
 		FilterJSON:       req.GetFilterJson(),
 		RerankCandidates: int(req.GetRerankCandidates()),
+		// G3-B7：搜索范围选择器（vault 相对目录前缀；data 层做斜杠归一与
+		// LIKE 转义，retriever/hybrid 全链路 struct 值拷贝自动携带）。
+		PathPrefix: strings.TrimSpace(req.GetPathPrefix()),
 	}
 	if req.UseRerank != nil {
 		v := req.GetUseRerank()

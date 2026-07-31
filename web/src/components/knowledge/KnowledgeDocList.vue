@@ -1,14 +1,20 @@
 <template>
   <q-card flat class="app-pane-card knowledge-doc-list">
     <div class="app-pane-card__header knowledge-doc-list__header">
-      <!-- 面包屑：根目录 / 子目录…，点击任意段回跳 -->
+      <!-- 面包屑：根目录 / 子目录…，点击任意段回跳；G3-F1 拖拽时兼作 drop 目标（hover 500ms 下钻） -->
       <div class="row items-center no-wrap ellipsis knowledge-doc-list__crumbs">
         <template v-for="(c, i) in crumbs" :key="c.prefix">
           <q-icon v-if="i > 0" name="chevron_right" size="14px" class="knowledge-doc-list__crumb-sep" />
           <span
             class="knowledge-doc-list__crumb ellipsis"
-            :class="{ 'knowledge-doc-list__crumb--current': i === crumbs.length - 1 }"
+            :class="{
+              'knowledge-doc-list__crumb--current': i === crumbs.length - 1,
+              'knowledge-doc-list__crumb--drop': crumbDropPrefix === c.prefix,
+            }"
             @click="$emit('navigate', c.prefix)"
+            @dragover="onCrumbDragOver(c, $event)"
+            @dragleave="onCrumbDragLeave(c)"
+            @drop="onCrumbDrop(c, $event)"
           >
             <q-icon v-if="i === 0" name="home" size="14px" class="q-mr-xs" />{{ c.label }}
           </span>
@@ -26,7 +32,15 @@
         >
           <q-tooltip>{{ t('knowledgePage.pasteText') }}</q-tooltip>
         </q-btn>
-        <q-btn flat dense round size="sm" icon="refresh" :aria-label="t('knowledgePage.refreshAria')" @click="$emit('refresh')">
+        <q-btn
+          flat
+          dense
+          round
+          size="sm"
+          icon="refresh"
+          :aria-label="t('knowledgePage.refreshAria')"
+          @click="$emit('refresh')"
+        >
           <q-tooltip>{{ t('knowledgePage.refreshAria') }}</q-tooltip>
         </q-btn>
       </div>
@@ -65,15 +79,18 @@
               'knowledge-doc-list__row--selected': e.kind === 'file' && selectedDocId === e.doc_id,
               'knowledge-doc-list__row--dir': e.kind === 'dir',
             }"
+            :draggable="e.kind === 'file'"
             @click="onRowClick(e)"
+            @dragstart="onRowDragStart(e, $event)"
+            @dragend="$emit('drag-end')"
           >
             <td class="knowledge-doc-list__cell knowledge-doc-list__cell--name">
               <div class="knowledge-doc-list__name-wrap">
                 <q-icon
-                  :name="e.kind === 'dir' ? 'folder' : 'insert_drive_file'"
+                  :name="visualOf(e).icon"
                   size="16px"
-                  :color="e.kind === 'dir' ? 'amber-8' : undefined"
                   class="q-mr-xs knowledge-doc-list__icon"
+                  :class="[visualOf(e).cls, { 'kv-icon--pulse': visualOf(e).pulse }]"
                 />
                 <span class="knowledge-doc-list__name-text" :title="e.name">{{ e.name }}</span>
               </div>
@@ -117,10 +134,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { VaultTreeNode } from '../../features/knowledge/types';
-import { formatKnowledgeDocSize, formatKnowledgeTime, knowledgeStatusColor } from '../../features/knowledge/knowledgeUi';
+import {
+  isValidDropTarget,
+  vaultNodeVisual,
+  type DragFileRef,
+  type VaultNodeVisual,
+} from '../../features/knowledge/vaultTreeUi';
+import {
+  formatKnowledgeDocSize,
+  formatKnowledgeTime,
+  knowledgeStatusColor,
+} from '../../features/knowledge/knowledgeUi';
 
 type SortKey = 'name' | 'updated_at' | 'type' | 'size' | 'status';
 
@@ -130,6 +157,9 @@ const props = defineProps<{
   entries: VaultTreeNode[];
   loading: boolean;
   selectedDocId: string;
+  /** G3-F1：拖拽中的文件（非空时面包屑变为 drop 目标）；列表恒属当前 vault。 */
+  dragFile: DragFileRef | null;
+  vaultId: string;
 }>();
 
 const emit = defineEmits<{
@@ -138,10 +168,20 @@ const emit = defineEmits<{
   navigate: [prefix: string];
   refresh: [];
   ingest: [];
+  /** G3-F1：文件行拖拽开始/结束（拖拽源状态由 composable 持有）。 */
+  'drag-start': [node: VaultTreeNode];
+  'drag-end': [];
+  /** G3-F1：drop 到面包屑段（目标目录 prefix）。 */
+  'drop-prefix': [prefix: string];
 }>();
 
 const { t } = useI18n();
 const statusColor = knowledgeStatusColor;
+
+/** G1 科幻图标：dir=violet、md=teal、图片=magenta、音视频=orange、error=red 脉冲。 */
+function visualOf(e: VaultTreeNode): VaultNodeVisual {
+  return vaultNodeVisual({ kind: e.kind, name: e.name, status: e.status });
+}
 
 const columns = computed<{ key: SortKey; label: string; align: 'left' | 'right'; width: string }[]>(() => [
   { key: 'name', label: t('knowledgePage.colName'), align: 'left', width: '40%' },
@@ -247,6 +287,72 @@ function onRowClick(e: VaultTreeNode) {
   }
   emit('select', e);
 }
+
+// ---------- G3-F1 拖拽移动（V12.5：幽灵卡 + 面包屑 drop 目标） ----------
+
+/** 文件行 dragstart：dataTransfer + 自定义幽灵卡（离屏渲染，setDragImage 捕获后即移除）。 */
+function onRowDragStart(e: VaultTreeNode, ev: DragEvent) {
+  if (e.kind !== 'file' || !ev.dataTransfer) return;
+  ev.dataTransfer.setData('text/plain', e.name);
+  ev.dataTransfer.effectAllowed = 'move';
+  const ghost = document.createElement('div');
+  ghost.className = 'knowledge-drag-ghost';
+  ghost.textContent = e.name;
+  document.body.appendChild(ghost);
+  ev.dataTransfer.setDragImage(ghost, -8, 14);
+  requestAnimationFrame(() => ghost.remove());
+  emit('drag-start', e);
+}
+
+/** 面包屑 drop 高亮（当前 dragover 的合法目标段）。 */
+const crumbDropPrefix = ref<string | null>(null);
+/** hover 500ms 下钻定时器（拖拽悬停面包屑段 → 中栏切到该目录，可继续深入）。 */
+let crumbHoverTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearCrumbHover() {
+  if (crumbHoverTimer) {
+    clearTimeout(crumbHoverTimer);
+    crumbHoverTimer = null;
+  }
+}
+
+function crumbTargetValid(prefix: string): boolean {
+  return isValidDropTarget(props.dragFile, { vaultId: props.vaultId, prefix });
+}
+
+function onCrumbDragOver(c: { prefix: string }, ev: DragEvent) {
+  if (!props.dragFile) return;
+  if (crumbTargetValid(c.prefix)) {
+    ev.preventDefault();
+    ev.dataTransfer!.dropEffect = 'move';
+    if (crumbDropPrefix.value !== c.prefix) {
+      crumbDropPrefix.value = c.prefix;
+      clearCrumbHover();
+      // 500ms 悬停下钻（当前段已是末段则无需跳转）。
+      if (c.prefix !== props.prefix) {
+        crumbHoverTimer = setTimeout(() => emit('navigate', c.prefix), 500);
+      }
+    }
+  } else {
+    ev.dataTransfer!.dropEffect = 'none';
+  }
+}
+
+function onCrumbDragLeave(c: { prefix: string }) {
+  if (crumbDropPrefix.value === c.prefix) {
+    crumbDropPrefix.value = null;
+    clearCrumbHover();
+  }
+}
+
+function onCrumbDrop(c: { prefix: string }, ev: DragEvent) {
+  ev.preventDefault();
+  crumbDropPrefix.value = null;
+  clearCrumbHover();
+  if (crumbTargetValid(c.prefix)) emit('drop-prefix', c.prefix);
+}
+
+onBeforeUnmount(clearCrumbHover);
 </script>
 
 <style lang="scss" scoped>
@@ -287,6 +393,15 @@ function onRowClick(e: VaultTreeNode) {
         background: transparent;
         color: inherit;
       }
+    }
+
+    // G3-F1：合法 drop 目标发光高亮。
+    &--drop {
+      background: var(--interaction-surface-hover);
+      color: var(--color-accent);
+      box-shadow:
+        0 0 0 1px var(--color-accent),
+        0 0 10px color-mix(in srgb, var(--color-accent) 40%, transparent);
     }
   }
 
@@ -380,7 +495,28 @@ function onRowClick(e: VaultTreeNode) {
 
   &__icon {
     flex: none;
-    color: var(--color-text-secondary);
+    // 颜色由全局 .kv-icon--* 色板决定（scoped 覆盖会压过全局类，故此处不设 color）
   }
+}
+</style>
+
+<!-- G3-F1 拖拽幽灵卡：appendChild 到 body（无 scoped 属性），须非作用域样式。 -->
+<style lang="scss">
+.knowledge-drag-ghost {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  z-index: 9999;
+  padding: 6px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  background: var(--glass-elevated);
+  backdrop-filter: blur(var(--glass-blur-elevated));
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated));
+  border: 1px solid var(--color-accent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  pointer-events: none;
+  white-space: nowrap;
 }
 </style>

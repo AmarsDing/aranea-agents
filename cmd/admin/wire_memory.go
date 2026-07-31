@@ -40,6 +40,22 @@ func provideFactIndexSync(vec *biz.MemoryUsecase, d *data.Data, lg loggateway.Lo
 	return data.NewMemoryFactIndexSync(vec, d, lg)
 }
 
+// provideMemoryConflictDetector wires the A2 conflict-governance detector.
+// Returns nil when Postgres or the embedding usecase is unavailable — the
+// worker then skips conflict governance (best-effort, never blocks writes).
+func provideMemoryConflictDetector(d *data.Data, vec *biz.MemoryUsecase) biz.MemoryConflictDetector {
+	if d == nil || vec == nil {
+		return nil
+	}
+	return biz.NewMemoryConflictDetector(data.NewMemoryConflictNeighborSearcher(d), vec, data.NewL3FactReaderForUser(d))
+}
+
+// provideL3ConflictStore wires the conflict store used to apply supersede /
+// conflict-mark decisions.
+func provideL3ConflictStore(d *data.Data) biz.L3ConflictStore {
+	return data.NewL3ConflictStore(d)
+}
+
 func provideEpisodeIndexSync(vec *biz.MemoryUsecase, d *data.Data) biz.EpisodeIndexSyncer {
 	return data.NewMemoryEpisodeIndexSync(vec, d)
 }
@@ -196,13 +212,14 @@ func providePersistenceSet(
 	var mem rt.MemorySet
 	if d != nil {
 		mem = rt.MemorySet{
-			TRPC:            memSvc,
-			Admin:           data.NewSessionAdminStoreAdapter(d, d.VectorStore()),
-			AdminUsecase:    adminUC,
-			ActionLogWriter: data.NewMemoryActionLogWriter(d),
-			L2Recall:        l2Recall,
-			L3Recall:        l3Recall,
-			CompositeRecall: compositeRecall,
+			TRPC:             memSvc,
+			Admin:            data.NewSessionAdminStoreAdapter(d, d.VectorStore()),
+			AdminUsecase:     adminUC,
+			ActionLogWriter:  data.NewMemoryActionLogWriter(d),
+			L2Recall:         l2Recall,
+			L3Recall:         l3Recall,
+			CompositeRecall:  compositeRecall,
+			PreferenceLister: data.NewMemoryPreferenceLister(d),
 		}
 		// Connect dead-letter sink so queue overflow is persisted instead of silently dropped.
 		if queue, ok := q.(*memtrpc.MemoryJobQueue); ok && deadLetterRepo != nil {

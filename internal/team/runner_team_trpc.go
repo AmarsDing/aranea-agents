@@ -239,6 +239,11 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		r.finishTeamRunWithError(ctx, &run, t0, err.Error(), &turnStatus, rollbackRunnerSession)
 		return userMsg, biz.ChatMessage{}, err
 	}
+	// F-C: 团队 Graph 路径绕过 trpcGraphRuntime.Run（唯一 EventBridge 宿主），
+	// node_start/node_end 到不了 coordinator 的 step watch，per-member
+	// team_run_steps 不持久化。tee 框架事件流，把图节点生命周期以 graph_stage
+	// system notice 重发到 EventBus（watch 按 spiritSessionID + execution_id 过滤）。
+	events = teeGraphStageNotices(events, r.td.Pipeline.EventBus, sess.ID, deriveSpiritSessionID(sess), ResolveLinkedGraphID(teamRow.LinkedGraphID, teamRow.DefinitionJSON), graphExecID, r.lg)
 	events = event.WrapFrameworkEventsWithOtel(events, teamEmitter, teamBridge, teamBridge)
 
 	// Phase 7: Consume stream (streamOpts already has the pre-created projector)

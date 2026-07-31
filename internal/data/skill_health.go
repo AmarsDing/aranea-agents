@@ -27,6 +27,8 @@ func (r *skillHealthRepo) GetSkillHealth(ctx context.Context, skillID string, si
 		Where(
 			skillinvocation.SkillIDEQ(skillID),
 			skillinvocation.CreatedAtGTE(since30dStr),
+			// 只统计真实运行时调用；filesystem_* 同步记录不参与健康指标。
+			skillinvocation.SourceEQ(biz.SkillInvocationSourceRuntime),
 		).
 		All(ctx)
 	if err != nil {

@@ -17,8 +17,10 @@
         <div v-if="loadingHealth" class="skill-stats-panel__state">{{ t('skillsPage.statsLoading') }}</div>
         <div v-else-if="!hasData" class="skill-stats-panel__state">{{ t('skillsPage.statsEmpty') }}</div>
         <template v-else>
-          <div class="skill-stats-panel__section">{{ t('skillsPage.statsTrendTitle') }}</div>
-          <div ref="trendEl" class="skill-stats-panel__trend" />
+          <div class="skill-stats-panel__trend-wrap">
+            <div class="skill-stats-panel__section">{{ t('skillsPage.statsTrendTitle') }}</div>
+            <div ref="trendEl" class="skill-stats-panel__trend" />
+          </div>
           <div class="skill-stats-panel__row">
             <div class="skill-stats-panel__donut-wrap">
               <div ref="donutEl" class="skill-stats-panel__donut" />
@@ -30,11 +32,11 @@
             <div class="skill-stats-panel__metrics">
               <div class="skill-stats-panel__metric">
                 <span>{{ t('skillsPage.statsCalls7d') }}</span
-                ><b>{{ health?.total_invocations_7d ?? 0 }}</b>
+                ><b>{{ formatCompactCount(health?.total_invocations_7d ?? 0) }}</b>
               </div>
               <div class="skill-stats-panel__metric">
                 <span>{{ t('skillsPage.statsCalls30d') }}</span
-                ><b>{{ health?.total_invocations_30d ?? 0 }}</b>
+                ><b>{{ formatCompactCount(health?.total_invocations_30d ?? 0) }}</b>
               </div>
               <div class="skill-stats-panel__metric">
                 <span>{{ t('skillsPage.statsP95') }}</span
@@ -58,6 +60,7 @@ import { useI18n } from 'vue-i18n';
 import type { EChartsCoreOption } from 'echarts/core';
 import SkillStatsStrip from './SkillStatsStrip.vue';
 import type { Skill, SkillHealthMetric } from '../../features/skills/types';
+import { formatCompactCount } from '../../features/usage/moneyFormat';
 import { usageChartPalette } from '../../features/usage/usageEcharts';
 import { useUsageChart } from '../../features/usage/useUsageChart';
 
@@ -187,42 +190,62 @@ useUsageChart(donutEl, donutOption, () => [health.value, locale.value]);
 .skill-stats-hover
   display: inline-block
 
-// q-tooltip 默认字号/宽度偏小，图形面板需要自定义
+// 悬浮统计面板：与系统玻璃主题一致（glass-elevated + blur + 玻璃描边 + 内高光）
 :global(.skill-stats-tooltip)
-  max-width: 420px
-  padding: 12px 14px
+  max-width: 432px
+  padding: 0
   font-size: 12px
   line-height: 1.5
-  border-radius: 14px
+  border-radius: 16px
+  border: 1px solid var(--glass-border)
+  background: color-mix(in srgb, var(--glass-elevated) 94%, transparent)
+  box-shadow: var(--glass-inner-highlight), 0 16px 40px color-mix(in srgb, var(--color-shadow, #000) 16%, transparent)
+  backdrop-filter: blur(var(--glass-blur-elevated)) saturate(1.08)
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated)) saturate(1.08)
 
 .skill-stats-panel
-  width: 380px
+  width: 392px
   max-width: 78vw
+  padding: 12px 14px 14px
 
 .skill-stats-panel__head
   display: flex
   align-items: baseline
   gap: 8px
-  margin-bottom: 6px
+  padding-bottom: 8px
+  margin-bottom: 10px
+  border-bottom: 1px solid var(--glass-border)
 
 .skill-stats-panel__title
+  font-size: 13px
   font-weight: 700
+  color: var(--color-text-heading)
 
 .skill-stats-panel__name
-  opacity: 0.75
+  font-size: 11px
+  color: var(--color-text-tertiary)
   overflow: hidden
   text-overflow: ellipsis
   white-space: nowrap
 
 .skill-stats-panel__section
-  margin: 6px 0 2px
+  margin-bottom: 2px
+  font-size: 11px
   font-weight: 600
-  opacity: 0.8
+  letter-spacing: 0.02em
+  color: var(--color-text-secondary)
 
 .skill-stats-panel__state
   padding: 18px 0
   text-align: center
-  opacity: 0.75
+  color: var(--color-text-tertiary)
+
+// 趋势图：内层玻璃卡片，与 app-trend-chart-panel 同语言
+.skill-stats-panel__trend-wrap
+  padding: 8px 10px 4px
+  border: 1px solid var(--glass-border)
+  border-radius: 12px
+  background: color-mix(in srgb, var(--glass-elevated) 72%, transparent)
 
 .skill-stats-panel__trend
   width: 100%
@@ -231,18 +254,22 @@ useUsageChart(donutEl, donutOption, () => [health.value, locale.value]);
 .skill-stats-panel__row
   display: flex
   align-items: center
-  gap: 14px
-  margin-top: 8px
+  gap: 12px
+  margin-top: 10px
 
 .skill-stats-panel__donut-wrap
   position: relative
   flex-shrink: 0
-  width: 108px
-  height: 108px
+  width: 104px
+  height: 104px
+  padding: 6px
+  border: 1px solid var(--glass-border)
+  border-radius: 12px
+  background: color-mix(in srgb, var(--glass-elevated) 72%, transparent)
 
 .skill-stats-panel__donut
-  width: 108px
-  height: 108px
+  width: 100%
+  height: 100%
 
 .skill-stats-panel__donut-center
   position: absolute
@@ -255,24 +282,38 @@ useUsageChart(donutEl, donutOption, () => [health.value, locale.value]);
 
   b
     font-size: 15px
+    color: var(--color-text-heading)
 
   span
     font-size: 10px
-    opacity: 0.7
+    color: var(--color-text-tertiary)
 
+// KPI 迷你卡：与 app-trend-kpi-card 同语言
 .skill-stats-panel__metrics
   flex: 1
   display: grid
   grid-template-columns: 1fr 1fr
-  gap: 6px 12px
+  gap: 8px
 
 .skill-stats-panel__metric
   display: flex
   flex-direction: column
+  gap: 1px
+  min-width: 0
+  padding: 7px 10px
+  border: 1px solid var(--glass-border)
+  border-radius: 10px
+  background: color-mix(in srgb, var(--glass-elevated) 72%, transparent)
 
   span
-    opacity: 0.7
+    font-size: 10px
+    font-weight: 600
+    letter-spacing: 0.02em
+    color: var(--color-text-secondary)
 
   b
     font-size: 14px
+    font-weight: 700
+    line-height: 1.25
+    color: var(--color-text-heading)
 </style>

@@ -15,7 +15,9 @@ func classifyToolInvocation(ctx context.Context, toolKey string, result any, dep
 	}
 	key := strings.ToLower(strings.TrimSpace(toolKey))
 	switch key {
-	case "use_skill", "skill_search":
+	case "use_skill", "skill_search", "skill_load", "skill_run", "skill_list_docs":
+		// skill_load/skill_run/skill_list_docs 是 trpc-agent-go skill 包的内建工具
+		// （不在 tools 表注册），skill 运行时调用的真实入口。
 		return false, true
 	}
 	if deps.ToolUC != nil {

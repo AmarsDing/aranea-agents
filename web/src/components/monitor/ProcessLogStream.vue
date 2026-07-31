@@ -5,6 +5,9 @@
         <div class="row items-center q-gutter-sm">
           <div class="text-h6 text-weight-bold">进程日志</div>
           <q-badge :color="stateColor">{{ stateText }}</q-badge>
+          <span v-if="hub.processState.value === 'error' && hub.errorHint.value" class="text-caption text-negative">
+            {{ hub.errorHint.value }}
+          </span>
           <q-badge outline color="accent">{{ filteredLines.length }}/{{ hub.processLines.value.length }}</q-badge>
         </div>
         <div class="text-caption text-grey-7">
@@ -163,6 +166,9 @@ const emptyText = computed(() => {
   }
   if (hub.processPaused.value) {
     return '已暂停接收，点击「恢复」开始接收。';
+  }
+  if (hub.processState.value === 'error') {
+    return hub.errorHint.value || t('monitorPage.logs.reconnecting');
   }
   if (hub.processState.value === 'connected') {
     return '已连接，等待进程日志…';

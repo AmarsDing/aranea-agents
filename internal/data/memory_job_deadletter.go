@@ -172,17 +172,32 @@ LIMIT ?`), state, limit)
 }
 
 // MarkDeadLetterReplayed marks a dead-letter job as replayed.
+// Returns NotFound when no row carries the id so callers (admin replay API)
+// never report success for a non-existent entry.
 func (r *MemoryJobDeadLetterRepo) MarkDeadLetterReplayed(ctx context.Context, id int64) error {
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_job_deadletter SET state='replayed', attempts=attempts+1 WHERE id=?`), id)
-	return entErrToBizErr(err, "MEMORY_DL")
+	if err != nil {
+		return entErrToBizErr(err, "MEMORY_DL")
+	}
+	if n, raErr := res.RowsAffected(); raErr == nil && n == 0 {
+		return apierror.NotFound("MEMORY_DL", "dead letter not found: %d", id)
+	}
+	return nil
 }
 
 // MarkDeadLetterAbandoned marks a dead-letter job as permanently abandoned.
+// Returns NotFound when no row carries the id (same contract as replay).
 func (r *MemoryJobDeadLetterRepo) MarkDeadLetterAbandoned(ctx context.Context, id int64, reason string) error {
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_job_deadletter SET state='abandoned', last_error=?, attempts=attempts+1 WHERE id=?`), reason, id)
-	return entErrToBizErr(err, "MEMORY_DL")
+	if err != nil {
+		return entErrToBizErr(err, "MEMORY_DL")
+	}
+	if n, raErr := res.RowsAffected(); raErr == nil && n == 0 {
+		return apierror.NotFound("MEMORY_DL", "dead letter not found: %d", id)
+	}
+	return nil
 }
 
 func (r *MemoryJobDeadLetterRepo) GetDeadLetter(ctx context.Context, id int64) (biz.MemoryDeadLetterEntry, error) {
@@ -255,7 +270,16 @@ func (r *MemoryJobDeadLetterRepo) ReplayDeadLetterIntoQueue(
          FROM memory_job_deadletter WHERE id=? AND state='pending'`), []any{id},
 		&payloadJSON, &sessionID, &appName, &userID, &feedbackMsgID, &priority, &enqueuedMs)
 	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
-		return nil // already replayed or abandoned
+		// Distinguish "no such dead letter" (caller error → 404) from
+		// "exists but already replayed/abandoned" (state conflict → 409).
+		// Both were previously swallowed as success, which let the admin API
+		// report replayed for ids that never existed.
+		var state string
+		if qErr := queryRowScan(ctx, db,
+			r.data.Dialect().RenumberPlaceholders(`SELECT state FROM memory_job_deadletter WHERE id=?`), []any{id}, &state); qErr != nil {
+			return entErrToBizErr(qErr, "MEMORY_DL")
+		}
+		return apierror.Conflict("MEMORY_DL", "dead letter %d is not pending (state=%s)", id, state)
 	}
 	if err != nil {
 		return entErrToBizErr(err, "MEMORY_DL")

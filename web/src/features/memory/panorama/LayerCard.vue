@@ -31,7 +31,7 @@
         <q-icon name="south" size="12px" />{{ t('memory.panorama.todayAdded') }}
         <b>{{ stat.today_added }}</b>
       </span>
-      <span>
+      <span v-if="stat.layer === 'L3'">
         <q-icon name="north" size="12px" />{{ t('memory.panorama.recallHits') }}
         <b>{{ stat.recall_hits }}</b>
       </span>

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -17,17 +19,22 @@ import (
 
 type EventBridge struct {
 	eventBus        biz.EventBus
+	monitorBus      contract.MonitorBus
 	sessionID       string
 	spiritSessionID string
 	graphID         string
 	execID          string
 	summary         *ExecutionSummaryTracker
 	lg              loggateway.Logger
+	// flow is the run-scoped flow-log emitter; nil when no monitor bus is
+	// configured (nil-safe: flow emission is skipped).
+	flow *event.TraceEmitter
 }
 
-func NewEventBridge(eventBus biz.EventBus, sessionID, spiritSessionID, graphID, execID string, lg loggateway.Logger) *EventBridge {
-	return &EventBridge{
+func NewEventBridge(eventBus biz.EventBus, monitorBus contract.MonitorBus, sessionID, spiritSessionID, graphID, execID string, lg loggateway.Logger) *EventBridge {
+	b := &EventBridge{
 		eventBus:        eventBus,
+		monitorBus:      monitorBus,
 		sessionID:       sessionID,
 		spiritSessionID: spiritSessionID,
 		graphID:         graphID,
@@ -35,6 +42,17 @@ func NewEventBridge(eventBus biz.EventBus, sessionID, spiritSessionID, graphID, 
 		summary:         NewExecutionSummaryTracker(execID, graphID),
 		lg:              lg,
 	}
+	if monitorBus != nil {
+		b.flow = event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+			Ctx:       context.Background(),
+			SessionID: sessionID,
+			RunID:     execID,
+			Domain:    event.TraceDomainGraph,
+			LG:        lg,
+			Infra:     event.NewInfraFromBus(monitorBus),
+		})
+	}
+	return b
 }
 
 func (b *EventBridge) EventBus() biz.EventBus {
@@ -159,6 +177,13 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *biz.ActivityEvent {
 		if b.summary != nil {
 			b.summary.RecordNodeComplete(meta)
 		}
+		if b.flow != nil {
+			b.flow.LogDone("graph.node.execute", "图节点执行完成",
+				event.P("node_id", meta.NodeID),
+				event.P("node_type", string(meta.NodeType)),
+				event.P("step_number", meta.StepNumber),
+			)
+		}
 		ev.Activity.Meta["node_id"] = meta.NodeID
 		ev.Activity.Meta["node_type"] = string(meta.NodeType)
 		ev.Activity.Meta["step_number"] = meta.StepNumber
@@ -219,6 +244,13 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *biz.ActivityEvent {
 
 	case trpcgraph.ObjectTypeGraphCheckpointInterrupt:
 		meta := b.extractPregelMeta(e)
+		if b.flow != nil {
+			b.flow.LogStart("graph.hitl.wait", "等待人工确认",
+				event.P("node_id", meta.NodeID),
+				event.P("interrupt_key", meta.InterruptKey),
+				event.P("checkpoint_id", meta.CheckpointID),
+			)
+		}
 		ev.Activity.Meta["checkpoint_id"] = meta.CheckpointID
 		ev.Activity.Meta["lineage_id"] = meta.LineageID
 		ev.Activity.Meta["interrupt_key"] = meta.InterruptKey

@@ -10,7 +10,16 @@
       @update:model-value="onQueryInput"
       @keyup.enter="$emit('search')"
     >
-      <template #prepend><q-icon name="search" /></template>
+      <template #prepend>
+        <!-- G3-F2 搜索范围选择器：弹出迷你目录树（仅目录单选），选中后即时区前端过滤 + 语义区走 B7 -->
+        <knowledge-scope-picker
+          :scope-prefix="scopePrefix"
+          :scope-nodes="scopeNodes"
+          @update:scope-prefix="$emit('update:scope-prefix', $event)"
+          @scope-lazy-load="$emit('scope-lazy-load', $event)"
+        />
+        <q-icon name="search" />
+      </template>
       <template #append>
         <!-- P3-3 意图分流徽标：规则与后端 internal/knowledge/search_intent.go 共享定义 -->
         <q-chip v-if="query.trim()" dense size="sm" :color="intentColor" text-color="white">{{ intentLabel }}</q-chip>
@@ -74,6 +83,8 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { SearchIntent } from '../../features/knowledge/searchIntent';
 import type { KnowledgeChunk, KnowledgeDocument } from '../../features/knowledge/types';
+import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../features/knowledge/useVaultExplorer';
+import KnowledgeScopePicker from './KnowledgeScopePicker.vue';
 
 const props = defineProps<{
   query: string;
@@ -87,6 +98,10 @@ const props = defineProps<{
   showInstant: boolean;
   showSemantic: boolean;
   docSourceMap: Record<string, string>;
+  /** G3-F2：搜索范围（vault 相对目录前缀；'' = 全库）。 */
+  scopePrefix: string;
+  /** G3-F2：范围迷你树根节点（当前 vault；目录经 lazy-load 仅目录）。 */
+  scopeNodes: VaultQTreeNode[];
 }>();
 
 const emit = defineEmits<{
@@ -94,6 +109,9 @@ const emit = defineEmits<{
   search: [];
   'select-instant': [doc: KnowledgeDocument];
   'select-semantic': [chunk: KnowledgeChunk];
+  /** G3-F2：范围变更（vault 根 = '' 全库；× 清除 = ''）。 */
+  'update:scope-prefix': [prefix: string];
+  'scope-lazy-load': [payload: VaultLazyLoadPayload];
 }>();
 
 const { t } = useI18n();

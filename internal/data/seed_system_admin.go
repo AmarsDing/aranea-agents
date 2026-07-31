@@ -383,8 +383,8 @@ func SeedCronTasks(ctx context.Context, client *ent.Client, d Dialect, lg loggat
 			name:        "记忆整理周期",
 			description: "每日凌晨3点触发记忆管家执行 dream_cycle：删除 misaligned 记忆、遗忘不活跃记忆、去重、蒸馏",
 			agentID:     "agent___memory__",
-			// dry_run=true: 默认仅模拟执行，避免首次启动误删记忆。生产环境可通过管理面板关闭。
-			configJSON: `{"schedule":"0 3 * * *","dry_run":true}`,
+			// dry_run=true: 默认仅模拟执行，避免首次启动误删记忆。生产环境可通过管理面板修改 message 关闭。
+			configJSON: `{"target_type":"agent","schedule_type":"cron","cron_expression":"0 3 * * *","timezone":"Asia/Shanghai","message":"请执行 memory_butler_dream_cycle 离线记忆整理：依次清理 misaligned 记忆、遗忘不活跃记忆、去重、蒸馏。使用 dry_run=true 仅模拟执行并输出报告，不实际删除。","retry_max_attempts":3}`,
 		},
 		{
 			id:          "cron_skill_health_scan",
@@ -392,9 +392,14 @@ func SeedCronTasks(ctx context.Context, client *ent.Client, d Dialect, lg loggat
 			name:        "技能健康扫描",
 			description: "每周一凌晨4点触发技能管家执行 Skill 健康度分析",
 			agentID:     "agent___skills__",
-			configJSON:  `{"schedule":"0 4 * * 1"}`,
+			configJSON:  `{"target_type":"agent","schedule_type":"cron","cron_expression":"0 4 * * 1","timezone":"Asia/Shanghai","message":"请使用 skills_butler_analyze_skill_health 对所有已安装 Skill 执行健康度分析，并输出健康扫描报告。","retry_max_attempts":3}`,
 		},
 	}
+	// upsert 语义：
+	// - 新行：插入完整配置。
+	// - 已存在且为旧 schema（无 schedule_type，runner/前端无法解析，必然每分钟失败并进死信）：
+	//   修复 config 并复活（重置 dead 状态与失败计数）——死信是该配置 bug 导致的，非用户意图。
+	// - 已存在且为新 schema：视为用户已在管理面板编辑过，不做任何覆盖，保留用户修改。
 	const q = `INSERT INTO cron_task (
 		id, task_key, name, description, status, enabled, sort_order,
 		agent_id, config_json, metadata_json, created_at, updated_at, deleted_at
@@ -406,7 +411,12 @@ func SeedCronTasks(ctx context.Context, client *ent.Client, d Dialect, lg loggat
 		description = excluded.description,
 		agent_id = excluded.agent_id,
 		config_json = excluded.config_json,
-		updated_at = excluded.updated_at`
+		status = 'active',
+		enabled = TRUE,
+		metadata_json = '{}',
+		updated_at = excluded.updated_at
+	WHERE cron_task.config_json NOT LIKE '%schedule_type%'
+		AND cron_task.deleted_at = ''`
 	for _, t := range tasks {
 		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), t.id, t.taskKey, t.name, t.description, t.agentID, t.configJSON, now, now); err != nil {
 			lg.Warn("seed step failed", loggateway.StepID("data.seed.cron_tasks"), loggateway.Str("task_key", t.taskKey), loggateway.Err(err))

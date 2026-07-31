@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -106,6 +107,22 @@ func (r *Runner) WithLease(lease taskLease) *Runner {
 	return r
 }
 
+// flowEmitter builds a run-scoped flow-log emitter for cron lifecycle events.
+// Returns nil when the monitor bus is not wired (emission skipped).
+func (r *Runner) flowEmitter(ctx context.Context, sessionID, runID string) *event.TraceEmitter {
+	if r == nil || r.deps.MonitorBus == nil {
+		return nil
+	}
+	return event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:       ctx,
+		SessionID: sessionID,
+		RunID:     runID,
+		Domain:    event.TraceDomainSystem,
+		LG:        r.lg,
+		Infra:     event.NewInfraFromBus(r.deps.MonitorBus),
+	})
+}
+
 // DefaultInterval reads CRON_RUNNER_INTERVAL (default 1m); values <=0 fall back to 1m.
 func DefaultInterval() time.Duration {
 	raw := strings.TrimSpace(os.Getenv("CRON_RUNNER_INTERVAL"))
@@ -145,6 +162,9 @@ func (r *Runner) runDue(ctx context.Context) {
 
 	tasks, err := r.deps.Cron.ListCronTasks(ctx)
 	if err != nil {
+		r.lg.Error("定时任务 tick 扫描失败",
+			loggateway.StepID("cron.tick.scan_fail"),
+			loggateway.Err(err))
 		return
 	}
 	now := time.Now().UTC()
@@ -173,6 +193,12 @@ func (r *Runner) runDue(ctx context.Context) {
 				r.persistMetadata(ctx, task, meta)
 			}
 			continue
+		}
+		if flow := r.flowEmitter(ctx, "", ""); flow != nil {
+			flow.LogStart("cron.job.trigger", "定时任务触发",
+				event.P("job_id", task.ID),
+				event.P("job_type", cronTargetType(cfg)),
+				event.P("trigger", "schedule"))
 		}
 		r.executeTask(ctx, task, cfg, meta, now, "schedule")
 	}
@@ -248,6 +274,13 @@ func (r *Runner) dispatchWithRetry(ctx context.Context, task biz.CronTask, cfg c
 				loggateway.Int("attempt", attempt+1),
 				loggateway.Str("delay", delay.String()),
 				loggateway.Err(err))
+			if flow := r.flowEmitter(ctx, state.sessID, ""); flow != nil {
+				flow.LogWarn("system.cron.retry", "定时任务重试", "",
+					event.P("job_id", task.ID),
+					event.P("attempt", attempt+1),
+					event.P("delay", delay.String()),
+					event.P("error", err.Error()))
+			}
 			select {
 			case <-ctx.Done():
 				return cronDispatchResult{}, ctx.Err()
@@ -267,6 +300,15 @@ func (r *Runner) dispatchSafe(ctx context.Context, task biz.CronTask, cfg cronTa
 				loggateway.StepID("cron.panic"),
 				loggateway.Str("job_id", task.ID),
 				loggateway.Any("panic", rec))
+			sessID := ""
+			if state != nil {
+				sessID = state.sessID
+			}
+			if flow := r.flowEmitter(ctx, sessID, ""); flow != nil {
+				flow.LogError("system.cron.panic", "定时任务 panic",
+					event.P("job_id", task.ID),
+					event.P("panic", fmt.Sprint(rec)))
+			}
 		}
 	}()
 	return r.dispatchCronTask(ctx, task, cfg, state)
@@ -325,7 +367,7 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 		}
 		var res cronDispatchResult
 		if r.deps.Chat != nil {
-			if err := r.sessionBusyErr(sessID); err != nil {
+			if err := r.sessionBusyErr(ctx, sessID); err != nil {
 				return cronDispatchResult{SessionID: sessID}, err
 			}
 			// EP-RT-07: in-process dispatch via plugin runtime.
@@ -363,7 +405,7 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 			return cronDispatchResult{}, err
 		}
 		if r.deps.Chat != nil {
-			if err := r.sessionBusyErr(sessID); err != nil {
+			if err := r.sessionBusyErr(ctx, sessID); err != nil {
 				return cronDispatchResult{SessionID: sessID}, err
 			}
 			// EP-RT-07: in-process dispatch via plugin runtime.
@@ -521,7 +563,7 @@ func (r *Runner) postChat(ctx context.Context, in sendMessagePayload) (cronDispa
 	}, nil
 }
 
-func (r *Runner) sessionBusyErr(sessionID string) error {
+func (r *Runner) sessionBusyErr(ctx context.Context, sessionID string) error {
 	if r == nil || r.deps.Chat == nil {
 		return nil
 	}
@@ -531,6 +573,10 @@ func (r *Runner) sessionBusyErr(sessionID string) error {
 	}
 	r.lg.With(loggateway.SessionID(sessionID)).Warn("定时任务跳过：会话有活跃 Run",
 		loggateway.StepID("cron.dispatch_skipped"))
+	if flow := r.flowEmitter(ctx, sessionID, ""); flow != nil {
+		flow.LogSkip("system.cron.dispatch_skipped", "定时任务跳过：会话有活跃 Run",
+			event.P("session_id", sessionID))
+	}
 	return biz.ErrCronSessionBusy
 }
 

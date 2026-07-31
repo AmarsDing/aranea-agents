@@ -45,11 +45,14 @@ func (s *MemoryService) ReplayMemoryDeadLetter(ctx context.Context, req *v1.Repl
 			return nil, err
 		}
 	}
-	entry := &v1.MemoryDeadLetterEntry{Id: id, State: "replayed"}
-	if e, err := s.deadLetterRepo.GetDeadLetter(ctx, id); err == nil {
-		entry = bizDeadLetterEntryToProto(e)
+	// Read back the persisted row; a replay/abandon that "succeeds" but
+	// cannot be read back is an inconsistency the caller must see, not a
+	// synthetic entry fabricated by the service.
+	e, err := s.deadLetterRepo.GetDeadLetter(ctx, id)
+	if err != nil {
+		return nil, err
 	}
-	return &v1.ReplayMemoryDeadLetterResponse{Entry: entry}, nil
+	return &v1.ReplayMemoryDeadLetterResponse{Entry: bizDeadLetterEntryToProto(e)}, nil
 }
 
 func (s *MemoryService) AbandonMemoryDeadLetter(ctx context.Context, req *v1.AbandonMemoryDeadLetterRequest) (*v1.AbandonMemoryDeadLetterResponse, error) {
@@ -63,11 +66,11 @@ func (s *MemoryService) AbandonMemoryDeadLetter(ctx context.Context, req *v1.Aba
 	if err := s.deadLetterRepo.MarkDeadLetterAbandoned(ctx, id, req.GetReason()); err != nil {
 		return nil, err
 	}
-	entry := &v1.MemoryDeadLetterEntry{Id: id, State: "abandoned"}
-	if e, err := s.deadLetterRepo.GetDeadLetter(ctx, id); err == nil {
-		entry = bizDeadLetterEntryToProto(e)
+	e, err := s.deadLetterRepo.GetDeadLetter(ctx, id)
+	if err != nil {
+		return nil, err
 	}
-	return &v1.AbandonMemoryDeadLetterResponse{Entry: entry}, nil
+	return &v1.AbandonMemoryDeadLetterResponse{Entry: bizDeadLetterEntryToProto(e)}, nil
 }
 
 func bizDeadLetterEntryToProto(e biz.MemoryDeadLetterEntry) *v1.MemoryDeadLetterEntry {

@@ -57,6 +57,12 @@ type TeamMediatorPort interface {
 	// SetFinisher wires the finisher that persists graph run steps and
 	// finalizes team runs. The finisher is typically *team.Runner.
 	SetFinisher(finisher TeamGraphRunFinisherPort)
+
+	// SetCoordinator wires the coordinator side so the mediator can forward
+	// RegisterTeamGraphExecution / MarkTeamGraphInterrupt / HITL deferral and
+	// step-watch calls. Construction order per team/runner.go:
+	// Runner → Mediator → Coordinator → Mediator.SetCoordinator.
+	SetCoordinator(coord TeamGraphCoordPort)
 }
 
 // TeamGraphRunFinisherPort is the biz-level port for the graph run finisher.

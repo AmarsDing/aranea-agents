@@ -71,8 +71,11 @@ type TRPCMemoryKnowledgeDeps struct {
 	MemoryL2Recall        biz.MemoryL2Recaller
 	MemoryL3Recall        biz.MemoryL3Recaller
 	MemoryCompositeRecall biz.MemoryCompositeRecaller
-	KnowledgeRetriever    *knowledge.Retriever
-	KnowledgeUsecase      *biz.KnowledgeUsecase
+	// MemoryPreferenceLister feeds the pinned preference/constraint block
+	// (FR-M3). Optional: when nil, pinned injection is skipped.
+	MemoryPreferenceLister biz.MemoryPreferenceLister
+	KnowledgeRetriever     *knowledge.Retriever
+	KnowledgeUsecase       *biz.KnowledgeUsecase
 	// ManualCompressor handles session-level compression triggered by the
 	// compact tool. When wired, agents can actively invoke the compact tool
 	// to compress older conversation history into a summary. May be nil

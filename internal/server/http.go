@@ -98,7 +98,7 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, readines
 	// Custom routes MUST be registered before proto services so that exact
 	// paths (e.g. /v1/artifacts/download) take priority over wildcard
 	// patterns (e.g. /v1/artifacts/{id}).
-	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension)
+	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension)
 	registerProtoServices(srv, s)
 	registerCompatibilityRedirects(srv)
 	registerInfrastructureRoutes(srv, readiness)
@@ -157,6 +157,7 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 // impractical:
 //   - /webhooks/{channel_key}: third-party webhook callbacks with varying path segments
 //   - /v1/artifacts/download: signed download with direct response writer access
+//   - /v1/knowledge/documents/{id}/asset: raw file streaming (G2-B6, Range/inline media)
 //   - skill import multipart: file upload handling
 //
 // All custom routes are explicitly documented here for auditability. New bypass routes
@@ -166,6 +167,7 @@ func registerCustomRoutes(
 	channelIngress *service.ChannelIngress,
 	skillSvc *service.SkillService,
 	artifactSvc *service.ArtifactService,
+	knowledgeSvc *service.KnowledgeService,
 	a2aPublic *a2atrpc.EndpointRegistry,
 	systemSettingSvc *service.SystemSettingService,
 	ecosystemPresetSvc *service.EcosystemPresetService,
@@ -199,6 +201,14 @@ func registerCustomRoutes(
 				return nil
 			})
 		}
+	}
+	if knowledgeSvc != nil {
+		// G2-B6：原始文件流式输出（图片/音频/视频 inline，word 下载，Range 拖动）。
+		// 鉴权走标准 auth 过滤器（前端 fetch 带 JWT → blob/object URL 渲染）。
+		srv.Route("/").GET("/v1/knowledge/documents/{id}/asset", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeDocumentAsset(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
 	}
 	if a2aPublic != nil {
 		auth.RegisterNoAuthPathPrefix(a2atrpc.PublicPathPrefix)

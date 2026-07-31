@@ -89,7 +89,7 @@ func main() {
 		       OR sa.last_span IN ('chat.turn.execute', 'chat.assistant_msg_persist', 'team.run.finish'))`, now)
 	fmt.Println("step2 span reclassify:", rowsAffected(res2), err)
 
-	// Step 3: usage aggregate
+	// Step 3: usage aggregate（与迁移同一 Dialect.JSONExtract 表达式）
 	res3, err := tx.Exec(`
 		UPDATE monitor_traces t
 		SET total_tokens = ua.tokens, total_cost_usd = ua.cost_usd,
@@ -97,7 +97,7 @@ func main() {
 		    model = CASE WHEN t.model = '' AND ua.model != '' THEN ua.model ELSE t.model END,
 		    updated_at = $1
 		FROM (
-		  SELECT (u.metadata_json::jsonb)->>'trace_id' AS trace_id,
+		  SELECT COALESCE(NULLIF(u.metadata_json::text, '')::jsonb, '{}'::jsonb) ->> 'trace_id' AS trace_id,
 		         SUM(u.total_tokens) AS tokens,
 		         SUM(u.total_cost_micro_usd) / 1e6 AS cost_usd,
 		         COALESCE((ARRAY_AGG(u.provider_code ORDER BY u.occurred_at DESC) FILTER (WHERE u.provider_code <> ''))[1], '') AS provider,
@@ -151,6 +151,26 @@ func main() {
 		) last ON true
 		WHERE t.status='interrupted' AND t.deleted_at=''
 		GROUP BY last.name ORDER BY COUNT(*) DESC LIMIT 12`)
+
+	// step4 漏配诊断：剩余 interrupted 中，其 session 是否存在 completed/failed turn？
+	// 若大量存在但时间差超出窗口，说明窗口过紧；若根本不存在，则为真实中断。
+	q("remaining interrupted: turn existence & nearest delta", `
+		SELECT
+		  COUNT(*) FILTER (WHERE m.turn_status IS NULL) AS no_turn_at_all,
+		  COUNT(*) FILTER (WHERE m.turn_status IS NOT NULL AND m.delta_sec <= 120) AS turn_within_window,
+		  COUNT(*) FILTER (WHERE m.turn_status IS NOT NULL AND m.delta_sec > 120) AS turn_outside_window,
+		  COALESCE(ROUND(AVG(m.delta_sec) FILTER (WHERE m.turn_status IS NOT NULL))::text, '-') AS avg_delta_sec,
+		  COALESCE(MAX(m.delta_sec)::text, '-') AS max_delta_sec
+		FROM monitor_traces t
+		LEFT JOIN LATERAL (
+		  SELECT st.status AS turn_status,
+		         ABS(EXTRACT(EPOCH FROM (st.started_at::timestamptz - t.created_at::timestamptz))) AS delta_sec
+		  FROM session_turns st
+		  WHERE st.session_id = t.session_id AND st.started_at <> ''
+		    AND st.status IN ('completed', 'failed')
+		  ORDER BY delta_sec ASC LIMIT 1
+		) m ON true
+		WHERE t.status='interrupted' AND t.deleted_at='' AND t.session_id <> ''`)
 
 	fmt.Println("\n(dry-run: rolling back)")
 }

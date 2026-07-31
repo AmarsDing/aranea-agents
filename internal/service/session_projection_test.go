@@ -16,7 +16,7 @@ func TestSessionProjectionAdapter_GetLatestRevision(t *testing.T) {
 	repo := &batchSessionRepo{sessions: map[string]biz.Session{
 		"s1": {ID: "s1", SessionRevision: 5},
 	}}
-	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, repo, loggateway.NewNoop())
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, repo, loggateway.NewNoop(), nil)
 	proj := service.NewSessionProjectionAdapter(uc, nil)
 	rev, err := proj.GetLatestRevision(context.Background(), "s1")
 	if err != nil || rev != 5 {
@@ -34,7 +34,7 @@ func TestSessionProjectionAdapter_GetMessagesAfterRevision(t *testing.T) {
 			{ID: "m2", SessionID: "s1", Role: "assistant", TurnNumber: 2, TurnID: "t2"},
 		},
 	}
-	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, repo, loggateway.NewNoop())
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, repo, loggateway.NewNoop(), nil)
 	proj := service.NewSessionProjectionAdapter(uc, nil)
 	items, err := proj.GetMessagesAfterRevision(context.Background(), "s1", 1)
 	if err != nil {

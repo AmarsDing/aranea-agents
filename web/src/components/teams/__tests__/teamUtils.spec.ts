@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   buildGraphFromDefinition,
   definitionGraphFromCompileJSON,
+  definitionGraphSource,
   definitionToJSON,
   definitionTopologyKey,
+  definitionTopologyOverwriteKey,
   deriveMemberRolesForMode,
   groupTeamsByIndustry,
   inferTeamIndustryId,
+  linkableGraphOptions,
   parseDefinition,
   rebuildDefinitionGraph,
+  resetDefinition,
 } from '../teamUtils';
 import type { Team, TeamDefinition } from '../../../features/teams/types';
 import type { Agent } from '../../../features/agents/types';
@@ -82,6 +86,104 @@ describe('teamUtils.parseDefinition', () => {
     const json = JSON.parse(definitionToJSON(def)) as Record<string, unknown>;
     expect(json.runtime_engine).toBe('graph');
     expect(json.team_graph_runtime).toBe(true);
+  });
+});
+
+describe('teamUtils.definition source (M53 Phase 11)', () => {
+  const mkTeam = (definitionJson: string): Team => ({
+    id: 't-src',
+    team_key: 'src',
+    display_name: 'Source',
+    status: 'active',
+    is_default: false,
+    taxonomy_industry_id: '',
+    definition_json: definitionJson,
+    app_name: 'src',
+    linked_graph_id: '',
+    has_active_run: false,
+    created_at: '',
+    updated_at: '',
+    deleted_at: '',
+  });
+
+  it('round-trips source through parseDefinition and definitionToJSON', () => {
+    const team = mkTeam(
+      JSON.stringify({
+        version: 1,
+        source: 'custom',
+        mode: 'sequential',
+        members: [{ agent_id: 'a1', role: 'worker', name: 'W', enabled: true, sort_order: 10 }],
+      }),
+    );
+
+    const def = parseDefinition(team);
+    expect(def.source).toBe('custom');
+
+    const json = JSON.parse(definitionToJSON(def)) as Record<string, unknown>;
+    expect(json.source).toBe('custom');
+  });
+
+  it('definitionGraphSource mirrors backend GraphSource: empty/unknown falls back to preset', () => {
+    const base = mkTeam(JSON.stringify({ version: 1, mode: 'sequential', members: [] }));
+    expect(definitionGraphSource(parseDefinition(base))).toBe('preset');
+    expect(definitionGraphSource({ source: 'custom' } as TeamDefinition)).toBe('custom');
+    expect(definitionGraphSource({ source: 'linked_external' } as TeamDefinition)).toBe('linked_external');
+    expect(definitionGraphSource({ source: 'weird' } as TeamDefinition)).toBe('preset');
+    expect(definitionGraphSource({} as TeamDefinition)).toBe('preset');
+  });
+
+  it('resetDefinition clears stale source back to derived default', () => {
+    const def = parseDefinition(
+      mkTeam(
+        JSON.stringify({
+          version: 1,
+          source: 'custom',
+          mode: 'parallel',
+          members: [{ agent_id: 'a1', role: 'worker', name: 'W', enabled: true, sort_order: 10 }],
+        }),
+      ),
+    );
+    resetDefinition(def);
+    expect(def.source).toBeUndefined();
+    expect(definitionGraphSource(def)).toBe('preset');
+  });
+});
+
+describe('teamUtils F2 helpers (M53 Phase 11)', () => {
+  const mkDef = (overrides: Partial<TeamDefinition> = {}): TeamDefinition => ({
+    version: 1,
+    description: '',
+    mode: 'sequential',
+    max_concurrency: 2,
+    timeout_seconds: 600,
+    loop_max_iterations: 0,
+    members: [{ agent_id: 'a1', role: 'worker', name: 'W', enabled: true, sort_order: 10 }],
+    ...overrides,
+  });
+
+  it('definitionTopologyOverwriteKey changes with topology and enable_checkpoint', () => {
+    const base = definitionTopologyOverwriteKey(mkDef());
+    expect(definitionTopologyOverwriteKey(mkDef())).toBe(base);
+    // checkpoint 开关参与指纹（缺省镜像后端默认 true）
+    expect(definitionTopologyOverwriteKey(mkDef({ enable_checkpoint: false }))).not.toBe(base);
+    expect(definitionTopologyOverwriteKey(mkDef({ enable_checkpoint: true }))).toBe(base);
+    // 拓扑字段变化
+    expect(definitionTopologyOverwriteKey(mkDef({ mode: 'parallel' }))).not.toBe(base);
+    // 非拓扑字段不变化
+    expect(definitionTopologyOverwriteKey(mkDef({ description: 'changed' }))).toBe(base);
+  });
+
+  it('linkableGraphOptions excludes team-owned graphs and keeps independent assets', () => {
+    const graphs = [
+      { id: 'g1', name: '独立图', metadata: {} },
+      { id: 'g2', name: 'Team 自有图', metadata: { team_owned: true } },
+      { id: 'g3', name: '', metadata: { team_owned: false } },
+      { id: '', name: '空 id', metadata: {} },
+    ];
+    const options = linkableGraphOptions(graphs);
+    expect(options.map((o) => o.value)).toEqual(['g1', 'g3']);
+    // name 缺省回退 id
+    expect(options[1]).toEqual({ label: 'g3', value: 'g3' });
   });
 });
 

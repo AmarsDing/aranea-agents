@@ -1298,7 +1298,7 @@ internal/
 ├── tools/
 │   ├── skillruntime/           # 运行时装配入口（toolset / resolve / filter / runtime）
 │   ├── skillrouter/            # 意图路由与分类（detect / taxonomy）
-│   ├── skills_butler/          # Skill 管家（registry / recommend / analyze / optimize / evolve）
+│   ├── skills_butler/          # Skill 管家（registry / recommend / analyze / optimize / evolve；装配于 service/cli_admin_tools.go，agent key=__skills__ 时挂载 8 工具）
 │   └── skillrecommend/         # Skill 推荐（rank / rank_feedback / health_provider）
 ├── service/
 │   ├── skill.go                # 薄适配（23 RPC：19 Skill + 4 标签字典）

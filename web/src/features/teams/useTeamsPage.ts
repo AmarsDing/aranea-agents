@@ -14,9 +14,11 @@ import {
   definitionGraphFromCompileJSON,
   definitionToJSON,
   definitionTopologyKey,
+  definitionTopologyOverwriteKey,
   deriveMemberRolesForMode,
   groupTeamsByIndustry,
   industryOptionsFromTree,
+  linkableGraphOptions,
   parseDefinition,
   rebuildDefinitionGraph,
   resetDefinition,
@@ -26,6 +28,7 @@ import {
 // TECH-DEBT(FL5): 同 useTeamCompilePreview —— compile RPC 为编辑器即时操作，
 // 不落地全局状态；如需持久化编译结果应迁入 Store。
 import { compileTeamGraph } from '../orchestration/compileApi';
+import { useGraphStore } from '../../stores/graph';
 import type { PlatformResourceTreeNode } from '../platform/types';
 
 /**
@@ -37,6 +40,7 @@ export function useTeamsPage() {
   const route = useRoute();
   const router = useRouter();
   const store = useTeamsStore();
+  const graphStore = useGraphStore();
   const isDark = computed(() => $q.dark.isActive);
 
   // Store refs (single source of truth for data)
@@ -94,6 +98,9 @@ export function useTeamsPage() {
   // 变更（mode / synthesizer / members 增删改启停排序）立即重建 definition.graph，
   // 使保存的 definition_json 中 graph 永远与 mode/members 一致（修 ADR-08 割裂点 1）。
   const savedTopologyKey = ref('');
+  // M53 Phase 11 F2：打开/重置/模板应用时的覆盖确认基线（拓扑+checkpoint 指纹）。
+  // 不随后续 watcher 推进——watcher 只更新 savedTopologyKey 用于去抖。
+  const editorOverwriteBaselineKey = ref('');
   let applyingSnapshot = false;
   const topologyKey = computed(() => definitionTopologyKey(definition));
   watch(
@@ -119,6 +126,7 @@ export function useTeamsPage() {
       update();
     } finally {
       savedTopologyKey.value = definitionTopologyKey(definition);
+      editorOverwriteBaselineKey.value = definitionTopologyOverwriteKey(definition);
       applyingSnapshot = false;
     }
   }
@@ -172,6 +180,8 @@ export function useTeamsPage() {
   const agentOptions = computed(() =>
     store.agents.map((agent: Agent) => ({ label: agent.display_name, value: agent.id })),
   );
+  // M53 Phase 11 F2：「关联 Graph」选择器仅列独立图资产（排除 team-owned）。
+  const graphOptions = computed(() => linkableGraphOptions(graphStore.graphs));
   const definitionJSON = computed(() => definitionToJSON(definition));
   const canSave = computed(() =>
     Boolean(form.team_key && form.display_name && definition.members.some((member) => member.enabled)),
@@ -251,6 +261,13 @@ export function useTeamsPage() {
 
   // ── Editor actions ──
 
+  /** F2：编辑器打开时加载图资产列表（「关联 Graph」选择器数据源，幂等刷新）。 */
+  function loadGraphsForEditor() {
+    void graphStore.loadGraphs(200).catch(() => {
+      /* 列表加载失败不阻塞编辑；选择器为空即可 */
+    });
+  }
+
   function openCreate() {
     editingId.value = '';
     editingHasActiveRun.value = false;
@@ -265,6 +282,7 @@ export function useTeamsPage() {
       spirit_session_id: '',
     });
     beginDefinitionSnapshot(() => resetDefinition(definition));
+    loadGraphsForEditor();
     editorOpen.value = true;
   }
 
@@ -287,7 +305,20 @@ export function useTeamsPage() {
       definition.runtime_engine = 'graph';
       definition.team_graph_runtime = true;
     });
+    loadGraphsForEditor();
     editorOpen.value = true;
+  }
+
+  /**
+   * M53 Phase 11 F2：custom → 重置为派生。放弃 Graph 编辑器自定义拓扑，
+   * 按当前表单字段重建本地图并回基线；保存后后端按 preset 物化（原地更新 owned 资产）。
+   */
+  function resetToDerived() {
+    beginDefinitionSnapshot(() => {
+      definition.source = 'preset';
+      definition.graph = rebuildDefinitionGraph(definition);
+    });
+    scheduleGraphSyncFromBackend();
   }
 
   function addMember() {
@@ -567,12 +598,15 @@ export function useTeamsPage() {
     form,
     definition,
     agentOptions,
+    graphOptions,
+    editorOverwriteBaselineKey,
     definitionJSON,
     canSave,
     filteredTeams,
     loadRows,
     openCreate,
     openEdit,
+    resetToDerived,
     addMember,
     removeMember,
     applyTemplate,

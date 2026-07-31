@@ -1,10 +1,12 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import type { GraphDefinition, NodeDef, ValidationError, ValidationIssue, ValidationWarning } from './types';
 import { applyAutoLayout } from './editor/graphLayout';
 import { useGraphStore } from '../../stores/graph';
 import { useToolsStore } from '../../stores/tools';
+import { useTeamsStore } from '../../stores/teams';
 import { useGraphEditorAssets } from './useGraphEditorAssets';
 import { useGraphExecute } from './useGraphExecute';
 import { useGraphUndoRedo } from './useGraphUndoRedo';
@@ -14,10 +16,12 @@ import { useGraphValidationDock } from './useGraphValidationDock';
 
 export function useGraphEditorPage() {
   const $q = useQuasar();
+  const { t } = useI18n();
   const route = useRoute();
   const router = useRouter();
   const graphStore = useGraphStore();
   const toolsStore = useToolsStore();
+  const teamsStore = useTeamsStore();
   const graphExecute = useGraphExecute(router);
 
   const isDark = computed(() => $q.dark.isActive);
@@ -159,6 +163,37 @@ export function useGraphEditorPage() {
     dirty.value = true;
   }
 
+  // ── M53 Phase 11 F4：team-owned 图保存确认 ──
+  /** 物化资产的 owned 标记（镜像后端 GraphMetadataTeamOwnedKey）。 */
+  const isTeamOwnedGraph = computed(() => graphDef.metadata?.team_owned === true);
+
+  /** 属主 Team 展示名（编辑器保存确认用）；找不到时回退 teamId。 */
+  async function ownerTeamLabel(): Promise<string> {
+    const id = String(graphDef.teamId || '').trim();
+    if (!id) return '';
+    const team = await teamsStore.fetchTeam(id).catch(() => null);
+    return team?.display_name || id;
+  }
+
+  /**
+   * 保存入口：team-owned 图先弹确认（保存会把自定义拓扑反向同步为 Team 的
+   * source=custom 执行拓扑并按图节点回写成员），确认后走正常 save()。
+   */
+  function onSaveClick() {
+    if (!isTeamOwnedGraph.value) {
+      void save();
+      return;
+    }
+    void ownerTeamLabel().then((label) => {
+      $q.dialog({
+        title: '保存 Team 拓扑',
+        message: `此图属于 Team「${label}」，保存将把自定义拓扑同步为该 Team 的执行拓扑，并按图节点回写成员。继续？`,
+        cancel: true,
+        persistent: true,
+      }).onOk(() => void save());
+    });
+  }
+
   async function save() {
     saving.value = true;
     try {
@@ -266,7 +301,7 @@ export function useGraphEditorPage() {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
       if (canSave.value && !saving.value) {
-        save();
+        onSaveClick();
       }
       return;
     }
@@ -295,8 +330,8 @@ export function useGraphEditorPage() {
   onBeforeRouteLeave((_to, _from, next) => {
     if (dirty.value) {
       $q.dialog({
-        title: '未保存的更改',
-        message: '当前 Graph 有未保存修改，确定离开吗？',
+        title: t('graphs.editorUnsavedTitle'),
+        message: t('graphs.editorUnsavedMessage'),
         cancel: true,
         persistent: true,
       })
@@ -340,10 +375,12 @@ export function useGraphEditorPage() {
     graphDef,
     selectedNode,
     canSave,
+    isTeamOwnedGraph,
     onSelectNode,
     onFocusPropertyPanel,
     markDirty,
     save,
+    onSaveClick,
     requestTemplates,
     createFromTemplate,
     openRunDialog,

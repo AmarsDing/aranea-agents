@@ -1,6 +1,7 @@
 <template>
-  <q-card flat bordered class="monitor-card monitor-alert-rules">
-    <q-card-section class="row items-center">
+  <div class="monitor-alert-rules-page">
+    <!-- 页头 -->
+    <div class="row items-center q-mb-md">
       <div>
         <div class="text-h6 text-weight-bold">{{ t('monitorPage.alerts.title') }}</div>
         <div class="text-caption text-grey-6">{{ t('monitorPage.alerts.subtitle') }}</div>
@@ -21,28 +22,71 @@
           @click="onSave"
         />
       </div>
-    </q-card-section>
-    <q-separator />
-    <q-card-section>
-      <MonitorAlertMetricCatalog :metrics="metrics" :loading="metricsLoading" />
-    </q-card-section>
-    <q-separator />
-    <q-card-section>
-      <div class="text-subtitle1 text-weight-medium q-mb-sm">{{ t('monitorPage.alerts.rulesTitle') }}</div>
-      <div v-if="!editableRules.length" class="text-caption text-grey-6 q-pa-md">
-        {{ t('monitorPage.alerts.emptyRules') }}
-      </div>
-      <MonitorAlertRuleCard
-        v-for="(rule, idx) in editableRules"
-        :key="rule.id || idx"
-        v-model:rule="editableRules[idx]"
-        class="q-mb-md"
-        :metrics="metrics"
-        :channel-options="channelOptions"
-        @remove="removeRule(idx)"
-      />
-    </q-card-section>
-  </q-card>
+    </div>
+
+    <!-- 指标目录（可折叠） -->
+    <q-card flat bordered class="monitor-card q-mb-md">
+      <q-card-section
+        class="row items-center cursor-pointer"
+        @click="catalogExpanded = !catalogExpanded"
+      >
+        <q-icon name="speed" size="sm" color="primary" class="q-mr-sm" />
+        <div>
+          <div class="text-subtitle1 text-weight-medium">{{ t('monitorPage.alerts.catalog.title') }}</div>
+          <div class="text-caption text-grey-6">{{ t('monitorPage.alerts.catalog.subtitle') }}</div>
+        </div>
+        <q-space />
+        <q-spinner v-if="metricsLoading" size="sm" />
+        <q-btn flat round dense :icon="catalogExpanded ? 'expand_less' : 'expand_more'" />
+      </q-card-section>
+      <q-slide-transition>
+        <div v-show="catalogExpanded">
+          <q-separator />
+          <q-card-section>
+            <MonitorAlertMetricCatalog :metrics="metrics" :loading="metricsLoading" />
+          </q-card-section>
+        </div>
+      </q-slide-transition>
+    </q-card>
+
+    <!-- 规则列表 -->
+    <q-card flat bordered class="monitor-card">
+      <q-card-section class="row items-center">
+        <q-icon name="notifications_active" size="sm" color="primary" class="q-mr-sm" />
+        <div class="text-subtitle1 text-weight-medium">{{ t('monitorPage.alerts.rulesTitle') }}</div>
+        <q-chip v-if="editableRules.length" dense size="sm" color="primary" text-color="white" class="q-ml-sm">
+          {{ editableRules.length }}
+        </q-chip>
+      </q-card-section>
+      <q-separator />
+      <q-card-section v-if="!editableRules.length" class="text-center q-pa-xl">
+        <q-icon name="notifications_off" size="48px" color="grey-4" />
+        <div class="text-grey-6 q-mt-sm">{{ t('monitorPage.alerts.emptyRules') }}</div>
+        <q-btn
+          flat
+          rounded
+          no-caps
+          color="primary"
+          icon="add"
+          :label="t('monitorPage.alerts.add')"
+          class="q-mt-md"
+          @click="addRule"
+        />
+      </q-card-section>
+      <template v-else>
+        <MonitorAlertRuleCard
+          v-for="(rule, idx) in editableRules"
+          :key="rule.id || idx"
+          v-model:rule="editableRules[idx]"
+          class="monitor-alert-rule-item"
+          :class="{ 'monitor-alert-rule-item--first': idx === 0 }"
+          :metrics="metrics"
+          :channel-options="channelOptions"
+          @remove="removeRule(idx)"
+        />
+      </template>
+    </q-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -69,6 +113,9 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const editableRules = ref<MonitorAlertRule[]>([]);
+
+// 指标目录默认折叠（已有规则时），减少视觉干扰。
+const catalogExpanded = ref(false);
 
 watch(
   () => props.rules,
@@ -104,3 +151,15 @@ function onSave() {
   );
 }
 </script>
+
+<style scoped>
+.monitor-alert-rule-item {
+  border-bottom: 1px solid var(--q-color-grey-3, #e0e0e0);
+}
+.monitor-alert-rule-item--first {
+  border-top: none;
+}
+.monitor-alert-rule-item:last-child {
+  border-bottom: none;
+}
+</style>

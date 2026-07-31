@@ -4,15 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
 	v1 "aranea-agents/api/kratos/mcp_server/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	mcpconfig "aranea-agents/internal/mcp/config"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/auth"
+	"aranea-agents/pkg/loggateway"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -21,12 +25,55 @@ import (
 type MCPServerService struct {
 	v1.UnimplementedMCPServerServiceServer
 
-	uc  *biz.MCPServerUsecase
-	mon *biz.MonitorUsecase
+	uc         *biz.MCPServerUsecase
+	mon        *biz.MonitorUsecase
+	lg         loggateway.Logger
+	monitorBus contract.MonitorBus
 }
 
-func NewMCPServerService(uc *biz.MCPServerUsecase, mon *biz.MonitorUsecase) *MCPServerService {
-	return &MCPServerService{uc: uc, mon: mon}
+func NewMCPServerService(uc *biz.MCPServerUsecase, mon *biz.MonitorUsecase, lg loggateway.Logger, monitorBus contract.MonitorBus) *MCPServerService {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	return &MCPServerService{uc: uc, mon: mon, lg: lg, monitorBus: monitorBus}
+}
+
+// logMCPFlow emits a user-visible flow log (流程日志) for MCP server CRUD steps.
+// err != nil → error phase; otherwise done phase. Nil-safe: skipped when the
+// monitor bus is not wired (tests).
+func (s *MCPServerService) logMCPFlow(ctx context.Context, step, message string, err error, pairs ...event.Pair) {
+	if s == nil || s.monitorBus == nil {
+		return
+	}
+	flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:    ctx,
+		Domain: event.TraceDomainSystem,
+		LG:     s.lg,
+		Infra:  event.NewInfraFromBus(s.monitorBus),
+	})
+	if err != nil {
+		flow.LogError(step, message, append(pairs, event.P("error", err.Error()))...)
+		return
+	}
+	flow.LogDone(step, message, pairs...)
+}
+
+// redactMCPConfigURL extracts the server URL from config_json and strips
+// query params / userinfo / fragment so no credentials leak into flow logs
+// (红线 #25). Returns "" when unavailable or unparseable.
+func redactMCPConfigURL(configJSON string) string {
+	cfg, err := mcpconfig.ParseServerConfigJSON(configJSON)
+	if err != nil || cfg.URL == "" {
+		return ""
+	}
+	u, err := url.Parse(cfg.URL)
+	if err != nil {
+		return ""
+	}
+	u.RawQuery = ""
+	u.User = nil
+	u.Fragment = ""
+	return u.String()
 }
 
 // assertMCPServerAccess 校验 caller 是否可读取指定 mcp server（P2-B IDOR 防护）。
@@ -178,8 +225,17 @@ func (s *MCPServerService) CreateMCPServer(ctx context.Context, req *v1.CreateMC
 	}
 	out, err := s.uc.Create(ctx, in)
 	if err != nil {
+		s.logMCPFlow(ctx, "mcp.server.add", "MCP 服务器添加失败", err,
+			event.P("server_key", in.Key),
+			event.P("server_name", in.Name),
+			event.P("url", redactMCPConfigURL(in.ConfigJSON)))
 		return nil, err
 	}
+	s.logMCPFlow(ctx, "mcp.server.add", fmt.Sprintf("MCP 服务器已添加：%s", out.Name), nil,
+		event.P("server_id", out.ID),
+		event.P("server_key", out.Key),
+		event.P("server_name", out.Name),
+		event.P("url", redactMCPConfigURL(out.ConfigJSON)))
 	invalidateAllAgentBuildCaches()
 	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
 		Action:     biz.AuditAction(biz.AuditVerbCreate, "mcp_server"),
@@ -249,12 +305,23 @@ func (s *MCPServerService) DeleteMCPServer(ctx context.Context, req *v1.DeleteMC
 	}
 	// 先取 key 供审计 detail 使用（best-effort，取不到不阻断删除）。
 	summary := ""
+	serverKey, serverName, serverURL := "", "", ""
 	if m, err := s.uc.Get(ctx, req.GetId()); err == nil {
 		summary = fmt.Sprintf("key=%s", m.Key)
+		serverKey, serverName = m.Key, m.Name
+		serverURL = redactMCPConfigURL(m.ConfigJSON)
 	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
+		s.logMCPFlow(ctx, "mcp.server.remove", "MCP 服务器移除失败", err,
+			event.P("server_id", req.GetId()),
+			event.P("server_key", serverKey))
 		return nil, err
 	}
+	s.logMCPFlow(ctx, "mcp.server.remove", fmt.Sprintf("MCP 服务器已移除：%s", serverName), nil,
+		event.P("server_id", req.GetId()),
+		event.P("server_key", serverKey),
+		event.P("server_name", serverName),
+		event.P("url", serverURL))
 	invalidateAllAgentBuildCaches()
 	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
 		Action:     biz.AuditAction(biz.AuditVerbDelete, "mcp_server"),

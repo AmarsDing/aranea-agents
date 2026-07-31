@@ -139,6 +139,18 @@ export function useMonitorPage() {
     }
   }
 
+  async function handleClearAudit() {
+    try {
+      const deleted = await monitorStore.clearAuditLogs();
+      notify({ message: t('monitorPage.audit.cleared', { count: deleted }), type: 'positive' });
+    } catch (e) {
+      notify({
+        message: e instanceof Error ? e.message : t('monitorPage.audit.clearFailed'),
+        type: 'negative',
+      });
+    }
+  }
+
   async function loadEvents() {
     await realtimeEvents.refreshHistory();
   }
@@ -192,6 +204,7 @@ export function useMonitorPage() {
     loading,
     loadAll,
     loadAudit,
+    handleClearAudit,
     loadEvents,
     loadTraces,
     // Runner metrics

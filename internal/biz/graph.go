@@ -601,8 +601,8 @@ func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string,
 	return uc.execUC.ResumeExecution(ctx, executionID, resumeValue)
 }
 
-func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID string, ct *CompiledTeam) error {
-	return uc.execUC.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, ct)
+func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID string, ct *CompiledTeam) error {
+	return uc.execUC.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID, ct)
 }
 
 func (uc *GraphUsecase) MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error {

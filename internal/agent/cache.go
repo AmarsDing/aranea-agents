@@ -9,11 +9,14 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/singleflight"
 
 	"aranea-agents/internal/agent/planner"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	arametrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -37,6 +40,10 @@ type buildCacheEntry struct {
 	// closed when the entry is evicted or the cache is shut down, preventing
 	// resource leaks (MCP sessions, stdio subprocesses, HTTP connections).
 	toolSets []trpctool.ToolSet
+	// lastHitFlowAt throttles the cache_hit flow log: hits fire on every
+	// chat request, so the user-visible flow log is emitted at most once per
+	// entry per cacheHitFlowLogInterval (process logs/metrics stay per-hit).
+	lastHitFlowAt time.Time
 }
 
 // BuildCache is a thread-safe LRU cache for built trpc LLMAgents.
@@ -57,10 +64,15 @@ type BuildCache struct {
 	items   map[string]*buildCacheEntry
 	lruList *list.List // front = most-recently-used
 	lg      loggateway.Logger
+	bus     contract.MonitorBus
 
 	// singleflight coalesces concurrent cache-miss builds for the same key.
 	sfGroup singleflight.Group
 }
+
+// cacheHitFlowLogInterval is the per-entry throttle window for the
+// system.agent.cache_hit flow log (see buildCacheEntry.lastHitFlowAt).
+const cacheHitFlowLogInterval = 5 * time.Minute
 
 var globalBuildCache = newBuildCache(buildCacheDefaultCap)
 
@@ -86,6 +98,43 @@ func (c *BuildCache) SetLogger(lg loggateway.Logger) {
 	c.mu.Lock()
 	c.lg = lg
 	c.mu.Unlock()
+}
+
+// SetMonitorBus injects the shared MonitorBus into the cache. Should be called
+// once during Wire initialization (before any cache operations). The bus is
+// used to publish cache hit/miss flow logs (流程日志); when unset, flow log
+// emission is skipped (tests).
+func (c *BuildCache) SetMonitorBus(bus contract.MonitorBus) {
+	if bus == nil {
+		return
+	}
+	c.mu.Lock()
+	c.bus = bus
+	c.mu.Unlock()
+}
+
+// emitCacheFlow publishes a cache hit/miss flow log via the shared monitor
+// bus. Nil-safe: no-op when the bus is not wired.
+func (c *BuildCache) emitCacheFlow(ctx context.Context, lg loggateway.Logger, stepID, message string, pairs ...event.Pair) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	bus := c.bus
+	c.mu.Unlock()
+	if bus == nil {
+		return
+	}
+	if lg == nil {
+		lg = c.lg
+	}
+	flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:    ctx,
+		Domain: event.TraceDomainSystem,
+		LG:     lg,
+		Infra:  event.NewInfraFromBus(bus),
+	})
+	flow.LogDone(stepID, message, pairs...)
 }
 
 // get returns the cached agent for the given key, or nil if not found.
@@ -308,9 +357,15 @@ func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilder
 	entry, ok := globalBuildCache.items[key]
 	var cachedAgent trpcagent.Agent
 	var dirty bool
+	var emitHitFlow bool
 	if ok {
 		cachedAgent = entry.agent
 		dirty = entry.dirty
+		// 命中是每请求级高频事件：流程日志按 entry 节流（进程日志/指标仍逐次打）。
+		if time.Since(entry.lastHitFlowAt) >= cacheHitFlowLogInterval {
+			entry.lastHitFlowAt = time.Now()
+			emitHitFlow = true
+		}
 	}
 	globalBuildCache.mu.Unlock()
 
@@ -323,6 +378,10 @@ func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilder
 			// composition, not the LLM agent's core behavior.
 			arametrics.AgentBuildCacheHits.Inc()
 			lg.Info("Agent 构建缓存命中（脏，后台重建中）", loggateway.StepID("agent.cache_hit_dirty"), loggateway.Phase("done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("cache_key", key))
+			if emitHitFlow {
+				globalBuildCache.emitCacheFlow(ctx, lg, "system.agent.cache_hit", "Agent 缓存命中（脏，后台重建中）",
+					event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("dirty", true))
+			}
 
 			// Kick off a background build to refresh this cache entry.
 			// Use singleflight to coalesce if multiple requests hit the same dirty key.
@@ -345,11 +404,17 @@ func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilder
 
 		arametrics.AgentBuildCacheHits.Inc()
 		lg.Info("Agent 构建缓存命中", loggateway.StepID("agent.cache_hit"), loggateway.Phase("done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("cache_key", key))
+		if emitHitFlow {
+			globalBuildCache.emitCacheFlow(ctx, lg, "system.agent.cache_hit", "Agent 缓存命中",
+				event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey))
+		}
 		return cachedAgent, nil
 	}
 
 	arametrics.AgentBuildCacheMisses.Inc()
 	lg.Info("Agent 构建缓存未命中", loggateway.StepID("agent.cache_miss"), loggateway.Phase("done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("cache_key", key))
+	globalBuildCache.emitCacheFlow(ctx, lg, "system.agent.cache_miss", "Agent 缓存未命中",
+		event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey))
 
 	// singleflight: coalesce concurrent builds for the same key.
 	// Use context.WithoutCancel so that one caller's cancellation does not

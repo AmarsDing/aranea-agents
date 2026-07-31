@@ -85,10 +85,10 @@
 | 筛选项 | 可选值 |
 |--------|--------|
 | 时间范围 | today / 7d / 30d / month / 自定义 start_date + end_date |
-| Provider | 按 provider_code 筛选 |
-| 模型 | 按 model_api_id 筛选 |
-| Agent | 按 agent_id 筛选 |
-| Team | 按 team_id 筛选（明细页；Team 整体费用见 §3.6） |
+| Provider | 按 provider_code 筛选（明细页为下拉选择，选项来自已配置的 Provider 模型目录） |
+| 模型 | 按 model_api_id 筛选（明细页为下拉选择，随 Provider 选择联动收敛） |
+| Agent | 按 agent_id 筛选（明细页为下拉选择，显示 Agent 名称、提交 ID） |
+| Team | 按 team_id 筛选（明细页；Team 整体费用见 §3.6；下拉选择，显示 Team 名称、提交 ID） |
 | 来源 | 按 usage_kind 筛选（明细页；`chat_turn` / `team_member` / `team_turn` 等） |
 | 状态 | success / failed / cancelled / timeout / abnormal（非 success） |
 
@@ -120,7 +120,7 @@
 | 用量明细 `/usage/events` | **全部** `usage_kind`（含 `team_turn`） | 排障与对账可看整轮聚合行 |
 | `team_turn` | 仅对账、审计；**默认不进**概览/排行/配额 SUM | 与 `team_member` 成员明细互补 |
 
-> 技术实现与 SQL 常量见设计文档 §4.5；迭代任务见开发计划 §9。
+> 技术实现与 SQL 常量见设计文档 §4.6；迭代任务见开发计划 §9。
 
 ### 3.7 增强分析（P3）
 
@@ -179,6 +179,12 @@
 
 完整明细页字段：时间、Agent、Provider / Model、调用次数、输入 Token、输出 Token、总 Token、费用、延迟、TPS、状态、错误信息。
 
+可读性规则：
+
+- Agent / Session / Team 列以**名称**为主显示（Agent 显示 display_name，Session 显示标题，Team 显示 display_name）；原始 ID 保留在数据结构中，通过次要行或悬停提示查看，已删除实体回退显示 ID
+- 状态列使用本地化标签（随界面语言切换中/英文），全站共用同一状态标签组件
+- 筛选操作区（重置/查询/清理/导出）紧凑排布，空间不足时换行而非横向滚动
+
 ---
 
 ## 5. 验收标准
@@ -210,6 +216,9 @@
 - Top 模型和 Top Agent 排行列表
 - 异常请求列表
 - 明细列表支持筛选和分页
+- 明细页 Provider / 模型 / Agent / Team 筛选项为下拉选择（显示名称），无需手输 ID
+- 明细页 Agent / Session / Team 列显示可读名称，ID 可经悬停/次要行查看
+- 明细页状态标签随界面语言本地化（中/英文）
 
 ### 5.4 用量限额（P2）
 

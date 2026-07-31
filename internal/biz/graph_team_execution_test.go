@@ -46,10 +46,29 @@ func TestRegisterTeamGraphExecution_andInterrupt(t *testing.T) {
 		EntryPoint: "review-1", FinishPoint: "review-1",
 	}
 	ct := NewCompiledTeam(cfg, nil, nil, nil)
-	if err := uc.RegisterTeamGraphExecution(context.Background(), "exec-1", "sess-1", "sess-1", "team-1", "run-1", ct); err != nil {
+	// B9：linked_graph_id 非空 → graph_id 用真实图资产 ID。
+	if err := uc.RegisterTeamGraphExecution(context.Background(), "exec-1", "sess-1", "sess-1", "team-1", "run-1", "g-asset-1", ct); err != nil {
 		t.Fatal(err)
 	}
-	gotCt, err := uc.buildConfigForExecution(context.Background(), &GraphExecution{ID: "exec-1", GraphID: "team:team-1:run-1"})
+	registered, err := uc.GetExecution(context.Background(), "exec-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if registered.GraphID != "g-asset-1" {
+		t.Fatalf("graph_id = %q, want linked asset id g-asset-1", registered.GraphID)
+	}
+	// B9：linked 为空（存量未迁移）→ 保留 team: 合成 ID 兜底。
+	if err := uc.RegisterTeamGraphExecution(context.Background(), "exec-legacy", "sess-1", "sess-1", "team-1", "run-2", "", ct); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := uc.GetExecution(context.Background(), "exec-legacy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.GraphID != "team:team-1:run-2" {
+		t.Fatalf("legacy graph_id = %q, want team:team-1:run-2", legacy.GraphID)
+	}
+	gotCt, err := uc.buildConfigForExecution(context.Background(), &GraphExecution{ID: "exec-1", GraphID: "g-asset-1"})
 	if err != nil {
 		t.Fatal(err)
 	}

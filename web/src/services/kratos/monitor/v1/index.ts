@@ -31,6 +31,15 @@ export type ListAuditLogsResponse = {
   total: number | undefined;
 };
 
+export type DeleteAuditLogsRequest = {
+  // Safety gate: must be "CONFIRM" to proceed with the clear-all delete.
+  confirm: string | undefined;
+};
+
+export type DeleteAuditLogsResponse = {
+  deleted: number | undefined;
+};
+
 // Mirrors legacy domain.PlatformResource JSON for monitor-events / monitor-traces rows.
 export type MonitorPlatformRow = {
   id: string | undefined;
@@ -382,6 +391,7 @@ export type ListHealRecordsResponse = {
 
 export interface MonitorService {
   ListAuditLogs(request: ListAuditLogsRequest): Promise<ListAuditLogsResponse>;
+  DeleteAuditLogs(request: DeleteAuditLogsRequest): Promise<DeleteAuditLogsResponse>;
   ListMonitorEvents(request: ListMonitorEventsRequest): Promise<ListMonitorEventsResponse>;
   GetMonitorEvent(request: GetMonitorEventRequest): Promise<MonitorPlatformRow>;
   ListMonitorTraces(request: ListMonitorTracesRequest): Promise<ListMonitorTracesResponse>;
@@ -450,6 +460,26 @@ export function createMonitorServiceClient(
         service: "MonitorService",
         method: "ListAuditLogs",
       }) as Promise<ListAuditLogsResponse>;
+    },
+    DeleteAuditLogs(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/monitor/audit-logs`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.confirm) {
+        queryParams.push(`confirm=${encodeURIComponent(request.confirm.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "MonitorService",
+        method: "DeleteAuditLogs",
+      }) as Promise<DeleteAuditLogsResponse>;
     },
     ListMonitorEvents(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/monitor/events`; // eslint-disable-line quotes

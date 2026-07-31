@@ -69,7 +69,7 @@ service UsageService {
 | `UsageSummary` | 汇总：call_count / request_count / success/failed/cancelled / input/output/total_tokens / total_cost_micro_usd / avg_latency_ms / avg_tokens_per_second / success_rate |
 | `UsageTrendPoint` | 趋势点：date_key + UsageSummary 核心字段 |
 | `UsageBreakdownRow` | 占比行：provider_code / model_api_id / model_display_name / agent_id / agent_key + 汇总字段 + success_rate |
-| `TokenUsageEvent` | 明细事件：50 个字段，包含时间/归属/模型/Token/价格快照/费用/性能/状态/上下文 |
+| `TokenUsageEvent` | 明细事件：53 个字段，包含时间/归属/模型/Token/价格快照/费用/性能/状态/上下文 + 显示名（`agent_name` / `session_title` / `team_name`，仅列表查询填充） |
 | `UsageOverview` | 概览：today / yesterday / month / range_summary / trends / top_models / top_agents / anomalies / quota_dashboard / inefficient_models |
 | `UsageQuota` | 限额：id / scope_type / scope_id / monthly_micro_usd / period_start / period_end / created_at / updated_at |
 | `BudgetAlert` | 告警：id / scope_type / scope_id / alert_ratio / enabled / last_fired_at / created_at / updated_at |
@@ -208,6 +208,10 @@ type TokenUsageEvent struct {
     StreamEnabled                 bool
     MetadataJSON                  string
     CreatedAt                     string
+    // 显示名（仅 ListModelUsageEvents 经标量子查询填充；实体已删除时为空，前端回退显示 ID）
+    AgentName                     string
+    SessionTitle                  string
+    TeamName                      string
 }
 
 type Overview struct {
@@ -580,7 +584,19 @@ CREATE TABLE IF NOT EXISTS budget_alerts (
 
 `usageLimit(limit)` 限制范围 [1, 200]，默认 10。
 
-### 4.4 费用计算
+### 4.4 显示名解析（sqlUsageEventNames）
+
+`ListModelUsageEvents` 在 SELECT 末尾追加 `sqlUsageEventNames`（`internal/data/usage.go`），用**标量子查询**（而非 JOIN）解析三个显示名列，避免 WHERE 列歧义与 COUNT 查询膨胀：
+
+| 列 | 解析规则 |
+|----|----------|
+| `agent_name` | `agents.display_name`（`agent_id` 同时匹配 `agents.id` / `agents.agent_key`）；未命中时回退到该事件 `session_id` 关联 Agent 的 display_name（同 monitor traces 的 `sqlMonitorTracesNames` 模式）；最终 `COALESCE ''` |
+| `session_title` | `sessions.title`（按 `session_id` 匹配，排除 `deleted_at`） |
+| `team_name` | `teams.display_name`（`team_id` 同时匹配 `teams.id` / `teams.team_key`） |
+
+写入侧保证 `agent_id` 列存 Agent 行 ID（`chat_orchestrator_turn.go` 传 `ag.ID`；Team `usage_record.go` 传 `ag.ID`），故前端筛选下拉提交行 ID 即可精确匹配；显示名解析额外兼容历史/边界数据中存 `*_key` 的行。实体已删除时显示名为空串，前端回退显示原始 ID。
+
+### 4.5 费用计算
 
 所有费用以 micro USD 存储。实现：`internal/biz/usage/usage.go` → `ApplyTokenUsageCosts`（幂等：仅当对应 cost 字段为 0 时计算，不覆盖已写入值）：
 
@@ -594,7 +610,7 @@ total_cost         = input_cost + output_cost + cached_input_cost + cache_write_
 
 单价取值优先级：`xxx_price_usd_per_1m`（cost = `round(tokens × usd_per_1m)`）> `xxx_price_micro_usd_per_1k`（cost = `tokens × micro_per_1k / 1000`，整除）。事件表仅持久化 micro 单价快照；USD 单价来自定价快照（`model_pricing_rules` 优先）。
 
-### 4.5 统计口径矩阵（可计费 vs 对账）
+### 4.6 统计口径矩阵（可计费 vs 对账）
 
 常量：`internal/data/usage_sql.go` → `sqlUsageBillableKind`
 
@@ -758,7 +774,7 @@ web/src/features/usage/
 ├── quotaApi.ts               ← 限额 + 告警 API（含 listBudgetAlerts / setBudgetAlert）
 ├── useAgentUsageQuota.ts     ← 限额 + 告警 composable
 ├── useOverviewPage.ts        ← 概览页 composable
-├── useUsageEventsPage.ts     ← 明细页 composable
+├── useUsageEventsPage.ts     ← 明细页 composable（筛选下拉选项：Provider/模型来自 platformStore.providerModels，Agent/Team 来自 agentsCatalog/teamsStore；Provider↔模型联动）
 ├── useUsageChart.ts          ← 趋势图 composable
 ├── useProviderTrendDialog.ts  ← Provider 趋势弹窗
 ├── usageTrendMetrics.ts      ← 趋势指标定义
@@ -842,6 +858,13 @@ export function microUsdToUsd(micro: number): number
 - 页面组件通过 composable（`useOverviewPage` / `useUsageEventsPage`）访问 API，禁止直接 `import features/usage/api`
 - `AgentUsageQuotaPanel` 通过 `useAgentUsageQuota` composable 访问 `quotaApi`，禁止直接调 API
 - 告警 API 合并进 `quotaApi.ts`，不再单独维护 `budgetAlertApi.ts`
+
+### 7.5 明细页可读性设计（2026-07-30）
+
+- **筛选下拉**：Provider / 模型 / Agent / Team 均为 `q-select`（显示名称、提交 code/ID）。Provider 与模型选项派生自 `platformStore.providerModels`（PlatformResource 的 `provider` / `model` / `name`），模型选项随已选 Provider 联动；Agent / Team 选项来自 `agentsCatalog.fetchAgents` / `teamsStore.loadTeams`（label 用 `display_name`，value 用行 ID）
+- **名称列**：Agent 列主行显示 `agent_name`（回退 `agent_key` → `agent_id`），有名称时次要行显示原始 ID；Session 列显示 `session_title`（无标题截断 ID），完整 ID 经 `AppRegistryHoverTip` 悬停查看；状态列用 `AppStatusChip`
+- **状态标签公共组件**：`components/common/AppStatusChip.vue` + `features/ui/appStatusMeta.ts`——状态枚举（success/completed/error/failed/timeout/cancelled/running/pending/queued/idle/interrupted）→ tone + 图标 + i18n key（`common.status.*`，zh-CN/en-US 双语）集中定义，各页面共用；筛选下拉的 statusOptions 复用同一元数据
+- **工具栏紧凑排布**：7 个筛选字段收窄（`min-width:108px / max-width:160px`）+ 操作按钮 `flat dense`，`flex-wrap: wrap` 换行替代横向滚动
 
 ---
 

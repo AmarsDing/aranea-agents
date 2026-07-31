@@ -19,6 +19,7 @@ var _ = binding.EncodeURL
 
 const _ = http.SupportPackageIsVersion1
 
+const OperationMonitorServiceDeleteAuditLogs = "/kratos.monitor.v1.MonitorService/DeleteAuditLogs"
 const OperationMonitorServiceDiagnoseAndHeal = "/kratos.monitor.v1.MonitorService/DiagnoseAndHeal"
 const OperationMonitorServiceGenerateDiagnosticBundle = "/kratos.monitor.v1.MonitorService/GenerateDiagnosticBundle"
 const OperationMonitorServiceGetCodeExecutorCapabilities = "/kratos.monitor.v1.MonitorService/GetCodeExecutorCapabilities"
@@ -39,6 +40,7 @@ const OperationMonitorServicePutMonitorAlertRules = "/kratos.monitor.v1.MonitorS
 const OperationMonitorServiceTriggerSelfCheck = "/kratos.monitor.v1.MonitorService/TriggerSelfCheck"
 
 type MonitorServiceHTTPServer interface {
+	DeleteAuditLogs(context.Context, *DeleteAuditLogsRequest) (*DeleteAuditLogsResponse, error)
 	DiagnoseAndHeal(context.Context, *DiagnoseAndHealRequest) (*DiagnoseAndHealResponse, error)
 	GenerateDiagnosticBundle(context.Context, *GenerateDiagnosticBundleRequest) (*GenerateDiagnosticBundleResponse, error)
 	GetCodeExecutorCapabilities(context.Context, *GetMonitorLogsRequest) (*GetCodeExecutorCapabilitiesResponse, error)
@@ -65,6 +67,7 @@ type MonitorServiceHTTPServer interface {
 func RegisterMonitorServiceHTTPServer(s *http.Server, srv MonitorServiceHTTPServer) {
 	r := s.Route("/")
 	r.GET("/v1/monitor/audit", _MonitorService_ListAuditLogs0_HTTP_Handler(srv))
+	r.DELETE("/v1/monitor/audit-logs", _MonitorService_DeleteAuditLogs0_HTTP_Handler(srv))
 	r.GET("/v1/monitor/events", _MonitorService_ListMonitorEvents0_HTTP_Handler(srv))
 	r.GET("/v1/monitor/events/{id}", _MonitorService_GetMonitorEvent0_HTTP_Handler(srv))
 	r.GET("/v1/monitor/traces", _MonitorService_ListMonitorTraces0_HTTP_Handler(srv))
@@ -99,6 +102,25 @@ func _MonitorService_ListAuditLogs0_HTTP_Handler(srv MonitorServiceHTTPServer) f
 			return err
 		}
 		reply := out.(*ListAuditLogsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _MonitorService_DeleteAuditLogs0_HTTP_Handler(srv MonitorServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DeleteAuditLogsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMonitorServiceDeleteAuditLogs)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteAuditLogs(ctx, req.(*DeleteAuditLogsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DeleteAuditLogsResponse)
 		return ctx.Result(200, reply)
 	}
 }
@@ -445,6 +467,7 @@ func _MonitorService_ListHealRecords0_HTTP_Handler(srv MonitorServiceHTTPServer)
 }
 
 type MonitorServiceHTTPClient interface {
+	DeleteAuditLogs(ctx context.Context, req *DeleteAuditLogsRequest, opts ...http.CallOption) (rsp *DeleteAuditLogsResponse, err error)
 	DiagnoseAndHeal(ctx context.Context, req *DiagnoseAndHealRequest, opts ...http.CallOption) (rsp *DiagnoseAndHealResponse, err error)
 	GenerateDiagnosticBundle(ctx context.Context, req *GenerateDiagnosticBundleRequest, opts ...http.CallOption) (rsp *GenerateDiagnosticBundleResponse, err error)
 	GetCodeExecutorCapabilities(ctx context.Context, req *GetMonitorLogsRequest, opts ...http.CallOption) (rsp *GetCodeExecutorCapabilitiesResponse, err error)
@@ -474,6 +497,19 @@ type MonitorServiceHTTPClientImpl struct {
 
 func NewMonitorServiceHTTPClient(client *http.Client) MonitorServiceHTTPClient {
 	return &MonitorServiceHTTPClientImpl{client}
+}
+
+func (c *MonitorServiceHTTPClientImpl) DeleteAuditLogs(ctx context.Context, in *DeleteAuditLogsRequest, opts ...http.CallOption) (*DeleteAuditLogsResponse, error) {
+	var out DeleteAuditLogsResponse
+	pattern := "/v1/monitor/audit-logs"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMonitorServiceDeleteAuditLogs))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 func (c *MonitorServiceHTTPClientImpl) DiagnoseAndHeal(ctx context.Context, in *DiagnoseAndHealRequest, opts ...http.CallOption) (*DiagnoseAndHealResponse, error) {

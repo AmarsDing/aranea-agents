@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/storage"
@@ -33,7 +34,6 @@ type SkillReader interface {
 // SkillWriter provides write operations needed by the filesystem watcher.
 type SkillWriter interface {
 	MarkFilesystemMissing(ctx context.Context, slug string, missing bool) error
-	RecordInvocation(ctx context.Context, inv biz.SkillInvocationWrite) error
 	UpsertSkillFromDisk(ctx context.Context, input biz.SkillDiskSyncInput) (biz.Skill, biz.SkillDiskSyncOutcome, error)
 }
 
@@ -74,6 +74,20 @@ func (r *Runner) resolveRoot(ctx context.Context) string {
 		}
 	}
 	return storage.ResolveRoot()
+}
+
+// flowLog returns a trace emitter for the skill domain, or nil when no
+// monitor bus is configured (flow-log emission disabled).
+func (r *Runner) flowLog(ctx context.Context) *event.TraceEmitter {
+	if r == nil || r.monitorBus == nil {
+		return nil
+	}
+	return event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:    ctx,
+		Domain: event.TraceDomainSkill,
+		LG:     r.lg,
+		Infra:  event.NewInfraFromBus(r.monitorBus),
+	})
 }
 
 func (r *Runner) Start(ctx context.Context) {
@@ -267,18 +281,14 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 		if err := r.writer.MarkFilesystemMissing(ctx, slug, true); err != nil {
 			r.lg.Warn("failed to mark filesystem missing", loggateway.Err(err), loggateway.Str("slug", slug))
 		}
-		dur := int(time.Since(t0).Milliseconds())
-		if err := r.writer.RecordInvocation(ctx, biz.SkillInvocationWrite{
-			Status:       "failure",
-			DurationMS:   dur,
-			InputPreview: preview(slug + " missing"),
-			ErrorCode:    "filesystem_missing",
-			ErrorMessage: errMsg,
-			Source:       source,
-		}); err != nil {
-			r.lg.Warn("failed to record skill invocation", loggateway.Err(err), loggateway.Str("slug", slug))
-		}
 		r.lg.Warn("skill filesystem missing", loggateway.StepID(sourceTag), loggateway.Str("slug", slug), loggateway.Str("err", errMsg))
+		if flow := r.flowLog(ctx); flow != nil {
+			flow.LogError("skill.watch.reload", "Skill 热重载失败",
+				event.P("slug", slug),
+				event.P("source", source),
+				event.P("error_code", "filesystem_missing"),
+				event.P("error", errMsg))
+		}
 		r.reportSync(ctx, "skill.filesystem.missing", slug, "Skill 磁盘目录缺失: "+slug, "warn")
 		return
 	}
@@ -349,18 +359,22 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 	if sk.CurrentVersion != nil {
 		ver = sk.CurrentVersion.Version
 	}
-	if err := r.writer.RecordInvocation(ctx, biz.SkillInvocationWrite{
-		SkillID:       sk.ID,
-		SkillVersion:  ver,
-		Status:        "success",
-		DurationMS:    dur,
-		InputPreview:  preview(slug + " sync"),
-		OutputPreview: preview(sk.Name + " @" + sk.Slug),
-		Source:        source,
-	}); err != nil {
-		r.lg.Warn("failed to record skill invocation", loggateway.Err(err), loggateway.Str("slug", slug))
-	}
 	r.lg.Info("skill sync success", loggateway.StepID(sourceTag), loggateway.Str("slug", slug), loggateway.Str("skill_id", sk.ID), loggateway.Int("duration_ms", dur))
+	// 流程日志只在真正发生重载时发射（新建/恢复/内容变化/回退草稿）：
+	// reconcile 每 5 分钟全量扫描，无变化的成功同步发 done 会产生持续噪音。
+	if flow := r.flowLog(ctx); flow != nil {
+		if isNew || wasMissing || outcome.ContentChanged || outcome.RevertedToDraft {
+			flow.LogDone("skill.watch.reload", "Skill 热重载完成",
+				event.P("slug", slug),
+				event.P("version", ver),
+				event.P("source", source),
+				event.P("is_new", isNew),
+				event.P("recovered", wasMissing),
+				event.P("content_changed", outcome.ContentChanged),
+				event.P("reverted_to_draft", outcome.RevertedToDraft),
+				event.P("duration_ms", dur))
+		}
+	}
 	eventKey := "skill.filesystem.updated"
 	severity := "info"
 	message := "Skill 磁盘同步: " + sk.Name
@@ -393,25 +407,14 @@ func (r *Runner) recordFailure(ctx context.Context, slug, source string, t0 time
 	if err != nil {
 		msg = err.Error()
 	}
-	if err := r.writer.RecordInvocation(ctx, biz.SkillInvocationWrite{
-		Status:       "failure",
-		DurationMS:   dur,
-		InputPreview: preview(slug + " sync"),
-		ErrorCode:    code,
-		ErrorMessage: msg,
-		Source:       source,
-	}); err != nil {
-		r.lg.Warn("failed to record skill invocation", loggateway.Err(err), loggateway.Str("slug", slug))
+	if flow := r.flowLog(ctx); flow != nil {
+		flow.LogError("skill.watch.reload", "Skill 热重载失败",
+			event.P("slug", slug),
+			event.P("source", source),
+			event.P("error_code", code),
+			event.P("error", msg),
+			event.P("duration_ms", dur))
 	}
-}
-
-func preview(s string) string {
-	s = strings.TrimSpace(s)
-	if len([]rune(s)) <= 512 {
-		return s
-	}
-	r := []rune(s)
-	return string(r[:512]) + "..."
 }
 
 func (r *Runner) checkSimilarityAsync(slug, name string) {

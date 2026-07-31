@@ -2,7 +2,7 @@
 
 > 需求文档：[73-self-iteration-v3.md](./73-self-iteration-v3.md)
 > 设计文档：[73-self-iteration-v3.design.md](./73-self-iteration-v3.design.md)
-> **版本**：2026-07-29 | **状态**：📋 P1 待启动
+> **版本**：2026-07-30 | **状态**：🟡 Phase 1（感知接入）+ Phase 2（沙盒与补丁）已完成，Phase 3 待启动
 
 ---
 
@@ -40,51 +40,63 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 
 | ID | 任务 | 层 | 状态 | DoD |
 |----|------|----|------|-----|
-| T1.1 | Ent Schema：`self_improvement_runs` + `patch_outcomes`（含 `entsql.Annotation{Table}`、索引）→ `go generate` | Data | ⏳ | 生成物提交，`go build ./internal/data/...` 通过 |
-| T1.2 | DDL 迁移登记（表创建 SQL，幂等 IF NOT EXISTS；observing 部分索引）入 `ddl_migration_registry.go` | Data | ⏳ | 迁移版本号 YYYYMMDD，启动应用成功 |
-| T1.3 | 确认/放宽 `unified_evolution_suggestions` 的 target_type/action_type CHECK 约束（若存在）以接纳 platform/patch_code 等新枚举 | Data | ⏳ | 插入 platform 行不报错 |
-| T1.4 | biz 领域模型：`self_improvement_types.go`（Run/Outcome/枚举/JSON 子结构） | Biz | ⏳ | `go build ./internal/biz/...` 通过 |
-| T1.5 | 运行状态机 `self_improvement_state_machine.go`（D3 迁移表，复用 GenericStateMachine）+ 全迁移表单测 | Biz | ⏳ | `go test ./internal/biz/ -run TestSelfImprovementRunSM -count=1` 绿 |
-| T1.6 | biz 端口：RunReader/Writer + PatchOutcomeWriter（窄接口 + Stability 标注） | Biz | ⏳ | build 通过 |
-| T1.7 | data Repo 实现 + CAS UpdateStatus + entErrToBizErr 翻译 + PG 集成测试 | Data | ⏳ | `go test -tags=integration ./internal/data/ -run TestSelfImprovement -count=1` 绿 |
-| T1.8 | 信号源窄端口（D 4.3）+ 4 触发器实现 `EvolutionTrigger` + 阈值/去重单测（mock 端口） | Biz | ⏳ | `go test ./internal/biz/ -run TestPlatformTrigger -count=1` 绿 |
-| T1.9 | 信号源端口的数据层适配（KB 聚类查询、monitor 指标查询、eval 基线查询、测试失败查询） | Data/Biz | ⏳ | 单测/集成测试绿 |
-| T1.10 | 编排器注册 4 触发器 + `self_improve_observe` worker（扫描→CheckAndCreate→建 run） | Biz/Cmd | ⏳ | `make wire && go build ./cmd/admin` 通过 |
-| T1.11 | 配置块 `self_improvement`（默认 enabled=false）+ 配置解析测试 | Cmd | ⏳ | build + 测试绿 |
+| T1.1 | Ent Schema：`self_improvement_runs` + `patch_outcomes`（含 `entsql.Annotation{Table}`、索引）→ `go generate` | Data | ✅ | 生成物提交，`go build ./internal/data/...` 通过 |
+| T1.2 | DDL 迁移登记（表创建 SQL，幂等 IF NOT EXISTS；observing 部分索引）入 `ddl_migration_registry.go` | Data | ✅ | 迁移版本号 YYYYMMDD，启动应用成功 |
+| T1.3 | 确认/放宽 `unified_evolution_suggestions` 的 target_type/action_type CHECK 约束（若存在）以接纳 platform/patch_code 等新枚举 | Data | ✅ | 插入 platform 行不报错 |
+| T1.4 | biz 领域模型：`self_improvement_types.go`（Run/Outcome/枚举/JSON 子结构） | Biz | ✅ | `go build ./internal/biz/...` 通过 |
+| T1.5 | 运行状态机 `self_improvement_state_machine.go`（D3 迁移表，复用 GenericStateMachine）+ 全迁移表单测 | Biz | ✅ | `go test ./internal/biz/ -run TestSelfImprovementRunSM -count=1` 绿 |
+| T1.6 | biz 端口：RunReader/Writer + PatchOutcomeWriter（窄接口 + Stability 标注） | Biz | ✅ | build 通过 |
+| T1.7 | data Repo 实现 + CAS UpdateStatus + entErrToBizErr 翻译 + PG 集成测试 | Data | ✅ | `go test -tags=integration ./internal/data/ -run TestSelfImprovement -count=1` 绿 |
+| T1.8 | 信号源窄端口（D 4.3）+ 4 触发器实现 `EvolutionTrigger` + 阈值/去重单测（mock 端口） | Biz | ✅ | `go test ./internal/biz/ -run TestPlatformTrigger -count=1` 绿 |
+| T1.9 | 信号源端口的数据层适配（KB 聚类查询、monitor 指标查询、eval 基线查询、测试失败查询） | Data/Biz | ✅ | `TestSignalRepo_*`/`TestTestRunFileReader_*` 7 项集成测试绿（2026-07-30） |
+| T1.10 | 编排器注册 4 触发器 + `self_improve_observe` worker（扫描→CheckAndCreate→建 run） | Biz/Cmd | ✅ | `make wire && go build ./cmd/admin` 通过（2026-07-30） |
+| T1.11 | 配置块 `self_improvement`（默认 enabled=false）+ 配置解析测试 | Cmd | ✅ | `internal/conf` 测试绿（2026-07-30） |
 
-**阶段验收**：`go build ./... && go test ./internal/biz/... ./internal/data/... -count=1` 全绿；手工造信号 → 库中出现 platform 建议 + run(detected)
+**阶段验收（2026-07-30 通过）**：`go build ./...`、`go vet ./...`、`araneactl lint`、`fmtcheck` 全绿；`go test -race ./internal/biz/ ./internal/conf/ ./internal/cronrunner/...` 及 data 层 SI 集成测试（真实 PG）全绿。注：验证须在干净 GOCACHE 下进行——默认缓存曾因并行工作流导出数据不一致产生幻影编译错误。剩余手工验收项：造信号 → 库中出现 platform 建议 + run(detected)（待运行时验证）。
 
 ### Phase 2 — 沙盒与补丁（P1）
 
 | ID | 任务 | 层 | 状态 | DoD |
 |----|------|----|------|-----|
-| T2.1 | `biz.RepoSandbox` 端口 + GateKind/GateResult 类型 | Biz | ⏳ | build 通过 |
-| T2.2 | `service.RepoSandboxRunner`：worktree 准备/清理 + ApplyDiff + G1-G3 执行（超时/输出截断/进程组杀绝） | Service | ⏳ | fixture 仓库集成测试绿 |
-| T2.3 | 受影响包推导（diff 文件清单 → go 包/前端范围）+ 单测 | Biz | ⏳ | 表驱动测试绿 |
-| T2.4 | 保护文件清单校验器（diff 路径解析 + glob 匹配，D9）+ 单测 | Biz | ⏳ | 命中/放行用例全绿 |
-| T2.5 | Patcher 工具集（fs_read/fs_write/git_diff，worktree 作用域限制） | Tools | ⏳ | 工具单测绿 |
-| T2.6 | diff 规模上限（500 行）与敏感信息检测（复用 V2 SEL-08 模式） | Biz | ⏳ | 单测绿 |
+| T2.1 | `biz.RepoSandbox` 端口 + GateKind/GateResult 类型 | Biz | ✅ | build 通过（2026-07-30；类型在 T1.4 已落地为 `SandboxGateKind/SandboxGateResult`，本任务补端口 + 契约测试） |
+| T2.2 | `service.RepoSandboxRunner`：worktree 准备/清理 + ApplyDiff + G1-G3 执行（超时/输出截断/进程组杀绝） | Service | ✅ | fixture 仓库集成测试 13 项全绿（2026-07-30） |
+| T2.3 | 受影响包推导（diff 文件清单 → go 包/前端范围）+ 单测 | Biz | ✅ | 表驱动测试绿（2026-07-30） |
+| T2.4 | 保护文件清单校验器（diff 路径解析 + glob 匹配，D9）+ 单测 | Biz | ✅ | 命中/放行用例全绿（2026-07-30，doublestar/v4 glob） |
+| T2.5 | Patcher 工具集（fs_read/fs_write/git_diff，worktree 作用域限制） | Tools | ✅ | 工具单测 11 项全绿（2026-07-30） |
+| T2.6 | diff 规模上限（500 行）与敏感信息检测（复用 V2 SEL-08 模式） | Biz | ✅ | 单测绿（2026-07-30，12 类 regex，命中只报类别不泄漏原文） |
 
-**阶段验收**：fixture 仓库上对测试补丁跑通 G1-G3；保护清单命中即拒
+**阶段验收（2026-07-30 通过）**：fixture 仓库上对测试补丁跑通 G1-G3（编译破坏补丁 G1 拒、测试失败补丁 G2 拒）；保护清单命中即拒（表驱动 14 用例）；`go build ./...`、`go vet`（改动包）、`araneactl lint`（0 violations）、`fmtcheck`（本任务文件）全绿；`go test -race ./internal/biz/ ./internal/conf/ ./internal/tools/patcherfs/` 及 `go test ./internal/service/`（跳过 2 个 models.dev 网络依赖用例）全绿。验证在独立 GOCACHE 下进行。
+
+**P2 落地偏差（已记录，Phase 3 回收）**：
+1. G3 Lint 以 `go vet` 为确定性下限；`golangci-lint run <pkgs>` 包级接线推迟 Phase 3（D4 原文保留）
+2. web 侧 gate（pnpm build/test/lint）未进 `RepoSandboxRunner`，Phase 3 随 Meta Team 集成一并接入（`DeriveAffectedScopes` 已输出 web 范围标志）
+3. 进程组杀绝沿用项目惯例 `exec.CommandContext`（Windows 无进程组语义；超时即 Kill 主进程，管道断开使子进程退出）
 
 ### Phase 3 — Meta Team 与治理（P1）
 
 | ID | 任务 | 层 | 状态 | DoD |
 |----|------|----|------|-----|
-| T3.1 | Analyst/Patcher/Verifier/Critic 的 Agent 定义与结构化输出契约（D5 表） | Biz | ⏳ | prompt + schema 单测 |
-| T3.2 | Meta Team 图编排（含 verify 失败回 patching 重试回路，attempts 上限 3） | Biz | ⏳ | 编排单测（mock LLM）绿 |
-| T3.3 | Critic G4 接入（复用 V2 输出契约 is_safe/risk_level/concerns）+ 日配额 10 | Service | ⏳ | 配额/降级单测绿 |
-| T3.4 | RiskClassifier（D6 规则矩阵 R1-R5）纯代码实现 + 全规则表驱动单测 | Biz | ⏳ | 单测全绿 |
-| T3.5 | 治理路由：low→auto、medium→auto+notify、high→审批 activity（复用聊天审批） | Biz/Service | ⏳ | 端到端集成测试绿 |
-| T3.6 | Meta Team 过程活动挂载（resolveParentActivityID 规范）+ 用户介入指令（暂停/跳过/回滚） | Biz | ⏳ | 事件树断言测试绿 |
+| T3.1 | Analyst/Patcher/Verifier/Critic 的 Agent 定义与结构化输出契约（D5 表） | Biz | ✅ | prompt + schema 单测绿（2026-07-30，`self_improvement_agents.go`：SIAgent* 标识 + 4 份系统提示词 + ParseDiagnosisJSON/ParsePatcherOutputJSON/ParseCriticReportJSON） |
+| T3.2 | Meta Team 图编排（含 verify 失败回 patching 重试回路，attempts 上限 3） | Biz | ✅ | 编排单测（mock LLM）绿（2026-07-30，`self_improvement_pipeline.go`：Diagnose→Patch→Verify 重试回路→Govern，fail-fast 策略门禁不消耗沙盒 Gate） |
+| T3.3 | Critic G4 接入（复用 V2 输出契约 is_safe/risk_level/concerns）+ 日配额 10 | Service | ✅ | 配额/降级单测绿（2026-07-30，`service/self_improvement_critic.go` 6 项测试：成功/非法 JSON/LLM 错误/配额耗尽降级/nil caller/diff 截断） |
+| T3.4 | RiskClassifier（D6 规则矩阵 R1-R5）纯代码实现 + 全规则表驱动单测 | Biz | ✅ | 单测全绿（2026-07-30，`self_improvement_risk.go`，表驱动 16 用例覆盖 R1-R5 + 通道映射） |
+| T3.5 | 治理路由：low→auto、medium→auto+notify、high→审批 activity（复用聊天审批） | Biz/Service | ✅ | 端到端集成测试绿（2026-07-30，`self_improvement_router.go`：auto/notify 日配额 5 超限转 approval；TestSIPipeline_EndToEnd_AutoChannel 信号→诊断→补丁→验证→治理→applying 全链路） |
+| T3.6 | Meta Team 过程活动挂载（resolveParentActivityID 规范）+ 用户介入指令（暂停/跳过/回滚） | Biz | ✅ | 事件树断言测试绿（2026-07-30，`self_improvement_activity.go` 确定性 ID 两级树 + `self_improvement_control.go` SIControlPlane pause/skip_retry/rollback；13 项测试含重试 attempt 子树与 fail-fast 无 dangling 断言） |
 
-**阶段验收**：端到端「信号→诊断→补丁→验证→审批单」httptest 可运行（mock LLM/git）
+**阶段验收（2026-07-30 通过）**：端到端「信号→诊断→补丁→验证→治理路由」biz 集成测试可运行（mock LLM/git）：`TestSIPipeline_EndToEnd_AutoChannel` + 路由 7 项 + 事件树/介入 13 项全绿；`go build ./internal/... ./pkg/...`、`go vet ./internal/biz/ ./internal/service/`、`gofmt`（本任务文件）、`go test -race ./internal/biz/`（SI 40 项）、`go test ./internal/service/ -run TestSICritic`（6 项）全绿。验证在独立 GOCACHE 下进行。注：`go build ./...` 与 `araneactl lint` 各有一处**并行会话**（memory canary）未完成的 wire 接线错误（`out.MemoryCanary undefined`）与 main.go 201 行超限，与本阶段改动无关，不越权修改对方集成点文件。
+
+**P3 落地偏差（已记录，Phase 4 回收）**：
+1. 审批/通知/活动挂载的 service 层适配器（`SIApprovalSink`→聊天审批、`SINotifier`→管理员通知、`SIActivitySink`→Activity/EventBus）为 wire 级接线，随 Phase 4 Applier/Watchdog 一并接入
+2. pause 指令的恢复入口（resume worker 重驱动非终态 run）属 Phase 4
+3. rollback 指令当前语义为 pre-apply 中止（→rejected）；applied/observing 的强制回滚属 Phase 4 Applier
+4. P2 偏差 1（golangci-lint 包级接线）本阶段未回收，随 Phase 4 Gate 强化一并处理；G3 仍以 `go vet` 为确定性下限
+5. P2 偏差 2（web 侧 gate 进 Runner）本阶段未回收；流水线已透传 `DeriveAffectedScopes` 的 go 包清单，web 范围标志的执行接线随 Phase 4 一并处理
 
 ### Phase 4 — 应用与学习（P1）
 
 | ID | 任务 | 层 | 状态 | DoD |
 |----|------|----|------|-----|
-| T4.1 | Applier：热加载通道（config/prompt）+ 代码合并通道（commit 标记 + ff 合并，冲突转人工） | Service | ⏳ | fixture 仓库集成测试绿 |
+| T4.1 | Applier：热加载通道（config/prompt）+ 代码合并通道（commit 标记 + ff 合并，冲突转人工） | Service | ✅ | fixture 仓库集成测试绿 |
 | T4.2 | Watchdog worker：observing 扫描 + 滑窗指标对比 + 自动 revert + 通知 | Cmd/Biz | ⏳ | 单测（mock 指标）绿 |
 | T4.3 | 手动 close/rollback 入口（P4 暂经管理 API 内部路径，P5 落 Proto） | Service | ⏳ | 集成测试绿 |
 | T4.4 | Outcome worker：终态归因 verdict + KB 负面样本 + 触发器自适应降频 | Cmd/Biz | ⏳ | 单测绿 |
@@ -105,18 +117,55 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 
 ## 5. 改动文件清单（P1 范围）
 
-**新增**：
+**新增（Phase 1 已落地）**：
 - `internal/data/ent/schema/self_improvement_run.go`、`patch_outcome.go`（+ go generate 产物）
-- `internal/data/sql/migrations/YYYYMMDD_self_improvement.sql`
-- `internal/biz/self_improvement_types.go`、`self_improvement_state_machine.go`、`self_improvement_repo.go`（端口）、`self_improvement_triggers.go`
-- `internal/data/self_improvement_repo.go`
-- `internal/biz/*_test.go`、`internal/data/self_improvement_repo_test.go`
+- `internal/data/sql/migrations/20261120_self_improvement_observing_index.sql`（原 20261115，与数据迁移 monitor_trace_interrupted_backfill 版本碰撞，2026-07-30 重编号）
+- `internal/biz/self_improvement_types.go`、`self_improvement_state_machine.go`、`self_improvement_repo.go`（端口）、`self_improvement_triggers.go`、`self_improvement_observe.go`
+- `internal/data/self_improvement_repo.go`、`self_improvement_signals.go`、`self_improvement_testrun_reader.go`
+- `internal/cronrunner/jobs/self_improve_observe_worker.go`
+- `internal/conf/self_improvement.go`
+- 测试：`internal/biz/self_improvement_*_test.go`、`internal/data/self_improvement_*_test.go`、`internal/conf/self_improvement_test.go`、`internal/cronrunner/jobs/self_improve_observe_worker_test.go`
 
-**修改**：
+**修改（Phase 1 已落地）**：
 - `internal/data/ddl_migration_registry.go`（登记迁移）
-- `cmd/admin/wire.go`（+ wire_gen.go regenerate）
-- `cmd/admin/workers.go`（注册 observe worker）
-- `internal/config/`（self_improvement 配置块）
+- `cmd/admin/wire.go`（+ wire_gen.go regenerate：触发器注册、observe usecase/worker provider）
+- `cmd/admin/workers.go`（注册 observe worker，`goAfterReady("self_improve_observe")`）
+- `internal/conf/conf.proto` + `conf.pb.go`（self_improvement 配置块）
+- `configs/config.yaml`（注释示例配置块，默认 enabled=false）
+
+**新增（Phase 2 已落地）**：
+- `internal/biz/self_improvement_patch.go`（diff 解析/受影响包推导/保护清单/规模上限/敏感信息检测）+ `_test.go`（含 T2.1 端口契约测试）
+- `internal/service/repo_sandbox_runner.go`（worktree 沙盒 + ApplyDiff + G1-G3）+ `_test.go`（fixture 仓库集成测试）
+- `internal/tools/patcherfs/patcherfs.go`（patcher_fs_read/patcher_fs_write/patcher_git_diff）+ `_test.go`
+
+**修改（Phase 2 已落地）**：
+- `internal/biz/self_improvement_repo.go`（新增 `RepoSandbox` 端口，T2.1）
+- `internal/conf/conf.proto` + `conf.pb.go`（Patch/Sandbox 子块，`make config` 重生成）
+- `internal/conf/self_improvement.go` + `_test.go`（SIMaxDiffLines/SIDailyAutoApplyQuota/SIMaxAttempts/SIGateTimeouts/SIWorktreeRoot 访问器）
+- `configs/config.yaml`（patch/sandbox 注释示例）
+- `.gitignore`（`/.aranea-self-improve/`）
+- `go.mod`/`go.sum`（`doublestar/v4` 转直接依赖）
+
+**新增（Phase 3 已落地）**：
+- `internal/biz/self_improvement_agents.go`（SIAgent* 标识、4 份系统提示词、ParseDiagnosisJSON/ParsePatcherOutputJSON/ParseCriticReportJSON，T3.1）+ `_test.go`
+- `internal/biz/self_improvement_pipeline.go`（Meta Team 编排 + 重试回路 + fail-fast 门禁 + 活动挂载/用户介入集成，T3.2/T3.6）+ `_test.go`
+- `internal/service/self_improvement_critic.go`（Critic G4 LLM 接入 + 日配额 10，T3.3）+ `_test.go`
+- `internal/biz/self_improvement_risk.go`（RiskClassifier D6 R1-R5 + 通道映射，T3.4）+ `_test.go`
+- `internal/biz/self_improvement_router.go`（SIGovernanceRouter + SINotifier/SIApprovalSink 端口 + auto 日配额 5 超限转 approval，T3.5）+ `_test.go`
+- `internal/biz/self_improvement_activity.go`（确定性活动 ID + SIActivityRecord + SIActivitySink 端口，T3.6）+ `_test.go`
+- `internal/biz/self_improvement_control.go`（SIControlCommand/SIControlPlane/ErrSIRunPaused，T3.6）+ `_test.go`
+
+**新增（Phase 4 已落地）**：
+- `internal/service/self_improvement_applier.go`（SIRepoApplier：ApplyHotReload 快照通道 + ApplyCodeMerge 代码 ff 合并 + Rollback revert/快照恢复，T4.1）+ `_test.go`（fixture 仓库集成测试 8 例）
+
+**修改（Phase 4 已落地）**：
+- `internal/biz/self_improvement_repo.go`（新增 `ErrSIMergeConflict` 哨兵 + `ListTerminalPendingOutcome`/`ListRecentOutcomesByTrigger` 端口方法，T4.1/T4.4）
+- `internal/conf/conf.proto` + `conf.pb.go`（ObserveWindow/watchdog_interval/outcome_interval，T4.2/T4.4）
+- `internal/conf/self_improvement.go` + `_test.go`（SIObserveWindow*/SIWatchdogInterval/SIOutcomeInterval 访问器）
+- `internal/data/self_improvement_repo.go` + `_test.go`（ListTerminalPendingOutcome/ListRecentOutcomesByTrigger PG 集成测试）
+- `internal/data/self_improvement_signals.go` + `_test.go`（SIMetricsReader.Snapshot 滑窗指标快照，T4.2）
+- `internal/biz/self_improvement_pipeline_test.go`、`self_improvement_observe_test.go`（stub 补 ListTerminalPendingOutcome 方法）
+- `internal/service/repo_sandbox_runner_test.go`（fixture 关闭 autocrlf，Windows 下 patch 内容不被转换）
 
 ## 6. 验收标准（总）
 
@@ -127,4 +176,4 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 
 ---
 
-*文档版本：2026-07-29 — 初始版本。*
+*文档版本：2026-07-30 — Phase 1（T1.1–T1.11）、Phase 2（T2.1–T2.6）、Phase 3（T3.1–T3.6）完成并验证，状态标记与文件清单同步。*

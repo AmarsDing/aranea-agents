@@ -35,6 +35,12 @@ type MemoryProposal struct {
 	ExtractionQuality float64
 	PIITypes          []string
 	IsPIISensitive    bool
+	// SubjectType classifies the fact: person|preference|constraint|event|concept|other.
+	SubjectType string
+	// Scope is "user" for cross-session facts, "agent" for agent-specific behavior.
+	Scope string
+	// Confidence ranges 0.0-1.0; zero means the extractor did not assess it.
+	Confidence float64
 }
 
 const (
@@ -100,6 +106,8 @@ func (c *HeuristicConsolidator) Extract(_ context.Context, in ConsolidateInput) 
 				Statement:         stmt,
 				SourceMessageID:   strings.TrimSpace(msg.MessageID),
 				ExtractionQuality: ExtractionQualityHeuristic,
+				SubjectType:       "preference",
+				Scope:             "user",
 			})
 		}
 	}
@@ -173,6 +181,8 @@ func (c *FeedbackConsolidator) Extract(_ context.Context, in ConsolidateInput) (
 			Topics:            []string{"feedback", "preference"},
 			SourceMessageID:   strings.TrimSpace(msg.MessageID),
 			ExtractionQuality: ExtractionQualityJSONMode,
+			SubjectType:       "preference",
+			Scope:             "user",
 		}}, nil
 	}
 	return nil, nil

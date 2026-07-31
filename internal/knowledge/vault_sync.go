@@ -61,6 +61,20 @@ func (a *VaultSyncApplier) ApplyEventsForced(ctx context.Context, vault bizknowl
 	return a.applyEvents(ctx, vault, events, true)
 }
 
+// ApplyOne 立即应用单个文件变更（G1-B2：树内新建文档不等同步轮询）。
+// 实现 bizknowledge.VaultDocApplier 端口。幂等：文件 hash 未变时 upsertDoc 短路。
+func (a *VaultSyncApplier) ApplyOne(ctx context.Context, vault bizknowledge.Collection, relPath string) error {
+	snap, err := a.filer.SnapshotDoc(vault.RootPath, relPath)
+	if err != nil {
+		return err
+	}
+	return a.applyOne(ctx, vault, bizknowledge.ChangeEvent{
+		Type:     bizknowledge.ChangeCreated,
+		RelPath:  snap.RelPath,
+		Snapshot: snap,
+	}, false)
+}
+
 func (a *VaultSyncApplier) applyEvents(ctx context.Context, vault bizknowledge.Collection, events []bizknowledge.ChangeEvent, force bool) error {
 	var firstErr error
 	for _, ev := range events {
@@ -200,36 +214,10 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 	return nil
 }
 
-// maxLinkCandidates 单 vault 参与 [[...]] 解析的候选文档上限。
-const maxLinkCandidates = 10000
-
 // rebuildExplicitLinks 解析正文 [[...]] 引用并重建该文档的 explicit 出链。
-// 解析候选来自 DB 镜像（最终一致：目标文档尚未同步时引用悬空不建链，
-// 待目标索引后、引用方下次变更时自愈）。自链跳过。
+// 委托 biz 公共实现（G3-B4 收编；语义不变：候选来自 DB 镜像最终一致，自链跳过）。
 func (a *VaultSyncApplier) rebuildExplicitLinks(ctx context.Context, vault bizknowledge.Collection, docID, body string) error {
-	refs := bizknowledge.ParseWikiLinks(body)
-	var links []bizknowledge.Link
-	if len(refs) > 0 {
-		candidates, _, err := a.uc.ListDocuments(ctx, vault.ID, maxLinkCandidates, 0)
-		if err != nil {
-			return err
-		}
-		resolved := bizknowledge.ResolveLinkRefs(refs, candidates)
-		for _, ref := range refs {
-			targetID, ok := resolved[ref]
-			if !ok || targetID == docID {
-				continue
-			}
-			links = append(links, bizknowledge.Link{
-				CollectionID: vault.ID,
-				DocID:        docID,
-				TargetDocID:  targetID,
-				LinkType:     bizknowledge.LinkTypeExplicit,
-				Context:      ref,
-			})
-		}
-	}
-	return a.uc.ReplaceExplicitLinks(ctx, vault.ID, docID, links)
+	return a.uc.RebuildExplicitLinks(ctx, vault.ID, docID, body)
 }
 
 // buildChunks 分块 + 可选 embed。无语义层（embedding_model 空或 embedder nil）时

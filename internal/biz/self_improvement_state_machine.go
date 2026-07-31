@@ -21,6 +21,7 @@
 //	AwaitingGovernance --> Applying : apply (auto / approved)
 //	AwaitingGovernance --> Rejected : reject
 //	Applying --> Applied : apply_done
+//	Applying --> AwaitingGovernance : apply_escalate (merge conflict)
 //	Applied --> Observing : observe
 //	Applied --> RolledBack : rollback
 //	Observing --> Closed : close
@@ -41,19 +42,19 @@ import (
 type SelfImprovementRunStatus string
 
 const (
-	RunStatusDetected            SelfImprovementRunStatus = "detected"
-	RunStatusDiagnosing          SelfImprovementRunStatus = "diagnosing"
-	RunStatusPatching            SelfImprovementRunStatus = "patching"
-	RunStatusVerifying           SelfImprovementRunStatus = "verifying"
-	RunStatusAwaitingGovernance  SelfImprovementRunStatus = "awaiting_governance"
-	RunStatusApplying            SelfImprovementRunStatus = "applying"
-	RunStatusApplied             SelfImprovementRunStatus = "applied"
-	RunStatusObserving           SelfImprovementRunStatus = "observing"
-	RunStatusClosed              SelfImprovementRunStatus = "closed"
-	RunStatusVerifyFailed        SelfImprovementRunStatus = "verify_failed"
-	RunStatusRolledBack          SelfImprovementRunStatus = "rolled_back"
-	RunStatusRejected            SelfImprovementRunStatus = "rejected"
-	RunStatusFailed              SelfImprovementRunStatus = "failed"
+	RunStatusDetected           SelfImprovementRunStatus = "detected"
+	RunStatusDiagnosing         SelfImprovementRunStatus = "diagnosing"
+	RunStatusPatching           SelfImprovementRunStatus = "patching"
+	RunStatusVerifying          SelfImprovementRunStatus = "verifying"
+	RunStatusAwaitingGovernance SelfImprovementRunStatus = "awaiting_governance"
+	RunStatusApplying           SelfImprovementRunStatus = "applying"
+	RunStatusApplied            SelfImprovementRunStatus = "applied"
+	RunStatusObserving          SelfImprovementRunStatus = "observing"
+	RunStatusClosed             SelfImprovementRunStatus = "closed"
+	RunStatusVerifyFailed       SelfImprovementRunStatus = "verify_failed"
+	RunStatusRolledBack         SelfImprovementRunStatus = "rolled_back"
+	RunStatusRejected           SelfImprovementRunStatus = "rejected"
+	RunStatusFailed             SelfImprovementRunStatus = "failed"
 )
 
 // SelfImprovementRunEvent enumerates events triggering run state transitions.
@@ -71,6 +72,9 @@ const (
 	RunEventApply           SelfImprovementRunEvent = "apply"
 	RunEventReject          SelfImprovementRunEvent = "reject"
 	RunEventApplyDone       SelfImprovementRunEvent = "apply_done"
+	// RunEventApplyEscalate returns an applying run to awaiting_governance
+	// when the merge conflicts (design D7: 冲突则转人工).
+	RunEventApplyEscalate   SelfImprovementRunEvent = "apply_escalate"
 	RunEventObserve         SelfImprovementRunEvent = "observe"
 	RunEventClose           SelfImprovementRunEvent = "close"
 	RunEventRollback        SelfImprovementRunEvent = "rollback"
@@ -89,7 +93,12 @@ var selfImprovementRunTransitionRules = []shared.TransitionRule[SelfImprovementR
 	{From: RunStatusVerifying, Event: RunEventVerifyFailFinal, To: RunStatusVerifyFailed},
 	{From: RunStatusAwaitingGovernance, Event: RunEventApply, To: RunStatusApplying},
 	{From: RunStatusAwaitingGovernance, Event: RunEventReject, To: RunStatusRejected},
+	// 策略拒绝：保护文件/敏感内容/超规模 diff 在 Verify 前 fail-fast（D9/D10）。
+	{From: RunStatusPatching, Event: RunEventReject, To: RunStatusRejected},
+	{From: RunStatusVerifying, Event: RunEventReject, To: RunStatusRejected},
 	{From: RunStatusApplying, Event: RunEventApplyDone, To: RunStatusApplied},
+	// 合并冲突转人工：applying → awaiting_governance（channel 改写为 approval，D7）。
+	{From: RunStatusApplying, Event: RunEventApplyEscalate, To: RunStatusAwaitingGovernance},
 	{From: RunStatusApplied, Event: RunEventObserve, To: RunStatusObserving},
 	{From: RunStatusApplied, Event: RunEventRollback, To: RunStatusRolledBack},
 	{From: RunStatusObserving, Event: RunEventClose, To: RunStatusClosed},

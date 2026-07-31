@@ -13,8 +13,9 @@ import (
 )
 
 var (
-	_ bizknowledge.LinkRepo   = (*knowledgeRepo)(nil)
-	_ bizknowledge.EntityRepo = (*knowledgeRepo)(nil)
+	_ bizknowledge.LinkRepo             = (*knowledgeRepo)(nil)
+	_ bizknowledge.EntityRepo           = (*knowledgeRepo)(nil)
+	_ bizknowledge.CollectionLinkReader = (*knowledgeRepo)(nil)
 )
 
 // ReplaceLinks 事务性替换某文档某类型的全部出链（删旧 + 插新；空切片 = 仅清理）。
@@ -53,6 +54,34 @@ func (r *knowledgeRepo) ListLinks(ctx context.Context, collectionID, docID, link
 	}
 	q += ` ORDER BY id`
 	rows, err := r.data.Postgres().QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []bizknowledge.Link
+	for rows.Next() {
+		var l bizknowledge.Link
+		if err := rows.Scan(&l.ID, &l.CollectionID, &l.DocID, &l.TargetDocID, &l.LinkType, &l.Context); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// ListCollectionLinks 列出库内全部关联（G4-B8 图谱数据源）；linkTypes 空 = 全部类型。
+// 按 id 有序保证返回稳定；路径前缀过滤在 biz 层按文档集裁剪（端点须在范围内）。
+func (r *knowledgeRepo) ListCollectionLinks(ctx context.Context, collectionID string, linkTypes []string) ([]bizknowledge.Link, error) {
+	q := `SELECT id, collection_id, doc_id, target_doc_id, link_type, context
+		FROM knowledge_links
+		WHERE collection_id = $1`
+	args := []any{collectionID}
+	if len(linkTypes) > 0 {
+		q += ` AND link_type = ANY($2)`
+		args = append(args, pq.Array(linkTypes))
+	}
+	q += ` ORDER BY id`
+	rows, err := r.data.PostgresRead().QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,10 @@
 package server
 
 import (
+	"context"
+	"sync"
+	"time"
+
 	a2av1 "aranea-agents/api/kratos/a2a/v1"
 	adminv1 "aranea-agents/api/kratos/admin/v1"
 	agentv1 "aranea-agents/api/kratos/agent/v1"
@@ -38,6 +42,8 @@ import (
 	toolv1 "aranea-agents/api/kratos/tool/v1"
 	usagev1 "aranea-agents/api/kratos/usage/v1"
 	"aranea-agents/internal/conf"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	servermw "aranea-agents/internal/server/middleware"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
@@ -114,4 +120,46 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 		learningloopv1.RegisterLearningLoopServiceServer(srv, s.LearningLoop)
 	}
 	return srv
+}
+
+// grpcUnauthenticatedFlowInterval bounds system.grpc.unauthenticated flow-log
+// emission: gRPC is internal-only and most calls carry no token, so the hook
+// fires on nearly every request — emit at most one event per minute.
+const grpcUnauthenticatedFlowInterval = time.Minute
+
+// RegisterAuthFlowHooks bridges pkg/auth authentication events to flow logs.
+// pkg/ libraries cannot import internal/event, so pkg/auth exposes package
+// hooks (SetOnGRPCUnauthenticated) and this function registers the emitting
+// closures. Called once at startup from cmd/admin/app.go (newApp).
+func RegisterAuthFlowHooks(bus contract.MonitorBus, lg loggateway.Logger) {
+	if bus == nil {
+		return
+	}
+	var mu sync.Mutex
+	var last time.Time
+	var suppressed int
+	auth.SetOnGRPCUnauthenticated(func(ctx context.Context) {
+		mu.Lock()
+		now := time.Now()
+		if now.Sub(last) < grpcUnauthenticatedFlowInterval {
+			suppressed++
+			mu.Unlock()
+			return
+		}
+		sup := suppressed
+		suppressed = 0
+		last = now
+		mu.Unlock()
+		em := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+			Ctx:    ctx,
+			Domain: event.TraceDomainSystem,
+			LG:     lg,
+			Infra:  event.NewInfraFromBus(bus),
+		})
+		pairs := []event.Pair{}
+		if sup > 0 {
+			pairs = append(pairs, event.P("suppressed", sup))
+		}
+		em.LogWarn("system.grpc.unauthenticated", "", "gRPC 未认证请求（内部网络，M2 前按网络策略放行）", pairs...)
+	})
 }

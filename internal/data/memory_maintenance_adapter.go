@@ -201,20 +201,21 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 				confidence = 0.6
 			}
 			_, err := e.ExecContext(txCtx, a.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_episodes (
-		id, session_id, agent_id, episode_kind, title,
-		goal, outcome, outcome_summary,
-		key_decisions_json, key_artifacts_json,
-		importance, confidence,
-		consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-	ON CONFLICT(session_id, title, agent_id) WHERE l1_task_id = '' DO UPDATE SET
-		goal = excluded.goal, outcome = excluded.outcome,
-		outcome_summary = excluded.outcome_summary,
-		key_decisions_json = excluded.key_decisions_json,
-		key_artifacts_json = excluded.key_artifacts_json,
-		importance = excluded.importance, confidence = excluded.confidence,
-		consolidation_status = excluded.consolidation_status,
-		consolidated_l3_count = excluded.consolidated_l3_count`),
+	id, session_id, agent_id, episode_kind, title,
+	goal, outcome, outcome_summary,
+	key_decisions_json, key_artifacts_json,
+	importance, confidence,
+	consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at, updated_at
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(session_id, title, agent_id) WHERE l1_task_id = '' DO UPDATE SET
+	goal = excluded.goal, outcome = excluded.outcome,
+	outcome_summary = excluded.outcome_summary,
+	key_decisions_json = excluded.key_decisions_json,
+	key_artifacts_json = excluded.key_artifacts_json,
+	importance = excluded.importance, confidence = excluded.confidence,
+	consolidation_status = excluded.consolidation_status,
+	consolidated_l3_count = excluded.consolidated_l3_count,
+	updated_at = excluded.updated_at`),
 				epID,
 				strings.TrimSpace(ep.SessionID),
 				strings.TrimSpace(ep.AgentID),
@@ -230,7 +231,7 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 				strings.TrimSpace(ep.ConsolidationStatus),
 				ep.ConsolidatedL3,
 				strings.TrimSpace(ep.MetadataJSON),
-				now, now,
+				now, now, now,
 			)
 			if err != nil {
 				a.lg.Warn("consolidation episode upsert failed", loggateway.StepID("memory.consolidation_episode_fail"), loggateway.Err(err))

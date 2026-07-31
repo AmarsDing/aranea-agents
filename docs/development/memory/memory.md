@@ -901,3 +901,51 @@ Agent 设置中新增独立 `记忆` Tab，避免把所有记忆配置塞进基�
 | 一致性 | 层级色码在卡片、图谱节点、表格徽章中全站统一 |
 | i18n | 全部 UI 文本走 zh-CN / en-US 语言包，枚举值映射中文 |
 | 兼容 | 现有 facts 表格、级联审批、演进 Tab 能力不丢失，迁移到新 Tab 结构 |
+
+---
+
+## 22. 子模块：会话记忆分类治理与复用增强（2026-07-29）
+
+> 设计细节见 [`memory.design.md`](./memory.design.md) 子模块同名章节；任务进度见 [`memory-development.md`](./memory-development.md) Phase 6。
+
+### 22.1 背景与问题
+
+自动记忆提取管道（AutoMemoryWorker）已将会话内容异步提炼为 L3 facts，但存在四类影响复用效果的问题：
+
+1. **提取分类丢失**：LLM 提取已输出 `subject_type / scope / confidence`，落库时却被统一写死为 `fact_kind=fact / scope=agent / confidence=0.85`，偏好、画像、业务知识混杂一处，无法分流治理。
+2. **冲突无治理**：用户偏好变更后新旧值并存；`memory_facts.superseded_by` 字段无写入方，矛盾记忆可能同时被召回，干扰 Agent 行为。
+3. **复用靠概率**：偏好/约束仅经向量召回（TopK=5, minScore=0.55），可能整轮会话都不出现——用户说过的"排查问题要从全局出发"这类工作要求没有强制生效保障。
+4. **无显式记忆入口**：用户明确要求"记住：xxx"时只能等会话结束异步提取，且可能提取不到。
+
+### 22.2 用户故事
+
+| 编号 | 用户故事 |
+|------|---------|
+| US-M1 | 作为用户，我说过的工作要求（如"排查问题要从全局出发，不要只修表面"）在后续每轮会话都被 Agent 遵守，而不是偶尔被记起。 |
+| US-M2 | 作为用户，我的偏好变更后（如从"可以用 X 工具"变为"别再用 X 工具"），旧偏好自动失效，不再干扰 Agent 行为。 |
+| US-M3 | 作为用户，我说"记住：xxx"后立即生效，不用等会话结束。 |
+| US-M4 | 作为用户，我确认过的业务知识（规则、知识点）被正确分类沉淀，在相关场景被召回。 |
+
+### 22.3 功能需求
+
+| 编号 | 需求 | 优先级 |
+|------|------|--------|
+| FR-M1 | **记忆分类落库**：提取产物按 `subject_type` 分类落库（preference/constraint/profile/event/knowledge/fact），`scope` 按 user/agent 分流，`confidence` 透传 | P0 |
+| FR-M2 | **冲突自动治理**：写入 preference/constraint/profile 类记忆前做语义近邻查重；高置信冲突的旧值自动置 `superseded`（标记不删除、可回滚），中置信记 `conflict_count` 供记忆管家治理 | P0 |
+| FR-M3 | **偏好/约束常驻注入**：`active` 状态的 preference/constraint 记忆不经向量打分，直接作为常驻块注入每轮 prompt（上限 10 条、单条截断） | P0 |
+| FR-M4 | **显式记忆工具**：chat agent 提供 `memory_remember` 工具，用户明确要求记住时立即写入，并走与 FR-M2 相同的冲突治理 | P1 |
+
+### 22.4 非功能需求
+
+| 类别 | 要求 |
+|------|------|
+| 兼容 | 存量 `fact_kind='fact'` 数据不回填、不进常驻块，渐进生效，零迁移风险 |
+| 安全 | supersede 仅标记不删除，保留回滚路径；memory_remember 的 agentID/userID 由装配闭包注入，禁止 LLM 填写 |
+| 性能 | 冲突检测为每 proposal 一次近邻查询（≤8 条/会话、后台异步）；常驻块硬上限 10 条 |
+
+### 22.5 验收标准
+
+- [x] 会话中提取的偏好类记忆以 `fact_kind=preference`、`scope_type=user` 落库（此前统一为 fact/agent）。（自动化验证：`auto_memory_classification_test.go` / `auto_memory_conflict_test.go`）
+- [x] 用户修改偏好（先"用 A 工具"后"别用 A 工具"）后，旧值 `status='superseded'` 且不再出现在召回与常驻注入中。（自动化验证：`auto_memory_conflict_test.go` 判决-写后 supersede 链路；`memory_shim_l3_pinned_test.go` superseded 行被过滤）
+- [x] 新会话首轮 prompt 中包含「用户偏好与工作要求」常驻块（Prompt Preview 可见），且只含 active 的 preference/constraint。（自动化验证：`composite_prompt_test.go` 7 个 PinnedPreferenceCue 用例；Prompt Preview 运行时目视建议下次真实对话抽验）
+- [x] 用户说"记住：xxx"后无需结束会话，即可在 `memory_facts` 查到 `source_kind='explicit'` 的记录。（自动化验证：`remember_test.go` 写入字段断言）

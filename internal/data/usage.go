@@ -96,17 +96,34 @@ func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery)
 	return mergeUsageBreakdownByAlias(result), entErrToBizErr(rows.Err(), apierror.DomainData)
 }
 
+// sqlUsageEventNames resolves human-readable names via scalar subqueries
+// (agents/teams/sessions are Ent-managed tables in the same database).
+// Subqueries instead of JOINs keep the WHERE clause columns unambiguous and
+// never inflate the COUNT query. agent_id/team_id may carry either the row id
+// or the *_key, so both are matched; agent_name falls back to the session's
+// agent (same pattern as monitor traces, see sqlMonitorTracesNames).
+const sqlUsageEventNames = `,
+	 COALESCE(
+	   (SELECT a.display_name FROM agents a WHERE (a.id = model_token_usage_events.agent_id OR a.agent_key = model_token_usage_events.agent_id) AND a.deleted_at = '' LIMIT 1),
+	   (SELECT a2.display_name FROM sessions s2 JOIN agents a2 ON (a2.id = s2.agent_id OR a2.agent_key = s2.agent_id)
+	     WHERE s2.id = model_token_usage_events.session_id AND s2.deleted_at = '' AND a2.deleted_at = '' LIMIT 1),
+	   ''
+	 ) AS agent_name,
+	 COALESCE((SELECT s3.title FROM sessions s3 WHERE s3.id = model_token_usage_events.session_id AND s3.deleted_at = '' LIMIT 1), '') AS session_title,
+	 COALESCE((SELECT tm.display_name FROM teams tm WHERE (tm.id = model_token_usage_events.team_id OR tm.team_key = model_token_usage_events.team_id) AND tm.deleted_at = '' LIMIT 1), '') AS team_name`
+
 func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQuery) ([]biz.TokenUsageEvent, error) {
 	where, args := usageWhere(query, false)
 	args = append(args, usageLimit(query.Limit), usageOffset(query.Offset))
 	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, occurred_at, date_key, hour_key, workspace_id, user_id, team_id, agent_id, agent_key, session_id, message_id, request_id,
-		 provider_code, COALESCE(canonical_provider_code, ''), provider_type, provider_display_name, model_api_id, model_display_name, model_category_json, usage_kind, call_count,
-		 input_tokens, output_tokens, cached_input_tokens, COALESCE(cache_write_tokens, 0), reasoning_tokens, embedding_tokens, total_tokens,
-		 input_price_micro_usd_per_1k, output_price_micro_usd_per_1k, cached_input_price_micro_usd_per_1k, COALESCE(cache_write_price_micro_usd_per_1k, 0), reasoning_price_micro_usd_per_1k, embedding_price_micro_usd_per_1k,
-		 input_cost_micro_usd, output_cost_micro_usd, cached_input_cost_micro_usd, COALESCE(cache_write_cost_micro_usd, 0), reasoning_cost_micro_usd, embedding_cost_micro_usd, total_cost_micro_usd,
-		 latency_ms, time_to_first_token_ms, tokens_per_second, status, error_code, error_message, retry_count,
-		 prompt_mode, max_output_tokens, context_window_k, stream_enabled, metadata_json, created_at
-		 FROM model_token_usage_events` + where + ` ORDER BY occurred_at DESC LIMIT ? OFFSET ?`)
+	 provider_code, COALESCE(canonical_provider_code, ''), provider_type, provider_display_name, model_api_id, model_display_name, model_category_json, usage_kind, call_count,
+	 input_tokens, output_tokens, cached_input_tokens, COALESCE(cache_write_tokens, 0), reasoning_tokens, embedding_tokens, total_tokens,
+	 input_price_micro_usd_per_1k, output_price_micro_usd_per_1k, cached_input_price_micro_usd_per_1k, COALESCE(cache_write_price_micro_usd_per_1k, 0), reasoning_price_micro_usd_per_1k, embedding_price_micro_usd_per_1k,
+	 input_cost_micro_usd, output_cost_micro_usd, cached_input_cost_micro_usd, COALESCE(cache_write_cost_micro_usd, 0), reasoning_cost_micro_usd, embedding_cost_micro_usd, total_cost_micro_usd,
+	 latency_ms, time_to_first_token_ms, tokens_per_second, status, error_code, error_message, retry_count,
+	 prompt_mode, max_output_tokens, context_window_k, stream_enabled, metadata_json, created_at` +
+		sqlUsageEventNames + `
+	 FROM model_token_usage_events` + where + ` ORDER BY occurred_at DESC LIMIT ? OFFSET ?`)
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainData)
@@ -172,6 +189,7 @@ func scanTokenUsageEvent(row scanner) (biz.TokenUsageEvent, error) {
 		&v.InputCostMicroUSD, &v.OutputCostMicroUSD, &v.CachedInputCostMicroUSD, &v.CacheWriteCostMicroUSD, &v.ReasoningCostMicroUSD, &v.EmbeddingCostMicroUSD, &v.TotalCostMicroUSD,
 		&v.LatencyMS, &v.TimeToFirstTokenMS, &v.TokensPerSecond, &v.Status, &v.ErrorCode, &v.ErrorMessage, &v.RetryCount,
 		&v.PromptMode, &v.MaxOutputTokens, &v.ContextWindowK, &streamEnabled, &v.MetadataJSON, &v.CreatedAt,
+		&v.AgentName, &v.SessionTitle, &v.TeamName,
 	)
 	v.StreamEnabled = streamEnabled != 0
 	return v, err

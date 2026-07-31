@@ -1,5 +1,5 @@
 <template>
-  <div class="monitor-alert-rule-row q-pa-md rounded-borders">
+  <div class="monitor-alert-rule-row q-pa-md" :class="`monitor-alert-rule-row--${rule.severity || 'warning'}`">
     <div class="row items-center q-col-gutter-sm q-mb-sm">
       <q-toggle v-model="rule.enabled" :aria-label="t('monitorPage.alerts.rule.enabled')" />
       <q-input v-model="rule.name" dense outlined class="col" :label="t('monitorPage.alerts.rule.name')" />
@@ -182,7 +182,20 @@ function onMetricChange(key: string) {
 </script>
 
 <style scoped>
+.monitor-alert-rule-row {
+  border-left: 3px solid transparent;
+  transition: border-color 0.2s ease;
+}
+.monitor-alert-rule-row--info {
+  border-left-color: var(--q-info);
+}
+.monitor-alert-rule-row--warning {
+  border-left-color: var(--q-warning);
+}
+.monitor-alert-rule-row--critical {
+  border-left-color: var(--q-negative);
+}
 .monitor-alert-metric-help {
-  background: var(--color-status-info-bg-alt, rgba(0, 0, 0, 0.04));
+  background: var(--color-status-info-bg-alt);
 }
 </style>

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
@@ -32,6 +33,7 @@ func (s *WSServer) writePump(wc *wsConn) {
 			}
 			wc.conn.SetWriteDeadline(time.Now().Add(cfg.WriteWait))
 			if err := wc.conn.WriteMessage(websocket.TextMessage, data); err != nil {
+				s.logWSSendFailed(wc, err)
 				return
 			}
 			// After draining a low-priority message, cap further low drains this
@@ -45,6 +47,7 @@ func (s *WSServer) writePump(wc *wsConn) {
 					}
 					wc.conn.SetWriteDeadline(time.Now().Add(cfg.WriteWait))
 					if err := wc.conn.WriteMessage(websocket.TextMessage, d); err != nil {
+						s.logWSSendFailed(wc, err)
 						return
 					}
 					if p == wsPriorityLow {
@@ -82,6 +85,18 @@ func (s *WSServer) writePump(wc *wsConn) {
 	}
 }
 
+// logWSSendFailed records a writePump data-write failure: process log Error
+// plus a throttled-by-nature (connection dies right after) system.ws.send_failed
+// flow log.
+func (s *WSServer) logWSSendFailed(wc *wsConn, err error) {
+	s.lg.With(loggateway.SessionID(wc.sessionID)).Error("WebSocket 发送失败",
+		loggateway.StepID("ws.send_failed"), loggateway.Err(err))
+	if flow := wc.queues.flowEmitter(); flow != nil {
+		flow.LogError("system.ws.send_failed", "WebSocket 消息写入连接失败",
+			event.P("error", err.Error()))
+	}
+}
+
 // readPump reads messages from the WebSocket connection and dispatches them.
 func (s *WSServer) readPump(wc *wsConn) {
 	cfg := s.wsConfig()
@@ -91,6 +106,11 @@ func (s *WSServer) readPump(wc *wsConn) {
 		// they use appctx.Ctx() and are cancelled via RunRegistry.Cancel.
 		s.removeConn(wc)
 		wc.close()
+		s.lg.Info("WebSocket 连接关闭",
+			loggateway.StepID("ws.closed"),
+			loggateway.SessionID(wc.sessionID),
+			loggateway.Str("mode", wsConnModeLabel(wc.globalMode, wc.probeMode)),
+		)
 	}()
 	wc.conn.SetReadLimit(cfg.ReadLimit)
 	wc.conn.SetReadDeadline(time.Now().Add(cfg.PongWait))
@@ -103,6 +123,10 @@ func (s *WSServer) readPump(wc *wsConn) {
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
 				s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket 读错误", loggateway.StepID("ws.read_error"), loggateway.Err(err))
+				if flow := wc.queues.flowEmitter(); flow != nil {
+					flow.LogError("system.ws.read_error", "WebSocket 连接意外关闭",
+						event.P("error", err.Error()))
+				}
 			}
 			return
 		}

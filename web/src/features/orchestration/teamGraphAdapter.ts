@@ -49,7 +49,9 @@ export function teamDefinitionToGraphDef(definition: TeamDefinition): GraphDefin
     subgraphs: [],
     entryPoint: graph.nodes.find((n) => n.type === 'start')?.id ?? '',
     finishPoint: graph.nodes.find((n) => n.type === 'end')?.id ?? '',
-    enableCheckpoint: false,
+    // M53 Phase 11：checkpoint 以 definition 为准；缺省镜像后端默认 true
+    // （internal/team/graph_runtime_options.go parseRuntimeOptions）。
+    enableCheckpoint: definition.enable_checkpoint ?? true,
     executionEngine: 'bsp',
     interruptBefore: [],
     interruptAfter: [],

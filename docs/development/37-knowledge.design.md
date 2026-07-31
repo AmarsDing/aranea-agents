@@ -1706,7 +1706,7 @@ VaultFiler（KB 侧唯一写文件出口）
 
 - 编排：`features/knowledge/useVaultExplorer.ts`（选中 vault/prefix/doc、树节点缓存、links 加载）；Page 只做布局与事件绑定
 - **意图分流共享定义**：`web/src/features/knowledge/searchIntent.ts`（前端）与 `internal/knowledge/search_intent.go`（后端）维护同一规则表——命中路径/扩展名/引号短语 → 即时区；自然语言问句/概念词 → 语义区。两处维护，注释互指
-- 旧三 Tab（documents/search/settings）收敛：documents 由三栏取代；settings（embedder 配置）保留为独立 Tab；旧 `KnowledgeDocumentsPanel/KnowledgeSearchPanel` 保留供迁移期回退
+- 旧三 Tab（documents/search/settings）收敛：documents 由三栏取代；settings（embedder 配置）保留为独立 Tab；search Tab 已由 3D 图谱取代（§V12.7），`KnowledgeSearchPanel` 随 G4 移除（高级检索选项 top_k/min_score/hybrid/rewrite/rerank 不再暴露 UI，检索能力由双区搜索语义区承载）；旧 `KnowledgeDocumentsPanel/KnowledgeDocPreviewDialog` 保留供迁移期回退
 
 ### V10. 技术升级路径（每层相互独立，接口隔离：Embedder / Retriever / LinkResolver）
 
@@ -1752,7 +1752,7 @@ UI:        树+列表+详情+双区搜索 ──→ 局部图谱(二期) ──�
 | B1 | `ListVaultTree` 改实现 | **扫文件系统目录** + 联文档索引（替代纯 rel_path 聚合）：空目录可见、目录节点带 mtime；文件节点仍来自索引（summary/tags/status 等不变） |
 | B2 | `rpc CreateVaultDir(collection_id, dir_path)` / `rpc CreateVaultDocument(collection_id, rel_path)` | 经 VaultFiler 建目录/写模板 md（frontmatter+空标题）；写后立即触发单文档 apply（不等 45s 轮询） |
 | B3 | `IngestDocumentRequest` + `target_dir`（可选） | 上传到指定子目录：VaultFiler 落盘 → 同步入库（Vault 模式文件系统为真相源）；空 = 现有行为 |
-| B4 | `rpc MoveDocumentToDir(id, target_dir)` | 库内跨目录移动：VaultFiler 原子 move + `UpdateDocumentRelPath` + rebuildExplicitLinks；同名冲突 → CodeConflict（前端弹 覆盖/自动改名/取消） |
+| B4 | `rpc MoveDocumentToDir(id, target_dir, conflict_policy)` | 库内跨目录移动：VaultFiler 原子 move + `UpdateDocumentRelPath`（保留文档身份/chunks/hash）+ 入链重建；同名冲突：默认 → CodeConflict（前端弹 覆盖/保留两份/取消），`overwrite` = 目标旧版本入 trash，`rename` = 自动生成唯一名 |
 | B5 | `rpc UpdateDocumentContent(id, content, base_hash)` | 编辑保存：VaultFiler.WriteDocCAS（冲突留双份返 CodeConflict）→ 触发重索引 |
 | B6 | `GET /v1/knowledge/documents/{id}/asset` | asset_uri 原始文件流式输出（图片/音频/视频内联渲染，word 下载） |
 | B7 | `SearchRequest` + `path_prefix`（可选） | BM25/向量 SQL 增加 `rel_path LIKE prefix%` 过滤 |

@@ -841,9 +841,52 @@ func NewSystemSettingRepo(d *Data) biz.SystemSettingRepo {
 **禁止 `log/slog`**，统一使用 `pkg/loggateway.Logger`：
 
 - `x.lg.Info/Warn/Error(msg, loggateway.StepID("..."), loggateway.Err(err))` — 结构化日志
-- `x.lg.With(loggateway.SessionID(sid))` — 绑定会话上下文
-- `loggateway.Global()` — 独立函数使用全局 Logger
+- `x.lg.With(loggateway.SessionID(sid))` — 绑定会话上下文（构造时预设，禁止每次调用现配）
+- `loggateway.Global()` — **已废弃**，新代码必须构造注入
 - `event.SysLog*` / `event.SessionSysLog*` — **已废弃**，禁止新增调用
+
+#### 7.4.1 双轨制：流程日志 vs 进程日志（强制）
+
+系统有两类日志，**新增/修改核心功能时必须同时评估两者**：
+
+| 类型 | 面向 | 实现 | 展示 |
+|------|------|------|------|
+| **流程日志**（Flow Log） | 业务用户/AI 排障 | `event.TraceEmitter`/`FlowTracker`；biz 层经 `biz.FlowLogWriter` 端口 | Monitor Logs「流程日志」Tab |
+| **进程日志**（Process Log） | 开发者调试 | `loggateway.Logger` 结构化字段 | Monitor Logs「进程日志」Tab + `logs/aranea-pipeline.log` |
+
+判断标准：**「业务用户需要知道发生了什么」→ 流程日志；「开发者需要定位为什么」→ 进程日志**。关键业务步骤两者都要有（流程日志给结论，进程日志给细节）。
+
+#### 7.4.2 K1-K7 关键节点覆盖模型（新业务流程必须覆盖）
+
+| # | 节点 | 流程日志 | 进程日志 | 说明 |
+|---|------|---------|---------|------|
+| K1 | 流程入口/出口 | 必须（LogStart/LogDone） | Info | 含关键参数摘要与耗时 |
+| K2 | 错误路径 | 必须（LogError + hint） | Error + `loggateway.Err` | 原始 error 完整入字段，禁止截断/拼接进 msg |
+| K3 | 降级/回退 | 必须（severity=warn） | Warn | 说明降级原因与降级后的行为 |
+| K4 | 重试 | 可选 | Warn（首次重试即可） | 禁止每次重试一条导致刷屏 |
+| K5 | 状态机转换/实体状态变更 | 域内重要时 | Info | from→to 状态入字段 |
+| K6 | 外部调用（LLM/HTTP/DB 长查询） | 域内重要时 | Debug/Info + 耗时 | 慢调用必须 Warn 阈值 |
+| K7 | 后台任务生命周期 | 必须 | Info/Error | 启动/停止/panic 恢复/死信入队各一条 |
+
+缺一需在 PR 中说明理由。
+
+#### 7.4.3 新增步骤红线
+
+1. **登记标题**：新增流程日志 step_id 必须登记 `internal/event/flow_log.go` `stepTitleRegistry`（中文标题），并同步 `docs/development/52-flow-logger.design.md` §5.1——**禁止无标题发射**（前端会原样展示 step_id 字符串）
+2. **命名**：`{domain}.{subsystem}.{action}` 全小写点分；domain 须为已注册的 `event.TraceDomain`（新 domain 需在 `trace_context.go` 注册 + 设计文档同步）
+3. **biz 层端口**：biz 禁止直接 import `internal/event` 发流程日志——使用 `biz.FlowLogWriter`（通用）/`SessionLogWriter`（会话域）/`SystemLogWriter`（系统域）端口，service 层 `ProvideXxx` 适配器经 Wire 注入
+4. **高频限流**：WS 消息、事件分发、流式 delta 等高频路径必须用计数器/时间窗限流（参考 channel 连接的 `logEveryNth` 模式），禁止每事件一条
+5. **后台任务**：goroutine/worker 的启动、退出、panic 恢复必须各有一条进程日志（`safego` 已统一 panic → `system.safego.panic` 流程日志）
+
+#### 7.4.4 反模式
+
+| ❌ 错误 | ✅ 正确 |
+|---------|---------|
+| 只在 `Error` 分支记日志，成功路径无痕迹 | K1 入口/出口必须有 start/done 对 |
+| `lg.Info("处理完成")` 无字段 | `lg.Info("处理完成", loggateway.StepID("..."), loggateway.SessionID(sid), loggateway.Duration(ms))` |
+| biz 层 `event.NewTraceEmitter(...)` 直发 | biz 注入 `FlowLogWriter` 端口，调 `LogFlowStart/Done/Error` |
+| 重试循环每次一条 Warn | 首次重试 Warn + 最终失败 Error |
+| 流程日志用英文技术文案 | title/message 用业务中文（registry 统一维护） |
 
 ### 7.5 命名（项目补充）
 

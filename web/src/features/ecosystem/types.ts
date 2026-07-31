@@ -134,6 +134,8 @@ export interface MarketAsset {
 export interface CategoryNode {
   key: string;
   label: string;
+  /** 一级分类图标（数据侧提供，组件不硬编码） */
+  icon?: string;
   children?: CategoryNode[];
 }
 
@@ -193,6 +195,15 @@ export interface StudioInboxItem {
   content: string;
   createdAt: string;
   replied: boolean;
+}
+
+/** 发布向导：组织整包可选节点（部门 → 岗位 → Agent 名） */
+export interface OrgPickNode {
+  key: string;
+  label: string;
+  children?: OrgPickNode[];
+  /** 仅岗位节点有值：该岗位下可选 Agent */
+  agents?: string[];
 }
 
 // ── 浏览页过滤/排序 ────────────────────────────────────────────

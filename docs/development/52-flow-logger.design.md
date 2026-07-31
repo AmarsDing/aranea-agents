@@ -92,6 +92,8 @@ const (
     TraceDomainKnowledge TraceDomain = "knowledge"
     TraceDomainPlugin    TraceDomain = "plugin"
     TraceDomainSystem    TraceDomain = "system"
+    TraceDomainSkill     TraceDomain = "skill"
+    TraceDomainA2A       TraceDomain = "a2a"
 )
 
 type TraceContext struct {
@@ -398,13 +400,22 @@ internal/cronrunner/jobs/
 | step_id | phase 典型 | severity（成功/失败） | title（用户可见） | 说明 |
 |---------|------------|----------------------|-------------------|------|
 | `chat.receive` | start | info / — | 收到消息 | 入口 |
+| `chat.active_check` | done | info / — | 检查活跃运行 | |
 | `chat.session_fetch` | done/error | ok / error | 加载会话 | |
+| `chat.session_ownership` | done/error | ok / error | 会话归属校验 | |
 | `chat.agent_hydrate` | done/error | ok / error | 加载 Agent 配置 | |
 | `chat.provider_resolve` | done | ok / — | Provider/Model已解析 | |
+| `chat.attachment.preflight` | done/error | ok / error | 附件预检 | |
+| `chat.pre_planning_gate` | done | info / — | 规划门决策 | |
+| `chat.clarification_gate` | done | info / — | 澄清门 | |
+| `chat.proactive_recall` | done | info / — | 主动召回 | |
 | `chat.turn.enter` | start | info / — | 进入Agent Turn执行 | |
 | `chat.agent.build` | done/error | ok / error | 构建 Agent | |
 | `chat.plugins_load` | done | ok / — | 加载插件 | |
 | `chat.runner.create` | done/error | ok / error | 创建 Runner | |
+| `chat.runner.ralph_loop` | done | info / — | Ralph Loop 配置 | |
+| `chat.runner.rollback` | done/error | ok / error | Runner 会话回滚 | |
+| `chat.runner.rollback_boundary` | info | info / — | Runner 回滚边界 | |
 | `chat.user_msg_persist` | done/error | ok / error | 保存用户消息 | |
 | `chat.intent.pass` | done/skip/error | ok / info / warn | 意图识别 | |
 | `chat.llm.invoke` | start/done/error | info / ok / error | 调用语言模型 | 原 `chat.llm_call` |
@@ -412,11 +423,14 @@ internal/cronrunner/jobs/
 | `chat.assistant_msg_persist` | done/error | ok / error | 保存助手回复 | |
 | `chat.turn.execute` | done | ok / — | 对话轮次完成 | |
 | `chat.turn.timeout` | error | critical | 对话超时 | |
+| `chat.turn.timeout_with_reply` | error | warn | 超时但已保存回复 | |
 | `chat.turn.empty_reply` | error | critical | 未收到模型回复 | |
 | `chat.first_byte_timeout` | error | critical | 模型响应过慢 | |
 | `chat.pending_dequeue` | start/done/error | info / ok / error | 处理排队消息 | |
 | `chat.usage_record` | error | error | 用量记录失败 | Token/Span 落库 |
 | `chat.turn.usage_source` | done | info | 用量来源追踪 | 仅当 UsageSource 为空或 estimated 时记录；诊断框架抑制 usage 的 TECH-DEBT |
+| `chat.team.invoke` | start/done/error | info / ok / error | 委派团队会话 | |
+| `run.start` | start | info / — | 创建会话运行 | |
 
 #### Team（`domain=team`）
 
@@ -462,6 +476,7 @@ internal/cronrunner/jobs/
 | `system.provider.*` | info/error | 模型目录与预检 |
 | `system.plugin.*` / `system.hook.*` | warn | 插件种子与 Hook 重载 |
 | `system.auto_memory.*` | warn/info | 自动记忆提取 |
+| `system.memory_canary.failed` | error | 记忆闭环金丝雀告警（写→召回→失效任一断言失败） |
 | `system.monitor.alert_*` | warn | 告警 Webhook/通道 |
 | `system.session.*` | warn | 会话压缩/标题/回滚 |
 | `system.graph.*` | error | 图任务启动/状态/恢复 |
@@ -481,6 +496,102 @@ internal/cronrunner/jobs/
 | `channel.progress.patch` | info | 长静默进度 PATCH（debug 级 SysLog） |
 | `chat.intent.merge_fail` | warn | 意图结果合并失败 |
 | `chat.usage_record_fail` | warn | 用量/轮次记录失败 |
+
+#### Cron（定时任务，2026-07-29 补齐 P0）
+
+| step_id | severity（成功/失败） | title |
+|---------|----------------------|-------|
+| `cron.job.trigger` | info / — | 定时任务触发 |
+| `cron.job.dispatch` | info / warn | 定时任务分发 |
+| `cron.job.execute` | ok / error | 定时任务执行 |
+
+#### Graph（`domain=graph`，2026-07-29 补齐 P0）
+
+| step_id | severity（成功/失败） | title |
+|---------|----------------------|-------|
+| `graph.run.start` | info / error | 图运行开始 |
+| `graph.run.finish` | ok / error | 图运行结束 |
+| `graph.run.resume` | info / error | 图运行恢复 |
+| `graph.node.execute` | ok / error | 图节点执行 |
+| `graph.checkpoint.save` | ok / error | 检查点保存 |
+| `graph.hitl.wait` | info / — | 等待人工确认 |
+
+#### Skill（`domain=skill`，2026-07-29 补齐 P0）
+
+| step_id | severity（成功/失败） | title |
+|---------|----------------------|-------|
+| `skill.import.start` | info / — | Skill 包导入开始 |
+| `skill.import.validate` | ok / error | Skill 包校验 |
+| `skill.import.conflict` | warn / — | Skill 冲突决策 |
+| `skill.import.done` | ok / error | Skill 导入完成 |
+| `skill.watch.reload` | ok / warn | Skill 热重载 |
+| `skill.execute` | ok / error | Skill 运行时执行 |
+
+#### Knowledge 摄取（2026-07-29 补齐 P0）
+
+| step_id | severity（成功/失败） | title |
+|---------|----------------------|-------|
+| `knowledge.ingest.start` | info / — | 知识文档摄取开始 |
+| `knowledge.ingest.parse` | ok / error | 文档解析分块 |
+| `knowledge.ingest.embed` | ok / warn | 文档向量嵌入 |
+| `knowledge.ingest.done` | ok / error | 知识摄取完成 |
+| `knowledge.vault.sync` | ok / error | Vault 同步 |
+
+#### A2A 联邦（`domain=a2a`，2026-07-29 补齐 P0）
+
+| step_id | severity（成功/失败） | title |
+|---------|----------------------|-------|
+| `a2a.invoke.start` | info / — | A2A 联邦调用开始 |
+| `a2a.invoke.governance` | ok / warn | A2A 治理链检查 |
+| `a2a.invoke.remote` | ok / error | A2A 远端调用 |
+| `a2a.invoke.done` | ok / error | A2A 调用完成 |
+
+#### 系统启动/关闭（2026-07-29 补齐 P0）
+
+| step_id | severity（成功/失败） | title |
+|---------|----------------------|-------|
+| `system.startup.migration` | ok / error | 数据库迁移 |
+| `system.startup.seed` | ok / warn | 基础数据种子 |
+| `system.startup.ready` | info / — | 服务就绪 |
+| `system.startup.shutdown` | info / — | 服务关闭 |
+
+#### 会话/Agent/平台管理（2026-07-29 补齐 P1）
+
+| step_id | severity（成功/失败） | title |
+|---------|----------------------|-------|
+| `session.create` | ok / error | 会话创建 |
+| `session.delete` | ok / error | 会话删除 |
+| `session.rename` | ok / error | 会话重命名 |
+| `agent.crud.create` | ok / error | Agent 创建 |
+| `agent.crud.update` | ok / error | Agent 更新 |
+| `agent.crud.delete` | ok / error | Agent 删除 |
+| `provider.catalog.sync` | ok / error | 模型目录同步 |
+| `mcp.server.add` | ok / error | MCP 服务器添加 |
+| `mcp.server.remove` | ok / error | MCP 服务器移除 |
+| `memory.auto.extract` | ok / error | 自动记忆提取 |
+| `media.generate` | ok / error | 媒体生成 |
+| `evaluation.run` | ok / error | 评测集运行 |
+| `gateway.webhook.delivery` | ok / error | 出站 Webhook 投递 |
+| `monitor.alert.evaluate` | ok / warn | 告警评估 |
+| `monitor.selfcheck.run` | ok / warn | 系统自检 |
+| `event_bus.flow_log.persist` | error | 流程日志落库失败 |
+
+#### Channel 连接生命周期（2026-07-29 补齐 P1）
+
+| step_id | severity（成功/失败） | title |
+|---------|----------------------|-------|
+| `channel.connect.open` | info / — | 渠道连接建立 |
+| `channel.connect.close` | info / — | 渠道连接断开 |
+| `channel.connect.error` | error | 渠道连接异常 |
+| `channel.turn.background` | info / — | 渠道后台继续执行 |
+
+#### 系统设置与生态（2026-07-29 补齐 P2）
+
+| step_id | severity（成功/失败） | title |
+|---------|----------------------|-------|
+| `settings.update` | ok / error | 系统设置更新 |
+| `settings.hot_reload` | info / warn | 配置热更新 |
+| `ecosystem.pack.install` | ok / error | 生态包安装 |
 
 #### 别名（v1 → v2，兼容 1 版本）
 

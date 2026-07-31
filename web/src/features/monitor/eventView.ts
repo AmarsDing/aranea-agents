@@ -33,7 +33,10 @@ export type MonitorViewEvent = {
   severity: MonitorEventSeverity;
   /** 主体（Agent/规则/skill 名），无可为 '' */
   actor: string;
+  /** 绝对时间（tooltip/详情展示） */
   time: string;
+  /** 相对时间（列表时间列展示，设计 18-monitor.md §3.1） */
+  timeAgo: string;
   /** 可打开会话的 session id */
   sessionId?: string;
   raw: unknown;
@@ -70,6 +73,7 @@ export function severityForPersistedStatus(status: string): MonitorEventSeverity
       return 'warn';
     case 'ok':
     case 'success':
+    case 'recovered':
       return 'success';
     default:
       return 'info';
@@ -143,6 +147,20 @@ function shortSession(sessionId: string): string {
   return s.length > 8 ? `${s.slice(0, 8)}…` : s;
 }
 
+/** 相对时间（i18n）：<1min 刚刚，<60min N 分钟前，<24h N 小时前，<30d N 天前，否则本地化日期 */
+export function relativeTime(t: Translate, iso?: string): string {
+  const ms = Date.parse(String(iso || ''));
+  if (!Number.isFinite(ms)) return '';
+  const minutes = Math.floor((Date.now() - ms) / 60000);
+  if (minutes < 1) return t('monitorPage.events.relTime.justNow');
+  if (minutes < 60) return t('monitorPage.events.relTime.minutes', { n: minutes });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t('monitorPage.events.relTime.hours', { n: hours });
+  const days = Math.floor(hours / 24);
+  if (days < 30) return t('monitorPage.events.relTime.days', { n: days });
+  return formatDate(iso);
+}
+
 /**
  * WS 运行时事件 → 视图模型。
  * @param seq 单调递增序号（替代旧实现中的数组长度，保证 id 稳定）
@@ -214,6 +232,7 @@ export function wsEventToView(t: Translate, event: TeamRunEvent, seq: number): M
   }
 
   const failed = type.includes('failed') || Boolean(step?.error_message || run?.error_message);
+  const timeIso = step?.created_at || run?.updated_at || run?.created_at || new Date().toISOString();
   return {
     id: `${type}-${run?.id || step?.id || 'e'}-${seq}`,
     type,
@@ -222,7 +241,8 @@ export function wsEventToView(t: Translate, event: TeamRunEvent, seq: number): M
     category: categoryForEventType(type),
     severity: severityForWsEvent(type, { failed }),
     actor,
-    time: formatDate(step?.created_at || run?.updated_at || run?.created_at || new Date().toISOString()),
+    time: formatDate(timeIso),
+    timeAgo: relativeTime(t, timeIso),
     sessionId,
     raw: event,
   };
@@ -248,6 +268,27 @@ function completionSubtitle(t: Translate, meta: RunnerCompletionMeta, rowDesc?: 
   return parts.length ? parts.join(' · ') : t('monitorPage.events.summary.runDone');
 }
 
+/** 持久化事件 type → i18n 人话标题 key（对齐落库 keyspace：RecordMonitorEvent 调用点） */
+const PERSISTED_TITLE_KEYS: Record<string, string> = {
+  'alert.fired': 'monitorPage.events.title.alertFired',
+  'alert.recovered': 'monitorPage.events.title.alertRecovered',
+  'skill.filesystem.imported': 'monitorPage.events.title.skillImported',
+  'skill.filesystem.updated': 'monitorPage.events.title.skillUpdated',
+  'skill.filesystem.missing': 'monitorPage.events.title.skillMissing',
+  'skill.filesystem.recovered': 'monitorPage.events.title.skillRecovered',
+  'skill.filesystem.rejected': 'monitorPage.events.title.skillRejected',
+  'skill.filesystem.similarity_warn': 'monitorPage.events.title.skillSimilarityWarn',
+  'usage.budget_alert': 'monitorPage.events.title.budgetAlert',
+  'chat.user_feedback': 'monitorPage.events.title.userFeedback',
+};
+
+/** 持久化事件人话标题；未知类型回退行 name（人工命名），兜底原始 type */
+function persistedTitle(t: Translate, type: string, row: PlatformResource): string {
+  const key = PERSISTED_TITLE_KEYS[type];
+  if (key) return t(key);
+  return row.name || type;
+}
+
 /** 持久化监控事件（monitor_events 行）→ 视图模型 */
 export function persistedEventToView(
   t: Translate,
@@ -259,17 +300,12 @@ export function persistedEventToView(
   const completion = isRunnerCompletionRow(row);
   const meta = completion ? runnerCompletionMetaFromRow(row) : undefined;
 
-  const severity =
-    completion && meta?.status === 'error' && !String(row.status || '').trim()
-      ? 'warn'
-      : completion && meta?.status === 'error'
-        ? 'warn'
-        : severityForPersistedStatus(row.status);
+  const severity = completion && meta?.status === 'error' ? 'warn' : severityForPersistedStatus(row.status);
 
   return {
     id: row.id,
     type,
-    title: completion && meta ? completionTitle(t, meta, row.name) : row.name || type,
+    title: completion && meta ? completionTitle(t, meta, row.name) : persistedTitle(t, type, row),
     subtitle:
       completion && meta
         ? completionSubtitle(t, meta, row.description)
@@ -279,6 +315,7 @@ export function persistedEventToView(
     severity,
     actor: String(row.name || '').trim(),
     time: formatDate(row.created_at),
+    timeAgo: relativeTime(t, row.created_at),
     sessionId: completion ? String(meta?.session_id || '').trim() || undefined : undefined,
     raw: { ...row, config: cfg, metadata: parseJSON(row.metadata_json) },
     completionMeta: meta,

@@ -25,7 +25,7 @@ func (r *Runtime) WSConfig() RuntimeWSConfig {
 		return RuntimeWSConfig{
 			ReadLimit: 1 << 20, PongWait: 60 * time.Second, PingPeriod: 30 * time.Second,
 			WriteWait: 10 * time.Second, TurnTimeout: 5 * time.Minute,
-			MaxSessionConns: 5, MaxGlobalMonitorConns: 3,
+			MaxSessionConns: 5, MaxGlobalMonitorConns: 32,
 			HighCap: 64, NormalCap: 128, LowCap: 256,
 			HighBlockTimeout: 5 * time.Second, BackpressureInterval: 10 * time.Second,
 			LowDrainPerLoop: 8,
@@ -46,7 +46,9 @@ func (r *Runtime) WSConfig() RuntimeWSConfig {
 	}
 	maxMonitor := w.MaxGlobalMonitorConns
 	if maxMonitor <= 0 {
-		maxMonitor = 3
+		// 32: 桌面单用户多标签页场景（每标签页占 1 条全局连接），实测重度使用
+		// 可达 10+ 个活跃标签页；32 提供充足余量且单连接成本极低（3 goroutine）。
+		maxMonitor = 32
 	}
 	highCap := w.HighCap
 	if highCap <= 0 {

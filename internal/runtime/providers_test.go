@@ -15,7 +15,7 @@ func TestNewTRPCSessionServiceNilDB(t *testing.T) {
 }
 
 func TestNewGraphCheckpointSaverNilDB(t *testing.T) {
-	_, err := NewGraphCheckpointSaver(nil, "", loggateway.NewNoop())
+	_, err := NewGraphCheckpointSaver(nil, "", nil, loggateway.NewNoop())
 	if err == nil {
 		t.Fatal("expected error for nil db")
 	}

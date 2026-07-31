@@ -21,6 +21,9 @@ func (r *runnerCompletionMockRepo) ListAuditLogs(context.Context, biz.AuditQuery
 	return biz.AuditListResult{}, nil
 }
 func (r *runnerCompletionMockRepo) InsertAuditLog(context.Context, biz.AuditLog) error { return nil }
+func (r *runnerCompletionMockRepo) DeleteAuditLogs(context.Context) (int, error) {
+	return 0, nil
+}
 func (r *runnerCompletionMockRepo) InsertMonitorEvent(_ context.Context, ev biz.MonitorEventWrite) error {
 	r.inserted = append(r.inserted, ev)
 	return nil

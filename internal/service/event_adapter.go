@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
@@ -89,6 +91,75 @@ func (a flowLogWriterAdapter) emitter(ctx context.Context, sessionID, stepID str
 		LG:        a.lg,
 		Infra:     a.infra,
 	})
+}
+
+// ProvideSessionFlowLogWriter adapts the shared biz.FlowLogWriter to the
+// session package's mirror port (session.FlowLogWriter) so biz/session does
+// not import internal/biz (re-export import cycle). Returns nil when inner
+// is nil (tests), callers must nil-check.
+func ProvideSessionFlowLogWriter(inner biz.FlowLogWriter) session.FlowLogWriter {
+	if inner == nil {
+		return nil
+	}
+	return sessionFlowLogWriter{inner: inner}
+}
+
+type sessionFlowLogWriter struct {
+	inner biz.FlowLogWriter
+}
+
+func (w sessionFlowLogWriter) LogFlowStart(ctx context.Context, sessionID, stepID, message string, pairs ...session.LogPair) {
+	w.inner.LogFlowStart(ctx, sessionID, stepID, message, sessionFlowPairs(pairs)...)
+}
+
+func (w sessionFlowLogWriter) LogFlowDone(ctx context.Context, sessionID, stepID, message string, pairs ...session.LogPair) {
+	w.inner.LogFlowDone(ctx, sessionID, stepID, message, sessionFlowPairs(pairs)...)
+}
+
+func (w sessionFlowLogWriter) LogFlowError(ctx context.Context, sessionID, stepID, message string, pairs ...session.LogPair) {
+	w.inner.LogFlowError(ctx, sessionID, stepID, message, sessionFlowPairs(pairs)...)
+}
+
+func sessionFlowPairs(pairs []session.LogPair) []biz.LogPair {
+	out := make([]biz.LogPair, 0, len(pairs))
+	for _, p := range pairs {
+		out = append(out, biz.LogPair{Key: p.Key, Value: p.Value})
+	}
+	return out
+}
+
+// ProvideMonitorFlowLogWriter adapts the shared biz.FlowLogWriter to the
+// monitor package's mirror port (monitor.FlowLogWriter). Returns nil when
+// inner is nil (tests), callers must nil-check.
+func ProvideMonitorFlowLogWriter(inner biz.FlowLogWriter) monitor.FlowLogWriter {
+	if inner == nil {
+		return nil
+	}
+	return monitorFlowLogWriter{inner: inner}
+}
+
+type monitorFlowLogWriter struct {
+	inner biz.FlowLogWriter
+}
+
+func (w monitorFlowLogWriter) LogFlowStart(ctx context.Context, sessionID, stepID, message string, pairs ...monitor.LogPair) {
+	w.inner.LogFlowStart(ctx, sessionID, stepID, message, monitorFlowPairs(pairs)...)
+}
+
+func (w monitorFlowLogWriter) LogFlowDone(ctx context.Context, sessionID, stepID, message string, pairs ...monitor.LogPair) {
+	w.inner.LogFlowDone(ctx, sessionID, stepID, message, monitorFlowPairs(pairs)...)
+}
+
+func (w monitorFlowLogWriter) LogFlowError(ctx context.Context, sessionID, stepID, message string, pairs ...monitor.LogPair) {
+	w.inner.LogFlowError(ctx, sessionID, stepID, message, monitorFlowPairs(pairs)...)
+}
+
+func monitorFlowPairs(pairs []monitor.LogPair) []biz.LogPair {
+	out := make([]biz.LogPair, 0, len(pairs))
+	for _, p := range pairs {
+		out = append(out, biz.LogPair{Key: p.Key, Value: p.Value})
+	}
+	return out
 }
 
 func flowPairs(pairs []biz.LogPair) []event.Pair {

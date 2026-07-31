@@ -81,6 +81,16 @@ func (a *teamMediatorAdapter) SetFinisher(finisher biz.TeamGraphRunFinisherPort)
 	}
 }
 
+func (a *teamMediatorAdapter) SetCoordinator(coord biz.TeamGraphCoordPort) {
+	if a.inner == nil || coord == nil {
+		return
+	}
+	// The coord port is backed by *teamGraphCoordAdapter; extract the inner Coordinator.
+	if ca, ok := coord.(*teamGraphCoordAdapter); ok {
+		a.inner.SetCoordinator(ca.inner)
+	}
+}
+
 // teamGraphCoordAdapter adapts *team.TeamGraphRunCoordinator to biz.TeamGraphCoordPort.
 type teamGraphCoordAdapter struct {
 	inner *team.TeamGraphRunCoordinator

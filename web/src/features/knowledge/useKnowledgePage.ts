@@ -4,16 +4,11 @@ import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import { hasIndexingDocuments } from './knowledgeUi';
 import { getDocumentContent } from './api';
-import type {
-  KnowledgeChunk,
-  KnowledgeDocument,
-  KnowledgeUploadTask,
-  EmbedderConfig,
-  UpdateEmbedderConfigInput,
-} from './types';
+import { dirNodeKey, vaultNodeKey } from './vaultTreeUi';
+import type { KnowledgeDocument, KnowledgeUploadTask, EmbedderConfig, UpdateEmbedderConfigInput } from './types';
 import { useKnowledgeStore } from '../../stores/knowledge';
 import { useKnowledgeIngestWs } from './useKnowledgeIngestWs';
-import { useVaultExplorer } from './useVaultExplorer';
+import { useVaultExplorer, type VaultQTreeNode } from './useVaultExplorer';
 
 export function useKnowledgePage() {
   const $q = useQuasar();
@@ -23,21 +18,12 @@ export function useKnowledgePage() {
   const docsLoading = ref(false);
   const error = ref('');
   const unavailable = ref('');
-  // 页面级 Tab：explorer（资源管理器三栏）| search（全库检索调试）| settings（Embedder 配置）
+  // 页面级 Tab：explorer（资源管理器三栏）| graph（3D 知识图谱）| settings（Embedder 配置）
   const pageTab = ref('explorer');
   const createOpen = ref(false);
   const createLoading = ref(false);
   const ingestOpen = ref(false);
   const ingestLoading = ref(false);
-  const searchQuery = ref('');
-  const searchTopK = ref(5);
-  const searchMinScore = ref(0);
-  const searchHybridMode = ref('auto');
-  const searchRewriteStrategy = ref('');
-  const searchUseRerank = ref(false);
-  const searchResults = ref<KnowledgeChunk[]>([]);
-  const searchLoading = ref(false);
-  const searchRan = ref(false);
   const embedderSaving = ref(false);
   const createForm = ref({ name: '', description: '', embedding_model: '', root_path: '' });
   const ingestForm = ref({
@@ -155,8 +141,8 @@ export function useKnowledgePage() {
     }
   }
 
-  function confirmDeleteCollection() {
-    const col = selectedCollection.value;
+  function confirmDeleteCollection(id?: string) {
+    const col = id ? collections.value.find((c) => c.id === id) : selectedCollection.value;
     if (!col) return;
     $q.dialog({
       title: '删除集合',
@@ -245,7 +231,7 @@ export function useKnowledgePage() {
     return 'application/octet-stream';
   }
 
-  // 粘贴文本入库（文件统一走 DropZone 拖拽队列）。
+  // 粘贴文本入库（文件统一走树 hover「上传文件到此」队列）。
   async function submitIngest() {
     if (!selectedId.value) return;
     const text = ingestForm.value.text.trim();
@@ -365,9 +351,23 @@ export function useKnowledgePage() {
   // 顺序上传：逐文件读取 → 入库，避免并发冲击后端；WS 事件并行刷新文档列表。
   // US-14 免预选：未选中集合时不传 collection_id，后端自动落入「默认知识库」；
   // 上传完成后自动选中该库并刷新列表（存储可分类，使用免选）。
-  async function enqueueUploadFiles(files: File[]) {
+  // G1-B3 定向上传：target 指定 {collectionId, prefix} 时，vault 集合落盘到
+  // <root>/<prefix>/<文件名>（库根传 '/'）；历史集合（无 root_path）退化为空 target_dir。
+  async function enqueueUploadFiles(files: File[], target?: { collectionId: string; prefix: string }) {
     if (!files.length) return;
-    const targetId = selectedId.value; // 可能为空（免预选 → 默认知识库）
+    let targetId = selectedId.value; // 可能为空（免预选 → 默认知识库）
+    let targetDir = '';
+    let targetLabel: string | undefined;
+    if (target) {
+      const col = collections.value.find((c) => c.id === target.collectionId);
+      if (col) {
+        targetId = col.id;
+        targetDir = col.root_path ? target.prefix || '/' : '';
+        targetLabel = target.prefix ? `${col.name} / ${target.prefix}` : col.name;
+        // 先定位目标目录（单一事实源 {collectionId, prefix}），用户即见文件落点。
+        await explorer.selectTreeNode(target.prefix ? dirNodeKey(col.id, target.prefix) : vaultNodeKey(col.id));
+      }
+    }
     let firstIngestedCollectionId = '';
     for (const file of files) {
       const mime = inferMime(file);
@@ -377,7 +377,7 @@ export function useKnowledgePage() {
         size: file.size,
         mime_type: mime,
         status: 'reading',
-        collection_label: targetId ? undefined : t('knowledgePage.defaultCollectionBadge'),
+        collection_label: targetLabel ?? (targetId ? undefined : t('knowledgePage.defaultCollectionBadge')),
       };
       uploadTasks.value.push(task);
       const invalid = validateUploadMime(mime);
@@ -394,6 +394,7 @@ export function useKnowledgePage() {
           mime_type: mime,
           content_base64: b64,
           organize_to_markdown: true,
+          target_dir: targetDir || undefined,
         });
         if (!firstIngestedCollectionId) firstIngestedCollectionId = doc.collection_id;
         patchUploadTask(task.id, { status: 'success', message: t('knowledgePage.uploadSubmitted') });
@@ -410,40 +411,98 @@ export function useKnowledgePage() {
     }
   }
 
+  // ---------- G1 树节点操作（hover 菜单） ----------
+
+  /** 上传文件选择器目标（page 监听此 ref 触发隐藏 input.click()）。 */
+  const pendingUploadTarget = ref<{ collectionId: string; prefix: string } | null>(null);
+
+  /** page 隐藏 input change 后回传文件列表。 */
+  async function onUploadFilesPicked(files: File[]) {
+    const target = pendingUploadTarget.value;
+    pendingUploadTarget.value = null;
+    await enqueueUploadFiles(files, target ?? undefined);
+  }
+
+  function promptCreateVaultDir(target: { collectionId: string; prefix: string }) {
+    $q.dialog({
+      title: t('knowledgePage.newDirTitle'),
+      prompt: { model: '', type: 'text', label: t('knowledgePage.newDirLabel'), isValid: (v: string) => !!v.trim() },
+      cancel: true,
+      persistent: true,
+    }).onOk((name: string) => {
+      void (async () => {
+        const dirName = name.trim().replace(/^\/+|\/+$/g, '');
+        if (!dirName) return;
+        try {
+          await knowledgeStore.addVaultDir(target.collectionId, `${target.prefix}${dirName}`);
+          // 定位所在目录并刷新（新建的子目录经 q-tree lazy-load 重载可见）。
+          await explorer.selectTreeNode(
+            target.prefix ? dirNodeKey(target.collectionId, target.prefix) : vaultNodeKey(target.collectionId),
+          );
+          await explorer.refreshTree();
+          $q.notify({ type: 'positive', message: t('knowledgePage.newDirSuccess') });
+        } catch (e) {
+          $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.newDirFailed') });
+        }
+      })();
+    });
+  }
+
+  function promptCreateVaultDoc(target: { collectionId: string; prefix: string }) {
+    $q.dialog({
+      title: t('knowledgePage.newDocTitle'),
+      prompt: { model: '', type: 'text', label: t('knowledgePage.newDocLabel'), isValid: (v: string) => !!v.trim() },
+      cancel: true,
+      persistent: true,
+    }).onOk((name: string) => {
+      void (async () => {
+        let docName = name.trim().replace(/^\/+|\/+$/g, '');
+        if (!docName) return;
+        if (!docName.toLowerCase().endsWith('.md')) docName += '.md';
+        try {
+          const doc = await knowledgeStore.addVaultDocument(target.collectionId, `${target.prefix}${docName}`);
+          await explorer.selectTreeNode(
+            target.prefix ? dirNodeKey(target.collectionId, target.prefix) : vaultNodeKey(target.collectionId),
+          );
+          await explorer.refreshTree();
+          explorer.selectDocument(doc.id);
+          $q.notify({ type: 'positive', message: t('knowledgePage.newDocSuccess') });
+        } catch (e) {
+          $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.newDocFailed') });
+        }
+      })();
+    });
+  }
+
+  /** 树节点 hover 菜单分发（G1：动作与节点类别合法性已由组件裁剪）。 */
+  function onTreeNodeAction(action: string, node: VaultQTreeNode) {
+    const target = { collectionId: node.vaultId, prefix: node.prefix };
+    switch (action) {
+      case 'new-dir':
+        promptCreateVaultDir(target);
+        break;
+      case 'new-doc':
+        promptCreateVaultDoc(target);
+        break;
+      case 'upload':
+        pendingUploadTarget.value = target;
+        break;
+      case 'refresh':
+        explorer.invalidateVault(node.vaultId);
+        if (node.vaultId === selectedId.value) void explorer.refreshTree();
+        break;
+      case 'delete-vault':
+        confirmDeleteCollection(node.vaultId);
+        break;
+    }
+  }
+
   function removeUploadTask(id: string) {
     uploadTasks.value = uploadTasks.value.filter((t) => t.id !== id);
   }
 
   function clearFinishedUploadTasks() {
     uploadTasks.value = uploadTasks.value.filter((t) => t.status === 'reading' || t.status === 'uploading');
-  }
-
-  // US-14 检索免选择：searchScopeId 空 = 全部知识库（后端 FederatedRetriever 智能路由），默认全库。
-  const searchScopeId = ref('');
-  const searchScopeOptions = computed(() => [
-    { label: t('knowledgePage.searchScopeAll'), value: '' },
-    ...collections.value.map((c) => ({ label: c.name || c.id, value: c.id })),
-  ]);
-
-  async function runSearch() {
-    if (!searchQuery.value.trim()) return;
-    searchLoading.value = true;
-    searchRan.value = true;
-    try {
-      searchResults.value = await knowledgeStore.search({
-        collection_id: searchScopeId.value,
-        query: searchQuery.value.trim(),
-        top_k: searchTopK.value,
-        min_score: searchMinScore.value || undefined,
-        hybrid_search: searchHybridMode.value || undefined,
-        rewrite_strategy: searchRewriteStrategy.value || undefined,
-        use_rerank: searchUseRerank.value ? true : undefined,
-      });
-    } catch (e) {
-      $q.notify({ type: 'negative', message: friendlyError(e) || '检索失败' });
-    } finally {
-      searchLoading.value = false;
-    }
   }
 
   // ---------- 文档跨库移动（US-14 整理归档） ----------
@@ -546,6 +605,7 @@ export function useKnowledgePage() {
   // P3 资源管理器：三栏编排（树/列表/详情/双区搜索），与上方共享 selectedId 与 documents。
   const explorer = useVaultExplorer({
     selectedId,
+    collections,
     documents,
     friendlyError,
     notifyError: (message: string) => {
@@ -560,6 +620,7 @@ export function useKnowledgePage() {
     selectedCollection,
     documents,
     docSourceMap,
+    friendlyError,
     loading,
     docsLoading,
     error,
@@ -569,15 +630,6 @@ export function useKnowledgePage() {
     createLoading,
     ingestOpen,
     ingestLoading,
-    searchQuery,
-    searchTopK,
-    searchMinScore,
-    searchHybridMode,
-    searchRewriteStrategy,
-    searchUseRerank,
-    searchResults,
-    searchLoading,
-    searchRan,
     createForm,
     ingestForm,
     embedderConfig,
@@ -602,9 +654,9 @@ export function useKnowledgePage() {
     enqueueUploadFiles,
     removeUploadTask,
     clearFinishedUploadTasks,
-    searchScopeId,
-    searchScopeOptions,
-    runSearch,
+    pendingUploadTarget,
+    onUploadFilesPicked,
+    onTreeNodeAction,
     moveOpen,
     moveLoading,
     movingDoc,

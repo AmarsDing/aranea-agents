@@ -245,3 +245,36 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 - [x] L3 单一写路径 + pgvector 索引同步 + legacy backfill
 - [ ] Memory Center 全 Tab 非占位（Evolution 图谱 Tab 仍 gated）
 
+---
+
+## 10. Phase 6：会话记忆分类治理与复用增强（2026-07-29）
+
+> 需求 [`memory.md`](./memory.md) §22；设计 [`memory.design.md`](./memory.design.md) 子模块同名章节。
+
+### 任务清单
+
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| M6-1 | 提取分类透传：prompt 枚举 +constraint、MemoryProposal 扩展、落库映射（subject_type→fact_kind / scope 分流 / confidence 透传） | ✅ |
+| M6-2 | 冲突判决器 `DecideMemoryConflict` + 自动 supersede（SupersedeFact / 复用 BatchIncrementConflictCounts + AutoMemoryWorker 注入 detector） | ✅ |
+| M6-3 | 常驻偏好/约束注入：`ListActivePreferenceFacts` + `PinnedPreferenceCue` 装配到 composite prompt | ✅ |
+| M6-4 | `memory_remember` 显式记忆工具（闭包注入身份 + 复用冲突判决 + IDENTITY.md 指导） | ✅ |
+| M6-5 | 技能管家 prompt 对齐（移除虚构 retire_skill）+ recommend_skills 单测补强（联动 20-skill） | ✅ |
+
+> 验证（2026-07-30，独立 GOCACHE）：`go build ./...`、`go vet`（biz/agent/cronrunner/data/service/compress/tools/cmd）、`go test`（memoryremember / skills_butler / biz / cronrunner/jobs / compress / agent / data / service）全部通过；service 包排除 3 个 models.dev 网络依赖用例（环境受限，与本改动无关）。
+
+### 改动文件清单（实际）
+
+| 层 | 文件 |
+|----|------|
+| compress | `internal/compress/memory_extract.go`（prompt + 枚举 +constraint） |
+| biz | `internal/biz/memory_consolidator.go`（Proposal 扩展）、新增 `memory_conflict.go`（判决器 + Detector + Searcher 接口）、`memory_admin_store.go`（L3ConflictStore+SupersedeFact、MemoryPreferenceLister 窄接口） |
+| service | `internal/service/memory_llm_extractor.go`（透传）、`internal/service/cli_admin_tools.go`（M4 装配）、`chat_orchestrator.go`（ChatInfraDeps 扩展 + CustomToolFunc 挂载） |
+| cron | `internal/cronrunner/jobs/auto_memory.go`（落库映射 + 冲突治理流程 + flow log） |
+| data | `internal/data/memory_shim_l3.go`（SupersedeFact / ListActivePreferenceFacts / PII 门禁收口 / version 系统计数）、`internal/data/memory.go`（SearchFactNeighbors 近邻搜索） |
+| agent | `internal/agent/composite_prompt.go`（PinnedPreferenceCue）、`memory_inject.go` + `builder_deps.go`（装配）、`internal/runtime/memory_set.go`（PreferenceLister 透出） |
+| tools | `internal/tools/memoryremember/remember.go`（新增） |
+| wire | `cmd/admin/wire_memory.go`（provideMemoryConflictDetector / provideL3ConflictStore / PreferenceLister）、`cmd/admin/wire.go` + `wire_gen.go`（生成物） |
+| prompts | `internal/scenario/system/prompts/IDENTITY.md`、`prompts/skills/skills.md` |
+| tests | `memory_conflict_test.go`、`auto_memory_classification_test.go`、`auto_memory_conflict_test.go`、`memory_shim_l3_pinned_test.go`、`composite_prompt_test.go`、`remember_test.go`、`recommend_skills_test.go` |
+

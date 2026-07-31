@@ -2,6 +2,8 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import {
   createCollection,
+  createVaultDir,
+  createVaultDocument,
   deleteCollection,
   deleteDocument,
   getCollection,
@@ -130,6 +132,21 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     return doc;
   }
 
+  // G1-B2：树内新建目录（幂等）；失效该 vault 树缓存供重载。
+  async function addVaultDir(collectionId: string, dirPath: string): Promise<void> {
+    await createVaultDir(collectionId, dirPath);
+    invalidateTree(collectionId);
+  }
+
+  // G1-B2：树内新建模板 .md（立即索引）；入库缓存 + 失效树。
+  async function addVaultDocument(collectionId: string, relPath: string): Promise<KnowledgeDocument> {
+    const doc = await createVaultDocument(collectionId, relPath);
+    const existing = documentsByCollection.value[collectionId] ?? [];
+    documentsByCollection.value[collectionId] = [doc, ...existing];
+    invalidateTree(collectionId);
+    return doc;
+  }
+
   async function removeDocument(id: string, collectionId: string): Promise<void> {
     await deleteDocument(id);
     if (documentsByCollection.value[collectionId]) {
@@ -142,6 +159,19 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
   // US-14：跨库移动文档；本地缓存由页面侧 reload 刷新（源/目标库计数均变化）。
   async function moveDoc(id: string, targetCollectionId: string): Promise<KnowledgeDocument> {
     return moveDocument(id, targetCollectionId);
+  }
+
+  // G3-B4：库内跨目录移动；文档身份保留（更新缓存 rel_path/source），失效树缓存供重载。
+  async function moveDocToDir(id: string, targetDir: string, conflictPolicy = ''): Promise<KnowledgeDocument> {
+    const doc = await moveDocumentToDir(id, targetDir, conflictPolicy);
+    const list = documentsByCollection.value[doc.collection_id];
+    if (list) {
+      const i = list.findIndex((d) => d.id === doc.id);
+      if (i >= 0) list[i] = doc;
+      else list.push(doc);
+    }
+    invalidateTree(doc.collection_id);
+    return doc;
   }
 
   async function search(query: SearchKnowledgeQuery): Promise<KnowledgeChunk[]> {
@@ -177,8 +207,11 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     refreshCollection,
     loadDocuments,
     ingest,
+    addVaultDir,
+    addVaultDocument,
     removeDocument,
     moveDoc,
+    moveDocToDir,
     search,
     loadEmbedderConfig,
     saveEmbedderConfig,

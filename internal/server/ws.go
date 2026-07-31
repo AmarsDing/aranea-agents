@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
@@ -262,6 +263,8 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		s.lg.Warn("WebSocket 升级失败", loggateway.StepID("ws.upgrade_failed"), loggateway.Err(err))
+		s.newWSFlowEmitter(r.Context(), sessionID).LogError("system.ws.upgrade_failed", "WebSocket 升级握手失败",
+			event.P("error", err.Error()))
 		return
 	}
 
@@ -286,6 +289,13 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	// Send connected message
 	s.sendConnected(wc, sessionID, lastEventID)
+
+	s.lg.Info("WebSocket 连接建立",
+		loggateway.StepID("ws.connected"),
+		loggateway.SessionID(sessionID),
+		loggateway.Str("mode", wsConnModeLabel(globalMode, probeMode)),
+		loggateway.Str("user_id", userID),
+	)
 
 	// Start goroutines
 	connCtx := r.Context()
@@ -326,6 +336,10 @@ func (s *WSServer) newWSConn(conn *websocket.Conn, sessionID, userID string, glo
 
 	wcCtx, wcCancel := context.WithCancel(context.Background())
 	cfg := s.wsConfig()
+	queues := newConnQueues(cfg)
+	flow := s.newWSFlowEmitter(wcCtx, sessionID)
+	queues.flow = flow
+	queues.onLaneDrop = makeSendDropHook(flow)
 	return &wsConn{
 		conn:       conn,
 		sessionID:  sessionID,
@@ -333,11 +347,71 @@ func (s *WSServer) newWSConn(conn *websocket.Conn, sessionID, userID string, glo
 		channels:   wsBuildChannels(globalMode, probeMode),
 		filterKey:  filterKey,
 		send:       make(chan []byte, cfg.NormalCap),
-		queues:     newConnQueues(cfg),
+		queues:     queues,
 		logEnabled: logEnabled,
 		globalMode: globalMode,
 		probeMode:  probeMode,
 		connCtx:    wcCtx,
 		connCancel: wcCancel,
+	}
+}
+
+// newWSFlowEmitter builds a system-domain flow-log emitter bound to a WS
+// connection (or a failed upgrade attempt). Nil-safe: when s.monitorBus is
+// nil the emitter only writes process logs.
+func (s *WSServer) newWSFlowEmitter(ctx context.Context, sessionID string) *event.TraceEmitter {
+	return event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:       ctx,
+		SessionID: sessionID,
+		Domain:    event.TraceDomainSystem,
+		LG:        s.lg,
+		Infra:     event.NewInfraFromBus(s.monitorBus),
+	})
+}
+
+// wsSendDropFlowInterval throttles system.ws.send_drop flow logs: at most one
+// entry per connection per interval; drops in between are counted and
+// reported via the "suppressed" extra field.
+const wsSendDropFlowInterval = 30 * time.Second
+
+// makeSendDropHook returns the connQueues.onLaneDrop callback emitting the
+// throttled system.ws.send_drop flow log. Returns nil when flow is nil.
+func makeSendDropHook(flow *event.TraceEmitter) func(wsPriority) {
+	if flow == nil {
+		return nil
+	}
+	var lastNano atomic.Int64
+	var suppressed atomic.Uint64
+	return func(prio wsPriority) {
+		lane := "normal"
+		if prio == wsPriorityLow {
+			lane = "low"
+		}
+		now := time.Now().UnixNano()
+		last := lastNano.Load()
+		if last != 0 && now-last < int64(wsSendDropFlowInterval) {
+			suppressed.Add(1)
+			return
+		}
+		if !lastNano.CompareAndSwap(last, now) {
+			suppressed.Add(1)
+			return
+		}
+		flow.LogWarn("system.ws.send_drop", "", "连接发送缓冲区已满，消息被丢弃",
+			event.P("lane", lane),
+			event.P("suppressed", suppressed.Swap(0)),
+		)
+	}
+}
+
+// wsConnModeLabel returns the connection mode label for logs.
+func wsConnModeLabel(globalMode, probeMode bool) string {
+	switch {
+	case probeMode:
+		return "probe"
+	case globalMode:
+		return "global"
+	default:
+		return "session"
 	}
 }

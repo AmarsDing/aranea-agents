@@ -21,6 +21,21 @@
         </div>
       </div>
       <q-space />
+      <q-btn
+        v-if="graphExecutionId"
+        flat
+        dense
+        no-caps
+        color="primary"
+        icon="account_tree"
+        label="Graph 执行视角"
+        class="q-mr-sm"
+        :loading="graphRunViewLoading"
+        data-test="open-graph-run-view"
+        @click="openGraphRunView"
+      >
+        <q-tooltip>在 Graph 运行页查看本次执行（/graphs/:id/run/:execId）</q-tooltip>
+      </q-btn>
       <q-badge v-if="observatory" rounded :color="runStatusColor">{{ observatory.status }}</q-badge>
     </div>
 
@@ -58,6 +73,7 @@
             <q-badge v-if="waitingReviewNodes.length" floating color="warning">{{ waitingReviewNodes.length }}</q-badge>
           </q-tab>
           <q-tab name="tasks" label="任务看板" :disable="!graphExecutionId" />
+          <q-tab name="checkpoints" label="Checkpoint" :disable="!checkpointTabEnabled" />
         </q-tabs>
         <q-tab-panels v-model="observatoryTab" animated>
           <q-tab-panel name="agents" class="q-pa-none">
@@ -134,7 +150,13 @@
                   <q-item-label caption>{{ node.error_message || node.output_preview || '等待审核' }}</q-item-label>
                 </q-item-section>
                 <q-item-section side>
-                  <q-btn flat dense color="primary" label="审核" @click.stop="openHitlForNode(node.node_id)" />
+                  <q-btn
+                    flat
+                    dense
+                    color="primary"
+                    :label="t('teamsPage.observatoryReview')"
+                    @click.stop="openHitlForNode(node.node_id)"
+                  />
                 </q-item-section>
               </q-item>
             </q-list>
@@ -152,7 +174,47 @@
               @select-task="onSelectTask"
               @admin-action="onKanbanAdminAction"
             />
-            <div v-else class="text-caption text-grey-7 q-pa-sm">当前 Team Run 未绑定 Graph 执行，任务看板不可用。</div>
+            <div v-else class="text-caption text-grey-7 q-pa-sm">{{ t('teamsPage.observatoryNoGraphExecution') }}</div>
+          </q-tab-panel>
+          <q-tab-panel name="checkpoints" class="q-pa-md">
+            <div class="row items-center q-gutter-sm q-mb-sm">
+              <q-btn
+                outline
+                dense
+                rounded
+                color="primary"
+                icon="play_arrow"
+                :label="t('teamsPage.observatoryResumeExecution')"
+                :loading="graphResumeLoading"
+                data-test="graph-resume-execution"
+                @click="onGraphResumeExecution"
+              >
+                <q-tooltip>{{ t('teamsPage.observatoryResumeExecutionTip') }}</q-tooltip>
+              </q-btn>
+            </div>
+            <GraphCheckpointPanel
+              :checkpoints="checkpoints"
+              :loading="checkpointsLoading"
+              :selected-checkpoint-id="selectedCheckpoint?.checkpointId"
+              :state-snapshot="stateSnapshot"
+              :restoring="editLoading"
+              @refresh="refreshCheckpoints"
+              @select="onSelectCheckpoint"
+              @restore="onRestoreCheckpoint"
+            />
+            <GraphTimeTravelPanel
+              :selected-checkpoint="selectedCheckpoint"
+              :state-patch-json="statePatchJson"
+              :snapshot-loading="snapshotLoading"
+              :edit-loading="editLoading"
+              :time-travel-loading="timeTravelLoading"
+              :step-index="checkpointStepIndex"
+              :max-step="checkpointMaxStep"
+              @update:state-patch-json="updateStatePatchJson"
+              @update:step-index="updateStepIndex"
+              @time-travel="onCheckpointTimeTravel"
+              @apply-edit="onApplyEditState"
+            />
           </q-tab-panel>
         </q-tab-panels>
       </section>
@@ -172,13 +234,18 @@
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import GraphEditorCanvas from '../components/graph/GraphEditorCanvas.vue';
 import GraphTaskKanban from '../components/graph/GraphTaskKanban.vue';
+import GraphCheckpointPanel from '../components/graph/GraphCheckpointPanel.vue';
+import GraphTimeTravelPanel from '../components/graph/GraphTimeTravelPanel.vue';
 import OrchestrationActivityTimeline from '../components/orchestration/OrchestrationActivityTimeline.vue';
 import OrchestrationFailureBanner from '../components/orchestration/OrchestrationFailureBanner.vue';
 import OrchestrationHitlReviewDialog from '../components/orchestration/OrchestrationHitlReviewDialog.vue';
 import OrchestrationKanban from '../components/orchestration/OrchestrationKanban.vue';
 import { useTeamRunObservatoryPage } from '../features/teams/useTeamRunObservatoryPage';
+
+const { t } = useI18n();
 
 const {
   isDark,
@@ -209,6 +276,28 @@ const {
   hitlReviewNode,
   hitlAdvancedJson,
   resumeLoading,
+  checkpointTabEnabled,
+  checkpoints,
+  checkpointsLoading,
+  selectedCheckpoint,
+  stateSnapshot,
+  statePatchJson,
+  snapshotLoading,
+  editLoading,
+  timeTravelLoading,
+  checkpointStepIndex,
+  checkpointMaxStep,
+  graphResumeLoading,
+  graphRunViewLoading,
+  onSelectCheckpoint,
+  onCheckpointTimeTravel,
+  onApplyEditState,
+  onRestoreCheckpoint,
+  updateStatePatchJson,
+  updateStepIndex,
+  onGraphResumeExecution,
+  openGraphRunView,
+  refreshCheckpoints,
   loadTimeline,
   onSelectNode,
   onSelectTask,

@@ -1,15 +1,43 @@
 package main
 
 import (
+	"context"
+	"fmt"
+
 	"aranea-agents/internal/adapter"
 	"aranea-agents/internal/conf"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/metrics"
 	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/logpipeline"
+	"aranea-agents/pkg/safego"
 
 	agentlog "trpc.group/trpc-go/trpc-agent-go/log"
 
 	"github.com/go-kratos/kratos/v2/log"
 )
+
+// registerSafegoPanicFlowHook re-registers the safego panic hook once the
+// MonitorBus is available: recovered panics are counted in Prometheus AND
+// surfaced as flow logs (system.safego.panic). Stack traces stay on stderr
+// only — never in extra.
+func registerSafegoPanicFlowHook(ctx context.Context, lg loggateway.Logger, bus contract.MonitorBus) {
+	metricsPanicHook := metrics.SafegoPanicHook()
+	safego.RegisterPanicHook(func(name string, r any, stack []byte) {
+		metricsPanicHook(name, r, stack)
+		flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+			Ctx:    ctx,
+			Domain: event.TraceDomainSystem,
+			LG:     lg,
+			Infra:  event.NewInfraFromBus(bus),
+		})
+		flow.LogError("system.safego.panic", "协程 panic 已恢复",
+			event.P("where", name),
+			event.P("error", fmt.Sprint(r)),
+		)
+	})
+}
 
 // initLogging sets up the loggateway Pipeline and Gateway from bootstrap config.
 // Returns the logger, pipeline, and logging sinks for use by Wire and BeforeStart.

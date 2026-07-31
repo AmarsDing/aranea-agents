@@ -233,7 +233,7 @@ func extractSlugFromArgs(args []byte) string {
 	if err := json.Unmarshal(args, &obj); err != nil {
 		return ""
 	}
-	for _, key := range []string{"slug", "skill_slug"} {
+	for _, key := range []string{"slug", "skill_slug", "skill"} {
 		if raw, ok := obj[key]; ok {
 			var s string
 			if err := json.Unmarshal(raw, &s); err == nil {

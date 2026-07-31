@@ -24,19 +24,17 @@
         <div class="app-registry-chip-wrap skill-tags-cell">
           <span v-for="group in groupSkillTags(props.row.tags)" :key="group.dimension || '__plain'" class="skill-tag-group">
             <span v-if="group.dimension" class="skill-tag-group__dim">{{ group.dimension }}</span>
-            <q-chip
+            <span
               v-for="tag in group.tags"
               :key="tag.name"
-              dense
-              :outline="tag.source === 'system'"
-              color="primary"
-              text-color="white"
+              class="skill-tag-value"
+              :class="{ 'skill-tag-value--system': tag.source === 'system' }"
             >
               {{ tag.label }}
               <q-tooltip v-if="group.dimension">{{ tag.name }}</q-tooltip>
-            </q-chip>
+            </span>
           </span>
-          <span v-if="!props.row.tags?.length" class="text-caption text-grey-6">无标签</span>
+          <span v-if="!props.row.tags?.length" class="text-caption text-grey-6">{{ t('skillsPage.noTags') }}</span>
         </div>
       </q-td>
     </template>
@@ -59,8 +57,12 @@
 
     <template #body-cell-disk="props">
       <q-td :props="props">
-        <q-badge v-if="props.row.filesystem_missing" rounded color="negative">缺失</q-badge>
-        <q-badge v-else rounded color="positive" outline>正常</q-badge>
+        <q-chip v-if="props.row.filesystem_missing" dense size="sm" color="negative" text-color="white">
+          {{ t('skillsPage.diskMissing') }}
+        </q-chip>
+        <q-chip v-else dense size="sm" outline color="positive" text-color="positive">
+          {{ t('skillsPage.diskOk') }}
+        </q-chip>
       </q-td>
     </template>
 
@@ -129,13 +131,17 @@
             flat
             dense
             round
-            color="secondary"
-            icon="storefront"
-            :disable="!props.row.permissions.can_edit || publishingEcosystemId === props.row.id"
+            :color="ecosystemPublishBtn(props.row).color"
+            :icon="ecosystemPublishBtn(props.row).icon"
+            :disable="
+              !props.row.permissions.can_edit ||
+              publishingEcosystemId === props.row.id ||
+              ecosystemPublishBtn(props.row).disabled
+            "
             :loading="publishingEcosystemId === props.row.id"
             @click="emit('publish-ecosystem', props.row)"
           >
-            <q-tooltip>{{ t('skillsPage.publishEcosystemTooltip') }}</q-tooltip>
+            <q-tooltip>{{ ecosystemPublishBtn(props.row).tooltip }}</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -189,7 +195,7 @@ import {
   skillOriginLabel as originLabel,
 } from './skillTableUi';
 
-defineProps<{
+const props = defineProps<{
   rows: Skill[];
   loading: boolean;
   togglingId?: string;
@@ -197,6 +203,8 @@ defineProps<{
   publishingId?: string;
   /** 正在发布到生态市场的 skill id，用于按钮 loading */
   publishingEcosystemId?: string;
+  /** 生态市场发布状态判定（published/failed/unpublished），由 Page/composable 注入 */
+  ecosystemPublishState: (skill: Skill) => 'published' | 'failed' | 'unpublished';
   /** 懒加载单行健康数据（统计悬浮图形面板用，store 方法经 Page 注入） */
   loadHealth: (skillId: string) => Promise<SkillHealthMetric>;
 }>();
@@ -213,6 +221,23 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const tablePagination = { rowsPerPage: 0 };
+
+/** 生态市场发布按钮三态：未发布（可点击）/ 已发布（勾选禁用）/ 发布失败（警示可重试）。 */
+function ecosystemPublishBtn(skill: Skill): { icon: string; color: string; tooltip: string; disabled: boolean } {
+  const state = props.ecosystemPublishState(skill);
+  if (state === 'published') {
+    return { icon: 'cloud_done', color: 'positive', tooltip: t('skillsPage.ecosystemPublishedTooltip'), disabled: true };
+  }
+  if (state === 'failed') {
+    return {
+      icon: 'error_outline',
+      color: 'negative',
+      tooltip: t('skillsPage.ecosystemFailedTooltip'),
+      disabled: false,
+    };
+  }
+  return { icon: 'storefront', color: 'secondary', tooltip: t('skillsPage.publishEcosystemTooltip'), disabled: false };
+}
 
 type SkillTagView = { name: string; label: string; source: string };
 type SkillTagGroup = { dimension: string; tags: SkillTagView[] };

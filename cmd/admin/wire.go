@@ -97,6 +97,7 @@ func provideEventBusSideConsumers(
 	fileAppender *monitor.FlowFileAppender,
 	usage *biz.UsageUsecase,
 	logger biz.SessionLogWriter,
+	flowLogWriter biz.FlowLogWriter,
 ) *biz.EventBusSideConsumers {
 	var monitorEventBus contract.MonitorBus
 	if infra != nil {
@@ -107,7 +108,7 @@ func provideEventBusSideConsumers(
 		monitorUC.SetTraceProjector(traceProj)
 		monitorUC.SetFlowFileAppender(fileAppender)
 	}
-	return biz.NewEventBusSideConsumers(eventBus, monitorEventBus, tools, webhooks, sessions, flowLogs, monitorUC, memWorker, traceProj, fileAppender, usage, logger)
+	return biz.NewEventBusSideConsumers(eventBus, monitorEventBus, tools, webhooks, sessions, flowLogs, monitorUC, memWorker, traceProj, fileAppender, usage, logger, flowLogWriter)
 }
 
 func provideCronRunnerDeps(
@@ -364,7 +365,7 @@ func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, monitorBus contra
 	return service.NewMonitorAlertNotifier(channels, monitorBus, lg)
 }
 
-func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, spanReader biz.MonitorTraceSpanReader, seq *v2.Sequencer, reg *monitor.AlertMetricRegistry, lg loggateway.Logger) *biz.MonitorUsecase {
+func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, spanReader biz.MonitorTraceSpanReader, seq *v2.Sequencer, canary *biz.MemoryCanaryStatus, reg *monitor.AlertMetricRegistry, lg loggateway.Logger) *biz.MonitorUsecase {
 	rb := monitor.NewMetricRingBuffer()
 	uc := biz.NewMonitorUsecase(audit, event, trace, alert, runner, notifier,
 		biz.WithFilesystemHealthReader(fsHealth),
@@ -384,6 +385,10 @@ func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRep
 	if seq != nil {
 		// P0-R2a: expose sequencer dead-letter backlog to the alert engine.
 		reg.Register(monitor.NewSequencerDeadLetterMetric(seq))
+	}
+	if canary != nil {
+		// P0 canary: expose memory closed-loop failure streak to the alert engine.
+		reg.Register(monitor.NewMemoryCanaryMetric(canary))
 	}
 	uc.SetRegistry(reg)
 	return uc
@@ -609,6 +614,7 @@ func provideRunnerConfig(
 	agentsUC *biz.AgentUsecase,
 	sys biz.SystemSettingRepo,
 	v2ProjectorFactory *v2.ProjectorFactory,
+	teamUC *biz.TeamUsecase,
 	lg loggateway.Logger,
 ) team.RunnerConfig {
 	cfg := team.RunnerConfig{
@@ -639,6 +645,9 @@ func provideRunnerConfig(
 		// MemberCustomTools injects cli_admin_* tools for __system_admin__ members
 		// inside teams — the same tool surface as the direct chat path.
 		MemberCustomTools: service.NewCLIAdminToolFactory(skillUC, agentsUC, sys),
+		// B10 运行时惰性兜底：加载 team 时确保图资产已物化（存量 team
+		// linked_graph_id 为空 → 先物化再编译运行）。
+		GraphEnsurer: teamUC,
 	}
 	if graphs != nil {
 		cfg.GraphLoader = graphadapter.NewLinkedGraphBuildConfigLoader(graphs)
@@ -780,6 +789,8 @@ func provideChatServiceDeps(
 	v2ProjectorFactory *v2.ProjectorFactory,
 	memberSessions biz.MemberSessionV2Repo,
 	memoryConsolidationWriter biz.MemoryConsolidationWriter,
+	memoryConflictDetector biz.MemoryConflictDetector,
+	memoryConflictStore biz.L3ConflictStore,
 	learningLoop *biz.LearningLoopUsecase,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
@@ -853,6 +864,8 @@ func provideChatServiceDeps(
 			V2ProjectorFactory:        v2ProjectorFactory,
 			MemberSessions:            memberSessions,
 			MemoryConsolidationWriter: memoryConsolidationWriter,
+			MemoryConflictDetector:    memoryConflictDetector,
+			MemoryConflictStore:       memoryConflictStore,
 		},
 	}
 }
@@ -946,10 +959,14 @@ func provideL1AdminReader(admin biz.SessionAdminStore) biz.L1AdminReader {
 	return admin
 }
 
-func provideGraphCheckpointSaver(d *data.Data, lg loggateway.Logger) (*graphtrpc.CheckpointSaver, error) {
+func provideGraphCheckpointSaver(d *data.Data, infra *event.Infra, lg loggateway.Logger) (*graphtrpc.CheckpointSaver, error) {
 	rawDB := providePrimaryRawDB(d)
 	pgDSN := d.PostgresDSN()
-	return rt.NewGraphCheckpointSaver(rawDB, pgDSN, lg)
+	var monitorBus contract.MonitorBus
+	if infra != nil {
+		monitorBus = infra.MonitorEventBus
+	}
+	return rt.NewGraphCheckpointSaver(rawDB, pgDSN, monitorBus, lg)
 }
 
 // provideNL2GraphConverter builds the NL2GraphConverter for natural-language →
@@ -1038,15 +1055,16 @@ func provideGraphBuildDeps(
 			MCPTooling: persist.AgentMCP,
 		},
 		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
-			HasMemory:             persist.Memory.Available(),
-			MemoryService:         persist.Memory.TRPC,
-			MemoryAdmin:           persist.Memory.Admin,
-			MemoryActionLogWriter: persist.Memory.ActionLogWriter,
-			MemoryL2Recall:        persist.Memory.L2Recall,
-			MemoryL3Recall:        persist.Memory.L3Recall,
-			MemoryCompositeRecall: persist.Memory.CompositeRecall,
-			KnowledgeRetriever:    knowledgeRetriever,
-			KnowledgeUsecase:      knowledgeUC,
+			HasMemory:              persist.Memory.Available(),
+			MemoryService:          persist.Memory.TRPC,
+			MemoryAdmin:            persist.Memory.Admin,
+			MemoryActionLogWriter:  persist.Memory.ActionLogWriter,
+			MemoryL2Recall:         persist.Memory.L2Recall,
+			MemoryL3Recall:         persist.Memory.L3Recall,
+			MemoryCompositeRecall:  persist.Memory.CompositeRecall,
+			MemoryPreferenceLister: persist.Memory.PreferenceLister,
+			KnowledgeRetriever:     knowledgeRetriever,
+			KnowledgeUsecase:       knowledgeUC,
 		},
 		TRPCPluginDeps: chatagent.TRPCPluginDeps{
 			PluginManager: pluginMgr,
@@ -1113,15 +1131,16 @@ func provideTRPCBuilderDeps(
 			MCPTooling: persist.AgentMCP,
 		},
 		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
-			HasMemory:             persist.Memory.Available(),
-			MemoryService:         persist.Memory.TRPC,
-			MemoryAdmin:           persist.Memory.Admin,
-			MemoryActionLogWriter: persist.Memory.ActionLogWriter,
-			MemoryL2Recall:        persist.Memory.L2Recall,
-			MemoryL3Recall:        persist.Memory.L3Recall,
-			MemoryCompositeRecall: persist.Memory.CompositeRecall,
-			KnowledgeRetriever:    knowledgeRetriever,
-			KnowledgeUsecase:      knowledgeUC,
+			HasMemory:              persist.Memory.Available(),
+			MemoryService:          persist.Memory.TRPC,
+			MemoryAdmin:            persist.Memory.Admin,
+			MemoryActionLogWriter:  persist.Memory.ActionLogWriter,
+			MemoryL2Recall:         persist.Memory.L2Recall,
+			MemoryL3Recall:         persist.Memory.L3Recall,
+			MemoryCompositeRecall:  persist.Memory.CompositeRecall,
+			MemoryPreferenceLister: persist.Memory.PreferenceLister,
+			KnowledgeRetriever:     knowledgeRetriever,
+			KnowledgeUsecase:       knowledgeUC,
 		},
 		TRPCPluginDeps: chatagent.TRPCPluginDeps{
 			PluginManager: pluginMgr,
@@ -1143,11 +1162,11 @@ func provideTRPCBuilderDeps(
 	}
 }
 
-func provideArtifactRuntimeService(uc *biz.ArtifactUsecase) trpcartifact.Service {
+func provideArtifactRuntimeService(uc *biz.ArtifactUsecase, lg loggateway.Logger) trpcartifact.Service {
 	if uc == nil {
 		return nil
 	}
-	return artifacttrpc.NewServiceAdapter(uc)
+	return artifacttrpc.NewServiceAdapter(uc, lg)
 }
 
 func provideArtifactSigner(lg loggateway.Logger) *artifact.Signer {
@@ -1167,22 +1186,28 @@ func provideAutoMemoryWorker(
 	queue memtrpc.AutoMemoryQueue,
 	deadLetterSink biz.MemoryDeadLetterSink,
 	workerStats *biz.MemoryWorkerStats,
+	monitorBus contract.MonitorBus,
+	conflictDetector biz.MemoryConflictDetector,
+	conflictStore biz.L3ConflictStore,
 	lg loggateway.Logger,
 ) (*jobs.AutoMemoryWorker, error) {
 	return jobs.NewAutoMemoryWorker(jobs.AutoMemoryWorkerConfig{
-		RuntimeConf:    runtimeConf,
-		Interval:       0,
-		Sessions:       sessions,
-		Agents:         agents,
-		Writer:         writer,
-		IndexSync:      factSync,
-		EpisodeSync:    episodeSync,
-		L4:             l4,
-		Consolidator:   biz.DefaultMemoryConsolidator(extractor),
-		Queue:          queue,
-		DeadLetterSink: deadLetterSink,
-		Stats:          workerStats,
-		Logger:         lg,
+		RuntimeConf:      runtimeConf,
+		Interval:         0,
+		Sessions:         sessions,
+		Agents:           agents,
+		Writer:           writer,
+		IndexSync:        factSync,
+		EpisodeSync:      episodeSync,
+		L4:               l4,
+		Consolidator:     biz.DefaultMemoryConsolidator(extractor),
+		Queue:            queue,
+		DeadLetterSink:   deadLetterSink,
+		Stats:            workerStats,
+		MonitorBus:       monitorBus,
+		ConflictDetector: conflictDetector,
+		ConflictStore:    conflictStore,
+		Logger:           lg,
 	})
 }
 
@@ -1248,9 +1273,11 @@ func provideKnowledgeVaultFiler(lg loggateway.Logger) *bizknowledge.VaultFiler {
 // provideVaultSyncSupervisor 装配 vault 同步链（P1-3 生产装配，原遗漏导致新建
 // vault 永不同步）：SyncEngine → VaultSyncApplier（共享 filer + 可选 embedder）→
 // VaultSyncRunner → Supervisor。embedder 未配置时 buildChunks 按无语义层降级。
+// 同时把 applier 回注 usecase（G1-B2：树内新建文档立即索引，不等 45s 轮询）。
 func provideVaultSyncSupervisor(uc *biz.KnowledgeUsecase, filer *bizknowledge.VaultFiler, embedder knowledge.Embedder, lg loggateway.Logger) *knowledge.VaultSyncSupervisor {
 	engine := bizknowledge.NewSyncEngine(lg)
 	applier := knowledge.NewVaultSyncApplier(uc, filer, embedder, lg)
+	uc.SetVaultApplier(applier)
 	runner := knowledge.NewVaultSyncRunner(engine, applier, uc, lg)
 	return knowledge.NewVaultSyncSupervisor(runner, uc, lg)
 }
@@ -1435,6 +1462,23 @@ func provideMemoryEbbinghausDecayWorker(d *data.Data, agents *biz.AgentUsecase, 
 		return nil
 	}
 	return jobs.NewMemoryEbbinghausDecayWorker(0, nil, data.NewL3FactReaderForUser(d), data.NewDecayScoreWriter(d), agents, lg)
+}
+
+// provideMemoryCanaryWorker wires the memory closed-loop canary worker. The
+// worker periodically proves write → recall → archive works end-to-end via
+// the production consolidation upsert path, the production L3 recall path at
+// the default minScore, and bi-temporal invalidation. Failures are recorded
+// in biz.MemoryCanaryStatus (alert metric) and emitted as flow-log alarms.
+// Disabled via MEMORY_CANARY_DISABLED env var.
+func provideMemoryCanaryWorker(d *data.Data, status *biz.MemoryCanaryStatus, flowLog biz.FlowLogWriter, lg loggateway.Logger) *jobs.MemoryCanaryWorker {
+	if jobs.MemoryCanaryDisabled() {
+		return nil
+	}
+	return jobs.NewMemoryCanaryWorker(0,
+		data.NewMemoryConsolidationWriterAdapter(d, lg),
+		data.NewL3FactReaderForUser(d),
+		data.NewL3FactWriterAdapter(d, d.VectorStore()),
+		status, flowLog, lg)
 }
 
 // memorySleepTimeQueueSize is the buffer size for the in-memory consolidation
@@ -1714,6 +1758,10 @@ func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *
 //   - AgentConfigTrigger carries the ported L3 scan logic (A6, formerly
 //     EvolutionUsecase.ScanAgent); both agent-scoped triggers gate on their
 //     own opt-in flag via biz.AgentRepository settings.
+//   - Platform self-improvement triggers (73-self-iteration-v3) register only
+//     when self_improvement.enabled=true; the observe worker (gated the same
+//     way) is the sole platform-scan caller, so a disabled pipeline leaves no
+//     live signal path.
 func provideSkillEvolutionOrchestrator(
 	unifiedRepo *data.UnifiedEvolutionRepo,
 	agents biz.AgentRepository,
@@ -1723,13 +1771,55 @@ func provideSkillEvolutionOrchestrator(
 	aggregator biz.SkillHealthAggregator,
 	scorer *biz.SkillScoringUsecase,
 	metricsRepo biz.EvolutionMetricsRepo,
+	siConf *conf.SelfImprovement,
+	siSignals *data.SelfImprovementSignalRepo,
+	siTestRuns biz.TestRunReader,
 	lg loggateway.Logger,
 ) *biz.SkillEvolutionOrchestrator {
 	orch := biz.NewSkillEvolutionOrchestrator(unifiedRepo, unifiedRepo, unifiedRepo, lg)
 	orch.RegisterTrigger(biz.NewPatternTrigger(agents, patterns, creator, registrar, unifiedRepo, lg))
 	orch.RegisterTrigger(biz.NewHealthTrigger(aggregator, scorer, lg))
 	orch.RegisterTrigger(biz.NewAgentConfigTrigger(agents, metricsRepo, unifiedRepo, lg))
+	if siConf.SIEnabled() {
+		orch.RegisterTrigger(biz.NewErrorClusterTrigger(siSignals, siConf.SIErrorClusterWindowDays(), siConf.SIErrorClusterMinCount(), lg))
+		orch.RegisterTrigger(biz.NewPerfBottleneckTrigger(siSignals, siConf.SIPerfLatencyFactor(), siConf.SIPerfTokenFactor(), lg))
+		orch.RegisterTrigger(biz.NewEvalRegressionTrigger(siSignals, siConf.SIEvalRegressionThreshold(), lg))
+		orch.RegisterTrigger(biz.NewTestFailureTrigger(siTestRuns, 0, 0, lg))
+	}
 	return orch
+}
+
+// provideSelfImprovementTestRunReader adapts the test-run JSON directory to
+// the biz.TestRunReader signal port (73-self-iteration-v3). Empty dir → the
+// reader stays inert (ListRecentFailures returns nil).
+func provideSelfImprovementTestRunReader(siConf *conf.SelfImprovement) biz.TestRunReader {
+	return data.NewTestRunFileReader(siConf.SITestRunsDir())
+}
+
+// provideSelfImprovementObserveUsecase assembles the Observe-stage usecase
+// (73-self-iteration-v3): unified orchestrator + pending-suggestion query +
+// run persistence ports.
+func provideSelfImprovementObserveUsecase(
+	orch *biz.SkillEvolutionOrchestrator,
+	unifiedRepo *data.UnifiedEvolutionRepo,
+	runReader biz.SelfImprovementRunReader,
+	runWriter biz.SelfImprovementRunWriter,
+	lg loggateway.Logger,
+) *biz.SelfImprovementObserveUsecase {
+	return biz.NewSelfImprovementObserveUsecase(orch, unifiedRepo, runReader, runWriter, lg)
+}
+
+// provideSelfImprovementObserveWorker gates the Observe-stage scheduler on
+// self_improvement.enabled (default off, design §6.2).
+func provideSelfImprovementObserveWorker(
+	siConf *conf.SelfImprovement,
+	uc *biz.SelfImprovementObserveUsecase,
+	lg loggateway.Logger,
+) *jobs.SelfImproveObserveWorker {
+	if !siConf.SIEnabled() {
+		return nil
+	}
+	return jobs.NewSelfImproveObserveWorker(siConf.SIObserveInterval(), uc, lg)
 }
 
 // provideEvolutionUsecase wraps biz.ProvideEvolutionUsecase with the unified
@@ -1797,13 +1887,14 @@ func provideSelfCheckScheduler(
 	repo monitor.SelfCheckReportRepo,
 	registry *monitor.AlertMetricRegistry,
 	lg loggateway.Logger,
+	flowLog monitor.FlowLogWriter,
 ) *monitor.SelfCheckScheduler {
 	// Wrap repairers in SelfCheckRepairDispatcher to enforce per-checker cooldown
 	// (5min) and prevent repeated repairs of the same failing check within the
 	// cooldown window. Without the dispatcher, SelfCheckScheduler would call
 	// repairers directly on every cycle (every 5min), bypassing cooldown logic.
 	dispatcher := monitor.NewSelfCheckRepairDispatcher(repairers, lg)
-	scheduler := monitor.NewSelfCheckScheduler(checkers, []monitor.SelfCheckRepairer{dispatcher}, repo, registry, lg)
+	scheduler := monitor.NewSelfCheckScheduler(checkers, []monitor.SelfCheckRepairer{dispatcher}, repo, registry, lg, flowLog)
 	// Register the unhealthy-count metric so AlertEvalWorker can evaluate
 	// alert rules against it. Without this registration, the metric is never
 	// polled and self-check degradation goes undetected by the alerting system.
@@ -2012,6 +2103,7 @@ type wireOut struct {
 	SkillIntelligenceWorker     *jobs.SkillIntelligenceWorker
 	CuratorWorker               *jobs.CuratorWorker
 	EvolutionOrchestratorWorker *jobs.EvolutionOrchestratorWorker
+	SelfImproveObserveWorker    *jobs.SelfImproveObserveWorker
 	ProviderHealthScanner       *jobs.ProviderHealthScanner
 	ChannelHealthScanner        *jobs.ChannelHealthScanner
 	ChannelDeliveryScanner      *jobs.ChannelDeliveryWorker
@@ -2033,6 +2125,7 @@ type wireOut struct {
 	MemoryL3Decay               *jobs.MemoryL3DecayWorker
 	MemoryL4Decay               *jobs.MemoryL4DecayWorker
 	MemoryEbbinghausDecay       *jobs.MemoryEbbinghausDecayWorker
+	MemoryCanary                *jobs.MemoryCanaryWorker
 	MemorySleepTime             *jobs.MemorySleepTimeWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
 	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
@@ -2087,6 +2180,7 @@ func provideWireOut(
 	memoryL3Decay *jobs.MemoryL3DecayWorker,
 	memoryL4Decay *jobs.MemoryL4DecayWorker,
 	memoryEbbinghausDecay *jobs.MemoryEbbinghausDecayWorker,
+	memoryCanary *jobs.MemoryCanaryWorker,
 	memorySleepTime *jobs.MemorySleepTimeWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
@@ -2103,6 +2197,7 @@ func provideWireOut(
 	skillIntelligenceWorker *jobs.SkillIntelligenceWorker,
 	curatorWorker *jobs.CuratorWorker,
 	evoOrchWorker *jobs.EvolutionOrchestratorWorker,
+	siObserveWorker *jobs.SelfImproveObserveWorker,
 	failurePatternSyncJob *jobs.FailurePatternSyncJob,
 	predictiveHealUsecase *monitor.PredictiveHealUsecase,
 	predictiveHealJob *jobs.PredictiveHealJob,
@@ -2123,6 +2218,7 @@ func provideWireOut(
 		ToolAuditCleanup:        toolAuditCleanup,
 		FlowLogCleanup:          flowLogCleanup, MonitorEventsCleanup: monitorEventsCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, ChannelTurnJobSweeper: channelTurnJobSweeper, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEbbinghausDecay:       memoryEbbinghausDecay,
+		MemoryCanary:                memoryCanary,
 		MemorySleepTime:             memorySleepTime,
 		MemoryEpisodeBackfill:       memoryEpisodeBackfill,
 		MemoryDataMigration:         memoryDataMigration,
@@ -2139,6 +2235,7 @@ func provideWireOut(
 		SkillIntelligenceWorker:     skillIntelligenceWorker,
 		CuratorWorker:               curatorWorker,
 		EvolutionOrchestratorWorker: evoOrchWorker,
+		SelfImproveObserveWorker:    siObserveWorker,
 		FailurePatternSyncJob:       failurePatternSyncJob,
 		PredictiveHealUsecase:       predictiveHealUsecase,
 		PredictiveHealJob:           predictiveHealJob,
@@ -2379,11 +2476,13 @@ func provideFederationUsecase(
 	cardWriter a2abiz.RemoteAgentCardWriter,
 	executor a2abiz.RemoteInvokeExecutor,
 	lg loggateway.Logger,
+	flowLog biz.FlowLogWriter,
 ) *a2abiz.FederationUsecase {
 	return a2abiz.NewFederationUsecase(orgs, gov,
 		a2abiz.NewDirectory(orgs, remotes),
 		a2abiz.NewAgentCardSync(remotes, discoverer, cardWriter, lg),
-		remotes, executor)
+		remotes, executor,
+		a2apkg.NewFederationFlowLogWriter(flowLog))
 }
 
 func provideFederationService(uc *a2abiz.FederationUsecase) *service.FederationService {
@@ -2531,6 +2630,12 @@ func provideTeamUsecaseOpts(
 	deptLeadMgr *biz.DeptLeadManager,
 	graphReader biz.GraphReader,
 	graphWriter biz.GraphWriter,
+	teamCompiler biz.TeamCompiler,
+	graphAssets biz.TeamGraphAssetStore,
+	txProvider biz.TeamTxProvider,
+	linkedReader biz.TeamLinkedGraphReader,
+	agentIDResolver biz.TeamAgentIDResolver,
+	channels *biz.ChannelUsecase,
 	lg loggateway.Logger,
 ) biz.TeamUsecaseOpts {
 	return biz.TeamUsecaseOpts{
@@ -2545,8 +2650,39 @@ func provideTeamUsecaseOpts(
 		DeptLeadMgr:  deptLeadMgr,
 		GraphReader:  graphReader,
 		GraphWriter:  graphWriter,
-		Lg:           lg,
+		// Team × Graph 一体化（Phase 11）保存钩子
+		Compiler:         teamCompiler,
+		GraphAssets:      graphAssets,
+		TxProvider:       txProvider,
+		AgentKeyResolver: biz.TeamAgentKeyResolver(channels.AgentKeyResolver),
+		AgentIDResolver:  agentIDResolver,
+		LinkedReader:     linkedReader,
+		Lg:               lg,
 	}
+}
+
+// provideTeamAgentIDResolver wires the agent_key → agent_id reverse resolver
+// for B6 member sync（Graph 编辑器保存 team-owned 图后回写 members）。
+func provideTeamAgentIDResolver(agents biz.AgentRepository) biz.TeamAgentIDResolver {
+	return func(ctx context.Context) func(agentKey string) (string, bool) {
+		return func(agentKey string) (string, bool) {
+			ag, err := agents.GetAgentByAgentKey(ctx, agentKey)
+			if err != nil {
+				return "", false
+			}
+			return ag.ID, true
+		}
+	}
+}
+
+// provideTeamUsecase wraps biz.NewTeamUsecase to inject the TeamGraphGuard
+// into GraphDefinitionUsecase（B6 反向同步 + B7 删除保护）——跨 usecase 的
+// 装配步骤，wire 无法经裸构造函数表达，故 NewTeamUsecase 从 biz.ProviderSet
+// 移出在此包装。
+func provideTeamUsecase(opts biz.TeamUsecaseOpts, graphs *biz.GraphUsecase) *biz.TeamUsecase {
+	uc := biz.NewTeamUsecase(opts)
+	graphs.DefUC().SetTeamGraphGuard(uc)
+	return uc
 }
 
 func provideMemoryLLMExtractorConfig(
@@ -2586,7 +2722,7 @@ func provideEcosystemPresetScenarioDir() string {
 }
 
 // wireApp init kratos application.
-func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
+func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
 	panic(wire.Build(
 		server.ProviderSet,
 		data.ProviderSet,
@@ -2618,6 +2754,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(biz.MemoryDeadLetterSink), new(*data.MemoryJobDeadLetterRepo)),
 		provideMemoryPolicyEngine,
 		provideFactIndexSync,
+		provideMemoryConflictDetector,
+		provideL3ConflictStore,
 		provideMemoryL2Recall,
 		provideMemoryL3Recall,
 		provideMemoryCompositeRecall,
@@ -2722,6 +2860,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideSkillEvolutionUsecase,
 		provideLearningLoopUsecase,
 		provideEvolutionOrchestratorWorker,
+		provideSelfImprovementTestRunReader,
+		provideSelfImprovementObserveUsecase,
+		provideSelfImprovementObserveWorker,
 		provideSkillIntelligenceWorker,
 		provideCuratorWorker,
 		provideLearningLoopScanner,
@@ -2746,6 +2887,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideMemoryL3DecayWorker,
 		provideMemoryL4DecayWorker,
 		provideMemoryEbbinghausDecayWorker,
+		provideMemoryCanaryWorker,
 		provideMemorySleepTimeWorker,
 		provideMemoryEpisodeBackfillWorker,
 		provideMemoryDataMigrationWorker,
@@ -2916,6 +3058,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideDeptLeadManager,
 		// TeamUsecaseOpts provider
 		provideTeamUsecaseOpts,
+		provideTeamUsecase,
+		provideTeamAgentIDResolver,
 		// SkillSimilarityComparer binding
 		wire.Bind(new(biz.SkillSimilarityComparer), new(*biz.SkillSimilarityEngine)),
 		// Memory extractor config providers

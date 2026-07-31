@@ -19,6 +19,7 @@ func (r *feedbackMonitorRepo) ListAuditLogs(context.Context, AuditQuery) (AuditL
 	return AuditListResult{}, nil
 }
 func (r *feedbackMonitorRepo) InsertAuditLog(context.Context, AuditLog) error { return nil }
+func (r *feedbackMonitorRepo) DeleteAuditLogs(context.Context) (int, error)   { return 0, nil }
 func (r *feedbackMonitorRepo) ListMonitorEvents(context.Context, MonitorEventsQuery) (MonitorListResult, error) {
 	return MonitorListResult{}, nil
 }

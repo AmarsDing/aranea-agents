@@ -19,6 +19,8 @@ import (
 	"aranea-agents/pkg/safego"
 
 	"aranea-agents/internal/cronrunner/jobs"
+	"aranea-agents/internal/telemetry"
+	"aranea-agents/pkg/auth"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
@@ -54,6 +56,18 @@ func newApp(
 	knowledgeSvc *service.KnowledgeService,
 	vaultSyncSup *knowledge.VaultSyncSupervisor,
 ) *kratos.App {
+	// startupBegin approximates the start of the P1 migration window: NewData
+	// (which launches the P1 goroutine) runs immediately before newApp inside
+	// wireApp, so this timestamp is close enough for a coarse duration.
+	startupBegin := time.Now()
+
+	// Register pkg/auth flow-log hooks (gRPC unauthenticated requests) backed
+	// by the monitor bus. pkg/ libraries cannot import internal/event, so the
+	// hook implementation lives in internal/server and is wired here.
+	if eventInfra != nil {
+		server.RegisterAuthFlowHooks(eventInfra.MonitorEventBus, lg)
+	}
+
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
 	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
 	srv := []transport.Server{gs, hs}
@@ -102,23 +116,36 @@ func newApp(
 			// The HTTP server now starts immediately so /healthz can report
 			// "starting" (503) while P1 migrations run. A readiness middleware
 			// blocks all non-infrastructure routes until ready.
+			runPostReadiness := func() {
+				// B10：team × graph 存量物化迁移（幂等，单队失败 warn 继续，
+				// 不阻塞启动）。依赖 TeamCompiler 无法放入 data 层 L3 迁移
+				// 注册表，故在 readiness 门控后以后台任务执行。
+				if teamUC != nil {
+					safego.Go(consumerCtx, "startup.team_graph_migration", func() {
+						teamUC.MigrateLegacyEmbeddedGraphs(consumerCtx)
+					})
+				}
+				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, lg)
+				emitStartupFlows(consumerCtx, eventInfra, lg, startupBegin)
+			}
 			if d != nil {
 				if gate := d.Readiness(); gate != nil {
 					safego.Go(ctx, "startup.post_readiness", func() {
 						if err := gate.Wait(ctx); err != nil {
 							lg.Warn("post-readiness: data readiness wait failed", loggateway.StepID("startup.gate"), loggateway.Err(err))
+							emitStartupMigrationFailure(consumerCtx, eventInfra, lg, gate.FailedReason())
 							return
 						}
 						lg.Info("post-readiness: data ready, starting dependent services", loggateway.StepID("startup.gate"))
-						startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, lg)
+						runPostReadiness()
 					})
 				} else {
 					// No readiness gate (unlikely), start immediately.
-					startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, lg)
+					runPostReadiness()
 				}
 			} else {
 				// No data layer (unlikely), start immediately.
-				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, lg)
+				runPostReadiness()
 			}
 			return nil
 		}),
@@ -131,6 +158,7 @@ func newApp(
 			return nil
 		}),
 		kratos.AfterStop(func(ctx context.Context) error {
+			shutdownFlow := newSystemFlowEmitter(ctx, eventInfra, lg)
 			if err := guard.OnShutdown(ctx); err != nil {
 				lg.Warn("session status guard shutdown failed", loggateway.StepID("shutdown.guard"), loggateway.Err(err))
 			}
@@ -157,6 +185,11 @@ func newApp(
 			// after the chat service has stopped accepting requests (A3).
 			if lifecycleMgr != nil {
 				lifecycleMgr.Close()
+			}
+			// Emit before consumerCancel/pipeline.Close so the event still reaches
+			// the flow log persist consumer and the log pipeline.
+			if shutdownFlow != nil {
+				shutdownFlow.LogDone("system.startup.shutdown", "服务关闭完成")
 			}
 			consumerCancel()
 			if pipeline != nil {
@@ -236,4 +269,66 @@ func startReadinessDependentServices(
 	if spiritUC != nil {
 		spiritUC.StartBackgroundPolling(ctx, 30*time.Second)
 	}
+}
+
+// newSystemFlowEmitter builds a system-domain flow emitter over the shared
+// monitor bus. Returns nil when the bus is unavailable (tests).
+func newSystemFlowEmitter(ctx context.Context, infra *event.Infra, lg loggateway.Logger) *event.TraceEmitter {
+	if infra == nil || infra.MonitorEventBus == nil {
+		return nil
+	}
+	return event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx:    ctx,
+		Domain: event.TraceDomainSystem,
+		LG:     lg,
+		Infra:  infra,
+	})
+}
+
+// emitStartupFlows emits the one-shot startup flow logs (telemetry, migration,
+// seed, ready, auth bypass) after readiness-dependent services — including the
+// flow log persist consumer — have started, so the events are persisted.
+// Migration/seed run inside data.NewData (pre-bus), so they are emitted here
+// retroactively with a coarse duration measured from newApp entry.
+func emitStartupFlows(ctx context.Context, infra *event.Infra, lg loggateway.Logger, startupBegin time.Time) {
+	em := newSystemFlowEmitter(ctx, infra, lg)
+	if em == nil {
+		return
+	}
+	// Telemetry init ran pre-bus (main.go); emit its recorded outcome now.
+	switch res := telemetry.LastInitResult(); res.Status {
+	case telemetry.InitStatusOK:
+		em.LogDone("system.telemetry.init", "遥测初始化完成",
+			event.P("endpoint", res.Endpoint), event.P("protocol", res.Protocol))
+	case telemetry.InitStatusNoop:
+		em.LogSkip("system.telemetry.noop", "遥测未配置，使用 noop 提供者")
+	case telemetry.InitStatusError:
+		em.LogError("system.telemetry.error", "遥测初始化失败",
+			event.P("endpoint", res.Endpoint), event.P("protocol", res.Protocol),
+			event.P("error", res.ErrMessage))
+	}
+	// Gate 已开放 ⇒ P1（L1/L2/L3 迁移 + 种子）全部完成。
+	em.LogDone("system.startup.migration", "数据库迁移完成",
+		event.P("stages", "L1,L2,L3"),
+		event.P("duration_ms", time.Since(startupBegin).Milliseconds()))
+	em.LogDone("system.startup.seed", "基础数据种子完成")
+	em.LogDone("system.startup.ready", "服务就绪")
+	// 认证绕过状态（WarnIfBypassEnabled 在 main.go 早期运行，此处延迟发射）。
+	if auth.HTTPAuthBypassEnabled() {
+		em.LogWarn("system.auth.bypass_warn", "", "认证绕过告警：KRATOS_HTTP_AUTH_DISABLED 已启用，请勿在生产环境使用")
+		em.LogWarn("system.auth.bypass_active", "", "认证绕过已启用：所有请求以 UserID=1 (admin) 身份执行")
+	} else if auth.BypassRequested() {
+		em.LogWarn("system.auth.bypass_refused", "", "认证绕过被拒绝：KRATOS_HTTP_AUTH_DISABLED 已设置但 DEPLOY_ENV 非 dev/test")
+	}
+}
+
+// emitStartupMigrationFailure emits the migration failure flow log when the
+// readiness gate reports failed (P1 步骤失败，服务不就绪).
+func emitStartupMigrationFailure(ctx context.Context, infra *event.Infra, lg loggateway.Logger, reason string) {
+	em := newSystemFlowEmitter(ctx, infra, lg)
+	if em == nil {
+		return
+	}
+	em.LogError("system.startup.migration", "数据库迁移失败",
+		event.P("error", reason))
 }

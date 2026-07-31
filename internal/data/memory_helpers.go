@@ -1044,6 +1044,107 @@ func applyCrossEncoderRerankToFactScored(reranker biz.Reranker, query string, sc
 	}
 }
 
+// scoreFactRow computes the L3 hybrid recall score for one fact row JSON.
+// vecOverrides, when non-nil, supplies the vector score per fact ID (pgvector
+// path); otherwise the score is decoded from embedding_blob when a query
+// embedding is available.
+func scoreFactRow(row map[string]any, tokens []string, queryEmbedding []float32, vecOverrides map[string]float64, now time.Time) recallScoreBreakdown {
+	id, _ := row["id"].(string)
+	stmt, _ := row["statement"].(string)
+	details, _ := row["details_markdown"].(string)
+	imp := anyFloat(row, "importance")
+	qScore := anyFloat(row, "quality_score")
+	updatedAt, _ := row["updated_at"].(string)
+	factKind, _ := row["fact_kind"].(string)
+
+	kwScore := keywordOverlapScore(tokens, stmt+" "+details)
+	var vecScore float64
+	if vecOverrides != nil {
+		vecScore = vecOverrides[id]
+	} else if len(queryEmbedding) > 0 {
+		// JSON unmarshal produces string (not []byte) for binary columns,
+		// so we must handle both types.
+		var embBlob []byte
+		switch v := row["embedding_blob"].(type) {
+		case []byte:
+			embBlob = v
+		case string:
+			embBlob = []byte(v)
+		}
+		if embNorm, ok := row["embedding_norm"].(float64); ok && embNorm > 0 && len(embBlob) > 0 {
+			emb := decodeFloat32Blob(embBlob)
+			if len(emb) == len(queryEmbedding) {
+				vecScore = cosineSimilarity(queryEmbedding, emb)
+			}
+		}
+	}
+	recency := recencyBoost(updatedAt, now)
+	decay := factDecayWithKind(factKind, updatedAt, now)
+	total := l3ScoreWeightKeyword*kwScore +
+		l3ScoreWeightVector*vecScore +
+		l3ScoreWeightImport*imp*decay +
+		l3ScoreWeightRecency*recency +
+		l3ScoreWeightQuality*qScore
+	return recallScoreBreakdown{
+		Keyword:      kwScore,
+		Vector:       vecScore,
+		Importance:   imp * decay,
+		Recency:      recency,
+		QualityScore: qScore,
+		Total:        total,
+	}
+}
+
+// scoreFactRows scans fact row JSON from rows and computes the hybrid recall
+// score for each, keeping only rows at or above minScore. Shared by all three
+// L3 recall paths (brute-force, candidate-pool fallback, pgvector).
+func scoreFactRows(rows *sql.Rows, tokens []string, queryEmbedding []float32, vecOverrides map[string]float64, minScore float64, now time.Time) []scoredFact {
+	var scored []scoredFact
+	for rows.Next() {
+		b, err := scanFactRowJSON(rows)
+		if err != nil {
+			continue
+		}
+		var row map[string]any
+		if json.Unmarshal(b, &row) != nil {
+			continue
+		}
+		bd := scoreFactRow(row, tokens, queryEmbedding, vecOverrides, now)
+		if bd.Total < minScore {
+			continue
+		}
+		stmt, _ := row["statement"].(string)
+		details, _ := row["details_markdown"].(string)
+		id, _ := row["id"].(string)
+		scored = append(scored, scoredFact{
+			raw:       b,
+			id:        id,
+			stmt:      stmt,
+			details:   details,
+			score:     bd.Total,
+			breakdown: bd,
+		})
+	}
+	return scored
+}
+
+// annotateFactScores injects the computed score breakdown into the fact row
+// JSON under the "scores" key so downstream consumers (scored recall adapter,
+// debug tools) can read the ranking without re-computing it. On any error the
+// original row is returned unchanged.
+func annotateFactScores(raw []byte, bd recallScoreBreakdown) []byte {
+	var row map[string]any
+	if err := json.Unmarshal(raw, &row); err != nil {
+		return raw
+	}
+	row["scores"] = bd
+	out, err := json.Marshal(row)
+	if err != nil {
+		return raw
+	}
+	return out
+}
+
 // VectorSearcher abstracts vector similarity search for recall operations.
 type VectorSearcher interface {
 	Search(ctx context.Context, embedding []float64, topK int, minScore float64) ([]VectorSearchHit, error)

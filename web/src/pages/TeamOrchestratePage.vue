@@ -23,6 +23,15 @@
         color="primary"
         @click="openObservatory"
       />
+      <q-btn
+        flat
+        dense
+        icon="account_tree"
+        label="在 Graph 编辑器中打开"
+        :loading="openingGraphEditor"
+        data-test="open-graph-editor"
+        @click="openInGraphEditor"
+      />
       <q-btn flat dense round icon="refresh" :loading="loading" @click="reload">
         <q-tooltip>重新编译</q-tooltip>
       </q-btn>
@@ -50,10 +59,19 @@
       class="q-ma-md"
       :class="compiled?.valid ? 'bg-warning text-dark' : 'bg-red-1 text-dark'"
     >
-      <div v-for="(issue, idx) in issues" :key="idx" class="text-caption">
+      <button
+        v-for="(issue, idx) in issues"
+        :key="idx"
+        type="button"
+        class="team-orchestrate-page__issue text-caption"
+        :class="{ 'team-orchestrate-page__issue--link': Boolean(issue.nodeId) }"
+        :disabled="!issue.nodeId"
+        :data-test="issue.nodeId ? 'issue-node-link' : undefined"
+        @click="onIssueClick(issue.nodeId)"
+      >
         {{ issue.warning ? '⚠' : '✕' }} {{ issue.message || issue.code }}
         <span v-if="issue.nodeId"> · {{ issue.nodeId }}</span>
-      </div>
+      </button>
     </q-banner>
 
     <div v-if="loading" class="flex flex-center q-pa-xl">
@@ -76,6 +94,7 @@
           :focus-selected-node="liveMode"
           :read-only="true"
           :hide-tech-ids="true"
+          :node-issues="canvasNodeIssues"
           @select-node="onSelectNode"
         />
         <TeamOrchestrateNodePanel
@@ -113,7 +132,7 @@
             </q-item-section>
           </q-item>
         </q-list>
-        <div v-else class="text-caption app-text-secondary q-mb-md">暂无成员</div>
+        <div v-else class="text-caption app-text-secondary q-mb-md">{{ t('teamsPage.orchestrateNoMembers') }}</div>
 
         <q-separator class="q-my-md" />
         <TeamOrchestrateRuntimePanel :definition="definition" />
@@ -124,16 +143,22 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import GraphEditorCanvas from '../components/graph/GraphEditorCanvas.vue';
 import OrchestrationKanban from '../components/orchestration/OrchestrationKanban.vue';
 import TeamMemberKanban from '../components/teams/TeamMemberKanban.vue';
 import TeamOrchestrateRuntimePanel from '../components/teams/TeamOrchestrateRuntimePanel.vue';
 import TeamOrchestrateNodePanel from '../components/teams/TeamOrchestrateNodePanel.vue';
 import { teamModeLabel } from '../components/teams/teamConstants';
-import { teamMemberDisplayRows, teamTopologySummary } from '../features/orchestration/teamNodeDisplay';
+import {
+  teamMemberDisplayRows,
+  teamTopologySummary,
+  compileIssuesToNodeIssues,
+} from '../features/orchestration/teamNodeDisplay';
 import { useTeamOrchestratePage } from '../features/teams/useTeamOrchestratePage';
 
 const activeTab = ref('canvas');
+const { t } = useI18n();
 
 const {
   isDark,
@@ -155,8 +180,21 @@ const {
   reload,
   onSelectNode,
   openObservatory,
+  openingGraphEditor,
+  openInGraphEditor,
   goBack,
 } = useTeamOrchestratePage();
+
+// M53 Phase 11 F3：校验问题 → 画布节点错误态（同节点 error 优先于 warning）。
+const canvasNodeIssues = computed(() => compileIssuesToNodeIssues(issues.value));
+
+/** 校验问题联动：点击带 nodeId 的 issue → 选中节点并切回画布。 */
+function onIssueClick(nodeId?: string) {
+  const id = String(nodeId ?? '').trim();
+  if (!id) return;
+  onSelectNode(id);
+  activeTab.value = 'canvas';
+}
 
 const topologySummary = computed(() => teamTopologySummary(compiled.value, definition.value));
 const memberRows = computed(() => teamMemberDisplayRows(compiled.value, definition.value));

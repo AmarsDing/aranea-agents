@@ -1,6 +1,31 @@
 import type { NodeDef } from '../graph/types';
+import type { NodeIssueInfo } from '../graph/types';
 import type { CompileTeamGraphResult, CompiledGraphNodeView } from './compileApi';
+import type { CompileTeamGraphValidationIssue } from '../../services/kratos/team/v1/index';
 import type { TeamDefinition } from '../teams/types';
+
+/**
+ * M53 Phase 11 F3：编译校验问题 → GraphEditorCanvas nodeIssues（节点错误态）。
+ * 仅收集带 nodeId 的 issue；同一节点 error 优先于 warning。
+ */
+export function compileIssuesToNodeIssues(issues: CompileTeamGraphValidationIssue[]): Record<string, NodeIssueInfo> {
+  const map: Record<string, NodeIssueInfo> = {};
+  for (const issue of issues) {
+    const nodeId = String(issue.nodeId ?? '').trim();
+    if (!nodeId) continue;
+    const existing = map[nodeId];
+    if (existing) {
+      // 同节点 error 优先；首个 warning 不被后续 warning 覆盖
+      if (existing.level === 'error' || issue.warning) continue;
+    }
+    map[nodeId] = {
+      level: issue.warning ? 'warning' : 'error',
+      code: issue.code ?? '',
+      message: issue.message || issue.code || '',
+    };
+  }
+  return map;
+}
 
 export type TeamNodeDisplay = {
   nodeId: string;

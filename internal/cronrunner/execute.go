@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -45,15 +46,38 @@ func (r *Runner) insertPendingRun(ctx context.Context, taskID, trigger string, n
 
 func (r *Runner) runDispatch(ctx context.Context, task biz.CronTask, cfg cronTaskConfig) runOutcome {
 	startedTime := time.Now()
+	flow := r.flowEmitter(ctx, "", "")
+	if flow != nil {
+		flow.LogStart("cron.job.dispatch", "定时任务分发",
+			event.P("job_id", task.ID),
+			event.P("job_type", cronTargetType(cfg)))
+	}
 	result, execErr := r.dispatchWithRetry(ctx, task, cfg)
 	elapsed := time.Since(startedTime)
 	cronJobDuration.WithLabelValues(task.ID).Observe(elapsed.Seconds())
 
 	if execErr == nil {
+		if flow != nil {
+			flow.LogDone("cron.job.dispatch", "定时任务分发完成",
+				event.P("job_id", task.ID),
+				event.P("session_id", result.SessionID))
+			flow.LogDone("cron.job.execute", "定时任务执行完成",
+				event.P("job_id", task.ID),
+				event.P("session_id", result.SessionID),
+				event.P("elapsed_ms", elapsed.Milliseconds()),
+				event.P("status", "success"))
+		}
 		return runOutcome{result: result, status: "success"}
 	}
 	if isSessionBusyErr(execErr) {
+		// 跳过分支的流程日志已在 sessionBusyErr 发射，此处不重复。
 		return runOutcome{result: result, status: "skipped", errMsg: execErr.Error()}
+	}
+	if flow != nil {
+		flow.LogError("cron.job.execute", "定时任务执行失败",
+			event.P("job_id", task.ID),
+			event.P("elapsed_ms", elapsed.Milliseconds()),
+			event.P("error", execErr.Error()))
 	}
 	return runOutcome{result: result, status: "failure", errMsg: execErr.Error()}
 }
@@ -112,7 +136,17 @@ func (r *Runner) finalizeRun(
 				task.Status = "dead"
 				task.Enabled = false
 				cronJobDeadTotal.WithLabelValues(task.ID).Inc()
-				r.lg.Warn("定时任务进入死信", loggateway.Str("job_id", task.ID), loggateway.Str("task_key", task.TaskKey), loggateway.Int("failure_count", meta.FailureCount))
+				r.lg.Error("定时任务进入死信",
+					loggateway.StepID("cron.job_dead"),
+					loggateway.Str("job_id", task.ID),
+					loggateway.Str("task_key", task.TaskKey),
+					loggateway.Int("failure_count", meta.FailureCount))
+				if flow := r.flowEmitter(ctx, outcome.result.SessionID, runID); flow != nil {
+					flow.LogError("system.cron.job_dead", "定时任务进入死信",
+						event.P("job_id", task.ID),
+						event.P("task_key", task.TaskKey),
+						event.P("failure_count", meta.FailureCount))
+				}
 				r.publishDeadLetterEvent(ctx, task)
 			}
 		}

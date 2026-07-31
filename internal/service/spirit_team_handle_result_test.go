@@ -1033,7 +1033,7 @@ func newF10Starter(team biz.Team, controller *stubSpiritTeamController, sessions
 		Lg:        loggateway.NewNoop(),
 	})
 	return &TeamStarter{
-		sessions: biz.NewSessionUsecase(&f10SessionRepo{sessions: sessions}, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop()),
+		sessions: biz.NewSessionUsecase(&f10SessionRepo{sessions: sessions}, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil),
 		team:     TeamOrchestrationDeps{TeamUC: teamUC, SpiritUC: controller},
 		seq:      seq,
 		lg:       loggateway.NewNoop(),
@@ -1376,7 +1376,7 @@ func newStandaloneStarterFromRepo(
 		Lg:        loggateway.NewNoop(),
 	})
 	return &TeamStarter{
-		sessions: biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop()),
+		sessions: biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil),
 		team:     TeamOrchestrationDeps{TeamUC: teamUC, SpiritUC: controller},
 		seq:      seq,
 		lg:       loggateway.NewNoop(),

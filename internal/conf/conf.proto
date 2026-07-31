@@ -12,6 +12,59 @@ message Bootstrap {
   DebugRecorder debug_recorder = 4;
   Langfuse langfuse = 5;
   Runtime runtime = 6;
+  SelfImprovement self_improvement = 7;
+}
+
+// SelfImprovement configures the platform self-improvement (V3) pipeline
+// (73-self-iteration-v3, design §6.2). Default: disabled (enabled=false);
+// every numeric field maps 0 to its design default.
+message SelfImprovement {
+  message ErrorCluster {
+    int32 window_days = 1;   // observation window (0 = 7)
+    int32 min_count = 2;     // min occurrences in window to fire (0 = 5)
+  }
+  message Perf {
+    double latency_factor = 1;  // p95 regression factor vs baseline (0 = 2.0)
+    double token_factor = 2;    // token usage anomaly factor (0 = 1.5)
+  }
+  message Eval {
+    double regression_threshold = 1;  // score drop ratio to fire (0 = 0.10)
+  }
+  message Patch {
+    int32 max_diff_lines = 1;          // diff size cap in changed lines (0 = 500)
+    int32 daily_auto_apply_quota = 2;  // auto-apply daily quota (0 = 5)
+    int32 max_attempts = 3;            // patch-verify retry cap (0 = 3)
+  }
+  message Sandbox {
+    message GateTimeouts {
+      google.protobuf.Duration g1 = 1;  // build gate (0 = 5m)
+      google.protobuf.Duration g2 = 2;  // test gate (0 = 10m)
+      google.protobuf.Duration g3 = 3;  // lint gate (0 = 5m)
+    }
+    GateTimeouts gate_timeouts = 1;
+    // Worktree root directory relative to repo root ("" = ".aranea-self-improve").
+    string worktree_root = 2;
+  }
+  // ObserveWindow configures the post-apply observing window (design D7/D10).
+  message ObserveWindow {
+    google.protobuf.Duration duration = 1;  // window length (0 = 24h)
+    double error_rate_factor = 2;           // rollback when error_rate > before*factor (0 = 1.5)
+    double p95_factor = 3;                  // rollback when p95 > before*factor (0 = 1.3)
+    int32 max_concurrent_observing = 4;     // observing-window concurrency cap (0 = 3)
+  }
+  bool enabled = 1;                           // master switch (gray rollout, default off)
+  google.protobuf.Duration observe_interval = 2;  // scan interval (0 = 15m)
+  ErrorCluster error_cluster = 3;
+  Perf perf = 4;
+  Eval eval = 5;
+  // Directory of test-run JSON round files (external cron output) feeding the
+  // test_failure trigger. Empty = that signal source stays inert.
+  string test_runs_dir = 6;
+  Patch patch = 7;
+  Sandbox sandbox = 8;
+  ObserveWindow observe_window = 9;
+  google.protobuf.Duration watchdog_interval = 10;  // watchdog tick (0 = 5m)
+  google.protobuf.Duration outcome_interval = 11;   // outcome attribution tick (0 = 1h)
 }
 
 message Server {

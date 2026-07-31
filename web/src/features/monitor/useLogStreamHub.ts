@@ -1,6 +1,7 @@
 import { onBeforeUnmount, ref, type Ref } from 'vue';
 import { storeToRefs } from 'pinia';
-import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
+import { getBackendOrigin, GLOBAL_WS_SESSION_ID } from '../../config/runtime';
+import { i18n } from '../../i18n';
 import { createMonitorStream } from '../../realtime/useMonitorStream';
 import type { MonitorEvent } from '../../realtime/monitorEvent';
 import { useMonitorStore } from '../../stores/monitor/index';
@@ -18,6 +19,8 @@ export type MonitorLogHub = {
   flowLines: Ref<MonitorLogLine[]>;
   processLines: Ref<MonitorLogLine[]>;
   backpressureMessage: Ref<string>;
+  /** 连接异常时的精确原因提示（如 429 连接数已满 / 401 未登录）；无则空串。 */
+  errorHint: Ref<string>;
   clearBackpressure: () => void;
   connect: () => void;
   disconnect: () => void;
@@ -56,9 +59,27 @@ export function createMonitorLogHub(paused: MonitorLogHubPausedRefs): MonitorLog
   const flowLines = ref<MonitorLogLine[]>([]);
   const processLines = ref<MonitorLogLine[]>([]);
   const backpressureMessage = ref('');
+  const errorHint = ref('');
   let hasFlowLine = false;
   let hasProcessLine = false;
   let wsConnected = false;
+  let errorProbed = false;
+
+  // 浏览器 WS API 拿不到握手失败的 HTTP 状态码；进入 error 时对 /v1/ws 做一次
+  // 普通 GET 探测（不会建立 WS 连接），从状态码还原精确原因（429 连接数已满 /
+  // 401 登录过期）。每个异常 episode 只探测一次，成功连接后复位。
+  async function probeErrorHint(): Promise<void> {
+    try {
+      const resp = await fetch(`${getBackendOrigin()}/v1/ws?session_id=*`, { credentials: 'include' });
+      if (resp.status === 429) {
+        errorHint.value = i18n.global.t('monitorPage.logs.connLimitHint');
+      } else if (resp.status === 401 || resp.status === 403) {
+        errorHint.value = i18n.global.t('monitorPage.logs.authExpiredHint');
+      }
+    } catch {
+      // 网络层失败——保持笼统的「连接异常」即可
+    }
+  }
 
   function refreshFlowState() {
     if (paused.flowPaused.value) {
@@ -95,6 +116,8 @@ export function createMonitorLogHub(paused: MonitorLogHubPausedRefs): MonitorLog
     logEnabled: false,
     onConnected: () => {
       wsConnected = true;
+      errorProbed = false;
+      errorHint.value = '';
       refreshFlowState();
       refreshProcessState();
       // Re-apply enableLog after connection — setProcessEnabled() may have been
@@ -108,6 +131,10 @@ export function createMonitorLogHub(paused: MonitorLogHubPausedRefs): MonitorLog
       wsConnected = false;
       if (!paused.flowPaused.value) flowState.value = 'error';
       if (processEnabled.value && !paused.processPaused.value) processState.value = 'error';
+      if (!errorProbed) {
+        errorProbed = true;
+        void probeErrorHint();
+      }
     },
     onMonitorEvent: (ev: MonitorEvent) => {
       switch (ev.type) {
@@ -165,6 +192,7 @@ export function createMonitorLogHub(paused: MonitorLogHubPausedRefs): MonitorLog
     flowLines,
     processLines,
     backpressureMessage,
+    errorHint,
     clearBackpressure: () => {
       backpressureMessage.value = '';
     },

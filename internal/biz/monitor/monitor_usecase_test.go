@@ -13,6 +13,7 @@ import (
 type mockRepo struct {
 	listAuditLogsFn                      func(ctx context.Context, query monitor.AuditQuery) (monitor.AuditListResult, error)
 	insertAuditLogFn                     func(ctx context.Context, entry monitor.AuditLog) error
+	deleteAuditLogsFn                    func(ctx context.Context) (int, error)
 	insertMonitorEventFn                 func(ctx context.Context, ev monitor.EventWrite) error
 	listMonitorEventsFn                  func(ctx context.Context, query monitor.EventsQuery) (monitor.ListResult, error)
 	getMonitorEventFn                    func(ctx context.Context, id string) (monitor.PlatformRow, error)
@@ -46,6 +47,13 @@ func (m *mockRepo) InsertAuditLog(ctx context.Context, entry monitor.AuditLog) e
 		return m.insertAuditLogFn(ctx, entry)
 	}
 	return nil
+}
+
+func (m *mockRepo) DeleteAuditLogs(ctx context.Context) (int, error) {
+	if m.deleteAuditLogsFn != nil {
+		return m.deleteAuditLogsFn(ctx)
+	}
+	return 0, nil
 }
 
 func (m *mockRepo) InsertMonitorEvent(ctx context.Context, ev monitor.EventWrite) error {

@@ -290,6 +290,95 @@ func (x *ListAuditLogsResponse) GetTotal() int32 {
 	return 0
 }
 
+type DeleteAuditLogsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Safety gate: must be "CONFIRM" to proceed with the clear-all delete.
+	Confirm       string `protobuf:"bytes,1,opt,name=confirm,proto3" json:"confirm,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteAuditLogsRequest) Reset() {
+	*x = DeleteAuditLogsRequest{}
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteAuditLogsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteAuditLogsRequest) ProtoMessage() {}
+
+func (x *DeleteAuditLogsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteAuditLogsRequest.ProtoReflect.Descriptor instead.
+func (*DeleteAuditLogsRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *DeleteAuditLogsRequest) GetConfirm() string {
+	if x != nil {
+		return x.Confirm
+	}
+	return ""
+}
+
+type DeleteAuditLogsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Deleted       int32                  `protobuf:"varint,1,opt,name=deleted,proto3" json:"deleted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteAuditLogsResponse) Reset() {
+	*x = DeleteAuditLogsResponse{}
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteAuditLogsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteAuditLogsResponse) ProtoMessage() {}
+
+func (x *DeleteAuditLogsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteAuditLogsResponse.ProtoReflect.Descriptor instead.
+func (*DeleteAuditLogsResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *DeleteAuditLogsResponse) GetDeleted() int32 {
+	if x != nil {
+		return x.Deleted
+	}
+	return 0
+}
+
 // Mirrors legacy domain.PlatformResource JSON for monitor-events / monitor-traces rows.
 type MonitorPlatformRow struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
@@ -325,7 +414,7 @@ type MonitorPlatformRow struct {
 
 func (x *MonitorPlatformRow) Reset() {
 	*x = MonitorPlatformRow{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[3]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -337,7 +426,7 @@ func (x *MonitorPlatformRow) String() string {
 func (*MonitorPlatformRow) ProtoMessage() {}
 
 func (x *MonitorPlatformRow) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[3]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -350,7 +439,7 @@ func (x *MonitorPlatformRow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MonitorPlatformRow.ProtoReflect.Descriptor instead.
 func (*MonitorPlatformRow) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{3}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *MonitorPlatformRow) GetId() string {
@@ -524,7 +613,7 @@ type ListMonitorEventsRequest struct {
 
 func (x *ListMonitorEventsRequest) Reset() {
 	*x = ListMonitorEventsRequest{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[4]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -536,7 +625,7 @@ func (x *ListMonitorEventsRequest) String() string {
 func (*ListMonitorEventsRequest) ProtoMessage() {}
 
 func (x *ListMonitorEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[4]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -549,7 +638,7 @@ func (x *ListMonitorEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMonitorEventsRequest.ProtoReflect.Descriptor instead.
 func (*ListMonitorEventsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{4}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListMonitorEventsRequest) GetLimit() int32 {
@@ -611,7 +700,7 @@ type ListMonitorEventsResponse struct {
 
 func (x *ListMonitorEventsResponse) Reset() {
 	*x = ListMonitorEventsResponse{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[5]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -623,7 +712,7 @@ func (x *ListMonitorEventsResponse) String() string {
 func (*ListMonitorEventsResponse) ProtoMessage() {}
 
 func (x *ListMonitorEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[5]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -636,7 +725,7 @@ func (x *ListMonitorEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMonitorEventsResponse.ProtoReflect.Descriptor instead.
 func (*ListMonitorEventsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{5}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListMonitorEventsResponse) GetItems() []*MonitorPlatformRow {
@@ -662,7 +751,7 @@ type GetMonitorEventRequest struct {
 
 func (x *GetMonitorEventRequest) Reset() {
 	*x = GetMonitorEventRequest{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[6]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -674,7 +763,7 @@ func (x *GetMonitorEventRequest) String() string {
 func (*GetMonitorEventRequest) ProtoMessage() {}
 
 func (x *GetMonitorEventRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[6]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -687,7 +776,7 @@ func (x *GetMonitorEventRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMonitorEventRequest.ProtoReflect.Descriptor instead.
 func (*GetMonitorEventRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{6}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetMonitorEventRequest) GetId() string {
@@ -711,7 +800,7 @@ type ListMonitorTracesRequest struct {
 
 func (x *ListMonitorTracesRequest) Reset() {
 	*x = ListMonitorTracesRequest{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[7]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -723,7 +812,7 @@ func (x *ListMonitorTracesRequest) String() string {
 func (*ListMonitorTracesRequest) ProtoMessage() {}
 
 func (x *ListMonitorTracesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[7]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -736,7 +825,7 @@ func (x *ListMonitorTracesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMonitorTracesRequest.ProtoReflect.Descriptor instead.
 func (*ListMonitorTracesRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{7}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListMonitorTracesRequest) GetLimit() int32 {
@@ -791,7 +880,7 @@ type ListMonitorTracesResponse struct {
 
 func (x *ListMonitorTracesResponse) Reset() {
 	*x = ListMonitorTracesResponse{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[8]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -803,7 +892,7 @@ func (x *ListMonitorTracesResponse) String() string {
 func (*ListMonitorTracesResponse) ProtoMessage() {}
 
 func (x *ListMonitorTracesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[8]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -816,7 +905,7 @@ func (x *ListMonitorTracesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMonitorTracesResponse.ProtoReflect.Descriptor instead.
 func (*ListMonitorTracesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{8}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListMonitorTracesResponse) GetItems() []*MonitorPlatformRow {
@@ -845,7 +934,7 @@ type MonitorTraceDetail struct {
 
 func (x *MonitorTraceDetail) Reset() {
 	*x = MonitorTraceDetail{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[9]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -857,7 +946,7 @@ func (x *MonitorTraceDetail) String() string {
 func (*MonitorTraceDetail) ProtoMessage() {}
 
 func (x *MonitorTraceDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[9]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -870,7 +959,7 @@ func (x *MonitorTraceDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MonitorTraceDetail.ProtoReflect.Descriptor instead.
 func (*MonitorTraceDetail) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{9}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *MonitorTraceDetail) GetTrace() *MonitorPlatformRow {
@@ -910,7 +999,7 @@ type GetMonitorTraceRequest struct {
 
 func (x *GetMonitorTraceRequest) Reset() {
 	*x = GetMonitorTraceRequest{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[10]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -922,7 +1011,7 @@ func (x *GetMonitorTraceRequest) String() string {
 func (*GetMonitorTraceRequest) ProtoMessage() {}
 
 func (x *GetMonitorTraceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[10]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -935,7 +1024,7 @@ func (x *GetMonitorTraceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMonitorTraceRequest.ProtoReflect.Descriptor instead.
 func (*GetMonitorTraceRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{10}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *GetMonitorTraceRequest) GetId() string {
@@ -959,7 +1048,7 @@ type MonitorLogLine struct {
 
 func (x *MonitorLogLine) Reset() {
 	*x = MonitorLogLine{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[11]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -971,7 +1060,7 @@ func (x *MonitorLogLine) String() string {
 func (*MonitorLogLine) ProtoMessage() {}
 
 func (x *MonitorLogLine) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[11]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -984,7 +1073,7 @@ func (x *MonitorLogLine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MonitorLogLine.ProtoReflect.Descriptor instead.
 func (*MonitorLogLine) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{11}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *MonitorLogLine) GetId() string {
@@ -1041,7 +1130,7 @@ type GetMonitorLogsResponse struct {
 
 func (x *GetMonitorLogsResponse) Reset() {
 	*x = GetMonitorLogsResponse{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[12]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1053,7 +1142,7 @@ func (x *GetMonitorLogsResponse) String() string {
 func (*GetMonitorLogsResponse) ProtoMessage() {}
 
 func (x *GetMonitorLogsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[12]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1066,7 +1155,7 @@ func (x *GetMonitorLogsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMonitorLogsResponse.ProtoReflect.Descriptor instead.
 func (*GetMonitorLogsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{12}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetMonitorLogsResponse) GetItems() []*MonitorLogLine {
@@ -1098,7 +1187,7 @@ type GetMonitorLogsRequest struct {
 
 func (x *GetMonitorLogsRequest) Reset() {
 	*x = GetMonitorLogsRequest{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[13]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1110,7 +1199,7 @@ func (x *GetMonitorLogsRequest) String() string {
 func (*GetMonitorLogsRequest) ProtoMessage() {}
 
 func (x *GetMonitorLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[13]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1123,7 +1212,7 @@ func (x *GetMonitorLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMonitorLogsRequest.ProtoReflect.Descriptor instead.
 func (*GetMonitorLogsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{13}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{15}
 }
 
 type FlowLogEntry struct {
@@ -1148,7 +1237,7 @@ type FlowLogEntry struct {
 
 func (x *FlowLogEntry) Reset() {
 	*x = FlowLogEntry{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[14]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1160,7 +1249,7 @@ func (x *FlowLogEntry) String() string {
 func (*FlowLogEntry) ProtoMessage() {}
 
 func (x *FlowLogEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[14]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1173,7 +1262,7 @@ func (x *FlowLogEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlowLogEntry.ProtoReflect.Descriptor instead.
 func (*FlowLogEntry) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{14}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *FlowLogEntry) GetId() string {
@@ -1292,7 +1381,7 @@ type ListFlowLogsRequest struct {
 
 func (x *ListFlowLogsRequest) Reset() {
 	*x = ListFlowLogsRequest{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[15]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1304,7 +1393,7 @@ func (x *ListFlowLogsRequest) String() string {
 func (*ListFlowLogsRequest) ProtoMessage() {}
 
 func (x *ListFlowLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[15]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1317,7 +1406,7 @@ func (x *ListFlowLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFlowLogsRequest.ProtoReflect.Descriptor instead.
 func (*ListFlowLogsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{15}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ListFlowLogsRequest) GetTraceId() string {
@@ -1393,7 +1482,7 @@ type ListFlowLogsResponse struct {
 
 func (x *ListFlowLogsResponse) Reset() {
 	*x = ListFlowLogsResponse{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[16]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1405,7 +1494,7 @@ func (x *ListFlowLogsResponse) String() string {
 func (*ListFlowLogsResponse) ProtoMessage() {}
 
 func (x *ListFlowLogsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[16]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1418,7 +1507,7 @@ func (x *ListFlowLogsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFlowLogsResponse.ProtoReflect.Descriptor instead.
 func (*ListFlowLogsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{16}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ListFlowLogsResponse) GetItems() []*FlowLogEntry {
@@ -1453,7 +1542,7 @@ type MonitorAlertRule struct {
 
 func (x *MonitorAlertRule) Reset() {
 	*x = MonitorAlertRule{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[17]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1465,7 +1554,7 @@ func (x *MonitorAlertRule) String() string {
 func (*MonitorAlertRule) ProtoMessage() {}
 
 func (x *MonitorAlertRule) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[17]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1478,7 +1567,7 @@ func (x *MonitorAlertRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MonitorAlertRule.ProtoReflect.Descriptor instead.
 func (*MonitorAlertRule) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{17}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *MonitorAlertRule) GetId() string {
@@ -1560,7 +1649,7 @@ type ListMonitorAlertRulesResponse struct {
 
 func (x *ListMonitorAlertRulesResponse) Reset() {
 	*x = ListMonitorAlertRulesResponse{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[18]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1572,7 +1661,7 @@ func (x *ListMonitorAlertRulesResponse) String() string {
 func (*ListMonitorAlertRulesResponse) ProtoMessage() {}
 
 func (x *ListMonitorAlertRulesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[18]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1585,7 +1674,7 @@ func (x *ListMonitorAlertRulesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMonitorAlertRulesResponse.ProtoReflect.Descriptor instead.
 func (*ListMonitorAlertRulesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{18}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ListMonitorAlertRulesResponse) GetItems() []*MonitorAlertRule {
@@ -1613,7 +1702,7 @@ type AlertMetricInfo struct {
 
 func (x *AlertMetricInfo) Reset() {
 	*x = AlertMetricInfo{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[19]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1625,7 +1714,7 @@ func (x *AlertMetricInfo) String() string {
 func (*AlertMetricInfo) ProtoMessage() {}
 
 func (x *AlertMetricInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[19]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1638,7 +1727,7 @@ func (x *AlertMetricInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AlertMetricInfo.ProtoReflect.Descriptor instead.
 func (*AlertMetricInfo) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{19}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *AlertMetricInfo) GetKey() string {
@@ -1706,7 +1795,7 @@ type ListAlertMetricsResponse struct {
 
 func (x *ListAlertMetricsResponse) Reset() {
 	*x = ListAlertMetricsResponse{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[20]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1718,7 +1807,7 @@ func (x *ListAlertMetricsResponse) String() string {
 func (*ListAlertMetricsResponse) ProtoMessage() {}
 
 func (x *ListAlertMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[20]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1731,7 +1820,7 @@ func (x *ListAlertMetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAlertMetricsResponse.ProtoReflect.Descriptor instead.
 func (*ListAlertMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{20}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListAlertMetricsResponse) GetItems() []*AlertMetricInfo {
@@ -1750,7 +1839,7 @@ type PutMonitorAlertRulesRequest struct {
 
 func (x *PutMonitorAlertRulesRequest) Reset() {
 	*x = PutMonitorAlertRulesRequest{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[21]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1762,7 +1851,7 @@ func (x *PutMonitorAlertRulesRequest) String() string {
 func (*PutMonitorAlertRulesRequest) ProtoMessage() {}
 
 func (x *PutMonitorAlertRulesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[21]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1775,7 +1864,7 @@ func (x *PutMonitorAlertRulesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PutMonitorAlertRulesRequest.ProtoReflect.Descriptor instead.
 func (*PutMonitorAlertRulesRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{21}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *PutMonitorAlertRulesRequest) GetItems() []*MonitorAlertRule {
@@ -1794,7 +1883,7 @@ type PutMonitorAlertRulesResponse struct {
 
 func (x *PutMonitorAlertRulesResponse) Reset() {
 	*x = PutMonitorAlertRulesResponse{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[22]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1806,7 +1895,7 @@ func (x *PutMonitorAlertRulesResponse) String() string {
 func (*PutMonitorAlertRulesResponse) ProtoMessage() {}
 
 func (x *PutMonitorAlertRulesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[22]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1819,7 +1908,7 @@ func (x *PutMonitorAlertRulesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PutMonitorAlertRulesResponse.ProtoReflect.Descriptor instead.
 func (*PutMonitorAlertRulesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{22}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *PutMonitorAlertRulesResponse) GetItems() []*MonitorAlertRule {
@@ -1838,7 +1927,7 @@ type GetRunnerMetricsRequest struct {
 
 func (x *GetRunnerMetricsRequest) Reset() {
 	*x = GetRunnerMetricsRequest{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[23]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1850,7 +1939,7 @@ func (x *GetRunnerMetricsRequest) String() string {
 func (*GetRunnerMetricsRequest) ProtoMessage() {}
 
 func (x *GetRunnerMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[23]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1863,7 +1952,7 @@ func (x *GetRunnerMetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRunnerMetricsRequest.ProtoReflect.Descriptor instead.
 func (*GetRunnerMetricsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{23}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetRunnerMetricsRequest) GetWindowMinutes() int32 {
@@ -1890,7 +1979,7 @@ type RunnerMetricsSummary struct {
 
 func (x *RunnerMetricsSummary) Reset() {
 	*x = RunnerMetricsSummary{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[24]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1902,7 +1991,7 @@ func (x *RunnerMetricsSummary) String() string {
 func (*RunnerMetricsSummary) ProtoMessage() {}
 
 func (x *RunnerMetricsSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[24]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1915,7 +2004,7 @@ func (x *RunnerMetricsSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunnerMetricsSummary.ProtoReflect.Descriptor instead.
 func (*RunnerMetricsSummary) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{24}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *RunnerMetricsSummary) GetWindowMinutes() int32 {
@@ -1992,7 +2081,7 @@ type CodeExecutorCapability struct {
 
 func (x *CodeExecutorCapability) Reset() {
 	*x = CodeExecutorCapability{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[25]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2004,7 +2093,7 @@ func (x *CodeExecutorCapability) String() string {
 func (*CodeExecutorCapability) ProtoMessage() {}
 
 func (x *CodeExecutorCapability) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[25]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2017,7 +2106,7 @@ func (x *CodeExecutorCapability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CodeExecutorCapability.ProtoReflect.Descriptor instead.
 func (*CodeExecutorCapability) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{25}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *CodeExecutorCapability) GetType() string {
@@ -2050,7 +2139,7 @@ type GetCodeExecutorCapabilitiesResponse struct {
 
 func (x *GetCodeExecutorCapabilitiesResponse) Reset() {
 	*x = GetCodeExecutorCapabilitiesResponse{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[26]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2062,7 +2151,7 @@ func (x *GetCodeExecutorCapabilitiesResponse) String() string {
 func (*GetCodeExecutorCapabilitiesResponse) ProtoMessage() {}
 
 func (x *GetCodeExecutorCapabilitiesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[26]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2075,7 +2164,7 @@ func (x *GetCodeExecutorCapabilitiesResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use GetCodeExecutorCapabilitiesResponse.ProtoReflect.Descriptor instead.
 func (*GetCodeExecutorCapabilitiesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{26}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GetCodeExecutorCapabilitiesResponse) GetBackends() []*CodeExecutorCapability {
@@ -2099,7 +2188,7 @@ type GenerateDiagnosticBundleRequest struct {
 
 func (x *GenerateDiagnosticBundleRequest) Reset() {
 	*x = GenerateDiagnosticBundleRequest{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[27]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2111,7 +2200,7 @@ func (x *GenerateDiagnosticBundleRequest) String() string {
 func (*GenerateDiagnosticBundleRequest) ProtoMessage() {}
 
 func (x *GenerateDiagnosticBundleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[27]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2124,7 +2213,7 @@ func (x *GenerateDiagnosticBundleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateDiagnosticBundleRequest.ProtoReflect.Descriptor instead.
 func (*GenerateDiagnosticBundleRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{27}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GenerateDiagnosticBundleRequest) GetTriggerType() string {
@@ -2184,7 +2273,7 @@ type GenerateDiagnosticBundleResponse struct {
 
 func (x *GenerateDiagnosticBundleResponse) Reset() {
 	*x = GenerateDiagnosticBundleResponse{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[28]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2196,7 +2285,7 @@ func (x *GenerateDiagnosticBundleResponse) String() string {
 func (*GenerateDiagnosticBundleResponse) ProtoMessage() {}
 
 func (x *GenerateDiagnosticBundleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[28]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2209,7 +2298,7 @@ func (x *GenerateDiagnosticBundleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateDiagnosticBundleResponse.ProtoReflect.Descriptor instead.
 func (*GenerateDiagnosticBundleResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{28}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *GenerateDiagnosticBundleResponse) GetBundleId() string {
@@ -2275,7 +2364,7 @@ type DiagnoseAndHealRequest struct {
 
 func (x *DiagnoseAndHealRequest) Reset() {
 	*x = DiagnoseAndHealRequest{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[29]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2287,7 +2376,7 @@ func (x *DiagnoseAndHealRequest) String() string {
 func (*DiagnoseAndHealRequest) ProtoMessage() {}
 
 func (x *DiagnoseAndHealRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[29]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2300,7 +2389,7 @@ func (x *DiagnoseAndHealRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiagnoseAndHealRequest.ProtoReflect.Descriptor instead.
 func (*DiagnoseAndHealRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{29}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *DiagnoseAndHealRequest) GetTriggerType() string {
@@ -2355,7 +2444,7 @@ type AutoHealedCondition struct {
 
 func (x *AutoHealedCondition) Reset() {
 	*x = AutoHealedCondition{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[30]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2367,7 +2456,7 @@ func (x *AutoHealedCondition) String() string {
 func (*AutoHealedCondition) ProtoMessage() {}
 
 func (x *AutoHealedCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[30]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2380,7 +2469,7 @@ func (x *AutoHealedCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AutoHealedCondition.ProtoReflect.Descriptor instead.
 func (*AutoHealedCondition) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{30}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *AutoHealedCondition) GetAutoHealed() bool {
@@ -2408,7 +2497,7 @@ type HealAttemptsCondition struct {
 
 func (x *HealAttemptsCondition) Reset() {
 	*x = HealAttemptsCondition{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[31]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2420,7 +2509,7 @@ func (x *HealAttemptsCondition) String() string {
 func (*HealAttemptsCondition) ProtoMessage() {}
 
 func (x *HealAttemptsCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[31]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2433,7 +2522,7 @@ func (x *HealAttemptsCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealAttemptsCondition.ProtoReflect.Descriptor instead.
 func (*HealAttemptsCondition) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{31}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *HealAttemptsCondition) GetAttempts() int32 {
@@ -2468,7 +2557,7 @@ type SelfCheckStatusCondition struct {
 
 func (x *SelfCheckStatusCondition) Reset() {
 	*x = SelfCheckStatusCondition{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[32]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2480,7 +2569,7 @@ func (x *SelfCheckStatusCondition) String() string {
 func (*SelfCheckStatusCondition) ProtoMessage() {}
 
 func (x *SelfCheckStatusCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[32]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2493,7 +2582,7 @@ func (x *SelfCheckStatusCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SelfCheckStatusCondition.ProtoReflect.Descriptor instead.
 func (*SelfCheckStatusCondition) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{32}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *SelfCheckStatusCondition) GetCheckName() string {
@@ -2531,7 +2620,7 @@ type RootCauseCondition struct {
 
 func (x *RootCauseCondition) Reset() {
 	*x = RootCauseCondition{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[33]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2543,7 +2632,7 @@ func (x *RootCauseCondition) String() string {
 func (*RootCauseCondition) ProtoMessage() {}
 
 func (x *RootCauseCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[33]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2556,7 +2645,7 @@ func (x *RootCauseCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RootCauseCondition.ProtoReflect.Descriptor instead.
 func (*RootCauseCondition) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{33}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *RootCauseCondition) GetCondition() isRootCauseCondition_Condition {
@@ -2635,7 +2724,7 @@ type DiagnoseAndHealResponse struct {
 
 func (x *DiagnoseAndHealResponse) Reset() {
 	*x = DiagnoseAndHealResponse{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[34]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2647,7 +2736,7 @@ func (x *DiagnoseAndHealResponse) String() string {
 func (*DiagnoseAndHealResponse) ProtoMessage() {}
 
 func (x *DiagnoseAndHealResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[34]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2660,7 +2749,7 @@ func (x *DiagnoseAndHealResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiagnoseAndHealResponse.ProtoReflect.Descriptor instead.
 func (*DiagnoseAndHealResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{34}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *DiagnoseAndHealResponse) GetHealId() string {
@@ -2761,7 +2850,7 @@ type SelfCheckResultEntry struct {
 
 func (x *SelfCheckResultEntry) Reset() {
 	*x = SelfCheckResultEntry{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[35]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2773,7 +2862,7 @@ func (x *SelfCheckResultEntry) String() string {
 func (*SelfCheckResultEntry) ProtoMessage() {}
 
 func (x *SelfCheckResultEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[35]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2786,7 +2875,7 @@ func (x *SelfCheckResultEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SelfCheckResultEntry.ProtoReflect.Descriptor instead.
 func (*SelfCheckResultEntry) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{35}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *SelfCheckResultEntry) GetCheckId() string {
@@ -2842,7 +2931,7 @@ type RepairActionEntry struct {
 
 func (x *RepairActionEntry) Reset() {
 	*x = RepairActionEntry{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[36]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2854,7 +2943,7 @@ func (x *RepairActionEntry) String() string {
 func (*RepairActionEntry) ProtoMessage() {}
 
 func (x *RepairActionEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[36]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2867,7 +2956,7 @@ func (x *RepairActionEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepairActionEntry.ProtoReflect.Descriptor instead.
 func (*RepairActionEntry) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{36}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *RepairActionEntry) GetSuccess() bool {
@@ -2906,7 +2995,7 @@ type SelfCheckReportEntry struct {
 
 func (x *SelfCheckReportEntry) Reset() {
 	*x = SelfCheckReportEntry{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[37]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2918,7 +3007,7 @@ func (x *SelfCheckReportEntry) String() string {
 func (*SelfCheckReportEntry) ProtoMessage() {}
 
 func (x *SelfCheckReportEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[37]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2931,7 +3020,7 @@ func (x *SelfCheckReportEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SelfCheckReportEntry.ProtoReflect.Descriptor instead.
 func (*SelfCheckReportEntry) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{37}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *SelfCheckReportEntry) GetId() string {
@@ -2991,7 +3080,7 @@ type TriggerSelfCheckRequest struct {
 
 func (x *TriggerSelfCheckRequest) Reset() {
 	*x = TriggerSelfCheckRequest{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[38]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3003,7 +3092,7 @@ func (x *TriggerSelfCheckRequest) String() string {
 func (*TriggerSelfCheckRequest) ProtoMessage() {}
 
 func (x *TriggerSelfCheckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[38]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3016,7 +3105,7 @@ func (x *TriggerSelfCheckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TriggerSelfCheckRequest.ProtoReflect.Descriptor instead.
 func (*TriggerSelfCheckRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{38}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{40}
 }
 
 type TriggerSelfCheckResponse struct {
@@ -3028,7 +3117,7 @@ type TriggerSelfCheckResponse struct {
 
 func (x *TriggerSelfCheckResponse) Reset() {
 	*x = TriggerSelfCheckResponse{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[39]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3040,7 +3129,7 @@ func (x *TriggerSelfCheckResponse) String() string {
 func (*TriggerSelfCheckResponse) ProtoMessage() {}
 
 func (x *TriggerSelfCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[39]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3053,7 +3142,7 @@ func (x *TriggerSelfCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TriggerSelfCheckResponse.ProtoReflect.Descriptor instead.
 func (*TriggerSelfCheckResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{39}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *TriggerSelfCheckResponse) GetReport() *SelfCheckReportEntry {
@@ -3073,7 +3162,7 @@ type ListSelfCheckReportsRequest struct {
 
 func (x *ListSelfCheckReportsRequest) Reset() {
 	*x = ListSelfCheckReportsRequest{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[40]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3085,7 +3174,7 @@ func (x *ListSelfCheckReportsRequest) String() string {
 func (*ListSelfCheckReportsRequest) ProtoMessage() {}
 
 func (x *ListSelfCheckReportsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[40]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3098,7 +3187,7 @@ func (x *ListSelfCheckReportsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSelfCheckReportsRequest.ProtoReflect.Descriptor instead.
 func (*ListSelfCheckReportsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{40}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ListSelfCheckReportsRequest) GetLimit() int32 {
@@ -3125,7 +3214,7 @@ type ListSelfCheckReportsResponse struct {
 
 func (x *ListSelfCheckReportsResponse) Reset() {
 	*x = ListSelfCheckReportsResponse{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[41]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3137,7 +3226,7 @@ func (x *ListSelfCheckReportsResponse) String() string {
 func (*ListSelfCheckReportsResponse) ProtoMessage() {}
 
 func (x *ListSelfCheckReportsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[41]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3150,7 +3239,7 @@ func (x *ListSelfCheckReportsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSelfCheckReportsResponse.ProtoReflect.Descriptor instead.
 func (*ListSelfCheckReportsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{41}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ListSelfCheckReportsResponse) GetItems() []*SelfCheckReportEntry {
@@ -3175,7 +3264,7 @@ type HealStatsRequest struct {
 
 func (x *HealStatsRequest) Reset() {
 	*x = HealStatsRequest{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[42]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3187,7 +3276,7 @@ func (x *HealStatsRequest) String() string {
 func (*HealStatsRequest) ProtoMessage() {}
 
 func (x *HealStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[42]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3200,7 +3289,7 @@ func (x *HealStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealStatsRequest.ProtoReflect.Descriptor instead.
 func (*HealStatsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{42}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{44}
 }
 
 type HealStatsResponse struct {
@@ -3214,7 +3303,7 @@ type HealStatsResponse struct {
 
 func (x *HealStatsResponse) Reset() {
 	*x = HealStatsResponse{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[43]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3226,7 +3315,7 @@ func (x *HealStatsResponse) String() string {
 func (*HealStatsResponse) ProtoMessage() {}
 
 func (x *HealStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[43]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3239,7 +3328,7 @@ func (x *HealStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealStatsResponse.ProtoReflect.Descriptor instead.
 func (*HealStatsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{43}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *HealStatsResponse) GetTotalHeals() int32 {
@@ -3273,7 +3362,7 @@ type RuleFailCount struct {
 
 func (x *RuleFailCount) Reset() {
 	*x = RuleFailCount{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[44]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3285,7 +3374,7 @@ func (x *RuleFailCount) String() string {
 func (*RuleFailCount) ProtoMessage() {}
 
 func (x *RuleFailCount) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[44]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3298,7 +3387,7 @@ func (x *RuleFailCount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuleFailCount.ProtoReflect.Descriptor instead.
 func (*RuleFailCount) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{44}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *RuleFailCount) GetRuleId() string {
@@ -3328,7 +3417,7 @@ type ListHealRecordsRequest struct {
 
 func (x *ListHealRecordsRequest) Reset() {
 	*x = ListHealRecordsRequest{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[45]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3340,7 +3429,7 @@ func (x *ListHealRecordsRequest) String() string {
 func (*ListHealRecordsRequest) ProtoMessage() {}
 
 func (x *ListHealRecordsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[45]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3353,7 +3442,7 @@ func (x *ListHealRecordsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListHealRecordsRequest.ProtoReflect.Descriptor instead.
 func (*ListHealRecordsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{45}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *ListHealRecordsRequest) GetLimit() int32 {
@@ -3412,7 +3501,7 @@ type HealRecordEntry struct {
 
 func (x *HealRecordEntry) Reset() {
 	*x = HealRecordEntry{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[46]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3424,7 +3513,7 @@ func (x *HealRecordEntry) String() string {
 func (*HealRecordEntry) ProtoMessage() {}
 
 func (x *HealRecordEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[46]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3437,7 +3526,7 @@ func (x *HealRecordEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealRecordEntry.ProtoReflect.Descriptor instead.
 func (*HealRecordEntry) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{46}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *HealRecordEntry) GetId() string {
@@ -3541,7 +3630,7 @@ type ListHealRecordsResponse struct {
 
 func (x *ListHealRecordsResponse) Reset() {
 	*x = ListHealRecordsResponse{}
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[47]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3553,7 +3642,7 @@ func (x *ListHealRecordsResponse) String() string {
 func (*ListHealRecordsResponse) ProtoMessage() {}
 
 func (x *ListHealRecordsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[47]
+	mi := &file_kratos_monitor_v1_monitor_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3566,7 +3655,7 @@ func (x *ListHealRecordsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListHealRecordsResponse.ProtoReflect.Descriptor instead.
 func (*ListHealRecordsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{47}
+	return file_kratos_monitor_v1_monitor_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ListHealRecordsResponse) GetItems() []*HealRecordEntry {
@@ -3615,7 +3704,11 @@ const file_kratos_monitor_v1_monitor_proto_rawDesc = "" +
 	"\akeyword\x18\x06 \x01(\tR\akeyword\"`\n" +
 	"\x15ListAuditLogsResponse\x121\n" +
 	"\x05items\x18\x01 \x03(\v2\x1b.kratos.monitor.v1.AuditLogR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total\"\xee\x04\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\"2\n" +
+	"\x16DeleteAuditLogsRequest\x12\x18\n" +
+	"\aconfirm\x18\x01 \x01(\tR\aconfirm\"3\n" +
+	"\x17DeleteAuditLogsResponse\x12\x18\n" +
+	"\adeleted\x18\x01 \x01(\x05R\adeleted\"\xee\x04\n" +
 	"\x12MonitorPlatformRow\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\bresource\x18\x02 \x01(\tR\bresource\x12\x10\n" +
@@ -3911,9 +4004,10 @@ const file_kratos_monitor_v1_monitor_proto_rawDesc = "" +
 	"created_at\x18\r \x01(\tR\tcreatedAt\"i\n" +
 	"\x17ListHealRecordsResponse\x128\n" +
 	"\x05items\x18\x01 \x03(\v2\".kratos.monitor.v1.HealRecordEntryR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total2\xbc\x14\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total2\xc7\x15\n" +
 	"\x0eMonitorService\x12}\n" +
-	"\rListAuditLogs\x12'.kratos.monitor.v1.ListAuditLogsRequest\x1a(.kratos.monitor.v1.ListAuditLogsResponse\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/monitor/audit\x12\x8a\x01\n" +
+	"\rListAuditLogs\x12'.kratos.monitor.v1.ListAuditLogsRequest\x1a(.kratos.monitor.v1.ListAuditLogsResponse\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/monitor/audit\x12\x88\x01\n" +
+	"\x0fDeleteAuditLogs\x12).kratos.monitor.v1.DeleteAuditLogsRequest\x1a*.kratos.monitor.v1.DeleteAuditLogsResponse\"\x1e\x82\xd3\xe4\x93\x02\x18*\x16/v1/monitor/audit-logs\x12\x8a\x01\n" +
 	"\x11ListMonitorEvents\x12+.kratos.monitor.v1.ListMonitorEventsRequest\x1a,.kratos.monitor.v1.ListMonitorEventsResponse\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/monitor/events\x12\x84\x01\n" +
 	"\x0fGetMonitorEvent\x12).kratos.monitor.v1.GetMonitorEventRequest\x1a%.kratos.monitor.v1.MonitorPlatformRow\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/monitor/events/{id}\x12\x8a\x01\n" +
 	"\x11ListMonitorTraces\x12+.kratos.monitor.v1.ListMonitorTracesRequest\x1a,.kratos.monitor.v1.ListMonitorTracesResponse\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/monitor/traces\x12\x84\x01\n" +
@@ -3945,117 +4039,121 @@ func file_kratos_monitor_v1_monitor_proto_rawDescGZIP() []byte {
 	return file_kratos_monitor_v1_monitor_proto_rawDescData
 }
 
-var file_kratos_monitor_v1_monitor_proto_msgTypes = make([]protoimpl.MessageInfo, 48)
+var file_kratos_monitor_v1_monitor_proto_msgTypes = make([]protoimpl.MessageInfo, 50)
 var file_kratos_monitor_v1_monitor_proto_goTypes = []any{
 	(*AuditLog)(nil),                            // 0: kratos.monitor.v1.AuditLog
 	(*ListAuditLogsRequest)(nil),                // 1: kratos.monitor.v1.ListAuditLogsRequest
 	(*ListAuditLogsResponse)(nil),               // 2: kratos.monitor.v1.ListAuditLogsResponse
-	(*MonitorPlatformRow)(nil),                  // 3: kratos.monitor.v1.MonitorPlatformRow
-	(*ListMonitorEventsRequest)(nil),            // 4: kratos.monitor.v1.ListMonitorEventsRequest
-	(*ListMonitorEventsResponse)(nil),           // 5: kratos.monitor.v1.ListMonitorEventsResponse
-	(*GetMonitorEventRequest)(nil),              // 6: kratos.monitor.v1.GetMonitorEventRequest
-	(*ListMonitorTracesRequest)(nil),            // 7: kratos.monitor.v1.ListMonitorTracesRequest
-	(*ListMonitorTracesResponse)(nil),           // 8: kratos.monitor.v1.ListMonitorTracesResponse
-	(*MonitorTraceDetail)(nil),                  // 9: kratos.monitor.v1.MonitorTraceDetail
-	(*GetMonitorTraceRequest)(nil),              // 10: kratos.monitor.v1.GetMonitorTraceRequest
-	(*MonitorLogLine)(nil),                      // 11: kratos.monitor.v1.MonitorLogLine
-	(*GetMonitorLogsResponse)(nil),              // 12: kratos.monitor.v1.GetMonitorLogsResponse
-	(*GetMonitorLogsRequest)(nil),               // 13: kratos.monitor.v1.GetMonitorLogsRequest
-	(*FlowLogEntry)(nil),                        // 14: kratos.monitor.v1.FlowLogEntry
-	(*ListFlowLogsRequest)(nil),                 // 15: kratos.monitor.v1.ListFlowLogsRequest
-	(*ListFlowLogsResponse)(nil),                // 16: kratos.monitor.v1.ListFlowLogsResponse
-	(*MonitorAlertRule)(nil),                    // 17: kratos.monitor.v1.MonitorAlertRule
-	(*ListMonitorAlertRulesResponse)(nil),       // 18: kratos.monitor.v1.ListMonitorAlertRulesResponse
-	(*AlertMetricInfo)(nil),                     // 19: kratos.monitor.v1.AlertMetricInfo
-	(*ListAlertMetricsResponse)(nil),            // 20: kratos.monitor.v1.ListAlertMetricsResponse
-	(*PutMonitorAlertRulesRequest)(nil),         // 21: kratos.monitor.v1.PutMonitorAlertRulesRequest
-	(*PutMonitorAlertRulesResponse)(nil),        // 22: kratos.monitor.v1.PutMonitorAlertRulesResponse
-	(*GetRunnerMetricsRequest)(nil),             // 23: kratos.monitor.v1.GetRunnerMetricsRequest
-	(*RunnerMetricsSummary)(nil),                // 24: kratos.monitor.v1.RunnerMetricsSummary
-	(*CodeExecutorCapability)(nil),              // 25: kratos.monitor.v1.CodeExecutorCapability
-	(*GetCodeExecutorCapabilitiesResponse)(nil), // 26: kratos.monitor.v1.GetCodeExecutorCapabilitiesResponse
-	(*GenerateDiagnosticBundleRequest)(nil),     // 27: kratos.monitor.v1.GenerateDiagnosticBundleRequest
-	(*GenerateDiagnosticBundleResponse)(nil),    // 28: kratos.monitor.v1.GenerateDiagnosticBundleResponse
-	(*DiagnoseAndHealRequest)(nil),              // 29: kratos.monitor.v1.DiagnoseAndHealRequest
-	(*AutoHealedCondition)(nil),                 // 30: kratos.monitor.v1.AutoHealedCondition
-	(*HealAttemptsCondition)(nil),               // 31: kratos.monitor.v1.HealAttemptsCondition
-	(*SelfCheckStatusCondition)(nil),            // 32: kratos.monitor.v1.SelfCheckStatusCondition
-	(*RootCauseCondition)(nil),                  // 33: kratos.monitor.v1.RootCauseCondition
-	(*DiagnoseAndHealResponse)(nil),             // 34: kratos.monitor.v1.DiagnoseAndHealResponse
-	(*SelfCheckResultEntry)(nil),                // 35: kratos.monitor.v1.SelfCheckResultEntry
-	(*RepairActionEntry)(nil),                   // 36: kratos.monitor.v1.RepairActionEntry
-	(*SelfCheckReportEntry)(nil),                // 37: kratos.monitor.v1.SelfCheckReportEntry
-	(*TriggerSelfCheckRequest)(nil),             // 38: kratos.monitor.v1.TriggerSelfCheckRequest
-	(*TriggerSelfCheckResponse)(nil),            // 39: kratos.monitor.v1.TriggerSelfCheckResponse
-	(*ListSelfCheckReportsRequest)(nil),         // 40: kratos.monitor.v1.ListSelfCheckReportsRequest
-	(*ListSelfCheckReportsResponse)(nil),        // 41: kratos.monitor.v1.ListSelfCheckReportsResponse
-	(*HealStatsRequest)(nil),                    // 42: kratos.monitor.v1.HealStatsRequest
-	(*HealStatsResponse)(nil),                   // 43: kratos.monitor.v1.HealStatsResponse
-	(*RuleFailCount)(nil),                       // 44: kratos.monitor.v1.RuleFailCount
-	(*ListHealRecordsRequest)(nil),              // 45: kratos.monitor.v1.ListHealRecordsRequest
-	(*HealRecordEntry)(nil),                     // 46: kratos.monitor.v1.HealRecordEntry
-	(*ListHealRecordsResponse)(nil),             // 47: kratos.monitor.v1.ListHealRecordsResponse
+	(*DeleteAuditLogsRequest)(nil),              // 3: kratos.monitor.v1.DeleteAuditLogsRequest
+	(*DeleteAuditLogsResponse)(nil),             // 4: kratos.monitor.v1.DeleteAuditLogsResponse
+	(*MonitorPlatformRow)(nil),                  // 5: kratos.monitor.v1.MonitorPlatformRow
+	(*ListMonitorEventsRequest)(nil),            // 6: kratos.monitor.v1.ListMonitorEventsRequest
+	(*ListMonitorEventsResponse)(nil),           // 7: kratos.monitor.v1.ListMonitorEventsResponse
+	(*GetMonitorEventRequest)(nil),              // 8: kratos.monitor.v1.GetMonitorEventRequest
+	(*ListMonitorTracesRequest)(nil),            // 9: kratos.monitor.v1.ListMonitorTracesRequest
+	(*ListMonitorTracesResponse)(nil),           // 10: kratos.monitor.v1.ListMonitorTracesResponse
+	(*MonitorTraceDetail)(nil),                  // 11: kratos.monitor.v1.MonitorTraceDetail
+	(*GetMonitorTraceRequest)(nil),              // 12: kratos.monitor.v1.GetMonitorTraceRequest
+	(*MonitorLogLine)(nil),                      // 13: kratos.monitor.v1.MonitorLogLine
+	(*GetMonitorLogsResponse)(nil),              // 14: kratos.monitor.v1.GetMonitorLogsResponse
+	(*GetMonitorLogsRequest)(nil),               // 15: kratos.monitor.v1.GetMonitorLogsRequest
+	(*FlowLogEntry)(nil),                        // 16: kratos.monitor.v1.FlowLogEntry
+	(*ListFlowLogsRequest)(nil),                 // 17: kratos.monitor.v1.ListFlowLogsRequest
+	(*ListFlowLogsResponse)(nil),                // 18: kratos.monitor.v1.ListFlowLogsResponse
+	(*MonitorAlertRule)(nil),                    // 19: kratos.monitor.v1.MonitorAlertRule
+	(*ListMonitorAlertRulesResponse)(nil),       // 20: kratos.monitor.v1.ListMonitorAlertRulesResponse
+	(*AlertMetricInfo)(nil),                     // 21: kratos.monitor.v1.AlertMetricInfo
+	(*ListAlertMetricsResponse)(nil),            // 22: kratos.monitor.v1.ListAlertMetricsResponse
+	(*PutMonitorAlertRulesRequest)(nil),         // 23: kratos.monitor.v1.PutMonitorAlertRulesRequest
+	(*PutMonitorAlertRulesResponse)(nil),        // 24: kratos.monitor.v1.PutMonitorAlertRulesResponse
+	(*GetRunnerMetricsRequest)(nil),             // 25: kratos.monitor.v1.GetRunnerMetricsRequest
+	(*RunnerMetricsSummary)(nil),                // 26: kratos.monitor.v1.RunnerMetricsSummary
+	(*CodeExecutorCapability)(nil),              // 27: kratos.monitor.v1.CodeExecutorCapability
+	(*GetCodeExecutorCapabilitiesResponse)(nil), // 28: kratos.monitor.v1.GetCodeExecutorCapabilitiesResponse
+	(*GenerateDiagnosticBundleRequest)(nil),     // 29: kratos.monitor.v1.GenerateDiagnosticBundleRequest
+	(*GenerateDiagnosticBundleResponse)(nil),    // 30: kratos.monitor.v1.GenerateDiagnosticBundleResponse
+	(*DiagnoseAndHealRequest)(nil),              // 31: kratos.monitor.v1.DiagnoseAndHealRequest
+	(*AutoHealedCondition)(nil),                 // 32: kratos.monitor.v1.AutoHealedCondition
+	(*HealAttemptsCondition)(nil),               // 33: kratos.monitor.v1.HealAttemptsCondition
+	(*SelfCheckStatusCondition)(nil),            // 34: kratos.monitor.v1.SelfCheckStatusCondition
+	(*RootCauseCondition)(nil),                  // 35: kratos.monitor.v1.RootCauseCondition
+	(*DiagnoseAndHealResponse)(nil),             // 36: kratos.monitor.v1.DiagnoseAndHealResponse
+	(*SelfCheckResultEntry)(nil),                // 37: kratos.monitor.v1.SelfCheckResultEntry
+	(*RepairActionEntry)(nil),                   // 38: kratos.monitor.v1.RepairActionEntry
+	(*SelfCheckReportEntry)(nil),                // 39: kratos.monitor.v1.SelfCheckReportEntry
+	(*TriggerSelfCheckRequest)(nil),             // 40: kratos.monitor.v1.TriggerSelfCheckRequest
+	(*TriggerSelfCheckResponse)(nil),            // 41: kratos.monitor.v1.TriggerSelfCheckResponse
+	(*ListSelfCheckReportsRequest)(nil),         // 42: kratos.monitor.v1.ListSelfCheckReportsRequest
+	(*ListSelfCheckReportsResponse)(nil),        // 43: kratos.monitor.v1.ListSelfCheckReportsResponse
+	(*HealStatsRequest)(nil),                    // 44: kratos.monitor.v1.HealStatsRequest
+	(*HealStatsResponse)(nil),                   // 45: kratos.monitor.v1.HealStatsResponse
+	(*RuleFailCount)(nil),                       // 46: kratos.monitor.v1.RuleFailCount
+	(*ListHealRecordsRequest)(nil),              // 47: kratos.monitor.v1.ListHealRecordsRequest
+	(*HealRecordEntry)(nil),                     // 48: kratos.monitor.v1.HealRecordEntry
+	(*ListHealRecordsResponse)(nil),             // 49: kratos.monitor.v1.ListHealRecordsResponse
 }
 var file_kratos_monitor_v1_monitor_proto_depIdxs = []int32{
 	0,  // 0: kratos.monitor.v1.ListAuditLogsResponse.items:type_name -> kratos.monitor.v1.AuditLog
-	3,  // 1: kratos.monitor.v1.ListMonitorEventsResponse.items:type_name -> kratos.monitor.v1.MonitorPlatformRow
-	3,  // 2: kratos.monitor.v1.ListMonitorTracesResponse.items:type_name -> kratos.monitor.v1.MonitorPlatformRow
-	3,  // 3: kratos.monitor.v1.MonitorTraceDetail.trace:type_name -> kratos.monitor.v1.MonitorPlatformRow
-	11, // 4: kratos.monitor.v1.GetMonitorLogsResponse.items:type_name -> kratos.monitor.v1.MonitorLogLine
-	14, // 5: kratos.monitor.v1.ListFlowLogsResponse.items:type_name -> kratos.monitor.v1.FlowLogEntry
-	17, // 6: kratos.monitor.v1.ListMonitorAlertRulesResponse.items:type_name -> kratos.monitor.v1.MonitorAlertRule
-	19, // 7: kratos.monitor.v1.ListAlertMetricsResponse.items:type_name -> kratos.monitor.v1.AlertMetricInfo
-	17, // 8: kratos.monitor.v1.PutMonitorAlertRulesRequest.items:type_name -> kratos.monitor.v1.MonitorAlertRule
-	17, // 9: kratos.monitor.v1.PutMonitorAlertRulesResponse.items:type_name -> kratos.monitor.v1.MonitorAlertRule
-	25, // 10: kratos.monitor.v1.GetCodeExecutorCapabilitiesResponse.backends:type_name -> kratos.monitor.v1.CodeExecutorCapability
-	30, // 11: kratos.monitor.v1.RootCauseCondition.auto_healed:type_name -> kratos.monitor.v1.AutoHealedCondition
-	31, // 12: kratos.monitor.v1.RootCauseCondition.heal_attempts:type_name -> kratos.monitor.v1.HealAttemptsCondition
-	32, // 13: kratos.monitor.v1.RootCauseCondition.self_check_status:type_name -> kratos.monitor.v1.SelfCheckStatusCondition
-	33, // 14: kratos.monitor.v1.DiagnoseAndHealResponse.root_cause_condition:type_name -> kratos.monitor.v1.RootCauseCondition
-	35, // 15: kratos.monitor.v1.SelfCheckReportEntry.check_results:type_name -> kratos.monitor.v1.SelfCheckResultEntry
-	36, // 16: kratos.monitor.v1.SelfCheckReportEntry.repair_actions:type_name -> kratos.monitor.v1.RepairActionEntry
-	37, // 17: kratos.monitor.v1.TriggerSelfCheckResponse.report:type_name -> kratos.monitor.v1.SelfCheckReportEntry
-	37, // 18: kratos.monitor.v1.ListSelfCheckReportsResponse.items:type_name -> kratos.monitor.v1.SelfCheckReportEntry
-	44, // 19: kratos.monitor.v1.HealStatsResponse.top_fail_rules:type_name -> kratos.monitor.v1.RuleFailCount
-	46, // 20: kratos.monitor.v1.ListHealRecordsResponse.items:type_name -> kratos.monitor.v1.HealRecordEntry
+	5,  // 1: kratos.monitor.v1.ListMonitorEventsResponse.items:type_name -> kratos.monitor.v1.MonitorPlatformRow
+	5,  // 2: kratos.monitor.v1.ListMonitorTracesResponse.items:type_name -> kratos.monitor.v1.MonitorPlatformRow
+	5,  // 3: kratos.monitor.v1.MonitorTraceDetail.trace:type_name -> kratos.monitor.v1.MonitorPlatformRow
+	13, // 4: kratos.monitor.v1.GetMonitorLogsResponse.items:type_name -> kratos.monitor.v1.MonitorLogLine
+	16, // 5: kratos.monitor.v1.ListFlowLogsResponse.items:type_name -> kratos.monitor.v1.FlowLogEntry
+	19, // 6: kratos.monitor.v1.ListMonitorAlertRulesResponse.items:type_name -> kratos.monitor.v1.MonitorAlertRule
+	21, // 7: kratos.monitor.v1.ListAlertMetricsResponse.items:type_name -> kratos.monitor.v1.AlertMetricInfo
+	19, // 8: kratos.monitor.v1.PutMonitorAlertRulesRequest.items:type_name -> kratos.monitor.v1.MonitorAlertRule
+	19, // 9: kratos.monitor.v1.PutMonitorAlertRulesResponse.items:type_name -> kratos.monitor.v1.MonitorAlertRule
+	27, // 10: kratos.monitor.v1.GetCodeExecutorCapabilitiesResponse.backends:type_name -> kratos.monitor.v1.CodeExecutorCapability
+	32, // 11: kratos.monitor.v1.RootCauseCondition.auto_healed:type_name -> kratos.monitor.v1.AutoHealedCondition
+	33, // 12: kratos.monitor.v1.RootCauseCondition.heal_attempts:type_name -> kratos.monitor.v1.HealAttemptsCondition
+	34, // 13: kratos.monitor.v1.RootCauseCondition.self_check_status:type_name -> kratos.monitor.v1.SelfCheckStatusCondition
+	35, // 14: kratos.monitor.v1.DiagnoseAndHealResponse.root_cause_condition:type_name -> kratos.monitor.v1.RootCauseCondition
+	37, // 15: kratos.monitor.v1.SelfCheckReportEntry.check_results:type_name -> kratos.monitor.v1.SelfCheckResultEntry
+	38, // 16: kratos.monitor.v1.SelfCheckReportEntry.repair_actions:type_name -> kratos.monitor.v1.RepairActionEntry
+	39, // 17: kratos.monitor.v1.TriggerSelfCheckResponse.report:type_name -> kratos.monitor.v1.SelfCheckReportEntry
+	39, // 18: kratos.monitor.v1.ListSelfCheckReportsResponse.items:type_name -> kratos.monitor.v1.SelfCheckReportEntry
+	46, // 19: kratos.monitor.v1.HealStatsResponse.top_fail_rules:type_name -> kratos.monitor.v1.RuleFailCount
+	48, // 20: kratos.monitor.v1.ListHealRecordsResponse.items:type_name -> kratos.monitor.v1.HealRecordEntry
 	1,  // 21: kratos.monitor.v1.MonitorService.ListAuditLogs:input_type -> kratos.monitor.v1.ListAuditLogsRequest
-	4,  // 22: kratos.monitor.v1.MonitorService.ListMonitorEvents:input_type -> kratos.monitor.v1.ListMonitorEventsRequest
-	6,  // 23: kratos.monitor.v1.MonitorService.GetMonitorEvent:input_type -> kratos.monitor.v1.GetMonitorEventRequest
-	7,  // 24: kratos.monitor.v1.MonitorService.ListMonitorTraces:input_type -> kratos.monitor.v1.ListMonitorTracesRequest
-	10, // 25: kratos.monitor.v1.MonitorService.GetMonitorTrace:input_type -> kratos.monitor.v1.GetMonitorTraceRequest
-	13, // 26: kratos.monitor.v1.MonitorService.GetMonitorLogs:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
-	15, // 27: kratos.monitor.v1.MonitorService.ListFlowLogs:input_type -> kratos.monitor.v1.ListFlowLogsRequest
-	13, // 28: kratos.monitor.v1.MonitorService.ListMonitorAlertRules:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
-	13, // 29: kratos.monitor.v1.MonitorService.ListAlertMetrics:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
-	21, // 30: kratos.monitor.v1.MonitorService.PutMonitorAlertRules:input_type -> kratos.monitor.v1.PutMonitorAlertRulesRequest
-	23, // 31: kratos.monitor.v1.MonitorService.GetRunnerMetrics:input_type -> kratos.monitor.v1.GetRunnerMetricsRequest
-	13, // 32: kratos.monitor.v1.MonitorService.GetCodeExecutorCapabilities:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
-	27, // 33: kratos.monitor.v1.MonitorService.GenerateDiagnosticBundle:input_type -> kratos.monitor.v1.GenerateDiagnosticBundleRequest
-	29, // 34: kratos.monitor.v1.MonitorService.DiagnoseAndHeal:input_type -> kratos.monitor.v1.DiagnoseAndHealRequest
-	38, // 35: kratos.monitor.v1.MonitorService.TriggerSelfCheck:input_type -> kratos.monitor.v1.TriggerSelfCheckRequest
-	40, // 36: kratos.monitor.v1.MonitorService.ListSelfCheckReports:input_type -> kratos.monitor.v1.ListSelfCheckReportsRequest
-	42, // 37: kratos.monitor.v1.MonitorService.GetHealStats:input_type -> kratos.monitor.v1.HealStatsRequest
-	45, // 38: kratos.monitor.v1.MonitorService.ListHealRecords:input_type -> kratos.monitor.v1.ListHealRecordsRequest
-	2,  // 39: kratos.monitor.v1.MonitorService.ListAuditLogs:output_type -> kratos.monitor.v1.ListAuditLogsResponse
-	5,  // 40: kratos.monitor.v1.MonitorService.ListMonitorEvents:output_type -> kratos.monitor.v1.ListMonitorEventsResponse
-	3,  // 41: kratos.monitor.v1.MonitorService.GetMonitorEvent:output_type -> kratos.monitor.v1.MonitorPlatformRow
-	8,  // 42: kratos.monitor.v1.MonitorService.ListMonitorTraces:output_type -> kratos.monitor.v1.ListMonitorTracesResponse
-	9,  // 43: kratos.monitor.v1.MonitorService.GetMonitorTrace:output_type -> kratos.monitor.v1.MonitorTraceDetail
-	12, // 44: kratos.monitor.v1.MonitorService.GetMonitorLogs:output_type -> kratos.monitor.v1.GetMonitorLogsResponse
-	16, // 45: kratos.monitor.v1.MonitorService.ListFlowLogs:output_type -> kratos.monitor.v1.ListFlowLogsResponse
-	18, // 46: kratos.monitor.v1.MonitorService.ListMonitorAlertRules:output_type -> kratos.monitor.v1.ListMonitorAlertRulesResponse
-	20, // 47: kratos.monitor.v1.MonitorService.ListAlertMetrics:output_type -> kratos.monitor.v1.ListAlertMetricsResponse
-	22, // 48: kratos.monitor.v1.MonitorService.PutMonitorAlertRules:output_type -> kratos.monitor.v1.PutMonitorAlertRulesResponse
-	24, // 49: kratos.monitor.v1.MonitorService.GetRunnerMetrics:output_type -> kratos.monitor.v1.RunnerMetricsSummary
-	26, // 50: kratos.monitor.v1.MonitorService.GetCodeExecutorCapabilities:output_type -> kratos.monitor.v1.GetCodeExecutorCapabilitiesResponse
-	28, // 51: kratos.monitor.v1.MonitorService.GenerateDiagnosticBundle:output_type -> kratos.monitor.v1.GenerateDiagnosticBundleResponse
-	34, // 52: kratos.monitor.v1.MonitorService.DiagnoseAndHeal:output_type -> kratos.monitor.v1.DiagnoseAndHealResponse
-	39, // 53: kratos.monitor.v1.MonitorService.TriggerSelfCheck:output_type -> kratos.monitor.v1.TriggerSelfCheckResponse
-	41, // 54: kratos.monitor.v1.MonitorService.ListSelfCheckReports:output_type -> kratos.monitor.v1.ListSelfCheckReportsResponse
-	43, // 55: kratos.monitor.v1.MonitorService.GetHealStats:output_type -> kratos.monitor.v1.HealStatsResponse
-	47, // 56: kratos.monitor.v1.MonitorService.ListHealRecords:output_type -> kratos.monitor.v1.ListHealRecordsResponse
-	39, // [39:57] is the sub-list for method output_type
-	21, // [21:39] is the sub-list for method input_type
+	3,  // 22: kratos.monitor.v1.MonitorService.DeleteAuditLogs:input_type -> kratos.monitor.v1.DeleteAuditLogsRequest
+	6,  // 23: kratos.monitor.v1.MonitorService.ListMonitorEvents:input_type -> kratos.monitor.v1.ListMonitorEventsRequest
+	8,  // 24: kratos.monitor.v1.MonitorService.GetMonitorEvent:input_type -> kratos.monitor.v1.GetMonitorEventRequest
+	9,  // 25: kratos.monitor.v1.MonitorService.ListMonitorTraces:input_type -> kratos.monitor.v1.ListMonitorTracesRequest
+	12, // 26: kratos.monitor.v1.MonitorService.GetMonitorTrace:input_type -> kratos.monitor.v1.GetMonitorTraceRequest
+	15, // 27: kratos.monitor.v1.MonitorService.GetMonitorLogs:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
+	17, // 28: kratos.monitor.v1.MonitorService.ListFlowLogs:input_type -> kratos.monitor.v1.ListFlowLogsRequest
+	15, // 29: kratos.monitor.v1.MonitorService.ListMonitorAlertRules:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
+	15, // 30: kratos.monitor.v1.MonitorService.ListAlertMetrics:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
+	23, // 31: kratos.monitor.v1.MonitorService.PutMonitorAlertRules:input_type -> kratos.monitor.v1.PutMonitorAlertRulesRequest
+	25, // 32: kratos.monitor.v1.MonitorService.GetRunnerMetrics:input_type -> kratos.monitor.v1.GetRunnerMetricsRequest
+	15, // 33: kratos.monitor.v1.MonitorService.GetCodeExecutorCapabilities:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
+	29, // 34: kratos.monitor.v1.MonitorService.GenerateDiagnosticBundle:input_type -> kratos.monitor.v1.GenerateDiagnosticBundleRequest
+	31, // 35: kratos.monitor.v1.MonitorService.DiagnoseAndHeal:input_type -> kratos.monitor.v1.DiagnoseAndHealRequest
+	40, // 36: kratos.monitor.v1.MonitorService.TriggerSelfCheck:input_type -> kratos.monitor.v1.TriggerSelfCheckRequest
+	42, // 37: kratos.monitor.v1.MonitorService.ListSelfCheckReports:input_type -> kratos.monitor.v1.ListSelfCheckReportsRequest
+	44, // 38: kratos.monitor.v1.MonitorService.GetHealStats:input_type -> kratos.monitor.v1.HealStatsRequest
+	47, // 39: kratos.monitor.v1.MonitorService.ListHealRecords:input_type -> kratos.monitor.v1.ListHealRecordsRequest
+	2,  // 40: kratos.monitor.v1.MonitorService.ListAuditLogs:output_type -> kratos.monitor.v1.ListAuditLogsResponse
+	4,  // 41: kratos.monitor.v1.MonitorService.DeleteAuditLogs:output_type -> kratos.monitor.v1.DeleteAuditLogsResponse
+	7,  // 42: kratos.monitor.v1.MonitorService.ListMonitorEvents:output_type -> kratos.monitor.v1.ListMonitorEventsResponse
+	5,  // 43: kratos.monitor.v1.MonitorService.GetMonitorEvent:output_type -> kratos.monitor.v1.MonitorPlatformRow
+	10, // 44: kratos.monitor.v1.MonitorService.ListMonitorTraces:output_type -> kratos.monitor.v1.ListMonitorTracesResponse
+	11, // 45: kratos.monitor.v1.MonitorService.GetMonitorTrace:output_type -> kratos.monitor.v1.MonitorTraceDetail
+	14, // 46: kratos.monitor.v1.MonitorService.GetMonitorLogs:output_type -> kratos.monitor.v1.GetMonitorLogsResponse
+	18, // 47: kratos.monitor.v1.MonitorService.ListFlowLogs:output_type -> kratos.monitor.v1.ListFlowLogsResponse
+	20, // 48: kratos.monitor.v1.MonitorService.ListMonitorAlertRules:output_type -> kratos.monitor.v1.ListMonitorAlertRulesResponse
+	22, // 49: kratos.monitor.v1.MonitorService.ListAlertMetrics:output_type -> kratos.monitor.v1.ListAlertMetricsResponse
+	24, // 50: kratos.monitor.v1.MonitorService.PutMonitorAlertRules:output_type -> kratos.monitor.v1.PutMonitorAlertRulesResponse
+	26, // 51: kratos.monitor.v1.MonitorService.GetRunnerMetrics:output_type -> kratos.monitor.v1.RunnerMetricsSummary
+	28, // 52: kratos.monitor.v1.MonitorService.GetCodeExecutorCapabilities:output_type -> kratos.monitor.v1.GetCodeExecutorCapabilitiesResponse
+	30, // 53: kratos.monitor.v1.MonitorService.GenerateDiagnosticBundle:output_type -> kratos.monitor.v1.GenerateDiagnosticBundleResponse
+	36, // 54: kratos.monitor.v1.MonitorService.DiagnoseAndHeal:output_type -> kratos.monitor.v1.DiagnoseAndHealResponse
+	41, // 55: kratos.monitor.v1.MonitorService.TriggerSelfCheck:output_type -> kratos.monitor.v1.TriggerSelfCheckResponse
+	43, // 56: kratos.monitor.v1.MonitorService.ListSelfCheckReports:output_type -> kratos.monitor.v1.ListSelfCheckReportsResponse
+	45, // 57: kratos.monitor.v1.MonitorService.GetHealStats:output_type -> kratos.monitor.v1.HealStatsResponse
+	49, // 58: kratos.monitor.v1.MonitorService.ListHealRecords:output_type -> kratos.monitor.v1.ListHealRecordsResponse
+	40, // [40:59] is the sub-list for method output_type
+	21, // [21:40] is the sub-list for method input_type
 	21, // [21:21] is the sub-list for extension type_name
 	21, // [21:21] is the sub-list for extension extendee
 	0,  // [0:21] is the sub-list for field type_name
@@ -4066,7 +4164,7 @@ func file_kratos_monitor_v1_monitor_proto_init() {
 	if File_kratos_monitor_v1_monitor_proto != nil {
 		return
 	}
-	file_kratos_monitor_v1_monitor_proto_msgTypes[33].OneofWrappers = []any{
+	file_kratos_monitor_v1_monitor_proto_msgTypes[35].OneofWrappers = []any{
 		(*RootCauseCondition_AutoHealed)(nil),
 		(*RootCauseCondition_HealAttempts)(nil),
 		(*RootCauseCondition_SelfCheckStatus)(nil),
@@ -4077,7 +4175,7 @@ func file_kratos_monitor_v1_monitor_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_monitor_v1_monitor_proto_rawDesc), len(file_kratos_monitor_v1_monitor_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   48,
+			NumMessages:   50,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -55,6 +55,11 @@ message DocumentContent {
   string id = 1;
   string content_text = 2;    // organized Markdown (or raw extracted text when not organized)
   bool   organized = 3;
+  // raw_content (G2-B5): vault 文件 body 原文（编辑器数据源；frontmatter 不含，
+  // 保存时后端自动保留合并）。非 vault 文档为空。
+  string raw_content = 4;
+  // base_hash (G2-B5): vault 文件 sha1，UpdateDocumentContent 的 CAS expectedHash。
+  string base_hash = 5;
 }
 
 // KnowledgeChunk is one indexed text chunk with its embedding vector.
@@ -115,6 +120,13 @@ message IngestDocumentRequest {
   // organize_to_markdown: unset/true = organize extracted text into Markdown via LLM
   // (falls back to raw text when LLM unavailable); false = ingest raw text as-is.
   optional bool organize_to_markdown = 9;
+  // target_dir (G1-B3): optional vault-relative directory to upload into.
+  // Non-empty requires a vault collection (root_path set): the raw file is
+  // written to <root>/<target_dir>/<filename> (create semantics; same-name
+  // conflict = CodeConflict) and the document gets rel_path + content_hash so
+  // the vault sync chain treats it as already-applied. Empty = legacy behavior
+  // (no filesystem write).
+  string target_dir = 10;
 }
 
 message GetDocumentContentRequest {
@@ -190,6 +202,33 @@ message ListDocumentLinksResponse {
   repeated KnowledgeLink items = 1;
 }
 
+// CollectionGraphNode is one document node in the collection link graph (G4-B8).
+message CollectionGraphNode {
+  string doc_id = 1;
+  string name = 2;
+  string rel_path = 3;
+  string doc_type = 4;
+  int32 degree = 5;           // in-edge count (size mapping; isolated nodes keep 0)
+}
+
+// CollectionGraphEdge is one directed link between two in-scope documents.
+message CollectionGraphEdge {
+  string source = 1;          // source doc_id
+  string target = 2;          // target doc_id
+  string type = 3;            // explicit | entity | semantic
+}
+
+message ListCollectionGraphRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  repeated string link_types = 2;  // empty = all types
+  string path_prefix = 3;          // vault dir prefix filter; empty = whole collection
+}
+
+message ListCollectionGraphResponse {
+  repeated CollectionGraphNode nodes = 1;
+  repeated CollectionGraphEdge edges = 2;
+}
+
 message ListDocumentsResponse {
   repeated KnowledgeDocument items = 1;
   int32 total = 2;
@@ -206,6 +245,37 @@ message MoveDocumentRequest {
   string target_collection_id = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
+// MoveDocumentToDirRequest moves a vault document to another directory within the
+// same collection (G3-B4). Document identity, chunks and content hash are kept
+// (content unchanged, no reindex); inbound explicit links are rebuilt.
+message MoveDocumentToDirRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  // target_dir: vault-relative target directory ("" or "/" = vault root).
+  string target_dir = 2;
+  // conflict_policy on name clash at target:
+  //   "" (default) = reject with CodeConflict (frontend prompts overwrite/rename/cancel);
+  //   "overwrite"  = back up the existing target to .aranea/trash, then overwrite;
+  //   "rename"     = keep both, auto-rename the moved file to "name (2).ext".
+  string conflict_policy = 3;
+}
+
+// UpdateDocumentContentRequest saves the edited body back to the vault file (G2-B5).
+message UpdateDocumentContentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  // content is the new Markdown body (frontmatter is preserved server-side).
+  string content = 2 [(google.api.field_behavior) = REQUIRED];
+  // base_hash is the file hash the editor started from (DocumentContent.base_hash);
+  // empty = expect file to not exist.
+  string base_hash = 3;
+}
+
+message UpdateDocumentContentResponse {
+  KnowledgeDocument document = 1;
+  // conflict=true: the file changed on disk since base_hash; the edit was still
+  // written and the disk version backed up to .aranea/trash (both copies kept).
+  bool conflict = 2;
+}
+
 message SearchRequest {
   // US-14: optional. Empty = federated smart-routing across all collections.
   string collection_id = 1;
@@ -219,6 +289,10 @@ message SearchRequest {
   string rewrite_strategy = 10;
   // hybrid_search: auto | dense | sparse | rrf (empty = auto).
   string hybrid_search = 11;
+  // path_prefix: optional vault-relative directory scope (G3-B7 search scope
+  // selector). Empty = whole collection. Only chunks whose document rel_path
+  // sits under "<prefix>/" match; leading/trailing slashes are tolerated.
+  string path_prefix = 12;
 }
 
 message SearchResponse {
@@ -300,6 +374,25 @@ service KnowledgeService {
       body: "*"
     };
   }
+  // MoveDocumentToDir moves a vault document to another directory within the same
+  // collection (G3-B4): atomic fs move + rel_path update (identity/chunks kept) +
+  // inbound explicit links rebuild. Name clash -> CodeConflict unless
+  // conflict_policy=overwrite|rename. Vault documents only (rel_path required).
+  rpc MoveDocumentToDir(MoveDocumentToDirRequest) returns (KnowledgeDocument) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/documents/{id}/move_to_dir"
+      body: "*"
+    };
+  }
+  // UpdateDocumentContent saves editor body back to the vault file (G2-B5):
+  // frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
+  // backed up to trash) and returns conflict=true. Triggers immediate reindex.
+  rpc UpdateDocumentContent(UpdateDocumentContentRequest) returns (UpdateDocumentContentResponse) {
+    option (google.api.http) = {
+      put: "/v1/knowledge/documents/{id}/content"
+      body: "*"
+    };
+  }
   // Vault explorer (P3): lazy folder listing derived from document rel_paths.
   rpc ListVaultTree(ListVaultTreeRequest) returns (ListVaultTreeResponse) {
     option (google.api.http) = {
@@ -325,6 +418,14 @@ service KnowledgeService {
   rpc ListDocumentLinks(ListDocumentLinksRequest) returns (ListDocumentLinksResponse) {
     option (google.api.http) = {
       get: "/v1/knowledge/documents/{id}/links"
+    };
+  }
+  // ListCollectionGraph returns the full link graph of one collection (G4-B8):
+  // nodes = documents (after path_prefix filter), edges = links (link_types filter;
+  // endpoints outside scope/dangling dropped), degree = in-edge count per node.
+  rpc ListCollectionGraph(ListCollectionGraphRequest) returns (ListCollectionGraphResponse) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/vaults/{collection_id}/graph"
     };
   }
 

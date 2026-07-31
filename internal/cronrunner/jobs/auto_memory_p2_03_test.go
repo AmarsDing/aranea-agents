@@ -71,7 +71,7 @@ func buildRetryExhaustedWorker(t *testing.T, rc *conf.Runtime, sink biz.MemoryDe
 			ID: "msg-1", SessionID: sessID, Role: "user", ContentMarkdown: "hello",
 		}},
 	}
-	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, repo, loggateway.NewNoop())
+	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, repo, loggateway.NewNoop(), nil)
 	agentsUC := newMemoryEnabledAgentsUC(agentID)
 	q := memtrpc.NewMemoryJobQueue(&conf.Runtime{}, 4, 0, loggateway.NewNoop())
 	t.Cleanup(q.Close)

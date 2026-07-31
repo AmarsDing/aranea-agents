@@ -232,6 +232,9 @@ func toProtoTokenUsageEvent(e biz.TokenUsageEvent) *v1.TokenUsageEvent {
 		StreamEnabled:                  e.StreamEnabled,
 		MetadataJson:                   e.MetadataJSON,
 		CreatedAt:                      e.CreatedAt,
+		AgentName:                      e.AgentName,
+		SessionTitle:                   e.SessionTitle,
+		TeamName:                       e.TeamName,
 	}
 }
 

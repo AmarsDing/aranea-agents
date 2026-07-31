@@ -20,6 +20,16 @@ func LinkedGraphIDFromDefinition(raw string) string {
 	return strings.TrimSpace(body.LinkedGraphID)
 }
 
+// ResolveLinkedGraphID returns the team's materialized graph asset ID:
+// the linked_graph_id column when set, else the definition_json fallback.
+// Empty for legacy teams without a materialized graph asset.
+func ResolveLinkedGraphID(column, definitionJSON string) string {
+	if id := strings.TrimSpace(column); id != "" {
+		return id
+	}
+	return LinkedGraphIDFromDefinition(definitionJSON)
+}
+
 // MergeLinkedGraphID writes linked_graph_id into definition JSON without dropping other keys.
 func MergeLinkedGraphID(raw, linkedGraphID string) (string, error) {
 	linkedGraphID = strings.TrimSpace(linkedGraphID)

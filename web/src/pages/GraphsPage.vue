@@ -51,6 +51,16 @@
             class="graphs-filter-bar__select"
           />
           <q-select
+            v-model="teamFilter"
+            :options="TEAM_FILTER_OPTIONS"
+            dense
+            outlined
+            emit-value
+            map-options
+            class="graphs-filter-bar__select"
+            data-test="graphs-team-filter"
+          />
+          <q-select
             v-model="sortKey"
             :options="SORT_OPTIONS"
             dense
@@ -165,9 +175,7 @@
                       chip.count
                     }}
                   </span>
-                  <span
-                    v-if="compositionChips(graph).overflow > 0"
-                    class="graph-card__chip graph-card__chip--overflow"
+                  <span v-if="compositionChips(graph).overflow > 0" class="graph-card__chip graph-card__chip--overflow"
                     >+{{ compositionChips(graph).overflow }}</span
                   >
                 </div>
@@ -175,13 +183,23 @@
                   {{ graph.description || t('graphs.noDescription') }}
                 </p>
                 <div class="graph-card__meta">
+                  <span
+                    v-if="isTeamOwned(graph)"
+                    class="graph-card__team-badge"
+                    :title="t('graphs.teamOwnedBadgeTip')"
+                    data-test="graph-team-badge"
+                  >
+                    <q-icon name="groups" size="11px" />{{ t('graphs.teamOwnedBadge') }} ·
+                    {{ teamDisplayName(graph.teamId ?? '') }}
+                  </span>
                   <span>v{{ graph.version || 0 }}</span>
                   <span>{{ relativeTime(graph.updatedAt) }}</span>
                   <span>{{ graph.executionEngine === 'dag' ? t('graphs.cardDAG') : t('graphs.cardBSP') }}</span>
                   <span v-if="graph.enableCheckpoint">{{ t('graphs.checkpoint') }}</span>
                   <span class="graph-card__meta-total"
                     >{{ graph.nodes?.length ?? 0 }}{{ t('graphs.nodesUnit') }}
-                    {{ (graph.edges?.length ?? 0) + (graph.conditionalEdges?.length ?? 0) }}{{ t('graphs.edgesUnit') }}</span
+                    {{ (graph.edges?.length ?? 0) + (graph.conditionalEdges?.length ?? 0)
+                    }}{{ t('graphs.edgesUnit') }}</span
                   >
                 </div>
               </div>
@@ -327,10 +345,14 @@ const {
   error,
   searchQuery,
   engineFilter,
+  teamFilter,
   sortKey,
   sortOrder,
   SORT_OPTIONS,
   ENGINE_FILTER_OPTIONS,
+  TEAM_FILTER_OPTIONS,
+  isTeamOwned,
+  teamDisplayName,
   nodeTypeBorderColor,
   countNodesByType,
   cardStatus,

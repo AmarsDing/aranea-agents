@@ -5,6 +5,7 @@ import {
   listAlertMetrics,
   listMonitorAlertRules,
   listMonitorAudit,
+  deleteAuditLogs,
   listMonitorEvents,
   listMonitorTraces,
   getMonitorTrace,
@@ -84,6 +85,13 @@ export const useMonitorStore = defineStore('monitor', () => {
 
   async function fetchAuditPage(query: AuditQuery = {}) {
     return listMonitorAudit(query);
+  }
+
+  async function clearAuditLogs(): Promise<number> {
+    const deleted = await deleteAuditLogs();
+    auditLogs.value = [];
+    auditTotal.value = 0;
+    return deleted;
   }
 
   async function fetchMonitorEvents(query: MonitorEventsQuery = {}) {
@@ -239,6 +247,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     loadAuditLogs,
     loadEvents,
     fetchAuditPage,
+    clearAuditLogs,
     fetchMonitorEvents,
     fetchTraceEvents,
     fetchTraceDetail,

@@ -6,6 +6,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -72,7 +73,47 @@ func RunWebSocket(
 	eventHandler := dispatcher.NewEventDispatcher("", "").
 		OnP2MessageReceiveV1(onMessage).
 		OnP2CardActionTrigger(onCardAction)
-	cli := larkws.NewClient(appID, appSecret, larkws.WithEventHandler(eventHandler))
+	// flowGuard 收敛 SDK 内部无限重连期间的重复发射：每个故障期一条
+	// connect.error，每次（重新）建立一条 connect.open，正常停止一条 connect.close。
+	flowGuard := &runtime.ConnectFlowGuard{}
+	cli := larkws.NewClient(appID, appSecret,
+		larkws.WithEventHandler(eventHandler),
+		larkws.WithOnReady(func() {
+			flowGuard.EmitOpen(func() {
+				lg.Info("飞书 WebSocket 已连接",
+					loggateway.StepID("channel.feishu.ws.connected"),
+					loggateway.Str("channel_id", ch.ID),
+				)
+				runtime.EmitConnectOpen(ctx, "feishu", ch.ID, appID, "飞书 WebSocket 已连接")
+			})
+		}),
+		larkws.WithOnReconnected(func() {
+			flowGuard.EmitOpen(func() {
+				lg.Info("飞书 WebSocket 重连成功",
+					loggateway.StepID("channel.feishu.ws.reconnected"),
+					loggateway.Str("channel_id", ch.ID),
+				)
+				runtime.EmitConnectOpen(ctx, "feishu", ch.ID, appID, "飞书 WebSocket 重连成功", event.P("reconnect", true))
+			})
+		}),
+		larkws.WithOnError(func(err error) {
+			flowGuard.EmitError(func() {
+				runtime.EmitConnectError(ctx, "feishu", ch.ID, "飞书 WebSocket 连接异常", err)
+			})
+		}),
+	)
+	// lark SDK 的 Start 在 ctx 取消后仍永久阻塞（select{} 不退出的 SDK 限制），
+	// 连接断开流程日志无法由 supervisor 收口，这里监听 ctx 补发 close。
+	safego.Go(ctx, "channel.feishu.ws.close_watch", func() {
+		<-ctx.Done()
+		flowGuard.EmitClose(func() {
+			lg.Info("飞书 WebSocket 连接已断开",
+				loggateway.StepID("channel.feishu.ws.close"),
+				loggateway.Str("channel_id", ch.ID),
+			)
+			runtime.EmitConnectClose(ctx, "feishu", ch.ID, "飞书 WebSocket 连接已断开")
+		})
+	})
 	return cli.Start(ctx)
 }
 

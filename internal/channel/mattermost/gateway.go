@@ -67,14 +67,22 @@ func RunWebSocket(
 	header := http.Header{}
 	header.Set("Authorization", "Bearer "+botToken)
 
+	// guard 收敛读失败与 ping 失败同时触发的重复 error 发射。
+	flowGuard := &runtime.ConnectFlowGuard{}
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL, header)
 	if err != nil {
-		return mattermostAPIError("mattermost websocket: dial", err.Error())
+		dialErr := mattermostAPIError("mattermost websocket: dial", err.Error())
+		flowGuard.EmitError(func() {
+			runtime.EmitConnectError(ctx, "mattermost", ch.ID, "Mattermost WebSocket 连接失败", dialErr)
+		})
+		return dialErr
 	}
 	defer conn.Close()
 	lg.Info("Mattermost WebSocket 连接成功",
 		loggateway.StepID("channel.mattermost.ws.connected"),
+		loggateway.Str("channel_id", ch.ID),
 		loggateway.Str("server_url", serverURL))
+	runtime.EmitConnectOpen(ctx, "mattermost", ch.ID, botUserID, "Mattermost WebSocket 已连接")
 
 	chRow := ch
 	readErr := make(chan error, 1)
@@ -84,11 +92,21 @@ func RunWebSocket(
 			if err != nil {
 				lg.Warn("Mattermost WebSocket 读取失败",
 					loggateway.StepID("channel.mattermost.ws.read_failed"),
+					loggateway.Str("channel_id", chRow.ID),
 					loggateway.Err(err))
+				flowGuard.EmitError(func() {
+					runtime.EmitConnectError(ctx, "mattermost", chRow.ID, "Mattermost WebSocket 读取异常", err)
+				})
 				readErr <- err
 				return
 			}
-			ev, ok := parseWSMessage(message, botUserID)
+			ev, ok, parseFailed := parseWSMessageDetail(message, botUserID)
+			if parseFailed {
+				lg.Warn("Mattermost WebSocket 消息解析失败",
+					loggateway.StepID("channel.mattermost.ws.parse_failed"),
+					loggateway.Str("channel_id", chRow.ID),
+				)
+			}
 			if !ok {
 				continue
 			}
@@ -113,7 +131,11 @@ func RunWebSocket(
 			return mattermostAPIError("mattermost websocket: read failed", err.Error())
 		case <-ticker.C:
 			if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"seq":0,"action":"ping"}`)); err != nil {
-				return mattermostAPIError("mattermost websocket: ping failed", err.Error())
+				pingErr := mattermostAPIError("mattermost websocket: ping failed", err.Error())
+				flowGuard.EmitError(func() {
+					runtime.EmitConnectError(ctx, "mattermost", ch.ID, "Mattermost WebSocket 心跳失败", pingErr)
+				})
+				return pingErr
 			}
 		}
 	}
@@ -157,25 +179,32 @@ func buildWSURL(serverURL string) string {
 }
 
 func parseWSMessage(raw []byte, botUserID string) (port.InboundEvent, bool) {
+	ev, ok, _ := parseWSMessageDetail(raw, botUserID)
+	return ev, ok
+}
+
+// parseWSMessageDetail 第三返回值 parseFailed 标记协议 JSON 损坏
+// （区别于非 posted 事件、bot 消息、空文本等正常业务过滤）。
+func parseWSMessageDetail(raw []byte, botUserID string) (port.InboundEvent, bool, bool) {
 	var envelope struct {
 		Event string          `json:"event"`
 		Data  json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return port.InboundEvent{}, false
+		return port.InboundEvent{}, false, true
 	}
 	if envelope.Event != "posted" {
-		return port.InboundEvent{}, false
+		return port.InboundEvent{}, false, false
 	}
 	var data struct {
 		Post       string `json:"post"`
 		SenderType string `json:"sender_type"`
 	}
 	if err := json.Unmarshal(envelope.Data, &data); err != nil {
-		return port.InboundEvent{}, false
+		return port.InboundEvent{}, false, true
 	}
 	if strings.EqualFold(data.SenderType, "bot") {
-		return port.InboundEvent{}, false
+		return port.InboundEvent{}, false, false
 	}
 	var post struct {
 		Message   string `json:"message"`
@@ -184,14 +213,14 @@ func parseWSMessage(raw []byte, botUserID string) (port.InboundEvent, bool) {
 		ID        string `json:"id"`
 	}
 	if err := json.Unmarshal([]byte(data.Post), &post); err != nil {
-		return port.InboundEvent{}, false
+		return port.InboundEvent{}, false, true
 	}
 	text := strings.TrimSpace(post.Message)
 	if text == "" {
-		return port.InboundEvent{}, false
+		return port.InboundEvent{}, false, false
 	}
 	if strings.TrimSpace(post.UserID) == strings.TrimSpace(botUserID) {
-		return port.InboundEvent{}, false
+		return port.InboundEvent{}, false, false
 	}
 	channelID := strings.TrimSpace(post.ChannelID)
 	userID := strings.TrimSpace(post.UserID)
@@ -203,5 +232,5 @@ func parseWSMessage(raw []byte, botUserID string) (port.InboundEvent, bool) {
 			port.MetaRecipient: channelID,
 			port.MetaChatID:    channelID,
 		},
-	}, true
+	}, true, false
 }

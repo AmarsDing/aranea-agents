@@ -817,6 +817,32 @@
 
 ---
 
+### 1.28 平台自改进 / M73 (`internal/biz/self_improvement_*.go` + `internal/service/{repo_sandbox_runner,self_improvement_applier,self_improvement_critic}.go` + `internal/cronrunner/jobs/self_improve_*.go`)
+
+**职责**：七阶段自闭环（Observe→Diagnose→Patch→Verify→Govern→Apply→Learn）：信号触发器产出 platform 建议 → 物化 SelfImprovementRun → Meta Team（Analyst/Patcher LLM + 沙盒 G1-G3 + Critic G4）→ RiskClassifier 治理路由 → Applier 应用（热加载快照 / 代码 ff 合并）→ Watchdog 观察窗指标对比自动回滚 → Outcome 终态归因反哺 KB。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（SkillEvolutionOrchestrator/UnifiedEvolutionQueryReader）、`biz/monitor`（FailurePatternWriter 负面样本）、`data`（SelfImprovementRunRepo/SelfImprovementSignalRepo）、`service`（RepoSandboxRunner/SIRepoApplier/SICritic）、`conf.SelfImprovement`（全部阈值/间隔/配额） |
+| **下游影响** | `cmd/admin/wire.go`（drive/watchdog/outcome worker 装配）、`cmd/admin/workers.go`（worker 注册）；MonitorPage Events 页（SINotifier/SIApprovalSink 经 monitor_events 展示） |
+| **核心导出** | `SelfImprovementObserveUsecase`、`SelfImprovementPipelineUsecase`、`SIGovernanceRouter`、`SelfImprovementApplyUsecase`（含手动 Approve/Reject/Close/Rollback 入口）、`SelfImprovementWatchdogUsecase`、`SelfImprovementOutcomeUsecase`、`SelfImprovementRunStateMachine`、`SIRiskClassifier` |
+| **共享类型** | `SelfImprovementRun`/`PatchOutcome`/`Diagnosis`/`PatcherOutput`/`CriticReport`/`GovernanceDecision`/`MetricsSnapshot`、`SandboxGateResult`、`EvolutionTargetPlatform`、`TriggerSource*` 常量 |
+| **事件生产** | 无领域事件；治理通知/审批请求经 `monitor_events`（service 适配器）；流程经 SIActivitySink（P4 接 monitor events） |
+| **事件消费** | 无 |
+| **数据库** | Postgres（self_improvement_runs / patch_outcomes，Ent Schema；observing 部分索引 20261120）；信号源读 model_token_usage_events / eval_runs |
+| **前端对应** | P5 控制台（Phase 5）；当前经 MonitorPage Events 页可见治理/应用/回滚通知 |
+
+**⚠️ 开发注意（M73）**：
+1. 驱动模型：drive worker（1min）串联 detected→pipeline→router→applier→observing 全链 + 重启恢复；watchdog（5min）/outcome（1h）独立。pipeline.Execute 仅接受 detected 入口。
+2. 状态机 CAS：`RunWriter.Update(run, from)` 以 from-status 做乐观锁，0 行 = CodeConflict；所有转换必须走 `SelfImprovementRunStateMachine`。
+3. 合并冲突转人工：`ErrSIMergeConflict`（errors.Is 判定）→ escalate 边 applying→awaiting_governance + approval 通知，禁止直接 failed。
+4. 观察窗并发上限 3 + 同核心路径串行：applied→observing 提升前检查 observing 计数与受影响目录重叠。
+5. 指标快照存 `run.Metadata`（`metrics_before`/`metrics_after`），无新列；KB 负面样本以 `FailurePatternSource=self_improvement` 表达（不加 negative 列）。
+6. 触发器降频：Outcome 归因后同 trigger_source 连续 3 次 neutral/regressed → `SkillEvolutionOrchestrator.SetCooldownScale` ×2（内存态，配置持久化待 Phase 5）。
+7. 沙盒安全：diff 路径校验（拒绝对/反斜杠/`..`）、保护文件 fail-fast 不消耗 Gate、快照回滚指针 `snapshot/<runID>`。
+
+---
+
 ## 二、前端模块开发上下文卡片
 
 ### 2.1 Chat 域（最复杂的前端域）
@@ -942,6 +968,9 @@
 | `ToolResultGate` | ChatOrchestrator | `internal/service/chat_orchestrator*.go` + `internal/biz/tool_result_gate.go` |
 | `MemoryTextExtractor` | MemoryService | `internal/service/memory_recall.go`（MemoryLLMExtractor）+ `cmd/admin/wire.go` |
 | `SkillEmbedder` | KnowledgeService | `internal/knowledge/embedder.go` + `cmd/admin/wire.go` |
+| `SelfImprovementRunReader/Writer`、`PatchOutcomeWriter` | M73 全部 usecase | `internal/data/self_improvement_repo.go` + `cmd/admin/wire.go` |
+| `SIApplier` / `RepoSandbox` / `SIMetricsReader` | Apply/Watchdog usecase | `internal/service/{self_improvement_applier,repo_sandbox_runner}.go` + `internal/data/self_improvement_signals.go` + `cmd/admin/wire.go` |
+| `SINotifier` / `SIApprovalSink` / `SIActivitySink` | Router/Pipeline | `internal/service/self_improvement_adapters.go`（monitor_events 适配）+ `cmd/admin/wire.go` |
 
 ### 3.2 修改共享类型时
 
@@ -958,6 +987,7 @@
 | `SessionStatusReason` | `biz/session/status.go` | SessionUsecase、ChatOrchestrator、TeamTurnHooks、SessionStatusGuard、前端 `SessionStatusBadge.vue` |
 | `TeamDefinition` | `biz/team_types.go` | TeamUsecase、TeamService、前端 |
 | `RecallDebugRow`/`RecallScoreBreakdown` | `biz/memory_debug_recall.go` | MemoryService、data 适配器、前端（debug recall 面板） |
+| `SelfImprovementRun` / `PatchOutcome` | `biz/self_improvement_types.go` | M73 usecase 全组、data Repo、P5 控制台前端 |
 
 ### 3.3 修改事件类型时
 
@@ -990,6 +1020,7 @@
 | flow_log_events | 原生 SQL | FlowLogRepo | MonitorUsecase | MonitorPage |
 | learning_observations / learning_patterns / learning_proposals | 原生 SQL | LearningLoopRepo | LearningLoopUsecase | AgentSettingsPage（学习闭环 Tab） |
 | unified_evolution_suggestions | 原生 SQL | UnifiedEvolutionRepo | SkillEvolutionUsecase / SkillIntelligenceUsecase / EvolutionUsecase / SkillEvolutionOrchestrator | SkillsPage（技能进化）/ AgentEvolutionPanel |
+| self_improvement_runs / patch_outcomes | ✅ | SelfImprovementRunRepo | M73 Observe/Pipeline/Router/Apply/Watchdog/Outcome usecase | P5 控制台（当前经 MonitorPage Events 页） |
 
 ---
 

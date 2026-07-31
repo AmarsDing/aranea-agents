@@ -57,6 +57,16 @@
             :loading="loading"
             @click="emitLoad"
           />
+          <q-btn
+            flat
+            rounded
+            no-caps
+            icon="delete_sweep"
+            color="negative"
+            :label="t('monitorPage.audit.clearAll')"
+            :disable="total === 0"
+            @click="confirmClear = true"
+          />
         </template>
       </AppPageToolbar>
 
@@ -122,6 +132,29 @@
         />
       </div>
     </q-card>
+
+    <q-dialog v-model="confirmClear" persistent>
+      <q-card class="app-dialog-card">
+        <q-card-section class="row items-center">
+          <q-icon name="warning" color="negative" size="md" class="q-mr-sm" />
+          <span class="text-h6">{{ t('monitorPage.audit.clearTitle') }}</span>
+        </q-card-section>
+        <q-card-section>
+          {{ t('monitorPage.audit.clearConfirm', { total }) }}
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn v-close-popup flat no-caps :label="t('monitorPage.audit.cancel')" />
+          <q-btn
+            flat
+            no-caps
+            color="negative"
+            :label="t('monitorPage.audit.clearConfirmBtn')"
+            :loading="clearing"
+            @click="doClear"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
 
     <q-dialog v-model="detailOpen">
       <q-card class="app-dialog-card app-dialog-card--lg app-glass-dialog">
@@ -203,6 +236,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   load: [query: AuditQuery];
   notify: [payload: { message: string; type: 'positive' | 'negative' | 'warning' }];
+  clear: [];
 }>();
 
 // 事件类型（动词级，后端按 "<verb>.%" 前缀匹配）与实体类型为固定枚举，
@@ -218,6 +252,8 @@ const actionFilter = ref<string | null>(null);
 const resourceFilter = ref<string | null>(null);
 const selected = ref<AuditLog | null>(null);
 const detailOpen = ref(false);
+const confirmClear = ref(false);
+const clearing = ref(false);
 const page = ref(1);
 const pageSize = ref(AUDIT_DEFAULT_PAGE_SIZE);
 
@@ -257,6 +293,14 @@ function resetFilters() {
 function openDetail(row: AuditLog) {
   selected.value = row;
   detailOpen.value = true;
+}
+
+function doClear() {
+  clearing.value = true;
+  emit('clear');
+  // Parent handles the actual clear + notify; close dialog immediately.
+  confirmClear.value = false;
+  clearing.value = false;
 }
 
 function prettyDetail(detail: string): string {

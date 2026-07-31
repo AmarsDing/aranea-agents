@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { compiledGraphToGraphDef } from '../orchestration/compileApi';
 import type { CompileTeamGraphResult } from '../orchestration/compileApi';
 import type { GraphDefinition } from '../graph/types';
@@ -8,6 +9,7 @@ import type { Team, TeamDefinition, TeamRun } from './types';
 import { findActiveTeamRun } from './api';
 import { parseDefinition } from '../../components/teams/teamUtils';
 import { useTeamsStore } from '../../stores/teams';
+import { useGraphStore } from '../../stores/graph';
 import { useOrchestrationStore } from '../../stores/orchestration';
 import { useOrchestrationStream } from '../orchestration/useOrchestrationStream';
 import { buildExecNodeStates } from '../orchestration/teamGraphAdapter';
@@ -15,9 +17,11 @@ import type { AgentNodeState, TeamRunObservatory } from '../orchestration/types'
 
 export function useTeamOrchestratePage() {
   const $q = useQuasar();
+  const { t } = useI18n();
   const route = useRoute();
   const router = useRouter();
   const teamsStore = useTeamsStore();
+  const graphStore = useGraphStore();
   const orchestrationStore = useOrchestrationStore();
 
   const isDark = computed(() => $q.dark.isActive);
@@ -166,6 +170,39 @@ export function useTeamOrchestratePage() {
     router.push({ name: 'team' });
   }
 
+  // ── M53 Phase 11 F3：「在 Graph 编辑器中打开」──
+  // 目标图资产解析：linked_external → linked_graph_id；preset/custom → team-owned
+  // 资产按 teamId 反查（物化时 GraphDefinition.TeamID=team.ID，见 MaterializeTeamGraphDefinition）。
+  async function resolveGraphEditorTargetId(): Promise<string> {
+    const def = definition.value;
+    if (def?.source === 'linked_external' && String(def.linked_graph_id ?? '').trim()) {
+      return String(def.linked_graph_id).trim();
+    }
+    const findOwned = () =>
+      graphStore.graphs.find((g) => g.teamId === teamId.value && g.metadata?.team_owned === true)?.id ?? '';
+    const owned = findOwned();
+    if (owned) return owned;
+    // 图列表可能尚未加载：拉取后再查一次
+    await graphStore.loadGraphs(200).catch(() => undefined);
+    return findOwned();
+  }
+
+  const openingGraphEditor = ref(false);
+  async function openInGraphEditor() {
+    if (openingGraphEditor.value) return;
+    openingGraphEditor.value = true;
+    try {
+      const id = await resolveGraphEditorTargetId();
+      if (!id) {
+        $q.notify({ type: 'warning', message: t('teamsPage.graphAssetMissingNotify') });
+        return;
+      }
+      await router.push({ name: 'graph-editor', params: { id } });
+    } finally {
+      openingGraphEditor.value = false;
+    }
+  }
+
   onMounted(reload);
   watch(teamId, reload);
   onBeforeUnmount(disconnectLiveRun);
@@ -192,6 +229,8 @@ export function useTeamOrchestratePage() {
     reload,
     onSelectNode,
     openObservatory,
+    openingGraphEditor,
+    openInGraphEditor,
     goBack,
   };
 }

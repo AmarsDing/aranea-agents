@@ -395,6 +395,13 @@ type ChatInfraDeps struct {
 	// ImmediateFactWriter for <fact> tag extraction. When nil, immediate fact
 	// extraction is disabled (graceful degradation).
 	MemoryConsolidationWriter biz.MemoryConsolidationWriter
+	// MemoryConflictDetector arbitrates governable fact kinds for the
+	// memory_remember explicit-memory tool (FR-M4). Optional: nil disables
+	// conflict governance (writes still succeed).
+	MemoryConflictDetector biz.MemoryConflictDetector
+	// MemoryConflictStore applies supersede/mark-conflict decisions for the
+	// memory_remember tool (FR-M4). Optional: nil skips governance application.
+	MemoryConflictStore biz.L3ConflictStore
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
@@ -523,6 +530,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			tools = append(tools, o.spiritCustomTools(ag)...)
 			tools = append(tools, o.skillsButlerTools(ctx, ag)...)
 			tools = append(tools, o.memoryButlerTools(ctx, ag)...)
+			tools = append(tools, o.memoryRememberTools(ag)...)
 			tools = append(tools, o.deliverableReaderTools()...)
 			tools = append(tools, o.memberFSDeptMailTools(ag)...)
 			tools = append(tools, o.sessionAccessTools(ag)...)
@@ -559,6 +567,10 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			deps.Team.Team.TeamMediator.SetFinisher(deps.Team.Team.TeamsNative)
 			if deps.Team.Team.TeamGraphCoord != nil {
 				deps.Team.Team.TeamGraphCoord.SetFinisher(deps.Team.Team.TeamMediator)
+				// Runner → Mediator → Coordinator → Mediator.SetCoordinator
+				// （team/runner.go 约定顺序）：缺这一步会导致 RegisterTeamGraphExecution
+				// 等协调调用全部跳过，graph_executions 不落库。
+				deps.Team.Team.TeamMediator.SetCoordinator(deps.Team.Team.TeamGraphCoord)
 				deps.Team.Team.TeamGraphCoord.RecoverSessions(context.Background())
 			}
 		}

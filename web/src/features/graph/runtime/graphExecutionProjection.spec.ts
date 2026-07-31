@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { NodeDef } from '../types';
 import {
   buildExecNodeStatesFromGraphNodes,
+  buildGraphRunKanbanNodes,
   buildResumePayload,
   graphNodeStatusToExecStatus,
   parseInterruptPrompt,
@@ -54,5 +56,96 @@ describe('graphExecutionProjection', () => {
       checkpoint_id: 'cp-1',
       resume_map: { confirm: true },
     });
+  });
+});
+
+// ── M53 Phase 11 F7：GraphRunPage Kanban 视角（team 执行） ──
+function mkGraphNode(id: string, agentName = ''): NodeDef {
+  return { id, agentName } as NodeDef;
+}
+
+describe('buildGraphRunKanbanNodes (M53 Phase 11 F7)', () => {
+  it('图定义节点未执行 → waiting/received；step 节点按状态映射 display/phase', () => {
+    const nodes = buildGraphRunKanbanNodes(
+      [
+        { nodeId: 'a', stepIndex: 0, inputState: {}, outputState: {}, status: 'completed', error: '', timestamp: '' },
+        { nodeId: 'b', stepIndex: 1, inputState: {}, outputState: {}, status: 'running', error: '', timestamp: '' },
+      ],
+      new Map(),
+      [mkGraphNode('a'), mkGraphNode('b'), mkGraphNode('c')],
+    );
+    expect(nodes.map((n) => n.node_id)).toEqual(['a', 'b', 'c']);
+    expect(nodes[0]).toMatchObject({ status: 'success', display_status: 'success', phase: 'delivered' });
+    expect(nodes[1]).toMatchObject({ status: 'running', display_status: 'active', phase: 'doing' });
+    expect(nodes[2]).toMatchObject({ status: 'idle', display_status: 'waiting', phase: 'received' });
+  });
+
+  it('failed/interrupted 映射：error_message 透传', () => {
+    const nodes = buildGraphRunKanbanNodes(
+      [
+        { nodeId: 'x', stepIndex: 0, inputState: {}, outputState: {}, status: 'failed', error: 'boom', timestamp: '' },
+        { nodeId: 'y', stepIndex: 1, inputState: {}, outputState: {}, status: 'interrupted', error: '', timestamp: '' },
+      ],
+      new Map(),
+      [],
+    );
+    expect(nodes[0]).toMatchObject({ node_id: 'x', status: 'failed', display_status: 'failed', error_message: 'boom' });
+    expect(nodes[1]).toMatchObject({ node_id: 'y', status: 'waiting_input', display_status: 'suspended' });
+  });
+
+  it('live execNodeStates 覆盖 step 状态（流式推进）', () => {
+    const nodes = buildGraphRunKanbanNodes(
+      [{ nodeId: 'a', stepIndex: 0, inputState: {}, outputState: {}, status: 'running', error: '', timestamp: '' }],
+      new Map([['a', { status: 'completed' }]]),
+      [],
+    );
+    expect(nodes[0]).toMatchObject({ status: 'success', display_status: 'success' });
+  });
+
+  it('agent_name 取图定义 agentName，缺省回退 node_id；同节点取最大 stepIndex 的输入/输出快照', () => {
+    const nodes = buildGraphRunKanbanNodes(
+      [
+        {
+          nodeId: 'a',
+          stepIndex: 0,
+          inputState: { q: 'old' },
+          outputState: {},
+          status: 'running',
+          error: '',
+          timestamp: '',
+        },
+        {
+          nodeId: 'a',
+          stepIndex: 2,
+          inputState: { q: 'new' },
+          outputState: { r: 'done' },
+          status: 'completed',
+          error: '',
+          timestamp: '',
+        },
+      ],
+      new Map(),
+      [mkGraphNode('a', '阿尔法')],
+    );
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].agent_name).toBe('阿尔法');
+    expect(nodes[0].input_preview).toContain('new');
+    expect(nodes[0].input_preview).not.toContain('old');
+    expect(nodes[0].output_preview).toContain('done');
+
+    const fallback = buildGraphRunKanbanNodes([], new Map(), [mkGraphNode('bare')]);
+    expect(fallback[0].agent_name).toBe('bare');
+  });
+
+  it('资产删除降级：图定义为空时仅从 steps 渲染节点（按 stepIndex 排序）', () => {
+    const nodes = buildGraphRunKanbanNodes(
+      [
+        { nodeId: 'b', stepIndex: 3, inputState: {}, outputState: {}, status: 'completed', error: '', timestamp: '' },
+        { nodeId: 'a', stepIndex: 1, inputState: {}, outputState: {}, status: 'completed', error: '', timestamp: '' },
+      ],
+      new Map(),
+      [],
+    );
+    expect(nodes.map((n) => n.node_id)).toEqual(['a', 'b']);
   });
 });

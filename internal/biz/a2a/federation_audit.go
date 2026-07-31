@@ -54,6 +54,16 @@ func (l *AuditLogger) RecordAllowed(ctx context.Context, entry FederationAuditLo
 	}
 	stored, err := l.repo.CreateAudit(ctx, entry)
 	if err != nil {
+		// K2: fail-closed audit persistence failure — the invocation is aborted.
+		if l.lg != nil {
+			l.lg.Error("federation allowed-audit persist failed; invocation aborted (fail-closed)",
+				loggateway.StepID("a2a.fed.audit.allowed"),
+				loggateway.Str("audit_id", entry.ID),
+				loggateway.Str("caller_org_id", entry.CallerOrgID),
+				loggateway.Str("callee_org_id", entry.CalleeOrgID),
+				loggateway.Err(err),
+			)
+		}
 		return FederationAuditLog{}, apierror.Internal(apierror.DomainA2AFed, "persist federation audit decision: %v", err).WithCause(err)
 	}
 	return stored, nil

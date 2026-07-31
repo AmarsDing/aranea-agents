@@ -1,6 +1,6 @@
 # FlowLogger 流程日志 — 开发计划
 
-> **版本**：2026-06-17 | **状态**：v2 Phase 1 + Phase 2 落库/HTTP ✅  
+> **版本**：2026-07-29 | **状态**：v2 Phase 1 + Phase 2 落库/HTTP ✅ · Phase 4 全模块覆盖补齐 ✅  
 > **DocSync**：[changelog](../changelog/2026-05-21-Message-FlowLogger-DocSync.md)
 > **需求**：[52-flow-logger.md](./52-flow-logger.md) · **设计**：[52-flow-logger.design.md](./52-flow-logger.design.md)  
 > **步骤注册表**：[52-flow-logger.design.md](./52-flow-logger.design.md) §5.1  
@@ -103,6 +103,22 @@
 | FL-3-02 | Knowledge rerank fallback → FlowLog | ✅ |
 | FL-3-03 | `event_bus` 用量失败 → `TraceEmitter.LogError` | ✅ |
 | FL-3-04 | `chat_native` 统一步骤 ID（`chat.turn.enter`） | ✅ |
+
+### Phase 4 — 全模块覆盖补齐（已完成 — 2026-07-29）
+
+> 审计报告：[2026-07-29-audit-flow-log-coverage.md](../reports/2026-07-29-audit-flow-log-coverage.md) · [2026-07-29-audit-process-log-coverage.md](../reports/2026-07-29-audit-process-log-coverage.md)
+
+| ID | 任务 | 状态 |
+|----|------|------|
+| FL-4-01 | 批次 0：16 个已发射无标题 stepID 补登记 `stepTitleRegistry` | ✅ |
+| FL-4-02 | P0 核心链路流程日志：cron/graph/skill/knowledge 摄取/a2a/系统启动（`cron.job.*`、`graph.run.*`、`graph.node.execute`、`graph.checkpoint.save`、`graph.hitl.wait`、`skill.import.*`、`skill.watch.reload`、`skill.execute`、`knowledge.ingest.*`、`knowledge.vault.sync`、`a2a.invoke.*`、`system.startup.*`） | ✅ |
+| FL-4-03 | P1 重要辅助流程日志：session/agent CRUD、provider 目录同步、MCP 服务器、记忆提取、媒体生成、评测、渠道连接生命周期、出站 webhook、告警评估、系统自检、流程日志落库失败 | ✅ |
+| FL-4-04 | P2 低频管理流程日志：`settings.update`、`settings.hot_reload`、`ecosystem.pack.install` | ✅ |
+| FL-4-05 | 新 `TraceDomain`：`skill`、`a2a`（`trace_context.go`） | ✅ |
+| FL-4-06 | biz 层 `FlowLogWriter` 端口 + service 层 `ProvideFlowLogWriter` 适配器（`event_adapter.go`），biz 不再依赖 `internal/event` 直发 | ✅ |
+| FL-4-07 | 进程日志补齐：WS pump/渠道连接（限流）/事件总线丢弃/graph checkpoint/cron 触发/skill 导入/a2a 治理链等 18 组关键节点 | ✅ |
+| FL-4-08 | 规则固化：`project_rules.md` §日志架构约束「关键节点日志规范」+ `aranea-coding-guide` §7.4 双轨制 + K1-K7 覆盖模型 | ✅ |
+| FL-4-09 | Wire 装配统一处理 + 全量验证（build/test/lint/archlint 基线重生成） | ✅ |
 
 ---
 

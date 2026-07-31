@@ -208,7 +208,8 @@ func (uc *MemoryAdminUsecase) GetLayerOverview(ctx context.Context, agentID, ses
 		if m == nil {
 			continue
 		}
-		l3.RecallHits += jsonutil.IfaceI32(m, "hit_count")
+		// 召回计数：use_count 是召回链路真实递增的计数器；hit_count 全库无递增代码（死计数器，恒 0），不再展示。
+		l3.RecallHits += jsonutil.IfaceI32(m, "use_count")
 		if memCreatedToday(jsonutil.IfaceStr(m, "created_at"), todayStart) {
 			l3.TodayAdded++
 		}

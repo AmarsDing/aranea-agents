@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"aranea-agents/pkg/loggateway"
 
@@ -27,11 +28,52 @@ const (
 	otelProtocolGRPC = "grpc"
 )
 
+// InitStatus classifies the outcome of Init for delayed flow-log emission.
+// Init runs before the monitor event bus exists (pre-wire), so the startup
+// orchestration layer (cmd/admin/app.go) reads LastInitResult and emits the
+// system.telemetry.* flow logs once the bus is available.
+type InitStatus string
+
+const (
+	InitStatusUnset InitStatus = ""
+	InitStatusOK    InitStatus = "ok"
+	InitStatusNoop  InitStatus = "noop"
+	InitStatusError InitStatus = "error"
+)
+
+// InitResult captures the Init outcome for delayed reporting. ErrMessage is
+// the sanitized error text (no credentials — OTLP endpoints carry no secrets).
+type InitResult struct {
+	Status     InitStatus
+	Endpoint   string
+	Protocol   string
+	ErrMessage string
+}
+
+var (
+	lastInitMu     sync.RWMutex
+	lastInitResult InitResult
+)
+
+// LastInitResult returns the outcome of the most recent Init call.
+func LastInitResult() InitResult {
+	lastInitMu.RLock()
+	defer lastInitMu.RUnlock()
+	return lastInitResult
+}
+
+func recordInitResult(res InitResult) {
+	lastInitMu.Lock()
+	defer lastInitMu.Unlock()
+	lastInitResult = res
+}
+
 // Init configures OTLP tracer and meter providers from environment variables.
 // When OTEL_EXPORTER_OTLP_ENDPOINT is unset, providers remain noop and shutdown is a no-op.
 func Init(serviceName, serviceVersion string, lg loggateway.Logger) func(context.Context) error {
 	endpoint := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
 	if endpoint == "" {
+		recordInitResult(InitResult{Status: InitStatusNoop})
 		lg.Debug("OTEL_EXPORTER_OTLP_ENDPOINT 未配置，使用 noop 提供者", loggateway.StepID("telemetry.noop"))
 		return func(context.Context) error { return nil }
 	}
@@ -44,6 +86,7 @@ func Init(serviceName, serviceVersion string, lg loggateway.Logger) func(context
 	ctx := context.Background()
 	tpShutdown, err := initTracerProvider(ctx, serviceName, serviceVersion, endpoint, protocol)
 	if err != nil {
+		recordInitResult(InitResult{Status: InitStatusError, Endpoint: endpoint, Protocol: protocol, ErrMessage: err.Error()})
 		lg.Error("OTel Tracer 初始化失败", loggateway.StepID("telemetry.error"), loggateway.Str("protocol", protocol), loggateway.Err(err))
 		return func(context.Context) error { return nil }
 	}
@@ -57,6 +100,7 @@ func Init(serviceName, serviceVersion string, lg loggateway.Logger) func(context
 		propagation.Baggage{},
 	))
 
+	recordInitResult(InitResult{Status: InitStatusOK, Endpoint: endpoint, Protocol: protocol})
 	lg.Info("遥测已初始化",
 		loggateway.StepID("telemetry.init"),
 		loggateway.Str("endpoint", endpoint),

@@ -30,6 +30,7 @@ var (
 	_ biz.TeamRunWriter         = (*TeamRepo)(nil)
 	_ biz.OrchestrationStepRepo = (*TeamRepo)(nil)
 	_ biz.TaskDeadLetterRepo    = (*TeamRepo)(nil)
+	_ biz.TeamLinkedGraphReader = (*TeamRepo)(nil)
 )
 
 // NewTeamRepo creates a TeamRepo that satisfies all team-related narrow interfaces.
@@ -150,6 +151,27 @@ func (r *TeamRepo) ListTeams(ctx context.Context) ([]biz.Team, error) {
 	c := r.data.RW().Read(ctx)
 	rows, err := c.Team.Query().Where(team.DeletedAtEQ("")).
 		Order(team.ByIsDefault(entsql.OrderDesc()), team.ByCreatedAt(entsql.OrderDesc())).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "TEAM")
+	}
+	out := make([]biz.Team, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entTeamToBiz(row, r.data.lg))
+	}
+	return out, nil
+}
+
+// ListTeamsByLinkedGraphID returns non-deleted teams whose linked_graph_id
+// column references the given graph（B7 删除保护：external 引用检查）.
+func (r *TeamRepo) ListTeamsByLinkedGraphID(ctx context.Context, graphID string) ([]biz.Team, error) {
+	graphID = strings.TrimSpace(graphID)
+	if graphID == "" {
+		return nil, nil
+	}
+	c := r.data.RW().Read(ctx)
+	rows, err := c.Team.Query().
+		Where(team.LinkedGraphIDEQ(graphID), team.DeletedAtEQ("")).
 		All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, "TEAM")

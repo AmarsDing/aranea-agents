@@ -47,7 +47,7 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 
 // TeamGraphExecutionBackend indexes and resumes team-linked graph executions.
 type TeamGraphExecutionBackend interface {
-	RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID string, ct *biz.CompiledTeam) error
+	RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID string, ct *biz.CompiledTeam) error
 	MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error
 	ResumeExecution(ctx context.Context, executionID string, resumeValue map[string]any) (*biz.GraphExecution, error)
 	GetExecution(ctx context.Context, executionID string) (*biz.GraphExecution, error)
@@ -149,7 +149,7 @@ func (c *TeamGraphRunCoordinator) SetFinisher(m *TeamRunMediator) {
 	c.finisher = m
 }
 
-func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID string, ct *biz.CompiledTeam) error {
+func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID string, ct *biz.CompiledTeam) error {
 	if c == nil || c.graphs == nil {
 		return nil
 	}
@@ -159,7 +159,7 @@ func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context
 		ctx, span = bridge.StartChild(ctx, "graph.execute.register")
 		defer turntrace.EndChild(span, nil)
 	}
-	if err := c.graphs.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, ct); err != nil {
+	if err := c.graphs.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID, ct); err != nil {
 		return err
 	}
 	execID = strings.TrimSpace(execID)
@@ -462,7 +462,11 @@ func shouldResumeTeamGraph(exec *biz.GraphExecution, nodeID string) bool {
 	if exec.Status == biz.TeamRunStatusWaitingHuman && (exec.GetInterruptNode() == nodeID || exec.CurrentNode == nodeID) {
 		return true
 	}
-	return strings.HasPrefix(exec.GraphID, "team:") && exec.GetInterruptNode() == nodeID
+	// B9（C1 全量物化）：team 执行的 graph_id 已是真实资产 ID，不再有 team: 前缀。
+	// 调用方 HandleTeamGraphTaskCompleted 已保证 exec 是本 coordinator 注册的 team
+	// 执行（sess != nil），此前缀代理条件不再需要；只需排除运行中状态，避免对活跃
+	// 执行重复 resume。
+	return exec.Status != biz.TeamRunStatusRunning && exec.GetInterruptNode() == nodeID
 }
 
 func (c *TeamGraphRunCoordinator) handleGraphWatchNotice(ctx context.Context, sess *teamGraphRunSession, notice *biz.SystemNoticeEvent, mode graphWatchMode) (done, failed bool, errMsg string) {

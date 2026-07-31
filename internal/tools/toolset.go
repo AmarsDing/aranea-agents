@@ -571,6 +571,7 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
+	started := time.Now()
 	lg.Info("tools.Assemble started",
 		loggateway.StepID("tool.assemble.start"),
 		loggateway.Int("enabled_tools", len(cfg.EnabledTools)),
@@ -640,10 +641,29 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		ApplyDisambiguationHints(ts.Tools(ctx))
 	}
 
+	// K1 出口摘要：toolset 数 + 工具 key 列表 + 耗时。仅枚举独立工具与
+	// toolset 名（不调用 ts.Tools(ctx) 展开成员，避免 MCP 等 toolset 触发额外 I/O）。
+	toolKeys := make([]string, 0, len(ac.out.Tools))
+	for _, t := range ac.out.Tools {
+		if t == nil || t.Declaration() == nil {
+			continue
+		}
+		toolKeys = append(toolKeys, t.Declaration().Name)
+	}
+	toolsetNames := make([]string, 0, len(ac.out.ToolSets))
+	for _, ts := range ac.out.ToolSets {
+		if ts == nil {
+			continue
+		}
+		toolsetNames = append(toolsetNames, ts.Name())
+	}
 	lg.Info("tools.Assemble completed",
 		loggateway.StepID("tool.assemble.complete"),
 		loggateway.Int("toolsets", len(ac.out.ToolSets)),
 		loggateway.Int("tools", len(ac.out.Tools)),
+		loggateway.Str("tool_keys", strings.Join(toolKeys, ",")),
+		loggateway.Str("toolset_names", strings.Join(toolsetNames, ",")),
+		loggateway.Duration(time.Since(started).Milliseconds()),
 	)
 
 	return ac.out, nil

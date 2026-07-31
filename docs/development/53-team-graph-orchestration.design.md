@@ -1123,3 +1123,132 @@ cd web && pnpm i && pnpm lint && pnpm test && pnpm build
 ---
 
 > 风险与回滚、文档同步清单、AI 编码代理执行守则、速查卡等开发流程内容详见 [53-team-graph-orchestration.development.md](./53-team-graph-orchestration.development.md)。
+
+---
+
+## 子模块：Team × Graph 一体化（C1 全量物化，2026-07-30）
+
+> 来源：2026-07-30 Team 中的 Graph 与 Graph 工作流（M36）关系评审。评审结论：后端执行单链已打通（OrchestrationSpec → 编译 → GraphAgent），但资产模型、能力面、导航三面割裂——embedded graph 是「二等公民」、`graph_executions.graph_id="team:..."` 合成 ID 产生孤儿执行、linked_graph 前端零入口、Team/Graph 两套观测 UI 互不可达。
+> 决策：C1 全量物化（用户已确认）；编辑语义=双路径+覆盖警告；存量迁移=L3 批量+惰性兜底。
+
+### A. 终态定义
+
+**Graph 资产是唯一拓扑真相源；Team 是「成员 + 派生规则 + 运行语义」的壳；一次执行，双视角观测。**
+
+- 每个 Team 持有一个 `graph_definitions` 一等资产（`team_id` 标记属主）
+- `definition_json.graph`（embedded）退役为**只读兼容**——不再写入，读取仅用于存量迁移与编译兜底
+- Team 只剩 `linked_graph_id` 一种拓扑来源；编译主路径 = linked loader
+- `graph_executions.graph_id` = 真实资产 ID；`team:` 合成 ID 仅存量历史保留（不迁移，快照可回放）
+- Team 观测台与 Graph 运行页能力对齐（Checkpoint/HITL/Kanban），互相跳转
+
+### B. source 三态（编辑语义）
+
+`OrchestrationSpec` 新增 `source` 字段（`json:"source,omitempty"`），缺省按 `preset` 处理：
+
+| source | 含义 | Team 表单行为 | Graph 编辑器行为 |
+|--------|------|--------------|-----------------|
+| `preset`（默认） | 表单派生 | 改 mode/members → 物化重建图（新版本，保留未变节点坐标） | 可改，保存后转 custom |
+| `custom` | 拓扑被手改过 | 拓扑区显示「已自定义，改 mode/members 将覆盖」+「重置为派生」按钮 | 可改 |
+| `linked_external` | 关联独立 Graph 资产（`team_id` 为空或非本 team） | 拓扑只读；成员从图 agent 节点同步 | 在该资产自己的上下文编辑 |
+
+**覆盖警告**：source=custom 的 Team 在表单中修改 mode/members 并保存时，前端弹确认「将丢弃自定义拓扑，按模式重新派生」；确认后物化重建并转回 preset。
+
+### C. 物化器（Materializer）
+
+新增 `internal/team/graph_materialize.go`：
+
+```
+MaterializeTeamGraph(ctx, def Definition, existing *biz.GraphDefinition) (*biz.GraphDefinition, error)
+```
+
+- 输入：Team Definition（mode/members/failure_policy/enable_checkpoint 等）+ 现有图资产（可为 nil）
+- 拓扑来源：**复用现有编译器**（`CompileToGraphBuildConfig` 同一生成器，避免两套拓扑逻辑），产出 canonical `biz.GraphBuildConfig`
+- 转换为 `biz.GraphDefinition` 持久化格式（nodes/edges/conditional_edges/state_fields/entry_point/finish_point/enable_checkpoint）
+- layout 保留：existing 非 nil 时，未变更节点 ID 的坐标从 `metadata.layout`（`Record<nodeID,{x,y}>`）继承；新增节点自动布局
+- `metadata.team_source` = preset/custom 镜像（GraphsPage badge 辅助）
+- 保存走 `GraphDefinitionUsecase.SaveDefinition` → 自动获得 `_version_history` 版本快照（上限 50），天然支持回滚
+
+### D. Team 保存流（钩子）
+
+`team_usecase.CreateTeam / UpdateTeam`：
+
+1. source=preset（或缺省）→ 物化器重建 team 图资产 → definition_json 写 `linked_graph_id` + `source`，**不再写 `graph` 字段**
+2. **D1：物化与 team 保存同一事务**（`Data.ExecInTx`）；物化失败（无启用成员/校验不过）→ 保存整体失败，返回具体校验错误，不静默降级
+3. 受 `HasActiveRun` 运行锁定约束（既有逻辑不变）
+4. source=custom 且表单改了拓扑字段 → 前端确认后才到达后端；后端按 preset 重建（前端确认责任，后端不二次拒绝）
+5. 换绑 external：旧 owned 图（`team_id`=本 team）**D2：直接删除**（历史 run 靠 `definition_snapshot_json` 回放；`GraphExecutionsPage` 对悬空 graph_id 友好降级「资产已删除」）
+
+### E. 反向同步（Graph 编辑器 → Team）
+
+`GraphDefinitionUsecase.SaveDefinition` 保存 team-owned 图（`team_id` 非空）后：
+
+1. 回写属主 team definition_json：`source=custom`
+2. members 从图 agent 节点派生重写（提取 `NormalizeOrchestrationSpec` 的 backfill 逻辑为共享函数 `DeriveMembersFromGraphNodes`）；agent key → agent_id 反向解析经 Agent reader；解析失败的节点跳过并记 warn
+3. mode 字段保留原值（仅作模板选择器语义展示）
+4. 属主 team 有活跃 Run 时 → 拒绝保存（与 Team 侧锁定对称）
+
+### F. 编译/运行路径收敛
+
+- `graph_runtime_config.go`：linked_graph_id 存在 → loader 加载（唯一主路径）；为空（存量未迁移）→ embedded/mode 模板兼容路径 + warn 日志（迁移完成后可标记退役）
+- `RegisterTeamGraphExecution`：`graph_id` = team 的 linked_graph_id（真实资产）；linked 为空时保留 `team:` 合成 ID 兜底
+- Team 多次 Run 共享同一资产 ID → `/graphs/:id/executions` 自然展示该 team 的全部执行历史（一体化核心收益）
+
+### G. 存量迁移（L3）
+
+注册 data migration `20260730_team_graph_materialize`：
+
+1. 扫描 `teams.definition_json` 含非空 `graph` 且 `linked_graph_id` 为空的 team
+2. 逐队物化 + 回写 `linked_graph_id` + `source`（有 graph 字段的存量 team 标记为 custom——其拓扑可能已被视为自定义；纯模板生成的标记 preset。判定：`graph.nodes` 与 mode 模板重新生成结果拓扑等价 → preset，否则 custom）
+3. 幂等：linked_graph_id 非空跳过；单 team 失败记 warn 继续，不阻塞启动
+4. 惰性兜底：team 保存/运行时 linked 仍为空 → 先物化再继续
+
+### H. 删除保护
+
+| 操作 | 规则 |
+|------|------|
+| 删 team-owned 图（属主 team 存在） | 拒绝，提示先删 team 或换绑 |
+| 删被 external 引用的独立图 | 拒绝并列出引用 team |
+| 删 team | owned 图（`team_id`=本 team）级联删（既有逻辑）；external 图只解绑不删 |
+
+### I. 前端设计
+
+| 模块 | 改动 |
+|------|------|
+| TeamEditorDialog | source=custom 警告条 +「重置为派生」按钮；「关联 Graph」选择器（高级区，列出独立图资产）；`enable_checkpoint` 开关；移除三处 `enableCheckpoint: false` 硬编码（teamGraphAdapter/compileApi/useTeamRunObservatoryPage，改从编译响应/图资产读取） |
+| TeamOrchestratePage | 工具栏「在 Graph 编辑器中打开」（跳 `/graphs/:id`）；校验错误接入 R2 节点联动（复用 GraphEditorCanvas 校验面板）；画布保持只读（**D3**：编辑只走表单/Graph 编辑器两个入口，不开第三入口） |
+| GraphsPage | team-owned 图显示「Team 编排」badge + 属主 team 名；过滤 chips（全部/独立/Team 关联）；行内操作加「打开 Team 编排」 |
+| GraphEditorPage | 保存 team-owned 图时确认提示「此图属于 Team X，保存后 Team 将标记为自定义编排」 |
+| TeamRunObservatoryPage | 新增 Checkpoint tab（ListCheckpoints/GetStateSnapshot/EditState/ResumeGraph，enable_checkpoint 时启用）；工具栏「Graph 执行视角」跳转 `/graphs/:graphId/run/:execId` |
+| GraphRunPage | team 执行（图 team_id 非空）显示 Kanban 视角 tab（复用 OrchestrationKanban）；悬空 graph_id 友好降级（从 definition_snapshot/执行 steps 渲染只读拓扑 +「资产已删除」提示） |
+
+### J. 端到端数据流
+
+- **创建**：表单 mode+members → 物化图 v1 → run → `graph_executions(graph_id=资产ID)` → Team 观测台 ↔ Graph 运行页互跳
+- **自定义**：编排页 → Graph 编辑器改拓扑 → team source=custom + members 同步 → 下次 run 生效
+- **回归派生**：Dialog「重置为派生」→ 确认 → 物化重建（新版本，保留坐标）→ source=preset
+- **Pack**：team 导出经既有 linked graph 导出路径自动包含 owned 图（`pack/exporter.go` 已支持 linked 导出 + importer ID 映射），零新增改动
+
+### K. 边界与错误处理
+
+- 物化失败 → 保存失败（D1），错误含节点级校验明细
+- 运行中：物化/换绑/重置/Graph 编辑器保存 team 图均拒绝（双向锁定对称）
+- 成员与图节点不一致（external 图含 team 外 agent）→ 保存时校验警告，members 以图节点为准同步
+- 迁移：单 team 失败不阻塞；迁移后 embedded 字段保留不物理删除（只退役写入）
+- 循环关联防御：external 关联目标不得是 team-owned 图（避免 team A 的图被 team B 关联后级联删除误伤）；校验在换绑时执行
+
+### L. 测试策略
+
+| 层 | 测试 |
+|----|------|
+| biz 单测 | 物化器六 mode / 坐标保留 / source 转换 / members 派生 / 删除保护 |
+| data PG 集成 | L3 迁移幂等 / preset-custom 判定 |
+| service 集成 | 保存→物化→编译→执行→观测全链路；换绑/重置/双路径 |
+| 前端组件 | badge / 警告条 / Checkpoint tab / 互跳 / 选择器 |
+| E2E | 创建 team→运行→双视角；Graph 编辑器改拓扑→team 运行验证 |
+
+### M. 明确不做（YAGNI）
+
+- embedded 字段不物理删除（只退役写入）；`team:` 历史执行不迁移（快照可回放）
+- 不为 team 图加 Graph 编辑器内的编辑限制（双路径+警告即可）
+- 不做多 team 共享 owned 图（external linked 已覆盖共享需求）
+- Team 编排页不开第三编辑入口（D3）

@@ -484,6 +484,11 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 运行时路由 | `ResolveSkillSlugsDetailed` Layer A/B + Embedding 精排，缺少端到端测试 | P4+ |
 | 磁盘监听 | `watch.Runner` fsnotify + debounce + reconcile，缺少并发场景测试 | P4+ |
 | ZIP 导入 | `importer.Engine` 解压 → 校验 → 相似度 → 冲突分组，缺少完整流程测试 | P4+ |
+| 技能管家工具 | `skills_butler` 8 工具中 `recommend_skills` 已补单测（6 用例，2026-07-30 M6-5 ✅）；其余 7 工具（analyze_* / optimize_* / evolve_skill）仍缺单测 | P1 |
+
+### 9.2.1 技能管家 prompt 对齐（2026-07-29，M6-5）
+
+核查结论：`internal/tools/skills_butler/` 8 工具全部实现并经 `cli_admin_tools.go` 装配（仅 `agent_key=__skills__` 挂载）；`recommend_skills` 已实现（pending proposals + 调用统计健康度双源推荐）。唯一漂移：prompt（`internal/scenario/system/prompts/skills/skills.md`）声明了未实现的 `retire_skill`，本期移除并对齐工作流描述；补 `recommend_skills` 单测。
 
 ### 9.3 验证命令
 

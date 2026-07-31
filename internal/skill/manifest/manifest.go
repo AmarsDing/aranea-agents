@@ -27,13 +27,40 @@ func Parse(body string) Manifest {
 	fmEnd := 0
 	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
 		inFrontmatter = true
-		for i, line := range lines[1:] {
-			trimmed := strings.TrimSpace(line)
+		for i := 1; i < len(lines); i++ {
+			trimmed := strings.TrimSpace(lines[i])
 			if trimmed == "---" {
-				fmEnd = i + 2
+				fmEnd = i + 1
 				break
 			}
 			if key, value, ok := splitMetaLine(trimmed); ok {
+				// YAML block scalar（| / |- / > / >- 等）：消费后续缩进行作为值。
+				// alibabacloud 系列 SKILL.md 的多行 description 即此格式，
+				// 不处理会把字面量 "|" / ">" 存为描述。
+				if isBlockScalarIndicator(value) {
+					folded := strings.HasPrefix(value, ">")
+					var buf []string
+					j := i + 1
+					for ; j < len(lines); j++ {
+						raw := lines[j]
+						if strings.TrimSpace(raw) == "---" {
+							break
+						}
+						if raw != "" && !strings.HasPrefix(raw, " ") && !strings.HasPrefix(raw, "\t") {
+							break // dedent：块结束
+						}
+						buf = append(buf, strings.TrimSpace(raw))
+					}
+					for len(buf) > 0 && buf[len(buf)-1] == "" {
+						buf = buf[:len(buf)-1]
+					}
+					if folded {
+						value = strings.Join(buf, " ")
+					} else {
+						value = strings.Join(buf, "\n")
+					}
+					i = j - 1
+				}
 				switch strings.ToLower(key) {
 				case "name", "title":
 					m.Name = strings.Trim(value, `"'`)
@@ -103,4 +130,14 @@ func splitMetaLine(line string) (string, string, bool) {
 		return "", "", false
 	}
 	return strings.TrimSpace(line[:idx]), strings.TrimSpace(line[idx+1:]), true
+}
+
+// isBlockScalarIndicator 判定 YAML block scalar 指示符（| 保留换行 / > 折叠，
+// 可带 - + chomping 修饰）。
+func isBlockScalarIndicator(v string) bool {
+	switch v {
+	case "|", "|-", "|+", ">", ">-", ">+":
+		return true
+	}
+	return false
 }

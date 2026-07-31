@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -50,6 +51,11 @@ func (m *Manager) runSupervised(
 		backoff = runtimeReconnectInitial
 	}
 	initialBackoff := backoff
+	// Attach the connection-lifecycle flow emitter so platform starters can
+	// emit channel.connect.* events; nil when the monitor bus is not wired.
+	if flow := m.connectFlow(runCtx); flow != nil {
+		runCtx = event.WithTraceEmitter(runCtx, flow)
+	}
 	for {
 		if runCtx.Err() != nil {
 			return
@@ -63,24 +69,37 @@ func (m *Manager) runSupervised(
 			setChannelConnection(ch.ID, false)
 			return
 		}
-		if err := starter(runCtx, ch, creds, m.credLookup, m.handler, m.lg); err != nil {
-			m.lg.Warn("渠道连接器异常退出",
-				loggateway.StepID("channel.runtime.starter_exited"),
+		runErr := starter(runCtx, ch, creds, m.credLookup, m.handler, m.lg)
+		setChannelConnection(ch.ID, false)
+		if runCtx.Err() != nil {
+			// 正常停止（Reload 替换 / 进程关停）。
+			EmitConnectClose(runCtx, platform, ch.ID, "渠道连接已断开（连接器停止）")
+			m.lg.Info("渠道连接器已停止",
+				loggateway.StepID("channel.runtime.connector_stop"),
 				loggateway.Str("platform", platform),
 				loggateway.Str("channel_id", ch.ID),
-				loggateway.Err(err),
 			)
-		}
-		setChannelConnection(ch.ID, false)
-		// Reset backoff after a successful run so that transient disconnects
-		// don't accumulate to the max backoff ceiling.
-		backoff = initialBackoff
-		if runCtx.Err() != nil {
 			return
 		}
 		if !m.fingerprintMatches(ch.ID, fp) {
 			return
 		}
+		if runErr != nil {
+			// 异常退出：channel.connect.error 流程日志由平台 starter 在具体
+			// 失败点发射（拨号失败/读循环异常/重连失败），此处只记进程日志。
+			m.lg.Warn("渠道连接器异常退出",
+				loggateway.StepID("channel.runtime.starter_exited"),
+				loggateway.Str("platform", platform),
+				loggateway.Str("channel_id", ch.ID),
+				loggateway.Err(runErr),
+			)
+		} else {
+			// 远端正常关闭（如 Telegram updates 通道关闭），稍后重连。
+			EmitConnectClose(runCtx, platform, ch.ID, "渠道连接已断开")
+		}
+		// Reset backoff after a successful run so that transient disconnects
+		// don't accumulate to the max backoff ceiling.
+		backoff = initialBackoff
 		arametrics.ChannelRuntimeReconnectTotal.WithLabelValues(platform, mode, "disconnect").Inc()
 		arametrics.ChannelRuntimeReconnectTotal.WithLabelValues(platform, mode, "attempt").Inc()
 
@@ -88,6 +107,12 @@ func (m *Manager) runSupervised(
 		// disconnect simultaneously (e.g., platform-side restart).
 		jitter := time.Duration(rand.Int64N(int64(backoff) / 2))
 		sleepDuration := backoff/2 + jitter
+		m.lg.Info("渠道连接器准备重连",
+			loggateway.StepID("channel.runtime.connector_reconnect"),
+			loggateway.Str("platform", platform),
+			loggateway.Str("channel_id", ch.ID),
+			loggateway.Int64("backoff_ms", sleepDuration.Milliseconds()),
+		)
 		timer := time.NewTimer(sleepDuration)
 		select {
 		case <-runCtx.Done():

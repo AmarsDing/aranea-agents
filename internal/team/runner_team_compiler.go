@@ -74,7 +74,10 @@ func (r *Runner) compileTeamRuntime(
 	}
 	if r.mediator != nil {
 		spiritSessionID := deriveSpiritSessionID(sess)
-		if regErr := r.mediator.RegisterTeamGraphExecution(ctx, graphExecID, sess.ID, spiritSessionID, teamRow.ID, runID, compiledTeam); regErr != nil {
+		// C1 全量物化（B9）：graph_id 优先用 team 的 linked_graph_id（真实图资产），
+		// 列值为空时回退 definition_json 中的 linked_graph_id，仍为空由下游保留 team: 合成 ID 兜底。
+		linkedGraphID := ResolveLinkedGraphID(teamRow.LinkedGraphID, teamRow.DefinitionJSON)
+		if regErr := r.mediator.RegisterTeamGraphExecution(ctx, graphExecID, sess.ID, spiritSessionID, teamRow.ID, runID, linkedGraphID, compiledTeam); regErr != nil {
 			r.lg.Warn("graph execution 注册失败", loggateway.StepID("team.graph_runtime.register"), loggateway.Err(regErr))
 		}
 	}

@@ -29,7 +29,7 @@ func (r *testParticipantRepo) ListBySession(ctx context.Context, sessionID strin
 }
 
 func newTestUcWithParticipants(repo *testRepo, participants *testParticipantRepo) *SessionUsecase {
-	return NewSessionUsecase(repo, &mockAgentLookup{}, &mockTeamLookup{}, nil, participants, nil, NewSessionMetricsUsecase(repo, nil, nil), nil, repo, loggateway.NewNoop())
+	return NewSessionUsecase(repo, &mockAgentLookup{}, &mockTeamLookup{}, nil, participants, nil, NewSessionMetricsUsecase(repo, nil, nil), nil, repo, loggateway.NewNoop(), nil)
 }
 
 func TestPreviewBatch(t *testing.T) {

@@ -7,21 +7,33 @@ import (
 
 const OrchestrationSpecVersion = 2
 
+// Definition graph source values for OrchestrationSpec.Source（Team × Graph 一体化，Phase 11）。
+const (
+	// DefinitionGraphSourcePreset：拓扑由 Team 表单（mode/members）派生物化。
+	DefinitionGraphSourcePreset = "preset"
+	// DefinitionGraphSourceCustom：拓扑在 Graph 编辑器中被手改过。
+	DefinitionGraphSourceCustom = "custom"
+	// DefinitionGraphSourceLinkedExt：拓扑关联自独立 Graph 资产（非本 team 拥有）。
+	DefinitionGraphSourceLinkedExt = "linked_external"
+)
+
 // OrchestrationSpec is the v2 strong-typed team orchestration document (TG-CMP-V2).
 type OrchestrationSpec struct {
-	Version             int                   `json:"version"`
-	Mode                string                `json:"mode"`
-	Members             []OrchestrationMember `json:"members"`
-	Graph               *EmbeddedGraphSpec    `json:"graph,omitempty"`
-	LinkedGraphID       string                `json:"linked_graph_id,omitempty"`
-	FailurePolicy       *TeamFailurePolicy    `json:"failure_policy,omitempty"`
-	RuntimeEngine       string                `json:"runtime_engine,omitempty"`
-	TeamGraphRuntime    bool                  `json:"team_graph_runtime,omitempty"`
-	TurnTimeoutSec      int                   `json:"turn_timeout_sec,omitempty"`
-	FirstByteTimeoutSec int                   `json:"first_byte_timeout_sec,omitempty"`
-	IntentAnchorAgentID string                `json:"intent_anchor_agent_id,omitempty"`
-	Description         string                `json:"description,omitempty"`
-	MaxConcurrency      int                   `json:"max_concurrency,omitempty"`
+	Version       int                   `json:"version"`
+	Mode          string                `json:"mode"`
+	Members       []OrchestrationMember `json:"members"`
+	Graph         *EmbeddedGraphSpec    `json:"graph,omitempty"`
+	LinkedGraphID string                `json:"linked_graph_id,omitempty"`
+	// Source 标记拓扑来源（preset/custom/linked_external），缺省按 preset 处理（见 GraphSource）。
+	Source              string             `json:"source,omitempty"`
+	FailurePolicy       *TeamFailurePolicy `json:"failure_policy,omitempty"`
+	RuntimeEngine       string             `json:"runtime_engine,omitempty"`
+	TeamGraphRuntime    bool               `json:"team_graph_runtime,omitempty"`
+	TurnTimeoutSec      int                `json:"turn_timeout_sec,omitempty"`
+	FirstByteTimeoutSec int                `json:"first_byte_timeout_sec,omitempty"`
+	IntentAnchorAgentID string             `json:"intent_anchor_agent_id,omitempty"`
+	Description         string             `json:"description,omitempty"`
+	MaxConcurrency      int                `json:"max_concurrency,omitempty"`
 	// Deprecated: use RunTimeoutSec
 	TimeoutSeconds     int             `json:"timeout_seconds,omitempty"`
 	RunTimeoutSec      int             `json:"run_timeout_sec,omitempty"`
@@ -29,6 +41,18 @@ type OrchestrationSpec struct {
 	SynthesizerAgentID string          `json:"synthesizer_agent_id,omitempty"`
 	CriticLoop         *CriticLoopSpec `json:"critic_loop,omitempty"`
 	EnableCheckpoint   bool            `json:"enable_checkpoint,omitempty"`
+}
+
+// GraphSource returns the effective definition graph source (default preset).
+func (s OrchestrationSpec) GraphSource() string {
+	switch strings.TrimSpace(s.Source) {
+	case DefinitionGraphSourceCustom:
+		return DefinitionGraphSourceCustom
+	case DefinitionGraphSourceLinkedExt:
+		return DefinitionGraphSourceLinkedExt
+	default:
+		return DefinitionGraphSourcePreset
+	}
 }
 
 type OrchestrationMember struct {

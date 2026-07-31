@@ -622,3 +622,56 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 **Phase B 验证证据（2026-07-25）**：`pnpm lint` 0 errors；`pnpm test` 877/877 PASS（`teamNodeDisplay.spec.ts` 新增 9 例六种模式中文摘要；`teamUtils.spec.ts` 新增 native→graph 归一化用例）；`pnpm build` 成功。
 
 **遗留**：mode 字段只读化待 graph 完全接管后评估（当前 mode 仍承担模板选择器语义）。
+
+---
+
+## Phase 11 — Team × Graph 一体化（C1 全量物化，2026-07-30 启动）
+
+> 来源：2026-07-30 Team 中的 Graph 与 Graph 工作流（M36）关系评审 + 用户确认 C1 全量物化路线。
+> 需求：[53-team-graph-orchestration.md 子模块（US-12~US-15）](./53-team-graph-orchestration.md#子模块team--graph-一体化c1-全量物化2026-07-30) · 设计：[53-team-graph-orchestration.design.md 子模块 §A~M](./53-team-graph-orchestration.design.md#子模块team--graph-一体化c1-全量物化2026-07-30)
+> **核心决策**：C1 全量物化（Graph 资产为拓扑唯一真相源，替代 ADR-08 的 embedded 真相源——需 ADR-09 记录）；双路径编辑+覆盖警告；L3 批量迁移+惰性兜底；D1 物化=同事务、D2 换绑删旧 owned 图、D3 编排页画布保持只读。
+> **实施纪律**：TDD（先失败测试后实现）；每任务完成后跑对应包测试；Phase 完成后全量验证。
+
+### Phase 11.A — 后端：物化器与保存钩子（B 系列）
+
+| ID | 任务 | 影响域 | 验收 | 状态 |
+|----|------|--------|------|------|
+| B1 | `OrchestrationSpec` 新增 `source` 字段（preset/custom/linked_external）+ v1↔v2 转换保留 + `DefinitionGraphSource` 常量 | `biz/orchestration_spec.go` · `orchestration_spec_test.go` | SpecV2RoundTrip 含 source；缺省=preset | ✅ |
+| B2 | 物化器 `MaterializeTeamGraph`：复用编译器产出 canonical 拓扑 → `biz.GraphDefinition`；layout 坐标继承（`metadata.layout`）；`metadata.team_source` 镜像 | `biz/team_graph_materialize.go` + `_test.go` | 六 mode 物化单测；坐标保留；enable_checkpoint 透传 | ✅ |
+| B3 | Team 保存钩子：CreateTeam/UpdateTeam 在 `ExecInTx` 内物化+回写 `linked_graph_id`/`source`，不再写 `graph` 字段；物化失败=保存失败（D1）；HasActiveRun 锁定不变 | `biz/team_graph_hook.go` · `biz/team_usecase.go` | 保存后 Graph 列表可见资产；失败回滚无残留 | ✅ |
+| B4 | 重置/覆盖语义：source=custom 表单改拓扑字段保存 → 按 preset 重建（前端已确认）；「重置为派生」= 同路径显式触发 | `biz/team_graph_hook.go` | source 转换单测（custom→preset 重建） | ✅ |
+| B5 | 删 team 行为变更：owned 图（team_id=本 team）级联删；external 图只解绑不删（**行为变更**，原逻辑级联删 linked） | `biz/team_usecase.go` delete 路径 | 删除回归测试覆盖两种情形 | ✅ |
+| B6 | 反向同步：GraphDefinitionUsecase.UpdateGraph 保存 team-owned 图 → 回写 team `source=custom` + members 从图 agent 节点派生（共享函数 `DeriveMembersFromGraphNodes`，agent key→id 反查）；属主有活跃 Run 拒绝保存 | `biz/team_graph_guard.go` · `biz/graph_definition_usecase.go` | Graph 编辑器保存后 team source/members 同步单测 | ✅ |
+| B7 | 删除保护：删 team-owned 图（属主存在）拒绝；删被 external 引用的独立图拒绝并列引用者；级联删走 `DeleteOwnedGraph` 旁路 | `biz/graph_definition_usecase.go` DeleteGraph · `data/team_repo.go` ListTeamsByLinkedGraphID | 两种拒绝路径单测 | ✅ |
+| B8 | 换绑校验：external 关联目标不得为 team-owned 图（防级联误删）；换绑时删旧 owned 图（D2） | `biz/team_graph_hook.go` | 循环关联拒绝 + 旧图清理单测 | ✅ |
+| B9 | `RegisterTeamGraphExecution` 使用真实 graph_id（team linked_graph_id），linked 为空保留 `team:` 兜底；调用点签名同步；`shouldResumeTeamGraph` 去除 `team:` 前缀代理（sess 门控后只需排除 running） | `biz/graph_execution_usecase.go` · `biz/graph.go` · `team/runner_mediator.go` · `team/runner_team_compiler.go` · `team/team_graph_run_coordinator.go` | 新执行 graph_id=资产 ID 断言 + 兜底断言（graph_team_execution_test） | ✅ |
+| B10 | L3 存量迁移：扫描含 graph 且 linked 为空的 team 批量物化+回写；preset/custom 判定（拓扑等价→preset）；幂等；单队失败 warn 继续；运行时惰性兜底（linked 空→先物化）。挂载：依赖 TeamCompiler 无法入 data 层 L3 注册表 → 批迁移由 cmd/admin readiness 门控后台任务（`startup.team_graph_migration`）调用；惰性兜底经 `biz.TeamGraphAssetEnsurer` 端口注入 `team.RunnerConfig.GraphEnsurer`（Runner.loadTeamForRun） | `biz/team_graph_migrate.go` · `biz/team_ports.go`（端口）· `team/runner.go`+`runner_config.go`（loadTeamForRun）· `cmd/admin/app.go`+`wire.go`（装配） | 单测 5 例（双态/幂等/惰性/跳过）+ PG 集成测试 `TestMigrateLegacyEmbeddedGraphs_PG_EndToEnd`（端到端+幂等+双态+惰性） | ✅ |
+| B11 | ADR-10：C1 全量物化决策记录（背景/决策/后果/替代方案 C2），标注替代 ADR-08 的 embedded 真相源条款（编号顺延：ADR-09 已被 2026-07-29 成员终态单写者占用） | `docs/reports/2026-07-30-review-adr-team-graph-materialize.md` | 文档落盘 | ✅ |
+
+### Phase 11.B — 前端：编辑路径（F 系列）
+
+| ID | 任务 | 影响域 | 验收 | 状态 |
+|----|------|--------|------|------|
+| F1 | definition_json 读写 source：`definitionToJSON`/`parseDefinition` 携带 source（`TeamDefinition.source` 类型 + `definitionGraphSource` 镜像后端 GraphSource；`resetDefinition` 清理 source）；移除三处 `enableCheckpoint: false` 硬编码（teamGraphAdapter 改读 `definition.enable_checkpoint ?? true`（镜像后端 parseRuntimeOptions 缺省 true）· compileApi 改解析编译产物 graph_json 的 `enable_checkpoint` · useTeamRunObservatoryPage 无编译拓扑时回退解析 definition_snapshot_json） | `web/.../teams/types.ts` · `teams/teamUtils.ts` · `features/orchestration/teamGraphAdapter.ts` · `compileApi.ts` · `features/teams/useTeamRunObservatoryPage.ts` | teamUtils 单测 3 例（source 往返/GraphSource 镜像/reset 清理）+ compileApi 单测 2 例（checkpoint 以 graph_json 为准/回退 false） | ✅ |
+| F2 | TeamEditorDialog：source=custom 警告条 +「重置为派生」（弹覆盖确认，emit `resetToDerived` → useTeamsPage 重置 source=preset 并重建本地图+后端同步）；「关联 Graph」选择器（`linkableGraphOptions` 排除 team-owned；选中置 `source=linked_external`+`linked_graph_id`，清空回 preset）；`enable_checkpoint` 开关（缺省 true 镜像后端）；custom 且 `definitionTopologyOverwriteKey` 漂移时保存弹覆盖确认 | `TeamEditorDialog.vue` · `teamUtils.ts` · `useTeamsPage.ts`（graphStore 集成/graphOptions/resetToDerived/overwriteBaselineKey）· `TeamsPage.vue` 接线 | 组件单测 8 例（警告条显隐/重置确认流/选择器互写/checkpoint 开关/覆盖确认三分支）+ teamUtils 2 例（overwrite 指纹/linkable 过滤） | ✅ |
+| F3 | TeamOrchestratePage：工具栏「在 Graph 编辑器中打开」（linked_external→linked_graph_id；preset/custom→按 teamId 反查 team-owned 资产，列表未载时拉取一页再查，缺失则 warning 提示）；校验错误接入节点联动（`compileIssuesToNodeIssues` 纯函数映射 nodeId→NodeIssueInfo 驱动画布节点错误态，同节点 error 优先/首 warning 保留；issue 行可点击→选中节点并切回画布） | `useTeamOrchestratePage.ts` · `TeamOrchestratePage.vue` · `teamNodeDisplay.ts` · `_team-orchestrate.sass` | composable 测试 3 例（external 直跳/owned 反查+懒加载/缺失告警）+ 纯函数测试 4 例（映射/error 优先/首 warning/message 回退） | ✅ |
+| F4 | GraphEditorPage：保存 team-owned 图时确认提示（`isTeamOwnedGraph`=metadata.team_owned；`onSaveClick` 独立图直存，owned 图解析属主 Team 名后弹「此图属于 Team X…反向同步 source=custom/回写成员」确认，onOk 才落库；属主查询失败回退 teamId 不阻断；Ctrl+S 快捷键同走确认流） | `useGraphEditorPage.ts` · `GraphEditorPage.vue` | composable 测试 3 例（独立图直存/owned 确认后落库/属主查询失败回退） | ✅ |
+| F5 | GraphsPage：Team badge + 属主名（teams 列表映射，`isTeamOwned`=metadata.team_owned 镜像后端，`teamDisplayName` 命中 display_name/回退 teamId，onMounted best-effort loadTeams）+ 过滤 chips（`teamFilter`：全部/独立/Team 关联=teamId 非空）+ 行内「打开 Team 编排」（teamId 非空图上下文菜单动态注入 open-team 项，跳 `team-orchestrate` 路由） | `useGraphsPage.ts` · `GraphsPage.vue` · `_graph-pages.sass` · i18n 双 locale | composable 测试 5 例（loadTeams 挂载/过滤三分支/owned 判定（external 回填不算）/属主名回退/菜单注入+跳转+独立图无项） | ✅ |
+
+### Phase 11.C — 前端：观测双视角（F 系列续）
+
+| ID | 任务 | 影响域 | 验收 | 状态 |
+|----|------|--------|------|------|
+| F6 | TeamRunObservatoryPage：Checkpoint tab（`checkpointTabEnabled`=graphDef.enableCheckpoint && graphExecutionId；load() 预取检查点；复用 `useGraphTimeTravel`+`GraphCheckpointPanel`+`GraphTimeTravelPanel`：ListCheckpoints/GetStateSnapshot/EditState；「恢复执行」按钮走 graphStore.resumeExecution=ResumeGraph 后重整 load）；工具栏「Graph 执行视角」（fetchExecution 反查 graphId 跳 `graph-run` 路由，graphId 空 warning 不跳） | `useTeamRunObservatoryPage.ts` · `TeamRunObservatoryPage.vue` | composable 测试 6 例（tab 启用+预取/checkpoint off 禁用/无 execId 禁用/跳转反查/空 graphId warning/resume+重载） | ✅ |
+| F7 | GraphRunPage：team 执行（图 team_id 非空）Inspector 新增 Kanban tab（`buildGraphRunKanbanNodes` 纯函数投影 steps+live execNodeStates+图定义→AgentNodeState：live 状态优先、同节点取最大 stepIndex 快照、agent_name 回退 node_id；复用 OrchestrationKanban，选中联动画布 selectedNodeId）；悬空 graph_id 友好降级（fetchGraph 404→`graphAssetMissing`+warning banner「资产已删除」，从执行 steps 经 `synthesizeGraphNodesFromSteps` 合成只读拓扑，不弹错误；非 404 保持原错误通知） | `graphExecutionProjection.ts` · `useGraphRunPage.ts` · `GraphRunInspector.vue` · `GraphRunPage.vue` · i18n 双 locale | 纯函数测试 5 例（状态映射/error 透传/live 覆盖/快照取最新/降级排序）+ composable 测试 5 例（team 显示/独立隐藏/派生内容/404 降级合成/非 404 原行为） | ✅ |
+
+### Phase 11.D — 全量验证与终审
+
+| ID | 任务 | 验收 | 状态 |
+|----|------|------|------|
+| V1 | 后端全量：`make api && make wire && make build && make test`（关注 internal/biz、internal/team、internal/data、internal/service） | 全绿 | ⏳ |
+| V2 | 前端全量：`cd web && pnpm lint && pnpm test && pnpm build` | 全绿 | ⏳ |
+| V3 | 运行时验证：建 team→物化可见→运行→双视角观测互跳→Graph 编辑器改拓扑→source=custom→重置派生；存量迁移后老 team 可运行 | 日志+UI 证据 | ⏳ |
+| V4 | 终审：aranea-review 全维度（架构/质量/正确性/错误处理/DB/安全/可测试性/业务逻辑/文档同步） | 审查报告 + 阻断项清零 | ⏳ |
+
+**依赖顺序**：B1→B2→B3（核心链）→B4/B5/B8（保存语义）→B6/B7（反向与保护）→B9（执行 ID）→B10（迁移）→B11（ADR 随时）；F1 依赖 B1 契约；F2/F3 依赖 B3；F4/F5 依赖 B6/B7；F6/F7 依赖 B9。

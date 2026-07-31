@@ -98,11 +98,14 @@ func main() {
 	// Initialize service-layer runtime configs before Wire construction.
 	service.InitWebhookRateLimitConfig(bc.Runtime)
 
-	out, cleanup, err := wireApp(bc.Server, bc.Data, bc.Runtime, nil, logger, lg, pipeline, loggingSinks)
+	out, cleanup, err := wireApp(bc.Server, bc.Data, bc.Runtime, bc.SelfImprovement, nil, logger, lg, pipeline, loggingSinks)
 	if err != nil {
 		panic(redactConfigError("wire app", err))
 	}
 	defer cleanup()
+
+	// Re-register the safego panic hook now that the MonitorBus is available.
+	registerSafegoPanicFlowHook(appctx.Ctx(), lg, out.MonitorBus)
 
 	cronCtx, cancelCron := context.WithCancel(context.Background())
 	watchCtx, cancelWatch := context.WithCancel(context.Background())
@@ -143,6 +146,7 @@ func main() {
 		SkillIntelligenceWorker:     out.SkillIntelligenceWorker,
 		CuratorWorker:               out.CuratorWorker,
 		EvolutionOrchestratorWorker: out.EvolutionOrchestratorWorker,
+		SelfImproveObserveWorker:    out.SelfImproveObserveWorker,
 		ProviderHealthScanner:       out.ProviderHealthScanner,
 		ChannelHealthScanner:        out.ChannelHealthScanner,
 		ChannelDeliveryScanner:      out.ChannelDeliveryScanner,
@@ -170,6 +174,7 @@ func main() {
 		MemoryL3Decay:               out.MemoryL3Decay,
 		MemoryL4Decay:               out.MemoryL4Decay,
 		MemoryEbbinghausDecay:       out.MemoryEbbinghausDecay,
+		MemoryCanary:                out.MemoryCanary,
 		MemorySleepTime:             out.MemorySleepTime,
 		MemoryEpisodeBackfill:       out.MemoryEpisodeBackfill,
 		MemoryFactIndexReconciler:   out.MemoryFactIndexReconciler,

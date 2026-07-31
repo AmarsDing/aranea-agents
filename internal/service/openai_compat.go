@@ -155,15 +155,16 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 			KanbanBridge: s.orch.rt().KanbanBridge,
 		},
 		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
-			HasMemory:             s.orch.td().Persist.Memory.Available(),
-			MemoryService:         s.orch.td().Persist.Memory.TRPC,
-			MemoryAdmin:           s.orch.td().Persist.Memory.Admin,
-			MemoryActionLogWriter: s.orch.td().Persist.Memory.ActionLogWriter,
-			ManualCompressor:      biz.ManualCompressorFromNative(s.orch.td().Compress),
-			MemoryL2Recall:        s.orch.td().Persist.Memory.L2Recall,
-			MemoryL3Recall:        s.orch.td().Persist.Memory.L3Recall,
-			MemoryCompositeRecall: s.orch.td().Persist.Memory.CompositeRecall,
-			KnowledgeRetriever:    s.orch.rt().KnowledgeRetriever,
+			HasMemory:              s.orch.td().Persist.Memory.Available(),
+			MemoryService:          s.orch.td().Persist.Memory.TRPC,
+			MemoryAdmin:            s.orch.td().Persist.Memory.Admin,
+			MemoryActionLogWriter:  s.orch.td().Persist.Memory.ActionLogWriter,
+			ManualCompressor:       biz.ManualCompressorFromNative(s.orch.td().Compress),
+			MemoryL2Recall:         s.orch.td().Persist.Memory.L2Recall,
+			MemoryL3Recall:         s.orch.td().Persist.Memory.L3Recall,
+			MemoryCompositeRecall:  s.orch.td().Persist.Memory.CompositeRecall,
+			MemoryPreferenceLister: s.orch.td().Persist.Memory.PreferenceLister,
+			KnowledgeRetriever:     s.orch.rt().KnowledgeRetriever,
 		},
 		TRPCPluginDeps: chatagent.TRPCPluginDeps{
 			PluginManager: s.orch.rt().PluginManager,
@@ -189,6 +190,7 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 	deps.CustomTools = append(deps.CustomTools, s.orch.spiritCustomTools(ag)...)
 	deps.CustomTools = append(deps.CustomTools, s.orch.skillsButlerTools(ctx, ag)...)
 	deps.CustomTools = append(deps.CustomTools, s.orch.memoryButlerTools(ctx, ag)...)
+	deps.CustomTools = append(deps.CustomTools, s.orch.memoryRememberTools(ag)...)
 	var plugins []trpcplugin.Plugin
 	wsID := workspace.IDFromContext(ctx)
 	if s.orch.rt().PluginManager != nil {

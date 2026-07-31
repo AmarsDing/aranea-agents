@@ -39,6 +39,17 @@
       </q-btn>
     </div>
 
+    <q-banner
+      v-if="graphAssetMissing"
+      dense
+      rounded
+      class="graph-run-page__missing-banner bg-warning text-white q-mb-sm"
+      data-test="graph-asset-missing-banner"
+    >
+      <template #avatar><q-icon name="delete_forever" /></template>
+      {{ t('graphs.runAssetMissingBanner') }}
+    </q-banner>
+
     <div v-if="showProgressBar" class="graph-run-progress">
       <div class="graph-run-progress__bar">
         <div class="graph-run-progress__fill" :style="{ width: progressPercent + '%' }"></div>
@@ -90,6 +101,9 @@
         :selected-task-id="selectedTaskId"
         :tab="inspectorTab"
         :restoring-checkpoint="editLoading"
+        :kanban-nodes="kanbanNodes"
+        :show-kanban-tab="showKanbanTab"
+        :selected-kanban-node-id="selectedNodeId"
         @update:tab="inspectorTab = $event"
         @refresh-checkpoints="timeTravelLoadCheckpoints"
         @select-checkpoint="onSelectCheckpoint"
@@ -101,6 +115,7 @@
         @refresh-tasks="loadTasks"
         @select-task="openTaskDetail"
         @kanban-admin-action="onKanbanAdminAction"
+        @select-node="onSelectNode"
       />
     </div>
 
@@ -133,11 +148,14 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import GraphEditorCanvas from '../components/graph/GraphEditorCanvas.vue';
 import GraphRunInspector from '../components/graph/GraphRunInspector.vue';
 import GraphHitlDialog from '../components/graph/GraphHitlDialog.vue';
 import GraphTaskDetailDrawer from '../components/graph/GraphTaskDetailDrawer.vue';
 import { useGraphRunPage } from '../features/graph/useGraphRunPage';
+
+const { t } = useI18n();
 
 const {
   isDark,
@@ -202,5 +220,8 @@ const {
   progressStepLabel,
   progressDurationSec,
   showProgressBar,
+  kanbanNodes,
+  showKanbanTab,
+  graphAssetMissing,
 } = useGraphRunPage();
 </script>

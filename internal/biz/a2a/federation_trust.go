@@ -23,6 +23,12 @@ func (m *TrustManager) Check(trustLevel string) bool {
 	case TrustLevelTrusted, TrustLevelNeutral:
 		return true
 	case TrustLevelUntrusted:
+		if m != nil && m.lg != nil {
+			m.lg.Warn("federation call denied by trust level",
+				loggateway.StepID("a2a.fed.trust.denied"),
+				loggateway.Str("trust_level", trustLevel),
+			)
+		}
 		return false
 	default:
 		if m != nil && m.lg != nil {

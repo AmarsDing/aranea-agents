@@ -63,7 +63,7 @@ func newTestFederationUsecase(fn func(*testFedParts)) (*FederationUsecase, *test
 	}
 	u := NewFederationUsecase(p.orgs, gov, NewDirectory(p.orgs, p.remotes),
 		NewAgentCardSync(p.remotes, nil, nil, loggateway.NewNoop()),
-		p.remotes, p.executor)
+		p.remotes, p.executor, nil)
 	return u, p
 }
 

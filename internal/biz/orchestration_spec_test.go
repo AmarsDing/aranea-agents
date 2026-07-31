@@ -194,3 +194,41 @@ func TestMergeProtectsBaseMembers(t *testing.T) {
 		t.Fatalf("base members should be preserved when overlay members is empty, got %v", body["members"])
 	}
 }
+
+func TestOrchestrationSpecSourceRoundTrip(t *testing.T) {
+	raw := `{"version":2,"mode":"sequential","source":"custom","members":[{"agent_id":"a1","role":"worker","enabled":true,"sort_order":1}]}`
+	spec, err := ParseOrchestrationSpec(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.Source != DefinitionGraphSourceCustom {
+		t.Fatalf("source=%q, want custom", spec.Source)
+	}
+	out, err := OrchestrationSpecToDefinitionJSON(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(out), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["source"] != "custom" {
+		t.Fatalf("source lost on serialize: %v", body["source"])
+	}
+}
+
+func TestOrchestrationSpecGraphSourceDefault(t *testing.T) {
+	cases := map[string]string{
+		"":                             DefinitionGraphSourcePreset,
+		DefinitionGraphSourcePreset:    DefinitionGraphSourcePreset,
+		DefinitionGraphSourceCustom:    DefinitionGraphSourceCustom,
+		DefinitionGraphSourceLinkedExt: DefinitionGraphSourceLinkedExt,
+		"unknown":                      DefinitionGraphSourcePreset,
+	}
+	for in, want := range cases {
+		spec := OrchestrationSpec{Source: in}
+		if got := spec.GraphSource(); got != want {
+			t.Fatalf("GraphSource(%q)=%q, want %q", in, got, want)
+		}
+	}
+}

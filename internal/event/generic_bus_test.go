@@ -5,7 +5,7 @@ import (
 )
 
 func TestGenericBus_SubscriberCount(t *testing.T) {
-	bus := NewGenericBus[string](nil)
+	bus := NewGenericBus[string](nil, nil)
 	if got := bus.SubscriberCount(); got != 0 {
 		t.Fatalf("initial subscriber count=%d want 0", got)
 	}

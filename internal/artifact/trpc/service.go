@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 )
@@ -14,11 +15,16 @@ import (
 // ServiceAdapter implements trpcartifact.Service backed by biz.ArtifactUsecase.
 type ServiceAdapter struct {
 	uc *biz.ArtifactUsecase
+	lg loggateway.Logger
 }
 
-// NewServiceAdapter creates a ServiceAdapter.
-func NewServiceAdapter(uc *biz.ArtifactUsecase) *ServiceAdapter {
-	return &ServiceAdapter{uc: uc}
+// NewServiceAdapter creates a ServiceAdapter. lg is nil-safe (defaults to a
+// no-op logger) and is used for the artifact write-failure process log.
+func NewServiceAdapter(uc *biz.ArtifactUsecase, lg loggateway.Logger) *ServiceAdapter {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	return &ServiceAdapter{uc: uc, lg: lg}
 }
 
 var _ trpcartifact.Service = (*ServiceAdapter)(nil)
@@ -34,6 +40,12 @@ func (s *ServiceAdapter) SaveArtifact(ctx context.Context, sessionInfo trpcartif
 	}
 	saved, err := s.uc.Save(ctx, sessionInfo.SessionID, filename, mime, a.Data)
 	if err != nil {
+		s.lg.Error("artifact 写入失败",
+			loggateway.StepID("artifact.save_failed"),
+			loggateway.SessionID(sessionInfo.SessionID),
+			loggateway.Str("filename", filename),
+			loggateway.Err(err),
+		)
 		return 0, err
 	}
 	return saved.Version, nil

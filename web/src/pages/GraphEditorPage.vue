@@ -31,7 +31,9 @@
         @click="toggleValidationPanel"
       >
         <q-icon :name="validationErrorCount > 0 ? 'error' : 'warning'" size="14px" class="q-mr-xs" />
-        <span v-if="validationErrorCount > 0">{{ t('graphs.validationFailedCount', { n: validationErrorCount }) }}</span>
+        <span v-if="validationErrorCount > 0">{{
+          t('graphs.validationFailedCount', { n: validationErrorCount })
+        }}</span>
         <span v-else>{{ t('graphs.validationWarningsCount', { n: validationWarningCount }) }}</span>
         <q-tooltip>{{ t('graphs.validationPanelTitle') }}</q-tooltip>
       </q-btn>
@@ -55,8 +57,18 @@
           <q-tooltip>保存为模板</q-tooltip>
         </q-btn>
       </template>
-      <q-btn flat dense round icon="save" color="primary" :loading="saving" :disable="!canSave" @click="save">
-        <q-tooltip>保存</q-tooltip>
+      <q-btn
+        flat
+        dense
+        round
+        icon="save"
+        color="primary"
+        :loading="saving"
+        :disable="!canSave"
+        data-test="graph-save"
+        @click="onSaveClick"
+      >
+        <q-tooltip>{{ isTeamOwnedGraph ? '保存（Team 拓扑，需确认）' : '保存' }}</q-tooltip>
       </q-btn>
       <q-btn
         v-if="!isNew"
@@ -201,10 +213,11 @@ const {
   graphDef,
   selectedNode,
   canSave,
+  isTeamOwnedGraph,
   onSelectNode,
   onFocusPropertyPanel,
   markDirty,
-  save,
+  onSaveClick,
   canUndo,
   canRedo,
   undo,

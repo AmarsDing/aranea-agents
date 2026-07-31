@@ -83,7 +83,7 @@ type Diagnosis struct {
 	AffectedFiles []string `json:"affected_files"`
 	ImpactScope   string   `json:"impact_scope"` // local / module / global
 	FixStrategy   string   `json:"fix_strategy"`
-	Confidence    float64  `json:"confidence"`   // 0-1；<0.5 降级为仅记录
+	Confidence    float64  `json:"confidence"` // 0-1；<0.5 降级为仅记录
 }
 
 // SandboxGateKind identifies one sandbox verification gate.

@@ -117,6 +117,17 @@ func (s *MonitorService) ListAuditLogs(ctx context.Context, in *v1.ListAuditLogs
 	return &v1.ListAuditLogsResponse{Items: out, Total: result.Total}, nil
 }
 
+func (s *MonitorService) DeleteAuditLogs(ctx context.Context, in *v1.DeleteAuditLogsRequest) (*v1.DeleteAuditLogsResponse, error) {
+	if in.GetConfirm() != "CONFIRM" {
+		return nil, apierror.BadRequest(apierror.DomainMonitor, "confirm must be \"CONFIRM\" to delete all audit logs")
+	}
+	deleted, err := s.uc.DeleteAuditLogs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DeleteAuditLogsResponse{Deleted: int32(deleted)}, nil
+}
+
 func (s *MonitorService) ListMonitorEvents(ctx context.Context, in *v1.ListMonitorEventsRequest) (*v1.ListMonitorEventsResponse, error) {
 	result, err := s.uc.ListMonitorEvents(ctx, biz.MonitorEventsQuery{
 		Limit:             in.GetLimit(),
