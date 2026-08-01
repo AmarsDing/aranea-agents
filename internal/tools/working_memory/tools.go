@@ -507,12 +507,53 @@ func NewDeleteTool() trpctool.Tool {
 	)
 }
 
+// --- Complete Tool ---
+
+// CompleteInput is the input for the complete tool (no parameters).
+type CompleteInput struct{}
+
+// CompleteOutput reports whether an active task was ended.
+type CompleteOutput struct {
+	Completed bool   `json:"completed"`
+	TaskID    string `json:"task_id,omitempty"`
+}
+
+func completeExecute(ctx context.Context, input CompleteInput) (CompleteOutput, error) {
+	taskWriter := L1TaskWriterFromCtx(ctx)
+	reader := L1ReaderFromCtx(ctx)
+	sessID := SessionIDFromCtx(ctx)
+	agentID := AgentIDFromCtx(ctx)
+	if taskWriter == nil || reader == nil || sessID == "" {
+		return CompleteOutput{}, apierror.Internal(apierror.DomainWorkingMemory, "working_memory not available")
+	}
+	taskID, err := findActiveTaskID(ctx, reader, sessID, agentID)
+	if err != nil || taskID == "" {
+		return CompleteOutput{Completed: false}, nil
+	}
+	// EndL1Task routes through MemoryAdminUsecase, whose hook asynchronously
+	// archives the task and creates the L2 episode atomically (P1-2). After
+	// completion the scratchpad lifecycle ends; the next write auto-creates a
+	// fresh task.
+	if _, err := taskWriter.EndL1Task(ctx, sessID, taskID, "completed"); err != nil {
+		return CompleteOutput{}, apierror.Internal(apierror.DomainWorkingMemory, "complete task: "+err.Error())
+	}
+	return CompleteOutput{Completed: true, TaskID: taskID}, nil
+}
+
+// NewCompleteTool creates the complete tool (P1-2: LLM-declared task end).
+func NewCompleteTool() trpctool.Tool {
+	return trpcfunction.NewFunctionTool(completeExecute,
+		trpcfunction.WithName("complete"),
+		trpcfunction.WithDescription("Mark the current working memory task as completed. Call this when the task's goal has been fully achieved: the task ends, its scratchpad is archived, and an episode is created for long-term memory. A new task starts automatically on the next write if work continues."),
+	)
+}
+
 // --- ToolSet adapter ---
 
 // ToolSet implements trpctool.ToolSet for the working_memory tool group.
 type ToolSet struct{}
 
-// Tools returns all 5 working_memory tools.
+// Tools returns all 6 working_memory tools.
 func (ToolSet) Tools(_ context.Context) []trpctool.Tool {
 	return Tools()
 }
@@ -525,7 +566,7 @@ func (ToolSet) Name() string {
 // Close releases resources held by the toolset (none for working_memory).
 func (ToolSet) Close() error { return nil }
 
-// Tools returns all 5 working_memory tools as a flat slice.
+// Tools returns all 6 working_memory tools as a flat slice.
 func Tools() []trpctool.Tool {
 	return []trpctool.Tool{
 		NewReadTool(),
@@ -533,5 +574,6 @@ func Tools() []trpctool.Tool {
 		NewWriteTool(),
 		NewPatchTool(),
 		NewDeleteTool(),
+		NewCompleteTool(),
 	}
 }

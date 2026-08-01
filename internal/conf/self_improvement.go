@@ -27,6 +27,8 @@ const (
 	siDefaultMaxConcurrentObserving = 3
 	siDefaultWatchdogInterval       = 5 * time.Minute
 	siDefaultOutcomeInterval        = time.Hour
+	siDefaultDriveInterval          = time.Minute
+	siDefaultStaleTimeout           = 30 * time.Minute
 )
 
 // SIEnabled reports whether the platform self-improvement pipeline is on.
@@ -150,6 +152,12 @@ func (c *SelfImprovement) SIWorktreeRoot() string {
 	return siDefaultWorktreeRoot
 }
 
+// SIRepoRoot is the platform repository root the sandbox/applier operates
+// on. Empty = the provider falls back to the process working directory.
+func (c *SelfImprovement) SIRepoRoot() string {
+	return c.GetSandbox().GetRepoRoot()
+}
+
 // ── Observe window (design §6.2 / D7 / D10) ─────────────────────────────────
 
 // SIObserveWindowDuration is the post-apply observing window length
@@ -202,4 +210,21 @@ func (c *SelfImprovement) SIOutcomeInterval() time.Duration {
 		return d
 	}
 	return siDefaultOutcomeInterval
+}
+
+// SIDriveInterval is the full-chain drive worker tick (default 1m).
+func (c *SelfImprovement) SIDriveInterval() time.Duration {
+	if d := c.GetDriveInterval().AsDuration(); d > 0 {
+		return d
+	}
+	return siDefaultDriveInterval
+}
+
+// SIStaleTimeout is the mid-pipeline stale threshold: runs idle longer than
+// this are recovered to detected for re-driving (default 30m).
+func (c *SelfImprovement) SIStaleTimeout() time.Duration {
+	if d := c.GetStaleTimeout().AsDuration(); d > 0 {
+		return d
+	}
+	return siDefaultStaleTimeout
 }

@@ -233,6 +233,8 @@ type SelfImprovement struct {
 	ObserveWindow    *SelfImprovement_ObserveWindow `protobuf:"bytes,9,opt,name=observe_window,json=observeWindow,proto3" json:"observe_window,omitempty"`
 	WatchdogInterval *durationpb.Duration           `protobuf:"bytes,10,opt,name=watchdog_interval,json=watchdogInterval,proto3" json:"watchdog_interval,omitempty"` // watchdog tick (0 = 5m)
 	OutcomeInterval  *durationpb.Duration           `protobuf:"bytes,11,opt,name=outcome_interval,json=outcomeInterval,proto3" json:"outcome_interval,omitempty"`    // outcome attribution tick (0 = 1h)
+	DriveInterval    *durationpb.Duration           `protobuf:"bytes,12,opt,name=drive_interval,json=driveInterval,proto3" json:"drive_interval,omitempty"`          // full-chain drive tick (0 = 1m)
+	StaleTimeout     *durationpb.Duration           `protobuf:"bytes,13,opt,name=stale_timeout,json=staleTimeout,proto3" json:"stale_timeout,omitempty"`             // mid-pipeline stale threshold before recover (0 = 30m)
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -340,6 +342,20 @@ func (x *SelfImprovement) GetWatchdogInterval() *durationpb.Duration {
 func (x *SelfImprovement) GetOutcomeInterval() *durationpb.Duration {
 	if x != nil {
 		return x.OutcomeInterval
+	}
+	return nil
+}
+
+func (x *SelfImprovement) GetDriveInterval() *durationpb.Duration {
+	if x != nil {
+		return x.DriveInterval
+	}
+	return nil
+}
+
+func (x *SelfImprovement) GetStaleTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.StaleTimeout
 	}
 	return nil
 }
@@ -1265,7 +1281,10 @@ type SelfImprovement_Sandbox struct {
 	state        protoimpl.MessageState                `protogen:"open.v1"`
 	GateTimeouts *SelfImprovement_Sandbox_GateTimeouts `protobuf:"bytes,1,opt,name=gate_timeouts,json=gateTimeouts,proto3" json:"gate_timeouts,omitempty"`
 	// Worktree root directory relative to repo root ("" = ".aranea-self-improve").
-	WorktreeRoot  string `protobuf:"bytes,2,opt,name=worktree_root,json=worktreeRoot,proto3" json:"worktree_root,omitempty"`
+	WorktreeRoot string `protobuf:"bytes,2,opt,name=worktree_root,json=worktreeRoot,proto3" json:"worktree_root,omitempty"`
+	// Platform repository root the sandbox/applier operates on
+	// ("" = process working directory).
+	RepoRoot      string `protobuf:"bytes,3,opt,name=repo_root,json=repoRoot,proto3" json:"repo_root,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1310,6 +1329,13 @@ func (x *SelfImprovement_Sandbox) GetGateTimeouts() *SelfImprovement_Sandbox_Gat
 func (x *SelfImprovement_Sandbox) GetWorktreeRoot() string {
 	if x != nil {
 		return x.WorktreeRoot
+	}
+	return ""
+}
+
+func (x *SelfImprovement_Sandbox) GetRepoRoot() string {
+	if x != nil {
+		return x.RepoRoot
 	}
 	return ""
 }
@@ -2531,7 +2557,7 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\x0edebug_recorder\x18\x04 \x01(\v2\x19.kratos.api.DebugRecorderR\rdebugRecorder\x120\n" +
 	"\blangfuse\x18\x05 \x01(\v2\x14.kratos.api.LangfuseR\blangfuse\x12-\n" +
 	"\aruntime\x18\x06 \x01(\v2\x13.kratos.api.RuntimeR\aruntime\x12F\n" +
-	"\x10self_improvement\x18\a \x01(\v2\x1b.kratos.api.SelfImprovementR\x0fselfImprovement\"\xf3\v\n" +
+	"\x10self_improvement\x18\a \x01(\v2\x1b.kratos.api.SelfImprovementR\x0fselfImprovement\"\x92\r\n" +
 	"\x0fSelfImprovement\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12D\n" +
 	"\x10observe_interval\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x0fobserveInterval\x12M\n" +
@@ -2544,7 +2570,9 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\x0eobserve_window\x18\t \x01(\v2).kratos.api.SelfImprovement.ObserveWindowR\robserveWindow\x12F\n" +
 	"\x11watchdog_interval\x18\n" +
 	" \x01(\v2\x19.google.protobuf.DurationR\x10watchdogInterval\x12D\n" +
-	"\x10outcome_interval\x18\v \x01(\v2\x19.google.protobuf.DurationR\x0foutcomeInterval\x1aL\n" +
+	"\x10outcome_interval\x18\v \x01(\v2\x19.google.protobuf.DurationR\x0foutcomeInterval\x12@\n" +
+	"\x0edrive_interval\x18\f \x01(\v2\x19.google.protobuf.DurationR\rdriveInterval\x12>\n" +
+	"\rstale_timeout\x18\r \x01(\v2\x19.google.protobuf.DurationR\fstaleTimeout\x1aL\n" +
 	"\fErrorCluster\x12\x1f\n" +
 	"\vwindow_days\x18\x01 \x01(\x05R\n" +
 	"windowDays\x12\x1b\n" +
@@ -2557,10 +2585,11 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\x05Patch\x12$\n" +
 	"\x0emax_diff_lines\x18\x01 \x01(\x05R\fmaxDiffLines\x123\n" +
 	"\x16daily_auto_apply_quota\x18\x02 \x01(\x05R\x13dailyAutoApplyQuota\x12!\n" +
-	"\fmax_attempts\x18\x03 \x01(\x05R\vmaxAttempts\x1a\x97\x02\n" +
+	"\fmax_attempts\x18\x03 \x01(\x05R\vmaxAttempts\x1a\xb4\x02\n" +
 	"\aSandbox\x12U\n" +
 	"\rgate_timeouts\x18\x01 \x01(\v20.kratos.api.SelfImprovement.Sandbox.GateTimeoutsR\fgateTimeouts\x12#\n" +
-	"\rworktree_root\x18\x02 \x01(\tR\fworktreeRoot\x1a\x8f\x01\n" +
+	"\rworktree_root\x18\x02 \x01(\tR\fworktreeRoot\x12\x1b\n" +
+	"\trepo_root\x18\x03 \x01(\tR\brepoRoot\x1a\x8f\x01\n" +
 	"\fGateTimeouts\x12)\n" +
 	"\x02g1\x18\x01 \x01(\v2\x19.google.protobuf.DurationR\x02g1\x12)\n" +
 	"\x02g2\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x02g2\x12)\n" +
@@ -2812,41 +2841,43 @@ var file_conf_conf_proto_depIdxs = []int32{
 	18, // 13: kratos.api.SelfImprovement.observe_window:type_name -> kratos.api.SelfImprovement.ObserveWindow
 	36, // 14: kratos.api.SelfImprovement.watchdog_interval:type_name -> google.protobuf.Duration
 	36, // 15: kratos.api.SelfImprovement.outcome_interval:type_name -> google.protobuf.Duration
-	20, // 16: kratos.api.Server.http:type_name -> kratos.api.Server.HTTP
-	21, // 17: kratos.api.Server.grpc:type_name -> kratos.api.Server.GRPC
-	22, // 18: kratos.api.Server.ws:type_name -> kratos.api.Server.WS
-	6,  // 19: kratos.api.Server.monitor:type_name -> kratos.api.Monitor
-	5,  // 20: kratos.api.Server.openai:type_name -> kratos.api.OpenAI
-	0,  // 21: kratos.api.LoggingSink.type:type_name -> kratos.api.SinkType
-	1,  // 22: kratos.api.LoggingSink.drop_policy:type_name -> kratos.api.DropPolicy
-	23, // 23: kratos.api.LoggingSink.config:type_name -> kratos.api.LoggingSink.ConfigEntry
-	7,  // 24: kratos.api.Logging.sinks:type_name -> kratos.api.LoggingSink
-	24, // 25: kratos.api.Data.database:type_name -> kratos.api.Data.Database
-	27, // 26: kratos.api.Data.redis:type_name -> kratos.api.Data.Redis
-	25, // 27: kratos.api.Data.postgres:type_name -> kratos.api.Data.Postgres
-	26, // 28: kratos.api.Data.initial_admin:type_name -> kratos.api.Data.InitialAdmin
-	28, // 29: kratos.api.Runtime.ws:type_name -> kratos.api.Runtime.WS
-	29, // 30: kratos.api.Runtime.hook:type_name -> kratos.api.Runtime.Hook
-	30, // 31: kratos.api.Runtime.self_heal:type_name -> kratos.api.Runtime.SelfHeal
-	31, // 32: kratos.api.Runtime.memory_queue:type_name -> kratos.api.Runtime.MemoryQueue
-	32, // 33: kratos.api.Runtime.webhook:type_name -> kratos.api.Runtime.Webhook
-	33, // 34: kratos.api.Runtime.auto_memory:type_name -> kratos.api.Runtime.AutoMemory
-	34, // 35: kratos.api.Runtime.activity_flusher:type_name -> kratos.api.Runtime.ActivityFlusher
-	35, // 36: kratos.api.Runtime.plugin:type_name -> kratos.api.Runtime.Plugin
-	19, // 37: kratos.api.SelfImprovement.Sandbox.gate_timeouts:type_name -> kratos.api.SelfImprovement.Sandbox.GateTimeouts
-	36, // 38: kratos.api.SelfImprovement.ObserveWindow.duration:type_name -> google.protobuf.Duration
-	36, // 39: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g1:type_name -> google.protobuf.Duration
-	36, // 40: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g2:type_name -> google.protobuf.Duration
-	36, // 41: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g3:type_name -> google.protobuf.Duration
-	36, // 42: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
-	36, // 43: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
-	36, // 44: kratos.api.Data.Redis.read_timeout:type_name -> google.protobuf.Duration
-	36, // 45: kratos.api.Data.Redis.write_timeout:type_name -> google.protobuf.Duration
-	46, // [46:46] is the sub-list for method output_type
-	46, // [46:46] is the sub-list for method input_type
-	46, // [46:46] is the sub-list for extension type_name
-	46, // [46:46] is the sub-list for extension extendee
-	0,  // [0:46] is the sub-list for field type_name
+	36, // 16: kratos.api.SelfImprovement.drive_interval:type_name -> google.protobuf.Duration
+	36, // 17: kratos.api.SelfImprovement.stale_timeout:type_name -> google.protobuf.Duration
+	20, // 18: kratos.api.Server.http:type_name -> kratos.api.Server.HTTP
+	21, // 19: kratos.api.Server.grpc:type_name -> kratos.api.Server.GRPC
+	22, // 20: kratos.api.Server.ws:type_name -> kratos.api.Server.WS
+	6,  // 21: kratos.api.Server.monitor:type_name -> kratos.api.Monitor
+	5,  // 22: kratos.api.Server.openai:type_name -> kratos.api.OpenAI
+	0,  // 23: kratos.api.LoggingSink.type:type_name -> kratos.api.SinkType
+	1,  // 24: kratos.api.LoggingSink.drop_policy:type_name -> kratos.api.DropPolicy
+	23, // 25: kratos.api.LoggingSink.config:type_name -> kratos.api.LoggingSink.ConfigEntry
+	7,  // 26: kratos.api.Logging.sinks:type_name -> kratos.api.LoggingSink
+	24, // 27: kratos.api.Data.database:type_name -> kratos.api.Data.Database
+	27, // 28: kratos.api.Data.redis:type_name -> kratos.api.Data.Redis
+	25, // 29: kratos.api.Data.postgres:type_name -> kratos.api.Data.Postgres
+	26, // 30: kratos.api.Data.initial_admin:type_name -> kratos.api.Data.InitialAdmin
+	28, // 31: kratos.api.Runtime.ws:type_name -> kratos.api.Runtime.WS
+	29, // 32: kratos.api.Runtime.hook:type_name -> kratos.api.Runtime.Hook
+	30, // 33: kratos.api.Runtime.self_heal:type_name -> kratos.api.Runtime.SelfHeal
+	31, // 34: kratos.api.Runtime.memory_queue:type_name -> kratos.api.Runtime.MemoryQueue
+	32, // 35: kratos.api.Runtime.webhook:type_name -> kratos.api.Runtime.Webhook
+	33, // 36: kratos.api.Runtime.auto_memory:type_name -> kratos.api.Runtime.AutoMemory
+	34, // 37: kratos.api.Runtime.activity_flusher:type_name -> kratos.api.Runtime.ActivityFlusher
+	35, // 38: kratos.api.Runtime.plugin:type_name -> kratos.api.Runtime.Plugin
+	19, // 39: kratos.api.SelfImprovement.Sandbox.gate_timeouts:type_name -> kratos.api.SelfImprovement.Sandbox.GateTimeouts
+	36, // 40: kratos.api.SelfImprovement.ObserveWindow.duration:type_name -> google.protobuf.Duration
+	36, // 41: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g1:type_name -> google.protobuf.Duration
+	36, // 42: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g2:type_name -> google.protobuf.Duration
+	36, // 43: kratos.api.SelfImprovement.Sandbox.GateTimeouts.g3:type_name -> google.protobuf.Duration
+	36, // 44: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
+	36, // 45: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
+	36, // 46: kratos.api.Data.Redis.read_timeout:type_name -> google.protobuf.Duration
+	36, // 47: kratos.api.Data.Redis.write_timeout:type_name -> google.protobuf.Duration
+	48, // [48:48] is the sub-list for method output_type
+	48, // [48:48] is the sub-list for method input_type
+	48, // [48:48] is the sub-list for extension type_name
+	48, // [48:48] is the sub-list for extension extendee
+	0,  // [0:48] is the sub-list for field type_name
 }
 
 func init() { file_conf_conf_proto_init() }

@@ -14,16 +14,28 @@ import (
 // ── apply-usecase fakes ──────────────────────────────────────────────────────
 
 type siFakeApplier struct {
-	hotCalls      int
-	mergeCalls    int
-	rollbackCalls int
-	hotErr        error
-	mergeErr      error
-	ref           string
-	sha           string
+	mu                 sync.Mutex
+	hotCalls           int
+	mergeCalls         int
+	rollbackCalls      int
+	lastRollbackReason string
+	hotErr             error
+	mergeErr           error
+	rollbackErr        error
+	ref                string
+	sha                string
+}
+
+// counts returns (hot, merge) call counts, race-safe.
+func (a *siFakeApplier) counts() (int, int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.hotCalls, a.mergeCalls
 }
 
 func (a *siFakeApplier) ApplyHotReload(_ context.Context, _ *SelfImprovementRun) (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.hotCalls++
 	if a.hotErr != nil {
 		return "", a.hotErr
@@ -35,6 +47,8 @@ func (a *siFakeApplier) ApplyHotReload(_ context.Context, _ *SelfImprovementRun)
 }
 
 func (a *siFakeApplier) ApplyCodeMerge(_ context.Context, _ *SelfImprovementRun) (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.mergeCalls++
 	if a.mergeErr != nil {
 		return "", a.mergeErr
@@ -45,9 +59,19 @@ func (a *siFakeApplier) ApplyCodeMerge(_ context.Context, _ *SelfImprovementRun)
 	return a.sha, nil
 }
 
-func (a *siFakeApplier) Rollback(_ context.Context, _ *SelfImprovementRun, _ string) error {
+func (a *siFakeApplier) Rollback(_ context.Context, _ *SelfImprovementRun, reason string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.rollbackCalls++
-	return nil
+	a.lastRollbackReason = reason
+	return a.rollbackErr
+}
+
+// rollbackStats returns (calls, lastReason), race-safe.
+func (a *siFakeApplier) rollbackStats() (int, string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.rollbackCalls, a.lastRollbackReason
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -75,9 +99,9 @@ func siApplyFixture(t *testing.T, run *SelfImprovementRun, mutate func(*SelfImpr
 	approvals := &siFakeApprovalSink{}
 	deps := SelfImprovementApplyUsecaseDeps{
 		RunReader: store, RunWriter: store,
-		Applier:  applier,
-		ApprovAP: approvals,
-		Lg:       loggateway.NewNoop(),
+		Applier:   applier,
+		Approvals: approvals,
+		Lg:        loggateway.NewNoop(),
 	}
 	if mutate != nil {
 		mutate(&deps)
@@ -97,8 +121,8 @@ func TestSIApplyUsecase_CodeKindMergesAndObserves(t *testing.T) {
 	if err := uc.Apply(context.Background(), "run-1"); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if applier.mergeCalls != 1 || applier.hotCalls != 0 {
-		t.Fatalf("kind 路由错误: merge=%d hot=%d", applier.mergeCalls, applier.hotCalls)
+	if hot, merge := applier.counts(); merge != 1 || hot != 0 {
+		t.Fatalf("kind 路由错误: merge=%d hot=%d", merge, hot)
 	}
 	run := store.run
 	if run.AppliedCommit != "sha-fake" {
@@ -126,8 +150,8 @@ func TestSIApplyUsecase_SoftKindsHotReload(t *testing.T) {
 			if err := uc.Apply(context.Background(), "run-1"); err != nil {
 				t.Fatalf("Apply: %v", err)
 			}
-			if applier.hotCalls != 1 || applier.mergeCalls != 0 {
-				t.Fatalf("kind %s 路由错误: hot=%d merge=%d", kind, applier.hotCalls, applier.mergeCalls)
+			if hot, merge := applier.counts(); hot != 1 || merge != 0 {
+				t.Fatalf("kind %s 路由错误: hot=%d merge=%d", kind, hot, merge)
 			}
 			if store.run.RollbackPointer != "snapshot/fake" {
 				t.Fatalf("RollbackPointer = %q, 期望 snapshot/fake", store.run.RollbackPointer)
@@ -144,8 +168,8 @@ func TestSIApplyUsecase_TestKindMerges(t *testing.T) {
 	if err := uc.Apply(context.Background(), "run-1"); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if applier.mergeCalls != 1 {
-		t.Fatalf("test kind 应走代码合并通道, merge=%d", applier.mergeCalls)
+	if _, merge := applier.counts(); merge != 1 {
+		t.Fatalf("test kind 应走代码合并通道, merge=%d", merge)
 	}
 }
 
@@ -155,7 +179,7 @@ func TestSIApplyUsecase_UnknownKindFails(t *testing.T) {
 	if err := uc.Apply(context.Background(), "run-1"); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if applier.hotCalls+applier.mergeCalls != 0 {
+	if hot, merge := applier.counts(); hot+merge != 0 {
 		t.Fatalf("未知 kind 不应调用 applier")
 	}
 	if store.run.Status != RunStatusFailed {
@@ -288,26 +312,47 @@ func TestSIApplyUsecase_PromoteEligibleOldestFirst(t *testing.T) {
 
 func TestSIApplyUsecase_ConcurrentApplies(t *testing.T) {
 	const n = 8
-	var wg sync.WaitGroup
-	errs := make(chan error, n)
+	// 共享一个 usecase + store：8 个 run 并发 Apply，观察窗槽位充足，
+	// 全部应进入 observing（验证 usecase 内部无共享态数据竞争，-race）。
+	store := &siRunStore{}
 	for i := 0; i < n; i++ {
 		run := siApplyingRun(PatchKindCode, fmt.Sprintf("internal/biz/f%d.go", i))
 		run.ID = fmt.Sprintf("run-%d", i)
-		uc, _, _, _ := siApplyFixture(t, run, func(d *SelfImprovementApplyUsecaseDeps) {
-			d.MaxConcurrentObserving = n // 槽位充足，全部应入观察窗
-		})
+		store.others = append(store.others, *run)
+	}
+	uc, err := NewSelfImprovementApplyUsecase(SelfImprovementApplyUsecaseDeps{
+		RunReader: store, RunWriter: store,
+		Applier: &siFakeApplier{}, MaxConcurrentObserving: n,
+		Lg: loggateway.NewNoop(),
+	})
+	if err != nil {
+		t.Fatalf("NewSelfImprovementApplyUsecase: %v", err)
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func(id string) {
 			defer wg.Done()
 			if err := uc.Apply(context.Background(), id); err != nil {
 				errs <- err
 			}
-		}(run.ID)
+		}(fmt.Sprintf("run-%d", i))
 	}
 	wg.Wait()
 	close(errs)
 	for err := range errs {
 		t.Fatalf("并发 Apply 出错: %v", err)
+	}
+	observing := 0
+	for _, r := range store.others {
+		if r.Status != RunStatusObserving {
+			t.Fatalf("run %s 应为 observing, 实际 %s", r.ID, r.Status)
+		}
+		observing++
+	}
+	if observing != n {
+		t.Fatalf("observing = %d, 期望 %d", observing, n)
 	}
 }
 
@@ -316,13 +361,8 @@ func TestSIApplyUsecase_EntryGuards(t *testing.T) {
 	if err := uc.Apply(context.Background(), "run-9"); err == nil {
 		t.Fatalf("run 不存在应报错")
 	}
-	uc2, _, _, _ := siApplyFixture(t, siApplyingRun(PatchKindCode, "internal/biz/foo.go"), nil)
-	// 非法前态：run 处于 detected。
-	store := &siRunStore{run: &SelfImprovementRun{ID: "run-1", Status: RunStatusDetected}}
-	uc2Deps := SelfImprovementApplyUsecaseDeps{
-		RunReader: store, RunWriter: store, Applier: &siFakeApplier{}, Lg: loggateway.NewNoop(),
-	}
-	uc2, _ = NewSelfImprovementApplyUsecase(uc2Deps)
+	// 非法前态：run 处于 detected（仅 applying 可驱动）。
+	uc2, _, _, _ := siApplyFixture(t, &SelfImprovementRun{ID: "run-1", Status: RunStatusDetected}, nil)
 	if err := uc2.Apply(context.Background(), "run-1"); err == nil {
 		t.Fatalf("非 applying 状态应报错")
 	}

@@ -256,6 +256,13 @@ func (r *Runner) finalizeTeamRun(
 		r.recordRunCompletion(ctx, run, "", t0)
 	}
 
+	// F-B：graph 运行已完成（未走 HITL 延迟），显式收敛 graph_executions ——
+	// team 路径没有 consumeRuntimeEvents 消费者替我们做这件事。幂等，重复
+	// 调用（如 watch 已先收敛）无副作用。
+	if graphExecID != "" && r.mediator != nil {
+		_ = r.mediator.FinalizeTeamGraphExecution(ctx, graphExecID, false, "")
+	}
+
 	r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, cachedTok, ar.prov, ar.mod, dialogMode)
 
 	if teamEmitter != nil {

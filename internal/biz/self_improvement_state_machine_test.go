@@ -40,6 +40,12 @@ func TestSelfImprovementRunSM_Transitions(t *testing.T) {
 		// 异常
 		{"applying→error", RunStatusApplying, RunEventError, RunStatusFailed, false},
 		{"patching→error", RunStatusPatching, RunEventError, RunStatusFailed, false},
+		// 中途态恢复（drive worker 重驱动崩溃孤儿 / pause 超时）
+		{"diagnosing→recover→detected", RunStatusDiagnosing, RunEventRecover, RunStatusDetected, false},
+		{"patching→recover→detected", RunStatusPatching, RunEventRecover, RunStatusDetected, false},
+		{"verifying→recover→detected", RunStatusVerifying, RunEventRecover, RunStatusDetected, false},
+		{"applying不能recover", RunStatusApplying, RunEventRecover, "", true},
+		{"observing不能recover", RunStatusObserving, RunEventRecover, "", true},
 		// 非法迁移
 		{"detected不能跳verify", RunStatusDetected, RunEventVerify, "", true},
 		{"closed终态不可迁移", RunStatusClosed, RunEventRollback, "", true},

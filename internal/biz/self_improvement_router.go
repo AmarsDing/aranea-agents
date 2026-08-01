@@ -40,12 +40,22 @@ type SIApprovalSink interface {
 	SubmitApproval(ctx context.Context, run *SelfImprovementRun) (approvalID string, err error)
 }
 
+// SIApplyDriver kicks off the actual apply for a run that just entered
+// applying status (T4.5 hook). Implemented by SelfImprovementApplyUsecase.
+// Nil → the run waits in applying for an external driver (resume worker).
+// Stability:evolving
+type SIApplyDriver interface {
+	Apply(ctx context.Context, runID string) error
+}
+
 // SIGovernanceRouterDeps carries the router's injected dependencies.
 type SIGovernanceRouterDeps struct {
 	RunReader SelfImprovementRunReader
 	RunWriter SelfImprovementRunWriter
 	Notifier  SINotifier     // nil → notify 通道静默降级（仅日志）
 	Approvals SIApprovalSink // approval 通道必需
+	// ApplyDriver nil → auto/notify 迁移到 applying 后等待外部驱动。
+	ApplyDriver SIApplyDriver
 	// AutoApplyQuotaPerDay ≤0 → DefaultSIAutoApplyQuotaPerDay。
 	AutoApplyQuotaPerDay int32
 	Lg                   loggateway.Logger
@@ -53,12 +63,13 @@ type SIGovernanceRouterDeps struct {
 
 // SIGovernanceRouter routes awaiting_governance runs to their apply channel.
 type SIGovernanceRouter struct {
-	runReader SelfImprovementRunReader
-	runWriter SelfImprovementRunWriter
-	notifier  SINotifier
-	approvals SIApprovalSink
-	dailyMax  int32
-	lg        loggateway.Logger
+	runReader  SelfImprovementRunReader
+	runWriter  SelfImprovementRunWriter
+	notifier   SINotifier
+	approvals  SIApprovalSink
+	applyDrive SIApplyDriver
+	dailyMax   int32
+	lg         loggateway.Logger
 
 	dailyCount atomic.Int32
 	dailyReset atomic.Int64 // Unix timestamp of last daily reset
@@ -75,12 +86,13 @@ func NewSIGovernanceRouter(deps SIGovernanceRouterDeps) *SIGovernanceRouter {
 		lg = loggateway.NewNoop()
 	}
 	return &SIGovernanceRouter{
-		runReader: deps.RunReader,
-		runWriter: deps.RunWriter,
-		notifier:  deps.Notifier,
-		approvals: deps.Approvals,
-		dailyMax:  dailyMax,
-		lg:        lg.With(loggateway.Domain("self_improve_router")),
+		runReader:  deps.RunReader,
+		runWriter:  deps.RunWriter,
+		notifier:   deps.Notifier,
+		approvals:  deps.Approvals,
+		applyDrive: deps.ApplyDriver,
+		dailyMax:   dailyMax,
+		lg:         lg.With(loggateway.Domain("self_improve_router")),
 	}
 }
 
@@ -151,6 +163,13 @@ func (r *SIGovernanceRouter) applyAuto(ctx context.Context, run *SelfImprovement
 			r.lg.Warn("self-improve notify degraded",
 				loggateway.StepID("si_router.notify"),
 				loggateway.Str("run_id", run.ID), loggateway.Err(nerr))
+		}
+	}
+	// T4.5 挂钩：路由迁移完成后驱动实际应用（git 合并/热加载）。驱动失败
+	// 不回滚路由迁移——run 停留 applying，由 resume worker 重驱动。
+	if r.applyDrive != nil {
+		if err := r.applyDrive.Apply(ctx, run.ID); err != nil {
+			return "", fmt.Errorf("drive apply: %w", err)
 		}
 	}
 	return channel, nil

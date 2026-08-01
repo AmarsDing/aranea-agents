@@ -21,14 +21,16 @@ const (
 	migrationNameSessionTurnNumberBackfill   = "session_turn_number_backfill"
 	MigrationSessionTurnNumberRebackfill     = 20260803
 	migrationNameSessionTurnNumberRebackfill = "session_turn_number_rebackfill"
-	// 版本取 20261121：原 20260624 被 DDL 迁移 message_fts_schema 抢先占用，
+	// 版本取 20261124：原 20260624 被 DDL 迁移 message_fts_schema 抢先占用，
+	// 重编号 20261121 又与 DDL 迁移 si_risk_rule_columns 碰撞（20261122/20261123
+	// 已被 audit_action_verb_first_normalize/organization_redesign 占用）。
 	// 本迁移在任何环境都从未执行（生产待回填 0 行，重编号仅为注册表全局唯一）。
-	MigrationTeamCopyOwnership               = 20261121
-	migrationNameTeamCopyOwnership           = "team_copy_ownership_to_user"
+	MigrationTeamCopyOwnership     = 20261124
+	migrationNameTeamCopyOwnership = "team_copy_ownership_to_user"
 	// 版本取 20261122：原 20260729 被数据迁移 avatar_image_repair 抢先占用，
 	// 导致审计 action 规范化从未执行（生产 audit_logs 仍有旧格式 action）。
-	MigrationAuditActionNormalize            = 20261122
-	migrationNameAuditActionNormalize        = "audit_action_verb_first_normalize"
+	MigrationAuditActionNormalize     = 20261122
+	migrationNameAuditActionNormalize = "audit_action_verb_first_normalize"
 	// schema_migrations 表由 DDL/数据/种子迁移共享，版本必须全局唯一。
 	// 唯一性由 TestMigrationVersionsGloballyUnique 守卫（新增迁移前必跑）。
 	MigrationMonitorTraceInterruptedBackfill     = 20261115

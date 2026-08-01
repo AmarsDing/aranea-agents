@@ -150,6 +150,7 @@ var ProviderSet = wire.NewSet(
 	NewSelfImprovementRunRepo,
 	wire.Bind(new(biz.SelfImprovementRunReader), new(*SelfImprovementRunRepo)),
 	wire.Bind(new(biz.SelfImprovementRunWriter), new(*SelfImprovementRunRepo)),
+	NewSIRiskRuleRepo,
 	NewSelfImprovementSignalRepo,
 	NewPackSeeder,
 	NewCircuitBreakerStateRepo,

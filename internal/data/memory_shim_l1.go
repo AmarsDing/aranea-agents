@@ -348,7 +348,7 @@ func (r *l1WorkingMemoryRepo) ArchiveAndCreateEpisodeTx(ctx context.Context, ses
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
 
 	return snapshot, nil
@@ -459,7 +459,7 @@ func (r *l1WorkingMemoryRepo) UpsertL1Field(ctx context.Context, in biz.L1FieldI
 		if budgetExceeded {
 			return nil, biz.ErrL1BudgetOverflow
 		}
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
 
 	return r.GetL1FieldRow(ctx, taskID, fieldPath)
@@ -547,7 +547,7 @@ func (r *l1WorkingMemoryRepo) PatchL1Fields(ctx context.Context, fields []biz.L1
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
 	return results, nil
 }
@@ -616,10 +616,16 @@ func isCJKRune(r rune) bool {
 
 // --- L1IdleTaskReader ---
 
-func (r *l1WorkingMemoryRepo) ListIdleL1Tasks(ctx context.Context, cutoffRFC3339 string) ([][]byte, error) {
+// ListIdleL1Tasks returns tasks pending archive in two branches (P1-2):
+// idle active tasks (the worker ends + archives them) and ended-but-unarchived
+// tasks (a previous archive attempt failed — the worker retries the archive tx
+// only). The retry branch keeps failures inside the scan set instead of
+// silently dropping them; its ended_at cutoff avoids racing the synchronous
+// end+archive path in MemoryAdminUsecase.EndL1Task.
+func (r *l1WorkingMemoryRepo) ListIdleL1Tasks(ctx context.Context, idleCutoffRFC3339, retryCutoffRFC3339 string) ([][]byte, error) {
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(`SELECT id, session_id, agent_id, task_title, status, updated_at FROM memory_l1_tasks WHERE status = 'active' AND archived_at = '' AND updated_at < ?`),
-		cutoffRFC3339,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, session_id, agent_id, task_title, status, updated_at, ended_at FROM memory_l1_tasks WHERE archived_at = '' AND ((status = 'active' AND updated_at < ?) OR (status != 'active' AND ended_at != '' AND ended_at < ?))`),
+		idleCutoffRFC3339, retryCutoffRFC3339,
 	)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L1")
@@ -627,13 +633,13 @@ func (r *l1WorkingMemoryRepo) ListIdleL1Tasks(ctx context.Context, cutoffRFC3339
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		var id, sessID, agentID, title, status, updatedAt string
-		if err := rows.Scan(&id, &sessID, &agentID, &title, &status, &updatedAt); err != nil {
+		var id, sessID, agentID, title, status, updatedAt, endedAt string
+		if err := rows.Scan(&id, &sessID, &agentID, &title, &status, &updatedAt, &endedAt); err != nil {
 			return nil, entErrToBizErr(err, "MEMORY_L1")
 		}
 		m := map[string]any{
 			"id": id, "session_id": sessID, "agent_id": agentID,
-			"task_title": title, "status": status, "updated_at": updatedAt,
+			"task_title": title, "status": status, "updated_at": updatedAt, "ended_at": endedAt,
 		}
 		b, mErr := json.Marshal(m)
 		if mErr != nil {

@@ -284,7 +284,7 @@ func (a *memoryFactIndexMaintainerAdapter) ListStaleIndexFacts(ctx context.Conte
 		a.data.Dialect().RenumberPlaceholders(sqlFactSelect+` WHERE embedding_status IN ('stale','failed') AND status = 'active' AND deleted_at = '' LIMIT ?`),
 		batchSize)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
 	var out [][]byte

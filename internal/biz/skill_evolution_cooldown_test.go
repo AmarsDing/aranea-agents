@@ -126,3 +126,62 @@ func TestCheckEvolutionTriggers_ActiveLatest_StillCooldowns(t *testing.T) {
 		})
 	}
 }
+
+// ── D8 自适应降频：trigger_source 冷却乘数 ──────────────────────────────────
+
+// 乘数 ×2 后，原冷却窗外、加倍窗口内的建议仍被抑制。
+func TestOrchestrator_CooldownMultiplier_ExtendsWindow(t *testing.T) {
+	sug := newTriggerSuggestion(EvolutionActionImprove)
+	sug.TriggerSource = TriggerSourceErrorCluster
+	// 原 168h 窗口外（+1h）、加倍 336h 窗口内。
+	old := &UnifiedEvolutionSuggestion{
+		Status:    "pending",
+		CreatedAt: time.Now().UTC().Add(-(EvoTriggerCooldownHours + 1) * time.Hour),
+	}
+	check := &orchStubCheckReader{latestByAction: map[string]*UnifiedEvolutionSuggestion{
+		string(EvolutionActionImprove): old,
+	}}
+	writer := &orchStubWriter{}
+	orch := NewSkillEvolutionOrchestrator(check, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	tr := &stubTrigger{targetType: EvolutionTargetSkill, suggestions: []UnifiedEvolutionSuggestion{sug}}
+	orch.RegisterTrigger(tr)
+
+	// 无乘数：窗口已过 → 创建。
+	created, err := orch.CheckAndCreate(context.Background(), EvolutionTargetSkill, "skill-1")
+	if err != nil {
+		t.Fatalf("CheckAndCreate: %v", err)
+	}
+	if len(created) != 1 {
+		t.Fatalf("无乘数时窗口已过应创建, 实际 %d", len(created))
+	}
+
+	// 乘数 ×2：加倍窗口内 → 抑制。
+	orch.SetTriggerCooldownMultiplier(TriggerSourceErrorCluster, 2)
+	writer.created = nil
+	created, err = orch.CheckAndCreate(context.Background(), EvolutionTargetSkill, "skill-1")
+	if err != nil {
+		t.Fatalf("CheckAndCreate: %v", err)
+	}
+	if len(created) != 0 {
+		t.Fatalf("×2 后加倍窗口内应抑制, 实际创建 %d", len(created))
+	}
+}
+
+// 乘数叠加上限 8×。
+func TestOrchestrator_CooldownMultiplier_Capped(t *testing.T) {
+	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubQueryReader{}, &orchStubWriter{}, loggateway.NewNoop())
+	for i := 0; i < 5; i++ { // 2^5=32 → 应封顶 8
+		orch.SetTriggerCooldownMultiplier(TriggerSourceErrorCluster, 2)
+	}
+	if m := orch.triggerCooldownMultiplier(TriggerSourceErrorCluster); m != siMaxTriggerCooldownMultiplier {
+		t.Fatalf("乘数应封顶 %.0f, 实际 %.1f", siMaxTriggerCooldownMultiplier, m)
+	}
+	// 未设置的 source 默认 1；factor<=1 为 no-op。
+	if m := orch.triggerCooldownMultiplier("other"); m != 1 {
+		t.Fatalf("未设置 source 应为 1, 实际 %.1f", m)
+	}
+	orch.SetTriggerCooldownMultiplier("other", 1)
+	if m := orch.triggerCooldownMultiplier("other"); m != 1 {
+		t.Fatalf("factor<=1 不应生效, 实际 %.1f", m)
+	}
+}

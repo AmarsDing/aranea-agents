@@ -158,9 +158,20 @@ type L1FieldWriter interface {
 	PatchL1Fields(ctx context.Context, fields []L1FieldInsert) ([][]byte, error)
 }
 
-// L1IdleTaskReader lists idle L1 tasks for the auto-archive worker.
+// L1IdleTaskReader lists tasks pending archive for the auto-archive worker.
+//
+// The scan set has two branches (P1-2):
+//   - idle active tasks (status='active', updated_at < idleCutoff): the worker
+//     ends them (cancelled) and archives atomically.
+//   - ended-but-unarchived tasks (status != 'active', archived_at=”,
+//     ended_at < retryCutoff): a previous archive attempt failed; the worker
+//     retries the archive tx only (never re-ends).
+//
+// The retry branch keeps archive failures inside the scan set so they are
+// retried instead of silently lost. retryCutoff (minutes-scale) avoids racing
+// the synchronous end+archive path in MemoryAdminUsecase.EndL1Task.
 type L1IdleTaskReader interface {
-	ListIdleL1Tasks(ctx context.Context, cutoffRFC3339 string) ([][]byte, error)
+	ListIdleL1Tasks(ctx context.Context, idleCutoffRFC3339, retryCutoffRFC3339 string) ([][]byte, error)
 }
 
 // L1ExpiredFieldCleaner batch-deletes expired L1 fields (where expires_at != ”

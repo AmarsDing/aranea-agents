@@ -64,7 +64,7 @@ func (s *fakeGraphStore) CreateGraph(_ context.Context, def *GraphDefinition) (*
 	s.created = append(s.created, def)
 	return def, nil
 }
-func (s *fakeGraphStore) UpdateGraph(_ context.Context, def *GraphDefinition) (*GraphDefinition, error) {
+func (s *fakeGraphStore) UpdateOwnedGraph(_ context.Context, def *GraphDefinition) (*GraphDefinition, error) {
 	if _, ok := s.byID[def.ID]; !ok {
 		return nil, ErrNotFound
 	}
@@ -430,6 +430,70 @@ func TestTeamGraphHook_CustomTopologyChangeRebuildsAsPreset(t *testing.T) {
 	attrs := definitionAttrs(t, updated.DefinitionJSON)
 	if attrs["source"] != DefinitionGraphSourcePreset {
 		t.Fatalf("source = %v, want preset after rebuild (B4)", attrs["source"])
+	}
+}
+
+// --- B4 回归：物化路径经 guard 装配的真实 GraphDefinitionUsecase 不得被镜像为 custom ---
+// 生产装配：TeamUsecase.graphAssets = 真实 defUC，且 defUC.SetTeamGraphGuard(teamUC)。
+// 物化（B4 重建）若走带 guard 的 UpdateGraph，team_source 会被 OnTeamOwnedGraphSaved
+// 误镜像为 custom（2026-08-01 V3 运行时验证发现）。
+
+func TestTeamGraphHook_MaterializeThroughGuardKeepsPresetSource(t *testing.T) {
+	t.Parallel()
+	store := newFakeGraphStore()
+	owned := ownedGraphDef("g-1", "team-1")
+	owned.Metadata[GraphMetadataTeamSourceKey] = DefinitionGraphSourceCustom
+	owned.Nodes = []NodeDef{{ID: "member_1", Type: "agent", AgentName: "a1"}}
+	store.addExisting(owned)
+	prev := Team{
+		ID:            "team-1",
+		TeamKey:       "t1",
+		DisplayName:   "Team",
+		Kind:          "user",
+		Status:        TeamStatusPending,
+		LinkedGraphID: "g-1",
+		DefinitionJSON: hookSpecJSON(t, func(s *OrchestrationSpec) {
+			s.LinkedGraphID = "g-1"
+			s.Source = DefinitionGraphSourceCustom
+		}),
+	}
+	writer := &recTeamWriter{}
+	teamUC := NewTeamUsecase(TeamUsecaseOpts{
+		Reader:      &stubTeamReader{team: prev},
+		Writer:      writer,
+		RunReader:   &stubTeamRunReader{},
+		RunWriter:   &stubTeamRunWriter{},
+		StepRepo:    &stubOrchestrationStepRepo{},
+		DeadLetter:  &stubTaskDeadLetterRepo{},
+		GraphReader: store,
+		GraphWriter: store,
+		Compiler:    &fakeTeamCompiler{cfg: simpleBuildConfig()},
+		Lg:          loggateway.NewNoop(),
+	})
+	defUC := newGuardDefUC(store, teamUC)
+	teamUC.graphAssets = defUC // 生产同款装配：物化走真实 defUC（带 guard）
+
+	patchJSON := hookSpecJSON(t, func(s *OrchestrationSpec) {
+		s.LinkedGraphID = "g-1"
+		s.Source = DefinitionGraphSourceCustom
+		s.Mode = TeamModeParallel // 拓扑字段变更 → 触发按 preset 重建
+	})
+	if _, err := teamUC.Update(context.Background(), "team-1", Team{DefinitionJSON: patchJSON}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	saved := store.byID["g-1"]
+	if saved == nil {
+		t.Fatal("g-1 missing after rebuild")
+	}
+	if got := saved.Metadata[GraphMetadataTeamSourceKey]; got != DefinitionGraphSourcePreset {
+		t.Fatalf("team_source = %v, want preset（物化路径不得被 guard 镜像为 custom）", got)
+	}
+	if writer.updated == nil {
+		t.Fatal("team not persisted")
+	}
+	attrs := definitionAttrs(t, writer.updated.DefinitionJSON)
+	if attrs["source"] != DefinitionGraphSourcePreset {
+		t.Fatalf("team definition source = %v, want preset", attrs["source"])
 	}
 }
 

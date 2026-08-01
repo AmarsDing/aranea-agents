@@ -100,6 +100,19 @@ func (m *fakeModel) Info() trpcmodel.Info {
 	return trpcmodel.Info{Name: "fake-model"}
 }
 
+// fakeLLMResolver implements LLMResolver for testing.
+type fakeLLMResolver struct {
+	model  trpcmodel.Model
+	calls  int
+	lastUK trpcmemory.UserKey
+}
+
+func (r *fakeLLMResolver) ResolveLLM(_ context.Context, uk trpcmemory.UserKey) trpcmodel.Model {
+	r.calls++
+	r.lastUK = uk
+	return r.model
+}
+
 // fakeConsolidationQueue implements ConsolidationQueue for testing.
 type fakeConsolidationQueue struct {
 	mu   sync.Mutex
@@ -566,5 +579,60 @@ func TestSleepTime_QueueChan(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for job from QueueChan")
+	}
+}
+
+// TestSleepTime_Consolidate_LLMResolverPreferred verifies that when an
+// LLMResolver is wired, its per-target model is used instead of the static
+// model passed to the constructor (P1-1: ModelCatalog-based resolution).
+func TestSleepTime_Consolidate_LLMResolverPreferred(t *testing.T) {
+	ms := &fakeMemoryService{
+		entries: map[string][]*trpcmemory.Entry{
+			"user-1": {makeEntry("mem-1", "User asked about Go")},
+		},
+	}
+	staticLLM := &fakeModel{err: errors.New("static LLM must not be called when resolver is wired")}
+	resolverLLM := &fakeModel{response: buildLLMResponse(`{"operations":[{"type":"reflect","reflection":"resolver insight","topics":["insight"]}]}`)}
+	resolver := &fakeLLMResolver{model: resolverLLM}
+
+	svc := NewSleepTimeService(ms, staticLLM, nil, loggateway.NewNoop())
+	svc.SetLLMResolver(resolver)
+
+	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
+	if err := svc.Consolidate(context.Background(), uk); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if resolver.calls == 0 {
+		t.Fatal("expected resolver to be called at least once")
+	}
+	if resolver.lastUK != uk {
+		t.Errorf("expected resolver called with uk %+v, got %+v", uk, resolver.lastUK)
+	}
+	if len(ms.added) != 1 || ms.added[0].content != "resolver insight" {
+		t.Fatalf("expected reflection from resolver LLM, got %+v", ms.added)
+	}
+}
+
+// TestSleepTime_Consolidate_LLMResolverNilFallsBack verifies that when the
+// resolver returns a nil model (no model configured for the target), the
+// static constructor model is used as fallback.
+func TestSleepTime_Consolidate_LLMResolverNilFallsBack(t *testing.T) {
+	ms := &fakeMemoryService{
+		entries: map[string][]*trpcmemory.Entry{
+			"user-1": {makeEntry("mem-1", "User asked about Go")},
+		},
+	}
+	staticLLM := &fakeModel{response: buildLLMResponse(`{"operations":[{"type":"reflect","reflection":"static insight","topics":["insight"]}]}`)}
+	resolver := &fakeLLMResolver{model: nil}
+
+	svc := NewSleepTimeService(ms, staticLLM, nil, loggateway.NewNoop())
+	svc.SetLLMResolver(resolver)
+
+	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
+	if err := svc.Consolidate(context.Background(), uk); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if len(ms.added) != 1 || ms.added[0].content != "static insight" {
+		t.Fatalf("expected reflection from static LLM fallback, got %+v", ms.added)
 	}
 }

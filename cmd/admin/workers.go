@@ -33,6 +33,9 @@ type backgroundWorkersConfig struct {
 	CuratorWorker               BackgroundStarter
 	EvolutionOrchestratorWorker BackgroundStarter
 	SelfImproveObserveWorker    BackgroundStarter
+	SelfImproveDriveWorker      BackgroundStarter
+	SelfImproveWatchdogWorker   BackgroundStarter
+	SelfImproveOutcomeWorker    BackgroundStarter
 	ProviderHealthScanner       BackgroundStarter
 	ChannelHealthScanner        BackgroundStarter
 	ChannelDeliveryScanner      BackgroundStarter
@@ -67,6 +70,61 @@ type backgroundWorkersConfig struct {
 	MemoryDeadLetterReplayer    BackgroundStarter
 	ModelRegistrySyncAgent      any // presence check only
 	CronRepo                    biz.CronRepo
+}
+
+// backgroundWorkersConfigFromOutput maps the wire output onto the worker
+// config (field names align 1:1); WatchCtx is owned by main().
+func backgroundWorkersConfigFromOutput(watchCtx context.Context, out *wireOut) *backgroundWorkersConfig {
+	return &backgroundWorkersConfig{
+		WatchCtx:                    watchCtx,
+		CronRunner:                  out.CronRunner,
+		SkillWatch:                  out.SkillWatch,
+		AutoMemory:                  out.AutoMemory,
+		MCPHealthProbe:              out.MCPHealthProbe,
+		A2AGatewayHealthProbe:       out.A2AGatewayHealthProbe,
+		LearningLoopScanner:         out.LearningLoopScanner,
+		SkillIntelligenceWorker:     out.SkillIntelligenceWorker,
+		CuratorWorker:               out.CuratorWorker,
+		EvolutionOrchestratorWorker: out.EvolutionOrchestratorWorker,
+		SelfImproveObserveWorker:    out.SelfImproveObserveWorker,
+		SelfImproveDriveWorker:      out.SelfImproveDriveWorker,
+		SelfImproveWatchdogWorker:   out.SelfImproveWatchdogWorker,
+		SelfImproveOutcomeWorker:    out.SelfImproveOutcomeWorker,
+		ProviderHealthScanner:       out.ProviderHealthScanner,
+		ChannelHealthScanner:        out.ChannelHealthScanner,
+		ChannelDeliveryScanner:      out.ChannelDeliveryScanner,
+		SessionRunDurableWorker:     out.SessionRunDurableWorker,
+		RecoveryWorker:              out.RecoveryWorker,
+		BackgroundJobWorker:         out.BackgroundJobWorker,
+		PluginRuntime:               out.PluginRuntime,
+		ChannelRuntime:              out.ChannelRuntime,
+		ToolAuditCleanup:            out.ToolAuditCleanup,
+		FlowLogCleanup:              out.FlowLogCleanup,
+		MonitorEventsCleanup:        out.MonitorEventsCleanup,
+		MonitorAlertCooldownCleanup: out.MonitorAlertCooldownCleanup,
+		AutoHealTTLCleanup:          out.AutoHealTTLCleanup,
+		MonitorAlertEvalWorker:      out.MonitorAlertEvalWorker,
+		MonitorTraceBackfillWorker:  out.MonitorTraceBackfillWorker,
+		SelfCheckScheduler:          out.SelfCheckScheduler,
+		SelfHealObserver:            out.SelfHealObserver,
+		MonitorBus:                  out.MonitorBus,
+		FailurePatternSyncJob:       out.FailurePatternSyncJob,
+		PredictiveHealJob:           out.PredictiveHealJob,
+		PatternMiningJob:            out.PatternMiningJob,
+		MemoryL2Decay:               out.MemoryL2Decay,
+		MemoryL1Archive:             out.MemoryL1Archive,
+		ChannelTurnJobSweeper:       out.ChannelTurnJobSweeper,
+		MemoryL3Decay:               out.MemoryL3Decay,
+		MemoryL4Decay:               out.MemoryL4Decay,
+		MemoryEbbinghausDecay:       out.MemoryEbbinghausDecay,
+		MemoryCanary:                out.MemoryCanary,
+		MemorySleepTime:             out.MemorySleepTime,
+		MemoryEpisodeBackfill:       out.MemoryEpisodeBackfill,
+		MemoryFactIndexReconciler:   out.MemoryFactIndexReconciler,
+		MemoryDeadLetterReplayer:    out.MemoryDeadLetterReplayer,
+		ModelRegistrySyncAgent:      out.ModelRegistrySyncAgent,
+		CronRepo:                    out.CronRepo,
+	}
 }
 
 // SkillWatchStarter is the minimal interface for starting the skill file watcher.
@@ -154,6 +212,21 @@ func startBackgroundWorkers(
 	if cfg.SelfImproveObserveWorker != nil {
 		goAfterReady("self_improve_observe", func() { cfg.SelfImproveObserveWorker.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "self-improve observe worker scheduled", "interval", "15m")
+	}
+
+	if cfg.SelfImproveDriveWorker != nil {
+		goAfterReady("self_improve_drive", func() { cfg.SelfImproveDriveWorker.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "self-improve drive worker scheduled", "interval", "1m")
+	}
+
+	if cfg.SelfImproveWatchdogWorker != nil {
+		goAfterReady("self_improve_watchdog", func() { cfg.SelfImproveWatchdogWorker.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "self-improve watchdog worker scheduled", "interval", "5m")
+	}
+
+	if cfg.SelfImproveOutcomeWorker != nil {
+		goAfterReady("self_improve_outcome", func() { cfg.SelfImproveOutcomeWorker.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "self-improve outcome worker scheduled", "interval", "1h")
 	}
 
 	if cfg.ProviderHealthScanner != nil {

@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -201,5 +202,65 @@ func TestSIPipeline_EndToEnd_AutoChannel(t *testing.T) {
 	}
 	if !strings.Contains(store.run.ApprovedBy, "auto") {
 		t.Errorf("ApprovedBy = %q", store.run.ApprovedBy)
+	}
+}
+
+// ── apply driver hook (T4.5) ────────────────────────────────────────────────
+
+type siFakeApplyDriver struct {
+	calls []string
+	err   error
+}
+
+func (d *siFakeApplyDriver) Apply(_ context.Context, runID string) error {
+	d.calls = append(d.calls, runID)
+	return d.err
+}
+
+func TestSIGovernanceRouter_AutoApplyDrivesApply(t *testing.T) {
+	driver := &siFakeApplyDriver{}
+	router, store, _, _ := siRouterFixture("auto", func(d *SIGovernanceRouterDeps) {
+		d.ApplyDriver = driver
+	})
+	channel, err := router.Route(context.Background(), "run-1")
+	if err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if channel != "auto" {
+		t.Fatalf("channel = %q, want auto", channel)
+	}
+	if len(driver.calls) != 1 || driver.calls[0] != "run-1" {
+		t.Fatalf("driver calls = %v, want [run-1]", driver.calls)
+	}
+	// fake driver 不做状态迁移：run 停留 applying 等待真实驱动结果。
+	if store.run.Status != RunStatusApplying {
+		t.Fatalf("status = %s, want applying", store.run.Status)
+	}
+}
+
+func TestSIGovernanceRouter_DriverErrorPropagates(t *testing.T) {
+	driver := &siFakeApplyDriver{err: errors.New("drive boom")}
+	router, store, _, _ := siRouterFixture("auto", func(d *SIGovernanceRouterDeps) {
+		d.ApplyDriver = driver
+	})
+	if _, err := router.Route(context.Background(), "run-1"); err == nil {
+		t.Fatalf("driver 错误应透传")
+	}
+	// 驱动失败不回滚路由迁移：run 停留 applying，由 resume worker 重驱动。
+	if store.run.Status != RunStatusApplying {
+		t.Fatalf("status = %s, want applying", store.run.Status)
+	}
+}
+
+func TestSIGovernanceRouter_ApprovalChannelDoesNotDrive(t *testing.T) {
+	driver := &siFakeApplyDriver{}
+	router, _, _, _ := siRouterFixture("approval", func(d *SIGovernanceRouterDeps) {
+		d.ApplyDriver = driver
+	})
+	if _, err := router.Route(context.Background(), "run-1"); err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if len(driver.calls) != 0 {
+		t.Fatalf("approval 通道不应触发 apply driver: %v", driver.calls)
 	}
 }

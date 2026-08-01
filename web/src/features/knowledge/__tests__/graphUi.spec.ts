@@ -8,6 +8,7 @@ import {
   sortedGraphNodes,
   filterGraphNodes,
   oneHopNeighborIds,
+  graphContainmentForce,
   GRAPH_LINK_TYPES,
   GRAPH_ISOLATED_HIDE_THRESHOLD,
 } from '../graphUi';
@@ -140,5 +141,45 @@ describe('oneHopNeighborIds', () => {
 describe('GRAPH_LINK_TYPES', () => {
   it('与后端 link_type 三类一致', () => {
     expect([...GRAPH_LINK_TYPES]).toEqual(['explicit', 'entity', 'semantic']);
+  });
+});
+
+describe('graphContainmentForce', () => {
+  it('按 距离×强度×alpha 将速度拉向原点（防无连边节点飞散）', () => {
+    const force = graphContainmentForce(0.05);
+    const nodes = [
+      { id: 'a', x: 100, y: 0, z: 0, vx: 0, vy: 0, vz: 0 },
+      { id: 'b', x: 0, y: -40, z: 20, vx: 2, vy: 1, vz: 0 },
+    ];
+    force.initialize?.(nodes);
+    force(1);
+    expect(nodes[0].vx).toBeCloseTo(-5); // 0 - 100*0.05*1
+    expect(nodes[0].vy).toBeCloseTo(0);
+    expect(nodes[1].vx).toBeCloseTo(2); // x=0 不受影响
+    expect(nodes[1].vy).toBeCloseTo(3); // 1 - (-40)*0.05*1
+    expect(nodes[1].vz).toBeCloseTo(-1); // 0 - 20*0.05*1
+  });
+
+  it('alpha 缩放生效；原点节点不产生速度', () => {
+    const force = graphContainmentForce(0.05);
+    const nodes = [{ id: 'o', x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 }];
+    force.initialize?.(nodes);
+    force(0.5);
+    expect(nodes[0].vx).toBe(0);
+    expect(nodes[0].vy).toBe(0);
+    expect(nodes[0].vz).toBe(0);
+  });
+
+  it('缺坐标/速度字段时安全跳过（不引入 NaN）', () => {
+    const force = graphContainmentForce(0.05);
+    const nodes: Array<{ id: string; x?: number; vx?: number }> = [
+      { id: 'no-coords' },
+      { id: 'no-vel', x: 10, y: 0, z: 0 },
+    ];
+    force.initialize?.(nodes);
+    expect(() => force(1)).not.toThrow();
+    expect(nodes[0].x).toBeUndefined();
+    expect(nodes[0].vx).toBeUndefined();
+    expect(nodes[1].vx).toBeCloseTo(-0.5); // vx 缺省按 0 起算
   });
 });

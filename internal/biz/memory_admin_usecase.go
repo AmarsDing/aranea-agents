@@ -315,8 +315,14 @@ func (uc *MemoryAdminUsecase) EndL1Task(ctx context.Context, sessionID, taskID, 
 	if err != nil {
 		return nil, err
 	}
-	// Archive the task and create an L2 episode (best-effort, non-blocking).
-	uc.archiveAndCreateEpisode(ctx, sessionID, taskID, raw)
+	// Archive the task and create an L2 episode asynchronously (best-effort).
+	// The hook contains a potential Path B LLM call and must not block the
+	// EndL1Task caller (e.g. the working_memory_complete tool executing
+	// in-turn). On failure the task stays ended-but-unarchived and is retried
+	// by the L1 archive worker's retry branch (P1-2).
+	safego.Go(ctx, "memory.l1_archive_hook", func() {
+		uc.archiveAndCreateEpisode(context.WithoutCancel(ctx), sessionID, taskID, raw)
+	})
 	return raw, nil
 }
 
@@ -622,11 +628,11 @@ func (uc *MemoryAdminUsecase) ArchiveL1Task(ctx context.Context, sessionID, task
 	return uc.admin.ArchiveL1Task(ctx, sessionID, taskID)
 }
 
-func (uc *MemoryAdminUsecase) ListIdleL1Tasks(ctx context.Context, cutoffRFC3339 string) ([][]byte, error) {
+func (uc *MemoryAdminUsecase) ListIdleL1Tasks(ctx context.Context, idleCutoffRFC3339, retryCutoffRFC3339 string) ([][]byte, error) {
 	if err := uc.requireAdmin(); err != nil {
 		return nil, err
 	}
-	return uc.admin.ListIdleL1Tasks(ctx, cutoffRFC3339)
+	return uc.admin.ListIdleL1Tasks(ctx, idleCutoffRFC3339, retryCutoffRFC3339)
 }
 
 func (uc *MemoryAdminUsecase) InsertL1ArchiveEpisode(ctx context.Context, in L1ArchiveEpisodeInsert) error {

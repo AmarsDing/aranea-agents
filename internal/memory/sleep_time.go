@@ -51,6 +51,27 @@ type ConsolidationQueue interface {
 	Chan() <-chan ConsolidationJobRequest
 }
 
+// LLMResolver resolves the LLM model for a given consolidation target
+// (agent + user). Implementations resolve per-target models from agent
+// settings via the ModelCatalog (P1-1). Returns nil when no model can be
+// resolved — callers must gracefully degrade to a no-op.
+type LLMResolver interface {
+	ResolveLLM(ctx context.Context, uk trpcmemory.UserKey) trpcmodel.Model
+}
+
+// resolveLLM returns the per-target model from the resolver when available,
+// falling back to the static model. The resolver takes precedence so that
+// per-target ModelCatalog resolution (P1-1) overrides any statically wired
+// model.
+func resolveLLM(ctx context.Context, r LLMResolver, static trpcmodel.Model, uk trpcmemory.UserKey) trpcmodel.Model {
+	if r != nil {
+		if m := r.ResolveLLM(ctx, uk); m != nil {
+			return m
+		}
+	}
+	return static
+}
+
 // ConsolidationOperation represents a single operation produced by the LLM
 // during consolidation. The Type field selects the operation:
 //   - "merge":       update TargetID with MergedContent, then delete SourceIDs
@@ -92,6 +113,7 @@ type ConsolidationResult struct {
 type SleepTimeService struct {
 	memory              MemoryReaderWriter
 	llm                 trpcmodel.Model
+	llmResolver         LLMResolver // P1-1: per-target ModelCatalog resolution (takes precedence over llm)
 	queue               ConsolidationQueue
 	episodeConsolidator *EpisodeConsolidator // Phase 6A-06: optional L2→L3 fact extraction
 	lg                  loggateway.Logger
@@ -125,6 +147,18 @@ func (s *SleepTimeService) SetEpisodeConsolidator(c *EpisodeConsolidator) {
 		return
 	}
 	s.episodeConsolidator = c
+}
+
+// SetLLMResolver wires a per-target LLM resolver (P1-1). When set, the
+// resolver's model takes precedence over the static constructor model for
+// each consolidation job; a nil resolver result falls back to the static
+// model. Must be called before Start/Consolidate; not safe to call
+// concurrently with active consolidation.
+func (s *SleepTimeService) SetLLMResolver(r LLMResolver) {
+	if s == nil {
+		return
+	}
+	s.llmResolver = r
 }
 
 // EnqueueConsolidationJob enqueues a consolidation job for the given user key.
@@ -168,9 +202,13 @@ func (s *SleepTimeService) Consolidate(ctx context.Context, uk trpcmemory.UserKe
 		return nil
 	}
 
+	// P1-1: resolve the per-target model once per job. The resolver's model
+	// takes precedence over the static constructor model.
+	llm := resolveLLM(ctx, s.llmResolver, s.llm, uk)
+
 	// Phase 1: trpcmemory consolidation.
 	if s.memory != nil {
-		if err := s.consolidateMemories(ctx, uk); err != nil {
+		if err := s.consolidateMemories(ctx, uk, llm); err != nil {
 			// Retryable read failure — skip Phase 2 to avoid duplicate facts on retry.
 			return err
 		}
@@ -186,7 +224,7 @@ func (s *SleepTimeService) Consolidate(ctx context.Context, uk trpcmemory.UserKe
 // consolidateMemories runs the Letta-style trpcmemory consolidation phase.
 // Returns an error only on read failure (retryable); mutation failures are
 // treated as graceful degradation (return nil, non-retryable).
-func (s *SleepTimeService) consolidateMemories(ctx context.Context, uk trpcmemory.UserKey) error {
+func (s *SleepTimeService) consolidateMemories(ctx context.Context, uk trpcmemory.UserKey, llm trpcmodel.Model) error {
 	// 1. Read recent memories.
 	memories, err := s.memory.ReadMemories(ctx, uk, defaultConsolidationLimit)
 	if err != nil {
@@ -202,7 +240,7 @@ func (s *SleepTimeService) consolidateMemories(ctx context.Context, uk trpcmemor
 	}
 
 	// 2. LLM analysis: merge duplicates, extract reflections, update core memory.
-	result, err := s.llmConsolidate(ctx, memories)
+	result, err := s.llmConsolidate(ctx, memories, llm)
 	if err != nil {
 		// Graceful degradation: log warn, no panic, no error returned.
 		s.lg.Warn("sleep-time LLM consolidation failed, skipping",
@@ -299,8 +337,8 @@ func (s *SleepTimeService) processJob(ctx context.Context, req ConsolidationJobR
 
 // llmConsolidate calls the LLM with the memories and parses the JSON response.
 // Returns an empty result (no operations) when the LLM is not wired.
-func (s *SleepTimeService) llmConsolidate(ctx context.Context, memories []*trpcmemory.Entry) (*ConsolidationResult, error) {
-	if s.llm == nil {
+func (s *SleepTimeService) llmConsolidate(ctx context.Context, memories []*trpcmemory.Entry, llm trpcmodel.Model) (*ConsolidationResult, error) {
+	if llm == nil {
 		return &ConsolidationResult{}, nil
 	}
 
@@ -310,7 +348,7 @@ func (s *SleepTimeService) llmConsolidate(ctx context.Context, memories []*trpcm
 		{Role: trpcmodel.RoleUser, Content: prompt},
 	})
 
-	respCh, err := s.llm.GenerateContent(ctx, req)
+	respCh, err := llm.GenerateContent(ctx, req)
 	if err != nil {
 		return nil, err
 	}

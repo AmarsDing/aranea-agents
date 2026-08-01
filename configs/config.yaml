@@ -103,4 +103,14 @@ logging:
 #       g2: 10m                     # test gate timeout
 #       g3: 5m                      # lint gate timeout
 #     worktree_root: ".aranea-self-improve"  # sandbox worktree root (relative to repo root, gitignored)
+#     repo_root: ""                 # platform repo root the sandbox/applier operates on (empty = process working directory)
+#   observe_window:
+#     duration: 24h                 # post-apply observing window length
+#     error_rate_factor: 1.5        # rollback when error_rate > before*factor
+#     p95_factor: 1.3               # rollback when p95 > before*factor
+#     max_concurrent_observing: 3   # observing-window concurrency cap
+#   watchdog_interval: 5m           # observing-window evaluator tick
+#   outcome_interval: 1h            # outcome attribution tick
+#   drive_interval: 1m              # full-chain drive tick
+#   stale_timeout: 30m              # mid-pipeline stale threshold before recover
 

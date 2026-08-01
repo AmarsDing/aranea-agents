@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,20 +15,31 @@ import (
 // ── in-memory fakes ──────────────────────────────────────────────────────────
 
 type siRunStore struct {
+	mu          sync.Mutex
 	run         *SelfImprovementRun
-	others      []SelfImprovementRun // List 额外返回的行（按 filter.Status 过滤）
+	others      []SelfImprovementRun          // List 额外返回的行（按 filter.Status 过滤）
 	transitions [][2]SelfImprovementRunStatus // (from → to) per Update
 	attempts    int
 }
 
 func (s *siRunStore) GetByID(_ context.Context, id string) (*SelfImprovementRun, error) {
-	if s.run == nil || s.run.ID != id {
-		return nil, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.run != nil && s.run.ID == id {
+		cp := *s.run
+		return &cp, nil
 	}
-	cp := *s.run
-	return &cp, nil
+	for i := range s.others {
+		if s.others[i].ID == id {
+			cp := s.others[i]
+			return &cp, nil
+		}
+	}
+	return nil, nil
 }
 func (s *siRunStore) GetBySuggestionID(_ context.Context, suggestionID string) (*SelfImprovementRun, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.run == nil || s.run.SuggestionID != suggestionID {
 		return nil, nil
 	}
@@ -35,7 +47,12 @@ func (s *siRunStore) GetBySuggestionID(_ context.Context, suggestionID string) (
 	return &cp, nil
 }
 func (s *siRunStore) List(_ context.Context, f RunFilter) ([]SelfImprovementRun, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var out []SelfImprovementRun
+	if s.run != nil && (f.Status == "" || s.run.Status == f.Status) {
+		out = append(out, *s.run)
+	}
 	for _, r := range s.others {
 		if f.Status == "" || r.Status == f.Status {
 			out = append(out, r)
@@ -46,6 +63,13 @@ func (s *siRunStore) List(_ context.Context, f RunFilter) ([]SelfImprovementRun,
 func (s *siRunStore) ListObservingDue(_ context.Context, _ time.Time) ([]SelfImprovementRun, error) {
 	return nil, nil
 }
+func (s *siRunStore) Count(_ context.Context, f RunFilter) (int, error) {
+	runs, err := s.List(context.Background(), f)
+	if err != nil {
+		return 0, err
+	}
+	return len(runs), nil
+}
 func (s *siRunStore) ListTerminalPendingOutcome(_ context.Context, _ int) ([]SelfImprovementRun, error) {
 	return nil, nil
 }
@@ -54,17 +78,36 @@ func (s *siRunStore) Create(_ context.Context, run *SelfImprovementRun) error {
 	return nil
 }
 func (s *siRunStore) Update(_ context.Context, run *SelfImprovementRun, from SelfImprovementRunStatus) error {
-	if s.run == nil || s.run.Status != from {
-		return fmt.Errorf("CAS conflict: stored=%v from=%v", s.run.Status, from)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.run != nil && s.run.ID == run.ID {
+		if s.run.Status != from {
+			return fmt.Errorf("CAS conflict: stored=%v from=%v", s.run.Status, from)
+		}
+		if from != run.Status { // 只记录真实状态迁移（同状态 Update 仅持久化字段）
+			s.transitions = append(s.transitions, [2]SelfImprovementRunStatus{from, run.Status})
+		}
+		cp := *run
+		s.run = &cp
+		return nil
 	}
-	if from != run.Status { // 只记录真实状态迁移（同状态 Update 仅持久化字段）
-		s.transitions = append(s.transitions, [2]SelfImprovementRunStatus{from, run.Status})
+	for i := range s.others {
+		if s.others[i].ID == run.ID {
+			if s.others[i].Status != from {
+				return fmt.Errorf("CAS conflict: stored=%v from=%v", s.others[i].Status, from)
+			}
+			if from != run.Status {
+				s.transitions = append(s.transitions, [2]SelfImprovementRunStatus{from, run.Status})
+			}
+			s.others[i] = *run
+			return nil
+		}
 	}
-	cp := *run
-	s.run = &cp
-	return nil
+	return fmt.Errorf("run %s not found", run.ID)
 }
 func (s *siRunStore) RecordAttempt(_ context.Context, _ string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.attempts++
 	if s.run != nil {
 		s.run.Attempts++
@@ -92,12 +135,12 @@ func (r *siSugReader) CountByTargetAndAction(_ context.Context, _, _, _, _ strin
 }
 
 type siFakeSandbox struct {
-	worktreePath  string
-	cleanupCalls  int
-	appliedDiffs  []string
-	gateCalls     []SandboxGateKind
-	gateFn        func(gate SandboxGateKind, gateCallIdx int) SandboxGateResult
-	prepareErr    error
+	worktreePath string
+	cleanupCalls int
+	appliedDiffs []string
+	gateCalls    []SandboxGateKind
+	gateFn       func(gate SandboxGateKind, gateCallIdx int) SandboxGateResult
+	prepareErr   error
 }
 
 func (s *siFakeSandbox) PrepareWorktree(_ context.Context, runID, _ string) (string, func(), error) {

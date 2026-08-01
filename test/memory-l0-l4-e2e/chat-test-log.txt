@@ -1,0 +1,17 @@
+[SETUP] agent created: id=f2e5a24ab0756d6413d6a1a3 status=200
+[SETUP] session created: id=33461c44-fd97-44c4-b755-a98597876d66 status=200
+[MSG1-L4-extract] http=200 agent_reply=
+[MSG2-L1-tool] http=-1 agent_reply=
+[MSG3-recall] http=-1 agent_reply=
+[L0-04] snapshots after chat: count=0
+[L1-03] l1 tasks: count=0
+[L4-04] entities: count=0
+[L2-02] episodes attempt0: total=None items=0
+[L2-02] episodes attempt1: total=0 items=0
+[L2-02] episodes attempt2: total=0 items=0
+[L3] facts for new agent: count=0
+[X-01-new] L0: count=0 today=0 health=ok
+[X-01-new] L1: count=0 today=0 health=ok
+[X-01-new] L2: count=0 today=0 health=ok
+[X-01-new] L3: count=0 today=0 health=ok
+[X-01-new] L4: count=0 today=0 health=ok

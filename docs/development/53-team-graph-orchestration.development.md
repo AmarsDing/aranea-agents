@@ -669,9 +669,45 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 
 | ID | 任务 | 验收 | 状态 |
 |----|------|------|------|
-| V1 | 后端全量：`make api && make wire && make build && make test`（关注 internal/biz、internal/team、internal/data、internal/service） | 全绿 | ⏳ |
-| V2 | 前端全量：`cd web && pnpm lint && pnpm test && pnpm build` | 全绿 | ⏳ |
-| V3 | 运行时验证：建 team→物化可见→运行→双视角观测互跳→Graph 编辑器改拓扑→source=custom→重置派生；存量迁移后老 team 可运行 | 日志+UI 证据 | ⏳ |
-| V4 | 终审：aranea-review 全维度（架构/质量/正确性/错误处理/DB/安全/可测试性/业务逻辑/文档同步） | 审查报告 + 阻断项清零 | ⏳ |
+| V1 | 后端全量：`make api && make wire && make build && make test`（关注 internal/biz、internal/team、internal/data、internal/service） | 全绿 | 🟡（api ✅；wire/build 被并发 self-improvement 工作流半途重构阻塞——wire.go 引用尚未创建的 biz.NewSelfImprovementAdminUsecase，与本模块无关；team-graph 范围 build/test/vet/race 全绿，见 V4 报告） |
+| V2 | 前端全量：`cd web && pnpm lint && pnpm test && pnpm build` | 全绿 | ✅（lint 0 error；test 158 文件/1165 用例全过；build ✅，2026-07-31） |
+| V3 | 运行时验证：建 team→物化可见→运行→双视角观测互跳→Graph 编辑器改拓扑→source=custom→重置派生；存量迁移后老 team 可运行 | 日志+UI 证据 | ✅（编辑路径 2026-08-01 验证通过，证据见 11.F；运行链路见 11.E） |
+| V4 | 终审：aranea-review 全维度（架构/质量/正确性/错误处理/DB/安全/可测试性/业务逻辑/文档同步） | 审查报告 + 阻断项清零 | ✅（F-C/Fix-A/B：0 阻断/3 建议/3 提示，[报告](../reports/2026-07-31-review-team-graph-fc-fix-a-b.md)；Fix C：0 阻断/0 建议/1 提示，[报告](../reports/2026-08-01-review-team-graph-fix-c-materialize-guard-bypass.md)） |
 
 **依赖顺序**：B1→B2→B3（核心链）→B4/B5/B8（保存语义）→B6/B7（反向与保护）→B9（执行 ID）→B10（迁移）→B11（ADR 随时）；F1 依赖 B1 契约；F2/F3 依赖 B3；F4/F5 依赖 B6/B7；F6/F7 依赖 B9。
+
+### Phase 11.E — Team 路径事件桥接与执行收敛修复（✅ 已完成，2026-07-31）
+
+> 来源：V3 运行时验证发现 team 路径三处与独立 graph 路径的行为差异。设计：[53-team-graph-orchestration.design.md 子模块 §N](./53-team-graph-orchestration.design.md#n-team-路径事件桥接与执行收敛2026-07-31-修复)
+
+| ID | 任务 | 影响域 | 验收 | 状态 |
+|----|------|--------|------|------|
+| F-C | 图节点事件桥接：`teeGraphStageNotices` 把 team run 框架事件流中的 graph stage 事件转为 system notice 旁路发布（复用独立路径同一转换链；高频事件过滤；事件原样透传） | `team/runner_graph_event_tee.go` · `team/runner_team_trpc.go` | team_run_steps 有逐成员步骤 | ✅ |
+| Fix A | 步骤归属修复：sort_order 归一化为 1 基密集序列（`normalizeMemberSortOrders` + 观测链镜像 `normalizeOrchestrationSortOrders`）；归属从实际执行图派生（`buildAttributionFromCompiledTeam` 替代 def 派生） | `team/definition.go` · `biz/orchestration_observatory.go` · `team/graph_attribution.go` | 0 基 sort_order 团队步骤归属与 definition 顺序一致 | ✅ |
+| Fix B | graph_executions 收敛：`RecordTeamGraphNodeEnd` 增量落步骤（跨 execution 隔离）；`FinalizeTeamGraphExecution` 终态收敛（协调器 finalize + Runner 成功/失败双路径经 mediator 兜底，幂等） | `biz/graph_execution_usecase.go` · `team/team_graph_run_coordinator.go` · `team/runner_mediator.go` · `team/runner_team_turn.go` · `team/runner_helpers.go` | status 收敛 + finished_at + steps_json 落库 | ✅ |
+
+**运行时验证证据（2026-07-31，team「V3 修复验证」run=b89266b7-fb84-47e4-acf1-0dc399809bbf）**：
+
+- 步骤归属：`team_run_steps` sort 0→系统巡检 Agent、sort 1→网络巡检专家（修复前 run=702a4fa5 为反转）✅
+- `graph_executions`：status=completed + finished_at 已设置（修复前 running/NULL）✅
+- `steps_json`：2 节点步骤（member-1/member-2 均 completed；修复前 null）✅
+- 回归测试：`internal/team` + `internal/biz` 全量通过 ✅
+- 已知非回归项：spirit standalone 路径 3 条防御性 WARN（`spirit.standalone.completed_err` / TeamStage FSM 拒绝 / team_run_v2 回退）——事件桥接后该路径首次被触发，FSM 守卫与回退均正常工作，属 spirit 域既有行为，不阻断
+
+### Phase 11.F — 物化路径 guard 旁路修复（✅ 已完成，2026-08-01）
+
+> 来源：V3 编辑路径运行时验证发现——Team 表单「重置为派生拓扑」（B4 按 preset 重建物化资产）后，graph metadata `team_source` 被误置为 `custom`。
+> 根因：物化路径走带 `TeamGraphGuard` 的 `UpdateGraph`，guard 的 `OnTeamOwnedGraphSaved`（B6 反向同步，语义为「用户在 Graph 编辑器保存」）把 `team_source` 镜像为 custom。物化是 team 生命周期内部路径，不适用反向同步。
+
+| ID | 任务 | 影响域 | 验收 | 状态 |
+|----|------|--------|------|------|
+| Fix C | 物化路径绕过 guard：`TeamGraphAssetStore` 窄端口以 `UpdateOwnedGraph` 替换 `UpdateGraph`；`GraphDefinitionUsecase.UpdateOwnedGraph` 跳过 B6 guard（与 `DeleteOwnedGraph` 跳过 B7 对称）；`materializeAndBind` 改走新端口 | `biz/team_graph_hook.go` · `biz/graph_definition_usecase.go` | 重建后 graph metadata `team_source=preset` 且 team definition `source=preset` | ✅ |
+| Fix C-T | 回归测试 `TestTeamGraphHook_MaterializeThroughGuardKeepsPresetSource`：生产同款装配（teamUC.graphAssets=真实 defUC 且 defUC 带 guard）下重建，双侧 source 保持 preset | `biz/team_graph_hook_test.go` | 失败在先（复现 bug）→ 修复后通过 | ✅ |
+
+**运行时验证证据（2026-08-01，team「V3 修复验证」/ graph `9f0ce9b2`）**：
+
+- Graph 编辑器改拓扑保存 → graph `team_source=custom` + team definition `source=custom`（B6 反向同步正常）✅
+- Team 表单重置为派生拓扑 → graph `team_source=preset` + team definition `source=preset`（Fix C 生效，修复前为 custom）✅
+- F4 前端确认弹窗（浏览器实测）：team-owned 图编辑后点保存 → 弹「保存 Team 拓扑」确认框，文案含属主 Team 展示名「V3 修复验证」，取消/确定按钮正常；取消不保存 ✅
+- 说明：未做修改时保存按钮 disabled（`canSave=false`）属预期行为，非弹窗缺陷
+- 回归测试：`internal/biz` 全量通过 ✅

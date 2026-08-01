@@ -46,6 +46,7 @@ type EpisodeConsolidator struct {
 	factWriter      biz.L3FactWriter
 	actionLogWriter biz.MemoryActionLogWriter
 	llm             trpcmodel.Model
+	llmResolver     LLMResolver // P1-1: per-target ModelCatalog resolution (takes precedence over llm)
 	lg              loggateway.Logger
 	// T8: minimum importance threshold for extracted facts. Facts with
 	// importance below this value are skipped. Default: 0.3.
@@ -90,6 +91,18 @@ func (c *EpisodeConsolidator) SetMinImportance(min float64) {
 	c.minImportance = min
 }
 
+// SetLLMResolver wires a per-target LLM resolver (P1-1). When set, the
+// resolver's model takes precedence over the static constructor model for
+// each consolidation pass; a nil resolver result falls back to the static
+// model. Must be called before use; not safe to call concurrently with
+// active consolidation.
+func (c *EpisodeConsolidator) SetLLMResolver(r LLMResolver) {
+	if c == nil {
+		return
+	}
+	c.llmResolver = r
+}
+
 // ConsolidateEpisodes reads recent L2 episodes for the given agent/user,
 // extracts durable L3 facts via LLM analysis, and persists them.
 //
@@ -103,7 +116,10 @@ func (c *EpisodeConsolidator) ConsolidateEpisodes(ctx context.Context, uk trpcme
 	if c == nil {
 		return nil
 	}
-	if c.llm == nil {
+	// P1-1: resolve the per-target model. The resolver's model takes
+	// precedence over the static constructor model.
+	llm := resolveLLM(ctx, c.llmResolver, c.llm, uk)
+	if llm == nil {
 		c.lg.Warn("episode consolidation skipped: nil LLM",
 			loggateway.Str("app", uk.AppName),
 			loggateway.Str("user", uk.UserID))
@@ -146,7 +162,7 @@ func (c *EpisodeConsolidator) ConsolidateEpisodes(ctx context.Context, uk trpcme
 	}
 
 	// 3. LLM analysis: extract durable facts from episodes.
-	result, err := c.llmExtractFacts(ctx, episodes)
+	result, err := c.llmExtractFacts(ctx, episodes, llm)
 	if err != nil {
 		c.lg.Warn("episode consolidation: LLM extraction failed, skipping",
 			loggateway.Str("app", uk.AppName),
@@ -225,7 +241,7 @@ func (c *EpisodeConsolidator) writeActionLog(ctx context.Context, fact extracted
 }
 
 // llmExtractFacts calls the LLM with the episodes and parses the JSON response.
-func (c *EpisodeConsolidator) llmExtractFacts(ctx context.Context, episodes []episodeData) (*extractionResult, error) {
+func (c *EpisodeConsolidator) llmExtractFacts(ctx context.Context, episodes []episodeData, llm trpcmodel.Model) (*extractionResult, error) {
 	prompt := buildExtractionPrompt(episodes)
 	callCtx, cancel := context.WithTimeout(ctx, episodeConsolidationLLMTimeout)
 	defer cancel()
@@ -235,7 +251,7 @@ func (c *EpisodeConsolidator) llmExtractFacts(ctx context.Context, episodes []ep
 		{Role: trpcmodel.RoleUser, Content: prompt},
 	})
 
-	respCh, err := c.llm.GenerateContent(callCtx, req)
+	respCh, err := llm.GenerateContent(callCtx, req)
 	if err != nil {
 		return nil, fmt.Errorf("LLM generate content: %w", err)
 	}

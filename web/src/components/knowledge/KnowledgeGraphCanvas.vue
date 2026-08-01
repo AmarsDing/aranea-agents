@@ -8,7 +8,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import ForceGraph3D, { type ForceGraph3DInstance } from '3d-force-graph';
 import type { NodeObject } from 'three-forcegraph';
-import { graphDocTypeColor, graphLinkColor, graphNodeVal, oneHopNeighborIds } from '../../features/knowledge/graphUi';
+import { graphContainmentForce, graphDocTypeColor, graphLinkColor, graphNodeVal, oneHopNeighborIds } from '../../features/knowledge/graphUi';
 import type { CollectionGraphEdge, CollectionGraphNode } from '../../features/knowledge/types';
 
 interface GraphNode extends NodeObject {
@@ -103,6 +103,10 @@ onMounted(() => {
     .onNodeClick((node: GraphNode) => emit('node-click', node.id))
     .onBackgroundClick(() => emit('background-click'))
     .graphData(toGraphData());
+
+  // 径向 containment：断链/孤立节点不再被电荷斥力无界推散（否则 zoomToFit 框住巨大
+  // bbox，相机拉飞 → 画布空白/伪影）。d3Force 挂载即注册到 d3 simulation。
+  graph.d3Force('contain', graphContainmentForce() as never);
 
   resizeObserver = new ResizeObserver(() => {
     if (graph && el.clientWidth > 0 && el.clientHeight > 0) {

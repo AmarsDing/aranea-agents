@@ -90,13 +90,19 @@
 ```
 detected → diagnosing → patching → verifying → awaiting_governance
     → applying → applied → observing → closed        （正常路径）
+    ↘ awaiting_governance（apply_escalate：合并冲突转人工，D7）
     ↘ verify_failed（重试 ≤3 次回 patching） ↘ rolled_back（终态）
     ↘ rejected / failed（终态）
+
+diagnosing / patching / verifying ──recover──→ detected
+    （Phase 4 增补：中途态陈旧恢复——run 在该态停留超过 stale_timeout
+     （默认 30m）视为驱动中断（进程重启/pause），drive worker 重置回
+     detected 重走全链；attempts 计数不清零，防无限重试）
 ```
 
 | 状态 | 进入事件 | 说明 |
 |------|----------|------|
-| detected | create | 建议创建即产生 run（1:1 绑定 suggestion_id） |
+| detected | create / recover | 建议创建即产生 run（1:1 绑定 suggestion_id）；recover 为陈旧中途态重驱动入口（Phase 4 增补） |
 | diagnosing | diagnose | Analyst 归因中 |
 | patching | patch | Patcher 生成补丁中（verify 失败重试也回此态） |
 | verifying | verify | G1-G5 执行中 |
@@ -169,12 +175,16 @@ Observer(代码节点,非LLM) → Analyst(LLM) → Patcher(LLM) → Verifier(代
 
 > P3 落地注记（2026-07-30）：Meta Team 编排实现于 `internal/biz/self_improvement_pipeline.go`（D5：Diagnose→Patch→Verify 重试回路→Govern，fail-fast 策略门禁在 Verify 前不消耗沙盒 Gate）；Agent 标识/提示词/结构化输出解析于 `self_improvement_agents.go`；RiskClassifier（R1-R5）于 `self_improvement_risk.go`；Critic G4 + 日配额 10 于 `internal/service/self_improvement_critic.go`；治理路由 `SIGovernanceRouter`（auto/notify 配额 5 超限转 approval、SINotifier/SIApprovalSink 端口）于 `self_improvement_router.go`；过程活动挂载（确定性 ID 两级树 `si-run:<id>` → 阶段子节点，patching/verifying 按 attempt 分叉）与用户介入控制面（pause→ErrSIRunPaused 非终态驻留、skip_retry、rollback=pre-apply 中止→rejected）于 `self_improvement_activity.go`/`self_improvement_control.go`。审批/通知/活动的 service 层适配器与 pause 恢复入口属 wire 级接线，推迟 Phase 4（见 development.md P3 落地偏差）。
 
+> P5 落地注记（2026-07-31）：R1/R2/R3 行数阈值、R3 核心路径 globs、日 auto 配额已可配置化——`SIRiskRules`（0/空 = 继承代码默认）持久化于 `system_settings`，控制台经 GetRiskRules/UpdateRiskRules RPC 读写（见 §七）；分类器 `NewSIRiskClassifierWithRules` 消费归一化规则（`NormalizeSIRiskRules`），日配额优先级 DB 配置 > config.yaml > 代码默认。
+
 ### D7：应用与观察窗（Applier + Watchdog）
 
 - **配置/Prompt 类**：复用 58-prompt-governance 的热加载通道（RuntimeProfile reload），应用即生效，回滚=回退快照
 - **代码类**：worktree 内 `git commit`（message 含 `self-improvement: true` + run_id 尾注）→ 合并主分支（fast-forward 优先，冲突则转人工）→ 状态 applied（待重启生效）；**不做运行中热替换**
 - **观察窗**：applied → observing，Watchdog（cron，5min）对比应用前后各 1h 滑窗指标：错误率 +50% 或 P95 +30%（可配置）→ 自动 `git revert` + 热加载回退 → rolled_back + 管理员通知
 - **手动控制**：管理员可 close（提前确认有效）或 rollback（立即回滚）
+
+> P4 落地注记（2026-07-31，T4.1/T4.5）：Applier 实现于 `internal/service/self_improvement_applier.go`（热加载=工作树补丁+预应用快照，代码=worktree commit+ff 合并，冲突返回 `ErrSIMergeConflict`）；Apply 编排 `SelfImprovementApplyUsecase` 于 `internal/biz/self_improvement_apply.go`——kind 路由（code/test→合并、config/prompt/docs→热加载）、冲突经 `apply_escalate` 回迁 awaiting_governance 并改写 channel=approval、观察窗准入（并发 ≤max_concurrent_observing + 同核心路径区域互斥 `SICoreAreas`）未通过时 run 停留 applied 构成晋升队列，`PromoteEligible`（最老优先）供 Watchdog 每 tick 调用；Router 经 `SIApplyDriver` 端口在 auto/notify 迁移后同步驱动 Apply。
 
 ### D8：成效学习（Learn）
 
@@ -335,10 +345,13 @@ type Applier interface {
 | Worker | 周期 | 职责 | 模式参照 |
 |--------|------|------|----------|
 | self_improve_observe | 15min | 对 platform 目标调用编排器 CheckAndCreate；为 pending 建议创建 run(status=detected) 并启动 Meta Team 会话 | V2 skill_intelligence_worker |
+| self_improve_drive | 1min | 全链驱动：detected 异步 pipeline / 陈旧中途态（diagnosing/patching/verifying，默认 30m 无进展）recover→detected 重驱动 / awaiting_governance 路由去重 / applying 重驱动 / applied 晋升 observing | V2 evolution_orchestrator |
 | self_improve_watchdog | 5min | 扫描 observing 且 observe_until<=now 的 run：指标对比→close 或自动 rollback | V2 predictive_heal |
 | self_improve_outcome | 1h | 终态 run 生成 PatchOutcome + KB 反哺 + 触发器自适应降频 | V2 pattern_mining |
 
-分布式安全：复用现有 worker 单实例运行约定（workers.go 启动模式），Watchdog 的 rollback 以 run 状态 CAS 防重。
+> self_improve_drive 为 Phase 4 实施期增补：原设计将「pipeline 启动/治理路由/应用驱动」挂在 observe worker 与 router 回调上，落地时发现异步 pipeline 失败与 pause 恢复需要独立重驱动入口，故拆出 drive worker 统一承担全链推进与陈旧恢复（`SIStaleTimeout`/`SIDriveInterval` 可配）。
+
+分布式安全：复用现有 worker 单实例运行约定（workers.go 启动模式），Watchdog 的 rollback 与 Drive 的 recover/晋升均以 run 状态 CAS 防重。
 
 ---
 
@@ -346,11 +359,33 @@ type Applier interface {
 
 ### 6.1 新增绑定（cmd/admin/wire.go）
 
+设计期规划：
+
 - `SelfImprovementRunReader/Writer`、`PatchOutcomeWriter` → data 层实现
-- 4 触发器 → 构造后注册进既有 `SkillEvolutionOrchestrator`（ProvideSet 返回注册器 func 或在 ProvideRunners 侧注册，参照现有 Trigger 装配方式）
+- 4 触发器 → 构造后注册进既有 `SkillEvolutionOrchestrator`
 - `RepoSandbox` → `service.RepoSandboxRunner`
 - `RiskClassifier` / `Applier` → biz 实现
 - 3 个 worker → `startBackgroundWorkers` 注册
+
+**W6 实际接线（2026-07-31 落地，共 24 个 provider，全部 gated on `self_improvement.enabled`）**：
+
+| 类别 | Provider | 说明 |
+|------|----------|------|
+| 基础设施 | `provideRepoSandboxRunner` | worktree 沙盒；repoRoot=进程工作目录（`os.Getwd()`），启用时 admin 须从仓库根启动 |
+| 基础设施 | `provideSIApplier` | `SIRepoApplier`：热加载快照通道 + 代码 ff 合并 + Rollback |
+| LLM stages | `provideSIAnalystStage` / `provideSIPatcherStage` / `provideSICriticStage` | 复用平台 `DefaultRefineLLM`（`SystemSettingUsecase.GetRefineLLM`）；Analyst/Patcher 未配置时 stage=nil，pipeline 报「stages not wired」明确错误（不 panic）；Critic nil 时 G4 降级放行（T3.3 设计）；Patcher 日配额默认 20 / Critic 默认 10（provider 传 0 取 agent 内默认） |
+| 适配器 | `provideSINotifier` / `provideSIApprovalSink` / `provideSIActivitySink` | 统一经 Monitor Events 通道（`biz.MonitorEventRepo`）；Approval 提交按 run 幂等 |
+| 适配器 | `provideSINegativePatternSink` | Learn 负面样本写 FailurePattern KB（按 pattern_hash 去重递增 fail_count） |
+| 适配器 | `provideSITriggerFeedbackSink` | 触发器降频反馈挂 `SkillEvolutionOrchestrator` |
+| 适配器 | `provideSIControlPlane` | 用户介入指令面（pause/skip_retry/rollback） |
+| Usecase | `provideSelfImprovementObserveUsecase` / `provideSelfImprovementPipelineUsecase` / `provideSelfImprovementApplyUsecase` / `provideSIGovernanceRouter` / `provideSelfImprovementDriveUsecase` / `provideSelfImprovementWatchdogUsecase` / `provideSelfImprovementOutcomeUsecase` | 七环闭环编排；Router 的 `SIApplyDriver` 端口由 Apply usecase 注入形成「治理→应用」挂钩 |
+| Worker | `provideSelfImprovementObserveWorker` / `provideSelfImproveDriveWorker` / `provideSelfImproveWatchdogWorker` / `provideSelfImproveOutcomeWorker` | 4 个调度器注册进 `startBackgroundWorkers`（wireOut 透出） |
+| 信号源 | `provideSelfImprovementTestRunReader` | test_failure 触发器的 JSON 轮次目录适配 |
+
+**接线备注**：
+- `provideSelfImprovementOperatorUsecase` 函数已备但**未注册**进 wire.Build——T4.3 内部路径暂无消费者，Wire 不允许 unused provider；P5 Proto/控制台落地时注册并暴露 RPC
+- `SelfImprovementRunReader/Writer`/`PatchOutcomeWriter` 绑定 data 层 `data.SelfImprovementRepo`（既有 repo provider 侧绑定，非本模块新增 provider）
+- `RiskClassifier` 无独立 provider：作为纯规则组件在 `NewSelfImprovementPipelineUsecase` 内部构造（`Classifier` dep 传 nil → 默认 D6 规则集）
 
 ### 6.2 配置新增（config.yaml）
 
@@ -361,14 +396,19 @@ self_improvement:
   error_cluster: {window_days: 7, min_count: 5}
   perf: {latency_factor: 2.0, token_factor: 1.5}
   eval: {regression_threshold: 0.10}
+  test_runs_dir: ""             # test_failure 触发器 JSON 轮次目录；空=该信号源惰性
   patch: {max_diff_lines: 500, daily_auto_apply_quota: 5, max_attempts: 3}
-  sandbox: {gate_timeouts: {g1: 5m, g2: 10m, g3: 5m}, worktree_root: ".aranea-self-improve"}
+  sandbox: {gate_timeouts: {g1: 5m, g2: 10m, g3: 5m}, worktree_root: ".aranea-self-improve", repo_root: ""}  # repo_root 空=进程工作目录
   observe_window: {duration: 24h, error_rate_factor: 1.5, p95_factor: 1.3, max_concurrent_observing: 3}
+  watchdog_interval: 5m         # Phase 4 落地新增（原设计硬编码于 worker）
+  outcome_interval: 1h          # Phase 4 落地新增
+  drive_interval: 1m            # drive worker（Phase 4 增补）
+  stale_timeout: 30m            # 中途态陈旧阈值，超过则 recover→detected 重驱动
 ```
 
 ---
 
-## 七、Proto 设计（P5 控制台 API，本阶段仅定义契约）
+## 七、Proto 设计（P5 控制台 API）
 
 `api/kratos/self_improvement/v1/self_improvement.proto`：
 
@@ -376,14 +416,17 @@ self_improvement:
 |-----|------|------|------|
 | ListRuns | GET /api/v1/self-improvement/runs | 运行列表（状态/风险/触发源筛选+分页） | admin |
 | GetRun | GET /api/v1/self-improvement/runs/{id} | 详情（诊断/diff/验证/治理/时间线） | admin |
-| ApproveRun | POST /api/v1/self-improvement/runs/{id}:approve | 高风险审批通过（body: reason） | admin |
-| RejectRun | POST /api/v1/self-improvement/runs/{id}:reject | 审批拒绝（body: reason 必填） | admin |
-| RollbackRun | POST /api/v1/self-improvement/runs/{id}:rollback | 手动回滚 | admin |
-| CloseRun | POST /api/v1/self-improvement/runs/{id}:close | 观察窗提前关闭 | admin |
+| ApproveRun | POST /api/v1/self-improvement/runs/{id}/approve | 高风险审批通过（body: reason） | admin |
+| RejectRun | POST /api/v1/self-improvement/runs/{id}/reject | 审批拒绝（body: reason 必填） | admin |
+| RollbackRun | POST /api/v1/self-improvement/runs/{id}/rollback | 手动回滚 | admin |
+| CloseRun | POST /api/v1/self-improvement/runs/{id}/close | 观察窗提前关闭 | admin |
 | GetOutcomeStats | GET /api/v1/self-improvement/outcome-stats | 成效统计 | admin |
-| UpdateRiskRules | PUT /api/v1/self-improvement/risk-rules | 分级规则配置 | admin |
+| GetRiskRules | GET /api/v1/self-improvement/risk-rules | 分级规则读取（configured 原始值 + effective 归一化值双视图） | admin |
+| UpdateRiskRules | PUT /api/v1/self-improvement/risk-rules | 分级规则配置（0/空 = 继承代码默认） | admin |
 
 P1-P4 阶段高风险审批经由既有聊天审批 activity 完成，不落 Proto。
+
+> P5 落地注记（2026-07-31）：9 个 RPC 全部实现于 `internal/service/self_improvement.go`（admin 鉴权，operator 取认证身份）；风险规则持久化于 `system_settings`（迁移 20261121，Raw SQL repo `internal/data/si_risk_rule_repo.go`），经 wire 注入 Pipeline 分类器（`NewSIRiskClassifierWithRules`）与治理路由日配额；校验（阈值 ≥0、low ≤ medium、doublestar glob 合法性）在 `SelfImprovementAdminUsecase.UpdateRiskRules`。
 
 ---
 
@@ -426,4 +469,5 @@ P1-P4 阶段高风险审批经由既有聊天审批 activity 完成，不落 Pro
 
 ---
 
-*文档版本：2026-07-29 — 初始版本（与设计确认稿一致：全量代码可补丁 + 风险分级审批 + 平台内 Meta Team + 代码类合并重启生效/配置类热加载）。*
+*文档版本：2026-07-31 — Phase 1–4 + W6 全链接线落地：§五 worker 表增补 self_improve_drive（Phase 4 实施期增补）；§6.1 更新为 24 个实际 provider 接线表（全部 gated on `self_improvement.enabled`）；§6.2 配置块补齐 watchdog/outcome/drive/stale_timeout 与 test_runs_dir，与 `internal/conf/conf.proto` 一致。*
+*历史版本：2026-07-29 — 初始版本（与设计确认稿一致：全量代码可补丁 + 风险分级审批 + 平台内 Meta Team + 代码类合并重启生效/配置类热加载）。*

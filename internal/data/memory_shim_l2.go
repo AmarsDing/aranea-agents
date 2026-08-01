@@ -380,7 +380,7 @@ func (r *l2EpisodeRepo) recallL2WithVectorStore(ctx context.Context, agentID, se
 	q := fmt.Sprintf(`%s WHERE agent_id = ? AND id IN (%s)`, sqlEpisodeSelect, strings.Join(placeholders, ","))
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L2")
 	}
 	defer rows.Close()
 	tokens := tokenizeQuery(query)

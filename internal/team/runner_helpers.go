@@ -172,6 +172,8 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRunRecord, t0 ti
 	if biz.IsTeamRunTerminalStatus(run.Status) {
 		return
 	}
+	// F-B：提前取出 graph exec ID（状态转换可能整体替换 run 记录）。
+	graphExecID := strings.TrimSpace(run.GraphExecutionID)
 	updatedRun, transitionErr := r.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusFailed)
 	if transitionErr != nil {
 		r.lg.Error("TransitionRunStatus failed in finishRunErr",
@@ -185,6 +187,10 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRunRecord, t0 ti
 			r.lg.Warn("UpdateTeamRun failed in finishRunErr", loggateway.StepID("team.run.err_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(err))
 		}
 		*run = updatedRun
+	}
+	// F-B：失败终态同步收敛 graph_executions（team graph 路径无事件消费者）。
+	if graphExecID != "" && r.mediator != nil {
+		_ = r.mediator.FinalizeTeamGraphExecution(ctx, graphExecID, true, msg)
 	}
 	if biz.ShouldRecordTaskDeadLetter(run.DefinitionSnapshotJSON) {
 		if dlerr := r.deadLetter.CreateTaskDeadLetter(ctx, biz.TaskDeadLetter{

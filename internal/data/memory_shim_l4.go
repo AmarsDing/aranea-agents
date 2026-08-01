@@ -860,14 +860,14 @@ func (r *l4EntityRepo) FindRelation(ctx context.Context, nodeA, nodeB, relationT
 	defer rows.Close()
 
 	if !rows.Next() {
-		return biz.L4HebbianRelation{}, false, rows.Err()
+		return biz.L4HebbianRelation{}, false, entErrToBizErr(rows.Err(), "MEMORY_L4")
 	}
 	var rel biz.L4HebbianRelation
 	if err := rows.Scan(&rel.ID, &rel.SourceID, &rel.TargetID, &rel.RelationType,
 		&rel.Weight, &rel.CoActivationCount, &rel.SourceActivation, &rel.TargetActivation); err != nil {
 		return biz.L4HebbianRelation{}, false, entErrToBizErr(err, "MEMORY_L4")
 	}
-	return rel, true, rows.Err()
+	return rel, true, entErrToBizErr(rows.Err(), "MEMORY_L4")
 }
 
 // updateRelationWeightSQL updates weight, co_activation_count, and

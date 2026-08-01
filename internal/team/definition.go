@@ -108,11 +108,56 @@ func ParseDefinition(raw string) (Definition, error) {
 	if strings.TrimSpace(d.Mode) == "" {
 		d.Mode = "sequential"
 	}
+	normalizeMemberSortOrders(d.Members)
 	// Normalize: an empty entries list is equivalent to no contract.
 	if d.DeliverableContract != nil && len(d.DeliverableContract.Entries) == 0 {
 		d.DeliverableContract = nil
 	}
 	return d, nil
+}
+
+// normalizeMemberSortOrders rewrites member sort_order to dense 1-based values
+// when the raw values cannot serve as a stable ordering key (contain zero /
+// negative / duplicates). Effective order = stable sort by (sortOrder,
+// declaration index); rewritten values are assigned 1..n in that order and
+// written back to the original declaration slots (array order is preserved —
+// it is the user-facing member list).
+//
+// 背景：前端团队编辑器以 0 基稠密 sort_order 保存（声明顺序=执行顺序），而
+// 后端历史上把 ≤0 解释为「未设置」并排到正数之后（见 EnabledMembers），
+// 导致成员有效顺序反转、member-N node ID 与物化资产错位（step 归属张冠李
+// 戴）。统一在解析边界收敛，使 EnabledMembers / memberNodeID / 物化器 /
+// observatory 注册表对同一 def 产生一致映射。
+//
+// 全正且互异的值（含稀疏 10/20/30）保持不变：node ID 在各路径一致使用原
+// 值，避免既有快照/物化资产漂移。
+func normalizeMemberSortOrders(members []MemberDef) {
+	needsFix := false
+	seen := make(map[int]struct{}, len(members))
+	for _, m := range members {
+		if m.SortOrder <= 0 {
+			needsFix = true
+			break
+		}
+		if _, dup := seen[m.SortOrder]; dup {
+			needsFix = true
+			break
+		}
+		seen[m.SortOrder] = struct{}{}
+	}
+	if !needsFix {
+		return
+	}
+	order := make([]int, len(members))
+	for i := range members {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		return members[order[a]].SortOrder < members[order[b]].SortOrder
+	})
+	for pos, idx := range order {
+		members[idx].SortOrder = pos + 1
+	}
 }
 
 func memberEnabled(m MemberDef) bool {

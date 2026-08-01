@@ -1177,6 +1177,7 @@ MaterializeTeamGraph(ctx, def Definition, existing *biz.GraphDefinition) (*biz.G
 3. 受 `HasActiveRun` 运行锁定约束（既有逻辑不变）
 4. source=custom 且表单改了拓扑字段 → 前端确认后才到达后端；后端按 preset 重建（前端确认责任，后端不二次拒绝）
 5. 换绑 external：旧 owned 图（`team_id`=本 team）**D2：直接删除**（历史 run 靠 `definition_snapshot_json` 回放；`GraphExecutionsPage` 对悬空 graph_id 友好降级「资产已删除」）
+6. **物化路径绕过反向同步 guard（2026-08-01 修正）**：Team 侧物化/级联删走 `TeamGraphAssetStore` 窄端口（`CreateGraph` / `UpdateOwnedGraph` / `DeleteOwnedGraph`）。`UpdateOwnedGraph`/`DeleteOwnedGraph` 是 team 生命周期内部路径，跳过 B6/B7 用户态 guard——guard 的「编辑器保存 → source=custom 镜像 + 成员反向派生」不适用于物化路径（否则重建后 `team_source` 会被误镜像为 custom）。用户在 Graph 编辑器的保存仍走带 guard 的 `UpdateGraph`（B6 正常生效）
 
 ### E. 反向同步（Graph 编辑器 → Team）
 
@@ -1252,3 +1253,25 @@ MaterializeTeamGraph(ctx, def Definition, existing *biz.GraphDefinition) (*biz.G
 - 不为 team 图加 Graph 编辑器内的编辑限制（双路径+警告即可）
 - 不做多 team 共享 owned 图（external linked 已覆盖共享需求）
 - Team 编排页不开第三编辑入口（D3）
+
+### N. Team 路径事件桥接与执行收敛（2026-07-31 修复）
+
+V3 运行时验证发现 team 路径与独立 graph 路径的三处行为差异，根因均为 team 路径绕过了独立路径的事件消费管线。修复后两条路径在「步骤持久化 + 执行收敛」上对齐。
+
+#### N.1 图节点事件桥接（F-C）
+
+- **问题**：team graph 路径以 GraphAgent 作为 trpc runner 直接运行，绕过 `trpcGraphRuntime.Run`——独立 graph 路径在后者中把框架事件转换为 system notice 发布到 EventBus。team 路径因此缺失 node_start/node_end 通知，协调器的 `StartGraphStepWatch`（BL-03）收不到节点事件，`team_run_steps` 无逐成员步骤。
+- **修复**：`team/runner_graph_event_tee.go` `teeGraphStageNotices` 在 team run 框架事件流上开旁路，复用独立路径的同一转换链（`graphtrpc.EventBridge.ConvertEvent` + `ActivityEventToSystemNotice`）把 graph stage 事件桥接为 system notice 发布；高频事件（pregel step/state update/channel update）过滤不转；事件原样透传下游，notice 仅旁路发布。
+
+#### N.2 sort_order 归一化与归属映射（Fix A）
+
+- **问题**：存量/手工定义的 `members[].sort_order` 可能是 0 基或含重复值，而 node_id 约定为 `member-{sort_order}`——0 基导致与 1 基生成的节点 ID 碰撞（观测台只显示一个节点）；且 definition 派生的成员顺序与实际图执行拓扑漂移时步骤归属反转。
+- **归一化**：definition 解析时把 sort_order 归一化为 1 基密集序列——`team/definition.go` `normalizeMemberSortOrders`（team 定义链）+ `biz/orchestration_observatory.go` `normalizeOrchestrationSortOrders`（观测链镜像），两处必须同步。
+- **归属映射**：`team/graph_attribution.go` `buildAttributionFromCompiledTeam` 从**实际执行的** CompiledTeam 节点派生 member↔node 映射与 OrchestrationRegistry（替代 def 派生），拓扑漂移时步骤归属仍以真实执行图为准。
+
+#### N.3 graph_executions 收敛与步骤落库（Fix B）
+
+- **问题**：team 路径无 `consumeRuntimeEvents` 消费者，graph 终态事件无人处理——`graph_executions` 停在 `status=running`、`finished_at=NULL`、`steps_json=null`。
+- **步骤增量落库**：`biz/graph_execution_usecase.go` `RecordTeamGraphNodeEnd`——协调器 graph watch 收到本 execution 的 node_end 通知时，按 (node_id, step_index) upsert 步骤快照并立即 `UpdateRun` 持久化；非本 execution 的通知忽略（防串写）。
+- **终态收敛**：`FinalizeTeamGraphExecution`——team run 到达终态时显式收敛 graph_executions（状态机转换 + finished_at + error_message），已终态幂等返回。接线路径：协调器 `finalizeTeamRun` 先收敛再走 finisher；Runner 成功路径（`runner_team_turn.go`）与失败路径（`runner_helpers.go finishRunErr`）经 `TeamRunMediator.FinalizeTeamGraphExecution` 兜底调用（mediator 未接线时 warn 并返回 nil，不阻断 team run 收尾）。
+- **测试**：`biz/graph_team_execution_test.go`（增量落库/收敛幂等）+ `team/team_graph_run_coordinator_test.go`（node_end 写步骤/跨 execution 隔离/成功失败双路径收敛）。

@@ -45,14 +45,6 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 	}
 }
 
-// TeamGraphExecutionBackend indexes and resumes team-linked graph executions.
-type TeamGraphExecutionBackend interface {
-	RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID, linkedGraphID string, ct *biz.CompiledTeam) error
-	MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error
-	ResumeExecution(ctx context.Context, executionID string, resumeValue map[string]any) (*biz.GraphExecution, error)
-	GetExecution(ctx context.Context, executionID string) (*biz.GraphExecution, error)
-}
-
 // TeamGraphTaskResumeHandler resumes team Graph runs after Kanban task completion.
 // Stability:evolving
 type TeamGraphTaskResumeHandler interface {
@@ -178,6 +170,11 @@ func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context
 			sess.inputPreview = strings.TrimSpace(run.InputPreview)
 			sess.definitionJSON = strings.TrimSpace(run.DefinitionSnapshotJSON)
 			reg, memberByNode, stepSortIndex := buildResumeSessionContext(run.DefinitionSnapshotJSON, sess.inputPreview, c.agentKeyFn, c.lg)
+			// 归因与执行图同源（C1）：优先用真实执行的 CompiledTeam 构建映射，
+			// def 派生仅作 ct 缺失/无 agent 成员节点时的回退。
+			if m, idx, r, ok := buildAttributionFromCompiledTeam(ct, run.DefinitionSnapshotJSON, c.agentKeyFn); ok {
+				memberByNode, stepSortIndex, reg = m, idx, r
+			}
 			sess.obsReg = reg
 			sess.obsStore = biz.NewOrchestrationStatusStore(reg)
 			sess.memberByNode = memberByNode
@@ -498,13 +495,18 @@ func (c *TeamGraphRunCoordinator) handleGraphWatchNotice(ctx context.Context, se
 				c.finisher.PublishTeamStepStarted(ctx, stepCtx, st.NodeID)
 			}
 			if isNodeEnd || isStepFinished {
-				if biz.IsTerminalAgentNodeStatus(st.Status) && c.finisher != nil && stepCtx != nil {
+				if biz.IsTerminalAgentNodeStatus(st.Status) {
 					skipped := st.Status == biz.AgentNodeStatusSkipped
 					errText := st.ErrorMessage
 					if st.Status == biz.AgentNodeStatusFailed && errText == "" {
 						errText = "graph node failed"
 					}
-					c.finisher.PersistGraphRunStep(ctx, stepCtx, st.NodeID, st.OutputPreview, errText, skipped, 0)
+					if c.finisher != nil && stepCtx != nil {
+						c.finisher.PersistGraphRunStep(ctx, stepCtx, st.NodeID, st.OutputPreview, errText, skipped, 0)
+					}
+					// F-B：team 路径无 consumeRuntimeEvents 消费者，steps_json
+					// 由 watch 增量落库（对齐 standalone 路径 node_end 行为）。
+					c.recordGraphNodeEnd(ctx, sess.execID, st, meta)
 				}
 			}
 		}
@@ -539,56 +541,13 @@ func (c *TeamGraphRunCoordinator) handleGraphWatchNotice(ctx context.Context, se
 	return false, false, ""
 }
 
-func resumeStepNodeID(meta map[string]any, reg biz.OrchestrationRegistry) string {
-	if meta == nil {
-		return ""
-	}
-	step, ok := meta["step"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	if agentID, ok := step["agent_id"].(string); ok && strings.TrimSpace(agentID) != "" {
-		for nodeID, entry := range reg.ByNodeID {
-			if strings.EqualFold(entry.AgentID, strings.TrimSpace(agentID)) {
-				return nodeID
-			}
-		}
-	}
-	return ""
-}
-
-func resumeMetaBool(meta map[string]any, key string) bool {
-	if meta == nil {
-		return false
-	}
-	v, ok := meta[key]
-	if !ok {
-		return false
-	}
-	b, ok := v.(bool)
-	return ok && b
-}
-
-func metaString(meta map[string]any, key string) string {
-	if meta == nil {
-		return ""
-	}
-	v, ok := meta[key]
-	if !ok || v == nil {
-		return ""
-	}
-	switch t := v.(type) {
-	case string:
-		return strings.TrimSpace(t)
-	default:
-		return strings.TrimSpace(fmt.Sprintf("%v", t))
-	}
-}
-
 func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *teamGraphRunSession, failed bool, errMsg string) {
 	if c == nil || sess == nil {
 		return
 	}
+	// F-B：graph 运行已到达终局（execution_done / node_error / 超时），先收敛
+	// graph_executions 行（幂等），再做 team run 终态记账。
+	_ = c.FinalizeTeamGraphExecution(ctx, sess.execID, failed, errMsg)
 	if c.finisher != nil {
 		c.finisher.FinalizeGraphTeamRun(ctx, sess.stepContext(), failed, errMsg)
 		c.evictSession(sess.execID)

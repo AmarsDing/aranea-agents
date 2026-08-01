@@ -19,6 +19,122 @@ func (s *stubL1SchemaReader) GetL1SchemaRow(_ context.Context, _ string) ([]byte
 	return s.row, s.err
 }
 
+// ---------------------------------------------------------------------------
+// complete tool (P1-2): LLM-declared task completion → end + atomic archive
+// ---------------------------------------------------------------------------
+
+type stubL1Reader struct {
+	taskRows [][]byte
+}
+
+func (s *stubL1Reader) ListL1TaskRows(_ context.Context, _, _, _, _ string) ([][]byte, error) {
+	return s.taskRows, nil
+}
+func (s *stubL1Reader) ListL1FieldRows(_ context.Context, _ string, _ bool, _ ...string) ([][]byte, error) {
+	return nil, nil
+}
+func (s *stubL1Reader) GetL1TaskRow(_ context.Context, _, _ string) ([]byte, error)  { return nil, nil }
+func (s *stubL1Reader) GetL1FieldRow(_ context.Context, _, _ string) ([]byte, error) { return nil, nil }
+
+type stubL1TaskWriter struct {
+	ended []string
+	err   error
+}
+
+func (s *stubL1TaskWriter) StartL1Task(_ context.Context, _ biz.L1TaskInsert) ([]byte, error) {
+	return nil, nil
+}
+func (s *stubL1TaskWriter) EndL1Task(_ context.Context, sessionID, taskID, status string) ([]byte, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.ended = append(s.ended, sessionID+":"+taskID+":"+status)
+	return []byte("{}"), nil
+}
+func (s *stubL1TaskWriter) GetL1TaskRow(_ context.Context, _, _ string) ([]byte, error) {
+	return nil, nil
+}
+func (s *stubL1TaskWriter) ArchiveL1Task(_ context.Context, _, _ string) ([]byte, error) {
+	return nil, nil
+}
+func (s *stubL1TaskWriter) UnarchiveL1Task(_ context.Context, _, _ string) error { return nil }
+func (s *stubL1TaskWriter) ArchiveAndCreateEpisodeTx(_ context.Context, _, _ string, _ biz.L1ArchiveEpisodeInsert) ([]byte, error) {
+	return nil, nil
+}
+
+func completeToolCtx(reader biz.L1AdminReader, writer biz.L1TaskWriter) context.Context {
+	ctx := context.Background()
+	ctx = WithSessionID(ctx, "sess-1")
+	ctx = WithAgentID(ctx, "agent-1")
+	ctx = WithL1Reader(ctx, reader)
+	ctx = WithL1TaskWriter(ctx, writer)
+	return ctx
+}
+
+// Completing a task ends it with status=completed via the L1TaskWriter (the
+// usecase hook then archives + creates the episode atomically).
+func TestCompleteExecute_EndsActiveTaskAsCompleted(t *testing.T) {
+	taskRow, _ := json.Marshal(map[string]any{"id": "task-1"})
+	reader := &stubL1Reader{taskRows: [][]byte{taskRow}}
+	writer := &stubL1TaskWriter{}
+
+	out, err := completeExecute(completeToolCtx(reader, writer), CompleteInput{})
+	if err != nil {
+		t.Fatalf("completeExecute: %v", err)
+	}
+	if !out.Completed || out.TaskID != "task-1" {
+		t.Errorf("out=%+v, want Completed=true TaskID=task-1", out)
+	}
+	if len(writer.ended) != 1 || writer.ended[0] != "sess-1:task-1:completed" {
+		t.Errorf("ended=%v, want [sess-1:task-1:completed]", writer.ended)
+	}
+}
+
+func TestCompleteExecute_NoActiveTaskIsNoop(t *testing.T) {
+	writer := &stubL1TaskWriter{}
+	out, err := completeExecute(completeToolCtx(&stubL1Reader{}, writer), CompleteInput{})
+	if err != nil {
+		t.Fatalf("completeExecute: %v", err)
+	}
+	if out.Completed {
+		t.Error("Completed should be false when no active task exists")
+	}
+	if len(writer.ended) != 0 {
+		t.Errorf("EndL1Task should not be called, ended=%v", writer.ended)
+	}
+}
+
+func TestCompleteExecute_MissingDepsReturnsError(t *testing.T) {
+	if _, err := completeExecute(context.Background(), CompleteInput{}); err == nil {
+		t.Fatal("expected error when working_memory deps are not injected")
+	}
+}
+
+func TestCompleteExecute_EndErrorPropagates(t *testing.T) {
+	taskRow, _ := json.Marshal(map[string]any{"id": "task-1"})
+	reader := &stubL1Reader{taskRows: [][]byte{taskRow}}
+	writer := &stubL1TaskWriter{err: errors.New("db down")}
+
+	if _, err := completeExecute(completeToolCtx(reader, writer), CompleteInput{}); err == nil {
+		t.Fatal("expected EndL1Task error to propagate")
+	}
+}
+
+// The complete tool must be part of the working_memory toolset (assembled as
+// working_memory_complete).
+func TestToolsIncludesComplete(t *testing.T) {
+	found := false
+	for _, tl := range Tools() {
+		if decl := tl.Declaration(); decl != nil && decl.Name == "complete" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Tools() should include the complete tool")
+	}
+}
+
 // TestValidFieldKinds verifies the 10 field_kind enum values.
 func TestValidFieldKinds(t *testing.T) {
 	want := []string{

@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -233,6 +234,11 @@ type SkillEvolutionOrchestrator struct {
 	triggersMu  sync.RWMutex                  // protects triggers for concurrent RegisterTrigger calls
 	unifiedSM   *UnifiedEvolutionStateMachine // AS-FSM-01: validates status transitions
 	lg          loggateway.Logger
+
+	// cooldownMul holds per-trigger-source cooldown escalations (D8 自适应
+	// 降频：连续非 effective outcomes → 冷却期 ×2，内存态，上限 8×)。
+	cooldownMu  sync.RWMutex
+	cooldownMul map[string]float64
 }
 
 func NewSkillEvolutionOrchestrator(
@@ -256,6 +262,49 @@ func (o *SkillEvolutionOrchestrator) RegisterTrigger(trigger EvolutionTrigger) {
 	o.triggersMu.Lock()
 	defer o.triggersMu.Unlock()
 	o.triggers = append(o.triggers, trigger)
+}
+
+// siMaxTriggerCooldownMultiplier caps the D8 adaptive cooldown escalation
+// (×2 per consecutive non-effective window, at most 8×).
+const siMaxTriggerCooldownMultiplier = 8.0
+
+// SetTriggerCooldownMultiplier multiplies the cooldown of one trigger source
+// by factor (D8 触发器自适应降频). The effective multiplier is capped at
+// siMaxTriggerCooldownMultiplier. factor <= 1 is a no-op. Safe for concurrent
+// use; in-memory only (config persistence deferred, see development.md P4).
+func (o *SkillEvolutionOrchestrator) SetTriggerCooldownMultiplier(triggerSource string, factor float64) {
+	if triggerSource == "" || factor <= 1 {
+		return
+	}
+	o.cooldownMu.Lock()
+	defer o.cooldownMu.Unlock()
+	if o.cooldownMul == nil {
+		o.cooldownMul = map[string]float64{}
+	}
+	cur := o.cooldownMul[triggerSource]
+	if cur <= 0 {
+		cur = 1
+	}
+	cur *= factor
+	if cur > siMaxTriggerCooldownMultiplier {
+		cur = siMaxTriggerCooldownMultiplier
+	}
+	o.cooldownMul[triggerSource] = cur
+	o.lg.Info("orchestrator: trigger cooldown escalated",
+		loggateway.StepID("evo_orchestrator.cooldown_escalate"),
+		loggateway.Str("trigger_source", triggerSource),
+		loggateway.Str("multiplier", fmt.Sprintf("%.1f", cur)))
+}
+
+// triggerCooldownMultiplier returns the effective cooldown multiplier of one
+// trigger source (default 1).
+func (o *SkillEvolutionOrchestrator) triggerCooldownMultiplier(triggerSource string) float64 {
+	o.cooldownMu.RLock()
+	defer o.cooldownMu.RUnlock()
+	if m := o.cooldownMul[triggerSource]; m > 0 {
+		return m
+	}
+	return 1
 }
 
 // HasPendingForTarget checks whether a pending suggestion exists for the given target.
@@ -310,7 +359,8 @@ func (o *SkillEvolutionOrchestrator) CheckAndCreate(ctx context.Context, targetT
 			// lifecycle states count — a rejected/expired suggestion never blocks.
 			latestByAction, lbErr := o.checkReader.GetLatestByTargetAndAction(ctx, string(suggestion.TargetType), suggestion.TargetID, string(suggestion.ActionType))
 			if lbErr == nil && latestByAction != nil && latestByAction.CountsForCooldown() {
-				cooldownEnd := latestByAction.CreatedAt.Add(EvoTriggerCooldownHours * time.Hour)
+				cooldownHours := time.Duration(float64(EvoTriggerCooldownHours) * o.triggerCooldownMultiplier(suggestion.TriggerSource))
+				cooldownEnd := latestByAction.CreatedAt.Add(cooldownHours * time.Hour)
 				if time.Now().UTC().Before(cooldownEnd) {
 					o.lg.Debug("orchestrator: cooldown active for action type, skipping",
 						loggateway.StepID("evo_orchestrator.cooldown"),

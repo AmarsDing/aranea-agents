@@ -477,6 +477,7 @@ internal/cronrunner/jobs/
 | `system.plugin.*` / `system.hook.*` | warn | 插件种子与 Hook 重载 |
 | `system.auto_memory.*` | warn/info | 自动记忆提取 |
 | `system.memory_canary.failed` | error | 记忆闭环金丝雀告警（写→召回→失效任一断言失败） |
+| `system.memory_l1_archive.failed` | error | L1 归档连续失败告警（同一任务连续 3 次归档失败，任务保留在重试集合中） |
 | `system.monitor.alert_*` | warn | 告警 Webhook/通道 |
 | `system.session.*` | warn | 会话压缩/标题/回滚 |
 | `system.graph.*` | error | 图任务启动/状态/恢复 |

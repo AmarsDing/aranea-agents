@@ -101,6 +101,7 @@ func TestSelfImprovement_PatchAndSandboxExplicitValues(t *testing.T) {
 				G3: durationpb.New(3 * time.Minute),
 			},
 			WorktreeRoot: ".si-sandbox",
+			RepoRoot:     "test/self-improve/repo",
 		},
 	}
 	if got := c.SIMaxDiffLines(); got != 300 {
@@ -118,6 +119,9 @@ func TestSelfImprovement_PatchAndSandboxExplicitValues(t *testing.T) {
 	}
 	if got := c.SIWorktreeRoot(); got != ".si-sandbox" {
 		t.Errorf("SIWorktreeRoot = %q, want .si-sandbox", got)
+	}
+	if got := c.SIRepoRoot(); got != "test/self-improve/repo" {
+		t.Errorf("SIRepoRoot = %q, want test/self-improve/repo", got)
 	}
 }
 

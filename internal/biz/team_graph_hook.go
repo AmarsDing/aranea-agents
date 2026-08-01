@@ -24,12 +24,13 @@ type TeamTxProvider interface {
 // materialized team graph assets. Implementations must maintain version
 // history (_version_history snapshots) and the definition cache coherence
 // （由 *GraphDefinitionUsecase 满足）.
-// DeleteOwnedGraph 是 team 生命周期内部级联删（B5/D2），跳过 B7 用户态删除
-// 保护——调用方已完成 owned 归属校验。
+// UpdateOwnedGraph / DeleteOwnedGraph 是 team 生命周期内部路径（B4 物化重建 /
+// B5 级联删 / D2 换绑），跳过 B6/B7 用户态 guard——调用方即 Team 保存钩子，
+// 反向同步不适用于物化路径（否则 team_source 会被误镜像为 custom）。
 // Stability:evolving
 type TeamGraphAssetStore interface {
 	CreateGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error)
-	UpdateGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error)
+	UpdateOwnedGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error)
 	DeleteOwnedGraph(ctx context.Context, id string) error
 }
 
@@ -180,7 +181,7 @@ func (u *TeamUsecase) materializeAndBind(ctx context.Context, team *Team, spec *
 	if existing == nil {
 		saved, err = u.graphAssets.CreateGraph(ctx, asset)
 	} else {
-		saved, err = u.graphAssets.UpdateGraph(ctx, asset)
+		saved, err = u.graphAssets.UpdateOwnedGraph(ctx, asset)
 	}
 	if err != nil {
 		return err

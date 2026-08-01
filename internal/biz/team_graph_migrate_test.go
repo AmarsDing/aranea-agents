@@ -82,7 +82,7 @@ func (s *migAssetStore) CreateGraph(_ context.Context, def *biz.GraphDefinition)
 	s.created[def.ID] = def
 	return def, nil
 }
-func (s *migAssetStore) UpdateGraph(_ context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error) {
+func (s *migAssetStore) UpdateOwnedGraph(_ context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error) {
 	s.created[def.ID] = def
 	return def, nil
 }

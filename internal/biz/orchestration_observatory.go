@@ -3,6 +3,7 @@ package biz
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -200,7 +201,42 @@ func parseOrchestrationMembers(definitionJSON string) ([]orchestrationMember, er
 		}
 		out = append(out, m)
 	}
+	normalizeOrchestrationSortOrders(out)
 	return out, nil
+}
+
+// normalizeOrchestrationSortOrders mirrors team.normalizeMemberSortOrders
+// （biz 不能反向依赖 team，两条规则必须保持同步）：sort_order 含 ≤0/重复值
+// 时按 (sort_order, 声明序) 稳定序重编为稠密 1 基；全正互异（含稀疏）保持
+// 不变。修复 0 基 sort_order 导致的 member-N 节点 ID 碰撞（observatory 只
+// 显示一个节点）。
+func normalizeOrchestrationSortOrders(members []orchestrationMember) {
+	needsFix := false
+	seen := make(map[int]struct{}, len(members))
+	for _, m := range members {
+		if m.SortOrder <= 0 {
+			needsFix = true
+			break
+		}
+		if _, dup := seen[m.SortOrder]; dup {
+			needsFix = true
+			break
+		}
+		seen[m.SortOrder] = struct{}{}
+	}
+	if !needsFix {
+		return
+	}
+	order := make([]int, len(members))
+	for i := range members {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		return members[order[a]].SortOrder < members[order[b]].SortOrder
+	})
+	for pos, idx := range order {
+		members[idx].SortOrder = pos + 1
+	}
 }
 
 // HasActiveTeamRun reports whether the team has a running or pending run.

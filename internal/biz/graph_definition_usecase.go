@@ -163,6 +163,19 @@ func (uc *GraphDefinitionUsecase) DeleteGraph(ctx context.Context, id string) er
 	return uc.deleteGraph(ctx, id)
 }
 
+// UpdateOwnedGraph updates a team-owned asset as part of the owner team's
+// materialize lifecycle（B4 按 preset 重建 / 迁移回填），跳过 B6 反向同步
+// guard——调用方即 Team 保存钩子，guard 的「编辑器保存 → source=custom 镜像 +
+// 成员反向派生」不适用于物化路径（否则 team_source 会被误置为 custom）。
+// 与 DeleteOwnedGraph 跳过 B7 删除保护对称。
+func (uc *GraphDefinitionUsecase) UpdateOwnedGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error) {
+	previous, err := uc.reader.GetDefinition(ctx, def.ID)
+	if err != nil {
+		return nil, err
+	}
+	return uc.updateGraph(ctx, def, previous)
+}
+
 // DeleteOwnedGraph deletes a team-owned asset as part of the owner team's
 // lifecycle（B5 级联删 / D2 换绑），跳过 B7 用户态删除保护——调用方已完成
 // owned 归属校验（deleteOwnedGraphAsset / TeamUsecase.Delete）。

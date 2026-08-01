@@ -61,7 +61,7 @@ func (r *memoryRepo) dimForEmbedding(ctx context.Context, memoryPartitionUserID 
 	case dataent.IsNotFound(err):
 		return r.data.VectorDim(), nil
 	case err != nil:
-		return 0, err
+		return 0, entErrToBizErr(err, "MEMORY")
 	default:
 		return row.VectorDimension, nil
 	}

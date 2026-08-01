@@ -168,10 +168,10 @@ func (r *l4GraphRepo) GetEntityRelations(ctx context.Context, entityID string) (
 		r.data.Dialect().RenumberPlaceholders(`SELECT id, scope_type, scope_id, source_id, target_id, relation_type, weight, confidence, metadata_json
 		 FROM memory_relations
 		 WHERE status = 'active' AND deleted_at = '' AND (source_id = ? OR target_id = ?)
-		 ORDER BY weight DESC`),
+	 ORDER BY weight DESC`),
 		entityID, entityID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	defer rows.Close()
 	var result []biz.L4Relation
@@ -185,7 +185,7 @@ func (r *l4GraphRepo) GetEntityRelations(ctx context.Context, entityID string) (
 		}
 		result = append(result, rel)
 	}
-	return result, rows.Err()
+	return result, entErrToBizErr(rows.Err(), "MEMORY_L4")
 }
 
 func (r *l4GraphRepo) GetEntitiesByType(ctx context.Context, scope, entityType string) ([]biz.L4Entity, error) {
@@ -201,10 +201,10 @@ func (r *l4GraphRepo) GetEntitiesByType(ctx context.Context, scope, entityType s
 		r.data.Dialect().RenumberPlaceholders(`SELECT id, scope_type, scope_id, user_id, entity_type, name, name_normalized, description, importance, confidence, metadata_json
 		 FROM memory_entities
 		 WHERE scope_id = ? AND entity_type = ? AND status = 'active' AND deleted_at = ''
-		 ORDER BY importance DESC`),
+	 ORDER BY importance DESC`),
 		scope, entityType)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	defer rows.Close()
 	var result []biz.L4Entity
@@ -218,7 +218,7 @@ func (r *l4GraphRepo) GetEntitiesByType(ctx context.Context, scope, entityType s
 		}
 		result = append(result, ent)
 	}
-	return result, rows.Err()
+	return result, entErrToBizErr(rows.Err(), "MEMORY_L4")
 }
 
 func (r *l4GraphRepo) SearchEntitiesByName(ctx context.Context, scope, nameQuery string, limit int) ([]biz.L4Entity, error) {
@@ -239,10 +239,10 @@ func (r *l4GraphRepo) SearchEntitiesByName(ctx context.Context, scope, nameQuery
 		 FROM memory_entities
 		 WHERE scope_id = ? AND name_normalized LIKE ? AND status = 'active' AND deleted_at = ''
 		 ORDER BY importance DESC
-		 LIMIT ?`),
+	 LIMIT ?`),
 		scope, pattern, limit)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	defer rows.Close()
 	var result []biz.L4Entity
@@ -256,7 +256,7 @@ func (r *l4GraphRepo) SearchEntitiesByName(ctx context.Context, scope, nameQuery
 		}
 		result = append(result, ent)
 	}
-	return result, rows.Err()
+	return result, entErrToBizErr(rows.Err(), "MEMORY_L4")
 }
 
 func (r *l4GraphRepo) ApplyConfidenceDecay(ctx context.Context, scopeType, scopeID, olderThanRFC3339 string, factor float64) (int64, error) {
@@ -268,7 +268,7 @@ func (r *l4GraphRepo) ApplyConfidenceDecay(ctx context.Context, scopeType, scope
 		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_entities SET confidence = confidence * ?, updated_at = ? WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = '' AND updated_at < ?`),
 		factor, now, scopeType, scopeID, olderThanRFC3339)
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "MEMORY_L4")
 	}
 	n, _ := res.RowsAffected()
 	return n, nil
@@ -308,7 +308,7 @@ func (r *l4GraphRepo) GetRecentReinforcementCounts(ctx context.Context, scopeTyp
 		 GROUP BY a.target_id`),
 		scopeType, scopeID, cutoff)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	defer rows.Close()
 	result := map[string]int{}
@@ -320,7 +320,7 @@ func (r *l4GraphRepo) GetRecentReinforcementCounts(ctx context.Context, scopeTyp
 		}
 		result[id] = count
 	}
-	return result, rows.Err()
+	return result, entErrToBizErr(rows.Err(), "MEMORY_L4")
 }
 
 func (r *l4GraphRepo) ApplyBusinessConfidenceDecay(ctx context.Context, scopeType, scopeID string, cfg biz.L4DecayConfig, nowUnixMs int64) (int64, error) {
@@ -351,7 +351,7 @@ func (r *l4GraphRepo) ApplyBusinessConfidenceDecay(ctx context.Context, scopeTyp
 		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_entities SET confidence = confidence * ?, updated_at = ? WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = '' AND updated_at < ? AND confidence > 0.01`),
 		factor, now, scopeType, scopeID, cutoff)
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "MEMORY_L4")
 	}
 	n, _ := res.RowsAffected()
 	return n, nil
@@ -366,7 +366,7 @@ func (r *l4GraphRepo) ArchiveLowConfidenceEntities(ctx context.Context, scopeTyp
 		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_entities SET status = 'archived', updated_at = ? WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = '' AND confidence < ?`),
 		now, scopeType, scopeID, threshold)
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "MEMORY_L4")
 	}
 	n, _ := res.RowsAffected()
 	return n, nil

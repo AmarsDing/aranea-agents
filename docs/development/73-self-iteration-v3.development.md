@@ -2,7 +2,7 @@
 
 > 需求文档：[73-self-iteration-v3.md](./73-self-iteration-v3.md)
 > 设计文档：[73-self-iteration-v3.design.md](./73-self-iteration-v3.design.md)
-> **版本**：2026-07-30 | **状态**：🟡 Phase 1（感知接入）+ Phase 2（沙盒与补丁）已完成，Phase 3 待启动
+> **版本**：2026-07-31 | **状态**：✅ Phase 1–5 全部完成（T1.1–T5.4）；遗留：运行时端到端冒烟（灰度开启后造信号验证）
 
 ---
 
@@ -97,23 +97,42 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 | ID | 任务 | 层 | 状态 | DoD |
 |----|------|----|------|-----|
 | T4.1 | Applier：热加载通道（config/prompt）+ 代码合并通道（commit 标记 + ff 合并，冲突转人工） | Service | ✅ | fixture 仓库集成测试绿 |
-| T4.2 | Watchdog worker：observing 扫描 + 滑窗指标对比 + 自动 revert + 通知 | Cmd/Biz | ⏳ | 单测（mock 指标）绿 |
-| T4.3 | 手动 close/rollback 入口（P4 暂经管理 API 内部路径，P5 落 Proto） | Service | ⏳ | 集成测试绿 |
-| T4.4 | Outcome worker：终态归因 verdict + KB 负面样本 + 触发器自适应降频 | Cmd/Biz | ⏳ | 单测绿 |
-| T4.5 | 观察窗并发上限 3 + 同核心路径串行队列 | Biz | ⏳ | 并发单测绿 |
+| T4.2 | Watchdog worker：observing 扫描 + 滑窗指标对比 + 自动 revert + 通知 | Cmd/Biz | ✅ | 单测（mock 指标）绿 |
+| T4.3 | 手动 approve/reject/close/rollback 入口（P4 暂经管理 API 内部路径，P5 落 Proto） | Biz | ✅ | 单测（-race）绿 |
+| T4.4 | Outcome worker：终态归因 verdict + KB 负面样本 + 触发器自适应降频 | Cmd/Biz | ✅ | 单测绿 |
+| T4.5 | 观察窗并发上限 3 + 同核心路径串行队列 + Apply 编排 usecase + Router apply driver 挂钩 | Biz | ✅ | 并发单测（-race）绿 |
+| T4.6 | W6 全链接线：21 个 wire provider（sandbox/applier/LLM stages/适配器/usecases）+ drive/watchdog/outcome 三 worker 注册 | Cmd | ✅ | `make wire && go build ./...` 绿，worker 冒烟测试绿 |
 
-**阶段验收**：端到端「应用→观察→指标退化→自动回滚→成效记录」可运行
+**阶段验收（2026-07-31 通过）**：W6 全链接线落地——21 个 wire provider（sandbox/applier/3 LLM stages/5 适配器/6 usecases/3 workers，全部 gated on `self_improvement.enabled`）+ drive/watchdog/outcome 三 worker 注册进 `startBackgroundWorkers`；端到端「应用→观察→指标退化→自动回滚→成效记录」链路经 usecase 级测试覆盖。验证：`make wire`、`go build ./...`、`go vet`（改动包）、`go test -race ./internal/biz/ ./internal/conf/ ./internal/cronrunner/...`、`go test ./internal/service/ -run TestSI` 全绿；gofmt 本会话文件干净。修复：watchdog/drive worker 冒烟测试竞态（async safego 扫描 vs 直接读共享计数 → stub 互斥访问器 + 轮询等待模式）。
+
+**P3 偏差回收（W6 完成）**：
+1. ✅ 审批/通知/活动适配器已接线（`SIMonitorApprovalSink`/`SIMonitorNotifier`/`SIMonitorActivitySink`，Monitor Events 通道）
+2. ✅ pause 恢复入口已落地（drive worker 陈旧恢复：`SIStaleTimeout` 默认 30m，diagnosing/patching/verifying→detected 重驱动）
+3. ✅ applied/observing 强制回滚已落地（Watchdog `ScanOnce` + Admin `Rollback`，经 `SIApplier.Rollback`）
+4. P2 偏差 1（golangci-lint 包级接线）未回收：G3 仍以 `go vet` 为确定性下限
+5. P2 偏差 2（web 侧 gate 进 Runner）未回收：`DeriveAffectedScopes` web 标志已透传，执行接线待后续
+
+**W6 接线备注**：
+- `provideSelfImprovementAdminUsecase` 函数已备，但未注册进 wire.Build——T4.3 内部路径暂无消费者，Wire 不允许 unused provider；P5 Proto/控制台落地时注册并暴露 RPC
+- LLM stages 复用平台 `DefaultRefineLLM`（`SystemSettingUsecase.GetRefineLLM`），未配置时 stage=nil，pipeline 报「stages not wired」明确错误（不 panic）
+- sandbox repoRoot = `sandbox.repo_root` 配置（空 → 进程工作目录 `os.Getwd()`）：未配置时启用自改进的 admin 必须从仓库根启动（灰度特性，默认 disabled）
+- T4.3 去重（2026-07-31）：实施期曾并存 `self_improvement_operator.go` 与 `self_improvement_admin.go` 两份同职责用例；保留签名对齐 design §7 的 Admin 版本并删除 Operator 版本（含各自测试重写/清理）
 
 ### Phase 5 — 控制台与竞赛材料（P2）
 
 | ID | 任务 | 层 | 状态 | DoD |
 |----|------|----|------|-----|
-| T5.1 | Proto `self_improvement/v1`（8 个 RPC，§七）+ `make api` | Proto | ⏳ | 生成物提交，build 通过 |
-| T5.2 | Service 层 8 RPC（admin 鉴权、entErrToBizErr、分页） | Service | ⏳ | service 测试绿 |
-| T5.3 | 前端控制台 4 组件 + feature store + i18n 双语言包 | Web | ⏳ | `pnpm lint && pnpm test && pnpm build` 绿 |
-| T5.4 | 竞赛四件套更新（需求/概要/详细设计/实施进度对齐实现） | Docs | ⏳ | 评审维度映射完整 |
+| T5.1 | Proto `self_improvement/v1`（9 个 RPC，§七）+ `make api` | Proto | ✅ | 生成物提交，build 通过 |
+| T5.2 | Console usecase（List/Get/Stats/Rules）+ Service 层 9 RPC（admin 鉴权、operator 身份、分页）+ SIRiskRules 可配置化（SystemSetting 持久化 + Pipeline/Router 消费）+ wire 注册 | Biz/Service/Data/Cmd | ✅ | biz/service/data 测试绿，`make wire && go build ./cmd/admin` 绿 |
+| T5.3 | 前端控制台 4 组件 + feature store + i18n 双语言包 | Web | ✅ | `pnpm lint && pnpm test && pnpm build` 绿（2026-07-31；组件落 `components/self-improvement/`，RiskRulesDialog 未做——API 就绪 UI 待补，diff 纯文本渲染） |
+| T5.4 | 竞赛四件套更新（需求/概要/详细设计/实施进度对齐实现） | Docs | ✅ | 评审维度映射完整（2026-07-31，`competition/15-平台自改进/`：实施进度 v2.0 全量重写 + 概要 v1.1 + 详设 v1.1 + 需求 v1.1 版本对齐，8 项落地偏差全量记录） |
 
-**阶段验收**：全量验证（后端 make api/wire/build/test/lint + 前端三件套）+ 竞赛材料同步
+**T5.2 落地备注（2026-07-31）**：
+- `provideSelfImprovementAdminUsecase` 已注册进 wire.Build（W6 备注回收），`SelfImprovementService` 经 `NewSelfImprovementService` 注入并注册 HTTP/gRPC（feature disabled 时 nil-guard 不注册）
+- 风险规则链：`SIRiskRules`（biz，0/空继承默认）→ `si_risk_rule_repo.go`（Raw SQL 读写 `system_settings`，迁移 20261121 四列）→ `provideSIRiskRules` 启动加载（失败回退 config/代码默认）→ `NewSIRiskClassifierWithRules`（Pipeline Govern 阶段）+ 治理路由日配额（DB > config > 默认）
+- 服务端校验：阈值 ≥0、low ≤ medium（均非零时）、glob 非空且过 doublestar.ValidatePattern；GetRiskRules 返回 configured（原始）+ effective（归一化）双视图
+
+**阶段验收（2026-07-31 通过）**：后端 `make api && make wire && make build` 绿；前端 `pnpm lint && pnpm test && pnpm build` 绿（store 单测覆盖）；竞赛四件套已同步实现口径。
 
 ## 5. 改动文件清单（P1 范围）
 
@@ -157,15 +176,32 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 
 **新增（Phase 4 已落地）**：
 - `internal/service/self_improvement_applier.go`（SIRepoApplier：ApplyHotReload 快照通道 + ApplyCodeMerge 代码 ff 合并 + Rollback revert/快照恢复，T4.1）+ `_test.go`（fixture 仓库集成测试 8 例）
+- `internal/biz/self_improvement_apply.go`（SelfImprovementApplyUsecase：kind 路由 + 冲突 escalate 转人工 + 观察窗并发上限 3 + 核心路径串行 PromoteEligible，T4.5）+ `_test.go`（12 例，含 -race 并发测试）
+- `internal/biz/self_improvement_watchdog.go`（SelfImprovementWatchdogUsecase：基线采集 + 到期滑窗对比 + 自动 revert + 通知，T4.2）+ `_test.go`
+- `internal/biz/self_improvement_admin.go`（SelfImprovementAdminUsecase：手动 approve/reject/close/rollback，签名对齐 design §7——Approve 带 reason、Reject reason 必填，T4.3）+ `_test.go`（10 例，-race 绿）
+- `internal/biz/self_improvement_outcome.go`（SelfImprovementOutcomeUsecase：verdict 归因 + KB 负面样本 + 触发器降频，T4.4）+ `_test.go`
+- `internal/biz/self_improvement_drive.go`（SelfImprovementDriveUsecase：全链驱动——detected 异步 pipeline / 陈旧中途态 recover / awaiting_governance 路由去重 / applying 重驱动 / applied 晋升，Phase 4 增补）+ `_test.go`
+- `internal/service/self_improvement_adapters.go`（W6 端口适配器：SIMonitorNotifier/SIMonitorApprovalSink/SIMonitorActivitySink/SIKBNegativePatternSink/SIOrchestratorFeedbackSink）+ `_test.go`
+- `internal/service/self_improvement_meta_team.go`（W6 LLM 阶段：SIAnalystAgent/SIPatcherAgent，复用 DefaultRefineLLM）
+- `internal/cronrunner/jobs/self_improve_watchdog_worker.go`（观察窗巡检调度，T4.2）+ `_test.go`
+- `internal/cronrunner/jobs/self_improve_outcome_worker.go`（终态归因调度，T4.4）+ `_test.go`
+- `internal/cronrunner/jobs/self_improve_drive_worker.go`（全链驱动调度，Phase 4 增补）+ `_test.go`
 
 **修改（Phase 4 已落地）**：
 - `internal/biz/self_improvement_repo.go`（新增 `ErrSIMergeConflict` 哨兵 + `ListTerminalPendingOutcome`/`ListRecentOutcomesByTrigger` 端口方法，T4.1/T4.4）
-- `internal/conf/conf.proto` + `conf.pb.go`（ObserveWindow/watchdog_interval/outcome_interval，T4.2/T4.4）
-- `internal/conf/self_improvement.go` + `_test.go`（SIObserveWindow*/SIWatchdogInterval/SIOutcomeInterval 访问器）
+- `internal/biz/self_improvement_state_machine.go`（新增 `RunEventApplyEscalate`：applying→awaiting_governance 冲突转人工，T4.5；`RunEventRecover`：diagnosing/patching/verifying→detected 陈旧恢复，Drive）
+- `internal/biz/self_improvement_risk.go`（导出 `SICoreAreas`/`SICoreAreasIntersect` 核心路径区域判定，T4.5）
+- `internal/biz/self_improvement_router.go`（新增 `SIApplyDriver` 端口 + auto/notify 迁移后驱动挂钩，T4.5）
+- `internal/biz/self_improvement_pipeline_test.go`（siRunStore fake 并发安全 + others 列表/CAS 支持，T4.5；stub 补 ListTerminalPendingOutcome 方法）
+- `internal/conf/conf.proto` + `conf.pb.go`（ObserveWindow/watchdog_interval/outcome_interval/drive_interval/stale_timeout + `sandbox.repo_root`，T4.2/T4.4/W6）
+- `internal/conf/self_improvement.go` + `_test.go`（SIObserveWindow*/SIWatchdogInterval/SIOutcomeInterval/SIDriveInterval/SIStaleTimeout/SIRepoRoot 访问器）
 - `internal/data/self_improvement_repo.go` + `_test.go`（ListTerminalPendingOutcome/ListRecentOutcomesByTrigger PG 集成测试）
 - `internal/data/self_improvement_signals.go` + `_test.go`（SIMetricsReader.Snapshot 滑窗指标快照，T4.2）
-- `internal/biz/self_improvement_pipeline_test.go`、`self_improvement_observe_test.go`（stub 补 ListTerminalPendingOutcome 方法）
+- `internal/biz/self_improvement_observe_test.go`（stub 补 ListTerminalPendingOutcome 方法）
 - `internal/service/repo_sandbox_runner_test.go`（fixture 关闭 autocrlf，Windows 下 patch 内容不被转换）
+- `cmd/admin/wire.go` + `wire_gen.go`（W6：21 个 provider 接线 + `make wire` 重生成；`provideSelfImprovementAdminUsecase` 备好未注册，P5 消费）
+- `cmd/admin/workers.go`（注册 self_improve_drive/watchdog/outcome 三 worker，`goAfterReady`）
+- `configs/config.yaml`（self_improvement 注释示例补齐 observe_window/watchdog_interval/outcome_interval/drive_interval/stale_timeout/sandbox.repo_root）
 
 ## 6. 验收标准（总）
 
@@ -176,4 +212,6 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 
 ---
 
-*文档版本：2026-07-30 — Phase 1（T1.1–T1.11）、Phase 2（T2.1–T2.6）、Phase 3（T3.1–T3.6）完成并验证，状态标记与文件清单同步。*
+*文档版本：2026-07-31 — Phase 1–5（T1.1–T5.4）全部完成并验证；竞赛四件套同步实现口径（8 项落地偏差记录于实施进度文档 v2.0）。遗留：运行时端到端冒烟待灰度开启后执行。*
+*历史版本：2026-07-31 — Phase 1–4（T1.1–T4.6）+ W6 全链接线完成并验证，状态标记与文件清单同步；design.md §五/§6 已同步实际接线（24 providers + drive worker + 配置块）。*
+*历史版本：2026-07-30 — Phase 1（T1.1–T1.11）、Phase 2（T2.1–T2.6）、Phase 3（T3.1–T3.6）完成并验证。*

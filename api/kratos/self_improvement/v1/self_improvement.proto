@@ -1,0 +1,229 @@
+syntax = "proto3";
+
+package kratos.self_improvement.v1;
+
+option go_package = "aranea-agents/api/kratos/self_improvement/v1;v1";
+option java_package = "api.kratos.self_improvement.v1";
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/timestamp.proto";
+
+// SelfImprovementService exposes the platform self-improvement console API
+// (73-self-iteration-v3, design §七). All endpoints require admin auth.
+service SelfImprovementService {
+  // ListRuns returns runs filtered by status / risk_level / trigger_source
+  // with pagination. Heavy fields (diff/diagnosis/report) are omitted.
+  rpc ListRuns (ListRunsRequest) returns (ListRunsResponse) {
+    option (google.api.http) = { get: "/v1/self-improvement/runs" };
+  }
+  // GetRun returns the full run detail including diff/diagnosis/reports.
+  rpc GetRun (GetRunRequest) returns (GetRunResponse) {
+    option (google.api.http) = { get: "/v1/self-improvement/runs/{id}" };
+  }
+  // ApproveRun approves a high-risk run (awaiting_governance → applying).
+  rpc ApproveRun (ApproveRunRequest) returns (ApproveRunResponse) {
+    option (google.api.http) = { post: "/v1/self-improvement/runs/{id}/approve" body: "*" };
+  }
+  // RejectRun rejects an awaiting_governance run (reason required).
+  rpc RejectRun (RejectRunRequest) returns (RejectRunResponse) {
+    option (google.api.http) = { post: "/v1/self-improvement/runs/{id}/reject" body: "*" };
+  }
+  // RollbackRun manually rolls back an applied/observing run.
+  rpc RollbackRun (RollbackRunRequest) returns (RollbackRunResponse) {
+    option (google.api.http) = { post: "/v1/self-improvement/runs/{id}/rollback" body: "*" };
+  }
+  // CloseRun closes an observing run early (confirmed effective).
+  rpc CloseRun (CloseRunRequest) returns (CloseRunResponse) {
+    option (google.api.http) = { post: "/v1/self-improvement/runs/{id}/close" body: "*" };
+  }
+  // GetOutcomeStats returns Learn-stage attribution statistics
+  // (verdict distribution + per-trigger breakdown).
+  rpc GetOutcomeStats (GetOutcomeStatsRequest) returns (GetOutcomeStatsResponse) {
+    option (google.api.http) = { get: "/v1/self-improvement/outcome-stats" };
+  }
+  // GetRiskRules returns the configured risk-classification rules
+  // (0/empty fields inherit the code defaults; effective carries the
+  // normalized values actually consumed by the pipeline/router).
+  rpc GetRiskRules (GetRiskRulesRequest) returns (GetRiskRulesResponse) {
+    option (google.api.http) = { get: "/v1/self-improvement/risk-rules" };
+  }
+  // UpdateRiskRules persists a new risk-classification rule set
+  // (design §七; takes effect for newly-classified runs).
+  rpc UpdateRiskRules (UpdateRiskRulesRequest) returns (UpdateRiskRulesResponse) {
+    option (google.api.http) = { put: "/v1/self-improvement/risk-rules" body: "*" };
+  }
+}
+
+// ── Runs ────────────────────────────────────────────────────────────────────
+
+message ListRunsRequest {
+  string status = 1;         // SelfImprovementRunStatus; empty = all
+  string risk_level = 2;     // low / medium / high; empty = all
+  string trigger_source = 3; // error_cluster / perf_bottleneck / eval_regression / test_failure; empty = all
+  int32 page = 4;            // 1-based; <=0 treated as 1
+  int32 page_size = 5;       // <=0 or >100 treated as 20
+}
+
+message ListRunsResponse {
+  repeated SelfImprovementRunMsg items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message GetRunRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetRunResponse {
+  SelfImprovementRunMsg run = 1;
+}
+
+message ApproveRunRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string reason = 2; // optional operator note
+}
+
+message ApproveRunResponse {}
+
+message RejectRunRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string reason = 2 [(google.api.field_behavior) = REQUIRED]; // design §七: 必填
+}
+
+message RejectRunResponse {}
+
+message RollbackRunRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string reason = 2;
+}
+
+message RollbackRunResponse {}
+
+message CloseRunRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string reason = 2;
+}
+
+message CloseRunResponse {}
+
+// ── Outcome stats (D8 Learn) ────────────────────────────────────────────────
+
+message GetOutcomeStatsRequest {}
+
+message GetOutcomeStatsResponse {
+  int64 total = 1;
+  int64 effective = 2;
+  int64 neutral = 3;
+  int64 regressed = 4;
+  double effective_rate = 5; // effective / total (0 when total=0)
+  double rollback_rate = 6;  // regressed / total (0 when total=0)
+  repeated TriggerOutcomeStatsMsg by_trigger = 7;
+}
+
+message TriggerOutcomeStatsMsg {
+  string trigger_source = 1;
+  int64 total = 2;
+  int64 effective = 3;
+  int64 neutral = 4;
+  int64 regressed = 5;
+}
+
+// ── Risk rules (D6/D10 configurable rule set) ───────────────────────────────
+
+// RiskRulesMsg is one view of the risk-classification rule set. Numeric 0 /
+// empty globs mean "inherit the code default".
+message RiskRulesMsg {
+  int32 low_max_lines = 1;     // R1 soft-kind single-file diff line cap (default 100)
+  int32 medium_max_lines = 2;  // R2/R3 single-file line cap (default 300)
+  repeated string core_path_globs = 3; // R3 core path globs (empty = default D6 set)
+  int32 daily_auto_quota = 4;  // D10 daily auto-apply quota (default 5)
+}
+
+message GetRiskRulesRequest {}
+
+message GetRiskRulesResponse {
+  RiskRulesMsg configured = 1; // raw stored values (0/empty = inherit default)
+  RiskRulesMsg effective = 2;  // normalized values actually consumed
+}
+
+message UpdateRiskRulesRequest {
+  int32 low_max_lines = 1;
+  int32 medium_max_lines = 2;
+  repeated string core_path_globs = 3;
+  int32 daily_auto_quota = 4;
+}
+
+message UpdateRiskRulesResponse {
+  RiskRulesMsg configured = 1;
+  RiskRulesMsg effective = 2;
+}
+
+// ── Domain messages ─────────────────────────────────────────────────────────
+
+// SelfImprovementRunMsg is the console view of one self-improvement run.
+// ListRuns omits diff/diagnosis/verification_report/critic_report/governance
+// (heavy fields); GetRun populates them.
+message SelfImprovementRunMsg {
+  string id = 1;
+  string suggestion_id = 2;
+  string status = 3;
+  string trigger_source = 4;
+  string patch_kind = 5;
+  string risk_level = 6;
+  string base_ref = 7;
+  string branch = 8;
+  DiffStatsMsg diff_stats = 9;
+  int32 attempts = 10;
+  string approved_by = 11;
+  string applied_commit = 12;
+  google.protobuf.Timestamp observe_until = 13;
+  string closed_reason = 14;
+  google.protobuf.Timestamp created_at = 15;
+  google.protobuf.Timestamp updated_at = 16;
+  // ── detail-only fields (GetRun) ──
+  string diff = 17;
+  DiagnosisMsg diagnosis = 18;
+  repeated SandboxGateResultMsg verification_report = 19;
+  CriticReportMsg critic_report = 20;
+  GovernanceDecisionMsg governance = 21;
+}
+
+message DiffStatsMsg {
+  int32 files = 1;
+  int32 additions = 2;
+  int32 deletions = 3;
+}
+
+// DiagnosisMsg is the Analyst Agent structured output (D5).
+message DiagnosisMsg {
+  string root_cause = 1;
+  repeated string affected_files = 2;
+  string impact_scope = 3;
+  string fix_strategy = 4;
+  double confidence = 5;
+}
+
+// SandboxGateResultMsg is one verification gate outcome (G1-G3/G5).
+message SandboxGateResultMsg {
+  string gate = 1;
+  bool passed = 2;
+  string output = 3; // truncated to 64KB at capture time
+  int64 duration_ms = 4;
+}
+
+// CriticReportMsg is the Critic Agent structured review (G4).
+message CriticReportMsg {
+  bool is_safe = 1;
+  string risk_level = 2;
+  repeated string concerns = 3;
+  string suggestion = 4;
+}
+
+// GovernanceDecisionMsg is the RiskClassifier output (D6).
+message GovernanceDecisionMsg {
+  string risk_level = 1;
+  string channel = 2; // auto / notify / approval / reject
+  repeated string rule_hits = 3;
+}

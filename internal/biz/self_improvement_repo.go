@@ -17,10 +17,17 @@ var ErrSIMergeConflict = errors.New("self-improvement merge conflict")
 // SelfImprovementRunReader reads platform self-improvement runs.
 // GetByID/GetBySuggestionID return (nil, nil) when absent.
 // Stability:evolving
+// TECH-DEBT(DB-DEBT-02): 6 methods after Count (P5 console pagination),
+// exceeding the ≤5 narrow-interface guideline; split deferred with the
+// other oversize ports.
 type SelfImprovementRunReader interface {
 	GetByID(ctx context.Context, id string) (*SelfImprovementRun, error)
 	GetBySuggestionID(ctx context.Context, suggestionID string) (*SelfImprovementRun, error)
 	List(ctx context.Context, filter RunFilter) ([]SelfImprovementRun, error)
+	// Count returns the number of runs matching the filter's status /
+	// risk_level / trigger_source conditions; Limit/Offset are ignored
+	// (console list total, P5).
+	Count(ctx context.Context, filter RunFilter) (int, error)
 	// ListObservingDue returns runs in observing status whose observe_until <= now
 	// (Watchdog scan).
 	ListObservingDue(ctx context.Context, now time.Time) ([]SelfImprovementRun, error)
@@ -53,6 +60,30 @@ type PatchOutcomeWriter interface {
 	// source (join through runs), newest first (trigger feedback adaptation,
 	// D8).
 	ListRecentOutcomesByTrigger(ctx context.Context, triggerSource string, limit int) ([]PatchOutcome, error)
+}
+
+// SITriggerVerdictCount is one (trigger_source, verdict) aggregate row of
+// patch_outcomes joined through runs (console outcome stats, P5).
+type SITriggerVerdictCount struct {
+	TriggerSource string
+	Verdict       SelfImprovementVerdict
+	Count         int
+}
+
+// PatchOutcomeStatsReader aggregates terminal attribution records for the
+// console stats panel (P5, design §7 GetOutcomeStats).
+// Stability:evolving
+type PatchOutcomeStatsReader interface {
+	AggregateOutcomeStats(ctx context.Context) ([]SITriggerVerdictCount, error)
+}
+
+// SIRiskRuleRepo persists the admin-configurable risk-classification rules
+// (P5 console, design §7 UpdateRiskRules) on the system_settings singleton.
+// Zero fields mean "inherit code defaults" (see SIRiskRules).
+// Stability:evolving
+type SIRiskRuleRepo interface {
+	GetSIRiskRules(ctx context.Context) (SIRiskRules, error)
+	UpdateSIRiskRules(ctx context.Context, rules SIRiskRules) (SIRiskRules, error)
 }
 
 // ── Sandbox port (73-self-iteration-v3, design §4.2 / D4) ────────────────────

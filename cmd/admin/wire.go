@@ -1405,11 +1405,11 @@ func provideMemoryAdminDeps(admin biz.SessionAdminStore) biz.MemoryAdminDeps {
 	return admin
 }
 
-func provideMemoryL1ArchiveWorker(admin biz.SessionAdminStore, agents *biz.AgentUsecase, lg loggateway.Logger) *jobs.MemoryL1ArchiveWorker {
+func provideMemoryL1ArchiveWorker(admin biz.SessionAdminStore, agents *biz.AgentUsecase, flowLog biz.FlowLogWriter, lg loggateway.Logger) *jobs.MemoryL1ArchiveWorker {
 	if jobs.MemoryL1ArchiveDisabled() {
 		return nil
 	}
-	return jobs.NewMemoryL1ArchiveWorker(0, admin, agents, lg)
+	return jobs.NewMemoryL1ArchiveWorker(0, admin, agents, lg, flowLog)
 }
 
 func provideChannelTurnJobSweeper(
@@ -1486,9 +1486,10 @@ func provideMemoryCanaryWorker(d *data.Data, status *biz.MemoryCanaryStatus, flo
 const memorySleepTimeQueueSize = 100
 
 // provideMemorySleepTimeWorker wires the Sleep-time Agent worker. It builds a
-// SleepTimeService backed by the shared trpc memory Service, an optional LLM
-// model (resolved from MEMORY_SLEEP_TIME_PROVIDER/MEMORY_SLEEP_TIME_MODEL env
-// vars), and an in-memory consolidation queue.
+// SleepTimeService backed by the shared trpc memory Service, a per-target LLM
+// resolver (P1-1: resolved from agent settings via the ModelCatalog — the
+// deprecated MEMORY_SLEEP_TIME_PROVIDER/MEMORY_SLEEP_TIME_MODEL env vars have
+// been retired), and an in-memory consolidation queue.
 //
 // Target lister selection (in priority order):
 //  1. MEMORY_SLEEP_TIME_USER_IDS env var — explicit override for testing/debug.
@@ -1514,36 +1515,38 @@ func provideMemorySleepTimeWorker(
 	if jobs.MemorySleepTimeDisabled() {
 		return nil
 	}
-	// Resolve optional LLM model for consolidation analysis. When unset, the
-	// SleepTimeService gracefully degrades to a no-op (llmConsolidate returns
-	// an empty result).
-	var llm trpcmodel.Model
-	prov := strings.TrimSpace(os.Getenv("MEMORY_SLEEP_TIME_PROVIDER"))
-	mod := strings.TrimSpace(os.Getenv("MEMORY_SLEEP_TIME_MODEL"))
-	if prov != "" && mod != "" && catalog != nil {
-		rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}}
-		if m, err := provider.TRPCModelForProviderModel(context.Background(), catalog, rtTrip, prov, mod, lg); err == nil {
-			llm = m
-		} else {
-			lg.Warn("sleep-time worker: LLM model build failed, consolidation will be no-op",
-				loggateway.Str("provider", prov),
-				loggateway.Str("model", mod),
-				loggateway.Err(err))
-		}
+	// P1-1: per-target LLM resolution from agent settings via the ModelCatalog
+	// (same precedence as MemoryLLMExtractor: MemoryWorker → L0Compress →
+	// agent default). Targets without a resolvable model gracefully degrade
+	// to a no-op consolidation pass.
+	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}}
+	// Guard against typed-nil interfaces: a nil *LlmProviderModelUsecase
+	// wrapped in the TeamModelCatalog interface would pass the resolver's
+	// nil check and panic on first use.
+	var modelCatalog biz.TeamModelCatalog
+	if catalog != nil {
+		modelCatalog = catalog
 	}
+	var agentGetter service.SleepTimeAgentGetter
+	if agents != nil {
+		agentGetter = agents
+	}
+	resolver := service.NewSleepTimeLLMResolver(agentGetter, modelCatalog, rtTrip, lg)
 	queue := memory.NewConsolidationQueue(memorySleepTimeQueueSize)
-	svc := memory.NewSleepTimeService(memSvc, llm, queue, lg)
+	svc := memory.NewSleepTimeService(memSvc, nil, queue, lg)
+	svc.SetLLMResolver(resolver)
 	// Phase 6A-06: wire EpisodeConsolidator for L2→L3 fact extraction.
-	// Reuses the same LLM (if configured) for episode analysis. When d is nil
-	// or LLM is unset, EpisodeConsolidator gracefully degrades to a no-op.
+	// Uses the same per-target resolver for episode analysis. When d is nil,
+	// EpisodeConsolidator gracefully degrades to a no-op.
 	if d != nil {
 		ec := memory.NewEpisodeConsolidator(
 			data.NewL2RecallStore(d, d.VectorStore()),
 			data.NewL3FactWriterAdapter(d, d.VectorStore()),
 			data.NewMemoryActionLogWriter(d),
-			llm,
+			nil,
 			lg,
 		)
+		ec.SetLLMResolver(resolver)
 		// T8: configurable min importance (env: MEMORY_EPISODE_MIN_IMPORTANCE).
 		// Default: 0.3. Set to "0" to disable filtering (keep all extracted facts).
 		if raw := strings.TrimSpace(os.Getenv("MEMORY_EPISODE_MIN_IMPORTANCE")); raw != "" {
@@ -1820,6 +1823,419 @@ func provideSelfImprovementObserveWorker(
 		return nil
 	}
 	return jobs.NewSelfImproveObserveWorker(siConf.SIObserveInterval(), uc, lg)
+}
+
+// ── Self-improvement Phase 4 chain (73-self-iteration-v3, W6) ───────────────
+//
+// Every provider in this block gates on self_improvement.enabled (default
+// false, design §6.2): a disabled pipeline constructs nothing downstream and
+// the three workers (drive/watchdog/outcome) stay nil so workers.go skips
+// them. Stage ports are returned as interfaces so a disabled/unconfigured
+// stage is a true nil (no nil-interface trap); the pipeline itself reports a
+// clear "stages not wired" error when a required stage is absent.
+
+// provideRepoSandboxRunner builds the git-worktree sandbox (biz.RepoSandbox)
+// anchored at sandbox.repo_root (fallback: process working directory — the
+// admin must then be started from the repository root when self-improvement
+// is enabled, gray-rollout feature). Gate timeouts/worktree root come from
+// config (D4).
+func provideRepoSandboxRunner(siConf *conf.SelfImprovement, lg loggateway.Logger) *service.RepoSandboxRunner {
+	if !siConf.SIEnabled() {
+		return nil
+	}
+	repoRoot := siConf.SIRepoRoot()
+	if repoRoot == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			lg.Warn("self-improve sandbox: resolve repo root failed, pipeline disabled",
+				loggateway.StepID("si_sandbox.init"), loggateway.Err(err))
+			return nil
+		}
+		repoRoot = wd
+	}
+	timeouts := siConf.SIGateTimeouts()
+	runner, err := service.NewRepoSandboxRunner(repoRoot, lg,
+		service.WithWorktreeRoot(siConf.SIWorktreeRoot()),
+		service.WithGateTimeout(biz.SandboxGateBuild, timeouts["g1"]),
+		service.WithGateTimeout(biz.SandboxGateTest, timeouts["g2"]),
+		service.WithGateTimeout(biz.SandboxGateLint, timeouts["g3"]),
+	)
+	if err != nil {
+		lg.Warn("self-improve sandbox init failed, pipeline disabled",
+			loggateway.StepID("si_sandbox.init"), loggateway.Err(err))
+		return nil
+	}
+	return runner
+}
+
+// provideSIControlPlane builds the user-intervention command plane (T3.6).
+func provideSIControlPlane() *biz.SIControlPlane {
+	return biz.NewSIControlPlane()
+}
+
+// provideSIAnalystStage wires the LLM Analyst stage on the platform
+// DefaultRefineLLM (V2 skill_curator pattern). Unconfigured → nil stage;
+// the pipeline then fails runs with a clear "stages not wired" error.
+func provideSIAnalystStage(siConf *conf.SelfImprovement, caller biz.LLMCaller, sys *biz.SystemSettingUsecase, lg loggateway.Logger) biz.SIAnalystStage {
+	if !siConf.SIEnabled() {
+		return nil
+	}
+	rl, err := sys.GetRefineLLM(context.Background())
+	if err != nil || strings.TrimSpace(rl.Provider) == "" || strings.TrimSpace(rl.Model) == "" {
+		lg.Warn("self-improve analyst: no DefaultRefineLLM configured, diagnose stage disabled",
+			loggateway.StepID("si_analyst.init"))
+		return nil
+	}
+	return service.NewSIAnalystAgent(caller, rl.Provider, rl.Model, lg)
+}
+
+// provideSIPatcherStage wires the LLM Patcher stage (D10 daily quota default
+// 20 inside the agent when dailyMax=0).
+func provideSIPatcherStage(siConf *conf.SelfImprovement, caller biz.LLMCaller, sys *biz.SystemSettingUsecase, lg loggateway.Logger) biz.SIPatcherStage {
+	if !siConf.SIEnabled() {
+		return nil
+	}
+	rl, err := sys.GetRefineLLM(context.Background())
+	if err != nil || strings.TrimSpace(rl.Provider) == "" || strings.TrimSpace(rl.Model) == "" {
+		lg.Warn("self-improve patcher: no DefaultRefineLLM configured, patch stage disabled",
+			loggateway.StepID("si_patcher.init"))
+		return nil
+	}
+	return service.NewSIPatcherAgent(caller, rl.Provider, rl.Model, 0, lg)
+}
+
+// provideSICriticStage wires the Critic G4 stage (D10 daily quota default 10
+// inside the agent when dailyMax=0). nil → pipeline degrades G4 (T3.3).
+func provideSICriticStage(siConf *conf.SelfImprovement, caller biz.LLMCaller, sys *biz.SystemSettingUsecase, lg loggateway.Logger) biz.SICriticStage {
+	if !siConf.SIEnabled() {
+		return nil
+	}
+	rl, err := sys.GetRefineLLM(context.Background())
+	if err != nil || strings.TrimSpace(rl.Provider) == "" || strings.TrimSpace(rl.Model) == "" {
+		lg.Warn("self-improve critic: no DefaultRefineLLM configured, G4 degraded",
+			loggateway.StepID("si_critic.init"))
+		return nil
+	}
+	return service.NewSICriticAgent(caller, rl.Provider, rl.Model, 0, lg)
+}
+
+// ── W6 port adapters (service layer): biz ports → platform infrastructure ──
+
+// provideSINotifier wires operator-facing notifications as monitor events.
+func provideSINotifier(events biz.MonitorEventRepo, lg loggateway.Logger) biz.SINotifier {
+	return service.NewSIMonitorNotifier(events, lg)
+}
+
+// provideSIApprovalSink wires manual-approval requests as monitor events
+// (idempotent per run, P4 internal path; P5 moves to Proto + console).
+func provideSIApprovalSink(events biz.MonitorEventRepo, lg loggateway.Logger) biz.SIApprovalSink {
+	return service.NewSIMonitorApprovalSink(events, lg)
+}
+
+// provideSIActivitySink wires Meta Team stage activities as monitor events.
+func provideSIActivitySink(events biz.MonitorEventRepo, lg loggateway.Logger) biz.SIActivitySink {
+	return service.NewSIMonitorActivitySink(events, lg)
+}
+
+// provideSINegativePatternSink wires regressed-patch anti-patterns to the
+// FailurePattern KB (D8).
+func provideSINegativePatternSink(kb *data.FailurePatternReadWriter, lg loggateway.Logger) biz.SINegativePatternSink {
+	return service.NewSIKBNegativePatternSink(kb, lg)
+}
+
+// provideSITriggerFeedbackSink wires trigger cooldown escalation onto the
+// unified evolution orchestrator (D8 adaptive throttle).
+func provideSITriggerFeedbackSink(orch *biz.SkillEvolutionOrchestrator) biz.SITriggerFeedbackSink {
+	return service.NewSIOrchestratorFeedbackSink(orch)
+}
+
+// provideSIApplier wires the git-backed applier on the repo sandbox. nil
+// sandbox (disabled/init failed) → nil applier; downstream usecases skip.
+func provideSIApplier(sandbox *service.RepoSandboxRunner, lg loggateway.Logger) biz.SIApplier {
+	if sandbox == nil {
+		return nil
+	}
+	applier, err := service.NewSIRepoApplier(sandbox, lg)
+	if err != nil {
+		lg.Warn("self-improve applier init failed, apply chain disabled",
+			loggateway.StepID("si_applier.init"), loggateway.Err(err))
+		return nil
+	}
+	return applier
+}
+
+// provideSIRiskRules loads the admin-configured risk-classification rules
+// (P5 console) once at startup. Raw (un-normalized) rules are returned so
+// consumers keep the "zero = inherit code default" semantics; load failures
+// degrade to zero rules (= D6/D10 code defaults).
+func provideSIRiskRules(siConf *conf.SelfImprovement, repo biz.SIRiskRuleRepo, lg loggateway.Logger) biz.SIRiskRules {
+	if !siConf.SIEnabled() || repo == nil {
+		return biz.SIRiskRules{}
+	}
+	rules, err := repo.GetSIRiskRules(context.Background())
+	if err != nil {
+		lg.Warn("self-improve risk rules load failed, using code defaults",
+			loggateway.StepID("si_risk_rules.load"), loggateway.Err(err))
+		return biz.SIRiskRules{}
+	}
+	return rules
+}
+
+// provideSelfImprovementPipelineUsecase assembles the Meta Team pipeline
+// (T3.2): stages + sandbox + run persistence + activity mount + control
+// plane.
+func provideSelfImprovementPipelineUsecase(
+	siConf *conf.SelfImprovement,
+	analyst biz.SIAnalystStage,
+	patcher biz.SIPatcherStage,
+	critic biz.SICriticStage,
+	sandbox *service.RepoSandboxRunner,
+	unifiedRepo *data.UnifiedEvolutionRepo,
+	runReader biz.SelfImprovementRunReader,
+	runWriter biz.SelfImprovementRunWriter,
+	activitySink biz.SIActivitySink,
+	control *biz.SIControlPlane,
+	riskRules biz.SIRiskRules,
+	lg loggateway.Logger,
+) *biz.SelfImprovementPipelineUsecase {
+	if !siConf.SIEnabled() {
+		return nil
+	}
+	// Guard the nil-interface trap: a failed sandbox init yields a nil
+	// *RepoSandboxRunner which must stay a nil biz.RepoSandbox.
+	var sandboxPort biz.RepoSandbox
+	if sandbox != nil {
+		sandboxPort = sandbox
+	}
+	return biz.NewSelfImprovementPipelineUsecase(biz.SelfImprovementPipelineDeps{
+		Analyst:      analyst,
+		Patcher:      patcher,
+		Critic:       critic,
+		Sandbox:      sandboxPort,
+		Suggestions:  unifiedRepo,
+		RunReader:    runReader,
+		RunWriter:    runWriter,
+		Classifier:   biz.NewSIRiskClassifierWithRules(riskRules),
+		ActivitySink: activitySink,
+		Control:      control,
+		MaxAttempts:  siConf.SIMaxAttempts(),
+		MaxDiffLines: siConf.SIMaxDiffLines(),
+		Lg:           lg,
+	})
+}
+
+// provideSelfImprovementApplyUsecase assembles the apply orchestrator (T4.5):
+// kind routing + conflict escalation + observing-window admission.
+func provideSelfImprovementApplyUsecase(
+	siConf *conf.SelfImprovement,
+	runReader biz.SelfImprovementRunReader,
+	runWriter biz.SelfImprovementRunWriter,
+	applier biz.SIApplier,
+	approvals biz.SIApprovalSink,
+	riskRules biz.SIRiskRules,
+	lg loggateway.Logger,
+) (*biz.SelfImprovementApplyUsecase, error) {
+	if !siConf.SIEnabled() || applier == nil {
+		return nil, nil
+	}
+	return biz.NewSelfImprovementApplyUsecase(biz.SelfImprovementApplyUsecaseDeps{
+		RunReader:              runReader,
+		RunWriter:              runWriter,
+		Applier:                applier,
+		Approvals:              approvals,
+		MaxConcurrentObserving: siConf.SIMaxConcurrentObserving(),
+		ObserveWindow:          siConf.SIObserveWindowDuration(),
+		RiskRules:              riskRules,
+		Lg:                     lg,
+	})
+}
+
+// provideSIGovernanceRouter assembles the governance router (T3.5): risk
+// channel routing + daily auto-apply quota + approval submission + apply
+// driver hook (T4.5).
+func provideSIGovernanceRouter(
+	siConf *conf.SelfImprovement,
+	runReader biz.SelfImprovementRunReader,
+	runWriter biz.SelfImprovementRunWriter,
+	notifier biz.SINotifier,
+	approvals biz.SIApprovalSink,
+	apply *biz.SelfImprovementApplyUsecase,
+	riskRules biz.SIRiskRules,
+	lg loggateway.Logger,
+) *biz.SIGovernanceRouter {
+	if !siConf.SIEnabled() {
+		return nil
+	}
+	var driver biz.SIApplyDriver
+	if apply != nil {
+		driver = apply
+	}
+	// 日配额优先级：DB 管理配置（P5）> config.yaml > 代码默认。
+	quota := int32(siConf.SIDailyAutoApplyQuota())
+	if riskRules.DailyAutoQuota > 0 {
+		quota = riskRules.DailyAutoQuota
+	}
+	return biz.NewSIGovernanceRouter(biz.SIGovernanceRouterDeps{
+		RunReader:            runReader,
+		RunWriter:            runWriter,
+		Notifier:             notifier,
+		Approvals:            approvals,
+		ApplyDriver:          driver,
+		AutoApplyQuotaPerDay: quota,
+		Lg:                   lg,
+	})
+}
+
+// provideSelfImprovementDriveUsecase assembles the full-chain driver
+// (Phase 4): detected→pipeline / stale mid-pipeline recover / governance
+// routing / applying re-drive / applied promotion.
+func provideSelfImprovementDriveUsecase(
+	siConf *conf.SelfImprovement,
+	runReader biz.SelfImprovementRunReader,
+	runWriter biz.SelfImprovementRunWriter,
+	pipeline *biz.SelfImprovementPipelineUsecase,
+	router *biz.SIGovernanceRouter,
+	apply *biz.SelfImprovementApplyUsecase,
+	lg loggateway.Logger,
+) (*biz.SelfImprovementDriveUsecase, error) {
+	if !siConf.SIEnabled() || apply == nil {
+		return nil, nil
+	}
+	var exec biz.SIPipelineExecutor
+	if pipeline != nil {
+		exec = pipeline
+	}
+	var routePort biz.SIGovernanceRoutePort
+	if router != nil {
+		routePort = router
+	}
+	return biz.NewSelfImprovementDriveUsecase(biz.SelfImprovementDriveDeps{
+		RunReader:    runReader,
+		RunWriter:    runWriter,
+		Pipeline:     exec,
+		Router:       routePort,
+		Applier:      apply,
+		StaleTimeout: siConf.SIStaleTimeout(),
+		Lg:           lg,
+	})
+}
+
+// provideSelfImprovementWatchdogUsecase assembles the observing-window
+// evaluator (T4.2): baseline vs 1h sliding-window metrics + auto-rollback.
+func provideSelfImprovementWatchdogUsecase(
+	siConf *conf.SelfImprovement,
+	runReader biz.SelfImprovementRunReader,
+	runWriter biz.SelfImprovementRunWriter,
+	siSignals *data.SelfImprovementSignalRepo,
+	applier biz.SIApplier,
+	notifier biz.SINotifier,
+	lg loggateway.Logger,
+) (*biz.SelfImprovementWatchdogUsecase, error) {
+	if !siConf.SIEnabled() || applier == nil {
+		return nil, nil
+	}
+	return biz.NewSelfImprovementWatchdogUsecase(biz.SelfImprovementWatchdogDeps{
+		RunReader:       runReader,
+		RunWriter:       runWriter,
+		Metrics:         siSignals,
+		Applier:         applier,
+		Notifier:        notifier,
+		ErrorRateFactor: siConf.SIObserveErrorRateFactor(),
+		P95Factor:       siConf.SIObserveP95Factor(),
+		MetricsWindow:   time.Hour,
+		Lg:              lg,
+	})
+}
+
+// provideSelfImprovementOutcomeUsecase assembles the Learn-stage attribution
+// (T4.4): terminal-run verdicts + KB negative patterns + trigger cooldown
+// feedback.
+func provideSelfImprovementOutcomeUsecase(
+	siConf *conf.SelfImprovement,
+	runReader biz.SelfImprovementRunReader,
+	runRepo *data.SelfImprovementRunRepo,
+	patterns biz.SINegativePatternSink,
+	feedback biz.SITriggerFeedbackSink,
+	lg loggateway.Logger,
+) (*biz.SelfImprovementOutcomeUsecase, error) {
+	if !siConf.SIEnabled() {
+		return nil, nil
+	}
+	return biz.NewSelfImprovementOutcomeUsecase(biz.SelfImprovementOutcomeDeps{
+		RunReader: runReader,
+		Outcomes:  runRepo,
+		Patterns:  patterns,
+		Feedback:  feedback,
+		Lg:        lg,
+	})
+}
+
+// provideSelfImprovementAdminUsecase assembles the manual admin control
+// surface (T4.3) + console query surface (P5: List/Get/OutcomeStats，
+// StatsReader 取同一 repo 的 AggregateOutcomeStats）。
+func provideSelfImprovementAdminUsecase(
+	siConf *conf.SelfImprovement,
+	runReader biz.SelfImprovementRunReader,
+	runWriter biz.SelfImprovementRunWriter,
+	runRepo *data.SelfImprovementRunRepo,
+	applier biz.SIApplier,
+	apply *biz.SelfImprovementApplyUsecase,
+	lg loggateway.Logger,
+) (*biz.SelfImprovementAdminUsecase, error) {
+	if !siConf.SIEnabled() || applier == nil {
+		return nil, nil
+	}
+	var driver biz.SIApplyDriver
+	if apply != nil {
+		driver = apply
+	}
+	return biz.NewSelfImprovementAdminUsecase(biz.SelfImprovementAdminDeps{
+		RunReader:   runReader,
+		RunWriter:   runWriter,
+		Applier:     applier,
+		ApplyDriver: driver,
+		StatsReader: runRepo,
+		Lg:          lg,
+	})
+}
+
+// provideSelfImproveDriveWorker gates the full-chain drive scheduler on
+// self_improvement.enabled (W6).
+func provideSelfImproveDriveWorker(
+	siConf *conf.SelfImprovement,
+	uc *biz.SelfImprovementDriveUsecase,
+	lg loggateway.Logger,
+) *jobs.SelfImproveDriveWorker {
+	if !siConf.SIEnabled() || uc == nil {
+		return nil
+	}
+	return jobs.NewSelfImproveDriveWorker(siConf.SIDriveInterval(), uc, lg)
+}
+
+// provideSelfImproveWatchdogWorker gates the observing-window scheduler on
+// self_improvement.enabled (T4.2).
+func provideSelfImproveWatchdogWorker(
+	siConf *conf.SelfImprovement,
+	uc *biz.SelfImprovementWatchdogUsecase,
+	lg loggateway.Logger,
+) *jobs.SelfImproveWatchdogWorker {
+	if !siConf.SIEnabled() || uc == nil {
+		return nil
+	}
+	return jobs.NewSelfImproveWatchdogWorker(siConf.SIWatchdogInterval(), uc, lg)
+}
+
+// provideSelfImproveOutcomeWorker gates the Learn-stage scheduler on
+// self_improvement.enabled (T4.4).
+func provideSelfImproveOutcomeWorker(
+	siConf *conf.SelfImprovement,
+	uc *biz.SelfImprovementOutcomeUsecase,
+	lg loggateway.Logger,
+) *jobs.SelfImproveOutcomeWorker {
+	if !siConf.SIEnabled() || uc == nil {
+		return nil
+	}
+	return jobs.NewSelfImproveOutcomeWorker(siConf.SIOutcomeInterval(), uc, lg)
 }
 
 // provideEvolutionUsecase wraps biz.ProvideEvolutionUsecase with the unified
@@ -2104,6 +2520,9 @@ type wireOut struct {
 	CuratorWorker               *jobs.CuratorWorker
 	EvolutionOrchestratorWorker *jobs.EvolutionOrchestratorWorker
 	SelfImproveObserveWorker    *jobs.SelfImproveObserveWorker
+	SelfImproveDriveWorker      *jobs.SelfImproveDriveWorker
+	SelfImproveWatchdogWorker   *jobs.SelfImproveWatchdogWorker
+	SelfImproveOutcomeWorker    *jobs.SelfImproveOutcomeWorker
 	ProviderHealthScanner       *jobs.ProviderHealthScanner
 	ChannelHealthScanner        *jobs.ChannelHealthScanner
 	ChannelDeliveryScanner      *jobs.ChannelDeliveryWorker
@@ -2198,6 +2617,9 @@ func provideWireOut(
 	curatorWorker *jobs.CuratorWorker,
 	evoOrchWorker *jobs.EvolutionOrchestratorWorker,
 	siObserveWorker *jobs.SelfImproveObserveWorker,
+	siDriveWorker *jobs.SelfImproveDriveWorker,
+	siWatchdogWorker *jobs.SelfImproveWatchdogWorker,
+	siOutcomeWorker *jobs.SelfImproveOutcomeWorker,
 	failurePatternSyncJob *jobs.FailurePatternSyncJob,
 	predictiveHealUsecase *monitor.PredictiveHealUsecase,
 	predictiveHealJob *jobs.PredictiveHealJob,
@@ -2236,6 +2658,9 @@ func provideWireOut(
 		CuratorWorker:               curatorWorker,
 		EvolutionOrchestratorWorker: evoOrchWorker,
 		SelfImproveObserveWorker:    siObserveWorker,
+		SelfImproveDriveWorker:      siDriveWorker,
+		SelfImproveWatchdogWorker:   siWatchdogWorker,
+		SelfImproveOutcomeWorker:    siOutcomeWorker,
 		FailurePatternSyncJob:       failurePatternSyncJob,
 		PredictiveHealUsecase:       predictiveHealUsecase,
 		PredictiveHealJob:           predictiveHealJob,
@@ -2863,6 +3288,30 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideSelfImprovementTestRunReader,
 		provideSelfImprovementObserveUsecase,
 		provideSelfImprovementObserveWorker,
+		// 73-self-iteration-v3 W6: Phase 4 chain (sandbox/applier/stages/
+		// adapters/usecases/workers), all gated on self_improvement.enabled.
+		provideRepoSandboxRunner,
+		provideSIControlPlane,
+		provideSIAnalystStage,
+		provideSIPatcherStage,
+		provideSICriticStage,
+		provideSINotifier,
+		provideSIApprovalSink,
+		provideSIActivitySink,
+		provideSINegativePatternSink,
+		provideSITriggerFeedbackSink,
+		provideSIApplier,
+		provideSIRiskRules,
+		provideSelfImprovementPipelineUsecase,
+		provideSelfImprovementApplyUsecase,
+		provideSIGovernanceRouter,
+		provideSelfImprovementDriveUsecase,
+		provideSelfImprovementWatchdogUsecase,
+		provideSelfImprovementOutcomeUsecase,
+		provideSelfImprovementAdminUsecase, // P5：SelfImprovementService 消费
+		provideSelfImproveDriveWorker,
+		provideSelfImproveWatchdogWorker,
+		provideSelfImproveOutcomeWorker,
 		provideSkillIntelligenceWorker,
 		provideCuratorWorker,
 		provideLearningLoopScanner,

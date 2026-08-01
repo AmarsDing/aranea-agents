@@ -27,6 +27,7 @@
 //	Observing --> Closed : close
 //	Observing --> RolledBack : rollback
 //	Detected/Diagnosing/Patching/Verifying/Applying --> Failed : error
+//	Diagnosing/Patching/Verifying --> Detected : recover (drive 重驱动)
 //
 // ```
 package biz
@@ -74,11 +75,17 @@ const (
 	RunEventApplyDone       SelfImprovementRunEvent = "apply_done"
 	// RunEventApplyEscalate returns an applying run to awaiting_governance
 	// when the merge conflicts (design D7: 冲突则转人工).
-	RunEventApplyEscalate   SelfImprovementRunEvent = "apply_escalate"
-	RunEventObserve         SelfImprovementRunEvent = "observe"
-	RunEventClose           SelfImprovementRunEvent = "close"
-	RunEventRollback        SelfImprovementRunEvent = "rollback"
-	RunEventError           SelfImprovementRunEvent = "error"
+	RunEventApplyEscalate SelfImprovementRunEvent = "apply_escalate"
+	// RunEventRecover resets a stale mid-pipeline run (diagnosing/patching/
+	// verifying) back to detected so the drive worker can re-drive it
+	// (pipeline.Execute 仅接受 detected 入口)。用于崩溃孤儿恢复与 pause
+	// 超时恢复：run 的非终态驻留超过 StaleAfter 且不在 drive 活跃集时触发，
+	// 阶段产物（Diagnosis/Diff）保留但会被重驱动覆盖。
+	RunEventRecover  SelfImprovementRunEvent = "recover"
+	RunEventObserve  SelfImprovementRunEvent = "observe"
+	RunEventClose    SelfImprovementRunEvent = "close"
+	RunEventRollback SelfImprovementRunEvent = "rollback"
+	RunEventError    SelfImprovementRunEvent = "error"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────
@@ -108,6 +115,10 @@ var selfImprovementRunTransitionRules = []shared.TransitionRule[SelfImprovementR
 	{From: RunStatusPatching, Event: RunEventError, To: RunStatusFailed},
 	{From: RunStatusVerifying, Event: RunEventError, To: RunStatusFailed},
 	{From: RunStatusApplying, Event: RunEventError, To: RunStatusFailed},
+	// 中途态恢复：崩溃孤儿 / pause 超时由 drive worker 重置回 detected 重驱动。
+	{From: RunStatusDiagnosing, Event: RunEventRecover, To: RunStatusDetected},
+	{From: RunStatusPatching, Event: RunEventRecover, To: RunStatusDetected},
+	{From: RunStatusVerifying, Event: RunEventRecover, To: RunStatusDetected},
 }
 
 // ── SelfImprovementRunStateMachine ───────────────────────────────────────────

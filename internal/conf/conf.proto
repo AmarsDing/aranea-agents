@@ -44,6 +44,9 @@ message SelfImprovement {
     GateTimeouts gate_timeouts = 1;
     // Worktree root directory relative to repo root ("" = ".aranea-self-improve").
     string worktree_root = 2;
+    // Platform repository root the sandbox/applier operates on
+    // ("" = process working directory).
+    string repo_root = 3;
   }
   // ObserveWindow configures the post-apply observing window (design D7/D10).
   message ObserveWindow {
@@ -65,6 +68,8 @@ message SelfImprovement {
   ObserveWindow observe_window = 9;
   google.protobuf.Duration watchdog_interval = 10;  // watchdog tick (0 = 5m)
   google.protobuf.Duration outcome_interval = 11;   // outcome attribution tick (0 = 1h)
+  google.protobuf.Duration drive_interval = 12;     // full-chain drive tick (0 = 1m)
+  google.protobuf.Duration stale_timeout = 13;      // mid-pipeline stale threshold before recover (0 = 30m)
 }
 
 message Server {

@@ -1,0 +1,72 @@
+﻿{
+    "runId":  "702a4fa5-b0a5-499c-ad9b-6dc2e56536b6",
+    "teamId":  "9755a723338ec796b02c36c9",
+    "sessionId":  "02e2a664-bb47-4540-9e07-6b8c8b71cec0",
+    "status":  "success",
+    "mode":  "sequential",
+    "nodes":  [
+                  {
+                      "nodeId":  "member-1",
+                      "agentId":  "e45353e2c3fbf04c173f34df",
+                      "agentKey":  "ops_network_inspection",
+                      "agentName":  "网络巡检专家",
+                      "role":  "worker",
+                      "status":  "success",
+                      "displayStatus":  "success",
+                      "phase":  "delivered",
+                      "retryCount":  0,
+                      "inputPreview":  "简单任务：第一个成员用一句话说明当前系统状态检查要点，第二个成员把它总结成一句话结论。",
+                      "outputPreview":  "",
+                      "errorMessage":  "",
+                      "currentActivity":  null,
+                      "activityHistory":  [
+
+                                          ]
+                  }
+              ],
+    "compiledTopology":  {
+                             "templateId":  "pipeline",
+                             "mode":  "sequential",
+                             "entryPoint":  "member-1",
+                             "finishPoint":  "member-2",
+                             "nodes":  [
+                                           {
+                                               "id":  "member-1",
+                                               "type":  "agent",
+                                               "agentName":  "ops_network_inspection",
+                                               "role":  "worker",
+                                               "description":  "网络巡检专家",
+                                               "agentDisplayName":  "网络巡检专家",
+                                               "taskPrompt":  ""
+                                           },
+                                           {
+                                               "id":  "member-2",
+                                               "type":  "agent",
+                                               "agentName":  "ops_system_inspection",
+                                               "role":  "worker",
+                                               "description":  "系统巡检 Agent",
+                                               "agentDisplayName":  "系统巡检 Agent",
+                                               "taskPrompt":  ""
+                                           }
+                                       ],
+                             "edges":  [
+                                           {
+                                               "from":  "member-1",
+                                               "to":  "member-2",
+                                               "edgeKind":  "flow"
+                                           }
+                                       ],
+                             "conditionalEdges":  [
+
+                                                  ],
+                             "graphJson":  "{\"nodes\":[{\"id\":\"member-1\",\"func_ref\":\"\",\"type\":\"agent\",\"description\":\"网络巡检专家\",\"instruction\":\"\",\"model_name\":\"\",\"tool_names\":null,\"agent_name\":\"ops_network_inspection\",\"interrupt_before\":false,\"interrupt_after\":false,\"destinations\":null,\"retry_max_attempts\":0,\"failure_action\":\"\",\"fallback_agent\":\"\",\"input_mapper_json\":\"\",\"output_mapper_json\":\"\",\"isolated_messages\":false,\"input_from_last_response\":false,\"cache_enabled\":false,\"cache_ttl_seconds\":0,\"required_role\":\"\",\"assignment_mode\":\"\",\"assignment_strategy\":\"\",\"reviewer_agent\":\"\",\"review_rules\":\"\",\"timeout_seconds\":0,\"heartbeat_interval_seconds\":0,\"enable_lease_extension\":false},{\"id\":\"member-2\",\"func_ref\":\"\",\"type\":\"agent\",\"description\":\"系统巡检 Agent\",\"instruction\":\"\",\"model_name\":\"\",\"tool_names\":null,\"agent_name\":\"ops_system_inspection\",\"interrupt_before\":false,\"interrupt_after\":false,\"destinations\":null,\"retry_max_attempts\":0,\"failure_action\":\"\",\"fallback_agent\":\"\",\"input_mapper_json\":\"\",\"output_mapper_json\":\"\",\"isolated_messages\":false,\"input_from_last_response\":false,\"cache_enabled\":false,\"cache_ttl_seconds\":0,\"required_role\":\"\",\"assignment_mode\":\"\",\"assignment_strategy\":\"\",\"reviewer_agent\":\"\",\"review_rules\":\"\",\"timeout_seconds\":0,\"heartbeat_interval_seconds\":0,\"enable_lease_extension\":false}],\"edges\":[{\"from\":\"member-1\",\"to\":\"member-2\",\"kind\":\"flow\"}],\"conditional_edges\":null,\"subgraphs\":[],\"state_fields\":null,\"entry_point\":\"member-1\",\"finish_point\":\"member-2\",\"enable_checkpoint\":false,\"execution_engine\":\"bsp\",\"interrupt_before\":null,\"interrupt_after\":null}",
+                             "issues":  [
+
+                                        ],
+                             "valid":  true,
+                             "definitionGraphJson":  "{\"version\":1,\"layout\":\"sequential\",\"nodes\":[{\"id\":\"start\",\"type\":\"start\",\"label\":\"Start\",\"agent_id\":\"\",\"role\":\"\",\"func_ref\":\"\",\"subgraph_id\":\"\",\"assignment_mode\":\"\",\"assignment_strategy\":\"\",\"reviewer_agent\":\"\",\"review_rules\":\"\",\"interrupt_before\":false,\"interrupt_after\":false,\"destinations\":null,\"retry_max_attempts\":0,\"fallback_agent\":\"\"},{\"id\":\"member-1\",\"type\":\"agent\",\"label\":\"网络巡检专家\",\"agent_id\":\"e45353e2c3fbf04c173f34df\",\"role\":\"worker\",\"func_ref\":\"\",\"subgraph_id\":\"\",\"assignment_mode\":\"\",\"assignment_strategy\":\"\",\"reviewer_agent\":\"\",\"review_rules\":\"\",\"interrupt_before\":false,\"interrupt_after\":false,\"destinations\":null,\"retry_max_attempts\":0,\"fallback_agent\":\"\"},{\"id\":\"member-2\",\"type\":\"agent\",\"label\":\"系统巡检 Agent\",\"agent_id\":\"ba71aa004484fe6814a9b26a\",\"role\":\"worker\",\"func_ref\":\"\",\"subgraph_id\":\"\",\"assignment_mode\":\"\",\"assignment_strategy\":\"\",\"reviewer_agent\":\"\",\"review_rules\":\"\",\"interrupt_before\":false,\"interrupt_after\":false,\"destinations\":null,\"retry_max_attempts\":0,\"fallback_agent\":\"\"},{\"id\":\"end\",\"type\":\"end\",\"label\":\"End\",\"agent_id\":\"\",\"role\":\"\",\"func_ref\":\"\",\"subgraph_id\":\"\",\"assignment_mode\":\"\",\"assignment_strategy\":\"\",\"reviewer_agent\":\"\",\"review_rules\":\"\",\"interrupt_before\":false,\"interrupt_after\":false,\"destinations\":null,\"retry_max_attempts\":0,\"fallback_agent\":\"\"}],\"edges\":[{\"id\":\"\",\"source\":\"start\",\"target\":\"member-1\",\"label\":\"\",\"condition\":\"\"},{\"id\":\"\",\"source\":\"member-1\",\"target\":\"member-2\",\"label\":\"flow\",\"condition\":\"\"},{\"id\":\"\",\"source\":\"member-2\",\"target\":\"end\",\"label\":\"\",\"condition\":\"\"}]}"
+                         },
+    "definitionSnapshotJson":  "{\"version\":2,\"mode\":\"sequential\",\"members\":[{\"agent_id\":\"ba71aa004484fe6814a9b26a\",\"role\":\"worker\",\"name\":\"系统巡检 Agent\",\"enabled\":true,\"sort_order\":0},{\"agent_id\":\"e45353e2c3fbf04c173f34df\",\"role\":\"worker\",\"name\":\"网络巡检专家\",\"enabled\":true,\"sort_order\":1}],\"linked_graph_id\":\"9f0ce9b2-9de6-4f1c-bee0-1d39ef0142b6\",\"source\":\"preset\",\"runtime_engine\":\"graph\",\"team_graph_runtime\":true,\"max_concurrency\":2,\"timeout_seconds\":600,\"run_timeout_sec\":600,\"enable_checkpoint\":true}",
+    "graphExecutionId":  "7bed4760-b8ce-4f2b-b626-56bb9ee98ba5",
+    "traceId":  "afd06669a9794998b1129509b38f9cb9"
+}

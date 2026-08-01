@@ -106,9 +106,9 @@ func TestSIRiskClassifier_RuleMatrix(t *testing.T) {
 		},
 		// R3 — multi-file / core path / large diff.
 		{
-			name: "R3 multi file",
-			patch: PatcherOutput{Diff: siRiskDiff("docs/a.md", 5) + siRiskDiff("docs/b.md", 5), Kind: PatchKindDocs},
-			critic: safeLow,
+			name:        "R3 multi file",
+			patch:       PatcherOutput{Diff: siRiskDiff("docs/a.md", 5) + siRiskDiff("docs/b.md", 5), Kind: PatchKindDocs},
+			critic:      safeLow,
 			wantRisk:    RiskLevelHigh,
 			wantChannel: "approval",
 			wantRule:    "R3",
@@ -214,6 +214,56 @@ func TestSIRiskClassifier_RuleMatrix(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSIRiskClassifier_CustomRules(t *testing.T) {
+	safe := &CriticReport{IsSafe: true, RiskLevel: "low"}
+
+	t.Run("custom low threshold", func(t *testing.T) {
+		clf := NewSIRiskClassifierWithRules(SIRiskRules{LowMaxLines: 30})
+		got := clf.Classify(PatcherOutput{Diff: siRiskDiff("docs/development/x.md", 60), Kind: PatchKindDocs}, safe)
+		if got.RiskLevel != RiskLevelMedium || got.RuleHits[0] != "R2" {
+			t.Errorf("60-line docs patch with LowMaxLines=30: got %+v, want medium/R2", got)
+		}
+	})
+
+	t.Run("custom core globs replace defaults", func(t *testing.T) {
+		clf := NewSIRiskClassifierWithRules(SIRiskRules{CorePathGlobs: []string{"custom/core/**"}})
+		// Default core path no longer escalates.
+		got := clf.Classify(PatcherOutput{Diff: siRiskDiff("internal/agent/v2/sequencer.go", 10), Kind: PatchKindCode}, safe)
+		if got.RiskLevel != RiskLevelMedium {
+			t.Errorf("default core path with custom globs: got %+v, want medium", got)
+		}
+		// Custom core path escalates.
+		got = clf.Classify(PatcherOutput{Diff: siRiskDiff("custom/core/x.go", 10), Kind: PatchKindCode}, safe)
+		if got.RiskLevel != RiskLevelHigh || got.RuleHits[0] != "R3" {
+			t.Errorf("custom core path hit: got %+v, want high/R3", got)
+		}
+	})
+
+	t.Run("zero rules inherit defaults", func(t *testing.T) {
+		clf := NewSIRiskClassifierWithRules(SIRiskRules{})
+		got := clf.Classify(PatcherOutput{Diff: siRiskDiff("docs/development/x.md", 60), Kind: PatchKindDocs}, safe)
+		if got.RiskLevel != RiskLevelLow || got.RuleHits[0] != "R1" {
+			t.Errorf("zero rules should behave like defaults: got %+v, want low/R1", got)
+		}
+	})
+}
+
+func TestNormalizeSIRiskRules(t *testing.T) {
+	got := NormalizeSIRiskRules(SIRiskRules{})
+	def := DefaultSIRiskRules()
+	if got.LowMaxLines != def.LowMaxLines || got.MediumMaxLines != def.MediumMaxLines ||
+		got.DailyAutoQuota != def.DailyAutoQuota || len(got.CorePathGlobs) != len(def.CorePathGlobs) {
+		t.Errorf("zero rules should normalize to defaults: got %+v want %+v", got, def)
+	}
+	custom := NormalizeSIRiskRules(SIRiskRules{LowMaxLines: 10, DailyAutoQuota: 2})
+	if custom.LowMaxLines != 10 || custom.DailyAutoQuota != 2 {
+		t.Errorf("set fields must survive normalization: got %+v", custom)
+	}
+	if custom.MediumMaxLines != def.MediumMaxLines || len(custom.CorePathGlobs) != len(def.CorePathGlobs) {
+		t.Errorf("unset fields should inherit defaults: got %+v", custom)
 	}
 }
 

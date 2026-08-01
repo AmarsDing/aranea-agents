@@ -13,8 +13,11 @@ import (
 
 func setupSelfImprovementRepo(t *testing.T) (*SelfImprovementRunRepo, context.Context) {
 	t.Helper()
-	client, _ := testhelper.SetupTestPG(t)
+	client, db := testhelper.SetupTestPG(t)
 	d := newDataFromClient(client, loggateway.NewNoop())
+	if db != nil { // AggregateOutcomeStats 走 Raw SQL 读路径（DB-N2）
+		d.rawDB, d.readDB, d.rwDB = db, db, NewReadWriteDB(db, db)
+	}
 	return NewSelfImprovementRunRepo(d, loggateway.NewNoop()), context.Background()
 }
 
@@ -166,6 +169,40 @@ func TestSelfImprovementRunRepo_ListAndObservingDue(t *testing.T) {
 	}
 }
 
+func TestSelfImprovementRunRepo_Count(t *testing.T) {
+	repo, ctx := setupSelfImprovementRepo(t)
+
+	mk := func(id, sug string, status biz.SelfImprovementRunStatus, risk biz.SelfImprovementRiskLevel, trigger string) {
+		run := newTestRun(id, sug, status)
+		run.RiskLevel = risk
+		run.TriggerSource = trigger
+		if err := repo.Create(ctx, run); err != nil {
+			t.Fatalf("Create %s: %v", id, err)
+		}
+	}
+	mk("run-c1", "sug-c1", biz.RunStatusDetected, biz.RiskLevelLow, biz.TriggerSourceErrorCluster)
+	mk("run-c2", "sug-c2", biz.RunStatusDetected, biz.RiskLevelHigh, biz.TriggerSourceTestFailure)
+	mk("run-c3", "sug-c3", biz.RunStatusObserving, biz.RiskLevelLow, biz.TriggerSourceErrorCluster)
+
+	total, err := repo.Count(ctx, biz.RunFilter{})
+	if err != nil || total != 3 {
+		t.Fatalf("Count all = %d, %v; want 3", total, err)
+	}
+	byStatus, err := repo.Count(ctx, biz.RunFilter{Status: biz.RunStatusDetected})
+	if err != nil || byStatus != 2 {
+		t.Fatalf("Count detected = %d, %v; want 2", byStatus, err)
+	}
+	combo, err := repo.Count(ctx, biz.RunFilter{Status: biz.RunStatusDetected, RiskLevel: biz.RiskLevelHigh, TriggerSource: biz.TriggerSourceTestFailure})
+	if err != nil || combo != 1 {
+		t.Fatalf("Count combo = %d, %v; want 1", combo, err)
+	}
+	// Limit/Offset 不影响计数（与 List 同过滤、不同分页）。
+	paged, err := repo.Count(ctx, biz.RunFilter{Limit: 1, Offset: 1})
+	if err != nil || paged != 3 {
+		t.Fatalf("Count 应忽略分页 = %d, %v; want 3", paged, err)
+	}
+}
+
 func TestPatchOutcomeRepo_CreateAndList(t *testing.T) {
 	repo, ctx := setupSelfImprovementRepo(t)
 	if err := repo.Create(ctx, newTestRun("run-o", "sug-o", biz.RunStatusClosed)); err != nil {
@@ -225,6 +262,49 @@ func TestSelfImprovementRunRepo_ListTerminalPendingOutcome(t *testing.T) {
 	pending, err = repo.ListTerminalPendingOutcome(ctx, 10)
 	if err != nil || len(pending) != 0 {
 		t.Fatalf("归因后 pending = %v, len=%d, want 0", err, len(pending))
+	}
+}
+
+func TestSelfImprovementRunRepo_AggregateOutcomeStats(t *testing.T) {
+	repo, ctx := setupSelfImprovementRepo(t)
+	mk := func(id, sug, src string, verdict biz.SelfImprovementVerdict) {
+		r := newTestRun(id, sug, biz.RunStatusClosed)
+		r.TriggerSource = src
+		if err := repo.Create(ctx, r); err != nil {
+			t.Fatalf("Create %s: %v", id, err)
+		}
+		if err := repo.CreateOutcome(ctx, &biz.PatchOutcome{
+			ID: "po-" + id, RunID: id, SuggestionID: sug, Verdict: verdict, CreatedAt: time.Now().UTC(),
+		}); err != nil {
+			t.Fatalf("CreateOutcome %s: %v", id, err)
+		}
+	}
+	mk("run-g1", "sug-g1", biz.TriggerSourceErrorCluster, biz.VerdictEffective)
+	mk("run-g2", "sug-g2", biz.TriggerSourceErrorCluster, biz.VerdictEffective)
+	mk("run-g3", "sug-g3", biz.TriggerSourceErrorCluster, biz.VerdictRegressed)
+	mk("run-g4", "sug-g4", biz.TriggerSourcePerfBottleneck, biz.VerdictNeutral)
+
+	rows, err := repo.AggregateOutcomeStats(ctx)
+	if err != nil {
+		t.Fatalf("AggregateOutcomeStats: %v", err)
+	}
+	got := map[string]int{}
+	total := 0
+	for _, row := range rows {
+		got[row.TriggerSource+"|"+string(row.Verdict)] = row.Count
+		total += row.Count
+	}
+	if total != 4 {
+		t.Fatalf("聚合总数 = %d, want 4（rows=%+v）", total, rows)
+	}
+	if got[biz.TriggerSourceErrorCluster+"|effective"] != 2 {
+		t.Errorf("error_cluster effective = %d, want 2", got[biz.TriggerSourceErrorCluster+"|effective"])
+	}
+	if got[biz.TriggerSourceErrorCluster+"|regressed"] != 1 {
+		t.Errorf("error_cluster regressed = %d, want 1", got[biz.TriggerSourceErrorCluster+"|regressed"])
+	}
+	if got[biz.TriggerSourcePerfBottleneck+"|neutral"] != 1 {
+		t.Errorf("perf_bottleneck neutral = %d, want 1", got[biz.TriggerSourcePerfBottleneck+"|neutral"])
 	}
 }
 

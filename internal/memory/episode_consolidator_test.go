@@ -425,3 +425,60 @@ func TestSleepTime_ReadFailureSkipsEpisodePhase(t *testing.T) {
 		t.Errorf("expected 0 facts (episode phase skipped on read failure), got %d", got)
 	}
 }
+
+// TestEpisodeConsolidator_LLMResolverPreferred verifies that when an
+// LLMResolver is wired, its per-target model is used instead of the static
+// constructor model (P1-1: ModelCatalog-based resolution).
+func TestEpisodeConsolidator_LLMResolverPreferred(t *testing.T) {
+	reader := &fakeL2RecallStore{rows: [][]byte{
+		makeEpisodeJSON("ep-1", "Task A", "done", 0.8),
+	}}
+	writer := &fakeL3FactWriter{}
+	staticLLM := &fakeModel{err: errors.New("static LLM must not be called when resolver is wired")}
+	resolverLLM := &fakeModel{response: buildLLMResponse(`{"facts":[
+		{"statement":"Resolver fact","importance":0.8,"confidence":0.9,"source_episode_id":"ep-1","reason":"test"}
+	]}`)}
+	resolver := &fakeLLMResolver{model: resolverLLM}
+
+	c := NewEpisodeConsolidator(reader, writer, &fakeActionLogWriter{}, staticLLM, loggateway.NewNoop())
+	c.SetLLMResolver(resolver)
+
+	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
+	if err := c.ConsolidateEpisodes(context.Background(), uk); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if resolver.calls == 0 {
+		t.Fatal("expected resolver to be called at least once")
+	}
+	if got := len(writer.upserted); got != 1 {
+		t.Fatalf("expected 1 fact from resolver LLM, got %d", got)
+	}
+	if writer.upserted[0].Statement != "Resolver fact" {
+		t.Errorf("unexpected fact statement: %q", writer.upserted[0].Statement)
+	}
+}
+
+// TestEpisodeConsolidator_LLMResolverNilFallsBack verifies that when the
+// resolver returns a nil model, the static constructor model is used as
+// fallback.
+func TestEpisodeConsolidator_LLMResolverNilFallsBack(t *testing.T) {
+	reader := &fakeL2RecallStore{rows: [][]byte{
+		makeEpisodeJSON("ep-1", "Task A", "done", 0.8),
+	}}
+	writer := &fakeL3FactWriter{}
+	staticLLM := &fakeModel{response: buildLLMResponse(`{"facts":[
+		{"statement":"Static fact","importance":0.8,"confidence":0.9,"source_episode_id":"ep-1","reason":"test"}
+	]}`)}
+	resolver := &fakeLLMResolver{model: nil}
+
+	c := NewEpisodeConsolidator(reader, writer, &fakeActionLogWriter{}, staticLLM, loggateway.NewNoop())
+	c.SetLLMResolver(resolver)
+
+	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
+	if err := c.ConsolidateEpisodes(context.Background(), uk); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if got := len(writer.upserted); got != 1 {
+		t.Fatalf("expected 1 fact from static LLM fallback, got %d", got)
+	}
+}

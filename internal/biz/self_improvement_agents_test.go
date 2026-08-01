@@ -31,13 +31,13 @@ func TestSIMetaAgentPrompts_ContainOutputContract(t *testing.T) {
 			},
 		},
 		{
-			name:   "verifier",
-			prompt: SIVerifierSystemPrompt,
+			name:       "verifier",
+			prompt:     SIVerifierSystemPrompt,
 			mustSubstr: []string{"gates", "gate", "passed", "output"},
 		},
 		{
-			name:   "critic",
-			prompt: SICriticSystemPrompt,
+			name:       "critic",
+			prompt:     SICriticSystemPrompt,
 			mustSubstr: []string{"is_safe", "risk_level", "concerns", "suggestion", "low", "medium", "high"},
 		},
 	}
@@ -148,7 +148,7 @@ func TestParsePatcherOutputJSON(t *testing.T) {
 	}{
 		{
 			name: "valid with declared stats normalized to computed",
-			raw: `{"diff":"` + strings.ReplaceAll(strings.ReplaceAll(siTestDiff, "\\", "\\\\"), "\n", "\\n") + `","files":99,"additions":99,"deletions":99,"kind":"code","summary":"add guard"}`,
+			raw:  `{"diff":"` + strings.ReplaceAll(strings.ReplaceAll(siTestDiff, "\\", "\\\\"), "\n", "\\n") + `","files":99,"additions":99,"deletions":99,"kind":"code","summary":"add guard"}`,
 			check: func(t *testing.T, p *PatcherOutput) {
 				// Declared stats (99) must be normalized to the diff-derived truth.
 				if p.Files != 1 || p.Additions != 1 || p.Deletions != 0 {

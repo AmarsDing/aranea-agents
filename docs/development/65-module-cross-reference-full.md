@@ -89,13 +89,13 @@
 
 ### 1.4 记忆服务 (`internal/memory/` + `internal/service/memory*.go` + `internal/data/memory_shim_*.go` + `internal/tools/working_memory/`)
 
-**职责**：5 层记忆系统适配器，提供记忆 CRUD + 6 个框架记忆工具 + 5 个 working_memory 工具 + 自动提取 + Memory 管理 API 传输桥点。
+**职责**：5 层记忆系统适配器，提供记忆 CRUD + 6 个框架记忆工具 + 6 个 working_memory 工具 + 自动提取 + Memory 管理 API 传输桥点。
 
 | 维度 | 内容 |
 |------|------|
 | **上游依赖** | `biz`（Memory 类型 + `MemoryDebugRecaller`/`MemoryFactIndexCounter` 端口）、`pkg/trpc-agent-go/memory`（框架记忆 API）、`data`（`memoryDebugRecallAdapter`/`memoryFactIndexCounterAdapter` + `memory_shim_*` L0–L4 Store 实现） |
 | **下游影响** | `agent`（MemoryService.Tools() 注入记忆工具，统一路径：`Service.Tools()` → 过滤 → `AssemblyConfig.MemoryTools`）、`agent`（working_memory BeforeToolHook 注入 L1TaskWriter/L1FieldWriter/L1AdminReader）、`service/chat`（记忆管理 API）、`service/memory`（L4 级联管理 + Debug Recall + Worker Status） |
-| **核心导出** | `memtrpc.NewMemoryService(...)`（L3FactReader/Writer + settingsLoader）、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()`、`service.NewMemoryService()`（Admin API，含 `debugRecaller`/`factIndexCounter`）、`working_memory.ToolSet`/`Tools()`（5 个 L1 工具）、`service.MemoryService.GetMemoryLayerOverview`/`GetUnifiedMemoryGraph`（记忆中心聚合端点） |
+| **核心导出** | `memtrpc.NewMemoryService(...)`（L3FactReader/Writer + settingsLoader）、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()`、`service.NewMemoryService()`（Admin API，含 `debugRecaller`/`factIndexCounter`）、`working_memory.ToolSet`/`Tools()`（6 个 L1 工具，含 P1-2 新增的 complete 任务结束触发）、`service.MemoryService.GetMemoryLayerOverview`/`GetUnifiedMemoryGraph`（记忆中心聚合端点） |
 | **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享）、`biz.RecallDebugRow`/`biz.RecallScoreBreakdown`（debug recall DTO）、`biz.L1TaskInsert`/`biz.L1FieldInsert`（L1 写入 DTO）、`biz.L2EpisodeAdminReader`/`biz.L4RelationAdminReader`（记忆中心窄接口，走 `SetMemoryCenterReaders` 注入） |
 | **事件生产** | 无直接生产（记忆提取通过 EventBus 异步触发） |
 | **事件消费** | 记忆提取 Worker 消费 `runner_completion` 事件 |

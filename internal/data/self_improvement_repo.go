@@ -23,6 +23,7 @@ type SelfImprovementRunRepo struct {
 var _ biz.SelfImprovementRunReader = (*SelfImprovementRunRepo)(nil)
 var _ biz.SelfImprovementRunWriter = (*SelfImprovementRunRepo)(nil)
 var _ biz.PatchOutcomeWriter = (*SelfImprovementRunRepo)(nil)
+var _ biz.PatchOutcomeStatsReader = (*SelfImprovementRunRepo)(nil)
 
 // NewSelfImprovementRunRepo creates the repo. Logger is held independently
 // (data 层推荐模式).
@@ -199,6 +200,29 @@ func (r *SelfImprovementRunRepo) List(ctx context.Context, filter biz.RunFilter)
 		out = append(out, *b)
 	}
 	return out, nil
+}
+
+// Count implements biz.SelfImprovementRunReader: same filter conditions as
+// List, ignoring Limit/Offset (console list total, P5).
+func (r *SelfImprovementRunRepo) Count(ctx context.Context, filter biz.RunFilter) (int, error) {
+	if r == nil || r.data == nil {
+		return 0, apierror.Internal("SELF_IMPROVE", "database not configured")
+	}
+	q := r.data.RW().Read(ctx).SelfImprovementRun.Query()
+	if filter.Status != "" {
+		q = q.Where(selfimprovementrun.StatusEQ(string(filter.Status)))
+	}
+	if filter.RiskLevel != "" {
+		q = q.Where(selfimprovementrun.RiskLevelEQ(string(filter.RiskLevel)))
+	}
+	if filter.TriggerSource != "" {
+		q = q.Where(selfimprovementrun.TriggerSourceEQ(filter.TriggerSource))
+	}
+	n, err := q.Count(ctx)
+	if err != nil {
+		return 0, entErrToBizErr(err, "SELF_IMPROVE")
+	}
+	return n, nil
 }
 
 func (r *SelfImprovementRunRepo) ListObservingDue(ctx context.Context, now time.Time) ([]biz.SelfImprovementRun, error) {
@@ -458,6 +482,37 @@ func (r *SelfImprovementRunRepo) ListRecentOutcomesByTrigger(ctx context.Context
 			return nil, err
 		}
 		out = append(out, *o)
+	}
+	return out, nil
+}
+
+// AggregateOutcomeStats implements biz.PatchOutcomeStatsReader: per
+// (trigger_source, verdict) counts of patch_outcomes joined through runs
+// (console stats panel, P5). Raw SQL per DB-N2 (Ent cannot express the
+// cross-table GROUP BY).
+func (r *SelfImprovementRunRepo) AggregateOutcomeStats(ctx context.Context) ([]biz.SITriggerVerdictCount, error) {
+	if r == nil || r.data == nil {
+		return nil, apierror.Internal("SELF_IMPROVE", "database not configured")
+	}
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, `
+		SELECT r.trigger_source, o.verdict, COUNT(*)::int
+		FROM patch_outcomes o
+		JOIN self_improvement_runs r ON r.id = o.run_id
+		GROUP BY r.trigger_source, o.verdict`)
+	if err != nil {
+		return nil, entErrToBizErr(err, "SELF_IMPROVE")
+	}
+	defer rows.Close()
+	out := []biz.SITriggerVerdictCount{}
+	for rows.Next() {
+		var c biz.SITriggerVerdictCount
+		if err := rows.Scan(&c.TriggerSource, &c.Verdict, &c.Count); err != nil {
+			return nil, entErrToBizErr(err, "SELF_IMPROVE")
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "SELF_IMPROVE")
 	}
 	return out, nil
 }

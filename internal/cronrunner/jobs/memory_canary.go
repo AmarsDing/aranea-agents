@@ -199,7 +199,7 @@ func (w *MemoryCanaryWorker) assertRecall(ctx context.Context, token string) err
 }
 
 // assertArchived invalidates the fact and proves the bi-temporal filter
-// (valid_until = '') removes it from recall — doubling as residue cleanup.
+// (valid_until = ”) removes it from recall — doubling as residue cleanup.
 func (w *MemoryCanaryWorker) assertArchived(ctx context.Context, factID, token string) error {
 	if _, err := w.facts.InvalidateFact(ctx, factID); err != nil {
 		return fmt.Errorf("invalidate: %w", err)
@@ -274,7 +274,7 @@ func randomHex(n int) string {
 	if _, err := rand.Read(buf); err != nil {
 		// crypto/rand failure is practically unreachable; fall back to time
 		// so the probe still gets a unique token.
-		return hex.EncodeToString([]byte(fmt.Sprintf("%x", time.Now().UnixNano())))[: n*2]
+		return hex.EncodeToString([]byte(fmt.Sprintf("%x", time.Now().UnixNano())))[:n*2]
 	}
 	return hex.EncodeToString(buf)
 }

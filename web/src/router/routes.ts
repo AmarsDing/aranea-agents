@@ -22,6 +22,7 @@ import SkillTagsPage from '../pages/SkillTagsPage.vue';
 import SkillDetailPage from '../pages/SkillDetailPage.vue';
 import SkillRunsPage from '../pages/SkillRunsPage.vue';
 import EvolutionSuggestionListPage from '../pages/EvolutionSuggestionListPage.vue';
+import SelfImprovementPage from '../pages/SelfImprovementPage.vue';
 import ExperienceReportListPage from '../pages/ExperienceReportListPage.vue';
 import PluginsPage from '../pages/PluginsPage.vue';
 import PluginRunsPage from '../pages/PluginRunsPage.vue';
@@ -242,6 +243,7 @@ export const routes: RouteRecordRaw[] = [
         component: CronTasksPage,
       },
       { path: 'monitor/logs', name: 'monitor-logs', component: MonitorPage },
+      { path: 'self-improvement', name: 'self-improvement', component: SelfImprovementPage },
       { path: 'shop', name: 'shop', component: EcosystemPage },
       { path: 'shop/a/:slug', name: 'shop-asset', component: ShopAssetPage },
       { path: 'shop/u/:handle', name: 'shop-creator', component: ShopCreatorPage },

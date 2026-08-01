@@ -77,6 +77,9 @@ func (s *siStubRunStore) GetBySuggestionID(_ context.Context, suggestionID strin
 func (s *siStubRunStore) List(context.Context, RunFilter) ([]SelfImprovementRun, error) {
 	return nil, nil
 }
+func (s *siStubRunStore) Count(context.Context, RunFilter) (int, error) {
+	return 0, nil
+}
 func (s *siStubRunStore) ListObservingDue(context.Context, time.Time) ([]SelfImprovementRun, error) {
 	return nil, nil
 }

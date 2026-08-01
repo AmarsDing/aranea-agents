@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,14 +19,37 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockL1IdleTaskReader struct {
-	listFn func(ctx context.Context, cutoffRFC3339 string) ([][]byte, error)
+	listFn func(ctx context.Context, idleCutoffRFC3339, retryCutoffRFC3339 string) ([][]byte, error)
 }
 
-func (m *mockL1IdleTaskReader) ListIdleL1Tasks(ctx context.Context, cutoffRFC3339 string) ([][]byte, error) {
+func (m *mockL1IdleTaskReader) ListIdleL1Tasks(ctx context.Context, idleCutoffRFC3339, retryCutoffRFC3339 string) ([][]byte, error) {
 	if m.listFn != nil {
-		return m.listFn(ctx, cutoffRFC3339)
+		return m.listFn(ctx, idleCutoffRFC3339, retryCutoffRFC3339)
 	}
 	return nil, nil
+}
+
+// fakeFlowLogWriter captures flow-log alarm calls (biz.FlowLogWriter).
+type fakeFlowLogWriter struct {
+	mu      sync.Mutex
+	stepIDs []string
+	msgs    []string
+}
+
+func (f *fakeFlowLogWriter) LogFlowStart(_ context.Context, _, _, _ string, _ ...biz.LogPair) {}
+func (f *fakeFlowLogWriter) LogFlowDone(_ context.Context, _, _, _ string, _ ...biz.LogPair)  {}
+
+func (f *fakeFlowLogWriter) LogFlowError(_ context.Context, _, stepID, message string, _ ...biz.LogPair) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stepIDs = append(f.stepIDs, stepID)
+	f.msgs = append(f.msgs, message)
+}
+
+func (f *fakeFlowLogWriter) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.stepIDs)
 }
 
 type mockL1TaskWriter struct {
@@ -127,12 +152,19 @@ func (c *compositeStore) ListL1FieldRows(_ context.Context, _ string, _ bool, _ 
 
 func newTestWorker(t *testing.T, interval time.Duration, idleReader biz.L1IdleTaskReader, writer biz.L1TaskWriter, cleaner biz.L1ExpiredFieldCleaner) *jobs.MemoryL1ArchiveWorker {
 	t.Helper()
+	w, _ := newTestWorkerWithFlowLog(t, interval, idleReader, writer, cleaner)
+	return w
+}
+
+func newTestWorkerWithFlowLog(t *testing.T, interval time.Duration, idleReader biz.L1IdleTaskReader, writer biz.L1TaskWriter, cleaner biz.L1ExpiredFieldCleaner) (*jobs.MemoryL1ArchiveWorker, *fakeFlowLogWriter) {
+	t.Helper()
 	store := &compositeStore{
 		L1IdleTaskReader:      idleReader,
 		L1TaskWriter:          writer,
 		L1ExpiredFieldCleaner: cleaner,
 	}
-	return jobs.NewMemoryL1ArchiveWorker(interval, store, nil, loggateway.NewNoop())
+	flowLog := &fakeFlowLogWriter{}
+	return jobs.NewMemoryL1ArchiveWorker(interval, store, nil, loggateway.NewNoop(), flowLog), flowLog
 }
 
 func taskJSON(id, sessionID, agentID string) []byte {
@@ -140,6 +172,19 @@ func taskJSON(id, sessionID, agentID string) []byte {
 		"id":         id,
 		"session_id": sessionID,
 		"agent_id":   agentID,
+	})
+	return b
+}
+
+// taskJSONWithStatus builds a task row carrying an explicit lifecycle status
+// (and ended_at for ended tasks), mirroring the repo's scan projection.
+func taskJSONWithStatus(id, sessionID, agentID, status, endedAt string) []byte {
+	b, _ := json.Marshal(map[string]string{
+		"id":         id,
+		"session_id": sessionID,
+		"agent_id":   agentID,
+		"status":     status,
+		"ended_at":   endedAt,
 	})
 	return b
 }
@@ -202,7 +247,7 @@ func TestMemoryL1Archive_ArchivesIdleTasks(t *testing.T) {
 		taskJSON("task-2", "sess-2", "agent-2"),
 	}
 	idleReader := &mockL1IdleTaskReader{
-		listFn: func(_ context.Context, _ string) ([][]byte, error) {
+		listFn: func(_ context.Context, _, _ string) ([][]byte, error) {
 			return tasks, nil
 		},
 	}
@@ -246,7 +291,7 @@ func TestMemoryL1Archive_ArchivesIdleTasks(t *testing.T) {
 
 func TestMemoryL1Archive_ListErrorDoesNotPanic(t *testing.T) {
 	idleReader := &mockL1IdleTaskReader{
-		listFn: func(_ context.Context, _ string) ([][]byte, error) {
+		listFn: func(_ context.Context, _, _ string) ([][]byte, error) {
 			return nil, errors.New("db error")
 		},
 	}
@@ -271,7 +316,7 @@ func TestMemoryL1Archive_EndErrorSkipsEpisode(t *testing.T) {
 		taskJSON("task-2", "sess-2", "agent-2"),
 	}
 	idleReader := &mockL1IdleTaskReader{
-		listFn: func(_ context.Context, _ string) ([][]byte, error) {
+		listFn: func(_ context.Context, _, _ string) ([][]byte, error) {
 			return tasks, nil
 		},
 	}
@@ -305,7 +350,7 @@ func TestMemoryL1Archive_EpisodeErrorContinues(t *testing.T) {
 		taskJSON("task-2", "sess-2", "agent-2"),
 	}
 	idleReader := &mockL1IdleTaskReader{
-		listFn: func(_ context.Context, _ string) ([][]byte, error) {
+		listFn: func(_ context.Context, _, _ string) ([][]byte, error) {
 			return tasks, nil
 		},
 	}
@@ -335,7 +380,7 @@ func TestMemoryL1Archive_EpisodeErrorContinues(t *testing.T) {
 
 func TestMemoryL1Archive_EmptyTaskListNoCalls(t *testing.T) {
 	idleReader := &mockL1IdleTaskReader{
-		listFn: func(_ context.Context, _ string) ([][]byte, error) {
+		listFn: func(_ context.Context, _, _ string) ([][]byte, error) {
 			return nil, nil
 		},
 	}
@@ -373,7 +418,7 @@ func TestMemoryL1Archive_SkipsInvalidRows(t *testing.T) {
 		taskJSON("task-3", "sess-3", "agent-3"),
 	}
 	idleReader := &mockL1IdleTaskReader{
-		listFn: func(_ context.Context, _ string) ([][]byte, error) {
+		listFn: func(_ context.Context, _, _ string) ([][]byte, error) {
 			return tasks, nil
 		},
 	}
@@ -395,6 +440,226 @@ func TestMemoryL1Archive_SkipsInvalidRows(t *testing.T) {
 	// Only task-3 should be processed.
 	if len(endCalls) != 1 || endCalls[0] != "task-3" {
 		t.Errorf("endCalls=%v, want [task-3]", endCalls)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// tests: ended-unarchived retry branch (P1-2)
+// ---------------------------------------------------------------------------
+
+// Ended-but-unarchived tasks (a prior archive attempt failed after EndL1Task
+// succeeded) must be retried WITHOUT calling EndL1Task again — the task is
+// already terminal; only the archive tx needs re-execution.
+func TestMemoryL1Archive_RetriesEndedTaskWithoutReEnding(t *testing.T) {
+	endedAt := time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC3339Nano)
+	tasks := [][]byte{
+		taskJSONWithStatus("task-done", "sess-1", "agent-1", "completed", endedAt),
+		taskJSONWithStatus("task-cancel", "sess-2", "agent-2", "cancelled", endedAt),
+	}
+	idleReader := &mockL1IdleTaskReader{
+		listFn: func(_ context.Context, _, _ string) ([][]byte, error) {
+			return tasks, nil
+		},
+	}
+
+	endCalled := false
+	var archiveCalls []string
+	writer := &mockL1TaskWriter{
+		endFn: func(_ context.Context, _, _, _ string) ([]byte, error) {
+			endCalled = true
+			return []byte("{}"), nil
+		},
+		archiveFn: func(_ context.Context, _, taskID string, ep biz.L1ArchiveEpisodeInsert) ([]byte, error) {
+			archiveCalls = append(archiveCalls, taskID)
+			return []byte("{}"), nil
+		},
+	}
+
+	w := newTestWorker(t, 0, idleReader, writer, &mockL1ExpiredFieldCleaner{})
+	w.RunOnceExposed(context.Background())
+
+	if endCalled {
+		t.Error("EndL1Task must not be called for already-ended tasks")
+	}
+	if len(archiveCalls) != 2 {
+		t.Errorf("archiveCalls=%v, want 2 retry attempts", archiveCalls)
+	}
+}
+
+// Active tasks keep the legacy flow: EndL1Task(cancelled) first, then archive.
+func TestMemoryL1Archive_ActiveTaskEndedBeforeArchive(t *testing.T) {
+	tasks := [][]byte{
+		taskJSONWithStatus("task-active", "sess-1", "agent-1", "active", ""),
+	}
+	idleReader := &mockL1IdleTaskReader{
+		listFn: func(_ context.Context, _, _ string) ([][]byte, error) {
+			return tasks, nil
+		},
+	}
+
+	var endCalls []string
+	writer := &mockL1TaskWriter{
+		endFn: func(_ context.Context, _, taskID, status string) ([]byte, error) {
+			endCalls = append(endCalls, taskID+":"+status)
+			return []byte("{}"), nil
+		},
+		archiveFn: func(_ context.Context, _, _ string, _ biz.L1ArchiveEpisodeInsert) ([]byte, error) {
+			return []byte("{}"), nil
+		},
+	}
+
+	w := newTestWorker(t, 0, idleReader, writer, &mockL1ExpiredFieldCleaner{})
+	w.RunOnceExposed(context.Background())
+
+	if len(endCalls) != 1 || endCalls[0] != "task-active:cancelled" {
+		t.Errorf("endCalls=%v, want [task-active:cancelled]", endCalls)
+	}
+}
+
+// The worker must pass distinct cutoffs: idle (60min) for the active branch,
+// retry (much shorter) for the ended-unarchived branch so a failed archive is
+// retried promptly without racing the synchronous end+archive path.
+func TestMemoryL1Archive_PassesDistinctIdleAndRetryCutoffs(t *testing.T) {
+	var gotIdle, gotRetry string
+	idleReader := &mockL1IdleTaskReader{
+		listFn: func(_ context.Context, idleCutoff, retryCutoff string) ([][]byte, error) {
+			gotIdle, gotRetry = idleCutoff, retryCutoff
+			return nil, nil
+		},
+	}
+
+	before := time.Now().UTC()
+	w := newTestWorker(t, 0, idleReader, &mockL1TaskWriter{}, &mockL1ExpiredFieldCleaner{})
+	w.RunOnceExposed(context.Background())
+	after := time.Now().UTC()
+
+	idleTs, err := time.Parse(time.RFC3339Nano, gotIdle)
+	if err != nil {
+		t.Fatalf("idle cutoff %q not RFC3339Nano: %v", gotIdle, err)
+	}
+	retryTs, err := time.Parse(time.RFC3339Nano, gotRetry)
+	if err != nil {
+		t.Fatalf("retry cutoff %q not RFC3339Nano: %v", gotRetry, err)
+	}
+	// idle cutoff ≈ now-60min; retry cutoff ≈ now-2min. 30s tolerance.
+	if d := before.Add(-60 * time.Minute).Sub(idleTs); d < -30*time.Second || d > 30*time.Second {
+		t.Errorf("idle cutoff off by %v (want ≈ now-60min)", d)
+	}
+	if d := before.Add(-2 * time.Minute).Sub(retryTs); d < -30*time.Second || d > 30*time.Second {
+		t.Errorf("retry cutoff off by %v (want ≈ now-2min)", d)
+	}
+	if !retryTs.After(idleTs) {
+		t.Errorf("retry cutoff %v should be after idle cutoff %v", retryTs, idleTs)
+	}
+	_ = after
+}
+
+// ---------------------------------------------------------------------------
+// tests: dead-letter alarm on consecutive archive failures (P1-2)
+// ---------------------------------------------------------------------------
+
+// Three consecutive archive failures for the same task must raise exactly one
+// flow-log alarm (step system.memory_l1_archive.failed); the 4th failure must
+// not spam another alarm.
+func TestMemoryL1Archive_AlarmsAfterConsecutiveArchiveFailures(t *testing.T) {
+	endedAt := time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC3339Nano)
+	tasks := [][]byte{
+		taskJSONWithStatus("task-stuck", "sess-1", "agent-1", "completed", endedAt),
+	}
+	idleReader := &mockL1IdleTaskReader{
+		listFn: func(_ context.Context, _, _ string) ([][]byte, error) {
+			return tasks, nil
+		},
+	}
+	writer := &mockL1TaskWriter{
+		archiveFn: func(_ context.Context, _, _ string, _ biz.L1ArchiveEpisodeInsert) ([]byte, error) {
+			return nil, errors.New("episode insert boom")
+		},
+	}
+
+	w, flowLog := newTestWorkerWithFlowLog(t, 0, idleReader, writer, &mockL1ExpiredFieldCleaner{})
+	for i := 0; i < 4; i++ {
+		w.RunOnceExposed(context.Background())
+	}
+
+	if got := flowLog.count(); got != 1 {
+		t.Fatalf("flow-log alarm count=%d, want exactly 1 (at 3rd consecutive failure)", got)
+	}
+	if flowLog.stepIDs[0] != "system.memory_l1_archive.failed" {
+		t.Errorf("alarm step=%q, want system.memory_l1_archive.failed", flowLog.stepIDs[0])
+	}
+	if !strings.Contains(flowLog.msgs[0], "task-stuck") {
+		t.Errorf("alarm message %q should contain the stuck task id", flowLog.msgs[0])
+	}
+}
+
+// A successful archive resets the consecutive-failure counter: fail, fail,
+// succeed, fail, fail → no alarm (never reaches 3 consecutive).
+func TestMemoryL1Archive_AlarmCounterResetsOnSuccess(t *testing.T) {
+	endedAt := time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC3339Nano)
+	tasks := [][]byte{
+		taskJSONWithStatus("task-flaky", "sess-1", "agent-1", "completed", endedAt),
+	}
+	idleReader := &mockL1IdleTaskReader{
+		listFn: func(_ context.Context, _, _ string) ([][]byte, error) {
+			return tasks, nil
+		},
+	}
+	var mu sync.Mutex
+	failNext := true
+	writer := &mockL1TaskWriter{
+		archiveFn: func(_ context.Context, _, _ string, _ biz.L1ArchiveEpisodeInsert) ([]byte, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			if failNext {
+				return nil, errors.New("boom")
+			}
+			return []byte("{}"), nil
+		},
+	}
+
+	w, flowLog := newTestWorkerWithFlowLog(t, 0, idleReader, writer, &mockL1ExpiredFieldCleaner{})
+	run := func(fail bool) {
+		mu.Lock()
+		failNext = fail
+		mu.Unlock()
+		w.RunOnceExposed(context.Background())
+	}
+	run(true)  // fail 1
+	run(true)  // fail 2
+	run(false) // success → reset
+	run(true)  // fail 1
+	run(true)  // fail 2
+
+	if got := flowLog.count(); got != 0 {
+		t.Errorf("flow-log alarm count=%d, want 0 (counter reset by success)", got)
+	}
+}
+
+// EndL1Task failures on the ACTIVE branch also feed the consecutive-failure
+// counter (the task failed to become archived this tick, whatever the stage).
+func TestMemoryL1Archive_EndFailureCountsTowardAlarm(t *testing.T) {
+	tasks := [][]byte{
+		taskJSONWithStatus("task-endfail", "sess-1", "agent-1", "active", ""),
+	}
+	idleReader := &mockL1IdleTaskReader{
+		listFn: func(_ context.Context, _, _ string) ([][]byte, error) {
+			return tasks, nil
+		},
+	}
+	writer := &mockL1TaskWriter{
+		endFn: func(_ context.Context, _, _, _ string) ([]byte, error) {
+			return nil, errors.New("end boom")
+		},
+	}
+
+	w, flowLog := newTestWorkerWithFlowLog(t, 0, idleReader, writer, &mockL1ExpiredFieldCleaner{})
+	for i := 0; i < 3; i++ {
+		w.RunOnceExposed(context.Background())
+	}
+
+	if got := flowLog.count(); got != 1 {
+		t.Errorf("flow-log alarm count=%d, want 1 after 3 consecutive end failures", got)
 	}
 }
 
@@ -446,7 +711,7 @@ func TestMemoryL1ArchiveDisabled_DefaultNotDisabled(t *testing.T) {
 
 func TestMemoryL1Archive_Start_NilStoreReturns(t *testing.T) {
 	// A worker constructed with a nil store should return immediately from Start.
-	w := jobs.NewMemoryL1ArchiveWorker(0, nil, nil, loggateway.NewNoop())
+	w := jobs.NewMemoryL1ArchiveWorker(0, nil, nil, loggateway.NewNoop(), nil)
 	if w == nil {
 		t.Fatal("expected non-nil worker")
 	}

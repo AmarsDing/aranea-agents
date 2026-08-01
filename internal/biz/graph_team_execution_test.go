@@ -87,6 +87,95 @@ func TestRegisterTeamGraphExecution_andInterrupt(t *testing.T) {
 	}
 }
 
+// F-B：team 路径绕过 trpcGraphRuntime.Run，无 consumeRuntimeEvents 消费者，
+// graph_executions 行不会随运行结束收敛。RecordTeamGraphNodeEnd 增量落 steps_json，
+// FinalizeTeamGraphExecution 在 team run 终态时收敛 status/finished_at。
+func TestRecordTeamGraphNodeEnd_persistsStepsIncrementally(t *testing.T) {
+	repo := &memGraphRunRepo{runs: map[string]*GraphExecution{}}
+	uc := NewGraphUsecase(GraphUsecaseDeps{RunRepo: repo, Lg: loggateway.NewNoop()})
+	ct := NewCompiledTeam(GraphBuildConfig{
+		Nodes:      []NodeDef{{ID: "member-1", Type: "agent"}, {ID: "member-2", Type: "agent"}},
+		EntryPoint: "member-1", FinishPoint: "member-2",
+	}, nil, nil, nil)
+	ctx := context.Background()
+	if err := uc.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "g-1", ct); err != nil {
+		t.Fatal(err)
+	}
+	if err := uc.RecordTeamGraphNodeEnd(ctx, "exec-1", "member-1", 1, "completed", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := uc.RecordTeamGraphNodeEnd(ctx, "exec-1", "member-2", 2, "failed", "boom"); err != nil {
+		t.Fatal(err)
+	}
+	// 持久化快照（repo 内为 UpdateRun 写入的拷贝）必须携带 steps。
+	persisted := repo.runs["exec-1"]
+	if persisted == nil {
+		t.Fatal("exec not persisted")
+	}
+	if len(persisted.Steps) != 2 {
+		t.Fatalf("persisted steps=%d want 2", len(persisted.Steps))
+	}
+	if persisted.Steps[0].NodeID != "member-1" || persisted.Steps[0].StepIndex != 1 || persisted.Steps[0].Status != "completed" {
+		t.Fatalf("step0=%+v", persisted.Steps[0])
+	}
+	if persisted.Steps[1].NodeID != "member-2" || persisted.Steps[1].Status != "failed" || persisted.Steps[1].Error != "boom" {
+		t.Fatalf("step1=%+v", persisted.Steps[1])
+	}
+	// 同节点同 step 重复 node_end（事件去重）→ upsert 而非追加。
+	if err := uc.RecordTeamGraphNodeEnd(ctx, "exec-1", "member-2", 2, "completed", ""); err != nil {
+		t.Fatal(err)
+	}
+	persisted = repo.runs["exec-1"]
+	if len(persisted.Steps) != 2 {
+		t.Fatalf("after upsert steps=%d want 2", len(persisted.Steps))
+	}
+	if persisted.Steps[1].Status != "completed" || persisted.Steps[1].Error != "" {
+		t.Fatalf("upserted step1=%+v", persisted.Steps[1])
+	}
+}
+
+func TestFinalizeTeamGraphExecution_convergesTerminalState(t *testing.T) {
+	repo := &memGraphRunRepo{runs: map[string]*GraphExecution{}}
+	uc := NewGraphUsecase(GraphUsecaseDeps{RunRepo: repo, Lg: loggateway.NewNoop()})
+	ct := NewCompiledTeam(GraphBuildConfig{
+		Nodes:      []NodeDef{{ID: "member-1", Type: "agent"}},
+		EntryPoint: "member-1", FinishPoint: "member-1",
+	}, nil, nil, nil)
+	ctx := context.Background()
+	if err := uc.RegisterTeamGraphExecution(ctx, "exec-ok", "sess-1", "sess-1", "team-1", "run-1", "g-1", ct); err != nil {
+		t.Fatal(err)
+	}
+	if err := uc.FinalizeTeamGraphExecution(ctx, "exec-ok", false, ""); err != nil {
+		t.Fatal(err)
+	}
+	persisted := repo.runs["exec-ok"]
+	if persisted.Status != string(GraphExecCompleted) {
+		t.Fatalf("status=%q want completed", persisted.Status)
+	}
+	if persisted.FinishedAt == nil {
+		t.Fatal("finished_at not set")
+	}
+	// 幂等：终态后重复 finalize（含相反结局）不得改变状态。
+	if err := uc.FinalizeTeamGraphExecution(ctx, "exec-ok", true, "late failure"); err != nil {
+		t.Fatal(err)
+	}
+	if repo.runs["exec-ok"].Status != string(GraphExecCompleted) {
+		t.Fatalf("idempotency broken: status=%q want still completed", repo.runs["exec-ok"].Status)
+	}
+
+	// 失败终态：status=failed + error_message 落库。
+	if err := uc.RegisterTeamGraphExecution(ctx, "exec-bad", "sess-1", "sess-1", "team-1", "run-2", "g-1", ct); err != nil {
+		t.Fatal(err)
+	}
+	if err := uc.FinalizeTeamGraphExecution(ctx, "exec-bad", true, "node exploded"); err != nil {
+		t.Fatal(err)
+	}
+	bad := repo.runs["exec-bad"]
+	if bad.Status != string(GraphExecFailed) || bad.ErrorMessage != "node exploded" || bad.FinishedAt == nil {
+		t.Fatalf("bad=%+v", bad)
+	}
+}
+
 func TestGraphTaskInputFromNode_defaults(t *testing.T) {
 	role, mode, strategy, input := GraphTaskInputFromNode(NodeDef{ID: "t1", Type: "task"}, NodeTaskMeta{})
 	if role != "" || mode != "static" || strategy != "" || input != "t1" {

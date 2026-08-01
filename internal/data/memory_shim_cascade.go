@@ -130,7 +130,11 @@ func (r *cascadeRepo) GetCascadeProposalRow(ctx context.Context, id string) ([]b
 	if !rows.Next() {
 		return nil, apierror.NotFound("MEMORY", "cascade proposal not found: %s", id)
 	}
-	return scanCascadeProposalJSON(rows)
+	b, err := scanCascadeProposalJSON(rows)
+	if err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_CASCADE")
+	}
+	return b, nil
 }
 
 func (r *cascadeRepo) UpdateCascadeProposalStatus(ctx context.Context, id, status, reviewedBy, reviewNote string) ([]byte, error) {

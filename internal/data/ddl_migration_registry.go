@@ -211,6 +211,9 @@ var ddlMigrations = []ddlMigration{
 	// Watchdog scan. Tables are Ent-managed (Schema.Create); only the partial
 	// index needs DDL.
 	{Version: 20261120, Name: "self_improvement_observing_index", SQL: "sql/migrations/20261120_self_improvement_observing_index.sql"},
+	// 20261121 si_risk_rule_columns: P5 console risk-rule config on the
+	// system_settings singleton (same raw-SQL pattern as planner_model_columns).
+	{Version: 20261121, Name: "si_risk_rule_columns", SQL: "sql/migrations/20261121_si_risk_rule_columns.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

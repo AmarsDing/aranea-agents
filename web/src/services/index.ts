@@ -31,6 +31,7 @@ import { createGraphServiceClient } from './kratos/graph/v1/index';
 import { createSkillEvolutionServiceClient } from './kratos/skill_evolution/v1/index';
 import { createSkillIntelligenceServiceClient } from './kratos/skill_intelligence/v1/index';
 import { createSkillEvolutionSuggestionServiceClient } from './kratos/skill_evolution_suggestion/v1/index';
+import { createSelfImprovementServiceClient } from './kratos/self_improvement/v1/index';
 import { createPackServiceClient } from './kratos/pack/v1/index';
 import { createRuntimeProfileServiceClient } from './kratos/runtime_profile/v1/index';
 import { createChatServiceClient } from './kratos/chat/v1/index';
@@ -175,6 +176,10 @@ export function createSkillIntelligenceService() {
 
 export function createSkillEvolutionSuggestionService() {
   return createSkillEvolutionSuggestionServiceClient(requestHandler);
+}
+
+export function createSelfImprovementService() {
+  return createSelfImprovementServiceClient(requestHandler);
 }
 
 export function createWebhookService() {

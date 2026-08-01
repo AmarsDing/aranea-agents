@@ -23,6 +23,7 @@ type TeamGraphCoordAccess interface {
 	MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error
 	DeferTeamRunSuccessIfHITL(ctx context.Context, graphExecID string, run *biz.TeamRunRecord) (bool, error)
 	StartGraphStepWatch(ctx context.Context, execID string) context.CancelFunc
+	FinalizeTeamGraphExecution(ctx context.Context, execID string, failed bool, errMsg string) error
 }
 
 // TeamRunMediator breaks the circular dependency between Runner and TeamGraphRunCoordinator.
@@ -99,6 +100,18 @@ func (m *TeamRunMediator) StartGraphStepWatch(ctx context.Context, execID string
 		return func() {}
 	}
 	return m.coord.StartGraphStepWatch(ctx, execID)
+}
+
+// FinalizeTeamGraphExecution converges the graph_executions row on terminal
+// team runs (F-B). Best-effort: a missing coordinator must not break the team
+// run finalize path, so it logs and returns nil instead of errMediatorCoordNotSet.
+func (m *TeamRunMediator) FinalizeTeamGraphExecution(ctx context.Context, execID string, failed bool, errMsg string) error {
+	if m.coord == nil {
+		m.lg.Warn("mediator coordinator not set, skipping FinalizeTeamGraphExecution",
+			loggateway.Str("exec_id", execID))
+		return nil
+	}
+	return m.coord.FinalizeTeamGraphExecution(ctx, execID, failed, errMsg)
 }
 
 // --- Finisher delegation (via function fields) ---

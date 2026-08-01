@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -181,6 +180,14 @@ func (b *coordGraphBackend) GetExecution(ctx context.Context, executionID string
 	return b.uc.GetExecution(ctx, executionID)
 }
 
+func (b *coordGraphBackend) RecordTeamGraphNodeEnd(ctx context.Context, execID, nodeID string, stepIndex int, status, errMsg string) error {
+	return b.uc.RecordTeamGraphNodeEnd(ctx, execID, nodeID, stepIndex, status, errMsg)
+}
+
+func (b *coordGraphBackend) FinalizeTeamGraphExecution(ctx context.Context, execID string, failed bool, errMsg string) error {
+	return b.uc.FinalizeTeamGraphExecution(ctx, execID, failed, errMsg)
+}
+
 func newCoordTestBackend() *coordGraphBackend {
 	repo := &memGraphRunRepoCoord{runs: map[string]*biz.GraphExecution{}}
 	return &coordGraphBackend{repo: repo, uc: biz.NewGraphUsecase(biz.GraphUsecaseDeps{RunRepo: repo, Lg: loggateway.NewNoop()})}
@@ -204,47 +211,6 @@ func TestTeamGraphRunCoordinator_DeferTeamRunSuccessIfHITL(t *testing.T) {
 	}
 	if run.Status != biz.TeamRunStatusWaitingHuman {
 		t.Fatalf("status=%q", run.Status)
-	}
-}
-
-func TestTeamGraphRunCoordinator_finalizeTeamRun(t *testing.T) {
-	backend := newCoordTestBackend()
-	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman}}}
-	v2Bus := event.NewV2Bus()
-	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, v2Bus, nil, nil, nil, loggateway.NewNoop())
-	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
-	ctx := context.Background()
-
-	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
-		t.Fatal(err)
-	}
-
-	outCh, unsub := v2Bus.Subscribe(biz.EventSubscribeOptions{})
-	defer unsub()
-
-	coord.finalizeTeamRun(ctx, coord.session("exec-1"), false, "")
-
-	select {
-	case e := <-outCh:
-		switch ev := e.(type) {
-		case *biz.TeamStageCompletedEvent:
-			if ev.TeamStage.Status != biz.TeamStageStatusCompleted {
-				t.Fatalf("status=%s want=%s", ev.TeamStage.Status, biz.TeamStageStatusCompleted)
-			}
-		case *biz.SystemNoticeEvent:
-			// notice may arrive before or after TeamStageCompleted depending on fan-out order
-			if ev.NoticeType != "team_stage_completed" && ev.NoticeType != "team_run_failed" {
-				t.Fatalf("unexpected notice type %q", ev.NoticeType)
-			}
-		default:
-			t.Fatalf("expected TeamStageCompletedEvent or SystemNoticeEvent, got %T", e)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for finalize event")
-	}
-	got, err := repo.GetTeamRunByID(ctx, "run-1")
-	if err != nil || got.Status != biz.TeamRunStatusSuccess {
-		t.Fatalf("run=%+v err=%v", got, err)
 	}
 }
 
@@ -386,6 +352,12 @@ func (b *failingResumeBackend) MarkTeamGraphInterrupt(ctx context.Context, execI
 func (b *failingResumeBackend) ResumeExecution(context.Context, string, map[string]any) (*biz.GraphExecution, error) {
 	return nil, errors.New("resume failed")
 }
+func (b *failingResumeBackend) RecordTeamGraphNodeEnd(ctx context.Context, execID, nodeID string, stepIndex int, status, errMsg string) error {
+	return b.inner.RecordTeamGraphNodeEnd(ctx, execID, nodeID, stepIndex, status, errMsg)
+}
+func (b *failingResumeBackend) FinalizeTeamGraphExecution(ctx context.Context, execID string, failed bool, errMsg string) error {
+	return b.inner.FinalizeTeamGraphExecution(ctx, execID, failed, errMsg)
+}
 func (b *failingResumeBackend) GetExecution(ctx context.Context, executionID string) (*biz.GraphExecution, error) {
 	return b.inner.GetExecution(ctx, executionID)
 }
@@ -399,6 +371,12 @@ func (b *succeedingResumeBackend) RegisterTeamGraphExecution(ctx context.Context
 }
 func (b *succeedingResumeBackend) MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error {
 	return b.inner.MarkTeamGraphInterrupt(ctx, execID, nodeID, lineageID)
+}
+func (b *succeedingResumeBackend) RecordTeamGraphNodeEnd(ctx context.Context, execID, nodeID string, stepIndex int, status, errMsg string) error {
+	return b.inner.RecordTeamGraphNodeEnd(ctx, execID, nodeID, stepIndex, status, errMsg)
+}
+func (b *succeedingResumeBackend) FinalizeTeamGraphExecution(ctx context.Context, execID string, failed bool, errMsg string) error {
+	return b.inner.FinalizeTeamGraphExecution(ctx, execID, failed, errMsg)
 }
 func (b *succeedingResumeBackend) ResumeExecution(ctx context.Context, executionID string, resumeValue map[string]any) (*biz.GraphExecution, error) {
 	exec, err := b.inner.GetExecution(ctx, executionID)

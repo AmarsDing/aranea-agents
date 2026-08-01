@@ -48,6 +48,7 @@ type ServiceRegistry struct {
 	SkillDedup         *service.SkillDedupService
 	Pack               *service.PackService
 	SkillEvoSuggestion *service.SkillEvolutionSuggestionService
+	SelfImprovement    *service.SelfImprovementService
 	EcosystemPreset    *service.EcosystemPresetService
 	// Compat service wrappers: lazily wire trpc-agent-go framework servers.
 	AGUICompat    *service.AGUICompatService
@@ -99,6 +100,7 @@ func NewServiceRegistry(
 	skillDedup *service.SkillDedupService,
 	packSvc *service.PackService,
 	skillEvoSuggestion *service.SkillEvolutionSuggestionService,
+	selfImprovement *service.SelfImprovementService,
 	ecosystemPresetSvc *service.EcosystemPresetService,
 	aguiCompat *service.AGUICompatService,
 	openaiSession *service.OpenAISessionCompatService,
@@ -145,6 +147,7 @@ func NewServiceRegistry(
 		SkillDedup:         skillDedup,
 		Pack:               packSvc,
 		SkillEvoSuggestion: skillEvoSuggestion,
+		SelfImprovement:    selfImprovement,
 		EcosystemPreset:    ecosystemPresetSvc,
 		AGUICompat:         aguiCompat,
 		OpenAISession:      openaiSession,
