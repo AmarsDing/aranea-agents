@@ -27,6 +27,10 @@ const (
 	CodeInternal     Code = "INTERNAL"
 	CodeUnavailable  Code = "UNAVAILABLE"
 	CodeRateLimit    Code = "RATE_LIMITED"
+	// CodeFailedPrecondition indicates the operation is rejected because the
+	// system is not in a state required for it (e.g. speech credentials not
+	// configured). Maps to HTTP 412.
+	CodeFailedPrecondition Code = "FAILED_PRECONDITION"
 )
 
 // Error is the canonical error type for all Aranea product-layer errors.
@@ -97,6 +101,10 @@ func NotFound(domain, msg string, args ...any) *Error {
 
 func BadRequest(domain, msg string, args ...any) *Error {
 	return newf(CodeBadRequest, domain, msg, args...)
+}
+
+func FailedPrecondition(domain, msg string, args ...any) *Error {
+	return newf(CodeFailedPrecondition, domain, msg, args...)
 }
 
 func Unauthorized(domain, msg string, args ...any) *Error {
@@ -196,6 +204,8 @@ func ToKratos(err error) error {
 		return kerrors.NotFound(reason, msg)
 	case CodeBadRequest:
 		return kerrors.BadRequest(reason, msg)
+	case CodeFailedPrecondition:
+		return kerrors.New(http.StatusPreconditionFailed, reason, msg)
 	case CodeUnauthorized:
 		return kerrors.New(http.StatusUnauthorized, reason, msg)
 	case CodeForbidden:
