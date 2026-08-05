@@ -39,6 +39,7 @@ import (
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/data"
+	"aranea-agents/internal/data/speech"
 	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
@@ -189,7 +190,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryPolicyEngine := provideMemoryPolicyEngine(dataData, systemSettingRepo)
 	memoryL2Recaller := provideMemoryL2Recall(dataData, memoryUsecase, loggatewayLogger)
 	memoryL3Recaller := provideMemoryL3Recall(dataData, memoryUsecase, loggatewayLogger)
-	memoryCompositeRecaller := provideMemoryCompositeRecall(dataData, memoryService)
+	memoryCompositeRecaller := provideMemoryCompositeRecall(dataData, memoryService, memoryL2Recaller, memoryL3Recaller)
 	sessionAdminStore := provideSessionAdminStore(dataData)
 	memoryAdminDeps := provideMemoryAdminDeps(sessionAdminStore)
 	memoryAdminUsecase := provideMemoryAdminUsecase(memoryAdminDeps, memoryUsecase, memoryFactIndexSyncer, dataData, loggatewayLogger)
@@ -565,7 +566,10 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	learningLoopService := service.NewLearningLoopService(learningLoopUsecase)
 	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillEvolutionService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, runtimeProfileService, learningLoopService)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
-	httpServer := server.NewHTTPServer(confServer, serviceRegistry, wsServer, dataData, loggatewayLogger)
+	speechRegistry := provideSpeechRegistry()
+	speechConfigReader := provideSpeechConfigReader()
+	voiceWSServer := provideVoiceWSServer(sessionAuthorizer, wsTurnExecutor, runCanceller, speechRegistry, speechConfigReader, v2Bus, infra, loggatewayLogger)
+	httpServer := server.NewHTTPServer(confServer, serviceRegistry, wsServer, voiceWSServer, dataData, loggatewayLogger)
 	feedbackMemoryEnqueuer := provideFeedbackMemoryEnqueuer(memoryJobQueue)
 	turnMemoryWorker := biz.NewTurnMemoryWorker(feedbackMemoryEnqueuer, sessionLogWriter)
 	eventBusSideConsumers := provideEventBusSideConsumers(infra, v2Bus, toolUsecase, webhookDispatcher, sessionUsecase, flowlogUsecase, monitorUsecase, turnMemoryWorker, traceProjector, flowFileAppender, usageUsecase, sessionLogWriter, flowLogWriter)
@@ -3244,6 +3248,51 @@ func provideWSServer(
 		srv.SetTaskResumer(resumer)
 	}
 	return srv
+}
+
+// provideSpeechRegistry constructs the speech provider registry (volcengine
+// ASR/TTS factories registered by default). M74 voice companion.
+func provideSpeechRegistry() *speech.Registry { return speech.NewRegistry() }
+
+// provideSpeechConfigReader constructs the env-based speech config reader
+// (V1; System Settings speech 分组在 V2-T7 替换实现，端口不变）。
+func provideSpeechConfigReader() biz.SpeechConfigReader { return speech.NewEnvSpeechConfigReader() }
+
+// provideVoiceWSServer constructs the /v1/voice WS gateway. Provider 工厂
+// 闭包按当前配置懒解析 ASR/TTS Provider（每次 voice.start 重新读配置）。
+func provideVoiceWSServer(
+	sessionAuth server.SessionAuthorizer,
+	turnExecutor server.WSTurnExecutor,
+	canceller server.RunCanceller,
+	registry *speech.Registry,
+	cfgReader biz.SpeechConfigReader,
+	eventBus biz.EventBus,
+	infra *event.Infra,
+	lg loggateway.Logger,
+) *server.VoiceWSServer {
+	newASR := func(ctx context.Context) (biz.StreamingASRProvider, biz.ASRSessionConfig, error) {
+		cfg, err := cfgReader.ASRConfig(ctx)
+		if err != nil {
+			return nil, biz.ASRSessionConfig{}, err
+		}
+		p, err := registry.ASRProvider(cfg, lg)
+		if err != nil {
+			return nil, biz.ASRSessionConfig{}, err
+		}
+		return p, biz.ASRSessionConfig{Language: cfg.Language, SampleRate: 16000}, nil
+	}
+	newTTS := func(ctx context.Context) (biz.StreamingTTSProvider, biz.TTSSessionConfig, error) {
+		cfg, err := cfgReader.TTSConfig(ctx)
+		if err != nil {
+			return nil, biz.TTSSessionConfig{}, err
+		}
+		p, err := registry.TTSProvider(cfg, lg)
+		if err != nil {
+			return nil, biz.TTSSessionConfig{}, err
+		}
+		return p, biz.TTSSessionConfig{Voice: cfg.Voice, SpeedRatio: cfg.SpeedRatio, SampleRate: 16000}, nil
+	}
+	return server.NewVoiceWSServer(sessionAuth, turnExecutor, canceller, newASR, newTTS, eventBus, infra, lg)
 }
 
 // provideV2ProjectorFactory constructs the v2 ProjectorFactory that produces

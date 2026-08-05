@@ -266,6 +266,17 @@ var stepTitleRegistry = map[string]string{
 	"settings.update":        "系统设置更新",
 	"settings.hot_reload":    "配置热更新",
 	"ecosystem.pack.install": "生态包安装",
+	// voice companion（M74）：与 internal/voice 实际发射对齐
+	"voice.session.start":     "语音会话开始",
+	"voice.session.done":      "语音会话结束",
+	"voice.asr.final":         "语音识别终稿",
+	"voice.asr.idle_reclaim":  "语音 ASR 空闲回收",
+	"voice.tts.start":         "语音播报开始",
+	"voice.tts.end":           "语音播报结束",
+	"voice.tts.enqueue_fail":  "语音播报入队失败",
+	"voice.barge_in":          "语音打断",
+	"voice.provider.fallback": "语音服务降级",
+	"voice.error":             "语音链路错误",
 }
 
 func stepTitle(stepID string) string {

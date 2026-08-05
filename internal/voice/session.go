@@ -19,9 +19,6 @@ const idleReclaimTimeout = 10 * time.Minute
 // interruptedSettleDelay 是 interrupted 过渡态自动回 listening 的延迟（设计 §5）。
 const interruptedSettleDelay = 300 * time.Millisecond
 
-// traceDomainVoice 是语音域的流程日志域。TODO(Task 10): 替换为 event.TraceDomainVoice。
-const traceDomainVoice = event.TraceDomain("voice")
-
 // ---- 注入端口（server 层适配，避免 voice 依赖 internal/server）----
 
 // ASRProviderFactory 按当前配置解析 ASR Provider + 会话参数。
@@ -125,7 +122,7 @@ func NewSession(ctx context.Context, deps SessionDeps, sessionID, userID string,
 	s.flow = event.NewTraceEmitterForRun(event.TraceEmitterOpts{
 		Ctx:       sctx,
 		SessionID: sessionID,
-		Domain:    traceDomainVoice,
+		Domain:    event.TraceDomainVoice,
 		LG:        lg,
 		Infra:     deps.Infra,
 	})

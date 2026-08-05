@@ -594,6 +594,21 @@ internal/cronrunner/jobs/
 | `settings.hot_reload` | info / warn | 配置热更新 |
 | `ecosystem.pack.install` | ok / error | 生态包安装 |
 
+#### Voice 语音伴侣（M74，2026-08-06）
+
+| step_id | severity（成功/失败） | title |
+|---------|----------------------|-------|
+| `voice.session.start` | info / — | 语音会话开始 |
+| `voice.session.done` | ok / — | 语音会话结束 |
+| `voice.asr.final` | ok / — | 语音识别终稿 |
+| `voice.asr.idle_reclaim` | info / — | 语音 ASR 空闲回收 |
+| `voice.tts.start` | ok / — | 语音播报开始 |
+| `voice.tts.end` | ok / — | 语音播报结束 |
+| `voice.tts.enqueue_fail` | warn | 语音播报入队失败 |
+| `voice.barge_in` | ok / — | 语音打断 |
+| `voice.provider.fallback` | warn | 语音服务降级 |
+| `voice.error` | error | 语音链路错误 |
+
 #### 别名（v1 → v2，兼容 1 版本）
 
 | v1 `flow_step` | v2 `step_id` |

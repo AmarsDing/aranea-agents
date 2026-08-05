@@ -65,7 +65,7 @@ type ReadinessProbe interface {
 	FailedReason() string
 }
 
-func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, readiness ReadinessProbe, lg loggateway.Logger) *kratoshttp.Server {
+func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv *VoiceWSServer, readiness ReadinessProbe, lg loggateway.Logger) *kratoshttp.Server {
 	var opts = []kratoshttp.ServerOption{
 		kratoshttp.Filter(
 			CorsDevFilter(),
@@ -104,6 +104,9 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, readines
 	registerCompatibilityRedirects(srv)
 	registerInfrastructureRoutes(srv, readiness)
 	wsSrv.RegisterOnKratos(srv)
+	if voiceSrv != nil {
+		voiceSrv.RegisterOnKratos(srv)
+	}
 
 	return srv
 }
