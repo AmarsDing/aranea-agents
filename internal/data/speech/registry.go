@@ -1,8 +1,6 @@
 package speech
 
 import (
-	"context"
-
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -49,18 +47,4 @@ func (r *Registry) TTSProvider(cfg biz.TTSProviderConfig, lg loggateway.Logger) 
 		return nil, apierror.FailedPrecondition("speech", "unknown tts driver %q", cfg.Driver)
 	}
 	return f(cfg, lg)
-}
-
-// --- 临时桩（Task 5 落地时删除）---
-// newVolcTTSProvider 的真实实现归 Task 5（volcengine_tts.go）。Task 4 交付
-// Registry 时该符号尚不存在，为保证包可编译/测试通过提供最小桩。
-// Task 5 创建 volcengine_tts.go 时必须删除本桩（否则符号重复声明）。
-type volcTTSProviderStub struct{}
-
-func (volcTTSProviderStub) Open(_ context.Context, _ biz.TTSSessionConfig) (biz.TTSSession, error) {
-	return nil, apierror.FailedPrecondition("speech", "volcengine tts not implemented yet (Task 5)")
-}
-
-func newVolcTTSProvider(_ biz.TTSProviderConfig, _ loggateway.Logger) biz.StreamingTTSProvider {
-	return volcTTSProviderStub{}
 }

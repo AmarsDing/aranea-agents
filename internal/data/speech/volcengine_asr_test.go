@@ -150,7 +150,7 @@ func TestASRPartialAndFinalEvents(t *testing.T) {
 
 	pushServerJSON(t, conn, volcFlagNone, map[string]any{
 		"result": map[string]any{
-			"text": "你好世界",
+			"text":       "你好世界",
 			"utterances": []any{map[string]any{"text": "你好世界", "definite": true, "end_time": 1200}},
 		},
 	})
