@@ -97,6 +97,7 @@ FROM monitor_alert_rules ORDER BY created_at ASC`)
 
 func (r *monitorRepo) ReplaceAlertRules(ctx context.Context, rules []biz.MonitorAlertRule) error {
 	r.ensureMonitorAlertFiringStateCols(ctx)
+	d := r.data.Dialect()
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
 
@@ -127,11 +128,11 @@ func (r *monitorRepo) ReplaceAlertRules(ctx context.Context, rules []biz.Monitor
 				enabled = 1
 			}
 			if _, exists := existingIDs[id]; exists {
-				_, err := e.ExecContext(txCtx, `
+				_, err := e.ExecContext(txCtx, d.RenumberPlaceholders(`
 UPDATE monitor_alert_rules
 SET name = ?, metric_key = ?, threshold = ?, window_minutes = ?, enabled = ?, severity = ?,
     notify_webhook_url = ?, notify_channel_id = ?, cooldown_minutes = ?, updated_at = ?
-WHERE id = ?`,
+WHERE id = ?`),
 					rule.Name, rule.MetricKey, rule.Threshold, rule.WindowMinutes, enabled, rule.Severity,
 					rule.NotifyWebhookURL, rule.NotifyChannelID, rule.CooldownMinutes, now, id,
 				)
@@ -139,12 +140,12 @@ WHERE id = ?`,
 					return entErrToBizErr(err, "MONITOR_ALERT")
 				}
 			} else {
-				_, err := e.ExecContext(txCtx, `
+				_, err := e.ExecContext(txCtx, d.RenumberPlaceholders(`
 INSERT INTO monitor_alert_rules
   (id, name, metric_key, threshold, window_minutes, enabled, severity,
    notify_webhook_url, notify_channel_id, cooldown_minutes, created_at, updated_at,
    firing_state)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'idle')`,
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'idle')`),
 					id, rule.Name, rule.MetricKey, rule.Threshold, rule.WindowMinutes, enabled, rule.Severity,
 					rule.NotifyWebhookURL, rule.NotifyChannelID, rule.CooldownMinutes, now, now,
 				)
@@ -156,7 +157,7 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'idle')`,
 
 		for id := range existingIDs {
 			if _, exists := newIDs[id]; !exists {
-				if _, err := e.ExecContext(txCtx, `DELETE FROM monitor_alert_rules WHERE id = ?`, id); err != nil {
+				if _, err := e.ExecContext(txCtx, d.RenumberPlaceholders(`DELETE FROM monitor_alert_rules WHERE id = ?`), id); err != nil {
 					return entErrToBizErr(err, "MONITOR_ALERT")
 				}
 			}

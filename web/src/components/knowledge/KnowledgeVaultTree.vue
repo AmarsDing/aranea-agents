@@ -1,7 +1,19 @@
 <template>
   <q-card flat class="app-pane-card knowledge-vault-tree">
+    <!-- UX-004：降级横幅内嵌重试（此前只能用户自行发现中栏刷新按钮） -->
     <q-banner v-if="error" dense rounded class="app-banner-warning q-ma-sm">
       {{ t('knowledgePage.vaultTreeError') }}
+      <template #action>
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="primary"
+          :label="t('knowledgePage.retry')"
+          :loading="loading"
+          @click="$emit('retry')"
+        />
+      </template>
     </q-banner>
 
     <div class="app-pane-card__body knowledge-vault-tree__body">
@@ -32,6 +44,14 @@
               :class="[visualOf(scope.node).cls, { 'kv-icon--pulse': pulseOf(scope.node) }]"
             />
             <span class="knowledge-vault-tree__label ellipsis" :title="scope.node.label">{{ scope.node.label }}</span>
+            <!-- 库节点文档计数徽标（hover 显示完整文案） -->
+            <span
+              v-if="scope.node.kind === 'vault' && scope.node.docCount != null"
+              class="knowledge-vault-tree__count"
+            >
+              {{ scope.node.docCount }}
+              <q-tooltip>{{ t('knowledgePage.treeDocCount', { count: scope.node.docCount }) }}</q-tooltip>
+            </span>
             <span
               v-if="scope.node.kind === 'vault' && scope.node.syncState"
               class="knowledge-vault-tree__sync-dot"
@@ -133,6 +153,8 @@ const emit = defineEmits<{
   'create-vault': [];
   /** G3-F1：drop 到目录/库节点（目标 = 节点 prefix；库节点 = 库根）。 */
   'drop-node': [node: VaultQTreeNode];
+  /** UX-004：降级横幅「重试」。 */
+  retry: [];
 }>();
 
 const { t } = useI18n();
@@ -262,6 +284,18 @@ function syncLabel(state: string): string {
     min-width: 0;
     flex: 1;
     font-size: 13px;
+  }
+
+  // 库文档计数徽标：低调灰底数字，不抢同步状态点语义。
+  &__count {
+    flex: none;
+    font-size: 10px;
+    line-height: 16px;
+    padding: 0 6px;
+    border-radius: 8px;
+    color: var(--color-text-secondary);
+    background: var(--color-warm-muted-surface);
+    font-variant-numeric: tabular-nums;
   }
 
   &__sync-dot {

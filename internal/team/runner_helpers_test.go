@@ -118,7 +118,7 @@ func TestPublishTeamStepActivity_MemberSessionIDMatchesV2Formula(t *testing.T) {
 	runner.publishTeamStepActivity(context.Background(), run, teamID, agentKey, "Worker A",
 		biz.ActivityEventCreated, biz.ActivityStatusRunning, "member_started", nil)
 
-	teamStageID := string(agent.NewTeamStageActivityID(teamID))
+	teamStageID := string(agent.NewTeamStageActivityID(teamID, ""))
 	wantRunID := agent.NewTeamRunV2ID(teamStageID)
 	wantMsID := string(agent.NewMemberSessionActivityID(wantRunID, agentKey))
 

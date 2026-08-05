@@ -78,7 +78,7 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Float("l2_episode_min_importance").Default(0.3),
 		field.Bool("l2_index_enabled").Default(true),
 		field.String("l2_index_embedding_model").Default(""),
-		field.Bool("l2_recall_enabled").Default(false),
+		field.Bool("l2_recall_enabled").Default(true),
 		field.Int("l2_recall_max").Default(3),
 		field.Int("l2_retention_days").Default(90),
 		field.Int("l2_archive_after_days").Default(30),
@@ -90,6 +90,8 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Int("l3_decay_interval_hours").Default(24),
 		field.Float("l3_archive_threshold").Default(0.2),
 		field.Int("l3_max_per_recall_chars").Default(1500),
+		// FR-12/P2: 召回块 token 预算（档位 400/800/1600，默认 800）。
+		field.Int("l3_recall_budget_tokens").Default(800),
 		field.Bool("l4_enabled").Default(true),
 		field.Bool("l4_graph_inject_neighbors").Default(true),
 		field.Int("l4_graph_max_neighbors").Default(6),

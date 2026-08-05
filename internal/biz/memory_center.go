@@ -197,8 +197,12 @@ func (uc *MemoryAdminUsecase) GetLayerOverview(ctx context.Context, agentID, ses
 	}
 
 	// --- L3: facts ---
+	// F1: count by ORIGINATING agent (agentID column) across all scopes, not
+	// just scope='agent' — immediate facts are written to session scope and
+	// consolidated facts to user scope (L3.md §1.3), so a scope-only count
+	// undercounts and showed L3=0 for agents that had actually produced facts.
 	l3 := MemoryLayerStat{Layer: "L3", Health: "ok"}
-	factRows, _, factActive, _, err := uc.admin.ListFactRows(ctx, "agent", agentID, "", "", "", layerOverviewScanLimit, 0)
+	factRows, _, factActive, _, err := uc.admin.ListFactRows(ctx, "", "", "", "", "", agentID, layerOverviewScanLimit, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +218,11 @@ func (uc *MemoryAdminUsecase) GetLayerOverview(ctx context.Context, agentID, ses
 			l3.TodayAdded++
 		}
 	}
-	_, conflictTotal, err := uc.admin.ListConflictingFacts(ctx, "agent", agentID, 1, 0)
+	// H2: count conflicts by ORIGINATING agent across ALL scopes (same
+	// caliber as the F1 fact count above) — conflicting facts also live in
+	// session/user scopes, so a scope='agent' query undercounted and the
+	// L3 health badge stayed "ok" despite open conflicts.
+	_, conflictTotal, err := uc.admin.ListConflictingFacts(ctx, "", "", agentID, 1, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +400,11 @@ func (uc *MemoryAdminUsecase) GetUnifiedMemoryGraph(ctx context.Context, agentID
 	}
 	factByID := map[string]map[string]any{}
 	if include["L3"] {
-		rows, _, _, _, err := uc.admin.ListFactRows(ctx, "agent", agentID, "", "", "", unifiedGraphScanLimit, 0)
+		// H1: filter by originating agent_id across ALL scopes (same caliber
+		// as F1 layer overview) — facts live in session/user/agent scopes;
+		// the old scope='agent' query missed session/user facts, so graph
+		// nodes and fact-linked edges were silently dropped.
+		rows, _, _, _, err := uc.admin.ListFactRows(ctx, "", "", "", "", "", agentID, unifiedGraphScanLimit, 0)
 		if err != nil {
 			return nil, err
 		}

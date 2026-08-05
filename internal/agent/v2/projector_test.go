@@ -3,6 +3,7 @@ package v2
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -682,6 +683,38 @@ func TestHandleTextDone_NormalReply(t *testing.T) {
 	}
 	if completed.Step.Content != "Hello world" {
 		t.Errorf("expected content='Hello world', got %q", completed.Step.Content)
+	}
+}
+
+// TestHandleTextDone_StripsFactMarks verifies that <fact> machine-extraction
+// tags (injected via the memory prompt convention) are stripped from the
+// persisted/displayed reply content at finalize time. Fact extraction itself
+// happens upstream (v1 orchestrator immediateFactWriter); the projector only
+// ensures user-visible content never carries raw tags.
+func TestHandleTextDone_StripsFactMarks(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	p.handleTextDelta(context.Background(), "你好，张三！")
+	capture.events = nil // ignore created/streaming
+
+	raw := "你好，张三！很高兴认识你。\n\n" +
+		`<fact type="identity" confidence="high">The user's name is 张三</fact>` + "\n" +
+		`<fact type="preference" confidence="high">User likes coffee</fact>`
+	p.handleTextDone(context.Background(), raw)
+
+	if len(capture.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(capture.events))
+	}
+	completed, ok := capture.events[0].(*biz.StepCompletedEvent)
+	if !ok {
+		t.Fatalf("expected StepCompletedEvent, got %T", capture.events[0])
+	}
+	if strings.Contains(completed.Step.Content, "<fact") || strings.Contains(completed.Step.Content, "</fact>") {
+		t.Errorf("expected fact tags stripped, got %q", completed.Step.Content)
+	}
+	if !strings.Contains(completed.Step.Content, "你好，张三！很高兴认识你。") {
+		t.Errorf("expected visible text preserved, got %q", completed.Step.Content)
 	}
 }
 

@@ -170,6 +170,8 @@ Schema 源：`internal/data/sql/memory_chain.sql` · 分层 SQL：`docs/sql/10_m
 
 代码锚点：`internal/biz/memory_worker.go` · `internal/cronrunner/jobs/auto_memory.go`
 
+**Ebbinghaus decay 扫描口径（2026-08-05，H3）**：`internal/cronrunner/jobs/memory_ebbinghaus_decay.go` per-agent 扫描改为按**产生方 agent**（`agent_id` 过滤）跨全部 scope 拉取活跃 facts（批上限 `memoryEbbinghausDecayBatchSize=500`）。旧口径 `scope_type='agent'` 只覆盖 agent 域子集，session/user 域事实的 R_t（reachability）衰减分长期不更新，fused recall 降权失真。
+
 ---
 
 ## 六、层间数据流
@@ -1848,7 +1850,7 @@ const memoryRoutes = [
 | L0 item_count / context_usage | `L0SnapshotRepo.GetLatestSessionSnapshot` / `ListSessionSnapshots` |
 | L1 active_tasks / field_count | 现有 L1 tasks/fields API |
 | L2 item_count / today_added | `episodeRepo.ListLatestByScope` + `created_at` 聚合 |
-| L3 item_count / conflict_open / recall_hits | facts 表 count + `conflict_count>0` + `use_count` 聚合 |
+| L3 item_count / conflict_open / recall_hits | facts 表 count（按产生方 `agent_id` 跨全部 scope 聚合，2026-08-05 起；即刻事实写 session scope、巩固事实写 user scope，scope='agent' 计数会漏算）+ `conflict_count>0` + `use_count` 聚合 |
 | L4 item_count / relation_count | `memoryGraphRepo.GraphStats`（已有） |
 | action_items | 上述冲突数 + cascade 待审批 + evolution pending + 上下文阈值 |
 | activity_feed | 归并最近 facts / episodes / entities（按 `created_at` 倒序，limit 20） |
@@ -1889,6 +1891,8 @@ const memoryRoutes = [
 > **fact 节点 `meta_json.statement`**：节点 `label` 被截断为 40 字符（省略号结尾），前端「在记忆浏览中打开」跳转依赖 `meta_json` 中的完整 `statement` 原文做知识库搜索（2026-07-26 修复，见 `TestUnifiedMemoryGraph_FactMetaCarriesFullStatement`）。
 >
 > **`empty_reason` 取值**：`""`（正常）/ `no_memory_data`（无任何记忆数据）/ `focus_not_found`（指定 focus 不在图内）。
+>
+> **L3 fact 节点查询口径（2026-08-05，H1）**：统一图 fact 节点按**产生方 agent**（`memory_facts.agent_id` 列）跨全部 scope 聚合扫描（`biz/memory_center.go`，上限 `unifiedGraphScanLimit`），与全景卡 / 浏览 Tab 的 F1 口径一致。旧实现按 `scope_type='agent'` 过滤，即刻事实（session 域）与巩固事实（user 域）全部漏算，图谱中 fact 节点近乎恒空。
 
 **边的来源映射**（已对照代码核实，2026-07-25）：
 
@@ -1901,6 +1905,10 @@ const memoryRoutes = [
 | `fact_conflict` | facts `conflict_count>0` 的冲突对（`ListConflictingFacts`）+ INHIBIT 关系 |
 
 > 注：此前草稿提到的 `fact_entities` 关联表**不存在**，实体↔事实关联以 `memory_relations` 端点解析为准。
+>
+> **EVOLVED_FROM relation 写入 scope（2026-08-05，H4）**：`link_evolution.go` `applyEvolvedFromSideEffects` 写 `memory_relations` 时，fact 带 `agent_id` 则统一落到 `agent` scope（key = 产生方 agent）；无 `agent_id` 的遗留行回退 fact 自身 scope。旧行为继承 fact 的 session/user scope，而统一图关系读取按 `scope_type='agent'` 过滤，导致 EVOLVED_FROM 边（`fact_link` ①）在图谱中不可见。
+>
+> **冲突 facts 查询口径（2026-08-05，H2）**：`GET /v1/memory/l3/facts/conflicts`（`ListConflictingFacts`）新增可选 `agent_id` 参数，按**产生方 agent** 跨全部 scope 过滤 `conflict_count>0` 的活跃 facts，与 scope_type/scope_id AND 组合；scope 查询保持向后兼容。`scope_type` 与 `agent_id` 同时为空返回 400（防全表扫描）。旧实现仅支持 scope 过滤，而冲突 facts 实际分布在 session/user 域（F1 同一根因），治理面按 agent 浏览时漏算。
 
 **默认 focus 策略**：未指定时由 repo 查询关系数最多的活跃实体（`memory_relations` 按端点聚合计数 Top 1）；空图时返回空 nodes 并附 `empty_reason`。
 
@@ -2002,6 +2010,8 @@ message ListMemoryEpisodesResponse {
 | settings（PlatformSettings/WorkerStatus/DeadLetter/RecallTester/SettingsStatus 5 面板） | **governance** | 原样迁入 |
 
 **browse Tab 内部结构**：层级 chips（全部 / L0 / L1 / L2 / L3）控制显示对应分段；`?layer` 状态由 `MemoryBrowseTab` 持有，钻取跳转时由父页写入。
+
+**L3 facts 查询口径（2026-08-05，F1）**：`GET /v1/memory/l3/facts` 新增可选 `agent_id` 参数，按**产生方 agent**（`memory_facts.agent_id` 列）跨全部 scope 过滤，与 scope_type/scope_id 命名空间过滤 AND 组合。记忆中心浏览 Tab 始终带上当前选中 agent，使 L3 列表与全景卡计数口径一致（全景卡同样按 agent_id 跨 scope 计数）；切换 agent 时 facts 列表自动刷新。
 
 **跳转矩阵（全部更新为终态命名）**：
 

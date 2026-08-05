@@ -149,6 +149,8 @@ const (
 	FieldL3ArchiveThreshold = "l3_archive_threshold"
 	// FieldL3MaxPerRecallChars holds the string denoting the l3_max_per_recall_chars field in the database.
 	FieldL3MaxPerRecallChars = "l3_max_per_recall_chars"
+	// FieldL3RecallBudgetTokens holds the string denoting the l3_recall_budget_tokens field in the database.
+	FieldL3RecallBudgetTokens = "l3_recall_budget_tokens"
 	// FieldL4Enabled holds the string denoting the l4_enabled field in the database.
 	FieldL4Enabled = "l4_enabled"
 	// FieldL4GraphInjectNeighbors holds the string denoting the l4_graph_inject_neighbors field in the database.
@@ -373,6 +375,7 @@ var Columns = []string{
 	FieldL3DecayIntervalHours,
 	FieldL3ArchiveThreshold,
 	FieldL3MaxPerRecallChars,
+	FieldL3RecallBudgetTokens,
 	FieldL4Enabled,
 	FieldL4GraphInjectNeighbors,
 	FieldL4GraphMaxNeighbors,
@@ -598,6 +601,8 @@ var (
 	DefaultL3ArchiveThreshold float64
 	// DefaultL3MaxPerRecallChars holds the default value on creation for the "l3_max_per_recall_chars" field.
 	DefaultL3MaxPerRecallChars int
+	// DefaultL3RecallBudgetTokens holds the default value on creation for the "l3_recall_budget_tokens" field.
+	DefaultL3RecallBudgetTokens int
 	// DefaultL4Enabled holds the default value on creation for the "l4_enabled" field.
 	DefaultL4Enabled bool
 	// DefaultL4GraphInjectNeighbors holds the default value on creation for the "l4_graph_inject_neighbors" field.
@@ -1101,6 +1106,11 @@ func ByL3ArchiveThreshold(opts ...sql.OrderTermOption) OrderOption {
 // ByL3MaxPerRecallChars orders the results by the l3_max_per_recall_chars field.
 func ByL3MaxPerRecallChars(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldL3MaxPerRecallChars, opts...).ToFunc()
+}
+
+// ByL3RecallBudgetTokens orders the results by the l3_recall_budget_tokens field.
+func ByL3RecallBudgetTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldL3RecallBudgetTokens, opts...).ToFunc()
 }
 
 // ByL4Enabled orders the results by the l4_enabled field.

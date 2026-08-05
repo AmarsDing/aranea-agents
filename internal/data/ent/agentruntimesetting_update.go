@@ -1231,6 +1231,27 @@ func (_u *AgentRuntimeSettingUpdate) AddL3MaxPerRecallChars(v int) *AgentRuntime
 	return _u
 }
 
+// SetL3RecallBudgetTokens sets the "l3_recall_budget_tokens" field.
+func (_u *AgentRuntimeSettingUpdate) SetL3RecallBudgetTokens(v int) *AgentRuntimeSettingUpdate {
+	_u.mutation.ResetL3RecallBudgetTokens()
+	_u.mutation.SetL3RecallBudgetTokens(v)
+	return _u
+}
+
+// SetNillableL3RecallBudgetTokens sets the "l3_recall_budget_tokens" field if the given value is not nil.
+func (_u *AgentRuntimeSettingUpdate) SetNillableL3RecallBudgetTokens(v *int) *AgentRuntimeSettingUpdate {
+	if v != nil {
+		_u.SetL3RecallBudgetTokens(*v)
+	}
+	return _u
+}
+
+// AddL3RecallBudgetTokens adds value to the "l3_recall_budget_tokens" field.
+func (_u *AgentRuntimeSettingUpdate) AddL3RecallBudgetTokens(v int) *AgentRuntimeSettingUpdate {
+	_u.mutation.AddL3RecallBudgetTokens(v)
+	return _u
+}
+
 // SetL4Enabled sets the "l4_enabled" field.
 func (_u *AgentRuntimeSettingUpdate) SetL4Enabled(v bool) *AgentRuntimeSettingUpdate {
 	_u.mutation.SetL4Enabled(v)
@@ -2792,6 +2813,12 @@ func (_u *AgentRuntimeSettingUpdate) sqlSave(ctx context.Context) (_node int, er
 	if value, ok := _u.mutation.AddedL3MaxPerRecallChars(); ok {
 		_spec.AddField(agentruntimesetting.FieldL3MaxPerRecallChars, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.L3RecallBudgetTokens(); ok {
+		_spec.SetField(agentruntimesetting.FieldL3RecallBudgetTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedL3RecallBudgetTokens(); ok {
+		_spec.AddField(agentruntimesetting.FieldL3RecallBudgetTokens, field.TypeInt, value)
+	}
 	if value, ok := _u.mutation.L4Enabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldL4Enabled, field.TypeBool, value)
 	}
@@ -4310,6 +4337,27 @@ func (_u *AgentRuntimeSettingUpdateOne) SetNillableL3MaxPerRecallChars(v *int) *
 // AddL3MaxPerRecallChars adds value to the "l3_max_per_recall_chars" field.
 func (_u *AgentRuntimeSettingUpdateOne) AddL3MaxPerRecallChars(v int) *AgentRuntimeSettingUpdateOne {
 	_u.mutation.AddL3MaxPerRecallChars(v)
+	return _u
+}
+
+// SetL3RecallBudgetTokens sets the "l3_recall_budget_tokens" field.
+func (_u *AgentRuntimeSettingUpdateOne) SetL3RecallBudgetTokens(v int) *AgentRuntimeSettingUpdateOne {
+	_u.mutation.ResetL3RecallBudgetTokens()
+	_u.mutation.SetL3RecallBudgetTokens(v)
+	return _u
+}
+
+// SetNillableL3RecallBudgetTokens sets the "l3_recall_budget_tokens" field if the given value is not nil.
+func (_u *AgentRuntimeSettingUpdateOne) SetNillableL3RecallBudgetTokens(v *int) *AgentRuntimeSettingUpdateOne {
+	if v != nil {
+		_u.SetL3RecallBudgetTokens(*v)
+	}
+	return _u
+}
+
+// AddL3RecallBudgetTokens adds value to the "l3_recall_budget_tokens" field.
+func (_u *AgentRuntimeSettingUpdateOne) AddL3RecallBudgetTokens(v int) *AgentRuntimeSettingUpdateOne {
+	_u.mutation.AddL3RecallBudgetTokens(v)
 	return _u
 }
 
@@ -5903,6 +5951,12 @@ func (_u *AgentRuntimeSettingUpdateOne) sqlSave(ctx context.Context) (_node *Age
 	}
 	if value, ok := _u.mutation.AddedL3MaxPerRecallChars(); ok {
 		_spec.AddField(agentruntimesetting.FieldL3MaxPerRecallChars, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.L3RecallBudgetTokens(); ok {
+		_spec.SetField(agentruntimesetting.FieldL3RecallBudgetTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedL3RecallBudgetTokens(); ok {
+		_spec.AddField(agentruntimesetting.FieldL3RecallBudgetTokens, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.L4Enabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldL4Enabled, field.TypeBool, value)

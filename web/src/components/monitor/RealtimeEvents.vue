@@ -16,14 +16,18 @@
           :icon="paused ? 'play_arrow' : 'pause'"
           :label="paused ? t('monitorPage.resume') : t('monitorPage.pause')"
           @click="emit('toggle-stream')"
-        />
+        >
+          <q-tooltip>{{ t('monitorPage.pauseHint') }}</q-tooltip>
+        </q-btn>
         <q-btn
           flat
           dense
           icon="delete_sweep"
           :label="t('monitorPage.events.clearPulse')"
           @click="emit('clear-pulse')"
-        />
+        >
+          <q-tooltip>{{ t('monitorPage.events.clearPulseConfirm') }}</q-tooltip>
+        </q-btn>
       </div>
     </div>
 
@@ -84,6 +88,13 @@
           style="min-width: 120px"
           @update:model-value="(v: string) => emit('update:severityFilter', v)"
         />
+        <q-toggle
+          :model-value="showSystemEvents"
+          :label="t('monitorPage.events.showSystem')"
+          @update:model-value="(v: boolean) => emit('update:showSystemEvents', v)"
+        >
+          <q-tooltip>{{ t('monitorPage.events.showSystemHint') }}</q-tooltip>
+        </q-toggle>
         <q-btn flat dense icon="refresh" :label="t('monitorPage.events.refresh')" @click="emit('refresh-history')" />
       </div>
     </div>
@@ -276,6 +287,7 @@ const props = defineProps<{
   pageSize: number;
   typeFilter: string;
   severityFilter: string;
+  showSystemEvents: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -285,6 +297,7 @@ const emit = defineEmits<{
   'update:pageSize': [value: number];
   'update:typeFilter': [value: string];
   'update:severityFilter': [value: string];
+  'update:showSystemEvents': [value: boolean];
   'refresh-history': [];
   'open-session': [event: MonitorViewEvent];
   'open-in-runs': [event: MonitorViewEvent];

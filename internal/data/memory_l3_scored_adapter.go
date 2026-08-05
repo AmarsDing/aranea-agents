@@ -26,7 +26,10 @@ func (a *L3ScoredRecallAdapter) RecallL3Hits(ctx context.Context, scopeType, sco
 	if a == nil {
 		return nil, nil
 	}
-	l3 := newL3FactRepo(a.data, nil)
+	// P2-3: pass the shared VectorStore so the pgvector+FTS RRF fusion path
+	// activates on the main chat recall path (previously nil → fusion never
+	// ran here; brute-force/recency paths still apply for small fact sets).
+	l3 := newL3FactRepo(a.data, a.data.VectorStore())
 	raw, err := l3.RecallL3Facts(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, 0)
 	if err != nil {
 		return nil, err
@@ -77,12 +80,13 @@ func (a *L3ScoredRecallAdapter) RecallL3Hits(ctx context.Context, scopeType, sco
 		}
 		out = append(out, hit)
 	}
-	// Increment use_count and update last_used_at for recalled facts so the
+	// Increment recalled_count and update last_used_at for recalled facts so the
 	// Ebbinghaus decay worker has accurate access-recency signals. Failures
 	// are logged but do not fail the recall (write-on-recall is best-effort).
+	// FR-12.6: this is the "recalled" stage of the three-stage counters.
 	if len(recalledIDs) > 0 {
-		if err := l3.IncrementFactAccessCount(ctx, recalledIDs); err != nil && a.data.lg != nil {
-			a.data.lg.Warn("scored recall: increment access count failed",
+		if err := l3.IncrementFactRecalledCount(ctx, recalledIDs); err != nil && a.data.lg != nil {
+			a.data.lg.Warn("scored recall: increment recalled count failed",
 				loggateway.StepID("memory.l3_recall_access"),
 				loggateway.Err(err))
 		}

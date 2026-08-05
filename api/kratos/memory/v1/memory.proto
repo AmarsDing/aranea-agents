@@ -136,6 +136,11 @@ message ListMemoryFactsRequest {
   string keyword = 5;
   int32 limit = 6;
   int32 offset = 7;
+  // optional: filter by ORIGINATING agent (memory_facts.agent_id) across all
+  // scopes — AND-combined with the scope namespace filters. Used by the memory
+  // center so the L3 browse tab matches the panorama card count (which counts
+  // facts an agent produced into session/user scopes as well).
+  string agent_id = 8;
 }
 
 message ListMemoryFactsResponse {
@@ -150,6 +155,10 @@ message ListConflictingFactsRequest {
   string scope_id = 2;
   int32 limit = 3;
   int32 offset = 4;
+  // agent_id filters conflicts by the ORIGINATING agent across ALL scopes
+  // (session/user/agent). H2: facts live in session/user scopes (F1), so a
+  // scope-only query undercounts. When set, scope_type may be left empty.
+  string agent_id = 5;
 }
 
 message ListConflictingFactsResponse {
@@ -187,6 +196,14 @@ message MemoryFact {
   string updated_at = 27;
   double quality_score = 28;
   string pii_types_json = 29;  // JSON array of PII type tags
+  // FR-12.6 three-stage counters. use_count (14) is legacy and no longer
+  // maintained; these carry the precise semantics:
+  //   recalled_count  — entered a recall result set
+  //   injected_count  — actually written into the LLM prompt
+  //   cited_count     — explicitly referenced by the assistant reply
+  int32 recalled_count = 30;
+  int32 injected_count = 31;
+  int32 cited_count = 32;
 }
 
 message ListMemoryEntitiesRequest {

@@ -160,6 +160,13 @@ watch(
     );
   },
 );
+
+/** 画布工具条「适应视图」。 */
+function zoomToFit(ms = 600) {
+  graph?.zoomToFit(ms, 40);
+}
+
+defineExpose({ zoomToFit });
 </script>
 
 <style lang="scss" scoped>

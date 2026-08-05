@@ -4418,6 +4418,8 @@ type AgentRuntimeSettingMutation struct {
 	addl3_archive_threshold                  *float64
 	l3_max_per_recall_chars                  *int
 	addl3_max_per_recall_chars               *int
+	l3_recall_budget_tokens                  *int
+	addl3_recall_budget_tokens               *int
 	l4_enabled                               *bool
 	l4_graph_inject_neighbors                *bool
 	l4_graph_max_neighbors                   *int
@@ -7791,6 +7793,62 @@ func (m *AgentRuntimeSettingMutation) ResetL3MaxPerRecallChars() {
 	m.addl3_max_per_recall_chars = nil
 }
 
+// SetL3RecallBudgetTokens sets the "l3_recall_budget_tokens" field.
+func (m *AgentRuntimeSettingMutation) SetL3RecallBudgetTokens(i int) {
+	m.l3_recall_budget_tokens = &i
+	m.addl3_recall_budget_tokens = nil
+}
+
+// L3RecallBudgetTokens returns the value of the "l3_recall_budget_tokens" field in the mutation.
+func (m *AgentRuntimeSettingMutation) L3RecallBudgetTokens() (r int, exists bool) {
+	v := m.l3_recall_budget_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldL3RecallBudgetTokens returns the old "l3_recall_budget_tokens" field's value of the AgentRuntimeSetting entity.
+// If the AgentRuntimeSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentRuntimeSettingMutation) OldL3RecallBudgetTokens(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldL3RecallBudgetTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldL3RecallBudgetTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldL3RecallBudgetTokens: %w", err)
+	}
+	return oldValue.L3RecallBudgetTokens, nil
+}
+
+// AddL3RecallBudgetTokens adds i to the "l3_recall_budget_tokens" field.
+func (m *AgentRuntimeSettingMutation) AddL3RecallBudgetTokens(i int) {
+	if m.addl3_recall_budget_tokens != nil {
+		*m.addl3_recall_budget_tokens += i
+	} else {
+		m.addl3_recall_budget_tokens = &i
+	}
+}
+
+// AddedL3RecallBudgetTokens returns the value that was added to the "l3_recall_budget_tokens" field in this mutation.
+func (m *AgentRuntimeSettingMutation) AddedL3RecallBudgetTokens() (r int, exists bool) {
+	v := m.addl3_recall_budget_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetL3RecallBudgetTokens resets all changes to the "l3_recall_budget_tokens" field.
+func (m *AgentRuntimeSettingMutation) ResetL3RecallBudgetTokens() {
+	m.l3_recall_budget_tokens = nil
+	m.addl3_recall_budget_tokens = nil
+}
+
 // SetL4Enabled sets the "l4_enabled" field.
 func (m *AgentRuntimeSettingMutation) SetL4Enabled(b bool) {
 	m.l4_enabled = &b
@@ -10989,7 +11047,7 @@ func (m *AgentRuntimeSettingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentRuntimeSettingMutation) Fields() []string {
-	fields := make([]string, 0, 143)
+	fields := make([]string, 0, 144)
 	if m.self_evolve != nil {
 		fields = append(fields, agentruntimesetting.FieldSelfEvolve)
 	}
@@ -11196,6 +11254,9 @@ func (m *AgentRuntimeSettingMutation) Fields() []string {
 	}
 	if m.l3_max_per_recall_chars != nil {
 		fields = append(fields, agentruntimesetting.FieldL3MaxPerRecallChars)
+	}
+	if m.l3_recall_budget_tokens != nil {
+		fields = append(fields, agentruntimesetting.FieldL3RecallBudgetTokens)
 	}
 	if m.l4_enabled != nil {
 		fields = append(fields, agentruntimesetting.FieldL4Enabled)
@@ -11565,6 +11626,8 @@ func (m *AgentRuntimeSettingMutation) Field(name string) (ent.Value, bool) {
 		return m.L3ArchiveThreshold()
 	case agentruntimesetting.FieldL3MaxPerRecallChars:
 		return m.L3MaxPerRecallChars()
+	case agentruntimesetting.FieldL3RecallBudgetTokens:
+		return m.L3RecallBudgetTokens()
 	case agentruntimesetting.FieldL4Enabled:
 		return m.L4Enabled()
 	case agentruntimesetting.FieldL4GraphInjectNeighbors:
@@ -11860,6 +11923,8 @@ func (m *AgentRuntimeSettingMutation) OldField(ctx context.Context, name string)
 		return m.OldL3ArchiveThreshold(ctx)
 	case agentruntimesetting.FieldL3MaxPerRecallChars:
 		return m.OldL3MaxPerRecallChars(ctx)
+	case agentruntimesetting.FieldL3RecallBudgetTokens:
+		return m.OldL3RecallBudgetTokens(ctx)
 	case agentruntimesetting.FieldL4Enabled:
 		return m.OldL4Enabled(ctx)
 	case agentruntimesetting.FieldL4GraphInjectNeighbors:
@@ -12500,6 +12565,13 @@ func (m *AgentRuntimeSettingMutation) SetField(name string, value ent.Value) err
 		}
 		m.SetL3MaxPerRecallChars(v)
 		return nil
+	case agentruntimesetting.FieldL3RecallBudgetTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetL3RecallBudgetTokens(v)
+		return nil
 	case agentruntimesetting.FieldL4Enabled:
 		v, ok := value.(bool)
 		if !ok {
@@ -13128,6 +13200,9 @@ func (m *AgentRuntimeSettingMutation) AddedFields() []string {
 	if m.addl3_max_per_recall_chars != nil {
 		fields = append(fields, agentruntimesetting.FieldL3MaxPerRecallChars)
 	}
+	if m.addl3_recall_budget_tokens != nil {
+		fields = append(fields, agentruntimesetting.FieldL3RecallBudgetTokens)
+	}
 	if m.addl4_graph_max_neighbors != nil {
 		fields = append(fields, agentruntimesetting.FieldL4GraphMaxNeighbors)
 	}
@@ -13279,6 +13354,8 @@ func (m *AgentRuntimeSettingMutation) AddedField(name string) (ent.Value, bool) 
 		return m.AddedL3ArchiveThreshold()
 	case agentruntimesetting.FieldL3MaxPerRecallChars:
 		return m.AddedL3MaxPerRecallChars()
+	case agentruntimesetting.FieldL3RecallBudgetTokens:
+		return m.AddedL3RecallBudgetTokens()
 	case agentruntimesetting.FieldL4GraphMaxNeighbors:
 		return m.AddedL4GraphMaxNeighbors()
 	case agentruntimesetting.FieldL4GraphMaxHops:
@@ -13575,6 +13652,13 @@ func (m *AgentRuntimeSettingMutation) AddField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddL3MaxPerRecallChars(v)
+		return nil
+	case agentruntimesetting.FieldL3RecallBudgetTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddL3RecallBudgetTokens(v)
 		return nil
 	case agentruntimesetting.FieldL4GraphMaxNeighbors:
 		v, ok := value.(int)
@@ -13984,6 +14068,9 @@ func (m *AgentRuntimeSettingMutation) ResetField(name string) error {
 		return nil
 	case agentruntimesetting.FieldL3MaxPerRecallChars:
 		m.ResetL3MaxPerRecallChars()
+		return nil
+	case agentruntimesetting.FieldL3RecallBudgetTokens:
+		m.ResetL3RecallBudgetTokens()
 		return nil
 	case agentruntimesetting.FieldL4Enabled:
 		m.ResetL4Enabled()

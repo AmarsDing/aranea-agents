@@ -152,14 +152,20 @@ func (s *TeamService) syncV2TeamRunStatus(
 	trStatus biz.TeamRunV2Status,
 	msStatus biz.MemberSessionStatus,
 ) {
-	if s.teamRunV2 == nil || s.v2Seq == nil {
+	if s.teamRunV2 == nil || s.v2Seq == nil || s.teamStageReader == nil {
 		return
 	}
 	teamID := strings.TrimSpace(legacy.TeamID)
 	if teamID == "" {
 		return
 	}
-	teamStageID := string(agent.NewTeamStageActivityID(teamID))
+	// S-3 后 stage 按 (teamID, rootTaskID) 每轮一行；pause/resume 是用户动作
+	// （ctx 无 RootTaskActivityID）——查团队最新行派生 v2 run ID，无行则跳过。
+	latest, lerr := s.teamStageReader.GetLatestTeamStageByTeam(ctx, teamID)
+	if lerr != nil || latest.ID == "" {
+		return
+	}
+	teamStageID := latest.ID
 	teamRunID := agent.NewTeamRunV2ID(teamStageID)
 	tr, err := s.teamRunV2.GetTeamRun(ctx, teamRunID)
 	if err != nil {

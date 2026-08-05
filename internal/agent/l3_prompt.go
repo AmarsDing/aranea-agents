@@ -14,8 +14,16 @@ import (
 // l1FieldValues contains pinned L1 field values for cross-layer dedup — facts whose normalized
 // statement matches any L1 value are filtered out to avoid redundancy.
 func L3MemoryCue(ctx context.Context, l3 biz.MemoryL3Recaller, ag biz.Agent, policy biz.MemoryRuntimePolicy, rt biz.MemoryRuntimeContext, keyword string, limit int, l1FieldValues []string, lg loggateway.Logger) string {
+	cue, _ := L3MemoryCueWithIDs(ctx, l3, ag, policy, rt, keyword, limit, l1FieldValues, lg)
+	return cue
+}
+
+// L3MemoryCueWithIDs is L3MemoryCue plus the IDs of the facts actually
+// written into the cue (FR-12.6: the before-model hook increments
+// injected_count for exactly this set once per turn).
+func L3MemoryCueWithIDs(ctx context.Context, l3 biz.MemoryL3Recaller, ag biz.Agent, policy biz.MemoryRuntimePolicy, rt biz.MemoryRuntimeContext, keyword string, limit int, l1FieldValues []string, lg loggateway.Logger) (string, []string) {
 	if l3 == nil || !policy.InjectL3 {
-		return ""
+		return "", nil
 	}
 	if limit <= 0 {
 		limit = policy.L3RecallTopK
@@ -30,22 +38,22 @@ func L3MemoryCue(ctx context.Context, l3 biz.MemoryL3Recaller, ag biz.Agent, pol
 	})
 	if err != nil {
 		lg.Warn("L3 memory query failed", loggateway.StepID("agent.memory_query_fail"), loggateway.Err(err))
-		return ""
+		return "", nil
 	}
 	if len(rows) == 0 {
-		return ""
+		return "", nil
 	}
 
 	// Cross-layer dedup: filter out L3 facts whose statement matches an L1 field value.
 	rows = biz.DedupL3WithL1(rows, l1FieldValues)
 	if len(rows) == 0 {
-		return ""
+		return "", nil
 	}
 
 	maxChars := policy.L3MaxPerRecallChars
 	type l3Entry struct {
 		stmt       string
-		factID     string
+		id         string
 		srcSess    string
 		confidence float64
 		version    int
@@ -67,8 +75,10 @@ func L3MemoryCue(ctx context.Context, l3 biz.MemoryL3Recaller, ag biz.Agent, pol
 			stmt = safeTruncate(stmt, maxChars)
 		}
 		e := l3Entry{stmt: stmt}
+		if id := strings.TrimSpace(fmt.Sprint(row["id"])); id != "" && id != "<nil>" {
+			e.id = id
+		}
 		if policy.L3InjectProvenance {
-			e.factID = strings.TrimSpace(fmt.Sprint(row["id"]))
 			e.srcSess = strings.TrimSpace(fmt.Sprint(row["source_session_id"]))
 			if c, ok := row["confidence"].(float64); ok {
 				e.confidence = c
@@ -80,20 +90,38 @@ func L3MemoryCue(ctx context.Context, l3 biz.MemoryL3Recaller, ag biz.Agent, pol
 		entries = append(entries, e)
 	}
 	if len(entries) == 0 {
-		return ""
+		return "", nil
 	}
 	var b strings.Builder
-	b.WriteString("## L3 semantic memory (user facts)\n")
-	b.WriteString("The following facts were learned from prior conversations. Use when relevant; do not invent beyond them.\n")
+	header := "## L3 semantic memory (user facts)\n" +
+		"The following facts were learned from prior conversations. Use when relevant; do not invent beyond them.\n"
+	b.WriteString(header)
+	// FR-12/P2: pack lines into the recall-block token budget (score-descended
+	// input, "按分截断"); factIDs collect only KEPT facts so injected_count
+	// counts exactly what entered the prompt.
+	packer := newRecallLinePacker(policy.L3RecallBudgetTokens)
+	packer.allow(header)
+	var factIDs []string
 	for _, e := range entries {
-		if policy.L3InjectProvenance && e.factID != "" && e.factID != "<nil>" {
-			suffix := formatL3Provenance(e.factID, e.srcSess, e.confidence, e.version)
-			fmt.Fprintf(&b, "- %s%s\n", e.stmt, suffix)
+		var line string
+		if policy.L3InjectProvenance && e.id != "" {
+			line = fmt.Sprintf("- %s%s", e.stmt, formatL3Provenance(e.id, e.srcSess, e.confidence, e.version))
 		} else {
-			fmt.Fprintf(&b, "- %s\n", e.stmt)
+			line = fmt.Sprintf("- %s", e.stmt)
+		}
+		if !packer.allow(line) {
+			continue
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+		if e.id != "" {
+			factIDs = append(factIDs, e.id)
 		}
 	}
-	return strings.TrimSpace(b.String())
+	if len(factIDs) == 0 && b.Len() <= len(header) {
+		return "", nil
+	}
+	return strings.TrimSpace(b.String()), factIDs
 }
 
 // formatL3Provenance builds a compact provenance suffix for an L3 fact.

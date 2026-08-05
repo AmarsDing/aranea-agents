@@ -110,12 +110,17 @@ type ConsolidationResult struct {
 // SetEpisodeConsolidator to additionally extract durable L3 facts from L2
 // episodes during each consolidation pass. The episode phase is independent
 // of the trpcmemory phase and runs best-effort (never fails the parent call).
+//
+// FR-12.7: an optional ProfileCardDistiller can be wired via
+// SetProfileCardDistiller to maintain the resident profile card from active
+// profile-class facts (Sleep-time Phase 3, best-effort).
 type SleepTimeService struct {
 	memory              MemoryReaderWriter
 	llm                 trpcmodel.Model
 	llmResolver         LLMResolver // P1-1: per-target ModelCatalog resolution (takes precedence over llm)
 	queue               ConsolidationQueue
 	episodeConsolidator *EpisodeConsolidator // Phase 6A-06: optional L2→L3 fact extraction
+	profileDistiller    *ProfileCardDistiller // FR-12.7: optional resident profile card distillation
 	lg                  loggateway.Logger
 }
 
@@ -149,6 +154,17 @@ func (s *SleepTimeService) SetEpisodeConsolidator(c *EpisodeConsolidator) {
 	s.episodeConsolidator = c
 }
 
+// SetProfileCardDistiller wires a ProfileCardDistiller for resident profile
+// card maintenance (FR-12.7, Sleep-time Phase 3). Optional: when not set,
+// Consolidate skips card distillation. Must be called before
+// Start/Consolidate; not safe to call concurrently with active consolidation.
+func (s *SleepTimeService) SetProfileCardDistiller(d *ProfileCardDistiller) {
+	if s == nil {
+		return
+	}
+	s.profileDistiller = d
+}
+
 // SetLLMResolver wires a per-target LLM resolver (P1-1). When set, the
 // resolver's model takes precedence over the static constructor model for
 // each consolidation job; a nil resolver result falls back to the static
@@ -177,7 +193,7 @@ func (s *SleepTimeService) EnqueueConsolidationJob(ctx context.Context, uk trpcm
 	return nil
 }
 
-// Consolidate runs both consolidation phases:
+// Consolidate runs all consolidation phases:
 //
 //  1. trpcmemory consolidation (Letta-style merge/reflect/update_core) —
 //     operates on trpcmemory.Entry items. Read failures are retryable
@@ -187,10 +203,15 @@ func (s *SleepTimeService) EnqueueConsolidationJob(ctx context.Context, uk trpcm
 //     L2 episodes. Best-effort: never returns an error, runs independently
 //     of Phase 1. Only runs if an EpisodeConsolidator is wired.
 //
-// Phase 2 runs even when Phase 1 has no memories to consolidate, because
-// episodes are an independent data source. Phase 2 is skipped only when
-// Phase 1 returns a retryable error (so JobRunner retry doesn't produce
-// duplicate facts).
+//  3. Resident profile card distillation (FR-12.7) — maintains the
+//     always-injected profile card from active profile-class facts.
+//     Best-effort: never returns an error. Only runs if a
+//     ProfileCardDistiller is wired.
+//
+// Phase 2/3 run even when Phase 1 has no memories to consolidate, because
+// episodes and facts are independent data sources. They are skipped only
+// when Phase 1 returns a retryable error (so JobRunner retry doesn't
+// produce duplicate mutations).
 //
 // Behaviour:
 //   - Empty memories + no episodes → no-op (returns nil).
@@ -217,6 +238,11 @@ func (s *SleepTimeService) Consolidate(ctx context.Context, uk trpcmemory.UserKe
 	// Phase 2: L2 episode → L3 fact extraction (Phase 6A-06).
 	// Best-effort: never returns an error.
 	s.consolidateEpisodes(ctx, uk)
+
+	// Phase 3: resident profile card distillation (FR-12.7).
+	// Best-effort: never returns an error. Runs after Phase 2 so cards are
+	// distilled from the freshest fact set.
+	s.distillProfileCard(ctx, uk)
 
 	return nil
 }
@@ -288,6 +314,16 @@ func (s *SleepTimeService) consolidateEpisodes(ctx context.Context, uk trpcmemor
 			loggateway.Str("user", uk.UserID),
 			loggateway.Err(err))
 	}
+}
+
+// distillProfileCard runs the resident profile card distillation phase
+// (FR-12.7). Best-effort: the distiller logs its own warnings and never
+// returns an error, so it never affects JobRunner retry decisions.
+func (s *SleepTimeService) distillProfileCard(ctx context.Context, uk trpcmemory.UserKey) {
+	if s == nil || s.profileDistiller == nil {
+		return
+	}
+	s.profileDistiller.Distill(ctx, uk)
 }
 
 // Start runs the worker loop that drains the consolidation queue and calls

@@ -155,13 +155,15 @@ func (x *AuditLog) GetMetadataJson() string {
 }
 
 type ListAuditLogsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
-	Offset        int32                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
-	Action        string                 `protobuf:"bytes,3,opt,name=action,proto3" json:"action,omitempty"`
-	Resource      string                 `protobuf:"bytes,4,opt,name=resource,proto3" json:"resource,omitempty"`
-	Actor         string                 `protobuf:"bytes,5,opt,name=actor,proto3" json:"actor,omitempty"`
-	Keyword       string                 `protobuf:"bytes,6,opt,name=keyword,proto3" json:"keyword,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Limit    int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset   int32                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
+	Action   string                 `protobuf:"bytes,3,opt,name=action,proto3" json:"action,omitempty"`
+	Resource string                 `protobuf:"bytes,4,opt,name=resource,proto3" json:"resource,omitempty"`
+	Actor    string                 `protobuf:"bytes,5,opt,name=actor,proto3" json:"actor,omitempty"`
+	Keyword  string                 `protobuf:"bytes,6,opt,name=keyword,proto3" json:"keyword,omitempty"`
+	// Hide system-generated noise (sync.* actions); ignored when action is set.
+	ExcludeSystem bool `protobuf:"varint,7,opt,name=exclude_system,json=excludeSystem,proto3" json:"exclude_system,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -236,6 +238,13 @@ func (x *ListAuditLogsRequest) GetKeyword() string {
 		return x.Keyword
 	}
 	return ""
+}
+
+func (x *ListAuditLogsRequest) GetExcludeSystem() bool {
+	if x != nil {
+		return x.ExcludeSystem
+	}
+	return false
 }
 
 type ListAuditLogsResponse struct {
@@ -787,13 +796,22 @@ func (x *GetMonitorEventRequest) GetId() string {
 }
 
 type ListMonitorTracesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
-	Offset        int32                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
-	AgentId       string                 `protobuf:"bytes,3,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	Provider      string                 `protobuf:"bytes,4,opt,name=provider,proto3" json:"provider,omitempty"`
-	Model         string                 `protobuf:"bytes,5,opt,name=model,proto3" json:"model,omitempty"`
-	Status        string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Limit    int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset   int32                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
+	AgentId  string                 `protobuf:"bytes,3,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Provider string                 `protobuf:"bytes,4,opt,name=provider,proto3" json:"provider,omitempty"`
+	Model    string                 `protobuf:"bytes,5,opt,name=model,proto3" json:"model,omitempty"`
+	// Run status: running/ok/error/timeout/interrupted/cancelled; empty = all.
+	Status string `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	// Substring search over name/trace_key/agent_id/provider/model and the
+	// resolved display names (agent/team display_name, session title).
+	Keyword string `protobuf:"bytes,7,opt,name=keyword,proto3" json:"keyword,omitempty"`
+	// Hide internal domains (system/skill cron & sync noise); name column carries the run domain.
+	ExcludeInternal bool `protobuf:"varint,8,opt,name=exclude_internal,json=excludeInternal,proto3" json:"exclude_internal,omitempty"`
+	// Exact run domain filter (chat/team/graph/system/skill); wins over
+	// exclude_internal so internal domains stay reachable. Empty = no filter.
+	Domain        string `protobuf:"bytes,9,opt,name=domain,proto3" json:"domain,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -870,10 +888,36 @@ func (x *ListMonitorTracesRequest) GetStatus() string {
 	return ""
 }
 
+func (x *ListMonitorTracesRequest) GetKeyword() string {
+	if x != nil {
+		return x.Keyword
+	}
+	return ""
+}
+
+func (x *ListMonitorTracesRequest) GetExcludeInternal() bool {
+	if x != nil {
+		return x.ExcludeInternal
+	}
+	return false
+}
+
+func (x *ListMonitorTracesRequest) GetDomain() string {
+	if x != nil {
+		return x.Domain
+	}
+	return ""
+}
+
 type ListMonitorTracesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Items         []*MonitorPlatformRow  `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Items []*MonitorPlatformRow  `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	Total int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	// Rows per status under current filters (status condition excluded) — filter chips.
+	StatusCounts map[string]int32 `protobuf:"bytes,3,rep,name=status_counts,json=statusCounts,proto3" json:"status_counts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	// Rows per run domain under current filters (domain condition and
+	// exclude_internal excluded) so chips reveal hidden internal rows.
+	DomainCounts  map[string]int32 `protobuf:"bytes,4,rep,name=domain_counts,json=domainCounts,proto3" json:"domain_counts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -920,6 +964,20 @@ func (x *ListMonitorTracesResponse) GetTotal() int32 {
 		return x.Total
 	}
 	return 0
+}
+
+func (x *ListMonitorTracesResponse) GetStatusCounts() map[string]int32 {
+	if x != nil {
+		return x.StatusCounts
+	}
+	return nil
+}
+
+func (x *ListMonitorTracesResponse) GetDomainCounts() map[string]int32 {
+	if x != nil {
+		return x.DomainCounts
+	}
+	return nil
 }
 
 type MonitorTraceDetail struct {
@@ -3694,14 +3752,15 @@ const file_kratos_monitor_v1_monitor_proto_rawDesc = "" +
 	"user_agent\x18\n" +
 	" \x01(\tR\tuserAgent\x12\x1a\n" +
 	"\bseverity\x18\v \x01(\tR\bseverity\x12#\n" +
-	"\rmetadata_json\x18\f \x01(\tR\fmetadataJson\"\xa8\x01\n" +
+	"\rmetadata_json\x18\f \x01(\tR\fmetadataJson\"\xcf\x01\n" +
 	"\x14ListAuditLogsRequest\x12\x14\n" +
 	"\x05limit\x18\x01 \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\x02 \x01(\x05R\x06offset\x12\x16\n" +
 	"\x06action\x18\x03 \x01(\tR\x06action\x12\x1a\n" +
 	"\bresource\x18\x04 \x01(\tR\bresource\x12\x14\n" +
 	"\x05actor\x18\x05 \x01(\tR\x05actor\x12\x18\n" +
-	"\akeyword\x18\x06 \x01(\tR\akeyword\"`\n" +
+	"\akeyword\x18\x06 \x01(\tR\akeyword\x12%\n" +
+	"\x0eexclude_system\x18\a \x01(\bR\rexcludeSystem\"`\n" +
 	"\x15ListAuditLogsResponse\x121\n" +
 	"\x05items\x18\x01 \x03(\v2\x1b.kratos.monitor.v1.AuditLogR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\"2\n" +
@@ -3754,17 +3813,28 @@ const file_kratos_monitor_v1_monitor_proto_rawDesc = "" +
 	"\x05items\x18\x01 \x03(\v2%.kratos.monitor.v1.MonitorPlatformRowR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\"(\n" +
 	"\x16GetMonitorEventRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\xad\x01\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x8a\x02\n" +
 	"\x18ListMonitorTracesRequest\x12\x14\n" +
 	"\x05limit\x18\x01 \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\x02 \x01(\x05R\x06offset\x12\x19\n" +
 	"\bagent_id\x18\x03 \x01(\tR\aagentId\x12\x1a\n" +
 	"\bprovider\x18\x04 \x01(\tR\bprovider\x12\x14\n" +
 	"\x05model\x18\x05 \x01(\tR\x05model\x12\x16\n" +
-	"\x06status\x18\x06 \x01(\tR\x06status\"n\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12\x18\n" +
+	"\akeyword\x18\a \x01(\tR\akeyword\x12)\n" +
+	"\x10exclude_internal\x18\b \x01(\bR\x0fexcludeInternal\x12\x16\n" +
+	"\x06domain\x18\t \x01(\tR\x06domain\"\xba\x03\n" +
 	"\x19ListMonitorTracesResponse\x12;\n" +
 	"\x05items\x18\x01 \x03(\v2%.kratos.monitor.v1.MonitorPlatformRowR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total\"\xb6\x01\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\x12c\n" +
+	"\rstatus_counts\x18\x03 \x03(\v2>.kratos.monitor.v1.ListMonitorTracesResponse.StatusCountsEntryR\fstatusCounts\x12c\n" +
+	"\rdomain_counts\x18\x04 \x03(\v2>.kratos.monitor.v1.ListMonitorTracesResponse.DomainCountsEntryR\fdomainCounts\x1a?\n" +
+	"\x11StatusCountsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\x1a?\n" +
+	"\x11DomainCountsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"\xb6\x01\n" +
 	"\x12MonitorTraceDetail\x12;\n" +
 	"\x05trace\x18\x01 \x01(\v2%.kratos.monitor.v1.MonitorPlatformRowR\x05trace\x12\x1f\n" +
 	"\vconfig_json\x18\x02 \x01(\tR\n" +
@@ -4039,7 +4109,7 @@ func file_kratos_monitor_v1_monitor_proto_rawDescGZIP() []byte {
 	return file_kratos_monitor_v1_monitor_proto_rawDescData
 }
 
-var file_kratos_monitor_v1_monitor_proto_msgTypes = make([]protoimpl.MessageInfo, 50)
+var file_kratos_monitor_v1_monitor_proto_msgTypes = make([]protoimpl.MessageInfo, 52)
 var file_kratos_monitor_v1_monitor_proto_goTypes = []any{
 	(*AuditLog)(nil),                            // 0: kratos.monitor.v1.AuditLog
 	(*ListAuditLogsRequest)(nil),                // 1: kratos.monitor.v1.ListAuditLogsRequest
@@ -4091,72 +4161,76 @@ var file_kratos_monitor_v1_monitor_proto_goTypes = []any{
 	(*ListHealRecordsRequest)(nil),              // 47: kratos.monitor.v1.ListHealRecordsRequest
 	(*HealRecordEntry)(nil),                     // 48: kratos.monitor.v1.HealRecordEntry
 	(*ListHealRecordsResponse)(nil),             // 49: kratos.monitor.v1.ListHealRecordsResponse
+	nil,                                         // 50: kratos.monitor.v1.ListMonitorTracesResponse.StatusCountsEntry
+	nil,                                         // 51: kratos.monitor.v1.ListMonitorTracesResponse.DomainCountsEntry
 }
 var file_kratos_monitor_v1_monitor_proto_depIdxs = []int32{
 	0,  // 0: kratos.monitor.v1.ListAuditLogsResponse.items:type_name -> kratos.monitor.v1.AuditLog
 	5,  // 1: kratos.monitor.v1.ListMonitorEventsResponse.items:type_name -> kratos.monitor.v1.MonitorPlatformRow
 	5,  // 2: kratos.monitor.v1.ListMonitorTracesResponse.items:type_name -> kratos.monitor.v1.MonitorPlatformRow
-	5,  // 3: kratos.monitor.v1.MonitorTraceDetail.trace:type_name -> kratos.monitor.v1.MonitorPlatformRow
-	13, // 4: kratos.monitor.v1.GetMonitorLogsResponse.items:type_name -> kratos.monitor.v1.MonitorLogLine
-	16, // 5: kratos.monitor.v1.ListFlowLogsResponse.items:type_name -> kratos.monitor.v1.FlowLogEntry
-	19, // 6: kratos.monitor.v1.ListMonitorAlertRulesResponse.items:type_name -> kratos.monitor.v1.MonitorAlertRule
-	21, // 7: kratos.monitor.v1.ListAlertMetricsResponse.items:type_name -> kratos.monitor.v1.AlertMetricInfo
-	19, // 8: kratos.monitor.v1.PutMonitorAlertRulesRequest.items:type_name -> kratos.monitor.v1.MonitorAlertRule
-	19, // 9: kratos.monitor.v1.PutMonitorAlertRulesResponse.items:type_name -> kratos.monitor.v1.MonitorAlertRule
-	27, // 10: kratos.monitor.v1.GetCodeExecutorCapabilitiesResponse.backends:type_name -> kratos.monitor.v1.CodeExecutorCapability
-	32, // 11: kratos.monitor.v1.RootCauseCondition.auto_healed:type_name -> kratos.monitor.v1.AutoHealedCondition
-	33, // 12: kratos.monitor.v1.RootCauseCondition.heal_attempts:type_name -> kratos.monitor.v1.HealAttemptsCondition
-	34, // 13: kratos.monitor.v1.RootCauseCondition.self_check_status:type_name -> kratos.monitor.v1.SelfCheckStatusCondition
-	35, // 14: kratos.monitor.v1.DiagnoseAndHealResponse.root_cause_condition:type_name -> kratos.monitor.v1.RootCauseCondition
-	37, // 15: kratos.monitor.v1.SelfCheckReportEntry.check_results:type_name -> kratos.monitor.v1.SelfCheckResultEntry
-	38, // 16: kratos.monitor.v1.SelfCheckReportEntry.repair_actions:type_name -> kratos.monitor.v1.RepairActionEntry
-	39, // 17: kratos.monitor.v1.TriggerSelfCheckResponse.report:type_name -> kratos.monitor.v1.SelfCheckReportEntry
-	39, // 18: kratos.monitor.v1.ListSelfCheckReportsResponse.items:type_name -> kratos.monitor.v1.SelfCheckReportEntry
-	46, // 19: kratos.monitor.v1.HealStatsResponse.top_fail_rules:type_name -> kratos.monitor.v1.RuleFailCount
-	48, // 20: kratos.monitor.v1.ListHealRecordsResponse.items:type_name -> kratos.monitor.v1.HealRecordEntry
-	1,  // 21: kratos.monitor.v1.MonitorService.ListAuditLogs:input_type -> kratos.monitor.v1.ListAuditLogsRequest
-	3,  // 22: kratos.monitor.v1.MonitorService.DeleteAuditLogs:input_type -> kratos.monitor.v1.DeleteAuditLogsRequest
-	6,  // 23: kratos.monitor.v1.MonitorService.ListMonitorEvents:input_type -> kratos.monitor.v1.ListMonitorEventsRequest
-	8,  // 24: kratos.monitor.v1.MonitorService.GetMonitorEvent:input_type -> kratos.monitor.v1.GetMonitorEventRequest
-	9,  // 25: kratos.monitor.v1.MonitorService.ListMonitorTraces:input_type -> kratos.monitor.v1.ListMonitorTracesRequest
-	12, // 26: kratos.monitor.v1.MonitorService.GetMonitorTrace:input_type -> kratos.monitor.v1.GetMonitorTraceRequest
-	15, // 27: kratos.monitor.v1.MonitorService.GetMonitorLogs:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
-	17, // 28: kratos.monitor.v1.MonitorService.ListFlowLogs:input_type -> kratos.monitor.v1.ListFlowLogsRequest
-	15, // 29: kratos.monitor.v1.MonitorService.ListMonitorAlertRules:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
-	15, // 30: kratos.monitor.v1.MonitorService.ListAlertMetrics:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
-	23, // 31: kratos.monitor.v1.MonitorService.PutMonitorAlertRules:input_type -> kratos.monitor.v1.PutMonitorAlertRulesRequest
-	25, // 32: kratos.monitor.v1.MonitorService.GetRunnerMetrics:input_type -> kratos.monitor.v1.GetRunnerMetricsRequest
-	15, // 33: kratos.monitor.v1.MonitorService.GetCodeExecutorCapabilities:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
-	29, // 34: kratos.monitor.v1.MonitorService.GenerateDiagnosticBundle:input_type -> kratos.monitor.v1.GenerateDiagnosticBundleRequest
-	31, // 35: kratos.monitor.v1.MonitorService.DiagnoseAndHeal:input_type -> kratos.monitor.v1.DiagnoseAndHealRequest
-	40, // 36: kratos.monitor.v1.MonitorService.TriggerSelfCheck:input_type -> kratos.monitor.v1.TriggerSelfCheckRequest
-	42, // 37: kratos.monitor.v1.MonitorService.ListSelfCheckReports:input_type -> kratos.monitor.v1.ListSelfCheckReportsRequest
-	44, // 38: kratos.monitor.v1.MonitorService.GetHealStats:input_type -> kratos.monitor.v1.HealStatsRequest
-	47, // 39: kratos.monitor.v1.MonitorService.ListHealRecords:input_type -> kratos.monitor.v1.ListHealRecordsRequest
-	2,  // 40: kratos.monitor.v1.MonitorService.ListAuditLogs:output_type -> kratos.monitor.v1.ListAuditLogsResponse
-	4,  // 41: kratos.monitor.v1.MonitorService.DeleteAuditLogs:output_type -> kratos.monitor.v1.DeleteAuditLogsResponse
-	7,  // 42: kratos.monitor.v1.MonitorService.ListMonitorEvents:output_type -> kratos.monitor.v1.ListMonitorEventsResponse
-	5,  // 43: kratos.monitor.v1.MonitorService.GetMonitorEvent:output_type -> kratos.monitor.v1.MonitorPlatformRow
-	10, // 44: kratos.monitor.v1.MonitorService.ListMonitorTraces:output_type -> kratos.monitor.v1.ListMonitorTracesResponse
-	11, // 45: kratos.monitor.v1.MonitorService.GetMonitorTrace:output_type -> kratos.monitor.v1.MonitorTraceDetail
-	14, // 46: kratos.monitor.v1.MonitorService.GetMonitorLogs:output_type -> kratos.monitor.v1.GetMonitorLogsResponse
-	18, // 47: kratos.monitor.v1.MonitorService.ListFlowLogs:output_type -> kratos.monitor.v1.ListFlowLogsResponse
-	20, // 48: kratos.monitor.v1.MonitorService.ListMonitorAlertRules:output_type -> kratos.monitor.v1.ListMonitorAlertRulesResponse
-	22, // 49: kratos.monitor.v1.MonitorService.ListAlertMetrics:output_type -> kratos.monitor.v1.ListAlertMetricsResponse
-	24, // 50: kratos.monitor.v1.MonitorService.PutMonitorAlertRules:output_type -> kratos.monitor.v1.PutMonitorAlertRulesResponse
-	26, // 51: kratos.monitor.v1.MonitorService.GetRunnerMetrics:output_type -> kratos.monitor.v1.RunnerMetricsSummary
-	28, // 52: kratos.monitor.v1.MonitorService.GetCodeExecutorCapabilities:output_type -> kratos.monitor.v1.GetCodeExecutorCapabilitiesResponse
-	30, // 53: kratos.monitor.v1.MonitorService.GenerateDiagnosticBundle:output_type -> kratos.monitor.v1.GenerateDiagnosticBundleResponse
-	36, // 54: kratos.monitor.v1.MonitorService.DiagnoseAndHeal:output_type -> kratos.monitor.v1.DiagnoseAndHealResponse
-	41, // 55: kratos.monitor.v1.MonitorService.TriggerSelfCheck:output_type -> kratos.monitor.v1.TriggerSelfCheckResponse
-	43, // 56: kratos.monitor.v1.MonitorService.ListSelfCheckReports:output_type -> kratos.monitor.v1.ListSelfCheckReportsResponse
-	45, // 57: kratos.monitor.v1.MonitorService.GetHealStats:output_type -> kratos.monitor.v1.HealStatsResponse
-	49, // 58: kratos.monitor.v1.MonitorService.ListHealRecords:output_type -> kratos.monitor.v1.ListHealRecordsResponse
-	40, // [40:59] is the sub-list for method output_type
-	21, // [21:40] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	50, // 3: kratos.monitor.v1.ListMonitorTracesResponse.status_counts:type_name -> kratos.monitor.v1.ListMonitorTracesResponse.StatusCountsEntry
+	51, // 4: kratos.monitor.v1.ListMonitorTracesResponse.domain_counts:type_name -> kratos.monitor.v1.ListMonitorTracesResponse.DomainCountsEntry
+	5,  // 5: kratos.monitor.v1.MonitorTraceDetail.trace:type_name -> kratos.monitor.v1.MonitorPlatformRow
+	13, // 6: kratos.monitor.v1.GetMonitorLogsResponse.items:type_name -> kratos.monitor.v1.MonitorLogLine
+	16, // 7: kratos.monitor.v1.ListFlowLogsResponse.items:type_name -> kratos.monitor.v1.FlowLogEntry
+	19, // 8: kratos.monitor.v1.ListMonitorAlertRulesResponse.items:type_name -> kratos.monitor.v1.MonitorAlertRule
+	21, // 9: kratos.monitor.v1.ListAlertMetricsResponse.items:type_name -> kratos.monitor.v1.AlertMetricInfo
+	19, // 10: kratos.monitor.v1.PutMonitorAlertRulesRequest.items:type_name -> kratos.monitor.v1.MonitorAlertRule
+	19, // 11: kratos.monitor.v1.PutMonitorAlertRulesResponse.items:type_name -> kratos.monitor.v1.MonitorAlertRule
+	27, // 12: kratos.monitor.v1.GetCodeExecutorCapabilitiesResponse.backends:type_name -> kratos.monitor.v1.CodeExecutorCapability
+	32, // 13: kratos.monitor.v1.RootCauseCondition.auto_healed:type_name -> kratos.monitor.v1.AutoHealedCondition
+	33, // 14: kratos.monitor.v1.RootCauseCondition.heal_attempts:type_name -> kratos.monitor.v1.HealAttemptsCondition
+	34, // 15: kratos.monitor.v1.RootCauseCondition.self_check_status:type_name -> kratos.monitor.v1.SelfCheckStatusCondition
+	35, // 16: kratos.monitor.v1.DiagnoseAndHealResponse.root_cause_condition:type_name -> kratos.monitor.v1.RootCauseCondition
+	37, // 17: kratos.monitor.v1.SelfCheckReportEntry.check_results:type_name -> kratos.monitor.v1.SelfCheckResultEntry
+	38, // 18: kratos.monitor.v1.SelfCheckReportEntry.repair_actions:type_name -> kratos.monitor.v1.RepairActionEntry
+	39, // 19: kratos.monitor.v1.TriggerSelfCheckResponse.report:type_name -> kratos.monitor.v1.SelfCheckReportEntry
+	39, // 20: kratos.monitor.v1.ListSelfCheckReportsResponse.items:type_name -> kratos.monitor.v1.SelfCheckReportEntry
+	46, // 21: kratos.monitor.v1.HealStatsResponse.top_fail_rules:type_name -> kratos.monitor.v1.RuleFailCount
+	48, // 22: kratos.monitor.v1.ListHealRecordsResponse.items:type_name -> kratos.monitor.v1.HealRecordEntry
+	1,  // 23: kratos.monitor.v1.MonitorService.ListAuditLogs:input_type -> kratos.monitor.v1.ListAuditLogsRequest
+	3,  // 24: kratos.monitor.v1.MonitorService.DeleteAuditLogs:input_type -> kratos.monitor.v1.DeleteAuditLogsRequest
+	6,  // 25: kratos.monitor.v1.MonitorService.ListMonitorEvents:input_type -> kratos.monitor.v1.ListMonitorEventsRequest
+	8,  // 26: kratos.monitor.v1.MonitorService.GetMonitorEvent:input_type -> kratos.monitor.v1.GetMonitorEventRequest
+	9,  // 27: kratos.monitor.v1.MonitorService.ListMonitorTraces:input_type -> kratos.monitor.v1.ListMonitorTracesRequest
+	12, // 28: kratos.monitor.v1.MonitorService.GetMonitorTrace:input_type -> kratos.monitor.v1.GetMonitorTraceRequest
+	15, // 29: kratos.monitor.v1.MonitorService.GetMonitorLogs:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
+	17, // 30: kratos.monitor.v1.MonitorService.ListFlowLogs:input_type -> kratos.monitor.v1.ListFlowLogsRequest
+	15, // 31: kratos.monitor.v1.MonitorService.ListMonitorAlertRules:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
+	15, // 32: kratos.monitor.v1.MonitorService.ListAlertMetrics:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
+	23, // 33: kratos.monitor.v1.MonitorService.PutMonitorAlertRules:input_type -> kratos.monitor.v1.PutMonitorAlertRulesRequest
+	25, // 34: kratos.monitor.v1.MonitorService.GetRunnerMetrics:input_type -> kratos.monitor.v1.GetRunnerMetricsRequest
+	15, // 35: kratos.monitor.v1.MonitorService.GetCodeExecutorCapabilities:input_type -> kratos.monitor.v1.GetMonitorLogsRequest
+	29, // 36: kratos.monitor.v1.MonitorService.GenerateDiagnosticBundle:input_type -> kratos.monitor.v1.GenerateDiagnosticBundleRequest
+	31, // 37: kratos.monitor.v1.MonitorService.DiagnoseAndHeal:input_type -> kratos.monitor.v1.DiagnoseAndHealRequest
+	40, // 38: kratos.monitor.v1.MonitorService.TriggerSelfCheck:input_type -> kratos.monitor.v1.TriggerSelfCheckRequest
+	42, // 39: kratos.monitor.v1.MonitorService.ListSelfCheckReports:input_type -> kratos.monitor.v1.ListSelfCheckReportsRequest
+	44, // 40: kratos.monitor.v1.MonitorService.GetHealStats:input_type -> kratos.monitor.v1.HealStatsRequest
+	47, // 41: kratos.monitor.v1.MonitorService.ListHealRecords:input_type -> kratos.monitor.v1.ListHealRecordsRequest
+	2,  // 42: kratos.monitor.v1.MonitorService.ListAuditLogs:output_type -> kratos.monitor.v1.ListAuditLogsResponse
+	4,  // 43: kratos.monitor.v1.MonitorService.DeleteAuditLogs:output_type -> kratos.monitor.v1.DeleteAuditLogsResponse
+	7,  // 44: kratos.monitor.v1.MonitorService.ListMonitorEvents:output_type -> kratos.monitor.v1.ListMonitorEventsResponse
+	5,  // 45: kratos.monitor.v1.MonitorService.GetMonitorEvent:output_type -> kratos.monitor.v1.MonitorPlatformRow
+	10, // 46: kratos.monitor.v1.MonitorService.ListMonitorTraces:output_type -> kratos.monitor.v1.ListMonitorTracesResponse
+	11, // 47: kratos.monitor.v1.MonitorService.GetMonitorTrace:output_type -> kratos.monitor.v1.MonitorTraceDetail
+	14, // 48: kratos.monitor.v1.MonitorService.GetMonitorLogs:output_type -> kratos.monitor.v1.GetMonitorLogsResponse
+	18, // 49: kratos.monitor.v1.MonitorService.ListFlowLogs:output_type -> kratos.monitor.v1.ListFlowLogsResponse
+	20, // 50: kratos.monitor.v1.MonitorService.ListMonitorAlertRules:output_type -> kratos.monitor.v1.ListMonitorAlertRulesResponse
+	22, // 51: kratos.monitor.v1.MonitorService.ListAlertMetrics:output_type -> kratos.monitor.v1.ListAlertMetricsResponse
+	24, // 52: kratos.monitor.v1.MonitorService.PutMonitorAlertRules:output_type -> kratos.monitor.v1.PutMonitorAlertRulesResponse
+	26, // 53: kratos.monitor.v1.MonitorService.GetRunnerMetrics:output_type -> kratos.monitor.v1.RunnerMetricsSummary
+	28, // 54: kratos.monitor.v1.MonitorService.GetCodeExecutorCapabilities:output_type -> kratos.monitor.v1.GetCodeExecutorCapabilitiesResponse
+	30, // 55: kratos.monitor.v1.MonitorService.GenerateDiagnosticBundle:output_type -> kratos.monitor.v1.GenerateDiagnosticBundleResponse
+	36, // 56: kratos.monitor.v1.MonitorService.DiagnoseAndHeal:output_type -> kratos.monitor.v1.DiagnoseAndHealResponse
+	41, // 57: kratos.monitor.v1.MonitorService.TriggerSelfCheck:output_type -> kratos.monitor.v1.TriggerSelfCheckResponse
+	43, // 58: kratos.monitor.v1.MonitorService.ListSelfCheckReports:output_type -> kratos.monitor.v1.ListSelfCheckReportsResponse
+	45, // 59: kratos.monitor.v1.MonitorService.GetHealStats:output_type -> kratos.monitor.v1.HealStatsResponse
+	49, // 60: kratos.monitor.v1.MonitorService.ListHealRecords:output_type -> kratos.monitor.v1.ListHealRecordsResponse
+	42, // [42:61] is the sub-list for method output_type
+	23, // [23:42] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_kratos_monitor_v1_monitor_proto_init() }
@@ -4175,7 +4249,7 @@ func file_kratos_monitor_v1_monitor_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_monitor_v1_monitor_proto_rawDesc), len(file_kratos_monitor_v1_monitor_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   50,
+			NumMessages:   52,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

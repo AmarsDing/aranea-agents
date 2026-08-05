@@ -849,6 +849,10 @@ func runPendingDataMigrations(d *Data) error {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.monitor_trace_interrupted_backfill"), loggateway.Err(err))
 		return fmt.Errorf("monitor trace interrupted backfill migration: %w", err)
 	}
+	if err := RunL2RecallDefaultOnMigration(ctx, entClient, d.Dialect(), d.lg); err != nil {
+		d.lg.Error("migration step failed", loggateway.StepID("data.migration.l2_recall_default_on"), loggateway.Err(err))
+		return fmt.Errorf("l2 recall default-on migration: %w", err)
+	}
 	return nil
 }
 

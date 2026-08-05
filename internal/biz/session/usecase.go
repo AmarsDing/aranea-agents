@@ -603,6 +603,11 @@ type ActivityEntry struct {
 	ToolName   string
 	ToolResult string
 	AgentKey   string
+	// NoticeType classifies kind=notice entries (e.g. "memory_recalled",
+	// "context_window", "model_router"). Empty for non-notice kinds and for
+	// legacy notices without a type. Populated from Activity.Meta["notice_type"]
+	// so consumers can filter system-internal notices from user-facing views.
+	NoticeType string
 }
 
 func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository, statusPublisher SessionStatusPublisher, metricsUsecase *SessionMetricsUsecase, runtimeWriter SessionRuntimeWriter, activityReader ActivityLister, lg loggateway.Logger, flowLog FlowLogWriter) *SessionUsecase {

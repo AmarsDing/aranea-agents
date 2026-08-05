@@ -54,3 +54,30 @@ func StepToActivity(s Step) Activity {
 		Meta:            meta,
 	}
 }
+
+// taskToActivity converts a v2 Task (user message) to the v1 Activity shape.
+//
+// v1 carried user inputs as kind=task activities; the v2 model persists them
+// as tasks_v2 rows instead (Task → Turn → Step). Timeline reconstruction must
+// merge both sources or every role=user message is dropped (see
+// sessionActivityLister.ListBySession).
+//
+// Field mapping notes:
+//   - Kind: literal "task" (ActivityKindTask) — v1 backward compat contract,
+//     activityToChatMessage maps it to role=user.
+//   - Status: TaskStatus strings match ActivityStatus values, direct cast.
+//     "interrupted" is a recovery placeholder; downstream maps it to ok,
+//     which is correct for a user-authored message.
+//   - TurnID: left empty — a Task spans N turns and no single turn owns the
+//     user message. No consumer keys user messages by turn.
+func taskToActivity(t Task) Activity {
+	return Activity{
+		ID:        t.ID,
+		Kind:      ActivityKindTask,
+		Status:    ActivityStatus(t.Status),
+		SessionID: t.SessionID,
+		Timestamp: t.CreatedAt,
+		Seq:       t.Seq,
+		Content:   t.UserMessage,
+	}
+}

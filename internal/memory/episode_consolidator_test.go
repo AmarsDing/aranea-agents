@@ -482,3 +482,69 @@ func TestEpisodeConsolidator_LLMResolverNilFallsBack(t *testing.T) {
 		t.Fatalf("expected 1 fact from static LLM fallback, got %d", got)
 	}
 }
+
+// TestEpisodeConsolidator_PipelinePathWritesWhitelistedFacts verifies the
+// P1-3 unified write pipeline path: extracted facts with a whitelisted
+// subject_type are mapped to their durable fact kind and persisted through
+// the pipeline (no direct factWriter upserts, no separate action_log).
+func TestEpisodeConsolidator_PipelinePathWritesWhitelistedFacts(t *testing.T) {
+	reader := &fakeL2RecallStore{rows: [][]byte{
+		makeEpisodeJSON("ep-1", "User prefers Go", "discovered", 0.8),
+	}}
+	pipelineWriter := &fakeL3FactWriter{}
+	pipeline := biz.NewFactWritePipeline(biz.FactWritePipelineDeps{
+		Writer: pipelineWriter,
+		LG:     loggateway.NewNoop(),
+	})
+	llm := &fakeModel{response: buildLLMResponse(`{"facts":[
+		{"statement":"User prefers Go for backend","subject_type":"preference","importance":0.9,"confidence":0.9,"source_episode_id":"ep-1","reason":"durable preference"}
+	]}`)}
+	// factWriter intentionally nil: the pipeline path must not require it.
+	c := NewEpisodeConsolidator(reader, nil, nil, llm, loggateway.NewNoop())
+	c.SetFactPipeline(pipeline)
+
+	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
+	if err := c.ConsolidateEpisodes(context.Background(), uk); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if got := len(pipelineWriter.upserted); got != 1 {
+		t.Fatalf("expected 1 pipeline upsert, got %d", got)
+	}
+	up := pipelineWriter.upserted[0]
+	if up.FactKind != "preference" {
+		t.Errorf("fact_kind=%q want preference", up.FactKind)
+	}
+	if up.SourceKind != "episode" {
+		t.Errorf("source_kind=%q want episode", up.SourceKind)
+	}
+	if up.SourceEpisodeID != "ep-1" {
+		t.Errorf("source_episode_id=%q want ep-1", up.SourceEpisodeID)
+	}
+}
+
+// TestEpisodeConsolidator_PipelineGateDropsEphemeralKind verifies that an
+// extracted fact without a durable subject_type maps to kind "fact" and is
+// dropped by the pipeline whitelist gate.
+func TestEpisodeConsolidator_PipelineGateDropsEphemeralKind(t *testing.T) {
+	reader := &fakeL2RecallStore{rows: [][]byte{
+		makeEpisodeJSON("ep-1", "User ordered takeout once", "done", 0.8),
+	}}
+	pipelineWriter := &fakeL3FactWriter{}
+	pipeline := biz.NewFactWritePipeline(biz.FactWritePipelineDeps{
+		Writer: pipelineWriter,
+		LG:     loggateway.NewNoop(),
+	})
+	llm := &fakeModel{response: buildLLMResponse(`{"facts":[
+		{"statement":"User ordered takeout yesterday","subject_type":"other","importance":0.9,"confidence":0.9,"source_episode_id":"ep-1","reason":"ephemeral event"}
+	]}`)}
+	c := NewEpisodeConsolidator(reader, nil, nil, llm, loggateway.NewNoop())
+	c.SetFactPipeline(pipeline)
+
+	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
+	if err := c.ConsolidateEpisodes(context.Background(), uk); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if got := len(pipelineWriter.upserted); got != 0 {
+		t.Fatalf("ephemeral kind must be dropped by the whitelist gate, got %d upserts", got)
+	}
+}

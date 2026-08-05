@@ -164,6 +164,7 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 			MemoryL3Recall:         s.orch.td().Persist.Memory.L3Recall,
 			MemoryCompositeRecall:  s.orch.td().Persist.Memory.CompositeRecall,
 			MemoryPreferenceLister: s.orch.td().Persist.Memory.PreferenceLister,
+			MemoryReconsolidator:   s.orch.td().Persist.Memory.Reconsolidator,
 			KnowledgeRetriever:     s.orch.rt().KnowledgeRetriever,
 		},
 		TRPCPluginDeps: chatagent.TRPCPluginDeps{

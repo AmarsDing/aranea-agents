@@ -988,6 +988,20 @@ func (_c *AgentRuntimeSettingCreate) SetNillableL3MaxPerRecallChars(v *int) *Age
 	return _c
 }
 
+// SetL3RecallBudgetTokens sets the "l3_recall_budget_tokens" field.
+func (_c *AgentRuntimeSettingCreate) SetL3RecallBudgetTokens(v int) *AgentRuntimeSettingCreate {
+	_c.mutation.SetL3RecallBudgetTokens(v)
+	return _c
+}
+
+// SetNillableL3RecallBudgetTokens sets the "l3_recall_budget_tokens" field if the given value is not nil.
+func (_c *AgentRuntimeSettingCreate) SetNillableL3RecallBudgetTokens(v *int) *AgentRuntimeSettingCreate {
+	if v != nil {
+		_c.SetL3RecallBudgetTokens(*v)
+	}
+	return _c
+}
+
 // SetL4Enabled sets the "l4_enabled" field.
 func (_c *AgentRuntimeSettingCreate) SetL4Enabled(v bool) *AgentRuntimeSettingCreate {
 	_c.mutation.SetL4Enabled(v)
@@ -2341,6 +2355,10 @@ func (_c *AgentRuntimeSettingCreate) defaults() {
 		v := agentruntimesetting.DefaultL3MaxPerRecallChars
 		_c.mutation.SetL3MaxPerRecallChars(v)
 	}
+	if _, ok := _c.mutation.L3RecallBudgetTokens(); !ok {
+		v := agentruntimesetting.DefaultL3RecallBudgetTokens
+		_c.mutation.SetL3RecallBudgetTokens(v)
+	}
 	if _, ok := _c.mutation.L4Enabled(); !ok {
 		v := agentruntimesetting.DefaultL4Enabled
 		_c.mutation.SetL4Enabled(v)
@@ -2847,6 +2865,9 @@ func (_c *AgentRuntimeSettingCreate) check() error {
 	}
 	if _, ok := _c.mutation.L3MaxPerRecallChars(); !ok {
 		return &ValidationError{Name: "l3_max_per_recall_chars", err: errors.New(`ent: missing required field "AgentRuntimeSetting.l3_max_per_recall_chars"`)}
+	}
+	if _, ok := _c.mutation.L3RecallBudgetTokens(); !ok {
+		return &ValidationError{Name: "l3_recall_budget_tokens", err: errors.New(`ent: missing required field "AgentRuntimeSetting.l3_recall_budget_tokens"`)}
 	}
 	if _, ok := _c.mutation.L4Enabled(); !ok {
 		return &ValidationError{Name: "l4_enabled", err: errors.New(`ent: missing required field "AgentRuntimeSetting.l4_enabled"`)}
@@ -3386,6 +3407,10 @@ func (_c *AgentRuntimeSettingCreate) createSpec() (*AgentRuntimeSetting, *sqlgra
 	if value, ok := _c.mutation.L3MaxPerRecallChars(); ok {
 		_spec.SetField(agentruntimesetting.FieldL3MaxPerRecallChars, field.TypeInt, value)
 		_node.L3MaxPerRecallChars = value
+	}
+	if value, ok := _c.mutation.L3RecallBudgetTokens(); ok {
+		_spec.SetField(agentruntimesetting.FieldL3RecallBudgetTokens, field.TypeInt, value)
+		_node.L3RecallBudgetTokens = value
 	}
 	if value, ok := _c.mutation.L4Enabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldL4Enabled, field.TypeBool, value)
@@ -4764,6 +4789,24 @@ func (u *AgentRuntimeSettingUpsert) UpdateL3MaxPerRecallChars() *AgentRuntimeSet
 // AddL3MaxPerRecallChars adds v to the "l3_max_per_recall_chars" field.
 func (u *AgentRuntimeSettingUpsert) AddL3MaxPerRecallChars(v int) *AgentRuntimeSettingUpsert {
 	u.Add(agentruntimesetting.FieldL3MaxPerRecallChars, v)
+	return u
+}
+
+// SetL3RecallBudgetTokens sets the "l3_recall_budget_tokens" field.
+func (u *AgentRuntimeSettingUpsert) SetL3RecallBudgetTokens(v int) *AgentRuntimeSettingUpsert {
+	u.Set(agentruntimesetting.FieldL3RecallBudgetTokens, v)
+	return u
+}
+
+// UpdateL3RecallBudgetTokens sets the "l3_recall_budget_tokens" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsert) UpdateL3RecallBudgetTokens() *AgentRuntimeSettingUpsert {
+	u.SetExcluded(agentruntimesetting.FieldL3RecallBudgetTokens)
+	return u
+}
+
+// AddL3RecallBudgetTokens adds v to the "l3_recall_budget_tokens" field.
+func (u *AgentRuntimeSettingUpsert) AddL3RecallBudgetTokens(v int) *AgentRuntimeSettingUpsert {
+	u.Add(agentruntimesetting.FieldL3RecallBudgetTokens, v)
 	return u
 }
 
@@ -7054,6 +7097,27 @@ func (u *AgentRuntimeSettingUpsertOne) AddL3MaxPerRecallChars(v int) *AgentRunti
 func (u *AgentRuntimeSettingUpsertOne) UpdateL3MaxPerRecallChars() *AgentRuntimeSettingUpsertOne {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateL3MaxPerRecallChars()
+	})
+}
+
+// SetL3RecallBudgetTokens sets the "l3_recall_budget_tokens" field.
+func (u *AgentRuntimeSettingUpsertOne) SetL3RecallBudgetTokens(v int) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetL3RecallBudgetTokens(v)
+	})
+}
+
+// AddL3RecallBudgetTokens adds v to the "l3_recall_budget_tokens" field.
+func (u *AgentRuntimeSettingUpsertOne) AddL3RecallBudgetTokens(v int) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.AddL3RecallBudgetTokens(v)
+	})
+}
+
+// UpdateL3RecallBudgetTokens sets the "l3_recall_budget_tokens" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertOne) UpdateL3RecallBudgetTokens() *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateL3RecallBudgetTokens()
 	})
 }
 
@@ -9684,6 +9748,27 @@ func (u *AgentRuntimeSettingUpsertBulk) AddL3MaxPerRecallChars(v int) *AgentRunt
 func (u *AgentRuntimeSettingUpsertBulk) UpdateL3MaxPerRecallChars() *AgentRuntimeSettingUpsertBulk {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateL3MaxPerRecallChars()
+	})
+}
+
+// SetL3RecallBudgetTokens sets the "l3_recall_budget_tokens" field.
+func (u *AgentRuntimeSettingUpsertBulk) SetL3RecallBudgetTokens(v int) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetL3RecallBudgetTokens(v)
+	})
+}
+
+// AddL3RecallBudgetTokens adds v to the "l3_recall_budget_tokens" field.
+func (u *AgentRuntimeSettingUpsertBulk) AddL3RecallBudgetTokens(v int) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.AddL3RecallBudgetTokens(v)
+	})
+}
+
+// UpdateL3RecallBudgetTokens sets the "l3_recall_budget_tokens" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertBulk) UpdateL3RecallBudgetTokens() *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateL3RecallBudgetTokens()
 	})
 }
 

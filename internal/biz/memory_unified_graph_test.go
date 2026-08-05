@@ -152,6 +152,30 @@ func TestUnifiedMemoryGraph_EdgeClassification(t *testing.T) {
 	}
 }
 
+// TestUnifiedMemoryGraph_FactQueryCrossScopeAgentFilter pins the H1 fix: the
+// unified graph must load facts by the ORIGINATING agent_id column across ALL
+// scopes (session/user/agent) — not scope_type='agent' — because immediate
+// facts live in session scope and consolidated facts in user scope (F1). The
+// old scope='agent' query silently dropped those fact nodes and their edges.
+func TestUnifiedMemoryGraph_FactQueryCrossScopeAgentFilter(t *testing.T) {
+	deps := &fakeCenterAdminDeps{
+		entityRows: [][]byte{entityRow("e1", "实体一", 1)},
+		factRows:   [][]byte{factRow("f1", "事实一", 1, nil, "")},
+	}
+	l4 := &fakeL4RelReader{rows: [][]byte{relationRow("r1", "e1", "f1", "RELATED_TO", 0.9)}}
+	uc := newGraphUsecase(deps, &fakeL2AdminReader{}, l4)
+
+	if _, err := uc.GetUnifiedMemoryGraph(context.Background(), "agent-1", "", 3, 0, nil); err != nil {
+		t.Fatalf("GetUnifiedMemoryGraph: %v", err)
+	}
+	if deps.factCallScopeType != "" {
+		t.Errorf("fact query scope_type = %q, want empty (cross-scope agent filter)", deps.factCallScopeType)
+	}
+	if deps.factCallAgentID != "agent-1" {
+		t.Errorf("fact query agent_id = %q, want agent-1", deps.factCallAgentID)
+	}
+}
+
 func TestUnifiedMemoryGraph_BFSTruncatesAtHops(t *testing.T) {
 	deps := &fakeCenterAdminDeps{
 		entityRows: [][]byte{

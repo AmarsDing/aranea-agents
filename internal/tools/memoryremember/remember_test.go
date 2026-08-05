@@ -59,7 +59,7 @@ type fakeConflictStore struct {
 func (f *fakeConflictStore) IncrementConflictCount(_ context.Context, _ string) (int32, error) {
 	return 1, nil
 }
-func (f *fakeConflictStore) ListConflictingFacts(_ context.Context, _, _ string, _, _ int32) ([][]byte, int32, error) {
+func (f *fakeConflictStore) ListConflictingFacts(_ context.Context, _, _, _ string, _, _ int32) ([][]byte, int32, error) {
 	return nil, 0, nil
 }
 func (f *fakeConflictStore) BatchIncrementConflictCounts(_ context.Context, ids []string) error {

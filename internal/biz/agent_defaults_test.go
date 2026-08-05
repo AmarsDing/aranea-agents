@@ -12,6 +12,19 @@ func TestDefaultAgentRuntimeSettings_L1HistoryEnabled(t *testing.T) {
 	}
 }
 
+// FR-12/P2: L2 召回默认开（评审 V7）。回归守卫：新 agent 的 standard 记忆
+// 档位必须包含 L2 召回，否则回到「五个层里两个半在干活」的默认配置。
+func TestDefaultAgentRuntimeSettings_L2RecallEnabled(t *testing.T) {
+	s := DefaultAgentRuntimeSettings()
+	if !s.L2RecallEnabled {
+		t.Error("L2RecallEnabled should default to true (FR-12/P2)")
+	}
+	p := ResolveMemoryRuntimePolicy(&s)
+	if !p.RecallL2 {
+		t.Error("resolved policy should recall L2 by default")
+	}
+}
+
 func TestDefaultToolsDenyFrameworkMemory(t *testing.T) {
 	// Verify the constant is valid JSON
 	var list []string

@@ -46,6 +46,9 @@
             <q-icon name="search" />
           </template>
         </q-input>
+        <q-toggle v-model="hideSystem" :label="t('monitorPage.audit.hideSystem')">
+          <q-tooltip>{{ t('monitorPage.audit.hideSystemHint') }}</q-tooltip>
+        </q-toggle>
         <template #actions>
           <q-btn flat rounded no-caps icon="restart_alt" :label="t('monitorPage.audit.reset')" @click="resetFilters" />
           <q-btn
@@ -250,6 +253,8 @@ const resourceOptions = RESOURCE_TYPES.map((r) => ({ label: r, value: r }));
 const keyword = ref('');
 const actionFilter = ref<string | null>(null);
 const resourceFilter = ref<string | null>(null);
+// 默认隐藏系统噪音（sync.skill 等文件同步审计），用户可手动放开查看。
+const hideSystem = ref(true);
 const selected = ref<AuditLog | null>(null);
 const detailOpen = ref(false);
 const confirmClear = ref(false);
@@ -265,10 +270,12 @@ const query = computed<AuditQuery>(() => ({
   action: actionFilter.value ?? '',
   resource: resourceFilter.value ?? '',
   keyword: keyword.value.trim(),
+  // 显式按动作过滤时由后端忽略 exclude_system（否则选 sync 会恒为空）。
+  exclude_system: hideSystem.value && !actionFilter.value,
 }));
 
 // 筛选变化回到第一页；query 变化统一触发服务端加载（初始加载由父级负责，与默认值一致）。
-watch([keyword, actionFilter, resourceFilter], () => {
+watch([keyword, actionFilter, resourceFilter, hideSystem], () => {
   page.value = 1;
 });
 watch(query, (q) => emit('load', q));

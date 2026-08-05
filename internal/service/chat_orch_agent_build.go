@@ -160,6 +160,7 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 			MemoryL3Recall:         d.td.Persist.Memory.L3Recall,
 			MemoryCompositeRecall:  d.td.Persist.Memory.CompositeRecall,
 			MemoryPreferenceLister: d.td.Persist.Memory.PreferenceLister,
+			MemoryReconsolidator:   d.td.Persist.Memory.Reconsolidator,
 			KnowledgeRetriever:     d.rt.KnowledgeRetriever,
 			KnowledgeUsecase:       d.rt.KnowledgeUC,
 		},

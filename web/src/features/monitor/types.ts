@@ -76,6 +76,8 @@ export type AuditQuery = {
   resource?: string;
   actor?: string;
   keyword?: string;
+  /** 隐藏系统噪音（sync.* 动作）；显式 action 过滤时忽略 */
+  exclude_system?: boolean;
 };
 
 export type MonitorEventsQuery = {
@@ -97,11 +99,23 @@ export type MonitorTracesQuery = {
   provider?: string;
   model?: string;
   status?: string;
+  /** 服务端子串搜索（name/trace_key/agent_id/provider/model + 显示名） */
+  keyword?: string;
+  /** 隐藏内部域（system/skill：cron、skill 同步等高频噪音） */
+  exclude_internal?: boolean;
+  /** 精确运行域过滤（chat/team/graph/system/skill），优先于 exclude_internal */
+  domain?: string;
 };
 
 export type PaginatedResult<T> = {
   items: T[];
   total: number;
+};
+
+/** Runs 列表响应：分页 + 筛选 chips 计数（各自忽略自身维度的过滤条件） */
+export type MonitorTraceListResult = PaginatedResult<MonitorTraceRow> & {
+  status_counts: Record<string, number>;
+  domain_counts: Record<string, number>;
 };
 
 export type MonitorLogLine = {

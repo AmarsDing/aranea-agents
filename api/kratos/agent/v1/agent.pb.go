@@ -179,8 +179,13 @@ type AgentRuntimeSettings struct {
 	VerificationTruncateChars int32 `protobuf:"varint,127,opt,name=verification_truncate_chars,json=verificationTruncateChars,proto3" json:"verification_truncate_chars,omitempty"`
 	// L1HistoryEnabled controls whether old field values are archived to memory_l1_field_history on upsert (default false).
 	L1HistoryEnabled bool `protobuf:"varint,131,opt,name=l1_history_enabled,json=l1HistoryEnabled,proto3" json:"l1_history_enabled,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// L3RecallBudgetTokens is the token budget for the fused L2/L3 recall block
+	// in the prompt (FR-12/P2). Hits are packed score-descending and the block is
+	// truncated once the estimated tokens exceed this budget. 0 = default 800.
+	// Preset tiers: 400 (compact) / 800 (standard) / 1600 (generous).
+	L3RecallBudgetTokens int32 `protobuf:"varint,132,opt,name=l3_recall_budget_tokens,json=l3RecallBudgetTokens,proto3" json:"l3_recall_budget_tokens,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *AgentRuntimeSettings) Reset() {
@@ -1121,6 +1126,13 @@ func (x *AgentRuntimeSettings) GetL1HistoryEnabled() bool {
 		return x.L1HistoryEnabled
 	}
 	return false
+}
+
+func (x *AgentRuntimeSettings) GetL3RecallBudgetTokens() int32 {
+	if x != nil {
+		return x.L3RecallBudgetTokens
+	}
+	return 0
 }
 
 type AgentPromptFile struct {
@@ -3972,7 +3984,7 @@ var File_kratos_agent_v1_agent_proto protoreflect.FileDescriptor
 
 const file_kratos_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x1bkratos/agent/v1/agent.proto\x12\x0fkratos.agent.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xe53\n" +
+	"\x1bkratos/agent/v1/agent.proto\x12\x0fkratos.agent.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x9d4\n" +
 	"\x14AgentRuntimeSettings\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x1f\n" +
 	"\vself_evolve\x18\x02 \x01(\bR\n" +
@@ -4115,7 +4127,8 @@ const file_kratos_agent_v1_agent_proto_rawDesc = "" +
 	"\x1dsubagents_stored_result_runes\x18} \x01(\x05R\x1asubagentsStoredResultRunes\x12C\n" +
 	"\x1esubagents_stored_summary_runes\x18~ \x01(\x05R\x1bsubagentsStoredSummaryRunes\x12>\n" +
 	"\x1bverification_truncate_chars\x18\x7f \x01(\x05R\x19verificationTruncateChars\x12-\n" +
-	"\x12l1_history_enabled\x18\x83\x01 \x01(\bR\x10l1HistoryEnabledB\x16\n" +
+	"\x12l1_history_enabled\x18\x83\x01 \x01(\bR\x10l1HistoryEnabled\x126\n" +
+	"\x17l3_recall_budget_tokens\x18\x84\x01 \x01(\x05R\x14l3RecallBudgetTokensB\x16\n" +
 	"\x14_intent_pass_enabledJ\x04\by\x10z\"\xc1\x01\n" +
 	"\x0fAgentPromptFile\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +

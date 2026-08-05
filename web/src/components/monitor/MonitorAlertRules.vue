@@ -10,17 +10,21 @@
       <div class="app-actions-bar">
         <q-btn flat rounded no-caps icon="add" :label="t('monitorPage.alerts.add')" @click="addRule" />
         <q-btn flat rounded no-caps icon="refresh" :label="t('monitorPage.alerts.refresh')" :loading="loading" @click="$emit('reload')" />
-        <q-btn
-          unelevated
-          rounded
-          no-caps
-          class="app-accent-btn"
-          icon="save"
-          :label="t('monitorPage.alerts.save')"
-          :loading="saving"
-          :disable="!editableRules.length || editableRules.some((r) => !r.name?.trim() || !r.metric_key?.trim())"
-          @click="onSave"
-        />
+        <!-- span 包裹：disabled 按钮不触发 tooltip，需要宿主元素 -->
+        <span class="inline-block">
+          <q-btn
+            unelevated
+            rounded
+            no-caps
+            class="app-accent-btn"
+            icon="save"
+            :label="t('monitorPage.alerts.save')"
+            :loading="saving"
+            :disable="saveDisabled"
+            @click="onSave"
+          />
+          <q-tooltip v-if="saveDisabledReason">{{ saveDisabledReason }}</q-tooltip>
+        </span>
       </div>
     </div>
 
@@ -92,6 +96,7 @@
 <script setup lang="ts">
 import { ref, watch, toRaw } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
 import type { AlertMetricInfo, MonitorAlertRule } from '../../features/monitor/types';
 import MonitorAlertMetricCatalog from './MonitorAlertMetricCatalog.vue';
 import MonitorAlertRuleCard from './MonitorAlertRuleCard.vue';
@@ -111,6 +116,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const $q = useQuasar();
 
 const editableRules = ref<MonitorAlertRule[]>([]);
 
@@ -141,7 +147,22 @@ function addRule() {
 }
 
 function removeRule(idx: number) {
-  editableRules.value.splice(idx, 1);
+  const rule = editableRules.value[idx];
+  // 已持久化的规则（有 id）删除后需点保存才生效，先确认避免误删。
+  // 未保存的新规则（无 id）仅存在于本地，直接移除。
+  if (!rule?.id) {
+    editableRules.value.splice(idx, 1);
+    return;
+  }
+  $q.dialog({
+    title: t('monitorPage.alerts.removeConfirmTitle'),
+    message: t('monitorPage.alerts.removeConfirmMessage', { name: rule.name || rule.id }),
+    cancel: { label: t('common.cancel'), flat: true, noCaps: true },
+    ok: { label: t('monitorPage.alerts.rule.delete'), noCaps: true, color: 'negative' },
+    persistent: true,
+  }).onOk(() => {
+    editableRules.value.splice(idx, 1);
+  });
 }
 
 function onSave() {

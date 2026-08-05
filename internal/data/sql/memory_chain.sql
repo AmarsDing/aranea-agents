@@ -295,7 +295,13 @@ CREATE TABLE IF NOT EXISTS memory_facts (
   tags_json TEXT NOT NULL DEFAULT '[]',
   confidence REAL NOT NULL DEFAULT 0.7,
   importance REAL NOT NULL DEFAULT 0.5,
+  -- FR-12.6: use_count is legacy (no longer maintained); the three-stage
+  -- counters below carry the precise semantics (20261125 backfills
+  -- recalled_count from use_count on upgraded databases).
   use_count INTEGER NOT NULL DEFAULT 0,
+  recalled_count INTEGER NOT NULL DEFAULT 0,
+  injected_count INTEGER NOT NULL DEFAULT 0,
+  cited_count INTEGER NOT NULL DEFAULT 0,
   hit_count INTEGER NOT NULL DEFAULT 0,
   positive_feedback_count INTEGER NOT NULL DEFAULT 0,
   negative_feedback_count INTEGER NOT NULL DEFAULT 0,
@@ -328,12 +334,50 @@ CREATE TABLE IF NOT EXISTS memory_facts (
   index_synced_at INTEGER NOT NULL DEFAULT 0,
   index_attempts INTEGER NOT NULL DEFAULT 0,
   index_last_error TEXT NOT NULL DEFAULT '',
+  -- Folded column-patch migrations so fresh installs get the full production
+  -- schema from this file (same pattern as index_status / three counters
+  -- above). On upgraded databases the same-named migrations are no-ops via
+  -- AlreadyExists tolerance:
+  --   20260725 bi-temporal validity, 20260726 A-MEM links/keywords/tags,
+  --   20260727 Ebbinghaus decay score, 20261004 context note.
+  valid_from TEXT NOT NULL DEFAULT '',
+  valid_until TEXT NOT NULL DEFAULT '',
+  links TEXT NOT NULL DEFAULT '[]',
+  keywords TEXT NOT NULL DEFAULT '[]',
+  tags TEXT NOT NULL DEFAULT '[]',
+  decay_score REAL NOT NULL DEFAULT 1.0,
+  context_note TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   archived_at TEXT NOT NULL DEFAULT '',
   deleted_at TEXT NOT NULL DEFAULT '',
   UNIQUE(scope_type, scope_id, fingerprint)
 );
+
+-- FR-12.6: citation dedup ledger — one row per (fact, turn) citation so the
+-- citation backfill worker can re-scan overlapping windows idempotently.
+CREATE TABLE IF NOT EXISTS memory_fact_citations (
+  fact_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (fact_id, turn_id)
+);
+CREATE INDEX IF NOT EXISTS idx_memory_fact_citations_turn ON memory_fact_citations(turn_id);
+
+-- FR-12.7: resident profile cards — one distilled card per (agent_id,
+-- user_id), maintained by the Sleep-time ProfileCardDistiller and injected
+-- into the prompt unconditionally (no recall scoring).
+CREATE TABLE IF NOT EXISTS memory_profile_cards (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  user_id TEXT NOT NULL DEFAULT '',
+  content TEXT NOT NULL DEFAULT '',
+  fact_count INTEGER NOT NULL DEFAULT 0,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_profile_cards_agent_user ON memory_profile_cards(agent_id, user_id);
 
 CREATE TABLE IF NOT EXISTS memory_fact_versions (
   id TEXT PRIMARY KEY,
@@ -404,6 +448,8 @@ CREATE INDEX IF NOT EXISTS idx_memory_facts_decay ON memory_facts(status, next_d
 CREATE INDEX IF NOT EXISTS idx_memory_facts_kind ON memory_facts(fact_kind, scope_type, scope_id);
 -- MEM-OPT-01 Phase 0: reconciler can quickly find stale rows that need re-sync
 CREATE INDEX IF NOT EXISTS idx_memory_facts_index_status ON memory_facts(index_status, index_synced_at);
+-- 20260725: partial index for filtering currently-valid memories in recall.
+CREATE INDEX IF NOT EXISTS idx_memory_facts_valid_until ON memory_facts(valid_until) WHERE valid_until = '';
 CREATE INDEX IF NOT EXISTS idx_memory_fact_versions_fact ON memory_fact_versions(fact_id, version DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_fact_feedback_fact ON memory_fact_feedback(fact_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_fact_feedback_session ON memory_fact_feedback(session_id, created_at DESC);

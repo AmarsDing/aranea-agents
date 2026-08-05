@@ -17,6 +17,7 @@
       </div>
       <knowledge-graph-canvas
         v-show="nodes.length && !error"
+        ref="canvasRef"
         :nodes="nodes"
         :edges="edges"
         :selected-node-id="selectedNodeId"
@@ -25,6 +26,40 @@
         @node-click="$emit('select-node', $event)"
         @background-click="$emit('select-node', '')"
       />
+      <!-- 画布工具条（右上浮动）：适应视图 + 配色图例 -->
+      <div v-if="nodes.length && !error" class="knowledge-graph__toolbar">
+        <q-btn
+          flat
+          dense
+          round
+          size="sm"
+          icon="fit_screen"
+          :aria-label="t('knowledgePage.graphFitView')"
+          @click="fitView"
+        >
+          <q-tooltip>{{ t('knowledgePage.graphFitView') }}</q-tooltip>
+        </q-btn>
+        <q-btn flat dense round size="sm" icon="palette" :aria-label="t('knowledgePage.graphLegendTitle')">
+          <q-tooltip>{{ t('knowledgePage.graphLegendTitle') }}</q-tooltip>
+          <q-menu anchor="top right" self="top right" class="knowledge-graph__legend">
+            <div class="knowledge-graph__legend-section">
+              <div class="knowledge-graph__legend-title">{{ t('knowledgePage.graphLegendNodes') }}</div>
+              <div v-for="item in nodeLegend" :key="item.type" class="knowledge-graph__legend-row">
+                <span class="knowledge-graph__chip-dot" :style="{ background: item.color }" />
+                <span class="ellipsis">{{ item.type }}</span>
+                <span class="knowledge-graph__legend-count">{{ item.count }}</span>
+              </div>
+            </div>
+            <div class="knowledge-graph__legend-section">
+              <div class="knowledge-graph__legend-title">{{ t('knowledgePage.graphLegendEdges') }}</div>
+              <div v-for="lt in graphLinkTypes" :key="lt" class="knowledge-graph__legend-row">
+                <span class="knowledge-graph__chip-dot" :style="{ background: graphLinkColor(lt) }" />
+                <span>{{ t(`knowledgePage.linkType${lt.charAt(0).toUpperCase() + lt.slice(1)}`) }}</span>
+              </div>
+            </div>
+          </q-menu>
+        </q-btn>
+      </div>
       <div class="knowledge-graph__stats">
         {{ t('knowledgePage.graphStats', { nodes: totalNodes, edges: totalEdges }) }}
         <span v-if="hiddenIsolated" class="knowledge-graph__stats-hidden">
@@ -115,6 +150,7 @@
               <q-item-section side>
                 <q-badge
                   outline
+                  color="accent"
                   :label="n.degree"
                   :title="t('knowledgePage.graphSelectedDegree', { count: n.degree })"
                 />
@@ -157,11 +193,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import KnowledgeGraphCanvas from './KnowledgeGraphCanvas.vue';
 import KnowledgeScopePicker from './KnowledgeScopePicker.vue';
-import { graphLinkColor, GRAPH_LINK_TYPES } from '../../features/knowledge/graphUi';
+import { graphDocTypeColor, graphLinkColor, GRAPH_LINK_TYPES } from '../../features/knowledge/graphUi';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../features/knowledge/useVaultExplorer';
 import type { CollectionGraphEdge, CollectionGraphNode, KnowledgeCollection } from '../../features/knowledge/types';
 
@@ -212,6 +248,30 @@ const { t } = useI18n();
 const graphLinkTypes = GRAPH_LINK_TYPES;
 
 const collectionOptions = computed(() => props.collections.map((c) => ({ label: c.name || c.id, value: c.id })));
+
+/** 画布实例（工具条「适应视图」）。 */
+const canvasRef = ref<{ zoomToFit: (ms?: number) => void } | null>(null);
+
+function fitView() {
+  canvasRef.value?.zoomToFit();
+}
+
+/** 节点图例：doc_type 按频次降序取前 8，色板与画布一致。 */
+const nodeLegend = computed(() => {
+  const counts = new Map<string, number>();
+  for (const n of props.nodes) {
+    const k = n.doc_type || '';
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([type, count]) => ({
+      type: type || t('knowledgePage.graphLegendUntyped'),
+      count,
+      color: graphDocTypeColor(type),
+    }));
+});
 </script>
 
 <style lang="scss" scoped>
@@ -255,6 +315,56 @@ const collectionOptions = computed(() => props.collections.map((c) => ({ label: 
     background: var(--interaction-surface-hover);
     border-radius: 6px;
     padding: 2px 8px;
+  }
+
+  // 画布工具条：右上浮动玻璃片，不遮挡节点主区域。
+  &__toolbar {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 4;
+    display: flex;
+    gap: 2px;
+    padding: 2px 4px;
+    border-radius: 8px;
+    background: var(--interaction-surface-hover);
+    backdrop-filter: blur(6px);
+  }
+
+  &__legend {
+    min-width: 180px;
+    max-width: 240px;
+    padding: 10px 12px;
+  }
+
+  &__legend-section + &__legend-section {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  &__legend-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--color-text-secondary);
+    margin-bottom: 6px;
+  }
+
+  &__legend-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    padding: 2px 0;
+    min-width: 0;
+  }
+
+  &__legend-count {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+    font-variant-numeric: tabular-nums;
   }
 
   &__console-body {

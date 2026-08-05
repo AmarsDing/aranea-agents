@@ -42,9 +42,16 @@ export function useMonitorLogStreamPanel() {
     hub.connect();
   });
 
+  // 清空流程日志视图：hub 实时行 + Store 快照一并清（此前只清快照，界面行残留）。
+  function clearFlowLogs() {
+    hub.clearFlow();
+    monitorStore.clearFlowLogs();
+  }
+
   return {
     subTab,
     backpressureMessage: hub.backpressureMessage,
     clearBackpressure: hub.clearBackpressure,
+    clearFlowLogs,
   };
 }

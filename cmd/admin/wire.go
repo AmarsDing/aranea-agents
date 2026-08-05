@@ -1055,16 +1055,18 @@ func provideGraphBuildDeps(
 			MCPTooling: persist.AgentMCP,
 		},
 		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
-			HasMemory:              persist.Memory.Available(),
-			MemoryService:          persist.Memory.TRPC,
-			MemoryAdmin:            persist.Memory.Admin,
-			MemoryActionLogWriter:  persist.Memory.ActionLogWriter,
-			MemoryL2Recall:         persist.Memory.L2Recall,
-			MemoryL3Recall:         persist.Memory.L3Recall,
-			MemoryCompositeRecall:  persist.Memory.CompositeRecall,
-			MemoryPreferenceLister: persist.Memory.PreferenceLister,
-			KnowledgeRetriever:     knowledgeRetriever,
-			KnowledgeUsecase:       knowledgeUC,
+			HasMemory:               persist.Memory.Available(),
+			MemoryService:           persist.Memory.TRPC,
+			MemoryAdmin:             persist.Memory.Admin,
+			MemoryActionLogWriter:   persist.Memory.ActionLogWriter,
+			MemoryL2Recall:          persist.Memory.L2Recall,
+			MemoryL3Recall:          persist.Memory.L3Recall,
+			MemoryCompositeRecall:   persist.Memory.CompositeRecall,
+			MemoryPreferenceLister:  persist.Memory.PreferenceLister,
+			MemoryProfileCardReader: persist.Memory.ProfileCardReader,
+			MemoryFactInjectCounter: persist.Memory.FactInjectCounter,
+			KnowledgeRetriever:      knowledgeRetriever,
+			KnowledgeUsecase:        knowledgeUC,
 		},
 		TRPCPluginDeps: chatagent.TRPCPluginDeps{
 			PluginManager: pluginMgr,
@@ -1131,16 +1133,18 @@ func provideTRPCBuilderDeps(
 			MCPTooling: persist.AgentMCP,
 		},
 		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
-			HasMemory:              persist.Memory.Available(),
-			MemoryService:          persist.Memory.TRPC,
-			MemoryAdmin:            persist.Memory.Admin,
-			MemoryActionLogWriter:  persist.Memory.ActionLogWriter,
-			MemoryL2Recall:         persist.Memory.L2Recall,
-			MemoryL3Recall:         persist.Memory.L3Recall,
-			MemoryCompositeRecall:  persist.Memory.CompositeRecall,
-			MemoryPreferenceLister: persist.Memory.PreferenceLister,
-			KnowledgeRetriever:     knowledgeRetriever,
-			KnowledgeUsecase:       knowledgeUC,
+			HasMemory:               persist.Memory.Available(),
+			MemoryService:           persist.Memory.TRPC,
+			MemoryAdmin:             persist.Memory.Admin,
+			MemoryActionLogWriter:   persist.Memory.ActionLogWriter,
+			MemoryL2Recall:          persist.Memory.L2Recall,
+			MemoryL3Recall:          persist.Memory.L3Recall,
+			MemoryCompositeRecall:   persist.Memory.CompositeRecall,
+			MemoryPreferenceLister:  persist.Memory.PreferenceLister,
+			MemoryProfileCardReader: persist.Memory.ProfileCardReader,
+			MemoryFactInjectCounter: persist.Memory.FactInjectCounter,
+			KnowledgeRetriever:      knowledgeRetriever,
+			KnowledgeUsecase:        knowledgeUC,
 		},
 		TRPCPluginDeps: chatagent.TRPCPluginDeps{
 			PluginManager: pluginMgr,
@@ -1187,27 +1191,25 @@ func provideAutoMemoryWorker(
 	deadLetterSink biz.MemoryDeadLetterSink,
 	workerStats *biz.MemoryWorkerStats,
 	monitorBus contract.MonitorBus,
-	conflictDetector biz.MemoryConflictDetector,
-	conflictStore biz.L3ConflictStore,
+	factPipeline *biz.FactWritePipeline,
 	lg loggateway.Logger,
 ) (*jobs.AutoMemoryWorker, error) {
 	return jobs.NewAutoMemoryWorker(jobs.AutoMemoryWorkerConfig{
-		RuntimeConf:      runtimeConf,
-		Interval:         0,
-		Sessions:         sessions,
-		Agents:           agents,
-		Writer:           writer,
-		IndexSync:        factSync,
-		EpisodeSync:      episodeSync,
-		L4:               l4,
-		Consolidator:     biz.DefaultMemoryConsolidator(extractor),
-		Queue:            queue,
-		DeadLetterSink:   deadLetterSink,
-		Stats:            workerStats,
-		MonitorBus:       monitorBus,
-		ConflictDetector: conflictDetector,
-		ConflictStore:    conflictStore,
-		Logger:           lg,
+		RuntimeConf:    runtimeConf,
+		Interval:       0,
+		Sessions:       sessions,
+		Agents:         agents,
+		Writer:         writer,
+		IndexSync:      factSync,
+		EpisodeSync:    episodeSync,
+		L4:             l4,
+		Consolidator:   biz.DefaultMemoryConsolidator(extractor),
+		Queue:          queue,
+		DeadLetterSink: deadLetterSink,
+		Stats:          workerStats,
+		MonitorBus:     monitorBus,
+		FactPipeline:   factPipeline,
+		Logger:         lg,
 	})
 }
 
@@ -1481,6 +1483,21 @@ func provideMemoryCanaryWorker(d *data.Data, status *biz.MemoryCanaryStatus, flo
 		status, flowLog, lg)
 }
 
+// provideMemoryCitationBackfillWorker wires the citation backfill worker
+// (FR-12.6: the "cited" stage of the three-stage counters). The worker scans
+// recent memory_recalled notices, detects facts explicitly referenced by the
+// assistant reply, and increments cited_count via the dedup ledger.
+// Disabled via MEMORY_CITATION_BACKFILL_DISABLED env var.
+func provideMemoryCitationBackfillWorker(d *data.Data, lg loggateway.Logger) *jobs.MemoryCitationBackfillWorker {
+	if d == nil || jobs.MemoryCitationBackfillDisabled() {
+		return nil
+	}
+	return jobs.NewMemoryCitationBackfillWorker(0,
+		data.NewMemoryCitationTraceReader(d),
+		data.NewL3FactCitationRecorder(d),
+		lg)
+}
+
 // memorySleepTimeQueueSize is the buffer size for the in-memory consolidation
 // queue consumed by the Sleep-time Agent.
 const memorySleepTimeQueueSize = 100
@@ -1509,6 +1526,7 @@ func provideMemorySleepTimeWorker(
 	catalog *biz.LlmProviderModelUsecase,
 	sessionReader biz.SessionReader,
 	deadLetterSink biz.MemoryDeadLetterSink,
+	factPipeline *biz.FactWritePipeline,
 	d *data.Data,
 	lg loggateway.Logger,
 ) *jobs.MemorySleepTimeWorker {
@@ -1547,6 +1565,9 @@ func provideMemorySleepTimeWorker(
 			lg,
 		)
 		ec.SetLLMResolver(resolver)
+		// P1-3: extracted facts funnel through the unified write pipeline
+		// (gates → neighbor recall → adjudication → bi-temporal writes).
+		ec.SetFactPipeline(factPipeline)
 		// T8: configurable min importance (env: MEMORY_EPISODE_MIN_IMPORTANCE).
 		// Default: 0.3. Set to "0" to disable filtering (keep all extracted facts).
 		if raw := strings.TrimSpace(os.Getenv("MEMORY_EPISODE_MIN_IMPORTANCE")); raw != "" {
@@ -1557,6 +1578,19 @@ func provideMemorySleepTimeWorker(
 			}
 		}
 		svc.SetEpisodeConsolidator(ec)
+		// FR-12.7 (Sleep-time Phase 3): wire ProfileCardDistiller for resident
+		// profile card maintenance. Uses the same per-target resolver; the
+		// distiller degrades to a no-op when no model resolves.
+		pd := memory.NewProfileCardDistiller(
+			data.NewMemoryPreferenceLister(d),
+			data.NewMemoryProfileCardStore(d),
+			nil,
+			lg,
+		)
+		if pd != nil {
+			pd.SetLLMResolver(resolver)
+			svc.SetProfileCardDistiller(pd)
+		}
 	}
 	// Build target lister. Priority: env-var override → SessionRepo-derived.
 	var lister jobs.SleepTimeTargetLister
@@ -2545,6 +2579,7 @@ type wireOut struct {
 	MemoryL4Decay               *jobs.MemoryL4DecayWorker
 	MemoryEbbinghausDecay       *jobs.MemoryEbbinghausDecayWorker
 	MemoryCanary                *jobs.MemoryCanaryWorker
+	MemoryCitationBackfill      *jobs.MemoryCitationBackfillWorker
 	MemorySleepTime             *jobs.MemorySleepTimeWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
 	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
@@ -2600,6 +2635,7 @@ func provideWireOut(
 	memoryL4Decay *jobs.MemoryL4DecayWorker,
 	memoryEbbinghausDecay *jobs.MemoryEbbinghausDecayWorker,
 	memoryCanary *jobs.MemoryCanaryWorker,
+	memoryCitationBackfill *jobs.MemoryCitationBackfillWorker,
 	memorySleepTime *jobs.MemorySleepTimeWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
@@ -2641,6 +2677,7 @@ func provideWireOut(
 		FlowLogCleanup:          flowLogCleanup, MonitorEventsCleanup: monitorEventsCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, ChannelTurnJobSweeper: channelTurnJobSweeper, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEbbinghausDecay:       memoryEbbinghausDecay,
 		MemoryCanary:                memoryCanary,
+		MemoryCitationBackfill:      memoryCitationBackfill,
 		MemorySleepTime:             memorySleepTime,
 		MemoryEpisodeBackfill:       memoryEpisodeBackfill,
 		MemoryDataMigration:         memoryDataMigration,
@@ -3181,6 +3218,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideFactIndexSync,
 		provideMemoryConflictDetector,
 		provideL3ConflictStore,
+		provideFactWriteAdjudicator,
+		provideFactWritePipeline,
 		provideMemoryL2Recall,
 		provideMemoryL3Recall,
 		provideMemoryCompositeRecall,
@@ -3262,6 +3301,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideRuntimeReplanner,
 		provideTopologyEvolver,
 		providePersistenceSet,
+		provideReconsolidationService,
 		provideSessionMemoryResync,
 		provideL1AdminReader,
 		provideEpisodeIndexSync,
@@ -3337,6 +3377,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideMemoryL4DecayWorker,
 		provideMemoryEbbinghausDecayWorker,
 		provideMemoryCanaryWorker,
+		provideMemoryCitationBackfillWorker,
 		provideMemorySleepTimeWorker,
 		provideMemoryEpisodeBackfillWorker,
 		provideMemoryDataMigrationWorker,

@@ -42,8 +42,14 @@ func L2MemoryCue(ctx context.Context, l2 biz.MemoryL2Recaller, ag biz.Agent, pol
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("## L2 episodic memory (recent sessions)\n")
-	b.WriteString("Summaries of prior consolidated interactions. Use for continuity when relevant.\n")
+	header := "## L2 episodic memory (recent sessions)\n" +
+		"Summaries of prior consolidated interactions. Use for continuity when relevant.\n"
+	b.WriteString(header)
+	// FR-12/P2: pack lines into the recall-block token budget (score-descended
+	// input, "按分截断").
+	packer := newRecallLinePacker(policy.L3RecallBudgetTokens)
+	packer.allow(header)
+	lines := 0
 	for i, raw := range rows {
 		if i >= limit {
 			break
@@ -60,11 +66,21 @@ func L2MemoryCue(ctx context.Context, l2 biz.MemoryL2Recaller, ag biz.Agent, pol
 		if title == "" || title == "<nil>" {
 			continue
 		}
+		var line string
 		if summary != "" && summary != title && summary != "<nil>" {
-			fmt.Fprintf(&b, "- %s: %s\n", title, summary)
+			line = fmt.Sprintf("- %s: %s", title, summary)
 		} else {
-			fmt.Fprintf(&b, "- %s\n", title)
+			line = fmt.Sprintf("- %s", title)
 		}
+		if !packer.allow(line) {
+			continue
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+		lines++
+	}
+	if lines == 0 {
+		return ""
 	}
 	return strings.TrimSpace(b.String())
 }

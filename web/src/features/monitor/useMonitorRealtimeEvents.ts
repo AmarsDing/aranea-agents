@@ -55,6 +55,8 @@ export function useMonitorRealtimeEvents() {
   const pageSize = ref(HISTORY_PAGE_SIZE);
   const typeFilter = ref<string>('all');
   const severityFilter = ref<string>('all');
+  // 默认隐藏 skill 文件同步等高频系统噪音；打开后全量展示。
+  const showSystemEvents = ref(false);
 
   const historyEvents = computed<MonitorViewEvent[]>(() =>
     persistedRows.value
@@ -74,6 +76,7 @@ export function useMonitorRealtimeEvents() {
           severity: severityFilter.value,
           page: page.value,
           pageSize: pageSize.value,
+          includeSystem: showSystemEvents.value,
         }),
       );
     } finally {
@@ -83,14 +86,17 @@ export function useMonitorRealtimeEvents() {
 
   // 单一 watcher：过滤条件变化先归第 1 页（链式触发本轮），翻页/页大小变化仅重新查询——
   // 避免「过滤 + 非第 1 页」时双 watcher 各发一次相同请求
-  watch([typeFilter, severityFilter, page, pageSize], ([type, severity], [oldType, oldSeverity]) => {
-    const filterChanged = type !== oldType || severity !== oldSeverity;
-    if (filterChanged && page.value !== 1) {
-      page.value = 1;
-      return;
-    }
-    void refreshHistory();
-  });
+  watch(
+    [typeFilter, severityFilter, showSystemEvents, page, pageSize],
+    ([type, severity, showSystem], [oldType, oldSeverity, oldShowSystem]) => {
+      const filterChanged = type !== oldType || severity !== oldSeverity || showSystem !== oldShowSystem;
+      if (filterChanged && page.value !== 1) {
+        page.value = 1;
+        return;
+      }
+      void refreshHistory();
+    },
+  );
 
   // ── WS 流生命周期（暂停 = 断开订阅，恢复 = 重连）──
   function refreshStreamState() {
@@ -191,6 +197,7 @@ export function useMonitorRealtimeEvents() {
     pageSize,
     typeFilter,
     severityFilter,
+    showSystemEvents,
     refreshHistory,
     // actions
     openChatSession,

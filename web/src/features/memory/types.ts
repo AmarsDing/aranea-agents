@@ -114,6 +114,11 @@ export type MemoryFact = {
   importance: number;
   use_count: number;
   hit_count: number;
+  // FR-12.6 three-stage counters: recalled into result set / injected into
+  // prompt / cited by the assistant reply. use_count above is legacy.
+  recalled_count: number;
+  injected_count: number;
+  cited_count: number;
   positive_feedback_count: number;
   negative_feedback_count: number;
   conflict_count: number;
@@ -136,6 +141,9 @@ export type MemoryFactListQuery = {
   kind?: string;
   status?: string;
   keyword?: string;
+  // Filter by ORIGINATING agent across all scopes — keeps the L3 browse tab
+  // consistent with the panorama card count (agent_id aggregation).
+  agent_id?: string;
   limit?: number;
   offset?: number;
 };

@@ -273,7 +273,7 @@ func (r *Runner) finalizeTeamRun(
 		spiritSID := deriveSpiritSessionID(sess)
 		now := time.Now().UTC()
 		ts := biz.TeamStage{
-			ID:        string(agent.NewTeamStageActivityID(teamRow.ID)),
+			ID:        string(agent.NewTeamStageActivityID(teamRow.ID, string(agent.RootTaskActivityIDFromCtx(ctx)))),
 			TeamID:    teamRow.ID,
 			TeamName:  teamRow.DisplayName,
 			SessionID: spiritSID,

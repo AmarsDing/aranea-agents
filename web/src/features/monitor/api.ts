@@ -7,6 +7,7 @@ import type {
   CodeExecutorCapability,
   MonitorEventsQuery,
   MonitorTraceDetail,
+  MonitorTraceListResult,
   MonitorTracesQuery,
   MonitorTraceRow,
   MonitorAlertRule,
@@ -143,6 +144,7 @@ export async function listMonitorAudit(query: AuditQuery = {}): Promise<Paginate
     resource: query.resource ?? '',
     actor: query.actor ?? '',
     keyword: query.keyword ?? '',
+    excludeSystem: query.exclude_system ?? false,
   });
   const items = (res.items ?? []).map((item: unknown) => auditFromWire(item));
   return { items, total: Number(res.total ?? items.length) };
@@ -153,9 +155,7 @@ export async function deleteAuditLogs(): Promise<number> {
   return Number(res.deleted ?? 0);
 }
 
-export async function listMonitorEvents(
-  query: MonitorEventsQuery = {},
-): Promise<PaginatedResult<PlatformResource>> {
+export async function listMonitorEvents(query: MonitorEventsQuery = {}): Promise<PaginatedResult<PlatformResource>> {
   const res = await monitor.ListMonitorEvents({
     limit: query.limit,
     offset: query.offset,
@@ -328,7 +328,7 @@ function traceRowFromWire(raw: unknown): MonitorTraceRow {
   };
 }
 
-export async function listMonitorTraces(query: MonitorTracesQuery = {}): Promise<PaginatedResult<MonitorTraceRow>> {
+export async function listMonitorTraces(query: MonitorTracesQuery = {}): Promise<MonitorTraceListResult> {
   const res = await monitor.ListMonitorTraces({
     limit: query.limit,
     offset: query.offset,
@@ -336,9 +336,29 @@ export async function listMonitorTraces(query: MonitorTracesQuery = {}): Promise
     provider: query.provider,
     model: query.model,
     status: query.status,
+    keyword: query.keyword,
+    excludeInternal: query.exclude_internal,
+    domain: query.domain,
   });
   const items = (res.items ?? []).map((item: unknown) => traceRowFromWire(item));
-  return { items, total: Number(res.total ?? items.length) };
+  const r = res as Record<string, unknown>;
+  return {
+    items,
+    total: Number(res.total ?? items.length),
+    status_counts: strNumMap(r.status_counts ?? r.statusCounts),
+    domain_counts: strNumMap(r.domain_counts ?? r.domainCounts),
+  };
+}
+
+/** map<string,int32> wire → Record<string, number>（容忍缺失/空） */
+function strNumMap(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const n = Number(v);
+    if (Number.isFinite(n)) out[k] = n;
+  }
+  return out;
 }
 
 /** @deprecated Use listMonitorTraces instead. */

@@ -40,8 +40,22 @@
             }}</q-chip>
           </div>
           <div v-if="fact.pii_flag && fact.pii_types?.length" class="q-mt-sm">
-            <q-badge v-for="t in fact.pii_types" :key="t" color="deep-orange" class="q-mr-xs">{{ t }}</q-badge>
+            <q-badge v-for="pt in fact.pii_types" :key="pt" color="deep-orange" class="q-mr-xs">{{ pt }}</q-badge>
           </div>
+          <q-separator class="q-my-md" />
+          <div class="text-caption text-grey-7">{{ t('memory.factDrawer.usage') }}</div>
+          <div class="q-mt-xs row q-gutter-sm">
+            <q-chip dense outline color="primary">
+              {{ t('memory.factDrawer.usageRecalled') }} · {{ fact.recalled_count }}
+            </q-chip>
+            <q-chip dense outline color="positive">
+              {{ t('memory.factDrawer.usageInjected') }} · {{ fact.injected_count }}
+            </q-chip>
+            <q-chip dense outline color="deep-purple">
+              {{ t('memory.factDrawer.usageCited') }} · {{ fact.cited_count }}
+            </q-chip>
+          </div>
+          <div class="text-caption text-grey-6 q-mt-xs">{{ t('memory.factDrawer.usageHint') }}</div>
           <q-separator class="q-my-md" />
           <div class="text-caption text-grey-7">{{ t('memory.factDrawer.details') }}</div>
           <pre class="memory-pre">{{ fact.details_markdown || t('memory.factDrawer.noDetails') }}</pre>

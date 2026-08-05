@@ -173,6 +173,24 @@
 | MON-UX-05 | Audit 清空功能 | proto/service/biz/data/web | ✅ | `DeleteAuditLogs` RPC（`DELETE /v1/monitor/audit-logs`，`confirm="CONFIRM"` 校验）；Repo 全表硬删除；Usecase 删除后写自审计条目（`delete.audit_logs`/warning）；前端 `AuditTable` 清空按钮 + 确认对话框，`useMonitorPage.handleClearAudit` notify |
 | MON-UX-06 | 文档同步 | docs | ✅ | 18-monitor.design.md（Proto/请求契约/查询模式/Service/前端映射/API）+ 本表 |
 
+### Phase MON-UX2 — 客户体验视角全量整改（2026-08-05）
+
+| ID | 任务 | 层 | 状态 | 关键实现 |
+|----|------|-----|------|----------|
+| MON-UX2-01 | Alerts 保存 500 修复 | data | ✅ | `monitor_alert.go` 全部 SQL 经 `d.RenumberPlaceholders()`（Postgres `$n`）；`columnExistsWithDialect` 改 `current_schema()`；集成测试 `monitor_alert_repo_test.go` |
+| MON-UX2-02 | Audit 隐藏系统操作 | proto/biz/data/web | ✅ | `AuditQuery.ExcludeSystem` + `auditWhere` 追加 `action NOT LIKE 'sync.%'`（显式 action 过滤时不叠加）；`AuditTable.vue`「隐藏系统操作」toggle 默认开；实测 26845→367 条 |
+| MON-UX2-03 | Traces 服务端筛选/搜索/分页 | proto/biz/data/web | ✅ | `MonitorTracesQuery.Keyword`（五列 OR LIKE）+ `ExcludeInternal`（`name NOT IN ('system','skill')`）；`TraceList.vue` 改服务端查询 + `total` 分页（`MONITOR_TRACES_PAGE_SIZE=12`）；实测 6304→668 条 |
+| MON-UX2-04 | Events 默认隐藏系统噪音 | web | ✅ | `buildMonitorEventsQuery` 未选类型时默认 `exclude_event_types=['skill.filesystem.']`；`RealtimeEvents.vue`「显示系统事件」toggle 默认关；`persistedEventToView` 标题/摘要/主体去重 |
+| MON-UX2-05 | Alerts 删除确认 + 保存态 | web | ✅ | 已持久化规则删除前确认对话框；保存按钮禁用态 tooltip |
+| MON-UX2-06 | 流程日志清空修复 | web | ✅ | `useMonitorLogStreamPanel.clearFlowLogs` 同清 hub 实时行 + Store 快照（此前只清快照界面残留） |
+| MON-UX2-07 | 日志文案去重 | web | ✅ | `monitorLogLineFromFlowEvent` message 不再拼接 title；`FlowLogStream` 仅当 title≠message 时单列渲染 |
+| MON-UX2-08 | 按钮 tooltip/下钻感知 | web | ✅ | 暂停/清除按钮 tooltip（暂停丢弃语义/仅清视图）；`RunnerMetricsPanel` 下钻 hover 下划线 + tooltip |
+| MON-UX2-09 | route.query.tab 同步 | web | ✅ | `useMonitorPage` 增加 route→tab watcher（Overview/Usage 下钻同页跳转生效） |
+| MON-UX2-10 | i18n 补齐 | web | ✅ | zh-CN/en-US 各 8 键（hideSystem/showSystem/hideInternal/pauseHint/clearViewHint 等） |
+| MON-UX2-11 | Events toggle prop 缺失修复 | web | ✅ | 浏览器实测发现 console 警告 `Missing required prop: showSystemEvents`——`MonitorPage.vue` 使用 `RealtimeEvents` 时漏传 prop/事件；补 `:show-system-events` + `@update:showSystemEvents` 接线后警告消失 |
+
+**验证**：`go test ./internal/data` ✅；前端 lint 0 errors / 1192 tests ✅ / build ✅；admin 新二进制重启后浏览器 6 项 PASS（0 console 错误）；API 实测 exclude 参数生效。
+
 ### MON-OPT — 业务逻辑优化（2026-05-26 方案落地）
 
 | ID | 任务 | 优先级 | 状态 | 关键实现 |

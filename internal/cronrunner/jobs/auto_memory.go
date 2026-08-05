@@ -28,23 +28,22 @@ import (
 // Retry schedule: 30 s / 2 m / 10 m exponential back-off.
 // Jobs that exceed maxRetries are marked dead and discarded.
 type AutoMemoryWorker struct {
-	interval         time.Duration
-	sessions         *biz.SessionUsecase
-	agents           *biz.AgentUsecase
-	writer           biz.MemoryConsolidationWriter
-	indexSync        biz.MemoryFactIndexSyncer
-	episodeSync      biz.EpisodeIndexSyncer
-	l4               biz.L4GraphWriter
-	consolidator     biz.MemoryConsolidator
-	feedback         biz.MemoryConsolidator
-	queue            memtrpc.AutoMemoryQueue
-	deadLetter       biz.MemoryDeadLetterSink
-	conflictDetector biz.MemoryConflictDetector
-	conflictStore    biz.L3ConflictStore
-	memConf          conf.RuntimeAutoMemoryConfig
-	stats            *biz.MemoryWorkerStats
-	monitorBus       contract.MonitorBus
-	lg               loggateway.Logger
+	interval     time.Duration
+	sessions     *biz.SessionUsecase
+	agents       *biz.AgentUsecase
+	writer       biz.MemoryConsolidationWriter
+	indexSync    biz.MemoryFactIndexSyncer
+	episodeSync  biz.EpisodeIndexSyncer
+	l4           biz.L4GraphWriter
+	consolidator biz.MemoryConsolidator
+	feedback     biz.MemoryConsolidator
+	queue        memtrpc.AutoMemoryQueue
+	deadLetter   biz.MemoryDeadLetterSink
+	factPipeline *biz.FactWritePipeline
+	memConf      conf.RuntimeAutoMemoryConfig
+	stats        *biz.MemoryWorkerStats
+	monitorBus   contract.MonitorBus
+	lg           loggateway.Logger
 }
 
 // AutoMemoryWorkerConfig holds all dependencies for AutoMemoryWorker.
@@ -64,14 +63,12 @@ type AutoMemoryWorkerConfig struct {
 	// DeadLetterSink receives jobs that exhausted all retries (P2-03).
 	// When nil, retry-exhausted jobs are only logged/metered (legacy behavior).
 	DeadLetterSink biz.MemoryDeadLetterSink
-	// ConflictDetector arbitrates governable fact kinds (preference/constraint/
-	// profile) against existing memory before write. When nil, conflict
-	// governance is skipped and facts are written as-is.
-	ConflictDetector biz.MemoryConflictDetector
-	// ConflictStore applies conflict decisions (supersede old fact / increment
-	// conflict_count). When nil, decisions are not persisted.
-	ConflictStore biz.L3ConflictStore
-	Stats         *biz.MemoryWorkerStats
+	// FactPipeline is the P1-3 unified write pipeline: gates → neighbor
+	// recall → LLM adjudication → bi-temporal writes. It replaces the old
+	// inline conflict governance. When nil, fact (and dependent episode)
+	// writes are skipped.
+	FactPipeline *biz.FactWritePipeline
+	Stats        *biz.MemoryWorkerStats
 	// MonitorBus enables flow-log emission (memory.auto.extract / system.auto_memory.*).
 	// When nil, flow-log emission is skipped.
 	MonitorBus contract.MonitorBus
@@ -92,23 +89,22 @@ func NewAutoMemoryWorker(cfg AutoMemoryWorkerConfig) (*AutoMemoryWorker, error) 
 		consolidator = biz.DefaultMemoryConsolidator(nil)
 	}
 	return &AutoMemoryWorker{
-		interval:         interval,
-		sessions:         cfg.Sessions,
-		agents:           cfg.Agents,
-		writer:           cfg.Writer,
-		indexSync:        cfg.IndexSync,
-		episodeSync:      cfg.EpisodeSync,
-		l4:               cfg.L4,
-		consolidator:     consolidator,
-		feedback:         biz.NewFeedbackConsolidator(),
-		queue:            cfg.Queue,
-		deadLetter:       cfg.DeadLetterSink,
-		conflictDetector: cfg.ConflictDetector,
-		conflictStore:    cfg.ConflictStore,
-		memConf:          cfg.RuntimeConf.AutoMemoryConfig(),
-		stats:            cfg.Stats,
-		monitorBus:       cfg.MonitorBus,
-		lg:               cfg.Logger,
+		interval:     interval,
+		sessions:     cfg.Sessions,
+		agents:       cfg.Agents,
+		writer:       cfg.Writer,
+		indexSync:    cfg.IndexSync,
+		episodeSync:  cfg.EpisodeSync,
+		l4:           cfg.L4,
+		consolidator: consolidator,
+		feedback:     biz.NewFeedbackConsolidator(),
+		queue:        cfg.Queue,
+		deadLetter:   cfg.DeadLetterSink,
+		factPipeline: cfg.FactPipeline,
+		memConf:      cfg.RuntimeConf.AutoMemoryConfig(),
+		stats:        cfg.Stats,
+		monitorBus:   cfg.MonitorBus,
+		lg:           cfg.Logger,
 	}, nil
 }
 
@@ -311,14 +307,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	lastUserMsgID := lastUserMessageID(msgs)
 	// Pre-generate episode ID so facts can reference it as source_episode_id.
 	episodeID := uuid.NewString()
-	var factInputs []biz.MemoryFactWrite
-	// pendingConflicts tracks conflict decisions per fact index; supersede is
-	// applied post-write (needs the new fact ID), marks are batched post-write.
-	type pendingConflict struct {
-		factIndex int
-		decision  biz.MemoryConflictDecision
-	}
-	var pendingConflicts []pendingConflict
+	var candidates []biz.FactWriteCandidate
 	if memoryPolicy.WriteL3Facts {
 		for _, p := range proposals {
 			stmt := strings.TrimSpace(p.Statement)
@@ -334,58 +323,50 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			if confidence <= 0 {
 				confidence = 0.85
 			}
-			factKind := memoryFactKindForSubjectType(p.SubjectType)
-			factInputs = append(factInputs, biz.MemoryFactWrite{
+			candidates = append(candidates, biz.FactWriteCandidate{
+				Statement:       stmt,
+				FactKind:        biz.FactKindForSubjectType(p.SubjectType),
+				Confidence:      confidence,
+				Importance:      0.6,
+				TagsJSON:        topicsJSON(p.Topics),
 				ScopeType:       scopeType,
 				ScopeID:         scopeID,
 				UserID:          userID,
 				AgentID:         appName,
-				Statement:       stmt,
-				DetailsMarkdown: stmt,
-				FactKind:        factKind,
-				TagsJSON:        topicsJSON(p.Topics),
-				Confidence:      confidence,
-				Importance:      0.6,
 				SourceKind:      "auto_memory",
 				SourceEpisodeID: episodeID,
 				SourceSessionID: sid,
 				SourceMessageID: msgID,
-				Status:          "active",
-				MetadataJSON:    `{"source":"auto_memory"}`,
 			})
-			// Conflict governance (A2): arbitrate governable kinds against
-			// existing memory. Detection failures degrade to no-action and
-			// never block the write path.
-			if w.conflictDetector != nil && biz.IsConflictGovernableFactKind(factKind) {
-				dec, derr := w.conflictDetector.DetectConflict(ctx, appName, userID, factKind, stmt)
-				if derr != nil {
-					w.lg.With(loggateway.SessionID(sid)).Warn("记忆冲突检测失败（已跳过）", loggateway.Err(derr))
-				} else if dec.Action != biz.ConflictActionNone {
-					idx := len(factInputs) - 1
-					if dec.Action == biz.ConflictActionMarkConflict {
-						factInputs[idx].MetadataJSON = mergeConflictCandidateMetadata(factInputs[idx].MetadataJSON, dec)
-					}
-					pendingConflicts = append(pendingConflicts, pendingConflict{factIndex: idx, decision: dec})
-				}
-			}
 		}
 	}
 
+	// Unified write pipeline (P1-3): gates → neighbor recall → adjudication →
+	// bi-temporal writes. Replaces the old inline conflict-governance block.
+	var writeRes biz.FactWriteBatchResult
+	if len(candidates) > 0 {
+		if w.factPipeline == nil {
+			w.lg.Debug("自动记忆跳过事实写入：未注入 fact pipeline", loggateway.Str("session_id", sid))
+		} else {
+			writeRes = w.factPipeline.Apply(ctx, candidates)
+		}
+	}
+	factsWritten := writeRes.Added + writeRes.Updated
+
 	var ep *biz.EpisodeWrite
-	if memoryPolicy.WriteL2Episode && len(factInputs) > 0 {
+	if memoryPolicy.WriteL2Episode && factsWritten > 0 {
 		// Use structured episode extraction (unified pipeline with L1 archive path)
 		structured := biz.ExtractStructuredEpisodeFromMessages(in.Messages)
-		added := len(factInputs)
 		title := structured.Title
 		if title == "" {
 			title = "Auto-memory consolidation"
-			if added == 1 {
-				title = previewText(factInputs[0].Statement, 120)
+			if factsWritten == 1 {
+				title = previewText(candidates[0].Statement, 120)
 			}
 		}
 		summary := structured.OutcomeSummary
 		if summary == "" {
-			summary = previewText(buildEpisodeSummary(proposals, added), 500)
+			summary = previewText(buildEpisodeSummary(proposals, factsWritten), 500)
 		}
 		decisionsJSON, _ := json.Marshal(structured.KeyDecisions)
 		artifactsJSON, _ := json.Marshal(structured.KeyArtifacts)
@@ -404,51 +385,35 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			Importance:          structured.Importance,
 			Confidence:          structured.Confidence,
 			MessageCount:        len(msgs),
-			ConsolidatedL3:      added,
+			ConsolidatedL3:      factsWritten,
 			ConsolidationStatus: "consolidated",
 			MetadataJSON:        `{"source":"auto_memory"}`,
 		}
 	}
 
-	writeResult, err := w.writer.UpsertFactsAndEpisodeBatch(ctx, factInputs, ep)
-	if err != nil {
-		w.lg.With(loggateway.SessionID(sid)).Warn("自动记忆巩固写入失败", loggateway.Err(err))
-		return err
+	// Episode-only write: facts were already persisted by the pipeline.
+	var episodeRow []byte
+	if ep != nil {
+		epRes, err := w.writer.UpsertFactsAndEpisodeBatch(ctx, nil, ep)
+		if err != nil {
+			w.lg.With(loggateway.SessionID(sid)).Warn("自动记忆 episode 写入失败", loggateway.Err(err))
+			return err
+		}
+		if epRes != nil {
+			episodeRow = epRes.EpisodeRow
+		}
 	}
-	added := writeResult.FactsWritten
-	for _, raw := range writeResult.FactRows {
+	added := factsWritten
+	for _, raw := range writeRes.FactRows {
 		if w.indexSync != nil {
 			if serr := w.indexSync.SyncFactIndexFromRow(ctx, raw); serr != nil {
 				w.lg.Warn("auto_memory index sync failed", loggateway.Err(serr))
 			}
 		}
 	}
-	// Apply conflict decisions post-write. Supersede needs the persisted new
-	// fact ID; conflict marks are batched. All failures are best-effort.
-	if w.conflictStore != nil && len(pendingConflicts) > 0 {
-		var markIDs []string
-		for _, pc := range pendingConflicts {
-			switch pc.decision.Action {
-			case biz.ConflictActionSupersede:
-				newID := factIDFromFactRow(writeResult.FactRows, pc.factIndex)
-				if newID != "" && newID != pc.decision.TargetFactID {
-					if serr := w.conflictStore.SupersedeFact(ctx, pc.decision.TargetFactID, newID); serr != nil {
-						w.lg.With(loggateway.SessionID(sid)).Warn("记忆冲突 supersede 失败", loggateway.Err(serr))
-					}
-				}
-			case biz.ConflictActionMarkConflict:
-				markIDs = append(markIDs, pc.decision.TargetFactID)
-			}
-		}
-		if len(markIDs) > 0 {
-			if merr := w.conflictStore.BatchIncrementConflictCounts(ctx, markIDs); merr != nil {
-				w.lg.With(loggateway.SessionID(sid)).Warn("记忆冲突标记失败", loggateway.Err(merr))
-			}
-		}
-	}
-	if w.episodeSync != nil && len(writeResult.EpisodeRow) > 0 {
+	if w.episodeSync != nil && len(episodeRow) > 0 {
 		var epRow map[string]any
-		if json.Unmarshal(writeResult.EpisodeRow, &epRow) == nil {
+		if json.Unmarshal(episodeRow, &epRow) == nil {
 			epID, _ := epRow["id"].(string)
 			title, _ := epRow["title"].(string)
 			summary, _ := epRow["outcome_summary"].(string)
@@ -506,8 +471,8 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	if sid == "" || msgID == "" || rating == "" {
 		return nil
 	}
-	if w.sessions == nil || w.writer == nil || w.feedback == nil {
-		w.lg.Debug("反馈记忆跳过：未注入 sessions/writer", loggateway.Str("session_id", sid))
+	if w.sessions == nil || w.factPipeline == nil || w.feedback == nil {
+		w.lg.Debug("反馈记忆跳过：未注入 sessions/factPipeline/feedback", loggateway.Str("session_id", sid))
 		return nil
 	}
 	sess, err := w.sessions.Get(ctx, sid)
@@ -558,7 +523,7 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	if err != nil {
 		return err
 	}
-	var facts []biz.MemoryFactWrite
+	var candidates []biz.FactWriteCandidate
 	for _, p := range proposals {
 		stmt := strings.TrimSpace(p.Statement)
 		if stmt == "" {
@@ -569,32 +534,27 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 		if confidence <= 0 {
 			confidence = 0.85
 		}
-		facts = append(facts, biz.MemoryFactWrite{
+		candidates = append(candidates, biz.FactWriteCandidate{
+			Statement:       stmt,
+			FactKind:        biz.FactKindForSubjectType(p.SubjectType),
+			Confidence:      confidence,
+			Importance:      0.6,
+			TagsJSON:        topicsJSON(p.Topics),
 			ScopeType:       scopeType,
 			ScopeID:         scopeID,
 			UserID:          userID,
 			AgentID:         appName,
-			Statement:       stmt,
-			DetailsMarkdown: stmt,
-			FactKind:        memoryFactKindForSubjectType(p.SubjectType),
-			TagsJSON:        topicsJSON(p.Topics),
-			Confidence:      confidence,
-			Importance:      0.6,
 			SourceKind:      "auto_memory",
 			SourceSessionID: sid,
 			SourceMessageID: msgID,
-			Status:          "active",
-			MetadataJSON:    `{"source":"auto_memory"}`,
 		})
 	}
-	if len(facts) == 0 {
+	if len(candidates) == 0 {
 		return nil
 	}
-	writeResult, err := w.writer.UpsertFactsAndEpisodeBatch(ctx, facts, nil)
-	if err != nil {
-		return err
-	}
-	for _, raw := range writeResult.FactRows {
+	// Feedback facts flow through the same unified write pipeline (P1-3).
+	writeRes := w.factPipeline.Apply(ctx, candidates)
+	for _, raw := range writeRes.FactRows {
 		if w.indexSync != nil {
 			if serr := w.indexSync.SyncFactIndexFromRow(ctx, raw); serr != nil {
 				w.lg.Warn("feedback_memory index sync failed", loggateway.Err(serr))
@@ -604,56 +564,6 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	w.lg.With(loggateway.SessionID(sid)).Info("反馈偏好记忆已写入",
 		loggateway.Str("message_id", msgID), loggateway.Str("rating", rating))
 	return nil
-}
-
-// factIDFromFactRow extracts the persisted fact ID from the i-th raw fact row.
-// Returns "" when the row is missing or malformed.
-func factIDFromFactRow(rows [][]byte, idx int) string {
-	if idx < 0 || idx >= len(rows) {
-		return ""
-	}
-	var m map[string]any
-	if json.Unmarshal(rows[idx], &m) != nil {
-		return ""
-	}
-	id, _ := m["id"].(string)
-	return id
-}
-
-// mergeConflictCandidateMetadata records a conflict candidate into the fact
-// metadata JSON so reviewers can trace why conflict_count was incremented.
-func mergeConflictCandidateMetadata(raw string, dec biz.MemoryConflictDecision) string {
-	m := map[string]any{}
-	if err := json.Unmarshal([]byte(raw), &m); err != nil {
-		m = map[string]any{}
-	}
-	m["conflict_candidates"] = []map[string]any{
-		{"fact_id": dec.TargetFactID, "score": dec.Score},
-	}
-	b, err := json.Marshal(m)
-	if err != nil {
-		return raw
-	}
-	return string(b)
-}
-
-// memoryFactKindForSubjectType maps the extractor subject_type vocabulary to the
-// storage fact_kind column. Unknown/empty values fall back to "fact".
-func memoryFactKindForSubjectType(subjectType string) string {
-	switch strings.TrimSpace(subjectType) {
-	case "person":
-		return "profile"
-	case "preference":
-		return "preference"
-	case "constraint":
-		return "constraint"
-	case "event":
-		return "event"
-	case "concept":
-		return "knowledge"
-	default:
-		return "fact"
-	}
 }
 
 // resolveFactScope maps the proposal scope vocabulary to the storage

@@ -39,6 +39,30 @@ describe('monitorLogLineFromFlowEvent', () => {
     expect(line?.run_id).toBe('run_456');
     expect(line?.level).toBe('INFO');
   });
+
+  it('falls back to metadata message without duplicating title (title rendered separately)', () => {
+    const ev: MonitorEvent = {
+      id: 'env-2',
+      type: 'flow_log',
+      timestamp: '2026-05-20T12:00:00.000Z',
+      session_id: 'sess-1',
+      source: 'flow',
+      message: '',
+      metadata: {
+        schema_version: 'flow_log/v1',
+        flow_id: 'fl_dup',
+        step_id: 'chat.llm.invoke',
+        flow_phase: 'done',
+        severity: 'ok',
+        title: '调用语言模型',
+        message: '模型已返回（120ms）',
+      },
+    };
+    const line = monitorLogLineFromFlowEvent(ev);
+    // 展示层 title 与 message 分两列渲染，message 不得再拼接 title（否则同一文本出现两次）。
+    expect(line?.title).toBe('调用语言模型');
+    expect(line?.message).toBe('模型已返回（120ms）');
+  });
 });
 
 describe('flowLogMatchesTrace', () => {

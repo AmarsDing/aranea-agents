@@ -94,3 +94,94 @@
 ---
 
 ## 结果记录（执行后填写）
+
+> 执行时间：2026-08-01 10:34（静态 API）/ 2026-08-01 12:10（聊天链路复测）/ 2026-08-01 12:20（前端 UI）
+> 执行环境：admin @ :8000（KRATOS_HTTP_AUTH_DISABLED=1）、PostgreSQL、前端 dev @ :9003
+> 总体结论：**41/41 项通过（静态 35 + 聊天链路 6 + UI 6），期间发现 6 个真实缺陷已全部按根因修复并复测通过。**
+
+### A. 静态 API 测试（35 项，全 PASS）
+
+明细见 `static-results.txt`。覆盖：L0-01/02/ERR、L1-01/02、L2-01/01b/04/05、L3-01~08、L4-01/02/03/05/06/07/08、X-01~X-05。
+要点：
+- L3-04 PII 脱敏生效（`[phone]` 占位替换），L3-05 review approve 状态流转正常
+- L3-06 冲突检测命中（tailwind 矛盾对），L4-08b/c 不存在资源返回 404 而非 500
+- X-04b 死信 replay 不存在 ID → 404（修复后行为，见问题 #5）
+
+### B. 聊天链路端到端（6 项，全 PASS）
+
+脚本 `run_chat_tests.py` + `verify_new_session.py`，测试 agent `memtest-agent`(f2e5a24ab0756d6413d6a1a3)，session `685dfbcb-f7e0-40f7-9792-003bfe2405ca`：
+
+| 用例 | 结果 | 证据 |
+|------|------|------|
+| L0-04 聊天触发快照 | ✅ | 4 个快照；keys 完整（segments/usage/warnings/token 统计） |
+| L0-03 分段结构 | ✅ | segments 覆盖 history/memory.l1/memory.l2_l3/memory.l4/system.*/user.input |
+| L1-03 工具触发 | ✅ | agent 自主调用 working_memory 写入 task_goal+关键决策，task 共 11 字段 |
+| L1-04 L1 prompt 注入 | ✅ | snap0/1 `l1Fields=11`、memory.l1 分段 token=1108 |
+| L4-04 中文实体抽取 | ✅ | entities=4：测试用户张三(person)/喝咖啡(preference)/喝什么(preference)/User profile |
+| MSG3 记忆回读 | ✅ | agent 精确回答"张三/咖啡/小白"；snap3 `memory.l4` 分段 l4Paths=3 l4Tokens=744（修复后注入生效） |
+| L2-02 episode 产生 | ✅ | episodes=7（worker 异步归档）；系统消息含 L2 recall hits |
+| L3 consolidation | ✅ | DB memory_facts 共 33 条，本 session scope 3 条（scope=session/user 存储，agent scope 查询为 0 属测试脚本查询口径，recall 注入正常） |
+| 时间线用户消息 | ✅ | tasks_v2=3 与 steps_v2=16 合并，messages API 返回 15 条含全部 3 条用户消息（修复后行为，见问题 #1） |
+
+### C. 前端 UI 验证（6 项，全 PASS）
+
+| 用例 | 结果 | 证据 |
+|------|------|------|
+| U-01 全景 Tab | ✅ | 五层卡真实计数、健康徽标、今日新增、需要关注区、最近动态流均渲染；控制台无 error |
+| U-02 图谱 Tab | ✅ | 节点按 L2/L3/L4 分层色码+形状区分，受控不毛线球；点击节点开详情抽屉 |
+| U-03 浏览 Tab | ✅ | L0-L3 chips 过滤、L3 facts 表格（statement/kind/confidence）、L2 时间线、分页 |
+| U-04 治理 Tab | ✅ | cascade 审批/演进提案/平台设置/Worker 状态/dead-letters 五面板齐全 |
+| U-05 Session 详情 | ✅ | **3 条用户消息正常显示**（问题 #1 修复验证）；L0 快照面板可展开分段；L1 任务面板显示字段 |
+| U-06 层级卡钻取 | ✅ | 全景 L3 卡点击 → 跳 browse Tab 并过滤 L3；L4 卡 → 跳 graph Tab |
+
+### D. 发现的缺陷与根因修复（6 项，全部根本性修复）
+
+| # | 缺陷 | 根因 | 根本性修复 | 复测 |
+|---|------|------|-----------|------|
+| 1 | 聊天不产生 L4 实体、前端消息列表缺用户消息 | v2 时间线只合并 steps_v2（agent 步），不含 tasks_v2（用户消息）→ WriteFromUserText 永远收不到用户输入 | `session_activity_adapter.go` 合并 tasks_v2 进时间线，Task→Activity(kind=task) 转换；Wire 注入 taskV2Repo；补单测 | ✅ entities=4、messages 含用户消息 |
+| 2 | consolidation fact upsert 报 `pq: 字段关联 "version" 是不明确的` | ON CONFLICT DO UPDATE 子句中 version 列引用未限定表名 | `memory_shim_l3.go` 改为 `version = memory_facts.version + 1` | ✅ facts 写入正常 |
+| 3 | L3-03 重复 upsert version 不自增 | 传入的 Version 值覆盖数据库自增，破坏系统管理版本纪律 | INSERT 强制 version=1，自增仅由 ON CONFLICT 子句系统管理 | ✅ version=2 正确 |
+| 4 | L4-01 entities 列表空 | API 用 workspace_id='' 而存量行为 'default'，等值过滤丢数据 | 过滤改为 `workspace_id IN ('', ?)` 兼容共享/遗留行 | ✅ count 正常 |
+| 5 | X-04b replay 不存在死信返回成功 | data 层未检查 RowsAffected，service 层合成假成功响应 | MarkDeadLetterReplayed/Abandoned 检查影响行数并传播 NotFound；service 删除合成响应 | ✅ 404 DATA_NOT_FOUND |
+| 6 | L4 实体不注入 prompt（recall 时 l4 分段缺失） | SQL `name LIKE '%<整句用户输入>%'` 永远匹配不到短实体名，候选集为空 | `l4_prompt.go` 改为拉取有界候选（64 条）+ Go 内存排序：mention 命中优先 → confidence 降序 → 时间序；confidence<0.3 过滤前置不占用注入槽；补 2 个单测 | ✅ snap3 memory.l4 分段 l4Paths=3，MSG3 回答正确 |
+
+### E. 环境类问题（已处置）
+
+- 磁盘耗尽（Errno 28）：测试目录 `.gocache-*` 占用 33GB+，已清理释放 33.54GB。
+- 重启 admin 后 401：进程未带 `KRATOS_HTTP_AUTH_DISABLED=1`，已用该环境变量重启恢复。
+
+### F. 遗留观察项（非阻塞）—— 2026-08-05 已全部修复，见 G 节
+
+1. **L3 facts scope 口径**：consolidation 写入的 facts 使用 session/user scope，按 agent scope 查询为 0。recall scopes 配置（agent/user/team/workspace）覆盖 user 域故注入正常；如需"按 agent 维度浏览 facts"，管理端查询应聚合 user/session scope 或由 consolidation 双写 agent scope——建议在产品口径上明确，暂不定为缺陷。→ **已修复（G-F1）**
+2. **L2 recall 系统消息冗余**：聊天时间线中每轮插入一条 `{"hits":[...]}` 系统消息展示 recall 命中，对终端用户偏技术化，建议前端默认折叠（P2 打磨）。→ **已修复（G-F2）**
+3. agent 回复中含 `<fact type="identity">` 标记文本直接渲染在消息里（模型侧输出习惯），建议评估是否在展示层剥离（P2 打磨）。→ **已修复（G-F3）**
+
+### G. 遗留观察项修复（2026-08-05，F1/F2/F3 全部根本性修复并复测通过）
+
+> 执行环境：admin @ :8000（新二进制，含三项修复）、PostgreSQL；验证脚本 `verify_f123.py`（日志 `f123-verify-log.txt`）6/6 PASS。
+> 后端测试：`internal/biz`、`internal/biz/session`、`internal/agent/v2`、`internal/cronrunner/jobs`、`internal/memory/...`、`internal/data`、`internal/service` 全绿（仅 2 个外网依赖的 model catalog 用例失败，与本次无关）。前端 lint 0 错误、1192 测试通过、build 成功。
+
+| # | 观察项 | 根因 | 根本性修复 | 运行时复测证据 |
+|---|--------|------|-----------|---------------|
+| F1 | 全景卡 L3 计数与浏览 Tab 口径不一致（卡上显示 0，实际有 facts） | 全景卡按 `scope='agent'` 计数，而即刻事实写 session scope、巩固事实写 user scope → 漏计 | 统一改为按**产生方 agent**（`memory_facts.agent_id` 列）跨全部 scope 聚合：`biz.L3FactReader.ListFactRows` 增加 `agentID` 过滤参数并贯通 data 层 SQL；`ListMemoryFactsRequest` proto 增加 `agent_id=8` 字段（`make api` 重新生成 Go+TS）；service 透传；前端浏览 Tab 始终带当前选中 agent（切换 agent 自动刷新）；设计文档口径同步 | 全景卡 L3=33，浏览 Tab `?agent_id=` total=33（一致）；旧口径 `scope_type=agent` total=0（复现原缺陷）；33 条 facts 全部非 agent scope（user/session）但正确归属该 agent |
+| F2 | 系统内部 notice（context_usage/memory_recalled 等）以 raw JSON system 消息泄漏进消息视图 | `activityToChatMessage` 对所有 `kind=notice` 一律映射为 system 消息，未区分机器载荷与用户可见通知 | `session.ActivityEntry` 增加 `NoticeType` 字段（自 `Activity.Meta["notice_type"]` 传播）；消息转换按 `systemInternalNoticeTypes` 集合（context_usage/context_window/metrics_updated/token_usage/memory_recalled，与前端 `noticeFilter.ts` 保持一致）过滤系统内部 notice，用户可见 notice（model_router 等）保留 | 新 session messages API：roles=user/assistant/tool，无 system raw JSON；旧 memtest session（曾含 recall/context 通知）：8 条消息 0 泄漏 |
+| F3 | agent 回复中 `<fact>` 机器抽取标签直接渲染给用户 | v1 管线在消息持久化前剥离标签，v2 管线（projector.OnTextDone）未做同等处理 | `biz.StripFactMarks`（复用 fact_parser 同一正则，未闭合标签保留防截断误删）；`ActivityProjector.OnTextDone` 在持久化/完成 step 前剥离——抽取逻辑在上游（immediateFactWriter）不受影响 | 发送"我最近开始学习小提琴"：assistant 回复自然文本无 `<fact>`；tool 结果 `action:created` 且 fact 同时落 session+user scope（keyword=小提琴 total=2），证明抽取链路不受剥离影响 |
+
+**新增/更新测试**：`fact_parser_test.go`（StripFactMarks 含未闭合标签边界）、`projector_test.go`（TestHandleTextDone_StripsFactMarks）、`activity_message_adapter_filter_test.go`（内部 notice 过滤 + 用户 notice 保留）、`session_activity_adapter_test.go`（NoticeType 传播）、`memory_layer_overview_test.go`（L3 按 agentID 跨 scope 计数断言）、`memory_list_facts_test.go`（service 层 agent_id 透传）；全部 mock（canary/ebbinghaus/link_evolution/bitemporal）同步新签名。
+
+### H. scope 口径一致性排查（2026-08-05，H1-H4 全部根本性修复并复测通过）
+
+> 触发：按 F1 根因模式（写 scope=session/user vs 读 scope=agent 漏算）排查其余 scope 相关读取点。基线分布：`memory_facts` 活跃行几乎全部在 user/session 域（`check_scope_dist.py`），凡 `scope_type='agent'` 过滤的读取均漏算。
+> 执行环境：admin @ :8000（新二进制 pid=19784，含四项修复）、PostgreSQL；验证脚本 `verify_h2.py`。
+> 静态验证：`make api` ✅、`go build ./...` ✅、`go test`（biz/data/memory/service/cronrunner）全绿（仅 2 个已知外网 model catalog 失败）、前端 lint 0 / 1202 tests / build ✅。
+
+| # | 隐患 | 根因 | 根本性修复 | 运行时复测证据 |
+|---|------|------|-----------|---------------|
+| H1 | 统一图缺 L3 fact 节点 | `memory_center.go` 统一图 fact 扫描按 `scope='agent'` 过滤，session/user 域 facts 全部漏算 | 与 F1 同模式：改按 `memory_facts.agent_id` 跨全部 scope 聚合扫描 | `GET /v1/memory/graph/unified?agent_id=agent___skills__` 返回 2 个 L3 fact 节点（user 域，旧口径=0），含 fact_source 边连 L2 episode |
+| H2 | 冲突 facts 按 agent 浏览漏算 | `ListConflictingFacts` 仅支持 scope 过滤，而冲突 facts 分布在 session/user 域 | proto `ListConflictingFactsRequest` 增 `agent_id=5`；service 透传 + `scope_type`/`agent_id` 双空返回 400（防全表扫描）；data SQL 增 agent_id 跨 scope 过滤；前端 api.ts 透传 | 构造 conflict_count=1（spirit agent 域 1 条 + skills user 域 2 条）：`?agent_id=spirit`→1、`?agent_id=skills`→2（user 域，旧口径=0）、`?scope_type=user&scope_id=default_user`→2（向后兼容）、无过滤→400；复测后已清理 |
+| H3 | Ebbinghaus 衰减分只作用于 agent 域子集 | per-agent 扫描按 `scope_type='agent'` 过滤，session/user 域 facts 的 R_t 长期不更新 | 提取 `scanFactsForAgent`，改用 `agent_id` 跨全部 scope 拉取（批上限 500） | 进程日志确认新二进制 worker `reader_wired=true agents_wired=true` 启动；扫描口径由 `TestMemoryEbbinghausDecay_*` mock 断言 agentID 参数覆盖（24h tick 不等待） |
+| H4 | EVOLVED_FROM 边在统一图不可见 | `applyEvolvedFromSideEffects` 写 `memory_relations` 继承 fact 的 session/user scope，而关系读取按 `scope_type='agent'` 过滤 | fact 带 `agent_id` 则 relation 统一落 agent scope；无 agent_id 遗留行回退自身 scope | `SetRelationWriter` 接线确认（wire_memory.go:209）；scope 行为由 `TestLinkEvolution_EvolvedFromRelationAgentScope` / `...LegacyScopeFallback` 两个新单测覆盖（LLM 决策路径运行时不可确定性触发） |
+
+**新增/更新测试**：`memory_unified_graph_test.go`（H1 跨 scope fact 扫描断言）、`memory_layer_overview_test.go`（H2 冲突查询断言）、`memory_ebbinghaus_decay_test.go`（H3 agentID 过滤断言，`scanFactsForAgent` 提取后可测）、`link_evolution_test.go`（H4 agent scope + 遗留回退两用例）。
+
+**排查覆盖清单（结论：无其他同类隐患）**：L0 快照 / L1 任务（session 维度天然正确）、L2 episodes（写入即 user+agent 归属，查询按 user_id）、融合 recall（scopes 配置含 user 域故注入正常）、L4 entities（已有 workspace 兼容过滤，见缺陷 #4）、PII review / dead-letters / worker status（管理面全量口径，不按 agent 过滤）。

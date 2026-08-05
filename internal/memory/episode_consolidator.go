@@ -47,6 +47,7 @@ type EpisodeConsolidator struct {
 	actionLogWriter biz.MemoryActionLogWriter
 	llm             trpcmodel.Model
 	llmResolver     LLMResolver // P1-1: per-target ModelCatalog resolution (takes precedence over llm)
+	factPipeline    *biz.FactWritePipeline
 	lg              loggateway.Logger
 	// T8: minimum importance threshold for extracted facts. Facts with
 	// importance below this value are skipped. Default: 0.3.
@@ -103,6 +104,18 @@ func (c *EpisodeConsolidator) SetLLMResolver(r LLMResolver) {
 	c.llmResolver = r
 }
 
+// SetFactPipeline wires the P1-3 unified write pipeline. When set, extracted
+// facts funnel through gates → neighbor recall → adjudication → bi-temporal
+// writes (replacing the legacy direct-upsert path, which is kept for
+// pipeline-less construction). Must be called before use; not safe to call
+// concurrently with active consolidation.
+func (c *EpisodeConsolidator) SetFactPipeline(p *biz.FactWritePipeline) {
+	if c == nil {
+		return
+	}
+	c.factPipeline = p
+}
+
 // ConsolidateEpisodes reads recent L2 episodes for the given agent/user,
 // extracts durable L3 facts via LLM analysis, and persists them.
 //
@@ -125,8 +138,8 @@ func (c *EpisodeConsolidator) ConsolidateEpisodes(ctx context.Context, uk trpcme
 			loggateway.Str("user", uk.UserID))
 		return nil
 	}
-	if c.episodeReader == nil || c.factWriter == nil {
-		c.lg.Warn("episode consolidation skipped: nil episode reader or fact writer",
+	if c.episodeReader == nil || (c.factWriter == nil && c.factPipeline == nil) {
+		c.lg.Warn("episode consolidation skipped: nil episode reader or fact sink",
 			loggateway.Str("app", uk.AppName),
 			loggateway.Str("user", uk.UserID))
 		return nil
@@ -174,7 +187,13 @@ func (c *EpisodeConsolidator) ConsolidateEpisodes(ctx context.Context, uk trpcme
 		return nil
 	}
 
-	// 4. Persist extracted facts via L3FactWriter.
+	// 4. Persist extracted facts. Preferred path (P1-3): the unified write
+	// pipeline (gates → neighbor recall → adjudication → bi-temporal writes →
+	// audit). Fallback (pipeline not wired): legacy direct upsert.
+	if c.factPipeline != nil {
+		c.persistViaPipeline(ctx, result.Facts, uk, len(episodes))
+		return nil
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	extractedCount := 0
 	for _, fact := range result.Facts {
@@ -220,7 +239,50 @@ func (c *EpisodeConsolidator) ConsolidateEpisodes(ctx context.Context, uk trpcme
 	return nil
 }
 
-// writeActionLog writes an action_log entry for an extracted fact.
+// persistViaPipeline funnels extracted facts through the unified write
+// pipeline (P1-3). The pipeline applies the noise-reduction gates (kind
+// whitelist, confidence floor, dedup-merge) and audits every decision, so no
+// separate action_log write happens here.
+func (c *EpisodeConsolidator) persistViaPipeline(ctx context.Context, facts []extractedFact, uk trpcmemory.UserKey, episodesScanned int) {
+	var candidates []biz.FactWriteCandidate
+	for _, fact := range facts {
+		if c.minImportance > 0 && fact.Importance < c.minImportance {
+			continue
+		}
+		stmt := strings.TrimSpace(fact.Statement)
+		if stmt == "" {
+			continue
+		}
+		confidence := fact.Confidence
+		if confidence <= 0 {
+			confidence = 0.85
+		}
+		candidates = append(candidates, biz.FactWriteCandidate{
+			Statement:       stmt,
+			FactKind:        biz.FactKindForSubjectType(fact.SubjectType),
+			Confidence:      confidence,
+			Importance:      fact.Importance,
+			ScopeType:       episodeConsolidationScopeType,
+			ScopeID:         uk.AppName,
+			UserID:          uk.UserID,
+			AgentID:         uk.AppName,
+			SourceKind:      "episode",
+			SourceEpisodeID: fact.SourceEpisodeID,
+		})
+	}
+	res := c.factPipeline.Apply(ctx, candidates)
+	c.lg.Info("episode consolidation completed (pipeline)",
+		loggateway.Str("app", uk.AppName),
+		loggateway.Str("user", uk.UserID),
+		loggateway.Int("episodes_scanned", episodesScanned),
+		loggateway.Int("facts_added", res.Added),
+		loggateway.Int("facts_updated", res.Updated),
+		loggateway.Int("facts_merged", res.Merged),
+		loggateway.Int("facts_dropped", res.Dropped))
+}
+
+// writeActionLog writes an action_log entry for an extracted fact (legacy
+// direct-upsert path only; the pipeline path audits via its own ActionLog).
 // Best-effort: failures are logged as warnings.
 func (c *EpisodeConsolidator) writeActionLog(ctx context.Context, fact extractedFact, uk trpcmemory.UserKey) {
 	if c.actionLogWriter == nil {
@@ -296,10 +358,11 @@ func buildExtractionPrompt(episodes []episodeData) string {
 const extractionSystemPrompt = `You are a memory extraction agent. Given a list of L2 episodes (each with an id, title, outcome_summary, and importance), your task is to extract durable, reusable L3 semantic facts that will remain useful beyond the specific episode.
 
 Return a JSON object with this schema:
-{"facts": [{"statement": "durable fact", "importance": 0.8, "confidence": 0.9, "source_episode_id": "episode-id", "reason": "why this fact was extracted"}]}
+{"facts": [{"statement": "durable fact", "subject_type": "preference", "importance": 0.8, "confidence": 0.9, "source_episode_id": "episode-id", "reason": "why this fact was extracted"}]}
 
 Rules:
-- Extract facts that are durable (user preferences, entity attributes, reusable knowledge) — NOT ephemeral task details.
+- Extract facts that are durable (user preferences, profile traits, goals, constraints, decisions, relationships) — NOT ephemeral task details.
+- "subject_type" categorizes the fact: person (profile trait), preference, constraint, goal, decision, relationship, or other.
 - Each fact must reference its source_episode_id from the input.
 - Importance ∈ [0, 1]: how useful this fact is for future conversations.
 - Confidence ∈ [0, 1]: how certain you are that this fact is accurate.
@@ -332,6 +395,7 @@ func parseEpisodeData(raw []byte) (episodeData, error) {
 // extractedFact represents a single L3 fact extracted by the LLM.
 type extractedFact struct {
 	Statement       string  `json:"statement"`
+	SubjectType     string  `json:"subject_type"`
 	Importance      float64 `json:"importance"`
 	Confidence      float64 `json:"confidence"`
 	SourceEpisodeID string  `json:"source_episode_id"`

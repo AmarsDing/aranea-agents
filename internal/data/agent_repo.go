@@ -200,6 +200,7 @@ func fromEntMemory(e *ent.AgentRuntimeSetting) biz.MemoryCfg {
 		L3DecayIntervalHours:     e.L3DecayIntervalHours,
 		L3ArchiveThreshold:       e.L3ArchiveThreshold,
 		L3MaxPerRecallChars:      e.L3MaxPerRecallChars,
+		L3RecallBudgetTokens:     e.L3RecallBudgetTokens,
 		L4Enabled:                e.L4Enabled,
 		L4GraphInjectNeighbors:   e.L4GraphInjectNeighbors,
 		L4GraphMaxNeighbors:      e.L4GraphMaxNeighbors,
@@ -393,6 +394,7 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetL3DecayIntervalHours(v.L3DecayIntervalHours).
 		SetL3ArchiveThreshold(v.L3ArchiveThreshold).
 		SetL3MaxPerRecallChars(v.L3MaxPerRecallChars).
+		SetL3RecallBudgetTokens(v.L3RecallBudgetTokens).
 		SetL4Enabled(v.L4Enabled).
 		SetL4GraphInjectNeighbors(v.L4GraphInjectNeighbors).
 		SetL4GraphMaxNeighbors(v.L4GraphMaxNeighbors).

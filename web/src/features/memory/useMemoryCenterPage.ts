@@ -249,7 +249,7 @@ export function useMemoryCenterPage() {
 
   watch(selectedAgentId, async () => {
     selectedSessionId.value = null;
-    await Promise.all([loadSessions(), loadEvolution(), loadCascade()]);
+    await Promise.all([loadSessions(), loadFacts(), loadEvolution(), loadCascade()]);
   });
 
   watch(selectedSessionId, () => {
@@ -399,7 +399,9 @@ export function useMemoryCenterPage() {
       return;
     }
     try {
-      await memoryStore.loadConflictingFacts('agent', agentID, 50, 0);
+      // H2: agent_id 跨 scope 口径——冲突事实分布在 session/user/agent scope，
+      // 仅查 agent scope 会漏计（与 F1 facts 列表口径一致）。
+      await memoryStore.loadConflictingFacts('', '', agentID, 50, 0);
     } catch {
       // 冲突总数仅用于全景行动项（后端聚合）；此处预取失败不阻断 facts 列表。
     }
@@ -412,6 +414,7 @@ export function useMemoryCenterPage() {
         keyword: factKeyword.value || undefined,
         scope_type: factScope.value || undefined,
         status: factStatus.value || undefined,
+        agent_id: selectedAgentId.value || undefined,
         limit: 50,
       });
       factsTotal.value = result.total;

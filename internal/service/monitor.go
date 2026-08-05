@@ -100,12 +100,13 @@ func wrapInternalError(err error) error {
 
 func (s *MonitorService) ListAuditLogs(ctx context.Context, in *v1.ListAuditLogsRequest) (*v1.ListAuditLogsResponse, error) {
 	result, err := s.uc.ListAuditLogs(ctx, biz.AuditQuery{
-		Limit:    in.GetLimit(),
-		Offset:   in.GetOffset(),
-		Action:   in.GetAction(),
-		Resource: in.GetResource(),
-		Actor:    in.GetActor(),
-		Keyword:  in.GetKeyword(),
+		Limit:         in.GetLimit(),
+		Offset:        in.GetOffset(),
+		Action:        in.GetAction(),
+		Resource:      in.GetResource(),
+		Actor:         in.GetActor(),
+		Keyword:       in.GetKeyword(),
+		ExcludeSystem: in.GetExcludeSystem(),
 	})
 	if err != nil {
 		return nil, err
@@ -154,25 +155,6 @@ func (s *MonitorService) GetMonitorEvent(ctx context.Context, in *v1.GetMonitorE
 		return nil, notFoundMonitor(err)
 	}
 	return bizMonitorRowToProto(row, s.lg), nil
-}
-
-func (s *MonitorService) ListMonitorTraces(ctx context.Context, in *v1.ListMonitorTracesRequest) (*v1.ListMonitorTracesResponse, error) {
-	result, err := s.uc.ListMonitorTraces(ctx, biz.MonitorTracesQuery{
-		Limit:    in.GetLimit(),
-		Offset:   in.GetOffset(),
-		AgentID:  in.GetAgentId(),
-		Provider: in.GetProvider(),
-		Model:    in.GetModel(),
-		Status:   in.GetStatus(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]*v1.MonitorPlatformRow, 0, len(result.Items))
-	for _, row := range result.Items {
-		out = append(out, bizMonitorRowToProto(row, s.lg))
-	}
-	return &v1.ListMonitorTracesResponse{Items: out, Total: result.Total}, nil
 }
 
 func (s *MonitorService) GetMonitorTrace(ctx context.Context, in *v1.GetMonitorTraceRequest) (*v1.MonitorTraceDetail, error) {

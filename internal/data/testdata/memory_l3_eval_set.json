@@ -1,0 +1,255 @@
+{
+  "version": 1,
+  "name": "memory-l3-offline-eval",
+  "min_score": 0.55,
+  "description": "P2-4 offline evaluation set (50 items), localized from the LongMemEval five-capability framework: extraction / multi_hop / temporal / knowledge_update / refusal. Deterministic gate for memory-related PRs: no embedder (keyword/FTS/recency/importance channels only), min_score = production default 0.55. Chinese queries are space-separated keyword phrases because tokenizeQuery is substring-based (CJK is not segmented); every expect_hits fact contains ALL query tokens verbatim (kw=1.0). Multi-hop items gate only the answer-bearing fact; bridge facts score kw=0.5 without the vector channel and are expected to fall below 0.55 (recorded baseline behavior). Temporal items backdate the stale fact (age_days) so decay+recency push it below the threshold; knowledge_update items invalidate the superseded fact (valid_until) so it is filtered structurally. Refusal items share NO query token with any seed fact (kw=0 -> 0.38 < 0.55).",
+  "items": [
+    { "id": "ex-01", "capability": "extraction", "query": "部署城市 杭州",
+      "seed_facts": [ { "statement": "用户的部署城市是杭州滨江", "importance": 0.85 } ],
+      "expect_hits": ["杭州滨江"] },
+    { "id": "ex-02", "capability": "extraction", "query": "深色主题 编辑器",
+      "seed_facts": [ { "statement": "用户偏好使用深色主题的编辑器", "importance": 0.85 } ],
+      "expect_hits": ["深色主题"] },
+    { "id": "ex-03", "capability": "extraction", "query": "FALCON-7391 项目代号",
+      "seed_facts": [ { "statement": "用户的项目代号是 FALCON-7391", "importance": 0.85 } ],
+      "expect_hits": ["FALCON-7391"] },
+    { "id": "ex-04", "capability": "extraction", "query": "周三 羽毛球",
+      "seed_facts": [ { "statement": "用户每周三晚上打羽毛球", "importance": 0.85 } ],
+      "expect_hits": ["羽毛球"] },
+    { "id": "ex-05", "capability": "extraction", "query": "宠物猫 年糕",
+      "seed_facts": [ { "statement": "用户的宠物猫叫年糕", "importance": 0.85 } ],
+      "expect_hits": ["年糕"] },
+    { "id": "ex-06", "capability": "extraction", "query": "PX-8842 序列号",
+      "seed_facts": [ { "statement": "备用服务器的序列号是 PX-8842", "importance": 0.85 } ],
+      "expect_hits": ["PX-8842"] },
+    { "id": "ex-07", "capability": "extraction", "query": "早餐 豆浆",
+      "seed_facts": [ { "statement": "用户的早餐偏好是豆浆配油条", "importance": 0.85 } ],
+      "expect_hits": ["豆浆"] },
+    { "id": "ex-08", "capability": "extraction", "query": "格式化工具 gofumpt",
+      "seed_facts": [ { "statement": "用户常用的代码格式化工具是 gofumpt", "importance": 0.85 } ],
+      "expect_hits": ["gofumpt"] },
+    { "id": "ex-09", "capability": "extraction", "query": "会议室 提前两天",
+      "seed_facts": [ { "statement": "用户的会议室预订习惯是提前两天", "importance": 0.85 } ],
+      "expect_hits": ["提前两天"] },
+    { "id": "ex-10", "capability": "extraction", "query": "迁移窗口 周日凌晨",
+      "seed_facts": [ { "statement": "用户的数据库迁移窗口在每周日凌晨", "importance": 0.85 } ],
+      "expect_hits": ["周日凌晨"] },
+
+    { "id": "mh-01", "capability": "multi_hop", "query": "林岚 杭州",
+      "seed_facts": [
+        { "statement": "林岚是 Falcon 项目的负责人", "importance": 0.85 },
+        { "statement": "林岚的常驻办公地点在杭州", "importance": 0.85 }
+      ],
+      "expect_hits": ["杭州"] },
+    { "id": "mh-02", "capability": "multi_hop", "query": "Kafka 告警",
+      "seed_facts": [
+        { "statement": "数据平台组负责维护 Kafka 集群", "importance": 0.85 },
+        { "statement": "Kafka 集群的告警接收人是周航", "importance": 0.85 }
+      ],
+      "expect_hits": ["周航"] },
+    { "id": "mh-03", "capability": "multi_hop", "query": "PayBridge 超时阈值",
+      "seed_facts": [
+        { "statement": "账单服务依赖的支付网关叫 PayBridge", "importance": 0.85 },
+        { "statement": "PayBridge 的超时阈值配置为 3 秒", "importance": 0.85 }
+      ],
+      "expect_hits": ["3 秒"] },
+    { "id": "mh-04", "capability": "multi_hop", "query": "仁济医院 预约",
+      "seed_facts": [
+        { "statement": "用户的上次体检在仁济医院完成", "importance": 0.85 },
+        { "statement": "仁济医院的体检报告需要在线预约领取", "importance": 0.85 }
+      ],
+      "expect_hits": ["预约"] },
+    { "id": "mh-05", "capability": "multi_hop", "query": "Orion 复盘",
+      "seed_facts": [
+        { "statement": "团队代号 Orion 的迭代周期是两周", "importance": 0.85 },
+        { "statement": "Orion 团队的复盘会议在周五下午", "importance": 0.85 }
+      ],
+      "expect_hits": ["复盘"] },
+    { "id": "mh-06", "capability": "multi_hop", "query": "D-17 抽检",
+      "seed_facts": [
+        { "statement": "训练数据集 D-17 的标注规范在三月更新", "importance": 0.85 },
+        { "statement": "D-17 数据集的抽检比例是百分之五", "importance": 0.85 }
+      ],
+      "expect_hits": ["抽检"] },
+    { "id": "mh-07", "capability": "multi_hop", "query": "阿凯 结算",
+      "seed_facts": [
+        { "statement": "供应商阿凯负责办公室的绿植养护", "importance": 0.85 },
+        { "statement": "阿凯的结算方式是按季度对公转账", "importance": 0.85 }
+      ],
+      "expect_hits": ["结算"] },
+    { "id": "mh-08", "capability": "multi_hop", "query": "gw-prod 审批",
+      "seed_facts": [
+        { "statement": "网关配置中心的命名空间是 gw-prod", "importance": 0.85 },
+        { "statement": "gw-prod 命名空间的变更需要双人审批", "importance": 0.85 }
+      ],
+      "expect_hits": ["审批"] },
+    { "id": "mh-09", "capability": "multi_hop", "query": "nas-archive 保留策略",
+      "seed_facts": [
+        { "statement": "老系统导出的凭证文件存放在 nas-archive 卷", "importance": 0.85 },
+        { "statement": "nas-archive 卷的保留策略是七年", "importance": 0.85 }
+      ],
+      "expect_hits": ["七年"] },
+    { "id": "mh-10", "capability": "multi_hop", "query": "KB-Core 同步窗口",
+      "seed_facts": [
+        { "statement": "客服知识库的主库叫 KB-Core", "importance": 0.85 },
+        { "statement": "KB-Core 的同步窗口在凌晨两点", "importance": 0.85 }
+      ],
+      "expect_hits": ["凌晨两点"] },
+
+    { "id": "tp-01", "capability": "temporal", "query": "咖啡 偏好",
+      "seed_facts": [
+        { "statement": "用户当时的咖啡偏好是美式", "importance": 0.85, "age_days": 60 },
+        { "statement": "用户现在的咖啡偏好是燕麦拿铁", "importance": 0.85 }
+      ],
+      "expect_hits": ["燕麦拿铁"], "expect_absent": ["美式"] },
+    { "id": "tp-02", "capability": "temporal", "query": "主力编辑器",
+      "seed_facts": [
+        { "statement": "用户此前的主力编辑器是 VSCode", "importance": 0.85, "age_days": 45 },
+        { "statement": "用户目前的主力编辑器是 Neovim", "importance": 0.85 }
+      ],
+      "expect_hits": ["Neovim"], "expect_absent": ["VSCode"] },
+    { "id": "tp-03", "capability": "temporal", "query": "通勤方式",
+      "seed_facts": [
+        { "statement": "用户之前通勤方式是地铁九号线", "importance": 0.85, "age_days": 90 },
+        { "statement": "用户现在通勤方式是骑自行车", "importance": 0.85 }
+      ],
+      "expect_hits": ["自行车"], "expect_absent": ["地铁九号线"] },
+    { "id": "tp-04", "capability": "temporal", "query": "发布窗口",
+      "seed_facts": [
+        { "statement": "团队原来的发布窗口是周三晚上", "importance": 0.85, "age_days": 120 },
+        { "statement": "团队当前的发布窗口是周二上午", "importance": 0.85 }
+      ],
+      "expect_hits": ["周二上午"], "expect_absent": ["周三晚上"] },
+    { "id": "tp-05", "capability": "temporal", "query": "错误追踪",
+      "seed_facts": [
+        { "statement": "项目原先的错误追踪用 Jira", "importance": 0.85, "age_days": 50 },
+        { "statement": "项目现在的错误追踪用 Linear", "importance": 0.85 }
+      ],
+      "expect_hits": ["Linear"], "expect_absent": ["Jira"] },
+    { "id": "tp-06", "capability": "temporal", "query": "健身频率",
+      "seed_facts": [
+        { "statement": "用户之前的健身频率是每周两次", "importance": 0.85, "age_days": 75 },
+        { "statement": "用户目前的健身频率是每周四次", "importance": 0.85 }
+      ],
+      "expect_hits": ["每周四次"], "expect_absent": ["每周两次"] },
+    { "id": "tp-07", "capability": "temporal", "query": "日志保留期",
+      "seed_facts": [
+        { "statement": "平台此前的日志保留期是三十天", "importance": 0.85, "age_days": 40 },
+        { "statement": "平台现在的日志保留期是九十天", "importance": 0.85 }
+      ],
+      "expect_hits": ["九十天"], "expect_absent": ["三十天"] },
+    { "id": "tp-08", "capability": "temporal", "query": "副本",
+      "seed_facts": [
+        { "statement": "集群原来的副本数是三副本", "importance": 0.85, "age_days": 65 },
+        { "statement": "集群当前的副本策略是五副本", "importance": 0.85 }
+      ],
+      "expect_hits": ["五副本"], "expect_absent": ["三副本"] },
+    { "id": "tp-09", "capability": "temporal", "query": "午休时长",
+      "seed_facts": [
+        { "statement": "用户过去的午休时长是半小时", "importance": 0.85, "age_days": 55 },
+        { "statement": "用户现在的午休时长是一小时", "importance": 0.85 }
+      ],
+      "expect_hits": ["一小时"], "expect_absent": ["半小时"] },
+    { "id": "tp-10", "capability": "temporal", "query": "代码评审方式",
+      "seed_facts": [
+        { "statement": "团队原先的代码评审方式是线下会议", "importance": 0.85, "age_days": 100 },
+        { "statement": "团队现在的代码评审方式是异步评论", "importance": 0.85 }
+      ],
+      "expect_hits": ["异步评论"], "expect_absent": ["线下会议"] },
+
+    { "id": "ku-01", "capability": "knowledge_update", "query": "居住城市",
+      "seed_facts": [
+        { "statement": "用户的居住城市是上海", "importance": 0.85, "invalidate": true },
+        { "statement": "用户的居住城市是苏州", "importance": 0.85 }
+      ],
+      "expect_hits": ["苏州"], "expect_absent": ["上海"] },
+    { "id": "ku-02", "capability": "knowledge_update", "query": "默认分支",
+      "seed_facts": [
+        { "statement": "用户的默认分支命名是 master", "importance": 0.85, "invalidate": true },
+        { "statement": "用户的默认分支命名是 main", "importance": 0.85 }
+      ],
+      "expect_hits": ["main"], "expect_absent": ["master"] },
+    { "id": "ku-03", "capability": "knowledge_update", "query": "站会时间",
+      "seed_facts": [
+        { "statement": "团队的站会时间是早上十点", "importance": 0.85, "invalidate": true },
+        { "statement": "团队的站会时间是下午两点", "importance": 0.85 }
+      ],
+      "expect_hits": ["下午两点"], "expect_absent": ["早上十点"] },
+    { "id": "ku-04", "capability": "knowledge_update", "query": "包管理工具",
+      "seed_facts": [
+        { "statement": "用户常用的包管理工具是 npm", "importance": 0.85, "invalidate": true },
+        { "statement": "用户常用的包管理工具是 pnpm", "importance": 0.85 }
+      ],
+      "expect_hits": ["pnpm"], "expect_absent": ["是 npm"] },
+    { "id": "ku-05", "capability": "knowledge_update", "query": "生产环境 域名",
+      "seed_facts": [
+        { "statement": "生产环境的域名是 api-old.example.com", "importance": 0.85, "invalidate": true },
+        { "statement": "生产环境的域名是 api.example.com", "importance": 0.85 }
+      ],
+      "expect_hits": ["api.example.com"], "expect_absent": ["api-old"] },
+    { "id": "ku-06", "capability": "knowledge_update", "query": "值班日",
+      "seed_facts": [
+        { "statement": "用户的值班日是每周一", "importance": 0.85, "invalidate": true },
+        { "statement": "用户的值班日是每周四", "importance": 0.85 }
+      ],
+      "expect_hits": ["每周四"], "expect_absent": ["每周一"] },
+    { "id": "ku-07", "capability": "knowledge_update", "query": "报表系统 负责人",
+      "seed_facts": [
+        { "statement": "报表系统的负责人是赵敏", "importance": 0.85, "invalidate": true },
+        { "statement": "报表系统的负责人是何斌", "importance": 0.85 }
+      ],
+      "expect_hits": ["何斌"], "expect_absent": ["赵敏"] },
+    { "id": "ku-08", "capability": "knowledge_update", "query": "会议时长",
+      "seed_facts": [
+        { "statement": "用户偏好的会议时长是六十分钟", "importance": 0.85, "invalidate": true },
+        { "statement": "用户偏好的会议时长是二十五分钟", "importance": 0.85 }
+      ],
+      "expect_hits": ["二十五分钟"], "expect_absent": ["六十分钟"] },
+    { "id": "ku-09", "capability": "knowledge_update", "query": "告警 渠道",
+      "seed_facts": [
+        { "statement": "监控告警的渠道是企业微信", "importance": 0.85, "invalidate": true },
+        { "statement": "监控告警的渠道是飞书", "importance": 0.85 }
+      ],
+      "expect_hits": ["飞书"], "expect_absent": ["企业微信"] },
+    { "id": "ku-10", "capability": "knowledge_update", "query": "测试环境 数据库",
+      "seed_facts": [
+        { "statement": "测试环境的数据库是 MySQL", "importance": 0.85, "invalidate": true },
+        { "statement": "测试环境的数据库是 PostgreSQL", "importance": 0.85 }
+      ],
+      "expect_hits": ["PostgreSQL"], "expect_absent": ["MySQL"] },
+
+    { "id": "rf-01", "capability": "refusal", "query": "量子计算 课程",
+      "seed_facts": [
+        { "statement": "用户喜欢燕麦拿铁", "importance": 0.85 },
+        { "statement": "用户的部署城市是杭州", "importance": 0.85 }
+      ],
+      "expect_empty": true },
+    { "id": "rf-02", "capability": "refusal", "query": "滑雪 装备",
+      "seed_facts": [ { "statement": "团队的发布窗口是周二上午", "importance": 0.85 } ],
+      "expect_empty": true },
+    { "id": "rf-03", "capability": "refusal", "query": "期货交易 规则",
+      "seed_facts": [ { "statement": "用户的宠物猫叫年糕", "importance": 0.85 } ],
+      "expect_empty": true },
+    { "id": "rf-04", "capability": "refusal", "query": "烘焙 温度",
+      "seed_facts": [ { "statement": "Kafka 集群由数据平台组维护", "importance": 0.85 } ],
+      "expect_empty": true },
+    { "id": "rf-05", "capability": "refusal", "query": "潜水 证书",
+      "seed_facts": [ { "statement": "用户的值班日是每周四", "importance": 0.85 } ],
+      "expect_empty": true },
+    { "id": "rf-06", "capability": "refusal", "query": "园艺 剪刀",
+      "seed_facts": [ { "statement": "监控告警的渠道是飞书", "importance": 0.85 } ],
+      "expect_empty": true },
+    { "id": "rf-07", "capability": "refusal", "query": "马拉松 配速",
+      "seed_facts": [ { "statement": "会议室预订需要提前两天", "importance": 0.85 } ],
+      "expect_empty": true },
+    { "id": "rf-08", "capability": "refusal", "query": "油画 颜料",
+      "seed_facts": [ { "statement": "用户常用的格式化工具是 gofumpt", "importance": 0.85 } ],
+      "expect_empty": true },
+    { "id": "rf-09", "capability": "refusal", "query": "房车 营地",
+      "seed_facts": [ { "statement": "数据集 D-17 的抽检比例是百分之五", "importance": 0.85 } ],
+      "expect_empty": true },
+    { "id": "rf-10", "capability": "refusal", "query": "攀岩 绳索",
+      "seed_facts": [ { "statement": "同步窗口在凌晨两点", "importance": 0.85 } ],
+      "expect_empty": true }
+  ]
+}

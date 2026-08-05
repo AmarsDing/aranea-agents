@@ -19,16 +19,23 @@ import (
 type l3FactRepo struct {
 	data        *Data
 	vectorStore vector.VectorStore
+	// bruteForceThreshold overrides biz.DefaultFactBruteForceThreshold when
+	// > 0. Tests set it to force the non-brute-force recall paths (recency
+	// pool / pgvector+FTS fusion) with small fixtures.
+	bruteForceThreshold int
 }
 
 // Compile-time interface checks.
 var (
-	_ biz.L3FactReader           = (*l3FactRepo)(nil)
-	_ biz.L3FactWriter           = (*l3FactRepo)(nil)
-	_ biz.L3ConflictStore        = (*l3FactRepo)(nil)
-	_ biz.PIIReviewStore         = (*l3FactRepo)(nil)
-	_ biz.DecayScoreWriter       = (*l3FactRepo)(nil)
-	_ biz.MemoryPreferenceLister = (*l3FactRepo)(nil)
+	_ biz.L3FactReader               = (*l3FactRepo)(nil)
+	_ biz.L3FactWriter               = (*l3FactRepo)(nil)
+	_ biz.L3ConflictStore            = (*l3FactRepo)(nil)
+	_ biz.PIIReviewStore             = (*l3FactRepo)(nil)
+	_ biz.DecayScoreWriter           = (*l3FactRepo)(nil)
+	_ biz.MemoryPreferenceLister     = (*l3FactRepo)(nil)
+	_ biz.FactAccessCounter          = (*l3FactRepo)(nil)
+	_ biz.MemoryFactInjectCounter    = (*l3FactRepo)(nil)
+	_ biz.MemoryFactCitationRecorder = (*l3FactRepo)(nil)
 )
 
 func newL3FactRepo(data *Data, vs vector.VectorStore) *l3FactRepo {
@@ -55,8 +62,36 @@ func NewL3FactReaderForUser(data *Data) biz.L3FactReader {
 }
 
 // NewL3ConflictStore creates a biz.L3ConflictStore backed by data.
-// Used by the auto-memory worker for conflict governance (supersede/mark).
+// Used by the chat turn path for conflict governance (supersede/mark).
 func NewL3ConflictStore(data *Data) biz.L3ConflictStore {
+	if data == nil {
+		return nil
+	}
+	return newL3FactRepo(data, nil)
+}
+
+// NewL3FactAccessCounter creates a biz.FactAccessCounter backed by data.
+// Used by the unified fact write pipeline (P1-3) for dedup-merge access bumps.
+func NewL3FactAccessCounter(data *Data) biz.FactAccessCounter {
+	if data == nil {
+		return nil
+	}
+	return newL3FactRepo(data, nil)
+}
+
+// NewL3FactInjectCounter creates a biz.MemoryFactInjectCounter backed by
+// data (FR-12.6). Used by the before-model memory inject hook for the
+// once-per-turn injected_count bump.
+func NewL3FactInjectCounter(data *Data) biz.MemoryFactInjectCounter {
+	if data == nil {
+		return nil
+	}
+	return newL3FactRepo(data, nil)
+}
+
+// NewL3FactCitationRecorder creates a biz.MemoryFactCitationRecorder backed
+// by data (FR-12.6). Used by the citation backfill worker.
+func NewL3FactCitationRecorder(data *Data) biz.MemoryFactCitationRecorder {
 	if data == nil {
 		return nil
 	}
@@ -112,12 +147,12 @@ func (a *factConsistencyAdapter) GetFactResyncRow(ctx context.Context, factID st
 
 // --- L3FactReader ---
 
-func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
-	clauses, args := buildFactFilterClauses(scopeType, scopeID, kind, status, keyword, true)
+func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword, agentID string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
+	clauses, args := buildFactFilterClauses(scopeType, scopeID, kind, status, keyword, agentID, true)
 	where := " WHERE " + strings.Join(clauses, " AND ")
 
 	// Single query to get total, active, and archived counts.
-	countClauses, countArgs := buildFactFilterClauses(scopeType, scopeID, kind, "", keyword, false)
+	countClauses, countArgs := buildFactFilterClauses(scopeType, scopeID, kind, "", keyword, agentID, false)
 	countWhere := ""
 	if len(countClauses) > 0 {
 		countWhere = " WHERE " + strings.Join(countClauses, " AND ")
@@ -175,7 +210,9 @@ func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind,
 // buildFactFilterClauses constructs WHERE clause components for fact queries.
 // When withStatusFilter is true, the status parameter is applied; otherwise
 // only scope/kind/keyword/deleted_at filters are included (for total counts).
-func buildFactFilterClauses(scopeType, scopeID, kind, status, keyword string, withStatusFilter bool) ([]string, []any) {
+// agentID filters by the originating-agent column (memory_facts.agent_id)
+// independently of the scope namespace — see biz.L3FactReader.
+func buildFactFilterClauses(scopeType, scopeID, kind, status, keyword, agentID string, withStatusFilter bool) ([]string, []any) {
 	clauses := []string{}
 	args := []any{}
 	if scopeType != "" {
@@ -185,6 +222,10 @@ func buildFactFilterClauses(scopeType, scopeID, kind, status, keyword string, wi
 	if scopeID != "" {
 		clauses = append(clauses, "scope_id = ?")
 		args = append(args, scopeID)
+	}
+	if agentID != "" {
+		clauses = append(clauses, "agent_id = ?")
+		args = append(args, agentID)
 	}
 	if kind != "" {
 		clauses = append(clauses, "fact_kind = ?")
@@ -379,7 +420,11 @@ func (r *l3FactRepo) shouldUseBruteForce(ctx context.Context, scopeType, scopeID
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders("SELECT COUNT(*) FROM memory_facts"+where), args, &count); err != nil {
 		return false
 	}
-	return count <= biz.DefaultFactBruteForceThreshold || len(queryEmbedding) == 0
+	threshold := r.bruteForceThreshold
+	if threshold <= 0 {
+		threshold = biz.DefaultFactBruteForceThreshold
+	}
+	return count <= threshold || len(queryEmbedding) == 0
 }
 
 // recallL3FactsBruteForce scans the (bounded) active fact set without a
@@ -416,11 +461,18 @@ func (r *l3FactRepo) recallL3FactsBruteForce(ctx context.Context, scopeType, sco
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-	defer rows.Close()
 	scored := scoreFactRows(rows, tokenizeQuery(query), queryEmbedding, nil, minScore, time.Now().UTC())
+	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
+	// P2-3: inject FTS-ranked candidates missed by the importance pre-limit
+	// (keyword-strong facts with low importance), scored via the same hybrid.
+	extra, err := r.ftsExtraCandidates(ctx, scopeType, scopeID, userID, query, queryEmbedding, scoredFactIDs(scored), minScore, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	scored = append(scored, extra...)
 	return r.finalizeScoredFacts(query, scored, lim), nil
 }
 
@@ -476,11 +528,18 @@ func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, user
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-	defer rows.Close()
 	scored := scoreFactRows(rows, tokenizeQuery(query), queryEmbedding, nil, minScore, time.Now().UTC())
+	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
+	// P2-3: inject FTS-ranked candidates missed by the recency pre-limit
+	// (keyword-strong but older facts), scored via the same hybrid.
+	extra, err := r.ftsExtraCandidates(ctx, scopeType, scopeID, userID, query, queryEmbedding, scoredFactIDs(scored), minScore, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	scored = append(scored, extra...)
 	return r.finalizeScoredFacts(query, scored, lim), nil
 }
 
@@ -494,48 +553,44 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 		pool = lim
 	}
 	vecHits, err := r.vectorStore.Search(ctx, float32To64(queryEmbedding), pool, 0.3)
-	if err != nil || len(vecHits) == 0 {
+	if err != nil {
+		// Degrade: a vector-store failure must not fail the recall — FTS and
+		// recency candidates still apply (previously it fell back silently).
+		r.data.lg.Warn("L3 vector search failed, degrading to FTS/recency recall",
+			loggateway.StepID("memory.l3_vector_search"),
+			loggateway.Err(err))
+		vecHits = nil
+	}
+	// P2-3: fuse pgvector-ranked and FTS-ranked candidates with RRF so
+	// keyword-strong facts (codes, names, exact tokens) enter the recall
+	// pool even when embedding similarity misses them.
+	ftsIDs := r.ftsCandidateIDs(ctx, scopeType, scopeID, userID, query, pool)
+	if len(vecHits) == 0 && len(ftsIDs) == 0 {
 		return r.recallL3Facts(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
 	}
-	ids := make([]string, 0, len(vecHits))
+	vecIDs := make([]string, 0, len(vecHits))
 	hitMap := make(map[string]float64, len(vecHits))
 	for _, h := range vecHits {
-		ids = append(ids, h.ID)
+		vecIDs = append(vecIDs, h.ID)
 		hitMap[h.ID] = h.Score
 	}
-	placeholders := make([]string, len(ids))
-	args := make([]any, 0, len(ids)+3)
-	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''"}
-	if scopeType != "" {
-		clauses = append(clauses, "scope_type = ?")
-		args = append(args, scopeType)
+	rrfScores, fusedOrder := rrfFuseRanked(l3RRFK, vecIDs, ftsIDs)
+	if len(fusedOrder) > pool {
+		fusedOrder = fusedOrder[:pool]
 	}
-	if scopeID != "" {
-		clauses = append(clauses, "scope_id = ?")
-		args = append(args, scopeID)
-	}
-	if userID != "" {
-		clauses = append(clauses, "user_id = ?")
-		args = append(args, userID)
-	}
-	phArgs := make([]any, len(ids))
-	for i, id := range ids {
-		placeholders[i] = "?"
-		phArgs[i] = id
-	}
-	clauses = append(clauses, fmt.Sprintf("id IN (%s)", strings.Join(placeholders, ",")))
-	args = append(args, phArgs...)
-	where := " WHERE " + strings.Join(clauses, " AND ")
-	q := sqlFactSelect + where + ` ORDER BY updated_at DESC LIMIT ?`
-	args = append(args, pool)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	rows, err := r.queryFactRowsByIDs(ctx, fusedOrder, scopeType, scopeID, userID)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-	defer rows.Close()
 	scored := scoreFactRows(rows, tokenizeQuery(query), nil, hitMap, minScore, time.Now().UTC())
+	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
+	}
+	// Annotate the fused RRF score into the breakdown (observability only —
+	// Total stays the calibrated hybrid score so minScore semantics hold).
+	for i := range scored {
+		scored[i].breakdown.RRF = rrfScores[scored[i].id]
 	}
 	return r.finalizeScoredFacts(query, scored, lim), nil
 }
@@ -1090,7 +1145,7 @@ func (r *l3FactRepo) BatchIncrementConflictCounts(ctx context.Context, factIDs [
 	return entErrToBizErr(err, "MEMORY_L3")
 }
 
-func (r *l3FactRepo) ListConflictingFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error) {
+func (r *l3FactRepo) ListConflictingFacts(ctx context.Context, scopeType, scopeID, agentID string, limit, offset int32) ([][]byte, int32, error) {
 	clauses := []string{"conflict_count > 0", "status = 'active'", "deleted_at = ''"}
 	args := []any{}
 	if scopeType != "" {
@@ -1100,6 +1155,12 @@ func (r *l3FactRepo) ListConflictingFacts(ctx context.Context, scopeType, scopeI
 	if scopeID != "" {
 		clauses = append(clauses, "scope_id = ?")
 		args = append(args, scopeID)
+	}
+	// H2: agent_id filters by ORIGINATING agent across ALL scopes (same
+	// caliber as buildFactFilterClauses / F1).
+	if agentID != "" {
+		clauses = append(clauses, "agent_id = ?")
+		args = append(args, agentID)
 	}
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	var total int32
@@ -1281,13 +1342,32 @@ func (r *l3FactRepo) UpdateDecayScores(ctx context.Context, scores map[string]fl
 	})
 }
 
-// IncrementFactAccessCount batch-increments use_count and updates last_used_at
-// for the given fact IDs. Called by the scored recall adapter so the Ebbinghaus
-// decay worker can use accurate access-recency signals. The updates are wrapped
-// in a single transaction to minimize write load on the recall path.
+// IncrementFactRecalledCount batch-increments recalled_count and updates
+// last_used_at for the given fact IDs. Called by the scored recall adapter so
+// the Ebbinghaus decay worker has accurate access-recency signals. The updates
+// are wrapped in a single transaction to minimize write load on the recall
+// path.
+//
+// FR-12.6: this is the "recalled" stage of the three-stage counters — the
+// fact entered a recall result set (previously mis-labelled use_count).
 //
 // factIDs must be non-empty; an empty slice is a no-op.
-func (r *l3FactRepo) IncrementFactAccessCount(ctx context.Context, factIDs []string) error {
+func (r *l3FactRepo) IncrementFactRecalledCount(ctx context.Context, factIDs []string) error {
+	return r.incrementFactCounter(ctx, factIDs, "recalled_count")
+}
+
+// IncrementFactInjectedCount batch-increments injected_count and updates
+// last_used_at for the given fact IDs. Called by the before-model memory
+// inject hook once per turn for the facts actually written into the prompt
+// (FR-12.6: the "injected" stage — the only usage count shown to users).
+func (r *l3FactRepo) IncrementFactInjectedCount(ctx context.Context, factIDs []string) error {
+	return r.incrementFactCounter(ctx, factIDs, "injected_count")
+}
+
+// incrementFactCounter is the shared batch-increment helper for the
+// recalled/injected stages. column is a compile-time constant from the two
+// callers above — never user input (SQL injection safe by construction).
+func (r *l3FactRepo) incrementFactCounter(ctx context.Context, factIDs []string, column string) error {
 	if r == nil || r.data == nil || len(factIDs) == 0 {
 		return nil
 	}
@@ -1317,10 +1397,50 @@ func (r *l3FactRepo) IncrementFactAccessCount(ctx context.Context, factIDs []str
 			placeholders[i] = "?"
 			args = append(args, id)
 		}
-		q := fmt.Sprintf(`UPDATE memory_facts SET use_count = use_count + 1, last_used_at = ? WHERE id IN (%s)`,
-			strings.Join(placeholders, ","))
+		q := fmt.Sprintf(`UPDATE memory_facts SET %s = %s + 1, last_used_at = ? WHERE id IN (%s)`,
+			column, column, strings.Join(placeholders, ","))
 		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
 			r.data.Dialect().RenumberPlaceholders(q), args...)
 		return entErrToBizErr(execErr, "MEMORY_L3")
+	})
+}
+
+// RecordFactCitations records (fact, turn) citations into the dedup ledger
+// and increments cited_count only for pairs not seen before (FR-12.6: the
+// "cited" stage). Idempotent: re-recording the same (fact_id, turn_id) pair
+// is a no-op, so the backfill worker may re-scan overlapping windows freely.
+// last_used_at is updated only for newly-cited facts.
+func (r *l3FactRepo) RecordFactCitations(ctx context.Context, citations []biz.FactCitation) error {
+	if r == nil || r.data == nil || len(citations) == 0 {
+		return nil
+	}
+	insertSQL := `INSERT INTO memory_fact_citations (fact_id, turn_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`
+	if !r.data.Dialect().IsPostgres() {
+		insertSQL = `INSERT OR IGNORE INTO memory_fact_citations (fact_id, turn_id, created_at) VALUES (?, ?, ?)`
+	}
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		for _, c := range citations {
+			factID := strings.TrimSpace(c.FactID)
+			turnID := strings.TrimSpace(c.TurnID)
+			if factID == "" || turnID == "" {
+				continue
+			}
+			res, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
+				r.data.Dialect().RenumberPlaceholders(insertSQL), factID, turnID, now)
+			if execErr != nil {
+				return entErrToBizErr(execErr, "MEMORY_L3")
+			}
+			affected, _ := res.RowsAffected()
+			if affected == 0 {
+				continue // already recorded — idempotent skip
+			}
+			if _, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
+				r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET cited_count = cited_count + 1, last_used_at = ? WHERE id = ?`),
+				now, factID); execErr != nil {
+				return entErrToBizErr(execErr, "MEMORY_L3")
+			}
+		}
+		return nil
 	})
 }

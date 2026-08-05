@@ -25,13 +25,15 @@ type mockL3FactReader struct {
 	lastScopeType string
 	lastScopeID   string
 	lastStatus    string
+	lastAgentID   string
 	lastLimit     int32
 }
 
-func (m *mockL3FactReader) ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
+func (m *mockL3FactReader) ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword, agentID string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
 	m.lastScopeType = scopeType
 	m.lastScopeID = scopeID
 	m.lastStatus = status
+	m.lastAgentID = agentID
 	m.lastLimit = limit
 	return m.rows, m.total, m.active, m.archived, m.err
 }
@@ -369,6 +371,44 @@ func TestMemoryEbbinghausDecay_ScanPerAgent_AgentsError(t *testing.T) {
 	// fails. Since we can't easily mock *biz.AgentUsecase (concrete type), we
 	// skip this test and rely on the integration test.
 	t.Skip("requires AgentUsecase mock — covered by integration test")
+}
+
+// TestMemoryEbbinghausDecay_ScanFactsForAgent_CrossScopeAgentFilter pins the
+// H3 fix: per-agent decay scanning must filter by the ORIGINATING agent column
+// (agent_id) across ALL scopes — not scope_type='agent' — because immediate
+// facts live in session scope and consolidated facts in user scope (F1). The
+// old scope='agent' query silently scanned 0 rows for agents whose facts are
+// all in user/session scopes, so no decay scores were ever written back.
+func TestMemoryEbbinghausDecay_ScanFactsForAgent_CrossScopeAgentFilter(t *testing.T) {
+	now := time.Now().UTC()
+	reader := &mockL3FactReader{
+		rows: [][]byte{makeFactRowWithID("fact-u1",
+			now.Add(-2*time.Hour).Format(time.RFC3339),
+			now.Add(-time.Hour).Format(time.RFC3339),
+			now.Add(-time.Hour).Format(time.RFC3339),
+			3)},
+		total:  1,
+		active: 1,
+	}
+	w := newTestWorker(reader, nil, nil)
+
+	total, decayed, _, scores, err := w.scanFactsForAgent(context.Background(), "agent-x", now)
+	if err != nil {
+		t.Fatalf("scanFactsForAgent: %v", err)
+	}
+	if reader.lastScopeType != "" {
+		t.Errorf("scope_type = %q, want empty (cross-scope agent filter)", reader.lastScopeType)
+	}
+	if reader.lastScopeID != "" {
+		t.Errorf("scope_id = %q, want empty", reader.lastScopeID)
+	}
+	if reader.lastAgentID != "agent-x" {
+		t.Errorf("agentID = %q, want agent-x", reader.lastAgentID)
+	}
+	if total != 1 || len(scores) != 1 {
+		t.Errorf("total=%d scores=%d, want 1/1", total, len(scores))
+	}
+	_ = decayed
 }
 
 // TestMemoryEbbinghausDecay_Integration verifies the full scan+compute flow

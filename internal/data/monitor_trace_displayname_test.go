@@ -152,3 +152,96 @@ func TestGetMonitorTrace_ResolvesDisplayNames(t *testing.T) {
 		t.Errorf("AgentName/TeamName = (%q, %q), want (编码小助手, 市场调研团队)", row.AgentName, row.TeamName)
 	}
 }
+
+// 域过滤 + StatusCounts/DomainCounts 聚合：chips 计数必须忽略自身维度的过滤。
+func TestListMonitorTraces_DomainFilterAndCounts(t *testing.T) {
+	r := setupMonitorTraceNameRepo(t)
+	seedAgentAndTeam(t, r)
+
+	insertTraceRow(t, r, biz.MonitorTraceWrite{TraceID: "tr-chat-ok", Name: "chat", AgentID: "ag-1", Status: "ok"})
+	insertTraceRow(t, r, biz.MonitorTraceWrite{TraceID: "tr-chat-err", Name: "chat", AgentID: "ag-1", Status: "error"})
+	insertTraceRow(t, r, biz.MonitorTraceWrite{TraceID: "tr-team-ok", Name: "team", TeamID: "tm-1", Status: "ok"})
+	insertTraceRow(t, r, biz.MonitorTraceWrite{TraceID: "tr-sys-ok", Name: "system", Status: "ok"})
+
+	ctx := context.Background()
+
+	// 1. 默认视图（ExcludeInternal）：system 被排除，计数仍揭示其存在。
+	res, err := r.ListMonitorTraces(ctx, biz.MonitorTracesQuery{Limit: 10, ExcludeInternal: true})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if res.Total != 3 {
+		t.Fatalf("default total = %d, want 3 (system excluded)", res.Total)
+	}
+	if res.DomainCounts["system"] != 1 || res.DomainCounts["chat"] != 2 || res.DomainCounts["team"] != 1 {
+		t.Fatalf("DomainCounts = %v, want chat:2 team:1 system:1", res.DomainCounts)
+	}
+	if res.StatusCounts["ok"] != 2 || res.StatusCounts["error"] != 1 {
+		t.Fatalf("StatusCounts = %v, want ok:2 error:1 (within default view)", res.StatusCounts)
+	}
+
+	// 2. 显式 domain=system：可查到内部域；StatusCounts 忽略 status 过滤。
+	res, err = r.ListMonitorTraces(ctx, biz.MonitorTracesQuery{Limit: 10, Domain: "system", Status: "ok"})
+	if err != nil {
+		t.Fatalf("list domain=system: %v", err)
+	}
+	if res.Total != 1 || len(res.Items) != 1 || res.Items[0].Key != "tr-sys-ok" {
+		t.Fatalf("domain=system items = %+v, want only tr-sys-ok", res.Items)
+	}
+	if res.StatusCounts["ok"] != 1 {
+		t.Fatalf("domain=system StatusCounts = %v, want ok:1", res.StatusCounts)
+	}
+
+	// 3. status=error + 默认视图：StatusCounts 忽略 status 条件，仍给出全量分布。
+	res, err = r.ListMonitorTraces(ctx, biz.MonitorTracesQuery{Limit: 10, ExcludeInternal: true, Status: "error"})
+	if err != nil {
+		t.Fatalf("list status=error: %v", err)
+	}
+	if res.Total != 1 || res.Items[0].Key != "tr-chat-err" {
+		t.Fatalf("status=error items = %+v, want only tr-chat-err", res.Items)
+	}
+	if res.StatusCounts["ok"] != 2 || res.StatusCounts["error"] != 1 {
+		t.Fatalf("status=error StatusCounts = %v, want ok:2 error:1 (status filter omitted)", res.StatusCounts)
+	}
+}
+
+// 关键字搜索显示名：agent display_name / session title / team display_name。
+func TestListMonitorTraces_KeywordMatchesDisplayNames(t *testing.T) {
+	r := setupMonitorTraceNameRepo(t)
+	seedAgentAndTeam(t, r)
+	ctx := context.Background()
+
+	// session for chat trace title search.
+	if _, err := r.data.entClient.Session.Create().
+		SetID("ss-1").SetAgentID("ag-1").SetTitle("帮我分析竞品报告").
+		Save(ctx); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	insertTraceRow(t, r, biz.MonitorTraceWrite{TraceID: "tr-kw-agent", Name: "chat", AgentID: "ag-1"})
+	insertTraceRow(t, r, biz.MonitorTraceWrite{TraceID: "tr-kw-team", Name: "team", TeamID: "tm-1"})
+	insertTraceRow(t, r, biz.MonitorTraceWrite{TraceID: "tr-kw-sess", Name: "chat", SessionID: "ss-1"})
+	insertTraceRow(t, r, biz.MonitorTraceWrite{TraceID: "tr-kw-none", Name: "chat"})
+
+	mustFind := func(kw string, wantKeys ...string) {
+		t.Helper()
+		res, err := r.ListMonitorTraces(ctx, biz.MonitorTracesQuery{Limit: 10, Keyword: kw})
+		if err != nil {
+			t.Fatalf("keyword %q: %v", kw, err)
+		}
+		got := map[string]bool{}
+		for _, it := range res.Items {
+			got[it.Key] = true
+		}
+		for _, w := range wantKeys {
+			if !got[w] {
+				t.Fatalf("keyword %q missing %s, got %v", kw, w, got)
+			}
+		}
+		if len(res.Items) != len(wantKeys) {
+			t.Fatalf("keyword %q items = %v, want exactly %v", kw, got, wantKeys)
+		}
+	}
+	mustFind("编码小助手", "tr-kw-agent", "tr-kw-sess") // 后者经 session→agent 回退命中
+	mustFind("市场调研", "tr-kw-team")
+	mustFind("竞品报告", "tr-kw-sess")
+}

@@ -250,6 +250,27 @@
 | FR-11.7 | 知识库检索结果可触发记忆强化（用户确认的知识 → 提升 L4 实体 confidence） | P2 |
 | FR-11.8 | 不合并存储：知识库块不进入 memory_entities，记忆事实不进入 knowledge_chunks | P0 |
 
+### FR-12：记忆闭环可靠性（重设计）
+
+> 源自 2026-07-29 记忆系统全量评审与重设计（[评审报告](../reports/2026-07-29-review-memory-system-redesign.md)）。评审实证：写入/召回/归档每条数据通路均断裂，且失败全部静默降级——用户视角即「记忆用了这么多次却没有任何内容」。本 FR 定义闭环可靠性的功能需求，设计与实现见 [设计文档 §十六](./70-orchestration-longtask-memory.design.md#十六记忆系统重设计写入闭环)。
+
+| # | 需求 | 优先级 |
+|---|------|--------|
+| FR-12.1 | 统一写入管线：所有自动事实写入（会话提取/反馈提取/sleep-time 归档提取）汇入单一管线，具备操作语义（ADD/UPDATE/DELETE/NOOP）与降噪三闸（kind 白名单/置信度下限/去重合并） | P1 |
+| FR-12.2 | 写入决策全量可溯源：每个候选的写入/合并/丢弃均有审计记录（含丢弃原因与目标 fact） | P1 |
+| FR-12.3 | L1→L2 归档原子化：任务结束与 episode 创建同事务；归档失败留在重试集合内并触发死信告警，禁止静默永久失败 | P1 |
+| FR-12.4 | Sleep-time 整理必须接线：LLM 经 ModelCatalog 按目标解析（MemoryWorker → L0Compress → agent 默认模型），禁止 nil LLM 空转 | P1 |
+| FR-12.5 | 记忆金丝雀：周期性走通「写入→召回→失效归档」全链路断言，任一环失败产生告警指标与流程日志 | P0 |
+| FR-12.6 | 计数器三段化：recalled/injected/cited 分离，替换语义错误的 use_count（召回即 +1，与是否注入无关） | P2 |
+| FR-12.7 | Profile 常驻卡：Sleep-time 从 facts 蒸馏常驻画像卡，100% 注入 prompt | P2 |
+
+**验收标准**：
+- 金丝雀持续绿：写入的 fact 必须能以生产默认 minScore 召回
+- 端到端注入率 >0：用户说「我喜欢 X」，后续轮次能被问出来
+- 归档失败有死信告警，无静默失败积压
+- 三段计数漏斗可观测：每条 fact 的 recalled/injected/cited 独立计数且 recalled ≥ injected ≥ cited；用户说「我喜欢 X」后该 fact 的 injected_count 随后续轮次增长；记忆中心 L3 表格与详情抽屉可见三段计数
+- Profile 常驻卡 100% 注入：存在 active 画像类事实（profile/preference/goal/constraint）的 (agent, user)，其每轮 prompt 首个记忆块位置包含蒸馏档案卡；事实全部删除后卡片同步移除
+
 ---
 
 ## 四、非功能需求

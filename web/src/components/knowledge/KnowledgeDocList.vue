@@ -21,6 +21,10 @@
         </template>
       </div>
       <div class="row items-center no-wrap">
+        <!-- 当前目录统计：x 文件夹 · y 文档 -->
+        <span v-if="!loading && sortedEntries.length" class="knowledge-doc-list__stats">
+          {{ t('knowledgePage.docListStats', entryStats) }}
+        </span>
         <q-btn
           flat
           dense
@@ -113,7 +117,7 @@
                 :color="statusColor(e.status)"
                 text-color="white"
               >
-                {{ e.status }}
+                {{ statusLabel(e.status) }}
               </q-chip>
               <q-tooltip v-if="e.status === 'error' && e.error_message" max-width="320px">
                 {{ e.error_message }}
@@ -125,6 +129,16 @@
       <div v-else-if="!loading" class="app-registry-empty app-registry-empty--compact">
         <q-icon name="drafts" size="40px" color="grey-6" />
         <div class="text-body2">{{ t('knowledgePage.docListEmpty') }}</div>
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="primary"
+          icon="note_add"
+          :label="t('knowledgePage.docListEmptyAction')"
+          class="q-mt-xs"
+          @click="$emit('ingest')"
+        />
       </div>
       <q-card-section v-else>
         <q-skeleton v-for="i in 3" :key="i" type="rect" height="40px" class="q-mb-sm" />
@@ -147,6 +161,7 @@ import {
   formatKnowledgeDocSize,
   formatKnowledgeTime,
   knowledgeStatusColor,
+  knowledgeStatusLabelKey,
 } from '../../features/knowledge/knowledgeUi';
 
 type SortKey = 'name' | 'updated_at' | 'type' | 'size' | 'status';
@@ -177,6 +192,23 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const statusColor = knowledgeStatusColor;
+
+/** 状态列本地化标签（未知状态回退原始值）。 */
+function statusLabel(status: string): string {
+  const key = knowledgeStatusLabelKey(status);
+  return key ? t(key) : status;
+}
+
+/** 工具条统计：当前目录直接子项的文件夹/文档数。 */
+const entryStats = computed(() => {
+  let dirs = 0;
+  let files = 0;
+  for (const e of props.entries) {
+    if (e.kind === 'dir') dirs++;
+    else files++;
+  }
+  return { dirs, files };
+});
 
 /** G1 科幻图标：dir=violet、md=teal、图片=magenta、音视频=orange、error=red 脉冲。 */
 function visualOf(e: VaultTreeNode): VaultNodeVisual {
@@ -371,6 +403,14 @@ onBeforeUnmount(clearCrumbHover);
   &__crumbs {
     min-width: 0;
     font-size: 13px;
+  }
+
+  &__stats {
+    flex: none;
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+    font-variant-numeric: tabular-nums;
+    margin-right: 2px;
   }
 
   &__crumb {

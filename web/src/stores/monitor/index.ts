@@ -20,8 +20,8 @@ import {
 import type {
   AlertMetricInfo,
   MonitorAlertRule,
-  MonitorTrace,
   MonitorTraceDetail,
+  MonitorTraceListResult,
   SelfCheckReport,
 } from '../../features/monitor/types';
 import { listChannels } from '../../features/channels/api';
@@ -98,7 +98,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     return listMonitorEvents(query);
   }
 
-  async function fetchTraceEvents(query: MonitorTracesQuery = {}): Promise<PaginatedResult<MonitorTrace>> {
+  async function fetchTraceEvents(query: MonitorTracesQuery = {}): Promise<MonitorTraceListResult> {
     return listMonitorTraces({ ...query, limit: query.limit ?? MONITOR_TRACES_LIMIT });
   }
 

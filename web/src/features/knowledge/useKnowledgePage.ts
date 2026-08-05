@@ -9,6 +9,7 @@ import type { KnowledgeDocument, KnowledgeUploadTask, EmbedderConfig, UpdateEmbe
 import { useKnowledgeStore } from '../../stores/knowledge';
 import { useKnowledgeIngestWs } from './useKnowledgeIngestWs';
 import { useVaultExplorer, type VaultQTreeNode } from './useVaultExplorer';
+import { parseKratosApiError } from '../../utils/kratosError';
 
 export function useKnowledgePage() {
   const $q = useQuasar();
@@ -423,10 +424,10 @@ export function useKnowledgePage() {
     await enqueueUploadFiles(files, target ?? undefined);
   }
 
-  function promptCreateVaultDir(target: { collectionId: string; prefix: string }) {
+  function promptCreateVaultDir(target: { collectionId: string; prefix: string }, preset = '') {
     $q.dialog({
       title: t('knowledgePage.newDirTitle'),
-      prompt: { model: '', type: 'text', label: t('knowledgePage.newDirLabel'), isValid: (v: string) => !!v.trim() },
+      prompt: { model: preset, type: 'text', label: t('knowledgePage.newDirLabel'), isValid: (v: string) => !!v.trim() },
       cancel: true,
       persistent: true,
     }).onOk((name: string) => {
@@ -442,16 +443,22 @@ export function useKnowledgePage() {
           await explorer.refreshTree();
           $q.notify({ type: 'positive', message: t('knowledgePage.newDirSuccess') });
         } catch (e) {
-          $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.newDirFailed') });
+          // UX-005：同名冲突本地化提示并重开对话框保留输入；其余错误维持原提示。
+          if (parseKratosApiError(e).status === 409) {
+            $q.notify({ type: 'negative', message: t('knowledgePage.dirAlreadyExists', { name: dirName }) });
+            promptCreateVaultDir(target, name);
+          } else {
+            $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.newDirFailed') });
+          }
         }
       })();
     });
   }
 
-  function promptCreateVaultDoc(target: { collectionId: string; prefix: string }) {
+  function promptCreateVaultDoc(target: { collectionId: string; prefix: string }, preset = '') {
     $q.dialog({
       title: t('knowledgePage.newDocTitle'),
-      prompt: { model: '', type: 'text', label: t('knowledgePage.newDocLabel'), isValid: (v: string) => !!v.trim() },
+      prompt: { model: preset, type: 'text', label: t('knowledgePage.newDocLabel'), isValid: (v: string) => !!v.trim() },
       cancel: true,
       persistent: true,
     }).onOk((name: string) => {
@@ -468,7 +475,13 @@ export function useKnowledgePage() {
           explorer.selectDocument(doc.id);
           $q.notify({ type: 'positive', message: t('knowledgePage.newDocSuccess') });
         } catch (e) {
-          $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.newDocFailed') });
+          // UX-005：同名冲突本地化提示并重开对话框保留输入；其余错误维持原提示。
+          if (parseKratosApiError(e).status === 409) {
+            $q.notify({ type: 'negative', message: t('knowledgePage.docAlreadyExists', { name: docName }) });
+            promptCreateVaultDoc(target, name);
+          } else {
+            $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.newDocFailed') });
+          }
         }
       })();
     });

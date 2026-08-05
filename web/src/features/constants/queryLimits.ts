@@ -29,6 +29,8 @@ export const MONITOR_REPORTS_LIMIT = 20;
 export const MONITOR_AUDIT_LOG_LIMIT = 200;
 /** 审计页服务端分页默认每页条数（与 AuditTable 初始 pageSize 一致） */
 export const AUDIT_DEFAULT_PAGE_SIZE = 12;
+/** Traces 页服务端分页默认每页条数（与 TraceList 初始 pageSize 一致） */
+export const MONITOR_TRACES_PAGE_SIZE = 12;
 export const MONITOR_TRACE_EVENT_LIMIT = 100;
 export const MONITOR_FLOW_LOG_LIMIT = 500;
 export const MONITOR_FLOW_LOG_LOCAL_MAX = 500;

@@ -22,7 +22,7 @@ func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamR
 	}
 	now := time.Now().UTC()
 	ts := biz.TeamStage{
-		ID:        string(agent.NewTeamStageActivityID(run.TeamID)),
+		ID:        string(agent.NewTeamStageActivityID(run.TeamID, string(agent.RootTaskActivityIDFromCtx(ctx)))),
 		TeamID:    run.TeamID,
 		SessionID: run.SpiritSessionID,
 		Status:    biz.TeamStageStatusFailed,
@@ -69,7 +69,7 @@ func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRunRec
 	// 且消息生命周期不得冒充工作结果。status/eventType 参数仅用于下方
 	// notice meta 透传，不再映射为 MemberSession 状态。
 	msStatus := biz.MemberSessionStatusRunning
-	teamStageID := string(agent.NewTeamStageActivityID(teamID))
+	teamStageID := string(agent.NewTeamStageActivityID(teamID, string(agent.RootTaskActivityIDFromCtx(ctx))))
 	// 统一使用 v2 确定性 ID（与 spirit_team service 同一公式），
 	// 保证 runner 与 service 写入同一 member_sessions_v2 行（upsert-by-ID）。
 	// run.ID 是 v1 随机 UUID，仅用于 meta，不可写入 v2 实体。

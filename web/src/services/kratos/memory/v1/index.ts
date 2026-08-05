@@ -134,6 +134,11 @@ export type ListMemoryFactsRequest = {
   keyword: string | undefined;
   limit: number | undefined;
   offset: number | undefined;
+  // optional: filter by ORIGINATING agent (memory_facts.agent_id) across all
+  // scopes — AND-combined with the scope namespace filters. Used by the memory
+  // center so the L3 browse tab matches the panorama card count (which counts
+  // facts an agent produced into session/user scopes as well).
+  agentId: string | undefined;
 };
 
 export type ListMemoryFactsResponse = {
@@ -173,6 +178,14 @@ export type MemoryFact = {
   updatedAt: string | undefined;
   qualityScore: number | undefined;
   piiTypesJson: string | undefined;
+  // FR-12.6 three-stage counters. use_count (14) is legacy and no longer
+  // maintained; these carry the precise semantics:
+  // recalled_count  — entered a recall result set
+  // injected_count  — actually written into the LLM prompt
+  // cited_count     — explicitly referenced by the assistant reply
+  recalledCount: number | undefined;
+  injectedCount: number | undefined;
+  citedCount: number | undefined;
 };
 
 export type ListConflictingFactsRequest = {
@@ -180,6 +193,10 @@ export type ListConflictingFactsRequest = {
   scopeId: string | undefined;
   limit: number | undefined;
   offset: number | undefined;
+  // agent_id filters conflicts by the ORIGINATING agent across ALL scopes
+  // (session/user/agent). H2: facts live in session/user scopes (F1), so a
+  // scope-only query undercounts. When set, scope_type may be left empty.
+  agentId: string | undefined;
 };
 
 export type ListConflictingFactsResponse = {
@@ -997,6 +1014,9 @@ export function createMemoryServiceClient(
       if (request.offset) {
         queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
       }
+      if (request.agentId) {
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -1025,6 +1045,9 @@ export function createMemoryServiceClient(
       }
       if (request.offset) {
         queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+      }
+      if (request.agentId) {
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

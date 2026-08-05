@@ -51,6 +51,9 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		L2EpisodeEnabled:                  true,
 		L2EpisodeMinImportance:            0.3,
 		L2IndexEnabled:                    true,
+		// FR-12/P2: L2 召回默认开（评审 V7：默认关 L2 召回是「层数多≠能力强」
+		// 根因之一；standard 档位 = profile 卡 + L2/L3 召回）。
+		L2RecallEnabled:                   true,
 		L2RecallMax:                       3,
 		L2RetentionDays:                   90,
 		L2ArchiveAfterDays:                30,
@@ -61,6 +64,8 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		L3DecayIntervalHours:              24,
 		L3ArchiveThreshold:                0.2,
 		L3MaxPerRecallChars:               1500,
+		// FR-12/P2: 召回块 token 预算默认 standard 档（800）。
+		L3RecallBudgetTokens:              MemoryRecallBudgetStandard,
 		L4Enabled:                         true,
 		L4GraphInjectNeighbors:            true,
 		L4GraphMaxNeighbors:               6,

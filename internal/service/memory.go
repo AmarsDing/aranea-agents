@@ -140,16 +140,22 @@ func (s *MemoryService) ListConflictingFacts(ctx context.Context, req *v1.ListCo
 		return nil, err
 	}
 	scopeType := strings.TrimSpace(req.GetScopeType())
-	if scopeType == "" {
-		return nil, apierror.BadRequest(apierror.DomainMemory, "scope_type is required")
+	agentID := strings.TrimSpace(req.GetAgentId())
+	if scopeType == "" && agentID == "" {
+		return nil, apierror.BadRequest(apierror.DomainMemory, "scope_type or agent_id is required")
 	}
 	scopeID, err := authorizeMemoryScope(ctx, scopeType, req.GetScopeId(), false)
 	if err != nil {
 		return nil, err
 	}
+	// Non-admin empty scope_type is forced to user scope by authorizeMemoryScope.
+	if scopeType == "" && scopeID != "" {
+		scopeType = "user"
+	}
 	rows, total, err := s.admin.ListConflictingFacts(ctx,
 		scopeType,
 		scopeID,
+		agentID,
 		req.GetLimit(),
 		req.GetOffset(),
 	)
@@ -301,6 +307,7 @@ func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryF
 		Kind:      strings.TrimSpace(req.GetKind()),
 		Status:    strings.TrimSpace(req.GetStatus()),
 		Keyword:   strings.TrimSpace(req.GetKeyword()),
+		AgentID:   strings.TrimSpace(req.GetAgentId()),
 		Limit:     req.GetLimit(),
 		Offset:    req.GetOffset(),
 	})

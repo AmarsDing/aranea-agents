@@ -217,6 +217,9 @@ function mapFact(raw: unknown): MemoryFact {
     importance: pickNum(f, 'importance', 'importance'),
     use_count: pickI32(f, 'use_count', 'useCount'),
     hit_count: pickI32(f, 'hit_count', 'hitCount'),
+    recalled_count: pickI32(f, 'recalled_count', 'recalledCount'),
+    injected_count: pickI32(f, 'injected_count', 'injectedCount'),
+    cited_count: pickI32(f, 'cited_count', 'citedCount'),
     positive_feedback_count: pickI32(f, 'positive_feedback_count', 'positiveFeedbackCount'),
     negative_feedback_count: pickI32(f, 'negative_feedback_count', 'negativeFeedbackCount'),
     conflict_count: pickI32(f, 'conflict_count', 'conflictCount'),
@@ -450,6 +453,7 @@ export async function listMemoryFacts(query: MemoryFactListQuery = {}): Promise<
       kind: query.kind,
       status: query.status,
       keyword: query.keyword,
+      agentId: query.agent_id,
       limit: query.limit,
       offset: query.offset,
     }),
@@ -869,10 +873,11 @@ export async function abandonMemoryDeadLetter(id: number, reason = ''): Promise<
 export async function listConflictingFacts(
   scopeType: string,
   scopeId: string,
+  agentId = '',
   limit = 50,
   offset = 0,
 ): Promise<{ items: MemoryFact[]; total: number }> {
-  const raw = await memory.ListConflictingFacts({ scopeType, scopeId, limit, offset });
+  const raw = await memory.ListConflictingFacts({ scopeType, scopeId, agentId, limit, offset });
   const resp = asRecord(raw);
   const items = resp.items ?? [];
   return {

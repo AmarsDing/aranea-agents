@@ -76,6 +76,7 @@ type MemoryCfg struct {
 	L3DecayIntervalHours int     `json:"l3_decay_interval_hours,omitempty"`
 	L3ArchiveThreshold   float64 `json:"l3_archive_threshold,omitempty"`
 	L3MaxPerRecallChars  int     `json:"l3_max_per_recall_chars,omitempty"`
+	L3RecallBudgetTokens int     `json:"l3_recall_budget_tokens,omitempty"`
 
 	// L4 knowledge graph.
 	L4Enabled              bool   `json:"l4_enabled,omitempty"`
@@ -270,6 +271,7 @@ func (s *AgentRuntimeSettings) ApplyMemory(cfg MemoryCfg) {
 	s.L3DecayIntervalHours = cfg.L3DecayIntervalHours
 	s.L3ArchiveThreshold = cfg.L3ArchiveThreshold
 	s.L3MaxPerRecallChars = cfg.L3MaxPerRecallChars
+	s.L3RecallBudgetTokens = cfg.L3RecallBudgetTokens
 	s.L4Enabled = cfg.L4Enabled
 	s.L4GraphInjectNeighbors = cfg.L4GraphInjectNeighbors
 	s.L4GraphMaxNeighbors = cfg.L4GraphMaxNeighbors

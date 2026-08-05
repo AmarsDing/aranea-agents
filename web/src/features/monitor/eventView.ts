@@ -125,18 +125,25 @@ const SEVERITY_TO_STATUS: Record<string, string> = {
   info: 'info',
 };
 
-/** 历史查询组装（纯函数）：类型前缀 + 级别→status + 服务端分页 */
+/** 历史查询组装（纯函数）：类型前缀 + 级别→status + 服务端分页 + 默认噪音排除 */
 export function buildMonitorEventsQuery(opts: {
   type: string;
   severity: string;
   page: number;
   pageSize: number;
+  /** 默认 false：未显式选类型时排除 skill.filesystem.* 高频治理噪音 */
+  includeSystem?: boolean;
 }): MonitorEventsQuery {
   const query: MonitorEventsQuery = {
     limit: opts.pageSize,
     offset: Math.max(0, (opts.page - 1) * opts.pageSize),
   };
-  if (opts.type && opts.type !== 'all') query.event_type = opts.type;
+  if (opts.type && opts.type !== 'all') {
+    query.event_type = opts.type;
+  } else if (!opts.includeSystem) {
+    // 默认视图隐藏 skill 文件同步噪音；用户显式选该类型或打开开关时不排除。
+    query.exclude_event_types = ['skill.filesystem.'];
+  }
   const status = SEVERITY_TO_STATUS[opts.severity];
   if (status) query.status = status;
   return query;
@@ -302,18 +309,24 @@ export function persistedEventToView(
 
   const severity = completion && meta?.status === 'error' ? 'warn' : severityForPersistedStatus(row.status);
 
+  const title = completion && meta ? completionTitle(t, meta, row.name) : persistedTitle(t, type, row);
+  // 摘要用 description；不回退 JSON.stringify(cfg)（原始 JSON 进详情弹窗）。
+  // 与标题重复时置空，避免标题/摘要两列展示同一文本。
+  const rawSubtitle = completion && meta
+    ? completionSubtitle(t, meta, row.description)
+    : String(row.description || '').trim();
+  const subtitle = rawSubtitle === title ? '' : rawSubtitle;
+  // 标题回退为行 name（未知事件类型）时，主体列不再重复同一文本。
+  const rawActor = String(row.name || '').trim();
+
   return {
     id: row.id,
     type,
-    title: completion && meta ? completionTitle(t, meta, row.name) : persistedTitle(t, type, row),
-    subtitle:
-      completion && meta
-        ? completionSubtitle(t, meta, row.description)
-        : // 摘要用 description；不回退 JSON.stringify(cfg)（原始 JSON 进详情弹窗）
-          String(row.description || '').trim(),
+    title,
+    subtitle,
     category: categoryForEventType(type),
     severity,
-    actor: String(row.name || '').trim(),
+    actor: rawActor === title ? '' : rawActor,
     time: formatDate(row.created_at),
     timeAgo: relativeTime(t, row.created_at),
     sessionId: completion ? String(meta?.session_id || '').trim() || undefined : undefined,

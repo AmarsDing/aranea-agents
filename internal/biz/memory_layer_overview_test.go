@@ -22,7 +22,17 @@ type fakeCenterAdminDeps struct {
 	factTotal  int32
 	factActive int32
 
+	// F1: records the last ListFactRows call so tests can assert the L3
+	// overview counts by originating agent across all scopes.
+	factCallScopeType string
+	factCallAgentID   string
+	factCallCount     int
+
 	conflictTotal int32
+	// H2: records the last ListConflictingFacts call so tests can assert the
+	// conflict count uses the cross-scope agent caliber.
+	conflictCallScopeType string
+	conflictCallAgentID   string
 
 	entityRows  [][]byte
 	entityTotal int32
@@ -42,11 +52,16 @@ func (f *fakeCenterAdminDeps) ListL1FieldRows(ctx context.Context, taskID string
 	return f.l1Fields[taskID], nil
 }
 
-func (f *fakeCenterAdminDeps) ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
+func (f *fakeCenterAdminDeps) ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword, agentID string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
+	f.factCallScopeType = scopeType
+	f.factCallAgentID = agentID
+	f.factCallCount++
 	return f.factRows, f.factTotal, f.factActive, 0, nil
 }
 
-func (f *fakeCenterAdminDeps) ListConflictingFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error) {
+func (f *fakeCenterAdminDeps) ListConflictingFacts(ctx context.Context, scopeType, scopeID, agentID string, limit, offset int32) ([][]byte, int32, error) {
+	f.conflictCallScopeType = scopeType
+	f.conflictCallAgentID = agentID
 	return nil, f.conflictTotal, nil
 }
 
@@ -326,6 +341,58 @@ func TestLayerOverview_RequiresAgentID(t *testing.T) {
 	uc.SetMemoryCenterReaders(&fakeL2AdminReader{}, &fakeL4RelReader{})
 	if _, err := uc.GetLayerOverview(context.Background(), "", "sess-1"); err == nil {
 		t.Fatal("expected error for empty agent id")
+	}
+}
+
+// TestLayerOverview_L3CountsByOriginatingAgentAcrossScopes pins the F1 fix:
+// the L3 panorama card must query facts by the originating-agent column with
+// NO scope filter, so facts the agent wrote into session/user scopes are
+// counted too (immediate facts live in session scope, consolidated facts in
+// user scope — a scope='agent' count undercounts and showed L3=0).
+func TestLayerOverview_L3CountsByOriginatingAgentAcrossScopes(t *testing.T) {
+	deps := &fakeCenterAdminDeps{
+		factRows: [][]byte{
+			centerRowJSON(map[string]any{"id": "f1", "scope_type": "session", "agent_id": "agent-1", "created_at": time.Now().UTC().Format(time.RFC3339Nano)}),
+			centerRowJSON(map[string]any{"id": "f2", "scope_type": "user", "agent_id": "agent-1", "created_at": time.Now().UTC().Format(time.RFC3339Nano)}),
+		},
+		factTotal:  2,
+		factActive: 2,
+		// H2: a conflicting fact in a non-agent scope must still flip L3
+		// health to "warn" via the cross-scope agent caliber.
+		conflictTotal: 1,
+	}
+	uc := NewMemoryAdminUsecase(deps, nil, nil, nil, loggateway.NewNoop())
+	uc.SetMemoryCenterReaders(&fakeL2AdminReader{}, &fakeL4RelReader{})
+
+	ov, err := uc.GetLayerOverview(context.Background(), "agent-1", "sess-1")
+	if err != nil {
+		t.Fatalf("GetLayerOverview: %v", err)
+	}
+	if deps.factCallCount == 0 {
+		t.Fatal("ListFactRows was not called")
+	}
+	if deps.factCallScopeType != "" {
+		t.Errorf("L3 fact query scopeType = %q, want empty (cross-scope count)", deps.factCallScopeType)
+	}
+	if deps.factCallAgentID != "agent-1" {
+		t.Errorf("L3 fact query agentID = %q, want agent-1", deps.factCallAgentID)
+	}
+	// H2: conflict count must use the same cross-scope agent caliber.
+	if deps.conflictCallScopeType != "" {
+		t.Errorf("L3 conflict query scopeType = %q, want empty (cross-scope count)", deps.conflictCallScopeType)
+	}
+	if deps.conflictCallAgentID != "agent-1" {
+		t.Errorf("L3 conflict query agentID = %q, want agent-1", deps.conflictCallAgentID)
+	}
+	l3 := findLayer(ov.Layers, "L3")
+	if l3 == nil {
+		t.Fatal("L3 layer missing")
+	}
+	if l3.ItemCount != 2 {
+		t.Errorf("L3 ItemCount = %d, want 2 (facts from session+user scopes)", l3.ItemCount)
+	}
+	if l3.Health != "warn" {
+		t.Errorf("L3 Health = %q, want warn (conflict_open > 0 via agent caliber)", l3.Health)
 	}
 }
 

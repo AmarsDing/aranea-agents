@@ -68,6 +68,9 @@ func (r *memoryRepo) dimForEmbedding(ctx context.Context, memoryPartitionUserID 
 }
 
 func (r *memoryRepo) storeFor(ctx context.Context, dim int) (vector.FactVectorStore, error) {
+	if !vector.IsPgvector() {
+		return nil, biz.ErrMemoryUnavailable
+	}
 	r.mu.RLock()
 	st, ok := r.store[dim]
 	r.mu.RUnlock()
@@ -82,11 +85,11 @@ func (r *memoryRepo) storeFor(ctx context.Context, dim int) (vector.FactVectorSt
 	}
 	if err := vector.EnsureDimensionTable(ctx, r.data.Postgres(), dim); err != nil {
 		r.data.lg.Warn("ensure dimension table failed", loggateway.StepID("memory.pgvector_init_fail"), loggateway.Err(err))
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY")
 	}
 	s, err := vector.NewPgVectorFactStore(r.data.Postgres(), dim)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY")
 	}
 	r.store[dim] = s
 	return s, nil
@@ -106,7 +109,7 @@ func (r *memoryRepo) Insert(ctx context.Context, m *biz.AgentMemory) error {
 	}
 	// Use UpsertFact with agentID as the vector ID for L0/L1 memory rows.
 	// The id parameter is used as a deduplication key within the fact content prefix protocol.
-	return st.UpsertFact(ctx, m.AgentID, m.AgentID, m.UserID, m.Content, float32To64(m.Embedding))
+	return entErrToBizErr(st.UpsertFact(ctx, m.AgentID, m.AgentID, m.UserID, m.Content, float32To64(m.Embedding)), "MEMORY")
 }
 
 func (r *memoryRepo) FindSimilar(ctx context.Context, agentID string, query []float32, topK int) ([]*biz.AgentMemory, error) {
@@ -124,7 +127,7 @@ func (r *memoryRepo) FindSimilarWithUser(ctx context.Context, agentID, userID st
 	}
 	hits, err := st.SearchByAgent(ctx, agentID, userID, float32To64(query), topK, 0)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY")
 	}
 	out := make([]*biz.AgentMemory, len(hits))
 	for i := range hits {
@@ -153,7 +156,7 @@ func (r *memoryRepo) UpsertFactVector(ctx context.Context, agentID, userID, fact
 	if err != nil {
 		return err
 	}
-	return st.UpsertFact(ctx, factID, agentID, userID, statement, float32To64(embedding))
+	return entErrToBizErr(st.UpsertFact(ctx, factID, agentID, userID, statement, float32To64(embedding)), "MEMORY")
 }
 
 // SearchFactNeighbors implements biz.MemoryConflictNeighborSearcher: scored
@@ -172,7 +175,7 @@ func (r *memoryRepo) SearchFactNeighbors(ctx context.Context, agentID, userID st
 	}
 	hits, err := st.SearchByAgent(ctx, agentID, userID, float32To64(embedding), limit, minScore)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY")
 	}
 	out := make([]biz.MemoryConflictNeighbor, 0, len(hits))
 	for _, h := range hits {

@@ -12,6 +12,8 @@
       <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" @confirm="(p) => $emit('confirm-step', p)" />
       <ErrorBlock v-else-if="step.Kind === 'error'" :step="step" />
     </template>
+    <!-- R4 召回透明度：本轮注入的记忆条目 chips（数据源 memory_recalled notice） -->
+    <MemoryRecallChips :turn-id="turn.ID" />
   </div>
 </template>
 
@@ -27,6 +29,7 @@ import ReplyBlock from '../ReplyBlock.vue';
 import NoticeBlock from '../NoticeBlock.vue';
 import ConfirmBlock from '../ConfirmBlock.vue';
 import ErrorBlock from '../ErrorBlock.vue';
+import MemoryRecallChips from '../MemoryRecallChips.vue';
 
 const props = defineProps<{ turn: Turn }>();
 defineEmits<{

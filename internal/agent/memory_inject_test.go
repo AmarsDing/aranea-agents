@@ -1,7 +1,12 @@
 package agent
 
 import (
+	"context"
+	"encoding/json"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 
@@ -89,5 +94,185 @@ func TestMemoryRuntimeContext_TeamIDResolution(t *testing.T) {
 	}
 	if rt := memoryRuntimeContext(inv4, ag); rt.TeamID != "" {
 		t.Fatalf("non-string team_id should be ignored, got %q", rt.TeamID)
+	}
+}
+
+// ── memory_recalled notice (R4: chat-level recall transparency) ─────────
+
+// noticeRecorder implements biz.ActivityEmitter capturing EmitNotice calls.
+type noticeRecorder struct {
+	calls []noticeCall
+}
+
+type noticeCall struct{ content, noticeType string }
+
+func (r *noticeRecorder) EmitNotice(_ context.Context, content, noticeType string) error {
+	r.calls = append(r.calls, noticeCall{content: content, noticeType: noticeType})
+	return nil
+}
+func (r *noticeRecorder) EmitConfirmRequest(context.Context, biz.ActivityConfirmParams) (string, error) {
+	return "", nil
+}
+func (r *noticeRecorder) EmitConfirmResult(context.Context, string, bool) error { return nil }
+func (r *noticeRecorder) EmitConfirmTimeout(context.Context, string) error      { return nil }
+
+func TestEmitMemoryRecalledNotice_EmitsJSONPayload(t *testing.T) {
+	rec := &noticeRecorder{}
+	ctx := biz.WithActivityEmitter(context.Background(), rec)
+	hits := []biz.CompositeRecallHit{
+		{Layer: "L3", Line: "用户偏好 XX 餐厅", Score: 0.91, FactID: "f-1", Confidence: 0.88, Version: 3},
+		{Layer: "L2", Line: "上次聚餐点了日料", Score: 0.72},
+	}
+	ctx = emitMemoryRecalledNotice(ctx, hits)
+	if len(rec.calls) != 1 {
+		t.Fatalf("expected 1 notice, got %d", len(rec.calls))
+	}
+	if rec.calls[0].noticeType != memoryRecalledNoticeType {
+		t.Fatalf("noticeType = %q, want %q", rec.calls[0].noticeType, memoryRecalledNoticeType)
+	}
+	var payload memoryRecalledNoticePayload
+	if err := json.Unmarshal([]byte(rec.calls[0].content), &payload); err != nil {
+		t.Fatalf("notice content is not valid JSON: %v", err)
+	}
+	if len(payload.Hits) != 2 {
+		t.Fatalf("payload hits = %d, want 2", len(payload.Hits))
+	}
+	if payload.Hits[0].Layer != "L3" || payload.Hits[0].FactID != "f-1" || payload.Hits[0].Score != 0.91 {
+		t.Fatalf("unexpected first hit: %+v", payload.Hits[0])
+	}
+}
+
+func TestEmitMemoryRecalledNotice_DeduplicatesWithinInvocation(t *testing.T) {
+	rec := &noticeRecorder{}
+	ctx := biz.WithActivityEmitter(context.Background(), rec)
+	hits := []biz.CompositeRecallHit{{Layer: "L3", Line: "fact", Score: 0.9}}
+	ctx = emitMemoryRecalledNotice(ctx, hits)
+	// Second call with the marked ctx (tool-loop re-entry) must not emit again.
+	ctx = emitMemoryRecalledNotice(ctx, hits)
+	if len(rec.calls) != 1 {
+		t.Fatalf("expected dedup to 1 notice, got %d", len(rec.calls))
+	}
+}
+
+func TestEmitMemoryRecalledNotice_NilEmitterNoPanic(t *testing.T) {
+	ctx := emitMemoryRecalledNotice(context.Background(), []biz.CompositeRecallHit{{Layer: "L3", Line: "x"}})
+	if ctx == nil {
+		t.Fatal("ctx must be returned even without emitter")
+	}
+}
+
+func TestEmitMemoryRecalledNotice_NoHitsSkips(t *testing.T) {
+	rec := &noticeRecorder{}
+	ctx := biz.WithActivityEmitter(context.Background(), rec)
+	emitMemoryRecalledNotice(ctx, nil)
+	if len(rec.calls) != 0 {
+		t.Fatalf("no hits must not emit, got %d", len(rec.calls))
+	}
+}
+
+func TestEmitMemoryRecalledNotice_TruncatesLongLines(t *testing.T) {
+	rec := &noticeRecorder{}
+	ctx := biz.WithActivityEmitter(context.Background(), rec)
+	long := strings.Repeat("记", 300)
+	emitMemoryRecalledNotice(ctx, []biz.CompositeRecallHit{{Layer: "L3", Line: long, Score: 0.9}})
+	if len(rec.calls) != 1 {
+		t.Fatalf("expected 1 notice, got %d", len(rec.calls))
+	}
+	if strings.Contains(rec.calls[0].content, long) {
+		t.Fatal("300-rune line must be truncated in notice payload")
+	}
+}
+
+// ── L4 reconsolidation trigger (design §15.7, FR-10.5) ─────────────────
+
+// reconsolidatorRecorder implements biz.L4Reconsolidator capturing OnRecall
+// calls. wg (optional) signals async completion for safego.Go-based triggers.
+type reconsolidatorRecorder struct {
+	mu    sync.Mutex
+	calls map[string][]string
+	wg    *sync.WaitGroup
+}
+
+func (r *reconsolidatorRecorder) OnRecall(_ context.Context, nodeID string, recalledWith []string) error {
+	r.mu.Lock()
+	if r.calls == nil {
+		r.calls = map[string][]string{}
+	}
+	r.calls[nodeID] = append([]string(nil), recalledWith...)
+	r.mu.Unlock()
+	if r.wg != nil {
+		r.wg.Done()
+	}
+	return nil
+}
+
+func (r *reconsolidatorRecorder) callCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.calls)
+}
+
+func (r *reconsolidatorRecorder) coRecalled(nodeID string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls[nodeID]
+}
+
+func TestTriggerL4Reconsolidation_FiresPerEntityWithCoRecalled(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(3)
+	rec := &reconsolidatorRecorder{wg: &wg}
+	deps := TRPCBuilderDeps{TRPCMemoryKnowledgeDeps: TRPCMemoryKnowledgeDeps{MemoryReconsolidator: rec}}
+	ctx := triggerL4Reconsolidation(context.Background(), deps, []string{"e1", "e2", "e3"})
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("OnRecall not invoked for all entities, got %d calls", rec.callCount())
+	}
+	if got := rec.coRecalled("e1"); len(got) != 2 || !containsAll(strings.Join(got, ","), "e2", "e3") {
+		t.Fatalf("e1 co-recalled = %v, want [e2 e3]", got)
+	}
+	if got := rec.coRecalled("e2"); len(got) != 2 || !containsAll(strings.Join(got, ","), "e1", "e3") {
+		t.Fatalf("e2 co-recalled = %v, want [e1 e3]", got)
+	}
+	// The returned ctx must carry the once-per-turn marker.
+	if ctx.Value(l4ReconsolidatedKey{}) == nil {
+		t.Fatal("ctx must carry the reconsolidation marker")
+	}
+}
+
+func TestTriggerL4Reconsolidation_DeduplicatesWithinTurn(t *testing.T) {
+	rec := &reconsolidatorRecorder{}
+	deps := TRPCBuilderDeps{TRPCMemoryKnowledgeDeps: TRPCMemoryKnowledgeDeps{MemoryReconsolidator: rec}}
+	ctx := triggerL4Reconsolidation(context.Background(), deps, []string{"e1"})
+	// Second call with the marked ctx (tool-loop re-entry) must not re-trigger.
+	triggerL4Reconsolidation(ctx, deps, []string{"e1"})
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if rec.callCount() > 1 {
+			t.Fatalf("expected at most 1 OnRecall, got %d", rec.callCount())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestTriggerL4Reconsolidation_SkipsWhenNilOrEmpty(t *testing.T) {
+	rec := &reconsolidatorRecorder{}
+	withRec := TRPCBuilderDeps{TRPCMemoryKnowledgeDeps: TRPCMemoryKnowledgeDeps{MemoryReconsolidator: rec}}
+	// Empty IDs → no trigger, no marker.
+	ctx := triggerL4Reconsolidation(context.Background(), withRec, nil)
+	if ctx.Value(l4ReconsolidatedKey{}) != nil {
+		t.Fatal("empty IDs must not mark ctx")
+	}
+	// Nil reconsolidator → no trigger, no marker.
+	noRec := TRPCBuilderDeps{}
+	ctx = triggerL4Reconsolidation(context.Background(), noRec, []string{"e1"})
+	if ctx.Value(l4ReconsolidatedKey{}) != nil {
+		t.Fatal("nil reconsolidator must not mark ctx")
+	}
+	if rec.callCount() != 0 {
+		t.Fatalf("expected 0 OnRecall calls, got %d", rec.callCount())
 	}
 }

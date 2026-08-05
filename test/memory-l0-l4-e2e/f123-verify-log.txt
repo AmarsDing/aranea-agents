@@ -1,0 +1,22 @@
+[SETUP] agent_id=f2e5a24ab0756d6413d6a1a3
+[F1] layer-overview L3 itemCount=33 http=200
+[F1] l3/facts?agent_id total=33 http=200
+[F1] l3/facts?scope_type=agent (old口径) total=0 http=200
+[PASS] F1.card_eq_browse card=33 browse=33
+[PASS] F1.cross_scope_ge_old agent_id口径=33 >= scope=agent口径=0
+[F1] browse items=33 non-agent-scope items=33
+  fact scope=user agent=f2e5a24ab0756d6413d6a1a3 stmt=The user has a cat named 小白
+  fact scope=user agent=f2e5a24ab0756d6413d6a1a3 stmt=The user likes drinking coffee
+  fact scope=user agent=f2e5a24ab0756d6413d6a1a3 stmt=The user's name is 张三（测试用户）
+  fact scope=user agent=f2e5a24ab0756d6413d6a1a3 stmt=The user's name is 张三 (测试用户).
+  fact scope=user agent=f2e5a24ab0756d6413d6a1a3 stmt=用户喜欢喝咖啡
+[SETUP] session=f5c0d524-e719-478a-adb2-2b366acf4741 http=200
+[F3] chat http=200 reply_len=0 preview=
+[PASS] F3.reply_no_fact_tag reply含<fact>=否
+[F3] stored assistant msgs=1 含<fact>=0
+[PASS] F3.stored_no_fact_tag 含标签消息数=0
+[F2] session msgs total=3 system_json_leak=0
+[PASS] F2.no_internal_notice_leak 泄漏条数=0
+[F2] old session=685dfbcb-f7e0-40f7-9792-003bfe2405ca msgs=8 roles={'user': 3, 'assistant': 4, 'tool': 1} leak=0
+[PASS] F2.old_session_no_leak 泄漏条数=0
+[SUMMARY] pass=6 fail=0 failed=[]

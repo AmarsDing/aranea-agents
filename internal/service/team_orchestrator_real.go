@@ -149,7 +149,7 @@ func (o *RealTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanSte
 	// 2026-07-04 问题 4 修复：返回 team + memberSessions + TeamStageID 让
 	// dispatchStep 能更新同一 TeamStage 记录（与 publishSpiritTeamAssembled
 	// + publishV2TeamRunAndMemberSessions 派生 ID 一致），避免双重创建。
-	teamStageID := string(agent.NewTeamStageActivityID(team.ID))
+	teamStageID := string(agent.NewTeamStageActivityID(team.ID, string(agent.RootTaskActivityIDFromCtx(ctx))))
 	result := &OrchestrateResult{
 		Team:           team,
 		TeamSession:    teamSession,

@@ -334,6 +334,96 @@ describe('useChatActivityStore', () => {
     expect(s.hydratedTaskIds.size).toBe(0);
     expect(s.taskHydration.size).toBe(0);
   });
+
+  // ── R4: memory_recalled recall transparency indexing ──────────────────
+
+  function makeNoticeStep(over: Partial<Step> = {}): Step {
+    return {
+      ID: 'n1',
+      TurnID: 'turn-1',
+      TaskID: 'task-1',
+      SessionID: 'sess-1',
+      SpiritSessionID: 'spirit-1',
+      Kind: 'notice',
+      AuthorAgentKey: 'a1',
+      Seq: 1,
+      Version: 1,
+      Content: '',
+      Reasoning: '',
+      ToolName: '',
+      ToolCallID: '',
+      ToolArgs: null,
+      ToolResult: null,
+      ToolDurationMs: 0,
+      ToolErrorCode: '',
+      NoticeType: 'memory_recalled',
+      Status: 'completed',
+      IsFinal: false,
+      StartedAt: '',
+      CompletedAt: null,
+      ...over,
+    };
+  }
+
+  const recallPayload = JSON.stringify({
+    hits: [
+      { layer: 'L3', line: '用户偏好 XX 餐厅', score: 0.91, fact_id: 'f-1' },
+      { layer: 'L2', line: '上次聚餐点了日料', score: 0.72 },
+    ],
+  });
+
+  it('upsertStep indexes memory_recalled hits by turn ID', () => {
+    const s = useChatActivityStore();
+    s.upsertStep(makeNoticeStep({ Content: recallPayload }));
+    const hits = s.getTurnRecallHits('turn-1');
+    expect(hits).toHaveLength(2);
+    expect(hits[0]).toMatchObject({ layer: 'L3', line: '用户偏好 XX 餐厅', score: 0.91 });
+  });
+
+  it('does not index non-memory notices or invalid payloads', () => {
+    const s = useChatActivityStore();
+    s.upsertStep(makeNoticeStep({ ID: 'n2', NoticeType: 'model_router', Content: 'switched' }));
+    s.upsertStep(makeNoticeStep({ ID: 'n3', Content: 'not json' }));
+    s.upsertStep(makeNoticeStep({ ID: 'n4', Content: '{"hits":[]}' }));
+    expect(s.getTurnRecallHits('turn-1')).toEqual([]);
+  });
+
+  it('re-upsert (created → completed) keeps hits idempotent', () => {
+    const s = useChatActivityStore();
+    s.upsertStep(makeNoticeStep({ Content: recallPayload, Status: 'running', Version: 1 }));
+    s.upsertStep(makeNoticeStep({ Content: recallPayload, Status: 'completed', Version: 2 }));
+    expect(s.getTurnRecallHits('turn-1')).toHaveLength(2);
+  });
+
+  it('clearSession removes recall hits of session turns', () => {
+    const s = useChatActivityStore();
+    s.upsertTurn({
+      ID: 'turn-1',
+      TaskID: 'task-1',
+      SessionID: 'sess-1',
+      SpiritSessionID: 'spirit-1',
+      ParentTurnID: '',
+      AgentKey: 'a1',
+      TeamID: '',
+      TeamStageID: '',
+      Seq: 1,
+      Version: 1,
+      Status: 'running',
+      StartedAt: '',
+      CompletedAt: null,
+    });
+    s.upsertStep(makeNoticeStep({ Content: recallPayload }));
+    expect(s.getTurnRecallHits('turn-1')).toHaveLength(2);
+    s.clearSession('spirit-1');
+    expect(s.getTurnRecallHits('turn-1')).toEqual([]);
+  });
+
+  it('clearAll clears recall hits', () => {
+    const s = useChatActivityStore();
+    s.upsertStep(makeNoticeStep({ Content: recallPayload }));
+    s.clearAll();
+    expect(s.getTurnRecallHits('turn-1')).toEqual([]);
+  });
 });
 
 describe('fetchSessionHistory phased hydration', () => {

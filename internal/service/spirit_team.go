@@ -224,7 +224,7 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		// 2026-07-05 P1 #9d-2（AS-FSM-01）：用状态机校验 Pending → Running 转换，
 		// 修复 Version=0 Bug（状态未持久化）。
 		dependsOn := team.DependsOn
-		tsID := string(agent.NewTeamStageActivityID(teamID))
+		tsID := string(agent.NewTeamStageActivityID(teamID, string(agent.RootTaskActivityIDFromCtx(ctx))))
 		newStatus, newVersion, tsOK := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
 			tsID, biz.TeamStageEventStart, biz.TeamStageStatusRunning, s.lg)
 		if tsOK {
@@ -501,7 +501,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		// （不是转换），用 TeamStageEventStart：from=Running 时状态机拒绝并降级
 		// 为 Version=100，from=Pending 时正常转换 Pending → Running。
 		if status == biz.TeamStatusRunning {
-			progressTsID := string(agent.NewTeamStageActivityID(teamID))
+			progressTsID := string(agent.NewTeamStageActivityID(teamID, string(agent.RootTaskActivityIDFromCtx(ctx))))
 			newStatus, newVersion, tsOK := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
 				progressTsID, biz.TeamStageEventStart, biz.TeamStageStatusRunning, s.lg)
 			if tsOK {
@@ -557,7 +557,7 @@ func (s *TeamStarter) publishTerminalTeamStage(
 	spiritSessionID string,
 	primaryStatus biz.TeamStageStatus,
 ) {
-	terminalTsID := string(agent.NewTeamStageActivityID(team.ID))
+	terminalTsID := string(agent.NewTeamStageActivityID(team.ID, string(agent.RootTaskActivityIDFromCtx(ctx))))
 	var tsEvent biz.TeamStageEvent
 	switch primaryStatus {
 	case biz.TeamStageStatusCompleted:
@@ -742,7 +742,7 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 					// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
 					// 2026-07-05 P1 #9d-2（AS-FSM-01）：用状态机校验 Running → Failed
 					// 转换，修复 Version=0 Bug（状态未持久化）。
-					failTsID := string(agent.NewTeamStageActivityID(action.TeamID))
+					failTsID := string(agent.NewTeamStageActivityID(action.TeamID, string(agent.RootTaskActivityIDFromCtx(ctx))))
 					newStatus, newVersion, tsOK := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
 						failTsID, biz.TeamStageEventFail, biz.TeamStageStatusFailed, s.lg)
 					if tsOK {
@@ -782,7 +782,7 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 				// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
 				// 2026-07-05 P1 #9d-2（AS-FSM-01）：用状态机校验 Pending → Running
 				// 转换，修复 Version=0 Bug（状态未持久化）。
-				activateTsID := string(agent.NewTeamStageActivityID(action.TeamID))
+				activateTsID := string(agent.NewTeamStageActivityID(action.TeamID, string(agent.RootTaskActivityIDFromCtx(ctx))))
 				newStatus, newVersion, tsOK := resolveTeamStageUpdate(ctx, s.teamStageR, s.tsSM,
 					activateTsID, biz.TeamStageEventStart, biz.TeamStageStatusRunning, s.lg)
 				if tsOK {
@@ -1226,6 +1226,17 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 		return err
 	}
 	spiritSessionID := strings.TrimSpace(team.SpiritSessionID)
+	// S-3 后 TeamStage 按 (teamID, rootTaskID) 每轮一行；cancel 是用户动作
+	// （ctx 无 RootTaskActivityID），无法重放 ID 公式——查团队最新行定位，
+	// 并把其 TaskID（Mode B 下 = rootTaskID，见 publishSpiritTeamAssembled）
+	// 注入 ctx，使下方 HandleTeamTurnResult 的终态 pass 派生同一批
+	// run-isolated ID（teamStage/teamRun/memberSession）。查无行或 TaskID
+	// 为空（Mode A runner 事件不写 TaskID）时降级 legacy 公式，保留旧行为。
+	if a.teamStageR != nil {
+		if latest, lerr := a.teamStageR.GetLatestTeamStageByTeam(ctx, teamID); lerr == nil && strings.TrimSpace(latest.TaskID) != "" {
+			ctx = agent.ContextWithRootTaskActivityID(ctx, agent.RootTaskActivityID(latest.TaskID))
+		}
+	}
 	if a.v2EventReady() && spiritSessionID != "" {
 		// Phase 3b-D Task 10: migrated to v2 NewTeamStageUpdatedEvent.
 		// No NewTeamStageCancelledEvent factory exists; use Updated as the
@@ -1234,7 +1245,12 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 		// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
 		// 2026-07-05 P1 #9d-2（AS-FSM-01）：用状态机校验 Running → Cancelled
 		// 转换，修复 Version=0 Bug（状态未持久化）。
-		cancelTsID := string(agent.NewTeamStageActivityID(teamID))
+		cancelTsID := string(agent.NewTeamStageActivityID(teamID, string(agent.RootTaskActivityIDFromCtx(ctx))))
+		if a.teamStageR != nil {
+			if latest, lerr := a.teamStageR.GetLatestTeamStageByTeam(ctx, teamID); lerr == nil && latest.ID != "" {
+				cancelTsID = latest.ID
+			}
+		}
 		newStatus, newVersion, tsOK := resolveTeamStageUpdate(ctx, a.teamStageR, a.tsSM,
 			cancelTsID, biz.TeamStageEventCancel, biz.TeamStageStatusCancelled, a.lg)
 		if tsOK {
@@ -1382,7 +1398,7 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 		)
 	}
 	ts := biz.TeamStage{
-		ID:        string(agent.NewTeamStageActivityID(team.ID)),
+		ID:        string(agent.NewTeamStageActivityID(team.ID, string(agent.RootTaskActivityIDFromCtx(ctx)))),
 		TaskID:    string(agent.RootTaskActivityIDFromCtx(ctx)),
 		TurnID:    event.TurnIDFromContext(ctx),
 		TeamID:    team.ID,
@@ -1479,7 +1495,7 @@ func (a *SpiritTeamAssembler) publishV2TeamRunAndMemberSessions(
 		return
 	}
 	rootTaskID := string(agent.RootTaskActivityIDFromCtx(ctx))
-	teamStageID := string(agent.NewTeamStageActivityID(team.ID))
+	teamStageID := string(agent.NewTeamStageActivityID(team.ID, rootTaskID))
 	now := time.Now().UTC()
 	// 派生 TeamRun ID（基于 teamStageID 确定性派生，确保多次调用产生相同 ID）。
 	teamRunID := agent.NewTeamRunV2ID(teamStageID)
@@ -1625,7 +1641,7 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 	}
 
 	rootTaskID := string(agent.RootTaskActivityIDFromCtx(ctx))
-	teamStageID := string(agent.NewTeamStageActivityID(teamID))
+	teamStageID := string(agent.NewTeamStageActivityID(teamID, rootTaskID))
 	teamRunID := agent.NewTeamRunV2ID(teamStageID)
 	now := time.Now().UTC()
 

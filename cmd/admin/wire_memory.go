@@ -14,6 +14,7 @@ import (
 	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/internal/service"
 	sessiontrpc "aranea-agents/internal/session/trpc"
 	"aranea-agents/pkg/loggateway"
 
@@ -54,6 +55,59 @@ func provideMemoryConflictDetector(d *data.Data, vec *biz.MemoryUsecase) biz.Mem
 // conflict-mark decisions.
 func provideL3ConflictStore(d *data.Data) biz.L3ConflictStore {
 	return data.NewL3ConflictStore(d)
+}
+
+// provideFactWriteAdjudicator wires the P1-3 LLM adjudicator for contested
+// fact-write candidates. Model resolution mirrors MemoryLLMExtractor
+// (MemoryWorker → L0Compress → agent default via ModelCatalog). Returns nil
+// when the catalog is unavailable — the pipeline then falls back to
+// heuristic ADD for contested candidates.
+func provideFactWriteAdjudicator(
+	agents *biz.AgentUsecase,
+	sessions *biz.SessionUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	lg loggateway.Logger,
+) biz.FactWriteAdjudicator {
+	return service.NewMemoryFactWriteAdjudicator(service.MemoryFactWriteAdjudicatorConfig{
+		Agents:       agents,
+		Sessions:     sessions,
+		ModelCatalog: catalog,
+		RoundTrip:    &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
+		LLMDisabled:  false,
+		Logger:       lg,
+	})
+}
+
+// provideFactWritePipeline wires the P1-3 unified write pipeline: all
+// automatic fact-write sources (auto_memory worker, sleep-time episode
+// consolidator) funnel through gates → neighbor recall → LLM adjudication →
+// bi-temporal writes → audit. Returns nil when d is nil (sources then skip
+// fact writes gracefully).
+func provideFactWritePipeline(
+	d *data.Data,
+	vec *biz.MemoryUsecase,
+	adjudicator biz.FactWriteAdjudicator,
+	lg loggateway.Logger,
+) *biz.FactWritePipeline {
+	if d == nil {
+		return nil
+	}
+	deps := biz.FactWritePipelineDeps{
+		Searcher:    data.NewMemoryConflictNeighborSearcher(d),
+		Reader:      data.NewL3FactReaderForUser(d),
+		Writer:      data.NewL3FactWriterAdapter(d, d.VectorStore()),
+		Access:      data.NewL3FactAccessCounter(d),
+		Adjudicator: adjudicator,
+		ActionLog:   data.NewMemoryActionLogWriter(d),
+		LG:          lg,
+	}
+	// Guard against typed-nil interfaces: a nil *MemoryUsecase wrapped in the
+	// EmbeddingService interface would pass the pipeline's nil check and
+	// panic on first Embed call.
+	if vec != nil {
+		deps.Embedder = vec
+	}
+	return biz.NewFactWritePipeline(deps)
 }
 
 func provideEpisodeIndexSync(vec *biz.MemoryUsecase, d *data.Data) biz.EpisodeIndexSyncer {
@@ -193,6 +247,22 @@ func providePathBL4Writer(d *data.Data) biz.PathBL4Writer {
 	return data.NewL4GraphRepo(d)
 }
 
+// provideReconsolidationService wires the L4 memory reconsolidation service
+// (design §15.7, FR-10.5): when entities are recalled into the prompt, their
+// activation is boosted, use_count incremented, and co-recalled connections
+// reinforced via the Hebbian rule. Returns nil when d is nil — the
+// before-model hook then skips the trigger.
+func provideReconsolidationService(d *data.Data, lg loggateway.Logger) biz.L4Reconsolidator {
+	if d == nil {
+		return nil
+	}
+	return memory.NewReconsolidationService(
+		data.NewL4ReconsolidationStore(d),
+		memory.NewHebbianUpdater(data.NewL4HebbianStore(d), lg),
+		lg,
+	)
+}
+
 func providePersistenceSet(
 	d *data.Data,
 	mcp *biz.AgentMCPTooling,
@@ -206,6 +276,7 @@ func providePersistenceSet(
 	l3Recall biz.MemoryL3Recaller,
 	compositeRecall biz.MemoryCompositeRecaller,
 	adminUC *biz.MemoryAdminUsecase,
+	reconsolidator biz.L4Reconsolidator,
 	lg loggateway.Logger,
 	deadLetterRepo *data.MemoryJobDeadLetterRepo,
 ) rt.PersistenceSet {
@@ -220,6 +291,9 @@ func providePersistenceSet(
 			L3Recall:         l3Recall,
 			CompositeRecall:  compositeRecall,
 			PreferenceLister: data.NewMemoryPreferenceLister(d),
+			ProfileCardReader: data.NewMemoryProfileCardStore(d),
+			FactInjectCounter: data.NewL3FactInjectCounter(d),
+			Reconsolidator:   reconsolidator,
 		}
 		// Connect dead-letter sink so queue overflow is persisted instead of silently dropped.
 		if queue, ok := q.(*memtrpc.MemoryJobQueue); ok && deadLetterRepo != nil {

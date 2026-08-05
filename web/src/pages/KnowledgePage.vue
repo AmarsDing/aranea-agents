@@ -74,6 +74,7 @@
             @node-action="onTreeNodeAction"
             @create-vault="openCreateCollection"
             @drop-node="onExplorerDropNode"
+            @retry="refreshExplorerTree"
           />
 
           <div class="knowledge-explorer-grid__mid">
@@ -106,6 +107,8 @@
             :preview-content="explorerPreviewContent"
             :preview-organized="explorerPreviewOrganized"
             :preview-loading="explorerPreviewLoading"
+            :preview-error="explorerPreviewError"
+            :links-error="explorerLinksError"
             :links="explorerLinks"
             :links-loading="explorerLinksLoading"
             :link-counts="explorerLinkCounts"
@@ -122,6 +125,7 @@
             @delete="onExplorerDelete"
             @move="onExplorerMove"
             @navigate="onExplorerNavigate"
+            @retry="explorer.reloadDetail()"
           />
         </div>
       </q-tab-panel>
@@ -289,6 +293,8 @@ const {
   previewContent: explorerPreviewContent,
   previewOrganized: explorerPreviewOrganized,
   previewLoading: explorerPreviewLoading,
+  previewError: explorerPreviewError,
+  linksError: explorerLinksError,
   links: explorerLinks,
   linksLoading: explorerLinksLoading,
   linkCounts: explorerLinkCounts,
@@ -494,6 +500,14 @@ onMounted(() => {
   gap: 16px;
   align-items: start;
 
+  // UX-001：左右栏粘性 + 视口内限高，列内独立滚动——关联区展开不再把整页撑长。
+  .knowledge-vault-tree,
+  .knowledge-doc-detail {
+    position: sticky;
+    top: 76px;
+    max-height: calc(100vh - 92px);
+  }
+
   &__mid {
     display: flex;
     flex-direction: column;
@@ -508,6 +522,9 @@ onMounted(() => {
 
     .knowledge-doc-detail {
       grid-column: 1 / -1;
+      // 堆叠布局下页面滚动为自然行为，取消粘性与限高。
+      position: static;
+      max-height: none;
     }
   }
 }

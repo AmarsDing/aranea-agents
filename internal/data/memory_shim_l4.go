@@ -37,6 +37,21 @@ func NewL4RelationAdminReader(data *Data) biz.L4RelationAdminReader {
 	return newL4EntityRepo(data)
 }
 
+// NewL4ReconsolidationStore returns the narrow L4ReconsolidationStore port for
+// memory reconsolidation (activation boost + use_count increment). Exposed so
+// the wire layer can inject it into ReconsolidationService without depending
+// on the full L4GraphRepo.
+func NewL4ReconsolidationStore(data *Data) biz.L4ReconsolidationStore {
+	return newL4EntityRepo(data)
+}
+
+// NewL4HebbianStore returns the narrow L4HebbianStore port for Hebbian weight
+// updates. Exposed so the wire layer can inject it into HebbianUpdater without
+// depending on the full L4GraphRepo.
+func NewL4HebbianStore(data *Data) biz.L4HebbianStore {
+	return newL4EntityRepo(data)
+}
+
 // Compile-time interface checks.
 var (
 	_ biz.L4EntityStore          = (*l4EntityRepo)(nil)

@@ -35,6 +35,10 @@ const (
 	// 唯一性由 TestMigrationVersionsGloballyUnique 守卫（新增迁移前必跑）。
 	MigrationMonitorTraceInterruptedBackfill     = 20261115
 	migrationNameMonitorTraceInterruptedBackfill = "monitor_trace_interrupted_backfill"
+	// 版本取 20261127：20261125/20261126 已被 DDL 迁移 memory_fact_three_counters /
+	// memory_profile_cards 占用（FR-12.6/12.7）。
+	MigrationL2RecallDefaultOn     = 20261127
+	migrationNameL2RecallDefaultOn = "memory_l2_recall_default_on"
 )
 
 func isMigrationApplied(ctx context.Context, client *ent.Client, version int, lg loggateway.Logger) (bool, error) {

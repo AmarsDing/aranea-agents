@@ -1059,14 +1059,19 @@ func (x *L1Field) GetUpdatedAt() string {
 }
 
 type ListMemoryFactsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ScopeType     string                 `protobuf:"bytes,1,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
-	ScopeId       string                 `protobuf:"bytes,2,opt,name=scope_id,json=scopeId,proto3" json:"scope_id,omitempty"`
-	Kind          string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
-	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
-	Keyword       string                 `protobuf:"bytes,5,opt,name=keyword,proto3" json:"keyword,omitempty"`
-	Limit         int32                  `protobuf:"varint,6,opt,name=limit,proto3" json:"limit,omitempty"`
-	Offset        int32                  `protobuf:"varint,7,opt,name=offset,proto3" json:"offset,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ScopeType string                 `protobuf:"bytes,1,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
+	ScopeId   string                 `protobuf:"bytes,2,opt,name=scope_id,json=scopeId,proto3" json:"scope_id,omitempty"`
+	Kind      string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
+	Status    string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	Keyword   string                 `protobuf:"bytes,5,opt,name=keyword,proto3" json:"keyword,omitempty"`
+	Limit     int32                  `protobuf:"varint,6,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset    int32                  `protobuf:"varint,7,opt,name=offset,proto3" json:"offset,omitempty"`
+	// optional: filter by ORIGINATING agent (memory_facts.agent_id) across all
+	// scopes — AND-combined with the scope namespace filters. Used by the memory
+	// center so the L3 browse tab matches the panorama card count (which counts
+	// facts an agent produced into session/user scopes as well).
+	AgentId       string `protobuf:"bytes,8,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1150,6 +1155,13 @@ func (x *ListMemoryFactsRequest) GetOffset() int32 {
 	return 0
 }
 
+func (x *ListMemoryFactsRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
 type ListMemoryFactsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*MemoryFact          `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
@@ -1219,11 +1231,15 @@ func (x *ListMemoryFactsResponse) GetOffset() int32 {
 }
 
 type ListConflictingFactsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ScopeType     string                 `protobuf:"bytes,1,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
-	ScopeId       string                 `protobuf:"bytes,2,opt,name=scope_id,json=scopeId,proto3" json:"scope_id,omitempty"`
-	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
-	Offset        int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ScopeType string                 `protobuf:"bytes,1,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
+	ScopeId   string                 `protobuf:"bytes,2,opt,name=scope_id,json=scopeId,proto3" json:"scope_id,omitempty"`
+	Limit     int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset    int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
+	// agent_id filters conflicts by the ORIGINATING agent across ALL scopes
+	// (session/user/agent). H2: facts live in session/user scopes (F1), so a
+	// scope-only query undercounts. When set, scope_type may be left empty.
+	AgentId       string `protobuf:"bytes,5,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1284,6 +1300,13 @@ func (x *ListConflictingFactsRequest) GetOffset() int32 {
 		return x.Offset
 	}
 	return 0
+}
+
+func (x *ListConflictingFactsRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
 }
 
 type ListConflictingFactsResponse struct {
@@ -1369,8 +1392,17 @@ type MemoryFact struct {
 	UpdatedAt             string                 `protobuf:"bytes,27,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	QualityScore          float64                `protobuf:"fixed64,28,opt,name=quality_score,json=qualityScore,proto3" json:"quality_score,omitempty"`
 	PiiTypesJson          string                 `protobuf:"bytes,29,opt,name=pii_types_json,json=piiTypesJson,proto3" json:"pii_types_json,omitempty"` // JSON array of PII type tags
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// FR-12.6 three-stage counters. use_count (14) is legacy and no longer
+	// maintained; these carry the precise semantics:
+	//
+	//	recalled_count  — entered a recall result set
+	//	injected_count  — actually written into the LLM prompt
+	//	cited_count     — explicitly referenced by the assistant reply
+	RecalledCount int32 `protobuf:"varint,30,opt,name=recalled_count,json=recalledCount,proto3" json:"recalled_count,omitempty"`
+	InjectedCount int32 `protobuf:"varint,31,opt,name=injected_count,json=injectedCount,proto3" json:"injected_count,omitempty"`
+	CitedCount    int32 `protobuf:"varint,32,opt,name=cited_count,json=citedCount,proto3" json:"cited_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *MemoryFact) Reset() {
@@ -1604,6 +1636,27 @@ func (x *MemoryFact) GetPiiTypesJson() string {
 		return x.PiiTypesJson
 	}
 	return ""
+}
+
+func (x *MemoryFact) GetRecalledCount() int32 {
+	if x != nil {
+		return x.RecalledCount
+	}
+	return 0
+}
+
+func (x *MemoryFact) GetInjectedCount() int32 {
+	if x != nil {
+		return x.InjectedCount
+	}
+	return 0
+}
+
+func (x *MemoryFact) GetCitedCount() int32 {
+	if x != nil {
+		return x.CitedCount
+	}
+	return 0
 }
 
 type ListMemoryEntitiesRequest struct {
@@ -7457,7 +7510,7 @@ const file_kratos_memory_v1_memory_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x17 \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\x18 \x01(\tR\tupdatedAt\"\xc6\x01\n" +
+	"updated_at\x18\x18 \x01(\tR\tupdatedAt\"\xe1\x01\n" +
 	"\x16ListMemoryFactsRequest\x12\x1d\n" +
 	"\n" +
 	"scope_type\x18\x01 \x01(\tR\tscopeType\x12\x19\n" +
@@ -7466,21 +7519,23 @@ const file_kratos_memory_v1_memory_proto_rawDesc = "" +
 	"\x06status\x18\x04 \x01(\tR\x06status\x12\x18\n" +
 	"\akeyword\x18\x05 \x01(\tR\akeyword\x12\x14\n" +
 	"\x05limit\x18\x06 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\a \x01(\x05R\x06offset\"\x91\x01\n" +
+	"\x06offset\x18\a \x01(\x05R\x06offset\x12\x19\n" +
+	"\bagent_id\x18\b \x01(\tR\aagentId\"\x91\x01\n" +
 	"\x17ListMemoryFactsResponse\x122\n" +
 	"\x05items\x18\x01 \x03(\v2\x1c.kratos.memory.v1.MemoryFactR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x14\n" +
 	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x04 \x01(\x05R\x06offset\"\x85\x01\n" +
+	"\x06offset\x18\x04 \x01(\x05R\x06offset\"\xa0\x01\n" +
 	"\x1bListConflictingFactsRequest\x12\x1d\n" +
 	"\n" +
 	"scope_type\x18\x01 \x01(\tR\tscopeType\x12\x19\n" +
 	"\bscope_id\x18\x02 \x01(\tR\ascopeId\x12\x14\n" +
 	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x04 \x01(\x05R\x06offset\"h\n" +
+	"\x06offset\x18\x04 \x01(\x05R\x06offset\x12\x19\n" +
+	"\bagent_id\x18\x05 \x01(\tR\aagentId\"h\n" +
 	"\x1cListConflictingFactsResponse\x122\n" +
 	"\x05items\x18\x01 \x03(\v2\x1c.kratos.memory.v1.MemoryFactR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total\"\xd5\a\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\"\xc4\b\n" +
 	"\n" +
 	"MemoryFact\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
@@ -7520,7 +7575,11 @@ const file_kratos_memory_v1_memory_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x1b \x01(\tR\tupdatedAt\x12#\n" +
 	"\rquality_score\x18\x1c \x01(\x01R\fqualityScore\x12$\n" +
-	"\x0epii_types_json\x18\x1d \x01(\tR\fpiiTypesJson\"\x92\x02\n" +
+	"\x0epii_types_json\x18\x1d \x01(\tR\fpiiTypesJson\x12%\n" +
+	"\x0erecalled_count\x18\x1e \x01(\x05R\rrecalledCount\x12%\n" +
+	"\x0einjected_count\x18\x1f \x01(\x05R\rinjectedCount\x12\x1f\n" +
+	"\vcited_count\x18  \x01(\x05R\n" +
+	"citedCount\"\x92\x02\n" +
 	"\x19ListMemoryEntitiesRequest\x12\x1d\n" +
 	"\n" +
 	"scope_type\x18\x01 \x01(\tR\tscopeType\x12\x19\n" +

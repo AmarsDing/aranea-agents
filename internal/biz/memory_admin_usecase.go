@@ -156,15 +156,19 @@ type ListFactRowsParams struct {
 	Kind      string
 	Status    string
 	Keyword   string
-	Limit     int32
-	Offset    int32
+	// AgentID filters by the originating agent (memory_facts.agent_id) across
+	// all scopes — the memory-center "this agent's facts" view. Independent of
+	// the ScopeType/ScopeID namespace filter (AND-combined).
+	AgentID string
+	Limit   int32
+	Offset  int32
 }
 
 func (uc *MemoryAdminUsecase) ListFactRows(ctx context.Context, p ListFactRowsParams) ([][]byte, int32, int32, int32, error) {
 	if err := uc.requireAdmin(); err != nil {
 		return nil, 0, 0, 0, err
 	}
-	return uc.admin.ListFactRows(ctx, p.ScopeType, p.ScopeID, p.Kind, p.Status, p.Keyword, p.Limit, p.Offset)
+	return uc.admin.ListFactRows(ctx, p.ScopeType, p.ScopeID, p.Kind, p.Status, p.Keyword, p.AgentID, p.Limit, p.Offset)
 }
 
 // ListEntityRowsParams encapsulates parameters for ListEntityRows.
@@ -649,11 +653,11 @@ func (uc *MemoryAdminUsecase) IncrementConflictCount(ctx context.Context, factID
 	return uc.admin.IncrementConflictCount(ctx, factID)
 }
 
-func (uc *MemoryAdminUsecase) ListConflictingFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error) {
+func (uc *MemoryAdminUsecase) ListConflictingFacts(ctx context.Context, scopeType, scopeID, agentID string, limit, offset int32) ([][]byte, int32, error) {
 	if err := uc.requireAdmin(); err != nil {
 		return nil, 0, err
 	}
-	return uc.admin.ListConflictingFacts(ctx, scopeType, scopeID, limit, offset)
+	return uc.admin.ListConflictingFacts(ctx, scopeType, scopeID, agentID, limit, offset)
 }
 
 // DetectFactConflicts checks if a new fact statement conflicts with existing facts in the same scope.
@@ -671,7 +675,7 @@ func (uc *MemoryAdminUsecase) DetectFactConflicts(ctx context.Context, scopeType
 		return nil
 	}
 	newFingerprint := FactFingerprint(newStatement, scopeType, scopeID)
-	rows, _, _, _, err := uc.admin.ListFactRows(ctx, scopeType, scopeID, "", "", "", conflictDetectMaxRows, 0)
+	rows, _, _, _, err := uc.admin.ListFactRows(ctx, scopeType, scopeID, "", "", "", "", conflictDetectMaxRows, 0)
 	if err != nil || len(rows) == 0 {
 		return nil
 	}

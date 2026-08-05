@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	v1 "aranea-agents/api/kratos/team/v1"
-	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 
 	"aranea-agents/pkg/apierror"
@@ -108,10 +107,11 @@ func (s *TeamService) ListSpiritTeams(ctx context.Context, req *v1.ListSpiritTea
 		view := toProtoSpiritTeamView(&teams[i], run)
 		// Members come from v2 TeamStage (typed []MemberInfo). Legacy
 		// activities-table fallback was removed with ActivityBridge/dual-write.
-		stageID := string(agent.NewTeamStageActivityID(teams[i].ID))
+		// S-3 后 stage 按 (teamID, rootTaskID) 每轮一行，此 API ctx 无
+		// RootTaskActivityID——查团队最新行取成员，无行则 members 为空。
 		var members []*v1.SpiritMemberView
 		if s.teamStageReader != nil {
-			if ts, err := s.teamStageReader.GetTeamStage(ctx, stageID); err == nil {
+			if ts, err := s.teamStageReader.GetLatestTeamStageByTeam(ctx, teams[i].ID); err == nil {
 				members = memberInfosToSpiritViews(ts.Members)
 			}
 		}

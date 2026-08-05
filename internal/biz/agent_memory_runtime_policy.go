@@ -8,6 +8,18 @@ import (
 
 const maxL3RecallLimit = 20
 
+// FR-12/P2: recall-block token budget tiers (评审 §6.4「预算：默认 ≤800
+// tokens（可配档位）」). Applied to the fused L2/L3 recall block: hits are
+// packed score-descending and the block stops growing once the estimated
+// tokens exceed the configured budget. The resident profile card and pinned
+// preference block are NOT gated by this budget (100% injection by design);
+// MemoryPromptTotalBudgetChars remains the outer backstop.
+const (
+	MemoryRecallBudgetCompact  = 400
+	MemoryRecallBudgetStandard = 800
+	MemoryRecallBudgetGenerous = 1600
+)
+
 // MemoryRuntimeContext carries session-local identifiers for scope resolution.
 type MemoryRuntimeContext struct {
 	AgentID   string
@@ -41,6 +53,7 @@ type MemoryRuntimePolicy struct {
 	L3MinScoreQuery        float64
 	L3MinScorePassive      float64
 	L3MaxPerRecallChars    int
+	L3RecallBudgetTokens   int
 	L3RecallScopes         []string
 	L0L3MaxChunks          int
 	L0L4MaxPaths           int
@@ -118,6 +131,7 @@ func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePol
 		L3MinScoreQuery:        settings.L3RecallMinScore,
 		L3MinScorePassive:      0,
 		L3MaxPerRecallChars:    settings.L3MaxPerRecallChars,
+		L3RecallBudgetTokens:   settings.L3RecallBudgetTokens,
 		L3RecallScopes:         parseMemoryScopeList(settings.L3RecallScopesJSON),
 		L0L3MaxChunks:          settings.L0L3MaxChunks,
 		L0L4MaxPaths:           settings.L0L4MaxPaths,
@@ -156,6 +170,9 @@ func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePol
 	}
 	if p.L3MaxPerRecallChars <= 0 {
 		p.L3MaxPerRecallChars = 1500
+	}
+	if p.L3RecallBudgetTokens <= 0 {
+		p.L3RecallBudgetTokens = MemoryRecallBudgetStandard
 	}
 	if p.L1FieldMaxChars <= 0 {
 		p.L1FieldMaxChars = 2048 * 4

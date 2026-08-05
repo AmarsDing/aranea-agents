@@ -184,7 +184,7 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 		cp := run
 		now := time.Now().UTC()
 		ts := biz.TeamStage{
-			ID:        string(agent.NewTeamStageActivityID(stepCtx.TeamID)),
+			ID:        string(agent.NewTeamStageActivityID(stepCtx.TeamID, stepCtx.RootTaskID)),
 			TeamID:    stepCtx.TeamID,
 			SessionID: stepCtx.SpiritSessionID,
 			Status:    biz.TeamStageStatusCompleted,

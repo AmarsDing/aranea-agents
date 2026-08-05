@@ -160,6 +160,11 @@ func (f *fakeConsolidationWriter) getEpisode() *biz.EpisodeWrite {
 
 func TestAutoMemoryWorker_ExtractChain(t *testing.T) {
 	writer := &fakeConsolidationWriter{}
+	factWriter := &fakePipelineFactWriter{}
+	pipeline := biz.NewFactWritePipeline(biz.FactWritePipelineDeps{
+		Writer: factWriter,
+		LG:     loggateway.NewNoop(),
+	})
 	ctx := context.Background()
 
 	const (
@@ -186,6 +191,7 @@ func TestAutoMemoryWorker_ExtractChain(t *testing.T) {
 		Writer:       writer,
 		Consolidator: biz.NewHeuristicConsolidator(),
 		Queue:        q,
+		FactPipeline: pipeline,
 		Logger:       loggateway.NewNoop(),
 	})
 	if err != nil {
@@ -197,15 +203,14 @@ func TestAutoMemoryWorker_ExtractChain(t *testing.T) {
 		t.Fatalf("extract: %v", err)
 	}
 
-	facts := writer.getFacts()
-	if len(facts) != 1 {
-		t.Fatalf("expected 1 fact, got %d", len(facts))
+	if len(factWriter.upserts) != 1 {
+		t.Fatalf("expected 1 fact, got %d", len(factWriter.upserts))
 	}
-	if facts[0].SourceKind != "auto_memory" {
-		t.Fatalf("source_kind=%q want auto_memory", facts[0].SourceKind)
+	if factWriter.upserts[0].SourceKind != "auto_memory" {
+		t.Fatalf("source_kind=%q want auto_memory", factWriter.upserts[0].SourceKind)
 	}
-	if facts[0].SourceMessageID != msgID {
-		t.Fatalf("source_message_id=%q want %q", facts[0].SourceMessageID, msgID)
+	if factWriter.upserts[0].SourceMessageID != msgID {
+		t.Fatalf("source_message_id=%q want %q", factWriter.upserts[0].SourceMessageID, msgID)
 	}
 
 	ep := writer.getEpisode()
@@ -219,6 +224,11 @@ func TestAutoMemoryWorker_ExtractChain(t *testing.T) {
 
 func TestAutoMemoryWorker_DrainUsesInjectedQueue(t *testing.T) {
 	writer := &fakeConsolidationWriter{}
+	factWriter := &fakePipelineFactWriter{}
+	pipeline := biz.NewFactWritePipeline(biz.FactWritePipelineDeps{
+		Writer: factWriter,
+		LG:     loggateway.NewNoop(),
+	})
 	ctx := context.Background()
 
 	repo := fixedSessionRepo{
@@ -238,6 +248,7 @@ func TestAutoMemoryWorker_DrainUsesInjectedQueue(t *testing.T) {
 		Writer:       writer,
 		Consolidator: biz.NewHeuristicConsolidator(),
 		Queue:        q,
+		FactPipeline: pipeline,
 		Logger:       loggateway.NewNoop(),
 	})
 	if err != nil {
@@ -248,12 +259,11 @@ func TestAutoMemoryWorker_DrainUsesInjectedQueue(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		w.drain(ctx)
-		facts := writer.getFacts()
-		if len(facts) >= 1 {
+		if len(factWriter.upserts) >= 1 {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("expected fact after queue drain, got %d", len(facts))
+			t.Fatalf("expected fact after queue drain, got %d", len(factWriter.upserts))
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

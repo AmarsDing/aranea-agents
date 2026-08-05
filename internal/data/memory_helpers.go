@@ -233,6 +233,7 @@ const sqlFactSelect = `SELECT id, scope_type, scope_id, workspace_id, user_id, t
  statement, statement_normalized, fingerprint, details_markdown,
  fact_kind, tags_json,
  confidence, importance, use_count, hit_count,
+ recalled_count, injected_count, cited_count,
  positive_feedback_count, negative_feedback_count, conflict_count,
  source_kind, source_episode_id, source_session_id, source_message_id, source_external,
  version, status, superseded_by,
@@ -385,6 +386,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		fkind, tags                        string
 		conf, imp                          float64
 		uc, hc, pfc, nfc, cc               int
+		rc, ic, cic                        int
 		srcKind, epID, sessID, msgID, ext  string
 		ver                                int
 		st, sup                            string
@@ -409,7 +411,9 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		&id, &stype, &sid, &wid, &uid, &tid, &aid,
 		&stmt, &snorm, &fp, &details,
 		&fkind, &tags,
-		&conf, &imp, &uc, &hc, &pfc, &nfc, &cc,
+		&conf, &imp, &uc, &hc,
+		&rc, &ic, &cic,
+		&pfc, &nfc, &cc,
 		&srcKind, &epID, &sessID, &msgID, &ext,
 		&ver, &st, &sup,
 		&embSt, &embModel, &embDim, &embBlob, &embNorm,
@@ -428,6 +432,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		"details_markdown": details, "fact_kind": fkind, "tags_json": tags,
 		"confidence": conf, "importance": imp,
 		"use_count": uc, "hit_count": hc,
+		"recalled_count": rc, "injected_count": ic, "cited_count": cic,
 		"positive_feedback_count": pfc, "negative_feedback_count": nfc, "conflict_count": cc,
 		"source_kind": srcKind, "source_episode_id": epID,
 		"source_session_id": sessID, "source_message_id": msgID, "source_external": ext,
@@ -860,6 +865,7 @@ type recallScoreBreakdown struct {
 	Recency      float64 `json:"recency"`
 	QualityScore float64 `json:"quality_score"`
 	CrossEncoder float64 `json:"cross_encoder"`
+	RRF          float64 `json:"rrf,omitempty"`
 	Total        float64 `json:"total"`
 }
 

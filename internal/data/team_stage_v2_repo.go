@@ -53,6 +53,22 @@ func (r *teamStageV2Repo) ListTeamStagesByTask(ctx context.Context, taskID strin
 	return entTeamStagesV2ToBiz(rows), nil
 }
 
+// GetLatestTeamStageByTeam returns the most recently started stage for the
+// team (StartedAt desc, Seq desc tiebreak). See biz.TeamStageV2Reader.
+func (r *teamStageV2Repo) GetLatestTeamStageByTeam(ctx context.Context, teamID string) (biz.TeamStage, error) {
+	if r == nil || r.data == nil {
+		return biz.TeamStage{}, fmt.Errorf("team stage v2 repo: database not configured")
+	}
+	row, err := r.data.RW().Read(ctx).TeamStageV2.Query().
+		Where(teamstagev2.TeamIDEQ(teamID)).
+		Order(ent.Desc(teamstagev2.FieldStartedAt), ent.Desc(teamstagev2.FieldSeq)).
+		First(ctx)
+	if err != nil {
+		return biz.TeamStage{}, entErrToBizErr(err, "TEAM_STAGE_V2")
+	}
+	return entTeamStageV2ToBiz(row), nil
+}
+
 // CreateTeamStage inserts a new TeamStage with the caller's claimed Version.
 func (r *teamStageV2Repo) CreateTeamStage(ctx context.Context, ts biz.TeamStage) (biz.TeamStage, error) {
 	if r == nil || r.data == nil {

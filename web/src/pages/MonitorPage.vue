@@ -98,12 +98,14 @@
             :page-size="eventsPageSize"
             :type-filter="typeFilter"
             :severity-filter="severityFilter"
+            :show-system-events="showSystemEvents"
             @toggle-stream="toggleStream"
             @clear-pulse="confirmClearEvents"
             @update:page="eventsPage = $event"
             @update:page-size="eventsPageSize = $event"
             @update:type-filter="typeFilter = $event"
             @update:severity-filter="severityFilter = $event"
+            @update:show-system-events="showSystemEvents = $event"
             @refresh-history="refreshHistory"
             @open-session="(evt) => openChatSession(evt.completionSessionId || evt.sessionId || '')"
             @open-in-runs="openLinkedRun"
@@ -112,14 +114,24 @@
         <q-tab-panel name="traces">
           <TraceList
             v-model:detail-open="traceDetailOpen"
+            v-model:keyword="traceKeyword"
+            v-model:status="traceStatus"
+            v-model:domain="traceDomain"
+            v-model:page="tracePage"
+            v-model:page-size="tracePageSize"
             :rows="traces"
+            :total="tracesTotal"
             :loading="loadingTraces"
+            :status-counts="traceStatusCounts"
+            :domain-counts="traceDomainCounts"
+            :live-state="runsLiveState"
             :highlight-usage-event-id="highlightUsageEventId"
             :flow-lines="flowLines"
             :active-correlation="activeCorrelation"
             :detail="traceDetail"
             :detail-spans="detailSpans"
-            @reload="loadTraces"
+            @refresh="loadTraces"
+            @reset="resetTraceFilters"
             @notify="notify"
             @open-trace="openTraceDetail"
             @open-chat-session="openChatSession"
@@ -152,15 +164,26 @@ const {
   highlightUsageEventId,
   auditRows,
   auditTotal,
-  traces,
   loadingAudit,
-  loadingTraces,
   error,
   loading,
   loadAll,
   loadAudit,
   handleClearAudit,
+  // Runs（Traces）
+  traces,
+  tracesTotal,
+  traceStatusCounts,
+  traceDomainCounts,
+  loadingTraces,
+  traceKeyword,
+  traceStatus,
+  traceDomain,
+  tracePage,
+  tracePageSize,
+  runsLiveState,
   loadTraces,
+  resetTraceFilters,
   // Runner metrics
   runnerMetrics,
   runnerLoading,
@@ -180,6 +203,7 @@ const {
   pageSize: eventsPageSize,
   typeFilter,
   severityFilter,
+  showSystemEvents,
   refreshHistory,
   openLinkedRun,
   // Trace flow

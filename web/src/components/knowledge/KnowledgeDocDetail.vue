@@ -7,7 +7,9 @@
           <span class="ellipsis" :title="node.name">{{ node.name }}</span>
         </div>
         <div class="row items-center no-wrap q-gutter-xs">
-          <q-chip dense size="sm" :color="statusColor(node.status)" text-color="white">{{ node.status }}</q-chip>
+          <q-chip dense size="sm" :color="statusColor(node.status)" text-color="white">{{
+            statusLabel(node.status)
+          }}</q-chip>
           <q-chip v-if="node.doc_type" dense size="sm" outline>{{ node.doc_type }}</q-chip>
         </div>
       </div>
@@ -54,7 +56,7 @@
           </div>
         </div>
 
-        <!-- 第二行：关联计数 chips（显式/实体/语义），点击锚滚关联区 -->
+        <!-- 第二行：关联计数 chips（显式/实体/语义），点击锚滚关联区；零计数禁用点击（UX-006） -->
         <div class="row items-center q-gutter-xs q-mt-sm">
           <q-chip
             v-for="c in linkChips"
@@ -63,8 +65,8 @@
             size="sm"
             :color="c.count ? c.color : 'grey-4'"
             :text-color="c.count ? 'white' : 'grey-7'"
-            clickable
-            @click="scrollToLinks"
+            :clickable="c.count > 0"
+            @click="c.count > 0 && scrollToLinks()"
           >
             {{ c.label }} {{ c.count }}
           </q-chip>
@@ -160,6 +162,20 @@
             />
             <!-- md/txt/word/其他：解析后文本预览 -->
             <pre v-else-if="previewContent" class="knowledge-doc-detail__preview">{{ previewContent }}</pre>
+            <!-- UX-003：加载失败错误态（不再复用「解析中」占位文案），内联重试 -->
+            <div v-else-if="previewError" class="knowledge-doc-detail__error">
+              <q-icon name="error_outline" size="20px" color="warning" />
+              <span class="text-caption">{{ t('knowledgePage.contentLoadError') }}</span>
+              <q-btn
+                flat
+                dense
+                no-caps
+                size="sm"
+                color="primary"
+                :label="t('knowledgePage.retry')"
+                @click="$emit('retry')"
+              />
+            </div>
             <div v-else class="text-caption text-grey-6 q-pa-sm">{{ t('knowledgePage.previewEmpty') }}</div>
           </template>
         </div>
@@ -169,26 +185,39 @@
           {{ t('knowledgePage.detailLinks') }}
         </div>
         <q-linear-progress v-if="linksLoading" indeterminate color="primary" />
-        <q-list v-else-if="links.length" dense separator>
+        <!-- UX-003：关联加载失败错误态 + 内联重试 -->
+        <div v-else-if="linksError" class="knowledge-doc-detail__links-error">
+          <q-icon name="error_outline" size="16px" color="warning" />
+          <span class="text-caption text-grey-6">{{ t('knowledgePage.linksLoadError') }}</span>
+          <q-btn
+            flat
+            dense
+            no-caps
+            size="sm"
+            color="primary"
+            :label="t('knowledgePage.retry')"
+            @click="$emit('retry')"
+          />
+        </div>
+        <!-- UX-007：按目标文档聚合（一篇一行），双向合并标注「互引」，多类型并列 chips -->
+        <q-list v-else-if="groupedLinks.length" dense separator>
           <q-item
-            v-for="(l, i) in links"
-            :key="`${l.target_doc_id}-${l.direction}-${i}`"
+            v-for="g in groupedLinks"
+            :key="g.docId"
             clickable
-            @click="$emit('navigate', { docId: l.target_doc_id, relPath: l.target_rel_path })"
+            @click="$emit('navigate', { docId: g.docId, relPath: g.relPath })"
           >
             <q-item-section avatar>
-              <q-icon :name="l.direction === 'out' ? 'north_east' : 'south_west'" size="16px" />
+              <q-icon :name="g.out && g.in ? 'swap_horiz' : g.out ? 'north_east' : 'south_west'" size="16px" />
             </q-item-section>
             <q-item-section>
-              <q-item-label lines="1">{{ l.target_source }}</q-item-label>
-              <q-item-label v-if="l.context" caption lines="1">{{ l.context }}</q-item-label>
+              <q-item-label lines="1">{{ g.source }}</q-item-label>
+              <q-item-label v-if="g.context" caption lines="1">{{ g.context }}</q-item-label>
             </q-item-section>
             <q-item-section side class="row items-center q-gutter-xs">
-              <span class="text-caption text-grey-6">
-                {{ l.direction === 'out' ? t('knowledgePage.linkDirOut') : t('knowledgePage.linkDirIn') }}
-              </span>
-              <q-chip dense size="sm" :color="linkTypeColor(l.link_type)" text-color="white">
-                {{ linkTypeLabel(l.link_type) }}
+              <span class="text-caption text-grey-6">{{ dirLabel(g) }}</span>
+              <q-chip v-for="tp in g.types" :key="tp" dense size="sm" :color="linkTypeColor(tp)" text-color="white">
+                {{ linkTypeLabel(tp) }}
               </q-chip>
             </q-item-section>
           </q-item>
@@ -214,6 +243,7 @@ import {
   formatKnowledgeDocSize,
   formatKnowledgeTime,
   knowledgeStatusColor,
+  knowledgeStatusLabelKey,
 } from '../../features/knowledge/knowledgeUi';
 
 const props = defineProps<{
@@ -221,6 +251,10 @@ const props = defineProps<{
   previewContent: string;
   previewOrganized: boolean;
   previewLoading: boolean;
+  /** UX-003：正文加载失败错误态（内联展示 + 重试）。 */
+  previewError: boolean;
+  /** UX-003：关联加载失败错误态。 */
+  linksError: boolean;
   links: KnowledgeLink[];
   linksLoading: boolean;
   linkCounts: { explicit: number; entity: number; semantic: number };
@@ -242,10 +276,18 @@ defineEmits<{
   'save-edit': [];
   'update:edit-draft': [value: string];
   'download-asset': [];
+  /** UX-003：错误态重试（正文 + 关联一并重拉）。 */
+  retry: [];
 }>();
 
 const { t } = useI18n();
 const statusColor = knowledgeStatusColor;
+
+/** 状态 chip 本地化标签（未知状态回退原始值）。 */
+function statusLabel(status: string): string {
+  const key = knowledgeStatusLabelKey(status);
+  return key ? t(key) : status;
+}
 
 const linksSection = ref<HTMLElement | null>(null);
 
@@ -292,8 +334,53 @@ const linkChips = computed(() => [
   { type: 'semantic', label: t('knowledgePage.linkTypeSemantic'), count: props.linkCounts.semantic, color: 'teal' },
 ]);
 
+/** UX-007：按目标文档聚合后的关联行（一篇文档一行，方向/类型合并）。 */
+interface GroupedLink {
+  docId: string;
+  relPath: string;
+  source: string;
+  context: string;
+  out: boolean;
+  in: boolean;
+  types: string[];
+}
+
+const groupedLinks = computed<GroupedLink[]>(() => {
+  const map = new Map<string, GroupedLink>();
+  for (const l of props.links) {
+    let g = map.get(l.target_doc_id);
+    if (!g) {
+      g = {
+        docId: l.target_doc_id,
+        relPath: l.target_rel_path,
+        source: l.target_source,
+        context: l.context,
+        out: false,
+        in: false,
+        types: [],
+      };
+      map.set(l.target_doc_id, g);
+    }
+    if (l.direction === 'out') g.out = true;
+    else g.in = true;
+    if (!g.types.includes(l.link_type)) g.types.push(l.link_type);
+    if (!g.context && l.context) g.context = l.context;
+  }
+  return [...map.values()];
+});
+
+function dirLabel(g: GroupedLink): string {
+  if (g.out && g.in) return t('knowledgePage.linkDirBoth');
+  return g.out ? t('knowledgePage.linkDirOut') : t('knowledgePage.linkDirIn');
+}
+
+/** UX-001：仅在详情列内部滚动到关联区（scrollIntoView 会把整页推走，丢失左/中栏上下文）。 */
 function scrollToLinks() {
-  linksSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const section = linksSection.value;
+  const scroller = section?.closest('.knowledge-doc-detail__body');
+  if (!section || !scroller) return;
+  const top = section.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 4;
+  scroller.scrollTo({ top, behavior: 'smooth' });
 }
 
 function linkTypeColor(linkType: string): string {
@@ -474,6 +561,23 @@ function linkTypeLabel(linkType: string): string {
     white-space: pre-wrap;
     word-break: break-word;
     color: var(--color-text-primary);
+  }
+
+  // UX-003：加载失败错误态（正文区居中 / 关联区横排）。
+  &__error {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--color-text-secondary);
+  }
+
+  &__links-error {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 }
 </style>

@@ -1988,18 +1988,24 @@ func (s *ReconsolidationService) OnRecall(
 - 时间戳：service 层传 RFC3339 给 BoostActivation（用于 activation_updated_at）；数据层用 RFC3339Nano 更新 updated_at
 - 编译期接口检查：`_ biz.L4ReconsolidationStore = (*l4EntityRepo)(nil)`
 
-**集成点**：在 [memory_inject.go](../../internal/agent/memory_inject.go) 的 BeforeModel 钩子（L117）中，召回记忆后通过 `safego.Go` 异步触发 `OnRecall`（不阻塞模型调用）。
+**集成点**：在 [memory_inject.go](../../internal/agent/memory_inject.go) 的 BeforeModel 钩子中，召回记忆后通过 `safego.Go` 异步触发 `OnRecall`（不阻塞模型调用）。**已集成（2026-08-05）**：
+
+- `L4MemoryCue` 返回实际注入的实体 ID（mention 排序 + confidence 门控 + maxPaths 截断后的精确召回集）
+- `MemoryCueResult.L4RecalledEntityIDs` 穿透到 BeforeModel 钩子；`triggerL4Reconsolidation` 经 `safego.Go` 后台执行，`l4ReconsolidatedKey` ctx 标记保证每回合至多触发一次（工具循环重入不重复 boost）
+- Wire 链路：`provideReconsolidationService`（`NewL4ReconsolidationStore` + `NewHebbianUpdater(NewL4HebbianStore)`）→ `MemorySet.Reconsolidator` → 4 个 `TRPCBuilderDeps` 装配点（chat / a2a / openai_compat / team）
+- 新增 `biz.L4Reconsolidator` 窄端口（evolving，1 方法），agent 层不依赖 `internal/memory` 具体类型
 
 **验收**：
 - ✅ 回忆时 `access_count`/`activation` 更新（AC-10）
-- ⏳ 异步执行不阻塞模型调用（集成点属 E-8 桥接阶段）
+- ✅ 异步执行不阻塞模型调用（已集成 BeforeModel 钩子，safego.Go 后台触发 + 每回合去重）
 - ✅ `go build ./internal/memory/ ./internal/data/ ./internal/biz/` 通过
 - ✅ `go test ./internal/memory/...` 通过（10 测试：OnRecall 全流程 / BoostDelta 常量 / EntityNotFound / BoostError / IncrementError best-effort / HebbianError best-effort / NilService / NilStore / EmptyRecalledWith / TimestampFormat RFC3339）
+- ✅ `go test ./internal/agent/ -run "TestL4MemoryCue|TestTriggerL4Reconsolidation"` 通过（召回 ID 断言 + 逐实体触发/回合并内去重/nil-empty 跳过）
 - ✅ `go test ./internal/data/... -run TestMemory` 通过
 - ✅ `go vet ./internal/memory/ ./internal/data/` 通过
 - ✅ aranea-review 两阶段审查通过（spec 合规 + 代码质量）
 
-**状态**：✅ 完成（核心 service + 数据层实现；集成点待 E-8 桥接阶段）
+**状态**：✅ 完成（核心 service + 数据层 + BeforeModel 钩子运行时集成）
 
 ### 16.8 Task E-7：冲突消解策略
 
@@ -2181,7 +2187,13 @@ func (s *KnowledgeMemoryBridge) OnTaskFeedback(
 - `internal/data/ent/` — `go generate` 生成物
 - `internal/data/memory_shim_l4.go` — 新增 `GraphTraverseCTE` 方法
 - `internal/biz/memory_l4.go` — 新增关系类型常量 + `RelationTypeProp` + `L4GraphRepo.GraphTraverseCTE` 接口方法
-- `internal/agent/memory_inject.go` — BeforeModel 钩子中异步触发 `OnRecall`
+- `internal/agent/memory_inject.go` — BeforeModel 钩子中异步触发 `OnRecall`（E-6 集成已落地：新增 `triggerL4Reconsolidation` + `l4ReconsolidatedKey`，`MemoryCueResult.L4RecalledEntityIDs`）
+- `internal/agent/l4_prompt.go` — `L4MemoryCue` 返回实际注入的实体 ID（E-6 集成）
+- `internal/agent/builder_deps.go` — `TRPCMemoryKnowledgeDeps` 新增 `MemoryReconsolidator`（E-6 集成）
+- `internal/runtime/memory_set.go` — `MemorySet` 新增 `Reconsolidator` 字段（E-6 集成）
+- `cmd/admin/wire_memory.go` — 新增 `provideReconsolidationService`，`providePersistenceSet` 装配 `Reconsolidator`（E-6 集成）
+- `cmd/admin/wire.go` / `wire_gen.go` — 注册 provider + 重新生成（E-6 集成）
+- `internal/service/chat_orch_agent_build.go` / `a2a_endpoint.go` / `openai_compat.go` / `internal/team/runner_team_trpc_phases.go` — 4 个 `TRPCBuilderDeps` 装配点穿透 `MemoryReconsolidator`（E-6 集成）
 - `internal/service/memory_service.go` — 新增 `GET /v1/memory/l4/spreading-activation` 端点
 - `api/kratos/memory/v1/memory.proto` — 新增 RPC 定义（如需）
 
@@ -2192,3 +2204,178 @@ func (s *KnowledgeMemoryBridge) OnTaskFeedback(
 
 **API 新增**：
 - `GET /v1/memory/l4/spreading-activation`（扩散激活检索）
+
+---
+
+## 十七、Phase R：记忆系统评审修复（2026-08-01）
+
+> 源自记忆系统全量评审（45+ biz 文件 + data 层 + 前端 + 31 文档）。本 Phase 修复评审发现的 P0/P1 阻断项。
+> 关联设计：[§9.6 召回透明度](./70-orchestration-longtask-memory.design.md#96-召回透明度memory_recalled-notice) / [§2.5 R5 补充](./70-orchestration-longtask-memory.design.md#25-错误翻译适配)
+
+### 17.1 Task R4：召回透明度（chat 可见召回记忆）
+
+**目标**：消除"记忆黑盒"——用户在 chat 中能看到本轮注入了哪些记忆条目。
+
+**后端**：
+- `internal/agent/memory_inject.go` — `emitMemoryRecalledNotice`：BeforeModel 钩子在 prompt 注入前发射 `memory_recalled` notice（best-effort，ctx 标记去重，≤10 hits，line ≤120 runes）
+- `internal/agent/composite_prompt.go` — `CompositeMemoryCue` 拆分为 Cue + WithHits 变体，返回合并后的 `RecallHits` 供 notice 使用
+- `internal/agent/memory_inject_test.go` — 新增事件发射与 hits 合并测试
+
+**前端**：
+- `web/src/features/chat/memoryRecall.ts`（新增）— `parseMemoryRecallHits` 解析 notice payload
+- `web/src/stores/chat/activityV2Store.ts` — `recallHitsByTurn` 按 TurnID 索引（幂等覆盖）
+- `web/src/components/chat/MemoryRecallChips.vue`（新增）— chips 渲染（层级 badge + line + score% + tooltip）
+- `web/src/components/chat/v2/TurnContainer.vue` — turn 底部集成 chips
+- `web/src/features/chat/noticeFilter.ts` — `memory_recalled` 加入 SYSTEM_NOTICE_TYPES（隐藏原始 JSON）
+- `web/src/i18n/locales/{zh-CN,en-US}.ts` — `chat.memoryRecall.*` 文案
+- 测试：`memoryRecall.spec.ts`（7）+ `activityV2.store.spec.ts`（+6）
+
+**验收**：
+- ✅ `pnpm lint` 0 errors / `vitest` 41 通过 / `pnpm build` 成功
+- ✅ 浏览器运行时验证：历史 2 turn + 实时新 turn 均渲染 chips；原始 JSON 不出现于聊天流；console 0 errors
+- ✅ DB 确认 `memory_recalled` notice 正常落库（steps_v2）
+
+**状态**：✅ 完成（2026-08-01）
+
+### 17.2 Task R5：vector 基础设施错误处理（DB-R5 合规）
+
+**目标**：消除 `internal/data/vector` 原始 `fmt.Errorf` 透传至 biz 层。
+
+- `internal/data/memory.go` — `storeFor` 增加 `vector.IsPgvector()` 门控（非 pgvector 环境返回 `biz.ErrMemoryUnavailable`）；所有 vector 调用错误经 `entErrToBizErr(err, "MEMORY")` 翻译
+- 同批修复 L1/L2/L4 shim 与 cascade/maintenance 中共 16 处未翻译错误（domain 分别标记 MEMORY_L1/L2/L3/L4/CASCADE）
+
+**验收**：
+- ✅ `go build ./...` / `go vet` / 相关包测试通过
+- ✅ 错误响应携带 domain，前端可按域处理
+
+**状态**：✅ 完成（2026-08-01）
+
+---
+
+## 十八、Phase M：记忆系统重设计闭环（P0 止血 + P1 闭环重构）
+
+> 源自《记忆系统整体设计评审与重设计方案》（[2026-07-29-review-memory-system-redesign.md](../reports/2026-07-29-review-memory-system-redesign.md)）。评审实证（报告 §2.2）：写入/召回/归档每条数据通路均断裂，且失败全部静默降级。本 Phase 按报告 §6.7 路线图执行 P0 止血与 P1 闭环重构。
+> 关联设计：[§十六 记忆系统重设计（写入闭环）](./70-orchestration-longtask-memory.design.md#十六记忆系统重设计写入闭环)
+
+### 18.1 Task M-P0：止血修复 + 金丝雀上线
+
+**修复项**（对应评审 Bug 清单）：
+
+| Bug | 问题 | 修复 |
+|---|---|---|
+| Bug F（L3 即时写入断） | upsert 报 `42702 字段关联 "version" 是不明确的`（未限定表名）→ 事务回滚 | `internal/data/memory_maintenance_adapter.go` — `version = memory_facts.version + 1` 显式限定表名 |
+| Bug C（L1→L2 归档断） | 迁移版本碰撞：`memory_episodes_l1_task_unique` DDL 被静默跳过 → `ON CONFLICT` 42P10 | 冲突的数据迁移重编号（20261121 → 20261124）；新增 `internal/data/migration_version_guard_test.go`（`TestMigrationVersionsGloballyUnique`，DDL/数据/种子迁移版本全局唯一性守卫） |
+| Bug A（L3 召回注入断） | brute-force 路径（fact 数 ≤5000 恒成立）不算分 → `Scores.Total=0` → fused recall `minScore=0.55` 过滤全丢 → prompt 从无 L3 段落 | `internal/data/memory_l3_scored_adapter.go` — brute-force 召回路径标注评分；回归测试 `memory_l3_recall_scores_test.go`（`TestL3Recall_BruteForceAnnotatesScores` / `TestL3Recall_BruteForceAppliesMinScore`） |
+
+**金丝雀**（`internal/cronrunner/jobs/memory_canary.go`）：
+
+- 每 30min 全链路断言：合成 fact 经生产 consolidation upsert 路径写入 → 以生产默认 minScore（0.55）经生产 L3 召回路径召回 → 双时态失效归档 → 断言从召回中消失
+- 任一阶段失败记录 `biz.MemoryCanaryStatus`（经 `monitor.NewMemoryCanaryMetric` 注册为告警指标）+ 流程日志告警
+- 装配：`cmd/admin/wire.go provideMemoryCanaryWorker` → `workers.go goAfterReady("memory_canary")`；`MEMORY_CANARY_DISABLED` 环境变量可禁用
+- 设计动机（报告 §三）：6 个 bug 能存活 45 天的结构性原因是「没有一处代码断言写入的 fact 必须能召回」——金丝雀就是这个断言
+
+**状态**：✅ 完成
+
+### 18.2 Task M-P1-1：Sleep-time 接线（LLMResolver）
+
+**问题**：`MEMORY_SLEEP_TIME_PROVIDER/MODEL` 未配置 → LLM=nil → 每周期 `episode consolidation skipped: nil LLM`（评审 §2.2「Sleep-time 未接线」）。
+
+**改动**：
+- `internal/memory/sleep_time.go` — 新增 `LLMResolver` 接口（`ResolveLLM(ctx, UserKey) trpcmodel.Model`）+ `SetLLMResolver`：按 consolidation 目标经 ModelCatalog 解析模型，优先级 MemoryWorker → L0Compress → agent 默认模型；resolver 未接线或解析失败回退静态 LLM
+- `internal/memory/episode_consolidator.go` — 同样接入 `SetLLMResolver`
+
+**状态**：✅ 完成
+
+### 18.3 Task M-P1-2：Scratchpad→Episode 归档原子化
+
+**问题**：L1 闲置 60min 即置 `cancelled` 且未归档（数据丢失）；归档失败后逃出重试集合，失败静默永久化（评审 §2.2「L1 生命周期语义错误」）。
+
+**改动**：
+- `internal/cronrunner/jobs/memory_l1_archive.go` — 扫描集合双分支：
+  - 闲置 active 任务（updated_at < idle cutoff）：`EndL1Task` + `ArchiveAndCreateEpisodeTx` 原子归档（archived_at + L2 episode 同事务）
+  - 已结束未归档任务（archived_at=''、ended_at < retry cutoff 2min）：仅重试归档事务，不重复 end——2min cutoff 避免与 `MemoryAdminUsecase.EndL1Task` 的同步归档路径竞争
+- 死信告警：同一任务连续归档失败 ≥3 次触发流程日志告警（`system.memory_l1_archive.failed`），此后每 +10 次重发（限频）；任务始终留在扫描集合内持续重试，消灭静默永久失败
+- `internal/tools/working_memory/tools.go` — 新增 `working_memory_complete` 工具：agent 显式标记任务完成并触发归档
+- `internal/biz/memory_admin_usecase.go` — `EndL1Task` 同步归档钩子
+- `internal/data/memory_shim_l1.go` — `ListIdleL1Tasks` 支持已结束未归档重试分支
+
+**状态**：✅ 完成
+
+### 18.4 Task M-P1-3：统一写入管线（操作语义 + 降噪三闸 + 溯源）
+
+**目标**：消灭多条独立事实写入路径（auto_memory 内联冲突治理、episode consolidator 直写），全部自动事实写入汇入单一管线，统一应用操作语义（ADD/UPDATE/DELETE/NOOP）与降噪三闸。
+
+**改动**：
+- `internal/biz/memory_write_pipeline.go`（新增）— 纯函数层：`FactWriteOperation` 四操作语义；降噪三闸（① kind 白名单 6 类：preference/profile/goal/constraint/decision/relationship ② 置信度 ≥0.6 ③ 同 kind 邻居 ≥0.92 去重合并）；争议带判定（邻居 ∈[0.80,0.92) 或跨 kind ≥0.92 → LLM 裁决）；`FactKindForSubjectType`（V3 subject_type → 存储 fact_kind 映射）
+- `internal/biz/memory_write_pipeline_exec.go`（新增）— 执行层 `FactWritePipeline.Apply`：闸口过滤 → 邻域召回（embedding + fact 行 kind/statement enrichment，失败降级无邻居→ADD）→ 分批 LLM 裁决（幻觉目标防御：裁决指向非邻居的 update/delete 降级为 add）→ 双时态写入（update=`InvalidateAndUpsertFactTx` / delete=`InvalidateFact` / merge=批量 `IncrementFactAccessCount`）→ 全量审计（`fact_write.{drop,add,update,delete,merge,noop}` action log）
+- `internal/service/memory_fact_write_adjudicator.go`（新增）— LLM 裁决器：批次调用；模型解析同 MemoryLLMExtractor（agent MemoryWorker → L0Compress → 默认，经 ModelCatalog）；LLM 不可用/出错时管线回退启发式 ADD
+- 接入点：`internal/cronrunner/jobs/auto_memory.go`（extract + extractFeedback 走路线，删除内联冲突治理及 `auto_memory_conflict_test.go`）；`internal/memory/episode_consolidator.go`（`persistViaPipeline`，管线未注入时保留 legacy 直写路径）
+- `internal/data/memory_shim_l3.go` — `NewL3FactAccessCounter`（合并访问计数批量 +1）
+- `cmd/admin/wire_memory.go` — `provideFactWriteAdjudicator` / `provideFactWritePipeline`（8 依赖装配：Searcher/Embedder/Reader/Writer/Access/Adjudicator/ActionLog/LG），注入 AutoMemoryWorker 与 SleepTimeWorker
+
+**测试**：
+- `internal/biz/memory_write_pipeline_test.go` + `memory_write_pipeline_exec_test.go`（闸口/启发式/争议带/裁决回退/执行计数）
+- `internal/cronrunner/jobs/auto_memory_pipeline_test.go`（worker 集成：管线写入/合并跳过插入/闸口丢弃/feedback 路径）
+- `internal/memory/episode_consolidator_test.go`（管线路径白名单写入/短暂 kind 丢弃）
+- `internal/service/memory_fact_write_adjudicator_test.go`
+
+**验收**（2026-08-05）：
+- ✅ `go test ./internal/biz -run FactWrite`、`./internal/cronrunner/jobs -run 'AutoMemory|L1Archive|MemoryCanary'`、`./internal/memory -run 'EpisodeConsolidator|SleepTime'`、`./internal/service -run Adjudicat`、`./internal/data -run MigrationVersions` 全部通过
+- ✅ `go build ./cmd/admin ./internal/...` 通过（wire_gen 含管线装配）
+
+**状态**：✅ 完成（2026-08-05）
+
+### 18.5 Task M-P1-4：计数器三段化（FR-12.6）
+
+**问题**：`use_count` 召回即 +1，与是否注入无关，制造「记忆在被使用」的假象，无法度量真实注入率/引用率（评审 §6.5）。
+
+**改动**：
+- `internal/data/sql/migrations/20261125_memory_fact_three_counters.sql`（新增）— `memory_facts` 增加 `recalled_count`/`injected_count`/`cited_count` 三列；`use_count` 一次性回填 `recalled_count`（WHERE 守卫幂等）；新建 `memory_fact_citations(fact_id, turn_id)` 引用去重账本。`memory_chain.sql` 基础 DDL 同步三列（fresh install 全量 schema）
+- `internal/biz/memory_counters.go`（新增）— 三段计数端口：`MemoryFactInjectCounter`（注入计数）、`MemoryFactCitationRecorder`（引用落账）、`MemoryCitationTraceReader`（notice+reply 加载），均标注 `Stability:evolving`
+- `internal/data/memory_shim_l3.go` — `IncrementFactRecalledCount`（召回批量 +1，更名自 IncrementFactAccessCount）；`IncrementFactInjectedCount`；`RecordFactCitations`（账本去重后首次 (fact,turn) 才 +1）
+- `internal/data/memory_l3_scored_adapter.go` — 召回结果返回前对命中集合批量 `IncrementFactRecalledCount`
+- `internal/agent/memory_inject.go` — before-model hook 收集本轮实际注入的 `InjectedFactIDs`，turn 完成后 `bumpFactInjectedCounts` 异步批量 +1（`context.Background()` 脱离请求生命周期）
+- `internal/data/memory_citation_trace.go`（新增）— `ListCitationCandidates`：`steps_v2` 中 `memory_recalled` notice join 该 turn 最终 reply（`kind='reply' AND is_final` 取 seq 最大），解析注入 fact 并回读 statement
+- `internal/cronrunner/jobs/memory_citation_backfill.go`（新增）— `MemoryCitationBackfillWorker`（默认 10min / 1h 滑窗 / 批 200）：双启发式判定引用（① 短 provenance ID 复述 ② 8-rune k-gram ≥50% 命中，CJK 友好），命中经账本幂等 +1；`MEMORY_CITATION_BACKFILL_DISABLED` 可关闭
+- `cmd/admin/wire.go` — `provideMemoryCitationBackfillWorker` 装配进 worker 组
+- 前端：`memory.proto` `MemoryFact` +field 30/31/32；`memory_decode.go` 映射；`web/src/features/memory/`（types/api/memoryTableUi「召/注/引」列/MemoryFactDrawer 使用统计区）+ 中英 i18n
+
+**测试**：
+- `internal/cronrunner/jobs/memory_citation_backfill_test.go`（ID 引用/k-gram 命中/短 statement 跳过/去重幂等/故障容错）
+- `internal/data/trpc_memory_facts_test.go` 等经 `EnsureSessionMemorySchema` 应用生产 DDL（消除手写镜像 schema 漂移，回归守卫「recalled_count 不存在」类失败）
+
+**验收**（2026-08-05）：
+- ✅ `go test ./internal/biz ./internal/data ./internal/memory ./internal/cronrunner/... ./internal/service` 通过（仅 3 个 pre-existing 网络依赖模型目录同步测试失败，与本改动无关）
+- ✅ `pnpm lint` 0 errors、`pnpm test` 161 文件 1192 测试全过、`pnpm build` 成功
+
+**状态**：✅ 完成（2026-08-05）
+
+### 18.6 Task M-P1-5：Profile 常驻卡（FR-12.7）
+
+**问题**：事实召回依赖向量打分，低分画像/偏好长期不得注入，用户感知不到记忆存在（评审 §6.4）。常驻卡 100% 注入率是「用户感到记忆存在」的最短路径（Letta core memory 模式）。
+
+**改动**：
+- `internal/data/sql/migrations/20261126_memory_profile_cards.sql`（新增）— `memory_profile_cards` 表：每 `(agent_id, user_id)` 一卡（唯一索引），`content`/`fact_count`/`version`/`updated_at`
+- `internal/biz/memory_profile_card.go`（新增）— `ProfileCard` 模型 + `MemoryProfileCardReader`/`MemoryProfileCardWriter` 端口（`Stability:evolving`）
+- `internal/data/memory_profile_card.go`（新增）— `GetProfileCard`（无卡返回 (nil,nil)）/`UpsertProfileCard`（冲突 version+1）/`DeleteProfileCard`
+- `internal/memory/profile_card_distiller.go`（新增）— `ProfileCardDistiller`：Sleep-time Phase 3 从 active 画像类事实（profile/preference/goal/constraint，≤50 条 importance 排序）LLM 蒸馏 ≤1000 runes 紧凑卡；零源事实删过期卡、LLM 失败留旧卡、全程 best-effort 不返回错误；`SetLLMResolver` 复用 §16.3 按目标解析
+- `internal/memory/sleep_time.go` — `SetProfileCardDistiller` + `Consolidate` Phase 3 接线（Phase 2 之后运行，用最新事实集）
+- `internal/agent/composite_prompt.go` — `ProfileCardCue`：L3 注入开启时卡片无条件渲染于记忆块首位（`## 用户档案（长期记忆摘要，始终生效）`，硬上限 1200 runes）；无卡返回空串不打断 turn
+- `internal/agent/memory_inject.go` — 注入点接线（`deps.MemoryProfileCardReader`）
+- `cmd/admin/wire_memory.go` — distiller 装配（`NewMemoryPreferenceLister` + `NewMemoryProfileCardStore` + resolver）；注入侧 reader 装配
+
+**测试**：
+- `internal/memory/profile_card_distiller_test.go`（蒸馏写入/零事实删卡/LLM 失败留旧卡/输出净化）
+- `internal/agent/composite_prompt_test.go`（卡片渲染/上限截断/无卡空串）
+
+**验收**（2026-08-05）：
+- ✅ `go test ./internal/memory -run 'ProfileCard|SleepTime'`、`./internal/agent -run 'ProfileCard|CompositePrompt'` 通过
+- ✅ `go build ./cmd/admin ./internal/...` 通过（wire_gen 含 distiller + reader 装配）
+
+**状态**：✅ 完成（2026-08-05）
+
+### 18.7 待办项（P2）
+
+| 项 | 说明 | 状态 |
+|---|---|---|
+| P2 召回升级 | FTS 接入 + RRF 融合；token 预算档位；L2 召回默认开；离线评测集 50 条——报告 §6.7 | ⏳ |

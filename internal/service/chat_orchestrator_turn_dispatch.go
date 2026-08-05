@@ -362,15 +362,25 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 			}
 			var err error
 			if isTeam {
+				// S-5b（2026-08-05）：pending-queue 团队 turn 与入口路径
+				// （executeTeamTurnViaHooks, S-5）同一姿态——每条出队消息是新的
+				// run，注入全新 RootTaskActivityID 并幂等建根/终态化。loopCtx
+				// 携带的是上一轮 rootTaskID，直接复用会让同团队所有 pending
+				// turn 碰撞同一 team_stages_v2 行（S-3 要消除的 bug）。
+				pendingRootTaskID := resolveRootTaskActivityID(pendingInput)
+				bgCtx = chatagent.ContextWithRootTaskActivityID(bgCtx, pendingRootTaskID)
+				o.ensureTeamTurnRootTask(bgCtx, sess, pendingInput, string(pendingRootTaskID))
 				o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusRunning, "")
 				_, _, err = o.team().TeamsNative.RunTurnFromInput(bgCtx, sess, pendingInput)
 				if err != nil {
+					o.terminalizeTeamTurnRootTask(bgCtx, string(pendingRootTaskID), biz.TaskStatusFailed)
 					o.publishTurnFailure(sessionID, "", "pending-queue", err, pendingEntryID)
 					o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 					if spiritSessionID != "" && teamID != "" {
 						o.teamStarter().HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "failed", err.Error(), sessionID)
 					}
 				} else {
+					o.terminalizeTeamTurnRootTask(bgCtx, string(pendingRootTaskID), biz.TaskStatusCompleted)
 					o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusCompleted, "")
 					if spiritSessionID != "" && teamID != "" {
 						o.teamStarter().HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "completed", "", sessionID)

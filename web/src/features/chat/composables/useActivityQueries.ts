@@ -9,6 +9,7 @@
 // The store remains the single source of truth; this composable is a thin
 // accessor that keeps the `useXxxStore()` call outside of `components/`.
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
+import type { MemoryRecallHit } from '../memoryRecall';
 import type {
   Task,
   Turn,
@@ -54,6 +55,10 @@ export function useActivityQueries() {
     // --- Turn-scoped ---
     getTurnSteps(turnId: string): Step[] {
       return store.getTurnSteps(turnId);
+    },
+    /** R4: memory recall hits injected for a turn (empty when none). */
+    getTurnRecallHits(turnId: string): MemoryRecallHit[] {
+      return store.getTurnRecallHits(turnId);
     },
     getTurnTeamStages(turnId: string): TeamStage[] {
       return store.getTurnTeamStages(turnId);

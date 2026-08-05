@@ -28,6 +28,11 @@ import {
 } from '../../features/session/v2Api';
 import { useNodeOutputStore } from './nodeOutputStore';
 import { MEDIA_TOOL_NAMES, type MediaArtifact } from '../../features/chat/mediaTypes';
+import {
+  MEMORY_RECALLED_NOTICE_TYPE,
+  parseMemoryRecallHits,
+  type MemoryRecallHit,
+} from '../../features/chat/memoryRecall';
 
 // P2-07: record sub-resource fetch failures during history hydration.
 export interface HydrationError {
@@ -53,6 +58,10 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   const planSteps = ref(new Map<string, PlanStep>());
   const graphStages = ref(new Map<string, GraphStage>());
   const graphNodes = ref(new Map<string, GraphNode>());
+  // R4 recall transparency: parsed memory_recalled notice hits keyed by turn ID.
+  // Populated in upsertStep; the raw notice step stays in `steps` (inspector
+  // visibility) but is hidden from the chat stream via noticeFilter.
+  const recallHitsByTurn = ref(new Map<string, MemoryRecallHit[]>());
 
   // P2-07: track sub-resource fetch failures so the UI can distinguish
   // "no data" from "failed to load" and show a partial/stale indicator.
@@ -151,6 +160,14 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
             nodeOutputStore.setNodeOutput(nodeId, artifacts as MediaArtifact[]);
           }
         }
+      }
+    }
+    // R4 recall transparency: index memory_recalled notice hits by turn.
+    // Idempotent — re-upserts (created → completed) overwrite with the same hits.
+    if (s.Kind === 'notice' && s.NoticeType === MEMORY_RECALLED_NOTICE_TYPE && s.TurnID) {
+      const hits = parseMemoryRecallHits(s.Content);
+      if (hits.length > 0) {
+        recallHitsByTurn.value.set(s.TurnID, hits);
       }
     }
   }
@@ -321,6 +338,11 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       if (s.TurnID === turnId) out.push(s);
     }
     return out.sort(compareByTimeThenSeq);
+  }
+
+  /** R4: recall hits injected for a turn (empty array when none). */
+  function getTurnRecallHits(turnId: string): MemoryRecallHit[] {
+    return recallHitsByTurn.value.get(turnId) ?? [];
   }
 
   /** Orphan steps owned directly by a task (TurnID empty), e.g. clarification
@@ -495,7 +517,10 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       }
     }
     for (const [id, t] of turns.value) {
-      if (t.SpiritSessionID === spiritSessionId) turns.value.delete(id);
+      if (t.SpiritSessionID === spiritSessionId) {
+        turns.value.delete(id);
+        recallHitsByTurn.value.delete(id);
+      }
     }
     for (const [id, s] of steps.value) {
       if (s.SpiritSessionID === spiritSessionId) {
@@ -539,6 +564,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     planSteps.value.clear();
     graphStages.value.clear();
     graphNodes.value.clear();
+    recallHitsByTurn.value.clear();
     loadedMemberStepSessions.value.clear();
     hydratedTaskIds.value.clear();
     taskHydration.value.clear();
@@ -701,6 +727,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     getSessionTasks,
     getTaskTurns,
     getTurnSteps,
+    getTurnRecallHits,
     getTaskOrphanSteps,
     getTaskTeamStages,
     getTurnTeamStages,

@@ -47,6 +47,8 @@ export interface VaultQTreeNode {
   prefix: string;
   /** 库节点同步状态徽标。 */
   syncState?: string;
+  /** 库节点文档计数（树徽标展示；目录节点无）。 */
+  docCount?: number;
 }
 
 /** Quasar q-tree @lazy-load 载荷（组件透传，composable 处理）。 */
@@ -71,6 +73,7 @@ export function vaultToQNode(c: KnowledgeCollection): VaultQTreeNode {
     vaultId: c.id,
     prefix: '',
     syncState: c.sync_state,
+    docCount: c.document_count,
   };
 }
 
@@ -246,6 +249,9 @@ export function useVaultExplorer(input: {
   const previewContent = ref('');
   const previewOrganized = ref(false);
   const previewLoading = ref(false);
+  // UX-003：正文/关联加载失败错误态（详情面板内联展示 + 重试，而非复用「解析中」占位）。
+  const previewError = ref(false);
+  const linksError = ref(false);
   const links = ref<KnowledgeLink[]>([]);
   const linksLoading = ref(false);
   // 编辑（G2-B5）：rawContent/baseHash 为编辑器数据源与 CAS 凭证（仅 vault 文档非空）。
@@ -273,20 +279,21 @@ export function useVaultExplorer(input: {
   /** 可编辑：md/txt 且为 vault 文档（base_hash 非空 = 后端下发了编辑凭证）。 */
   const editable = computed(() => knowledgeMediaEditable(mediaKind.value) && baseHash.value !== '');
 
-  /** 关联计数（第二行 chips）：按 link_type 聚合。 */
+  /** 关联计数（第二行 chips）：按 link_type 聚合不重复文档数（与关联列表按文档聚合的行数口径一致）。 */
   const linkCounts = computed(() => {
-    const counts = { explicit: 0, entity: 0, semantic: 0 };
+    const sets: Record<string, Set<string>> = { explicit: new Set(), entity: new Set(), semantic: new Set() };
     for (const l of links.value) {
-      if (l.link_type === 'explicit') counts.explicit += 1;
-      else if (l.link_type === 'entity') counts.entity += 1;
-      else if (l.link_type === 'semantic') counts.semantic += 1;
+      const set = sets[l.link_type];
+      if (set) set.add(l.target_doc_id);
     }
-    return counts;
+    return { explicit: sets.explicit.size, entity: sets.entity.size, semantic: sets.semantic.size };
   });
 
   function clearDetail() {
     previewContent.value = '';
     previewOrganized.value = false;
+    previewError.value = false;
+    linksError.value = false;
     rawContent.value = '';
     baseHash.value = '';
     links.value = [];
@@ -299,6 +306,8 @@ export function useVaultExplorer(input: {
     if (!docId) return;
     previewLoading.value = true;
     linksLoading.value = true;
+    previewError.value = false;
+    linksError.value = false;
     try {
       const res = await getDocumentContent(docId);
       previewContent.value = res.content_text;
@@ -309,6 +318,7 @@ export function useVaultExplorer(input: {
       previewContent.value = '';
       rawContent.value = '';
       baseHash.value = '';
+      previewError.value = true;
       notifyError(friendlyError(e));
     } finally {
       previewLoading.value = false;
@@ -317,13 +327,24 @@ export function useVaultExplorer(input: {
       links.value = await knowledgeStore.loadDocumentLinks(docId, '', true);
     } catch (e) {
       links.value = [];
+      linksError.value = true;
       notifyError(friendlyError(e));
     } finally {
       linksLoading.value = false;
     }
   }
 
+  /** 重试：详情面板错误态「重试」按钮 / 重点已选中文档时重新拉取。 */
+  function reloadDetail() {
+    if (selectedDocId.value) void loadDetail(selectedDocId.value);
+  }
+
   function selectDocument(docId: string) {
+    // UX-003：重复点击已选中文档且上次加载失败时重新拉取（此前无反应，用户只能切走再切回）。
+    if (docId === selectedDocId.value) {
+      if (previewError.value || linksError.value) void loadDetail(docId);
+      return;
+    }
     selectedDocId.value = docId;
   }
 
@@ -642,6 +663,8 @@ export function useVaultExplorer(input: {
     previewContent,
     previewOrganized,
     previewLoading,
+    previewError,
+    linksError,
     links,
     linksLoading,
     linkCounts,
@@ -655,6 +678,7 @@ export function useVaultExplorer(input: {
     assetUrl,
     assetLoading,
     selectDocument,
+    reloadDetail,
     navigateToDocument,
     startEdit,
     cancelEdit,

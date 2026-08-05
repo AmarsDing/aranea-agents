@@ -278,3 +278,35 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 | prompts | `internal/scenario/system/prompts/IDENTITY.md`、`prompts/skills/skills.md` |
 | tests | `memory_conflict_test.go`、`auto_memory_classification_test.go`、`auto_memory_conflict_test.go`、`memory_shim_l3_pinned_test.go`、`composite_prompt_test.go`、`remember_test.go`、`recommend_skills_test.go` |
 
+---
+
+## 11. Phase 7：scope 口径一致性排查与修复（H1-H4，2026-08-05）
+
+> 背景：F1-F3 修复确立了「写 scope（session/user）≠ 读 scope（agent）会漏算」的根因模式——facts 统一携带 `memory_facts.agent_id`（产生方），凡需「按 agent 维度」读取的位置都必须按 `agent_id` 跨全部 scope 聚合，而非 `scope_type='agent'` 过滤。本 Phase 按此模式排查其余 scope 相关读取点，发现并修复 4 处同类隐患。设计注记见 [`memory.design.md`](./memory.design.md) §5.2（H3）、§10.2 ②（H1/H2/H4）。
+
+### 任务清单
+
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| H1 | 统一图 fact 节点漏算：`biz/memory_center.go` 统一图 fact 扫描由 `scope='agent'` 改为 `agent_id` 跨全部 scope 聚合 | ✅ |
+| H2 | 冲突检测漏算：`ListConflictingFacts` 全链路（proto `agent_id=5` / service / data SQL）增加 agent_id 跨 scope 过滤；无过滤时 400 防全表扫描；前端 api.ts 透传 | ✅ |
+| H3 | Ebbinghaus decay 漏算：`memory_ebbinghaus_decay.go` per-agent 扫描提取 `scanFactsForAgent`，由 `scope_type='agent'` 改为 `agent_id` 跨 scope | ✅ |
+| H4 | EVOLVED_FROM 边不可见：`link_evolution.go` `applyEvolvedFromSideEffects` 写 `memory_relations` 时 fact 带 agent_id 则落 agent scope（遗留行回退自身 scope） | ✅ |
+
+> 验证（2026-08-05）：
+> - 静态：`make api` ✅；`go build ./...` ✅；`go test`（biz / data / memory / memory/trpc / service / cronrunner/jobs）全绿（仅 2 个已知外网 model catalog 用例失败，与本改动无关）；前端 `pnpm lint` 0 错误、`pnpm test` 162 文件 1202 用例通过、`pnpm build` ✅。
+> - 运行时（admin 新二进制 pid=19784 + PostgreSQL 实库）：H1 — `graph/unified?agent_id=agent___skills__` 返回 2 个 L3 fact 节点（user 域，旧口径=0）；H2 — `facts/conflicts?agent_id=` spirit=1 / skills=2（user 域），scope 查询向后兼容=2，无过滤=400；H3 — 进程日志确认 worker `reader_wired/agents_wired=true`（扫描行为由单测 mock 断言 agentID 参数覆盖）；H4 — `SetRelationWriter` 接线确认（scope 行为由 2 个新单测覆盖）。验证脚本 `test/memory-l0-l4-e2e/verify_h2.py`。
+
+### 改动文件清单（实际）
+
+| 层 | 文件 |
+|----|------|
+| proto | `api/kratos/memory/v1/memory.proto`（`ListConflictingFactsRequest.agent_id=5`）+ 生成物（`memory.pb.go`、`web/src/services/kratos/memory/v1/index.ts`） |
+| biz | `internal/biz/memory_center.go`（H1）、`internal/biz/memory_admin_store.go`（H2 接口签名） |
+| service | `internal/service/memory.go`（H2 透传 + 400 校验） |
+| data | `internal/data/memory_shim_l3.go`（H2 `ListConflictingFacts` agent_id SQL） |
+| cron | `internal/cronrunner/jobs/memory_ebbinghaus_decay.go`（H3 `scanFactsForAgent`） |
+| memory | `internal/memory/link_evolution.go`（H4 relation scope） |
+| 前端 | `web/src/features/memory/api.ts`（H2 冲突 API 带 agent_id） |
+| tests | `memory_unified_graph_test.go`（H1）、`memory_layer_overview_test.go`（H2）、`memory_ebbinghaus_decay_test.go`（H3）、`link_evolution_test.go`（H4 ×2） |
+

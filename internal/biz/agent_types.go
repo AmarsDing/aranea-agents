@@ -256,6 +256,7 @@ type AgentRuntimeSettings struct {
 	L3DecayIntervalHours      int
 	L3ArchiveThreshold        float64
 	L3MaxPerRecallChars       int
+	L3RecallBudgetTokens      int
 	L4Enabled                 bool
 	L4GraphInjectNeighbors    bool
 	L4GraphMaxNeighbors       int
@@ -446,6 +447,7 @@ func (s *AgentRuntimeSettings) GetMemory() MemoryCfg {
 		L3DecayIntervalHours:     s.L3DecayIntervalHours,
 		L3ArchiveThreshold:       s.L3ArchiveThreshold,
 		L3MaxPerRecallChars:      s.L3MaxPerRecallChars,
+		L3RecallBudgetTokens:     s.L3RecallBudgetTokens,
 		L4Enabled:                s.L4Enabled,
 		L4GraphInjectNeighbors:   s.L4GraphInjectNeighbors,
 		L4GraphMaxNeighbors:      s.L4GraphMaxNeighbors,

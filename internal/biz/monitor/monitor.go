@@ -38,6 +38,10 @@ type AuditQuery struct {
 	Resource string
 	Actor    string
 	Keyword  string
+	// ExcludeSystem hides system-generated noise (currently sync.* actions such
+	// as skill filesystem sync) so user operations stay visible. Ignored when
+	// Action is set explicitly (an explicit sync.* filter must still match).
+	ExcludeSystem bool
 }
 
 // AuditListResult is a paginated audit log list.
@@ -100,6 +104,14 @@ type TracesQuery struct {
 	Provider string
 	Model    string
 	Status   string
+	// Keyword: case-insensitive substring over name/trace_key/agent_id/provider/model.
+	Keyword string
+	// ExcludeInternal hides internal domains (system/skill: cron jobs, skill
+	// watch sync, MCP health …) which fire constantly and drown user runs.
+	ExcludeInternal bool
+	// Domain filters one run domain exactly (chat/team/graph/system/skill);
+	// empty = no domain filter (ExcludeInternal still applies).
+	Domain string
 }
 
 type TraceWrite struct {
@@ -153,6 +165,13 @@ type TraceSpan struct {
 type ListResult struct {
 	Items []PlatformRow
 	Total int32
+	// StatusCounts aggregates rows per status under the current filters
+	// (keyword/domain applied, status condition excluded) — feeds filter chips.
+	StatusCounts map[string]int32
+	// DomainCounts aggregates rows per run domain under the current filters
+	// (keyword/status applied, domain condition and ExcludeInternal excluded)
+	// so chips can reveal how many internal rows are hidden by default.
+	DomainCounts map[string]int32
 }
 
 // EventWrite is the insert payload for a monitor event.

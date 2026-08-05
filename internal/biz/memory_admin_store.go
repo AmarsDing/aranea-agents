@@ -249,7 +249,12 @@ type L4RelationAdminReader interface {
 
 // L3FactReader exposes read operations for semantic facts.
 type L3FactReader interface {
-	ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error)
+	// ListFactRows lists facts with AND-combined optional filters. scopeType/
+	// scopeID select the namespace (L3.md §1.3 five-level scope); agentID
+	// filters by ORIGINATING agent (memory_facts.agent_id) across all scopes —
+	// used by the memory-center layer overview and browse tab so that facts an
+	// agent produced into session/user scopes are visible under that agent.
+	ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword, agentID string, limit, offset int32) ([][]byte, int32, int32, int32, error)
 	ListFactRowsForUser(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error)
 	// ListFactRowsForUserAll returns facts for a user including invalidated
 	// ones (valid_until != ''). Used for historical reconstruction queries
@@ -331,7 +336,11 @@ type L4EvolutionStore interface {
 // L3ConflictStore manages L3 fact conflict detection.
 type L3ConflictStore interface {
 	IncrementConflictCount(ctx context.Context, factID string) (int32, error)
-	ListConflictingFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error)
+	// ListConflictingFacts lists facts with conflict_count > 0. scopeType/scopeID
+	// filter by scope; agentID filters by the ORIGINATING agent across ALL
+	// scopes (H2: facts live in session/user scopes, so scope-only queries
+	// undercount — same caliber as F1). All filters are optional and AND-ed.
+	ListConflictingFacts(ctx context.Context, scopeType, scopeID, agentID string, limit, offset int32) ([][]byte, int32, error)
 	// BatchIncrementConflictCounts increments conflict_count for multiple facts in a single query.
 	BatchIncrementConflictCounts(ctx context.Context, factIDs []string) error
 	// SupersedeFact marks oldID as superseded by newID (status='superseded',

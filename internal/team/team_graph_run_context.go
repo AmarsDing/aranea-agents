@@ -13,10 +13,15 @@ type GraphRunStepContext struct {
 	TeamID          string
 	SessionID       string
 	SpiritSessionID string
-	InputPreview    string
-	memberByNode    map[string]MemberDef
-	stepSortIndex   map[string]int
-	dedup           *graphStepDedup
+	// RootTaskID is the run-dimension captured at registration (S-3); the
+	// finisher must derive the team_stage Activity ID from it rather than
+	// the triggering ctx, which never carries RootTaskActivityID on the
+	// resume/finalize path.
+	RootTaskID    string
+	InputPreview  string
+	memberByNode  map[string]MemberDef
+	stepSortIndex map[string]int
+	dedup         *graphStepDedup
 }
 
 type graphStepDedup struct {
@@ -62,6 +67,7 @@ func (s *teamGraphRunSession) stepContext() *GraphRunStepContext {
 		TeamID:          s.teamID,
 		SessionID:       s.sessionID,
 		SpiritSessionID: s.spiritSessionID,
+		RootTaskID:      s.rootTaskID,
 		InputPreview:    s.inputPreview,
 		memberByNode:    s.memberByNode,
 		stepSortIndex:   s.stepSortIndex,

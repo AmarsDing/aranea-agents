@@ -19,6 +19,16 @@ type MemorySet struct {
 	// PreferenceLister feeds the pinned preference/constraint prompt block
 	// (FR-M3). Optional: nil disables pinned injection.
 	PreferenceLister biz.MemoryPreferenceLister
+	// ProfileCardReader feeds the resident profile card prompt block (FR-12.7).
+	// Optional: nil disables profile card injection.
+	ProfileCardReader biz.MemoryProfileCardReader
+	// FactInjectCounter bumps injected_count for the facts actually written
+	// into the prompt each turn (FR-12.6). Optional: nil disables counting.
+	FactInjectCounter biz.MemoryFactInjectCounter
+	// Reconsolidator triggers L4 memory reconsolidation (activation boost +
+	// use_count + Hebbian reinforcement) when entities are recalled into the
+	// prompt (design §15.7, FR-10.5). Optional: nil disables the trigger.
+	Reconsolidator biz.L4Reconsolidator
 }
 
 func (s MemorySet) Available() bool {

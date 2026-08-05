@@ -30,7 +30,8 @@ export function monitorLogLineFromFlowEvent(ev: MonitorEvent): MonitorLogLine | 
   const message = str(m.message);
   const stepId = str(m.step_id);
   const phase = str(m.flow_phase);
-  const display = (ev.message ?? '').trim() || [title, message].filter(Boolean).join(' — ') || `${stepId}.${phase}`;
+  // title 由 FlowLogStream 单独渲染，display 不再拼接 title，避免同一文本重复出现。
+  const display = (ev.message ?? '').trim() || message || title || `${stepId}.${phase}`;
 
   return {
     id: str(m.flow_id || ev.id),

@@ -1,0 +1,50 @@
+[
+ {
+  "id": "d015dea03d40f77084a0",
+  "name": "phase8-test",
+  "description": "",
+  "embedding_model": "text-embedding-3-small",
+  "dim": 1536,
+  "status": "active",
+  "document_count": 0,
+  "chunk_count": 0,
+  "workspace": "",
+  "created_at": "2026-07-20 23:33:52+08:00",
+  "updated_at": "2026-07-20 23:33:52+08:00",
+  "root_path": "",
+  "sync_state": "",
+  "last_sync_at": null
+ },
+ {
+  "id": "1612fe0708099f10331c",
+  "name": "E2E验证库",
+  "description": "",
+  "embedding_model": "",
+  "dim": 0,
+  "status": "active",
+  "document_count": 2,
+  "chunk_count": 2,
+  "workspace": "default",
+  "created_at": "2026-07-29 11:52:50+08:00",
+  "updated_at": "2026-08-05 19:51:20.436479+08:00",
+  "root_path": "F:\\aranea-agents\\test\\kb-e2e-vault",
+  "sync_state": "active",
+  "last_sync_at": "2026-08-05 19:51:20.433906+08:00"
+ },
+ {
+  "id": "997a33fffc59f8894eac",
+  "name": "E2E验证库2",
+  "description": "",
+  "embedding_model": "",
+  "dim": 0,
+  "status": "active",
+  "document_count": 7,
+  "chunk_count": 7,
+  "workspace": "default",
+  "created_at": "2026-07-29 15:10:21+08:00",
+  "updated_at": "2026-08-05 19:51:20.436549+08:00",
+  "root_path": "F:\\aranea-agents\\test\\kb-e2e-vault2",
+  "sync_state": "active",
+  "last_sync_at": "2026-08-05 19:51:20.433906+08:00"
+ }
+]

@@ -64,6 +64,7 @@ type backgroundWorkersConfig struct {
 	MemoryL4Decay               BackgroundStarter
 	MemoryEbbinghausDecay       BackgroundStarter
 	MemoryCanary                BackgroundStarter
+	MemoryCitationBackfill      BackgroundStarter
 	MemorySleepTime             BackgroundStarter
 	MemoryEpisodeBackfill       BackgroundStarter
 	MemoryFactIndexReconciler   BackgroundStarter
@@ -118,6 +119,7 @@ func backgroundWorkersConfigFromOutput(watchCtx context.Context, out *wireOut) *
 		MemoryL4Decay:               out.MemoryL4Decay,
 		MemoryEbbinghausDecay:       out.MemoryEbbinghausDecay,
 		MemoryCanary:                out.MemoryCanary,
+		MemoryCitationBackfill:      out.MemoryCitationBackfill,
 		MemorySleepTime:             out.MemorySleepTime,
 		MemoryEpisodeBackfill:       out.MemoryEpisodeBackfill,
 		MemoryFactIndexReconciler:   out.MemoryFactIndexReconciler,
@@ -364,6 +366,11 @@ func startBackgroundWorkers(
 	if cfg.MemoryCanary != nil {
 		goAfterReady("memory_canary", func() { cfg.MemoryCanary.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "memory canary worker scheduled", "interval", "30m")
+	}
+
+	if cfg.MemoryCitationBackfill != nil {
+		goAfterReady("memory_citation_backfill", func() { cfg.MemoryCitationBackfill.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "memory citation backfill worker scheduled", "interval", "10m")
 	}
 
 	if cfg.MemorySleepTime != nil {

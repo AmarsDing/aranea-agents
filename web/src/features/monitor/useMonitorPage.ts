@@ -1,16 +1,18 @@
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { Notify } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import { useMonitorStore } from '../../stores/monitor';
-import type { AuditQuery, MonitorTrace, MonitorTracesQuery } from './types';
+import type { AuditQuery, MonitorTrace } from './types';
 import { AUDIT_DEFAULT_PAGE_SIZE } from '../constants/queryLimits';
 import { useRunnerMetrics } from './useRunnerMetrics';
 import { useMonitorRunNavigation } from './useMonitorRunNavigation';
 import { useMonitorRealtimeEvents } from './useMonitorRealtimeEvents';
 import { useMonitorTraceFlow } from './useMonitorTraceFlow';
 import { useMonitorLogStreamPanel } from './useMonitorLogStreamPanel';
+import { useMonitorTraces } from './useMonitorTraces';
+import { useMonitorRunsLive } from './useMonitorRunsLive';
 
 const VALID_TABS = ['usage', 'alerts', 'audit', 'events', 'traces', 'logs'] as const;
 
@@ -19,28 +21,18 @@ export function useMonitorPage() {
   const router = useRouter();
   const { t } = useI18n();
   const monitorStore = useMonitorStore();
-  const { auditLogs, auditTotal, selfCheckReports, selfCheckLoading, selfCheckTriggering } =
-    storeToRefs(monitorStore);
+  const { auditLogs, auditTotal, selfCheckReports, selfCheckLoading, selfCheckTriggering } = storeToRefs(monitorStore);
   const initialTab = String(route.query.tab || 'usage');
   const tab = ref(VALID_TABS.includes(initialTab as (typeof VALID_TABS)[number]) ? initialTab : 'usage');
   const highlightUsageEventId = ref(String(route.query.usage_event_id || '').trim());
-  const traces = ref<MonitorTrace[]>([]);
   const loadingAudit = ref(false);
-  const loadingTraces = ref(false);
   const error = ref('');
 
-  const filters = reactive<MonitorTracesQuery>({
-    limit: 50,
-  });
+  // ── Runs（Traces）：筛选/分页/计数状态在 useMonitorTraces；WS 生命周期事件防抖触发刷新 ──
+  const runs = useMonitorTraces();
+  const runsLive = useMonitorRunsLive(() => void runs.refresh());
 
-  const rangeOptions = [
-    { label: '今日', value: 'today' },
-    { label: '7 天', value: '7d' },
-    { label: '30 天', value: '30d' },
-    { label: '本月', value: 'month' },
-  ];
-
-  const loading = computed(() => loadingAudit.value || realtimeEvents.historyLoading.value || loadingTraces.value);
+  const loading = computed(() => loadingAudit.value || realtimeEvents.historyLoading.value || runs.loading.value);
 
   // ── Runner Metrics (was in MonitorRunnerMetrics.vue) ──
   const {
@@ -84,7 +76,7 @@ export function useMonitorPage() {
   function refreshActiveTab() {
     if (tab.value === 'audit') void loadAudit();
     else if (tab.value === 'events') void loadEvents();
-    else if (tab.value === 'traces') void loadTraces();
+    else if (tab.value === 'traces') void runs.refresh();
   }
 
   onMounted(() => {
@@ -107,6 +99,17 @@ export function useMonitorPage() {
     await router.replace({ query: { ...route.query, tab: value } });
   });
 
+  // 外部导航（如 Overview/Usage 下钻 openRunsTab 只改 query）同步回 tab，否则同页跳转不生效。
+  watch(
+    () => route.query.tab,
+    (value) => {
+      const v = String(value || '');
+      if (VALID_TABS.includes(v as (typeof VALID_TABS)[number]) && v !== tab.value) {
+        tab.value = v;
+      }
+    },
+  );
+
   watch(
     () => route.query.usage_event_id,
     (id) => {
@@ -120,14 +123,15 @@ export function useMonitorPage() {
   async function loadAll() {
     error.value = '';
     try {
-      await Promise.all([loadAudit(), loadEvents(), loadTraces()]);
+      await Promise.all([loadAudit(), loadEvents(), runs.refresh()]);
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载监控数据失败';
     }
   }
 
   // AuditTable 服务端分页/筛选：记住最近一次查询，tab 切换/定时刷新时沿用。
-  let lastAuditQuery: AuditQuery = { limit: AUDIT_DEFAULT_PAGE_SIZE, offset: 0 };
+  // exclude_system 默认值必须与 AuditTable 的 hideSystem 初始值一致（初始加载不走子组件 watch）。
+  let lastAuditQuery: AuditQuery = { limit: AUDIT_DEFAULT_PAGE_SIZE, offset: 0, exclude_system: true };
 
   async function loadAudit(query?: AuditQuery) {
     if (query) lastAuditQuery = query;
@@ -155,16 +159,6 @@ export function useMonitorPage() {
     await realtimeEvents.refreshHistory();
   }
 
-  async function loadTraces() {
-    loadingTraces.value = true;
-    try {
-      const result = await monitorStore.fetchTraceEvents({ ...filters, limit: 100 });
-      traces.value = result.items;
-    } finally {
-      loadingTraces.value = false;
-    }
-  }
-
   function confirmClearEvents() {
     Notify.create({
       // 仅清空 pulse 实时条（页面刷新后也会重建），持久化事件记录不受影响
@@ -180,12 +174,12 @@ export function useMonitorPage() {
 
   function confirmClearFlow() {
     Notify.create({
-      message: '确定清除所有流程日志？此操作不可撤销。',
+      message: t('monitorPage.logs.clearFlowConfirm'),
       type: 'warning',
       position: 'top',
       actions: [
-        { label: '取消', color: 'white', handler: () => {} },
-        { label: '确定', color: 'red', handler: () => monitorStore.clearFlowLogs() },
+        { label: t('common.cancel'), color: 'white', handler: () => {} },
+        { label: t('common.confirm'), color: 'red', handler: () => logStream.clearFlowLogs() },
       ],
     });
   }
@@ -195,18 +189,27 @@ export function useMonitorPage() {
     highlightUsageEventId,
     auditRows: auditLogs,
     auditTotal,
-    traces,
     loadingAudit,
-    loadingTraces,
     error,
-    filters,
-    rangeOptions,
     loading,
     loadAll,
     loadAudit,
     handleClearAudit,
     loadEvents,
-    loadTraces,
+    // Runs（Traces）：列表数据 + 筛选/分页 + chips 计数 + WS 实时状态
+    traces: runs.rows,
+    tracesTotal: runs.total,
+    traceStatusCounts: runs.statusCounts,
+    traceDomainCounts: runs.domainCounts,
+    loadingTraces: runs.loading,
+    traceKeyword: runs.keyword,
+    traceStatus: runs.status,
+    traceDomain: runs.domain,
+    tracePage: runs.page,
+    tracePageSize: runs.pageSize,
+    runsLiveState: runsLive.state,
+    loadTraces: runs.refresh,
+    resetTraceFilters: runs.resetFilters,
     // Runner metrics
     runnerMetrics,
     runnerLoading,

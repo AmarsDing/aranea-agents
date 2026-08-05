@@ -30,6 +30,8 @@ message ListAuditLogsRequest {
   string resource = 4;
   string actor = 5;
   string keyword = 6;
+  // Hide system-generated noise (sync.* actions); ignored when action is set.
+  bool exclude_system = 7;
 }
 
 message ListAuditLogsResponse {
@@ -103,12 +105,26 @@ message ListMonitorTracesRequest {
   string agent_id = 3;
   string provider = 4;
   string model = 5;
+  // Run status: running/ok/error/timeout/interrupted/cancelled; empty = all.
   string status = 6;
+  // Substring search over name/trace_key/agent_id/provider/model and the
+  // resolved display names (agent/team display_name, session title).
+  string keyword = 7;
+  // Hide internal domains (system/skill cron & sync noise); name column carries the run domain.
+  bool exclude_internal = 8;
+  // Exact run domain filter (chat/team/graph/system/skill); wins over
+  // exclude_internal so internal domains stay reachable. Empty = no filter.
+  string domain = 9;
 }
 
 message ListMonitorTracesResponse {
   repeated MonitorPlatformRow items = 1;
   int32 total = 2;
+  // Rows per status under current filters (status condition excluded) — filter chips.
+  map<string, int32> status_counts = 3;
+  // Rows per run domain under current filters (domain condition and
+  // exclude_internal excluded) so chips reveal hidden internal rows.
+  map<string, int32> domain_counts = 4;
 }
 
 message MonitorTraceDetail {

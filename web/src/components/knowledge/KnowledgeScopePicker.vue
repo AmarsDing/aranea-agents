@@ -82,9 +82,10 @@ const scopeSelectedKey = computed<string | null>(() => {
 
 function onScopeMenuShow() {
   const vault = props.scopeNodes[0];
-  if (vault && !scopeExpanded.value.length) {
-    scopeExpanded.value = [vault.key];
-  }
+  if (!vault) return;
+  // UX-002：每次打开都确保库根展开（而非仅首次）。菜单关闭期间 scopeNodes 可能随父级
+  // computed 重建，已加载子节点随旧节点对象丢失；重新赋展开数组让 q-tree 重新评估 lazy 节点。
+  scopeExpanded.value = [...scopeExpanded.value.filter((k) => k !== vault.key), vault.key];
 }
 
 function onScopeSelect(key: string | null) {

@@ -154,6 +154,7 @@ service MonitorService {
 | `resource` | string | 按实体类型过滤（如 agent/team/channel） |
 | `actor` | string | 按操作者过滤 |
 | `keyword` | string | 全文模糊搜索（action/resource/resource_id/detail） |
+| `exclude_system` | bool | 隐藏系统噪音（`sync.%` 动作，如 Skill 文件同步）；**显式设置 `action` 时忽略**（否则选 sync 恒为空）。前端 Audit Tab 默认开启（2026-08-05 UX） |
 
 **ListAuditLogsResponse**：新增 `total` 字段（int32），表示符合条件的总记录数。
 
@@ -188,6 +189,8 @@ service MonitorService {
 | `provider` | string | 按 metadata_json 中 provider 模糊匹配 |
 | `model` | string | 按 metadata_json 中 model 模糊匹配 |
 | `status` | string | 按状态精确匹配 |
+| `keyword` | string | 子串模糊搜索（name/trace_key/agent_id/provider/model 五列 OR，2026-08-05 UX） |
+| `exclude_internal` | bool | 隐藏内部域运行（name 列承载运行域，排除 `system`/`skill`：cron、Skill 同步、MCP 健康检查等高频噪音）。前端 Traces Tab 默认开启（2026-08-05 UX） |
 
 ### 2.5 Usage Proto
 

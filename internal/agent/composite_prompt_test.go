@@ -88,6 +88,65 @@ func TestCompositeMemoryCue_ProactiveOnly(t *testing.T) {
 	}
 }
 
+// ── FR-12.7: resident profile card cue ───────────────────────────────────
+
+type fakeProfileCardReader struct {
+	card *biz.ProfileCard
+	err  error
+}
+
+func (f fakeProfileCardReader) GetProfileCard(_ context.Context, _, _ string) (*biz.ProfileCard, error) {
+	return f.card, f.err
+}
+
+// TestProfileCardCue_RendersCard verifies the resident card is rendered with
+// its block header (100% injection, no recall scoring).
+func TestProfileCardCue_RendersCard(t *testing.T) {
+	reader := fakeProfileCardReader{card: &biz.ProfileCard{
+		AgentID: "a1", UserID: "u1", Content: "- 名叫张三\n- 喜欢咖啡",
+	}}
+	cue := ProfileCardCue(context.Background(), reader, "a1", "u1")
+	if !strings.Contains(cue, "## 用户档案（长期记忆摘要，始终生效）") {
+		t.Fatalf("missing card header: %q", cue)
+	}
+	if !strings.Contains(cue, "喜欢咖啡") {
+		t.Fatalf("missing card content: %q", cue)
+	}
+}
+
+// TestProfileCardCue_TruncatesLongCard verifies the hook-side hard rune cap
+// (safety net beyond the distiller's own budget).
+func TestProfileCardCue_TruncatesLongCard(t *testing.T) {
+	reader := fakeProfileCardReader{card: &biz.ProfileCard{
+		AgentID: "a1", Content: strings.Repeat("档", profileCardMaxRunes+50),
+	}}
+	cue := ProfileCardCue(context.Background(), reader, "a1", "")
+	body := strings.TrimPrefix(cue, "## 用户档案（长期记忆摘要，始终生效）\n")
+	if runes := []rune(body); len(runes) != profileCardMaxRunes+1 || !strings.HasSuffix(body, "…") {
+		t.Fatalf("expected %d runes + ellipsis, got %d runes", profileCardMaxRunes, len([]rune(body)))
+	}
+}
+
+// TestProfileCardCue_NoCard verifies best-effort behavior: nil reader, read
+// error, missing card, and blank content all render "" without breaking a turn.
+func TestProfileCardCue_NoCard(t *testing.T) {
+	ctx := context.Background()
+	if cue := ProfileCardCue(ctx, nil, "a1", "u1"); cue != "" {
+		t.Fatalf("nil reader: expected empty, got %q", cue)
+	}
+	if cue := ProfileCardCue(ctx, fakeProfileCardReader{}, "a1", "u1"); cue != "" {
+		t.Fatalf("no card: expected empty, got %q", cue)
+	}
+	errReader := fakeProfileCardReader{err: errors.New("db down")}
+	if cue := ProfileCardCue(ctx, errReader, "a1", "u1"); cue != "" {
+		t.Fatalf("read error: expected empty, got %q", cue)
+	}
+	blank := fakeProfileCardReader{card: &biz.ProfileCard{AgentID: "a1", Content: "  \n "}}
+	if cue := ProfileCardCue(ctx, blank, "a1", "u1"); cue != "" {
+		t.Fatalf("blank content: expected empty, got %q", cue)
+	}
+}
+
 // TestMergeCompositeHits_Deduplication verifies that mergeCompositeHits
 // deduplicates by line (case-insensitive) and respects the limit.
 func TestMergeCompositeHits_Deduplication(t *testing.T) {
@@ -127,6 +186,46 @@ func TestMergeCompositeHits_Limit(t *testing.T) {
 	// Top 2 by score: C (0.9) and D (0.7)
 	if merged[0].Line != "C" || merged[1].Line != "D" {
 		t.Fatalf("expected [C, D], got [%s, %s]", merged[0].Line, merged[1].Line)
+	}
+}
+
+// TestCompositeMemoryCueWithHits_ReturnsMergedHits verifies the WithHits
+// variant returns the same cue as CompositeMemoryCue plus the merged,
+// deduplicated hit list used for recall-transparency events (R4).
+func TestCompositeMemoryCueWithHits_ReturnsMergedHits(t *testing.T) {
+	policy := biz.ResolveMemoryRuntimePolicy(&biz.AgentRuntimeSettings{
+		MemoryEnabled: true, L2RecallEnabled: true, L3Enabled: true, L0InjectL3: true,
+	})
+	recallHits := []biz.CompositeRecallHit{
+		{Layer: "L2", Line: "Session A: fixed bug", Score: 0.5},
+		{Layer: "L3", Line: "Prefers Go", Score: 0.8},
+	}
+	proactiveHits := []biz.CompositeRecallHit{
+		{Layer: "L3", Line: "Prefers Go", Score: 0.9}, // duplicate
+		{Layer: "L3", Line: "Lives in London", Score: 0.7},
+	}
+	cue, hits := CompositeMemoryCueWithHits(context.Background(), compositeRecallStub{hits: recallHits},
+		biz.Agent{ID: "a1"}, policy, biz.MemoryRuntimeContext{}, "sess", "bug", 0, proactiveHits)
+	if !strings.Contains(cue, "L2+L3 memory") {
+		t.Fatalf("missing header: %s", cue)
+	}
+	if len(hits) != 3 {
+		t.Fatalf("expected 3 merged hits, got %d: %+v", len(hits), hits)
+	}
+	if hits[0].Line != "Prefers Go" {
+		t.Fatalf("hits must be score-sorted, first = %+v", hits[0])
+	}
+}
+
+// TestCompositeMemoryCueWithHits_NoHits verifies empty recall yields no hits.
+func TestCompositeMemoryCueWithHits_NoHits(t *testing.T) {
+	policy := biz.ResolveMemoryRuntimePolicy(&biz.AgentRuntimeSettings{
+		MemoryEnabled: true, L2RecallEnabled: true, L3Enabled: true, L0InjectL3: true,
+	})
+	cue, hits := CompositeMemoryCueWithHits(context.Background(), compositeRecallStub{hits: nil},
+		biz.Agent{ID: "a1"}, policy, biz.MemoryRuntimeContext{}, "sess", "bug", 0, nil)
+	if cue != "" || len(hits) != 0 {
+		t.Fatalf("empty recall must yield empty cue and no hits, got cue=%q hits=%d", cue, len(hits))
 	}
 }
 

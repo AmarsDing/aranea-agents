@@ -176,28 +176,18 @@ func (w *MemoryEbbinghausDecayWorker) scanPerAgent(ctx context.Context, now time
 		if !t.WriteL3Facts {
 			continue
 		}
-		rows, _, _, _, err := w.reader.ListFactRows(ctx, "agent", t.AgentID, "", "active", "",
-			int32(memoryEbbinghausDecayBatchSize), 0)
+		n, decayed, sum, agentScores, err := w.scanFactsForAgent(ctx, t.AgentID, now)
 		if err != nil {
 			w.lg.Warn("ebbinghaus decay: list facts failed",
 				loggateway.Str("agent_id", t.AgentID),
 				loggateway.Err(err))
 			continue
 		}
-
-		for _, row := range rows {
-			factID, decay, parseErr := w.computeDecayForRow(row, now)
-			if parseErr != nil {
-				continue
-			}
-			totalFacts++
-			sumDecay += decay
-			if decay < memoryEbbinghausDecayThreshold {
-				decayedFacts++
-			}
-			if factID != "" {
-				scores[factID] = decay
-			}
+		totalFacts += n
+		decayedFacts += decayed
+		sumDecay += sum
+		for id, s := range agentScores {
+			scores[id] = s
 		}
 	}
 
@@ -206,10 +196,44 @@ func (w *MemoryEbbinghausDecayWorker) scanPerAgent(ctx context.Context, now time
 	return nil
 }
 
+// scanFactsForAgent scans one batch of active facts for a single agent and
+// computes Ebbinghaus decay scores.
+//
+// H3 fix: filters by the originating agent_id column across ALL scopes
+// (scope_type/scope_id left empty) — not scope_type='agent' — because
+// immediate facts live in session scope and consolidated facts in user scope
+// (same caliber as F1). The old scope='agent' query silently scanned 0 rows
+// for agents whose facts are all in user/session scopes, so no decay scores
+// were ever written back for them.
+func (w *MemoryEbbinghausDecayWorker) scanFactsForAgent(ctx context.Context, agentID string, now time.Time) (totalFacts, decayedFacts int, sumDecay float64, scores map[string]float64, err error) {
+	rows, _, _, _, err := w.reader.ListFactRows(ctx, "", "", "", "active", "", agentID,
+		int32(memoryEbbinghausDecayBatchSize), 0)
+	if err != nil {
+		return 0, 0, 0, nil, err
+	}
+
+	scores = make(map[string]float64)
+	for _, row := range rows {
+		factID, decay, parseErr := w.computeDecayForRow(row, now)
+		if parseErr != nil {
+			continue
+		}
+		totalFacts++
+		sumDecay += decay
+		if decay < memoryEbbinghausDecayThreshold {
+			decayedFacts++
+		}
+		if factID != "" {
+			scores[factID] = decay
+		}
+	}
+	return totalFacts, decayedFacts, sumDecay, scores, nil
+}
+
 // scanGlobal scans all active memories in a single batch (fallback when
 // agents is not wired).
 func (w *MemoryEbbinghausDecayWorker) scanGlobal(ctx context.Context, now time.Time) error {
-	rows, _, _, _, err := w.reader.ListFactRows(ctx, "", "", "", "active", "",
+	rows, _, _, _, err := w.reader.ListFactRows(ctx, "", "", "", "active", "", "",
 		int32(memoryEbbinghausDecayBatchSize), 0)
 	if err != nil {
 		w.lg.Warn("ebbinghaus decay: global list facts failed", loggateway.Err(err))

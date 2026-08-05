@@ -168,7 +168,7 @@ func (r *Runner) publishTeamRunStartedEvent(ctx context.Context, sess biz.Sessio
 	// TeamStageCreated via publishSpiritTeamAssembled; this covers standalone
 	// team runs and progress updates under the graph parent.
 	ts := biz.TeamStage{
-		ID:        string(agent.NewTeamStageActivityID(teamRow.ID)),
+		ID:        string(agent.NewTeamStageActivityID(teamRow.ID, string(agent.RootTaskActivityIDFromCtx(ctx)))),
 		TeamID:    teamRow.ID,
 		TeamName:  teamRow.DisplayName,
 		SessionID: spiritSID,
@@ -214,6 +214,7 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 			MemoryL3Recall:         r.td.Persist.Memory.L3Recall,
 			MemoryCompositeRecall:  r.td.Persist.Memory.CompositeRecall,
 			MemoryPreferenceLister: r.td.Persist.Memory.PreferenceLister,
+			MemoryReconsolidator:   r.td.Persist.Memory.Reconsolidator,
 			KnowledgeRetriever:     r.cfg.Knowledge.Retriever,
 			KnowledgeUsecase:       r.cfg.KnowledgeUsecase,
 		},
@@ -306,7 +307,7 @@ func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run
 	if requestID == "" {
 		requestID = run.ID
 	}
-	teamStageID := string(agent.NewTeamStageActivityID(teamRow.ID))
+	teamStageID := string(agent.NewTeamStageActivityID(teamRow.ID, rootTaskID))
 	return agent.ProjectMeta{
 		SessionID:    sess.ID,
 		RequestID:    requestID,

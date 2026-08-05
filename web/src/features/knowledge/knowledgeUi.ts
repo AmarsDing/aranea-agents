@@ -22,6 +22,15 @@ export function knowledgeStatusColor(status: string): string {
   return 'grey';
 }
 
+/** 文档状态本地化 i18n key；未知状态返回 ''（调用方回退展示原始 status）。 */
+export function knowledgeStatusLabelKey(status: string): string {
+  if (status === 'active' || status === 'indexed') return 'knowledgePage.statusIndexed';
+  if (status === 'indexing') return 'knowledgePage.statusIndexing';
+  if (status === 'pending') return 'knowledgePage.statusPending';
+  if (status === 'error') return 'knowledgePage.statusError';
+  return '';
+}
+
 export const INDEXING_DOC_STATUSES = new Set(['indexing', 'pending']);
 
 export function hasIndexingDocuments(documents: KnowledgeDocument[]): boolean {

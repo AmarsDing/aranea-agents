@@ -127,3 +127,37 @@ func TestTeamStageV2Repo_GetTeamStage_NotFound(t *testing.T) {
 		t.Fatalf("expected error for nonexistent team stage, got nil")
 	}
 }
+
+// TestTeamStageV2Repo_GetLatestByTeam verifies S-3's reader for ctx-less
+// paths (spirit view / pause sync / cancel): run-isolated stage IDs make
+// deterministic derivation impossible, so these paths query the latest
+// stage by team (StartedAt desc, Seq desc tiebreak).
+func TestTeamStageV2Repo_GetLatestByTeam(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	repo := NewTeamStageV2Repo(d, loggateway.NewNoop())
+	ctx := context.Background()
+	base := time.Now().UTC().Truncate(time.Second)
+
+	// Two runs of team-1 (older + newer) and one row for another team.
+	for _, ts := range []biz.TeamStage{
+		{ID: "ts-old", TeamID: "team-1", SessionID: "s-1", Status: biz.TeamStageStatusCompleted, Stage: biz.TeamStageStageCompleted, StartedAt: base, Seq: 1, Version: 1},
+		{ID: "ts-new", TeamID: "team-1", SessionID: "s-1", Status: biz.TeamStageStatusRunning, Stage: biz.TeamStageStageExecuting, StartedAt: base.Add(time.Minute), Seq: 2, Version: 1},
+		{ID: "ts-other", TeamID: "team-2", SessionID: "s-1", Status: biz.TeamStageStatusRunning, Stage: biz.TeamStageStageExecuting, StartedAt: base.Add(2 * time.Minute), Seq: 3, Version: 1},
+	} {
+		if _, err := repo.CreateTeamStage(ctx, ts); err != nil {
+			t.Fatalf("CreateTeamStage %s: %v", ts.ID, err)
+		}
+	}
+
+	got, err := repo.GetLatestTeamStageByTeam(ctx, "team-1")
+	if err != nil {
+		t.Fatalf("GetLatestTeamStageByTeam: %v", err)
+	}
+	if got.ID != "ts-new" {
+		t.Fatalf("latest = %q, want ts-new", got.ID)
+	}
+
+	if _, err := repo.GetLatestTeamStageByTeam(ctx, "team-no-such"); err == nil {
+		t.Fatal("expected NotFound error for unknown team")
+	}
+}

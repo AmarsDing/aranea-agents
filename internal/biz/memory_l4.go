@@ -436,6 +436,21 @@ type L4ReconsolidationStore interface {
 	IncrementUseCount(ctx context.Context, nodeID string) (bool, error)
 }
 
+// L4Reconsolidator is the narrow port for triggering memory reconsolidation
+// when L4 entities are recalled into the prompt (design §15.7, FR-10.5).
+// The concrete implementation lives in internal/memory
+// (ReconsolidationService); the agent layer depends only on this port so the
+// before-model hook can fire it asynchronously without importing the memory
+// package.
+//
+// Stability:evolving
+type L4Reconsolidator interface {
+	// OnRecall boosts the recalled node's activation, increments its
+	// use_count, and reinforces connections to recalledWith via the Hebbian
+	// rule. Best-effort semantics live inside the implementation.
+	OnRecall(ctx context.Context, nodeID string, recalledWith []string) error
+}
+
 // ──────────────────────────────────────────────────────────
 // Conflict resolution (Phase E, FR-10.6 / AC-11 / IR-7)
 // ──────────────────────────────────────────────────────────

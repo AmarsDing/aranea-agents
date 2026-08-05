@@ -5,6 +5,7 @@ import {
   knowledgeMediaEditable,
   knowledgeMediaKind,
   knowledgeMediaNeedsAsset,
+  knowledgeStatusLabelKey,
 } from '../knowledgeUi';
 
 describe('knowledgeUi doc table columns', () => {
@@ -53,5 +54,20 @@ describe('knowledgeMediaKind（G2-F 媒体分类）', () => {
     expect(knowledgeMediaEditable('text')).toBe(true);
     expect(knowledgeMediaEditable('word')).toBe(false);
     expect(knowledgeMediaEditable('image')).toBe(false);
+  });
+});
+
+describe('knowledgeStatusLabelKey（文档状态本地化）', () => {
+  it('maps known statuses to i18n keys', () => {
+    expect(knowledgeStatusLabelKey('indexed')).toBe('knowledgePage.statusIndexed');
+    expect(knowledgeStatusLabelKey('active')).toBe('knowledgePage.statusIndexed');
+    expect(knowledgeStatusLabelKey('indexing')).toBe('knowledgePage.statusIndexing');
+    expect(knowledgeStatusLabelKey('pending')).toBe('knowledgePage.statusPending');
+    expect(knowledgeStatusLabelKey('error')).toBe('knowledgePage.statusError');
+  });
+
+  it('returns empty string for unknown status (caller falls back to raw)', () => {
+    expect(knowledgeStatusLabelKey('')).toBe('');
+    expect(knowledgeStatusLabelKey('migrating')).toBe('');
   });
 });

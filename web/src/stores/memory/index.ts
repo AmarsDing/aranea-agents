@@ -269,10 +269,11 @@ export const useMemoryStore = defineStore('memory', () => {
   async function loadConflictingFacts(
     scopeType: string,
     scopeId: string,
+    agentId = '',
     limit = 50,
     offset = 0,
   ): Promise<{ items: MemoryFact[]; total: number }> {
-    return listConflictingFacts(scopeType, scopeId, limit, offset);
+    return listConflictingFacts(scopeType, scopeId, agentId, limit, offset);
   }
 
   async function upsertFact(fact: Parameters<typeof upsertMemoryFact>[0]): Promise<MemoryFact> {

@@ -89,6 +89,15 @@ export function buildMemoryFactTableColumns(formatDate: (value: string) => strin
         sortable: false,
       },
     ),
+    // FR-12.6: compact three-stage counters "recalled / injected / cited".
+    registryCol<MemoryFact>(
+      'usage',
+      t('memory.table.columns.usage'),
+      (row) => `${row.recalled_count} / ${row.injected_count} / ${row.cited_count}`,
+      'center',
+      REGISTRY_COL_W.metric,
+      { sortable: false },
+    ),
     registryCol<MemoryFact>('updated', t('memory.table.columns.updated'), 'updated_at', 'left', REGISTRY_COL_W.time, {
       sortable: false,
       format: formatDate,

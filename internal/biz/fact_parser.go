@@ -38,6 +38,17 @@ func HasFactMarks(response string) bool {
 	return strings.Contains(response, "<fact")
 }
 
+// StripFactMarks removes complete <fact>...</fact> tag pairs from text
+// without extracting them. Use at display/persist boundaries where facts
+// have already been extracted upstream and only the user-visible text is
+// needed. Unclosed tags (e.g. truncated streams) are left untouched.
+func StripFactMarks(text string) string {
+	if !HasFactMarks(text) {
+		return text
+	}
+	return strings.TrimSpace(factRegex.ReplaceAllString(text, ""))
+}
+
 // ExtractFactMarksOnly extracts facts without modifying the original response.
 // Useful when you need to check facts but preserve the original text.
 func ExtractFactMarksOnly(response string) []FactMark {

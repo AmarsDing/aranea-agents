@@ -162,8 +162,23 @@ func activitiesToChatMessages(acts []ActivityEntry) []ChatMessage {
 	return msgs
 }
 
+// systemInternalNoticeTypes mirrors the frontend SYSTEM_NOTICE_TYPES set
+// (web/src/features/chat/noticeFilter.ts): machine-payload notices that carry
+// metrics/recall internals, not user-facing text. They are rendered as
+// dedicated UI affordances in the v2 chat stream (e.g. MemoryRecallChips) and
+// must not leak into the plain message view as raw JSON system messages.
+// Keep in sync with the frontend set.
+var systemInternalNoticeTypes = map[string]struct{}{
+	"context_usage":   {},
+	"context_window":  {},
+	"metrics_updated": {},
+	"token_usage":     {},
+	"memory_recalled": {},
+}
+
 // activityToChatMessage converts a single Activity to ChatMessage.
-// Returns ok=false for kinds that don't map to chat messages (thinking/session/etc.).
+// Returns ok=false for kinds that don't map to chat messages (thinking/session/etc.)
+// and for system-internal notices (see systemInternalNoticeTypes).
 func activityToChatMessage(a ActivityEntry) (ChatMessage, bool) {
 	var role string
 	switch a.Kind {
@@ -174,6 +189,9 @@ func activityToChatMessage(a ActivityEntry) (ChatMessage, bool) {
 	case "action":
 		role = "tool"
 	case "notice":
+		if _, internal := systemInternalNoticeTypes[a.NoticeType]; internal {
+			return ChatMessage{}, false
+		}
 		role = "system"
 	default:
 		return ChatMessage{}, false

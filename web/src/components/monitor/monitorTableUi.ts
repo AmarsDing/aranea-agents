@@ -32,10 +32,10 @@ export function createMonitorEventColumns(t: Translate): QTableColumn<MonitorVie
 }
 
 /** TraceList 列定义 — Runs 列表（OPT-05 monitor_traces 真相源，含 Token/延迟/成本）。
- *  列宽总和 = 100%，避免横向滚动条。 */
+ *  行点击打开详情（无操作列）；列宽总和 = 100%，避免横向滚动条。 */
 export function createMonitorTraceColumns(t: Translate): QTableColumn<MonitorTrace>[] {
   return [
-    registryCol<MonitorTrace>('name', t('monitorPage.traces.colName'), 'name', 'left', '22%'),
+    registryCol<MonitorTrace>('name', t('monitorPage.traces.colName'), 'name', 'left', '28%'),
     registryCol<MonitorTrace>('agent', t('monitorPage.traces.colAgent'), 'agent_id', 'left', '14%'),
     registryCol<MonitorTrace>('model', t('monitorPage.traces.colModel'), 'model', 'left', '12%'),
     registryCol<MonitorTrace>('tokens', t('monitorPage.traces.colTokens'), 'total_tokens', 'right', '8%'),
@@ -43,7 +43,6 @@ export function createMonitorTraceColumns(t: Translate): QTableColumn<MonitorTra
     registryCol<MonitorTrace>('cost', t('monitorPage.traces.colCost'), 'total_cost_usd', 'right', '8%'),
     registryCol<MonitorTrace>('status', t('monitorPage.traces.colStatus'), 'status', 'center', '7%'),
     registryCol<MonitorTrace>('time', t('monitorPage.traces.colTime'), 'created_at', 'left', '15%'),
-    registryColActions<MonitorTrace>('6%', ''),
   ];
 }
 
@@ -108,11 +107,13 @@ export function traceStatusLabel(t: Translate, status?: string): string {
   return key ? t(key) : s;
 }
 
-/** Trace 域（运行类型）配色；与语言无关 */
+/** Trace 域（运行类型）配色；与语言无关。system/skill 为内部域（默认视图排除，chips 可达） */
 const TRACE_DOMAIN_COLORS: Record<string, string> = {
   chat: 'blue-grey',
   team: 'deep-purple',
   graph: 'teal',
+  system: 'grey',
+  skill: 'blue-grey',
 };
 
 /** Trace 域颜色 */

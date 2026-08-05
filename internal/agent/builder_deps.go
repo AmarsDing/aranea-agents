@@ -74,6 +74,19 @@ type TRPCMemoryKnowledgeDeps struct {
 	// MemoryPreferenceLister feeds the pinned preference/constraint block
 	// (FR-M3). Optional: when nil, pinned injection is skipped.
 	MemoryPreferenceLister biz.MemoryPreferenceLister
+	// MemoryProfileCardReader feeds the resident profile card block (FR-12.7):
+	// one distilled card per (agent, user), injected unconditionally at the
+	// first memory-block position when L3 injection is enabled. Optional:
+	// when nil, the card block is skipped.
+	MemoryProfileCardReader biz.MemoryProfileCardReader
+	// MemoryFactInjectCounter bumps injected_count for the L3 facts actually
+	// written into the prompt (FR-12.6 three-stage counters). Optional: when
+	// nil, injected counting is skipped (recalled/cited still work).
+	MemoryFactInjectCounter biz.MemoryFactInjectCounter
+	// MemoryReconsolidator triggers L4 memory reconsolidation when entities
+	// are recalled into the prompt (design §15.7, FR-10.5). Optional: when
+	// nil, the before-model hook skips the reconsolidation trigger.
+	MemoryReconsolidator biz.L4Reconsolidator
 	KnowledgeRetriever     *knowledge.Retriever
 	KnowledgeUsecase       *biz.KnowledgeUsecase
 	// ManualCompressor handles session-level compression triggered by the

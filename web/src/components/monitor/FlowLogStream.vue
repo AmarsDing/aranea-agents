@@ -35,7 +35,9 @@
           :icon="hub.flowPaused.value ? 'play_arrow' : 'pause'"
           :label="hub.flowPaused.value ? '恢复' : '暂停'"
           @click="togglePause"
-        />
+        >
+          <q-tooltip>{{ t('monitorPage.pauseHint') }}</q-tooltip>
+        </q-btn>
         <q-btn
           dense
           outline
@@ -45,7 +47,9 @@
           icon="delete_sweep"
           label="清除"
           @click="$emit('clear')"
-        />
+        >
+          <q-tooltip>{{ t('monitorPage.clearViewHint') }}</q-tooltip>
+        </q-btn>
       </div>
     </q-card-section>
     <q-separator />
@@ -59,7 +63,9 @@
         >
           <span class="monitor-log-time">{{ line.time }}</span>
           <span class="monitor-log-level">[{{ line.level }}]</span>
-          <span v-if="line.title" class="monitor-log-title text-weight-medium">{{ line.title }}</span>
+          <span v-if="line.title && line.title !== line.message" class="monitor-log-title text-weight-medium">
+            {{ line.title }}
+          </span>
           <span>{{ line.message }}</span>
           <span v-if="line.hint" class="text-caption text-grey-7 q-ml-sm">提示：{{ line.hint }}</span>
         </div>

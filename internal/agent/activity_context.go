@@ -81,10 +81,25 @@ func NewGraphStageActivityID(spiritSessionID string) GraphStageActivityID {
 var teamStageNamespace = uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.team_stage.v1"))
 
 // NewTeamStageActivityID returns the deterministic team_stage Activity ID
-// for a given team ID. Both spirit_team (service) and team runner (team
-// package) use this to compute the same ID.
-func NewTeamStageActivityID(teamID string) TeamStageActivityID {
-	return TeamStageActivityID(uuid.NewSHA1(teamStageNamespace, []byte(teamID)).String())
+// for a given team ID + root task ID (run dimension). Both spirit_team
+// (service) and team runner (team package) use this to compute the same ID.
+//
+// S-3（2026-08-05）：run 维度修复 ID 碰撞。此前公式只含 teamID，同团队
+// 第二轮 turn 复用第一轮的 team_stages_v2/team_runs_v2/member_sessions_v2
+// 行——FSM completed→running 转换被拒、outcome 哨兵版本带（1<<40）阻塞
+// created（V=1）写入，状态永久冻结。rootTaskID 每轮用户输入唯一（Mode A
+// 由 executeTeamTurnViaHooks 注入新 UUID；Mode B 继承 plan 根 Task），
+// 下游 NewTeamRunV2ID/NewMemberSessionActivityID 从 TeamStageID 派生，
+// 自动继承 run 隔离。
+//
+// rootTaskID 为空时降级为 legacy teamID-only 公式：仅用于无 turn ctx 的
+// 特殊路径（如 recovery），保证其写入自洽；正常 turn 链路永不为空。
+func NewTeamStageActivityID(teamID, rootTaskID string) TeamStageActivityID {
+	key := teamID
+	if rootTaskID != "" {
+		key = teamID + ":" + rootTaskID
+	}
+	return TeamStageActivityID(uuid.NewSHA1(teamStageNamespace, []byte(key)).String())
 }
 
 // NewTeamRunV2ID returns the deterministic v2 team run ID for a given

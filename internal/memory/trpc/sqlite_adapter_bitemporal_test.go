@@ -122,7 +122,7 @@ func (s *bitemporalMockStore) listForUser(scopeType, scopeID, userID, keyword st
 
 // --- L3FactReader implementation ---
 
-func (s *bitemporalMockStore) ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
+func (s *bitemporalMockStore) ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword, agentID string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
 	rows := s.listForUser(scopeType, scopeID, "", keyword, true)
 	return rows, int32(len(rows)), int32(len(rows)), 0, nil
 }

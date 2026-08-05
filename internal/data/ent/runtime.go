@@ -601,300 +601,304 @@ func init() {
 	agentruntimesettingDescL3MaxPerRecallChars := agentruntimesettingFields[69].Descriptor()
 	// agentruntimesetting.DefaultL3MaxPerRecallChars holds the default value on creation for the l3_max_per_recall_chars field.
 	agentruntimesetting.DefaultL3MaxPerRecallChars = agentruntimesettingDescL3MaxPerRecallChars.Default.(int)
+	// agentruntimesettingDescL3RecallBudgetTokens is the schema descriptor for l3_recall_budget_tokens field.
+	agentruntimesettingDescL3RecallBudgetTokens := agentruntimesettingFields[70].Descriptor()
+	// agentruntimesetting.DefaultL3RecallBudgetTokens holds the default value on creation for the l3_recall_budget_tokens field.
+	agentruntimesetting.DefaultL3RecallBudgetTokens = agentruntimesettingDescL3RecallBudgetTokens.Default.(int)
 	// agentruntimesettingDescL4Enabled is the schema descriptor for l4_enabled field.
-	agentruntimesettingDescL4Enabled := agentruntimesettingFields[70].Descriptor()
+	agentruntimesettingDescL4Enabled := agentruntimesettingFields[71].Descriptor()
 	// agentruntimesetting.DefaultL4Enabled holds the default value on creation for the l4_enabled field.
 	agentruntimesetting.DefaultL4Enabled = agentruntimesettingDescL4Enabled.Default.(bool)
 	// agentruntimesettingDescL4GraphInjectNeighbors is the schema descriptor for l4_graph_inject_neighbors field.
-	agentruntimesettingDescL4GraphInjectNeighbors := agentruntimesettingFields[71].Descriptor()
+	agentruntimesettingDescL4GraphInjectNeighbors := agentruntimesettingFields[72].Descriptor()
 	// agentruntimesetting.DefaultL4GraphInjectNeighbors holds the default value on creation for the l4_graph_inject_neighbors field.
 	agentruntimesetting.DefaultL4GraphInjectNeighbors = agentruntimesettingDescL4GraphInjectNeighbors.Default.(bool)
 	// agentruntimesettingDescL4GraphMaxNeighbors is the schema descriptor for l4_graph_max_neighbors field.
-	agentruntimesettingDescL4GraphMaxNeighbors := agentruntimesettingFields[72].Descriptor()
+	agentruntimesettingDescL4GraphMaxNeighbors := agentruntimesettingFields[73].Descriptor()
 	// agentruntimesetting.DefaultL4GraphMaxNeighbors holds the default value on creation for the l4_graph_max_neighbors field.
 	agentruntimesetting.DefaultL4GraphMaxNeighbors = agentruntimesettingDescL4GraphMaxNeighbors.Default.(int)
 	// agentruntimesettingDescL4GraphMaxHops is the schema descriptor for l4_graph_max_hops field.
-	agentruntimesettingDescL4GraphMaxHops := agentruntimesettingFields[73].Descriptor()
+	agentruntimesettingDescL4GraphMaxHops := agentruntimesettingFields[74].Descriptor()
 	// agentruntimesetting.DefaultL4GraphMaxHops holds the default value on creation for the l4_graph_max_hops field.
 	agentruntimesetting.DefaultL4GraphMaxHops = agentruntimesettingDescL4GraphMaxHops.Default.(int)
 	// agentruntimesettingDescL4IdentityInject is the schema descriptor for l4_identity_inject field.
-	agentruntimesettingDescL4IdentityInject := agentruntimesettingFields[74].Descriptor()
+	agentruntimesettingDescL4IdentityInject := agentruntimesettingFields[75].Descriptor()
 	// agentruntimesetting.DefaultL4IdentityInject holds the default value on creation for the l4_identity_inject field.
 	agentruntimesetting.DefaultL4IdentityInject = agentruntimesettingDescL4IdentityInject.Default.(bool)
 	// agentruntimesettingDescL4StrategyInject is the schema descriptor for l4_strategy_inject field.
-	agentruntimesettingDescL4StrategyInject := agentruntimesettingFields[75].Descriptor()
+	agentruntimesettingDescL4StrategyInject := agentruntimesettingFields[76].Descriptor()
 	// agentruntimesetting.DefaultL4StrategyInject holds the default value on creation for the l4_strategy_inject field.
 	agentruntimesetting.DefaultL4StrategyInject = agentruntimesettingDescL4StrategyInject.Default.(bool)
 	// agentruntimesettingDescL4DecayIntervalHours is the schema descriptor for l4_decay_interval_hours field.
-	agentruntimesettingDescL4DecayIntervalHours := agentruntimesettingFields[76].Descriptor()
+	agentruntimesettingDescL4DecayIntervalHours := agentruntimesettingFields[77].Descriptor()
 	// agentruntimesetting.DefaultL4DecayIntervalHours holds the default value on creation for the l4_decay_interval_hours field.
 	agentruntimesetting.DefaultL4DecayIntervalHours = agentruntimesettingDescL4DecayIntervalHours.Default.(int)
 	// agentruntimesettingDescL4DecayOverridesJSON is the schema descriptor for l4_decay_overrides_json field.
-	agentruntimesettingDescL4DecayOverridesJSON := agentruntimesettingFields[77].Descriptor()
+	agentruntimesettingDescL4DecayOverridesJSON := agentruntimesettingFields[78].Descriptor()
 	// agentruntimesetting.DefaultL4DecayOverridesJSON holds the default value on creation for the l4_decay_overrides_json field.
 	agentruntimesetting.DefaultL4DecayOverridesJSON = agentruntimesettingDescL4DecayOverridesJSON.Default.(string)
 	// agentruntimesettingDescEvoEnabled is the schema descriptor for evo_enabled field.
-	agentruntimesettingDescEvoEnabled := agentruntimesettingFields[78].Descriptor()
+	agentruntimesettingDescEvoEnabled := agentruntimesettingFields[79].Descriptor()
 	// agentruntimesetting.DefaultEvoEnabled holds the default value on creation for the evo_enabled field.
 	agentruntimesetting.DefaultEvoEnabled = agentruntimesettingDescEvoEnabled.Default.(bool)
 	// agentruntimesettingDescEvoAutoApply is the schema descriptor for evo_auto_apply field.
-	agentruntimesettingDescEvoAutoApply := agentruntimesettingFields[79].Descriptor()
+	agentruntimesettingDescEvoAutoApply := agentruntimesettingFields[80].Descriptor()
 	// agentruntimesetting.DefaultEvoAutoApply holds the default value on creation for the evo_auto_apply field.
 	agentruntimesetting.DefaultEvoAutoApply = agentruntimesettingDescEvoAutoApply.Default.(bool)
 	// agentruntimesettingDescEvoMinEpisodes is the schema descriptor for evo_min_episodes field.
-	agentruntimesettingDescEvoMinEpisodes := agentruntimesettingFields[80].Descriptor()
+	agentruntimesettingDescEvoMinEpisodes := agentruntimesettingFields[81].Descriptor()
 	// agentruntimesetting.DefaultEvoMinEpisodes holds the default value on creation for the evo_min_episodes field.
 	agentruntimesetting.DefaultEvoMinEpisodes = agentruntimesettingDescEvoMinEpisodes.Default.(int)
 	// agentruntimesettingDescEvoMinNegativeFeedback is the schema descriptor for evo_min_negative_feedback field.
-	agentruntimesettingDescEvoMinNegativeFeedback := agentruntimesettingFields[81].Descriptor()
+	agentruntimesettingDescEvoMinNegativeFeedback := agentruntimesettingFields[82].Descriptor()
 	// agentruntimesetting.DefaultEvoMinNegativeFeedback holds the default value on creation for the evo_min_negative_feedback field.
 	agentruntimesetting.DefaultEvoMinNegativeFeedback = agentruntimesettingDescEvoMinNegativeFeedback.Default.(int)
 	// agentruntimesettingDescEvoThrottleHours is the schema descriptor for evo_throttle_hours field.
-	agentruntimesettingDescEvoThrottleHours := agentruntimesettingFields[82].Descriptor()
+	agentruntimesettingDescEvoThrottleHours := agentruntimesettingFields[83].Descriptor()
 	// agentruntimesetting.DefaultEvoThrottleHours holds the default value on creation for the evo_throttle_hours field.
 	agentruntimesetting.DefaultEvoThrottleHours = agentruntimesettingDescEvoThrottleHours.Default.(int)
 	// agentruntimesettingDescEvoProposalTTLDays is the schema descriptor for evo_proposal_ttl_days field.
-	agentruntimesettingDescEvoProposalTTLDays := agentruntimesettingFields[83].Descriptor()
+	agentruntimesettingDescEvoProposalTTLDays := agentruntimesettingFields[84].Descriptor()
 	// agentruntimesetting.DefaultEvoProposalTTLDays holds the default value on creation for the evo_proposal_ttl_days field.
 	agentruntimesetting.DefaultEvoProposalTTLDays = agentruntimesettingDescEvoProposalTTLDays.Default.(int)
 	// agentruntimesettingDescEvoPersonaMaxChars is the schema descriptor for evo_persona_max_chars field.
-	agentruntimesettingDescEvoPersonaMaxChars := agentruntimesettingFields[84].Descriptor()
+	agentruntimesettingDescEvoPersonaMaxChars := agentruntimesettingFields[85].Descriptor()
 	// agentruntimesetting.DefaultEvoPersonaMaxChars holds the default value on creation for the evo_persona_max_chars field.
 	agentruntimesetting.DefaultEvoPersonaMaxChars = agentruntimesettingDescEvoPersonaMaxChars.Default.(int)
 	// agentruntimesettingDescEvoSystemPromptMaxAppends is the schema descriptor for evo_system_prompt_max_appends field.
-	agentruntimesettingDescEvoSystemPromptMaxAppends := agentruntimesettingFields[85].Descriptor()
+	agentruntimesettingDescEvoSystemPromptMaxAppends := agentruntimesettingFields[86].Descriptor()
 	// agentruntimesetting.DefaultEvoSystemPromptMaxAppends holds the default value on creation for the evo_system_prompt_max_appends field.
 	agentruntimesetting.DefaultEvoSystemPromptMaxAppends = agentruntimesettingDescEvoSystemPromptMaxAppends.Default.(int)
 	// agentruntimesettingDescSkillRuntimeJSON is the schema descriptor for skill_runtime_json field.
-	agentruntimesettingDescSkillRuntimeJSON := agentruntimesettingFields[86].Descriptor()
+	agentruntimesettingDescSkillRuntimeJSON := agentruntimesettingFields[87].Descriptor()
 	// agentruntimesetting.DefaultSkillRuntimeJSON holds the default value on creation for the skill_runtime_json field.
 	agentruntimesetting.DefaultSkillRuntimeJSON = agentruntimesettingDescSkillRuntimeJSON.Default.(string)
 	// agentruntimesettingDescIntentPassEnabled is the schema descriptor for intent_pass_enabled field.
-	agentruntimesettingDescIntentPassEnabled := agentruntimesettingFields[87].Descriptor()
+	agentruntimesettingDescIntentPassEnabled := agentruntimesettingFields[88].Descriptor()
 	// agentruntimesetting.DefaultIntentPassEnabled holds the default value on creation for the intent_pass_enabled field.
 	agentruntimesetting.DefaultIntentPassEnabled = agentruntimesettingDescIntentPassEnabled.Default.(bool)
 	// agentruntimesettingDescClarificationEnabled is the schema descriptor for clarification_enabled field.
-	agentruntimesettingDescClarificationEnabled := agentruntimesettingFields[88].Descriptor()
+	agentruntimesettingDescClarificationEnabled := agentruntimesettingFields[89].Descriptor()
 	// agentruntimesetting.DefaultClarificationEnabled holds the default value on creation for the clarification_enabled field.
 	agentruntimesetting.DefaultClarificationEnabled = agentruntimesettingDescClarificationEnabled.Default.(bool)
 	// agentruntimesettingDescChannelID is the schema descriptor for channel_id field.
-	agentruntimesettingDescChannelID := agentruntimesettingFields[89].Descriptor()
+	agentruntimesettingDescChannelID := agentruntimesettingFields[90].Descriptor()
 	// agentruntimesetting.DefaultChannelID holds the default value on creation for the channel_id field.
 	agentruntimesetting.DefaultChannelID = agentruntimesettingDescChannelID.Default.(string)
 	// agentruntimesettingDescChatID is the schema descriptor for chat_id field.
-	agentruntimesettingDescChatID := agentruntimesettingFields[90].Descriptor()
+	agentruntimesettingDescChatID := agentruntimesettingFields[91].Descriptor()
 	// agentruntimesetting.DefaultChatID holds the default value on creation for the chat_id field.
 	agentruntimesetting.DefaultChatID = agentruntimesettingDescChatID.Default.(string)
 	// agentruntimesettingDescWorkspace is the schema descriptor for workspace field.
-	agentruntimesettingDescWorkspace := agentruntimesettingFields[91].Descriptor()
+	agentruntimesettingDescWorkspace := agentruntimesettingFields[92].Descriptor()
 	// agentruntimesetting.DefaultWorkspace holds the default value on creation for the workspace field.
 	agentruntimesetting.DefaultWorkspace = agentruntimesettingDescWorkspace.Default.(string)
 	// agentruntimesettingDescReasoningMode is the schema descriptor for reasoning_mode field.
-	agentruntimesettingDescReasoningMode := agentruntimesettingFields[92].Descriptor()
+	agentruntimesettingDescReasoningMode := agentruntimesettingFields[93].Descriptor()
 	// agentruntimesetting.DefaultReasoningMode holds the default value on creation for the reasoning_mode field.
 	agentruntimesetting.DefaultReasoningMode = agentruntimesettingDescReasoningMode.Default.(string)
 	// agentruntimesettingDescReasoningLevel is the schema descriptor for reasoning_level field.
-	agentruntimesettingDescReasoningLevel := agentruntimesettingFields[93].Descriptor()
+	agentruntimesettingDescReasoningLevel := agentruntimesettingFields[94].Descriptor()
 	// agentruntimesetting.DefaultReasoningLevel holds the default value on creation for the reasoning_level field.
 	agentruntimesetting.DefaultReasoningLevel = agentruntimesettingDescReasoningLevel.Default.(string)
 	// agentruntimesettingDescVariablesJSON is the schema descriptor for variables_json field.
-	agentruntimesettingDescVariablesJSON := agentruntimesettingFields[94].Descriptor()
+	agentruntimesettingDescVariablesJSON := agentruntimesettingFields[95].Descriptor()
 	// agentruntimesetting.DefaultVariablesJSON holds the default value on creation for the variables_json field.
 	agentruntimesetting.DefaultVariablesJSON = agentruntimesettingDescVariablesJSON.Default.(string)
 	// agentruntimesettingDescModelInstructionsJSON is the schema descriptor for model_instructions_json field.
-	agentruntimesettingDescModelInstructionsJSON := agentruntimesettingFields[95].Descriptor()
+	agentruntimesettingDescModelInstructionsJSON := agentruntimesettingFields[96].Descriptor()
 	// agentruntimesetting.DefaultModelInstructionsJSON holds the default value on creation for the model_instructions_json field.
 	agentruntimesetting.DefaultModelInstructionsJSON = agentruntimesettingDescModelInstructionsJSON.Default.(string)
 	// agentruntimesettingDescContextCompactionEnabled is the schema descriptor for context_compaction_enabled field.
-	agentruntimesettingDescContextCompactionEnabled := agentruntimesettingFields[96].Descriptor()
+	agentruntimesettingDescContextCompactionEnabled := agentruntimesettingFields[97].Descriptor()
 	// agentruntimesetting.DefaultContextCompactionEnabled holds the default value on creation for the context_compaction_enabled field.
 	agentruntimesetting.DefaultContextCompactionEnabled = agentruntimesettingDescContextCompactionEnabled.Default.(bool)
 	// agentruntimesettingDescMemoryCompactEnabled is the schema descriptor for memory_compact_enabled field.
-	agentruntimesettingDescMemoryCompactEnabled := agentruntimesettingFields[97].Descriptor()
+	agentruntimesettingDescMemoryCompactEnabled := agentruntimesettingFields[98].Descriptor()
 	// agentruntimesetting.DefaultMemoryCompactEnabled holds the default value on creation for the memory_compact_enabled field.
 	agentruntimesetting.DefaultMemoryCompactEnabled = agentruntimesettingDescMemoryCompactEnabled.Default.(bool)
 	// agentruntimesettingDescToolResultGateEnabled is the schema descriptor for tool_result_gate_enabled field.
-	agentruntimesettingDescToolResultGateEnabled := agentruntimesettingFields[98].Descriptor()
+	agentruntimesettingDescToolResultGateEnabled := agentruntimesettingFields[99].Descriptor()
 	// agentruntimesetting.DefaultToolResultGateEnabled holds the default value on creation for the tool_result_gate_enabled field.
 	agentruntimesetting.DefaultToolResultGateEnabled = agentruntimesettingDescToolResultGateEnabled.Default.(bool)
 	// agentruntimesettingDescCompressLlmCacheEnabled is the schema descriptor for compress_llm_cache_enabled field.
-	agentruntimesettingDescCompressLlmCacheEnabled := agentruntimesettingFields[99].Descriptor()
+	agentruntimesettingDescCompressLlmCacheEnabled := agentruntimesettingFields[100].Descriptor()
 	// agentruntimesetting.DefaultCompressLlmCacheEnabled holds the default value on creation for the compress_llm_cache_enabled field.
 	agentruntimesetting.DefaultCompressLlmCacheEnabled = agentruntimesettingDescCompressLlmCacheEnabled.Default.(bool)
 	// agentruntimesettingDescCompressLlmCacheMaxEntries is the schema descriptor for compress_llm_cache_max_entries field.
-	agentruntimesettingDescCompressLlmCacheMaxEntries := agentruntimesettingFields[100].Descriptor()
+	agentruntimesettingDescCompressLlmCacheMaxEntries := agentruntimesettingFields[101].Descriptor()
 	// agentruntimesetting.DefaultCompressLlmCacheMaxEntries holds the default value on creation for the compress_llm_cache_max_entries field.
 	agentruntimesetting.DefaultCompressLlmCacheMaxEntries = agentruntimesettingDescCompressLlmCacheMaxEntries.Default.(int)
 	// agentruntimesettingDescCompressLlmCacheTTLSec is the schema descriptor for compress_llm_cache_ttl_sec field.
-	agentruntimesettingDescCompressLlmCacheTTLSec := agentruntimesettingFields[101].Descriptor()
+	agentruntimesettingDescCompressLlmCacheTTLSec := agentruntimesettingFields[102].Descriptor()
 	// agentruntimesetting.DefaultCompressLlmCacheTTLSec holds the default value on creation for the compress_llm_cache_ttl_sec field.
 	agentruntimesetting.DefaultCompressLlmCacheTTLSec = agentruntimesettingDescCompressLlmCacheTTLSec.Default.(int)
 	// agentruntimesettingDescEnableTokenTailoring is the schema descriptor for enable_token_tailoring field.
-	agentruntimesettingDescEnableTokenTailoring := agentruntimesettingFields[102].Descriptor()
+	agentruntimesettingDescEnableTokenTailoring := agentruntimesettingFields[103].Descriptor()
 	// agentruntimesetting.DefaultEnableTokenTailoring holds the default value on creation for the enable_token_tailoring field.
 	agentruntimesetting.DefaultEnableTokenTailoring = agentruntimesettingDescEnableTokenTailoring.Default.(bool)
 	// agentruntimesettingDescTokenTailoringStrategy is the schema descriptor for token_tailoring_strategy field.
-	agentruntimesettingDescTokenTailoringStrategy := agentruntimesettingFields[103].Descriptor()
+	agentruntimesettingDescTokenTailoringStrategy := agentruntimesettingFields[104].Descriptor()
 	// agentruntimesetting.DefaultTokenTailoringStrategy holds the default value on creation for the token_tailoring_strategy field.
 	agentruntimesetting.DefaultTokenTailoringStrategy = agentruntimesettingDescTokenTailoringStrategy.Default.(string)
 	// agentruntimesettingDescTokenTailoringSafetyMargin is the schema descriptor for token_tailoring_safety_margin field.
-	agentruntimesettingDescTokenTailoringSafetyMargin := agentruntimesettingFields[104].Descriptor()
+	agentruntimesettingDescTokenTailoringSafetyMargin := agentruntimesettingFields[105].Descriptor()
 	// agentruntimesetting.DefaultTokenTailoringSafetyMargin holds the default value on creation for the token_tailoring_safety_margin field.
 	agentruntimesetting.DefaultTokenTailoringSafetyMargin = agentruntimesettingDescTokenTailoringSafetyMargin.Default.(float64)
 	// agentruntimesettingDescCompressionBufferRatio is the schema descriptor for compression_buffer_ratio field.
-	agentruntimesettingDescCompressionBufferRatio := agentruntimesettingFields[105].Descriptor()
+	agentruntimesettingDescCompressionBufferRatio := agentruntimesettingFields[106].Descriptor()
 	// agentruntimesetting.DefaultCompressionBufferRatio holds the default value on creation for the compression_buffer_ratio field.
 	agentruntimesetting.DefaultCompressionBufferRatio = agentruntimesettingDescCompressionBufferRatio.Default.(float64)
 	// agentruntimesettingDescCompressionBufferAdaptive is the schema descriptor for compression_buffer_adaptive field.
-	agentruntimesettingDescCompressionBufferAdaptive := agentruntimesettingFields[106].Descriptor()
+	agentruntimesettingDescCompressionBufferAdaptive := agentruntimesettingFields[107].Descriptor()
 	// agentruntimesetting.DefaultCompressionBufferAdaptive holds the default value on creation for the compression_buffer_adaptive field.
 	agentruntimesetting.DefaultCompressionBufferAdaptive = agentruntimesettingDescCompressionBufferAdaptive.Default.(bool)
 	// agentruntimesettingDescSoftTriggerRatio is the schema descriptor for soft_trigger_ratio field.
-	agentruntimesettingDescSoftTriggerRatio := agentruntimesettingFields[107].Descriptor()
+	agentruntimesettingDescSoftTriggerRatio := agentruntimesettingFields[108].Descriptor()
 	// agentruntimesetting.DefaultSoftTriggerRatio holds the default value on creation for the soft_trigger_ratio field.
 	agentruntimesetting.DefaultSoftTriggerRatio = agentruntimesettingDescSoftTriggerRatio.Default.(float64)
 	// agentruntimesettingDescHardTriggerRatio is the schema descriptor for hard_trigger_ratio field.
-	agentruntimesettingDescHardTriggerRatio := agentruntimesettingFields[108].Descriptor()
+	agentruntimesettingDescHardTriggerRatio := agentruntimesettingFields[109].Descriptor()
 	// agentruntimesetting.DefaultHardTriggerRatio holds the default value on creation for the hard_trigger_ratio field.
 	agentruntimesetting.DefaultHardTriggerRatio = agentruntimesettingDescHardTriggerRatio.Default.(float64)
 	// agentruntimesettingDescSessionSummaryEnabled is the schema descriptor for session_summary_enabled field.
-	agentruntimesettingDescSessionSummaryEnabled := agentruntimesettingFields[109].Descriptor()
+	agentruntimesettingDescSessionSummaryEnabled := agentruntimesettingFields[110].Descriptor()
 	// agentruntimesetting.DefaultSessionSummaryEnabled holds the default value on creation for the session_summary_enabled field.
 	agentruntimesetting.DefaultSessionSummaryEnabled = agentruntimesettingDescSessionSummaryEnabled.Default.(bool)
 	// agentruntimesettingDescSkillLoadMode is the schema descriptor for skill_load_mode field.
-	agentruntimesettingDescSkillLoadMode := agentruntimesettingFields[110].Descriptor()
+	agentruntimesettingDescSkillLoadMode := agentruntimesettingFields[111].Descriptor()
 	// agentruntimesetting.DefaultSkillLoadMode holds the default value on creation for the skill_load_mode field.
 	agentruntimesetting.DefaultSkillLoadMode = agentruntimesettingDescSkillLoadMode.Default.(string)
 	// agentruntimesettingDescCodeExecutorType is the schema descriptor for code_executor_type field.
-	agentruntimesettingDescCodeExecutorType := agentruntimesettingFields[111].Descriptor()
+	agentruntimesettingDescCodeExecutorType := agentruntimesettingFields[112].Descriptor()
 	// agentruntimesetting.DefaultCodeExecutorType holds the default value on creation for the code_executor_type field.
 	agentruntimesetting.DefaultCodeExecutorType = agentruntimesettingDescCodeExecutorType.Default.(string)
 	// agentruntimesettingDescMaxLlmCalls is the schema descriptor for max_llm_calls field.
-	agentruntimesettingDescMaxLlmCalls := agentruntimesettingFields[112].Descriptor()
+	agentruntimesettingDescMaxLlmCalls := agentruntimesettingFields[113].Descriptor()
 	// agentruntimesetting.DefaultMaxLlmCalls holds the default value on creation for the max_llm_calls field.
 	agentruntimesetting.DefaultMaxLlmCalls = agentruntimesettingDescMaxLlmCalls.Default.(int)
 	// agentruntimesettingDescMaxToolIterations is the schema descriptor for max_tool_iterations field.
-	agentruntimesettingDescMaxToolIterations := agentruntimesettingFields[113].Descriptor()
+	agentruntimesettingDescMaxToolIterations := agentruntimesettingFields[114].Descriptor()
 	// agentruntimesetting.DefaultMaxToolIterations holds the default value on creation for the max_tool_iterations field.
 	agentruntimesetting.DefaultMaxToolIterations = agentruntimesettingDescMaxToolIterations.Default.(int)
 	// agentruntimesettingDescPlannerKind is the schema descriptor for planner_kind field.
-	agentruntimesettingDescPlannerKind := agentruntimesettingFields[114].Descriptor()
+	agentruntimesettingDescPlannerKind := agentruntimesettingFields[115].Descriptor()
 	// agentruntimesetting.DefaultPlannerKind holds the default value on creation for the planner_kind field.
 	agentruntimesetting.DefaultPlannerKind = agentruntimesettingDescPlannerKind.Default.(string)
 	// agentruntimesettingDescPlannerConfigJSON is the schema descriptor for planner_config_json field.
-	agentruntimesettingDescPlannerConfigJSON := agentruntimesettingFields[115].Descriptor()
+	agentruntimesettingDescPlannerConfigJSON := agentruntimesettingFields[116].Descriptor()
 	// agentruntimesetting.DefaultPlannerConfigJSON holds the default value on creation for the planner_config_json field.
 	agentruntimesetting.DefaultPlannerConfigJSON = agentruntimesettingDescPlannerConfigJSON.Default.(string)
 	// agentruntimesettingDescRalphLoopMaxIterations is the schema descriptor for ralph_loop_max_iterations field.
-	agentruntimesettingDescRalphLoopMaxIterations := agentruntimesettingFields[116].Descriptor()
+	agentruntimesettingDescRalphLoopMaxIterations := agentruntimesettingFields[117].Descriptor()
 	// agentruntimesetting.DefaultRalphLoopMaxIterations holds the default value on creation for the ralph_loop_max_iterations field.
 	agentruntimesetting.DefaultRalphLoopMaxIterations = agentruntimesettingDescRalphLoopMaxIterations.Default.(int)
 	// agentruntimesettingDescRalphLoopCompletionPromise is the schema descriptor for ralph_loop_completion_promise field.
-	agentruntimesettingDescRalphLoopCompletionPromise := agentruntimesettingFields[117].Descriptor()
+	agentruntimesettingDescRalphLoopCompletionPromise := agentruntimesettingFields[118].Descriptor()
 	// agentruntimesetting.DefaultRalphLoopCompletionPromise holds the default value on creation for the ralph_loop_completion_promise field.
 	agentruntimesetting.DefaultRalphLoopCompletionPromise = agentruntimesettingDescRalphLoopCompletionPromise.Default.(string)
 	// agentruntimesettingDescRalphLoopVerifyCommand is the schema descriptor for ralph_loop_verify_command field.
-	agentruntimesettingDescRalphLoopVerifyCommand := agentruntimesettingFields[118].Descriptor()
+	agentruntimesettingDescRalphLoopVerifyCommand := agentruntimesettingFields[119].Descriptor()
 	// agentruntimesetting.DefaultRalphLoopVerifyCommand holds the default value on creation for the ralph_loop_verify_command field.
 	agentruntimesetting.DefaultRalphLoopVerifyCommand = agentruntimesettingDescRalphLoopVerifyCommand.Default.(string)
 	// agentruntimesettingDescRalphLoopVerifyTimeoutSeconds is the schema descriptor for ralph_loop_verify_timeout_seconds field.
-	agentruntimesettingDescRalphLoopVerifyTimeoutSeconds := agentruntimesettingFields[119].Descriptor()
+	agentruntimesettingDescRalphLoopVerifyTimeoutSeconds := agentruntimesettingFields[120].Descriptor()
 	// agentruntimesetting.DefaultRalphLoopVerifyTimeoutSeconds holds the default value on creation for the ralph_loop_verify_timeout_seconds field.
 	agentruntimesetting.DefaultRalphLoopVerifyTimeoutSeconds = agentruntimesettingDescRalphLoopVerifyTimeoutSeconds.Default.(int)
 	// agentruntimesettingDescRalphLoopPromiseTagOpen is the schema descriptor for ralph_loop_promise_tag_open field.
-	agentruntimesettingDescRalphLoopPromiseTagOpen := agentruntimesettingFields[120].Descriptor()
+	agentruntimesettingDescRalphLoopPromiseTagOpen := agentruntimesettingFields[121].Descriptor()
 	// agentruntimesetting.DefaultRalphLoopPromiseTagOpen holds the default value on creation for the ralph_loop_promise_tag_open field.
 	agentruntimesetting.DefaultRalphLoopPromiseTagOpen = agentruntimesettingDescRalphLoopPromiseTagOpen.Default.(string)
 	// agentruntimesettingDescRalphLoopPromiseTagClose is the schema descriptor for ralph_loop_promise_tag_close field.
-	agentruntimesettingDescRalphLoopPromiseTagClose := agentruntimesettingFields[121].Descriptor()
+	agentruntimesettingDescRalphLoopPromiseTagClose := agentruntimesettingFields[122].Descriptor()
 	// agentruntimesetting.DefaultRalphLoopPromiseTagClose holds the default value on creation for the ralph_loop_promise_tag_close field.
 	agentruntimesetting.DefaultRalphLoopPromiseTagClose = agentruntimesettingDescRalphLoopPromiseTagClose.Default.(string)
 	// agentruntimesettingDescRalphLoopVerifyWorkDir is the schema descriptor for ralph_loop_verify_work_dir field.
-	agentruntimesettingDescRalphLoopVerifyWorkDir := agentruntimesettingFields[122].Descriptor()
+	agentruntimesettingDescRalphLoopVerifyWorkDir := agentruntimesettingFields[123].Descriptor()
 	// agentruntimesetting.DefaultRalphLoopVerifyWorkDir holds the default value on creation for the ralph_loop_verify_work_dir field.
 	agentruntimesetting.DefaultRalphLoopVerifyWorkDir = agentruntimesettingDescRalphLoopVerifyWorkDir.Default.(string)
 	// agentruntimesettingDescOutputSchemaJSON is the schema descriptor for output_schema_json field.
-	agentruntimesettingDescOutputSchemaJSON := agentruntimesettingFields[123].Descriptor()
+	agentruntimesettingDescOutputSchemaJSON := agentruntimesettingFields[124].Descriptor()
 	// agentruntimesetting.DefaultOutputSchemaJSON holds the default value on creation for the output_schema_json field.
 	agentruntimesetting.DefaultOutputSchemaJSON = agentruntimesettingDescOutputSchemaJSON.Default.(string)
 	// agentruntimesettingDescModelSelector is the schema descriptor for model_selector field.
-	agentruntimesettingDescModelSelector := agentruntimesettingFields[124].Descriptor()
+	agentruntimesettingDescModelSelector := agentruntimesettingFields[125].Descriptor()
 	// agentruntimesetting.DefaultModelSelector holds the default value on creation for the model_selector field.
 	agentruntimesetting.DefaultModelSelector = agentruntimesettingDescModelSelector.Default.(string)
 	// agentruntimesettingDescToolsRetryEnabled is the schema descriptor for tools_retry_enabled field.
-	agentruntimesettingDescToolsRetryEnabled := agentruntimesettingFields[125].Descriptor()
+	agentruntimesettingDescToolsRetryEnabled := agentruntimesettingFields[126].Descriptor()
 	// agentruntimesetting.DefaultToolsRetryEnabled holds the default value on creation for the tools_retry_enabled field.
 	agentruntimesetting.DefaultToolsRetryEnabled = agentruntimesettingDescToolsRetryEnabled.Default.(bool)
 	// agentruntimesettingDescToolsRetryMaxAttempts is the schema descriptor for tools_retry_max_attempts field.
-	agentruntimesettingDescToolsRetryMaxAttempts := agentruntimesettingFields[126].Descriptor()
+	agentruntimesettingDescToolsRetryMaxAttempts := agentruntimesettingFields[127].Descriptor()
 	// agentruntimesetting.DefaultToolsRetryMaxAttempts holds the default value on creation for the tools_retry_max_attempts field.
 	agentruntimesetting.DefaultToolsRetryMaxAttempts = agentruntimesettingDescToolsRetryMaxAttempts.Default.(int)
 	// agentruntimesettingDescToolsRetryInitialIntervalMs is the schema descriptor for tools_retry_initial_interval_ms field.
-	agentruntimesettingDescToolsRetryInitialIntervalMs := agentruntimesettingFields[127].Descriptor()
+	agentruntimesettingDescToolsRetryInitialIntervalMs := agentruntimesettingFields[128].Descriptor()
 	// agentruntimesetting.DefaultToolsRetryInitialIntervalMs holds the default value on creation for the tools_retry_initial_interval_ms field.
 	agentruntimesetting.DefaultToolsRetryInitialIntervalMs = agentruntimesettingDescToolsRetryInitialIntervalMs.Default.(int)
 	// agentruntimesettingDescToolsRetryBackoffFactor is the schema descriptor for tools_retry_backoff_factor field.
-	agentruntimesettingDescToolsRetryBackoffFactor := agentruntimesettingFields[128].Descriptor()
+	agentruntimesettingDescToolsRetryBackoffFactor := agentruntimesettingFields[129].Descriptor()
 	// agentruntimesetting.DefaultToolsRetryBackoffFactor holds the default value on creation for the tools_retry_backoff_factor field.
 	agentruntimesetting.DefaultToolsRetryBackoffFactor = agentruntimesettingDescToolsRetryBackoffFactor.Default.(float64)
 	// agentruntimesettingDescToolsRetryMaxIntervalMs is the schema descriptor for tools_retry_max_interval_ms field.
-	agentruntimesettingDescToolsRetryMaxIntervalMs := agentruntimesettingFields[129].Descriptor()
+	agentruntimesettingDescToolsRetryMaxIntervalMs := agentruntimesettingFields[130].Descriptor()
 	// agentruntimesetting.DefaultToolsRetryMaxIntervalMs holds the default value on creation for the tools_retry_max_interval_ms field.
 	agentruntimesetting.DefaultToolsRetryMaxIntervalMs = agentruntimesettingDescToolsRetryMaxIntervalMs.Default.(int)
 	// agentruntimesettingDescToolsRetryJitter is the schema descriptor for tools_retry_jitter field.
-	agentruntimesettingDescToolsRetryJitter := agentruntimesettingFields[130].Descriptor()
+	agentruntimesettingDescToolsRetryJitter := agentruntimesettingFields[131].Descriptor()
 	// agentruntimesetting.DefaultToolsRetryJitter holds the default value on creation for the tools_retry_jitter field.
 	agentruntimesetting.DefaultToolsRetryJitter = agentruntimesettingDescToolsRetryJitter.Default.(bool)
 	// agentruntimesettingDescToolsParallelEnabled is the schema descriptor for tools_parallel_enabled field.
-	agentruntimesettingDescToolsParallelEnabled := agentruntimesettingFields[131].Descriptor()
+	agentruntimesettingDescToolsParallelEnabled := agentruntimesettingFields[132].Descriptor()
 	// agentruntimesetting.DefaultToolsParallelEnabled holds the default value on creation for the tools_parallel_enabled field.
 	agentruntimesetting.DefaultToolsParallelEnabled = agentruntimesettingDescToolsParallelEnabled.Default.(bool)
 	// agentruntimesettingDescToolsStreamingEnabled is the schema descriptor for tools_streaming_enabled field.
-	agentruntimesettingDescToolsStreamingEnabled := agentruntimesettingFields[132].Descriptor()
+	agentruntimesettingDescToolsStreamingEnabled := agentruntimesettingFields[133].Descriptor()
 	// agentruntimesetting.DefaultToolsStreamingEnabled holds the default value on creation for the tools_streaming_enabled field.
 	agentruntimesetting.DefaultToolsStreamingEnabled = agentruntimesettingDescToolsStreamingEnabled.Default.(bool)
 	// agentruntimesettingDescToolsCircuitBreakerEnabled is the schema descriptor for tools_circuit_breaker_enabled field.
-	agentruntimesettingDescToolsCircuitBreakerEnabled := agentruntimesettingFields[133].Descriptor()
+	agentruntimesettingDescToolsCircuitBreakerEnabled := agentruntimesettingFields[134].Descriptor()
 	// agentruntimesetting.DefaultToolsCircuitBreakerEnabled holds the default value on creation for the tools_circuit_breaker_enabled field.
 	agentruntimesetting.DefaultToolsCircuitBreakerEnabled = agentruntimesettingDescToolsCircuitBreakerEnabled.Default.(bool)
 	// agentruntimesettingDescToolsCircuitBreakerOverridesJSON is the schema descriptor for tools_circuit_breaker_overrides_json field.
-	agentruntimesettingDescToolsCircuitBreakerOverridesJSON := agentruntimesettingFields[134].Descriptor()
+	agentruntimesettingDescToolsCircuitBreakerOverridesJSON := agentruntimesettingFields[135].Descriptor()
 	// agentruntimesetting.DefaultToolsCircuitBreakerOverridesJSON holds the default value on creation for the tools_circuit_breaker_overrides_json field.
 	agentruntimesetting.DefaultToolsCircuitBreakerOverridesJSON = agentruntimesettingDescToolsCircuitBreakerOverridesJSON.Default.(string)
 	// agentruntimesettingDescToolsDeferredJSON is the schema descriptor for tools_deferred_json field.
-	agentruntimesettingDescToolsDeferredJSON := agentruntimesettingFields[135].Descriptor()
+	agentruntimesettingDescToolsDeferredJSON := agentruntimesettingFields[136].Descriptor()
 	// agentruntimesetting.DefaultToolsDeferredJSON holds the default value on creation for the tools_deferred_json field.
 	agentruntimesetting.DefaultToolsDeferredJSON = agentruntimesettingDescToolsDeferredJSON.Default.(string)
 	// agentruntimesettingDescToolsCommandSafetyEnabled is the schema descriptor for tools_command_safety_enabled field.
-	agentruntimesettingDescToolsCommandSafetyEnabled := agentruntimesettingFields[136].Descriptor()
+	agentruntimesettingDescToolsCommandSafetyEnabled := agentruntimesettingFields[137].Descriptor()
 	// agentruntimesetting.DefaultToolsCommandSafetyEnabled holds the default value on creation for the tools_command_safety_enabled field.
 	agentruntimesetting.DefaultToolsCommandSafetyEnabled = agentruntimesettingDescToolsCommandSafetyEnabled.Default.(bool)
 	// agentruntimesettingDescToolsExecutionTimeoutSec is the schema descriptor for tools_execution_timeout_sec field.
-	agentruntimesettingDescToolsExecutionTimeoutSec := agentruntimesettingFields[137].Descriptor()
+	agentruntimesettingDescToolsExecutionTimeoutSec := agentruntimesettingFields[138].Descriptor()
 	// agentruntimesetting.DefaultToolsExecutionTimeoutSec holds the default value on creation for the tools_execution_timeout_sec field.
 	agentruntimesetting.DefaultToolsExecutionTimeoutSec = agentruntimesettingDescToolsExecutionTimeoutSec.Default.(int)
 	// agentruntimesettingDescForgetPolicyJSON is the schema descriptor for forget_policy_json field.
-	agentruntimesettingDescForgetPolicyJSON := agentruntimesettingFields[138].Descriptor()
+	agentruntimesettingDescForgetPolicyJSON := agentruntimesettingFields[139].Descriptor()
 	// agentruntimesetting.DefaultForgetPolicyJSON holds the default value on creation for the forget_policy_json field.
 	agentruntimesetting.DefaultForgetPolicyJSON = agentruntimesettingDescForgetPolicyJSON.Default.(string)
 	// agentruntimesettingDescToolWeightJSON is the schema descriptor for tool_weight_json field.
-	agentruntimesettingDescToolWeightJSON := agentruntimesettingFields[139].Descriptor()
+	agentruntimesettingDescToolWeightJSON := agentruntimesettingFields[140].Descriptor()
 	// agentruntimesetting.DefaultToolWeightJSON holds the default value on creation for the tool_weight_json field.
 	agentruntimesetting.DefaultToolWeightJSON = agentruntimesettingDescToolWeightJSON.Default.(string)
 	// agentruntimesettingDescDreamSnapshotJSON is the schema descriptor for dream_snapshot_json field.
-	agentruntimesettingDescDreamSnapshotJSON := agentruntimesettingFields[140].Descriptor()
+	agentruntimesettingDescDreamSnapshotJSON := agentruntimesettingFields[141].Descriptor()
 	// agentruntimesetting.DefaultDreamSnapshotJSON holds the default value on creation for the dream_snapshot_json field.
 	agentruntimesetting.DefaultDreamSnapshotJSON = agentruntimesettingDescDreamSnapshotJSON.Default.(string)
 	// agentruntimesettingDescVerificationTruncateChars is the schema descriptor for verification_truncate_chars field.
-	agentruntimesettingDescVerificationTruncateChars := agentruntimesettingFields[141].Descriptor()
+	agentruntimesettingDescVerificationTruncateChars := agentruntimesettingFields[142].Descriptor()
 	// agentruntimesetting.DefaultVerificationTruncateChars holds the default value on creation for the verification_truncate_chars field.
 	agentruntimesetting.DefaultVerificationTruncateChars = agentruntimesettingDescVerificationTruncateChars.Default.(int)
 	// agentruntimesettingDescCreatedAt is the schema descriptor for created_at field.
-	agentruntimesettingDescCreatedAt := agentruntimesettingFields[142].Descriptor()
+	agentruntimesettingDescCreatedAt := agentruntimesettingFields[143].Descriptor()
 	// agentruntimesetting.DefaultCreatedAt holds the default value on creation for the created_at field.
 	agentruntimesetting.DefaultCreatedAt = agentruntimesettingDescCreatedAt.Default.(string)
 	// agentruntimesettingDescUpdatedAt is the schema descriptor for updated_at field.
-	agentruntimesettingDescUpdatedAt := agentruntimesettingFields[143].Descriptor()
+	agentruntimesettingDescUpdatedAt := agentruntimesettingFields[144].Descriptor()
 	// agentruntimesetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	agentruntimesetting.DefaultUpdatedAt = agentruntimesettingDescUpdatedAt.Default.(string)
 	// agentruntimesettingDescID is the schema descriptor for id field.

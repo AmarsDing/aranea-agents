@@ -152,6 +152,13 @@ func entErrToBizErr(err error, domain string) error {
 - `isPostgresAlreadyExistsErr`（data.go）同样改用 `errors.As`，处理 SQLSTATE 42P07/42710/42701（duplicate_table/duplicate_object/duplicate_column）
 - 错误翻译使用 `apierror.Wrap(err, code, domain)` 保留原始错误链（非 `apierror.NewXxx`）
 
+**R5 补充（2026-08-01，vector 基础设施错误处理）**：
+
+记忆域 vector 调用（`internal/data/memory.go`）此前将 `internal/data/vector` 包的原始 `fmt.Errorf` 直接透传至 biz 层，违反 DB-R5。修复方案：
+
+- **可用性门控**：`memoryRepo.storeFor` 先检查 `vector.IsPgvector()`，非 pgvector 环境（如 SQLite 测试）直接返回 `biz.ErrMemoryUnavailable`，不再尝试构建 store 后失败
+- **统一翻译**：所有 vector store 调用（Insert/FindSimilar/FindSimilarWithUser/UpsertFactVector）的错误经 `entErrToBizErr(err, "MEMORY")` 翻译后返回，消除原始基础设施错误泄漏
+
 ---
 
 ## 三、统一执行引擎设计
@@ -1148,6 +1155,35 @@ type Entry struct {
 // 新笔记 → cosine 相似度检索历史 → LLM 判断是否建立链接 → 更新历史记忆的 keywords/tags
 ```
 
+### 9.6 召回透明度（memory_recalled notice）
+
+> R4 修复（2026-08-01）：chat 场景下用户无法感知"本轮注入了哪些记忆"。设计目标——召回结果对用户可见，且不干扰聊天流。
+
+**后端发射**（`internal/agent/memory_inject.go` BeforeModel 钩子）：
+
+```go
+// 召回结果注入 prompt 前，先发射 notice（best-effort，Informational 级）
+ctx = emitMemoryRecalledNotice(ctx, result.RecallHits)
+
+// notice payload（steps_v2, kind=notice, notice_type=memory_recalled）
+{"hits":[{"layer":"L2","line":"...","score":0.5,"fact_id":"...","confidence":0.88,"version":3}]}
+```
+
+- **幂等去重**：ctx 标记 `memoryRecalledEmittedKey`，tool-loop 重入不重复发射
+- **限额**：单 notice ≤10 条 hits，单条 line ≤120 runes（截断加省略号）
+- **降级契约**：无 hits / 无 ActivityEmitter / 发射失败均静默跳过，绝不中断 turn（与 PinnedPreferenceCue 同级）
+
+**前端渲染**：
+
+| 组件 | 职责 |
+|------|------|
+| `web/src/features/chat/memoryRecall.ts` | `parseMemoryRecallHits` 解析 notice Content（JSON → `MemoryRecallHit[]`，非法输入返回空） |
+| `activityV2Store.recallHitsByTurn` | `upsertStep` 时按 TurnID 索引 hits（created→completed 重放幂等覆盖） |
+| `MemoryRecallChips.vue` | turn 底部渲染 chips：层级 badge（L1-L4 配色）+ line + score%，tooltip 显示置信度/版本 |
+| `noticeFilter.ts` | `memory_recalled` 加入 `SYSTEM_NOTICE_TYPES`，原始 JSON 不作为 NoticeBlock 渲染 |
+
+**数据流**：BeforeModel 钩子 → `ActivityEmitter.EmitNotice` → steps_v2 落库 + WS 推送 → store 索引 → TurnContainer 底部 chips。
+
 ---
 
 ## 十、体验设计
@@ -1853,6 +1889,8 @@ func (s *ReconsolidationService) OnRecall(
 
 **集成点**：在 [memory_inject.go](../../internal/agent/memory_inject.go) 的 BeforeModel 钩子中，召回记忆后异步触发 `OnRecall`（不阻塞模型调用）。
 
+> **实现注记（2026-08-05）**：已按本节设计落地。实际实现较设计稿有两点收窄：① store 依赖从 `biz.L4EntityWriter`（Stable 不可扩展）收窄为新建的 `biz.L4ReconsolidationStore`（evolving，BoostActivation/IncrementUseCount 两方法）；② activation 饱和在 SQL 层原子完成（`CASE WHEN activation + delta > 1.0`），避免 Go 层 read-modify-write 竞态。触发侧由 `L4MemoryCue` 返回实际注入的实体 ID 集，`triggerL4Reconsolidation` 经 `safego.Go` 后台执行并以 ctx 标记保证每回合至多触发一次。
+
 ### 15.8 冲突消解策略
 
 新记忆与旧记忆矛盾时建立 INHIBIT 抑制关系：
@@ -1949,3 +1987,146 @@ func (s *KnowledgeMemoryBridge) OnKnowledgeConfirmed(
 | 冲突消解 | <30ms | 1 INSERT + 1 UPDATE |
 
 **容量假设**：单 Agent 图谱 ≤10万节点、≤50万边。超过此规模触发图数据库迁移评估。
+
+---
+
+## 十六、记忆系统重设计（写入闭环）
+
+> 源自《记忆系统整体设计评审与重设计方案》（[2026-07-29-review-memory-system-redesign.md](../reports/2026-07-29-review-memory-system-redesign.md)）。本节落地报告 §6.3 写入管线与 §6.7 P0/P1 的工程设计。实现状态见 [development.md §十八](./70-orchestration-longtask-memory.development.md#十八phase-m记忆系统重设计闭环p0-止血--p1-闭环重构)。
+
+### 16.1 统一写入管线（P1-3）
+
+**问题**：重设计前存在多条独立事实写入路径（auto_memory 内联冲突治理、episode consolidator 直写），操作语义与降噪策略各自为政，垃圾与重复事实无闸门。
+
+**设计**：所有自动事实写入源归一化为 `FactWriteCandidate`，汇入单一管线 `FactWritePipeline.Apply`：
+
+```
+候选（candidate）
+  → ① 降噪闸口（纯函数）：非空 statement + kind 白名单 + 置信度 ≥0.6
+  → ② 邻域召回：embedding 相似邻居（≥0.80，上限 10），kind/statement 经 fact 行 enrichment
+  → ③ 决策分流：
+       非争议 → 启发式（同 kind 邻居 ≥0.92 → noop-merge；否则 add）
+       争议   → 批次 LLM 裁决（邻居 ∈[0.80,0.92) 或跨 kind ≥0.92）
+  → ④ 双时态写入执行
+  → ⑤ 全量审计（memory_action_log）
+```
+
+**操作语义**（`FactWriteOperation`，对齐 Mem0 ADD/UPDATE/DELETE/NOOP）：
+
+| 操作 | 执行 | 说明 |
+|------|------|------|
+| `add` | `UpsertFactRow` | 全新事实插入 |
+| `update` | `InvalidateAndUpsertFactTx` | 取代旧事实：旧行 `valid_until=now` 失效 + 新行插入，**原子事务** |
+| `delete` | `InvalidateFact` | 仅失效不替代——永不物理删除，双时态历史保留 |
+| `noop` | 不写 / `IncrementFactAccessCount` | 两子类：LLM 宣告 noop（无存储价值）；去重合并（≥0.92 同 kind 邻居已承载，仅访问计数 +1） |
+
+**降噪三闸**（`GateFactWriteCandidate` + 邻域判定）：
+
+| 闸 | 规则 | 依据 |
+|---|------|------|
+| ① kind 白名单 | 仅 preference/profile/goal/constraint/decision/relationship 六类耐久事实入 L3；event/knowledge/fact 丢弃（「用户做了什么」归 L2 episode） | 认知分层语义边界 |
+| ② 置信度下限 | `FactWriteMinConfidence = 0.6`；启发式正则提取器赋恰好 0.6 使高精度匹配通过 | Mem0 #4573 教训：无下限垃圾持续累积 |
+| ③ 去重合并 | 同 kind 邻居余弦相似度 ≥0.92（`FactWriteMergeScore`）→ 合并不重复插入 | 与既有冲突 supersede 阈值一致 |
+
+**争议带与 LLM 裁决**：邻居 ∈[`FactWriteContestedScore`=0.80, 0.92) 或跨 kind ≥0.92 的候选为「争议」，整批一次 LLM 调用裁决（`FactWriteAdjudicator.AdjudicateFactWrites`）。防御设计：
+- 裁决目标必须 ∈ 该候选的邻居集合，否则降级 `add`（防幻觉/过期 id）
+- 裁决器不可用/出错/漏判 → 回退启发式（争议在启发式下恒为 `add`，只有 LLM 可发出 update/delete）
+- 邻域召回任何失败（embed/search/行读取）降级为无邻居 → `add`
+
+**溯源与审计**：每个决策写一条 action log（`fact_write.{drop,add,update,delete,merge,noop}`，含 drop 原因/target/kind/statement 截断 80 runes）；candidate 携带 `source_kind`/`source_episode_id`/`source_session_id`/`source_message_id` 全链溯源。
+
+**依赖装配**（`FactWritePipelineDeps`，恰好 8 个）：`Searcher`（邻域向量搜索）、`Embedder`、`Reader`（kind/statement enrichment）、`Writer`（双时态写）、`Access`（合并计数）、`Adjudicator`（可选）、`ActionLog`（可选）、`LG`。可选依赖为 nil 时按上述降级路径运行。
+
+**接入点**：
+- `AutoMemoryWorker.extract` / `extractFeedback`（会话提取 + 反馈提取均走管线；原内联冲突治理移除）
+- `EpisodeConsolidator.persistViaPipeline`（sleep-time episode → fact 提取走管线；管线未注入时保留 legacy 直写兜底）
+
+**subject_type → fact_kind 映射**（`FactKindForSubjectType`）：V3 提取 schema 的 `person|preference|constraint|goal|decision|relationship` 映射到白名单对应 kind（person→profile）；`event|concept` 映射为 event/knowledge（将被闸①丢弃）；未知值回退 `fact`（同样被闸①丢弃）。
+
+### 16.2 Scratchpad→Episode 归档原子化（P1-2）
+
+**问题**：L1 闲置 60min 即置 `cancelled` 且未归档（数据丢失）；归档失败后逃出扫描集合，失败静默永久化。
+
+**设计**：
+- **原子归档**：`EndL1Task` + `ArchiveAndCreateEpisodeTx` 同事务（archived_at 标记 + L2 episode 创建）
+- **双分支扫描**（`MemoryL1ArchiveWorker`）：
+  - 闲置 active 分支：updated_at < idle cutoff → end + 归档
+  - 已结束未归档分支：archived_at='' 且 ended_at < now-2min → 仅重试归档事务（2min cutoff 防止与 `EndL1Task` 同步归档路径竞争）
+- **死信告警**：同一任务连续归档失败 ≥3 次发流程日志告警（`system.memory_l1_archive.failed`），此后每 +10 次重发限频；任务永不离开扫描集合——失败可重试、持续失败有告警，消灭静默永久失败
+- **显式完成**：`working_memory_complete` 工具让 agent 任务完成时主动触发归档，不再依赖闲置超时
+
+### 16.3 Sleep-time LLM 接线（P1-1）
+
+**问题**：Sleep-time 依赖静态 env 配置 LLM，未配置即每周期 nil LLM 空转跳过。
+
+**设计**：`LLMResolver` 接口（`ResolveLLM(ctx, UserKey) trpcmodel.Model`）按 consolidation 目标从 agent 设置经 ModelCatalog 解析模型，优先级 **MemoryWorker → L0Compress → agent 默认模型**；`SleepTimeService` 与 `EpisodeConsolidator` 均经 `SetLLMResolver` 接线；resolver 缺失或解析失败回退静态 LLM。同一解析策略被 P1-3 的 `MemoryFactWriteAdjudicator` 复用。
+
+### 16.4 记忆金丝雀（P0 闭环断言）
+
+**设计动机**：评审根因——链路无人端到端拥有、失败全部静默降级、观测指标定义错误（`use_count` 召回即 +1 制造运行假象）。金丝雀是「写入的 fact 必须能召回」的代码级断言。
+
+**设计**（`MemoryCanaryWorker`，默认 30min 周期）：
+
+```
+write   合成 fact（scope_type=canary）经生产 consolidation upsert 路径写入
+recall  以生产默认 minScore（0.55）经生产 L3 召回路径召回 → 断言命中
+        （Bug A 回归捕获点：Scores.Total=0 将使召回阶段失败）
+archive 双时态失效（valid_until=now）→ 断言从后续召回消失
+```
+
+任一阶段失败：记录 `biz.MemoryCanaryStatus`（经 `AlertMetricRegistry` 暴露为告警指标）+ 流程日志告警。金丝雀使用独立 canary scope，不污染业务记忆空间。
+
+### 16.5 计数器三段化（FR-12.6）
+
+**问题**：`use_count` 语义错误——召回路径返回结果即 +1，与该 fact 是否真正写入 prompt 无关。它制造「记忆在被使用」的假象（评审根因之一：观测指标定义错误），且无法度量真实注入率与引用率。
+
+**设计**：三段漏斗分离，每段有唯一写入点，语义互不重叠：
+
+| 计数器 | 语义 | 写入点 |
+|--------|------|--------|
+| `recalled_count` | 进入召回结果集 | 数据层召回路径：`l3ScoredAdapter` 在召回结果返回前批量 +1（`IncrementFactRecalledCount`）；历史 `use_count` 一次性回填 |
+| `injected_count` | 通过过滤与预算、实际写入 prompt（用户视角唯一有意义的「使用」计数） | before-model hook：`memory_inject` 收集本轮实际注入的 factIDs，turn 完成后经 `bumpFactInjectedCounts` 异步批量 +1（`context.Background()` 脱离请求生命周期，不阻塞流式响应） |
+| `cited_count` | 被助手回复显式引用 | `MemoryCitationBackfillWorker` 后台扫描回填（见下） |
+
+**Schema 迁移**（`20261125_memory_fact_three_counters.sql`）：`memory_facts` 增加三列（`INTEGER NOT NULL DEFAULT 0`）；`UPDATE ... SET recalled_count = use_count WHERE recalled_count = 0 AND use_count > 0` 一次性回填（WHERE 守卫保证幂等）；新建 `memory_fact_citations(fact_id, turn_id, created_at)` 主键去重账本。`use_count` 列保留但不再维护（历史数据不丢）。
+
+**引用回填 worker**（`MemoryCitationBackfillWorker`，默认 10min 周期、1h 滑窗、单批 200 条 notice）：
+
+```
+扫描 steps_v2 中 memory_recalled notice（= 本轮注入的 fact 集合）
+  → join 该 turn 的最终 reply（kind='reply' AND is_final，seq 最大一条）
+  → 对每条注入 fact 做双启发式判定：
+      ① ID 引用：回复含 fact 短 provenance ID（prompt 以 "[id:abc12345, ...]" 渲染，
+         LLM 复述该引用即确凿 citation）
+      ② 文本重叠：statement 的 8-rune 滑窗 k-gram ≥50% 出现在回复中
+         （CJK 无词边界无法分词，k-gram 包含容忍改写；statement <4 runes 跳过）
+  → 命中写 (fact_id, turn_id) 去重账本 + cited_count +1
+```
+
+重叠窗口经账本幂等，重复扫描不会双计。全部失败 best-effort：本轮失败记录日志，下一 tick 重试；`MEMORY_CITATION_BACKFILL_DISABLED` 环境变量可整体关闭。
+
+**前端可观测**：`MemoryFact` proto 增加 `recalled_count`/`injected_count`/`cited_count`（field 30/31/32）→ 记忆中心 L3 facts 表新增紧凑「召/注/引」列，fact 详情抽屉增加使用统计区（三枚 chip + 漏斗说明文案），中英 i18n。
+
+### 16.6 Profile 常驻卡（FR-12.7）
+
+**问题**：事实召回依赖向量打分，低分事实不进 prompt——用户最常用的画像/偏好可能长期不得注入，感知不到记忆存在。常驻卡是「用户感到记忆存在」的最短路径（Letta core memory 模式）：100% 注入率，不经召回打分。
+
+**数据模型**（`20261126_memory_profile_cards.sql`）：`memory_profile_cards` 每 `(agent_id, user_id)` 一张卡（唯一索引），字段 `content`（蒸馏正文）/`fact_count`（源事实数）/`version`（upsert 递增）/`updated_at`。
+
+**Sleep-time Phase 3**（`ProfileCardDistiller`，在 Phase 1 trpcmemory 整理与 Phase 2 episode→fact 提取之后运行，使用最新事实集）：
+
+```
+读取 active 画像类事实（kinds = profile/preference/goal/constraint，
+  user ∪ agent scope，importance 排序，上限 50 条，单条截断 200 runes）
+  → 零源事实 → 删除过期卡（卡不得比事实活得更久，如治理清空偏好后）
+  → LLM 蒸馏（45s 超时；系统提示要求按语义分组合并、冲突以更新更具体为准、
+     ≤800 字、不编造源事实之外信息）
+  → 输出净化（剥 markdown 围栏/标题，硬上限 1000 runes）
+  → upsert（version+1，fact_count=源事实数）
+```
+
+LLM 复用 §16.3 的 `LLMResolver` 按目标解析（MemoryWorker → L0Compress → agent 默认），nil LLM 或蒸馏失败 → 保留旧卡优雅降级。整个 Phase 3 best-effort 永不返回错误——JobRunner 的重试决策只由 Phase 1 驱动，避免 Phase 3 失败导致整个 job 重试而重复 Phase 1/2 变更。
+
+**注入**（`ProfileCardCue`）：L3 注入开启时，卡片无条件渲染在记忆块**首位**（`## 用户档案（长期记忆摘要，始终生效）` 标题 + 正文，hook 侧硬上限 1200 runes 安全网）；无卡/读卡失败返回空串，best-effort 永不打断 turn。
+
+**依赖装配**（wire）：`NewProfileCardDistiller(data.NewMemoryPreferenceLister, data.NewMemoryProfileCardStore)` → `SetLLMResolver(resolver)` → `SleepTimeService.SetProfileCardDistiller`；注入侧 `TRPCBuilderDeps.MemoryProfileCardReader` = `data.NewMemoryProfileCardStore`。

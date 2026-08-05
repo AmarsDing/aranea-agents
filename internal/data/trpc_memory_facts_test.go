@@ -16,59 +16,26 @@ import (
 )
 
 // openTestDataForMemory opens an isolated Postgres test schema with the Ent
-// schema plus the raw-SQL-managed memory tables (DDL-migration managed in
-// production, created here directly for test speed).
+// schema plus the raw-SQL-managed memory tables. The memory chain tables are
+// created from the PRODUCTION DDL (sql/memory_chain.sql via
+// EnsureSessionMemorySchema) instead of a hand-written mirror, so tests can
+// never drift from the columns production code actually reads/writes
+// (regression guard for the 2026-08-05 "recalled_count does not exist"
+// failures caused by a stale mirror).
 func openTestDataForMemory(t *testing.T) (*data.Data, *ent.Client) {
 	t.Helper()
 	client, db := testhelper.SetupTestPG(t)
 	ctx := context.Background()
-	for _, stmt := range []string{
-		`CREATE TABLE IF NOT EXISTS memory_facts (
- id TEXT PRIMARY KEY, scope_type TEXT NOT NULL, scope_id TEXT NOT NULL DEFAULT '',
- workspace_id TEXT NOT NULL DEFAULT '', user_id TEXT NOT NULL DEFAULT '', team_id TEXT NOT NULL DEFAULT '', agent_id TEXT NOT NULL DEFAULT '',
- statement TEXT NOT NULL, statement_normalized TEXT NOT NULL DEFAULT '', fingerprint TEXT NOT NULL DEFAULT '', details_markdown TEXT NOT NULL DEFAULT '',
- fact_kind TEXT NOT NULL DEFAULT 'fact', tags_json TEXT NOT NULL DEFAULT '[]',
- confidence REAL NOT NULL DEFAULT 0.7, importance REAL NOT NULL DEFAULT 0.5,
- use_count INTEGER NOT NULL DEFAULT 0, hit_count INTEGER NOT NULL DEFAULT 0,
- positive_feedback_count INTEGER NOT NULL DEFAULT 0, negative_feedback_count INTEGER NOT NULL DEFAULT 0, conflict_count INTEGER NOT NULL DEFAULT 0,
- source_kind TEXT NOT NULL DEFAULT 'manual', source_episode_id TEXT NOT NULL DEFAULT '', source_session_id TEXT NOT NULL DEFAULT '',
- source_message_id TEXT NOT NULL DEFAULT '', source_external TEXT NOT NULL DEFAULT '',
- version INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'active', superseded_by TEXT NOT NULL DEFAULT '',
- embedding_status TEXT NOT NULL DEFAULT 'pending', embedding_model TEXT NOT NULL DEFAULT '', embedding_dim INTEGER NOT NULL DEFAULT 0,
- embedding_blob BYTEA, embedding_norm REAL NOT NULL DEFAULT 0,
- pii_flag INTEGER NOT NULL DEFAULT 0, redacted_statement TEXT NOT NULL DEFAULT '', pii_types TEXT NOT NULL DEFAULT '',
- ttl_days INTEGER NOT NULL DEFAULT 0, decay_factor REAL NOT NULL DEFAULT 0.98, next_decay_at TEXT NOT NULL DEFAULT '',
- last_used_at TEXT NOT NULL DEFAULT '', expires_at TEXT NOT NULL DEFAULT '',
- metadata_json TEXT NOT NULL DEFAULT '{}', quality_score REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
- archived_at TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '',
- valid_from TEXT NOT NULL DEFAULT '', valid_until TEXT NOT NULL DEFAULT '',
- links TEXT NOT NULL DEFAULT '[]', keywords TEXT NOT NULL DEFAULT '[]', tags TEXT NOT NULL DEFAULT '[]',
- decay_score REAL NOT NULL DEFAULT 1.0, context_note TEXT NOT NULL DEFAULT '',
- UNIQUE(scope_type, scope_id, fingerprint))`,
-		`CREATE TABLE IF NOT EXISTS memory_action_log (
- id TEXT PRIMARY KEY, action TEXT NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL,
- reason TEXT NOT NULL DEFAULT '', policy_version TEXT NOT NULL DEFAULT 'consolidate_v1',
- source_event_ids_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL)`,
-		`CREATE TABLE IF NOT EXISTS memory_entities (
- id TEXT PRIMARY KEY, scope_type TEXT NOT NULL, scope_id TEXT NOT NULL DEFAULT '', workspace_id TEXT NOT NULL DEFAULT '', user_id TEXT NOT NULL DEFAULT '',
- entity_type TEXT NOT NULL, name TEXT NOT NULL, name_normalized TEXT NOT NULL, aliases_json TEXT NOT NULL DEFAULT '[]',
- description TEXT NOT NULL DEFAULT '', attributes_json TEXT NOT NULL DEFAULT '{}',
- importance REAL NOT NULL DEFAULT 0.5, confidence REAL NOT NULL DEFAULT 0.7, use_count INTEGER NOT NULL DEFAULT 0, source_kind TEXT NOT NULL DEFAULT '',
- embedding_status TEXT NOT NULL DEFAULT 'pending', embedding_model TEXT NOT NULL DEFAULT '', embedding_dim INTEGER NOT NULL DEFAULT 0,
- embedding_blob BYTEA, embedding_norm REAL NOT NULL DEFAULT 0,
- status TEXT NOT NULL DEFAULT 'active', merged_into TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}',
- created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '',
- activation REAL NOT NULL DEFAULT 0, activation_updated_at TEXT NOT NULL DEFAULT '', source_type TEXT NOT NULL DEFAULT '',
- valence REAL NOT NULL DEFAULT 0, arousal REAL NOT NULL DEFAULT 0,
- UNIQUE(scope_type, scope_id, entity_type, name_normalized))`,
-		`CREATE TABLE IF NOT EXISTS schema_migrations (
+	if err := data.EnsureSessionMemorySchema(ctx, client, data.DialectPostgres, loggateway.NewNoop()); err != nil {
+		t.Fatalf("ensure session memory schema: %v", err)
+	}
+	// schema_migrations is managed by the DDL migration registry, not by
+	// memory_chain.sql; the legacy TRPC memory migration tests gate on it.
+	if _, err := client.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
  version INTEGER PRIMARY KEY NOT NULL,
  name TEXT NOT NULL,
- applied_at TEXT NOT NULL)`,
-	} {
-		if _, err := client.ExecContext(ctx, stmt); err != nil {
-			t.Fatal(err)
-		}
+ applied_at TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
 	}
 	// Create a minimal Data with the test client
 	d := &data.Data{}
@@ -96,7 +63,7 @@ func TestMemoryService_AddMemoryWritesFactVisibleToAdmin(t *testing.T) {
 		t.Fatalf("AddMemory: %v", err)
 	}
 	l3 := data.NewL3FactReaderForUser(d)
-	rows, total, _, _, err := l3.ListFactRows(ctx, "agent", "agent-1", "", "active", "", 20, 0)
+	rows, total, _, _, err := l3.ListFactRows(ctx, "agent", "agent-1", "", "active", "", "", 20, 0)
 	if err != nil {
 		t.Fatalf("ListFactRows: %v", err)
 	}
@@ -129,7 +96,7 @@ func TestMemoryService_AddMemoryDedupByFingerprint(t *testing.T) {
 		t.Fatal(err)
 	}
 	l3 := data.NewL3FactReaderForUser(d)
-	rows, total, _, _, err := l3.ListFactRows(ctx, "agent", "agent-dedup", "", "active", "", 20, 0)
+	rows, total, _, _, err := l3.ListFactRows(ctx, "agent", "agent-dedup", "", "active", "", "", 20, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +315,7 @@ func TestUpdateMemory_InvalidatesOldOnConflict(t *testing.T) {
 	// The old fact should still exist in the DB but with ValidUntil set.
 	// Use the admin reader (ListFactRows) which does NOT filter valid_until.
 	l3 := data.NewL3FactReaderForUser(d)
-	rows, _, _, _, err := l3.ListFactRows(ctx, "agent", "agent-conf", "", "", "", 20, 0)
+	rows, _, _, _, err := l3.ListFactRows(ctx, "agent", "agent-conf", "", "", "", "", 20, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

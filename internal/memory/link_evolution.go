@@ -472,9 +472,19 @@ func (s *LinkEvolutionServiceImpl) updateNewMemoryLinks(ctx context.Context, uk 
 func (s *LinkEvolutionServiceImpl) applyEvolvedFromSideEffects(ctx context.Context, newFactID string, oldFact *factRowData, link linkDecision, now string) {
 	// L4 memory_relations entry: new fact EVOLVED_FROM old fact.
 	if s.relationWriter != nil && oldFact != nil {
+		// H4: write the relation in AGENT scope keyed by the originating
+		// agent — L4 relation readers (unified graph via
+		// ListActiveRelationRows) query with scope_type='agent', so
+		// inheriting the fact's session/user scope made EVOLVED_FROM edges
+		// invisible. Facts carry agent_id across all scopes (F1); fall back
+		// to the fact's own scope for legacy rows without agent_id.
+		relScopeType, relScopeID := oldFact.ScopeType, oldFact.ScopeID
+		if oldFact.AgentID != "" {
+			relScopeType, relScopeID = "agent", oldFact.AgentID
+		}
 		rel := biz.L4RelationWrite{
-			ScopeType:    oldFact.ScopeType,
-			ScopeID:      oldFact.ScopeID,
+			ScopeType:    relScopeType,
+			ScopeID:      relScopeID,
 			SourceID:     newFactID,
 			TargetID:     oldFact.ID,
 			RelationType: LinkTypeEvolvedFrom,

@@ -88,6 +88,7 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 			MemoryL3Recall:         s.orch.td().Persist.Memory.L3Recall,
 			MemoryCompositeRecall:  s.orch.td().Persist.Memory.CompositeRecall,
 			MemoryPreferenceLister: s.orch.td().Persist.Memory.PreferenceLister,
+			MemoryReconsolidator:   s.orch.td().Persist.Memory.Reconsolidator,
 			KnowledgeRetriever:     s.orch.rt().KnowledgeRetriever,
 		},
 		TRPCPluginDeps: chatagent.TRPCPluginDeps{

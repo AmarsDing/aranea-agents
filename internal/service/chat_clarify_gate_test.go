@@ -16,8 +16,9 @@ import (
 
 // stubTaskV2Writer is a stub implementation of biz.TaskV2Writer for testing.
 type stubTaskV2Writer struct {
-	upserted []biz.Task
-	err      error
+	upserted      []biz.Task
+	terminalized  []biz.Task
+	err           error
 }
 
 func (s *stubTaskV2Writer) CreateTask(_ context.Context, t biz.Task) (biz.Task, error) {
@@ -38,6 +39,7 @@ func (s *stubTaskV2Writer) ResumeInterruptedTask(_ context.Context, id string, r
 }
 
 func (s *stubTaskV2Writer) CompleteTaskTerminal(_ context.Context, t biz.Task) (biz.Task, error) {
+	s.terminalized = append(s.terminalized, t)
 	return t, nil
 }
 
@@ -112,8 +114,8 @@ func (s *stubTaskV2Repo) ResumeInterruptedTask(_ context.Context, id string, res
 	return biz.Task{}, false, nil
 }
 
-func (s *stubTaskV2Repo) CompleteTaskTerminal(_ context.Context, t biz.Task) (biz.Task, error) {
-	return t, nil
+func (s *stubTaskV2Repo) CompleteTaskTerminal(ctx context.Context, t biz.Task) (biz.Task, error) {
+	return s.writer.CompleteTaskTerminal(ctx, t)
 }
 
 func newClarificationTestOrch(

@@ -1,39 +1,40 @@
-# 静态API测试结果 2026-07-30T00:52:33.471761
+# 静态API测试结果 2026-08-01T10:34:37.345014
 
 [PASS] L0-01 富会话快照列表 :: status=200 items=0 (on_warning模式下低ratio无快照=设计行为)
 [PASS] L0-02 agent_id过滤兼容 :: status=200 items=0
 [PASS] L0-ERR 不存在session的L0查询 :: status=200 body={'items': []}
 [PASS] L1-01 L1任务列表 :: status=200 items=0
 [PASS] L1-02 L1字段列表 :: SKIP: 无任务（等待L1-03聊天触发）
-[PASS] L2-01 episodes分页 :: status=200 total=0 page=0
+[PASS] L2-01 episodes分页 :: status=200 total=5 page=5
+[PASS] L2-01b episode字段完整性 :: keys=['agentId', 'consolidatedL3Count', 'consolidationStatus', 'createdAt', 'endedAt', 'episodeKind', 'id', 'importance', 'outcomeSummary', 'sessionId', 'title']
 [PASS] L2-04/L3-07 recall debug :: status=200 keys=['l2Hits', 'l3Hits']
-[PASS] L2-05 composite search :: status=200 body={'items': [{'layer': 'L3', 'id': '78cea0f1-d06f-44f4-8a37-1c7007e9d44a', 'text': 'User prefers to organize work using multi-team parallel+sequential workflow patterns (two parallel teams feeding concl
-[PASS] L3-01 facts列表(基线4) :: status=200 count=4
-[PASS] L3-02 新增fact :: status=200 id=3a10a5be-4d2a-4157-808f-61be909fb426 body={'fact': {'id': '3a10a5be-4d2a-4157-808f-61be909fb426', 'scopeType': 'agent', 'scopeId': 'agent___spirit__', 'workspaceId': 'default', 'userId': '', 'teamId': '', 'agentId': 'agent
-[FAIL] L3-03 重复upsert幂等 :: status=200 version=1 memtest_count=1
-[PASS] L3-04 PII fact写入脱敏 :: status=200 id=b546686e-5baa-4afd-8f1f-affd43938d7d piiFlag=True statement='memtest: 用户手机号是 [phone]'
+[PASS] L2-05 composite search :: status=200 body={'items': [{'layer': 'L2', 'id': '4dfed247-5a0b-43e4-b9b3-0ed1e55de220', 'text': 'L1 Archive: 1c6baf88-f2ec-4834-9e51-2a079d07aff9', 'score': 0.07364238007751583}, {'layer': 'L2', 'id': '5b9c937a-5619
+[PASS] L3-01 facts列表(基线4) :: status=200 count=20
+[PASS] L3-02 新增fact :: status=200 id=ff84138f-911f-4cfa-b166-953900e8bb4a body={'fact': {'id': 'ff84138f-911f-4cfa-b166-953900e8bb4a', 'scopeType': 'agent', 'scopeId': 'agent___spirit__', 'workspaceId': 'default', 'userId': '', 'teamId': '', 'agentId': 'agent
+[PASS] L3-03 重复upsert幂等 :: status=200 version=2 memtest_count=1
+[PASS] L3-04 PII fact写入脱敏 :: status=200 id=22a5dfb1-f06f-467a-be75-1d8f4fc1c50a piiFlag=True statement='memtest: 用户手机号是 [phone]'
 [PASS] L3-05a PII列表 :: status=200 count=1
-[PASS] L3-05b PII review approve :: status=200 body={'fact': {'id': 'b546686e-5baa-4afd-8f1f-affd43938d7d', 'scopeType': 'agent', 'scopeId': 'agent___spirit__', 'workspaceId': 'default', 'userId': '', '
-[PASS] L3-06 冲突检测 :: write=(200,200) conflicts=1 tailwind_hit=True body=[{'id': '287fc22e-aa42-475b-9006-aec1fb9d6bd3', 'scopeType': 'agent', 'scopeId': 'agent___spirit__', 'workspaceId': 'default', 'userId': '', 'teamId': '', 'agentId': 'agent___spirit__', 'statement': '
+[PASS] L3-05b PII review approve :: status=200 body={'fact': {'id': '22a5dfb1-f06f-467a-be75-1d8f4fc1c50a', 'scopeType': 'agent', 'scopeId': 'agent___spirit__', 'workspaceId': 'default', 'userId': '', '
+[PASS] L3-06 冲突检测 :: write=(200,200) conflicts=1 tailwind_hit=True body=[{'id': '0910135f-050e-4210-8c6d-55181d7d4a52', 'scopeType': 'agent', 'scopeId': 'agent___spirit__', 'workspaceId': 'default', 'userId': '', 'teamId': '', 'agentId': 'agent___spirit__', 'statement': '
 [PASS] L3-08 索引状态(worker status) :: stale=8 disabled=0
 [PASS] L4-01 entities列表(基线1) :: status=200 count=2
 [PASS] L4-02 neighborhood BFS :: status=200 nodes=0 edges=0
-[PASS] L4-03 spreading activation :: status=200 body={'centerId': 'l4-user-agent___system_admin__', 'hops': 0, 'topK': 5, 'items': [{'nodeId': 'l4-user-agent___system_admin__', 'activation': 1, 'hopCount': 0, 'activationPath': []}]}
+[PASS] L4-03 spreading activation :: status=200 body={'centerId': 'l4-user-agent___spirit__', 'hops': 0, 'topK': 5, 'items': [{'nodeId': 'l4-user-agent___spirit__', 'activation': 1, 'hopCount': 0, 'activationPath': []}]}
 [PASS] L4-05a identity :: status=200 body={'agentId': 'agent___spirit__', 'persona': '', 'values': [], 'tone': '', 'domains': [], 'userExpectations': '', 'currentPhase': '', 'version': 0}
 [PASS] L4-05b strategy :: status=200 body={'agentId': 'agent___spirit__', 'exploration': 0, 'conciseness': 0, 'caution': 0, 'delegation': 0, 'toolPreference': {}, 'toolBlacklist': [], 'provide
 [PASS] L4-06a evolution proposals :: status=200 items=0
 [PASS] L4-06b evolution events :: status=200 items=0
-[PASS] L4-06c evolution metrics :: status=200 body={'agentId': 'agent___spirit__', 'timeRange': '', 'toolSuccessRate': 0.9373040752351097, 'retrievalQuality': 1, 'totalEpisodes': 73, 'negativeFeedback'
-[PASS] L4-07a append evolution event :: status=200 body={'event': {'id': 'abdc5a03-48b0-4329-9ebf-7ce2699059d8', 'agentId': 'agent___spirit__', 'eventKind': 'note', 'kind': 'note', 'targetField': 'persona',
+[PASS] L4-06c evolution metrics :: status=200 body={'agentId': 'agent___spirit__', 'timeRange': '', 'toolSuccessRate': 0.9192618223760092, 'retrievalQuality': 1, 'totalEpisodes': 73, 'negativeFeedback'
+[PASS] L4-07a append evolution event :: status=200 body={'event': {'id': '8c3002a2-1dd9-4d43-ac43-69305d214def', 'agentId': 'agent___spirit__', 'eventKind': 'note', 'kind': 'note', 'targetField': 'persona',
 [PASS] L4-07b event追加后可见 :: before=0 after=1
 [PASS] L4-08a cascade proposals列表 :: status=200 items=0
 [PASS] L4-08b approve不存在proposal :: status=404 body={'code': 404, 'reason': 'MEMORY_NOT_FOUND', 'message': 'cascade proposal not found: nonexistent-id', 'metadata': {}}
 [PASS] L4-08c preview不存在proposal :: status=404 body={'code': 404, 'reason': 'MEMORY_NOT_FOUND', 'message': 'cascade proposal not found: nonexistent-id', 'metadata': {}}
-[PASS] X-01 layer-overview五层 :: L3=8 L4=1 actions=1 feed=9
+[PASS] X-01 layer-overview五层 :: L3=8 L4=1 actions=1 feed=14
 [PASS] X-02a unified graph :: nodes=1 edges=0 filtered=0 empty=''
 [PASS] X-02b unified graph高阈值过滤 :: nodes=1 edges=0 filtered=0
 [PASS] X-03 worker status :: status=200 body={'jobsDone': '0', 'jobsDead': '0', 'llmFallbackTotal': '0', 'avgExtractionSeconds': 0, 'episodeBackfillTotal': '0', 'factIndexStaleCount': '8', 'factIndexDisabledCount': '0', 'queueHigh': {'capacity': '64', 'inFlight': '0', 'droppedTotal': '0', 'debo
 [PASS] X-04a dead-letters列表 :: status=200 count=0
-[FAIL] X-04b replay不存在死信 :: status=200 body={'entry': {'id': '999999999', 'enqueuedAt': '', 'failedAt': '', 'sessionId': '', 'appName': '', 'dropReason': '', 'prior
+[PASS] X-04b replay不存在死信 :: status=404 body={'code': 404, 'reason': 'DATA_NOT_FOUND', 'message': 'not found', 'metadata': {}}
 [PASS] X-05a platform settings读 :: status=200 body={'policyStrict': False, 'episodeBackfillDisabled': False, 'envPolicyStrictOverride': False, 'envEpisodeBackfillDisabledOverride': False}
 [PASS] X-05b platform settings写读一致 :: put=200 consistent=True

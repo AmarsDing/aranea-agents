@@ -50,7 +50,9 @@
           :icon="hub.processPaused.value ? 'play_arrow' : 'pause'"
           :label="hub.processPaused.value ? t('monitorPage.resume') : t('monitorPage.pause')"
           @click="togglePause"
-        />
+        >
+          <q-tooltip>{{ t('monitorPage.pauseHint') }}</q-tooltip>
+        </q-btn>
         <q-btn
           dense
           outline
@@ -60,7 +62,9 @@
           icon="delete_sweep"
           label="清除"
           @click="hub.clearProcess()"
-        />
+        >
+          <q-tooltip>{{ t('monitorPage.clearViewHint') }}</q-tooltip>
+        </q-btn>
       </div>
     </q-card-section>
     <q-separator />

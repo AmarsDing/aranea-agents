@@ -1,21 +1,28 @@
 package jobs
 
-import "testing"
+import (
+	"testing"
+
+	"aranea-agents/internal/biz"
+)
 
 func TestMemoryFactKindForSubjectType(t *testing.T) {
 	cases := map[string]string{
-		"person":     "profile",
-		"preference": "preference",
-		"constraint": "constraint",
-		"event":      "event",
-		"concept":    "knowledge",
-		"other":      "fact",
-		"":           "fact",
-		"unknown":    "fact",
+		"person":       "profile",
+		"preference":   "preference",
+		"constraint":   "constraint",
+		"goal":         "goal",
+		"decision":     "decision",
+		"relationship": "relationship",
+		"event":        "event",
+		"concept":      "knowledge",
+		"other":        "fact",
+		"":             "fact",
+		"unknown":      "fact",
 	}
 	for in, want := range cases {
-		if got := memoryFactKindForSubjectType(in); got != want {
-			t.Fatalf("memoryFactKindForSubjectType(%q)=%q want %q", in, got, want)
+		if got := biz.FactKindForSubjectType(in); got != want {
+			t.Fatalf("biz.FactKindForSubjectType(%q)=%q want %q", in, got, want)
 		}
 	}
 }

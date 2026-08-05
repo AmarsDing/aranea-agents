@@ -214,6 +214,17 @@ var ddlMigrations = []ddlMigration{
 	// 20261121 si_risk_rule_columns: P5 console risk-rule config on the
 	// system_settings singleton (same raw-SQL pattern as planner_model_columns).
 	{Version: 20261121, Name: "si_risk_rule_columns", SQL: "sql/migrations/20261121_si_risk_rule_columns.sql"},
+	// 20261125 memory_fact_three_counters: FR-12.6 recalled/injected/cited
+	// three-stage counters replacing the semantically-wrong use_count, plus the
+	// memory_fact_citations dedup ledger for the citation backfill worker.
+	{Version: 20261125, Name: "memory_fact_three_counters", SQL: "sql/migrations/20261125_memory_fact_three_counters.sql"},
+	// 20261126 memory_profile_cards: FR-12.7 resident profile card store, one
+	// card per (agent_id, user_id) distilled by Sleep-time and injected 100%.
+	{Version: 20261126, Name: "memory_profile_cards", SQL: "sql/migrations/20261126_memory_profile_cards.sql"},
+	// 20261128 memory_facts_fts_index: P2-3 GIN index for L3 fact full-text
+	// search (to_tsvector over statement+details_markdown). Postgres-only;
+	// gated by Func so SQLite CLI/tests skip it.
+	{Version: 20261128, Name: "memory_facts_fts_index", Func: ddlMemoryFactsFTSIndex},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -1041,6 +1052,18 @@ func ddlIntentPassDefaultOnMigration(ctx context.Context, rawDB *sql.DB, _ *ent.
 		return fmt.Errorf("commit intent_pass_default_on migration: %w", err)
 	}
 	return nil
+}
+
+// ddlMemoryFactsFTSIndex creates the GIN FTS index on memory_facts (P2-3).
+// Postgres-only: to_tsvector/GIN do not exist on SQLite, so CLI tools and
+// SQLite tests skip it (FTS candidate search degrades to nil there).
+func ddlMemoryFactsFTSIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if !d.IsPostgres() || rawDB == nil {
+		lg.Info("memory_facts_fts_index skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.memory_facts_fts"))
+		return nil
+	}
+	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261128_memory_facts_fts_index.sql", d, lg)
 }
 
 // ddlTenantRLSPhase1 enables Postgres RLS on tenant-owned tables (C-25).

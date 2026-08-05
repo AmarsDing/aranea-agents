@@ -6,9 +6,18 @@ import (
 	"testing"
 	"time"
 
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
+
+type stubCoordEventPublisher struct {
+	published []biz.Event
+}
+
+func (s *stubCoordEventPublisher) Publish(_ context.Context, e biz.Event) {
+	s.published = append(s.published, e)
+}
 
 type memTeamRunRepoCoord struct {
 	runs map[string]biz.TeamRunRecord
@@ -443,6 +452,49 @@ func TestTeamGraphRunCoordinator_HandleTaskCompleted_ResumeFail(t *testing.T) {
 	}
 	if coord.session("exec-1") != nil {
 		t.Fatal("session should be evicted after resume failure")
+	}
+}
+
+// TestTeamGraphRunCoordinator_ResumeFailTeamStageID_RunIsolated verifies the
+// TeamStage failed event emitted on the resume-failure path uses the
+// run-isolated stage ID captured at registration — NOT a RootTaskActivityID
+// lookup on the resume ctx (which originates from the task-completion handler
+// and never carries one, see startGraphWatch's emitter comment).
+// S-3（2026-08-05）：wrong ID → upsert writes a second team_stages_v2 row
+// while the real stage row stays non-terminal forever.
+func TestTeamGraphRunCoordinator_ResumeFailTeamStageID_RunIsolated(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman}}}
+	sessRepo := newMemSessionRepo()
+	seq := &stubCoordEventPublisher{}
+	coord := NewTeamGraphRunCoordinator(&failingResumeBackend{inner: backend}, repo, repo, repo, nil, seq, sessRepo, nil, loggateway.NewNoop())
+	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
+
+	// Registration ctx carries the run's RootTaskActivityID (runner run ctx).
+	regCtx := chatagent.ContextWithRootTaskActivityID(context.Background(), chatagent.RootTaskActivityID("root-task-1"))
+	if err := coord.RegisterTeamGraphExecution(regCtx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
+		t.Fatal(err)
+	}
+	if err := coord.MarkTeamGraphInterrupt(regCtx, "exec-1", "review-1", "lineage-1"); err != nil {
+		t.Fatal(err)
+	}
+	// Resume ctx comes from the task-completion handler — no RootTaskActivityID.
+	task := &biz.GraphTask{TaskID: "task-1", ExecutionID: "exec-1", NodeID: "review-1"}
+	if _, err := coord.HandleTeamGraphTaskCompleted(context.Background(), task, nil); err == nil {
+		t.Fatal("expected error from ResumeExecution")
+	}
+	wantID := string(chatagent.NewTeamStageActivityID("team-1", "root-task-1"))
+	var stageEvent *biz.TeamStageFailedEvent
+	for _, e := range seq.published {
+		if fe, ok := e.(*biz.TeamStageFailedEvent); ok {
+			stageEvent = fe
+		}
+	}
+	if stageEvent == nil {
+		t.Fatal("expected TeamStageFailedEvent published")
+	}
+	if got := stageEvent.TeamStage.ID; got != wantID {
+		t.Errorf("TeamStage.ID = %q, want run-isolated %q", got, wantID)
 	}
 }
 

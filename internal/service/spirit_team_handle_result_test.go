@@ -112,6 +112,22 @@ func (s *stubTeamStageV2Reader) ListTeamStagesByTask(_ context.Context, _ string
 	return nil, nil
 }
 
+func (s *stubTeamStageV2Reader) GetLatestTeamStageByTeam(_ context.Context, teamID string) (biz.TeamStage, error) {
+	var latest biz.TeamStage
+	for _, ts := range s.stages {
+		if ts.TeamID != teamID {
+			continue
+		}
+		if latest.ID == "" || ts.StartedAt.After(latest.StartedAt) {
+			latest = ts
+		}
+	}
+	if latest.ID == "" {
+		return biz.TeamStage{}, biz.ErrNotFound
+	}
+	return latest, nil
+}
+
 // stubSpiritTeamController implements biz.SpiritTeamController for testing.
 // Counters track side-effect invocations so tests can assert that stale
 // callbacks do not trigger completion recording or dependent scheduling.
@@ -493,7 +509,7 @@ func TestResolveTeamStageUpdate_ValidTransition(t *testing.T) {
 func TestPublishV2TeamRunCompletion_SkipsWhenCurrentTerminal(t *testing.T) {
 	teamID := "team-x"
 	spiritSessionID := "spirit-1"
-	tsID := string(agent.NewTeamStageActivityID(teamID))
+	tsID := string(agent.NewTeamStageActivityID(teamID, ""))
 	trID := agent.NewTeamRunV2ID(tsID)
 
 	team := biz.Team{
@@ -1368,7 +1384,7 @@ func newStandaloneStarterFromRepo(
 	repo *f10SessionRepo,
 	seq *capturingSeq,
 ) *TeamStarter {
-	tsID := string(agent.NewTeamStageActivityID(team.ID))
+	tsID := string(agent.NewTeamStageActivityID(team.ID, ""))
 	teamUC := biz.NewTeamUsecase(biz.TeamUsecaseOpts{
 		Reader:    &stubTeamReader{teams: map[string]biz.Team{team.ID: team}},
 		Writer:    writer,

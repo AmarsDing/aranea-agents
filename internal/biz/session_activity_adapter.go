@@ -6,25 +6,36 @@ import (
 	"aranea-agents/internal/biz/session"
 )
 
-// sessionActivityLister adapts biz.StepV2Reader to session.ActivityLister.
-// This bridges the package boundary: biz/session cannot import biz (circular),
-// so the adapter is provided from the biz package side via Wire.
+// sessionActivityLister adapts biz.StepV2Reader + biz.TaskV2Reader to
+// session.ActivityLister. This bridges the package boundary: biz/session
+// cannot import biz (circular), so the adapter is provided from the biz
+// package side via Wire.
 //
-// Adapts StepV2Reader → session.ActivityLister (DTO shape for compress/search).
-// Steps are converted to the v1 Activity shape via StepToActivity for
+// Adapts the v2 persistence model (Task = user message, Step = agent-side
+// activity) to the v1 Activity shape via StepToActivity / taskToActivity for
 // backward compat with the session.ActivityEntry conversion.
+//
+// Both sources MUST be merged: steps_v2 only persists agent-side steps
+// (thinking/action/reply/notice); user inputs live in tasks_v2
+// (Task.UserMessage). A steps-only timeline drops every user message, which
+// breaks downstream consumers that filter on role=user — auto-memory L4 graph
+// extraction (WriteFromUserText gate), L3 consolidation quality, and the
+// ListSessionMessages RPC backing the frontend chat history.
 type sessionActivityLister struct {
 	stepReader StepV2Reader
+	taskReader TaskV2Reader
 }
 
-// NewSessionActivityLister creates a session.ActivityLister from biz.StepV2Reader.
-// Returns nil when stepReader is nil so NewSessionUsecase falls back to the legacy
-// sessions-repo code path (used by tests/CLI without StepV2Reader wired).
-func NewSessionActivityLister(stepReader StepV2Reader) session.ActivityLister {
+// NewSessionActivityLister creates a session.ActivityLister from the v2
+// step/task readers. Returns nil when stepReader is nil so NewSessionUsecase
+// falls back to the legacy sessions-repo code path (used by tests/CLI without
+// StepV2Reader wired). taskReader may be nil (tasks skipped) for the same
+// fallback scenarios.
+func NewSessionActivityLister(stepReader StepV2Reader, taskReader TaskV2Reader) session.ActivityLister {
 	if stepReader == nil {
 		return nil
 	}
-	return &sessionActivityLister{stepReader: stepReader}
+	return &sessionActivityLister{stepReader: stepReader, taskReader: taskReader}
 }
 
 func (a *sessionActivityLister) ListBySessionTurn(ctx context.Context, sessionID, turnID string) ([]session.ActivityEntry, error) {
@@ -48,6 +59,15 @@ func (a *sessionActivityLister) ListBySession(ctx context.Context, sessionID str
 	for _, s := range steps {
 		acts = append(acts, StepToActivity(s))
 	}
+	if a.taskReader != nil {
+		tasks, err := a.taskReader.ListTasksBySession(ctx, sessionID)
+		if err != nil {
+			return nil, err
+		}
+		for _, t := range tasks {
+			acts = append(acts, taskToActivity(t))
+		}
+	}
 	return activitiesToSessionEntries(acts), nil
 }
 
@@ -56,7 +76,7 @@ func (a *sessionActivityLister) ListBySession(ctx context.Context, sessionID str
 func activitiesToSessionEntries(acts []Activity) []session.ActivityEntry {
 	out := make([]session.ActivityEntry, 0, len(acts))
 	for _, a := range acts {
-		out = append(out, session.ActivityEntry{
+		entry := session.ActivityEntry{
 			ID:         a.ID,
 			Kind:       string(a.Kind),
 			Status:     string(a.Status),
@@ -68,7 +88,14 @@ func activitiesToSessionEntries(acts []Activity) []session.ActivityEntry {
 			ToolName:   a.ToolName,
 			ToolResult: a.ToolResult,
 			AgentKey:   a.AgentKey,
-		})
+		}
+		// Carry the notice classification through so the message view can
+		// filter system-internal notices (F2). Meta key written by
+		// StepToActivity from Step.NoticeType.
+		if nt, ok := a.Meta["notice_type"].(string); ok {
+			entry.NoticeType = nt
+		}
+		out = append(out, entry)
 	}
 	return out
 }

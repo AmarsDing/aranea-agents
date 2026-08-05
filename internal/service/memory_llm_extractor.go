@@ -78,11 +78,11 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 		defer cancel()
 	}
 
-	toolDecls := mapSchemaToToolDecls([]map[string]any{compress.ExtractMemoryFactsFunctionSchema})
+	toolDecls := mapSchemaToToolDecls([]map[string]any{compress.ExtractMemoryFactsFunctionSchemaV3})
 
 	req := &trpcmodel.Request{
 		Messages: []trpcmodel.Message{
-			trpcmodel.NewSystemMessage(compress.MemoryExtractSystemPromptV2),
+			trpcmodel.NewSystemMessage(compress.MemoryExtractSystemPromptV3),
 			trpcmodel.NewUserMessage("Conversation excerpt:\n\n" + transcript),
 		},
 		Tools: toolDecls,

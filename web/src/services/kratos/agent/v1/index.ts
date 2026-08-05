@@ -156,6 +156,11 @@ export type AgentRuntimeSettings = {
   verificationTruncateChars: number | undefined;
   // L1HistoryEnabled controls whether old field values are archived to memory_l1_field_history on upsert (default false).
   l1HistoryEnabled: boolean | undefined;
+  // L3RecallBudgetTokens is the token budget for the fused L2/L3 recall block
+  // in the prompt (FR-12/P2). Hits are packed score-descending and the block is
+  // truncated once the estimated tokens exceed this budget. 0 = default 800.
+  // Preset tiers: 400 (compact) / 800 (standard) / 1600 (generous).
+  l3RecallBudgetTokens: number | undefined;
 };
 
 export type AgentPromptFile = {

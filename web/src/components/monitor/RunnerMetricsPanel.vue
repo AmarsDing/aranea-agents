@@ -25,26 +25,30 @@
       <div class="app-metrics-grid runner-metrics__grid">
         <div class="app-metrics-grid__item">
           <div class="text-caption text-grey">总运行次数</div>
-          <q-btn flat dense no-caps class="q-pa-none" @click="emit('drill')">
+          <q-btn flat dense no-caps class="q-pa-none runner-metrics__drill" @click="emit('drill')">
             <div class="text-h5 text-weight-bold text-primary">{{ metrics.total_runs }}</div>
+            <q-tooltip>{{ drillHint }}</q-tooltip>
           </q-btn>
         </div>
         <div class="app-metrics-grid__item">
           <div class="text-caption text-grey">错误次数</div>
-          <q-btn flat dense no-caps class="q-pa-none" @click="emit('drill')">
+          <q-btn flat dense no-caps class="q-pa-none runner-metrics__drill" @click="emit('drill')">
             <div class="text-h5 text-weight-bold text-negative">{{ metrics.error_runs }}</div>
+            <q-tooltip>{{ drillHint }}</q-tooltip>
           </q-btn>
         </div>
         <div class="app-metrics-grid__item">
           <div class="text-caption text-grey">错误率</div>
-          <q-btn flat dense no-caps class="q-pa-none" @click="emit('drill')">
+          <q-btn flat dense no-caps class="q-pa-none runner-metrics__drill" @click="emit('drill')">
             <div class="text-h5 text-weight-bold">{{ formatPercent(metrics.error_rate) }}</div>
+            <q-tooltip>{{ drillHint }}</q-tooltip>
           </q-btn>
         </div>
         <div class="app-metrics-grid__item">
           <div class="text-caption text-grey">成功率</div>
-          <q-btn flat dense no-caps class="q-pa-none" @click="emit('drill')">
+          <q-btn flat dense no-caps class="q-pa-none runner-metrics__drill" @click="emit('drill')">
             <div class="text-h5 text-weight-bold">{{ formatPercent(metrics.success_rate) }}</div>
+            <q-tooltip>{{ drillHint }}</q-tooltip>
           </q-btn>
         </div>
         <div v-if="metrics.p50_duration_ms != null" class="app-metrics-grid__item">
@@ -117,3 +121,15 @@ function formatLatency(v?: number): string {
   return `${Math.round(v)}ms`;
 }
 </script>
+
+<style scoped>
+/* 下钻可点击感知：hover 时下划线 + 手型（纯 flat 按钮默认无可点击提示） */
+.runner-metrics__drill {
+  cursor: pointer;
+  border-radius: 4px;
+}
+.runner-metrics__drill:hover .text-h5 {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+</style>

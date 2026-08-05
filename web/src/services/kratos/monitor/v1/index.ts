@@ -24,6 +24,8 @@ export type ListAuditLogsRequest = {
   resource: string | undefined;
   actor: string | undefined;
   keyword: string | undefined;
+  // Hide system-generated noise (sync.* actions); ignored when action is set.
+  excludeSystem: boolean | undefined;
 };
 
 export type ListAuditLogsResponse = {
@@ -97,12 +99,26 @@ export type ListMonitorTracesRequest = {
   agentId: string | undefined;
   provider: string | undefined;
   model: string | undefined;
+  // Run status: running/ok/error/timeout/interrupted/cancelled; empty = all.
   status: string | undefined;
+  // Substring search over name/trace_key/agent_id/provider/model and the
+  // resolved display names (agent/team display_name, session title).
+  keyword: string | undefined;
+  // Hide internal domains (system/skill cron & sync noise); name column carries the run domain.
+  excludeInternal: boolean | undefined;
+  // Exact run domain filter (chat/team/graph/system/skill); wins over
+  // exclude_internal so internal domains stay reachable. Empty = no filter.
+  domain: string | undefined;
 };
 
 export type ListMonitorTracesResponse = {
   items: MonitorPlatformRow[] | undefined;
   total: number | undefined;
+  // Rows per status under current filters (status condition excluded) — filter chips.
+  statusCounts: { [key: string]: number } | undefined;
+  // Rows per run domain under current filters (domain condition and
+  // exclude_internal excluded) so chips reveal hidden internal rows.
+  domainCounts: { [key: string]: number } | undefined;
 };
 
 export type MonitorTraceDetail = {
@@ -448,6 +464,9 @@ export function createMonitorServiceClient(
       if (request.keyword) {
         queryParams.push(`keyword=${encodeURIComponent(request.keyword.toString())}`)
       }
+      if (request.excludeSystem) {
+        queryParams.push(`excludeSystem=${encodeURIComponent(request.excludeSystem.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -564,6 +583,15 @@ export function createMonitorServiceClient(
       }
       if (request.status) {
         queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
+      }
+      if (request.keyword) {
+        queryParams.push(`keyword=${encodeURIComponent(request.keyword.toString())}`)
+      }
+      if (request.excludeInternal) {
+        queryParams.push(`excludeInternal=${encodeURIComponent(request.excludeInternal.toString())}`)
+      }
+      if (request.domain) {
+        queryParams.push(`domain=${encodeURIComponent(request.domain.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

@@ -155,6 +155,11 @@ func auditWhere(q biz.AuditQuery) (string, []any) {
 			parts = append(parts, "action LIKE ?")
 			args = append(args, q.Action+".%")
 		}
+	} else if q.ExcludeSystem {
+		// 隐藏系统噪音（skill 文件同步等 sync.* 动作）；用户显式按动作过滤时不叠加，
+		// 否则选 sync 会得到空结果。
+		parts = append(parts, "action NOT LIKE ?")
+		args = append(args, "sync.%")
 	}
 	if q.Resource != "" {
 		parts = append(parts, "resource = ?")
@@ -358,7 +363,7 @@ func (r *monitorRepo) ListMonitorTraces(ctx context.Context, query biz.MonitorTr
 	}
 
 	d := r.data.Dialect()
-	where, args := monitorTracesWhere(query, d)
+	where, args := monitorTracesWhere(query, d, traceWhereOmit{})
 	countSQL := d.RenumberPlaceholders(sqlMonitorTracesCount + where)
 	listSQL := d.RenumberPlaceholders(sqlMonitorTracesList + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?")
 	listArgs := append(args, limit, offset)
@@ -378,39 +383,16 @@ func (r *monitorRepo) ListMonitorTraces(ctx context.Context, query biz.MonitorTr
 	if err != nil {
 		return biz.MonitorListResult{}, entErrToBizErr(err, "MONITOR")
 	}
-	return biz.MonitorListResult{Items: out, Total: total}, nil
-}
+	res := biz.MonitorListResult{Items: out, Total: total}
 
-func monitorTracesWhere(q biz.MonitorTracesQuery, d Dialect) (string, []any) {
-	parts := []string{}
-	args := []any{}
-	// TODO(debt): After backfill completes for all rows, simplify to direct column
-	// comparison (e.g. "agent_id = ?") for index utilization. The COALESCE fallback
-	// to json_extract is a transition pattern for rows created before the column existed.
-	if q.AgentID != "" {
-		// Three-level fallback matching the SELECT column: stored column →
-		// metadata_json (backfill) → session.agent_id (chat traces where the
-		// runner.completion backfill never populated agent_id).
-		parts = append(parts, `COALESCE(NULLIF(agent_id, ''), `+d.JSONExtract("metadata_json", "agent_id")+`,
-  (SELECT s.agent_id FROM sessions s WHERE s.id = monitor_traces.session_id AND s.deleted_at = '' LIMIT 1), '') = ?`)
-		args = append(args, q.AgentID)
+	// Chip 计数聚合：各自忽略自身维度的过滤条件（见 traceWhereOmit）。
+	if res.StatusCounts, err = r.aggregateTraceCounts(ctx, d, query, "status", traceWhereOmit{status: true}); err != nil {
+		return biz.MonitorListResult{}, err
 	}
-	if q.Provider != "" {
-		parts = append(parts, "COALESCE(NULLIF(provider, ''), "+d.JSONExtract("metadata_json", "provider")+") = ?")
-		args = append(args, q.Provider)
+	if res.DomainCounts, err = r.aggregateTraceCounts(ctx, d, query, "name", traceWhereOmit{domain: true}); err != nil {
+		return biz.MonitorListResult{}, err
 	}
-	if q.Model != "" {
-		parts = append(parts, "COALESCE(NULLIF(model, ''), "+d.JSONExtract("metadata_json", "model")+") = ?")
-		args = append(args, q.Model)
-	}
-	if q.Status != "" {
-		parts = append(parts, "status = ?")
-		args = append(args, q.Status)
-	}
-	if len(parts) == 0 {
-		return "", args
-	}
-	return " AND " + strings.Join(parts, " AND "), args
+	return res, nil
 }
 
 func (r *monitorRepo) ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error) {

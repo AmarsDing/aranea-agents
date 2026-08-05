@@ -51,11 +51,20 @@ s, agent = req("POST", "/v1/agents", {
     "agent_description": "你是一个乐于助人的测试助手。当用户告诉你个人信息时记住它们；当被要求记录任务状态时使用 working memory 工具。",
     "settings": settings,
 })
-if s not in (200, 409):
+if s != 200:
+    # 已存在则复用：按 agent_key 查找
+    s2, lst = req("GET", "/v1/agents?limit=200")
+    for a in lst.get("agents", lst.get("items", [])):
+        if a.get("agent_key") == "memtest-agent" or a.get("agentKey") == "memtest-agent":
+            agent, s = a, 200
+            break
+if s != 200 or not agent.get("id"):
     log(f"[FATAL] create agent: {s} {str(agent)[:300]}")
     sys.exit(1)
+# 确保记忆设置为测试配置（复用旧 agent 时覆盖 settings）
+req("PUT", f"/v1/agents/{agent['id']}", {"settings": settings})
 aid = agent.get("id")
-log(f"[SETUP] agent created: id={aid} status={s}")
+log(f"[SETUP] agent ready: id={aid}")
 
 # ---------- 2. 创建 session ----------
 s, sess = req("POST", "/v1/sessions", {"agentId": aid, "title": "memtest-l0-l4", "dialogMode": "default"})

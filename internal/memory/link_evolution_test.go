@@ -33,7 +33,7 @@ func newFakeFactReader() *fakeFactReader {
 	}
 }
 
-func (f *fakeFactReader) ListFactRows(_ context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
+func (f *fakeFactReader) ListFactRows(_ context.Context, scopeType, scopeID, kind, status, keyword, agentID string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
 	return nil, 0, 0, 0, nil
 }
 
@@ -814,5 +814,83 @@ func TestLinkEvolution_Disabled(t *testing.T) {
 	defer writer.mu.Unlock()
 	if len(writer.upserts) != 0 {
 		t.Errorf("expected 0 upserts when disabled, got %d", len(writer.upserts))
+	}
+}
+
+// --- H4: EVOLVED_FROM relation scope ---
+
+// fakeRelationWriter captures UpsertRelation params for assertions.
+type fakeRelationWriter struct {
+	mu   sync.Mutex
+	rels []biz.L4RelationWrite
+	err  error
+}
+
+func (f *fakeRelationWriter) UpsertRelation(_ context.Context, params biz.L4RelationWrite) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.rels = append(f.rels, params)
+	return nil
+}
+
+// TestLinkEvolution_EvolvedFromRelationAgentScope pins the H4 fix: the L4
+// EVOLVED_FROM relation must be written in AGENT scope keyed by the
+// originating agent_id — not the old fact's session/user scope — because L4
+// relation readers (unified graph via ListActiveRelationRows) query with
+// scope_type='agent'. Inheriting the fact scope made EVOLVED_FROM edges
+// invisible for facts living in session/user scopes (the common case, F1).
+func TestLinkEvolution_EvolvedFromRelationAgentScope(t *testing.T) {
+	rw := &fakeRelationWriter{}
+	svc := NewLinkEvolutionService(nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc.SetRelationWriter(rw)
+
+	oldFact := &factRowData{
+		ID:        "mem-old-1",
+		ScopeType: "session",
+		ScopeID:   "sess-1",
+		AgentID:   "agent-1",
+	}
+	svc.applyEvolvedFromSideEffects(context.Background(), "mem-new-1", oldFact,
+		linkDecision{LinkType: LinkTypeEvolvedFrom, Reason: "superseded"}, "2026-08-05T00:00:00Z")
+
+	rw.mu.Lock()
+	defer rw.mu.Unlock()
+	if len(rw.rels) != 1 {
+		t.Fatalf("expected 1 relation write, got %d", len(rw.rels))
+	}
+	rel := rw.rels[0]
+	if rel.ScopeType != "agent" || rel.ScopeID != "agent-1" {
+		t.Errorf("relation scope = %q/%q, want agent/agent-1 (H4)", rel.ScopeType, rel.ScopeID)
+	}
+	if rel.SourceID != "mem-new-1" || rel.TargetID != "mem-old-1" {
+		t.Errorf("relation endpoints = %q→%q, want mem-new-1→mem-old-1", rel.SourceID, rel.TargetID)
+	}
+	if rel.RelationType != LinkTypeEvolvedFrom {
+		t.Errorf("relation type = %q, want %q", rel.RelationType, LinkTypeEvolvedFrom)
+	}
+}
+
+// TestLinkEvolution_EvolvedFromRelationLegacyScopeFallback verifies that a
+// legacy fact row without agent_id keeps the pre-H4 behavior (fact scope),
+// so the relation is at least co-located with its endpoints.
+func TestLinkEvolution_EvolvedFromRelationLegacyScopeFallback(t *testing.T) {
+	rw := &fakeRelationWriter{}
+	svc := NewLinkEvolutionService(nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc.SetRelationWriter(rw)
+
+	oldFact := &factRowData{ID: "mem-old-1", ScopeType: "user", ScopeID: "user-1"}
+	svc.applyEvolvedFromSideEffects(context.Background(), "mem-new-1", oldFact,
+		linkDecision{LinkType: LinkTypeEvolvedFrom}, "2026-08-05T00:00:00Z")
+
+	rw.mu.Lock()
+	defer rw.mu.Unlock()
+	if len(rw.rels) != 1 {
+		t.Fatalf("expected 1 relation write, got %d", len(rw.rels))
+	}
+	if rw.rels[0].ScopeType != "user" || rw.rels[0].ScopeID != "user-1" {
+		t.Errorf("relation scope = %q/%q, want user/user-1 (legacy fallback)", rw.rels[0].ScopeType, rw.rels[0].ScopeID)
 	}
 }
