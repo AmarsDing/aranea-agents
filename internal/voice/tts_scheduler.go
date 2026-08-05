@@ -116,6 +116,14 @@ func (s *TTSScheduler) loop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case job := <-s.queue:
+			if job.text == "" {
+				// 空文本 flush 哨兵（Turn 尾句已在句边界切出时由会话层补入）：
+				// 不触达 provider，仅按序驱动 OnDrained。
+				if job.flush && s.opts.OnDrained != nil {
+					s.opts.OnDrained()
+				}
+				continue
+			}
 			err := s.synthesize(ctx, job)
 			if ctx.Err() != nil {
 				return
