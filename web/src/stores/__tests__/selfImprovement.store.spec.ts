@@ -5,12 +5,14 @@ import {
   approveRun,
   closeRun,
   getOutcomeStats,
+  getRiskRules,
   getRun,
   listRuns,
   rejectRun,
   rollbackRun,
+  updateRiskRules,
 } from '../../features/self-improvement/api';
-import type { SIRun, SIRunDetail } from '../../features/self-improvement/types';
+import type { SIRiskRules, SIRun, SIRunDetail } from '../../features/self-improvement/types';
 
 vi.mock('../../features/self-improvement/api', () => ({
   listRuns: vi.fn(),
@@ -20,6 +22,8 @@ vi.mock('../../features/self-improvement/api', () => ({
   rollbackRun: vi.fn(),
   closeRun: vi.fn(),
   getOutcomeStats: vi.fn(),
+  getRiskRules: vi.fn(),
+  updateRiskRules: vi.fn(),
 }));
 
 const listRunsMock = vi.mocked(listRuns);
@@ -29,6 +33,8 @@ const rejectRunMock = vi.mocked(rejectRun);
 const rollbackRunMock = vi.mocked(rollbackRun);
 const closeRunMock = vi.mocked(closeRun);
 const getOutcomeStatsMock = vi.mocked(getOutcomeStats);
+const getRiskRulesMock = vi.mocked(getRiskRules);
+const updateRiskRulesMock = vi.mocked(updateRiskRules);
 
 function makeRun(over: Partial<SIRun> = {}): SIRun {
   return {
@@ -163,5 +169,29 @@ describe('useSelfImprovementStore', () => {
     approveRunMock.mockRejectedValue(new Error('conflict'));
     const store = useSelfImprovementStore();
     await expect(store.approve('run-x')).rejects.toThrow('conflict');
+  });
+
+  it('loads risk rules dual view', async () => {
+    getRiskRulesMock.mockResolvedValue({
+      configured: { lowMaxLines: 0, mediumMaxLines: 0, corePathGlobs: [], dailyAutoQuota: 0 },
+      effective: { lowMaxLines: 100, mediumMaxLines: 300, corePathGlobs: ['internal/**'], dailyAutoQuota: 5 },
+    });
+    const store = useSelfImprovementStore();
+    await store.loadRiskRules();
+    expect(store.riskRules?.effective.lowMaxLines).toBe(100);
+    expect(store.riskRules?.configured.corePathGlobs).toHaveLength(0);
+    expect(store.rulesLoading).toBe(false);
+  });
+
+  it('saveRiskRules stores the returned view and propagates errors', async () => {
+    const payload: SIRiskRules = { lowMaxLines: 80, mediumMaxLines: 250, corePathGlobs: ['cmd/**'], dailyAutoQuota: 3 };
+    updateRiskRulesMock.mockResolvedValue({ configured: payload, effective: payload });
+    const store = useSelfImprovementStore();
+    await store.saveRiskRules(payload);
+    expect(updateRiskRulesMock).toHaveBeenCalledWith(payload);
+    expect(store.riskRules?.configured.mediumMaxLines).toBe(250);
+
+    updateRiskRulesMock.mockRejectedValue(new Error('low > medium'));
+    await expect(store.saveRiskRules(payload)).rejects.toThrow('low > medium');
   });
 });

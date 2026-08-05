@@ -3,8 +3,10 @@ import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import { useSelfImprovementStore } from '../../stores/selfImprovement';
-import type { SIRun } from './types';
+import type { SIRiskRules, SIRun } from './types';
 import { canApprove, canClose, canReject, canRollback } from '../../components/self-improvement/selfImprovementUi';
+
+const EMPTY_RULES: SIRiskRules = { lowMaxLines: 0, mediumMaxLines: 0, corePathGlobs: [], dailyAutoQuota: 0 };
 
 // Page orchestration for the self-improvement console (73-self-iteration-v3
 // design §八): filters + pagination + detail drawer + governance actions.
@@ -13,7 +15,8 @@ import { canApprove, canClose, canReject, canRollback } from '../../components/s
 
 export function useSelfImprovementPage() {
   const store = useSelfImprovementStore();
-  const { runs, total, loading, detail, detailLoading, outcomeStats, statsLoading } = storeToRefs(store);
+  const { runs, total, loading, detail, detailLoading, outcomeStats, statsLoading, riskRules, rulesLoading } =
+    storeToRefs(store);
   const $q = useQuasar();
   const { t } = useI18n();
 
@@ -194,6 +197,31 @@ export function useSelfImprovementPage() {
     });
   }
 
+  // Risk-rules dialog: configured view is editable, effective view read-only.
+  const rulesDialogOpen = ref(false);
+  const rulesSaving = ref(false);
+  const configuredRules = computed(() => riskRules.value?.configured ?? EMPTY_RULES);
+  const effectiveRules = computed(() => riskRules.value?.effective ?? EMPTY_RULES);
+
+  function openRulesDialog() {
+    rulesDialogOpen.value = true;
+    void store.loadRiskRules();
+  }
+
+  async function saveRiskRulesAction(rules: SIRiskRules) {
+    if (rulesSaving.value) return;
+    rulesSaving.value = true;
+    try {
+      await store.saveRiskRules(rules);
+      $q.notify({ type: 'positive', message: t('selfImprovementPage.rules.saved') });
+      rulesDialogOpen.value = false;
+    } catch (e) {
+      notifyError(e);
+    } finally {
+      rulesSaving.value = false;
+    }
+  }
+
   onMounted(() => {
     void loadRows();
     void store.loadOutcomeStats();
@@ -230,5 +258,13 @@ export function useSelfImprovementPage() {
     rejectRunAction,
     rollbackRunAction,
     closeRunAction,
+    // risk rules
+    rulesDialogOpen,
+    rulesSaving,
+    rulesLoading,
+    configuredRules,
+    effectiveRules,
+    openRulesDialog,
+    saveRiskRulesAction,
   };
 }

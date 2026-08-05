@@ -2,13 +2,15 @@
 // Wraps the proto-generated SelfImprovementService client and maps wire
 // messages (all fields undefined-able) into clean domain types from ./types.
 import { createSelfImprovementService } from '../../services/index';
-import type { SelfImprovementRunMsg } from '../../services/kratos/self_improvement/v1/index';
+import type { RiskRulesMsg, SelfImprovementRunMsg } from '../../services/kratos/self_improvement/v1/index';
 import type {
   SIDiagnosis,
   SIGateResult,
   SIGovernanceDecision,
   SICriticReport,
   SIOutcomeStats,
+  SIRiskRules,
+  SIRiskRulesView,
   SIRun,
   SIRunDetail,
   SIRunFilter,
@@ -130,6 +132,30 @@ export async function rollbackRun(id: string, reason?: string): Promise<void> {
 
 export async function closeRun(id: string, reason?: string): Promise<void> {
   await si.CloseRun({ id, reason: reason || undefined });
+}
+
+function mapRiskRules(m: RiskRulesMsg | undefined): SIRiskRules {
+  return {
+    lowMaxLines: num(m?.lowMaxLines),
+    mediumMaxLines: num(m?.mediumMaxLines),
+    corePathGlobs: m?.corePathGlobs ?? [],
+    dailyAutoQuota: num(m?.dailyAutoQuota),
+  };
+}
+
+export async function getRiskRules(): Promise<SIRiskRulesView> {
+  const resp = await si.GetRiskRules({});
+  return { configured: mapRiskRules(resp.configured), effective: mapRiskRules(resp.effective) };
+}
+
+export async function updateRiskRules(rules: SIRiskRules): Promise<SIRiskRulesView> {
+  const resp = await si.UpdateRiskRules({
+    lowMaxLines: rules.lowMaxLines,
+    mediumMaxLines: rules.mediumMaxLines,
+    corePathGlobs: rules.corePathGlobs,
+    dailyAutoQuota: rules.dailyAutoQuota,
+  });
+  return { configured: mapRiskRules(resp.configured), effective: mapRiskRules(resp.effective) };
 }
 
 export async function getOutcomeStats(): Promise<SIOutcomeStats> {

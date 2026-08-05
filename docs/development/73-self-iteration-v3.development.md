@@ -124,7 +124,7 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 |----|------|----|------|-----|
 | T5.1 | Proto `self_improvement/v1`（9 个 RPC，§七）+ `make api` | Proto | ✅ | 生成物提交，build 通过 |
 | T5.2 | Console usecase（List/Get/Stats/Rules）+ Service 层 9 RPC（admin 鉴权、operator 身份、分页）+ SIRiskRules 可配置化（SystemSetting 持久化 + Pipeline/Router 消费）+ wire 注册 | Biz/Service/Data/Cmd | ✅ | biz/service/data 测试绿，`make wire && go build ./cmd/admin` 绿 |
-| T5.3 | 前端控制台 4 组件 + feature store + i18n 双语言包 | Web | ✅ | `pnpm lint && pnpm test && pnpm build` 绿（2026-07-31；组件落 `components/self-improvement/`，RiskRulesDialog 未做——API 就绪 UI 待补，diff 纯文本渲染） |
+| T5.3 | 前端控制台 4 组件 + feature store + i18n 双语言包 | Web | ✅ | `pnpm lint && pnpm test && pnpm build` 绿（组件落 `components/self-improvement/`，diff 纯文本渲染；2026-08-01 补齐 RiskRulesDialog：configured 可编辑 + effective 只读双视图、客户端校验 阈值≥0 且 low≤medium、i18n 双语言、store 单测 11 例绿） |
 | T5.4 | 竞赛四件套更新（需求/概要/详细设计/实施进度对齐实现） | Docs | ✅ | 评审维度映射完整（2026-07-31，`competition/15-平台自改进/`：实施进度 v2.0 全量重写 + 概要 v1.1 + 详设 v1.1 + 需求 v1.1 版本对齐，8 项落地偏差全量记录） |
 
 **T5.2 落地备注（2026-07-31）**：

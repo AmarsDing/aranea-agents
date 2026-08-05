@@ -435,9 +435,9 @@ P1-P4 阶段高风险审批经由既有聊天审批 activity 完成，不落 Pro
 | 组件 | 位置 | 说明 |
 |------|------|------|
 | SelfImprovementPage | `web/src/pages/SelfImprovementPage.vue` | 控制台主页：统计卡片 + runs 表格（筛选/分页） |
-| RunDetailDrawer | `web/src/features/self-improvement/RunDetailDrawer.vue` | 详情抽屉：时间线 + diff 渲染（diff2html）+ 五级 Gate 结果 + 审批操作 |
-| OutcomeStatsPanel | `web/src/features/self-improvement/OutcomeStatsPanel.vue` | 成效图表（有效率/回滚率/触发源分布，复用 echarts 封装） |
-| RiskRulesDialog | `web/src/features/self-improvement/RiskRulesDialog.vue` | 分级规则配置 |
+| RunDetailDrawer | `web/src/components/self-improvement/RunDetailDrawer.vue` | 详情抽屉：概览/诊断/Gate/diff Tab + 审批操作（diff 纯文本渲染） |
+| OutcomeStatsPanel | `web/src/components/self-improvement/OutcomeStatsPanel.vue` | 成效图表（有效率/回滚率/触发源分布，复用 echarts 封装） |
+| RiskRulesDialog | `web/src/components/self-improvement/RiskRulesDialog.vue` | 分级规则配置（configured 可编辑 + effective 只读双视图） |
 
 数据流遵循前端铁律：feature store（Pinia）→ services/kratos/self_improvement；文案全部 i18n（skillsPage 模式参照）。
 

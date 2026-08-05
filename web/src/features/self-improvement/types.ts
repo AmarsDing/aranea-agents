@@ -112,3 +112,20 @@ export interface SIOutcomeStats {
   rollbackRate: number;
   byTrigger: SITriggerOutcomeStats[];
 }
+
+/**
+ * Admin-configurable risk-classification rule set (design §六 D6).
+ * Numeric 0 / empty globs mean "inherit the code default".
+ */
+export interface SIRiskRules {
+  lowMaxLines: number;
+  mediumMaxLines: number;
+  corePathGlobs: string[];
+  dailyAutoQuota: number;
+}
+
+/** Dual view returned by Get/UpdateRiskRules: raw stored vs normalized. */
+export interface SIRiskRulesView {
+  configured: SIRiskRules;
+  effective: SIRiskRules;
+}

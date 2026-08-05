@@ -664,6 +664,12 @@ func (p *ActivityProjector) OnReasoningDone(ctx context.Context, stepID, finalCo
 
 // OnTextDone finalizes the reply content and completes the step.
 func (p *ActivityProjector) OnTextDone(ctx context.Context, stepID, finalContent string, isFinal bool) {
+	// Strip memory <fact> machine-extraction tags (prompt.go convention) from
+	// the user-visible reply before persisting. Fact extraction itself happens
+	// upstream (v1 orchestrator immediateFactWriter); here we only guarantee
+	// that stored/streamed reply content never carries raw tags — the v1
+	// pipeline applied the same discipline to its (now removed) message store.
+	finalContent = biz.StripFactMarks(finalContent)
 	p.mu.Lock()
 	if step, ok := p.activeStep[stepID]; ok {
 		step.IsFinal = isFinal

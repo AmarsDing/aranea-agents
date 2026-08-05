@@ -4,12 +4,21 @@ import {
   approveRun,
   closeRun,
   getOutcomeStats,
+  getRiskRules,
   getRun,
   listRuns,
   rejectRun,
   rollbackRun,
+  updateRiskRules,
 } from '../../features/self-improvement/api';
-import type { SIOutcomeStats, SIRun, SIRunDetail, SIRunFilter } from '../../features/self-improvement/types';
+import type {
+  SIOutcomeStats,
+  SIRiskRules,
+  SIRiskRulesView,
+  SIRun,
+  SIRunDetail,
+  SIRunFilter,
+} from '../../features/self-improvement/types';
 
 // Self-improvement console store (73-self-iteration-v3, design §八):
 // runs list + active detail + Learn-stage outcome stats; mutations reload the
@@ -69,6 +78,26 @@ export const useSelfImprovementStore = defineStore('selfImprovement', () => {
     }
   }
 
+  const riskRules = ref<SIRiskRulesView | null>(null);
+  const rulesLoading = ref(false);
+
+  async function loadRiskRules() {
+    rulesLoading.value = true;
+    error.value = null;
+    try {
+      riskRules.value = await getRiskRules();
+    } catch (e: unknown) {
+      captureError(e);
+    } finally {
+      rulesLoading.value = false;
+    }
+  }
+
+  // saveRiskRules propagates errors to the caller (page composable notifies).
+  async function saveRiskRules(rules: SIRiskRules) {
+    riskRules.value = await updateRiskRules(rules);
+  }
+
   function patchRow(id: string, status: SIRun['status']) {
     const idx = runs.value.findIndex((r) => r.id === id);
     if (idx >= 0) {
@@ -111,6 +140,10 @@ export const useSelfImprovementStore = defineStore('selfImprovement', () => {
     loadRuns,
     loadRun,
     loadOutcomeStats,
+    riskRules,
+    rulesLoading,
+    loadRiskRules,
+    saveRiskRules,
     approve,
     reject,
     rollback,

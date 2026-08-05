@@ -7,6 +7,14 @@
     >
       <template #actions>
         <q-btn
+          flat
+          rounded
+          no-caps
+          icon="tune"
+          :label="t('selfImprovementPage.rules.action')"
+          @click="openRulesDialog"
+        />
+        <q-btn
           unelevated
           rounded
           no-caps
@@ -223,6 +231,14 @@
       @rollback="rollbackRunAction"
       @close="closeRunAction"
     />
+
+    <RiskRulesDialog
+      v-model="rulesDialogOpen"
+      :configured="configuredRules"
+      :effective="effectiveRules"
+      :saving="rulesSaving"
+      @submit="saveRiskRulesAction"
+    />
   </q-page>
 </template>
 
@@ -234,6 +250,7 @@ import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 import OutcomeStatsPanel from '../components/self-improvement/OutcomeStatsPanel.vue';
+import RiskRulesDialog from '../components/self-improvement/RiskRulesDialog.vue';
 import RunDetailDrawer from '../components/self-improvement/RunDetailDrawer.vue';
 import {
   canApprove,
@@ -279,6 +296,12 @@ const {
   rejectRunAction,
   rollbackRunAction,
   closeRunAction,
+  rulesDialogOpen,
+  rulesSaving,
+  configuredRules,
+  effectiveRules,
+  openRulesDialog,
+  saveRiskRulesAction,
 } = useSelfImprovementPage();
 
 const columns = computed(() => createSIRunColumns(t));
