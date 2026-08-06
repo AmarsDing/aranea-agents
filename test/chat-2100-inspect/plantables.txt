@@ -1,6 +1,0 @@
-COLS: [table_name]
-ROW 1: [table_name=allocation_plans] 
-ROW 2: [table_name=task_plans] 
-ROW 3: [table_name=plan_boards_v2] 
-ROW 4: [table_name=plan_steps_v2] 
-TOTAL: 4

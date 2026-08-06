@@ -1,6 +1,0 @@
-﻿{
-    "ok":  true,
-    "status":  "ok",
-    "message":  "stdio 命令校验通过，未在测试中启动子进程",
-    "detailsJson":  "{\"args\":[\"--transport\",\"stdio\"],\"command\":\"C:\\\\Users\\\\Administrator\\\\.local\\\\bin\\\\mcp-server-aliyun-observability.exe\"}"
-}

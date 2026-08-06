@@ -1,3 +1,0 @@
-COLS: [total]
-ROW 1: [total=4] 
-TOTAL: 1

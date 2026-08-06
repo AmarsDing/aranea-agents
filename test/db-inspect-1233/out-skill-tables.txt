@@ -1,8 +1,0 @@
-COLS: [table_name]
-ROW 1: [table_name=agent_skill_stats] 
-ROW 2: [table_name=skill] 
-ROW 3: [table_name=skill_import_jobs] 
-ROW 4: [table_name=skill_invocation] 
-ROW 5: [table_name=skill_tags] 
-ROW 6: [table_name=skill_version] 
-TOTAL: 6

@@ -1,6 +1,0 @@
-COLS: [tool_name count]
-ROW 1: [tool_name=set_deliverable] [count=3] 
-ROW 2: [tool_name=todo] [count=3] 
-ROW 3: [tool_name=file_save_file] [count=1] 
-ROW 4: [tool_name=get_deliverable] [count=1] 
-TOTAL: 4

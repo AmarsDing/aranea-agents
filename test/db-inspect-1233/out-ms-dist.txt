@@ -1,6 +1,0 @@
-COLS: [tid status count]
-ROW 1: [tid=empty] [status=failed] [count=61] 
-ROW 2: [tid=empty] [status=running] [count=2] 
-ROW 3: [tid=set] [status=completed] [count=142] 
-ROW 4: [tid=set] [status=failed] [count=26] 
-TOTAL: 4

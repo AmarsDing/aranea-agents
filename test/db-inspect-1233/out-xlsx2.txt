@@ -1,2 +1,0 @@
-COLS: [seq tool_name args res]
-TOTAL: 0

@@ -1,1 +1,0 @@
-﻿ 		logTeamRunError(teamEmitter, "team.run.execute", err.Error(), mode)

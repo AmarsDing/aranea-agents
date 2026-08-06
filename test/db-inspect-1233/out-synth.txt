@@ -1,3 +1,0 @@
-COLS: [seq tool_call_id tool_name args res]
-ROW 1: [seq=419] [tool_call_id=] [tool_name=get_deliverable] [args={"topic": "xlsx_install_result"}] [res={"data":null,"found":false,"topic":"pdf_install_result"}] 
-TOTAL: 1

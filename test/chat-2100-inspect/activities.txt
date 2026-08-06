@@ -1,2 +1,0 @@
-COLS: [seq kind status parent_activity_id team_id agent_key left timestamp]
-TOTAL: 0

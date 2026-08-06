@@ -1,6 +1,0 @@
-COLS: [id status version seq started_at finished_at]
-ROW 1: [id=38a53dd5-defa-5fc9-b94e-e84549acb2c7] [status=failed] [version=2] [seq=0] [started_at=2026-07-28 12:28:05.565609 +0800 CST] [finished_at=2026-07-28 15:04:41.700624 +0800 CST] 
-ROW 2: [id=174d2a97-f8f7-5e3d-82e4-0a768833efea] [status=failed] [version=2] [seq=0] [started_at=2026-07-28 12:28:08.433433 +0800 CST] [finished_at=2026-07-28 15:04:41.700624 +0800 CST] 
-ROW 3: [id=91f65605-42c9-5df3-a0c9-1799f09db59a] [status=failed] [version=2] [seq=0] [started_at=2026-07-28 12:28:09.286756 +0800 CST] [finished_at=2026-07-28 15:04:41.700624 +0800 CST] 
-ROW 4: [id=878c2678-e482-5766-80c0-eb8f754ad623] [status=failed] [version=2] [seq=0] [started_at=2026-07-28 12:31:51.165459 +0800 CST] [finished_at=2026-07-28 15:04:41.700624 +0800 CST] 
-TOTAL: 4

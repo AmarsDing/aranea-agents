@@ -129,3 +129,27 @@ test/.gocache*
 /pkg/trpc-agent-go/test/
 /promo-videos
 /.study
+
+# ----- 仓库整理（2026-08-07）：中间产物、媒体与大文件不入库 -----
+# 测试中间产物（project_rules: test/ 为本地排查目录；评测 smoke 脚本例外保留）
+/test/*
+!/test/agent-memory-challenge/
+/test/agent-memory-challenge/*
+!/test/agent-memory-challenge/smoke.sh
+# Python 缓存
+__pycache__/
+*.pyc
+# Playwright MCP 浏览器产物
+.playwright-mcp/
+# 历史遗留目录（AGENTS.md: 逐步归档后删除）与已废弃 scripts/（脚本已迁入 build/）
+/_temp/
+/_tmp_dbcheck/
+/tmp/
+/scripts/
+/.tmp/
+# 比赛提交包归档 zip（重新打包即可生成，不入库）
+competition/**/*.zip
+# 宣传视频媒体产物（TTS 音频/录屏/成片；js/ts/md/json 源文件保留）
+docs/promo-videos/**/*.webm
+docs/promo-videos/**/*.mp4
+docs/promo-videos/**/*.mp3

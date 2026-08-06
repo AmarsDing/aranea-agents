@@ -1,8 +1,0 @@
-COLS: [column_name]
-ROW 1: [column_name=id] 
-ROW 2: [column_name=user_id] 
-ROW 3: [column_name=spirit_agent_id] 
-ROW 4: [column_name=status] 
-ROW 5: [column_name=created_at] 
-ROW 6: [column_name=updated_at] 
-TOTAL: 6

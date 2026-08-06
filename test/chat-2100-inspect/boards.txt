@@ -1,3 +1,0 @@
-COLS: [id task_id turn_id status seq started_at completed_at]
-ROW 1: [id=pb_tp_d20bd133-dd45-4374-9c68-86d000aebeb1] [task_id=b9e390a0-19f9-46ae-ad99-8cb86a04a158] [turn_id=b9e390a0-19f9-46ae-ad99-8cb86a04a158] [status=completed] [seq=0] [started_at=2026-07-28 20:57:18.070707+08] [completed_at=2026-07-28 21:00:35.439326+08] 
-TOTAL: 1

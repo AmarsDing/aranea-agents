@@ -1,7 +1,0 @@
-{
-  "repo": "https://github.com/anthropics/skills",
-  "label": "anthropics-missing4",
-  "groups": [
-    ["skills/brand-guidelines", "skills/doc-coauthoring", "skills/frontend-design", "skills/pptx"]
-  ]
-}

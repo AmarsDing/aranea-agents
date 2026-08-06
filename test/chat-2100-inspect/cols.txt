@@ -1,7 +1,0 @@
-COLS: [table_name string_agg]
-ROW 1: [table_name=plan_steps_v2] [string_agg=id, plan_id, task_id, label, description, depends_on, mapped_team_stage_id, status, auto_synthesis, started_at, completed_at, seq, version, result, error, agent_keys, deliverables, input_contract] 
-ROW 2: [table_name=tasks_v2] [string_agg=id, session_id, user_message, status, seq, version, created_at, updated_at, completed_at, workspace_id] 
-ROW 3: [table_name=team_runs_v2] [string_agg=id, team_stage_id, task_id, session_id, spirit_session_id, dag_node_id, depends_on, status, started_at, completed_at, seq, version, error] 
-ROW 4: [table_name=team_stages_v2] [string_agg=id, task_id, turn_id, session_id, team_id, dag_node_id, depends_on, status, stage, members, strategy, started_at, completed_at, seq, version, team_name] 
-ROW 5: [table_name=turns_v2] [string_agg=id, task_id, session_id, spirit_session_id, parent_turn_id, agent_key, team_id, team_stage_id, seq, version, status, started_at, completed_at] 
-TOTAL: 5

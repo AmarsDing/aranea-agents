@@ -1,2 +1,0 @@
-COLS: [name status created_at]
-TOTAL: 0

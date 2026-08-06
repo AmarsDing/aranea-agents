@@ -1,8 +1,0 @@
-COLS: [id status seq team_id agent_key started_at completed_at]
-ROW 1: [id=c1e849da-2460-4c32-a222-65c6cc5ea2ec] [status=completed] [seq=1] [team_id=] [agent_key=agent___spirit__] [started_at=2026-07-28 20:57:07.056057+08] [completed_at=2026-07-28 21:00:46.482717+08] 
-ROW 2: [id=3a80eece-ec3b-4e03-b785-34375d479ee2] [status=completed] [seq=14] [team_id=692fa75f8e7ab45e8a168076] [agent_key=__system_admin__] [started_at=2026-07-28 20:58:01.060255+08] [completed_at=2026-07-28 21:00:17.710042+08] 
-ROW 3: [id=aca60b1d-dc08-4502-9e28-e5bd6e1abf5a] [status=completed] [seq=15] [team_id=d45d483552b76b2e06d32aa2] [agent_key=__system_admin__] [started_at=2026-07-28 20:58:02.006191+08] [completed_at=2026-07-28 21:00:16.197675+08] 
-ROW 4: [id=1a69a9c1-71d6-4bce-93a0-b61a94c472b8] [status=completed] [seq=32] [team_id=403568dc52f35c58476b5e06] [agent_key=__system_admin__] [started_at=2026-07-28 20:58:06.574086+08] [completed_at=2026-07-28 21:00:26.564454+08] 
-ROW 5: [id=738d764d-f7b8-415a-972a-bd4766fe5516] [status=completed] [seq=46] [team_id=acada4b519d03fd81441608c] [agent_key=__system_admin__] [started_at=2026-07-28 20:58:10.470056+08] [completed_at=2026-07-28 21:00:20.596356+08] 
-ROW 6: [id=728a781a-8849-48b6-bd9f-7522b0ee21b0] [status=completed] [seq=332] [team_id=7a077e0b9228c099720e0f4a] [agent_key=__system_admin__] [started_at=2026-07-28 21:00:29.995724+08] [completed_at=2026-07-28 21:00:35.405147+08] 
-TOTAL: 6

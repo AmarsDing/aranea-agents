@@ -1,8 +1,0 @@
-﻿go : cmd\admin\wire_gen.go:43:2: package aranea-agents/internal/event/activityevent is not in std (C:\Program Files\Go\src\aranea-agents\internal\event\activi
-tyevent)
-所在位置 行:1 字符: 1
-+ go build ./... 2>&1 | Out-File -Encoding utf8 _temp/build_err.txt; Ge ...
-+ ~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (cmd\admin\wire_...\activityevent):String) [], RemoteException
-    + FullyQualifiedErrorId : NativeCommandError
- 
