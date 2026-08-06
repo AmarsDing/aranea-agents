@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>new slides</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;background:#0B0E14;color:#E8EEF7;font-family:"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+.deck{position:relative;overflow:hidden}
+.slide{position:absolute;inset:0;padding:46px 64px 40px;display:none}
+.slide.active{display:block}
+.kicker{color:#3DD6D0;font-size:13px;letter-spacing:2.5px;font-weight:600;margin-bottom:10px}
+h2{font-size:38px;font-weight:800;letter-spacing:.5px;margin-bottom:8px}
+.sub{color:#9AA7BD;font-size:16px;margin-bottom:22px}
+.footl{position:absolute;left:64px;bottom:18px;color:#5F6B84;font-size:12px;letter-spacing:1px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.card{background:#141B29;border:1px solid #243049;border-radius:10px;padding:18px 20px}
+.card h3{font-size:17px;color:#3DD6D0;margin-bottom:8px;font-weight:700}
+.card p{font-size:13.5px;line-height:1.75;color:#B9C4D6}
+.card p b{color:#E8EEF7}
+.num{font-size:40px;font-weight:800;color:#F2A93B;line-height:1.1}
+.num.cy{color:#3DD6D0}
+.num small{display:block;font-size:13px;color:#9AA7BD;font-weight:500;margin-top:6px}
+.flow{display:flex;align-items:stretch;gap:10px;margin-bottom:20px}
+.fstep{flex:1;background:#141B29;border:1px solid #243049;border-radius:10px;padding:12px 12px;text-align:center;font-size:12.5px;line-height:1.55;color:#B9C4D6;display:flex;flex-direction:column;justify-content:center}
+.fstep b{color:#E8EEF7;font-size:13.5px;display:block;margin-bottom:4px}
+.fstep .st{color:#3DD6D0;font-weight:700}
+.farrow{align-self:center;color:#3DD6D0;font-size:18px;font-weight:700}
+table{width:100%;border-collapse:collapse;background:#101624;border-radius:10px;overflow:hidden}
+th{color:#3DD6D0;font-size:13px;text-align:left;padding:10px 14px;border-bottom:1px solid #243049;font-weight:700}
+td{font-size:13px;color:#B9C4D6;padding:9px 14px;border-bottom:1px solid #1B2436;line-height:1.6;vertical-align:top}
+td b{color:#E8EEF7}
+tr:last-child td{border-bottom:none}
+.strip{border-left:4px solid #F2A93B;background:#141B29;border-radius:6px;padding:12px 18px;font-size:13.5px;color:#B9C4D6;line-height:1.7;margin-top:16px}
+.strip b{color:#E8EEF7}
+.strip.cy{border-left-color:#3DD6D0}
+.tag{display:inline-block;font-size:11px;padding:2px 10px;border-radius:20px;margin-left:8px;vertical-align:middle}
+.tag.ok{background:rgba(61,214,208,.12);color:#3DD6D0;border:1px solid rgba(61,214,208,.4)}
+.tag.plan{background:rgba(242,169,59,.12);color:#F2A93B;border:1px solid rgba(242,169,59,.4)}
+.cols{display:grid;gap:18px}
+ul.tight{list-style:none}
+ul.tight li{font-size:13px;color:#B9C4D6;line-height:1.7;padding-left:14px;position:relative;margin-bottom:5px}
+ul.tight li::before{content:"";position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:50%;background:#3DD6D0}
+ul.tight li b{color:#E8EEF7}
+.imgbox{border:1px solid #243049;border-radius:10px;overflow:hidden}
+.imgbox img{width:100%;display:block;object-fit:cover}
+.cap{font-size:12px;color:#5F6B84;text-align:center;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+<!-- A: 需求分析 -->
+<section class="slide">
+  <div class="kicker">D1 · 需求分析 · 数据中心零人工运维</div>
+  <h2>三重矛盾挤压下，运维需要「四个能力层」</h2>
+  <div class="sub">数千台服务器与异构网络设备 · 数十万配置项 · 日均数十起变更 —— 而运维人力线性受限，唯有自主闭环</div>
+  <div class="grid4">
+    <div class="card"><div class="num cy">L1<small>看得见</small></div><p style="margin-top:10px"><b>全域可观测</b>：指标 / 日志 / 链路 / 配置 / 变更事件统一采集，打破多源监控数据孤岛</p></div>
+    <div class="card"><div class="num cy">L2<small>诊断快</small></div><p style="margin-top:10px"><b>分钟级定位</b>：告警风暴 90%+ 为噪声，聚合降噪 + 根因链推理，MTTR 不被专家排班绑架</p></div>
+    <div class="card"><div class="num cy">L3<small>执行稳</small></div><p style="margin-top:10px"><b>变更零事故</b>：70%+ 事故源于变更 —— 事前可验证、事中可门控、事后可回滚</p></div>
+    <div class="card"><div class="num cy">L4<small>经验长</small></div><p style="margin-top:10px"><b>组织级记忆</b>：处置经验沉淀为可复用资产，人走经验不失，同类故障不反复踩坑</p></div>
+  </div>
+  <div class="strip">由此凝练<b>三大自主场景</b>：<b>告警自愈闭环</b>（降噪→根因→修复→验证→复盘→经验→防范）· <b>配置变更升级</b>（指令→虚拟验证→Skill 化→批次灰度→自动回滚）· <b>设备批量初始化</b>（配置 Skill 化→批量下发→漂移纠偏）—— 本方案逐页展开</div>
+  <div class="footl">D1 · 场景价值与行业可复制性 · 25%</div>
+</section>
+
+<!-- B: 场景一 告警自愈 -->
+<section class="slide">
+  <div class="kicker">场景一 · 告警自愈闭环 <span class="tag ok">已实证</span></div>
+  <h2>从告警到免疫：定位、修复、复盘、防范全自动</h2>
+  <div class="sub">P2 生产事故端到端实证（2026-07-29）—— 全程人工介入 0（设计内 2 个审批点除外）</div>
+  <div class="flow">
+    <div class="fstep"><b><span class="st">①</span> 聚合降噪</b>多源告警聚合去重，P 级定级 confidence=0.95</div>
+    <div class="farrow">→</div>
+    <div class="fstep"><b><span class="st">②</span> 根因定位</b>三层根因链 + 置信度 95/90/85% + 证据链</div>
+    <div class="farrow">→</div>
+    <div class="fstep"><b><span class="st">③</span> 修复执行</b>可回滚优先：回滚 + pt-osc 128s 无锁加索引</div>
+    <div class="farrow">→</div>
+    <div class="fstep"><b><span class="st">④</span> 恢复验证</b>指标基线自动判定：502 23%→0.03%</div>
+    <div class="farrow">→</div>
+    <div class="fstep"><b><span class="st">⑤</span> 事故复盘</b>12K 字标准复盘报告，时间线/根因/改进项</div>
+    <div class="farrow">→</div>
+    <div class="fstep"><b><span class="st">⑥</span> 经验入库</b>报告入知识库 RAG，模式固化为 Skill</div>
+    <div class="farrow">→</div>
+    <div class="fstep"><b><span class="st">⑦</span> 防范优化</b>索引/容量/监控补盲，改进项跟踪闭环</div>
+  </div>
+  <div class="grid3">
+    <div class="card"><h3>实证指标</h3><p>502 错误率 <b>23%→0.03%</b> · 慢查询 <b>187→2/min</b> · QPS <b>45→320</b> · HikariCP 198→85 · 874 万行无锁表加索引 <b>128s</b></p></div>
+    <div class="card"><h3>经验资产化</h3><p><b>12 份交付物</b>全链落库（含认知信封 assumptions/decisions/confidence）；复盘报告写入知识库，供 RAG 召回复用</p></div>
+    <div class="card"><h3>从治病到免疫</h3><p>高频处置模式经 <b>Skill 自动进化闭环</b>（观测→检测→去重→生成→审批→注册）固化；基于事故模式输出防范优化计划</p></div>
+  </div>
+  <div class="footl">D2 多 Agent 协同与自主闭环 · 25% ｜ D4 工程落地 · 20%</div>
+</section>
+
+<!-- C: 场景二 配置升级 -->
+<section class="slide">
+  <div class="kicker">场景二 · 配置变更与升级 <span class="tag ok">底座已实证</span><span class="tag plan">沙箱验证·复赛工程化</span></div>
+  <h2>未经验证的策略，不得触达生产</h2>
+  <div class="sub">用户自然语言指令驱动，变更三板斧「可灰度 · 可回滚 · 可观测」固化为引擎级流程</div>
+  <div class="flow">
+    <div class="fstep"><b><span class="st">①</span> 策略生成</b>步骤 / 前置检查 / 回退点 / 验证指标 / 风险评估</div>
+    <div class="farrow">→</div>
+    <div class="fstep"><b><span class="st">②</span> 虚拟验证</b>镜像同构沙箱集群灰度执行，验证报告为准入依据</div>
+    <div class="farrow">→</div>
+    <div class="fstep"><b><span class="st">③</span> 策略 Skill 化</b>成熟策略版本化 + 审批发布，组织资产零边际复用</div>
+    <div class="farrow">→</div>
+    <div class="fstep"><b><span class="st">④</span> 批次灰度</b>金丝雀节奏 5%→25%→50%→100% 滚动升级</div>
+    <div class="farrow">→</div>
+    <div class="fstep"><b><span class="st">⑤</span> 逐批校验</b>错误率 / 延迟 / 吞吐达标，方放行下一批</div>
+    <div class="farrow">→</div>
+    <div class="fstep"><b><span class="st">⑥</span> 失败回滚</b>自动回滚本批 + 冻结后续 + 升级人工决策</div>
+  </div>
+  <div class="grid3">
+    <div class="card"><h3>已实证底座</h3><p>应用版本回滚 <b>v1.2.9→v1.2.8</b>（TS-9）· Skill 版本回滚 · Graph Checkpoint / TimeTravel 状态穿越</p></div>
+    <div class="card"><h3>门控与审批</h3><p>plan confirm 硬门控 + 高危操作强制人工审批 + 工具白名单最小授权 —— <b>AI 无权跳关</b></p></div>
+    <div class="card"><h3>全程可审计</h3><p>三层审计：工具调用审计 + 管理操作审计（actor/IP/severity）+ 跨 Agent A2A 调用审计，每步可回放</p></div>
+  </div>
+  <div class="strip cy">适用面：数千台服务器的版本升级 / 参数调优 / 补丁批量发布 —— 同一套「验证→灰度→回滚」流水线，策略一次验证、处处复用</div>
+  <div class="footl">D2 · D4 ｜ 变更零事故</div>
+</section>
+
+<!-- D: 场景三 设备初始化 -->
+<section class="slide">
+  <div class="kicker">场景三 · 设备批量初始化与配置治理 <span class="tag ok">接入与授权已实证</span></div>
+  <h2>配置即资产：千台设备初始化，从数周到小时级</h2>
+  <div class="sub">服务器 · 交换机 · 防火墙 · 负载均衡 —— 异构设备统一经 MCP 开放协议接入（SSH / NETCONF / REST）</div>
+  <div class="grid4">
+    <div class="card"><h3>① 配置 Skill 化</h3><p>服务器安全基线、交换机 VLAN/ACL、防火墙策略 —— <b>模板化、版本化</b>，跨数据中心分发</p></div>
+    <div class="card"><h3>② 批量初始化</h3><p>自动发现 → 角色识别 → 匹配配置 Skill → <b>并发批量下发</b> → 逐项回读校验</p></div>
+    <div class="card"><h3>③ 漂移治理</h3><p>合规检查专家周期比对实际配置与基线，<b>漂移自动识别</b> → 修复工单 → 纠偏闭环</p></div>
+    <div class="card"><h3>④ 最小授权</h3><p>工具白名单按岗位授权（shell_exec 仅 8 个实操岗位显式授权 + deny 收敛），高危命令 <b>confirmation_guard 人工确认</b></p></div>
+  </div>
+  <div class="strip">实证底座：<b>MCP 集成契约（R1）</b>stdio 传输健康检查通过，CredentialCrypto 加密存储 + masked preview；<b>65 个内置工具统一注册表</b>（Schema/权限/重试/幂等/审计/降级）—— 新设备通道仅需协议适配，无需改造引擎</div>
+  <div class="footl">D4 工程落地 · 20% ｜ R1 MCP</div>
+</section>
+
+<!-- E: 可量化价值 -->
+<section class="slide">
+  <div class="kicker">价值兑现 · 对比</div>
+  <h2>零人工运维的可量化价值</h2>
+  <div class="sub">实证数据 + 设计目标，双重锚定</div>
+  <table>
+    <tr><th style="width:20%">指标</th><th style="width:34%">传统人工运维</th><th>本方案</th></tr>
+    <tr><td><b>MTTR</b></td><td>小时级（依赖专家到场）</td><td><b>分钟级</b> —— P2 事故全链路自愈已实证</td></tr>
+    <tr><td><b>告警噪声</b></td><td>人工逐条甄别，真实信号被淹没</td><td>聚合降噪 + P 级定级（confidence=0.95），人工仅处理有效告警</td></tr>
+    <tr><td><b>变更事故率</b></td><td>70%+ 事故源于变更</td><td>虚拟验证 + 批次门控 + 自动回滚，趋近于零</td></tr>
+    <tr><td><b>千台设备初始化</b></td><td>数周，配置漂移不可控</td><td><b>小时级</b>，下发-回读-纠偏闭环，配置零漂移</td></tr>
+    <tr><td><b>经验复用</b></td><td>人走经验失，同类故障反复踩坑</td><td><b>Skill 资产化</b>：版本化、审批发布、跨团队/行业复用，平台越用越强</td></tr>
+    <tr><td><b>人工介入</b></td><td>全程参与</td><td><b>仅审批点介入，常规闭环 0 介入</b>（TS-9 实证）</td></tr>
+  </table>
+  <div class="footl">D1 · 场景价值 ｜ D4 · 工程落地</div>
+</section>
+
+<!-- S9fix: 工具连接与上下文 -->
+<section class="slide">
+  <div class="kicker">D4 · 工程落地 · 推荐项 R1 MCP / R3 RAG</div>
+  <h2 style="font-size:34px">工具连接与上下文：65 工具 + MCP + 五层记忆</h2>
+  <div class="cols" style="grid-template-columns:52% 48%">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card" style="padding:14px 18px"><h3 style="font-size:15px">MCP 集成契约（R1）</h3>
+        <ul class="tight">
+          <li><b>协议</b>：Model Context Protocol，stdio 传输（Playwright Server，health=ok）</li>
+          <li><b>鉴权</b>：CredentialCrypto 加密存储 + 用户级独立凭证 + masked preview</li>
+          <li><b>等价契约</b>：65 个内置工具统一注册表（Schema/权限/重试/幂等/审计/降级）—— 迁移 MCP 仅需协议适配</li>
+        </ul>
+      </div>
+      <div class="card" style="padding:14px 18px"><h3 style="font-size:15px">受控命令执行（运维关键能力）</h3><p style="font-size:12.5px">shell_exec 纳入岗位工具白名单（8 个实操岗位显式授权 + deny 收敛）；高危命令经 confirmation_guard 人工确认；调用全量入审计 —— <b>AI 能动手，但只在授权围栏内动手</b></p></div>
+      <div>
+        <div class="imgbox"><img src="http://localhost:8899/evidence/ts7-01-memory-center.png" style="height:196px"></div>
+        <div class="cap">Memory Center：五层记忆统一可视化</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <table>
+        <tr><th style="width:14%">层级</th><th style="width:30%">名称</th><th>功能</th></tr>
+        <tr><td><b>L0</b></td><td>会话上下文窗口</td><td>最近 N 轮对话 + 摘要压缩注入</td></tr>
+        <tr><td><b>L1</b></td><td>工作记忆</td><td>结构化字段（角色/偏好/约束），Token 预算控制</td></tr>
+        <tr><td><b>L2</b></td><td>情景记忆</td><td>对话片段向量索引 + 时间衰减召回</td></tr>
+        <tr><td><b>L3</b></td><td>语义事实</td><td>五维评分召回，五 scope 融合</td></tr>
+        <tr><td><b>L4</b></td><td>知识图谱</td><td>实体-关系图谱，Saga 级联更新（失败自动补偿）</td></tr>
+      </table>
+      <div class="card" style="padding:14px 18px"><h3 style="font-size:15px">团队共享状态（R3，4 项能力实现 3 项+）</h3><p style="font-size:12.5px">Graph StateFields 共享黑板 + set/get_deliverable 产物引用 + 认知信封（decisions/assumptions/open_questions）；并发一致性由状态 Reducer（append/cover/merge）保证。另含知识库 RAG（pgvector 向量检索）。</p></div>
+    </div>
+  </div>
+  <div class="footl">D4 工程落地 · 20%</div>
+</section>
+
+</div>
+<script>
+const slides=[...document.querySelectorAll('.slide')];let cur=0;
+function show(i){cur=Math.max(0,Math.min(slides.length-1,i));slides.forEach((s,j)=>s.classList.toggle('active',j===cur))}
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')show(cur+1);else if(e.key==='ArrowLeft')show(cur-1);else if(e.key==='Home')show(0)});
+show(0);
+</script>
+</body>
+</html>

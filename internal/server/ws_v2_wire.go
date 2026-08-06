@@ -245,6 +245,8 @@ type stepStreamingEventWire struct {
 	StepID     string `json:"StepID"`
 	DeltaField string `json:"DeltaField"`
 	DeltaChunk string `json:"DeltaChunk"`
+	// DeltaSeq 会话级单调序号（Sequencer flush 时分配），前端用于增量去重。
+	DeltaSeq int64 `json:"DeltaSeq"`
 }
 
 type teamStageEventWire struct {

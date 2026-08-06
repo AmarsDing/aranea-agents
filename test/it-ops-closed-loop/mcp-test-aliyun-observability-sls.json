@@ -1,0 +1,6 @@
+﻿{
+    "ok":  true,
+    "status":  "ok",
+    "message":  "stdio 命令校验通过，未在测试中启动子进程",
+    "detailsJson":  "{\"args\":[\"--python\",\"3.12\",\"--with\",\"python-dotenv\",\"mcp-server-aliyun-observability@latest\"],\"command\":\"C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python314\\\\Scripts\\\\uvx.exe\"}"
+}

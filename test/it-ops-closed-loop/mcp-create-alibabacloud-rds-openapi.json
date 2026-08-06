@@ -1,0 +1,14 @@
+﻿{
+    "id":  "1f6ddc7211320f0b43784214",
+    "key":  "alibabacloud-rds-openapi",
+    "name":  "Alibaba Cloud RDS OpenAPI",
+    "description":  "aliyun/alibabacloud-rds-openapi-mcp-server v3.1.2 (pinned mcp==1.13.1 for fastmcp compat): RDS instance management via OpenAPI - describe/restart instances, slow query logs, performance metrics.",
+    "status":  "active",
+    "enabled":  true,
+    "sortOrder":  100,
+    "configJson":  "{\"args\":[\"--python\",\"3.12\",\"--with\",\"mcp==1.13.1\",\"alibabacloud-rds-openapi-mcp-server@3.1.2\"],\"command\":\"C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python314\\\\Scripts\\\\uvx.exe\",\"timeout_sec\":120,\"transport\":\"stdio\"}",
+    "metadataJson":  "",
+    "createdAt":  "2026-08-06T11:17:17Z",
+    "updatedAt":  "2026-08-06T11:17:17Z",
+    "deletedAt":  ""
+}

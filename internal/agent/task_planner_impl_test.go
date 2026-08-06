@@ -706,3 +706,89 @@ func TestTaskPlanner_PublishOrchestrationProgress(t *testing.T) {
 		t.Errorf("sessionID=%q want %q", notice.SpiritSessionID(), "sess-orch")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// 闭环任务自动追加复盘节点（TS9-GAP-1）
+// ---------------------------------------------------------------------------
+
+// ts9LikeSubTasks 模拟 TS-9 实跑中 LLM 分解出的 4 团队串行链（无复盘节点）。
+func ts9LikeSubTasks() []biz.SubTask {
+	return []biz.SubTask{
+		{ID: "st_1", Name: "告警分诊", Description: "对告警进行聚合定级", DependsOn: []string{}, Priority: 1},
+		{ID: "st_2", Name: "根因定位", Description: "定位故障根因", DependsOn: []string{"st_1"}, Priority: 2},
+		{ID: "st_3", Name: "修复方案", Description: "制定修复方案", DependsOn: []string{"st_2"}, Priority: 3},
+		{ID: "st_4", Name: "恢复执行与验证", Description: "执行回滚与验证", DependsOn: []string{"st_3"}, Priority: 4},
+	}
+}
+
+// TestAppendClosedLoopPostmortem_Append 验证闭环类（事故/告警/恢复）任务在
+// LLM 分解未产出复盘节点时，由引擎确定性追加一个依赖全部叶子节点的复盘
+// subtask，且追加后 DAG 仍合法（TS9-GAP-1：TS-9 实跑中复盘靠人工补位）。
+func TestAppendClosedLoopPostmortem_Append(t *testing.T) {
+	msg := "电商平台订单服务 P2 生产事故：502 错误率 23%，请完成告警分诊、根因定位、修复方案与恢复执行验证"
+	subTasks := ts9LikeSubTasks()
+
+	updated, pm, appended := appendClosedLoopPostmortem(msg, subTasks)
+	if !appended {
+		t.Fatal("closed-loop incident message must append a postmortem subtask")
+	}
+	if len(updated) != len(subTasks)+1 {
+		t.Fatalf("updated len=%d want %d", len(updated), len(subTasks)+1)
+	}
+	if !strings.Contains(pm.Name, "复盘") {
+		t.Errorf("postmortem subtask name=%q should contain 复盘", pm.Name)
+	}
+	// 复盘节点必须依赖当前全部叶子节点（st_4 是唯一叶子）。
+	if len(pm.DependsOn) != 1 || pm.DependsOn[0] != "st_4" {
+		t.Errorf("postmortem DependsOn=%v want [st_4]（全部叶子节点）", pm.DependsOn)
+	}
+	// 执行团队只能看到自己的 description：必须自包含，且禁止保留字契约。
+	if pm.Description == "" {
+		t.Error("postmortem description must be non-empty and self-contained")
+	}
+	if len(pm.Deliverables) == 0 {
+		t.Error("postmortem must declare a deliverable contract for the report")
+	}
+	for _, c := range pm.Deliverables {
+		if c.Name == "summary" || c.Name == "cognition" {
+			t.Errorf("deliverable contract name %q uses reserved key", c.Name)
+		}
+	}
+	// 追加后 DAG 必须仍合法（无环、引用存在）。
+	if err := validateSubTaskDAG(updated); err != nil {
+		t.Errorf("DAG invalid after postmortem append: %v", err)
+	}
+	// 原切片不被修改（函数应返回新切片）。
+	if len(subTasks) != 4 {
+		t.Error("appendClosedLoopPostmortem must not mutate the input slice")
+	}
+}
+
+// TestAppendClosedLoopPostmortem_Skip 验证非闭环任务、节点过少、已含复盘
+// 节点三种情况下不追加。
+func TestAppendClosedLoopPostmortem_Skip(t *testing.T) {
+	t.Run("non-closed-loop message", func(t *testing.T) {
+		_, _, appended := appendClosedLoopPostmortem("帮我写一首关于春天的诗并配一张图", ts9LikeSubTasks())
+		if appended {
+			t.Error("non-incident message must not append postmortem")
+		}
+	})
+
+	t.Run("fewer than 2 subtasks", func(t *testing.T) {
+		single := []biz.SubTask{{ID: "st_1", Name: "告警分诊", Description: "分诊", Priority: 1}}
+		_, _, appended := appendClosedLoopPostmortem("P2 生产事故需要恢复", single)
+		if appended {
+			t.Error("single subtask plan must not append postmortem")
+		}
+	})
+
+	t.Run("postmortem already present", func(t *testing.T) {
+		with := append(ts9LikeSubTasks(), biz.SubTask{
+			ID: "st_5", Name: "事故复盘", Description: "复盘", DependsOn: []string{"st_4"}, Priority: 5,
+		})
+		_, _, appended := appendClosedLoopPostmortem("P2 生产事故需要恢复并复盘", with)
+		if appended {
+			t.Error("must not duplicate postmortem when LLM already produced one")
+		}
+	})
+}

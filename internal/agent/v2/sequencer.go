@@ -344,6 +344,13 @@ func canMergeStreaming(a, b *biz.StepStreamingEvent) bool {
 
 // flushStreaming publishes the merged streaming event to bus only (no persist).
 func (s *Sequencer) flushStreaming(ev *biz.StepStreamingEvent) {
+	// P3 fix: assign a session-scoped monotonic DeltaSeq at the single flush
+	// point (publishLoop is single-goroutine, so assignment is race-free) so
+	// the frontend can dedup redelivered deltas by sequence instead of content
+	// fingerprints. Assigned only once — a re-flushed event keeps its seq.
+	if ev.DeltaSeq <= 0 && s.seqAssigner != nil {
+		ev.DeltaSeq = s.seqAssigner.NextSeq(ev.SpiritSessionID())
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	s.bus.Publish(ctx, ev)

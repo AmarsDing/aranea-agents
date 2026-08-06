@@ -138,6 +138,94 @@ describe('useChatActivityStore', () => {
     expect(s.steps.get('s1')?.Content).toBe('hello world');
   });
 
+  // P3 验证：DeltaSeq 序号去重不得误杀合法的重复 chunk（叠词/重复标点/缩进）。
+  // LLM 流式输出连续两个完全相同的 delta 是合法输入，序号递增时必须全部追加。
+  it('appendStepDelta applies consecutive identical chunks (no false dedup)', () => {
+    const s = useChatActivityStore();
+    const step: Step = {
+      ID: 's1',
+      TurnID: 't1',
+      TaskID: 'tk1',
+      SessionID: 's1',
+      SpiritSessionID: 's1',
+      Kind: 'reply',
+      AuthorAgentKey: 'a1',
+      Seq: 1,
+      Version: 1,
+      Content: '',
+      Reasoning: '',
+      ToolName: '',
+      ToolCallID: '',
+      ToolArgs: null,
+      ToolResult: null,
+      ToolDurationMs: 0,
+      ToolErrorCode: '',
+      Status: 'running',
+      IsFinal: false,
+      StartedAt: '',
+      CompletedAt: null,
+    };
+    s.upsertStep(step);
+    // 带递增序号（生产路径：Sequencer 分配会话级单调 DeltaSeq）。
+    s.appendStepDelta('s1', 'content', '哈', 1);
+    s.appendStepDelta('s1', 'content', '哈', 2);
+    s.appendStepDelta('s1', 'content', '哈', 3);
+    expect(s.steps.get('s1')?.Content).toBe('哈哈哈');
+    s.appendStepDelta('s1', 'reasoning', '  ', 4);
+    s.appendStepDelta('s1', 'reasoning', '  ', 5);
+    expect(s.steps.get('s1')?.Reasoning).toBe('    ');
+    // 无序号（legacy/边界生产者）：总是应用，不做任何去重。
+    s.appendStepDelta('s1', 'content', '哈');
+    s.appendStepDelta('s1', 'content', '哈');
+    expect(s.steps.get('s1')?.Content).toBe('哈哈哈哈哈');
+  });
+
+  // P3 验证：重发/乱序的 delta（DeltaSeq <= lastSeen）必须丢弃，
+  // 否则 WS 重投递会产生重复字。
+  it('appendStepDelta drops redelivered or out-of-order deltas by DeltaSeq', () => {
+    const s = useChatActivityStore();
+    const step: Step = {
+      ID: 's1',
+      TurnID: 't1',
+      TaskID: 'tk1',
+      SessionID: 's1',
+      SpiritSessionID: 's1',
+      Kind: 'reply',
+      AuthorAgentKey: 'a1',
+      Seq: 1,
+      Version: 1,
+      Content: '',
+      Reasoning: '',
+      ToolName: '',
+      ToolCallID: '',
+      ToolArgs: null,
+      ToolResult: null,
+      ToolDurationMs: 0,
+      ToolErrorCode: '',
+      Status: 'running',
+      IsFinal: false,
+      StartedAt: '',
+      CompletedAt: null,
+    };
+    s.upsertStep(step);
+    s.appendStepDelta('s1', 'content', 'A', 10);
+    // 重发（同 seq）→ 丢弃。
+    s.appendStepDelta('s1', 'content', 'A', 10);
+    expect(s.steps.get('s1')?.Content).toBe('A');
+    // 乱序旧包（更小 seq）→ 丢弃。
+    s.appendStepDelta('s1', 'content', 'B', 9);
+    expect(s.steps.get('s1')?.Content).toBe('A');
+    // 新包（更大 seq）→ 应用。
+    s.appendStepDelta('s1', 'content', 'C', 11);
+    expect(s.steps.get('s1')?.Content).toBe('AC');
+    // 不同 field 独立记录 lastSeen：reasoning 从更小 seq 开始也应用。
+    s.appendStepDelta('s1', 'reasoning', 'R', 3);
+    expect(s.steps.get('s1')?.Reasoning).toBe('R');
+    // 无 seq 的边界包不受 lastSeen 影响，总是应用。
+    s.appendStepDelta('s1', 'content', 'D');
+    expect(s.steps.get('s1')?.Content).toBe('ACD');
+  });
+
   it('getSessionTasks returns tasks sorted by seq', () => {
     const s = useChatActivityStore();
     s.upsertTask(makeTask({ ID: 't2', Seq: 2 }));

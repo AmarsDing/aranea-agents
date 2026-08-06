@@ -238,7 +238,12 @@ type StepStreamingEvent struct {
 	StepID          string
 	DeltaField      string // content / reasoning / tool_args
 	DeltaChunk      string
-	occurredAt      time.Time
+	// DeltaSeq 是 Sequencer 在 flush 时分配的会话级单调序号（与实体事件共享
+	// SeqAssigner 计数空间）。前端按 (StepID, DeltaField) 记录最后应用的
+	// DeltaSeq，丢弃 <= lastSeen 的重发/乱序增量 —— 取代内容指纹去重
+	// （指纹会误杀合法的连续相同 chunk，如"哈哈哈"分三个"哈"到达）。
+	DeltaSeq   int64
+	occurredAt time.Time
 }
 
 func (e *StepStreamingEvent) EventKind() EventKind      { return EventKindStepStreaming }

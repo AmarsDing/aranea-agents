@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	mcpmetadata "aranea-agents/internal/mcp/metadata"
 	mcpprobe "aranea-agents/internal/mcp/probe"
 	"aranea-agents/internal/server"
+	"aranea-agents/internal/service"
 	"aranea-agents/internal/tools/testexec"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
 	loggateway "aranea-agents/pkg/loggateway"
@@ -291,6 +293,14 @@ func (a *wsTurnExecutorAdapter) ExecuteTurn(ctx context.Context, input server.WS
 	start := time.Now()
 	_, err := a.gateway.ExecuteTurn(ctx, bizInput)
 	elapsed := time.Since(start)
+	if errors.Is(err, service.ErrTurnMessageQueued) {
+		// queued = 成功受理（消息已入排队队列），不是失败。
+		// 与 chatTurnExecutor / spirit_team 的语义一致；透传会让前端渲染假 send_failed 卡片。
+		a.lg.With(loggateway.SessionID(input.SessionID)).Info("wsTurnExecutorAdapter.ExecuteTurn 消息已排队",
+			loggateway.StepID("ws.adapter_turn_done"),
+			loggateway.Any("elapsed_ms", elapsed.Milliseconds()))
+		return nil
+	}
 	a.lg.With(loggateway.SessionID(input.SessionID)).Info("wsTurnExecutorAdapter.ExecuteTurn 完成",
 		loggateway.StepID("ws.adapter_turn_done"),
 		loggateway.Any("elapsed_ms", elapsed.Milliseconds()),

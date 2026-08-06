@@ -285,6 +285,22 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 					loggateway.Int("decomposed_subtask_count", len(subTasks)),
 				)
 			}
+			// TS9-GAP-1：闭环类任务（事故/告警/故障）由引擎确定性追加复盘节点，
+			// 不再依赖 LLM 分解时自觉产出——流程控制权在引擎。追加发生在
+			// teamCount 截取之后，避免被截取丢弃；追加后重建 DAG，流式路径
+			// 补发该节点的 PlanStep/GraphNode 事件。
+			if updated, pm, appended := appendClosedLoopPostmortem(input.UserMessage, subTasks); appended {
+				subTasks = updated
+				dag = buildDAGFromSubTasks(subTasks)
+				if streamPublished {
+					impl.publishV2PlanStep(ctx, *pm, planID, len(subTasks)-1, input)
+				}
+				impl.lg.Info("闭环任务自动追加复盘节点",
+					loggateway.StepID(biz.SpiritStepPlannerDecompose),
+					loggateway.Str("trace_id", traceID),
+					loggateway.Str("postmortem_subtask_id", pm.ID),
+				)
+			}
 			// Strategy is determined solely by the explicit mode (or detected
 			// team intent). We no longer auto-refine based on DAG shape — the
 			// LLM is the decision authority. When mode is empty (no explicit
@@ -1358,6 +1374,70 @@ func deriveFallbackContracts(subTasks []biz.SubTask) {
 			})
 		}
 	}
+}
+
+// closedLoopSignalPattern 匹配事故/运维闭环类信号词。刻意不含「修复/恢复」
+// 等泛化词——代码修复类任务不应触发复盘节点追加。
+var closedLoopSignalPattern = regexp.MustCompile(`告警|事故|故障|宕机|停机|复盘|incident|outage|postmortem`)
+
+// appendClosedLoopPostmortem 实现 TS9-GAP-1：闭环类任务（事故/告警/故障处置）
+// 在 LLM 分解未产出复盘节点时，由引擎确定性追加一个「事故复盘」subtask，
+// 依赖当前 DAG 的全部叶子节点（所有处置完成后才复盘）。与
+// deriveFallbackContracts 同模式：引擎补齐 LLM 之不足，流程控制权在引擎。
+//
+// 跳过条件：subtask < 2（非编排任务）、消息无闭环信号、LLM 已产出复盘节点。
+// 返回新切片，不修改入参。
+func appendClosedLoopPostmortem(userMessage string, subTasks []biz.SubTask) ([]biz.SubTask, *biz.SubTask, bool) {
+	if len(subTasks) < 2 {
+		return nil, nil, false
+	}
+	if !closedLoopSignalPattern.MatchString(strings.ToLower(userMessage)) {
+		return nil, nil, false
+	}
+	for _, st := range subTasks {
+		name := strings.ToLower(st.Name)
+		if strings.Contains(name, "复盘") || strings.Contains(name, "postmortem") {
+			return nil, nil, false
+		}
+	}
+	// 叶子节点：没有任何其他节点依赖它（与 buildDAGFromSubTasks LeafIDs 同义）。
+	depended := make(map[string]bool, len(subTasks))
+	for _, st := range subTasks {
+		for _, depID := range st.DependsOn {
+			depended[depID] = true
+		}
+	}
+	leaves := make([]string, 0, 1)
+	for _, st := range subTasks {
+		if !depended[st.ID] {
+			leaves = append(leaves, st.ID)
+		}
+	}
+	if len(leaves) == 0 {
+		return nil, nil, false
+	}
+	pm := biz.SubTask{
+		ID:   "st_" + uuid.NewString(),
+		Name: "事故复盘",
+		// description 自包含（执行团队只能看到自己的 description）：说明输入
+		// 来源（上游交付物）与产出要求（复盘报告结构与交付 topic）。
+		Description:          "对本次事故处置全流程进行复盘：基于上游团队的交付物（告警分诊、根因定位、修复方案、恢复执行与验证结果），产出标准事故复盘报告，包含事故时间线、根因分析（直接/间接/系统层面）、处置过程评估、可执行的改进项清单。通过 set_deliverable 将复盘报告写入 postmortem-report。",
+		DependsOn:            leaves,
+		RequiredCapabilities: []string{"documentation", "research"},
+		Priority:             5,
+		EstimatedComplexity:  0.3,
+		Deliverables: []biz.DeliverableContract{{
+			Name:        "postmortem-report",
+			Type:        "document",
+			Format:      "markdown",
+			Description: "事故复盘报告（时间线/根因/处置评估/改进项）",
+		}},
+		DomainPath: "办公/文档",
+	}
+	updated := make([]biz.SubTask, 0, len(subTasks)+1)
+	updated = append(updated, subTasks...)
+	updated = append(updated, pm)
+	return updated, &pm, true
 }
 
 // validateSubTaskDAG checks for cycles and invalid references.

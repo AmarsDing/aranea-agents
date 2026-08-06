@@ -252,31 +252,21 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
 
   // === Streaming delta (does NOT bump version) ===
 
-  // E2E-P1-05: fingerprint recent streaming deltas to skip WS redelivery
-  // duplicates. Key = stepId:field; ring-bounded fingerprints per key.
-  const deltaDedupMaxPerKey = 64;
-  const recentDeltas = new Map<string, string[]>();
+  // P3 fix: dedup redelivered/reordered streaming deltas by the session-scoped
+  // monotonic DeltaSeq assigned by the backend Sequencer at flush time.
+  // Key = stepId:field; value = last applied DeltaSeq. A delta with
+  // DeltaSeq <= lastSeen is a redelivery and is dropped. Deltas without a seq
+  // (legacy/edge producers) are always applied — no content fingerprinting,
+  // which falsely killed legitimately repeated chunks (e.g. "哈哈哈" arriving
+  // as three separate "哈" deltas).
+  const lastDeltaSeqs = new Map<string, number>();
 
-  function deltaFingerprint(chunk: string): string {
-    const n = chunk.length;
-    if (n <= 48) return `${n}:${chunk}`;
-    return `${n}:${chunk.slice(0, 24)}:${chunk.slice(-24)}`;
-  }
-
-  function shouldApplyDelta(stepId: string, field: string, chunk: string): boolean {
-    if (!chunk) return false;
+  function shouldApplyDelta(stepId: string, field: string, deltaSeq?: number): boolean {
+    if (deltaSeq === undefined || deltaSeq === null || deltaSeq <= 0) return true;
     const key = `${stepId}:${field}`;
-    const fp = deltaFingerprint(chunk);
-    let ring = recentDeltas.get(key);
-    if (!ring) {
-      ring = [];
-      recentDeltas.set(key, ring);
-    }
-    if (ring.includes(fp)) return false;
-    ring.push(fp);
-    if (ring.length > deltaDedupMaxPerKey) {
-      ring.splice(0, ring.length - deltaDedupMaxPerKey);
-    }
+    const last = lastDeltaSeqs.get(key) ?? 0;
+    if (deltaSeq <= last) return false;
+    lastDeltaSeqs.set(key, deltaSeq);
     return true;
   }
 
@@ -286,10 +276,11 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   // via the subsequent step.completed event which carries the complete Step
   // entity. The previous if/else caught ALL non-content fields and appended
   // them to Reasoning, causing silent data corruption.
-  function appendStepDelta(stepId: string, field: string, chunk: string) {
+  function appendStepDelta(stepId: string, field: string, chunk: string, deltaSeq?: number) {
     const s = steps.value.get(stepId);
     if (!s) return;
-    if (!shouldApplyDelta(stepId, field, chunk)) return;
+    if (!chunk) return;
+    if (!shouldApplyDelta(stepId, field, deltaSeq)) return;
     switch (field) {
       case 'content':
         s.Content += chunk;
@@ -525,8 +516,8 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const [id, s] of steps.value) {
       if (s.SpiritSessionID === spiritSessionId) {
         steps.value.delete(id);
-        recentDeltas.delete(`${id}:content`);
-        recentDeltas.delete(`${id}:reasoning`);
+        lastDeltaSeqs.delete(`${id}:content`);
+        lastDeltaSeqs.delete(`${id}:reasoning`);
       }
     }
     for (const [id, ts] of teamStages.value) {
@@ -556,7 +547,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     tasks.value.clear();
     turns.value.clear();
     steps.value.clear();
-    recentDeltas.clear();
+    lastDeltaSeqs.clear();
     teamStages.value.clear();
     teamRuns.value.clear();
     memberSessions.value.clear();

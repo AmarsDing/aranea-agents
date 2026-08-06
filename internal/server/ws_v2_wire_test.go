@@ -281,7 +281,7 @@ func wireGoldenCases() []wireGoldenCase {
 		{"step.created", func() biz.Event { return biz.NewStepCreatedEvent(wireTestStep()) }, []string{"Step"}},
 		{"step.streaming", func() biz.Event {
 			return biz.NewStepStreamingEvent("sess-1", "task-1", "step-1", "content", "chunk")
-		}, []string{"StepID", "DeltaField", "DeltaChunk"}},
+		}, []string{"StepID", "DeltaField", "DeltaChunk", "DeltaSeq"}},
 		{"step.updated", func() biz.Event { return biz.NewStepUpdatedEvent(wireTestStep()) }, []string{"Step"}},
 		{"step.completed", func() biz.Event { return biz.NewStepCompletedEvent(wireTestStep()) }, []string{"Step"}},
 		{"step.failed", func() biz.Event { return biz.NewStepFailedEvent(wireTestStep()) }, []string{"Step"}},

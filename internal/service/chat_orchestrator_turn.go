@@ -127,6 +127,14 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: lockSession",
 		loggateway.StepID("chat.lock_session"),
 		loggateway.Any("elapsed_ms", time.Since(lockStart).Milliseconds()))
+	// TOCTOU 复查：准入阶段的锁外 HasActive 检查与锁获取之间存在窗口，并发
+	// turn 可能已在该窗口内注册活跃运行（StoreCancelable）。到达此处的 turn 均
+	// 以 hasActive=false 放行，锁内再发现活跃运行只可能是竞态 —— 拒绝为
+	// CHAT_TURN_BUSY，防止双跑与取消函数被覆盖。
+	if o.runs.HasActive(sessionID) {
+		unlock()
+		return biz.ChatMessage{}, biz.ChatMessage{}, turnBusyError()
+	}
 	sessGetStart := time.Now()
 	sess, err := o.td().Sessions.Get(ctx, sessionID)
 	if err != nil {

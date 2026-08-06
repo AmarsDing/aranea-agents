@@ -1,0 +1,174 @@
+{
+  "server_key": "alibaba-cloud-ops",
+  "command": [
+    "C:\\Users\\Administrator\\.local\\bin\\alibaba-cloud-ops-mcp-server.exe"
+  ],
+  "server_info": {
+    "name": "alibaba-cloud-ops-mcp-server",
+    "version": "1.29.0"
+  },
+  "protocol_version": "2024-11-05",
+  "tool_count": 40,
+  "tools": [
+    {
+      "name": "OOS_RunCommand",
+      "description": "批量在多台ECS实例上运行云助手命令，适用于需要同时管理多台ECS实例的场景，如应用程序管理和资源标记操作等。"
+    },
+    {
+      "name": "OOS_StartInstances",
+      "description": "批量启动ECS实例，适用于需要同时管理和启动多台ECS实例的场景，例如应用部署和高可用性场景。"
+    },
+    {
+      "name": "OOS_StopInstances",
+      "description": "批量停止ECS实例，适用于需要同时管理和停止多台ECS实例的场景。"
+    },
+    {
+      "name": "OOS_RebootInstances",
+      "description": "批量重启ECS实例，适用于需要同时管理和重启多台ECS实例的场景。"
+    },
+    {
+      "name": "OOS_RunInstances",
+      "description": "批量创建ECS实例，适用于需要同时创建多台ECS实例的场景，例如应用部署和高可用性场景。"
+    },
+    {
+      "name": "OOS_ResetPassword",
+      "description": "批量修改ECS实例的密码，请注意，本操作将会重启ECS实例"
+    },
+    {
+      "name": "OOS_ReplaceSystemDisk",
+      "description": "批量替换ECS实例的系统盘，更换操作系统"
+    },
+    {
+      "name": "OOS_StartRDSInstances",
+      "description": "批量启动RDS实例，适用于需要同时管理和启动多台RDS实例的场景，例如应用部署和高可用性场景。"
+    },
+    {
+      "name": "OOS_StopRDSInstances",
+      "description": "批量停止RDS实例，适用于需要同时管理和停止多台RDS实例的场景。"
+    },
+    {
+      "name": "OOS_RebootRDSInstances",
+      "description": "批量重启RDS实例，适用于需要同时管理和重启多台RDS实例的场景。"
+    },
+    {
+      "name": "OOS_CodeDeploy",
+      "description": "\n    将应用部署到阿里云ECS实例。使用阿里云OOS（运维编排服务）的CodeDeploy功能实现自动化部署。\n\n    ## 前置条件（调用此工具前需完成）\n\n    1. **识别项目类型**：读取项目配置文件（package.json、pom.xml、requirements.txt等），确定技术栈和部署语言（通过deploy_language参数传入）\n    2. **构建部署产物*"
+    },
+    {
+      "name": "OOS_GetLastDeploymentInfo",
+      "description": "\n    获取上次部署的应用信息\n    "
+    },
+    {
+      "name": "OOS_GetDeployStatus",
+      "description": "\n    查询应用分组的部署状态\n    "
+    },
+    {
+      "name": "CMS_GetCpuUsageData",
+      "description": "获取ECS实例的CPU使用率数据"
+    },
+    {
+      "name": "CMS_GetCpuLoadavgData",
+      "description": "获取CPU一分钟平均负载指标数据"
+    },
+    {
+      "name": "CMS_GetCpuloadavg5mData",
+      "description": "获取CPU五分钟平均负载指标数据"
+    },
+    {
+      "name": "CMS_GetCpuloadavg15mData",
+      "description": "获取CPU十五分钟平均负载指标数据"
+    },
+    {
+      "name": "CMS_GetMemUsedData",
+      "description": "获取内存使用量指标数据"
+    },
+    {
+      "name": "CMS_GetMemUsageData",
+      "description": "获取内存利用率指标数据"
+    },
+    {
+      "name": "CMS_GetDiskUsageData",
+      "description": "获取磁盘利用率指标数据"
+    },
+    {
+      "name": "CMS_GetDiskTotalData",
+      "description": "获取磁盘分区总容量指标数据"
+    },
+    {
+      "name": "CMS_GetDiskUsedData",
+      "description": "获取磁盘分区使用量指标数据"
+    },
+    {
+      "name": "OSS_ListBuckets",
+      "description": "列出指定区域的所有OSS存储空间。"
+    },
+    {
+      "name": "OSS_ListObjects",
+      "description": "获取指定OSS存储空间中的所有文件信息。"
+    },
+    {
+      "name": "OSS_PutBucket",
+      "description": "创建一个新的OSS存储空间。"
+    },
+    {
+      "name": "OSS_DeleteBucket",
+      "description": "删除指定的OSS存储空间。"
+    },
+    {
+      "name": "ECS_DescribeInstances",
+      "description": "本接口支持根据不同请求条件查询实例列表，并关联查询实例的详细信息。"
+    },
+    {
+      "name": "ECS_DescribeRegions",
+      "description": "根据计费方式、资源类型等参数查询地域信息列表。"
+    },
+    {
+      "name": "ECS_DescribeZones",
+      "description": "根据地域ID、计费方式等参数查询可用区信息列表。"
+    },
+    {
+      "name": "ECS_DescribeAccountAttributes",
+      "description": "查询您在一个阿里云地域下能创建的ECS资源配额。包括您能创建的安全组数量、弹性网卡数量、按量付费vCPU核数、抢占式实例vCPU核数、按量付费云盘总容量配额、专用宿主机数量、网络类型以及账号是否已完成实名认证。"
+    },
+    {
+      "name": "ECS_DescribeAvailableResource",
+      "description": "查询指定可用区的资源库存状态。该接口主要用于在创建实例（RunInstances）或修改实例规格（ModifyInstanceSpec）前，确认目标资源（如实例规格、系统盘类型）在特定可用区是否库存充足。"
+    },
+    {
+      "name": "ECS_DescribeImages",
+      "description": "指定ImageId、镜像被使用场景、Filter过滤等参数，查询您可以使用的镜像资源列表。"
+    },
+    {
+      "name": "ECS_DescribeSecurityGroups",
+      "description": "本接口用于查询安全组基本信息列表，支持您通过地域、安全组ID、安全组类型等不同参数查询。"
+    },
+    {
+      "name": "ECS_DeleteInstances",
+      "description": "本接口用于批量删除或者释放按量付费实例或者到期的包年包月实例，支持通过参数设置决定云盘是否释放或转换为按量付费保留。"
+    },
+    {
+      "name": "VPC_DescribeVpcs",
+      "description": "查询已创建的VPC。"
+    },
+    {
+      "name": "VPC_DescribeVSwitches",
+      "description": "查询可组网的信息，内网按vswitch进行组网。"
+    },
+    {
+      "name": "RDS_DescribeDBInstances",
+      "description": "该接口用于查询RDS的实例列表。"
+    },
+    {
+      "name": "LOCAL_ListDirectory",
+      "description": "列出指定目录中的文件和子目录。返回包含名称、类型和大小等信息的目录和文件列表。"
+    },
+    {
+      "name": "LOCAL_RunShellScript",
+      "description": "执行 shell 脚本或命令。返回命令输出、错误信息和退出代码。注意：执行任意命令可能存在安全风险，请谨慎使用。"
+    },
+    {
+      "name": "LOCAL_AnalyzeDeployStack",
+      "description": "识别项目部署方式和技术栈。支持识别 npm、Python、Java、Go、Docker 等部署方式。"
+    }
+  ]
+}

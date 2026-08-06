@@ -1,0 +1,99 @@
+﻿{
+    "names":  [
+                  "alibabacloud-oos-chatops-agent",
+                  "alibabacloud-sls-query",
+                  "alibabacloud-network-health-inspection",
+                  "alibabacloud-alinux-sysom-inspection",
+                  "alibabacloud-ecs-diagnose",
+                  "alibabacloud-migration-mas-solution",
+                  "alibabacloud-rds-copilot",
+                  "alibabacloud-resourcecenter-search",
+                  "alibabacloud-workbench-cli",
+                  "alibabacloud-cms-alert-rule-create",
+                  "alibabacloud-find-skills",
+                  "alert-diagnosis",
+                  "system-inspection",
+                  "ops-report-writing",
+                  "rca-root-cause-analysis",
+                  "doc-coauthoring",
+                  "brand-guidelines",
+                  "pptx",
+                  "frontend-design",
+                  "mcp-builder",
+                  "slack-gif-creator",
+                  "claude-api",
+                  "xlsx",
+                  "internal-comms",
+                  "skill-creator",
+                  "webapp-testing",
+                  "canvas-design",
+                  "web-artifacts-builder",
+                  "pdf",
+                  "theme-factory",
+                  "algorithmic-art",
+                  "docx",
+                  "InformationResearch",
+                  "idea-refine",
+                  "planning-and-task-breakdown"
+              ],
+    "alibaba_count":  11,
+    "collected_at":  "2026-08-06T11:25:22.2056074Z",
+    "total":  35,
+    "alibaba_skills":  [
+                           {
+                               "source":  null,
+                               "name":  "alibabacloud-oos-chatops-agent",
+                               "display_name":  null
+                           },
+                           {
+                               "source":  null,
+                               "name":  "alibabacloud-sls-query",
+                               "display_name":  null
+                           },
+                           {
+                               "source":  null,
+                               "name":  "alibabacloud-network-health-inspection",
+                               "display_name":  null
+                           },
+                           {
+                               "source":  null,
+                               "name":  "alibabacloud-alinux-sysom-inspection",
+                               "display_name":  null
+                           },
+                           {
+                               "source":  null,
+                               "name":  "alibabacloud-ecs-diagnose",
+                               "display_name":  null
+                           },
+                           {
+                               "source":  null,
+                               "name":  "alibabacloud-migration-mas-solution",
+                               "display_name":  null
+                           },
+                           {
+                               "source":  null,
+                               "name":  "alibabacloud-rds-copilot",
+                               "display_name":  null
+                           },
+                           {
+                               "source":  null,
+                               "name":  "alibabacloud-resourcecenter-search",
+                               "display_name":  null
+                           },
+                           {
+                               "source":  null,
+                               "name":  "alibabacloud-workbench-cli",
+                               "display_name":  null
+                           },
+                           {
+                               "source":  null,
+                               "name":  "alibabacloud-cms-alert-rule-create",
+                               "display_name":  null
+                           },
+                           {
+                               "source":  null,
+                               "name":  "alibabacloud-find-skills",
+                               "display_name":  null
+                           }
+                       ]
+}

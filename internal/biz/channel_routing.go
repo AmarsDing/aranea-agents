@@ -117,6 +117,12 @@ func ResolveChannelTarget(ctx context.Context, agents AgentRepository, teams Tea
 	if agentRef == "" {
 		return "", "", "", apierror.BadRequest("CHANNEL", "routing has no default_agent_id or team for this peer")
 	}
+	// 与 teams 分支对称的依赖防护：nil agents 时返回明确错误而非穿透为
+	// nil interface 方法调用 panic（曾被 channel.inbound.background goroutine
+	// 的 safego recover 捕获为噪音）。
+	if agents == nil {
+		return "", "", "", apierror.Internal("CHANNEL", "agent repository not configured")
+	}
 	ag, e := agents.GetAgentByID(ctx, agentRef)
 	if e != nil {
 		if !isNotFound(e) && !stderrors.Is(e, shared.ErrNotFound) {

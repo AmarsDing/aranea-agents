@@ -28,7 +28,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - `internal/service/chat_orchestrator.go` — ChatOrchestrator 编排核心
 - `internal/agent/stream_consumer.go` — turn 流消费
 - `internal/agent/v2/projector.go` — **唯一**投影器：trpc event → Task/Turn/Step…
-- `internal/agent/v2/sequencer.go` — FIFO 发布；`step.streaming` 仅 WS；终态 WBPF + outbox + dead-letter
+- `internal/agent/v2/sequencer.go` — FIFO 发布；`step.streaming` 仅 WS（flush 时分配会话级单调 `DeltaSeq`，前端按序号去重，替代原内容指纹方案）；终态 WBPF + outbox + dead-letter
 - `internal/event/contract/monitor_event.go` — MonitorEvent（监控通道，与聊天分离）
 - `web/src/features/chat/composables/useChatWorkspace.ts` — Chat 页编排（只消费 `v2_event`）
 - `web/src/features/chat/composables/useChatEventRouter.ts` — v2 EventKind → activityV2Store

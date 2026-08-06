@@ -116,7 +116,7 @@ internal/biz/session/                     ← Session 子包（status / turns / 
             → runSingleAgentViaTRPC()
               → BuildTRPCLLMAgentCached() → NewTRPCRunner() → RunTRPCUserTurn()
               → agent/v2.ActivityProjector → Sequencer
-                  （step.streaming：仅 WS，16ms batch；终态：WBPF + outbox）
+                  （step.streaming：仅 WS，16ms batch，flush 时分配会话级单调 DeltaSeq（SeqAssigner 共享计数空间）供前端按 (StepID, DeltaField) 去重重发/乱序增量；终态：WBPF + outbox）
                 → EventBus → WSV2Subscriber → WS 下行 type=v2_event
 
 后台/非流式入口：

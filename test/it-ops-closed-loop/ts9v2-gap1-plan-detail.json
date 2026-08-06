@@ -1,0 +1,209 @@
+﻿{
+    "plan":  {
+                 "planId":  "tp_622f0975-e4f9-4868-b7df-85e8cb6f8c59",
+                 "sessionId":  "ac8cc235-95ee-4646-8ae0-fdbc8dfd089c",
+                 "traceId":  "tr_ae510530-0b10-46bd-a9fa-311d7c5f68e0",
+                 "userMessage":  "【P2 生产事故】电商订单服务 2026-08-06 18:30 告警，大促期间 19:00 峰值前必须恢复。现象：order-service 网关 502 错误率 0.1%→23%；orders-db-01 order_items 全表扫描慢查询最长 47s；磁盘 IO util 98%；HikariCP 连接池耗尽 200/200。变更：17:55 上线订单查询功能未走评审。零人工运维闭环。\n\n流水线模式 4 团队：\nTeam1 告警分诊定级（并行）：定级 P1-P4 含依据、影响范围、优先级、联动动作留痕。\nTeam2 根因定位（并行）：RCA 因果链：查询功能上线→全表扫描→慢查询 47s→IO 98%→连接池耗尽→502 23%，含证据验证与置信度。\nTeam3 修复方案与风险评估（依赖 T1+T2）：短期止血（19:00 前：回滚/限流/加索引/连接池调整，含操作路径、风险等级、审批）＋长期根治（SQL 优化、索引、缓存、容量规划、评审流程）＋回滚预案。\nTeam4 修复执行与恢复验证（依赖 T3）：分步执行计划（时间线/责任人/验证门禁），验证标准：502\u003c1%、慢查询消除、连接池 active\u003c50、IO util\u003c60%、19:00 前稳定，附自动化闭环建议。\n\n依赖：T1∥T2 → T3 → T4。约束：大促期最小影响、DDL 评估锁表、动作留痕、交付物结构化。",
+                 "intentArtifactJson":  "{}",
+                 "complexityLevel":  "simple",
+                 "complexityScore":  0.29500000000000004,
+                 "dimensions":  {
+                                    "semantic":  0.7,
+                                    "structural":  0.5,
+                                    "domain":  0.1,
+                                    "tool":  0.1,
+                                    "context":  0.2,
+                                    "historical":  0
+                                },
+                 "subTasks":  [
+                                  {
+                                      "id":  "st_1c080654-ed78-4526-a76f-284178dd0e1a",
+                                      "name":  "告警分诊定级团队",
+                                      "description":  "对 2026-08-06 18:30 的 P2 生产事故进行告警分诊与事故定级（P1-P4）。背景事实：大促期间 19:00 峰值前，order-service 网关 502 错误率从 0.1% 升至 23%；orders-db-01 上 order_items 表出现全表扫描慢查询，最长 47s；磁盘 IO util 达 98%；HikariCP 连接池耗尽 200/200。17:55 上线订单查询功能未走评审。请输出结构化定级报告，内容包括：事故级别（P1-P4）及判定依据（参照 SLA、用户影响面、恢复时间要求）；影响范围（订单查询链路、下单链路、支付链路、大促峰值可用性）；处理优先级（结合 19:00 峰值前必须恢复的约束）；联动动作留痕（通知对象、时间戳、决策记录）。本团队与根因定位团队并行工作，不依赖其他团队。交付物通过 set_deliverable 写入名为 triage-report 的 markdown 文档。",
+                                      "dependsOn":  [
+
+                                                    ],
+                                      "requiredCapabilities":  [
+                                                                   "architecture",
+                                                                   "database",
+                                                                   "devops",
+                                                                   "documentation"
+                                                               ],
+                                      "priority":  1,
+                                      "estimatedComplexity":  0.35
+                                  },
+                                  {
+                                      "id":  "st_6bbe0b1a-6c3a-4c9e-a8e8-d6d3cead6b25",
+                                      "name":  "根因定位分析团队",
+                                      "description":  "针对 2026-08-06 17:55 上线的订单查询功能缺陷进行根因定位，产出 RCA 因果链报告。现象：18:30 告警，order-service 网关 502 错误率 0.1%→23%；orders-db-01 上 order_items 表全表扫描慢查询最长 47s；磁盘 IO util 98%；HikariCP 连接池耗尽 200/200。因果链须覆盖：订单查询功能上线 → 未命中索引全表扫描 → 慢查询 47s → 磁盘 IO 98% → 连接池耗尽 → 网关 502 23%。请结合 order_items 表可能存在的字段（order_id, user_id, item_id, created_at）推断缺失索引或查询条件设计缺陷，并给出证据验证（如慢查询日志、数据库会话状态、网关错误日志）与置信度（高/中/低）。本团队与告警分诊团队并行工作，不依赖其他团队。交付物通过 set_deliverable 写入名为 root-cause-report 的 markdown 文档。",
+                                      "dependsOn":  [
+
+                                                    ],
+                                      "requiredCapabilities":  [
+                                                                   "go-backend",
+                                                                   "architecture",
+                                                                   "database",
+                                                                   "research",
+                                                                   "testing",
+                                                                   "documentation"
+                                                               ],
+                                      "priority":  1,
+                                      "estimatedComplexity":  0.65
+                                  },
+                                  {
+                                      "id":  "st_12246570-decb-491a-9d82-1b643a93241d",
+                                      "name":  "修复方案与风险评估团队",
+                                      "description":  "基于 input_contract 中的 triage-report（告警分诊定级报告）和 root-cause-report（根因定位报告）设计修复方案与风险评估。事故背景：2026-08-06 18:30，大促 19:00 峰值前，order-service 网关 502 错误率 0.1%→23%；orders-db-01 上 order_items 表全表扫描慢查询最长 47s；磁盘 IO util 98%；HikariCP 连接池耗尽 200/200；17:55 上线未评审的订单查询功能。输出内容：1. 短期止血方案（须在 19:00 前）：包含回滚 17:55 发布的订单查询功能到上一个稳定版本的操作路径与风险等级；对 order-service 入口限流以保护后端；调整 HikariCP 连接池参数（如 maximum-pool-size、connection-timeout、minimum-idle）以缓解耗尽；对 order_items 表添加联合索引（建议 (order_id, user_id)，并评估在线 DDL 锁表风险，如 MySQL 8.0 ONLINE DDL ALGORITHM=INPLACE, LOCK=NONE）。2. 长期根治方案：SQL 优化、索引策略、缓存（如 Redis 缓存热点查询）、容量规划（磁盘 IO 与连接池）、上线评审流程。3. 回滚预案：回滚触发条件、执行步骤、责任人、验证方法。4. 风险评估：每项操作的风险等级（低/中/高）、影响面、审批要求。所有操作须遵循大促期最小影响原则。交付物通过 set_deliverable 写入名为 fix-plan 的 markdown 文档。",
+                                      "dependsOn":  [
+                                                        "st_1c080654-ed78-4526-a76f-284178dd0e1a",
+                                                        "st_6bbe0b1a-6c3a-4c9e-a8e8-d6d3cead6b25"
+                                                    ],
+                                      "requiredCapabilities":  [
+                                                                   "go-backend",
+                                                                   "architecture",
+                                                                   "database",
+                                                                   "devops",
+                                                                   "security",
+                                                                   "api-design",
+                                                                   "documentation"
+                                                               ],
+                                      "priority":  1,
+                                      "estimatedComplexity":  0.8
+                                  },
+                                  {
+                                      "id":  "st_b79a01e9-e81a-4426-81ba-260d81764e3b",
+                                      "name":  "修复执行与恢复验证团队",
+                                      "description":  "根据 input_contract 中的 fix-plan（修复方案与风险评估）制定并执行分步实施计划。事故背景：2026-08-06 18:30 P2 生产事故，大促 19:00 峰值前，order-service 网关 502 错误率 0.1%→23%；orders-db-01 上 order_items 表全表扫描慢查询最长 47s；磁盘 IO util 98%；HikariCP 连接池耗尽 200/200。须在 19:00 前恢复稳定。执行要求：1. 分步时间线：包含 19:00 前的每一步操作、责任角色（如 DBA/开发/运维）、预计耗时、验证门禁。2. 操作步骤应从 fix-plan 中选取短期止血项，并标注是否已完成回滚、限流、加索引、连接池调整及其操作路径（如通过配置中心调整限流阈值、通过 CI/CD 回滚订单查询版本、通过数据库管理平台执行在线 DDL）。3. 每步执行后须留痕：操作人、时间、操作标识、结果。4. 恢复验证标准：502 错误率低于 1%；order_items 慢查询消除；HikariCP 连接池 active 数低于 50；磁盘 IO util 低于 60%；19:00 前链路稳定。5. 若某步骤未达门禁，执行回滚预案并通知相关方。6. 输出自动化闭环建议：如何将告警→分诊→根因→修复→验证流程自动化（如故障自愈、自动回滚、告警联动）。交付物通过 set_deliverable 写入名为 execution-report 的 markdown 文档。",
+                                      "dependsOn":  [
+                                                        "st_12246570-decb-491a-9d82-1b643a93241d"
+                                                    ],
+                                      "requiredCapabilities":  [
+                                                                   "go-backend",
+                                                                   "devops",
+                                                                   "database",
+                                                                   "testing",
+                                                                   "documentation"
+                                                               ],
+                                      "priority":  1,
+                                      "estimatedComplexity":  0.85
+                                  },
+                                  {
+                                      "id":  "st_8b27fbc3-0333-4115-baec-bf13ca5befa2",
+                                      "name":  "事故复盘",
+                                      "description":  "对本次事故处置全流程进行复盘：基于上游团队的交付物（告警分诊、根因定位、修复方案、恢复执行与验证结果），产出标准事故复盘报告，包含事故时间线、根因分析（直接/间接/系统层面）、处置过程评估、可执行的改进项清单。通过 set_deliverable 将复盘报告写入 postmortem-report。",
+                                      "dependsOn":  [
+                                                        "st_b79a01e9-e81a-4426-81ba-260d81764e3b"
+                                                    ],
+                                      "requiredCapabilities":  [
+                                                                   "documentation",
+                                                                   "research"
+                                                               ],
+                                      "priority":  5,
+                                      "estimatedComplexity":  0.3
+                                  }
+                              ],
+                 "taskDag":  {
+                                 "nodes":  [
+                                               {
+                                                   "id":  "st_1c080654-ed78-4526-a76f-284178dd0e1a",
+                                                   "name":  "告警分诊定级团队",
+                                                   "description":  "对 2026-08-06 18:30 的 P2 生产事故进行告警分诊与事故定级（P1-P4）。背景事实：大促期间 19:00 峰值前，order-service 网关 502 错误率从 0.1% 升至 23%；orders-db-01 上 order_items 表出现全表扫描慢查询，最长 47s；磁盘 IO util 达 98%；HikariCP 连接池耗尽 200/200。17:55 上线订单查询功能未走评审。请输出结构化定级报告，内容包括：事故级别（P1-P4）及判定依据（参照 SLA、用户影响面、恢复时间要求）；影响范围（订单查询链路、下单链路、支付链路、大促峰值可用性）；处理优先级（结合 19:00 峰值前必须恢复的约束）；联动动作留痕（通知对象、时间戳、决策记录）。本团队与根因定位团队并行工作，不依赖其他团队。交付物通过 set_deliverable 写入名为 triage-report 的 markdown 文档。",
+                                                   "dependsOn":  [
+
+                                                                 ],
+                                                   "requiredCapabilities":  [
+                                                                                "architecture",
+                                                                                "database",
+                                                                                "devops",
+                                                                                "documentation"
+                                                                            ],
+                                                   "priority":  1,
+                                                   "estimatedComplexity":  0.35
+                                               },
+                                               {
+                                                   "id":  "st_6bbe0b1a-6c3a-4c9e-a8e8-d6d3cead6b25",
+                                                   "name":  "根因定位分析团队",
+                                                   "description":  "针对 2026-08-06 17:55 上线的订单查询功能缺陷进行根因定位，产出 RCA 因果链报告。现象：18:30 告警，order-service 网关 502 错误率 0.1%→23%；orders-db-01 上 order_items 表全表扫描慢查询最长 47s；磁盘 IO util 98%；HikariCP 连接池耗尽 200/200。因果链须覆盖：订单查询功能上线 → 未命中索引全表扫描 → 慢查询 47s → 磁盘 IO 98% → 连接池耗尽 → 网关 502 23%。请结合 order_items 表可能存在的字段（order_id, user_id, item_id, created_at）推断缺失索引或查询条件设计缺陷，并给出证据验证（如慢查询日志、数据库会话状态、网关错误日志）与置信度（高/中/低）。本团队与告警分诊团队并行工作，不依赖其他团队。交付物通过 set_deliverable 写入名为 root-cause-report 的 markdown 文档。",
+                                                   "dependsOn":  [
+
+                                                                 ],
+                                                   "requiredCapabilities":  [
+                                                                                "go-backend",
+                                                                                "architecture",
+                                                                                "database",
+                                                                                "research",
+                                                                                "testing",
+                                                                                "documentation"
+                                                                            ],
+                                                   "priority":  1,
+                                                   "estimatedComplexity":  0.65
+                                               },
+                                               {
+                                                   "id":  "st_12246570-decb-491a-9d82-1b643a93241d",
+                                                   "name":  "修复方案与风险评估团队",
+                                                   "description":  "基于 input_contract 中的 triage-report（告警分诊定级报告）和 root-cause-report（根因定位报告）设计修复方案与风险评估。事故背景：2026-08-06 18:30，大促 19:00 峰值前，order-service 网关 502 错误率 0.1%→23%；orders-db-01 上 order_items 表全表扫描慢查询最长 47s；磁盘 IO util 98%；HikariCP 连接池耗尽 200/200；17:55 上线未评审的订单查询功能。输出内容：1. 短期止血方案（须在 19:00 前）：包含回滚 17:55 发布的订单查询功能到上一个稳定版本的操作路径与风险等级；对 order-service 入口限流以保护后端；调整 HikariCP 连接池参数（如 maximum-pool-size、connection-timeout、minimum-idle）以缓解耗尽；对 order_items 表添加联合索引（建议 (order_id, user_id)，并评估在线 DDL 锁表风险，如 MySQL 8.0 ONLINE DDL ALGORITHM=INPLACE, LOCK=NONE）。2. 长期根治方案：SQL 优化、索引策略、缓存（如 Redis 缓存热点查询）、容量规划（磁盘 IO 与连接池）、上线评审流程。3. 回滚预案：回滚触发条件、执行步骤、责任人、验证方法。4. 风险评估：每项操作的风险等级（低/中/高）、影响面、审批要求。所有操作须遵循大促期最小影响原则。交付物通过 set_deliverable 写入名为 fix-plan 的 markdown 文档。",
+                                                   "dependsOn":  [
+                                                                     "st_1c080654-ed78-4526-a76f-284178dd0e1a",
+                                                                     "st_6bbe0b1a-6c3a-4c9e-a8e8-d6d3cead6b25"
+                                                                 ],
+                                                   "requiredCapabilities":  [
+                                                                                "go-backend",
+                                                                                "architecture",
+                                                                                "database",
+                                                                                "devops",
+                                                                                "security",
+                                                                                "api-design",
+                                                                                "documentation"
+                                                                            ],
+                                                   "priority":  1,
+                                                   "estimatedComplexity":  0.8
+                                               },
+                                               {
+                                                   "id":  "st_b79a01e9-e81a-4426-81ba-260d81764e3b",
+                                                   "name":  "修复执行与恢复验证团队",
+                                                   "description":  "根据 input_contract 中的 fix-plan（修复方案与风险评估）制定并执行分步实施计划。事故背景：2026-08-06 18:30 P2 生产事故，大促 19:00 峰值前，order-service 网关 502 错误率 0.1%→23%；orders-db-01 上 order_items 表全表扫描慢查询最长 47s；磁盘 IO util 98%；HikariCP 连接池耗尽 200/200。须在 19:00 前恢复稳定。执行要求：1. 分步时间线：包含 19:00 前的每一步操作、责任角色（如 DBA/开发/运维）、预计耗时、验证门禁。2. 操作步骤应从 fix-plan 中选取短期止血项，并标注是否已完成回滚、限流、加索引、连接池调整及其操作路径（如通过配置中心调整限流阈值、通过 CI/CD 回滚订单查询版本、通过数据库管理平台执行在线 DDL）。3. 每步执行后须留痕：操作人、时间、操作标识、结果。4. 恢复验证标准：502 错误率低于 1%；order_items 慢查询消除；HikariCP 连接池 active 数低于 50；磁盘 IO util 低于 60%；19:00 前链路稳定。5. 若某步骤未达门禁，执行回滚预案并通知相关方。6. 输出自动化闭环建议：如何将告警→分诊→根因→修复→验证流程自动化（如故障自愈、自动回滚、告警联动）。交付物通过 set_deliverable 写入名为 execution-report 的 markdown 文档。",
+                                                   "dependsOn":  [
+                                                                     "st_12246570-decb-491a-9d82-1b643a93241d"
+                                                                 ],
+                                                   "requiredCapabilities":  [
+                                                                                "go-backend",
+                                                                                "devops",
+                                                                                "database",
+                                                                                "testing",
+                                                                                "documentation"
+                                                                            ],
+                                                   "priority":  1,
+                                                   "estimatedComplexity":  0.85
+                                               },
+                                               {
+                                                   "id":  "st_8b27fbc3-0333-4115-baec-bf13ca5befa2",
+                                                   "name":  "事故复盘",
+                                                   "description":  "对本次事故处置全流程进行复盘：基于上游团队的交付物（告警分诊、根因定位、修复方案、恢复执行与验证结果），产出标准事故复盘报告，包含事故时间线、根因分析（直接/间接/系统层面）、处置过程评估、可执行的改进项清单。通过 set_deliverable 将复盘报告写入 postmortem-report。",
+                                                   "dependsOn":  [
+                                                                     "st_b79a01e9-e81a-4426-81ba-260d81764e3b"
+                                                                 ],
+                                                   "requiredCapabilities":  [
+                                                                                "documentation",
+                                                                                "research"
+                                                                            ],
+                                                   "priority":  5,
+                                                   "estimatedComplexity":  0.3
+                                               }
+                                           ],
+                                 "rootIds":  [
+                                                 "st_8b27fbc3-0333-4115-baec-bf13ca5befa2"
+                                             ],
+                                 "leafIds":  [
+                                                 "st_8b27fbc3-0333-4115-baec-bf13ca5befa2"
+                                             ]
+                             },
+                 "decomposeReason":  "分解为 4 个子任务",
+                 "strategy":  "dag",
+                 "strategyReason":  "用户指定 dag 模式",
+                 "topologyHint":  "hybrid",
+                 "memoryHit":  null,
+                 "status":  "draft",
+                 "createdAt":  "2026-08-06T10:48:15Z",
+                 "updatedAt":  "2026-08-06T10:48:15Z"
+             }
+}

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -55,6 +56,18 @@ func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID 
 	runCtx, cancel := context.WithTimeout(context.Background(), deadline)
 	safego.Go(runCtx, "session-run-durable-resume", func() {
 		defer cancel()
+		// 防卡死：goroutine panic 时必须把 run 落为 failed 并清除 resume claim
+		// （Fail 内部已含 ClearResumeClaim），否则 run 永远卡在 claimed 状态无法
+		// 再被 resume。随后 re-panic 交由 safego 记录堆栈并触发 PanicHook。
+		defer func() {
+			if r := recover(); r != nil {
+				persistCtx := context.WithoutCancel(runCtx)
+				if err := s.orch.chJobs().SessionRuns.Fail(persistCtx, sessionRunID, fmt.Sprintf("durable resume panic: %v", r)); err != nil {
+					s.lg.Warn("durable resume: fail session run after panic failed", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
+				}
+				panic(r)
+			}
+		}()
 		req := biz.TurnInput{
 			SessionID: run.SessionID,
 			Content:   biz.DurableResumePrompt(),

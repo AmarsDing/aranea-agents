@@ -8,7 +8,7 @@ type Store = ReturnType<typeof useChatActivityStore>;
  * useChatEventRouter dispatches v2 WS events into Pinia store mutations.
  *
  * The router is a pure function of (store, envelope) → store mutation.
- * Streaming delta dedup lives in activityV2Store.appendStepDelta (E2E-P1-05).
+ * Streaming delta dedup lives in activityV2Store.appendStepDelta (P3: DeltaSeq-based).
  * Reconnect reconciliation uses fetchSessionHistory (no WS replay).
  */
 export function useChatEventRouter(store: Store) {
@@ -49,7 +49,14 @@ export function useChatEventRouter(store: Store) {
         if (p.StepID && p.DeltaField && p.DeltaChunk) {
           // P2-06: pass DeltaField as string — the store handles known fields
           // (content, reasoning) and silently ignores unknown ones.
-          store.appendStepDelta(p.StepID as string, p.DeltaField as string, p.DeltaChunk as string);
+          // P3: pass DeltaSeq — the store dedups redelivered deltas by
+          // sequence; undefined seq (legacy producer) always applies.
+          store.appendStepDelta(
+            p.StepID as string,
+            p.DeltaField as string,
+            p.DeltaChunk as string,
+            p.DeltaSeq as number | undefined,
+          );
         }
         break;
       case 'step.updated':

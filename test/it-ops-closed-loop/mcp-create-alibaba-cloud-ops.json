@@ -1,0 +1,14 @@
+﻿{
+    "id":  "14aabb0a62a9d3794b90ad75",
+    "key":  "alibaba-cloud-ops",
+    "name":  "Alibaba Cloud Ops (ECS/CloudMonitor/OOS/RDS)",
+    "description":  "aliyun/alibaba-cloud-ops-mcp-server: ECS instance ops, CloudMonitor metrics, OOS command execution, OSS/VPC/RDS management. Credentials via user credential keys ALIBABA_CLOUD_ACCESS_KEY_ID / ALIBABA_CLOUD_ACCESS_KEY_SECRET.",
+    "status":  "active",
+    "enabled":  true,
+    "sortOrder":  100,
+    "configJson":  "{\"args\":[\"--python\",\"3.12\",\"alibaba-cloud-ops-mcp-server@latest\"],\"command\":\"C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python314\\\\Scripts\\\\uvx.exe\",\"timeout_sec\":120,\"transport\":\"stdio\"}",
+    "metadataJson":  "",
+    "createdAt":  "2026-08-06T11:17:17Z",
+    "updatedAt":  "2026-08-06T11:17:17Z",
+    "deletedAt":  ""
+}

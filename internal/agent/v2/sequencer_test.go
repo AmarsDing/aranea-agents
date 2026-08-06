@@ -197,6 +197,53 @@ func TestSequencer_FIFOOrderAcrossEventTypes(t *testing.T) {
 	}
 }
 
+// TestSequencer_StreamingAssignsMonotonicDeltaSeq verifies that every flushed
+// step.streaming event carries a strictly increasing DeltaSeq (session-scoped,
+// shared counter — per-(step,field) monotonicity follows from session
+// monotonicity). The frontend dedups redelivered deltas by DeltaSeq instead of
+// content fingerprints (P3 fix): identical chunks ("哈哈哈" as three "哈"
+// deltas) must all survive with distinct seqs.
+func TestSequencer_StreamingAssignsMonotonicDeltaSeq(t *testing.T) {
+	t.Parallel()
+	s, _, bus := newTestSequencer(t)
+	ctx := context.Background()
+
+	publishFlushed := func(stepID, field, chunk string) {
+		t.Helper()
+		s.Publish(ctx, biz.NewStepStreamingEvent("sess-1", "task-1", stepID, field, chunk))
+		if err := s.Flush(ctx); err != nil {
+			t.Fatalf("Flush: %v", err)
+		}
+	}
+	// 连续三个相同 chunk —— 内容指纹无法区分，序号必须全部保留。
+	publishFlushed("step-1", "content", "哈")
+	publishFlushed("step-1", "content", "哈")
+	publishFlushed("step-1", "content", "哈")
+	publishFlushed("step-1", "reasoning", " ")
+	publishFlushed("step-2", "content", "x")
+
+	bus.mu.Lock()
+	defer bus.mu.Unlock()
+	if len(bus.pub) != 5 {
+		t.Fatalf("expected 5 flushed streaming events, got %d", len(bus.pub))
+	}
+	var lastSeq int64
+	for i, e := range bus.pub {
+		ev, ok := e.(*biz.StepStreamingEvent)
+		if !ok {
+			t.Fatalf("event %d: expected *StepStreamingEvent, got %T", i, e)
+		}
+		if ev.DeltaSeq <= 0 {
+			t.Fatalf("event %d (%s/%s): DeltaSeq not assigned, got %d", i, ev.StepID, ev.DeltaField, ev.DeltaSeq)
+		}
+		if ev.DeltaSeq <= lastSeq {
+			t.Fatalf("event %d (%s/%s): DeltaSeq %d not strictly increasing (prev %d)",
+				i, ev.StepID, ev.DeltaField, ev.DeltaSeq, lastSeq)
+		}
+		lastSeq = ev.DeltaSeq
+	}
+}
+
 // TestSequencer_StreamingBatchMerge verifies that two step.streaming events
 // for the SAME StepID within the batch window merge into a single WS publish.
 func TestSequencer_StreamingBatchMerge(t *testing.T) {
