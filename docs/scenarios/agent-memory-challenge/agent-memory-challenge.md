@@ -77,7 +77,7 @@
 - **系统**：Aranea-Agents Memory（Aranea-Agents 平台的记忆子系统独立参评）
 - **核心能力**：L0–L4 五层记忆体系（上下文窗口 / 工作记忆 / 情景记忆 / 语义事实 / 图谱与进化）
 - **仓库**：https://github.com/AmarsDing/aranea-agents （public ✅ 已确认）
-- **固定版本**：当前 HEAD `69378f54c`（v0.1.35-96-g69378f54c），提交前打固定 tag `amc-2026.08`
+- **固定版本**：tag `amc-2026.08`（commit `d5668572f`，含全新部署修复；Full 受理后冻结）
 
 ---
 
@@ -90,7 +90,7 @@
 | 字段 | 填写内容 |
 |------|----------|
 | 系统名称 | Aranea-Agents Memory |
-| 系统版本 | `amc-2026.08`（git tag；基于 commit `69378f54c` 固定，Full 受理后冻结） |
+| 系统版本 | `amc-2026.08`（git tag，指向 commit `d5668572f`；Full 受理后冻结） |
 | 联系人 | 丁升 / dingsheng88888888@126.com / 13521757871 |
 | 机构或团队 | 个人开发者（Independent Developer） |
 | 拟参评类型 | 文本记忆（Textual Memory）+ 代码记忆（Coding Memory） |

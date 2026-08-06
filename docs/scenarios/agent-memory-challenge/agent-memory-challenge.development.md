@@ -27,11 +27,11 @@
 |---|------|--------|------|------|
 | T0 | 确认仓库 public 可匿名访问（https://github.com/AmarsDing/aranea-agents） | P0 阻塞 | 用户 | ✅ 已确认 public |
 | T1 | 实现 Add/Search 适配层：**独立入口 `cmd/memoryeval/`（主程序零修改）** + biz 窄接口 `EvalMemoryStore` + Bearer 鉴权；17 个契约测试通过 | P0 | 无 | ✅ 2026-08-06 |
-| T2 | Docker 形态验证：~~①SQLite 单容器~~（`NewData` 硬编码 Postgres，不可行，已定论）；②compose（pgvector）双服务形态 — 配置已就绪（`docker-compose.eval.yml`），实机 `docker compose up` 验证 | P0 | T1 | 🟡 配置就绪，待实机跑通 |
+| T2 | Docker 形态验证：~~①SQLite 单容器~~（`NewData` 硬编码 Postgres，不可行，已定论）；②compose（pgvector）双服务形态 — 配置就绪（`docker-compose.eval.yml`，镜像以 `GO_BUILD_TAGS=pgvector` 构建）；本地等价验证：全新 aranea_eval 库直跑二进制 + smoke 7 项全绿（本机无 Docker，实机构建验证留待平台 Smoke 阶段） | P0 | T1 | ✅ 本地等价验证通过 |
 | T3 | 仓库 README 增加「Agent Memory Challenge」章节：构建/启动/健康检查/curl 示例/依赖与降级说明 | P0 | T2 | ✅ 2026-08-06（README §Agent Memory Challenge 2026） |
 | T4 | 仓库内发布学术披露页（引用 + 方法改动，引用 design.md §3/§4 内容） | P0 | 无 | ✅（design.md §3/§4 随仓库发布，README 已链接） |
-| T5 | Smoke 自测脚本：模拟平台 Add（多 user 多会话）→ Search 断言召回与隔离 → 输出报告 | P0 | T1 | 🟡 脚本已就绪（`test/agent-memory-challenge/smoke.sh`），待对运行中服务执行 |
-| T6 | 打固定版本 tag `amc-2026.08`，全局 grep 确认无 Key 残留 | P0 | T1–T5 | ⏳ |
+| T5 | Smoke 自测脚本：模拟平台 Add（多 user 多会话）→ Search 断言召回与隔离 → 输出报告 | P0 | T1 | ✅ 2026-08-07 本地 aranea_eval 全新库实跑 7 项全绿（含 user 隔离与幂等重试） |
+| T6 | 打固定版本 tag `amc-2026.08`，全局 grep 确认无 Key 残留 | P0 | T1–T5 | ✅ 2026-08-07 tag 已打（本地，commit `d5668572f`），grep 无 Key 残留；⏳ 待推送 origin |
 | T7 | 填写申请表（需求文档 §3 口径，补联系人/机构）并提交 | P0 | T0、T6 | ⏳ |
 | T8 | （可选）代码记忆榜复核：确认同一适配层覆盖工程任务记忆场景，必要时补说明 | P1 | T1 | ⏳ |
 | T9 | （可选）社区贡献加分：准备 3 组挑战性测试样本提交审核 | P2 | T7 | ⏳ |
@@ -81,4 +81,6 @@
 - `cmd/memoryeval/handler_test.go` — 17 个契约测试
 - `docker-compose.eval.yml`、`test/agent-memory-challenge/smoke.sh`（T2/T5）
 
-主程序修改：**无**（api proto、cmd/admin、internal/service、internal/data 现有文件均未触碰；`make build` 自动产出 `bin/memoryeval`）
+主程序修改：**评测零侵入**（api proto、cmd/admin、internal/service 未触碰；`make build` 自动产出 `bin/memoryeval`）。仅两处共享构建/迁移设施的必要修复：
+- `internal/data/plugin_run_schema.go`（`splitDDLStatements` 先剥离 `--` 注释再切分）— 修复全新 Postgres 部署时 `20261128_memory_facts_fts_index` 迁移因注释含 `;` 被切碎而失败（P1 启动阻塞，平台干净构建必经路径）；回归测试 `internal/data/split_ddl_statements_test.go`
+- `Makefile` / `Dockerfile` — 新增可选 `GO_BUILD_TAGS`（默认空，主程序构建行为不变）；评测 compose 传 `pgvector` 并设 `DAO_VECTOR_PGVECTOR=true` 启用向量召回
