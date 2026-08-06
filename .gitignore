@@ -95,6 +95,7 @@ profile.cov
 /manager_notes_*.md
 /output/
 /node_modules
+node_modules/
 /.gocache*
 test/*gocache*
 test/.gocache*
