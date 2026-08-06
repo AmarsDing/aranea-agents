@@ -31,7 +31,7 @@
 | T3 | 仓库 README 增加「Agent Memory Challenge」章节：构建/启动/健康检查/curl 示例/依赖与降级说明 | P0 | T2 | ✅ 2026-08-06（README §Agent Memory Challenge 2026） |
 | T4 | 仓库内发布学术披露页（引用 + 方法改动，引用 design.md §3/§4 内容） | P0 | 无 | ✅（design.md §3/§4 随仓库发布，README 已链接） |
 | T5 | Smoke 自测脚本：模拟平台 Add（多 user 多会话）→ Search 断言召回与隔离 → 输出报告 | P0 | T1 | ✅ 2026-08-07 本地 aranea_eval 全新库实跑 7 项全绿（含 user 隔离与幂等重试） |
-| T6 | 打固定版本 tag `amc-2026.08`，全局 grep 确认无 Key 残留 | P0 | T1–T5 | ✅ 2026-08-07 tag 已打（本地，commit `80eb316e4`），grep 无 Key 残留；⏳ 待推送 origin |
+| T6 | 打固定版本 tag `amc-2026.08`，全局 grep 确认无 Key 残留 | P0 | T1–T5 | ✅ 2026-08-07 tag 已推送 origin（commit `ab2468ad3`），grep 无 Key 残留 |
 | T7 | 填写申请表（需求文档 §3 口径，补联系人/机构）并提交 | P0 | T0、T6 | ⏳ |
 | T8 | （可选）代码记忆榜复核：确认同一适配层覆盖工程任务记忆场景，必要时补说明 | P1 | T1 | ⏳ |
 | T9 | （可选）社区贡献加分：准备 3 组挑战性测试样本提交审核 | P2 | T7 | ⏳ |

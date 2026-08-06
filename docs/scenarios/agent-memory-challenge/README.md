@@ -26,7 +26,7 @@
 | M4 | 开发计划与提交 Checklist | [agent-memory-challenge.development.md](./agent-memory-challenge.development.md) | ✅ 初稿 |
 | M5 | 仓库参赛 README 章节（运行说明、Docker 命令、API 入口） | 仓库根 [README.md](../../../README.md) §Agent Memory Challenge 2026 | ✅ 已发布 |
 | M6 | Add/Search 适配层代码 | `cmd/memoryeval/` + `internal/biz/memory_eval.go` + `internal/data/memory_eval_store.go` | ✅ 已实现（17 契约测试通过，主程序零修改） |
-| M7 | 固定版本 tag（如 `amc-2026.08`） | git tag `amc-2026.08` → commit `80eb316e4` | ✅ 已打（本地）；⏳ 待推送 origin |
+| M7 | 固定版本 tag（如 `amc-2026.08`） | git tag `amc-2026.08` → commit `ab2468ad3` | ✅ 已推送 origin |
 
 ## 3. 有效提交五条件（平台复核标准）
 
