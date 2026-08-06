@@ -35,7 +35,7 @@ query ──► Embedding（OpenAI 兼容 API，可降级）──► 向量召�
    └──► scope=user（=评测 user_id）强制过滤 ────────────► top_k 截断 ──► 证据条目
 ```
 
-SQLite 降级模式：无 pgvector 时退化为关键词全文召回，契约行为不变。
+降级模式：Embedding 端点未配置/不可用时退化为关键词混合召回（brute-force 路径），契约行为不变。
 
 ---
 
@@ -135,17 +135,16 @@ Search(query, user_id, top_k=100, options)
       ‑ 无 LLM 调用、无答案生成（红线 R1）
 ```
 
-### 5.3 代码落位（遵循项目分层规范）
+### 5.3 代码落位（T1 实际实施：独立入口，主程序零修改）
 
-| 层 | 新增/修改 | 说明 |
-|----|-----------|------|
-| api | 新增 `api/kratos/memoryeval/v1/eval.proto` | 两个 RPC + HTTP 注解；`make api` 生成 |
-| service | 新增 `internal/service/memory_eval.go` | 契约校验、鉴权中间件挂载、错误码翻译 |
-| biz | 复用 `MemoryUsecase` / `MemoryAdminUsecase` / Recall 端口 | 新增窄接口 `EvalMemoryPort`（Stability:internal，方法 ≤5） |
-| data | 复用现有 L2/L3 shim | 零改动 |
-| 配置 | `configs/` 新增 eval 适配层开关与 Bearer Token 注入（环境变量） | Key 不进仓库 |
+| 层 | 文件 | 说明 |
+|----|------|------|
+| biz | `internal/biz/memory_eval.go`（新增） | `EvalMemoryStore` 窄端口（Stability:internal，2 方法）+ `EvalMessage` / `EvalMemoryItem` |
+| data | `internal/data/memory_eval_store.go`（新增） | 委托现有 `l3FactRepo`：`UpsertFactRow`（`(scope_type,scope_id,fingerprint)` 唯一键幂等 + PII gate）+ `RecallL3Facts`（混合评分召回，空 embedding 自动 brute-force 降级） |
+| cmd | `cmd/memoryeval/main.go`、`handler.go`（新增） | 独立 HTTP 入口；net/http 标准库；Bearer/X-Api-Key 鉴权；`make build` 自动产出 `bin/memoryeval`（`go build -o ./bin/ ./...`） |
+| 主程序 | **零修改** | 不动 api proto / cmd/admin wire / internal/service / data 现有文件 |
 
-**鉴权**：Kratos HTTP 中间件校验 `Authorization: Bearer` / `X-Api-Key`，与系统现有鉴权链并联，仅保护 `/v1/memory/*` 评测端点。
+**鉴权**：handler 层中间件校验 `Authorization: Bearer` / `X-Api-Key`，仅保护评测端点；token 由环境变量 `EVAL_MEMORY_TOKEN` 注入，不进仓库。
 
 ---
 
@@ -174,12 +173,14 @@ Search(query, user_id, top_k=100, options)
 
 仓库根 `Dockerfile`：Go 1.23 多阶段构建 → debian-slim；`EXPOSE 8000(HTTP)/9000(gRPC)`；`CMD ["./admin", "-conf", "/data/conf"]`。
 
-### 8.2 参赛运行形态（T2 验证后定稿）
+### 8.2 参赛运行形态（已定论）
 
-| 形态 | 组成 | 取舍 |
-|------|------|------|
-| A. 单容器（默认） | admin + SQLite | 零外部依赖；向量检索降级为关键词召回，成绩可能低于完整模式 |
-| B. compose（推荐） | admin + Postgres(pgvector 镜像) | 完整混合召回；需在运行说明中给出 compose 文件与启动顺序 |
+**`NewData` 硬编码 Postgres（pgvector），SQLite 仅存在于遗留迁移工具——单容器 SQLite 形态不可行。唯一形态为 docker-compose（app + pgvector）**，见仓库根 `docker-compose.eval.yml`：
+
+| 服务 | 镜像/构建 | 说明 |
+|------|-----------|------|
+| `db` | `pgvector/pgvector:pg16` | Postgres + pgvector，健康检查后启动 app |
+| `memoryeval` | 根 `Dockerfile` 构建（`make build` 自动含 `bin/memoryeval`），`command: ["./memoryeval"]` 覆盖 CMD | 评测适配层服务，暴露 9100 |
 
 ### 8.3 环境变量（运行说明必须包含）
 
@@ -187,7 +188,7 @@ Search(query, user_id, top_k=100, options)
 |------|------|------|
 | `EVAL_MEMORY_TOKEN` | 适配层 Bearer Key（Memory System Key） | 是 |
 | `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` / `EMBEDDING_DIM` | OpenAI 兼容 Embedding 端点 | 否（缺省降级关键词召回） |
-| `DEPLOY_ENV` / 数据库 DSN | 模式切换与 PG 连接 | 形态 B 必填 |
+| `EVAL_PG_SOURCE` | Postgres DSN（compose 已内置默认值） | 是 |
 
 ### 8.4 仓库须补充（T3）
 

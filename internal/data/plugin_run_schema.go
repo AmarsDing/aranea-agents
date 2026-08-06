@@ -72,8 +72,19 @@ func execDDLFile(ctx context.Context, client *ent.Client, ddl, label string) err
 	return nil
 }
 
+// splitDDLStatements splits a DDL script into statements on semicolons.
+// `--` line comments are stripped first so semicolons inside comments never
+// fragment statements (fresh-Postgres failure of 20261128_memory_facts_fts_index).
+// Contract: scripts fed here must not use `$$` bodies or `--` inside string
+// literals; complex DDL goes through Func-based migrations instead.
 func splitDDLStatements(ddl string) []string {
-	parts := strings.Split(ddl, ";")
+	lines := strings.Split(ddl, "\n")
+	for i, ln := range lines {
+		if idx := strings.Index(ln, "--"); idx >= 0 {
+			lines[i] = ln[:idx]
+		}
+	}
+	parts := strings.Split(strings.Join(lines, "\n"), ";")
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
 		stmt := strings.TrimSpace(p)

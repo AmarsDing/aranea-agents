@@ -91,8 +91,8 @@
 |------|----------|
 | 系统名称 | Aranea-Agents Memory |
 | 系统版本 | `amc-2026.08`（git tag；基于 commit `69378f54c` 固定，Full 受理后冻结） |
-| 联系人 | ⚠️ 待填写（姓名 / 邮箱） |
-| 机构或团队 | ⚠️ 待填写（个人开发者或团队名称） |
+| 联系人 | 丁升 / dingsheng88888888@126.com / 13521757871 |
+| 机构或团队 | 个人开发者（Independent Developer） |
 | 拟参评类型 | 文本记忆（Textual Memory）+ 代码记忆（Coding Memory） |
 | 参赛组别 | 学术方法榜（Academic Methods） |
 | 提交方式 | 代码提交，由平台 Docker 部署（Academic · Code） |
@@ -106,18 +106,18 @@
 >
 > 针对评测维度的核心机制：事实召回（A）由 L3 混合评分召回承担（向量余弦 + Postgres 全文检索 + 时间衰减 + 置信度强化）；多跳组合（B）由 L4 图谱路径与跨层融合承担；时序理解（C）由 L2 情景时间线与 turn 索引承担；记忆治理（D）由冲突检测、反驳/确认、版本回滚、级联删除与全局衰减模型承担；个性化（E）由 user 作用域偏好事实与业务化置信度模型承担；安全隐私（H）由 PII 扫描脱敏、scope 五级作用域隔离与全量审计承担。Search 接口仅返回记忆条目证据，不做任何答案生成；user_id 为唯一检索隔离边界。
 >
-> 系统以 Docker 单容器（SQLite 降级模式）或 docker-compose（Postgres + pgvector 完整模式）运行，Add/Search 契约适配层以独立 HTTP 端口暴露。
+> 系统以 docker-compose（Postgres + pgvector + 评测适配层）运行，Add/Search 契约适配层以独立 HTTP 端口暴露；未配置 Embedding API 时自动降级为关键词混合召回。
 
 ### 3.3 提交说明（Submission Notes）
 
 1. **仓库**：https://github.com/AmarsDing/aranea-agents ，固定 tag `amc-2026.08`
-2. **构建**：仓库根 `Dockerfile`（Go 1.23 构建 → debian-slim 运行时）；构建命令 `docker build -t aranea-memory:amc-2026.08 .`
-3. **运行**：`docker run -p 8000:8000 -p 9000:9000 -v ./conf:/data/conf aranea-memory:amc-2026.08`；评测适配层端点见仓库 README「Agent Memory Challenge」章节
-4. **Add/Search 封装**：独立 HTTP 适配层，契约细节见 [design.md §5](./agent-memory-challenge.design.md#5-addsearch-api-封装方案)
-5. **外部依赖**：语义向量检索依赖 OpenAI 兼容 Embedding API（通过环境变量配置 base_url/api_key/model/dim）；未配置时自动降级为关键词全文检索，不影响 Add/Search 契约可用性
-6. **数据库**：默认单容器 SQLite 可运行；完整模式（推荐）使用 Postgres + pgvector，compose 文件与说明随仓库提供
-7. **鉴权**：适配层启用 Bearer Token（Memory System Key），Key 通过申请表安全渠道提交，不在仓库出现
-8. **容量与限制**：单容器默认配置支持评测规模（≈150M 字符写入）；Add 为同步确认 + 内部异步摄取，Search 同步返回；详见 design.md §7
+2. **构建**：`docker compose -f docker-compose.eval.yml build`（根 Dockerfile，Go 1.23 多阶段构建，自动包含 `memoryeval` 评测二进制）
+3. **运行**：`docker compose -f docker-compose.eval.yml up -d`（app + pgvector 两服务）；评测端点 `http://<host>:9100`，健康检查 `GET /healthz`
+4. **Add/Search 封装**：`cmd/memoryeval/` 独立 HTTP 适配层（主程序零修改），契约细节见 [design.md §5](./agent-memory-challenge.design.md#5-addsearch-api-封装方案)
+5. **外部依赖**：语义向量检索依赖 OpenAI 兼容 Embedding API（环境变量配置 base_url/api_key/model/dim）；未配置时自动降级为关键词混合召回，Add/Search 契约保持可用
+6. **数据库**：Postgres + pgvector（compose 内置 `pgvector/pgvector:pg16` 服务，首次启动自动完成 schema 迁移）
+7. **鉴权**：适配层启用 Bearer Token（Memory System Key，环境变量 `EVAL_MEMORY_TOKEN` 注入），Key 通过申请表安全渠道提交，不在仓库出现
+8. **容量与限制**：compose 默认配置支持评测规模（≈150M 字符写入）；Add 为同步确认（含幂等 upsert，平台重试安全），Search 同步返回；详见 design.md §7
 
 ### 3.4 学术方法补充材料（学术榜必填）
 

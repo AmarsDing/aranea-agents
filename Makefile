@@ -91,9 +91,9 @@ cli-all: cli
 	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o ./bin/aranea-linux-amd64 ./cmd/aranea
 
 .PHONY: build
-# build
+# build (GO_BUILD_TAGS optional, e.g. GO_BUILD_TAGS=pgvector for the eval image)
 build:
-	mkdir -p bin/ && go build -ldflags "$(LDFLAGS)" -o ./bin/ ./...
+	mkdir -p bin/ && go build -tags "$(GO_BUILD_TAGS)" -ldflags "$(LDFLAGS)" -o ./bin/ ./...
 
 .PHONY: fieldguide-lint
 # PGO-2-LINT-02: check Go ↔ TypeScript FieldGuide scope registry is in sync

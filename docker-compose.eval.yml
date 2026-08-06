@@ -1,0 +1,56 @@
+# Agent Memory Challenge 2026 — evaluation deployment (academic · code route).
+#
+# Build:  docker compose -f docker-compose.eval.yml build
+# Run:    docker compose -f docker-compose.eval.yml up -d
+# Smoke:  ./test/agent-memory-challenge/smoke.sh http://localhost:9100 "$EVAL_MEMORY_TOKEN"
+# Stop:   docker compose -f docker-compose.eval.yml down   (add -v to drop data)
+#
+# The stack runs only the standalone evaluation entrypoint (cmd/memoryeval) —
+# the main admin server is not started and not required.
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: aranea
+      POSTGRES_PASSWORD: ${EVAL_DB_PASSWORD:-aranea_eval}
+      POSTGRES_DB: aranea
+    volumes:
+      - eval-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aranea -d aranea"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  memoryeval:
+    build:
+      context: .
+      args:
+        # Enable the pgvector-backed vector store in this image (the compose
+        # db service ships the extension). Main-program builds stay untagged.
+        GO_BUILD_TAGS: pgvector
+    command: ["./memoryeval"]
+    environment:
+      EVAL_HTTP_ADDR: ":9100"
+      EVAL_PG_SOURCE: "postgres://aranea:${EVAL_DB_PASSWORD:-aranea_eval}@db:5432/aranea?sslmode=disable"
+      # Use the pgvector store provided by the db service (required together
+      # with the GO_BUILD_TAGS=pgvector build arg above).
+      DAO_VECTOR_PGVECTOR: "true"
+      # Memory System Key (Bearer / X-Api-Key). Provide via environment; never commit.
+      EVAL_MEMORY_TOKEN: ${EVAL_MEMORY_TOKEN:-}
+      # Optional OpenAI-compatible embedding endpoint. When unset, recall
+      # degrades to keyword-only hybrid scoring and the contract stays live.
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
+    ports:
+      - "9100:9100"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  eval-pgdata:

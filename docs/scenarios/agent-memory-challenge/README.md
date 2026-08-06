@@ -14,18 +14,18 @@
 | 评测类型 | **文本记忆 + 代码记忆**（双榜） | 两个独立榜单，同一套 Add/Search 契约 |
 | 参赛组别 | **学术方法榜** | 要求公开 GitHub 仓库 + 披露原始工作与方法改动 |
 | 参赛路径 | **学术·代码（平台 Docker 部署）** | 提交公开仓库 + Docker 启动方式 + Add/Search 封装 + 运行说明；平台构建评测，**不签发 Eval Key** |
-| 参评仓库 | https://github.com/AmarsDing/aranea-agents | ⏳ 待确认 public 状态与固定版本 tag |
+| 参评仓库 | https://github.com/AmarsDing/aranea-agents | ✅ public 已确认；⏳ 固定版本 tag 待打（T6） |
 
 ## 2. 材料清单与状态
 
 | # | 材料 | 对应文件 | 状态 |
 |---|------|----------|------|
-| M1 | 评测申请表材料（系统名称/版本/联系人/参评类型/方法说明/公开信息/提交说明） | [agent-memory-challenge.md](./agent-memory-challenge.md) §3 | ✅ 初稿（联系人等待填） |
+| M1 | 评测申请表材料（系统名称/版本/联系人/参评类型/方法说明/公开信息/提交说明） | [agent-memory-challenge.md](./agent-memory-challenge.md) §3 | ✅ 初稿（联系人已确认：丁升 / 个人开发者） |
 | M2 | 方法/系统说明（学术披露：架构、原始工作引用、方法改动、维度映射） | [agent-memory-challenge.design.md](./agent-memory-challenge.design.md) §1–§4 | ✅ 初稿 |
 | M3 | Add/Search API 封装方案（契约映射、样本隔离、鉴权、Docker 部署要求） | [agent-memory-challenge.design.md](./agent-memory-challenge.design.md) §5–§8 | ✅ 初稿 |
 | M4 | 开发计划与提交 Checklist | [agent-memory-challenge.development.md](./agent-memory-challenge.development.md) | ✅ 初稿 |
-| M5 | 仓库参赛 README 章节（运行说明、Docker 命令、API 入口） | 待写入仓库 README / `docs/` | ⏳ 待实施（T3） |
-| M6 | Add/Search 适配层代码 | 待实施 | ⏳ 待实施（T1） |
+| M5 | 仓库参赛 README 章节（运行说明、Docker 命令、API 入口） | 仓库根 [README.md](../../../README.md) §Agent Memory Challenge 2026 | ✅ 已发布 |
+| M6 | Add/Search 适配层代码 | `cmd/memoryeval/` + `internal/biz/memory_eval.go` + `internal/data/memory_eval_store.go` | ✅ 已实现（17 契约测试通过，主程序零修改） |
 | M7 | 固定版本 tag（如 `amc-2026.08`） | git tag | ⏳ 待实施（T6 前） |
 
 ## 3. 有效提交五条件（平台复核标准）
@@ -52,7 +52,7 @@
 | Q1 | ~~仓库是否已 public？~~ | 已确认 public ✅ | ✅ |
 | Q2 | ~~联系人 / 机构团队信息~~ | 丁升 / dingsheng88888888@126.com / 个人开发者 | ✅ |
 | Q3 | 平台 Docker 环境能否访问外部 Embedding API（OpenAI 兼容端点） | 决定语义检索是否可用；降级方案为关键词检索 | 📋 已在运行说明中按"可配置"设计，Smoke 阶段实测 |
-| Q4 | 数据库形态：单容器 SQLite 降级 vs compose Postgres+pgvector | 影响 Docker 运行说明 | 📋 方案已双写，T2 验证后定稿 |
+| Q4 | ~~数据库形态：单容器 SQLite 降级 vs compose Postgres+pgvector~~ | 影响 Docker 运行说明 | ✅ 已定论：`NewData` 硬编码 Postgres，compose（pgvector）为唯一形态 |
 
 ## 6. 时间线
 

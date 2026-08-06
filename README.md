@@ -878,6 +878,56 @@ go build -o aranea ./cmd/aranea
 ```
 
 ---
+## Agent Memory Challenge 2026（评测入口）
+
+本仓库参加首届 Agent 记忆挑战赛（[Agent Memory Leaderboard](https://agentmemories.ai/competition/)）学术方法榜。参评实现为独立评测入口 `cmd/memoryeval/`（**不影响主程序**），将平台 Add/Search 契约桥接到本项目的 L0–L4 五层记忆体系（L3 混合评分召回 + PII 写入门禁 + 幂等 upsert）。
+
+### 构建与运行（Docker，唯一依赖 Docker）
+
+```bash
+# 构建（根 Dockerfile 多阶段构建，自动包含 memoryeval 二进制）
+docker compose -f docker-compose.eval.yml build
+
+# 启动（app + Postgres/pgvector 两服务，首次启动自动完成 schema 迁移）
+EVAL_MEMORY_TOKEN=<memory-system-key> docker compose -f docker-compose.eval.yml up -d
+
+# 健康检查
+curl http://localhost:9100/healthz
+```
+
+### 端点契约
+
+| 端点 | 说明 |
+|------|------|
+| `POST /v1/memory/add` | 写入记忆：`{request_id, user_id, session_id, messages[]}` → `{success, request_id, timestamp}` |
+| `POST /v1/memory/search` | 检索证据：`{user_id, query, top_k=100}` → `{data: [{id, content, score, timestamp}]}`（仅返回记忆条目，不生成答案） |
+| `GET /healthz` | 健康检查 |
+
+鉴权：`Authorization: Bearer <EVAL_MEMORY_TOKEN>` 或 `X-Api-Key` 头。`user_id` 为唯一检索隔离边界，禁止跨 user 召回。
+
+### 环境变量
+
+| 变量 | 必填 | 说明 |
+|------|------|------|
+| `EVAL_PG_SOURCE` | 是 | Postgres DSN（compose 已内置默认值） |
+| `EVAL_MEMORY_TOKEN` | 是 | Memory System Key（经申请表提交，勿入仓库） |
+| `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` | 否 | OpenAI 兼容 Embedding 端点；**未配置时自动降级为关键词混合召回，契约保持可用** |
+| `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` / `EMBEDDING_DIM` | 否 | 默认 `openai` / `text-embedding-3-small` / `1536` |
+| `EVAL_HTTP_ADDR` | 否 | 监听地址，默认 `:9100` |
+
+### Smoke 自测
+
+```bash
+./test/agent-memory-challenge/smoke.sh http://localhost:9100 "$EVAL_MEMORY_TOKEN"
+```
+
+覆盖：健康检查、鉴权 401、参数校验 400、双用户写入、幂等重复 Add、召回正确性与 user 隔离断言、空 scope 返回 `data:[]`。
+
+### 方法披露
+
+架构说明、原始工作引用与方法改动清单见 [docs/scenarios/agent-memory-challenge/](./docs/scenarios/agent-memory-challenge/README.md)（需求 / 设计 / 开发计划三件套）。
+
+---
 ## License
 
 See [LICENSE](./LICENSE).
