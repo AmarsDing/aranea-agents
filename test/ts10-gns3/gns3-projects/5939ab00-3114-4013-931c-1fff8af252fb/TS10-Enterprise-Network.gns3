@@ -98,32 +98,6 @@
             },
             {
                 "filters": {},
-                "link_id": "38e37c0d-dbf8-4c09-9ce1-ba576b28a436",
-                "link_style": {},
-                "nodes": [
-                    {
-                        "adapter_number": 3,
-                        "label": {
-                            "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                            "text": "3/0"
-                        },
-                        "node_id": "6e374690-b778-4dba-bef1-99c711a61d0f",
-                        "port_number": 0
-                    },
-                    {
-                        "adapter_number": 0,
-                        "label": {
-                            "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                            "text": "0/0"
-                        },
-                        "node_id": "135e7c63-8be5-49f6-a67c-bc473a9be8c6",
-                        "port_number": 0
-                    }
-                ],
-                "suspend": false
-            },
-            {
-                "filters": {},
                 "link_id": "0c256a7d-d48f-45a0-a1ef-4dfc73aff352",
                 "link_style": {},
                 "nodes": [
@@ -143,6 +117,32 @@
                             "text": "0/0"
                         },
                         "node_id": "faed1a77-ce98-45f0-b7d4-ac517effaa7c",
+                        "port_number": 0
+                    }
+                ],
+                "suspend": false
+            },
+            {
+                "filters": {},
+                "link_id": "dd2aa139-4533-4bb8-81c8-af88cc697ce6",
+                "link_style": {},
+                "nodes": [
+                    {
+                        "adapter_number": 3,
+                        "label": {
+                            "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                            "text": "3/0"
+                        },
+                        "node_id": "6e374690-b778-4dba-bef1-99c711a61d0f",
+                        "port_number": 0
+                    },
+                    {
+                        "adapter_number": 0,
+                        "label": {
+                            "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+                            "text": "0/0"
+                        },
+                        "node_id": "135e7c63-8be5-49f6-a67c-bc473a9be8c6",
                         "port_number": 0
                     }
                 ],
@@ -478,7 +478,7 @@
                     ],
                     "ports_mapping": [
                         {
-                            "interface": "GNS3-Loopback",
+                            "interface": "\u4ee5\u592a\u7f51 2",
                             "name": "eth0",
                             "port_number": 0,
                             "type": "ethernet"

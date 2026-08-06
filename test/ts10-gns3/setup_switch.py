@@ -14,7 +14,7 @@ import json
 import sys
 import time
 
-from device import Console, run, set_password, wait_boot, ssh_exec, ssh_wait
+from device import Console, run, set_password, sync_prompt, wait_boot, ssh_exec, ssh_wait
 
 HOST = "192.168.10.254"
 LAN_IP = "192.168.10.2"
@@ -27,6 +27,7 @@ def main(port):
     print("[console] connected, waiting for boot (TCG first boot can take minutes)...")
     wait_boot(con, timeout=600)
     print("[console] boot complete")
+    sync_prompt(con)
 
     print(run(con, "cat /etc/openwrt_release | head -3"))
 
@@ -43,7 +44,10 @@ def main(port):
     run(con, "uci delete network.wan 2>/dev/null; uci delete network.wan6 2>/dev/null; true")
     run(con, "uci set network.@device[0].type='bridge'")
     run(con, "uci set network.@device[0].name='br-lan'")
-    run(con, "uci set network.@device[0].ports='eth0 eth1 eth2 eth3'")
+    # ports is a UCI list on 25.12: must delete + add_list per port (space-separated string is wrong)
+    run(con, "uci delete network.@device[0].ports 2>/dev/null; true")
+    for p in ("eth0", "eth1", "eth2", "eth3"):
+        run(con, f"uci add_list network.@device[0].ports='{p}'")
     run(con, "uci set network.lan.device='br-lan'")
     run(con, "uci set network.lan.proto='static'")
     run(con, f"uci set network.lan.ipaddr='{LAN_IP}'")
@@ -67,11 +71,11 @@ def main(port):
     run(con, f"uci set system.@system[0].log_ip='{HOST}'; uci set system.@system[0].log_port='5150'; uci set system.@system[0].log_proto='udp'; uci commit system")
     run(con, "/etc/init.d/log restart; /etc/init.d/system reload 2>/dev/null; true", timeout=60)
 
-    # --- snmpd via opkg (through edge-router NAT) ---
-    print("[cfg] opkg update + install snmpd (via edge-router NAT)...")
-    out = run(con, "opkg update", timeout=300)
+    # --- snmpd via apk (OpenWrt 25.x; through edge-router NAT) ---
+    print("[cfg] apk update + add snmpd (via edge-router NAT)...")
+    out = run(con, "apk update", timeout=300)
     print(out[-500:])
-    out = run(con, "opkg install snmpd", timeout=600)
+    out = run(con, "apk add snmpd", timeout=600)
     print(out[-500:])
     run(con, "uci set snmpd.@agent[0].agentaddress='UDP:161' 2>/dev/null; true")
     run(con, "uci set snmpd.public=community 2>/dev/null; uci set snmpd.public.name='public' 2>/dev/null; uci set snmpd.public.source='default' 2>/dev/null; uci set snmpd.public.community='public' 2>/dev/null; uci commit snmpd 2>/dev/null; true")

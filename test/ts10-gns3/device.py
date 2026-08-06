@@ -90,13 +90,33 @@ class Console:
 
 
 def wait_boot(con: Console, timeout=420):
-    """Wait for OpenWrt first boot to finish; activate console shell."""
-    idx, text = con.read_until(
-        ["Please press Enter to activate", r"root@.*:/#"], timeout=timeout
-    )
-    if idx == 0:
+    """Wait for OpenWrt boot to finish; activate console shell.
+
+    GNS3 telnet console is a live serial stream with no scrollback replay,
+    so we must actively send CRLF to elicit a prompt from an idle shell.
+    """
+    patterns = ["Please press Enter to activate", r"root@[^#]*#", r"bash[^#]*#", r"/ #"]
+    deadline = time.time() + timeout
+    while time.time() < deadline:
         con.send_raw("\r\n")
-        con.read_until([r"root@.*:/#", r"bash.*#", r"/ #"], timeout=60)
+        try:
+            idx, _ = con.read_until(patterns, timeout=15)
+        except TimeoutError:
+            continue  # guest still booting quietly; poke again
+        if idx == 0:
+            con.send_raw("\r\n")
+            con.read_until(patterns[1:], timeout=60)
+        con.drain(1)
+        return
+    raise TimeoutError("wait_boot timeout: no shell prompt and no activate banner")
+
+
+def sync_prompt(con: Console, timeout=30):
+    """Abort any partial/interactive command (Ctrl+C) and resync to a clean prompt."""
+    con.buf = b""
+    con.send_raw("\x03")          # Ctrl+C: kill stuck interactive cmds (e.g. passwd)
+    con.send_raw("\r\n")
+    con.read_until([r"root@[^#]*#", r"bash[^#]*#", r"/ #", r"[#$] $"], timeout=timeout)
     con.drain(1)
 
 
@@ -108,7 +128,7 @@ def run(con: Console, cmd, expect=r"[#$] $", timeout=60):
     return text
 
 
-def set_password(con: Console, user, password, timeout=30):
+def set_password(con: Console, user, password, timeout=60):
     con.buf = b""
     con.send(f"passwd {user}" if user != "root" else "passwd")
     con.read_until(["New password", "new password"], timeout=timeout)

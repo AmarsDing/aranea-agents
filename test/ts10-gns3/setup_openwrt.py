@@ -16,7 +16,7 @@ import json
 import sys
 import time
 
-from device import Console, run, set_password, wait_boot, ssh_exec, ssh_wait
+from device import Console, run, set_password, sync_prompt, wait_boot, ssh_exec, ssh_wait
 
 HOST = "192.168.10.254"
 LAN_IP = "192.168.10.1"
@@ -28,6 +28,7 @@ def main(port):
     print("[console] connected, waiting for boot (TCG first boot can take minutes)...")
     wait_boot(con, timeout=600)
     print("[console] boot complete")
+    sync_prompt(con)
 
     print(run(con, "cat /etc/openwrt_release | head -3"))
 
@@ -41,10 +42,13 @@ def main(port):
     print(set_password(con, "admin", "123456"))
 
     # --- network ---
-    print("[cfg] network lan=192.168.10.1/24, wan=dhcp")
+    print("[cfg] network lan=192.168.10.1/24, wan=dhcp on eth1")
     run(con, "uci set network.lan.ipaddr='192.168.10.1'")
     run(con, "uci set network.lan.netmask='255.255.255.0'")
-    run(con, "uci set network.wan.proto='dhcp' 2>/dev/null; uci set network.wan.device='eth1' 2>/dev/null; true")
+    # 25.12 default has NO wan section: `uci set network.wan.proto` fails unless created first
+    run(con, "uci set network.wan=interface")
+    run(con, "uci set network.wan.proto='dhcp'")
+    run(con, "uci set network.wan.device='eth1'")
     run(con, "uci commit network")
     print(run(con, "/etc/init.d/network restart", timeout=90))
     time.sleep(5)
@@ -59,11 +63,11 @@ def main(port):
     run(con, f"uci set system.@system[0].log_ip='{HOST}'; uci set system.@system[0].log_port='5150'; uci set system.@system[0].log_proto='udp'; uci commit system")
     run(con, "/etc/init.d/log restart; /etc/init.d/system reload 2>/dev/null; true", timeout=60)
 
-    # --- snmpd via opkg (needs WAN/NAT) ---
-    print("[cfg] opkg update + install snmpd (via NAT, may take a while)...")
-    out = run(con, "opkg update", timeout=300)
+    # --- snmpd via apk (OpenWrt 25.x replaced opkg with apk; needs WAN) ---
+    print("[cfg] apk update + add snmpd (via WAN, may take a while)...")
+    out = run(con, "apk update", timeout=300)
     print(out[-800:])
-    out = run(con, "opkg install snmpd", timeout=600)
+    out = run(con, "apk add snmpd", timeout=600)
     print(out[-800:])
     run(con, "uci set snmpd.@agent[0].agentaddress='UDP:161' 2>/dev/null; true")
     run(con, "uci set snmpd.public=community 2>/dev/null; uci set snmpd.public.name='public' 2>/dev/null; uci set snmpd.public.source='default' 2>/dev/null; uci set snmpd.public.community='public' 2>/dev/null; uci commit snmpd 2>/dev/null; true")
