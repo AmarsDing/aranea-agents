@@ -279,6 +279,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	dialogMode, prov, mod string,
 ) (biz.ChatMessage, biz.ChatMessage, error) {
 	sessionID := strings.TrimSpace(input.SessionID)
+	o.publishTurnProgress(ctx, sessionID, "routing", nil)
 
 	// ── ADMISSION ──
 	admitStart := time.Now()
@@ -393,6 +394,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// hook can merge them with RecallComposite results. Failures are non-fatal:
 	// only a warning is logged and the turn continues without proactive hits.
 	proactiveStart := time.Now()
+	o.publishTurnProgress(ctx, sessionID, "recalling", nil)
 	proactiveHits := o.runProactiveRecall(ctx, sess, ag, content, emitter)
 	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: runProactiveRecall",
 		loggateway.StepID("chat.proactive_recall"),
@@ -411,6 +413,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// so every Run persists checkpoints and can be recovered by RecoveryWorker
 	// after a process restart.
 	eg.Go(func() error {
+		o.publishTurnProgress(ctx, sessionID, "preparing_tools", nil)
 		var buildErr error
 		buildResult, buildErr = o.buildTurnRunner(egCtx, sess, ag, admit, emitter)
 		return buildErr
@@ -430,6 +433,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			event.P("refined_goal_len", len(intentArtifact.RefinedGoal)))
 	} else if !biz.IsA2AProxyAgent(ag) && intent.ShouldRun(ag, content) {
 		eg.Go(func() error {
+			o.publishTurnProgress(ctx, sessionID, "understanding", nil)
 			intentRunOpts, intentArtifact = o.runIntentPass(egCtx, ag, sessionID, content, prov, mod, emitter)
 			return nil // Intent Pass failure is non-fatal; it returns empty opts on error
 		})
@@ -462,6 +466,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// go through planning. The forcedPlanningRunOption is still injected as a
 	// hint to the LLM. If Plan() fails, we fall back to the soft gate.
 	gateStart := time.Now()
+	if strings.TrimSpace(input.ParentTaskID) == "" {
+		// 与 runPrePlanningGate 的续跑跳过对齐：仅根 turn 发布评估进度。
+		o.publishTurnProgress(ctx, sessionID, "assessing", nil)
+	}
 	gateDecision, gateErr := o.runPrePlanningGate(ctx, input, intentArtifact)
 	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: runPrePlanningGate",
 		loggateway.StepID("chat.pre_planning_gate"),
@@ -499,6 +507,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}
 	// SetRunStatus("running") was already sent in the EARLY ACK section
 	// above (right after ADMISSION) to clear the frontend 30s timeout early.
+	o.publishTurnProgress(ctx, sessionID, "starting", nil)
 	emitter.LogStart("chat.turn.execute", "开始执行对话轮次", event.P("run_id", runID))
 	defer func() {
 		if turnStatus != "ok" {

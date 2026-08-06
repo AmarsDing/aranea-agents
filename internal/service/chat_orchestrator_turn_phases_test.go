@@ -83,6 +83,68 @@ func TestResolveIntentPassProviderModel(t *testing.T) {
 	})
 }
 
+// captureNoticeBus extracts SystemNoticeEvents from the shared captureEventBus
+// (run_heartbeat_test.go) for progress-notice assertions.
+func captureNoticeBus(bus *captureEventBus) []*biz.SystemNoticeEvent {
+	var out []*biz.SystemNoticeEvent
+	for _, e := range bus.snapshot() {
+		if n, ok := e.(*biz.SystemNoticeEvent); ok {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// TestChatOrchestrator_PublishTurnProgress pins the pre-orchestration
+// progress contract (2026-08-06): every phase publish is an
+// orchestration_progress SystemNoticeEvent keyed by chat session ID with
+// meta.phase set, so the chat UI can render live feedback during the
+// previously silent window (recall → tools/MCP build → IntentPass → gate).
+func TestChatOrchestrator_PublishTurnProgress(t *testing.T) {
+	newOrch := func(bus biz.EventBus) *ChatOrchestrator {
+		return &ChatOrchestrator{
+			core: chatTurnCoreDeps{
+				TD: rt.TurnDeps{Pipeline: rt.EventPipeline{EventBus: bus}},
+			},
+		}
+	}
+
+	t.Run("nil bus is a no-op", func(t *testing.T) {
+		newOrch(nil).publishTurnProgress(context.Background(), "sess-1", "routing", nil)
+	})
+
+	t.Run("empty session skips publish", func(t *testing.T) {
+		bus := &captureEventBus{}
+		newOrch(bus).publishTurnProgress(context.Background(), "", "routing", nil)
+		if len(captureNoticeBus(bus)) != 0 {
+			t.Fatalf("expected no notices, got %d", len(captureNoticeBus(bus)))
+		}
+	})
+
+	t.Run("publishes orchestration_progress notice with phase and extras", func(t *testing.T) {
+		bus := &captureEventBus{}
+		newOrch(bus).publishTurnProgress(context.Background(), "sess-1", "understanding", map[string]any{"model": "gpt-4.1-mini"})
+
+		notices := captureNoticeBus(bus)
+		if len(notices) != 1 {
+			t.Fatalf("expected 1 notice, got %d", len(notices))
+		}
+		n := notices[0]
+		if n.NoticeType != "orchestration_progress" {
+			t.Errorf("NoticeType=%q want %q", n.NoticeType, "orchestration_progress")
+		}
+		if n.SpiritSessionID() != "sess-1" {
+			t.Errorf("session=%q want %q", n.SpiritSessionID(), "sess-1")
+		}
+		if n.Meta["phase"] != "understanding" {
+			t.Errorf("meta.phase=%v want %q", n.Meta["phase"], "understanding")
+		}
+		if n.Meta["model"] != "gpt-4.1-mini" {
+			t.Errorf("meta.model=%v want %q", n.Meta["model"], "gpt-4.1-mini")
+		}
+	})
+}
+
 // TestResolveRootTaskActivityID pins the ctx invariant consumed by
 // plan_and_execute → PublishV2Board & team projection: the root Task activity ID
 // of a turn must be the pre-generated fresh ID for root turns, and the parent

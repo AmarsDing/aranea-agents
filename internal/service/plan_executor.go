@@ -78,6 +78,12 @@ type PlanExecutor struct {
 	// when the same PlanBoardCreatedEvent is delivered multiple times (replay,
 	// multi-instance, or event bus redelivery). Key: board.ID, Value: *boardRunLease.
 	running sync.Map
+	// 2026-08-06 P0-2 修复（流式空壳契约）：publishV2BoardShell 先发 Steps=nil
+	// 的 PlanBoardCreatedEvent（供前端先渲染看板），steps 就绪后由 PublishV2Board
+	// 发 PlanBoardUpdatedEvent。shellTimeout 是空壳等待 steps 的兜底超时，
+	// 超时仍未就绪则 fail-closed（防止 Plan/Allocate 中途失败时看板永停 planning）。
+	// 测试可覆盖此字段缩短超时。
+	shellTimeout time.Duration
 	// 2026-07-27 总结重复触发修复：board 终态后的完成通知器（TeamStarter）。
 	// lazy 建团下 checkAllTeamsCompleted 在波次中点会误判全完成（后续 step
 	// 尚无团队记录），改为 dagRun 活跃期间门控拦截 + board 终态唯一触发。
@@ -103,6 +109,11 @@ type TeamDispatchMarker interface {
 	MarkTeamDispatched(taskID string)
 }
 
+// defaultPlanBoardShellTimeout 是流式空壳 PlanBoard 等待 steps 就绪的兜底
+// 超时（2026-08-06 P0-2）。正常 LLM 分解在工具预算内完成；超过即视为分解
+// 失败，看板 fail-closed 标记 Failed。
+const defaultPlanBoardShellTimeout = 2 * time.Minute
+
 // NewPlanExecutor constructs a PlanExecutor. All dependencies are required.
 func NewPlanExecutor(repos executorRepos, orch TeamOrchestrator, seq sequencerPublisher, lg loggateway.Logger) *PlanExecutor {
 	return &PlanExecutor{
@@ -116,6 +127,8 @@ func NewPlanExecutor(repos executorRepos, orch TeamOrchestrator, seq sequencerPu
 		gsSM: biz.NewGraphStageStateMachine(),
 		// 2026-07-05 P1 #9d：TeamStage 状态机一次性创建复用。
 		tsSM: biz.NewTeamStageStateMachine(),
+		// 2026-08-06 P0-2：流式空壳兜底超时默认值（测试可覆盖）。
+		shellTimeout: defaultPlanBoardShellTimeout,
 	}
 }
 
@@ -391,72 +404,135 @@ func (e *PlanExecutor) NotifyTeamCompletion(teamID, teamRunID string, success bo
 	}
 }
 
-// StartSubscription subscribes to PlanBoardCreatedEvent on the EventBus and
-// triggers PlanExecutor.Subscribe in a goroutine for each new PlanBoard.
+// StartSubscription subscribes to PlanBoard events on the EventBus and
+// triggers PlanExecutor.Subscribe in a goroutine for each ready PlanBoard.
 // Must be called after SetEventBus. No-op if bus is nil.
 // 2026-07-04 问题 4 修复：让 PlanExecutor 自动响应 PlanBoard 创建事件。
+//
+// 2026-08-06 P0-2 修复（流式空壳契约，20:45 会话计划失败根因）：
+// 流式分解路径先由 publishV2BoardShell 发布 Steps=nil 的
+// PlanBoardCreatedEvent（供前端先渲染看板），steps 就绪后由 PublishV2Board
+// 发布 PlanBoardUpdatedEvent（planning + 完整 steps）。契约：
+//   - Created + 空 steps：不启动 DAG、不占 lease、不 fail-closed，
+//     仅登记超时兜底看门狗（armShellTimeout），等待 steps 就绪的 Updated；
+//   - Created/Updated + planning + steps：启动 DAG（lease 去重）；
+//   - Updated + 非 planning：执行器自身发布的 executing/terminal 事件，跳过。
 func (e *PlanExecutor) StartSubscription() {
 	if e.bus == nil {
 		return
 	}
 	ch, cancel := e.bus.Subscribe(biz.EventSubscribeOptions{})
-	e.lg.Info("PlanExecutor 开始订阅 PlanBoardCreatedEvent")
+	e.lg.Info("PlanExecutor 开始订阅 PlanBoard 事件")
 	go func() {
 		defer cancel()
 		for ev := range ch {
-			pbEv, ok := ev.(*biz.PlanBoardCreatedEvent)
-			if !ok {
-				continue
+			switch pbEv := ev.(type) {
+			case *biz.PlanBoardCreatedEvent:
+				e.handleBoardReady(pbEv.PlanBoard, true)
+			case *biz.PlanBoardUpdatedEvent:
+				e.handleBoardReady(pbEv.PlanBoard, false)
 			}
-			board := pbEv.PlanBoard
-			// C-20: skip Subscribe when board is already terminal (replay / stale event).
-			if biz.IsPlanBoardTerminal(board.Status) {
-				e.lg.Warn("PlanBoard 已是终态，跳过 Subscribe",
-					loggateway.Str("plan_board_id", board.ID),
-					loggateway.Str("task_id", board.TaskID),
-					loggateway.Str("status", string(board.Status)))
-				continue
-			}
-			// C-20 + C-18: execution lease for empty and non-empty boards alike.
-			runCtx, cancel := context.WithCancel(context.Background())
-			lease := &boardRunLease{cancel: cancel, sessionID: board.SessionID}
-			if _, loaded := e.running.LoadOrStore(board.ID, lease); loaded {
-				cancel() // unused; an existing run owns this board
-				e.lg.Warn("PlanBoard 已在执行中，跳过重复事件",
-					loggateway.Str("plan_board_id", board.ID),
-					loggateway.Str("task_id", board.TaskID))
-				continue
-			}
-			if len(board.Steps) == 0 {
-				e.lg.Warn("PlanBoard 无 steps，fail-closed",
-					loggateway.Str("plan_board_id", board.ID),
-					loggateway.Str("task_id", board.TaskID))
-			} else {
-				e.lg.Info("PlanExecutor 收到 PlanBoardCreatedEvent，启动 DAG 执行",
-					loggateway.Str("plan_board_id", board.ID),
-					loggateway.Str("task_id", board.TaskID),
-					loggateway.Int("steps", len(board.Steps)))
-			}
-			// Subscribe 是阻塞的，在独立 goroutine 中执行。
-			// 2026-07-04 问题 4 修复：从 PlanBoard.TaskID 恢复 RootTaskActivityID
-			// 注入 ctx，让下游 buildTeamProjectMeta / publishV2TeamRunAndMemberSessions
-			// / publishV2TeamRunCompletion 都能拿到正确的 rootTaskID（之前为空字符串
-			// 导致 MemberSession.TaskID 为空，前端 getMemberSessionSteps 返回空数组）。
-			go func(b biz.PlanBoard, runCtx context.Context, cancel context.CancelFunc) {
-				defer e.running.Delete(b.ID) // C-20: release lease on exit
-				defer cancel()
-				if b.TaskID != "" {
-					runCtx = agent.ContextWithRootTaskActivityID(
-						runCtx, agent.RootTaskActivityID(b.TaskID))
-				}
-				if err := e.Subscribe(runCtx, b); err != nil {
-					e.lg.Warn("PlanExecutor.Subscribe 失败",
-						loggateway.Str("plan_board_id", b.ID),
-						loggateway.Err(err))
-				}
-			}(board, runCtx, cancel)
 		}
 	}()
+}
+
+// handleBoardReady 按流式空壳契约处理 PlanBoard Created/Updated 事件。
+// isCreated 区分事件种类：空壳看门狗仅在 Created 时登记；Updated 事件仅在
+// planning 状态下允许启动 DAG（排除执行器自身发出的 executing/terminal）。
+func (e *PlanExecutor) handleBoardReady(board biz.PlanBoard, isCreated bool) {
+	// C-20: skip Subscribe when board is already terminal (replay / stale event).
+	if biz.IsPlanBoardTerminal(board.Status) {
+		e.lg.Warn("PlanBoard 已是终态，跳过 Subscribe",
+			loggateway.Str("plan_board_id", board.ID),
+			loggateway.Str("task_id", board.TaskID),
+			loggateway.Str("status", string(board.Status)))
+		return
+	}
+	if len(board.Steps) == 0 {
+		// 流式空壳：steps 未就绪。登记超时兜底后返回，等待 Updated。
+		if isCreated {
+			e.lg.Info("PlanBoard 流式空壳（steps 未就绪），等待 Updated",
+				loggateway.Str("plan_board_id", board.ID),
+				loggateway.Str("task_id", board.TaskID))
+			e.armShellTimeout(board.ID)
+		}
+		return
+	}
+	// Updated 事件只允许 planning 状态启动（执行器自身发布的 executing
+	// Updated 不得重入）。
+	if !isCreated && board.Status != biz.PlanStatusPlanning {
+		return
+	}
+	// C-20 + C-18: execution lease for ready boards.
+	runCtx, cancel := context.WithCancel(context.Background())
+	lease := &boardRunLease{cancel: cancel, sessionID: board.SessionID}
+	if _, loaded := e.running.LoadOrStore(board.ID, lease); loaded {
+		cancel() // unused; an existing run owns this board
+		e.lg.Warn("PlanBoard 已在执行中，跳过重复事件",
+			loggateway.Str("plan_board_id", board.ID),
+			loggateway.Str("task_id", board.TaskID))
+		return
+	}
+	e.lg.Info("PlanExecutor 收到 PlanBoard 就绪事件，启动 DAG 执行",
+		loggateway.Str("plan_board_id", board.ID),
+		loggateway.Str("task_id", board.TaskID),
+		loggateway.Int("steps", len(board.Steps)))
+	// Subscribe 是阻塞的，在独立 goroutine 中执行。
+	// 2026-07-04 问题 4 修复：从 PlanBoard.TaskID 恢复 RootTaskActivityID
+	// 注入 ctx，让下游 buildTeamProjectMeta / publishV2TeamRunAndMemberSessions
+	// / publishV2TeamRunCompletion 都能拿到正确的 rootTaskID（之前为空字符串
+	// 导致 MemberSession.TaskID 为空，前端 getMemberSessionSteps 返回空数组）。
+	go func(b biz.PlanBoard, runCtx context.Context, cancel context.CancelFunc) {
+		defer e.running.Delete(b.ID) // C-20: release lease on exit
+		defer cancel()
+		if b.TaskID != "" {
+			runCtx = agent.ContextWithRootTaskActivityID(
+				runCtx, agent.RootTaskActivityID(b.TaskID))
+		}
+		if err := e.Subscribe(runCtx, b); err != nil {
+			e.lg.Warn("PlanExecutor.Subscribe 失败",
+				loggateway.Str("plan_board_id", b.ID),
+				loggateway.Err(err))
+		}
+	}(board, runCtx, cancel)
+}
+
+// armShellTimeout 为流式空壳 PlanBoard 登记超时兜底看门狗：shellTimeout 后
+// steps 仍未就绪（Plan/Allocate 中途失败，PublishV2Board 永不到达）时强制
+// 将看板标记为 Failed，防止前端看板永远停在 planning。
+//
+// 跳过条件（任一满足即不误伤）：
+//   - DAG 已启动（lease 在）；
+//   - 看板已离开 planning（steps 就绪后 markPlanBoardExecuting 已推进）；
+//   - 看板已有 steps。
+func (e *PlanExecutor) armShellTimeout(boardID string) {
+	timeout := e.shellTimeout
+	if timeout <= 0 {
+		timeout = defaultPlanBoardShellTimeout
+	}
+	time.AfterFunc(timeout, func() {
+		// 独立 ctx：此时无请求 ctx 可用，给 DB 读取/失败落库 30s 预算。
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if _, ok := e.running.Load(boardID); ok {
+			return // DAG 已启动，兜底跳过
+		}
+		board, err := e.repos.GetPlanBoard(ctx, boardID)
+		if err != nil {
+			e.lg.Warn("shellTimeout: 读取 PlanBoard 失败，跳过兜底",
+				loggateway.Str("plan_board_id", boardID),
+				loggateway.Err(err))
+			return
+		}
+		if board.Status != biz.PlanStatusPlanning || len(board.Steps) > 0 {
+			return
+		}
+		e.lg.Warn("PlanBoard 流式空壳超时，steps 永未就绪，fail-closed",
+			loggateway.Str("plan_board_id", boardID),
+			loggateway.Str("task_id", board.TaskID))
+		r := newDagRun(e, board)
+		r.publishPlanBoardFailed(ctx, "streaming plan board shell timeout: steps never arrived")
+	})
 }
 
 // Subscribe starts DAG execution for the given board and blocks until all

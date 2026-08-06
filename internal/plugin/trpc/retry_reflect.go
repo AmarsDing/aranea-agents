@@ -2,6 +2,7 @@ package plugintrpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -101,6 +102,16 @@ func (r *RetryAndReflectPlugin) afterTool(ctx context.Context, args *trpctool.Af
 		r.base.record(ctx, "after_tool", "success")
 		return &trpctool.AfterToolResult{}, nil
 	}
+	// P2 (2026-08-06): deterministic system errors (node not registered, unknown
+	// tool, permission/config) cannot be fixed by the LLM adjusting arguments —
+	// reflecting on them caused 3 wasteful retries of "orchestration.skip not
+	// registered" in the 20:45 session. Propagate the raw error untouched and
+	// do NOT consume retry budget.
+	if isDeterministicToolError(args.Error) {
+		r.base.logger.Info("plugin.retry_reflect.after_tool", "status", "skip", "tool", args.ToolName, "reason", "deterministic_error")
+		r.base.record(ctx, "after_tool", "success")
+		return &trpctool.AfterToolResult{}, nil
+	}
 	key := retryKey(ctx, args.ToolName, r.cfg.TrackingScope)
 	n := r.bump(key)
 	if n > r.cfg.MaxRetries {
@@ -143,6 +154,45 @@ func buildReflectHint(tool, errMsg string, attempt, max int) string {
 		"Tool %q failed (attempt %d/%d): %s. Analyze the error, adjust arguments or strategy, then retry if appropriate.",
 		tool, attempt, max, strings.TrimSpace(errMsg),
 	)
+}
+
+// deterministicErrorKeywords match system-level failures that reflect-and-retry
+// cannot fix. Deliberately excludes argument-shape errors ("invalid argument",
+// "validation failed", …) because the reflection hint helps the LLM repair
+// arguments on retry — classifying those as deterministic would lose that.
+// Kept as a package-level var so it can be extended without touching afterTool.
+var deterministicErrorKeywords = []string{
+	"not registered",  // graph node resolution (e.g. orchestration.skip)
+	"unknown node",    // graph node resolution
+	"unknown tool",    // tool resolution
+	"tool not found",  // tool resolution
+	"no such tool",    // tool resolution
+	"permission denied",
+	"forbidden",
+	"unauthorized",
+	"not allowed",
+	"access refused",
+	"not implemented",
+}
+
+// isDeterministicToolError reports whether retrying the failed tool call with
+// LLM-adjusted arguments cannot succeed. Case-insensitive substring match on
+// the error chain's message; context.Canceled is deterministic (the invocation
+// is being torn down, retrying is meaningless).
+func isDeterministicToolError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	for _, kw := range deterministicErrorKeywords {
+		if strings.Contains(msg, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *RetryAndReflectPlugin) publishReflectEvent(ctx context.Context, args *trpctool.AfterToolArgs, hint string, attempt int) {

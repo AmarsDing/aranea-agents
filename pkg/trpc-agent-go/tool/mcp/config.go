@@ -98,6 +98,7 @@ type toolSetConfig struct {
 	mcpOptions             []mcp.ClientOption      // MCP client options.
 	sessionReconnectConfig *SessionReconnectConfig // Session reconnection configuration.
 	name                   string                  // ToolSet name for identification and conflict resolution.
+	toolsCacheTTL          time.Duration           // Tools() cache TTL; <=0 disables caching (refresh per call).
 }
 
 // ToolSetOption is a function type for configuring ToolSet.
@@ -171,6 +172,21 @@ func WithSessionReconnectConfig(config SessionReconnectConfig) ToolSetOption {
 func WithName(name string) ToolSetOption {
 	return func(c *toolSetConfig) {
 		c.name = name
+	}
+}
+
+// WithToolsCacheTTL sets a TTL for caching the tool list returned by Tools().
+//
+// Runners that rebuild tools from ToolSets on every run (e.g. llmagent with
+// RefreshToolSetsOnRun) otherwise trigger a tools/list network roundtrip per
+// run. Within the TTL, Tools() serves the cached list without touching the
+// MCP server; the first call after expiry refreshes from the server.
+//
+// A TTL <= 0 (the default) disables caching and preserves the upstream
+// per-call refresh semantics.
+func WithToolsCacheTTL(ttl time.Duration) ToolSetOption {
+	return func(c *toolSetConfig) {
+		c.toolsCacheTTL = ttl
 	}
 }
 

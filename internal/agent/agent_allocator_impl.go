@@ -7,10 +7,10 @@ import (
 	"math"
 	"net/http"
 	"strings"
-	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -904,7 +904,7 @@ func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.Su
 		{Role: "user", Content: fmt.Sprintf("Select the best agent for this subtask:\n\nName: %s\nDescription: %s\nRequired Capabilities: %v", subTask.Name, subTask.Description, subTask.RequiredCapabilities)},
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	callCtx, cancel := context.WithTimeout(ctx, tools.AllocateLLMTimeout)
 	defer cancel()
 
 	text, _, _, _, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
@@ -1113,7 +1113,7 @@ func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPla
 		{Role: "user", Content: fmt.Sprintf("Select the best agent for this task:\n\n%s", taskPlan.UserMessage)},
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	callCtx, cancel := context.WithTimeout(ctx, tools.AllocateLLMTimeout)
 	defer cancel()
 
 	text, _, _, _, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)

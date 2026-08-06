@@ -14,7 +14,6 @@ import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { useChatConversationStore } from '../../../stores/chat/conversationStore';
 import { useSpiritTeamStore } from '../../../stores/spirit';
 import { cancelRunningToolMessages } from '../activityToolCall';
-import { runStatusFromActivityEvent } from '../activityRunStatus';
 import { confirmActivity, confirmActivityGrant, submitClarification } from '../api';
 import { useChatRunStatus } from './useChatRunStatus';
 import { useChatStreamManager } from './useChatStreamManager';
@@ -645,6 +644,11 @@ export function useChatWorkspace() {
       runStatus === SESSION_RUN_STATUS.IDLE
     ) {
       llmRetryStore.clear(sid);
+      // 2026-08-06: pre-orchestration phases (routing/…/starting) set the
+      // loading line on every turn; direct-answer turns have no
+      // orchestration.completed event, so terminal run status is the only
+      // reliable clearing point for them.
+      contextualLoading.clearMessage();
     }
     const rs = runStatusFromV2Payload(payload);
     if (rs?.status === SESSION_RUN_STATUS.RUNNING) {

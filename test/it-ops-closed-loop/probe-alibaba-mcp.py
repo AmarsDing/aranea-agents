@@ -12,7 +12,7 @@ OUT = r"f:\aranea-agents\test\it-ops-closed-loop"
 
 SERVERS = {
     "alibaba-cloud-ops": [f"{BIN}\\alibaba-cloud-ops-mcp-server.exe"],
-    "aliyun-observability-sls": [f"{BIN}\\mcp-server-aliyun-observability.exe"],
+    "aliyun-observability-sls": [f"{BIN}\\mcp-server-aliyun-observability.exe", "--transport", "stdio"],
     "alibabacloud-rds-openapi": [f"{BIN}\\alibabacloud-rds-openapi-mcp-server.exe"],
 }
 

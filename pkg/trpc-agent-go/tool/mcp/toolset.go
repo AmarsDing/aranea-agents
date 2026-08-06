@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/singleflight"
 	"trpc.group/trpc-go/trpc-agent-go/log"
@@ -45,6 +46,7 @@ type ToolSet struct {
 	config         toolSetConfig
 	sessionManager *mcpSessionManager
 	tools          []tool.Tool
+	toolsLoadedAt  time.Time // last successful listTools (for toolsCacheTTL)
 	mu             sync.RWMutex
 	name           string
 }
@@ -96,9 +98,11 @@ func (ts *ToolSet) Init(ctx context.Context) error {
 
 // Tools implements the ToolSet interface.
 func (ts *ToolSet) Tools(ctx context.Context) []tool.Tool {
-	if err := ts.listTools(ctx); err != nil {
-		log.ErrorContext(ctx, "Failed to refresh tools", err)
-		// Return cached tools if refresh fails.
+	if !ts.toolsCacheFresh() {
+		if err := ts.listTools(ctx); err != nil {
+			log.ErrorContext(ctx, "Failed to refresh tools", err)
+			// Return cached tools if refresh fails.
+		}
 	}
 
 	ts.mu.RLock()
@@ -112,6 +116,19 @@ func (ts *ToolSet) Tools(ctx context.Context) []tool.Tool {
 		result = append(result, t)
 	}
 	return result
+}
+
+// toolsCacheFresh reports whether the cached tool list is still within the
+// configured TTL. A zero/negative TTL disables caching (always refresh),
+// preserving the upstream per-call refresh semantics.
+func (ts *ToolSet) toolsCacheFresh() bool {
+	ttl := ts.config.toolsCacheTTL
+	if ttl <= 0 {
+		return false
+	}
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	return ts.tools != nil && time.Since(ts.toolsLoadedAt) < ttl
 }
 
 // Close implements the ToolSet interface.
@@ -170,6 +187,7 @@ func (ts *ToolSet) listTools(ctx context.Context) error {
 	// Update tools atomically.
 	ts.mu.Lock()
 	ts.tools = tools
+	ts.toolsLoadedAt = time.Now()
 	ts.mu.Unlock()
 
 	log.DebugContext(ctx, "Successfully refreshed MCP tools", "count", len(tools))

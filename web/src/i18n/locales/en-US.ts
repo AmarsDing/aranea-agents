@@ -164,6 +164,12 @@ export default {
       progressSummary: '{completed}/{total} completed',
     },
     orchestrationProgress: {
+      routing: 'Routing session and model…',
+      recalling: 'Recalling relevant memories…',
+      preparingTools: 'Assembling tools…',
+      understanding: 'Understanding task intent…',
+      assessing: 'Assessing task complexity…',
+      starting: 'Starting execution…',
       decomposing: 'Decomposing task…',
       decomposed: 'Task decomposed into {subTaskCount} subtasks',
       allocating: 'Matching agents… ({index}/{total}) {subTask}',
@@ -4061,8 +4067,7 @@ export default {
       lowMaxHint:
         'A single-file diff with ≤ this many lines and a soft kind classifies as low risk (R1); 0 = default (effective {value})',
       mediumMax: 'Medium-risk line cap',
-      mediumMaxHint:
-        'Above this or hitting a core path classifies as high risk (R3); 0 = default (effective {value})',
+      mediumMaxHint: 'Above this or hitting a core path classifies as high risk (R3); 0 = default (effective {value})',
       quota: 'Daily auto-apply quota',
       quotaHint: 'Max low-risk patches auto-applied per day (D10); 0 = default (effective {value})',
       globs: 'Core path globs',

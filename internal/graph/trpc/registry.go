@@ -98,6 +98,12 @@ func (r *Registry) ResolveNodeDef(n biz.NodeDef) (NodeDef, error) {
 	if n.FuncRef == "" {
 		return NodeDef{NodeDef: n}, nil
 	}
+	// biz.SkipNodeFuncRef 是内置 sentinel（由 ApplySkipNodeSemantics 注入到
+	// verification/skip 节点），不会注册进 Registry。与 node_wiring.go 的
+	// 特判对齐：直接返回 SkipNodeFunc，避免查表报 NOT_FOUND。
+	if n.FuncRef == biz.SkipNodeFuncRef {
+		return NodeDef{NodeDef: n, Func: SkipNodeFunc(n.ID)}, nil
+	}
 	fn, err := r.GetNodeFunc(n.FuncRef)
 	if err != nil {
 		return NodeDef{NodeDef: n}, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph registry: node %q: %v", n.ID, err))

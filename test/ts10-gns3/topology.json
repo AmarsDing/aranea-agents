@@ -1,0 +1,667 @@
+{
+  "project_id": "5939ab00-3114-4013-931c-1fff8af252fb",
+  "nodes": [
+    {
+      "command_line": "",
+      "compute_id": "local",
+      "console": 5000,
+      "console_auto_start": false,
+      "console_host": "127.0.0.1",
+      "console_type": "telnet",
+      "custom_adapters": [],
+      "first_port_name": "eth0",
+      "height": 45,
+      "label": {
+        "rotation": 0,
+        "style": null,
+        "text": "edge-router",
+        "x": null,
+        "y": -32
+      },
+      "locked": false,
+      "name": "edge-router",
+      "node_directory": "F:\\aranea-agents\\test\\ts10-gns3\\gns3-projects\\5939ab00-3114-4013-931c-1fff8af252fb\\project-files\\qemu\\49ee1b6e-da24-48d5-9de5-ae00f7579271",
+      "node_id": "49ee1b6e-da24-48d5-9de5-ae00f7579271",
+      "node_type": "qemu",
+      "port_name_format": "eth{0}",
+      "port_segment_size": 0,
+      "ports": [
+        {
+          "adapter_number": 0,
+          "adapter_type": "e1000",
+          "data_link_types": {
+            "Ethernet": "DLT_EN10MB"
+          },
+          "link_type": "ethernet",
+          "mac_address": "0c:ee:1b:6e:00:00",
+          "name": "eth0",
+          "port_number": 0,
+          "short_name": "eth0"
+        },
+        {
+          "adapter_number": 1,
+          "adapter_type": "e1000",
+          "data_link_types": {
+            "Ethernet": "DLT_EN10MB"
+          },
+          "link_type": "ethernet",
+          "mac_address": "0c:ee:1b:6e:00:01",
+          "name": "eth0",
+          "port_number": 0,
+          "short_name": "eth0"
+        }
+      ],
+      "project_id": "5939ab00-3114-4013-931c-1fff8af252fb",
+      "properties": {
+        "adapter_type": "e1000",
+        "adapters": 2,
+        "bios_image": "",
+        "bios_image_md5sum": null,
+        "boot_priority": "c",
+        "cdrom_image": "",
+        "cdrom_image_md5sum": null,
+        "cpu_throttling": 0,
+        "cpus": 1,
+        "create_config_disk": false,
+        "hda_disk_image": "openwrt-25.12.5-x86-64.qcow2",
+        "hda_disk_image_md5sum": "d432d918acf97f81d98515212e11fff3",
+        "hda_disk_interface": "ide",
+        "hdb_disk_image": "",
+        "hdb_disk_image_md5sum": null,
+        "hdb_disk_interface": "none",
+        "hdc_disk_image": "",
+        "hdc_disk_image_md5sum": null,
+        "hdc_disk_interface": "none",
+        "hdd_disk_image": "",
+        "hdd_disk_image_md5sum": null,
+        "hdd_disk_interface": "none",
+        "initrd": "",
+        "initrd_md5sum": null,
+        "kernel_command_line": "",
+        "kernel_image": "",
+        "kernel_image_md5sum": null,
+        "legacy_networking": false,
+        "linked_clone": true,
+        "mac_address": "0c:ee:1b:6e:00:00",
+        "on_close": "power_off",
+        "options": "-machine pc",
+        "platform": "x86_64",
+        "process_priority": "normal",
+        "qemu_path": "C:\\Program Files\\qemu\\qemu-system-x86_64w.exe",
+        "ram": 256,
+        "replicate_network_connection_state": true,
+        "tpm": false,
+        "uefi": false,
+        "usage": "OpenWrt edge router for TS-10 semi-physical ops loop"
+      },
+      "status": "stopped",
+      "symbol": ":/symbols/router.svg",
+      "template_id": "2a5ec2f6-652b-4731-9848-365d44738e42",
+      "width": 66,
+      "x": -200,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "command_line": "",
+      "compute_id": "local",
+      "console": 5002,
+      "console_auto_start": false,
+      "console_host": "127.0.0.1",
+      "console_type": "telnet",
+      "custom_adapters": [],
+      "first_port_name": "eth0",
+      "height": 32,
+      "label": {
+        "rotation": 0,
+        "style": null,
+        "text": "SW1",
+        "x": null,
+        "y": -26
+      },
+      "locked": false,
+      "name": "SW1",
+      "node_directory": "F:\\aranea-agents\\test\\ts10-gns3\\gns3-projects\\5939ab00-3114-4013-931c-1fff8af252fb\\project-files\\qemu\\6e374690-b778-4dba-bef1-99c711a61d0f",
+      "node_id": "6e374690-b778-4dba-bef1-99c711a61d0f",
+      "node_type": "qemu",
+      "port_name_format": "eth{0}",
+      "port_segment_size": 0,
+      "ports": [
+        {
+          "adapter_number": 0,
+          "adapter_type": "e1000",
+          "data_link_types": {
+            "Ethernet": "DLT_EN10MB"
+          },
+          "link_type": "ethernet",
+          "mac_address": "0c:37:46:90:00:00",
+          "name": "eth0",
+          "port_number": 0,
+          "short_name": "eth0"
+        },
+        {
+          "adapter_number": 1,
+          "adapter_type": "e1000",
+          "data_link_types": {
+            "Ethernet": "DLT_EN10MB"
+          },
+          "link_type": "ethernet",
+          "mac_address": "0c:37:46:90:00:01",
+          "name": "eth0",
+          "port_number": 0,
+          "short_name": "eth0"
+        },
+        {
+          "adapter_number": 2,
+          "adapter_type": "e1000",
+          "data_link_types": {
+            "Ethernet": "DLT_EN10MB"
+          },
+          "link_type": "ethernet",
+          "mac_address": "0c:37:46:90:00:02",
+          "name": "eth1",
+          "port_number": 0,
+          "short_name": "eth1"
+        },
+        {
+          "adapter_number": 3,
+          "adapter_type": "e1000",
+          "data_link_types": {
+            "Ethernet": "DLT_EN10MB"
+          },
+          "link_type": "ethernet",
+          "mac_address": "0c:37:46:90:00:03",
+          "name": "eth2",
+          "port_number": 0,
+          "short_name": "eth2"
+        }
+      ],
+      "project_id": "5939ab00-3114-4013-931c-1fff8af252fb",
+      "properties": {
+        "adapter_type": "e1000",
+        "adapters": 4,
+        "bios_image": "",
+        "bios_image_md5sum": null,
+        "boot_priority": "c",
+        "cdrom_image": "",
+        "cdrom_image_md5sum": null,
+        "cpu_throttling": 0,
+        "cpus": 1,
+        "create_config_disk": false,
+        "hda_disk_image": "openwrt-25.12.5-x86-64.qcow2",
+        "hda_disk_image_md5sum": "d432d918acf97f81d98515212e11fff3",
+        "hda_disk_interface": "ide",
+        "hdb_disk_image": "",
+        "hdb_disk_image_md5sum": null,
+        "hdb_disk_interface": "none",
+        "hdc_disk_image": "",
+        "hdc_disk_image_md5sum": null,
+        "hdc_disk_interface": "none",
+        "hdd_disk_image": "",
+        "hdd_disk_image_md5sum": null,
+        "hdd_disk_interface": "none",
+        "initrd": "",
+        "initrd_md5sum": null,
+        "kernel_command_line": "",
+        "kernel_image": "",
+        "kernel_image_md5sum": null,
+        "legacy_networking": false,
+        "linked_clone": true,
+        "mac_address": "0c:37:46:90:00:00",
+        "on_close": "power_off",
+        "options": "-machine pc",
+        "platform": "x86_64",
+        "process_priority": "normal",
+        "qemu_path": "C:\\Program Files\\qemu\\qemu-system-x86_64w.exe",
+        "ram": 128,
+        "replicate_network_connection_state": true,
+        "tpm": false,
+        "uefi": false,
+        "usage": "L2 access switch (OpenWrt br-lan bridge, SSH/SNMP manageable)"
+      },
+      "status": "stopped",
+      "symbol": ":/symbols/ethernet_switch.svg",
+      "template_id": "855772ee-bcbd-4865-acc1-7af3fd2cc2f9",
+      "width": 72,
+      "x": 0,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "command_line": "",
+      "compute_id": "local",
+      "console": 5004,
+      "console_auto_start": false,
+      "console_host": "127.0.0.1",
+      "console_type": "telnet",
+      "custom_adapters": [],
+      "first_port_name": null,
+      "height": 59,
+      "label": {
+        "rotation": 0,
+        "style": null,
+        "text": "PC1",
+        "x": null,
+        "y": -40
+      },
+      "locked": false,
+      "name": "PC1",
+      "node_directory": "F:\\aranea-agents\\test\\ts10-gns3\\gns3-projects\\5939ab00-3114-4013-931c-1fff8af252fb\\project-files\\vpcs\\47f11b20-f299-4881-b0a5-8628713210b0",
+      "node_id": "47f11b20-f299-4881-b0a5-8628713210b0",
+      "node_type": "vpcs",
+      "port_name_format": "Ethernet{0}",
+      "port_segment_size": 0,
+      "ports": [
+        {
+          "adapter_number": 0,
+          "data_link_types": {
+            "Ethernet": "DLT_EN10MB"
+          },
+          "link_type": "ethernet",
+          "name": "Ethernet0",
+          "port_number": 0,
+          "short_name": "e0"
+        }
+      ],
+      "project_id": "5939ab00-3114-4013-931c-1fff8af252fb",
+      "properties": {},
+      "status": "stopped",
+      "symbol": ":/symbols/computer.svg",
+      "template_id": "508a43a3-6144-4fde-bffc-722d3628cc1a",
+      "width": 65,
+      "x": 200,
+      "y": -120,
+      "z": 1
+    },
+    {
+      "command_line": "",
+      "compute_id": "local",
+      "console": 5006,
+      "console_auto_start": false,
+      "console_host": "127.0.0.1",
+      "console_type": "telnet",
+      "custom_adapters": [],
+      "first_port_name": null,
+      "height": 59,
+      "label": {
+        "rotation": 0,
+        "style": null,
+        "text": "PC2",
+        "x": null,
+        "y": -40
+      },
+      "locked": false,
+      "name": "PC2",
+      "node_directory": "F:\\aranea-agents\\test\\ts10-gns3\\gns3-projects\\5939ab00-3114-4013-931c-1fff8af252fb\\project-files\\vpcs\\033e2262-e8c5-4ae1-ab4f-63382913a49b",
+      "node_id": "033e2262-e8c5-4ae1-ab4f-63382913a49b",
+      "node_type": "vpcs",
+      "port_name_format": "Ethernet{0}",
+      "port_segment_size": 0,
+      "ports": [
+        {
+          "adapter_number": 0,
+          "data_link_types": {
+            "Ethernet": "DLT_EN10MB"
+          },
+          "link_type": "ethernet",
+          "name": "Ethernet0",
+          "port_number": 0,
+          "short_name": "e0"
+        }
+      ],
+      "project_id": "5939ab00-3114-4013-931c-1fff8af252fb",
+      "properties": {},
+      "status": "stopped",
+      "symbol": ":/symbols/computer.svg",
+      "template_id": "508a43a3-6144-4fde-bffc-722d3628cc1a",
+      "width": 65,
+      "x": 200,
+      "y": 120,
+      "z": 1
+    },
+    {
+      "command_line": null,
+      "compute_id": "local",
+      "console": null,
+      "console_auto_start": false,
+      "console_host": "127.0.0.1",
+      "console_type": null,
+      "custom_adapters": [],
+      "first_port_name": null,
+      "height": 59,
+      "label": {
+        "rotation": 0,
+        "style": null,
+        "text": "WAN",
+        "x": null,
+        "y": -40
+      },
+      "locked": false,
+      "name": "WAN",
+      "node_directory": "F:\\aranea-agents\\test\\ts10-gns3\\gns3-projects\\5939ab00-3114-4013-931c-1fff8af252fb\\project-files\\builtin\\faed1a77-ce98-45f0-b7d4-ac517effaa7c",
+      "node_id": "faed1a77-ce98-45f0-b7d4-ac517effaa7c",
+      "node_type": "cloud",
+      "port_name_format": "Ethernet{0}",
+      "port_segment_size": 0,
+      "ports": [
+        {
+          "adapter_number": 0,
+          "data_link_types": {
+            "Ethernet": "DLT_EN10MB"
+          },
+          "link_type": "ethernet",
+          "name": "eth0",
+          "port_number": 0,
+          "short_name": "eth0"
+        }
+      ],
+      "project_id": "5939ab00-3114-4013-931c-1fff8af252fb",
+      "properties": {
+        "interfaces": [
+          {
+            "name": "WLAN",
+            "special": true,
+            "type": "ethernet"
+          },
+          {
+            "name": "\u4ee5\u592a\u7f51",
+            "special": false,
+            "type": "ethernet"
+          },
+          {
+            "name": "\u84dd\u7259\u7f51\u7edc\u8fde\u63a5",
+            "special": false,
+            "type": "ethernet"
+          },
+          {
+            "name": "SSTAP 1",
+            "special": false,
+            "type": "ethernet"
+          },
+          {
+            "name": "\u4ee5\u592a\u7f51 2",
+            "special": false,
+            "type": "ethernet"
+          },
+          {
+            "name": "GNS3-Loopback",
+            "special": true,
+            "type": "ethernet"
+          }
+        ],
+        "ports_mapping": [
+          {
+            "interface": "\u4ee5\u592a\u7f51",
+            "name": "eth0",
+            "port_number": 0,
+            "type": "ethernet"
+          }
+        ],
+        "remote_console_host": "",
+        "remote_console_http_path": "/",
+        "remote_console_port": 23,
+        "remote_console_type": "none"
+      },
+      "status": "started",
+      "symbol": ":/symbols/computer.svg",
+      "template_id": null,
+      "width": 65,
+      "x": -420,
+      "y": -160,
+      "z": 1
+    },
+    {
+      "command_line": null,
+      "compute_id": "local",
+      "console": null,
+      "console_auto_start": false,
+      "console_host": "127.0.0.1",
+      "console_type": null,
+      "custom_adapters": [],
+      "first_port_name": null,
+      "height": 59,
+      "label": {
+        "rotation": 0,
+        "style": null,
+        "text": "MGMT",
+        "x": null,
+        "y": -40
+      },
+      "locked": false,
+      "name": "MGMT",
+      "node_directory": "F:\\aranea-agents\\test\\ts10-gns3\\gns3-projects\\5939ab00-3114-4013-931c-1fff8af252fb\\project-files\\builtin\\135e7c63-8be5-49f6-a67c-bc473a9be8c6",
+      "node_id": "135e7c63-8be5-49f6-a67c-bc473a9be8c6",
+      "node_type": "cloud",
+      "port_name_format": "Ethernet{0}",
+      "port_segment_size": 0,
+      "ports": [
+        {
+          "adapter_number": 0,
+          "data_link_types": {
+            "Ethernet": "DLT_EN10MB"
+          },
+          "link_type": "ethernet",
+          "name": "eth0",
+          "port_number": 0,
+          "short_name": "eth0"
+        }
+      ],
+      "project_id": "5939ab00-3114-4013-931c-1fff8af252fb",
+      "properties": {
+        "interfaces": [
+          {
+            "name": "WLAN",
+            "special": true,
+            "type": "ethernet"
+          },
+          {
+            "name": "\u4ee5\u592a\u7f51",
+            "special": false,
+            "type": "ethernet"
+          },
+          {
+            "name": "\u84dd\u7259\u7f51\u7edc\u8fde\u63a5",
+            "special": false,
+            "type": "ethernet"
+          },
+          {
+            "name": "SSTAP 1",
+            "special": false,
+            "type": "ethernet"
+          },
+          {
+            "name": "\u4ee5\u592a\u7f51 2",
+            "special": false,
+            "type": "ethernet"
+          },
+          {
+            "name": "GNS3-Loopback",
+            "special": true,
+            "type": "ethernet"
+          }
+        ],
+        "ports_mapping": [
+          {
+            "interface": "GNS3-Loopback",
+            "name": "eth0",
+            "port_number": 0,
+            "type": "ethernet"
+          }
+        ],
+        "remote_console_host": "",
+        "remote_console_http_path": "/",
+        "remote_console_port": 23,
+        "remote_console_type": "none"
+      },
+      "status": "started",
+      "symbol": ":/symbols/computer.svg",
+      "template_id": null,
+      "width": 65,
+      "x": 0,
+      "y": 220,
+      "z": 1
+    }
+  ],
+  "links": [
+    {
+      "capture_compute_id": null,
+      "capture_file_name": null,
+      "capture_file_path": null,
+      "capturing": false,
+      "filters": {},
+      "link_id": "a2a8dad2-0f1d-4341-9302-17b25b11963e",
+      "link_style": {},
+      "link_type": "ethernet",
+      "nodes": [
+        {
+          "adapter_number": 0,
+          "label": {
+            "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+            "text": "0/0"
+          },
+          "node_id": "49ee1b6e-da24-48d5-9de5-ae00f7579271",
+          "port_number": 0
+        },
+        {
+          "adapter_number": 0,
+          "label": {
+            "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+            "text": "0/0"
+          },
+          "node_id": "6e374690-b778-4dba-bef1-99c711a61d0f",
+          "port_number": 0
+        }
+      ],
+      "project_id": "5939ab00-3114-4013-931c-1fff8af252fb",
+      "suspend": false
+    },
+    {
+      "capture_compute_id": null,
+      "capture_file_name": null,
+      "capture_file_path": null,
+      "capturing": false,
+      "filters": {},
+      "link_id": "b84760b7-92c4-4704-a300-569ebfca7f6f",
+      "link_style": {},
+      "link_type": "ethernet",
+      "nodes": [
+        {
+          "adapter_number": 1,
+          "label": {
+            "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+            "text": "1/0"
+          },
+          "node_id": "6e374690-b778-4dba-bef1-99c711a61d0f",
+          "port_number": 0
+        },
+        {
+          "adapter_number": 0,
+          "label": {
+            "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+            "text": "0/0"
+          },
+          "node_id": "47f11b20-f299-4881-b0a5-8628713210b0",
+          "port_number": 0
+        }
+      ],
+      "project_id": "5939ab00-3114-4013-931c-1fff8af252fb",
+      "suspend": false
+    },
+    {
+      "capture_compute_id": null,
+      "capture_file_name": null,
+      "capture_file_path": null,
+      "capturing": false,
+      "filters": {},
+      "link_id": "cfc6053b-183e-4565-840f-032b64567acb",
+      "link_style": {},
+      "link_type": "ethernet",
+      "nodes": [
+        {
+          "adapter_number": 2,
+          "label": {
+            "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+            "text": "2/0"
+          },
+          "node_id": "6e374690-b778-4dba-bef1-99c711a61d0f",
+          "port_number": 0
+        },
+        {
+          "adapter_number": 0,
+          "label": {
+            "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+            "text": "0/0"
+          },
+          "node_id": "033e2262-e8c5-4ae1-ab4f-63382913a49b",
+          "port_number": 0
+        }
+      ],
+      "project_id": "5939ab00-3114-4013-931c-1fff8af252fb",
+      "suspend": false
+    },
+    {
+      "capture_compute_id": null,
+      "capture_file_name": null,
+      "capture_file_path": null,
+      "capturing": false,
+      "filters": {},
+      "link_id": "38e37c0d-dbf8-4c09-9ce1-ba576b28a436",
+      "link_style": {},
+      "link_type": "ethernet",
+      "nodes": [
+        {
+          "adapter_number": 3,
+          "label": {
+            "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+            "text": "3/0"
+          },
+          "node_id": "6e374690-b778-4dba-bef1-99c711a61d0f",
+          "port_number": 0
+        },
+        {
+          "adapter_number": 0,
+          "label": {
+            "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+            "text": "0/0"
+          },
+          "node_id": "135e7c63-8be5-49f6-a67c-bc473a9be8c6",
+          "port_number": 0
+        }
+      ],
+      "project_id": "5939ab00-3114-4013-931c-1fff8af252fb",
+      "suspend": false
+    },
+    {
+      "capture_compute_id": null,
+      "capture_file_name": null,
+      "capture_file_path": null,
+      "capturing": false,
+      "filters": {},
+      "link_id": "0c256a7d-d48f-45a0-a1ef-4dfc73aff352",
+      "link_style": {},
+      "link_type": "ethernet",
+      "nodes": [
+        {
+          "adapter_number": 1,
+          "label": {
+            "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+            "text": "1/0"
+          },
+          "node_id": "49ee1b6e-da24-48d5-9de5-ae00f7579271",
+          "port_number": 0
+        },
+        {
+          "adapter_number": 0,
+          "label": {
+            "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
+            "text": "0/0"
+          },
+          "node_id": "faed1a77-ce98-45f0-b7d4-ac517effaa7c",
+          "port_number": 0
+        }
+      ],
+      "project_id": "5939ab00-3114-4013-931c-1fff8af252fb",
+      "suspend": false
+    }
+  ]
+}

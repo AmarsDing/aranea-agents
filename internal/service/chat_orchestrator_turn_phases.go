@@ -83,6 +83,26 @@ func (o *ChatOrchestrator) prepareTurnUserOptions(
 	return userOpts, nil
 }
 
+// publishTurnProgress emits an orchestration_progress SystemNoticeEvent
+// (WS-only, not persisted) for the pre-orchestration turn phases
+// (routing/recalling/preparing_tools/understanding/assessing/starting).
+// The frontend maps meta.phase via ORCHESTRATION_PROGRESS_MAP, closing the
+// feedback gap between message ack and TaskPlanner's decomposing/allocated
+// events (2026-08-06 20:45 session: >2min silent window). Nil bus or empty
+// session → skipped.
+// Stability:internal
+func (o *ChatOrchestrator) publishTurnProgress(ctx context.Context, sessionID, phase string, extra map[string]any) {
+	bus := o.td().Pipeline.EventBus
+	if bus == nil || sessionID == "" {
+		return
+	}
+	meta := map[string]any{"phase": phase}
+	for k, v := range extra {
+		meta[k] = v
+	}
+	bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "orchestration_progress", "orchestration progress: "+phase, meta))
+}
+
 // runIntentPass executes the intent recognition pass and returns run options
 // along with the intent artifact (nil if the pass was skipped or failed).
 // The userOpts merge is deferred to after BUILD completes (see prepareTurnUserOptions).

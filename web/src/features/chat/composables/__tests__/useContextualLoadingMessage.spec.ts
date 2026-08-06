@@ -469,6 +469,51 @@ describe('useContextualLoadingMessage', () => {
     });
   });
 
+  // 2026-08-06: pre-orchestration turn phases emitted by ChatOrchestrator
+  // (publishTurnProgress) as orchestration_progress notices, closing the
+  // silent window between message ack and decomposing/allocated.
+  describe('pre-orchestration turn phases', () => {
+    const cases: Array<{ phase: string; text: string }> = [
+      { phase: 'routing', text: '正在路由会话与模型…' },
+      { phase: 'recalling', text: '正在检索相关记忆…' },
+      { phase: 'preparing_tools', text: '正在装配工具…' },
+      { phase: 'understanding', text: '正在识别任务意图…' },
+      { phase: 'assessing', text: '正在评估任务复杂度…' },
+      { phase: 'starting', text: '正在启动执行…' },
+    ];
+    for (const { phase, text } of cases) {
+      it(`${phase} phase renders "${text}"`, () => {
+        const isReplaying = ref(false);
+        const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+        onSpiritActivityEvent(
+          makeActivityEvent({
+            kind: 'notice',
+            stage: 'orchestration_progress',
+            meta: { phase },
+          }),
+        );
+
+        expect(loadingMessage.value).not.toBeNull();
+        expect(loadingMessage.value!.text).toBe(text);
+      });
+    }
+
+    it('later phase replaces earlier pre-orchestration message', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(
+        makeActivityEvent({ kind: 'notice', stage: 'orchestration_progress', meta: { phase: 'routing' } }),
+      );
+      onSpiritActivityEvent(
+        makeActivityEvent({ kind: 'notice', stage: 'orchestration_progress', meta: { phase: 'understanding' } }),
+      );
+
+      expect(loadingMessage.value!.text).toBe('正在识别任务意图…');
+    });
+  });
+
   // P-ORCH.2: orchestration_progress fine-grained phases.
   // Backend (TaskPlanner/AgentAllocator/AgentFactory) publishes SystemNoticeEvent
   // with NoticeType="orchestration_progress" and meta.phase ∈ {decomposing, decomposed,

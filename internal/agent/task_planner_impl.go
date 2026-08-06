@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -892,7 +893,7 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 		{Role: "user", Content: "Decompose the following task:\n\n" + userMessage},
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	callCtx, cancel := context.WithTimeout(ctx, tools.DecomposeLLMTimeout)
 	defer cancel()
 
 	text, _, _, _, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
@@ -958,7 +959,7 @@ func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessag
 		{Role: "user", Content: "Decompose the following task:\n\n" + userMessage},
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	callCtx, cancel := context.WithTimeout(ctx, tools.DecomposeLLMTimeout)
 	defer cancel()
 
 	parser := newStreamSubTaskParser()

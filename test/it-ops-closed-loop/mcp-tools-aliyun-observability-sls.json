@@ -1,0 +1,132 @@
+{
+  "server_key": "aliyun-observability-sls",
+  "command": [
+    "C:\\Users\\Administrator\\.local\\bin\\mcp-server-aliyun-observability.exe",
+    "--transport",
+    "stdio"
+  ],
+  "server_info": {
+    "name": "mcp_aliyun_observability_server",
+    "version": "1.13.1"
+  },
+  "protocol_version": "2024-11-05",
+  "tool_count": 29,
+  "tools": [
+    {
+      "name": "cms_text_to_promql",
+      "description": "将自然语言转换为PromQL查询语句。\n\n            ## 功能概述\n\n            该工具可以将自然语言描述转换为有效的PromQL查询语句，便于用户使用自然语言表达查询需求。\n\n            ## 使用场景\n\n            - 当用户不熟悉PromQL查询语法时\n            - 当需要快速构建复杂查询时\n            - 当需要从"
+    },
+    {
+      "name": "sls_text_to_sql",
+      "description": "将自然语言转换为SLS查询语句。当用户有明确的 logstore 查询需求，必须优先使用该工具来生成查询语句\n\n            ## 功能概述\n\n            该工具可以将自然语言描述转换为有效的SLS查询语句，便于用户使用自然语言表达查询需求。用户有任何 SLS 日志查询需求时，都需要优先使用该工具。\n\n            ## 使用场景\n\n            - 当用"
+    },
+    {
+      "name": "sls_text_to_spl",
+      "description": "将自然语言转换为SLS SPL查询语句。\n            \n            ## 功能概述\n            \n            该工具可以将自然语言描述转换为有效的SLS SPL查询语句。\n            注意：SPL (Search Processing Language) 是SLS的一种管道式查询语句，主要用于数据加工、过滤、提取等场景，与标准SQL不同。"
+    },
+    {
+      "name": "sls_sop",
+      "description": "SLS SOP (Standard Operating Procedure) assistant.\n            \n            ## 功能概述\n            \n            该工具是一个智能助手，用于回答关于 SLS (Simple Log Service) 使用方法、功能介绍、操作步骤 (SOP) 等方面的问题。\n            \n       "
+    },
+    {
+      "name": "sls_execute_sql",
+      "description": "执行SLS日志查询。\n\n            ## 功能概述\n\n            该工具用于在指定的SLS项目和日志库上执行查询语句，并返回查询结果。查询将在指定的时间范围内执行。如果上下文没有提到具体的 SQL 语句，必须优先使用 iaas_sls_text_to_sql 工具生成查询语句，无论问题有多简单\n\n            ## 使用场景\n\n            - 当需要根"
+    },
+    {
+      "name": "sls_get_context_logs",
+      "description": "查询指定日志前后的上下文日志。\n\n            ## 功能概述\n\n            该工具用于根据“起始日志”的 pack_id 与 pack_meta，查询该日志前（上文）后（下文）的若干条上下文日志。\n\n            说明：上下文查询的时间范围固定为起始日志的前后一天（由SLS服务端限制）。\n\n            ## 如何获取 pack_id 与 pack_me"
+    },
+    {
+      "name": "cms_execute_promql",
+      "description": "执行PromQL指标查询。\n\n            ## 功能概述\n\n            该工具用于在指定的SLS项目和指标库上执行PromQL查询语句，并返回时序指标数据。主要用于查询和分析时序指标数据。\n\n            ## 使用场景\n\n            - 当需要查询时序指标数据时\n            - 当需要分析系统性能指标时\n            - 当需要"
+    },
+    {
+      "name": "sls_list_projects",
+      "description": "列出阿里云日志服务中的所有项目。\n\n            ## 功能概述\n\n            该工具可以列出指定区域中的所有SLS项目，支持通过项目名进行模糊搜索。如果不提供项目名称，则返回该区域的所有项目。\n\n            ## 使用场景\n\n            - 当需要查找特定项目是否存在时\n            - 当需要获取某个区域下所有可用的SLS项目列表时\n  "
+    },
+    {
+      "name": "sls_execute_spl",
+      "description": "执行原SPL查询语句。\n\n            ## 功能概述\n\n            该工具允许直接执行原生SPL（Search Processing Language）查询语句，\n            为高级用户提供最大的灵活性和功能。支持复杂的数据操作和分析。\n\n            ## 使用场景\n\n            - 复杂的数据分析和统计计算，超出标准API的覆盖范围\n "
+    },
+    {
+      "name": "sls_list_logstores",
+      "description": "列出SLS项目中的日志库。\n\n            ## 功能概述\n\n            该工具可以列出指定SLS项目中的所有日志库，如果不选，则默认为日志库类型\n            支持通过日志库名称进行模糊搜索。如果不提供日志库名称，则返回项目中的所有日志库。\n\n            ## 使用场景\n\n            - 当需要查找特定项目下是否存在某个日志库时\n     "
+    },
+    {
+      "name": "sls_log_explore",
+      "description": "查看阿里云日志服务中某个日志库的日志数据聚合分析结果，提供日志数据概览信息。\n\n            ## 功能概述\n\n            该工具可以给出指定日志库中日志数据的概览信息。给出日志数据中典型的日志模板，以及各个日志模板对应日志数量分布。\n\n            ## 使用场景\n\n            - 当需要查看日志库中日志的概览信息和数据分布时\n\n           "
+    },
+    {
+      "name": "sls_log_compare",
+      "description": "查看阿里云日志服务中某个日志库的日志数据在两个时间范围内的对比结果。\n\n            ## 功能概述\n\n            该工具可以两个时间范围内的日志数据分布的区别，用于快速分析日志数据的变化情况。\n\n            ## 使用场景\n\n            - 当需要分析两个时间范围内的日志数据分布的区别时\n\n            ## 查询实例\n\n         "
+    },
+    {
+      "name": "umodel_get_entities",
+      "description": "获取实体信息的PaaS API工具。\n\n            ## 功能概述\n\n            该工具用于检索实体信息，支持分页查询和精确ID查询。专注于实体的基础信息获取，\n            如需要模糊搜索请使用 `umodel_search_entities` 工具。\n\n            ## 功能特点\n\n            - **数量控制**: 默认返回20个实体"
+    },
+    {
+      "name": "umodel_get_neighbor_entities",
+      "description": "获取指定实体的邻居实体信息。\n\n            ## 功能概述\n\n            该工具用于查找与指定实体相关联的邻居实体，基于实体间的关联关系\n            返回相邻的实体列表。\n\n            ## 功能特点\n\n            - **数量控制**: 默认返回20个邻居实体，支持通过limit参数控制返回数量\n            - **关系分析"
+    },
+    {
+      "name": "umodel_search_entities",
+      "description": "基于关键词搜索实体信息。\n\n            ## 功能概述\n\n            该工具用于在指定的实体集合中根据关键词进行模糊搜索，查找名称或属性\n            包含搜索关键词的实体。支持全文检索，帮助用户快速定位相关实体。\n\n            ## 功能特点\n\n            - **数量控制**: 默认返回20个搜索结果，支持通过limit参数控制返回数量"
+    },
+    {
+      "name": "umodel_list_data_set",
+      "description": "列出指定实体的可用数据集合，为其他PaaS工具提供参数选项。\n\n            ## 功能概述\n\n            该工具是一个元数据查询接口，用于获取指定实体域和类型下可用的数据集合信息。\n            主要作用是为其他PaaS层工具（如observability、entity等工具）提供可选的参数列表，\n            包括指标集合、日志集合、事件集合等存储信息"
+    },
+    {
+      "name": "umodel_search_entity_set",
+      "description": "搜索实体集合，支持全文搜索并按相关度排序。\n\n            ## 功能概述\n\n            该工具用于在UModel元数据中搜索实体集合定义，支持按关键词进行全文搜索。\n            主要用于发现可用的实体集合类型和它们的元数据信息。\n\n            ## 功能特点\n\n            - **全文搜索**: 支持在实体集合的元数据和规格中进行全文搜索"
+    },
+    {
+      "name": "umodel_list_related_entity_set",
+      "description": "列出与指定实体集合相关的其他实体集合。\n\n            ## 功能概述\n\n            该工具用于发现与指定实体集合存在关系定义的其他实体集合类型。\n            这是一个元数据级别的工具，用于探索UModel拓扑的高级蓝图。\n\n            ## 功能特点\n\n            - **关系发现**: 查找与源实体集合有关系定义的其他实体集合\n    "
+    },
+    {
+      "name": "umodel_get_metrics",
+      "description": "获取实体的时序指标数据，支持range/instant查询、聚合计算和高级分析模式。\n\n            ## 参数获取: 1)搜索实体集→ 2)列出MetricSet→ 3)获取实体ID(可选) → 4)执行查询\n            - domain,entity_set_name: `umodel_search_entity_set(search_text=\"apm\")`\n     "
+    },
+    {
+      "name": "umodel_get_golden_metrics",
+      "description": "获取实体的黄金指标（关键性能指标）数据。包括延迟、吞吐量、错误率、饱和度等核心指标。\n            ## 参数获取: 1)搜索实体集→ 2)获取实体ID(可选) → 3)执行查询\n            - domain,entity_set_name: `umodel_search_entity_set(search_text=\"apm\")`\n            - entity_"
+    },
+    {
+      "name": "umodel_get_relation_metrics",
+      "description": "获取实体间关系级别的指标数据，如服务调用延迟、吞吐量等。用于分析微服务依赖关系。\n            ## 参数获取: 1)搜索实体集→ 2)列出相关实体→ 3)执行查询\n            - src_domain,src_entity_set_name: `umodel_search_entity_set(search_text=\"apm\")`\n            - relati"
+    },
+    {
+      "name": "umodel_get_logs",
+      "description": "获取实体相关的日志数据，用于故障诊断、性能分析、审计等场景。\n            ## 参数获取: 1)搜索实体集→ 2)列出LogSet→ 3)获取实体ID(可选) → 4)执行查询\n            - domain,entity_set_name: `umodel_search_entity_set(search_text=\"apm\")`\n            - log_set"
+    },
+    {
+      "name": "umodel_get_events",
+      "description": "获取指定实体集的事件数据。事件是离散记录，如部署、告警、配置更改等。用于关联分析系统行为。\n            ## 参数获取: 1)搜索实体集→ 2)列出EventSet→ 3)获取实体ID(可选) → 4)执行查询\n            - domain,entity_set_name: `umodel_search_entity_set(search_text=\"apm\")`\n    "
+    },
+    {
+      "name": "umodel_get_traces",
+      "description": "获取指定trace ID的详细trace数据，包括所有span、独占耗时和元数据。用于深入分析慢trace和错误trace。\n\n            ## 参数获取: 1)搜索trace → 2)获取详细信息\n            - trace_ids: 通常从`umodel_search_traces()`工具输出中获得\n            - domain,entity_set_na"
+    },
+    {
+      "name": "umodel_search_traces",
+      "description": "基于过滤条件搜索trace并返回摘要信息。支持按持续时间、错误状态、实体ID过滤，返回traceID用于详细分析。\n            ## 参数获取: 1)搜索实体集→ 2)列出TraceSet→ 3)获取实体ID(可选) → 4)执行搜索\n            - domain,entity_set_name: `umodel_search_entity_set(search_text="
+    },
+    {
+      "name": "umodel_get_profiles",
+      "description": "获取指定实体集的性能剖析数据。包括CPU使用、内存分配、方法调用堆栈等，用于性能瓶颈分析。\n            ## 参数获取: 1)搜索实体集→ 2)列出ProfileSet→ 3)获取实体ID(必须) → 4)执行查询\n            - domain,entity_set_name: `umodel_search_entity_set(search_text=\"apm\")`\n  "
+    },
+    {
+      "name": "list_workspace",
+      "description": "列出可用的CMS工作空间\n            \n            ## 功能概述\n            获取指定区域内可用的Cloud Monitor Service (CMS)工作空间列表。\n            工作空间是CMS中用于组织和管理监控数据的逻辑容器。\n            \n            ## 参数说明\n            - regionId: 阿"
+    },
+    {
+      "name": "list_domains",
+      "description": "列出所有可用的实体域\n            \n            ## 功能概述\n            获取系统中所有可用的实体域（domain）列表。实体域是实体的最高级分类，\n            如 APM、容器、云产品等。这是发现系统支持实体类型的第一步。\n            \n            ## 使用场景\n            - 了解系统支持的所有实体域\n  "
+    },
+    {
+      "name": "introduction",
+      "description": "获取阿里云可观测性MCP Server的介绍和使用说明\n            ## 功能概述\n            返回阿里云可观测性 MCP Server 的服务概述、核心能力和使用限制说明。\n            帮助用户快速了解服务能做什么，以及使用各层工具的前提条件。\n            Observable MCP Server 是阿里云可观测官方推出的 MCP (Model "
+    }
+  ]
+}

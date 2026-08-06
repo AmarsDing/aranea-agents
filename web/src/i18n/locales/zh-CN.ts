@@ -161,6 +161,12 @@ export default {
       progressSummary: '{completed}/{total} 已完成',
     },
     orchestrationProgress: {
+      routing: '正在路由会话与模型…',
+      recalling: '正在检索相关记忆…',
+      preparingTools: '正在装配工具…',
+      understanding: '正在识别任务意图…',
+      assessing: '正在评估任务复杂度…',
+      starting: '正在启动执行…',
       decomposing: '正在分解任务…',
       decomposed: '任务分解完成，共 {subTaskCount} 个子任务',
       allocating: '正在匹配 Agent…（{index}/{total}）{subTask}',

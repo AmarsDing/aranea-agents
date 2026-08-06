@@ -296,15 +296,27 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
 
   // === Query helpers ===
 
-  /** Primary sort: StartedAt/CreatedAt ASC; Seq as tiebreaker (streaming order). */
-  function compareByTimeThenSeq(
+  /**
+   * Primary sort: Seq ASC (creation-time order assigned by backend, immutable);
+   * StartedAt/CreatedAt as tiebreaker and as fallback for legacy rows without Seq.
+   *
+   * 2026-08-06 顺序修复（20:45 会话看板乱序根因）：之前以 StartedAt 主排序，
+   * 但 PlanStep.StartedAt 会在 dispatch 时被覆盖为实际开始时间，导致已运行
+   * step 排到 pending step（保留创建时间）之后，看板随执行进度乱序。Seq 在
+   * 创建时确定且不可变，作为主键稳定。任一方 Seq 缺失（=0，遗留数据）时
+   * 回退到 time 排序，保持旧行为。
+   */
+  function compareBySeqThenTime(
     a: { Seq: number; StartedAt?: string; CreatedAt?: string },
     b: { Seq: number; StartedAt?: string; CreatedAt?: string },
   ): number {
+    const sa = a.Seq || 0;
+    const sb = b.Seq || 0;
+    if (sa > 0 && sb > 0 && sa !== sb) return sa - sb;
     const ta = Date.parse(a.StartedAt || a.CreatedAt || '') || 0;
     const tb = Date.parse(b.StartedAt || b.CreatedAt || '') || 0;
     if (ta !== tb) return ta - tb;
-    return a.Seq - b.Seq;
+    return sa - sb;
   }
 
   function getSessionTasks(sessionId: string): Task[] {
@@ -312,7 +324,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const t of tasks.value.values()) {
       if (t.SessionID === sessionId) out.push(t);
     }
-    return out.sort(compareByTimeThenSeq);
+    return out.sort(compareBySeqThenTime);
   }
 
   function getTaskTurns(taskId: string): Turn[] {
@@ -320,7 +332,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const t of turns.value.values()) {
       if (t.TaskID === taskId) out.push(t);
     }
-    return out.sort(compareByTimeThenSeq);
+    return out.sort(compareBySeqThenTime);
   }
 
   function getTurnSteps(turnId: string): Step[] {
@@ -328,7 +340,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const s of steps.value.values()) {
       if (s.TurnID === turnId) out.push(s);
     }
-    return out.sort(compareByTimeThenSeq);
+    return out.sort(compareBySeqThenTime);
   }
 
   /** R4: recall hits injected for a turn (empty array when none). */
@@ -343,7 +355,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const s of steps.value.values()) {
       if (s.TaskID === taskId && !s.TurnID) out.push(s);
     }
-    return out.sort(compareByTimeThenSeq);
+    return out.sort(compareBySeqThenTime);
   }
 
   function getTaskTeamStages(taskId: string): TeamStage[] {
@@ -351,7 +363,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const ts of teamStages.value.values()) {
       if (ts.TaskID === taskId) out.push(ts);
     }
-    return out.sort(compareByTimeThenSeq);
+    return out.sort(compareBySeqThenTime);
   }
 
   // 按触发 turn 查询 team stages（设计稿 §3.6.2：teamStages.filter(ts => ts.turnId === turn.id)）
@@ -360,7 +372,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const ts of teamStages.value.values()) {
       if (ts.TurnID === turnId) out.push(ts);
     }
-    return out.sort(compareByTimeThenSeq);
+    return out.sort(compareBySeqThenTime);
   }
 
   function getTaskPlanBoards(taskId: string): PlanBoard[] {
@@ -368,7 +380,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const pb of planBoards.value.values()) {
       if (pb.TaskID === taskId) out.push(pb);
     }
-    return out.sort(compareByTimeThenSeq);
+    return out.sort(compareBySeqThenTime);
   }
 
   function getTaskGraphStages(taskId: string): GraphStage[] {
@@ -376,7 +388,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const gs of graphStages.value.values()) {
       if (gs.TaskID === taskId) out.push(gs);
     }
-    return out.sort(compareByTimeThenSeq);
+    return out.sort(compareBySeqThenTime);
   }
 
   function getGraphStageByPlanBoard(planBoardId: string): GraphStage | undefined {
@@ -391,7 +403,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const ps of planSteps.value.values()) {
       if (ps.PlanID === planBoardId) out.push(ps);
     }
-    return out.sort(compareByTimeThenSeq);
+    return out.sort(compareBySeqThenTime);
   }
 
   // Match steps for a MemberSession.
@@ -412,7 +424,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       for (const s of steps.value.values()) {
         if (s.SessionID === sessionId) out.push(s);
       }
-      if (out.length > 0) return out.sort(compareByTimeThenSeq);
+      if (out.length > 0) return out.sort(compareBySeqThenTime);
     }
 
     const turnIds = new Set<string>();
@@ -437,7 +449,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       }
     }
 
-    return out.sort(compareByTimeThenSeq);
+    return out.sort(compareBySeqThenTime);
   }
 
   /** Mode B / orphan: member sessions on a task not rendered under any TeamRun.
@@ -470,7 +482,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
         out.push(ms);
       }
     }
-    return out.sort(compareByTimeThenSeq);
+    return out.sort(compareBySeqThenTime);
   }
 
   function getGraphStageNodes(graphStageId: string): GraphNode[] {
@@ -478,7 +490,15 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const gn of graphNodes.value.values()) {
       if (gn.GraphStageID === graphStageId) out.push(gn);
     }
-    return out;
+    // 2026-08-06 顺序修复：GraphNode 无 Seq 字段，Map 迭代顺序 = 事件到达
+    // 顺序（懒加载/重放时乱序）。经 DagNodeID（= plan_step.id）派生
+    // PlanStep.Seq 排序；无匹配 PlanStep 的节点排最后，JS sort 稳定保持
+    // 插入相对顺序。
+    const seqOf = (gn: GraphNode): number => {
+      const ps = gn.DagNodeID ? planSteps.value.get(gn.DagNodeID) : undefined;
+      return ps && ps.Seq > 0 ? ps.Seq : Number.MAX_SAFE_INTEGER;
+    };
+    return out.sort((a, b) => seqOf(a) - seqOf(b));
   }
 
   function getTeamStageTeamRuns(teamStageId: string): TeamRun[] {
@@ -486,7 +506,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const tr of teamRuns.value.values()) {
       if (tr.TeamStageID === teamStageId) out.push(tr);
     }
-    return out.sort(compareByTimeThenSeq);
+    return out.sort(compareBySeqThenTime);
   }
 
   function getTeamRunMemberSessions(teamRunId: string): MemberSession[] {
@@ -494,7 +514,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const ms of memberSessions.value.values()) {
       if (ms.TeamRunID === teamRunId) out.push(ms);
     }
-    return out.sort(compareByTimeThenSeq);
+    return out.sort(compareBySeqThenTime);
   }
 
   // === Bulk operations ===
@@ -585,7 +605,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const t of tasksList) upsertTask(t);
     for (const s of stepsList) upsertStep(s);
 
-    const sorted = [...tasksList].sort(compareByTimeThenSeq);
+    const sorted = [...tasksList].sort(compareBySeqThenTime);
     const autoHydrate = new Set<string>();
     const lastTask = sorted[sorted.length - 1];
     if (lastTask) autoHydrate.add(lastTask.ID);

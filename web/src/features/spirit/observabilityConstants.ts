@@ -100,6 +100,39 @@ export type OrchestrationProgressConfig = {
 };
 
 export const ORCHESTRATION_PROGRESS_MAP: Record<string, OrchestrationProgressConfig> = {
+  // Pre-orchestration turn phases (2026-08-06): emitted by ChatOrchestrator
+  // (publishTurnProgress) between message ack and planning, closing the
+  // previously silent window (recall / MCP tools build / IntentPass / gate).
+  routing: {
+    messageKey: 'chat.orchestrationProgress.routing',
+    icon: 'route',
+    color: 'grey',
+  },
+  recalling: {
+    messageKey: 'chat.orchestrationProgress.recalling',
+    icon: 'psychology',
+    color: 'teal',
+  },
+  preparing_tools: {
+    messageKey: 'chat.orchestrationProgress.preparingTools',
+    icon: 'build',
+    color: 'blue-grey',
+  },
+  understanding: {
+    messageKey: 'chat.orchestrationProgress.understanding',
+    icon: 'lightbulb',
+    color: 'blue',
+  },
+  assessing: {
+    messageKey: 'chat.orchestrationProgress.assessing',
+    icon: 'analytics',
+    color: 'indigo',
+  },
+  starting: {
+    messageKey: 'chat.orchestrationProgress.starting',
+    icon: 'play_circle',
+    color: 'orange',
+  },
   decomposing: {
     messageKey: 'chat.orchestrationProgress.decomposing',
     icon: 'split',

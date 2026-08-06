@@ -25,6 +25,45 @@ import (
 // when ToolDecoratorConfig.Timeout is zero.
 const DefaultToolTimeout = 60 * time.Second
 
+// 2026-08-06 P0-3 工具预算治理（20:45 会话 plan_and_execute budget exhaustion
+// 根因）：编排入口工具的子阶段 LLM 预算与外层工具预算。
+//
+//   - DecomposeLLMTimeout：task_planner 分解（decomposeTask / Stream）单次 LLM
+//     调用子超时。
+//   - AllocateLLMTimeout：agent_allocator 分配单次 LLM 调用子超时。
+//   - PlanAndExecuteTimeout：plan_and_execute 工具外层预算。不变量：外层预算
+//     必须 ≥ 分解 + 分配 + 编排委派余量，否则外层装饰器会在子阶段中途掐断
+//     （此前外层套用 DefaultToolTimeout=60s < 60s+60s 子阶段之和，必现超时）。
+//
+// 子超时常量子集中在 tools 包，调用点（internal/agent）引用同一常量，
+// 防止预算各自漂移破坏不变量。
+const (
+	DecomposeLLMTimeout   = 60 * time.Second
+	AllocateLLMTimeout    = 60 * time.Second
+	PlanAndExecuteTimeout = 3 * time.Minute
+)
+
+// builtinTimeoutOverrides maps tool-name suffixes to per-tool execution
+// timeouts, overriding DefaultToolTimeout. Suffix-based matching (consistent
+// with budgetOverrideForTool) so ToolSet prefixes are handled transparently.
+var builtinTimeoutOverrides = map[string]time.Duration{
+	"plan_and_execute": PlanAndExecuteTimeout,
+}
+
+// timeoutOverrideForTool returns the per-tool timeout override for a tool
+// based on its declaration name, or 0 when no override applies.
+func timeoutOverrideForTool(name string) time.Duration {
+	if name == "" {
+		return 0
+	}
+	for suffix, timeout := range builtinTimeoutOverrides {
+		if name == suffix || strings.HasSuffix(name, "_"+suffix) {
+			return timeout
+		}
+	}
+	return 0
+}
+
 // DefaultStreamTimeout is the default maximum duration for a streaming tool
 // call when ToolDecoratorConfig.StreamTimeout is zero. Streaming tools that
 // run longer than this are terminated with a context-deadline error.
@@ -166,6 +205,12 @@ func NewToolDecorator(inner trpctool.CallableTool, cfg ToolDecoratorConfig) trpc
 		cfg.Logger = loggateway.NewNoop()
 	}
 	d := &ToolDecorator{inner: inner, cfg: cfg}
+	// 2026-08-06 P0-3：per-tool 超时覆盖（如 plan_and_execute 的多子阶段
+	// 预算）。覆盖在默认值落定之后、显式 cfg.Timeout 之上——按工具语义
+	// 修正预算是覆盖点的设计意图。
+	if override := timeoutOverrideForTool(d.toolName()); override > 0 {
+		d.cfg.Timeout = override
+	}
 	if cfg.EnableCache {
 		if name := d.toolName(); IsCacheable(name) {
 			d.cache = make(map[string]any)

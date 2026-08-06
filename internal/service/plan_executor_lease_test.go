@@ -56,7 +56,7 @@ func TestPlanExecutor_StartSubscription_LeaseDedupesSameBoard(t *testing.T) {
 	orch.completeStep("s1", true, "")
 }
 
-func TestPlanExecutor_StartSubscription_EmptyBoardAlsoTakesLease(t *testing.T) {
+func TestPlanExecutor_StartSubscription_EmptyShellTakesNoLease(t *testing.T) {
 	repos := newFakeReposForExecutor()
 	seq := &fakeSeq{repos: repos}
 	orch := newFakeOrchestrator().withSeq(seq)
@@ -74,18 +74,16 @@ func TestPlanExecutor_StartSubscription_EmptyBoardAlsoTakesLease(t *testing.T) {
 		Status:    biz.PlanStatusPlanning,
 		Steps:     nil,
 	}
-	// Hold the lease manually to prove the empty-path also uses LoadOrStore.
-	_, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	pe.running.Store(board.ID, &boardRunLease{cancel: cancel})
-
 	bus.Publish(context.Background(), biz.NewPlanBoardCreatedEvent(board))
 	time.Sleep(50 * time.Millisecond)
 
-	// With lease held, empty-board event must not start another Subscribe
-	// (no PlanBoard upsert from fail-closed path).
+	// 新契约（流式壳修复）：空壳 Created 不启动、不 fail-closed、不占 lease，
+	// 等待 steps 就绪的 PlanBoardUpdatedEvent。
+	if _, ok := pe.running.Load(board.ID); ok {
+		t.Fatal("empty shell must not hold the execution lease")
+	}
 	if repos.board != nil {
-		t.Fatalf("expected no board upsert while lease held, got status=%s", repos.board.Status)
+		t.Fatalf("expected no board upsert for empty shell, got status=%s", repos.board.Status)
 	}
 }
 

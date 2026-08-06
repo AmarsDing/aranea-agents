@@ -672,6 +672,13 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 // DefaultMCPServerTimeoutSec is applied when config_json.timeout_sec is unset.
 const DefaultMCPServerTimeoutSec = mcpdefaults.DefaultRuntimeTimeoutSec
 
+// DefaultMCPToolsCacheTTL is the default TTL for caching an MCP server's tool
+// list. llmagent calls ToolSet.Tools(ctx) on every run when
+// RefreshToolSetsOnRun is enabled; without caching each run pays a tools/list
+// roundtrip (plus session reconnect when the transport expired), which
+// dominated the pre-orchestration latency in the 2026-08-06 20:45 session.
+const DefaultMCPToolsCacheTTL = 5 * time.Minute
+
 func mcpTimeoutDuration(timeoutSec int) time.Duration {
 	if timeoutSec <= 0 {
 		timeoutSec = DefaultMCPServerTimeoutSec
@@ -684,6 +691,7 @@ func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 
 	opts := []trpcmcp.ToolSetOption{
 		trpcmcp.WithName(cfg.Name),
+		trpcmcp.WithToolsCacheTTL(DefaultMCPToolsCacheTTL),
 	}
 	if pred := ToolFilterForPrefix(cfg.ToolPrefix); pred != nil {
 		opts = append(opts, trpcmcp.WithToolFilterFunc(pred))
