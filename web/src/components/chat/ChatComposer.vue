@@ -1,22 +1,5 @@
 <template>
   <q-card-section class="chat-composer" style="padding: 8px var(--chat-edge-gutter, 12px)">
-    <q-banner v-if="isAwaitingUser" rounded class="q-mb-sm app-banner-warning" dense>
-      <template #avatar>
-        <q-icon name="hourglass_top" color="warning" />
-      </template>
-      {{ t('chat.awaitingUserHint') }}
-      <template #action>
-        <q-btn
-          flat
-          dense
-          no-caps
-          color="accent"
-          :label="t('chat.submitAwaitReply')"
-          @click="$emit('submit-await-reply')"
-        />
-      </template>
-    </q-banner>
-
     <q-banner v-if="contextPressureLevel === 'critical'" rounded class="q-mb-sm app-banner-warning" dense>
       <template #avatar>
         <q-icon name="warning" color="negative" />
@@ -235,7 +218,6 @@ const props = defineProps<{
   sending?: boolean;
   inputDisabled?: boolean;
   isRunnerActive?: boolean;
-  isAwaitingUser?: boolean;
   showEnqueue?: boolean;
   sessionId?: string;
   fileSupported?: boolean;
@@ -252,7 +234,6 @@ const emit = defineEmits<{
   send: [];
   stop: [];
   'enqueue-message': [content: string];
-  'submit-await-reply': [];
   'paste-file': [file: File];
   'paste-unsupported': [];
   'new-session': [];

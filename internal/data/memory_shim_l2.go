@@ -260,7 +260,12 @@ func (r *l2EpisodeRepo) recallL2Episodes(ctx context.Context, agentID, sessionID
 	if pool < lim {
 		pool = lim
 	}
-	candidates, err := r.ListEpisodeRowsForRecall(ctx, agentID, sessionID, int32(pool))
+	// P2-R2: candidate pool is agent-wide (sessionID passed as ""), matching the
+	// vector path (recallL2WithVectorStore) which already searches across all
+	// sessions. The sessionID is still used below for the continuity session
+	// boost in scoring, so same-session episodes outrank equal cross-session
+	// ones without excluding them.
+	candidates, err := r.ListEpisodeRowsForRecall(ctx, agentID, "", int32(pool))
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +349,7 @@ func (r *l2EpisodeRepo) recallL2Episodes(ctx context.Context, agentID, sessionID
 	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
 	var out [][]byte
 	for _, s := range scored {
-		out = append(out, s.raw)
+		out = append(out, annotateEpisodeScores(s.raw, s.breakdown))
 	}
 	return out, nil
 }
@@ -445,7 +450,7 @@ func (r *l2EpisodeRepo) recallL2WithVectorStore(ctx context.Context, agentID, se
 	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
 	var out [][]byte
 	for _, s := range scored {
-		out = append(out, s.raw)
+		out = append(out, annotateEpisodeScores(s.raw, s.breakdown))
 	}
 	return out, nil
 }

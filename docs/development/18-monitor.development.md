@@ -191,6 +191,24 @@
 
 **验证**：`go test ./internal/data` ✅；前端 lint 0 errors / 1192 tests ✅ / build ✅；admin 新二进制重启后浏览器 6 项 PASS（0 console 错误）；API 实测 exclude 参数生效。
 
+### Phase MON-TR1 — Traces 排障地基 + 详情瘦身 + 实时化（2026-08-05 · C3）
+
+| ID | 任务 | 层 | 状态 | 关键实现 |
+|----|------|-----|------|----------|
+| MON-TR1-01 | Traces 状态/域筛选 + 计数 | proto/biz/data/web | ✅ | `ListMonitorTracesRequest.domain`（优先于 `exclude_internal`）；响应 `status_counts`/`domain_counts`（domain_counts 排除 domain 条件与 exclude_internal，暴露全量分布）；`monitor_trace_query.go` 同 WHERE `GROUP BY` 聚合 |
+| MON-TR1-02 | 关键字显示名回退 | data | ✅ | 五列 OR LIKE + 四路 `EXISTS`：`agents.display_name` / `sessions.title` / `teams.display_name` / `sessions JOIN agents` |
+| MON-TR1-03 | 列表状态 composable | web | ✅ | `features/monitor/useMonitorTraces.ts`：keyword/status/domain + 服务端分页 + chips 计数；单一 watcher，筛选变化自动归第 1 页；`tracesQuery.ts` 常量与查询组装 |
+| MON-TR1-04 | 筛选 chips UI | web | ✅ | `TraceList.vue` 状态/域 chips（带计数）、默认排除内部域、空态处理、行点击开详情 |
+| MON-TR1-05 | 实时刷新 | web | ✅ | `features/monitor/useMonitorRunsLive.ts`：全局 WS 订阅运行生命周期事件（`isRunLifecycleEventType`），防抖刷新列表；live pill 呈现连接态（live/connected→绿「实时」，修复 connected 不亮绿灯问题） |
+| MON-TR1-06 | 数字/时间格式 | web | ✅ | `features/monitor/runFormat.ts`：令牌 156.8k 紧凑格式、成本 $0.0220、延迟自适应、相对时间列 |
+| MON-TR1-07 | 单元测试 | web | ✅ | `tracesQuery.spec.ts` 等；前端 161 文件 / 1192 tests 通过 |
+| MON-TR1-08 | 浏览器运行时实测 | web | ✅ | 筛选/搜索/分页/详情/实时全链路验证，0 console 错误 |
+| MON-TR1-09 | backfill 域污染修复 | cronrunner | ✅ | `monitor_trace_backfill.go` `Name: "chat"`（曾误写事件名 `runner.completion`，name 列语义是域）；`monitor_trace_backfill_test.go` 断言防回归 |
+| MON-TR1-10 | 存量域污染清理 | data | ✅ | `UPDATE monitor_traces SET name='chat' WHERE name='runner.completion'`——17 行修复，验证残留 0；当前分布 chat=588/team=90/system=1879/skill=4472 |
+| MON-TR1-11 | 文档同步 | docs | ✅ | 18-monitor.design.md（§2.4 契约 / §3.1 模型 / §4.2 查询 / §7 前端 / §十一 方案）+ 本表 |
+
+**验证**：`go test ./internal/cronrunner/jobs -run TestMonitorTraceBackfill` ✅；前端 lint/test/build ✅；SQL 修复 17 行并复查域分布 ✅。
+
 ### MON-OPT — 业务逻辑优化（2026-05-26 方案落地）
 
 | ID | 任务 | 优先级 | 状态 | 关键实现 |

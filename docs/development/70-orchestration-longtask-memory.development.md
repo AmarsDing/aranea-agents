@@ -2374,8 +2374,79 @@ func (s *KnowledgeMemoryBridge) OnTaskFeedback(
 
 **状态**：✅ 完成（2026-08-05）
 
-### 18.7 待办项（P2）
+### 18.7 Task M-P2：召回质量升级（FR-13，报告 §6.7）
+
+#### M-P2-1：L2 召回默认开启（FR-13.1）
+
+**改动**：
+- `internal/data/ent/schema/agent_runtime_setting.go` — `l2_recall_enabled` 默认值改 `true`（go generate 生成物同步）
+- `internal/biz/agent_defaults.go` — `DefaultAgentRuntimeSettings.L2RecallEnabled: true`
+- `internal/data/memory_l2_recall_default_migrate.go`（新增）— 数据迁移 `20261127 memory_l2_recall_default_on`：存量行 false→true 整体翻转（历史默认关闭实质无 opt-out 语义），`schema_migrations` 门控幂等；`data.go` P1 迁移链注册
+
+**状态**：✅ 完成（2026-08-05）
+
+#### M-P2-2：召回 token 预算档位（FR-13.2）
+
+**改动**：
+- `internal/biz/agent_memory_runtime_policy.go` — 档位常量 `MemoryRecallBudgetCompact=400 / Standard=800（默认）/ Generous=1600`，策略解析回落 Standard
+- `api/kratos/agent/v1/agent.proto` — `AgentRuntimeSetting.l3_recall_budget_tokens`（field 132）+ pb 再生成 + 前端 services 再生成
+- `internal/agent/recall_budget.go`（新增）— `recallLinePacker`：分数降序贪心装入，大行装不下时小行填充剩余预算；标题行显式计入预算；rune 估算 token
+- `internal/agent/composite_prompt.go` / `l2_prompt.go` / `l3_prompt.go` — L2/L3/复合召回块统一经 packer 输出
+- `internal/agent/memory_inject.go` — `InjectedFactIDs` 只收集实际通过预算装入的行，保证 injected_count 漏斗语义（FR-12.6）
+
+**测试**：`internal/agent/composite_prompt_test.go`（预算截断/标题计入/小行填充）
+
+**状态**：✅ 完成（2026-08-05）
+
+#### M-P2-3：L3 混合召回 pgvector + FTS 经 RRF 融合（FR-13.3/13.4）
+
+**改动**：
+- `internal/data/sql/migrations/20261128_memory_facts_fts_index.sql`（新增）— `memory_facts` GIN 索引 `to_tsvector('simple', statement || ' ' || COALESCE(details_markdown,''))`；registry Func 门控 Postgres-only（SQLite CLI/测试跳过）。`'simple'` 不分词 CJK——FTS 定位字母数字 token 补充信号，中文关键词仍走 Go 子串通道
+- `internal/data/memory_l3_fts.go`（新增）— `searchL3FTS`（ts_rank 排序候选，active/scope/user 过滤齐备）/ `rrfFuseRanked(k=60)` / `queryFactRowsByIDs` / `ftsExtraCandidates`
+- `internal/data/memory_shim_l3.go` — 三条召回路径全接入：暴力扫描与 recency 池注入 FTS 候选；pgvector 主路径向量 ∪ FTS 经 RRF 融合后过既有校准打分（minScore 语义不变），融合分写入 `recallScoreBreakdown.RRF` 仅作可观测注解；vector store 失败改 Warn 日志（step `memory.l3_vector_search`）降级 FTS/recency，禁止静默回退
+- `internal/data/memory_l3_scored_adapter.go` — **主聊天链路修复**：`RecallL3Hits` 原传 nil VectorStore（融合永不激活），改传 `a.data.VectorStore()`
+- `internal/data/memory_helpers.go` — `recallScoreBreakdown` +`RRF` 字段
+
+**测试**：`internal/data/memory_l3_fts_test.go`（RRF 融合序/FTS 字母数字 token 排名/暴力路径 FTS 注入/向量+FTS 融合/vector 故障降级）
+
+**状态**：✅ 完成（2026-08-05）
+
+#### M-P2-4：离线评测集 50 条（FR-13.5）
+
+**改动**：
+- `internal/data/testdata/memory_l3_eval_set.json`（新增）— 50 条金标准，覆盖信息抽取/多跳推理/时序感知/知识更新/拒答五能力；每条含 `seed_facts`/`expect_hits`/`expect_absent`/`expect_empty`，确定性构造控制关键词重叠/recency/importance 变量
+- `internal/data/memory_l3_eval_set_test.go`（新增）— `TestMemoryL3OfflineEvalSet` 对真实 Postgres schema 执行全量，通过率门 ≥90%，纳入 `go test ./internal/data` 回归
+
+**状态**：✅ 完成（2026-08-05）
+
+**M-P2 整体验收**（2026-08-05）：
+- ✅ `go build ./...` 通过（含 S-3 签名变更收尾：`NewTeamStageActivityID(teamID, rootTaskID)` service 包 10 处调用点补齐；新增 `TeamStageV2Reader.GetLatestTeamStageByTeam` 端口供 cancel/pause/ListSpiritTeams 等无 turn ctx 路径定位当前轮 stage 行）
+- ✅ `go test ./internal/data ./internal/biz ./internal/memory ./internal/cronrunner/... ./internal/team` 全过；`./internal/service` team 相关定向测试全过（仅 3 个 pre-existing 网络依赖模型目录同步测试失败，与本改动无关）
+- ✅ 迁移版本唯一性：20261125/26/27/28 无冲突
+
+#### M-P2-5：P2 回归修复（P2-R1 组合路径降级 / P2-R2 L2 跨会话不可达）
+
+> 运行时冒烟发现的两处召回回归，设计见 [design.md §16.7.6](./70-orchestration-longtask-memory.design.md#1676-组合召回分层路径与-l2-跨会话候选池p2-r1r2-回归修复)。
+
+**P2-R1：composite 主聊天路径 L3 召回降级**（2026-08-05 ✅）
+
+- `internal/biz/memory_composite_recall.go` — 新增 `SetLayerRecallers` + `recallCompositeLayered`：l3 非 nil 时直接组合 L2/L3 fused 用例，按 `scores.total` 归并 + MMR 重排；nil 回退 legacy store 路径
+- `internal/biz/memory_mmr.go`（新增）— `MMRRerankTexts` 上移至 biz 层（Jaccard 词集相似度）
+- `internal/data/memory_helpers.go` — `annotateEpisodeScores`：L2 episode 注入与 L3 相同的 `scores` 契约
+- `internal/data/memory_shim_l2.go` — 两条 L2 召回路径均经 `annotateEpisodeScores` 输出
+- `cmd/admin/wire_memory.go` — `provideMemoryCompositeRecall` 注入 L2/L3 recallers
+- **测试**：`biz/memory_composite_recall_test.go`（校准分排序/provenance 传递/无分回退/limit 截断/legacy 兼容）；`data/memory_episode_annotate_test.go`
+- **验收**：重启后冒烟确认 `recalled_count` 自增与校准分排序生效
+
+**P2-R2：L2 召回会话级过滤致跨会话记忆不可达**（2026-08-05 ✅）
+
+- `internal/data/memory_shim_l2.go` — `recallL2Episodes` 候选池改传空 sessionID（agent 全域，对齐向量路径）；sessionBoost 连续性加分保留
+- **测试**（TDD）：`data/memory_shim_l2_test.go` — `TestL2Recall_CrossSessionReachable`（跨会话 episode 可达 + keyword 分 >0）、`TestL2Recall_SameSessionBoostPreserved`（同等条件下同会话 total 严格更高）
+- **验收**：RED→GREEN 确认；`go test ./internal/data ./internal/biz ./internal/team ./internal/memory` 全过；`go build ./cmd/admin ./internal/...` 通过
+- **顺带修复**（S-3 收尾编译错误）：`internal/team/team_graph_run_coordinator.go` — `teamGraphRunSession` 补 `rootTaskID` 字段，注册时 `RootTaskActivityIDFromCtx(ctx)` 捕获；resume-fail（L309）与 finalize（L633）两处 `TeamStage` ID 派生由 ctx 查找改用 `sess.rootTaskID`（外来 ctx 不携带 RootTaskActivityID，避免派生错误 stage ID 写入第二个 team_stages_v2 行）
+
+### 18.8 待办项
 
 | 项 | 说明 | 状态 |
 |---|---|---|
-| P2 召回升级 | FTS 接入 + RRF 融合；token 预算档位；L2 召回默认开；离线评测集 50 条——报告 §6.7 | ⏳ |
+| — | P2 召回升级四项已全部完成，无遗留待办 | ✅ |

@@ -271,6 +271,25 @@
 - 三段计数漏斗可观测：每条 fact 的 recalled/injected/cited 独立计数且 recalled ≥ injected ≥ cited；用户说「我喜欢 X」后该 fact 的 injected_count 随后续轮次增长；记忆中心 L3 表格与详情抽屉可见三段计数
 - Profile 常驻卡 100% 注入：存在 active 画像类事实（profile/preference/goal/constraint）的 (agent, user)，其每轮 prompt 首个记忆块位置包含蒸馏档案卡；事实全部删除后卡片同步移除
 
+### FR-13：召回质量升级（P2）
+
+> 源自评审报告 §6.7（[评审报告](../reports/2026-07-29-review-memory-system-redesign.md)）。FR-12 修复「写入→可召回」的闭环可靠性后，本 FR 提升召回侧的质量与可配置性：纯向量召回漏掉关键词强项事实（编号/名称/精确 token），L2 事件召回默认关闭导致会话上下文断裂，且注入无预算约束存在挤占上下文风险。设计与实现见 [设计文档 §16.7](./70-orchestration-longtask-memory.design.md#167-召回质量升级p2)。
+
+| # | 需求 | 优先级 |
+|---|------|--------|
+| FR-13.1 | L2 召回默认开启：新 agent 默认 `l2_recall_enabled=true`；存量 agent 经数据迁移一次性开启 | P2 |
+| FR-13.2 | 召回 token 预算档位：L2/L3 召回块可按档位（紧凑 400 / 标准 800 / 宽裕 1600）限制注入 token，按分数降序贪心打包，高档优先、小行填充剩余预算 | P2 |
+| FR-13.3 | L3 混合召回：pgvector 语义候选与 Postgres FTS（to_tsvector）关键词候选经 RRF（Reciprocal Rank Fusion）融合，关键词强项事实不因向量相似度不足而漏召 | P2 |
+| FR-13.4 | 召回降级可观测：vector 搜索失败降级为 FTS/recency 召回并产出 Warn 日志，禁止静默回退掩盖基础设施故障 | P2 |
+| FR-13.5 | 离线评测集：≥50 条金标准（覆盖信息抽取/多跳推理/时序感知/知识更新/拒答五能力），纳入回归测试，通过率门 ≥90% | P2 |
+
+**验收标准**：
+- 存量 agent 迁移后 L2 召回生效：会话内事件可进入 prompt 记忆块
+- 预算生效：任意档位下注入块 token 不超预算，且标题行计入预算
+- 混合召回：仅含字母数字 token（如编号、代号）的事实可被 FTS 通道召回，即使向量相似度低于阈值
+- vector store 故障时召回不失败且有 Warn 进程日志
+- 评测集在 CI/本地回归中通过率 ≥90%
+
 ---
 
 ## 四、非功能需求

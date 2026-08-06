@@ -1,6 +1,9 @@
 package team
 
 import (
+	"time"
+
+	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 )
 
@@ -47,7 +50,31 @@ func SummaryMapFromData(data biz.TeamRunSummaryData) map[string]any {
 	}
 }
 
-// TeamSummaryActivityEvent was removed in S-3（2026-08-05）: no production
-// callers remained (runner publishTeamRunSummary emits a SystemNoticeEvent
-// instead), and its legacy teamID-only stage ID formula could not be made
-// run-isolated without a rootTaskID source.
+// TeamSummaryActivityEvent emits a structured team_summary as a biz.ActivityEvent
+// for WS team/monitor consumers. Replaces the legacy TeamSummaryEnvelope helper
+// during the dual-bus unification (Teams domain → ActivityEventBus).
+func TeamSummaryActivityEvent(run biz.TeamRunRecord, steps []biz.TeamRunStep) biz.ActivityEvent {
+	summary := BuildTeamRunSummary(run, steps)
+	// SessionID = spirit session ID (not run.SessionID which is the team
+	// session ID) so the frontend WS filter and listActivities API return
+	// this team_stage summary event. Matches publishSpiritTeamAssembled.
+	return biz.ActivityEvent{
+		Event: biz.ActivityEventCompleted,
+		Activity: biz.Activity{
+			ID:              string(agent.NewTeamStageActivityID(run.TeamID, "")),
+			Kind:            biz.ActivityKindTeamStage,
+			Status:          biz.ActivityStatusCompleted,
+			SessionID:       run.SpiritSessionID,
+			SpiritSessionID: run.SpiritSessionID,
+			TeamID:          run.TeamID,
+			Timestamp:       time.Now().UTC(),
+			Stage:           "completed",
+			Meta: map[string]any{
+				"run_id":       run.ID,
+				"run":          run,
+				"team_summary": summary,
+			},
+		},
+		Domain: biz.ActivityDomainChat,
+	}
+}

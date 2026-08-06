@@ -3,6 +3,7 @@ package session
 import (
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 	"context"
 	"errors"
@@ -568,13 +569,65 @@ func TestCreate(t *testing.T) {
 				return
 			}
 			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if tt.checkResult != nil {
-				tt.checkResult(t, got)
-			}
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if tt.checkResult != nil {
+			tt.checkResult(t, got)
+		}
 		})
 	}
+}
+
+// TestCreateBackfillsUserID verifies the ownership backfill: sessions created
+// without an explicit UserID must inherit the authenticated principal from ctx
+// (the confirm gate compares session.UserID against ctxuser.FromContext, so an
+// empty owner makes every tool confirmation fail with 403).
+func TestCreateBackfillsUserID(t *testing.T) {
+	newUc := func() (*SessionUsecase, *mockSessionRepo) {
+		repo := &mockSessionRepo{}
+		agents := &mockAgentLookup{getAgentByIDFn: func(_ context.Context, _ string) (struct{}, error) {
+			return struct{}{}, nil
+		}}
+		return newTestUsecase(repo, agents, &mockTeamLookup{}), repo
+	}
+	baseInput := Session{OwnerType: "agent", AgentID: "agent-1", Title: "t"}
+
+	t.Run("empty UserID inherits auth principal", func(t *testing.T) {
+		uc, _ := newUc()
+		ctx := auth.NewContext(context.Background(), &auth.Auth{UserID: 1, Access: "admin"})
+		got, err := uc.Create(ctx, baseInput)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.UserID != "1" {
+			t.Fatalf("expected UserID backfilled to %q, got %q", "1", got.UserID)
+		}
+	})
+
+	t.Run("empty UserID without auth stays empty", func(t *testing.T) {
+		uc, _ := newUc()
+		got, err := uc.Create(context.Background(), baseInput)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.UserID != "" {
+			t.Fatalf("expected UserID to stay empty without auth, got %q", got.UserID)
+		}
+	})
+
+	t.Run("explicit UserID is not overwritten", func(t *testing.T) {
+		uc, _ := newUc()
+		ctx := auth.NewContext(context.Background(), &auth.Auth{UserID: 1, Access: "admin"})
+		in := baseInput
+		in.UserID = "42"
+		got, err := uc.Create(ctx, in)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.UserID != "42" {
+			t.Fatalf("expected explicit UserID preserved, got %q", got.UserID)
+		}
+	})
 }
 
 func TestSearch(t *testing.T) {

@@ -5,7 +5,7 @@
 -- COMPLEMENTARY signal for alphanumeric tokens (codes, names, IDs) — CJK
 -- keyword matching stays with the Go substring channel (keywordOverlapScore).
 -- Idempotent: CREATE INDEX IF NOT EXISTS. The registry Func gates this file
--- to Postgres dialect — SQLite CLI/tests skip it.
+-- to Postgres dialect; SQLite CLI/tests skip it.
 CREATE INDEX IF NOT EXISTS idx_memory_facts_fts
   ON memory_facts USING GIN (
     to_tsvector('simple', statement || ' ' || COALESCE(details_markdown, ''))

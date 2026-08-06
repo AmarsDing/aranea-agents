@@ -191,6 +191,15 @@ service MonitorService {
 | `status` | string | 按状态精确匹配 |
 | `keyword` | string | 子串模糊搜索（name/trace_key/agent_id/provider/model 五列 OR，2026-08-05 UX） |
 | `exclude_internal` | bool | 隐藏内部域运行（name 列承载运行域，排除 `system`/`skill`：cron、Skill 同步、MCP 健康检查等高频噪音）。前端 Traces Tab 默认开启（2026-08-05 UX） |
+| `domain` | string | 精确域过滤（chat/team/graph/system/skill）；**优先于 `exclude_internal`**（显式选内部域时仍可达）。空 = 不过滤（2026-08-05 C3） |
+
+**ListMonitorTracesResponse**（2026-08-05 C3 扩展）：除 `items` 外——
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `total` | int32 | 当前筛选条件下总条数（服务端分页依据） |
+| `status_counts` | map<string, int32> | 各状态行数（keyword/domain/exclude_internal 均生效），供状态筛选 chips 显示计数 |
+| `domain_counts` | map<string, int32> | 各域行数（keyword/status 生效，**domain 条件与 exclude_internal 不生效**），使域 chips 能暴露被默认隐藏的内部行数 |
 
 ### 2.5 Usage Proto
 
@@ -246,10 +255,21 @@ type MonitorEventsQuery struct {
 type MonitorTracesQuery struct {
     Limit, Offset int32
     AgentID, Provider, Model, Status string
+    // Keyword: 大小写不敏感子串（name/trace_key/agent_id/provider/model 五列 +
+    // agents.display_name / sessions.title / teams.display_name / sessions→agents 四路 EXISTS 回退）
+    Keyword string
+    // ExcludeInternal 隐藏内部域（system/skill：cron、Skill 同步等高频噪音）
+    ExcludeInternal bool
+    // Domain 精确过滤单个运行域；空 = 不过滤（ExcludeInternal 仍生效）
+    Domain string
 }
 
 type MonitorListResult struct {
     Items []MonitorPlatformRow; Total int32
+    // StatusCounts 各状态行数（全部筛选条件生效）
+    StatusCounts map[string]int32
+    // DomainCounts 各域行数（keyword/status 生效，domain 与 ExcludeInternal 不生效）
+    DomainCounts map[string]int32
 }
 ```
 
@@ -385,6 +405,10 @@ func (u *UsageUsecase) RecordTokenUsageEvent(ctx, e TokenUsageEvent) (TokenUsage
 
 - **Audit**：`WHERE` 动态拼接（action/resource/actor/keyword），`COUNT(*)` 获取总数，`LIMIT/OFFSET` 分页；`DeleteAuditLogs` 为全表硬删除（`DELETE FROM audit_logs`），返回受影响行数
 - **Events/Traces**：基础 `WHERE deleted_at = ''` + 动态条件追加，`COUNT(*)` 获取总数
+- **Traces 筛选与计数聚合**（2026-08-05 C3，`monitor_trace_query.go`）：
+  - `keyword`：五列 OR LIKE + 四路 `EXISTS` 回退——`agents.display_name`（id 或 agent_key 匹配）、`sessions.title`、`teams.display_name`（id 或 team_key）、`sessions JOIN agents`（会话所属 agent 显示名），用户可按显示名/会话标题搜索
+  - `domain`：name 列精确匹配，条件优先于 `exclude_internal`（`name NOT IN ('system','skill')`），显式选内部域时仍可达
+  - `status_counts`/`domain_counts`：与列表同 WHERE 的 `GROUP BY` 聚合；`domain_counts` 刻意**排除** domain 条件与 `exclude_internal`，保证域筛选 chips 显示全量分布（含被默认隐藏的内部行数）
 - **Traces 显示名解析**（2026-07-30 增强）：`ListMonitorTraces`/`GetMonitorTrace` 以标量子查询解析 `agents.display_name`/`teams.display_name`（id 或 key 匹配，dangling 回退空串）；`agent_id`/`agent_name` 额外经 `sessions` 回退（chat 域 runner.completion 回溯未填 agent_id 的历史行）；行 `Name` 按优先级输出显示名——team 运行 → 团队显示名，chat 运行 → 会话标题（`sessions.title`，即用户首条消息），agent 运行 → agent 显示名，全空回退存储域；原存储域保留在 `config_json.domain` 供前端类型标签使用。`agent_id` 过滤条件与 SELECT 列保持同一三级回退（列值 → metadata_json → sessions.agent_id），避免"列显示有值但过滤不到"的不一致
 - **Usage**：独立 `UsageRepo`，查询 `model_token_usage_events` 聚合；trace 维度聚合（`AggregateUsageByTrace`）走表达式索引 `idx_model_token_usage_events_trace_id`（迁移 20261114，与查询同一 `Dialect.JSONExtract` 表达式保证规划器匹配）
 - **Latency 聚合**：`LatencyPercentilesSince` + `meta_duration_ms` generated column + `LIMIT 10000`
@@ -460,6 +484,10 @@ web/src/
 │   ├── useMonitorTraceFlow.ts         ← Trace Flow composable
 │   ├── useMonitorLogStreamPanel.ts    ← Log Stream Panel composable
 │   ├── useMonitorAlertRules.ts        ← 告警规则 composable
+│   ├── tracesQuery.ts                 ← Traces 筛选常量/查询组装/运行生命周期事件判定（2026-08-05 C3）
+│   ├── useMonitorTraces.ts            ← Traces 列表 composable：keyword/status/domain 筛选 + 服务端分页 + chips 计数（2026-08-05 C3）
+│   ├── useMonitorRunsLive.ts          ← Traces 实时刷新：WS 订阅运行生命周期事件，防抖触发列表刷新，输出 live 状态（2026-08-05 C3）
+│   ├── runFormat.ts                   ← 紧凑数字格式（156.8k tokens / $0.0220 成本）与相对时间（2026-08-05 C3）
 │   ├── flow.ts                        ← Flow 工具
 │   ├── types.ts                       ← RunnerMetricsSummary 等
 │   └── utils.ts                       ← 格式化工具
@@ -474,7 +502,7 @@ web/src/
 | **Alerts** | `MonitorAlertRules` → `MonitorAlertMetricCatalog` + `MonitorAlertRuleCard` | `ListAlertMetrics`（指标目录 + 当前值）/ `ListMonitorAlertRules` / `PutMonitorAlertRules`（2026-07-30 重排：页头外置、指标目录默认折叠、规则卡严重度色条） |
 | **Audit** | `AuditTable` | `MonitorService.ListAuditLogs`（2026-07-29 重设计：服务端分页/筛选、summary 摘要列、详情弹窗、全量 i18n；2026-07-30 新增清空按钮 + 确认对话框 → `DeleteAuditLogs`） |
 | **Events** | `RealtimeEvents` | 脉搏：WS 运行时事件；历史：`ListMonitorEvents`（服务端分页 + `event_types`/`status` 过滤；2026-07-29 EVT-R 重设计） |
-| **Runs（Traces）** | `TraceList` | `MonitorService.ListMonitorTraces`（OPT-05；含 duration/tokens/cost；2026-07-29 重设计：6 态状态模型 + 语义色、显示名解析、指标条 + 错误面板、全量 i18n；2026-07-30：chat 行显示会话标题、agent 列经 sessions 回退补全、列宽百分比化消除横向滚动条、名称列 20ch 截断 + 大 tooltip） |
+| **Runs（Traces）** | `TraceList` | `MonitorService.ListMonitorTraces`（OPT-05；含 duration/tokens/cost；2026-07-29 重设计：6 态状态模型 + 语义色、显示名解析、指标条 + 错误面板、全量 i18n；2026-07-30：chat 行显示会话标题、agent 列经 sessions 回退补全、列宽百分比化消除横向滚动条、名称列 20ch 截断 + 大 tooltip；2026-08-05 C3：状态/域筛选 chips（带计数）、默认排除内部域、紧凑数字与相对时间、行点击开详情、WS 实时刷新 + live pill） |
 | **Logs** | `LogStreamPanel` → `FlowLogStream` / `ProcessLogStream` | 共享 WS Hub + `flow_log` / `log` 分流 |
 
 ### 7.3 Quasar 组件映射
@@ -709,6 +737,47 @@ skill.filesystem.updated（info 级高频）
 - 不引入新的落库事件类型；不改变现有 `monitor_events` 表结构。
 - 不做历史区实时追加（历史定位是「查」，实时定位是「看」）。
 - Pulse 区不做持久化/回放（刷新即清空，查历史走 History 区）。
+
+
+---
+
+## 十一、Traces 页排障地基与实时化（2026-08-05 · C3）
+
+> 对应开发计划：[18-monitor.development.md](./18-monitor.development.md) Phase MON-TR1 任务表
+
+**背景**：C3 前 Traces 列表为「全量拉取 + 前端筛选」，6000+ 行中约 90% 是 `system`/`skill` 内部噪音；无筛选分布反馈、无实时性、大数字难扫读。本方案按「排障地基 + 详情瘦身 + 实时化」一次性整改。
+
+### 11.1 默认排除内部噪音
+
+`exclude_internal` 前端默认开启：name 列承载运行域，`NOT IN ('system','skill')` 排除 cron、Skill 同步、MCP 健康检查等高频行。实测 6304 → 668 条（≈89% 噪音）。域筛选 chips 选中具体域时 `domain` 条件**优先于** `exclude_internal`，内部域仍可达。
+
+### 11.2 筛选 chips 与计数
+
+- 状态/域筛选以 chips 呈现，计数来自响应 `status_counts`/`domain_counts`（契约见 §2.4，聚合口径见 §4.2）。
+- `domain_counts` 刻意排除 domain 条件与 `exclude_internal`，使「对话 588 / 团队 90 / 系统 1879 / 技能 4472」全量分布可见，用户能理解默认隐藏了多少内部行。
+- 筛选条件变化自动归第 1 页（`useMonitorTraces` 单一 watcher 链式触发）。
+
+### 11.3 关键字搜索回退
+
+五列 OR LIKE 之外增加四路 `EXISTS` 回退（§4.2）：agent 显示名、会话标题、团队显示名、会话所属 agent 显示名——用户按「人话名称」而非裸 ID 搜索。
+
+### 11.4 实时化
+
+`useMonitorRunsLive` 订阅全局 WS（`session_id=*`）运行生命周期事件（`runner_completion`、team run finished/failed 等，见 `tracesQuery.ts` `isRunLifecycleEventType`），防抖后触发列表刷新；连接状态经 live pill 呈现（`live`/`connected` → 绿「实时」，`error` → 红，其余灰「连接中」）。不新增 WS 连接，复用 Monitor 全局上限语义。
+
+### 11.5 数字与时间格式
+
+`runFormat.ts`：令牌紧凑格式（156.8k）、成本四位有效小数（$0.0220）、延迟 ms/s 自适应；时间列相对时间（复用 i18n `relTime.*`），绝对时间在 tooltip。
+
+### 11.6 backfill 域语义修复
+
+`monitor_traces.name` 列语义是**运行域**（chat/team/graph/...），与 `TraceProjector` 一致。`MonitorTraceBackfillWorker` 曾把 `runner.completion` 事件名写入 name，产生 17 行域污染（域筛选出现伪域、徽标显示事件名）。修复：backfill 补写 `Name="chat"`（runner.completion 只来自 chat runner），存量 17 行经 `UPDATE monitor_traces SET name='chat' WHERE name='runner.completion'` 清理；`monitor_trace_backfill_test.go` 断言防回归。
+
+### 11.7 非目标
+
+- 不改 6 态状态模型与语义色（2026-07-29 已定）。
+- 不为 Events 页增加平行实时刷新（Events 脉搏区已是实时定位）。
+- 不改 WS Envelope 类型与全局连接上限。
 
 
 ---

@@ -92,13 +92,15 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 		}
 		agg := w.aggregateUsage(ctx, row.TraceID)
 		tw := monitor.TraceWrite{
-			TraceID:    row.TraceID,
-			SessionID:  row.SessionID,
-			RunID:      row.RunID,
-			AgentID:    row.AgentID,
-			Provider:   agg.Provider,
-			Model:      agg.Model,
-			Name:       "runner.completion",
+			TraceID:   row.TraceID,
+			SessionID: row.SessionID,
+			RunID:     row.RunID,
+			AgentID:   row.AgentID,
+			Provider:  agg.Provider,
+			Model:     agg.Model,
+			// name 列语义是域（与 TraceProjector 一致）：runner.completion 事件只来自
+			// chat runner，补写域为 chat；写事件名会污染域筛选与展示徽标。
+			Name:       "chat",
 			Status:     row.Status,
 			DurationMs: row.DurationMs,
 		}

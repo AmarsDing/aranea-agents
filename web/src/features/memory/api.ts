@@ -873,11 +873,10 @@ export async function abandonMemoryDeadLetter(id: number, reason = ''): Promise<
 export async function listConflictingFacts(
   scopeType: string,
   scopeId: string,
-  agentId = '',
   limit = 50,
   offset = 0,
 ): Promise<{ items: MemoryFact[]; total: number }> {
-  const raw = await memory.ListConflictingFacts({ scopeType, scopeId, agentId, limit, offset });
+  const raw = await memory.ListConflictingFacts({ scopeType, scopeId, limit, offset });
   const resp = asRecord(raw);
   const items = resp.items ?? [];
   return {

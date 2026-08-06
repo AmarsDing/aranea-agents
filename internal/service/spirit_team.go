@@ -1226,17 +1226,6 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 		return err
 	}
 	spiritSessionID := strings.TrimSpace(team.SpiritSessionID)
-	// S-3 后 TeamStage 按 (teamID, rootTaskID) 每轮一行；cancel 是用户动作
-	// （ctx 无 RootTaskActivityID），无法重放 ID 公式——查团队最新行定位，
-	// 并把其 TaskID（Mode B 下 = rootTaskID，见 publishSpiritTeamAssembled）
-	// 注入 ctx，使下方 HandleTeamTurnResult 的终态 pass 派生同一批
-	// run-isolated ID（teamStage/teamRun/memberSession）。查无行或 TaskID
-	// 为空（Mode A runner 事件不写 TaskID）时降级 legacy 公式，保留旧行为。
-	if a.teamStageR != nil {
-		if latest, lerr := a.teamStageR.GetLatestTeamStageByTeam(ctx, teamID); lerr == nil && strings.TrimSpace(latest.TaskID) != "" {
-			ctx = agent.ContextWithRootTaskActivityID(ctx, agent.RootTaskActivityID(latest.TaskID))
-		}
-	}
 	if a.v2EventReady() && spiritSessionID != "" {
 		// Phase 3b-D Task 10: migrated to v2 NewTeamStageUpdatedEvent.
 		// No NewTeamStageCancelledEvent factory exists; use Updated as the
@@ -1245,7 +1234,10 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 		// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
 		// 2026-07-05 P1 #9d-2（AS-FSM-01）：用状态机校验 Running → Cancelled
 		// 转换，修复 Version=0 Bug（状态未持久化）。
-		cancelTsID := string(agent.NewTeamStageActivityID(teamID, string(agent.RootTaskActivityIDFromCtx(ctx))))
+		// S-3 后 TeamStage 按 (teamID, rootTaskID) 每轮一行；cancel 是用户动作
+		// （ctx 无 RootTaskActivityID），无法重放 ID 公式——查团队最新行定位；
+		// 无行（团队从未产生 stage）时降级 legacy 公式，保留旧行为。
+		cancelTsID := string(agent.NewTeamStageActivityID(teamID, ""))
 		if a.teamStageR != nil {
 			if latest, lerr := a.teamStageR.GetLatestTeamStageByTeam(ctx, teamID); lerr == nil && latest.ID != "" {
 				cancelTsID = latest.ID

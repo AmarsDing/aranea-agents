@@ -120,6 +120,11 @@ func TestMonitorTraceBackfill_RunOnce_AggregatesUsageAndSweeps(t *testing.T) {
 	if len(traceRepo.inserted) != 1 {
 		t.Fatalf("InsertMonitorTrace calls = %d, want 1", len(traceRepo.inserted))
 	}
+	// monitor_traces.name 列语义是域（chat/team/graph/...），与 TraceProjector 保持一致；
+	// 禁止写成事件名 "runner.completion"（会污染域筛选与展示徽标）。
+	if traceRepo.inserted[0].Name != "chat" {
+		t.Errorf("inserted Name = %q, want domain %q", traceRepo.inserted[0].Name, "chat")
+	}
 	if traceRepo.inserted[0].Provider != "deepseek" || traceRepo.inserted[0].Model != "deepseek-chat" {
 		t.Errorf("inserted provider/model = %q/%q, want deepseek/deepseek-chat",
 			traceRepo.inserted[0].Provider, traceRepo.inserted[0].Model)

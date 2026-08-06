@@ -126,10 +126,9 @@ type StepV2Repo interface {
 type TeamStageV2Reader interface {
 	GetTeamStage(ctx context.Context, id string) (TeamStage, error)
 	ListTeamStagesByTask(ctx context.Context, taskID string) ([]TeamStage, error)
-	// GetLatestTeamStageByTeam returns the most recently started stage for a
-	// team. S-3（2026-08-05）: run-isolated stage IDs (teamID+rootTaskID) make
-	// deterministic derivation impossible on ctx-less read paths (spirit view,
-	// pause/resume sync, cancel) — those paths query the latest stage instead.
+	// GetLatestTeamStageByTeam returns the team's most recent stage (seq desc).
+	// S-3 后 TeamStage 按 (teamID, rootTaskID) 每轮一行，无 turn ctx 的路径
+	// （cancel/pause/sidebar 读取）无法重放 ID 公式，必须经此查询定位当前行。
 	GetLatestTeamStageByTeam(ctx context.Context, teamID string) (TeamStage, error)
 }
 

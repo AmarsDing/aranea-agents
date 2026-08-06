@@ -126,11 +126,15 @@ func provideFeedbackMemoryEnqueuer(q memtrpc.AutoMemoryQueue) biz.FeedbackMemory
 	return biz.FeedbackMemoryEnqueuerFunc(memtrpc.NewFeedbackMemoryEnqueuer(q))
 }
 
-func provideMemoryCompositeRecall(d *data.Data, memSvc trpcmemory.Service) biz.MemoryCompositeRecaller {
+func provideMemoryCompositeRecall(d *data.Data, memSvc trpcmemory.Service, l2Recall biz.MemoryL2Recaller, l3Recall biz.MemoryL3Recaller) biz.MemoryCompositeRecaller {
 	uc := biz.NewMemoryCompositeRecallUsecase(data.NewMemoryCompositeRecallAdapter(d))
 	if uc == nil {
 		return nil
 	}
+	// P2-R1: compose the fused L2/L3 recall usecases so the main chat path
+	// gets embedding + pgvector/FTS RRF + calibrated scores + recalled_count
+	// bumps (the legacy store path had none of these).
+	uc.SetLayerRecallers(l2Recall, l3Recall)
 	// Wire the proactive recaller so the composite usecase can surface
 	// memories based on conversation context (P3-11).
 	if proactiveRecaller := memtrpc.NewProactiveRecallAdapter(memSvc); proactiveRecaller != nil {
@@ -283,17 +287,17 @@ func providePersistenceSet(
 	var mem rt.MemorySet
 	if d != nil {
 		mem = rt.MemorySet{
-			TRPC:             memSvc,
-			Admin:            data.NewSessionAdminStoreAdapter(d, d.VectorStore()),
-			AdminUsecase:     adminUC,
-			ActionLogWriter:  data.NewMemoryActionLogWriter(d),
-			L2Recall:         l2Recall,
-			L3Recall:         l3Recall,
-			CompositeRecall:  compositeRecall,
-			PreferenceLister: data.NewMemoryPreferenceLister(d),
+			TRPC:              memSvc,
+			Admin:             data.NewSessionAdminStoreAdapter(d, d.VectorStore()),
+			AdminUsecase:      adminUC,
+			ActionLogWriter:   data.NewMemoryActionLogWriter(d),
+			L2Recall:          l2Recall,
+			L3Recall:          l3Recall,
+			CompositeRecall:   compositeRecall,
+			PreferenceLister:  data.NewMemoryPreferenceLister(d),
 			ProfileCardReader: data.NewMemoryProfileCardStore(d),
 			FactInjectCounter: data.NewL3FactInjectCounter(d),
-			Reconsolidator:   reconsolidator,
+			Reconsolidator:    reconsolidator,
 		}
 		// Connect dead-letter sink so queue overflow is persisted instead of silently dropped.
 		if queue, ok := q.(*memtrpc.MemoryJobQueue); ok && deadLetterRepo != nil {

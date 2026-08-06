@@ -36,6 +36,7 @@ type toolConfirmGate struct {
 	catalog   map[string]confirmCatalogEntry
 	plugin    plugintrpc.ConfirmationGuardConfig
 	hasPlugin bool
+	lg        loggateway.Logger
 	// sessionGrants holds session-scoped "always allow for this session"
 	// grants. It is a process-wide store shared across agent rebuilds;
 	// entries are keyed by (sessionID, agentID, toolKey) so a grant never
@@ -80,7 +81,7 @@ var defaultToolGrantStore = newToolGrantStore(time.Now)
 // other tools short-circuit as default_allow.
 func (g *toolConfirmGate) decide(ctx context.Context, sessionID, agentID, toolName string, args []byte) confirmDecision {
 	toolName = strings.TrimSpace(toolName)
-	needsByCatalog := catalogRequiresConfirm(g.catalog, toolName)
+	needsByCatalog := g.catalogCheck(toolName)
 	needsByPlugin := g.hasPlugin && plugintrpc.MatchConfirmationGuard(g.plugin, toolName, args)
 	if !needsByCatalog && !needsByPlugin {
 		return confirmDecision{needsConfirm: false, reason: confirmReasonDefaultAllow}
@@ -117,6 +118,7 @@ func buildToolConfirmGate(ctx context.Context, ag biz.Agent, deps TRPCBuilderDep
 		catalog:       catalog,
 		plugin:        pluginCfg,
 		hasPlugin:     hasPlugin,
+		lg:            deps.Logger(),
 		sessionGrants: defaultToolGrantStore,
 	}
 	if deps.ToolUC != nil {
@@ -182,14 +184,39 @@ func buildCatalogConfirmTools(ctx context.Context, ag biz.Agent, deps TRPCBuilde
 	return out
 }
 
+// Catalog match strategies, recorded in logs to explain gating decisions.
+const (
+	catalogMatchExact         = "exact"
+	catalogMatchToolsetPrefix = "toolset_prefix"
+	catalogMatchToolsetAlias  = "toolset_prefix_alias"
+	catalogMatchReverseAlias  = "reverse_alias"
+	catalogMatchSegment       = "segment"
+)
+
+// catalogConfirmMatch describes how the catalog resolved a runtime tool name.
+type catalogConfirmMatch struct {
+	requiresConfirm bool
+	// via is one of the catalogMatch* strategies; "" when nothing matched.
+	via string
+	// catalogKey is the catalog key that decided the outcome.
+	catalogKey string
+}
+
+// catalogRequiresConfirm reports whether the catalog gates toolName. Kept as
+// a thin wrapper for unit tests; production call sites use
+// (*toolConfirmGate).catalogCheck which logs indirect resolutions.
 func catalogRequiresConfirm(catalog map[string]confirmCatalogEntry, toolName string) bool {
+	return lookupCatalogConfirm(catalog, toolName).requiresConfirm
+}
+
+func lookupCatalogConfirm(catalog map[string]confirmCatalogEntry, toolName string) catalogConfirmMatch {
 	if catalog == nil {
-		return false
+		return catalogConfirmMatch{}
 	}
 	toolName = strings.TrimSpace(toolName)
 	// Exact match first.
 	if entry, ok := catalog[toolName]; ok {
-		return entry.requiresConfirm
+		return catalogConfirmMatch{requiresConfirm: entry.requiresConfirm, via: catalogMatchExact, catalogKey: toolName}
 	}
 	// Try deriving catalog key from runtime name using ToolSet prefix.
 	// Runtime names follow the pattern: <toolsetName>_<catalogKey>
@@ -200,7 +227,20 @@ func catalogRequiresConfirm(catalog map[string]confirmCatalogEntry, toolName str
 		if strings.HasPrefix(toolName, prefix) {
 			suffix := strings.TrimPrefix(toolName, prefix)
 			if entry, ok := catalog[suffix]; ok {
-				return entry.requiresConfirm
+				return catalogConfirmMatch{requiresConfirm: entry.requiresConfirm, via: catalogMatchToolsetPrefix, catalogKey: suffix}
+			}
+			// The suffix may itself be a canonical runtime name whose catalog
+			// key is an alias source (e.g. "hostexec_exec_command" → suffix
+			// "exec_command" ← catalog key "shell_exec"). Resolve via reverse
+			// alias lookup so mounted toolset names inherit the catalog policy;
+			// an absent catalog entry (e.g. admin disabled confirmation) stays
+			// ungated, preserving per-agent overrides.
+			for aliasKey, canonical := range alias.RuntimeToolNameAliases {
+				if canonical == suffix {
+					if entry, ok := catalog[aliasKey]; ok {
+						return catalogConfirmMatch{requiresConfirm: entry.requiresConfirm, via: catalogMatchToolsetAlias, catalogKey: aliasKey}
+					}
+				}
 			}
 		}
 	}
@@ -209,7 +249,7 @@ func catalogRequiresConfirm(catalog map[string]confirmCatalogEntry, toolName str
 	for aliasKey, canonical := range alias.RuntimeToolNameAliases {
 		if canonical == toolName {
 			if entry, ok := catalog[aliasKey]; ok {
-				return entry.requiresConfirm
+				return catalogConfirmMatch{requiresConfirm: entry.requiresConfirm, via: catalogMatchReverseAlias, catalogKey: aliasKey}
 			}
 		}
 	}
@@ -228,10 +268,38 @@ func catalogRequiresConfirm(catalog map[string]confirmCatalogEntry, toolName str
 		if strings.HasPrefix(toolName, key+"_") ||
 			strings.HasSuffix(toolName, "_"+key) ||
 			strings.Contains(toolName, "_"+key+"_") {
-			return true
+			return catalogConfirmMatch{requiresConfirm: true, via: catalogMatchSegment, catalogKey: key}
 		}
 	}
-	return false
+	return catalogConfirmMatch{}
+}
+
+// logger returns the gate logger, falling back to a noop for zero-value gates
+// (unit tests construct gates via struct literals without a logger).
+func (g *toolConfirmGate) logger() loggateway.Logger {
+	if g != nil && g.lg != nil {
+		return g.lg
+	}
+	return loggateway.NewNoop()
+}
+
+// catalogCheck resolves the catalog policy for a runtime tool name. Indirect
+// resolutions (toolset prefix / alias / segment) are logged at Info level so
+// unexpected gating decisions — e.g. a mounted name like
+// "hostexec_exec_command" inheriting the "shell_exec" policy — can be traced
+// without a debugger. Exact matches are the common path and stay silent.
+func (g *toolConfirmGate) catalogCheck(toolName string) bool {
+	m := lookupCatalogConfirm(g.catalog, toolName)
+	if m.via != "" && m.via != catalogMatchExact {
+		g.logger().Info("tool confirm gate: catalog matched via indirect rule",
+			loggateway.StepID("agent.tool_confirm_gate"),
+			loggateway.Str("tool_name", toolName),
+			loggateway.Str("catalog_key", m.catalogKey),
+			loggateway.Str("match_via", m.via),
+			loggateway.Bool("requires_confirm", m.requiresConfirm),
+		)
+	}
+	return m.requiresConfirm
 }
 
 func (g *toolConfirmGate) needsConfirm(toolName string, args []byte) bool {
@@ -239,7 +307,7 @@ func (g *toolConfirmGate) needsConfirm(toolName string, args []byte) bool {
 		return false
 	}
 	toolName = strings.TrimSpace(toolName)
-	if catalogRequiresConfirm(g.catalog, toolName) {
+	if g.catalogCheck(toolName) {
 		return true
 	}
 	if g.hasPlugin && plugintrpc.MatchConfirmationGuard(g.plugin, toolName, args) {
@@ -252,7 +320,7 @@ func (g *toolConfirmGate) pluginAllowWithoutChannel(toolName string, args []byte
 	if g == nil || !g.hasPlugin || !plugintrpc.ConfirmationDefaultAllow(g.plugin) {
 		return false
 	}
-	if g.catalog != nil && catalogRequiresConfirm(g.catalog, strings.TrimSpace(toolName)) {
+	if g.catalog != nil && g.catalogCheck(strings.TrimSpace(toolName)) {
 		return false
 	}
 	return plugintrpc.MatchConfirmationGuard(g.plugin, toolName, args)

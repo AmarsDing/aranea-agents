@@ -227,6 +227,16 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
   - S-2：standalone cancelled 时 running 成员 session 一并转 interrupted（与 AutoCreated 同姿态）；`publishTerminalTeamStage` 空聚合根守卫防孤立记录
   - 测试：`TestHandleTeamTurnResult_Standalone_Completed/Failed/Cancelled_TerminalPass` + `_EmptySpiritID_FallbackToTeamSession`
 
+**P0++ — v2 记录链 run 隔离（✅ 2026-08-05，ADR-10）**
+
+- ✅ S-3：`NewTeamStageActivityID(teamID, rootTaskID)` 引入 run 维度——修复同团队多轮 turn 碰撞同一 team_stages_v2 行（FSM 终态冻结）；rootTaskID 空降级 legacy 公式（兼容重启恢复）。TeamRun/MemberSession 从 teamStageID 链式派生继承隔离
+- ✅ S-3b：新 reader `GetLatestTeamStageByTeam`（port + data 实现 + 测试）——ctx-less 路径（CancelTeam/pause-resume/spirit view）查最新行替代公式重放
+- ✅ S-3c/d：`spirit_team.go` 8 处派生点全部传 rootTaskID；CancelTeam 查最新行把 TaskID 注入 ctx 富化；`team_orchestrator_real`/`team_pause`/`team_dead_letter` 同步；graph run `teamGraphRunSession` 注册时捕获 rootTaskID（resume/finalize 外来 ctx 不携带）
+- ✅ S-5：`executeTeamTurnViaHooks` 团队 chat 入口注入 RootTaskActivityID + 幂等建根 Task v2 + 完成/失败终态化（continuation 继承 ParentTaskID 不新建）——修复 turn 树挂幽灵 ID
+- ✅ S-5b：pending-queue 团队分支同一姿态（每条出队消息全新 rootTaskID）——修复 loopCtx 复用上一轮 ID 的碰撞缺口
+- ✅ S-4：standalone 团队不驱动 teams.status（TDD）——`handleStandaloneTeamTurnResult` 删除 teams 表 TransitionStatus；修复一次 failed 永久毒化团队实体（pending→failed 合法）+ completed 恒被 FSM 拒绝刷 Warn；Mode B 行为不变
+- 测试：`activity_context_test.go`（ID 公式）+ `team_turn_hooks_test.go`（S-5 注入/建根/隔离/终态化 4 例）+ `team_stage_v2_repo_test.go`（GetLatestTeamStageByTeam）+ standalone 三例反转向断言（teams 零写入）
+
 **改动文件清单**：
 
 - `internal/team/runner_helpers.go`（F1 ✅ / 单写者 ✅：completed 投影删除）
@@ -243,8 +253,17 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 - `internal/biz/member_session.go`（单写者 ✅：版本带常量 + IsMemberSessionTerminal + outcome 哨兵化）
 - `internal/service/chat_pause.go` / `internal/service/team_pause.go`（单写者 ✅：生命周期写者版本纪律）
 - `internal/data/v2_recovery_repo.go`（单写者 ✅：recovery 终态携带 outcome 带）
-- `internal/data/member_session_v2_repo_test.go`（回归测试 ✅）+ `internal/service/spirit_team_handle_result_test.go`（F9/F10/版本带断言 ✅）
+- `internal/data/member_session_v2_repo_test.go`（回归测试 ✅）+ `internal/service/spirit_team_handle_result_test.go`（F9/F10/版本带断言 ✅ / S-4 ✅ standalone teams 零写入）
 - `docs/reports/2026-07-29-review-adr-member-outcome-single-writer.md`（ADR-09）
+- `internal/agent/activity_context.go`（S-3 ✅ run 隔离 ID 公式）+ `activity_context_test.go`（S-3 ✅）
+- `internal/biz/repo_ports_v2.go`（S-3b ✅ TeamStageV2Reader.GetLatestTeamStageByTeam）+ `internal/data/team_stage_v2_repo.go`（S-3b ✅ 实现）+ `team_stage_v2_repo_test.go`（S-3b ✅）
+- `internal/service/team_turn_hooks.go`（S-5 ✅ 入口注入 + 根 Task 生命周期）+ `team_turn_hooks_test.go`（S-5 ✅ 4 例）
+- `internal/service/chat_orchestrator_turn_dispatch.go`（S-5b ✅ pending-queue 团队分支）
+- `internal/team/team_graph_run_coordinator.go`（S-3 ✅ session 捕获 rootTaskID + stageActivityID）+ `team_graph_run_finisher.go`（S-3 ✅ stepCtx.RootTaskID）+ `team_graph_run_context.go`（S-3 ✅ RootTaskID 字段）
+- `internal/service/team_pause.go` / `internal/service/team_dead_letter.go`（S-3d ✅ 查最新行）
+- `internal/service/spirit_team.go`（S-3c ✅ 8 处派生 + CancelTeam ctx 富化 / S-4 ✅ standalone 不驱动 teams.status）
+- `internal/team/summary.go`（S-3 ✅ TeamSummaryActivityEvent 死代码删除）
+- `docs/reports/2026-08-05-review-adr-team-run-isolation.md`（ADR-10）
 
 **验收标准**：
 

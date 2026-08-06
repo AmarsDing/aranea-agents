@@ -2,6 +2,8 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
+	"sort"
 	"strings"
 )
 
@@ -80,6 +82,12 @@ type ProactiveRecaller interface {
 type MemoryCompositeRecallUsecase struct {
 	store             SessionCompositeRecallStore
 	proactiveRecaller ProactiveRecaller
+	// P2-R1: layered recallers. When l3 is set, RecallComposite composes the
+	// fused L2/L3 usecases directly (embedding + pgvector/FTS RRF + calibrated
+	// scores + recalled_count bumps) instead of the degraded legacy store
+	// path (raw repo, importance-as-score, no counters).
+	l2 MemoryL2Recaller
+	l3 MemoryL3Recaller
 }
 
 // NewMemoryCompositeRecallUsecase wires the composite recall store.
@@ -102,8 +110,24 @@ func (uc *MemoryCompositeRecallUsecase) SetProactiveRecaller(r ProactiveRecaller
 	uc.proactiveRecaller = r
 }
 
+// SetLayerRecallers injects the fused L2/L3 recall usecases (P2-R1). When l3
+// is non-nil, RecallComposite takes the layered path; nil l2 skips episodes.
+func (uc *MemoryCompositeRecallUsecase) SetLayerRecallers(l2 MemoryL2Recaller, l3 MemoryL3Recaller) {
+	if uc == nil {
+		return
+	}
+	uc.l2 = l2
+	uc.l3 = l3
+}
+
 func (uc *MemoryCompositeRecallUsecase) RecallComposite(ctx context.Context, q CompositeRecallQuery) ([]CompositeRecallHit, error) {
-	if uc == nil || uc.store == nil {
+	if uc == nil {
+		return nil, nil
+	}
+	if uc.l3 != nil {
+		return uc.recallCompositeLayered(ctx, q)
+	}
+	if uc.store == nil {
 		return nil, nil
 	}
 	agentID := strings.TrimSpace(q.AgentID)
@@ -138,6 +162,149 @@ func (uc *MemoryCompositeRecallUsecase) RecallComposite(ctx context.Context, q C
 		})
 	}
 	return out, nil
+}
+
+// compositeMMRLambda controls the relevance-vs-diversity trade-off in the
+// merged L2+L3 rerank. 0.7 = 70% relevance weight + 30% diversity penalty.
+const compositeMMRLambda = 0.7
+
+// recallCompositeLayered composes the fused L2/L3 recall usecases (P2-R1).
+// Both layers arrive with calibrated score breakdowns annotated into the raw
+// JSON ("scores" key); the merged set is ranked by scores.total, MMR-reranked
+// for diversity, and capped at limit.
+func (uc *MemoryCompositeRecallUsecase) recallCompositeLayered(ctx context.Context, q CompositeRecallQuery) ([]CompositeRecallHit, error) {
+	agentID := strings.TrimSpace(q.AgentID)
+	if agentID == "" {
+		return nil, nil
+	}
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 8
+	}
+	if limit > 20 {
+		limit = 20
+	}
+	query := strings.TrimSpace(q.Query)
+
+	var all []CompositeRecallHit
+
+	// L2 episodes (fused usecase: embedding + vector/cross-encoder rerank).
+	if uc.l2 != nil {
+		epRows, err := uc.l2.RecallEpisodes(ctx, L2RecallQuery{
+			AgentID:   agentID,
+			SessionID: strings.TrimSpace(q.SessionID),
+			Query:     query,
+			Limit:     limit,
+		})
+		if err == nil {
+			for _, raw := range epRows {
+				hit := compositeHitFromEpisodeJSON(raw)
+				if hit.Line != "" {
+					all = append(all, hit)
+				}
+			}
+		}
+	}
+
+	// L3 facts (fused usecase: embedding + pgvector/FTS RRF + decay fusion +
+	// recalled_count bumps inside the scored store adapter).
+	factRows, err := uc.l3.RecallFactsFused(ctx, L3FusedRecallQuery{
+		Runtime: MemoryRuntimeContext{AgentID: agentID, UserID: strings.TrimSpace(q.UserID)},
+		Query:   query,
+		Limit:   limit,
+	})
+	if err == nil {
+		for _, raw := range factRows {
+			hit := compositeHitFromFactJSON(raw)
+			if hit.Line != "" {
+				all = append(all, hit)
+			}
+		}
+	}
+
+	sort.Slice(all, func(i, j int) bool { return all[i].Score > all[j].Score })
+
+	// MMR diversity rerank (same policy as the legacy data-adapter path).
+	if len(all) > 1 {
+		texts := make([]string, len(all))
+		scores := make([]float64, len(all))
+		for i, hit := range all {
+			texts[i] = hit.Line
+			scores[i] = hit.Score
+		}
+		order := MMRRerankTexts(texts, scores, int(limit), compositeMMRLambda)
+		reranked := make([]CompositeRecallHit, 0, len(order))
+		for _, idx := range order {
+			reranked = append(reranked, all[idx])
+		}
+		all = reranked
+	}
+
+	if len(all) > int(limit) {
+		all = all[:limit]
+	}
+	return all, nil
+}
+
+// compositeHitFromEpisodeJSON maps a raw L2 episode row to a composite hit.
+// Ranking uses the annotated scores.total (P2-R1), falling back to raw
+// importance for rows produced before score annotation existed.
+func compositeHitFromEpisodeJSON(raw []byte) CompositeRecallHit {
+	var row map[string]any
+	if json.Unmarshal(raw, &row) != nil {
+		return CompositeRecallHit{}
+	}
+	title, _ := row["title"].(string)
+	summary, _ := row["outcome_summary"].(string)
+	line := formatCompositeRecallLine(CompositeRecallStoreRow{Layer: "L2", Title: title, Summary: summary})
+	return CompositeRecallHit{
+		Layer: "L2",
+		Line:  line,
+		Score: compositeRowScore(row),
+	}
+}
+
+// compositeHitFromFactJSON maps a raw L3 fact row to a composite hit,
+// propagating provenance metadata (P2-04) for the transparency notice.
+func compositeHitFromFactJSON(raw []byte) CompositeRecallHit {
+	var row map[string]any
+	if json.Unmarshal(raw, &row) != nil {
+		return CompositeRecallHit{}
+	}
+	stmt, _ := row["statement"].(string)
+	factID, _ := row["id"].(string)
+	srcSess, _ := row["source_session_id"].(string)
+	var confidence float64
+	if v, ok := row["confidence"].(float64); ok {
+		confidence = v
+	}
+	var version int
+	if v, ok := row["version"].(float64); ok {
+		version = int(v)
+	}
+	return CompositeRecallHit{
+		Layer:         "L3",
+		Line:          formatCompositeRecallLine(CompositeRecallStoreRow{Layer: "L3", Statement: stmt}),
+		Score:         compositeRowScore(row),
+		FactID:        factID,
+		SourceSession: srcSess,
+		Confidence:    confidence,
+		Version:       version,
+	}
+}
+
+// compositeRowScore extracts the calibrated scores.total annotated by the
+// recall pipeline; falls back to the raw importance field when absent.
+func compositeRowScore(row map[string]any) float64 {
+	if sc, ok := row["scores"].(map[string]any); ok {
+		if total, ok := sc["total"].(float64); ok && total > 0 {
+			return total
+		}
+	}
+	if v, ok := row["importance"].(float64); ok {
+		return v
+	}
+	return 0
 }
 
 // ProactiveRecall retrieves memories based on the conversation context

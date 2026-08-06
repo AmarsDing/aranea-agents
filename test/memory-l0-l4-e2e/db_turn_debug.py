@@ -1,0 +1,11 @@
+import psycopg2
+SID = open('fts_smoke_session.txt').read().strip()
+print('session:', SID)
+conn = psycopg2.connect(host='127.0.0.1', dbname='aranea', user='postgres', password='Hangshan@123')
+cur = conn.cursor()
+cur.execute("SELECT table_name FROM information_schema.tables WHERE table_name LIKE '%message%' OR table_name LIKE '%turn%'")
+print('tables:', cur.fetchall())
+cur.execute("SELECT id, kind, notice_type, status, left(content,150), started_at FROM steps_v2 WHERE session_id=%s ORDER BY started_at", (SID,))
+print('steps:')
+for r in cur.fetchall(): print(' ', r)
+conn.close()

@@ -16,9 +16,9 @@ import (
 
 // stubTaskV2Writer is a stub implementation of biz.TaskV2Writer for testing.
 type stubTaskV2Writer struct {
-	upserted      []biz.Task
-	terminalized  []biz.Task
-	err           error
+	upserted     []biz.Task
+	terminalized []biz.Task
+	err          error
 }
 
 func (s *stubTaskV2Writer) CreateTask(_ context.Context, t biz.Task) (biz.Task, error) {

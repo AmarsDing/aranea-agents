@@ -43,6 +43,24 @@ func TestCatalogRequiresConfirm_nilCatalog(t *testing.T) {
 	}
 }
 
+// The hostexec ToolSet mounts its tools under the "hostexec_" prefix while the
+// catalog gates the toolset under key "shell_exec" (alias of the mounted
+// "exec_command"). Mounted names like "hostexec_exec_command" must inherit the
+// catalog policy — previously they bypassed the gate entirely, letting the
+// agent run arbitrary host commands after a shell_exec confirmation timed out.
+func TestCatalogRequiresConfirm_hostexecMountedExecCommand(t *testing.T) {
+	t.Parallel()
+	catalog := map[string]confirmCatalogEntry{"shell_exec": {requiresConfirm: true}}
+	if !catalogRequiresConfirm(catalog, "hostexec_exec_command") {
+		t.Fatal("expected hostexec_exec_command to require confirm when shell_exec does (toolset prefix + reverse alias on suffix)")
+	}
+	// When the catalog does not gate shell_exec (e.g. an admin override disabled
+	// confirmation), the mounted name must likewise stay ungated.
+	if catalogRequiresConfirm(map[string]confirmCatalogEntry{}, "hostexec_exec_command") {
+		t.Fatal("did not expect hostexec_exec_command gating without a catalog entry")
+	}
+}
+
 // MCP-mounted toolsets expose sub-tools whose runtime names derive from the
 // catalog key: catalog "browser" → "browser_navigate", optionally with an MCP
 // ToolPrefix → "playwright_browser_navigate". The gate must treat the catalog

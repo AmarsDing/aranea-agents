@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -742,6 +743,31 @@ func (uc *SessionUsecase) Create(ctx context.Context, in Session) (Session, erro
 		in.OwnerType = "agent"
 	default:
 		return Session{}, validationErr("owner_type must be agent or team")
+	}
+	// Ownership backfill: sessions created without an explicit UserID inherit
+	// the caller principal (explicit ctxuser scope or auth user). The confirm
+	// gate compares session.UserID against ctxuser.FromContext, so an empty
+	// owner makes every tool confirmation fail with 403.
+	if strings.TrimSpace(in.UserID) == "" {
+		if uid := ctxuser.FromContext(ctx); uid != ctxuser.DefaultUserID {
+			in.UserID = uid
+			uc.lg.Info("session user_id backfilled from caller principal",
+				loggateway.StepID("session.create"),
+				loggateway.Str("user_id", uid),
+				loggateway.Str("owner_type", in.OwnerType),
+				loggateway.Str("agent_id", in.AgentID),
+				loggateway.Str("team_id", in.TeamID),
+			)
+		} else {
+			// K2-adjacent: an ownerless session passes creation but every tool
+			// confirmation on it will 403 — surface loudly for troubleshooting.
+			uc.lg.Warn("session created without owner user_id: no auth principal in context, tool confirmations will fail the ownership check",
+				loggateway.StepID("session.create"),
+				loggateway.Str("owner_type", in.OwnerType),
+				loggateway.Str("agent_id", in.AgentID),
+				loggateway.Str("team_id", in.TeamID),
+			)
+		}
 	}
 	in.ID = uuid.NewString()
 	created, err := uc.sessionWriter.CreateSession(ctx, in)

@@ -75,15 +75,8 @@ type teamGraphRunSession struct {
 	teamID          string
 	sessionID       string
 	spiritSessionID string
-	execID          string
-	// rootTaskID is the run-dimension captured from the registration ctx
-	// (S-3). The resume/finalize paths run on foreign ctx (task-completion
-	// handler, watch goroutine) that never carry RootTaskActivityID, so the
-	// stage ID must be derived from this captured value to hit the same
-	// team_stages_v2 row created at run start. Empty for sessions recovered
-	// from DB after restart → stageActivityID degrades to the legacy
-	// teamID-only formula (pre-S-3 behavior, bounded to post-restart resume).
 	rootTaskID      string
+	execID          string
 	inputPreview    string
 	definitionJSON  string
 	watchStop       context.CancelFunc
@@ -168,11 +161,13 @@ func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context
 		teamID:          strings.TrimSpace(teamID),
 		sessionID:       strings.TrimSpace(sessionID),
 		spiritSessionID: strings.TrimSpace(spiritSessionID),
-		execID:          execID,
-		rootTaskID:      string(agent.RootTaskActivityIDFromCtx(ctx)),
-		emitter:         event.TraceEmitterFromContext(ctx),
-		stepDedup:       newGraphStepDedup(),
-		registeredAt:    time.Now(),
+		// S-3: capture the run-dimension at registration; the finisher's ctx
+		// (resume/finalize path) never carries RootTaskActivityID.
+		rootTaskID:   string(agent.RootTaskActivityIDFromCtx(ctx)),
+		execID:       execID,
+		emitter:      event.TraceEmitterFromContext(ctx),
+		stepDedup:    newGraphStepDedup(),
+		registeredAt: time.Now(),
 	}
 	if c.teamRunReader != nil {
 		if run, err := c.teamRunReader.GetTeamRunByID(ctx, sess.teamRunID); err == nil {
@@ -311,7 +306,11 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 				if c.seq != nil || c.eventBus != nil {
 					now := time.Now().UTC()
 					ts := biz.TeamStage{
-						ID:        sess.stageActivityID(),
+						// S-3: use the run-dimension captured at registration; this
+						// resume-failure ctx (task-completion handler) never carries
+						// RootTaskActivityID, so a ctx lookup would derive the wrong
+						// stage ID and upsert a second team_stages_v2 row.
+						ID:        string(agent.NewTeamStageActivityID(sess.teamID, sess.rootTaskID)),
 						TeamID:    sess.teamID,
 						SessionID: sess.spiritSessionID,
 						Status:    biz.TeamStageStatusFailed,
@@ -635,7 +634,9 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 	if c.seq != nil || c.eventBus != nil {
 		now := time.Now().UTC()
 		ts := biz.TeamStage{
-			ID:        sess.stageActivityID(),
+			// S-3: run-dimension captured at registration (watch/finalize ctx
+			// originates from the completion watcher, not the run ctx).
+			ID:        string(agent.NewTeamStageActivityID(sess.teamID, sess.rootTaskID)),
 			TeamID:    sess.teamID,
 			SessionID: sess.spiritSessionID,
 			StartedAt: now,
@@ -720,14 +721,6 @@ func (c *TeamGraphRunCoordinator) session(execID string) *teamGraphRunSession {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.sessions[strings.TrimSpace(execID)]
-}
-
-// stageActivityID derives the team_stage Activity ID for this session from
-// the captured rootTaskID (S-3 run isolation). Never consult the triggering
-// ctx — resume/finalize ctx originate from foreign handlers and do not carry
-// RootTaskActivityID.
-func (s *teamGraphRunSession) stageActivityID() string {
-	return string(agent.NewTeamStageActivityID(s.teamID, s.rootTaskID))
 }
 
 func (c *TeamGraphRunCoordinator) stopWatch(execID string) {

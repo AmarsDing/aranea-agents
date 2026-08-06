@@ -4928,6 +4928,8 @@ TeamStageID: m.TeamID, // team member turns are identified by non-empty TeamID
 - Spirit root turns 的 `TeamStageID` 和 `TeamID` 都为空（无 team 归属）
 - 前端 Fallback 仅在精确匹配结果为空时触发，避免误用
 
+> **2026-08-05 修订（S-3 run 隔离 + S-5 根任务注入）**：`NewTeamStageActivityID` 签名已变更为 `(teamID, rootTaskID)`——同一团队每轮 turn 生成独立 `team_stages_v2` 行（此前每轮碰撞同一行导致 FSM 转换失败、状态冻结），下游 `NewTeamRunV2ID`/`NewMemberSessionActivityID` 自动继承 run 隔离。`rootTaskID` 在 chat/团队入口注入 ctx（`chat_orchestrator_turn.go:444`、`team_turn_hooks.go:59`），turn 链路所有调用点经 `agent.RootTaskActivityIDFromCtx(ctx)` 获取；graph resume/finalize 等外来 ctx 路径由 coordinator session 捕获值（`sess.rootTaskID`）供给。**无 turn ctx 且无从捕获的路径**（用户 cancel/pause/resume、ListSpiritTeams 侧栏读取）无法重放 ID 公式，统一经 `TeamStageV2Reader.GetLatestTeamStageByTeam`（按 seq desc 取团队最新行）定位当前轮 stage，团队从未产生 stage 时降级 legacy `teamID`-only 公式。上文 1-arg 公式引用为历史记录，以本修订为准。
+
 **运行时验证**（需清空数据库重新测试）：
 - 旧数据的 `Turn.TeamStageID` 仍是错误的 `TeamID` 值，前端会走 Fallback 路径（行为与修复前一致）
 - 清空数据库重新发起任务后，新数据的 `Turn.TeamStageID` 正确，前端走精确匹配路径

@@ -843,6 +843,29 @@
 
 ---
 
+### 1.29 语音伴侣 / M74（`internal/voice/` + `internal/server/voice_ws.go` + `internal/biz/speech.go` + `internal/data/speech/` + `internal/tools/clientbridge/`，规划中）
+
+**职责**：语音 I/O 形态（级联流式管线：流式 ASR → 现有 Chat Turn 管线 → 分句流式 TTS）+ 客户端工具桥（Agent 工具在用户桌面本机执行）。编排内核零改动。详见 [`74-voice-companion.design.md`](./74-voice-companion.design.md)。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `service/chat`（ChatSender/WSTurnExecutor，ASR 终稿入口）、`biz`（EventBus/工具配置）、`server`（RunCanceller/SessionAuthorizer）、`internal/event`（流程日志）、System Settings（speech 分组配置） |
+| **下游影响** | `tools`（clientbridge 注册新 ToolSet）、`agent`（确认门 catalog 扩展 client 工具组）、`59-multimodal`（V4 复用 ASR 端口做音频附件 STT）、`63-tts`（可后续共用 SpeechProvider 端口） |
+| **核心导出** | `StreamingASRProvider`/`StreamingTTSProvider`（biz 窄端口）、`VoiceSession` 状态机（idle/listening/thinking/speaking/interrupted/error）、`SentenceChunker` |
+| **共享类型** | `ASREvent`/`TTSAudioChunk`（biz 层，data 适配器单向转换）；`/v1/voice` 帧协议（二进制 PCM + JSON 控制帧，独立于 `/v1/ws`） |
+| **事件生产** | `client_tool.invoke/result/timeout`（WS 路由事件）；流程日志 `voice.*` step（须登记 stepTitleRegistry + 52-flow-logger §5.1） |
+| **事件消费** | Chat 流式 delta（喂 SentenceChunker）、工具确认门事件 |
+| **数据库** | 无新表（System Settings `speech` 分组；语音留档复用 27-artifact） |
+| **前端对应** | `/companion` 路由（见 §2.7）；System Settings「语音服务」Tab（V2） |
+
+**⚠️ 开发注意**：
+- 语音网关仅做 ASR↔Chat↔TTS 胶水，禁止在 `internal/voice/` 内复制编排逻辑；Turn 生命周期以 Chat 管线为准
+- 打断链路必须复用 `RunCanceller.CancelRun`，禁止另建取消通道
+- 客户端工具执行路由目标 = 同 user + 同 session 且 capabilities 含 `desktop_companion` 的 WS 连接；无连接时返回 `DESKTOP_CLIENT_OFFLINE`，禁止静默成功
+- 火山等 Provider SDK 只允许出现在 `internal/data/speech/`；凭据走敏感字段，禁止入日志
+
+---
+
 ## 二、前端模块开发上下文卡片
 
 ### 2.1 Chat 域（最复杂的前端域）
@@ -938,6 +961,26 @@
 - 聊天业务事件走 typed v2 EventKind；监控走 `MonitorEvent`。禁止新增 `activity_event` / bridge。
 - `globalWsHub` 引用计数：`acquireGlobalWsConsumer`/`releaseGlobalWsConsumer` 必须配对
 - WS 重连 hydrate 用 v2 REST（`/v2/sessions/...`），不走 EventBuffer replay
+
+---
+
+### 2.7 语音伴侣域（M74，规划中）
+
+**涉及文件**（待创建）：`pages/CompanionPage.vue`、`features/companion/`（`stores/companion.ts`、`voice/`（audioCapture/vad/audioPlayback/useVoiceSession）、`hud/HudScene.ts`、`components/`（HudCanvas/CompanionChatPanel/HoloConfirmCard））；`web/src-tauri/src/`（`client_tools.rs`/`whitelist.rs`）
+
+| 维度 | 内容 |
+|------|------|
+| **Store** | `companion store`（voiceState/实时字幕/HUD 状态/确认卡队列）；聊天数据仍归 chat 域 stores（单一数据源，禁止复制消息状态） |
+| **WS 通道** | 双连接并存：`/v1/ws`（v2_event + client_tool 桥）+ `/v1/voice`（PCM 音频 + 语音事件） |
+| **Composable** | `useVoiceSession`（语音会话生命周期 + 状态机镜像）；发送复用 `useChatSender`（ASR 终稿与打字同路径） |
+| **原生集成** | Tauri `invoke()` 调 `client_tools.rs` 执行 open_app/open_url/screenshot；白名单在 Rust 侧强制（不信任 JS 入参） |
+| **后端对应** | §1.29 语音伴侣（voice gateway + clientbridge） |
+
+**⚠️ 开发注意**：
+- 语音字幕为 companion store transient 状态，禁止直接写入消息流；终稿经 useChatSender 转正
+- HUD 状态以服务端 `voice.state` 广播为准，禁止前端本地推测状态机
+- 新增 `three` 依赖（仅 `/companion` 路由按需加载，避免增大主包）
+- 播报音频经 AnalyserNode 驱动 HUD 跳动；barge_in 时播放队列 50ms 淡出清空
 
 ---
 

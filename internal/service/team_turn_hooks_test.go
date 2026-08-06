@@ -30,8 +30,8 @@ func (s *capturingTeamRunner) RunTurnFromInput(ctx context.Context, _ biz.Sessio
 	}
 	return biz.ChatMessage{ID: "u-1"}, biz.ChatMessage{ID: "a-1"}, nil
 }
-func (s *capturingTeamRunner) SetMediator(biz.TeamMediatorPort)          {}
-func (s *capturingTeamRunner) SetAwaitHookProvider(biz.AwaitHookProvider) {}
+func (s *capturingTeamRunner) SetMediator(biz.TeamMediatorPort)               {}
+func (s *capturingTeamRunner) SetAwaitHookProvider(biz.AwaitHookProvider)     {}
 func (s *capturingTeamRunner) SetDeliverableGate(biz.TeamDeliverableGateFunc) {}
 
 // capturingTeamStarter implements biz.TeamStarterPort, capturing the

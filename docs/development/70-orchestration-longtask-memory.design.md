@@ -2130,3 +2130,77 @@ LLM 复用 §16.3 的 `LLMResolver` 按目标解析（MemoryWorker → L0Compres
 **注入**（`ProfileCardCue`）：L3 注入开启时，卡片无条件渲染在记忆块**首位**（`## 用户档案（长期记忆摘要，始终生效）` 标题 + 正文，hook 侧硬上限 1200 runes 安全网）；无卡/读卡失败返回空串，best-effort 永不打断 turn。
 
 **依赖装配**（wire）：`NewProfileCardDistiller(data.NewMemoryPreferenceLister, data.NewMemoryProfileCardStore)` → `SetLLMResolver(resolver)` → `SleepTimeService.SetProfileCardDistiller`；注入侧 `TRPCBuilderDeps.MemoryProfileCardReader` = `data.NewMemoryProfileCardStore`。
+
+### 16.7 召回质量升级（P2）
+
+> 对应需求 FR-13。FR-12/§16.1-16.6 修复「写入→可召回」闭环后，本节提升召回侧质量：混合检索补齐向量盲区、预算档位约束注入体量、L2 默认开启恢复会话上下文、离线评测集提供回归门。
+
+#### 16.7.1 L2 召回默认开启（FR-13.1）
+
+- **Schema 默认**：`agent_runtime_setting.l2_recall_enabled` 默认值改 `true`（`ent/schema/agent_runtime_setting.go`），`biz.DefaultAgentRuntimeSettings` 同步 `L2RecallEnabled: true`——新 agent 开箱即有会话事件召回。
+- **存量迁移**：数据迁移 `20261127 memory_l2_recall_default_on`（`memory_l2_recall_default_migrate.go`，经 `schema_migrations` 表门控幂等）将全部存量行的 `l2_recall_enabled` false→true。历史上该功能因默认关闭实质不可用，不存在「显式 opt-out」语义，故整体翻转安全。
+
+#### 16.7.2 召回 token 预算档位（FR-13.2）
+
+- **档位常量**（`biz/agent_memory_runtime_policy.go`）：`MemoryRecallBudgetCompact=400 / Standard=800（默认）/ Generous=1600`，策略解析 nil/越界值回落 Standard。
+- **配置链路**：proto `AgentRuntimeSetting.l3_recall_budget_tokens`（field 132）→ agent settings → runtime policy → 召回打包器；前端表单字段经 proto 再生成后暴露。
+- **打包器**（`agent/recall_budget.go` `recallLinePacker`）：候选行按分数降序贪心装入——高分行优先，装不下当前大行时允许后续小行填充剩余预算；**标题行显式计入预算**（`packer.allow(header)`），杜绝「内容达标但标题溢出」；token 按 rune 估算。
+- **接入点**：`composite_prompt.go`（L2+L3 复合块）、`l2_prompt.go`、`l3_prompt.go` 统一经 packer 输出。
+- **计数准确性**：`injected_count` 只统计实际通过预算装入的行对应 fact ID——未注入不计数，保持 recalled ≥ injected ≥ cited 漏斗语义（FR-12.6）。
+
+#### 16.7.3 L3 混合召回：pgvector + FTS 经 RRF 融合（FR-13.3/13.4）
+
+**问题**：纯向量召回对关键词强项事实（编号、代号、精确名称等字母数字 token）相似度天然偏低，minScore 阈值直接漏召。
+
+**FTS 通道**（`data/memory_l3_fts.go`）：
+
+- DDL 迁移 `20261128 memory_facts_fts_index`（Postgres-only，registry Func 门控，SQLite CLI/测试跳过）：`memory_facts` 上建 GIN 索引 `to_tsvector('simple', statement || ' ' || COALESCE(details_markdown, ''))`。
+- `'simple'` 配置不分词 CJK（连续中文成单 token），故 FTS 定位为**字母数字 token 的补充信号**；中文关键词匹配仍由 Go 子串通道（`keywordOverlapScore`）承担。
+- `searchL3FTS` 按 `ts_rank` 排序返回候选 ID（遵循 active/未删除/未失效过滤与 scope/user 过滤）；空查询/非 Postgres 返回 nil，调用方自然降级。
+
+**RRF 融合**：`rrfFuseRanked(k=60)` 合并向量排名与 FTS 排名——`fused(id) = Σ 1/(k+rank)`，取并集按融合分降序，截断到候选池后经既有 `scoreFactRow` 校准打分（minScore 语义不变）；融合分仅写入 `recallScoreBreakdown.RRF` 做可观测性注解，不参与 Total。
+
+**三条召回路径全覆盖**（`data/memory_shim_l3.go`）：
+
+| 路径 | 触发 | FTS 接入方式 |
+|------|------|-------------|
+| 暴力扫描（小数据集 ≤ 阈值或无 embedding） | `recallL3FactsBruteForce` | FTS 候选注入扫描池（`ftsExtraCandidates`），不错过关键词命中 |
+| recency 池（无向量结果降级） | `recallL3Facts` | 同上 |
+| pgvector 主路径 | `recallL3WithVectorStore` | 向量候选 ∪ FTS 候选 RRF 融合 |
+
+**主聊天链路修复**：`memory_l3_scored_adapter.go` 的 `RecallL3Hits` 原传 `nil` VectorStore（融合路径永不激活），已改为 `a.data.VectorStore()`。
+
+**降级可观测**（FR-13.4）：vector store 搜索失败不再静默回退——`Warn` 进程日志（step `memory.l3_vector_search`）后降级为 FTS/recency 召回，召回本身不失败。
+
+#### 16.7.4 离线评测集（FR-13.5）
+
+- **数据集**：`data/testdata/memory_l3_eval_set.json` 50 条，覆盖五能力——信息抽取 / 多跳推理 / 时序感知 / 知识更新（旧事实应被新事实取代）/ 拒答（无关查询应空召回）。每条含 `seed_facts`、`expect_hits`、`expect_absent`、`expect_empty`，确定性构造（控制关键词重叠/ recency / importance 变量）。
+- **执行器**：`memory_l3_eval_set_test.go` `TestMemoryL3OfflineEvalSet` 对真实 Postgres schema 跑全量 50 条，通过率门 **≥90%**，纳入 `go test ./internal/data` 回归。
+
+#### 16.7.5 配套 DDL/数据迁移一览
+
+| 版本 | 名称 | 类型 | 说明 |
+|------|------|------|------|
+| 20261125 | memory_fact_three_counters | DDL | FR-12.6 recalled/injected/cited 三列 |
+| 20261126 | memory_profile_cards | DDL | FR-12.7 常驻卡存储 |
+| 20261127 | memory_l2_recall_default_on | 数据迁移 | FR-13.1 存量 L2 召回翻转 |
+| 20261128 | memory_facts_fts_index | DDL（Func 门控） | FR-13.3 FTS GIN 索引（Postgres-only） |
+
+#### 16.7.6 组合召回分层路径与 L2 跨会话候选池（P2-R1/R2 回归修复）
+
+> M-P2 验收后运行时冒烟发现的两处召回回归，2026-08-05 修复。实现记录见 [development.md §18.7 M-P2-5](./70-orchestration-longtask-memory.development.md)。
+
+**P2-R1：组合召回直接组合 fused 分层用例**。主聊天注入路径的 `MemoryCompositeRecallUsecase` 原走降级 legacy store 路径（`CompositeSearchMemories` raw repo 查询）——无 embedding、无 pgvector/FTS RRF、以 importance 冒充分数、`recalled_count` 不自增，M-P2-3 的融合成果在主链路实质失效。修复后经 `SetLayerRecallers(l2, l3)` 注入两个 fused 召回用例（Wire 装配）：
+
+```
+RecallComposite
+  → L2 RecallEpisodes（embedding + 向量/CE 重排 + annotateEpisodeScores）
+  → L3 RecallFactsFused（embedding + pgvector/FTS RRF + 校准分 + recalled_count 自增）
+  → 按 scores.total 归并排序（L2 行经 annotateEpisodeScores 注入同一 scores 契约）
+  → MMRRerankTexts 多样性重排（λ 偏向相关性，Jaccard 词集冗余度）
+  → limit 截断
+```
+
+MMR 实现由 data 层上移至 biz（`biz/memory_mmr.go` `MMRRerankTexts`），data 层保留包装供 legacy 调用方。l3 为 nil 时回退 legacy store 路径（向后兼容）。
+
+**P2-R2：L2 召回候选池 agent 全域化**。`recallL2Episodes`（无向量暴力路径）原将 `sessionID` 作为 SQL 过滤条件构造候选池——跨会话 episode 在该路径永不可达（向量路径 `recallL2WithVectorStore` 本就只按 agent_id 过滤，两条路径语义不一致）。修复后候选池与向量路径对齐为 agent 全域；`sessionID` 仅保留于打分的连续性加分（`l2ScoreWeightSession=0.05` 的 sessionBoost）——同会话 episode 在同等相关度下优先，但不再排除跨会话记忆。

@@ -111,14 +111,13 @@ func (s *stubTeamStageV2Reader) GetTeamStage(_ context.Context, id string) (biz.
 func (s *stubTeamStageV2Reader) ListTeamStagesByTask(_ context.Context, _ string) ([]biz.TeamStage, error) {
 	return nil, nil
 }
-
 func (s *stubTeamStageV2Reader) GetLatestTeamStageByTeam(_ context.Context, teamID string) (biz.TeamStage, error) {
 	var latest biz.TeamStage
 	for _, ts := range s.stages {
 		if ts.TeamID != teamID {
 			continue
 		}
-		if latest.ID == "" || ts.StartedAt.After(latest.StartedAt) {
+		if latest.ID == "" || ts.Seq > latest.Seq {
 			latest = ts
 		}
 	}

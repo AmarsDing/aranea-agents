@@ -296,6 +296,24 @@ WaitingHuman → Cancelled (cancel)
 - **生命周期写者纪律**（`syncMemberSessionStatus` / `syncV2TeamRunStatus`）：已终态记录跳过；目标为终态携带 outcome 带；running↔paused 走 `Version++`。
 - **崩溃 recovery**：对非终态孤儿成员 `SetVersion(outcome)` 标 failed，迟到的 V≤2 重放无法覆盖。
 
+**v2 记录链 run 隔离 ID（ADR-10，2026-08-05）**
+
+v2 三表使用确定性派生 ID，双写者（runner/assembler 与 service outcome pass）按同一公式收敛到同一行（upsert by ID）：
+
+```
+TeamStageID    = NewTeamStageActivityID(teamID, rootTaskID)   // rootTaskID 空 → legacy teamID-only
+TeamRunV2ID    = NewTeamRunV2ID(teamStageID)
+MemberSessionID = NewMemberSessionActivityID(teamRunV2ID, agentKey)
+```
+
+- **run 维度 = RootTaskActivityID**：每条用户消息（含 pending-queue 出队）在团队入口注入全新 RootTaskActivityID 并幂等建根 Task v2（continuation turn 继承 ParentTaskID）；同团队每轮 turn 一行 TeamStage，杜绝多轮碰撞同一行导致的 FSM 冻结。
+- **ctx-less 路径**（CancelTeam / pause-resume / spirit view）：无法重放公式，改查 `GetLatestTeamStageByTeam(teamID)` 最新行；CancelTeam 把其 TaskID 注入 ctx 使终态 pass 命中同一批 ID。
+- **graph 团队 run**：`teamGraphRunSession` 注册时捕获 rootTaskID（resume/finalize 路径的外来 ctx 不携带），`stageActivityID()` 从捕获值派生。
+
+**teams.status 归属（ADR-10 §4，2026-08-05）**
+
+teams 表状态机（§3.2）是 Mode B（AutoCreated）一次性编排生命周期；standalone（Mode A）团队是用户创建的持久实体，**任何路径不得驱动其 teams.status**——每轮 run 终态只落 v2 三表。违反后果：一次 failed 永久毒化团队实体（pending→failed 合法），completed 恒被 FSM 拒绝刷 Warn 噪声。
+
 ### 3.3 窄接口
 
 文件：`internal/biz/team_usecase.go`

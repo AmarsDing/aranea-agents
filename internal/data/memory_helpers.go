@@ -1151,6 +1151,13 @@ func annotateFactScores(raw []byte, bd recallScoreBreakdown) []byte {
 	return out
 }
 
+// annotateEpisodeScores is the L2 twin of annotateFactScores (P2-R1): the
+// composite layered path ranks episodes and facts by the calibrated
+// scores.total, so episode rows must expose the same "scores" contract.
+func annotateEpisodeScores(raw []byte, bd recallScoreBreakdown) []byte {
+	return annotateFactScores(raw, bd)
+}
+
 // VectorSearcher abstracts vector similarity search for recall operations.
 type VectorSearcher interface {
 	Search(ctx context.Context, embedding []float64, topK int, minScore float64) ([]VectorSearchHit, error)
